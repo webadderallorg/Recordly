@@ -70,10 +70,10 @@ export function SourceSelector() {
   return (
     <div className={`min-h-screen flex flex-col items-center justify-center ${styles.glassContainer}`}>
       <div className="flex-1 flex flex-col w-full max-w-xl" style={{ padding: 0 }}>
-        <Tabs defaultValue="screens">
+        <Tabs defaultValue={screenSources.length === 0 ? "windows" : "screens"}>
           <TabsList className="grid grid-cols-2 mb-3 bg-zinc-900/40 rounded-full">
-            <TabsTrigger value="screens" className="data-[state=active]:bg-[#34B27B] data-[state=active]:text-white text-zinc-200 rounded-full text-xs py-1">Screens</TabsTrigger>
-            <TabsTrigger value="windows" className="data-[state=active]:bg-[#34B27B] data-[state=active]:text-white text-zinc-200 rounded-full text-xs py-1">Windows</TabsTrigger>
+            <TabsTrigger value="screens" className="data-[state=active]:bg-[#34B27B] data-[state=active]:text-white text-zinc-200 rounded-full text-xs py-1">Screens ({screenSources.length})</TabsTrigger>
+            <TabsTrigger value="windows" className="data-[state=active]:bg-[#34B27B] data-[state=active]:text-white text-zinc-200 rounded-full text-xs py-1">Windows ({windowSources.length})</TabsTrigger>
           </TabsList>
             <div className="h-72 flex flex-col justify-stretch">
             <TabsContent value="screens" className="h-full">
