@@ -48,7 +48,7 @@ jobs:
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --mac dmg --x64
+          npx electron-builder --mac dmg --x64 --publish never
           mv release/Recordly.dmg release/Recordly-x64.dmg
 
       - name: Upload macOS x64 artifact
@@ -81,7 +81,7 @@ jobs:
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --mac dmg --arm64
+          npx electron-builder --mac dmg --arm64 --publish never
           mv release/Recordly.dmg release/Recordly-arm64.dmg
 
       - name: Upload macOS arm64 artifact
@@ -115,7 +115,7 @@ jobs:
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --win nsis --x64
+          npx electron-builder --win nsis --x64 --publish never
           Rename-Item -Path release/Recordly.exe -NewName Recordly-windows-x64.exe
 
       - name: Upload Windows x64 artifact
@@ -148,7 +148,7 @@ jobs:
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --linux AppImage --x64
+          npx electron-builder --linux AppImage --x64 --publish never
           mv release/Recordly.AppImage release/Recordly-linux-x64.AppImage
 
       - name: Upload Linux x64 artifact
