@@ -3,6 +3,7 @@ import { execFile, spawn, spawnSync } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
 import fs from 'node:fs/promises'
+import { constants as fsConstants } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -202,6 +203,14 @@ function getNativeCaptureHelperSourcePath() {
   return resolveUnpackedAppPath('electron', 'native', 'ScreenCaptureKitRecorder.swift')
 }
 
+function getNativeArchTag() {
+  return process.arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64'
+}
+
+function getPrebundledNativeHelperPath(binaryName: string) {
+  return resolveUnpackedAppPath('electron', 'native', 'bin', getNativeArchTag(), binaryName)
+}
+
 function getNativeCaptureHelperBinaryPath() {
   return path.join(app.getPath('userData'), 'native-tools', 'openscreen-screencapturekit-helper')
 }
@@ -247,7 +256,26 @@ type NativeMacWindowSource = {
 let cachedNativeMacWindowSources: NativeMacWindowSource[] | null = null
 let cachedNativeMacWindowSourcesAtMs = 0
 
-async function ensureSwiftHelperBinary(sourcePath: string, binaryPath: string, label: string) {
+async function ensureSwiftHelperBinary(
+  sourcePath: string,
+  binaryPath: string,
+  label: string,
+  prebundledBinaryName?: string,
+) {
+  if (prebundledBinaryName) {
+    const prebundledPath = getPrebundledNativeHelperPath(prebundledBinaryName)
+    try {
+      await fs.access(prebundledPath, fsConstants.X_OK)
+      return prebundledPath
+    } catch {
+      if (app.isPackaged) {
+        throw new Error(
+          `${label} is missing from this app build (${prebundledPath}). Reinstall or update the app.`
+        )
+      }
+    }
+  }
+
   const helperDir = path.dirname(binaryPath)
 
   await fs.mkdir(helperDir, { recursive: true })
@@ -284,7 +312,8 @@ async function ensureNativeCaptureHelperBinary() {
   return ensureSwiftHelperBinary(
     getNativeCaptureHelperSourcePath(),
     getNativeCaptureHelperBinaryPath(),
-    'native ScreenCaptureKit helper'
+    'native ScreenCaptureKit helper',
+    'openscreen-screencapturekit-helper'
   )
 }
 
@@ -292,7 +321,8 @@ async function ensureNativeWindowListBinary() {
   return ensureSwiftHelperBinary(
     getNativeWindowListSourcePath(),
     getNativeWindowListBinaryPath(),
-    'native ScreenCaptureKit window list helper'
+    'native ScreenCaptureKit window list helper',
+    'openscreen-window-list'
   )
 }
 
@@ -348,7 +378,8 @@ async function getSystemCursorAssets() {
   const binaryPath = await ensureSwiftHelperBinary(
     sourcePath,
     getSystemCursorHelperBinaryPath(),
-    'system cursor helper'
+    'system cursor helper',
+    'openscreen-system-cursors'
   )
 
   const { stdout } = await execFileAsync(binaryPath, [], { timeout: 15000, maxBuffer: 20 * 1024 * 1024 })
@@ -748,7 +779,8 @@ async function ensureNativeCursorMonitorBinary() {
   return ensureSwiftHelperBinary(
     getNativeCursorMonitorSourcePath(),
     getNativeCursorMonitorBinaryPath(),
-    'native cursor monitor helper'
+    'native cursor monitor helper',
+    'openscreen-native-cursor-monitor'
   )
 }
 

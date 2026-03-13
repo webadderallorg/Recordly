@@ -44,6 +44,9 @@ jobs:
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
 
+      - name: Build native macOS helpers
+        run: npm run build:native-helpers
+
       - name: Build macOS x64
         run: |
           npx tsc
@@ -76,6 +79,9 @@ jobs:
 
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
+
+      - name: Build native macOS helpers
+        run: npm run build:native-helpers
 
       - name: Build macOS arm64
         run: |
