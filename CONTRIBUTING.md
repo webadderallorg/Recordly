@@ -2,6 +2,14 @@
 
 Thank you for considering contributing to this project! By contributing, you help make this project better for everyone. Please take a moment to review these guidelines to ensure a smooth contribution process.
 
+Areas where help is especially valuable:
+
+- Smooth cursor pipeline for Linux
+- Webcam overlay bubble
+- Localisation support, especially Chinese
+- UI/UX design improvements
+- Export speed improvements
+
 ## How to Contribute
 
 1. **Fork the Repository**
