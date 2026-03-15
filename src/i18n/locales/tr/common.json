@@ -1,0 +1,18 @@
+{
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Recordly Editör",
+		"subtitle": "Ekran kaydı ve düzenleme"
+	},
+	"actions": {
+		"cancel": "İptal",
+		"save": "Kaydet",
+		"delete": "Sil",
+		"done": "Tamam"
+	},
+	"errors": {
+		"invalidFileType": "Geçersiz dosya türü",
+		"failedToUploadImage": "Resim yüklenemedi",
+		"fileReadError": "Dosya okunurken bir hata oluştu."
+	}
+}

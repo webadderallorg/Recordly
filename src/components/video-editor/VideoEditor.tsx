@@ -94,7 +94,7 @@ function LanguageSwitcher() {
   const { locale, setLocale, t } = useI18n();
   const idx = SUPPORTED_LOCALES.indexOf(locale as typeof SUPPORTED_LOCALES[number]);
   const next = SUPPORTED_LOCALES[(idx + 1) % SUPPORTED_LOCALES.length] as AppLocale;
-  const labels: Record<string, string> = { en: "EN", es: "ES", "zh-CN": "中文" };
+  const labels: Record<string, string> = { en: "EN", es: "ES", "zh-CN": "中文", tr: "TR" };
   return (
     <button
       type="button"

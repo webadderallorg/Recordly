@@ -1,0 +1,91 @@
+{
+	"playback": {
+		"play": "Oynat",
+		"pause": "Duraklat"
+	},
+	"annotations": {
+		"settings": "Açıklama Ayarları",
+		"active": "Aktif",
+		"text": "Metin",
+		"image": "Resim",
+		"arrow": "Ok",
+		"textContent": "Metin İçeriği",
+		"textPlaceholder": "Metninizi girin...",
+		"fontStyle": "Yazı Tipi Stili",
+		"selectStyle": "Stil seçin",
+		"size": "Boyut",
+		"toggleBold": "Kalın yap",
+		"toggleItalic": "İtalik yap",
+		"toggleUnderline": "Altını çiz",
+		"alignLeft": "Sola hizala",
+		"alignCenter": "Ortala",
+		"alignRight": "Sağa hizala",
+		"textColor": "Metin Rengi",
+		"background": "Arka Plan",
+		"none": "Yok",
+		"clearBackground": "Arka Planı Temizle",
+		"uploadImage": "Resim Yükle",
+		"supportedFormats": "Desteklenen formatlar: JPG, PNG, GIF, WebP",
+		"arrowDirection": "Ok Yönü",
+		"strokeWidth": "Çizgi Kalınlığı: {{width}}px",
+		"arrowColor": "Ok Rengi",
+		"deleteAnnotation": "Açıklamayı Sil",
+		"shortcutsAndTips": "Kısayollar ve İpuçları",
+		"tipSelectAnnotation": "Oynatma kafasını örtüşen açıklama bölümüne taşıyın ve bir öğe seçin.",
+		"tipCycleForward": "Örtüşen öğeler arasında geçiş yapmak için Tab kullanın.",
+		"tipCycleBackward": "Geriye doğru geçiş yapmak için Shift+Tab kullanın.",
+		"imageUploadSuccess": "Resim başarıyla yüklendi!",
+		"imageUploadError": "Lütfen JPG, PNG, GIF veya WebP resim dosyası yükleyin."
+	},
+	"fontStyles": {
+		"classic": "Klasik",
+		"editor": "Editör",
+		"strong": "Güçlü",
+		"typewriter": "Daktilo",
+		"deco": "Dekoratif",
+		"simple": "Basit",
+		"modern": "Modern",
+		"clean": "Temiz"
+	},
+	"format": {
+		"mp4Video": "MP4 Video",
+		"mp4Description": "Yüksek kaliteli video dosyası",
+		"gifAnimation": "GIF Animasyon",
+		"gifDescription": "Paylaşım için animasyonlu resim"
+	},
+	"gifOptions": {
+		"frameRate": "Kare Hızı",
+		"outputSize": "Çıktı Boyutu",
+		"outputDimensions": "Çıktı: {{width}} × {{height}}px",
+		"loopAnimation": "Animasyonu Döngüye Al",
+		"loopDescription": "GIF sürekli oynatılacak"
+	},
+	"tutorial": {
+		"howTrimmingWorks": "Kırpma nasıl çalışır",
+		"title": "Kırpma Nasıl Çalışır",
+		"understanding": "Videonuzun istenmeyen kısımlarını nasıl keseceğinizi anlama.",
+		"descriptionP1": "Kırpma aracı, videonuzdan",
+		"descriptionRemove": "kaldırmak",
+		"descriptionP2": "istediğiniz bölümleri tanımlayarak çalışır.",
+		"descriptionP3": "Zaman çizelgesinde kırmızı kırpma bölümü tarafından kaplanan her kısım, dışa aktardığınızda kesilecektir.",
+		"visualExample": "Görsel Örnek",
+		"removed": "KALDIRILDI",
+		"kept": "Tutuldu",
+		"finalVideo": "Son Video",
+		"part": "Bölüm {{number}}",
+		"addTrimStep": "1. Kırpma Ekle",
+		"addTrimDesc": "Kaldırılacak bir bölümü işaretlemek için T tuşuna basın veya makas simgesine tıklayın.",
+		"adjustStep": "2. Ayarla",
+		"adjustDesc": "Kırmızı bölgenin kenarlarını sürükleyerek tam olarak kesmek istediğiniz kısmı kaplayın."
+	},
+	"keyboardShortcuts": {
+		"title": "Klavye Kısayolları",
+		"customizeTooltip": "Kısayolları özelleştir",
+		"customize": "Özelleştir",
+		"panTimeline": "Zaman Çizelgesini Kaydır",
+		"zoomTimeline": "Zaman Çizelgesini Yakınlaştır",
+		"cycleAnnotations": "Açıklamalar Arasında Geç",
+		"tab": "Tab"
+	},
+	"openRecordingsFolder": "Kayıtlar klasörünü aç"
+}

@@ -28,7 +28,7 @@ export function LaunchWindow() {
   const { locale, setLocale } = useI18n();
   const t = useScopedT('launch');
 
-  const LOCALE_LABELS: Record<string, string> = { en: "EN", es: "ES", "zh-CN": "中文" };
+  const LOCALE_LABELS: Record<string, string> = { en: "EN", es: "ES", "zh-CN": "中文", tr: "TR" };
   const {
     recording,
     toggleRecording,

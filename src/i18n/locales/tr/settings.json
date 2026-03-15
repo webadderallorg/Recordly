@@ -1,0 +1,60 @@
+{
+	"zoom": {
+		"level": "Yakınlaştırma Seviyesi",
+		"selectRegion": "Ayarlamak için bir yakınlaştırma bölgesi seçin",
+		"deleteZoom": "Yakınlaştırmayı Sil"
+	},
+	"trim": {
+		"deleteRegion": "Kırpma Bölgesini Sil"
+	},
+	"speed": {
+		"playbackSpeed": "Oynatma Hızı",
+		"selectRegion": "Ayarlamak için bir hız bölgesi seçin",
+		"deleteRegion": "Hız Bölgesini Sil"
+	},
+	"effects": {
+		"title": "Video Efektleri",
+		"showCursor": "İmleci Göster",
+		"loopCursor": "İmleci döngüye al",
+		"backgroundBlur": "Arka Plan Bulanıklığı",
+		"zoomMotionBlur": "Yakınlaştırma Hareket Bulanıklığı",
+		"connectZooms": "Yakınlaştırmaları Bağla",
+		"cursorSize": "İmleç Boyutu",
+		"cursorSmoothing": "İmleç Yumuşatma",
+		"off": "Kapalı",
+		"cursorMotionBlur": "İmleç Hareket Bulanıklığı",
+		"cursorClickBounce": "İmleç Tıklama Zıplaması",
+		"shadow": "Gölge",
+		"roundness": "Yuvarlaklık",
+		"padding": "Dolgu"
+	},
+	"crop": {
+		"title": "Videoyu Kırp",
+		"instruction": "Kırpma alanını ayarlamak için her bir kenara sürükleyin"
+	},
+	"background": {
+		"title": "Arka Plan",
+		"image": "Resim",
+		"color": "Renk",
+		"gradient": "Gradyan",
+		"uploadCustom": "Özel Yükle",
+		"uploadSuccess": "Özel resim başarıyla yüklendi!",
+		"uploadError": "Lütfen JPG veya JPEG resim dosyası yükleyin."
+	},
+	"export": {
+		"mp4": "MP4",
+		"gif": "GIF",
+		"quality": {
+			"low": "Düşük",
+			"medium": "Orta",
+			"high": "Yüksek"
+		},
+		"loop": "Döngü",
+		"outputDimensions": "Çıktı: {{dimensions}}px",
+		"loadProject": "Proje Yükle",
+		"saveProject": "Projeyi Kaydet",
+		"exportVideo": "{{format}} Dışa Aktar",
+		"reportBug": "Hata Bildir",
+		"starOnGithub": "GitHub'da Yıldızla"
+	}
+}

@@ -1,0 +1,36 @@
+{
+	"recording": {
+		"disableSystemAudio": "Sistem sesini kapat",
+		"enableSystemAudio": "Sistem sesini aç",
+		"disableMicrophone": "Mikrofonu kapat",
+		"enableMicrophone": "Mikrofonu aç",
+		"record": "Kaydet",
+		"recordingFolder": "Kayıt klasörü: {{path}}",
+		"chooseRecordingsFolder": "Kayıt klasörünü seç",
+		"folderPath": "Yol: /{{name}}/",
+		"openVideoFile": "Video dosyası aç",
+		"openProject": "Proje aç",
+		"hideHud": "HUD'u gizle",
+		"closeApp": "Uygulamayı kapat"
+	},
+	"sourceSelector": {
+		"loadingSources": "Kaynaklar yükleniyor...",
+		"screens": "Ekranlar",
+		"windows": "Pencereler",
+		"windowsNote": "Yalnızca görünür (simge durumuna küçültülmemiş) pencereler kaydedilebilir.",
+		"windowPlaceholder": "Pencere",
+		"cancel": "İptal",
+		"share": "Paylaş"
+	},
+	"permissions": {
+		"screenRecordingNeeded": "Recordly başlamadan önce Ekran Kaydı iznine ihtiyaç duyuyor. Sistem Ayarları açıldı. İzni etkinleştirdikten sonra Recordly'yi kapatıp yeniden açın.",
+		"screenRecordingMissing": "Ekran Kaydı izni hala eksik. Sistem Ayarları tekrar açıldı. İzni etkinleştirin, ardından kayıt yapmadan önce Recordly'yi kapatıp yeniden açın.",
+		"accessibilityNeeded": "Recordly ayrıca imleç takibi için Erişilebilirlik iznine ihtiyaç duyuyor. Sistem Ayarları açıldı. İzni etkinleştirdikten sonra Recordly'yi kapatıp yeniden açın.",
+		"accessibilityMissing": "Erişilebilirlik izni hala eksik. Sistem Ayarları tekrar açıldı. İzni etkinleştirin, ardından kayıt yapmadan önce Recordly'yi kapatıp yeniden açın.",
+		"selectSource": "Lütfen kaydetmek için bir kaynak seçin",
+		"systemAudioUnavailable": "Bu kaynak için sistem sesi kullanılamıyor. Kayıt sistem sesi olmadan devam edecek.",
+		"microphoneDenied": "Mikrofon erişimi reddedildi. Kayıt mikrofon sesi olmadan devam edecek.",
+		"failedToStart": "Kayıt başlatılamadı: {{error}}",
+		"failedToStartGeneric": "Kayıt başlatılamadı"
+	}
+}

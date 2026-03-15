@@ -35,6 +35,13 @@ import zhCNLaunch from '@/i18n/locales/zh-CN/launch.json'
 import zhCNSettings from '@/i18n/locales/zh-CN/settings.json'
 import zhCNShortcuts from '@/i18n/locales/zh-CN/shortcuts.json'
 import zhCNTimeline from '@/i18n/locales/zh-CN/timeline.json'
+import trCommon from '@/i18n/locales/tr/common.json'
+import trDialogs from '@/i18n/locales/tr/dialogs.json'
+import trEditor from '@/i18n/locales/tr/editor.json'
+import trLaunch from '@/i18n/locales/tr/launch.json'
+import trSettings from '@/i18n/locales/tr/settings.json'
+import trShortcuts from '@/i18n/locales/tr/shortcuts.json'
+import trTimeline from '@/i18n/locales/tr/timeline.json'
 
 const LOCALE_STORAGE_KEY = 'recordly.locale'
 
@@ -67,6 +74,15 @@ const messages: Record<AppLocale, LocaleBundle> = {
     settings: zhCNSettings,
     dialogs: zhCNDialogs,
     shortcuts: zhCNShortcuts,
+  },
+  tr: {
+    common: trCommon,
+    launch: trLaunch,
+    editor: trEditor,
+    timeline: trTimeline,
+    settings: trSettings,
+    dialogs: trDialogs,
+    shortcuts: trShortcuts,
   },
 } as const
 
