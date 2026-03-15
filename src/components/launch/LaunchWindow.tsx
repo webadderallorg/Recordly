@@ -10,7 +10,6 @@ import { useAudioLevelMeter } from "../../hooks/useAudioLevelMeter";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { useCameraDevices } from "../../hooks/useCameraDevices";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
-import { WebcamPreview } from "./WebcamPreview";
 import { useScopedT } from "../../contexts/I18nContext";
 import { Button } from "../ui/button";
 import { AudioLevelMeter } from "../ui/audio-level-meter";
@@ -44,7 +43,6 @@ export function LaunchWindow() {
     setWebcamEnabled,
     webcamDeviceId,
     setWebcamDeviceId,
-    webcamStream,
   } = useScreenRecorder();
   const [recordingStart, setRecordingStart] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -188,9 +186,7 @@ export function LaunchWindow() {
   };
 
   return (
-    <>
-      <WebcamPreview stream={webcamStream} enabled={webcamEnabled} />
-      <div className="w-full h-full flex items-end justify-center bg-transparent overflow-hidden">
+    <div className="w-full h-full flex items-end justify-center bg-transparent overflow-hidden">
       <div className={`flex flex-col items-center gap-2 mx-auto ${styles.electronDrag}`}>
         {showMicControls && (
           <div
@@ -404,7 +400,6 @@ export function LaunchWindow() {
         </div>
       </div>
     </div>
-    </>
   );
 }
 

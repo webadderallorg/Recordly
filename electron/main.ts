@@ -2,7 +2,7 @@ import { app, BrowserWindow, Tray, Menu, nativeImage, desktopCapturer, session, 
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
-import { createHudOverlayWindow, createEditorWindow, createSourceSelectorWindow } from './windows'
+import { createHudOverlayWindow, createEditorWindow, createSourceSelectorWindow, createWebcamWindow, getWebcamWindow, closeWebcamWindow } from './windows'
 import { registerIpcHandlers, getSelectedSourceId, killWgcCaptureProcess } from './ipc/handlers'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -371,6 +371,17 @@ app.whenReady().then(async () => {
   ipcMain.on('hud-overlay-close', () => {
     app.quit();
   });
+
+  ipcMain.on('open-webcam-window', () => {
+    if (!getWebcamWindow()) {
+      createWebcamWindow();
+    }
+  });
+
+  ipcMain.on('close-webcam-window', () => {
+    closeWebcamWindow();
+  });
+
   syncDockIcon()
   createTray()
   updateTrayMenu()

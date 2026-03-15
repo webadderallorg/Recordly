@@ -12,6 +12,7 @@ const RENDERER_DIST = path.join(APP_ROOT, 'dist')
 const WINDOW_ICON_PATH = path.join(process.env.VITE_PUBLIC || RENDERER_DIST, 'app-icons', 'recordly-512.png')
 
 let hudOverlayWindow: BrowserWindow | null = null;
+let webcamWindow: BrowserWindow | null = null;
 
 function getScreen() {
   return nodeRequire('electron').screen as typeof import('electron').screen
@@ -164,5 +165,63 @@ export function createSourceSelectorWindow(): BrowserWindow {
   }
 
   return win
+}
+
+export function createWebcamWindow(): BrowserWindow {
+  const { width, height } = getScreen().getPrimaryDisplay().workAreaSize
+  
+  const WEBCAM_SIZE = 200
+  const win = new BrowserWindow({
+    width: WEBCAM_SIZE,
+    height: WEBCAM_SIZE,
+    x: Math.round(width - WEBCAM_SIZE - 50),
+    y: Math.round(height - WEBCAM_SIZE - 50),
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    transparent: true,
+    hasShadow: false,
+    skipTaskbar: true,
+    ...(process.platform !== 'darwin' && {
+      icon: WINDOW_ICON_PATH,
+    }),
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.mjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  })
+
+  webcamWindow = win
+
+  win.on('closed', () => {
+    if (webcamWindow === win) {
+      webcamWindow = null
+    }
+  })
+
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  win.setAlwaysOnTop(true, 'floating', 1)
+
+  if (VITE_DEV_SERVER_URL) {
+    win.loadURL(VITE_DEV_SERVER_URL + '?windowType=webcam')
+  } else {
+    win.loadFile(path.join(RENDERER_DIST, 'index.html'), { 
+      query: { windowType: 'webcam' } 
+    })
+  }
+
+  return win
+}
+
+export function getWebcamWindow(): BrowserWindow | null {
+  return webcamWindow
+}
+
+export function closeWebcamWindow(): void {
+  if (webcamWindow && !webcamWindow.isDestroyed()) {
+    webcamWindow.close()
+    webcamWindow = null
+  }
 }
 

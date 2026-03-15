@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { LaunchWindow } from "./components/launch/LaunchWindow";
 import { SourceSelector } from "./components/launch/SourceSelector";
 import VideoEditor from "./components/video-editor/VideoEditor";
+import { WebcamWindow } from "./components/webcam/WebcamWindow";
 import { loadAllCustomFonts } from "./lib/customFonts";
 import { ShortcutsProvider } from "./contexts/ShortcutsContext";
 import { ShortcutsConfigDialog } from "./components/video-editor/ShortcutsConfigDialog";
@@ -16,7 +17,7 @@ export default function App() {
     const type = params.get('windowType') || '';
     setWindowType(type);
 
-    if (type === 'hud-overlay' || type === 'source-selector') {
+    if (type === 'hud-overlay' || type === 'source-selector' || type === 'webcam') {
       document.body.style.background = 'transparent';
       document.documentElement.style.background = 'transparent';
       document.getElementById('root')?.style.setProperty('background', 'transparent');
@@ -39,6 +40,8 @@ export default function App() {
       return <LaunchWindow />;
     case 'source-selector':
       return <SourceSelector />;
+    case 'webcam':
+      return <WebcamWindow />;
     case 'editor':
       return (
         <ShortcutsProvider>

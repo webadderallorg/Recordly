@@ -230,6 +230,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
           webcamStreamRef.current = null;
           setWebcamStream(null);
         }
+        window.electronAPI?.closeWebcamWindow?.();
         return;
       }
 
@@ -251,6 +252,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
         if (mounted) {
           webcamStreamRef.current = stream;
           setWebcamStream(stream);
+          window.electronAPI?.openWebcamWindow?.();
         } else {
           stream.getTracks().forEach((track) => track.stop());
         }
@@ -272,6 +274,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
         webcamStreamRef.current = null;
         setWebcamStream(null);
       }
+      window.electronAPI?.closeWebcamWindow?.();
     };
   }, [webcamEnabled, webcamDeviceId]);
 
