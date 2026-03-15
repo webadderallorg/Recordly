@@ -9,7 +9,7 @@ const nodeRequire = createRequire(import.meta.url)
 const APP_ROOT = path.join(__dirname, '..')
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 const RENDERER_DIST = path.join(APP_ROOT, 'dist')
-const WINDOW_ICON_PATH = path.join(process.env.VITE_PUBLIC || RENDERER_DIST, 'app-icons', 'recordly-512.png')
+const WINDOW_ICON_PATH = path.join(process.env.VITE_PUBLIC || RENDERER_DIST, 'app-icons', 'open-recorder-512.png')
 
 let hudOverlayWindow: BrowserWindow | null = null;
 
@@ -101,7 +101,7 @@ export function createEditorWindow(): BrowserWindow {
     resizable: true,
     alwaysOnTop: false,
     skipTaskbar: false,
-    title: 'Recordly',
+    title: 'Open Recorder',
     backgroundColor: '#000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),

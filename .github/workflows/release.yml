@@ -52,13 +52,13 @@ jobs:
           npx tsc
           npx vite build
           npx electron-builder --mac dmg --x64 --publish never
-          mv release/Recordly.dmg release/Recordly-x64.dmg
+          mv release/OpenRecorder.dmg release/OpenRecorder-x64.dmg
 
       - name: Upload macOS x64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-x64
-          path: release/Recordly-x64.dmg
+          path: release/OpenRecorder-x64.dmg
           if-no-files-found: error
 
   build-macos-arm64:
@@ -88,13 +88,13 @@ jobs:
           npx tsc
           npx vite build
           npx electron-builder --mac dmg --arm64 --publish never
-          mv release/Recordly.dmg release/Recordly-arm64.dmg
+          mv release/OpenRecorder.dmg release/OpenRecorder-arm64.dmg
 
       - name: Upload macOS arm64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm64
-          path: release/Recordly-arm64.dmg
+          path: release/OpenRecorder-arm64.dmg
           if-no-files-found: error
 
   build-windows-x64:
@@ -122,13 +122,13 @@ jobs:
           npx tsc
           npx vite build
           npx electron-builder --win nsis --x64 --publish never
-          Rename-Item -Path release/Recordly.exe -NewName Recordly-windows-x64.exe
+          Rename-Item -Path release/OpenRecorder.exe -NewName OpenRecorder-windows-x64.exe
 
       - name: Upload Windows x64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: windows-x64
-          path: release/Recordly-windows-x64.exe
+          path: release/OpenRecorder-windows-x64.exe
           if-no-files-found: error
 
   build-linux-x64:
@@ -155,13 +155,13 @@ jobs:
           npx tsc
           npx vite build
           npx electron-builder --linux AppImage --x64 --publish never
-          mv release/Recordly.AppImage release/Recordly-linux-x64.AppImage
+          mv release/OpenRecorder.AppImage release/OpenRecorder-linux-x64.AppImage
 
       - name: Upload Linux x64 artifact
         uses: actions/upload-artifact@v4
         with:
           name: linux-x64
-          path: release/Recordly-linux-x64.AppImage
+          path: release/OpenRecorder-linux-x64.AppImage
           if-no-files-found: error
 
   publish-release:
@@ -208,7 +208,7 @@ jobs:
           replacesArtifacts: true
           artifactErrorsFailBuild: true
           artifacts: |
-            release-assets/Recordly-arm64.dmg
-            release-assets/Recordly-x64.dmg
-            release-assets/Recordly-windows-x64.exe
-            release-assets/Recordly-linux-x64.AppImage
+            release-assets/OpenRecorder-arm64.dmg
+            release-assets/OpenRecorder-x64.dmg
+            release-assets/OpenRecorder-windows-x64.exe
+            release-assets/OpenRecorder-linux-x64.AppImage

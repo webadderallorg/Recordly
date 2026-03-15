@@ -13,14 +13,14 @@ import { RECORDINGS_DIR } from '../main'
 const execFileAsync = promisify(execFile)
 const nodeRequire = createRequire(import.meta.url)
 
-const PROJECT_FILE_EXTENSION = 'recordly'
-const LEGACY_PROJECT_FILE_EXTENSIONS = ['openscreen']
+const PROJECT_FILE_EXTENSION = 'openrecorder'
+const LEGACY_PROJECT_FILE_EXTENSIONS = ['recordly', 'openscreen']
 const SHORTCUTS_FILE = path.join(app.getPath('userData'), 'shortcuts.json')
 const RECORDINGS_SETTINGS_FILE = path.join(app.getPath('userData'), 'recordings-settings.json')
 const AUTO_RECORDING_PREFIX = 'recording-'
 const AUTO_RECORDING_RETENTION_COUNT = 20
 const AUTO_RECORDING_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000
-const ALLOW_RECORDLY_WINDOW_CAPTURE = Boolean(process.env['VITE_DEV_SERVER_URL'])
+const ALLOW_OWN_WINDOW_CAPTURE = Boolean(process.env['VITE_DEV_SERVER_URL'])
 
 function getScreen() {
   return nodeRequire('electron').screen as typeof import('electron').screen
@@ -1538,7 +1538,7 @@ export function registerIpcHandlers(
     const ownWindowNames = new Set(
       [
         app.getName(),
-        'Recordly',
+        'Open Recorder',
         ...BrowserWindow.getAllWindows().flatMap((win) => {
           const title = win.getTitle().trim()
           return title ? [title] : []
@@ -1569,7 +1569,7 @@ export function registerIpcHandlers(
             return true
           }
 
-          if (ALLOW_RECORDLY_WINDOW_CAPTURE && normalizedName.includes('recordly')) {
+          if (ALLOW_OWN_WINDOW_CAPTURE && normalizedName.includes('open recorder')) {
             return true
           }
 
@@ -1606,11 +1606,11 @@ export function registerIpcHandlers(
           const normalizedWindowName = normalizeDesktopSourceName(source.windowTitle ?? source.name)
           const normalizedAppName = normalizeDesktopSourceName(source.appName ?? '')
 
-          if (!ALLOW_RECORDLY_WINDOW_CAPTURE && normalizedAppName && normalizedAppName === ownAppName) {
+          if (!ALLOW_OWN_WINDOW_CAPTURE && normalizedAppName && normalizedAppName === ownAppName) {
             return false
           }
 
-          if (ALLOW_RECORDLY_WINDOW_CAPTURE && (normalizedAppName === 'recordly' || normalizedWindowName?.includes('recordly'))) {
+          if (ALLOW_OWN_WINDOW_CAPTURE && (normalizedAppName === 'open recorder' || normalizedWindowName?.includes('open recorder'))) {
             return true
           }
 
@@ -1654,7 +1654,7 @@ export function registerIpcHandlers(
             return true
           }
 
-          if (ALLOW_RECORDLY_WINDOW_CAPTURE && normalizedName.includes('recordly')) {
+          if (ALLOW_OWN_WINDOW_CAPTURE && normalizedName.includes('open recorder')) {
             return true
           }
 
@@ -1827,13 +1827,13 @@ export function registerIpcHandlers(
       const appName = normalizeDesktopSourceName(String(source?.appName ?? ''))
       const ownAppName = normalizeDesktopSourceName(app.getName())
       if (
-        !ALLOW_RECORDLY_WINDOW_CAPTURE
+        !ALLOW_OWN_WINDOW_CAPTURE
         &&
         source?.id?.startsWith('window:')
         && appName
-        && (appName === ownAppName || appName === 'recordly')
+        && (appName === ownAppName || appName === 'open recorder')
       ) {
-        return { success: false, message: 'Cannot record Recordly windows. Please select another app window.' }
+        return { success: false, message: 'Cannot record Open Recorder windows. Please select another app window.' }
       }
 
       const helperPath = await ensureNativeCaptureHelperBinary()
@@ -2563,10 +2563,10 @@ export function registerIpcHandlers(
         : `${safeName}.${PROJECT_FILE_EXTENSION}`
 
       const result = await dialog.showSaveDialog({
-        title: 'Save Recordly Project',
+        title: 'Save Open Recorder Project',
         defaultPath: path.join(recordingsDir, defaultName),
         filters: [
-          { name: 'Recordly Project', extensions: [PROJECT_FILE_EXTENSION] },
+          { name: 'Open Recorder Project', extensions: [PROJECT_FILE_EXTENSION] },
           { name: 'JSON', extensions: ['json'] }
         ],
         properties: ['createDirectory', 'showOverwriteConfirmation']
@@ -2602,10 +2602,10 @@ export function registerIpcHandlers(
     try {
       const recordingsDir = await getRecordingsDir()
       const result = await dialog.showOpenDialog({
-        title: 'Open Recordly Project',
+        title: 'Open Project',
         defaultPath: recordingsDir,
         filters: [
-          { name: 'Recordly Project', extensions: [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS] },
+          { name: 'Open Recorder Project', extensions: [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS] },
           { name: 'JSON', extensions: ['json'] },
           { name: 'All Files', extensions: ['*'] }
         ],

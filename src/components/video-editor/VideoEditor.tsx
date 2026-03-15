@@ -1589,7 +1589,7 @@ export default function VideoEditor() {
         className="relative h-10 flex-shrink-0 bg-[#09090b]/80 backdrop-blur-md border-b border-white/5 flex items-center justify-center px-6 z-50"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <span className="text-sm font-semibold tracking-tight text-white/90">Recordly</span>
+        <span className="text-sm font-semibold tracking-tight text-white/90">Open Recorder</span>
         <button
           type="button"
           onClick={() => void openRecordingsFolder()}

@@ -1,7 +1,7 @@
 {
   "app": {
-    "name": "Recordly",
-    "editorTitle": "Recordly Editor",
+    "name": "Open Recorder",
+    "editorTitle": "Open Recorder Editor",
     "subtitle": "Screen recording and editing"
   }
 }

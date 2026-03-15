@@ -69,8 +69,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       await window.electronAPI.openScreenRecordingPreferences();
       alert(
         options.startup
-          ? "Recordly needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen Recordly."
-          : "Screen Recording permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Recordly before recording.",
+          ? "Open Recorder needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen Open Recorder."
+          : "Screen Recording permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Open Recorder before recording.",
       );
       return false;
     }
@@ -92,8 +92,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
     await window.electronAPI.openAccessibilityPreferences();
     alert(
       options.startup
-        ? "Recordly also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen Recordly."
-        : "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Recordly before recording.",
+        ? "Open Recorder also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen Open Recorder."
+        : "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Open Recorder before recording.",
     );
 
     return false;

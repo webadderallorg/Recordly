@@ -1,7 +1,7 @@
-# Recordly
+# Open Recorder
 
 <p align="center">
-  <img src="https://i.postimg.cc/tRnL8gHp/Frame-5.png" width="220" alt="Recordly logo">
+  <img src="https://i.postimg.cc/tRnL8gHp/Frame-5.png" width="220" alt="Open Recorder logo">
 </p>
 
 <p align="center">
@@ -10,25 +10,21 @@
 </p>
 
 ### Create polished, pro-grade screen recordings.
-[Recordly](https://www.recordly.dev) is an **open-source screen recorder and editor** for creating **polished walkthroughs, demos, tutorials, and product videos**. Contribution encouraged.
+[Open Recorder](https://github.com/imbhargav5/open-recorder) is an **open-source screen recorder and editor** for creating **polished walkthroughs, demos, tutorials, and product videos**. Contribution encouraged.
 
-**FAQ**: What are the changes between this and **Openscreen**? A: Recordly adds a full cursor animation/rendering pipeline, native screen capture for Mac and Windows, zoom animations faithful to Screen Studio, cursor loops, smoother panning behaviour, and more major tweaks.
+**FAQ**: What are the changes between this and **Openscreen**? A: Open Recorder adds a full cursor animation/rendering pipeline, native screen capture for Mac and Windows, zoom animations faithful to Screen Studio, cursor loops, smoother panning behaviour, and more major tweaks.
 > This fork exists because the original maintainer does not wish implementing the architectural changes that make some of these features possible i.e. different recording pipeline.
 
-> [!NOTE]
-> Huge thank you to **tadees** for supporting the project! This donation directly helps cover the Apple Developer fees to get Recordly signed and notarised for macOS.
-[**Support the project**](https://ko-fi.com)
-
 <p align="center">
-  <img src="./recordlydemo.gif" width="750" alt="Recordly demo video">
+  <img src="./recordlydemo.gif" width="750" alt="Open Recorder demo video">
 </p>
 
 ---
-## What is Recordly?
+## What is Open Recorder?
 
-Recordly lets you record your screen and automatically transform it into a polished video. It handles the heavy lifting of zooming into important actions and smoothing out jittery cursor movement so your demos look professional by default.
+Open Recorder lets you record your screen and automatically transform it into a polished video. It handles the heavy lifting of zooming into important actions and smoothing out jittery cursor movement so your demos look professional by default.
 
-Recordly runs on:
+Open Recorder runs on:
 
 - **macOS**
 - **Windows**
@@ -68,7 +64,7 @@ Linux currently use Electron's capture path, which means the OS cursor cannot al
 
 ### Cursor Loops
 <p>
-  <img src="./CursorLoop.gif" width="450" alt="Recordly demo video">
+  <img src="./CursorLoop.gif" width="450" alt="Open Recorder demo video">
 </p>
 
 - Cursor returns to original position in a freeze-frame at end of video/GIF (off by default)
@@ -79,7 +75,7 @@ Linux currently use Electron's capture path, which means the OS cursor cannot al
 - Speed-up / slow-down regions
 - Annotations
 - Zoom spans
-- Project save + reopen (`.recordly` files)
+- Project save + reopen (`.openrecorder` files, with `.recordly` and `.openscreen` backward compatibility)
 
 ### Frame Styling
 
@@ -103,11 +99,11 @@ Linux currently use Electron's capture path, which means the OS cursor cannot al
 # Screenshots
 
 <p align="center">
-  <img src="https://i.postimg.cc/d0t09ypT/Screenshot-2026-03-09-at-8-10-08-pm.png" width="700" alt="Recordly editor screenshot">
+  <img src="https://i.postimg.cc/d0t09ypT/Screenshot-2026-03-09-at-8-10-08-pm.png" width="700" alt="Open Recorder editor screenshot">
 </p>
 
 <p align="center">
-  <img src="https://i.postimg.cc/YSgdbvFj/Screenshot-2026-03-09-at-8-49-14-pm.png" width="700" alt="Recordly recording interface screenshot">
+  <img src="https://i.postimg.cc/YSgdbvFj/Screenshot-2026-03-09-at-8-49-14-pm.png" width="700" alt="Open Recorder recording interface screenshot">
 </p>
 
 ---
@@ -118,17 +114,17 @@ Linux currently use Electron's capture path, which means the OS cursor cannot al
 
 Prebuilt releases are available here:
 
-https://github.com/webadderall/Recordly/releases
+https://github.com/imbhargav5/open-recorder/releases
 
 ## Homebrew (Cask)
 
-Recordly is distributed as a GUI app, so Homebrew support is done via cask.
+Open Recorder is distributed as a GUI app, so Homebrew support is done via cask.
 
 For users:
 
 ```bash
-brew tap webadderall/tap
-brew install --cask recordly
+brew tap imbhargav5/tap
+brew install --cask open-recorder
 ```
 
 ---
@@ -136,8 +132,8 @@ brew install --cask recordly
 ## Build from source
 
 ```bash
-git clone https://github.com/webadderall/Recordly.git recordly
-cd recordly
+git clone https://github.com/imbhargav5/open-recorder.git
+cd open-recorder
 npm install
 npm run dev
 ```
@@ -146,12 +142,12 @@ npm run dev
 
 ## macOS: "App cannot be opened"
 
-Recordly is not signed. macOS may quarantine locally built apps.
+Open Recorder is not signed. macOS may quarantine locally built apps.
 
 Remove the quarantine flag with:
 
 ```bash
-xattr -rd com.apple.quarantine /Applications/Recordly.app
+xattr -rd com.apple.quarantine "/Applications/Open Recorder.app"
 ```
 
 ---
@@ -160,7 +156,7 @@ xattr -rd com.apple.quarantine /Applications/Recordly.app
 
 ## Record
 
-1. Launch Recordly
+1. Launch Open Recorder
 2. Select a screen or window
 3. Choose audio recording options
 4. Start recording
@@ -180,7 +176,7 @@ Inside the editor you can:
 - Add annotations
 - Style the frame
 
-Save your work anytime as a `.recordly` project.
+Save your work anytime as an `.openrecorder` project.
 
 ---
 
@@ -203,7 +199,7 @@ Adjust:
 
 ### Linux Cursor Capture
 
-Electron’s desktop capture API does not allow hiding the system cursor during recording.
+Electron's desktop capture API does not allow hiding the system cursor during recording.
 
 If you enable the animated cursor layer, recordings may contain **two cursors**.
 
@@ -230,7 +226,7 @@ System audio capture depends on platform support.
 
 # How It Works
 
-Recordly is a **desktop video editor with a renderer-driven motion pipeline and platform-specific capture layer**.
+Open Recorder is a **desktop video editor with a renderer-driven motion pipeline and platform-specific capture layer**.
 
 **Capture**
 - Electron orchestrates recording
@@ -251,7 +247,7 @@ Recordly is a **desktop video editor with a renderer-driven motion pipeline and 
 - Encoded to MP4 or GIF
 
 **Projects**
-- `.recordly` files store the source video path and editor state
+- `.openrecorder` files store the source video path and editor state
 
 ---
 
@@ -280,27 +276,15 @@ See `CONTRIBUTING.md` for guidelines.
 
 Bug reports and feature requests:
 
-https://github.com/webadderall/Recordly/issues
+https://github.com/imbhargav5/open-recorder/issues
 
 Pull requests are welcome.
 
 ---
 
-# Donations & Sponsors
-
-[Donations](https://ko-fi.com/webadderall/goal?g=0)
-
-• Tadees
-
-Email youngchen3442@gmail.com for other inquiries or DM me via [@webadderall](https://x.com/webadderall)
-
-
-
----
-
 # License
 
-Recordly is licensed under the **MIT License**.
+Open Recorder is licensed under the **MIT License**.
 
 ---
 
@@ -310,8 +294,4 @@ Recordly is licensed under the **MIT License**.
 
 Built on top of the excellent [OpenScreen](https://github.com/siddharthvaddem/openscreen) project, you should go check it out!
 
-Created by  
-[@webadderall](https://x.com/webadderall)
-
 ---
-

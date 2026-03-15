@@ -66,7 +66,7 @@ function closeEditorWindowBypassingUnsavedPrompt(window: BrowserWindow | null) {
 }
 
 // Tray Icons
-const defaultTrayIcon = getTrayIcon('app-icons/recordly-32.png');
+const defaultTrayIcon = getTrayIcon('app-icons/open-recorder-32.png');
 const recordingTrayIcon = getTrayIcon('rec-button.png');
 
 ipcMain.on('set-has-unsaved-changes', (_event, hasChanges: boolean) => {
@@ -227,7 +227,7 @@ function syncDockIcon() {
     return
   }
 
-  const dockIcon = getAppImage('app-icons/recordly-512.png')
+  const dockIcon = getAppImage('app-icons/open-recorder-512.png')
   if (!dockIcon.isEmpty()) {
     app.dock.setIcon(dockIcon)
   }
@@ -237,7 +237,7 @@ function syncDockIcon() {
 function updateTrayMenu(recording: boolean = false) {
   if (!tray) return;
   const trayIcon = recording ? recordingTrayIcon : defaultTrayIcon;
-  const trayToolTip = recording ? `Recording: ${selectedSourceName}` : 'Recordly';
+  const trayToolTip = recording ? `Recording: ${selectedSourceName}` : 'Open Recorder';
   const menuTemplate = recording
     ? [
         {

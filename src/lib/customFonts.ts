@@ -7,7 +7,7 @@ export interface CustomFont {
   importUrl: string; // Google Fonts @import URL
 }
 
-const STORAGE_KEY = 'recordly_custom_fonts';
+const STORAGE_KEY = 'open_recorder_custom_fonts';
 const LEGACY_STORAGE_KEY = 'openscreen_custom_fonts';
 const loadedFonts = new Set<string>();
 

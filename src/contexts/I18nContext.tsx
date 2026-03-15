@@ -29,7 +29,7 @@ import esSettings from '@/i18n/locales/es/settings.json'
 import esShortcuts from '@/i18n/locales/es/shortcuts.json'
 import esTimeline from '@/i18n/locales/es/timeline.json'
 
-const LOCALE_STORAGE_KEY = 'recordly.locale'
+const LOCALE_STORAGE_KEY = 'open-recorder.locale'
 
 type LocaleBundle = Record<I18nNamespace, Record<string, unknown>>
 

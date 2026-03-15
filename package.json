@@ -1,18 +1,18 @@
 {
-	"name": "recordly",
-	"productName": "Recordly",
+	"name": "open-recorder",
+	"productName": "Open Recorder",
 	"description": "A free, creator-focused screen recorder with auto-zoom, cursor effects, backgrounds, annotations, and more - built for polished videos out of the box.",
-	"author": "webadderall",
-	"homepage": "https://github.com/webadderall/Recordly",
+	"author": "imbhargav5",
+	"homepage": "https://github.com/imbhargav5/open-recorder",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/webadderall/Recordly.git"
+		"url": "https://github.com/imbhargav5/open-recorder.git"
 	},
 	"bugs": {
-		"url": "https://github.com/webadderall/Recordly/issues"
+		"url": "https://github.com/imbhargav5/open-recorder/issues"
 	},
 	"private": true,
-	"version": "1.0.0",
+	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
 		"dev": "vite",

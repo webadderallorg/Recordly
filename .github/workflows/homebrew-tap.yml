@@ -12,7 +12,7 @@ on:
       tap_repo:
         description: "Tap repository in owner/repo format"
         required: false
-        default: "webadderall/homebrew-tap"
+        default: "imbhargav5/homebrew-tap"
         type: string
 
 permissions:
@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-      TAP_REPO: ${{ github.event.inputs.tap_repo || vars.HOMEBREW_TAP_REPO || 'webadderall/homebrew-tap' }}
+      TAP_REPO: ${{ github.event.inputs.tap_repo || vars.HOMEBREW_TAP_REPO || 'imbhargav5/homebrew-tap' }}
     steps:
       - name: Validate token
         run: |
@@ -54,19 +54,19 @@ jobs:
       - name: Download release artifacts
         shell: bash
         run: |
-          mkdir -p /tmp/recordly-release
+          mkdir -p /tmp/open-recorder-release
           gh release download "${{ steps.tag.outputs.tag }}" \
             --repo "${{ github.repository }}" \
-            --dir /tmp/recordly-release \
-            --pattern "Recordly-arm64.dmg" \
-            --pattern "Recordly-x64.dmg"
+            --dir /tmp/open-recorder-release \
+            --pattern "OpenRecorder-arm64.dmg" \
+            --pattern "OpenRecorder-x64.dmg"
 
       - name: Compute checksums
         id: sha
         shell: bash
         run: |
-          SHA_ARM=$(sha256sum /tmp/recordly-release/Recordly-arm64.dmg | awk '{print $1}')
-          SHA_INTEL=$(sha256sum /tmp/recordly-release/Recordly-x64.dmg | awk '{print $1}')
+          SHA_ARM=$(sha256sum /tmp/open-recorder-release/OpenRecorder-arm64.dmg | awk '{print $1}')
+          SHA_INTEL=$(sha256sum /tmp/open-recorder-release/OpenRecorder-x64.dmg | awk '{print $1}')
           echo "arm=$SHA_ARM" >> "$GITHUB_OUTPUT"
           echo "intel=$SHA_INTEL" >> "$GITHUB_OUTPUT"
 
@@ -84,36 +84,36 @@ jobs:
           cd /tmp/homebrew-tap
           mkdir -p Casks
 
-          BRANCH="recordly-cask-${{ steps.tag.outputs.tag }}"
+          BRANCH="open-recorder-cask-${{ steps.tag.outputs.tag }}"
           git checkout -B "$BRANCH"
 
-          cat > Casks/recordly.rb <<'RUBY'
-          cask "recordly" do
+          cat > Casks/open-recorder.rb <<'RUBY'
+          cask "open-recorder" do
             version "__VERSION__"
 
             on_arm do
               sha256 "__SHA_ARM__"
-              url "https://github.com/__REPO__/releases/download/__TAG__/Recordly-arm64.dmg"
+              url "https://github.com/__REPO__/releases/download/__TAG__/OpenRecorder-arm64.dmg"
             end
 
             on_intel do
               sha256 "__SHA_INTEL__"
-              url "https://github.com/__REPO__/releases/download/__TAG__/Recordly-x64.dmg"
+              url "https://github.com/__REPO__/releases/download/__TAG__/OpenRecorder-x64.dmg"
             end
 
-            name "Recordly"
+            name "Open Recorder"
             desc "Open-source screen recorder and editor"
-            homepage "https://www.recordly.dev"
+            homepage "https://github.com/imbhargav5/open-recorder"
 
-            app "Recordly.app"
+            app "Open Recorder.app"
           end
           RUBY
 
-          sed -i "s/__VERSION__/${{ steps.tag.outputs.version }}/g" Casks/recordly.rb
-          sed -i "s/__SHA_ARM__/${{ steps.sha.outputs.arm }}/g" Casks/recordly.rb
-          sed -i "s/__SHA_INTEL__/${{ steps.sha.outputs.intel }}/g" Casks/recordly.rb
-          sed -i "s#__REPO__#${{ github.repository }}#g" Casks/recordly.rb
-          sed -i "s#__TAG__#${{ steps.tag.outputs.tag }}#g" Casks/recordly.rb
+          sed -i "s/__VERSION__/${{ steps.tag.outputs.version }}/g" Casks/open-recorder.rb
+          sed -i "s/__SHA_ARM__/${{ steps.sha.outputs.arm }}/g" Casks/open-recorder.rb
+          sed -i "s/__SHA_INTEL__/${{ steps.sha.outputs.intel }}/g" Casks/open-recorder.rb
+          sed -i "s#__REPO__#${{ github.repository }}#g" Casks/open-recorder.rb
+          sed -i "s#__TAG__#${{ steps.tag.outputs.tag }}#g" Casks/open-recorder.rb
 
           if git diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -122,8 +122,8 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Casks/recordly.rb
-          git commit -m "chore(cask): update recordly to ${{ steps.tag.outputs.tag }}"
+          git add Casks/open-recorder.rb
+          git commit -m "chore(cask): update open-recorder to ${{ steps.tag.outputs.tag }}"
           git push --force-with-lease origin "$BRANCH"
 
           echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -142,7 +142,7 @@ jobs:
           fi
 
           gh pr create \
-            --title "chore(cask): update recordly to ${{ steps.tag.outputs.tag }}" \
+            --title "chore(cask): update open-recorder to ${{ steps.tag.outputs.tag }}" \
             --body "Automated cask update for ${{ steps.tag.outputs.tag }}.\n\n- arm64 sha256: \\`${{ steps.sha.outputs.arm }}\\`\n- x64 sha256: \\`${{ steps.sha.outputs.intel }}\\`" \
             --head "${{ steps.update.outputs.branch }}" \
             --base main

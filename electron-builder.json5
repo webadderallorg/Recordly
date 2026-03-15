@@ -1,14 +1,14 @@
 // @see - https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "dev.recordly.app",
+  "appId": "dev.openrecorder.app",
   "asar": true,
   "asarUnpack": [
     "node_modules/ffmpeg-static/**",
     "node_modules/uiohook-napi/**",
     "electron/native/**"
   ],
-  "productName": "Recordly",
+  "productName": "Open Recorder",
   "npmRebuild": true,
   "buildDependenciesFromSource": true,
   "compression": "normal",
@@ -42,10 +42,10 @@
       }
     ],
     "icon": "icons/icons/mac/icon.icns",
-    "artifactName": "Recordly.dmg",
+    "artifactName": "OpenRecorder.dmg",
     "extendInfo": {
-      "NSAudioCaptureUsageDescription": "Recordly needs audio capture permission to record system audio.",
-      "NSMicrophoneUsageDescription": "Recordly needs microphone access to record voice audio.",
+      "NSAudioCaptureUsageDescription": "Open Recorder needs audio capture permission to record system audio.",
+      "NSMicrophoneUsageDescription": "Open Recorder needs microphone access to record voice audio.",
       "NSCameraUseContinuityCameraDeviceType": true,
       "com.apple.security.device.audio-input": true
     }
@@ -55,7 +55,7 @@
       "AppImage"
     ],
     "icon": "icons/icons/png",
-    "artifactName": "Recordly.AppImage",
+    "artifactName": "OpenRecorder.AppImage",
     "category": "AudioVideo"
   },
   "win": {
@@ -64,7 +64,7 @@
     ],
     "icon": "icons/icons/win/icon.ico"
     ,
-    "artifactName": "Recordly.exe"
+    "artifactName": "OpenRecorder.exe"
   }
 }
 
