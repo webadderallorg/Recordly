@@ -1,0 +1,38 @@
+{
+	"zoom": {
+		"cannotPlace": "여기에 줌을 추가할 수 없습니다",
+		"existsOrNoSpace": "이 위치에 이미 줌이 있거나 공간이 부족합니다.",
+		"suggestHandlerUnavailable": "줌 추천 핸들러를 사용할 수 없습니다",
+		"noTelemetry": "커서 추적 데이터를 사용할 수 없습니다",
+		"recordFirst": "커서 기반 추천을 생성하려면 먼저 화면을 녹화하세요.",
+		"noUsableTelemetry": "사용 가능한 커서 이동 데이터가 없습니다",
+		"notEnoughMovement": "녹화에 충분한 커서 이동 데이터가 포함되어 있지 않습니다.",
+		"noInteractionMoments": "뚜렷한 상호작용 지점을 찾을 수 없습니다",
+		"tryRecording": "중요한 동작 주변에서 일시정지나 클릭이 포함된 녹화를 시도해 보세요.",
+		"noAutoZoomSlots": "자동 줌 슬롯이 없습니다",
+		"dwellPointsOverlap": "감지된 체류 지점이 기존 줌 영역과 겹칩니다.",
+		"addedSuggestions": "상호작용 기반 줌 추천 {{count}}개가 추가되었습니다",
+		"label": "줌 {{index}}",
+		"addZoom": "줌 추가 (Z)",
+		"suggestZooms": "커서 기반 줌 추천"
+	},
+	"trim": {
+		"cannotPlace": "여기에 구간 자르기를 추가할 수 없습니다",
+		"existsOrNoSpace": "이 위치에 이미 구간 자르기가 있거나 공간이 부족합니다.",
+		"label": "구간 자르기 {{index}}",
+		"addTrim": "구간 자르기 추가 (T)"
+	},
+	"speed": {
+		"cannotPlace": "여기에 속도 조절을 추가할 수 없습니다",
+		"existsOrNoSpace": "이 위치에 이미 속도 영역이 있거나 공간이 부족합니다.",
+		"label": "속도"
+	},
+	"annotation": {
+		"label": "주석",
+		"image": "이미지",
+		"addAnnotation": "주석 추가 (A)"
+	},
+	"addSpeed": "속도 추가 (S)",
+	"resizeLeft": "왼쪽 크기 조절",
+	"resizeRight": "오른쪽 크기 조절"
+}

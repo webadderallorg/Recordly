@@ -1,0 +1,36 @@
+{
+	"recording": {
+		"disableSystemAudio": "시스템 오디오 끄기",
+		"enableSystemAudio": "시스템 오디오 켜기",
+		"disableMicrophone": "마이크 끄기",
+		"enableMicrophone": "마이크 켜기",
+		"record": "녹화",
+		"recordingFolder": "녹화 폴더: {{path}}",
+		"chooseRecordingsFolder": "녹화 폴더 선택",
+		"folderPath": "경로: /{{name}}/",
+		"openVideoFile": "동영상 파일 열기",
+		"openProject": "프로젝트 열기",
+		"hideHud": "HUD 숨기기",
+		"closeApp": "앱 종료"
+	},
+	"sourceSelector": {
+		"loadingSources": "소스 불러오는 중...",
+		"screens": "화면",
+		"windows": "창",
+		"windowsNote": "화면에 열려있는(최소화되지 않은) 창만 녹화할 수 있습니다.",
+		"windowPlaceholder": "창",
+		"cancel": "취소",
+		"share": "공유"
+	},
+	"permissions": {
+		"screenRecordingNeeded": "Recordly에 화면 녹화 권한이 필요합니다. 시스템 설정 창을 열었습니다. 권한을 활성화한 후 Recordly를 종료하고 다시 실행해 주세요.",
+		"screenRecordingMissing": "화면 녹화 권한이 아직 없습니다. 시스템 설정 창을 다시 열었습니다. 권한을 활성화한 후 Recordly를 종료하고 다시 실행해 주세요.",
+		"accessibilityNeeded": "Recordly에 커서 추적을 위한 손쉬운 사용 권한이 필요합니다. 시스템 설정 창을 열었습니다. 권한을 활성화한 후 Recordly를 종료하고 다시 실행해 주세요.",
+		"accessibilityMissing": "손쉬운 사용 권한이 아직 없습니다. 시스템 설정 창을 다시 열었습니다. 권한을 활성화한 후 Recordly를 종료하고 다시 실행해 주세요.",
+		"selectSource": "녹화할 소스를 선택하세요",
+		"systemAudioUnavailable": "이 소스에서는 시스템 오디오를 사용할 수 없습니다. 시스템 오디오 없이 녹화를 계속합니다.",
+		"microphoneDenied": "마이크 접근이 거부되었습니다. 마이크 오디오 없이 녹화를 계속합니다.",
+		"failedToStart": "녹화 시작 실패: {{error}}",
+		"failedToStartGeneric": "녹화를 시작하지 못했습니다"
+	}
+}

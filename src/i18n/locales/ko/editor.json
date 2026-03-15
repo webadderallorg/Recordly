@@ -1,0 +1,91 @@
+{
+	"playback": {
+		"play": "재생",
+		"pause": "일시정지"
+	},
+	"annotations": {
+		"settings": "주석 설정",
+		"active": "활성",
+		"text": "텍스트",
+		"image": "이미지",
+		"arrow": "화살표",
+		"textContent": "텍스트 내용",
+		"textPlaceholder": "텍스트를 입력하세요...",
+		"fontStyle": "글꼴 스타일",
+		"selectStyle": "스타일 선택",
+		"size": "크기",
+		"toggleBold": "굵게",
+		"toggleItalic": "기울임",
+		"toggleUnderline": "밑줄",
+		"alignLeft": "왼쪽 정렬",
+		"alignCenter": "가운데 정렬",
+		"alignRight": "오른쪽 정렬",
+		"textColor": "텍스트 색상",
+		"background": "배경",
+		"none": "없음",
+		"clearBackground": "배경 지우기",
+		"uploadImage": "이미지 업로드",
+		"supportedFormats": "지원 형식: JPG, PNG, GIF, WebP",
+		"arrowDirection": "화살표 방향",
+		"strokeWidth": "선 두께: {{width}}px",
+		"arrowColor": "화살표 색상",
+		"deleteAnnotation": "주석 삭제",
+		"shortcutsAndTips": "단축키 및 팁",
+		"tipSelectAnnotation": "재생 헤드를 주석이 겹치는 구간으로 이동한 후 항목을 선택하세요.",
+		"tipCycleForward": "Tab 키를 눌러 겹치는 항목을 차례로 선택합니다.",
+		"tipCycleBackward": "Shift+Tab을 누르면 역순으로 선택됩니다.",
+		"imageUploadSuccess": "이미지가 업로드되었습니다!",
+		"imageUploadError": "JPG, PNG, GIF 또는 WebP 이미지 파일을 업로드하세요."
+	},
+	"fontStyles": {
+		"classic": "클래식",
+		"editor": "에디터",
+		"strong": "강조",
+		"typewriter": "타자기",
+		"deco": "데코",
+		"simple": "심플",
+		"modern": "모던",
+		"clean": "클린"
+	},
+	"format": {
+		"mp4Video": "MP4 동영상",
+		"mp4Description": "고화질 동영상 파일",
+		"gifAnimation": "GIF 애니메이션",
+		"gifDescription": "공유용 움직이는 이미지"
+	},
+	"gifOptions": {
+		"frameRate": "프레임 레이트",
+		"outputSize": "출력 크기",
+		"outputDimensions": "출력: {{width}} × {{height}}px",
+		"loopAnimation": "반복 재생",
+		"loopDescription": "GIF가 계속 반복됩니다"
+	},
+	"tutorial": {
+		"howTrimmingWorks": "구간 자르기 사용법",
+		"title": "구간 자르기 사용법",
+		"understanding": "동영상에서 불필요한 부분을 잘라내는 방법을 알아봅니다.",
+		"descriptionP1": "구간 자르기 도구는 동영상에서",
+		"descriptionRemove": "제거",
+		"descriptionP2": "할 구간을 지정하는 방식으로 작동합니다.",
+		"descriptionP3": "타임라인에서 빨간색 구간 자르기로 표시된 부분은 내보내기 시 제거됩니다.",
+		"visualExample": "시각적 예시",
+		"removed": "제거됨",
+		"kept": "유지됨",
+		"finalVideo": "최종 영상",
+		"part": "파트 {{number}}",
+		"addTrimStep": "1. 구간 자르기 추가",
+		"addTrimDesc": "T 키를 누르거나 가위 아이콘을 클릭하여 제거할 구간을 표시합니다.",
+		"adjustStep": "2. 조정",
+		"adjustDesc": "빨간색 영역의 가장자리를 드래그하여 잘라낼 범위를 정확히 지정합니다."
+	},
+	"keyboardShortcuts": {
+		"title": "키보드 단축키",
+		"customizeTooltip": "단축키 설정",
+		"customize": "설정",
+		"panTimeline": "타임라인 이동",
+		"zoomTimeline": "타임라인 확대/축소",
+		"cycleAnnotations": "주석 순환",
+		"tab": "Tab"
+	},
+	"openRecordingsFolder": "녹화 폴더 열기"
+}

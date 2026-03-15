@@ -1,0 +1,16 @@
+{
+	"actions": {
+		"addZoom": "줌 추가",
+		"addTrim": "구간 자르기 추가",
+		"addSpeed": "속도 추가",
+		"addAnnotation": "주석 추가",
+		"addKeyframe": "키프레임 추가",
+		"deleteSelected": "선택 항목 삭제",
+		"playPause": "재생 / 일시정지",
+		"cycleForward": "다음 주석으로",
+		"cycleBackward": "이전 주석으로",
+		"deleteSelectedAlt": "선택 항목 삭제 (보조)",
+		"panTimeline": "타임라인 이동",
+		"zoomTimeline": "타임라인 확대/축소"
+	}
+}

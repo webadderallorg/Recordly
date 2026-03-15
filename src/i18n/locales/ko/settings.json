@@ -1,0 +1,60 @@
+{
+	"zoom": {
+		"level": "줌 레벨",
+		"selectRegion": "조정할 줌 영역을 선택하세요",
+		"deleteZoom": "줌 삭제"
+	},
+	"trim": {
+		"deleteRegion": "구간 자르기 영역 삭제"
+	},
+	"speed": {
+		"playbackSpeed": "재생 속도",
+		"selectRegion": "조정할 속도 영역을 선택하세요",
+		"deleteRegion": "속도 영역 삭제"
+	},
+	"effects": {
+		"title": "영상 효과",
+		"showCursor": "커서 표시",
+		"loopCursor": "커서 반복",
+		"backgroundBlur": "배경 블러",
+		"zoomMotionBlur": "줌 모션 블러",
+		"connectZooms": "줌 연결",
+		"cursorSize": "커서 크기",
+		"cursorSmoothing": "커서 스무딩",
+		"off": "끄기",
+		"cursorMotionBlur": "커서 모션 블러",
+		"cursorClickBounce": "커서 클릭 바운스",
+		"shadow": "그림자",
+		"roundness": "모서리 둥글기",
+		"padding": "여백"
+	},
+	"crop": {
+		"title": "화면 자르기",
+		"instruction": "가장자리를 드래그하여 자르기 영역을 조정하세요"
+	},
+	"background": {
+		"title": "배경",
+		"image": "이미지",
+		"color": "색상",
+		"gradient": "그라데이션",
+		"uploadCustom": "사용자 지정 업로드",
+		"uploadSuccess": "사용자 지정 이미지가 업로드되었습니다!",
+		"uploadError": "JPG 또는 JPEG 이미지 파일을 업로드하세요."
+	},
+	"export": {
+		"mp4": "MP4",
+		"gif": "GIF",
+		"quality": {
+			"low": "낮음",
+			"medium": "보통",
+			"high": "높음"
+		},
+		"loop": "반복",
+		"outputDimensions": "출력: {{dimensions}}px",
+		"loadProject": "프로젝트 불러오기",
+		"saveProject": "프로젝트 저장",
+		"exportVideo": "{{format}} 내보내기",
+		"reportBug": "버그 제보",
+		"starOnGithub": "GitHub에서 Star 주기"
+	}
+}

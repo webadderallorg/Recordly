@@ -1,0 +1,18 @@
+{
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Recordly 편집기",
+		"subtitle": "화면 녹화 및 편집"
+	},
+	"actions": {
+		"cancel": "취소",
+		"save": "저장",
+		"delete": "삭제",
+		"done": "완료"
+	},
+	"errors": {
+		"invalidFileType": "지원하지 않는 파일 형식입니다",
+		"failedToUploadImage": "이미지 업로드에 실패했습니다",
+		"fileReadError": "파일을 읽는 중 오류가 발생했습니다."
+	}
+}
