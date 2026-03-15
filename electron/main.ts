@@ -84,10 +84,25 @@ function focusOrCreateMainWindow() {
   }
 
   if (mainWindow && !mainWindow.isDestroyed()) {
-    if (mainWindow.isMinimized()) mainWindow.restore()
+    // On Linux/Wayland, focus() often doesn't take effect (compositor ignores it). Apps like Telegram
+    // work because they receive an XDG activation token via StatusNotifierItem.ProvideXdgActivationToken;
+    // Electron's tray doesn't handle that yet. Workaround: destroy and recreate the HUD so the new
+    // window gets focus (creation path works). Only for HUD, not editor.
+    if (
+      process.platform === 'linux' &&
+      !mainWindow.isFocused() &&
+      !isEditorWindow(mainWindow)
+    ) {
+      const win = mainWindow
+      mainWindow = null
+      win.once('closed', () => createWindow())
+      win.destroy()
+      return
+    }
     mainWindow.show()
-    mainWindow.focus()
+    if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.moveTop()
+    mainWindow.focus()
   }
 }
 
@@ -204,6 +219,7 @@ function setupApplicationMenu() {
 
 function createTray() {
   tray = new Tray(defaultTrayIcon);
+  tray.on('click', () => focusOrCreateMainWindow())
 }
 
 function getPublicAssetPath(filename: string) {
