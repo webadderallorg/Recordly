@@ -136,6 +136,24 @@ brew install --cask recordly
 
 ---
 
+## Arch Linux / Manjaro (yay)
+
+From the AUR (once the package is published):
+
+```bash
+yay -S recordly-bin
+```
+
+Or build and install from this repo:
+
+```bash
+git clone https://github.com/webadderall/Recordly.git && cd Recordly/packaging/arch && makepkg -si
+```
+
+The AUR package is community-maintained. The same PKGBUILD lives in this repo under `packaging/arch/`. For AUR-specific issues or update requests, you can contact the maintainer at **aur@firtoz.com**.
+
+---
+
 ## Build from source
 
 ```bash

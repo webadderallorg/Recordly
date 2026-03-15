@@ -32,3 +32,10 @@ release/**
 # Native capture build artifacts
 electron/native/wgc-capture/build/
 electron/native/cursor-monitor/build/
+
+# Arch packaging (makepkg)
+packaging/arch/src/
+packaging/arch/pkg/
+packaging/arch/*.pkg.tar.zst
+packaging/arch/*.pkg.tar.xz
+packaging/arch/*.AppImage

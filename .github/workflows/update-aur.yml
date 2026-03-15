@@ -1,0 +1,94 @@
+# Update the AUR recordly-bin package when upstream (webadderall/Recordly) releases a new version.
+# Runs on schedule and on manual trigger. Requires AUR_SSH_PRIVATE_KEY secret in this repo.
+
+name: Update AUR
+
+on:
+  schedule:
+    # Run daily at 00:00 UTC
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-aur:
+    name: Check and update AUR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest upstream release
+        id: release
+        run: |
+          API="https://api.github.com/repos/webadderall/Recordly/releases/latest"
+          TAG=$(curl -sL "$API" | jq -r .tag_name)
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Latest upstream: $TAG ($VERSION)"
+
+      - name: Check if AUR update needed
+        id: check
+        run: |
+          CURRENT=$(grep '^pkgver=' packaging/arch/PKGBUILD | cut -d= -f2)
+          LATEST="${{ steps.release.outputs.version }}"
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+          echo "Current PKGBUILD pkgver: $CURRENT"
+          if [ "$(printf '%s\n%s' "$CURRENT" "$LATEST" | sort -V | tail -1)" = "$LATEST" ] && [ "$CURRENT" != "$LATEST" ]; then
+            echo "needed=true" >> $GITHUB_OUTPUT
+            echo "Update needed: $CURRENT -> $LATEST"
+          else
+            echo "needed=false" >> $GITHUB_OUTPUT
+            echo "No update needed (current $CURRENT, latest $LATEST)"
+          fi
+
+      - name: Update PKGBUILD
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          sed -i "s/^pkgver=.*/pkgver=${{ steps.release.outputs.version }}/" packaging/arch/PKGBUILD
+          sed -i 's/^pkgrel=.*/pkgrel=1/' packaging/arch/PKGBUILD
+          grep -E '^(pkgver|pkgrel)=' packaging/arch/PKGBUILD
+
+      - name: Regenerate .SRCINFO
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          docker run --rm -v "$PWD":/mnt -w /mnt/packaging/arch archlinux bash -c \
+            "pacman -Sy --noconfirm base-devel && makepkg --printsrcinfo > .SRCINFO"
+          head -20 packaging/arch/.SRCINFO
+
+      - name: Commit and push to fork
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packaging/arch/PKGBUILD packaging/arch/.SRCINFO
+          git commit -m "chore(arch): update recordly-bin to ${{ steps.release.outputs.version }}"
+          git push
+
+      - name: Setup AUR SSH
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/aur_key
+          chmod 600 ~/.ssh/aur_key
+          ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
+
+      - name: Clone AUR repo and push update
+        if: steps.check.outputs.needed == 'true'
+        env:
+          GIT_SSH_COMMAND: "ssh -i ~/.ssh/aur_key -o StrictHostKeyChecking=no"
+        run: |
+          git clone ssh://aur@aur.archlinux.org/recordly-bin.git aur-repo
+          cd aur-repo
+          git config user.name "firtoz"
+          git config user.email "aur@firtoz.com"
+          cp ../packaging/arch/PKGBUILD ../packaging/arch/.SRCINFO ../packaging/arch/recordly.desktop ../packaging/arch/LICENSE .
+          git add PKGBUILD .SRCINFO recordly.desktop LICENSE
+          git diff --cached --stat
+          git commit -m "Update to ${{ steps.release.outputs.version }}"
+          git push origin master
