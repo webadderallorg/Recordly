@@ -28,6 +28,13 @@ jobs:
   build-macos-x64:
     name: Build macOS x64
     runs-on: macos-15-intel
+    env:
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      CSC_NAME: ${{ secrets.CSC_NAME }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -44,8 +51,21 @@ jobs:
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
 
+      - name: Sync brand icons
+        run: npm run build:icons
+
       - name: Build native macOS helpers
         run: npm run build:native-helpers
+
+      - name: Verify macOS signing secrets
+        shell: bash
+        run: |
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required GitHub secret mapped to $name"
+              exit 1
+            fi
+          done
 
       - name: Build macOS x64
         run: |
@@ -53,6 +73,9 @@ jobs:
           npx vite build
           npx electron-builder --mac dmg --x64 --publish never
           mv release/OpenRecorder.dmg release/OpenRecorder-x64.dmg
+
+      - name: Validate notarized macOS x64 artifact
+        run: xcrun stapler validate release/OpenRecorder-x64.dmg
 
       - name: Upload macOS x64 artifact
         uses: actions/upload-artifact@v4
@@ -64,6 +87,13 @@ jobs:
   build-macos-arm64:
     name: Build macOS arm64
     runs-on: macos-14
+    env:
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      CSC_NAME: ${{ secrets.CSC_NAME }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -80,8 +110,21 @@ jobs:
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
 
+      - name: Sync brand icons
+        run: npm run build:icons
+
       - name: Build native macOS helpers
         run: npm run build:native-helpers
+
+      - name: Verify macOS signing secrets
+        shell: bash
+        run: |
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required GitHub secret mapped to $name"
+              exit 1
+            fi
+          done
 
       - name: Build macOS arm64
         run: |
@@ -89,6 +132,9 @@ jobs:
           npx vite build
           npx electron-builder --mac dmg --arm64 --publish never
           mv release/OpenRecorder.dmg release/OpenRecorder-arm64.dmg
+
+      - name: Validate notarized macOS arm64 artifact
+        run: xcrun stapler validate release/OpenRecorder-arm64.dmg
 
       - name: Upload macOS arm64 artifact
         uses: actions/upload-artifact@v4
@@ -115,6 +161,9 @@ jobs:
 
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
+
+      - name: Sync brand icons
+        run: npm run build:icons
 
       - name: Build Windows x64
         shell: pwsh
@@ -149,6 +198,9 @@ jobs:
 
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
+
+      - name: Sync brand icons
+        run: npm run build:icons
 
       - name: Build Linux x64
         run: |

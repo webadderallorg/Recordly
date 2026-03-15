@@ -1,7 +1,7 @@
 # Open Recorder
 
 <p align="center">
-  <img src="https://i.postimg.cc/tRnL8gHp/Frame-5.png" width="220" alt="Open Recorder logo">
+  <img src="./branding/source-assets/open-recorder-brand-image.png" width="220" alt="Open Recorder logo">
 </p>
 
 <p align="center">
@@ -140,9 +140,35 @@ npm run dev
 
 ---
 
+## Signed macOS releases in GitHub Actions
+
+The manual release workflow at `.github/workflows/release.yml` can produce signed and notarized macOS DMGs when these GitHub repository secrets are configured:
+
+- `CSC_LINK`: base64-encoded `Developer ID Application` `.p12` certificate export
+- `CSC_KEY_PASSWORD`: password used when exporting the `.p12`
+- `CSC_NAME`: optional full signing identity name, for example `Developer ID Application: Your Name (TEAMID12345)`
+- `APPLE_ID`: Apple Developer account email
+- `APPLE_APP_SPECIFIC_PASSWORD`: app-specific password for notarization
+- `APPLE_TEAM_ID`: your Apple Developer team ID
+
+This repo now includes two helper scripts:
+
+```bash
+npm run release:setup-macos-signing
+npm run release:dispatch
+```
+
+`release:setup-macos-signing` detects the local `Developer ID Application` identity, exports a `.p12`, and uploads the GitHub secrets.
+
+`release:dispatch` checks the current semantic version, asks whether you want a patch, minor, or major release, shows the calculated next tag, asks for confirmation, and then dispatches the `Release Builds` workflow.
+
+Make sure `gh auth login` succeeds before running the release dispatch flow.
+
+---
+
 ## macOS: "App cannot be opened"
 
-Open Recorder is not signed. macOS may quarantine locally built apps.
+Local source builds are not signed or notarized by default. macOS may quarantine apps built on your machine.
 
 Remove the quarantine flag with:
 
