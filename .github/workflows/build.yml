@@ -2,6 +2,10 @@
 name: Build Electron App
 
 on:
+  push:
+    branches:
+      - main
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -23,9 +27,7 @@ jobs:
         run: npx electron-builder install-app-deps
         
       - name: Build Windows app
-        run: npm run build:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:win -- --publish never
         
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
@@ -57,9 +59,7 @@ jobs:
         run: npx electron-builder install-app-deps
 
       - name: Build macOS app
-        run: npm run build:mac
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:mac -- --publish never
 
       - name: Upload macOS build
         uses: actions/upload-artifact@v4
@@ -86,9 +86,7 @@ jobs:
         run: npx electron-builder install-app-deps
 
       - name: Build Linux app
-        run: npm run build:linux
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build:linux -- --publish never
 
       - name: Upload Linux build
         uses: actions/upload-artifact@v4
@@ -96,5 +94,4 @@ jobs:
           name: linux-installer
           path: release/**/*.AppImage
           retention-days: 30
-
 
