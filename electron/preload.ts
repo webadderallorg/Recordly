@@ -48,6 +48,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   stopFfmpegRecording: () => {
     return ipcRenderer.invoke('stop-ffmpeg-recording')
   },
+  mergeAudioIntoVideo: (videoPath: string, audioData: ArrayBuffer) => {
+    return ipcRenderer.invoke('merge-audio-into-video', videoPath, audioData)
+  },
 
   storeRecordedVideo: (videoData: ArrayBuffer, fileName: string) => {
     return ipcRenderer.invoke('store-recorded-video', videoData, fileName)

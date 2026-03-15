@@ -40,6 +40,7 @@ interface Window {
     stopNativeScreenRecording: () => Promise<{ success: boolean; path?: string; message?: string; error?: string }>
     startFfmpegRecording: (source: any) => Promise<{ success: boolean; path?: string; message?: string; error?: string }>
     stopFfmpegRecording: () => Promise<{ success: boolean; path?: string; message?: string; error?: string }>
+    mergeAudioIntoVideo: (videoPath: string, audioData: ArrayBuffer) => Promise<{ success: boolean; error?: string }>
     storeRecordedVideo: (videoData: ArrayBuffer, fileName: string) => Promise<{ success: boolean; path?: string; message?: string }>
     getRecordedVideoPath: () => Promise<{ success: boolean; path?: string; message?: string }>
     readLocalFile: (filePath: string) => Promise<{ success: boolean; data?: Uint8Array; error?: string }>

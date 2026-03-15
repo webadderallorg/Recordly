@@ -1752,6 +1752,42 @@ export function registerIpcHandlers(
 
 
 
+  ipcMain.handle('merge-audio-into-video', async (_, videoPath: string, audioData: ArrayBuffer) => {
+    const dir = path.dirname(videoPath)
+    const audioTempPath = path.join(dir, `temp-audio-${Date.now()}.webm`)
+    const outputTempPath = `${videoPath}.merged.mp4`
+
+    try {
+      const ffmpegPath = getFfmpegBinaryPath()
+
+      await fs.writeFile(audioTempPath, Buffer.from(audioData))
+
+      await execFileAsync(
+        ffmpegPath,
+        [
+          '-y',
+          '-i', videoPath,
+          '-i', audioTempPath,
+          '-c:v', 'copy',
+          '-c:a', 'aac',
+          '-b:a', '192k',
+          '-shortest',
+          outputTempPath,
+        ],
+        { timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
+      )
+
+      await moveFileWithOverwrite(outputTempPath, videoPath)
+      await fs.rm(audioTempPath, { force: true })
+      return { success: true }
+    } catch (error) {
+      console.error('Failed to merge audio into video:', error)
+      await fs.rm(audioTempPath, { force: true }).catch(() => {})
+      await fs.rm(outputTempPath, { force: true }).catch(() => {})
+      return { success: false, message: 'Failed to merge audio into video', error: String(error) }
+    }
+  })
+
   ipcMain.handle('store-recorded-video', async (_, videoData: ArrayBuffer, fileName: string) => {
     try {
       const recordingsDir = await getRecordingsDir()

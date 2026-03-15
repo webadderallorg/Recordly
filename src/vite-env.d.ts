@@ -64,6 +64,10 @@ interface Window {
       message?: string
       error?: string
     }>
+    mergeAudioIntoVideo: (videoPath: string, audioData: ArrayBuffer) => Promise<{
+      success: boolean
+      error?: string
+    }>
     storeRecordedVideo: (videoData: ArrayBuffer, fileName: string) => Promise<{
       success: boolean
       path?: string

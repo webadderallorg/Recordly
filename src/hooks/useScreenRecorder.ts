@@ -54,6 +54,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
   const chunks = useRef<Blob[]>([]);
   const startTime = useRef<number>(0);
   const nativeScreenRecording = useRef(false);
+  const ffmpegRecording = useRef(false);
+  const ffmpegAudioRecorder = useRef<MediaRecorder | null>(null);
+  const ffmpegAudioChunks = useRef<Blob[]>([]);
   const startInFlight = useRef(false);
   const hasPromptedForReselect = useRef(false);
 
@@ -168,6 +171,55 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       return;
     }
 
+    if (ffmpegRecording.current) {
+      ffmpegRecording.current = false;
+      setRecording(false);
+
+      void (async () => {
+        // Collect audio data from the browser-side audio recorder
+        const audioBlob = await new Promise<Blob | null>((resolve) => {
+          const recorder = ffmpegAudioRecorder.current;
+          if (!recorder || recorder.state !== "recording") {
+            resolve(null);
+            return;
+          }
+          recorder.onstop = () => {
+            const audioChunks = ffmpegAudioChunks.current;
+            ffmpegAudioChunks.current = [];
+            resolve(audioChunks.length > 0 ? new Blob(audioChunks, { type: recorder.mimeType }) : null);
+          };
+          recorder.onerror = () => resolve(null);
+          recorder.stop();
+        });
+        ffmpegAudioRecorder.current = null;
+        cleanupCapturedMedia();
+
+        const result = await window.electronAPI.stopFfmpegRecording();
+        window.electronAPI?.setRecordingState(false);
+
+        if (!result.success || !result.path) {
+          console.error("Failed to stop FFmpeg recording:", result.error ?? result.message);
+          return;
+        }
+
+        if (audioBlob && audioBlob.size > 0) {
+          try {
+            const audioData = await audioBlob.arrayBuffer();
+            const mergeResult = await window.electronAPI.mergeAudioIntoVideo(result.path, audioData);
+            if (!mergeResult.success) {
+              console.warn("Failed to merge audio into recording:", mergeResult.error);
+            }
+          } catch (mergeError) {
+            console.warn("Failed to merge audio into recording:", mergeError);
+          }
+        }
+
+        await window.electronAPI.setCurrentVideoPath(result.path);
+        await window.electronAPI.switchToEditor();
+      })();
+      return;
+    }
+
     if (mediaRecorder.current?.state === "recording") {
       cleanupCapturedMedia();
       mediaRecorder.current.stop();
@@ -199,6 +251,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
     const removeRecordingInterruptedListener = window.electronAPI?.onRecordingInterrupted?.((state) => {
       setRecording(false);
       nativeScreenRecording.current = false;
+      ffmpegRecording.current = false;
       cleanupCapturedMedia();
       void window.electronAPI.setRecordingState(false);
 
@@ -219,6 +272,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       if (nativeScreenRecording.current) {
         nativeScreenRecording.current = false;
         void window.electronAPI.stopNativeScreenRecording();
+      }
+
+      if (ffmpegRecording.current) {
+        ffmpegRecording.current = false;
+        if (ffmpegAudioRecorder.current?.state === "recording") ffmpegAudioRecorder.current.stop();
+        ffmpegAudioRecorder.current = null;
+        ffmpegAudioChunks.current = [];
+        void window.electronAPI.stopFfmpegRecording();
       }
 
       if (mediaRecorder.current?.state === "recording") {
@@ -269,6 +330,124 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
         }
 
         nativeScreenRecording.current = true;
+        startTime.current = Date.now();
+        setRecording(true);
+        window.electronAPI?.setRecordingState(true);
+        return;
+      }
+
+      // On Windows, use FFmpeg with -draw_mouse 0 so the native cursor is
+      // excluded from the captured video.  Audio is captured separately via
+      // the browser and merged into the video when recording stops.
+      const useWindowsFfmpegCapture =
+        platform === "win32" &&
+        typeof window.electronAPI.startFfmpegRecording === "function";
+
+      if (useWindowsFfmpegCapture) {
+        const ffmpegResult = await window.electronAPI.startFfmpegRecording(selectedSource);
+        if (!ffmpegResult.success) {
+          throw new Error(
+            ffmpegResult.error ?? ffmpegResult.message ?? "Failed to start FFmpeg recording",
+          );
+        }
+
+        // Capture audio separately if needed
+        if (microphoneEnabled || systemAudioEnabled) {
+          let systemAudioTrack: MediaStreamTrack | undefined;
+
+          if (systemAudioEnabled) {
+            try {
+              // Request system audio via desktopCapturer; video is required by
+              // the API but we keep it at minimum resolution to avoid overhead.
+              const audioStream = await (navigator.mediaDevices as any).getUserMedia({
+                audio: {
+                  mandatory: {
+                    chromeMediaSource: CHROME_MEDIA_SOURCE,
+                    chromeMediaSourceId: selectedSource.id,
+                  },
+                },
+                video: {
+                  mandatory: {
+                    chromeMediaSource: CHROME_MEDIA_SOURCE,
+                    chromeMediaSourceId: selectedSource.id,
+                    maxWidth: 2,
+                    maxHeight: 2,
+                    maxFrameRate: 1,
+                  },
+                },
+              });
+              screenStream.current = audioStream;
+              systemAudioTrack = audioStream.getAudioTracks()[0];
+            } catch (audioError) {
+              console.warn("System audio capture failed:", audioError);
+              alert("System audio is not available for this source. Recording will continue without system audio.");
+            }
+          }
+
+          let micAudioTrack: MediaStreamTrack | undefined;
+          if (microphoneEnabled) {
+            try {
+              microphoneStream.current = await navigator.mediaDevices.getUserMedia({
+                audio: microphoneDeviceId
+                  ? {
+                      deviceId: { exact: microphoneDeviceId },
+                      echoCancellation: true,
+                      noiseSuppression: true,
+                      autoGainControl: true,
+                    }
+                  : {
+                      echoCancellation: true,
+                      noiseSuppression: true,
+                      autoGainControl: true,
+                    },
+                video: false,
+              });
+              micAudioTrack = microphoneStream.current.getAudioTracks()[0];
+            } catch (audioError) {
+              console.warn("Failed to get microphone access:", audioError);
+              alert("Microphone access was denied. Recording will continue without microphone audio.");
+              setMicrophoneEnabled(false);
+            }
+          }
+
+          // Mix audio sources into a single track
+          let recordingTrack: MediaStreamTrack | undefined;
+          if (systemAudioTrack && micAudioTrack) {
+            const context = new AudioContext();
+            mixingContext.current = context;
+            const systemSource = context.createMediaStreamSource(new MediaStream([systemAudioTrack]));
+            const micSource = context.createMediaStreamSource(new MediaStream([micAudioTrack]));
+            const micGain = context.createGain();
+            micGain.gain.value = MIC_GAIN_BOOST;
+            const destination = context.createMediaStreamDestination();
+            systemSource.connect(destination);
+            micSource.connect(micGain).connect(destination);
+            recordingTrack = destination.stream.getAudioTracks()[0];
+          } else if (systemAudioTrack) {
+            recordingTrack = systemAudioTrack;
+          } else if (micAudioTrack) {
+            recordingTrack = micAudioTrack;
+          }
+
+          if (recordingTrack) {
+            const audioOnlyStream = new MediaStream([recordingTrack]);
+            ffmpegAudioChunks.current = [];
+            const audioMimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+              ? "audio/webm;codecs=opus"
+              : "audio/webm";
+            const audioRecorder = new MediaRecorder(audioOnlyStream, {
+              mimeType: audioMimeType,
+              audioBitsPerSecond: systemAudioTrack ? AUDIO_BITRATE_SYSTEM : AUDIO_BITRATE_VOICE,
+            });
+            audioRecorder.ondataavailable = (event) => {
+              if (event.data && event.data.size > 0) ffmpegAudioChunks.current.push(event.data);
+            };
+            audioRecorder.start(RECORDER_TIMESLICE_MS);
+            ffmpegAudioRecorder.current = audioRecorder;
+          }
+        }
+
+        ffmpegRecording.current = true;
         startTime.current = Date.now();
         setRecording(true);
         window.electronAPI?.setRecordingState(true);
