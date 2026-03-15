@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Recordly
+Comment=Screen recorder and editor with auto-zoom and cursor effects
+Exec=/opt/recordly/Recordly.AppImage %U
+Icon=dev.recordly.app
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;
+StartupWMClass=Recordly
+MimeType=
