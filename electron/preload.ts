@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { CursorTelemetryPoint } from '../src/components/video-editor/types'
+import type { RecordingSession } from '../src/lib/recordingSession'
 
 contextBridge.exposeInMainWorld('electronAPI', {
     hudOverlayHide: () => {
@@ -52,6 +54,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   storeRecordedVideo: (videoData: ArrayBuffer, fileName: string) => {
     return ipcRenderer.invoke('store-recorded-video', videoData, fileName)
+  },
+  storeRecordingAsset: (assetData: ArrayBuffer, fileName: string) => {
+    return ipcRenderer.invoke('store-recording-asset', assetData, fileName)
   },
 
   getRecordedVideoPath: () => {
@@ -116,8 +121,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setCurrentVideoPath: (path: string) => {
     return ipcRenderer.invoke('set-current-video-path', path)
   },
+  setCurrentRecordingSession: (session: RecordingSession | null) => {
+    return ipcRenderer.invoke('set-current-recording-session', session)
+  },
   getCurrentVideoPath: () => {
     return ipcRenderer.invoke('get-current-video-path')
+  },
+  getCurrentRecordingSession: () => {
+    return ipcRenderer.invoke('get-current-recording-session')
   },
   clearCurrentVideoPath: () => {
     return ipcRenderer.invoke('clear-current-video-path')
@@ -183,4 +194,3 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Cursor visibility control for cursor-free browser capture fallback
   hideOsCursor: () => ipcRenderer.invoke('hide-cursor'),
 })
-

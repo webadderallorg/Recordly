@@ -1,5 +1,6 @@
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
 import type { ExportFormat, ExportQuality, GifFrameRate, GifSizePreset } from "@/lib/exporter";
+import { normalizeFacecamSettings, type FacecamSettings } from "@/lib/recordingSession";
 import { WALLPAPER_PATHS } from "@/lib/wallpapers";
 import {
   DEFAULT_CURSOR_CLICK_BOUNCE,
@@ -21,7 +22,7 @@ import {
   type ZoomRegion,
 } from "./types";
 
-export const PROJECT_VERSION = 1;
+export const PROJECT_VERSION = 2;
 
 export interface ProjectEditorState {
   wallpaper: string;
@@ -42,6 +43,7 @@ export interface ProjectEditorState {
   trimRegions: TrimRegion[];
   speedRegions: SpeedRegion[];
   annotationRegions: AnnotationRegion[];
+  facecamSettings: FacecamSettings;
   aspectRatio: AspectRatio;
   exportQuality: ExportQuality;
   exportFormat: ExportFormat;
@@ -53,6 +55,8 @@ export interface ProjectEditorState {
 export interface EditorProjectData {
   version: number;
   videoPath: string;
+  facecamVideoPath?: string;
+  facecamOffsetMs?: number;
   editor: ProjectEditorState;
 }
 
@@ -289,6 +293,10 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
         })
     : [];
 
+  const normalizedFacecamSettings = normalizeFacecamSettings(
+    (editor as Partial<ProjectEditorState>).facecamSettings,
+  );
+
   const rawCropX = isFiniteNumber(editor.cropRegion?.x) ? editor.cropRegion.x : DEFAULT_CROP_REGION.x;
   const rawCropY = isFiniteNumber(editor.cropRegion?.y) ? editor.cropRegion.y : DEFAULT_CROP_REGION.y;
   const rawCropWidth = isFiniteNumber(editor.cropRegion?.width) ? editor.cropRegion.width : DEFAULT_CROP_REGION.width;
@@ -331,6 +339,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
     trimRegions: normalizedTrimRegions,
     speedRegions: normalizedSpeedRegions,
     annotationRegions: normalizedAnnotationRegions,
+    facecamSettings: normalizedFacecamSettings,
     aspectRatio:
       typeof editor.aspectRatio === "string" &&
       (validAspectRatios.has(editor.aspectRatio as AspectRatio) || isCustomAspectRatio(editor.aspectRatio))
@@ -353,11 +362,28 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
   };
 }
 
-export function createProjectData(videoPath: string, editor: ProjectEditorState): EditorProjectData {
+export function createProjectData(
+  videoPath: string,
+  editor: ProjectEditorState,
+  options?: {
+    facecamVideoPath?: string | null;
+    facecamOffsetMs?: number;
+  },
+): EditorProjectData {
+  const facecamVideoPath =
+    typeof options?.facecamVideoPath === "string" && options.facecamVideoPath.trim()
+      ? options.facecamVideoPath
+      : undefined;
+  const facecamOffsetMs =
+    typeof options?.facecamOffsetMs === "number" && Number.isFinite(options.facecamOffsetMs)
+      ? options.facecamOffsetMs
+      : undefined;
+
   return {
     version: PROJECT_VERSION,
     videoPath,
+    ...(facecamVideoPath ? { facecamVideoPath } : {}),
+    ...(facecamOffsetMs !== undefined ? { facecamOffsetMs } : {}),
     editor,
   };
 }
-

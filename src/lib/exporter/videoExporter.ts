@@ -3,10 +3,14 @@ import { AudioProcessor } from './audioEncoder';
 import { StreamingVideoDecoder } from './streamingDecoder';
 import { FrameRenderer } from './frameRenderer';
 import { VideoMuxer } from './muxer';
+import { SyncedVideoProvider } from './syncedVideoProvider';
 import type { ZoomRegion, CropRegion, TrimRegion, AnnotationRegion, SpeedRegion, CursorTelemetryPoint } from '@/components/video-editor/types';
+import type { FacecamSettings } from '@/lib/recordingSession';
 
 interface VideoExporterConfig extends ExportConfig {
   videoUrl: string;
+  facecamVideoUrl?: string;
+  facecamOffsetMs?: number;
   wallpaper: string;
   zoomRegions: ZoomRegion[];
   trimRegions?: TrimRegion[];
@@ -20,6 +24,7 @@ interface VideoExporterConfig extends ExportConfig {
   padding?: number;
   videoPadding?: number;
   cropRegion: CropRegion;
+  facecamSettings?: FacecamSettings;
   annotationRegions?: AnnotationRegion[];
   cursorTelemetry?: CursorTelemetryPoint[];
   showCursor?: boolean;
@@ -36,6 +41,7 @@ export class VideoExporter {
   private config: VideoExporterConfig;
   private streamingDecoder: StreamingVideoDecoder | null = null;
   private renderer: FrameRenderer | null = null;
+  private facecamProvider: SyncedVideoProvider | null = null;
   private encoder: VideoEncoder | null = null;
   private muxer: VideoMuxer | null = null;
   private audioProcessor: AudioProcessor | null = null;
@@ -76,6 +82,7 @@ export class VideoExporter {
         borderRadius: this.config.borderRadius,
         padding: this.config.padding,
         cropRegion: this.config.cropRegion,
+        facecamSettings: this.config.facecamSettings,
         videoWidth: videoInfo.width,
         videoHeight: videoInfo.height,
         annotationRegions: this.config.annotationRegions,
@@ -90,6 +97,11 @@ export class VideoExporter {
         cursorClickBounce: this.config.cursorClickBounce,
       });
       await this.renderer.initialize();
+
+      if (this.config.facecamVideoUrl && this.config.facecamSettings?.enabled) {
+        this.facecamProvider = new SyncedVideoProvider();
+        await this.facecamProvider.initialize(this.config.facecamVideoUrl, this.config.frameRate);
+      }
 
       // Initialize video encoder
       await this.initializeEncoder();
@@ -125,8 +137,12 @@ export class VideoExporter {
 
           const timestamp = frameIndex * frameDuration;
           const sourceTimestampUs = sourceTimestampMs * 1000;
-          await this.renderer!.renderFrame(videoFrame, sourceTimestampUs);
+          const facecamFrame = this.facecamProvider
+            ? await this.facecamProvider.getFrameAt(sourceTimestampMs - (this.config.facecamOffsetMs ?? 0))
+            : null;
+          await this.renderer!.renderFrame(videoFrame, sourceTimestampUs, facecamFrame);
           videoFrame.close();
+          facecamFrame?.close();
 
           await this.encodeRenderedFrame(timestamp, frameDuration, frameIndex);
           frameIndex++;
@@ -384,8 +400,17 @@ export class VideoExporter {
       this.renderer = null;
     }
 
+    if (this.facecamProvider) {
+      try {
+        this.facecamProvider.destroy();
+      } catch (e) {
+        console.warn('Error destroying facecam provider:', e);
+      }
+      this.facecamProvider = null;
+    }
+
     this.muxer = null;
-  this.audioProcessor = null;
+    this.audioProcessor = null;
     this.encodeQueue = 0;
     this.pendingMuxing = Promise.resolve();
     this.chunkCount = 0;
@@ -393,4 +418,3 @@ export class VideoExporter {
     this.videoColorSpace = undefined;
   }
 }
-

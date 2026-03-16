@@ -1,6 +1,7 @@
 import type React from "react";
 import { useEffect, useRef, useImperativeHandle, forwardRef, useState, useMemo, useCallback } from "react";
 import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
+import { getFacecamLayout, type FacecamSettings } from "@/lib/recordingSession";
 import { DEFAULT_WALLPAPER_PATH, DEFAULT_WALLPAPER_RELATIVE_PATH } from "@/lib/wallpapers";
 import { Application, Container, Sprite, Graphics, BlurFilter, Texture, VideoSource } from 'pixi.js';
 import { MotionBlurFilter } from 'pixi-filters/motion-blur';
@@ -47,6 +48,9 @@ function createPlaybackAnimationState(): PlaybackAnimationState {
 
 interface VideoPlaybackProps {
   videoPath: string;
+  facecamVideoPath?: string;
+  facecamOffsetMs?: number;
+  facecamSettings?: FacecamSettings;
   onDurationChange: (duration: number) => void;
   onTimeUpdate: (time: number) => void;
   currentTime: number;
@@ -95,6 +99,9 @@ export interface VideoPlaybackRef {
 
 const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   videoPath,
+  facecamVideoPath,
+  facecamOffsetMs = 0,
+  facecamSettings,
   onDurationChange,
   onTimeUpdate,
   currentTime,
@@ -130,15 +137,21 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   cursorClickBounce = DEFAULT_CURSOR_CLICK_BOUNCE,
 }, ref) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const facecamVideoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const appRef = useRef<Application | null>(null);
   const videoSpriteRef = useRef<Sprite | null>(null);
   const videoContainerRef = useRef<Container | null>(null);
   const cursorContainerRef = useRef<Container | null>(null);
   const cameraContainerRef = useRef<Container | null>(null);
+  const facecamContainerRef = useRef<Container | null>(null);
+  const facecamSpriteRef = useRef<Sprite | null>(null);
+  const facecamMaskRef = useRef<Graphics | null>(null);
+  const facecamBorderRef = useRef<Graphics | null>(null);
   const timeUpdateAnimationRef = useRef<number | null>(null);
   const [pixiReady, setPixiReady] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  const [facecamReady, setFacecamReady] = useState(false);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const focusIndicatorRef = useRef<HTMLDivElement | null>(null);
   const currentTimeRef = useRef(0);
@@ -160,6 +173,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   const allowPlaybackRef = useRef(false);
   const lockedVideoDimensionsRef = useRef<{ width: number; height: number } | null>(null);
   const layoutVideoContentRef = useRef<(() => void) | null>(null);
+  const layoutFacecamOverlayRef = useRef<(() => void) | null>(null);
   const trimRegionsRef = useRef<TrimRegion[]>([]);
   const speedRegionsRef = useRef<SpeedRegion[]>([]);
   const zoomMotionBlurRef = useRef(zoomMotionBlur);
@@ -173,6 +187,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   const cursorMotionBlurRef = useRef(cursorMotionBlur);
   const cursorClickBounceRef = useRef(cursorClickBounce);
   const motionBlurStateRef = useRef<MotionBlurState>(createMotionBlurState());
+  const facecamOffsetMsRef = useRef(facecamOffsetMs);
+  const facecamSettingsRef = useRef(facecamSettings);
 
   const clampFocusToStage = useCallback((focus: ZoomFocus, depth: ZoomDepth) => {
     return clampFocusToStageUtil(focus, depth, stageSizeRef.current);
@@ -202,6 +218,76 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
       isPlaying: isPlayingRef.current,
     });
   }, []);
+
+  const layoutFacecamOverlay = useCallback(() => {
+    const facecamContainer = facecamContainerRef.current;
+    const facecamSprite = facecamSpriteRef.current;
+    const facecamMask = facecamMaskRef.current;
+    const facecamBorder = facecamBorderRef.current;
+    const facecamVideo = facecamVideoRef.current;
+    const settings = facecamSettingsRef.current;
+
+    if (!facecamContainer || !facecamSprite || !facecamMask || !facecamBorder || !facecamVideo || !settings) {
+      return;
+    }
+
+    const stageWidth = stageSizeRef.current.width || containerRef.current?.clientWidth || 0;
+    const stageHeight = stageSizeRef.current.height || containerRef.current?.clientHeight || 0;
+
+    if (!stageWidth || !stageHeight || !settings.enabled || !facecamVideoPath) {
+      facecamContainer.visible = false;
+      return;
+    }
+
+    const { x, y, size, borderRadius } = getFacecamLayout(stageWidth, stageHeight, settings);
+    const scale = Math.max(
+      size / Math.max(1, facecamVideo.videoWidth),
+      size / Math.max(1, facecamVideo.videoHeight),
+    );
+    const drawWidth = facecamVideo.videoWidth * scale;
+    const drawHeight = facecamVideo.videoHeight * scale;
+    const centerX = x + size / 2;
+    const centerY = y + size / 2;
+
+    facecamSprite.scale.set(scale);
+    facecamSprite.position.set(
+      x + (size - drawWidth) / 2,
+      y + (size - drawHeight) / 2,
+    );
+
+    facecamMask.clear();
+    facecamBorder.clear();
+
+    if (settings.shape === 'circle') {
+      facecamMask.circle(centerX, centerY, size / 2);
+      facecamMask.fill({ color: 0xffffff });
+      if (settings.borderWidth > 0) {
+        facecamBorder.circle(centerX, centerY, Math.max(0, size / 2 - settings.borderWidth / 2));
+        facecamBorder.stroke({
+          color: Number.parseInt(settings.borderColor.replace('#', ''), 16),
+          width: settings.borderWidth,
+        });
+      }
+    } else {
+      facecamMask.roundRect(x, y, size, size, borderRadius);
+      facecamMask.fill({ color: 0xffffff });
+      if (settings.borderWidth > 0) {
+        facecamBorder.roundRect(
+          x + settings.borderWidth / 2,
+          y + settings.borderWidth / 2,
+          Math.max(0, size - settings.borderWidth),
+          Math.max(0, size - settings.borderWidth),
+          Math.max(0, borderRadius - settings.borderWidth / 2),
+        );
+        facecamBorder.stroke({
+          color: Number.parseInt(settings.borderColor.replace('#', ''), 16),
+          width: settings.borderWidth,
+        });
+      }
+    }
+
+    facecamContainer.visible = true;
+  }, [facecamVideoPath]);
 
   const layoutVideoContent = useCallback(() => {
     const container = containerRef.current;
@@ -253,12 +339,17 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
         : null;
 
       updateOverlayForRegion(activeRegion);
+      layoutFacecamOverlayRef.current?.();
     }
   }, [updateOverlayForRegion, cropRegion, borderRadius, padding]);
 
   useEffect(() => {
     layoutVideoContentRef.current = layoutVideoContent;
   }, [layoutVideoContent]);
+
+  useEffect(() => {
+    layoutFacecamOverlayRef.current = layoutFacecamOverlay;
+  }, [layoutFacecamOverlay]);
 
   const selectedZoom = useMemo(() => {
     if (!selectedZoomId) return null;
@@ -450,6 +541,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   }, [cursorClickBounce]);
 
   useEffect(() => {
+    facecamOffsetMsRef.current = facecamOffsetMs;
+  }, [facecamOffsetMs]);
+
+  useEffect(() => {
+    facecamSettingsRef.current = facecamSettings;
+  }, [facecamSettings]);
+
+  useEffect(() => {
     if (!pixiReady || !videoReady) return;
 
     const app = appRef.current;
@@ -549,6 +648,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   }, [selectedZoom, pixiReady, videoReady, updateOverlayForRegion]);
 
   useEffect(() => {
+    if (!pixiReady) {
+      return;
+    }
+
+    layoutFacecamOverlay();
+  }, [pixiReady, facecamReady, facecamSettings, facecamVideoPath, layoutFacecamOverlay]);
+
+  useEffect(() => {
     const overlayEl = overlayRef.current;
     if (!overlayEl) return;
     if (!selectedZoom) {
@@ -602,6 +709,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
       cameraContainerRef.current = cameraContainer;
       app.stage.addChild(cameraContainer);
 
+      const facecamContainer = new Container();
+      facecamContainer.visible = false;
+      facecamContainerRef.current = facecamContainer;
+      app.stage.addChild(facecamContainer);
+
       // Video container - holds the masked video sprite
       const videoContainer = new Container();
       videoContainerRef.current = videoContainer;
@@ -644,6 +756,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
       }
       appRef.current = null;
       cameraContainerRef.current = null;
+      facecamContainerRef.current = null;
+      facecamSpriteRef.current = null;
+      facecamMaskRef.current = null;
+      facecamBorderRef.current = null;
       videoContainerRef.current = null;
       cursorContainerRef.current = null;
       videoSpriteRef.current = null;
@@ -663,6 +779,17 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
       videoReadyRafRef.current = null;
     }
   }, [videoPath]);
+
+  useEffect(() => {
+    const video = facecamVideoRef.current;
+    if (!video) {
+      return;
+    }
+
+    video.pause();
+    video.currentTime = 0;
+    setFacecamReady(false);
+  }, [facecamVideoPath]);
 
 
 
@@ -768,12 +895,69 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
   }, [pixiReady, videoReady, onTimeUpdate, updateOverlayForRegion]);
 
   useEffect(() => {
+    if (!pixiReady || !facecamReady || !facecamVideoPath) {
+      const facecamContainer = facecamContainerRef.current;
+      if (facecamContainer) {
+        facecamContainer.visible = false;
+      }
+      return;
+    }
+
+    const facecamVideo = facecamVideoRef.current;
+    const app = appRef.current;
+    const facecamContainer = facecamContainerRef.current;
+
+    if (!facecamVideo || !app || !facecamContainer) {
+      return;
+    }
+
+    const source = VideoSource.from(facecamVideo);
+    if ('autoPlay' in source) {
+      (source as { autoPlay?: boolean }).autoPlay = false;
+    }
+    if ('autoUpdate' in source) {
+      (source as { autoUpdate?: boolean }).autoUpdate = true;
+    }
+    const facecamTexture = Texture.from(source);
+    const facecamSprite = new Sprite(facecamTexture);
+    const facecamMask = new Graphics();
+    const facecamBorder = new Graphics();
+
+    facecamSpriteRef.current = facecamSprite;
+    facecamMaskRef.current = facecamMask;
+    facecamBorderRef.current = facecamBorder;
+
+    facecamContainer.addChild(facecamSprite);
+    facecamContainer.addChild(facecamMask);
+    facecamContainer.addChild(facecamBorder);
+    facecamContainer.mask = facecamMask;
+
+    layoutFacecamOverlay();
+
+    return () => {
+      facecamContainer.visible = false;
+      facecamContainer.mask = null;
+      facecamContainer.removeChildren();
+
+      facecamBorder.destroy();
+      facecamMask.destroy();
+      facecamSprite.destroy();
+      facecamTexture.destroy(false);
+
+      facecamSpriteRef.current = null;
+      facecamMaskRef.current = null;
+      facecamBorderRef.current = null;
+    };
+  }, [pixiReady, facecamReady, facecamVideoPath, layoutFacecamOverlay]);
+
+  useEffect(() => {
     if (!pixiReady || !videoReady) return;
 
-    const app = appRef.current;
-    const videoSprite = videoSpriteRef.current;
-    const videoContainer = videoContainerRef.current;
-    if (!app || !videoSprite || !videoContainer) return;
+      const app = appRef.current;
+      const videoSprite = videoSpriteRef.current;
+      const videoContainer = videoContainerRef.current;
+      const primaryVideo = videoRef.current;
+      if (!app || !videoSprite || !videoContainer || !primaryVideo) return;
 
     const applyTransform = (
       transform: { scale: number; x: number; y: number },
@@ -916,6 +1100,36 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
 
       applyTransform({ scale: appliedScale, x: appliedX, y: appliedY }, targetFocus, motionIntensity, motionVector);
 
+      const facecamVideo = facecamVideoRef.current;
+      const activeFacecamSettings = facecamSettingsRef.current;
+      if (
+        facecamVideo
+        && facecamVideo.readyState >= HTMLMediaElement.HAVE_METADATA
+        && facecamVideoPath
+        && activeFacecamSettings?.enabled
+      ) {
+        const targetTime = Math.max(0, currentTimeRef.current / 1000 - facecamOffsetMsRef.current / 1000);
+        const withinDuration = !Number.isFinite(facecamVideo.duration) || targetTime <= facecamVideo.duration;
+
+        facecamVideo.playbackRate = primaryVideo.playbackRate;
+
+        if (!isPlayingRef.current || !withinDuration) {
+          if (!facecamVideo.paused) {
+            facecamVideo.pause();
+          }
+          if (withinDuration && Math.abs(facecamVideo.currentTime - targetTime) > 0.06) {
+            facecamVideo.currentTime = targetTime;
+          }
+        } else {
+          if (Math.abs(facecamVideo.currentTime - targetTime) > 0.12) {
+            facecamVideo.currentTime = targetTime;
+          }
+          if (facecamVideo.paused) {
+            facecamVideo.play().catch(() => {});
+          }
+        }
+      }
+
       // Update cursor overlay
       const cursorOverlay = cursorOverlayRef.current;
       if (cursorOverlay) {
@@ -976,6 +1190,17 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
     };
 
     videoReadyRafRef.current = requestAnimationFrame(waitForRenderableFrame);
+  };
+
+  const handleFacecamLoadedMetadata = () => {
+    const video = facecamVideoRef.current;
+    if (!video) {
+      return;
+    }
+
+    video.currentTime = 0;
+    video.pause();
+    setFacecamReady(true);
   };
 
   const [resolvedWallpaper, setResolvedWallpaper] = useState<string | null>(null);
@@ -1134,6 +1359,18 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
         }}
         onError={() => onError('Failed to load video')}
       />
+      {facecamVideoPath && (
+        <video
+          ref={facecamVideoRef}
+          src={facecamVideoPath}
+          className="hidden"
+          preload="metadata"
+          muted
+          playsInline
+          onLoadedMetadata={handleFacecamLoadedMetadata}
+          onError={() => setFacecamReady(false)}
+        />
+      )}
     </div>
   );
 });
@@ -1141,4 +1378,3 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(({
 VideoPlayback.displayName = 'VideoPlayback';
 
 export default VideoPlayback;
-

@@ -50,6 +50,11 @@ import {
 import { VideoExporter, GifExporter, type ExportProgress, type ExportQuality, type ExportSettings, type ExportFormat, type GifFrameRate, type GifSizePreset, GIF_SIZE_PRESETS, calculateOutputDimensions } from "@/lib/exporter";
 import { type AspectRatio, getAspectRatioValue } from "@/utils/aspectRatioUtils";
 import { getAssetPath } from "@/lib/assetPath";
+import {
+  createDefaultFacecamSettings,
+  normalizeFacecamSettings,
+  type FacecamSettings,
+} from "@/lib/recordingSession";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { matchesShortcut } from "@/lib/shortcuts";
 import { detectInteractionCandidates, normalizeCursorTelemetry } from "./timeline/zoomSuggestionUtils";
@@ -77,6 +82,8 @@ type PendingExportSave = {
 export default function VideoEditor() {
   const [videoPath, setVideoPath] = useState<string | null>(null);
   const [videoSourcePath, setVideoSourcePath] = useState<string | null>(null);
+  const [facecamVideoPath, setFacecamVideoPath] = useState<string | null>(null);
+  const [facecamOffsetMs, setFacecamOffsetMs] = useState(0);
   const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -97,6 +104,7 @@ export default function VideoEditor() {
   const [borderRadius, setBorderRadius] = useState(12.5);
   const [padding, setPadding] = useState(50);
   const [cropRegion, setCropRegion] = useState<CropRegion>(DEFAULT_CROP_REGION);
+  const [facecamSettings, setFacecamSettings] = useState<FacecamSettings>(createDefaultFacecamSettings(false));
   const [zoomRegions, setZoomRegions] = useState<ZoomRegion[]>([]);
   const [cursorTelemetry, setCursorTelemetry] = useState<CursorTelemetryPoint[]>([]);
   const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
@@ -223,6 +231,17 @@ export default function VideoEditor() {
     const project = candidate;
     const sourcePath = fromFileUrl(project.videoPath);
     const normalizedEditor = normalizeProjectEditor(project.editor);
+    const normalizedFacecam = normalizeFacecamSettings(project.editor.facecamSettings, {
+      defaultEnabled: typeof project.facecamVideoPath === "string" && project.facecamVideoPath.length > 0,
+    });
+    const normalizedFacecamVideoPath =
+      typeof project.facecamVideoPath === "string" && project.facecamVideoPath
+        ? fromFileUrl(project.facecamVideoPath)
+        : null;
+    const normalizedFacecamOffsetMs =
+      typeof project.facecamOffsetMs === "number" && Number.isFinite(project.facecamOffsetMs)
+        ? project.facecamOffsetMs
+        : 0;
 
     try {
       videoPlaybackRef.current?.pause();
@@ -236,6 +255,8 @@ export default function VideoEditor() {
     setError(null);
     setVideoSourcePath(sourcePath);
     setVideoPath(toFileUrl(sourcePath));
+    setFacecamVideoPath(normalizedFacecamVideoPath);
+    setFacecamOffsetMs(normalizedFacecamOffsetMs);
     setCurrentProjectPath(path ?? null);
 
     setWallpaper(normalizedEditor.wallpaper);
@@ -252,6 +273,7 @@ export default function VideoEditor() {
     setBorderRadius(normalizedEditor.borderRadius);
     setPadding(normalizedEditor.padding);
     setCropRegion(normalizedEditor.cropRegion);
+    setFacecamSettings(normalizedFacecam);
     setZoomRegions(normalizedEditor.zoomRegions);
     setTrimRegions(normalizedEditor.trimRegions);
     setSpeedRegions(normalizedEditor.speedRegions);
@@ -278,7 +300,13 @@ export default function VideoEditor() {
     nextAnnotationZIndexRef.current =
       normalizedEditor.annotationRegions.reduce((max, region) => Math.max(max, region.zIndex), 0) + 1;
 
-    setLastSavedSnapshot(JSON.stringify(createProjectData(sourcePath, normalizedEditor)));
+    setLastSavedSnapshot(JSON.stringify(createProjectData(sourcePath, {
+      ...normalizedEditor,
+      facecamSettings: normalizedFacecam,
+    }, {
+      facecamVideoPath: normalizedFacecamVideoPath,
+      facecamOffsetMs: normalizedFacecamOffsetMs,
+    })));
     return true;
   }, []);
 
@@ -303,6 +331,7 @@ export default function VideoEditor() {
         borderRadius,
         padding,
         cropRegion,
+        facecamSettings,
         zoomRegions,
         trimRegions,
         speedRegions,
@@ -313,11 +342,16 @@ export default function VideoEditor() {
         gifFrameRate,
         gifLoop,
         gifSizePreset,
+      }, {
+        facecamVideoPath,
+        facecamOffsetMs,
       }),
     );
   }, [
     videoPath,
     videoSourcePath,
+    facecamVideoPath,
+    facecamOffsetMs,
     wallpaper,
     shadowIntensity,
     backgroundBlur,
@@ -332,6 +366,7 @@ export default function VideoEditor() {
     borderRadius,
     padding,
     cropRegion,
+    facecamSettings,
     zoomRegions,
     trimRegions,
     speedRegions,
@@ -394,10 +429,30 @@ export default function VideoEditor() {
         }
 
         const result = await window.electronAPI.getCurrentVideoPath();
-        if (result.success && result.path) {
+        const sessionResult = await window.electronAPI.getCurrentRecordingSession();
+        if (sessionResult.success && sessionResult.session?.screenVideoPath) {
+          const sourcePath = fromFileUrl(sessionResult.session.screenVideoPath);
+          const nextFacecamPath = sessionResult.session.facecamVideoPath
+            ? fromFileUrl(sessionResult.session.facecamVideoPath)
+            : null;
+          setVideoSourcePath(sourcePath);
+          setVideoPath(toFileUrl(sourcePath));
+          setFacecamVideoPath(nextFacecamPath);
+          setFacecamOffsetMs(sessionResult.session.facecamOffsetMs ?? 0);
+          setFacecamSettings(
+            normalizeFacecamSettings(sessionResult.session.facecamSettings, {
+              defaultEnabled: Boolean(nextFacecamPath),
+            }),
+          );
+          setCurrentProjectPath(null);
+          setLastSavedSnapshot(null);
+        } else if (result.success && result.path) {
           const sourcePath = fromFileUrl(result.path);
           setVideoSourcePath(sourcePath);
           setVideoPath(toFileUrl(sourcePath));
+          setFacecamVideoPath(null);
+          setFacecamOffsetMs(0);
+          setFacecamSettings(createDefaultFacecamSettings(false));
           setCurrentProjectPath(null);
           setLastSavedSnapshot(null);
         } else {
@@ -440,6 +495,7 @@ export default function VideoEditor() {
       borderRadius,
       padding,
       cropRegion,
+      facecamSettings,
       zoomRegions,
       trimRegions,
       speedRegions,
@@ -450,6 +506,9 @@ export default function VideoEditor() {
       gifFrameRate,
       gifLoop,
       gifSizePreset,
+    }, {
+      facecamVideoPath,
+      facecamOffsetMs,
     });
 
     const fileNameBase = sourcePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, '') || `project-${Date.now()}`;
@@ -479,6 +538,8 @@ export default function VideoEditor() {
   }, [
     videoPath,
     videoSourcePath,
+    facecamVideoPath,
+    facecamOffsetMs,
     currentProjectPath,
     wallpaper,
     shadowIntensity,
@@ -494,6 +555,7 @@ export default function VideoEditor() {
     borderRadius,
     padding,
     cropRegion,
+    facecamSettings,
     zoomRegions,
     trimRegions,
     speedRegions,
@@ -1235,6 +1297,8 @@ export default function VideoEditor() {
         // GIF Export
         const gifExporter = new GifExporter({
           videoUrl: videoPath,
+          facecamVideoUrl: facecamVideoPath ? toFileUrl(facecamVideoPath) : undefined,
+          facecamOffsetMs,
           width: settings.gifConfig.width,
           height: settings.gifConfig.height,
           frameRate: settings.gifConfig.frameRate,
@@ -1252,6 +1316,7 @@ export default function VideoEditor() {
           padding,
           videoPadding: padding,
           cropRegion,
+          facecamSettings,
           annotationRegions,
           zoomRegions: effectiveZoomRegions,
           cursorTelemetry: effectiveCursorTelemetry,
@@ -1383,6 +1448,8 @@ export default function VideoEditor() {
           bitrate,
           codec: 'avc1.640033',
           wallpaper,
+          facecamVideoUrl: facecamVideoPath ? toFileUrl(facecamVideoPath) : undefined,
+          facecamOffsetMs,
           trimRegions,
           speedRegions,
           showShadow: shadowIntensity > 0,
@@ -1393,6 +1460,7 @@ export default function VideoEditor() {
           borderRadius,
           padding,
           cropRegion,
+          facecamSettings,
           annotationRegions,
           zoomRegions: effectiveZoomRegions,
           cursorTelemetry: effectiveCursorTelemetry,
@@ -1457,7 +1525,7 @@ export default function VideoEditor() {
       setShowExportDialog(keepExportDialogOpen);
       setExportProgress(null);
     }
-  }, [videoPath, wallpaper, zoomRegions, trimRegions, speedRegions, shadowIntensity, backgroundBlur, zoomMotionBlur, connectZooms, showCursor, effectiveCursorTelemetry, cursorSize, cursorSmoothing, cursorMotionBlur, cursorClickBounce, borderRadius, padding, cropRegion, annotationRegions, isPlaying, aspectRatio, exportQuality, showExportSuccessToast]);
+  }, [videoPath, facecamVideoPath, facecamOffsetMs, wallpaper, zoomRegions, trimRegions, speedRegions, shadowIntensity, backgroundBlur, zoomMotionBlur, connectZooms, showCursor, effectiveCursorTelemetry, cursorSize, cursorSmoothing, cursorMotionBlur, cursorClickBounce, borderRadius, padding, cropRegion, facecamSettings, annotationRegions, isPlaying, aspectRatio, exportQuality, showExportSuccessToast]);
 
   const handleOpenExportDialog = useCallback(() => {
     if (!videoPath) {
@@ -1624,6 +1692,9 @@ export default function VideoEditor() {
                       aspectRatio={aspectRatio}
                       ref={videoPlaybackRef}
                       videoPath={videoPath || ''}
+                      facecamVideoPath={facecamVideoPath ? toFileUrl(facecamVideoPath) : undefined}
+                      facecamOffsetMs={facecamOffsetMs}
+                      facecamSettings={facecamSettings}
                       onDurationChange={setDuration}
                       onTimeUpdate={setCurrentTime}
                       currentTime={currentTime}
@@ -1755,6 +1826,9 @@ export default function VideoEditor() {
           onPaddingChange={setPadding}
           cropRegion={cropRegion}
           onCropChange={setCropRegion}
+          facecamVideoPath={facecamVideoPath}
+          facecamSettings={facecamSettings}
+          onFacecamSettingsChange={setFacecamSettings}
           aspectRatio={aspectRatio}
           videoElement={videoPlaybackRef.current?.video || null}
           exportQuality={exportQuality}
@@ -1807,4 +1881,3 @@ export default function VideoEditor() {
     </div>
   );
 }
-

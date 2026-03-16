@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { useEffect, useRef } from "react";
 import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
+import { createDefaultFacecamSettings, type FacecamSettings } from "@/lib/recordingSession";
 import { BUILT_IN_WALLPAPERS, WALLPAPER_PATHS, WALLPAPER_RELATIVE_PATHS } from "@/lib/wallpapers";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -81,6 +82,9 @@ interface SettingsPanelProps {
   onPaddingChange?: (padding: number) => void;
   cropRegion?: CropRegion;
   onCropChange?: (region: CropRegion) => void;
+  facecamVideoPath?: string | null;
+  facecamSettings?: FacecamSettings;
+  onFacecamSettingsChange?: (settings: FacecamSettings) => void;
   aspectRatio: AspectRatio;
   videoElement?: HTMLVideoElement | null;
   exportQuality?: ExportQuality;
@@ -157,6 +161,9 @@ export function SettingsPanel({
   onPaddingChange, 
   cropRegion, 
   onCropChange, 
+  facecamVideoPath,
+  facecamSettings = createDefaultFacecamSettings(false),
+  onFacecamSettingsChange,
   aspectRatio, 
   videoElement, 
   exportQuality = 'good',
@@ -216,6 +223,14 @@ export function SettingsPanel({
 
   const zoomEnabled = Boolean(selectedZoomDepth);
   const trimEnabled = Boolean(selectedTrimId);
+  const facecamAvailable = Boolean(facecamVideoPath);
+
+  const updateFacecamSettings = (next: Partial<FacecamSettings>) => {
+    onFacecamSettingsChange?.({
+      ...facecamSettings,
+      ...next,
+    });
+  };
   
   const handleDeleteClick = () => {
     if (selectedZoomId && onZoomDelete) {
@@ -602,6 +617,85 @@ export function SettingsPanel({
                 </div>
               </div>
 
+              <div className="mt-2 rounded-xl border border-white/5 bg-white/[0.03] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-medium text-slate-200">Facecam</div>
+                    <div className="text-[10px] text-slate-500">
+                      {facecamAvailable
+                        ? "Show a Loom-style facecam overlay in preview and export."
+                        : "Record with facecam enabled to customize the overlay."}
+                    </div>
+                  </div>
+                  <Switch
+                    checked={facecamAvailable && facecamSettings.enabled}
+                    disabled={!facecamAvailable}
+                    onCheckedChange={(checked) => updateFacecamSettings({ enabled: checked && facecamAvailable })}
+                  />
+                </div>
+
+                {facecamAvailable && (
+                  <div className="mt-3 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => updateFacecamSettings({ shape: "circle" })}
+                        className={cn(
+                          "h-8 text-[10px] border-white/10 bg-white/5 text-slate-300 hover:bg-white/10",
+                          facecamSettings.shape === "circle" && "border-[#2563EB]/60 bg-[#2563EB]/15 text-white",
+                        )}
+                      >
+                        Circle
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => updateFacecamSettings({ shape: "square" })}
+                        className={cn(
+                          "h-8 text-[10px] border-white/10 bg-white/5 text-slate-300 hover:bg-white/10",
+                          facecamSettings.shape === "square" && "border-[#2563EB]/60 bg-[#2563EB]/15 text-white",
+                        )}
+                      >
+                        Square
+                      </Button>
+                    </div>
+
+                    <div className="p-2 rounded-lg bg-white/5 border border-white/5">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-[10px] font-medium text-slate-300">Facecam Size</div>
+                        <span className="text-[10px] text-slate-500 font-mono">{facecamSettings.size.toFixed(0)}%</span>
+                      </div>
+                      <Slider
+                        value={[facecamSettings.size]}
+                        onValueChange={(values) => updateFacecamSettings({ size: values[0] })}
+                        min={12}
+                        max={40}
+                        step={1}
+                        className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+                      />
+                    </div>
+
+                    {facecamSettings.shape === "square" && (
+                      <div className="p-2 rounded-lg bg-white/5 border border-white/5">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-[10px] font-medium text-slate-300">Square Roundness</div>
+                          <span className="text-[10px] text-slate-500 font-mono">{facecamSettings.cornerRadius.toFixed(0)}%</span>
+                        </div>
+                        <Slider
+                          value={[facecamSettings.cornerRadius]}
+                          onValueChange={(values) => updateFacecamSettings({ cornerRadius: values[0] })}
+                          min={0}
+                          max={50}
+                          step={1}
+                          className="w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <Button
                 onClick={handleCropToggle}
                 variant="outline"
@@ -953,4 +1047,3 @@ export function SettingsPanel({
     </div>
   );
 }
-

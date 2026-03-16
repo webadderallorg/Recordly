@@ -9,6 +9,11 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { RECORDINGS_DIR } from '../main'
+import {
+  createPersistedRecordingSession,
+  normalizeRecordingSession,
+  type RecordingSession,
+} from '../../src/lib/recordingSession'
 
 const execFileAsync = promisify(execFile)
 const nodeRequire = createRequire(import.meta.url)
@@ -21,6 +26,7 @@ const AUTO_RECORDING_PREFIX = 'recording-'
 const AUTO_RECORDING_RETENTION_COUNT = 20
 const AUTO_RECORDING_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000
 const ALLOW_OWN_WINDOW_CAPTURE = Boolean(process.env['VITE_DEV_SERVER_URL'])
+const RECORDING_SESSION_SIDECAR_SUFFIX = '.recording-session.json'
 
 function getScreen() {
   return nodeRequire('electron').screen as typeof import('electron').screen
@@ -54,6 +60,7 @@ let selectedSource: SelectedSource | null = null
 let currentProjectPath: string | null = null
 let nativeScreenRecordingActive = false
 let currentVideoPath: string | null = null
+let currentRecordingSession: RecordingSession | null = null
 let nativeCaptureProcess: ChildProcessWithoutNullStreams | null = null
 let nativeCaptureOutputBuffer = ''
 let nativeCaptureTargetPath: string | null = null
@@ -146,6 +153,101 @@ function isAutoRecordingPath(filePath: string) {
 
 function getTelemetryPathForVideo(videoPath: string) {
   return `${videoPath}.cursor.json`
+}
+
+function getRecordingSessionPathForVideo(videoPath: string) {
+  return `${videoPath}${RECORDING_SESSION_SIDECAR_SUFFIX}`
+}
+
+async function persistRecordingSessionSidecar(session: RecordingSession | null) {
+  if (!session?.facecamVideoPath) {
+    return
+  }
+
+  await fs.writeFile(
+    getRecordingSessionPathForVideo(session.screenVideoPath),
+    JSON.stringify(createPersistedRecordingSession(session), null, 2),
+    'utf-8',
+  )
+}
+
+async function loadRecordingSessionSidecar(videoPath: string): Promise<RecordingSession | null> {
+  try {
+    const content = await fs.readFile(getRecordingSessionPathForVideo(videoPath), 'utf-8')
+    const parsed = JSON.parse(content) as Partial<RecordingSession>
+    return normalizeRecordingSession({
+      screenVideoPath: videoPath,
+      ...parsed,
+    })
+  } catch (error) {
+    const nodeError = error as NodeJS.ErrnoException
+    if (nodeError.code === 'ENOENT') {
+      return null
+    }
+
+    console.warn('Failed to load recording session sidecar:', error)
+    return null
+  }
+}
+
+async function applyCurrentRecordingSession(
+  session: RecordingSession | null,
+  options: { persistSidecar?: boolean } = {},
+) {
+  currentRecordingSession = session
+  currentVideoPath = session?.screenVideoPath ?? null
+
+  if (options.persistSidecar && session?.facecamVideoPath) {
+    await persistRecordingSessionSidecar(session)
+  }
+}
+
+async function resolveRecordingSessionForVideoPath(videoPath: string): Promise<RecordingSession> {
+  const normalizedPath = normalizeVideoSourcePath(videoPath) ?? videoPath
+  const sidecarSession = await loadRecordingSessionSidecar(normalizedPath)
+  return sidecarSession ?? { screenVideoPath: normalizedPath }
+}
+
+function extractRecordingSessionFromProject(candidate: unknown): RecordingSession | null {
+  if (!candidate || typeof candidate !== 'object') {
+    return null
+  }
+
+  const project = candidate as {
+    videoPath?: unknown
+    facecamVideoPath?: unknown
+    facecamOffsetMs?: unknown
+    editor?: {
+      facecamSettings?: unknown
+    }
+  }
+
+  return normalizeRecordingSession({
+    screenVideoPath: typeof project.videoPath === 'string' ? project.videoPath : '',
+    facecamVideoPath: typeof project.facecamVideoPath === 'string' ? project.facecamVideoPath : undefined,
+    facecamOffsetMs: typeof project.facecamOffsetMs === 'number' ? project.facecamOffsetMs : undefined,
+    facecamSettings:
+      project.editor && typeof project.editor === 'object'
+        ? (project.editor.facecamSettings as RecordingSession['facecamSettings'])
+        : undefined,
+  })
+}
+
+function getRecordingCompanionPaths(videoPath: string) {
+  const parsed = path.parse(videoPath)
+  return {
+    facecamVideoPath: path.join(parsed.dir, `${parsed.name}.facecam.webm`),
+    sessionSidecarPath: getRecordingSessionPathForVideo(videoPath),
+  }
+}
+
+async function removeRecordingCompanionFiles(videoPath: string) {
+  const companionPaths = getRecordingCompanionPaths(videoPath)
+  await Promise.all([
+    fs.rm(companionPaths.facecamVideoPath, { force: true }),
+    fs.rm(companionPaths.sessionSidecarPath, { force: true }),
+    fs.rm(getTelemetryPathForVideo(videoPath), { force: true }),
+  ])
 }
 
 async function loadRecordingsDirectorySetting() {
@@ -262,7 +364,7 @@ async function pruneAutoRecordings(exemptPaths: string[] = []) {
 
     try {
       await fs.rm(entry.filePath, { force: true })
-      await fs.rm(getTelemetryPathForVideo(entry.filePath), { force: true })
+      await removeRecordingCompanionFiles(entry.filePath)
     } catch (error) {
       console.warn('Failed to prune old auto recording:', entry.filePath, error)
     }
@@ -1398,8 +1500,8 @@ function snapshotCursorTelemetryForPersistence() {
 
 async function finalizeStoredVideo(videoPath: string) {
   snapshotCursorTelemetryForPersistence()
-  currentVideoPath = videoPath
   currentProjectPath = null
+  await applyCurrentRecordingSession({ screenVideoPath: videoPath })
   await persistPendingCursorTelemetry(videoPath)
   if (isAutoRecordingPath(videoPath)) {
     await pruneAutoRecordings([videoPath])
@@ -2166,6 +2268,26 @@ export function registerIpcHandlers(
     }
   })
 
+  ipcMain.handle('store-recording-asset', async (_, assetData: ArrayBuffer, fileName: string) => {
+    try {
+      const recordingsDir = await getRecordingsDir()
+      const assetPath = path.join(recordingsDir, fileName)
+      await fs.writeFile(assetPath, Buffer.from(assetData))
+      return {
+        success: true,
+        path: assetPath,
+        message: 'Recording asset stored successfully',
+      }
+    } catch (error) {
+      console.error('Failed to store recording asset:', error)
+      return {
+        success: false,
+        message: 'Failed to store recording asset',
+        error: String(error),
+      }
+    }
+  })
+
 
 
   ipcMain.handle('get-recorded-video-path', async () => {
@@ -2620,8 +2742,9 @@ export function registerIpcHandlers(
       const content = await fs.readFile(filePath, 'utf-8')
       const project = JSON.parse(content)
       currentProjectPath = filePath
-      if (project && typeof project === 'object' && typeof project.videoPath === 'string') {
-        currentVideoPath = normalizeVideoSourcePath(project.videoPath) ?? project.videoPath
+      const projectSession = extractRecordingSessionFromProject(project)
+      if (projectSession) {
+        await applyCurrentRecordingSession(projectSession)
       }
 
       return {
@@ -2647,8 +2770,9 @@ export function registerIpcHandlers(
 
       const content = await fs.readFile(currentProjectPath, 'utf-8')
       const project = JSON.parse(content)
-      if (project && typeof project === 'object' && typeof project.videoPath === 'string') {
-        currentVideoPath = normalizeVideoSourcePath(project.videoPath) ?? project.videoPath
+      const projectSession = extractRecordingSessionFromProject(project)
+      if (projectSession) {
+        await applyCurrentRecordingSession(projectSession)
       }
       return {
         success: true,
@@ -2664,20 +2788,35 @@ export function registerIpcHandlers(
       }
     }
   })
-  ipcMain.handle('set-current-video-path', (_, path: string) => {
-    currentVideoPath = normalizeVideoSourcePath(path) ?? path
+  ipcMain.handle('set-current-video-path', async (_, path: string) => {
     currentProjectPath = null
+    const session = await resolveRecordingSessionForVideoPath(path)
+    await applyCurrentRecordingSession(session)
     return { success: true }
   })
 
-  ipcMain.handle('get-current-video-path', () => {
-    return currentVideoPath ? { success: true, path: currentVideoPath } : { success: false };
-  });
+  ipcMain.handle('set-current-recording-session', async (_, session: RecordingSession | null) => {
+    currentProjectPath = null
+    const normalizedSession = normalizeRecordingSession(session)
+    await applyCurrentRecordingSession(normalizedSession, { persistSidecar: true })
+    return { success: true }
+  })
 
-  ipcMain.handle('clear-current-video-path', () => {
-    currentVideoPath = null;
-    return { success: true };
-  });
+  ipcMain.handle('get-current-recording-session', () => {
+    return currentRecordingSession
+      ? { success: true, session: currentRecordingSession }
+      : { success: false }
+  })
+
+  ipcMain.handle('get-current-video-path', () => {
+    const activePath = currentRecordingSession?.screenVideoPath ?? currentVideoPath
+    return activePath ? { success: true, path: activePath } : { success: false }
+  })
+
+  ipcMain.handle('clear-current-video-path', async () => {
+    await applyCurrentRecordingSession(null)
+    return { success: true }
+  })
 
   ipcMain.handle('get-platform', () => {
     return process.platform;
@@ -2713,4 +2852,3 @@ export function registerIpcHandlers(
     }
   });
 }
-

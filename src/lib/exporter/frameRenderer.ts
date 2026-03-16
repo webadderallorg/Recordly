@@ -1,6 +1,7 @@
 import { Application, Container, Sprite, Graphics, BlurFilter, Texture } from 'pixi.js';
 import { MotionBlurFilter } from 'pixi-filters/motion-blur';
 import type { ZoomRegion, CropRegion, AnnotationRegion, SpeedRegion, CursorTelemetryPoint } from '@/components/video-editor/types';
+import { getFacecamLayout, type FacecamSettings } from '@/lib/recordingSession';
 import { ZOOM_DEPTH_SCALES } from '@/components/video-editor/types';
 import { getAssetPath, getRenderableAssetUrl } from '@/lib/assetPath';
 import { findDominantRegion } from '@/components/video-editor/videoPlayback/zoomRegionUtils';
@@ -22,6 +23,7 @@ interface FrameRenderConfig {
   borderRadius?: number;
   padding?: number;
   cropRegion: CropRegion;
+  facecamSettings?: FacecamSettings;
   videoWidth: number;
   videoHeight: number;
   annotationRegions?: AnnotationRegion[];
@@ -65,9 +67,13 @@ export class FrameRenderer {
   private cameraContainer: Container | null = null;
   private videoContainer: Container | null = null;
   private cursorContainer: Container | null = null;
+  private facecamContainer: Container | null = null;
   private videoSprite: Sprite | null = null;
+  private facecamSprite: Sprite | null = null;
   private backgroundSprite: Sprite | null = null;
   private maskGraphics: Graphics | null = null;
+  private facecamMaskGraphics: Graphics | null = null;
+  private facecamBorderGraphics: Graphics | null = null;
   private blurFilter: BlurFilter | null = null;
   private motionBlurFilter: MotionBlurFilter | null = null;
   private shadowCanvas: HTMLCanvasElement | null = null;
@@ -129,7 +135,9 @@ export class FrameRenderer {
     this.cameraContainer = new Container();
     this.videoContainer = new Container();
     this.cursorContainer = new Container();
+    this.facecamContainer = new Container();
     this.app.stage.addChild(this.cameraContainer);
+    this.app.stage.addChild(this.facecamContainer);
     this.cameraContainer.addChild(this.videoContainer);
     this.cameraContainer.addChild(this.cursorContainer);
 
@@ -179,6 +187,13 @@ export class FrameRenderer {
     this.maskGraphics = new Graphics();
     this.videoContainer.addChild(this.maskGraphics);
     this.videoContainer.mask = this.maskGraphics;
+
+    this.facecamMaskGraphics = new Graphics();
+    this.facecamBorderGraphics = new Graphics();
+    this.facecamContainer.addChild(this.facecamMaskGraphics);
+    this.facecamContainer.addChild(this.facecamBorderGraphics);
+    this.facecamContainer.mask = this.facecamMaskGraphics;
+    this.facecamContainer.visible = false;
     if (this.cursorOverlay) {
       this.cursorContainer.addChild(this.cursorOverlay.container);
     }
@@ -335,7 +350,11 @@ export class FrameRenderer {
     return getRenderableAssetUrl(wallpaperAsset);
   }
 
-  async renderFrame(videoFrame: VideoFrame, timestamp: number): Promise<void> {
+  async renderFrame(
+    videoFrame: VideoFrame,
+    timestamp: number,
+    facecamFrame?: VideoFrame | null,
+  ): Promise<void> {
     if (!this.app || !this.videoContainer || !this.cameraContainer) {
       throw new Error('Renderer not initialized');
     }
@@ -360,6 +379,8 @@ export class FrameRenderer {
       this.videoSprite.texture = newTexture;
       oldTexture.destroy(true);
     }
+
+    this.updateFacecamFrame(facecamFrame ?? null);
 
     // Apply layout
     this.updateLayout();
@@ -433,6 +454,100 @@ export class FrameRenderer {
       );
     }
 
+  }
+
+  private updateFacecamFrame(facecamFrame: VideoFrame | null): void {
+    if (!this.facecamContainer || !this.facecamMaskGraphics || !this.facecamBorderGraphics) {
+      return
+    }
+
+    const settings = this.config.facecamSettings
+    if (!facecamFrame || !settings?.enabled) {
+      this.facecamContainer.visible = false
+      return
+    }
+
+    if (!this.facecamSprite) {
+      const texture = Texture.from(facecamFrame as any)
+      this.facecamSprite = new Sprite(texture)
+      this.facecamContainer.addChildAt(this.facecamSprite, 0)
+    } else {
+      const oldTexture = this.facecamSprite.texture
+      const newTexture = Texture.from(facecamFrame as any)
+      this.facecamSprite.texture = newTexture
+      oldTexture.destroy(true)
+    }
+
+    this.updateFacecamLayout(
+      facecamFrame.displayWidth || facecamFrame.codedWidth,
+      facecamFrame.displayHeight || facecamFrame.codedHeight,
+    )
+  }
+
+  private updateFacecamLayout(facecamVideoWidth: number, facecamVideoHeight: number): void {
+    if (
+      !this.facecamContainer
+      || !this.facecamSprite
+      || !this.facecamMaskGraphics
+      || !this.facecamBorderGraphics
+      || !this.config.facecamSettings?.enabled
+    ) {
+      return
+    }
+
+    const settings = this.config.facecamSettings
+    const { x, y, size, borderRadius } = getFacecamLayout(
+      this.config.width,
+      this.config.height,
+      settings,
+    )
+    const scale = Math.max(
+      size / Math.max(1, facecamVideoWidth),
+      size / Math.max(1, facecamVideoHeight),
+    )
+    const drawWidth = facecamVideoWidth * scale
+    const drawHeight = facecamVideoHeight * scale
+    const centerX = x + size / 2
+    const centerY = y + size / 2
+
+    this.facecamSprite.scale.set(scale)
+    this.facecamSprite.position.set(
+      x + (size - drawWidth) / 2,
+      y + (size - drawHeight) / 2,
+    )
+
+    this.facecamMaskGraphics.clear()
+    this.facecamBorderGraphics.clear()
+
+    const borderColor = Number.parseInt(settings.borderColor.replace('#', ''), 16)
+
+    if (settings.shape === 'circle') {
+      this.facecamMaskGraphics.circle(centerX, centerY, size / 2)
+      this.facecamMaskGraphics.fill({ color: 0xffffff })
+      if (settings.borderWidth > 0) {
+        this.facecamBorderGraphics.circle(
+          centerX,
+          centerY,
+          Math.max(0, size / 2 - settings.borderWidth / 2),
+        )
+        this.facecamBorderGraphics.stroke({ color: borderColor, width: settings.borderWidth })
+      }
+    } else {
+      this.facecamMaskGraphics.roundRect(x, y, size, size, borderRadius)
+      this.facecamMaskGraphics.fill({ color: 0xffffff })
+      if (settings.borderWidth > 0) {
+        this.facecamBorderGraphics.roundRect(
+          x + settings.borderWidth / 2,
+          y + settings.borderWidth / 2,
+          Math.max(0, size - settings.borderWidth),
+          Math.max(0, size - settings.borderWidth),
+          Math.max(0, borderRadius - settings.borderWidth / 2),
+        )
+        this.facecamBorderGraphics.stroke({ color: borderColor, width: settings.borderWidth })
+      }
+    }
+
+    this.facecamContainer.visible = true
   }
 
   private updateLayout(): void {
@@ -660,13 +775,22 @@ export class FrameRenderer {
       this.videoSprite = null;
     }
     this.backgroundSprite = null;
+    if (this.facecamSprite) {
+      const facecamTexture = this.facecamSprite.texture;
+      this.facecamSprite.destroy({ texture: false, textureSource: false });
+      facecamTexture?.destroy(true);
+      this.facecamSprite = null;
+    }
     if (this.app) {
       this.app.destroy(true, { children: true, texture: false, textureSource: false });
       this.app = null;
     }
     this.cameraContainer = null;
+    this.facecamContainer = null;
     this.videoContainer = null;
     this.maskGraphics = null;
+    this.facecamMaskGraphics = null;
+    this.facecamBorderGraphics = null;
     this.blurFilter = null;
     this.motionBlurFilter = null;
     if (this.cursorOverlay) {
@@ -679,4 +803,3 @@ export class FrameRenderer {
     this.compositeCtx = null;
   }
 }
-

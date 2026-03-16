@@ -48,6 +48,7 @@
     "extendInfo": {
       "NSAudioCaptureUsageDescription": "Open Recorder needs audio capture permission to record system audio.",
       "NSMicrophoneUsageDescription": "Open Recorder needs microphone access to record voice audio.",
+      "NSCameraUsageDescription": "Open Recorder needs camera access to record your facecam overlay.",
       "NSCameraUseContinuityCameraDeviceType": true,
       "com.apple.security.device.audio-input": true
     }

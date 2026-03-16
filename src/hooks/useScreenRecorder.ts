@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { fixWebmDuration } from "@fix-webm-duration/fix";
+import { createDefaultFacecamSettings, type RecordingSession } from "@/lib/recordingSession";
 
 const TARGET_FRAME_RATE = 60;
 const TARGET_WIDTH = 3840;
@@ -22,9 +23,19 @@ const MIN_FRAME_RATE = 30;
 const CHROME_MEDIA_SOURCE = "desktop";
 const RECORDING_FILE_PREFIX = "recording-";
 const VIDEO_FILE_EXTENSION = ".webm";
+const FACECAM_FILE_SUFFIX = ".facecam.webm";
 const AUDIO_BITRATE_VOICE = 128_000;
 const AUDIO_BITRATE_SYSTEM = 192_000;
 const MIC_GAIN_BOOST = 1.4;
+const FACECAM_TARGET_WIDTH = 1280;
+const FACECAM_TARGET_HEIGHT = 720;
+const FACECAM_TARGET_FRAME_RATE = 30;
+const FACECAM_BITRATE = 8_000_000;
+
+type FacecamCaptureResult = {
+  path: string;
+  offsetMs: number;
+} | null;
 
 type UseScreenRecorderReturn = {
   recording: boolean;
@@ -37,6 +48,10 @@ type UseScreenRecorderReturn = {
   setMicrophoneDeviceId: (deviceId: string | undefined) => void;
   systemAudioEnabled: boolean;
   setSystemAudioEnabled: (enabled: boolean) => void;
+  cameraEnabled: boolean;
+  setCameraEnabled: (enabled: boolean) => void;
+  cameraDeviceId: string | undefined;
+  setCameraDeviceId: (deviceId: string | undefined) => void;
 };
 
 export function useScreenRecorder(): UseScreenRecorderReturn {
@@ -46,17 +61,27 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
   const [microphoneDeviceId, setMicrophoneDeviceId] = useState<string | undefined>(undefined);
   const [systemAudioEnabled, setSystemAudioEnabled] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [cameraDeviceId, setCameraDeviceId] = useState<string | undefined>(undefined);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const screenStream = useRef<MediaStream | null>(null);
   const microphoneStream = useRef<MediaStream | null>(null);
+  const cameraStream = useRef<MediaStream | null>(null);
   const mixingContext = useRef<AudioContext | null>(null);
   const chunks = useRef<Blob[]>([]);
+  const cameraRecorder = useRef<MediaRecorder | null>(null);
+  const cameraChunks = useRef<Blob[]>([]);
+  const cameraMimeType = useRef<string>("video/webm");
+  const cameraRecordingStartedAt = useRef<number | null>(null);
+  const screenRecordingStartedAt = useRef<number | null>(null);
+  const pendingFacecamResult = useRef<Promise<FacecamCaptureResult> | null>(null);
   const startTime = useRef<number>(0);
   const nativeScreenRecording = useRef(false);
   const wgcRecording = useRef(false);
   const startInFlight = useRef(false);
   const hasPromptedForReselect = useRef(false);
+  const recordingSessionId = useRef<string>("");
 
   const preparePermissions = useCallback(async (options: { startup?: boolean } = {}) => {
     const platform = await window.electronAPI.getPlatform();
@@ -143,13 +168,152 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       microphoneStream.current = null;
     }
 
+    if (cameraStream.current) {
+      cameraStream.current.getTracks().forEach((track) => track.stop());
+      cameraStream.current = null;
+    }
+
     if (mixingContext.current) {
       mixingContext.current.close().catch(() => {});
       mixingContext.current = null;
     }
   }, []);
 
-  const stopRecording = useRef(() => {
+  const buildRecordingSession = useCallback(
+    (screenVideoPath: string, facecamResult: FacecamCaptureResult): RecordingSession => ({
+      screenVideoPath,
+      ...(facecamResult?.path ? { facecamVideoPath: facecamResult.path } : {}),
+      ...(facecamResult?.offsetMs !== undefined ? { facecamOffsetMs: facecamResult.offsetMs } : {}),
+      facecamSettings: createDefaultFacecamSettings(Boolean(facecamResult?.path)),
+    }),
+    [],
+  );
+
+  const stopFacecamCapture = useCallback(async (): Promise<FacecamCaptureResult> => {
+    const recorder = cameraRecorder.current;
+    const pending = pendingFacecamResult.current;
+
+    if (recorder?.state === "recording") {
+      recorder.stop();
+    }
+
+    const result = pending ? await pending : null;
+    pendingFacecamResult.current = null;
+    return result;
+  }, []);
+
+  const startFacecamCapture = useCallback(
+    async (sessionId: string) => {
+      if (!cameraEnabled) {
+        pendingFacecamResult.current = Promise.resolve(null);
+        return;
+      }
+
+      try {
+        cameraStream.current = await navigator.mediaDevices.getUserMedia({
+          video: cameraDeviceId
+            ? {
+                deviceId: { exact: cameraDeviceId },
+                width: { ideal: FACECAM_TARGET_WIDTH, max: FACECAM_TARGET_WIDTH },
+                height: { ideal: FACECAM_TARGET_HEIGHT, max: FACECAM_TARGET_HEIGHT },
+                frameRate: { ideal: FACECAM_TARGET_FRAME_RATE, max: FACECAM_TARGET_FRAME_RATE },
+              }
+            : {
+                width: { ideal: FACECAM_TARGET_WIDTH, max: FACECAM_TARGET_WIDTH },
+                height: { ideal: FACECAM_TARGET_HEIGHT, max: FACECAM_TARGET_HEIGHT },
+                frameRate: { ideal: FACECAM_TARGET_FRAME_RATE, max: FACECAM_TARGET_FRAME_RATE },
+              },
+          audio: false,
+        });
+      } catch (error) {
+        console.warn("Failed to get camera access:", error);
+        alert("Camera access was denied. Recording will continue without facecam.");
+        setCameraEnabled(false);
+        pendingFacecamResult.current = Promise.resolve(null);
+        return;
+      }
+
+      const mimeType = selectMimeType();
+      cameraMimeType.current = mimeType;
+      cameraChunks.current = [];
+
+      const recorder = new MediaRecorder(cameraStream.current, {
+        mimeType,
+        videoBitsPerSecond: FACECAM_BITRATE,
+      });
+      cameraRecorder.current = recorder;
+
+      pendingFacecamResult.current = new Promise<FacecamCaptureResult>((resolve) => {
+        let settled = false;
+
+        const settle = (result: FacecamCaptureResult) => {
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+          resolve(result);
+        };
+
+        recorder.onstart = () => {
+          cameraRecordingStartedAt.current = Date.now();
+        };
+
+        recorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) {
+            cameraChunks.current.push(event.data);
+          }
+        };
+
+        recorder.onerror = () => {
+          console.error("Facecam recorder failed while capturing.");
+          settle(null);
+        };
+
+        recorder.onstop = async () => {
+          cameraRecorder.current = null;
+
+          const recordedChunks = cameraChunks.current;
+          cameraChunks.current = [];
+
+          if (recordedChunks.length === 0) {
+            settle(null);
+            return;
+          }
+
+          try {
+            const startedAt = cameraRecordingStartedAt.current ?? Date.now();
+            const duration = Math.max(0, Date.now() - startedAt);
+            const buggyBlob = new Blob(recordedChunks, { type: cameraMimeType.current });
+            const fixedBlob = await fixWebmDuration(buggyBlob, duration);
+            const arrayBuffer = await fixedBlob.arrayBuffer();
+            const fileName = `${RECORDING_FILE_PREFIX}${sessionId}${FACECAM_FILE_SUFFIX}`;
+            const result = await window.electronAPI.storeRecordingAsset(arrayBuffer, fileName);
+
+            if (!result.success || !result.path) {
+              console.error("Failed to store facecam recording:", result.error ?? result.message);
+              settle(null);
+              return;
+            }
+
+            const screenStartedAt = screenRecordingStartedAt.current ?? startedAt;
+            settle({
+              path: result.path,
+              offsetMs: Math.round(startedAt - screenStartedAt),
+            });
+          } catch (error) {
+            console.error("Failed to save facecam recording:", error);
+            settle(null);
+          }
+        };
+      });
+
+      recorder.start(RECORDER_TIMESLICE_MS);
+    },
+    [cameraDeviceId, cameraEnabled],
+  );
+
+  const stopRecording = useCallback(() => {
     if (nativeScreenRecording.current) {
       nativeScreenRecording.current = false;
       setRecording(false);
@@ -157,12 +321,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       void (async () => {
         const isWgc = wgcRecording.current;
         wgcRecording.current = false;
+        const facecamResultPromise = stopFacecamCapture();
 
         const result = await window.electronAPI.stopNativeScreenRecording();
-        window.electronAPI?.setRecordingState(false);
+        await window.electronAPI.setRecordingState(false);
 
         if (!result.success || !result.path) {
           console.error("Failed to stop native screen recording:", result.error ?? result.message);
+          cleanupCapturedMedia();
+          await facecamResultPromise.catch(() => null);
           return;
         }
 
@@ -173,19 +340,24 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
           finalPath = muxResult?.path ?? result.path;
         }
 
-        await window.electronAPI.setCurrentVideoPath(finalPath);
+        const facecamResult = await facecamResultPromise;
+        await window.electronAPI.setCurrentRecordingSession(
+          buildRecordingSession(finalPath, facecamResult),
+        );
+        cleanupCapturedMedia();
         await window.electronAPI.switchToEditor();
       })();
       return;
     }
 
     if (mediaRecorder.current?.state === "recording") {
+      pendingFacecamResult.current = stopFacecamCapture();
       cleanupCapturedMedia();
       mediaRecorder.current.stop();
       setRecording(false);
-      window.electronAPI?.setRecordingState(false);
+      void window.electronAPI.setRecordingState(false);
     }
-  });
+  }, [buildRecordingSession, cleanupCapturedMedia, stopFacecamCapture]);
 
   useEffect(() => {
     void (async () => {
@@ -199,7 +371,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
     if (window.electronAPI?.onStopRecordingFromTray) {
       cleanup = window.electronAPI.onStopRecordingFromTray(() => {
-        stopRecording.current();
+        stopRecording();
       });
     }
 
@@ -236,9 +408,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
         mediaRecorder.current.stop();
       }
 
+      if (cameraRecorder.current?.state === "recording") {
+        cameraRecorder.current.stop();
+      }
+
       cleanupCapturedMedia();
     };
-  }, [cleanupCapturedMedia]);
+  }, [cleanupCapturedMedia, stopRecording]);
 
   const startRecording = async () => {
     if (startInFlight.current) {
@@ -248,6 +424,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
     hasPromptedForReselect.current = false;
     startInFlight.current = true;
     setStarting(true);
+    recordingSessionId.current = `${Date.now()}`;
+    pendingFacecamResult.current = Promise.resolve(null);
+    cameraRecordingStartedAt.current = null;
+    screenRecordingStartedAt.current = null;
 
     try {
       const selectedSource = await window.electronAPI.getSelectedSource();
@@ -282,17 +462,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       }
 
       if (useNativeMacScreenCapture || useWgcCapture) {
-        // WGC: resolve mic device label for native WASAPI capture
         let micLabel: string | undefined;
         if (useWgcCapture && microphoneEnabled) {
           try {
             const devices = await navigator.mediaDevices.enumerateDevices();
             const mic = devices.find(
-              (d) => d.deviceId === microphoneDeviceId && d.kind === "audioinput",
+              (device) => device.deviceId === microphoneDeviceId && device.kind === "audioinput",
             );
             micLabel = mic?.label || undefined;
           } catch {
-            // Fall through — native process will use default mic
           }
         }
 
@@ -313,12 +491,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
         }
 
         if (nativeResult.success) {
+          await startFacecamCapture(recordingSessionId.current);
           nativeScreenRecording.current = true;
           wgcRecording.current = useWgcCapture;
           startTime.current = Date.now();
+          screenRecordingStartedAt.current = startTime.current;
           setRecording(true);
-          window.electronAPI?.setRecordingState(true);
-
+          await window.electronAPI.setRecordingState(true);
           return;
         }
       }
@@ -499,49 +678,62 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
       mediaRecorder.current = recorder;
       recorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) chunks.current.push(event.data);
-      };
-      recorder.onstop = async () => {
-        cleanupCapturedMedia();
-        if (chunks.current.length === 0) return;
-
-        const duration = Date.now() - startTime.current;
-        const recordedChunks = chunks.current;
-        const buggyBlob = new Blob(recordedChunks, { type: mimeType });
-        chunks.current = [];
-        const timestamp = Date.now();
-        const videoFileName = `${RECORDING_FILE_PREFIX}${timestamp}${VIDEO_FILE_EXTENSION}`;
-
-        try {
-          const videoBlob = await fixWebmDuration(buggyBlob, duration);
-          const arrayBuffer = await videoBlob.arrayBuffer();
-          const videoResult = await window.electronAPI.storeRecordedVideo(arrayBuffer, videoFileName);
-          if (!videoResult.success) {
-            console.error("Failed to store video:", videoResult.message);
-            return;
-          }
-
-          if (videoResult.path) {
-            await window.electronAPI.setCurrentVideoPath(videoResult.path);
-          }
-
-          await window.electronAPI.switchToEditor();
-        } catch (error) {
-          console.error("Error saving recording:", error);
+        if (event.data && event.data.size > 0) {
+          chunks.current.push(event.data);
         }
       };
       recorder.onerror = () => {
         setRecording(false);
       };
+      recorder.onstop = async () => {
+        mediaRecorder.current = null;
+        cleanupCapturedMedia();
+        if (chunks.current.length === 0) {
+          return;
+        }
+
+        const duration = Math.max(0, Date.now() - startTime.current);
+        const recordedChunks = chunks.current;
+        const buggyBlob = new Blob(recordedChunks, { type: mimeType });
+        chunks.current = [];
+        const videoFileName = `${RECORDING_FILE_PREFIX}${recordingSessionId.current}${VIDEO_FILE_EXTENSION}`;
+
+        try {
+          const videoBlob = await fixWebmDuration(buggyBlob, duration);
+          const arrayBuffer = await videoBlob.arrayBuffer();
+          const videoResult = await window.electronAPI.storeRecordedVideo(arrayBuffer, videoFileName);
+          if (!videoResult.success || !videoResult.path) {
+            console.error("Failed to store video:", videoResult.message);
+            return;
+          }
+
+          const facecamResult = pendingFacecamResult.current
+            ? await pendingFacecamResult.current
+            : null;
+          pendingFacecamResult.current = null;
+
+          await window.electronAPI.setCurrentRecordingSession(
+            buildRecordingSession(videoResult.path, facecamResult),
+          );
+          await window.electronAPI.switchToEditor();
+        } catch (error) {
+          console.error("Error saving recording:", error);
+        }
+      };
+
+      await startFacecamCapture(recordingSessionId.current);
       recorder.start(RECORDER_TIMESLICE_MS);
       startTime.current = Date.now();
+      screenRecordingStartedAt.current = startTime.current;
       setRecording(true);
-      window.electronAPI?.setRecordingState(true);
+      await window.electronAPI.setRecordingState(true);
     } catch (error) {
       console.error("Failed to start recording:", error);
       alert(error instanceof Error ? `Failed to start recording: ${error.message}` : "Failed to start recording");
       setRecording(false);
+      const facecamResultPromise = stopFacecamCapture();
       cleanupCapturedMedia();
+      await facecamResultPromise.catch(() => null);
     } finally {
       startInFlight.current = false;
       setStarting(false);
@@ -553,7 +745,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       return;
     }
 
-    recording ? stopRecording.current() : startRecording();
+    recording ? stopRecording() : void startRecording();
   };
 
   return {
@@ -567,6 +759,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
     setMicrophoneDeviceId,
     systemAudioEnabled,
     setSystemAudioEnabled,
+    cameraEnabled,
+    setCameraEnabled,
+    cameraDeviceId,
+    setCameraDeviceId,
   };
 }
-

@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BsRecordCircle } from "react-icons/bs";
 import { FaRegStopCircle } from "react-icons/fa";
 import { FaFolderOpen } from "react-icons/fa6";
 import { FiMinus, FiX } from "react-icons/fi";
-import { MdMic, MdMicOff, MdMonitor, MdVideoFile, MdVolumeOff, MdVolumeUp } from "react-icons/md";
+import { MdMic, MdMicOff, MdMonitor, MdVideocam, MdVideocamOff, MdVideoFile, MdVolumeOff, MdVolumeUp } from "react-icons/md";
+import { useCameraDevices } from "../../hooks/useCameraDevices";
 import { RxDragHandleDots2 } from "react-icons/rx";
 import { useAudioLevelMeter } from "../../hooks/useAudioLevelMeter";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
@@ -23,21 +24,90 @@ export function LaunchWindow() {
     setMicrophoneDeviceId,
     systemAudioEnabled,
     setSystemAudioEnabled,
+    cameraEnabled,
+    setCameraEnabled,
+    cameraDeviceId,
+    setCameraDeviceId,
   } = useScreenRecorder();
   const [recordingStart, setRecordingStart] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const showMicControls = microphoneEnabled && !recording;
+  const showCameraControls = cameraEnabled && !recording;
   const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(microphoneEnabled);
+  const {
+    devices: cameraDevices,
+    selectedDeviceId: selectedCameraDeviceId,
+    setSelectedDeviceId: setSelectedCameraDeviceId,
+  } = useCameraDevices(cameraEnabled);
   const { level } = useAudioLevelMeter({
     enabled: showMicControls,
     deviceId: microphoneDeviceId,
   });
+  const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     if (selectedDeviceId && selectedDeviceId !== "default") {
       setMicrophoneDeviceId(selectedDeviceId);
     }
   }, [selectedDeviceId, setMicrophoneDeviceId]);
+
+  useEffect(() => {
+    if (selectedCameraDeviceId && selectedCameraDeviceId !== "default") {
+      setCameraDeviceId(selectedCameraDeviceId);
+    }
+  }, [selectedCameraDeviceId, setCameraDeviceId]);
+
+  useEffect(() => {
+    if (!showCameraControls) {
+      if (cameraPreviewRef.current) {
+        cameraPreviewRef.current.srcObject = null;
+      }
+      return;
+    }
+
+    let mounted = true;
+    let previewStream: MediaStream | null = null;
+
+    const loadPreview = async () => {
+      try {
+        previewStream = await navigator.mediaDevices.getUserMedia({
+          video: cameraDeviceId
+            ? {
+                deviceId: { exact: cameraDeviceId },
+                width: { ideal: 640, max: 640 },
+                height: { ideal: 360, max: 360 },
+                frameRate: { ideal: 30, max: 30 },
+              }
+            : {
+                width: { ideal: 640, max: 640 },
+                height: { ideal: 360, max: 360 },
+                frameRate: { ideal: 30, max: 30 },
+              },
+          audio: false,
+        });
+
+        if (!mounted || !cameraPreviewRef.current) {
+          previewStream?.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        cameraPreviewRef.current.srcObject = previewStream;
+        await cameraPreviewRef.current.play().catch(() => {});
+      } catch (error) {
+        console.error("Failed to load facecam preview:", error);
+      }
+    };
+
+    void loadPreview();
+
+    return () => {
+      mounted = false;
+      if (cameraPreviewRef.current) {
+        cameraPreviewRef.current.srcObject = null;
+      }
+      previewStream?.getTracks().forEach((track) => track.stop());
+    };
+  }, [cameraDeviceId, showCameraControls]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
@@ -151,9 +221,47 @@ export function LaunchWindow() {
     }
   };
 
+  const toggleCamera = () => {
+    if (!recording) {
+      setCameraEnabled(!cameraEnabled);
+    }
+  };
+
   return (
     <div className="w-full h-full flex items-end justify-center bg-transparent overflow-hidden">
       <div className={`flex flex-col items-center gap-2 mx-auto ${styles.electronDrag}`}>
+        {showCameraControls && (
+          <div
+            className={`flex items-center gap-3 rounded-[22px] border border-white/15 bg-[rgba(18,18,26,0.92)] px-3 py-2 shadow-xl backdrop-blur-xl ${styles.electronNoDrag}`}
+          >
+            <div className="h-14 w-24 overflow-hidden rounded-2xl border border-white/10 bg-black/30">
+              <video
+                ref={cameraPreviewRef}
+                className="h-full w-full object-cover"
+                muted
+                playsInline
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <div className="text-[10px] font-medium tracking-[0.18em] uppercase text-white/50">Facecam</div>
+              <select
+                value={cameraDeviceId || selectedCameraDeviceId}
+                onChange={(event) => {
+                  setSelectedCameraDeviceId(event.target.value);
+                  setCameraDeviceId(event.target.value);
+                }}
+                className={`max-w-[230px] rounded-full border border-white/15 bg-[#131722] px-3 py-1 text-xs text-slate-100 outline-none ${styles.micSelect}`}
+              >
+                {cameraDevices.map((device) => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
         {showMicControls && (
           <div
             className={`flex items-center gap-2 rounded-full border border-white/15 bg-[rgba(18,18,26,0.92)] px-3 py-2 shadow-xl backdrop-blur-xl ${styles.electronNoDrag}`}
@@ -225,6 +333,16 @@ export function LaunchWindow() {
               className="text-white/80 hover:bg-transparent"
             >
               {microphoneEnabled ? <MdMic size={16} className="text-[#2563EB]" /> : <MdMicOff size={16} className="text-white/35" />}
+            </Button>
+            <Button
+              variant="link"
+              size="icon"
+              onClick={toggleCamera}
+              disabled={recording}
+              title={cameraEnabled ? "Disable facecam" : "Enable facecam"}
+              className="text-white/80 hover:bg-transparent"
+            >
+              {cameraEnabled ? <MdVideocam size={16} className="text-[#2563EB]" /> : <MdVideocamOff size={16} className="text-white/35" />}
             </Button>
           </div>
 
@@ -308,4 +426,3 @@ export function LaunchWindow() {
     </div>
   );
 }
-

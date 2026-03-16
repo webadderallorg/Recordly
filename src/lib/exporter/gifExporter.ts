@@ -2,12 +2,16 @@ import GIF from 'gif.js';
 import type { ExportProgress, ExportResult, GifFrameRate, GifSizePreset, GIF_SIZE_PRESETS } from './types';
 import { StreamingVideoDecoder } from './streamingDecoder';
 import { FrameRenderer } from './frameRenderer';
+import { SyncedVideoProvider } from './syncedVideoProvider';
 import type { ZoomRegion, CropRegion, TrimRegion, AnnotationRegion, SpeedRegion, CursorTelemetryPoint } from '@/components/video-editor/types';
+import type { FacecamSettings } from '@/lib/recordingSession';
 
 const GIF_WORKER_URL = new URL('gif.js/dist/gif.worker.js', import.meta.url).toString();
 
 interface GifExporterConfig {
   videoUrl: string;
+  facecamVideoUrl?: string;
+  facecamOffsetMs?: number;
   width: number;
   height: number;
   frameRate: GifFrameRate;
@@ -26,6 +30,7 @@ interface GifExporterConfig {
   padding?: number;
   videoPadding?: number;
   cropRegion: CropRegion;
+  facecamSettings?: FacecamSettings;
   annotationRegions?: AnnotationRegion[];
   cursorTelemetry?: CursorTelemetryPoint[];
   showCursor?: boolean;
@@ -76,6 +81,7 @@ export class GifExporter {
   private config: GifExporterConfig;
   private streamingDecoder: StreamingVideoDecoder | null = null;
   private renderer: FrameRenderer | null = null;
+  private facecamProvider: SyncedVideoProvider | null = null;
   private gif: GIF | null = null;
   private cancelled = false;
 
@@ -106,6 +112,7 @@ export class GifExporter {
         borderRadius: this.config.borderRadius,
         padding: this.config.padding,
         cropRegion: this.config.cropRegion,
+        facecamSettings: this.config.facecamSettings,
         videoWidth: videoInfo.width,
         videoHeight: videoInfo.height,
         annotationRegions: this.config.annotationRegions,
@@ -120,6 +127,11 @@ export class GifExporter {
         cursorClickBounce: this.config.cursorClickBounce,
       });
       await this.renderer.initialize();
+
+      if (this.config.facecamVideoUrl && this.config.facecamSettings?.enabled) {
+        this.facecamProvider = new SyncedVideoProvider();
+        await this.facecamProvider.initialize(this.config.facecamVideoUrl, this.config.frameRate);
+      }
 
       // Initialize GIF encoder
       // Loop: 0 = infinite loop, 1 = play once (no loop)
@@ -168,8 +180,12 @@ export class GifExporter {
           }
 
           const sourceTimestampUs = sourceTimestampMs * 1000;
-          await this.renderer!.renderFrame(videoFrame, sourceTimestampUs);
+          const facecamFrame = this.facecamProvider
+            ? await this.facecamProvider.getFrameAt(sourceTimestampMs - (this.config.facecamOffsetMs ?? 0))
+            : null;
+          await this.renderer!.renderFrame(videoFrame, sourceTimestampUs, facecamFrame);
           videoFrame.close();
+          facecamFrame?.close();
 
           this.addRenderedGifFrame(frameDelay);
           frameIndex++;
@@ -274,7 +290,15 @@ export class GifExporter {
       this.renderer = null;
     }
 
+    if (this.facecamProvider) {
+      try {
+        this.facecamProvider.destroy();
+      } catch (e) {
+        console.warn('Error destroying facecam provider:', e);
+      }
+      this.facecamProvider = null;
+    }
+
     this.gif = null;
   }
 }
-
