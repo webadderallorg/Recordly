@@ -85,7 +85,8 @@ export function LaunchWindow() {
 	const [selectedSource, setSelectedSource] = useState("Screen");
 	const [hasSelectedSource, setHasSelectedSource] = useState(false);
 	const [recordingsDirectory, setRecordingsDirectory] = useState<string | null>(null);
-	const [hideHudFromCapture, setHideHudFromCapture] = useState(false);
+	const [hideHudFromCapture, setHideHudFromCapture] = useState(true);
+	const [platform, setPlatform] = useState<string | null>(null);
 
 	useEffect(() => {
 		const checkSelectedSource = async () => {
@@ -104,6 +105,27 @@ export function LaunchWindow() {
 		void checkSelectedSource();
 		const interval = setInterval(checkSelectedSource, 500);
 		return () => clearInterval(interval);
+	}, []);
+
+	useEffect(() => {
+		let cancelled = false;
+
+		const loadPlatform = async () => {
+			try {
+				const nextPlatform = await window.electronAPI.getPlatform();
+				if (!cancelled) {
+					setPlatform(nextPlatform);
+				}
+			} catch (error) {
+				console.error("Failed to load platform:", error);
+			}
+		};
+
+		void loadPlatform();
+
+		return () => {
+			cancelled = true;
+		};
 	}, []);
 
 	useEffect(() => {
@@ -204,6 +226,7 @@ export function LaunchWindow() {
 		? recordingsDirectory.split(/[\\/]/).filter(Boolean).pop() || recordingsDirectory
 		: "recordings";
 	const dividerClass = "mx-1 h-5 w-px shrink-0 bg-white/35";
+	const supportsHudCaptureProtection = platform !== "linux";
 
 	const toggleMicrophone = () => {
 		if (!recording) {
@@ -266,21 +289,25 @@ export function LaunchWindow() {
 					<div className={dividerClass} />
 
 					<div className={`flex items-center gap-1 ${styles.electronNoDrag}`}>
-						<Button
-							variant="link"
-							size="icon"
-							onClick={() => void toggleHudCaptureProtection()}
-							title={
-								hideHudFromCapture ? t("recording.showHudInVideo") : t("recording.hideHudFromVideo")
-							}
-							className="text-white/80 hover:bg-transparent"
-						>
-							{hideHudFromCapture ? (
-								<EyeOff size={16} className="text-[#2563EB]" />
-							) : (
-								<Eye size={16} className="text-white/35" />
-							)}
-						</Button>
+						{supportsHudCaptureProtection && (
+							<Button
+								variant="link"
+								size="icon"
+								onClick={() => void toggleHudCaptureProtection()}
+								title={
+									hideHudFromCapture
+										? t("recording.showHudInVideo")
+										: t("recording.hideHudFromVideo")
+								}
+								className="text-white/80 hover:bg-transparent"
+							>
+								{hideHudFromCapture ? (
+									<EyeOff size={16} className="text-white/35" />
+								) : (
+									<Eye size={16} className="text-[#2563EB]" />
+								)}
+							</Button>
+						)}
 						<Button
 							variant="link"
 							size="icon"

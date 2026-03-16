@@ -1,7 +1,8 @@
+import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nodeRequire = createRequire(import.meta.url);
@@ -16,7 +17,50 @@ const WINDOW_ICON_PATH = path.join(
 );
 
 let hudOverlayWindow: BrowserWindow | null = null;
-let hudOverlayHiddenFromCapture = false;
+let hudOverlayHiddenFromCapture = true;
+let hudOverlayCaptureProtectionLoaded = false;
+
+const HUD_OVERLAY_SETTINGS_FILE = path.join(app.getPath("userData"), "hud-overlay-settings.json");
+
+function isHudOverlayCaptureProtectionSupported(): boolean {
+	return process.platform !== "linux";
+}
+
+function loadHudOverlayCaptureProtectionSetting(): boolean {
+	if (hudOverlayCaptureProtectionLoaded) {
+		return hudOverlayHiddenFromCapture;
+	}
+
+	hudOverlayCaptureProtectionLoaded = true;
+
+	try {
+		if (!fs.existsSync(HUD_OVERLAY_SETTINGS_FILE)) {
+			return hudOverlayHiddenFromCapture;
+		}
+
+		const raw = fs.readFileSync(HUD_OVERLAY_SETTINGS_FILE, "utf-8");
+		const parsed = JSON.parse(raw) as { hiddenFromCapture?: unknown };
+		if (typeof parsed.hiddenFromCapture === "boolean") {
+			hudOverlayHiddenFromCapture = parsed.hiddenFromCapture;
+		}
+	} catch {
+		// Ignore settings read failures and fall back to defaults.
+	}
+
+	return hudOverlayHiddenFromCapture;
+}
+
+function persistHudOverlayCaptureProtectionSetting(enabled: boolean): void {
+	try {
+		fs.writeFileSync(
+			HUD_OVERLAY_SETTINGS_FILE,
+			JSON.stringify({ hiddenFromCapture: enabled }, null, 2),
+			"utf-8",
+		);
+	} catch {
+		// Ignore settings write failures and keep runtime state working.
+	}
+}
 
 function getScreen() {
 	return nodeRequire("electron").screen as typeof import("electron").screen;
@@ -29,16 +73,24 @@ ipcMain.on("hud-overlay-hide", () => {
 });
 
 ipcMain.handle("get-hud-overlay-capture-protection", () => {
+	const enabled = loadHudOverlayCaptureProtectionSetting();
+
 	return {
 		success: true,
-		enabled: hudOverlayHiddenFromCapture,
+		enabled,
 	};
 });
 
 ipcMain.handle("set-hud-overlay-capture-protection", (_event, enabled: boolean) => {
+	loadHudOverlayCaptureProtectionSetting();
 	hudOverlayHiddenFromCapture = Boolean(enabled);
+	persistHudOverlayCaptureProtectionSetting(hudOverlayHiddenFromCapture);
 
-	if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
+	if (
+		isHudOverlayCaptureProtectionSupported() &&
+		hudOverlayWindow &&
+		!hudOverlayWindow.isDestroyed()
+	) {
 		hudOverlayWindow.setContentProtection(hudOverlayHiddenFromCapture);
 	}
 
@@ -49,6 +101,8 @@ ipcMain.handle("set-hud-overlay-capture-protection", (_event, enabled: boolean) 
 });
 
 export function createHudOverlayWindow(): BrowserWindow {
+	loadHudOverlayCaptureProtectionSetting();
+
 	const primaryDisplay = getScreen().getPrimaryDisplay();
 	const { workArea } = primaryDisplay;
 
@@ -81,7 +135,9 @@ export function createHudOverlayWindow(): BrowserWindow {
 		},
 	});
 
-	win.setContentProtection(hudOverlayHiddenFromCapture);
+	if (isHudOverlayCaptureProtectionSupported()) {
+		win.setContentProtection(hudOverlayHiddenFromCapture);
+	}
 
 	win.webContents.on("did-finish-load", () => {
 		win?.webContents.send("main-process-message", new Date().toLocaleString());
