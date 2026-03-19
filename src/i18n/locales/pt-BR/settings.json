@@ -1,0 +1,96 @@
+{
+	"zoom": {
+		"level": "Nível de Zoom",
+		"selectRegion": "Selecione uma região de zoom para ajustar",
+		"deleteZoom": "Excluir Zoom"
+	},
+	"trim": {
+		"deleteRegion": "Excluir Região de Corte"
+	},
+	"speed": {
+		"playbackSpeed": "Velocidade de Reprodução",
+		"selectRegion": "Selecione uma região de velocidade para ajustar",
+		"deleteRegion": "Excluir Região de Velocidade"
+	},
+	"effects": {
+		"title": "Efeitos de Vídeo",
+		"show": "Mostrar",
+		"showCursor": "Mostrar Cursor",
+		"loopCursor": "Loop do cursor",
+		"backgroundBlur": "Desfoque de fundo",
+		"zoomMotionBlur": "Desfoque de movimento do zoom",
+		"connectZooms": "Conectar Zooms",
+		"cursorSize": "Tamanho do cursor",
+		"cursorSmoothing": "Suavização do cursor",
+		"off": "Desligado",
+		"cursorMotionBlur": "Desfoque de movimento do cursor",
+		"cursorClickBounce": "Salto do clique do cursor",
+		"cursorClickBounceDuration": "Velocidade do salto",
+		"cursorSway": "Oscilação do cursor",
+		"webcam": "Sobreposição de webcam",
+		"webcamFootage": "Gravação de webcam",
+		"webcamFootageDescription": "Nenhuma gravação de webcam vinculada a este vídeo",
+		"uploadWebcamFootage": "Carregar gravação",
+		"replaceWebcamFootage": "Substituir gravação",
+		"removeWebcamFootage": "Remover gravação",
+		"webcamFootageAdded": "Gravação de webcam vinculada",
+		"webcamFootageRemoved": "Gravação de webcam removida",
+		"webcamSize": "Tamanho da webcam",
+		"webcamReactToZoom": "Webcam reage ao zoom",
+		"webcamRoundness": "Arredondamento da webcam",
+		"webcamShadow": "Sombra da webcam",
+		"shadow": "Sombra",
+		"radius": "Raio",
+		"roundness": "Arredondamento",
+		"padding": "Preenchimento",
+		"removeBackground": "Remover fundo"
+	},
+	"sections": {
+		"scene": "Cena",
+		"cursor": "Cursor",
+		"webcam": "Webcam",
+		"frame": "Quadro",
+		"crop": "Corte"
+	},
+	"crop": {
+		"title": "Cortar Vídeo",
+		"instruction": "Arraste em cada lado para ajustar a área de corte",
+		"top": "Topo",
+		"bottom": "Base",
+		"left": "Esquerda",
+		"right": "Direita",
+		"openEditor": "Abrir Editor de Corte"
+	},
+	"background": {
+		"title": "Fundo",
+		"image": "Imagem",
+		"color": "Cor",
+		"gradient": "Gradiente",
+		"wallpaperPreview": "Visualização do papel de parede",
+		"uploadCustom": "Carregar personalizado",
+		"uploadSuccess": "Imagem personalizada carregada com sucesso!",
+		"uploadError": "Por favor, carregue um arquivo de imagem JPG ou JPEG.",
+		"uploadErrorDescription": "Apenas imagens JPG e JPEG são suportadas."
+	},
+	"export": {
+		"title": "Exportar",
+		"mp4": "MP4",
+		"gif": "GIF",
+		"quality": {
+			"low": "Baixa",
+			"medium": "Média",
+			"high": "Alta",
+			"original": "Original"
+		},
+		"loop": "Loop",
+		"outputDimensions": "Saída: {{dimensions}}px",
+		"sizePresetOriginalShort": "Orig",
+		"sizePresetMediumShort": "Méd",
+		"sizePresetLargeShort": "Grand",
+		"loadProject": "Carregar Projeto",
+		"saveProject": "Salvar Projeto",
+		"exportVideo": "Exportar {{format}}",
+		"reportBug": "Reportar Bug",
+		"starOnGithub": "Star no GitHub"
+	}
+}

@@ -1,0 +1,26 @@
+{
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Editor Recordly",
+		"subtitle": "Gravação de tela e edição",
+		"language": "Idioma",
+		"manageRecordings": "Abrir pasta de gravações"
+	},
+	"actions": {
+		"cancel": "Cancelar",
+		"close": "Fechar",
+		"export": "Exportar",
+		"load": "Carregar",
+		"redo": "Refazer",
+		"reset": "Redefinir",
+		"save": "Salvar",
+		"undo": "Desfazer",
+		"delete": "Excluir",
+		"done": "Concluído"
+	},
+	"errors": {
+		"invalidFileType": "Tipo de arquivo inválido",
+		"failedToUploadImage": "Falha ao carregar imagem",
+		"fileReadError": "Ocorreu um erro ao ler o arquivo."
+	}
+}

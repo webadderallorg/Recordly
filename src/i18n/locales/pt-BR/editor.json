@@ -1,0 +1,118 @@
+{
+	"playback": {
+		"play": "Reproduzir",
+		"pause": "Pausar"
+	},
+	"annotations": {
+		"settings": "Configurações de anotações",
+		"active": "Ativo",
+		"text": "Texto",
+		"image": "Imagem",
+		"arrow": "Seta",
+		"textContent": "Conteúdo do texto",
+		"textPlaceholder": "Digite seu texto...",
+		"fontStyle": "Estilo da fonte",
+		"selectStyle": "Selecionar estilo",
+		"size": "Tamanho",
+		"toggleBold": "Alternar negrito",
+		"toggleItalic": "Alternar itálico",
+		"toggleUnderline": "Alternar sublinhado",
+		"alignLeft": "Alinhar à esquerda",
+		"alignCenter": "Alinhar ao centro",
+		"alignRight": "Alinhar à direita",
+		"textColor": "Cor do texto",
+		"background": "Fundo",
+		"none": "Nenhum",
+		"clearBackground": "Limpar fundo",
+		"uploadImage": "Carregar imagem",
+		"supportedFormats": "Formatos suportados: JPG, PNG, GIF, WebP",
+		"arrowDirection": "Direção da seta",
+		"strokeWidth": "Largura do traço: {{width}}px",
+		"arrowColor": "Cor da seta",
+		"deleteAnnotation": "Excluir anotação",
+		"shortcutsAndTips": "Atalhos e dicas",
+		"tipSelectAnnotation": "Mova o cursor de reprodução para a seção de anotação sobreposta e selecione um item.",
+		"tipCycleForward": "Use Tab para navegar pelos itens sobrepostos.",
+		"tipCycleBackward": "Use Shift+Tab para navegar para trás.",
+		"imageUploadSuccess": "Imagem carregada com sucesso!",
+		"imageUploadError": "Por favor, carregue um arquivo de imagem JPG, PNG, GIF ou WebP."
+	},
+	"fontStyles": {
+		"classic": "Clássico",
+		"editor": "Editor",
+		"strong": "Forte",
+		"typewriter": "Máquina de escrever",
+		"deco": "Deco",
+		"simple": "Simples",
+		"modern": "Moderno",
+		"clean": "Limpo"
+	},
+	"format": {
+		"mp4Video": "Vídeo MP4",
+		"mp4Description": "Arquivo de vídeo de alta qualidade",
+		"gifAnimation": "Animação GIF",
+		"gifDescription": "Imagem animada para compartilhar"
+	},
+	"gifOptions": {
+		"frameRate": "Taxa de quadros",
+		"outputSize": "Tamanho de saída",
+		"outputDimensions": "Saída: {{width}} × {{height}}px",
+		"loopAnimation": "Animação em loop",
+		"loopDescription": "O GIF será reproduzido continuamente"
+	},
+	"tutorial": {
+		"howTrimmingWorks": "Como funciona o corte",
+		"title": "Como Funciona o Corte",
+		"understanding": "Entenda como remover as partes indesejadas do seu vídeo.",
+		"descriptionP1": "A ferramenta de corte funciona definindo os segmentos que você deseja",
+		"descriptionRemove": "remover",
+		"descriptionP2": "do seu vídeo.",
+		"descriptionP3": "Qualquer parte da linha do tempo coberta por um segmento de corte vermelho será removida ao exportar.",
+		"visualExample": "Exemplo visual",
+		"removed": "REMOVIDO",
+		"kept": "Mantido",
+		"finalVideo": "Vídeo final",
+		"part": "Parte {{number}}",
+		"addTrimStep": "1. Adicionar corte",
+		"addTrimDesc": "Pressione T ou clique no ícone de tesoura para marcar uma seção para remoção.",
+		"adjustStep": "2. Ajustar",
+		"adjustDesc": "Arraste as bordas da região vermelha para cobrir exatamente o que você deseja remover."
+	},
+	"feedback": {
+		"trigger": "Feedback",
+		"title": "Feedback e contato",
+		"description": "Entre em contato diretamente ou abra uma issue se algo estiver quebrado ou faltando.",
+		"emailLabel": "E-mail",
+		"xLabel": "X",
+		"reportIssue": "Reportar problema / enviar feedback",
+		"openFailed": "Falha ao abrir link."
+	},
+	"keyboardShortcuts": {
+		"trigger": "Atalhos",
+		"title": "Atalhos de Teclado",
+		"description": "Referência rápida para os controles da linha do tempo e do editor.",
+		"customizeTooltip": "Personalizar atalhos",
+		"customize": "Personalizar",
+		"panTimeline": "Mover linha do tempo",
+		"zoomTimeline": "Zoom da linha do tempo",
+		"cycleAnnotations": "Navegar pelas anotações",
+		"tab": "Tab"
+	},
+	"actions": {
+		"saveAgain": "Salvar novamente",
+		"showInFolder": "Mostrar na pasta"
+	},
+	"project": {
+		"untitled": "Sem título"
+	},
+	"exportStatus": {
+		"exporting": "Exportando",
+		"renderingFile": "Renderizando seu arquivo.",
+		"preparing": "Preparando exportação...",
+		"completePercent": "{{percent}}% concluído",
+		"issue": "Problema na exportação",
+		"complete": "Exportação concluída",
+		"savedSuccessfully": "Seu arquivo foi salvo com sucesso."
+	},
+	"openRecordingsFolder": "Abrir pasta de gravações"
+}
