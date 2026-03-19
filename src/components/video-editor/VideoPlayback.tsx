@@ -148,6 +148,7 @@ export interface VideoPlaybackRef {
   play: () => Promise<void>;
   pause: () => void;
   refreshFrame: () => Promise<void>;
+  relayout: () => void;
 }
 
 const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
@@ -462,6 +463,31 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
           video.currentTime = nudgeTarget;
         });
       },
+      relayout: () => {
+        const fn = layoutVideoContentRef.current;
+        if (fn) {
+          if (videoSpriteRef.current?.texture?.source) {
+            try {
+              videoSpriteRef.current.texture.source.update();
+            } catch (e) {
+              console.warn("[VideoPlayback] Failed to update texture source during relayout:", e);
+            }
+          }
+          
+          requestAnimationFrame(() => {
+            fn();
+            if (cursorOverlayRef.current) {
+              cursorOverlayRef.current.update(
+                cursorTelemetryRef.current,
+                currentTimeRef.current,
+                baseMaskRef.current,
+                showCursorRef.current,
+                !isPlayingRef.current || isSeekingRef.current,
+              );
+            }
+          });
+        }
+      },
     }));
 
     const updateFocusFromClientPoint = (clientX: number, clientY: number) => {
@@ -596,6 +622,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
     useEffect(() => {
       cursorSwayRef.current = cursorSway;
     }, [cursorSway]);
+
+    // Sync currentTime prop to internal ref (in milliseconds)
+    useEffect(() => {
+      currentTimeRef.current = currentTime * 1000;
+    }, [currentTime]);
 
     useEffect(() => {
       if (!pixiReady || !videoReady) return;

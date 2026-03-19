@@ -157,6 +157,7 @@ export default function VideoEditor() {
 	const [audioRegions, setAudioRegions] = useState<AudioRegion[]>([]);
 	const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
 	const [isExporting, setIsExporting] = useState(false);
+	const [previewVersion, setPreviewVersion] = useState(0);
 	const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
 	const [exportError, setExportError] = useState<string | null>(null);
 	const [showExportDialog, setShowExportDialog] = useState(false);
@@ -1774,13 +1775,11 @@ export default function VideoEditor() {
 				setExportError(errorMessage);
 				toast.error(`Export failed: ${errorMessage}`);
 			} finally {
-				if (!isPlaying) {
-					await videoPlaybackRef.current?.refreshFrame().catch(() => undefined);
-				}
 				setIsExporting(false);
 				exporterRef.current = null;
 				setShowExportDialog(keepExportDialogOpen);
 				setExportProgress(null);
+				setPreviewVersion(v => v + 1);
 			}
 		},
 		[
@@ -1881,6 +1880,7 @@ export default function VideoEditor() {
 			setExportProgress(null);
 			setExportError(null);
 			setExportedFilePath(undefined);
+			setPreviewVersion(v => v + 1);
 		}
 	}, []);
 
@@ -1997,6 +1997,7 @@ export default function VideoEditor() {
 								>
 									<div
 										className="relative"
+										key={`preview-wrapper-${previewVersion}`}
 										style={{
 											width: "auto",
 											height: "100%",
@@ -2016,7 +2017,7 @@ export default function VideoEditor() {
 										}}
 									>
 										<VideoPlayback
-											key={videoPath || "no-video"}
+											key={`${videoPath || "no-video"}-${previewVersion}`}
 											aspectRatio={aspectRatio}
 											ref={videoPlaybackRef}
 											videoPath={videoPath || ""}
