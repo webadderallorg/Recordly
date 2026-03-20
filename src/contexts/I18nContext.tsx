@@ -119,11 +119,13 @@ function getInitialLocale(): AppLocale {
   }
 
   const storedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY)
-  if (storedLocale && isSupportedLocale(storedLocale)) {
-    return storedLocale
+  if (storedLocale) {
+    return normalizeLocale(storedLocale)
   }
 
-  return normalizeLocale(window.navigator.language)
+  // Product default must be English on first launch unless user explicitly
+  // selected another locale and we persisted it in localStorage.
+  return DEFAULT_LOCALE
 }
 
 function getMessageValue(source: unknown, key: string): string | undefined {

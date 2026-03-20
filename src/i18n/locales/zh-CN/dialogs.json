@@ -18,6 +18,7 @@
 		"compilingStatus": "正在编译...",
 		"frames": "帧",
 		"cancelExport": "取消导出",
+		"reopenSaveDialog": "再次打开保存对话框",
 		"savedSuccess": "{{format}} 保存成功！"
 	},
 	"addFont": {

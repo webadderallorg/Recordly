@@ -11,6 +11,7 @@ struct CaptureConfig: Codable {
 	let capturesSystemAudio: Bool?
 	let capturesMicrophone: Bool?
 	let microphoneDeviceId: String?
+	let microphoneLabel: String?
 	let microphoneOutputPath: String?
 }
 
@@ -28,7 +29,13 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var firstPrimaryAudioSampleTime: CMTime?
 	private var firstMicrophoneSampleTime: CMTime?
 	private var lastSampleBuffer: CMSampleBuffer?
+	private var lastVideoPresentationTime: CMTime = .zero
+	private var lastVideoDuration: CMTime = .zero
 	private var isRecording = false
+	private var isPaused = false
+	private var pauseStartedHostTime: CMTime?
+	private var pendingResumeAdjustment = false
+	private var accumulatedPausedDuration: CMTime = .zero
 	private var sessionStarted = false
 	private var frameCount = 0
 	private var outputURL: URL?
@@ -76,14 +83,14 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		streamConfig.queueDepth = 6
 		streamConfig.pixelFormat = kCVPixelFormatType_32BGRA
 		streamConfig.showsCursor = false
-		streamConfig.capturesAudio = capturesSystemAudio
+		streamConfig.capturesAudio = capturesSystemAudio || capturesMicrophone
 		streamConfig.sampleRate = 48000
 		streamConfig.channelCount = 2
 		streamConfig.excludesCurrentProcessAudio = true
 
 		if capturesMicrophone {
 			streamConfig.setValue(true, forKey: "captureMicrophone")
-			if let microphoneDeviceId = config.microphoneDeviceId, !microphoneDeviceId.isEmpty {
+			if let microphoneDeviceId = Self.resolveMicrophoneCaptureDeviceID(config: config) {
 				streamConfig.setValue(microphoneDeviceId, forKey: "microphoneCaptureDeviceID")
 			}
 		}
@@ -230,8 +237,14 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		assetWriter.startSession(atSourceTime: .zero)
 		sessionStarted = true
 		isRecording = true
+		isPaused = false
+		pauseStartedHostTime = nil
+		pendingResumeAdjustment = false
+		accumulatedPausedDuration = .zero
 		frameCount = 0
 		firstSampleTime = .zero
+		lastVideoPresentationTime = .zero
+		lastVideoDuration = .zero
 		startWindowValidationIfNeeded()
 		print("Recording started")
 		fflush(stdout)
@@ -245,8 +258,22 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		return try await finishCapture()
 	}
 
+	func pauseCapture() {
+		guard isRecording, !isPaused else { return }
+		isPaused = true
+		pauseStartedHostTime = CMClockGetTime(CMClockGetHostTimeClock())
+		pendingResumeAdjustment = false
+	}
+
+	func resumeCapture() {
+		guard isRecording, isPaused else { return }
+		isPaused = false
+		pendingResumeAdjustment = true
+	}
+
 	func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
 		guard sessionStarted, sampleBuffer.isValid, isRecording else { return }
+		guard let presentationTime = adjustedPresentationTime(for: sampleBuffer, outputType: outputType) else { return }
 
 		if outputType == .screen {
 			guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
@@ -263,11 +290,12 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				firstSampleTime = sampleBuffer.presentationTimeStamp
 			}
 
-			let presentationTime = sampleBuffer.presentationTimeStamp - firstSampleTime
 			lastSampleBuffer = sampleBuffer
 			let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: presentationTime, decodeTimeStamp: sampleBuffer.decodeTimeStamp)
 			if let retimedSampleBuffer = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]) {
 				videoInput.append(retimedSampleBuffer)
+				lastVideoPresentationTime = presentationTime
+				lastVideoDuration = sampleBuffer.duration
 				frameCount += 1
 			}
 			return
@@ -275,15 +303,15 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 		if outputType == .audio {
 			guard primaryAudioSource == .system, let audioInput else { return }
-			appendAudioSampleBuffer(sampleBuffer, to: audioInput, firstSampleTime: &firstPrimaryAudioSampleTime)
+			appendAudioSampleBuffer(sampleBuffer, to: audioInput, firstSampleTime: &firstPrimaryAudioSampleTime, presentationTime: presentationTime)
 			return
 		}
 
 		if outputType.rawValue == microphoneOutputTypeRawValue {
 			if writesMicrophoneToSeparateTrack, let microphoneOnlyInput {
-				appendAudioSampleBuffer(sampleBuffer, to: microphoneOnlyInput, firstSampleTime: &firstMicrophoneSampleTime)
+				appendAudioSampleBuffer(sampleBuffer, to: microphoneOnlyInput, firstSampleTime: &firstMicrophoneSampleTime, presentationTime: presentationTime)
 			} else if primaryAudioSource == .microphone, let audioInput {
-				appendAudioSampleBuffer(sampleBuffer, to: audioInput, firstSampleTime: &firstPrimaryAudioSampleTime)
+				appendAudioSampleBuffer(sampleBuffer, to: audioInput, firstSampleTime: &firstPrimaryAudioSampleTime, presentationTime: presentationTime)
 			}
 			return
 		}
@@ -312,7 +340,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		stream = nil
 
 		if let originalBuffer = lastSampleBuffer, let videoInput = videoInput {
-			let additionalTime = CMTime(seconds: ProcessInfo.processInfo.systemUptime, preferredTimescale: 600) - firstSampleTime
+			let additionalTime = lastVideoPresentationTime + frameDuration(for: originalBuffer)
 			let timing = CMSampleTimingInfo(duration: originalBuffer.duration, presentationTimeStamp: additionalTime, decodeTimeStamp: originalBuffer.decodeTimeStamp)
 			if let additionalSampleBuffer = try? CMSampleBuffer(copying: originalBuffer, withNewTiming: [timing]) {
 				videoInput.append(additionalSampleBuffer)
@@ -340,7 +368,13 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		firstPrimaryAudioSampleTime = nil
 		firstMicrophoneSampleTime = nil
 		lastSampleBuffer = nil
+		lastVideoPresentationTime = .zero
+		lastVideoDuration = .zero
 		frameCount = 0
+		isPaused = false
+		pauseStartedHostTime = nil
+		pendingResumeAdjustment = false
+		accumulatedPausedDuration = .zero
 		capturesSystemAudio = false
 		capturesMicrophone = false
 		writesMicrophoneToSeparateTrack = false
@@ -348,16 +382,53 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		return path
 	}
 
-	private func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, to input: AVAssetWriterInput, firstSampleTime: inout CMTime?) {
+	private func adjustedPresentationTime(for sampleBuffer: CMSampleBuffer, outputType: SCStreamOutputType) -> CMTime? {
+		if isPaused {
+			return nil
+		}
+
+		let sampleTime = sampleBuffer.presentationTimeStamp
+		if pendingResumeAdjustment, let pauseStartedHostTime {
+			let pauseGap = sampleTime - pauseStartedHostTime
+			if pauseGap > .zero {
+				accumulatedPausedDuration = accumulatedPausedDuration + pauseGap
+			}
+			self.pauseStartedHostTime = nil
+			pendingResumeAdjustment = false
+		}
+
+		if outputType == .screen {
+			if firstSampleTime == .zero {
+				firstSampleTime = sampleTime
+			}
+			return max(.zero, sampleTime - firstSampleTime - accumulatedPausedDuration)
+		}
+
+		return sampleTime - accumulatedPausedDuration
+	}
+
+	private func frameDuration(for sampleBuffer: CMSampleBuffer) -> CMTime {
+		if sampleBuffer.duration.isValid && sampleBuffer.duration > .zero {
+			return sampleBuffer.duration
+		}
+
+		if lastVideoDuration.isValid && lastVideoDuration > .zero {
+			return lastVideoDuration
+		}
+
+		return CMTime(value: 1, timescale: CMTimeScale(targetCaptureFPS))
+	}
+
+	private func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, to input: AVAssetWriterInput, firstSampleTime: inout CMTime?, presentationTime: CMTime) {
 		guard input.isReadyForMoreMediaData else { return }
 
 		if firstSampleTime == nil {
-			firstSampleTime = sampleBuffer.presentationTimeStamp
+			firstSampleTime = presentationTime
 		}
 
 		guard let firstSampleTime else { return }
-		let presentationTime = sampleBuffer.presentationTimeStamp - firstSampleTime
-		let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: presentationTime, decodeTimeStamp: sampleBuffer.decodeTimeStamp)
+		let relativePresentationTime = max(.zero, presentationTime - firstSampleTime)
+		let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: relativePresentationTime, decodeTimeStamp: sampleBuffer.decodeTimeStamp)
 		if let retimedSampleBuffer = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]) {
 			input.append(retimedSampleBuffer)
 		}
@@ -370,6 +441,24 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			AVNumberOfChannelsKey: 2,
 			AVEncoderBitRateKey: bitRate,
 		]
+	}
+
+	private static func resolveMicrophoneCaptureDeviceID(config: CaptureConfig) -> String? {
+		let audioDevices = AVCaptureDevice.devices(for: .audio)
+
+		if let microphoneLabel = config.microphoneLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneLabel.isEmpty {
+			if let matchedDevice = audioDevices.first(where: { $0.localizedName == microphoneLabel }) {
+				return matchedDevice.uniqueID
+			}
+		}
+
+		if let microphoneDeviceId = config.microphoneDeviceId?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneDeviceId.isEmpty {
+			if audioDevices.contains(where: { $0.uniqueID == microphoneDeviceId }) {
+				return microphoneDeviceId
+			}
+		}
+
+		return nil
 	}
 
 	private func supportsNativeMicrophoneCapture(streamConfig: SCStreamConfiguration) -> Bool {
@@ -457,6 +546,18 @@ final class RecorderService {
 		}
 	}
 
+	func pause() {
+		queue.async {
+			self.recorder.pauseCapture()
+		}
+	}
+
+	func resume() {
+		queue.async {
+			self.recorder.resumeCapture()
+		}
+	}
+
 	func waitUntilFinished() {
 		completionGroup.wait()
 	}
@@ -478,6 +579,16 @@ service.start(configJSON: CommandLine.arguments[1])
 
 DispatchQueue.global(qos: .utility).async {
 	while let input = readLine(strippingNewline: true)?.lowercased() {
+		if input == "pause" {
+			service.pause()
+			continue
+		}
+
+		if input == "resume" {
+			service.resume()
+			continue
+		}
+
 		if input == "stop" {
 			service.stop()
 			break

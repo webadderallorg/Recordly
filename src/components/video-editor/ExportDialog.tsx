@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import type { ExportProgress } from '@/lib/exporter';
 import { toast } from 'sonner'; // Add this import
 import { useScopedT } from "../../contexts/I18nContext";
+import { ExportSettingsMenu } from './ExportSettingsMenu';
+import type { ExportFormat, ExportQuality, GifFrameRate, GifSizePreset } from '@/lib/exporter';
 
 
 interface ExportDialogProps {
@@ -17,6 +19,17 @@ interface ExportDialogProps {
   canRetrySave?: boolean;
   exportFormat?: 'mp4' | 'gif';
   exportedFilePath?: string;
+  exportQuality?: ExportQuality;
+  onExportQualityChange?: (quality: ExportQuality) => void;
+  onExportFormatChange?: (format: ExportFormat) => void;
+  gifFrameRate?: GifFrameRate;
+  onGifFrameRateChange?: (rate: GifFrameRate) => void;
+  gifLoop?: boolean;
+  onGifLoopChange?: (loop: boolean) => void;
+  gifSizePreset?: GifSizePreset;
+  onGifSizePresetChange?: (preset: GifSizePreset) => void;
+  gifOutputDimensions?: { width: number; height: number };
+  onStartExport?: () => void;
 }
 
 export function ExportDialog({
@@ -30,6 +43,17 @@ export function ExportDialog({
   canRetrySave = false,
   exportFormat = 'mp4',
   exportedFilePath, // Add this line
+  exportQuality = 'good',
+  onExportQualityChange,
+  onExportFormatChange,
+  gifFrameRate = 15,
+  onGifFrameRateChange,
+  gifLoop = true,
+  onGifLoopChange,
+  gifSizePreset = 'medium',
+  onGifSizePresetChange,
+  gifOutputDimensions = { width: 1280, height: 720 },
+  onStartExport,
 }: ExportDialogProps) {
   const t = useScopedT('dialogs');
   const [showSuccess, setShowSuccess] = useState(false);
@@ -49,6 +73,12 @@ export function ExportDialog({
   }, [isOpen, isExporting, progress]);
 
   useEffect(() => {
+    if (!isOpen) {
+      setShowSuccess(false);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
     if (!isExporting && progress && progress.percentage >= 100 && !error) {
       setShowSuccess(true);
       const timer = setTimeout(() => {
@@ -60,6 +90,8 @@ export function ExportDialog({
   }, [isExporting, progress, error, onClose]);
 
   if (!isOpen) return null;
+
+  const showSettings = !isExporting && !progress && !error && !showSuccess;
 
   const formatLabel = exportFormat === 'gif' ? 'GIF' : 'Video';
   
@@ -110,7 +142,41 @@ export function ExportDialog({
         className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 animate-in fade-in duration-200"
         onClick={isExporting ? undefined : onClose}
       />
-      <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[60] bg-[#09090b] rounded-2xl shadow-2xl border border-white/10 p-8 w-[90vw] max-w-md animate-in zoom-in-95 duration-200">
+      <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[60] bg-[#09090b] rounded-2xl border border-white/10 p-8 w-[90vw] max-w-md animate-in zoom-in-95 duration-200">
+        {showSettings ? (
+          <div className="space-y-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <span className="text-xl font-bold text-slate-200 block">{t('export.exportingFormat', undefined, { format: formatLabel })}</span>
+                <span className="text-sm text-slate-400">Choose format and quality before exporting.</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                className="hover:bg-white/10 text-slate-400 hover:text-white rounded-full"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            <ExportSettingsMenu
+              exportFormat={exportFormat}
+              onExportFormatChange={onExportFormatChange}
+              exportQuality={exportQuality}
+              onExportQualityChange={onExportQualityChange}
+              gifFrameRate={gifFrameRate}
+              onGifFrameRateChange={onGifFrameRateChange}
+              gifLoop={gifLoop}
+              onGifLoopChange={onGifLoopChange}
+              gifSizePreset={gifSizePreset}
+              onGifSizePresetChange={onGifSizePresetChange}
+              gifOutputDimensions={gifOutputDimensions}
+              onExport={onStartExport}
+              className="border-white/8 bg-[#121216] p-0 shadow-none"
+            />
+          </div>
+        ) : (
+        <div>
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             {showSuccess ? (
@@ -184,9 +250,20 @@ export function ExportDialog({
                 onClick={onRetrySave}
                 className="w-full mt-3 bg-[#2563EB] text-white hover:bg-[#1D4ED8]"
               >
-                Save Again
+                {t('export.reopenSaveDialog')}
               </Button>
             )}
+          </div>
+        )}
+
+        {!isExporting && !error && canRetrySave && onRetrySave && (
+          <div className="mb-6 animate-in slide-in-from-top-2">
+            <Button
+              onClick={onRetrySave}
+              className="w-full bg-[#2563EB] text-white hover:bg-[#1D4ED8]"
+            >
+              {t('export.reopenSaveDialog')}
+            </Button>
           </div>
         )}
 
@@ -215,13 +292,13 @@ export function ExportDialog({
                   // Show render progress if available, otherwise animated indeterminate bar
                   renderProgress !== undefined && renderProgress > 0 ? (
                     <div
-                      className="h-full bg-[#2563EB] shadow-[0_0_10px_rgba(37,99,235,0.3)] transition-all duration-300 ease-out"
+                      className="h-full bg-[#2563EB] transition-all duration-300 ease-out"
                       style={{ width: `${renderProgress}%` }}
                     />
                   ) : (
                     <div className="h-full w-full relative overflow-hidden">
                       <div 
-                        className="absolute h-full w-1/3 bg-[#2563EB] shadow-[0_0_10px_rgba(37,99,235,0.3)]"
+                        className="absolute h-full w-1/3 bg-[#2563EB]"
                         style={{
                           animation: 'indeterminate 1.5s ease-in-out infinite',
                         }}
@@ -236,7 +313,7 @@ export function ExportDialog({
                   )
                 ) : (
                   <div
-                    className="h-full bg-[#2563EB] shadow-[0_0_10px_rgba(37,99,235,0.3)] transition-all duration-300 ease-out"
+                    className="h-full bg-[#2563EB] transition-all duration-300 ease-out"
                     style={{ width: `${Math.min(progress.percentage, 100)}%` }}
                   />
                 )}
@@ -280,6 +357,8 @@ export function ExportDialog({
               {t('export.savedSuccess', undefined, { format: formatLabel })}
             </p>
           </div>
+        )}
+        </div>
         )}
       </div>
     </>

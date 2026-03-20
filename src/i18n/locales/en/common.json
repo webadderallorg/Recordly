@@ -2,11 +2,19 @@
 	"app": {
 		"name": "Recordly",
 		"editorTitle": "Recordly Editor",
-		"subtitle": "Screen recording and editing"
+		"subtitle": "Screen recording and editing",
+		"language": "Language",
+		"manageRecordings": "Open recordings folder"
 	},
 	"actions": {
 		"cancel": "Cancel",
+		"close": "Close",
+		"export": "Export",
+		"load": "Load",
+		"redo": "Redo",
+		"reset": "Reset",
 		"save": "Save",
+		"undo": "Undo",
 		"delete": "Delete",
 		"done": "Done"
 	},

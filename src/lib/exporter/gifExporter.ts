@@ -1,10 +1,27 @@
-import GIF from 'gif.js';
-import type { ExportProgress, ExportResult, GifFrameRate, GifSizePreset, GIF_SIZE_PRESETS } from './types';
-import { StreamingVideoDecoder } from './streamingDecoder';
-import { FrameRenderer } from './frameRenderer';
-import type { ZoomRegion, CropRegion, TrimRegion, AnnotationRegion, SpeedRegion, CursorTelemetryPoint } from '@/components/video-editor/types';
+import GIF from "gif.js";
+import type {
+  ExportProgress,
+  ExportResult,
+  GifFrameRate,
+  GifSizePreset,
+  GIF_SIZE_PRESETS,
+} from "./types";
+import { StreamingVideoDecoder } from "./streamingDecoder";
+import { FrameRenderer } from "./frameRenderer";
+import type {
+  ZoomRegion,
+  CropRegion,
+  TrimRegion,
+  AnnotationRegion,
+  SpeedRegion,
+  CursorTelemetryPoint,
+  WebcamOverlaySettings,
+} from "@/components/video-editor/types";
 
-const GIF_WORKER_URL = new URL('gif.js/dist/gif.worker.js', import.meta.url).toString();
+const GIF_WORKER_URL = new URL(
+  "gif.js/dist/gif.worker.js",
+  import.meta.url,
+).toString();
 
 interface GifExporterConfig {
   videoUrl: string;
@@ -26,6 +43,8 @@ interface GifExporterConfig {
   padding?: number;
   videoPadding?: number;
   cropRegion: CropRegion;
+  webcam?: WebcamOverlaySettings;
+  webcamUrl?: string | null;
   annotationRegions?: AnnotationRegion[];
   cursorTelemetry?: CursorTelemetryPoint[];
   showCursor?: boolean;
@@ -33,6 +52,8 @@ interface GifExporterConfig {
   cursorSmoothing?: number;
   cursorMotionBlur?: number;
   cursorClickBounce?: number;
+  cursorClickBounceDuration?: number;
+  cursorSway?: number;
   previewWidth?: number;
   previewHeight?: number;
   onProgress?: (progress: ExportProgress) => void;
@@ -50,13 +71,13 @@ export function calculateOutputDimensions(
   sourceWidth: number,
   sourceHeight: number,
   sizePreset: GifSizePreset,
-  sizePresets: typeof GIF_SIZE_PRESETS
+  sizePresets: typeof GIF_SIZE_PRESETS,
 ): { width: number; height: number } {
   const preset = sizePresets[sizePreset];
   const maxHeight = preset.maxHeight;
 
   // If original is smaller than max height or preset is 'original', use source dimensions
-  if (sourceHeight <= maxHeight || sizePreset === 'original') {
+  if (sourceHeight <= maxHeight || sizePreset === "original") {
     return { width: sourceWidth, height: sourceHeight };
   }
 
@@ -90,7 +111,9 @@ export class GifExporter {
 
       // Initialize streaming decoder and load video metadata
       this.streamingDecoder = new StreamingVideoDecoder();
-      const videoInfo = await this.streamingDecoder.loadMetadata(this.config.videoUrl);
+      const videoInfo = await this.streamingDecoder.loadMetadata(
+        this.config.videoUrl,
+      );
 
       // Initialize frame renderer
       this.renderer = new FrameRenderer({
@@ -106,6 +129,8 @@ export class GifExporter {
         borderRadius: this.config.borderRadius,
         padding: this.config.padding,
         cropRegion: this.config.cropRegion,
+        webcam: this.config.webcam,
+        webcamUrl: this.config.webcamUrl,
         videoWidth: videoInfo.width,
         videoHeight: videoInfo.height,
         annotationRegions: this.config.annotationRegions,
@@ -118,6 +143,8 @@ export class GifExporter {
         cursorSmoothing: this.config.cursorSmoothing,
         cursorMotionBlur: this.config.cursorMotionBlur,
         cursorClickBounce: this.config.cursorClickBounce,
+        cursorClickBounceDuration: this.config.cursorClickBounceDuration,
+        cursorSway: this.config.cursorSway,
       });
       await this.renderer.initialize();
 
@@ -134,25 +161,33 @@ export class GifExporter {
         height: this.config.height,
         workerScript: GIF_WORKER_URL,
         repeat,
-        background: '#000000',
+        background: "#000000",
         transparent: null,
-        dither: 'FloydSteinberg',
+        dither: "FloydSteinberg",
       });
 
       // Calculate effective duration and frame count (excluding trim regions)
-      const effectiveDuration = this.streamingDecoder.getEffectiveDuration(this.config.trimRegions, this.config.speedRegions);
+      const effectiveDuration = this.streamingDecoder.getEffectiveDuration(
+        this.config.trimRegions,
+        this.config.speedRegions,
+      );
       const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
 
       // Calculate frame delay in milliseconds (gif.js uses ms)
       const frameDelay = Math.round(1000 / this.config.frameRate);
 
-      console.log('[GifExporter] Original duration:', videoInfo.duration, 's');
-      console.log('[GifExporter] Effective duration:', effectiveDuration, 's');
-      console.log('[GifExporter] Total frames to export:', totalFrames);
-      console.log('[GifExporter] Frame rate:', this.config.frameRate, 'FPS');
-      console.log('[GifExporter] Frame delay:', frameDelay, 'ms');
-      console.log('[GifExporter] Loop:', this.config.loop ? 'infinite' : 'once');
-      console.log('[GifExporter] Using streaming decode (web-demuxer + VideoDecoder)');
+      console.log("[GifExporter] Original duration:", videoInfo.duration, "s");
+      console.log("[GifExporter] Effective duration:", effectiveDuration, "s");
+      console.log("[GifExporter] Total frames to export:", totalFrames);
+      console.log("[GifExporter] Frame rate:", this.config.frameRate, "FPS");
+      console.log("[GifExporter] Frame delay:", frameDelay, "ms");
+      console.log(
+        "[GifExporter] Loop:",
+        this.config.loop ? "infinite" : "once",
+      );
+      console.log(
+        "[GifExporter] Using streaming decode (web-demuxer + VideoDecoder)",
+      );
 
       let frameIndex = 0;
 
@@ -174,11 +209,11 @@ export class GifExporter {
           this.addRenderedGifFrame(frameDelay);
           frameIndex++;
           this.reportProgress(frameIndex, totalFrames);
-        }
+        },
       );
 
       if (this.cancelled) {
-        return { success: false, error: 'Export cancelled' };
+        return { success: false, error: "Export cancelled" };
       }
 
       // Update progress to show we're now in the finalizing phase
@@ -188,25 +223,25 @@ export class GifExporter {
           totalFrames,
           percentage: 100,
           estimatedTimeRemaining: 0,
-          phase: 'finalizing',
+          phase: "finalizing",
         });
       }
 
       // Render the GIF
       const blob = await new Promise<Blob>((resolve, _reject) => {
-        this.gif!.on('finished', (blob: Blob) => {
+        this.gif!.on("finished", (blob: Blob) => {
           resolve(blob);
         });
 
         // Track rendering progress
-        this.gif!.on('progress', (progress: number) => {
+        this.gif!.on("progress", (progress: number) => {
           if (this.config.onProgress) {
             this.config.onProgress({
               currentFrame: totalFrames,
               totalFrames,
               percentage: 100,
               estimatedTimeRemaining: 0,
-              phase: 'finalizing',
+              phase: "finalizing",
               renderProgress: Math.round(progress * 100),
             });
           }
@@ -218,7 +253,7 @@ export class GifExporter {
 
       return { success: true, blob };
     } catch (error) {
-      console.error('GIF Export error:', error);
+      console.error("GIF Export error:", error);
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
@@ -260,7 +295,7 @@ export class GifExporter {
       try {
         this.streamingDecoder.destroy();
       } catch (e) {
-        console.warn('Error destroying streaming decoder:', e);
+        console.warn("Error destroying streaming decoder:", e);
       }
       this.streamingDecoder = null;
     }
@@ -269,7 +304,7 @@ export class GifExporter {
       try {
         this.renderer.destroy();
       } catch (e) {
-        console.warn('Error destroying renderer:', e);
+        console.warn("Error destroying renderer:", e);
       }
       this.renderer = null;
     }
@@ -277,4 +312,3 @@ export class GifExporter {
     this.gif = null;
   }
 }
-

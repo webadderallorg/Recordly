@@ -78,14 +78,41 @@
 		"adjustStep": "2. 调整",
 		"adjustDesc": "拖动红色区域的边缘，精确覆盖要剪掉的部分。"
 	},
+	"feedback": {
+		"trigger": "反馈",
+		"title": "反馈与联系",
+		"description": "如果有问题或缺失功能，可以直接联系或提交 issue。",
+		"emailLabel": "邮箱",
+		"xLabel": "X",
+		"reportIssue": "报告问题 / 提交反馈",
+		"openFailed": "打开链接失败。"
+	},
 	"keyboardShortcuts": {
+		"trigger": "快捷键",
 		"title": "键盘快捷键",
+		"description": "时间线和编辑器控制的快速参考。",
 		"customizeTooltip": "自定义快捷键",
 		"customize": "自定义",
 		"panTimeline": "平移时间线",
 		"zoomTimeline": "缩放时间线",
 		"cycleAnnotations": "循环切换注释",
 		"tab": "Tab"
+	},
+	"actions": {
+		"saveAgain": "再次保存",
+		"showInFolder": "在文件夹中显示"
+	},
+	"project": {
+		"untitled": "未命名"
+	},
+	"exportStatus": {
+		"exporting": "正在导出",
+		"renderingFile": "正在渲染你的文件。",
+		"preparing": "正在准备导出...",
+		"completePercent": "已完成 {{percent}}%",
+		"issue": "导出问题",
+		"complete": "导出完成",
+		"savedSuccessfully": "文件已成功保存。"
 	},
 	"openRecordingsFolder": "打开录制文件夹"
 }

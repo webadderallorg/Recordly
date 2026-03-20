@@ -1,4 +1,5 @@
 import { ipcMain, desktopCapturer, BrowserWindow, shell, app, dialog, systemPreferences } from 'electron'
+import type { SaveDialogOptions } from 'electron'
 import { execFile, spawn, spawnSync } from 'node:child_process'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
@@ -9,6 +10,8 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import { RECORDINGS_DIR } from '../main'
+import { hideCursor, showCursor } from '../cursorHider'
+import { createCountdownWindow, getCountdownWindow, closeCountdownWindow } from '../windows'
 
 const execFileAsync = promisify(execFile)
 const nodeRequire = createRequire(import.meta.url)
@@ -17,10 +20,12 @@ const PROJECT_FILE_EXTENSION = 'recordly'
 const LEGACY_PROJECT_FILE_EXTENSIONS = ['openscreen']
 const SHORTCUTS_FILE = path.join(app.getPath('userData'), 'shortcuts.json')
 const RECORDINGS_SETTINGS_FILE = path.join(app.getPath('userData'), 'recordings-settings.json')
+const COUNTDOWN_SETTINGS_FILE = path.join(app.getPath('userData'), 'countdown-settings.json')
 const AUTO_RECORDING_PREFIX = 'recording-'
 const AUTO_RECORDING_RETENTION_COUNT = 20
 const AUTO_RECORDING_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000
 const ALLOW_RECORDLY_WINDOW_CAPTURE = Boolean(process.env['VITE_DEV_SERVER_URL'])
+const RECORDING_SESSION_MANIFEST_SUFFIX = '.recordly-session.json'
 
 function getScreen() {
   return nodeRequire('electron').screen as typeof import('electron').screen
@@ -50,25 +55,39 @@ type WindowBounds = {
   height: number
 }
 
+type RecordingSessionData = {
+  videoPath: string
+  webcamPath?: string | null
+}
+
+type RecordingSessionManifest = {
+  version: 1
+  videoFileName: string
+  webcamFileName?: string | null
+}
+
 let selectedSource: SelectedSource | null = null
 let currentProjectPath: string | null = null
 let nativeScreenRecordingActive = false
 let currentVideoPath: string | null = null
+let currentRecordingSession: RecordingSessionData | null = null
 let nativeCaptureProcess: ChildProcessWithoutNullStreams | null = null
 let nativeCaptureOutputBuffer = ''
 let nativeCaptureTargetPath: string | null = null
 let nativeCaptureStopRequested = false
 let nativeCaptureMicrophonePath: string | null = null
+let nativeCapturePaused = false
 let nativeCursorMonitorProcess: ChildProcessWithoutNullStreams | null = null
 let nativeCursorMonitorOutputBuffer = ''
-let wgcCaptureProcess: ChildProcessWithoutNullStreams | null = null
-let wgcCaptureOutputBuffer = ''
-let wgcCaptureTargetPath: string | null = null
-let wgcScreenRecordingActive = false
-let wgcCaptureStopRequested = false
-let wgcSystemAudioPath: string | null = null
-let wgcMicAudioPath: string | null = null
-let wgcPendingVideoPath: string | null = null
+let windowsCaptureProcess: ChildProcessWithoutNullStreams | null = null
+let windowsCaptureOutputBuffer = ''
+let windowsCaptureTargetPath: string | null = null
+let windowsNativeCaptureActive = false
+let windowsCaptureStopRequested = false
+let windowsCapturePaused = false
+let windowsSystemAudioPath: string | null = null
+let windowsMicAudioPath: string | null = null
+let windowsPendingVideoPath: string | null = null
 let ffmpegScreenRecordingActive = false
 let ffmpegCaptureProcess: ChildProcessWithoutNullStreams | null = null
 let ffmpegCaptureOutputBuffer = ''
@@ -77,6 +96,10 @@ let customRecordingsDir: string | null = null
 let recordingsDirLoaded = false
 let cachedSystemCursorAssets: Record<string, SystemCursorAsset> | null = null
 let cachedSystemCursorAssetsSourceMtimeMs: number | null = null
+let countdownTimer: ReturnType<typeof setInterval> | null = null
+let countdownCancelled = false
+let countdownInProgress = false
+let countdownRemaining: number | null = null
 
 type SystemCursorAsset = {
   dataUrl: string
@@ -95,17 +118,18 @@ export function getSelectedSourceId(): string | null {
   return selectedSource?.id as string | null ?? null
 }
 
-export function killWgcCaptureProcess() {
-  if (wgcCaptureProcess) {
-    try { wgcCaptureProcess.kill() } catch { /* ignore */ }
-    wgcCaptureProcess = null
-    wgcCaptureTargetPath = null
-    wgcScreenRecordingActive = false
+export function killWindowsCaptureProcess() {
+  if (windowsCaptureProcess) {
+    try { windowsCaptureProcess.kill() } catch { /* ignore */ }
+    windowsCaptureProcess = null
+    windowsCaptureTargetPath = null
+    windowsNativeCaptureActive = false
     nativeScreenRecordingActive = false
-    wgcCaptureStopRequested = false
-    wgcSystemAudioPath = null
-    wgcMicAudioPath = null
-    wgcPendingVideoPath = null
+    windowsCaptureStopRequested = false
+    windowsCapturePaused = false
+    windowsSystemAudioPath = null
+    windowsMicAudioPath = null
+    windowsPendingVideoPath = null
   }
 }
 
@@ -202,6 +226,124 @@ function normalizeVideoSourcePath(videoPath?: string | null): string | null {
   }
 
   return trimmed
+}
+
+function getRecordingSessionManifestPath(videoPath: string) {
+  const extension = path.extname(videoPath)
+  const baseName = path.basename(videoPath, extension)
+  return path.join(path.dirname(videoPath), `${baseName}${RECORDING_SESSION_MANIFEST_SUFFIX}`)
+}
+
+async function persistRecordingSessionManifest(session: RecordingSessionData): Promise<void> {
+  const normalizedVideoPath = normalizeVideoSourcePath(session.videoPath)
+  if (!normalizedVideoPath) {
+    return
+  }
+
+  const normalizedWebcamPath = normalizeVideoSourcePath(session.webcamPath ?? null)
+  const manifestPath = getRecordingSessionManifestPath(normalizedVideoPath)
+
+  if (!normalizedWebcamPath) {
+    await fs.rm(manifestPath, { force: true })
+    return
+  }
+
+  const manifest: RecordingSessionManifest = {
+    version: 1,
+    videoFileName: path.basename(normalizedVideoPath),
+    webcamFileName: path.basename(normalizedWebcamPath),
+  }
+
+  await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8')
+}
+
+async function resolveRecordingSessionManifest(videoPath?: string | null): Promise<RecordingSessionData | null> {
+  const normalizedVideoPath = normalizeVideoSourcePath(videoPath)
+  if (!normalizedVideoPath) {
+    return null
+  }
+
+  const manifestPath = getRecordingSessionManifestPath(normalizedVideoPath)
+
+  try {
+    const content = await fs.readFile(manifestPath, 'utf-8')
+    const parsed = JSON.parse(content) as Partial<RecordingSessionManifest>
+    if (parsed.version !== 1) {
+      return null
+    }
+
+    const webcamFileName = typeof parsed.webcamFileName === 'string' && parsed.webcamFileName.trim()
+      ? parsed.webcamFileName.trim()
+      : null
+
+    if (!webcamFileName) {
+      return {
+        videoPath: normalizedVideoPath,
+        webcamPath: null,
+      }
+    }
+
+    const webcamPath = path.join(path.dirname(normalizedVideoPath), webcamFileName)
+    await fs.access(webcamPath, fsConstants.F_OK)
+
+    return {
+      videoPath: normalizedVideoPath,
+      webcamPath,
+    }
+  } catch {
+    return null
+  }
+}
+
+async function resolveLinkedWebcamPath(videoPath?: string | null): Promise<string | null> {
+  const normalizedVideoPath = normalizeVideoSourcePath(videoPath)
+  if (!normalizedVideoPath) {
+    return null
+  }
+
+  const extension = path.extname(normalizedVideoPath)
+  const baseName = path.basename(normalizedVideoPath, extension)
+  if (!baseName || baseName.endsWith('-webcam')) {
+    return null
+  }
+
+  const candidateExtensions = Array.from(
+    new Set([extension, '.webm', '.mp4', '.mov', '.mkv', '.avi'].filter(Boolean)),
+  )
+
+  for (const candidateExtension of candidateExtensions) {
+    const candidatePath = path.join(
+      path.dirname(normalizedVideoPath),
+      `${baseName}-webcam${candidateExtension}`,
+    )
+
+    try {
+      await fs.access(candidatePath, fsConstants.F_OK)
+      return candidatePath
+    } catch {
+      continue
+    }
+  }
+
+  return null
+}
+
+async function resolveRecordingSession(videoPath?: string | null): Promise<RecordingSessionData | null> {
+  const manifestSession = await resolveRecordingSessionManifest(videoPath)
+  if (manifestSession) {
+    return manifestSession
+  }
+
+  const normalizedVideoPath = normalizeVideoSourcePath(videoPath)
+  if (!normalizedVideoPath) {
+    return null
+  }
+
+  const linkedWebcamPath = await resolveLinkedWebcamPath(normalizedVideoPath)
+  return {
+    videoPath: normalizedVideoPath,
+    webcamPath: linkedWebcamPath,
+  }
 }
 
 async function hasSiblingProjectFile(videoPath: string) {
@@ -706,7 +848,7 @@ async function buildFfmpegCaptureArgs(source: SelectedSource, outputPath: string
   throw new Error(`FFmpeg capture is not supported on ${process.platform}`)
 }
 
-function getWgcCaptureExePath() {
+function getWindowsCaptureExePath() {
   return resolveUnpackedAppPath('electron', 'native', 'wgc-capture', 'build', 'Release', 'wgc-capture.exe')
 }
 
@@ -714,26 +856,25 @@ function getCursorMonitorExePath() {
   return resolveUnpackedAppPath('electron', 'native', 'cursor-monitor', 'build', 'Release', 'cursor-monitor.exe')
 }
 
-async function isWgcCaptureAvailable(): Promise<boolean> {
+async function isNativeWindowsCaptureAvailable(): Promise<boolean> {
   if (process.platform !== 'win32') return false
 
   try {
-    await fs.access(getWgcCaptureExePath(), fsConstants.X_OK)
+    await fs.access(getWindowsCaptureExePath(), fsConstants.X_OK)
   } catch {
     return false
   }
 
-  // Windows 10 2004 (Build 19041) minimum for IsCursorCaptureEnabled
   const os = await import('node:os')
   const [major, , build] = os.release().split('.').map(Number)
   return major >= 10 && build >= 19041
 }
 
-function waitForWgcCaptureStart(proc: ChildProcessWithoutNullStreams) {
+function waitForWindowsCaptureStart(proc: ChildProcessWithoutNullStreams) {
   return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       cleanup()
-      reject(new Error('Timed out waiting for WGC capture to start'))
+      reject(new Error('Timed out waiting for native Windows capture to start'))
     }, 12000)
 
     const onStdout = (chunk: Buffer) => {
@@ -751,7 +892,7 @@ function waitForWgcCaptureStart(proc: ChildProcessWithoutNullStreams) {
 
     const onExit = (code: number | null) => {
       cleanup()
-      reject(new Error(wgcCaptureOutputBuffer.trim() || `WGC capture exited before recording started (code ${code ?? 'unknown'})`))
+      reject(new Error(windowsCaptureOutputBuffer.trim() || `Native Windows capture exited before recording started (code ${code ?? 'unknown'})`))
     }
 
     const cleanup = () => {
@@ -767,20 +908,20 @@ function waitForWgcCaptureStart(proc: ChildProcessWithoutNullStreams) {
   })
 }
 
-function waitForWgcCaptureStop(proc: ChildProcessWithoutNullStreams) {
+function waitForWindowsCaptureStop(proc: ChildProcessWithoutNullStreams) {
   return new Promise<string>((resolve, reject) => {
     const onClose = (code: number | null) => {
       cleanup()
-      const match = wgcCaptureOutputBuffer.match(/Recording stopped\. Output path: (.+)/)
+      const match = windowsCaptureOutputBuffer.match(/Recording stopped\. Output path: (.+)/)
       if (match?.[1]) {
         resolve(match[1].trim())
         return
       }
-      if (code === 0 && wgcCaptureTargetPath) {
-        resolve(wgcCaptureTargetPath)
+      if (code === 0 && windowsCaptureTargetPath) {
+        resolve(windowsCaptureTargetPath)
         return
       }
-      reject(new Error(wgcCaptureOutputBuffer.trim() || `WGC capture exited with code ${code ?? 'unknown'}`))
+      reject(new Error(windowsCaptureOutputBuffer.trim() || `Native Windows capture exited with code ${code ?? 'unknown'}`))
     }
 
     const onError = (error: Error) => {
@@ -798,18 +939,18 @@ function waitForWgcCaptureStop(proc: ChildProcessWithoutNullStreams) {
   })
 }
 
-function attachWgcCaptureLifecycle(proc: ChildProcessWithoutNullStreams) {
+function attachWindowsCaptureLifecycle(proc: ChildProcessWithoutNullStreams) {
   proc.once('close', () => {
-    const wasActive = wgcScreenRecordingActive
-    wgcCaptureProcess = null
+    const wasActive = windowsNativeCaptureActive
+    windowsCaptureProcess = null
 
-    if (!wasActive || wgcCaptureStopRequested) {
+    if (!wasActive || windowsCaptureStopRequested) {
       return
     }
 
-    wgcScreenRecordingActive = false
-    wgcCaptureTargetPath = null
-    wgcCaptureStopRequested = false
+    windowsNativeCaptureActive = false
+    windowsCaptureTargetPath = null
+    windowsCaptureStopRequested = false
 
     const sourceName = selectedSource?.name ?? 'Screen'
     BrowserWindow.getAllWindows().forEach((window) => {
@@ -825,7 +966,7 @@ function attachWgcCaptureLifecycle(proc: ChildProcessWithoutNullStreams) {
   })
 }
 
-async function muxWgcVideoWithAudio(videoPath: string, systemAudioPath: string | null, micAudioPath: string | null) {
+async function muxNativeWindowsVideoWithAudio(videoPath: string, systemAudioPath: string | null, micAudioPath: string | null) {
   const ffmpegPath = getFfmpegBinaryPath()
   const inputs: string[] = ['-i', videoPath]
   const audioInputs: string[] = []
@@ -973,25 +1114,63 @@ function waitForNativeCaptureStop(process: ChildProcessWithoutNullStreams) {
   })
 }
 
+async function fileHasAudioStream(filePath: string) {
+  const ffmpegPath = getFfmpegBinaryPath()
+
+  try {
+    await execFileAsync(
+      ffmpegPath,
+      ['-i', filePath],
+      { timeout: 30000, maxBuffer: 10 * 1024 * 1024 },
+    )
+  } catch (error) {
+    const stderr = typeof error === 'object' && error !== null && 'stderr' in error
+      ? String((error as { stderr?: unknown }).stderr ?? '')
+      : ''
+
+    if (stderr) {
+      return /Audio:/i.test(stderr)
+    }
+  }
+
+  return false
+}
+
 async function mixNativeMacAudioTracks(videoPath: string, microphonePath: string) {
   const ffmpegPath = getFfmpegBinaryPath()
   const mixedOutputPath = `${videoPath}.mixed.mp4`
+  const videoHasAudio = await fileHasAudioStream(videoPath)
+
+  const args = videoHasAudio
+    ? [
+        '-y',
+        '-i', videoPath,
+        '-i', microphonePath,
+        '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[aout]',
+        '-map', '0:v:0',
+        '-map', '[aout]',
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-shortest',
+        mixedOutputPath,
+      ]
+    : [
+        '-y',
+        '-i', videoPath,
+        '-i', microphonePath,
+        '-map', '0:v:0',
+        '-map', '1:a:0',
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-b:a', '192k',
+        '-shortest',
+        mixedOutputPath,
+      ]
 
   await execFileAsync(
     ffmpegPath,
-    [
-      '-y',
-      '-i', videoPath,
-      '-i', microphonePath,
-      '-filter_complex', '[0:a][1:a]amix=inputs=2:duration=longest:normalize=0[aout]',
-      '-map', '0:v:0',
-      '-map', '[aout]',
-      '-c:v', 'copy',
-      '-c:a', 'aac',
-      '-b:a', '192k',
-      '-shortest',
-      mixedOutputPath,
-    ],
+    args,
     { timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
   )
 
@@ -1219,6 +1398,7 @@ let isCursorCaptureActive = false
 let interactionCaptureCleanup: (() => void) | null = null
 let hasLoggedInteractionHookFailure = false
 let lastLeftClick: { timeMs: number; cx: number; cy: number } | null = null
+let linuxCursorScreenPoint: { x: number; y: number; updatedAt: number } | null = null
 let selectedWindowBounds: WindowBounds | null = null
 let windowBoundsCaptureInterval: NodeJS.Timeout | null = null
 
@@ -1313,21 +1493,26 @@ async function resolveMacWindowBounds(source: SelectedSource): Promise<WindowBou
 }
 
 async function refreshSelectedWindowBounds() {
-  if (process.platform !== 'darwin' || !selectedSource?.id?.startsWith('window:')) {
+  if (!selectedSource?.id?.startsWith('window:')) {
     selectedWindowBounds = null
     return
   }
 
-  const bounds = await resolveMacWindowBounds(selectedSource)
-  if (bounds) {
-    selectedWindowBounds = bounds
+  let bounds: WindowBounds | null = null
+
+  if (process.platform === 'darwin') {
+    bounds = await resolveMacWindowBounds(selectedSource)
+  } else if (process.platform === 'linux') {
+    bounds = await resolveLinuxWindowBounds(selectedSource)
   }
+
+  selectedWindowBounds = bounds
 }
 
 function startWindowBoundsCapture() {
   stopWindowBoundsCapture()
 
-  if (process.platform !== 'darwin' || !selectedSource?.id?.startsWith('window:')) {
+  if (!['darwin', 'linux'].includes(process.platform) || !selectedSource?.id?.startsWith('window:')) {
     return
   }
 
@@ -1338,7 +1523,15 @@ function startWindowBoundsCapture() {
 }
 
 function getNormalizedCursorPoint() {
-  const cursor = getScreen().getCursorScreenPoint()
+  const fallbackCursor = getScreen().getCursorScreenPoint()
+  const linuxCursorCache = process.platform === 'linux' ? linuxCursorScreenPoint : null
+  const isLinuxCacheFresh = !!linuxCursorCache
+    && Date.now() - linuxCursorCache.updatedAt <= 1000
+
+  const cursor = isLinuxCacheFresh
+    ? { x: linuxCursorCache.x, y: linuxCursorCache.y }
+    : fallbackCursor
+
   const windowBounds = selectedSource?.id?.startsWith('window:') ? selectedWindowBounds : null
   if (windowBounds) {
     const width = Math.max(1, windowBounds.width)
@@ -1362,6 +1555,17 @@ function getNormalizedCursorPoint() {
   const cx = clamp((cursor.x - bounds.x) / width, 0, 1)
   const cy = clamp((cursor.y - bounds.y) / height, 0, 1)
   return { cx, cy }
+}
+
+function getHookCursorScreenPoint(event: any): { x: number; y: number } | null {
+  const rawX = event?.x ?? event?.data?.x ?? event?.screenX ?? event?.data?.screenX
+  const rawY = event?.y ?? event?.data?.y ?? event?.screenY ?? event?.data?.screenY
+
+  if (typeof rawX !== 'number' || !Number.isFinite(rawX) || typeof rawY !== 'number' || !Number.isFinite(rawY)) {
+    return null
+  }
+
+  return { x: rawX, y: rawY }
 }
 
 function pushCursorSample(
@@ -1443,7 +1647,7 @@ async function startInteractionCapture() {
     return
   }
 
-  if (!['darwin', 'win32'].includes(process.platform)) {
+  if (!['darwin', 'win32', 'linux'].includes(process.platform)) {
     return
   }
 
@@ -1507,8 +1711,22 @@ async function startInteractionCapture() {
       pushCursorSample(point.cx, point.cy, timeMs, 'mouseup')
     }
 
+    const onMouseMove = (event: any) => {
+      if (process.platform !== 'linux' || !isCursorCaptureActive) {
+        return
+      }
+
+      const point = getHookCursorScreenPoint(event)
+      if (!point) {
+        return
+      }
+
+      linuxCursorScreenPoint = { x: point.x, y: point.y, updatedAt: Date.now() }
+    }
+
     hook.on('mousedown', onMouseDown)
     hook.on('mouseup', onMouseUp)
+    hook.on('mousemove', onMouseMove)
 
     hook.start()
 
@@ -1517,9 +1735,11 @@ async function startInteractionCapture() {
         if (typeof hook.off === 'function') {
           hook.off('mousedown', onMouseDown)
           hook.off('mouseup', onMouseUp)
+          hook.off('mousemove', onMouseMove)
         } else if (typeof hook.removeListener === 'function') {
           hook.removeListener('mousedown', onMouseDown)
           hook.removeListener('mouseup', onMouseUp)
+          hook.removeListener('mousemove', onMouseMove)
         }
       } catch {
         // ignore listener cleanup errors
@@ -1715,6 +1935,169 @@ export function registerIpcHandlers(
     return selectedSource
   })
 
+  ipcMain.handle('show-source-highlight', async (_, source: SelectedSource) => {
+    try {
+      const isWindow = source.id?.startsWith('window:')
+      const windowId = isWindow ? parseWindowId(source.id) : null
+
+      // ── 1. Bring window to front & get its bounds via AppleScript ──
+      let asBounds: { x: number; y: number; width: number; height: number } | null = null
+
+      if (isWindow && process.platform === 'darwin') {
+        const appName = source.appName || source.name?.split(' — ')[0]?.trim()
+        if (appName) {
+          // Single AppleScript: activate AND return window bounds
+          try {
+            const { stdout } = await execFileAsync('osascript', ['-e',
+              `tell application "${appName}"\n` +
+              `  activate\n` +
+              `end tell\n` +
+              `delay 0.3\n` +
+              `tell application "System Events"\n` +
+              `  tell process "${appName}"\n` +
+              `    set frontWindow to front window\n` +
+              `    set {x1, y1} to position of frontWindow\n` +
+              `    set {w1, h1} to size of frontWindow\n` +
+              `    return (x1 as text) & "," & (y1 as text) & "," & (w1 as text) & "," & (h1 as text)\n` +
+              `  end tell\n` +
+              `end tell`
+            ], { timeout: 4000 })
+            const parts = stdout.trim().split(',').map(Number)
+            if (parts.length === 4 && parts.every(n => Number.isFinite(n))) {
+              asBounds = { x: parts[0], y: parts[1], width: parts[2], height: parts[3] }
+            }
+          } catch {
+            // Fallback: just activate without bounds
+            try {
+              await execFileAsync('osascript', ['-e',
+                `tell application "${appName}" to activate`
+              ], { timeout: 2000 })
+              await new Promise((resolve) => setTimeout(resolve, 350))
+            } catch { /* ignore */ }
+          }
+        }
+      } else if (windowId && process.platform === 'linux') {
+        try {
+          await execFileAsync('wmctrl', ['-i', '-a', `0x${windowId.toString(16)}`], { timeout: 1500 })
+        } catch {
+          try {
+            await execFileAsync('xdotool', ['windowactivate', String(windowId)], { timeout: 1500 })
+          } catch { /* not available */ }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250))
+      }
+
+      // ── 2. Resolve bounds ──
+      let bounds = asBounds
+
+      if (!bounds) {
+        if (source.id?.startsWith('screen:')) {
+          bounds = getDisplayBoundsForSource(source)
+        } else if (isWindow) {
+          if (process.platform === 'darwin') {
+            bounds = await resolveMacWindowBounds(source)
+          } else if (process.platform === 'linux') {
+            bounds = await resolveLinuxWindowBounds(source)
+          }
+        }
+      }
+
+      if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+        bounds = getDisplayBoundsForSource(source)
+      }
+
+      // ── 3. Show traveling wave highlight ──
+      const pad = 6
+      const highlightWin = new BrowserWindow({
+        x: bounds.x - pad,
+        y: bounds.y - pad,
+        width: bounds.width + pad * 2,
+        height: bounds.height + pad * 2,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        hasShadow: false,
+        resizable: false,
+        focusable: false,
+        webPreferences: { nodeIntegration: false, contextIsolation: true },
+      })
+
+      highlightWin.setIgnoreMouseEvents(true)
+
+      const html = `<!DOCTYPE html>
+<html><head><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:transparent;overflow:hidden;width:100vw;height:100vh}
+
+.border-wrap{
+  position:fixed;inset:0;border-radius:10px;padding:3px;
+  background:conic-gradient(from var(--angle,0deg),
+    transparent 0%,
+    transparent 60%,
+    rgba(99,96,245,.15) 70%,
+    rgba(99,96,245,.9) 80%,
+    rgba(123,120,255,1) 85%,
+    rgba(99,96,245,.9) 90%,
+    rgba(99,96,245,.15) 95%,
+    transparent 100%
+  );
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;
+  mask-composite:exclude;
+  animation:spin 1.2s linear forwards, fadeAll 1.6s ease-out forwards;
+}
+
+.glow-wrap{
+  position:fixed;inset:-4px;border-radius:14px;padding:6px;
+  background:conic-gradient(from var(--angle,0deg),
+    transparent 0%,
+    transparent 65%,
+    rgba(99,96,245,.3) 78%,
+    rgba(123,120,255,.5) 85%,
+    rgba(99,96,245,.3) 92%,
+    transparent 100%
+  );
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask-composite:xor;
+  mask-composite:exclude;
+  filter:blur(8px);
+  animation:spin 1.2s linear forwards, fadeAll 1.6s ease-out forwards;
+}
+
+@property --angle{
+  syntax:'<angle>';
+  initial-value:0deg;
+  inherits:false;
+}
+
+@keyframes spin{
+  0%{--angle:0deg}
+  100%{--angle:360deg}
+}
+
+@keyframes fadeAll{
+  0%,60%{opacity:1}
+  100%{opacity:0}
+}
+</style></head><body>
+<div class="glow-wrap"></div>
+<div class="border-wrap"></div>
+</body></html>`
+
+      await highlightWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+
+      setTimeout(() => {
+        if (!highlightWin.isDestroyed()) highlightWin.close()
+      }, 1700)
+
+      return { success: true }
+    } catch (error) {
+      console.error('Failed to show source highlight:', error)
+      return { success: false }
+    }
+  })
+
   ipcMain.handle('get-selected-source', () => {
     return selectedSource
   })
@@ -1737,26 +2120,26 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle('start-native-screen-recording', async (_, source: SelectedSource, options?: NativeMacRecordingOptions) => {
-    // Windows WGC path
+    // Windows native capture path
     if (process.platform === 'win32') {
-      const wgcAvailable = await isWgcCaptureAvailable()
-      if (!wgcAvailable) {
-        return { success: false, message: 'WGC capture is not available on this system.' }
+      const windowsCaptureAvailable = await isNativeWindowsCaptureAvailable()
+      if (!windowsCaptureAvailable) {
+        return { success: false, message: 'Native Windows capture is not available on this system.' }
       }
 
-      if (wgcCaptureProcess && !wgcScreenRecordingActive) {
-        try { wgcCaptureProcess.kill() } catch { /* ignore */ }
-        wgcCaptureProcess = null
-        wgcCaptureTargetPath = null
-        wgcCaptureStopRequested = false
+      if (windowsCaptureProcess && !windowsNativeCaptureActive) {
+        try { windowsCaptureProcess.kill() } catch { /* ignore */ }
+        windowsCaptureProcess = null
+        windowsCaptureTargetPath = null
+        windowsCaptureStopRequested = false
       }
 
-      if (wgcCaptureProcess) {
-        return { success: false, message: 'A WGC screen recording is already active.' }
+      if (windowsCaptureProcess) {
+        return { success: false, message: 'A native Windows screen recording is already active.' }
       }
 
       try {
-        const exePath = getWgcCaptureExePath()
+        const exePath = getWindowsCaptureExePath()
         const recordingsDir = await getRecordingsDir()
         const timestamp = Date.now()
         const outputPath = path.join(recordingsDir, `recording-${timestamp}.mp4`)
@@ -1770,7 +2153,7 @@ export function registerIpcHandlers(
           const audioPath = path.join(recordingsDir, `recording-${timestamp}.system.wav`)
           config.captureSystemAudio = true
           config.audioOutputPath = audioPath
-          wgcSystemAudioPath = audioPath
+          windowsSystemAudioPath = audioPath
         }
 
         if (options?.capturesMicrophone) {
@@ -1780,7 +2163,7 @@ export function registerIpcHandlers(
           if (options.microphoneLabel) {
             config.micDeviceName = options.microphoneLabel
           }
-          wgcMicAudioPath = micPath
+          windowsMicAudioPath = micPath
         }
 
         const windowId = parseWindowId(source?.id)
@@ -1793,37 +2176,39 @@ export function registerIpcHandlers(
             : Number(getScreen().getPrimaryDisplay().id)
         }
 
-        wgcCaptureOutputBuffer = ''
-        wgcCaptureTargetPath = outputPath
-        wgcCaptureStopRequested = false
-        wgcCaptureProcess = spawn(exePath, [JSON.stringify(config)], {
+        windowsCaptureOutputBuffer = ''
+        windowsCaptureTargetPath = outputPath
+        windowsCaptureStopRequested = false
+        windowsCapturePaused = false
+        windowsCaptureProcess = spawn(exePath, [JSON.stringify(config)], {
           cwd: recordingsDir,
           stdio: ['pipe', 'pipe', 'pipe'],
         })
-        attachWgcCaptureLifecycle(wgcCaptureProcess)
+        attachWindowsCaptureLifecycle(windowsCaptureProcess)
 
-        wgcCaptureProcess.stdout.on('data', (chunk: Buffer) => {
-          wgcCaptureOutputBuffer += chunk.toString()
+        windowsCaptureProcess.stdout.on('data', (chunk: Buffer) => {
+          windowsCaptureOutputBuffer += chunk.toString()
         })
-        wgcCaptureProcess.stderr.on('data', (chunk: Buffer) => {
-          wgcCaptureOutputBuffer += chunk.toString()
+        windowsCaptureProcess.stderr.on('data', (chunk: Buffer) => {
+          windowsCaptureOutputBuffer += chunk.toString()
         })
 
-        await waitForWgcCaptureStart(wgcCaptureProcess)
-        wgcScreenRecordingActive = true
+        await waitForWindowsCaptureStart(windowsCaptureProcess)
+        windowsNativeCaptureActive = true
         nativeScreenRecordingActive = true
         return { success: true }
       } catch (error) {
-        console.error('Failed to start WGC capture:', error)
-        try { wgcCaptureProcess?.kill() } catch { /* ignore */ }
-        wgcScreenRecordingActive = false
+        console.error('Failed to start native Windows capture:', error)
+        try { windowsCaptureProcess?.kill() } catch { /* ignore */ }
+        windowsNativeCaptureActive = false
         nativeScreenRecordingActive = false
-        wgcCaptureProcess = null
-        wgcCaptureTargetPath = null
-        wgcCaptureStopRequested = false
+        windowsCaptureProcess = null
+        windowsCaptureTargetPath = null
+        windowsCaptureStopRequested = false
+        windowsCapturePaused = false
         return {
           success: false,
-          message: 'Failed to start WGC capture',
+          message: 'Failed to start native Windows capture',
           error: String(error),
         }
       }
@@ -1880,6 +2265,10 @@ export function registerIpcHandlers(
         config.microphoneDeviceId = options.microphoneDeviceId
       }
 
+      if (options?.microphoneLabel) {
+        config.microphoneLabel = options.microphoneLabel
+      }
+
       if (microphoneOutputPath) {
         config.microphoneOutputPath = microphoneOutputPath
       }
@@ -1899,6 +2288,7 @@ export function registerIpcHandlers(
       nativeCaptureTargetPath = outputPath
       nativeCaptureMicrophonePath = microphoneOutputPath
       nativeCaptureStopRequested = false
+      nativeCapturePaused = false
       nativeCaptureProcess = spawn(helperPath, [JSON.stringify(config)], {
         cwd: recordingsDir,
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -1927,6 +2317,7 @@ export function registerIpcHandlers(
       nativeCaptureTargetPath = null
       nativeCaptureMicrophonePath = null
       nativeCaptureStopRequested = false
+      nativeCapturePaused = false
       return {
         success: false,
         message: 'Failed to start native ScreenCaptureKit recording',
@@ -1936,47 +2327,49 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle('stop-native-screen-recording', async () => {
-    // Windows WGC stop path
-    if (process.platform === 'win32' && wgcScreenRecordingActive) {
+    // Windows native capture stop path
+    if (process.platform === 'win32' && windowsNativeCaptureActive) {
       try {
-        if (!wgcCaptureProcess) {
-          throw new Error('WGC capture process is not running')
+        if (!windowsCaptureProcess) {
+          throw new Error('Native Windows capture process is not running')
         }
 
-        const proc = wgcCaptureProcess
-        const preferredVideoPath = wgcCaptureTargetPath
-        wgcCaptureStopRequested = true
+        const proc = windowsCaptureProcess
+        const preferredVideoPath = windowsCaptureTargetPath
+        windowsCaptureStopRequested = true
         proc.stdin.write('stop\n')
-        const tempVideoPath = await waitForWgcCaptureStop(proc)
-        wgcCaptureProcess = null
-        wgcScreenRecordingActive = false
+        const tempVideoPath = await waitForWindowsCaptureStop(proc)
+        windowsCaptureProcess = null
+        windowsNativeCaptureActive = false
         nativeScreenRecordingActive = false
-        wgcCaptureTargetPath = null
-        wgcCaptureStopRequested = false
+        windowsCaptureTargetPath = null
+        windowsCaptureStopRequested = false
+        windowsCapturePaused = false
 
         const finalVideoPath = preferredVideoPath ?? tempVideoPath
         if (tempVideoPath !== finalVideoPath) {
           await moveFileWithOverwrite(tempVideoPath, finalVideoPath)
         }
 
-        wgcPendingVideoPath = finalVideoPath
+        windowsPendingVideoPath = finalVideoPath
         return { success: true, path: finalVideoPath }
       } catch (error) {
-        console.error('Failed to stop WGC capture:', error)
-        const fallbackPath = wgcCaptureTargetPath
-        wgcScreenRecordingActive = false
+        console.error('Failed to stop native Windows capture:', error)
+        const fallbackPath = windowsCaptureTargetPath
+        windowsNativeCaptureActive = false
         nativeScreenRecordingActive = false
-        wgcCaptureProcess = null
-        wgcCaptureTargetPath = null
-        wgcCaptureStopRequested = false
-        wgcSystemAudioPath = null
-        wgcMicAudioPath = null
-        wgcPendingVideoPath = null
+        windowsCaptureProcess = null
+        windowsCaptureTargetPath = null
+        windowsCaptureStopRequested = false
+        windowsCapturePaused = false
+        windowsSystemAudioPath = null
+        windowsMicAudioPath = null
+        windowsPendingVideoPath = null
 
         if (fallbackPath) {
           try {
             await fs.access(fallbackPath)
-            wgcPendingVideoPath = fallbackPath
+            windowsPendingVideoPath = fallbackPath
             return { success: true, path: fallbackPath }
           } catch {
             // File doesn't exist
@@ -1985,7 +2378,7 @@ export function registerIpcHandlers(
 
         return {
           success: false,
-          message: 'Failed to stop WGC capture',
+          message: 'Failed to stop native Windows capture',
           error: String(error),
         }
       }
@@ -2015,6 +2408,7 @@ export function registerIpcHandlers(
       nativeCaptureTargetPath = null
       nativeCaptureMicrophonePath = null
       nativeCaptureStopRequested = false
+      nativeCapturePaused = false
 
       const finalVideoPath = preferredVideoPath ?? tempVideoPath
       if (tempVideoPath !== finalVideoPath) {
@@ -2039,6 +2433,7 @@ export function registerIpcHandlers(
       nativeCaptureTargetPath = null
       nativeCaptureMicrophonePath = null
       nativeCaptureStopRequested = false
+      nativeCapturePaused = false
 
       // Try to recover: if the target file exists on disk, finalize with it
       if (fallbackPath) {
@@ -2059,6 +2454,86 @@ export function registerIpcHandlers(
     }
   })
 
+  ipcMain.handle('pause-native-screen-recording', async () => {
+    if (process.platform === 'win32') {
+      if (!windowsNativeCaptureActive || !windowsCaptureProcess) {
+        return { success: false, message: 'No native Windows screen recording is active.' }
+      }
+
+      if (windowsCapturePaused) {
+        return { success: true }
+      }
+
+      try {
+        windowsCaptureProcess.stdin.write('pause\n')
+        windowsCapturePaused = true
+        return { success: true }
+      } catch (error) {
+        return { success: false, message: 'Failed to pause native Windows capture', error: String(error) }
+      }
+    }
+
+    if (process.platform !== 'darwin') {
+      return { success: false, message: 'Native screen recording is only available on macOS.' }
+    }
+
+    if (!nativeScreenRecordingActive || !nativeCaptureProcess) {
+      return { success: false, message: 'No native screen recording is active.' }
+    }
+
+    if (nativeCapturePaused) {
+      return { success: true }
+    }
+
+    try {
+      nativeCaptureProcess.stdin.write('pause\n')
+      nativeCapturePaused = true
+      return { success: true }
+    } catch (error) {
+      return { success: false, message: 'Failed to pause native screen recording', error: String(error) }
+    }
+  })
+
+  ipcMain.handle('resume-native-screen-recording', async () => {
+    if (process.platform === 'win32') {
+      if (!windowsNativeCaptureActive || !windowsCaptureProcess) {
+        return { success: false, message: 'No native Windows screen recording is active.' }
+      }
+
+      if (!windowsCapturePaused) {
+        return { success: true }
+      }
+
+      try {
+        windowsCaptureProcess.stdin.write('resume\n')
+        windowsCapturePaused = false
+        return { success: true }
+      } catch (error) {
+        return { success: false, message: 'Failed to resume native Windows capture', error: String(error) }
+      }
+    }
+
+    if (process.platform !== 'darwin') {
+      return { success: false, message: 'Native screen recording is only available on macOS.' }
+    }
+
+    if (!nativeScreenRecordingActive || !nativeCaptureProcess) {
+      return { success: false, message: 'No native screen recording is active.' }
+    }
+
+    if (!nativeCapturePaused) {
+      return { success: true }
+    }
+
+    try {
+      nativeCaptureProcess.stdin.write('resume\n')
+      nativeCapturePaused = false
+      return { success: true }
+    } catch (error) {
+      return { success: false, message: 'Failed to resume native screen recording', error: String(error) }
+    }
+  })
+
   ipcMain.handle('get-system-cursor-assets', async () => {
     try {
       return { success: true, cursors: await getSystemCursorAssets() }
@@ -2068,34 +2543,34 @@ export function registerIpcHandlers(
     }
   })
 
-  ipcMain.handle('is-wgc-available', async () => {
-    return { available: await isWgcCaptureAvailable() }
+  ipcMain.handle('is-native-windows-capture-available', async () => {
+    return { available: await isNativeWindowsCaptureAvailable() }
   })
 
-  ipcMain.handle('mux-wgc-recording', async () => {
-    const videoPath = wgcPendingVideoPath
-    wgcPendingVideoPath = null
+  ipcMain.handle('mux-native-windows-recording', async () => {
+    const videoPath = windowsPendingVideoPath
+    windowsPendingVideoPath = null
 
     if (!videoPath) {
-      return { success: false, message: 'No WGC video pending for mux' }
+      return { success: false, message: 'No native Windows video pending for mux' }
     }
 
     try {
-      if (wgcSystemAudioPath || wgcMicAudioPath) {
-        await muxWgcVideoWithAudio(videoPath, wgcSystemAudioPath, wgcMicAudioPath)
-        wgcSystemAudioPath = null
-        wgcMicAudioPath = null
+      if (windowsSystemAudioPath || windowsMicAudioPath) {
+        await muxNativeWindowsVideoWithAudio(videoPath, windowsSystemAudioPath, windowsMicAudioPath)
+        windowsSystemAudioPath = null
+        windowsMicAudioPath = null
       }
 
       return await finalizeStoredVideo(videoPath)
     } catch (error) {
-      console.error('Failed to mux WGC recording:', error)
-      wgcSystemAudioPath = null
-      wgcMicAudioPath = null
+      console.error('Failed to mux native Windows recording:', error)
+      windowsSystemAudioPath = null
+      windowsMicAudioPath = null
       try {
         return await finalizeStoredVideo(videoPath)
       } catch {
-        return { success: false, message: 'Failed to mux WGC recording', error: String(error) }
+        return { success: false, message: 'Failed to mux native Windows recording', error: String(error) }
       }
     }
   })
@@ -2224,6 +2699,7 @@ export function registerIpcHandlers(
       activeCursorSamples = []
       pendingCursorSamples = []
       cursorCaptureStartTimeMs = Date.now()
+      linuxCursorScreenPoint = null
       lastLeftClick = null
       sampleCursorPoint()
       cursorCaptureInterval = setInterval(sampleCursorPoint, CURSOR_SAMPLE_INTERVAL_MS)
@@ -2234,6 +2710,8 @@ export function registerIpcHandlers(
       stopInteractionCapture()
       stopWindowBoundsCapture()
       stopNativeCursorMonitor()
+      showCursor()
+      linuxCursorScreenPoint = null
       snapshotCursorTelemetryForPersistence()
       activeCursorSamples = []
     }
@@ -2413,20 +2891,24 @@ export function registerIpcHandlers(
     }
   })
 
-  ipcMain.handle('save-exported-video', async (_, videoData: ArrayBuffer, fileName: string) => {
+  ipcMain.handle('save-exported-video', async (event, videoData: ArrayBuffer, fileName: string) => {
     try {
       // Determine file type from extension
       const isGif = fileName.toLowerCase().endsWith('.gif');
       const filters = isGif 
         ? [{ name: 'GIF Image', extensions: ['gif'] }]
         : [{ name: 'MP4 Video', extensions: ['mp4'] }];
-
-      const result = await dialog.showSaveDialog({
+      const parentWindow = BrowserWindow.fromWebContents(event.sender)
+      const saveDialogOptions: SaveDialogOptions = {
         title: isGif ? 'Save Exported GIF' : 'Save Exported Video',
         defaultPath: path.join(app.getPath('downloads'), fileName),
         filters,
-        properties: ['createDirectory', 'showOverwriteConfirmation']
-      });
+        properties: ['createDirectory', 'showOverwriteConfirmation'],
+      }
+
+      const result = parentWindow
+        ? await dialog.showSaveDialog(parentWindow, saveDialogOptions)
+        : await dialog.showSaveDialog(saveDialogOptions)
 
       if (result.canceled || !result.filePath) {
         return {
@@ -2480,6 +2962,35 @@ export function registerIpcHandlers(
       return {
         success: false,
         message: 'Failed to open file picker',
+        error: String(error)
+      };
+    }
+  });
+
+  ipcMain.handle('open-audio-file-picker', async () => {
+    try {
+      const result = await dialog.showOpenDialog({
+        title: 'Select Audio File',
+        filters: [
+          { name: 'Audio Files', extensions: ['mp3', 'wav', 'aac', 'm4a', 'flac', 'ogg'] },
+          { name: 'All Files', extensions: ['*'] }
+        ],
+        properties: ['openFile']
+      });
+
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: false, canceled: true };
+      }
+
+      return {
+        success: true,
+        path: result.filePaths[0]
+      };
+    } catch (error) {
+      console.error('Failed to open audio file picker:', error);
+      return {
+        success: false,
+        message: 'Failed to open audio file picker',
         error: String(error)
       };
     }
@@ -2647,7 +3158,18 @@ export function registerIpcHandlers(
       const project = JSON.parse(content)
       currentProjectPath = filePath
       if (project && typeof project === 'object' && typeof project.videoPath === 'string') {
-        currentVideoPath = normalizeVideoSourcePath(project.videoPath) ?? project.videoPath
+        const normalizedVideoPath = normalizeVideoSourcePath(project.videoPath) ?? project.videoPath
+        currentVideoPath = normalizedVideoPath
+        const webcamPath =
+          typeof (project as { editor?: { webcam?: { sourcePath?: unknown } } }).editor?.webcam
+            ?.sourcePath === 'string'
+            ? ((project as { editor?: { webcam?: { sourcePath?: string } } }).editor?.webcam
+                ?.sourcePath ?? null)
+            : null
+        currentRecordingSession = {
+          videoPath: normalizedVideoPath,
+          webcamPath,
+        }
       }
 
       return {
@@ -2674,7 +3196,18 @@ export function registerIpcHandlers(
       const content = await fs.readFile(currentProjectPath, 'utf-8')
       const project = JSON.parse(content)
       if (project && typeof project === 'object' && typeof project.videoPath === 'string') {
-        currentVideoPath = normalizeVideoSourcePath(project.videoPath) ?? project.videoPath
+        const normalizedVideoPath = normalizeVideoSourcePath(project.videoPath) ?? project.videoPath
+        currentVideoPath = normalizedVideoPath
+        const webcamPath =
+          typeof (project as { editor?: { webcam?: { sourcePath?: unknown } } }).editor?.webcam
+            ?.sourcePath === 'string'
+            ? ((project as { editor?: { webcam?: { sourcePath?: string } } }).editor?.webcam
+                ?.sourcePath ?? null)
+            : null
+        currentRecordingSession = {
+          videoPath: normalizedVideoPath,
+          webcamPath,
+        }
       }
       return {
         success: true,
@@ -2690,10 +3223,45 @@ export function registerIpcHandlers(
       }
     }
   })
-  ipcMain.handle('set-current-video-path', (_, path: string) => {
+  ipcMain.handle('set-current-video-path', async (_, path: string) => {
     currentVideoPath = normalizeVideoSourcePath(path) ?? path
+    const resolvedSession = await resolveRecordingSession(currentVideoPath)
+      ?? {
+        videoPath: currentVideoPath,
+        webcamPath: null,
+      }
+
+    currentRecordingSession = resolvedSession
+
+    if (resolvedSession.webcamPath) {
+      await persistRecordingSessionManifest(resolvedSession)
+    }
+
     currentProjectPath = null
+    return { success: true, webcamPath: resolvedSession.webcamPath ?? null }
+  })
+
+  ipcMain.handle('set-current-recording-session', async (_, session: { videoPath: string; webcamPath?: string | null }) => {
+    const normalizedVideoPath = normalizeVideoSourcePath(session.videoPath) ?? session.videoPath
+    currentVideoPath = normalizedVideoPath
+    currentRecordingSession = {
+      videoPath: normalizedVideoPath,
+      webcamPath: normalizeVideoSourcePath(session.webcamPath ?? null),
+    }
+    currentProjectPath = null
+    await persistRecordingSessionManifest(currentRecordingSession)
     return { success: true }
+  })
+
+  ipcMain.handle('get-current-recording-session', () => {
+    if (!currentRecordingSession) {
+      return { success: false }
+    }
+
+    return {
+      success: true,
+      session: currentRecordingSession,
+    }
   })
 
   ipcMain.handle('get-current-video-path', () => {
@@ -2702,7 +3270,27 @@ export function registerIpcHandlers(
 
   ipcMain.handle('clear-current-video-path', () => {
     currentVideoPath = null;
+    currentRecordingSession = null;
     return { success: true };
+  });
+
+  ipcMain.handle('delete-recording-file', async (_, filePath: string) => {
+    try {
+      if (!filePath || !isAutoRecordingPath(filePath)) {
+        return { success: false, error: 'Only auto-generated recordings can be deleted' };
+      }
+      await fs.unlink(filePath);
+      // Also delete the cursor telemetry sidecar if it exists
+      const telemetryPath = getTelemetryPathForVideo(filePath);
+      await fs.unlink(telemetryPath).catch(() => {});
+      if (currentVideoPath === filePath) {
+        currentVideoPath = null;
+        currentRecordingSession = null;
+      }
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
   });
 
   ipcMain.handle('get-platform', () => {
@@ -2714,10 +3302,11 @@ export function registerIpcHandlers(
   // The IPC promise resolves only after the cursor hide attempt completes.
   // ---------------------------------------------------------------------------
   ipcMain.handle('hide-cursor', () => {
-    // No-op: macOS uses native ScreenCaptureKit (cursor excluded at capture
-    // level), and Win/Linux use Electron desktopCapturer where cursor hiding
-    // is not reliably supported.
-    return { success: true }
+    if (process.platform !== 'win32') {
+      return { success: true }
+    }
+
+    return { success: hideCursor() }
   })
 
   ipcMain.handle('get-shortcuts', async () => {
@@ -2738,5 +3327,107 @@ export function registerIpcHandlers(
       return { success: false, error: String(error) };
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // Countdown timer before recording
+  // ---------------------------------------------------------------------------
+  ipcMain.handle('get-countdown-delay', async () => {
+    try {
+      const content = await fs.readFile(COUNTDOWN_SETTINGS_FILE, 'utf-8')
+      const parsed = JSON.parse(content) as { delay?: number }
+      return { success: true, delay: parsed.delay ?? 3 }
+    } catch {
+      return { success: true, delay: 3 }
+    }
+  })
+
+  ipcMain.handle('set-countdown-delay', async (_, delay: number) => {
+    try {
+      await fs.writeFile(COUNTDOWN_SETTINGS_FILE, JSON.stringify({ delay }, null, 2), 'utf-8')
+      return { success: true }
+    } catch (error) {
+      console.error('Failed to save countdown delay:', error)
+      return { success: false, error: String(error) }
+    }
+  })
+
+  ipcMain.handle('start-countdown', async (_, seconds: number) => {
+    if (countdownInProgress) {
+      return { success: false, error: 'Countdown already in progress' }
+    }
+
+    countdownInProgress = true
+    countdownCancelled = false
+    countdownRemaining = seconds
+
+    const countdownWin = createCountdownWindow()
+
+    if (countdownWin.webContents.isLoadingMainFrame()) {
+      await new Promise<void>((resolve) => {
+        countdownWin.webContents.once('did-finish-load', () => {
+          resolve()
+        })
+      })
+    }
+
+    return new Promise<{ success: boolean; cancelled?: boolean }>((resolve) => {
+      let remaining = seconds
+      countdownRemaining = remaining
+
+      countdownWin.webContents.send('countdown-tick', remaining)
+
+      countdownTimer = setInterval(() => {
+        if (countdownCancelled) {
+          if (countdownTimer) {
+            clearInterval(countdownTimer)
+            countdownTimer = null
+          }
+          closeCountdownWindow()
+          countdownInProgress = false
+          countdownRemaining = null
+          resolve({ success: false, cancelled: true })
+          return
+        }
+
+        remaining--
+        countdownRemaining = remaining
+
+        if (remaining <= 0) {
+          if (countdownTimer) {
+            clearInterval(countdownTimer)
+            countdownTimer = null
+          }
+          closeCountdownWindow()
+          countdownInProgress = false
+          countdownRemaining = null
+          resolve({ success: true })
+        } else {
+          const win = getCountdownWindow()
+          if (win && !win.isDestroyed()) {
+            win.webContents.send('countdown-tick', remaining)
+          }
+        }
+      }, 1000)
+    })
+  })
+
+  ipcMain.handle('cancel-countdown', () => {
+    countdownCancelled = true
+    countdownInProgress = false
+    countdownRemaining = null
+    if (countdownTimer) {
+      clearInterval(countdownTimer)
+      countdownTimer = null
+    }
+    closeCountdownWindow()
+    return { success: true }
+  })
+
+  ipcMain.handle('get-active-countdown', () => {
+    return {
+      success: true,
+      seconds: countdownInProgress ? countdownRemaining : null,
+    }
+  })
 }
 

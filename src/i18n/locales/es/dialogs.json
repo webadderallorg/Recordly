@@ -18,6 +18,7 @@
 		"compilingStatus": "Compilando...",
 		"frames": "Cuadros",
 		"cancelExport": "Cancelar exportación",
+		"reopenSaveDialog": "Abrir de nuevo el diálogo de guardado",
 		"savedSuccess": "¡{{format}} guardado exitosamente!"
 	},
 	"addFont": {

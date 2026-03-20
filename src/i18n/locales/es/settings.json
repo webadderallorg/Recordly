@@ -14,6 +14,7 @@
 	},
 	"effects": {
 		"title": "Efectos de video",
+		"show": "Mostrar",
 		"showCursor": "Mostrar cursor",
 		"loopCursor": "Cursor en bucle",
 		"backgroundBlur": "Desenfoque de fondo",
@@ -24,33 +25,68 @@
 		"off": "Desactivado",
 		"cursorMotionBlur": "Desenfoque de movimiento del cursor",
 		"cursorClickBounce": "Rebote de clic del cursor",
+		"cursorClickBounceDuration": "Velocidad del rebote",
+		"cursorSway": "Balanceo del cursor",
+		"webcam": "Superposición de cámara",
+		"webcamFootage": "Metraje de cámara",
+		"webcamFootageDescription": "No hay metraje de cámara vinculado a este video",
+		"uploadWebcamFootage": "Subir metraje",
+		"replaceWebcamFootage": "Reemplazar metraje",
+		"removeWebcamFootage": "Quitar metraje",
+		"webcamFootageAdded": "Metraje de cámara vinculado",
+		"webcamFootageRemoved": "Metraje de cámara eliminado",
+		"webcamSize": "Tamaño de cámara",
+		"webcamReactToZoom": "La cámara reacciona al zoom",
+		"webcamRoundness": "Redondez de cámara",
+		"webcamShadow": "Sombra de cámara",
 		"shadow": "Sombra",
+		"radius": "Radio",
 		"roundness": "Redondez",
-		"padding": "Relleno"
+		"padding": "Relleno",
+		"removeBackground": "Quitar fondo"
+	},
+	"sections": {
+		"scene": "Escena",
+		"cursor": "Cursor",
+		"webcam": "Cámara",
+		"frame": "Marco",
+		"crop": "Recorte"
 	},
 	"crop": {
 		"title": "Recortar video",
-		"instruction": "Arrastra cada lado para ajustar el área de recorte"
+		"instruction": "Arrastra cada lado para ajustar el área de recorte",
+		"top": "Superior",
+		"bottom": "Inferior",
+		"left": "Izquierda",
+		"right": "Derecha",
+		"openEditor": "Abrir editor de recorte"
 	},
 	"background": {
 		"title": "Fondo",
 		"image": "Imagen",
 		"color": "Color",
 		"gradient": "Degradado",
+		"wallpaperPreview": "Vista previa del fondo",
 		"uploadCustom": "Subir personalizado",
 		"uploadSuccess": "¡Imagen personalizada subida exitosamente!",
-		"uploadError": "Por favor sube un archivo de imagen JPG o JPEG."
+		"uploadError": "Por favor sube un archivo de imagen JPG o JPEG.",
+		"uploadErrorDescription": "Solo se admiten imágenes JPG y JPEG."
 	},
 	"export": {
+		"title": "Exportar",
 		"mp4": "MP4",
 		"gif": "GIF",
 		"quality": {
 			"low": "Baja",
 			"medium": "Media",
-			"high": "Alta"
+			"high": "Alta",
+			"original": "Original"
 		},
 		"loop": "Bucle",
 		"outputDimensions": "Salida: {{dimensions}}px",
+		"sizePresetOriginalShort": "Orig",
+		"sizePresetMediumShort": "Med",
+		"sizePresetLargeShort": "Gra",
 		"loadProject": "Cargar proyecto",
 		"saveProject": "Guardar proyecto",
 		"exportVideo": "Exportar {{format}}",

@@ -24,6 +24,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
       TAP_REPO: ${{ github.event.inputs.tap_repo || vars.HOMEBREW_TAP_REPO || 'webadderall/homebrew-tap' }}
+      AUTO_MERGE_TAP_PR: ${{ vars.HOMEBREW_TAP_AUTO_MERGE || 'true' }}
     steps:
       - name: Validate token
         run: |
@@ -131,18 +132,37 @@ jobs:
 
       - name: Open pull request in tap repo
         if: steps.update.outputs.changed == 'true'
+        id: pr
         shell: bash
         run: |
           cd /tmp/homebrew-tap
 
-          EXISTING=$(gh pr list --head "${{ steps.update.outputs.branch }}" --json number --jq 'length')
-          if [ "$EXISTING" -gt 0 ]; then
-            echo "PR already exists for ${{ steps.update.outputs.branch }}"
+          PR_NUMBER=$(gh pr list --head "${{ steps.update.outputs.branch }}" --json number --jq '.[0].number // empty')
+          if [ -n "$PR_NUMBER" ]; then
+            echo "PR already exists for ${{ steps.update.outputs.branch }} (#$PR_NUMBER)"
+            echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          gh pr create \
+          PR_URL=$(gh pr create \
             --title "chore(cask): update recordly to ${{ steps.tag.outputs.tag }}" \
             --body "Automated cask update for ${{ steps.tag.outputs.tag }}.\n\n- arm64 sha256: \\`${{ steps.sha.outputs.arm }}\\`\n- x64 sha256: \\`${{ steps.sha.outputs.intel }}\\`" \
             --head "${{ steps.update.outputs.branch }}" \
-            --base main
+            --base main)
+
+          PR_NUMBER=$(echo "$PR_URL" | sed -E 's#.*/pull/([0-9]+).*#\1#')
+          echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Auto-merge tap PR
+        if: steps.update.outputs.changed == 'true' && env.AUTO_MERGE_TAP_PR == 'true'
+        shell: bash
+        run: |
+          cd /tmp/homebrew-tap
+
+          PR_NUMBER="${{ steps.pr.outputs.number }}"
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No pull request number available; skipping auto-merge."
+            exit 0
+          fi
+
+          gh pr merge "$PR_NUMBER" --squash --delete-branch --repo "$TAP_REPO"

@@ -1,6 +1,7 @@
 import { WebDemuxer } from 'web-demuxer'
-import type { SpeedRegion, TrimRegion } from '@/components/video-editor/types'
+import type { SpeedRegion, TrimRegion, AudioRegion } from '@/components/video-editor/types'
 import type { VideoMuxer } from './muxer'
+import { resolveMediaElementSource } from './localMediaSource'
 
 const AUDIO_BITRATE = 128_000
 const DECODE_BACKPRESSURE_LIMIT = 20
@@ -21,6 +22,7 @@ export class AudioProcessor {
     trimRegions?: TrimRegion[],
     speedRegions?: SpeedRegion[],
     readEndSec?: number,
+    audioRegions?: AudioRegion[],
   ): Promise<void> {
     const sortedTrims = trimRegions ? [...trimRegions].sort((a, b) => a.startMs - b.startMs) : []
     const sortedSpeedRegions = speedRegions
@@ -28,13 +30,17 @@ export class AudioProcessor {
         .filter((region) => region.endMs - region.startMs > MIN_SPEED_REGION_DELTA_MS)
         .sort((a, b) => a.startMs - b.startMs)
       : []
+    const sortedAudioRegions = audioRegions
+      ? [...audioRegions].sort((a, b) => a.startMs - b.startMs)
+      : []
 
-    // Speed edits must use timeline playback to preserve pitch.
-    if (sortedSpeedRegions.length > 0) {
-      const renderedAudioBlob = await this.renderPitchPreservedTimelineAudio(
+    // When audio regions or speed edits are present, use AudioContext mixing path.
+    if (sortedSpeedRegions.length > 0 || sortedAudioRegions.length > 0) {
+      const renderedAudioBlob = await this.renderMixedTimelineAudio(
         videoUrl,
         sortedTrims,
         sortedSpeedRegions,
+        sortedAudioRegions,
       )
       if (!this.cancelled) {
         await this.muxRenderedAudioBlob(renderedAudioBlob, muxer)
@@ -42,7 +48,7 @@ export class AudioProcessor {
       }
     }
 
-    // No speed edits: keep the original demux/decode/encode path with trim timestamp remap.
+    // No speed edits or audio regions: keep the original demux/decode/encode path with trim timestamp remap.
     await this.processTrimOnlyAudio(demuxer, muxer, sortedTrims, readEndSec)
   }
 
@@ -158,15 +164,17 @@ export class AudioProcessor {
     }
   }
 
-  // Speed-aware path that mirrors preview semantics (trim skipping + playbackRate regions)
-  // and preserves pitch through browser media playback behavior.
-  private async renderPitchPreservedTimelineAudio(
+  // Renders mixed audio: original video audio (with speed/trim) + external audio regions.
+  // Uses AudioContext to mix all sources into a single recorded stream.
+  private async renderMixedTimelineAudio(
     videoUrl: string,
     trimRegions: TrimRegion[],
     speedRegions: SpeedRegion[],
+    audioRegions: AudioRegion[],
   ): Promise<Blob> {
+    const mediaSource = await resolveMediaElementSource(videoUrl)
     const media = document.createElement('audio')
-    media.src = videoUrl
+    media.src = mediaSource.src
     media.preload = 'auto'
 
     const pitchMedia = media as HTMLMediaElement & {
@@ -184,9 +192,49 @@ export class AudioProcessor {
     }
 
     const audioContext = new AudioContext()
-    const sourceNode = audioContext.createMediaElementSource(media)
     const destinationNode = audioContext.createMediaStreamDestination()
+
+    // Connect original video audio
+    const sourceNode = audioContext.createMediaElementSource(media)
     sourceNode.connect(destinationNode)
+
+    // Prepare external audio region elements
+    const audioRegionElements: {
+      media: HTMLAudioElement
+      sourceNode: MediaElementAudioSourceNode
+      gainNode: GainNode
+      region: AudioRegion
+      cleanup: () => void
+    }[] = []
+
+    for (const region of audioRegions) {
+      const regionFileSource = await resolveMediaElementSource(region.audioPath)
+      const audioEl = document.createElement('audio')
+      audioEl.src = regionFileSource.src
+      audioEl.preload = 'auto'
+      try {
+        await this.waitForLoadedMetadata(audioEl)
+      } catch {
+        regionFileSource.revoke()
+        console.warn('[AudioProcessor] Failed to load audio region:', region.audioPath)
+        continue
+      }
+      if (this.cancelled) throw new Error('Export cancelled')
+
+      const regionSourceNode = audioContext.createMediaElementSource(audioEl)
+      const gainNode = audioContext.createGain()
+      gainNode.gain.value = Math.max(0, Math.min(1, region.volume))
+      regionSourceNode.connect(gainNode)
+      gainNode.connect(destinationNode)
+
+      audioRegionElements.push({
+        media: audioEl,
+        sourceNode: regionSourceNode,
+        gainNode,
+        region,
+        cleanup: regionFileSource.revoke,
+      })
+    }
 
     const { recorder, recordedBlobPromise } = this.startAudioRecording(destinationNode.stream)
     let rafId: number | null = null
@@ -211,7 +259,7 @@ export class AudioProcessor {
 
         const onError = () => {
           cleanup()
-          reject(new Error('Failed while rendering speed-adjusted audio timeline'))
+          reject(new Error('Failed while rendering mixed audio timeline'))
         }
 
         const onEnded = () => {
@@ -246,6 +294,26 @@ export class AudioProcessor {
             }
           }
 
+          // Sync external audio regions with the video timeline position
+          for (const entry of audioRegionElements) {
+            const { media: audioEl, region } = entry
+            const isInRegion = currentTimeMs >= region.startMs && currentTimeMs < region.endMs
+
+            if (isInRegion) {
+              const audioOffset = (currentTimeMs - region.startMs) / 1000
+              if (audioEl.paused) {
+                audioEl.currentTime = audioOffset
+                audioEl.play().catch(() => {})
+              } else if (Math.abs(audioEl.currentTime - audioOffset) > 0.3) {
+                audioEl.currentTime = audioOffset
+              }
+            } else {
+              if (!audioEl.paused) {
+                audioEl.pause()
+              }
+            }
+          }
+
           if (!media.paused && !media.ended) {
             rafId = requestAnimationFrame(tick)
           } else {
@@ -263,6 +331,14 @@ export class AudioProcessor {
         cancelAnimationFrame(rafId)
       }
       media.pause()
+      for (const entry of audioRegionElements) {
+        entry.media.pause()
+        entry.sourceNode.disconnect()
+        entry.gainNode.disconnect()
+        entry.media.src = ''
+        entry.media.load()
+        entry.cleanup()
+      }
       if (recorder.state !== 'inactive') {
         recorder.stop()
       }
@@ -272,6 +348,7 @@ export class AudioProcessor {
       await audioContext.close()
       media.src = ''
       media.load()
+      mediaSource.revoke()
     }
 
     const recordedBlob = await recordedBlobPromise

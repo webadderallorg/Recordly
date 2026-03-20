@@ -14,6 +14,7 @@
 	},
 	"effects": {
 		"title": "Video Effects",
+		"show": "Show",
 		"showCursor": "Show Cursor",
 		"loopCursor": "Loop cursor",
 		"backgroundBlur": "Background Blur",
@@ -24,33 +25,68 @@
 		"off": "Off",
 		"cursorMotionBlur": "Cursor Motion Blur",
 		"cursorClickBounce": "Cursor Click Bounce",
+		"cursorClickBounceDuration": "Bounce Speed",
+		"cursorSway": "Cursor Sway",
+		"webcam": "Webcam Overlay",
+		"webcamFootage": "Webcam Footage",
+		"webcamFootageDescription": "No webcam footage linked to this video",
+		"uploadWebcamFootage": "Upload footage",
+		"replaceWebcamFootage": "Replace footage",
+		"removeWebcamFootage": "Remove footage",
+		"webcamFootageAdded": "Webcam footage linked",
+		"webcamFootageRemoved": "Webcam footage removed",
+		"webcamSize": "Webcam Size",
+		"webcamReactToZoom": "Webcam Reacts To Zoom",
+		"webcamRoundness": "Webcam Roundness",
+		"webcamShadow": "Webcam Shadow",
 		"shadow": "Shadow",
+		"radius": "Radius",
 		"roundness": "Roundness",
-		"padding": "Padding"
+		"padding": "Padding",
+		"removeBackground": "Remove background"
+	},
+	"sections": {
+		"scene": "Scene",
+		"cursor": "Cursor",
+		"webcam": "Webcam",
+		"frame": "Frame",
+		"crop": "Crop"
 	},
 	"crop": {
 		"title": "Crop Video",
-		"instruction": "Drag on each side to adjust the crop area"
+		"instruction": "Drag on each side to adjust the crop area",
+		"top": "Top",
+		"bottom": "Bottom",
+		"left": "Left",
+		"right": "Right",
+		"openEditor": "Open Crop Editor"
 	},
 	"background": {
 		"title": "Background",
 		"image": "Image",
 		"color": "Color",
 		"gradient": "Gradient",
+		"wallpaperPreview": "Wallpaper preview",
 		"uploadCustom": "Upload Custom",
 		"uploadSuccess": "Custom image uploaded successfully!",
-		"uploadError": "Please upload a JPG or JPEG image file."
+		"uploadError": "Please upload a JPG or JPEG image file.",
+		"uploadErrorDescription": "Only JPG and JPEG images are supported."
 	},
 	"export": {
+		"title": "Export",
 		"mp4": "MP4",
 		"gif": "GIF",
 		"quality": {
 			"low": "Low",
 			"medium": "Medium",
-			"high": "High"
+			"high": "High",
+			"original": "Original"
 		},
 		"loop": "Loop",
 		"outputDimensions": "Output: {{dimensions}}px",
+		"sizePresetOriginalShort": "Orig",
+		"sizePresetMediumShort": "Med",
+		"sizePresetLargeShort": "Lar",
 		"loadProject": "Load Project",
 		"saveProject": "Save Project",
 		"exportVideo": "Export {{format}}",

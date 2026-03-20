@@ -1,51 +1,281 @@
 .electronDrag {
-  -webkit-app-region: drag;
-}
-
-.hudBar {
-  isolation: isolate;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+	-webkit-app-region: drag;
 }
 
 .electronNoDrag {
-  -webkit-app-region: no-drag;
+	-webkit-app-region: no-drag;
 }
 
-
-.folderButton {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.bar {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: max-content;
+	max-width: 1200px;
+	background: rgba(18, 18, 24, 0.97);
+	border: 1px solid rgba(255, 255, 255, 0.07);
+	border-radius: 20px;
+	padding: 11px 20px 11px 18px;
+	box-shadow:
+		0 10px 30px rgba(0, 0, 0, 0.24),
+		0 2px 10px rgba(0, 0, 0, 0.12),
+		inset 0 1px 0 rgba(255, 255, 255, 0.04);
+	overflow: visible;
+	position: relative;
+	transform-origin: center bottom;
 }
 
-.folderText {
-  color: #cbd5e1;
-  transition: text-decoration 0.15s;
+.barStateViewport {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex: 0 1 auto;
+	min-height: 46px;
+	min-width: fit-content;
+	padding-right: 2px;
 }
 
-.folderButton:hover .folderText {
-  text-decoration: underline;
+.barState {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: 0 1 auto;
+	white-space: nowrap;
+	min-width: fit-content;
+	pointer-events: auto;
 }
 
-.hudOverlayButton {
-  cursor: pointer;
-  background: none;
-  border: none;
-  color: #fff;
-  opacity: 0.7;
-  transition: opacity 0.15s;
+.sep {
+	width: 1px;
+	height: 26px;
+	background: #2a2a34;
+	margin: 0 6px;
+	flex-shrink: 0;
 }
-.hudOverlayButton:hover {
-  opacity: 0.7;
-  background: none !important;
+
+.ib {
+	position: relative;
+	width: 40px;
+	height: 40px;
+	border-radius: 11px;
+	border: none;
+	background: transparent;
+	color: #6b6b78;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.15s ease;
+	flex-shrink: 0;
+}
+
+.ib:hover {
+	background: rgba(255, 255, 255, 0.07);
+	color: #eeeef2;
+}
+
+.ibActive {
+	color: #6360f5;
+}
+
+.ibActive:hover {
+	color: #7b78ff;
+}
+
+.ibRed {
+	color: #f43f5e;
+}
+
+.ibRed:hover {
+	color: #ff5a75;
+}
+
+.ibGreen {
+	color: #34d399;
+}
+
+.ibGreen:hover {
+	color: #4eeeb0;
+}
+
+.screenSel {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	height: 40px;
+	min-width: 0;
+	max-width: 640px;
+	padding: 0 14px 0 12px;
+	border-radius: 11px;
+	border: 1px solid #2a2a34;
+	background: #1a1a22;
+	color: #eeeef2;
+	font-size: 12px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	flex: 0 1 auto;
+}
+
+.screenSel:hover {
+	border-color: #3e3e4c;
+	background: #20202a;
+}
+
+.sourceLabel {
+	display: inline-block;
+	min-width: 0;
+	max-width: 520px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.menuArea {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	pointer-events: none;
+	overflow: visible;
+	min-height: 0;
+}
+
+.menuCard {
+	width: 300px;
+	max-height: 400px;
+	overflow-y: auto;
+	background: rgba(22, 22, 30, 0.96);
+	border: 1px solid rgba(255, 255, 255, 0.07);
+	border-radius: 14px;
+	padding: 8px;
+	margin-top: auto;
+	margin-bottom: 8px;
+	box-shadow:
+		0 12px 32px rgba(0, 0, 0, 0.22),
+		0 2px 10px rgba(0, 0, 0, 0.1);
+	pointer-events: auto;
+	animation: menuCardIn 0.18s ease;
+}
+
+@keyframes menuCardIn {
+	from {
+		opacity: 0;
+		transform: translateY(12px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.menuCard::-webkit-scrollbar {
+	width: 4px;
+}
+
+.menuCard::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.menuCard::-webkit-scrollbar-thumb {
+	background: #2a2a34;
+	border-radius: 2px;
+}
+
+.ddLabel {
+	font-size: 9px;
+	font-weight: 600;
+	color: #6b6b78;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	padding: 6px 10px 4px;
+}
+
+.ddItem {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 8px 10px;
+	border-radius: 8px;
+	border: none;
+	background: transparent;
+	font-size: 12px;
+	color: #6b6b78;
+	cursor: pointer;
+	transition: all 0.12s ease;
+	text-align: left;
+}
+
+.ddItem:hover {
+	background: rgba(255, 255, 255, 0.06);
+	color: #eeeef2;
+}
+
+.ddItemSelected {
+	color: #6360f5;
+}
+
+.recBtn {
+	position: relative;
+	width: 46px;
+	height: 46px;
+	border-radius: 50%;
+	border: none;
+	background: #f43f5e;
+	color: #fff;
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition: all 0.2s ease;
+	flex-shrink: 0;
+	box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.3);
+}
+
+.recBtn:hover {
+	background: #ff5a75;
+	box-shadow: 0 0 0 6px rgba(244, 63, 94, 0.15);
+}
+
+.recBtn:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.recBtn:disabled:hover {
+	background: #f43f5e;
+	box-shadow: none;
+}
+
+.recDot {
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background: #fff;
+	transition: all 0.2s ease;
+}
+
+.recDotBlink {
+	animation: blink 1.2s ease-in-out infinite;
+}
+
+@keyframes blink {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.2;
+	}
 }
 
 .micSelect {
-  color-scheme: dark;
+	color-scheme: dark;
 }
 
 .micSelect option {
-  background-color: #131722;
-  color: #e5e7eb;
+	background-color: #1a1a22;
+	color: #eeeef2;
 }

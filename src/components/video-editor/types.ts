@@ -17,8 +17,23 @@ export interface CursorTelemetryPoint {
   timeMs: number;
   cx: number;
   cy: number;
-  interactionType?: 'move' | 'click' | 'double-click' | 'right-click' | 'middle-click' | 'mouseup';
-  cursorType?: 'arrow' | 'text' | 'pointer' | 'crosshair' | 'open-hand' | 'closed-hand' | 'resize-ew' | 'resize-ns' | 'not-allowed';
+  interactionType?:
+    | "move"
+    | "click"
+    | "double-click"
+    | "right-click"
+    | "middle-click"
+    | "mouseup";
+  cursorType?:
+    | "arrow"
+    | "text"
+    | "pointer"
+    | "crosshair"
+    | "open-hand"
+    | "closed-hand"
+    | "resize-ew"
+    | "resize-ns"
+    | "not-allowed";
 }
 
 export interface CursorVisualSettings {
@@ -26,13 +41,65 @@ export interface CursorVisualSettings {
   smoothing: number;
   motionBlur: number;
   clickBounce: number;
+  clickBounceDuration: number;
+  sway: number;
+}
+
+export type WebcamCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+export type WebcamPositionPreset =
+  | WebcamCorner
+  | "top-center"
+  | "center-left"
+  | "center"
+  | "center-right"
+  | "bottom-center"
+  | "custom";
+
+export interface WebcamOverlaySettings {
+  enabled: boolean;
+  sourcePath: string | null;
+  mirror: boolean;
+  corner: WebcamCorner;
+  positionPreset: WebcamPositionPreset;
+  positionX: number;
+  positionY: number;
+  size: number;
+  reactToZoom: boolean;
+  cornerRadius: number;
+  shadow: number;
+  margin: number;
 }
 
 export const DEFAULT_CURSOR_SIZE = 3.0;
 export const DEFAULT_CURSOR_SMOOTHING = 0.67;
-export const DEFAULT_CURSOR_MOTION_BLUR = 0.35;
+export const DEFAULT_CURSOR_MOTION_BLUR = 0.5;
 export const DEFAULT_CURSOR_CLICK_BOUNCE = 2.5;
+export const DEFAULT_CURSOR_CLICK_BOUNCE_DURATION = 350;
+export const DEFAULT_CURSOR_SWAY = 0.25;
 export const DEFAULT_ZOOM_MOTION_BLUR = 0.35;
+export const DEFAULT_WEBCAM_SIZE = 40;
+export const DEFAULT_WEBCAM_REACT_TO_ZOOM = true;
+export const DEFAULT_WEBCAM_CORNER_RADIUS = 82;
+export const DEFAULT_WEBCAM_SHADOW = 0.67;
+export const DEFAULT_WEBCAM_MARGIN = 24;
+export const DEFAULT_WEBCAM_POSITION_PRESET: WebcamPositionPreset = "bottom-right";
+export const DEFAULT_WEBCAM_POSITION_X = 1;
+export const DEFAULT_WEBCAM_POSITION_Y = 1;
+
+export const DEFAULT_WEBCAM_OVERLAY: WebcamOverlaySettings = {
+  enabled: false,
+  sourcePath: null,
+  mirror: true,
+  corner: "bottom-right",
+  positionPreset: DEFAULT_WEBCAM_POSITION_PRESET,
+  positionX: DEFAULT_WEBCAM_POSITION_X,
+  positionY: DEFAULT_WEBCAM_POSITION_Y,
+  size: DEFAULT_WEBCAM_SIZE,
+  reactToZoom: DEFAULT_WEBCAM_REACT_TO_ZOOM,
+  cornerRadius: DEFAULT_WEBCAM_CORNER_RADIUS,
+  shadow: DEFAULT_WEBCAM_SHADOW,
+  margin: DEFAULT_WEBCAM_MARGIN,
+};
 
 export interface TrimRegion {
   id: string;
@@ -40,9 +107,17 @@ export interface TrimRegion {
   endMs: number;
 }
 
-export type AnnotationType = 'text' | 'image' | 'figure';
+export type AnnotationType = "text" | "image" | "figure";
 
-export type ArrowDirection = 'up' | 'down' | 'left' | 'right' | 'up-right' | 'up-left' | 'down-right' | 'down-left';
+export type ArrowDirection =
+  | "up"
+  | "down"
+  | "left"
+  | "right"
+  | "up-right"
+  | "up-left"
+  | "down-right"
+  | "down-left";
 
 export interface FigureData {
   arrowDirection: ArrowDirection;
@@ -65,18 +140,18 @@ export interface AnnotationTextStyle {
   backgroundColor: string;
   fontSize: number; // pixels
   fontFamily: string;
-  fontWeight: 'normal' | 'bold';
-  fontStyle: 'normal' | 'italic';
-  textDecoration: 'none' | 'underline';
-  textAlign: 'left' | 'center' | 'right';
+  fontWeight: "normal" | "bold";
+  fontStyle: "normal" | "italic";
+  textDecoration: "none" | "underline";
+  textAlign: "left" | "center" | "right";
 }
 
 function getDefaultAnnotationFontFamily() {
-  if (typeof navigator !== 'undefined' && /mac/i.test(navigator.platform)) {
+  if (typeof navigator !== "undefined" && /mac/i.test(navigator.platform)) {
     return '"SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, sans-serif';
   }
 
-  return 'Inter, system-ui, sans-serif';
+  return "Inter, system-ui, sans-serif";
 }
 
 export interface AnnotationRegion {
@@ -105,29 +180,27 @@ export const DEFAULT_ANNOTATION_SIZE: AnnotationSize = {
 };
 
 export const DEFAULT_ANNOTATION_STYLE: AnnotationTextStyle = {
-  color: '#ffffff',
-  backgroundColor: 'transparent',
+  color: "#ffffff",
+  backgroundColor: "transparent",
   fontSize: 32,
   fontFamily: getDefaultAnnotationFontFamily(),
-  fontWeight: 'bold',
-  fontStyle: 'normal',
-  textDecoration: 'none',
-  textAlign: 'center',
+  fontWeight: "bold",
+  fontStyle: "normal",
+  textDecoration: "none",
+  textAlign: "center",
 };
 
 export const DEFAULT_FIGURE_DATA: FigureData = {
-  arrowDirection: 'right',
-  color: '#2563EB',
+  arrowDirection: "right",
+  color: "#2563EB",
   strokeWidth: 4,
 };
 
-
-
 export interface CropRegion {
-  x: number; 
-  y: number; 
-  width: number; 
-  height: number; 
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export const DEFAULT_CROP_REGION: CropRegion = {
@@ -136,6 +209,14 @@ export const DEFAULT_CROP_REGION: CropRegion = {
   width: 1,
   height: 1,
 };
+
+export interface AudioRegion {
+  id: string;
+  startMs: number;
+  endMs: number;
+  audioPath: string;
+  volume: number;
+}
 
 export type PlaybackSpeed = 0.25 | 0.5 | 0.75 | 1.25 | 1.5 | 1.75 | 2;
 
@@ -169,7 +250,10 @@ export const ZOOM_DEPTH_SCALES: Record<ZoomDepth, number> = {
 
 export const DEFAULT_ZOOM_DEPTH: ZoomDepth = 3;
 
-export function clampFocusToDepth(focus: ZoomFocus, _depth: ZoomDepth): ZoomFocus {
+export function clampFocusToDepth(
+  focus: ZoomFocus,
+  _depth: ZoomDepth,
+): ZoomFocus {
   return {
     cx: clamp(focus.cx, 0, 1),
     cy: clamp(focus.cy, 0, 1),
@@ -180,4 +264,3 @@ function clamp(value: number, min: number, max: number) {
   if (Number.isNaN(value)) return (min + max) / 2;
   return Math.min(max, Math.max(min, value));
 }
-

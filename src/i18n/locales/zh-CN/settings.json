@@ -14,6 +14,7 @@
 	},
 	"effects": {
 		"title": "视频效果",
+		"show": "显示",
 		"showCursor": "显示光标",
 		"loopCursor": "循环光标",
 		"backgroundBlur": "背景模糊",
@@ -24,33 +25,68 @@
 		"off": "关",
 		"cursorMotionBlur": "光标运动模糊",
 		"cursorClickBounce": "光标点击弹跳",
+		"cursorClickBounceDuration": "弹跳速度",
+		"cursorSway": "光标摆动",
+		"webcam": "摄像头叠加",
+		"webcamFootage": "摄像头素材",
+		"webcamFootageDescription": "此视频尚未关联摄像头素材",
+		"uploadWebcamFootage": "上传素材",
+		"replaceWebcamFootage": "替换素材",
+		"removeWebcamFootage": "移除素材",
+		"webcamFootageAdded": "已关联摄像头素材",
+		"webcamFootageRemoved": "已移除摄像头素材",
+		"webcamSize": "摄像头大小",
+		"webcamReactToZoom": "摄像头随缩放变化",
+		"webcamRoundness": "摄像头圆角",
+		"webcamShadow": "摄像头阴影",
 		"shadow": "阴影",
+		"radius": "圆角半径",
 		"roundness": "圆角",
-		"padding": "内边距"
+		"padding": "内边距",
+		"removeBackground": "移除背景"
+	},
+	"sections": {
+		"scene": "场景",
+		"cursor": "光标",
+		"webcam": "摄像头",
+		"frame": "边框",
+		"crop": "裁剪"
 	},
 	"crop": {
 		"title": "裁剪视频",
-		"instruction": "拖动各边以调整裁剪区域"
+		"instruction": "拖动各边以调整裁剪区域",
+		"top": "上",
+		"bottom": "下",
+		"left": "左",
+		"right": "右",
+		"openEditor": "打开裁剪编辑器"
 	},
 	"background": {
 		"title": "背景",
 		"image": "图片",
 		"color": "颜色",
 		"gradient": "渐变",
+		"wallpaperPreview": "壁纸预览",
 		"uploadCustom": "上传自定义",
 		"uploadSuccess": "自定义图片上传成功！",
-		"uploadError": "请上传 JPG 或 JPEG 图片文件。"
+		"uploadError": "请上传 JPG 或 JPEG 图片文件。",
+		"uploadErrorDescription": "仅支持 JPG 和 JPEG 图片。"
 	},
 	"export": {
+		"title": "导出",
 		"mp4": "MP4",
 		"gif": "GIF",
 		"quality": {
 			"low": "低",
 			"medium": "中",
-			"high": "高"
+			"high": "高",
+			"original": "原始"
 		},
 		"loop": "循环",
 		"outputDimensions": "输出：{{dimensions}}px",
+		"sizePresetOriginalShort": "原",
+		"sizePresetMediumShort": "中",
+		"sizePresetLargeShort": "大",
 		"loadProject": "加载项目",
 		"saveProject": "保存项目",
 		"exportVideo": "导出{{format}}",

@@ -297,7 +297,7 @@ export default function TimelineWrapper({
       onDragEnd={onDragEndWithTooltip}
       autoScroll={{ enabled: false }}
     >
-      <div className="relative">
+      <div className="relative h-full min-h-0">
         {children}
         {/* Floating tooltip shown during drag/resize */}
         <div

@@ -1,8 +1,6 @@
 # Recordly
 
-语言: [English](README.md) | 简体中文
-
-[Product Hunt 页面 - 欢迎支持！](https://www.producthunt.com/products/recordly-make-stunning-product-demos?launch=recordly-2)
+语言: [EN](README.md) | 简中
 
 <p align="center">
   <img src="https://i.postimg.cc/tRnL8gHp/Frame-5.png" width="220" alt="Recordly logo">
@@ -13,127 +11,122 @@
   <img src="https://img.shields.io/badge/open%20source-MIT-2563eb?style=for-the-badge" alt="MIT license" />
 </p>
 
-### 创建精致、专业级的屏幕录制视频
-[Recordly](https://www.recordly.dev) 是一款**开源的录屏与视频编辑器**，用于制作**演示、教程、产品讲解和工作流视频**。
+### 制作精致、专业级的屏幕录制视频。
+[Recordly](https://www.recordly.dev) 是一款**开源录屏与编辑工具**，用于制作**精致的演示、讲解、教程和产品视频**。欢迎参与贡献。
 
-**FAQ**：这个项目与 **Openscreen** 有什么区别？
-答：Recordly 增加了完整的光标动画/渲染管线、Mac 和 Windows 原生录制能力、更贴近 Screen Studio 的缩放动画、光标循环、更平滑的平移行为，以及更多底层改进。
-
-> 该分支存在的原因是：原维护者不计划引入这些需要调整架构才能实现的能力（例如不同的录制管线）。
-
-> [!NOTE]
-> 非常感谢 **tadees** 对项目的支持！这笔捐助直接帮助支付 Apple Developer 账户费用，以便 Recordly 在 macOS 上签名与公证。
-[**支持项目**](https://ko-fi.com)
+Recordly 包含完整的光标动画与渲染管线、macOS 和 Windows 原生录屏系统、带动画的摄像头圆形叠加工作流、贴近 Screen Studio 的缩放动画、光标循环、音轨等更多核心功能。
 
 <p align="center">
   <img src="./recordlydemo.gif" width="750" alt="Recordly demo video">
 </p>
 
----
+> [!NOTE]
+> 非常感谢 **tadees** 的支持。这笔捐助会直接用于支付 Apple Developer 费用，帮助 Recordly 在 macOS 上完成签名和公证。目前仍在等待 Apple 审核。
+[**支持项目**](https://ko-fi.com/webadderall/goal?g=0)
 
+
+---
 ## Recordly 是什么？
 
-Recordly 可以录制屏幕，并自动将内容转换为更精致的视频。它会自动放大关键操作、平滑光标抖动，让你的演示默认看起来更专业。
+Recordly 可以录制你的屏幕，并自动将内容整理为更精致的视频。它会自动放大关键操作、平滑抖动的光标移动，让你的演示默认就具备更专业的观感。
 
-Recordly 支持：
+Recordly 运行于：
 
-- **macOS**
-- **Windows**
-- **Linux**
+- **macOS** 12.3+
+- **Windows** 10 Build 19041+
+- **Linux**（现代发行版）
 
-Linux 当前使用 Electron 捕获路径，因此录制时系统光标不一定总能被隐藏。
+在 Windows 上，低于 19041 的版本会回退到 Electron 捕获，且无法隐藏光标。在 Linux 上，目前不支持隐藏光标（欢迎贡献）。
+
+
 
 ---
 
 # 功能
 
-### 录制
-
-- 录制整屏或单个窗口
-- 录制结束后可直接进入编辑器
-- 支持麦克风和系统音频录制
-- Windows / Linux 使用 Chromium 捕获 API
-- macOS 使用原生 **ScreenCaptureKit**
-- Windows 提供原生 WGC 录制辅助（屏幕与应用窗口）以及 WASAPI 系统/麦克风音频能力
-
-### 智能运动
-
-- 类 Apple 风格缩放动画
-- 基于光标活动自动建议缩放区域
-- 支持手动添加缩放区域
-- 区域之间平滑过渡
-
-### 光标控制
+### 光标动画
+<p>
+  <img src="./CursorSwayDemo.gif" width="450" alt="Recordly sway demo video">
+</p>
 
 - 可调节光标大小
 - 光标平滑
 - 运动模糊
 - 点击弹跳动画
 - macOS 风格光标素材
+- 光标摆动效果
 
-### 光标循环
+### 录制
 
+- 录制整个屏幕或单个窗口
+- 录制后可直接进入编辑器
+- 支持麦克风或系统音频录制
+- Windows/Linux 使用 Chromium 捕获 API
+- macOS 使用原生 **ScreenCaptureKit** 捕获
+- Windows 使用原生 DXGI Desktop Duplication 录制辅助程序进行显示器和应用窗口捕获，并通过原生 WASAPI 处理系统/麦克风音频等
+
+### 智能运动
+
+- Apple 风格缩放动画
+- 基于光标活动的自动缩放建议
+- 手动缩放区域
+- 缩放区域之间的平滑平移过渡
+
+### 无限循环
 <p>
-  <img src="./CursorLoop.gif" width="450" alt="Recordly demo video">
+  <img src="./CursorLoop.gif" width="450" alt="Recordly gif loop demo video">
 </p>
 
-- 在视频/GIF 结尾冻结帧中让光标回到原始位置（默认关闭）
+- 可切换是否让光标在视频/GIF 结尾回到初始位置，从而生成更干净的循环效果
 
 ### 编辑工具
 
 - 时间线裁剪
-- 变速区域
+- 加速 / 减速区域
 - 注释
-- 缩放片段
+- 缩放区段
 - 项目保存与重新打开（`.recordly` 文件）
 
 ### 画面样式
 
 - 壁纸
 - 渐变
-- 纯色背景
+- 纯色填充
 - 内边距
 - 圆角
 - 模糊
-- 阴影
+- 投影阴影
 
 ### 导出
 
-- MP4 导出
+- MP4 视频导出
 - GIF 导出
 - 画幅比例控制
-- 质量选项
+- 质量设置
 
 ---
 
 # 截图
 
 <p align="center">
-  <img src="https://i.postimg.cc/d0t09ypT/Screenshot-2026-03-09-at-8-10-08-pm.png" width="700" alt="Recordly editor screenshot">
+  <img src="https://i.postimg.cc/B6bX9gcy/Screenshot-2026-03-16-at-1-33-51-pm.png" width="700" alt="Recordly editor screenshot">
 </p>
 
 <p align="center">
-  <img src="https://i.postimg.cc/YSgdbvFj/Screenshot-2026-03-09-at-8-49-14-pm.png" width="700" alt="Recordly recording interface screenshot">
+  <img src="https://i.postimg.cc/nhnmSqgV/Screenshot-2026-03-16-at-1-36-14-pm.png" width="700" alt="Recordly recording interface screenshot">
 </p>
 
 ---
 
 # 安装
 
-## 下载预编译版本
+## 下载构建版本
 
-发布页面：
+预构建发布版见：
 
 https://github.com/webadderall/Recordly/releases
 
-## Homebrew（Cask）
-
-Recordly 是图形应用，因此通过 cask 安装。
-
-```bash
-brew tap webadderall/tap
-brew install --cask recordly
-```
+---
 
 ## 从源码构建
 
@@ -144,13 +137,30 @@ npm install
 npm run dev
 ```
 
-## macOS：提示“无法打开应用”
+---
 
-Recordly 默认未签名，本地构建后的应用可能被 macOS 隔离。
+## macOS: “无法打开应用”
+
+Recordly 尚未签名。macOS 可能会隔离本地构建的应用。
+
+使用以下命令移除隔离标记：
 
 ```bash
 xattr -rd com.apple.quarantine /Applications/Recordly.app
 ```
+
+---
+
+# 系统要求
+
+| 平台 | 最低版本 | 说明 |
+|---|---|---|
+| **macOS** | macOS 12.3 (Monterey) | ScreenCaptureKit 的最低要求。更旧版本无法正常进行录制和隐藏光标。 |
+| **Windows** | Windows 10 20H1（Build 19041，2020 年 5 月） | 原生 DXGI Desktop Duplication 录制助手的最低要求。更旧版本会回退到 Electron 浏览器捕获，录制中会显示真实光标。 |
+| **Linux** | 任意现代发行版 | 通过 Electron 捕获实现录制。录制中光标始终可见。系统音频需要 PipeWire（Ubuntu 22.04+、Fedora 34+）。 |
+
+> [!IMPORTANT]
+> 在 Windows 上，如果系统版本低于 19041，录制仍可使用，但**无法将光标从录制视频中隐藏**。
 
 ---
 
@@ -162,7 +172,9 @@ xattr -rd com.apple.quarantine /Applications/Recordly.app
 2. 选择屏幕或窗口
 3. 选择音频录制选项
 4. 开始录制
-5. 停止录制并进入编辑器
+5. 停止录制并打开编辑器
+
+---
 
 ## 编辑
 
@@ -172,20 +184,22 @@ xattr -rd com.apple.quarantine /Applications/Recordly.app
 - 使用自动缩放建议
 - 调整光标行为
 - 裁剪视频
-- 添加变速片段
+- 添加变速
 - 添加注释
 - 调整画面样式
 
-你可以随时将工程保存为 `.recordly` 项目文件。
+你可以随时将工作保存为 `.recordly` 项目。
+
+---
 
 ## 导出
 
-导出选项：
+导出选项包括：
 
-- **MP4**（高质量视频）
-- **GIF**（轻量分享）
+- **MP4**，适合完整质量的视频
+- **GIF**，适合轻量分享
 
-可调整参数：
+可调整：
 
 - 画幅比例
 - 输出分辨率
@@ -195,20 +209,25 @@ xattr -rd com.apple.quarantine /Applications/Recordly.app
 
 # 限制
 
-### Linux 光标捕获
+### 光标捕获（我们会在原始隐藏光标之上叠加第二个动画光标）
 
-Electron 的桌面捕获 API 不允许在录制时隐藏系统光标。
+**macOS**：在 ScreenCaptureKit 层级就会将光标排除，因此始终干净。
 
-如果启用动画光标图层，录制结果中可能会出现**双光标**。
+**Windows**：光标排除依赖原生 DXGI Desktop Duplication 录制助手以及系统光标隐藏/恢复逻辑，需要 **Windows 10 Build 19041+**。在更旧版本中，应用会回退到 Electron 浏览器捕获，真实光标会出现在录制里。
 
-欢迎贡献以改进跨平台光标捕获体验。
+**Linux**：Electron 的桌面捕获 API 不支持隐藏光标。真实系统光标将始终出现在录制中。如果你同时在编辑器中启用动画光标叠加，导出结果中可能会出现**两个光标**。
+
+欢迎贡献，帮助改进跨平台光标捕获。
+
+---
 
 ### 系统音频
 
-系统音频捕获能力取决于平台支持。
+系统音频捕获依赖平台支持。
 
 **Windows**
-- 开箱即用
+- 开箱即用，使用原生 WASAPI
+- 需要 Windows 10 Build 19041+
 
 **Linux**
 - 需要 PipeWire（Ubuntu 22.04+、Fedora 34+）
@@ -222,31 +241,91 @@ Electron 的桌面捕获 API 不允许在录制时隐藏系统光标。
 
 # 工作原理
 
-Recordly 是一个**桌面视频编辑器**，核心是渲染驱动的运动管线 + 平台特定捕获层。
+Recordly 是一个**桌面视频编辑器**，以渲染驱动的运动管线和平台特定捕获层为核心。
 
-**捕获层**
+**捕获**
 - Electron 负责录制流程编排
 - macOS 使用原生辅助程序处理 ScreenCaptureKit 和光标遥测
-- Windows 使用原生 WGC 进行屏幕捕获
+- Windows 使用原生 DXGI Desktop Duplication 进行屏幕捕获
 
-**运动层**
+**运动**
 - 缩放区域
-- 光标追踪
+- 光标跟踪
 - 变速
 - 时间线编辑
 
-**渲染层**
-- 场景组合由 **PixiJS** 处理
+**渲染**
+- 场景合成由 **PixiJS** 处理
 
-**导出层**
-- 使用同一渲染场景逐帧输出
+**导出**
+- 帧通过同一套场景管线进行渲染
 - 编码为 MP4 或 GIF
 
-**项目文件**
-- `.recordly` 文件保存源视频路径与编辑状态
+**项目**
+- `.recordly` 文件保存源视频路径和编辑状态
 
 ---
 
 # 贡献
 
-欢迎所有贡献者参与！
+欢迎所有贡献者参与。
+
+特别需要帮助的方向：
+
+- **Linux** 的平滑光标管线
+- **摄像头** 叠加气泡
+- **本地化** 支持，尤其是中文
+- UI/UX **设计** 改进
+- **导出速度** 改进
+
+请注意：
+- 保持 Pull Request **聚焦且模块化**
+- 测试播放、编辑和导出流程
+- 避免大型且无关的重构
+
+详细指南请参阅 `CONTRIBUTING.md`。
+
+---
+
+# 社区
+
+Bug 反馈和功能请求：
+
+https://github.com/webadderall/Recordly/issues
+
+欢迎提交 Pull Request。
+
+---
+
+# 捐助与赞助者
+
+[捐助](https://ko-fi.com/webadderall/goal?g=0)
+
+感谢所有支持者。你们在帮助 Recordly 保持开源，并支持持续开发。
+
+• Tadees ($100)
+• Anonymous supporter ($5)
+• Anonymous supporter ($1)
+
+其他事项可发送邮件至 youngchen3442@gmail.com，或通过 [@webadderall](https://x.com/webadderall) 私信联系。
+
+
+
+---
+
+# 许可证
+
+Recordly 基于 **MIT License** 发布。
+
+---
+
+# 致谢
+
+## 鸣谢
+
+本项目最初构建于优秀的 [OpenScreen](https://github.com/siddharthvaddem/openscreen) 项目之上。
+
+创建者  
+[@webadderall](https://x.com/webadderall)
+
+---

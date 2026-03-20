@@ -1,6 +1,4 @@
-import { useState, useRef, useEffect } from "react";
-import { Slider } from "@/components/ui/slider";
-import { RotateCcw } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface SliderControlProps {
   label: string;
@@ -18,92 +16,51 @@ interface SliderControlProps {
 export function SliderControl({
   label,
   value,
-  defaultValue,
+  defaultValue: _defaultValue,
   min,
   max,
   step,
   onChange,
   formatValue,
-  parseInput,
+  parseInput: _parseInput,
   accentColor = "blue",
 }: SliderControlProps) {
-  const [editing, setEditing] = useState(false);
-  const [editText, setEditText] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const isModified = value !== defaultValue;
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editing]);
-
-  const commitEdit = () => {
-    const parsed = parseInput(editText);
-    if (parsed != null && !isNaN(parsed)) {
-      onChange(Math.min(max, Math.max(min, parsed)));
-    }
-    setEditing(false);
-  };
-
-  const cancelEdit = () => {
-    setEditing(false);
-  };
+  const pct = Math.min(100, Math.max(0, ((value - min) / (max - min || 1)) * 100));
+  const dividerClass =
+    accentColor === "purple"
+      ? "bg-white/95 shadow-[0_0_10px_rgba(139,92,246,0.28)]"
+      : "bg-white/95 shadow-[0_0_10px_rgba(37,99,235,0.28)]";
 
   return (
-    <>
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-1">
-          <div className="text-[10px] font-medium text-slate-300">{label}</div>
-          {isModified && (
-            <button
-              type="button"
-              onClick={() => onChange(defaultValue)}
-              className="text-slate-500 hover:text-slate-300 transition-colors"
-              title="Reset to default"
-            >
-              <RotateCcw className="w-2.5 h-2.5" />
-            </button>
-          )}
-        </div>
-        {editing ? (
-          <input
-            ref={inputRef}
-            type="text"
-            value={editText}
-            onChange={(e) => setEditText(e.target.value)}
-            onBlur={commitEdit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitEdit();
-              if (e.key === "Escape") cancelEdit();
-            }}
-            className="w-14 text-[10px] text-right font-mono bg-white/10 border border-white/20 rounded px-1 py-0 text-slate-200 outline-none focus:border-white/40"
-          />
-        ) : (
-          <span
-            className="text-[10px] text-slate-500 font-mono cursor-text hover:text-slate-300 transition-colors"
-            onClick={() => {
-              setEditText(formatValue(value));
-              setEditing(true);
-            }}
-          >
-            {formatValue(value)}
-          </span>
+		<div className="relative flex h-10 w-full select-none items-center overflow-hidden rounded-xl bg-black/60 px-1.5">
+			<div
+				className="absolute inset-y-[3px] left-[3px] right-auto rounded-[10px] bg-white/[0.08] shadow-[0_4px_10px_0_rgba(0,0,0,0.18)] transition-none"
+				style={{
+					width: pct > 0 ? `max(calc(${pct}% - 6px), 2.1rem)` : 0,
+				}}
+			/>
+      <div
+        className={cn(
+          "pointer-events-none absolute bottom-[18%] top-[18%] z-10 w-[2px] rounded-full transition-none",
+          dividerClass,
         )}
-      </div>
-      <Slider
-        value={[value]}
-        onValueChange={(values) => onChange(values[0])}
+        style={{ left: `calc(${pct}% - 8px)` }}
+      />
+      <span className="pointer-events-none relative z-10 flex-1 pl-3 text-[12px] font-medium text-slate-300">
+        {label}
+      </span>
+      <span className="pointer-events-none relative z-10 pr-3 text-[12px] font-medium tabular-nums text-slate-100">
+        {formatValue(value)}
+      </span>
+      <input
+        type="range"
         min={min}
         max={max}
         step={step}
-        className={
-          accentColor === "purple"
-            ? "w-full [&_[role=slider]]:bg-[#8b5cf6] [&_[role=slider]]:border-[#8b5cf6] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
-            : "w-full [&_[role=slider]]:bg-[#2563EB] [&_[role=slider]]:border-[#2563EB] [&_[role=slider]]:h-3 [&_[role=slider]]:w-3"
-        }
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0"
       />
-    </>
+    </div>
   );
 }

@@ -78,14 +78,41 @@
 		"adjustStep": "2. Adjust",
 		"adjustDesc": "Drag the edges of the red region to cover exactly what you want to cut out."
 	},
+	"feedback": {
+		"trigger": "Feedback",
+		"title": "Feedback & contact",
+		"description": "Reach out directly or open an issue if something is broken or missing.",
+		"emailLabel": "Email",
+		"xLabel": "X",
+		"reportIssue": "Report issue / send feedback",
+		"openFailed": "Failed to open link."
+	},
 	"keyboardShortcuts": {
+		"trigger": "Shortcuts",
 		"title": "Keyboard Shortcuts",
+		"description": "Quick reference for the timeline and editor controls.",
 		"customizeTooltip": "Customize shortcuts",
 		"customize": "Customize",
 		"panTimeline": "Pan Timeline",
 		"zoomTimeline": "Zoom Timeline",
 		"cycleAnnotations": "Cycle Annotations",
 		"tab": "Tab"
+	},
+	"actions": {
+		"saveAgain": "Save Again",
+		"showInFolder": "Show In Folder"
+	},
+	"project": {
+		"untitled": "Untitled"
+	},
+	"exportStatus": {
+		"exporting": "Exporting",
+		"renderingFile": "Rendering your file.",
+		"preparing": "Preparing export...",
+		"completePercent": "{{percent}}% complete",
+		"issue": "Export issue",
+		"complete": "Export complete",
+		"savedSuccessfully": "Your file was saved successfully."
 	},
 	"openRecordingsFolder": "Open recordings folder"
 }

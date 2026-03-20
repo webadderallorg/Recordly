@@ -1,4 +1,4 @@
-import { Pause, Play } from "lucide-react";
+import { Pause, Play, Volume2, VolumeX } from "lucide-react";
 import { useScopedT } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
@@ -9,6 +9,8 @@ interface PlaybackControlsProps {
 	duration: number;
 	onTogglePlayPause: () => void;
 	onSeek: (time: number) => void;
+	volume: number;
+	onVolumeChange: (volume: number) => void;
 }
 
 export default function PlaybackControls({
@@ -17,6 +19,8 @@ export default function PlaybackControls({
 	duration,
 	onTogglePlayPause,
 	onSeek,
+	volume,
+	onVolumeChange,
 }: PlaybackControlsProps) {
 	const t = useScopedT("editor");
 	function formatTime(seconds: number) {
@@ -30,10 +34,14 @@ export default function PlaybackControls({
 		onSeek(parseFloat(e.target.value));
 	}
 
+	function handleVolumeChange(e: React.ChangeEvent<HTMLInputElement>) {
+		onVolumeChange(Number(e.target.value));
+	}
+
 	const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
 	return (
-		<div className="flex items-center gap-2 px-1 py-0.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 shadow-xl transition-all duration-300 hover:bg-black/70 hover:border-white/20">
+		<div className="flex items-center gap-2 px-1.5 pr-3 py-0.5 rounded-full bg-black/75 backdrop-blur-md border border-white/10 transition-colors duration-300 hover:bg-black/80 hover:border-white/20">
 			<Button
 				onClick={onTogglePlayPause}
 				size="icon"
@@ -41,7 +49,7 @@ export default function PlaybackControls({
 					"w-8 h-8 rounded-full transition-all duration-200 border border-white/10",
 					isPlaying
 						? "bg-white/10 text-white hover:bg-white/20"
-						: "bg-white text-black hover:bg-white/90 hover:scale-105 shadow-[0_0_15px_rgba(255,255,255,0.3)]",
+						: "bg-white text-black hover:bg-white/90",
 				)}
 				aria-label={isPlaying ? t("playback.pause") : t("playback.play")}
 			>
@@ -75,7 +83,7 @@ export default function PlaybackControls({
 
 				{/* Custom Thumb (visual only, follows progress) */}
 				<div
-					className="absolute w-2.5 h-2.5 bg-white rounded-full shadow-lg pointer-events-none group-hover:scale-125 transition-transform duration-100"
+					className="absolute w-2.5 h-2.5 bg-white rounded-full pointer-events-none group-hover:scale-125 transition-transform duration-100"
 					style={{
 						left: `${progress}%`,
 						transform: "translateX(-50%)",
@@ -86,6 +94,32 @@ export default function PlaybackControls({
 			<span className="text-[9px] font-medium text-slate-500 tabular-nums w-[30px]">
 				{formatTime(duration)}
 			</span>
+
+			<div className="flex items-center gap-1.5 pl-1">
+				{volume <= 0.001 ? (
+					<VolumeX className="h-3.5 w-3.5 text-slate-400" />
+				) : (
+					<Volume2 className="h-3.5 w-3.5 text-slate-400" />
+				)}
+				<div className="group relative flex h-6 w-20 items-center">
+					<div className="absolute left-0 right-0 h-0.5 rounded-full bg-white/10 overflow-hidden">
+						<div className="h-full rounded-full bg-white/70" style={{ width: `${volume * 100}%` }} />
+					</div>
+					<input
+						type="range"
+						min="0"
+						max="1"
+						step="0.01"
+						value={volume}
+						onChange={handleVolumeChange}
+						className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+					/>
+					<div
+						className="pointer-events-none absolute h-2.5 w-2.5 rounded-full bg-white transition-transform duration-100 group-hover:scale-125"
+						style={{ left: `${volume * 100}%`, transform: "translateX(-50%)" }}
+					/>
+				</div>
+			</div>
 		</div>
 	);
 }

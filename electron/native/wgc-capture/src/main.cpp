@@ -12,8 +12,14 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include <chrono>
 
 static std::atomic<bool> g_stopRequested{false};
+static std::atomic<bool> g_pauseRequested{false};
+static std::atomic<bool> g_resumePending{false};
+static std::atomic<int64_t> g_lastFrameTimestampHns{0};
+static std::atomic<int64_t> g_pauseStartTimestampHns{0};
+static std::atomic<int64_t> g_accumulatedPausedHns{0};
 static std::mutex g_stopMutex;
 static std::condition_variable g_stopCv;
 
@@ -140,6 +146,18 @@ static void stdinListenerThread() {
             line.pop_back();
         }
 
+        if (line == "pause") {
+            g_pauseRequested = true;
+            g_pauseStartTimestampHns = g_lastFrameTimestampHns.load();
+            continue;
+        }
+
+        if (line == "resume") {
+            g_pauseRequested = false;
+            g_resumePending = true;
+            continue;
+        }
+
         if (line == "stop") {
             g_stopRequested = true;
             g_stopCv.notify_all();
@@ -209,8 +227,25 @@ int main(int argc, char* argv[]) {
     // Set up frame callback
     std::atomic<int64_t> frameCount{0};
     session.setFrameCallback([&](ID3D11Texture2D* texture, int64_t timestampHns) {
+        g_lastFrameTimestampHns = timestampHns;
         if (g_stopRequested) return;
-        if (encoder.writeFrame(texture, timestampHns)) {
+
+        if (g_pauseRequested) return;
+
+        int64_t adjustedTimestampHns = timestampHns;
+        if (g_resumePending.exchange(false)) {
+            const int64_t pauseStart = g_pauseStartTimestampHns.load();
+            if (pauseStart > 0 && timestampHns > pauseStart) {
+                g_accumulatedPausedHns += (timestampHns - pauseStart);
+            }
+        }
+
+        adjustedTimestampHns -= g_accumulatedPausedHns.load();
+        if (adjustedTimestampHns < 0) {
+            adjustedTimestampHns = 0;
+        }
+
+        if (encoder.writeFrame(texture, adjustedTimestampHns)) {
             frameCount++;
         }
     });
@@ -257,10 +292,18 @@ int main(int argc, char* argv[]) {
     std::cout << "Recording started" << std::endl;
     std::cout.flush();
 
-    // Wait for stop signal
-    {
+    // Wait for stop signal while pausing/resuming audio tracks in lockstep.
+    while (!g_stopRequested) {
+        if (g_pauseRequested) {
+            if (audioActive) loopback.pause();
+            if (micActive) micCapture.pause();
+        } else {
+            if (audioActive) loopback.resume();
+            if (micActive) micCapture.resume();
+        }
+
         std::unique_lock<std::mutex> lock(g_stopMutex);
-        g_stopCv.wait(lock, [] { return g_stopRequested.load(); });
+        g_stopCv.wait_for(lock, std::chrono::milliseconds(20), [] { return g_stopRequested.load(); });
     }
 
     // Stop capture and finalize

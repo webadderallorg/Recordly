@@ -78,14 +78,41 @@
 		"adjustStep": "2. Ajustar",
 		"adjustDesc": "Arrastra los bordes de la región roja para cubrir exactamente lo que deseas eliminar."
 	},
+	"feedback": {
+		"trigger": "Comentarios",
+		"title": "Comentarios y contacto",
+		"description": "Contáctanos directamente o abre un issue si algo falla o falta.",
+		"emailLabel": "Correo",
+		"xLabel": "X",
+		"reportIssue": "Reportar problema / enviar comentarios",
+		"openFailed": "No se pudo abrir el enlace."
+	},
 	"keyboardShortcuts": {
+		"trigger": "Atajos",
 		"title": "Atajos de teclado",
+		"description": "Referencia rápida para los controles de la línea de tiempo y del editor.",
 		"customizeTooltip": "Personalizar atajos",
 		"customize": "Personalizar",
 		"panTimeline": "Desplazar línea de tiempo",
 		"zoomTimeline": "Zoom en línea de tiempo",
 		"cycleAnnotations": "Recorrer anotaciones",
 		"tab": "Tab"
+	},
+	"actions": {
+		"saveAgain": "Guardar de nuevo",
+		"showInFolder": "Mostrar en carpeta"
+	},
+	"project": {
+		"untitled": "Sin título"
+	},
+	"exportStatus": {
+		"exporting": "Exportando",
+		"renderingFile": "Renderizando tu archivo.",
+		"preparing": "Preparando exportación...",
+		"completePercent": "{{percent}}% completado",
+		"issue": "Problema de exportación",
+		"complete": "Exportación completada",
+		"savedSuccessfully": "Tu archivo se guardó correctamente."
 	},
 	"openRecordingsFolder": "Abrir carpeta de grabaciones"
 }

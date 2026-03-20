@@ -1,5 +1,6 @@
 import { Application, Sprite, Graphics } from 'pixi.js';
 import type { CropRegion } from '../types';
+import { drawSquircleOnGraphics } from '@/lib/geometry/squircle';
 
 interface LayoutParams {
   container: HTMLDivElement;
@@ -18,7 +19,13 @@ interface LayoutResult {
   videoSize: { width: number; height: number };
   baseScale: number;
   baseOffset: { x: number; y: number };
-  maskRect: { x: number; y: number; width: number; height: number };
+  maskRect: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    sourceCrop?: CropRegion;
+  };
   cropBounds: { startX: number; endX: number; startY: number; endY: number };
 }
 
@@ -97,7 +104,13 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
   
   // Apply border radius
   maskGraphics.clear();
-  maskGraphics.roundRect(maskX, maskY, croppedDisplayWidth, croppedDisplayHeight, borderRadius);
+  drawSquircleOnGraphics(maskGraphics, {
+    x: maskX,
+    y: maskY,
+    width: croppedDisplayWidth,
+    height: croppedDisplayHeight,
+    radius: borderRadius,
+  });
   maskGraphics.fill({ color: 0xffffff });
 
   return {
@@ -105,7 +118,13 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
     videoSize: { width: croppedVideoWidth, height: croppedVideoHeight },
     baseScale: scale,
     baseOffset: { x: spriteX, y: spriteY },
-    maskRect: { x: maskX, y: maskY, width: croppedDisplayWidth, height: croppedDisplayHeight },
+    maskRect: {
+      x: maskX,
+      y: maskY,
+      width: croppedDisplayWidth,
+      height: croppedDisplayHeight,
+      sourceCrop: crop,
+    },
     cropBounds: { startX: cropStartX, endX: cropEndX, startY: cropStartY, endY: cropEndY },
   };
 }

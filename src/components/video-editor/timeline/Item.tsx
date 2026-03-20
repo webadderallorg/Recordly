@@ -1,21 +1,20 @@
 import type { Span } from "dnd-timeline";
 import { useItem } from "dnd-timeline";
-import { Gauge, MessageSquare, Scissors, ZoomIn } from "lucide-react";
+import { Gauge, MessageSquare, Music, Scissors, ZoomIn } from "lucide-react";
 import { useMemo } from "react";
-import { useScopedT } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";
 import glassStyles from "./ItemGlass.module.css";
 
 interface ItemProps {
-	id: string;
-	span: Span;
-	rowId: string;
-	children: React.ReactNode;
-	isSelected?: boolean;
-	onSelect?: () => void;
-	zoomDepth?: number;
-	speedValue?: number;
-	variant?: "zoom" | "trim" | "annotation" | "speed";
+  id: string;
+  span: Span;
+  rowId: string;
+  children: React.ReactNode;
+  isSelected?: boolean;
+  onSelect?: () => void;
+  zoomDepth?: number;
+  speedValue?: number;
+  variant?: 'zoom' | 'trim' | 'annotation' | 'speed' | 'audio';
 }
 
 // Map zoom depth to multiplier labels
@@ -49,122 +48,127 @@ export default function Item({
 	variant = "zoom",
 	children,
 }: ItemProps) {
-	const t = useScopedT("timeline");
 	const { setNodeRef, attributes, listeners, itemStyle, itemContentStyle } = useItem({
 		id,
 		span,
 		data: { rowId },
 	});
 
-	const isZoom = variant === "zoom";
-	const isTrim = variant === "trim";
-	const isSpeed = variant === "speed";
+  const isZoom = variant === 'zoom';
+  const isTrim = variant === 'trim';
+  const isSpeed = variant === 'speed';
+  const isAudio = variant === 'audio';
 
-	const glassClass = isZoom
-		? glassStyles.glassGreen
-		: isTrim
-			? glassStyles.glassRed
-			: isSpeed
-				? glassStyles.glassAmber
-				: glassStyles.glassYellow;
+  const glassClass = isZoom
+    ? glassStyles.glassGreen
+    : isTrim
+    ? glassStyles.glassRed
+    : isSpeed
+    ? glassStyles.glassAmber
+    : isAudio
+    ? glassStyles.glassPurple
+    : glassStyles.glassYellow;
 
-	const endCapColor = isZoom ? "#2563EB" : isTrim ? "#ef4444" : isSpeed ? "#d97706" : "#B4A046";
+  const endCapColor = isZoom
+    ? '#2563EB'
+    : isTrim
+    ? '#ef4444'
+    : isSpeed
+    ? '#d97706'
+    : isAudio
+    ? '#a855f7'
+    : '#B4A046';
 
 	const timeLabel = useMemo(
 		() => `${formatMs(span.start)} – ${formatMs(span.end)}`,
 		[span.start, span.end],
 	);
 
-	const MIN_ITEM_PX = 6;
-	const safeItemStyle = { ...itemStyle, minWidth: MIN_ITEM_PX };
+  const MIN_ITEM_PX = 6;
+  const safeItemStyle = { ...itemStyle, minWidth: MIN_ITEM_PX, height: "100%" };
 
-	return (
-		<div
-			ref={setNodeRef}
-			style={safeItemStyle}
-			{...listeners}
-			{...attributes}
-			onPointerDownCapture={() => onSelect?.()}
-			className="group"
-		>
-			<div style={{ ...itemContentStyle, minWidth: 24 }}>
-				<div
-					className={cn(
-						glassClass,
-						"w-full h-full overflow-hidden flex items-center justify-center gap-1.5 cursor-grab active:cursor-grabbing relative",
-						isSelected && glassStyles.selected,
-					)}
-					style={{ height: 40, color: "#fff", minWidth: 24 }}
-					onClick={(event) => {
-						event.stopPropagation();
-						onSelect?.();
-					}}
-				>
-					<div
-						className={cn(glassStyles.zoomEndCap, glassStyles.left)}
-						style={{
-							cursor: "col-resize",
-							pointerEvents: "auto",
-							width: 8,
-							opacity: 0.9,
-							background: endCapColor,
-						}}
-						title={t("resizeLeft")}
-					/>
-					<div
-						className={cn(glassStyles.zoomEndCap, glassStyles.right)}
-						style={{
-							cursor: "col-resize",
-							pointerEvents: "auto",
-							width: 8,
-							opacity: 0.9,
-							background: endCapColor,
-						}}
-						title={t("resizeRight")}
-					/>
-					{/* Content */}
-					<div className="relative z-10 flex flex-col items-center justify-center text-white/90 opacity-80 group-hover:opacity-100 transition-opacity select-none overflow-hidden">
-						<div className="flex items-center gap-1.5">
-							{isZoom ? (
-								<>
-									<ZoomIn className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
-										{ZOOM_LABELS[zoomDepth] || `${zoomDepth}×`}
-									</span>
-								</>
-							) : isTrim ? (
-								<>
-									<Scissors className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
-										{t("trim.label", undefined, { index: "" }).trim()}
-									</span>
-								</>
-							) : isSpeed ? (
-								<>
-									<Gauge className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
-										{speedValue !== undefined ? `${speedValue}×` : t("speed.label")}
-									</span>
-								</>
-							) : (
-								<>
-									<MessageSquare className="w-3.5 h-3.5 shrink-0" />
-									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
-										{children}
-									</span>
-								</>
-							)}
-						</div>
-						<span
-							className={`text-[9px] tabular-nums tracking-tight whitespace-nowrap transition-opacity ${
-								isSelected ? "opacity-60" : "opacity-0 group-hover:opacity-40"
-							}`}
-						>
-							{timeLabel}
-						</span>
-					</div>
-				</div>
-			</div>
-		</div>
-	);
+  return (
+    <div
+      ref={setNodeRef}
+      style={safeItemStyle}
+      {...listeners}
+      {...attributes}
+      onPointerDownCapture={() => onSelect?.()}
+      className="group h-full"
+    >
+      <div className="h-full" style={{ ...itemContentStyle, minWidth: 24, height: "100%" }}>
+        <div
+          className={cn(
+            glassClass,
+            "w-full h-full overflow-hidden flex items-center justify-center gap-1.5 cursor-grab active:cursor-grabbing relative",
+            isSelected && glassStyles.selected
+          )}
+          style={{ height: "100%", minHeight: 22, color: '#fff', minWidth: 24 }}
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect?.();
+          }}
+        >
+          <div
+            className={cn(glassStyles.zoomEndCap, glassStyles.left)}
+            style={{ cursor: 'col-resize', pointerEvents: 'auto', width: 8, opacity: 0.9, background: endCapColor }}
+            title="Resize left"
+          />
+          <div
+            className={cn(glassStyles.zoomEndCap, glassStyles.right)}
+            style={{ cursor: 'col-resize', pointerEvents: 'auto', width: 8, opacity: 0.9, background: endCapColor }}
+            title="Resize right"
+          />
+          {/* Content */}
+          <div className="relative z-10 flex flex-col items-center justify-center text-white/90 opacity-80 group-hover:opacity-100 transition-opacity select-none overflow-hidden">
+            <div className="flex items-center gap-1.5">
+              {isZoom ? (
+                <>
+                  <ZoomIn className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
+                    {ZOOM_LABELS[zoomDepth] || `${zoomDepth}×`}
+                  </span>
+                </>
+              ) : isTrim ? (
+                <>
+                  <Scissors className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
+                    Trim
+                  </span>
+                </>
+              ) : isSpeed ? (
+                <>
+                  <Gauge className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
+                    {speedValue !== undefined ? `${speedValue}×` : 'Speed'}
+                  </span>
+                </>
+              ) : isAudio ? (
+                <>
+                  <Music className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[11px] font-semibold tracking-tight truncate max-w-full">
+                    {children}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
+                    {children}
+                  </span>
+                </>
+              )}
+            </div>
+            <span
+              className={`text-[9px] tabular-nums tracking-tight whitespace-nowrap transition-opacity ${
+                isSelected ? 'opacity-60' : 'opacity-0 group-hover:opacity-40'
+              }`}
+            >
+              {timeLabel}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }

@@ -18,6 +18,7 @@
 		"compilingStatus": "Compiling...",
 		"frames": "Frames",
 		"cancelExport": "Cancel Export",
+		"reopenSaveDialog": "Open Save Dialog Again",
 		"savedSuccess": "{{format}} saved successfully!"
 	},
 	"addFont": {

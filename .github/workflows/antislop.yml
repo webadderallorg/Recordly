@@ -1,0 +1,61 @@
+name: PR Quality
+
+on:
+  pull_request_target:
+    types: [opened, reopened, edited, synchronize]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: write
+
+jobs:
+  anti-slop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: peakoss/anti-slop@85daca1880e9e1af197fc06ea03349daf08f4202
+        with:
+          max-failures: 4
+
+          require-description: true
+          max-description-length: 2000
+          max-emoji-count: 2
+          max-code-references: 5
+
+          max-commit-message-length: 300
+          require-commit-author-match: true
+
+          min-account-age: 30
+          min-profile-completeness: 4
+          min-global-merge-ratio: 30
+
+          max-daily-forks: 7
+          detect-spam-usernames: true
+
+          blocked-source-branches: |
+            main
+            master
+
+          blocked-terms: |
+            ignore previous instructions
+            you are a helpful AI
+            as an AI language model
+
+          exempt-draft-prs: true
+          exempt-bots: |
+            dependabot[bot]
+            renovate[bot]
+            github-actions[bot]
+          exempt-author-association: OWNER,MEMBER,COLLABORATOR
+
+          success-add-pr-labels: checked
+          failure-add-pr-labels: slop
+
+          failure-pr-message: |
+            ⚠️ This pull request has been flagged by **Anti-Slop**.
+            Our automated checks detected patterns commonly associated with
+            low-quality or automated/AI submissions (failure count reached).
+            No automatic closure — a maintainer will review it.
+            If this is legitimate work, please add more context, link issues, or ping us.
+
+          close-pr: false

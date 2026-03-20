@@ -3,7 +3,8 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { createHudOverlayWindow, createEditorWindow, createSourceSelectorWindow } from './windows'
-import { registerIpcHandlers, getSelectedSourceId, killWgcCaptureProcess } from './ipc/handlers'
+import { showCursor } from './cursorHider'
+import { registerIpcHandlers, getSelectedSourceId, killWindowsCaptureProcess } from './ipc/handlers'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -84,10 +85,25 @@ function focusOrCreateMainWindow() {
   }
 
   if (mainWindow && !mainWindow.isDestroyed()) {
-    if (mainWindow.isMinimized()) mainWindow.restore()
+    // On Linux/Wayland, focus() often doesn't take effect (compositor ignores it). Apps like Telegram
+    // work because they receive an XDG activation token via StatusNotifierItem.ProvideXdgActivationToken;
+    // Electron's tray doesn't handle that yet. Workaround: destroy and recreate the HUD so the new
+    // window gets focus (creation path works). Only for HUD, not editor.
+    if (
+      process.platform === 'linux' &&
+      !mainWindow.isFocused() &&
+      !isEditorWindow(mainWindow)
+    ) {
+      const win = mainWindow
+      mainWindow = null
+      win.once('closed', () => createWindow())
+      win.destroy()
+      return
+    }
     mainWindow.show()
-    mainWindow.focus()
+    if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.moveTop()
+    mainWindow.focus()
   }
 }
 
@@ -204,6 +220,7 @@ function setupApplicationMenu() {
 
 function createTray() {
   tray = new Tray(defaultTrayIcon);
+  tray.on('click', () => focusOrCreateMainWindow())
 }
 
 function getPublicAssetPath(filename: string) {
@@ -310,8 +327,10 @@ function createEditorWindowWrapper() {
 
     if (choice === 0) {
       mainWindow!.webContents.send('request-save-before-close')
-      ipcMain.once('save-before-close-done', () => {
-        closeEditorWindowBypassingUnsavedPrompt(mainWindow)
+      ipcMain.once('save-before-close-done', (_event, saved: boolean) => {
+        if (saved) {
+          closeEditorWindowBypassingUnsavedPrompt(mainWindow)
+        }
       })
     } else if (choice === 1) {
       closeEditorWindowBypassingUnsavedPrompt(mainWindow)
@@ -330,11 +349,14 @@ function createSourceSelectorWindowWrapper() {
 // On macOS, applications and their menu bar stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('before-quit', () => {
-  killWgcCaptureProcess()
+  killWindowsCaptureProcess()
+  showCursor()
 })
 
 app.on('window-all-closed', () => {
-  // Keep app running (macOS behavior)
+  if (process.platform !== 'darwin') {
+    app.quit()
+  }
 })
 
 app.on('activate', () => {

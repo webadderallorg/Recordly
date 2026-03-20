@@ -44,7 +44,12 @@ for (const helper of helpers) {
   const sourcePath = path.join(nativeRoot, helper.source);
   const outputPath = path.join(outputDir, helper.output);
 
-  const result = spawnSync('swiftc', ['-O', sourcePath, '-o', outputPath], {
+  const result = spawnSync('swiftc', [
+    '-O',
+    '-target', process.arch === 'arm64' ? 'arm64-apple-macos14.0' : 'x86_64-apple-macos14.0',
+    sourcePath,
+    '-o', outputPath
+  ], {
     encoding: 'utf8',
     timeout: 120000,
   });

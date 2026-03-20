@@ -1,0 +1,38 @@
+name: Auto Translate to zh-CN
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "*.md"
+
+permissions:
+  contents: write
+  models: read
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/cache@v4
+        with:
+          path: .genaiscript/cache/**
+          key: translation-cache-${{ github.run_id }}
+          restore-keys: translation-cache-
+
+      - uses: pelikhan/action-continuous-translation@v0.2.11
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          source: en
+          lang: zh
+          files: "*.md;README.md;CONTRIBUTING.md;TRANSLATION_GUIDE.md;CLAUDE.md"
+          filename_template: "{{ base }}.zh-CN{{ ext }}"
+
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs(zh-CN): auto-translate updates"
+          file_pattern: "*.zh-CN.md"

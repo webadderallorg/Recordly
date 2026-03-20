@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |---------|-------------|
 | `npm run dev` | Start Vite dev server + Electron |
 | `npm run build` | Full production build (native helpers → TypeScript → Vite → Electron Builder) |
-| `npm run build:win` | Windows build (includes WGC capture) |
+| `npm run build:win` | Windows build (includes native DXGI capture) |
 | `npm run build:mac` | macOS build |
 | `npm run build:linux` | Linux build |
 | `npm run lint` | Biome lint check |
@@ -42,7 +42,7 @@ Run a single test file: `npx vitest run src/lib/exporter/gifExporter.test.ts`
 ### Recording Pipeline (Platform-Specific)
 
 - **macOS**: ScreenCaptureKit via compiled Swift helpers (`scripts/build-native-helpers.mjs`)
-- **Windows**: WGC (Windows.Graphics.Capture) via C++ CMake build (`scripts/build-wgc-capture.mjs`), fallback to FFmpeg
+- **Windows**: DXGI Desktop Duplication via C++ CMake build (`scripts/build-windows-capture.mjs`), fallback to FFmpeg
 - **Linux**: Chromium `getDisplayMedia`
 - Core recording logic: `src/hooks/useScreenRecorder.ts` (60 FPS target, adaptive bitrate)
 
