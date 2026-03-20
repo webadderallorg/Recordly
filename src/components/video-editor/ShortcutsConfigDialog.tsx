@@ -112,7 +112,7 @@ export function ShortcutsConfigDialog() {
 
   return (
     <Dialog open={isConfigOpen} onOpenChange={(open: boolean) => { if (!open) handleClose(); }}>
-      <DialogContent className="bg-[#09090b] border-white/10 text-white max-w-[420px]">
+      <DialogContent className="bg-[#09090b] border-white/10 text-white max-w-[460px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-sm">
             <Keyboard className="w-4 h-4 text-[#2563EB]" />
