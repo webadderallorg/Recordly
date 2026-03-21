@@ -38,8 +38,27 @@ On Windows, builds older than 19041 fall back to Electron capture and the cursor
 
 ---
 
-# Features
+# Core Features
 
+## Auto-zooms, silky cursor & beautiful backgrounds
+Recordly adds beautiful cursor animations and auto-zooming plus a background to your recordings so you can spend less time editing and more time shipping.
+<p>
+  <img src="./feature1.gif" width="450" alt="Recordly sway demo video">
+</p>
+
+## Dynamic bubble webcam overlay
+Record your face with smart webcam bubbles that expand and shrink to make sure you get the spotlight when you need to. Perfect for demos and tutorials.
+<p>
+  <img src="./feature2.gif" width="450" alt="Recordly sway demo video">
+</p>
+
+## Intuitive timeline editing interface
+Use drag-and-drop pieces to control video speed, zooms, annotations, audio tracks and video length, and save your projects as .recordly files so you can save your progress or edit other projects.
+<p>
+  <img src="./feature3.png" width="450" alt="Recordly sway demo video">
+</p>
+
+## All features
 ### Cursor Animations
 <p>
   <img src="./CursorSwayDemo.gif" width="450" alt="Recordly sway demo video">
