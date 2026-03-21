@@ -1,5 +1,72 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
 reviews:
   auto_review:
     enabled: true
+
+    # Only review mainline branches
     base_branches:
-      - "*"
+      - "^main$"
+      - "^dev$"
+      - "^develop$"
+
+    draft: false
+    auto_incremental_review: true
+
+    ignore:
+      # ignore build and generated output
+      paths:
+        - "node_modules/**"
+        - "dist/**"
+        - "build/**"
+        - "electron/dist/**"
+        - "*.dll"
+        - "*.exe"
+        - "coverage/**"
+        - "*.log"
+        - "*.lock"
+
+    high_level_summary: true
+    review_status: true
+    collapse_walkthrough: false
+
+    labels:
+      enabled: true
+      categories:
+        - name: "bug"
+          keywords: ["fix", "error", "bug", "crash"]
+        - name: "feature"
+          keywords: ["feat", "add", "support", "implement"]
+        - name: "refactor"
+          keywords: ["refactor", "cleanup"]
+        - name: "docs"
+          keywords: ["docs", "readme", "documentation"]
+        - name: "test"
+          keywords: ["test", "tests", "coverage"]
+
+checks:
+  title:
+    enabled: true
+    conventional: true
+
+  description:
+    enabled: true
+    required_sections:
+      - "Motivation"
+      - "Type of Change"
+      - "Testing"
+      - "Checklist"
+
+  docstring_coverage:
+    enabled: true
+    threshold: 60
+
+  large_pr:
+    enabled: true
+    max_lines: 800
+
+  breaking_changes:
+    enabled: true
+
+chat:
+  auto_reply: true
