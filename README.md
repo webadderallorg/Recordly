@@ -379,7 +379,7 @@ Recordly is licensed under the **AGPL 3.0**.
 Recordly originally started as a fork of the excellent [OpenScreen](https://github.com/siddharthvaddem/openscreen) project and has since been significantly modified.
 
 Created by  
-[@webadderall](https://x.com/webadderall) && Contributors
+[@webadderall](https://x.com/webadderall) and contributors
 <a href="https://github.com/webadderall/Recordly/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=webadderall/Recordly" />
 </a>
