@@ -307,7 +307,9 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						region.speed === 1.25 ||
 						region.speed === 1.5 ||
 						region.speed === 1.75 ||
-						region.speed === 2
+						region.speed === 2 ||
+						region.speed === 3 ||
+						region.speed === 4
 							? region.speed
 							: DEFAULT_PLAYBACK_SPEED;
 

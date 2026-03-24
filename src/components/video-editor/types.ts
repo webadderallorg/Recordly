@@ -292,7 +292,7 @@ export const DEFAULT_AUTO_CAPTION_SETTINGS: AutoCaptionSettings = {
   backgroundOpacity: 0.9,
 };
 
-export type PlaybackSpeed = 0.25 | 0.5 | 0.75 | 1.25 | 1.5 | 1.75 | 2;
+export type PlaybackSpeed = 0.25 | 0.5 | 0.75 | 1.25 | 1.5 | 1.75 | 2 | 3 | 4;
 
 export interface SpeedRegion {
   id: string;
@@ -309,6 +309,8 @@ export const SPEED_OPTIONS: Array<{ speed: PlaybackSpeed; label: string }> = [
   { speed: 1.5, label: "1.5×" },
   { speed: 1.75, label: "1.75×" },
   { speed: 2, label: "2×" },
+  { speed: 3, label: "3×" },
+  { speed: 4, label: "4×" },
 ];
 
 export const DEFAULT_PLAYBACK_SPEED: PlaybackSpeed = 1.5;
