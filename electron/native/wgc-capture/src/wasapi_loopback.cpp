@@ -126,13 +126,22 @@ bool WasapiCapture::initializeMic(
         IID_IMMDeviceEnumerator_, reinterpret_cast<void**>(&enumerator_));
     if (FAILED(hr)) return false;
 
+    std::cerr << "MIC: Requested deviceId=\"" << deviceId << "\" deviceName=\"" << deviceName << "\"" << std::endl;
+
     if (!deviceId.empty()) {
         device_ = findCaptureDeviceById(utf8ToWide(deviceId));
+        if (device_) {
+            std::cerr << "MIC: Matched device by WASAPI endpoint ID" << std::endl;
+        }
     }
     if (!device_ && !deviceName.empty()) {
         device_ = findCaptureDeviceByName(utf8ToWide(deviceName));
+        if (device_) {
+            std::cerr << "MIC: Matched device by name" << std::endl;
+        }
     }
     if (!device_) {
+        std::cerr << "MIC: No match found, falling back to default capture device" << std::endl;
         hr = enumerator_->GetDefaultAudioEndpoint(eCapture, eCommunications, &device_);
         if (FAILED(hr)) {
             hr = enumerator_->GetDefaultAudioEndpoint(eCapture, eConsole, &device_);

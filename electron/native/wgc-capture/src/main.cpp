@@ -6,6 +6,9 @@
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.System.h>
 
+#include <mmdeviceapi.h>
+#include <functiondiscoverykeys_devpkey.h>
+
 #include <iostream>
 #include <string>
 #include <thread>
@@ -172,7 +175,90 @@ static void stdinListenerThread() {
     g_stopCv.notify_all();
 }
 
+static std::string wideToUtf8(const std::wstring& wstr) {
+    if (wstr.empty()) return "";
+    int len = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), static_cast<int>(wstr.size()), nullptr, 0, nullptr, nullptr);
+    std::string str(len, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), static_cast<int>(wstr.size()), &str[0], len, nullptr, nullptr);
+    return str;
+}
+
+static std::string escapeJsonString(const std::string& s) {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+        switch (c) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n";  break;
+            case '\r': out += "\\r";  break;
+            case '\t': out += "\\t";  break;
+            default:   out += c;      break;
+        }
+    }
+    return out;
+}
+
+static int listAudioDevices() {
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+
+    IMMDeviceEnumerator* enumerator = nullptr;
+    HRESULT hr = CoCreateInstance(
+        __uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+        __uuidof(IMMDeviceEnumerator), reinterpret_cast<void**>(&enumerator));
+    if (FAILED(hr)) {
+        std::cerr << "ERROR: Failed to create device enumerator" << std::endl;
+        return 1;
+    }
+
+    IMMDeviceCollection* collection = nullptr;
+    hr = enumerator->EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE, &collection);
+    if (FAILED(hr)) {
+        enumerator->Release();
+        std::cerr << "ERROR: Failed to enumerate audio endpoints" << std::endl;
+        return 1;
+    }
+
+    UINT count = 0;
+    collection->GetCount(&count);
+
+    std::cout << "[";
+    for (UINT i = 0; i < count; i++) {
+        IMMDevice* dev = nullptr;
+        collection->Item(i, &dev);
+
+        LPWSTR deviceId = nullptr;
+        dev->GetId(&deviceId);
+        std::string id = deviceId ? wideToUtf8(deviceId) : "";
+        if (deviceId) CoTaskMemFree(deviceId);
+
+        IPropertyStore* store = nullptr;
+        dev->OpenPropertyStore(STGM_READ, &store);
+        PROPVARIANT pv;
+        PropVariantInit(&pv);
+        store->GetValue(PKEY_Device_FriendlyName, &pv);
+        std::string name = pv.pwszVal ? wideToUtf8(pv.pwszVal) : "";
+        PropVariantClear(&pv);
+        store->Release();
+        dev->Release();
+
+        if (i > 0) std::cout << ",";
+        std::cout << "{\"id\":\"" << escapeJsonString(id)
+                  << "\",\"name\":\"" << escapeJsonString(name) << "\"}";
+    }
+    std::cout << "]" << std::endl;
+
+    collection->Release();
+    enumerator->Release();
+    CoUninitialize();
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
+    if (argc >= 2 && std::string(argv[1]) == "--list-devices") {
+        return listAudioDevices();
+    }
+
     if (argc < 2) {
         std::cerr << "ERROR: Missing JSON config argument" << std::endl;
         return 1;

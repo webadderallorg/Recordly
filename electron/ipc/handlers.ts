@@ -1661,6 +1661,32 @@ function getCursorMonitorExePath() {
   return resolveUnpackedAppPath('electron', 'native', 'cursor-monitor', 'build', 'Release', 'cursor-monitor.exe')
 }
 
+/**
+ * Call wgc-capture.exe --list-devices to get WASAPI audio input devices,
+ * then match by browser device label to find the correct WASAPI endpoint ID.
+ */
+async function resolveWasapiDeviceId(browserLabel: string | undefined): Promise<string | undefined> {
+  if (!browserLabel) return undefined
+  try {
+    const exePath = getWindowsCaptureExePath()
+    const { stdout } = await execFileAsync(exePath, ['--list-devices'], { timeout: 5000 })
+    const devices: Array<{ id: string; name: string }> = JSON.parse(stdout.trim())
+
+    // Exact match first
+    const exact = devices.find((d) => d.name === browserLabel)
+    if (exact) return exact.id
+
+    // Partial / substring match (browser label often contains or is contained by WASAPI name)
+    const partial = devices.find(
+      (d) => d.name.includes(browserLabel) || browserLabel.includes(d.name),
+    )
+    if (partial) return partial.id
+  } catch (err) {
+    console.warn('Failed to resolve WASAPI device ID:', err)
+  }
+  return undefined
+}
+
 async function isNativeWindowsCaptureAvailable(): Promise<boolean> {
   if (process.platform !== 'win32') return false
 
@@ -3041,8 +3067,11 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
           const micPath = path.join(recordingsDir, `recording-${timestamp}.mic.wav`)
           config.captureMic = true
           config.micOutputPath = micPath
-          if (options.microphoneDeviceId) {
-            config.micDeviceId = options.microphoneDeviceId
+
+          // Resolve browser device label → WASAPI endpoint ID
+          const wasapiId = await resolveWasapiDeviceId(options.microphoneLabel)
+          if (wasapiId) {
+            config.micDeviceId = wasapiId
           }
           if (options.microphoneLabel) {
             config.micDeviceName = options.microphoneLabel
