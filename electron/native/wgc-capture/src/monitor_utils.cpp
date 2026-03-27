@@ -27,20 +27,16 @@ std::vector<MonitorInfo> enumerateMonitors() {
 }
 
 // Electron uses the HMONITOR handle value cast to a number as the display ID.
-HMONITOR findMonitorByDisplayId(int displayId) {
+HMONITOR findMonitorByDisplayId(int64_t displayId) {
     auto monitors = enumerateMonitors();
 
     for (const auto& m : monitors) {
-        if (static_cast<int>(reinterpret_cast<intptr_t>(m.handle)) == displayId) {
+        if (static_cast<int64_t>(reinterpret_cast<intptr_t>(m.handle)) == displayId) {
             return m.handle;
         }
     }
 
-    if (!monitors.empty()) {
-        return monitors[0].handle;
-    }
-
-    return MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    return nullptr;
 }
 
 MonitorInfo getMonitorInfo(HMONITOR monitor) {
