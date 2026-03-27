@@ -1,4 +1,4 @@
-import { Palette, Trash2, Upload, X } from "lucide-react";
+import { Film, Palette, Trash2, Upload, X } from "lucide-react";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -13,9 +13,14 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { getAssetPath, getRenderableAssetUrl } from "@/lib/assetPath";
+import { SCENE_FRAME_OPTIONS } from "@/lib/sceneFrames";
 import { cn } from "@/lib/utils";
 import type { BuiltInWallpaper } from "@/lib/wallpapers";
-import { BUILT_IN_WALLPAPERS, getAvailableWallpapers } from "@/lib/wallpapers";
+import {
+	BUILT_IN_WALLPAPERS,
+	getAvailableWallpapers,
+	isVideoWallpaperSource,
+} from "@/lib/wallpapers";
 import { type AspectRatio } from "@/utils/aspectRatioUtils";
 import minimalCursorUrl from "../../../Minimal Cursor.svg";
 import amongusCursorUrl from "../../assets/cursors/amongus/default.png";
@@ -38,6 +43,7 @@ import type {
 	CursorStyle,
 	FigureData,
 	PlaybackSpeed,
+	SceneFrameStyle,
 	WebcamOverlaySettings,
 	WebcamPositionPreset,
 	ZoomDepth,
@@ -53,6 +59,10 @@ import {
 	DEFAULT_CURSOR_SMOOTHING,
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_CURSOR_SWAY,
+	DEFAULT_SCENE_FRAME_OPACITY,
+	DEFAULT_SCENE_FRAME_STYLE,
+	DEFAULT_SCENE_FRAME_TEXT,
+	DEFAULT_SCENE_FRAME_THICKNESS,
 	DEFAULT_WEBCAM_CORNER_RADIUS,
 	DEFAULT_WEBCAM_MARGIN,
 	DEFAULT_WEBCAM_POSITION_PRESET,
@@ -105,7 +115,7 @@ const CAPTION_ANIMATION_OPTIONS: Array<{ value: AutoCaptionAnimation; label: str
 	{ value: "pop", label: "Pop" },
 ];
 
-type BackgroundTab = "image" | "color" | "gradient";
+type BackgroundTab = "image" | "video" | "color" | "gradient";
 export type EditorEffectSection =
 	| "scene"
 	| "cursor"
@@ -122,6 +132,10 @@ function isHexWallpaper(value: string): boolean {
 function getBackgroundTabForWallpaper(value: string): BackgroundTab {
 	if (GRADIENTS.includes(value)) {
 		return "gradient";
+	}
+
+	if (isVideoWallpaperSource(value)) {
+		return "video";
 	}
 
 	if (isHexWallpaper(value)) {
@@ -190,6 +204,14 @@ interface SettingsPanelProps {
 	onCursorClickBounceDurationChange?: (duration: number) => void;
 	cursorSway?: number;
 	onCursorSwayChange?: (amount: number) => void;
+	sceneFrameStyle?: SceneFrameStyle;
+	onSceneFrameStyleChange?: (style: SceneFrameStyle) => void;
+	sceneFrameText?: string;
+	onSceneFrameTextChange?: (text: string) => void;
+	sceneFrameOpacity?: number;
+	onSceneFrameOpacityChange?: (opacity: number) => void;
+	sceneFrameThickness?: number;
+	onSceneFrameThicknessChange?: (thickness: number) => void;
 	borderRadius?: number;
 	onBorderRadiusChange?: (radius: number) => void;
 	webcam?: WebcamOverlaySettings;
@@ -213,6 +235,7 @@ interface SettingsPanelProps {
 	autoCaptionSettings?: AutoCaptionSettings;
 	whisperExecutablePath?: string | null;
 	whisperModelPath?: string | null;
+	hasDownloadedWhisperModel?: boolean;
 	whisperModelDownloadStatus?: "idle" | "downloading" | "downloaded" | "error";
 	whisperModelDownloadProgress?: number;
 	isGeneratingCaptions?: boolean;
@@ -417,6 +440,64 @@ async function createInvertedPreview(url: string) {
 	return canvas.toDataURL("image/png");
 }
 
+async function createVideoWallpaperPreview(url: string) {
+	return new Promise<string>((resolve, reject) => {
+		const video = document.createElement("video");
+		let settled = false;
+
+		const cleanup = () => {
+			video.onloadeddata = null;
+			video.onerror = null;
+			video.pause();
+			video.removeAttribute("src");
+			video.load();
+		};
+
+		const finish = (value: string) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			resolve(value);
+		};
+
+		const fail = () => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			reject(new Error(`Failed to load video preview asset: ${url}`));
+		};
+
+		const drawFrame = () => {
+			if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+				fail();
+				return;
+			}
+
+			const canvas = document.createElement("canvas");
+			canvas.width = video.videoWidth;
+			canvas.height = video.videoHeight;
+			const ctx = canvas.getContext("2d");
+
+			if (!ctx) {
+				fail();
+				return;
+			}
+
+			ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+			finish(canvas.toDataURL("image/png"));
+		};
+
+		video.preload = "auto";
+		video.muted = true;
+		video.playsInline = true;
+		video.crossOrigin = "anonymous";
+		video.onloadeddata = () => drawFrame();
+		video.onerror = () => fail();
+		video.src = url;
+		video.load();
+	});
+}
+
 function CursorStylePreview({
 	style,
 	previewUrls,
@@ -527,6 +608,14 @@ export function SettingsPanel({
 	onCursorClickBounceDurationChange,
 	cursorSway = DEFAULT_CURSOR_SWAY,
 	onCursorSwayChange,
+	sceneFrameStyle = DEFAULT_SCENE_FRAME_STYLE,
+	onSceneFrameStyleChange,
+	sceneFrameText = DEFAULT_SCENE_FRAME_TEXT,
+	onSceneFrameTextChange,
+	sceneFrameOpacity = DEFAULT_SCENE_FRAME_OPACITY,
+	onSceneFrameOpacityChange,
+	sceneFrameThickness = DEFAULT_SCENE_FRAME_THICKNESS,
+	onSceneFrameThicknessChange,
 	borderRadius = 12.5,
 	onBorderRadiusChange,
 	webcam,
@@ -549,6 +638,7 @@ export function SettingsPanel({
 	autoCaptions = [],
 	autoCaptionSettings = DEFAULT_AUTO_CAPTION_SETTINGS,
 	whisperModelPath,
+	hasDownloadedWhisperModel = false,
 	whisperModelDownloadStatus = "idle",
 	whisperModelDownloadProgress = 0,
 	isGeneratingCaptions = false,
@@ -578,6 +668,7 @@ export function SettingsPanel({
 		padding: number;
 	} | null>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
+	const videoFileInputRef = useRef<HTMLInputElement>(null);
 	const builtInWallpaperPaths = useMemo(
 		() => builtInWallpapers.map((wallpaper) => wallpaper.publicPath),
 		[builtInWallpapers],
@@ -592,6 +683,7 @@ export function SettingsPanel({
 
 	useEffect(() => {
 		let mounted = true;
+
 		(async () => {
 			try {
 				const availableWallpapers = await getAvailableWallpapers();
@@ -644,12 +736,23 @@ export function SettingsPanel({
 	const [backgroundTab, setBackgroundTab] = useState<BackgroundTab>(() =>
 		getBackgroundTabForWallpaper(selected),
 	);
+	const customImageWallpapers = useMemo(
+		() => customImages.filter((imageUrl) => !isVideoWallpaperSource(imageUrl)),
+		[customImages],
+	);
+	const customVideoWallpapers = useMemo(
+		() => customImages.filter((imageUrl) => isVideoWallpaperSource(imageUrl)),
+		[customImages],
+	);
 	const customColorInputRef = useRef<HTMLInputElement | null>(null);
 	const defaultWebcam = initialEditorPreferences.webcam;
 	const [internalActiveEffectSection] = useState<EditorEffectSection>("scene");
 	const activeEffectSection = activeEffectSectionProp ?? internalActiveEffectSection;
 	const [cursorPreviewUrls, setCursorPreviewUrls] = useState<
 		Partial<Record<"tahoe" | "figma" | "mono", string>>
+	>({});
+	const [videoWallpaperPreviewUrls, setVideoWallpaperPreviewUrls] = useState<
+		Record<string, string>
 	>({});
 
 	useEffect(() => {
@@ -692,6 +795,41 @@ export function SettingsPanel({
 	}, []);
 
 	useEffect(() => {
+		let cancelled = false;
+		const videoSources = [
+			...wallpaperPreviewPaths.filter((path) => isVideoWallpaperSource(path)),
+			...customVideoWallpapers,
+		];
+
+		if (videoSources.length === 0) {
+			setVideoWallpaperPreviewUrls({});
+			return;
+		}
+
+		void (async () => {
+			const entries = await Promise.all(
+				videoSources.map(async (videoUrl) => {
+					try {
+						return [videoUrl, await createVideoWallpaperPreview(videoUrl)] as const;
+					} catch {
+						return null;
+					}
+				}),
+			);
+
+			if (!cancelled) {
+				setVideoWallpaperPreviewUrls(
+					Object.fromEntries(entries.filter(Boolean).map((entry) => entry!)),
+				);
+			}
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [customVideoWallpapers, wallpaperPreviewPaths]);
+
+	useEffect(() => {
 		setBackgroundTab(getBackgroundTabForWallpaper(selected));
 
 		if (isHexWallpaper(selected)) {
@@ -702,10 +840,17 @@ export function SettingsPanel({
 			setGradient(selected);
 		}
 
-		if (selected.startsWith("data:image") && !customImages.includes(selected)) {
+		const isBuiltInWallpaper =
+			builtInWallpaperPaths.includes(selected) || wallpaperPreviewPaths.includes(selected);
+
+		if (
+			!isBuiltInWallpaper &&
+			(selected.startsWith("data:image") || isVideoWallpaperSource(selected)) &&
+			!customImages.includes(selected)
+		) {
 			setCustomImages((prev) => [selected, ...prev]);
 		}
-	}, [customImages, selected]);
+	}, [builtInWallpaperPaths, customImages, selected, wallpaperPreviewPaths]);
 
 	useEffect(() => {
 		saveEditorPreferences({ customWallpapers: customImages });
@@ -778,16 +923,38 @@ export function SettingsPanel({
 			role="button"
 		>
 			<div className="absolute inset-[1px] overflow-hidden rounded-[8px] bg-[#0d0e11]">
-				<img
-					src={imageUrl}
-					alt={
-						props?.title ??
-						props?.ariaLabel ??
-						tSettings("background.wallpaperPreview", "Wallpaper preview")
-					}
-					className="h-full w-full select-none object-cover [transform:translateZ(0)]"
-					draggable={false}
-				/>
+				{isVideoWallpaperSource(imageUrl) ? (
+					videoWallpaperPreviewUrls[imageUrl] ? (
+						<img
+							src={videoWallpaperPreviewUrls[imageUrl]}
+							alt={
+								props?.title ??
+								props?.ariaLabel ??
+								tSettings("background.video", "Video background")
+							}
+							className="h-full w-full select-none object-cover [transform:translateZ(0)]"
+							draggable={false}
+						/>
+					) : (
+						<div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-[radial-gradient(circle_at_top,#1f3b68,transparent_58%),linear-gradient(135deg,#0f172a,#111827_48%,#1d4ed8)] px-1 text-center text-white">
+							<Film className="h-4 w-4 opacity-90" />
+							<span className="line-clamp-2 text-[8px] font-medium leading-tight text-white/80">
+								{props?.title ?? props?.ariaLabel ?? tSettings("background.video", "Video background")}
+							</span>
+						</div>
+					)
+				) : (
+					<img
+						src={imageUrl}
+						alt={
+							props?.title ??
+							props?.ariaLabel ??
+							tSettings("background.wallpaperPreview", "Wallpaper preview")
+						}
+						className="h-full w-full select-none object-cover [transform:translateZ(0)]"
+						draggable={false}
+					/>
+				)}
 			</div>
 			{props?.children}
 		</div>
@@ -871,6 +1038,10 @@ export function SettingsPanel({
 
 	const resetFrameSection = () => {
 		onShadowChange?.(initialEditorPreferences.shadowIntensity);
+		onSceneFrameStyleChange?.(initialEditorPreferences.sceneFrameStyle);
+		onSceneFrameTextChange?.(initialEditorPreferences.sceneFrameText);
+		onSceneFrameOpacityChange?.(initialEditorPreferences.sceneFrameOpacity);
+		onSceneFrameThicknessChange?.(initialEditorPreferences.sceneFrameThickness);
 		onBorderRadiusChange?.(initialEditorPreferences.borderRadius);
 		onPaddingChange?.(initialEditorPreferences.padding);
 		onAspectRatioChange?.(initialEditorPreferences.aspectRatio);
@@ -946,6 +1117,25 @@ export function SettingsPanel({
 		event.target.value = "";
 	};
 
+	const handleVideoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+		const files = event.target.files;
+		if (!files || files.length === 0) return;
+
+		const file = files[0] as File & { path?: string };
+		const isLikelyVideo = file.type.startsWith("video/") || isVideoWallpaperSource(file.name);
+		if (!isLikelyVideo) {
+			toast.error(tSettings("background.videoUploadError", "Choose a video file."));
+			event.target.value = "";
+			return;
+		}
+
+		const source = file.path || URL.createObjectURL(file);
+		setCustomImages((prev) => [source, ...prev.filter((item) => item !== source)]);
+		onWallpaperChange(source);
+		toast.success(tSettings("background.videoUploadSuccess", "Video background added."));
+		event.target.value = "";
+	};
+
 	const handleRemoveCustomImage = (imageUrl: string, event: React.MouseEvent) => {
 		event.stopPropagation();
 		setCustomImages((prev) => prev.filter((img) => img !== imageUrl));
@@ -988,10 +1178,11 @@ export function SettingsPanel({
 
 			<div className="w-full">
 				<LayoutGroup id="background-picker-switcher">
-					<div className="grid h-8 w-full grid-cols-3 rounded-xl border border-white/10 bg-white/[0.04] p-1">
+					<div className="grid h-8 w-full grid-cols-4 rounded-xl border border-white/10 bg-white/[0.04] p-1">
 						{(
 							[
 								{ value: "image", label: tSettings("background.image") },
+								{ value: "video", label: tSettings("background.video", "Video") },
 								{ value: "color", label: tSettings("background.color") },
 								{ value: "gradient", label: tSettings("background.gradient") },
 							] as const
@@ -1053,7 +1244,7 @@ export function SettingsPanel({
 									</Button>
 
 									<div className="grid grid-cols-8 gap-1.5">
-										{customImages.map((imageUrl, idx) => {
+										{customImageWallpapers.map((imageUrl, idx) => {
 											const isSelected = getWallpaperTileState(imageUrl);
 											return renderWallpaperImageTile(imageUrl, isSelected, {
 												key: `custom-${idx}`,
@@ -1085,6 +1276,52 @@ export function SettingsPanel({
 											});
 										})}
 									</div>
+								</div>
+							) : backgroundTab === "video" ? (
+								<div className="mt-0 space-y-2">
+									<input
+										type="file"
+										ref={videoFileInputRef}
+										onChange={handleVideoUpload}
+										accept=".avi,.m4v,.mkv,.mov,.mp4,.webm,video/*"
+										className="hidden"
+									/>
+									<Button
+										onClick={() => videoFileInputRef.current?.click()}
+										variant="outline"
+										className="w-full gap-2 bg-white/5 text-slate-200 border-white/10 hover:bg-[#2563EB] hover:text-white hover:border-[#2563EB] transition-all h-7 text-[10px]"
+									>
+										<Film className="w-3 h-3" />
+										{tSettings("background.uploadVideo", "Upload Video")}
+									</Button>
+
+									{customVideoWallpapers.length > 0 ? (
+										<div className="grid grid-cols-8 gap-1.5">
+											{customVideoWallpapers.map((videoUrl, idx) => {
+												const isSelected = getWallpaperTileState(videoUrl);
+												return renderWallpaperImageTile(videoUrl, isSelected, {
+													key: `video-${idx}`,
+													ariaLabel:
+														videoUrl.split(/[\\/]/).pop() ??
+														tSettings("background.video", "Video background"),
+													title: videoUrl.split(/[\\/]/).pop(),
+													onClick: () => onWallpaperChange(videoUrl),
+													children: (
+														<button
+															onClick={(e) => handleRemoveCustomImage(videoUrl, e)}
+															className="absolute top-0.5 right-0.5 w-3 h-3 bg-red-500/90 hover:bg-red-500 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10"
+														>
+															<X className="w-2 h-2 text-white" />
+														</button>
+													),
+												});
+											})}
+										</div>
+									) : (
+										<div className="flex min-h-24 items-center justify-center rounded-xl border border-dashed border-white/10 bg-white/[0.03] text-[11px] text-slate-400">
+											{tSettings("background.videoEmpty", "Add a looping video background.")}
+										</div>
+									)}
 								</div>
 							) : backgroundTab === "color" ? (
 								<div className="mt-0 space-y-2">
@@ -1241,6 +1478,72 @@ export function SettingsPanel({
 				</button>
 			</div>
 			<div className="flex flex-col gap-1.5">
+				<div className="flex flex-col gap-1.5 rounded-lg bg-white/[0.03] p-2">
+					<span className="text-[10px] text-slate-400">
+						{tSettings("effects.frameStyle", "Frame Style")}
+					</span>
+					<div className="grid grid-cols-3 gap-1.5">
+						{SCENE_FRAME_OPTIONS.map((option) => {
+							const isSelected = sceneFrameStyle === option.value;
+							return (
+								<button
+									key={option.value}
+									type="button"
+									onClick={() => onSceneFrameStyleChange?.(option.value)}
+									className={cn(
+										"rounded-lg border px-2 py-2 text-[11px] font-medium transition-colors",
+										isSelected
+											? "border-[#2563EB]/60 bg-[#2563EB]/14 text-[#8ec5ff]"
+											: "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white",
+									)}
+								>
+									{option.label}
+								</button>
+							);
+						})}
+					</div>
+				</div>
+				{sceneFrameStyle === "safari" ? (
+					<div className="flex flex-col gap-1.5 rounded-lg bg-white/[0.03] p-2">
+						<label className="text-[10px] text-slate-400" htmlFor="scene-frame-text-input">
+							{tSettings("effects.frameText", "Browser Text")}
+						</label>
+						<input
+							id="scene-frame-text-input"
+							type="text"
+							value={sceneFrameText}
+							onChange={(event) => onSceneFrameTextChange?.(event.target.value)}
+							placeholder="recordly.app"
+							className="h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-[#2563EB]/60"
+						/>
+					</div>
+				) : null}
+				{sceneFrameStyle === "glass" ? (
+					<>
+						<SliderControl
+							label={tSettings("effects.frameOpacity", "Frame Opacity")}
+							value={sceneFrameOpacity}
+							defaultValue={initialEditorPreferences.sceneFrameOpacity}
+							min={0.05}
+							max={1}
+							step={0.01}
+							onChange={(value) => onSceneFrameOpacityChange?.(value)}
+							formatValue={(value) => `${Math.round(value * 100)}%`}
+							parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
+						/>
+						<SliderControl
+							label={tSettings("effects.frameThickness", "Frame Thickness")}
+							value={sceneFrameThickness}
+							defaultValue={initialEditorPreferences.sceneFrameThickness}
+							min={1}
+							max={48}
+							step={1}
+							onChange={(value) => onSceneFrameThicknessChange?.(value)}
+							formatValue={(value) => `${Math.round(value)}px`}
+							parseInput={(text) => parseFloat(text.replace(/px$/, ""))}
+						/>
+					</>
+				) : null}
 				<SliderControl
 					label={tSettings("effects.shadow")}
 					value={shadowIntensity}
@@ -1416,7 +1719,7 @@ export function SettingsPanel({
 								{tSettings("captions.downloading", "Downloading...")}{" "}
 								{Math.round(whisperModelDownloadProgress)}%
 							</Button>
-						) : whisperModelPath ? (
+										) : hasDownloadedWhisperModel ? (
 							<Button
 								type="button"
 								variant="outline"
@@ -1429,7 +1732,7 @@ export function SettingsPanel({
 							<Button
 								type="button"
 								onClick={onDownloadWhisperSmallModel}
-								className="h-10 w-full rounded-xl bg-[#2563EB] px-4 text-sm font-medium text-white hover:bg-[#2563EB]/90"
+								className="h-10 w-full rounded-xl bg-white px-4 text-sm font-medium text-slate-950 hover:bg-slate-100"
 							>
 								{tSettings("captions.downloadModel", "Download Model")}
 							</Button>
@@ -1660,8 +1963,6 @@ export function SettingsPanel({
 										<ToggleGroupItem
 											key={option.value}
 											value={option.value}
-											title={option.label}
-											aria-label={option.label}
 											className={cn(
 												"group aspect-square h-auto min-w-0 rounded-[10px] border border-white/10 bg-white/[0.03] p-3 text-left text-slate-200 shadow-none transition-all hover:border-white/20 hover:bg-white/[0.06]",
 												"data-[state=on]:border-[#2563EB]/70 data-[state=on]:bg-[#2563EB]/12 data-[state=on]:text-white",

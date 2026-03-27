@@ -6,6 +6,7 @@ export interface BuiltInWallpaper {
 }
 
 const IMAGE_FILE_PATTERN = /\.(avif|gif|jpe?g|png|svg|webp)$/i;
+const VIDEO_FILE_PATTERN = /\.(avi|m4v|mkv|mov|mp4|webm)$/i;
 
 export const BUILT_IN_WALLPAPERS: BuiltInWallpaper[] = [
   { id: 'wallpaper-1', label: 'Wallpaper 1', relativePath: 'wallpapers/wallpaper1.jpg', publicPath: '/wallpapers/wallpaper1.jpg' },
@@ -37,6 +38,19 @@ export const WALLPAPER_PATHS = BUILT_IN_WALLPAPERS.map((wallpaper) => wallpaper.
 export const WALLPAPER_RELATIVE_PATHS = BUILT_IN_WALLPAPERS.map((wallpaper) => wallpaper.relativePath);
 export const DEFAULT_WALLPAPER_PATH = '/wallpapers/wallpaper2.jpg';
 export const DEFAULT_WALLPAPER_RELATIVE_PATH = 'wallpapers/wallpaper2.jpg';
+
+export function isVideoWallpaperSource(value: string): boolean {
+  if (!value) {
+    return false;
+  }
+
+  if (value.startsWith("blob:")) {
+    return true;
+  }
+
+  const normalizedValue = value.split("?")[0]?.toLowerCase() ?? value.toLowerCase();
+  return VIDEO_FILE_PATTERN.test(normalizedValue);
+}
 
 function toWallpaperId(fileName: string) {
   return fileName

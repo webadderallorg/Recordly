@@ -46,7 +46,16 @@ export interface CursorVisualSettings {
   style: CursorStyle;
 }
 
-export type CursorStyle = "tahoe" | "dot" | "figma" | "mono";
+export type CursorStyle =
+  | "tahoe"
+  | "dot"
+  | "figma"
+  | "mono"
+  | "lavender"
+  | "parched"
+  | "chooper"
+  | "amongus"
+  | "turtle";
 export const DEFAULT_CURSOR_STYLE: CursorStyle = "tahoe";
 
 export type SceneFrameStyle = "none" | "safari" | "glass";
