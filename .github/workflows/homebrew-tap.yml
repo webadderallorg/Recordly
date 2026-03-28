@@ -1,8 +1,6 @@
 name: Update Homebrew Tap
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
@@ -37,11 +35,7 @@ jobs:
         id: tag
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            TAG="${{ github.event.release.tag_name }}"
-          else
-            TAG="${{ github.event.inputs.tag }}"
-          fi
+          TAG="${{ github.event.inputs.tag }}"
 
           if [ -z "$TAG" ]; then
             echo "Release tag is empty"
@@ -55,21 +49,33 @@ jobs:
       - name: Download release artifacts
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p /tmp/recordly-release
           gh release download "${{ steps.tag.outputs.tag }}" \
             --repo "${{ github.repository }}" \
             --dir /tmp/recordly-release \
-            --pattern "Recordly-arm64.dmg" \
-            --pattern "Recordly-x64.dmg"
+            --pattern "Recordly-*-arm64.dmg" \
+            --pattern "Recordly-*-x64.dmg"
 
       - name: Compute checksums
         id: sha
         shell: bash
         run: |
-          SHA_ARM=$(sha256sum /tmp/recordly-release/Recordly-arm64.dmg | awk '{print $1}')
-          SHA_INTEL=$(sha256sum /tmp/recordly-release/Recordly-x64.dmg | awk '{print $1}')
+          set -euo pipefail
+          ARM_FILE=$(find /tmp/recordly-release -maxdepth 1 -name 'Recordly-*-arm64.dmg' | head -n 1)
+          INTEL_FILE=$(find /tmp/recordly-release -maxdepth 1 -name 'Recordly-*-x64.dmg' | head -n 1)
+
+          if [ -z "$ARM_FILE" ] || [ -z "$INTEL_FILE" ]; then
+            echo "Unable to locate macOS release artifacts for ${{ steps.tag.outputs.tag }}"
+            exit 1
+          fi
+
+          SHA_ARM=$(sha256sum "$ARM_FILE" | awk '{print $1}')
+          SHA_INTEL=$(sha256sum "$INTEL_FILE" | awk '{print $1}')
           echo "arm=$SHA_ARM" >> "$GITHUB_OUTPUT"
           echo "intel=$SHA_INTEL" >> "$GITHUB_OUTPUT"
+          echo "arm_file=$(basename "$ARM_FILE")" >> "$GITHUB_OUTPUT"
+          echo "intel_file=$(basename "$INTEL_FILE")" >> "$GITHUB_OUTPUT"
 
       - name: Clone tap repository
         shell: bash
@@ -94,12 +100,12 @@ jobs:
 
             on_arm do
               sha256 "__SHA_ARM__"
-              url "https://github.com/__REPO__/releases/download/__TAG__/Recordly-arm64.dmg"
+              url "https://github.com/__REPO__/releases/download/__TAG__/__ARM_FILE__"
             end
 
             on_intel do
               sha256 "__SHA_INTEL__"
-              url "https://github.com/__REPO__/releases/download/__TAG__/Recordly-x64.dmg"
+              url "https://github.com/__REPO__/releases/download/__TAG__/__INTEL_FILE__"
             end
 
             name "Recordly"
@@ -115,6 +121,8 @@ jobs:
           sed -i "s/__SHA_INTEL__/${{ steps.sha.outputs.intel }}/g" Casks/recordly.rb
           sed -i "s#__REPO__#${{ github.repository }}#g" Casks/recordly.rb
           sed -i "s#__TAG__#${{ steps.tag.outputs.tag }}#g" Casks/recordly.rb
+          sed -i "s#__ARM_FILE__#${{ steps.sha.outputs.arm_file }}#g" Casks/recordly.rb
+          sed -i "s#__INTEL_FILE__#${{ steps.sha.outputs.intel_file }}#g" Casks/recordly.rb
 
           if git diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"

@@ -2,6 +2,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "dev.recordly.app",
+  "electronUpdaterCompatibility": ">=2.16",
   "asar": true,
   "asarUnpack": [
     "node_modules/ffmpeg-static/**",
@@ -32,17 +33,32 @@
       "to": "assets/wallpapers"
     }
   ],
+  "publish": [
+    {
+      "provider": "github",
+      "owner": "webadderall",
+      "repo": "Recordly",
+      "tagNamePrefix": "v",
+      "publishAutoUpdate": true
+    }
+  ],
 
   "mac": {
-    "hardenedRuntime": false,
+    "hardenedRuntime": true,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.inherit.plist",
     "target": [
       {
         "target": "dmg",
         "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
       }
     ],
     "icon": "icons/icons/mac/icon.icns",
-    "artifactName": "Recordly.dmg",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
     "extendInfo": {
       "NSAudioCaptureUsageDescription": "Recordly needs audio capture permission to record system audio.",
       "NSMicrophoneUsageDescription": "Recordly needs microphone access to record voice audio.",
@@ -55,7 +71,7 @@
       "AppImage"
     ],
     "icon": "icons/icons/png",
-    "artifactName": "Recordly.AppImage",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
     "category": "AudioVideo"
   },
   "win": {
@@ -64,7 +80,8 @@
     ],
     "icon": "icons/icons/win/icon.ico"
     ,
-    "artifactName": "Recordly.exe"
+    "executableName": "Recordly",
+    "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
   }
 }
 

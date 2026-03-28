@@ -19,8 +19,24 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
-import { checkForAppUpdates, setupAutoUpdates } from "./updater";
-import { createEditorWindow, createHudOverlayWindow, createSourceSelectorWindow } from "./windows";
+import {
+	checkForAppUpdates,
+	deferDownloadedUpdateReminder,
+	installDownloadedUpdateNow,
+	previewUpdateToast,
+	skipDownloadedUpdateVersion,
+	setupAutoUpdates,
+} from "./updater";
+import type { UpdateToastPayload } from "./updater";
+import {
+	createEditorWindow,
+	createHudOverlayWindow,
+	createSourceSelectorWindow,
+	createUpdateToastWindow,
+	closeUpdateToastWindow,
+	getUpdateToastWindow,
+	positionUpdateToastWindow,
+} from "./windows";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -73,6 +89,7 @@ let tray: Tray | null = null;
 let selectedSourceName = "";
 let editorHasUnsavedChanges = false;
 let isForceClosing = false;
+let currentUpdateToastPayload: UpdateToastPayload | null = null;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -123,6 +140,7 @@ function focusOrCreateMainWindow() {
 		if (mainWindow.isMinimized()) mainWindow.restore();
 		mainWindow.moveTop();
 		mainWindow.focus();
+		positionUpdateToastWindow();
 	}
 }
 
@@ -234,6 +252,17 @@ function setupApplicationMenu() {
 						void checkForAppUpdates(() => mainWindow, { manual: true });
 					},
 				},
+				...(!app.isPackaged
+					? [
+						{ type: "separator" as const },
+						{
+							label: "Preview Update Toast",
+							click: () => {
+								previewUpdateToast(sendUpdateToastToWindows);
+							},
+						},
+					]
+					: []),
 			],
 		},
 	);
@@ -273,6 +302,66 @@ function syncDockIcon() {
 		app.dock.setIcon(dockIcon);
 	}
 }
+
+function sendUpdateToastToWindows(channel: "update-ready-toast", payload: unknown) {
+	currentUpdateToastPayload = payload as UpdateToastPayload;
+	positionUpdateToastWindow();
+	let toastWindow = getUpdateToastWindow();
+
+	if (!toastWindow) {
+		toastWindow = createUpdateToastWindow();
+	}
+
+	const sendPayload = () => {
+		if (!toastWindow || toastWindow.isDestroyed() || !currentUpdateToastPayload) {
+			return false;
+		}
+
+		positionUpdateToastWindow();
+		toastWindow.webContents.send(channel, currentUpdateToastPayload);
+		toastWindow.show();
+		toastWindow.moveTop();
+		toastWindow.focus();
+		return true;
+	};
+
+	if (toastWindow.webContents.isLoading()) {
+		toastWindow.webContents.once("did-finish-load", () => {
+			sendPayload();
+		});
+		return true;
+	}
+
+	return sendPayload();
+}
+
+ipcMain.handle("install-downloaded-update", () => {
+	closeUpdateToastWindow();
+	installDownloadedUpdateNow();
+	return { success: true };
+});
+
+ipcMain.handle("defer-downloaded-update", (_event, delayMs?: number) => {
+	return deferDownloadedUpdateReminder(() => mainWindow, sendUpdateToastToWindows, delayMs);
+});
+
+ipcMain.handle("preview-update-toast", () => {
+	return { success: previewUpdateToast(sendUpdateToastToWindows) };
+});
+
+ipcMain.handle("dismiss-update-toast", () => {
+	closeUpdateToastWindow();
+	return { success: true };
+});
+
+ipcMain.handle("skip-downloaded-update", (_event, version?: string) => {
+	closeUpdateToastWindow();
+	return skipDownloadedUpdateVersion(version);
+});
+
+ipcMain.handle("get-current-update-toast-payload", () => {
+	return currentUpdateToastPayload;
+});
 
 function updateTrayMenu(recording: boolean = false) {
 	if (!tray) return;
@@ -322,11 +411,13 @@ function createEditorWindowWrapper() {
 	}
 	mainWindow = createEditorWindow();
 	editorHasUnsavedChanges = false;
+	positionUpdateToastWindow();
 
 	mainWindow.on("closed", () => {
 		if (mainWindow?.isDestroyed()) {
 			mainWindow = null;
 		}
+		closeUpdateToastWindow();
 		isForceClosing = false;
 		editorHasUnsavedChanges = false;
 	});
@@ -436,7 +527,7 @@ app.whenReady().then(async () => {
 		},
 	);
 
-	setupAutoUpdates(() => mainWindow);
+	setupAutoUpdates(() => mainWindow, sendUpdateToastToWindows);
 
 	// Register the display media handler so that renderer's getDisplayMedia()
 	// calls land on the pre-selected source without showing a system picker.

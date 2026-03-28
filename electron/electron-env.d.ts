@@ -279,6 +279,28 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		installDownloadedUpdate: () => Promise<{ success: boolean }>;
+		deferDownloadedUpdate: (
+			delayMs?: number,
+		) => Promise<{ success: boolean; message?: string }>;
+		previewUpdateToast: () => Promise<{ success: boolean }>;
+		dismissUpdateToast: () => Promise<{ success: boolean }>;
+		skipDownloadedUpdate: (version?: string) => Promise<{
+			success: boolean;
+			message?: string;
+		}>;
+		getCurrentUpdateToastPayload: () => Promise<{
+			version: string;
+			detail: string;
+			delayMs: number;
+			isPreview?: boolean;
+		} | null>;
+		onUpdateReadyToast: (callback: (payload: {
+			version: string;
+			detail: string;
+			delayMs: number;
+			isPreview?: boolean;
+		}) => void) => () => void;
 		onMenuLoadProject: (callback: () => void) => () => void;
 		onMenuSaveProject: (callback: () => void) => () => void;
 		onMenuSaveProjectAs: (callback: () => void) => () => void;

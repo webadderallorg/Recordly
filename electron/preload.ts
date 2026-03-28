@@ -244,6 +244,39 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	openProjectsDirectory: () => {
 		return ipcRenderer.invoke("open-projects-directory");
 	},
+	installDownloadedUpdate: () => {
+		return ipcRenderer.invoke("install-downloaded-update");
+	},
+	deferDownloadedUpdate: (delayMs?: number) => {
+		return ipcRenderer.invoke("defer-downloaded-update", delayMs);
+	},
+	previewUpdateToast: () => {
+		return ipcRenderer.invoke("preview-update-toast");
+	},
+	dismissUpdateToast: () => {
+		return ipcRenderer.invoke("dismiss-update-toast");
+	},
+	skipDownloadedUpdate: (version?: string) => {
+		return ipcRenderer.invoke("skip-downloaded-update", version);
+	},
+	getCurrentUpdateToastPayload: () => {
+		return ipcRenderer.invoke("get-current-update-toast-payload");
+	},
+	onUpdateReadyToast: (
+		callback: (payload: {
+			version: string;
+			detail: string;
+			delayMs: number;
+			isPreview?: boolean;
+		}) => void,
+	) => {
+		const listener = (
+			_event: Electron.IpcRendererEvent,
+			payload: { version: string; detail: string; delayMs: number; isPreview?: boolean },
+		) => callback(payload);
+		ipcRenderer.on("update-ready-toast", listener);
+		return () => ipcRenderer.removeListener("update-ready-toast", listener);
+	},
 	onMenuLoadProject: (callback: () => void) => {
 		const listener = () => callback();
 		ipcRenderer.on("menu-load-project", listener);

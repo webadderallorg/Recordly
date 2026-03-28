@@ -20,6 +20,7 @@ let hudOverlayWindow: BrowserWindow | null = null;
 let hudOverlayHiddenFromCapture = true;
 let hudOverlayCaptureProtectionLoaded = false;
 let countdownWindow: BrowserWindow | null = null;
+let updateToastWindow: BrowserWindow | null = null;
 
 const HUD_OVERLAY_SETTINGS_FILE = path.join(app.getPath("userData"), "hud-overlay-settings.json");
 const HUD_BOTTOM_CLEARANCE_CM = 3.5;
@@ -30,6 +31,9 @@ const HUD_SHADOW_BLEED_DIP = 36;
 const HUD_MIN_WINDOW_WIDTH = 560;
 const HUD_COMPACT_HEIGHT = 96;
 const HUD_MIN_EXPANDED_HEIGHT = 520 + HUD_SHADOW_BLEED_DIP;
+const UPDATE_TOAST_WINDOW_WIDTH = 420;
+const UPDATE_TOAST_WINDOW_HEIGHT = 196;
+const UPDATE_TOAST_GAP_DIP = 16;
 
 let hudOverlayExpanded = false;
 let hudOverlayCompactWidth = HUD_MIN_WINDOW_WIDTH;
@@ -119,6 +123,7 @@ function applyHudOverlayBounds(expanded: boolean) {
 	hudOverlayExpanded = expanded;
 
 	hudOverlayWindow.setBounds(getHudOverlayBounds(expanded), false);
+	positionUpdateToastWindow();
 	if (!hudOverlayWindow.isVisible()) {
 		return;
 	}
@@ -250,11 +255,20 @@ export function createHudOverlayWindow(): BrowserWindow {
 		setTimeout(() => {
 			if (!win.isDestroyed()) {
 				win.show();
+				positionUpdateToastWindow();
 			}
 		}, 100);
 	});
 
 	hudOverlayWindow = win;
+
+	win.on("move", () => {
+		positionUpdateToastWindow();
+	});
+
+	win.on("show", () => {
+		positionUpdateToastWindow();
+	});
 
 	win.on("closed", () => {
 		if (hudOverlayWindow === win) {
@@ -271,6 +285,104 @@ export function createHudOverlayWindow(): BrowserWindow {
 	}
 
 	return win;
+}
+
+export function getHudOverlayWindow(): BrowserWindow | null {
+	return hudOverlayWindow && !hudOverlayWindow.isDestroyed() ? hudOverlayWindow : null;
+}
+
+function getUpdateToastBounds() {
+	const primaryDisplay = getScreen().getPrimaryDisplay();
+	const { workArea } = primaryDisplay;
+	const anchorWindow = getHudOverlayWindow();
+
+	if (anchorWindow) {
+		const anchorBounds = anchorWindow.getBounds();
+		return {
+			x: Math.round(anchorBounds.x + (anchorBounds.width - UPDATE_TOAST_WINDOW_WIDTH) / 2),
+			y: Math.max(
+				workArea.y + HUD_EDGE_MARGIN_DIP,
+				anchorBounds.y - UPDATE_TOAST_WINDOW_HEIGHT - UPDATE_TOAST_GAP_DIP,
+			),
+			width: UPDATE_TOAST_WINDOW_WIDTH,
+			height: UPDATE_TOAST_WINDOW_HEIGHT,
+		};
+	}
+
+	return {
+		x: Math.round(workArea.x + (workArea.width - UPDATE_TOAST_WINDOW_WIDTH) / 2),
+		y: Math.round(workArea.y + (workArea.height - UPDATE_TOAST_WINDOW_HEIGHT) / 2),
+		width: UPDATE_TOAST_WINDOW_WIDTH,
+		height: UPDATE_TOAST_WINDOW_HEIGHT,
+	};
+}
+
+export function positionUpdateToastWindow(): void {
+	if (!updateToastWindow || updateToastWindow.isDestroyed()) {
+		return;
+	}
+
+	updateToastWindow.setBounds(getUpdateToastBounds(), false);
+	if (updateToastWindow.isVisible()) {
+		updateToastWindow.moveTop();
+	}
+}
+
+export function createUpdateToastWindow(): BrowserWindow {
+	const bounds = getUpdateToastBounds();
+	const win = new BrowserWindow({
+		width: bounds.width,
+		height: bounds.height,
+		x: bounds.x,
+		y: bounds.y,
+		frame: false,
+		transparent: true,
+		resizable: false,
+		alwaysOnTop: true,
+		skipTaskbar: true,
+		hasShadow: false,
+		focusable: true,
+		show: false,
+		backgroundColor: "#00000000",
+		webPreferences: {
+			preload: path.join(__dirname, "preload.mjs"),
+			nodeIntegration: false,
+			contextIsolation: true,
+			webSecurity: false,
+			backgroundThrottling: false,
+		},
+	});
+
+	win.setBackgroundColor("#00000000");
+
+	win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+	win.on("closed", () => {
+		if (updateToastWindow === win) {
+			updateToastWindow = null;
+		}
+	});
+
+	if (VITE_DEV_SERVER_URL) {
+		win.loadURL(VITE_DEV_SERVER_URL + "?windowType=update-toast");
+	} else {
+		win.loadFile(path.join(RENDERER_DIST, "index.html"), {
+			query: { windowType: "update-toast" },
+		});
+	}
+
+	updateToastWindow = win;
+	return win;
+}
+
+export function getUpdateToastWindow(): BrowserWindow | null {
+	return updateToastWindow && !updateToastWindow.isDestroyed() ? updateToastWindow : null;
+}
+
+export function closeUpdateToastWindow(): void {
+	if (updateToastWindow && !updateToastWindow.isDestroyed()) {
+		updateToastWindow.close();
+	}
 }
 
 export function createEditorWindow(): BrowserWindow {

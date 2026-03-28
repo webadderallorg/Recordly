@@ -1,93 +1,91 @@
-name: Release Builds
+name: Publish Release
 
 on:
+  release:
+    types: [published, prereleased]
   workflow_dispatch:
     inputs:
-      source_ref:
-        description: Branch, tag, or commit to build from
-        required: true
-        default: main
-        type: string
       tag_name:
-        description: Release tag to create or update
+        description: Existing release tag to rebuild and publish
         required: true
         type: string
-      release_name:
-        description: Release title
-        required: true
-        type: string
-      release_notes:
-        description: Optional release notes
-        required: false
-        type: string
-      make_latest:
-        description: Mark this release as the latest release
-        required: true
-        default: true
-        type: boolean
 
 permissions:
   contents: write
+  actions: write
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || github.event.inputs.tag_name || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
-  validate-release:
-    name: Prepare release input
+  prepare-release:
+    name: Prepare release
     runs-on: ubuntu-latest
     outputs:
+      tag_name: ${{ steps.prepare.outputs.tag_name }}
       package_version: ${{ steps.prepare.outputs.package_version }}
       source_sha: ${{ steps.prepare.outputs.source_sha }}
+      prerelease: ${{ steps.prepare.outputs.prerelease }}
     steps:
-      - name: Checkout source ref
+      - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.source_ref }}
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.tag_name }}
           fetch-depth: 0
 
-      - name: Sync version with release tag
+      - name: Validate release tag
         id: prepare
         shell: bash
         run: |
           set -euo pipefail
-          INPUT_REF="${{ github.event.inputs.source_ref }}"
-          TAG_VERSION="${{ github.event.inputs.tag_name }}"
-          TAG_VERSION="${TAG_VERSION#v}"
-          SOURCE_BRANCH=""
-
-          if git ls-remote --exit-code --heads origin "$INPUT_REF" >/dev/null 2>&1; then
-            SOURCE_BRANCH="$INPUT_REF"
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG_NAME="${{ github.event.release.tag_name }}"
+            IS_PRERELEASE="${{ github.event.release.prerelease }}"
+          else
+            TAG_NAME="${{ github.event.inputs.tag_name }}"
+            IS_PRERELEASE="false"
           fi
 
+          if [ -z "$TAG_NAME" ]; then
+            echo "Release tag is required."
+            exit 1
+          fi
+
+          TAG_VERSION="${TAG_NAME#v}"
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
 
           if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
-            if [ -z "$SOURCE_BRANCH" ]; then
-              echo "Release tag version ($TAG_VERSION) does not match package.json version ($PACKAGE_VERSION), and source_ref '$INPUT_REF' is not a branch that can be updated automatically."
-              exit 1
-            fi
-
-            npm version "$TAG_VERSION" --no-git-tag-version
-
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add package.json package-lock.json
-            git commit -m "chore(release): bump version to v$TAG_VERSION"
-            git push origin "HEAD:$SOURCE_BRANCH"
-
-            PACKAGE_VERSION=$(node -p "require('./package.json').version")
+            echo "Release tag version ($TAG_VERSION) does not match package.json version ($PACKAGE_VERSION)."
+            exit 1
           fi
 
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
+              gh release create "$TAG_NAME" --repo "${{ github.repository }}" --verify-tag --draft --title "$TAG_NAME"
+          fi
+
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
           echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-macos-x64:
     name: Build macOS x64
-    needs: validate-release
+    needs: prepare-release
     runs-on: macos-15-intel
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.validate-release.outputs.source_sha }}
+          ref: ${{ needs.prepare-release.outputs.source_sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -100,8 +98,36 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Validate macOS signing secrets
+        shell: bash
+        env:
+          APPLE_SIGNING_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_SIGNING_CERTIFICATE_P12_BASE64 }}
+          APPLE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in APPLE_SIGNING_CERTIFICATE_P12_BASE64 APPLE_SIGNING_CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required macOS release secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Prepare macOS signing certificate
+        shell: bash
+        env:
+          APPLE_SIGNING_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_SIGNING_CERTIFICATE_P12_BASE64 }}
+          APPLE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/apple-signing-cert.p12"
+          echo "$APPLE_SIGNING_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          {
+            echo "CSC_LINK=$CERT_PATH"
+            echo "CSC_KEY_PASSWORD=$APPLE_SIGNING_CERTIFICATE_PASSWORD"
+          } >> "$GITHUB_ENV"
+
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
@@ -113,25 +139,255 @@ jobs:
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --mac dmg --x64 --publish never
-          mv release/Recordly.dmg release/Recordly-x64.dmg
+          npx electron-builder --mac dmg zip --x64 --publish always
 
-      - name: Upload macOS x64 artifact
+      - name: Upload macOS x64 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-x64
-          path: release/Recordly-x64.dmg
+          name: macos-x64-release
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/latest-mac.yml
           if-no-files-found: error
 
   build-macos-arm64:
     name: Build macOS arm64
-    needs: validate-release
+    needs: prepare-release
     runs-on: macos-14
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.validate-release.outputs.source_sha }}
+          ref: ${{ needs.prepare-release.outputs.source_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate macOS signing secrets
+        shell: bash
+        env:
+          APPLE_SIGNING_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_SIGNING_CERTIFICATE_P12_BASE64 }}
+          APPLE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in APPLE_SIGNING_CERTIFICATE_P12_BASE64 APPLE_SIGNING_CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required macOS release secret: $name"
+              exit 1
+            fi
+          done
+
+      - name: Prepare macOS signing certificate
+        shell: bash
+        env:
+          APPLE_SIGNING_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_SIGNING_CERTIFICATE_P12_BASE64 }}
+          APPLE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/apple-signing-cert.p12"
+          echo "$APPLE_SIGNING_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          {
+            echo "CSC_LINK=$CERT_PATH"
+            echo "CSC_KEY_PASSWORD=$APPLE_SIGNING_CERTIFICATE_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install app dependencies
+        run: npx electron-builder install-app-deps
+
+      - name: Build native macOS helpers
+        run: npm run build:native-helpers
+
+      - name: Build macOS arm64
+        run: |
+          npx tsc
+          npx vite build
+          npx electron-builder --mac dmg zip --arm64 --publish always
+
+      - name: Upload macOS arm64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64-release
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/latest-mac.yml
+          if-no-files-found: error
+
+  merge-macos-update-metadata:
+    name: Merge macOS update metadata
+    needs:
+      - prepare-release
+      - build-macos-x64
+      - build-macos-arm64
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download macOS x64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-x64-release
+          path: release-assets/macos-x64
+
+      - name: Download macOS arm64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-arm64-release
+          path: release-assets/macos-arm64
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyYAML
+        run: python -m pip install pyyaml
+
+      - name: Merge latest-mac.yml
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets/merged
+          python <<'PY'
+          from pathlib import Path
+          import yaml
+
+          x64_info = yaml.safe_load(Path('release-assets/macos-x64/latest-mac.yml').read_text())
+          arm64_info = yaml.safe_load(Path('release-assets/macos-arm64/latest-mac.yml').read_text())
+
+          merged_files = []
+          seen_urls = set()
+          for info in (x64_info, arm64_info):
+            for file_info in info.get('files', []):
+              url = file_info.get('url')
+              if url and url not in seen_urls:
+                seen_urls.add(url)
+                merged_files.append(file_info)
+
+          if not merged_files:
+            raise SystemExit('No macOS update files found to merge.')
+
+          preferred = next((item for item in merged_files if 'x64' in item.get('url', '')), merged_files[0])
+          merged = dict(x64_info)
+          merged['files'] = merged_files
+          merged['path'] = preferred.get('url', merged.get('path'))
+          merged['sha512'] = preferred.get('sha512', merged.get('sha512'))
+          if not merged.get('releaseDate') and arm64_info.get('releaseDate'):
+            merged['releaseDate'] = arm64_info['releaseDate']
+
+          Path('release-assets/merged/latest-mac.yml').write_text(
+            yaml.safe_dump(merged, sort_keys=False)
+          )
+          PY
+
+      - name: Upload merged latest-mac.yml to release
+        shell: bash
+        run: |
+          gh release upload "${{ needs.prepare-release.outputs.tag_name }}" \
+            release-assets/merged/latest-mac.yml \
+            --repo "${{ github.repository }}" \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-windows-x64:
+    name: Build Windows x64
+    needs: prepare-release
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.source_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate Windows signing secrets
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_P12_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_P12_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          foreach ($name in @('WINDOWS_SIGNING_CERTIFICATE_P12_BASE64', 'WINDOWS_SIGNING_CERTIFICATE_PASSWORD')) {
+            $value = [Environment]::GetEnvironmentVariable($name)
+            if ([string]::IsNullOrWhiteSpace($value)) {
+              Write-Error "Missing required Windows release secret: $name"
+              exit 1
+            }
+          }
+
+      - name: Prepare Windows signing certificate
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_P12_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_P12_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          $certPath = Join-Path $env:RUNNER_TEMP 'windows-signing-cert.p12'
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE_P12_BASE64))
+          Add-Content -Path $env:GITHUB_ENV -Value "WIN_CSC_LINK=$certPath"
+          Add-Content -Path $env:GITHUB_ENV -Value "WIN_CSC_KEY_PASSWORD=$env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install app dependencies
+        run: npx electron-builder install-app-deps
+
+      - name: Build Windows x64
+        shell: pwsh
+        run: |
+          npm run build:platform-native-helpers
+          npx tsc
+          npx vite build
+          npx electron-builder --win nsis --x64 --publish always
+
+      - name: Upload Windows x64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-release
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest*.yml
+          if-no-files-found: error
+
+  build-linux-x64:
+    name: Build Linux x64
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.source_sha }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -150,154 +406,41 @@ jobs:
       - name: Install app dependencies
         run: npx electron-builder install-app-deps
 
-      - name: Build native macOS helpers
-        run: npm run build:native-helpers
-
-      - name: Build macOS arm64
-        run: |
-          npx tsc
-          npx vite build
-          npx electron-builder --mac dmg --arm64 --publish never
-          mv release/Recordly.dmg release/Recordly-arm64.dmg
-
-      - name: Upload macOS arm64 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-arm64
-          path: release/Recordly-arm64.dmg
-          if-no-files-found: error
-
-  build-windows-x64:
-    name: Build Windows x64
-    needs: validate-release
-    runs-on: windows-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.validate-release.outputs.source_sha }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install app dependencies
-        run: npx electron-builder install-app-deps
-
-      - name: Build Windows x64
-        shell: pwsh
-        run: |
-          npm run build:cursor-monitor
-          npx tsc
-          npx vite build
-          npx electron-builder --win nsis --x64 --publish never
-          Rename-Item -Path release/Recordly.exe -NewName Recordly-windows-x64.exe
-
-      - name: Upload Windows x64 artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-x64
-          path: release/Recordly-windows-x64.exe
-          if-no-files-found: error
-
-  build-linux-x64:
-    name: Build Linux x64
-    needs: validate-release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.validate-release.outputs.source_sha }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install app dependencies
-        run: npx electron-builder install-app-deps
-
       - name: Build Linux x64
         run: |
+          export CSC_IDENTITY_AUTO_DISCOVERY=false
+          npm run build:platform-native-helpers
           npx tsc
           npx vite build
-          npx electron-builder --linux AppImage --x64 --publish never
-          mv release/Recordly.AppImage release/Recordly-linux-x64.AppImage
+          npx electron-builder --linux AppImage --x64 --publish always
 
-      - name: Upload Linux x64 artifact
+      - name: Upload Linux x64 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: linux-x64
-          path: release/Recordly-linux-x64.AppImage
+          name: linux-x64-release
+          path: |
+            release/*.AppImage
+            release/*.blockmap
+            release/latest-linux.yml
           if-no-files-found: error
 
-  publish-release:
-    name: Publish release
+  trigger-homebrew-update:
+    name: Trigger Homebrew tap update
     needs:
-      - validate-release
+      - prepare-release
       - build-macos-x64
       - build-macos-arm64
+      - merge-macos-update-metadata
       - build-windows-x64
       - build-linux-x64
     runs-on: ubuntu-latest
+    if: needs.prepare-release.outputs.prerelease != 'true'
     steps:
-      - name: Download macOS x64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-x64
-          path: release-assets
-
-      - name: Download macOS arm64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-arm64
-          path: release-assets
-
-      - name: Download Windows x64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-x64
-          path: release-assets
-
-      - name: Download Linux x64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: linux-x64
-          path: release-assets
-
-      - name: Create or update release
-        uses: ncipollo/release-action@v1
-        with:
-          tag: ${{ github.event.inputs.tag_name }}
-          commit: ${{ needs.validate-release.outputs.source_sha }}
-          name: ${{ github.event.inputs.release_name }}
-          body: ${{ github.event.inputs.release_notes }}
-          makeLatest: ${{ github.event.inputs.make_latest }}
-          allowUpdates: true
-          replacesArtifacts: true
-          artifactErrorsFailBuild: true
-          artifacts: |
-            release-assets/Recordly-arm64.dmg
-            release-assets/Recordly-x64.dmg
-            release-assets/Recordly-windows-x64.exe
-            release-assets/Recordly-linux-x64.AppImage
+      - name: Dispatch Homebrew tap workflow
+        shell: bash
+        run: |
+          gh workflow run homebrew-tap.yml \
+            --repo "${{ github.repository }}" \
+            -f tag="${{ needs.prepare-release.outputs.tag_name }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
