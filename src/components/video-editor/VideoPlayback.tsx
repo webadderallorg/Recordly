@@ -49,6 +49,8 @@ import {
   DEFAULT_CURSOR_CONFIG,
   PixiCursorOverlay,
   preloadCursorAssets,
+  drawCursorOnCanvas,
+  SmoothedCursorState,
 } from "./videoPlayback/cursorRenderer";
 import {
   buildActiveCaptionLayout,
@@ -301,6 +303,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
     const motionBlurFilterRef = useRef<MotionBlurFilter | null>(null);
     const isDraggingFocusRef = useRef(false);
     const stageSizeRef = useRef({ width: 0, height: 0 });
+    const cursorCanvasRef = useRef<HTMLCanvasElement | null>(null);
+    const smoothedCursorStateRef = useRef<SmoothedCursorState | null>(null);
     const videoSizeRef = useRef({ width: 0, height: 0 });
     const baseScaleRef = useRef(1);
     const baseOffsetRef = useRef({ x: 0, y: 0 });
@@ -1175,9 +1179,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
       videoContainer.addChild(maskGraphics);
       videoContainer.mask = maskGraphics;
       maskGraphicsRef.current = maskGraphics;
-      if (cursorOverlayRef.current) {
-        cursorContainer.addChild(cursorOverlayRef.current.container);
-      }
+
+      smoothedCursorStateRef.current = new SmoothedCursorState(DEFAULT_CURSOR_CONFIG);
 
       animationStateRef.current = createPlaybackAnimationState();
 
@@ -1411,17 +1414,46 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
         );
         applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
 
-        // Update cursor overlay
-        const cursorOverlay = cursorOverlayRef.current;
-        if (cursorOverlay) {
+        // Update cursor overlay on separate top-level canvas
+        const cursorCanvas = cursorCanvasRef.current;
+        const smoothedState = smoothedCursorStateRef.current;
+        if (cursorCanvas && smoothedState && cursorTelemetryRef.current && showCursorRef.current) {
           const timeMs = currentTimeRef.current;
-          cursorOverlay.update(
-            cursorTelemetryRef.current,
-            timeMs,
-            baseMaskRef.current,
-            showCursorRef.current,
-            !isPlayingRef.current || isSeekingRef.current,
-          );
+          const ctx = cursorCanvas.getContext('2d');
+          if (ctx) {
+            // Match canvas size to container
+            if (cursorCanvas.width !== cursorCanvas.clientWidth || cursorCanvas.height !== cursorCanvas.clientHeight) {
+              cursorCanvas.width = cursorCanvas.clientWidth;
+              cursorCanvas.height = cursorCanvas.clientHeight;
+            }
+            
+            ctx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+            
+            // Draw cursor on top using utility
+            drawCursorOnCanvas(
+              ctx,
+              cursorTelemetryRef.current,
+              timeMs,
+              {
+                x: 0,
+                y: 0,
+                width: cursorCanvas.width,
+                height: cursorCanvas.height,
+                sourceCrop: cropRegion,
+              },
+              smoothedState,
+              {
+                ...DEFAULT_CURSOR_CONFIG,
+                style: cursorStyle,
+                dotRadius: 28 * cursorSize, // Matches Pixi scaling approx
+                smoothingFactor: cursorSmoothing,
+                motionBlur: cursorMotionBlur,
+                clickBounce: cursorClickBounce,
+                clickBounceDuration: cursorClickBounceDuration,
+                sway: cursorSway,
+              }
+            );
+          }
         }
       };
 
@@ -1851,6 +1883,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
                 />
               ));
             })()}
+            {/* Top-level Cursor Layer (on top of all annotations) */}
+            {showCursor && (
+              <canvas
+                ref={cursorCanvasRef}
+                className="absolute inset-0 pointer-events-none w-full h-full"
+                style={{ zIndex: 10000 }} // Ensure it's above any annotation zIndex
+              />
+            )}
           </div>
         )}
         <video
