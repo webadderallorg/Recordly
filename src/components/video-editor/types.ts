@@ -172,7 +172,7 @@ export function trimsToClips(trims: TrimRegion[], totalDurationMs: number): Clip
 	return clips;
 }
 
-export type AnnotationType = "text" | "image" | "figure";
+export type AnnotationType = "text" | "image" | "figure" | "blur";
 
 export type ArrowDirection =
 	| "up"
@@ -240,6 +240,7 @@ export interface AnnotationRegion {
 	style: AnnotationTextStyle;
 	zIndex: number;
 	figureData?: FigureData;
+	blurIntensity?: number;
 }
 
 export const DEFAULT_ANNOTATION_POSITION: AnnotationPosition = {

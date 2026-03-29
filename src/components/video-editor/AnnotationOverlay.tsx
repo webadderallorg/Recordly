@@ -50,8 +50,8 @@ export function AnnotationOverlay({
           <div
             className="w-full h-full flex items-center p-2 overflow-hidden"
             style={{
-              justifyContent: annotation.style.textAlign === 'left' ? 'flex-start' : 
-                            annotation.style.textAlign === 'right' ? 'flex-end' : 'center',
+              justifyContent: annotation.style.textAlign === 'left' ? 'flex-start' :
+                annotation.style.textAlign === 'right' ? 'flex-end' : 'center',
               alignItems: 'center',
             }}
           >
@@ -111,6 +111,17 @@ export function AnnotationOverlay({
           </div>
         );
 
+      case 'blur':
+        return (
+          <div 
+            className="w-full h-full rounded-lg backdrop-blur-md"
+            style={{ 
+              backdropFilter: `blur(${annotation.blurIntensity ?? 12}px)`,
+              WebkitBackdropFilter: `blur(${annotation.blurIntensity ?? 12}px)`
+            }} 
+          />
+        );
+
       default:
         return null;
     }
@@ -127,7 +138,7 @@ export function AnnotationOverlay({
         const xPercent = (d.x / containerWidth) * 100;
         const yPercent = (d.y / containerHeight) * 100;
         onPositionChange(annotation.id, { x: xPercent, y: yPercent });
-        
+
         // Reset dragging flag after a short delay to prevent click event
         setTimeout(() => {
           isDraggingRef.current = false;

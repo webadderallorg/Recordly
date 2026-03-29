@@ -21,6 +21,7 @@ interface AnnotationSettingsPanelProps {
   onTypeChange: (type: AnnotationType) => void;
   onStyleChange: (style: Partial<AnnotationRegion['style']>) => void;
   onFigureDataChange?: (figureData: FigureData) => void;
+  onBlurIntensityChange?: (intensity: number) => void;
   onDelete: () => void;
 }
 
@@ -43,6 +44,7 @@ export function AnnotationSettingsPanel({
   onTypeChange,
   onStyleChange,
   onFigureDataChange,
+  onBlurIntensityChange,
   onDelete,
 }: AnnotationSettingsPanelProps) {
   const t = useScopedT('editor');
@@ -128,20 +130,28 @@ export function AnnotationSettingsPanel({
         
         {/* Type Selector */}
         <Tabs value={annotation.type} onValueChange={(value) => onTypeChange(value as AnnotationType)} className="mb-6">
-          <TabsList className="mb-4 bg-white/5 border border-white/5 p-1 w-full grid grid-cols-3 h-auto rounded-xl">
-            <TabsTrigger value="text" className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-slate-400 py-2 rounded-lg transition-all gap-2">
-              <Type className="w-4 h-4" />
+          <TabsList className="mb-4 bg-white/[0.03] border border-white/[0.06] p-0.5 w-full grid grid-cols-4 h-10 rounded-xl backdrop-blur-sm">
+            <TabsTrigger value="text" className="data-[state=active]:bg-white/[0.08] data-[state=active]:text-[#3B82F6] data-[state=active]:shadow-none text-slate-400 py-1.5 rounded-lg transition-all gap-1.5 text-[11px] font-medium border border-transparent data-[state=active]:border-white/[0.05]">
+              <Type className="w-3.5 h-3.5" />
               {t('annotations.text')}
             </TabsTrigger>
-            <TabsTrigger value="image" className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-slate-400 py-2 rounded-lg transition-all gap-2">
-              <ImageIcon className="w-4 h-4" />
+            <TabsTrigger value="image" className="data-[state=active]:bg-white/[0.08] data-[state=active]:text-[#3B82F6] data-[state=active]:shadow-none text-slate-400 py-1.5 rounded-lg transition-all gap-1.5 text-[11px] font-medium border border-transparent data-[state=active]:border-white/[0.05]">
+              <ImageIcon className="w-3.5 h-3.5" />
               {t('annotations.image')}
             </TabsTrigger>
-            <TabsTrigger value="figure" className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-slate-400 py-2 rounded-lg transition-all gap-2">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <TabsTrigger value="figure" className="data-[state=active]:bg-white/[0.08] data-[state=active]:text-[#3B82F6] data-[state=active]:shadow-none text-slate-400 py-1.5 rounded-lg transition-all gap-1.5 text-[11px] font-medium border border-transparent data-[state=active]:border-white/[0.05]">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M4 12h16m0 0l-6-6m6 6l-6 6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               {t('annotations.arrow')}
+            </TabsTrigger>
+            <TabsTrigger value="blur" className="data-[state=active]:bg-white/[0.08] data-[state=active]:text-[#3B82F6] data-[state=active]:shadow-none text-slate-400 py-1.5 rounded-lg transition-all gap-1.5 text-[11px] font-medium border border-transparent data-[state=active]:border-white/[0.05]">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="9" className="opacity-30" />
+                <circle cx="12" cy="12" r="5" className="opacity-60" />
+                <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+              </svg>
+              {t('annotations.blur', 'Blur')}
             </TabsTrigger>
           </TabsList>
 
@@ -497,6 +507,31 @@ export function AnnotationSettingsPanel({
                   />
                 </PopoverContent>
               </Popover>
+            </div>
+          </TabsContent>
+          <TabsContent value="blur" className="mt-0 space-y-4">
+            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <label className="text-xs font-semibold text-slate-200 uppercase tracking-widest opacity-80">
+                  {t('annotations.blurIntensity', 'Intensity')}
+                </label>
+                <span className="text-xs font-mono font-bold text-[#3B82F6] bg-[#3B82F6]/10 px-2 py-0.5 rounded-md border border-[#3B82F6]/20">
+                  {annotation.blurIntensity ?? 12}%
+                </span>
+              </div>
+              <Slider
+                value={[annotation.blurIntensity ?? 12]}
+                onValueChange={([value]) => {
+                  onBlurIntensityChange?.(value);
+                }}
+                min={1}
+                max={100}
+                step={1}
+                className="w-full"
+              />
+              <p className="text-[10px] text-slate-500 mt-4 leading-relaxed font-medium">
+                {t('annotations.blurDescription', 'Obscure sensitive information by blurring the underlying video content.')}
+              </p>
             </div>
           </TabsContent>
         </Tabs>

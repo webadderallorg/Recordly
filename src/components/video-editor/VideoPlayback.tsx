@@ -292,6 +292,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
     const captionBoxRef = useRef<HTMLDivElement | null>(null);
     const currentTimeRef = useRef(0);
     const zoomRegionsRef = useRef<ZoomRegion[]>([]);
+    const annotationRegionsRef = useRef<AnnotationRegion[]>([]);
     const selectedZoomIdRef = useRef<string | null>(null);
     const animationStateRef = useRef<PlaybackAnimationState>(
       createPlaybackAnimationState(),
@@ -435,13 +436,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
       const margin = webcam.margin ?? 24;
       const scaledSize = getWebcamOverlaySizePx({
-    		containerWidth: overlay.clientWidth,
-    		containerHeight: overlay.clientHeight,
-      		sizePercent: webcam.size ?? DEFAULT_WEBCAM_SIZE,
-    		margin,
-    		zoomScale,
-      		reactToZoom: webcam.reactToZoom ?? DEFAULT_WEBCAM_REACT_TO_ZOOM,
-    	});
+        containerWidth: overlay.clientWidth,
+        containerHeight: overlay.clientHeight,
+        sizePercent: webcam.size ?? DEFAULT_WEBCAM_SIZE,
+        margin,
+        zoomScale,
+        reactToZoom: webcam.reactToZoom ?? DEFAULT_WEBCAM_REACT_TO_ZOOM,
+      });
       const { x, y } = getWebcamOverlayPosition({
         containerWidth: overlay.clientWidth,
         containerHeight: overlay.clientHeight,
@@ -569,8 +570,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
         const selectedId = selectedZoomIdRef.current;
         const activeRegion = selectedId
           ? (zoomRegionsRef.current.find(
-              (region) => region.id === selectedId,
-            ) ?? null)
+            (region) => region.id === selectedId,
+          ) ?? null)
           : null;
 
         updateOverlayForRegion(activeRegion);
@@ -637,9 +638,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
           restoreTime > epsilon
             ? restoreTime - epsilon
             : Math.min(
-                duration || restoreTime + epsilon,
-                restoreTime + epsilon,
-              );
+              duration || restoreTime + epsilon,
+              restoreTime + epsilon,
+            );
 
         if (Math.abs(nudgeTarget - restoreTime) < 0.000001) {
           return;
@@ -728,7 +729,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
       isDraggingFocusRef.current = false;
       try {
         event.currentTarget.releasePointerCapture(event.pointerId);
-      } catch {}
+      } catch { }
     };
 
     const handleOverlayPointerUp = (
@@ -745,7 +746,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
     useEffect(() => {
       zoomRegionsRef.current = zoomRegions;
-    }, [zoomRegions]);
+      annotationRegionsRef.current = annotationRegions;
+    }, [zoomRegions, annotationRegions]);
 
     useEffect(() => {
       selectedZoomIdRef.current = selectedZoomId;
@@ -921,7 +923,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
         requestAnimationFrame(() => {
           const finalApp = appRef.current;
           if (wasPlaying && video) {
-            video.play().catch(() => {});
+            video.play().catch(() => { });
           }
           if (tickerWasStarted && finalApp?.ticker) {
             finalApp.ticker.start();
@@ -993,7 +995,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
       if (isPlaying) {
         const playPromise = webcamVideo.play();
         if (playPromise) {
-          playPromise.catch(() => {});
+          playPromise.catch(() => { });
         }
       } else {
         webcamVideo.pause();
@@ -1151,8 +1153,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
       const app = appRef.current;
       const videoContainer = videoContainerRef.current;
       const cursorContainer = cursorContainerRef.current;
+      const cameraContainer = cameraContainerRef.current;
 
-      if (!video || !app || !videoContainer || !cursorContainer) return;
+      if (!video || !app || !videoContainer || !cursorContainer || !cameraContainer) return;
       if (video.videoWidth === 0 || video.videoHeight === 0) return;
 
       const source = VideoSource.from(video);
@@ -1336,7 +1339,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
               scale:
                 startTransform.scale +
                 (endTransform.scale - startTransform.scale) *
-                  transition.progress,
+                transition.progress,
               x:
                 startTransform.x +
                 (endTransform.x - startTransform.x) * transition.progress,

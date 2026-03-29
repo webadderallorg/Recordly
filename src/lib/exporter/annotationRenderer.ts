@@ -47,7 +47,7 @@ const ARROW_PATHS: Record<ArrowDirection, string[]> = {
 function parseSvgPath(pathString: string, scaleX: number, scaleY: number): Array<{ cmd: string; args: number[] }> {
   const commands: Array<{ cmd: string; args: number[] }> = [];
   const parts = pathString.trim().split(/\s+/);
-  
+
   let i = 0;
   while (i < parts.length) {
     const cmd = parts[i];
@@ -60,7 +60,7 @@ function parseSvgPath(pathString: string, scaleX: number, scaleY: number): Array
       i++;
     }
   }
-  
+
   return commands;
 }
 
@@ -81,36 +81,36 @@ function renderArrow(
 
   ctx.save();
   ctx.translate(x, y);
-  
+
   const padding = 8 * _scaleFactor;
   const availableWidth = Math.max(0, width - padding * 2);
   const availableHeight = Math.max(0, height - padding * 2);
 
   const scale = Math.min(availableWidth / 100, availableHeight / 100);
-  
+
   const offsetX = padding + (availableWidth - 100 * scale) / 2;
   const offsetY = padding + (availableHeight - 100 * scale) / 2;
-  
+
   // Apply centering offset
   ctx.translate(offsetX, offsetY);
-  
+
   // Apply shadow filter
   ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
-  ctx.shadowBlur = 8 * scale; 
+  ctx.shadowBlur = 8 * scale;
   ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 4 * scale; 
-  
+  ctx.shadowOffsetY = 4 * scale;
+
   ctx.strokeStyle = color;
   ctx.lineWidth = strokeWidth * scale;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  
+
   // Draw all paths as a single shape to avoid overlapping shadows/strokes
   ctx.beginPath();
-  
+
   for (const pathString of paths) {
     const commands = parseSvgPath(pathString, scale, scale);
-    
+
 
     for (const { cmd, args } of commands) {
       if (cmd === 'M') {
@@ -120,9 +120,9 @@ function renderArrow(
       }
     }
   }
-  
+
   ctx.stroke();
-  
+
   ctx.restore();
 }
 
@@ -136,7 +136,7 @@ function renderText(
   scaleFactor: number
 ) {
   const style = annotation.style;
-  
+
   ctx.save();
 
   // Clip text to annotation box bounds (matches editor's overflow: hidden)
@@ -149,12 +149,12 @@ function renderText(
   const scaledFontSize = style.fontSize * scaleFactor;
   ctx.font = `${fontStyle} ${fontWeight} ${scaledFontSize}px ${style.fontFamily}`;
   ctx.textBaseline = 'middle';
-  
+
   const containerPadding = 8 * scaleFactor;
-  
+
   let textX = x;
   let textY = y + height / 2;
-  
+
   if (style.textAlign === 'center') {
     textX = x + width / 2;
     ctx.textAlign = 'center';
@@ -165,7 +165,7 @@ function renderText(
     textX = x + containerPadding;
     ctx.textAlign = 'left';
   }
-  
+
   const availableWidth = width - containerPadding * 2;
   const rawLines = annotation.content.split('\n');
   const lines: string[] = [];
@@ -190,49 +190,49 @@ function renderText(
   const lineHeight = scaledFontSize * 1.4;
 
   const startY = textY - ((lines.length - 1) * lineHeight) / 2;
-  
+
   lines.forEach((line, index) => {
     const currentY = startY + index * lineHeight;
-    
+
     if (style.backgroundColor && style.backgroundColor !== 'transparent') {
       const metrics = ctx.measureText(line);
       const verticalPadding = scaledFontSize * 0.1;
       const horizontalPadding = scaledFontSize * 0.2;
       const borderRadius = 4 * scaleFactor;
-      
+
       let bgX = textX - horizontalPadding;
       const bgWidth = metrics.width + horizontalPadding * 2;
-      
+
       const contentHeight = scaledFontSize * 1.4;
       const bgHeight = contentHeight + verticalPadding * 2;
       const bgY = currentY - bgHeight / 2;
-      
+
       if (style.textAlign === 'center') {
         bgX = textX - bgWidth / 2;
       } else if (style.textAlign === 'right') {
         bgX = textX - bgWidth;
       }
-      
+
       ctx.fillStyle = style.backgroundColor;
       ctx.beginPath();
       ctx.roundRect(bgX, bgY, bgWidth, bgHeight, borderRadius);
       ctx.fill();
     }
-    
+
     ctx.fillStyle = style.color;
     ctx.fillText(line, textX, currentY);
-    
+
     if (style.textDecoration === 'underline') {
       const metrics = ctx.measureText(line);
       let underlineX = textX;
       const underlineY = currentY + scaledFontSize * 0.15;
-      
+
       if (style.textAlign === 'center') {
         underlineX = textX - metrics.width / 2;
       } else if (style.textAlign === 'right') {
         underlineX = textX - metrics.width;
       }
-      
+
       ctx.strokeStyle = style.color;
       ctx.lineWidth = Math.max(1, scaledFontSize / 16);
       ctx.beginPath();
@@ -241,7 +241,7 @@ function renderText(
       ctx.stroke();
     }
   });
-  
+
   ctx.restore();
 }
 
@@ -256,19 +256,19 @@ async function renderImage(
   if (!annotation.content || !annotation.content.startsWith('data:image')) {
     return;
   }
-  
+
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       // Preserve aspect ratio - contain the image within the bounds
       const imgAspect = img.width / img.height;
       const boxAspect = width / height;
-      
+
       let drawWidth = width;
       let drawHeight = height;
       let drawX = x;
       let drawY = y;
-      
+
       if (imgAspect > boxAspect) {
 
         drawHeight = width / imgAspect;
@@ -277,7 +277,7 @@ async function renderImage(
         drawWidth = height * imgAspect;
         drawX = x + (width - drawWidth) / 2;
       }
-      
+
       ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
       resolve();
     };
@@ -301,25 +301,25 @@ export async function renderAnnotations(
   const activeAnnotations = annotations.filter(
     (ann) => currentTimeMs >= ann.startMs && currentTimeMs <= ann.endMs
   );
-  
+
   // Sort by z-index (lower first, so higher z-index draws on top)
   const sortedAnnotations = [...activeAnnotations].sort((a, b) => a.zIndex - b.zIndex);
-  
+
   for (const annotation of sortedAnnotations) {
     const x = (annotation.position.x / 100) * canvasWidth;
     const y = (annotation.position.y / 100) * canvasHeight;
     const width = (annotation.size.width / 100) * canvasWidth;
     const height = (annotation.size.height / 100) * canvasHeight;
-    
+
     switch (annotation.type) {
       case 'text':
         renderText(ctx, annotation, x, y, width, height, scaleFactor);
         break;
-        
+
       case 'image':
         await renderImage(ctx, annotation, x, y, width, height);
         break;
-        
+
       case 'figure':
         if (annotation.figureData) {
           renderArrow(
@@ -335,7 +335,72 @@ export async function renderAnnotations(
           );
         }
         break;
+
+      case 'blur':
+        renderBlur(ctx, annotation, x, y, width, height, scaleFactor);
+        break;
     }
   }
+}
+
+function renderBlur(
+  ctx: CanvasRenderingContext2D,
+  annotation: AnnotationRegion,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  scaleFactor: number
+) {
+  // Get intensity scaled to canvas resolution
+  const intensity = (annotation.blurIntensity ?? 12) * scaleFactor;
+  if (intensity <= 0 || width <= 0 || height <= 0) return;
+
+  ctx.save();
+  try {
+    // Determine bounds and ensure they are within canvas to avoid ImageData errors
+    const srcX = Math.max(0, x);
+    const srcY = Math.max(0, y);
+    const srcWidth = Math.min(x + width, ctx.canvas.width) - srcX;
+    const srcHeight = Math.min(y + height, ctx.canvas.height) - srcY;
+
+    if (srcWidth <= 0 || srcHeight <= 0) {
+      ctx.restore();
+      return;
+    }
+
+    // Capture the current canvas region precisely for this intersection
+    const imageData = ctx.getImageData(srcX, srcY, srcWidth, srcHeight);
+    
+    let offscreen: HTMLCanvasElement | OffscreenCanvas;
+    if (typeof document !== 'undefined') {
+      offscreen = document.createElement('canvas');
+    } else {
+      offscreen = new OffscreenCanvas(srcWidth, srcHeight);
+    }
+    offscreen.width = srcWidth;
+    offscreen.height = srcHeight;
+    
+    const offCtx = offscreen.getContext('2d') as CanvasRenderingContext2D;
+    offCtx.putImageData(imageData, 0, 0);
+
+    // Create rounded rect clipping path (matches UI's rounded-lg approx 8px)
+    const radius = 8 * scaleFactor;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(x, y, width, height, radius);
+    } else {
+      ctx.rect(x, y, width, height);
+    }
+    ctx.clip();
+
+    // Apply the blur filter and draw the captured region back at its source position
+    ctx.filter = `blur(${intensity}px)`;
+    ctx.drawImage(offscreen as any, srcX, srcY);
+
+  } catch (err) {
+    console.warn('[AnnotationRenderer] Blur annotation render failed:', err);
+  }
+  ctx.restore();
 }
 

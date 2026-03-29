@@ -216,6 +216,7 @@ interface SettingsPanelProps {
 	onAnnotationTypeChange?: (id: string, type: AnnotationType) => void;
 	onAnnotationStyleChange?: (id: string, style: Partial<AnnotationRegion["style"]>) => void;
 	onAnnotationFigureDataChange?: (id: string, figureData: FigureData) => void;
+	onAnnotationBlurIntensityChange?: (id: string, intensity: number) => void;
 	onAnnotationDelete?: (id: string) => void;
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
@@ -557,6 +558,7 @@ export function SettingsPanel({
 	onAnnotationTypeChange,
 	onAnnotationStyleChange,
 	onAnnotationFigureDataChange,
+	onAnnotationBlurIntensityChange,
 	onAnnotationDelete,
 	autoCaptions = [],
 	autoCaptionSettings = DEFAULT_AUTO_CAPTION_SETTINGS,
@@ -1278,15 +1280,20 @@ export function SettingsPanel({
 		return (
 			<AnnotationSettingsPanel
 				annotation={selectedAnnotation}
-				onContentChange={(content) => onAnnotationContentChange(selectedAnnotation.id, content)}
-				onTypeChange={(type) => onAnnotationTypeChange(selectedAnnotation.id, type)}
-				onStyleChange={(style) => onAnnotationStyleChange(selectedAnnotation.id, style)}
+				onContentChange={(content) => onAnnotationContentChange?.(selectedAnnotation.id, content)}
+				onTypeChange={(type) => onAnnotationTypeChange?.(selectedAnnotation.id, type)}
+				onStyleChange={(style) => onAnnotationStyleChange?.(selectedAnnotation.id, style)}
 				onFigureDataChange={
 					onAnnotationFigureDataChange
 						? (figureData) => onAnnotationFigureDataChange(selectedAnnotation.id, figureData)
 						: undefined
 				}
-				onDelete={() => onAnnotationDelete(selectedAnnotation.id)}
+				onBlurIntensityChange={
+					onAnnotationBlurIntensityChange
+						? (intensity) => onAnnotationBlurIntensityChange(selectedAnnotation.id, intensity)
+						: undefined
+				}
+				onDelete={() => onAnnotationDelete?.(selectedAnnotation.id)}
 			/>
 		);
 	}
