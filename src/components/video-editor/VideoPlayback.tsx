@@ -354,6 +354,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
     const cursorClickBounceRef = useRef(cursorClickBounce);
     const cursorClickBounceDurationRef = useRef(cursorClickBounceDuration);
     const cursorSwayRef = useRef(cursorSway);
+    const cropRegionRef = useRef(cropRegion);
 
     const activeCaptionLayout = useMemo(() => {
       if (!autoCaptionSettings?.enabled || autoCaptions.length === 0 || typeof document === "undefined") {
@@ -860,6 +861,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
     useEffect(() => {
       cursorSwayRef.current = cursorSway;
     }, [cursorSway]);
+
+    useEffect(() => {
+      cropRegionRef.current = cropRegion;
+    }, [cropRegion]);
 
     useEffect(() => {
       currentTimeRef.current = currentTime * 1000;
@@ -1414,18 +1419,18 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
                 y: 0,
                 width: cursorCanvas.width,
                 height: cursorCanvas.height,
-                sourceCrop: cropRegion,
+                sourceCrop: cropRegionRef.current,
               },
               smoothedState,
               {
                 ...DEFAULT_CURSOR_CONFIG,
-                style: cursorStyle,
-                dotRadius: 28 * cursorSize, // Matches Pixi scaling approx
-                smoothingFactor: cursorSmoothing,
-                motionBlur: cursorMotionBlur,
-                clickBounce: cursorClickBounce,
-                clickBounceDuration: cursorClickBounceDuration,
-                sway: cursorSway,
+                style: cursorStyleRef.current,
+                dotRadius: 28 * cursorSizeRef.current, // Matches Pixi scaling approx
+                smoothingFactor: cursorSmoothingRef.current,
+                motionBlur: cursorMotionBlurRef.current,
+                clickBounce: cursorClickBounceRef.current,
+                clickBounceDuration: cursorClickBounceDurationRef.current,
+                sway: cursorSwayRef.current,
               }
             );
           }

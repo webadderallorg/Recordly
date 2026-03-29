@@ -358,11 +358,13 @@ function renderBlur(
 
   ctx.save();
   try {
-    // Determine bounds and ensure they are within canvas to avoid ImageData errors
-    const srcX = Math.max(0, x);
-    const srcY = Math.max(0, y);
-    const srcWidth = Math.min(x + width, ctx.canvas.width) - srcX;
-    const srcHeight = Math.min(y + height, ctx.canvas.height) - srcY;
+    // Pad the capture region to provide context for the blur kernel
+    // This prevents clipping at the edges of the annotation box
+    const padding = Math.ceil(intensity * 2);
+    const srcX = Math.max(0, x - padding);
+    const srcY = Math.max(0, y - padding);
+    const srcWidth = Math.min(x + width + padding, ctx.canvas.width) - srcX;
+    const srcHeight = Math.min(y + height + padding, ctx.canvas.height) - srcY;
 
     if (srcWidth <= 0 || srcHeight <= 0) {
       ctx.restore();

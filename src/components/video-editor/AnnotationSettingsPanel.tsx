@@ -516,7 +516,7 @@ export function AnnotationSettingsPanel({
                   {t('annotations.blurIntensity', 'Intensity')}
                 </label>
                 <span className="text-xs font-mono font-bold text-[#3B82F6] bg-[#3B82F6]/10 px-2 py-0.5 rounded-md border border-[#3B82F6]/20">
-                  {annotation.blurIntensity ?? 12}%
+                  {annotation.blurIntensity ?? 12}px
                 </span>
               </div>
               <Slider

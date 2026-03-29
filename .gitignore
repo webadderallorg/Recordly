@@ -42,6 +42,7 @@ electron/native/cursor-monitor/build/
 ebcache/
 docs/
 recordly_dev/
+.agent/
 
 # Local debug helpers
 tmp-*.ps1
