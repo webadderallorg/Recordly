@@ -4,13 +4,16 @@ import {
 	Captions,
 	Download,
 	FolderOpen,
+	Languages,
 	MousePointer2,
+	Music,
 	Redo2,
 	Save,
 	Sparkles,
 	Undo2,
 	X,
 } from "lucide-react";
+import { v4 as uuidv4 } from "uuid";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -61,12 +64,13 @@ import {
 } from "./projectPersistence";
 import { type EditorEffectSection, SettingsPanel } from "./SettingsPanel";
 import {
-	APP_HEADER_ICON_BUTTON_CLASS,
+	APP_HEADER_ACTION_BUTTON_CLASS,
 	FeedbackDialog,
 	KeyboardShortcutsDialog,
 } from "./TutorialHelp";
 import TimelineEditor from "./timeline/TimelineEditor";
 import {
+	detectInteractionCandidates,
 	normalizeCursorTelemetry,
 } from "./timeline/zoomSuggestionUtils";
 import {
@@ -82,6 +86,7 @@ import {
 	DEFAULT_ANNOTATION_SIZE,
 	DEFAULT_ANNOTATION_STYLE,
 	DEFAULT_AUTO_CAPTION_SETTINGS,
+	DEFAULT_BLUR_INTENSITY,
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
 	DEFAULT_CONNECTED_ZOOM_EASING,
 	DEFAULT_CONNECTED_ZOOM_GAP_MS,
@@ -124,6 +129,12 @@ type EditorHistorySnapshot = {
 	selectedSpeedId: string | null;
 	selectedAnnotationId: string | null;
 	selectedAudioId: string | null;
+	selectedCaptionId: string | null;
+	masterAudioMuted: boolean;
+	masterAudioSoloed: boolean;
+	masterAudioVolume: number;
+	audioTrackVolume: number;
+	isMasterSelected: boolean;
 };
 
 type PendingExportSave = {
@@ -287,20 +298,18 @@ function LanguageSwitcher() {
 			variant="ghost"
 			size="sm"
 			onClick={() => setLocale(next)}
-			className="h-7 rounded-[5px] px-2 text-[11px] font-semibold leading-none text-slate-300 hover:bg-white/10 hover:text-white transition-all"
+			className={APP_HEADER_ACTION_BUTTON_CLASS}
 			title={t("common.app.language", "Language")}
 			aria-label={t("common.app.language", "Language")}
 		>
-			<span className="leading-none">{labels[locale] ?? locale.toUpperCase()}</span>
+			<Languages className="h-4 w-4" />
+			<span className="font-medium">{labels[locale] ?? locale.toUpperCase()}</span>
 		</Button>
 	);
 }
 
 export default function VideoEditor() {
 	const { t } = useI18n();
-	const [appPlatform, setAppPlatform] = useState<string>(
-		typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "darwin" : "",
-	);
 	const initialEditorPreferences = useMemo(() => loadEditorPreferences(), []);
 	const [videoPath, setVideoPath] = useState<string | null>(null);
 	const [videoSourcePath, setVideoSourcePath] = useState<string | null>(null);
@@ -376,25 +385,32 @@ export default function VideoEditor() {
 	const [audioRegions, setAudioRegions] = useState<AudioRegion[]>([]);
 	const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
 	const [autoCaptions, setAutoCaptions] = useState<CaptionCue[]>([]);
-	const [autoCaptionSettings, setAutoCaptionSettings] = useState<AutoCaptionSettings>(
-		DEFAULT_AUTO_CAPTION_SETTINGS,
-	);
+	const [selectedCaptionId, setSelectedCaptionId] = useState<string | null>(null);
+	const [autoCaptionSettings, setAutoCaptionSettings] = useState<AutoCaptionSettings>(() => ({
+		...DEFAULT_AUTO_CAPTION_SETTINGS,
+		selectedModel: (initialEditorPreferences.whisperSelectedModel as any) || "small",
+	}));
 	const [whisperExecutablePath, setWhisperExecutablePath] = useState<string | null>(
 		initialEditorPreferences.whisperExecutablePath,
 	);
 	const [whisperModelPath, setWhisperModelPath] = useState<string | null>(
 		initialEditorPreferences.whisperModelPath,
 	);
-	const [downloadedWhisperModelPath, setDownloadedWhisperModelPath] = useState<string | null>(null);
 	const [whisperModelDownloadStatus, setWhisperModelDownloadStatus] = useState<
 		"idle" | "downloading" | "downloaded" | "error"
 	>(initialEditorPreferences.whisperModelPath ? "downloaded" : "idle");
 	const [whisperModelDownloadProgress, setWhisperModelDownloadProgress] = useState(0);
 	const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
+	const [autoCaptionProgress, setAutoCaptionProgress] = useState(0);
 	const [isExporting, setIsExporting] = useState(false);
 	const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
 	const [exportError, setExportError] = useState<string | null>(null);
 	const [showExportDropdown, setShowExportDropdown] = useState(false);
+	const [masterAudioMuted, setMasterAudioMuted] = useState(false);
+	const [masterAudioSoloed, setMasterAudioSoloed] = useState(false);
+	const [masterAudioVolume, setMasterAudioVolume] = useState(1);
+	const [audioTrackVolume, setAudioTrackVolume] = useState(1);
+	const [isMasterSelected, setIsMasterSelected] = useState(false);
 	const [previewVolume, setPreviewVolume] = useState(1);
 	const [aspectRatio, setAspectRatio] = useState<AspectRatio>(initialEditorPreferences.aspectRatio);
 	const [activeEffectSection, setActiveEffectSection] = useState<EditorEffectSection>("scene");
@@ -416,11 +432,14 @@ export default function VideoEditor() {
 	const [lastSavedSnapshot, setLastSavedSnapshot] = useState<EditorProjectData | null>(null);
 	const [showCropModal, setShowCropModal] = useState(false);
 	const [previewVersion, setPreviewVersion] = useState(0);
-	const [isPreviewReady, setIsPreviewReady] = useState(false);
-	const [autoSuggestZoomsTrigger, setAutoSuggestZoomsTrigger] = useState(0);
-	const headerLeftControlsPaddingClass = appPlatform === "darwin" ? "pl-[76px]" : "";
+	const [isAudioEngineReady, setIsAudioEngineReady] = useState(false);
 
 	const videoPlaybackRef = useRef<VideoPlaybackRef>(null);
+	const audioContextRef = useRef<AudioContext | null>(null);
+	const masterGainRef = useRef<GainNode | null>(null);
+	const audioRegionNodesRef = useRef<Map<string, { source: MediaElementAudioSourceNode; gain: GainNode }>>(new Map());
+	const videoAudioNodeRef = useRef<{ source: MediaElementAudioSourceNode; gain: GainNode } | null>(null);
+	
 	const projectBrowserTriggerRef = useRef<HTMLButtonElement | null>(null);
 	const projectBrowserFallbackTriggerRef = useRef<HTMLButtonElement | null>(null);
 	const nextZoomIdRef = useRef(1);
@@ -433,22 +452,14 @@ export default function VideoEditor() {
 	const nextAnnotationZIndexRef = useRef(1); // Track z-index for stacking order
 	const exporterRef = useRef<VideoExporter | null>(null);
 	const autoSuggestedVideoPathRef = useRef<string | null>(null);
-	const pendingFreshRecordingAutoZoomPathRef = useRef<string | null>(null);
 	const historyPastRef = useRef<EditorHistorySnapshot[]>([]);
 	const historyFutureRef = useRef<EditorHistorySnapshot[]>([]);
 	const historyCurrentRef = useRef<EditorHistorySnapshot | null>(null);
 	const applyingHistoryRef = useRef(false);
 	const pendingExportSaveRef = useRef<PendingExportSave | null>(null);
-	const pendingTelemetryRetryTimeoutRef = useRef<number | null>(null);
 	const cropSnapshotRef = useRef<CropRegion | null>(null);
 	const mp4SupportRequestRef = useRef(0);
 	const [historyVersion, setHistoryVersion] = useState(0);
-
-	useEffect(() => {
-		void window.electronAPI.getPlatform().then((platform) => {
-			setAppPlatform(platform);
-		});
-	}, []);
 	const [supportedMp4SourceDimensions, setSupportedMp4SourceDimensions] =
 		useState<SupportedMp4Dimensions>({
 			width: 1920,
@@ -653,20 +664,11 @@ export default function VideoEditor() {
 		}));
 	}, []);
 
-	const remountPreview = useCallback(() => {
-		setIsPreviewReady(false);
-		setPreviewVersion((version) => version + 1);
-	}, []);
-
 	useEffect(() => {
 		return () => {
 			exporterRef.current?.cancel();
 			exporterRef.current = null;
 			pendingExportSaveRef.current = null;
-			if (pendingTelemetryRetryTimeoutRef.current !== null) {
-				window.clearTimeout(pendingTelemetryRetryTimeoutRef.current);
-				pendingTelemetryRetryTimeoutRef.current = null;
-			}
 		};
 	}, []);
 
@@ -811,6 +813,7 @@ export default function VideoEditor() {
 				label: t("settings.sections.captions", "Captions"),
 				icon: Captions,
 			},
+			{ id: "audio" as const, label: t("settings.sections.audio", "Audio"), icon: Music },
 		],
 		[t],
 	);
@@ -985,6 +988,12 @@ export default function VideoEditor() {
 			selectedSpeedId,
 			selectedAnnotationId,
 			selectedAudioId,
+			selectedCaptionId,
+			masterAudioMuted,
+			masterAudioSoloed,
+			masterAudioVolume,
+			audioTrackVolume,
+			isMasterSelected,
 		};
 	}, [
 		zoomRegions,
@@ -998,46 +1007,57 @@ export default function VideoEditor() {
 		selectedSpeedId,
 		selectedAnnotationId,
 		selectedAudioId,
+		selectedCaptionId,
+		masterAudioMuted,
+		masterAudioSoloed,
+		masterAudioVolume,
+		audioTrackVolume,
+		isMasterSelected,
 	]);
 
 	const applyHistorySnapshot = useCallback(
 		(snapshot: EditorHistorySnapshot) => {
 			applyingHistoryRef.current = true;
-			const cloned = cloneSnapshot(snapshot);
-			setZoomRegions(cloned.zoomRegions);
-			setTrimRegions(cloned.trimRegions);
-			setSpeedRegions(cloned.speedRegions);
-			setAnnotationRegions(cloned.annotationRegions);
-			setAudioRegions(cloned.audioRegions);
-			setAutoCaptions(cloned.autoCaptions);
-			setSelectedZoomId(cloned.selectedZoomId);
-			setSelectedTrimId(cloned.selectedTrimId);
-			setSelectedSpeedId(cloned.selectedSpeedId);
-			setSelectedAnnotationId(cloned.selectedAnnotationId);
-			setSelectedAudioId(cloned.selectedAudioId);
+			setZoomRegions(cloneStructured(snapshot.zoomRegions));
+			setTrimRegions(cloneStructured(snapshot.trimRegions));
+			setSpeedRegions(cloneStructured(snapshot.speedRegions));
+			setAnnotationRegions(cloneStructured(snapshot.annotationRegions));
+			setAudioRegions(cloneStructured(snapshot.audioRegions));
+			setAutoCaptions(cloneStructured(snapshot.autoCaptions));
+			setSelectedZoomId(snapshot.selectedZoomId);
+			setSelectedTrimId(snapshot.selectedTrimId);
+			setSelectedSpeedId(snapshot.selectedSpeedId);
+			setSelectedAnnotationId(snapshot.selectedAnnotationId);
+			setSelectedAudioId(snapshot.selectedAudioId);
+			setSelectedCaptionId(snapshot.selectedCaptionId);
+			setMasterAudioMuted(snapshot.masterAudioMuted);
+			setMasterAudioSoloed(snapshot.masterAudioSoloed);
+			setMasterAudioVolume(snapshot.masterAudioVolume);
+			setAudioTrackVolume(snapshot.audioTrackVolume);
+			setIsMasterSelected(snapshot.isMasterSelected);
 
 			nextZoomIdRef.current = deriveNextId(
 				"zoom",
-				cloned.zoomRegions.map((region) => region.id),
+				snapshot.zoomRegions.map((region: ZoomRegion) => region.id),
 			);
 			nextTrimIdRef.current = deriveNextId(
 				"trim",
-				cloned.trimRegions.map((region) => region.id),
+				snapshot.trimRegions.map((region: TrimRegion) => region.id),
 			);
 			nextSpeedIdRef.current = deriveNextId(
 				"speed",
-				cloned.speedRegions.map((region) => region.id),
+				snapshot.speedRegions.map((region: SpeedRegion) => region.id),
 			);
 			nextAnnotationIdRef.current = deriveNextId(
 				"annotation",
-				cloned.annotationRegions.map((region) => region.id),
+				snapshot.annotationRegions.map((region: AnnotationRegion) => region.id),
 			);
 			nextAudioIdRef.current = deriveNextId(
 				"audio",
-				cloned.audioRegions.map((region) => region.id),
+				snapshot.audioRegions.map((region: AudioRegion) => region.id),
 			);
 			nextAnnotationZIndexRef.current =
-				cloned.annotationRegions.reduce((max, region) => Math.max(max, region.zIndex), 0) + 1;
+				snapshot.annotationRegions.reduce((max: number, region: AnnotationRegion) => Math.max(max, region.zIndex), 0) + 1;
 		},
 		[cloneSnapshot],
 	);
@@ -1091,7 +1111,6 @@ export default function VideoEditor() {
 			setVideoSourcePath(sourcePath);
 			setVideoPath(toFileUrl(sourcePath));
 			setCurrentProjectPath(path ?? null);
-			pendingFreshRecordingAutoZoomPathRef.current = null;
 			if (normalizedEditor.webcam.sourcePath) {
 				await window.electronAPI.setCurrentRecordingSession?.({
 					videoPath: sourcePath,
@@ -1140,6 +1159,11 @@ export default function VideoEditor() {
 			setGifFrameRate(normalizedEditor.gifFrameRate);
 			setGifLoop(normalizedEditor.gifLoop);
 			setGifSizePreset(normalizedEditor.gifSizePreset);
+			setMasterAudioMuted(normalizedEditor.masterAudioMuted);
+			setMasterAudioSoloed(normalizedEditor.masterAudioSoloed);
+			setMasterAudioVolume(normalizedEditor.masterAudioVolume);
+			setAudioTrackVolume(normalizedEditor.audioTrackVolume);
+			setIsMasterSelected(normalizedEditor.isMasterSelected ?? false);
 
 			setSelectedZoomId(null);
 			setSelectedTrimId(null);
@@ -1284,9 +1308,9 @@ export default function VideoEditor() {
 		() =>
 			Boolean(
 				currentProjectPath &&
-					currentProjectSnapshot &&
-					lastSavedSnapshot &&
-					!areDeepEqual(currentProjectSnapshot, lastSavedSnapshot),
+				currentProjectSnapshot &&
+				lastSavedSnapshot &&
+				!areDeepEqual(currentProjectSnapshot, lastSavedSnapshot),
 			),
 		[currentProjectPath, currentProjectSnapshot, lastSavedSnapshot],
 	);
@@ -1308,12 +1332,10 @@ export default function VideoEditor() {
 				const sessionResult = await window.electronAPI.getCurrentRecordingSession?.();
 				if (sessionResult?.success && sessionResult.session?.videoPath) {
 					const sourcePath = fromFileUrl(sessionResult.session.videoPath);
-					const sourceVideoUrl = toFileUrl(sourcePath);
 					setVideoSourcePath(sourcePath);
-					setVideoPath(sourceVideoUrl);
+					setVideoPath(toFileUrl(sourcePath));
 					setCurrentProjectPath(null);
 					setLastSavedSnapshot(null);
-					pendingFreshRecordingAutoZoomPathRef.current = sourceVideoUrl;
 					setWebcam((prev) => ({
 						...prev,
 						enabled: Boolean(sessionResult.session?.webcamPath),
@@ -1325,12 +1347,10 @@ export default function VideoEditor() {
 				const result = await window.electronAPI.getCurrentVideoPath();
 				if (result.success && result.path) {
 					const sourcePath = fromFileUrl(result.path);
-					const sourceVideoUrl = toFileUrl(sourcePath);
 					setVideoSourcePath(sourcePath);
-					setVideoPath(sourceVideoUrl);
+					setVideoPath(toFileUrl(sourcePath));
 					setCurrentProjectPath(null);
 					setLastSavedSnapshot(null);
-					pendingFreshRecordingAutoZoomPathRef.current = sourceVideoUrl;
 					setWebcam((prev) => ({
 						...prev,
 						enabled: false,
@@ -1382,8 +1402,11 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			masterAudioMuted,
+			masterAudioSoloed,
 			whisperExecutablePath,
 			whisperModelPath,
+			whisperSelectedModel: autoCaptionSettings.selectedModel,
 		});
 	}, [
 		wallpaper,
@@ -1419,45 +1442,73 @@ export default function VideoEditor() {
 		gifSizePreset,
 		whisperExecutablePath,
 		whisperModelPath,
+		autoCaptionSettings.selectedModel,
 	]);
 
 	useEffect(() => {
-		const unsubscribe = window.electronAPI.onWhisperSmallModelDownloadProgress((state) => {
-			setWhisperModelDownloadStatus(state.status);
-			setWhisperModelDownloadProgress(state.progress);
+		const unsubscribe = window.electronAPI.onWhisperModelDownloadProgress((state) => {
+			if (state.model === autoCaptionSettings.selectedModel) {
+				setWhisperModelDownloadStatus(state.status);
+				setWhisperModelDownloadProgress(state.progress);
+			}
+
 			if (state.status === "downloaded") {
-				setDownloadedWhisperModelPath(state.path ?? null);
-				setWhisperModelPath((currentPath) => currentPath ?? state.path ?? null);
+				if (state.model === autoCaptionSettings.selectedModel) {
+					setWhisperModelPath(state.path ?? null);
+				}
 			}
+
 			if (state.status === "idle") {
-				setDownloadedWhisperModelPath(null);
+				if (state.model === autoCaptionSettings.selectedModel) {
+					setWhisperModelPath(null);
+				}
 			}
+
 			if (state.status === "error" && state.error) {
 				toast.error(state.error);
 			}
 		});
 
+		return () => unsubscribe?.();
+	}, [autoCaptionSettings.selectedModel]);
+
+	useEffect(() => {
+		const unlistenProgress = window.electronAPI.onAutoCaptionProgress((payload: { progress: number }) => {
+			setAutoCaptionProgress(payload.progress);
+		});
+		const unlistenChunk = window.electronAPI.onAutoCaptionChunk(({ cues }) => {
+			setAutoCaptions((prev) => {
+				const existingIds = new Set(prev.map((c) => c.id));
+				const newCues = cues.filter((c) => !existingIds.has(c.id));
+				if (newCues.length === 0) return prev;
+				return [...prev, ...newCues].sort((a, b) => a.startMs - b.startMs);
+			});
+		});
+		return () => {
+			unlistenProgress();
+			unlistenChunk();
+		};
+	}, []);
+
+	useEffect(() => {
 		void (async () => {
-			const result = await window.electronAPI.getWhisperSmallModelStatus();
+			const result = await window.electronAPI.getWhisperModelStatus(
+				autoCaptionSettings.selectedModel,
+			);
 			if (!result.success) {
 				return;
 			}
 
 			if (result.exists && result.path) {
-				setDownloadedWhisperModelPath(result.path);
 				setWhisperModelPath((currentPath) => currentPath ?? result.path ?? null);
 				setWhisperModelDownloadStatus("downloaded");
 				setWhisperModelDownloadProgress(100);
-				return;
+			} else {
+				setWhisperModelDownloadStatus("idle");
+				setWhisperModelDownloadProgress(0);
 			}
-
-			setDownloadedWhisperModelPath(null);
-			setWhisperModelDownloadStatus("idle");
-			setWhisperModelDownloadProgress(0);
 		})();
-
-		return () => unsubscribe?.();
-	}, []);
+	}, [autoCaptionSettings.selectedModel]);
 
 	const handlePickWhisperExecutable = useCallback(async () => {
 		const result = await window.electronAPI.openWhisperExecutablePicker();
@@ -1469,25 +1520,42 @@ export default function VideoEditor() {
 		toast.success("Whisper executable selected");
 	}, []);
 
-	const handleDownloadWhisperSmallModel = useCallback(async () => {
+	const handleSelectMaster = useCallback((selected: boolean) => {
+		setIsMasterSelected(selected);
+		if (selected) {
+			setSelectedZoomId(null);
+			setSelectedTrimId(null);
+			setSelectedSpeedId(null);
+			setSelectedAnnotationId(null);
+			setSelectedAudioId(null);
+			setSelectedCaptionId(null);
+			setActiveEffectSection("audio");
+		}
+	}, []);
+
+	const handleDownloadWhisperModel = useCallback(async () => {
 		if (whisperModelDownloadStatus === "downloading") {
 			return;
 		}
 
 		setWhisperModelDownloadStatus("downloading");
 		setWhisperModelDownloadProgress(0);
-		const result = await window.electronAPI.downloadWhisperSmallModel();
+		const result = await window.electronAPI.downloadWhisperModel(
+			autoCaptionSettings.selectedModel,
+		);
 		if (!result.success) {
 			setWhisperModelDownloadStatus("error");
-			toast.error(result.error || "Failed to download Whisper small model");
+			toast.error(
+				result.error ||
+				`Failed to download Whisper ${autoCaptionSettings.selectedModel} model`,
+			);
 			return;
 		}
 
 		if (result.path) {
-			setDownloadedWhisperModelPath(result.path);
 			setWhisperModelPath(result.path);
 		}
-	}, [whisperModelDownloadStatus]);
+	}, [whisperModelDownloadStatus, autoCaptionSettings.selectedModel]);
 
 	const handlePickWhisperModel = useCallback(async () => {
 		const result = await window.electronAPI.openWhisperModelPicker();
@@ -1499,21 +1567,23 @@ export default function VideoEditor() {
 		toast.success("Whisper model selected");
 	}, []);
 
-	const handleDeleteWhisperSmallModel = useCallback(async () => {
-		const result = await window.electronAPI.deleteWhisperSmallModel();
+	const handleDeleteWhisperModel = useCallback(async () => {
+		const result = await window.electronAPI.deleteWhisperModel(
+			autoCaptionSettings.selectedModel,
+		);
 		if (!result.success) {
-			toast.error(result.error || "Failed to delete Whisper small model");
+			toast.error(
+				result.error ||
+				`Failed to delete Whisper ${autoCaptionSettings.selectedModel} model`,
+			);
 			return;
 		}
 
-		setWhisperModelPath((currentPath) =>
-			currentPath === downloadedWhisperModelPath ? null : currentPath,
-		);
-		setDownloadedWhisperModelPath(null);
+		setWhisperModelPath(null);
 		setWhisperModelDownloadStatus("idle");
 		setWhisperModelDownloadProgress(0);
-		toast.success("Whisper small model deleted");
-	}, [downloadedWhisperModelPath]);
+		toast.success(`Whisper ${autoCaptionSettings.selectedModel} model deleted`);
+	}, [autoCaptionSettings.selectedModel]);
 
 	const handleGenerateAutoCaptions = useCallback(async () => {
 		if (isGeneratingCaptions) {
@@ -1554,39 +1624,63 @@ export default function VideoEditor() {
 			return;
 		}
 
+		console.log("[VideoEditor] handleGenerateAutoCaptions: starting", {
+			sourcePath,
+			whisperExecutablePath,
+			whisperModelPath,
+			language: autoCaptionSettings.language,
+		});
+
 		setIsGeneratingCaptions(true);
+		setAutoCaptionProgress(0);
+
+		const startTimeMs = 0;
+		const rangeDurationMs = duration * 1000;
+
 		try {
 			const result = await window.electronAPI.generateAutoCaptions({
 				videoPath: sourcePath,
 				whisperExecutablePath: whisperExecutablePath ?? undefined,
 				whisperModelPath,
 				language: autoCaptionSettings.language,
+				durationMs: rangeDurationMs,
+				startTimeMs,
 			});
 
-			if (!result.success || !result.cues) {
+			console.log("[VideoEditor] handleGenerateAutoCaptions: result", result);
+
+			if (result.success && result.cues) {
+				const cuesWithIds = result.cues.map((cue: CaptionCue) => ({
+					...cue,
+					id: cue.id || uuidv4(),
+				}));
+				// Sort cues by time
+				cuesWithIds.sort((a, b) => a.startMs - b.startMs);
+				setAutoCaptions(cuesWithIds);
+				setAutoCaptionSettings((prev) => ({ ...prev, enabled: true }));
+				toast.success(`Generated ${cuesWithIds.length} captions`);
+			} else if (!result.success) {
 				toast.error(
 					result.message || getErrorMessage(result.error) || "Failed to generate captions",
 				);
-				return;
+			} else {
+				toast.error("No captions were generated");
 			}
-
-			setAutoCaptions(result.cues);
-			setAutoCaptionSettings((prev) => ({ ...prev, enabled: true }));
-			toast.success(result.message || `Generated ${result.cues.length} captions`);
 		} catch (error) {
 			toast.error(getErrorMessage(error));
 		} finally {
 			setIsGeneratingCaptions(false);
+			setAutoCaptionProgress(0);
 		}
 	}, [
 		autoCaptionSettings.language,
 		isGeneratingCaptions,
-		webcam.sourcePath,
-		syncActiveVideoSource,
-		videoPath,
 		videoSourcePath,
-		whisperExecutablePath,
+		videoPath,
+		duration,
 		whisperModelPath,
+		syncActiveVideoSource,
+		webcam.sourcePath,
 	]);
 
 	const handleClearAutoCaptions = useCallback(() => {
@@ -1601,57 +1695,53 @@ export default function VideoEditor() {
 				return false;
 			}
 
-			try {
-				const projectData =
-					currentProjectSnapshot?.videoPath === currentSourcePath
-						? currentProjectSnapshot
-						: createProjectData(currentSourcePath, currentPersistedEditorState);
+			const projectData =
+				currentProjectSnapshot?.videoPath === currentSourcePath
+					? currentProjectSnapshot
+					: createProjectData(currentSourcePath, currentPersistedEditorState);
 
-				const fileNameBase =
-					currentSourcePath
-						.split(/[\\/]/)
-						.pop()
-						?.replace(/\.[^.]+$/, "") || `project-${Date.now()}`;
-				let targetProjectPath = forceSaveAs ? undefined : (currentProjectPath ?? undefined);
+			const fileNameBase =
+				currentSourcePath
+					.split(/[\\/]/)
+					.pop()
+					?.replace(/\.[^.]+$/, "") || `project-${Date.now()}`;
+			let targetProjectPath = forceSaveAs ? undefined : (currentProjectPath ?? undefined);
 
-				if (!forceSaveAs && !targetProjectPath) {
-					const activeProjectResult = await window.electronAPI.loadCurrentProjectFile();
-					if (activeProjectResult.success && activeProjectResult.path) {
-						targetProjectPath = activeProjectResult.path;
-						setCurrentProjectPath(activeProjectResult.path);
-					}
+			if (!forceSaveAs && !targetProjectPath) {
+				const activeProjectResult = await window.electronAPI.loadCurrentProjectFile();
+				if (activeProjectResult.success && activeProjectResult.path) {
+					targetProjectPath = activeProjectResult.path;
+					setCurrentProjectPath(activeProjectResult.path);
 				}
-
-				const thumbnailDataUrl = await captureProjectThumbnail();
-
-				const result = await window.electronAPI.saveProjectFile(
-					projectData,
-					fileNameBase,
-					targetProjectPath,
-					thumbnailDataUrl,
-				);
-
-				if (result.canceled) {
-					toast.info("Project save canceled");
-					return false;
-				}
-
-				if (!result.success) {
-					toast.error(result.message || "Failed to save project");
-					return false;
-				}
-
-				if (result.path) {
-					setCurrentProjectPath(result.path);
-				}
-				setLastSavedSnapshot(cloneStructured(projectData));
-				await refreshProjectLibrary();
-
-				toast.success(`Project saved to ${result.path}`);
-				return true;
-			} finally {
-				remountPreview();
 			}
+
+			const thumbnailDataUrl = await captureProjectThumbnail();
+
+			const result = await window.electronAPI.saveProjectFile(
+				projectData,
+				fileNameBase,
+				targetProjectPath,
+				thumbnailDataUrl,
+			);
+
+			if (result.canceled) {
+				toast.info("Project save canceled");
+				return false;
+			}
+
+			if (!result.success) {
+				toast.error(result.message || "Failed to save project");
+				return false;
+			}
+
+			if (result.path) {
+				setCurrentProjectPath(result.path);
+			}
+			setLastSavedSnapshot(cloneStructured(projectData));
+			await refreshProjectLibrary();
+
+			toast.success(`Project saved to ${result.path}`);
+			return true;
 		},
 		[
 			captureProjectThumbnail,
@@ -1660,7 +1750,6 @@ export default function VideoEditor() {
 			currentProjectSnapshot,
 			currentPersistedEditorState,
 			refreshProjectLibrary,
-			remountPreview,
 		],
 	);
 
@@ -1738,8 +1827,31 @@ export default function VideoEditor() {
 	}, [handleOpenProjectBrowser, handleSaveProject, handleSaveProjectAs]);
 
 	useEffect(() => {
+		const video = videoPlaybackRef.current?.video;
+		if (!video || !audioContextRef.current || (videoAudioNodeRef.current && videoAudioNodeRef.current.source.mediaElement === video)) {
+			return;
+		}
+
+		try {
+			// If we had an old source node for a different video, disconnect it
+			if (videoAudioNodeRef.current) {
+				videoAudioNodeRef.current.source.disconnect();
+				videoAudioNodeRef.current.gain.disconnect();
+			}
+
+			const source = audioContextRef.current.createMediaElementSource(video);
+			const gain = audioContextRef.current.createGain();
+			source.connect(gain);
+			gain.connect(masterGainRef.current!);
+			videoAudioNodeRef.current = { source, gain };
+			console.log("[VideoEditor] Video audio routed through Web Audio API");
+		} catch (e) {
+			console.warn("[VideoEditor] Could not route video audio", e);
+		}
+	}, [videoPlaybackRef.current?.video, previewVersion, isAudioEngineReady]);
+
+	useEffect(() => {
 		let mounted = true;
-		let retryAttempts = 0;
 
 		async function loadCursorTelemetry() {
 			if (!videoPath) {
@@ -1752,59 +1864,41 @@ export default function VideoEditor() {
 			try {
 				const result = await window.electronAPI.getCursorTelemetry(fromFileUrl(videoPath));
 				if (mounted) {
-					const samples = result.success ? result.samples : [];
-					setCursorTelemetry(samples);
-
-					const shouldRetryFreshRecordingTelemetry =
-						samples.length < 2 &&
-						pendingFreshRecordingAutoZoomPathRef.current === videoPath &&
-						retryAttempts < 12;
-
-					if (shouldRetryFreshRecordingTelemetry) {
-						retryAttempts += 1;
-						pendingTelemetryRetryTimeoutRef.current = window.setTimeout(() => {
-							pendingTelemetryRetryTimeoutRef.current = null;
-							if (mounted) {
-								void loadCursorTelemetry();
-							}
-						}, 350);
-					}
+					setCursorTelemetry(result.success ? result.samples : []);
 				}
 			} catch (telemetryError) {
 				console.warn("Unable to load cursor telemetry:", telemetryError);
 				if (mounted) {
 					setCursorTelemetry([]);
-					if (
-						pendingFreshRecordingAutoZoomPathRef.current === videoPath &&
-						retryAttempts < 12
-					) {
-						retryAttempts += 1;
-						pendingTelemetryRetryTimeoutRef.current = window.setTimeout(() => {
-							pendingTelemetryRetryTimeoutRef.current = null;
-							if (mounted) {
-								void loadCursorTelemetry();
-							}
-						}, 350);
-					}
 				}
 			}
-		}
-
-		if (pendingTelemetryRetryTimeoutRef.current !== null) {
-			window.clearTimeout(pendingTelemetryRetryTimeoutRef.current);
-			pendingTelemetryRetryTimeoutRef.current = null;
 		}
 
 		loadCursorTelemetry();
 
 		return () => {
 			mounted = false;
-			if (pendingTelemetryRetryTimeoutRef.current !== null) {
-				window.clearTimeout(pendingTelemetryRetryTimeoutRef.current);
-				pendingTelemetryRetryTimeoutRef.current = null;
-			}
 		};
 	}, [videoPath]);
+
+	// Apply master volume to the master gain node
+	useEffect(() => {
+		if (masterGainRef.current) {
+			masterGainRef.current.gain.setTargetAtTime(masterAudioVolume * previewVolume, 0, 0.03);
+		}
+	}, [masterAudioVolume, previewVolume]);
+
+	// Handle video master solo/mute
+	useEffect(() => {
+		if (videoAudioNodeRef.current) {
+			const hasGlobalSolo = masterAudioSoloed || audioRegions.some((r) => r.soloed);
+			let vol = 1;
+			if (masterAudioMuted || (hasGlobalSolo && !masterAudioSoloed)) {
+				vol = 0;
+			}
+			videoAudioNodeRef.current.gain.gain.setTargetAtTime(vol, 0, 0.03);
+		}
+	}, [masterAudioMuted, masterAudioSoloed, audioRegions]);
 
 	const normalizedCursorTelemetry = useMemo(() => {
 		if (cursorTelemetry.length === 0) {
@@ -1845,36 +1939,112 @@ export default function VideoEditor() {
 	const effectiveZoomRegions = zoomRegions;
 
 	useEffect(() => {
+		const suggestionTelemetry = effectiveCursorTelemetry;
 		if (
 			!videoPath ||
-			loading ||
-			!isPreviewReady ||
 			duration <= 0 ||
 			loopCursor ||
 			zoomRegions.length > 0 ||
-			effectiveCursorTelemetry.length < 2
+			suggestionTelemetry.length < 2
 		) {
 			return;
 		}
 
-		if (pendingFreshRecordingAutoZoomPathRef.current !== videoPath) {
+		if (autoSuggestedVideoPathRef.current === videoPath) {
 			return;
 		}
 
-		if (autoSuggestedVideoPathRef.current === videoPath) {
-			pendingFreshRecordingAutoZoomPathRef.current = null;
+		const totalMs = Math.max(0, Math.round(duration * 1000));
+		if (totalMs <= 0) {
 			return;
 		}
+
+		const candidates = detectInteractionCandidates(suggestionTelemetry);
+		if (candidates.length === 0) {
+			autoSuggestedVideoPathRef.current = videoPath;
+			return;
+		}
+
+		const DEFAULT_DURATION_MS = 1100;
+		const MIN_SPACING_MS = 1800;
+		const sortedCandidates = [...candidates].sort((a, b) => b.strength - a.strength);
+		const acceptedCenters: number[] = [];
+
+		setZoomRegions((prev) => {
+			if (prev.length > 0) {
+				return prev;
+			}
+
+			const reservedSpans: Array<{ start: number; end: number }> = [];
+			const additions: ZoomRegion[] = [];
+			let nextId = nextZoomIdRef.current;
+
+			sortedCandidates.forEach((candidate) => {
+				const tooCloseToAccepted = acceptedCenters.some(
+					(center) => Math.abs(center - candidate.centerTimeMs) < MIN_SPACING_MS,
+				);
+				if (tooCloseToAccepted) {
+					return;
+				}
+
+				const centeredStart = Math.round(candidate.centerTimeMs - DEFAULT_DURATION_MS / 2);
+				const startMs = Math.max(0, Math.min(centeredStart, totalMs - DEFAULT_DURATION_MS));
+				const endMs = Math.min(totalMs, startMs + DEFAULT_DURATION_MS);
+
+				const hasOverlap = reservedSpans.some((span) => endMs > span.start && startMs < span.end);
+				if (hasOverlap) {
+					return;
+				}
+
+				additions.push({
+					id: `zoom-${nextId++}`,
+					startMs,
+					endMs,
+					depth: DEFAULT_ZOOM_DEPTH,
+					focus: clampFocusToDepth(candidate.focus, DEFAULT_ZOOM_DEPTH),
+				});
+				reservedSpans.push({ start: startMs, end: endMs });
+				acceptedCenters.push(candidate.centerTimeMs);
+			});
+
+			if (additions.length === 0) {
+				return prev;
+			}
+
+			nextZoomIdRef.current = nextId;
+			return [...prev, ...additions];
+		});
 
 		autoSuggestedVideoPathRef.current = videoPath;
-		pendingFreshRecordingAutoZoomPathRef.current = null;
-		setAutoSuggestZoomsTrigger((value) => value + 1);
-	}, [videoPath, loading, isPreviewReady, duration, effectiveCursorTelemetry.length, loopCursor, zoomRegions.length]);
+	}, [videoPath, duration, effectiveCursorTelemetry, loopCursor, zoomRegions.length]);
+
+	const initAudioContext = useCallback(() => {
+		if (audioContextRef.current) {
+			if (audioContextRef.current.state === 'suspended') {
+				audioContextRef.current.resume().then(() => setIsAudioEngineReady(true));
+			}
+			return;
+		}
+		
+		try {
+			const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+			const masterGain = ctx.createGain();
+			masterGain.connect(ctx.destination);
+			audioContextRef.current = ctx;
+			masterGainRef.current = masterGain;
+			setIsAudioEngineReady(true);
+			console.log("[VideoEditor] Web Audio API context initialized");
+		} catch (e) {
+			console.error("[VideoEditor] Failed to initialize AudioContext", e);
+		}
+	}, []);
 
 	function togglePlayPause() {
 		const playback = videoPlaybackRef.current;
 		const video = playback?.video;
 		if (!playback || !video) return;
+
+		initAudioContext();
 
 		if (!video.paused && !video.ended) {
 			playback.pause();
@@ -1882,6 +2052,7 @@ export default function VideoEditor() {
 			playback.play().catch((err) => console.error("Video play failed:", err));
 		}
 	}
+
 
 	function handleSeek(time: number) {
 		const video = videoPlaybackRef.current?.video;
@@ -1894,6 +2065,10 @@ export default function VideoEditor() {
 		if (id) {
 			setSelectedTrimId(null);
 			setSelectedAudioId(null);
+			setSelectedSpeedId(null);
+			setSelectedAnnotationId(null);
+			setSelectedCaptionId(null);
+			setIsMasterSelected(false);
 		}
 	}, []);
 
@@ -1903,6 +2078,9 @@ export default function VideoEditor() {
 			setSelectedZoomId(null);
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
+			setSelectedSpeedId(null);
+			setSelectedCaptionId(null);
+			setIsMasterSelected(false);
 		}
 	}, []);
 
@@ -1912,6 +2090,9 @@ export default function VideoEditor() {
 			setSelectedZoomId(null);
 			setSelectedTrimId(null);
 			setSelectedAudioId(null);
+			setSelectedSpeedId(null);
+			setSelectedCaptionId(null);
+			setIsMasterSelected(false);
 		}
 	}, []);
 
@@ -1928,6 +2109,7 @@ export default function VideoEditor() {
 		setSelectedZoomId(id);
 		setSelectedTrimId(null);
 		setSelectedAnnotationId(null);
+		setSelectedCaptionId(null);
 	}, []);
 
 	const handleZoomSuggested = useCallback((span: Span, focus: ZoomFocus) => {
@@ -1943,6 +2125,7 @@ export default function VideoEditor() {
 		setSelectedZoomId(id);
 		setSelectedTrimId(null);
 		setSelectedAnnotationId(null);
+		setSelectedCaptionId(null);
 	}, []);
 
 	const handleTrimAdded = useCallback((span: Span) => {
@@ -1956,6 +2139,8 @@ export default function VideoEditor() {
 		setSelectedTrimId(id);
 		setSelectedZoomId(null);
 		setSelectedAnnotationId(null);
+		setSelectedCaptionId(null);
+		setIsMasterSelected(false);
 	}, []);
 
 	const handleZoomSpanChange = useCallback((id: string, span: Span) => {
@@ -1963,10 +2148,10 @@ export default function VideoEditor() {
 			prev.map((region) =>
 				region.id === id
 					? {
-							...region,
-							startMs: Math.round(span.start),
-							endMs: Math.round(span.end),
-						}
+						...region,
+						startMs: Math.round(span.start),
+						endMs: Math.round(span.end),
+					}
 					: region,
 			),
 		);
@@ -1977,10 +2162,10 @@ export default function VideoEditor() {
 			prev.map((region) =>
 				region.id === id
 					? {
-							...region,
-							startMs: Math.round(span.start),
-							endMs: Math.round(span.end),
-						}
+						...region,
+						startMs: Math.round(span.start),
+						endMs: Math.round(span.end),
+					}
 					: region,
 			),
 		);
@@ -1991,9 +2176,9 @@ export default function VideoEditor() {
 			prev.map((region) =>
 				region.id === id
 					? {
-							...region,
-							focus: clampFocusToDepth(focus, region.depth),
-						}
+						...region,
+						focus: clampFocusToDepth(focus, region.depth),
+					}
 					: region,
 			),
 		);
@@ -2006,10 +2191,10 @@ export default function VideoEditor() {
 				prev.map((region) =>
 					region.id === selectedZoomId
 						? {
-								...region,
-								depth,
-								focus: clampFocusToDepth(region.focus, depth),
-							}
+							...region,
+							depth,
+							focus: clampFocusToDepth(region.focus, depth),
+						}
 						: region,
 				),
 			);
@@ -2044,6 +2229,8 @@ export default function VideoEditor() {
 			setSelectedTrimId(null);
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
+			setSelectedCaptionId(null);
+			setIsMasterSelected(false);
 		}
 	}, []);
 
@@ -2060,6 +2247,7 @@ export default function VideoEditor() {
 		setSelectedZoomId(null);
 		setSelectedTrimId(null);
 		setSelectedAnnotationId(null);
+		setSelectedCaptionId(null);
 	}, []);
 
 	const handleSpeedSpanChange = useCallback((id: string, span: Span) => {
@@ -2067,10 +2255,10 @@ export default function VideoEditor() {
 			prev.map((region) =>
 				region.id === id
 					? {
-							...region,
-							startMs: Math.round(span.start),
-							endMs: Math.round(span.end),
-						}
+						...region,
+						startMs: Math.round(span.start),
+						endMs: Math.round(span.end),
+					}
 					: region,
 			),
 		);
@@ -2093,6 +2281,9 @@ export default function VideoEditor() {
 			setSelectedTrimId(null);
 			setSelectedAnnotationId(null);
 			setSelectedSpeedId(null);
+			setSelectedCaptionId(null);
+			setIsMasterSelected(false);
+			setActiveEffectSection("audio");
 		}
 	}, []);
 
@@ -2111,6 +2302,8 @@ export default function VideoEditor() {
 		setSelectedTrimId(null);
 		setSelectedAnnotationId(null);
 		setSelectedSpeedId(null);
+		setSelectedCaptionId(null);
+		setIsMasterSelected(false);
 	}, []);
 
 	const handleAudioSpanChange = useCallback((id: string, span: Span) => {
@@ -2118,10 +2311,10 @@ export default function VideoEditor() {
 			prev.map((region) =>
 				region.id === id
 					? {
-							...region,
-							startMs: Math.round(span.start),
-							endMs: Math.round(span.end),
-						}
+						...region,
+						startMs: Math.round(span.start),
+						endMs: Math.round(span.end),
+					}
 					: region,
 			),
 		);
@@ -2136,6 +2329,66 @@ export default function VideoEditor() {
 		},
 		[selectedAudioId],
 	);
+
+	const handleAudioVolumeChange = useCallback((id: string, volume: number) => {
+		setAudioRegions((prev) => prev.map((r) => (r.id === id ? { ...r, volume } : r)));
+	}, []);
+
+	const handleAudioMutedChange = useCallback((id: string, muted: boolean) => {
+		setAudioRegions((prev) => prev.map((r) => (r.id === id ? { ...r, muted } : r)));
+	}, []);
+
+	const handleMasterAudioSoloedChange = useCallback((soloed: boolean) => {
+		setMasterAudioSoloed(soloed);
+		if (soloed) {
+			setAudioRegions((prev) => prev.map((r) => ({ ...r, soloed: false })));
+		}
+	}, []);
+
+	const handleAudioSoloedChange = useCallback((id: string, soloed: boolean) => {
+		if (soloed) {
+			setMasterAudioSoloed(false);
+			setAudioRegions((prev) =>
+				prev.map((r) => (r.id === id ? { ...r, soloed: true } : { ...r, soloed: false })),
+			);
+		} else {
+			setAudioRegions((prev) => prev.map((r) => (r.id === id ? { ...r, soloed: false } : r)));
+		}
+	}, []);
+
+	const handleAudioFadeInMsChange = useCallback((id: string, fadeInMs: number) => {
+		setAudioRegions((prev) => prev.map((r) => (r.id === id ? { ...r, fadeInMs } : r)));
+	}, []);
+
+	const handleAudioFadeOutMsChange = useCallback((id: string, fadeOutMs: number) => {
+		setAudioRegions((prev) => prev.map((r) => (r.id === id ? { ...r, fadeOutMs } : r)));
+	}, []);
+
+	const handleCaptionSpanChange = useCallback((id: string, span: Span) => {
+		setAutoCaptions((prev) =>
+			prev.map((caption) =>
+				caption.id === id
+					? {
+						...caption,
+						startMs: Math.round(span.start),
+						endMs: Math.round(span.end),
+					}
+					: caption,
+			),
+		);
+	}, []);
+
+	const handleSelectCaption = useCallback((id: string | null) => {
+		setSelectedCaptionId(id);
+		if (id) {
+			setSelectedZoomId(null);
+			setSelectedTrimId(null);
+			setSelectedAnnotationId(null);
+			setSelectedSpeedId(null);
+			setSelectedAudioId(null);
+			setIsMasterSelected(false);
+		}
+	}, []);
 
 	const handleSpeedChange = useCallback(
 		(speed: PlaybackSpeed) => {
@@ -2165,6 +2418,8 @@ export default function VideoEditor() {
 		setSelectedAnnotationId(id);
 		setSelectedZoomId(null);
 		setSelectedTrimId(null);
+		setSelectedCaptionId(null);
+		setIsMasterSelected(false);
 	}, []);
 
 	const handleAnnotationSpanChange = useCallback((id: string, span: Span) => {
@@ -2172,10 +2427,10 @@ export default function VideoEditor() {
 			prev.map((region) =>
 				region.id === id
 					? {
-							...region,
-							startMs: Math.round(span.start),
-							endMs: Math.round(span.end),
-						}
+						...region,
+						startMs: Math.round(span.start),
+						endMs: Math.round(span.end),
+					}
 					: region,
 			),
 		);
@@ -2226,6 +2481,11 @@ export default function VideoEditor() {
 					if (!region.figureData) {
 						updatedRegion.figureData = { ...DEFAULT_FIGURE_DATA };
 					}
+				} else if (type === "blur") {
+					updatedRegion.content = "";
+					if (updatedRegion.blurIntensity === undefined) {
+						updatedRegion.blurIntensity = DEFAULT_BLUR_INTENSITY;
+					}
 				}
 
 				return updatedRegion;
@@ -2248,6 +2508,12 @@ export default function VideoEditor() {
 	const handleAnnotationFigureDataChange = useCallback((id: string, figureData: FigureData) => {
 		setAnnotationRegions((prev) =>
 			prev.map((region) => (region.id === id ? { ...region, figureData } : region)),
+		);
+	}, []);
+
+	const handleAnnotationBlurIntensityChange = useCallback((id: string, blurIntensity: number) => {
+		setAnnotationRegions((prev) =>
+			prev.map((region) => (region.id === id ? { ...region, blurIntensity } : region)),
 		);
 	}, []);
 
@@ -2364,45 +2630,86 @@ export default function VideoEditor() {
 		}
 	}, [selectedAudioId, audioRegions]);
 
+	useEffect(() => {
+		if (selectedCaptionId && !autoCaptions.some((cue) => cue.id === selectedCaptionId)) {
+			setSelectedCaptionId(null);
+		}
+	}, [selectedCaptionId, autoCaptions]);
+
 	// Audio playback sync: manage Audio elements that play in sync with video
 	const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
 	useEffect(() => {
 		const existing = audioElementsRef.current;
-		const currentIds = new Set(audioRegions.map((r) => r.id));
+		const unused = new Set(existing.keys());
 
-		// Remove old audio elements
-		for (const [id, audio] of existing) {
-			if (!currentIds.has(id)) {
-				audio.pause();
-				audio.src = "";
-				existing.delete(id);
-			}
-		}
+		const hasAudioContext = !!(audioContextRef.current && masterGainRef.current && isAudioEngineReady);
 
-		// Create/update audio elements
 		for (const region of audioRegions) {
+			unused.delete(region.id);
 			let audio = existing.get(region.id);
 			if (!audio) {
 				audio = new Audio();
-				audio.preload = "auto";
+				// Ensure cross-origin is handled to avoid CORS issues with AudioContext
+				audio.crossOrigin = "anonymous";
 				existing.set(region.id, audio);
 			}
 			const expectedSrc = toFileUrl(region.audioPath);
 			if (audio.src !== expectedSrc) {
 				audio.src = expectedSrc;
 			}
-			audio.volume = Math.max(0, Math.min(1, region.volume * previewVolume));
+
+			// Route through Web Audio API if ready
+			if (hasAudioContext && !audioRegionNodesRef.current.has(region.id)) {
+				try {
+					const source = audioContextRef.current!.createMediaElementSource(audio);
+					const gain = audioContextRef.current!.createGain();
+					source.connect(gain);
+					gain.connect(masterGainRef.current!);
+					audioRegionNodesRef.current.set(region.id, { source, gain });
+					console.log(`[VideoEditor] Audio region ${region.id} routed through GainNode`);
+				} catch (e) {
+					console.warn(`[VideoEditor] Failed to route audio ${region.id}:`, e);
+				}
+			}
+
+			// Initial volume setup — masterAudioMuted only affects the video element, not audio regions
+			const hasGlobalSolo = masterAudioSoloed || audioRegions.some((r) => r.soloed);
+			let baseVolume = region.volume * audioTrackVolume * previewVolume * masterAudioVolume;
+			if (region.muted || (hasGlobalSolo && !region.soloed)) {
+				baseVolume = 0;
+			}
+
+			const nodeEntry = audioRegionNodesRef.current.get(region.id);
+			if (nodeEntry) {
+				audio.volume = 1;
+				nodeEntry.gain.gain.setTargetAtTime(baseVolume, 0, 0.03);
+			} else {
+				// Fallback to native volume (limited to 100%)
+				audio.volume = Math.max(0, Math.min(1, baseVolume));
+			}
 		}
 
 		return () => {
-			for (const audio of existing.values()) {
-				audio.pause();
-				audio.src = "";
+			for (const id of unused) {
+				const audio = existing.get(id);
+				if (audio) {
+					audio.pause();
+					audio.src = "";
+				}
+				existing.delete(id);
+
+				const nodeEntry = audioRegionNodesRef.current.get(id);
+				if (nodeEntry) {
+					try {
+						nodeEntry.source.disconnect();
+						nodeEntry.gain.disconnect();
+					} catch (e) { /* ignore */ }
+					audioRegionNodesRef.current.delete(id);
+				}
 			}
-			existing.clear();
 		};
-	}, [audioRegions, previewVolume]);
+	}, [audioRegions, previewVolume, masterAudioVolume, audioTrackVolume, isAudioEngineReady]);
 
 	// Sync audio playback with video currentTime and isPlaying state
 	useEffect(() => {
@@ -2414,9 +2721,39 @@ export default function VideoEditor() {
 			const isInRegion = currentTimeMs >= region.startMs && currentTimeMs < region.endMs;
 
 			if (isPlaying && isInRegion) {
+				// Calculate fade multiplier
+				let fadeMultiplier = 1;
+				if (region.fadeInMs && currentTimeMs < region.startMs + region.fadeInMs) {
+					fadeMultiplier = (currentTimeMs - region.startMs) / region.fadeInMs;
+				} else if (region.fadeOutMs && currentTimeMs > region.endMs - region.fadeOutMs) {
+					fadeMultiplier = (region.endMs - currentTimeMs) / region.fadeOutMs;
+				}
+				fadeMultiplier = Math.max(0, Math.min(1, fadeMultiplier));
+
+				// masterAudioMuted only affects the video element — not audio regions
+				const hasGlobalSolo = masterAudioSoloed || audioRegions.some((r) => r.soloed);
+				let baseVolume = region.volume * audioTrackVolume * previewVolume * masterAudioVolume;
+				if (region.muted || (hasGlobalSolo && !region.soloed)) {
+					baseVolume = 0;
+				}
+
+				const targetVolume = baseVolume * fadeMultiplier;
+				const nodeEntry = audioRegionNodesRef.current.get(region.id);
+
+				if (nodeEntry) {
+					// Use Web Audio gain automation for smooth high-precision fade
+					nodeEntry.gain.gain.setTargetAtTime(targetVolume, 0, 0.03);
+				} else {
+					// Fallback to native volume (limited to 1.0)
+					const fallbackValue = Math.max(0, Math.min(1, targetVolume));
+					if (Math.abs(audio.volume - fallbackValue) > 0.01) {
+						audio.volume = fallbackValue;
+					}
+				}
+
 				const audioOffset = (currentTimeMs - region.startMs) / 1000;
-				// Only seek if significantly out of sync (> 200ms)
-				if (Math.abs(audio.currentTime - audioOffset) > 0.2) {
+				// Only seek if significantly out of sync (> 20ms) - tightened for Web Audio era
+				if (Math.abs(audio.currentTime - audioOffset) > 0.02) {
 					audio.currentTime = audioOffset;
 				}
 				if (audio.paused) {
@@ -2428,7 +2765,7 @@ export default function VideoEditor() {
 				}
 			}
 		}
-	}, [isPlaying, currentTime, audioRegions]);
+	}, [isPlaying, currentTime, audioRegions, previewVolume, masterAudioVolume, audioTrackVolume]);
 
 	const showExportSuccessToast = useCallback((filePath: string) => {
 		toast.success(`Exported successfully to ${filePath}`, {
@@ -2638,6 +2975,10 @@ export default function VideoEditor() {
 						cursorClickBounceDuration,
 						cursorSway,
 						audioRegions,
+						masterAudioVolume: masterAudioVolume ?? 1,
+						audioTrackVolume: audioTrackVolume ?? 1,
+						masterAudioMuted: masterAudioMuted ?? false,
+						masterAudioSoloed: masterAudioSoloed ?? false,
 						previewWidth,
 						previewHeight,
 						onProgress: (progress: ExportProgress) => {
@@ -2692,7 +3033,7 @@ export default function VideoEditor() {
 				exporterRef.current = null;
 				setShowExportDropdown(keepExportDialogOpen);
 				setExportProgress(null);
-				remountPreview();
+				setPreviewVersion((version) => version + 1);
 			}
 		},
 		[
@@ -2735,7 +3076,6 @@ export default function VideoEditor() {
 			effectiveZoomRegions,
 			ensureSupportedMp4SourceDimensions,
 			markExportAsSaving,
-			remountPreview,
 			showExportSuccessToast,
 		],
 	);
@@ -2782,12 +3122,12 @@ export default function VideoEditor() {
 			gifConfig:
 				exportFormat === "gif"
 					? {
-							frameRate: gifFrameRate,
-							loop: gifLoop,
-							sizePreset: gifSizePreset,
-							width: gifDimensions.width,
-							height: gifDimensions.height,
-						}
+						frameRate: gifFrameRate,
+						loop: gifLoop,
+						sizePreset: gifSizePreset,
+						width: gifDimensions.width,
+						height: gifDimensions.height,
+					}
 					: undefined,
 		};
 
@@ -2904,11 +3244,11 @@ export default function VideoEditor() {
 			? t("editor.exportStatus.saving", "Opening save dialog...")
 			: isExportFinalizing && typeof exportProgress.renderProgress === "number"
 				? t("editor.exportStatus.finalizingPercent", "Finalizing {{percent}}%", {
-						percent: Math.round(exportProgress.renderProgress),
-					})
+					percent: Math.round(exportProgress.renderProgress),
+				})
 				: t("editor.exportStatus.completePercent", "{{percent}}% complete", {
-						percent: Math.round(exportProgress.percentage),
-					})
+					percent: Math.round(exportProgress.percentage),
+				})
 		: t("editor.exportStatus.preparing", "Preparing export...");
 
 	const projectBrowser = (
@@ -2955,11 +3295,17 @@ export default function VideoEditor() {
 	return (
 		<div className="flex flex-col h-screen bg-[#111113] text-slate-200 overflow-hidden selection:bg-[#2563EB]/30">
 			<div
-				className="relative flex h-11 flex-shrink-0 items-center justify-between bg-[#151518]/88 px-5 backdrop-blur-md border-b border-white/10 z-50"
+				className="relative h-11 flex-shrink-0 bg-[#151518]/88 backdrop-blur-md border-b border-white/10 flex items-center justify-center px-8 z-50"
 				style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
 			>
+				<div className="flex items-baseline gap-0">
+					<span className="text-sm font-semibold tracking-tight text-white/90">
+						{projectDisplayName}
+					</span>
+					<span className="text-xs font-medium tracking-tight text-slate-500">.recordly</span>
+				</div>
 				<div
-					className={`flex items-center gap-1.5 justify-self-start ${headerLeftControlsPaddingClass}`}
+					className="absolute left-[88px] flex items-center gap-2"
 					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 				>
 					<LanguageSwitcher />
@@ -2968,7 +3314,7 @@ export default function VideoEditor() {
 						variant="ghost"
 						size="sm"
 						onClick={() => void openRecordingsFolder()}
-						className={APP_HEADER_ICON_BUTTON_CLASS}
+						className={`${APP_HEADER_ACTION_BUTTON_CLASS} px-2.5`}
 						title={t("common.app.manageRecordings", "Open recordings folder")}
 						aria-label={t("common.app.manageRecordings", "Open recordings folder")}
 					>
@@ -2977,6 +3323,11 @@ export default function VideoEditor() {
 					<KeyboardShortcutsDialog />
 					<FeedbackDialog />
 					<div className="ml-1 h-5 w-px bg-white/10" />
+				</div>
+				<div
+					className="absolute right-5 flex items-center gap-2 pr-3"
+					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+				>
 					<Button
 						type="button"
 						variant="ghost"
@@ -2999,20 +3350,7 @@ export default function VideoEditor() {
 					>
 						<Redo2 className="h-4 w-4" />
 					</Button>
-				</div>
-				<div
-					className="pointer-events-none absolute left-1/2 flex min-w-0 -translate-x-1/2 items-baseline justify-center gap-0"
-					style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-				>
-					<span className="text-sm font-semibold tracking-tight text-white/90">
-						{projectDisplayName}
-					</span>
-					<span className="text-xs font-medium tracking-tight text-slate-500">.recordly</span>
-				</div>
-				<div
-					className="flex items-center gap-2 justify-self-end pr-3"
-					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-				>
+					<div className="mx-1 h-5 w-px bg-white/10" />
 					<Button
 						ref={projectBrowserTriggerRef}
 						type="button"
@@ -3249,11 +3587,17 @@ export default function VideoEditor() {
 										>
 											<VideoPlayback
 												key={`${videoPath || "no-video"}:${previewVersion}`}
+												volume={(() => {
+													const hasGlobalSolo = masterAudioSoloed || audioRegions.some((r) => r.soloed);
+													if (masterAudioMuted || (hasGlobalSolo && !masterAudioSoloed)) {
+														return 0;
+													}
+													return previewVolume * masterAudioVolume;
+												})()}
 												aspectRatio={aspectRatio}
 												ref={videoPlaybackRef}
 												videoPath={videoPath || ""}
 												onDurationChange={setDuration}
-												onPreviewReadyChange={setIsPreviewReady}
 												onTimeUpdate={setCurrentTime}
 												currentTime={currentTime}
 												onPlayStateChange={setIsPlaying}
@@ -3300,8 +3644,8 @@ export default function VideoEditor() {
 												cursorClickBounce={cursorClickBounce}
 												cursorClickBounceDuration={cursorClickBounceDuration}
 												cursorSway={cursorSway}
-												volume={previewVolume}
 											/>
+
 										</div>
 									</div>
 								</div>
@@ -3339,10 +3683,18 @@ export default function VideoEditor() {
 							<div className="h-full min-h-0 bg-[#17171a] rounded-2xl border border-white/10 shadow-lg overflow-auto flex flex-col">
 								<TimelineEditor
 									videoDuration={duration}
+									videoPath={videoPath || undefined}
+									masterAudioMuted={masterAudioMuted}
+									onMasterAudioMutedChange={setMasterAudioMuted}
+									masterAudioSoloed={masterAudioSoloed}
+									onMasterAudioSoloedChange={handleMasterAudioSoloedChange}
+									masterAudioVolume={masterAudioVolume}
+									onMasterAudioVolumeChange={setMasterAudioVolume}
+									audioTrackVolume={audioTrackVolume}
+									onAudioTrackVolumeChange={setAudioTrackVolume}
 									currentTime={currentTime}
 									onSeek={handleSeek}
 									cursorTelemetry={normalizedCursorTelemetry}
-									autoSuggestZoomsTrigger={autoSuggestZoomsTrigger}
 									zoomRegions={effectiveZoomRegions}
 									onZoomAdded={handleZoomAdded}
 									onZoomSuggested={handleZoomSuggested}
@@ -3365,6 +3717,8 @@ export default function VideoEditor() {
 									audioRegions={audioRegions}
 									onAudioAdded={handleAudioAdded}
 									onAudioSpanChange={handleAudioSpanChange}
+									onAudioMutedChange={handleAudioMutedChange}
+									onAudioSoloedChange={handleAudioSoloedChange}
 									onAudioDelete={handleAudioDelete}
 									selectedAudioId={selectedAudioId}
 									onSelectAudio={handleSelectAudio}
@@ -3374,10 +3728,17 @@ export default function VideoEditor() {
 									onAnnotationDelete={handleAnnotationDelete}
 									selectedAnnotationId={selectedAnnotationId}
 									onSelectAnnotation={handleSelectAnnotation}
+									autoCaptions={autoCaptions}
+									onCaptionSpanChange={handleCaptionSpanChange}
+									selectedCaptionId={selectedCaptionId}
+									onSelectCaption={handleSelectCaption}
+									onClearAutoCaptions={handleClearAutoCaptions}
 									aspectRatio={aspectRatio}
 									onAspectRatioChange={setAspectRatio}
 									onOpenCropEditor={handleOpenCropEditor}
 									isCropped={isCropped}
+									isMasterSelected={isMasterSelected}
+									onSelectMaster={handleSelectMaster}
 								/>
 							</div>
 						</Panel>
@@ -3455,24 +3816,28 @@ export default function VideoEditor() {
 						onAspectRatioChange={setAspectRatio}
 						selectedAnnotationId={selectedAnnotationId}
 						annotationRegions={annotationRegions}
+						onSeek={(time) => videoPlaybackRef.current?.seek(time)}
 						autoCaptions={autoCaptions}
+						onAutoCaptionsChange={setAutoCaptions}
 						autoCaptionSettings={autoCaptionSettings}
 						whisperExecutablePath={whisperExecutablePath}
 						whisperModelPath={whisperModelPath}
 						whisperModelDownloadStatus={whisperModelDownloadStatus}
 						whisperModelDownloadProgress={whisperModelDownloadProgress}
 						isGeneratingCaptions={isGeneratingCaptions}
+						autoCaptionProgress={autoCaptionProgress}
 						onAutoCaptionSettingsChange={setAutoCaptionSettings}
 						onPickWhisperExecutable={handlePickWhisperExecutable}
 						onPickWhisperModel={handlePickWhisperModel}
 						onGenerateAutoCaptions={handleGenerateAutoCaptions}
 						onClearAutoCaptions={handleClearAutoCaptions}
-						onDownloadWhisperSmallModel={handleDownloadWhisperSmallModel}
-						onDeleteWhisperSmallModel={handleDeleteWhisperSmallModel}
+						onDownloadWhisperModel={handleDownloadWhisperModel}
+						onDeleteWhisperModel={handleDeleteWhisperModel}
 						onAnnotationContentChange={handleAnnotationContentChange}
 						onAnnotationTypeChange={handleAnnotationTypeChange}
 						onAnnotationStyleChange={handleAnnotationStyleChange}
 						onAnnotationFigureDataChange={handleAnnotationFigureDataChange}
+						onAnnotationBlurIntensityChange={handleAnnotationBlurIntensityChange}
 						onAnnotationDelete={handleAnnotationDelete}
 						selectedSpeedId={selectedSpeedId}
 						selectedSpeedValue={
@@ -3482,6 +3847,25 @@ export default function VideoEditor() {
 						}
 						onSpeedChange={handleSpeedChange}
 						onSpeedDelete={handleSpeedDelete}
+						audioRegions={audioRegions}
+						selectedAudioId={selectedAudioId}
+						onAudioVolumeChange={handleAudioVolumeChange}
+						onAudioMutedChange={handleAudioMutedChange}
+						onAudioSoloedChange={handleAudioSoloedChange}
+						onAudioFadeInMsChange={handleAudioFadeInMsChange}
+						onAudioFadeOutMsChange={handleAudioFadeOutMsChange}
+						onAudioDelete={handleAudioDelete}
+						selectedCaptionId={selectedCaptionId}
+						onSelectCaption={handleSelectCaption}
+						isMasterSelected={isMasterSelected}
+						masterAudioVolume={masterAudioVolume}
+						masterAudioMuted={masterAudioMuted}
+						masterAudioSoloed={masterAudioSoloed}
+						videoDuration={duration}
+						videoPath={videoPath || undefined}
+						onMasterAudioVolumeChange={setMasterAudioVolume}
+						onMasterAudioMutedChange={setMasterAudioMuted}
+						onMasterAudioSoloedChange={handleMasterAudioSoloedChange}
 					/>
 				</div>
 			</div>
