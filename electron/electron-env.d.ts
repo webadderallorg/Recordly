@@ -81,7 +81,7 @@ interface Window {
 		selectSource: (source: any) => Promise<any>;
 		showSourceHighlight: (source: any) => Promise<{ success: boolean }>;
 		getSelectedSource: () => Promise<any>;
-		setSelectedArea: (area: { x: number; y: number; width: number; height: number }) => Promise<void>;
+		setSelectedArea: (area: { x: number; y: number; width: number; height: number }) => Promise<{ success: boolean; message?: string }>;
 		getSelectedArea: () => Promise<{ x: number; y: number; width: number; height: number } | null>;
 		onAreaHighlightData: (callback: (data: { x: number; y: number; width: number; height: number; winX: number; winY: number }) => void) => () => void;
 		onSelectedSourceChanged: (callback: (source: any) => void) => () => void;
