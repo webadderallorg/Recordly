@@ -708,6 +708,9 @@ app.whenReady().then(async () => {
 			selectedSourceName = sourceName;
 			if (!tray) createTray();
 			updateTrayMenu(recording);
+			if (recording) {
+				reassertHudOverlayMouseState();
+			}
 			if (!recording) {
 				if (mainWindow) mainWindow.restore();
 			}

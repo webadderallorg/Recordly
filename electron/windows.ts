@@ -345,6 +345,15 @@ export function createHudOverlayWindow(): BrowserWindow {
 		setTimeout(() => {
 			if (!win.isDestroyed()) {
 				win.show();
+				win.moveTop();
+				if (process.platform === "win32") {
+					win.setIgnoreMouseEvents(false);
+					setTimeout(() => {
+						if (!win.isDestroyed()) {
+							win.setIgnoreMouseEvents(true, { forward: true });
+						}
+					}, 50);
+				}
 			}
 		}, 100);
 	});
