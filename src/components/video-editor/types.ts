@@ -17,6 +17,7 @@ export interface CursorTelemetryPoint {
 	timeMs: number;
 	cx: number;
 	cy: number;
+	hidden?: boolean;
 	interactionType?: "move" | "click" | "double-click" | "right-click" | "middle-click" | "mouseup";
 	cursorType?:
 		| "arrow"

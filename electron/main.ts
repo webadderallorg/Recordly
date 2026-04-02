@@ -36,6 +36,7 @@ import {
 } from "./updater";
 import type { UpdateToastPayload } from "./updater";
 import {
+	createAreaSelectorWindow,
 	createEditorWindow,
 	createHudOverlayWindow,
 	createSourceSelectorWindow,
@@ -580,12 +581,18 @@ function createEditorWindowWrapper() {
 	});
 }
 
+function createAreaSelectorWindowWrapper(options?: { displayId?: string }) {
+	const win = createAreaSelectorWindow(options);
+	return win;
+}
+
 function createSourceSelectorWindowWrapper() {
-	sourceSelectorWindow = createSourceSelectorWindow();
-	sourceSelectorWindow.on("closed", () => {
+	const win = createSourceSelectorWindow();
+	sourceSelectorWindow = win;
+	win.on("closed", () => {
 		sourceSelectorWindow = null;
 	});
-	return sourceSelectorWindow;
+	return win;
 }
 
 // On macOS, applications and their menu bar stay active until the user quits
@@ -663,6 +670,7 @@ app.whenReady().then(async () => {
 	registerIpcHandlers(
 		createEditorWindowWrapper,
 		createSourceSelectorWindowWrapper,
+		createAreaSelectorWindowWrapper,
 		() => mainWindow,
 		() => sourceSelectorWindow,
 		(recording: boolean, sourceName: string) => {

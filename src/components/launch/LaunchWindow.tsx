@@ -3,6 +3,7 @@ import {
 	ArrowUpCircle,
 	ChevronUp,
 	CheckCircle2,
+	Crop,
 	Eye,
 	EyeOff,
 	FolderOpen,
@@ -176,7 +177,7 @@ export function LaunchWindow() {
 	const [elapsed, setElapsed] = useState(0);
 	const [pausedAt, setPausedAt] = useState<number | null>(null);
 	const [pausedTotal, setPausedTotal] = useState(0);
-	const [selectedSource, setSelectedSource] = useState("Screen");
+	const [selectedSource, setSelectedSource] = useState<any>({ name: "Screen" });
 	const [hasSelectedSource, setHasSelectedSource] = useState(false);
 	const [, setRecordingsDirectory] = useState<string | null>(null);
 	const [activeDropdown, setActiveDropdown] = useState<
@@ -206,6 +207,8 @@ export function LaunchWindow() {
 	const moreButtonRef = useRef<HTMLButtonElement | null>(null);
 	const webcamPreviewRef = useRef<HTMLVideoElement | null>(null);
 	const isDraggingRef = useRef(false);
+	// Tracks the last real (non-area) screen source so we can revert from area mode
+	const lastScreenSourceRef = useRef<any>(null);
 
 	const micDropdownOpen = activeDropdown === "mic";
 	const webcamDropdownOpen = activeDropdown === "webcam";
@@ -335,18 +338,22 @@ export function LaunchWindow() {
 	useEffect(() => {
 		let mounted = true;
 
-		const applySelectedSource = (source: { name?: string } | null | undefined) => {
+		const applySelectedSource = (source: any | null | undefined) => {
 			if (!mounted) {
 				return;
 			}
 
 			if (source?.name) {
-				setSelectedSource(source.name);
+				setSelectedSource(source);
 				setHasSelectedSource(true);
+				// Keep lastScreenSourceRef up-to-date so area mode can find its parent screen
+				if (source?.id?.startsWith('screen:')) {
+					lastScreenSourceRef.current = source;
+				}
 				return;
 			}
 
-			setSelectedSource("Screen");
+			setSelectedSource({ name: "Screen" });
 			setHasSelectedSource(false);
 		};
 
@@ -571,7 +578,11 @@ export function LaunchWindow() {
 
 	const handleSourceSelect = async (source: DesktopSource) => {
 		await window.electronAPI.selectSource(source);
-		setSelectedSource(source.name);
+		// Store as full object for consistent type throughout the component
+		setSelectedSource(source);
+		if (source.id?.startsWith('screen:')) {
+			lastScreenSourceRef.current = source;
+		}
 		setHasSelectedSource(true);
 		setActiveDropdown("none");
 		window.electronAPI.showSourceHighlight?.({
@@ -655,6 +666,7 @@ export function LaunchWindow() {
 		}
 	};
 
+	const isAreaSelected = selectedSource.id === "area:custom";
 	const screenSources = sources.filter((s) => s.sourceType === "screen");
 	const windowSources = sources.filter((s) => s.sourceType === "window");
 	const hudStateTransition = { duration: 0.24, ease: [0.22, 1, 0.36, 1] as const };
@@ -795,12 +807,27 @@ export function LaunchWindow() {
 				type="button"
 				className={`${styles.screenSel} ${styles.electronNoDrag}`}
 				onClick={() => toggleDropdown("sources")}
-				title={selectedSource}
+				title={selectedSource.name}
+				style={selectedSource.id === "area:custom" ? {
+					border: '1px solid rgba(37,99,235,0.5)',
+					boxShadow: '0 0 15px rgba(37,99,235,0.2)',
+					background: 'rgba(37,99,235,0.08)'
+				} : {}}
 			>
-				<Monitor size={16} />
+				{selectedSource.id === "area:custom" ? (
+					<div className="relative">
+						<Video size={16} className="text-blue-400" />
+						<div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+					</div>
+				) : (
+					<Monitor size={16} />
+				)}
 				<ContentClamp className={styles.sourceLabel} truncateLength={36}>
-					{selectedSource}
+					{selectedSource.name}
 				</ContentClamp>
+				{selectedSource.id === "area:custom" && (
+					<span className="text-[9px] font-black bg-blue-600 text-white px-1 rounded ml-1 scale-90">CROP</span>
+				)}
 				<ChevronUp
 					size={10}
 					className={`text-[#6b6b78] ml-0.5 transition-transform duration-200 ${activeDropdown === "sources" ? "" : "rotate-180"}`}
@@ -914,19 +941,71 @@ export function LaunchWindow() {
 										</div>
 									) : (
 										<>
+											{/* Quick Mode Switcher */}
+											<div className="flex flex-col shrink-0">
+												<div className={styles.ddLabel} style={{ paddingBottom: 6 }}>Recording Mode</div>
+												<div className="px-3 pb-2">
+													<div className="flex items-center gap-1 p-1 bg-black/40 rounded-xl border border-white/5 shadow-inner">
+														<button
+															onClick={() => {
+																// Revert to the last real screen source (or current if already full)
+																const target = isAreaSelected
+																	? (lastScreenSourceRef.current || sources.find(s => s.id?.startsWith('screen:')))
+																	: selectedSource;
+																if (target?.id && !target.id.startsWith('area:')) {
+																	window.electronAPI.selectSource(target);
+																	setActiveDropdown('none');
+																}
+															}}
+															className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-[9px] text-[10px] font-bold tracking-wider uppercase transition-all duration-200 ${
+																!isAreaSelected 
+																? 'bg-[#6360f5] text-white shadow-[0_2px_8px_rgba(99,96,245,0.4)]' 
+																: 'text-[#6b6b78] hover:text-[#eeeef2] hover:bg-white/5'
+															}`}
+														>
+															<Monitor size={12} strokeWidth={2.5} />
+															Full
+														</button>
+														<button
+															onClick={() => {
+																// Use the actual screen display_id — from current source or last screen
+																const screenSrc = isAreaSelected
+																	? (lastScreenSourceRef.current || sources.find(s => s.id?.startsWith('screen:')))
+																	: selectedSource;
+																window.electronAPI.openAreaSelector({ displayId: screenSrc?.display_id });
+																setActiveDropdown('none');
+															}}
+															className={`flex-1 flex items-center justify-center gap-2 py-1.5 rounded-[9px] text-[10px] font-bold tracking-wider uppercase transition-all duration-200 ${
+																isAreaSelected 
+																? 'bg-[#6360f5] text-white shadow-[0_2px_8px_rgba(99,96,245,0.4)]' 
+																: 'text-[#6b6b78] hover:text-[#eeeef2] hover:bg-white/5'
+															}`}
+														>
+															<Crop size={12} strokeWidth={2.5} />
+															Area
+														</button>
+													</div>
+												</div>
+											</div>
+											<div className="h-[1px] bg-white/5 mx-3 mb-1" />
+
 											{screenSources.length > 0 && (
 												<>
 													<div className={styles.ddLabel}>{t("recording.screens")}</div>
-													{screenSources.map((source) => (
+													{screenSources.map((source) => {
+														const isAreaMode = selectedSource?.id?.startsWith('area:');
+														const isParentScreen = isAreaMode && lastScreenSourceRef.current?.id === source.id;
+														return (
 														<DropdownItem
 															key={source.id}
 															icon={<Monitor size={16} />}
-															selected={selectedSource === source.name}
+															selected={selectedSource?.id === source.id || isParentScreen}
 															onClick={() => handleSourceSelect(source)}
 														>
 															{source.name}
 														</DropdownItem>
-													))}
+														);
+													})}
 												</>
 											)}
 											{windowSources.length > 0 && (
@@ -941,7 +1020,7 @@ export function LaunchWindow() {
 														<DropdownItem
 															key={source.id}
 															icon={<AppWindow size={16} />}
-															selected={selectedSource === source.name}
+															selected={selectedSource?.id === source.id}
 															onClick={() => handleSourceSelect(source)}
 														>
 															{source.appName && source.appName !== source.name

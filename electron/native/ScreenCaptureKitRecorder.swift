@@ -14,6 +14,10 @@ struct CaptureConfig: Codable {
 	let microphoneDeviceId: String?
 	let microphoneLabel: String?
 	let microphoneOutputPath: String?
+	let cropX: Double?
+	let cropY: Double?
+	let cropWidth: Double?
+	let cropHeight: Double?
 }
 
 let targetCaptureFPS = 60
@@ -97,8 +101,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 
 		let filter: SCContentFilter
-		let outputWidth: Int
-		let outputHeight: Int
+		var outputWidth: Int
+		var outputHeight: Int
 
 		if let windowId = config.windowId {
 			trackedWindowId = windowId
@@ -129,8 +133,20 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			let scaleFactor = ScreenCaptureRecorder.scaleFactor(for: display.displayID)
 			outputWidth = max(2, Int(displayBounds.width) * scaleFactor)
 			outputHeight = max(2, Int(displayBounds.height) * scaleFactor)
-			streamConfig.width = outputWidth
-			streamConfig.height = outputHeight
+
+			if let cx = config.cropX, let cy = config.cropY, let cw = config.cropWidth, let ch = config.cropHeight, cw > 0, ch > 0 {
+				let cropRect = CGRect(x: cx, y: cy, width: cw, height: ch)
+				streamConfig.sourceRect = cropRect
+				
+				// Adjust output dimensions to match the crop area (scaled)
+				outputWidth = max(2, Int(cw) * scaleFactor)
+				outputHeight = max(2, Int(ch) * scaleFactor)
+				streamConfig.width = outputWidth
+				streamConfig.height = outputHeight
+			} else {
+				streamConfig.width = outputWidth
+				streamConfig.height = outputHeight
+			}
 		}
 
 		let destinationURL: URL

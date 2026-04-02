@@ -21,6 +21,7 @@ function normalizeTelemetrySample(sample: CursorTelemetryPoint, totalMs: number)
     cy: Math.max(0, Math.min(sample.cy, 1)),
     interactionType: sample.interactionType,
     cursorType: sample.cursorType,
+    hidden: sample.hidden,
   };
 }
 
@@ -96,7 +97,9 @@ export function detectZoomDwellCandidates(samples: CursorTelemetryPoint[]): Zoom
       return;
     }
 
-    const runSamples = samples.slice(startIndex, endIndexExclusive);
+    const runSamples = samples.slice(startIndex, endIndexExclusive).filter(s => !s.hidden);
+    if (runSamples.length === 0) return;
+    
     const avgCx = runSamples.reduce((sum, sample) => sum + sample.cx, 0) / runSamples.length;
     const avgCy = runSamples.reduce((sum, sample) => sum + sample.cy, 0) / runSamples.length;
 

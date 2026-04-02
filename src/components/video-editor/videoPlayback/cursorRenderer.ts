@@ -606,17 +606,18 @@ export async function preloadCursorAssets() {
 export function interpolateCursorPosition(
 	samples: CursorTelemetryPoint[],
 	timeMs: number,
-): { cx: number; cy: number } | null {
+): { cx: number; cy: number; hidden?: boolean } | null {
 	if (!samples || samples.length === 0) return null;
 
 	if (timeMs <= samples[0].timeMs) {
-		return { cx: samples[0].cx, cy: samples[0].cy };
+		return { cx: samples[0].cx, cy: samples[0].cy, hidden: samples[0].hidden };
 	}
 
 	if (timeMs >= samples[samples.length - 1].timeMs) {
 		return {
 			cx: samples[samples.length - 1].cx,
 			cy: samples[samples.length - 1].cy,
+			hidden: samples[samples.length - 1].hidden,
 		};
 	}
 
@@ -634,12 +635,13 @@ export function interpolateCursorPosition(
 	const a = samples[lo];
 	const b = samples[hi];
 	const span = b.timeMs - a.timeMs;
-	if (span <= 0) return { cx: a.cx, cy: a.cy };
+	if (span <= 0) return { cx: a.cx, cy: a.cy, hidden: a.hidden };
 
 	const t = (timeMs - a.timeMs) / span;
 	return {
 		cx: a.cx + (b.cx - a.cx) * t,
 		cy: a.cy + (b.cy - a.cy) * t,
+		hidden: a.hidden || b.hidden,
 	};
 }
 
@@ -1018,7 +1020,7 @@ export class PixiCursorOverlay {
 		}
 
 		const target = interpolateCursorPosition(samples, timeMs);
-		if (!target) {
+		if (!target || target.hidden) {
 			this.container.visible = false;
 			return;
 		}

@@ -76,9 +76,14 @@ interface Window {
 		getSources: (opts: Electron.SourcesOptions) => Promise<ProcessedDesktopSource[]>;
 		switchToEditor: () => Promise<void>;
 		openSourceSelector: () => Promise<void>;
+		openAreaSelector: (options?: { displayId?: string }) => Promise<void>;
+		cancelAreaSelector: () => Promise<void>;
 		selectSource: (source: any) => Promise<any>;
 		showSourceHighlight: (source: any) => Promise<{ success: boolean }>;
 		getSelectedSource: () => Promise<any>;
+		setSelectedArea: (area: { x: number; y: number; width: number; height: number }) => Promise<void>;
+		getSelectedArea: () => Promise<{ x: number; y: number; width: number; height: number } | null>;
+		onAreaHighlightData: (callback: (data: { x: number; y: number; width: number; height: number; winX: number; winY: number }) => void) => () => void;
 		onSelectedSourceChanged: (callback: (source: any) => void) => () => void;
 		startNativeScreenRecording: (
 			source: any,

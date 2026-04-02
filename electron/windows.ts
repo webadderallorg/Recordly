@@ -524,11 +524,11 @@ export function createSourceSelectorWindow(): BrowserWindow {
 
 	const win = new BrowserWindow({
 		width: 620,
-		height: 420,
-		minHeight: 350,
-		maxHeight: 500,
+		height: 520,
+		minHeight: 450,
+		maxHeight: 600,
 		x: Math.round((width - 620) / 2),
-		y: Math.round((height - 420) / 2),
+		y: Math.round((height - 520) / 2),
 		frame: false,
 		resizable: false,
 		alwaysOnTop: true,
@@ -564,13 +564,27 @@ export function createSourceSelectorWindow(): BrowserWindow {
 	return win;
 }
 
-export function createCountdownWindow(): BrowserWindow {
+export function createCountdownWindow(bounds?: { x: number; y: number; width: number; height: number }): BrowserWindow {
 	const primaryDisplay = getScreen().getPrimaryDisplay();
-	const { width, height } = primaryDisplay.workAreaSize;
+	let workArea = primaryDisplay.workArea;
+
+	if (bounds) {
+		// Use the display that contains our target bounds (or most of it)
+		const targetDisplay = getScreen().getDisplayMatching(bounds);
+		if (targetDisplay) {
+			workArea = targetDisplay.workArea;
+		}
+	}
 
 	const windowSize = 200;
-	const x = Math.floor((width - windowSize) / 2);
-	const y = Math.floor((height - windowSize) / 2);
+	
+	// If bounds provided, center in that specific area. Otherwise center in monitor.
+	const x = bounds 
+		? Math.floor(bounds.x + (bounds.width - windowSize) / 2)
+		: Math.floor(workArea.x + (workArea.width - windowSize) / 2);
+	const y = bounds 
+		? Math.floor(bounds.y + (bounds.height - windowSize) / 2)
+		: Math.floor(workArea.y + (workArea.height - windowSize) / 2);
 
 	const win = new BrowserWindow({
 		width: windowSize,
@@ -628,4 +642,136 @@ export function closeCountdownWindow(): void {
 		countdownWindow.close();
 		countdownWindow = null;
 	}
+}
+
+export function createAreaSelectorWindow(options?: { displayId?: string }): BrowserWindow {
+	const displays = getScreen().getAllDisplays();
+	let selectedBounds: { x: number; y: number; width: number; height: number };
+
+	if (options?.displayId) {
+		const targetDisplay = displays.find((d) => String(d.id) === options.displayId);
+		if (targetDisplay) {
+			selectedBounds = targetDisplay.bounds;
+		} else {
+			selectedBounds = getScreen().getPrimaryDisplay().bounds;
+		}
+	} else {
+		selectedBounds = displays.reduce(
+			(acc, display) => {
+				const { x, y, width, height } = display.bounds;
+				return {
+					x: Math.min(acc.x, x),
+					y: Math.min(acc.y, y),
+					width: Math.max(acc.x + acc.width, x + width) - Math.min(acc.x, x),
+					height: Math.max(acc.y + acc.height, y + height) - Math.min(acc.y, y),
+				};
+			},
+			{ x: 0, y: 0, width: 0, height: 0 },
+		);
+	}
+
+	const { x, y, width, height } = selectedBounds;
+
+	const win = new BrowserWindow({
+		x,
+		y,
+		width,
+		height,
+		frame: false,
+		transparent: true,
+		resizable: false,
+		alwaysOnTop: true,
+		skipTaskbar: true,
+		hasShadow: false,
+		focusable: true,
+		show: false,
+		backgroundColor: "#00000000",
+		webPreferences: {
+			preload: path.join(__dirname, "preload.mjs"),
+			nodeIntegration: false,
+			contextIsolation: true,
+			backgroundThrottling: false,
+		},
+	});
+
+	// Support multi-monitor coordinate system
+	win.setBounds({ x, y, width, height });
+
+	win.webContents.on("did-finish-load", () => {
+		if (!win.isDestroyed()) {
+			win.show();
+			win.focus();
+		}
+	});
+
+	if (VITE_DEV_SERVER_URL) {
+		win.loadURL(VITE_DEV_SERVER_URL + "?windowType=area-selector");
+	} else {
+		win.loadFile(path.join(RENDERER_DIST, "index.html"), {
+			query: { windowType: "area-selector" },
+		});
+	}
+
+	return win;
+}
+
+export function createAreaHighlightWindow(bounds: { x: number; y: number; width: number; height: number }): BrowserWindow {
+	const displays = getScreen().getAllDisplays();
+	const totalBounds = displays.reduce(
+		(acc, display) => {
+			const { x, y, width, height } = display.bounds;
+			return {
+				x: Math.min(acc.x, x),
+				y: Math.min(acc.y, y),
+				width: Math.max(acc.x + acc.width, x + width) - Math.min(acc.x, x),
+				height: Math.max(acc.y + acc.height, y + height) - Math.min(acc.y, y),
+			};
+		},
+		{ x: 0, y: 0, width: 0, height: 0 },
+	);
+
+	const x = totalBounds.x;
+	const y = totalBounds.y;
+	const width = totalBounds.width;
+	const height = totalBounds.height;
+
+	const win = new BrowserWindow({
+		x,
+		y,
+		width,
+		height,
+		frame: false,
+		transparent: true,
+		resizable: false,
+		alwaysOnTop: true,
+		skipTaskbar: true,
+		hasShadow: false,
+		focusable: false,
+		show: false,
+		backgroundColor: "#00000000",
+		webPreferences: {
+			preload: path.join(__dirname, "preload.mjs"),
+			nodeIntegration: false,
+			contextIsolation: true,
+		},
+	});
+
+	win.setIgnoreMouseEvents(true);
+
+	win.webContents.on("did-finish-load", () => {
+		if (!win.isDestroyed()) {
+			win.show();
+			win.webContents.send("area-highlight-data", { ...bounds, winX: x, winY: y });
+		}
+	});
+
+	if (VITE_DEV_SERVER_URL) {
+		win.loadURL(VITE_DEV_SERVER_URL + "?windowType=area-highlight");
+	} else {
+		win.loadFile(path.join(RENDERER_DIST, "index.html"), {
+			query: { windowType: "area-highlight" },
+		});
+	}
+
+	return win;
 }

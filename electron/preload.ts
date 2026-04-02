@@ -49,6 +49,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	openSourceSelector: () => {
 		return ipcRenderer.invoke("open-source-selector");
 	},
+	openAreaSelector: (options?: { displayId?: string }) => {
+		return ipcRenderer.invoke("open-area-selector", options);
+	},
+	cancelAreaSelector: () => {
+		return ipcRenderer.invoke("cancel-area-selector");
+	},
 	selectSource: (source: any) => {
 		return ipcRenderer.invoke("select-source", source);
 	},
@@ -57,6 +63,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	getSelectedSource: () => {
 		return ipcRenderer.invoke("get-selected-source");
+	},
+	setSelectedArea: (area: { x: number; y: number; width: number; height: number }) => {
+		return ipcRenderer.invoke("set-selected-area", area);
+	},
+	getSelectedArea: () => {
+		return ipcRenderer.invoke("get-selected-area");
+	},
+	onAreaHighlightData: (callback: (data: any) => void) => {
+		const listener = (_event: Electron.IpcRendererEvent, payload: any) => callback(payload);
+		ipcRenderer.on("area-highlight-data", listener);
+		return () => ipcRenderer.removeListener("area-highlight-data", listener);
 	},
 	onSelectedSourceChanged: (callback: (source: any) => void) => {
 		const listener = (_event: Electron.IpcRendererEvent, payload: any) => callback(payload);

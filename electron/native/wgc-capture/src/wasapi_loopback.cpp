@@ -231,19 +231,47 @@ void WasapiCapture::captureThread() {
     DWORD sleepMs = static_cast<DWORD>((static_cast<double>(bufferFrameCount_) / mixFormat_->nSamplesPerSec) * 500.0);
     if (sleepMs < 5) sleepMs = 5;
 
+    auto lastTick = std::chrono::steady_clock::now();
+    double totalActiveSeconds = 0.0;
+    uint64_t actualFramesWritten = 0;
+    const DWORD sampleRate = mixFormat_->nSamplesPerSec;
+
+    auto writeSilenceFrames = [&](uint64_t frames) {
+        if (frames == 0) return;
+        std::vector<int16_t> silenceFrameBuffer(frames * channels, 0);
+        DWORD written;
+        WriteFile(outputFile_, silenceFrameBuffer.data(), static_cast<DWORD>(frames * channels * sizeof(int16_t)), &written, nullptr);
+        totalDataBytes_ += written;
+        actualFramesWritten += frames;
+    };
+
     while (capturing_) {
+        auto now = std::chrono::steady_clock::now();
+        double dt = std::chrono::duration<double>(now - lastTick).count();
+        lastTick = now;
+
         if (paused_) {
             Sleep(10);
             continue;
         }
 
-        Sleep(sleepMs);
+        totalActiveSeconds += dt;
+        uint64_t expectedFrames = static_cast<uint64_t>(totalActiveSeconds * sampleRate);
 
         UINT32 packetLength = 0;
         HRESULT hr = captureClient_->GetNextPacketSize(&packetLength);
         if (FAILED(hr)) {
             std::cerr << "WASAPI: GetNextPacketSize failed hr=0x" << std::hex << hr << std::dec << std::endl;
             break;
+        }
+
+        // Write silence if we are falling behind while no audio is playing
+        if (packetLength == 0) {
+            if (expectedFrames > actualFramesWritten + (sampleRate / 20)) { // 50ms tolerance
+                writeSilenceFrames(expectedFrames - actualFramesWritten);
+            }
+            Sleep(sleepMs);
+            continue;
         }
 
         while (packetLength > 0) {
@@ -255,6 +283,11 @@ void WasapiCapture::captureThread() {
             if (FAILED(hr)) {
                 std::cerr << "WASAPI: GetBuffer failed hr=0x" << std::hex << hr << std::dec << std::endl;
                 break;
+            }
+
+            // Before writing the actual frames, pad any preceding gap
+            if (expectedFrames > actualFramesWritten + numFrames) {
+                writeSilenceFrames(expectedFrames - actualFramesWritten - numFrames);
             }
 
             UINT32 totalSamples = numFrames * channels;
@@ -278,6 +311,7 @@ void WasapiCapture::captureThread() {
             DWORD written;
             WriteFile(outputFile_, pcmBuffer.data(), bytesToWrite, &written, nullptr);
             totalDataBytes_ += written;
+            actualFramesWritten += numFrames;
 
             hr = captureClient_->GetNextPacketSize(&packetLength);
             if (FAILED(hr)) {

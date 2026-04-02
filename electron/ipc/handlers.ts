@@ -8,10 +8,10 @@ import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 import type { SaveDialogOptions } from 'electron'
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell, systemPreferences } from 'electron'
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, shell, systemPreferences, screen } from 'electron'
 import { RECORDINGS_DIR, USER_DATA_PATH } from '../appPaths'
 import { hideCursor, showCursor } from '../cursorHider'
-import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from '../windows'
+import { closeCountdownWindow, createCountdownWindow, getCountdownWindow, createAreaHighlightWindow } from '../windows'
 import { resolveWindowsCaptureDisplay } from './windowsCaptureSelection'
 
 const execFileAsync = promisify(execFile)
@@ -141,6 +141,8 @@ type ProjectLibraryEntry = {
 }
 
 let selectedSource: SelectedSource | null = null
+let selectedArea: WindowBounds | null = null
+let previousScreenSource: SelectedSource | null = null
 let currentProjectPath: string | null = null
 let nativeScreenRecordingActive = false
 let currentVideoPath: string | null = null
@@ -157,6 +159,7 @@ let nativeCursorMonitorOutputBuffer = ''
 let windowsCaptureProcess: ChildProcessWithoutNullStreams | null = null
 let windowsCaptureOutputBuffer = ''
 let windowsCaptureTargetPath: string | null = null
+let areaHighlightWindow: BrowserWindow | null = null
 let windowsNativeCaptureActive = false
 let windowsCaptureStopRequested = false
 let windowsCapturePaused = false
@@ -400,18 +403,22 @@ async function validateRecordedVideo(videoPath: string) {
   try {
     const result = await execFileAsync(
       ffmpegPath,
-      ['-hide_banner', '-i', videoPath, '-map', '0:v:0', '-frames:v', '1', '-f', 'null', '-'],
+      ['-hide_banner', '-i', videoPath, '-f', 'null', '-'],
       { timeout: 20000, maxBuffer: 10 * 1024 * 1024 },
     )
-    stderr = result.stderr
+    stderr = result.stderr + result.stdout
   } catch (error) {
-    const execError = error as NodeJS.ErrnoException & { stderr?: string }
-    const output = execError.stderr?.trim()
-    throw new Error(output || `Recorded output could not be decoded: ${videoPath}`)
+    const execError = error as NodeJS.ErrnoException & { stderr?: string; stdout?: string }
+    stderr = (execError.stderr ?? '') + (execError.stdout ?? '')
+
+    // FFmpeg exits with code 1 if it just shows info, but if it truly fails to parse, we error
+    if (!/Stream #.*Video:/i.test(stderr)) {
+      throw new Error(`Recorded output is not a valid video file: ${videoPath}`)
+    }
   }
 
   if (!/Stream #.*Video:/i.test(stderr)) {
-    throw new Error(`Recorded output does not contain a readable video stream: ${videoPath}`)
+    throw new Error(`Recorded output does not contain a readable video stream (too short?): ${videoPath}`)
   }
 
   const durationSeconds = parseFfmpegDurationSeconds(stderr)
@@ -2128,7 +2135,6 @@ async function muxNativeWindowsVideoWithAudio(videoPath: string, systemAudioPath
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-b:a', '192k',
-        '-shortest',
         mixedOutputPath,
       ],
       { timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
@@ -2149,7 +2155,6 @@ async function muxNativeWindowsVideoWithAudio(videoPath: string, systemAudioPath
             '-c:v', 'copy',
             '-c:a', 'aac',
             '-b:a', '192k',
-            '-shortest',
             mixedOutputPath,
           ]
         : [
@@ -2160,7 +2165,6 @@ async function muxNativeWindowsVideoWithAudio(videoPath: string, systemAudioPath
             '-c:v', 'copy',
             '-c:a', 'aac',
             '-b:a', '192k',
-            '-shortest',
             mixedOutputPath,
           ],
       { timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
@@ -2450,7 +2454,7 @@ function sampleCursorStateChange(cursorType: CursorVisualType) {
     return
   }
 
-  pushCursorSample(point.cx, point.cy, Date.now() - cursorCaptureStartTimeMs, 'move', cursorType)
+  pushCursorSample(point.cx, point.cy, Date.now() - cursorCaptureStartTimeMs, 'move', cursorType, point.hidden)
 }
 
 function attachNativeCaptureLifecycle(process: ChildProcessWithoutNullStreams) {
@@ -2634,6 +2638,7 @@ interface CursorTelemetryPoint {
   timeMs: number
   cx: number
   cy: number
+  hidden?: boolean
   interactionType?: CursorInteractionType
   cursorType?: CursorVisualType
 }
@@ -2786,10 +2791,27 @@ function getNormalizedCursorPoint() {
   if (windowBounds) {
     const width = Math.max(1, windowBounds.width)
     const height = Math.max(1, windowBounds.height)
+    const isHidden = cursor.x < windowBounds.x || cursor.x > windowBounds.x + windowBounds.width ||
+                     cursor.y < windowBounds.y || cursor.y > windowBounds.y + windowBounds.height
 
     return {
       cx: clamp((cursor.x - windowBounds.x) / width, 0, 1),
       cy: clamp((cursor.y - windowBounds.y) / height, 0, 1),
+      hidden: isHidden,
+    }
+  }
+
+  const areaBounds = selectedSource?.id === 'area:custom' ? selectedArea : null
+  if (areaBounds) {
+    const width = Math.max(1, areaBounds.width)
+    const height = Math.max(1, areaBounds.height)
+    const isHidden = cursor.x < areaBounds.x || cursor.x > areaBounds.x + areaBounds.width ||
+                     cursor.y < areaBounds.y || cursor.y > areaBounds.y + areaBounds.height
+
+    return {
+      cx: clamp((cursor.x - areaBounds.x) / width, 0, 1),
+      cy: clamp((cursor.y - areaBounds.y) / height, 0, 1),
+      hidden: isHidden,
     }
   }
 
@@ -2797,14 +2819,22 @@ function getNormalizedCursorPoint() {
   const sourceDisplay = Number.isFinite(sourceDisplayId)
     ? getScreen().getAllDisplays().find((display) => display.id === sourceDisplayId) ?? null
     : null
+  
+  // If we have a specific source display, check if cursor is within it.
+  // Otherwise, use the nearest display (no hiding possible if no target display was locked).
   const display = sourceDisplay ?? getScreen().getDisplayNearestPoint(cursor)
   const bounds = display.bounds
   const width = Math.max(1, bounds.width)
   const height = Math.max(1, bounds.height)
 
+  const isHidden = sourceDisplay && (
+    cursor.x < bounds.x || cursor.x > bounds.x + bounds.width ||
+    cursor.y < bounds.y || cursor.y > bounds.y + bounds.height
+  )
+
   const cx = clamp((cursor.x - bounds.x) / width, 0, 1)
   const cy = clamp((cursor.y - bounds.y) / height, 0, 1)
-  return { cx, cy }
+  return { cx, cy, hidden: !!isHidden }
 }
 
 function getHookCursorScreenPoint(event: any): { x: number; y: number } | null {
@@ -2824,11 +2854,13 @@ function pushCursorSample(
   timeMs: number,
   interactionType: CursorInteractionType = 'move',
   cursorType?: CursorVisualType,
+  hidden?: boolean,
 ) {
   activeCursorSamples.push({
     timeMs: Math.max(0, timeMs),
     cx,
     cy,
+    hidden,
     interactionType,
     cursorType: cursorType ?? currentCursorVisualType,
   })
@@ -2844,7 +2876,7 @@ function sampleCursorPoint() {
     return
   }
 
-  pushCursorSample(point.cx, point.cy, Date.now() - cursorCaptureStartTimeMs, 'move')
+  pushCursorSample(point.cx, point.cy, Date.now() - cursorCaptureStartTimeMs, 'move', undefined, point.hidden)
 }
 
 async function persistPendingCursorTelemetry(videoPath: string) {
@@ -3034,7 +3066,7 @@ async function startInteractionCapture() {
         lastLeftClick = { timeMs, cx: point.cx, cy: point.cy }
       }
 
-      pushCursorSample(point.cx, point.cy, timeMs, interactionType)
+      pushCursorSample(point.cx, point.cy, timeMs, interactionType, undefined, point.hidden)
     }
 
     const onMouseUp = (_event: any) => {
@@ -3048,7 +3080,7 @@ async function startInteractionCapture() {
       }
 
       const timeMs = Date.now() - cursorCaptureStartTimeMs
-      pushCursorSample(point.cx, point.cy, timeMs, 'mouseup')
+      pushCursorSample(point.cx, point.cy, timeMs, 'mouseup', undefined, point.hidden)
     }
 
     const onMouseMove = (event: any) => {
@@ -3103,11 +3135,39 @@ async function startInteractionCapture() {
 
 export function registerIpcHandlers(
   createEditorWindow: () => void,
-  createSourceSelectorWindow: () => BrowserWindow,
+  createSourceSelectorWindow: () => void,
+  createAreaSelectorWindow: (options?: { displayId?: string }) => void,
   _getMainWindow: () => BrowserWindow | null,
   getSourceSelectorWindow: () => BrowserWindow | null,
   onRecordingStateChange?: (recording: boolean, sourceName: string) => void
 ) {
+  // Load initially selected area if present in settings.
+  // We do it here so it's ready when the handlers are registered.
+  void (async () => {
+    try {
+      if (await fs.stat(RECORDINGS_SETTINGS_FILE).catch(() => null)) {
+        const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, 'utf-8')
+        const parsed = JSON.parse(content) as any
+        if (parsed.lastSelectedArea) {
+          selectedArea = parsed.lastSelectedArea
+          if (selectedArea) {
+            // Re-detect display for loaded area
+            const targetDisplay = screen.getDisplayMatching(selectedArea)
+            const displayId = targetDisplay ? String(targetDisplay.id) : undefined
+
+            selectedSource = {
+              name: `Area: ${Math.round(selectedArea.width)}x${Math.round(selectedArea.height)}`,
+              sourceType: 'screen' as const,
+              id: 'area:custom',
+              display_id: displayId
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load lastSelectedArea:', error)
+    }
+  })()
   ipcMain.handle('get-sources', async (_, opts) => {
     const includeScreens = Array.isArray(opts?.types) ? opts.types.includes('screen') : true
     const includeWindows = Array.isArray(opts?.types) ? opts.types.includes('window') : true
@@ -3292,6 +3352,78 @@ export function registerIpcHandlers(
 
       return [...screenSources, ...windowSources]
     }
+  })
+
+  ipcMain.handle('open-area-selector', (_, options?: { displayId?: string }) => {
+    // Save the current screen source so we can revert on cancel
+    if (selectedSource?.id?.startsWith('screen:')) {
+      previousScreenSource = selectedSource
+    }
+    createAreaSelectorWindow(options)
+  })
+
+  ipcMain.handle('cancel-area-selector', () => {
+    // Revert to the previous screen source (fullscreen)
+    if (previousScreenSource) {
+      selectedSource = previousScreenSource
+      selectedArea = null
+      broadcastSelectedSourceChange()
+    }
+    BrowserWindow.getAllWindows().forEach(win => {
+      if (win.webContents.getURL().includes('windowType=area-selector')) {
+        win.close()
+      }
+    })
+  })
+
+  ipcMain.handle('set-selected-area', async (event, area: WindowBounds) => {
+    // Convert relative window coordinates to global screen coordinates
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const winBounds = win ? win.getBounds() : { x: 0, y: 0 }
+    
+    const globalArea = {
+      x: area.x + winBounds.x,
+      y: area.y + winBounds.y,
+      width: area.width,
+      height: area.height
+    }
+
+    // Detect which display contains this area
+    const targetDisplay = screen.getDisplayMatching(globalArea)
+    const displayId = targetDisplay ? String(targetDisplay.id) : undefined
+
+    selectedArea = globalArea
+    selectedSource = {
+      name: `Area: ${Math.round(area.width)}x${Math.round(area.height)}`,
+      sourceType: 'screen' as const,
+      id: 'area:custom',
+      display_id: displayId,
+      scaleFactor: targetDisplay?.scaleFactor || 1,
+      displayBounds: targetDisplay?.bounds
+    }
+    broadcastSelectedSourceChange()
+
+    // Also close the source selector if open
+    getSourceSelectorWindow()?.close()
+
+    // Persist to settings
+    try {
+      let existing: any = {}
+      try {
+        const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, 'utf-8')
+        existing = JSON.parse(content)
+      } catch {}
+      const merged = { ...existing, lastSelectedArea: area }
+      await fs.writeFile(RECORDINGS_SETTINGS_FILE, JSON.stringify(merged, null, 2), 'utf-8')
+    } catch (error) {
+      console.error('Failed to persist selected area:', error)
+    }
+
+    return { success: true }
+  })
+
+  ipcMain.handle('get-selected-area', () => {
+    return selectedArea
   })
 
   ipcMain.handle('select-source', (_, source: SelectedSource) => {
@@ -3528,6 +3660,33 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
           config.displayH = Math.round(resolvedDisplay.bounds.height)
         }
 
+        if (source?.id === 'area:custom' && selectedArea) {
+          // Identify the target display for DPI scaling.
+          const targetDisplay = getScreen().getDisplayMatching(selectedArea);
+          const sf = targetDisplay.scaleFactor || 1;
+
+          // IMPORTANT: WGC capture requires crop coordinates to be relative to the monitor, in RAW pixels.
+          // Since we passed config.displayX/Y above as DIP (handled by findMonitorByBounds fallback),
+          // or matched by handle ID, we must now provide the crop in monitor-local pixels.
+          
+          // 1. Calculate global screen coordinates in pixels
+          const globalXPixels = Math.round(selectedArea.x * sf);
+          const globalYPixels = Math.round(selectedArea.y * sf);
+          
+          // 2. Calculate display top-left in pixels (using Electron's display bounds converted to pixels)
+          const displayXPixels = Math.round(targetDisplay.bounds.x * sf);
+          const displayYPixels = Math.round(targetDisplay.bounds.y * sf);
+
+          const finalW = Math.round(selectedArea.width * sf);
+          const finalH = Math.round(selectedArea.height * sf);
+          
+          // Boundary safety for H.264 (ensure even dims)
+          config.cropX = Math.round(globalXPixels - displayXPixels);
+          config.cropY = Math.round(globalYPixels - displayYPixels);
+          config.cropW = Math.floor(finalW / 2) * 2;
+          config.cropH = Math.floor(finalH / 2) * 2;
+        }
+
         recordNativeCaptureDiagnostics({
           backend: 'windows-wgc',
           phase: 'start',
@@ -3701,6 +3860,13 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
         config.displayId = screenId
       } else {
         config.displayId = Number(getScreen().getPrimaryDisplay().id)
+      }
+
+      if (source?.id === 'area:custom' && selectedArea) {
+        config.cropX = selectedArea.x
+        config.cropY = selectedArea.y
+        config.cropWidth = selectedArea.width
+        config.cropHeight = selectedArea.height
       }
 
       nativeCaptureOutputBuffer = ''
@@ -5187,7 +5353,27 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
     countdownCancelled = false
     countdownRemaining = seconds
 
-    const countdownWin = createCountdownWindow()
+    // Calculate where to show the countdown based on what we are recording
+    let countdownTargetBounds: { x: number; y: number; width: number; height: number } | undefined;
+    
+    if (selectedSource?.id === 'area:custom' && selectedArea) {
+      // If recording a custom area, center countdown in that area
+      countdownTargetBounds = selectedArea;
+    } else if (selectedSource?.id?.startsWith('screen:')) {
+      // If recording a screen, center countdown in that screen
+      // Import screen inside or use global if available
+      const displays = screen.getAllDisplays();
+      const targetDisplay = displays.find(d => String(d.id) === selectedSource?.display_id);
+      if (targetDisplay) {
+        countdownTargetBounds = targetDisplay.bounds;
+      }
+    }
+
+    const countdownWin = createCountdownWindow(countdownTargetBounds)
+
+    if (selectedArea && selectedSource?.id === 'area:custom') {
+      areaHighlightWindow = createAreaHighlightWindow(selectedArea)
+    }
 
     if (countdownWin.webContents.isLoadingMainFrame()) {
       await new Promise<void>((resolve) => {
@@ -5210,6 +5396,10 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
             countdownTimer = null
           }
           closeCountdownWindow()
+          if (areaHighlightWindow) {
+            areaHighlightWindow.close()
+            areaHighlightWindow = null
+          }
           countdownInProgress = false
           countdownRemaining = null
           resolve({ success: false, cancelled: true })
@@ -5225,6 +5415,10 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
             countdownTimer = null
           }
           closeCountdownWindow()
+          if (areaHighlightWindow) {
+            areaHighlightWindow.close()
+            areaHighlightWindow = null
+          }
           countdownInProgress = false
           countdownRemaining = null
           resolve({ success: true })

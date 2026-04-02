@@ -283,6 +283,45 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
     }
   }, []);
 
+  const createCroppedStream = useCallback((originalStream: MediaStream, cropArea: { x: number; y: number; width: number; height: number }) => {
+    const videoTrack = originalStream.getVideoTracks()[0];
+    if (!videoTrack) return originalStream;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+    if (!ctx) return originalStream;
+
+    const video = document.createElement('video');
+    video.srcObject = originalStream;
+    void video.play();
+
+    canvas.width = Math.floor(cropArea.width / CODEC_ALIGNMENT) * CODEC_ALIGNMENT;
+    canvas.height = Math.floor(cropArea.height / CODEC_ALIGNMENT) * CODEC_ALIGNMENT;
+
+    let animationFrameId: number;
+    const draw = () => {
+      ctx.drawImage(
+        video,
+        cropArea.x, cropArea.y, cropArea.width, cropArea.height,
+        0, 0, canvas.width, canvas.height
+      );
+      animationFrameId = requestAnimationFrame(draw);
+    };
+    draw();
+
+    const croppedStream = canvas.captureStream(TARGET_FRAME_RATE);
+    
+    // Add original stop listener to cleanup
+    const originalStop = videoTrack.stop.bind(videoTrack);
+    videoTrack.stop = () => {
+      cancelAnimationFrame(animationFrameId);
+      video.srcObject = null;
+      originalStop();
+    };
+
+    return croppedStream;
+  }, []);
+
   const resolveBrowserCaptureSource = useCallback(async (source: any) => {
     if (!source?.id?.startsWith("screen:")) {
       return source;
@@ -691,13 +730,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
       const platform = await window.electronAPI.getPlatform();
       const useNativeMacScreenCapture =
         platform === "darwin" &&
-        (selectedSource.id?.startsWith("screen:") || selectedSource.id?.startsWith("window:")) &&
+        (selectedSource.id?.startsWith("screen:") || selectedSource.id?.startsWith("window:") || selectedSource.id?.startsWith("area:")) &&
         typeof window.electronAPI.startNativeScreenRecording === "function";
 
       let useNativeWindowsCapture = false;
       if (
         platform === "win32" &&
-        (selectedSource.id?.startsWith("screen:") || selectedSource.id?.startsWith("window:")) &&
+        (selectedSource.id?.startsWith("screen:") || selectedSource.id?.startsWith("window:") || selectedSource.id?.startsWith("area:")) &&
         typeof window.electronAPI.isNativeWindowsCaptureAvailable === "function"
       ) {
         try {
@@ -915,6 +954,25 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
         stream.current = mediaStream;
         videoTrack = mediaStream.getVideoTracks()[0];
+      }
+
+      if (selectedSource.id === 'area:custom') {
+        const area = await window.electronAPI.getSelectedArea();
+        if (area && stream.current) {
+          const sf = selectedSource.scaleFactor || 1;
+          const displayBounds = selectedSource.displayBounds || { x: 0, y: 0 };
+          
+          // Convert global DIP Area to monitor-relative Pixels
+          const monitorRelativeArea = {
+            x: Math.round((area.x - displayBounds.x) * sf),
+            y: Math.round((area.y - displayBounds.y) * sf),
+            width: Math.round(area.width * sf),
+            height: Math.round(area.height * sf),
+          };
+
+          stream.current = createCroppedStream(stream.current, monitorRelativeArea);
+          videoTrack = stream.current.getVideoTracks()[0];
+        }
       }
 
       if (!stream.current || !videoTrack) {

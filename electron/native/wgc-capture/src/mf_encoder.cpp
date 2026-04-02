@@ -2,6 +2,7 @@
 #include <mfapi.h>
 #include <mferror.h>
 #include <codecapi.h>
+#include <strmif.h>
 #include <iostream>
 #include <cstring>
 
@@ -70,10 +71,12 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
 
     // Create SinkWriter with MPEG4 container
     ComPtr<IMFAttributes> writerAttrs;
-    hr = MFCreateAttributes(&writerAttrs, 1);
+    hr = MFCreateAttributes(&writerAttrs, 3);
     if (FAILED(hr)) return false;
 
     writerAttrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
+    writerAttrs->SetUINT32(MF_LOW_LATENCY, TRUE);
+    writerAttrs->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE);
 
     hr = MFCreateSinkWriterFromURL(outputPath.c_str(), nullptr, writerAttrs.Get(), &sinkWriter_);
     if (FAILED(hr)) {
@@ -85,6 +88,20 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
     if (FAILED(hr)) {
         std::cerr << "ERROR: AddStream failed: 0x" << std::hex << hr << std::endl;
         return false;
+    }
+
+    // Attempt to set encoder properties for real-time performance
+    ComPtr<ICodecAPI> codecApi;
+    if (sinkWriter_ && SUCCEEDED(sinkWriter_->GetServiceForStream(streamIndex_, GUID_NULL, IID_PPV_ARGS(&codecApi)))) {
+        VARIANT var;
+        VariantInit(&var);
+        var.vt = VT_BOOL;
+        var.boolVal = VARIANT_TRUE;
+        codecApi->SetValue(&CODECAPI_AVLowLatencyMode, &var);
+        
+        var.vt = VT_UI4;
+        var.ulVal = 1; // RealTime
+        codecApi->SetValue(&CODECAPI_AVEncCommonRealTime, &var);
     }
 
     hr = sinkWriter_->SetInputMediaType(streamIndex_, inputType.Get(), nullptr);
@@ -130,11 +147,12 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
 
     if (!initialized_ || !sinkWriter_) return false;
 
-    context_->CopyResource(stagingTexture_.Get(), texture);
+    if (texture) {
+        context_->CopyResource(stagingTexture_.Get(), texture);
 
-    D3D11_MAPPED_SUBRESOURCE mapped;
-    HRESULT hr = context_->Map(stagingTexture_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
-    if (FAILED(hr)) return false;
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        HRESULT hr = context_->Map(stagingTexture_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+        if (FAILED(hr)) return false;
 
     // Convert BGRA → NV12
     const uint8_t* bgra = static_cast<const uint8_t*>(mapped.pData);
@@ -166,11 +184,39 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
     }
 
     context_->Unmap(stagingTexture_.Get(), 0);
+    hasValidFrame_ = true;
+    }
 
-    // Create MF sample
+    if (!hasValidFrame_) return true;
+
+    int64_t frameDurationHns = 10000000LL / fps_;
+
+    // First frame initialization
+    if (lastWrittenPtsHns_ == -1) {
+        lastWrittenPtsHns_ = timestampHns;
+        return writeInternalSample(lastWrittenPtsHns_);
+    }
+
+    // Do not step backwards in time
+    if (timestampHns <= lastWrittenPtsHns_) return true;
+
+    bool success = true;
+    int64_t nextExpectedPts = lastWrittenPtsHns_ + frameDurationHns;
+
+    // Fill the temporal gap with duplicate frames
+    while (nextExpectedPts <= timestampHns) {
+        success &= writeInternalSample(nextExpectedPts);
+        lastWrittenPtsHns_ = nextExpectedPts;
+        nextExpectedPts += frameDurationHns;
+    }
+
+    return success;
+}
+
+bool MFEncoder::writeInternalSample(int64_t pts) {
     DWORD bufferSize = static_cast<DWORD>(nv12Buffer_.size());
     ComPtr<IMFMediaBuffer> buffer;
-    hr = MFCreateMemoryBuffer(bufferSize, &buffer);
+    HRESULT hr = MFCreateMemoryBuffer(bufferSize, &buffer);
     if (FAILED(hr)) return false;
 
     BYTE* bufferData = nullptr;
@@ -186,7 +232,7 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
     if (FAILED(hr)) return false;
 
     sample->AddBuffer(buffer.Get());
-    sample->SetSampleTime(timestampHns);
+    sample->SetSampleTime(pts);
     sample->SetSampleDuration(10000000LL / fps_);
 
     hr = sinkWriter_->WriteSample(streamIndex_, sample.Get());
@@ -194,6 +240,16 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
         std::cerr << "ERROR: WriteSample failed: 0x" << std::hex << hr << std::endl;
     }
     return SUCCEEDED(hr);
+}
+
+bool MFEncoder::markEndOfStream() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!initialized_ || !sinkWriter_) return false;
+    
+    // Notify the sink writer that the stream has ended
+    sinkWriter_->SendStreamTick(streamIndex_, 0); 
+    sinkWriter_->PlaceMarker(streamIndex_, nullptr);
+    return true;
 }
 
 bool MFEncoder::finalize() {
