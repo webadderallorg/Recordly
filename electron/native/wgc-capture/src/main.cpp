@@ -293,7 +293,12 @@ int main(int argc, char* argv[]) {
         desc.SampleDesc.Count = 1;
         desc.Usage = D3D11_USAGE_DEFAULT;
         desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-        session.device()->CreateTexture2D(&desc, nullptr, cropTexture.GetAddressOf());
+        
+        HRESULT hr = session.device()->CreateTexture2D(&desc, nullptr, cropTexture.GetAddressOf());
+        if (FAILED(hr)) {
+            std::cerr << "ERROR: Failed to create crop texture (HRESULT 0x" << std::hex << hr << ")" << std::endl;
+            return 1;
+        }
     }
 
     // Set up frame callback

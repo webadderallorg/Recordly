@@ -104,8 +104,11 @@ export function AreaSelector() {
 
     if (isMoving && selection && moveOffset.current) {
       // Move existing selection
-      const newX = currentX - moveOffset.current.x;
-      const newY = currentY - moveOffset.current.y;
+      const maxX = window.innerWidth - selection.width;
+      const maxY = window.innerHeight - selection.height;
+      
+      const newX = Math.max(0, Math.min(currentX - moveOffset.current.x, maxX));
+      const newY = Math.max(0, Math.min(currentY - moveOffset.current.y, maxY));
       
       setSelection({
         ...selection,

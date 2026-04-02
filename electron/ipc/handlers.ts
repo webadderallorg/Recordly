@@ -180,6 +180,20 @@ let countdownCancelled = false
 let countdownInProgress = false
 let countdownRemaining: number | null = null
 
+function stopCountdown() {
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
+  closeCountdownWindow()
+  if (areaHighlightWindow) {
+    areaHighlightWindow.close()
+    areaHighlightWindow = null
+  }
+  countdownInProgress = false
+  countdownRemaining = null
+}
+
 type SystemCursorAsset = {
   dataUrl: string
   hotspotX: number
@@ -3159,7 +3173,9 @@ export function registerIpcHandlers(
               name: `Area: ${Math.round(selectedArea.width)}x${Math.round(selectedArea.height)}`,
               sourceType: 'screen' as const,
               id: 'area:custom',
-              display_id: displayId
+              display_id: displayId,
+              scaleFactor: targetDisplay?.scaleFactor || 1,
+              displayBounds: targetDisplay?.bounds
             }
           }
         }
@@ -3388,6 +3404,21 @@ export function registerIpcHandlers(
       height: area.height
     }
 
+    // Verify the selection stays within a single monitor
+    const intersectingDisplays = screen.getAllDisplays().filter(display => {
+      const db = display.bounds
+      const ix = Math.max(globalArea.x, db.x)
+      const iy = Math.max(globalArea.y, db.y)
+      const iw = Math.min(globalArea.x + globalArea.width, db.x + db.width) - ix
+      const ih = Math.min(globalArea.y + globalArea.height, db.y + db.height) - iy
+      return iw > 0 && ih > 0
+    })
+
+    if (intersectingDisplays.length > 1) {
+      console.warn('Rejecting area selection spanning multiple displays:', intersectingDisplays.length)
+      return { success: false, error: 'Selection spans multiple monitors' }
+    }
+
     // Detect which display contains this area
     const targetDisplay = screen.getDisplayMatching(globalArea)
     const displayId = targetDisplay ? String(targetDisplay.id) : undefined
@@ -3413,7 +3444,7 @@ export function registerIpcHandlers(
         const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, 'utf-8')
         existing = JSON.parse(content)
       } catch {}
-      const merged = { ...existing, lastSelectedArea: area }
+      const merged = { ...existing, lastSelectedArea: globalArea }
       await fs.writeFile(RECORDINGS_SETTINGS_FILE, JSON.stringify(merged, null, 2), 'utf-8')
     } catch (error) {
       console.error('Failed to persist selected area:', error)
@@ -5391,17 +5422,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 
       countdownTimer = setInterval(() => {
         if (countdownCancelled) {
-          if (countdownTimer) {
-            clearInterval(countdownTimer)
-            countdownTimer = null
-          }
-          closeCountdownWindow()
-          if (areaHighlightWindow) {
-            areaHighlightWindow.close()
-            areaHighlightWindow = null
-          }
-          countdownInProgress = false
-          countdownRemaining = null
+          stopCountdown()
           resolve({ success: false, cancelled: true })
           return
         }
@@ -5410,17 +5431,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
         countdownRemaining = remaining
 
         if (remaining <= 0) {
-          if (countdownTimer) {
-            clearInterval(countdownTimer)
-            countdownTimer = null
-          }
-          closeCountdownWindow()
-          if (areaHighlightWindow) {
-            areaHighlightWindow.close()
-            areaHighlightWindow = null
-          }
-          countdownInProgress = false
-          countdownRemaining = null
+          stopCountdown()
           resolve({ success: true })
         } else {
           const win = getCountdownWindow()
@@ -5434,13 +5445,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 
   ipcMain.handle('cancel-countdown', () => {
     countdownCancelled = true
-    countdownInProgress = false
-    countdownRemaining = null
-    if (countdownTimer) {
-      clearInterval(countdownTimer)
-      countdownTimer = null
-    }
-    closeCountdownWindow()
+    stopCountdown()
     return { success: true }
   })
 

@@ -32,6 +32,9 @@ export function AreaHighlight() {
   const relX = area.x - area.winX;
   const relY = area.y - area.winY;
 
+  const labelTop = relY < 22 ? relY + area.height : relY - 22;
+  const borderRadiusStyle = relY < 22 ? { borderRadius: '0 0 4px 4px' } : {};
+
   return (
     <div className="fixed inset-0 pointer-events-none overflow-hidden">
       {/* Dimmed overlay around the selection */}
@@ -70,7 +73,8 @@ export function AreaHighlight() {
         className="absolute flex items-center gap-1.5 px-2 py-1 bg-[#2563EB] text-white text-[10px] font-bold rounded-t"
         style={{
           left: relX,
-          top: relY - 22,
+          top: labelTop,
+          ...borderRadiusStyle,
         }}
       >
         <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />

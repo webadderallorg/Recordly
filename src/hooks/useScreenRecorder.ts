@@ -283,7 +283,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
     }
   }, []);
 
-  const createCroppedStream = useCallback((originalStream: MediaStream, cropArea: { x: number; y: number; width: number; height: number }) => {
+  const createCroppedStream = useCallback(async (originalStream: MediaStream, cropArea: { x: number; y: number; width: number; height: number }) => {
     const videoTrack = originalStream.getVideoTracks()[0];
     if (!videoTrack) return originalStream;
 
@@ -293,12 +293,21 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
     const video = document.createElement('video');
     video.srcObject = originalStream;
-    void video.play();
+
+    const originalStop = videoTrack.stop.bind(videoTrack);
+    let animationFrameId: number;
+
+    try {
+      await video.play();
+    } catch (error) {
+      console.error("Failed to start video playback for cropping:", error);
+      video.srcObject = null;
+      throw error;
+    }
 
     canvas.width = Math.floor(cropArea.width / CODEC_ALIGNMENT) * CODEC_ALIGNMENT;
     canvas.height = Math.floor(cropArea.height / CODEC_ALIGNMENT) * CODEC_ALIGNMENT;
 
-    let animationFrameId: number;
     const draw = () => {
       ctx.drawImage(
         video,
@@ -312,9 +321,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
     const croppedStream = canvas.captureStream(TARGET_FRAME_RATE);
     
     // Add original stop listener to cleanup
-    const originalStop = videoTrack.stop.bind(videoTrack);
     videoTrack.stop = () => {
-      cancelAnimationFrame(animationFrameId);
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
       video.srcObject = null;
       originalStop();
     };
@@ -970,7 +980,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
             height: Math.round(area.height * sf),
           };
 
-          stream.current = createCroppedStream(stream.current, monitorRelativeArea);
+          stream.current = await createCroppedStream(stream.current, monitorRelativeArea);
           videoTrack = stream.current.getVideoTracks()[0];
         }
       }
