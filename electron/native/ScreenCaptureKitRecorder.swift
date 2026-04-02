@@ -378,7 +378,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			}
 		}
 
-		assetWriter?.endSession(atSourceTime: lastSampleBuffer?.presentationTimeStamp ?? .zero)
+		let endTime = lastVideoPresentationTime + (lastSampleBuffer.map { frameDuration(for: $0) } ?? .zero)
+		assetWriter?.endSession(atSourceTime: endTime)
 		videoInput?.markAsFinished()
 		inlineAudioInput?.markAsFinished()
 		await assetWriter?.finishWriting()
@@ -438,10 +439,19 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			if firstSampleTime == .zero {
 				firstSampleTime = sampleTime
 			}
-			return max(.zero, sampleTime - firstSampleTime - accumulatedPausedDuration)
 		}
 
-		return sampleTime - accumulatedPausedDuration
+		// Use video's first sample time as the common time base for ALL tracks.
+		// This ensures audio files contain leading silence when audio hardware
+		// delivers its first sample after the first video frame (e.g. iPhone mic
+		// over Continuity Camera can lag 1-2 seconds behind).
+		if firstSampleTime == .zero {
+			// Video hasn't started yet — drop this audio sample to avoid
+			// negative timestamps.
+			return nil
+		}
+
+		return max(.zero, sampleTime - firstSampleTime - accumulatedPausedDuration)
 	}
 
 	private func frameDuration(for sampleBuffer: CMSampleBuffer) -> CMTime {
@@ -463,9 +473,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			firstSampleTime = presentationTime
 		}
 
-		guard let firstSampleTime else { return }
-		let relativePresentationTime = max(.zero, presentationTime - firstSampleTime)
-		let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: relativePresentationTime, decodeTimeStamp: sampleBuffer.decodeTimeStamp)
+		// presentationTime is already relative to the video's first frame
+		// (computed by adjustedPresentationTime), so use it directly.
+		let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: presentationTime, decodeTimeStamp: sampleBuffer.decodeTimeStamp)
 		if let retimedSampleBuffer = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]) {
 			input.append(retimedSampleBuffer)
 		}
