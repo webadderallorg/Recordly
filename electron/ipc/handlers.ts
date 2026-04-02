@@ -143,6 +143,7 @@ type ProjectLibraryEntry = {
 let selectedSource: SelectedSource | null = null
 let selectedArea: WindowBounds | null = null
 let previousScreenSource: SelectedSource | null = null
+let selectorWindowOrigin = { x: 0, y: 0 }
 let currentProjectPath: string | null = null
 let nativeScreenRecordingActive = false
 let currentVideoPath: string | null = null
@@ -179,11 +180,17 @@ let countdownTimer: ReturnType<typeof setInterval> | null = null
 let countdownCancelled = false
 let countdownInProgress = false
 let countdownRemaining: number | null = null
+let countdownResolve: ((value: { success: boolean; cancelled?: boolean }) => void) | null = null
 
-function stopCountdown() {
+
+function stopCountdown(result: { success: boolean; cancelled?: boolean } = { success: false, cancelled: true }) {
   if (countdownTimer) {
     clearInterval(countdownTimer)
     countdownTimer = null
+  }
+  if (countdownResolve) {
+    countdownResolve(result)
+    countdownResolve = null
   }
   closeCountdownWindow()
   if (areaHighlightWindow) {
@@ -3147,10 +3154,28 @@ async function startInteractionCapture() {
   }
 }
 
+function validateRecordingArea(area: any): area is WindowBounds {
+  if (!area || typeof area !== 'object') return false
+  const { x, y, width, height } = area
+  if (![x, y, width, height].every(v => typeof v === 'number' && Number.isFinite(v))) return false
+  if (width <= 0 || height <= 0) return false
+
+  const intersectingDisplays = getScreen().getAllDisplays().filter(display => {
+    const db = display.bounds
+    const ix = Math.max(x, db.x)
+    const iy = Math.max(y, db.y)
+    const iw = Math.min(x + width, db.x + db.width) - ix
+    const ih = Math.min(y + height, db.y + db.height) - iy
+    return iw > 0 && ih > 0
+  })
+
+  return intersectingDisplays.length === 1
+}
+
 export function registerIpcHandlers(
   createEditorWindow: () => void,
   createSourceSelectorWindow: () => void,
-  createAreaSelectorWindow: (options?: { displayId?: string }) => void,
+  createAreaSelectorWindow: (options?: { displayId?: string }) => BrowserWindow,
   _getMainWindow: () => BrowserWindow | null,
   getSourceSelectorWindow: () => BrowserWindow | null,
   onRecordingStateChange?: (recording: boolean, sourceName: string) => void
@@ -3162,21 +3187,20 @@ export function registerIpcHandlers(
       if (await fs.stat(RECORDINGS_SETTINGS_FILE).catch(() => null)) {
         const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, 'utf-8')
         const parsed = JSON.parse(content) as any
-        if (parsed.lastSelectedArea) {
-          selectedArea = parsed.lastSelectedArea
-          if (selectedArea) {
-            // Re-detect display for loaded area
-            const targetDisplay = screen.getDisplayMatching(selectedArea)
-            const displayId = targetDisplay ? String(targetDisplay.id) : undefined
+        if (parsed.lastSelectedArea && validateRecordingArea(parsed.lastSelectedArea)) {
+          const area = parsed.lastSelectedArea
+          selectedArea = area
+          // Re-detect display for loaded area
+          const targetDisplay = getScreen().getDisplayMatching(area)
+          const displayId = targetDisplay ? String(targetDisplay.id) : undefined
 
-            selectedSource = {
-              name: `Area: ${Math.round(selectedArea.width)}x${Math.round(selectedArea.height)}`,
-              sourceType: 'screen' as const,
-              id: 'area:custom',
-              display_id: displayId,
-              scaleFactor: targetDisplay?.scaleFactor || 1,
-              displayBounds: targetDisplay?.bounds
-            }
+          selectedSource = {
+            name: `Area: ${Math.round(area.width)}x${Math.round(area.height)}`,
+            sourceType: 'screen' as const,
+            id: 'area:custom',
+            display_id: displayId,
+            scaleFactor: targetDisplay?.scaleFactor || 1,
+            displayBounds: targetDisplay?.bounds
           }
         }
       }
@@ -3375,7 +3399,9 @@ export function registerIpcHandlers(
     if (selectedSource?.id?.startsWith('screen:')) {
       previousScreenSource = selectedSource
     }
-    createAreaSelectorWindow(options)
+    const win = createAreaSelectorWindow(options)
+    const bounds = win.getBounds()
+    selectorWindowOrigin = { x: bounds.x, y: bounds.y }
   })
 
   ipcMain.handle('cancel-area-selector', () => {
@@ -3392,35 +3418,23 @@ export function registerIpcHandlers(
     })
   })
 
-  ipcMain.handle('set-selected-area', async (event, area: WindowBounds) => {
-    // Convert relative window coordinates to global screen coordinates
-    const win = BrowserWindow.fromWebContents(event.sender)
-    const winBounds = win ? win.getBounds() : { x: 0, y: 0 }
-    
+  ipcMain.handle('set-selected-area', async (_event, area: WindowBounds) => {
+    // Convert relative window coordinates to global screen coordinates using
+    // our stored origin, rather than win.getBounds(), to avoid macOS frame drift.
     const globalArea = {
-      x: area.x + winBounds.x,
-      y: area.y + winBounds.y,
+      x: area.x + selectorWindowOrigin.x,
+      y: area.y + selectorWindowOrigin.y,
       width: area.width,
       height: area.height
     }
 
-    // Verify the selection stays within a single monitor
-    const intersectingDisplays = screen.getAllDisplays().filter(display => {
-      const db = display.bounds
-      const ix = Math.max(globalArea.x, db.x)
-      const iy = Math.max(globalArea.y, db.y)
-      const iw = Math.min(globalArea.x + globalArea.width, db.x + db.width) - ix
-      const ih = Math.min(globalArea.y + globalArea.height, db.y + db.height) - iy
-      return iw > 0 && ih > 0
-    })
-
-    if (intersectingDisplays.length > 1) {
-      console.warn('Rejecting area selection spanning multiple displays:', intersectingDisplays.length)
-      return { success: false, error: 'Selection spans multiple monitors' }
+    if (!validateRecordingArea(globalArea)) {
+      console.warn('Rejecting area selection: invalid or spans multiple monitors')
+      return { success: false, error: 'Select a valid area on a single monitor' }
     }
 
     // Detect which display contains this area
-    const targetDisplay = screen.getDisplayMatching(globalArea)
+    const targetDisplay = getScreen().getDisplayMatching(globalArea)
     const displayId = targetDisplay ? String(targetDisplay.id) : undefined
 
     selectedArea = globalArea
@@ -5415,6 +5429,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
     }
 
     return new Promise<{ success: boolean; cancelled?: boolean }>((resolve) => {
+      countdownResolve = resolve
       let remaining = seconds
       countdownRemaining = remaining
 
@@ -5422,8 +5437,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 
       countdownTimer = setInterval(() => {
         if (countdownCancelled) {
-          stopCountdown()
-          resolve({ success: false, cancelled: true })
+          stopCountdown({ success: false, cancelled: true })
           return
         }
 
@@ -5431,8 +5445,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
         countdownRemaining = remaining
 
         if (remaining <= 0) {
-          stopCountdown()
-          resolve({ success: true })
+          stopCountdown({ success: true })
         } else {
           const win = getCountdownWindow()
           if (win && !win.isDestroyed()) {
@@ -5445,7 +5458,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 
   ipcMain.handle('cancel-countdown', () => {
     countdownCancelled = true
-    stopCountdown()
+    stopCountdown({ success: false, cancelled: true })
     return { success: true }
   })
 

@@ -9,78 +9,111 @@ interface Selection {
   height: number;
 }
 
+const MIN_SELECTION_SIZE = 100;
+
+function isSelectionTooSmall(selection: Selection | null): boolean {
+  if (!selection) return true;
+  return selection.width < MIN_SELECTION_SIZE || selection.height < MIN_SELECTION_SIZE;
+}
+
 export function AreaSelector() {
   const t = useScopedT("launch");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
+  const selectionRef = useRef<Selection | null>(null);
   const startPoint = useRef<{ x: number, y: number } | null>(null);
   const moveOffset = useRef<{ x: number, y: number } | null>(null);
 
+  // Sync ref for access in resize handler without re-binding effects
   useEffect(() => {
+    selectionRef.current = selection;
+  }, [selection]);
+
+  const render = useCallback((currentSelection = selection) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const updateCanvas = () => {
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = window.innerWidth * dpr;
-      canvas.height = window.innerHeight * dpr;
-      canvas.style.width = `${window.innerWidth}px`;
-      canvas.style.height = `${window.innerHeight}px`;
-      ctx.scale(dpr, dpr);
-      draw();
-    };
+    const w = window.innerWidth;
+    const h = window.innerHeight;
 
-    const draw = () => {
-      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    ctx.clearRect(0, 0, w, h);
 
-      // Draw dimmed background
-      ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
-      ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+    // Draw dimmed background
+    ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
+    ctx.fillRect(0, 0, w, h);
 
-      // Selected monitor identification
-      ctx.fillStyle = "rgba(255, 255, 255, 1.0)";
-      ctx.font = "italic 11px Inter, sans-serif";
+    // Selected monitor identification
+    ctx.fillStyle = "rgba(255, 255, 255, 1.0)";
+    ctx.font = "italic 11px Inter, sans-serif";
 
-      if (selection) {
-        // Clear selection area
-        ctx.clearRect(selection.x, selection.y, selection.width, selection.height);
-        
-        // Draw selection border (Glow effect)
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = "rgba(37, 99, 235, 0.4)";
-        ctx.strokeStyle = "#2563EB";
-        ctx.lineWidth = 2;
-        ctx.strokeRect(selection.x, selection.y, selection.width, selection.height);
-        ctx.shadowBlur = 0;
+    if (currentSelection) {
+      // Clear selection area
+      ctx.clearRect(currentSelection.x, currentSelection.y, currentSelection.width, currentSelection.height);
+      
+      // Draw selection border (Glow effect)
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = "rgba(37, 99, 235, 0.4)";
+      ctx.strokeStyle = "#2563EB";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(currentSelection.x, currentSelection.y, currentSelection.width, currentSelection.height);
+      ctx.shadowBlur = 0;
 
-        // Draw dimensions label
-        const pad = 8;
-        const isTooSmall = selection.width < 100 || selection.height < 100;
-        const info = `${Math.round(selection.width)} × ${Math.round(selection.height)}`;
-        ctx.font = "bold 10px Inter, sans-serif";
-        const textWidth = ctx.measureText(info).width;
-        
-        const labelX = selection.x;
-        const labelY = selection.y < 30 ? selection.y + selection.height + 25 : selection.y - 5;
-        
-        ctx.fillStyle = isTooSmall ? "#EF4444" : "#2563EB";
-        ctx.fillRect(labelX, labelY - 18, textWidth + (pad * 2), 22);
-        
-        ctx.fillStyle = "#FFFFFF";
-        ctx.fillText(info, labelX + pad, labelY - 2);
-      }
-    };
-
-    window.addEventListener("resize", updateCanvas);
-    updateCanvas();
-
-    return () => window.removeEventListener("resize", updateCanvas);
+      // Draw dimensions label
+      const pad = 8;
+      const isTooSmall = isSelectionTooSmall(currentSelection);
+      const info = `${Math.round(currentSelection.width)} × ${Math.round(currentSelection.height)}`;
+      ctx.font = "bold 10px Inter, sans-serif";
+      const textWidth = ctx.measureText(info).width;
+      
+      const labelX = currentSelection.x;
+      const labelY = currentSelection.y < 30 ? currentSelection.y + currentSelection.height + 25 : currentSelection.y - 5;
+      
+      ctx.fillStyle = isTooSmall ? "#EF4444" : "#2563EB";
+      ctx.fillRect(labelX, labelY - 18, textWidth + (pad * 2), 22);
+      
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillText(info, labelX + pad, labelY - 2);
+    }
   }, [selection]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const updateCanvasSize = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      
+      // Force immediate redraw because setting canvas.width clears the context
+      render(selectionRef.current);
+    };
+
+    window.addEventListener("resize", updateCanvasSize);
+    updateCanvasSize();
+
+    return () => window.removeEventListener("resize", updateCanvasSize);
+  }, [render]); // render changes only when selection changes, but still avoids frequent width/height reassignment during mousemove if we're careful
+
+  // Trigger draw on selection update
+  useEffect(() => {
+    render();
+  }, [render]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const mouseX = e.clientX;
@@ -145,7 +178,12 @@ export function AreaSelector() {
   };
 
   const confirmSelection = useCallback(async () => {
-    if (selection && selection.width >= 10 && selection.height >= 10) {
+    if (isSelectionTooSmall(selection)) {
+      toast.error(t("sourceSelector.selectionTooSmall", "Selection area is too small. Please select an area at least 100x100 pixels."));
+      return;
+    }
+
+    if (selection) {
       // Pass selection in DIP coordinates (CSS pixels). Scaling to physical pixels
       // is handled by the capture engine/backend to ensure accuracy across displays.
       const result = await window.electronAPI.setSelectedArea(selection);
@@ -155,7 +193,7 @@ export function AreaSelector() {
         toast.error(result.error || result.message || "Failed to set recording area. Please try again.");
       }
     }
-  }, [selection]);
+  }, [selection, t]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -194,9 +232,9 @@ export function AreaSelector() {
         >
           <button
             onClick={confirmSelection}
-            disabled={selection.width < 100 || selection.height < 100}
+            disabled={isSelectionTooSmall(selection)}
             className={`px-4 py-1.5 bg-[#2563EB] text-white rounded-full text-xs font-medium shadow-lg hover:bg-blue-600 transition-colors pointer-events-auto ${
-              (selection.width < 100 || selection.height < 100) ? 'opacity-50 cursor-not-allowed' : ''
+              isSelectionTooSmall(selection) ? 'opacity-50 cursor-not-allowed' : ''
             }`}
           >
             {t("sourceSelector.recordArea", "Record Area")}
