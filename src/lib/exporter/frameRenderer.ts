@@ -864,7 +864,7 @@ export class FrameRenderer {
       const scaleY = this.config.height / previewHeight;
       const scaleFactor = (scaleX + scaleY) / 2;
 
-      await renderAnnotations(
+      const success = await renderAnnotations(
         this.compositeCtx,
         this.config.annotationRegions,
         this.config.width,
@@ -872,6 +872,10 @@ export class FrameRenderer {
         timeMs,
         scaleFactor,
       );
+
+      if (!success) {
+        throw new Error("Failed to render annotations: a critical component (like a blur) could not be applied.");
+      }
     }
 
     if (

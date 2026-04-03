@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DEFAULT_WEBCAM_OVERLAY } from '@/components/video-editor/types';
+import { DEFAULT_WEBCAM_OVERLAY } from '../../components/video-editor/types';
 
 vi.mock('pixi.js', () => ({
   Application: class {},
@@ -38,7 +38,7 @@ vi.mock('@/components/video-editor/videoPlayback/zoomTransform', () => ({
 }));
 
 vi.mock('./annotationRenderer', () => ({
-  renderAnnotations: vi.fn(),
+  renderAnnotations: vi.fn(async () => true),
 }));
 
 vi.mock('@/components/video-editor/videoPlayback/cursorRenderer', () => ({
@@ -170,7 +170,7 @@ function createMockCanvas() {
     width: 0,
     height: 0,
     context,
-    getContext: vi.fn(() => context),
+    getContext: vi.fn((..._args: any[]) => context),
   };
 }
 

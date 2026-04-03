@@ -1085,8 +1085,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
         cameraContainer.addChild(videoContainer);
 
         setPixiReady(true);
-
-        setPixiReady(true);
       })().catch((error) => {
         console.error("Failed to initialize preview renderer:", error);
         onError(

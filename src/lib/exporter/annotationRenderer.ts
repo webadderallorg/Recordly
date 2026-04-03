@@ -296,7 +296,7 @@ export async function renderAnnotations(
   canvasHeight: number,
   currentTimeMs: number,
   scaleFactor: number = 1.0
-): Promise<void> {
+): Promise<boolean> {
   // Filter active annotations at current time
   const activeAnnotations = annotations.filter(
     (ann) => currentTimeMs >= ann.startMs && currentTimeMs <= ann.endMs
@@ -311,6 +311,7 @@ export async function renderAnnotations(
     const width = (annotation.size.width / 100) * canvasWidth;
     const height = (annotation.size.height / 100) * canvasHeight;
 
+    let success = true;
     switch (annotation.type) {
       case 'text':
         renderText(ctx, annotation, x, y, width, height, scaleFactor);
@@ -337,10 +338,16 @@ export async function renderAnnotations(
         break;
 
       case 'blur':
-        renderBlur(ctx, annotation, x, y, width, height, scaleFactor);
+        success = renderBlur(ctx, annotation, x, y, width, height, scaleFactor);
         break;
     }
+
+    if (!success) {
+      return false;
+    }
   }
+
+  return true;
 }
 
 function renderBlur(
@@ -351,10 +358,10 @@ function renderBlur(
   width: number,
   height: number,
   scaleFactor: number
-) {
+): boolean {
   // Get intensity scaled to canvas resolution
   const intensity = (annotation.blurIntensity ?? 12) * scaleFactor;
-  if (intensity <= 0 || width <= 0 || height <= 0) return;
+  if (intensity <= 0 || width <= 0 || height <= 0) return true;
 
   ctx.save();
   try {
@@ -367,8 +374,9 @@ function renderBlur(
     const srcHeight = Math.ceil(Math.min(y + height + padding, ctx.canvas.height) - srcY);
 
     if (srcWidth <= 0 || srcHeight <= 0) {
+      console.warn('[AnnotationRenderer] Failed to calculate valid blur capture bounds');
       ctx.restore();
-      return;
+      return false;
     }
 
     // Capture the current canvas region precisely for this intersection
@@ -396,20 +404,16 @@ function renderBlur(
     }
     ctx.clip();
 
-    // Apply the blur filter with a subtle brightness boost to give it a "premium glass" feel
-    // and draw the captured region back at its source position. This looks much smoother
-    // than a raw blur which can sometimes look "dirty" or flat.
-    ctx.filter = `blur(${intensity}px) brightness(1.02)`;
+    ctx.filter = `blur(${intensity}px)`;
     ctx.drawImage(offscreen as any, srcX, srcY);
-    
-    // Optional: draw a very faint edge highlight to further soften the clip line
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-    ctx.lineWidth = 1 * scaleFactor;
-    ctx.stroke();
+
+    ctx.restore();
+    return true;
 
   } catch (err) {
     console.warn('[AnnotationRenderer] Blur annotation render failed:', err);
+    ctx.restore();
+    return false;
   }
-  ctx.restore();
 }
 
