@@ -1,0 +1,38 @@
+{
+	"zoom": {
+		"cannotPlace": "Nao e possivel colocar zoom aqui",
+		"existsOrNoSpace": "Zoom ja existe neste local ou espaco insuficiente disponivel.",
+		"suggestHandlerUnavailable": "Manipulador de sugestao de zoom indisponivel",
+		"noTelemetry": "Sem telemetria de cursor disponivel",
+		"recordFirst": "Grave uma screencast primeiro para gerar sugestoes baseadas em cursor.",
+		"noUsableTelemetry": "Sem telemetria de cursor utilizavel",
+		"notEnoughMovement": "A gravacao nao inclui dados suficientes de movimento do cursor.",
+		"noInteractionMoments": "Nenhum momento de interacao claro encontrado",
+		"tryRecording": "Tente uma gravacao com pausas ou cliques em torno de acoes importantes.",
+		"noAutoZoomSlots": "Nenhum slot de auto-zoom disponivel",
+		"dwellPointsOverlap": "Pontos de permanencia detectados se sobrepoem a regioes de zoom existentes.",
+		"addedSuggestions": "Adicionadas {{count}} sugestao(oes) de zoom baseada(s) em interacao",
+		"label": "Zoom {{index}}",
+		"addZoom": "Adicionar Zoom (Z)",
+		"suggestZooms": "Sugerir Zooms do Cursor"
+	},
+	"trim": {
+		"cannotPlace": "Nao e possivel colocar trim aqui",
+		"existsOrNoSpace": "Trim ja existe neste local ou espaco insuficiente disponivel.",
+		"label": "Trim {{index}}",
+		"addTrim": "Adicionar Trim (T)"
+	},
+	"speed": {
+		"cannotPlace": "Nao e possivel colocar velocidade aqui",
+		"existsOrNoSpace": "Regiao de velocidade ja existe neste local ou espaco insuficiente disponivel.",
+		"label": "Velocidade"
+	},
+	"annotation": {
+		"label": "Anotacao",
+		"image": "Imagem",
+		"addAnnotation": "Adicionar Anotacao (A)"
+	},
+	"addSpeed": "Adicionar Velocidade (S)",
+	"resizeLeft": "Redimensionar esquerda",
+	"resizeRight": "Redimensionar direita"
+}

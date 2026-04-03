@@ -1,0 +1,16 @@
+{
+	"actions": {
+		"addZoom": "Adicionar Zoom",
+		"addTrim": "Adicionar Trim",
+		"addSpeed": "Adicionar Velocidade",
+		"addAnnotation": "Adicionar Anotacao",
+		"addKeyframe": "Adicionar Keyframe",
+		"deleteSelected": "Excluir Selecionado",
+		"playPause": "Reproduzir / Pausar",
+		"cycleForward": "Navegar Anotacoes para Frente",
+		"cycleBackward": "Navegar Anotacoes para Tras",
+		"deleteSelectedAlt": "Excluir Selecionado (alt)",
+		"panTimeline": "Mover Linha do Tempo",
+		"zoomTimeline": "Ampliar Linha do Tempo"
+	}
+}

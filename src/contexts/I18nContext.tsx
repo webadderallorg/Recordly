@@ -35,6 +35,13 @@ import zhCNLaunch from '@/i18n/locales/zh-CN/launch.json'
 import zhCNSettings from '@/i18n/locales/zh-CN/settings.json'
 import zhCNShortcuts from '@/i18n/locales/zh-CN/shortcuts.json'
 import zhCNTimeline from '@/i18n/locales/zh-CN/timeline.json'
+import ptBRCommon from '@/i18n/locales/pt-BR/common.json'
+import ptBRDialogs from '@/i18n/locales/pt-BR/dialogs.json'
+import ptBREditor from '@/i18n/locales/pt-BR/editor.json'
+import ptBRLaunch from '@/i18n/locales/pt-BR/launch.json'
+import ptBRSettings from '@/i18n/locales/pt-BR/settings.json'
+import ptBRShortcuts from '@/i18n/locales/pt-BR/shortcuts.json'
+import ptBRTimeline from '@/i18n/locales/pt-BR/timeline.json'
 
 const LOCALE_STORAGE_KEY = 'recordly.locale'
 
@@ -67,6 +74,15 @@ const messages: Record<AppLocale, LocaleBundle> = {
     settings: zhCNSettings,
     dialogs: zhCNDialogs,
     shortcuts: zhCNShortcuts,
+  },
+  'pt-BR': {
+    common: ptBRCommon,
+    launch: ptBRLaunch,
+    editor: ptBREditor,
+    timeline: ptBRTimeline,
+    settings: ptBRSettings,
+    dialogs: ptBRDialogs,
+    shortcuts: ptBRShortcuts,
   },
 } as const
 
