@@ -41,6 +41,57 @@ let hudOverlayCompactWidth = HUD_MIN_WINDOW_WIDTH;
 let hudOverlayCompactHeight = HUD_COMPACT_HEIGHT;
 let hudOverlayExpandedHeight = HUD_MIN_EXPANDED_HEIGHT;
 
+function getEditorWindowQuery(): Record<string, string> {
+	const query: Record<string, string> = {
+		windowType: "editor",
+	};
+
+	if (process.env.RECORDLY_SMOKE_EXPORT === "1") {
+		query.smokeExport = "1";
+		if (process.env.RECORDLY_SMOKE_EXPORT_INPUT) {
+			query.smokeInput = process.env.RECORDLY_SMOKE_EXPORT_INPUT;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_OUTPUT) {
+			query.smokeOutput = process.env.RECORDLY_SMOKE_EXPORT_OUTPUT;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_USE_NATIVE === "1") {
+			query.smokeUseNativeExport = "1";
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_ENCODING_MODE) {
+			query.smokeEncodingMode = process.env.RECORDLY_SMOKE_EXPORT_ENCODING_MODE;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_SHADOW_INTENSITY) {
+			query.smokeShadowIntensity = process.env.RECORDLY_SMOKE_EXPORT_SHADOW_INTENSITY;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_WEBCAM_INPUT) {
+			query.smokeWebcamInput = process.env.RECORDLY_SMOKE_EXPORT_WEBCAM_INPUT;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_WEBCAM_SHADOW) {
+			query.smokeWebcamShadow = process.env.RECORDLY_SMOKE_EXPORT_WEBCAM_SHADOW;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_WEBCAM_SIZE) {
+			query.smokeWebcamSize = process.env.RECORDLY_SMOKE_EXPORT_WEBCAM_SIZE;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_PIPELINE) {
+			query.smokePipelineModel = process.env.RECORDLY_SMOKE_EXPORT_PIPELINE;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_BACKEND) {
+			query.smokeBackendPreference = process.env.RECORDLY_SMOKE_EXPORT_BACKEND;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_MAX_ENCODE_QUEUE) {
+			query.smokeMaxEncodeQueue = process.env.RECORDLY_SMOKE_EXPORT_MAX_ENCODE_QUEUE;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_MAX_DECODE_QUEUE) {
+			query.smokeMaxDecodeQueue = process.env.RECORDLY_SMOKE_EXPORT_MAX_DECODE_QUEUE;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_MAX_PENDING_FRAMES) {
+			query.smokeMaxPendingFrames = process.env.RECORDLY_SMOKE_EXPORT_MAX_PENDING_FRAMES;
+		}
+	}
+
+	return query;
+}
+
 function isHudOverlayCaptureProtectionSupported(): boolean {
 	return process.platform !== "linux";
 }
@@ -547,11 +598,12 @@ export function createEditorWindow(): BrowserWindow {
 	});
 
 	if (VITE_DEV_SERVER_URL) {
-		win.loadURL(VITE_DEV_SERVER_URL + "?windowType=editor");
+		const query = new URLSearchParams(getEditorWindowQuery());
+		win.loadURL(`${VITE_DEV_SERVER_URL}?${query.toString()}`);
 	} else {
 		console.log("[editor-window] load-file", path.join(RENDERER_DIST, "index.html"));
 		win.loadFile(path.join(RENDERER_DIST, "index.html"), {
-			query: { windowType: "editor" },
+			query: getEditorWindowQuery(),
 		});
 	}
 

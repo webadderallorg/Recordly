@@ -17,6 +17,7 @@ import {
 import { RECORDINGS_DIR } from "./appPaths";
 import { showCursor } from "./cursorHider";
 import {
+	cleanupNativeVideoExportSessions,
 	getSelectedSourceId,
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
@@ -46,10 +47,49 @@ import {
 } from "./windows";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const IS_SMOKE_EXPORT = process.env.RECORDLY_SMOKE_EXPORT === "1";
 
-if (process.platform === "darwin") {
-	app.commandLine.appendSwitch("disable-features", "MacCatapLoopbackAudioForScreenShare");
+function configureGpuAccelerationSwitches() {
+	app.commandLine.appendSwitch("ignore-gpu-blocklist");
+	app.commandLine.appendSwitch("enable-gpu-rasterization");
+
+	if (process.platform === "darwin") {
+		app.commandLine.appendSwitch("use-angle", "metal");
+		app.commandLine.appendSwitch("disable-features", "MacCatapLoopbackAudioForScreenShare");
+		return;
+	}
+
+	if (process.platform === "win32") {
+		app.commandLine.appendSwitch("use-angle", "d3d11");
+		return;
+	}
+
+	if (process.platform === "linux") {
+		app.commandLine.appendSwitch("use-angle", "vulkan");
+		app.commandLine.appendSwitch("enable-features", "Vulkan");
+	}
 }
+
+async function logSmokeExportGpuDiagnostics() {
+	if (!IS_SMOKE_EXPORT) {
+		return;
+	}
+
+	try {
+		console.log(
+			"[smoke-export] GPU feature status",
+			JSON.stringify(app.getGPUFeatureStatus()),
+		);
+		console.log(
+			"[smoke-export] GPU info",
+			JSON.stringify(await app.getGPUInfo("basic")),
+		);
+	} catch (error) {
+		console.warn("[smoke-export] Failed to read GPU diagnostics:", error);
+	}
+}
+
+configureGpuAccelerationSwitches();
 
 async function ensureRecordingsDir() {
 	try {
@@ -632,10 +672,11 @@ function createSourceSelectorWindowWrapper() {
 app.on("before-quit", () => {
 	killWindowsCaptureProcess();
 	showCursor();
+	cleanupNativeVideoExportSessions();
 });
 
 app.on("window-all-closed", () => {
-	if (process.platform !== "darwin") {
+	if (IS_SMOKE_EXPORT || process.platform !== "darwin") {
 		app.quit();
 	}
 });
@@ -716,6 +757,15 @@ app.whenReady().then(async () => {
 			}
 		},
 	);
+
+	if (IS_SMOKE_EXPORT) {
+		await logSmokeExportGpuDiagnostics();
+		console.log(
+			`[smoke-export] Starting editor smoke export for ${process.env.RECORDLY_SMOKE_EXPORT_INPUT ?? "<missing input>"}`,
+		);
+		createEditorWindowWrapper();
+		return;
+	}
 
 	createWindow();
 	setupAutoUpdates(getUpdateDialogWindow, sendUpdateToastToWindows);
