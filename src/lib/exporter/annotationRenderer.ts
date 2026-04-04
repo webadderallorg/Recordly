@@ -270,7 +270,6 @@ async function renderImage(
       let drawY = y;
 
       if (imgAspect > boxAspect) {
-
         drawHeight = width / imgAspect;
         drawY = y + (height - drawHeight) / 2;
       } else {

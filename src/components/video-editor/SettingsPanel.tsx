@@ -811,7 +811,7 @@ export function SettingsPanel({
 						preload="metadata"
 						className="h-full w-full select-none object-cover [transform:translateZ(0)]"
 						draggable={false}
-						onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
+						onMouseEnter={(e) => e.currentTarget.play().catch((err) => console.warn("Hover play fail:", err))}
 						onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
 					/>
 				) : (

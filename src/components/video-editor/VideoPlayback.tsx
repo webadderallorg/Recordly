@@ -758,7 +758,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
       const bgVideo = bgVideoRef.current;
       if (bgVideo) {
         if (isPlaying) {
-          bgVideo.play().catch(() => {});
+          bgVideo.play().catch((err) => console.warn('bgVideo play failed:', err));
         } else {
           bgVideo.pause();
         }
@@ -923,7 +923,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
         requestAnimationFrame(() => {
           const finalApp = appRef.current;
           if (wasPlaying && video) {
-            video.play().catch(() => { });
+            video.play().catch((err) => console.warn('video play failed:', err));
           }
           if (tickerWasStarted && finalApp?.ticker) {
             finalApp.ticker.start();
@@ -995,7 +995,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
       if (isPlaying) {
         const playPromise = webcamVideo.play();
         if (playPromise) {
-          playPromise.catch(() => { });
+          playPromise.catch((err) => console.warn('webcam play failed:', err));
         }
       } else {
         webcamVideo.pause();
@@ -1501,7 +1501,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
     useEffect(() => {
       let mounted = true;
-      let revokeResolvedWallpaper = () => {};
+      let revokeResolvedWallpaper = () => { /* no-op */ };
       (async () => {
         try {
           if (!wallpaper) {
