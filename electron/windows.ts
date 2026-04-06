@@ -576,8 +576,13 @@ function loadPackagedEditorWindow(win: BrowserWindow) {
 	const queryString = new URLSearchParams(query).toString();
 	const indexHtmlPath = path.join(RENDERER_DIST, "index.html");
 	const packagedRendererBaseUrl = getPackagedRendererBaseUrl();
+	const webContents = win.webContents;
 
 	const loadFromFile = () => {
+		if (win.isDestroyed()) {
+			return;
+		}
+
 		console.log("[editor-window] load-file", indexHtmlPath);
 		void win.loadFile(indexHtmlPath, { query });
 	};
@@ -600,10 +605,14 @@ function loadPackagedEditorWindow(win: BrowserWindow) {
 		}
 	};
 
-	const cleanup = () => {
+	const detachLoadListeners = () => {
 		clearTimeoutIfNeeded();
-		win.webContents.removeListener("did-fail-load", handleDidFailLoad);
-		win.webContents.removeListener("did-finish-load", handleDidFinishLoad);
+		if (webContents.isDestroyed()) {
+			return;
+		}
+
+		webContents.removeListener("did-fail-load", handleDidFailLoad);
+		webContents.removeListener("did-finish-load", handleDidFinishLoad);
 	};
 
 	const fallbackToFile = (reason: string, details?: Record<string, unknown>) => {
@@ -612,7 +621,7 @@ function loadPackagedEditorWindow(win: BrowserWindow) {
 		}
 
 		settled = true;
-		cleanup();
+		detachLoadListeners();
 		console.warn("[editor-window] packaged renderer URL failed, falling back to file", {
 			reason,
 			targetUrl,
@@ -640,17 +649,17 @@ function loadPackagedEditorWindow(win: BrowserWindow) {
 	};
 
 	const handleDidFinishLoad = () => {
-		if (win.webContents.getURL() !== targetUrl) {
+		if (webContents.getURL() !== targetUrl) {
 			return;
 		}
 
 		settled = true;
-		cleanup();
+		detachLoadListeners();
 	};
 
-	win.webContents.on("did-fail-load", handleDidFailLoad);
-	win.webContents.on("did-finish-load", handleDidFinishLoad);
-	win.once("closed", cleanup);
+	webContents.on("did-fail-load", handleDidFailLoad);
+	webContents.on("did-finish-load", handleDidFinishLoad);
+	win.once("closed", clearTimeoutIfNeeded);
 
 	console.log("[editor-window] load-url", targetUrl);
 	void win.loadURL(targetUrl).catch((error) => {

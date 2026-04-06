@@ -134,9 +134,19 @@ function closeEditorWindowBypassingUnsavedPrompt(window: BrowserWindow | null) {
 		return;
 	}
 
-	isForceClosing = true;
-	editorHasUnsavedChanges = false;
+	if (isEditorWindow(window)) {
+		isForceClosing = true;
+		editorHasUnsavedChanges = false;
+	}
 	window.close();
+}
+
+function restoreWindowSafely(window: BrowserWindow | null) {
+	if (!window || window.isDestroyed()) {
+		return;
+	}
+
+	window.restore();
 }
 
 // Tray Icons (lazily created after app is ready to avoid accessing Electron APIs too early)
@@ -673,29 +683,37 @@ function updateTrayMenu(recording: boolean = false) {
 }
 
 function createEditorWindowWrapper() {
-	if (mainWindow) {
-		closeEditorWindowBypassingUnsavedPrompt(mainWindow);
-		mainWindow = null;
+	const previousWindow = mainWindow;
+	if (previousWindow && !previousWindow.isDestroyed()) {
+		const closingEditorWindow = isEditorWindow(previousWindow);
+		closeEditorWindowBypassingUnsavedPrompt(previousWindow);
+		if (!closingEditorWindow) {
+			isForceClosing = false;
+		}
+		if (mainWindow === previousWindow) {
+			mainWindow = null;
+		}
 	}
-	mainWindow = createEditorWindow();
+	const editorWindow = createEditorWindow();
+	mainWindow = editorWindow;
 	editorHasUnsavedChanges = false;
 
-	mainWindow.on("closed", () => {
-		if (mainWindow?.isDestroyed()) {
+	editorWindow.on("closed", () => {
+		if (mainWindow === editorWindow) {
 			mainWindow = null;
 		}
 		isForceClosing = false;
 		editorHasUnsavedChanges = false;
 	});
 
-	mainWindow.on("close", (event) => {
+	editorWindow.on("close", (event) => {
 		if (isForceClosing || !editorHasUnsavedChanges) {
 			return;
 		}
 
 		event.preventDefault();
 
-		const choice = dialog.showMessageBoxSync(mainWindow!, {
+		const choice = dialog.showMessageBoxSync(editorWindow, {
 			type: "warning",
 			buttons: ["Save & Close", "Discard & Close", "Cancel"],
 			defaultId: 0,
@@ -706,14 +724,14 @@ function createEditorWindowWrapper() {
 		});
 
 		if (choice === 0) {
-			mainWindow!.webContents.send("request-save-before-close");
+			editorWindow.webContents.send("request-save-before-close");
 			ipcMain.once("save-before-close-done", (_event, saved: boolean) => {
 				if (saved) {
-					closeEditorWindowBypassingUnsavedPrompt(mainWindow);
+					closeEditorWindowBypassingUnsavedPrompt(editorWindow);
 				}
 			});
 		} else if (choice === 1) {
-			closeEditorWindowBypassingUnsavedPrompt(mainWindow);
+			closeEditorWindowBypassingUnsavedPrompt(editorWindow);
 		}
 	});
 }
@@ -824,7 +842,7 @@ app.whenReady().then(async () => {
 				reassertHudOverlayMouseState();
 			}
 			if (!recording) {
-				if (mainWindow) mainWindow.restore();
+				restoreWindowSafely(mainWindow);
 			}
 		},
 	);
