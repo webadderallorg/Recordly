@@ -294,9 +294,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
     const containerRef = useRef<HTMLDivElement | null>(null);
     const cursorCanvasContainerRef = useRef<HTMLDivElement | null>(null);
     const appRef = useRef<Application | null>(null);
+    const cursorAppRef = useRef<Application | null>(null);
     const videoSpriteRef = useRef<Sprite | null>(null);
     const videoContainerRef = useRef<Container | null>(null);
     const cursorContainerRef = useRef<Container | null>(null);
+    const cursorCameraContainerRef = useRef<Container | null>(null);
     const cameraContainerRef = useRef<Container | null>(null);
     const timeUpdateAnimationRef = useRef<number | null>(null);
     const [pixiReady, setPixiReady] = useState(false);
@@ -1116,9 +1118,29 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
         videoContainerRef.current = videoContainer;
         cameraContainer.addChild(videoContainer);
 
+        const cursorApp = new Application();
+        await cursorApp.init({
+          width: container.clientWidth,
+          height: container.clientHeight,
+          backgroundAlpha: 0,
+          antialias: true,
+          failIfMajorPerformanceCaveat: false,
+          resolution: window.devicePixelRatio || 1,
+          autoDensity: true,
+          preference: "webgl",
+        });
+        cursorAppRef.current = cursorApp;
+        if (cursorCanvasContainerRef.current) {
+          cursorCanvasContainerRef.current.appendChild(cursorApp.canvas);
+        }
+
+        const cursorCameraContainer = new Container();
+        cursorCameraContainerRef.current = cursorCameraContainer;
+        cursorApp.stage.addChild(cursorCameraContainer);
+
         const cursorContainer = new Container();
         cursorContainerRef.current = cursorContainer;
-        cameraContainer.addChild(cursorContainer);
+        cursorCameraContainer.addChild(cursorContainer);
 
         // Cursor overlay - rendered above the masked video so it can sit in front
         // of the content without getting clipped.
@@ -1328,12 +1350,18 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
           frameTimeMs: performance.now(),
         });
 
-        state.x = appliedTransform.x;
-        state.y = appliedTransform.y;
-        state.appliedScale = appliedTransform.scale;
-      };
+          state.x = appliedTransform.x;
+          state.y = appliedTransform.y;
+          state.appliedScale = appliedTransform.scale;
+        };
 
-      const ticker = () => {
+        const ticker = () => {
+          // Sync cursor camera container with main camera container
+          if (cursorCameraContainerRef.current && cameraContainerRef.current) {
+            cursorCameraContainerRef.current.scale.copyFrom(cameraContainerRef.current.scale);
+            cursorCameraContainerRef.current.position.copyFrom(cameraContainerRef.current.position);
+            cursorCameraContainerRef.current.pivot.copyFrom(cameraContainerRef.current.pivot);
+          }
         const { region, strength, blendedScale, transition } =
           findDominantRegion(zoomRegionsRef.current, currentTimeRef.current, {
             connectZooms: connectZoomsRef.current,
