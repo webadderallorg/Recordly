@@ -37,7 +37,6 @@ import {
 	DEFAULT_CURSOR_SWAY,
 	DEFAULT_FIGURE_DATA,
 	DEFAULT_PLAYBACK_SPEED,
-	DEFAULT_ZOOM_SMOOTHNESS,
 	DEFAULT_WEBCAM_CORNER_RADIUS,
 	DEFAULT_WEBCAM_MARGIN,
 	DEFAULT_WEBCAM_OVERLAY,
@@ -71,7 +70,6 @@ export interface ProjectEditorState {
 	shadowIntensity: number;
 	backgroundBlur: number;
 	zoomMotionBlur: number;
-	zoomSmoothness: number;
 	connectZooms: boolean;
 	zoomInDurationMs: number;
 	zoomInOverlapMs: number;
@@ -340,8 +338,8 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				})
 		: [];
 
-	const normalizedClipRegions: ClipRegion[] = Array.isArray(editor.clipRegions)
-		? editor.clipRegions
+	const normalizedClipRegions: ClipRegion[] = Array.isArray((editor as any).clipRegions)
+		? ((editor as any).clipRegions as ClipRegion[])
 				.filter((region): region is ClipRegion => Boolean(region && typeof region.id === "string"))
 				.map((region) => {
 					const rawStart = isFiniteNumber(region.startMs) ? Math.round(region.startMs) : 0;
@@ -352,7 +350,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						id: region.id,
 						startMs,
 						endMs,
-						speed: isFiniteNumber(region.speed) ? region.speed : 1,
+						speed: isFiniteNumber((region as any).speed) ? (region as any).speed : 1,
 					};
 				})
 		: [];
@@ -401,7 +399,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						id: region.id,
 						startMs,
 						endMs,
-						type: region.type === "image" || region.type === "figure" ? region.type : "text",
+						type: (["image", "figure", "blur"].includes(region.type) ? region.type : "text") as AnnotationRegion["type"],
 						content: typeof region.content === "string" ? region.content : "",
 						textContent: typeof region.textContent === "string" ? region.textContent : undefined,
 						imageContent: typeof region.imageContent === "string" ? region.imageContent : undefined,
@@ -598,7 +596,6 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		wallpaper: typeof editor.wallpaper === "string" ? editor.wallpaper : DEFAULT_WALLPAPER_PATH,
 		shadowIntensity: typeof editor.shadowIntensity === "number" ? editor.shadowIntensity : 0.67,
 		backgroundBlur: normalizedBackgroundBlur,
-		zoomSmoothness: DEFAULT_ZOOM_SMOOTHNESS,
 		zoomMotionBlur: normalizedZoomMotionBlur,
 		connectZooms: typeof editor.connectZooms === "boolean" ? editor.connectZooms : true,
 		zoomInDurationMs: normalizedZoomInDurationMs,

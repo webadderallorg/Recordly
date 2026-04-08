@@ -2696,22 +2696,6 @@ export default function VideoEditor() {
 		);
 	}, []);
 
-	const handleAnnotationBlurIntensityChange = useCallback((id: string, blurIntensity: number) => {
-		setAnnotationRegions((prev) =>
-			prev.map((region) =>
-				region.id === id
-					? {
-							...region,
-							figureData: region.figureData
-								? { ...region.figureData, blurIntensity }
-								: { ...DEFAULT_FIGURE_DATA, blurIntensity, type: "blur" },
-						}
-					: region,
-			),
-		);
-	}, []);
-
-
 	const handleAnnotationPositionChange = useCallback(
 		(id: string, position: { x: number; y: number }) => {
 			setAnnotationRegions((prev) =>
@@ -4502,7 +4486,6 @@ export default function VideoEditor() {
 						onAnnotationTypeChange={handleAnnotationTypeChange}
 						onAnnotationStyleChange={handleAnnotationStyleChange}
 						onAnnotationFigureDataChange={handleAnnotationFigureDataChange}
-						onAnnotationBlurIntensityChange={handleAnnotationBlurIntensityChange}
 						onAnnotationDelete={handleAnnotationDelete}
 						selectedSpeedId={selectedSpeedId}
 						selectedSpeedValue={

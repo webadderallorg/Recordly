@@ -128,7 +128,6 @@ function renderArrow(
 
   ctx.translate(offsetX, offsetY);
 
-  // Apply shadow filter
   ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
   ctx.shadowBlur = 8 * scale;
   ctx.shadowOffsetX = 0;
@@ -139,12 +138,10 @@ function renderArrow(
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  // Draw all paths as a single shape to avoid overlapping shadows/strokes
   ctx.beginPath();
 
   for (const pathString of paths) {
     const commands = parseSvgPath(pathString, scale, scale);
-
 
     for (const { cmd, args } of commands) {
       if (cmd === "M") {
@@ -278,6 +275,59 @@ function renderText(
   ctx.restore();
 }
 
+function renderBlur(
+  ctx: CanvasRenderingContext2D,
+  annotation: AnnotationRegion,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  scaleFactor: number,
+) {
+  const intensity = annotation.figureData?.blurIntensity || 1.0;
+  const blurAmount = intensity * 16 * scaleFactor;
+
+  ctx.save();
+
+  // Create clipping path for the blur region
+  ctx.beginPath();
+  const borderRadius = 4 * scaleFactor;
+  if (typeof ctx.roundRect === "function") {
+    ctx.roundRect(x, y, width, height, borderRadius);
+  } else {
+    ctx.rect(x, y, width, height);
+  }
+  ctx.clip();
+
+  // Apply blur to existing pixels in this region
+  // Using a temporary canvas to capture the region and draw it back with blur
+  try {
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    const tempCtx = tempCanvas.getContext("2d");
+    if (tempCtx) {
+      tempCtx.drawImage(ctx.canvas, x, y, width, height, 0, 0, width, height);
+      ctx.filter = `blur(${blurAmount}px)`;
+      ctx.drawImage(tempCanvas, x, y);
+    }
+  } catch (e) {
+    console.warn("[AnnotationRenderer] Blur failed:", e);
+  }
+
+  // Add subtle overlay highlight
+  ctx.filter = "none";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.05)";
+  ctx.fill();
+
+  // Optional: subtle border for visibility
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+  ctx.lineWidth = 1 * scaleFactor;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
 async function renderImage(
   ctx: CanvasRenderingContext2D,
   annotation: AnnotationRegion,
@@ -291,6 +341,7 @@ async function renderImage(
   if (!source) {
     return;
   }
+
   const img = assets?.imageCache.get(source) ?? (await loadAnnotationImage(source));
   if (!img) {
     return;
@@ -328,7 +379,6 @@ export async function renderAnnotations(
     (ann) => currentTimeMs >= ann.startMs && currentTimeMs <= ann.endMs,
   );
 
-  // Sort by z-index (lower first, so higher z-index draws on top)
   const sortedAnnotations = [...activeAnnotations].sort((a, b) => a.zIndex - b.zIndex);
 
   for (const annotation of sortedAnnotations) {
@@ -362,7 +412,7 @@ export async function renderAnnotations(
         }
         break;
 
-      case 'blur':
+      case "blur":
         renderBlur(ctx, annotation, x, y, width, height, scaleFactor);
         break;
     }
@@ -418,68 +468,16 @@ export async function renderAnnotationToCanvas(
       break;
 
     case "blur":
-      renderBlur(ctx, annotation, 0, 0, canvasWidth, canvasHeight, scaleFactor);
+      // For individual annotation rendering (e.g. preview thumbnails)
+      // Since blur depends on background, we just show a placeholder or semi-transparent box
+      ctx.fillStyle = "rgba(255, 255, 255, 0.2)";
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+      ctx.lineWidth = 2 * scaleFactor;
+      ctx.strokeRect(0, 0, canvasWidth, canvasHeight);
       break;
   }
 
   return canvas;
-}
-
-function renderBlur(
-  ctx: CanvasRenderingContext2D,
-  annotation: AnnotationRegion,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  scaleFactor: number,
-) {
-  // Get intensity from figureData or root, scaled to canvas resolution
-  const intensity = (annotation.figureData?.blurIntensity ?? annotation.blurIntensity ?? 12) * scaleFactor;
-  if (intensity <= 0 || width <= 0 || height <= 0) return;
-
-  ctx.save();
-  try {
-    // Determine bounds and ensure they are within canvas to avoid ImageData errors
-    const srcX = Math.max(0, x);
-    const srcY = Math.max(0, y);
-    const srcWidth = Math.min(x + width, ctx.canvas.width) - srcX;
-    const srcHeight = Math.min(y + height, ctx.canvas.height) - srcY;
-
-    if (srcWidth <= 0 || srcHeight <= 0) {
-      ctx.restore();
-      return;
-    }
-
-    // Capture the current canvas region precisely for this intersection
-    const imageData = ctx.getImageData(srcX, srcY, srcWidth, srcHeight);
-
-    const offscreen = typeof document !== "undefined"
-      ? document.createElement("canvas")
-      : new OffscreenCanvas(srcWidth, srcHeight);
-    
-    offscreen.width = srcWidth;
-    offscreen.height = srcHeight;
-
-    const offCtx = offscreen.getContext("2d") as CanvasRenderingContext2D;
-    offCtx.putImageData(imageData, 0, 0);
-
-    // Create rounded rect clipping path (matches UI's rounded-lg approx 8px)
-    const radius = 8 * scaleFactor;
-    ctx.beginPath();
-    if (ctx.roundRect) {
-      ctx.roundRect(x, y, width, height, radius);
-    } else {
-      ctx.rect(x, y, width, height);
-    }
-    ctx.clip();
-
-    // Apply the blur filter and draw the captured region back at its source position
-    ctx.filter = `blur(${intensity}px)`;
-    ctx.drawImage(offscreen, srcX, srcY);
-  } catch (err) {
-    console.warn("[AnnotationRenderer] Blur annotation render failed:", err);
-  }
-  ctx.restore();
 }
 

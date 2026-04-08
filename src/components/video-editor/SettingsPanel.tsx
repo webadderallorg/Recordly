@@ -167,7 +167,6 @@ interface SettingsPanelProps {
 	onZoomMotionBlurChange?: (amount: number) => void;
 	connectZooms?: boolean;
 	onConnectZoomsChange?: (enabled: boolean) => void;
-
 	zoomInDurationMs?: number;
 	onZoomInDurationMsChange?: (duration: number) => void;
 	zoomInOverlapMs?: number;
@@ -225,7 +224,6 @@ interface SettingsPanelProps {
 	onAnnotationStyleChange?: (id: string, style: Partial<AnnotationRegion["style"]>) => void;
 	onAnnotationFigureDataChange?: (id: string, figureData: FigureData) => void;
 	onAnnotationDelete?: (id: string) => void;
-	onAnnotationBlurIntensityChange?: (id: string, intensity: number) => void;
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
 	whisperExecutablePath?: string | null;
@@ -589,8 +587,6 @@ export function SettingsPanel({
 	selectedSpeedValue,
 	onSpeedChange,
 	onSpeedDelete,
-	onAnnotationBlurIntensityChange,
-
 }: SettingsPanelProps) {
 	const tSettings = useScopedT("settings");
 	const { t } = useI18n();
@@ -1305,12 +1301,15 @@ export function SettingsPanel({
 						? (figureData) => onAnnotationFigureDataChange(selectedAnnotation.id, figureData)
 						: undefined
 				}
-				onBlurIntensityChange={
-					onAnnotationBlurIntensityChange
-						? (intensity) => onAnnotationBlurIntensityChange(selectedAnnotation.id, intensity)
-						: undefined
-				}
-				onDelete={() => onAnnotationDelete?.(selectedAnnotation.id)}
+				onBlurIntensityChange={(intensity) => {
+					if (onAnnotationFigureDataChange) {
+						onAnnotationFigureDataChange(selectedAnnotation.id, {
+							...(selectedAnnotation.figureData || { arrowDirection: "right", color: "#2563EB", strokeWidth: 4 }),
+							blurIntensity: intensity,
+						});
+					}
+				}}
+				onDelete={() => onAnnotationDelete(selectedAnnotation.id)}
 			/>
 		);
 	}
@@ -1757,33 +1756,7 @@ export function SettingsPanel({
 			case "scene":
 				return sceneSectionContent;
 			case "zoom":
-				return (
-					<section className="flex flex-col gap-4">
-						<SectionLabel>{tSettings("sections.zoom", "Zoom")}</SectionLabel>
-						<SliderControl
-							label={tSettings("effects.zoomSmoothness", "Zoom Smoothing")}
-							value={zoomSmoothness ?? 1.0}
-							defaultValue={1.0}
-							min={0}
-							max={2}
-							step={0.05}
-							onChange={(v) => onZoomSmoothnessChange?.(v)}
-							formatValue={(v) => `${v.toFixed(2)}×`}
-							parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
-						/>
-						<SliderControl
-							label={tSettings("effects.zoomMotionBlur", "Zoom Motion Blur")}
-							value={zoomMotionBlur ?? 0}
-							defaultValue={DEFAULT_ZOOM_MOTION_BLUR}
-							min={0}
-							max={2}
-							step={0.05}
-							onChange={(v) => onZoomMotionBlurChange?.(v)}
-							formatValue={(v) => `${v.toFixed(2)}×`}
-							parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
-						/>
-					</section>
-				);
+				return sceneSectionContent;
 			case "frame":
 				return sceneSectionContent;
 			case "crop":
