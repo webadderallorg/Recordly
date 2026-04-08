@@ -912,13 +912,16 @@ export class FrameRenderer {
       frameTimeMs: timeMs,
     });
 
-    // Render the PixiJS stage to its canvas (video only, transparent background)
+    // Render the PixiJS stage (Video only first)
+    if (this.cursorContainer) {
+      this.cursorContainer.visible = false;
+    }
     this.app.renderer.render(this.app.stage);
 
-    // Composite with shadows to final output canvas
+    // Composite with shadows to final output canvas (includes video and webcam)
     this.compositeWithShadows();
 
-    // Render annotations on top if present
+    // Render annotations on top of video/webcam but below cursor
     if (
       this.config.annotationRegions &&
       this.config.annotationRegions.length > 0 &&
@@ -941,21 +944,39 @@ export class FrameRenderer {
       );
     }
 
+    // Render captions
     if (
-    this.config.autoCaptions &&
-    this.config.autoCaptions.length > 0 &&
-    this.config.autoCaptionSettings &&
-    this.compositeCtx
-  ) {
-    renderCaptions(
-    this.compositeCtx,
-    this.config.autoCaptions,
-    this.config.autoCaptionSettings,
-    this.config.width,
-    this.config.height,
-    timeMs,
-    );
-  }
+      this.config.autoCaptions &&
+      this.config.autoCaptions.length > 0 &&
+      this.config.autoCaptionSettings &&
+      this.compositeCtx
+    ) {
+      renderCaptions(
+        this.compositeCtx,
+        this.config.autoCaptions,
+        this.config.autoCaptionSettings,
+        this.config.width,
+        this.config.height,
+        timeMs,
+      );
+    }
+
+    // Final pass: Render the cursor on top of everything
+    if (this.cursorContainer && (this.config.showCursor ?? true) && this.compositeCtx) {
+      this.videoContainer!.visible = false;
+      this.cursorContainer.visible = true;
+      this.app.renderer.render(this.app.stage);
+      
+      this.compositeCtx.drawImage(
+        this.app.canvas as HTMLCanvasElement, 
+        0, 0, 
+        this.config.width, 
+        this.config.height
+      );
+
+      // Restore visibility for next frame
+      this.videoContainer!.visible = true;
+    }
   }
 
   private updateLayout(): void {

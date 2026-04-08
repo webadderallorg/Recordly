@@ -1939,7 +1939,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
         <div
           ref={cursorCanvasContainerRef}
           className="absolute inset-0 pointer-events-none"
-          style={{ zIndex: 10 }}
+          style={{ zIndex: 9999 }}
         />
 
         <video
