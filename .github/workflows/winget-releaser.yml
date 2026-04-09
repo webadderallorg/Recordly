@@ -6,7 +6,7 @@ jobs:
   publish:
     runs-on: windows-latest
     steps:
-      - uses: vedantmgoyal9/winget-releaser@latest
+      - uses: vedantmgoyal9/winget-releaser@v2
         with:
           identifier: Webadderall.Recordly
           installers-regex: 'windows\-x64\.exe'

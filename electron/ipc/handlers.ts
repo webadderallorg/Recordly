@@ -3425,18 +3425,26 @@ function getNormalizedCursorPoint() {
   const isLinuxCacheFresh = !!linuxCursorCache
     && Date.now() - linuxCursorCache.updatedAt <= 1000
 
+  // On Windows/Linux, platform APIs (iohook, GetWindowRect, xwininfo) return
+  // physical pixel coordinates, while Electron's getCursorScreenPoint() and
+  // display.bounds return DIP (logical) coordinates. Apply a DPI correction
+  // so all values are in the same coordinate space before normalizing.
+  const sf = process.platform !== 'darwin'
+    ? (getScreen().getPrimaryDisplay().scaleFactor || 1)
+    : 1
+
   const cursor = isLinuxCacheFresh
-    ? { x: linuxCursorCache.x, y: linuxCursorCache.y }
+    ? { x: linuxCursorCache.x / sf, y: linuxCursorCache.y / sf }
     : fallbackCursor
 
   const windowBounds = selectedSource?.id?.startsWith('window:') ? selectedWindowBounds : null
   if (windowBounds) {
-    const width = Math.max(1, windowBounds.width)
-    const height = Math.max(1, windowBounds.height)
+    const width = Math.max(1, windowBounds.width / sf)
+    const height = Math.max(1, windowBounds.height / sf)
 
     return {
-      cx: clamp((cursor.x - windowBounds.x) / width, 0, 1),
-      cy: clamp((cursor.y - windowBounds.y) / height, 0, 1),
+      cx: clamp((cursor.x - windowBounds.x / sf) / width, 0, 1),
+      cy: clamp((cursor.y - windowBounds.y / sf) / height, 0, 1),
     }
   }
 
