@@ -3,10 +3,11 @@ on:
   workflow_run:
     workflows: ["Publish Release"]
     types: [completed]
+  workflow_dispatch:
 jobs:
   publish:
     runs-on: windows-latest
-    if: github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     steps:
       - name: Get release tag
         id: tag
