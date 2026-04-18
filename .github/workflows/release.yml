@@ -149,7 +149,7 @@ jobs:
             release/*.dmg
             release/*.zip
             release/*.blockmap
-            release/latest-mac.yml
+            release/*-mac.yml
           if-no-files-found: error
 
   build-macos-arm64:
@@ -229,7 +229,7 @@ jobs:
             release/*.dmg
             release/*.zip
             release/*.blockmap
-            release/latest-mac.yml
+            release/*-mac.yml
           if-no-files-found: error
 
   merge-macos-update-metadata:
@@ -260,17 +260,25 @@ jobs:
       - name: Install PyYAML
         run: python -m pip install pyyaml
 
-      - name: Merge latest-mac.yml
+      - name: Merge mac update metadata
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p release-assets/merged
           python <<'PY'
           from pathlib import Path
+          import glob
           import yaml
 
-          x64_info = yaml.safe_load(Path('release-assets/macos-x64/latest-mac.yml').read_text())
-          arm64_info = yaml.safe_load(Path('release-assets/macos-arm64/latest-mac.yml').read_text())
+          x64_files = glob.glob('release-assets/macos-x64/*-mac.yml')
+          arm64_files = glob.glob('release-assets/macos-arm64/*-mac.yml')
+          if not x64_files or not arm64_files:
+            raise SystemExit('Could not find macOS update metadata files.')
+          # Use the filename from x64 (e.g. latest-mac.yml or beta-mac.yml)
+          channel_filename = Path(x64_files[0]).name
+
+          x64_info = yaml.safe_load(Path(x64_files[0]).read_text())
+          arm64_info = yaml.safe_load(Path(arm64_files[0]).read_text())
 
           merged_files = []
           seen_urls = set()
@@ -292,7 +300,7 @@ jobs:
           if not merged.get('releaseDate') and arm64_info.get('releaseDate'):
             merged['releaseDate'] = arm64_info['releaseDate']
 
-          Path('release-assets/merged/latest-mac.yml').write_text(
+          Path(f'release-assets/merged/{channel_filename}').write_text(
             yaml.safe_dump(merged, sort_keys=False)
           )
           PY
@@ -372,7 +380,7 @@ jobs:
           path: |
             release/*.exe
             release/*.blockmap
-            release/latest*.yml
+            release/*.yml
           if-no-files-found: error
 
   build-linux-x64:
@@ -427,7 +435,7 @@ jobs:
           path: |
             release/*.AppImage
             release/*.blockmap
-            release/latest-linux.yml
+            release/*-linux.yml
           if-no-files-found: error
 
   publish-release-assets:
@@ -484,13 +492,13 @@ jobs:
             release-assets/macos-arm64/*.dmg
             release-assets/macos-arm64/*.zip
             release-assets/macos-arm64/*.blockmap
-            release-assets/macos-merged/latest-mac.yml
+            release-assets/macos-merged/*.yml
             release-assets/windows-x64/*.exe
             release-assets/windows-x64/*.blockmap
-            release-assets/windows-x64/latest*.yml
+            release-assets/windows-x64/*.yml
             release-assets/linux-x64/*.AppImage
             release-assets/linux-x64/*.blockmap
-            release-assets/linux-x64/latest-linux.yml
+            release-assets/linux-x64/*.yml
           )
 
           if [ ${#assets[@]} -eq 0 ]; then
