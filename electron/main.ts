@@ -68,6 +68,15 @@ function configureGpuAccelerationSwitches() {
 		app.commandLine.appendSwitch("use-angle", "d3d11");
 		return;
 	}
+
+	// Linux: prefer EGL over GLX for better Wayland compatibility.
+	// Disable VAAPI — many distros ship broken drivers that cause
+	// "vaInitialize failed" and prevent the renderer from loading.
+	if (process.platform === "linux") {
+		app.commandLine.appendSwitch("use-gl", "egl");
+		app.commandLine.appendSwitch("disable-features", "VaapiVideoDecoder,VaapiVideoEncoder");
+		return;
+	}
 }
 
 async function logSmokeExportGpuDiagnostics() {

@@ -498,6 +498,17 @@ export function createHudOverlayWindow(): BrowserWindow {
 		}, 100);
 	});
 
+	// Safety net: on Linux the renderer may fail to fire did-finish-load
+	// (e.g. GPU/VAAPI errors). Show the window after ready-to-show as fallback.
+	win.once("ready-to-show", () => {
+		setTimeout(() => {
+			if (!win.isDestroyed() && !win.isVisible()) {
+				win.show();
+				win.moveTop();
+			}
+		}, 500);
+	});
+
 	hudOverlayWindow = win;
 
 	// Reset the user's saved HUD position when displays change so the bar
