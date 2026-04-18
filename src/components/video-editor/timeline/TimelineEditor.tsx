@@ -1,5 +1,3 @@
-import type { Range, Span } from "dnd-timeline";
-import { useTimelineContext } from "dnd-timeline";
 import {
 	Check,
 	CaretDown as ChevronDown,
@@ -11,6 +9,8 @@ import {
 	MagicWand as WandSparkles,
 	MagnifyingGlassPlus as ZoomIn,
 } from "@phosphor-icons/react";
+import type { Range, Span } from "dnd-timeline";
+import { useTimelineContext } from "dnd-timeline";
 import {
 	forwardRef,
 	type KeyboardEvent as ReactKeyboardEvent,

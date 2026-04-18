@@ -745,8 +745,7 @@ export default function VideoEditor() {
 		}
 		context.imageSmoothingEnabled = true;
 		context.imageSmoothingQuality = "high";
-		const editorBgHsl = getComputedStyle(document.documentElement).getPropertyValue("--editor-bg").trim();
-		context.fillStyle = editorBgHsl ? `hsl(${editorBgHsl})` : "#111113";
+		context.fillStyle = "#111113";
 		context.fillRect(0, 0, targetWidth, targetHeight);
 
 		const previewWidth = previewHandle?.containerRef.current?.clientWidth || 1920;
@@ -781,7 +780,7 @@ export default function VideoEditor() {
 					padding,
 					cropRegion,
 					webcam,
-					webcamUrl: resolvedWebcamVideoUrl ?? (webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
+					webcamUrl: webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null,
 					videoWidth: previewVideo.videoWidth,
 					videoHeight: previewVideo.videoHeight,
 					annotationRegions,
@@ -1807,6 +1806,7 @@ export default function VideoEditor() {
 			setResolvedWebcamVideoUrl(null);
 			return;
 		}
+		setResolvedWebcamVideoUrl(null);
 		void resolveVideoUrl(webcam.sourcePath).then((url) => {
 			if (!cancelled) setResolvedWebcamVideoUrl(url);
 		});
@@ -2808,12 +2808,22 @@ export default function VideoEditor() {
 
 	const handleClipDelete = useCallback(
 		(id: string) => {
+			const deletedClip = clipRegions.find((c) => c.id === id);
 			setClipRegions((prev) => prev.filter((clip) => clip.id !== id));
+			if (deletedClip) {
+				const { startMs, endMs } = deletedClip;
+				// Cascade: remove all timeline items fully within the deleted clip's span
+				setZoomRegions((prev) => prev.filter((r) => r.startMs < startMs || r.endMs > endMs));
+				setAnnotationRegions((prev) => prev.filter((r) => r.startMs < startMs || r.endMs > endMs));
+				setTrimRegions((prev) => prev.filter((r) => r.startMs < startMs || r.endMs > endMs));
+				setSpeedRegions((prev) => prev.filter((r) => r.startMs < startMs || r.endMs > endMs));
+				setAudioRegions((prev) => prev.filter((r) => r.startMs < startMs || r.endMs > endMs));
+			}
 			if (selectedClipId === id) {
 				setSelectedClipId(null);
 			}
 		},
-		[selectedClipId],
+		[clipRegions, selectedClipId],
 	);
 
 	const handleSelectSpeed = useCallback((id: string | null) => {
@@ -3539,7 +3549,7 @@ export default function VideoEditor() {
 						videoPadding: padding,
 						cropRegion,
 						webcam,
-						webcamUrl: resolvedWebcamVideoUrl ?? (webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
+						webcamUrl: webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null,
 						annotationRegions,
 						autoCaptions,
 						autoCaptionSettings,
@@ -3708,7 +3718,7 @@ export default function VideoEditor() {
 						padding,
 						cropRegion,
 						webcam,
-						webcamUrl: resolvedWebcamVideoUrl ?? (webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
+						webcamUrl: webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null,
 						annotationRegions,
 						autoCaptions,
 						autoCaptionSettings,
@@ -4177,8 +4187,8 @@ export default function VideoEditor() {
 		? Math.min(
 				typeof exportProgress?.renderProgress === "number"
 					? exportProgress.renderProgress
-					: (exportProgress?.percentage ?? 100),
-				100,
+					: (exportProgress?.percentage ?? 99),
+				99,
 			)
 		: null;
 	const isLightningExportInProgress =
@@ -4234,7 +4244,7 @@ export default function VideoEditor() {
 					})
 				: isExportFinalizing
 					? t("editor.exportStatus.finalizingPercent", "Finalizing {{percent}}%", {
-							percent: Math.round(exportFinalizingProgress ?? 100),
+							percent: Math.round(exportFinalizingProgress ?? 99),
 						})
 					: t("editor.exportStatus.completePercent", "{{percent}}% complete", {
 							percent: Math.round(exportProgress.percentage),
@@ -4258,7 +4268,7 @@ export default function VideoEditor() {
 			<div className="flex h-screen items-center justify-center bg-background">
 				<div className="text-foreground">Loading video...</div>
 				{projectBrowser}
-				<Toaster className="pointer-events-auto" />
+				<Toaster theme="dark" className="pointer-events-auto" />
 			</div>
 		);
 	}
@@ -4271,21 +4281,21 @@ export default function VideoEditor() {
 						ref={projectBrowserFallbackTriggerRef}
 						type="button"
 						onClick={handleOpenProjectBrowser}
-						className="rounded-[5px] bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(0,0,0,0.18)] transition-colors hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"
+						className="rounded-[5px] bg-white px-3 py-1.5 text-sm font-semibold text-black shadow-[0_14px_32px_rgba(0,0,0,0.18)] transition-colors hover:bg-white/92"
 					>
 						Open Projects
 					</button>
 				</div>
 				{projectBrowser}
-				<Toaster className="pointer-events-auto" />
+				<Toaster theme="dark" className="pointer-events-auto" />
 			</div>
 		);
 	}
 
 	return (
-		<div className="flex flex-col h-screen bg-editor-bg text-foreground overflow-hidden selection:bg-[#2563EB]/30">
+		<div className="flex flex-col h-screen bg-[#111113] text-slate-200 overflow-hidden selection:bg-[#2563EB]/30">
 			<div
-				className="relative flex h-11 flex-shrink-0 items-center justify-between bg-editor-header/88 px-5 backdrop-blur-md border-b border-foreground/10 z-50"
+				className="relative flex h-11 flex-shrink-0 items-center justify-between bg-[#151518]/88 px-5 backdrop-blur-md border-b border-white/10 z-50"
 				style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
 			>
 				<div
@@ -4305,13 +4315,13 @@ export default function VideoEditor() {
 					</Button>
 					<DiscordLinkButton />
 					<FeedbackDialog />
-					<div className="ml-1 h-5 w-px bg-foreground/10" />
+					<div className="ml-1 h-5 w-px bg-white/10" />
 					<Button
 						type="button"
 						variant="ghost"
 						onClick={handleUndo}
 						disabled={!canUndo}
-						className="inline-flex h-8 w-8 items-center justify-center rounded-[5px] border border-foreground/10 bg-foreground/5 p-0 text-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+						className="inline-flex h-8 w-8 items-center justify-center rounded-[5px] border border-white/10 bg-white/5 p-0 text-slate-200 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
 						title={t("common.actions.undo", "Undo")}
 						aria-label={t("common.actions.undo", "Undo")}
 					>
@@ -4322,7 +4332,7 @@ export default function VideoEditor() {
 						variant="ghost"
 						onClick={handleRedo}
 						disabled={!canRedo}
-						className="inline-flex h-8 w-8 items-center justify-center rounded-[5px] border border-foreground/10 bg-foreground/5 p-0 text-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+						className="inline-flex h-8 w-8 items-center justify-center rounded-[5px] border border-white/10 bg-white/5 p-0 text-slate-200 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
 						title={t("common.actions.redo", "Redo")}
 						aria-label={t("common.actions.redo", "Redo")}
 					>
@@ -4333,10 +4343,10 @@ export default function VideoEditor() {
 					className="pointer-events-none absolute left-1/2 flex min-w-0 -translate-x-1/2 items-baseline justify-center gap-0"
 					style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
 				>
-					<span className="text-sm font-semibold tracking-tight text-foreground/90">
+					<span className="text-sm font-semibold tracking-tight text-white/90">
 						{projectDisplayName}
 					</span>
-					<span className="text-xs font-medium tracking-tight text-muted-foreground/70">
+					<span className="text-xs font-medium tracking-tight text-slate-500">
 						.recordly
 					</span>
 				</div>
@@ -4348,7 +4358,7 @@ export default function VideoEditor() {
 						ref={projectBrowserTriggerRef}
 						type="button"
 						onClick={handleOpenProjectBrowser}
-						className="inline-flex h-8 min-w-[96px] items-center justify-center gap-1.5 rounded-[5px] bg-neutral-800 px-4 text-white shadow-[0_14px_32px_rgba(0,0,0,0.18)] transition-colors hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"
+						className="inline-flex h-8 min-w-[96px] items-center justify-center gap-1.5 rounded-[5px] bg-white px-4 text-black shadow-[0_14px_32px_rgba(0,0,0,0.18)] transition-colors hover:bg-white/92"
 					>
 						<FolderOpen className="h-4 w-4" />
 						<span className="text-sm font-semibold tracking-tight">
@@ -4358,7 +4368,7 @@ export default function VideoEditor() {
 					<Button
 						type="button"
 						onClick={handleSaveProject}
-						className="inline-flex h-8 min-w-[96px] items-center justify-center gap-1.5 rounded-[5px] bg-neutral-800 px-4 text-white transition-colors hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"
+						className="inline-flex h-8 min-w-[96px] items-center justify-center gap-1.5 rounded-[5px] bg-white px-4 text-black transition-colors hover:bg-white/92"
 					>
 						<span
 							className={`${hasUnsavedChanges ? "flex" : "hidden"} size-2 relative`}
@@ -4371,7 +4381,7 @@ export default function VideoEditor() {
 							{t("common.actions.save")}
 						</span>
 					</Button>
-					<div className="mx-1 h-5 w-px bg-foreground/10" />
+					<div className="mx-1 h-5 w-px bg-white/10" />
 					<DropdownMenu
 						open={showExportDropdown}
 						onOpenChange={setShowExportDropdown}
@@ -4395,25 +4405,25 @@ export default function VideoEditor() {
 							className="w-[360px] border-none bg-transparent p-0 shadow-none"
 						>
 							{isExporting ? (
-								<div className="rounded-2xl border border-foreground/10 bg-editor-surface p-4 text-foreground shadow-2xl">
+								<div className="rounded-2xl border border-white/10 bg-[#17171a] p-4 text-slate-200 shadow-2xl">
 									<div className="mb-3 flex items-center justify-between gap-3">
 										<div>
-											<p className="text-sm font-semibold text-foreground">
+											<p className="text-sm font-semibold text-white">
 												{t("editor.exportStatus.exporting", "Exporting")}
 											</p>
-											<p className="text-xs text-muted-foreground">
+											<p className="text-xs text-slate-400">
 												{t(
 													"editor.exportStatus.renderingFile",
 													"Rendering your file.",
 												)}
 											</p>
 											{isLightningExportInProgress ? (
-												<p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground/70">
+												<p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
 													PLEASE
 													<button
 														type="button"
 														onClick={() => void openLightningIssues()}
-														className="underline decoration-slate-500/70 underline-offset-2 transition-colors hover:text-foreground"
+														className="underline decoration-slate-500/70 underline-offset-2 transition-colors hover:text-slate-200"
 													>
 														report bugs
 													</button>
@@ -4422,7 +4432,7 @@ export default function VideoEditor() {
 												</p>
 											) : null}
 											{isLegacyExportInProgress ? (
-												<p className="mt-1 text-[11px] text-muted-foreground/70">
+												<p className="mt-1 text-[11px] text-slate-500">
 													Export too slow? Cancel and try Lightning
 													export!
 												</p>
@@ -4437,7 +4447,7 @@ export default function VideoEditor() {
 											{t("common.actions.cancel")}
 										</Button>
 									</div>
-									<div className="h-2 overflow-hidden rounded-full border border-foreground/5 bg-foreground/5">
+									<div className="h-2 overflow-hidden rounded-full border border-white/5 bg-white/5">
 										{isExportSaving ? (
 											<div className="indeterminate-progress h-full rounded-full bg-transparent" />
 										) : (
@@ -4449,35 +4459,36 @@ export default function VideoEditor() {
 											/>
 										)}
 									</div>
-									<p className="mt-2 text-xs text-muted-foreground">
+									<p className="mt-2 text-xs text-slate-400">
 										{exportPercentLabel}
 									</p>
 									{isRenderingAudio ? (
-										<p className="mt-1 text-[11px] text-muted-foreground/70">
-											{t("editor.export.processingAudioEdits", "Processing audio with speed/overlay edits")}
+										<p className="mt-1 text-[11px] text-slate-500">
+											Audio requires real-time playback for speed/overlay
+											edits
 										</p>
 									) : exportRenderSpeedLabel ? (
-										<p className="mt-1 text-[11px] text-muted-foreground/70">
+										<p className="mt-1 text-[11px] text-slate-500">
 											{exportRenderSpeedLabel}
 										</p>
 									) : null}
 									{exportRuntimeLabel ? (
-										<p className="mt-1 text-[11px] text-muted-foreground/70">
+										<p className="mt-1 text-[11px] text-slate-500">
 											Path: {exportRuntimeLabel}
 										</p>
 									) : null}
 								</div>
 							) : exportError ? (
-								<div className="rounded-2xl border border-foreground/10 bg-editor-surface p-4 text-foreground shadow-2xl">
-									<p className="text-sm font-semibold text-foreground">
+								<div className="rounded-2xl border border-white/10 bg-[#17171a] p-4 text-slate-200 shadow-2xl">
+									<p className="text-sm font-semibold text-white">
 										{t("editor.exportStatus.issue", "Export issue")}
 									</p>
 									{exportRuntimeLabel ? (
-										<p className="mt-1 text-[11px] text-muted-foreground/70">
+										<p className="mt-1 text-[11px] text-slate-500">
 											Path: {exportRuntimeLabel}
 										</p>
 									) : null}
-									<p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+									<p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-slate-400">
 										{exportError}
 									</p>
 									<div className="mt-4 flex gap-2">
@@ -4494,29 +4505,29 @@ export default function VideoEditor() {
 											type="button"
 											variant="outline"
 											onClick={handleExportDropdownClose}
-											className="h-8 flex-1 border-foreground/10 bg-foreground/5 text-xs text-muted-foreground hover:bg-foreground/10"
+											className="h-8 flex-1 border-white/10 bg-white/5 text-xs text-slate-300 hover:bg-white/10"
 										>
 											{t("common.actions.close", "Close")}
 										</Button>
 									</div>
 								</div>
 							) : exportedFilePath ? (
-								<div className="rounded-2xl border border-foreground/10 bg-editor-surface p-4 text-foreground shadow-2xl">
-									<p className="text-sm font-semibold text-foreground">
+								<div className="rounded-2xl border border-white/10 bg-[#17171a] p-4 text-slate-200 shadow-2xl">
+									<p className="text-sm font-semibold text-white">
 										{t("editor.exportStatus.complete", "Export complete")}
 									</p>
-									<p className="mt-1 text-xs text-muted-foreground">
+									<p className="mt-1 text-xs text-slate-400">
 										{t(
 											"editor.exportStatus.savedSuccessfully",
 											"Your file was saved successfully.",
 										)}
 									</p>
 									{exportRuntimeLabel ? (
-										<p className="mt-1 text-[11px] text-muted-foreground/70">
+										<p className="mt-1 text-[11px] text-slate-500">
 											Path: {exportRuntimeLabel}
 										</p>
 									) : null}
-									<p className="mt-3 truncate text-xs text-muted-foreground/70">
+									<p className="mt-3 truncate text-xs text-slate-500">
 										{exportedFilePath.split("/").pop()}
 									</p>
 									<div className="mt-4 flex gap-2">
@@ -4531,7 +4542,7 @@ export default function VideoEditor() {
 											type="button"
 											variant="outline"
 											onClick={handleExportDropdownClose}
-											className="h-8 flex-1 border-foreground/10 bg-foreground/5 text-xs text-muted-foreground hover:bg-foreground/10"
+											className="h-8 flex-1 border-white/10 bg-white/5 text-xs text-slate-300 hover:bg-white/10"
 										>
 											Done
 										</Button>
@@ -4567,7 +4578,7 @@ export default function VideoEditor() {
 			</div>
 
 			<div className="relative flex min-h-0 flex-1 flex-col gap-3 p-4">
-				<div className="flex min-h-0 flex-1 gap-3 relative z-10">
+				<div className="flex min-h-0 flex-1 gap-3">
 					{/* Settings sidebar */}
 					<div className="flex flex-shrink-0 gap-1.5">
 						{/* Icon rail */}
@@ -4587,7 +4598,7 @@ export default function VideoEditor() {
 											{isActive && (
 												<motion.span
 													layoutId="rail-active-bg"
-													className="absolute inset-0 rounded-lg bg-foreground/[0.08]"
+													className="absolute inset-0 rounded-lg bg-white/[0.08]"
 													transition={{
 														type: "spring",
 														stiffness: 450,
@@ -4600,7 +4611,7 @@ export default function VideoEditor() {
 												animate={{
 													color: isActive
 														? "#2563EB"
-														: "hsl(var(--foreground))",
+														: "rgba(255,255,255,1)",
 												}}
 												transition={{ duration: 0.14 }}
 											>
@@ -4636,16 +4647,16 @@ export default function VideoEditor() {
 									</div>
 								);
 							})}
-							<div className="mt-auto flex flex-col items-center gap-0.5 pt-3">
+							<div className="mt-auto pt-3">
 								<motion.button
 									type="button"
 									onClick={() => toast.info("Account coming soon")}
 									title="Account"
-									className="group relative flex h-9 w-9 items-center justify-center rounded-lg text-foreground/55 outline-none transition hover:text-foreground focus:outline-none focus-visible:outline-none"
+									className="group relative flex h-9 w-9 items-center justify-center rounded-lg text-white/55 outline-none transition hover:text-white focus:outline-none focus-visible:outline-none"
 									whileHover={{ opacity: 1 }}
 									initial={{ opacity: 0.55 }}
 								>
-									<motion.span className="absolute inset-0 rounded-lg bg-foreground/[0.04] opacity-0 transition group-hover:opacity-100" />
+									<motion.span className="absolute inset-0 rounded-lg bg-white/[0.04] opacity-0 transition group-hover:opacity-100" />
 									<User className="relative z-10 h-[22px] w-[22px]" />
 								</motion.button>
 							</div>
@@ -4813,7 +4824,7 @@ export default function VideoEditor() {
 											<Button
 												variant="ghost"
 												size="sm"
-												className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-all gap-1"
+												className="h-7 px-2 text-xs text-white hover:text-white hover:bg-white/10 transition-all gap-1"
 											>
 												<span className="font-medium">
 													{getAspectRatioLabel(aspectRatio)}
@@ -4823,13 +4834,13 @@ export default function VideoEditor() {
 										</DropdownMenuTrigger>
 										<DropdownMenuContent
 											align="center"
-											className="bg-editor-surface-alt border-foreground/10"
+											className="bg-[#1a1a1c] border-white/10"
 										>
 											{ASPECT_RATIOS.map((ratio) => (
 												<DropdownMenuItem
 													key={ratio}
 													onClick={() => setAspectRatio(ratio)}
-													className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer flex items-center justify-between gap-3"
+													className="text-slate-300 hover:text-white hover:bg-white/10 cursor-pointer flex items-center justify-between gap-3"
 												>
 													<span>{getAspectRatioLabel(ratio)}</span>
 													{aspectRatio === ratio && (
@@ -4839,12 +4850,12 @@ export default function VideoEditor() {
 											))}
 										</DropdownMenuContent>
 									</DropdownMenu>
-									<div className="w-[1px] h-4 bg-foreground/20" />
+									<div className="w-[1px] h-4 bg-white/20" />
 									<Button
 										variant="ghost"
 										size="sm"
 										onClick={handleOpenCropEditor}
-										className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-all gap-1.5"
+										className="h-7 px-2 text-xs text-white hover:text-white hover:bg-white/10 transition-all gap-1.5"
 									>
 										<Crop className="w-3.5 h-3.5" />
 										<span className="font-medium">
@@ -4968,7 +4979,7 @@ export default function VideoEditor() {
 										<Button
 											variant="ghost"
 											size="sm"
-											className="h-7 gap-1 rounded-full border border-foreground/[0.08] bg-foreground/[0.04] px-2.5 text-[11px] text-foreground/65 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.06)] transition-all hover:bg-foreground/[0.08] hover:text-foreground"
+											className="h-7 gap-1 rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 text-[11px] text-white/65 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition-all hover:bg-white/[0.08] hover:text-white"
 										>
 											<Plus className="w-3.5 h-3.5" />
 											<span className="font-medium">
@@ -4979,7 +4990,7 @@ export default function VideoEditor() {
 									</DropdownMenuTrigger>
 									<DropdownMenuContent
 										align="start"
-										className="bg-editor-surface-alt border-foreground/10"
+										className="bg-[#1a1a1c] border-white/10"
 									>
 										<DropdownMenuItem
 											onClick={() => {
@@ -4993,24 +5004,24 @@ export default function VideoEditor() {
 														: 0;
 												timelineRef.current?.addAnnotation(nextTrackIndex);
 											}}
-											className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer"
+											className="text-slate-300 hover:text-white hover:bg-white/10 cursor-pointer"
 										>
 											{t("timeline.annotation.label")}
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											onClick={() => timelineRef.current?.addAudio()}
-											className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer"
+											className="text-slate-300 hover:text-white hover:bg-white/10 cursor-pointer"
 										>
 											{t("timeline.audio.label")}
 										</DropdownMenuItem>
 									</DropdownMenuContent>
 								</DropdownMenu>
-								<div className="w-[1px] h-4 bg-foreground/10 mx-1" />
+								<div className="w-[1px] h-4 bg-white/10 mx-1" />
 								<Button
 									onClick={() => timelineRef.current?.addZoom()}
 									variant="ghost"
 									size="icon"
-									className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-[#2563EB]/10 hover:text-[#2563EB]"
+									className="h-7 w-7 rounded-full text-slate-400 transition-all hover:bg-[#2563EB]/10 hover:text-[#2563EB]"
 									title={t("timeline.zoom.addZoom")}
 								>
 									<ZoomIn className="w-4 h-4" />
@@ -5019,7 +5030,7 @@ export default function VideoEditor() {
 									onClick={() => timelineRef.current?.suggestZooms()}
 									variant="ghost"
 									size="icon"
-									className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-[#2563EB]/10 hover:text-[#2563EB]"
+									className="h-7 w-7 rounded-full text-slate-400 transition-all hover:bg-[#2563EB]/10 hover:text-[#2563EB]"
 									title={t("timeline.zoom.suggestZooms")}
 								>
 									<WandSparkles className="w-4 h-4" />
@@ -5028,7 +5039,7 @@ export default function VideoEditor() {
 									onClick={() => timelineRef.current?.splitClip()}
 									variant="ghost"
 									size="icon"
-									className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
+									className="h-7 w-7 rounded-full text-slate-400 transition-all hover:bg-white/10 hover:text-white"
 									title={t("editor.toolbar.splitClip")}
 								>
 									<Scissors className="w-4 h-4" />
@@ -5037,13 +5048,13 @@ export default function VideoEditor() {
 							{/* Playback controls - centered */}
 							<div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
 								<div className="flex items-center gap-1.5 pointer-events-auto">
-									<span className="mr-1 text-[10px] font-medium tabular-nums text-muted-foreground">
+									<span className="mr-1 text-[10px] font-medium tabular-nums text-slate-400">
 										{formatTime(timelinePlayheadTime)}
 									</span>
 									<Button
 										variant="ghost"
 										size="icon"
-										className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
+										className="h-7 w-7 rounded-full text-slate-400 transition-all hover:bg-white/10 hover:text-white"
 										title={t("editor.playback.skipBack")}
 										onClick={() => {
 											const currentMs = timelinePlayheadTime * 1000;
@@ -5063,7 +5074,7 @@ export default function VideoEditor() {
 									<Button
 										variant="ghost"
 										size="icon"
-										className={`h-7 w-7 rounded-full border border-foreground/10 transition-all shadow-[0_8px_18px_rgba(0,0,0,0.18)] ${isPlaying ? "bg-foreground/10 text-foreground hover:bg-foreground/20" : "bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"}`}
+										className={`h-7 w-7 rounded-full border border-white/10 transition-all shadow-[0_8px_18px_rgba(0,0,0,0.18)] ${isPlaying ? "bg-white/10 text-white hover:bg-white/20" : "bg-white text-black hover:bg-white/90"}`}
 										onClick={togglePlayPause}
 										title={isPlaying ? "Pause" : "Play"}
 									>
@@ -5076,7 +5087,7 @@ export default function VideoEditor() {
 									<Button
 										variant="ghost"
 										size="icon"
-										className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
+										className="h-7 w-7 rounded-full text-slate-400 transition-all hover:bg-white/10 hover:text-white"
 										title={t("editor.playback.skipForward")}
 										onClick={() => {
 											const currentMs = timelinePlayheadTime * 1000;
@@ -5091,7 +5102,7 @@ export default function VideoEditor() {
 									>
 										<SkipForward className="w-3.5 h-3.5" weight="fill" />
 									</Button>
-									<span className="text-[10px] font-medium text-muted-foreground/70 tabular-nums ml-1">
+									<span className="text-[10px] font-medium text-slate-500 tabular-nums ml-1">
 										{formatTime(duration)}
 									</span>
 								</div>
@@ -5106,7 +5117,7 @@ export default function VideoEditor() {
 											? t("editor.timeline.expand")
 											: t("editor.timeline.collapse")
 									}
-									className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
+									className="h-7 w-7 rounded-full text-slate-400 transition-all hover:bg-white/10 hover:text-white"
 									onClick={() => {
 										setTimelineCollapsed((p) => !p);
 									}}
@@ -5120,7 +5131,7 @@ export default function VideoEditor() {
 								<div className="flex items-center gap-1.5">
 									<button
 										type="button"
-										className="text-muted-foreground hover:text-foreground transition-colors"
+										className="text-slate-400 hover:text-white transition-colors"
 										title={t("editor.playback.muteUnmute")}
 										onClick={() =>
 											setPreviewVolume(previewVolume <= 0.001 ? 1 : 0)
@@ -5134,9 +5145,9 @@ export default function VideoEditor() {
 											<Volume2 className="w-3.5 h-3.5" />
 										)}
 									</button>
-									<div className="relative flex h-7 w-24 select-none items-center overflow-hidden rounded-full border border-foreground/[0.06] bg-editor-bg/80 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.06)]">
+									<div className="relative flex h-7 w-24 select-none items-center overflow-hidden rounded-full border border-white/[0.06] bg-black/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
 										<div
-											className="absolute inset-y-[3px] left-[3px] right-auto rounded-[10px] bg-foreground/[0.08]"
+											className="absolute inset-y-[3px] left-[3px] right-auto rounded-[10px] bg-white/[0.08]"
 											style={{
 												width:
 													previewVolume > 0
@@ -5145,10 +5156,10 @@ export default function VideoEditor() {
 											}}
 										/>
 										<div
-											className="pointer-events-none absolute bottom-[18%] top-[18%] z-10 w-[2px] rounded-full bg-foreground/95 shadow-[0_0_10px_rgba(37,99,235,0.28)]"
+											className="pointer-events-none absolute bottom-[18%] top-[18%] z-10 w-[2px] rounded-full bg-white/95 shadow-[0_0_10px_rgba(37,99,235,0.28)]"
 											style={{ left: `calc(${previewVolume * 100}% - 8px)` }}
 										/>
-										<span className="pointer-events-none relative z-10 pl-2 text-[10px] font-medium text-muted-foreground">
+										<span className="pointer-events-none relative z-10 pl-2 text-[10px] font-medium text-slate-400">
 											{Math.round(previewVolume * 100)}%
 										</span>
 										<input
@@ -5233,13 +5244,13 @@ export default function VideoEditor() {
 						className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
 						onClick={handleCancelCropEditor}
 					/>
-					<div className="fixed left-1/2 top-1/2 z-[60] max-h-[90vh] w-[90vw] max-w-5xl -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-2xl border border-foreground/10 bg-editor-dialog p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+					<div className="fixed left-1/2 top-1/2 z-[60] max-h-[90vh] w-[90vw] max-w-5xl -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-2xl border border-white/10 bg-[#09090b] p-8 shadow-2xl animate-in zoom-in-95 duration-200">
 						<div className="mb-6 flex items-center justify-between">
 							<div>
-								<span className="text-xl font-bold text-foreground">
+								<span className="text-xl font-bold text-slate-200">
 									{t("settings.crop.title")}
 								</span>
-								<p className="mt-2 text-sm text-muted-foreground">
+								<p className="mt-2 text-sm text-slate-400">
 									{t("settings.crop.instruction")}
 								</p>
 							</div>
@@ -5247,7 +5258,7 @@ export default function VideoEditor() {
 								variant="ghost"
 								size="icon"
 								onClick={handleCancelCropEditor}
-								className="text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+								className="text-slate-400 hover:bg-white/10 hover:text-white"
 							>
 								<X className="h-5 w-5" />
 							</Button>
@@ -5273,7 +5284,7 @@ export default function VideoEditor() {
 
 			{projectBrowser}
 
-			<Toaster className="pointer-events-auto" />
+			<Toaster theme="dark" className="pointer-events-auto" />
 		</div>
 	);
 }

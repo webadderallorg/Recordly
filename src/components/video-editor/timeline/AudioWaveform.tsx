@@ -83,7 +83,7 @@ export default function AudioWaveform({ peaks }: AudioWaveformProps) {
 		<canvas
 			ref={setCanvasRef}
 			className="absolute inset-0 w-full h-full pointer-events-none"
-			style={{ zIndex: 0 }}
+			style={{ display: "block" }}
 		/>
 	);
 }
