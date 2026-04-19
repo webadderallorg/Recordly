@@ -64,10 +64,7 @@ export function isAllowedLocalReadPath(candidatePath: string) {
 // saved outside the active recording session can still be reopened in the editor.
 export async function isAllowedLocalMediaPath(candidatePath: string) {
 	const normalizedCandidatePath = normalizePath(candidatePath);
-	const realPath = await fs.realpath(normalizedCandidatePath).catch(() => normalizedCandidatePath);
-	return (
-		isAllowedLocalReadPath(normalizedCandidatePath) || isAllowedLocalReadPath(realPath)
-	);
+	return isAllowedLocalReadPath(normalizedCandidatePath);
 }
 
 export async function rememberApprovedLocalReadPath(filePath?: string | null) {

@@ -16,27 +16,25 @@ import {
 	currentRecordingSession,
 	setCurrentRecordingSession,
 } from "../state";
-import { normalizeVideoSourcePath } from "../utils";
 import {
+	getProjectsDir,
 	isAllowedLocalMediaPath,
 	isPathInsideDirectory,
+	isTrustedProjectPath,
+	listProjectLibraryEntries,
+	loadProjectFromPath,
+	persistRecordingsDirectorySetting,
 	replaceApprovedSessionLocalReadPaths,
+	rememberRecentProject,
+	saveProjectThumbnail,
 } from "../project/manager";
 import {
 	getTelemetryPathForVideo,
 	isAutoRecordingPath,
 	getRecordingsDir,
 	approveUserPath,
+	normalizeVideoSourcePath,
 } from "../utils";
-import {
-	getProjectsDir,
-	persistRecordingsDirectorySetting,
-	saveProjectThumbnail,
-	rememberRecentProject,
-	listProjectLibraryEntries,
-	loadProjectFromPath,
-	isTrustedProjectPath,
-} from "../project/manager";
 import { persistRecordingSessionManifest, resolveRecordingSession } from "../project/session";
 
 function normalizeRecordingTimeOffsetMs(value: unknown): number {

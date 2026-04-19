@@ -64,4 +64,13 @@ describe("local media path policy", () => {
 
 		await expect(isAllowedLocalMediaPath(missingPath)).resolves.toBe(false);
 	});
+
+	it("allows approved media paths before the file exists", async () => {
+		const pendingExportPath = path.join(tempRoot, "Downloads", "pending-export.mp4");
+		const { isAllowedLocalMediaPath, rememberApprovedLocalReadPath } = await import("./manager");
+
+		await rememberApprovedLocalReadPath(pendingExportPath);
+
+		await expect(isAllowedLocalMediaPath(pendingExportPath)).resolves.toBe(true);
+	});
 });
