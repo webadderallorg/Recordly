@@ -19,7 +19,6 @@ static std::atomic<bool> g_stopRequested{false};
 static std::atomic<bool> g_pauseRequested{false};
 static std::atomic<bool> g_resumePending{false};
 static std::atomic<int64_t> g_lastFrameTimestampHns{0};
-static std::atomic<int64_t> g_firstFrameTimestampHns{-1};
 static std::atomic<int64_t> g_pauseStartTimestampHns{0};
 static std::atomic<int64_t> g_accumulatedPausedHns{0};
 static std::mutex g_stopMutex;
@@ -258,16 +257,6 @@ int main(int argc, char* argv[]) {
 
         if (g_pauseRequested) return;
 
-        int64_t firstFrameTimestampHns = g_firstFrameTimestampHns.load();
-        if (firstFrameTimestampHns < 0) {
-            int64_t expected = -1;
-            if (g_firstFrameTimestampHns.compare_exchange_strong(expected, timestampHns)) {
-                firstFrameTimestampHns = timestampHns;
-            } else {
-                firstFrameTimestampHns = g_firstFrameTimestampHns.load();
-            }
-        }
-
         int64_t adjustedTimestampHns = timestampHns;
         if (g_resumePending.exchange(false)) {
             const int64_t pauseStart = g_pauseStartTimestampHns.load();
@@ -276,7 +265,6 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        adjustedTimestampHns -= firstFrameTimestampHns;
         adjustedTimestampHns -= g_accumulatedPausedHns.load();
         if (adjustedTimestampHns < 0) {
             adjustedTimestampHns = 0;
