@@ -2,6 +2,7 @@ import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
+import { selectRecordingMimeType } from "./recordingMimeType";
 
 const TARGET_FRAME_RATE = 60;
 const TARGET_WIDTH = 3840;
@@ -32,6 +33,14 @@ const WEBCAM_WIDTH = 1280;
 const WEBCAM_HEIGHT = 720;
 const WEBCAM_FRAME_RATE = 30;
 const WEBCAM_SUFFIX = "-webcam";
+const LINUX_PORTAL_SOURCE: ProcessedDesktopSource = {
+	id: "screen:linux-portal",
+	name: "Linux Portal",
+	display_id: "",
+	thumbnail: null,
+	appIcon: null,
+	sourceType: "screen",
+};
 
 type PauseSegment = {
 	startMs: number;
@@ -262,15 +271,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, []);
 
 	const selectMimeType = useCallback(() => {
-		const preferred = [
-			"video/webm;codecs=av1",
-			"video/webm;codecs=h264",
-			"video/webm;codecs=vp9",
-			"video/webm;codecs=vp8",
-			"video/webm",
-		];
-
-		return preferred.find((type) => MediaRecorder.isTypeSupported(type)) ?? "video/webm";
+		return selectRecordingMimeType();
 	}, []);
 
 	const computeBitrate = (width: number, height: number) => {
@@ -838,10 +839,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			const platform = await window.electronAPI.getPlatform();
 			const existingSource = await window.electronAPI.getSelectedSource();
 			const selectedSource =
-				existingSource ??
-				(platform === "linux"
-					? { id: "screen:linux-portal", name: "Linux Portal" }
-					: null);
+				existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
 			if (!selectedSource) {
 				alert("Please select a source to record");
 				return;
