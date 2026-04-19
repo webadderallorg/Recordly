@@ -100,4 +100,23 @@ describe("useMicrophoneTest helpers", () => {
 		expect(shouldAbort).toBe(false);
 		expect(stop).not.toHaveBeenCalled();
 	});
+
+	it("aborts stale stop events when the recorder identity changes", () => {
+		const stop = vi.fn();
+		const stream = {
+			getTracks: () => [{ stop }],
+		} as unknown as MediaStream;
+		const recorder = {} as MediaRecorder;
+
+		const shouldAbort = shouldAbortMicrophoneTestSession({
+			currentSession: 1,
+			session: 1,
+			currentRecorder: {} as MediaRecorder,
+			recorder,
+			stream,
+		});
+
+		expect(shouldAbort).toBe(true);
+		expect(stop).toHaveBeenCalledTimes(1);
+	});
 });

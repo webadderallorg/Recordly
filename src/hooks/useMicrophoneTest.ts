@@ -328,12 +328,20 @@ export function useMicrophoneTest({ enabled, deviceId }: UseMicrophoneTestOption
 			};
 
 			recorder.onstop = () => {
-				recorderRef.current = null;
-				stopInputStream();
-
-				if (sessionRef.current !== session) {
+				if (
+					shouldAbortMicrophoneTestSession({
+						currentSession: sessionRef.current,
+						session,
+						currentRecorder: recorderRef.current,
+						recorder,
+						stream,
+					})
+				) {
 					return;
 				}
+
+				recorderRef.current = null;
+				stopInputStream();
 
 				const chunks = recordedChunksRef.current;
 				recordedChunksRef.current = [];

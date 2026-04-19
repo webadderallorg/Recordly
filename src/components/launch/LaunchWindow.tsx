@@ -284,7 +284,7 @@ export function LaunchWindow() {
 		stopTest,
 		supported: microphoneTestSupported,
 	} = useMicrophoneTest({
-		enabled: micDropdownOpen && devices.length > 0,
+		enabled: micDropdownOpen && !recording && !countdownActive && devices.length > 0,
 		deviceId: microphoneDeviceId,
 	});
 
@@ -319,13 +319,21 @@ export function LaunchWindow() {
 	})();
 	const microphoneTestBusy =
 		microphoneTestStatus === "recording" || microphoneTestStatus === "playing";
-	const canRunMicrophoneTest = microphoneTestSupported && devices.length > 0;
+	const canRunMicrophoneTest =
+		!recording && !countdownActive && microphoneTestSupported && devices.length > 0;
 
 	useEffect(() => {
 		if (!micDropdownOpen) {
 			setMicrophoneTestExpanded(false);
 		}
 	}, [micDropdownOpen]);
+
+	useEffect(() => {
+		if ((recording || countdownActive) && micDropdownOpen) {
+			setActiveDropdown("none");
+			setMicrophoneTestExpanded(false);
+		}
+	}, [countdownActive, micDropdownOpen, recording]);
 
 	useEffect(() => {
 		if (microphoneTestBusy || microphoneTestStatus === "error") {
