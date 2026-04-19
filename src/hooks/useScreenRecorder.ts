@@ -543,8 +543,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			pendingWebcamPathPromise.current = webcamStopPromise.current;
 
 			const recorder = new MediaRecorder(webcamStream.current, {
-				mimeType,
 				videoBitsPerSecond: WEBCAM_BITRATE,
+				...(mimeType ? { mimeType } : {}),
 			});
 
 			webcamRecorder.current = recorder;
@@ -571,7 +571,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						0,
 						getRecordingDurationMs(Date.now()) - webcamTimeOffsetMs.current,
 					);
-					const webcamBlob = new Blob(webcamChunks.current, { type: mimeType });
+					const webcamBlobType = recorder.mimeType || mimeType;
+					const webcamBlob = new Blob(
+						webcamChunks.current,
+						webcamBlobType ? { type: webcamBlobType } : undefined,
+					);
 					webcamChunks.current = [];
 					const fixedBlob = await fixWebmDuration(webcamBlob, duration);
 					const arrayBuffer = await fixedBlob.arrayBuffer();
@@ -1206,7 +1210,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			const mimeType = selectMimeType();
 
 			console.log(
-				`Recording at ${width}x${height} @ ${frameRate ?? TARGET_FRAME_RATE}fps using ${mimeType} / ${Math.round(
+				`Recording at ${width}x${height} @ ${frameRate ?? TARGET_FRAME_RATE}fps using ${mimeType ?? "browser default"} / ${Math.round(
 					videoBitsPerSecond / BITS_PER_MEGABIT,
 				)} Mbps`,
 			);
@@ -1214,8 +1218,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			chunks.current = [];
 			const hasAudio = stream.current.getAudioTracks().length > 0;
 			const recorder = new MediaRecorder(stream.current, {
-				mimeType,
 				videoBitsPerSecond,
+				...(mimeType ? { mimeType } : {}),
 				...(hasAudio
 					? {
 							audioBitsPerSecond: systemAudioIncluded
@@ -1237,7 +1241,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 				const duration = getRecordingDurationMs(Date.now());
 				const recordedChunks = chunks.current;
-				const buggyBlob = new Blob(recordedChunks, { type: mimeType });
+				const recordingBlobType = recorder.mimeType || mimeType;
+				const buggyBlob = new Blob(
+					recordedChunks,
+					recordingBlobType ? { type: recordingBlobType } : undefined,
+				);
 				chunks.current = [];
 				const timestamp = recordingSessionTimestamp.current ?? Date.now();
 				const videoFileName = `${RECORDING_FILE_PREFIX}${timestamp}${VIDEO_FILE_EXTENSION}`;

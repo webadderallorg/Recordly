@@ -1,5 +1,3 @@
-const FALLBACK_RECORDING_MIME_TYPE = "video/webm";
-
 const RECORDING_MIME_TYPE_PREFERENCES = [
 	"video/webm;codecs=vp9",
 	"video/webm",
@@ -15,7 +13,7 @@ type MimeTypeSelectorOptions = {
 
 export function selectRecordingMimeType(
 	options: MimeTypeSelectorOptions = {},
-): string {
+): string | undefined {
 	const isTypeSupported =
 		options.isTypeSupported ?? ((type: string) => MediaRecorder.isTypeSupported(type));
 	const canPlayType =
@@ -27,5 +25,5 @@ export function selectRecordingMimeType(
 	);
 	const playableType = supportedTypes.find((type) => canPlayType(type) !== "");
 
-	return playableType ?? supportedTypes[0] ?? FALLBACK_RECORDING_MIME_TYPE;
+	return playableType ?? supportedTypes[0];
 }
