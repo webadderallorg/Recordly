@@ -32,6 +32,14 @@ const WEBCAM_WIDTH = 1280;
 const WEBCAM_HEIGHT = 720;
 const WEBCAM_FRAME_RATE = 30;
 const WEBCAM_SUFFIX = "-webcam";
+const LINUX_PORTAL_SOURCE: ProcessedDesktopSource = {
+	id: "screen:linux-portal",
+	name: "Linux Portal",
+	display_id: "",
+	thumbnail: null,
+	appIcon: null,
+	sourceType: "screen",
+};
 
 type PauseSegment = {
 	startMs: number;
@@ -434,7 +442,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, []);
 
 	const storeMicrophoneSidecar = useCallback(
-		async (micFallbackBlobPromise: Promise<Blob | null> | null | undefined, finalPath: string) => {
+		async (
+			micFallbackBlobPromise: Promise<Blob | null> | null | undefined,
+			finalPath: string,
+		) => {
 			const micFallbackBlob = await micFallbackBlobPromise;
 			if (!micFallbackBlob) {
 				return;
@@ -644,9 +655,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					);
 					void logNativeCaptureDiagnostics("stop-native-screen-recording");
 					try {
-						const recoveredPath = await recoverNativeRecordingSession(
-							micFallbackBlobPromise,
-						);
+						const recoveredPath =
+							await recoverNativeRecordingSession(micFallbackBlobPromise);
 						if (recoveredPath) {
 							return;
 						}
@@ -838,10 +848,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			const platform = await window.electronAPI.getPlatform();
 			const existingSource = await window.electronAPI.getSelectedSource();
 			const selectedSource =
-				existingSource ??
-				(platform === "linux"
-					? { id: "screen:linux-portal", name: "Linux Portal" }
-					: null);
+				existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
 			if (!selectedSource) {
 				alert("Please select a source to record");
 				return;

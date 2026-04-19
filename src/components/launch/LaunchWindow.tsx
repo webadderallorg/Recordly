@@ -1,27 +1,27 @@
 import {
 	AppWindow,
 	ArrowCircleUp as ArrowUpCircle,
-	ArrowClockwise as RefreshCw,
-	CaretUp as ChevronUp,
 	CheckCircle as CheckCircle2,
-	DotsThreeVertical as MoreVertical,
+	CaretUp as ChevronUp,
 	Eye,
 	EyeSlash as EyeOff,
 	FolderOpen,
+	Translate as Languages,
 	Microphone as Mic,
 	MicrophoneSlash as MicOff,
 	Minus,
 	Monitor,
+	DotsThreeVertical as MoreVertical,
 	Pause,
 	Play,
-	SpeakerHigh as Volume2,
-	SpeakerX as VolumeX,
+	ArrowClockwise as RefreshCw,
 	Stop as Square,
 	Timer,
-	Translate as Languages,
 	VideoCamera as Video,
 	VideoCamera as VideoIcon,
 	VideoCameraSlash as VideoOff,
+	SpeakerHigh as Volume2,
+	SpeakerX as VolumeX,
 	X,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
@@ -34,6 +34,7 @@ import { SUPPORTED_LOCALES } from "@/i18n/config";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useAudioLevelMeter } from "../../hooks/useAudioLevelMeter";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
+import { useMicrophoneTest } from "../../hooks/useMicrophoneTest";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { useVideoDevices } from "../../hooks/useVideoDevices";
 import { AudioLevelMeter } from "../ui/audio-level-meter";
@@ -133,7 +134,7 @@ function MicDeviceRow({
 	onSelect: () => void;
 }) {
 	const { level } = useAudioLevelMeter({
-		enabled: true,
+		enabled: selected,
 		deviceId: device.deviceId,
 	});
 
@@ -193,6 +194,7 @@ export function LaunchWindow() {
 	const [sourcesLoading, setSourcesLoading] = useState(false);
 	const [hideHudFromCapture, setHideHudFromCapture] = useState(true);
 	const [showFloatingWebcamPreview, setShowFloatingWebcamPreview] = useState(true);
+	const [microphoneTestExpanded, setMicrophoneTestExpanded] = useState(false);
 	const [webcamPreviewOffset, setWebcamPreviewOffset] = useState(DEFAULT_WEBCAM_PREVIEW_OFFSET);
 	const [recordingHudOffset, setRecordingHudOffset] = useState(DEFAULT_RECORDING_HUD_OFFSET);
 	const [platform, setPlatform] = useState<string | null>(null);
@@ -272,8 +274,64 @@ export function LaunchWindow() {
 		selectedDeviceId: selectedVideoDeviceId,
 		setSelectedDeviceId: setSelectedVideoDeviceId,
 	} = useVideoDevices(webcamEnabled || webcamDropdownOpen);
+	const {
+		error: microphoneTestError,
+		hasPlayback: microphoneTestHasPlayback,
+		level: microphoneTestLevel,
+		playLastTest,
+		startTest,
+		status: microphoneTestStatus,
+		stopTest,
+		supported: microphoneTestSupported,
+	} = useMicrophoneTest({
+		enabled: micDropdownOpen && devices.length > 0,
+		deviceId: microphoneDeviceId,
+	});
 
 	const supportsHudCaptureProtection = platform !== "linux";
+	const microphoneTestStatusText = (() => {
+		if (!microphoneTestSupported) {
+			return t("recording.microphoneTestUnsupported");
+		}
+
+		switch (microphoneTestStatus) {
+			case "recording":
+				return t("recording.microphoneTestRecording");
+			case "playing":
+				return t("recording.microphoneTestPlaying");
+			case "error":
+				switch (microphoneTestError) {
+					case "permission-denied":
+						return t("recording.microphoneTestPermissionDenied");
+					case "playback-failed":
+						return t("recording.microphoneTestPlaybackFailed");
+					case "capture-failed":
+						return t("recording.microphoneTestCaptureFailed");
+					default:
+						return t("recording.microphoneTestUnsupported");
+				}
+			case "idle":
+			default:
+				return microphoneTestHasPlayback
+					? t("recording.microphoneTestReady")
+					: t("recording.microphoneTestIdle");
+		}
+	})();
+	const microphoneTestBusy =
+		microphoneTestStatus === "recording" || microphoneTestStatus === "playing";
+	const canRunMicrophoneTest = microphoneTestSupported && devices.length > 0;
+
+	useEffect(() => {
+		if (!micDropdownOpen) {
+			setMicrophoneTestExpanded(false);
+		}
+	}, [micDropdownOpen]);
+
+	useEffect(() => {
+		if (microphoneTestBusy || microphoneTestStatus === "error") {
+			setMicrophoneTestExpanded(true);
+		}
+	}, [microphoneTestBusy, microphoneTestStatus]);
 
 	useEffect(() => {
 		if (!selectedDeviceId) {
@@ -1338,6 +1396,102 @@ export function LaunchWindow() {
 											{t("recording.selectMicToEnable")}
 										</div>
 									)}
+									{devices.length > 0 &&
+										(microphoneTestExpanded ? (
+											<div className={styles.micTestCard}>
+												<div className={styles.micTestHeader}>
+													<div className={styles.micTestTitle}>
+														{t("recording.microphoneTest")}
+													</div>
+													<div className={styles.micTestHeaderActions}>
+														<AudioLevelMeter
+															level={
+																microphoneTestStatus === "recording"
+																	? microphoneTestLevel
+																	: 0
+															}
+															className="w-16 shrink-0"
+														/>
+														<button
+															type="button"
+															className={styles.micTestCollapseButton}
+															onClick={() => {
+																if (microphoneTestBusy) {
+																	stopTest();
+																}
+																setMicrophoneTestExpanded(false);
+															}}
+														>
+															{t("recording.hideMicrophoneTest")}
+														</button>
+													</div>
+												</div>
+												<div
+													className={styles.micTestStatus}
+													role="status"
+													aria-live="polite"
+												>
+													{microphoneTestStatusText}
+												</div>
+												<div className={styles.micTestActions}>
+													<button
+														type="button"
+														className={styles.micTestButton}
+														onClick={() => {
+															if (microphoneTestBusy) {
+																stopTest();
+																return;
+															}
+
+															void startTest();
+														}}
+														disabled={!canRunMicrophoneTest}
+													>
+														{microphoneTestBusy
+															? t("recording.stopMicrophoneTest")
+															: t("recording.startMicrophoneTest")}
+													</button>
+													{microphoneTestHasPlayback &&
+														microphoneTestStatus !== "playing" && (
+															<button
+																type="button"
+																className={`${styles.micTestButton} ${styles.micTestButtonSecondary}`}
+																onClick={() => {
+																	void playLastTest();
+																}}
+															>
+																{t(
+																	"recording.playLastMicrophoneTest",
+																)}
+															</button>
+														)}
+												</div>
+											</div>
+										) : (
+											<div className={styles.micTestPreviewRow}>
+												<div className={styles.micTestPreviewCopy}>
+													<div className={styles.micTestPreviewTitle}>
+														{t("recording.microphoneTest")}
+													</div>
+													<div className={styles.micTestPreviewSubtitle}>
+														{microphoneTestHasPlayback
+															? t("recording.microphoneTestReady")
+															: t("recording.microphoneTestIdle")}
+													</div>
+												</div>
+												<button
+													type="button"
+													className={`${styles.micTestButton} ${styles.micTestPreviewButton}`}
+													onClick={() => {
+														setMicrophoneTestExpanded(true);
+														void startTest();
+													}}
+													disabled={!canRunMicrophoneTest}
+												>
+													{t("recording.startMicrophoneTest")}
+												</button>
+											</div>
+										))}
 									{devices.map((device) => (
 										<MicDeviceRow
 											key={device.deviceId}

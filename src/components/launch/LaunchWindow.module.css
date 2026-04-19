@@ -277,6 +277,133 @@
 	color: #6360f5;
 }
 
+.micTestCard {
+	margin: 6px 2px 10px;
+	padding: 10px;
+	border-radius: 12px;
+	border: 1px solid rgba(255, 255, 255, 0.07);
+	background: rgba(255, 255, 255, 0.03);
+}
+
+.micTestPreviewRow {
+	margin: 6px 2px 10px;
+	padding: 10px;
+	border-radius: 12px;
+	border: 1px solid rgba(255, 255, 255, 0.07);
+	background: rgba(255, 255, 255, 0.02);
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.micTestPreviewCopy {
+	min-width: 0;
+	flex: 1;
+}
+
+.micTestPreviewTitle {
+	font-size: 12px;
+	font-weight: 600;
+	color: #eeeef2;
+}
+
+.micTestPreviewSubtitle {
+	margin-top: 4px;
+	font-size: 11px;
+	line-height: 1.4;
+	color: #9ea2b4;
+}
+
+.micTestPreviewButton {
+	flex: 0 0 auto;
+	min-width: 110px;
+}
+
+.micTestHeader {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.micTestHeaderActions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.micTestTitle {
+	font-size: 12px;
+	font-weight: 600;
+	color: #eeeef2;
+}
+
+.micTestCollapseButton {
+	height: 28px;
+	padding: 0 10px;
+	border-radius: 8px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	background: rgba(255, 255, 255, 0.04);
+	color: #c8cad6;
+	font-size: 11px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.12s ease;
+}
+
+.micTestCollapseButton:hover {
+	background: rgba(255, 255, 255, 0.08);
+	color: #f3f4fb;
+}
+
+.micTestStatus {
+	margin-top: 8px;
+	font-size: 11px;
+	line-height: 1.45;
+	color: #9ea2b4;
+}
+
+.micTestActions {
+	display: flex;
+	gap: 8px;
+	margin-top: 10px;
+}
+
+.micTestButton {
+	flex: 1;
+	height: 32px;
+	padding: 0 10px;
+	border-radius: 9px;
+	border: 1px solid rgba(99, 96, 245, 0.22);
+	background: rgba(99, 96, 245, 0.16);
+	color: #f3f2ff;
+	font-size: 12px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.12s ease;
+}
+
+.micTestButton:hover:not(:disabled) {
+	background: rgba(99, 96, 245, 0.24);
+	border-color: rgba(123, 120, 255, 0.38);
+}
+
+.micTestButton:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.micTestButtonSecondary {
+	border-color: rgba(255, 255, 255, 0.08);
+	background: rgba(255, 255, 255, 0.05);
+	color: #d8d9e3;
+}
+
+.micTestButtonSecondary:hover:not(:disabled) {
+	background: rgba(255, 255, 255, 0.09);
+	border-color: rgba(255, 255, 255, 0.16);
+}
+
 .recBtn {
 	position: relative;
 	width: 46px;
