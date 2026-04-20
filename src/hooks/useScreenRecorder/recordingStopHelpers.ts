@@ -32,8 +32,18 @@ export async function stopNativeRecordingSession(options: StopRecordingOptions) 
 	const pauseSegments = options.refs.pauseSegmentsRef.current.slice();
 	options.refs.nativeWindowsRecording.current = false;
 
-	const result = await window.electronAPI.stopNativeScreenRecording();
-	await window.electronAPI?.setRecordingState(false);
+	let result: Awaited<ReturnType<typeof window.electronAPI.stopNativeScreenRecording>>;
+	try {
+		result = await window.electronAPI.stopNativeScreenRecording();
+	} catch (error) {
+		console.error("stopNativeScreenRecording threw:", error);
+		result = { success: false, error: String(error) };
+	}
+	try {
+		await window.electronAPI?.setRecordingState(false);
+	} catch (error) {
+		console.warn("setRecordingState(false) failed:", error);
+	}
 
 	if (!result.success || !result.path) {
 		console.error("Failed to stop native screen recording:", result.error ?? result.message);
@@ -59,8 +69,14 @@ export async function stopNativeRecordingSession(options: StopRecordingOptions) 
 
 	let finalPath = result.path;
 	if (isNativeWindows) {
-		const muxResult = await window.electronAPI.muxNativeWindowsRecording(pauseSegments);
-		if (!muxResult?.success) {
+		let muxResult: Awaited<ReturnType<typeof window.electronAPI.muxNativeWindowsRecording>> | undefined;
+		try {
+			muxResult = await window.electronAPI.muxNativeWindowsRecording(pauseSegments);
+		} catch (error) {
+			console.error("muxNativeWindowsRecording threw:", error);
+			await options.logNativeCaptureDiagnostics("mux-native-windows-recording");
+		}
+		if (muxResult && !muxResult.success) {
 			await options.logNativeCaptureDiagnostics("mux-native-windows-recording");
 		}
 		finalPath = muxResult?.path ?? result.path;
