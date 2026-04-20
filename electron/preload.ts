@@ -134,6 +134,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		options?: {
 			audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 			audioSourcePath?: string | null;
+			audioCodec?: string | null;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
 			editedAudioData?: ArrayBuffer;
 			editedAudioMimeType?: string | null;
@@ -171,6 +172,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		options?: {
 			audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 			audioSourcePath?: string | null;
+			audioCodec?: string | null;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
 			editedAudioData?: ArrayBuffer;
 			editedAudioMimeType?: string | null;

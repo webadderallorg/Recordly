@@ -2,13 +2,24 @@ import type { ChildProcessByStdio } from "node:child_process";
 import { execFile, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 import type { Readable, Writable } from "node:stream";
-import { app } from "electron";
+import { promisify } from "node:util";
 import type { WebContents } from "electron";
+import { app } from "electron";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
-import { buildTrimmedSourceAudioFilter, getEditedAudioExtension, getNativeVideoInputByteSize, getPreferredNativeVideoEncoders, buildNativeVideoExportArgs, parseAvailableFfmpegEncoders } from "../nativeVideoExport";
-import type { NativeExportEncodingMode, NativeVideoExportFinishOptions } from "../nativeVideoExport";
+import type {
+	NativeExportEncodingMode,
+	NativeVideoExportFinishOptions,
+} from "../nativeVideoExport";
+import {
+	buildNativeVideoExportArgs,
+	buildTrimmedSourceAudioFilter,
+	getEditedAudioExtension,
+	getNativeVideoInputByteSize,
+	getPreferredNativeVideoEncoders,
+	parseAvailableFfmpegEncoders,
+	shouldCopyNativeVideoExportAudio,
+} from "../nativeVideoExport";
 import { cachedNativeVideoEncoder, setCachedNativeVideoEncoder } from "../state";
 
 const execFileAsync = promisify(execFile);
@@ -72,7 +83,10 @@ export async function removeTemporaryExportFile(filePath: string | null | undefi
 	}
 }
 
-export function getNativeVideoExportSessionError(session: NativeVideoExportSession, fallback: string) {
+export function getNativeVideoExportSessionError(
+	session: NativeVideoExportSession,
+	fallback: string,
+) {
 	return (
 		session.stdinError?.message ||
 		session.processError?.message ||
@@ -199,7 +213,10 @@ export async function writeNativeVideoExportFrame(
 	session: NativeVideoExportSession,
 	frameData: Uint8Array | ArrayBuffer,
 ) {
-	if (session.inputMode !== "h264-stream" && getNativeVideoExportFrameLength(frameData) !== session.inputByteSize) {
+	if (
+		session.inputMode !== "h264-stream" &&
+		getNativeVideoExportFrameLength(frameData) !== session.inputByteSize
+	) {
 		throw new Error(
 			`Native video export expected ${session.inputByteSize} bytes per frame but received ${getNativeVideoExportFrameLength(frameData)}`,
 		);
@@ -398,6 +415,7 @@ export async function muxNativeVideoExportAudio(
 		"-i",
 		audioInputPath,
 	];
+	const shouldCopyAudio = shouldCopyNativeVideoExportAudio(options);
 
 	if (audioMode === "trim-source") {
 		const filter = buildTrimmedSourceAudioFilter(options.trimSegments ?? []);
@@ -410,18 +428,13 @@ export async function muxNativeVideoExportAudio(
 		args.push("-map", "0:v:0", "-map", "1:a:0");
 	}
 
-	args.push(
-		"-c:v",
-		"copy",
-		"-c:a",
-		"aac",
-		"-b:a",
-		"192k",
-		"-shortest",
-		"-movflags",
-		"+faststart",
-		outputPath,
-	);
+	args.push("-c:v", "copy", "-c:a", shouldCopyAudio ? "copy" : "aac");
+
+	if (!shouldCopyAudio) {
+		args.push("-b:a", "192k");
+	}
+
+	args.push("-shortest", "-movflags", "+faststart", outputPath);
 
 	try {
 		await execFileAsync(ffmpegPath, args, {

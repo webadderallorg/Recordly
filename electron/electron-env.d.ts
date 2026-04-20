@@ -1,6 +1,5 @@
 /// <reference types="vite-plugin-electron/electron-env" />
 
-// biome-ignore lint/style/noNamespace: NodeJS.ProcessEnv augmentation requires a namespace declaration.
 declare namespace NodeJS {
 	interface ProcessEnv {
 		/**
@@ -185,6 +184,7 @@ interface Window {
 			options?: {
 				audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 				audioSourcePath?: string | null;
+				audioCodec?: string | null;
 				trimSegments?: Array<{ startMs: number; endMs: number }>;
 				editedAudioData?: ArrayBuffer;
 				editedAudioMimeType?: string | null;
@@ -203,6 +203,7 @@ interface Window {
 			options?: {
 				audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 				audioSourcePath?: string | null;
+				audioCodec?: string | null;
 				trimSegments?: Array<{ startMs: number; endMs: number }>;
 				editedAudioData?: ArrayBuffer;
 				editedAudioMimeType?: string | null;
@@ -330,9 +331,9 @@ interface Window {
 		getCurrentVideoPath: () => Promise<{ success: boolean; path?: string }>;
 		clearCurrentVideoPath: () => Promise<{ success: boolean }>;
 		deleteRecordingFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
-		getLocalMediaUrl: (filePath: string) => Promise<
-			{ success: true; url: string } | { success: false }
-		>;
+		getLocalMediaUrl: (
+			filePath: string,
+		) => Promise<{ success: true; url: string } | { success: false }>;
 		saveProjectFile: (
 			projectData: unknown,
 			suggestedName?: string,

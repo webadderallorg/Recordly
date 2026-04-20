@@ -100,6 +100,7 @@ type NativeAudioPlan =
 	| {
 			audioMode: "copy-source" | "trim-source";
 			audioSourcePath: string;
+			audioCodec?: string | null;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
 	  }
 	| {
@@ -737,6 +738,8 @@ export class ModernVideoExporter {
 			(videoInfo.hasAudio ? localVideoSourcePath : null) ??
 			sourceAudioFallbackPaths[0] ??
 			null;
+		const primaryAudioCodec =
+			primaryAudioSourcePath === localVideoSourcePath ? (videoInfo.audioCodec ?? null) : null;
 
 		if (
 			!videoInfo.hasAudio &&
@@ -771,6 +774,7 @@ export class ModernVideoExporter {
 			return {
 				audioMode: "trim-source",
 				audioSourcePath: primaryAudioSourcePath,
+				audioCodec: primaryAudioCodec,
 				trimSegments,
 			};
 		}
@@ -778,6 +782,7 @@ export class ModernVideoExporter {
 		return {
 			audioMode: "copy-source",
 			audioSourcePath: primaryAudioSourcePath,
+			audioCodec: primaryAudioCodec,
 		};
 	}
 
@@ -1000,6 +1005,10 @@ export class ModernVideoExporter {
 					audioPlan.audioMode === "copy-source" || audioPlan.audioMode === "trim-source"
 						? audioPlan.audioSourcePath
 						: null,
+				audioCodec:
+					audioPlan.audioMode === "copy-source" || audioPlan.audioMode === "trim-source"
+						? (audioPlan.audioCodec ?? null)
+						: null,
 				trimSegments:
 					audioPlan.audioMode === "trim-source" ? audioPlan.trimSegments : undefined,
 				editedAudioData: editedAudioBuffer,
@@ -1075,6 +1084,10 @@ export class ModernVideoExporter {
 				audioSourcePath:
 					audioPlan.audioMode === "copy-source" || audioPlan.audioMode === "trim-source"
 						? audioPlan.audioSourcePath
+						: null,
+				audioCodec:
+					audioPlan.audioMode === "copy-source" || audioPlan.audioMode === "trim-source"
+						? (audioPlan.audioCodec ?? null)
 						: null,
 				trimSegments:
 					audioPlan.audioMode === "trim-source" ? audioPlan.trimSegments : undefined,
