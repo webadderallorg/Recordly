@@ -1564,23 +1564,48 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				// "live" until the user has actually clicked Share in the native dialog.
 				if (preAcquiredLinuxStream) {
 					const videoTrack = preAcquiredLinuxStream.getVideoTracks()[0];
-					if (videoTrack && videoTrack.readyState !== "live") {
+					if (videoTrack) {
+						let checkInterval: number;
 						await new Promise<void>((resolve, reject) => {
 							const onUnmute = () => {
-								videoTrack.removeEventListener("unmute", onUnmute);
-								videoTrack.removeEventListener("ended", onEnded);
+								cleanup();
 								resolve();
 							};
 							const onEnded = () => {
-								videoTrack.removeEventListener("unmute", onUnmute);
-								videoTrack.removeEventListener("ended", onEnded);
+								cleanup();
 								reject(new Error("Stream ended before becoming live"));
 							};
+							
+							const cleanup = () => {
+								videoTrack.removeEventListener("unmute", onUnmute);
+								videoTrack.removeEventListener("ended", onEnded);
+								if (checkInterval) window.clearInterval(checkInterval);
+							};
+
+							if (videoTrack.readyState === "live" && !videoTrack.muted) {
+								resolve();
+								return;
+							}
+
 							videoTrack.addEventListener("unmute", onUnmute);
 							videoTrack.addEventListener("ended", onEnded);
 							
+							// Fallback polling for track status in case events fail
+							checkInterval = window.setInterval(() => {
+								if (videoTrack.readyState === "live" && !videoTrack.muted) {
+									cleanup();
+									resolve();
+								} else if (videoTrack.readyState === "ended") {
+									cleanup();
+									reject(new Error("Stream ended before becoming live"));
+								}
+							}, 250);
+
 							// Add a timeout as a fallback in case events don't fire
-							setTimeout(() => reject(new Error("Timeout waiting for track to become live")), 30000);
+							setTimeout(() => {
+								cleanup();
+								reject(new Error("Timeout waiting for track to become live"));
+							}, 30000);
 						});
 					}
 				}
