@@ -88,8 +88,8 @@ export async function stopBrowserRecordingSession(options: StopRecordingOptions)
 	}
 
 	options.refs.pendingWebcamPathPromise.current = stopWebcamRecorder(options.refs);
-	await options.cleanupCapturedMedia();
 	recorder.stop();
+	await options.cleanupCapturedMedia();
 	options.setRecording(false);
 	window.electronAPI?.setRecordingState(false);
 	return true;

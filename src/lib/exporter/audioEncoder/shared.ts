@@ -123,10 +123,12 @@ export function buildTimelineSlices(
 			(s) => midpoint >= s.startMs && midpoint < s.endMs,
 		);
 
+		const rawSpeed = speedRegion?.speed ?? 1;
+		const speed = Number.isFinite(rawSpeed) && rawSpeed > 0 ? rawSpeed : 1;
 		slices.push({
 			sourceStartMs: start,
 			sourceEndMs: end,
-			speed: speedRegion?.speed ?? 1,
+			speed,
 		});
 	}
 
