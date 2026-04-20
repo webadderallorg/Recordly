@@ -1,6 +1,11 @@
 import { WebDemuxer } from "web-demuxer";
 import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
-import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
+import {
+	buildDecodeSegments,
+	destroyStreamingDecoderResources,
+	getEffectiveDecodedDuration,
+	loadStreamingVideoMetadata,
+} from "./streamingDecoderHelpers";
 
 const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
@@ -79,148 +84,18 @@ export class StreamingVideoDecoder {
 		);
 	}
 
-	private toLocalFilePath(resourceUrl: string): string | null {
-		if (!resourceUrl.startsWith("file:")) {
-			return null;
-		}
-
-		try {
-			const url = new URL(resourceUrl);
-			let filePath = decodeURIComponent(url.pathname);
-			if (/^\/[A-Za-z]:/.test(filePath)) {
-				filePath = filePath.slice(1);
-			}
-			return filePath;
-		} catch {
-			return resourceUrl.replace(/^file:\/\//, "");
-		}
-	}
-
-	private inferMimeType(fileName: string): string {
-		const extension = fileName.split(".").pop()?.toLowerCase();
-		switch (extension) {
-			case "mov":
-				return "video/quicktime";
-			case "webm":
-				return "video/webm";
-			case "mkv":
-				return "video/x-matroska";
-			case "avi":
-				return "video/x-msvideo";
-			case "mp4":
-			default:
-				return "video/mp4";
-		}
-	}
-
-	private async loadVideoFile(resourceUrl: string): Promise<File> {
-		const filename = resourceUrl.split("/").pop() || "video";
-		const localFilePath = this.toLocalFilePath(resourceUrl);
-
-		if (localFilePath) {
-			const result = await window.electronAPI.readLocalFile(localFilePath);
-			if (!result.success || !result.data) {
-				throw new Error(result.error || "Failed to read local video file");
-			}
-
-			const bytes =
-				result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
-			const arrayBuffer = bytes.buffer.slice(
-				bytes.byteOffset,
-				bytes.byteOffset + bytes.byteLength,
-			) as ArrayBuffer;
-			return new File([arrayBuffer], filename, { type: this.inferMimeType(filename) });
-		}
-
-		const response = await fetch(resourceUrl);
-		if (!response.ok) {
-			throw new Error(
-				`Failed to load video resource: ${response.status} ${response.statusText}`,
-			);
-		}
-
-		const blob = await response.blob();
-		return new File([blob], filename, { type: blob.type || this.inferMimeType(filename) });
-	}
-
-	private resolveVideoResourceUrl(videoUrl: string): string {
-		if (/^(blob:|data:|https?:|file:)/i.test(videoUrl)) {
-			return videoUrl;
-		}
-
-		if (videoUrl.startsWith("/")) {
-			return `file://${encodeURI(videoUrl)}`;
-		}
-
-		return videoUrl;
-	}
-
 	async loadMetadata(videoUrl: string): Promise<DecodedVideoInfo> {
-		if (this.decoder) {
-			try {
-				if (this.decoder.state === "configured") {
-					this.decoder.close();
-				}
-			} catch {
-				// Ignore cleanup errors while reloading metadata.
-			}
-			this.decoder = null;
-		}
+		destroyStreamingDecoderResources({
+			decoder: this.decoder,
+			demuxer: this.demuxer,
+			pendingFrames: this.pendingFrames,
+		});
+		this.decoder = null;
+		this.demuxer = null;
 
-		if (this.demuxer) {
-			try {
-				this.demuxer.destroy();
-			} catch {
-				// Ignore cleanup errors while reloading metadata.
-			}
-			this.demuxer = null;
-		}
-
-		const resourceUrl = this.resolveVideoResourceUrl(videoUrl);
-
-		// Relative URL so it resolves correctly in both dev (http) and packaged (file://) builds
-		const wasmUrl = new URL("./wasm/web-demuxer.wasm", window.location.href).href;
-		this.demuxer = new WebDemuxer({ wasmFilePath: wasmUrl });
-		const file = await this.loadVideoFile(resourceUrl);
-		await this.demuxer.load(file);
-
-		const mediaInfo = await this.demuxer.getMediaInfo();
-		const videoStream = mediaInfo.streams.find((s) => s.codec_type_string === "video");
-		const audioStream = mediaInfo.streams.find((s) => s.codec_type_string === "audio");
-		const mediaStartTime =
-			typeof mediaInfo.start_time === "number" && Number.isFinite(mediaInfo.start_time)
-				? mediaInfo.start_time
-				: 0;
-		const streamStartTime =
-			typeof videoStream?.start_time === "number" && Number.isFinite(videoStream.start_time)
-				? videoStream.start_time
-				: mediaStartTime;
-
-		let frameRate = 60;
-		if (videoStream?.avg_frame_rate) {
-			const parts = videoStream.avg_frame_rate.split("/");
-			if (parts.length === 2) {
-				const num = parseInt(parts[0], 10);
-				const den = parseInt(parts[1], 10);
-				if (den > 0 && num > 0) frameRate = num / den;
-			}
-		}
-
-		this.metadata = {
-			width: videoStream?.width || 1920,
-			height: videoStream?.height || 1080,
-			duration: mediaInfo.duration,
-			mediaStartTime,
-			streamStartTime,
-			streamDuration:
-				typeof videoStream?.duration === "number" && Number.isFinite(videoStream.duration)
-					? videoStream.duration
-					: undefined,
-			frameRate,
-			codec: videoStream?.codec_string || "unknown",
-			hasAudio: !!audioStream,
-			audioCodec: audioStream?.codec_string,
-		};
+		const loaded = await loadStreamingVideoMetadata(videoUrl);
+		this.demuxer = loaded.demuxer;
+		this.metadata = loaded.metadata;
 
 		return this.metadata;
 	}
@@ -238,14 +113,7 @@ export class StreamingVideoDecoder {
 		const decoderConfig = await this.demuxer.getDecoderConfig("video");
 		const codec = this.metadata.codec.toLowerCase();
 		const shouldPreferSoftwareDecode = codec.includes("av01") || codec.includes("av1");
-		const effectiveVideoDuration = getEffectiveVideoStreamDurationSeconds({
-			duration: this.metadata.duration,
-			streamDuration: this.metadata.streamDuration,
-		});
-		const segments = this.splitBySpeed(
-			this.computeSegments(effectiveVideoDuration, trimRegions),
-			speedRegions,
-		);
+		const segments = buildDecodeSegments(this.metadata, trimRegions, speedRegions);
 		const segmentOutputFrameCounts = segments.map((segment) =>
 			Math.ceil(((segment.endSec - segment.startSec) / segment.speed) * targetFrameRate),
 		);
@@ -578,85 +446,9 @@ export class StreamingVideoDecoder {
 		}
 	}
 
-	private computeSegments(
-		totalDuration: number,
-		trimRegions?: TrimRegion[],
-	): Array<{ startSec: number; endSec: number }> {
-		if (!trimRegions || trimRegions.length === 0) {
-			return [{ startSec: 0, endSec: totalDuration }];
-		}
-
-		const sorted = [...trimRegions].sort((a, b) => a.startMs - b.startMs);
-		const segments: Array<{ startSec: number; endSec: number }> = [];
-		let cursor = 0;
-
-		for (const trim of sorted) {
-			const trimStart = trim.startMs / 1000;
-			const trimEnd = trim.endMs / 1000;
-			if (cursor < trimStart) {
-				segments.push({ startSec: cursor, endSec: trimStart });
-			}
-			cursor = Math.max(cursor, trimEnd);
-		}
-
-		if (cursor < totalDuration) {
-			segments.push({ startSec: cursor, endSec: totalDuration });
-		}
-
-		return segments;
-	}
-
 	getEffectiveDuration(trimRegions?: TrimRegion[], speedRegions?: SpeedRegion[]): number {
 		if (!this.metadata) throw new Error("Must call loadMetadata() first");
-		const trimSegments = this.computeSegments(
-			getEffectiveVideoStreamDurationSeconds({
-				duration: this.metadata.duration,
-				streamDuration: this.metadata.streamDuration,
-			}),
-			trimRegions,
-		);
-		const speedSegments = this.splitBySpeed(trimSegments, speedRegions);
-		return speedSegments.reduce((sum, seg) => sum + (seg.endSec - seg.startSec) / seg.speed, 0);
-	}
-
-	private splitBySpeed(
-		segments: Array<{ startSec: number; endSec: number }>,
-		speedRegions?: SpeedRegion[],
-	): Array<{ startSec: number; endSec: number; speed: number }> {
-		if (!speedRegions || speedRegions.length === 0)
-			return segments.map((s) => ({ ...s, speed: 1 }));
-
-		const result: Array<{ startSec: number; endSec: number; speed: number }> = [];
-		for (const segment of segments) {
-			const overlapping = speedRegions
-				.filter(
-					(sr) =>
-						sr.startMs / 1000 < segment.endSec && sr.endMs / 1000 > segment.startSec,
-				)
-				.sort((a, b) => a.startMs - b.startMs);
-
-			if (overlapping.length === 0) {
-				result.push({ ...segment, speed: 1 });
-				continue;
-			}
-
-			let cursor = segment.startSec;
-			for (const sr of overlapping) {
-				const srStart = Math.max(sr.startMs / 1000, segment.startSec);
-				const srEnd = Math.min(sr.endMs / 1000, segment.endSec);
-				if (cursor < srStart) {
-					result.push({ startSec: cursor, endSec: srStart, speed: 1 });
-				}
-				const effectiveStart = Math.max(cursor, srStart);
-				if (srEnd > effectiveStart) {
-					result.push({ startSec: effectiveStart, endSec: srEnd, speed: sr.speed });
-				}
-				cursor = Math.max(cursor, srEnd);
-			}
-			if (cursor < segment.endSec)
-				result.push({ startSec: cursor, endSec: segment.endSec, speed: 1 });
-		}
-		return result.filter((s) => s.endSec - s.startSec > 0.0001);
+		return getEffectiveDecodedDuration(this.metadata, trimRegions, speedRegions);
 	}
 
 	cancel(): void {
@@ -669,32 +461,12 @@ export class StreamingVideoDecoder {
 
 	destroy(): void {
 		this.cancelled = true;
-
-		if (this.decoder) {
-			try {
-				if (this.decoder.state === "configured") this.decoder.close();
-			} catch {
-				/* ignore */
-			}
-			this.decoder = null;
-		}
-
-		if (this.demuxer) {
-			try {
-				this.demuxer.destroy();
-			} catch {
-				/* ignore */
-			}
-			this.demuxer = null;
-		}
-
-		for (const frame of this.pendingFrames) {
-			try {
-				frame.close();
-			} catch {
-				/* ignore */
-			}
-		}
-		this.pendingFrames.length = 0;
+		destroyStreamingDecoderResources({
+			decoder: this.decoder,
+			demuxer: this.demuxer,
+			pendingFrames: this.pendingFrames,
+		});
+		this.decoder = null;
+		this.demuxer = null;
 	}
 }

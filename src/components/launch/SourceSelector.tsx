@@ -18,6 +18,20 @@ interface DesktopSource {
 	windowTitle?: string;
 }
 
+function toProcessedDesktopSource(source: DesktopSource): ProcessedDesktopSource {
+	return {
+		id: source.id,
+		name: source.originalName,
+		thumbnail: source.thumbnail,
+		display_id: source.display_id,
+		appIcon: source.appIcon,
+		originalName: source.originalName,
+		sourceType: source.sourceType,
+		appName: source.appName,
+		windowTitle: source.windowTitle,
+	};
+}
+
 function parseSourceMetadata(source: ProcessedDesktopSource) {
 	if (source.sourceType === "window" && (source.appName || source.windowTitle)) {
 		return {
@@ -73,13 +87,13 @@ export function SourceSelector() {
 						return {
 							id: source.id,
 							name: metadata.displayName,
-							thumbnail: source.thumbnail,
-							display_id: source.display_id,
-							appIcon: source.appIcon,
+							thumbnail: source.thumbnail ?? null,
+							display_id: source.display_id ?? "",
+							appIcon: source.appIcon ?? null,
 							originalName: source.name,
 							sourceType: metadata.sourceType,
 							appName: metadata.appName,
-							windowTitle: metadata.windowTitle,
+							windowTitle: metadata.windowTitle ?? source.name,
 						};
 					}),
 				);
@@ -124,7 +138,9 @@ export function SourceSelector() {
 	};
 
 	const handleShare = async () => {
-		if (selectedSource) await window.electronAPI.selectSource(selectedSource);
+		if (selectedSource) {
+			await window.electronAPI.selectSource(toProcessedDesktopSource(selectedSource));
+		}
 	};
 
 	if (loading) {

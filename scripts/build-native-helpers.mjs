@@ -25,19 +25,24 @@ function getTargetConfigs() {
 
 const helpers = [
 	{
-		source: "ScreenCaptureKitRecorder.swift",
+		sources: [
+			"ScreenCaptureKitRecorder.swift",
+			"ScreenCaptureKitRecorder/ScreenCaptureRecorder.swift",
+			"ScreenCaptureKitRecorder/ScreenCaptureRecorder+Stream.swift",
+			"ScreenCaptureKitRecorder/RecorderService.swift",
+		],
 		output: "recordly-screencapturekit-helper",
 	},
 	{
-		source: "ScreenCaptureKitWindowList.swift",
+		sources: ["ScreenCaptureKitWindowList.swift"],
 		output: "recordly-window-list",
 	},
 	{
-		source: "SystemCursorAssets.swift",
+		sources: ["SystemCursorAssets.swift"],
 		output: "recordly-system-cursors",
 	},
 	{
-		source: "NativeCursorMonitor.swift",
+		sources: ["NativeCursorMonitor.swift"],
 		output: "recordly-native-cursor-monitor",
 	},
 ];
@@ -53,12 +58,12 @@ for (const target of getTargetConfigs()) {
 	await mkdir(outputDir, { recursive: true });
 
 	for (const helper of helpers) {
-		const sourcePath = path.join(nativeRoot, helper.source);
+		const sourcePaths = helper.sources.map((source) => path.join(nativeRoot, source));
 		const outputPath = path.join(outputDir, helper.output);
 
 		const result = spawnSync(
 			"swiftc",
-			["-O", "-target", target.swiftTarget, sourcePath, "-o", outputPath],
+			["-O", "-target", target.swiftTarget, ...sourcePaths, "-o", outputPath],
 			{
 				encoding: "utf8",
 				timeout: 120000,
@@ -67,7 +72,7 @@ for (const target of getTargetConfigs()) {
 
 		if (result.status !== 0) {
 			const details = [result.stderr, result.stdout].filter(Boolean).join("\n").trim();
-			throw new Error(details || `Failed to compile ${helper.source} for ${target.archTag}`);
+			throw new Error(details || `Failed to compile ${helper.sources[0]} for ${target.archTag}`);
 		}
 
 		await chmod(outputPath, 0o755);

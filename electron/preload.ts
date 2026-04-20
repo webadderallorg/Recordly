@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { createExtensionsBridge } from "./preloadExtensionsBridge";
+import { createUpdateBridge } from "./preloadUpdateBridge";
 
 type NativeVideoExportWriteResult = { success: boolean; error?: string };
 
@@ -425,91 +427,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	openProjectsDirectory: () => {
 		return ipcRenderer.invoke("open-projects-directory");
 	},
-	installDownloadedUpdate: () => {
-		return ipcRenderer.invoke("install-downloaded-update");
-	},
-	downloadAvailableUpdate: () => {
-		return ipcRenderer.invoke("download-available-update");
-	},
-	deferDownloadedUpdate: (delayMs?: number) => {
-		return ipcRenderer.invoke("defer-downloaded-update", delayMs);
-	},
-	dismissUpdateToast: () => {
-		return ipcRenderer.invoke("dismiss-update-toast");
-	},
-	skipUpdateVersion: () => {
-		return ipcRenderer.invoke("skip-update-version");
-	},
-	getCurrentUpdateToastPayload: () => {
-		return ipcRenderer.invoke("get-current-update-toast-payload");
-	},
-	getUpdateStatusSummary: () => {
-		return ipcRenderer.invoke("get-update-status-summary");
-	},
-	previewUpdateToast: () => {
-		return ipcRenderer.invoke("preview-update-toast");
-	},
-	checkForAppUpdates: () => {
-		return ipcRenderer.invoke("check-for-app-updates");
-	},
-	onUpdateToastStateChanged: (
-		callback: (
-			payload: {
-				version: string;
-				detail: string;
-				phase: "available" | "downloading" | "ready" | "error";
-				delayMs: number;
-				isPreview?: boolean;
-				progressPercent?: number;
-				primaryAction?: "download-update" | "install-update" | "retry-check";
-			} | null,
-		) => void,
-	) => {
-		const listener = (
-			_event: Electron.IpcRendererEvent,
-			payload: {
-				version: string;
-				detail: string;
-				phase: "available" | "downloading" | "ready" | "error";
-				delayMs: number;
-				isPreview?: boolean;
-				progressPercent?: number;
-				primaryAction?: "download-update" | "install-update" | "retry-check";
-			} | null,
-		) => callback(payload);
-		ipcRenderer.on("update-toast-state", listener);
-		return () => ipcRenderer.removeListener("update-toast-state", listener);
-	},
-	onUpdateReadyToast: (
-		callback: (payload: {
-			version: string;
-			detail: string;
-			delayMs: number;
-			isPreview?: boolean;
-		}) => void,
-	) => {
-		const listener = (
-			_event: Electron.IpcRendererEvent,
-			payload: { version: string; detail: string; delayMs: number; isPreview?: boolean },
-		) => callback(payload);
-		ipcRenderer.on("update-ready-toast", listener);
-		return () => ipcRenderer.removeListener("update-ready-toast", listener);
-	},
-	onMenuLoadProject: (callback: () => void) => {
-		const listener = () => callback();
-		ipcRenderer.on("menu-load-project", listener);
-		return () => ipcRenderer.removeListener("menu-load-project", listener);
-	},
-	onMenuSaveProject: (callback: () => void) => {
-		const listener = () => callback();
-		ipcRenderer.on("menu-save-project", listener);
-		return () => ipcRenderer.removeListener("menu-save-project", listener);
-	},
-	onMenuSaveProjectAs: (callback: () => void) => {
-		const listener = () => callback();
-		ipcRenderer.on("menu-save-project-as", listener);
-		return () => ipcRenderer.removeListener("menu-save-project-as", listener);
-	},
+	...createUpdateBridge(ipcRenderer),
 	getPlatform: () => {
 		return ipcRenderer.invoke("get-platform");
 	},
@@ -569,35 +487,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("countdown-tick", listener);
 		return () => ipcRenderer.removeListener("countdown-tick", listener);
 	},
-
-	// ── Extensions ──────────────────────────────────────────────────────
-	extensionsDiscover: () => ipcRenderer.invoke("extensions:discover"),
-	extensionsList: () => ipcRenderer.invoke("extensions:list"),
-	extensionsGet: (id: string) => ipcRenderer.invoke("extensions:get", id),
-	extensionsEnable: (id: string) => ipcRenderer.invoke("extensions:enable", id),
-	extensionsDisable: (id: string) => ipcRenderer.invoke("extensions:disable", id),
-	extensionsInstallFromFolder: () => ipcRenderer.invoke("extensions:install-from-folder"),
-	extensionsUninstall: (id: string) => ipcRenderer.invoke("extensions:uninstall", id),
-	extensionsGetDirectory: () => ipcRenderer.invoke("extensions:get-directory"),
-	extensionsOpenDirectory: () => ipcRenderer.invoke("extensions:open-directory"),
-
-	// ── Extensions — Marketplace ────────────────────────────────────────
-	extensionsMarketplaceSearch: (params: {
-		query?: string;
-		tags?: string[];
-		sort?: string;
-		page?: number;
-		pageSize?: number;
-	}) => ipcRenderer.invoke("extensions:marketplace-search", params),
-	extensionsMarketplaceGet: (id: string) => ipcRenderer.invoke("extensions:marketplace-get", id),
-	extensionsMarketplaceInstall: (extensionId: string, downloadUrl: string) =>
-		ipcRenderer.invoke("extensions:marketplace-install", extensionId, downloadUrl),
-	extensionsMarketplaceSubmit: (extensionId: string) =>
-		ipcRenderer.invoke("extensions:marketplace-submit", extensionId),
-
-	// ── Extensions — Admin Review ───────────────────────────────────────
-	extensionsReviewsList: (params: { status?: string; page?: number; pageSize?: number }) =>
-		ipcRenderer.invoke("extensions:reviews-list", params),
-	extensionsReviewUpdate: (reviewId: string, status: string, notes?: string) =>
-		ipcRenderer.invoke("extensions:review-update", reviewId, status, notes),
+	...createExtensionsBridge(ipcRenderer),
 });
