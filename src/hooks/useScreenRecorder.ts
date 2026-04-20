@@ -1555,21 +1555,44 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
             );
             preAcquiredLinuxStream = await acquireLinuxPortalStream(false);
           }
-        } else {
-          preAcquiredLinuxStream = await acquireLinuxPortalStream(false);
-        }
+				} else {
+					preAcquiredLinuxStream = await acquireLinuxPortalStream(false);
+				}
 
-        // Give the Wayland Portal dialog a brief moment to fully close
-        // so the UI can draw the countdown correctly.
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      } catch (error) {
-        console.warn(
-          "Failed to pre-acquire Linux portal stream (likely cancelled):",
-          error,
-        );
-        return;
-      }
-    }
+				// Wait for the OS Wayland Portal dialog to actually close.
+				// Even though `getDisplayMedia` resolves, the video track is often not 
+				// "live" until the user has actually clicked Share in the native dialog.
+				if (preAcquiredLinuxStream) {
+					const videoTrack = preAcquiredLinuxStream.getVideoTracks()[0];
+					if (videoTrack && videoTrack.readyState !== "live") {
+						await new Promise<void>((resolve, reject) => {
+							const onUnmute = () => {
+								videoTrack.removeEventListener("unmute", onUnmute);
+								videoTrack.removeEventListener("ended", onEnded);
+								resolve();
+							};
+							const onEnded = () => {
+								videoTrack.removeEventListener("unmute", onUnmute);
+								videoTrack.removeEventListener("ended", onEnded);
+								reject(new Error("Stream ended before becoming live"));
+							};
+							videoTrack.addEventListener("unmute", onUnmute);
+							videoTrack.addEventListener("ended", onEnded);
+						});
+					}
+				}
+
+				// Give the Wayland Portal dialog a brief moment to fully close visually
+				// so the UI can draw the countdown correctly.
+				await new Promise((resolve) => setTimeout(resolve, 300));
+			} catch (error) {
+				console.warn("Failed to pre-acquire Linux portal stream (likely cancelled):", error);
+				if (preAcquiredLinuxStream) {
+					preAcquiredLinuxStream.getTracks().forEach(t => t.stop());
+				}
+				return;
+			}
+		}
 
     // Start recording with optional countdown
     if (countdownDelay > 0) {
