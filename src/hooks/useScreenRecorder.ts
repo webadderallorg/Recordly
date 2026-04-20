@@ -1560,52 +1560,45 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}
 
 				// Wait for the OS Wayland Portal dialog to actually close.
-				// Even though `getDisplayMedia` resolves, the video track is often not 
-				// "live" until the user has actually clicked Share in the native dialog.
+				// On Linux, the stream is returned instantly but no frames are emitted
+				// until the user clicks Share. The most robust way to detect this is to
+				// wait for the first frame to flow into a video element.
 				if (preAcquiredLinuxStream) {
 					const videoTrack = preAcquiredLinuxStream.getVideoTracks()[0];
 					if (videoTrack) {
-						let checkInterval: number;
 						await new Promise<void>((resolve, reject) => {
-							const onUnmute = () => {
+							const video = document.createElement("video");
+							video.muted = true;
+							video.srcObject = preAcquiredLinuxStream;
+							
+							const onPlaying = () => {
 								cleanup();
 								resolve();
 							};
+							
 							const onEnded = () => {
 								cleanup();
 								reject(new Error("Stream ended before becoming live"));
 							};
 							
 							const cleanup = () => {
-								videoTrack.removeEventListener("unmute", onUnmute);
+								video.removeEventListener("playing", onPlaying);
 								videoTrack.removeEventListener("ended", onEnded);
-								if (checkInterval) window.clearInterval(checkInterval);
+								video.srcObject = null;
 							};
 
-							if (videoTrack.readyState === "live" && !videoTrack.muted) {
-								resolve();
-								return;
-							}
-
-							videoTrack.addEventListener("unmute", onUnmute);
+							video.addEventListener("playing", onPlaying);
 							videoTrack.addEventListener("ended", onEnded);
-							
-							// Fallback polling for track status in case events fail
-							checkInterval = window.setInterval(() => {
-								if (videoTrack.readyState === "live" && !videoTrack.muted) {
-									cleanup();
-									resolve();
-								} else if (videoTrack.readyState === "ended") {
-									cleanup();
-									reject(new Error("Stream ended before becoming live"));
-								}
-							}, 250);
 
-							// Add a timeout as a fallback in case events don't fire
+							video.play().catch(() => {
+								// Ignore play errors, we are just using it to trigger 'playing' event
+							});
+
+							// Add a timeout as a fallback
 							setTimeout(() => {
 								cleanup();
 								reject(new Error("Timeout waiting for track to become live"));
-							}, 30000);
+							}, 60000);
 						});
 					}
 				}
