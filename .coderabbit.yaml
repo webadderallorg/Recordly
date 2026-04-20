@@ -1,8 +1,28 @@
 reviews:
   high_level_summary: true
   review_status: true
+  path_filters:
+    - "!electron/native/bin/**"
+    - "!**/*.module.css"
+    - "!scripts/benchmark-export-queues/**"
+    - "!.github/**"
+    - "!src/components/video-editor/settings/**"
+    - "!src/components/video-editor/videoPlaybackComponent/**"
+    - "!src/components/video-editor/extension-manager/**"
+    - "!src/components/video-editor/timeline/TimelineEditor/TimelineDecorations.tsx"
+    - "!src/components/video-editor/timeline/TimelineEditor/TimelineSurface.tsx"
+    - "!src/components/video-editor/timeline/TimelineEditor/TimelineToolbar.tsx"
+    - "!src/components/video-editor/timeline/TimelineEditor/shared.ts"
+    - "!src/components/video-editor/timeline/TimelineEditor/timelineActionUtils.ts"
+    - "!src/components/video-editor/settingsPanelConstants.tsx"
+    - "!src/components/video-editor/settingsPanelUtils.ts"
+    - "!src/components/video-editor/captureProjectThumbnail.ts"
+    - "!src/components/video-editor/videoEditorUtils.ts"
+    - "!src/components/video-editor/annotationSettingsShared.ts"
+    - "!src/components/video-editor/CursorStylePreview.tsx"
+    - "!src/lib/exporter/frameRendererTypes.ts"
+    - "!src/lib/exporter/frameRenderer/types.ts"
   auto_review:
     enabled: true
-    max_files: 300
     base_branches:
       - ".*"
