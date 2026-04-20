@@ -73,7 +73,7 @@ export function MicDeviceRow({
 	onSelect: () => void;
 }) {
 	const { level } = useAudioLevelMeter({
-		enabled: true,
+		enabled: selected,
 		deviceId: device.deviceId,
 	});
 

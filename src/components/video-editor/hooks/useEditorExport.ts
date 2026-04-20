@@ -127,14 +127,14 @@ export function useEditorExport({
 	);
 
 	const handleOpenExportDropdown = useCallback(() => {
-		const { videoPath } = getRenderConfig();
-		if (!videoPath) {
-			toast.error("No video loaded");
-			return;
-		}
 		if (hasPendingExportSave) {
 			setShowExportDropdown(true);
 			setExportError("Save dialog canceled. Click Save Again to save without re-rendering.");
+			return;
+		}
+		const { videoPath } = getRenderConfig();
+		if (!videoPath) {
+			toast.error("No video loaded");
 			return;
 		}
 		setShowExportDropdown(true);
@@ -153,8 +153,12 @@ export function useEditorExport({
 			toast.error("Video not ready");
 			return;
 		}
-		const sourceWidth = video.videoWidth || 1920;
-		const sourceHeight = video.videoHeight || 1080;
+		const sourceWidth = video.videoWidth;
+		const sourceHeight = video.videoHeight;
+		if (!sourceWidth || !sourceHeight) {
+			toast.error("Video dimensions not ready. Please wait for the video to load.");
+			return;
+		}
 		const gifDimensions = calculateOutputDimensions(
 			sourceWidth,
 			sourceHeight,

@@ -35,8 +35,10 @@ export function InstalledExtensionCard({
 
 	return (
 		<div
+			role="button"
+			tabIndex={0}
 			className={cn(
-				"flex items-start gap-3 p-3 rounded-xl border transition-colors cursor-pointer",
+				"flex items-start gap-3 p-3 rounded-xl border transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#2563EB]/50 focus-visible:ring-offset-1 outline-none",
 				isError
 					? "border-red-500/30 bg-red-500/5"
 					: isActive
@@ -44,6 +46,7 @@ export function InstalledExtensionCard({
 						: "border-foreground/[0.06] bg-white/[0.02] hover:bg-foreground/[0.04]",
 			)}
 			onClick={onClick}
+			onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick?.(); } }}
 		>
 			<div className="flex-shrink-0 w-8 h-8 rounded-lg bg-foreground/5 border border-foreground/10 flex items-center justify-center overflow-hidden">
 				<ExtensionIcon
@@ -142,8 +145,11 @@ export function MarketplaceCard({
 
 	return (
 		<div
-			className="flex items-start gap-3 p-3 rounded-xl border border-foreground/[0.06] bg-white/[0.02] hover:bg-foreground/[0.04] transition-colors cursor-pointer"
+			role="button"
+			tabIndex={0}
+			className="flex items-start gap-3 p-3 rounded-xl border border-foreground/[0.06] bg-white/[0.02] hover:bg-foreground/[0.04] transition-colors cursor-pointer focus-visible:ring-2 focus-visible:ring-[#2563EB]/50 focus-visible:ring-offset-1 outline-none"
 			onClick={onClick}
+			onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick?.(); } }}
 		>
 			<div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-white/10 to-white/5 border border-foreground/10 flex items-center justify-center overflow-hidden">
 				{extension.iconUrl ? (

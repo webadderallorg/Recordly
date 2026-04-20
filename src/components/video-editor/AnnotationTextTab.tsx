@@ -93,7 +93,7 @@ export function AnnotationTextTab({
 								{customFonts.length > 0 && (
 									<>
 										<div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-											Custom Fonts
+											{t("annotations.customFonts")}
 										</div>
 										{customFonts.map((font) => (
 											<SelectItem
@@ -273,7 +273,7 @@ export function AnnotationTextTab({
 									<span className="text-xs text-muted-foreground truncate flex-1 text-left">
 										{annotation.style.backgroundColor === "transparent"
 											? t("annotations.none")
-											: "Color"}
+											: t("annotations.color")}
 									</span>
 									<ChevronDown className="h-3 w-3 opacity-50" />
 								</Button>

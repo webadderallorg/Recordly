@@ -6,7 +6,7 @@ import {
 	Tag,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { useScopedT } from "@/contexts/I18nContext";
 import { ExtensionIcon } from "../ExtensionIcon";
@@ -41,6 +41,7 @@ export function ExtensionDetailModal({
 	return (
 		<Dialog open onOpenChange={(open) => !open && onClose()}>
 			<DialogContent className="max-w-md bg-editor-panel border-foreground/10 text-foreground p-0 gap-0 overflow-hidden">
+				<DialogTitle className="sr-only">{name}</DialogTitle>
 				<div className="p-5 pb-4">
 					<div className="flex items-start gap-3.5">
 						<div className="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-[#2563EB]/20 to-[#2563EB]/5 border border-foreground/10 flex items-center justify-center">

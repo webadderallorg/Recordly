@@ -42,7 +42,9 @@
 		"imageUploadError": "请上传 JPG、PNG、GIF 或 WebP 图片文件。",
 		"blurStrength": "模糊强度: {{strength}}",
 		"solidColor": "纯色 (审查)",
-		"borderRadius": "边框半径"
+		"borderRadius": "边框半径",
+		"customFonts": "Custom Fonts",
+		"color": "Color"
 	},
 
 	"fontStyles": {

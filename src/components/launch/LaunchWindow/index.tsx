@@ -126,9 +126,8 @@ export function LaunchWindow() {
 	}, [selectedDeviceId, setMicrophoneDeviceId]);
 
 	useEffect(() => {
-		if (selectedVideoDeviceId && selectedVideoDeviceId !== "default") {
-			setWebcamDeviceId(selectedVideoDeviceId);
-		}
+		if (!selectedVideoDeviceId) return;
+		setWebcamDeviceId(selectedVideoDeviceId === "default" ? undefined : selectedVideoDeviceId);
 	}, [selectedVideoDeviceId, setWebcamDeviceId]);
 
 	useEffect(() => {

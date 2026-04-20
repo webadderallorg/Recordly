@@ -42,7 +42,9 @@
 		"imageUploadError": "Please upload a JPG, PNG, GIF, or WebP image file.",
 		"blurStrength": "Blur Strength: {{strength}}",
 		"solidColor": "Solid Color (Censorship)",
-		"borderRadius": "Border Radius"
+		"borderRadius": "Border Radius",
+		"customFonts": "Custom Fonts",
+		"color": "Color"
 	},
 
 	"fontStyles": {

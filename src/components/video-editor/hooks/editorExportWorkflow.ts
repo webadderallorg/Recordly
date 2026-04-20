@@ -183,6 +183,10 @@ export async function runEditorExport({
 							)
 						: await window.electronAPI.saveExportedVideo(arrayBuffer, fileName);
 
+				const smokeElapsedMs = smokeExportStartedAt !== null
+					? Math.round(performance.now() - smokeExportStartedAt)
+					: undefined;
+
 				if (saveResult.canceled) {
 					setPendingExportSave({ arrayBuffer, fileName });
 					setExportError(
@@ -190,6 +194,15 @@ export async function runEditorExport({
 					);
 					toast.info("Save canceled. You can save again without re-exporting.");
 					keepExportDialogOpen = true;
+					if (smokeExportConfig.enabled) {
+						await writeSmokeExportReport(smokeExportConfig.outputPath, {
+							success: false,
+							phase: "save",
+							format: "gif",
+							elapsedMs: smokeElapsedMs,
+							error: "Save canceled",
+						});
+					}
 				} else if (saveResult.success && saveResult.path) {
 					if (smokeExportStartedAt !== null) {
 						console.log(
@@ -199,6 +212,13 @@ export async function runEditorExport({
 					showExportSuccessToast(saveResult.path);
 					setExportedFilePath(saveResult.path);
 					if (smokeExportConfig.enabled) {
+						await writeSmokeExportReport(smokeExportConfig.outputPath, {
+							success: true,
+							phase: "complete",
+							format: "gif",
+							elapsedMs: smokeElapsedMs,
+							outputPath: saveResult.path,
+						});
 						window.close();
 						return;
 					}
@@ -206,6 +226,13 @@ export async function runEditorExport({
 					setExportError(saveResult.message || "Failed to save GIF");
 					toast.error(saveResult.message || "Failed to save GIF");
 					if (smokeExportConfig.enabled) {
+						await writeSmokeExportReport(smokeExportConfig.outputPath, {
+							success: false,
+							phase: "save",
+							format: "gif",
+							elapsedMs: smokeElapsedMs,
+							error: saveResult.message || "Failed to save GIF",
+						});
 						window.close();
 						return;
 					}
@@ -214,6 +241,16 @@ export async function runEditorExport({
 				setExportError(result.error || "GIF export failed");
 				toast.error(result.error || "GIF export failed");
 				if (smokeExportConfig.enabled) {
+					const smokeElapsedMs = smokeExportStartedAt !== null
+						? Math.round(performance.now() - smokeExportStartedAt)
+						: undefined;
+					await writeSmokeExportReport(smokeExportConfig.outputPath, {
+						success: false,
+						phase: "export",
+						format: "gif",
+						elapsedMs: smokeElapsedMs,
+						error: result.error || "GIF export failed",
+					});
 					window.close();
 					return;
 				}

@@ -89,7 +89,7 @@ export function EditorSidebar({
 								type="button"
 								onClick={() => prefs.setActiveEffectSection(section.id)}
 								title={section.label}
-								className="group relative flex h-9 w-9 items-center justify-center rounded-lg outline-none focus:outline-none focus-visible:outline-none"
+								className="group relative flex h-9 w-9 items-center justify-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/50 focus-visible:ring-offset-1"
 								animate={{ opacity: isActive ? 1 : 0.55 }}
 								transition={{ duration: 0.14 }}
 							>

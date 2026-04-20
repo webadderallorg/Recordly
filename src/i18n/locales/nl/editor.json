@@ -43,7 +43,9 @@
 		"imageUploadError": "Upload een JPG-, PNG-, GIF- of WebP-afbeelding.",
 		"blurStrength": "Vervagingssterkte: {{strength}}",
 		"solidColor": "Effen Kleur (Censuur)",
-		"borderRadius": "Hoekradius"
+		"borderRadius": "Hoekradius",
+		"customFonts": "Custom Fonts",
+		"color": "Color"
 	},
 
 	"fontStyles": {
