@@ -1,5 +1,8 @@
 reviews:
+  high_level_summary: true
+  review_status: true
   auto_review:
     enabled: true
+    max_files: 300
     base_branches:
       - ".*"
