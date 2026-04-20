@@ -15,6 +15,7 @@ import type {
 import { extensionHost } from "@/lib/extensions";
 import { AudioProcessor, isAacAudioEncodingSupported } from "./audioEncoder";
 import { normalizeLightningRuntimePlatform } from "./backendPolicy";
+import { buildEditedTrackSourceSegments, classifyEditedTrackStrategy } from "./editedTrackStrategy";
 import {
 	type ExportBackpressureProfile,
 	getExportBackpressureProfile,
@@ -106,6 +107,14 @@ type NativeAudioPlan =
 	  }
 	| {
 			audioMode: "edited-track";
+			strategy: "offline-render-fallback";
+	  }
+	| {
+			audioMode: "edited-track";
+			strategy: "filtergraph-fast-path";
+			audioSourcePath: string;
+			audioSourceSampleRate: number;
+			editedTrackSegments: Array<{ startMs: number; endMs: number; speed: number }>;
 	  };
 
 const NATIVE_EXPORT_ENGINE_NAME = "Breeze";
@@ -737,11 +746,62 @@ export class ModernVideoExporter {
 			audioRegions.length > 0 ||
 			sourceAudioFallbackPaths.length > 1
 		) {
-			return { audioMode: "edited-track" };
+			const sourceDurationMs = Math.max(
+				0,
+				Math.round((videoInfo.streamDuration ?? videoInfo.duration) * 1000),
+			);
+			const trimRegions = this.config.trimRegions ?? [];
+			const strategy =
+				videoInfo.hasAudio &&
+				localVideoSourcePath &&
+				sourceAudioFallbackPaths.length === 0 &&
+				typeof videoInfo.audioSampleRate === "number" &&
+				Number.isFinite(videoInfo.audioSampleRate) &&
+				videoInfo.audioSampleRate > 0
+					? classifyEditedTrackStrategy({
+							primaryAudioSourcePath,
+							sourceDurationMs,
+							trimRegions,
+							speedRegions,
+							audioRegions,
+							sourceAudioFallbackPaths,
+						})
+					: "offline-render-fallback";
+
+			if (strategy === "filtergraph-fast-path") {
+				const audioSourcePath = localVideoSourcePath;
+				const audioSourceSampleRate = videoInfo.audioSampleRate;
+				const editedTrackSegments = buildEditedTrackSourceSegments(
+					sourceDurationMs,
+					trimRegions,
+					speedRegions,
+				);
+				if (
+					audioSourcePath &&
+					typeof audioSourceSampleRate === "number" &&
+					editedTrackSegments.length > 0
+				) {
+					return {
+						audioMode: "edited-track",
+						strategy,
+						audioSourcePath,
+						audioSourceSampleRate,
+						editedTrackSegments,
+					};
+				}
+			}
+
+			return {
+				audioMode: "edited-track",
+				strategy: "offline-render-fallback",
+			};
 		}
 
 		if (!primaryAudioSourcePath) {
-			return { audioMode: "edited-track" };
+			return {
+				audioMode: "edited-track",
+				strategy: "offline-render-fallback",
+			};
 		}
 
 		if ((this.config.trimRegions ?? []).length > 0) {
@@ -949,7 +1009,10 @@ export class ModernVideoExporter {
 		let editedAudioBuffer: ArrayBuffer | undefined;
 		let editedAudioMimeType: string | null = null;
 
-		if (audioPlan.audioMode === "edited-track") {
+		if (
+			audioPlan.audioMode === "edited-track" &&
+			audioPlan.strategy === "offline-render-fallback"
+		) {
 			this.audioProcessor = new AudioProcessor();
 			this.audioProcessor.setOnProgress((progress) => {
 				this.reportFinalizingProgress(this.processedFrameCount, 99, progress);
@@ -976,6 +1039,8 @@ export class ModernVideoExporter {
 		console.log(`[VideoExporter] Finalizing ${NATIVE_EXPORT_ENGINE_NAME} export`, {
 			sessionId,
 			audioMode: audioPlan.audioMode,
+			editedTrackStrategy:
+				audioPlan.audioMode === "edited-track" ? audioPlan.strategy : undefined,
 			encoderName: this.encoderName ?? "unknown",
 		});
 
@@ -987,11 +1052,25 @@ export class ModernVideoExporter {
 					audioMode: audioPlan.audioMode,
 					audioSourcePath:
 						audioPlan.audioMode === "copy-source" ||
-						audioPlan.audioMode === "trim-source"
+						audioPlan.audioMode === "trim-source" ||
+						(audioPlan.audioMode === "edited-track" &&
+							audioPlan.strategy === "filtergraph-fast-path")
 							? audioPlan.audioSourcePath
 							: null,
 					trimSegments:
 						audioPlan.audioMode === "trim-source" ? audioPlan.trimSegments : undefined,
+					editedTrackStrategy:
+						audioPlan.audioMode === "edited-track" ? audioPlan.strategy : undefined,
+					editedTrackSegments:
+						audioPlan.audioMode === "edited-track" &&
+						audioPlan.strategy === "filtergraph-fast-path"
+							? audioPlan.editedTrackSegments
+							: undefined,
+					audioSourceSampleRate:
+						audioPlan.audioMode === "edited-track" &&
+						audioPlan.strategy === "filtergraph-fast-path"
+							? audioPlan.audioSourceSampleRate
+							: undefined,
 					editedAudioData: editedAudioBuffer,
 					editedAudioMimeType,
 				}),
@@ -1041,7 +1120,10 @@ export class ModernVideoExporter {
 		let editedAudioBuffer: ArrayBuffer | undefined;
 		let editedAudioMimeType: string | null = null;
 
-		if (audioPlan.audioMode === "edited-track") {
+		if (
+			audioPlan.audioMode === "edited-track" &&
+			audioPlan.strategy === "offline-render-fallback"
+		) {
 			this.audioProcessor = new AudioProcessor();
 			this.audioProcessor.setOnProgress((progress) => {
 				this.reportFinalizingProgress(this.processedFrameCount, 99, progress);
@@ -1071,11 +1153,25 @@ export class ModernVideoExporter {
 					audioMode: audioPlan.audioMode,
 					audioSourcePath:
 						audioPlan.audioMode === "copy-source" ||
-						audioPlan.audioMode === "trim-source"
+						audioPlan.audioMode === "trim-source" ||
+						(audioPlan.audioMode === "edited-track" &&
+							audioPlan.strategy === "filtergraph-fast-path")
 							? audioPlan.audioSourcePath
 							: null,
 					trimSegments:
 						audioPlan.audioMode === "trim-source" ? audioPlan.trimSegments : undefined,
+					editedTrackStrategy:
+						audioPlan.audioMode === "edited-track" ? audioPlan.strategy : undefined,
+					editedTrackSegments:
+						audioPlan.audioMode === "edited-track" &&
+						audioPlan.strategy === "filtergraph-fast-path"
+							? audioPlan.editedTrackSegments
+							: undefined,
+					audioSourceSampleRate:
+						audioPlan.audioMode === "edited-track" &&
+						audioPlan.strategy === "filtergraph-fast-path"
+							? audioPlan.audioSourceSampleRate
+							: undefined,
 					editedAudioData: editedAudioBuffer,
 					editedAudioMimeType,
 				}),

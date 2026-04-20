@@ -13,6 +13,7 @@ import type {
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
 import { AudioProcessor, isAacAudioEncodingSupported } from "./audioEncoder";
+import { buildEditedTrackSourceSegments, classifyEditedTrackStrategy } from "./editedTrackStrategy";
 import {
 	advanceFinalizationProgress,
 	type FinalizationProgressWatchdog,
@@ -94,6 +95,14 @@ type NativeAudioPlan =
 	  }
 	| {
 			audioMode: "edited-track";
+			strategy: "offline-render-fallback";
+	  }
+	| {
+			audioMode: "edited-track";
+			strategy: "filtergraph-fast-path";
+			audioSourcePath: string;
+			audioSourceSampleRate: number;
+			editedTrackSegments: Array<{ startMs: number; endMs: number; speed: number }>;
 	  };
 
 export class VideoExporter {
@@ -504,11 +513,62 @@ export class VideoExporter {
 			audioRegions.length > 0 ||
 			sourceAudioFallbackPaths.length > 1
 		) {
-			return { audioMode: "edited-track" };
+			const sourceDurationMs = Math.max(
+				0,
+				Math.round((videoInfo.streamDuration ?? videoInfo.duration) * 1000),
+			);
+			const trimRegions = this.config.trimRegions ?? [];
+			const strategy =
+				videoInfo.hasAudio &&
+				localVideoSourcePath &&
+				sourceAudioFallbackPaths.length === 0 &&
+				typeof videoInfo.audioSampleRate === "number" &&
+				Number.isFinite(videoInfo.audioSampleRate) &&
+				videoInfo.audioSampleRate > 0
+					? classifyEditedTrackStrategy({
+							primaryAudioSourcePath,
+							sourceDurationMs,
+							trimRegions,
+							speedRegions,
+							audioRegions,
+							sourceAudioFallbackPaths,
+						})
+					: "offline-render-fallback";
+
+			if (strategy === "filtergraph-fast-path") {
+				const audioSourcePath = localVideoSourcePath;
+				const audioSourceSampleRate = videoInfo.audioSampleRate;
+				const editedTrackSegments = buildEditedTrackSourceSegments(
+					sourceDurationMs,
+					trimRegions,
+					speedRegions,
+				);
+				if (
+					audioSourcePath &&
+					typeof audioSourceSampleRate === "number" &&
+					editedTrackSegments.length > 0
+				) {
+					return {
+						audioMode: "edited-track",
+						strategy,
+						audioSourcePath,
+						audioSourceSampleRate,
+						editedTrackSegments,
+					};
+				}
+			}
+
+			return {
+				audioMode: "edited-track",
+				strategy: "offline-render-fallback",
+			};
 		}
 
 		if (!primaryAudioSourcePath) {
-			return { audioMode: "edited-track" };
+			return {
+				audioMode: "edited-track",
+				strategy: "offline-render-fallback",
+			};
 		}
 
 		if ((this.config.trimRegions ?? []).length > 0) {
@@ -709,7 +769,10 @@ export class VideoExporter {
 		let editedAudioBuffer: ArrayBuffer | undefined;
 		let editedAudioMimeType: string | null = null;
 
-		if (audioPlan.audioMode === "edited-track") {
+		if (
+			audioPlan.audioMode === "edited-track" &&
+			audioPlan.strategy === "offline-render-fallback"
+		) {
 			this.audioProcessor = new AudioProcessor();
 			this.audioProcessor.setOnProgress((progress) => {
 				this.reportFinalizingProgress(totalFrames, 99, progress);
@@ -741,11 +804,25 @@ export class VideoExporter {
 					audioMode: audioPlan.audioMode,
 					audioSourcePath:
 						audioPlan.audioMode === "copy-source" ||
-						audioPlan.audioMode === "trim-source"
+						audioPlan.audioMode === "trim-source" ||
+						(audioPlan.audioMode === "edited-track" &&
+							audioPlan.strategy === "filtergraph-fast-path")
 							? audioPlan.audioSourcePath
 							: null,
 					trimSegments:
 						audioPlan.audioMode === "trim-source" ? audioPlan.trimSegments : undefined,
+					editedTrackStrategy:
+						audioPlan.audioMode === "edited-track" ? audioPlan.strategy : undefined,
+					editedTrackSegments:
+						audioPlan.audioMode === "edited-track" &&
+						audioPlan.strategy === "filtergraph-fast-path"
+							? audioPlan.editedTrackSegments
+							: undefined,
+					audioSourceSampleRate:
+						audioPlan.audioMode === "edited-track" &&
+						audioPlan.strategy === "filtergraph-fast-path"
+							? audioPlan.audioSourceSampleRate
+							: undefined,
 					editedAudioData: editedAudioBuffer,
 					editedAudioMimeType,
 				}),
@@ -790,7 +867,10 @@ export class VideoExporter {
 		let editedAudioBuffer: ArrayBuffer | undefined;
 		let editedAudioMimeType: string | null = null;
 
-		if (audioPlan.audioMode === "edited-track") {
+		if (
+			audioPlan.audioMode === "edited-track" &&
+			audioPlan.strategy === "offline-render-fallback"
+		) {
 			this.audioProcessor = new AudioProcessor();
 			this.audioProcessor.setOnProgress((progress) => {
 				this.reportFinalizingProgress(totalFrames, 99, progress);
@@ -820,11 +900,25 @@ export class VideoExporter {
 					audioMode: audioPlan.audioMode,
 					audioSourcePath:
 						audioPlan.audioMode === "copy-source" ||
-						audioPlan.audioMode === "trim-source"
+						audioPlan.audioMode === "trim-source" ||
+						(audioPlan.audioMode === "edited-track" &&
+							audioPlan.strategy === "filtergraph-fast-path")
 							? audioPlan.audioSourcePath
 							: null,
 					trimSegments:
 						audioPlan.audioMode === "trim-source" ? audioPlan.trimSegments : undefined,
+					editedTrackStrategy:
+						audioPlan.audioMode === "edited-track" ? audioPlan.strategy : undefined,
+					editedTrackSegments:
+						audioPlan.audioMode === "edited-track" &&
+						audioPlan.strategy === "filtergraph-fast-path"
+							? audioPlan.editedTrackSegments
+							: undefined,
+					audioSourceSampleRate:
+						audioPlan.audioMode === "edited-track" &&
+						audioPlan.strategy === "filtergraph-fast-path"
+							? audioPlan.audioSourceSampleRate
+							: undefined,
 					editedAudioData: editedAudioBuffer,
 					editedAudioMimeType,
 				}),

@@ -17,6 +17,7 @@ export interface DecodedVideoInfo {
 	codec: string;
 	hasAudio: boolean;
 	audioCodec?: string;
+	audioSampleRate?: number;
 }
 
 /** Caller must close the VideoFrame after use. */
@@ -205,6 +206,10 @@ export class StreamingVideoDecoder {
 			codec: videoStream?.codec_string || "unknown",
 			hasAudio: !!audioStream,
 			audioCodec: audioStream?.codec_string,
+			audioSampleRate:
+				typeof audioStream?.sample_rate === "string"
+					? Number.parseInt(audioStream.sample_rate, 10)
+					: undefined,
 		};
 
 		return this.metadata;

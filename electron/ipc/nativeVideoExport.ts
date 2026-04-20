@@ -3,6 +3,9 @@ const NATIVE_EXPORT_INPUT_BYTES_PER_PIXEL = 4;
 export type NativeExportEncodingMode = "fast" | "balanced" | "quality";
 
 export type NativeVideoExportAudioMode = "none" | "copy-source" | "trim-source" | "edited-track";
+export type NativeVideoExportEditedTrackStrategy =
+	| "filtergraph-fast-path"
+	| "offline-render-fallback";
 
 export interface NativeVideoExportStartOptions {
 	width: number;
@@ -18,10 +21,17 @@ export interface NativeVideoExportAudioSegment {
 	endMs: number;
 }
 
+export interface NativeVideoExportEditedTrackSegment extends NativeVideoExportAudioSegment {
+	speed: number;
+}
+
 export interface NativeVideoExportFinishOptions {
 	audioMode?: NativeVideoExportAudioMode;
 	audioSourcePath?: string | null;
+	audioSourceSampleRate?: number;
 	trimSegments?: NativeVideoExportAudioSegment[];
+	editedTrackStrategy?: NativeVideoExportEditedTrackStrategy;
+	editedTrackSegments?: NativeVideoExportEditedTrackSegment[];
 	editedAudioData?: ArrayBuffer;
 	editedAudioMimeType?: string | null;
 }
@@ -152,6 +162,54 @@ export function buildTrimmedSourceAudioFilter(
 		);
 		segmentLabels.push(`[${label}]`);
 	});
+
+	if (segmentLabels.length === 1) {
+		filterParts.push(`${segmentLabels[0]}anull[aout]`);
+	} else {
+		filterParts.push(`${segmentLabels.join("")}concat=n=${segmentLabels.length}:v=0:a=1[aout]`);
+	}
+
+	return filterParts.join(";");
+}
+
+export function buildEditedTrackSourceAudioFilter(
+	segments: NativeVideoExportEditedTrackSegment[],
+	sourceSampleRate: number,
+): string | null {
+	if (segments.length === 0 || !Number.isFinite(sourceSampleRate) || sourceSampleRate <= 0) {
+		return null;
+	}
+
+	const normalizedSourceSampleRate = Math.round(sourceSampleRate);
+	const filterParts: string[] = [];
+	const segmentLabels: string[] = [];
+
+	segments.forEach((segment, index) => {
+		if (segment.endMs - segment.startMs <= 0.5) {
+			return;
+		}
+
+		const label = `edited_audio_${index}`;
+		const speed = Number.isFinite(segment.speed) && segment.speed > 0 ? segment.speed : 1;
+		const segmentFilter = [
+			`[1:a]atrim=start=${formatFfmpegSeconds(segment.startMs)}:end=${formatFfmpegSeconds(segment.endMs)}`,
+			"asetpts=PTS-STARTPTS",
+		];
+
+		if (Math.abs(speed - 1) > 0.0001) {
+			segmentFilter.push(
+				`asetrate=${Math.max(1, Math.round(normalizedSourceSampleRate * speed))}`,
+				`aresample=${normalizedSourceSampleRate}`,
+			);
+		}
+
+		filterParts.push(`${segmentFilter.join(",")}[${label}]`);
+		segmentLabels.push(`[${label}]`);
+	});
+
+	if (segmentLabels.length === 0) {
+		return null;
+	}
 
 	if (segmentLabels.length === 1) {
 		filterParts.push(`${segmentLabels[0]}anull[aout]`);

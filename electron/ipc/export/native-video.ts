@@ -14,6 +14,7 @@ import type {
 	NativeVideoExportFinishOptions,
 } from "../nativeVideoExport";
 import {
+	buildEditedTrackSourceAudioFilter,
 	buildNativeVideoExportArgs,
 	buildTrimmedSourceAudioFilter,
 	getEditedAudioExtension,
@@ -387,8 +388,10 @@ export async function muxNativeVideoExportAudio(
 	const metrics: NativeVideoAudioMuxMetrics = {};
 	const tempArtifacts: string[] = [];
 	let audioInputPath = options.audioSourcePath ?? null;
+	const useEditedTrackFiltergraph =
+		audioMode === "edited-track" && options.editedTrackStrategy === "filtergraph-fast-path";
 
-	if (audioMode === "edited-track") {
+	if (audioMode === "edited-track" && !useEditedTrackFiltergraph) {
 		if (!options.editedAudioData) {
 			throw new Error("Edited audio data is missing for native export");
 		}
@@ -435,6 +438,15 @@ export async function muxNativeVideoExportAudio(
 		} else {
 			args.push("-map", "0:v:0", "-map", "1:a:0");
 		}
+	} else if (useEditedTrackFiltergraph) {
+		const filter = buildEditedTrackSourceAudioFilter(
+			options.editedTrackSegments ?? [],
+			options.audioSourceSampleRate ?? 0,
+		);
+		if (!filter) {
+			throw new Error("Edited-track filtergraph inputs are incomplete for native export");
+		}
+		args.push("-filter_complex", filter, "-map", "0:v:0", "-map", "[aout]");
 	} else {
 		args.push("-map", "0:v:0", "-map", "1:a:0");
 	}
