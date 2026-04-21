@@ -2167,7 +2167,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 											Set
 										</Button>
 										{isCustomAspectRatio(aspectRatio) && (
-											<Check className="w-3 h-3 text-[#2563EB] ml-auto" />
+											<Check className="w-3 h-3 text-[#2563EB] ms-auto" />
 										)}
 									</div>
 								</DropdownMenuContent>

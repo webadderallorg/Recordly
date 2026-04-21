@@ -63,9 +63,11 @@ interface DesktopSource {
 const LOCALE_LABELS: Record<string, string> = {
 	en: "EN",
 	es: "ES",
+	fr: "FR",
 	nl: "NL",
 	"zh-CN": "中文",
 	ko: "한국어",
+	ar: "عربي",
 };
 
 const COUNTDOWN_OPTIONS = [0, 3, 5, 10];
@@ -1048,7 +1050,7 @@ export function LaunchWindow() {
 						</ContentClamp>
 						<ChevronUp
 							size={10}
-							className={`text-[#6b6b78] ml-0.5 transition-transform duration-200 ${activeDropdown === "sources" ? "" : "rotate-180"}`}
+							className={`text-[#6b6b78] ms-0.5 transition-transform duration-200 ${activeDropdown === "sources" ? "" : "rotate-180"}`}
 						/>
 					</button>
 

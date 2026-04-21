@@ -1,0 +1,60 @@
+{
+	"title": "الإضافات",
+	"tabs": {
+		"browse": "تصفح",
+		"installed": "المثبتة"
+	},
+	"actions": {
+		"submit": "إرسال إضافة",
+		"docs": "وثائق الإضافات",
+		"refresh": "تحديث",
+		"openFolder": "فتح مجلد الإضافات",
+		"uninstall": "إلغاء التثبيت",
+		"install": "تثبيت",
+		"installing": "جارٍ التثبيت",
+		"add": "إضافة",
+		"retry": "إعادة المحاولة",
+		"close": "إغلاق",
+		"folder": "المجلد"
+	},
+	"status": {
+		"enabled": "مفعّلة",
+		"disabled": "معطّلة",
+		"installed": "مثبتة"
+	},
+	"detail": {
+		"by": "بواسطة {{author}}",
+		"unknownAuthor": "مؤلف غير معروف",
+		"noDescription": "لا يوجد وصف",
+		"downloads": "{{count}} تنزيل",
+		"preview": "معاينة",
+		"screenshotAlt": "لقطة شاشة {{number}}",
+		"description": "الوصف",
+		"tags": "العلامات",
+		"permissions": "الأذونات",
+		"location": "الموقع",
+		"error": "خطأ: {{message}}"
+	},
+	"empty": {
+		"title": "لا توجد إضافات",
+		"description": "ثبّت إضافات لإضافة إطارات وتأثيرات المؤشر وأدوات المحرر."
+	},
+	"search": {
+		"placeholder": "البحث في الإضافات...",
+		"noResults": "لم يتم العثور على إضافات",
+		"noMarketplace": "لا توجد إضافات من المتجر متاحة بعد",
+		"count": "{{count}} إضافة",
+		"countPlural": "{{count}} إضافات"
+	},
+	"toast": {
+		"installedAndEnabled": "تم تثبيت الإضافة وتفعيلها",
+		"uninstalled": "تم إلغاء تثبيت {{name}}",
+		"uninstallFailed": "فشل إلغاء تثبيت {{name}}",
+		"searchFailed": "فشل البحث في المتجر",
+		"refreshed": "تم تحديث الإضافات",
+		"refreshFailed": "فشل تحديث الإضافات",
+		"marketplaceInstalled": "تم تثبيت وتفعيل {{name}}",
+		"marketplaceInstallFailed": "فشل تثبيت {{name}}",
+		"enableFailed": "فشل تفعيل الإضافة"
+	}
+}

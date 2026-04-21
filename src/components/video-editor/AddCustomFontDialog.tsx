@@ -136,7 +136,7 @@ export function AddCustomFontDialog({ onFontAdded }: AddCustomFontDialogProps) {
 					size="sm"
 					className="w-full bg-foreground/5 border-foreground/10 text-foreground hover:bg-foreground/10 h-9 text-xs"
 				>
-					<Plus className="w-3 h-3 mr-1" />
+					<Plus className="w-3 h-3 me-1" />
 					{t("addFont.title")}
 				</Button>
 			</DialogTrigger>

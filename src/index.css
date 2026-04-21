@@ -1,3 +1,4 @@
+@import "@fontsource-variable/noto-sans-arabic";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -141,6 +142,10 @@
 	[data-platform="macos"] body .font-mono,
 	[data-platform="macos"] body kbd {
 		font-family: "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+	}
+
+	[dir="rtl"] body {
+		font-family: "Noto Sans Arabic Variable", "Helvetica Neue", Helvetica, Arial, sans-serif;
 	}
 }
 

@@ -32,7 +32,7 @@
 	flex: 0 1 auto;
 	min-height: 46px;
 	min-width: fit-content;
-	padding-right: 2px;
+	padding-inline-end: 2px;
 }
 
 .barState {
@@ -205,7 +205,7 @@
 	color: #6b6b78;
 	cursor: pointer;
 	transition: all 0.12s ease;
-	text-align: left;
+	text-align: start;
 }
 
 .ddItem:hover {

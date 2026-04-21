@@ -189,7 +189,7 @@ export default function ProjectBrowserDialog({
 										key={entry.path}
 										type="button"
 										onClick={() => onOpenProject(entry.path)}
-										className="group flex flex-col gap-1 rounded-lg bg-transparent p-0.5 text-left outline-none transition focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+										className="group flex flex-col gap-1 rounded-lg bg-transparent p-0.5 text-start outline-none transition focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
 									>
 										<div className="relative aspect-[16/10] w-full overflow-hidden rounded-[5px] bg-editor-dialog-alt shadow-[0_10px_18px_rgba(0,0,0,0.28)] transition duration-200 group-hover:-translate-y-0.5 group-hover:shadow-[0_16px_30px_rgba(0,0,0,0.38)]">
 											{thumbnailSrc ? (
@@ -205,7 +205,7 @@ export default function ProjectBrowserDialog({
 												</div>
 											)}
 											{entry.isCurrent ? (
-												<div className="absolute right-1.5 top-1.5">
+												<div className="absolute end-1.5 top-1.5">
 													<span className="rounded-[5px] bg-[#2563EB] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_20px_rgba(37,99,235,0.28)]">
 														Current
 													</span>
@@ -260,7 +260,7 @@ export default function ProjectBrowserDialog({
 										key={entry.path}
 										type="button"
 										onClick={() => onOpenProject(entry.path)}
-										className="group flex flex-col gap-1 rounded-lg bg-transparent p-0.5 text-left outline-none transition focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+										className="group flex flex-col gap-1 rounded-lg bg-transparent p-0.5 text-start outline-none transition focus:outline-none focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
 									>
 										<div className="relative aspect-[16/10] w-full overflow-hidden rounded-[5px] bg-editor-dialog-alt shadow-[0_10px_18px_rgba(0,0,0,0.28)] transition duration-200 group-hover:-translate-y-0.5 group-hover:shadow-[0_16px_30px_rgba(0,0,0,0.38)]">
 											{thumbnailSrc ? (
@@ -276,7 +276,7 @@ export default function ProjectBrowserDialog({
 												</div>
 											)}
 											{entry.isCurrent ? (
-												<div className="absolute right-1.5 top-1.5">
+												<div className="absolute end-1.5 top-1.5">
 													<span className="rounded-[5px] bg-[#2563EB] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_20px_rgba(37,99,235,0.28)]">
 														Current
 													</span>

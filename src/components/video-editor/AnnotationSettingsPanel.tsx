@@ -410,7 +410,7 @@ export function AnnotationSettingsPanel({
 														backgroundColor: annotation.style.color,
 													}}
 												/>
-												<span className="text-xs text-muted-foreground truncate flex-1 text-left">
+												<span className="text-xs text-muted-foreground truncate flex-1 text-start">
 													{annotation.style.color}
 												</span>
 												<ChevronDown className="h-3 w-3 opacity-50" />
@@ -450,7 +450,7 @@ export function AnnotationSettingsPanel({
 														}}
 													/>
 												</div>
-												<span className="text-xs text-muted-foreground truncate flex-1 text-left">
+												<span className="text-xs text-muted-foreground truncate flex-1 text-start">
 													{annotation.style.backgroundColor ===
 													"transparent"
 														? t("annotations.none")
@@ -622,7 +622,7 @@ export function AnnotationSettingsPanel({
 													annotation.figureData?.color || "#2563EB",
 											}}
 										/>
-										<span className="text-xs text-muted-foreground truncate flex-1 text-left">
+										<span className="text-xs text-muted-foreground truncate flex-1 text-start">
 											{annotation.figureData?.color || "#2563EB"}
 										</span>
 										<ChevronDown className="h-3 w-3 opacity-50" />
@@ -789,7 +789,7 @@ export function AnnotationSettingsPanel({
 							{t("annotations.shortcutsAndTips")}
 						</span>
 					</div>
-					<ul className="text-[10px] text-muted-foreground space-y-1.5 list-disc pl-3 leading-relaxed">
+					<ul className="text-[10px] text-muted-foreground space-y-1.5 list-disc ps-3 leading-relaxed">
 						<li>{t("annotations.tipSelectAnnotation")}</li>
 						<li>{t("annotations.tipCycleForward")}</li>
 						<li>{t("annotations.tipCycleBackward")}</li>

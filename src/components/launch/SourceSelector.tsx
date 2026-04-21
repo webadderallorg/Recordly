@@ -167,7 +167,7 @@ export function SourceSelector() {
 					<div className="h-72 flex flex-col justify-stretch">
 						<TabsContent value="screens" className="h-full">
 							<div
-								className={`grid grid-cols-2 gap-2 h-full overflow-y-auto pr-1 relative ${styles.sourceGridScroll}`}
+								className={`grid grid-cols-2 gap-2 h-full overflow-y-auto pe-1 relative ${styles.sourceGridScroll}`}
 							>
 								{screenSources.length === 0 && (
 									<div className="col-span-2 text-center text-xs text-zinc-500 py-8">
@@ -198,7 +198,7 @@ export function SourceSelector() {
 														className="w-full aspect-video object-cover rounded border border-zinc-800"
 													/>
 													{isSelected && (
-														<div className="absolute -top-1 -right-1">
+														<div className="absolute -top-1 -end-1">
 															<div className="w-4 h-4 bg-[#2563EB] rounded-full flex items-center justify-center shadow-md">
 																<MdCheck className={styles.icon} />
 															</div>
@@ -219,7 +219,7 @@ export function SourceSelector() {
 								{t("sourceSelector.windowsNote")}
 							</p>
 							<div
-								className={`grid grid-cols-2 gap-2 h-full overflow-y-auto pr-1 relative ${styles.sourceGridScroll}`}
+								className={`grid grid-cols-2 gap-2 h-full overflow-y-auto pe-1 relative ${styles.sourceGridScroll}`}
 							>
 								{windowSources.length === 0 && (
 									<div className="col-span-2 text-center text-xs text-zinc-500 py-8">
@@ -269,7 +269,7 @@ export function SourceSelector() {
 														</div>
 													)}
 													{isSelected && (
-														<div className="absolute -top-1 -right-1">
+														<div className="absolute -top-1 -end-1">
 															<div className="w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center shadow-md">
 																<MdCheck className={styles.icon} />
 															</div>

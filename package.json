@@ -37,6 +37,7 @@
 		"test:watch": "vitest"
 	},
 	"dependencies": {
+		"@fontsource-variable/noto-sans-arabic": "^5.2.10",
 		"@phosphor-icons/react": "^2.1.10",
 		"capturekit": "^1.0.13",
 		"electron-updater": "^6.8.3",

@@ -7,12 +7,14 @@ import {
 	useMemo,
 	useState,
 } from "react";
+import { DirectionProvider } from "@/components/ui/direction";
 import {
 	type AppLocale,
 	DEFAULT_LOCALE,
 	I18N_NAMESPACES,
 	type I18nNamespace,
 	SUPPORTED_LOCALES,
+	isRtlLocale,
 } from "@/i18n/config";
 import enCommon from "@/i18n/locales/en/common.json";
 import enDialogs from "@/i18n/locales/en/dialogs.json";
@@ -70,6 +72,14 @@ import zhCNLaunch from "@/i18n/locales/zh-CN/launch.json";
 import zhCNSettings from "@/i18n/locales/zh-CN/settings.json";
 import zhCNShortcuts from "@/i18n/locales/zh-CN/shortcuts.json";
 import zhCNTimeline from "@/i18n/locales/zh-CN/timeline.json";
+import arCommon from "@/i18n/locales/ar/common.json";
+import arDialogs from "@/i18n/locales/ar/dialogs.json";
+import arEditor from "@/i18n/locales/ar/editor.json";
+import arExtensions from "@/i18n/locales/ar/extensions.json";
+import arLaunch from "@/i18n/locales/ar/launch.json";
+import arSettings from "@/i18n/locales/ar/settings.json";
+import arShortcuts from "@/i18n/locales/ar/shortcuts.json";
+import arTimeline from "@/i18n/locales/ar/timeline.json";
 
 const LOCALE_STORAGE_KEY = "recordly.locale";
 
@@ -145,6 +155,16 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		dialogs: zhCNDialogs,
 		shortcuts: zhCNShortcuts,
 		extensions: zhCNExtensions,
+	},
+	ar: {
+		common: arCommon,
+		launch: arLaunch,
+		editor: arEditor,
+		timeline: arTimeline,
+		settings: arSettings,
+		dialogs: arDialogs,
+		shortcuts: arShortcuts,
+		extensions: arExtensions,
 	},
 } as const;
 
@@ -264,6 +284,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		document.documentElement.lang = locale;
+		document.documentElement.dir = isRtlLocale(locale) ? "rtl" : "ltr";
 	}, [locale]);
 
 	const t = useCallback(
@@ -282,7 +303,13 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 		[locale, setLocale, t],
 	);
 
-	return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+	const dir = isRtlLocale(locale) ? "rtl" : "ltr";
+
+	return (
+		<I18nContext.Provider value={value}>
+			<DirectionProvider dir={dir}>{children}</DirectionProvider>
+		</I18nContext.Provider>
+	);
 }
 
 export function useI18n() {

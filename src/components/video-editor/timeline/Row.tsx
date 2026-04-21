@@ -19,7 +19,7 @@ export default function Row({ id, children, label, hint, isEmpty, labelColor = "
 		>
 			{label && (
 				<div
-					className="absolute left-1.5 top-1/2 -translate-y-1/2 text-[9px] font-semibold uppercase tracking-widest z-20 pointer-events-none select-none"
+					className="absolute start-1.5 top-1/2 -translate-y-1/2 text-[9px] font-semibold uppercase tracking-widest z-20 pointer-events-none select-none"
 					style={{ color: labelColor, writingMode: "horizontal-tb" }}
 				>
 					{label}

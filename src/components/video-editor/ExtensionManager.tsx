@@ -310,14 +310,14 @@ function ScreenshotGallery({ screenshots }: { screenshots: string[] }) {
 					<>
 						<button
 							type="button"
-							className="absolute left-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-editor-bg/80 text-foreground/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-editor-bg/80"
+							className="absolute start-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-editor-bg/80 text-foreground/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-editor-bg/80"
 							onClick={() => setIndex((i) => (i - 1 + count) % count)}
 						>
 							<ChevronLeft className="w-3.5 h-3.5" />
 						</button>
 						<button
 							type="button"
-							className="absolute right-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-editor-bg/80 text-foreground/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-editor-bg/80"
+							className="absolute end-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-editor-bg/80 text-foreground/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-editor-bg/80"
 							onClick={() => setIndex((i) => (i + 1) % count)}
 						>
 							<ChevronRight className="w-3.5 h-3.5" />
@@ -1045,7 +1045,7 @@ function BrowseTab({
 		<div className="flex flex-col gap-3">
 			{/* Search */}
 			<div className="relative">
-				<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/70 pointer-events-none" />
+				<Search className="absolute start-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/70 pointer-events-none" />
 				<input
 					type="text"
 					placeholder={t("search.placeholder")}
@@ -1055,7 +1055,7 @@ function BrowseTab({
 						e.stopPropagation();
 						if (e.key === "Enter") onSearch();
 					}}
-					className="w-full h-8 pl-8 pr-3 rounded-lg bg-foreground/[0.04] border border-foreground/[0.08] text-[12px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[#2563EB]/50 focus:border-[#2563EB]/30 transition-colors"
+					className="w-full h-8 ps-8 pe-3 rounded-lg bg-foreground/[0.04] border border-foreground/[0.08] text-[12px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-[#2563EB]/50 focus:border-[#2563EB]/30 transition-colors"
 				/>
 			</div>
 

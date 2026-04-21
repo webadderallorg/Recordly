@@ -1,0 +1,136 @@
+{
+	"playback": {
+		"play": "تشغيل",
+		"pause": "إيقاف مؤقت",
+		"skipBack": "تخطي للخلف",
+		"skipForward": "تخطي للأمام",
+		"muteUnmute": "كتم/إلغاء الكتم"
+	},
+	"annotations": {
+		"settings": "إعدادات التعليقات التوضيحية",
+		"active": "نشط",
+		"text": "نص",
+		"image": "صورة",
+		"arrow": "سهم",
+		"blur": "تمويه",
+		"textContent": "محتوى النص",
+		"textPlaceholder": "أدخل النص الخاص بك...",
+		"fontStyle": "نمط الخط",
+		"selectStyle": "اختر نمطًا",
+		"size": "الحجم",
+		"toggleBold": "تبديل الغامق",
+		"toggleItalic": "تبديل المائل",
+		"toggleUnderline": "تبديل التسطير",
+		"alignLeft": "محاذاة لليسار",
+		"alignCenter": "محاذاة للوسط",
+		"alignRight": "محاذاة لليمين",
+		"textColor": "لون النص",
+		"background": "الخلفية",
+		"none": "بدون",
+		"clearBackground": "مسح الخلفية",
+		"uploadImage": "رفع صورة",
+		"supportedFormats": "التنسيقات المدعومة: JPG، PNG، GIF، WebP",
+		"arrowDirection": "اتجاه السهم",
+		"strokeWidth": "عرض الخط: {{width}}px",
+		"arrowColor": "لون السهم",
+		"deleteAnnotation": "حذف التعليق التوضيحي",
+		"shortcutsAndTips": "اختصارات ونصائح",
+		"tipSelectAnnotation": "انقل مؤشر التشغيل إلى قسم التعليق التوضيحي المتداخل واختر عنصرًا.",
+		"tipCycleForward": "استخدم Tab للتنقل بين العناصر المتداخلة.",
+		"tipCycleBackward": "استخدم Shift+Tab للتنقل للخلف.",
+		"imageUploadSuccess": "تم رفع الصورة بنجاح!",
+		"imageUploadError": "يرجى رفع ملف صورة بصيغة JPG أو PNG أو GIF أو WebP.",
+		"blurStrength": "قوة التمويه: {{strength}}",
+		"solidColor": "لون ثابت (تعتيم)",
+		"borderRadius": "نصف قطر الحدود"
+	},
+	"fontStyles": {
+		"classic": "كلاسيكي",
+		"editor": "محرر",
+		"strong": "عريض",
+		"typewriter": "آلة كاتبة",
+		"deco": "ديكو",
+		"simple": "بسيط",
+		"modern": "عصري",
+		"clean": "نظيف"
+	},
+	"format": {
+		"mp4Video": "فيديو MP4",
+		"mp4Description": "ملف فيديو عالي الجودة",
+		"gifAnimation": "رسوم متحركة GIF",
+		"gifDescription": "صورة متحركة للمشاركة"
+	},
+	"gifOptions": {
+		"frameRate": "معدل الإطارات",
+		"outputSize": "حجم الإخراج",
+		"outputDimensions": "الإخراج: {{width}} × {{height}}px",
+		"loopAnimation": "تكرار الرسوم المتحركة",
+		"loopDescription": "سيتم تشغيل GIF بشكل مستمر"
+	},
+	"tutorial": {
+		"howTrimmingWorks": "كيف يعمل القص",
+		"title": "كيف يعمل القص",
+		"understanding": "فهم كيفية قطع الأجزاء غير المرغوب فيها من الفيديو.",
+		"descriptionP1": "أداة القص تعمل عن طريق تحديد الأجزاء التي تريد",
+		"descriptionRemove": "إزالتها",
+		"descriptionP2": "من الفيديو الخاص بك.",
+		"descriptionP3": "أي جزء من الخط الزمني مغطى بجزء قص أحمر سيتم قطعه عند التصدير.",
+		"visualExample": "مثال مرئي",
+		"removed": "تمت الإزالة",
+		"kept": "تم الاحتفاظ",
+		"finalVideo": "الفيديو النهائي",
+		"part": "الجزء {{number}}",
+		"addTrimStep": "1. إضافة قص",
+		"addTrimDesc": "اضغط T أو انقر على أيقونة المقص لتحديد قسم للإزالة.",
+		"adjustStep": "2. تعديل",
+		"adjustDesc": "اسحب حواف المنطقة الحمراء لتغطية ما تريد قطعه بالضبط."
+	},
+	"feedback": {
+		"trigger": "الملاحظات",
+		"title": "الملاحظات والتواصل",
+		"description": "تواصل معنا مباشرة أو افتح مشكلة إذا كان هناك شيء معطل أو مفقود.",
+		"emailLabel": "البريد الإلكتروني",
+		"xLabel": "X",
+		"reportIssue": "الإبلاغ عن مشكلة / إرسال ملاحظات",
+		"openFailed": "فشل فتح الرابط."
+	},
+	"keyboardShortcuts": {
+		"trigger": "الاختصارات",
+		"title": "اختصارات لوحة المفاتيح",
+		"description": "مرجع سريع لعناصر تحكم الخط الزمني والمحرر.",
+		"customizeTooltip": "تخصيص الاختصارات",
+		"customize": "تخصيص",
+		"panTimeline": "تحريك الخط الزمني",
+		"zoomTimeline": "تكبير الخط الزمني",
+		"cycleAnnotations": "التنقل بين التعليقات التوضيحية",
+		"tab": "Tab"
+	},
+	"actions": {
+		"saveAgain": "حفظ مرة أخرى",
+		"showInFolder": "إظهار في المجلد"
+	},
+	"project": {
+		"untitled": "بدون عنوان"
+	},
+	"exportStatus": {
+		"exporting": "جارٍ التصدير",
+		"renderingFile": "جارٍ معالجة ملفك.",
+		"preparing": "جارٍ تحضير التصدير...",
+		"completePercent": "اكتمل {{percent}}%",
+		"issue": "مشكلة في التصدير",
+		"complete": "اكتمل التصدير",
+		"savedSuccessfully": "تم حفظ الملف الخاص بك بنجاح."
+	},
+	"export": {
+		"processingAudioEdits": "جارٍ معالجة الصوت مع تعديلات السرعة/التراكب"
+	},
+	"toolbar": {
+		"addLayer": "إضافة طبقة",
+		"splitClip": "تقسيم المقطع (C)"
+	},
+	"timeline": {
+		"expand": "توسيع الخط الزمني",
+		"collapse": "طي الخط الزمني"
+	},
+	"openRecordingsFolder": "فتح مجلد التسجيلات"
+}
