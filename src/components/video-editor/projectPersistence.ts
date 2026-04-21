@@ -118,6 +118,7 @@ export interface ProjectEditorState {
 
 export interface EditorProjectData {
 	version: number;
+	projectId?: string;
 	videoPath: string;
 	editor: Partial<ProjectEditorState>;
 }
@@ -281,6 +282,7 @@ export function validateProjectData(candidate: unknown): candidate is EditorProj
 	if (!candidate || typeof candidate !== "object") return false;
 	const project = candidate as Partial<EditorProjectData>;
 	if (typeof project.version !== "number") return false;
+	if (project.projectId !== undefined && typeof project.projectId !== "string") return false;
 	if (typeof project.videoPath !== "string" || !project.videoPath) return false;
 	if (!project.editor || typeof project.editor !== "object") return false;
 	return true;
@@ -861,9 +863,13 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 export function createProjectData(
 	videoPath: string,
 	editor: Partial<ProjectEditorState>,
+	projectId?: string | null,
 ): EditorProjectData {
 	return {
 		version: PROJECT_VERSION,
+		...(typeof projectId === "string" && projectId.trim().length > 0
+			? { projectId }
+			: {}),
 		videoPath,
 		editor,
 	};

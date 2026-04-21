@@ -1,4 +1,5 @@
 import { constants as fsConstants } from "node:fs";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { dialog, ipcMain, shell } from "electron";
@@ -82,12 +83,55 @@ function getProjectVideoPath(projectData: unknown) {
   return typeof candidate.videoPath === "string" ? candidate.videoPath : null;
 }
 
+function getProjectId(projectData: unknown) {
+  if (!projectData || typeof projectData !== "object") {
+    return null;
+  }
+
+  const candidate = projectData as { projectId?: unknown };
+  return typeof candidate.projectId === "string" && candidate.projectId.trim().length > 0
+    ? candidate.projectId
+    : null;
+}
+
+function withProjectId(projectData: unknown, projectId: string) {
+  if (!projectData || typeof projectData !== "object" || Array.isArray(projectData)) {
+    return projectData;
+  }
+
+  return {
+    ...projectData,
+    projectId,
+  };
+}
+
+function ensureProjectDataHasProjectId(projectData: unknown) {
+  const existingProjectId = getProjectId(projectData);
+  if (existingProjectId) {
+    return {
+      projectId: existingProjectId,
+      projectData,
+    };
+  }
+
+  const projectId = randomUUID();
+  return {
+    projectId,
+    projectData: withProjectId(projectData, projectId),
+  };
+}
+
+async function resolveComparablePath(filePath: string) {
+  return fs.realpath(filePath).catch(() => path.resolve(filePath));
+}
+
 /**
  * Prevents a named save from silently overwriting a different project file.
  */
 async function ensureNamedProjectSaveDoesNotOverwriteDifferentProject(
   targetProjectPath: string,
   projectData: unknown,
+  activeProjectPath?: string | null,
 ) {
   try {
     await fs.stat(targetProjectPath);
@@ -98,34 +142,59 @@ async function ensureNamedProjectSaveDoesNotOverwriteDifferentProject(
     throw error;
   }
 
+  const targetResolvedPath = await resolveComparablePath(targetProjectPath);
+  if (activeProjectPath) {
+    const activeResolvedPath = await resolveComparablePath(activeProjectPath);
+    if (activeResolvedPath === targetResolvedPath) {
+      return { success: true };
+    }
+  }
+
+  const incomingProjectId = getProjectId(projectData);
   const incomingVideoPath = getProjectVideoPath(projectData);
-  if (!incomingVideoPath) {
+
+  try {
+    const existingProjectRaw = await fs.readFile(targetProjectPath, "utf-8");
+    const existingProjectData = JSON.parse(existingProjectRaw) as unknown;
+    const existingProjectId = getProjectId(existingProjectData);
+    const existingVideoPath = getProjectVideoPath(existingProjectData);
+
+    if (existingProjectId && incomingProjectId) {
+      if (existingProjectId === incomingProjectId) {
+        return { success: true };
+      }
+
+      return {
+        success: false,
+        message: "A different project already uses this name",
+      };
+    }
+
+    if (existingVideoPath && incomingVideoPath && existingVideoPath !== incomingVideoPath) {
+      return {
+        success: false,
+        message: "A different project already uses this name",
+      };
+    }
+
+    if (!existingProjectId && !incomingProjectId && existingVideoPath && incomingVideoPath) {
+      return {
+        success: false,
+        message: "Unable to verify project identity for the chosen name",
+      };
+    }
+
+    return {
+      success: false,
+      message: "Unable to verify project identity for the chosen name",
+    };
+  } catch (error) {
+    console.error("Failed to verify existing named project before overwrite:", error);
     return {
       success: false,
       message: "Unable to verify project identity for the chosen name",
     };
   }
-
-  try {
-    const existingProjectRaw = await fs.readFile(targetProjectPath, "utf-8");
-    const existingProjectData = JSON.parse(existingProjectRaw) as unknown;
-    const existingVideoPath = getProjectVideoPath(existingProjectData);
-
-    if (existingVideoPath === incomingVideoPath) {
-      return { success: true };
-    }
-  } catch (error) {
-    console.error("Failed to verify existing named project before overwrite:", error);
-    return {
-      success: false,
-      message: "A different project already uses this name",
-    };
-  }
-
-  return {
-    success: false,
-    message: "A different project already uses this name",
-  };
 }
 
 export function registerProjectHandlers() {
@@ -213,18 +282,20 @@ export function registerProjectHandlers() {
   ipcMain.handle('save-project-file', async (_, projectData: unknown, suggestedName?: string, existingProjectPath?: string, thumbnailDataUrl?: string | null) => {
     try {
       const projectsDir = await getProjectsDir()
+      const preparedProject = ensureProjectDataHasProjectId(projectData)
       const trustedExistingProjectPath = isTrustedProjectPath(existingProjectPath)
         ? existingProjectPath
         : null
 
       if (trustedExistingProjectPath) {
-        await fs.writeFile(trustedExistingProjectPath, JSON.stringify(projectData, null, 2), 'utf-8')
+        await fs.writeFile(trustedExistingProjectPath, JSON.stringify(preparedProject.projectData, null, 2), 'utf-8')
         setCurrentProjectPath(trustedExistingProjectPath)
         await saveProjectThumbnail(trustedExistingProjectPath, thumbnailDataUrl)
         await rememberRecentProject(trustedExistingProjectPath)
         return {
           success: true,
           path: trustedExistingProjectPath,
+          projectId: preparedProject.projectId,
           message: 'Project saved successfully'
         }
       }
@@ -250,7 +321,7 @@ export function registerProjectHandlers() {
         }
       }
 
-      await fs.writeFile(result.filePath, JSON.stringify(projectData, null, 2), 'utf-8')
+      await fs.writeFile(result.filePath, JSON.stringify(preparedProject.projectData, null, 2), 'utf-8')
       setCurrentProjectPath(result.filePath)
       await saveProjectThumbnail(result.filePath, thumbnailDataUrl)
       await rememberRecentProject(result.filePath)
@@ -258,6 +329,7 @@ export function registerProjectHandlers() {
       return {
         success: true,
         path: result.filePath,
+        projectId: preparedProject.projectId,
         message: 'Project saved successfully'
       }
     } catch (error) {
@@ -281,6 +353,7 @@ export function registerProjectHandlers() {
         }
 
         const projectsDir = await getProjectsDir()
+        const preparedProject = ensureProjectDataHasProjectId(projectData)
         const targetProjectPath = path.join(
           projectsDir,
           `${normalizedProjectName}.${PROJECT_FILE_EXTENSION}`,
@@ -288,13 +361,14 @@ export function registerProjectHandlers() {
 
         const overwriteCheck = await ensureNamedProjectSaveDoesNotOverwriteDifferentProject(
           targetProjectPath,
-          projectData,
+          preparedProject.projectData,
+          currentProjectPath,
         )
         if (!overwriteCheck.success) {
           return overwriteCheck
         }
 
-        await fs.writeFile(targetProjectPath, JSON.stringify(projectData, null, 2), 'utf-8')
+        await fs.writeFile(targetProjectPath, JSON.stringify(preparedProject.projectData, null, 2), 'utf-8')
         setCurrentProjectPath(targetProjectPath)
         await saveProjectThumbnail(targetProjectPath, thumbnailDataUrl)
         await rememberRecentProject(targetProjectPath)
@@ -302,6 +376,7 @@ export function registerProjectHandlers() {
         return {
           success: true,
           path: targetProjectPath,
+          projectId: preparedProject.projectId,
           message: 'Project saved successfully'
         }
       } catch (error) {

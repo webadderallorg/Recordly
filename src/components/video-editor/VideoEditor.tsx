@@ -1592,7 +1592,11 @@ export default function VideoEditor() {
 
 			setLastSavedSnapshot(
 				cloneStructured(
-					createProjectData(sourcePath, buildPersistedEditorState(normalizedEditor)),
+					createProjectData(
+						sourcePath,
+						buildPersistedEditorState(normalizedEditor),
+						project.projectId ?? null,
+					),
 				),
 			);
 			await refreshProjectLibrary();
@@ -1605,8 +1609,12 @@ export default function VideoEditor() {
 		if (!currentSourcePath) {
 			return null;
 		}
-		return createProjectData(currentSourcePath, currentPersistedEditorState);
-	}, [currentPersistedEditorState, currentSourcePath]);
+		return createProjectData(
+			currentSourcePath,
+			currentPersistedEditorState,
+			lastSavedSnapshot?.projectId ?? null,
+		);
+	}, [currentPersistedEditorState, currentSourcePath, lastSavedSnapshot?.projectId]);
 
 	const syncRecordingSessionWebcam = useCallback(
 		async (webcamPath: string | null) => {
@@ -2120,7 +2128,11 @@ export default function VideoEditor() {
 				const projectData =
 					currentProjectSnapshot?.videoPath === currentSourcePath
 						? currentProjectSnapshot
-						: createProjectData(currentSourcePath, currentPersistedEditorState);
+						: createProjectData(
+								currentSourcePath,
+								currentPersistedEditorState,
+								lastSavedSnapshot?.projectId ?? null,
+						  );
 
 				const fileNameBase =
 					currentSourcePath
@@ -2159,7 +2171,15 @@ export default function VideoEditor() {
 				if (result.path) {
 					setCurrentProjectPath(result.path);
 				}
-				setLastSavedSnapshot(cloneStructured(projectData));
+				setLastSavedSnapshot(
+					cloneStructured(
+						createProjectData(
+							projectData.videoPath,
+							projectData.editor,
+							result.projectId ?? projectData.projectId ?? null,
+						),
+					),
+				);
 				await refreshProjectLibrary();
 
 				toast.success(`Project saved to ${result.path}`);
@@ -2174,6 +2194,7 @@ export default function VideoEditor() {
 			currentProjectPath,
 			currentProjectSnapshot,
 			currentPersistedEditorState,
+			lastSavedSnapshot?.projectId,
 			refreshProjectLibrary,
 			remountPreview,
 		],
@@ -2222,7 +2243,11 @@ export default function VideoEditor() {
 				const projectData =
 					currentProjectSnapshot?.videoPath === currentSourcePath
 						? currentProjectSnapshot
-						: createProjectData(currentSourcePath, currentPersistedEditorState);
+						: createProjectData(
+								currentSourcePath,
+								currentPersistedEditorState,
+								lastSavedSnapshot?.projectId ?? null,
+						  );
 				const thumbnailDataUrl = await captureProjectThumbnail();
 				const result = await window.electronAPI.saveProjectFileNamed(
 					projectData,
@@ -2243,7 +2268,15 @@ export default function VideoEditor() {
 				if (result.path) {
 					setCurrentProjectPath(result.path);
 				}
-				setLastSavedSnapshot(cloneStructured(projectData));
+				setLastSavedSnapshot(
+					cloneStructured(
+						createProjectData(
+							projectData.videoPath,
+							projectData.editor,
+							result.projectId ?? projectData.projectId ?? null,
+						),
+					),
+				);
 				await refreshProjectLibrary();
 				toast.success(result.path ? `Project saved to ${result.path}` : "Project saved");
 				return true;
@@ -2256,6 +2289,7 @@ export default function VideoEditor() {
 			currentPersistedEditorState,
 			currentProjectSnapshot,
 			currentSourcePath,
+			lastSavedSnapshot?.projectId,
 			refreshProjectLibrary,
 			remountPreview,
 		],
