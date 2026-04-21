@@ -39,6 +39,14 @@ interface UseEditorProjectParams {
 	clearHistory: () => void;
 }
 
+type SaveProjectResult = {
+	success: boolean;
+	path?: string;
+	message?: string;
+	canceled?: boolean;
+	error?: string;
+};
+
 export function useEditorProject({
 	getCurrentPersistedState,
 	getCurrentSourcePath,
@@ -71,18 +79,50 @@ export function useEditorProject({
 		return JSON.stringify(current) !== JSON.stringify(lastSavedSnapshot);
 	}, [getCurrentPersistedState, getCurrentSourcePath, getCurrentProjectPath, lastSavedSnapshot]);
 
-	const saveProject = useCallback(
-		async (forceSaveAs: boolean) => {
-			const sourcePath = getCurrentSourcePath();
-			if (!sourcePath) {
-				toast.error("No video loaded");
+	const prepareProjectSave = useCallback(async () => {
+		const sourcePath = getCurrentSourcePath();
+		if (!sourcePath) {
+			toast.error("No video loaded");
+			return null;
+		}
+
+		const projectData = createProjectData(sourcePath, getCurrentPersistedState());
+		const fileNameBase =
+			sourcePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ||
+			`project-${Date.now()}`;
+		const thumbnailDataUrl = await captureProjectThumbnail();
+
+		return {
+			projectData,
+			fileNameBase,
+			thumbnailDataUrl,
+		};
+	}, [captureProjectThumbnail, getCurrentPersistedState, getCurrentSourcePath]);
+
+	const completeProjectSave = useCallback(
+		async (result: SaveProjectResult, projectData: EditorProjectData) => {
+			if (result.canceled) {
+				toast.info("Project save canceled");
 				return false;
 			}
+			if (!result.success) {
+				toast.error(result.message || "Failed to save project");
+				return false;
+			}
+			if (result.path) setCurrentProjectPath(result.path);
+			setLastSavedSnapshot(globalThis.structuredClone(projectData));
+			await refreshProjectLibrary();
+			toast.success(result.path ? `Project saved to ${result.path}` : "Project saved");
+			return true;
+		},
+		[refreshProjectLibrary, setCurrentProjectPath],
+	);
+
+	const saveProject = useCallback(
+		async (forceSaveAs: boolean) => {
+			const preparedSave = await prepareProjectSave();
+			if (!preparedSave) return false;
 			try {
-				const projectData = createProjectData(sourcePath, getCurrentPersistedState());
-				const fileNameBase =
-					sourcePath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ||
-					`project-${Date.now()}`;
 				let targetProjectPath = forceSaveAs ? undefined : (getCurrentProjectPath() ?? undefined);
 
 				if (!forceSaveAs && !targetProjectPath) {
@@ -93,40 +133,51 @@ export function useEditorProject({
 					}
 				}
 
-				const thumbnailDataUrl = await captureProjectThumbnail();
 				const result = await window.electronAPI.saveProjectFile(
-					projectData,
-					fileNameBase,
+					preparedSave.projectData,
+					preparedSave.fileNameBase,
 					targetProjectPath,
-					thumbnailDataUrl,
+					preparedSave.thumbnailDataUrl,
 				);
 
-				if (result.canceled) {
-					toast.info("Project save canceled");
-					return false;
-				}
-				if (!result.success) {
-					toast.error(result.message || "Failed to save project");
-					return false;
-				}
-				if (result.path) setCurrentProjectPath(result.path);
-				setLastSavedSnapshot(globalThis.structuredClone(projectData));
-				await refreshProjectLibrary();
-				toast.success(`Project saved to ${result.path}`);
-				return true;
+				return await completeProjectSave(result, preparedSave.projectData);
 			} finally {
 				remountPreview();
 			}
 		},
 		[
-			captureProjectThumbnail,
-			getCurrentPersistedState,
-			getCurrentSourcePath,
+			completeProjectSave,
 			getCurrentProjectPath,
+			prepareProjectSave,
 			setCurrentProjectPath,
-			refreshProjectLibrary,
 			remountPreview,
 		],
+	);
+
+	const saveProjectWithName = useCallback(
+		async (projectName: string) => {
+			const trimmedProjectName = projectName.trim();
+			if (!trimmedProjectName) {
+				toast.error("Project name is required");
+				return false;
+			}
+
+			const preparedSave = await prepareProjectSave();
+			if (!preparedSave) return false;
+
+			try {
+				const result = await window.electronAPI.saveProjectFileNamed(
+					preparedSave.projectData,
+					trimmedProjectName,
+					preparedSave.thumbnailDataUrl,
+				);
+
+				return await completeProjectSave(result, preparedSave.projectData);
+			} finally {
+				remountPreview();
+			}
+		},
+		[completeProjectSave, prepareProjectSave, remountPreview],
 	);
 
 	/** Load and apply a project from a raw (possibly unknown) candidate value. */
@@ -218,6 +269,7 @@ export function useEditorProject({
 		setLastSavedSnapshot,
 		hasUnsavedChanges,
 		saveProject,
+		saveProjectWithName,
 		handleSaveProject,
 		handleSaveProjectAs,
 		applyLoadedProject,

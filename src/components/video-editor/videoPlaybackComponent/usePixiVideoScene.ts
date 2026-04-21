@@ -10,8 +10,7 @@ interface UsePixiVideoSceneParams {
 	videoReady: boolean;
 	onTimeUpdate: (time: number) => void;
 	onPlayStateChange: (playing: boolean) => void;
-	layoutVideoContent: () => void;
-	updateOverlayForRegion: () => void;
+	updateOverlayForRegion: (region: null) => void;
 }
 
 export function usePixiVideoScene({
@@ -20,7 +19,6 @@ export function usePixiVideoScene({
 	videoReady,
 	onTimeUpdate,
 	onPlayStateChange,
-	layoutVideoContent,
 	updateOverlayForRegion,
 }: UsePixiVideoSceneParams) {
 	useEffect(() => {
@@ -64,7 +62,7 @@ export function usePixiVideoScene({
 		refs.blurFilterRef.current = blurFilter;
 		refs.motionBlurFilterRef.current = motionBlurFilter;
 
-		layoutVideoContent();
+		refs.layoutVideoContentRef.current?.();
 		video.pause();
 
 		const { handlePlay, handlePause, handleSeeked, handleSeeking } = createVideoEventHandlers({
@@ -118,7 +116,7 @@ export function usePixiVideoScene({
 			}
 			videoTexture.destroy(false);
 			refs.videoSpriteRef.current = null;
-			updateOverlayForRegion();
+			updateOverlayForRegion(null);
 		};
-	}, [layoutVideoContent, onPlayStateChange, onTimeUpdate, pixiReady, refs, updateOverlayForRegion, videoReady]);
+	}, [onPlayStateChange, onTimeUpdate, pixiReady, refs, updateOverlayForRegion, videoReady]);
 }

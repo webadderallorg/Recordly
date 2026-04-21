@@ -16,7 +16,7 @@ import { useI18n } from "@/contexts/I18nContext";
 import { ASPECT_RATIOS, getAspectRatioLabel, getAspectRatioValue } from "@/utils/aspectRatioUtils";
 import { CropControl } from "./CropControl";
 import { EditorToolbar } from "./EditorToolbar";
-import TimelineEditor, { type TimelineEditorHandle } from "./timeline/TimelineEditor";
+import type { TimelineEditorHandle } from "./timeline/TimelineEditor";
 import VideoPlayback, { VideoPlaybackRef } from "./VideoPlayback";
 import type { CursorTelemetryPoint } from "./types";
 import type { useEditorPreferences } from "./hooks/useEditorPreferences";
@@ -41,8 +41,6 @@ interface EditorContentProps {
 	isCropped: boolean;
 	hasSourceAudioFallback: boolean;
 	effectiveCursorTelemetry: CursorTelemetryPoint[];
-	normalizedCursorTelemetry: CursorTelemetryPoint[];
-	autoSuggestZoomsTrigger: number;
 	videoPlaybackRef: React.RefObject<VideoPlaybackRef | null>;
 	timelineRef: React.RefObject<TimelineEditorHandle | null>;
 	setDuration: (v: number) => void;
@@ -56,7 +54,6 @@ interface EditorContentProps {
 	handleOpenCropEditor: () => void;
 	handleCloseCropEditor: () => void;
 	handleCancelCropEditor: () => void;
-	handleAutoSuggestZoomsConsumed: () => void;
 }
 
 export function EditorContent({
@@ -73,8 +70,6 @@ export function EditorContent({
 	isCropped,
 	hasSourceAudioFallback,
 	effectiveCursorTelemetry,
-	normalizedCursorTelemetry,
-	autoSuggestZoomsTrigger,
 	videoPlaybackRef,
 	timelineRef,
 	setDuration,
@@ -88,13 +83,11 @@ export function EditorContent({
 	handleOpenCropEditor,
 	handleCloseCropEditor,
 	handleCancelCropEditor,
-	handleAutoSuggestZoomsConsumed,
 }: EditorContentProps) {
 	const { t } = useI18n();
 
 	return (
-		<>
-			<div className="flex min-h-0 flex-1 flex-col gap-3">
+		<div className="flex min-h-0 flex-1 flex-col gap-3">
 				{/* Preview */}
 				<div className="flex min-h-0 flex-1 flex-col">
 					<div className="relative flex flex-1 min-h-0 flex-col overflow-hidden">
@@ -248,55 +241,6 @@ export function EditorContent({
 					togglePlayPause={togglePlayPause}
 					handleSeek={handleSeek}
 				/>
-			</div>
-			{/* Timeline */}
-			<div
-				className="flex-shrink-0 flex flex-col"
-				style={{
-					height: timelineCollapsed ? undefined : "15%",
-					minHeight: timelineCollapsed ? 0 : 160,
-				}}
-			>
-				<TimelineEditor
-					ref={timelineRef as React.Ref<TimelineEditorHandle>}
-					hideToolbar
-					videoDuration={duration}
-					currentTime={currentTime}
-					playheadTime={regions.timelinePlayheadTime}
-					onSeek={handleSeek}
-					videoPath={videoPath}
-					cursorTelemetry={normalizedCursorTelemetry}
-					autoSuggestZoomsTrigger={autoSuggestZoomsTrigger}
-					onAutoSuggestZoomsConsumed={handleAutoSuggestZoomsConsumed}
-					zoomRegions={regions.zoomRegions}
-					onZoomAdded={regions.handleZoomAdded}
-					onZoomSuggested={regions.handleZoomSuggested}
-					onZoomSpanChange={regions.handleZoomSpanChange}
-					onZoomDelete={regions.handleZoomDelete}
-					selectedZoomId={regions.selectedZoomId}
-					onSelectZoom={regions.handleSelectZoom}
-					trimRegions={regions.trimRegions}
-					clipRegions={regions.clipRegions}
-					onClipSplit={regions.handleClipSplit}
-					onClipSpanChange={regions.handleClipSpanChange}
-					onClipDelete={regions.handleClipDelete}
-					selectedClipId={regions.selectedClipId}
-					onSelectClip={regions.handleSelectClip}
-					audioRegions={regions.audioRegions}
-					onAudioAdded={regions.handleAudioAdded}
-					onAudioSpanChange={regions.handleAudioSpanChange}
-					onAudioDelete={regions.handleAudioDelete}
-					selectedAudioId={regions.selectedAudioId}
-					onSelectAudio={regions.handleSelectAudio}
-					annotationRegions={regions.annotationRegions}
-					onAnnotationAdded={regions.handleAnnotationAdded}
-					onAnnotationSpanChange={regions.handleAnnotationSpanChange}
-					onAnnotationDelete={regions.handleAnnotationDelete}
-					selectedAnnotationId={regions.selectedAnnotationId}
-					onSelectAnnotation={regions.handleSelectAnnotation}
-					aspectRatio={prefs.aspectRatio}
-				/>
-			</div>
 			{/* Crop modal */}
 			{showCropModal ? (
 				<>
@@ -341,6 +285,6 @@ export function EditorContent({
 					</div>
 				</>
 			) : null}
-		</>
+		</div>
 	);
 }

@@ -221,8 +221,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(function 
 		videoReady,
 		onTimeUpdate,
 		onPlayStateChange,
-		layoutVideoContent: layout.layoutVideoContent,
-		updateOverlayForRegion: () => layout.updateOverlayForRegion(null),
+		updateOverlayForRegion: layout.updateOverlayForRegion,
 	});
 
 	usePlaybackTicker({

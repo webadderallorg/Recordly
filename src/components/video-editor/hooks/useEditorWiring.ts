@@ -76,6 +76,7 @@ export function useEditorWiring({
 		(snapshot: EditorHistorySnapshot) => {
 			regions.setZoomRegions(snapshot.zoomRegions);
 			regions.setClipRegions(snapshot.clipRegions);
+			regions.clipInitializedRef.current = snapshot.clipRegions.length > 0;
 			regions.setAnnotationRegions(snapshot.annotationRegions);
 			regions.setAudioRegions(snapshot.audioRegions);
 			captions.setAutoCaptions(snapshot.autoCaptions);

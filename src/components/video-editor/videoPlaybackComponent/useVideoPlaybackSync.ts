@@ -296,6 +296,7 @@ export function useVideoPlaybackSync({
 			const videoStage = refs.videoContainerRef.current;
 			const sprite = refs.videoSpriteRef.current;
 			const currentApp = refs.appRef.current;
+			const layout = refs.layoutVideoContentRef.current;
 			if (!container || !videoStage || !sprite || !currentApp) return;
 
 			container.scale.set(1);
@@ -305,7 +306,7 @@ export function useVideoPlaybackSync({
 			sprite.scale.set(1);
 			sprite.position.set(0, 0);
 
-			layoutVideoContent();
+			layout?.();
 
 			requestAnimationFrame(() => {
 				const finalApp = refs.appRef.current;
@@ -317,7 +318,12 @@ export function useVideoPlaybackSync({
 				}
 			});
 		});
-	}, [layoutVideoContent, pixiReady, refs, videoReady]);
+	}, [pixiReady, refs, videoPath, videoReady]);
+
+	useEffect(() => {
+		if (!pixiReady || !videoReady) return;
+		layoutVideoContent();
+	}, [layoutVideoContent, pixiReady, videoReady]);
 
 	useEffect(() => {
 		if (!pixiReady || !videoReady) return;

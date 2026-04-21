@@ -23,7 +23,7 @@ import ProjectBrowserDialog from "./ProjectBrowserDialog";
 import { fromFileUrl } from "./projectPersistence";
 import type { CropRegion } from "./types";
 import { VideoPlaybackRef } from "./VideoPlayback";
-import type { TimelineEditorHandle } from "./timeline/TimelineEditor";
+import TimelineEditor, { type TimelineEditorHandle } from "./timeline/TimelineEditor";
 import { getSmokeExportConfig } from "./videoEditorUtils";
 
 export default function VideoEditor() {
@@ -293,16 +293,6 @@ export default function VideoEditor() {
 	}, [prefs.cropRegion]);
 
 	// ── Misc handlers ────────────────────────────────────────────────
-	const openRecordingsFolder = useCallback(async () => {
-		try {
-			const result = await window.electronAPI.openRecordingsFolder();
-			if (!result.success)
-				toast.error(result.message || result.error || "Failed to open recordings folder.");
-		} catch (err) {
-			toast.error(`Failed to open recordings folder: ${String(err)}`);
-		}
-	}, []);
-
 	const revealExportedFile = useCallback(async () => {
 		if (!exp.exportedFilePath) return;
 		try {
@@ -368,12 +358,11 @@ export default function VideoEditor() {
 				headerLeftControlsPaddingClass={headerLeftControlsPaddingClass}
 				mp4OutputDimensions={wiring.mp4OutputDimensions}
 				gifOutputDimensions={wiring.gifOutputDimensions}
-				openRecordingsFolder={openRecordingsFolder}
 				revealExportedFile={revealExportedFile}
 				projectBrowserTriggerRef={projectBrowserTriggerRef}
 			/>
 			<div className="relative flex min-h-0 flex-1 flex-col gap-3 p-4">
-				<div className="flex min-h-0 flex-1 gap-3">
+				<div className="relative z-10 flex min-h-0 flex-1 gap-3">
 					<EditorSidebar
 						prefs={prefs}
 						regions={regions}
@@ -396,8 +385,6 @@ export default function VideoEditor() {
 						isCropped={isCropped}
 						hasSourceAudioFallback={hasSourceAudioFallback}
 						effectiveCursorTelemetry={wiring.effectiveCursorTelemetry}
-						normalizedCursorTelemetry={wiring.normalizedCursorTelemetry}
-						autoSuggestZoomsTrigger={autoSuggestZoomsTrigger}
 						videoPlaybackRef={videoPlaybackRef}
 						timelineRef={timelineRef}
 						setDuration={setDuration}
@@ -411,7 +398,53 @@ export default function VideoEditor() {
 						handleOpenCropEditor={handleOpenCropEditor}
 						handleCloseCropEditor={handleCloseCropEditor}
 						handleCancelCropEditor={handleCancelCropEditor}
-						handleAutoSuggestZoomsConsumed={handleAutoSuggestZoomsConsumed}
+					/>
+				</div>
+				<div
+					className="relative z-0 isolate flex-shrink-0 flex flex-col"
+					style={{
+						height: timelineCollapsed ? undefined : "15%",
+						minHeight: timelineCollapsed ? 0 : 160,
+					}}
+				>
+					<TimelineEditor
+						ref={timelineRef}
+						hideToolbar
+						videoDuration={duration}
+						currentTime={currentTime}
+						playheadTime={regions.timelinePlayheadTime}
+						onSeek={handleSeek}
+						videoPath={videoPath}
+						cursorTelemetry={wiring.normalizedCursorTelemetry}
+						autoSuggestZoomsTrigger={autoSuggestZoomsTrigger}
+						onAutoSuggestZoomsConsumed={handleAutoSuggestZoomsConsumed}
+						zoomRegions={regions.zoomRegions}
+						onZoomAdded={regions.handleZoomAdded}
+						onZoomSuggested={regions.handleZoomSuggested}
+						onZoomSpanChange={regions.handleZoomSpanChange}
+						onZoomDelete={regions.handleZoomDelete}
+						selectedZoomId={regions.selectedZoomId}
+						onSelectZoom={regions.handleSelectZoom}
+						trimRegions={regions.trimRegions}
+						clipRegions={regions.clipRegions}
+						onClipSplit={regions.handleClipSplit}
+						onClipSpanChange={regions.handleClipSpanChange}
+						onClipDelete={regions.handleClipDelete}
+						selectedClipId={regions.selectedClipId}
+						onSelectClip={regions.handleSelectClip}
+						audioRegions={regions.audioRegions}
+						onAudioAdded={regions.handleAudioAdded}
+						onAudioSpanChange={regions.handleAudioSpanChange}
+						onAudioDelete={regions.handleAudioDelete}
+						selectedAudioId={regions.selectedAudioId}
+						onSelectAudio={regions.handleSelectAudio}
+						annotationRegions={regions.annotationRegions}
+						onAnnotationAdded={regions.handleAnnotationAdded}
+						onAnnotationSpanChange={regions.handleAnnotationSpanChange}
+						onAnnotationDelete={regions.handleAnnotationDelete}
+						selectedAnnotationId={regions.selectedAnnotationId}
+						onSelectAnnotation={regions.handleSelectAnnotation}
+						aspectRatio={prefs.aspectRatio}
 					/>
 				</div>
 			</div>
