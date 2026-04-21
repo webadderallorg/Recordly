@@ -43,6 +43,7 @@ import {
 	createEditorWindow,
 	createHudOverlayWindow,
 	createSourceSelectorWindow,
+	createUpdateToastWindow,
 	getHudOverlayWindow,
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
@@ -582,7 +583,7 @@ function sendUpdateToastToWindows(channel: "update-toast-state", payload: unknow
 		return true;
 	}
 
-	const toastWindow = showUpdateToastWindow();
+	const toastWindow = getUpdateToastWindow() ?? createUpdateToastWindow();
 	const sendPayload = () => {
 		toastWindow.webContents.send(channel, payload);
 		showUpdateToastWindow();
@@ -905,8 +906,7 @@ app.whenReady().then(async () => {
 			// source picker entirely). This avoids calling getSources() which
 			// would itself trigger an extra portal dialog.
 			const isLinuxPortalSentinel =
-				process.platform === "linux" &&
-				(sourceId === "screen:linux-portal" || !sourceId);
+				process.platform === "linux" && (sourceId === "screen:linux-portal" || !sourceId);
 			if (isLinuxPortalSentinel) {
 				callback({ video: { id: "screen:0:0", name: "Entire screen" } });
 				return;

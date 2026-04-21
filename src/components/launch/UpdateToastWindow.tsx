@@ -75,22 +75,22 @@ export function UpdateToastWindow() {
 
 		void window.electronAPI.getCurrentUpdateToastPayload().then((nextPayload) => {
 			if (mounted) {
-				setPayload(nextPayload);
+				setPayload(nextPayload ?? null);
 			}
 		});
 
 		pollTimer = setInterval(() => {
 			void window.electronAPI.getCurrentUpdateToastPayload().then((nextPayload) => {
-				if (!mounted || !nextPayload) {
+				if (!mounted) {
 					return;
 				}
 
-				setPayload((currentPayload) => currentPayload ?? nextPayload);
+				setPayload(nextPayload ?? null);
 			});
 		}, 750);
 
 		const dispose = window.electronAPI.onUpdateToastStateChanged((nextPayload) => {
-			setPayload(nextPayload);
+			setPayload(nextPayload ?? null);
 		});
 
 		return () => {
@@ -194,21 +194,7 @@ export function UpdateToastWindow() {
 	} as const;
 
 	if (!payload) {
-		return (
-			<div style={wrapperStyle}>
-				<div style={{ ...cardStyle, alignItems: "center" }}>
-					<div style={iconBoxStyle}>
-						<LoaderCircle size={20} />
-					</div>
-					<div>
-						<p style={titleStyle}>Checking for updates</p>
-						<p style={secondaryTextStyle}>
-							Waiting for updater state from the main process.
-						</p>
-					</div>
-				</div>
-			</div>
-		);
+		return null;
 	}
 
 	const normalizedProgress = Math.max(0, Math.min(100, Math.round(payload.progressPercent ?? 0)));
