@@ -21,6 +21,16 @@ describe("shouldForceLinuxEgl", () => {
 		).toBe(false);
 	});
 
+	it("falls back to Electron's ozone hint when OZONE_PLATFORM is invalid", () => {
+		expect(
+			shouldForceLinuxEgl({
+				OZONE_PLATFORM: "auto",
+				ELECTRON_OZONE_PLATFORM_HINT: "wayland",
+				XDG_SESSION_TYPE: "x11",
+			}),
+		).toBe(false);
+	});
+
 	it("forces EGL in an X11 session", () => {
 		expect(shouldForceLinuxEgl({ XDG_SESSION_TYPE: "x11" })).toBe(true);
 	});

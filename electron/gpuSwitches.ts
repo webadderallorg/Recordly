@@ -4,17 +4,20 @@ export interface GpuSwitches {
 	disableFeatures?: string[];
 }
 
-function getForcedLinuxWindowSystem(env: NodeJS.ProcessEnv): "wayland" | "x11" | null {
-	const ozonePlatform =
-		env.OZONE_PLATFORM?.toLowerCase() ??
-		env.ELECTRON_OZONE_PLATFORM_HINT?.toLowerCase() ??
-		null;
-
-	if (ozonePlatform === "wayland" || ozonePlatform === "x11") {
-		return ozonePlatform;
+function normalizeLinuxWindowSystem(value: string | undefined): "wayland" | "x11" | null {
+	const normalized = value?.trim().toLowerCase();
+	if (normalized === "wayland" || normalized === "x11") {
+		return normalized;
 	}
 
 	return null;
+}
+
+function getForcedLinuxWindowSystem(env: NodeJS.ProcessEnv): "wayland" | "x11" | null {
+	return (
+		normalizeLinuxWindowSystem(env.OZONE_PLATFORM) ??
+		normalizeLinuxWindowSystem(env.ELECTRON_OZONE_PLATFORM_HINT)
+	);
 }
 
 export function shouldForceLinuxEgl(env: NodeJS.ProcessEnv): boolean {
