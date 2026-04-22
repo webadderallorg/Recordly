@@ -1134,11 +1134,17 @@ export function SettingsPanel({
 			return;
 		}
 
-		if (removeBackgroundStateRef.current) {
-			onAspectRatioChange?.(removeBackgroundStateRef.current.aspectRatio);
-			onPaddingChange?.(removeBackgroundStateRef.current.padding);
+		const previousState = removeBackgroundStateRef.current;
+		if (previousState) {
+			onAspectRatioChange?.(previousState.aspectRatio);
+			onPaddingChange?.(previousState.padding);
 			removeBackgroundStateRef.current = null;
+			return;
 		}
+
+		// Fallback if the project loaded in a "background removed" state already
+		onAspectRatioChange?.(initialEditorPreferences.aspectRatio);
+		onPaddingChange?.({ ...DEFAULT_PADDING });
 	};
 
 	const togglePaddingLink = () => {
