@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { app } from "electron";
 import { RECORDINGS_DIR, USER_DATA_PATH } from "../../appPaths";
+import { isSupportedLocalMediaPath } from "../../mediaTypes";
 import {
 	PROJECT_FILE_EXTENSION,
 	LEGACY_PROJECT_FILE_EXTENSIONS,
@@ -81,6 +82,27 @@ export async function rememberApprovedLocalReadPath(filePath?: string | null) {
 	} catch {
 		// Ignore missing files; the eventual read will surface the real error.
 	}
+}
+
+export async function resolveApprovedLocalMediaPath(candidatePath: string): Promise<string | null> {
+	const normalizedCandidatePath = normalizePath(candidatePath);
+	const realPath = await fs.realpath(normalizedCandidatePath).catch(() => null);
+
+	if (!realPath) {
+		return null;
+	}
+
+	const stat = await fs.stat(realPath).catch(() => null);
+	if (!stat?.isFile() || !isSupportedLocalMediaPath(realPath)) {
+		return null;
+	}
+
+	if (!(await isAllowedLocalMediaPath(realPath))) {
+		return null;
+	}
+
+	await rememberApprovedLocalReadPath(realPath);
+	return realPath;
 }
 
 export async function replaceApprovedSessionLocalReadPaths(filePaths: Array<string | null | undefined>) {

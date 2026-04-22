@@ -73,4 +73,31 @@ describe("local media path policy", () => {
 
 		await expect(isAllowedLocalMediaPath(pendingExportPath)).resolves.toBe(true);
 	});
+
+	it("approves media-server access for existing external files resolved through the URL policy", async () => {
+		const downloadsPath = path.join(tempRoot, "Downloads");
+		const videoPath = path.join(downloadsPath, "external-video.mp4");
+		await fs.mkdir(downloadsPath, { recursive: true });
+		await fs.writeFile(videoPath, "test-video");
+
+		const { resolveApprovedLocalMediaPath } = await import("./manager");
+		const { isAllowedMediaPath } = await import("../../mediaServer");
+
+		expect(isAllowedMediaPath(videoPath)).toBe(false);
+		await expect(resolveApprovedLocalMediaPath(videoPath)).resolves.toBe(videoPath);
+		expect(isAllowedMediaPath(videoPath)).toBe(true);
+	});
+
+	it("rejects existing non-media files when resolving local media URLs", async () => {
+		const downloadsPath = path.join(tempRoot, "Downloads");
+		const textPath = path.join(downloadsPath, "notes.txt");
+		await fs.mkdir(downloadsPath, { recursive: true });
+		await fs.writeFile(textPath, "not media");
+
+		const { resolveApprovedLocalMediaPath } = await import("./manager");
+		const { isAllowedMediaPath } = await import("../../mediaServer");
+
+		await expect(resolveApprovedLocalMediaPath(textPath)).resolves.toBeNull();
+		expect(isAllowedMediaPath(textPath)).toBe(false);
+	});
 });

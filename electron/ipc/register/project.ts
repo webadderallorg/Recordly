@@ -20,7 +20,6 @@ import {
 import {
 	getProjectsDir,
   getProjectThumbnailPath,
-	isAllowedLocalMediaPath,
 	isPathInsideDirectory,
 	isTrustedProjectPath,
 	listProjectLibraryEntries,
@@ -28,6 +27,7 @@ import {
 	loadProjectFromPath,
 	persistRecordingsDirectorySetting,
 	replaceApprovedSessionLocalReadPaths,
+	resolveApprovedLocalMediaPath,
 	rememberRecentProject,
   saveRecentProjectPaths,
 	saveProjectThumbnail,
@@ -622,15 +622,10 @@ export function registerProjectHandlers() {
     if (!baseUrl || !filePath) {
       return { success: false as const };
     }
-    const normalized = path.resolve(filePath);
-    let resolved: string;
-    try {
-      resolved = await fs.realpath(normalized);
-    } catch {
-      return { success: false as const };
-    }
-    if (!(await isAllowedLocalMediaPath(resolved))) {
-      console.warn(`[get-local-media-url] Blocked disallowed path: ${resolved}`);
+    const resolved = await resolveApprovedLocalMediaPath(filePath);
+    if (!resolved) {
+      const normalized = path.resolve(filePath);
+      console.warn(`[get-local-media-url] Blocked disallowed path: ${normalized}`);
       return { success: false as const };
     }
     return { success: true as const, url: buildMediaUrl(baseUrl, resolved) };

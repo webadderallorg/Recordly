@@ -3,27 +3,10 @@ import fs from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { approvedLocalReadPaths } from "./ipc/state";
-
-const MEDIA_MIME_TYPES: Record<string, string> = {
-	".mp4": "video/mp4",
-	".webm": "video/webm",
-	".mov": "video/quicktime",
-	".mkv": "video/x-matroska",
-	".avi": "video/x-msvideo",
-	".wav": "audio/wav",
-	".mp3": "audio/mpeg",
-	".ogg": "audio/ogg",
-	".png": "image/png",
-	".jpg": "image/jpeg",
-	".jpeg": "image/jpeg",
-};
+import { getMediaContentType } from "./mediaTypes";
 
 let mediaServerBaseUrl: string | null = null;
 let mediaServerStartPromise: Promise<string> | null = null;
-
-function getMediaContentType(filePath: string): string {
-	return MEDIA_MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
-}
 
 async function resolveRealPath(filePath: string): Promise<string | null> {
 	try {
@@ -33,7 +16,7 @@ async function resolveRealPath(filePath: string): Promise<string | null> {
 	}
 }
 
-function isAllowedMediaPath(realPath: string): boolean {
+export function isAllowedMediaPath(realPath: string): boolean {
 	return approvedLocalReadPaths.has(realPath);
 }
 
