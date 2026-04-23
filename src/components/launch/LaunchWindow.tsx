@@ -42,6 +42,10 @@ import ProjectBrowserDialog, {
 	type ProjectLibraryEntry,
 } from "../video-editor/ProjectBrowserDialog";
 import {
+	canShowFloatingWebcamPreview,
+	canToggleFloatingWebcamPreview,
+} from "./floatingWebcamPreview";
+import {
 	mergeHudInteractiveBounds,
 	shouldRestoreHudMousePassthroughAfterDrag,
 } from "./hudMousePassthrough";
@@ -199,6 +203,9 @@ export function LaunchWindow() {
 	const [showFloatingWebcamPreview, setShowFloatingWebcamPreview] = useState(true);
 	const [webcamPreviewOffset, setWebcamPreviewOffset] = useState(DEFAULT_WEBCAM_PREVIEW_OFFSET);
 	const [recordingHudOffset, setRecordingHudOffset] = useState(DEFAULT_RECORDING_HUD_OFFSET);
+	const [hudOverlayMousePassthroughSupported, setHudOverlayMousePassthroughSupported] = useState<
+		boolean | null
+	>(null);
 	const [platform, setPlatform] = useState<string | null>(null);
 	const [appVersion, setAppVersion] = useState<string | null>(null);
 	const [updateStatus, setUpdateStatus] = useState<{
@@ -264,9 +271,14 @@ export function LaunchWindow() {
 	const micDropdownOpen = activeDropdown === "mic";
 	const webcamDropdownOpen = activeDropdown === "webcam";
 	const showWebcamControls = webcamEnabled && !recording;
-	const showRecordingWebcamPreview = webcamEnabled && showFloatingWebcamPreview;
+	const showRecordingWebcamPreview =
+		webcamEnabled &&
+		canShowFloatingWebcamPreview(
+			showFloatingWebcamPreview,
+			hudOverlayMousePassthroughSupported,
+		);
 	const shouldStreamWebcamPreview =
-		webcamEnabled && (showFloatingWebcamPreview || (showWebcamControls && webcamDropdownOpen));
+		webcamEnabled && (showRecordingWebcamPreview || (showWebcamControls && webcamDropdownOpen));
 	const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(
 		microphoneEnabled || micDropdownOpen,
 		microphoneDeviceId,
@@ -675,6 +687,24 @@ export function LaunchWindow() {
 			}
 		};
 		void loadPlatform();
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	useEffect(() => {
+		let cancelled = false;
+		const loadHudOverlayMousePassthroughSupport = async () => {
+			try {
+				const result = await window.electronAPI.getHudOverlayMousePassthroughSupported();
+				if (!cancelled && result.success) {
+					setHudOverlayMousePassthroughSupported(result.supported);
+				}
+			} catch (error) {
+				console.error("Failed to load HUD overlay mouse passthrough support:", error);
+			}
+		};
+		void loadHudOverlayMousePassthroughSupport();
 		return () => {
 			cancelled = true;
 		};
@@ -1403,25 +1433,29 @@ export function LaunchWindow() {
 											>
 												{t("recording.turnOffWebcam")}
 											</DropdownItem>
-											<DropdownItem
-												icon={
-													showFloatingWebcamPreview ? (
-														<EyeOff size={16} />
-													) : (
-														<Eye size={16} />
-													)
-												}
-												selected={showFloatingWebcamPreview}
-												onClick={() => {
-													setShowFloatingWebcamPreview(
-														(current) => !current,
-													);
-												}}
-											>
-												{showFloatingWebcamPreview
-													? t("recording.hideFloatingWebcamPreview")
-													: t("recording.showFloatingWebcamPreview")}
-											</DropdownItem>
+											{canToggleFloatingWebcamPreview(
+												hudOverlayMousePassthroughSupported,
+											) ? (
+												<DropdownItem
+													icon={
+														showFloatingWebcamPreview ? (
+															<EyeOff size={16} />
+														) : (
+															<Eye size={16} />
+														)
+													}
+													selected={showFloatingWebcamPreview}
+													onClick={() => {
+														setShowFloatingWebcamPreview(
+															(current) => !current,
+														);
+													}}
+												>
+													{showFloatingWebcamPreview
+														? t("recording.hideFloatingWebcamPreview")
+														: t("recording.showFloatingWebcamPreview")}
+												</DropdownItem>
+											) : null}
 										</>
 									)}
 									{!webcamEnabled && (

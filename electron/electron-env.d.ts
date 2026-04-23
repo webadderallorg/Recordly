@@ -88,6 +88,10 @@ interface Window {
 		setHudOverlayCompactWidth: (width: number) => void;
 		setHudOverlayMeasuredHeight: (height: number, expanded: boolean) => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
+		getHudOverlayMousePassthroughSupported: () => Promise<{
+			success: boolean;
+			supported: boolean;
+		}>;
 		setHudOverlayCaptureProtection: (
 			enabled: boolean,
 		) => Promise<{ success: boolean; enabled: boolean }>;

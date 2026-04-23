@@ -96,6 +96,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getHudOverlayCaptureProtection: () => {
 		return ipcRenderer.invoke("get-hud-overlay-capture-protection");
 	},
+	getHudOverlayMousePassthroughSupported: () => {
+		return ipcRenderer.invoke("get-hud-overlay-mouse-passthrough-supported");
+	},
 	setHudOverlayCaptureProtection: (enabled: boolean) => {
 		return ipcRenderer.invoke("set-hud-overlay-capture-protection", enabled);
 	},
