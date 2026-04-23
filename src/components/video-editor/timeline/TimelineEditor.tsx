@@ -1,3 +1,5 @@
+import type { Range, Span } from "dnd-timeline";
+import { useTimelineContext } from "dnd-timeline";
 import {
 	Check,
 	CaretDown as ChevronDown,
@@ -9,8 +11,6 @@ import {
 	MagicWand as WandSparkles,
 	MagnifyingGlassPlus as ZoomIn,
 } from "@phosphor-icons/react";
-import type { Range, Span } from "dnd-timeline";
-import { useTimelineContext } from "dnd-timeline";
 import {
 	forwardRef,
 	type KeyboardEvent as ReactKeyboardEvent,
@@ -33,7 +33,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useScopedT } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
-import { resolveMediaElementSource } from "@/lib/exporter/localMediaSource";
 import { matchesShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import {
@@ -44,6 +43,7 @@ import {
 } from "@/utils/aspectRatioUtils";
 import { formatShortcut } from "@/utils/platformUtils";
 import { loadEditorPreferences, saveEditorPreferences } from "../editorPreferences";
+import { toFileUrl } from "../projectPersistence";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -106,10 +106,6 @@ function getAudioTrackIndex(rowId: string) {
 	return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
-function spansOverlap(left: Span, right: Span) {
-	return left.end > right.start && left.start < right.end;
-}
-
 interface TimelineEditorProps {
 	videoDuration: number;
 	currentTime: number;
@@ -169,7 +165,7 @@ export interface TimelineEditorHandle {
 	suggestZooms: () => void;
 	splitClip: () => void;
 	addAnnotation: (trackIndex?: number) => void;
-	addAudio: (trackIndex?: number) => Promise<void>;
+	addAudio: () => Promise<void>;
 	keyframes: { id: string; time: number }[];
 }
 
@@ -1255,10 +1251,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					return regions.some((region) => {
 						if (region.id === excludeId) return false;
 						// True overlap: regions actually intersect (not just adjacent)
-						return spansOverlap(newSpan, {
-							start: region.startMs,
-							end: region.endMs,
-						});
+						return newSpan.end > region.startMs && newSpan.start < region.endMs;
 					});
 				};
 
@@ -1279,15 +1272,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				}
 
 				if (isAudioItem) {
-					const activeAudioRegion = audioRegions.find(
-						(region) => region.id === excludeId,
-					);
-					const activeTrackIndex = activeAudioRegion?.trackIndex ?? 0;
-					return checkOverlap(
-						audioRegions.filter(
-							(region) => (region.trackIndex ?? 0) === activeTrackIndex,
-						),
-					);
+					return checkOverlap(audioRegions);
 				}
 
 				return false;
@@ -1510,142 +1495,56 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			defaultRegionDurationMs,
 		]);
 
-		const handleAddAudio = useCallback(
-			async (preferredTrackIndex?: number) => {
-				if (!videoDuration || videoDuration === 0 || totalMs === 0 || !onAudioAdded) {
-					return;
-				}
+		const handleAddAudio = useCallback(async () => {
+			if (!videoDuration || videoDuration === 0 || totalMs === 0 || !onAudioAdded) {
+				return;
+			}
 
-				const result = await window.electronAPI.openAudioFilePicker();
-				if (!result?.success || !result.path) {
-					return;
-				}
+			const result = await window.electronAPI.openAudioFilePicker();
+			if (!result?.success || !result.path) {
+				return;
+			}
 
-				const audioPath = result.path;
+			const audioPath = result.path;
 
-				// Load the audio file through the local-media resolver so local paths work reliably.
-				const audioDurationMs = await new Promise<number>((resolve) => {
-					void (async () => {
-						const resolved = await resolveMediaElementSource(audioPath);
-						const audio = new Audio();
-						const cleanup = () => {
-							audio.removeAttribute("src");
-							audio.load();
-							resolved.revoke();
-						};
-
-						audio.addEventListener(
-							"loadedmetadata",
-							() => {
-								resolve(Math.round(audio.duration * 1000));
-								cleanup();
-							},
-							{ once: true },
-						);
-						audio.addEventListener(
-							"error",
-							() => {
-								resolve(0);
-								cleanup();
-							},
-							{ once: true },
-						);
-						audio.src = resolved.src;
-					})();
+			// Load the audio file to get its full duration
+			const audioDurationMs = await new Promise<number>((resolve) => {
+				const audio = new Audio(toFileUrl(audioPath));
+				audio.addEventListener("loadedmetadata", () => {
+					resolve(Math.round(audio.duration * 1000));
 				});
+				audio.addEventListener("error", () => {
+					resolve(0);
+				});
+			});
 
-				if (audioDurationMs <= 0) {
-					toast.error("Could not read audio file", {
-						description:
-							"The selected file may be corrupted or in an unsupported format.",
-					});
-					return;
-				}
+			if (audioDurationMs <= 0) {
+				toast.error("Could not read audio file", {
+					description: "The selected file may be corrupted or in an unsupported format.",
+				});
+				return;
+			}
 
-				const startPos = Math.max(0, Math.min(currentTimeMs, totalMs));
-				const maxRemainingDuration = totalMs - startPos;
-				if (maxRemainingDuration <= 0) {
-					toast.error("Cannot place audio here", {
-						description:
-							"There is no remaining space at the current playhead position.",
-					});
-					return;
-				}
+			const startPos = Math.max(0, Math.min(currentTimeMs, totalMs));
+			const sorted = [...audioRegions].sort((a, b) => a.startMs - b.startMs);
+			const nextRegion = sorted.find((region) => region.startMs > startPos);
+			const gapToNext = nextRegion ? nextRegion.startMs - startPos : totalMs - startPos;
 
-				const desiredDuration = Math.min(audioDurationMs, maxRemainingDuration);
-				const normalizedPreferredTrackIndex = Number.isFinite(preferredTrackIndex)
-					? Math.max(0, Math.floor(preferredTrackIndex ?? 0))
-					: null;
-				const maxTrackIndex = audioRegions.reduce(
-					(max, region) => Math.max(max, region.trackIndex ?? 0),
-					-1,
-				);
-				const candidateTrackIndexes =
-					normalizedPreferredTrackIndex === null
-						? Array.from({ length: maxTrackIndex + 2 }, (_, index) => index)
-						: [normalizedPreferredTrackIndex];
+			const isOverlapping = sorted.some(
+				(region) => startPos >= region.startMs && startPos < region.endMs,
+			);
+			if (isOverlapping || gapToNext <= 0) {
+				toast.error("Cannot place audio here", {
+					description:
+						"Audio region already exists at this location or not enough space available.",
+				});
+				return;
+			}
 
-				const getGapForTrack = (trackIndex: number) => {
-					const trackRegions = audioRegions
-						.filter((region) => (region.trackIndex ?? 0) === trackIndex)
-						.sort((left, right) => left.startMs - right.startMs);
-					const desiredSpan = {
-						start: startPos,
-						end: startPos + desiredDuration,
-					};
-
-					const overlappingRegion = trackRegions.find((region) =>
-						spansOverlap(desiredSpan, { start: region.startMs, end: region.endMs }),
-					);
-					if (overlappingRegion) {
-						return 0;
-					}
-
-					const nextRegion = trackRegions.find((region) => region.startMs > startPos);
-					return nextRegion ? nextRegion.startMs - startPos : totalMs - startPos;
-				};
-
-				let selectedTrackIndex: number | null = null;
-				let availableGap = 0;
-
-				for (const trackIndex of candidateTrackIndexes) {
-					const gap = getGapForTrack(trackIndex);
-					if (gap >= desiredDuration) {
-						selectedTrackIndex = trackIndex;
-						availableGap = gap;
-						break;
-					}
-				}
-
-				if (selectedTrackIndex === null && normalizedPreferredTrackIndex === null) {
-					for (const trackIndex of candidateTrackIndexes) {
-						const gap = getGapForTrack(trackIndex);
-						if (gap > 0) {
-							selectedTrackIndex = trackIndex;
-							availableGap = gap;
-							break;
-						}
-					}
-				}
-
-				if (selectedTrackIndex === null || availableGap <= 0) {
-					toast.error("Cannot place audio here", {
-						description:
-							"Audio region already exists at this location or not enough space available.",
-					});
-					return;
-				}
-
-				// Use full audio duration, but clamp to available gap and video length
-				const actualDuration = Math.min(audioDurationMs, availableGap, totalMs - startPos);
-				onAudioAdded(
-					{ start: startPos, end: startPos + actualDuration },
-					result.path,
-					selectedTrackIndex,
-				);
-			},
-			[videoDuration, totalMs, currentTimeMs, audioRegions, onAudioAdded],
-		);
+			// Use full audio duration, but clamp to available gap and video length
+			const actualDuration = Math.min(audioDurationMs, gapToNext, totalMs - startPos);
+			onAudioAdded({ start: startPos, end: startPos + actualDuration }, result.path);
+		}, [videoDuration, totalMs, currentTimeMs, audioRegions, onAudioAdded]);
 
 		const handleAddAnnotation = useCallback(
 			(trackIndex = 0) => {
@@ -2043,9 +1942,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 								<MessageSquare className="w-4 h-4" />
 							</Button>
 							<Button
-								onClick={() => {
-									void handleAddAudio();
-								}}
+								onClick={handleAddAudio}
 								variant="ghost"
 								size="icon"
 								className="h-7 w-7 text-muted-foreground hover:text-[#a855f7] hover:bg-[#a855f7]/10 transition-all"

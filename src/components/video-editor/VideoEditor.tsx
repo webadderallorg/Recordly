@@ -5226,17 +5226,7 @@ export default function VideoEditor() {
 											{t("timeline.annotation.label")}
 										</DropdownMenuItem>
 										<DropdownMenuItem
-											onClick={() => {
-												const nextTrackIndex =
-													audioRegions.length > 0
-														? Math.max(
-																...audioRegions.map(
-																	(region) => region.trackIndex ?? 0,
-																),
-															) + 1
-														: 0;
-												timelineRef.current?.addAudio(nextTrackIndex);
-											}}
+											onClick={() => timelineRef.current?.addAudio()}
 											className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer"
 										>
 											{t("timeline.audio.label")}
