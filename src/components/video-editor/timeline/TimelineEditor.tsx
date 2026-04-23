@@ -1273,7 +1273,11 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				}
 
 				if (isAudioItem) {
-					return checkOverlap(audioRegions);
+					const currentAudio = audioRegions.find((region) => region.id === excludeId);
+					const trackIndex = currentAudio?.trackIndex ?? 0;
+					return checkOverlap(
+						audioRegions.filter((region) => (region.trackIndex ?? 0) === trackIndex),
+					);
 				}
 
 				return false;
