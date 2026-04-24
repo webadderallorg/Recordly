@@ -61,7 +61,7 @@ jobs:
 
       - name: Build macOS app
         run: |
-          npm run build:native-helpers
+          npm run build:platform-native-helpers
           npx tsc
           npx vite build
           npx electron-builder --mac dmg zip --publish never

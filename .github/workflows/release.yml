@@ -133,7 +133,7 @@ jobs:
         run: npx electron-builder install-app-deps
 
       - name: Build native macOS helpers
-        run: npm run build:native-helpers
+        run: npm run build:platform-native-helpers
 
       - name: Build macOS x64
         run: |
@@ -213,7 +213,7 @@ jobs:
         run: npx electron-builder install-app-deps
 
       - name: Build native macOS helpers
-        run: npm run build:native-helpers
+        run: npm run build:platform-native-helpers
 
       - name: Build macOS arm64
         run: |
