@@ -141,7 +141,7 @@ interface TimelineEditorProps {
 	onSelectClip?: (id: string | null) => void;
 	annotationRegions?: AnnotationRegion[];
 	onAnnotationAdded?: (span: Span, trackIndex?: number) => void;
-	onAnnotationSpanChange?: (id: string, span: Span) => void;
+	onAnnotationSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
 	onAnnotationDelete?: (id: string) => void;
 	selectedAnnotationId?: string | null;
 	onSelectAnnotation?: (id: string | null) => void;
@@ -153,7 +153,7 @@ interface TimelineEditorProps {
 	onSelectSpeed?: (id: string | null) => void;
 	audioRegions?: AudioRegion[];
 	onAudioAdded?: (span: Span, audioPath: string, trackIndex?: number) => void;
-	onAudioSpanChange?: (id: string, span: Span) => void;
+	onAudioSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
 	onAudioDelete?: (id: string) => void;
 	selectedAudioId?: string | null;
 	onSelectAudio?: (id: string | null) => void;
@@ -1236,7 +1236,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		]);
 
 		const hasOverlap = useCallback(
-			(newSpan: Span, excludeId?: string): boolean => {
+			(newSpan: Span, excludeId?: string, rowId?: string): boolean => {
 				// Determine which row the item belongs to
 				const isZoomItem = zoomRegions.some((r) => r.id === excludeId);
 				const isTrimItem = trimRegions.some((r) => r.id === excludeId);
@@ -1283,7 +1283,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					const activeAudioRegion = audioRegions.find(
 						(region) => region.id === excludeId,
 					);
-					const activeTrackIndex = activeAudioRegion?.trackIndex ?? 0;
+					const activeTrackIndex =
+						rowId && isAudioTrackRowId(rowId)
+							? getAudioTrackIndex(rowId)
+							: (activeAudioRegion?.trackIndex ?? 0);
 					return checkOverlap(
 						audioRegions.filter(
 							(region) => (region.trackIndex ?? 0) === activeTrackIndex,
@@ -1904,8 +1907,32 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			return [...zooms, ...clips, ...audios];
 		}, [zoomRegions, clipRegions, audioRegions]);
 
+		const getResolvedDropRowId = useCallback(
+			(id: string, proposedRowId: string) => {
+				const currentRowId = timelineItems.find((item) => item.id === id)?.rowId;
+				if (!currentRowId) {
+					return proposedRowId;
+				}
+
+				if (isAnnotationTrackRowId(currentRowId)) {
+					return isAnnotationTrackRowId(proposedRowId)
+						? getAnnotationTrackRowId(getAnnotationTrackIndex(proposedRowId))
+						: currentRowId;
+				}
+
+				if (isAudioTrackRowId(currentRowId)) {
+					return isAudioTrackRowId(proposedRowId)
+						? getAudioTrackRowId(getAudioTrackIndex(proposedRowId))
+						: currentRowId;
+				}
+
+				return currentRowId;
+			},
+			[timelineItems],
+		);
+
 		const handleItemSpanChange = useCallback(
-			(id: string, span: Span) => {
+			(id: string, span: Span, rowId?: string) => {
 				// Check if it's a zoom, trim, clip, speed, or annotation item
 				if (zoomRegions.some((r) => r.id === id)) {
 					onZoomSpanChange(id, span);
@@ -1914,11 +1941,20 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				} else if (clipRegions.some((r) => r.id === id)) {
 					onClipSpanChange?.(id, span);
 				} else if (annotationRegions.some((r) => r.id === id)) {
-					onAnnotationSpanChange?.(id, span);
+					const nextTrackIndex =
+						rowId && isAnnotationTrackRowId(rowId)
+							? getAnnotationTrackIndex(rowId)
+							: (annotationRegions.find((region) => region.id === id)?.trackIndex ??
+								0);
+					onAnnotationSpanChange?.(id, span, nextTrackIndex);
 				} else if (speedRegions.some((r) => r.id === id)) {
 					onSpeedSpanChange?.(id, span);
 				} else if (audioRegions.some((r) => r.id === id)) {
-					onAudioSpanChange?.(id, span);
+					const nextTrackIndex =
+						rowId && isAudioTrackRowId(rowId)
+							? getAudioTrackIndex(rowId)
+							: (audioRegions.find((region) => region.id === id)?.trackIndex ?? 0);
+					onAudioSpanChange?.(id, span, nextTrackIndex);
 				}
 			},
 			[
@@ -2202,6 +2238,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						minItemDurationMs={timelineScale.minItemDurationMs}
 						minVisibleRangeMs={timelineScale.minVisibleRangeMs}
 						onItemSpanChange={handleItemSpanChange}
+						resolveTargetRowId={getResolvedDropRowId}
 						allRegionSpans={allRegionSpans}
 					>
 						<KeyframeMarkers
