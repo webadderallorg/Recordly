@@ -5,9 +5,7 @@ import type {
 	SpeedRegion,
 	TrimRegion,
 } from "@/components/video-editor/types";
-import {
-	estimateCompanionAudioStartDelaySeconds,
-} from "@/lib/mediaTiming";
+import { estimateCompanionAudioStartDelaySeconds } from "@/lib/mediaTiming";
 import { resolveMediaElementSource } from "./localMediaSource";
 import type { VideoMuxer } from "./muxer";
 import { resolveSourceAudioFallbackPaths } from "./sourceAudioFallback";
@@ -37,20 +35,20 @@ interface PreparedOfflineRender {
 }
 
 export async function isAacAudioEncodingSupported(
-		sampleRate = 48_000,
-		numberOfChannels = 2,
+	sampleRate = 48_000,
+	numberOfChannels = 2,
 ): Promise<boolean> {
-		try {
-				const support = await AudioEncoder.isConfigSupported({
-						codec: MP4_AUDIO_CODEC,
-						sampleRate,
-						numberOfChannels,
-						bitrate: AUDIO_BITRATE,
-				});
-				return support.supported === true;
-		} catch {
-				return false;
-		}
+	try {
+		const support = await AudioEncoder.isConfigSupported({
+			codec: MP4_AUDIO_CODEC,
+			sampleRate,
+			numberOfChannels,
+			bitrate: AUDIO_BITRATE,
+		});
+		return support.supported === true;
+	} catch {
+		return false;
+	}
 }
 
 type TrimLikeRegion = TrimRegion | ClipRegion;
@@ -162,12 +160,19 @@ export class AudioProcessor {
 					(audioPath) => typeof audioPath === "string" && audioPath.trim().length > 0,
 				)
 			: [];
+		const { hasEmbeddedSourceAudio, externalAudioPaths } = resolveSourceAudioFallbackPaths(
+			videoUrl,
+			sortedSourceAudioFallbackPaths,
+		);
+		const needsSourceAudioMixing =
+			externalAudioPaths.length > 1 ||
+			(hasEmbeddedSourceAudio && externalAudioPaths.length > 0);
 
 		// When speed edits, audio regions, or multiple audio sources need mixing, use offline AudioContext pipeline.
 		if (
 			sortedSpeedRegions.length > 0 ||
 			sortedAudioRegions.length > 0 ||
-			sortedSourceAudioFallbackPaths.length > 1
+			needsSourceAudioMixing
 		) {
 			await this.renderAndMuxOfflineAudio(
 				videoUrl,
@@ -181,10 +186,8 @@ export class AudioProcessor {
 		}
 
 		// Single sidecar audio with no speed/audio edits: demux directly (skips slow real-time rendering).
-		if (sortedSourceAudioFallbackPaths.length === 1) {
-			const sidecarDemuxer = await this.loadAudioFileDemuxer(
-				sortedSourceAudioFallbackPaths[0],
-			);
+		if (!hasEmbeddedSourceAudio && externalAudioPaths.length === 1) {
+			const sidecarDemuxer = await this.loadAudioFileDemuxer(externalAudioPaths[0]);
 			if (sidecarDemuxer) {
 				try {
 					await this.processTrimOnlyAudio(sidecarDemuxer, muxer, sortedTrims);
@@ -206,7 +209,7 @@ export class AudioProcessor {
 				sortedTrims,
 				[],
 				[],
-				sortedSourceAudioFallbackPaths,
+				externalAudioPaths,
 				muxer,
 			);
 			return;
@@ -564,8 +567,7 @@ export class AudioProcessor {
 			const buffer = await this.decodeAudioFromUrl(audioPath);
 			if (!buffer) continue;
 
-			const refDuration =
-				mainBuffer?.duration ?? (await this.getMediaDurationSec(videoUrl));
+			const refDuration = mainBuffer?.duration ?? (await this.getMediaDurationSec(videoUrl));
 			companionEntries.push({
 				buffer,
 				startDelaySec: estimateCompanionAudioStartDelaySeconds(
@@ -661,10 +663,7 @@ export class AudioProcessor {
 				pendingMuxing = pendingMuxing
 					.then(async () => {
 						if (this.cancelled) return;
-						await muxer.addAudioChunk(
-							chunk,
-							!wroteFirstChunk ? meta : undefined,
-						);
+						await muxer.addAudioChunk(chunk, !wroteFirstChunk ? meta : undefined);
 						wroteFirstChunk = true;
 					})
 					.catch((error) => {
@@ -708,27 +707,17 @@ export class AudioProcessor {
 
 	// Render timeline to a WAV blob for the native/FFmpeg export path.
 	// Processes in chunks to avoid holding the entire output in memory.
-	private async renderToWavBlobChunked(
-		prepared: PreparedOfflineRender,
-	): Promise<Blob> {
+	private async renderToWavBlobChunked(prepared: PreparedOfflineRender): Promise<Blob> {
 		const totalOutputSec = Math.max(prepared.outputDurationMs / 1000, 0.01);
 		const totalFrames = Math.ceil(totalOutputSec * OFFLINE_AUDIO_SAMPLE_RATE);
 		const numChannels = prepared.numChannels;
 
-		const header = this.createWavHeader(
-			OFFLINE_AUDIO_SAMPLE_RATE,
-			numChannels,
-			totalFrames,
-		);
+		const header = this.createWavHeader(OFFLINE_AUDIO_SAMPLE_RATE, numChannels, totalFrames);
 		const pcmParts: ArrayBuffer[] = [header];
 
-		await this.renderChunked(
-			prepared,
-			totalOutputSec,
-			async (rendered) => {
-				pcmParts.push(...this.audioBufferToPcmParts(rendered));
-			},
-		);
+		await this.renderChunked(prepared, totalOutputSec, async (rendered) => {
+			pcmParts.push(...this.audioBufferToPcmParts(rendered));
+		});
 
 		return new Blob(pcmParts, { type: "audio/wav" });
 	}
@@ -749,10 +738,7 @@ export class AudioProcessor {
 		const chunkCount = Math.ceil(totalOutputSec / OFFLINE_CHUNK_DURATION_SEC);
 
 		for (let i = 0; i < chunkCount && !this.cancelled; i++) {
-			const chunkSec = Math.min(
-				OFFLINE_CHUNK_DURATION_SEC,
-				totalOutputSec - outputOffsetSec,
-			);
+			const chunkSec = Math.min(OFFLINE_CHUNK_DURATION_SEC, totalOutputSec - outputOffsetSec);
 			const chunkFrames = Math.ceil(chunkSec * OFFLINE_AUDIO_SAMPLE_RATE);
 
 			const offlineCtx = new OfflineAudioContext(
@@ -835,10 +821,7 @@ export class AudioProcessor {
 			localEndSec = chunkDurationSec;
 		}
 
-		const duration = Math.min(
-			localEndSec - localStartSec,
-			buffer.duration - bufferOffsetSec,
-		);
+		const duration = Math.min(localEndSec - localStartSec, buffer.duration - bufferOffsetSec);
 		if (duration <= 0.001) return;
 
 		const gainNode = ctx.createGain();
@@ -871,10 +854,7 @@ export class AudioProcessor {
 			const planarData = new Float32Array(frameCount * numChannels);
 			for (let ch = 0; ch < numChannels; ch++) {
 				const channelData = buffer.getChannelData(ch);
-				planarData.set(
-					channelData.subarray(offset, offset + frameCount),
-					ch * frameCount,
-				);
+				planarData.set(channelData.subarray(offset, offset + frameCount), ch * frameCount);
 			}
 
 			const audioData = new AudioData({
@@ -882,19 +862,14 @@ export class AudioProcessor {
 				sampleRate,
 				numberOfFrames: frameCount,
 				numberOfChannels: numChannels,
-				timestamp: Math.round(
-					(offset / sampleRate + timestampOffsetSec) * 1_000_000,
-				),
+				timestamp: Math.round((offset / sampleRate + timestampOffsetSec) * 1_000_000),
 				data: planarData,
 			});
 
 			encoder.encode(audioData);
 			audioData.close();
 
-			while (
-				encoder.encodeQueueSize >= ENCODE_BACKPRESSURE_LIMIT &&
-				!this.cancelled
-			) {
+			while (encoder.encodeQueueSize >= ENCODE_BACKPRESSURE_LIMIT && !this.cancelled) {
 				await new Promise((r) => setTimeout(r, 1));
 			}
 		}
@@ -931,18 +906,13 @@ export class AudioProcessor {
 				type: blob.type || "video/mp4",
 			});
 
-			const wasmUrl = new URL(
-				"./wasm/web-demuxer.wasm",
-				window.location.href,
-			).href;
+			const wasmUrl = new URL("./wasm/web-demuxer.wasm", window.location.href).href;
 			demuxer = new WebDemuxer({ wasmFilePath: wasmUrl });
 			await demuxer.load(file);
 
 			let audioConfig: AudioDecoderConfig;
 			try {
-				audioConfig = (await demuxer.getDecoderConfig(
-					"audio",
-				)) as AudioDecoderConfig;
+				audioConfig = (await demuxer.getDecoderConfig("audio")) as AudioDecoderConfig;
 			} catch {
 				return null; // No audio track
 			}
@@ -951,10 +921,7 @@ export class AudioProcessor {
 			const numChannels = Math.min(audioConfig.numberOfChannels || 2, 2);
 
 			// Accumulate decoded PCM per channel
-			const channelChunks: Float32Array[][] = Array.from(
-				{ length: numChannels },
-				() => [],
-			);
+			const channelChunks: Float32Array[][] = Array.from({ length: numChannels }, () => []);
 			let totalFrames = 0;
 			let decodeError: Error | null = null;
 
@@ -962,10 +929,7 @@ export class AudioProcessor {
 				output: (data: AudioData) => {
 					try {
 						const frames = data.numberOfFrames;
-						const dataChannels = Math.min(
-							data.numberOfChannels,
-							numChannels,
-						);
+						const dataChannels = Math.min(data.numberOfChannels, numChannels);
 						const format = data.format;
 
 						if (format?.includes("planar")) {
@@ -975,9 +939,7 @@ export class AudioProcessor {
 								});
 								const bytes = new ArrayBuffer(size);
 								data.copyTo(bytes, { planeIndex: ch });
-								channelChunks[ch].push(
-									this.rawToFloat32(bytes, format, frames),
-								);
+								channelChunks[ch].push(this.rawToFloat32(bytes, format, frames));
 							}
 						} else if (format) {
 							// Interleaved format — deinterleave into per-channel arrays.
@@ -995,8 +957,7 @@ export class AudioProcessor {
 							for (let ch = 0; ch < dataChannels; ch++) {
 								const chData = new Float32Array(frames);
 								for (let i = 0; i < frames; i++) {
-									chData[i] =
-										interleaved[i * srcChannels + ch];
+									chData[i] = interleaved[i * srcChannels + ch];
 								}
 								channelChunks[ch].push(chData);
 							}
@@ -1013,18 +974,14 @@ export class AudioProcessor {
 					}
 				},
 				error: (err: DOMException) => {
-					decodeError = new Error(
-						`Streaming audio decode error: ${err.message}`,
-					);
+					decodeError = new Error(`Streaming audio decode error: ${err.message}`);
 				},
 			});
 
 			decoder.configure(audioConfig);
 
 			const audioStream = demuxer.read("audio");
-			const reader = (
-				audioStream as ReadableStream<EncodedAudioChunk>
-			).getReader();
+			const reader = (audioStream as ReadableStream<EncodedAudioChunk>).getReader();
 
 			try {
 				while (!this.cancelled) {
@@ -1034,10 +991,7 @@ export class AudioProcessor {
 
 					decoder.decode(chunk);
 
-					while (
-						decoder.decodeQueueSize > DECODE_BACKPRESSURE_LIMIT &&
-						!this.cancelled
-					) {
+					while (decoder.decodeQueueSize > DECODE_BACKPRESSURE_LIMIT && !this.cancelled) {
 						if (decodeError) throw decodeError;
 						await new Promise((r) => setTimeout(r, 1));
 					}
@@ -1087,11 +1041,7 @@ export class AudioProcessor {
 	}
 
 	// Convert raw bytes from AudioData to Float32Array based on the sample format.
-	private rawToFloat32(
-		bytes: ArrayBuffer,
-		format: string,
-		sampleCount: number,
-	): Float32Array {
+	private rawToFloat32(bytes: ArrayBuffer, format: string, sampleCount: number): Float32Array {
 		if (format.startsWith("f32")) {
 			return new Float32Array(bytes);
 		}
@@ -1124,10 +1074,7 @@ export class AudioProcessor {
 	}
 
 	// Bulk decode fallback: loads entire file into memory and uses decodeAudioData.
-	private async bulkDecodeFromUrl(
-		url: string,
-		sampleRate: number,
-	): Promise<AudioBuffer | null> {
+	private async bulkDecodeFromUrl(url: string, sampleRate: number): Promise<AudioBuffer | null> {
 		try {
 			const source = await resolveMediaElementSource(url);
 			try {
@@ -1199,8 +1146,7 @@ export class AudioProcessor {
 		boundaries.add(sourceDurationMs);
 
 		for (const trim of trimRegions) {
-			if (trim.startMs >= 0 && trim.startMs <= sourceDurationMs)
-				boundaries.add(trim.startMs);
+			if (trim.startMs >= 0 && trim.startMs <= sourceDurationMs) boundaries.add(trim.startMs);
 			if (trim.endMs >= 0 && trim.endMs <= sourceDurationMs) boundaries.add(trim.endMs);
 		}
 		for (const speed of speedRegions) {
@@ -1236,10 +1182,7 @@ export class AudioProcessor {
 	}
 
 	// Map a source-timeline timestamp to the corresponding output-timeline timestamp.
-	private sourceTimeToOutputTime(
-		sourceMs: number,
-		slices: TimelineSlice[],
-	): number {
+	private sourceTimeToOutputTime(sourceMs: number, slices: TimelineSlice[]): number {
 		let outputMs = 0;
 
 		for (const slice of slices) {
@@ -1305,8 +1248,7 @@ export class AudioProcessor {
 			// Calculate output position (global then chunk-local)
 			let localOutputStartSec =
 				outputOffsetSec + trimmedFromStartSec / slice.speed - chunkOutputStartSec;
-			let localOutputEndSec =
-				localOutputStartSec + effectiveSourceDurationSec / slice.speed;
+			let localOutputEndSec = localOutputStartSec + effectiveSourceDurationSec / slice.speed;
 
 			// Skip if entirely outside chunk window
 			if (localOutputEndSec <= 0 || localOutputStartSec >= chunkDurationSec) {
@@ -1403,11 +1345,7 @@ export class AudioProcessor {
 			for (let i = 0; i < chunkFrames; i++) {
 				for (let ch = 0; ch < numChannels; ch++) {
 					const sample = Math.max(-1, Math.min(1, channels[ch][frameOffset + i]));
-					view.setInt16(
-						byteOffset,
-						sample < 0 ? sample * 0x8000 : sample * 0x7fff,
-						true,
-					);
+					view.setInt16(byteOffset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
 					byteOffset += 2;
 				}
 			}

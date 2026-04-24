@@ -158,8 +158,8 @@ import {
 	extendAutoFullTrackClip,
 	type FigureData,
 	getClipSourceEndMs,
-	type PlaybackSpeed,
 	type Padding,
+	type PlaybackSpeed,
 	type SpeedRegion,
 	type TrimRegion,
 	type WebcamOverlaySettings,
@@ -752,7 +752,9 @@ export default function VideoEditor() {
 		}
 		context.imageSmoothingEnabled = true;
 		context.imageSmoothingQuality = "high";
-		const editorBgHsl = getComputedStyle(document.documentElement).getPropertyValue("--editor-bg").trim();
+		const editorBgHsl = getComputedStyle(document.documentElement)
+			.getPropertyValue("--editor-bg")
+			.trim();
 		context.fillStyle = editorBgHsl ? `hsl(${editorBgHsl})` : "#111113";
 		context.fillRect(0, 0, targetWidth, targetHeight);
 
@@ -788,7 +790,9 @@ export default function VideoEditor() {
 					padding,
 					cropRegion,
 					webcam,
-					webcamUrl: resolvedWebcamVideoUrl ?? (webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
+					webcamUrl:
+						resolvedWebcamVideoUrl ??
+						(webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
 					videoWidth: previewVideo.videoWidth,
 					videoHeight: previewVideo.videoHeight,
 					annotationRegions,
@@ -1205,10 +1209,7 @@ export default function VideoEditor() {
 		() => videoSourcePath ?? (videoPath ? fromFileUrl(videoPath) : null),
 		[videoPath, videoSourcePath],
 	);
-	const {
-		hasEmbeddedSourceAudio,
-		externalAudioPaths: previewSourceAudioFallbackPaths,
-	} = useMemo(
+	const { hasEmbeddedSourceAudio, externalAudioPaths: previewSourceAudioFallbackPaths } = useMemo(
 		() => resolveSourceAudioFallbackPaths(currentSourcePath, sourceAudioFallbackPaths),
 		[currentSourcePath, sourceAudioFallbackPaths],
 	);
@@ -2160,7 +2161,7 @@ export default function VideoEditor() {
 								currentSourcePath,
 								currentPersistedEditorState,
 								lastSavedSnapshot?.projectId ?? null,
-						  );
+							);
 
 				const fileNameBase =
 					currentSourcePath
@@ -2275,7 +2276,7 @@ export default function VideoEditor() {
 								currentSourcePath,
 								currentPersistedEditorState,
 								lastSavedSnapshot?.projectId ?? null,
-						  );
+							);
 				const thumbnailDataUrl = await captureProjectThumbnail();
 				const result = await window.electronAPI.saveProjectFileNamed(
 					projectData,
@@ -2975,7 +2976,9 @@ export default function VideoEditor() {
 					regions.filter(
 						(region) =>
 							!removedSegments.some(
-								(segment) => region.startMs < segment.endMs && region.endMs > segment.startMs,
+								(segment) =>
+									region.startMs < segment.endMs &&
+									region.endMs > segment.startMs,
 							),
 					);
 				setZoomRegions((prev) => removeTrimmedRegions(prev));
@@ -3510,20 +3513,39 @@ export default function VideoEditor() {
 				sourceAudioElementResourcesRef.current.set(audioPath, audioPath);
 
 				void (async () => {
-					const resolved = await resolveMediaElementSource(audioPath);
-					const latestAudio = existing.get(audioPath);
+					try {
+						const resolved = await resolveMediaElementSource(audioPath);
+						const latestAudio = existing.get(audioPath);
 
-					if (
-						cancelled ||
-						latestAudio !== audio ||
-						sourceAudioElementResourcesRef.current.get(audioPath) !== audioPath
-					) {
-						resolved.revoke();
-						return;
+						if (
+							cancelled ||
+							latestAudio !== audio ||
+							sourceAudioElementResourcesRef.current.get(audioPath) !== audioPath
+						) {
+							resolved.revoke();
+							return;
+						}
+
+						sourceAudioElementRevokersRef.current.set(audioPath, resolved.revoke);
+						latestAudio.src = resolved.src;
+					} catch (error) {
+						if (cancelled) {
+							return;
+						}
+
+						sourceAudioElementRevokersRef.current.get(audioPath)?.();
+						sourceAudioElementRevokersRef.current.delete(audioPath);
+						sourceAudioElementResourcesRef.current.delete(audioPath);
+						const latestAudio = existing.get(audioPath);
+						if (latestAudio === audio) {
+							latestAudio.pause();
+							latestAudio.src = "";
+						}
+						toast.warning(
+							`Could not load companion audio source: ${summarizeErrorMessage(getErrorMessage(error))}`,
+							{ id: SOURCE_AUDIO_FALLBACK_TOAST_ID, duration: 10000 },
+						);
 					}
-
-					sourceAudioElementRevokersRef.current.set(audioPath, resolved.revoke);
-					latestAudio.src = resolved.src;
 				})();
 			}
 
@@ -3785,7 +3807,9 @@ export default function VideoEditor() {
 						videoPadding: padding,
 						cropRegion,
 						webcam,
-						webcamUrl: resolvedWebcamVideoUrl ?? (webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
+						webcamUrl:
+							resolvedWebcamVideoUrl ??
+							(webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
 						annotationRegions,
 						autoCaptions,
 						autoCaptionSettings,
@@ -3954,7 +3978,9 @@ export default function VideoEditor() {
 						padding,
 						cropRegion,
 						webcam,
-						webcamUrl: resolvedWebcamVideoUrl ?? (webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
+						webcamUrl:
+							resolvedWebcamVideoUrl ??
+							(webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
 						annotationRegions,
 						autoCaptions,
 						autoCaptionSettings,
@@ -4708,7 +4734,10 @@ export default function VideoEditor() {
 									</p>
 									{isRenderingAudio ? (
 										<p className="mt-1 text-[11px] text-muted-foreground/70">
-											{t("editor.export.processingAudioEdits", "Processing audio with speed/overlay edits")}
+											{t(
+												"editor.export.processingAudioEdits",
+												"Processing audio with speed/overlay edits",
+											)}
 										</p>
 									) : exportRenderSpeedLabel ? (
 										<p className="mt-1 text-[11px] text-muted-foreground/70">
