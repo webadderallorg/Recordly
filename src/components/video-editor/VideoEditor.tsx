@@ -3102,7 +3102,12 @@ export default function VideoEditor() {
 		setSelectedSpeedId(null);
 	}, []);
 
-	const handleAudioSpanChange = useCallback((id: string, span: Span) => {
+	const handleAudioSpanChange = useCallback((id: string, span: Span, trackIndex?: number) => {
+		const normalizedTrackIndex =
+			typeof trackIndex === "number" && Number.isFinite(trackIndex)
+				? Math.max(0, Math.floor(trackIndex))
+				: undefined;
+
 		setAudioRegions((prev) =>
 			prev.map((region) =>
 				region.id === id
@@ -3110,6 +3115,9 @@ export default function VideoEditor() {
 							...region,
 							startMs: Math.round(span.start),
 							endMs: Math.round(span.end),
+							...(normalizedTrackIndex === undefined
+								? {}
+								: { trackIndex: normalizedTrackIndex }),
 						}
 					: region,
 			),
@@ -3159,19 +3167,30 @@ export default function VideoEditor() {
 		setSelectedTrimId(null);
 	}, []);
 
-	const handleAnnotationSpanChange = useCallback((id: string, span: Span) => {
-		setAnnotationRegions((prev) =>
-			prev.map((region) =>
-				region.id === id
-					? {
-							...region,
-							startMs: Math.round(span.start),
-							endMs: Math.round(span.end),
-						}
-					: region,
-			),
-		);
-	}, []);
+	const handleAnnotationSpanChange = useCallback(
+		(id: string, span: Span, trackIndex?: number) => {
+			const normalizedTrackIndex =
+				typeof trackIndex === "number" && Number.isFinite(trackIndex)
+					? Math.max(0, Math.floor(trackIndex))
+					: undefined;
+
+			setAnnotationRegions((prev) =>
+				prev.map((region) =>
+					region.id === id
+						? {
+								...region,
+								startMs: Math.round(span.start),
+								endMs: Math.round(span.end),
+								...(normalizedTrackIndex === undefined
+									? {}
+									: { trackIndex: normalizedTrackIndex }),
+							}
+						: region,
+				),
+			);
+		},
+		[],
+	);
 
 	const handleAnnotationDelete = useCallback(
 		(id: string) => {

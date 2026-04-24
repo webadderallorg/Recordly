@@ -15,12 +15,13 @@ interface TimelineWrapperProps {
 	children: ReactNode;
 	range: Range;
 	videoDuration: number;
-	hasOverlap: (newSpan: Span, excludeId?: string) => boolean;
+	hasOverlap: (newSpan: Span, excludeId?: string, rowId?: string) => boolean;
 	onRangeChange: Dispatch<SetStateAction<Range>>;
 	minItemDurationMs: number;
 	minVisibleRangeMs: number;
 	gridSizeMs?: number;
-	onItemSpanChange: (id: string, span: Span) => void;
+	onItemSpanChange: (id: string, span: Span, rowId?: string) => void;
+	resolveTargetRowId?: (id: string, proposedRowId: string) => string;
 	allRegionSpans?: { id: string; start: number; end: number; rowId: string }[];
 }
 
@@ -34,6 +35,7 @@ export default function TimelineWrapper({
 	minVisibleRangeMs,
 	gridSizeMs: _gridSizeMs,
 	onItemSpanChange,
+	resolveTargetRowId,
 	allRegionSpans = [],
 }: TimelineWrapperProps) {
 	const totalMs = Math.max(0, Math.round(videoDuration * 1000));
@@ -95,14 +97,15 @@ export default function TimelineWrapper({
 	);
 
 	const getSiblingSpans = useCallback(
-		(activeItemId: string) => {
+		(activeItemId: string, rowId?: string) => {
 			const activeItem = allRegionSpans.find((region) => region.id === activeItemId);
-			if (!activeItem) {
+			const resolvedRowId = rowId ?? activeItem?.rowId;
+			if (!resolvedRowId) {
 				return [];
 			}
 
 			return allRegionSpans
-				.filter((region) => region.id !== activeItemId && region.rowId === activeItem.rowId)
+				.filter((region) => region.id !== activeItemId && region.rowId === resolvedRowId)
 				.sort((left, right) => left.start - right.start);
 		},
 		[allRegionSpans],
@@ -146,13 +149,13 @@ export default function TimelineWrapper({
 
 	// When a drag overlaps neighbours, keep duration fixed and stop at the nearest gap boundary.
 	const clampDraggedSpanToNeighbours = useCallback(
-		(span: Span, activeItemId: string): Span => {
+		(span: Span, activeItemId: string, rowId?: string): Span => {
 			const activeItem = allRegionSpans.find((region) => region.id === activeItemId);
 			if (!activeItem) {
 				return clampSpanToBounds(span);
 			}
 
-			const siblings = getSiblingSpans(activeItemId);
+			const siblings = getSiblingSpans(activeItemId, rowId);
 			const duration = Math.max(
 				activeItem.end - activeItem.start,
 				Math.min(minItemDurationMs, totalMs || minItemDurationMs),
@@ -216,11 +219,13 @@ export default function TimelineWrapper({
 
 	const onDragEnd = useCallback(
 		(event: DragEndEvent) => {
-			const activeRowId = event.over?.id as string;
+			const proposedRowId = event.over?.id as string;
 			const updatedSpan = event.active.data.current.getSpanFromDragEvent?.(event);
-			if (!updatedSpan || !activeRowId) return;
+			if (!updatedSpan || !proposedRowId) return;
 
 			const activeItemId = event.active.id as string;
+			const resolvedRowId =
+				resolveTargetRowId?.(activeItemId, proposedRowId) ?? proposedRowId;
 
 			// Drags are pure translations — always preserve the original duration.
 			// The span from getSpanFromDragEvent can drift due to pixel-to-ms
@@ -237,14 +242,18 @@ export default function TimelineWrapper({
 			let clampedSpan = clampSpanToBounds(dragSpan);
 
 			// Clamp to neighbour boundaries instead of rejecting
-			if (hasOverlap(clampedSpan, activeItemId)) {
-				clampedSpan = clampDraggedSpanToNeighbours(clampedSpan, activeItemId);
-				if (hasOverlap(clampedSpan, activeItemId)) {
+			if (hasOverlap(clampedSpan, activeItemId, resolvedRowId)) {
+				clampedSpan = clampDraggedSpanToNeighbours(
+					clampedSpan,
+					activeItemId,
+					resolvedRowId,
+				);
+				if (hasOverlap(clampedSpan, activeItemId, resolvedRowId)) {
 					return;
 				}
 			}
 
-			onItemSpanChange(activeItemId, clampedSpan);
+			onItemSpanChange(activeItemId, clampedSpan, resolvedRowId);
 		},
 		[
 			allRegionSpans,
@@ -252,6 +261,7 @@ export default function TimelineWrapper({
 			clampSpanToBounds,
 			hasOverlap,
 			onItemSpanChange,
+			resolveTargetRowId,
 		],
 	);
 
