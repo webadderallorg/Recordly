@@ -8,6 +8,7 @@ import type {
 	Span,
 } from "dnd-timeline";
 import { TimelineContext } from "dnd-timeline";
+import { useI18n } from "@/contexts/I18nContext";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useCallback, useRef } from "react";
 
@@ -38,6 +39,7 @@ export default function TimelineWrapper({
 	resolveTargetRowId,
 	allRegionSpans = [],
 }: TimelineWrapperProps) {
+	const { locale } = useI18n();
 	const totalMs = Math.max(0, Math.round(videoDuration * 1000));
 
 	const clampSpanToBounds = useCallback(
@@ -365,6 +367,7 @@ export default function TimelineWrapper({
 
 	return (
 		<TimelineContext
+			key={locale}
 			range={range}
 			onRangeChanged={handleRangeChange}
 			onResizeEnd={onResizeEndWithTooltip}
