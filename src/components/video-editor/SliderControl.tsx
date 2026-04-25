@@ -44,7 +44,7 @@ export function SliderControl({
 					"pointer-events-none absolute bottom-[18%] top-[18%] z-10 w-[2px] rounded-full transition-none",
 					dividerClass,
 				)}
-				style={{ left: `calc(${pct}% - 8px)` }}
+				style={{ insetInlineStart: `calc(${pct}% - 8px)` }}
 			/>
 			<span className="pointer-events-none relative z-10 flex-1 ps-3 text-[12px] font-medium text-muted-foreground">
 				{label}

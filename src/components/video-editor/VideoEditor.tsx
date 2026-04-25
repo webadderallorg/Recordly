@@ -5541,7 +5541,7 @@ export default function VideoEditor() {
 											);
 										}}
 									>
-										<SkipBack className="w-3.5 h-3.5" weight="fill" />
+										<SkipBack className="w-3.5 h-3.5 rtl:rotate-180" weight="fill" />
 									</Button>
 									<Button
 										variant="ghost"
@@ -5572,7 +5572,7 @@ export default function VideoEditor() {
 											);
 										}}
 									>
-										<SkipForward className="w-3.5 h-3.5" weight="fill" />
+										<SkipForward className="w-3.5 h-3.5 rtl:rotate-180" weight="fill" />
 									</Button>
 									<span className="text-[10px] font-medium text-muted-foreground/70 tabular-nums ms-1">
 										{formatTime(duration)}
@@ -5629,7 +5629,7 @@ export default function VideoEditor() {
 										/>
 										<div
 											className="pointer-events-none absolute bottom-[18%] top-[18%] z-10 w-[2px] rounded-full bg-foreground/95 shadow-[0_0_10px_rgba(37,99,235,0.28)]"
-											style={{ left: `calc(${previewVolume * 100}% - 8px)` }}
+											style={{ insetInlineStart: `calc(${previewVolume * 100}% - 8px)` }}
 										/>
 										<span className="pointer-events-none relative z-10 ps-2 text-[10px] font-medium text-muted-foreground">
 											{Math.round(previewVolume * 100)}%
