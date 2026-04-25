@@ -104,5 +104,5 @@
 		"vitest": "^4.0.16",
 		"web-demuxer": "^4.0.0"
 	},
-	"main": "dist-electron/main.js"
+	"main": "dist-electron/main.cjs"
 }

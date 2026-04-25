@@ -29,10 +29,11 @@
 		"loopCursor": "Cursor herhalen",
 		"cursorStyle": "Cursorstijl",
 		"cursorStyleOptions": {
+			"macos": "macOS",
 			"tahoe": "Tahoe",
+			"tahoe-inverted": "Tahoe omgekeerd",
 			"dot": "Punt",
 			"figma": "Minimaal",
-			"mono": "Omgekeerd",
 			"lavender": "Lavendel",
 			"parched": "Parched",
 			"chooper": "Chooper",
@@ -91,15 +92,6 @@
 		"radius": "Straal",
 		"roundness": "Afronding",
 		"padding": "Opvulling",
-		"paddingAdvanced": "Geavanceerd",
-		"paddingAdvancedShow": "Geavanceerde opvulcontroles tonen",
-		"paddingAdvancedHide": "Geavanceerde opvulcontroles verbergen",
-		"paddingLinked": "Gekoppeld (uniform)",
-		"paddingUnlinked": "Ontkoppeld (asymmetrisch)",
-		"paddingTop": "Boven",
-		"paddingBottom": "Onder",
-		"paddingLeft": "Links",
-		"paddingRight": "Rechts",
 		"removeBackground": "Achtergrond verwijderen"
 	},
 	"sections": {

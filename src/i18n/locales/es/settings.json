@@ -29,10 +29,11 @@
 		"loopCursor": "Cursor en bucle",
 		"cursorStyle": "Estilo del cursor",
 		"cursorStyleOptions": {
+			"macos": "macOS",
 			"tahoe": "Tahoe",
+			"tahoe-inverted": "Tahoe invertido",
 			"dot": "Punto",
 			"figma": "Minimal",
-			"mono": "Invertido",
 			"lavender": "Lavender",
 			"parched": "Parched",
 			"chooper": "Chooper",
@@ -91,15 +92,6 @@
 		"radius": "Radio",
 		"roundness": "Redondez",
 		"padding": "Relleno",
-		"paddingAdvanced": "Avanzado",
-		"paddingAdvancedShow": "Mostrar controles avanzados de relleno",
-		"paddingAdvancedHide": "Ocultar controles avanzados de relleno",
-		"paddingLinked": "Vinculado (uniforme)",
-		"paddingUnlinked": "No vinculado (asimétrico)",
-		"paddingTop": "Superior",
-		"paddingBottom": "Inferior",
-		"paddingLeft": "Izquierda",
-		"paddingRight": "Derecha",
 		"removeBackground": "Quitar fondo"
 	},
 	"sections": {

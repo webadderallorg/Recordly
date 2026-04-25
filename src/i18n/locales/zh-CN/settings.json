@@ -29,10 +29,11 @@
 		"loopCursor": "循环光标",
 		"cursorStyle": "光标样式",
 		"cursorStyleOptions": {
+			"macos": "macOS",
 			"tahoe": "Tahoe",
+			"tahoe-inverted": "Tahoe 反相",
 			"dot": "圆点",
 			"figma": "Minimal",
-			"mono": "反相",
 			"lavender": "Lavender",
 			"parched": "Parched",
 			"chooper": "Chooper",
@@ -91,15 +92,6 @@
 		"radius": "圆角半径",
 		"roundness": "圆角",
 		"padding": "内边距",
-		"paddingAdvanced": "高级",
-		"paddingAdvancedShow": "显示高级内边距控件",
-		"paddingAdvancedHide": "隐藏高级内边距控件",
-		"paddingLinked": "联动（统一）",
-		"paddingUnlinked": "取消联动（非对称）",
-		"paddingTop": "上",
-		"paddingBottom": "下",
-		"paddingLeft": "左",
-		"paddingRight": "右",
 		"removeBackground": "移除背景"
 	},
 	"sections": {

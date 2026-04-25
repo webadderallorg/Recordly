@@ -37,6 +37,7 @@ import {
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_CURSOR_SWAY,
 	DEFAULT_FIGURE_DATA,
+	DEFAULT_PADDING,
 	DEFAULT_PLAYBACK_SPEED,
 	DEFAULT_WEBCAM_CORNER_RADIUS,
 	DEFAULT_WEBCAM_MARGIN,
@@ -62,7 +63,6 @@ import {
 	type WebcamOverlaySettings,
 	type ZoomRegion,
 	type ZoomTransitionEasing,
-	DEFAULT_PADDING,
 } from "./types";
 
 export const PROJECT_VERSION = 1;
@@ -100,6 +100,8 @@ export interface ProjectEditorState {
 	zoomRegions: ZoomRegion[];
 	trimRegions: TrimRegion[];
 	clipRegions: ClipRegion[];
+	autoFullTrackClipId?: string | null;
+	autoFullTrackClipEndMs?: number | null;
 	speedRegions: SpeedRegion[];
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];
@@ -413,6 +415,12 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				})
 		: [];
 
+	const normalizedAutoFullTrackClipId =
+		typeof editor.autoFullTrackClipId === "string" ? editor.autoFullTrackClipId : null;
+	const normalizedAutoFullTrackClipEndMs = isFiniteNumber(editor.autoFullTrackClipEndMs)
+		? Math.round(editor.autoFullTrackClipEndMs)
+		: null;
+
 	const normalizedSpeedRegions: SpeedRegion[] = Array.isArray(editor.speedRegions)
 		? editor.speedRegions
 				.filter((region): region is SpeedRegion =>
@@ -698,6 +706,12 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 	)
 		? (webcam as Partial<{ zoomScaleEffect: number }>).zoomScaleEffect
 		: null;
+	const normalizedCursorStyle =
+		typeof editor.cursorStyle === "string" && editor.cursorStyle.trim().length > 0
+			? editor.cursorStyle === "mono"
+				? "tahoe-inverted"
+				: editor.cursorStyle
+			: DEFAULT_CURSOR_STYLE;
 
 	return {
 		wallpaper: typeof editor.wallpaper === "string" ? editor.wallpaper : DEFAULT_WALLPAPER_PATH,
@@ -718,10 +732,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		),
 		showCursor: typeof editor.showCursor === "boolean" ? editor.showCursor : true,
 		loopCursor: typeof editor.loopCursor === "boolean" ? editor.loopCursor : false,
-		cursorStyle:
-			typeof editor.cursorStyle === "string" && editor.cursorStyle.trim().length > 0
-				? editor.cursorStyle
-				: DEFAULT_CURSOR_STYLE,
+		cursorStyle: normalizedCursorStyle,
 		cursorSize: isFiniteNumber(editor.cursorSize)
 			? clamp(editor.cursorSize, 0.5, 10)
 			: DEFAULT_CURSOR_SIZE,
@@ -786,6 +797,8 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		zoomRegions: normalizedZoomRegions,
 		trimRegions: normalizedTrimRegions,
 		clipRegions: normalizedClipRegions,
+		autoFullTrackClipId: normalizedAutoFullTrackClipId,
+		autoFullTrackClipEndMs: normalizedAutoFullTrackClipEndMs,
 		speedRegions: normalizedSpeedRegions,
 		annotationRegions: normalizedAnnotationRegions,
 		audioRegions: normalizedAudioRegions,
@@ -892,9 +905,7 @@ export function createProjectData(
 ): EditorProjectData {
 	return {
 		version: PROJECT_VERSION,
-		...(typeof projectId === "string" && projectId.trim().length > 0
-			? { projectId }
-			: {}),
+		...(typeof projectId === "string" && projectId.trim().length > 0 ? { projectId } : {}),
 		videoPath,
 		editor,
 	};

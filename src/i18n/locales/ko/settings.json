@@ -29,10 +29,11 @@
 		"loopCursor": "커서 반복",
 		"cursorStyle": "커서 스타일",
 		"cursorStyleOptions": {
+			"macos": "macOS",
 			"tahoe": "Tahoe",
+			"tahoe-inverted": "Tahoe Inverted",
 			"dot": "Dot",
 			"figma": "Minimal",
-			"mono": "Inverted",
 			"lavender": "Lavender",
 			"parched": "Parched",
 			"chooper": "Chooper",
@@ -91,15 +92,6 @@
 		"radius": "반경",
 		"roundness": "둥글기",
 		"padding": "여백",
-		"paddingAdvanced": "고급",
-		"paddingAdvancedShow": "고급 여백 컨트롤 표시",
-		"paddingAdvancedHide": "고급 여백 컨트롤 숨기기",
-		"paddingLinked": "연결됨 (균일)",
-		"paddingUnlinked": "연결 해제됨 (비대칭)",
-		"paddingTop": "위",
-		"paddingBottom": "아래",
-		"paddingLeft": "왼쪽",
-		"paddingRight": "오른쪽",
 		"removeBackground": "배경 제거"
 	},
 	"sections": {

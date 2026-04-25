@@ -13,8 +13,16 @@ export default defineConfig({
 				entry: "electron/main.ts",
 				vite: {
 					build: {
+						lib: {
+							entry: "electron/main.ts",
+							formats: ["cjs"],
+						},
 						rollupOptions: {
 							external: ["ffmpeg-static", "uiohook-napi"],
+							output: {
+								entryFileNames: "[name].cjs",
+								chunkFileNames: "[name].cjs",
+							},
 						},
 					},
 				},

@@ -24,7 +24,6 @@ import {
 } from "@/lib/wallpapers";
 import { type AspectRatio } from "@/utils/aspectRatioUtils";
 import minimalCursorUrl from "../../../Minimal Cursor.svg";
-import tahoeCursorUrl from "../../assets/cursors/Cursor=Default.svg";
 import { useI18n, useScopedT } from "../../contexts/I18nContext";
 import type { AppLocale } from "../../i18n/config";
 import { SUPPORTED_LOCALES } from "../../i18n/config";
@@ -77,11 +76,10 @@ import {
 	SPEED_OPTIONS,
 } from "./types";
 import { fromCursorSwaySliderValue, toCursorSwaySliderValue } from "./videoPlayback/cursorSway";
-import {
-	UPLOADED_CURSOR_SAMPLE_SIZE,
-	uploadedCursorAssets,
-} from "./videoPlayback/uploadedCursorAssets";
+import { cursorSetAssets } from "./videoPlayback/uploadedCursorAssets";
 import { getWebcamPositionForPreset, resolveWebcamCorner } from "./webcamOverlay";
+
+const tahoeCursorUrl = cursorSetAssets.tahoe.arrow.url;
 
 const GRADIENTS = [
 	"linear-gradient( 111.6deg,  rgba(114,167,232,1) 9.4%, rgba(253,129,82,1) 43.9%, rgba(253,129,82,1) 54.8%, rgba(249,202,86,1) 86.3% )",
@@ -470,10 +468,11 @@ type WallpaperTile = {
 };
 
 const BUILTIN_CURSOR_STYLE_OPTIONS: CursorStyleOption[] = [
+	{ value: "macos", label: "macOS" },
 	{ value: "tahoe", label: "Tahoe" },
+	{ value: "tahoe-inverted", label: "Tahoe Inverted" },
 	{ value: "dot", label: "Dot" },
 	{ value: "figma", label: "Minimal" },
-	{ value: "mono", label: "Inverted" },
 ];
 
 const CAPTION_LANGUAGE_OPTIONS = [
@@ -644,15 +643,17 @@ function CursorStylePreview({
 	previewUrls: Partial<Record<string, string>>;
 }) {
 	const previewSrc =
-		style === "tahoe"
-			? (previewUrls.tahoe ?? tahoeCursorUrl)
-			: style === "figma"
-				? (previewUrls.figma ?? minimalCursorUrl)
-				: style === "mono"
-					? (previewUrls.mono ?? tahoeCursorUrl)
-					: previewUrls[style];
+		style === "macos"
+			? (previewUrls.macos ?? tahoeCursorUrl)
+			: style === "tahoe"
+				? (previewUrls.tahoe ?? tahoeCursorUrl)
+				: style === "figma"
+					? (previewUrls.figma ?? minimalCursorUrl)
+					: style === "tahoe-inverted"
+						? (previewUrls["tahoe-inverted"] ?? tahoeCursorUrl)
+						: previewUrls[style];
 
-	if (style === "tahoe") {
+	if (style === "macos" || style === "tahoe") {
 		return (
 			<img
 				src={previewSrc}
@@ -992,30 +993,26 @@ export function SettingsPanel({
 
 		void (async () => {
 			try {
-				const tahoeAsset = uploadedCursorAssets.arrow;
-				const tahoePreview = tahoeAsset
-					? await createTrimmedSvgPreview(
-							tahoeAsset.url,
-							UPLOADED_CURSOR_SAMPLE_SIZE,
-							tahoeAsset.trim,
-						)
-					: tahoeCursorUrl;
+				const macosPreview = cursorSetAssets.macos.arrow.url;
+				const tahoePreview = cursorSetAssets.tahoe.arrow.url;
 				const minimalPreview = await createTrimmedSvgPreview(minimalCursorUrl, 512);
 				const invertedPreview = await createInvertedPreview(tahoePreview);
 
 				if (!cancelled) {
 					setBuiltInCursorPreviewUrls({
+						macos: macosPreview,
 						tahoe: tahoePreview,
 						figma: minimalPreview,
-						mono: invertedPreview,
+						"tahoe-inverted": invertedPreview,
 					});
 				}
 			} catch {
 				if (!cancelled) {
 					setBuiltInCursorPreviewUrls({
+						macos: tahoeCursorUrl,
 						tahoe: tahoeCursorUrl,
 						figma: minimalCursorUrl,
-						mono: tahoeCursorUrl,
+						"tahoe-inverted": tahoeCursorUrl,
 					});
 				}
 			}
