@@ -332,7 +332,7 @@ export function TutorialHelp() {
 									{t("tutorial.part", undefined, { number: "3" })}
 								</span>
 							</div>
-							<span className="absolute right-4 text-xs text-muted-foreground">
+							<span className="absolute end-4 text-xs text-muted-foreground">
 								{t("tutorial.finalVideo")}
 							</span>
 						</div>

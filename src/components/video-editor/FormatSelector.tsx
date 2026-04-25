@@ -72,7 +72,7 @@ export function FormatSelector({
 							</div>
 						</div>
 						{isSelected && (
-							<div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-[#2563EB]" />
+							<div className="absolute top-2 end-2 w-2 h-2 rounded-full bg-[#2563EB]" />
 						)}
 					</button>
 				);
