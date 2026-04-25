@@ -17,6 +17,7 @@ const UPDATER_LOG_PATH =
 const DEV_UPDATE_PREVIEW_VERSION = "9.9.9";
 const DEV_UPDATE_PREVIEW_PROGRESS_STEP_MS = 300;
 const DEV_UPDATE_PREVIEW_PROGRESS_INCREMENT = 20;
+const ONE_MEGABYTE = 1024 * 1024;
 
 export type UpdateToastPhase = "available" | "downloading" | "ready" | "error";
 
@@ -43,7 +44,18 @@ export interface UpdateToastPayload {
 	delayMs: number;
 	isPreview?: boolean;
 	progressPercent?: number;
-	primaryAction?: "download-update" | "install-update" | "retry-check";
+	transferredBytes?: number;
+	totalBytes?: number;
+	remainingBytes?: number;
+	bytesPerSecond?: number;
+	primaryAction?: "install-and-restart" | "retry-check";
+}
+
+interface DownloadProgressSnapshot {
+	progressPercent?: number;
+	transferredBytes?: number;
+	totalBytes?: number;
+	bytesPerSecond?: number;
 }
 
 type UpdateToastSender = (
@@ -64,6 +76,7 @@ let downloadInProgress = false;
 let downloadToastDismissed = false;
 let skippedVersion: string | null = null;
 let updateCheckErrorHandled = false;
+let installAfterDownloadRequested = false;
 let activeUpdateToastSender: UpdateToastSender | undefined;
 let updateStatusSummary: UpdateStatusSummary = {
 	status: "idle",
@@ -180,26 +193,54 @@ function createAvailableUpdateToastPayload(version: string): UpdateToastPayload 
 	return {
 		version,
 		phase: "available",
-		detail: "A new version is available. Download it now, or wait and we will remind you again in 3 hours.",
+		detail: "Install the latest version now, or remind yourself to come back to it later.",
 		delayMs: UPDATE_REMINDER_DELAY_MS,
-		primaryAction: "download-update",
+		primaryAction: "install-and-restart",
 	};
 }
 
 function createDownloadingUpdateToastPayload(
 	version: string,
-	progressPercent = 0,
+	progress: DownloadProgressSnapshot = {},
 ): UpdateToastPayload {
-	const normalizedProgress = Math.max(0, Math.min(100, progressPercent));
+	const normalizedProgress = Math.max(
+		0,
+		Math.min(100, Math.round(progress.progressPercent ?? 0)),
+	);
+	const transferredBytes =
+		typeof progress.transferredBytes === "number" && Number.isFinite(progress.transferredBytes)
+			? Math.max(0, progress.transferredBytes)
+			: undefined;
+	const totalBytes =
+		typeof progress.totalBytes === "number" && Number.isFinite(progress.totalBytes)
+			? Math.max(0, progress.totalBytes)
+			: undefined;
+	const remainingBytes =
+		totalBytes !== undefined && transferredBytes !== undefined
+			? Math.max(totalBytes - transferredBytes, 0)
+			: undefined;
+	const bytesPerSecond =
+		typeof progress.bytesPerSecond === "number" && Number.isFinite(progress.bytesPerSecond)
+			? Math.max(0, progress.bytesPerSecond)
+			: undefined;
+	const remainingMb =
+		remainingBytes !== undefined ? Math.max(0, remainingBytes / ONE_MEGABYTE) : null;
 	return {
 		version,
 		phase: "downloading",
 		detail:
 			normalizedProgress >= 100
-				? "Finishing the update download. You can keep using Recordly while this completes."
-				: `Downloading the update in the foreground: ${normalizedProgress.toFixed(0)}% complete.`,
+				? "Finishing the update download. Recordly will restart as soon as the installer is ready."
+				: remainingMb !== null
+					? `${remainingMb.toFixed(1)} MB left before Recordly restarts.`
+					: "Downloading the update now. Recordly will restart when it finishes.",
 		delayMs: UPDATE_REMINDER_DELAY_MS,
 		progressPercent: normalizedProgress,
+		transferredBytes,
+		totalBytes,
+		remainingBytes,
+		bytesPerSecond,
+		primaryAction: "install-and-restart",
 	};
 }
 
@@ -207,9 +248,9 @@ function createDownloadedUpdateToastPayload(version: string): UpdateToastPayload
 	return {
 		version,
 		phase: "ready",
-		detail: "Install now to restart into the new version, or wait and we will remind you again in 3 hours.",
+		detail: "The update is ready. Install and restart now, or remind yourself later.",
 		delayMs: UPDATE_REMINDER_DELAY_MS,
-		primaryAction: "install-update",
+		primaryAction: "install-and-restart",
 	};
 }
 
@@ -217,9 +258,9 @@ function createUpdateErrorToastPayload(version: string, error: unknown): UpdateT
 	return {
 		version,
 		phase: "error",
-		detail: `The update download failed. ${String(error)}`,
+		detail: `The update could not be downloaded. ${String(error)}`,
 		delayMs: UPDATE_REMINDER_DELAY_MS,
-		primaryAction: "download-update",
+		primaryAction: "install-and-restart",
 	};
 }
 
@@ -276,6 +317,7 @@ function resetDevPreviewState(sendToRenderer?: UpdateToastSender) {
 	downloadInProgress = false;
 	downloadToastDismissed = false;
 	skippedVersion = null;
+	installAfterDownloadRequested = false;
 	clearVisibleUpdateToast(sendToRenderer);
 }
 
@@ -289,7 +331,12 @@ function simulateDevPreviewDownload(sendToRenderer?: UpdateToastSender) {
 
 	let progressPercent = 0;
 	emitUpdateToastState(sendToRenderer, {
-		...createDownloadingUpdateToastPayload(DEV_UPDATE_PREVIEW_VERSION, progressPercent),
+		...createDownloadingUpdateToastPayload(DEV_UPDATE_PREVIEW_VERSION, {
+			progressPercent,
+			transferredBytes: 0,
+			totalBytes: 20 * ONE_MEGABYTE,
+			bytesPerSecond: 5 * ONE_MEGABYTE,
+		}),
 		isPreview: true,
 	});
 
@@ -313,7 +360,12 @@ function simulateDevPreviewDownload(sendToRenderer?: UpdateToastSender) {
 		}
 
 		emitUpdateToastState(sendToRenderer, {
-			...createDownloadingUpdateToastPayload(DEV_UPDATE_PREVIEW_VERSION, progressPercent),
+			...createDownloadingUpdateToastPayload(DEV_UPDATE_PREVIEW_VERSION, {
+				progressPercent,
+				transferredBytes: (progressPercent / 100) * 20 * ONE_MEGABYTE,
+				totalBytes: 20 * ONE_MEGABYTE,
+				bytesPerSecond: 5 * ONE_MEGABYTE,
+			}),
 			isPreview: true,
 		});
 	}, DEV_UPDATE_PREVIEW_PROGRESS_STEP_MS);
@@ -331,6 +383,7 @@ export function dismissUpdateToast(
 	}
 
 	if (downloadInProgress) {
+		installAfterDownloadRequested = false;
 		downloadToastDismissed = true;
 		clearVisibleUpdateToast(sendToRenderer);
 		return { success: true };
@@ -360,13 +413,17 @@ export function installDownloadedUpdateNow(sendToRenderer?: UpdateToastSender) {
 
 	clearDeferredReminderTimer();
 	downloadToastDismissed = false;
+	installAfterDownloadRequested = false;
 	clearVisibleUpdateToast(sendToRenderer);
 	setUpdateStatusSummary({ status: "ready", availableVersion: pendingDownloadedVersion });
 	writeUpdaterLog("Installing downloaded update.");
 	autoUpdater.quitAndInstall();
 }
 
-export async function downloadAvailableUpdate(sendToRenderer?: UpdateToastSender) {
+export async function downloadAvailableUpdate(
+	sendToRenderer?: UpdateToastSender,
+	options?: { installAfterDownload?: boolean },
+) {
 	if (currentToastPayload?.isPreview) {
 		return simulateDevPreviewDownload(sendToRenderer);
 	}
@@ -386,12 +443,20 @@ export async function downloadAvailableUpdate(sendToRenderer?: UpdateToastSender
 	clearDeferredReminderTimer();
 	downloadInProgress = true;
 	downloadToastDismissed = false;
+	installAfterDownloadRequested =
+		Boolean(options?.installAfterDownload) || installAfterDownloadRequested;
 	setUpdateStatusSummary({
 		status: "downloading",
 		availableVersion,
 		detail: `Downloading Recordly ${availableVersion}`,
 	});
-	emitUpdateToastState(sendToRenderer, createDownloadingUpdateToastPayload(availableVersion, 0));
+	emitUpdateToastState(
+		sendToRenderer,
+		createDownloadingUpdateToastPayload(availableVersion, {
+			progressPercent: 0,
+			transferredBytes: 0,
+		}),
+	);
 	writeUpdaterLog(`Starting update download for ${availableVersion}.`);
 
 	try {
@@ -425,6 +490,7 @@ export function deferUpdateReminder(
 	}
 
 	clearDeferredReminderTimer();
+	installAfterDownloadRequested = false;
 	clearVisibleUpdateToast(sendToRenderer);
 	deferredReminderTimer = setTimeout(() => {
 		const nextPayload = getReminderPayload();
@@ -462,6 +528,7 @@ export function skipAvailableUpdateVersion(sendToRenderer?: UpdateToastSender) {
 	}
 	downloadInProgress = false;
 	downloadToastDismissed = false;
+	installAfterDownloadRequested = false;
 	clearDeferredReminderTimer();
 	clearVisibleUpdateToast(sendToRenderer);
 
@@ -475,6 +542,7 @@ export function previewUpdateToast(sendToRenderer: UpdateToastSender) {
 	pendingDownloadedVersion = null;
 	downloadInProgress = false;
 	downloadToastDismissed = false;
+	installAfterDownloadRequested = false;
 	return emitUpdateToastState(sendToRenderer, {
 		version: DEV_UPDATE_PREVIEW_VERSION,
 		phase: "available",
@@ -493,24 +561,19 @@ async function showAvailableUpdateDialog(
 		type: "info",
 		title: "Update Available",
 		message: `Recordly ${version} is available.`,
-		detail: "Download now, remind me in 3 hours, or skip this version.",
-		buttons: ["Download Update", "Remind Me in 3 Hours", "Skip This Version"],
+		detail: "Install and restart now, or remind me later.",
+		buttons: ["Install & Restart", "Later"],
 		defaultId: 0,
 		cancelId: 1,
 		noLink: true,
 	});
 
 	if (result.response === 0) {
-		await downloadAvailableUpdate(sendToRenderer);
+		await downloadAvailableUpdate(sendToRenderer, { installAfterDownload: true });
 		return;
 	}
 
-	if (result.response === 1) {
-		deferUpdateReminder(getMainWindow, sendToRenderer, UPDATE_REMINDER_DELAY_MS);
-		return;
-	}
-
-	skipAvailableUpdateVersion(sendToRenderer);
+	deferUpdateReminder(getMainWindow, sendToRenderer, UPDATE_REMINDER_DELAY_MS);
 }
 
 async function showDownloadedUpdateDialog(
@@ -527,8 +590,8 @@ async function showDownloadedUpdateDialog(
 			: `Recordly ${version} has been downloaded.`,
 		detail: isPreview
 			? "Development preview of the native update prompt. No real update will be installed."
-			: "Install now, remind me in 3 hours, or skip this version.",
-		buttons: ["Install Update", "Remind Me in 3 Hours", "Skip This Version"],
+			: "Install and restart now, or remind me later.",
+		buttons: ["Install & Restart", "Later"],
 		defaultId: 0,
 		cancelId: 1,
 		noLink: true,
@@ -558,14 +621,7 @@ async function showDownloadedUpdateDialog(
 		}
 
 		deferUpdateReminder(getMainWindow, undefined, UPDATE_REMINDER_DELAY_MS);
-		return;
 	}
-
-	if (isPreview) {
-		return;
-	}
-
-	skipAvailableUpdateVersion();
 }
 
 export async function checkForAppUpdates(
@@ -665,6 +721,7 @@ export function setupAutoUpdates(
 		pendingDownloadedVersion = null;
 		downloadInProgress = false;
 		downloadToastDismissed = false;
+		installAfterDownloadRequested = false;
 		setUpdateStatusSummary({
 			status: "available",
 			availableVersion: info.version,
@@ -694,6 +751,7 @@ export function setupAutoUpdates(
 		pendingDownloadedVersion = null;
 		downloadInProgress = false;
 		downloadToastDismissed = false;
+		installAfterDownloadRequested = false;
 		setUpdateStatusSummary({
 			status: "up-to-date",
 			availableVersion: null,
@@ -727,7 +785,12 @@ export function setupAutoUpdates(
 
 		emitUpdateToastState(
 			sendToRenderer,
-			createDownloadingUpdateToastPayload(availableVersion, progress.percent),
+			createDownloadingUpdateToastPayload(availableVersion, {
+				progressPercent: progress.percent,
+				transferredBytes: progress.transferred,
+				totalBytes: progress.total,
+				bytesPerSecond: progress.bytesPerSecond,
+			}),
 		);
 	});
 
@@ -748,6 +811,7 @@ export function setupAutoUpdates(
 		if (downloadInProgress && availableVersion) {
 			downloadInProgress = false;
 			downloadToastDismissed = false;
+			installAfterDownloadRequested = false;
 			emitUpdateToastState(
 				sendToRenderer,
 				createUpdateErrorToastPayload(availableVersion, error),
@@ -767,6 +831,7 @@ export function setupAutoUpdates(
 		downloadInProgress = false;
 		downloadToastDismissed = false;
 		if (skippedVersion === info.version) {
+			installAfterDownloadRequested = false;
 			return;
 		}
 		availableVersion = info.version;
@@ -777,6 +842,16 @@ export function setupAutoUpdates(
 			detail: `Recordly ${info.version} is ready to install.`,
 		});
 		clearDeferredReminderTimer();
+
+		if (installAfterDownloadRequested && !currentToastPayload?.isPreview) {
+			installAfterDownloadRequested = false;
+			clearVisibleUpdateToast(sendToRenderer);
+			writeUpdaterLog(`Auto-installing downloaded update: version=${info.version}`);
+			setImmediate(() => {
+				installDownloadedUpdateNow(sendToRenderer);
+			});
+			return;
+		}
 
 		if (
 			emitUpdateToastState(sendToRenderer, createDownloadedUpdateToastPayload(info.version))

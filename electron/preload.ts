@@ -504,8 +504,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	installDownloadedUpdate: () => {
 		return ipcRenderer.invoke("install-downloaded-update");
 	},
-	downloadAvailableUpdate: () => {
-		return ipcRenderer.invoke("download-available-update");
+	downloadAvailableUpdate: (installAfterDownload?: boolean) => {
+		return ipcRenderer.invoke("download-available-update", installAfterDownload);
 	},
 	deferDownloadedUpdate: (delayMs?: number) => {
 		return ipcRenderer.invoke("defer-downloaded-update", delayMs);
@@ -537,7 +537,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 				delayMs: number;
 				isPreview?: boolean;
 				progressPercent?: number;
-				primaryAction?: "download-update" | "install-update" | "retry-check";
+				transferredBytes?: number;
+				totalBytes?: number;
+				remainingBytes?: number;
+				bytesPerSecond?: number;
+				primaryAction?: "install-and-restart" | "retry-check";
 			} | null,
 		) => void,
 	) => {
@@ -550,7 +554,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 				delayMs: number;
 				isPreview?: boolean;
 				progressPercent?: number;
-				primaryAction?: "download-update" | "install-update" | "retry-check";
+				transferredBytes?: number;
+				totalBytes?: number;
+				remainingBytes?: number;
+				bytesPerSecond?: number;
+				primaryAction?: "install-and-restart" | "retry-check";
 			} | null,
 		) => callback(payload);
 		ipcRenderer.on("update-toast-state", listener);

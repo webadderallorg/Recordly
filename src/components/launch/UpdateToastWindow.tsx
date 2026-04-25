@@ -4,7 +4,7 @@ import {
 	Spinner as LoaderCircle,
 	Rocket,
 } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 type UpdateToastPayload = {
 	version: string;
@@ -13,61 +13,73 @@ type UpdateToastPayload = {
 	delayMs: number;
 	isPreview?: boolean;
 	progressPercent?: number;
-	primaryAction?: "download-update" | "install-update" | "retry-check";
+	transferredBytes?: number;
+	totalBytes?: number;
+	remainingBytes?: number;
+	bytesPerSecond?: number;
+	primaryAction?: "install-and-restart" | "retry-check";
 };
 
-const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+const DEFAULT_REMINDER_DELAY_MS = 3 * 60 * 60 * 1000;
+const REMINDER_OPTIONS = [
+	{ label: "1 hour", value: 1 * 60 * 60 * 1000 },
+	{ label: "3 hours", value: 3 * 60 * 60 * 1000 },
+	{ label: "Tomorrow", value: 24 * 60 * 60 * 1000 },
+	{ label: "3 days", value: 3 * 24 * 60 * 60 * 1000 },
+];
 
-function formatDelayHours(delayMs: number) {
-	const hours = Math.max(1, Math.round(delayMs / (60 * 60 * 1000)));
-	return `${hours}h`;
+function formatBytes(value: number | undefined) {
+	if (value === undefined || !Number.isFinite(value) || value <= 0) {
+		return null;
+	}
+
+	const megabytes = value / (1024 * 1024);
+	if (megabytes >= 1024) {
+		return `${(megabytes / 1024).toFixed(1)} GB`;
+	}
+
+	return `${megabytes.toFixed(megabytes >= 100 ? 0 : 1)} MB`;
 }
 
 function getToastTitle(payload: UpdateToastPayload) {
 	if (payload.isPreview) {
-		return "Update Toast Preview";
+		return "Update Prompt Preview";
 	}
 
 	switch (payload.phase) {
 		case "available":
 			return `Recordly ${payload.version} is available`;
 		case "downloading":
-			return `Downloading Recordly ${payload.version}`;
+			return `Installing Recordly ${payload.version}`;
 		case "ready":
 			return `Recordly ${payload.version} is ready`;
 		case "error":
-			return `Recordly ${payload.version} needs attention`;
+			return payload.primaryAction === "retry-check"
+				? "Could not check for updates"
+				: `Recordly ${payload.version} needs attention`;
 	}
 }
 
-function getPrimaryActionLabel(payload: UpdateToastPayload) {
-	switch (payload.primaryAction) {
-		case "download-update":
-			return "Download Update";
-		case "install-update":
-			return "Install Update";
-		case "retry-check":
-			return "Retry Check";
-		default:
-			return null;
+function getPrimaryButtonLabel(payload: UpdateToastPayload) {
+	return payload.primaryAction === "retry-check" ? "Try Again" : "Install & Restart";
+}
+
+function getPhaseIcon(payload: UpdateToastPayload) {
+	switch (payload.phase) {
+		case "available":
+			return <Download size={20} />;
+		case "downloading":
+			return <LoaderCircle size={20} className="animate-spin" />;
+		case "ready":
+			return <Rocket size={20} />;
+		case "error":
+			return <AlertCircle size={20} />;
 	}
 }
 
 export function UpdateToastWindow() {
 	const [payload, setPayload] = useState<UpdateToastPayload | null>(null);
-	const [dragOffsetX, setDragOffsetX] = useState(0);
-	const dragResetKey = payload
-		? `${payload.phase}:${payload.version}:${payload.progressPercent ?? ""}:${payload.detail}:${payload.delayMs}:${payload.isPreview ? "1" : "0"}:${payload.primaryAction ?? ""}`
-		: "empty";
-	const dragState = useRef<{
-		pointerId: number | null;
-		startX: number;
-		active: boolean;
-	}>({
-		pointerId: null,
-		startX: 0,
-		active: false,
-	});
+	const [reminderDelayMs, setReminderDelayMs] = useState(DEFAULT_REMINDER_DELAY_MS);
 
 	useEffect(() => {
 		let mounted = true;
@@ -81,11 +93,9 @@ export function UpdateToastWindow() {
 
 		pollTimer = setInterval(() => {
 			void window.electronAPI.getCurrentUpdateToastPayload().then((nextPayload) => {
-				if (!mounted || !nextPayload) {
-					return;
+				if (mounted) {
+					setPayload(nextPayload);
 				}
-
-				setPayload((currentPayload) => currentPayload ?? nextPayload);
 			});
 		}, 750);
 
@@ -103,214 +113,160 @@ export function UpdateToastWindow() {
 	}, []);
 
 	useEffect(() => {
-		if (!dragResetKey) {
+		if (!payload) {
 			return;
 		}
 
-		setDragOffsetX(0);
-		dragState.current = {
-			pointerId: null,
-			startX: 0,
-			active: false,
-		};
-	}, [dragResetKey]);
+		setReminderDelayMs(payload.delayMs || DEFAULT_REMINDER_DELAY_MS);
+	}, [payload]);
 
-	const cardStyle = {
-		background: "#0d1117",
-		border: "1px solid rgba(125, 211, 252, 0.22)",
-		boxShadow: "0 24px 48px rgba(0, 0, 0, 0.45)",
-		borderRadius: 24,
-		padding: 16,
-		color: "#ffffff",
-		width: "100%",
-		maxWidth: 404,
-		display: "flex",
-		gap: 12,
-		alignItems: "flex-start",
-		fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
-	} as const;
+	const normalizedProgress = Math.max(
+		0,
+		Math.min(100, Math.round(payload?.progressPercent ?? 0)),
+	);
+	const downloadedLabel = formatBytes(payload?.transferredBytes);
+	const totalLabel = formatBytes(payload?.totalBytes);
+	const remainingLabel = formatBytes(payload?.remainingBytes);
+	const speedLabel = formatBytes(payload?.bytesPerSecond);
+	const phaseStats: Array<{ label: string; value: string }> = [];
+	if (payload?.phase === "downloading") {
+		if (downloadedLabel && totalLabel) {
+			phaseStats.push({ label: "Downloaded", value: `${downloadedLabel} / ${totalLabel}` });
+		} else if (downloadedLabel) {
+			phaseStats.push({ label: "Downloaded", value: downloadedLabel });
+		}
+		if (remainingLabel) {
+			phaseStats.push({ label: "Left", value: remainingLabel });
+		}
+		if (speedLabel) {
+			phaseStats.push({ label: "Speed", value: `${speedLabel}/s` });
+		}
+	}
+
+	const isMacOS = /mac/i.test(navigator.platform);
 	const wrapperStyle = {
 		display: "flex",
 		alignItems: "center",
 		justifyContent: "center",
 		width: "100%",
 		height: "100%",
-		padding: 8,
+		padding: 10,
 		boxSizing: "border-box",
-		background: "transparent",
+		background: isMacOS ? "transparent" : "#0b1220",
 	} as const;
-	const secondaryTextStyle = {
-		color: "rgba(255, 255, 255, 0.74)",
-		fontSize: 14,
-		lineHeight: 1.45,
-		margin: "4px 0 0 0",
-	} as const;
-	const titleStyle = {
-		fontSize: 14,
-		fontWeight: 700,
-		lineHeight: 1.2,
-		margin: 0,
+	const cardStyle = {
+		width: "100%",
+		maxWidth: 440,
+		display: "flex",
+		gap: 14,
+		alignItems: "flex-start",
+		padding: "18px 18px 16px",
+		borderRadius: 24,
+		background:
+			"linear-gradient(180deg, rgba(12, 19, 34, 0.98) 0%, rgba(10, 17, 30, 0.98) 100%)",
+		border: "1px solid rgba(37, 99, 235, 0.24)",
+		boxShadow: "0 20px 48px rgba(2, 6, 23, 0.5), inset 0 1px 0 rgba(148, 163, 184, 0.08)",
 		color: "#ffffff",
+		fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
 	} as const;
 	const iconBoxStyle = {
-		width: 40,
-		height: 40,
-		minWidth: 40,
+		width: 42,
+		height: 42,
+		minWidth: 42,
 		borderRadius: 16,
-		background: "rgba(125, 211, 252, 0.15)",
-		color: "#7dd3fc",
 		display: "flex",
 		alignItems: "center",
 		justifyContent: "center",
-		marginTop: 2,
+		background: "rgba(37, 99, 235, 0.16)",
+		color: "#60a5fa",
+		boxShadow: "inset 0 0 0 1px rgba(37, 99, 235, 0.18)",
 	} as const;
-	const rowStyle = {
-		display: "flex",
-		flexWrap: "wrap" as const,
-		gap: 8,
-		marginTop: 12,
+	const titleStyle = {
+		fontSize: 15,
+		fontWeight: 700,
+		lineHeight: 1.25,
+		margin: 0,
+		color: "#f8fafc",
+	} as const;
+	const secondaryTextStyle = {
+		color: "rgba(226, 232, 240, 0.78)",
+		fontSize: 13,
+		lineHeight: 1.5,
+		margin: "6px 0 0 0",
 	} as const;
 	const subtleButtonStyle = {
-		border: "1px solid rgba(255, 255, 255, 0.1)",
-		background: "rgba(255, 255, 255, 0.05)",
-		color: "rgba(255, 255, 255, 0.92)",
+		height: 38,
 		borderRadius: 12,
-		padding: "8px 12px",
-		fontSize: 12,
+		padding: "0 14px",
+		border: "1px solid rgba(148, 163, 184, 0.16)",
+		background: "rgba(15, 23, 42, 0.72)",
+		color: "#e2e8f0",
+		fontSize: 13,
 		fontWeight: 600,
 		cursor: "pointer",
+		transition: "all 0.15s ease",
 	} as const;
 	const primaryButtonStyle = {
 		...subtleButtonStyle,
-		background: "#7dd3fc",
-		color: "#031a2c",
 		border: "none",
+		background: "linear-gradient(180deg, #3b82f6 0%, #2563eb 100%)",
+		color: "#ffffff",
+		boxShadow: "0 12px 24px rgba(37, 99, 235, 0.26)",
 	} as const;
-	const ghostButtonStyle = {
-		...subtleButtonStyle,
-		background: "transparent",
-		color: "rgba(255, 255, 255, 0.72)",
-		border: "1px solid rgba(125, 211, 252, 0.16)",
+	const selectStyle = {
+		height: 38,
+		borderRadius: 12,
+		padding: "0 34px 0 12px",
+		border: "1px solid rgba(37, 99, 235, 0.22)",
+		background:
+			"linear-gradient(180deg, rgba(18, 29, 51, 0.96) 0%, rgba(12, 22, 42, 0.96) 100%)",
+		color: "#dbeafe",
+		fontSize: 13,
+		fontWeight: 600,
+		outline: "none",
+		boxShadow: "inset 0 0 0 1px rgba(37, 99, 235, 0.06)",
+		cursor: "pointer",
 	} as const;
-
-	if (!payload) {
-		return (
-			<div style={wrapperStyle}>
-				<div style={{ ...cardStyle, alignItems: "center" }}>
-					<div style={iconBoxStyle}>
-						<LoaderCircle size={20} />
-					</div>
-					<div>
-						<p style={titleStyle}>Checking for updates</p>
-						<p style={secondaryTextStyle}>
-							Waiting for updater state from the main process.
-						</p>
-					</div>
-				</div>
-			</div>
-		);
-	}
-
-	const normalizedProgress = Math.max(0, Math.min(100, Math.round(payload.progressPercent ?? 0)));
-	const primaryActionLabel = getPrimaryActionLabel(payload);
-	const swipeThreshold = 96;
-	const handleSwipeDismiss = async () => {
-		setDragOffsetX(0);
-		dragState.current = {
-			pointerId: null,
-			startX: 0,
-			active: false,
-		};
-		await window.electronAPI.dismissUpdateToast();
-	};
 
 	const handlePrimaryAction = async () => {
-		switch (payload.primaryAction) {
-			case "download-update":
-				await window.electronAPI.downloadAvailableUpdate();
-				return;
-			case "install-update":
-				await window.electronAPI.installDownloadedUpdate();
-				return;
-			case "retry-check":
-				await window.electronAPI.checkForAppUpdates();
-				return;
-			default:
-				return;
+		if (!payload || payload.phase === "downloading") {
+			return;
 		}
+
+		if (payload.primaryAction === "retry-check") {
+			await window.electronAPI.checkForAppUpdates();
+			return;
+		}
+
+		if (payload.phase === "ready") {
+			await window.electronAPI.installDownloadedUpdate();
+			return;
+		}
+
+		await window.electronAPI.downloadAvailableUpdate(true);
 	};
+
+	const handleLater = async () => {
+		if (!payload) {
+			return;
+		}
+
+		if (payload.isPreview) {
+			await window.electronAPI.dismissUpdateToast();
+			return;
+		}
+
+		await window.electronAPI.deferDownloadedUpdate(reminderDelayMs);
+	};
+
+	if (!payload) {
+		return <div style={wrapperStyle} />;
+	}
 
 	return (
 		<div style={wrapperStyle}>
-			<div
-				className="pointer-events-auto select-none"
-				style={{
-					...cardStyle,
-					transform: `translateX(${dragOffsetX}px) rotate(${dragOffsetX / 30}deg)`,
-					opacity: Math.max(0.35, 1 - Math.min(1, Math.abs(dragOffsetX) / 180)),
-				}}
-				onPointerDown={(event) => {
-					const target = event.target as HTMLElement | null;
-					if (target?.closest("button")) {
-						return;
-					}
-
-					dragState.current = {
-						pointerId: event.pointerId,
-						startX: event.clientX,
-						active: true,
-					};
-					event.currentTarget.setPointerCapture(event.pointerId);
-				}}
-				onPointerMove={(event) => {
-					if (
-						!dragState.current.active ||
-						dragState.current.pointerId !== event.pointerId
-					) {
-						return;
-					}
-
-					setDragOffsetX(event.clientX - dragState.current.startX);
-				}}
-				onPointerUp={async (event) => {
-					if (
-						!dragState.current.active ||
-						dragState.current.pointerId !== event.pointerId
-					) {
-						return;
-					}
-
-					const nextOffset = event.clientX - dragState.current.startX;
-					dragState.current = {
-						pointerId: null,
-						startX: 0,
-						active: false,
-					};
-
-					if (Math.abs(nextOffset) >= swipeThreshold) {
-						await handleSwipeDismiss();
-						return;
-					}
-
-					setDragOffsetX(0);
-				}}
-				onPointerCancel={() => {
-					dragState.current = {
-						pointerId: null,
-						startX: 0,
-						active: false,
-					};
-					setDragOffsetX(0);
-				}}
-			>
-				<div style={iconBoxStyle}>
-					{payload.phase === "available" ? <Download size={20} /> : null}
-					{payload.phase === "downloading" ? (
-						<LoaderCircle size={20} className="animate-spin" />
-					) : null}
-					{payload.phase === "ready" ? <Rocket size={20} /> : null}
-					{payload.phase === "error" ? <AlertCircle size={20} /> : null}
-				</div>
+			<div style={cardStyle}>
+				<div style={iconBoxStyle}>{getPhaseIcon(payload)}</div>
 				<div style={{ minWidth: 0, flex: 1 }}>
 					<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 						<p style={titleStyle}>{getToastTitle(payload)}</p>
@@ -318,14 +274,14 @@ export function UpdateToastWindow() {
 							<span
 								style={{
 									borderRadius: 999,
-									border: "1px solid rgba(125, 211, 252, 0.2)",
-									background: "rgba(125, 211, 252, 0.1)",
 									padding: "2px 8px",
 									fontSize: 10,
 									fontWeight: 700,
 									letterSpacing: "0.18em",
 									textTransform: "uppercase",
-									color: "#bae6fd",
+									color: "#93c5fd",
+									background: "rgba(37, 99, 235, 0.14)",
+									border: "1px solid rgba(37, 99, 235, 0.18)",
 								}}
 							>
 								Dev
@@ -335,104 +291,102 @@ export function UpdateToastWindow() {
 					<p style={secondaryTextStyle}>{payload.detail}</p>
 
 					{payload.phase === "downloading" ? (
-						<div style={{ marginTop: 12 }}>
+						<div style={{ marginTop: 14 }}>
 							<div
 								style={{
-									height: 8,
+									height: 10,
 									overflow: "hidden",
 									borderRadius: 999,
-									background: "rgba(255, 255, 255, 0.1)",
+									background: "rgba(148, 163, 184, 0.14)",
 								}}
 							>
 								<div
 									style={{
 										height: "100%",
-										borderRadius: 999,
-										background: "#7dd3fc",
 										width: `${normalizedProgress}%`,
+										borderRadius: 999,
+										background:
+											"linear-gradient(90deg, #60a5fa 0%, #2563eb 45%, #1d4ed8 100%)",
+										boxShadow: "0 0 22px rgba(37, 99, 235, 0.38)",
 									}}
 								/>
 							</div>
-							<p
+							<div
 								style={{
-									margin: "8px 0 0 0",
-									color: "rgba(224, 242, 254, 0.9)",
-									fontSize: 12,
-									fontWeight: 600,
+									display: "flex",
+									flexWrap: "wrap",
+									gap: 8,
+									marginTop: 10,
 								}}
 							>
-								{normalizedProgress}% downloaded
-							</p>
+								<span
+									style={{
+										fontSize: 12,
+										fontWeight: 700,
+										color: "#dbeafe",
+									}}
+								>
+									{normalizedProgress}% complete
+								</span>
+								{phaseStats.map((stat) => (
+									<span
+										key={stat.label}
+										style={{
+											fontSize: 11,
+											fontWeight: 600,
+											color: "rgba(191, 219, 254, 0.9)",
+											background: "rgba(37, 99, 235, 0.12)",
+											borderRadius: 999,
+											padding: "4px 8px",
+											border: "1px solid rgba(37, 99, 235, 0.16)",
+										}}
+									>
+										{stat.label}: {stat.value}
+									</span>
+								))}
+							</div>
 						</div>
 					) : null}
 
-					<div style={rowStyle}>
-						{primaryActionLabel ? (
-							<button
-								type="button"
-								onClick={handlePrimaryAction}
-								style={primaryButtonStyle}
-							>
-								{primaryActionLabel}
-							</button>
-						) : null}
-
-						{payload.phase === "downloading" ? (
-							<button
-								type="button"
-								onClick={async () => {
-									await window.electronAPI.dismissUpdateToast();
-								}}
-								style={subtleButtonStyle}
-							>
-								Hide
-							</button>
-						) : null}
-
+					<div
+						style={{
+							display: "flex",
+							flexWrap: "wrap",
+							gap: 10,
+							marginTop: 14,
+							alignItems: "center",
+						}}
+					>
 						{payload.phase !== "downloading" ? (
-							<button
-								type="button"
-								onClick={async () => {
-									if (payload.isPreview) {
-										await window.electronAPI.dismissUpdateToast();
-										return;
-									}
-
-									await window.electronAPI.deferDownloadedUpdate(payload.delayMs);
-								}}
-								style={subtleButtonStyle}
-							>
-								Later ({formatDelayHours(payload.delayMs)})
-							</button>
-						) : null}
-
-						{payload.phase !== "downloading" ? (
-							<button
-								type="button"
-								onClick={async () => {
-									if (payload.isPreview) {
-										await window.electronAPI.dismissUpdateToast();
-										return;
-									}
-
-									await window.electronAPI.deferDownloadedUpdate(THREE_DAYS_MS);
-								}}
-								style={subtleButtonStyle}
-							>
-								Later (3 days)
-							</button>
-						) : null}
-
-						{!payload.isPreview && payload.phase !== "downloading" ? (
-							<button
-								type="button"
-								onClick={async () => {
-									await window.electronAPI.skipUpdateVersion();
-								}}
-								style={ghostButtonStyle}
-							>
-								Skip This Version
-							</button>
+							<>
+								<button
+									type="button"
+									onClick={handlePrimaryAction}
+									style={primaryButtonStyle}
+								>
+									{getPrimaryButtonLabel(payload)}
+								</button>
+								<select
+									value={String(reminderDelayMs)}
+									onChange={(event) => {
+										setReminderDelayMs(Number.parseInt(event.target.value, 10));
+									}}
+									style={selectStyle}
+								>
+									{REMINDER_OPTIONS.map((option) => (
+										<option key={option.value} value={option.value}>
+											{option.label}
+										</option>
+									))}
+								</select>
+								<button
+									type="button"
+									onClick={handleLater}
+									style={subtleButtonStyle}
+								>
+									Later
+								</button>
+							</>
 						) : null}
 					</div>
 				</div>

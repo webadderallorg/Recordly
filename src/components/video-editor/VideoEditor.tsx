@@ -149,6 +149,7 @@ import {
 	DEFAULT_FIGURE_DATA,
 	DEFAULT_PLAYBACK_SPEED,
 	DEFAULT_WEBCAM_OVERLAY,
+	DEFAULT_WEBCAM_TIME_OFFSET_MS,
 	DEFAULT_ZOOM_DEPTH,
 	DEFAULT_ZOOM_IN_DURATION_MS,
 	DEFAULT_ZOOM_IN_EASING,
@@ -1569,6 +1570,7 @@ export default function VideoEditor() {
 				await window.electronAPI.setCurrentRecordingSession?.({
 					videoPath: sourcePath,
 					webcamPath: normalizedEditor.webcam.sourcePath,
+					timeOffsetMs: normalizedEditor.webcam.timeOffsetMs,
 				});
 			} else {
 				await window.electronAPI.setCurrentVideoPath(sourcePath);
@@ -1695,7 +1697,7 @@ export default function VideoEditor() {
 	}, [currentPersistedEditorState, currentSourcePath, lastSavedSnapshot?.projectId]);
 
 	const syncRecordingSessionWebcam = useCallback(
-		async (webcamPath: string | null) => {
+		async (webcamPath: string | null, timeOffsetMs?: number) => {
 			if (!currentSourcePath || !window.electronAPI.setCurrentRecordingSession) {
 				return;
 			}
@@ -1703,9 +1705,15 @@ export default function VideoEditor() {
 			await window.electronAPI.setCurrentRecordingSession({
 				videoPath: currentSourcePath,
 				webcamPath,
+				timeOffsetMs:
+					webcamPath && Number.isFinite(timeOffsetMs)
+						? (timeOffsetMs ?? DEFAULT_WEBCAM_TIME_OFFSET_MS)
+						: webcamPath
+							? webcam.timeOffsetMs
+							: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 			});
 		},
-		[currentSourcePath],
+		[currentSourcePath, webcam.timeOffsetMs],
 	);
 
 	const syncActiveVideoSource = useCallback(
@@ -1714,13 +1722,14 @@ export default function VideoEditor() {
 				await window.electronAPI.setCurrentRecordingSession?.({
 					videoPath: sourcePath,
 					webcamPath,
+					timeOffsetMs: webcam.timeOffsetMs,
 				});
 				return;
 			}
 
 			await window.electronAPI.setCurrentVideoPath(sourcePath);
 		},
-		[],
+		[webcam.timeOffsetMs],
 	);
 
 	const handleUploadWebcam = useCallback(async () => {
@@ -1733,9 +1742,10 @@ export default function VideoEditor() {
 			...prev,
 			enabled: true,
 			sourcePath: result.path ?? null,
+			timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 		}));
 
-		await syncRecordingSessionWebcam(result.path);
+		await syncRecordingSessionWebcam(result.path, DEFAULT_WEBCAM_TIME_OFFSET_MS);
 		toast.success(t("settings.effects.webcamFootageAdded"));
 	}, [syncRecordingSessionWebcam, t]);
 
@@ -1744,6 +1754,7 @@ export default function VideoEditor() {
 			...prev,
 			enabled: false,
 			sourcePath: null,
+			timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 		}));
 
 		await syncRecordingSessionWebcam(null);
@@ -1838,6 +1849,7 @@ export default function VideoEditor() {
 						...prev,
 						enabled: !!smokeWebcamSourcePath,
 						sourcePath: smokeWebcamSourcePath,
+						timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 						shadow:
 							smokeExportConfig.webcamShadow === undefined
 								? prev.shadow
@@ -1896,6 +1908,8 @@ export default function VideoEditor() {
 						...prev,
 						enabled: Boolean(sessionResult.session?.webcamPath),
 						sourcePath: sessionResult.session?.webcamPath ?? null,
+						timeOffsetMs:
+							sessionResult.session?.timeOffsetMs ?? DEFAULT_WEBCAM_TIME_OFFSET_MS,
 					}));
 					return;
 				}
@@ -1913,6 +1927,7 @@ export default function VideoEditor() {
 						...prev,
 						enabled: false,
 						sourcePath: null,
+						timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 					}));
 				} else {
 					setError("No video to load. Please record or select a video.");
@@ -3594,14 +3609,14 @@ export default function VideoEditor() {
 			}
 		}
 
-			for (const audioPath of previewSourceAudioFallbackPaths) {
-				let audio = existing.get(audioPath);
-				if (!audio) {
-					audio = new Audio();
-					audio.preload = "auto";
-					existing.set(audioPath, audio);
-				}
-				audio.dataset.sourceAudioPath = audioPath;
+		for (const audioPath of previewSourceAudioFallbackPaths) {
+			let audio = existing.get(audioPath);
+			if (!audio) {
+				audio = new Audio();
+				audio.preload = "auto";
+				existing.set(audioPath, audio);
+			}
+			audio.dataset.sourceAudioPath = audioPath;
 
 			if (sourceAudioElementResourcesRef.current.get(audioPath) !== audioPath) {
 				audio.pause();
@@ -5476,7 +5491,8 @@ export default function VideoEditor() {
 													audioRegions.length > 0
 														? Math.max(
 																...audioRegions.map(
-																	(region) => region.trackIndex ?? 0,
+																	(region) =>
+																		region.trackIndex ?? 0,
 																),
 															) + 1
 														: 0;

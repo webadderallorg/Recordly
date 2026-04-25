@@ -2,6 +2,17 @@ import type React from "react";
 import { extensionHost } from "@/lib/extensions";
 import type { SpeedRegion, TrimRegion } from "../types";
 
+interface PresentedFrameMetadata {
+	mediaTime?: number;
+}
+
+type PresentedFrameVideoElement = HTMLVideoElement & {
+	requestVideoFrameCallback?: (
+		callback: (now: DOMHighResTimeStamp, metadata: PresentedFrameMetadata) => void,
+	) => number;
+	cancelVideoFrameCallback?: (handle: number) => void;
+};
+
 interface VideoEventHandlersParams {
 	video: HTMLVideoElement;
 	isSeekingRef: React.MutableRefObject<boolean>;
@@ -28,6 +39,8 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		trimRegionsRef,
 		speedRegionsRef,
 	} = params;
+	const presentedFrameVideo = video as PresentedFrameVideoElement;
+	let videoFrameRequestId: number | null = null;
 
 	const emitTime = (timeValue: number) => {
 		currentTimeRef.current = timeValue * 1000;
@@ -66,10 +79,54 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		}
 	};
 
-	function updateTime() {
+	const cancelScheduledUpdate = () => {
+		if (timeUpdateAnimationRef.current !== null) {
+			cancelAnimationFrame(timeUpdateAnimationRef.current);
+			timeUpdateAnimationRef.current = null;
+		}
+
+		if (
+			videoFrameRequestId !== null &&
+			typeof presentedFrameVideo.cancelVideoFrameCallback === "function"
+		) {
+			presentedFrameVideo.cancelVideoFrameCallback(videoFrameRequestId);
+			videoFrameRequestId = null;
+		}
+	};
+
+	const scheduleNextUpdate = () => {
+		if (video.paused || video.ended) {
+			return;
+		}
+
+		// Align editor state with the frame Chromium actually presented instead of
+		// polling `currentTime` on a generic animation frame.
+		if (typeof presentedFrameVideo.requestVideoFrameCallback === "function") {
+			videoFrameRequestId = presentedFrameVideo.requestVideoFrameCallback(
+				(_now, metadata) => {
+					videoFrameRequestId = null;
+					updateTime(metadata);
+				},
+			);
+			return;
+		}
+
+		timeUpdateAnimationRef.current = requestAnimationFrame(() => {
+			timeUpdateAnimationRef.current = null;
+			updateTime();
+		});
+	};
+
+	function getPresentedTime(metadata?: PresentedFrameMetadata): number {
+		const mediaTime = metadata?.mediaTime;
+		return Number.isFinite(mediaTime) ? (mediaTime ?? 0) : video.currentTime;
+	}
+
+	function updateTime(metadata?: PresentedFrameMetadata) {
 		if (!video) return;
 
-		const currentTimeMs = video.currentTime * 1000;
+		const presentedTime = getPresentedTime(metadata);
+		const currentTimeMs = presentedTime * 1000;
 		const activeTrimRegion = findActiveTrimRegion(currentTimeMs);
 
 		// If we're in a trim region during playback, skip to the end of it
@@ -79,12 +136,10 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 			// Apply playback speed from active speed region
 			const activeSpeedRegion = findActiveSpeedRegion(currentTimeMs);
 			video.playbackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
-			emitTime(video.currentTime);
+			emitTime(presentedTime);
 		}
 
-		if (!video.paused && !video.ended) {
-			timeUpdateAnimationRef.current = requestAnimationFrame(updateTime);
-		}
+		scheduleNextUpdate();
 	}
 
 	const handlePlay = () => {
@@ -95,19 +150,14 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 
 		isPlayingRef.current = true;
 		onPlayStateChange(true);
-		if (timeUpdateAnimationRef.current) {
-			cancelAnimationFrame(timeUpdateAnimationRef.current);
-		}
-		timeUpdateAnimationRef.current = requestAnimationFrame(updateTime);
+		cancelScheduledUpdate();
+		scheduleNextUpdate();
 	};
 
 	const handlePause = () => {
 		isPlayingRef.current = false;
 		onPlayStateChange(false);
-		if (timeUpdateAnimationRef.current) {
-			cancelAnimationFrame(timeUpdateAnimationRef.current);
-			timeUpdateAnimationRef.current = null;
-		}
+		cancelScheduledUpdate();
 		emitTime(video.currentTime);
 	};
 
@@ -131,6 +181,7 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 	};
 
 	return {
+		dispose: cancelScheduledUpdate,
 		handlePlay,
 		handlePause,
 		handleSeeked,

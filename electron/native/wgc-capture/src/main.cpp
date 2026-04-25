@@ -14,6 +14,7 @@
 #include <condition_variable>
 #include <chrono>
 #include <cstdio>
+#include <fstream>
 
 static std::atomic<bool> g_stopRequested{false};
 static std::atomic<bool> g_pauseRequested{false};
@@ -156,6 +157,43 @@ static std::wstring utf8ToWide(const std::string& str) {
     return wstr;
 }
 
+static void writeCompanionAudioTimingMetadata(
+    const std::string& audioPath,
+    int64_t firstVideoTimestampHns,
+    const WasapiCapture& capture
+) {
+    if (audioPath.empty() || firstVideoTimestampHns < 0) {
+        return;
+    }
+
+    const int64_t firstPacketQpcHns = capture.firstPacketQpcHns();
+    if (firstPacketQpcHns < 0) {
+        return;
+    }
+
+    int64_t startDelayMs = (firstPacketQpcHns - firstVideoTimestampHns + 5000) / 10000;
+    if (startDelayMs < 0) {
+        startDelayMs = 0;
+    }
+
+    std::ofstream metadataFile(audioPath + ".json", std::ios::trunc);
+    if (!metadataFile) {
+        std::cerr << "WARNING: Failed to write audio timing metadata for " << audioPath << std::endl;
+        return;
+    }
+
+    metadataFile << "{\"startDelayMs\":" << startDelayMs;
+    const uint32_t discontinuityCount = capture.dataDiscontinuityCount();
+    if (discontinuityCount > 0) {
+        metadataFile << ",\"dataDiscontinuityCount\":" << discontinuityCount;
+    }
+    const uint32_t timestampErrorCount = capture.timestampErrorCount();
+    if (timestampErrorCount > 0) {
+        metadataFile << ",\"timestampErrorCount\":" << timestampErrorCount;
+    }
+    metadataFile << "}";
+}
+
 static void stdinListenerThread() {
     std::string line;
     while (std::getline(std::cin, line)) {
@@ -250,9 +288,12 @@ int main(int argc, char* argv[]) {
 
     // Set up frame callback
     std::atomic<int64_t> frameCount{0};
+    std::atomic<int64_t> firstVideoTimestampHns{-1};
     std::atomic<bool> recordingStartedAnnounced{false};
     session.setFrameCallback([&](ID3D11Texture2D* texture, int64_t timestampHns) {
         g_lastFrameTimestampHns = timestampHns;
+        int64_t expectedFirstVideoTimestampHns = -1;
+        firstVideoTimestampHns.compare_exchange_strong(expectedFirstVideoTimestampHns, timestampHns);
         if (g_stopRequested) return;
 
         if (g_pauseRequested) return;
@@ -337,6 +378,19 @@ int main(int argc, char* argv[]) {
     if (audioActive) loopback.stop();
     if (micActive) micCapture.stop();
 
+    if (audioActive) {
+        writeCompanionAudioTimingMetadata(
+            config.audioOutputPath,
+            firstVideoTimestampHns.load(),
+            loopback);
+    }
+    if (micActive) {
+        writeCompanionAudioTimingMetadata(
+            config.micOutputPath,
+            firstVideoTimestampHns.load(),
+            micCapture);
+    }
+
     if (frameCount.load() <= 0) {
         std::cerr << "ERROR: No video frames were captured before stop" << std::endl;
         DeleteFileW(outputPathW.c_str());
@@ -350,9 +404,19 @@ int main(int argc, char* argv[]) {
 
     std::cout << "Recording stopped. Output path: " << config.outputPath << std::endl;
     if (audioActive) {
+        if (loopback.dataDiscontinuityCount() > 0 || loopback.timestampErrorCount() > 0) {
+            std::cerr << "WARNING: System audio timing metadata includes discontinuities="
+                      << loopback.dataDiscontinuityCount()
+                      << " timestampErrors=" << loopback.timestampErrorCount() << std::endl;
+        }
         std::cout << "Audio path: " << config.audioOutputPath << std::endl;
     }
     if (micActive) {
+        if (micCapture.dataDiscontinuityCount() > 0 || micCapture.timestampErrorCount() > 0) {
+            std::cerr << "WARNING: Microphone timing metadata includes discontinuities="
+                      << micCapture.dataDiscontinuityCount()
+                      << " timestampErrors=" << micCapture.timestampErrorCount() << std::endl;
+        }
         std::cout << "Mic path: " << config.micOutputPath << std::endl;
     }
     std::cout.flush();

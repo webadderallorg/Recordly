@@ -1,21 +1,21 @@
 {
-	"version": 1,
-	"platform": "win32",
-	"arch": "x64",
-	"helpers": {
-		"wgc-capture": {
-			"binaryName": "wgc-capture.exe",
-			"binarySha256": "013164c0a1391d334e5aa2fe0ff2e47b507407e36c7e44e7333a70a84b944643",
-			"sourceDir": "electron/native/wgc-capture",
-			"sourceFingerprint": "9e9bce082266ca5968cf5f0b535b469d47c4ec3a775a93726171c0dfdbcdaa44",
-			"updatedAt": "2026-03-29T02:15:34.516Z"
-		},
-		"cursor-monitor": {
-			"binaryName": "cursor-monitor.exe",
-			"binarySha256": "b0732abc06998a40c3e95078465ad750a6169901944571c39cfd7996effe39c0",
-			"sourceDir": "electron/native/cursor-monitor",
-			"sourceFingerprint": "6ad1b8b50bb336f2a48937b06f5ec56d90b6ab4a3e56a4bca278cf67a5d3e52e",
-			"updatedAt": "2026-03-29T02:15:38.286Z"
-		}
-	}
+  "version": 1,
+  "platform": "win32",
+  "arch": "x64",
+  "helpers": {
+    "wgc-capture": {
+      "binaryName": "wgc-capture.exe",
+      "binarySha256": "bb4c2aa4141e81e1a05b54bd49dbb114eb3a5ff4a666bf7d26525a9da585128b",
+      "sourceDir": "electron/native/wgc-capture",
+      "sourceFingerprint": "5bb02a69049a02909d38188cae1dfdfb94fd49465b51ed6ab78a98092b7520cc",
+      "updatedAt": "2026-04-25T09:17:16.237Z"
+    },
+    "cursor-monitor": {
+      "binaryName": "cursor-monitor.exe",
+      "binarySha256": "b0732abc06998a40c3e95078465ad750a6169901944571c39cfd7996effe39c0",
+      "sourceDir": "electron/native/cursor-monitor",
+      "sourceFingerprint": "6ad1b8b50bb336f2a48937b06f5ec56d90b6ab4a3e56a4bca278cf67a5d3e52e",
+      "updatedAt": "2026-03-29T02:15:38.286Z"
+    }
+  }
 }

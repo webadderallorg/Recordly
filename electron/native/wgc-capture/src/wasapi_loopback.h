@@ -19,6 +19,9 @@ public:
     bool pause();
     bool resume();
     void stop();
+    int64_t firstPacketQpcHns() const { return firstPacketQpcHns_.load(); }
+    uint32_t dataDiscontinuityCount() const { return dataDiscontinuityCount_.load(); }
+    uint32_t timestampErrorCount() const { return timestampErrorCount_.load(); }
 
 private:
     bool initializeCommon();
@@ -41,4 +44,7 @@ private:
     DWORD streamFlags_ = 0;
 
     UINT32 bufferFrameCount_ = 0;
+    std::atomic<int64_t> firstPacketQpcHns_{-1};
+    std::atomic<uint32_t> dataDiscontinuityCount_{0};
+    std::atomic<uint32_t> timestampErrorCount_{0};
 };

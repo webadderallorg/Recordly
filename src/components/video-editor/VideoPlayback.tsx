@@ -101,6 +101,7 @@ import {
 	DEFAULT_CURSOR_SIZE,
 	DEFAULT_CURSOR_SMOOTHING,
 	DEFAULT_CURSOR_SWAY,
+	DEFAULT_PADDING,
 	DEFAULT_WEBCAM_CORNER_RADIUS,
 	DEFAULT_WEBCAM_REACT_TO_ZOOM,
 	DEFAULT_WEBCAM_SHADOW,
@@ -110,7 +111,6 @@ import {
 	DEFAULT_ZOOM_IN_OVERLAP_MS,
 	DEFAULT_ZOOM_OUT_DURATION_MS,
 	DEFAULT_ZOOM_OUT_EASING,
-	DEFAULT_PADDING,
 	getDefaultCaptionFontFamily,
 } from "./types";
 import {
@@ -124,6 +124,7 @@ import { clampFocusToStage as clampFocusToStageUtil } from "./videoPlayback/focu
 import { layoutVideoContent as layoutVideoContentUtil } from "./videoPlayback/layoutUtils";
 import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
 import { createVideoEventHandlers } from "./videoPlayback/videoEventHandlers";
+import { getWebcamPreviewTargetTimeSeconds } from "./videoPlayback/webcamSync";
 import { findDominantRegion } from "./videoPlayback/zoomRegionUtils";
 import {
 	applyZoomTransform,
@@ -1232,10 +1233,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				return;
 			}
 
-			const targetTime = clampMediaTimeToDuration(
+			const targetTime = getWebcamPreviewTargetTimeSeconds({
 				currentTime,
-				Number.isFinite(webcamVideo.duration) ? webcamVideo.duration : null,
-			);
+				webcamDuration: Number.isFinite(webcamVideo.duration) ? webcamVideo.duration : null,
+				timeOffsetMs: webcam.timeOffsetMs,
+			});
 
 			const activeSpeedRegion = speedRegionsRef.current.find(
 				(region) => targetTime * 1000 >= region.startMs && targetTime * 1000 < region.endMs,
@@ -1470,7 +1472,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			layoutVideoContent();
 			video.pause();
 
-			const { handlePlay, handlePause, handleSeeked, handleSeeking } =
+			const { handlePlay, handlePause, handleSeeked, handleSeeking, dispose } =
 				createVideoEventHandlers({
 					video,
 					isSeekingRef,
@@ -1496,10 +1498,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				video.removeEventListener("ended", handlePause);
 				video.removeEventListener("seeked", handleSeeked);
 				video.removeEventListener("seeking", handleSeeking);
-
-				if (timeUpdateAnimationRef.current) {
-					cancelAnimationFrame(timeUpdateAnimationRef.current);
-				}
+				dispose();
 
 				if (videoSprite) {
 					videoContainer.removeChild(videoSprite);
@@ -1749,9 +1748,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				// through an intermediate RenderTexture at renderer resolution, which
 				// downsamples the native video and degrades preview quality.
 				// Hysteresis prevents flickering when motionIntensity oscillates near threshold.
-				const filtersActive = Array.isArray(videoContainer.filters) && videoContainer.filters.length > 0;
-				const cameraIsMoving = filtersActive ? motionIntensity > 0.002 : motionIntensity > 0.008;
-				const needsFilters = zoomMotionBlurRef.current > 0 && isPlayingRef.current && cameraIsMoving;
+				const filtersActive =
+					Array.isArray(videoContainer.filters) && videoContainer.filters.length > 0;
+				const cameraIsMoving = filtersActive
+					? motionIntensity > 0.002
+					: motionIntensity > 0.008;
+				const needsFilters =
+					zoomMotionBlurRef.current > 0 && isPlayingRef.current && cameraIsMoving;
 				if (needsFilters && !filtersActive && motionBlurFilterRef.current) {
 					videoContainer.filters = [motionBlurFilterRef.current];
 				} else if (!needsFilters && filtersActive) {
@@ -2451,12 +2454,15 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						})()}
 					</div>
 				)}
+				{/* Keep the source video off-screen instead of display:none so the
+					browser continues producing presented frames for Pixi and preview sync. */}
 				<video
 					ref={videoRef}
 					src={videoPath}
-					className="hidden"
+					className="pointer-events-none absolute left-0 top-0 h-px w-px opacity-0"
 					preload="metadata"
 					playsInline
+					aria-hidden="true"
 					onLoadedMetadata={handleLoadedMetadata}
 					onDurationChange={(e) => {
 						onDurationChange(e.currentTarget.duration);

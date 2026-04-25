@@ -156,7 +156,7 @@ export type UiohookModuleNamespace = {
 };
 
 export type AudioSyncAdjustment = {
-	mode: "none" | "tempo" | "delay";
+	mode: "none" | "tempo" | "delay" | "pad";
 	delayMs: number;
 	tempoRatio: number;
 	durationDeltaMs: number;

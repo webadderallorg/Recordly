@@ -137,6 +137,9 @@ bool WasapiCapture::start() {
     }
 
     totalDataBytes_ = 0;
+    firstPacketQpcHns_ = -1;
+    dataDiscontinuityCount_ = 0;
+    timestampErrorCount_ = 0;
     writeWavHeader(outputFile_, 0);
 
     HRESULT hr = audioClient_->Start();
@@ -250,11 +253,35 @@ void WasapiCapture::captureThread() {
             BYTE* data = nullptr;
             UINT32 numFrames = 0;
             DWORD flags = 0;
+            UINT64 devicePosition = 0;
+            UINT64 qpcPosition = 0;
 
-            hr = captureClient_->GetBuffer(&data, &numFrames, &flags, nullptr, nullptr);
+            hr = captureClient_->GetBuffer(
+                &data,
+                &numFrames,
+                &flags,
+                &devicePosition,
+                &qpcPosition);
             if (FAILED(hr)) {
                 std::cerr << "WASAPI: GetBuffer failed hr=0x" << std::hex << hr << std::dec << std::endl;
                 break;
+            }
+
+            if ((flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0) {
+                dataDiscontinuityCount_.fetch_add(1);
+            }
+            if ((flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) != 0) {
+                timestampErrorCount_.fetch_add(1);
+            }
+            if (
+                numFrames > 0 &&
+                qpcPosition > 0 &&
+                (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) == 0
+            ) {
+                int64_t expected = -1;
+                firstPacketQpcHns_.compare_exchange_strong(
+                    expected,
+                    static_cast<int64_t>(qpcPosition));
             }
 
             UINT32 totalSamples = numFrames * channels;

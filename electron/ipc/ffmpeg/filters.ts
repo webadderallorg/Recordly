@@ -1,5 +1,7 @@
 import type { AudioSyncAdjustment, PauseSegment } from "../types";
 
+const MAX_AUDIO_SYNC_DELAY_MS = 15000;
+
 export function buildAtempoFilters(tempoRatio: number): string[] {
 	if (!Number.isFinite(tempoRatio) || tempoRatio <= 0) {
 		return [];
@@ -58,7 +60,41 @@ export function getAudioSyncAdjustment(
 		return { mode: "tempo", delayMs: 0, tempoRatio, durationDeltaMs };
 	}
 
+	if (durationDeltaMs > MAX_AUDIO_SYNC_DELAY_MS) {
+		return { mode: "pad", delayMs: 0, tempoRatio: 1, durationDeltaMs };
+	}
+
 	return { mode: "delay", delayMs: durationDeltaMs, tempoRatio: 1, durationDeltaMs };
+}
+
+export function applyRecordedAudioStartDelay(
+	adjustment: AudioSyncAdjustment,
+	recordedStartDelayMs?: number | null,
+): AudioSyncAdjustment {
+	if (!Number.isFinite(recordedStartDelayMs) || (recordedStartDelayMs ?? 0) < 0) {
+		return adjustment;
+	}
+
+	const delayMs = Math.max(0, Math.round(recordedStartDelayMs ?? 0));
+	if (delayMs > 20) {
+		return {
+			mode: "delay",
+			delayMs,
+			tempoRatio: 1,
+			durationDeltaMs: adjustment.durationDeltaMs,
+		};
+	}
+
+	if (adjustment.mode !== "delay" && adjustment.mode !== "pad") {
+		return adjustment;
+	}
+
+	return {
+		mode: "pad",
+		delayMs: 0,
+		tempoRatio: 1,
+		durationDeltaMs: adjustment.durationDeltaMs,
+	};
 }
 
 export function appendSyncedAudioFilter(
@@ -66,8 +102,12 @@ export function appendSyncedAudioFilter(
 	inputLabel: string,
 	outputLabel: string,
 	adjustment: AudioSyncAdjustment,
+	options: number | { volumeMultiplier?: number; preFilters?: string[] } = 1,
 ) {
-	const filters: string[] = [];
+	const volumeMultiplier =
+		typeof options === "number" ? options : (options.volumeMultiplier ?? 1);
+	const preFilters = typeof options === "number" ? [] : (options.preFilters ?? []);
+	const filters: string[] = [...preFilters];
 
 	if (adjustment.mode === "delay" && adjustment.delayMs > 0) {
 		filters.push(`adelay=${adjustment.delayMs}|${adjustment.delayMs}`);
@@ -75,6 +115,18 @@ export function appendSyncedAudioFilter(
 
 	if (adjustment.mode === "tempo") {
 		filters.push(...buildAtempoFilters(adjustment.tempoRatio));
+	}
+
+	if (adjustment.mode === "pad" && adjustment.durationDeltaMs > 0) {
+		filters.push(`apad=pad_dur=${formatFfmpegSeconds(adjustment.durationDeltaMs)}`);
+	}
+
+	if (
+		Number.isFinite(volumeMultiplier) &&
+		volumeMultiplier > 0 &&
+		Math.abs(volumeMultiplier - 1) > 0.0005
+	) {
+		filters.push(`volume=${volumeMultiplier.toFixed(3)}`);
 	}
 
 	filters.push("aresample=async=1:first_pts=0", "asetpts=PTS-STARTPTS");

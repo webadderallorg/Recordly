@@ -59,6 +59,7 @@ type DesktopCaptureMediaDevices = {
 type UseScreenRecorderReturn = {
 	recording: boolean;
 	paused: boolean;
+	finalizing: boolean;
 	countdownActive: boolean;
 	toggleRecording: () => void;
 	pauseRecording: () => void;
@@ -114,6 +115,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const [recording, setRecording] = useState(false);
 	const [paused, setPaused] = useState(false);
 	const [starting, setStarting] = useState(false);
+	const [finalizing, setFinalizing] = useState(false);
 	const [countdownActive, setCountdownActive] = useState(false);
 	const [isMacOS, setIsMacOS] = useState(false);
 	const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
@@ -149,35 +151,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const accumulatedPausedDurationMs = useRef(0);
 	const pauseStartedAtMs = useRef<number | null>(null);
 	const pauseSegmentsRef = useRef<PauseSegment[]>([]);
-	const recordingFinalizationToastId = useRef<string | number | null>(null);
 	const micFallbackRecorder = useRef<MediaRecorder | null>(null);
 	const micFallbackChunks = useRef<Blob[]>([]);
 	const micFallbackStartDelayMs = useRef<number | null>(null);
 
-	const showRecordingFinalizationToast = useCallback((message = "Preparing recording...") => {
-		recordingFinalizationToastId.current = toast.loading(message, {
-			id: recordingFinalizationToastId.current ?? undefined,
-			duration: Number.POSITIVE_INFINITY,
-		});
+	const notifyRecordingFinalizationFailure = useCallback(async (message: string) => {
+		setFinalizing(false);
+		toast.error(message, { duration: 10000 });
 	}, []);
-
-	const clearRecordingFinalizationToast = useCallback(() => {
-		const toastId = recordingFinalizationToastId.current;
-		if (toastId === null) {
-			return;
-		}
-
-		toast.dismiss(toastId);
-		recordingFinalizationToastId.current = null;
-	}, []);
-
-	const notifyRecordingFinalizationFailure = useCallback(
-		async (message: string) => {
-			clearRecordingFinalizationToast();
-			toast.error(message, { duration: 10000 });
-		},
-		[clearRecordingFinalizationToast],
-	);
 
 	const logNativeCaptureDiagnostics = useCallback(async (context: string) => {
 		if (typeof window.electronAPI?.getLastNativeCaptureDiagnostics !== "function") {
@@ -436,10 +417,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}
 			}
 
-			clearRecordingFinalizationToast();
+			setFinalizing(false);
 			await window.electronAPI.switchToEditor();
 		},
-		[clearRecordingFinalizationToast],
+		[],
 	);
 
 	const stopMicFallbackRecorder = useCallback((): Promise<Blob | null> => {
@@ -690,9 +671,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		if (nativeScreenRecording.current) {
 			nativeScreenRecording.current = false;
 			setRecording(false);
+			setFinalizing(true);
 
 			void (async () => {
-				showRecordingFinalizationToast();
 				const fallbackStartDelayMs = micFallbackStartDelayMs.current;
 				const micFallbackBlobPromise = stopMicFallbackRecorder();
 				const webcamPath = await stopWebcamRecorder();
@@ -787,6 +768,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			cleanupCapturedMedia();
 			recorder.stop();
 			setRecording(false);
+			setFinalizing(true);
 			window.electronAPI?.setRecordingState(false);
 		}
 	});
@@ -1341,9 +1323,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			};
 			recorder.onstop = async () => {
 				cleanupCapturedMedia();
-				if (chunks.current.length === 0) return;
-
-				showRecordingFinalizationToast();
+				if (chunks.current.length === 0) {
+					setFinalizing(false);
+					return;
+				}
 
 				const duration = getRecordingDurationMs(Date.now());
 				const recordedChunks = chunks.current;
@@ -1530,7 +1513,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, [cleanupCapturedMedia, markRecordingResumed, recording]);
 
 	const toggleRecording = async () => {
-		if (starting || countdownActive) {
+		if (starting || countdownActive || finalizing) {
 			return;
 		}
 
@@ -1558,6 +1541,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	return {
 		recording,
 		paused,
+		finalizing,
 		countdownActive,
 		toggleRecording,
 		pauseRecording,
