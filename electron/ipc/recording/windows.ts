@@ -33,6 +33,7 @@ import {
 import { emitRecordingInterrupted } from "./events";
 
 const execFileAsync = promisify(execFile);
+const WINDOWS_NATIVE_MIC_GAIN_BOOST = 1.4;
 
 export async function isNativeWindowsCaptureAvailable(): Promise<boolean> {
 	if (process.platform !== "win32") return false;
@@ -266,7 +267,15 @@ export async function muxNativeWindowsVideoWithAudio(
 			const micLabel = micPauseFilter ? "[mic_trimmed]" : "[2:a]";
 
 			appendSyncedAudioFilter(filterParts, systemLabel, "s", systemAdjustment);
-			appendSyncedAudioFilter(filterParts, micLabel, "m", micAdjustment);
+			// Keep native Windows mic loudness closer to the browser-recording path,
+			// which already applies a small gain boost before mixing.
+			appendSyncedAudioFilter(
+				filterParts,
+				micLabel,
+				"m",
+				micAdjustment,
+				WINDOWS_NATIVE_MIC_GAIN_BOOST,
+			);
 			filterParts.push("[s][m]amix=inputs=2:duration=longest:normalize=0[aout]");
 
 			await execFileAsync(
@@ -312,7 +321,13 @@ export async function muxNativeWindowsVideoWithAudio(
 				filterParts.push(pauseFilter);
 			}
 			const srcLabel = pauseFilter ? "[trimmed_audio]" : "[1:a]";
-			appendSyncedAudioFilter(filterParts, srcLabel, "aout", singleAdjustment);
+			appendSyncedAudioFilter(
+				filterParts,
+				srcLabel,
+				"aout",
+				singleAdjustment,
+				audioInputs[0] === "mic" ? WINDOWS_NATIVE_MIC_GAIN_BOOST : 1,
+			);
 
 			await execFileAsync(
 				ffmpegPath,

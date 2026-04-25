@@ -69,6 +69,21 @@ describe("getAudioSyncAdjustment", () => {
 			"[1:a]apad=pad_dur=120.000,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS[aout]",
 		]);
 	});
+
+	it("can add a small gain boost before resampling", () => {
+		const filterParts: string[] = [];
+		appendSyncedAudioFilter(
+			filterParts,
+			"[1:a]",
+			"aout",
+			getAudioSyncAdjustment(120, 120),
+			1.4,
+		);
+
+		expect(filterParts).toEqual([
+			"[1:a]volume=1.400,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS[aout]",
+		]);
+	});
 });
 
 describe("applyRecordedAudioStartDelay", () => {

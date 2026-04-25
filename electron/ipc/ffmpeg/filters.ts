@@ -102,6 +102,7 @@ export function appendSyncedAudioFilter(
 	inputLabel: string,
 	outputLabel: string,
 	adjustment: AudioSyncAdjustment,
+	volumeMultiplier = 1,
 ) {
 	const filters: string[] = [];
 
@@ -115,6 +116,14 @@ export function appendSyncedAudioFilter(
 
 	if (adjustment.mode === "pad" && adjustment.durationDeltaMs > 0) {
 		filters.push(`apad=pad_dur=${formatFfmpegSeconds(adjustment.durationDeltaMs)}`);
+	}
+
+	if (
+		Number.isFinite(volumeMultiplier) &&
+		volumeMultiplier > 0 &&
+		Math.abs(volumeMultiplier - 1) > 0.0005
+	) {
+		filters.push(`volume=${volumeMultiplier.toFixed(3)}`);
 	}
 
 	filters.push("aresample=async=1:first_pts=0", "asetpts=PTS-STARTPTS");
