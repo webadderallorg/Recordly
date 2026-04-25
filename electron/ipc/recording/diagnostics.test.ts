@@ -166,6 +166,18 @@ describe("getCompanionAudioFallbackPaths", () => {
 		});
 	});
 
+	it("ignores invalid sidecar timing metadata values", async () => {
+		const micPath = path.join(tempRoot, "recording.mic.wav");
+		await Promise.all([
+			fs.writeFile(micPath, "mic"),
+			fs.writeFile(`${micPath}.json`, JSON.stringify({ startDelayMs: -250 })),
+		]);
+
+		const { getCompanionAudioStartDelayMs } = await import("./diagnostics");
+
+		await expect(getCompanionAudioStartDelayMs(micPath)).resolves.toBeNull();
+	});
+
 	it("rejects tiny MP4 container-only outputs before they reach the editor", async () => {
 		const videoPath = path.join(tempRoot, "recording-123.mp4");
 		await fs.writeFile(videoPath, Buffer.alloc(261));

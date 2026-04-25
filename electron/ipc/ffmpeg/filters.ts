@@ -61,6 +61,36 @@ export function getAudioSyncAdjustment(
 	return { mode: "delay", delayMs: durationDeltaMs, tempoRatio: 1, durationDeltaMs };
 }
 
+export function applyRecordedAudioStartDelay(
+	adjustment: AudioSyncAdjustment,
+	recordedStartDelayMs?: number | null,
+): AudioSyncAdjustment {
+	if (!Number.isFinite(recordedStartDelayMs) || (recordedStartDelayMs ?? 0) < 0) {
+		return adjustment;
+	}
+
+	const delayMs = Math.max(0, Math.round(recordedStartDelayMs ?? 0));
+	if (delayMs > 20) {
+		return {
+			mode: "delay",
+			delayMs,
+			tempoRatio: 1,
+			durationDeltaMs: adjustment.durationDeltaMs,
+		};
+	}
+
+	if (adjustment.mode !== "delay") {
+		return adjustment;
+	}
+
+	return {
+		mode: "none",
+		delayMs: 0,
+		tempoRatio: 1,
+		durationDeltaMs: adjustment.durationDeltaMs,
+	};
+}
+
 export function appendSyncedAudioFilter(
 	filterParts: string[],
 	inputLabel: string,

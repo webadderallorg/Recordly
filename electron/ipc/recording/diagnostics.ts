@@ -119,6 +119,16 @@ async function readCompanionAudioTimingMetadata(
 	}
 }
 
+export async function getCompanionAudioStartDelayMs(companionPath: string) {
+	const metadata = await readCompanionAudioTimingMetadata(companionPath);
+	const startDelayMs = metadata?.startDelayMs;
+	if (!Number.isFinite(startDelayMs) || (startDelayMs ?? 0) < 0) {
+		return null;
+	}
+
+	return Math.round(startDelayMs ?? 0);
+}
+
 export async function hasEmbeddedAudioStream(videoPath: string) {
 	const ffmpegPath = getFfmpegBinaryPath();
 	let stderr = "";
@@ -172,22 +182,19 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 
 	const metadataEntries = await Promise.all(
 		paths.map(async (audioPath) => {
-			const metadata = await readCompanionAudioTimingMetadata(audioPath);
-			const startDelayMs = metadata?.startDelayMs;
-			if (!Number.isFinite(startDelayMs) || (startDelayMs ?? 0) < 0) {
+			const startDelayMs = await getCompanionAudioStartDelayMs(audioPath);
+			if (!Number.isFinite(startDelayMs)) {
 				return null;
 			}
 
-			return [audioPath, Math.round(startDelayMs ?? 0)] as const;
+			return [audioPath, startDelayMs] as const;
 		}),
 	);
 
 	return {
 		paths,
 		startDelayMsByPath: Object.fromEntries(
-			metadataEntries.filter(
-				(entry): entry is readonly [string, number] => entry !== null,
-			),
+			metadataEntries.filter((entry): entry is readonly [string, number] => entry !== null),
 		),
 	};
 }
