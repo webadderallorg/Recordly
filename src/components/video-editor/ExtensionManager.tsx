@@ -313,14 +313,14 @@ function ScreenshotGallery({ screenshots }: { screenshots: string[] }) {
 							className="absolute start-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-editor-bg/80 text-foreground/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-editor-bg/80"
 							onClick={() => setIndex((i) => (i - 1 + count) % count)}
 						>
-							<ChevronLeft className="w-3.5 h-3.5" />
+							<ChevronLeft className="w-3.5 h-3.5 rtl:rotate-180" />
 						</button>
 						<button
 							type="button"
 							className="absolute end-1 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-editor-bg/80 text-foreground/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-editor-bg/80"
 							onClick={() => setIndex((i) => (i + 1) % count)}
 						>
-							<ChevronRight className="w-3.5 h-3.5" />
+							<ChevronRight className="w-3.5 h-3.5 rtl:rotate-180" />
 						</button>
 						<div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-1">
 							{screenshots.map((_, i) => (
