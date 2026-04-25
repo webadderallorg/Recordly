@@ -39,6 +39,75 @@ export const FIXED_SHORTCUTS: FixedShortcut[] = [
 		display: "Del / ⌫",
 		bindings: [{ key: "delete" }, { key: "backspace" }],
 	},
+	{
+		label: "Select Zoom Blocks",
+		display: "Ctrl + Shift + Y",
+		bindings: [{ key: "y", ctrl: true, shift: true }],
+	},
+	{
+		label: "Zoom Timeline In",
+		display: "Ctrl + +",
+		bindings: [
+			{ key: "+", ctrl: true },
+			{ key: "+", ctrl: true, shift: true },
+			{ key: "=", ctrl: true },
+			{ key: "=", ctrl: true, shift: true },
+		],
+	},
+	{
+		label: "Zoom Timeline Out",
+		display: "Ctrl + -",
+		bindings: [
+			{ key: "-", ctrl: true },
+			{ key: "_", ctrl: true, shift: true },
+		],
+	},
+	{
+		label: "Fit Timeline",
+		display: "Shift + Z / Ctrl + 0",
+		bindings: [
+			{ key: "z", shift: true },
+			{ key: "0", ctrl: true },
+		],
+	},
+	{
+		label: "Zoom to Selection",
+		display: "Ctrl + F / \\",
+		bindings: [{ key: "f", ctrl: true }, { key: "\\" }],
+	},
+	{
+		label: "Toggle Timeline Snapping",
+		display: "Ctrl + ;",
+		bindings: [{ key: ";", ctrl: true }],
+	},
+	{
+		label: "Add Timeline Marker",
+		display: "M",
+		bindings: [{ key: "m" }],
+	},
+	{
+		label: "Trim Selection to Playhead",
+		display: "I / O",
+		bindings: [{ key: "i" }, { key: "o" }],
+	},
+	{
+		label: "Nudge Selection",
+		display: "Alt + ← / →",
+		bindings: [
+			{ key: "arrowleft", alt: true },
+			{ key: "arrowright", alt: true },
+		],
+	},
+	{
+		label: "Step Playhead",
+		display: ", / .",
+		bindings: [{ key: "," }, { key: "." }],
+	},
+	{
+		label: "Jump to Timeline Edge",
+		display: "Home / End",
+		bindings: [{ key: "home" }, { key: "end" }],
+	},
 	{ label: "Pan Timeline", display: "Shift + Ctrl + Scroll", bindings: [] },
 	{ label: "Zoom Timeline", display: "Ctrl + Scroll", bindings: [] },
 ];

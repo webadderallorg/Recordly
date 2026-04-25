@@ -14,7 +14,6 @@
 		"arrow": "화살표",
 		"blur": "흐리게",
 		"textContent": "텍스트 내용",
-
 		"textPlaceholder": "텍스트를 입력하세요...",
 		"fontStyle": "글꼴 스타일",
 		"selectStyle": "스타일 선택",
@@ -45,7 +44,6 @@
 		"solidColor": "단색 (검열)",
 		"borderRadius": "테두리 반경"
 	},
-
 	"fontStyles": {
 		"classic": "클래식",
 		"editor": "에디터",
@@ -112,7 +110,10 @@
 		"showInFolder": "폴더에서 보기"
 	},
 	"project": {
-		"untitled": "제목 없음"
+		"untitled": "제목 없음",
+		"projects": "Open projects",
+		"renameTitle": "Rename project",
+		"renameInput": "Project name"
 	},
 	"exportStatus": {
 		"exporting": "내보내는 중",
@@ -121,7 +122,11 @@
 		"completePercent": "{{percent}}% 완료",
 		"issue": "내보내기 오류",
 		"complete": "내보내기 완료",
-		"savedSuccessfully": "파일이 성공적으로 저장되었습니다."
+		"savedSuccessfully": "파일이 성공적으로 저장되었습니다.",
+		"saving": "Opening save dialog...",
+		"renderingAudio": "Rendering audio {{percent}}%",
+		"finalizingPercent": "Finalizing {{percent}}%",
+		"renderSpeed": "Render speed {{fps}} FPS"
 	},
 	"export": {
 		"processingAudioEdits": "속도/오버레이 편집으로 오디오 처리 중"
@@ -134,5 +139,11 @@
 		"expand": "타임라인 펼치기",
 		"collapse": "타임라인 접기"
 	},
-	"openRecordingsFolder": "녹화 폴더 열기"
+	"openRecordingsFolder": "녹화 폴더 열기",
+	"theme": {
+		"appearance": "Appearance",
+		"light": "Light",
+		"dark": "Dark",
+		"system": "System"
+	}
 }

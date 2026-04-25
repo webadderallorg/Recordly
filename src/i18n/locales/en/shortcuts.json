@@ -2,6 +2,7 @@
 	"actions": {
 		"addZoom": "Add Zoom",
 		"addTrim": "Add Trim",
+		"splitClip": "Split Clip",
 		"addSpeed": "Add Speed",
 		"addAnnotation": "Add Annotation",
 		"addKeyframe": "Add Keyframe",
@@ -10,6 +11,24 @@
 		"cycleForward": "Cycle Annotations Forward",
 		"cycleBackward": "Cycle Annotations Backward",
 		"deleteSelectedAlt": "Delete Selected (alt)",
+		"panTimeline": "Pan Timeline",
+		"zoomTimeline": "Zoom Timeline"
+	},
+	"fixed": {
+		"cycleAnnotationsForward": "Cycle Annotations Forward",
+		"cycleAnnotationsBackward": "Cycle Annotations Backward",
+		"deleteSelectedAlt": "Delete Selected (alt)",
+		"selectZoomBlocks": "Select Zoom Blocks",
+		"zoomTimelineIn": "Zoom Timeline In",
+		"zoomTimelineOut": "Zoom Timeline Out",
+		"fitTimeline": "Fit Timeline",
+		"zoomToSelection": "Zoom to Selection",
+		"toggleTimelineSnapping": "Toggle Timeline Snapping",
+		"addTimelineMarker": "Add Timeline Marker",
+		"trimSelectionToPlayhead": "Trim Selection to Playhead",
+		"nudgeSelection": "Nudge Selection",
+		"stepPlayhead": "Step Playhead",
+		"jumpToTimelineEdge": "Jump to Timeline Edge",
 		"panTimeline": "Pan Timeline",
 		"zoomTimeline": "Zoom Timeline"
 	}

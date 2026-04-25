@@ -4,7 +4,8 @@
 		"editorTitle": "Recordly 编辑器",
 		"subtitle": "屏幕录制与编辑",
 		"language": "语言",
-		"manageRecordings": "打开录制文件夹"
+		"manageRecordings": "打开录制文件夹",
+		"discord": "加入 Discord"
 	},
 	"actions": {
 		"cancel": "取消",
@@ -16,6 +17,7 @@
 		"save": "保存",
 		"undo": "撤销",
 		"delete": "删除",
+		"remove": "移除",
 		"done": "完成"
 	},
 	"errors": {

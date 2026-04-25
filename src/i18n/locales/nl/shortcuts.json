@@ -11,6 +11,25 @@
 		"cycleBackward": "Annotaties achteruit doorlopen",
 		"deleteSelectedAlt": "Selectie verwijderen (alt)",
 		"panTimeline": "Tijdlijn verschuiven",
-		"zoomTimeline": "Tijdlijn zoomen"
+		"zoomTimeline": "Tijdlijn zoomen",
+		"splitClip": "Split Clip"
+	},
+	"fixed": {
+		"cycleAnnotationsForward": "Cycle Annotations Forward",
+		"cycleAnnotationsBackward": "Cycle Annotations Backward",
+		"deleteSelectedAlt": "Delete Selected (alt)",
+		"selectZoomBlocks": "Select Zoom Blocks",
+		"zoomTimelineIn": "Zoom Timeline In",
+		"zoomTimelineOut": "Zoom Timeline Out",
+		"fitTimeline": "Fit Timeline",
+		"zoomToSelection": "Zoom to Selection",
+		"toggleTimelineSnapping": "Toggle Timeline Snapping",
+		"addTimelineMarker": "Add Timeline Marker",
+		"trimSelectionToPlayhead": "Trim Selection to Playhead",
+		"nudgeSelection": "Nudge Selection",
+		"stepPlayhead": "Step Playhead",
+		"jumpToTimelineEdge": "Jump to Timeline Edge",
+		"panTimeline": "Pan Timeline",
+		"zoomTimeline": "Zoom Timeline"
 	}
 }

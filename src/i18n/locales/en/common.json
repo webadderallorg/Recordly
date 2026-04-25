@@ -4,7 +4,8 @@
 		"editorTitle": "Recordly Editor",
 		"subtitle": "Screen recording and editing",
 		"language": "Language",
-		"manageRecordings": "Open recordings folder"
+		"manageRecordings": "Open recordings folder",
+		"discord": "Join Discord"
 	},
 	"actions": {
 		"cancel": "Cancel",
@@ -16,6 +17,7 @@
 		"save": "Save",
 		"undo": "Undo",
 		"delete": "Delete",
+		"remove": "Remove",
 		"done": "Done"
 	},
 	"errors": {

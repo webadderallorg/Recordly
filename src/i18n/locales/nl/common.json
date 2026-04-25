@@ -4,7 +4,8 @@
 		"editorTitle": "Recordly Editor",
 		"subtitle": "Schermopname en bewerking",
 		"language": "Taal",
-		"manageRecordings": "Opnamemap openen"
+		"manageRecordings": "Opnamemap openen",
+		"discord": "Join Discord"
 	},
 	"actions": {
 		"cancel": "Annuleren",
@@ -16,7 +17,8 @@
 		"save": "Opslaan",
 		"undo": "Ongedaan maken",
 		"delete": "Verwijderen",
-		"done": "Klaar"
+		"done": "Klaar",
+		"remove": "Remove"
 	},
 	"errors": {
 		"invalidFileType": "Ongeldig bestandstype",

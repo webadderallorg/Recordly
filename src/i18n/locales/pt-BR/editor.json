@@ -44,7 +44,6 @@
 		"solidColor": "Cor sólida (censura)",
 		"borderRadius": "Raio da borda"
 	},
-
 	"fontStyles": {
 		"classic": "Classic",
 		"editor": "Editor",
@@ -111,7 +110,10 @@
 		"showInFolder": "Mostrar na pasta"
 	},
 	"project": {
-		"untitled": "Sem título"
+		"untitled": "Sem título",
+		"projects": "Open projects",
+		"renameTitle": "Rename project",
+		"renameInput": "Project name"
 	},
 	"exportStatus": {
 		"exporting": "Exportando",
@@ -120,7 +122,11 @@
 		"completePercent": "{{percent}}% concluído",
 		"issue": "Problema na exportação",
 		"complete": "Exportação concluída",
-		"savedSuccessfully": "Seu arquivo foi salvo com sucesso."
+		"savedSuccessfully": "Seu arquivo foi salvo com sucesso.",
+		"saving": "Opening save dialog...",
+		"renderingAudio": "Rendering audio {{percent}}%",
+		"finalizingPercent": "Finalizing {{percent}}%",
+		"renderSpeed": "Render speed {{fps}} FPS"
 	},
 	"toolbar": {
 		"addLayer": "Adicionar camada",
@@ -130,5 +136,14 @@
 		"expand": "Expandir linha do tempo",
 		"collapse": "Recolher linha do tempo"
 	},
-	"openRecordingsFolder": "Abrir pasta de gravações"
+	"openRecordingsFolder": "Abrir pasta de gravações",
+	"export": {
+		"processingAudioEdits": "Processing audio with speed/overlay edits"
+	},
+	"theme": {
+		"appearance": "Appearance",
+		"light": "Light",
+		"dark": "Dark",
+		"system": "System"
+	}
 }

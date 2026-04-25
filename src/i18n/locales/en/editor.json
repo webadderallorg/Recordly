@@ -111,12 +111,19 @@
 		"showInFolder": "Show In Folder"
 	},
 	"project": {
-		"untitled": "Untitled"
+		"untitled": "Untitled",
+		"projects": "Open projects",
+		"renameTitle": "Rename project",
+		"renameInput": "Project name"
 	},
 	"exportStatus": {
 		"exporting": "Exporting",
 		"renderingFile": "Rendering your file.",
 		"preparing": "Preparing export...",
+		"saving": "Opening save dialog...",
+		"renderingAudio": "Rendering audio {{percent}}%",
+		"finalizingPercent": "Finalizing {{percent}}%",
+		"renderSpeed": "Render speed {{fps}} FPS",
 		"completePercent": "{{percent}}% complete",
 		"issue": "Export issue",
 		"complete": "Export complete",
@@ -124,6 +131,12 @@
 	},
 	"export": {
 		"processingAudioEdits": "Processing audio with speed/overlay edits"
+	},
+	"theme": {
+		"appearance": "Appearance",
+		"light": "Light",
+		"dark": "Dark",
+		"system": "System"
 	},
 	"toolbar": {
 		"addLayer": "Add Layer",

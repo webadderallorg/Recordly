@@ -7,6 +7,9 @@ export interface ZoomFocus {
 
 export type ZoomMode = "auto" | "manual";
 
+export type AutoZoomStyle = "lecture" | "demo" | "conservative";
+export const DEFAULT_AUTO_ZOOM_STYLE: AutoZoomStyle = "lecture";
+
 export interface ZoomRegion {
 	id: string;
 	startMs: number;
@@ -356,6 +359,8 @@ export const DEFAULT_PADDING: Padding = {
 	right: 20,
 	linked: true,
 };
+
+export const DEFAULT_SCENE_SCALE = 1;
 
 export interface AudioRegion {
 	id: string;

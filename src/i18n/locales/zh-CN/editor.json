@@ -111,12 +111,19 @@
 		"showInFolder": "在文件夹中显示"
 	},
 	"project": {
-		"untitled": "未命名"
+		"untitled": "未命名",
+		"projects": "打开项目",
+		"renameTitle": "重命名项目",
+		"renameInput": "项目名称"
 	},
 	"exportStatus": {
 		"exporting": "正在导出",
 		"renderingFile": "正在渲染你的文件。",
 		"preparing": "正在准备导出...",
+		"saving": "正在打开保存对话框...",
+		"renderingAudio": "正在渲染音频 {{percent}}%",
+		"finalizingPercent": "正在收尾 {{percent}}%",
+		"renderSpeed": "渲染速度 {{fps}} FPS",
 		"completePercent": "已完成 {{percent}}%",
 		"issue": "导出问题",
 		"complete": "导出完成",
@@ -124,6 +131,12 @@
 	},
 	"export": {
 		"processingAudioEdits": "正在处理带有速度/叠加编辑的音频"
+	},
+	"theme": {
+		"appearance": "外观",
+		"light": "浅色",
+		"dark": "深色",
+		"system": "跟随系统"
 	},
 	"toolbar": {
 		"addLayer": "添加图层",

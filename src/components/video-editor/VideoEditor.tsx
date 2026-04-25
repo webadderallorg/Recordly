@@ -129,6 +129,7 @@ import {
 	type AnnotationRegion,
 	type AudioRegion,
 	type AutoCaptionSettings,
+	type AutoZoomStyle,
 	type CaptionCue,
 	type ClipRegion,
 	type CropRegion,
@@ -530,6 +531,9 @@ export default function VideoEditor() {
 	const [autoApplyFreshRecordingAutoZooms, setAutoApplyFreshRecordingAutoZooms] = useState(
 		initialEditorPreferences.autoApplyFreshRecordingAutoZooms,
 	);
+	const [autoZoomStyle, setAutoZoomStyle] = useState<AutoZoomStyle>(
+		initialEditorPreferences.autoZoomStyle,
+	);
 	const [connectZooms, setConnectZooms] = useState(initialEditorPreferences.connectZooms);
 	const [zoomInDurationMs, setZoomInDurationMs] = useState(
 		initialEditorPreferences.zoomInDurationMs ?? DEFAULT_ZOOM_IN_DURATION_MS,
@@ -577,6 +581,7 @@ export default function VideoEditor() {
 	);
 	const [cursorSway, setCursorSway] = useState(initialEditorPreferences.cursorSway);
 	const [borderRadius, setBorderRadius] = useState(initialEditorPreferences.borderRadius);
+	const [sceneScale, setSceneScale] = useState(initialEditorPreferences.sceneScale);
 	const [padding, setPadding] = useState(initialEditorPreferences.padding);
 	const [frame, setFrame] = useState<string | null>(initialEditorPreferences.frame);
 	const [cropRegion, setCropRegion] = useState<CropRegion>(DEFAULT_CROP_REGION);
@@ -674,6 +679,7 @@ export default function VideoEditor() {
 	const nextZoomIdRef = useRef(1);
 	const nextTrimIdRef = useRef(1);
 	const nextClipIdRef = useRef(1);
+	const lastSplitContinuationClipIdRef = useRef<string | null>(null);
 	const nextSpeedIdRef = useRef(1);
 	const nextAudioIdRef = useRef(1);
 
@@ -1220,6 +1226,7 @@ export default function VideoEditor() {
 				cursorClickBounceDuration: number;
 				cursorSway: number;
 				borderRadius: number;
+				sceneScale: number;
 				padding: Padding;
 				frame: string | null;
 				cropRegion: CropRegion;
@@ -1368,6 +1375,7 @@ export default function VideoEditor() {
 				cursorClickBounceDuration,
 				cursorSway,
 				borderRadius,
+				sceneScale,
 				padding,
 				frame,
 				webcam,
@@ -1417,6 +1425,7 @@ export default function VideoEditor() {
 			cursorClickBounceDuration,
 			cursorSway,
 			borderRadius,
+			sceneScale,
 			padding,
 			webcam,
 			zoomRegions,
@@ -1599,6 +1608,7 @@ export default function VideoEditor() {
 			setCursorClickBounceDuration(normalizedEditor.cursorClickBounceDuration);
 			setCursorSway(normalizedEditor.cursorSway);
 			setBorderRadius(normalizedEditor.borderRadius);
+			setSceneScale(normalizedEditor.sceneScale);
 			setPadding(normalizedEditor.padding);
 			setFrame(normalizedEditor.frame);
 			setCropRegion(normalizedEditor.cropRegion);
@@ -1863,6 +1873,7 @@ export default function VideoEditor() {
 						// settings, etc. that were saved to localStorage.
 						setPadding(initialEditorPreferences.padding);
 						setBorderRadius(initialEditorPreferences.borderRadius);
+						setSceneScale(initialEditorPreferences.sceneScale);
 						setAspectRatio(initialEditorPreferences.aspectRatio);
 						setExportFormat(initialEditorPreferences.exportFormat);
 						setMp4FrameRate(
@@ -1964,6 +1975,7 @@ export default function VideoEditor() {
 			backgroundBlur,
 			zoomMotionBlur,
 			autoApplyFreshRecordingAutoZooms,
+			autoZoomStyle,
 			connectZooms,
 			zoomInDurationMs,
 			zoomInOverlapMs,
@@ -1983,6 +1995,7 @@ export default function VideoEditor() {
 			cursorClickBounceDuration,
 			cursorSway,
 			borderRadius,
+			sceneScale,
 			padding,
 			frame,
 			webcam,
@@ -2005,6 +2018,7 @@ export default function VideoEditor() {
 		backgroundBlur,
 		zoomMotionBlur,
 		autoApplyFreshRecordingAutoZooms,
+		autoZoomStyle,
 		connectZooms,
 		zoomInDurationMs,
 		zoomInOverlapMs,
@@ -2024,6 +2038,7 @@ export default function VideoEditor() {
 		cursorClickBounceDuration,
 		cursorSway,
 		borderRadius,
+		sceneScale,
 		padding,
 		frame,
 		webcam,
@@ -2998,13 +3013,13 @@ export default function VideoEditor() {
 					speed: target.speed,
 					muted: target.muted,
 				};
-				if (selectedClipId === target.id) {
-					setSelectedClipId(leftId);
-				}
+				const continuingSplit = lastSplitContinuationClipIdRef.current === target.id;
+				setSelectedClipId(continuingSplit ? leftId : rightId);
+				lastSplitContinuationClipIdRef.current = continuingSplit ? null : rightId;
 				return prev.flatMap((c) => (c.id === target.id ? [left, right] : [c]));
 			});
 		},
-		[selectedClipId],
+		[],
 	);
 
 	const handleClipSpanChange = useCallback(
@@ -3138,6 +3153,9 @@ export default function VideoEditor() {
 			}
 			if (selectedClipId === id) {
 				setSelectedClipId(null);
+			}
+			if (lastSplitContinuationClipIdRef.current === id) {
+				lastSplitContinuationClipIdRef.current = null;
 			}
 		},
 		[clipRegions, selectedClipId],
@@ -3909,6 +3927,7 @@ export default function VideoEditor() {
 						zoomOutEasing,
 						connectedZoomEasing,
 						borderRadius,
+						sceneScale,
 						padding,
 						videoPadding: padding,
 						cropRegion,
@@ -4085,6 +4104,7 @@ export default function VideoEditor() {
 						zoomOutEasing,
 						connectedZoomEasing,
 						borderRadius,
+						sceneScale,
 						padding,
 						cropRegion,
 						webcam,
@@ -5183,6 +5203,8 @@ export default function VideoEditor() {
 								onAutoApplyFreshRecordingAutoZoomsChange={
 									setAutoApplyFreshRecordingAutoZooms
 								}
+								autoZoomStyle={autoZoomStyle}
+								onAutoZoomStyleChange={setAutoZoomStyle}
 								connectZooms={connectZooms}
 								onConnectZoomsChange={setConnectZooms}
 								zoomInDurationMs={zoomInDurationMs}
@@ -5225,6 +5247,8 @@ export default function VideoEditor() {
 								onCursorSwayChange={setCursorSway}
 								borderRadius={borderRadius}
 								onBorderRadiusChange={setBorderRadius}
+								sceneScale={sceneScale}
+								onSceneScaleChange={setSceneScale}
 								webcam={webcam}
 								onWebcamChange={setWebcam}
 								onUploadWebcam={handleUploadWebcam}
@@ -5392,6 +5416,7 @@ export default function VideoEditor() {
 												zoomOutEasing={zoomOutEasing}
 												connectedZoomEasing={connectedZoomEasing}
 												borderRadius={borderRadius}
+												sceneScale={sceneScale}
 												padding={padding}
 												frame={frame}
 												cropRegion={cropRegion}
@@ -5667,6 +5692,7 @@ export default function VideoEditor() {
 						onSeek={handleSeek}
 						videoPath={videoPath}
 						cursorTelemetry={normalizedCursorTelemetry}
+						autoZoomStyle={autoZoomStyle}
 						autoSuggestZoomsTrigger={autoSuggestZoomsTrigger}
 						onAutoSuggestZoomsConsumed={handleAutoSuggestZoomsConsumed}
 						zoomRegions={zoomRegions}

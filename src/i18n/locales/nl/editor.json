@@ -14,7 +14,6 @@
 		"arrow": "Pijl",
 		"blur": "Vervagen",
 		"textContent": "Tekstinhoud",
-
 		"textPlaceholder": "Voer je tekst in...",
 		"fontStyle": "Lettertype",
 		"selectStyle": "Selecteer stijl",
@@ -45,7 +44,6 @@
 		"solidColor": "Effen Kleur (Censuur)",
 		"borderRadius": "Hoekradius"
 	},
-
 	"fontStyles": {
 		"classic": "Klassiek",
 		"editor": "Editor",
@@ -112,7 +110,10 @@
 		"showInFolder": "Tonen in map"
 	},
 	"project": {
-		"untitled": "Naamloos"
+		"untitled": "Naamloos",
+		"projects": "Open projects",
+		"renameTitle": "Rename project",
+		"renameInput": "Project name"
 	},
 	"exportStatus": {
 		"exporting": "Exporteren",
@@ -121,7 +122,11 @@
 		"completePercent": "{{percent}}% voltooid",
 		"issue": "Exportprobleem",
 		"complete": "Export voltooid",
-		"savedSuccessfully": "Je bestand is succesvol opgeslagen."
+		"savedSuccessfully": "Je bestand is succesvol opgeslagen.",
+		"saving": "Opening save dialog...",
+		"renderingAudio": "Rendering audio {{percent}}%",
+		"finalizingPercent": "Finalizing {{percent}}%",
+		"renderSpeed": "Render speed {{fps}} FPS"
 	},
 	"export": {
 		"processingAudioEdits": "Audio verwerken met snelheids-/overlay-bewerkingen"
@@ -134,5 +139,11 @@
 		"expand": "Tijdlijn uitvouwen",
 		"collapse": "Tijdlijn samenvouwen"
 	},
-	"openRecordingsFolder": "Opnamemap openen"
+	"openRecordingsFolder": "Opnamemap openen",
+	"theme": {
+		"appearance": "Appearance",
+		"light": "Light",
+		"dark": "Dark",
+		"system": "System"
+	}
 }

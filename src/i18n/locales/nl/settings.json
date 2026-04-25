@@ -6,7 +6,8 @@
 		"modeAuto": "Auto",
 		"modeManual": "Handmatig",
 		"modeManualDescription": "Stel een vast focuspunt in voor deze zoom",
-		"modeAutoDescription": "De camera volgt de cursor automatisch"
+		"modeAutoDescription": "De camera volgt de cursor automatisch",
+		"globalSettings": "Animation"
 	},
 	"trim": {
 		"deleteRegion": "Trimgebied verwijderen"
@@ -100,7 +101,25 @@
 		"paddingBottom": "Onder",
 		"paddingLeft": "Links",
 		"paddingRight": "Rechts",
-		"removeBackground": "Achtergrond verwijderen"
+		"removeBackground": "Achtergrond verwijderen",
+		"sceneScale": "Base scale",
+		"zoomSmoothness": "Zoom Smoothness",
+		"classicZoom": "Classic Animation",
+		"webcamPosition": "Position",
+		"webcamHorizontal": "Horizontal",
+		"webcamVertical": "Vertical",
+		"webcamMargin": "Margin",
+		"autoZoomStyle": "Auto Zoom style",
+		"autoZoomStyleOptions": {
+			"lecture": "Lecture",
+			"demo": "Product demo",
+			"conservative": "Conservative"
+		},
+		"autoZoomStyleDescriptions": {
+			"lecture": "Prefer longer focus holds for narrated walkthroughs.",
+			"demo": "React faster to clicks and short product-demo actions.",
+			"conservative": "Create fewer zooms and require clearer focus moments."
+		}
 	},
 	"sections": {
 		"scene": "Scène",
@@ -109,7 +128,9 @@
 		"cursor": "Cursor",
 		"webcam": "Webcam",
 		"frame": "Kader",
-		"crop": "Bijsnijden"
+		"crop": "Bijsnijden",
+		"settings": "Settings",
+		"extensions": "Extensions"
 	},
 	"captions": {
 		"enabled": "Tonen",
@@ -136,7 +157,20 @@
 		"maxWidth": "Maximale breedte",
 		"boxRadius": "Vakstraal",
 		"backgroundOpacity": "Achtergrond-dekking",
-		"textColor": "Tekstkleur"
+		"textColor": "Tekstkleur",
+		"selectModel": "Select Model",
+		"languages": {
+			"auto": "Auto Detect",
+			"en": "English",
+			"es": "Spanish",
+			"fr": "French",
+			"de": "German",
+			"it": "Italian",
+			"pt": "Portuguese",
+			"zh": "Chinese",
+			"ja": "Japanese",
+			"ko": "Korean"
+		}
 	},
 	"crop": {
 		"title": "Video bijsnijden",
@@ -156,7 +190,9 @@
 		"uploadCustom": "Afbeelding uploaden",
 		"uploadSuccess": "Eigen afbeelding succesvol geüpload!",
 		"uploadError": "Upload een JPG- of JPEG-afbeelding.",
-		"uploadErrorDescription": "Alleen JPG- en JPEG-afbeeldingen worden ondersteund."
+		"uploadErrorDescription": "Alleen JPG- en JPEG-afbeeldingen worden ondersteund.",
+		"video": "Video",
+		"uploadCustomVideo": "Upload Video"
 	},
 	"export": {
 		"title": "Exporteren",
@@ -178,6 +214,36 @@
 		"saveProject": "Project opslaan",
 		"exportVideo": "{{format}} exporteren",
 		"reportBug": "Bug melden",
-		"starOnGithub": "Ster op GitHub"
+		"starOnGithub": "Ster op GitHub",
+		"encodingTitle": "Encoding",
+		"encoding": {
+			"fast": "Fast",
+			"balanced": "Balanced",
+			"quality": "Quality"
+		},
+		"pipelineTitle": "Pipeline",
+		"pipeline": {
+			"legacy": "Legacy",
+			"modern": "Lightning (Beta)"
+		}
+	},
+	"timeline": {
+		"noVideoLoaded": "No Video Loaded",
+		"dragDropVideo": "Drag and drop a video to start editing",
+		"addZoom": "Add Zoom (Z)",
+		"suggestZooms": "Suggest Zooms from Cursor",
+		"addAnnotation": "Add Annotation (A)",
+		"addAudio": "Add Audio",
+		"splitClip": "Split Clip (C)",
+		"aspectNative": "Native",
+		"aspectCustom": "Custom {{ratio}}",
+		"customAspect": "Custom",
+		"customAspectWidth": "Custom aspect width",
+		"customAspectHeight": "Custom aspect height",
+		"customAspectError": "Custom aspect ratio must be positive numbers.",
+		"setAspect": "Set",
+		"sideScroll": "Side Scroll",
+		"pan": "Pan",
+		"zoom": "Zoom"
 	}
 }

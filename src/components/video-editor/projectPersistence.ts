@@ -63,6 +63,7 @@ import {
 	type ZoomRegion,
 	type ZoomTransitionEasing,
 	DEFAULT_PADDING,
+	DEFAULT_SCENE_SCALE,
 } from "./types";
 
 export const PROJECT_VERSION = 1;
@@ -94,6 +95,7 @@ export interface ProjectEditorState {
 	cursorSway: number;
 	borderRadius: number;
 	padding: Padding;
+	sceneScale: number;
 	/** Selected frame ID (e.g. "recordly.frames/browser-dark"), or null for none */
 	frame: string | null;
 	cropRegion: CropRegion;
@@ -752,6 +754,9 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			? clamp((editor as Partial<ProjectEditorState>).cursorSway as number, 0, 2)
 			: DEFAULT_CURSOR_SWAY,
 		borderRadius: typeof editor.borderRadius === "number" ? editor.borderRadius : 12.5,
+		sceneScale: isFiniteNumber(editor.sceneScale)
+			? clamp(editor.sceneScale, 1, 2)
+			: DEFAULT_SCENE_SCALE,
 		padding: (() => {
 			const p = editor.padding;
 			if (p && typeof p === "object") {

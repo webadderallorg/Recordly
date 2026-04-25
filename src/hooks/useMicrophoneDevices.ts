@@ -8,6 +8,32 @@ export interface MicrophoneDevice {
 
 let hasRequestedMicrophoneLabels = false;
 
+function scoreMicrophoneDevice(device: MicrophoneDevice, index: number): number {
+	const label = device.label.toLowerCase();
+	let score = 1000 - index;
+
+	if (device.deviceId === "default") score -= 200;
+	if (device.deviceId === "communications") score -= 150;
+	if (/\b(microphone|mic|array|usb|headset|realtek|logitech|rode|shure|blue)\b/.test(label)) {
+		score += 120;
+	}
+	if (/\b(stereo mix|loopback|monitor|virtual|vb-audio|voicemeeter|cable|blackhole|soundflower|obs)\b/.test(label)) {
+		score -= 350;
+	}
+
+	return score;
+}
+
+export function pickBestMicrophoneDevice(devices: MicrophoneDevice[]): MicrophoneDevice | null {
+	if (devices.length === 0) {
+		return null;
+	}
+
+	return [...devices]
+		.map((device, index) => ({ device, score: scoreMicrophoneDevice(device, index) }))
+		.sort((a, b) => b.score - a.score)[0]?.device ?? null;
+}
+
 export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?: string) {
 	const [devices, setDevices] = useState<MicrophoneDevice[]>([]);
 	const [selectedDeviceId, setSelectedDeviceId] = useState<string>("default");
@@ -73,8 +99,7 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 						}
 
 						return (
-							audioInputs.find((device) => device.deviceId !== "default")?.deviceId ??
-							audioInputs[0]?.deviceId ??
+							pickBestMicrophoneDevice(audioInputs)?.deviceId ??
 							"default"
 						);
 					});

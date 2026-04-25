@@ -47,6 +47,7 @@ import { loadEditorPreferences, saveEditorPreferences } from "../editorPreferenc
 import type {
 	AnnotationRegion,
 	AudioRegion,
+	AutoZoomStyle,
 	ClipRegion,
 	CursorTelemetryPoint,
 	SpeedRegion,
@@ -71,6 +72,13 @@ const ANNOTATION_ROW_PREFIX = `${ANNOTATION_ROW_ID}-`;
 const AUDIO_ROW_PREFIX = "row-audio-";
 const FALLBACK_RANGE_MS = 1000;
 const TARGET_MARKER_COUNT = 12;
+const TIMELINE_DEFAULT_REGION_DURATION_MS = 1000;
+const TIMELINE_DEFAULT_ZOOM_DURATION_MS = 10000;
+const TIMELINE_KEYBOARD_ZOOM_FACTOR = 0.75;
+const TIMELINE_SNAP_THRESHOLD_MS = 200;
+const TIMELINE_NUDGE_MS = 100;
+const TIMELINE_FRAME_STEP_MS = 1000 / 30;
+const TIMELINE_SELECTION_PADDING_RATIO = 0.12;
 
 function getAnnotationTrackRowId(trackIndex: number) {
 	return `${ANNOTATION_ROW_ID}-${Math.max(0, Math.floor(trackIndex))}`;
@@ -116,6 +124,7 @@ interface TimelineEditorProps {
 	playheadTime?: number;
 	onSeek?: (time: number) => void;
 	cursorTelemetry?: CursorTelemetryPoint[];
+	autoZoomStyle?: AutoZoomStyle;
 	autoSuggestZoomsTrigger?: number;
 	onAutoSuggestZoomsConsumed?: () => void;
 	disableSuggestedZooms?: boolean;
@@ -188,6 +197,13 @@ interface TimelineRenderItem {
 	zoomMode?: ZoomMode;
 	speedValue?: number;
 	variant: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio";
+}
+
+interface TimelineSnapSpan {
+	id: string;
+	start: number;
+	end: number;
+	rowId: string;
 }
 
 const SCALE_CANDIDATES = [
@@ -263,6 +279,23 @@ function normalizeWheelDeltaToPixels(delta: number, deltaMode: number) {
 	}
 
 	return delta;
+}
+
+function getClosestSnapDelta(value: number, anchors: number[], thresholdMs: number) {
+	let closestDelta: number | null = null;
+
+	for (const anchor of anchors) {
+		const delta = anchor - value;
+		if (Math.abs(delta) > thresholdMs) {
+			continue;
+		}
+
+		if (closestDelta === null || Math.abs(delta) < Math.abs(closestDelta)) {
+			closestDelta = delta;
+		}
+	}
+
+	return closestDelta;
 }
 
 function formatTimeLabel(milliseconds: number, intervalMs: number) {
@@ -601,7 +634,12 @@ function Timeline({
 	selectedSpeedId: _selectedSpeedId,
 	selectedAudioId,
 	selectAllBlocksActive = false,
+	selectZoomBlocksActive = false,
+	selectedZoomBlockIds = [],
+	zoomMultiSelectActive = false,
 	onClearBlockSelection,
+	onToggleZoomMultiSelection,
+	onSetZoomMultiSelection,
 	keyframes = [],
 	audioPeaks,
 }: {
@@ -622,12 +660,21 @@ function Timeline({
 	selectedSpeedId?: string | null;
 	selectedAudioId?: string | null;
 	selectAllBlocksActive?: boolean;
+	selectZoomBlocksActive?: boolean;
+	selectedZoomBlockIds?: string[];
+	zoomMultiSelectActive?: boolean;
 	onClearBlockSelection?: () => void;
+	onToggleZoomMultiSelection?: (id: string) => void;
+	onSetZoomMultiSelection?: (ids: string[]) => void;
 	keyframes?: { id: string; time: number }[];
 	audioPeaks?: AudioPeaksData | null;
 }) {
 	const { setTimelineRef, style, sidebarWidth, range, pixelsToValue } = useTimelineContext();
 	const localTimelineRef = useRef<HTMLDivElement | null>(null);
+	const [zoomMarquee, setZoomMarquee] = useState<{
+		startX: number;
+		currentX: number;
+	} | null>(null);
 
 	const setRefs = useCallback(
 		(node: HTMLDivElement | null) => {
@@ -703,6 +750,78 @@ function Timeline({
 		[annotationItems],
 	);
 
+	const selectZoomsByRange = useCallback(
+		(leftX: number, rightX: number) => {
+			const start = Math.max(
+				0,
+				Math.min(range.start + pixelsToValue(leftX), videoDurationMs),
+			);
+			const end = Math.max(0, Math.min(range.start + pixelsToValue(rightX), videoDurationMs));
+			const selectionSpan = { start: Math.min(start, end), end: Math.max(start, end) };
+			const ids = zoomItems
+				.filter((item) => spansOverlap(item.span, selectionSpan))
+				.map((item) => item.id);
+
+			onSetZoomMultiSelection?.(ids);
+		},
+		[onSetZoomMultiSelection, pixelsToValue, range.start, videoDurationMs, zoomItems],
+	);
+
+	const handleZoomRowBlankPointerDown = useCallback(
+		(event: React.PointerEvent<HTMLDivElement>) => {
+			if (event.button !== 0 || videoDurationMs <= 0) return;
+
+			event.preventDefault();
+			event.stopPropagation();
+
+			const rowRect = event.currentTarget.getBoundingClientRect();
+			const clampX = (clientX: number) =>
+				Math.max(0, Math.min(clientX - rowRect.left, rowRect.width));
+			const startX = clampX(event.clientX);
+			let moved = false;
+
+			const handlePointerMove = (moveEvent: PointerEvent) => {
+				const currentX = clampX(moveEvent.clientX);
+				const hasMovedEnough = Math.abs(currentX - startX) >= 4;
+
+				if (!hasMovedEnough && !moved) return;
+
+				moved = true;
+				setZoomMarquee({ startX, currentX });
+				selectZoomsByRange(Math.min(startX, currentX), Math.max(startX, currentX));
+			};
+
+			const handlePointerUp = (upEvent: PointerEvent) => {
+				window.removeEventListener("pointermove", handlePointerMove);
+				window.removeEventListener("pointerup", handlePointerUp);
+				setZoomMarquee(null);
+
+				if (!moved && onSeek) {
+					onClearBlockSelection?.();
+					const absoluteMs = Math.max(
+						0,
+						Math.min(
+							range.start + pixelsToValue(clampX(upEvent.clientX)),
+							videoDurationMs,
+						),
+					);
+					onSeek(absoluteMs / 1000);
+				}
+			};
+
+			window.addEventListener("pointermove", handlePointerMove);
+			window.addEventListener("pointerup", handlePointerUp);
+		},
+		[
+			onClearBlockSelection,
+			onSeek,
+			pixelsToValue,
+			range.start,
+			selectZoomsByRange,
+			videoDurationMs,
+		],
+	);
+
 	return (
 		<div
 			ref={setRefs}
@@ -739,15 +858,31 @@ function Timeline({
 					))}
 				</Row>
 
-				<Row id={ZOOM_ROW_ID} isEmpty={zoomItems.length === 0} hint="Press Z to add zoom">
+				<Row
+					id={ZOOM_ROW_ID}
+					isEmpty={zoomItems.length === 0}
+					hint="Press Z to add zoom"
+					onBlankPointerDown={handleZoomRowBlankPointerDown}
+				>
 					{zoomItems.map((item) => (
 						<Item
 							id={item.id}
 							key={item.id}
 							rowId={item.rowId}
 							span={item.span}
-							isSelected={selectAllBlocksActive || item.id === selectedZoomId}
-							onSelect={() => onSelectZoom?.(item.id)}
+							isSelected={
+								selectAllBlocksActive ||
+								(selectZoomBlocksActive &&
+									selectedZoomBlockIds.includes(item.id)) ||
+								item.id === selectedZoomId
+							}
+							onSelect={() => {
+								if (zoomMultiSelectActive) {
+									onToggleZoomMultiSelection?.(item.id);
+									return;
+								}
+								onSelectZoom?.(item.id);
+							}}
 							zoomDepth={item.zoomDepth}
 							zoomMode={item.zoomMode}
 							variant="zoom"
@@ -755,6 +890,18 @@ function Timeline({
 							{item.label}
 						</Item>
 					))}
+					{zoomMarquee && (
+						<div
+							className="pointer-events-none absolute top-[7.5%] bottom-[7.5%] z-40 rounded border border-[#2563EB] bg-[#2563EB]/15 shadow-[0_0_0_1px_rgba(37,99,235,0.25)]"
+							style={{
+								left: Math.min(zoomMarquee.startX, zoomMarquee.currentX),
+								width: Math.max(
+									2,
+									Math.abs(zoomMarquee.currentX - zoomMarquee.startX),
+								),
+							}}
+						/>
+					)}
 				</Row>
 
 				{annotationRowIds.map((rowId, index) => {
@@ -828,11 +975,12 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 	function TimelineEditor(
 		{
 			videoDuration,
-			currentTime,
-			playheadTime,
-			onSeek,
-			cursorTelemetry = [],
-			autoSuggestZoomsTrigger = 0,
+		currentTime,
+		playheadTime,
+		onSeek,
+		cursorTelemetry = [],
+		autoZoomStyle = "lecture",
+		autoSuggestZoomsTrigger = 0,
 			onAutoSuggestZoomsConsumed,
 			disableSuggestedZooms = false,
 			zoomRegions,
@@ -904,6 +1052,9 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		const [keyframes, setKeyframes] = useState<{ id: string; time: number }[]>([]);
 		const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
 		const [selectAllBlocksActive, setSelectAllBlocksActive] = useState(false);
+		const [selectZoomBlocksActive, setSelectZoomBlocksActive] = useState(false);
+		const [selectedZoomBlockIds, setSelectedZoomBlockIds] = useState<string[]>([]);
+		const [isSnappingEnabled, setIsSnappingEnabled] = useState(true);
 		const [customAspectWidth, setCustomAspectWidth] = useState(
 			initialEditorPreferences.customAspectWidth,
 		);
@@ -915,6 +1066,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			zoom: "Ctrl + Scroll",
 		});
 		const isTimelineFocusedRef = useRef(false);
+		const primaryModifierPressedRef = useRef(false);
 		const timelineContainerRef = useRef<HTMLDivElement>(null);
 		const { shortcuts: keyShortcuts, isMac } = useShortcuts();
 		const audioPeaks = useAudioPeaks(videoPath);
@@ -945,11 +1097,29 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			const width = Number.parseInt(customAspectWidth, 10);
 			const height = Number.parseInt(customAspectHeight, 10);
 			if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-				toast.error("Custom aspect ratio must be positive numbers.");
+				toast.error(
+					t(
+						"timeline.customAspectError",
+						"Custom aspect ratio must be positive numbers.",
+					),
+				);
 				return;
 			}
 			onAspectRatioChange?.(`${width}:${height}` as AspectRatio);
-		}, [customAspectHeight, customAspectWidth, onAspectRatioChange]);
+		}, [customAspectHeight, customAspectWidth, onAspectRatioChange, t]);
+
+		const getLocalizedAspectRatioLabel = useCallback(
+			(ratio: AspectRatio) => {
+				if (ratio === "native") {
+					return t("timeline.aspectNative", "Native");
+				}
+				if (isCustomAspectRatio(ratio)) {
+					return t("timeline.aspectCustom", "Custom {{ratio}}", { ratio });
+				}
+				return getAspectRatioLabel(ratio);
+			},
+			[t],
+		);
 
 		const handleCustomAspectRatioKeyDown = useCallback(
 			(event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -970,6 +1140,27 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				});
 			});
 		}, []);
+
+		useEffect(() => {
+			const syncModifierState = (event: KeyboardEvent) => {
+				primaryModifierPressedRef.current = isMac ? event.metaKey : event.ctrlKey;
+			};
+			const clearModifierState = (event: KeyboardEvent) => {
+				primaryModifierPressedRef.current = isMac ? event.metaKey : event.ctrlKey;
+			};
+			const handleWindowBlur = () => {
+				primaryModifierPressedRef.current = false;
+			};
+
+			window.addEventListener("keydown", syncModifierState);
+			window.addEventListener("keyup", clearModifierState);
+			window.addEventListener("blur", handleWindowBlur);
+			return () => {
+				window.removeEventListener("keydown", syncModifierState);
+				window.removeEventListener("keyup", clearModifierState);
+				window.removeEventListener("blur", handleWindowBlur);
+			};
+		}, [isMac]);
 
 		// Add keyframe at current playhead position
 		const addKeyframe = useCallback(() => {
@@ -1006,6 +1197,16 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onZoomDelete(selectedZoomId);
 			onSelectZoom(null);
 		}, [selectedZoomId, onZoomDelete, onSelectZoom]);
+
+		const deleteZoomBlocks = useCallback(() => {
+			const validZoomIds = new Set(zoomRegions.map((region) => region.id));
+			selectedZoomBlockIds
+				.filter((id) => validZoomIds.has(id))
+				.forEach((id) => onZoomDelete(id));
+			onSelectZoom(null);
+			setSelectedZoomBlockIds([]);
+			setSelectZoomBlocksActive(false);
+		}, [selectedZoomBlockIds, zoomRegions, onZoomDelete, onSelectZoom]);
 
 		// Delete selected trim item
 		const deleteSelectedTrim = useCallback(() => {
@@ -1046,6 +1247,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onSelectSpeed?.(null);
 			onSelectAudio?.(null);
 			setSelectAllBlocksActive(false);
+			setSelectZoomBlocksActive(false);
+			setSelectedZoomBlockIds([]);
 		}, [
 			onSelectAnnotation,
 			onSelectAudio,
@@ -1099,6 +1302,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		const handleSelectZoom = useCallback(
 			(id: string | null) => {
 				setSelectAllBlocksActive(false);
+				setSelectZoomBlocksActive(false);
+				setSelectedZoomBlockIds([]);
 				onSelectZoom(id);
 			},
 			[onSelectZoom],
@@ -1107,6 +1312,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		const handleSelectTrim = useCallback(
 			(id: string | null) => {
 				setSelectAllBlocksActive(false);
+				setSelectZoomBlocksActive(false);
+				setSelectedZoomBlockIds([]);
 				onSelectTrim?.(id);
 			},
 			[onSelectTrim],
@@ -1115,6 +1322,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		const handleSelectClip = useCallback(
 			(id: string | null) => {
 				setSelectAllBlocksActive(false);
+				setSelectZoomBlocksActive(false);
+				setSelectedZoomBlockIds([]);
 				onSelectClip?.(id);
 			},
 			[onSelectClip],
@@ -1123,6 +1332,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		const handleSelectAnnotation = useCallback(
 			(id: string | null) => {
 				setSelectAllBlocksActive(false);
+				setSelectZoomBlocksActive(false);
+				setSelectedZoomBlockIds([]);
 				onSelectAnnotation?.(id);
 			},
 			[onSelectAnnotation],
@@ -1131,6 +1342,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		const handleSelectSpeed = useCallback(
 			(id: string | null) => {
 				setSelectAllBlocksActive(false);
+				setSelectZoomBlocksActive(false);
+				setSelectedZoomBlockIds([]);
 				onSelectSpeed?.(id);
 			},
 			[onSelectSpeed],
@@ -1139,9 +1352,50 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		const handleSelectAudio = useCallback(
 			(id: string | null) => {
 				setSelectAllBlocksActive(false);
+				setSelectZoomBlocksActive(false);
+				setSelectedZoomBlockIds([]);
 				onSelectAudio?.(id);
 			},
 			[onSelectAudio],
+		);
+
+		const setZoomMultiSelection = useCallback(
+			(ids: string[]) => {
+				clearSelectedBlocks();
+				setSelectedKeyframeId(null);
+				onSelectZoom(null);
+				setSelectedZoomBlockIds(ids);
+				setSelectZoomBlocksActive(ids.length > 0);
+			},
+			[clearSelectedBlocks, onSelectZoom],
+		);
+
+		const toggleZoomMultiSelection = useCallback(
+			(id: string) => {
+				setSelectedKeyframeId(null);
+				onSelectZoom(null);
+				onSelectTrim?.(null);
+				onSelectClip?.(null);
+				onSelectAnnotation?.(null);
+				onSelectSpeed?.(null);
+				onSelectAudio?.(null);
+				setSelectAllBlocksActive(false);
+				setSelectedZoomBlockIds((prev) => {
+					const next = prev.includes(id)
+						? prev.filter((selectedId) => selectedId !== id)
+						: [...prev, id];
+					setSelectZoomBlocksActive(next.length > 0);
+					return next;
+				});
+			},
+			[
+				onSelectAnnotation,
+				onSelectAudio,
+				onSelectClip,
+				onSelectSpeed,
+				onSelectTrim,
+				onSelectZoom,
+			],
 		);
 
 		useEffect(() => {
@@ -1300,14 +1554,21 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 
 		// Keep newly added timeline regions at the original short default instead of
 		// scaling them with the full recording length.
-		const defaultRegionDurationMs = useMemo(() => Math.min(1000, totalMs), [totalMs]);
+		const defaultRegionDurationMs = useMemo(
+			() => Math.min(TIMELINE_DEFAULT_REGION_DURATION_MS, totalMs),
+			[totalMs],
+		);
+		const defaultZoomDurationMs = useMemo(
+			() => Math.min(TIMELINE_DEFAULT_ZOOM_DURATION_MS, totalMs),
+			[totalMs],
+		);
 
 		const handleAddZoom = useCallback(() => {
 			if (!videoDuration || videoDuration === 0 || totalMs === 0) {
 				return;
 			}
 
-			const defaultDuration = Math.min(defaultRegionDurationMs, totalMs);
+			const defaultDuration = Math.min(defaultZoomDurationMs, totalMs);
 			if (defaultDuration <= 0) {
 				return;
 			}
@@ -1331,7 +1592,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				return;
 			}
 
-			const actualDuration = Math.min(defaultRegionDurationMs, gapToNext);
+			const actualDuration = Math.min(defaultZoomDurationMs, gapToNext);
 			onZoomAdded({ start: startPos, end: startPos + actualDuration });
 		}, [
 			videoDuration,
@@ -1339,7 +1600,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			currentTimeMs,
 			zoomRegions,
 			onZoomAdded,
-			defaultRegionDurationMs,
+			defaultZoomDurationMs,
 		]);
 
 		const handleSuggestZooms = useCallback(() => {
@@ -1364,7 +1625,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				return;
 			}
 
-			const defaultDuration = Math.min(defaultRegionDurationMs, totalMs);
+			const defaultDuration = Math.min(defaultZoomDurationMs, totalMs);
 			if (defaultDuration <= 0) {
 				return;
 			}
@@ -1373,6 +1634,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				cursorTelemetry,
 				totalMs,
 				defaultDurationMs: defaultDuration,
+				autoZoomStyle,
 				reservedSpans: zoomRegions
 					.map((region) => ({ start: region.startMs, end: region.endMs }))
 					.sort((a, b) => a.start - b.start),
@@ -1409,7 +1671,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		}, [
 			videoDuration,
 			totalMs,
-			defaultRegionDurationMs,
+			defaultZoomDurationMs,
+			autoZoomStyle,
 			zoomRegions,
 			disableSuggestedZooms,
 			onZoomSuggested,
@@ -1669,129 +1932,71 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			[videoDuration, totalMs, currentTimeMs, onAnnotationAdded, defaultRegionDurationMs],
 		);
 
-		useEffect(() => {
-			const handleKeyDown = (e: KeyboardEvent) => {
-				if (
-					e.target instanceof HTMLInputElement ||
-					e.target instanceof HTMLTextAreaElement
-				) {
+		const zoomTimelineRange = useCallback(
+			(factor: number) => {
+				if (!Number.isFinite(factor) || factor <= 0 || totalMs <= 0) {
 					return;
 				}
 
-				if (matchesShortcut(e, { key: "a", ctrl: true }, isMac)) {
-					if (!hasAnyTimelineBlocks || !isTimelineFocusedRef.current) {
-						return;
+				setRange((previous) => {
+					const visibleSpan = Math.max(1, previous.end - previous.start);
+					const minVisibleSpan = Math.min(timelineScale.minVisibleRangeMs, totalMs);
+					const nextVisibleSpan = Math.max(
+						minVisibleSpan,
+						Math.min(totalMs, visibleSpan * factor),
+					);
+
+					if (Math.abs(nextVisibleSpan - visibleSpan) < 1) {
+						return previous;
 					}
 
-					e.preventDefault();
-					setSelectedKeyframeId(null);
-					setSelectAllBlocksActive(true);
+					const anchorMs =
+						currentTimeMs >= previous.start && currentTimeMs <= previous.end
+							? currentTimeMs
+							: previous.start + visibleSpan / 2;
+					const anchorRatio =
+						visibleSpan > 0
+							? Math.max(0, Math.min((anchorMs - previous.start) / visibleSpan, 1))
+							: 0.5;
+					const maxStart = Math.max(0, totalMs - nextVisibleSpan);
+					const nextStart = Math.max(
+						0,
+						Math.min(anchorMs - nextVisibleSpan * anchorRatio, maxStart),
+					);
+
+					return {
+						start: nextStart,
+						end: nextStart + nextVisibleSpan,
+					};
+				});
+			},
+			[currentTimeMs, timelineScale.minVisibleRangeMs, totalMs],
+		);
+
+		const fitTimelineRange = useCallback(() => {
+			if (totalMs <= 0) {
+				return;
+			}
+			setRange({ start: 0, end: totalMs });
+		}, [totalMs]);
+
+		const seekToMs = useCallback(
+			(timeMs: number) => {
+				if (!onSeek || totalMs <= 0) {
 					return;
 				}
+				const nextTimeMs = Math.max(0, Math.min(timeMs, totalMs));
+				onSeek(nextTimeMs / 1000);
+			},
+			[onSeek, totalMs],
+		);
 
-				if (matchesShortcut(e, keyShortcuts.addKeyframe, isMac)) {
-					addKeyframe();
-				}
-				if (matchesShortcut(e, keyShortcuts.addZoom, isMac)) {
-					handleAddZoom();
-				}
-				if (matchesShortcut(e, keyShortcuts.addTrim, isMac)) {
-					handleAddTrim();
-				}
-				if (matchesShortcut(e, keyShortcuts.splitClip, isMac)) {
-					handleSplitClip();
-				}
-				if (matchesShortcut(e, keyShortcuts.addAnnotation, isMac)) {
-					handleAddAnnotation();
-				}
-				if (matchesShortcut(e, keyShortcuts.addSpeed, isMac)) {
-					handleAddSpeed();
-				}
-
-				// Tab: Cycle through overlapping annotations at current time
-				if (e.key === "Tab" && annotationRegions.length > 0) {
-					const overlapping = annotationRegions
-						.filter((a) => currentTimeMs >= a.startMs && currentTimeMs <= a.endMs)
-						.sort((a, b) => a.zIndex - b.zIndex); // Sort by z-index
-
-					if (overlapping.length > 0) {
-						e.preventDefault();
-
-						if (
-							!selectedAnnotationId ||
-							!overlapping.some((a) => a.id === selectedAnnotationId)
-						) {
-							onSelectAnnotation?.(overlapping[0].id);
-						} else {
-							// Cycle to next annotation
-							const currentIndex = overlapping.findIndex(
-								(a) => a.id === selectedAnnotationId,
-							);
-							const nextIndex = e.shiftKey
-								? (currentIndex - 1 + overlapping.length) % overlapping.length // Shift+Tab = backward
-								: (currentIndex + 1) % overlapping.length; // Tab = forward
-							onSelectAnnotation?.(overlapping[nextIndex].id);
-						}
-					}
-				}
-				// Delete key or Ctrl+D / Cmd+D
-				if (
-					e.key === "Delete" ||
-					e.key === "Backspace" ||
-					matchesShortcut(e, keyShortcuts.deleteSelected, isMac)
-				) {
-					if (selectAllBlocksActive) {
-						e.preventDefault();
-						deleteAllBlocks();
-					} else if (selectedKeyframeId) {
-						deleteSelectedKeyframe();
-					} else if (selectedZoomId) {
-						deleteSelectedZoom();
-					} else if (selectedTrimId) {
-						deleteSelectedTrim();
-					} else if (selectedClipId) {
-						deleteSelectedClip();
-					} else if (selectedAnnotationId) {
-						deleteSelectedAnnotation();
-					} else if (selectedSpeedId) {
-						deleteSelectedSpeed();
-					} else if (selectedAudioId) {
-						deleteSelectedAudio();
-					}
-				}
-			};
-			window.addEventListener("keydown", handleKeyDown);
-			return () => window.removeEventListener("keydown", handleKeyDown);
-		}, [
-			addKeyframe,
-			handleAddZoom,
-			handleAddTrim,
-			handleSplitClip,
-			handleAddAnnotation,
-			handleAddSpeed,
-			deleteAllBlocks,
-			deleteSelectedKeyframe,
-			deleteSelectedZoom,
-			deleteSelectedTrim,
-			deleteSelectedClip,
-			deleteSelectedAnnotation,
-			deleteSelectedSpeed,
-			deleteSelectedAudio,
-			selectedKeyframeId,
-			selectedZoomId,
-			selectedTrimId,
-			selectedClipId,
-			selectedAnnotationId,
-			selectedSpeedId,
-			selectedAudioId,
-			annotationRegions,
-			currentTimeMs,
-			hasAnyTimelineBlocks,
-			onSelectAnnotation,
-			keyShortcuts,
-			isMac,
-			selectAllBlocksActive,
-		]);
+		const stepPlayhead = useCallback(
+			(deltaMs: number) => {
+				seekToMs(currentTimeMs + deltaMs);
+			},
+			[currentTimeMs, seekToMs],
+		);
 
 		const clampedRange = useMemo<Range>(() => {
 			if (totalMs === 0) {
@@ -1883,6 +2088,65 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			return [...zooms, ...clips, ...annotations, ...audios];
 		}, [zoomRegions, clipRegions, annotationRegions, audioRegions]);
 
+		const getActiveTimelineItems = useCallback(() => {
+			if (selectZoomBlocksActive && selectedZoomBlockIds.length > 0) {
+				const selectedZoomIds = new Set(selectedZoomBlockIds);
+				return timelineItems.filter((item) => selectedZoomIds.has(item.id));
+			}
+
+			const selectedId =
+				selectedZoomId ??
+				selectedTrimId ??
+				selectedClipId ??
+				selectedAnnotationId ??
+				selectedSpeedId ??
+				selectedAudioId;
+
+			if (!selectedId) {
+				return [];
+			}
+
+			return timelineItems.filter((item) => item.id === selectedId);
+		}, [
+			selectZoomBlocksActive,
+			selectedAnnotationId,
+			selectedAudioId,
+			selectedClipId,
+			selectedSpeedId,
+			selectedTrimId,
+			selectedZoomBlockIds,
+			selectedZoomId,
+			timelineItems,
+		]);
+
+		const zoomTimelineToActiveSelection = useCallback(() => {
+			if (totalMs <= 0) {
+				return;
+			}
+
+			const activeItems = getActiveTimelineItems();
+			if (activeItems.length === 0) {
+				fitTimelineRange();
+				return;
+			}
+
+			const start = Math.min(...activeItems.map((item) => item.span.start));
+			const end = Math.max(...activeItems.map((item) => item.span.end));
+			const selectionSpan = Math.max(end - start, timelineScale.minVisibleRangeMs);
+			const padding = selectionSpan * TIMELINE_SELECTION_PADDING_RATIO;
+			const visibleSpan = Math.min(
+				totalMs,
+				Math.max(timelineScale.minVisibleRangeMs, selectionSpan + padding * 2),
+			);
+			const center = (start + end) / 2;
+			const nextStart = Math.max(
+				0,
+				Math.min(center - visibleSpan / 2, totalMs - visibleSpan),
+			);
+
+			setRange({ start: nextStart, end: nextStart + visibleSpan });
+		}, [fitTimelineRange, getActiveTimelineItems, timelineScale.minVisibleRangeMs, totalMs]);
+
 		// Flat list of draggable row spans for neighbour-clamping during drag/resize.
 		const allRegionSpans = useMemo(() => {
 			const zooms = zoomRegions.map((r) => ({
@@ -1905,6 +2169,118 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			}));
 			return [...zooms, ...clips, ...audios];
 		}, [zoomRegions, clipRegions, audioRegions]);
+
+		const snapRegionSpans = useMemo<TimelineSnapSpan[]>(() => {
+			const zooms = zoomRegions.map((r) => ({
+				id: r.id,
+				start: r.startMs,
+				end: r.endMs,
+				rowId: ZOOM_ROW_ID,
+			}));
+			const trims = trimRegions.map((r) => ({
+				id: r.id,
+				start: r.startMs,
+				end: r.endMs,
+				rowId: "row-trim",
+			}));
+			const clips = clipRegions.map((r) => ({
+				id: r.id,
+				start: r.startMs,
+				end: r.endMs,
+				rowId: CLIP_ROW_ID,
+			}));
+			const annotations = annotationRegions.map((r) => ({
+				id: r.id,
+				start: r.startMs,
+				end: r.endMs,
+				rowId: getAnnotationTrackRowId(r.trackIndex ?? 0),
+			}));
+			const speeds = speedRegions.map((r) => ({
+				id: r.id,
+				start: r.startMs,
+				end: r.endMs,
+				rowId: "row-speed",
+			}));
+			const audios = audioRegions.map((r) => ({
+				id: r.id,
+				start: r.startMs,
+				end: r.endMs,
+				rowId: getAudioTrackRowId(r.trackIndex ?? 0),
+			}));
+			return [...zooms, ...trims, ...clips, ...annotations, ...speeds, ...audios];
+		}, [zoomRegions, trimRegions, clipRegions, annotationRegions, speedRegions, audioRegions]);
+
+		const snapItemSpan = useCallback(
+			(id: string, span: Span, rowId?: string): Span => {
+				if (totalMs <= 0 || !Number.isFinite(span.start) || !Number.isFinite(span.end)) {
+					return span;
+				}
+
+				const currentSpan = snapRegionSpans.find((candidate) => candidate.id === id);
+				const activeRowId = rowId ?? currentSpan?.rowId;
+				const anchors = [0, totalMs, Math.max(0, Math.min(currentTimeMs, totalMs))];
+
+				for (const candidate of snapRegionSpans) {
+					if (candidate.id === id) {
+						continue;
+					}
+					if (activeRowId && candidate.rowId !== activeRowId) {
+						continue;
+					}
+					anchors.push(candidate.start, candidate.end);
+				}
+
+				let nextStart = Math.max(0, Math.min(span.start, totalMs));
+				let nextEnd = Math.max(0, Math.min(span.end, totalMs));
+
+				if (nextEnd < nextStart) {
+					[nextStart, nextEnd] = [nextEnd, nextStart];
+				}
+
+				const minDuration = Math.min(safeMinDurationMs, totalMs);
+				if (nextEnd - nextStart < minDuration) {
+					nextEnd = Math.min(totalMs, nextStart + minDuration);
+					nextStart = Math.max(0, nextEnd - minDuration);
+				}
+
+				if (!isSnappingEnabled || primaryModifierPressedRef.current) {
+					return { start: nextStart, end: nextEnd };
+				}
+
+				const startDelta = getClosestSnapDelta(
+					nextStart,
+					anchors,
+					TIMELINE_SNAP_THRESHOLD_MS,
+				);
+				const endDelta = getClosestSnapDelta(nextEnd, anchors, TIMELINE_SNAP_THRESHOLD_MS);
+
+				if (startDelta !== null && endDelta !== null) {
+					const delta =
+						Math.abs(startDelta) <= Math.abs(endDelta) ? startDelta : endDelta;
+					const minDelta = -nextStart;
+					const maxDelta = totalMs - nextEnd;
+					const clampedDelta = Math.max(minDelta, Math.min(delta, maxDelta));
+					nextStart += clampedDelta;
+					nextEnd += clampedDelta;
+				} else if (startDelta !== null) {
+					nextStart = Math.max(0, Math.min(nextStart + startDelta, totalMs));
+				} else if (endDelta !== null) {
+					nextEnd = Math.max(0, Math.min(nextEnd + endDelta, totalMs));
+				}
+
+				if (nextEnd - nextStart < minDuration) {
+					if (startDelta !== null && endDelta === null) {
+						nextStart = Math.max(0, nextEnd - minDuration);
+					} else {
+						nextEnd = Math.min(totalMs, nextStart + minDuration);
+						nextStart = Math.max(0, nextEnd - minDuration);
+					}
+				}
+
+				return { start: nextStart, end: nextEnd };
+			},
+			[currentTimeMs, isSnappingEnabled, safeMinDurationMs, snapRegionSpans, totalMs],
+		);
 
 		const getResolvedDropRowId = useCallback(
 			(id: string, proposedRowId: string) => {
@@ -1930,33 +2306,35 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			[timelineItems],
 		);
 
-		const handleItemSpanChange = useCallback(
-			(id: string, span: Span, rowId?: string) => {
+		const commitItemSpanChange = useCallback(
+			(id: string, span: Span, rowId?: string, shouldSnap = true) => {
+				const nextSpan = shouldSnap ? snapItemSpan(id, span, rowId) : span;
 				// Check if it's a zoom, trim, clip, speed, or annotation item
 				if (zoomRegions.some((r) => r.id === id)) {
-					onZoomSpanChange(id, span);
+					onZoomSpanChange(id, nextSpan);
 				} else if (trimRegions.some((r) => r.id === id)) {
-					onTrimSpanChange?.(id, span);
+					onTrimSpanChange?.(id, nextSpan);
 				} else if (clipRegions.some((r) => r.id === id)) {
-					onClipSpanChange?.(id, span);
+					onClipSpanChange?.(id, nextSpan);
 				} else if (annotationRegions.some((r) => r.id === id)) {
 					const nextTrackIndex =
 						rowId && isAnnotationTrackRowId(rowId)
 							? getAnnotationTrackIndex(rowId)
 							: (annotationRegions.find((region) => region.id === id)?.trackIndex ??
 								0);
-					onAnnotationSpanChange?.(id, span, nextTrackIndex);
+					onAnnotationSpanChange?.(id, nextSpan, nextTrackIndex);
 				} else if (speedRegions.some((r) => r.id === id)) {
-					onSpeedSpanChange?.(id, span);
+					onSpeedSpanChange?.(id, nextSpan);
 				} else if (audioRegions.some((r) => r.id === id)) {
 					const nextTrackIndex =
 						rowId && isAudioTrackRowId(rowId)
 							? getAudioTrackIndex(rowId)
 							: (audioRegions.find((region) => region.id === id)?.trackIndex ?? 0);
-					onAudioSpanChange?.(id, span, nextTrackIndex);
+					onAudioSpanChange?.(id, nextSpan, nextTrackIndex);
 				}
 			},
 			[
+				snapItemSpan,
 				zoomRegions,
 				trimRegions,
 				clipRegions,
@@ -1971,6 +2349,368 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				onAudioSpanChange,
 			],
 		);
+
+		const handleItemSpanChange = useCallback(
+			(id: string, span: Span, rowId?: string) => {
+				commitItemSpanChange(id, span, rowId);
+			},
+			[commitItemSpanChange],
+		);
+
+		const canMoveTimelineItem = useCallback(
+			(_id: string, rowId: string) => rowId !== CLIP_ROW_ID,
+			[],
+		);
+
+		const nudgeActiveTimelineItems = useCallback(
+			(deltaMs: number) => {
+				if (totalMs <= 0) {
+					return;
+				}
+
+				const activeItems = getActiveTimelineItems();
+				if (activeItems.length === 0) {
+					return;
+				}
+
+				for (const item of activeItems) {
+					if (item.rowId === CLIP_ROW_ID) {
+						continue;
+					}
+
+					const duration = item.span.end - item.span.start;
+					if (duration <= 0) {
+						continue;
+					}
+					const nextStart = Math.max(
+						0,
+						Math.min(item.span.start + deltaMs, totalMs - duration),
+					);
+					commitItemSpanChange(
+						item.id,
+						{ start: nextStart, end: nextStart + duration },
+						item.rowId,
+						false,
+					);
+				}
+			},
+			[commitItemSpanChange, getActiveTimelineItems, totalMs],
+		);
+
+		const trimActiveTimelineItemToPlayhead = useCallback(
+			(edge: "start" | "end") => {
+				const [item] = getActiveTimelineItems();
+				if (!item || totalMs <= 0) {
+					return;
+				}
+
+				const playheadMs = Math.max(0, Math.min(currentTimeMs, totalMs));
+				let nextSpan = item.span;
+
+				if (edge === "start") {
+					if (playheadMs >= item.span.end - safeMinDurationMs) {
+						return;
+					}
+					nextSpan = { start: playheadMs, end: item.span.end };
+				} else {
+					if (playheadMs <= item.span.start + safeMinDurationMs) {
+						return;
+					}
+					nextSpan = { start: item.span.start, end: playheadMs };
+				}
+
+				commitItemSpanChange(item.id, nextSpan, item.rowId, false);
+			},
+			[
+				commitItemSpanChange,
+				currentTimeMs,
+				getActiveTimelineItems,
+				safeMinDurationMs,
+				totalMs,
+			],
+		);
+
+		useEffect(() => {
+			const handleKeyDown = (e: KeyboardEvent) => {
+				if (
+					e.target instanceof HTMLInputElement ||
+					e.target instanceof HTMLTextAreaElement
+				) {
+					return;
+				}
+
+				const isTimelineFocused = isTimelineFocusedRef.current;
+
+				if (
+					matchesShortcut(e, { key: ";", ctrl: true }, isMac) ||
+					matchesShortcut(e, { key: ";", ctrl: true, shift: true }, isMac)
+				) {
+					if (!isTimelineFocused) return;
+
+					e.preventDefault();
+					setIsSnappingEnabled((enabled) => {
+						const nextEnabled = !enabled;
+						toast.info(`Timeline snapping ${nextEnabled ? "enabled" : "disabled"}`);
+						return nextEnabled;
+					});
+					return;
+				}
+
+				if (
+					matchesShortcut(e, { key: "z", shift: true }, isMac) ||
+					matchesShortcut(e, { key: "0", ctrl: true }, isMac)
+				) {
+					if (!isTimelineFocused) return;
+
+					e.preventDefault();
+					fitTimelineRange();
+					return;
+				}
+
+				if (
+					matchesShortcut(e, { key: "f", ctrl: true }, isMac) ||
+					matchesShortcut(e, { key: "\\", ctrl: true }, isMac) ||
+					(e.key === "\\" && !e.ctrlKey && !e.metaKey && !e.altKey)
+				) {
+					if (!isTimelineFocused) return;
+
+					e.preventDefault();
+					zoomTimelineToActiveSelection();
+					return;
+				}
+
+				if (e.key === "Home" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+					if (!isTimelineFocused) return;
+
+					e.preventDefault();
+					seekToMs(0);
+					return;
+				}
+
+				if (e.key === "End" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+					if (!isTimelineFocused) return;
+
+					e.preventDefault();
+					seekToMs(totalMs);
+					return;
+				}
+
+				if (e.key === "," && !e.ctrlKey && !e.metaKey && !e.altKey) {
+					if (!isTimelineFocused) return;
+
+					e.preventDefault();
+					stepPlayhead(-TIMELINE_FRAME_STEP_MS);
+					return;
+				}
+
+				if (e.key === "." && !e.ctrlKey && !e.metaKey && !e.altKey) {
+					if (!isTimelineFocused) return;
+
+					e.preventDefault();
+					stepPlayhead(TIMELINE_FRAME_STEP_MS);
+					return;
+				}
+
+				if (matchesShortcut(e, { key: "m" }, isMac)) {
+					if (!isTimelineFocused) return;
+
+					e.preventDefault();
+					addKeyframe();
+					return;
+				}
+
+				if (matchesShortcut(e, { key: "ArrowLeft", alt: true }, isMac)) {
+					if (!isTimelineFocused) return;
+
+					e.preventDefault();
+					nudgeActiveTimelineItems(-TIMELINE_NUDGE_MS);
+					return;
+				}
+
+				if (matchesShortcut(e, { key: "ArrowRight", alt: true }, isMac)) {
+					if (!isTimelineFocused) return;
+
+					e.preventDefault();
+					nudgeActiveTimelineItems(TIMELINE_NUDGE_MS);
+					return;
+				}
+
+				if (matchesShortcut(e, { key: "i" }, isMac)) {
+					if (!isTimelineFocused) return;
+
+					e.preventDefault();
+					trimActiveTimelineItemToPlayhead("start");
+					return;
+				}
+
+				if (matchesShortcut(e, { key: "o" }, isMac)) {
+					if (!isTimelineFocused) return;
+
+					e.preventDefault();
+					trimActiveTimelineItemToPlayhead("end");
+					return;
+				}
+
+				const isTimelineZoomInShortcut =
+					matchesShortcut(e, { key: "+", ctrl: true }, isMac) ||
+					matchesShortcut(e, { key: "+", ctrl: true, shift: true }, isMac) ||
+					matchesShortcut(e, { key: "=", ctrl: true }, isMac) ||
+					matchesShortcut(e, { key: "=", ctrl: true, shift: true }, isMac);
+				const isTimelineZoomOutShortcut =
+					matchesShortcut(e, { key: "-", ctrl: true }, isMac) ||
+					matchesShortcut(e, { key: "_", ctrl: true, shift: true }, isMac);
+
+				if (isTimelineZoomInShortcut || isTimelineZoomOutShortcut) {
+					if (!isTimelineFocused) return;
+
+					e.preventDefault();
+					zoomTimelineRange(
+						isTimelineZoomInShortcut
+							? TIMELINE_KEYBOARD_ZOOM_FACTOR
+							: 1 / TIMELINE_KEYBOARD_ZOOM_FACTOR,
+					);
+					return;
+				}
+
+				if (matchesShortcut(e, { key: "a", ctrl: true }, isMac)) {
+					if (!hasAnyTimelineBlocks || !isTimelineFocused) return;
+
+					e.preventDefault();
+					setSelectedKeyframeId(null);
+					setSelectZoomBlocksActive(false);
+					setSelectedZoomBlockIds([]);
+					setSelectAllBlocksActive(true);
+					return;
+				}
+
+				if (matchesShortcut(e, { key: "y", ctrl: true, shift: true }, isMac)) {
+					if (zoomRegions.length === 0 || !isTimelineFocused) return;
+
+					e.preventDefault();
+					clearSelectedBlocks();
+					setSelectedKeyframeId(null);
+					setSelectedZoomBlockIds(zoomRegions.map((region) => region.id));
+					setSelectZoomBlocksActive(true);
+					return;
+				}
+
+				if (matchesShortcut(e, keyShortcuts.addKeyframe, isMac)) {
+					addKeyframe();
+				}
+				if (matchesShortcut(e, keyShortcuts.addZoom, isMac)) {
+					handleAddZoom();
+				}
+				if (matchesShortcut(e, keyShortcuts.addTrim, isMac)) {
+					handleAddTrim();
+				}
+				if (matchesShortcut(e, keyShortcuts.splitClip, isMac)) {
+					handleSplitClip();
+				}
+				if (matchesShortcut(e, keyShortcuts.addAnnotation, isMac)) {
+					handleAddAnnotation();
+				}
+				if (matchesShortcut(e, keyShortcuts.addSpeed, isMac)) {
+					handleAddSpeed();
+				}
+
+				if (e.key === "Tab" && annotationRegions.length > 0) {
+					const overlapping = annotationRegions
+						.filter((a) => currentTimeMs >= a.startMs && currentTimeMs <= a.endMs)
+						.sort((a, b) => a.zIndex - b.zIndex);
+
+					if (overlapping.length > 0) {
+						e.preventDefault();
+
+						if (
+							!selectedAnnotationId ||
+							!overlapping.some((a) => a.id === selectedAnnotationId)
+						) {
+							onSelectAnnotation?.(overlapping[0].id);
+						} else {
+							const currentIndex = overlapping.findIndex(
+								(a) => a.id === selectedAnnotationId,
+							);
+							const nextIndex = e.shiftKey
+								? (currentIndex - 1 + overlapping.length) % overlapping.length
+								: (currentIndex + 1) % overlapping.length;
+							onSelectAnnotation?.(overlapping[nextIndex].id);
+						}
+					}
+				}
+
+				if (
+					e.key === "Delete" ||
+					e.key === "Backspace" ||
+					matchesShortcut(e, keyShortcuts.deleteSelected, isMac)
+				) {
+					if (selectAllBlocksActive) {
+						e.preventDefault();
+						deleteAllBlocks();
+					} else if (selectZoomBlocksActive && selectedZoomBlockIds.length > 0) {
+						e.preventDefault();
+						deleteZoomBlocks();
+					} else if (selectedKeyframeId) {
+						deleteSelectedKeyframe();
+					} else if (selectedZoomId) {
+						deleteSelectedZoom();
+					} else if (selectedTrimId) {
+						deleteSelectedTrim();
+					} else if (selectedClipId) {
+						deleteSelectedClip();
+					} else if (selectedAnnotationId) {
+						deleteSelectedAnnotation();
+					} else if (selectedSpeedId) {
+						deleteSelectedSpeed();
+					} else if (selectedAudioId) {
+						deleteSelectedAudio();
+					}
+				}
+			};
+			window.addEventListener("keydown", handleKeyDown);
+			return () => window.removeEventListener("keydown", handleKeyDown);
+		}, [
+			addKeyframe,
+			handleAddZoom,
+			handleAddTrim,
+			handleSplitClip,
+			handleAddAnnotation,
+			handleAddSpeed,
+			clearSelectedBlocks,
+			deleteAllBlocks,
+			deleteZoomBlocks,
+			deleteSelectedKeyframe,
+			deleteSelectedZoom,
+			deleteSelectedTrim,
+			deleteSelectedClip,
+			deleteSelectedAnnotation,
+			deleteSelectedSpeed,
+			deleteSelectedAudio,
+			fitTimelineRange,
+			nudgeActiveTimelineItems,
+			seekToMs,
+			selectedKeyframeId,
+			selectedZoomId,
+			selectedTrimId,
+			selectedClipId,
+			selectedAnnotationId,
+			selectedSpeedId,
+			selectedAudioId,
+			annotationRegions,
+			currentTimeMs,
+			hasAnyTimelineBlocks,
+			onSelectAnnotation,
+			keyShortcuts,
+			isMac,
+			selectAllBlocksActive,
+			selectZoomBlocksActive,
+			selectedZoomBlockIds,
+			stepPlayhead,
+			totalMs,
+			trimActiveTimelineItemToPlayhead,
+			zoomTimelineRange,
+			zoomTimelineToActiveSelection,
+			zoomRegions,
+		]);
 
 		const panTimelineRange = useCallback(
 			(deltaMs: number) => {
@@ -2036,9 +2776,11 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						<Plus className="w-6 h-6 text-muted-foreground" />
 					</div>
 					<div className="text-center">
-						<p className="text-sm font-medium text-muted-foreground">No Video Loaded</p>
+						<p className="text-sm font-medium text-muted-foreground">
+							{t("timeline.noVideoLoaded", "No Video Loaded")}
+						</p>
 						<p className="text-xs text-muted-foreground/70 mt-1">
-							Drag and drop a video to start editing
+							{t("timeline.dragDropVideo", "Drag and drop a video to start editing")}
 						</p>
 					</div>
 				</div>
@@ -2055,7 +2797,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 								variant="ghost"
 								size="icon"
 								className="h-7 w-7 text-muted-foreground hover:text-[#2563EB] hover:bg-[#2563EB]/10 transition-all"
-								title="Add Zoom (Z)"
+								title={t("timeline.addZoom", "Add Zoom (Z)")}
 							>
 								<ZoomIn className="w-4 h-4" />
 							</Button>
@@ -2064,7 +2806,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 								variant="ghost"
 								size="icon"
 								className="h-7 w-7 text-muted-foreground hover:text-[#2563EB] hover:bg-[#2563EB]/10 transition-all"
-								title="Suggest Zooms from Cursor"
+								title={t("timeline.suggestZooms", "Suggest Zooms from Cursor")}
 							>
 								<WandSparkles className="w-4 h-4" />
 							</Button>
@@ -2073,7 +2815,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 								variant="ghost"
 								size="icon"
 								className="h-7 w-7 text-muted-foreground hover:text-[#B4A046] hover:bg-[#B4A046]/10 transition-all"
-								title="Add Annotation (A)"
+								title={t("timeline.addAnnotation", "Add Annotation (A)")}
 							>
 								<MessageSquare className="w-4 h-4" />
 							</Button>
@@ -2084,7 +2826,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 								variant="ghost"
 								size="icon"
 								className="h-7 w-7 text-muted-foreground hover:text-[#a855f7] hover:bg-[#a855f7]/10 transition-all"
-								title="Add Audio"
+								title={t("timeline.addAudio", "Add Audio")}
 							>
 								<Music className="w-4 h-4" />
 							</Button>
@@ -2093,7 +2835,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 								variant="ghost"
 								size="icon"
 								className="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-all"
-								title="Split Clip (C)"
+								title={t("timeline.splitClip", "Split Clip (C)")}
 							>
 								<Scissors className="w-4 h-4" />
 							</Button>
@@ -2107,7 +2849,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 										className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-all gap-1"
 									>
 										<span className="font-medium">
-											{getAspectRatioLabel(aspectRatio)}
+											{getLocalizedAspectRatioLabel(aspectRatio)}
 										</span>
 										<ChevronDown className="w-3 h-3" />
 									</Button>
@@ -2122,7 +2864,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 											onClick={() => onAspectRatioChange?.(ratio)}
 											className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer flex items-center justify-between gap-3"
 										>
-											<span>{getAspectRatioLabel(ratio)}</span>
+											<span>{getLocalizedAspectRatioLabel(ratio)}</span>
 											{aspectRatio === ratio && (
 												<Check className="w-3 h-3 text-[#2563EB]" />
 											)}
@@ -2130,7 +2872,9 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 									))}
 									<div className="mx-1 my-1 h-px bg-foreground/10" />
 									<div className="px-2 py-1.5 flex items-center gap-2 text-muted-foreground">
-										<span className="text-sm">Custom</span>
+										<span className="text-sm">
+											{t("timeline.customAspect", "Custom")}
+										</span>
 										<input
 											type="text"
 											inputMode="numeric"
@@ -2142,7 +2886,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 											}
 											onKeyDown={handleCustomAspectRatioKeyDown}
 											className="w-12 h-7 rounded border border-foreground/10 bg-foreground/5 px-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
-											aria-label="Custom aspect width"
+											aria-label={t(
+												"timeline.customAspectWidth",
+												"Custom aspect width",
+											)}
 										/>
 										<span className="text-muted-foreground/70">:</span>
 										<input
@@ -2156,7 +2903,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 											}
 											onKeyDown={handleCustomAspectRatioKeyDown}
 											className="w-12 h-7 rounded border border-foreground/10 bg-foreground/5 px-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
-											aria-label="Custom aspect height"
+											aria-label={t(
+												"timeline.customAspectHeight",
+												"Custom aspect height",
+											)}
 										/>
 										<Button
 											variant="ghost"
@@ -2164,7 +2914,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 											onClick={applyCustomAspectRatio}
 											className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/10"
 										>
-											Set
+											{t("timeline.setAspect", "Set")}
 										</Button>
 										{isCustomAspectRatio(aspectRatio) && (
 											<Check className="w-3 h-3 text-[#2563EB] ml-auto" />
@@ -2190,21 +2940,21 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						<div className="flex items-center gap-4 text-[10px] text-muted-foreground/70 font-medium">
 							<span className="flex items-center gap-1.5">
 								<kbd className="px-1.5 py-0.5 bg-foreground/5 border border-foreground/10 rounded text-[#2563EB] font-sans">
-									Side Scroll
+									{t("timeline.sideScroll", "Side Scroll")}
 								</kbd>
-								<span>Pan</span>
+								<span>{t("timeline.pan", "Pan")}</span>
 							</span>
 							<span className="flex items-center gap-1.5">
 								<kbd className="px-1.5 py-0.5 bg-foreground/5 border border-foreground/10 rounded text-[#2563EB] font-sans">
 									{scrollLabels.pan}
 								</kbd>
-								<span>Pan</span>
+								<span>{t("timeline.pan", "Pan")}</span>
 							</span>
 							<span className="flex items-center gap-1.5">
 								<kbd className="px-1.5 py-0.5 bg-foreground/5 border border-foreground/10 rounded text-[#2563EB] font-sans">
 									{scrollLabels.zoom}
 								</kbd>
-								<span>Zoom</span>
+								<span>{t("timeline.zoom", "Zoom")}</span>
 							</span>
 						</div>
 					</div>
@@ -2226,6 +2976,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					onClick={() => {
 						setSelectedKeyframeId(null);
 						setSelectAllBlocksActive(false);
+						setSelectZoomBlocksActive(false);
 					}}
 					onWheel={handleTimelineWheel}
 				>
@@ -2238,6 +2989,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						minVisibleRangeMs={timelineScale.minVisibleRangeMs}
 						onItemSpanChange={handleItemSpanChange}
 						resolveTargetRowId={getResolvedDropRowId}
+						canMoveItem={canMoveTimelineItem}
 						allRegionSpans={allRegionSpans}
 					>
 						<KeyframeMarkers
@@ -2266,6 +3018,11 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							selectedSpeedId={selectedSpeedId}
 							selectedAudioId={selectedAudioId}
 							selectAllBlocksActive={selectAllBlocksActive}
+							selectZoomBlocksActive={selectZoomBlocksActive}
+							selectedZoomBlockIds={selectedZoomBlockIds}
+							zoomMultiSelectActive={selectZoomBlocksActive}
+							onToggleZoomMultiSelection={toggleZoomMultiSelection}
+							onSetZoomMultiSelection={setZoomMultiSelection}
 							onClearBlockSelection={clearSelectedBlocks}
 							keyframes={keyframes}
 							audioPeaks={audioPeaks}

@@ -1,7 +1,7 @@
-import type { CursorTelemetryPoint, ZoomFocus } from "../types";
+import type { AutoZoomStyle, CursorTelemetryPoint, ZoomFocus } from "../types";
 
-export const MIN_DWELL_DURATION_MS = 450;
-export const MAX_DWELL_DURATION_MS = 2600;
+export const MIN_DWELL_DURATION_MS = 900;
+export const MAX_DWELL_DURATION_MS = 20000;
 export const DWELL_MOVE_THRESHOLD = 0.02;
 
 export interface ZoomDwellCandidate {
@@ -38,8 +38,75 @@ export interface InteractionZoomSuggestionResult {
 	suggestions: SuggestedZoomRegion[];
 }
 
-const DEFAULT_SUGGESTION_SPACING_MS = 1800;
-const DEFAULT_MERGE_NEARBY_GAP_MS = 1500;
+const DEFAULT_SUGGESTION_SPACING_MS = 6000;
+const DEFAULT_MERGE_NEARBY_GAP_MS = 4000;
+const DEFAULT_MAX_SUGGESTION_DURATION_MS = 20000;
+const LONG_DWELL_DURATION_PADDING_MS = 4000;
+
+export interface AutoZoomSuggestionConfig {
+	style: AutoZoomStyle;
+	minDwellDurationMs: number;
+	maxDwellDurationMs: number;
+	defaultDurationMs: number;
+	spacingMs: number;
+	mergeGapMs: number;
+	maxDurationMs: number;
+	longDwellPaddingMs: number;
+	genericClickMinStrengthMs: number;
+	clickLeadMs: number;
+	clickTailMs: number;
+}
+
+export const AUTO_ZOOM_SUGGESTION_CONFIGS: Record<
+	AutoZoomStyle,
+	AutoZoomSuggestionConfig
+> = {
+	lecture: {
+		style: "lecture",
+		minDwellDurationMs: 1200,
+		maxDwellDurationMs: 20000,
+		defaultDurationMs: 10000,
+		spacingMs: 6000,
+		mergeGapMs: 4000,
+		maxDurationMs: 20000,
+		longDwellPaddingMs: 4000,
+		genericClickMinStrengthMs: 1200,
+		clickLeadMs: 600,
+		clickTailMs: 3000,
+	},
+	demo: {
+		style: "demo",
+		minDwellDurationMs: 450,
+		maxDwellDurationMs: 8000,
+		defaultDurationMs: 4000,
+		spacingMs: 1800,
+		mergeGapMs: 1500,
+		maxDurationMs: 8000,
+		longDwellPaddingMs: 1800,
+		genericClickMinStrengthMs: 0,
+		clickLeadMs: 600,
+		clickTailMs: 3000,
+	},
+	conservative: {
+		style: "conservative",
+		minDwellDurationMs: 1800,
+		maxDwellDurationMs: 18000,
+		defaultDurationMs: 10000,
+		spacingMs: 10000,
+		mergeGapMs: 3000,
+		maxDurationMs: 18000,
+		longDwellPaddingMs: 2500,
+		genericClickMinStrengthMs: 2000,
+		clickLeadMs: 400,
+		clickTailMs: 2500,
+	},
+};
+
+export function getAutoZoomSuggestionConfig(
+	style: AutoZoomStyle = "lecture",
+): AutoZoomSuggestionConfig {
+	return AUTO_ZOOM_SUGGESTION_CONFIGS[style] ?? AUTO_ZOOM_SUGGESTION_CONFIGS.lecture;
+}
 
 function normalizeTelemetrySample(
 	sample: CursorTelemetryPoint,
@@ -135,7 +202,10 @@ export function normalizeCursorTelemetry(
 	return normalized;
 }
 
-export function detectZoomDwellCandidates(samples: CursorTelemetryPoint[]): ZoomDwellCandidate[] {
+export function detectZoomDwellCandidates(
+	samples: CursorTelemetryPoint[],
+	config: AutoZoomSuggestionConfig = getAutoZoomSuggestionConfig(),
+): ZoomDwellCandidate[] {
 	if (samples.length < 2) {
 		return [];
 	}
@@ -151,7 +221,7 @@ export function detectZoomDwellCandidates(samples: CursorTelemetryPoint[]): Zoom
 		const start = samples[startIndex];
 		const end = samples[endIndexExclusive - 1];
 		const runDuration = end.timeMs - start.timeMs;
-		if (runDuration < MIN_DWELL_DURATION_MS || runDuration > MAX_DWELL_DURATION_MS) {
+		if (runDuration < config.minDwellDurationMs) {
 			return;
 		}
 
@@ -162,7 +232,7 @@ export function detectZoomDwellCandidates(samples: CursorTelemetryPoint[]): Zoom
 		dwellCandidates.push({
 			centerTimeMs: Math.round((start.timeMs + end.timeMs) / 2),
 			focus: { cx: avgCx, cy: avgCy },
-			strength: runDuration,
+			strength: Math.min(runDuration, config.maxDwellDurationMs),
 		});
 	};
 
@@ -183,6 +253,7 @@ export function detectZoomDwellCandidates(samples: CursorTelemetryPoint[]): Zoom
 
 export function detectInteractionCandidates(
 	samples: CursorTelemetryPoint[],
+	config: AutoZoomSuggestionConfig = getAutoZoomSuggestionConfig(),
 ): CursorInteractionCandidate[] {
 	// --- Phase 1: Explicit interaction events (from uiohook telemetry) ---
 	const clickEvents = samples.filter(
@@ -197,14 +268,24 @@ export function detectInteractionCandidates(
 
 		const baseStrength =
 			kind === "double-click-like"
-				? 1500
+				? config.style === "demo"
+					? 2600
+					: 1500
 				: kind === "dropdown-open"
-					? 1200
+					? config.style === "demo"
+						? 2400
+						: 1200
 					: kind === "text-selection"
-						? 1300
+						? config.style === "demo"
+							? 2400
+							: 1300
 						: kind === "text-field-click"
-							? 1100
-							: 900;
+							? config.style === "demo"
+								? 2200
+								: 1100
+							: config.style === "demo"
+								? 1800
+								: 900;
 
 		explicitInteractionCandidates.push({
 			centerTimeMs: Math.round(clickSample.timeMs),
@@ -215,7 +296,7 @@ export function detectInteractionCandidates(
 	}
 
 	// --- Phase 2: Dwell-based heuristic candidates ---
-	const dwellCandidates = detectZoomDwellCandidates(samples).map<CursorInteractionCandidate>(
+	const dwellCandidates = detectZoomDwellCandidates(samples, config).map<CursorInteractionCandidate>(
 		(candidate) => {
 			if (candidate.strength >= 1100) {
 				return { ...candidate, kind: "text-focus-like" };
@@ -258,20 +339,26 @@ export function buildInteractionZoomSuggestions(params: {
 	cursorTelemetry: CursorTelemetryPoint[];
 	totalMs: number;
 	defaultDurationMs: number;
+	autoZoomStyle?: AutoZoomStyle;
 	reservedSpans?: Array<{ start: number; end: number }>;
 	spacingMs?: number;
 	mergeGapMs?: number;
+	maxDurationMs?: number;
 }): InteractionZoomSuggestionResult {
 	const {
 		cursorTelemetry,
 		totalMs,
 		defaultDurationMs,
+		autoZoomStyle = "lecture",
 		reservedSpans = [],
-		spacingMs = DEFAULT_SUGGESTION_SPACING_MS,
-		mergeGapMs = DEFAULT_MERGE_NEARBY_GAP_MS,
 	} = params;
+	const config = getAutoZoomSuggestionConfig(autoZoomStyle);
+	const spacingMs = params.spacingMs ?? config.spacingMs ?? DEFAULT_SUGGESTION_SPACING_MS;
+	const mergeGapMs = params.mergeGapMs ?? config.mergeGapMs ?? DEFAULT_MERGE_NEARBY_GAP_MS;
+	const maxDurationMs =
+		params.maxDurationMs ?? config.maxDurationMs ?? DEFAULT_MAX_SUGGESTION_DURATION_MS;
 
-	const defaultDuration = Math.min(defaultDurationMs, totalMs);
+	const defaultDuration = Math.min(config.defaultDurationMs ?? defaultDurationMs, totalMs);
 	if (defaultDuration <= 0) {
 		return { status: "no-slots", suggestions: [] };
 	}
@@ -281,15 +368,25 @@ export function buildInteractionZoomSuggestions(params: {
 		return { status: "no-telemetry", suggestions: [] };
 	}
 
-	const interactionCandidates = detectInteractionCandidates(normalizedSamples);
+	const interactionCandidates = detectInteractionCandidates(normalizedSamples, config);
 	if (interactionCandidates.length === 0) {
 		return { status: "no-interactions", suggestions: [] };
 	}
 
-	const sortedCandidates = [...interactionCandidates].sort((a, b) => b.strength - a.strength);
+	const meaningfulCandidates = interactionCandidates.filter(
+		(candidate) =>
+			candidate.kind !== "click-like" ||
+			candidate.strength >= config.genericClickMinStrengthMs,
+	);
+	if (meaningfulCandidates.length === 0) {
+		return { status: "no-interactions", suggestions: [] };
+	}
+
+	const sortedCandidates = [...meaningfulCandidates].sort((a, b) => b.strength - a.strength);
 	const acceptedCenters: number[] = [];
 	const accepted: SuggestedZoomRegion[] = [];
 	const reserved = [...reservedSpans].sort((a, b) => a.start - b.start);
+	const maxDuration = Math.max(defaultDuration, Math.min(maxDurationMs, totalMs));
 
 	sortedCandidates.forEach((candidate) => {
 		const tooCloseToAccepted = acceptedCenters.some(
@@ -300,9 +397,25 @@ export function buildInteractionZoomSuggestions(params: {
 			return;
 		}
 
-		const centeredStart = Math.round(candidate.centerTimeMs - defaultDuration / 2);
-		const candidateStart = Math.max(0, Math.min(centeredStart, totalMs - defaultDuration));
-		const candidateEnd = candidateStart + defaultDuration;
+		const candidateDuration = Math.min(
+			totalMs,
+			Math.max(
+				defaultDuration,
+				Math.min(
+					maxDuration,
+					candidate.strength + (config.longDwellPaddingMs ?? LONG_DWELL_DURATION_PADDING_MS),
+				),
+			),
+		);
+		const isClickDriven =
+			candidate.kind !== "dwell" && candidate.kind !== "text-focus-like";
+		const centeredStart = Math.round(
+			isClickDriven
+				? candidate.centerTimeMs - config.clickLeadMs
+				: candidate.centerTimeMs - candidateDuration / 2,
+		);
+		const candidateStart = Math.max(0, Math.min(centeredStart, totalMs - candidateDuration));
+		const candidateEnd = candidateStart + candidateDuration;
 		const hasOverlap = reserved.some(
 			(span) => candidateEnd > span.start && candidateStart < span.end,
 		);

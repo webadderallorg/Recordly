@@ -18,6 +18,7 @@ export function isZeroPadding(padding: Padding | number): boolean {
 
 export interface PaddedLayoutResult {
 	scale: number;
+	viewportScale: number;
 	centerOffsetX: number;
 	centerOffsetY: number;
 	spriteX: number;
@@ -30,6 +31,7 @@ export interface PaddedLayoutResult {
 	croppedDisplayHeight: number;
 	cropStartX: number;
 	cropStartY: number;
+	visibleSourceCrop: CropRegion;
 }
 
 export function computePaddedLayout(params: {
@@ -38,10 +40,15 @@ export function computePaddedLayout(params: {
 	padding: Padding | number;
 	frameInsets?: { top: number; right: number; bottom: number; left: number } | null;
 	cropRegion: CropRegion;
+	sceneScale?: number;
 	videoWidth: number;
 	videoHeight: number;
 }): PaddedLayoutResult {
 	const { width, height, padding, frameInsets, cropRegion, videoWidth, videoHeight } = params;
+	const sceneScale =
+		typeof params.sceneScale === "number" && Number.isFinite(params.sceneScale)
+			? Math.max(1, params.sceneScale)
+			: 1;
 
 	// Apply asymmetrical padding
 	const p =
@@ -74,18 +81,19 @@ export function computePaddedLayout(params: {
 	const fullFrameVideoW = croppedVideoWidth / screenFracW;
 	const fullFrameVideoH = croppedVideoHeight / screenFracH;
 
-	const scale = Math.min(
+	const viewportScale = Math.min(
 		fullFrameVideoW > 0 ? maxDisplayWidth / fullFrameVideoW : 0,
 		fullFrameVideoH > 0 ? maxDisplayHeight / fullFrameVideoH : 0,
 	);
+	const scale = viewportScale * sceneScale;
 
 	const fullVideoDisplayWidth = videoWidth * scale;
 	const fullVideoDisplayHeight = videoHeight * scale;
-	const croppedDisplayWidth = croppedVideoWidth * scale;
-	const croppedDisplayHeight = croppedVideoHeight * scale;
+	const croppedDisplayWidth = croppedVideoWidth * viewportScale;
+	const croppedDisplayHeight = croppedVideoHeight * viewportScale;
 
-	const fullFrameDisplayW = fullFrameVideoW * scale;
-	const fullFrameDisplayH = fullFrameVideoH * scale;
+	const fullFrameDisplayW = fullFrameVideoW * viewportScale;
+	const fullFrameDisplayH = fullFrameVideoH * viewportScale;
 
 	const availableCenterX = leftPadFrac * width + maxDisplayWidth / 2;
 	const availableCenterY = topPadFrac * height + maxDisplayHeight / 2;
@@ -100,11 +108,21 @@ export function computePaddedLayout(params: {
 		? frameCenterY + insets.top * fullFrameDisplayH
 		: frameCenterY;
 
-	const spriteX = centerOffsetX - crop.x * fullVideoDisplayWidth;
-	const spriteY = centerOffsetY - crop.y * fullVideoDisplayHeight;
+	const visibleWidth = crop.width / sceneScale;
+	const visibleHeight = crop.height / sceneScale;
+	const visibleSourceCrop = {
+		x: crop.x + (crop.width - visibleWidth) / 2,
+		y: crop.y + (crop.height - visibleHeight) / 2,
+		width: visibleWidth,
+		height: visibleHeight,
+	};
+
+	const spriteX = centerOffsetX - visibleSourceCrop.x * fullVideoDisplayWidth;
+	const spriteY = centerOffsetY - visibleSourceCrop.y * fullVideoDisplayHeight;
 
 	return {
 		scale,
+		viewportScale,
 		centerOffsetX,
 		centerOffsetY,
 		spriteX,
@@ -115,8 +133,9 @@ export function computePaddedLayout(params: {
 		fullVideoDisplayHeight,
 		croppedDisplayWidth,
 		croppedDisplayHeight,
-		cropStartX: crop.x * videoWidth,
-		cropStartY: crop.y * videoHeight,
+		cropStartX: visibleSourceCrop.x * videoWidth,
+		cropStartY: visibleSourceCrop.y * videoHeight,
+		visibleSourceCrop,
 	};
 }
 
@@ -130,6 +149,7 @@ interface LayoutParams {
 	lockedVideoDimensions?: { width: number; height: number } | null;
 	borderRadius?: number;
 	padding?: Padding | number;
+	sceneScale?: number;
 	/** Screen insets from the active device frame, used to scale/center the full frame */
 	frameInsets?: { top: number; right: number; bottom: number; left: number } | null;
 }
@@ -160,6 +180,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		lockedVideoDimensions,
 		borderRadius = 0,
 		padding = 0,
+		sceneScale = 1,
 		frameInsets,
 	} = params;
 
@@ -188,6 +209,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		padding,
 		frameInsets,
 		cropRegion: crop,
+		sceneScale,
 		videoWidth,
 		videoHeight,
 	});
@@ -215,7 +237,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 			y: layout.centerOffsetY,
 			width: layout.croppedDisplayWidth,
 			height: layout.croppedDisplayHeight,
-			sourceCrop: crop,
+			sourceCrop: layout.visibleSourceCrop,
 		},
 		cropBounds: {
 			startX: layout.cropStartX,

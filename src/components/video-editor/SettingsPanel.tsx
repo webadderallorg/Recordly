@@ -36,6 +36,7 @@ import { KeyboardShortcutsDialog } from "./TutorialHelp";
 import type {
 	AnnotationRegion,
 	AnnotationType,
+	AutoZoomStyle,
 	AutoCaptionAnimation,
 	AutoCaptionSettings,
 	CaptionCue,
@@ -51,9 +52,7 @@ import type {
 	ZoomMode,
 	ZoomTransitionEasing,
 } from "./types";
-import {
-	isZeroPadding,
-} from "./videoPlayback/layoutUtils";
+import { isZeroPadding } from "./videoPlayback/layoutUtils";
 import {
 	DEFAULT_AUTO_CAPTION_SETTINGS,
 	DEFAULT_CROP_REGION,
@@ -65,6 +64,7 @@ import {
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_CURSOR_SWAY,
 	DEFAULT_PADDING,
+	DEFAULT_SCENE_SCALE,
 	DEFAULT_WEBCAM_CORNER_RADIUS,
 	DEFAULT_WEBCAM_MARGIN,
 	DEFAULT_WEBCAM_POSITION_PRESET,
@@ -110,11 +110,15 @@ const GRADIENTS = [
 	"linear-gradient(to right, #0acffe 0%, #495aff 100%)",
 ];
 
-const CAPTION_ANIMATION_OPTIONS: Array<{ value: AutoCaptionAnimation; label: string }> = [
-	{ value: "none", label: "Off" },
-	{ value: "fade", label: "Fade" },
-	{ value: "rise", label: "Rise" },
-	{ value: "pop", label: "Pop" },
+const CAPTION_ANIMATION_OPTIONS: Array<{
+	value: AutoCaptionAnimation;
+	labelKey: string;
+	fallback: string;
+}> = [
+	{ value: "none", labelKey: "captions.animationOff", fallback: "Off" },
+	{ value: "fade", labelKey: "captions.animationFade", fallback: "Fade" },
+	{ value: "rise", labelKey: "captions.animationRise", fallback: "Rise" },
+	{ value: "pop", labelKey: "captions.animationPop", fallback: "Pop" },
 ];
 
 type BackgroundTab = "image" | "video" | "color" | "gradient";
@@ -355,6 +359,8 @@ interface SettingsPanelProps {
 	onConnectZoomsChange?: (enabled: boolean) => void;
 	autoApplyFreshRecordingAutoZooms?: boolean;
 	onAutoApplyFreshRecordingAutoZoomsChange?: (enabled: boolean) => void;
+	autoZoomStyle?: AutoZoomStyle;
+	onAutoZoomStyleChange?: (style: AutoZoomStyle) => void;
 	zoomInDurationMs?: number;
 	onZoomInDurationMsChange?: (duration: number) => void;
 	zoomInOverlapMs?: number;
@@ -395,6 +401,8 @@ interface SettingsPanelProps {
 	onCursorSwayChange?: (amount: number) => void;
 	borderRadius?: number;
 	onBorderRadiusChange?: (radius: number) => void;
+	sceneScale?: number;
+	onSceneScaleChange?: (scale: number) => void;
 	webcam?: WebcamOverlaySettings;
 	onWebcamChange?: (webcam: WebcamOverlaySettings) => void;
 	onUploadWebcam?: () => void;
@@ -477,16 +485,16 @@ const BUILTIN_CURSOR_STYLE_OPTIONS: CursorStyleOption[] = [
 ];
 
 const CAPTION_LANGUAGE_OPTIONS = [
-	{ value: "auto", label: "Auto Detect" },
-	{ value: "en", label: "English" },
-	{ value: "es", label: "Spanish" },
-	{ value: "fr", label: "French" },
-	{ value: "de", label: "German" },
-	{ value: "it", label: "Italian" },
-	{ value: "pt", label: "Portuguese" },
-	{ value: "zh", label: "Chinese" },
-	{ value: "ja", label: "Japanese" },
-	{ value: "ko", label: "Korean" },
+	{ value: "auto", labelKey: "captions.languages.auto", fallback: "Auto Detect" },
+	{ value: "en", labelKey: "captions.languages.en", fallback: "English" },
+	{ value: "es", labelKey: "captions.languages.es", fallback: "Spanish" },
+	{ value: "fr", labelKey: "captions.languages.fr", fallback: "French" },
+	{ value: "de", labelKey: "captions.languages.de", fallback: "German" },
+	{ value: "it", labelKey: "captions.languages.it", fallback: "Italian" },
+	{ value: "pt", labelKey: "captions.languages.pt", fallback: "Portuguese" },
+	{ value: "zh", labelKey: "captions.languages.zh", fallback: "Chinese" },
+	{ value: "ja", labelKey: "captions.languages.ja", fallback: "Japanese" },
+	{ value: "ko", labelKey: "captions.languages.ko", fallback: "Korean" },
 ] as const;
 
 const APP_LANGUAGE_LABELS: Record<AppLocale, string> = {
@@ -712,6 +720,8 @@ export function SettingsPanel({
 	onConnectZoomsChange,
 	autoApplyFreshRecordingAutoZooms = true,
 	onAutoApplyFreshRecordingAutoZoomsChange,
+	autoZoomStyle = "lecture",
+	onAutoZoomStyleChange,
 	showCursor = false,
 	onShowCursorChange,
 	loopCursor = false,
@@ -736,6 +746,8 @@ export function SettingsPanel({
 	onCursorSwayChange,
 	borderRadius = 12.5,
 	onBorderRadiusChange,
+	sceneScale = DEFAULT_SCENE_SCALE,
+	onSceneScaleChange,
 	webcam,
 	onWebcamChange,
 	onUploadWebcam,
@@ -1341,6 +1353,7 @@ export function SettingsPanel({
 	const resetFrameSection = () => {
 		onShadowChange?.(initialEditorPreferences.shadowIntensity);
 		onBorderRadiusChange?.(initialEditorPreferences.borderRadius);
+		onSceneScaleChange?.(DEFAULT_SCENE_SCALE);
 		onPaddingChange?.(DEFAULT_PADDING);
 		onFrameChange?.(null);
 		onAspectRatioChange?.(initialEditorPreferences.aspectRatio);
@@ -1831,6 +1844,17 @@ export function SettingsPanel({
 					formatValue={(v) => `${v}px`}
 					parseInput={(text) => parseFloat(text.replace(/px$/, ""))}
 				/>
+				<SliderControl
+					label={tSettings("effects.sceneScale", "Base scale")}
+					value={sceneScale}
+					defaultValue={DEFAULT_SCENE_SCALE}
+					min={1}
+					max={2}
+					step={0.01}
+					onChange={(v) => onSceneScaleChange?.(v)}
+					formatValue={(v) => `${Math.round(v * 100)}%`}
+					parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
+				/>
 				<div className="flex flex-col gap-1.5 pt-0.5">
 					<div className="flex items-center justify-between">
 						<span className="text-[10px] text-muted-foreground">
@@ -1843,8 +1867,14 @@ export function SettingsPanel({
 							className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
 							title={
 								padding.linked === false
-									? tSettings("effects.paddingAdvancedHide", "Hide advanced padding controls")
-									: tSettings("effects.paddingAdvancedShow", "Show advanced padding controls")
+									? tSettings(
+											"effects.paddingAdvancedHide",
+											"Hide advanced padding controls",
+										)
+									: tSettings(
+											"effects.paddingAdvancedShow",
+											"Show advanced padding controls",
+										)
 							}
 						>
 							{tSettings("effects.paddingAdvanced", "Advanced")}
@@ -1926,14 +1956,16 @@ export function SettingsPanel({
 				{availableFrames.length > 0 && (
 					<div className="flex flex-col gap-1.5 mt-1">
 						<div className="flex items-center justify-between">
-							<span className="text-[10px] text-muted-foreground">Frame</span>
+							<span className="text-[10px] text-muted-foreground">
+								{tSettings("sections.frame", "Frame")}
+							</span>
 							{frame && (
 								<button
 									type="button"
 									onClick={() => onFrameChange?.(null)}
 									className="text-[9px] text-[#2563EB] hover:opacity-80"
 								>
-									Remove
+									{t("common.actions.remove", "Remove")}
 								</button>
 							)}
 						</div>
@@ -2084,7 +2116,7 @@ export function SettingsPanel({
 						<SelectContent className="border-foreground/10 bg-editor-surface-alt text-foreground">
 							{CAPTION_LANGUAGE_OPTIONS.map((option) => (
 								<SelectItem key={option.value} value={option.value}>
-									{option.label}
+									{tSettings(option.labelKey, option.fallback)}
 								</SelectItem>
 							))}
 						</SelectContent>
@@ -2184,7 +2216,7 @@ export function SettingsPanel({
 						<SelectContent className="border-foreground/10 bg-editor-surface-alt text-foreground">
 							{CAPTION_ANIMATION_OPTIONS.map((option) => (
 								<SelectItem key={option.value} value={option.value}>
-									{option.label}
+									{tSettings(option.labelKey, option.fallback)}
 								</SelectItem>
 							))}
 						</SelectContent>
@@ -2346,6 +2378,34 @@ export function SettingsPanel({
 							onCheckedChange={onAutoApplyFreshRecordingAutoZoomsChange}
 							className="data-[state=checked]:bg-[#2563EB] scale-75"
 						/>
+					</div>
+					<div className="flex flex-col gap-2 rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+						<div>
+							<div className="text-[11px] font-medium text-foreground">
+								{tSettings("effects.autoZoomStyle", "Auto Zoom style")}
+							</div>
+							<div className="mt-0.5 text-[10px] text-muted-foreground/70">
+								{tSettings(
+									`effects.autoZoomStyleDescriptions.${autoZoomStyle}`,
+									"Choose how aggressively Recordly turns cursor activity into zooms.",
+								)}
+							</div>
+						</div>
+						<Select
+							value={autoZoomStyle}
+							onValueChange={(value) => onAutoZoomStyleChange?.(value as AutoZoomStyle)}
+						>
+							<SelectTrigger className="h-9 w-full rounded-lg border-foreground/10 bg-foreground/5 text-xs text-foreground hover:bg-foreground/10">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent className="border-foreground/10 bg-editor-surface-alt text-foreground">
+								{(["lecture", "demo", "conservative"] as AutoZoomStyle[]).map((style) => (
+									<SelectItem key={style} value={style}>
+										{tSettings(`effects.autoZoomStyleOptions.${style}`, style)}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
 					</div>
 					<div className="flex items-center justify-between gap-3 rounded-lg bg-foreground/[0.03] px-2.5 py-2">
 						<div>
@@ -2666,27 +2726,33 @@ export function SettingsPanel({
 									className="grid grid-cols-4 gap-2"
 									aria-label={tSettings("effects.cursorStyle", "Cursor Style")}
 								>
-									{cursorStyleOptions.map((option) => (
-										<ToggleGroupItem
-											key={option.value}
-											value={option.value}
-											title={option.label}
-											aria-label={option.label}
-											className={cn(
-												"group aspect-square h-auto min-w-0 rounded-[10px] border border-foreground/10 bg-foreground/[0.03] p-3 text-left text-foreground shadow-none transition-all hover:border-foreground/20 hover:bg-foreground/[0.06]",
-												"data-[state=on]:border-[#2563EB]/70 data-[state=on]:bg-[#2563EB]/12 data-[state=on]:text-foreground",
-											)}
-										>
-											<div className="flex h-full flex-col items-center justify-between gap-3">
-												<div className="flex min-h-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5">
-													<CursorStylePreview
-														style={option.value}
-														previewUrls={cursorPreviewUrls}
-													/>
+									{cursorStyleOptions.map((option) => {
+										const optionLabel = tSettings(
+											`effects.cursorStyleOptions.${option.value}`,
+											option.label,
+										);
+										return (
+											<ToggleGroupItem
+												key={option.value}
+												value={option.value}
+												title={optionLabel}
+												aria-label={optionLabel}
+												className={cn(
+													"group aspect-square h-auto min-w-0 rounded-[10px] border border-foreground/10 bg-foreground/[0.03] p-3 text-left text-foreground shadow-none transition-all hover:border-foreground/20 hover:bg-foreground/[0.06]",
+													"data-[state=on]:border-[#2563EB]/70 data-[state=on]:bg-[#2563EB]/12 data-[state=on]:text-foreground",
+												)}
+											>
+												<div className="flex h-full flex-col items-center justify-between gap-3">
+													<div className="flex min-h-0 flex-1 items-center justify-center rounded-lg px-2 py-1.5">
+														<CursorStylePreview
+															style={option.value}
+															previewUrls={cursorPreviewUrls}
+														/>
+													</div>
 												</div>
-											</div>
-										</ToggleGroupItem>
-									))}
+											</ToggleGroupItem>
+										);
+									})}
 								</ToggleGroup>
 							</div>
 							<SliderControl

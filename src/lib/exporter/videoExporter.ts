@@ -59,6 +59,7 @@ interface VideoExporterConfig extends ExportConfig {
 	connectedZoomEasing?: ZoomTransitionEasing;
 	borderRadius?: number;
 	padding?: Padding | number;
+	sceneScale?: number;
 	videoPadding?: number;
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
@@ -203,6 +204,7 @@ export class VideoExporter {
 				connectedZoomEasing: this.config.connectedZoomEasing,
 				borderRadius: this.config.borderRadius,
 				padding: this.config.padding,
+				sceneScale: this.config.sceneScale,
 				cropRegion: this.config.cropRegion,
 				webcam: this.config.webcam,
 				webcamUrl: this.config.webcamUrl,

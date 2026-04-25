@@ -6,7 +6,8 @@
 		"modeAuto": "Automatique",
 		"modeManual": "Manuel",
 		"modeManualDescription": "Définir un point de focus fixe pour ce zoom",
-		"modeAutoDescription": "La caméra suit automatiquement le curseur"
+		"modeAutoDescription": "La caméra suit automatiquement le curseur",
+		"globalSettings": "Animation"
 	},
 	"trim": {
 		"deleteRegion": "Supprimer la zone de découpe"
@@ -100,7 +101,25 @@
 		"paddingBottom": "Bas",
 		"paddingLeft": "Gauche",
 		"paddingRight": "Droite",
-		"removeBackground": "Supprimer l’arrière-plan"
+		"removeBackground": "Supprimer l’arrière-plan",
+		"sceneScale": "Base scale",
+		"zoomSmoothness": "Zoom Smoothness",
+		"classicZoom": "Classic Animation",
+		"webcamPosition": "Position",
+		"webcamHorizontal": "Horizontal",
+		"webcamVertical": "Vertical",
+		"webcamMargin": "Margin",
+		"autoZoomStyle": "Auto Zoom style",
+		"autoZoomStyleOptions": {
+			"lecture": "Lecture",
+			"demo": "Product demo",
+			"conservative": "Conservative"
+		},
+		"autoZoomStyleDescriptions": {
+			"lecture": "Prefer longer focus holds for narrated walkthroughs.",
+			"demo": "React faster to clicks and short product-demo actions.",
+			"conservative": "Create fewer zooms and require clearer focus moments."
+		}
 	},
 	"sections": {
 		"scene": "Scène",
@@ -109,7 +128,9 @@
 		"cursor": "Curseur",
 		"webcam": "Webcam",
 		"frame": "Cadre",
-		"crop": "Recadrage"
+		"crop": "Recadrage",
+		"settings": "Settings",
+		"extensions": "Extensions"
 	},
 	"captions": {
 		"enabled": "Afficher",
@@ -136,7 +157,20 @@
 		"maxWidth": "Largeur max",
 		"boxRadius": "Rayon de la boîte",
 		"backgroundOpacity": "Opacité de l’arrière-plan",
-		"textColor": "Couleur du texte"
+		"textColor": "Couleur du texte",
+		"selectModel": "Select Model",
+		"languages": {
+			"auto": "Auto Detect",
+			"en": "English",
+			"es": "Spanish",
+			"fr": "French",
+			"de": "German",
+			"it": "Italian",
+			"pt": "Portuguese",
+			"zh": "Chinese",
+			"ja": "Japanese",
+			"ko": "Korean"
+		}
 	},
 	"crop": {
 		"title": "Recadrer la vidéo",
@@ -156,7 +190,9 @@
 		"uploadCustom": "Importer un fond personnalisé",
 		"uploadSuccess": "Image personnalisée importée avec succès !",
 		"uploadError": "Veuillez importer un fichier image JPG ou JPEG.",
-		"uploadErrorDescription": "Seules les images JPG et JPEG sont prises en charge."
+		"uploadErrorDescription": "Seules les images JPG et JPEG sont prises en charge.",
+		"video": "Video",
+		"uploadCustomVideo": "Upload Video"
 	},
 	"export": {
 		"title": "Exportation",
@@ -178,6 +214,36 @@
 		"saveProject": "Enregistrer le projet",
 		"exportVideo": "Exporter en {{format}}",
 		"reportBug": "Signaler un bug",
-		"starOnGithub": "Mettre une étoile sur GitHub"
+		"starOnGithub": "Mettre une étoile sur GitHub",
+		"encodingTitle": "Encoding",
+		"encoding": {
+			"fast": "Fast",
+			"balanced": "Balanced",
+			"quality": "Quality"
+		},
+		"pipelineTitle": "Pipeline",
+		"pipeline": {
+			"legacy": "Legacy",
+			"modern": "Lightning (Beta)"
+		}
+	},
+	"timeline": {
+		"noVideoLoaded": "No Video Loaded",
+		"dragDropVideo": "Drag and drop a video to start editing",
+		"addZoom": "Add Zoom (Z)",
+		"suggestZooms": "Suggest Zooms from Cursor",
+		"addAnnotation": "Add Annotation (A)",
+		"addAudio": "Add Audio",
+		"splitClip": "Split Clip (C)",
+		"aspectNative": "Native",
+		"aspectCustom": "Custom {{ratio}}",
+		"customAspect": "Custom",
+		"customAspectWidth": "Custom aspect width",
+		"customAspectHeight": "Custom aspect height",
+		"customAspectError": "Custom aspect ratio must be positive numbers.",
+		"setAspect": "Set",
+		"sideScroll": "Side Scroll",
+		"pan": "Pan",
+		"zoom": "Zoom"
 	}
 }

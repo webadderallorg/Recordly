@@ -68,6 +68,7 @@ type UseScreenRecorderReturn = {
 	preparePermissions: (options?: { startup?: boolean }) => Promise<boolean>;
 	isMacOS: boolean;
 	microphoneEnabled: boolean;
+	microphonePreferenceSet: boolean;
 	setMicrophoneEnabled: (enabled: boolean) => void;
 	microphoneDeviceId: string | undefined;
 	setMicrophoneDeviceId: (deviceId: string | undefined) => void;
@@ -119,6 +120,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const [countdownActive, setCountdownActive] = useState(false);
 	const [isMacOS, setIsMacOS] = useState(false);
 	const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
+	const [microphonePreferenceSet, setMicrophonePreferenceSet] = useState(false);
 	const [microphoneDeviceId, setMicrophoneDeviceId] = useState<string | undefined>(undefined);
 	const [systemAudioEnabled, setSystemAudioEnabled] = useState(false);
 	const [webcamEnabled, setWebcamEnabled] = useState(false);
@@ -805,6 +807,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			const result = await window.electronAPI.getRecordingPreferences();
 			if (result.success) {
 				setMicrophoneEnabled(result.microphoneEnabled);
+				setMicrophonePreferenceSet(result.microphonePreferenceSet === true);
 				if (result.microphoneDeviceId) {
 					setMicrophoneDeviceId(result.microphoneDeviceId);
 				}
@@ -815,6 +818,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 	const persistMicrophoneEnabled = useCallback((enabled: boolean) => {
 		setMicrophoneEnabled(enabled);
+		setMicrophonePreferenceSet(true);
 		void window.electronAPI.setRecordingPreferences({ microphoneEnabled: enabled });
 	}, []);
 
@@ -1550,6 +1554,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		preparePermissions,
 		isMacOS,
 		microphoneEnabled,
+		microphonePreferenceSet,
 		setMicrophoneEnabled: persistMicrophoneEnabled,
 		microphoneDeviceId,
 		setMicrophoneDeviceId: persistMicrophoneDeviceId,

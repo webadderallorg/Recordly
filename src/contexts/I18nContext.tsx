@@ -72,6 +72,7 @@ import zhCNShortcuts from "@/i18n/locales/zh-CN/shortcuts.json";
 import zhCNTimeline from "@/i18n/locales/zh-CN/timeline.json";
 
 const LOCALE_STORAGE_KEY = "recordly.locale";
+const DEFAULT_LOCALE_MIGRATION_KEY = "recordly.locale.default.zh-CN.v1";
 
 type LocaleBundle = Record<I18nNamespace, Record<string, unknown>>;
 
@@ -195,12 +196,17 @@ function getInitialLocale(): AppLocale {
 	}
 
 	const storedLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY);
+	const migratedDefaultLocale = window.localStorage.getItem(DEFAULT_LOCALE_MIGRATION_KEY);
+	if (!migratedDefaultLocale && (!storedLocale || normalizeLocale(storedLocale) === "en")) {
+		window.localStorage.setItem(LOCALE_STORAGE_KEY, DEFAULT_LOCALE);
+		window.localStorage.setItem(DEFAULT_LOCALE_MIGRATION_KEY, "1");
+		return DEFAULT_LOCALE;
+	}
+
 	if (storedLocale) {
 		return normalizeLocale(storedLocale);
 	}
 
-	// Product default must be English on first launch unless user explicitly
-	// selected another locale and we persisted it in localStorage.
 	return DEFAULT_LOCALE;
 }
 

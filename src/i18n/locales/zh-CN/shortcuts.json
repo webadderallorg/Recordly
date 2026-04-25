@@ -2,6 +2,7 @@
 	"actions": {
 		"addZoom": "添加缩放",
 		"addTrim": "添加修剪",
+		"splitClip": "拆分片段",
 		"addSpeed": "添加变速",
 		"addAnnotation": "添加注释",
 		"addKeyframe": "添加关键帧",
@@ -10,6 +11,24 @@
 		"cycleForward": "向前循环切换注释",
 		"cycleBackward": "向后循环切换注释",
 		"deleteSelectedAlt": "删除选中（替代）",
+		"panTimeline": "平移时间线",
+		"zoomTimeline": "缩放时间线"
+	},
+	"fixed": {
+		"cycleAnnotationsForward": "向前循环切换注释",
+		"cycleAnnotationsBackward": "向后循环切换注释",
+		"deleteSelectedAlt": "删除选中（替代）",
+		"selectZoomBlocks": "全选缩放块",
+		"zoomTimelineIn": "放大时间线",
+		"zoomTimelineOut": "缩小时间线",
+		"fitTimeline": "适配时间线",
+		"zoomToSelection": "缩放到选中项",
+		"toggleTimelineSnapping": "切换时间线吸附",
+		"addTimelineMarker": "添加时间线标记",
+		"trimSelectionToPlayhead": "按播放头裁剪选中项",
+		"nudgeSelection": "微移选中项",
+		"stepPlayhead": "逐帧移动播放头",
+		"jumpToTimelineEdge": "跳到时间线边缘",
 		"panTimeline": "平移时间线",
 		"zoomTimeline": "缩放时间线"
 	}

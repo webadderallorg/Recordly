@@ -11,6 +11,25 @@
 		"cycleBackward": "Recorrer anotaciones hacia atrás",
 		"deleteSelectedAlt": "Eliminar seleccionado (alt)",
 		"panTimeline": "Desplazar línea de tiempo",
-		"zoomTimeline": "Zoom en línea de tiempo"
+		"zoomTimeline": "Zoom en línea de tiempo",
+		"splitClip": "Split Clip"
+	},
+	"fixed": {
+		"cycleAnnotationsForward": "Cycle Annotations Forward",
+		"cycleAnnotationsBackward": "Cycle Annotations Backward",
+		"deleteSelectedAlt": "Delete Selected (alt)",
+		"selectZoomBlocks": "Select Zoom Blocks",
+		"zoomTimelineIn": "Zoom Timeline In",
+		"zoomTimelineOut": "Zoom Timeline Out",
+		"fitTimeline": "Fit Timeline",
+		"zoomToSelection": "Zoom to Selection",
+		"toggleTimelineSnapping": "Toggle Timeline Snapping",
+		"addTimelineMarker": "Add Timeline Marker",
+		"trimSelectionToPlayhead": "Trim Selection to Playhead",
+		"nudgeSelection": "Nudge Selection",
+		"stepPlayhead": "Step Playhead",
+		"jumpToTimelineEdge": "Jump to Timeline Edge",
+		"panTimeline": "Pan Timeline",
+		"zoomTimeline": "Zoom Timeline"
 	}
 }

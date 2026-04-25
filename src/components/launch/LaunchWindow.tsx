@@ -31,7 +31,10 @@ import type { AppLocale } from "@/i18n/config";
 import { SUPPORTED_LOCALES } from "@/i18n/config";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useAudioLevelMeter } from "../../hooks/useAudioLevelMeter";
-import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
+import {
+	pickBestMicrophoneDevice,
+	useMicrophoneDevices,
+} from "../../hooks/useMicrophoneDevices";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { useVideoDevices } from "../../hooks/useVideoDevices";
 import { AudioLevelMeter } from "../ui/audio-level-meter";
@@ -170,6 +173,7 @@ export function LaunchWindow() {
 		resumeRecording,
 		cancelRecording,
 		microphoneEnabled,
+		microphonePreferenceSet,
 		setMicrophoneEnabled,
 		microphoneDeviceId,
 		setMicrophoneDeviceId,
@@ -261,7 +265,7 @@ export function LaunchWindow() {
 	const shouldStreamWebcamPreview =
 		webcamEnabled && (showRecordingWebcamPreview || (showWebcamControls && webcamDropdownOpen));
 	const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(
-		microphoneEnabled || micDropdownOpen,
+		microphoneEnabled || micDropdownOpen || !microphonePreferenceSet,
 		microphoneDeviceId,
 	);
 	const {
@@ -279,6 +283,28 @@ export function LaunchWindow() {
 
 		setMicrophoneDeviceId(selectedDeviceId === "default" ? undefined : selectedDeviceId);
 	}, [selectedDeviceId, setMicrophoneDeviceId]);
+
+	useEffect(() => {
+		if (microphonePreferenceSet || microphoneEnabled || devices.length === 0) {
+			return;
+		}
+
+		const bestDevice = pickBestMicrophoneDevice(devices);
+		if (!bestDevice) {
+			return;
+		}
+
+		setMicrophoneEnabled(true);
+		setSelectedDeviceId(bestDevice.deviceId);
+		setMicrophoneDeviceId(bestDevice.deviceId === "default" ? undefined : bestDevice.deviceId);
+	}, [
+		devices,
+		microphoneEnabled,
+		microphonePreferenceSet,
+		setMicrophoneDeviceId,
+		setMicrophoneEnabled,
+		setSelectedDeviceId,
+	]);
 
 	useEffect(() => {
 		if (selectedVideoDeviceId && selectedVideoDeviceId !== "default") {

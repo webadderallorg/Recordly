@@ -555,6 +555,7 @@ interface Window {
 		getRecordingPreferences: () => Promise<{
 			success: boolean;
 			microphoneEnabled: boolean;
+			microphonePreferenceSet?: boolean;
 			microphoneDeviceId?: string;
 			systemAudioEnabled: boolean;
 		}>;

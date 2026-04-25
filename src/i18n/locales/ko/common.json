@@ -4,7 +4,8 @@
 		"editorTitle": "Recordly 편집기",
 		"subtitle": "화면 녹화 및 편집",
 		"language": "언어",
-		"manageRecordings": "녹화 폴더 열기"
+		"manageRecordings": "녹화 폴더 열기",
+		"discord": "Join Discord"
 	},
 	"actions": {
 		"cancel": "취소",
@@ -16,7 +17,8 @@
 		"save": "저장",
 		"undo": "실행 취소",
 		"delete": "삭제",
-		"done": "완료"
+		"done": "완료",
+		"remove": "Remove"
 	},
 	"errors": {
 		"invalidFileType": "잘못된 파일 형식입니다",

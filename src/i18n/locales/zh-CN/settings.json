@@ -6,7 +6,8 @@
 		"modeAuto": "自动",
 		"modeManual": "手动",
 		"modeManualDescription": "为此缩放设置固定焦点",
-		"modeAutoDescription": "镜头会自动跟随光标"
+		"modeAutoDescription": "镜头会自动跟随光标",
+		"globalSettings": "动画"
 	},
 	"trim": {
 		"deleteRegion": "删除修剪区域"
@@ -29,22 +30,36 @@
 		"loopCursor": "循环光标",
 		"cursorStyle": "光标样式",
 		"cursorStyleOptions": {
-			"tahoe": "Tahoe",
+			"tahoe": "塔霍",
 			"dot": "圆点",
-			"figma": "Minimal",
+			"figma": "极简",
 			"mono": "反相",
-			"lavender": "Lavender",
-			"parched": "Parched",
-			"chooper": "Chooper",
-			"amongus": "Among Us",
-			"turtle": "Turtle"
+			"lavender": "薰衣草",
+			"parched": "暖砂",
+			"chooper": "斩切",
+			"amongus": "太空人",
+			"turtle": "海龟"
 		},
 		"backgroundBlur": "背景模糊",
+		"sceneScale": "基础缩放",
 		"zoomMotionBlur": "缩放运动模糊",
+		"zoomSmoothness": "缩放平滑度",
+		"classicZoom": "经典动画",
 		"connectZooms": "连接缩放",
 		"connectZoomsDescription": "将连续的缩放区域平滑连接为一次连续的镜头移动。",
 		"autoApplyFreshRecordingZooms": "自动为新录制应用缩放",
 		"autoApplyFreshRecordingZoomsDescription": "打开新录制时自动建议跟随光标的缩放。",
+		"autoZoomStyle": "自动缩放风格",
+		"autoZoomStyleOptions": {
+			"lecture": "讲解模式",
+			"demo": "产品演示",
+			"conservative": "保守模式"
+		},
+		"autoZoomStyleDescriptions": {
+			"lecture": "优先生成更长的聚焦停留，适合边讲边演示。",
+			"demo": "更快响应点击和短操作，适合产品演示。",
+			"conservative": "只在更明确的重点处生成较少缩放。"
+		},
 		"zoomGeneralTitle": "全局",
 		"zoomGeneralDescription": "控制所有缩放过渡的整体运动设置。",
 		"zoomInTitle": "进入缩放",
@@ -85,6 +100,10 @@
 		"webcamFootageRemoved": "已移除摄像头素材",
 		"webcamSize": "摄像头大小",
 		"webcamReactToZoom": "摄像头随缩放变化",
+		"webcamPosition": "位置",
+		"webcamHorizontal": "水平",
+		"webcamVertical": "垂直",
+		"webcamMargin": "边距",
 		"webcamRoundness": "摄像头圆角",
 		"webcamShadow": "摄像头阴影",
 		"shadow": "阴影",
@@ -104,6 +123,8 @@
 	},
 	"sections": {
 		"scene": "场景",
+		"settings": "设置",
+		"extensions": "插件",
 		"captions": "字幕",
 		"zoom": "缩放",
 		"cursor": "光标",
@@ -114,6 +135,7 @@
 	"captions": {
 		"enabled": "显示",
 		"language": "语言",
+		"selectModel": "选择模型",
 		"downloading": "下载中...",
 		"deleteModel": "删除模型",
 		"clearModel": "清除模型",
@@ -132,6 +154,18 @@
 		"animationFade": "淡入淡出",
 		"animationRise": "上移",
 		"animationPop": "弹出",
+		"languages": {
+			"auto": "自动检测",
+			"en": "英语",
+			"es": "西班牙语",
+			"fr": "法语",
+			"de": "德语",
+			"it": "意大利语",
+			"pt": "葡萄牙语",
+			"zh": "中文",
+			"ja": "日语",
+			"ko": "韩语"
+		},
 		"bottomOffset": "底部偏移",
 		"maxWidth": "最大宽度",
 		"boxRadius": "字幕框圆角",
@@ -150,10 +184,12 @@
 	"background": {
 		"title": "背景",
 		"image": "图片",
+		"video": "视频",
 		"color": "颜色",
 		"gradient": "渐变",
 		"wallpaperPreview": "壁纸预览",
 		"uploadCustom": "上传自定义",
+		"uploadCustomVideo": "上传视频",
 		"uploadSuccess": "自定义图片上传成功！",
 		"uploadError": "请上传 JPG 或 JPEG 图片文件。",
 		"uploadErrorDescription": "仅支持 JPG 和 JPEG 图片。"
@@ -170,6 +206,17 @@
 		},
 		"fpsTitle": "帧率",
 		"loop": "循环",
+		"encodingTitle": "编码",
+		"encoding": {
+			"fast": "快速",
+			"balanced": "平衡",
+			"quality": "高质量"
+		},
+		"pipelineTitle": "导出引擎",
+		"pipeline": {
+			"legacy": "传统",
+			"modern": "闪电（测试版）"
+		},
 		"outputDimensions": "输出：{{dimensions}}px",
 		"sizePresetOriginalShort": "原",
 		"sizePresetMediumShort": "中",
@@ -179,5 +226,24 @@
 		"exportVideo": "导出{{format}}",
 		"reportBug": "报告问题",
 		"starOnGithub": "在 GitHub 上加星"
+	},
+	"timeline": {
+		"noVideoLoaded": "未加载视频",
+		"dragDropVideo": "拖放视频即可开始编辑",
+		"addZoom": "添加缩放 (Z)",
+		"suggestZooms": "根据光标建议缩放",
+		"addAnnotation": "添加注释 (A)",
+		"addAudio": "添加音频",
+		"splitClip": "拆分片段 (C)",
+		"aspectNative": "原始比例",
+		"aspectCustom": "自定义 {{ratio}}",
+		"customAspect": "自定义",
+		"customAspectWidth": "自定义比例宽度",
+		"customAspectHeight": "自定义比例高度",
+		"customAspectError": "自定义比例必须是正数。",
+		"setAspect": "应用",
+		"sideScroll": "侧向滚动",
+		"pan": "平移",
+		"zoom": "缩放"
 	}
 }

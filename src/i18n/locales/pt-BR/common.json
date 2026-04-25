@@ -4,7 +4,8 @@
 		"editorTitle": "Editor do Recordly",
 		"subtitle": "Gravação e edição de tela",
 		"language": "Idioma",
-		"manageRecordings": "Abrir pasta de gravações"
+		"manageRecordings": "Abrir pasta de gravações",
+		"discord": "Join Discord"
 	},
 	"actions": {
 		"cancel": "Cancelar",
@@ -16,7 +17,8 @@
 		"save": "Salvar",
 		"undo": "Desfazer",
 		"delete": "Excluir",
-		"done": "Concluído"
+		"done": "Concluído",
+		"remove": "Remove"
 	},
 	"errors": {
 		"invalidFileType": "Tipo de arquivo inválido",

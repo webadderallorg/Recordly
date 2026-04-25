@@ -107,6 +107,7 @@ interface FrameRenderConfig {
 	connectedZoomEasing?: ZoomTransitionEasing;
 	borderRadius?: number;
 	padding?: Padding | number;
+	sceneScale?: number;
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
 	webcamUrl?: string | null;
@@ -2445,6 +2446,7 @@ export class FrameRenderer {
 			cropRegion,
 			borderRadius = 0,
 			padding = 0,
+			sceneScale = 1,
 			videoWidth,
 			videoHeight,
 		} = this.config;
@@ -2454,6 +2456,7 @@ export class FrameRenderer {
 			height,
 			padding,
 			cropRegion,
+			sceneScale,
 			videoWidth,
 			videoHeight,
 		});
@@ -2497,7 +2500,7 @@ export class FrameRenderer {
 				y: layout.centerOffsetY,
 				width: layout.croppedDisplayWidth,
 				height: layout.croppedDisplayHeight,
-				sourceCrop: cropRegion,
+				sourceCrop: layout.visibleSourceCrop,
 			},
 		};
 	}

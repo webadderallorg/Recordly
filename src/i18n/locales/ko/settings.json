@@ -6,7 +6,8 @@
 		"modeAuto": "자동",
 		"modeManual": "수동",
 		"modeManualDescription": "이 확대에 고정 초점을 설정합니다",
-		"modeAutoDescription": "카메라가 커서를 자동으로 따라갑니다"
+		"modeAutoDescription": "카메라가 커서를 자동으로 따라갑니다",
+		"globalSettings": "Animation"
 	},
 	"trim": {
 		"deleteRegion": "트림 구간 삭제"
@@ -100,7 +101,25 @@
 		"paddingBottom": "아래",
 		"paddingLeft": "왼쪽",
 		"paddingRight": "오른쪽",
-		"removeBackground": "배경 제거"
+		"removeBackground": "배경 제거",
+		"sceneScale": "Base scale",
+		"zoomSmoothness": "Zoom Smoothness",
+		"classicZoom": "Classic Animation",
+		"webcamPosition": "Position",
+		"webcamHorizontal": "Horizontal",
+		"webcamVertical": "Vertical",
+		"webcamMargin": "Margin",
+		"autoZoomStyle": "Auto Zoom style",
+		"autoZoomStyleOptions": {
+			"lecture": "Lecture",
+			"demo": "Product demo",
+			"conservative": "Conservative"
+		},
+		"autoZoomStyleDescriptions": {
+			"lecture": "Prefer longer focus holds for narrated walkthroughs.",
+			"demo": "React faster to clicks and short product-demo actions.",
+			"conservative": "Create fewer zooms and require clearer focus moments."
+		}
 	},
 	"sections": {
 		"scene": "장면",
@@ -109,7 +128,9 @@
 		"cursor": "커서",
 		"webcam": "웹캠",
 		"frame": "프레임",
-		"crop": "자르기"
+		"crop": "자르기",
+		"settings": "Settings",
+		"extensions": "Extensions"
 	},
 	"captions": {
 		"enabled": "표시",
@@ -136,7 +157,20 @@
 		"maxWidth": "최대 너비",
 		"boxRadius": "박스 반경",
 		"backgroundOpacity": "배경 투명도",
-		"textColor": "텍스트 색상"
+		"textColor": "텍스트 색상",
+		"selectModel": "Select Model",
+		"languages": {
+			"auto": "Auto Detect",
+			"en": "English",
+			"es": "Spanish",
+			"fr": "French",
+			"de": "German",
+			"it": "Italian",
+			"pt": "Portuguese",
+			"zh": "Chinese",
+			"ja": "Japanese",
+			"ko": "Korean"
+		}
 	},
 	"crop": {
 		"title": "비디오 자르기",
@@ -156,7 +190,9 @@
 		"uploadCustom": "사용자 이미지 업로드",
 		"uploadSuccess": "사용자 이미지를 업로드했습니다!",
 		"uploadError": "JPG 또는 JPEG 이미지 파일을 업로드해 주세요.",
-		"uploadErrorDescription": "JPG 또는 JPEG 이미지 파일을 업로드해 주세요."
+		"uploadErrorDescription": "JPG 또는 JPEG 이미지 파일을 업로드해 주세요.",
+		"video": "Video",
+		"uploadCustomVideo": "Upload Video"
 	},
 	"export": {
 		"title": "내보내기",
@@ -178,6 +214,36 @@
 		"saveProject": "프로젝트 저장",
 		"exportVideo": "{{format}} 내보내기",
 		"reportBug": "버그 신고",
-		"starOnGithub": "GitHub에서 별표 주기"
+		"starOnGithub": "GitHub에서 별표 주기",
+		"encodingTitle": "Encoding",
+		"encoding": {
+			"fast": "Fast",
+			"balanced": "Balanced",
+			"quality": "Quality"
+		},
+		"pipelineTitle": "Pipeline",
+		"pipeline": {
+			"legacy": "Legacy",
+			"modern": "Lightning (Beta)"
+		}
+	},
+	"timeline": {
+		"noVideoLoaded": "No Video Loaded",
+		"dragDropVideo": "Drag and drop a video to start editing",
+		"addZoom": "Add Zoom (Z)",
+		"suggestZooms": "Suggest Zooms from Cursor",
+		"addAnnotation": "Add Annotation (A)",
+		"addAudio": "Add Audio",
+		"splitClip": "Split Clip (C)",
+		"aspectNative": "Native",
+		"aspectCustom": "Custom {{ratio}}",
+		"customAspect": "Custom",
+		"customAspectWidth": "Custom aspect width",
+		"customAspectHeight": "Custom aspect height",
+		"customAspectError": "Custom aspect ratio must be positive numbers.",
+		"setAspect": "Set",
+		"sideScroll": "Side Scroll",
+		"pan": "Pan",
+		"zoom": "Zoom"
 	}
 }

@@ -4,7 +4,8 @@
 		"editorTitle": "Recordly Editor",
 		"subtitle": "Enregistrement et édition d’écran",
 		"language": "Langue",
-		"manageRecordings": "Ouvrir le dossier des enregistrements"
+		"manageRecordings": "Ouvrir le dossier des enregistrements",
+		"discord": "Join Discord"
 	},
 	"actions": {
 		"cancel": "Annuler",
@@ -16,7 +17,8 @@
 		"save": "Enregistrer",
 		"undo": "Annuler",
 		"delete": "Supprimer",
-		"done": "Terminé"
+		"done": "Terminé",
+		"remove": "Remove"
 	},
 	"errors": {
 		"invalidFileType": "Type de fichier invalide",

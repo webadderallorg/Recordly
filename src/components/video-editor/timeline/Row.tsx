@@ -1,5 +1,6 @@
 import type { RowDefinition } from "dnd-timeline";
 import { useRow } from "dnd-timeline";
+import type React from "react";
 
 interface RowProps extends RowDefinition {
 	children: React.ReactNode;
@@ -7,9 +8,18 @@ interface RowProps extends RowDefinition {
 	hint?: string;
 	isEmpty?: boolean;
 	labelColor?: string;
+	onBlankPointerDown?: (event: React.PointerEvent<HTMLDivElement>) => void;
 }
 
-export default function Row({ id, children, label, hint, isEmpty, labelColor = "#666" }: RowProps) {
+export default function Row({
+	id,
+	children,
+	label,
+	hint,
+	isEmpty,
+	labelColor = "#666",
+	onBlankPointerDown,
+}: RowProps) {
 	const { setNodeRef, rowWrapperStyle, rowStyle } = useRow({ id });
 
 	return (
@@ -30,7 +40,21 @@ export default function Row({ id, children, label, hint, isEmpty, labelColor = "
 					<span className="text-[11px] text-foreground/15 font-medium">{hint}</span>
 				</div>
 			)}
-			<div ref={setNodeRef} className="relative h-full min-h-0 overflow-hidden" style={rowStyle}>
+			<div
+				ref={setNodeRef}
+				className="relative h-full min-h-0 overflow-hidden"
+				style={rowStyle}
+				onPointerDown={(event) => {
+					if (event.target === event.currentTarget) {
+						onBlankPointerDown?.(event);
+					}
+				}}
+				onClick={(event) => {
+					if (event.target === event.currentTarget && onBlankPointerDown) {
+						event.stopPropagation();
+					}
+				}}
+			>
 				{children}
 			</div>
 		</div>

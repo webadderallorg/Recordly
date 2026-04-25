@@ -22,6 +22,7 @@ interface TimelineWrapperProps {
 	gridSizeMs?: number;
 	onItemSpanChange: (id: string, span: Span, rowId?: string) => void;
 	resolveTargetRowId?: (id: string, proposedRowId: string) => string;
+	canMoveItem?: (id: string, rowId: string) => boolean;
 	allRegionSpans?: { id: string; start: number; end: number; rowId: string }[];
 }
 
@@ -36,6 +37,7 @@ export default function TimelineWrapper({
 	gridSizeMs: _gridSizeMs,
 	onItemSpanChange,
 	resolveTargetRowId,
+	canMoveItem,
 	allRegionSpans = [],
 }: TimelineWrapperProps) {
 	const totalMs = Math.max(0, Math.round(videoDuration * 1000));
@@ -227,6 +229,10 @@ export default function TimelineWrapper({
 			const resolvedRowId =
 				resolveTargetRowId?.(activeItemId, proposedRowId) ?? proposedRowId;
 
+			if (canMoveItem && !canMoveItem(activeItemId, resolvedRowId)) {
+				return;
+			}
+
 			// Drags are pure translations — always preserve the original duration.
 			// The span from getSpanFromDragEvent can drift due to pixel-to-ms
 			// rounding at different zoom levels, so pin to the known duration.
@@ -260,6 +266,7 @@ export default function TimelineWrapper({
 			clampDraggedSpanToNeighbours,
 			clampSpanToBounds,
 			hasOverlap,
+			canMoveItem,
 			onItemSpanChange,
 			resolveTargetRowId,
 		],

@@ -5,6 +5,7 @@ import {
 	normalizeProjectEditor,
 	type ProjectEditorState,
 } from "./projectPersistence";
+import { DEFAULT_AUTO_ZOOM_STYLE, type AutoZoomStyle } from "./types";
 
 type PersistedEditorControls = Pick<
 	ProjectEditorState,
@@ -31,6 +32,7 @@ type PersistedEditorControls = Pick<
 	| "cursorClickBounceDuration"
 	| "cursorSway"
 	| "borderRadius"
+	| "sceneScale"
 	| "padding"
 	| "frame"
 	| "webcam"
@@ -53,6 +55,7 @@ export interface EditorPreferences extends PersistedEditorControls {
 	customAspectHeight: string;
 	customWallpapers: string[];
 	autoApplyFreshRecordingAutoZooms: boolean;
+	autoZoomStyle: AutoZoomStyle;
 	whisperExecutablePath: string | null;
 	whisperModelPath: string | null;
 }
@@ -85,6 +88,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	cursorClickBounceDuration: DEFAULT_EDITOR_CONTROLS.cursorClickBounceDuration,
 	cursorSway: DEFAULT_EDITOR_CONTROLS.cursorSway,
 	borderRadius: DEFAULT_EDITOR_CONTROLS.borderRadius,
+	sceneScale: DEFAULT_EDITOR_CONTROLS.sceneScale,
 	padding: DEFAULT_EDITOR_CONTROLS.padding,
 	frame: DEFAULT_EDITOR_CONTROLS.frame,
 	webcam: DEFAULT_EDITOR_CONTROLS.webcam,
@@ -102,6 +106,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	customAspectHeight: "9",
 	customWallpapers: [],
 	autoApplyFreshRecordingAutoZooms: true,
+	autoZoomStyle: DEFAULT_AUTO_ZOOM_STYLE,
 	whisperExecutablePath: null,
 	whisperModelPath: null,
 };
@@ -144,6 +149,12 @@ function normalizeNullablePath(value: unknown): string | null {
 	return trimmed.length > 0 ? trimmed : null;
 }
 
+function normalizeAutoZoomStyle(value: unknown, fallback: AutoZoomStyle): AutoZoomStyle {
+	return value === "lecture" || value === "demo" || value === "conservative"
+		? value
+		: fallback;
+}
+
 function normalizeEditorControls(
 	raw: Partial<EditorPreferences>,
 	fallback: EditorPreferences,
@@ -173,6 +184,7 @@ function normalizeEditorControls(
 			raw.cursorClickBounceDuration ?? fallback.cursorClickBounceDuration,
 		cursorSway: raw.cursorSway ?? fallback.cursorSway,
 		borderRadius: raw.borderRadius ?? fallback.borderRadius,
+		sceneScale: raw.sceneScale ?? fallback.sceneScale,
 		padding: raw.padding ?? fallback.padding,
 		frame: raw.frame !== undefined ? raw.frame : fallback.frame,
 		webcam: raw.webcam ?? fallback.webcam,
@@ -223,6 +235,7 @@ function normalizeEditorControls(
 		cursorClickBounceDuration: normalized.cursorClickBounceDuration,
 		cursorSway: normalized.cursorSway,
 		borderRadius: normalized.borderRadius,
+		sceneScale: normalized.sceneScale,
 		padding: normalized.padding,
 		frame: normalized.frame,
 		webcam: normalized.webcam,
@@ -264,6 +277,7 @@ export function normalizeEditorPreferences(
 			raw.autoApplyFreshRecordingAutoZooms,
 			fallback.autoApplyFreshRecordingAutoZooms,
 		),
+		autoZoomStyle: normalizeAutoZoomStyle(raw.autoZoomStyle, fallback.autoZoomStyle),
 		whisperExecutablePath:
 			normalizeNullablePath(raw.whisperExecutablePath) ?? fallback.whisperExecutablePath,
 		whisperModelPath: normalizeNullablePath(raw.whisperModelPath) ?? fallback.whisperModelPath,

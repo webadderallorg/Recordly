@@ -11,6 +11,25 @@
 		"cycleBackward": "주석 이전으로 순환",
 		"deleteSelectedAlt": "선택 항목 삭제 (보조)",
 		"panTimeline": "타임라인 이동",
-		"zoomTimeline": "타임라인 확대/축소"
+		"zoomTimeline": "타임라인 확대/축소",
+		"splitClip": "Split Clip"
+	},
+	"fixed": {
+		"cycleAnnotationsForward": "Cycle Annotations Forward",
+		"cycleAnnotationsBackward": "Cycle Annotations Backward",
+		"deleteSelectedAlt": "Delete Selected (alt)",
+		"selectZoomBlocks": "Select Zoom Blocks",
+		"zoomTimelineIn": "Zoom Timeline In",
+		"zoomTimelineOut": "Zoom Timeline Out",
+		"fitTimeline": "Fit Timeline",
+		"zoomToSelection": "Zoom to Selection",
+		"toggleTimelineSnapping": "Toggle Timeline Snapping",
+		"addTimelineMarker": "Add Timeline Marker",
+		"trimSelectionToPlayhead": "Trim Selection to Playhead",
+		"nudgeSelection": "Nudge Selection",
+		"stepPlayhead": "Step Playhead",
+		"jumpToTimelineEdge": "Jump to Timeline Edge",
+		"panTimeline": "Pan Timeline",
+		"zoomTimeline": "Zoom Timeline"
 	}
 }

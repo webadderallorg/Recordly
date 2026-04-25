@@ -68,11 +68,12 @@ export function registerSettingsHandlers() {
         return {
           success: true,
           microphoneEnabled: parsed.microphoneEnabled === true,
+          microphonePreferenceSet: Object.prototype.hasOwnProperty.call(parsed, 'microphoneEnabled'),
           microphoneDeviceId: typeof parsed.microphoneDeviceId === 'string' ? parsed.microphoneDeviceId : undefined,
           systemAudioEnabled: parsed.systemAudioEnabled !== false,
         }
       } catch {
-        return { success: true, microphoneEnabled: false, microphoneDeviceId: undefined, systemAudioEnabled: true }
+        return { success: true, microphoneEnabled: false, microphonePreferenceSet: false, microphoneDeviceId: undefined, systemAudioEnabled: true }
       }
     })
 
