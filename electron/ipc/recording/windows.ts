@@ -206,6 +206,10 @@ export async function muxNativeWindowsVideoWithAudio(
 				console.log(
 					`[mux-win] ${audioInputs[i]} audio recorded a start delay of ${adjustment.delayMs}ms`,
 				);
+			} else if (Number.isFinite(recordedStartDelayMs) && adjustment.mode === "pad") {
+				console.log(
+					`[mux-win] ${audioInputs[i]} audio started on time but ends ${adjustment.durationDeltaMs}ms early — padding trailing silence`,
+				);
 			} else if (adjustment.mode === "tempo") {
 				console.log(
 					`[mux-win] ${audioInputs[i]} audio differs from video by ${adjustment.durationDeltaMs}ms — applying tempo ratio ${adjustment.tempoRatio.toFixed(6)}`,
@@ -213,6 +217,10 @@ export async function muxNativeWindowsVideoWithAudio(
 			} else if (adjustment.mode === "delay" && adjustment.delayMs > 0) {
 				console.log(
 					`[mux-win] ${audioInputs[i]} audio appears to start late by ${adjustment.delayMs}ms — adding leading silence`,
+				);
+			} else if (adjustment.mode === "pad" && adjustment.durationDeltaMs > 0) {
+				console.log(
+					`[mux-win] ${audioInputs[i]} audio is much shorter than video by ${adjustment.durationDeltaMs}ms — padding trailing silence`,
 				);
 			}
 		}

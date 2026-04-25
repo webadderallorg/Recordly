@@ -34,6 +34,15 @@ describe("getAudioSyncAdjustment", () => {
 		});
 	});
 
+	it("pads trailing silence instead of prepending extreme delay for very short audio tracks", () => {
+		expect(getAudioSyncAdjustment(600, 480)).toEqual({
+			mode: "pad",
+			delayMs: 0,
+			tempoRatio: 1,
+			durationDeltaMs: 120000,
+		});
+	});
+
 	it("does not inject atempo when longer audio stays on the anchored path", () => {
 		const filterParts: string[] = [];
 		appendSyncedAudioFilter(filterParts, "[1:a]", "aout", getAudioSyncAdjustment(120, 122.5));
@@ -51,12 +60,21 @@ describe("getAudioSyncAdjustment", () => {
 			"[1:a]atempo=0.975000,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS[aout]",
 		]);
 	});
+
+	it("pads the tail for very short audio tracks", () => {
+		const filterParts: string[] = [];
+		appendSyncedAudioFilter(filterParts, "[1:a]", "aout", getAudioSyncAdjustment(600, 480));
+
+		expect(filterParts).toEqual([
+			"[1:a]apad=pad_dur=120.000,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS[aout]",
+		]);
+	});
 });
 
 describe("applyRecordedAudioStartDelay", () => {
-	it("suppresses an inferred late-start delay when recorded metadata says audio started on time", () => {
+	it("pads the tail when recorded metadata says audio started on time", () => {
 		expect(applyRecordedAudioStartDelay(getAudioSyncAdjustment(120, 110), 0)).toEqual({
-			mode: "none",
+			mode: "pad",
 			delayMs: 0,
 			tempoRatio: 1,
 			durationDeltaMs: 10000,
