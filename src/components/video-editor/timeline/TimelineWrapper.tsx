@@ -375,7 +375,7 @@ export default function TimelineWrapper({
 			autoScroll={{ enabled: false }}
 			resizeHandleWidth={28}
 		>
-			<div className="relative h-full min-h-0">
+			<div className="relative min-h-full">
 				{children}
 				{/* Floating tooltip shown during drag/resize */}
 				<div
