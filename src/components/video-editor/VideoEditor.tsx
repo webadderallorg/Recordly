@@ -4409,6 +4409,8 @@ export default function VideoEditor() {
 			effectiveSpeedRegions,
 			frame,
 			smokeExportConfig.encodingMode,
+			smokeExportConfig.fps,
+			smokeExportConfig.quality,
 		],
 	);
 
