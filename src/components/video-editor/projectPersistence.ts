@@ -5,6 +5,7 @@ import type {
 	ExportMp4FrameRate,
 	ExportPipelineModel,
 	ExportQuality,
+	GifCompressionPreset,
 	GifFrameRate,
 	GifSizePreset,
 } from "@/lib/exporter";
@@ -118,6 +119,7 @@ export interface ProjectEditorState {
 	gifFrameRate: GifFrameRate;
 	gifLoop: boolean;
 	gifSizePreset: GifSizePreset;
+	gifCompressionPreset: GifCompressionPreset;
 }
 
 export interface EditorProjectData {
@@ -895,6 +897,12 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			editor.gifSizePreset === "original"
 				? editor.gifSizePreset
 				: "medium",
+		gifCompressionPreset:
+			editor.gifCompressionPreset === "compact" ||
+			editor.gifCompressionPreset === "balanced" ||
+			editor.gifCompressionPreset === "quality"
+				? editor.gifCompressionPreset
+				: "balanced",
 	};
 }
 

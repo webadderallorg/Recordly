@@ -54,6 +54,7 @@ import {
 	type ExportSettings,
 	FrameRenderer,
 	GIF_SIZE_PRESETS,
+	type GifCompressionPreset,
 	GifExporter,
 	type GifFrameRate,
 	type GifSizePreset,
@@ -659,6 +660,9 @@ export default function VideoEditor() {
 	const [gifSizePreset, setGifSizePreset] = useState<GifSizePreset>(
 		initialEditorPreferences.gifSizePreset,
 	);
+	const [gifCompressionPreset, setGifCompressionPreset] = useState<GifCompressionPreset>(
+		initialEditorPreferences.gifCompressionPreset,
+	);
 	const [exportedFilePath, setExportedFilePath] = useState<string | undefined>(undefined);
 	const [hasPendingExportSave, setHasPendingExportSave] = useState(false);
 	const [lastSavedSnapshot, setLastSavedSnapshot] = useState<EditorProjectData | null>(null);
@@ -1243,6 +1247,7 @@ export default function VideoEditor() {
 				gifFrameRate: GifFrameRate;
 				gifLoop: boolean;
 				gifSizePreset: GifSizePreset;
+				gifCompressionPreset: GifCompressionPreset;
 			}>,
 		) => {
 			return editor;
@@ -1390,6 +1395,7 @@ export default function VideoEditor() {
 				gifFrameRate,
 				gifLoop,
 				gifSizePreset,
+				gifCompressionPreset,
 			}),
 		[
 			buildPersistedEditorState,
@@ -1438,6 +1444,7 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			gifCompressionPreset,
 			frame,
 		],
 	);
@@ -1626,6 +1633,7 @@ export default function VideoEditor() {
 			setGifFrameRate(normalizedEditor.gifFrameRate);
 			setGifLoop(normalizedEditor.gifLoop);
 			setGifSizePreset(normalizedEditor.gifSizePreset);
+			setGifCompressionPreset(normalizedEditor.gifCompressionPreset);
 
 			setSelectedZoomId(null);
 			setSelectedTrimId(null);
@@ -1889,6 +1897,7 @@ export default function VideoEditor() {
 						setGifFrameRate(initialEditorPreferences.gifFrameRate);
 						setGifLoop(initialEditorPreferences.gifLoop);
 						setGifSizePreset(initialEditorPreferences.gifSizePreset);
+						setGifCompressionPreset(initialEditorPreferences.gifCompressionPreset);
 						return;
 					}
 				}
@@ -2011,6 +2020,7 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			gifCompressionPreset,
 			whisperExecutablePath,
 			whisperModelPath,
 		});
@@ -2052,6 +2062,7 @@ export default function VideoEditor() {
 		gifFrameRate,
 		gifLoop,
 		gifSizePreset,
+		gifCompressionPreset,
 		whisperExecutablePath,
 		whisperModelPath,
 	]);
@@ -3907,6 +3918,7 @@ export default function VideoEditor() {
 						frameRate: settings.gifConfig.frameRate,
 						loop: settings.gifConfig.loop,
 						sizePreset: settings.gifConfig.sizePreset,
+						compressionPreset: settings.gifConfig.compressionPreset,
 						wallpaper,
 						trimRegions,
 						speedRegions: effectiveSpeedRegions,
@@ -4494,6 +4506,7 @@ export default function VideoEditor() {
 							frameRate: gifFrameRate,
 							loop: gifLoop,
 							sizePreset: gifSizePreset,
+							compressionPreset: gifCompressionPreset,
 							width: gifDimensions.width,
 							height: gifDimensions.height,
 						}
@@ -4513,6 +4526,7 @@ export default function VideoEditor() {
 		gifFrameRate,
 		gifLoop,
 		gifSizePreset,
+		gifCompressionPreset,
 		exportBackendPreference,
 		exportPipelineModel,
 		handleExport,
@@ -5043,6 +5057,8 @@ export default function VideoEditor() {
 									onGifLoopChange={setGifLoop}
 									gifSizePreset={gifSizePreset}
 									onGifSizePresetChange={setGifSizePreset}
+									gifCompressionPreset={gifCompressionPreset}
+									onGifCompressionPresetChange={setGifCompressionPreset}
 									mp4OutputDimensions={mp4OutputDimensions}
 									gifOutputDimensions={gifOutputDimensions}
 									onExport={handleStartExportFromDropdown}

@@ -9,10 +9,16 @@ import type {
 	ExportMp4FrameRate,
 	ExportPipelineModel,
 	ExportQuality,
+	GifCompressionPreset,
 	GifFrameRate,
 	GifSizePreset,
 } from "@/lib/exporter";
-import { GIF_FRAME_RATES, GIF_SIZE_PRESETS, MP4_FRAME_RATES } from "@/lib/exporter";
+import {
+	GIF_COMPRESSION_PRESETS,
+	GIF_FRAME_RATES,
+	GIF_SIZE_PRESETS,
+	MP4_FRAME_RATES,
+} from "@/lib/exporter";
 import { cn } from "@/lib/utils";
 
 interface ExportSettingsMenuProps {
@@ -33,6 +39,8 @@ interface ExportSettingsMenuProps {
 	onGifLoopChange?: (loop: boolean) => void;
 	gifSizePreset: GifSizePreset;
 	onGifSizePresetChange?: (preset: GifSizePreset) => void;
+	gifCompressionPreset: GifCompressionPreset;
+	onGifCompressionPresetChange?: (preset: GifCompressionPreset) => void;
 	gifOutputDimensions: { width: number; height: number };
 	onExport?: () => void;
 	className?: string;
@@ -56,6 +64,8 @@ export function ExportSettingsMenu({
 	onGifLoopChange,
 	gifSizePreset,
 	onGifSizePresetChange,
+	gifCompressionPreset,
+	onGifCompressionPresetChange,
 	gifOutputDimensions,
 	onExport,
 	className,
@@ -441,6 +451,55 @@ export function ExportSettingsMenu({
 							/>
 						</div>
 					</div>
+					<div className="px-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+						{tSettings("export.gifCompressionTitle", "Compression")}
+					</div>
+					<LayoutGroup id="header-gif-compression-toggle">
+						<div className="grid h-8 grid-cols-3 rounded-xl border border-foreground/5 bg-foreground/5 p-0.5">
+							{Object.entries(GIF_COMPRESSION_PRESETS).map(([key]) => {
+								const value = key as GifCompressionPreset;
+								const isActive = gifCompressionPreset === value;
+								const label =
+									value === "compact"
+										? tSettings("export.gifCompressionCompact", "Small")
+										: value === "quality"
+											? tSettings("export.gifCompressionQuality", "Best")
+											: tSettings("export.gifCompressionBalanced", "Balanced");
+
+								return (
+									<button
+										key={value}
+										type="button"
+										onClick={() => onGifCompressionPresetChange?.(value)}
+										aria-pressed={isActive}
+										className="relative rounded-lg text-[11px] font-medium transition-colors"
+									>
+										{isActive ? (
+											<motion.span
+												layoutId="header-gif-compression-pill"
+												className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+												transition={{
+													type: "spring",
+													stiffness: 420,
+													damping: 34,
+												}}
+											/>
+										) : null}
+										<span
+											className={cn(
+												"relative z-10",
+												isActive
+													? "text-white dark:text-black"
+													: "text-muted-foreground hover:text-foreground",
+											)}
+										>
+											{label}
+										</span>
+									</button>
+								);
+							})}
+						</div>
+					</LayoutGroup>
 				</div>
 			)}
 

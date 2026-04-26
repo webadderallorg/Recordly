@@ -27,12 +27,14 @@ export type {
 	ExportRenderBackend,
 	ExportResult,
 	ExportSettings,
+	GifCompressionPreset,
 	GifExportConfig,
 	GifFrameRate,
 	GifSizePreset,
 	VideoFrameData,
 } from "./types";
 export {
+	GIF_COMPRESSION_PRESETS,
 	GIF_FRAME_RATES,
 	GIF_SIZE_PRESETS,
 	isValidGifFrameRate,
