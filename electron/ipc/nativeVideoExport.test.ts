@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ATEMPO_FILTER_EPSILON } from "./ffmpeg/filters";
 import {
 	buildEditedTrackSourceAudioFilter,
 	buildTrimmedSourceAudioFilter,
@@ -58,6 +59,20 @@ describe("buildEditedTrackSourceAudioFilter", () => {
 			"[1:a]atrim=start=0.000:end=2.000,asetpts=PTS-STARTPTS[edited_audio_0];" +
 				"[edited_audio_0]anull[aout]",
 		);
+	});
+
+	it("treats exact epsilon speed changes as unchanged audio", () => {
+		for (const speed of [1 - ATEMPO_FILTER_EPSILON, 1 + ATEMPO_FILTER_EPSILON]) {
+			const filter = buildEditedTrackSourceAudioFilter(
+				[{ startMs: 0, endMs: 2_000, speed }],
+				44_100,
+			);
+
+			expect(filter).toBe(
+				"[1:a]atrim=start=0.000:end=2.000,asetpts=PTS-STARTPTS[edited_audio_0];" +
+					"[edited_audio_0]anull[aout]",
+			);
+		}
 	});
 
 	it("returns null when the edited-track filtergraph inputs are incomplete", () => {
