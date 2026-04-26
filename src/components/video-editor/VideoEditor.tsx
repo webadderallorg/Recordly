@@ -3257,6 +3257,19 @@ export default function VideoEditor() {
 		);
 	}, []);
 
+	const handleAudioVolumeChange = useCallback((volume: number) => {
+		if (!selectedAudioId) {
+			return;
+		}
+
+		const nextVolume = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1;
+		setAudioRegions((prev) =>
+			prev.map((region) =>
+				region.id === selectedAudioId ? { ...region, volume: nextVolume } : region,
+			),
+		);
+	}, [selectedAudioId]);
+
 	const handleAudioDelete = useCallback(
 		(id: string) => {
 			setAudioRegions((prev) => prev.filter((region) => region.id !== id));
@@ -5188,6 +5201,15 @@ export default function VideoEditor() {
 									selectedClipId && handleClipMutedChange(muted)
 								}
 								onClipDelete={handleClipDelete}
+								selectedAudioId={selectedAudioId}
+								selectedAudioVolume={
+									selectedAudioId
+										? (audioRegions.find((r) => r.id === selectedAudioId)
+												?.volume ?? null)
+										: null
+								}
+								onAudioVolumeChange={handleAudioVolumeChange}
+								onAudioDelete={handleAudioDelete}
 								shadowIntensity={shadowIntensity}
 								onShadowChange={setShadowIntensity}
 								backgroundBlur={backgroundBlur}

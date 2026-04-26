@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useTheme } from "@/contexts/ThemeContext";
 import { getAssetPath, getRenderableAssetUrl, getWallpaperThumbnailUrl } from "@/lib/assetPath";
 import type { ExtensionSettingField } from "@/lib/extensions";
 import { extensionHost, type FrameInstance } from "@/lib/extensions";
@@ -27,7 +28,6 @@ import minimalCursorUrl from "../../../Minimal Cursor.svg";
 import { useI18n, useScopedT } from "../../contexts/I18nContext";
 import type { AppLocale } from "../../i18n/config";
 import { SUPPORTED_LOCALES } from "../../i18n/config";
-import { useTheme } from "@/contexts/ThemeContext";
 import { AnnotationSettingsPanel } from "./AnnotationSettingsPanel";
 import { loadEditorPreferences, saveEditorPreferences } from "./editorPreferences";
 import { SliderControl } from "./SliderControl";
@@ -51,9 +51,6 @@ import type {
 	ZoomTransitionEasing,
 } from "./types";
 import {
-	isZeroPadding,
-} from "./videoPlayback/layoutUtils";
-import {
 	DEFAULT_AUTO_CAPTION_SETTINGS,
 	DEFAULT_CROP_REGION,
 	DEFAULT_CURSOR_CLICK_BOUNCE,
@@ -76,6 +73,7 @@ import {
 	SPEED_OPTIONS,
 } from "./types";
 import { fromCursorSwaySliderValue, toCursorSwaySliderValue } from "./videoPlayback/cursorSway";
+import { isZeroPadding } from "./videoPlayback/layoutUtils";
 import {
 	cursorSetAssets,
 	getCursorStyleSizeMultiplier,
@@ -348,6 +346,10 @@ interface SettingsPanelProps {
 	onClipSpeedChange?: (speed: number) => void;
 	onClipMutedChange?: (muted: boolean) => void;
 	onClipDelete?: (id: string) => void;
+	selectedAudioId?: string | null;
+	selectedAudioVolume?: number | null;
+	onAudioVolumeChange?: (volume: number) => void;
+	onAudioDelete?: (id: string) => void;
 	shadowIntensity?: number;
 	onShadowChange?: (intensity: number) => void;
 	backgroundBlur?: number;
@@ -721,6 +723,10 @@ export function SettingsPanel({
 	onClipSpeedChange,
 	onClipMutedChange,
 	onClipDelete,
+	selectedAudioId,
+	selectedAudioVolume,
+	onAudioVolumeChange,
+	onAudioDelete,
 	shadowIntensity = 0.67,
 	onShadowChange,
 	backgroundBlur = 0,
@@ -3031,7 +3037,7 @@ export function SettingsPanel({
 			<div
 				className={cn(
 					"flex-shrink-0 border-t border-foreground/10 bg-editor-header p-4 pt-3",
-					!selectedTrimId && !selectedSpeedId && "hidden",
+					!selectedTrimId && !selectedSpeedId && !selectedAudioId && "hidden",
 				)}
 			>
 				{selectedTrimId && (
@@ -3091,6 +3097,39 @@ export function SettingsPanel({
 						>
 							<Trash2 className="h-3 w-3" />
 							{tSettings("speed.deleteRegion")}
+						</Button>
+					</div>
+				)}
+
+				{selectedAudioId && (
+					<div>
+						<div className="mb-3 flex items-center justify-between">
+							<span className="text-sm font-medium text-foreground">
+								{tSettings("audio.volumeTitle", "Audio Volume")}
+							</span>
+							<span className="rounded-full bg-[#2563EB]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#2563EB]">
+								{Math.round((selectedAudioVolume ?? 1) * 100)}%
+							</span>
+						</div>
+						<SliderControl
+							label={tSettings("audio.volume", "Volume")}
+							value={selectedAudioVolume ?? 1}
+							defaultValue={1}
+							min={0}
+							max={1}
+							step={0.01}
+							onChange={(v) => onAudioVolumeChange?.(v)}
+							formatValue={(v) => `${Math.round(v * 100)}%`}
+							parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
+						/>
+						<Button
+							onClick={() => selectedAudioId && onAudioDelete?.(selectedAudioId)}
+							variant="destructive"
+							size="sm"
+							className="mt-2 h-8 w-full gap-2 border border-red-500/20 bg-red-500/10 text-xs text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/20"
+						>
+							<Trash2 className="h-3 w-3" />
+							{tSettings("audio.deleteRegion", "Delete Audio")}
 						</Button>
 					</div>
 				)}
