@@ -275,6 +275,7 @@ export function LaunchWindow() {
 	} = useVideoDevices(webcamEnabled || webcamDropdownOpen);
 
 	const supportsHudCaptureProtection = platform !== "linux";
+	// Drive the launcher UI from runtime capture capabilities instead of a coarse platform check.
 	const supportsManualSourceSelection = captureCapabilities?.supportsManualSourceSelection === true;
 	const supportsPortalSourceSelection = captureCapabilities?.supportsPortalSourceSelection === true;
 	const showSourceSelector = supportsManualSourceSelection || supportsPortalSourceSelection;
@@ -696,6 +697,7 @@ export function LaunchWindow() {
 
 	useEffect(() => {
 		let cancelled = false;
+		// Capture capabilities decide whether Linux should show manual sources or route through the portal.
 		const loadCaptureCapabilities = async () => {
 			try {
 				const nextCapabilities = await window.electronAPI.getCaptureCapabilities();
@@ -901,11 +903,13 @@ export function LaunchWindow() {
 	const toggleDropdown = (which: "sources" | "more" | "mic" | "countdown" | "webcam") => {
 		setProjectBrowserOpen(false);
 		setActiveDropdown(activeDropdown === which ? "none" : which);
+		// Manual sources are only fetched for environments that support source enumeration.
 		if (activeDropdown !== which && which === "sources" && supportsManualSourceSelection) {
 			fetchSources();
 		}
 	};
 
+	// Persist the selected source for recording and skip highlight overlays for the synthetic portal source.
 	const handleSourceSelect = async (source: DesktopSource) => {
 		await window.electronAPI.selectSource(source);
 		setSelectedSource(source.name);
@@ -997,6 +1001,7 @@ export function LaunchWindow() {
 
 	const screenSources = sources.filter((s) => s.sourceType === "screen");
 	const windowSources = sources.filter((s) => s.sourceType === "window");
+	// Do not let recording race ahead of the async capability probe or required source selection.
 	const handleRecordButtonClick = () => {
 		if (captureCapabilities === null) {
 			return;

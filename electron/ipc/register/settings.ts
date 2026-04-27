@@ -21,6 +21,7 @@ import {
 } from "../state";
 
 const execFileAsync = promisify(execFile);
+// Cache the portal probe so repeated renderer requests do not keep spawning D-Bus tools.
 let linuxScreenCastPortalAvailablePromise: Promise<boolean> | null = null;
 
 function normalizeLinuxWindowSystem(value: string | undefined): "wayland" | "x11" | null {
@@ -32,6 +33,7 @@ function normalizeLinuxWindowSystem(value: string | undefined): "wayland" | "x11
 	return null;
 }
 
+// Normalize the different Linux session hints down to the two capture modes we care about.
 function getLinuxWindowSystem(): "wayland" | "x11" | null {
 	return (
 		normalizeLinuxWindowSystem(process.env.OZONE_PLATFORM) ??
@@ -41,7 +43,8 @@ function getLinuxWindowSystem(): "wayland" | "x11" | null {
 	);
 }
 
-async function commandSucceeds(command: string, args: string[]) {
+// Return command output when a probe tool is available; otherwise fail quietly and try the next one.
+async function getOptionalCommandOutput(command: string, args: string[]) {
 	try {
 		const { stdout = "", stderr = "" } = await execFileAsync(command, args, {
 			timeout: 2500,
@@ -52,6 +55,7 @@ async function commandSucceeds(command: string, args: string[]) {
 	}
 }
 
+// On Wayland, only prefer the portal capture flow if the ScreenCast portal is actually present.
 async function probeLinuxScreenCastPortal() {
 	if (process.platform !== "linux") {
 		return false;
@@ -59,7 +63,7 @@ async function probeLinuxScreenCastPortal() {
 
 	if (!linuxScreenCastPortalAvailablePromise) {
 		linuxScreenCastPortalAvailablePromise = (async () => {
-			const gdbusOutput = await commandSucceeds("gdbus", [
+			const gdbusOutput = await getOptionalCommandOutput("gdbus", [
 				"introspect",
 				"--session",
 				"--dest",
@@ -71,7 +75,7 @@ async function probeLinuxScreenCastPortal() {
 				return true;
 			}
 
-			const busctlOutput = await commandSucceeds("busctl", [
+			const busctlOutput = await getOptionalCommandOutput("busctl", [
 				"--user",
 				"introspect",
 				"org.freedesktop.portal.Desktop",
@@ -81,7 +85,7 @@ async function probeLinuxScreenCastPortal() {
 				return true;
 			}
 
-			const dbusSendOutput = await commandSucceeds("dbus-send", [
+			const dbusSendOutput = await getOptionalCommandOutput("dbus-send", [
 				"--session",
 				"--dest=org.freedesktop.portal.Desktop",
 				"--type=method_call",
@@ -115,6 +119,8 @@ export function registerSettingsHandlers() {
 			};
 		}
 
+		// Linux sessions can support different capture paths; prefer portal mode only
+		// for Wayland sessions where the ScreenCast portal is confirmed available.
 		const linuxWindowSystem = getLinuxWindowSystem();
 		const screenCastPortalAvailable =
 			linuxWindowSystem === "wayland" ? await probeLinuxScreenCastPortal() : false;
