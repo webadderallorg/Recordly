@@ -156,7 +156,7 @@ export function normalizeExportPipelineModel(value: unknown): ExportPipelineMode
 		return value;
 	}
 
-	return "legacy";
+	return "modern";
 }
 
 export function normalizeExportMp4FrameRate(value: unknown): ExportMp4FrameRate {

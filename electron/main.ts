@@ -55,6 +55,45 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IS_SMOKE_EXPORT = process.env.RECORDLY_SMOKE_EXPORT === "1";
 
+function isBrokenPipeError(error: unknown): boolean {
+	return (
+		typeof error === "object" &&
+		error !== null &&
+		"code" in error &&
+		(error as NodeJS.ErrnoException).code === "EPIPE"
+	);
+}
+
+function configureSmokeExportPipeGuards() {
+	if (!IS_SMOKE_EXPORT) {
+		return;
+	}
+
+	const ignoreBrokenPipe = (error: Error) => {
+		if (!isBrokenPipeError(error)) {
+			throw error;
+		}
+	};
+
+	process.stdout.on("error", ignoreBrokenPipe);
+	process.stderr.on("error", ignoreBrokenPipe);
+
+	for (const method of ["log", "warn", "error"] as const) {
+		const original = console[method].bind(console);
+		console[method] = (...args: unknown[]) => {
+			try {
+				original(...args);
+			} catch (error) {
+				if (!isBrokenPipeError(error)) {
+					throw error;
+				}
+			}
+		};
+	}
+}
+
+configureSmokeExportPipeGuards();
+
 app.commandLine.appendSwitch("ignore-gpu-blocklist");
 app.commandLine.appendSwitch("enable-unsafe-webgpu");
 app.commandLine.appendSwitch("enable-gpu-rasterization");
