@@ -519,6 +519,7 @@ export default function VideoEditor() {
 	const [isSavingProjectName, setIsSavingProjectName] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [smokeExportReadinessTick, setSmokeExportReadinessTick] = useState(0);
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [duration, setDuration] = useState(0);
@@ -4042,7 +4043,7 @@ export default function VideoEditor() {
 						: (settings.mp4FrameRate ?? mp4FrameRate);
 					const pipelineModel = smokeExportConfig.enabled
 						? (smokeExportConfig.pipelineModel ??
-							(smokeExportConfig.useNativeExport ? "modern" : "legacy"))
+							(smokeExportConfig.useNativeExport ? "modern" : exportPipelineModel))
 						: (settings.pipelineModel ?? exportPipelineModel);
 					const backendPreference =
 						pipelineModel === "legacy"
@@ -4423,14 +4424,65 @@ export default function VideoEditor() {
 			return;
 		}
 
-		if (error) {
+		const writeSmokeStartupFailure = (reason: string, detail: Record<string, unknown> = {}) => {
 			smokeExportStartedRef.current = true;
-			console.error(`[smoke-export] ${error}`);
-			window.close();
+			void writeSmokeExportReport(smokeExportConfig.outputPath, {
+				success: false,
+				phase: "startup",
+				reason,
+				...detail,
+			}).finally(() => window.close());
+		};
+
+		if (error) {
+			writeSmokeStartupFailure("editor-error", { error });
 			return;
 		}
 
 		if (!videoPath || loading) {
+			if (smokeExportReadinessTick >= 80) {
+				writeSmokeStartupFailure("video-not-loaded", {
+					videoPath,
+					loading,
+					duration,
+				});
+				return;
+			}
+
+			const retryTimeout = window.setTimeout(() => {
+				setSmokeExportReadinessTick((tick) => tick + 1);
+			}, 100);
+			return () => window.clearTimeout(retryTimeout);
+		}
+
+		const videoElement = videoPlaybackRef.current?.video;
+		if (!videoElement || videoElement.readyState < 1 || duration <= 0) {
+			if (smokeExportReadinessTick >= 80) {
+				writeSmokeStartupFailure("video-metadata-not-ready", {
+					hasVideoElement: Boolean(videoElement),
+					readyState: videoElement?.readyState ?? null,
+					duration,
+					videoPath,
+				});
+				return;
+			}
+
+			const retryTimeout = window.setTimeout(() => {
+				setSmokeExportReadinessTick((tick) => tick + 1);
+			}, 100);
+			return () => window.clearTimeout(retryTimeout);
+		}
+
+		if (
+			smokeExportConfig.projectPath &&
+			videoSourcePath &&
+			cursorTelemetrySourcePath !== videoSourcePath &&
+			smokeExportReadinessTick >= 80
+		) {
+			writeSmokeStartupFailure("cursor-telemetry-not-ready", {
+				videoSourcePath,
+				cursorTelemetrySourcePath,
+			});
 			return;
 		}
 
@@ -4457,9 +4509,12 @@ export default function VideoEditor() {
 		error,
 		handleExport,
 		loading,
+		duration,
 		smokeExportConfig.enabled,
 		smokeExportConfig.encodingMode,
+		smokeExportConfig.outputPath,
 		smokeExportConfig.projectPath,
+		smokeExportReadinessTick,
 		videoPath,
 		videoSourcePath,
 	]);

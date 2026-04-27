@@ -11,7 +11,7 @@ import ffmpegStatic from "ffmpeg-static";
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
-const mainEntry = path.join(repoRoot, "dist-electron", "main.js");
+const mainEntry = path.join(repoRoot, "dist-electron", "main.cjs");
 const rendererEntry = path.join(repoRoot, "dist", "index.html");
 
 const width = parseEvenInteger(process.env.RECORDLY_BENCH_EXPORT_WIDTH ?? "1280", "Width");
