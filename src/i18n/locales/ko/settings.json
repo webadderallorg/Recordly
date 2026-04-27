@@ -85,6 +85,7 @@
 		"webcamFootageAdded": "웹캠 영상을 연결했습니다",
 		"webcamFootageRemoved": "웹캠 영상을 제거했습니다",
 		"webcamSize": "웹캠 크기",
+		"webcamMirror": "웹캠 좌우 반전",
 		"webcamReactToZoom": "확대 시 웹캠 반응",
 		"webcamRoundness": "웹캠 둥글기",
 		"webcamShadow": "웹캠 그림자",

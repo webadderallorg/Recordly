@@ -2850,6 +2850,16 @@ export function SettingsPanel({
 							</div>
 							<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
 								<span className="text-[10px] text-muted-foreground">
+									{tSettings("effects.webcamMirror", "Mirror Webcam")}
+								</span>
+								<Switch
+									checked={webcam?.mirror ?? defaultWebcam.mirror}
+									onCheckedChange={(mirror) => updateWebcam({ mirror })}
+									className="data-[state=checked]:bg-[#2563EB] scale-75"
+								/>
+							</div>
+							<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
+								<span className="text-[10px] text-muted-foreground">
 									{tSettings("effects.webcamReactToZoom")}
 								</span>
 								<Switch

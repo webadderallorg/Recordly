@@ -85,6 +85,7 @@
 		"webcamFootageAdded": "Vidéo de webcam liée",
 		"webcamFootageRemoved": "Vidéo de webcam supprimée",
 		"webcamSize": "Taille de la webcam",
+		"webcamMirror": "Inverser la webcam",
 		"webcamReactToZoom": "La webcam réagit au zoom",
 		"webcamRoundness": "Arrondi de la webcam",
 		"webcamShadow": "Ombre de la webcam",

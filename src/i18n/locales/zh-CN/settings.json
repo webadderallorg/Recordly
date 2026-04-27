@@ -85,6 +85,7 @@
 		"webcamFootageAdded": "已关联摄像头素材",
 		"webcamFootageRemoved": "已移除摄像头素材",
 		"webcamSize": "摄像头大小",
+		"webcamMirror": "镜像摄像头",
 		"webcamReactToZoom": "摄像头随缩放变化",
 		"webcamRoundness": "摄像头圆角",
 		"webcamShadow": "摄像头阴影",
