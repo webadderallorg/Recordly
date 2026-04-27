@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
 import { selectRecordingMimeType } from "./recordingMimeType";
+import { LINUX_PORTAL_SOURCE_ID } from "@/lib/constants";
 
 const TARGET_FRAME_RATE = 60;
 const TARGET_WIDTH = 3840;
@@ -38,8 +39,8 @@ const MICROPHONE_FALLBACK_TOAST_ID = "recording-microphone-fallback";
 const MICROPHONE_FALLBACK_ERROR_TOAST_ID = "recording-microphone-fallback-error";
 const MICROPHONE_SIDECAR_ERROR_TOAST_ID = "recording-microphone-sidecar-error";
 const LINUX_PORTAL_SOURCE: ProcessedDesktopSource = {
-	id: "screen:linux-portal",
-	name: "Linux Portal",
+	id: LINUX_PORTAL_SOURCE_ID,
+	name: "Entire screen",
 	display_id: "",
 	thumbnail: null,
 	appIcon: null,
@@ -355,7 +356,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		// on Wayland that triggers an additional xdg-desktop-portal dialog.
 		// The sentinel is handled later by routing through getDisplayMedia,
 		// which lets the portal pick the source in a single dialog.
-		if (source.id === "screen:linux-portal") {
+		if (source.id === LINUX_PORTAL_SOURCE_ID) {
 			return source;
 		}
 
@@ -918,7 +919,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			// Persist the synthetic Linux portal sentinel to main so that the
 			// setDisplayMediaRequestHandler can short-circuit getSources() and
 			// avoid triggering an extra portal dialog.
-			if (!existingSource && selectedSource.id === "screen:linux-portal") {
+			if (!existingSource && selectedSource.id === LINUX_PORTAL_SOURCE_ID) {
 				try {
 					await window.electronAPI.selectSource(selectedSource);
 				} catch (err) {
@@ -1130,7 +1131,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			if (wantsAudioCapture) {
 				let screenMediaStream: MediaStream;
-				const useLinuxPortal = selectedSource.id === "screen:linux-portal";
+				const useLinuxPortal = selectedSource.id === LINUX_PORTAL_SOURCE_ID;
 				const acquireLinuxPortalStream = (withAudio: boolean) =>
 					mediaDevices.getDisplayMedia({
 						audio: withAudio,

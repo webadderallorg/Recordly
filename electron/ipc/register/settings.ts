@@ -9,6 +9,7 @@ import {
 	RECORDINGS_SETTINGS_FILE,
 	COUNTDOWN_SETTINGS_FILE,
 } from "../constants";
+import { LINUX_PORTAL_SOURCE_ID } from "../../../src/lib/constants";
 import {
 	countdownTimer,
 	setCountdownTimer,
@@ -24,6 +25,11 @@ const execFileAsync = promisify(execFile);
 // Cache the portal probe so repeated renderer requests do not keep spawning D-Bus tools.
 let linuxScreenCastPortalAvailablePromise: Promise<boolean> | null = null;
 
+/**
+ * Normalizes a given window system environment variable into "wayland" or "x11".
+ * @param value The raw environment variable value to parse.
+ * @returns "wayland" or "x11" if matched, otherwise null.
+ */
 function normalizeLinuxWindowSystem(value: string | undefined): "wayland" | "x11" | null {
 	const normalized = value?.trim().toLowerCase();
 	if (normalized === "wayland" || normalized === "x11") {
@@ -33,7 +39,11 @@ function normalizeLinuxWindowSystem(value: string | undefined): "wayland" | "x11
 	return null;
 }
 
-// Normalize the different Linux session hints down to the two capture modes we care about.
+/**
+ * Normalizes the different Linux session hints down to the two capture modes we care about.
+ * It checks multiple environment variables to determine if the session is Wayland or X11.
+ * @returns "wayland" or "x11" if a window system can be determined, otherwise null.
+ */
 function getLinuxWindowSystem(): "wayland" | "x11" | null {
 	return (
 		normalizeLinuxWindowSystem(process.env.OZONE_PLATFORM) ??
@@ -43,7 +53,12 @@ function getLinuxWindowSystem(): "wayland" | "x11" | null {
 	);
 }
 
-// Return command output when a probe tool is available; otherwise fail quietly and try the next one.
+/**
+ * Return command output when a probe tool is available; otherwise fail quietly and try the next one.
+ * @param command The binary command to execute.
+ * @param args The arguments to pass to the command.
+ * @returns The stdout and stderr concatenated, or null if the command failed or timed out.
+ */
 async function getOptionalCommandOutput(command: string, args: string[]) {
 	try {
 		const { stdout = "", stderr = "" } = await execFileAsync(command, args, {
@@ -55,7 +70,12 @@ async function getOptionalCommandOutput(command: string, args: string[]) {
 	}
 }
 
-// On Wayland, only prefer the portal capture flow if the ScreenCast portal is actually present.
+/**
+ * Probes the Linux system to determine if the ScreenCast portal is available.
+ * On Wayland, we only prefer the portal capture flow if the ScreenCast portal is actually present.
+ * Uses `gdbus`, `busctl`, and `dbus-send` in order to introspect the D-Bus interfaces.
+ * @returns A promise resolving to true if the portal is available, false otherwise.
+ */
 async function probeLinuxScreenCastPortal() {
 	if (process.platform !== "linux") {
 		return false;
@@ -109,6 +129,11 @@ export function registerSettingsHandlers() {
     return process.platform;
   });
 
+	/**
+	 * Retrieves the capture capabilities of the current system.
+	 * Used primarily to determine whether Linux users can use manual source enumeration
+	 * or if they are required to use the system ScreenCast portal (e.g. on Wayland).
+	 */
 	ipcMain.handle("get-capture-capabilities", async () => {
 		if (process.platform !== "linux") {
 			return {
@@ -134,7 +159,7 @@ export function registerSettingsHandlers() {
 				: ("manual" as const),
 			portalSource: prefersPortalSelection
 				? {
-						id: "screen:linux-portal",
+						id: LINUX_PORTAL_SOURCE_ID,
 						name: "Entire screen",
 						display_id: "linux-portal",
 						thumbnail: null,

@@ -22,6 +22,7 @@ import {
 	SpeakerX as VolumeX,
 	X,
 } from "@phosphor-icons/react";
+import { LINUX_PORTAL_SOURCE_ID } from "@/lib/constants";
 import { AnimatePresence, motion } from "motion/react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -697,13 +698,24 @@ export function LaunchWindow() {
 
 	useEffect(() => {
 		let cancelled = false;
-		// Capture capabilities decide whether Linux should show manual sources or route through the portal.
+		/**
+		 * Loads the capture capabilities of the current system.
+		 * Capture capabilities decide whether Linux should show manual sources or route through the portal.
+		 */
 		const loadCaptureCapabilities = async () => {
 			try {
 				const nextCapabilities = await window.electronAPI.getCaptureCapabilities();
 				if (!cancelled) setCaptureCapabilities(nextCapabilities);
 			} catch (error) {
 				console.error("Failed to load capture capabilities:", error);
+				if (!cancelled) {
+					setCaptureCapabilities({
+						supportsManualSourceSelection: true,
+						supportsPortalSourceSelection: false,
+						preferredSourceSelectionMode: "manual",
+						portalSource: null,
+					});
+				}
 			}
 		};
 		void loadCaptureCapabilities();
@@ -900,6 +912,11 @@ export function LaunchWindow() {
 		}
 	}, []);
 
+	/**
+	 * Toggles the dropdown menus in the HUD.
+	 * Fetches manual sources if the sources dropdown is opened and manual enumeration is supported.
+	 * @param which The dropdown to toggle
+	 */
 	const toggleDropdown = (which: "sources" | "more" | "mic" | "countdown" | "webcam") => {
 		setProjectBrowserOpen(false);
 		setActiveDropdown(activeDropdown === which ? "none" : which);
@@ -909,13 +926,17 @@ export function LaunchWindow() {
 		}
 	};
 
-	// Persist the selected source for recording and skip highlight overlays for the synthetic portal source.
+	/**
+	 * Persists the selected source for recording.
+	 * Skips drawing highlight overlays if the synthetic portal source (Wayland) is selected.
+	 * @param source The selected desktop source
+	 */
 	const handleSourceSelect = async (source: DesktopSource) => {
 		await window.electronAPI.selectSource(source);
 		setSelectedSource(source.name);
 		setHasSelectedSource(true);
 		setActiveDropdown("none");
-		if (source.id === "screen:linux-portal") {
+		if (source.id === LINUX_PORTAL_SOURCE_ID) {
 			return;
 		}
 		window.electronAPI.showSourceHighlight?.({
@@ -1001,13 +1022,17 @@ export function LaunchWindow() {
 
 	const screenSources = sources.filter((s) => s.sourceType === "screen");
 	const windowSources = sources.filter((s) => s.sourceType === "window");
-	// Do not let recording race ahead of the async capability probe or required source selection.
+	/**
+	 * Handles clicks on the primary Record button.
+	 * Ensures a source is selected before recording begins, or opens the source selector if necessary.
+	 * Bypasses the source selector dropdown entirely if the system mandates portal source selection (e.g., Wayland).
+	 */
 	const handleRecordButtonClick = () => {
 		if (captureCapabilities === null) {
 			return;
 		}
 
-		if (hasSelectedSource) {
+		if (hasSelectedSource || (shouldUsePortalSourceSelection && !supportsManualSourceSelection)) {
 			toggleRecording();
 			return;
 		}
