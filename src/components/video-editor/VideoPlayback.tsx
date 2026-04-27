@@ -1012,11 +1012,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const bgVideo = bgVideoRef.current;
 			if (!bgVideo) return;
 
+			const clipTimelineTime = currentTime;
 			const videoDuration =
 				Number.isFinite(bgVideo.duration) && bgVideo.duration > 0 ? bgVideo.duration : null;
 			const targetTime = videoDuration
-				? currentTime % videoDuration
-				: clampMediaTimeToDuration(currentTime, videoDuration);
+				? clipTimelineTime % videoDuration
+				: clampMediaTimeToDuration(clipTimelineTime, videoDuration);
 
 			const activeSpeedRegion = speedRegionsRef.current.find(
 				(region) => currentTime * 1000 >= region.startMs && currentTime * 1000 < region.endMs,
@@ -1036,7 +1037,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 			const previousTimelineTime = lastBackgroundSyncTimeRef.current;
 			const timelineJumped =
-				previousTimelineTime === null || Math.abs(targetTime - previousTimelineTime) > 0.25;
+				previousTimelineTime === null ||
+				Math.abs(clipTimelineTime - previousTimelineTime) > 0.25;
 			const driftThreshold = isPlaying ? 0.35 : 0.01;
 			if (timelineJumped || Math.abs(bgVideo.currentTime - targetTime) > driftThreshold) {
 				try {
@@ -1055,7 +1057,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				bgVideo.pause();
 			}
 
-			lastBackgroundSyncTimeRef.current = targetTime;
+			lastBackgroundSyncTimeRef.current = clipTimelineTime;
 		}, [currentTime, isPlaying]);
 
 		useEffect(() => {

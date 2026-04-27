@@ -157,6 +157,7 @@ function WallpaperVideoPreview({ src }: { src: string }) {
 
 	useEffect(() => {
 		let cancelled = false;
+		setResolvedSrc(src);
 
 		void (async () => {
 			try {

@@ -1477,8 +1477,15 @@ export function LaunchWindow() {
 										<DropdownItem
 											icon={<RefreshCw size={16} />}
 											onClick={() => {
-												void window.electronAPI.previewUpdateToast();
 												setActiveDropdown("none");
+												void window.electronAPI
+													.previewUpdateToast()
+													.catch((error) => {
+														console.warn(
+															"Failed to preview update toast:",
+															error,
+														);
+													});
 											}}
 										>
 											{t("recording.previewUpdateUi", "Preview Update UI")}
