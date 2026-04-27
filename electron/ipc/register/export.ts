@@ -518,6 +518,74 @@ export function registerExportHandlers() {
 	);
 
 	ipcMain.handle(
+		"save-subtitle-file",
+		async (event, content: string, fileName: string, format: "srt" | "vtt") => {
+			const normalizedFormat = format === "vtt" ? "vtt" : "srt";
+			const defaultFileName =
+				typeof fileName === "string" && fileName.trim().length > 0
+					? path.basename(fileName.trim())
+					: `captions-${Date.now()}.${normalizedFormat}`;
+			const fileNameWithExtension = defaultFileName
+				.toLowerCase()
+				.endsWith(`.${normalizedFormat}`)
+				? defaultFileName
+				: `${defaultFileName}.${normalizedFormat}`;
+
+			try {
+				if (typeof content !== "string" || content.trim().length === 0) {
+					return {
+						success: false,
+						canceled: false,
+						message: "No captions to export",
+					};
+				}
+
+				const filters =
+					normalizedFormat === "vtt"
+						? [{ name: "WebVTT Subtitle", extensions: ["vtt"] }]
+						: [{ name: "SubRip Subtitle", extensions: ["srt"] }];
+				const parentWindow = BrowserWindow.fromWebContents(event.sender);
+				const saveDialogOptions: SaveDialogOptions = {
+					title: normalizedFormat === "vtt" ? "Save WebVTT Subtitle" : "Save SRT Subtitle",
+					defaultPath: path.join(app.getPath("downloads"), fileNameWithExtension),
+					filters,
+					properties: ["createDirectory", "showOverwriteConfirmation"],
+				};
+
+				const result = parentWindow
+					? await dialog.showSaveDialog(parentWindow, saveDialogOptions)
+					: await dialog.showSaveDialog(saveDialogOptions);
+
+				if (result.canceled || !result.filePath) {
+					return {
+						success: false,
+						canceled: true,
+						message: "Subtitle export canceled",
+					};
+				}
+
+				await fs.writeFile(result.filePath, content, "utf8");
+				approveUserPath(result.filePath);
+
+				return {
+					success: true,
+					path: result.filePath,
+					message: "Subtitles exported successfully",
+					canceled: false,
+				};
+			} catch (error) {
+				console.error("Failed to save subtitle file:", error);
+				return {
+					success: false,
+					canceled: false,
+					message: "Failed to save subtitle file",
+					error: String(error),
+				};
+			}
+		},
+	);
+
+	ipcMain.handle(
 		"write-exported-video-to-path",
 		async (_event, videoData: ArrayBuffer, outputPath: string) => {
 			try {

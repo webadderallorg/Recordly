@@ -116,6 +116,7 @@ import {
 	validateProjectData,
 } from "./projectPersistence";
 import { SettingsPanel } from "./SettingsPanel";
+import { type SubtitleExportFormat, serializeCaptions } from "./subtitleExport";
 import {
 	APP_HEADER_ICON_BUTTON_CLASS,
 	DiscordLinkButton,
@@ -2235,6 +2236,40 @@ export default function VideoEditor() {
 		setAutoCaptions([]);
 		setAutoCaptionSettings((prev) => ({ ...prev, enabled: false }));
 	}, []);
+
+	const handleExportCaptions = useCallback(
+		async (format: SubtitleExportFormat) => {
+			const content = serializeCaptions(autoCaptions, format);
+			if (!content.trim()) {
+				toast.error("No captions to export");
+				return;
+			}
+
+			let result: Awaited<ReturnType<typeof window.electronAPI.saveSubtitleFile>>;
+			try {
+				result = await window.electronAPI.saveSubtitleFile(
+					content,
+					`${projectDisplayName}.${format}`,
+					format,
+				);
+			} catch (error) {
+				toast.error(getErrorMessage(error));
+				return;
+			}
+
+			if (result.canceled) {
+				return;
+			}
+
+			if (!result.success) {
+				toast.error(result.message || "Failed to export captions");
+				return;
+			}
+
+			toast.success(result.message || "Captions exported");
+		},
+		[autoCaptions, projectDisplayName],
+	);
 
 	const saveProject = useCallback(
 		async (forceSaveAs: boolean) => {
@@ -5294,6 +5329,7 @@ export default function VideoEditor() {
 								onPickWhisperModel={handlePickWhisperModel}
 								onGenerateAutoCaptions={handleGenerateAutoCaptions}
 								onClearAutoCaptions={handleClearAutoCaptions}
+								onExportCaptions={handleExportCaptions}
 								onDownloadWhisperSmallModel={handleDownloadWhisperSmallModel}
 								onDeleteWhisperSmallModel={handleDeleteWhisperSmallModel}
 								onAnnotationContentChange={handleAnnotationContentChange}

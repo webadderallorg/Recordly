@@ -1,4 +1,10 @@
-import { Palette, Trash as Trash2, UploadSimple as Upload, X } from "@phosphor-icons/react";
+import {
+	DownloadSimple as Download,
+	Palette,
+	Trash as Trash2,
+	UploadSimple as Upload,
+	X,
+} from "@phosphor-icons/react";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -433,6 +439,7 @@ interface SettingsPanelProps {
 	onPickWhisperModel?: () => void;
 	onGenerateAutoCaptions?: () => void;
 	onClearAutoCaptions?: () => void;
+	onExportCaptions?: (format: "srt" | "vtt") => void;
 	onDownloadWhisperSmallModel?: () => void;
 	onDeleteWhisperSmallModel?: () => void;
 	selectedSpeedId?: string | null;
@@ -792,6 +799,7 @@ export function SettingsPanel({
 	onPickWhisperModel,
 	onGenerateAutoCaptions,
 	onClearAutoCaptions,
+	onExportCaptions,
 	onDownloadWhisperSmallModel,
 	onDeleteWhisperSmallModel,
 	selectedSpeedId,
@@ -2162,6 +2170,28 @@ export function SettingsPanel({
 								? tSettings("captions.regenerateFull", "Regenerate Captions")
 								: tSettings("captions.generateFull", "Generate Captions")}
 					</Button>
+					<div className="grid grid-cols-2 gap-2">
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => onExportCaptions?.("srt")}
+							disabled={captionCueCount === 0}
+							className="h-9 gap-1.5 rounded-xl border-foreground/10 bg-foreground/5 px-3 text-xs text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+						>
+							<Download className="h-3 w-3" />
+							{tSettings("captions.exportSrt", "Export SRT")}
+						</Button>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => onExportCaptions?.("vtt")}
+							disabled={captionCueCount === 0}
+							className="h-9 gap-1.5 rounded-xl border-foreground/10 bg-foreground/5 px-3 text-xs text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+						>
+							<Download className="h-3 w-3" />
+							{tSettings("captions.exportVtt", "Export VTT")}
+						</Button>
+					</div>
 					{isGeneratingCaptions ? (
 						<div className="space-y-1">
 							<div className="text-xs text-muted-foreground">

@@ -342,6 +342,17 @@ interface Window {
 			videoData: ArrayBuffer,
 			fileName: string,
 		) => Promise<{ success: boolean; path?: string; message?: string; canceled?: boolean }>;
+		saveSubtitleFile: (
+			content: string,
+			fileName: string,
+			format: "srt" | "vtt",
+		) => Promise<{
+			success: boolean;
+			path?: string;
+			message?: string;
+			error?: string;
+			canceled?: boolean;
+		}>;
 		writeExportedVideoToPath: (
 			videoData: ArrayBuffer,
 			outputPath: string,

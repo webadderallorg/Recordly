@@ -378,6 +378,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	saveExportedVideo: (videoData: ArrayBuffer, fileName: string) => {
 		return ipcRenderer.invoke("save-exported-video", videoData, fileName);
 	},
+	saveSubtitleFile: (content: string, fileName: string, format: "srt" | "vtt") => {
+		return ipcRenderer.invoke("save-subtitle-file", content, fileName, format);
+	},
 	writeExportedVideoToPath: (videoData: ArrayBuffer, outputPath: string) => {
 		return ipcRenderer.invoke("write-exported-video-to-path", videoData, outputPath);
 	},
