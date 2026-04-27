@@ -124,6 +124,7 @@ import {
 	RECORDLY_ISSUES_URL,
 } from "./TutorialHelp";
 import TimelineEditor, { type TimelineEditorHandle } from "./timeline/TimelineEditor";
+import { buildManualRecordingZoomRegions } from "./timeline/recordingZoomMarkers";
 import { normalizeCursorTelemetry } from "./timeline/zoomSuggestionUtils";
 import {
 	type AnnotationRegion,
@@ -684,6 +685,8 @@ export default function VideoEditor() {
 	const exporterRef = useRef<CancelableExporter | null>(null);
 	const autoSuggestedVideoPathRef = useRef<string | null>(null);
 	const pendingFreshRecordingAutoZoomPathRef = useRef<string | null>(null);
+	const pendingFreshRecordingManualZoomPathRef = useRef<string | null>(null);
+	const manualRecordingZoomsAppliedVideoPathRef = useRef<string | null>(null);
 	const historyPastRef = useRef<EditorHistorySnapshot[]>([]);
 	const historyFutureRef = useRef<EditorHistorySnapshot[]>([]);
 	const historyCurrentRef = useRef<EditorHistorySnapshot | null>(null);
@@ -715,6 +718,7 @@ export default function VideoEditor() {
 
 	useEffect(() => {
 		autoSuggestedVideoPathRef.current = null;
+		manualRecordingZoomsAppliedVideoPathRef.current = null;
 		pendingFreshRecordingAutoSuggestTelemetryCountRef.current = 0;
 		if (pendingFreshRecordingAutoSuggestTimeoutRef.current !== null) {
 			window.clearTimeout(pendingFreshRecordingAutoSuggestTimeoutRef.current);
@@ -1566,6 +1570,7 @@ export default function VideoEditor() {
 			setVideoPath(await resolveVideoUrl(sourcePath));
 			setCurrentProjectPath(path ?? null);
 			pendingFreshRecordingAutoZoomPathRef.current = null;
+			pendingFreshRecordingManualZoomPathRef.current = null;
 			if (normalizedEditor.webcam.sourcePath) {
 				await window.electronAPI.setCurrentRecordingSession?.({
 					videoPath: sourcePath,
@@ -1845,6 +1850,7 @@ export default function VideoEditor() {
 					setCurrentProjectPath(null);
 					setLastSavedSnapshot(null);
 					pendingFreshRecordingAutoZoomPathRef.current = null;
+					pendingFreshRecordingManualZoomPathRef.current = null;
 					setWebcam((prev) => ({
 						...prev,
 						enabled: !!smokeWebcamSourcePath,
@@ -1901,6 +1907,7 @@ export default function VideoEditor() {
 					setVideoPath(sourceVideoUrl);
 					setCurrentProjectPath(null);
 					setLastSavedSnapshot(null);
+					pendingFreshRecordingManualZoomPathRef.current = sourceVideoUrl;
 					pendingFreshRecordingAutoZoomPathRef.current = autoApplyFreshRecordingAutoZooms
 						? sourceVideoUrl
 						: null;
@@ -1923,6 +1930,7 @@ export default function VideoEditor() {
 					setCurrentProjectPath(null);
 					setLastSavedSnapshot(null);
 					pendingFreshRecordingAutoZoomPathRef.current = null;
+					pendingFreshRecordingManualZoomPathRef.current = null;
 					setWebcam((prev) => ({
 						...prev,
 						enabled: false,
@@ -2817,6 +2825,52 @@ export default function VideoEditor() {
 		},
 		[videoPath],
 	);
+
+	useEffect(() => {
+		if (!videoPath || loading || duration <= 0 || normalizedCursorTelemetry.length === 0) {
+			return;
+		}
+
+		if (pendingFreshRecordingManualZoomPathRef.current !== videoPath) {
+			return;
+		}
+
+		if (manualRecordingZoomsAppliedVideoPathRef.current === videoPath) {
+			return;
+		}
+
+		const totalMs = Math.round(duration * 1000);
+		const manualRegions = buildManualRecordingZoomRegions({
+			cursorTelemetry: normalizedCursorTelemetry,
+			totalMs,
+			defaultDurationMs: Math.min(1000, totalMs),
+			reservedSpans: zoomRegions.map((region) => ({
+				start: region.startMs,
+				end: region.endMs,
+			})),
+		});
+
+		manualRecordingZoomsAppliedVideoPathRef.current = videoPath;
+		pendingFreshRecordingManualZoomPathRef.current = null;
+
+		if (manualRegions.length === 0) {
+			return;
+		}
+
+		setZoomRegions((prev) => [
+			...prev,
+			...manualRegions.map((region) => ({
+				id: `zoom-${nextZoomIdRef.current++}`,
+				startMs: region.start,
+				endMs: region.end,
+				depth: DEFAULT_ZOOM_DEPTH,
+				focus: clampFocusToDepth(region.focus, DEFAULT_ZOOM_DEPTH),
+				mode: "manual" as const,
+			})),
+		]);
+		autoSuggestedVideoPathRef.current = videoPath;
+		pendingFreshRecordingAutoZoomPathRef.current = null;
+	}, [videoPath, loading, duration, normalizedCursorTelemetry, zoomRegions]);
 
 	useEffect(() => {
 		if (

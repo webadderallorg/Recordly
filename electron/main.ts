@@ -6,6 +6,7 @@ import {
 	BrowserWindow,
 	desktopCapturer,
 	dialog,
+	globalShortcut,
 	ipcMain,
 	Menu,
 	Notification,
@@ -18,6 +19,7 @@ import { RECORDINGS_DIR } from "./appPaths";
 import { showCursor } from "./cursorHider";
 import { registerExtensionIpcHandlers } from "./extensions/extensionIpc";
 import { getGpuSwitches } from "./gpuSwitches";
+import { captureManualZoomMarker } from "./ipc/cursor/telemetry";
 import {
 	cleanupAllExportStreams,
 	cleanupNativeVideoExportSessions,
@@ -54,6 +56,8 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IS_SMOKE_EXPORT = process.env.RECORDLY_SMOKE_EXPORT === "1";
+const RECORDING_ZOOM_SHORTCUT = "CommandOrControl+Alt+Z";
+const RECORDING_ZOOM_SHORTCUT_THROTTLE_MS = 500;
 
 app.commandLine.appendSwitch("ignore-gpu-blocklist");
 app.commandLine.appendSwitch("enable-unsafe-webgpu");
@@ -127,6 +131,8 @@ let editorHasUnsavedChanges = false;
 let isForceClosing = false;
 let activeUpdateNotification: Notification | null = null;
 let activeUpdateNotificationKey: string | null = null;
+let recordingZoomShortcutRegistered = false;
+let lastRecordingZoomShortcutAtMs = 0;
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -165,6 +171,45 @@ function restoreWindowSafely(window: BrowserWindow | null) {
 
 	window.moveTop();
 	window.focus();
+}
+
+function addRecordingZoomMarkerFromShortcut() {
+	const now = Date.now();
+	if (now - lastRecordingZoomShortcutAtMs < RECORDING_ZOOM_SHORTCUT_THROTTLE_MS) {
+		return;
+	}
+
+	lastRecordingZoomShortcutAtMs = now;
+	if (captureManualZoomMarker()) {
+		console.log(`[recording-zoom] Added zoom marker via ${RECORDING_ZOOM_SHORTCUT}`);
+	}
+}
+
+function registerRecordingZoomShortcut() {
+	if (recordingZoomShortcutRegistered) {
+		return;
+	}
+
+	recordingZoomShortcutRegistered = globalShortcut.register(
+		RECORDING_ZOOM_SHORTCUT,
+		addRecordingZoomMarkerFromShortcut,
+	);
+
+	if (!recordingZoomShortcutRegistered) {
+		console.warn(
+			`[recording-zoom] Failed to register ${RECORDING_ZOOM_SHORTCUT}; another app may already be using it.`,
+		);
+	}
+}
+
+function unregisterRecordingZoomShortcut() {
+	if (!recordingZoomShortcutRegistered) {
+		return;
+	}
+
+	globalShortcut.unregister(RECORDING_ZOOM_SHORTCUT);
+	recordingZoomShortcutRegistered = false;
+	lastRecordingZoomShortcutAtMs = 0;
 }
 
 // Tray Icons (lazily created after app is ready to avoid accessing Electron APIs too early)
@@ -783,6 +828,7 @@ function createSourceSelectorWindowWrapper() {
 // On macOS, applications and their menu bar stay active until the user quits
 // explicitly with Cmd + Q.
 app.on("before-quit", () => {
+	unregisterRecordingZoomShortcut();
 	killWindowsCaptureProcess();
 	showCursor();
 	cleanupNativeVideoExportSessions();
@@ -882,9 +928,11 @@ app.whenReady().then(async () => {
 			if (!tray) createTray();
 			updateTrayMenu(recording);
 			if (recording) {
+				registerRecordingZoomShortcut();
 				reassertHudOverlayMouseState();
 			}
 			if (!recording) {
+				unregisterRecordingZoomShortcut();
 				restoreWindowSafely(mainWindow);
 			}
 		},

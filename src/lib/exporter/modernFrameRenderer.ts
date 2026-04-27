@@ -2413,7 +2413,11 @@ export class FrameRenderer {
 			if (point.timeMs < timeMs - 100) {
 				continue;
 			}
-			if (!point.interactionType || point.interactionType === "move") {
+			if (
+				!point.interactionType ||
+				point.interactionType === "move" ||
+				point.interactionType === "manual-zoom"
+			) {
 				continue;
 			}
 			if (point.timeMs === this.lastEmittedClickTimeMs) {

@@ -1813,6 +1813,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 							if (
 								p.interactionType &&
 								p.interactionType !== "move" &&
+								p.interactionType !== "manual-zoom" &&
 								p.timeMs !== lastEmittedClickTimeMsRef.current
 							) {
 								const extensionCursor = mapCursorToCanvasNormalized(

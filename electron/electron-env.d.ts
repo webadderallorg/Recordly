@@ -636,6 +636,7 @@ interface CursorTelemetryPoint {
 		| "double-click"
 		| "right-click"
 		| "middle-click"
+		| "manual-zoom"
 		| "mouseup";
 	cursorType?:
 		| "arrow"

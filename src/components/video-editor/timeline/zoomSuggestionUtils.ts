@@ -186,7 +186,11 @@ export function detectInteractionCandidates(
 ): CursorInteractionCandidate[] {
 	// --- Phase 1: Explicit interaction events (from uiohook telemetry) ---
 	const clickEvents = samples.filter(
-		(s) => s.interactionType && s.interactionType !== "move" && s.interactionType !== "mouseup",
+		(s) =>
+			s.interactionType &&
+			s.interactionType !== "move" &&
+			s.interactionType !== "mouseup" &&
+			s.interactionType !== "manual-zoom",
 	);
 
 	const explicitInteractionCandidates: CursorInteractionCandidate[] = [];
