@@ -998,6 +998,10 @@ export function LaunchWindow() {
 	const screenSources = sources.filter((s) => s.sourceType === "screen");
 	const windowSources = sources.filter((s) => s.sourceType === "window");
 	const handleRecordButtonClick = () => {
+		if (captureCapabilities === null) {
+			return;
+		}
+
 		if (hasSelectedSource) {
 			toggleRecording();
 			return;
@@ -1145,7 +1149,7 @@ export function LaunchWindow() {
 				type="button"
 				className={`${styles.recBtn} ${styles.electronNoDrag}`}
 				onClick={handleRecordButtonClick}
-				disabled={countdownActive}
+				disabled={countdownActive || captureCapabilities === null}
 				title={t("recording.record")}
 			>
 				<div className={styles.recDot} />

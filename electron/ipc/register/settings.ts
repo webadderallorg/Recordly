@@ -1,4 +1,6 @@
 import fs from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { app, ipcMain } from "electron";
 import { hideCursor } from "../../cursorHider";
 import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from "../../windows";
@@ -18,6 +20,9 @@ import {
 	setCountdownRemaining,
 } from "../state";
 
+const execFileAsync = promisify(execFile);
+let linuxScreenCastPortalAvailablePromise: Promise<boolean> | null = null;
+
 function normalizeLinuxWindowSystem(value: string | undefined): "wayland" | "x11" | null {
 	const normalized = value?.trim().toLowerCase();
 	if (normalized === "wayland" || normalized === "x11") {
@@ -36,6 +41,61 @@ function getLinuxWindowSystem(): "wayland" | "x11" | null {
 	);
 }
 
+async function commandSucceeds(command: string, args: string[]) {
+	try {
+		const { stdout = "", stderr = "" } = await execFileAsync(command, args, {
+			timeout: 2500,
+		});
+		return `${stdout}${stderr}`;
+	} catch {
+		return null;
+	}
+}
+
+async function probeLinuxScreenCastPortal() {
+	if (process.platform !== "linux") {
+		return false;
+	}
+
+	if (!linuxScreenCastPortalAvailablePromise) {
+		linuxScreenCastPortalAvailablePromise = (async () => {
+			const gdbusOutput = await commandSucceeds("gdbus", [
+				"introspect",
+				"--session",
+				"--dest",
+				"org.freedesktop.portal.Desktop",
+				"--object-path",
+				"/org/freedesktop/portal/desktop",
+			]);
+			if (gdbusOutput?.includes("org.freedesktop.portal.ScreenCast")) {
+				return true;
+			}
+
+			const busctlOutput = await commandSucceeds("busctl", [
+				"--user",
+				"introspect",
+				"org.freedesktop.portal.Desktop",
+				"/org/freedesktop/portal/desktop",
+			]);
+			if (busctlOutput?.includes("org.freedesktop.portal.ScreenCast")) {
+				return true;
+			}
+
+			const dbusSendOutput = await commandSucceeds("dbus-send", [
+				"--session",
+				"--dest=org.freedesktop.portal.Desktop",
+				"--type=method_call",
+				"--print-reply",
+				"/org/freedesktop/portal/desktop",
+				"org.freedesktop.DBus.Introspectable.Introspect",
+			]);
+			return dbusSendOutput?.includes("org.freedesktop.portal.ScreenCast") ?? false;
+		})();
+	}
+
+	return linuxScreenCastPortalAvailablePromise;
+}
+
 export function registerSettingsHandlers() {
   ipcMain.handle('app:getVersion', () => {
     return app.getVersion()
@@ -45,7 +105,7 @@ export function registerSettingsHandlers() {
     return process.platform;
   });
 
-	ipcMain.handle("get-capture-capabilities", () => {
+	ipcMain.handle("get-capture-capabilities", async () => {
 		if (process.platform !== "linux") {
 			return {
 				supportsManualSourceSelection: true,
@@ -56,12 +116,16 @@ export function registerSettingsHandlers() {
 		}
 
 		const linuxWindowSystem = getLinuxWindowSystem();
-		const prefersPortalSelection = linuxWindowSystem === "wayland";
+		const screenCastPortalAvailable =
+			linuxWindowSystem === "wayland" ? await probeLinuxScreenCastPortal() : false;
+		const prefersPortalSelection = linuxWindowSystem === "wayland" && screenCastPortalAvailable;
 
 		return {
 			supportsManualSourceSelection: !prefersPortalSelection,
 			supportsPortalSourceSelection: prefersPortalSelection,
-			preferredSourceSelectionMode: prefersPortalSelection ? ("portal" as const) : ("manual" as const),
+			preferredSourceSelectionMode: prefersPortalSelection
+				? ("portal" as const)
+				: ("manual" as const),
 			portalSource: prefersPortalSelection
 				? {
 						id: "screen:linux-portal",
