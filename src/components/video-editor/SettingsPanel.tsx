@@ -537,8 +537,7 @@ const CAPTION_LANGUAGE_OPTIONS = [
 	{ value: "de", label: "German" },
 	{ value: "it", label: "Italian" },
 	{ value: "pt", label: "Portuguese" },
-	{ value: "zh-CN", label: "Chinese (Simplified)" },
-	{ value: "zh-TW", label: "Chinese (Traditional)" },
+	{ value: "zh", label: "Chinese (Simplified)" },
 	{ value: "ja", label: "Japanese" },
 	{ value: "ko", label: "Korean" },
 ] as const;
