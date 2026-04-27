@@ -57,7 +57,7 @@ jobs:
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: recordly-windows-${{ github.sha }}
+          name: windows-x64-release
           path: |
             release/*.exe
             release/*.blockmap
@@ -128,7 +128,7 @@ jobs:
       - name: Upload macOS build
         uses: actions/upload-artifact@v4
         with:
-          name: recordly-macos-${{ matrix.arch }}-${{ github.sha }}
+          name: macos-${{ matrix.arch }}-release
           path: |
             release/**/*.dmg
             release/**/*.zip
@@ -191,7 +191,7 @@ jobs:
       - name: Upload Linux build
         uses: actions/upload-artifact@v4
         with:
-          name: recordly-linux-${{ github.sha }}
+          name: linux-x64-release
           path: |
             release/**/*.AppImage
             release/**/*.blockmap
