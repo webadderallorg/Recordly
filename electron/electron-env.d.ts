@@ -64,6 +64,13 @@ interface UpdateStatusSummary {
 	detail?: string;
 }
 
+interface CaptureCapabilities {
+	supportsManualSourceSelection: boolean;
+	supportsPortalSourceSelection: boolean;
+	preferredSourceSelectionMode: "manual" | "portal";
+	portalSource: ProcessedDesktopSource | null;
+}
+
 type RendererExtensionInfo = import("./extensions/extensionTypes").ExtensionInfo;
 type RendererExtensionReview = import("./extensions/extensionTypes").ExtensionReview;
 type RendererMarketplaceExtension = import("./extensions/extensionTypes").MarketplaceExtension;
@@ -516,6 +523,7 @@ interface Window {
 		onMenuSaveProject: (callback: () => void) => () => void;
 		onMenuSaveProjectAs: (callback: () => void) => () => void;
 		getPlatform: () => Promise<string>;
+		getCaptureCapabilities: () => Promise<CaptureCapabilities>;
 		revealInFolder: (
 			filePath: string,
 		) => Promise<{ success: boolean; error?: string; message?: string }>;

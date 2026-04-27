@@ -25,6 +25,7 @@ dist-ssr
 *.sw?
 release/**
 *.kiro/
+*.codex
 # npx electron-builder --mac --win
 .tmp/
 .history/
@@ -36,6 +37,8 @@ vite.config.d.ts
 # Native capture build artifacts
 electron/native/wgc-capture/build/
 electron/native/cursor-monitor/build/
+electron/native/bin/
+
 
 # Local debug helpers
 tmp-*.ps1

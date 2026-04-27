@@ -18,6 +18,24 @@ import {
 	setCountdownRemaining,
 } from "../state";
 
+function normalizeLinuxWindowSystem(value: string | undefined): "wayland" | "x11" | null {
+	const normalized = value?.trim().toLowerCase();
+	if (normalized === "wayland" || normalized === "x11") {
+		return normalized;
+	}
+
+	return null;
+}
+
+function getLinuxWindowSystem(): "wayland" | "x11" | null {
+	return (
+		normalizeLinuxWindowSystem(process.env.OZONE_PLATFORM) ??
+		normalizeLinuxWindowSystem(process.env.ELECTRON_OZONE_PLATFORM_HINT) ??
+		normalizeLinuxWindowSystem(process.env.XDG_SESSION_TYPE) ??
+		(process.env.WAYLAND_DISPLAY ? "wayland" : null)
+	);
+}
+
 export function registerSettingsHandlers() {
   ipcMain.handle('app:getVersion', () => {
     return app.getVersion()
@@ -26,6 +44,36 @@ export function registerSettingsHandlers() {
   ipcMain.handle('get-platform', () => {
     return process.platform;
   });
+
+	ipcMain.handle("get-capture-capabilities", () => {
+		if (process.platform !== "linux") {
+			return {
+				supportsManualSourceSelection: true,
+				supportsPortalSourceSelection: false,
+				preferredSourceSelectionMode: "manual" as const,
+				portalSource: null,
+			};
+		}
+
+		const linuxWindowSystem = getLinuxWindowSystem();
+		const prefersPortalSelection = linuxWindowSystem === "wayland";
+
+		return {
+			supportsManualSourceSelection: !prefersPortalSelection,
+			supportsPortalSourceSelection: prefersPortalSelection,
+			preferredSourceSelectionMode: prefersPortalSelection ? ("portal" as const) : ("manual" as const),
+			portalSource: prefersPortalSelection
+				? {
+						id: "screen:linux-portal",
+						name: "Entire screen",
+						display_id: "linux-portal",
+						thumbnail: null,
+						appIcon: null,
+						sourceType: "screen" as const,
+					}
+				: null,
+		};
+	});
 
   // ---------------------------------------------------------------------------
   // Cursor hiding for the browser-capture fallback.

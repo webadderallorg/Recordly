@@ -207,6 +207,9 @@ export function LaunchWindow() {
 		boolean | null
 	>(null);
 	const [platform, setPlatform] = useState<string | null>(null);
+	const [captureCapabilities, setCaptureCapabilities] = useState<CaptureCapabilities | null>(
+		null,
+	);
 	const [appVersion, setAppVersion] = useState<string | null>(null);
 	const dropdownRef = useRef<HTMLDivElement>(null);
 	const hudContentRef = useRef<HTMLDivElement>(null);
@@ -272,6 +275,23 @@ export function LaunchWindow() {
 	} = useVideoDevices(webcamEnabled || webcamDropdownOpen);
 
 	const supportsHudCaptureProtection = platform !== "linux";
+	const supportsManualSourceSelection = captureCapabilities?.supportsManualSourceSelection === true;
+	const supportsPortalSourceSelection = captureCapabilities?.supportsPortalSourceSelection === true;
+	const showSourceSelector = supportsManualSourceSelection || supportsPortalSourceSelection;
+	const shouldUsePortalSourceSelection =
+		captureCapabilities?.preferredSourceSelectionMode === "portal";
+	const portalSource = captureCapabilities?.portalSource
+		? {
+				id: captureCapabilities.portalSource.id,
+				name: captureCapabilities.portalSource.name,
+				thumbnail: captureCapabilities.portalSource.thumbnail,
+				display_id: captureCapabilities.portalSource.display_id,
+				appIcon: captureCapabilities.portalSource.appIcon,
+				sourceType: captureCapabilities.portalSource.sourceType,
+				appName: captureCapabilities.portalSource.appName,
+				windowTitle: captureCapabilities.portalSource.windowTitle,
+			}
+		: null;
 
 	useEffect(() => {
 		if (!selectedDeviceId) {
@@ -676,6 +696,22 @@ export function LaunchWindow() {
 
 	useEffect(() => {
 		let cancelled = false;
+		const loadCaptureCapabilities = async () => {
+			try {
+				const nextCapabilities = await window.electronAPI.getCaptureCapabilities();
+				if (!cancelled) setCaptureCapabilities(nextCapabilities);
+			} catch (error) {
+				console.error("Failed to load capture capabilities:", error);
+			}
+		};
+		void loadCaptureCapabilities();
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	useEffect(() => {
+		let cancelled = false;
 		const loadHudOverlayMousePassthroughSupport = async () => {
 			try {
 				const result = await window.electronAPI.getHudOverlayMousePassthroughSupported();
@@ -865,7 +901,9 @@ export function LaunchWindow() {
 	const toggleDropdown = (which: "sources" | "more" | "mic" | "countdown" | "webcam") => {
 		setProjectBrowserOpen(false);
 		setActiveDropdown(activeDropdown === which ? "none" : which);
-		if (activeDropdown !== which && which === "sources") fetchSources();
+		if (activeDropdown !== which && which === "sources" && supportsManualSourceSelection) {
+			fetchSources();
+		}
 	};
 
 	const handleSourceSelect = async (source: DesktopSource) => {
@@ -873,6 +911,9 @@ export function LaunchWindow() {
 		setSelectedSource(source.name);
 		setHasSelectedSource(true);
 		setActiveDropdown("none");
+		if (source.id === "screen:linux-portal") {
+			return;
+		}
 		window.electronAPI.showSourceHighlight?.({
 			...source,
 			name: source.appName ? `${source.appName} — ${source.name}` : source.name,
@@ -956,6 +997,19 @@ export function LaunchWindow() {
 
 	const screenSources = sources.filter((s) => s.sourceType === "screen");
 	const windowSources = sources.filter((s) => s.sourceType === "window");
+	const handleRecordButtonClick = () => {
+		if (hasSelectedSource) {
+			toggleRecording();
+			return;
+		}
+
+		if (showSourceSelector) {
+			toggleDropdown("sources");
+			return;
+		}
+
+		toggleRecording();
+	};
 	const hudStateTransition = {
 		duration: 0.24,
 		ease: [0.22, 1, 0.36, 1] as const,
@@ -1035,7 +1089,7 @@ export function LaunchWindow() {
 
 	const idleControls = (
 		<>
-			{platform !== "linux" && (
+			{showSourceSelector && (
 				<>
 					<button
 						type="button"
@@ -1090,11 +1144,7 @@ export function LaunchWindow() {
 			<button
 				type="button"
 				className={`${styles.recBtn} ${styles.electronNoDrag}`}
-				onClick={
-					hasSelectedSource || platform === "linux"
-						? toggleRecording
-						: () => toggleDropdown("sources")
-				}
+				onClick={handleRecordButtonClick}
 				disabled={countdownActive}
 				title={t("recording.record")}
 			>
@@ -1183,10 +1233,21 @@ export function LaunchWindow() {
 						<div className={`${styles.menuCard} ${styles.electronNoDrag}`}>
 							{activeDropdown === "sources" && (
 								<>
-									{sourcesLoading ? (
+									{supportsManualSourceSelection && sourcesLoading ? (
 										<div className="flex items-center justify-center py-6">
 											<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#6b6b78]" />
 										</div>
+									) : shouldUsePortalSourceSelection && portalSource ? (
+										<>
+											<div className={styles.ddLabel}>{t("recording.screens")}</div>
+											<DropdownItem
+												icon={<Monitor size={16} />}
+												selected={selectedSource === portalSource.name}
+												onClick={() => handleSourceSelect(portalSource)}
+											>
+												{portalSource.name}
+											</DropdownItem>
+										</>
 									) : (
 										<>
 											{screenSources.length > 0 && (
