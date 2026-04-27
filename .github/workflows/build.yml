@@ -4,6 +4,12 @@ name: Build Electron App
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -40,6 +46,14 @@ jobs:
       - name: Smoke test packaged Windows paths
         run: npm run smoke:packaged-binaries
 
+      - name: Generate Windows artifact checksums
+        run: npm run checksums:release -- SHA256SUMS-windows.txt
+
+      - name: Attest Windows artifacts
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release/SHA256SUMS-windows.txt
+
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
@@ -48,6 +62,7 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/latest*.yml
+            release/SHA256SUMS*.txt
           if-no-files-found: error
           retention-days: 30
 
@@ -102,6 +117,14 @@ jobs:
           PACKAGED_SMOKE_ARCH_TAGS: ${{ matrix.arch_tag }}
         run: npm run smoke:packaged-binaries
 
+      - name: Generate macOS artifact checksums
+        run: npm run checksums:release -- SHA256SUMS-macos-${{ matrix.arch }}.txt
+
+      - name: Attest macOS artifacts
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release/SHA256SUMS-macos-${{ matrix.arch }}.txt
+
       - name: Upload macOS build
         uses: actions/upload-artifact@v4
         with:
@@ -110,6 +133,7 @@ jobs:
             release/**/*.dmg
             release/**/*.zip
             release/latest-mac.yml
+            release/SHA256SUMS*.txt
           if-no-files-found: error
           retention-days: 30
 
@@ -155,6 +179,14 @@ jobs:
       - name: Smoke test packaged Linux paths
         run: npm run smoke:packaged-binaries
 
+      - name: Generate Linux artifact checksums
+        run: npm run checksums:release -- SHA256SUMS-linux.txt
+
+      - name: Attest Linux artifacts
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release/SHA256SUMS-linux.txt
+
       - name: Upload Linux build
         uses: actions/upload-artifact@v4
         with:
@@ -162,5 +194,6 @@ jobs:
           path: |
             release/**/*.AppImage
             release/latest-linux.yml
+            release/SHA256SUMS*.txt
           if-no-files-found: error
           retention-days: 30

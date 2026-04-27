@@ -13,6 +13,9 @@ on:
 permissions:
   contents: write
   actions: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
 
 concurrency:
   group: release-${{ github.event.release.tag_name || github.event.inputs.tag_name || github.run_id }}
@@ -153,6 +156,14 @@ jobs:
           PACKAGED_SMOKE_ARCH_TAGS: darwin-x64
         run: npm run smoke:packaged-binaries
 
+      - name: Generate macOS x64 artifact checksums
+        run: npm run checksums:release -- SHA256SUMS-macos-x64.txt
+
+      - name: Attest macOS x64 artifacts
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release/SHA256SUMS-macos-x64.txt
+
       - name: Upload macOS x64 artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -162,6 +173,7 @@ jobs:
             release/*.zip
             release/*.blockmap
             release/latest-mac.yml
+            release/SHA256SUMS*.txt
           if-no-files-found: error
 
   build-macos-arm64:
@@ -245,6 +257,14 @@ jobs:
           PACKAGED_SMOKE_ARCH_TAGS: darwin-arm64
         run: npm run smoke:packaged-binaries
 
+      - name: Generate macOS arm64 artifact checksums
+        run: npm run checksums:release -- SHA256SUMS-macos-arm64.txt
+
+      - name: Attest macOS arm64 artifacts
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release/SHA256SUMS-macos-arm64.txt
+
       - name: Upload macOS arm64 artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -254,6 +274,7 @@ jobs:
             release/*.zip
             release/*.blockmap
             release/latest-mac.yml
+            release/SHA256SUMS*.txt
           if-no-files-found: error
 
   merge-macos-update-metadata:
@@ -399,6 +420,14 @@ jobs:
       - name: Smoke test packaged Windows x64 paths
         run: npm run smoke:packaged-binaries
 
+      - name: Generate Windows x64 artifact checksums
+        run: npm run checksums:release -- SHA256SUMS-windows-x64.txt
+
+      - name: Attest Windows x64 artifacts
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release/SHA256SUMS-windows-x64.txt
+
       - name: Upload Windows x64 artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -407,6 +436,7 @@ jobs:
             release/*.exe
             release/*.blockmap
             release/latest*.yml
+            release/SHA256SUMS*.txt
           if-no-files-found: error
 
   build-linux-x64:
@@ -464,6 +494,14 @@ jobs:
       - name: Smoke test packaged Linux x64 paths
         run: npm run smoke:packaged-binaries
 
+      - name: Generate Linux x64 artifact checksums
+        run: npm run checksums:release -- SHA256SUMS-linux-x64.txt
+
+      - name: Attest Linux x64 artifacts
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release/SHA256SUMS-linux-x64.txt
+
       - name: Upload Linux x64 artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -472,6 +510,7 @@ jobs:
             release/*.AppImage
             release/*.blockmap
             release/latest-linux.yml
+            release/SHA256SUMS*.txt
           if-no-files-found: error
 
   publish-release-assets:
@@ -515,6 +554,45 @@ jobs:
           name: linux-x64-release
           path: release-assets/linux-x64
 
+      - name: Generate release asset checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          assets=(
+            release-assets/macos-x64/*.dmg
+            release-assets/macos-x64/*.zip
+            release-assets/macos-x64/*.blockmap
+            release-assets/macos-arm64/*.dmg
+            release-assets/macos-arm64/*.zip
+            release-assets/macos-arm64/*.blockmap
+            release-assets/macos-merged/latest-mac.yml
+            release-assets/windows-x64/*.exe
+            release-assets/windows-x64/*.blockmap
+            release-assets/windows-x64/latest*.yml
+            release-assets/linux-x64/*.AppImage
+            release-assets/linux-x64/*.blockmap
+            release-assets/linux-x64/latest-linux.yml
+          )
+
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No release assets found to checksum."
+            exit 1
+          fi
+
+          : > release-assets/SHA256SUMS.txt
+          for file in "${assets[@]}"; do
+            digest="$(sha256sum "$file" | awk '{print $1}')"
+            printf '%s  %s\n' "$digest" "$(basename "$file")" >> release-assets/SHA256SUMS.txt
+          done
+          sort -k2,2 release-assets/SHA256SUMS.txt -o release-assets/SHA256SUMS.txt
+
+      - name: Attest release assets
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release-assets/SHA256SUMS.txt
+
       - name: Upload release assets to GitHub
         shell: bash
         run: |
@@ -535,6 +613,7 @@ jobs:
             release-assets/linux-x64/*.AppImage
             release-assets/linux-x64/*.blockmap
             release-assets/linux-x64/latest-linux.yml
+            release-assets/SHA256SUMS.txt
           )
 
           if [ ${#assets[@]} -eq 0 ]; then
