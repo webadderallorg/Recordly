@@ -33,6 +33,7 @@
 		"build:linux": "npm run build:platform-native-helpers && tsc && vite build --config vite.config.ts && electron-builder --linux",
 		"i18n:check": "node scripts/i18n-check.mjs",
 		"benchmark:export-queues": "node scripts/benchmark-export-queues.mjs",
+		"smoke:packaged-binaries": "node scripts/smoke-packaged-binaries.mjs",
 		"release:create": "node scripts/create-release.mjs",
 		"test": "vitest --run",
 		"test:watch": "vitest"

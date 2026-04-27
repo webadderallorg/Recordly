@@ -35,17 +35,34 @@ jobs:
           npm run build:platform-native-helpers
           npx tsc
           npx vite build
-          npx electron-builder --win nsis --x64 --publish never
+          npx electron-builder --win dir nsis --x64 --publish never
+
+      - name: Smoke test packaged Windows paths
+        run: npm run smoke:packaged-binaries
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installer
-          path: release/**/*.exe
+          name: recordly-windows-${{ github.sha }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/latest*.yml
+          if-no-files-found: error
           retention-days: 30
 
   build-macos:
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            arch_tag: darwin-x64
+            runner: macos-15-intel
+          - arch: arm64
+            arch_tag: darwin-arm64
+            runner: macos-14
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -78,16 +95,22 @@ jobs:
           npm run build:platform-native-helpers
           npx tsc
           npx vite build
-          npx electron-builder --mac dmg zip --publish never
+          npx electron-builder --mac dir dmg zip --${{ matrix.arch }} --publish never
+
+      - name: Smoke test packaged macOS paths
+        env:
+          PACKAGED_SMOKE_ARCH_TAGS: ${{ matrix.arch_tag }}
+        run: npm run smoke:packaged-binaries
 
       - name: Upload macOS build
         uses: actions/upload-artifact@v4
         with:
-          name: macos-installer
+          name: recordly-macos-${{ matrix.arch }}-${{ github.sha }}
           path: |
             release/**/*.dmg
             release/**/*.zip
             release/latest-mac.yml
+          if-no-files-found: error
           retention-days: 30
 
   build-linux:
@@ -127,13 +150,17 @@ jobs:
           npm run build:platform-native-helpers
           npx tsc
           npx vite build
-          npx electron-builder --linux AppImage --x64 --publish never
+          npx electron-builder --linux dir AppImage --x64 --publish never
+
+      - name: Smoke test packaged Linux paths
+        run: npm run smoke:packaged-binaries
 
       - name: Upload Linux build
         uses: actions/upload-artifact@v4
         with:
-          name: linux-installer
+          name: recordly-linux-${{ github.sha }}
           path: |
             release/**/*.AppImage
             release/latest-linux.yml
+          if-no-files-found: error
           retention-days: 30

@@ -146,7 +146,12 @@ jobs:
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --mac dmg zip --x64 --publish never
+          npx electron-builder --mac dir dmg zip --x64 --publish never
+
+      - name: Smoke test packaged macOS x64 paths
+        env:
+          PACKAGED_SMOKE_ARCH_TAGS: darwin-x64
+        run: npm run smoke:packaged-binaries
 
       - name: Upload macOS x64 artifacts
         uses: actions/upload-artifact@v4
@@ -233,7 +238,12 @@ jobs:
         run: |
           npx tsc
           npx vite build
-          npx electron-builder --mac dmg zip --arm64 --publish never
+          npx electron-builder --mac dir dmg zip --arm64 --publish never
+
+      - name: Smoke test packaged macOS arm64 paths
+        env:
+          PACKAGED_SMOKE_ARCH_TAGS: darwin-arm64
+        run: npm run smoke:packaged-binaries
 
       - name: Upload macOS arm64 artifacts
         uses: actions/upload-artifact@v4
@@ -384,7 +394,10 @@ jobs:
           npm run build:platform-native-helpers
           npx tsc
           npx vite build
-          npx electron-builder --win nsis --x64 --publish never
+          npx electron-builder --win dir nsis --x64 --publish never
+
+      - name: Smoke test packaged Windows x64 paths
+        run: npm run smoke:packaged-binaries
 
       - name: Upload Windows x64 artifacts
         uses: actions/upload-artifact@v4
@@ -446,7 +459,10 @@ jobs:
           npm run build:platform-native-helpers
           npx tsc
           npx vite build
-          npx electron-builder --linux AppImage --x64 --publish never
+          npx electron-builder --linux dir AppImage --x64 --publish never
+
+      - name: Smoke test packaged Linux x64 paths
+        run: npm run smoke:packaged-binaries
 
       - name: Upload Linux x64 artifacts
         uses: actions/upload-artifact@v4
