@@ -290,9 +290,7 @@ export function LaunchWindow() {
 	// Drive the launcher UI from runtime capture capabilities instead of a coarse platform check.
 	const supportsManualSourceSelection =
 		captureCapabilities?.supportsManualSourceSelection === true;
-	const supportsPortalSourceSelection =
-		captureCapabilities?.supportsPortalSourceSelection === true;
-	const showSourceSelector = supportsManualSourceSelection || supportsPortalSourceSelection;
+	const showSourceSelector = supportsManualSourceSelection;
 	const shouldUsePortalSourceSelection =
 		captureCapabilities?.preferredSourceSelectionMode === "portal";
 	const portalSource = captureCapabilities?.portalSource;
