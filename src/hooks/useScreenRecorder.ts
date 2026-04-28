@@ -911,12 +911,20 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			const platform = await window.electronAPI.getPlatform();
 			const existingSource = await window.electronAPI.getSelectedSource();
 			const captureCapabilities = await window.electronAPI.getCaptureCapabilities();
-			const selectedSource =
+			let selectedSource =
 				existingSource ?? (captureCapabilities?.supportsPortalSourceSelection ? LINUX_PORTAL_SOURCE : null);
+
+			// If no source is selected, invoke the picker flow
 			if (!selectedSource) {
-				alert("Please select a source to record");
-				return;
+				await window.electronAPI.openSourceSelector();
+				selectedSource = await window.electronAPI.getSelectedSource();
+
+				if (!selectedSource) {
+					alert("Please select a source to record");
+					return;
+				}
 			}
+
 			// Persist the synthetic Linux portal sentinel to main so that the
 			// setDisplayMediaRequestHandler can short-circuit getSources() and
 			// avoid triggering an extra portal dialog.

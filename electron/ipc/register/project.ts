@@ -55,8 +55,11 @@ function normalizeProjectSaveName(projectName?: string | null) {
 		return null;
 	}
 
+	// Build a regex that matches all known extensions (current + legacy)
+	const allExtensions = [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS];
+	const extensionPattern = allExtensions.map((ext) => ext.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
 	const withoutExtension = trimmedName.replace(
-		new RegExp(`\\.${PROJECT_FILE_EXTENSION}$`, "i"),
+		new RegExp(`\\.(${extensionPattern})$`, "i"),
 		"",
 	);
 	const withoutInvalidFilesystemChars = withoutExtension.replace(/[<>:"/\\|?*]/g, "");
@@ -175,6 +178,11 @@ async function ensureNamedProjectSaveDoesNotOverwriteDifferentProject(
 				success: false,
 				message: "A different project already uses this name",
 			};
+		}
+
+		// If video paths are present and equal, allow the overwrite (e.g., legacy projects)
+		if (existingVideoPath && incomingVideoPath && existingVideoPath === incomingVideoPath) {
+			return { success: true };
 		}
 
 		if (!existingProjectId && !incomingProjectId && existingVideoPath && incomingVideoPath) {
