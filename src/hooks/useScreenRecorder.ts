@@ -910,8 +910,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		try {
 			const platform = await window.electronAPI.getPlatform();
 			const existingSource = await window.electronAPI.getSelectedSource();
+			const captureCapabilities = await window.electronAPI.getCaptureCapabilities();
 			const selectedSource =
-				existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
+				existingSource ?? (captureCapabilities?.supportsPortalSourceSelection ? LINUX_PORTAL_SOURCE : null);
 			if (!selectedSource) {
 				alert("Please select a source to record");
 				return;

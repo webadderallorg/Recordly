@@ -283,6 +283,10 @@ export async function rememberRecentProject(projectPath: string) {
 	await saveRecentProjectPaths([projectPath, ...existingPaths]);
 }
 
+function escapeRegExp(string: string) {
+	return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export async function buildProjectLibraryEntry(
 	projectPath: string,
 	projectsDir: string,
@@ -310,7 +314,9 @@ export async function buildProjectLibraryEntry(
 				.basename(normalizedPath)
 				.replace(
 					new RegExp(
-						`\\.(${[PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS].join("|")})$`,
+						`\\.(${[PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS]
+							.map(escapeRegExp)
+							.join("|")})$`,
 						"i",
 					),
 					"",

@@ -675,7 +675,7 @@ export function registerProjectHandlers() {
 			await fs.unlink(resolvedPath);
 			// Also delete the cursor telemetry sidecar if it exists
 			const telemetryPath = getTelemetryPathForVideo(resolvedPath);
-			await fs.unlink(telemetryPath).catch(() => {});
+			await fs.unlink(telemetryPath).catch(() => undefined);
 			const currentResolved = currentVideoPath
 				? await fs.realpath(currentVideoPath).catch(() => currentVideoPath)
 				: null;
