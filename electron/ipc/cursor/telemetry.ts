@@ -17,7 +17,7 @@ import {
 	setCursorCaptureInterval,
 	setPendingCursorSamples,
 } from "../state";
-import type { CursorInteractionType, CursorTelemetryPoint, CursorVisualType } from "../types";
+import type { CursorInteractionType, CursorTelemetryPoint, CursorVisualType, HookMouseEvent } from "../types";
 import { getScreen, getTelemetryPathForVideo } from "../utils";
 
 export function clamp(value: number, min: number, max: number) {
@@ -78,16 +78,7 @@ export function getNormalizedCursorPoint() {
 }
 
 export function getHookCursorScreenPoint(
-	event:
-		| {
-				x?: number;
-				y?: number;
-				data?: { x?: number; y?: number; screenX?: number; screenY?: number };
-				screenX?: number;
-				screenY?: number;
-		  }
-		| null
-		| undefined,
+	event: HookMouseEvent | null | undefined,
 ): { x: number; y: number } | null {
 	const rawX = event?.x ?? event?.data?.x ?? event?.screenX ?? event?.data?.screenX;
 	const rawY = event?.y ?? event?.data?.y ?? event?.screenY ?? event?.data?.screenY;

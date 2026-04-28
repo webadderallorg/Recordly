@@ -191,7 +191,7 @@ export function registerCaptionHandlers() {
 			_,
 			options: {
 				videoPath: string;
-				whisperExecutablePath: string;
+				whisperExecutablePath?: string;
 				whisperModelPath: string;
 				language?: string;
 			},

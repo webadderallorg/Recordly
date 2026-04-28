@@ -40,7 +40,7 @@ const MICROPHONE_FALLBACK_ERROR_TOAST_ID = "recording-microphone-fallback-error"
 const MICROPHONE_SIDECAR_ERROR_TOAST_ID = "recording-microphone-sidecar-error";
 const LINUX_PORTAL_SOURCE: ProcessedDesktopSource = {
 	id: LINUX_PORTAL_SOURCE_ID,
-	name: "Entire screen",
+	name: "recording.portalEntireScreen",
 	display_id: "",
 	thumbnail: null,
 	appIcon: null,
