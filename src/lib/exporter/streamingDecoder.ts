@@ -55,6 +55,19 @@ export function getDecodedFrameTimelineOffsetUs(
 }
 
 /**
+ * Video frames are presented from their own timestamp until the next frame starts.
+ * Using midpoint handoff works poorly for sparse VFR screen recordings because it
+ * makes visual changes appear early relative to cursor and click telemetry.
+ */
+export function shouldKeepHeldFrameForTargetTime(
+	targetTimeSec: number,
+	nextFrameStartSec: number,
+	epsilonSec = 0.001,
+): boolean {
+	return targetTimeSec < nextFrameStartSec - epsilonSec;
+}
+
+/**
  * Decodes video frames via web-demuxer + VideoDecoder in a single forward pass.
  * Way faster than seeking an HTMLVideoElement per frame.
  *
@@ -470,8 +483,10 @@ export class StreamingVideoDecoder {
 				continue;
 			}
 
-			// Any target timestamp before this midpoint is closer to heldFrame than current frame.
-			const handoffBoundarySec = (heldFrameSec + frameTimeSec) / 2;
+			// Preserve VFR presentation timing: a decoded frame stays visible until the
+			// timestamp of the next decoded frame instead of switching at the midpoint.
+			// Midpoint handoff makes sparse window-capture recordings look like the video
+			// content updates before the matching cursor/click telemetry is overlaid.
 			while (!this.cancelled) {
 				const segmentFrameCount = segmentOutputFrameCounts[segmentIdx];
 				if (segmentFrameIndex >= segmentFrameCount) {
@@ -485,7 +500,7 @@ export class StreamingVideoDecoder {
 				if (sourceTimeSec >= currentSegment.endSec - epsilonSec) {
 					break;
 				}
-				if (sourceTimeSec > handoffBoundarySec) {
+				if (!shouldKeepHeldFrameForTargetTime(sourceTimeSec, frameTimeSec, epsilonSec)) {
 					break;
 				}
 

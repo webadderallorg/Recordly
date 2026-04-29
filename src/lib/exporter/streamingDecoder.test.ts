@@ -3,7 +3,15 @@ import {
 	getDecodedFrameStartupOffsetUs,
 	getDecodedFrameTimelineOffsetUs,
 	StreamingVideoDecoder,
+	shouldKeepHeldFrameForTargetTime,
 } from "./streamingDecoder";
+
+type TestElectronApiWindow = Window &
+	typeof globalThis & {
+		electronAPI: {
+			readLocalFile: ReturnType<typeof vi.fn>;
+		};
+	};
 
 describe("StreamingVideoDecoder local media loading", () => {
 	beforeEach(() => {
@@ -22,12 +30,16 @@ describe("StreamingVideoDecoder local media loading", () => {
 			success: true,
 			data: new Uint8Array([1, 2, 3]),
 		}));
-		(window as any).electronAPI.readLocalFile = readLocalFile;
+		const testWindow = globalThis.window as unknown as TestElectronApiWindow;
+		testWindow.electronAPI.readLocalFile = readLocalFile;
 		const fetchSpy = vi.fn();
 		vi.stubGlobal("fetch", fetchSpy);
 
 		const decoder = new StreamingVideoDecoder();
-		const file = await (decoder as any).loadVideoFile(
+		const decoderHarness = decoder as StreamingVideoDecoder & {
+			loadVideoFile(resourceUrl: string): Promise<File>;
+		};
+		const file = await decoderHarness.loadVideoFile(
 			"http://127.0.0.1:43123/video?path=%2Ftmp%2Fcapture.mp4",
 		);
 
@@ -90,5 +102,15 @@ describe("getDecodedFrameTimelineOffsetUs", () => {
 				mediaStartTime: 0.1,
 			}),
 		).toBe(150_000);
+	});
+});
+
+describe("shouldKeepHeldFrameForTargetTime", () => {
+	it("keeps a sparse VFR frame visible until the next frame timestamp", () => {
+		expect(shouldKeepHeldFrameForTargetTime(0.75, 1)).toBe(true);
+	});
+
+	it("switches to the next frame once its presentation timestamp is reached", () => {
+		expect(shouldKeepHeldFrameForTargetTime(1, 1)).toBe(false);
 	});
 });
