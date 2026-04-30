@@ -48,6 +48,7 @@ import {
 	type MotionBlurState,
 } from "@/components/video-editor/videoPlayback/zoomTransform";
 import {
+	getWebcamCropSourceRect,
 	getWebcamOverlayPosition,
 	getWebcamOverlaySizePx,
 } from "@/components/video-editor/webcamOverlay";
@@ -1842,9 +1843,14 @@ export class FrameRenderer {
 				: "videoHeight" in webcamFrameSource
 					? webcamFrameSource.videoHeight
 					: webcamFrameSource.height) || size;
-		const coverScale = Math.max(size / sourceWidth, size / sourceHeight);
-		const drawWidth = sourceWidth * coverScale;
-		const drawHeight = sourceHeight * coverScale;
+		const { sx, sy, sw, sh } = getWebcamCropSourceRect(
+			webcam.cropRegion,
+			sourceWidth,
+			sourceHeight,
+		);
+		const coverScale = Math.max(size / sw, size / sh);
+		const drawWidth = sw * coverScale;
+		const drawHeight = sh * coverScale;
 		const drawX = (size - drawWidth) / 2;
 		const drawY = (size - drawHeight) / 2;
 
@@ -1855,10 +1861,30 @@ export class FrameRenderer {
 			bubbleCtx.save();
 			bubbleCtx.translate(size, 0);
 			bubbleCtx.scale(-1, 1);
-			bubbleCtx.drawImage(webcamFrameSource, drawX, drawY, drawWidth, drawHeight);
+			bubbleCtx.drawImage(
+				webcamFrameSource,
+				sx,
+				sy,
+				sw,
+				sh,
+				drawX,
+				drawY,
+				drawWidth,
+				drawHeight,
+			);
 			bubbleCtx.restore();
 		} else {
-			bubbleCtx.drawImage(webcamFrameSource, drawX, drawY, drawWidth, drawHeight);
+			bubbleCtx.drawImage(
+				webcamFrameSource,
+				sx,
+				sy,
+				sw,
+				sh,
+				drawX,
+				drawY,
+				drawWidth,
+				drawHeight,
+			);
 		}
 		bubbleCtx.restore();
 
