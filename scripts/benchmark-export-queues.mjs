@@ -11,7 +11,10 @@ import ffmpegStatic from "ffmpeg-static";
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
-const mainEntry = path.join(repoRoot, "dist-electron", "main.js");
+const mainEntryCandidates = [
+	path.join(repoRoot, "dist-electron", "main.js"),
+	path.join(repoRoot, "dist-electron", "main.cjs"),
+];
 const rendererEntry = path.join(repoRoot, "dist", "index.html");
 
 const width = parseEvenInteger(process.env.RECORDLY_BENCH_EXPORT_WIDTH ?? "1280", "Width");
@@ -28,9 +31,11 @@ const timeoutMs = parsePositiveInteger(
 const runsPerVariant = parsePositiveInteger(process.env.RECORDLY_BENCH_EXPORT_RUNS ?? "2", "Runs");
 const useNativeExport = process.env.RECORDLY_BENCH_EXPORT_USE_NATIVE === "1";
 const useWebcamOverlay = process.env.RECORDLY_BENCH_EXPORT_ENABLE_WEBCAM === "1";
+const useSourceOnlyScene = process.env.RECORDLY_BENCH_EXPORT_SOURCE_ONLY === "1";
 const exportEncodingMode = parseExportEncodingMode(
 	process.env.RECORDLY_BENCH_EXPORT_ENCODING_MODE ?? null,
 );
+const exportQuality = parseExportQuality(process.env.RECORDLY_BENCH_EXPORT_QUALITY ?? "source");
 const exportShadowIntensity = parseExportShadowIntensity(
 	process.env.RECORDLY_BENCH_EXPORT_SHADOW_INTENSITY ?? null,
 );
@@ -177,6 +182,19 @@ function parseExportEncodingMode(rawValue) {
 	throw new Error("RECORDLY_BENCH_EXPORT_ENCODING_MODE must be 'fast', 'balanced', or 'quality'");
 }
 
+function parseExportQuality(rawValue) {
+	if (
+		rawValue === "medium" ||
+		rawValue === "good" ||
+		rawValue === "high" ||
+		rawValue === "source"
+	) {
+		return rawValue;
+	}
+
+	throw new Error("RECORDLY_BENCH_EXPORT_QUALITY must be 'medium', 'good', 'high', or 'source'");
+}
+
 function parseExportShadowIntensity(rawValue) {
 	if (rawValue === null || rawValue === "") {
 		return null;
@@ -244,7 +262,11 @@ function summarizeSmokeProgress(progressSamples) {
 }
 
 async function ensureBuildArtifacts() {
-	await fs.access(mainEntry);
+	await Promise.any(mainEntryCandidates.map((candidate) => fs.access(candidate))).catch(() => {
+		throw new Error(
+			`Missing Electron main build output. Tried: ${mainEntryCandidates.join(", ")}`,
+		);
+	});
 	await fs.access(rendererEntry);
 }
 
@@ -479,7 +501,9 @@ function buildRequestedConfigRows(benchmarkRequests) {
 		{ key: "Requested backends", value: benchmarkRequests.map((request) => request.label) },
 		{ key: "Backend sweep", value: formatBoolean(benchmarkRequests.length > 1) },
 		{ key: "Encoding mode", value: exportEncodingMode ?? "default" },
+		{ key: "Quality", value: exportQuality },
 		{ key: "Shadow intensity", value: exportShadowIntensity ?? "default" },
+		{ key: "Source-only scene", value: formatBoolean(useSourceOnlyScene) },
 		{ key: "Webcam enabled", value: formatBoolean(useWebcamOverlay) },
 		{ key: "Experimental native override", value: formatBoolean(useNativeExport) },
 	];
@@ -662,9 +686,12 @@ async function runVariant(
 			RECORDLY_SMOKE_EXPORT_INPUT: inputPath,
 			RECORDLY_SMOKE_EXPORT_OUTPUT: outputPath,
 			...(useNativeExport ? { RECORDLY_SMOKE_EXPORT_USE_NATIVE: "1" } : {}),
+			...(useSourceOnlyScene ? { RECORDLY_SMOKE_EXPORT_SOURCE_ONLY: "1" } : {}),
 			...(exportEncodingMode
 				? { RECORDLY_SMOKE_EXPORT_ENCODING_MODE: exportEncodingMode }
 				: {}),
+			RECORDLY_SMOKE_EXPORT_QUALITY: exportQuality,
+			RECORDLY_SMOKE_EXPORT_FPS: String(frameRate),
 			...(exportShadowIntensity !== null
 				? { RECORDLY_SMOKE_EXPORT_SHADOW_INTENSITY: String(exportShadowIntensity) }
 				: {}),
@@ -871,6 +898,7 @@ async function main() {
 				requestedBackends: benchmarkRequests.map((request) => request.label),
 				backendSweepEnabled: benchmarkRequests.length > 1,
 				requestedEncodingMode: exportEncodingMode,
+				requestedQuality: exportQuality,
 				requestedShadowIntensity: exportShadowIntensity,
 				webcamEnabled: useWebcamOverlay,
 				requestedWebcamShadowIntensity: webcamShadowIntensity,

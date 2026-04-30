@@ -258,6 +258,21 @@ interface Window {
 			error?: string;
 			metrics?: RendererFfmpegAudioMuxMetrics;
 		}>;
+		nativeFastVideoExport: (options: {
+			sourcePath: string;
+			width: number;
+			height: number;
+			frameRate: number;
+			bitrate: number;
+			encodingMode: "fast" | "balanced" | "quality";
+			segments?: Array<{ startMs: number; endMs: number }>;
+		}) => Promise<{
+			success: boolean;
+			tempPath?: string;
+			encoderName?: string;
+			error?: string;
+			metrics?: RendererFfmpegAudioMuxMetrics;
+		}>;
 		openExportStream: (options?: { extension?: string }) => Promise<{
 			success: boolean;
 			streamId?: string;

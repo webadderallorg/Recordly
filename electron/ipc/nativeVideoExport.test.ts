@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { ATEMPO_FILTER_EPSILON } from "./ffmpeg/filters";
 import {
 	buildEditedTrackSourceAudioFilter,
+	buildNativeFastVideoExportArgs,
 	buildTrimmedSourceAudioFilter,
+	canStreamCopyNativeFastVideoExport,
+	parseNativeFastVideoSourceProbe,
 } from "./nativeVideoExport";
 
 describe("buildTrimmedSourceAudioFilter", () => {
@@ -17,6 +20,120 @@ describe("buildTrimmedSourceAudioFilter", () => {
 				"[1:a]atrim=start=4.000:end=6.000,asetpts=PTS-STARTPTS[trimmed_audio_1];" +
 				"[trimmed_audio_0][trimmed_audio_1]concat=n=2:v=0:a=1[aout]",
 		);
+	});
+});
+
+describe("buildNativeFastVideoExportArgs", () => {
+	it("builds a direct FFmpeg export that maps optional audio and scales in-process", () => {
+		const args = buildNativeFastVideoExportArgs(
+			"libx264",
+			{
+				sourcePath: "C:\\Videos\\source.mp4",
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				bitrate: 20_000_000,
+				encodingMode: "fast",
+			},
+			"C:\\Videos\\out.mp4",
+		);
+
+		expect(args).toContain("-map");
+		expect(args).toContain("0:a:0?");
+		expect(args).toContain("scale=1920:1080:flags=lanczos,setsar=1,fps=30,format=yuv420p");
+		expect(args).toContain("libx264");
+		expect(args).toContain("ultrafast");
+	});
+
+	it("uses input seeking for a single contiguous kept segment", () => {
+		const args = buildNativeFastVideoExportArgs(
+			"h264_nvenc",
+			{
+				sourcePath: "C:\\Videos\\source.mp4",
+				width: 1280,
+				height: 720,
+				frameRate: 60,
+				bitrate: 10_000_000,
+				encodingMode: "balanced",
+				segments: [{ startMs: 5_000, endMs: 15_000 }],
+			},
+			"C:\\Videos\\out.mp4",
+		);
+
+		expect(args.slice(0, 10)).toContain("-ss");
+		expect(args).toContain("5.000");
+		expect(args).toContain("-t");
+		expect(args).toContain("10.000");
+		expect(args).toContain("h264_nvenc");
+	});
+
+	it("stream-copies a matching source without scaling or re-encoding", () => {
+		const args = buildNativeFastVideoExportArgs(
+			"copy",
+			{
+				sourcePath: "C:\\Videos\\source.mp4",
+				width: 1280,
+				height: 720,
+				frameRate: 30,
+				bitrate: 10_000_000,
+				encodingMode: "fast",
+				videoMode: "copy",
+			},
+			"C:\\Videos\\out.mp4",
+		);
+
+		expect(args).toContain("copy");
+		expect(args).not.toContain("-vf");
+		expect(args.join(" ")).toContain("-c:v copy -c:a copy");
+	});
+});
+
+describe("native fast video source probing", () => {
+	const ffmpegProbeOutput = `
+Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'source.mp4':
+  Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(progressive), 1280x720 [SAR 1:1 DAR 16:9], 30 fps, 30 tbr, 15360 tbn (default)
+  Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp, 160 kb/s (default)
+`;
+
+	it("parses FFmpeg input stream metadata for guarded stream-copy decisions", () => {
+		expect(parseNativeFastVideoSourceProbe(ffmpegProbeOutput)).toEqual({
+			videoCodecName: "h264",
+			audioCodecName: "aac",
+			pixelFormat: "yuv420p",
+			width: 1280,
+			height: 720,
+			fps: 30,
+		});
+	});
+
+	it("allows stream copy only when codec, dimensions, fps, and timeline match", () => {
+		const options = {
+			sourcePath: "C:\\Videos\\source.mp4",
+			width: 1280,
+			height: 720,
+			frameRate: 30,
+			bitrate: 10_000_000,
+			encodingMode: "fast" as const,
+		};
+		const probe = parseNativeFastVideoSourceProbe(ffmpegProbeOutput);
+
+		expect(canStreamCopyNativeFastVideoExport(probe, options)).toBe(true);
+		expect(
+			canStreamCopyNativeFastVideoExport(probe, {
+				...options,
+				width: 1920,
+				height: 1080,
+			}),
+		).toBe(false);
+		expect(
+			canStreamCopyNativeFastVideoExport(probe, {
+				...options,
+				segments: [{ startMs: 1_000, endMs: 2_000 }],
+			}),
+		).toBe(false);
+		expect(
+			canStreamCopyNativeFastVideoExport({ ...probe, pixelFormat: "yuv444p" }, options),
+		).toBe(false);
 	});
 });
 

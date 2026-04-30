@@ -15,6 +15,7 @@ import {
 } from "../export/exportStream";
 import {
 	enqueueNativeVideoExportFrameWrite,
+	exportNativeFastVideo,
 	flushNativeVideoExportPendingWriteRequests,
 	getNativeVideoExportMaxQueuedWriteBytes,
 	getNativeVideoExportSessionError,
@@ -35,6 +36,7 @@ import {
 	buildNativeVideoExportArgs,
 	getNativeVideoInputByteSize,
 	type NativeExportEncodingMode,
+	type NativeFastVideoExportOptions,
 	type NativeVideoExportFinishOptions,
 } from "../nativeVideoExport";
 import { approveUserPath } from "../utils";
@@ -395,6 +397,48 @@ export function registerExportHandlers() {
 			}
 		},
 	);
+
+	ipcMain.handle("native-fast-video-export", async (_, options: NativeFastVideoExportOptions) => {
+		try {
+			if (
+				!options ||
+				typeof options.sourcePath !== "string" ||
+				options.sourcePath.trim().length === 0 ||
+				!Number.isFinite(options.width) ||
+				!Number.isFinite(options.height) ||
+				!Number.isFinite(options.frameRate) ||
+				!Number.isFinite(options.bitrate)
+			) {
+				throw new Error("Invalid native fast export options");
+			}
+
+			if (
+				options.width <= 0 ||
+				options.height <= 0 ||
+				options.width % 2 !== 0 ||
+				options.height % 2 !== 0 ||
+				options.frameRate <= 0 ||
+				options.bitrate <= 0
+			) {
+				throw new Error("Native fast export requires positive even dimensions");
+			}
+
+			const exported = await exportNativeFastVideo(options);
+			registerOwnedExportPath(exported.outputPath);
+			return {
+				success: true,
+				tempPath: exported.outputPath,
+				encoderName: exported.encoderName,
+				metrics: exported.metrics,
+			};
+		} catch (error) {
+			console.error("[native-fast-export] Failed to export video:", error);
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+	});
 
 	ipcMain.handle("export-stream-open", async (_event, options?: { extension?: string }) => {
 		try {

@@ -219,6 +219,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	) => {
 		return ipcRenderer.invoke("mux-exported-video-audio-from-path", videoPath, options);
 	},
+	nativeFastVideoExport: (options: {
+		sourcePath: string;
+		width: number;
+		height: number;
+		frameRate: number;
+		bitrate: number;
+		encodingMode: "fast" | "balanced" | "quality";
+		segments?: Array<{ startMs: number; endMs: number }>;
+	}) => {
+		return ipcRenderer.invoke("native-fast-video-export", options) as Promise<{
+			success: boolean;
+			tempPath?: string;
+			encoderName?: string;
+			error?: string;
+			metrics?: NativeVideoAudioMuxMetrics;
+		}>;
+	},
 	openExportStream: (options?: { extension?: string }) => {
 		return ipcRenderer.invoke("export-stream-open", options);
 	},

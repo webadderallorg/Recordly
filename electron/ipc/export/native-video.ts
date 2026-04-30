@@ -10,17 +10,21 @@ import { app } from "electron";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import type {
 	NativeExportEncodingMode,
+	NativeFastVideoExportOptions,
 	NativeVideoAudioMuxMetrics,
 	NativeVideoExportFinishOptions,
 } from "../nativeVideoExport";
 import {
 	buildEditedTrackSourceAudioFilter,
+	buildNativeFastVideoExportArgs,
 	buildNativeVideoExportArgs,
 	buildTrimmedSourceAudioFilter,
+	canStreamCopyNativeFastVideoExport,
 	getEditedAudioExtension,
 	getNativeVideoInputByteSize,
 	getPreferredNativeVideoEncoders,
 	parseAvailableFfmpegEncoders,
+	parseNativeFastVideoSourceProbe,
 } from "../nativeVideoExport";
 import { cachedNativeVideoEncoder, setCachedNativeVideoEncoder } from "../state";
 
@@ -370,6 +374,64 @@ export async function resolveNativeVideoEncoder(
 	}
 
 	throw new Error("No usable FFmpeg encoder was available for native export");
+}
+
+async function shouldUseNativeFastVideoStreamCopy(
+	ffmpegPath: string,
+	options: NativeFastVideoExportOptions,
+) {
+	try {
+		await execFileAsync(ffmpegPath, ["-hide_banner", "-i", options.sourcePath], {
+			timeout: 15000,
+			maxBuffer: 20 * 1024 * 1024,
+		});
+		return false;
+	} catch (error) {
+		const output =
+			error && typeof error === "object"
+				? `${"stdout" in error ? String(error.stdout ?? "") : ""}\n${"stderr" in error ? String(error.stderr ?? "") : ""}`
+				: String(error);
+		const probe = parseNativeFastVideoSourceProbe(output);
+		return canStreamCopyNativeFastVideoExport(probe, options);
+	}
+}
+
+export async function exportNativeFastVideo(options: NativeFastVideoExportOptions) {
+	const ffmpegPath = getFfmpegBinaryPath();
+	const useStreamCopy = await shouldUseNativeFastVideoStreamCopy(ffmpegPath, options);
+	const encoderName = useStreamCopy
+		? "copy"
+		: await resolveNativeVideoEncoder(ffmpegPath, options.encodingMode);
+	const outputPath = path.join(
+		app.getPath("temp"),
+		`recordly-fast-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`,
+	);
+	const args = buildNativeFastVideoExportArgs(
+		encoderName,
+		{
+			...options,
+			videoMode: useStreamCopy ? "copy" : "encode",
+		},
+		outputPath,
+	);
+	const metrics: NativeVideoAudioMuxMetrics = {};
+
+	try {
+		const ffmpegExecStartedAt = getNowMs();
+		await execFileAsync(ffmpegPath, args, {
+			timeout: 15 * 60 * 1000,
+			maxBuffer: 20 * 1024 * 1024,
+		});
+		metrics.ffmpegExecMs = getNowMs() - ffmpegExecStartedAt;
+		return {
+			outputPath,
+			encoderName,
+			metrics,
+		};
+	} catch (error) {
+		await removeTemporaryExportFile(outputPath);
+		throw error;
+	}
 }
 
 export async function muxNativeVideoExportAudio(
