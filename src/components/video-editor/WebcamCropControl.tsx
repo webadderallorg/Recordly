@@ -5,6 +5,14 @@ import { normalizeWebcamCropRegion } from "./webcamOverlay";
 
 type CropHandle = "move" | "nw" | "ne" | "sw" | "se";
 
+const HANDLE_LABELS: Record<CropHandle, string> = {
+	move: "Move webcam crop",
+	nw: "Resize webcam crop from top left",
+	ne: "Resize webcam crop from top right",
+	sw: "Resize webcam crop from bottom left",
+	se: "Resize webcam crop from bottom right",
+};
+
 interface WebcamCropControlProps {
 	cropRegion: CropRegion;
 	mirrored?: boolean;
@@ -19,6 +27,8 @@ interface DragState {
 }
 
 const MIN_CROP_SIZE = 0.08;
+const KEYBOARD_STEP = 0.01;
+const KEYBOARD_FAST_STEP = 0.05;
 
 const RESIZE_HANDLES: Array<{
 	handle: Exclude<CropHandle, "move">;
@@ -135,6 +145,9 @@ export function WebcamCropControl({
 	const cropTop = crop.y * 100;
 	const cropWidth = crop.width * 100;
 	const cropHeight = crop.height * 100;
+	const commitVisualCrop = (nextVisualCrop: CropRegion) => {
+		onCropChange(mirrored ? flipCropHorizontally(nextVisualCrop) : nextVisualCrop);
+	};
 
 	const getPointerPosition = (event: React.PointerEvent<HTMLDivElement>) => {
 		const rect = containerRef.current?.getBoundingClientRect();
@@ -188,7 +201,7 @@ export function WebcamCropControl({
 			pointer.x - dragState.startX,
 			pointer.y - dragState.startY,
 		);
-		onCropChange(mirrored ? flipCropHorizontally(nextVisualCrop) : nextVisualCrop);
+		commitVisualCrop(nextVisualCrop);
 	};
 
 	const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -201,6 +214,33 @@ export function WebcamCropControl({
 		}
 		dragStateRef.current = null;
 		setActiveHandle(null);
+	};
+
+	const getKeyboardDelta = (event: React.KeyboardEvent<HTMLElement>) => {
+		const step = event.shiftKey ? KEYBOARD_FAST_STEP : KEYBOARD_STEP;
+		if (event.key === "ArrowLeft") {
+			return { x: -step, y: 0 };
+		}
+		if (event.key === "ArrowRight") {
+			return { x: step, y: 0 };
+		}
+		if (event.key === "ArrowUp") {
+			return { x: 0, y: -step };
+		}
+		if (event.key === "ArrowDown") {
+			return { x: 0, y: step };
+		}
+		return null;
+	};
+
+	const handleKeyboardAdjust = (event: React.KeyboardEvent<HTMLElement>, handle: CropHandle) => {
+		const delta = getKeyboardDelta(event);
+		if (!delta) {
+			return;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+		commitVisualCrop(resizeCrop(crop, handle, delta.x, delta.y));
 	};
 
 	return (
@@ -240,7 +280,7 @@ export function WebcamCropControl({
 
 			<div
 				className={cn(
-					"absolute border border-white shadow-[0_0_0_1px_rgba(37,99,235,0.9),0_8px_24px_rgba(0,0,0,0.25)]",
+					"absolute border border-white shadow-[0_0_0_1px_rgba(37,99,235,0.9),0_8px_24px_rgba(0,0,0,0.25)] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/60 focus:ring-offset-2 focus:ring-offset-editor-dialog",
 					activeHandle === "move" ? "cursor-grabbing" : "cursor-move",
 				)}
 				style={{
@@ -249,7 +289,12 @@ export function WebcamCropControl({
 					width: `${cropWidth}%`,
 					height: `${cropHeight}%`,
 				}}
+				tabIndex={0}
+				aria-label={HANDLE_LABELS.move}
 				onPointerDown={(event) => handlePointerDown(event, "move")}
+				onFocus={() => setActiveHandle("move")}
+				onBlur={() => setActiveHandle(null)}
+				onKeyDown={(event) => handleKeyboardAdjust(event, "move")}
 			>
 				<div className="pointer-events-none absolute left-1/3 top-0 h-full w-px bg-white/45" />
 				<div className="pointer-events-none absolute left-2/3 top-0 h-full w-px bg-white/45" />
@@ -259,13 +304,23 @@ export function WebcamCropControl({
 				{RESIZE_HANDLES.map((handle) => (
 					<div
 						key={handle.handle}
+						role="slider"
+						tabIndex={0}
+						aria-label={HANDLE_LABELS[handle.handle]}
+						aria-valuemin={Math.round(MIN_CROP_SIZE * 100)}
+						aria-valuemax={100}
+						aria-valuenow={Math.round(crop.width * 100)}
+						aria-valuetext={`${Math.round(crop.width * 100)}%`}
 						className={cn(
-							"absolute z-10 h-3.5 w-3.5 rounded-[3px] border-2 border-white bg-[#2563EB] shadow-sm",
+							"absolute z-10 h-3.5 w-3.5 rounded-[3px] border-2 border-white bg-[#2563EB] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/60 focus:ring-offset-2 focus:ring-offset-editor-dialog",
 							handle.className,
 							handle.cursorClassName,
 							activeHandle === handle.handle && "scale-110",
 						)}
 						onPointerDown={(event) => handlePointerDown(event, handle.handle)}
+						onFocus={() => setActiveHandle(handle.handle)}
+						onBlur={() => setActiveHandle(null)}
+						onKeyDown={(event) => handleKeyboardAdjust(event, handle.handle)}
 					/>
 				))}
 			</div>
