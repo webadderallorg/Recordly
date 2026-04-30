@@ -120,6 +120,8 @@
 		"generateFull": "Générer les sous-titres",
 		"regenerateFull": "Régénérer les sous-titres",
 		"clearFull": "Effacer les sous-titres",
+		"editCurrent": "Modifier le sous-titre actuel",
+		"editSaved": "Sous-titre mis à jour",
 		"fontSettings": "Paramètres de police",
 		"defaultFont": "Par défaut",
 		"fontFamily": "Police",

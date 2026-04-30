@@ -120,6 +120,8 @@
 		"generateFull": "Ondertiteling genereren",
 		"regenerateFull": "Ondertiteling opnieuw genereren",
 		"clearFull": "Ondertiteling wissen",
+		"editCurrent": "Huidige ondertiteling bewerken",
+		"editSaved": "Ondertiteling bijgewerkt",
 		"fontSettings": "Lettertype-instellingen",
 		"defaultFont": "Standaard",
 		"fontFamily": "Lettertype",

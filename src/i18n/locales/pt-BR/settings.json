@@ -120,6 +120,8 @@
 		"generateFull": "Gerar legendas",
 		"regenerateFull": "Gerar legendas novamente",
 		"clearFull": "Limpar legendas",
+		"editCurrent": "Editar legenda atual",
+		"editSaved": "Legenda atualizada",
 		"fontSettings": "Configurações da fonte",
 		"defaultFont": "Padrão",
 		"fontFamily": "Fonte",

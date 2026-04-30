@@ -120,6 +120,8 @@
 		"generateFull": "Generar subtítulos",
 		"regenerateFull": "Regenerar subtítulos",
 		"clearFull": "Borrar subtítulos",
+		"editCurrent": "Editar subtítulo actual",
+		"editSaved": "Subtítulo actualizado",
 		"fontSettings": "Tipografía",
 		"defaultFont": "Predeterminado",
 		"fontFamily": "Fuente",

@@ -120,6 +120,8 @@
 		"generateFull": "자막 생성",
 		"regenerateFull": "자막 다시 생성",
 		"clearFull": "자막 지우기",
+		"editCurrent": "현재 자막 편집",
+		"editSaved": "자막이 업데이트되었습니다",
 		"fontSettings": "글꼴 설정",
 		"defaultFont": "기본값",
 		"fontFamily": "글꼴",

@@ -1,3 +1,4 @@
+import type { CaptionEditTarget } from "./captionEditing";
 import type {
 	AutoCaptionAnimation,
 	AutoCaptionSettings,
@@ -8,12 +9,15 @@ import type {
 export type CaptionWordState = "spoken" | "active" | "upcoming";
 
 export interface CaptionWordLayout {
+	cueId: string;
+	cueWordIndex: number;
 	text: string;
 	index: number;
 	forcedBreakBefore: boolean;
 	leadingSpace: boolean;
 	startMs: number;
 	endMs: number;
+	hasRealTiming: boolean;
 	state: CaptionWordState;
 }
 
@@ -37,6 +41,7 @@ export interface ActiveCaptionLayout {
 	hasWordTimings: boolean;
 	activeWordIndex: number;
 	activeWordProgress: number;
+	editTarget: CaptionEditTarget;
 	visiblePageIndex: number;
 	opacity: number;
 	translateY: number;
@@ -45,6 +50,7 @@ export interface ActiveCaptionLayout {
 
 type CaptionSourceWord = {
 	cueId: string;
+	cueWordIndex: number;
 	text: string;
 	forcedBreakBefore: boolean;
 	leadingSpace?: boolean;
@@ -77,6 +83,7 @@ function splitCaptionWordsFromText(text: string) {
 			.forEach((word, wordIndex) => {
 				words.push({
 					cueId: "",
+					cueWordIndex: words.length,
 					text: word,
 					forcedBreakBefore: lineIndex > 0 && wordIndex === 0,
 				});
@@ -92,8 +99,9 @@ function splitCaptionWords(cue: CaptionCue) {
 			.filter((word): word is CaptionCueWord =>
 				Boolean(word && typeof word.text === "string"),
 			)
-			.map((word) => ({
+			.map((word, cueWordIndex) => ({
 				cueId: cue.id,
+				cueWordIndex,
 				text: word.text.trim(),
 				forcedBreakBefore: false,
 				leadingSpace: Boolean(word.leadingSpace),
@@ -103,7 +111,10 @@ function splitCaptionWords(cue: CaptionCue) {
 			.filter((word) => word.text.length > 0);
 	}
 
-	return splitCaptionWordsFromText(cue.text);
+	return splitCaptionWordsFromText(cue.text).map((word) => ({
+		...word,
+		cueId: cue.id,
+	}));
 }
 
 function getActiveCaptionCue(cues: CaptionCue[], timeMs: number) {
@@ -119,6 +130,7 @@ function getActiveCaptionCue(cues: CaptionCue[], timeMs: number) {
 function flattenCaptionWords(cues: CaptionCue[]) {
 	const flattened: Array<{
 		cueId: string;
+		cueWordIndex: number;
 		text: string;
 		forcedBreakBefore: boolean;
 		leadingSpace: boolean;
@@ -160,6 +172,7 @@ function flattenCaptionWords(cues: CaptionCue[]) {
 
 			flattened.push({
 				cueId: cue.id,
+				cueWordIndex: word.cueWordIndex,
 				text: word.text,
 				forcedBreakBefore:
 					word.forcedBreakBefore || (wordIndex === 0 && shouldForceCueBreak),
@@ -380,6 +393,18 @@ function getVisibleCaptionPageIndex(pages: CaptionPageLayout[], timeMs: number) 
 	return -1;
 }
 
+function getVisibleCaptionText(lines: CaptionLineLayout[]) {
+	return lines
+		.map((line) =>
+			line.words
+				.map((word, index) => `${index > 0 && word.leadingSpace ? " " : ""}${word.text}`)
+				.join("")
+				.trim(),
+		)
+		.filter(Boolean)
+		.join(" ");
+}
+
 export function buildActiveCaptionLayout(options: {
 	cues: CaptionCue[];
 	timeMs: number;
@@ -392,34 +417,32 @@ export function buildActiveCaptionLayout(options: {
 		return null;
 	}
 
-	const hasWordTimings = sourceWords.every((word) => word.hasRealTiming);
-
 	let activeWordIndex = -1;
-	if (hasWordTimings) {
-		activeWordIndex = sourceWords.findIndex(
-			(word) => options.timeMs >= word.startMs && options.timeMs < word.endMs,
-		);
-		if (activeWordIndex < 0) {
-			activeWordIndex = sourceWords.findIndex((word) => options.timeMs < word.startMs);
-			activeWordIndex =
-				activeWordIndex < 0
-					? sourceWords.length - 1
-					: clamp(activeWordIndex - 1, 0, sourceWords.length - 1);
-		}
+	activeWordIndex = sourceWords.findIndex(
+		(word) => options.timeMs >= word.startMs && options.timeMs < word.endMs,
+	);
+	if (activeWordIndex < 0) {
+		activeWordIndex = sourceWords.findIndex((word) => options.timeMs < word.startMs);
+		activeWordIndex =
+			activeWordIndex < 0
+				? sourceWords.length - 1
+				: clamp(activeWordIndex - 1, 0, sourceWords.length - 1);
 	}
 	const maxRows = clamp(Math.round(options.settings.maxRows || 1), 1, 4);
 
 	const words: CaptionWordLayout[] = sourceWords.map((word, index) => {
 		return {
+			cueId: word.cueId,
+			cueWordIndex: word.cueWordIndex,
 			text: word.text,
 			index,
 			forcedBreakBefore: word.forcedBreakBefore,
 			leadingSpace: word.leadingSpace,
 			startMs: word.startMs,
 			endMs: word.endMs,
-			state: !hasWordTimings
-				? "spoken"
-				: index < activeWordIndex
+			hasRealTiming: word.hasRealTiming,
+			state:
+				index < activeWordIndex
 					? "spoken"
 					: index === activeWordIndex
 						? "active"
@@ -461,6 +484,8 @@ export function buildActiveCaptionLayout(options: {
 	const animationStartMs = visiblePage?.startMs ?? sourceWords[0].startMs;
 	const animationEndMs = visiblePage?.endMs ?? sourceWords[sourceWords.length - 1].endMs;
 	const pageStartWordIndex = visibleLines[0]?.startWordIndex ?? 0;
+	const visibleWords = visibleLines.flatMap((line) => line.words);
+	const visibleHasWordTimings = visibleWords.every((word) => word.hasRealTiming);
 	const pageCueId = sourceWords[pageStartWordIndex]?.cueId ?? sourceWords[0].cueId;
 	const activeCue =
 		getActiveCaptionCue(options.cues, options.timeMs) ??
@@ -478,9 +503,25 @@ export function buildActiveCaptionLayout(options: {
 		cue: activeCue,
 		blockKey: `${Math.round(animationStartMs)}-${Math.round(animationEndMs)}`,
 		visibleLines,
-		hasWordTimings,
+		hasWordTimings: visibleHasWordTimings,
 		activeWordIndex,
 		activeWordProgress,
+		editTarget: {
+			id: `${Math.round(animationStartMs)}-${Math.round(animationEndMs)}:${visibleWords
+				.map((word) => `${word.cueId}:${word.cueWordIndex}`)
+				.join("|")}`,
+			startMs: animationStartMs,
+			endMs: animationEndMs,
+			text: getVisibleCaptionText(visibleLines),
+			words: visibleWords.map((word) => ({
+				cueId: word.cueId,
+				cueWordIndex: word.cueWordIndex,
+				startMs: word.startMs,
+				endMs: word.endMs,
+				text: word.text,
+				leadingSpace: word.leadingSpace,
+			})),
+		},
 		visiblePageIndex,
 		opacity: animation.opacity,
 		translateY: animation.translateY,
