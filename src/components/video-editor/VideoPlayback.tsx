@@ -1385,6 +1385,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			}
 
 			let animationFrame: number | null = null;
+			let pendingOneOffDrawFrame: number | null = null;
+			let oneOffDrawAttempts = 0;
 			let videoFrameCallback: number | null = null;
 			const markWebcamFrameReady = () => {
 				if (webcamFrameReadyRef.current) {
@@ -1460,6 +1462,22 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				});
 			};
 
+			const scheduleOneOffDraw = () => {
+				if (pendingOneOffDrawFrame !== null) {
+					return;
+				}
+				pendingOneOffDrawFrame = requestAnimationFrame(() => {
+					pendingOneOffDrawFrame = null;
+					const didDraw = drawWebcamFrame(true);
+					if (!didDraw && !webcamFrameReadyRef.current && oneOffDrawAttempts < 30) {
+						oneOffDrawAttempts += 1;
+						scheduleOneOffDraw();
+						return;
+					}
+					oneOffDrawAttempts = 0;
+				});
+			};
+
 			const drawOnAnimationFrame = () => {
 				drawWebcamFrame(true);
 				animationFrame = requestAnimationFrame(drawOnAnimationFrame);
@@ -1472,7 +1490,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						cancelAnimationFrame(animationFrame);
 						animationFrame = null;
 					}
-					drawWebcamFrame(true);
+					scheduleOneOffDraw();
 					queueVideoFrameCallback();
 					return;
 				}
@@ -1486,7 +1504,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			webcamVideo.addEventListener("canplay", handleDrawableMediaEvent);
 			webcamVideo.addEventListener("seeked", handleDrawableMediaEvent);
 			if (hasVideoFrameCallback) {
-				drawWebcamFrame(true);
+				scheduleOneOffDraw();
 				queueVideoFrameCallback();
 			} else {
 				drawOnAnimationFrame();
@@ -1495,6 +1513,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			return () => {
 				if (animationFrame !== null) {
 					cancelAnimationFrame(animationFrame);
+				}
+				if (pendingOneOffDrawFrame !== null) {
+					cancelAnimationFrame(pendingOneOffDrawFrame);
 				}
 				if (videoFrameCallback !== null && hasVideoFrameCallback) {
 					webcamVideo.cancelVideoFrameCallback(videoFrameCallback);
@@ -2516,7 +2537,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								style={{
 									display: webcam.enabled ? "block" : "none",
 									pointerEvents: "none",
-									visibility: webcamFrameReady ? "visible" : "hidden",
 								}}
 							>
 								<div
@@ -2532,7 +2552,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 										preload="auto"
 										aria-hidden="true"
 										style={{
-											opacity: webcamFrameReady ? 0 : 1,
+											opacity: 0,
 											transform: webcamMirror ? "scaleX(-1)" : undefined,
 										}}
 										onLoadedMetadata={handleWebcamMediaReady}
