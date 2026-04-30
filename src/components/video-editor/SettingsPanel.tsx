@@ -83,7 +83,12 @@ import {
 	cursorSetAssets,
 	getCursorStyleSizeMultiplier,
 } from "./videoPlayback/uploadedCursorAssets";
-import { getWebcamPositionForPreset, resolveWebcamCorner } from "./webcamOverlay";
+import { WebcamCropControl } from "./WebcamCropControl";
+import {
+	getWebcamPositionForPreset,
+	normalizeWebcamCropRegion,
+	resolveWebcamCorner,
+} from "./webcamOverlay";
 
 const tahoeCursorUrl = cursorSetAssets.tahoe.arrow.url;
 const BUILTIN_CURSOR_PREVIEW_SIZE = 28;
@@ -1263,6 +1268,7 @@ export function SettingsPanel({
 	const webcamPositionPreset = webcam?.positionPreset ?? DEFAULT_WEBCAM_POSITION_PRESET;
 	const webcamPositionX = webcam?.positionX ?? DEFAULT_WEBCAM_POSITION_X;
 	const webcamPositionY = webcam?.positionY ?? DEFAULT_WEBCAM_POSITION_Y;
+	const webcamCrop = normalizeWebcamCropRegion(webcam?.cropRegion);
 
 	const getWallpaperTileState = (candidateValue: string, previewPath?: string) => {
 		if (!selected) return false;
@@ -1902,8 +1908,14 @@ export function SettingsPanel({
 							className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
 							title={
 								padding.linked === false
-									? tSettings("effects.paddingAdvancedHide", "Hide advanced padding controls")
-									: tSettings("effects.paddingAdvancedShow", "Show advanced padding controls")
+									? tSettings(
+											"effects.paddingAdvancedHide",
+											"Hide advanced padding controls",
+										)
+									: tSettings(
+											"effects.paddingAdvancedShow",
+											"Show advanced padding controls",
+										)
 							}
 						>
 							{tSettings("effects.paddingAdvanced", "Advanced")}
@@ -2863,6 +2875,16 @@ export function SettingsPanel({
 									className="data-[state=checked]:bg-[#2563EB] scale-75"
 								/>
 							</div>
+							<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
+								<span className="text-[10px] text-muted-foreground">
+									{tSettings("effects.webcamMirror", "Mirror webcam")}
+								</span>
+								<Switch
+									checked={webcam?.mirror ?? true}
+									onCheckedChange={(mirror) => updateWebcam({ mirror })}
+									className="data-[state=checked]:bg-[#2563EB] scale-75"
+								/>
+							</div>
 							<SliderControl
 								label={tSettings("effects.webcamSize")}
 								value={webcam?.size ?? DEFAULT_WEBCAM_SIZE}
@@ -2874,6 +2896,27 @@ export function SettingsPanel({
 								formatValue={(v) => `${Math.round(v)}%`}
 								parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
 							/>
+							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+								<div className="mb-2 flex items-center justify-between gap-2">
+									<div className="text-[10px] text-muted-foreground">
+										{tSettings("effects.webcamCrop", "Crop")}
+									</div>
+									<button
+										type="button"
+										onClick={() =>
+											updateWebcam({ cropRegion: DEFAULT_CROP_REGION })
+										}
+										className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
+									>
+										{t("common.actions.reset", "Reset")}
+									</button>
+								</div>
+								<WebcamCropControl
+									cropRegion={webcamCrop}
+									mirrored={webcam?.mirror ?? true}
+									onCropChange={(cropRegion) => updateWebcam({ cropRegion })}
+								/>
+							</div>
 							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
 								<div className="mb-2 text-[10px] text-muted-foreground">
 									{tSettings("effects.webcamPosition", "Position")}
@@ -2988,37 +3031,41 @@ export function SettingsPanel({
 								parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
 							/>
 							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
-								<div className="flex items-center justify-between gap-2">
-									<div>
+								<div className="flex flex-col gap-2">
+									<div className="min-w-0">
 										<div className="text-[10px] text-muted-foreground">
 											{tSettings("effects.webcamFootage")}
 										</div>
-										<div className="mt-0.5 text-[10px] text-muted-foreground/70">
+										<div className="mt-0.5 break-all text-[10px] leading-4 text-muted-foreground/70">
 											{webcamFileName ??
 												tSettings("effects.webcamFootageDescription")}
 										</div>
 									</div>
-									<div className="flex items-center gap-1.5">
+									<div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
 										<Button
 											type="button"
 											variant="outline"
 											onClick={onUploadWebcam}
-											className="h-7 gap-1.5 border-foreground/10 bg-foreground/5 px-2 text-[10px] text-foreground hover:bg-foreground/10 hover:text-foreground"
+											className="h-7 min-w-0 gap-1.5 border-foreground/10 bg-foreground/5 px-2 text-[10px] text-foreground hover:bg-foreground/10 hover:text-foreground"
 										>
 											<Upload className="h-3 w-3" />
-											{webcam?.sourcePath
-												? tSettings("effects.replaceWebcamFootage")
-												: tSettings("effects.uploadWebcamFootage")}
+											<span className="min-w-0 truncate">
+												{webcam?.sourcePath
+													? tSettings("effects.replaceWebcamFootage")
+													: tSettings("effects.uploadWebcamFootage")}
+											</span>
 										</Button>
 										{webcam?.sourcePath ? (
 											<Button
 												type="button"
 												variant="outline"
 												onClick={onClearWebcam}
-												className="h-7 gap-1.5 border-foreground/10 bg-foreground/5 px-2 text-[10px] text-foreground hover:bg-foreground/10 hover:text-foreground"
+												className="h-7 min-w-0 gap-1.5 border-foreground/10 bg-foreground/5 px-2 text-[10px] text-foreground hover:bg-foreground/10 hover:text-foreground"
 											>
 												<Trash2 className="h-3 w-3" />
-												{tSettings("effects.removeWebcamFootage")}
+												<span className="min-w-0 truncate">
+													{tSettings("effects.removeWebcamFootage")}
+												</span>
 											</Button>
 										) : null}
 									</div>
