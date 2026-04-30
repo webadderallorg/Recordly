@@ -364,7 +364,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const webcamBubbleRef = useRef<HTMLDivElement | null>(null);
 		const webcamBubbleInnerRef = useRef<HTMLDivElement | null>(null);
 		const [webcamFrameReady, setWebcamFrameReady] = useState(false);
-		const [webcamSourceReady, setWebcamSourceReady] = useState(false);
 		const webcamFrameReadyRef = useRef(false);
 		const captionBoxRef = useRef<HTMLDivElement | null>(null);
 		const currentTimeRef = useRef(0);
@@ -1360,7 +1359,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		}, [currentTime, isPlaying, webcamEnabled, webcamTimeOffsetMs, webcamVideoPath]);
 
 		const handleWebcamMediaReady = useCallback(() => {
-			setWebcamSourceReady(true);
 			syncWebcamMedia();
 		}, [syncWebcamMedia]);
 
@@ -1371,7 +1369,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		useEffect(() => {
 			webcamFrameReadyRef.current = false;
 			setWebcamFrameReady(false);
-			setWebcamSourceReady(false);
 			lastWebcamSyncTimeRef.current = null;
 		}, [webcamVideoPath]);
 
@@ -2519,10 +2516,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								style={{
 									display: webcam.enabled ? "block" : "none",
 									pointerEvents: "none",
-									visibility:
-										webcamFrameReady || webcamSourceReady
-											? "visible"
-											: "hidden",
+									visibility: webcamFrameReady ? "visible" : "hidden",
 								}}
 							>
 								<div
