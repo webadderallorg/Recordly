@@ -123,10 +123,13 @@ export type GifFrameRate = 15 | 20 | 25 | 30;
 
 export type GifSizePreset = "medium" | "large" | "original";
 
+export type GifCompressionPreset = "compact" | "balanced" | "quality";
+
 export interface GifExportConfig {
 	frameRate: GifFrameRate;
 	loop: boolean;
 	sizePreset: GifSizePreset;
+	compressionPreset: GifCompressionPreset;
 	width: number;
 	height: number;
 }
@@ -153,6 +156,15 @@ export const GIF_SIZE_PRESETS: Record<GifSizePreset, { maxHeight: number; label:
 	medium: { maxHeight: 720, label: "Medium (720p)" },
 	large: { maxHeight: 1080, label: "Large (1080p)" },
 	original: { maxHeight: Infinity, label: "Original" },
+};
+
+export const GIF_COMPRESSION_PRESETS: Record<
+	GifCompressionPreset,
+	{ quality: number; label: string }
+> = {
+	compact: { quality: 20, label: "Compact" },
+	balanced: { quality: 10, label: "Balanced" },
+	quality: { quality: 5, label: "Quality" },
 };
 
 export const GIF_FRAME_RATES: { value: GifFrameRate; label: string }[] = [

@@ -19,9 +19,11 @@ import type {
 	ExportProgress,
 	ExportResult,
 	GIF_SIZE_PRESETS,
+	GifCompressionPreset,
 	GifFrameRate,
 	GifSizePreset,
 } from "./types";
+import { GIF_COMPRESSION_PRESETS } from "./types";
 
 const GIF_WORKER_URL = new URL("gif.js/dist/gif.worker.js", import.meta.url).toString();
 
@@ -34,6 +36,7 @@ interface GifExporterConfig {
 	frameRate: GifFrameRate;
 	loop: boolean;
 	sizePreset: GifSizePreset;
+	compressionPreset: GifCompressionPreset;
 	wallpaper: string;
 	zoomRegions: ZoomRegion[];
 	trimRegions?: TrimRegion[];
@@ -115,6 +118,13 @@ export function calculateOutputDimensions(
 
 export function getGifRepeat(loop: boolean): 0 | 1 {
 	return loop ? 0 : 1;
+}
+
+export function getGifEncoderQuality(compressionPreset: GifCompressionPreset) {
+	return (
+		GIF_COMPRESSION_PRESETS[compressionPreset]?.quality ??
+		GIF_COMPRESSION_PRESETS.balanced.quality
+	);
 }
 
 export class GifExporter {
@@ -203,7 +213,7 @@ export class GifExporter {
 
 			this.gif = new GIF({
 				workers: WORKER_COUNT,
-				quality: 10,
+				quality: getGifEncoderQuality(this.config.compressionPreset),
 				width: this.config.width,
 				height: this.config.height,
 				workerScript: GIF_WORKER_URL,
