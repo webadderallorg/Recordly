@@ -1453,6 +1453,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				if (!hasVideoFrameCallback) {
 					return;
 				}
+				if (videoFrameCallback !== null) {
+					return;
+				}
 				videoFrameCallback = webcamVideo.requestVideoFrameCallback(() => {
 					videoFrameCallback = null;
 					drawWebcamFrame(true);
@@ -1461,12 +1464,21 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			};
 
 			const drawOnAnimationFrame = () => {
-				drawWebcamFrame(!hasVideoFrameCallback);
+				drawWebcamFrame(true);
 				animationFrame = requestAnimationFrame(drawOnAnimationFrame);
 			};
 
 			const handleDrawableMediaEvent = () => {
 				syncWebcamMedia();
+				if (hasVideoFrameCallback) {
+					if (animationFrame !== null) {
+						cancelAnimationFrame(animationFrame);
+						animationFrame = null;
+					}
+					drawWebcamFrame(true);
+					queueVideoFrameCallback();
+					return;
+				}
 				if (animationFrame !== null) {
 					cancelAnimationFrame(animationFrame);
 				}
@@ -1476,8 +1488,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			webcamVideo.addEventListener("loadeddata", handleDrawableMediaEvent);
 			webcamVideo.addEventListener("canplay", handleDrawableMediaEvent);
 			webcamVideo.addEventListener("seeked", handleDrawableMediaEvent);
-			queueVideoFrameCallback();
-			drawOnAnimationFrame();
+			if (hasVideoFrameCallback) {
+				drawWebcamFrame(true);
+				queueVideoFrameCallback();
+			} else {
+				drawOnAnimationFrame();
+			}
 
 			return () => {
 				if (animationFrame !== null) {
