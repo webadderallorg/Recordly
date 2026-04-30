@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { type AspectRatio } from "@/utils/aspectRatioUtils";
-
-interface CropRegion {
-	x: number; // 0-1 normalized
-	y: number; // 0-1 normalized
-	width: number; // 0-1 normalized
-	height: number; // 0-1 normalized
-}
+import type { AspectRatio } from "@/utils/aspectRatioUtils";
+import {
+	type CropRegionPixels,
+	cropRegionFromPixels,
+	cropRegionToPixels,
+	getCropSourceDimensions,
+} from "./cropRegionPixels";
+import type { CropRegion } from "./types";
 
 interface CropControlProps {
 	videoElement: HTMLVideoElement | null;
@@ -148,12 +148,28 @@ export function CropControl({ videoElement, cropRegion, onCropChange }: CropCont
 	const cropPixelY = cropRegion.y * 100;
 	const cropPixelWidth = cropRegion.width * 100;
 	const cropPixelHeight = cropRegion.height * 100;
-	const videoAspectRatio = videoElement
-		? videoElement.videoWidth / videoElement.videoHeight
-		: 16 / 9;
+	const cropSourceDimensions = getCropSourceDimensions(videoElement);
+	const preciseCropPixels = cropRegionToPixels(
+		cropRegion,
+		cropSourceDimensions.width,
+		cropSourceDimensions.height,
+	);
+	const videoAspectRatio = cropSourceDimensions.width / cropSourceDimensions.height;
 	const isVideoPortrait = videoAspectRatio < 1;
 	const maxContainerWidth = isVideoPortrait ? "40vw" : "75vw";
 	const maxContainerHeight = "75vh";
+	const handlePixelInputChange = (field: keyof CropRegionPixels, value: number) => {
+		onCropChange(
+			cropRegionFromPixels(
+				{
+					...preciseCropPixels,
+					[field]: value,
+				},
+				cropSourceDimensions.width,
+				cropSourceDimensions.height,
+			),
+		);
+	};
 
 	return (
 		<div className="w-full p-8">
@@ -269,6 +285,46 @@ export function CropControl({ videoElement, cropRegion, onCropChange }: CropCont
 					}}
 					onPointerDown={(e) => handlePointerDown(e, "right")}
 				/>
+			</div>
+			<div className="mx-auto mt-4 max-w-2xl rounded-xl border border-white/10 bg-black/80 p-3 shadow-lg backdrop-blur">
+				<div className="mb-2 flex items-center justify-between">
+					<span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70">
+						Precise crop
+					</span>
+					<span className="text-[10px] text-white/45">
+						{cropSourceDimensions.width} x {cropSourceDimensions.height}px source
+					</span>
+				</div>
+				<div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+					{(
+						[
+							{ key: "x", label: "X", max: cropSourceDimensions.width - 1 },
+							{ key: "y", label: "Y", max: cropSourceDimensions.height - 1 },
+							{ key: "width", label: "W", max: cropSourceDimensions.width },
+							{ key: "height", label: "H", max: cropSourceDimensions.height },
+						] as const
+					).map((input) => (
+						<label key={input.key} className="space-y-1">
+							<span className="text-[10px] font-medium uppercase tracking-[0.12em] text-white/50">
+								{input.label}
+							</span>
+							<div className="flex items-center rounded-lg border border-white/10 bg-white/5 px-2 focus-within:border-[#2563EB]/70">
+								<input
+									type="number"
+									min={0}
+									max={input.max}
+									step={1}
+									value={preciseCropPixels[input.key]}
+									onChange={(event) =>
+										handlePixelInputChange(input.key, Number(event.currentTarget.value))
+									}
+									className="min-w-0 flex-1 bg-transparent py-1.5 text-sm tabular-nums text-white outline-none"
+								/>
+								<span className="text-[10px] text-white/35">px</span>
+							</div>
+						</label>
+					))}
+				</div>
 			</div>
 		</div>
 	);
