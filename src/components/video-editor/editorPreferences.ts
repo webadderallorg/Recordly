@@ -48,6 +48,22 @@ type PersistedEditorControls = Pick<
 
 type PartialEditorControls = Partial<PersistedEditorControls>;
 
+type PresetAutoCaptionSettings = ProjectEditorState["autoCaptionSettings"];
+
+export interface EditorPresetSnapshot extends PersistedEditorControls {
+	autoCaptionSettings: PresetAutoCaptionSettings;
+	whisperExecutablePath: string | null;
+	whisperModelPath: string | null;
+}
+
+export interface EditorPreset {
+	id: string;
+	name: string;
+	createdAt: string;
+	updatedAt: string;
+	snapshot: EditorPresetSnapshot;
+}
+
 export interface EditorPreferences extends PersistedEditorControls {
 	customAspectWidth: string;
 	customAspectHeight: string;
@@ -58,6 +74,7 @@ export interface EditorPreferences extends PersistedEditorControls {
 }
 
 export const EDITOR_PREFERENCES_STORAGE_KEY = "recordly.editor.preferences";
+export const EDITOR_PRESETS_STORAGE_KEY = "recordly.editor.presets";
 
 const DEFAULT_EDITOR_CONTROLS = normalizeProjectEditor({});
 
@@ -142,6 +159,77 @@ function normalizeNullablePath(value: unknown): string | null {
 
 	const trimmed = value.trim();
 	return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizePresetAutoCaptionSettings(value: unknown): PresetAutoCaptionSettings {
+	return normalizeProjectEditor({
+		autoCaptionSettings:
+			value && typeof value === "object"
+				? (value as PresetAutoCaptionSettings)
+				: undefined,
+	}).autoCaptionSettings;
+}
+
+function normalizeEditorPresetSnapshot(candidate: unknown): EditorPresetSnapshot {
+	const normalizedPreferences = normalizeEditorPreferences(candidate);
+	const raw =
+		candidate && typeof candidate === "object"
+			? (candidate as Partial<EditorPresetSnapshot>)
+			: {};
+
+	return {
+		...normalizeEditorControls(normalizedPreferences, normalizedPreferences),
+		autoCaptionSettings: normalizePresetAutoCaptionSettings(raw.autoCaptionSettings),
+		whisperExecutablePath:
+			normalizeNullablePath(raw.whisperExecutablePath) ?? normalizedPreferences.whisperExecutablePath,
+		whisperModelPath:
+			normalizeNullablePath(raw.whisperModelPath) ?? normalizedPreferences.whisperModelPath,
+	};
+}
+
+function normalizePresetName(value: unknown): string | null {
+	if (typeof value !== "string") {
+		return null;
+	}
+
+	const trimmed = value.trim().replace(/\s+/g, " ");
+	return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizePresetTimestamp(value: unknown, fallback: string): string {
+	if (typeof value !== "string") {
+		return fallback;
+	}
+
+	const parsed = Date.parse(value);
+	return Number.isFinite(parsed) ? new Date(parsed).toISOString() : fallback;
+}
+
+function normalizeEditorPreset(candidate: unknown): EditorPreset | null {
+	if (!candidate || typeof candidate !== "object") {
+		return null;
+	}
+
+	const raw = candidate as Partial<EditorPreset>;
+	const name = normalizePresetName(raw.name);
+	if (!name) {
+		return null;
+	}
+
+	const timestamp = new Date().toISOString();
+	const id = typeof raw.id === "string" && raw.id.trim().length > 0 ? raw.id : crypto.randomUUID();
+
+	return {
+		id,
+		name,
+		createdAt: normalizePresetTimestamp(raw.createdAt, timestamp),
+		updatedAt: normalizePresetTimestamp(raw.updatedAt, timestamp),
+		snapshot: normalizeEditorPresetSnapshot(raw.snapshot),
+	};
+}
+
+export function serializeEditorPresetSnapshot(snapshot: EditorPresetSnapshot): string {
+	return JSON.stringify(normalizeEditorPresetSnapshot(snapshot));
 }
 
 function normalizeEditorControls(
@@ -296,6 +384,43 @@ export function saveEditorPreferences(preferences: Partial<EditorPreferences>): 
 		const current = loadEditorPreferences();
 		const merged = normalizeEditorPreferences({ ...current, ...preferences }, current);
 		globalThis.localStorage.setItem(EDITOR_PREFERENCES_STORAGE_KEY, JSON.stringify(merged));
+	} catch {
+		// Ignore storage failures so editor controls still work.
+	}
+}
+
+export function loadEditorPresets(): EditorPreset[] {
+	if (typeof globalThis.localStorage === "undefined") {
+		return [];
+	}
+
+	try {
+		const stored = globalThis.localStorage.getItem(EDITOR_PRESETS_STORAGE_KEY);
+		if (!stored) {
+			return [];
+		}
+
+		const parsed = JSON.parse(stored);
+		if (!Array.isArray(parsed)) {
+			return [];
+		}
+
+		return parsed
+			.map((item) => normalizeEditorPreset(item))
+			.filter((preset): preset is EditorPreset => preset !== null)
+			.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+	} catch {
+		return [];
+	}
+}
+
+export function saveEditorPresets(presets: EditorPreset[]): void {
+	if (typeof globalThis.localStorage === "undefined") {
+		return;
+	}
+
+	try {
+		globalThis.localStorage.setItem(EDITOR_PRESETS_STORAGE_KEY, JSON.stringify(presets));
 	} catch {
 		// Ignore storage failures so editor controls still work.
 	}

@@ -1,4 +1,5 @@
 import {
+	BookmarkSimple,
 	Check,
 	CaretDown as ChevronDown,
 	CaretUp as ChevronUp,
@@ -38,6 +39,8 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Toaster } from "@/components/ui/sonner";
 import { useI18n } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
@@ -77,6 +80,7 @@ import {
 	getAspectRatioLabel,
 	getAspectRatioValue,
 } from "@/utils/aspectRatioUtils";
+import { cn } from "@/lib/utils";
 import { ExtensionIcon } from "./ExtensionIcon";
 
 const PhCursorFill = (props: { className?: string; weight?: "fill" | "regular" }) => (
@@ -103,7 +107,15 @@ import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
 import { CropControl } from "./CropControl";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
 import ExtensionManager from "./ExtensionManager";
-import { loadEditorPreferences, saveEditorPreferences } from "./editorPreferences";
+import {
+	loadEditorPreferences,
+	loadEditorPresets,
+	saveEditorPreferences,
+	saveEditorPresets,
+	serializeEditorPresetSnapshot,
+	type EditorPreset,
+	type EditorPresetSnapshot,
+} from "./editorPreferences";
 import ProjectBrowserDialog, { type ProjectLibraryEntry } from "./ProjectBrowserDialog";
 import {
 	createProjectData,
@@ -670,6 +682,9 @@ export default function VideoEditor() {
 	const [exportedFilePath, setExportedFilePath] = useState<string | undefined>(undefined);
 	const [hasPendingExportSave, setHasPendingExportSave] = useState(false);
 	const [lastSavedSnapshot, setLastSavedSnapshot] = useState<EditorProjectData | null>(null);
+	const [editorPresets, setEditorPresets] = useState<EditorPreset[]>(() => loadEditorPresets());
+	const [presetPopoverOpen, setPresetPopoverOpen] = useState(false);
+	const [presetNameDraft, setPresetNameDraft] = useState("");
 	const [showCropModal, setShowCropModal] = useState(false);
 	const [previewVersion, setPreviewVersion] = useState(0);
 	const [isPreviewReady, setIsPreviewReady] = useState(false);
@@ -748,6 +763,228 @@ export default function VideoEditor() {
 	const syncHistoryButtons = useCallback(() => {
 		setHistoryVersion((version) => version + 1);
 	}, []);
+
+	const captureEditorPresetSnapshot = useCallback(
+		(): EditorPresetSnapshot => ({
+			wallpaper,
+			shadowIntensity,
+			backgroundBlur,
+			zoomMotionBlur,
+			connectZooms,
+			zoomInDurationMs,
+			zoomInOverlapMs,
+			zoomOutDurationMs,
+			connectedZoomGapMs,
+			connectedZoomDurationMs,
+			zoomInEasing,
+			zoomOutEasing,
+			connectedZoomEasing,
+			showCursor,
+			loopCursor,
+			cursorStyle,
+			cursorSize,
+			cursorSmoothing,
+			cursorMotionBlur,
+			cursorClickBounce,
+			cursorClickBounceDuration,
+			cursorSway,
+			borderRadius,
+			padding: { ...padding },
+			frame,
+			webcam: { ...webcam },
+			aspectRatio,
+			exportEncodingMode,
+			exportBackendPreference,
+			exportPipelineModel,
+			exportQuality,
+			mp4FrameRate,
+			exportFormat,
+			gifFrameRate,
+			gifLoop,
+			gifSizePreset,
+			autoCaptionSettings: { ...autoCaptionSettings },
+			whisperExecutablePath,
+			whisperModelPath,
+		}),
+		[
+			wallpaper,
+			shadowIntensity,
+			backgroundBlur,
+			zoomMotionBlur,
+			connectZooms,
+			zoomInDurationMs,
+			zoomInOverlapMs,
+			zoomOutDurationMs,
+			connectedZoomGapMs,
+			connectedZoomDurationMs,
+			zoomInEasing,
+			zoomOutEasing,
+			connectedZoomEasing,
+			showCursor,
+			loopCursor,
+			cursorStyle,
+			cursorSize,
+			cursorSmoothing,
+			cursorMotionBlur,
+			cursorClickBounce,
+			cursorClickBounceDuration,
+			cursorSway,
+			borderRadius,
+			padding,
+			frame,
+			webcam,
+			aspectRatio,
+			exportEncodingMode,
+			exportBackendPreference,
+			exportPipelineModel,
+			exportQuality,
+			mp4FrameRate,
+			exportFormat,
+			gifFrameRate,
+			gifLoop,
+			gifSizePreset,
+			autoCaptionSettings,
+			whisperExecutablePath,
+			whisperModelPath,
+		],
+	);
+
+	const currentPresetSnapshot = useMemo(
+		() => captureEditorPresetSnapshot(),
+		[captureEditorPresetSnapshot],
+	);
+	const currentPresetSignature = useMemo(
+		() => serializeEditorPresetSnapshot(currentPresetSnapshot),
+		[currentPresetSnapshot],
+	);
+	const currentEditorPreset = useMemo(
+		() =>
+			editorPresets.find(
+				(preset) =>
+					serializeEditorPresetSnapshot(preset.snapshot) === currentPresetSignature,
+			) ?? null,
+		[editorPresets, currentPresetSignature],
+	);
+
+	useEffect(() => {
+		if (!presetPopoverOpen) {
+			setPresetNameDraft("");
+		}
+	}, [presetPopoverOpen]);
+
+	const applyEditorPresetSnapshot = useCallback((snapshot: EditorPresetSnapshot) => {
+		setWallpaper(snapshot.wallpaper);
+		setShadowIntensity(snapshot.shadowIntensity);
+		setBackgroundBlur(snapshot.backgroundBlur);
+		setZoomMotionBlur(snapshot.zoomMotionBlur);
+		setConnectZooms(snapshot.connectZooms);
+		setZoomInDurationMs(snapshot.zoomInDurationMs);
+		setZoomInOverlapMs(snapshot.zoomInOverlapMs);
+		setZoomOutDurationMs(snapshot.zoomOutDurationMs);
+		setConnectedZoomGapMs(snapshot.connectedZoomGapMs);
+		setConnectedZoomDurationMs(snapshot.connectedZoomDurationMs);
+		setZoomInEasing(snapshot.zoomInEasing);
+		setZoomOutEasing(snapshot.zoomOutEasing);
+		setConnectedZoomEasing(snapshot.connectedZoomEasing);
+		setShowCursor(snapshot.showCursor);
+		setLoopCursor(snapshot.loopCursor);
+		setCursorStyle(snapshot.cursorStyle);
+		setCursorSize(snapshot.cursorSize);
+		setCursorSmoothing(snapshot.cursorSmoothing);
+		setCursorMotionBlur(snapshot.cursorMotionBlur);
+		setCursorClickBounce(snapshot.cursorClickBounce);
+		setCursorClickBounceDuration(snapshot.cursorClickBounceDuration);
+		setCursorSway(snapshot.cursorSway);
+		setBorderRadius(snapshot.borderRadius);
+		setPadding({ ...snapshot.padding });
+		setFrame(snapshot.frame);
+		setWebcam({ ...snapshot.webcam });
+		setAspectRatio(snapshot.aspectRatio);
+		setExportEncodingMode(snapshot.exportEncodingMode);
+		setExportBackendPreference(snapshot.exportBackendPreference);
+		setExportPipelineModel(snapshot.exportPipelineModel);
+		setExportQuality(snapshot.exportQuality);
+		setMp4FrameRate(snapshot.mp4FrameRate);
+		setExportFormat(snapshot.exportFormat);
+		setGifFrameRate(snapshot.gifFrameRate);
+		setGifLoop(snapshot.gifLoop);
+		setGifSizePreset(snapshot.gifSizePreset);
+		setAutoCaptionSettings({ ...snapshot.autoCaptionSettings });
+		setWhisperExecutablePath(snapshot.whisperExecutablePath);
+		setWhisperModelPath(snapshot.whisperModelPath);
+	}, []);
+
+	const handleApplyEditorPreset = useCallback(
+		(presetId: string) => {
+			const preset = editorPresets.find((item) => item.id === presetId);
+			if (!preset) {
+				return;
+			}
+
+			applyEditorPresetSnapshot(preset.snapshot);
+			toast.success(`Applied preset \"${preset.name}\"`);
+		},
+		[applyEditorPresetSnapshot, editorPresets],
+	);
+
+	const handleSaveEditorPreset = useCallback(
+		(name: string) => {
+			const normalizedName = name.trim().replace(/\s+/g, " ");
+			if (normalizedName.length === 0) {
+				toast.error("Enter a preset name.");
+				return false;
+			}
+
+			const hasDuplicateName = editorPresets.some(
+				(preset) => preset.name.toLocaleLowerCase() === normalizedName.toLocaleLowerCase(),
+			);
+			if (hasDuplicateName) {
+				toast.error("A preset with that name already exists.");
+				return false;
+			}
+
+			const snapshot = captureEditorPresetSnapshot();
+			const timestamp = new Date().toISOString();
+			const nextPresets = [
+				{
+					id: crypto.randomUUID(),
+					name: normalizedName,
+					createdAt: timestamp,
+					updatedAt: timestamp,
+					snapshot,
+				},
+				...editorPresets,
+			];
+
+			setEditorPresets(nextPresets);
+			saveEditorPresets(nextPresets);
+			toast.success(`Saved preset \"${normalizedName}\"`);
+			return true;
+		},
+		[captureEditorPresetSnapshot, editorPresets],
+	);
+
+	const handleDeleteEditorPreset = useCallback(
+		(presetId: string) => {
+			const preset = editorPresets.find((item) => item.id === presetId);
+			if (!preset) {
+				return;
+			}
+
+			const nextPresets = editorPresets.filter((item) => item.id !== presetId);
+			setEditorPresets(nextPresets);
+			saveEditorPresets(nextPresets);
+			toast.success(`Deleted preset \"${preset.name}\"`);
+		},
+		[editorPresets],
+	);
+
+	const handleSavePresetSubmit = useCallback(() => {
+		const didSave = handleSaveEditorPreset(presetNameDraft);
+		if (didSave) {
+			setPresetNameDraft("");
+		}
+	}, [handleSaveEditorPreset, presetNameDraft]);
 
 	const clearPendingExportSave = useCallback(() => {
 		const pending = pendingExportSaveRef.current;
@@ -4957,6 +5194,98 @@ export default function VideoEditor() {
 					className="flex items-center gap-2 justify-self-end pr-3"
 					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 				>
+					<Popover open={presetPopoverOpen} onOpenChange={setPresetPopoverOpen}>
+						<PopoverTrigger asChild>
+							<button
+								type="button"
+								className="inline-flex items-center gap-1.5 bg-transparent p-0 text-sm font-medium tracking-tight text-foreground outline-none transition-opacity hover:opacity-80"
+							>
+								<span className="flex items-center gap-1.5">
+									<BookmarkSimple weight="fill" className="h-4 w-4" />
+									<span>{currentEditorPreset?.name ?? "Presets"}</span>
+								</span>
+								<ChevronDown className="h-3.5 w-3.5 text-foreground" />
+							</button>
+						</PopoverTrigger>
+						<PopoverContent
+							align="end"
+							sideOffset={10}
+							className="w-[300px] rounded-2xl border border-foreground/10 bg-editor-surface-alt p-3 shadow-xl"
+						>
+							<div className="space-y-3">
+								<form
+									onSubmit={(event) => {
+										event.preventDefault();
+										handleSavePresetSubmit();
+									}}
+									className="space-y-2"
+								>
+									<p className="text-[11px] font-medium text-foreground">
+										Save current preset as
+									</p>
+									<div className="flex items-center gap-2">
+										<Input
+											value={presetNameDraft}
+											onChange={(event) => setPresetNameDraft(event.target.value)}
+											placeholder="Preset name"
+											className="h-9 rounded-xl border-foreground/10 bg-background/70 text-sm"
+										/>
+										<Button
+											type="submit"
+											size="sm"
+											className="h-9 rounded-xl bg-[#2563EB] px-3 text-white hover:bg-[#1d4ed8]"
+										>
+											Save
+										</Button>
+									</div>
+								</form>
+
+								<div className="space-y-2">
+									<p className="text-[11px] font-medium text-foreground">Saved presets</p>
+									<div className="max-h-56 space-y-1 overflow-y-auto pr-1 custom-scrollbar">
+										{editorPresets.length === 0 ? (
+											<div className="rounded-xl border border-dashed border-foreground/10 px-3 py-4 text-center text-[11px] text-muted-foreground">
+												No presets yet.
+											</div>
+										) : (
+											editorPresets.map((preset) => {
+												const isActive = preset.id === currentEditorPreset?.id;
+												return (
+													<div
+														key={preset.id}
+														className={cn(
+															"flex items-center gap-2 rounded-xl border px-2 py-2 text-sm transition-colors",
+															isActive
+																? "border-[#2563EB]/20 bg-[#2563EB]/10 text-foreground"
+																: "border-foreground/8 bg-foreground/[0.03] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
+														)}
+													>
+														<button
+															type="button"
+															onClick={() => handleApplyEditorPreset(preset.id)}
+															className="flex min-w-0 flex-1 items-center justify-between text-left"
+														>
+															<span className="truncate pr-3">{preset.name}</span>
+															{isActive && <Check className="h-3.5 w-3.5 shrink-0 text-[#2563EB]" />}
+														</button>
+														<button
+															type="button"
+															onClick={() => handleDeleteEditorPreset(preset.id)}
+															className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground"
+															aria-label={`Delete preset ${preset.name}`}
+															title={`Delete preset ${preset.name}`}
+														>
+															<X className="h-3.5 w-3.5" />
+														</button>
+													</div>
+												);
+											})
+										)}
+									</div>
+								</div>
+							</div>
+						</PopoverContent>
+					</Popover>
 					<DropdownMenu
 						open={showExportDropdown}
 						onOpenChange={setShowExportDropdown}
@@ -4966,7 +5295,7 @@ export default function VideoEditor() {
 							<Button
 								type="button"
 								onClick={handleOpenExportDropdown}
-								className="inline-flex h-8 min-w-[112px] items-center justify-center gap-2 rounded-[5px] bg-[#2563EB] px-4.5 text-white transition-colors hover:bg-[#2563EB]/92"
+								className="ml-3 inline-flex h-8 min-w-[112px] items-center justify-center gap-2 rounded-[5px] bg-[#2563EB] px-4.5 text-white transition-colors hover:bg-[#2563EB]/92"
 							>
 								<Download className="h-4 w-4" />
 								<span className="text-sm font-semibold tracking-tight">
