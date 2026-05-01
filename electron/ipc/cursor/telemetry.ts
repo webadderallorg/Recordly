@@ -168,9 +168,9 @@ export function pushCursorSample(
 	}
 }
 
-export function sampleCursorPoint() {
+export function sampleCursorPoint(sampledAtMs = Date.now()) {
 	const point = getNormalizedCursorPoint();
-	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "move");
+	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(sampledAtMs), "move");
 }
 
 export async function persistPendingCursorTelemetry(videoPath: string) {

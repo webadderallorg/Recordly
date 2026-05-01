@@ -1440,12 +1440,32 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (webcamRecorder.current?.state === "recording") {
 					webcamRecorder.current.pause();
 				}
+				const boundaryMs = Date.now();
 				try {
-					await window.electronAPI.pauseCursorCapture();
+					await window.electronAPI.pauseCursorCapture(boundaryMs);
 				} catch (error) {
 					console.warn("Failed to pause cursor capture:", error);
+					try {
+						const rollbackResult =
+							await window.electronAPI.resumeNativeScreenRecording();
+						if (!rollbackResult.success) {
+							console.warn(
+								"Failed to roll back native pause after cursor pause failure:",
+								rollbackResult.error ?? rollbackResult.message,
+							);
+						}
+					} catch (rollbackError) {
+						console.warn(
+							"Failed to roll back native pause after cursor pause failure:",
+							rollbackError,
+						);
+					}
+					if (webcamRecorder.current?.state === "paused") {
+						webcamRecorder.current.resume();
+					}
+					return;
 				}
-				markRecordingPaused(Date.now());
+				markRecordingPaused(boundaryMs);
 				setPaused(true);
 			})();
 			return;
@@ -1455,13 +1475,21 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			if (webcamRecorder.current?.state === "recording") {
 				webcamRecorder.current.pause();
 			}
+			const boundaryMs = Date.now();
 			void (async () => {
 				try {
-					await window.electronAPI.pauseCursorCapture();
+					await window.electronAPI.pauseCursorCapture(boundaryMs);
 				} catch (error) {
 					console.warn("Failed to pause cursor capture:", error);
+					if (mediaRecorder.current?.state === "paused") {
+						mediaRecorder.current.resume();
+					}
+					if (webcamRecorder.current?.state === "paused") {
+						webcamRecorder.current.resume();
+					}
+					return;
 				}
-				markRecordingPaused(Date.now());
+				markRecordingPaused(boundaryMs);
 				setPaused(true);
 			})();
 		}
@@ -1483,12 +1511,32 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (webcamRecorder.current?.state === "paused") {
 					webcamRecorder.current.resume();
 				}
+				const boundaryMs = Date.now();
 				try {
-					await window.electronAPI.resumeCursorCapture();
+					await window.electronAPI.resumeCursorCapture(boundaryMs);
 				} catch (error) {
 					console.warn("Failed to resume cursor capture:", error);
+					try {
+						const rollbackResult =
+							await window.electronAPI.pauseNativeScreenRecording();
+						if (!rollbackResult.success) {
+							console.warn(
+								"Failed to roll back native resume after cursor resume failure:",
+								rollbackResult.error ?? rollbackResult.message,
+							);
+						}
+					} catch (rollbackError) {
+						console.warn(
+							"Failed to roll back native resume after cursor resume failure:",
+							rollbackError,
+						);
+					}
+					if (webcamRecorder.current?.state === "recording") {
+						webcamRecorder.current.pause();
+					}
+					return;
 				}
-				markRecordingResumed(Date.now());
+				markRecordingResumed(boundaryMs);
 				setPaused(false);
 			})();
 			return;
@@ -1498,13 +1546,21 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			if (webcamRecorder.current?.state === "paused") {
 				webcamRecorder.current.resume();
 			}
+			const boundaryMs = Date.now();
 			void (async () => {
 				try {
-					await window.electronAPI.resumeCursorCapture();
+					await window.electronAPI.resumeCursorCapture(boundaryMs);
 				} catch (error) {
 					console.warn("Failed to resume cursor capture:", error);
+					if (mediaRecorder.current?.state === "recording") {
+						mediaRecorder.current.pause();
+					}
+					if (webcamRecorder.current?.state === "recording") {
+						webcamRecorder.current.pause();
+					}
+					return;
 				}
-				markRecordingResumed(Date.now());
+				markRecordingResumed(boundaryMs);
 				setPaused(false);
 			})();
 		}

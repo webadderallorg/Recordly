@@ -151,12 +151,12 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
-		pauseCursorCapture: () => Promise<{
+		pauseCursorCapture: (boundaryMs?: number) => Promise<{
 			success: boolean;
 			message?: string;
 			error?: string;
 		}>;
-		resumeCursorCapture: () => Promise<{
+		resumeCursorCapture: (boundaryMs?: number) => Promise<{
 			success: boolean;
 			message?: string;
 			error?: string;

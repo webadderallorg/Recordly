@@ -1312,15 +1312,23 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("pause-cursor-capture", () => {
-		sampleCursorPoint();
-		pauseCursorCapture(Date.now());
+	ipcMain.handle("pause-cursor-capture", (_event, boundaryMs?: number) => {
+		const timestamp =
+			typeof boundaryMs === "number" && Number.isFinite(boundaryMs)
+				? boundaryMs
+				: Date.now();
+		sampleCursorPoint(timestamp);
+		pauseCursorCapture(timestamp);
 		return { success: true };
 	});
 
-	ipcMain.handle("resume-cursor-capture", () => {
-		resumeCursorCapture(Date.now());
-		sampleCursorPoint();
+	ipcMain.handle("resume-cursor-capture", (_event, boundaryMs?: number) => {
+		const timestamp =
+			typeof boundaryMs === "number" && Number.isFinite(boundaryMs)
+				? boundaryMs
+				: Date.now();
+		resumeCursorCapture(timestamp);
+		sampleCursorPoint(timestamp);
 		return { success: true };
 	});
 
