@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { CropRegion } from "./types";
 import { normalizeWebcamCropRegion } from "./webcamOverlay";
@@ -137,17 +137,59 @@ export function WebcamCropControl({
 }: WebcamCropControlProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
 	const dragStateRef = useRef<DragState | null>(null);
+	const pendingCropRef = useRef<CropRegion | null>(null);
+	const pendingFrameRef = useRef<number | null>(null);
 	const maskId = `webcam-crop-mask-${useId().replace(/:/g, "")}`;
 	const [activeHandle, setActiveHandle] = useState<CropHandle | null>(null);
+	const [draftVisualCrop, setDraftVisualCrop] = useState<CropRegion | null>(null);
 	const sourceCrop = normalizeSquareCropRegion(cropRegion);
-	const crop = mirrored ? flipCropHorizontally(sourceCrop) : sourceCrop;
+	const propVisualCrop = mirrored ? flipCropHorizontally(sourceCrop) : sourceCrop;
+	const crop = draftVisualCrop ?? propVisualCrop;
 	const cropLeft = crop.x * 100;
 	const cropTop = crop.y * 100;
 	const cropWidth = crop.width * 100;
 	const cropHeight = crop.height * 100;
-	const commitVisualCrop = (nextVisualCrop: CropRegion) => {
-		onCropChange(mirrored ? flipCropHorizontally(nextVisualCrop) : nextVisualCrop);
+	const cancelPendingCommit = () => {
+		if (pendingFrameRef.current !== null) {
+			cancelAnimationFrame(pendingFrameRef.current);
+			pendingFrameRef.current = null;
+		}
 	};
+	const flushPendingCommit = () => {
+		const nextCrop = pendingCropRef.current;
+		if (!nextCrop) {
+			return;
+		}
+		cancelPendingCommit();
+		pendingCropRef.current = null;
+		onCropChange(nextCrop);
+	};
+	const commitVisualCrop = (nextVisualCrop: CropRegion, immediate = false) => {
+		const nextCrop = mirrored ? flipCropHorizontally(nextVisualCrop) : nextVisualCrop;
+		if (immediate) {
+			cancelPendingCommit();
+			pendingCropRef.current = null;
+			onCropChange(nextCrop);
+			return;
+		}
+
+		pendingCropRef.current = nextCrop;
+		if (pendingFrameRef.current !== null) {
+			return;
+		}
+		pendingFrameRef.current = requestAnimationFrame(() => {
+			pendingFrameRef.current = null;
+			flushPendingCommit();
+		});
+	};
+
+	useEffect(() => {
+		return () => {
+			if (pendingFrameRef.current !== null) {
+				cancelAnimationFrame(pendingFrameRef.current);
+			}
+		};
+	}, []);
 
 	const getPointerPosition = (event: React.PointerEvent<HTMLDivElement>) => {
 		const rect = containerRef.current?.getBoundingClientRect();
@@ -201,6 +243,7 @@ export function WebcamCropControl({
 			pointer.x - dragState.startX,
 			pointer.y - dragState.startY,
 		);
+		setDraftVisualCrop(nextVisualCrop);
 		commitVisualCrop(nextVisualCrop);
 	};
 
@@ -212,7 +255,9 @@ export function WebcamCropControl({
 				/* Pointer capture may already be released while ending the drag. */
 			}
 		}
+		flushPendingCommit();
 		dragStateRef.current = null;
+		setDraftVisualCrop(null);
 		setActiveHandle(null);
 	};
 
@@ -240,7 +285,7 @@ export function WebcamCropControl({
 		}
 		event.preventDefault();
 		event.stopPropagation();
-		commitVisualCrop(resizeCrop(crop, handle, delta.x, delta.y));
+		commitVisualCrop(resizeCrop(crop, handle, delta.x, delta.y), true);
 	};
 
 	return (

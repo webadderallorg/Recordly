@@ -360,11 +360,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const overlayRef = useRef<HTMLDivElement | null>(null);
 		const focusIndicatorRef = useRef<HTMLDivElement | null>(null);
 		const webcamVideoRef = useRef<HTMLVideoElement | null>(null);
-		const webcamCanvasRef = useRef<HTMLCanvasElement | null>(null);
 		const webcamBubbleRef = useRef<HTMLDivElement | null>(null);
 		const webcamBubbleInnerRef = useRef<HTMLDivElement | null>(null);
-		const [webcamFrameReady, setWebcamFrameReady] = useState(false);
-		const webcamFrameReadyRef = useRef(false);
+		const [webcamVideoDimensions, setWebcamVideoDimensions] = useState<{
+			width: number;
+			height: number;
+		} | null>(null);
 		const captionBoxRef = useRef<HTMLDivElement | null>(null);
 		const currentTimeRef = useRef(0);
 		const zoomRegionsRef = useRef<ZoomRegion[]>([]);
@@ -529,6 +530,31 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const webcamTimeOffsetMs = webcam?.timeOffsetMs;
 		const webcamCropRegion = webcam?.cropRegion;
 		const webcamMirror = webcam?.mirror ?? false;
+		const webcamCropPreviewContentStyle = useMemo<React.CSSProperties>(() => {
+			if (!webcamVideoDimensions) {
+				return { opacity: 0 };
+			}
+
+			const { sx, sy, sw, sh } = getWebcamCropSourceRect(
+				webcamCropRegion,
+				webcamVideoDimensions.width,
+				webcamVideoDimensions.height,
+			);
+			const coverScale = Math.max(1 / sw, 1 / sh);
+			const drawWidth = webcamVideoDimensions.width * coverScale;
+			const drawHeight = webcamVideoDimensions.height * coverScale;
+			const drawX = (1 - sw * coverScale) / 2 - sx * coverScale;
+			const drawY = (1 - sh * coverScale) / 2 - sy * coverScale;
+
+			return {
+				left: `${drawX * 100}%`,
+				top: `${drawY * 100}%`,
+				width: `${drawWidth * 100}%`,
+				height: `${drawHeight * 100}%`,
+				maxWidth: "none",
+				willChange: "left, top, width, height",
+			};
+		}, [webcamCropRegion, webcamVideoDimensions]);
 
 		const applyWebcamBubbleLayout = useCallback(
 			(zoomScale: number) => {
@@ -566,6 +592,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				bubble.style.top = `${y}px`;
 				bubble.style.width = `${scaledSize}px`;
 				bubble.style.height = `${scaledSize}px`;
+				bubble.style.aspectRatio = "1 / 1";
 				const squirclePath = getSquircleSvgPath({
 					x: 0,
 					y: 0,
@@ -579,7 +606,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				bubble.style.borderRadius = "0px";
 				bubble.style.boxShadow = "none";
 
-				bubbleInner.style.borderRadius = "0px";
+				bubbleInner.style.borderRadius = `${webcamCornerRadius}px`;
+				bubbleInner.style.overflow = "hidden";
+				bubbleInner.style.contain = "paint";
 				bubbleInner.style.clipPath = `path('${squirclePath}')`;
 				bubbleInner.style.setProperty("-webkit-clip-path", `path('${squirclePath}')`);
 			},
@@ -1358,173 +1387,28 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			lastWebcamSyncTimeRef.current = targetTime;
 		}, [currentTime, isPlaying, webcamEnabled, webcamTimeOffsetMs, webcamVideoPath]);
 
-		const handleWebcamMediaReady = useCallback(() => {
-			syncWebcamMedia();
-		}, [syncWebcamMedia]);
+		const handleWebcamMediaReady = useCallback(
+			(event: React.SyntheticEvent<HTMLVideoElement>) => {
+				const video = event.currentTarget;
+				if (video.videoWidth > 0 && video.videoHeight > 0) {
+					setWebcamVideoDimensions({
+						width: video.videoWidth,
+						height: video.videoHeight,
+					});
+				}
+				syncWebcamMedia();
+			},
+			[syncWebcamMedia],
+		);
 
 		useEffect(() => {
 			syncWebcamMedia();
 		}, [syncWebcamMedia]);
 
 		useEffect(() => {
-			webcamFrameReadyRef.current = false;
-			setWebcamFrameReady(false);
+			setWebcamVideoDimensions(null);
 			lastWebcamSyncTimeRef.current = null;
 		}, [webcamVideoPath]);
-
-		useEffect(() => {
-			const webcamVideo = webcamVideoRef.current;
-			const webcamCanvas = webcamCanvasRef.current;
-			if (!webcamVideo || !webcamCanvas || !webcamEnabled || !webcamVideoPath) {
-				return;
-			}
-
-			const ctx = webcamCanvas.getContext("2d");
-			if (!ctx) {
-				return;
-			}
-
-			let animationFrame: number | null = null;
-			let pendingOneOffDrawFrame: number | null = null;
-			let oneOffDrawAttempts = 0;
-			let videoFrameCallback: number | null = null;
-			const markWebcamFrameReady = () => {
-				if (webcamFrameReadyRef.current) {
-					return;
-				}
-				webcamFrameReadyRef.current = true;
-				setWebcamFrameReady(true);
-			};
-			const drawWebcamFrame = (markReady = false): boolean => {
-				const cssWidth = Math.max(1, webcamCanvas.clientWidth);
-				const cssHeight = Math.max(1, webcamCanvas.clientHeight);
-				const deviceScale = window.devicePixelRatio || 1;
-				const canvasWidth = Math.max(1, Math.round(cssWidth * deviceScale));
-				const canvasHeight = Math.max(1, Math.round(cssHeight * deviceScale));
-
-				if (webcamCanvas.width !== canvasWidth || webcamCanvas.height !== canvasHeight) {
-					webcamCanvas.width = canvasWidth;
-					webcamCanvas.height = canvasHeight;
-				}
-
-				if (
-					webcamVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
-					webcamVideo.videoWidth <= 0 ||
-					webcamVideo.videoHeight <= 0
-				) {
-					return false;
-				}
-
-				ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-				ctx.imageSmoothingEnabled = true;
-				ctx.imageSmoothingQuality = "high";
-
-				const { sx, sy, sw, sh } = getWebcamCropSourceRect(
-					webcamCropRegion,
-					webcamVideo.videoWidth,
-					webcamVideo.videoHeight,
-				);
-				const coverScale = Math.max(canvasWidth / sw, canvasHeight / sh);
-				const drawWidth = sw * coverScale;
-				const drawHeight = sh * coverScale;
-				const drawX = (canvasWidth - drawWidth) / 2;
-				const drawY = (canvasHeight - drawHeight) / 2;
-				if (webcamMirror) {
-					ctx.save();
-					ctx.translate(canvasWidth, 0);
-					ctx.scale(-1, 1);
-					ctx.drawImage(webcamVideo, sx, sy, sw, sh, drawX, drawY, drawWidth, drawHeight);
-					ctx.restore();
-				} else {
-					ctx.drawImage(webcamVideo, sx, sy, sw, sh, drawX, drawY, drawWidth, drawHeight);
-				}
-				if (markReady) {
-					markWebcamFrameReady();
-				}
-				return true;
-			};
-
-			const hasVideoFrameCallback =
-				typeof webcamVideo.requestVideoFrameCallback === "function" &&
-				typeof webcamVideo.cancelVideoFrameCallback === "function";
-
-			const queueVideoFrameCallback = () => {
-				if (!hasVideoFrameCallback) {
-					return;
-				}
-				if (videoFrameCallback !== null) {
-					return;
-				}
-				videoFrameCallback = webcamVideo.requestVideoFrameCallback(() => {
-					videoFrameCallback = null;
-					drawWebcamFrame(true);
-					queueVideoFrameCallback();
-				});
-			};
-
-			const scheduleOneOffDraw = () => {
-				if (pendingOneOffDrawFrame !== null) {
-					return;
-				}
-				pendingOneOffDrawFrame = requestAnimationFrame(() => {
-					pendingOneOffDrawFrame = null;
-					const didDraw = drawWebcamFrame(true);
-					if (!didDraw && !webcamFrameReadyRef.current && oneOffDrawAttempts < 30) {
-						oneOffDrawAttempts += 1;
-						scheduleOneOffDraw();
-						return;
-					}
-					oneOffDrawAttempts = 0;
-				});
-			};
-
-			const drawOnAnimationFrame = () => {
-				drawWebcamFrame(true);
-				animationFrame = requestAnimationFrame(drawOnAnimationFrame);
-			};
-
-			const handleDrawableMediaEvent = () => {
-				syncWebcamMedia();
-				if (hasVideoFrameCallback) {
-					if (animationFrame !== null) {
-						cancelAnimationFrame(animationFrame);
-						animationFrame = null;
-					}
-					scheduleOneOffDraw();
-					queueVideoFrameCallback();
-					return;
-				}
-				if (animationFrame !== null) {
-					cancelAnimationFrame(animationFrame);
-				}
-				animationFrame = requestAnimationFrame(drawOnAnimationFrame);
-			};
-
-			webcamVideo.addEventListener("loadeddata", handleDrawableMediaEvent);
-			webcamVideo.addEventListener("canplay", handleDrawableMediaEvent);
-			webcamVideo.addEventListener("seeked", handleDrawableMediaEvent);
-			if (hasVideoFrameCallback) {
-				scheduleOneOffDraw();
-				queueVideoFrameCallback();
-			} else {
-				drawOnAnimationFrame();
-			}
-
-			return () => {
-				if (animationFrame !== null) {
-					cancelAnimationFrame(animationFrame);
-				}
-				if (pendingOneOffDrawFrame !== null) {
-					cancelAnimationFrame(pendingOneOffDrawFrame);
-				}
-				if (videoFrameCallback !== null && hasVideoFrameCallback) {
-					webcamVideo.cancelVideoFrameCallback(videoFrameCallback);
-				}
-				webcamVideo.removeEventListener("loadeddata", handleDrawableMediaEvent);
-				webcamVideo.removeEventListener("canplay", handleDrawableMediaEvent);
-				webcamVideo.removeEventListener("seeked", handleDrawableMediaEvent);
-			};
-		}, [syncWebcamMedia, webcamCropRegion, webcamEnabled, webcamMirror, webcamVideoPath]);
 
 		useEffect(() => {
 			lastBackgroundSyncTimeRef.current = null;
@@ -2543,28 +2427,30 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 									ref={webcamBubbleInnerRef}
 									className="relative h-full w-full overflow-hidden"
 								>
-									<video
-										ref={webcamVideoRef}
-										src={webcamVideoPath}
-										className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-										muted
-										playsInline
-										preload="auto"
-										aria-hidden="true"
+									<div
+										className="pointer-events-none absolute inset-0 overflow-hidden"
 										style={{
-											opacity: 0,
+											opacity: webcamVideoDimensions ? 1 : 0,
 											transform: webcamMirror ? "scaleX(-1)" : undefined,
 										}}
-										onLoadedMetadata={handleWebcamMediaReady}
-										onLoadedData={handleWebcamMediaReady}
-									/>
-									<canvas
-										ref={webcamCanvasRef}
-										className="absolute inset-0 block h-full w-full"
-										style={{
-											opacity: webcamFrameReady ? 1 : 0,
-										}}
-									/>
+									>
+										<div
+											className="pointer-events-none absolute"
+											style={webcamCropPreviewContentStyle}
+										>
+											<video
+												ref={webcamVideoRef}
+												src={webcamVideoPath}
+												className="pointer-events-none absolute inset-0 block h-full w-full object-fill"
+												muted
+												playsInline
+												preload="auto"
+												aria-hidden="true"
+												onLoadedMetadata={handleWebcamMediaReady}
+												onLoadedData={handleWebcamMediaReady}
+											/>
+										</div>
+									</div>
 								</div>
 							</div>
 						) : null}
