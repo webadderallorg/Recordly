@@ -151,4 +151,29 @@ describe("createVideoEventHandlers", () => {
 		handlers.dispose();
 		expect(cancelVideoFrameCallback).toHaveBeenCalledWith(23);
 	});
+
+	it("skips removed footage after a paused seek", () => {
+		const video = createMockVideo({
+			currentTime: 1.25,
+			paused: true,
+		});
+		const onTimeUpdate = vi.fn();
+		const handlers = createVideoEventHandlers({
+			video,
+			isSeekingRef: createMutableRef(true),
+			isPlayingRef: createMutableRef(false),
+			allowPlaybackRef: createMutableRef(true),
+			currentTimeRef: createMutableRef(0),
+			timeUpdateAnimationRef: createMutableRef<number | null>(null),
+			onPlayStateChange: vi.fn(),
+			onTimeUpdate,
+			trimRegionsRef: createMutableRef([{ id: "trim-1", startMs: 1000, endMs: 2000 }]),
+			speedRegionsRef: createMutableRef([]),
+		});
+
+		handlers.handleSeeked();
+
+		expect(video.currentTime).toBe(2);
+		expect(onTimeUpdate).toHaveBeenLastCalledWith(2);
+	});
 });
