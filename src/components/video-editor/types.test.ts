@@ -122,6 +122,12 @@ describe("clip timeline mapping", () => {
 		expect(mapTimelineTimeToSourceTime(7_000, clips)).toBe(8_000);
 	});
 
+	it("treats clip ends as exclusive at cut boundaries", () => {
+		expect(mapTimelineTimeToSourceTime(4_000, clips)).toBe(4_000);
+		expect(mapSourceTimeToTimelineTime(4_000, clips)).toBe(4_000);
+		expect(findClipAtTimelineTime(4_000, clips)).toBeNull();
+	});
+
 	it("snaps timeline gaps to the nearest clip edge", () => {
 		expect(mapTimelineTimeToSourceTime(4_300, clips)).toBe(4_000);
 		expect(mapTimelineTimeToSourceTime(5_700, clips)).toBe(6_000);

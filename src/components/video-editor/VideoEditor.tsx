@@ -2772,7 +2772,12 @@ export default function VideoEditor() {
 				autoFullTrackClipIdRef.current = id;
 				autoFullTrackClipEndMsRef.current = totalMs;
 				if (trimRegions.length > 0) {
-					setClipRegions(trimsToClips(trimRegions, totalMs));
+					const migratedClips = trimsToClips(trimRegions, totalMs);
+					nextClipIdRef.current = deriveNextId(
+						"clip",
+						migratedClips.map((clip) => clip.id),
+					);
+					setClipRegions(migratedClips);
 					clipInitializedRef.current = true;
 					return;
 				}

@@ -194,7 +194,7 @@ export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[])
 	const sortedClips = sortClipRegions(clips);
 
 	for (const clip of sortedClips) {
-		if (roundedTimeMs < clip.startMs || roundedTimeMs > clip.endMs) {
+		if (roundedTimeMs < clip.startMs || roundedTimeMs >= clip.endMs) {
 			continue;
 		}
 
@@ -216,7 +216,7 @@ export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[])
 
 	for (const clip of sortedClips) {
 		const sourceEndMs = getClipSourceEndMs(clip);
-		if (roundedTimeMs < clip.startMs || roundedTimeMs > sourceEndMs) {
+		if (roundedTimeMs < clip.startMs || roundedTimeMs >= sourceEndMs) {
 			continue;
 		}
 

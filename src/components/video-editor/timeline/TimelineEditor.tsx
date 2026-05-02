@@ -836,13 +836,9 @@ function Timeline({
 			}
 
 			const startMs = Math.max(0, Math.min(zoomRowHoverMs, videoDurationMs));
-			if (canPlaceZoomAtMs && !canPlaceZoomAtMs(startMs)) {
-				return;
-			}
-
 			onAddZoomAtMs(startMs);
 		},
-		[canPlaceZoomAtMs, onAddZoomAtMs, videoDurationMs, zoomRowHoverMs],
+		[onAddZoomAtMs, videoDurationMs, zoomRowHoverMs],
 	);
 
 	return (
