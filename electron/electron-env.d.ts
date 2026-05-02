@@ -400,16 +400,28 @@ interface Window {
 		}>;
 		setCurrentVideoPath: (
 			path: string,
-			options?: { preserveProjectPath?: boolean },
+			options?: {
+				preserveProjectPath?: boolean;
+				hideOverlayCursorByDefault?: boolean;
+			},
 		) => Promise<{ success: boolean; webcamPath: string | null }>;
-		setCurrentRecordingSession: (session: {
-			videoPath: string;
-			webcamPath?: string | null;
-			timeOffsetMs?: number;
-		}, options?: { preserveProjectPath?: boolean }) => Promise<{ success: boolean }>;
+		setCurrentRecordingSession: (
+			session: {
+				videoPath: string;
+				webcamPath?: string | null;
+				timeOffsetMs?: number;
+				hideOverlayCursorByDefault?: boolean;
+			},
+			options?: { preserveProjectPath?: boolean },
+		) => Promise<{ success: boolean }>;
 		getCurrentRecordingSession: () => Promise<{
 			success: boolean;
-			session?: { videoPath: string; webcamPath?: string | null; timeOffsetMs?: number };
+			session?: {
+				videoPath: string;
+				webcamPath?: string | null;
+				timeOffsetMs?: number;
+				hideOverlayCursorByDefault?: boolean;
+			};
 		}>;
 		getCurrentVideoPath: () => Promise<{ success: boolean; path?: string }>;
 		clearCurrentVideoPath: () => Promise<{ success: boolean }>;

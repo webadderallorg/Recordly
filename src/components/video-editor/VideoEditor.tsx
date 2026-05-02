@@ -2005,6 +2005,9 @@ export default function VideoEditor() {
 					pendingFreshRecordingAutoZoomPathRef.current = autoApplyFreshRecordingAutoZooms
 						? sourceVideoUrl
 						: null;
+					if (sessionResult.session.hideOverlayCursorByDefault) {
+						setShowCursor(false);
+					}
 					setWebcam((prev) => ({
 						...prev,
 						enabled: Boolean(sessionResult.session?.webcamPath),

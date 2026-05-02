@@ -437,6 +437,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		videoPath: string;
 		webcamPath?: string | null;
 		timeOffsetMs?: number;
+		hideOverlayCursorByDefault?: boolean;
 	}, options?: { preserveProjectPath?: boolean }) => {
 		return ipcRenderer.invoke("set-current-recording-session", session, options);
 	},

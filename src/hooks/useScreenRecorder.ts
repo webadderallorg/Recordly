@@ -154,6 +154,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const micFallbackRecorder = useRef<MediaRecorder | null>(null);
 	const micFallbackChunks = useRef<Blob[]>([]);
 	const micFallbackStartDelayMs = useRef<number | null>(null);
+	const hideEditorOverlayCursorByDefault = useRef(false);
 
 	const notifyRecordingFinalizationFailure = useCallback(async (message: string) => {
 		setFinalizing(false);
@@ -397,21 +398,27 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 	const finalizeRecordingSession = useCallback(
 		async (videoPath: string, webcamPath: string | null) => {
+			const shouldHideOverlayCursor = hideEditorOverlayCursorByDefault.current;
 			try {
 				if (webcamPath) {
 					await window.electronAPI.setCurrentRecordingSession({
 						videoPath,
 						webcamPath,
 						timeOffsetMs: webcamTimeOffsetMs.current,
+						hideOverlayCursorByDefault: shouldHideOverlayCursor,
 					});
 				} else {
-					await window.electronAPI.setCurrentVideoPath(videoPath);
+					await window.electronAPI.setCurrentVideoPath(videoPath, {
+						hideOverlayCursorByDefault: shouldHideOverlayCursor,
+					});
 				}
 			} catch (error) {
 				console.error("Failed to persist recording session metadata:", error);
 
 				try {
-					await window.electronAPI.setCurrentVideoPath(videoPath);
+					await window.electronAPI.setCurrentVideoPath(videoPath, {
+						hideOverlayCursorByDefault: shouldHideOverlayCursor,
+					});
 				} catch (fallbackError) {
 					console.error("Failed to persist fallback video path:", fallbackError);
 				}
@@ -908,6 +915,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		try {
 			const platform = await window.electronAPI.getPlatform();
+			hideEditorOverlayCursorByDefault.current = false;
 			const existingSource = await window.electronAPI.getSelectedSource();
 			const selectedSource =
 				existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
@@ -1096,6 +1104,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			const wantsAudioCapture = microphoneEnabled || systemAudioEnabled;
 			const browserCaptureSource = await resolveBrowserCaptureSource(selectedSource);
+			hideEditorOverlayCursorByDefault.current = true;
 
 			if (
 				browserCaptureSource?.id?.startsWith("screen:fallback:") ||
