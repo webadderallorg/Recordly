@@ -246,7 +246,7 @@ interface Window {
 			},
 		) => Promise<{
 			success: boolean;
-			data?: Uint8Array;
+			tempPath?: string;
 			error?: string;
 			metrics?: RendererFfmpegAudioMuxMetrics;
 		}>;

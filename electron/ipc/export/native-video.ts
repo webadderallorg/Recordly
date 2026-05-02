@@ -492,6 +492,8 @@ export async function muxExportedVideoAudioBuffer(
 		`recordly-export-video-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.mp4`,
 	);
 	const metrics: NativeVideoAudioMuxMetrics = {};
+	let succeeded = false;
+	let outputPath = tempVideoPath;
 
 	try {
 		const tempVideoWriteStartedAt = getNowMs();
@@ -500,23 +502,35 @@ export async function muxExportedVideoAudioBuffer(
 		metrics.tempVideoBytes = videoData.byteLength;
 		const finalized = await muxNativeVideoExportAudio(tempVideoPath, options);
 		Object.assign(metrics, finalized.metrics);
-		const muxedVideoReadStartedAt = getNowMs();
-		const muxedData = await fs.readFile(finalized.outputPath);
-		metrics.muxedVideoReadMs = getNowMs() - muxedVideoReadStartedAt;
-		metrics.muxedVideoBytes = muxedData.byteLength;
+		outputPath = finalized.outputPath;
+		// Record byte size via stat instead of reading the whole file into a
+		// Buffer — fs.readFile throws ERR_FS_FILE_TOO_LARGE on >2 GiB outputs.
+		try {
+			const stat = await fs.stat(outputPath);
+			metrics.muxedVideoBytes = stat.size;
+		} catch {
+			// Stat failures are non-fatal; size is purely metric data.
+		}
+		succeeded = true;
 		return {
-			data: new Uint8Array(muxedData),
+			outputPath,
 			metrics,
 		};
 	} finally {
-		await Promise.allSettled([
-			removeTemporaryExportFile(tempVideoPath),
-			removeTemporaryExportFile(
-				path.join(
-					path.dirname(tempVideoPath),
-					`${path.basename(tempVideoPath, path.extname(tempVideoPath))}-final.mp4`,
-				),
-			),
-		]);
+		// Always remove the unmuxed intermediate when the muxer wrote a separate
+		// file. Only remove the muxed output on failure — on success the caller
+		// owns it and is responsible for moving/deleting it.
+		const cleanupTargets: string[] = [];
+		if (outputPath !== tempVideoPath) {
+			cleanupTargets.push(tempVideoPath);
+		}
+		if (!succeeded) {
+			cleanupTargets.push(outputPath);
+		}
+		if (cleanupTargets.length > 0) {
+			await Promise.allSettled(
+				cleanupTargets.map((target) => removeTemporaryExportFile(target)),
+			);
+		}
 	}
 }

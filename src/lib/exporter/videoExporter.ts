@@ -981,7 +981,7 @@ export class VideoExporter {
 			this.finalizationStageMs.ffmpegAudioMuxBreakdown = result.metrics;
 		}
 
-		if (!result.success || !result.data) {
+		if (!result.success || !result.tempPath) {
 			return {
 				success: false,
 				error: result.error || "Failed to mux exported audio with FFmpeg",
@@ -989,11 +989,11 @@ export class VideoExporter {
 			};
 		}
 
-		const blobData = new Uint8Array(result.data.byteLength);
-		blobData.set(result.data);
+		// Returning a temp path (instead of buffering the muxed bytes back into
+		// the renderer) is what keeps >2 GiB exports off Node's fs.readFile cap.
 		return {
 			success: true,
-			blob: new Blob([blobData.buffer], { type: "video/mp4" }),
+			tempFilePath: result.tempPath,
 			metrics: this.buildExportMetrics(),
 		};
 	}
