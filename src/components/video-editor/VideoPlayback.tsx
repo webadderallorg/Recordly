@@ -606,7 +606,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				bubble.style.borderRadius = "0px";
 				bubble.style.boxShadow = "none";
 
-				bubbleInner.style.borderRadius = `${webcamCornerRadius}px`;
+				bubbleInner.style.borderRadius = "0px";
 				bubbleInner.style.overflow = "hidden";
 				bubbleInner.style.contain = "paint";
 				bubbleInner.style.clipPath = `path('${squirclePath}')`;
