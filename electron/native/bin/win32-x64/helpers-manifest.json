@@ -5,10 +5,10 @@
   "helpers": {
     "wgc-capture": {
       "binaryName": "wgc-capture.exe",
-      "binarySha256": "bb4c2aa4141e81e1a05b54bd49dbb114eb3a5ff4a666bf7d26525a9da585128b",
+      "binarySha256": "501335fa59300aecfe6725bc81001462bad64494fb29986bc2f2bccd37c38bbf",
       "sourceDir": "electron/native/wgc-capture",
-      "sourceFingerprint": "5bb02a69049a02909d38188cae1dfdfb94fd49465b51ed6ab78a98092b7520cc",
-      "updatedAt": "2026-04-25T09:17:16.237Z"
+      "sourceFingerprint": "0d989a0e3ccd628959781e38a3129e57a92a962a19adc0cc9e5fbdc8c5fc7f76",
+      "updatedAt": "2026-05-03T14:26:22.012Z"
     },
     "cursor-monitor": {
       "binaryName": "cursor-monitor.exe",
