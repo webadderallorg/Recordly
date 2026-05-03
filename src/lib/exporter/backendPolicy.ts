@@ -1,3 +1,5 @@
+import type { ExportRenderBackend } from "./types";
+
 export type LightningRuntimePlatform = "darwin" | "win32" | "linux" | "unknown";
 
 export function normalizeLightningRuntimePlatform(
@@ -24,4 +26,8 @@ export function normalizeLightningRuntimePlatform(
 
 export function shouldPreferNativeAutoBackend(_platform: LightningRuntimePlatform): boolean {
 	return false;
+}
+
+export function getDefaultLightningRenderBackend(): ExportRenderBackend {
+	return "webgl";
 }

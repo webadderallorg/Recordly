@@ -82,6 +82,110 @@ interface RendererFfmpegAudioMuxMetrics {
 	muxedVideoBytes?: number;
 }
 
+interface RendererWindowsGpuExportSummary {
+	success?: boolean;
+	width?: number;
+	height?: number;
+	fps?: number;
+	seconds?: number;
+	mediaMs?: number;
+	frames?: number;
+	gpuDecodeSurface?: boolean;
+	webcamOverlay?: boolean;
+	cursorOverlay?: boolean;
+	zoomOverlay?: boolean;
+	surfacePoolSize?: number;
+	adapterIndex?: number;
+	adapterVendorId?: number;
+	adapterDeviceId?: number;
+	adapterDedicatedVideoMemoryMB?: number;
+	encoderBackend?: string;
+	encoderTuningApplied?: boolean;
+	nvencOutputBytes?: number;
+	initializeMs?: number;
+	initCoInitializeMs?: number;
+	initMfStartupMs?: number;
+	initD3DDeviceMs?: number;
+	initSourceReaderMs?: number;
+	initWebcamReaderMs?: number;
+	initVideoProcessorMs?: number;
+	initTexturesMs?: number;
+	initShaderPipelineMs?: number;
+	initSinkWriterMs?: number;
+	totalMs?: number;
+	readMs?: number;
+	clearMs?: number;
+	videoProcessMs?: number;
+	writeSampleMs?: number;
+	finalizeMs?: number;
+	realtimeMultiplier?: number;
+}
+
+interface RendererNativeStaticLayoutChunkMetric {
+	index: number;
+	startSec: number;
+	durationSec: number;
+	backend:
+		| "cuda-overlay"
+		| "cuda-scale-cpu-pad"
+		| "cuda-static-composite"
+		| "nvidia-cuda-compositor"
+		| "windows-d3d11-compositor";
+	elapsedMs: number;
+	outputBytes: number;
+	fallbackReason?: string;
+	windowsGpuSummary?: RendererWindowsGpuExportSummary;
+}
+
+interface RendererNativeStaticLayoutMetrics extends RendererFfmpegAudioMuxMetrics {
+	chunkCount: number;
+	chunkDurationSec: number;
+	chunkExecMs: number;
+	concatExecMs?: number;
+	staticAssetExecMs?: number;
+	fallbackChunkCount: number;
+	videoOnlyBytes?: number;
+	chunks: RendererNativeStaticLayoutChunkMetric[];
+}
+
+interface RendererNativeStaticLayoutProgress {
+	sessionId?: string;
+	backend?: RendererNativeStaticLayoutChunkMetric["backend"];
+	elapsedMs?: number;
+	averageFps?: number;
+	instantFps?: number;
+	intervalMs?: number;
+	intervalFrames?: number;
+	intervalDecodeWallMs?: number;
+	intervalEncodeMs?: number;
+	intervalPipelineWaitMs?: number;
+	intervalCompositeMs?: number;
+	intervalNvencMs?: number;
+	intervalPacketWriteMs?: number;
+	intervalWebcamDecodeMs?: number;
+	intervalWebcamCopyMs?: number;
+	intervalRoiCompositeFrames?: number;
+	intervalMonolithicCompositeFrames?: number;
+	intervalCopyCompositeFrames?: number;
+	currentFrame: number;
+	totalFrames: number;
+	percentage: number;
+}
+
+interface RendererNativeVideoMetadataProbe {
+	width: number;
+	height: number;
+	duration: number;
+	mediaStartTime?: number;
+	streamStartTime?: number;
+	streamDuration?: number;
+	frameRate: number;
+	codec: string;
+	hasAudio: boolean;
+	audioCodec?: string;
+	audioSampleRate?: number;
+}
+
 interface Window {
 	electronAPI: {
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
@@ -193,6 +297,82 @@ interface Window {
 		generateWallpaperThumbnail: (
 			filePath: string,
 		) => Promise<{ success: boolean; data?: Uint8Array; error?: string }>;
+		probeNativeVideoMetadata: (filePath: string) => Promise<{
+			success: boolean;
+			metadata?: RendererNativeVideoMetadataProbe;
+			error?: string;
+		}>;
+		nativeStaticLayoutExport: (options: {
+			sessionId?: string;
+			inputPath: string;
+			width: number;
+			height: number;
+			frameRate: number;
+			bitrate: number;
+			encodingMode: "fast" | "balanced" | "quality";
+			durationSec: number;
+			contentWidth: number;
+			contentHeight: number;
+			offsetX: number;
+			offsetY: number;
+			backgroundColor: string;
+			backgroundImagePath?: string | null;
+			borderRadius?: number;
+			shadowIntensity?: number;
+			webcamInputPath?: string | null;
+			webcamLeft?: number;
+			webcamTop?: number;
+			webcamSize?: number;
+			webcamRadius?: number;
+			webcamShadowIntensity?: number;
+			webcamMirror?: boolean;
+			webcamTimeOffsetMs?: number;
+			cursorTelemetry?: Array<{
+				timeMs: number;
+				cx: number;
+				cy: number;
+				cursorTypeIndex?: number;
+				bounceScale?: number;
+			}>;
+			cursorSize?: number;
+			cursorAtlasPngDataUrl?: string | null;
+			cursorAtlasEntries?: Array<{
+				index: number;
+				x: number;
+				y: number;
+				width: number;
+				height: number;
+				anchorX: number;
+				anchorY: number;
+				aspectRatio: number;
+			}>;
+			zoomTelemetry?: Array<{ timeMs: number; scale: number; x: number; y: number }>;
+			chunkDurationSec?: number;
+			experimentalWindowsGpuCompositor?: boolean;
+			audioOptions?: {
+				audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
+				audioSourcePath?: string | null;
+				audioSourceSampleRate?: number;
+				outputDurationSec?: number;
+				trimSegments?: Array<{ startMs: number; endMs: number }>;
+				editedTrackStrategy?: "filtergraph-fast-path" | "offline-render-fallback";
+				editedTrackSegments?: Array<{ startMs: number; endMs: number; speed: number }>;
+				editedAudioData?: ArrayBuffer;
+				editedAudioMimeType?: string | null;
+			};
+		}) => Promise<{
+			success: boolean;
+			tempPath?: string;
+			encoderName?: string;
+			error?: string;
+			metrics?: RendererNativeStaticLayoutMetrics;
+		}>;
+		nativeStaticLayoutExportCancel: (sessionId: string) => Promise<{
+			success: boolean;
+		}>;
+		onNativeStaticLayoutExportProgress: (
+			callback: (progress: RendererNativeStaticLayoutProgress) => void,
+		) => () => void;
 		nativeVideoExportStart: (options: {
 			width: number;
 			height: number;
@@ -216,6 +396,7 @@ interface Window {
 				audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 				audioSourcePath?: string | null;
 				audioSourceSampleRate?: number;
+				outputDurationSec?: number;
 				trimSegments?: Array<{ startMs: number; endMs: number }>;
 				editedTrackStrategy?: "filtergraph-fast-path" | "offline-render-fallback";
 				editedTrackSegments?: Array<{ startMs: number; endMs: number; speed: number }>;

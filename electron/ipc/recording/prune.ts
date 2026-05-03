@@ -15,6 +15,7 @@ import {
 	isAutoRecordingPath,
 	normalizePath,
 	normalizeVideoSourcePath,
+	parseJsonWithByteOrderMark,
 } from "../utils";
 
 export async function hasSiblingProjectFile(videoPath: string) {
@@ -71,10 +72,22 @@ async function loadSavedProjectMediaPaths() {
 			})
 			.map(async (entry) => {
 				const projectPath = path.join(projectsDir, entry.name);
-				const rawProject = JSON.parse(await fs.readFile(projectPath, "utf-8")) as {
+				let rawProject: {
 					videoPath?: unknown;
 					editor?: { webcam?: { sourcePath?: unknown } };
 				};
+				try {
+					rawProject = parseJsonWithByteOrderMark<{
+						videoPath?: unknown;
+						editor?: { webcam?: { sourcePath?: unknown } };
+					}>(await fs.readFile(projectPath, "utf-8"));
+				} catch (error) {
+					console.warn("[prune] Skipping unreadable project while pruning recordings", {
+						projectPath,
+						error,
+					});
+					return;
+				}
 				const candidatePaths = [
 					rawProject.videoPath,
 					rawProject.editor?.webcam?.sourcePath,

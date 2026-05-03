@@ -115,4 +115,26 @@ describe("local media path policy", () => {
 
 		await expect(fs.readFile(thumbnailPath, "utf8")).resolves.toBe("png-thumbnail");
 	});
+
+	it("loads project files that start with a UTF-8 byte order mark", async () => {
+		const videoPath = path.join(tempPath, "recording.mp4");
+		const projectPath = path.join(tempPath, "recording.recordly");
+		await fs.writeFile(videoPath, "test-video");
+		await fs.writeFile(
+			projectPath,
+			`\uFEFF${JSON.stringify({
+				version: 1,
+				videoPath,
+				editor: {},
+			})}`,
+			"utf-8",
+		);
+
+		const { loadProjectFromPath } = await import("./manager");
+
+		const result = await loadProjectFromPath(projectPath);
+		expect(result.success).toBe(true);
+		expect(result.path).toBe(projectPath);
+		expect(result.project).toMatchObject({ videoPath });
+	});
 });

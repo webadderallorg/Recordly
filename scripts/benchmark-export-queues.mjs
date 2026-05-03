@@ -11,7 +11,7 @@ import ffmpegStatic from "ffmpeg-static";
 const execFileAsync = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
-const mainEntry = path.join(repoRoot, "dist-electron", "main.js");
+const mainEntry = path.join(repoRoot, "dist-electron", "main.cjs");
 const rendererEntry = path.join(repoRoot, "dist", "index.html");
 
 const width = parseEvenInteger(process.env.RECORDLY_BENCH_EXPORT_WIDTH ?? "1280", "Width");
@@ -28,9 +28,13 @@ const timeoutMs = parsePositiveInteger(
 const runsPerVariant = parsePositiveInteger(process.env.RECORDLY_BENCH_EXPORT_RUNS ?? "2", "Runs");
 const useNativeExport = process.env.RECORDLY_BENCH_EXPORT_USE_NATIVE === "1";
 const useWebcamOverlay = process.env.RECORDLY_BENCH_EXPORT_ENABLE_WEBCAM === "1";
+const providedInputPath = process.env.RECORDLY_BENCH_EXPORT_INPUT ?? null;
+const providedWebcamInputPath = process.env.RECORDLY_BENCH_EXPORT_WEBCAM_INPUT ?? null;
+const keepTempArtifacts = process.env.RECORDLY_BENCH_EXPORT_KEEP_TEMP === "1";
 const exportEncodingMode = parseExportEncodingMode(
 	process.env.RECORDLY_BENCH_EXPORT_ENCODING_MODE ?? null,
 );
+const exportQuality = parseExportQuality(process.env.RECORDLY_BENCH_EXPORT_QUALITY ?? null);
 const exportShadowIntensity = parseExportShadowIntensity(
 	process.env.RECORDLY_BENCH_EXPORT_SHADOW_INTENSITY ?? null,
 );
@@ -49,6 +53,9 @@ const webcamSize = parseExportWebcamSize(process.env.RECORDLY_BENCH_EXPORT_WEBCA
 const MODERN_BACKEND_SWEEP = ["auto", "webcodecs", "breeze"];
 const exportPipeline = parseExportPipeline(process.env.RECORDLY_BENCH_EXPORT_PIPELINE ?? null);
 const exportBackend = parseExportBackend(process.env.RECORDLY_BENCH_EXPORT_BACKEND ?? null);
+const exportRenderBackend = parseRenderBackend(
+	process.env.RECORDLY_BENCH_EXPORT_RENDER_BACKEND ?? null,
+);
 const exportBackendList = parseExportBackendList(
 	process.env.RECORDLY_BENCH_EXPORT_BACKENDS ?? null,
 );
@@ -113,6 +120,18 @@ function parseExportBackend(rawValue) {
 	throw new Error("RECORDLY_BENCH_EXPORT_BACKEND must be 'auto', 'webcodecs', or 'breeze'");
 }
 
+function parseRenderBackend(rawValue) {
+	if (rawValue === null || rawValue === "") {
+		return null;
+	}
+
+	if (rawValue === "webgl" || rawValue === "webgpu") {
+		return rawValue;
+	}
+
+	throw new Error("RECORDLY_BENCH_EXPORT_RENDER_BACKEND must be 'webgl' or 'webgpu'");
+}
+
 function parseExportBackendList(rawValue) {
 	if (rawValue === null || rawValue === "") {
 		return null;
@@ -175,6 +194,18 @@ function parseExportEncodingMode(rawValue) {
 	}
 
 	throw new Error("RECORDLY_BENCH_EXPORT_ENCODING_MODE must be 'fast', 'balanced', or 'quality'");
+}
+
+function parseExportQuality(rawValue) {
+	if (rawValue === null || rawValue === "") {
+		return null;
+	}
+
+	if (rawValue === "medium" || rawValue === "good" || rawValue === "high" || rawValue === "source") {
+		return rawValue;
+	}
+
+	throw new Error("RECORDLY_BENCH_EXPORT_QUALITY must be 'medium', 'good', 'high', or 'source'");
 }
 
 function parseExportShadowIntensity(rawValue) {
@@ -477,8 +508,10 @@ function buildRequestedConfigRows(benchmarkRequests) {
 		{ key: "Runs per variant", value: runsPerVariant },
 		{ key: "Pipeline", value: exportPipeline ?? "default" },
 		{ key: "Requested backends", value: benchmarkRequests.map((request) => request.label) },
+		{ key: "Render backend", value: exportRenderBackend ?? "default" },
 		{ key: "Backend sweep", value: formatBoolean(benchmarkRequests.length > 1) },
 		{ key: "Encoding mode", value: exportEncodingMode ?? "default" },
+		{ key: "Quality", value: exportQuality ?? "default" },
 		{ key: "Shadow intensity", value: exportShadowIntensity ?? "default" },
 		{ key: "Webcam enabled", value: formatBoolean(useWebcamOverlay) },
 		{ key: "Experimental native override", value: formatBoolean(useNativeExport) },
@@ -665,6 +698,7 @@ async function runVariant(
 			...(exportEncodingMode
 				? { RECORDLY_SMOKE_EXPORT_ENCODING_MODE: exportEncodingMode }
 				: {}),
+			...(exportQuality ? { RECORDLY_SMOKE_EXPORT_QUALITY: exportQuality } : {}),
 			...(exportShadowIntensity !== null
 				? { RECORDLY_SMOKE_EXPORT_SHADOW_INTENSITY: String(exportShadowIntensity) }
 				: {}),
@@ -680,6 +714,9 @@ async function runVariant(
 				: {}),
 			...(benchmarkRequest.backend
 				? { RECORDLY_SMOKE_EXPORT_BACKEND: benchmarkRequest.backend }
+				: {}),
+			...(exportRenderBackend
+				? { RECORDLY_SMOKE_EXPORT_RENDER_BACKEND: exportRenderBackend }
 				: {}),
 			...(typeof variant.maxEncodeQueue === "number"
 				? { RECORDLY_SMOKE_EXPORT_MAX_ENCODE_QUEUE: String(variant.maxEncodeQueue) }
@@ -869,28 +906,45 @@ async function main() {
 				requestedPipeline: exportPipeline,
 				requestedBackend: exportBackend,
 				requestedBackends: benchmarkRequests.map((request) => request.label),
+				requestedRenderBackend: exportRenderBackend,
 				backendSweepEnabled: benchmarkRequests.length > 1,
 				requestedEncodingMode: exportEncodingMode,
+				requestedQuality: exportQuality,
 				requestedShadowIntensity: exportShadowIntensity,
 				webcamEnabled: useWebcamOverlay,
+				providedInput: providedInputPath,
+				providedWebcamInput: providedWebcamInputPath,
+				keepTempArtifacts,
 				requestedWebcamShadowIntensity: webcamShadowIntensity,
 				requestedWebcamSize: webcamSize,
 			}),
 		);
 		printRequestedConfigTable(benchmarkRequests);
 
-		console.log(`[benchmark-export-queues] Generating fixture video: ${inputPath}`);
-		await createFixtureVideo(ffmpegStatic, inputPath);
+		if (providedInputPath) {
+			console.log(`[benchmark-export-queues] Using provided input video: ${providedInputPath}`);
+			await fs.copyFile(providedInputPath, inputPath);
+		} else {
+			console.log(`[benchmark-export-queues] Generating fixture video: ${inputPath}`);
+			await createFixtureVideo(ffmpegStatic, inputPath);
+		}
 		if (webcamInputPath) {
-			console.log(
-				`[benchmark-export-queues] Generating webcam fixture video: ${webcamInputPath}`,
-			);
-			await createFixtureVideo(ffmpegStatic, webcamInputPath, {
-				fixtureWidth: webcamWidth,
-				fixtureHeight: webcamHeight,
-				includeAudio: false,
-				videoFilter: `testsrc=size=${webcamWidth}x${webcamHeight}:rate=${frameRate}`,
-			});
+			if (providedWebcamInputPath) {
+				console.log(
+					`[benchmark-export-queues] Using provided webcam video: ${providedWebcamInputPath}`,
+				);
+				await fs.copyFile(providedWebcamInputPath, webcamInputPath);
+			} else {
+				console.log(
+					`[benchmark-export-queues] Generating webcam fixture video: ${webcamInputPath}`,
+				);
+				await createFixtureVideo(ffmpegStatic, webcamInputPath, {
+					fixtureWidth: webcamWidth,
+					fixtureHeight: webcamHeight,
+					includeAudio: false,
+					videoFilter: `testsrc=size=${webcamWidth}x${webcamHeight}:rate=${frameRate}`,
+				});
+			}
 		}
 
 		const benchmarkResults = [];
@@ -968,7 +1022,11 @@ async function main() {
 			);
 		}
 	} finally {
-		await fs.rm(tempDir, { recursive: true, force: true });
+		if (keepTempArtifacts) {
+			console.log(`[benchmark-export-queues] Preserved temp artifacts: ${tempDir}`);
+		} else {
+			await fs.rm(tempDir, { recursive: true, force: true });
+		}
 	}
 }
 

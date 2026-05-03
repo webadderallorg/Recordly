@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { selectRecordingMimeType } from "./recordingMimeType";
+import {
+	getVideoExtensionForMimeType,
+	isWebmMimeType,
+	selectRecordingMimeType,
+	selectWebcamRecordingMimeType,
+} from "./recordingMimeType";
 
 describe("selectRecordingMimeType", () => {
 	it("prefers codecs the editor can play back", () => {
@@ -54,5 +59,39 @@ describe("selectRecordingMimeType", () => {
 		});
 
 		expect(mimeType).toBeUndefined();
+	});
+
+	it("prefers MP4/H.264 for webcam captures when supported", () => {
+		const mimeType = selectWebcamRecordingMimeType({
+			isTypeSupported: (type) =>
+				["video/mp4;codecs=avc1.42E01E", "video/webm;codecs=vp9"].includes(
+					type,
+				),
+			canPlayType: () => "probably",
+		});
+
+		expect(mimeType).toBe("video/mp4;codecs=avc1.42E01E");
+	});
+
+	it("falls back to WebM webcam capture when MP4 is unavailable", () => {
+		const mimeType = selectWebcamRecordingMimeType({
+			isTypeSupported: (type) =>
+				["video/webm;codecs=vp9", "video/webm"].includes(type),
+			canPlayType: () => "probably",
+		});
+
+		expect(mimeType).toBe("video/webm;codecs=vp9");
+	});
+
+	it("maps recording MIME types to the saved file extension", () => {
+		expect(getVideoExtensionForMimeType("video/mp4;codecs=avc1")).toBe(".mp4");
+		expect(getVideoExtensionForMimeType("video/webm;codecs=vp9")).toBe(".webm");
+		expect(getVideoExtensionForMimeType(undefined)).toBe(".webm");
+	});
+
+	it("detects WebM MIME types for duration repair", () => {
+		expect(isWebmMimeType("video/webm;codecs=vp9")).toBe(true);
+		expect(isWebmMimeType("video/mp4;codecs=avc1")).toBe(false);
+		expect(isWebmMimeType(undefined)).toBe(false);
 	});
 });

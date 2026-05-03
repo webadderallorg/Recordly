@@ -63,6 +63,10 @@ export function resolvePreferredWindowsNativeHelperPath(
 	);
 	const prebundledPath = getPrebundledNativeHelperPath(binaryName);
 
+	if (app.isPackaged && existsSync(prebundledPath)) {
+		return prebundledPath;
+	}
+
 	if (existsSync(buildOutputPath)) {
 		return buildOutputPath;
 	}

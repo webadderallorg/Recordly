@@ -183,6 +183,8 @@ static void writeCompanionAudioTimingMetadata(
     }
 
     metadataFile << "{\"startDelayMs\":" << startDelayMs;
+    metadataFile << ",\"capturedDurationMs\":" << capture.capturedDurationMs();
+    metadataFile << ",\"dataBytes\":" << capture.totalDataBytes();
     const uint32_t discontinuityCount = capture.dataDiscontinuityCount();
     if (discontinuityCount > 0) {
         metadataFile << ",\"dataDiscontinuityCount\":" << discontinuityCount;

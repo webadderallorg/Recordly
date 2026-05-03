@@ -20,6 +20,7 @@ export default defineConfig({
 						rollupOptions: {
 							external: ["ffmpeg-static", "uiohook-napi"],
 							output: {
+								format: "cjs",
 								entryFileNames: "[name].cjs",
 								chunkFileNames: "[name].cjs",
 							},

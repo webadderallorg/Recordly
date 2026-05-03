@@ -3,20 +3,21 @@ import { app, ipcMain } from "electron";
 import { hideCursor } from "../../cursorHider";
 import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from "../../windows";
 import {
-	SHORTCUTS_FILE,
-	RECORDINGS_SETTINGS_FILE,
 	COUNTDOWN_SETTINGS_FILE,
+	RECORDINGS_SETTINGS_FILE,
+	SHORTCUTS_FILE,
 } from "../constants";
 import {
-	countdownTimer,
-	setCountdownTimer,
 	countdownCancelled,
-	setCountdownCancelled,
 	countdownInProgress,
-	setCountdownInProgress,
 	countdownRemaining,
+	countdownTimer,
+	setCountdownCancelled,
+	setCountdownInProgress,
 	setCountdownRemaining,
+	setCountdownTimer,
 } from "../state";
+import { parseJsonWithByteOrderMark } from "../utils";
 
 export function registerSettingsHandlers() {
   ipcMain.handle('app:getVersion', () => {
@@ -42,7 +43,7 @@ export function registerSettingsHandlers() {
   ipcMain.handle('get-shortcuts', async () => {
     try {
       const data = await fs.readFile(SHORTCUTS_FILE, 'utf-8');
-      return JSON.parse(data);
+      return parseJsonWithByteOrderMark(data);
     } catch {
       return null;
     }
@@ -64,7 +65,7 @@ export function registerSettingsHandlers() {
     ipcMain.handle('get-recording-preferences', async () => {
       try {
         const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, 'utf-8')
-        const parsed = JSON.parse(content) as Record<string, unknown>
+        const parsed = parseJsonWithByteOrderMark<Record<string, unknown>>(content)
         return {
           success: true,
           microphoneEnabled: parsed.microphoneEnabled === true,
@@ -81,7 +82,7 @@ export function registerSettingsHandlers() {
         let existing: Record<string, unknown> = {}
         try {
           const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, 'utf-8')
-          existing = JSON.parse(content) as Record<string, unknown>
+          existing = parseJsonWithByteOrderMark<Record<string, unknown>>(content)
         } catch {
           // file doesn't exist yet
         }
@@ -97,7 +98,7 @@ export function registerSettingsHandlers() {
   ipcMain.handle('get-countdown-delay', async () => {
     try {
       const content = await fs.readFile(COUNTDOWN_SETTINGS_FILE, 'utf-8')
-      const parsed = JSON.parse(content) as { delay?: number }
+      const parsed = parseJsonWithByteOrderMark<{ delay?: number }>(content)
       return { success: true, delay: parsed.delay ?? 3 }
     } catch {
       return { success: true, delay: 3 }

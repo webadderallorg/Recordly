@@ -2,8 +2,40 @@
 #include <functiondiscoverykeys_devpkey.h>
 #include <iostream>
 #include <cstring>
+#include <algorithm>
 
 #pragma comment(lib, "ole32.lib")
+
+namespace {
+constexpr int64_t kHundredNanosecondsPerSecond = 10000000;
+constexpr uint64_t kSilenceWriteChunkFrames = 4096;
+
+bool isFloatFormat(const WAVEFORMATEX* format) {
+    if (!format) return false;
+    if (format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) return true;
+    if (format->wFormatTag != WAVE_FORMAT_EXTENSIBLE) return false;
+    return reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(format)->SubFormat ==
+        KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+}
+
+bool isPcmFormat(const WAVEFORMATEX* format) {
+    if (!format) return false;
+    if (format->wFormatTag == WAVE_FORMAT_PCM) return true;
+    if (format->wFormatTag != WAVE_FORMAT_EXTENSIBLE) return false;
+    return reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(format)->SubFormat ==
+        KSDATAFORMAT_SUBTYPE_PCM;
+}
+
+int16_t pcm24ToInt16(const BYTE* sample) {
+    int32_t value = static_cast<int32_t>(sample[0]) |
+        (static_cast<int32_t>(sample[1]) << 8) |
+        (static_cast<int32_t>(sample[2]) << 16);
+    if ((value & 0x800000) != 0) {
+        value |= ~0xFFFFFF;
+    }
+    return static_cast<int16_t>(value >> 8);
+}
+}
 
 static const CLSID CLSID_MMDeviceEnumerator_ = __uuidof(MMDeviceEnumerator);
 static const IID IID_IMMDeviceEnumerator_ = __uuidof(IMMDeviceEnumerator);
@@ -137,6 +169,7 @@ bool WasapiCapture::start() {
     }
 
     totalDataBytes_ = 0;
+    framesWritten_ = 0;
     firstPacketQpcHns_ = -1;
     dataDiscontinuityCount_ = 0;
     timestampErrorCount_ = 0;
@@ -177,7 +210,10 @@ void WasapiCapture::stop() {
 
     if (outputFile_ != INVALID_HANDLE_VALUE) {
         SetFilePointer(outputFile_, 0, nullptr, FILE_BEGIN);
-        writeWavHeader(outputFile_, totalDataBytes_);
+        const uint64_t dataBytes = totalDataBytes_.load();
+        const DWORD wavDataBytes =
+            static_cast<DWORD>(std::min<uint64_t>(dataBytes, 0xFFFFFFFFu));
+        writeWavHeader(outputFile_, wavDataBytes);
         CloseHandle(outputFile_);
         outputFile_ = INVALID_HANDLE_VALUE;
     }
@@ -217,6 +253,39 @@ bool WasapiCapture::writeWavHeader(HANDLE file, DWORD dataSize) {
     return true;
 }
 
+void WasapiCapture::writePcmFrames(const int16_t* samples, UINT32 frameCount, WORD channels) {
+    if (!samples || frameCount == 0 || channels == 0 || outputFile_ == INVALID_HANDLE_VALUE) {
+        return;
+    }
+
+    const DWORD bytesToWrite = frameCount * channels * sizeof(int16_t);
+    DWORD written = 0;
+    WriteFile(outputFile_, samples, bytesToWrite, &written, nullptr);
+    totalDataBytes_.fetch_add(written);
+    framesWritten_.fetch_add(written / (channels * sizeof(int16_t)));
+}
+
+void WasapiCapture::writeSilenceFrames(uint64_t frameCount, WORD channels) {
+    if (frameCount == 0 || channels == 0 || outputFile_ == INVALID_HANDLE_VALUE) {
+        return;
+    }
+
+    std::vector<int16_t> silence(static_cast<size_t>(kSilenceWriteChunkFrames * channels), 0);
+    while (frameCount > 0) {
+        const uint64_t chunkFrames = std::min<uint64_t>(frameCount, kSilenceWriteChunkFrames);
+        writePcmFrames(silence.data(), static_cast<UINT32>(chunkFrames), channels);
+        frameCount -= chunkFrames;
+    }
+}
+
+uint64_t WasapiCapture::capturedDurationMs() const {
+    if (!mixFormat_ || mixFormat_->nSamplesPerSec == 0) {
+        return 0;
+    }
+
+    return (framesWritten_.load() * 1000) / mixFormat_->nSamplesPerSec;
+}
+
 void WasapiCapture::captureThread() {
     // COM must be initialized on every thread that uses COM objects.
     // The main thread calls winrt::init_apartment(MTA) but that only covers
@@ -225,9 +294,12 @@ void WasapiCapture::captureThread() {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
     WORD channels = static_cast<WORD>(mixFormat_->nChannels);
-    bool isFloat = (mixFormat_->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) ||
-        (mixFormat_->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
-         reinterpret_cast<WAVEFORMATEXTENSIBLE*>(mixFormat_)->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+    const bool isFloat = isFloatFormat(mixFormat_);
+    const bool isPcm = isPcmFormat(mixFormat_);
+    const WORD bitsPerSample = mixFormat_->wBitsPerSample;
+    const WORD sourceBlockAlign = mixFormat_->nBlockAlign;
+    const WORD sourceBytesPerSample =
+        channels > 0 ? static_cast<WORD>(sourceBlockAlign / channels) : 0;
 
     std::vector<int16_t> pcmBuffer;
 
@@ -273,38 +345,96 @@ void WasapiCapture::captureThread() {
             if ((flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) != 0) {
                 timestampErrorCount_.fetch_add(1);
             }
-            if (
+            const bool hasReliableTimestamp =
                 numFrames > 0 &&
                 qpcPosition > 0 &&
-                (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) == 0
-            ) {
+                (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) == 0;
+            if (hasReliableTimestamp) {
                 int64_t expected = -1;
                 firstPacketQpcHns_.compare_exchange_strong(
                     expected,
                     static_cast<int64_t>(qpcPosition));
+
+                const int64_t firstPacketQpcHns = firstPacketQpcHns_.load();
+                if (
+                    firstPacketQpcHns >= 0 &&
+                    static_cast<int64_t>(qpcPosition) > firstPacketQpcHns
+                ) {
+                    const int64_t elapsedHns =
+                        static_cast<int64_t>(qpcPosition) - firstPacketQpcHns;
+                    const uint64_t expectedStartFrame =
+                        (static_cast<uint64_t>(elapsedHns) * mixFormat_->nSamplesPerSec +
+                         kHundredNanosecondsPerSecond / 2) /
+                        kHundredNanosecondsPerSecond;
+                    const uint64_t writtenFrames = framesWritten_.load();
+                    const uint64_t gapThresholdFrames = mixFormat_->nSamplesPerSec / 100;
+
+                    if (expectedStartFrame > writtenFrames + gapThresholdFrames) {
+                        writeSilenceFrames(expectedStartFrame - writtenFrames, channels);
+                    }
+                }
             }
 
             UINT32 totalSamples = numFrames * channels;
 
             if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
                 pcmBuffer.assign(totalSamples, 0);
-            } else if (isFloat) {
+            } else if (isFloat && bitsPerSample == 32 && sourceBytesPerSample >= 4) {
                 pcmBuffer.resize(totalSamples);
                 const float* src = reinterpret_cast<const float*>(data);
                 for (UINT32 i = 0; i < totalSamples; i++) {
                     pcmBuffer[i] = floatToInt16(src[i]);
                 }
-            } else {
+            } else if (isPcm && bitsPerSample == 16 && sourceBytesPerSample >= 2) {
                 pcmBuffer.resize(totalSamples);
-                std::memcpy(pcmBuffer.data(), data, totalSamples * sizeof(int16_t));
+                if (sourceBytesPerSample == sizeof(int16_t)) {
+                    std::memcpy(pcmBuffer.data(), data, totalSamples * sizeof(int16_t));
+                } else {
+                    for (UINT32 frame = 0; frame < numFrames; frame++) {
+                        const BYTE* frameData = data + frame * sourceBlockAlign;
+                        for (WORD channel = 0; channel < channels; channel++) {
+                            const BYTE* sample = frameData + channel * sourceBytesPerSample;
+                            pcmBuffer[frame * channels + channel] =
+                                *reinterpret_cast<const int16_t*>(sample);
+                        }
+                    }
+                }
+            } else if (isPcm && bitsPerSample == 24 && sourceBytesPerSample >= 3) {
+                pcmBuffer.resize(totalSamples);
+                for (UINT32 frame = 0; frame < numFrames; frame++) {
+                    const BYTE* frameData = data + frame * sourceBlockAlign;
+                    for (WORD channel = 0; channel < channels; channel++) {
+                        const BYTE* sample = frameData + channel * sourceBytesPerSample;
+                        pcmBuffer[frame * channels + channel] = pcm24ToInt16(sample);
+                    }
+                }
+            } else if (isPcm && bitsPerSample == 32 && sourceBytesPerSample >= 4) {
+                pcmBuffer.resize(totalSamples);
+                for (UINT32 frame = 0; frame < numFrames; frame++) {
+                    const BYTE* frameData = data + frame * sourceBlockAlign;
+                    for (WORD channel = 0; channel < channels; channel++) {
+                        const BYTE* sample = frameData + channel * sourceBytesPerSample;
+                        const int32_t value = *reinterpret_cast<const int32_t*>(sample);
+                        pcmBuffer[frame * channels + channel] = static_cast<int16_t>(value >> 16);
+                    }
+                }
+            } else if (isPcm && bitsPerSample == 8 && sourceBytesPerSample >= 1) {
+                pcmBuffer.resize(totalSamples);
+                for (UINT32 frame = 0; frame < numFrames; frame++) {
+                    const BYTE* frameData = data + frame * sourceBlockAlign;
+                    for (WORD channel = 0; channel < channels; channel++) {
+                        const BYTE value = *(frameData + channel * sourceBytesPerSample);
+                        pcmBuffer[frame * channels + channel] =
+                            static_cast<int16_t>((static_cast<int>(value) - 128) << 8);
+                    }
+                }
+            } else {
+                pcmBuffer.assign(totalSamples, 0);
             }
 
             captureClient_->ReleaseBuffer(numFrames);
 
-            DWORD bytesToWrite = totalSamples * sizeof(int16_t);
-            DWORD written;
-            WriteFile(outputFile_, pcmBuffer.data(), bytesToWrite, &written, nullptr);
-            totalDataBytes_ += written;
+            writePcmFrames(pcmBuffer.data(), numFrames, channels);
 
             hr = captureClient_->GetNextPacketSize(&packetLength);
             if (FAILED(hr)) {

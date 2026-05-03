@@ -166,6 +166,11 @@ function getExpectedNativeHelperFiles(archTag) {
 				label: "Windows cursor monitor helper",
 				executable: true,
 			},
+			{
+				name: "recordly-gpu-export.exe",
+				label: "Windows GPU export helper",
+				executable: true,
+			},
 			{ name: "helpers-manifest.json", label: "Windows helper manifest" },
 			{ name: "whisper-cli.exe", label: "Whisper CLI runtime", executable: true },
 			{ name: "whisper-runtime.json", label: "Whisper runtime manifest" },

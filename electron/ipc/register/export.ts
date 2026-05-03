@@ -15,6 +15,7 @@ import {
 } from "../export/exportStream";
 import {
 	enqueueNativeVideoExportFrameWrite,
+	exportNativeStaticLayoutVideo,
 	flushNativeVideoExportPendingWriteRequests,
 	getNativeVideoExportMaxQueuedWriteBytes,
 	getNativeVideoExportSessionError,
@@ -22,8 +23,11 @@ import {
 	isIgnorableNativeVideoExportStreamError,
 	muxExportedVideoAudioBuffer,
 	muxNativeVideoExportAudio,
+	type NativeStaticLayoutExportOptions,
 	type NativeVideoExportSession,
+	nativeStaticLayoutExportSessions,
 	nativeVideoExportSessions,
+	probeNativeVideoMetadata,
 	removeTemporaryExportFile,
 	resolveNativeVideoEncoder,
 	sendNativeVideoExportWriteFrameResult,
@@ -39,7 +43,13 @@ import {
 } from "../nativeVideoExport";
 import { approveUserPath } from "../utils";
 
-async function moveExportedTempFile(tempPath: string, destinationPath: string) {
+function getPartialExportDestinationPath(destinationPath: string) {
+	const parsed = path.parse(destinationPath);
+	const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+	return path.join(parsed.dir, `.recordly-partial-${parsed.name}-${suffix}${parsed.ext}`);
+}
+
+export async function moveExportedTempFile(tempPath: string, destinationPath: string) {
 	await fs.mkdir(path.dirname(destinationPath), { recursive: true });
 	try {
 		await fs.rename(tempPath, destinationPath);
@@ -53,17 +63,33 @@ async function moveExportedTempFile(tempPath: string, destinationPath: string) {
 		// exporting to a different volume still works.
 	}
 
-	await fs.copyFile(tempPath, destinationPath);
+	const partialDestinationPath = getPartialExportDestinationPath(destinationPath);
 	try {
-		await fs.rm(tempPath, { force: true });
-	} catch (unlinkError) {
-		// Copy succeeded, so the export itself is safe; surface the leaked temp
-		// path instead of silently swallowing the failure so operators can
-		// reclaim disk space manually if the OS temp reaper misses it.
-		console.warn(
-			`[export] Failed to remove temp file after cross-volume copy (${tempPath}):`,
-			unlinkError,
-		);
+		await fs.copyFile(tempPath, partialDestinationPath);
+		try {
+			await fs.rename(partialDestinationPath, destinationPath);
+		} catch (renameError) {
+			const code = (renameError as NodeJS.ErrnoException).code;
+			if (code !== "EEXIST" && code !== "EPERM") {
+				throw renameError;
+			}
+			await fs.rm(destinationPath, { force: true });
+			await fs.rename(partialDestinationPath, destinationPath);
+		}
+		try {
+			await fs.rm(tempPath, { force: true });
+		} catch (unlinkError) {
+			// Copy succeeded, so the export itself is safe; surface the leaked temp
+			// path instead of silently swallowing the failure so operators can
+			// reclaim disk space manually if the OS temp reaper misses it.
+			console.warn(
+				`[export] Failed to remove temp file after cross-volume copy (${tempPath}):`,
+				unlinkError,
+			);
+		}
+	} catch (error) {
+		await fs.rm(partialDestinationPath, { force: true }).catch(() => undefined);
+		throw error;
 	}
 }
 
@@ -217,6 +243,86 @@ export function registerExportHandlers() {
 			}
 		},
 	);
+
+	ipcMain.handle("probe-native-video-metadata", async (_, filePath: string) => {
+		try {
+			if (typeof filePath !== "string" || filePath.trim().length === 0) {
+				throw new Error("Native metadata probe requires a file path");
+			}
+
+			const metadata = await probeNativeVideoMetadata(getFfmpegBinaryPath(), filePath);
+			return {
+				success: true,
+				metadata,
+			};
+		} catch (error) {
+			console.warn("[probe-native-video-metadata] Failed:", error);
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+	});
+
+	ipcMain.handle(
+		"native-static-layout-export",
+		async (event, options: NativeStaticLayoutExportOptions) => {
+			try {
+				if (!options || typeof options.inputPath !== "string") {
+					throw new Error("Native static layout export requires an input path");
+				}
+
+				const result = await exportNativeStaticLayoutVideo(
+					getFfmpegBinaryPath(),
+					options,
+					(progress) => {
+						if (event.sender.isDestroyed()) {
+							return;
+						}
+
+						event.sender.send("native-static-layout-export-progress", progress);
+					},
+				);
+				registerOwnedExportPath(result.outputPath);
+				const primaryBackend = result.metrics.chunks[0]?.backend;
+				return {
+					success: true,
+					tempPath: result.outputPath,
+					encoderName:
+						primaryBackend === "nvidia-cuda-compositor"
+							? "nvidia-cuda-compositor"
+							: primaryBackend === "windows-d3d11-compositor"
+								? "windows-d3d11-compositor"
+								: result.metrics.chunkCount > 1
+									? "chunked-h264-nvenc"
+									: "static-layout-h264-nvenc",
+					metrics: result.metrics,
+				};
+			} catch (error) {
+				console.warn("[native-static-layout-export] Failed:", error);
+				return {
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				};
+			}
+		},
+	);
+
+	ipcMain.handle("native-static-layout-export-cancel", async (_, sessionId: string) => {
+		const session = nativeStaticLayoutExportSessions.get(sessionId);
+		if (!session) {
+			return { success: true };
+		}
+
+		session.terminating = true;
+		try {
+			session.currentProcess?.kill("SIGKILL");
+		} catch {
+			// Process may already be closed.
+		}
+
+		return { success: true };
+	});
 
 	ipcMain.on(
 		"native-video-export-write-frame-async",

@@ -54,6 +54,7 @@ import {
 	type ExportPipelineModel,
 	type ExportProgress,
 	type ExportQuality,
+	type ExportRenderBackend,
 	type ExportSettings,
 	FrameRenderer,
 	GIF_SIZE_PRESETS,
@@ -66,6 +67,7 @@ import {
 	type SupportedMp4Dimensions,
 	VideoExporter,
 } from "@/lib/exporter";
+import { getMp4ExportBitrate, getSourceQualityBitrate } from "@/lib/exporter/exportBitrate";
 import { resolveMediaElementSource } from "@/lib/exporter/localMediaSource";
 import { resolveSourceAudioFallbackPaths } from "@/lib/exporter/sourceAudioFallback";
 import {
@@ -230,6 +232,7 @@ type SmokeExportConfig = {
 	webcamSize?: number;
 	pipelineModel?: ExportPipelineModel;
 	backendPreference?: ExportBackendPreference;
+	renderBackend?: ExportRenderBackend;
 	maxEncodeQueue?: number;
 	maxDecodeQueue?: number;
 	maxPendingFrames?: number;
@@ -243,6 +246,11 @@ type SaveProjectOptions = {
 	remountPreviewAfterSave?: boolean;
 	refreshLibraryAfterSave?: boolean;
 	captureThumbnail?: boolean;
+};
+
+type DevOpenRecordingConfig = {
+	inputPath: string | null;
+	webcamInputPath: string | null;
 };
 
 async function writeSmokeExportReport(
@@ -268,21 +276,10 @@ async function writeSmokeExportReport(
 	}
 }
 
+const SMOKE_EXPORT_READY_TIMEOUT_MS = 30_000;
 const DEFAULT_MP4_EXPORT_FRAME_RATE: ExportMp4FrameRate = 30;
 const SOURCE_AUDIO_FALLBACK_TOAST_ID = "source-audio-fallback-error";
 const PROJECT_AUTOSAVE_DELAY_MS = 1000;
-
-function getEncodingModeBitrateMultiplier(encodingMode: ExportEncodingMode): number {
-	switch (encodingMode) {
-		case "fast":
-			return 0.1;
-		case "quality":
-			return 0.9;
-		case "balanced":
-		default:
-			return 0.5;
-	}
-}
 
 function summarizeErrorMessage(message: string): string {
 	const firstLine = message
@@ -328,6 +325,10 @@ function parseSmokeExportFps(value: string | null): ExportMp4FrameRate | undefin
 	return isValidMp4FrameRate(parsed) ? parsed : undefined;
 }
 
+function parseSmokeRenderBackend(value: string | null): ExportRenderBackend | undefined {
+	return value === "webgl" || value === "webgpu" ? value : undefined;
+}
+
 function getSmokeExportConfig(search: string): SmokeExportConfig {
 	const params = new URLSearchParams(search);
 	const enabled = params.get("smokeExport") === "1";
@@ -369,6 +370,7 @@ function getSmokeExportConfig(search: string): SmokeExportConfig {
 					: enabled && params.get("smokeBackendPreference") === "breeze"
 						? "breeze"
 						: undefined,
+		renderBackend: enabled ? parseSmokeRenderBackend(params.get("smokeRenderBackend")) : undefined,
 		maxEncodeQueue: enabled
 			? parseSmokeExportNumber(params.get("smokeMaxEncodeQueue"))
 			: undefined,
@@ -381,6 +383,14 @@ function getSmokeExportConfig(search: string): SmokeExportConfig {
 		projectPath: enabled ? params.get("smokeProject") : null,
 		quality: enabled ? parseSmokeExportQuality(params.get("smokeQuality")) : undefined,
 		fps: enabled ? parseSmokeExportFps(params.get("smokeFps")) : undefined,
+	};
+}
+
+function getDevOpenRecordingConfig(search: string): DevOpenRecordingConfig {
+	const params = new URLSearchParams(search);
+	return {
+		inputPath: params.get("devOpenInput"),
+		webcamInputPath: params.get("devOpenWebcam"),
 	};
 }
 
@@ -496,17 +506,6 @@ function calculateMp4ExportDimensions(
 	};
 }
 
-function getSourceQualityBitrate(width: number, height: number): number {
-	const totalPixels = width * height;
-	if (totalPixels > 2560 * 1440) {
-		return 80_000_000;
-	}
-	if (totalPixels > 1920 * 1080) {
-		return 50_000_000;
-	}
-	return 30_000_000;
-}
-
 function getErrorMessage(error: unknown): string {
 	if (error instanceof Error) {
 		return error.message;
@@ -523,6 +522,13 @@ export default function VideoEditor() {
 	const { t } = useI18n();
 	const smokeExportConfig = useMemo(
 		() => getSmokeExportConfig(typeof window === "undefined" ? "" : window.location.search),
+		[],
+	);
+	const devOpenRecordingConfig = useMemo(
+		() =>
+			getDevOpenRecordingConfig(
+				typeof window === "undefined" ? "" : window.location.search,
+			),
 		[],
 	);
 	const [appPlatform, setAppPlatform] = useState<string>(
@@ -721,6 +727,7 @@ export default function VideoEditor() {
 	const smokeExportStartedRef = useRef(false);
 	const projectAutosaveTimeoutRef = useRef<number | null>(null);
 	const projectSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+	const smokeExportReadyStateRef = useRef<Record<string, unknown>>({});
 	const [historyVersion, setHistoryVersion] = useState(0);
 	const timelineRef = useRef<TimelineEditorHandle>(null);
 
@@ -2161,6 +2168,29 @@ export default function VideoEditor() {
 					return;
 				}
 
+				if (!smokeExportConfig.enabled && devOpenRecordingConfig.inputPath) {
+					const sourcePath = fromFileUrl(devOpenRecordingConfig.inputPath);
+					const sourceVideoUrl = await resolveVideoUrl(sourcePath);
+					const webcamSourcePath = devOpenRecordingConfig.webcamInputPath
+						? fromFileUrl(devOpenRecordingConfig.webcamInputPath)
+						: null;
+					setVideoSourcePath(sourcePath);
+					setVideoPath(sourceVideoUrl);
+					setCurrentProjectPath(null);
+					setLastSavedSnapshot(null);
+					pendingFreshRecordingAutoZoomPathRef.current = autoApplyFreshRecordingAutoZooms
+						? sourceVideoUrl
+						: null;
+					setWebcam((prev) => ({
+						...prev,
+						enabled: Boolean(webcamSourcePath),
+						sourcePath: webcamSourcePath,
+						timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
+					}));
+					setError(null);
+					return;
+				}
+
 				if (smokeExportConfig.enabled) {
 					if (!smokeExportConfig.inputPath) {
 						setError("Smoke export input path is missing.");
@@ -2275,6 +2305,8 @@ export default function VideoEditor() {
 	}, [
 		applyLoadedProject,
 		autoApplyFreshRecordingAutoZooms,
+		devOpenRecordingConfig.inputPath,
+		devOpenRecordingConfig.webcamInputPath,
 		initialEditorPreferences,
 		smokeExportConfig.enabled,
 		smokeExportConfig.inputPath,
@@ -4429,9 +4461,14 @@ export default function VideoEditor() {
 						? (smokeExportConfig.pipelineModel ??
 							(smokeExportConfig.useNativeExport ? "modern" : "legacy"))
 						: (settings.pipelineModel ?? exportPipelineModel);
+					const useExperimentalNativeExport =
+						pipelineModel === "modern" &&
+						(smokeExportConfig.enabled ? smokeExportConfig.useNativeExport : true);
 					const backendPreference =
 						pipelineModel === "legacy"
 							? "webcodecs"
+							: useExperimentalNativeExport
+								? "auto"
 							: smokeExportConfig.enabled
 								? (smokeExportConfig.backendPreference ??
 									(smokeExportConfig.useNativeExport ? "breeze" : "webcodecs"))
@@ -4444,33 +4481,14 @@ export default function VideoEditor() {
 							supportedSourceDimensions.height,
 							quality,
 						);
-					let bitrate: number;
-
-					if (quality === "source") {
-						// Calculate visually lossless bitrate matching screen recording optimization
-						const totalPixels = exportWidth * exportHeight;
-						bitrate = 30_000_000;
-						if (totalPixels > 1920 * 1080 && totalPixels <= 2560 * 1440) {
-							bitrate = 50_000_000;
-						} else if (totalPixels > 2560 * 1440) {
-							bitrate = 80_000_000;
-						}
-					} else {
-						// Adjust bitrate for lower resolutions
-						const totalPixels = exportWidth * exportHeight;
-						if (totalPixels <= 1280 * 720) {
-							bitrate = 10_000_000;
-						} else if (totalPixels <= 1920 * 1080) {
-							bitrate = 20_000_000;
-						} else {
-							bitrate = 30_000_000;
-						}
-					}
-
-					bitrate = Math.max(
-						2_000_000,
-						Math.round(bitrate * getEncodingModeBitrateMultiplier(encodingMode)),
-					);
+					const bitrate = getMp4ExportBitrate({
+						width: exportWidth,
+						height: exportHeight,
+						frameRate: selectedMp4FrameRate,
+						quality,
+						encodingMode,
+						useModernNativeStaticLayout: useExperimentalNativeExport,
+					});
 
 					const exporterConfig = {
 						videoUrl: videoPath,
@@ -4481,7 +4499,8 @@ export default function VideoEditor() {
 						codec: DEFAULT_MP4_CODEC,
 						encodingMode,
 						preferredEncoderPath: supportedSourceDimensions.encoderPath,
-						experimentalNativeExport: smokeExportConfig.useNativeExport,
+						preferredRenderBackend: smokeExportConfig.renderBackend,
+						experimentalNativeExport: useExperimentalNativeExport,
 						maxEncodeQueue: smokeExportConfig.maxEncodeQueue,
 						maxDecodeQueue: smokeExportConfig.maxDecodeQueue,
 						maxPendingFrames: smokeExportConfig.maxPendingFrames,
@@ -4787,6 +4806,7 @@ export default function VideoEditor() {
 			remountPreview,
 			showExportSuccessToast,
 			smokeExportConfig.backendPreference,
+			smokeExportConfig.renderBackend,
 			smokeExportConfig.enabled,
 			smokeExportConfig.useNativeExport,
 			smokeExportConfig.maxDecodeQueue,
@@ -4804,6 +4824,48 @@ export default function VideoEditor() {
 	);
 
 	useEffect(() => {
+		smokeExportReadyStateRef.current = {
+			cursorTelemetrySourcePath,
+			duration,
+			hasVideoPath: Boolean(videoPath),
+			isPreviewReady,
+			loading,
+			projectPath: smokeExportConfig.projectPath ?? null,
+			videoSourcePath,
+		};
+	}, [
+		cursorTelemetrySourcePath,
+		duration,
+		isPreviewReady,
+		loading,
+		smokeExportConfig.projectPath,
+		videoPath,
+		videoSourcePath,
+	]);
+
+	useEffect(() => {
+		if (!smokeExportConfig.enabled) {
+			return;
+		}
+
+		const timeoutId = window.setTimeout(() => {
+			if (smokeExportStartedRef.current) {
+				return;
+			}
+
+			smokeExportStartedRef.current = true;
+			void writeSmokeExportReport(smokeExportConfig.outputPath, {
+				success: false,
+				phase: "ready",
+				error: `Smoke export did not become ready within ${SMOKE_EXPORT_READY_TIMEOUT_MS}ms.`,
+				readyState: smokeExportReadyStateRef.current,
+			}).finally(() => window.close());
+		}, SMOKE_EXPORT_READY_TIMEOUT_MS);
+
+		return () => window.clearTimeout(timeoutId);
+	}, [smokeExportConfig.enabled, smokeExportConfig.outputPath]);
+
+	useEffect(() => {
 		if (!smokeExportConfig.enabled || smokeExportStartedRef.current) {
 			return;
 		}
@@ -4811,11 +4873,16 @@ export default function VideoEditor() {
 		if (error) {
 			smokeExportStartedRef.current = true;
 			console.error(`[smoke-export] ${error}`);
-			window.close();
+			void writeSmokeExportReport(smokeExportConfig.outputPath, {
+				success: false,
+				phase: "load",
+				error,
+				readyState: smokeExportReadyStateRef.current,
+			}).finally(() => window.close());
 			return;
 		}
 
-		if (!videoPath || loading) {
+		if (!videoPath || loading || !isPreviewReady || duration <= 0) {
 			return;
 		}
 
@@ -4841,9 +4908,12 @@ export default function VideoEditor() {
 		cursorTelemetrySourcePath,
 		error,
 		handleExport,
+		isPreviewReady,
 		loading,
+		duration,
 		smokeExportConfig.enabled,
 		smokeExportConfig.encodingMode,
+		smokeExportConfig.outputPath,
 		smokeExportConfig.projectPath,
 		videoPath,
 		videoSourcePath,
@@ -5055,6 +5125,8 @@ export default function VideoEditor() {
 		exportFormat === "mp4" &&
 		exportPipelineModel === "modern" &&
 		(isExporting || exportProgress !== null);
+	const shouldSuspendPreviewRendering =
+		isExporting && exportFormat === "mp4" && exportPipelineModel === "modern";
 	const isLegacyExportInProgress =
 		exportFormat === "mp4" &&
 		exportPipelineModel === "legacy" &&
@@ -5095,6 +5167,9 @@ export default function VideoEditor() {
 
 		return encoderName ? `${pathLabel} (${encoderName})` : pathLabel;
 	}, [exportProgress]);
+	const exportNativeSkipLabel = exportProgress?.nativeStaticLayoutSkipReason
+		? `Native skipped: ${exportProgress.nativeStaticLayoutSkipReason}`
+		: null;
 	const exportPercentLabel = exportProgress
 		? isExportSaving
 			? t("editor.exportStatus.saving", "Opening save dialog...")
@@ -5461,6 +5536,11 @@ export default function VideoEditor() {
 									{exportRuntimeLabel ? (
 										<p className="mt-1 text-[11px] text-muted-foreground/70">
 											Path: {exportRuntimeLabel}
+										</p>
+									) : null}
+									{exportNativeSkipLabel ? (
+										<p className="mt-1 text-[11px] text-amber-500/80">
+											{exportNativeSkipLabel}
 										</p>
 									) : null}
 								</div>
@@ -5960,6 +6040,7 @@ export default function VideoEditor() {
 												}
 												cursorSway={cursorSway}
 												volume={shouldMutePreviewVideo ? 0 : previewVolume}
+												suspendRendering={shouldSuspendPreviewRendering}
 											/>
 										</div>
 									</div>

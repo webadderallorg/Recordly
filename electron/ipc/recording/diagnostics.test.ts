@@ -140,7 +140,7 @@ describe("getCompanionAudioFallbackPaths", () => {
 		await Promise.all([
 			fs.writeFile(videoPath, "video"),
 			fs.writeFile(micPath, "mic"),
-			fs.writeFile(`${micPath}.json`, JSON.stringify({ startDelayMs: 2750 })),
+			fs.writeFile(`${micPath}.json`, `\ufeff${JSON.stringify({ startDelayMs: 2750 })}`),
 		]);
 
 		execFileMock.mockImplementation(
@@ -164,6 +164,17 @@ describe("getCompanionAudioFallbackPaths", () => {
 				[micPath]: 2750,
 			},
 		});
+	});
+
+	it("scales audio mux timeout for long recordings", async () => {
+		const { getRecordingAudioMuxTimeoutMs } = await import("./diagnostics");
+
+		expect(getRecordingAudioMuxTimeoutMs(0)).toBe(5 * 60 * 1000);
+		expect(getRecordingAudioMuxTimeoutMs(29 * 60 + 29.41)).toBeGreaterThan(120000);
+		expect(getRecordingAudioMuxTimeoutMs(29 * 60 + 29.41)).toBeCloseTo(
+			(29 * 60 + 29.41) * 1000 + 60 * 1000,
+			0,
+		);
 	});
 
 	it("ignores invalid sidecar timing metadata values", async () => {

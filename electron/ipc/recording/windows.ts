@@ -27,6 +27,7 @@ import type { AudioSyncAdjustment, PauseSegment } from "../types";
 import { moveFileWithOverwrite } from "../utils";
 import {
 	getCompanionAudioStartDelayMs,
+	getRecordingAudioMuxTimeoutMs,
 	probeMediaDurationSeconds,
 	validateRecordedVideo,
 } from "./diagnostics";
@@ -194,6 +195,7 @@ export async function muxNativeWindowsVideoWithAudio(
 	if (audioInputs.length === 0) return;
 
 	const videoDuration = await probeMediaDurationSeconds(videoPath);
+	const muxTimeoutMs = getRecordingAudioMuxTimeoutMs(videoDuration);
 	const audioAdjustments: Map<string, AudioSyncAdjustment> = new Map();
 
 	if (videoDuration > 0) {
@@ -278,6 +280,9 @@ export async function muxNativeWindowsVideoWithAudio(
 				ffmpegPath,
 				[
 					"-y",
+					"-hide_banner",
+					"-nostdin",
+					"-nostats",
 					...inputs,
 					"-filter_complex",
 					filterParts.join(";"),
@@ -294,7 +299,7 @@ export async function muxNativeWindowsVideoWithAudio(
 					"-shortest",
 					mixedOutputPath,
 				],
-				{ timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
+				{ timeout: muxTimeoutMs, maxBuffer: 20 * 1024 * 1024 },
 			);
 		} else {
 			const pauseFilter = buildPausedAudioFilter(
@@ -329,6 +334,9 @@ export async function muxNativeWindowsVideoWithAudio(
 				ffmpegPath,
 				[
 					"-y",
+					"-hide_banner",
+					"-nostdin",
+					"-nostats",
 					...inputs,
 					"-filter_complex",
 					filterParts.join(";"),
@@ -345,7 +353,7 @@ export async function muxNativeWindowsVideoWithAudio(
 					"-shortest",
 					mixedOutputPath,
 				],
-				{ timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
+				{ timeout: muxTimeoutMs, maxBuffer: 20 * 1024 * 1024 },
 			);
 		}
 

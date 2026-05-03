@@ -1,3 +1,5 @@
+import { resolveAvailableWallpaperPath } from "./wallpapers";
+
 function encodeRelativeAssetPath(relativePath: string): string {
 	return relativePath
 		.replace(/^\/+/, "")
@@ -132,10 +134,11 @@ export async function getRenderableAssetUrl(asset: string): Promise<string> {
 		return asset;
 	}
 
+	const availableAsset = await resolveAvailableWallpaperPath(asset);
 	const resolvedAsset =
-		asset.startsWith("/") && !asset.startsWith("//")
-			? await getAssetPath(asset.replace(/^\//, ""))
-			: asset;
+		availableAsset.startsWith("/") && !availableAsset.startsWith("//")
+			? await getAssetPath(availableAsset.replace(/^\//, ""))
+			: availableAsset;
 
 	const localFilePath = toLocalFilePath(resolvedAsset);
 	if (!localFilePath || typeof window === "undefined" || !window.electronAPI?.readLocalFile) {

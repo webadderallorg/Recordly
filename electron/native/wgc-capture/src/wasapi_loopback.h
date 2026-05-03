@@ -20,6 +20,8 @@ public:
     bool resume();
     void stop();
     int64_t firstPacketQpcHns() const { return firstPacketQpcHns_.load(); }
+    uint64_t capturedDurationMs() const;
+    uint64_t totalDataBytes() const { return totalDataBytes_.load(); }
     uint32_t dataDiscontinuityCount() const { return dataDiscontinuityCount_.load(); }
     uint32_t timestampErrorCount() const { return timestampErrorCount_.load(); }
 
@@ -27,6 +29,8 @@ private:
     bool initializeCommon();
     void captureThread();
     bool writeWavHeader(HANDLE file, DWORD dataSize);
+    void writePcmFrames(const int16_t* samples, UINT32 frameCount, WORD channels);
+    void writeSilenceFrames(uint64_t frameCount, WORD channels);
     IMMDevice* findCaptureDeviceByName(const std::wstring& name);
 
     std::string outputPath_;
@@ -34,7 +38,8 @@ private:
     std::atomic<bool> capturing_{false};
     std::atomic<bool> paused_{false};
     HANDLE outputFile_ = INVALID_HANDLE_VALUE;
-    DWORD totalDataBytes_ = 0;
+    std::atomic<uint64_t> totalDataBytes_{0};
+    std::atomic<uint64_t> framesWritten_{0};
 
     IMMDeviceEnumerator* enumerator_ = nullptr;
     IMMDevice* device_ = nullptr;

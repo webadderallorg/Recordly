@@ -892,13 +892,19 @@ app.whenReady().then(async () => {
 
 	registerExtensionIpcHandlers();
 
-	if (IS_SMOKE_EXPORT) {
+	if (IS_SMOKE_EXPORT || process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {
 		await logSmokeExportGpuDiagnostics();
-		const smokeSource =
-			process.env.RECORDLY_SMOKE_EXPORT_PROJECT ??
-			process.env.RECORDLY_SMOKE_EXPORT_INPUT ??
-			"<missing input>";
-		console.log(`[smoke-export] Starting editor smoke export for ${smokeSource}`);
+		if (IS_SMOKE_EXPORT) {
+			const smokeSource =
+				process.env.RECORDLY_SMOKE_EXPORT_PROJECT ??
+				process.env.RECORDLY_SMOKE_EXPORT_INPUT ??
+				"<missing input>";
+			console.log(`[smoke-export] Starting editor smoke export for ${smokeSource}`);
+		} else {
+			console.log(
+				`[dev-open-recording] Starting editor for ${process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT}`,
+			);
+		}
 		createEditorWindowWrapper();
 		return;
 	}

@@ -1,33 +1,33 @@
-import { constants as fsConstants } from "node:fs";
-import { existsSync } from "node:fs";
+import { existsSync, constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { app } from "electron";
 import { RECORDINGS_DIR, USER_DATA_PATH } from "../../appPaths";
 import { isSupportedLocalMediaPath } from "../../mediaTypes";
 import {
-	PROJECT_FILE_EXTENSION,
 	LEGACY_PROJECT_FILE_EXTENSIONS,
-	PROJECTS_DIRECTORY_NAME,
-	PROJECT_THUMBNAIL_SUFFIX,
-	RECENT_PROJECTS_FILE,
 	MAX_RECENT_PROJECTS,
+	PROJECT_FILE_EXTENSION,
+	PROJECT_THUMBNAIL_SUFFIX,
+	PROJECTS_DIRECTORY_NAME,
+	RECENT_PROJECTS_FILE,
 	RECORDINGS_SETTINGS_FILE,
 } from "../constants";
-import type { ProjectLibraryEntry, RecordingSessionData } from "../types";
 import {
+	approvedLocalReadPaths,
 	currentProjectPath,
 	setCurrentProjectPath,
-	setCurrentVideoPath,
 	setCurrentRecordingSession,
-	approvedLocalReadPaths,
+	setCurrentVideoPath,
 	setCustomRecordingsDir,
 	setRecordingsDirLoaded,
 } from "../state";
+import type { ProjectLibraryEntry, RecordingSessionData } from "../types";
 import {
+	getRecordingsDir,
 	normalizePath,
 	normalizeVideoSourcePath,
-	getRecordingsDir,
+	parseJsonWithByteOrderMark,
 } from "../utils";
 
 
@@ -247,7 +247,7 @@ export async function saveProjectThumbnail(projectPath: string, thumbnailDataUrl
 export async function loadRecentProjectPaths() {
 	try {
 		const content = await fs.readFile(RECENT_PROJECTS_FILE, "utf-8");
-		const parsed = JSON.parse(content) as { paths?: unknown };
+		const parsed = parseJsonWithByteOrderMark<{ paths?: unknown }>(content);
 		return Array.isArray(parsed.paths)
 			? parsed.paths.filter(
 					(value): value is string =>
@@ -364,7 +364,7 @@ export async function loadProjectFromPath(projectPath: string) {
 	let project: unknown;
 	try {
 		const content = await fs.readFile(normalizedPath, "utf-8");
-		project = JSON.parse(content);
+		project = parseJsonWithByteOrderMark(content);
 	} catch (error) {
 		return {
 			success: false,

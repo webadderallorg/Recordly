@@ -134,6 +134,7 @@ import {
 	getTelemetryPathForVideo,
 	moveFileWithOverwrite,
 	normalizeVideoSourcePath,
+	parseJsonWithByteOrderMark,
 	parseWindowId,
 } from "../utils";
 import { resolveWindowsCaptureDisplay } from "../windowsCaptureSelection";
@@ -1341,11 +1342,15 @@ export function registerRecordingHandlers(
 		const telemetryPath = getTelemetryPathForVideo(targetVideoPath);
 		try {
 			const content = await fs.readFile(telemetryPath, "utf-8");
-			const parsed = JSON.parse(content);
+			const parsed = parseJsonWithByteOrderMark<unknown>(content);
+			const parsedObject =
+				parsed && typeof parsed === "object" && !Array.isArray(parsed)
+					? (parsed as { samples?: unknown })
+					: null;
 			const rawSamples = Array.isArray(parsed)
 				? parsed
-				: Array.isArray(parsed?.samples)
-					? parsed.samples
+				: Array.isArray(parsedObject?.samples)
+					? parsedObject.samples
 					: [];
 
 			const samples: CursorTelemetryPoint[] = rawSamples

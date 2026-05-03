@@ -13,9 +13,39 @@ import type {
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
+import { ZOOM_DEPTH_SCALES } from "@/components/video-editor/types";
+import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
+import {
+	computeCursorFollowFocus,
+	createCursorFollowCameraState,
+	SNAP_TO_EDGES_RATIO_AUTO,
+} from "@/components/video-editor/videoPlayback/cursorFollowCamera";
+import { buildNativeCursorAtlas } from "@/components/video-editor/videoPlayback/cursorRenderer";
+import { computePaddedLayout } from "@/components/video-editor/videoPlayback/layoutUtils";
+import {
+	createSpringState,
+	getZoomSpringConfig,
+	resetSpringState,
+	stepSpringValue,
+} from "@/components/video-editor/videoPlayback/motionSmoothing";
+import { getCursorStyleSizeMultiplier } from "@/components/video-editor/videoPlayback/uploadedCursorAssets";
+import { findDominantRegion } from "@/components/video-editor/videoPlayback/zoomRegionUtils";
+import {
+	computeFocusFromTransform,
+	computeZoomTransform,
+} from "@/components/video-editor/videoPlayback/zoomTransform";
+import {
+	getWebcamOverlayPosition,
+	getWebcamOverlaySizePx,
+} from "@/components/video-editor/webcamOverlay";
 import { extensionHost } from "@/lib/extensions";
+import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
+import { DEFAULT_WALLPAPER_RELATIVE_PATH, isVideoWallpaperSource } from "@/lib/wallpapers";
 import { AudioProcessor, isAacAudioEncodingSupported } from "./audioEncoder";
-import { normalizeLightningRuntimePlatform } from "./backendPolicy";
+import {
+	getDefaultLightningRenderBackend,
+	normalizeLightningRuntimePlatform,
+} from "./backendPolicy";
 import { buildEditedTrackSourceSegments, classifyEditedTrackStrategy } from "./editedTrackStrategy";
 import {
 	type ExportBackpressureProfile,
@@ -38,10 +68,13 @@ import {
 	type SupportedMp4EncoderPath,
 } from "./mp4Support";
 import { VideoMuxer } from "./muxer";
+import { roundNativeStaticLayoutContentSize } from "./nativeStaticLayoutGeometry";
+import { buildNativeStaticLayoutCursorTelemetry } from "./nativeStaticLayoutTelemetry";
 import { type DecodedVideoInfo, StreamingVideoDecoder } from "./streamingDecoder";
 import type {
 	ExportConfig,
 	ExportEncodeBackend,
+	ExportFfmpegAudioMuxBreakdown,
 	ExportFinalizationStageMetrics,
 	ExportMetrics,
 	ExportProgress,
@@ -119,8 +152,40 @@ type NativeAudioPlan =
 			editedTrackSegments: Array<{ startMs: number; endMs: number; speed: number }>;
 	  };
 
+type NativeStaticLayoutBackground =
+	| {
+			backgroundColor: string;
+			backgroundImagePath?: null;
+	  }
+	| {
+			backgroundColor: string;
+			backgroundImagePath: string;
+	  };
+
+type NativeStaticLayoutWebcamOverlay = {
+	inputPath: string;
+	left: number;
+	top: number;
+	size: number;
+	radius: number;
+	shadowIntensity: number;
+	mirror: boolean;
+	timeOffsetMs: number;
+};
+
+type NativeStaticLayoutZoomSample = {
+	timeMs: number;
+	scale: number;
+	x: number;
+	y: number;
+};
+
 const NATIVE_EXPORT_ENGINE_NAME = "Breeze";
 const LIGHTNING_PIPELINE_NAME = "Lightning (Beta)";
+const STATIC_LAYOUT_CHUNK_DURATION_SEC = 120;
+const MISSING_NATIVE_WALLPAPER_FALLBACK_COLOR = "#ffffff";
+const NATIVE_STATIC_LAYOUT_MAX_EXTRACTING_PROGRESS = 95;
+const NATIVE_STATIC_LAYOUT_FRAME_COMPLETE_PROGRESS = 96;
 
 export class ModernVideoExporter {
 	private static readonly NATIVE_ENCODER_QUEUE_LIMIT = 32;
@@ -146,10 +211,13 @@ export class ModernVideoExporter {
 	private encoderName: string | null = null;
 	private backpressureProfile: ExportBackpressureProfile | null = null;
 	private nativeExportSessionId: string | null = null;
+	private nativeStaticLayoutSessionId: string | null = null;
+	private nativeStaticLayoutAverageFps: number | null = null;
 	private nativeWritePromises = new Set<Promise<void>>();
 	private nativeWriteError: Error | null = null;
 	private maxNativeWriteInFlight = 1;
 	private lastNativeExportError: string | null = null;
+	private nativeStaticLayoutSkipReason: string | null = null;
 	private nativeH264Encoder: VideoEncoder | null = null;
 	private nativeEncoderError: Error | null = null;
 	private effectiveDurationSec = 0;
@@ -186,21 +254,19 @@ export class ModernVideoExporter {
 			this.cancelled = false;
 			this.encoderError = null;
 			this.nativeEncoderError = null;
+			this.nativeStaticLayoutSkipReason = null;
 			this.totalExportStartTimeMs = this.getNowMs();
 			const backendPreference = this.config.backendPreference ?? "auto";
 			let useNativeEncoder = false;
+			let triedNativeStaticLayoutWithProbe = false;
+			const shouldDeferNativeEncoderStart = backendPreference === "breeze";
 			this.lastNativeExportError = null;
 
 			let stageStartedAt = this.getNowMs();
 			if (backendPreference === "breeze") {
-				useNativeEncoder = await this.tryStartNativeVideoExport();
-				this.nativeSessionStartTimeMs = this.getNowMs() - stageStartedAt;
-				if (!useNativeEncoder) {
-					throw new Error(
-						this.lastNativeExportError ??
-							`${NATIVE_EXPORT_ENGINE_NAME} export is unavailable for this output profile on this system.`,
-					);
-				}
+				// Defer the streaming native encoder until after metadata is known.
+				// Static-layout exports can then use the faster Windows D3D compositor
+				// instead of unnecessarily rendering every frame through JS first.
 			} else {
 				try {
 					const configuredWebCodecsPath = await this.initializeEncoder();
@@ -242,7 +308,8 @@ export class ModernVideoExporter {
 			}
 
 			this.backpressureProfile = getExportBackpressureProfile({
-				encodeBackend: useNativeEncoder ? "ffmpeg" : "webcodecs",
+				encodeBackend:
+					shouldDeferNativeEncoderStart || useNativeEncoder ? "ffmpeg" : "webcodecs",
 				width: this.config.width,
 				height: this.config.height,
 				frameRate: this.config.frameRate,
@@ -260,7 +327,8 @@ export class ModernVideoExporter {
 
 			console.log("[VideoExporter] Backpressure profile", {
 				profile: this.backpressureProfile.name,
-				encodeBackend: useNativeEncoder ? "ffmpeg" : "webcodecs",
+				encodeBackend:
+					shouldDeferNativeEncoderStart || useNativeEncoder ? "ffmpeg" : "webcodecs",
 				maxEncodeQueue:
 					this.config.maxEncodeQueue ?? this.backpressureProfile.maxEncodeQueue,
 				maxDecodeQueue:
@@ -269,6 +337,31 @@ export class ModernVideoExporter {
 					this.config.maxPendingFrames ?? this.backpressureProfile.maxPendingFrames,
 				maxInFlightNativeWrites: this.maxNativeWriteInFlight,
 			});
+
+			if (
+				(backendPreference === "auto" || backendPreference === "breeze") &&
+				!useNativeEncoder
+			) {
+				const nativeVideoInfo = await this.loadNativeStaticLayoutVideoInfo();
+				if (nativeVideoInfo) {
+					triedNativeStaticLayoutWithProbe = true;
+					const nativeAudioPlan = this.buildNativeAudioPlan(nativeVideoInfo);
+					const effectiveDuration =
+						this.getNativeStaticLayoutEffectiveDuration(nativeVideoInfo);
+					this.effectiveDurationSec = effectiveDuration;
+					const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
+					const staticLayoutResult = await this.tryExportNativeStaticLayout(
+						nativeVideoInfo,
+						nativeAudioPlan,
+						effectiveDuration,
+						totalFrames,
+					);
+					if (staticLayoutResult) {
+						this.disposeEncoder();
+						return staticLayoutResult;
+					}
+				}
+			}
 
 			this.streamingDecoder = new StreamingVideoDecoder({
 				maxDecodeQueue:
@@ -291,11 +384,44 @@ export class ModernVideoExporter {
 			this.effectiveDurationSec = effectiveDuration;
 			const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
 
+			if (
+				(backendPreference === "auto" || backendPreference === "breeze") &&
+				!useNativeEncoder &&
+				!triedNativeStaticLayoutWithProbe
+			) {
+				const staticLayoutResult = await this.tryExportNativeStaticLayout(
+					videoInfo,
+					nativeAudioPlan,
+					effectiveDuration,
+					totalFrames,
+				);
+				if (staticLayoutResult) {
+					this.disposeEncoder();
+					return staticLayoutResult;
+				}
+			}
+
+			if (shouldDeferNativeEncoderStart && !useNativeEncoder) {
+				stageStartedAt = this.getNowMs();
+				useNativeEncoder = await this.tryStartNativeVideoExport();
+				this.nativeSessionStartTimeMs = this.getNowMs() - stageStartedAt;
+				if (!useNativeEncoder) {
+					throw new Error(
+						this.lastNativeExportError ??
+							`${NATIVE_EXPORT_ENGINE_NAME} export is unavailable for this output profile on this system.`,
+					);
+				}
+			}
+
 			stageStartedAt = this.getNowMs();
 			this.renderer = new ModernFrameRenderer({
 				width: this.config.width,
 				height: this.config.height,
-				preferredRenderBackend: useNativeEncoder ? "webgl" : undefined,
+				// WebGPU + direct VideoFrame textures can flicker during raw-recording startup
+				// on some machines. Keep default Lightning renders on stable WebGL unless a
+				// caller opts into an explicit experimental renderer.
+				preferredRenderBackend:
+					this.config.preferredRenderBackend ?? getDefaultLightningRenderBackend(),
 				wallpaper: this.config.wallpaper,
 				zoomRegions: this.config.zoomRegions,
 				showShadow: this.config.showShadow,
@@ -713,6 +839,40 @@ export class ModernVideoExporter {
 		return this.config.videoUrl ? getLocalFilePath(this.config.videoUrl) : null;
 	}
 
+	private getNativeWebcamSourcePath(): string | null {
+		const source = this.config.webcam?.sourcePath || this.config.webcamUrl || "";
+		return source ? getLocalFilePath(source) : null;
+	}
+
+	private async loadNativeStaticLayoutVideoInfo(): Promise<DecodedVideoInfo | null> {
+		if (typeof window === "undefined" || !window.electronAPI?.probeNativeVideoMetadata) {
+			return null;
+		}
+
+		const sourcePath = this.getNativeVideoSourcePath();
+		if (!sourcePath) {
+			return null;
+		}
+
+		const startedAt = this.getNowMs();
+		try {
+			const result = await window.electronAPI.probeNativeVideoMetadata(sourcePath);
+			this.metadataLoadTimeMs = this.getNowMs() - startedAt;
+			if (!result.success || !result.metadata) {
+				console.info("[VideoExporter] Native metadata probe unavailable", {
+					error: result.error,
+				});
+				return null;
+			}
+
+			return result.metadata;
+		} catch (error) {
+			this.metadataLoadTimeMs = this.getNowMs() - startedAt;
+			console.info("[VideoExporter] Native metadata probe failed", error);
+			return null;
+		}
+	}
+
 	private buildNativeTrimSegments(durationMs: number): Array<{ startMs: number; endMs: number }> {
 		const trimRegions = [...(this.config.trimRegions ?? [])].sort(
 			(a, b) => a.startMs - b.startMs,
@@ -738,6 +898,18 @@ export class ModernVideoExporter {
 		}
 
 		return segments.filter((segment) => segment.endMs - segment.startMs > 0.5);
+	}
+
+	private getNativeStaticLayoutEffectiveDuration(videoInfo: DecodedVideoInfo): number {
+		const sourceDurationSec = getEffectiveVideoStreamDurationSeconds({
+			duration: videoInfo.duration,
+			streamDuration: videoInfo.streamDuration,
+		});
+		const trimSegments = this.buildNativeTrimSegments(sourceDurationSec * 1000);
+		return trimSegments.reduce(
+			(totalSec, segment) => totalSec + (segment.endMs - segment.startMs) / 1000,
+			0,
+		);
 	}
 
 	private buildNativeAudioPlan(videoInfo: DecodedVideoInfo): NativeAudioPlan {
@@ -849,6 +1021,736 @@ export class ModernVideoExporter {
 			audioMode: "copy-source",
 			audioSourcePath: primaryAudioSourcePath,
 		};
+	}
+
+	private isDefaultCropRegion(): boolean {
+		const crop = this.config.cropRegion;
+		const epsilon = 0.0001;
+		return (
+			Math.abs(crop.x) <= epsilon &&
+			Math.abs(crop.y) <= epsilon &&
+			Math.abs(crop.width - 1) <= epsilon &&
+			Math.abs(crop.height - 1) <= epsilon
+		);
+	}
+
+	private canUseNativeStaticTailTrim(
+		videoInfo: DecodedVideoInfo,
+		effectiveDurationSec: number,
+	): boolean {
+		const trimRegions = this.config.trimRegions ?? [];
+		if (trimRegions.length === 0) {
+			return true;
+		}
+
+		if (trimRegions.length !== 1) {
+			return false;
+		}
+
+		const [trim] = trimRegions;
+		const sourceDurationMs = Math.max(
+			0,
+			Math.round((videoInfo.streamDuration ?? videoInfo.duration) * 1000),
+		);
+		const outputDurationMs = Math.max(0, Math.round(effectiveDurationSec * 1000));
+		const toleranceMs = 250;
+
+		return (
+			Math.abs(trim.startMs - outputDurationMs) <= toleranceMs &&
+			Math.abs(trim.endMs - sourceDurationMs) <= toleranceMs
+		);
+	}
+
+	private getNativeStaticLayoutSkipReason(
+		audioPlan: NativeAudioPlan,
+		videoInfo: DecodedVideoInfo,
+		effectiveDurationSec: number,
+	): string | null {
+		if (
+			typeof window === "undefined" ||
+			!window.electronAPI?.nativeStaticLayoutExport ||
+			!window.electronAPI?.nativeStaticLayoutExportCancel
+		) {
+			return "native-static-api-unavailable";
+		}
+
+		if (this.config.width % 2 !== 0 || this.config.height % 2 !== 0) {
+			return "odd-output-dimensions";
+		}
+
+		if (
+			audioPlan.audioMode !== "none" &&
+			audioPlan.audioMode !== "copy-source" &&
+			!(
+				audioPlan.audioMode === "trim-source" &&
+				this.canUseNativeStaticTailTrim(videoInfo, effectiveDurationSec)
+			)
+		) {
+			return `unsupported-audio-mode:${audioPlan.audioMode}`;
+		}
+
+		const trimRegions = this.config.trimRegions ?? [];
+		const hasZoomRegions = (this.config.zoomRegions ?? []).length > 0;
+		if (
+			(trimRegions.length > 0 &&
+				!this.canUseNativeStaticTailTrim(videoInfo, effectiveDurationSec)) ||
+			(this.config.speedRegions ?? []).length > 0 ||
+			(hasZoomRegions && this.config.experimentalNativeExport !== true) ||
+			(this.config.annotationRegions ?? []).length > 0 ||
+			(this.config.autoCaptions ?? []).length > 0 ||
+			(this.config.audioRegions ?? []).length > 0
+		) {
+			return "timeline-edits-present";
+		}
+
+		if (this.config.webcam?.enabled && !this.getNativeWebcamSourcePath()) {
+			return "unsupported-webcam-source";
+		}
+
+		const hasCursorOverlay =
+			this.config.showCursor === true && (this.config.cursorTelemetry ?? []).length > 0;
+		if (
+			this.config.frame ||
+			this.config.backgroundBlur > 0 ||
+			(hasCursorOverlay && this.config.experimentalNativeExport !== true)
+		) {
+			return "dynamic-overlay-present";
+		}
+
+		return this.isDefaultCropRegion() ? null : "non-default-crop";
+	}
+
+	private async resolveNativeStaticLayoutBackground(): Promise<NativeStaticLayoutBackground | null> {
+		const wallpaper = this.config.wallpaper?.trim() ?? "";
+		if (/^#?[0-9a-f]{6}$/i.test(wallpaper)) {
+			return {
+				backgroundColor: wallpaper.startsWith("#") ? wallpaper : `#${wallpaper}`,
+				backgroundImagePath: null,
+			};
+		}
+
+		if (
+			!wallpaper ||
+			isVideoWallpaperSource(wallpaper) ||
+			wallpaper.startsWith("data:") ||
+			wallpaper.startsWith("blob:") ||
+			wallpaper.startsWith("http") ||
+			wallpaper.startsWith("linear-gradient") ||
+			wallpaper.startsWith("radial-gradient")
+		) {
+			return null;
+		}
+
+		if (wallpaper.startsWith("/wallpapers/") || wallpaper.startsWith("/app-icons/")) {
+			const assetPath = await this.resolveNativeBundledAssetPath(wallpaper);
+			if (assetPath) {
+				return { backgroundColor: "#101010", backgroundImagePath: assetPath };
+			}
+
+			const fallbackAssetPath = await this.resolveNativeBundledAssetPath(
+				`/${DEFAULT_WALLPAPER_RELATIVE_PATH}`,
+			);
+			return fallbackAssetPath
+				? { backgroundColor: "#101010", backgroundImagePath: fallbackAssetPath }
+				: {
+						backgroundColor: MISSING_NATIVE_WALLPAPER_FALLBACK_COLOR,
+						backgroundImagePath: null,
+					};
+		}
+
+		const localPath = getLocalFilePath(wallpaper);
+		return localPath ? { backgroundColor: "#101010", backgroundImagePath: localPath } : null;
+	}
+
+	private async resolveNativeBundledAssetPath(assetPath: string): Promise<string | null> {
+		const normalizedAssetPath = assetPath.replace(/^\/+/, "");
+		const [assetDirectory, fileName] = normalizedAssetPath.split("/");
+		if (!assetDirectory || !fileName) {
+			return null;
+		}
+
+		try {
+			const result = await window.electronAPI?.listAssetDirectory?.(assetDirectory);
+			if (
+				result?.success &&
+				result.files &&
+				!result.files.includes(decodeURIComponent(fileName))
+			) {
+				console.warn("[VideoExporter] Native static layout wallpaper asset is missing", {
+					assetPath,
+				});
+				return null;
+			}
+		} catch {
+			// Keep native export opportunistic when directory probing is unavailable.
+		}
+
+		const assetBasePath = await window.electronAPI?.getAssetBasePath?.();
+		if (!assetBasePath) {
+			return null;
+		}
+
+		const assetUrl = new URL(normalizedAssetPath, assetBasePath).toString();
+		return getLocalFilePath(assetUrl);
+	}
+
+	private getNativeStaticLayoutAudioOptions(audioPlan: NativeAudioPlan) {
+		if (audioPlan.audioMode === "none") {
+			return { audioMode: "none" as const };
+		}
+
+		if (audioPlan.audioMode === "copy-source" || audioPlan.audioMode === "trim-source") {
+			return {
+				audioMode: audioPlan.audioMode,
+				audioSourcePath: audioPlan.audioSourcePath,
+				trimSegments: audioPlan.trimSegments,
+			};
+		}
+
+		return null;
+	}
+
+	private getNativeStaticLayoutWebcamOverlay(): NativeStaticLayoutWebcamOverlay | null {
+		const webcam = this.config.webcam;
+		if (!webcam?.enabled) {
+			return null;
+		}
+
+		const inputPath = this.getNativeWebcamSourcePath();
+		if (!inputPath) {
+			return null;
+		}
+
+		const margin = webcam.margin ?? 24;
+		const rawSize = getWebcamOverlaySizePx({
+			containerWidth: this.config.width,
+			containerHeight: this.config.height,
+			sizePercent: webcam.size ?? 40,
+			margin,
+			zoomScale: 1,
+			reactToZoom: webcam.reactToZoom ?? true,
+		});
+		const size = Math.max(2, Math.round(rawSize / 2) * 2);
+		const position = getWebcamOverlayPosition({
+			containerWidth: this.config.width,
+			containerHeight: this.config.height,
+			size,
+			margin,
+			positionPreset: webcam.positionPreset ?? webcam.corner,
+			positionX: webcam.positionX ?? 1,
+			positionY: webcam.positionY ?? 1,
+			legacyCorner: webcam.corner,
+		});
+
+		return {
+			inputPath,
+			left: Math.round(position.x),
+			top: Math.round(position.y),
+			size,
+			radius: Math.max(0, webcam.cornerRadius ?? 18),
+			shadowIntensity: Math.min(1, Math.max(0, webcam.shadow ?? 0)),
+			mirror: webcam.mirror !== false,
+			timeOffsetMs: Number.isFinite(webcam.timeOffsetMs) ? webcam.timeOffsetMs : 0,
+		};
+	}
+
+	private getNativeStaticLayoutCursorTelemetry():
+		| Array<{
+				timeMs: number;
+				cx: number;
+				cy: number;
+				cursorType?: CursorTelemetryPoint["cursorType"];
+				cursorTypeIndex?: number;
+				bounceScale?: number;
+		  }>
+		| undefined {
+		const telemetry = this.config.cursorTelemetry ?? [];
+		if (this.config.showCursor !== true || telemetry.length === 0) {
+			return undefined;
+		}
+
+		return buildNativeStaticLayoutCursorTelemetry(telemetry, {
+			frameRate: this.config.frameRate,
+			durationSec: this.effectiveDurationSec || 0,
+			clickBounce: this.config.cursorClickBounce,
+			clickBounceDurationMs: this.config.cursorClickBounceDuration,
+		});
+	}
+
+	private getNativeStaticLayoutCursorSize(contentWidth: number) {
+		const cursorStyle = this.config.cursorStyle ?? "tahoe";
+		const viewportScale = Math.max(0.55, contentWidth / 1920);
+		return (
+			28 *
+			(this.config.cursorSize ?? 3) *
+			viewportScale *
+			getCursorStyleSizeMultiplier(cursorStyle)
+		);
+	}
+
+	private getNativeStaticLayoutZoomTelemetry(
+		layout: ReturnType<typeof computePaddedLayout>,
+		totalFrames: number,
+		cursorTelemetry:
+			| Array<{
+					timeMs: number;
+					cx: number;
+					cy: number;
+					cursorType?: CursorTelemetryPoint["cursorType"];
+					cursorTypeIndex?: number;
+					bounceScale?: number;
+			  }>
+			| undefined,
+	): NativeStaticLayoutZoomSample[] | undefined {
+		const zoomRegions = this.config.zoomRegions ?? [];
+		if (zoomRegions.length === 0 || totalFrames <= 0) {
+			return undefined;
+		}
+
+		const stageSize = { width: this.config.width, height: this.config.height };
+		const baseMask = {
+			x: layout.centerOffsetX,
+			y: layout.centerOffsetY,
+			width: layout.croppedDisplayWidth,
+			height: layout.croppedDisplayHeight,
+			sourceCrop: this.config.cropRegion,
+		};
+		const cursorFollowCamera = createCursorFollowCameraState();
+		const springScale = createSpringState(1);
+		const springX = createSpringState(0);
+		const springY = createSpringState(0);
+		const zoomSpringConfig = getZoomSpringConfig(this.config.zoomSmoothness);
+		const frameDurationMs = 1000 / Math.max(1, this.config.frameRate);
+		const samples: NativeStaticLayoutZoomSample[] = [];
+		let lastContentTimeMs: number | null = null;
+		let appliedScale = 1;
+		let appliedX = 0;
+		let appliedY = 0;
+
+		for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
+			const timeMs = frameIndex * frameDurationMs;
+			const { region, strength, blendedScale, transition } = findDominantRegion(
+				zoomRegions,
+				timeMs,
+				{
+					connectZooms: this.config.connectZooms,
+				},
+			);
+
+			let targetScale = 1;
+			let targetFocus = DEFAULT_FOCUS;
+			let targetProgress = 0;
+
+			if (region && strength > 0) {
+				const zoomScale = blendedScale ?? ZOOM_DEPTH_SCALES[region.depth];
+				let regionFocus = region.focus;
+				if (
+					!this.config.zoomClassicMode &&
+					region.mode !== "manual" &&
+					(cursorTelemetry?.length ?? 0) > 0
+				) {
+					regionFocus = computeCursorFollowFocus(
+						cursorFollowCamera,
+						cursorTelemetry ?? [],
+						timeMs,
+						zoomScale,
+						strength,
+						region.focus,
+						{ snapToEdgesRatio: SNAP_TO_EDGES_RATIO_AUTO },
+					);
+				}
+
+				targetScale = zoomScale;
+				targetFocus = regionFocus;
+				targetProgress = strength;
+
+				if (transition) {
+					const startTransform = computeZoomTransform({
+						stageSize,
+						baseMask,
+						zoomScale: transition.startScale,
+						zoomProgress: 1,
+						focusX: transition.startFocus.cx,
+						focusY: transition.startFocus.cy,
+					});
+					const endTransform = computeZoomTransform({
+						stageSize,
+						baseMask,
+						zoomScale: transition.endScale,
+						zoomProgress: 1,
+						focusX: transition.endFocus.cx,
+						focusY: transition.endFocus.cy,
+					});
+					const interpolatedTransform = {
+						scale:
+							startTransform.scale +
+							(endTransform.scale - startTransform.scale) * transition.progress,
+						x:
+							startTransform.x +
+							(endTransform.x - startTransform.x) * transition.progress,
+						y:
+							startTransform.y +
+							(endTransform.y - startTransform.y) * transition.progress,
+					};
+
+					targetScale = interpolatedTransform.scale;
+					targetFocus = computeFocusFromTransform({
+						stageSize,
+						baseMask,
+						zoomScale: interpolatedTransform.scale,
+						x: interpolatedTransform.x,
+						y: interpolatedTransform.y,
+					});
+					targetProgress = 1;
+				}
+			}
+
+			const projectedTransform = computeZoomTransform({
+				stageSize,
+				baseMask,
+				zoomScale: targetScale,
+				zoomProgress: targetProgress,
+				focusX: targetFocus.cx,
+				focusY: targetFocus.cy,
+			});
+			const deltaMs =
+				lastContentTimeMs !== null ? timeMs - lastContentTimeMs : frameDurationMs;
+			lastContentTimeMs = timeMs;
+
+			if (this.config.zoomClassicMode) {
+				appliedScale = projectedTransform.scale;
+				appliedX = projectedTransform.x;
+				appliedY = projectedTransform.y;
+				resetSpringState(springScale, appliedScale);
+				resetSpringState(springX, appliedX);
+				resetSpringState(springY, appliedY);
+			} else {
+				appliedScale = stepSpringValue(
+					springScale,
+					projectedTransform.scale,
+					deltaMs,
+					zoomSpringConfig,
+				);
+				appliedX = stepSpringValue(
+					springX,
+					projectedTransform.x,
+					deltaMs,
+					zoomSpringConfig,
+				);
+				appliedY = stepSpringValue(
+					springY,
+					projectedTransform.y,
+					deltaMs,
+					zoomSpringConfig,
+				);
+			}
+
+			samples.push({
+				timeMs,
+				scale: appliedScale,
+				x: appliedX,
+				y: appliedY,
+			});
+		}
+
+		return samples;
+	}
+
+	private async tryExportNativeStaticLayout(
+		videoInfo: DecodedVideoInfo,
+		audioPlan: NativeAudioPlan,
+		effectiveDuration: number,
+		totalFrames: number,
+	): Promise<ExportResult | null> {
+		const skipReason = this.getNativeStaticLayoutSkipReason(
+			audioPlan,
+			videoInfo,
+			effectiveDuration,
+		);
+		if (skipReason) {
+			this.nativeStaticLayoutSkipReason = skipReason;
+			console.info("[VideoExporter] Native static layout skipped", {
+				reason: skipReason,
+				audioMode: audioPlan.audioMode,
+				zoomRegions: this.config.zoomRegions?.length ?? 0,
+				speedRegions: this.config.speedRegions?.length ?? 0,
+				audioRegions: this.config.audioRegions?.length ?? 0,
+				annotationRegions: this.config.annotationRegions?.length ?? 0,
+				hasFrame: Boolean(this.config.frame),
+				backgroundBlur: this.config.backgroundBlur,
+				hasCursorOverlay:
+					this.config.showCursor === true &&
+					(this.config.cursorTelemetry?.length ?? 0) > 0,
+				experimentalNativeExport: this.config.experimentalNativeExport === true,
+			});
+			return null;
+		}
+
+		const sourcePath = this.getNativeVideoSourcePath();
+		const audioOptions = this.getNativeStaticLayoutAudioOptions(audioPlan);
+		if (!sourcePath || !audioOptions) {
+			this.nativeStaticLayoutSkipReason = !sourcePath
+				? "missing-source-path"
+				: "missing-audio-options";
+			return null;
+		}
+		const background = await this.resolveNativeStaticLayoutBackground();
+		if (!background) {
+			this.nativeStaticLayoutSkipReason = "unsupported-background";
+			return null;
+		}
+
+		const layout = computePaddedLayout({
+			width: this.config.width,
+			height: this.config.height,
+			padding: this.config.padding ?? 0,
+			cropRegion: this.config.cropRegion,
+			videoWidth: videoInfo.width,
+			videoHeight: videoInfo.height,
+		});
+		const contentSize = roundNativeStaticLayoutContentSize({
+			width: layout.fullVideoDisplayWidth,
+			height: layout.fullVideoDisplayHeight,
+		});
+		const contentWidth = contentSize.width;
+		const contentHeight = contentSize.height;
+		if (
+			contentWidth > this.config.width ||
+			contentHeight > this.config.height ||
+			!Number.isFinite(effectiveDuration) ||
+			effectiveDuration <= 0
+		) {
+			this.nativeStaticLayoutSkipReason = "invalid-layout-or-duration";
+			return null;
+		}
+
+		const offsetX = Math.round(
+			layout.centerOffsetX + layout.croppedDisplayWidth / 2 - contentWidth / 2,
+		);
+		const offsetY = Math.round(
+			layout.centerOffsetY + layout.croppedDisplayHeight / 2 - contentHeight / 2,
+		);
+		const previewWidth = this.config.previewWidth || 1920;
+		const previewHeight = this.config.previewHeight || 1080;
+		const canvasScaleFactor = Math.min(
+			this.config.width / previewWidth,
+			this.config.height / previewHeight,
+		);
+		const borderRadius = Math.max(0, (this.config.borderRadius ?? 0) * canvasScaleFactor);
+		const shadowIntensity = this.config.showShadow
+			? Math.min(1, Math.max(0, this.config.shadowIntensity))
+			: 0;
+		const webcamOverlay = this.getNativeStaticLayoutWebcamOverlay();
+		const cursorTelemetry = this.getNativeStaticLayoutCursorTelemetry();
+		const zoomTelemetry = this.getNativeStaticLayoutZoomTelemetry(
+			layout,
+			totalFrames,
+			cursorTelemetry,
+		);
+		const cursorAtlas =
+			cursorTelemetry && cursorTelemetry.length > 0
+				? await buildNativeCursorAtlas(this.config.cursorStyle ?? "tahoe").catch(
+						(error) => {
+							console.warn("[VideoExporter] Native cursor atlas unavailable", error);
+							return null;
+						},
+					)
+				: null;
+		if (cursorTelemetry && cursorTelemetry.length > 0 && !cursorAtlas) {
+			this.nativeStaticLayoutSkipReason = "cursor-atlas-unavailable";
+			return null;
+		}
+		const startedAt = this.getNowMs();
+		const sessionId = `recordly-static-layout-${Date.now()}-${Math.random()
+			.toString(36)
+			.slice(2, 8)}`;
+		const previousEncodeBackend = this.encodeBackend;
+		const previousEncoderName = this.encoderName;
+		const restoreEncoderState = () => {
+			this.encodeBackend = previousEncodeBackend;
+			this.encoderName = previousEncoderName;
+		};
+
+		this.exportStartTimeMs = startedAt;
+		this.lastThroughputLogTimeMs = startedAt;
+		this.lastProgressSampleTimeMs = startedAt;
+		this.lastProgressSampleFrame = 0;
+		this.nativeStaticLayoutSessionId = sessionId;
+		this.nativeStaticLayoutSkipReason = null;
+		this.nativeStaticLayoutAverageFps = null;
+		this.encodeBackend = "ffmpeg";
+		const runtimePlatform =
+			typeof navigator !== "undefined"
+				? normalizeLightningRuntimePlatform(navigator.userAgent)
+				: "unknown";
+		this.encoderName =
+			this.config.experimentalNativeExport === true && runtimePlatform === "win32"
+				? "windows-native-compositor"
+				: "static-layout-h264-nvenc";
+		this.reportProgress(0, totalFrames, "extracting");
+		let unsubscribeNativeProgress: (() => void) | undefined;
+		unsubscribeNativeProgress = window.electronAPI.onNativeStaticLayoutExportProgress?.(
+			(progress) => {
+				if (progress.sessionId && progress.sessionId !== sessionId) {
+					return;
+				}
+				if (
+					!Number.isFinite(progress.currentFrame) ||
+					!Number.isFinite(progress.totalFrames)
+				) {
+					return;
+				}
+
+				const nativeCurrentFrame = Math.floor(progress.currentFrame);
+				const nativeTotalFrames = Math.max(1, Math.floor(progress.totalFrames));
+				const nativeFramesComplete = nativeCurrentFrame >= nativeTotalFrames;
+				const maxExtractingFrame = Math.max(
+					0,
+					Math.min(
+						totalFrames - 1,
+						Math.floor(totalFrames * (NATIVE_STATIC_LAYOUT_MAX_EXTRACTING_PROGRESS / 100)),
+					),
+				);
+				const currentFrame = Math.min(
+					maxExtractingFrame,
+					Math.max(this.processedFrameCount, nativeCurrentFrame),
+				);
+				if (
+					progress.backend === "nvidia-cuda-compositor" ||
+					progress.backend === "windows-d3d11-compositor"
+				) {
+					this.encoderName = progress.backend;
+				}
+				this.nativeStaticLayoutAverageFps =
+					typeof progress.instantFps === "number" &&
+					Number.isFinite(progress.instantFps) &&
+					progress.instantFps > 0
+						? progress.instantFps
+						: typeof progress.averageFps === "number" &&
+							  Number.isFinite(progress.averageFps) &&
+							  progress.averageFps > 0
+							? progress.averageFps
+							: null;
+				this.processedFrameCount = currentFrame;
+				if (nativeFramesComplete) {
+					this.reportFinalizingProgress(
+						totalFrames,
+						NATIVE_STATIC_LAYOUT_FRAME_COMPLETE_PROGRESS,
+					);
+				} else {
+					this.reportProgress(currentFrame, totalFrames, "extracting");
+				}
+			},
+		);
+
+		try {
+			const result = await window.electronAPI.nativeStaticLayoutExport({
+				sessionId,
+				inputPath: sourcePath,
+				width: this.config.width,
+				height: this.config.height,
+				frameRate: this.config.frameRate,
+				bitrate: this.config.bitrate,
+				encodingMode: this.config.encodingMode ?? "balanced",
+				durationSec: effectiveDuration,
+				contentWidth,
+				contentHeight,
+				offsetX,
+				offsetY,
+				backgroundColor: background.backgroundColor,
+				backgroundImagePath: background.backgroundImagePath ?? null,
+				borderRadius,
+				shadowIntensity,
+				webcamInputPath: webcamOverlay?.inputPath ?? null,
+				webcamLeft: webcamOverlay?.left,
+				webcamTop: webcamOverlay?.top,
+				webcamSize: webcamOverlay?.size,
+				webcamRadius: webcamOverlay?.radius,
+				webcamShadowIntensity: webcamOverlay?.shadowIntensity,
+				webcamMirror: webcamOverlay?.mirror,
+				webcamTimeOffsetMs: webcamOverlay?.timeOffsetMs,
+				cursorTelemetry,
+				cursorSize: this.getNativeStaticLayoutCursorSize(contentWidth),
+				cursorAtlasPngDataUrl: cursorAtlas?.dataUrl ?? null,
+				cursorAtlasEntries: cursorAtlas?.entries,
+				zoomTelemetry,
+				chunkDurationSec: STATIC_LAYOUT_CHUNK_DURATION_SEC,
+				experimentalWindowsGpuCompositor: this.config.experimentalNativeExport === true,
+				audioOptions: {
+					...audioOptions,
+					outputDurationSec: effectiveDuration,
+				},
+			});
+
+			if (this.cancelled) {
+				return {
+					success: false,
+					error: "Export cancelled",
+					metrics: this.buildExportMetrics(),
+				};
+			}
+
+			if (!result.success || !result.tempPath) {
+				console.warn("[VideoExporter] Native static layout export unavailable", {
+					error: result.error,
+				});
+				restoreEncoderState();
+				return null;
+			}
+
+			const elapsedMs = this.getNowMs() - startedAt;
+			this.encoderName = result.encoderName ?? "static-layout-h264-nvenc";
+			this.nativeStaticLayoutAverageFps = null;
+			this.processedFrameCount = totalFrames;
+			this.decodeLoopTimeMs = result.metrics?.chunkExecMs ?? elapsedMs;
+			this.finalizationTimeMs = Math.max(0, elapsedMs - this.decodeLoopTimeMs);
+			this.finalizationStageMs.nativeExportFinalizeMs = elapsedMs;
+			if (result.metrics) {
+				const metrics: ExportFfmpegAudioMuxBreakdown = {
+					tempVideoWriteMs: result.metrics.tempVideoWriteMs,
+					tempEditedAudioWriteMs: result.metrics.tempEditedAudioWriteMs,
+					ffmpegExecMs: result.metrics.ffmpegExecMs,
+					muxedVideoReadMs: result.metrics.muxedVideoReadMs,
+					tempVideoBytes: result.metrics.tempVideoBytes,
+					tempEditedAudioBytes: result.metrics.tempEditedAudioBytes,
+					muxedVideoBytes: result.metrics.muxedVideoBytes,
+					chunkCount: result.metrics.chunkCount,
+					chunkDurationSec: result.metrics.chunkDurationSec,
+					chunkExecMs: result.metrics.chunkExecMs,
+					concatExecMs: result.metrics.concatExecMs,
+					staticAssetExecMs: result.metrics.staticAssetExecMs,
+					fallbackChunkCount: result.metrics.fallbackChunkCount,
+					videoOnlyBytes: result.metrics.videoOnlyBytes,
+					chunks: result.metrics.chunks,
+				};
+				this.finalizationStageMs.ffmpegAudioMuxBreakdown = metrics;
+			}
+			this.reportFinalizingProgress(totalFrames, 99);
+
+			return {
+				success: true,
+				tempFilePath: result.tempPath,
+				metrics: this.buildExportMetrics(),
+			};
+		} catch (error) {
+			if (this.cancelled) {
+				return {
+					success: false,
+					error: "Export cancelled",
+					metrics: this.buildExportMetrics(),
+				};
+			}
+
+			console.warn("[VideoExporter] Native static layout export failed; falling back", error);
+			this.nativeStaticLayoutSkipReason = "native-static-runtime-failed";
+			restoreEncoderState();
+			return null;
+		} finally {
+			unsubscribeNativeProgress?.();
+			if (this.nativeStaticLayoutSessionId === sessionId) {
+				this.nativeStaticLayoutSessionId = null;
+			}
+		}
 	}
 
 	private async tryStartNativeVideoExport(): Promise<boolean> {
@@ -1091,6 +1993,7 @@ export class ModernVideoExporter {
 						audioPlan.strategy === "filtergraph-fast-path"
 							? audioPlan.editedTrackSegments
 							: undefined,
+					outputDurationSec: this.effectiveDurationSec,
 					audioSourceSampleRate:
 						audioPlan.audioMode === "edited-track" &&
 						audioPlan.strategy === "filtergraph-fast-path"
@@ -1332,7 +2235,15 @@ export class ModernVideoExporter {
 		}
 		this.lastFinalizationRenderProgress = nextProgress.lastRenderProgress;
 		this.lastFinalizationAudioProgress = nextProgress.lastAudioProgress;
-		this.reportProgress(totalFrames, totalFrames, "finalizing", renderProgress, audioProgress);
+		this.reportProgress(
+			totalFrames,
+			totalFrames,
+			"finalizing",
+			nextProgress.lastRenderProgress,
+			typeof audioProgress === "number" && Number.isFinite(audioProgress)
+				? nextProgress.lastAudioProgress
+				: undefined,
+		);
 	}
 
 	private reportProgress(
@@ -1348,6 +2259,7 @@ export class ModernVideoExporter {
 		const sampleElapsedMs = Math.max(nowMs - this.lastProgressSampleTimeMs, 1);
 		const sampleFrameDelta = Math.max(currentFrame - this.lastProgressSampleFrame, 0);
 		const sampleRenderFps = (sampleFrameDelta * 1000) / sampleElapsedMs;
+		const displayedRenderFps = this.nativeStaticLayoutAverageFps ?? sampleRenderFps;
 		const remainingFrames = Math.max(totalFrames - currentFrame, 0);
 		const estimatedTimeRemaining =
 			averageRenderFps > 0 ? remainingFrames / averageRenderFps : 0;
@@ -1374,6 +2286,7 @@ export class ModernVideoExporter {
 					elapsedSec: Number(elapsedSeconds.toFixed(2)),
 					averageRenderFps: Number(averageRenderFps.toFixed(1)),
 					sampleRenderFps: Number(sampleRenderFps.toFixed(1)),
+					displayedRenderFps: Number(displayedRenderFps.toFixed(1)),
 					renderBackend: this.renderBackend ?? undefined,
 					encodeBackend: this.encodeBackend ?? undefined,
 					encoderName: this.encoderName ?? undefined,
@@ -1413,10 +2326,11 @@ export class ModernVideoExporter {
 				totalFrames,
 				percentage,
 				estimatedTimeRemaining,
-				renderFps: sampleRenderFps,
+				renderFps: displayedRenderFps,
 				renderBackend: this.renderBackend ?? undefined,
 				encodeBackend: this.encodeBackend ?? undefined,
 				encoderName: this.encoderName ?? undefined,
+				nativeStaticLayoutSkipReason: this.nativeStaticLayoutSkipReason ?? undefined,
 				phase,
 				renderProgress: safeRenderProgress,
 				audioProgress,
@@ -1450,6 +2364,7 @@ export class ModernVideoExporter {
 			encodeBackend: this.encodeBackend ?? undefined,
 			encoderName: this.encoderName ?? undefined,
 			backpressureProfile: this.backpressureProfile?.name,
+			nativeStaticLayoutSkipReason: this.nativeStaticLayoutSkipReason ?? undefined,
 			effectiveDurationSec: this.effectiveDurationSec || undefined,
 			finalizationStageMs: hasFinalizationStageMetrics ? this.finalizationStageMs : undefined,
 			averageFrameCallbackMs:
@@ -1728,6 +2643,12 @@ export class ModernVideoExporter {
 		if (nativeExportSessionId && typeof window !== "undefined") {
 			void window.electronAPI?.nativeVideoExportCancel?.(nativeExportSessionId);
 		}
+
+		const nativeStaticLayoutSessionId = this.nativeStaticLayoutSessionId;
+		this.nativeStaticLayoutSessionId = null;
+		if (nativeStaticLayoutSessionId && typeof window !== "undefined") {
+			void window.electronAPI?.nativeStaticLayoutExportCancel?.(nativeStaticLayoutSessionId);
+		}
 	}
 
 	private cleanup(): void {
@@ -1805,6 +2726,7 @@ export class ModernVideoExporter {
 		this.renderBackend = null;
 		this.encodeBackend = null;
 		this.encoderName = null;
+		this.nativeStaticLayoutAverageFps = null;
 		this.backpressureProfile = null;
 		this.lastNativeExportError = null;
 	}

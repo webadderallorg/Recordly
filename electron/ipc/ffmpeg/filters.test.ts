@@ -70,6 +70,34 @@ describe("getAudioSyncAdjustment", () => {
 		]);
 	});
 
+	it("pads the remaining tail after a measured late start delay", () => {
+		const filterParts: string[] = [];
+		appendSyncedAudioFilter(filterParts, "[1:a]", "aout", {
+			mode: "delay",
+			delayMs: 18051,
+			tempoRatio: 1,
+			durationDeltaMs: 1631070,
+		});
+
+		expect(filterParts).toEqual([
+			"[1:a]adelay=18051|18051,apad=pad_dur=1613.019,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS[aout]",
+		]);
+	});
+
+	it("does not pad when a measured late start already explains the duration gap", () => {
+		const filterParts: string[] = [];
+		appendSyncedAudioFilter(filterParts, "[1:a]", "aout", {
+			mode: "delay",
+			delayMs: 10000,
+			tempoRatio: 1,
+			durationDeltaMs: 10000,
+		});
+
+		expect(filterParts).toEqual([
+			"[1:a]adelay=10000|10000,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS[aout]",
+		]);
+	});
+
 	it("can add a small gain boost before resampling", () => {
 		const filterParts: string[] = [];
 		appendSyncedAudioFilter(

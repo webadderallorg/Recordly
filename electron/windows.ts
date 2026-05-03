@@ -48,6 +48,13 @@ function getEditorWindowQuery(): Record<string, string> {
 		windowType: "editor",
 	};
 
+	if (process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {
+		query.devOpenInput = process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT;
+	}
+	if (process.env.RECORDLY_DEV_OPEN_RECORDING_WEBCAM) {
+		query.devOpenWebcam = process.env.RECORDLY_DEV_OPEN_RECORDING_WEBCAM;
+	}
+
 	if (process.env.RECORDLY_SMOKE_EXPORT === "1") {
 		query.smokeExport = "1";
 		if (process.env.RECORDLY_SMOKE_EXPORT_INPUT) {
@@ -79,6 +86,9 @@ function getEditorWindowQuery(): Record<string, string> {
 		}
 		if (process.env.RECORDLY_SMOKE_EXPORT_BACKEND) {
 			query.smokeBackendPreference = process.env.RECORDLY_SMOKE_EXPORT_BACKEND;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_RENDER_BACKEND) {
+			query.smokeRenderBackend = process.env.RECORDLY_SMOKE_EXPORT_RENDER_BACKEND;
 		}
 		if (process.env.RECORDLY_SMOKE_EXPORT_MAX_ENCODE_QUEUE) {
 			query.smokeMaxEncodeQueue = process.env.RECORDLY_SMOKE_EXPORT_MAX_ENCODE_QUEUE;

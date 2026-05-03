@@ -20,6 +20,7 @@
     "dist",
     "dist-electron",
     "electron/native",
+    "!electron/native/**/build/**",
     "!*.png",
     "!preview*.png",
     "!*.md",

@@ -2,7 +2,12 @@ import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
-import { selectRecordingMimeType } from "./recordingMimeType";
+import {
+	getVideoExtensionForMimeType,
+	isWebmMimeType,
+	selectRecordingMimeType,
+	selectWebcamRecordingMimeType,
+} from "./recordingMimeType";
 
 const TARGET_FRAME_RATE = 60;
 const TARGET_WIDTH = 3840;
@@ -288,6 +293,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 	const selectMimeType = useCallback(() => {
 		return selectRecordingMimeType();
+	}, []);
+
+	const selectWebcamMimeType = useCallback(() => {
+		return selectWebcamRecordingMimeType();
 	}, []);
 
 	const computeBitrate = (width: number, height: number) => {
@@ -576,7 +585,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				audio: false,
 			});
 
-			const mimeType = selectMimeType();
+			const mimeType = selectWebcamMimeType();
 			webcamChunks.current = [];
 			resolvedWebcamPath.current = null;
 			webcamStopPromise.current = new Promise((resolve) => {
@@ -601,7 +610,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			};
 			recorder.onstop = async () => {
 				const sessionTimestamp = recordingSessionTimestamp.current ?? Date.now();
-				const webcamFileName = `${RECORDING_FILE_PREFIX}${sessionTimestamp}${WEBCAM_SUFFIX}${VIDEO_FILE_EXTENSION}`;
+				const webcamMimeType = recorder.mimeType || mimeType;
+				const webcamFileName = `${RECORDING_FILE_PREFIX}${sessionTimestamp}${WEBCAM_SUFFIX}${getVideoExtensionForMimeType(webcamMimeType)}`;
 
 				try {
 					if (webcamChunks.current.length === 0) {
@@ -613,14 +623,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						0,
 						getRecordingDurationMs(Date.now()) - webcamTimeOffsetMs.current,
 					);
-					const webcamBlobType = recorder.mimeType || mimeType;
 					const webcamBlob = new Blob(
 						webcamChunks.current,
-						webcamBlobType ? { type: webcamBlobType } : undefined,
+						webcamMimeType ? { type: webcamMimeType } : undefined,
 					);
 					webcamChunks.current = [];
-					const fixedBlob = await fixWebmDuration(webcamBlob, duration);
-					const arrayBuffer = await fixedBlob.arrayBuffer();
+					const finalBlob = isWebmMimeType(webcamMimeType)
+						? await fixWebmDuration(webcamBlob, duration)
+						: webcamBlob;
+					const arrayBuffer = await finalBlob.arrayBuffer();
 					const result = await window.electronAPI.storeRecordedVideo(
 						arrayBuffer,
 						webcamFileName,
@@ -655,7 +666,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				webcamStream.current = null;
 			}
 		}
-	}, [getRecordingDurationMs, selectMimeType, webcamDeviceId, webcamEnabled]);
+	}, [getRecordingDurationMs, selectWebcamMimeType, webcamDeviceId, webcamEnabled]);
 
 	/** Start the prepared webcam MediaRecorder. Call after main recording begins. */
 	const beginWebcamCapture = useCallback(() => {

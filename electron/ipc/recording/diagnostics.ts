@@ -5,9 +5,12 @@ import { COMPANION_AUDIO_LAYOUTS } from "../constants";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { lastNativeCaptureDiagnostics, setLastNativeCaptureDiagnostics } from "../state";
 import type { CompanionAudioCandidate, NativeCaptureDiagnostics } from "../types";
+import { parseJsonWithByteOrderMark } from "../utils";
 
 const execFileAsync = promisify(execFile);
 export const MIN_VALID_RECORDED_VIDEO_BYTES = 1024;
+export const RECORDING_AUDIO_MUX_MIN_TIMEOUT_MS = 5 * 60 * 1000;
+export const RECORDING_AUDIO_MUX_MAX_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
 type CompanionAudioTimingMetadata = {
 	startDelayMs?: number;
@@ -51,6 +54,18 @@ export function parseFfmpegDurationSeconds(stderr: string) {
 	}
 
 	return hours * 3600 + minutes * 60 + seconds;
+}
+
+export function getRecordingAudioMuxTimeoutMs(durationSeconds: number) {
+	if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+		return RECORDING_AUDIO_MUX_MIN_TIMEOUT_MS;
+	}
+
+	const realtimeMuxBudgetMs = Math.ceil(durationSeconds * 1000) + 60 * 1000;
+	return Math.min(
+		RECORDING_AUDIO_MUX_MAX_TIMEOUT_MS,
+		Math.max(RECORDING_AUDIO_MUX_MIN_TIMEOUT_MS, realtimeMuxBudgetMs),
+	);
 }
 
 /** Probe the duration of a media file (in seconds) using the container header. */
@@ -108,7 +123,8 @@ async function readCompanionAudioTimingMetadata(
 ): Promise<CompanionAudioTimingMetadata | null> {
 	try {
 		const raw = await fs.readFile(`${companionPath}.json`, "utf8");
-		const parsed = JSON.parse(raw) as CompanionAudioTimingMetadata | null;
+		const parsed =
+			parseJsonWithByteOrderMark<CompanionAudioTimingMetadata | null>(raw);
 		if (!parsed || typeof parsed !== "object") {
 			return null;
 		}
