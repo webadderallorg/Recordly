@@ -14,6 +14,7 @@ vi.mock("../ffmpeg/binary", () => ({
 
 import {
 	buildNativeVideoAudioMuxArgs,
+	getNvidiaCudaAudioExportSkipReason,
 	normalizeNativeStaticLayoutBackground,
 	parseFfmpegDurationSeconds,
 	parseFfmpegFrameRate,
@@ -21,7 +22,28 @@ import {
 	parseNvidiaCudaExportSummary,
 	parseWindowsGpuExportProgressLine,
 	parseWindowsGpuExportSummary,
+	validateNvidiaCudaExportSummary,
 } from "./native-video";
+
+function withNvidiaCudaAudioOverride<T>(value: string | undefined, callback: () => T) {
+	const envName = "RECORDLY_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT";
+	const originalValue = process.env[envName];
+	if (value === undefined) {
+		delete process.env[envName];
+	} else {
+		process.env[envName] = value;
+	}
+
+	try {
+		return callback();
+	} finally {
+		if (originalValue === undefined) {
+			delete process.env[envName];
+		} else {
+			process.env[envName] = originalValue;
+		}
+	}
+}
 
 describe("normalizeNativeStaticLayoutBackground", () => {
 	it("falls back to a solid background when the configured image file is missing", async () => {
@@ -43,6 +65,35 @@ describe("normalizeNativeStaticLayoutBackground", () => {
 
 		expect(normalized.backgroundImagePath).toBeNull();
 		expect(normalized.backgroundColor).toBe("#ffffff");
+	});
+});
+
+describe("getNvidiaCudaAudioExportSkipReason", () => {
+	it("allows video-only CUDA exports by default", () => {
+		withNvidiaCudaAudioOverride(undefined, () => {
+			expect(getNvidiaCudaAudioExportSkipReason(undefined)).toBeNull();
+			expect(getNvidiaCudaAudioExportSkipReason("none")).toBeNull();
+		});
+	});
+
+	it("guards CUDA for audio exports unless explicitly overridden", () => {
+		withNvidiaCudaAudioOverride(undefined, () => {
+			expect(getNvidiaCudaAudioExportSkipReason("copy-source")).toBe(
+				"audio-mode:copy-source",
+			);
+			expect(getNvidiaCudaAudioExportSkipReason("trim-source")).toBe(
+				"audio-mode:trim-source",
+			);
+			expect(getNvidiaCudaAudioExportSkipReason("edited-track")).toBe(
+				"audio-mode:edited-track",
+			);
+		});
+	});
+
+	it("allows CUDA audio exports only for explicit lab overrides", () => {
+		withNvidiaCudaAudioOverride("1", () => {
+			expect(getNvidiaCudaAudioExportSkipReason("copy-source")).toBeNull();
+		});
 	});
 });
 
@@ -148,6 +199,87 @@ describe("parseNvidiaCudaExportSummary", () => {
 
 	it("returns null when the wrapper output has no JSON object", () => {
 		expect(parseNvidiaCudaExportSummary("native probe failed before summary")).toBeNull();
+	});
+});
+
+describe("validateNvidiaCudaExportSummary", () => {
+	it("accepts CUDA output when frames and stream durations match the export target", () => {
+		const issues = validateNvidiaCudaExportSummary(
+			{
+				success: true,
+				targetFrames: 300,
+				durationSec: 10,
+				nativeSummary: { success: true, frames: 300 },
+				outputVideo: { duration: "9.999900", nb_frames: "300" },
+				outputAudio: { duration: "10.005000" },
+			},
+			{ durationSec: 10, targetFrames: 300 },
+		);
+
+		expect(issues).toEqual([]);
+	});
+
+	it("rejects CUDA output that reports too few frames or a short video stream", () => {
+		const issues = validateNvidiaCudaExportSummary(
+			{
+				success: true,
+				targetFrames: 300,
+				durationSec: 10,
+				nativeSummary: { success: true, frames: 144 },
+				outputVideo: { duration: "4.799952", nb_frames: "144" },
+				outputAudio: { duration: "10.005000" },
+			},
+			{ durationSec: 10, targetFrames: 300 },
+		);
+
+		expect(issues).toEqual([
+			"native frames 144 below expected minimum 285",
+			"output video frames 144 below expected minimum 285",
+			"output video duration 4.800s differs from expected 10.000s",
+		]);
+	});
+
+	it("rejects audio CUDA output unless the helper reports timestamp-aligned frame selection", () => {
+		const issues = validateNvidiaCudaExportSummary(
+			{
+				success: true,
+				targetFrames: 300,
+				durationSec: 10,
+				nativeSummary: {
+					success: true,
+					frames: 300,
+					selectionStage: "decoder-policy-mapped-callback",
+				},
+				outputVideo: { duration: "9.999900", nb_frames: "300" },
+				outputAudio: { duration: "10.005000" },
+			},
+			{ durationSec: 10, targetFrames: 300, requiresTimelineSync: true },
+		);
+
+		expect(issues).toEqual([
+			"CUDA timeline mode is not timestamp-aligned for audio export",
+		]);
+	});
+
+	it("accepts audio CUDA output when the helper reports PTS-aligned selection", () => {
+		const issues = validateNvidiaCudaExportSummary(
+			{
+				success: true,
+				targetFrames: 300,
+				durationSec: 10,
+				nativeSummary: {
+					success: true,
+					frames: 300,
+					sourceTimestampMode: "pts",
+					selectionStage: "timestamp-mapped-callback",
+				},
+				outputVideo: { duration: "9.999900", nb_frames: "300" },
+				outputAudio: { duration: "10.005000" },
+			},
+			{ durationSec: 10, targetFrames: 300, requiresTimelineSync: true },
+		);
+
+		expect(issues).toEqual([]);
 	});
 });
 

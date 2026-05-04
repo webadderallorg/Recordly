@@ -20,8 +20,8 @@ import { startNativeCursorMonitor, stopNativeCursorMonitor } from "../cursor/mon
 import {
 	clamp,
 	pauseCursorCapture,
-	resumeCursorCapture,
 	resetCursorCaptureClock,
+	resumeCursorCapture,
 	sampleCursorPoint,
 	snapshotCursorTelemetryForPersistence,
 	startCursorSampling,
@@ -1082,6 +1082,18 @@ export function registerRecordingHandlers(
 				try {
 					return await finalizeStoredVideo(videoPath);
 				} catch {
+					try {
+						await validateRecordedVideo(videoPath);
+						return {
+							success: false,
+							path: videoPath,
+							message: "Failed to mux native Windows recording",
+							error: String(error),
+						};
+					} catch {
+						// The fallback path is not safely playable; surface the original mux error.
+					}
+
 					return {
 						success: false,
 						message: "Failed to mux native Windows recording",

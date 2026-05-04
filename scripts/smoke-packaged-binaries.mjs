@@ -171,6 +171,11 @@ function getExpectedNativeHelperFiles(archTag) {
 				label: "Windows GPU export helper",
 				executable: true,
 			},
+			{
+				name: "recordly-nvidia-cuda-compositor.exe",
+				label: "NVIDIA CUDA compositor helper",
+				executable: true,
+			},
 			{ name: "helpers-manifest.json", label: "Windows helper manifest" },
 			{ name: "whisper-cli.exe", label: "Whisper CLI runtime", executable: true },
 			{ name: "whisper-runtime.json", label: "Whisper runtime manifest" },

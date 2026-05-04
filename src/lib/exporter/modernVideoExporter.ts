@@ -1601,8 +1601,14 @@ export class ModernVideoExporter {
 					return;
 				}
 
-				const nativeCurrentFrame = Math.floor(progress.currentFrame);
 				const nativeTotalFrames = Math.max(1, Math.floor(progress.totalFrames));
+				const progressPercentFrame = Number.isFinite(progress.percentage)
+					? Math.floor((nativeTotalFrames * progress.percentage) / 100)
+					: 0;
+				const nativeCurrentFrame = Math.max(
+					Math.floor(progress.currentFrame),
+					progressPercentFrame,
+				);
 				const nativeFramesComplete = nativeCurrentFrame >= nativeTotalFrames;
 				const maxExtractingFrame = Math.max(
 					0,

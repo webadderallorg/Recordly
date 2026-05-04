@@ -23,6 +23,13 @@
       "sourceDir": "electron/native/gpu-export-probe",
       "sourceFingerprint": "75bf080c4a5cbbcb1d42fb088a1545130c613e42d9e7681cc23f9151d1c8072b",
       "updatedAt": "2026-05-03T15:39:47.938Z"
+    },
+    "recordly-nvidia-cuda-compositor": {
+      "binaryName": "recordly-nvidia-cuda-compositor.exe",
+      "binarySha256": "f274039c46445a3b8e57c9faa6307238d6facc04d5c88f7bb84c43563feda649",
+      "sourceDir": "electron/native/nvidia-cuda-compositor",
+      "sourceFingerprint": "bc6f657ff3226f8c3bcdc89354de4118d0ef0f3ac1b5fde6d496bda9b77b65c6",
+      "updatedAt": "2026-05-04T02:54:12.432Z"
     }
   }
 }

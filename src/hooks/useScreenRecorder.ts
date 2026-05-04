@@ -731,16 +731,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						await window.electronAPI.muxNativeWindowsRecording(pauseSegments);
 					if (!muxResult?.success || !muxResult.path) {
 						void logNativeCaptureDiagnostics("mux-native-windows-recording");
-						if (!muxResult?.path) {
-							const failureMessage = await buildNativeCaptureFailureMessage(
-								"mux-native-windows-recording",
-								muxResult?.message ||
-									"Failed to finalize the Windows recording, so the editor was not opened.",
-							);
-							await notifyRecordingFinalizationFailure(failureMessage);
-							return;
-						}
-
+						const fallbackPath = muxResult?.path ?? finalPath;
 						const warningMessage =
 							muxResult?.error ||
 							muxResult?.message ||
@@ -749,8 +740,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							`${warningMessage}. Recording was saved, but audio playback or export may be incomplete.`,
 							{ id: SOURCE_AUDIO_MUX_TOAST_ID, duration: 10000 },
 						);
+						finalPath = fallbackPath;
+					} else {
+						finalPath = muxResult.path;
 					}
-					finalPath = muxResult.path;
 				}
 
 				await storeMicrophoneSidecar(
@@ -1186,7 +1179,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 								maxFrameRate: TARGET_FRAME_RATE,
 							},
 						},
-					} as any);
+					} as unknown as MediaStreamConstraints);
 				}
 			};
 
