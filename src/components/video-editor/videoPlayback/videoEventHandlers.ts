@@ -167,8 +167,8 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		const currentTimeMs = video.currentTime * 1000;
 		const activeTrimRegion = findActiveTrimRegion(currentTimeMs);
 
-		// If we seeked into a trim region while playing, skip to the end
-		if (activeTrimRegion && isPlayingRef.current && !video.paused) {
+		// Never leave the preview parked on removed footage after a seek.
+		if (activeTrimRegion) {
 			skipPastTrimRegion(activeTrimRegion);
 		} else {
 			emitTime(video.currentTime);

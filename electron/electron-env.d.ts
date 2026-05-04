@@ -151,12 +151,12 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
-		pauseCursorCapture: (boundaryMs?: number) => Promise<{
+		pauseCursorCapture: () => Promise<{
 			success: boolean;
 			message?: string;
 			error?: string;
 		}>;
-		resumeCursorCapture: (boundaryMs?: number) => Promise<{
+		resumeCursorCapture: () => Promise<{
 			success: boolean;
 			message?: string;
 			error?: string;
@@ -313,6 +313,15 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		setCursorTelemetry: (
+			videoPath: string | undefined,
+			samples: CursorTelemetryPoint[],
+		) => Promise<{
+			success: boolean;
+			samples: CursorTelemetryPoint[];
+			message?: string;
+			error?: string;
+		}>;
 		getSystemCursorAssets: () => Promise<{
 			success: boolean;
 			cursors: Record<string, SystemCursorAsset>;
@@ -410,16 +419,28 @@ interface Window {
 		}>;
 		setCurrentVideoPath: (
 			path: string,
-			options?: { preserveProjectPath?: boolean },
+			options?: {
+				preserveProjectPath?: boolean;
+				hideOverlayCursorByDefault?: boolean;
+			},
 		) => Promise<{ success: boolean; webcamPath: string | null }>;
-		setCurrentRecordingSession: (session: {
-			videoPath: string;
-			webcamPath?: string | null;
-			timeOffsetMs?: number;
-		}, options?: { preserveProjectPath?: boolean }) => Promise<{ success: boolean }>;
+		setCurrentRecordingSession: (
+			session: {
+				videoPath: string;
+				webcamPath?: string | null;
+				timeOffsetMs?: number;
+				hideOverlayCursorByDefault?: boolean;
+			},
+			options?: { preserveProjectPath?: boolean },
+		) => Promise<{ success: boolean }>;
 		getCurrentRecordingSession: () => Promise<{
 			success: boolean;
-			session?: { videoPath: string; webcamPath?: string | null; timeOffsetMs?: number };
+			session?: {
+				videoPath: string;
+				webcamPath?: string | null;
+				timeOffsetMs?: number;
+				hideOverlayCursorByDefault?: boolean;
+			};
 		}>;
 		getCurrentVideoPath: () => Promise<{ success: boolean; path?: string }>;
 		clearCurrentVideoPath: () => Promise<{ success: boolean }>;
@@ -529,6 +550,7 @@ interface Window {
 		onMenuSaveProject: (callback: () => void) => () => void;
 		onMenuSaveProjectAs: (callback: () => void) => () => void;
 		getPlatform: () => Promise<string>;
+		getLinuxWindowSystem: () => Promise<"wayland" | "x11" | null>;
 		revealInFolder: (
 			filePath: string,
 		) => Promise<{ success: boolean; error?: string; message?: string }>;

@@ -54,6 +54,20 @@
 		"zoomOutDescription": "控制镜头离开缩放区域的方式。",
 		"connectedZoomTitle": "缩放之间",
 		"connectedZoomDescription": "在启用连接缩放时，调整连续缩放区域之间的滑移方式。",
+		"motionPresetsTitle": "运动预设",
+		"motionPresetsZoomHint": "缩放运动预设已移到“设置”中。",
+		"animationPresets": "动画预设",
+		"cursorMotionPresets": "光标运动预设",
+		"motionPresets": {
+			"focused": {
+				"label": "专注",
+				"description": "更利落，适合演示、讲解和日常录屏。"
+			},
+			"smooth": {
+				"label": "平滑",
+				"description": "更柔和，适合展示、发布会风格视频和更从容的镜头。"
+			}
+		},
 		"zoomInDuration": "进入时长",
 		"zoomInOverlap": "进入重叠",
 		"zoomOutDuration": "退出时长",
@@ -71,6 +85,9 @@
 		},
 		"cursorSize": "光标大小",
 		"cursorSmoothing": "光标平滑",
+		"cursorSpringStiffness": "光标弹簧刚度",
+		"cursorSpringDamping": "光标弹簧阻尼",
+		"cursorSpringMass": "光标弹簧质量",
 		"off": "关",
 		"cursorMotionBlur": "光标运动模糊",
 		"cursorClickBounce": "光标点击弹跳",
@@ -120,8 +137,6 @@
 		"generateFull": "生成字幕",
 		"regenerateFull": "重新生成字幕",
 		"clearFull": "清除字幕",
-		"editCurrent": "编辑当前字幕",
-		"editSaved": "字幕已更新",
 		"fontSettings": "字体设置",
 		"defaultFont": "默认",
 		"fontFamily": "字体",

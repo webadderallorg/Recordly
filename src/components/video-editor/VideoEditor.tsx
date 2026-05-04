@@ -1,5 +1,4 @@
 import {
-	BookmarkSimple,
 	Check,
 	CaretDown as ChevronDown,
 	CaretUp as ChevronUp,
@@ -39,8 +38,6 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Toaster } from "@/components/ui/sonner";
 import { useI18n } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
@@ -80,7 +77,6 @@ import {
 	getAspectRatioLabel,
 	getAspectRatioValue,
 } from "@/utils/aspectRatioUtils";
-import { cn } from "@/lib/utils";
 import { ExtensionIcon } from "./ExtensionIcon";
 
 const PhCursorFill = (props: { className?: string; weight?: "fill" | "regular" }) => (
@@ -105,18 +101,9 @@ const PhSettings = (props: { className?: string; weight?: "fill" | "regular" }) 
 import { extensionHost } from "@/lib/extensions";
 import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
 import { CropControl } from "./CropControl";
-import { updateCaptionCuesForEditedTarget, type CaptionEditTarget } from "./captionEditing";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
 import ExtensionManager from "./ExtensionManager";
-import {
-	loadEditorPreferences,
-	loadEditorPresets,
-	saveEditorPreferences,
-	saveEditorPresets,
-	serializeEditorPresetSnapshot,
-	type EditorPreset,
-	type EditorPresetSnapshot,
-} from "./editorPreferences";
+import { loadEditorPreferences, saveEditorPreferences } from "./editorPreferences";
 import ProjectBrowserDialog, { type ProjectLibraryEntry } from "./ProjectBrowserDialog";
 import {
 	createProjectData,
@@ -160,7 +147,6 @@ import {
 	DEFAULT_CROP_REGION,
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_FIGURE_DATA,
-	DEFAULT_PLAYBACK_SPEED,
 	DEFAULT_WEBCAM_OVERLAY,
 	DEFAULT_WEBCAM_TIME_OFFSET_MS,
 	DEFAULT_ZOOM_IN_DURATION_MS,
@@ -172,10 +158,12 @@ import {
 	extendAutoFullTrackClip,
 	type FigureData,
 	getClipSourceEndMs,
+	mapSourceTimeToTimelineTime as resolveSourceTimeToTimelineTime,
+	mapTimelineTimeToSourceTime as resolveTimelineTimeToSourceTime,
 	type Padding,
-	type PlaybackSpeed,
 	type SpeedRegion,
 	type TrimRegion,
+	trimsToClips,
 	type WebcamOverlaySettings,
 	type ZoomDepth,
 	type ZoomFocus,
@@ -197,9 +185,7 @@ type EditorHistorySnapshot = {
 	audioRegions: AudioRegion[];
 	autoCaptions: CaptionCue[];
 	selectedZoomId: string | null;
-	selectedTrimId: string | null;
 	selectedClipId: string | null;
-	selectedSpeedId: string | null;
 	selectedAnnotationId: string | null;
 	selectedAudioId: string | null;
 };
@@ -615,11 +601,9 @@ export default function VideoEditor() {
 	const [cursorTelemetrySourcePath, setCursorTelemetrySourcePath] = useState<string | null>(null);
 	const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
 	const [trimRegions, setTrimRegions] = useState<TrimRegion[]>([]);
-	const [selectedTrimId, setSelectedTrimId] = useState<string | null>(null);
 	const [clipRegions, setClipRegions] = useState<ClipRegion[]>([]);
 	const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
 	const [speedRegions, setSpeedRegions] = useState<SpeedRegion[]>([]);
-	const [selectedSpeedId, setSelectedSpeedId] = useState<string | null>(null);
 	const [annotationRegions, setAnnotationRegions] = useState<AnnotationRegion[]>([]);
 	const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
 	const [audioRegions, setAudioRegions] = useState<AudioRegion[]>([]);
@@ -682,10 +666,6 @@ export default function VideoEditor() {
 	const [exportedFilePath, setExportedFilePath] = useState<string | undefined>(undefined);
 	const [hasPendingExportSave, setHasPendingExportSave] = useState(false);
 	const [lastSavedSnapshot, setLastSavedSnapshot] = useState<EditorProjectData | null>(null);
-	const [editorPresets, setEditorPresets] = useState<EditorPreset[]>(() => loadEditorPresets());
-	const [activeEditorPresetId, setActiveEditorPresetId] = useState<string | null>(null);
-	const [presetPopoverOpen, setPresetPopoverOpen] = useState(false);
-	const [presetNameDraft, setPresetNameDraft] = useState("");
 	const [showCropModal, setShowCropModal] = useState(false);
 	const [previewVersion, setPreviewVersion] = useState(0);
 	const [isPreviewReady, setIsPreviewReady] = useState(false);
@@ -697,9 +677,7 @@ export default function VideoEditor() {
 	const projectBrowserFallbackTriggerRef = useRef<HTMLButtonElement | null>(null);
 	const projectNameInputRef = useRef<HTMLInputElement | null>(null);
 	const nextZoomIdRef = useRef(1);
-	const nextTrimIdRef = useRef(1);
 	const nextClipIdRef = useRef(1);
-	const nextSpeedIdRef = useRef(1);
 	const nextAudioIdRef = useRef(1);
 
 	const { shortcuts, isMac } = useShortcuts();
@@ -764,285 +742,6 @@ export default function VideoEditor() {
 	const syncHistoryButtons = useCallback(() => {
 		setHistoryVersion((version) => version + 1);
 	}, []);
-
-	const captureEditorPresetSnapshot = useCallback(
-		(): EditorPresetSnapshot => ({
-			wallpaper,
-			shadowIntensity,
-			backgroundBlur,
-			zoomMotionBlur,
-			connectZooms,
-			zoomInDurationMs,
-			zoomInOverlapMs,
-			zoomOutDurationMs,
-			connectedZoomGapMs,
-			connectedZoomDurationMs,
-			zoomInEasing,
-			zoomOutEasing,
-			connectedZoomEasing,
-			showCursor,
-			loopCursor,
-			cursorStyle,
-			cursorSize,
-			cursorSmoothing,
-			cursorMotionBlur,
-			cursorClickBounce,
-			cursorClickBounceDuration,
-			cursorSway,
-			borderRadius,
-			padding: { ...padding },
-			frame,
-			webcam: { ...webcam },
-			aspectRatio,
-			exportEncodingMode,
-			exportBackendPreference,
-			exportPipelineModel,
-			exportQuality,
-			mp4FrameRate,
-			exportFormat,
-			gifFrameRate,
-			gifLoop,
-			gifSizePreset,
-			autoCaptionSettings: { ...autoCaptionSettings },
-			whisperExecutablePath,
-			whisperModelPath,
-		}),
-		[
-			wallpaper,
-			shadowIntensity,
-			backgroundBlur,
-			zoomMotionBlur,
-			connectZooms,
-			zoomInDurationMs,
-			zoomInOverlapMs,
-			zoomOutDurationMs,
-			connectedZoomGapMs,
-			connectedZoomDurationMs,
-			zoomInEasing,
-			zoomOutEasing,
-			connectedZoomEasing,
-			showCursor,
-			loopCursor,
-			cursorStyle,
-			cursorSize,
-			cursorSmoothing,
-			cursorMotionBlur,
-			cursorClickBounce,
-			cursorClickBounceDuration,
-			cursorSway,
-			borderRadius,
-			padding,
-			frame,
-			webcam,
-			aspectRatio,
-			exportEncodingMode,
-			exportBackendPreference,
-			exportPipelineModel,
-			exportQuality,
-			mp4FrameRate,
-			exportFormat,
-			gifFrameRate,
-			gifLoop,
-			gifSizePreset,
-			autoCaptionSettings,
-			whisperExecutablePath,
-			whisperModelPath,
-		],
-	);
-
-	const currentPresetSnapshot = useMemo(
-		() => captureEditorPresetSnapshot(),
-		[captureEditorPresetSnapshot],
-	);
-	const currentPresetSignature = useMemo(
-		() => serializeEditorPresetSnapshot(currentPresetSnapshot),
-		[currentPresetSnapshot],
-	);
-	const currentEditorPreset = useMemo(
-		() => editorPresets.find((preset) => preset.id === activeEditorPresetId) ?? null,
-		[activeEditorPresetId, editorPresets],
-	);
-
-	useEffect(() => {
-		const activePreset = currentEditorPreset;
-		if (
-			activePreset &&
-			serializeEditorPresetSnapshot(activePreset.snapshot) === currentPresetSignature
-		) {
-			return;
-		}
-
-		const matchingPreset =
-			editorPresets.find(
-				(preset) =>
-					serializeEditorPresetSnapshot(preset.snapshot) === currentPresetSignature,
-			) ?? null;
-		const nextActivePresetId = matchingPreset?.id ?? null;
-		if (nextActivePresetId !== activeEditorPresetId) {
-			setActiveEditorPresetId(nextActivePresetId);
-		}
-	}, [activeEditorPresetId, currentEditorPreset, currentPresetSignature, editorPresets]);
-
-	useEffect(() => {
-		if (!presetPopoverOpen) {
-			setPresetNameDraft("");
-		}
-	}, [presetPopoverOpen]);
-
-	const applyEditorPresetSnapshot = useCallback((snapshot: EditorPresetSnapshot) => {
-		setWallpaper(snapshot.wallpaper);
-		setShadowIntensity(snapshot.shadowIntensity);
-		setBackgroundBlur(snapshot.backgroundBlur);
-		setZoomMotionBlur(snapshot.zoomMotionBlur);
-		setConnectZooms(snapshot.connectZooms);
-		setZoomInDurationMs(snapshot.zoomInDurationMs);
-		setZoomInOverlapMs(snapshot.zoomInOverlapMs);
-		setZoomOutDurationMs(snapshot.zoomOutDurationMs);
-		setConnectedZoomGapMs(snapshot.connectedZoomGapMs);
-		setConnectedZoomDurationMs(snapshot.connectedZoomDurationMs);
-		setZoomInEasing(snapshot.zoomInEasing);
-		setZoomOutEasing(snapshot.zoomOutEasing);
-		setConnectedZoomEasing(snapshot.connectedZoomEasing);
-		setShowCursor(snapshot.showCursor);
-		setLoopCursor(snapshot.loopCursor);
-		setCursorStyle(snapshot.cursorStyle);
-		setCursorSize(snapshot.cursorSize);
-		setCursorSmoothing(snapshot.cursorSmoothing);
-		setCursorMotionBlur(snapshot.cursorMotionBlur);
-		setCursorClickBounce(snapshot.cursorClickBounce);
-		setCursorClickBounceDuration(snapshot.cursorClickBounceDuration);
-		setCursorSway(snapshot.cursorSway);
-		setBorderRadius(snapshot.borderRadius);
-		setPadding({ ...snapshot.padding });
-		setFrame(snapshot.frame);
-		setWebcam({ ...snapshot.webcam });
-		setAspectRatio(snapshot.aspectRatio);
-		setExportEncodingMode(snapshot.exportEncodingMode);
-		setExportBackendPreference(snapshot.exportBackendPreference);
-		setExportPipelineModel(snapshot.exportPipelineModel);
-		setExportQuality(snapshot.exportQuality);
-		setMp4FrameRate(snapshot.mp4FrameRate);
-		setExportFormat(snapshot.exportFormat);
-		setGifFrameRate(snapshot.gifFrameRate);
-		setGifLoop(snapshot.gifLoop);
-		setGifSizePreset(snapshot.gifSizePreset);
-		setAutoCaptionSettings({ ...snapshot.autoCaptionSettings });
-		setWhisperExecutablePath(snapshot.whisperExecutablePath);
-		setWhisperModelPath(snapshot.whisperModelPath);
-	}, []);
-
-	const handleApplyEditorPreset = useCallback(
-		(presetId: string) => {
-			const preset = editorPresets.find((item) => item.id === presetId);
-			if (!preset) {
-				return;
-			}
-
-			setActiveEditorPresetId(preset.id);
-			applyEditorPresetSnapshot(preset.snapshot);
-			toast.success(
-				t("editor.presets.toasts.applied", "Applied preset \"{{name}}\"", {
-					name: preset.name,
-				}),
-			);
-		},
-		[applyEditorPresetSnapshot, editorPresets, t],
-	);
-
-	const handleSaveEditorPreset = useCallback(
-		(name: string) => {
-			const normalizedName = name.trim().replace(/\s+/g, " ");
-			if (normalizedName.length === 0) {
-				toast.error(t("editor.presets.errors.nameRequired", "Enter a preset name."));
-				return false;
-			}
-
-			const hasDuplicateName = editorPresets.some(
-				(preset) => preset.name.toLocaleLowerCase() === normalizedName.toLocaleLowerCase(),
-			);
-			if (hasDuplicateName) {
-				toast.error(
-					t(
-						"editor.presets.errors.duplicateName",
-						"A preset with that name already exists.",
-					),
-				);
-				return false;
-			}
-
-			const snapshot = captureEditorPresetSnapshot();
-			const timestamp = new Date().toISOString();
-			const nextPreset: EditorPreset = {
-				id: crypto.randomUUID(),
-				name: normalizedName,
-				createdAt: timestamp,
-				updatedAt: timestamp,
-				snapshot,
-			};
-			const nextPresets = [
-				nextPreset,
-				...editorPresets,
-			];
-
-			if (!saveEditorPresets(nextPresets)) {
-				toast.error(
-					t(
-						"editor.presets.errors.saveFailed",
-						"Could not save that preset. Check your browser storage settings and try again.",
-					),
-				);
-				return false;
-			}
-
-			setEditorPresets(nextPresets);
-			setActiveEditorPresetId(nextPreset.id);
-			toast.success(
-				t("editor.presets.toasts.saved", "Saved preset \"{{name}}\"", {
-					name: normalizedName,
-				}),
-			);
-			return true;
-		},
-		[captureEditorPresetSnapshot, editorPresets, t],
-	);
-
-	const handleDeleteEditorPreset = useCallback(
-		(presetId: string) => {
-			const preset = editorPresets.find((item) => item.id === presetId);
-			if (!preset) {
-				return;
-			}
-
-			const nextPresets = editorPresets.filter((item) => item.id !== presetId);
-			if (!saveEditorPresets(nextPresets)) {
-				toast.error(
-					t(
-						"editor.presets.errors.deleteFailed",
-						"Could not delete that preset. Check your browser storage settings and try again.",
-					),
-				);
-				return;
-			}
-
-			setEditorPresets(nextPresets);
-			if (preset.id === activeEditorPresetId) {
-				setActiveEditorPresetId(null);
-			}
-			toast.success(
-				t("editor.presets.toasts.deleted", "Deleted preset \"{{name}}\"", {
-					name: preset.name,
-				}),
-			);
-		},
-		[activeEditorPresetId, editorPresets, t],
-	);
-
-	const handleSavePresetSubmit = useCallback(() => {
-		const didSave = handleSaveEditorPreset(presetNameDraft);
-		if (didSave) {
-			setPresetNameDraft("");
-		}
-	}, [handleSaveEditorPreset, presetNameDraft]);
 
 	const clearPendingExportSave = useCallback(() => {
 		const pending = pendingExportSaveRef.current;
@@ -1773,9 +1472,7 @@ export default function VideoEditor() {
 			audioRegions,
 			autoCaptions,
 			selectedZoomId,
-			selectedTrimId,
 			selectedClipId,
-			selectedSpeedId,
 			selectedAnnotationId,
 			selectedAudioId,
 		};
@@ -1787,9 +1484,7 @@ export default function VideoEditor() {
 		audioRegions,
 		autoCaptions,
 		selectedZoomId,
-		selectedTrimId,
 		selectedClipId,
-		selectedSpeedId,
 		selectedAnnotationId,
 		selectedAudioId,
 	]);
@@ -1805,9 +1500,7 @@ export default function VideoEditor() {
 			setAudioRegions(cloned.audioRegions);
 			setAutoCaptions(cloned.autoCaptions);
 			setSelectedZoomId(cloned.selectedZoomId);
-			setSelectedTrimId(cloned.selectedTrimId);
 			setSelectedClipId(cloned.selectedClipId);
-			setSelectedSpeedId(cloned.selectedSpeedId);
 			setSelectedAnnotationId(cloned.selectedAnnotationId);
 			setSelectedAudioId(cloned.selectedAudioId);
 
@@ -1818,10 +1511,6 @@ export default function VideoEditor() {
 			nextClipIdRef.current = deriveNextId(
 				"clip",
 				cloned.clipRegions.map((region) => region.id),
-			);
-			nextSpeedIdRef.current = deriveNextId(
-				"speed",
-				cloned.speedRegions.map((region) => region.id),
 			);
 			nextAnnotationIdRef.current = deriveNextId(
 				"annotation",
@@ -1954,9 +1643,7 @@ export default function VideoEditor() {
 			setGifSizePreset(normalizedEditor.gifSizePreset);
 
 			setSelectedZoomId(null);
-			setSelectedTrimId(null);
 			setSelectedClipId(null);
-			setSelectedSpeedId(null);
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
 
@@ -1964,17 +1651,9 @@ export default function VideoEditor() {
 				"zoom",
 				normalizedEditor.zoomRegions.map((region) => region.id),
 			);
-			nextTrimIdRef.current = deriveNextId(
-				"trim",
-				normalizedEditor.trimRegions.map((region) => region.id),
-			);
 			nextClipIdRef.current = deriveNextId(
 				"clip",
 				normalizedEditor.clipRegions.map((region: ClipRegion) => region.id),
-			);
-			nextSpeedIdRef.current = deriveNextId(
-				"speed",
-				normalizedEditor.speedRegions.map((region) => region.id),
 			);
 			nextAudioIdRef.current = deriveNextId(
 				"audio",
@@ -2236,6 +1915,9 @@ export default function VideoEditor() {
 					pendingFreshRecordingAutoZoomPathRef.current = autoApplyFreshRecordingAutoZooms
 						? sourceVideoUrl
 						: null;
+					if (sessionResult.session.hideOverlayCursorByDefault) {
+						setShowCursor(false);
+					}
 					setWebcam((prev) => ({
 						...prev,
 						enabled: Boolean(sessionResult.session?.webcamPath),
@@ -2567,14 +2249,6 @@ export default function VideoEditor() {
 		setAutoCaptions([]);
 		setAutoCaptionSettings((prev) => ({ ...prev, enabled: false }));
 	}, []);
-
-	const handleSaveAutoCaptionEdit = useCallback(
-		(target: CaptionEditTarget, text: string) => {
-			setAutoCaptions((captions) => updateCaptionCuesForEditedTarget(captions, target, text));
-			toast.success(t("settings.captions.editSaved", "Caption updated"));
-		},
-		[t],
-	);
 
 	const saveProject = useCallback(
 		async (forceSaveAs: boolean, options?: SaveProjectOptions) => {
@@ -3007,6 +2681,11 @@ export default function VideoEditor() {
 		if (totalMs <= 0) return;
 		if (!clipInitializedRef.current) {
 			if (clipRegions.length === 0) {
+				if (trimRegions.length > 0) {
+					setClipRegions(trimsToClips(trimRegions, totalMs));
+					clipInitializedRef.current = true;
+					return;
+				}
 				const id = `clip-${nextClipIdRef.current++}`;
 				autoFullTrackClipIdRef.current = id;
 				autoFullTrackClipEndMsRef.current = totalMs;
@@ -3026,7 +2705,7 @@ export default function VideoEditor() {
 
 		autoFullTrackClipEndMsRef.current = totalMs;
 		setClipRegions(extendedClipRegions);
-	}, [duration, clipRegions]);
+	}, [duration, clipRegions, trimRegions]);
 
 	// Derive trimRegions from clipRegions so export/playback pipelines stay unchanged
 	useEffect(() => {
@@ -3036,27 +2715,12 @@ export default function VideoEditor() {
 	}, [clipRegions, duration]);
 
 	const mapTimelineTimeToSourceTime = useCallback(
-		(timeMs: number) => {
-			for (const clip of clipRegions) {
-				if (timeMs < clip.startMs || timeMs > clip.endMs) continue;
-				const speed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
-				return Math.round(clip.startMs + (timeMs - clip.startMs) * speed);
-			}
-			return Math.round(timeMs);
-		},
+		(timeMs: number) => resolveTimelineTimeToSourceTime(timeMs, clipRegions),
 		[clipRegions],
 	);
 
 	const mapSourceTimeToTimelineTime = useCallback(
-		(timeMs: number) => {
-			for (const clip of clipRegions) {
-				const sourceEndMs = getClipSourceEndMs(clip);
-				if (timeMs < clip.startMs || timeMs > sourceEndMs) continue;
-				const speed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
-				return Math.round(clip.startMs + (timeMs - clip.startMs) / speed);
-			}
-			return Math.round(timeMs);
-		},
+		(timeMs: number) => resolveSourceTimeToTimelineTime(timeMs, clipRegions),
 		[clipRegions],
 	);
 
@@ -3124,7 +2788,6 @@ export default function VideoEditor() {
 		setSelectedZoomId(id);
 		if (id) {
 			setActiveEffectSection("zoom");
-			setSelectedTrimId(null);
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
 		} else {
@@ -3132,20 +2795,10 @@ export default function VideoEditor() {
 		}
 	}, []);
 
-	const handleSelectTrim = useCallback((id: string | null) => {
-		setSelectedTrimId(id);
-		if (id) {
-			setSelectedZoomId(null);
-			setSelectedAnnotationId(null);
-			setSelectedAudioId(null);
-		}
-	}, []);
-
 	const handleSelectAnnotation = useCallback((id: string | null) => {
 		setSelectedAnnotationId(id);
 		if (id) {
 			setSelectedZoomId(null);
-			setSelectedTrimId(null);
 			setSelectedAudioId(null);
 		}
 	}, []);
@@ -3168,7 +2821,6 @@ export default function VideoEditor() {
 			}
 			setZoomRegions((prev) => [...prev, newRegion]);
 			setSelectedZoomId(id);
-			setSelectedTrimId(null);
 			setSelectedAnnotationId(null);
 			extensionHost.emitEvent({
 				type: "timeline:region-added",
@@ -3262,19 +2914,6 @@ export default function VideoEditor() {
 		zoomRegions,
 	]);
 
-	const handleTrimAdded = useCallback((span: Span) => {
-		const id = `trim-${nextTrimIdRef.current++}`;
-		const newRegion: TrimRegion = {
-			id,
-			startMs: Math.round(span.start),
-			endMs: Math.round(span.end),
-		};
-		setTrimRegions((prev) => [...prev, newRegion]);
-		setSelectedTrimId(id);
-		setSelectedZoomId(null);
-		setSelectedAnnotationId(null);
-	}, []);
-
 	const handleZoomSpanChange = useCallback((id: string, span: Span) => {
 		setZoomRegions((prev) =>
 			prev.map((region) =>
@@ -3285,21 +2924,7 @@ export default function VideoEditor() {
 							endMs: Math.round(span.end),
 						}
 					: region,
-			),
-		);
-	}, []);
-
-	const handleTrimSpanChange = useCallback((id: string, span: Span) => {
-		setTrimRegions((prev) =>
-			prev.map((region) =>
-				region.id === id
-					? {
-							...region,
-							startMs: Math.round(span.start),
-							endMs: Math.round(span.end),
-						}
-					: region,
-			),
+				),
 		);
 	}, []);
 
@@ -3353,16 +2978,6 @@ export default function VideoEditor() {
 			extensionHost.emitEvent({ type: "timeline:region-removed", data: { id } });
 		},
 		[selectedZoomId],
-	);
-
-	const handleTrimDelete = useCallback(
-		(id: string) => {
-			setTrimRegions((prev) => prev.filter((region) => region.id !== id));
-			if (selectedTrimId === id) {
-				setSelectedTrimId(null);
-			}
-		},
-		[selectedTrimId],
 	);
 
 	const handleSelectClip = useCallback((id: string | null) => {
@@ -3543,62 +3158,11 @@ export default function VideoEditor() {
 		[clipRegions, selectedClipId],
 	);
 
-	const handleSelectSpeed = useCallback((id: string | null) => {
-		setSelectedSpeedId(id);
-		if (id) {
-			setSelectedZoomId(null);
-			setSelectedTrimId(null);
-			setSelectedAnnotationId(null);
-			setSelectedAudioId(null);
-		}
-	}, []);
-
-	const handleSpeedAdded = useCallback((span: Span) => {
-		const id = `speed-${nextSpeedIdRef.current++}`;
-		const newRegion: SpeedRegion = {
-			id,
-			startMs: Math.round(span.start),
-			endMs: Math.round(span.end),
-			speed: DEFAULT_PLAYBACK_SPEED,
-		};
-		setSpeedRegions((prev) => [...prev, newRegion]);
-		setSelectedSpeedId(id);
-		setSelectedZoomId(null);
-		setSelectedTrimId(null);
-		setSelectedAnnotationId(null);
-	}, []);
-
-	const handleSpeedSpanChange = useCallback((id: string, span: Span) => {
-		setSpeedRegions((prev) =>
-			prev.map((region) =>
-				region.id === id
-					? {
-							...region,
-							startMs: Math.round(span.start),
-							endMs: Math.round(span.end),
-						}
-					: region,
-			),
-		);
-	}, []);
-
-	const handleSpeedDelete = useCallback(
-		(id: string) => {
-			setSpeedRegions((prev) => prev.filter((region) => region.id !== id));
-			if (selectedSpeedId === id) {
-				setSelectedSpeedId(null);
-			}
-		},
-		[selectedSpeedId],
-	);
-
 	const handleSelectAudio = useCallback((id: string | null) => {
 		setSelectedAudioId(id);
 		if (id) {
 			setSelectedZoomId(null);
-			setSelectedTrimId(null);
 			setSelectedAnnotationId(null);
-			setSelectedSpeedId(null);
 		}
 	}, []);
 
@@ -3615,9 +3179,7 @@ export default function VideoEditor() {
 		setAudioRegions((prev) => [...prev, newRegion]);
 		setSelectedAudioId(id);
 		setSelectedZoomId(null);
-		setSelectedTrimId(null);
 		setSelectedAnnotationId(null);
-		setSelectedSpeedId(null);
 	}, []);
 
 	const handleAudioSpanChange = useCallback((id: string, span: Span, trackIndex?: number) => {
@@ -3669,18 +3231,6 @@ export default function VideoEditor() {
 		[selectedAudioId],
 	);
 
-	const handleSpeedChange = useCallback(
-		(speed: PlaybackSpeed) => {
-			if (!selectedSpeedId) return;
-			setSpeedRegions((prev) =>
-				prev.map((region) =>
-					region.id === selectedSpeedId ? { ...region, speed } : region,
-				),
-			);
-		},
-		[selectedSpeedId],
-	);
-
 	const handleAnnotationAdded = useCallback((span: Span, trackIndex = 0) => {
 		const id = `annotation-${nextAnnotationIdRef.current++}`;
 		const zIndex = nextAnnotationZIndexRef.current++; // Assign z-index based on creation order
@@ -3699,7 +3249,6 @@ export default function VideoEditor() {
 		setAnnotationRegions((prev) => [...prev, newRegion]);
 		setSelectedAnnotationId(id);
 		setSelectedZoomId(null);
-		setSelectedTrimId(null);
 	}, []);
 
 	const handleAnnotationSpanChange = useCallback(
@@ -3901,12 +3450,6 @@ export default function VideoEditor() {
 	}, [selectedZoomId, zoomRegions]);
 
 	useEffect(() => {
-		if (selectedTrimId && !trimRegions.some((region) => region.id === selectedTrimId)) {
-			setSelectedTrimId(null);
-		}
-	}, [selectedTrimId, trimRegions]);
-
-	useEffect(() => {
 		if (
 			selectedAnnotationId &&
 			!annotationRegions.some((region) => region.id === selectedAnnotationId)
@@ -3914,12 +3457,6 @@ export default function VideoEditor() {
 			setSelectedAnnotationId(null);
 		}
 	}, [selectedAnnotationId, annotationRegions]);
-
-	useEffect(() => {
-		if (selectedSpeedId && !speedRegions.some((region) => region.id === selectedSpeedId)) {
-			setSelectedSpeedId(null);
-		}
-	}, [selectedSpeedId, speedRegions]);
 
 	useEffect(() => {
 		if (selectedAudioId && !audioRegions.some((region) => region.id === selectedAudioId)) {
@@ -4105,7 +3642,7 @@ export default function VideoEditor() {
 	// Sync audio playback with video currentTime and isPlaying state
 	useEffect(() => {
 		const currentTimeMs = currentTime * 1000;
-		const activeSpeedRegion = speedRegions.find(
+		const activeSpeedRegion = effectiveSpeedRegions.find(
 			(region) => currentTimeMs >= region.startMs && currentTimeMs < region.endMs,
 		);
 		const targetPlaybackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
@@ -4139,7 +3676,7 @@ export default function VideoEditor() {
 				}
 			}
 		}
-	}, [isPlaying, currentTime, audioRegions, speedRegions]);
+	}, [isPlaying, currentTime, audioRegions, effectiveSpeedRegions]);
 
 	useEffect(() => {
 		if (previewSourceAudioFallbackPaths.length === 0) {
@@ -4147,7 +3684,7 @@ export default function VideoEditor() {
 			return;
 		}
 
-		const activeSpeedRegion = speedRegions.find(
+		const activeSpeedRegion = effectiveSpeedRegions.find(
 			(region) => currentTime * 1000 >= region.startMs && currentTime * 1000 < region.endMs,
 		);
 		const targetPlaybackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
@@ -4201,8 +3738,8 @@ export default function VideoEditor() {
 		isPlaying,
 		previewSourceAudioFallbackPaths,
 		sourceAudioFallbackStartDelayMsByPath,
-		speedRegions,
-	]);
+			effectiveSpeedRegions,
+		]);
 
 	const showExportSuccessToast = useCallback((filePath: string) => {
 		toast.success(`Exported successfully to ${filePath}`, {
@@ -5261,111 +4798,6 @@ export default function VideoEditor() {
 					className="flex items-center gap-2 justify-self-end pr-3"
 					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 				>
-					<Popover open={presetPopoverOpen} onOpenChange={setPresetPopoverOpen}>
-						<PopoverTrigger asChild>
-							<button
-								type="button"
-								title={t("editor.presets.open", "Open presets")}
-								aria-label={t("editor.presets.open", "Open presets")}
-								className="inline-flex items-center gap-1.5 bg-transparent p-0 text-sm font-medium tracking-tight text-foreground outline-none transition-opacity hover:opacity-80"
-							>
-								<span className="flex items-center gap-1.5">
-									<BookmarkSimple weight="fill" className="h-4 w-4" />
-									<span>{currentEditorPreset?.name ?? t("editor.presets.label", "Presets")}</span>
-								</span>
-								<ChevronDown className="h-3.5 w-3.5 text-foreground" />
-							</button>
-						</PopoverTrigger>
-						<PopoverContent
-							align="end"
-							sideOffset={10}
-							className="w-[300px] rounded-2xl border border-foreground/10 bg-editor-surface-alt p-3 shadow-xl"
-						>
-							<div className="space-y-3">
-								<form
-									onSubmit={(event) => {
-										event.preventDefault();
-										handleSavePresetSubmit();
-									}}
-									className="space-y-2"
-								>
-									<p className="text-[11px] font-medium text-foreground">
-										{t("editor.presets.saveCurrentAs", "Save current preset as")}
-									</p>
-									<div className="flex items-center gap-2">
-										<Input
-											value={presetNameDraft}
-											onChange={(event) => setPresetNameDraft(event.target.value)}
-											className="h-9 rounded-xl border-foreground/10 bg-background/70 text-sm"
-											placeholder={t("editor.presets.namePlaceholder", "Preset name")}
-											aria-label={t("editor.presets.namePlaceholder", "Preset name")}
-										/>
-										<Button
-											type="submit"
-											size="sm"
-											className="h-9 rounded-xl bg-[#2563EB] px-3 text-white hover:bg-[#1d4ed8]"
-										>
-											{t("common.actions.save", "Save")}
-										</Button>
-									</div>
-								</form>
-
-								<div className="space-y-2">
-									<p className="text-[11px] font-medium text-foreground">
-										{t("editor.presets.savedList", "Saved presets")}
-									</p>
-									<div className="max-h-56 space-y-1 overflow-y-auto pr-1 custom-scrollbar">
-										{editorPresets.length === 0 ? (
-											<div className="rounded-xl border border-dashed border-foreground/10 px-3 py-4 text-center text-[11px] text-muted-foreground">
-												{t("editor.presets.empty", "No presets yet.")}
-											</div>
-										) : (
-											editorPresets.map((preset) => {
-												const isActive = preset.id === currentEditorPreset?.id;
-												return (
-													<div
-														key={preset.id}
-														className={cn(
-															"flex items-center gap-2 rounded-xl border px-2 py-2 text-sm transition-colors",
-															isActive
-																? "border-[#2563EB]/20 bg-[#2563EB]/10 text-foreground"
-																: "border-foreground/8 bg-foreground/[0.03] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
-														)}
-													>
-														<button
-															type="button"
-															onClick={() => handleApplyEditorPreset(preset.id)}
-															className="flex min-w-0 flex-1 items-center justify-between text-left"
-														>
-															<span className="truncate pr-3">{preset.name}</span>
-															{isActive ? <Check className="h-3.5 w-3.5 shrink-0 text-[#2563EB]" /> : null}
-														</button>
-														<button
-															type="button"
-															onClick={() => handleDeleteEditorPreset(preset.id)}
-															className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground"
-															aria-label={t(
-																"editor.presets.deleteAriaLabel",
-																"Delete preset {{name}}",
-																{ name: preset.name },
-															)}
-															title={t(
-																"editor.presets.deleteAriaLabel",
-																"Delete preset {{name}}",
-																{ name: preset.name },
-															)}
-														>
-															<X className="h-3.5 w-3.5" />
-														</button>
-													</div>
-												);
-											})
-										)}
-									</div>
-								</div>
-							</div>
-						</PopoverContent>
-					</Popover>
 					<DropdownMenu
 						open={showExportDropdown}
 						onOpenChange={setShowExportDropdown}
@@ -5375,7 +4807,7 @@ export default function VideoEditor() {
 							<Button
 								type="button"
 								onClick={handleOpenExportDropdown}
-								className="ml-3 inline-flex h-8 min-w-[112px] items-center justify-center gap-2 rounded-[5px] bg-[#2563EB] px-4.5 text-white transition-colors hover:bg-[#2563EB]/92"
+								className="inline-flex h-8 min-w-[112px] items-center justify-center gap-2 rounded-[5px] bg-[#2563EB] px-4.5 text-white transition-colors hover:bg-[#2563EB]/92"
 							>
 								<Download className="h-4 w-4" />
 								<span className="text-sm font-semibold tracking-tight">
@@ -5675,8 +5107,6 @@ export default function VideoEditor() {
 									selectedZoomId && handleZoomModeChange(mode)
 								}
 								onZoomDelete={handleZoomDelete}
-								selectedTrimId={selectedTrimId}
-								onTrimDelete={handleTrimDelete}
 								selectedClipId={selectedClipId}
 								selectedClipSpeed={
 									selectedClipId
@@ -5710,8 +5140,6 @@ export default function VideoEditor() {
 								onShadowChange={setShadowIntensity}
 								backgroundBlur={backgroundBlur}
 								onBackgroundBlurChange={setBackgroundBlur}
-								zoomMotionBlur={zoomMotionBlur}
-								onZoomMotionBlurChange={setZoomMotionBlur}
 								autoApplyFreshRecordingAutoZooms={autoApplyFreshRecordingAutoZooms}
 								onAutoApplyFreshRecordingAutoZoomsChange={
 									setAutoApplyFreshRecordingAutoZooms
@@ -5744,8 +5172,6 @@ export default function VideoEditor() {
 								onCursorSizeChange={setCursorSize}
 								cursorSmoothing={cursorSmoothing}
 								onCursorSmoothingChange={setCursorSmoothing}
-								zoomSmoothness={zoomSmoothness}
-								onZoomSmoothnessChange={setZoomSmoothness}
 								zoomClassicMode={zoomClassicMode}
 								onZoomClassicModeChange={setZoomClassicMode}
 								cursorMotionBlur={cursorMotionBlur}
@@ -5795,15 +5221,6 @@ export default function VideoEditor() {
 								}
 								onAnnotationBlurColorChange={handleAnnotationBlurColorChange}
 								onAnnotationDelete={handleAnnotationDelete}
-								selectedSpeedId={selectedSpeedId}
-								selectedSpeedValue={
-									selectedSpeedId
-										? (speedRegions.find((r) => r.id === selectedSpeedId)
-												?.speed ?? null)
-										: null
-								}
-								onSpeedChange={handleSpeedChange}
-								onSpeedDelete={handleSpeedDelete}
 							/>
 						)}
 					</div>
@@ -5914,7 +5331,6 @@ export default function VideoEditor() {
 												showShadow={shadowIntensity > 0}
 												shadowIntensity={shadowIntensity}
 												backgroundBlur={backgroundBlur}
-												zoomMotionBlur={zoomMotionBlur}
 												connectZooms={connectZooms}
 												zoomInDurationMs={zoomInDurationMs}
 												zoomInOverlapMs={zoomInOverlapMs}
@@ -5939,7 +5355,6 @@ export default function VideoEditor() {
 												annotationRegions={annotationRegions}
 												autoCaptions={autoCaptions}
 												autoCaptionSettings={autoCaptionSettings}
-												onEditAutoCaption={handleSaveAutoCaptionEdit}
 												selectedAnnotationId={selectedAnnotationId}
 												onSelectAnnotation={handleSelectAnnotation}
 												onAnnotationPositionChange={
@@ -6212,22 +5627,11 @@ export default function VideoEditor() {
 						selectedZoomId={selectedZoomId}
 						onSelectZoom={handleSelectZoom}
 						trimRegions={trimRegions}
-						onTrimAdded={handleTrimAdded}
-						onTrimSpanChange={handleTrimSpanChange}
-						onTrimDelete={handleTrimDelete}
-						selectedTrimId={selectedTrimId}
-						onSelectTrim={handleSelectTrim}
 						clipRegions={clipRegions}
 						onClipSplit={handleClipSplit}
 						onClipSpanChange={handleClipSpanChange}
 						selectedClipId={selectedClipId}
 						onSelectClip={handleSelectClip}
-						speedRegions={speedRegions}
-						onSpeedAdded={handleSpeedAdded}
-						onSpeedSpanChange={handleSpeedSpanChange}
-						onSpeedDelete={handleSpeedDelete}
-						selectedSpeedId={selectedSpeedId}
-						onSelectSpeed={handleSelectSpeed}
 						audioRegions={audioRegions}
 						onAudioAdded={handleAudioAdded}
 						onAudioSpanChange={handleAudioSpanChange}
