@@ -18,7 +18,7 @@ import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../cursor/bou
 import { startInteractionCapture, stopInteractionCapture } from "../cursor/interaction";
 import { startNativeCursorMonitor, stopNativeCursorMonitor } from "../cursor/monitor";
 import {
-	normalizeCursorTelemetrySamples,
+	clamp,
 	pauseCursorCapture,
 	resumeCursorCapture,
 	resetCursorCaptureClock,
@@ -26,7 +26,6 @@ import {
 	snapshotCursorTelemetryForPersistence,
 	startCursorSampling,
 	stopCursorCapture,
-	writeCursorTelemetry,
 } from "../cursor/telemetry";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import {
@@ -1313,15 +1312,23 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("pause-cursor-capture", () => {
-		sampleCursorPoint();
-		pauseCursorCapture(Date.now());
+	ipcMain.handle("pause-cursor-capture", (_event, boundaryMs?: number) => {
+		const timestamp =
+			typeof boundaryMs === "number" && Number.isFinite(boundaryMs)
+				? boundaryMs
+				: Date.now();
+		sampleCursorPoint(timestamp);
+		pauseCursorCapture(timestamp);
 		return { success: true };
 	});
 
-	ipcMain.handle("resume-cursor-capture", () => {
-		resumeCursorCapture(Date.now());
-		sampleCursorPoint();
+	ipcMain.handle("resume-cursor-capture", (_event, boundaryMs?: number) => {
+		const timestamp =
+			typeof boundaryMs === "number" && Number.isFinite(boundaryMs)
+				? boundaryMs
+				: Date.now();
+		resumeCursorCapture(timestamp);
+		sampleCursorPoint(timestamp);
 		return { success: true };
 	});
 
@@ -1335,7 +1342,53 @@ export function registerRecordingHandlers(
 		try {
 			const content = await fs.readFile(telemetryPath, "utf-8");
 			const parsed = JSON.parse(content);
-			const samples = normalizeCursorTelemetrySamples(parsed);
+			const rawSamples = Array.isArray(parsed)
+				? parsed
+				: Array.isArray(parsed?.samples)
+					? parsed.samples
+					: [];
+
+			const samples: CursorTelemetryPoint[] = rawSamples
+				.filter((sample: unknown) => Boolean(sample && typeof sample === "object"))
+				.map((sample: unknown) => {
+					const point = sample as Partial<CursorTelemetryPoint>;
+					return {
+						timeMs:
+							typeof point.timeMs === "number" && Number.isFinite(point.timeMs)
+								? Math.max(0, point.timeMs)
+								: 0,
+						cx:
+							typeof point.cx === "number" && Number.isFinite(point.cx)
+								? clamp(point.cx, 0, 1)
+								: 0.5,
+						cy:
+							typeof point.cy === "number" && Number.isFinite(point.cy)
+								? clamp(point.cy, 0, 1)
+								: 0.5,
+						interactionType:
+							point.interactionType === "click" ||
+							point.interactionType === "double-click" ||
+							point.interactionType === "right-click" ||
+							point.interactionType === "middle-click" ||
+							point.interactionType === "move" ||
+							point.interactionType === "mouseup"
+								? point.interactionType
+								: undefined,
+						cursorType:
+							point.cursorType === "arrow" ||
+							point.cursorType === "text" ||
+							point.cursorType === "pointer" ||
+							point.cursorType === "crosshair" ||
+							point.cursorType === "open-hand" ||
+							point.cursorType === "closed-hand" ||
+							point.cursorType === "resize-ew" ||
+							point.cursorType === "resize-ns" ||
+							point.cursorType === "not-allowed"
+								? point.cursorType
+								: undefined,
+					};
+				})
+				.sort((a: CursorTelemetryPoint, b: CursorTelemetryPoint) => a.timeMs - b.timeMs);
 
 			return { success: true, samples };
 		} catch (error) {
@@ -1352,32 +1405,4 @@ export function registerRecordingHandlers(
 			};
 		}
 	});
-
-	ipcMain.handle(
-		"set-cursor-telemetry",
-		async (_, videoPath: string | undefined, samples: CursorTelemetryPoint[]) => {
-			const targetVideoPath = normalizeVideoSourcePath(videoPath ?? currentVideoPath);
-			if (!targetVideoPath) {
-				return {
-					success: false,
-					samples: [],
-					message: "No video path available for cursor telemetry",
-					error: "Missing video path",
-				};
-			}
-
-			try {
-				const normalizedSamples = await writeCursorTelemetry(targetVideoPath, samples);
-				return { success: true, samples: normalizedSamples };
-			} catch (error) {
-				console.error("Failed to save cursor telemetry:", error);
-				return {
-					success: false,
-					samples: [],
-					message: "Failed to save cursor telemetry",
-					error: String(error),
-				};
-			}
-		},
-	);
 }

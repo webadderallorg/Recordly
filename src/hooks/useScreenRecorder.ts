@@ -154,7 +154,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const micFallbackRecorder = useRef<MediaRecorder | null>(null);
 	const micFallbackChunks = useRef<Blob[]>([]);
 	const micFallbackStartDelayMs = useRef<number | null>(null);
-	const hideEditorOverlayCursorByDefault = useRef(false);
 
 	const notifyRecordingFinalizationFailure = useCallback(async (message: string) => {
 		setFinalizing(false);
@@ -398,27 +397,21 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 	const finalizeRecordingSession = useCallback(
 		async (videoPath: string, webcamPath: string | null) => {
-			const shouldHideOverlayCursor = hideEditorOverlayCursorByDefault.current;
 			try {
 				if (webcamPath) {
 					await window.electronAPI.setCurrentRecordingSession({
 						videoPath,
 						webcamPath,
 						timeOffsetMs: webcamTimeOffsetMs.current,
-						hideOverlayCursorByDefault: shouldHideOverlayCursor,
 					});
 				} else {
-					await window.electronAPI.setCurrentVideoPath(videoPath, {
-						hideOverlayCursorByDefault: shouldHideOverlayCursor,
-					});
+					await window.electronAPI.setCurrentVideoPath(videoPath);
 				}
 			} catch (error) {
 				console.error("Failed to persist recording session metadata:", error);
 
 				try {
-					await window.electronAPI.setCurrentVideoPath(videoPath, {
-						hideOverlayCursorByDefault: shouldHideOverlayCursor,
-					});
+					await window.electronAPI.setCurrentVideoPath(videoPath);
 				} catch (fallbackError) {
 					console.error("Failed to persist fallback video path:", fallbackError);
 				}
@@ -915,7 +908,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		try {
 			const platform = await window.electronAPI.getPlatform();
-			hideEditorOverlayCursorByDefault.current = false;
 			const existingSource = await window.electronAPI.getSelectedSource();
 			const selectedSource =
 				existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
@@ -1003,7 +995,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				);
 				if (!nativeResult.success) {
 					if (useNativeWindowsCapture) {
-						hideEditorOverlayCursorByDefault.current = true;
 						console.warn(
 							"Native Windows capture failed, falling back to browser capture:",
 							nativeResult.error ?? nativeResult.message,
@@ -1103,7 +1094,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}
 			}
 
-			const wantsAudioCapture = microphoneEnabled || systemAudioEnabled;
 			const browserCaptureSource = await resolveBrowserCaptureSource(selectedSource);
 
 			if (
@@ -1124,7 +1114,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			let videoTrack: MediaStreamTrack | undefined;
 			let systemAudioIncluded = false;
 			const mediaDevices = navigator.mediaDevices as DesktopCaptureMediaDevices;
-			const useLinuxPortal = selectedSource.id === "screen:linux-portal";
 			const browserScreenVideoConstraints = {
 				mandatory: {
 					chromeMediaSource: CHROME_MEDIA_SOURCE,
@@ -1138,10 +1127,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				cursor: "never" as const,
 			};
 
-			if (wantsAudioCapture) {
-				let screenMediaStream: MediaStream;
-				const acquireLinuxPortalStream = (withAudio: boolean) =>
-					mediaDevices.getDisplayMedia({
+
+
+			const acquireLinuxPortalStream = async (withAudio: boolean): Promise<MediaStream> => {
+					
+				try {
+					return await mediaDevices.getDisplayMedia({
 						audio: withAudio,
 						video: {
 							displaySurface: "monitor",
@@ -1153,6 +1144,43 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						selfBrowserSurface: "exclude",
 						surfaceSwitching: "exclude",
 					});
+				} 
+				
+				catch (err) {
+					console.warn("Linux portal failed, falling back to desktop capture(no audio):", err);
+					if (withAudio) {
+						alert("System audio is not supported in fallback mode. Recording will continue without audio.");
+					  }
+
+
+					const sources = await window.electronAPI.getSources({ types: ["screen"] });
+
+					if (!sources.length) {
+						throw new Error("No screen sources available");
+					}
+
+					const source = sources[0];
+					console.log("Using fallback source:", source);
+
+					
+
+					return await navigator.mediaDevices.getUserMedia({
+						audio: false, //intentional
+						video: {
+							mandatory: {
+								chromeMediaSource: "desktop",
+								chromeMediaSourceId: source.id,
+								maxWidth: TARGET_WIDTH,
+								maxHeight: TARGET_HEIGHT,
+								maxFrameRate: TARGET_FRAME_RATE,
+							},
+						},
+					} as any);
+				}
+			};
+
+				let screenMediaStream: MediaStream;
+				const useLinuxPortal = selectedSource.id === "screen:linux-portal";
 
 				if (systemAudioEnabled) {
 					try {
@@ -1257,26 +1285,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				} else if (micAudioTrack) {
 					stream.current.addTrack(micAudioTrack);
 				}
-			} else {
-				const mediaStream = await mediaDevices.getDisplayMedia({
-					audio: false,
-					video: {
-						displaySurface: selectedSource.id?.startsWith("window:")
-							? "window"
-							: "monitor",
-						width: { ideal: TARGET_WIDTH, max: TARGET_WIDTH },
-						height: { ideal: TARGET_HEIGHT, max: TARGET_HEIGHT },
-						frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
-						cursor: "never",
-					},
-					selfBrowserSurface: "exclude",
-					surfaceSwitching: "exclude",
-				});
+			
+			
 
-				stream.current = mediaStream;
-				videoTrack = mediaStream.getVideoTracks()[0];
-			}
-
+		
 			if (!stream.current || !videoTrack) {
 				throw new Error("Media stream is not available.");
 			}
@@ -1428,12 +1440,32 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (webcamRecorder.current?.state === "recording") {
 					webcamRecorder.current.pause();
 				}
+				const boundaryMs = Date.now();
 				try {
-					await window.electronAPI.pauseCursorCapture();
+					await window.electronAPI.pauseCursorCapture(boundaryMs);
 				} catch (error) {
 					console.warn("Failed to pause cursor capture:", error);
+					try {
+						const rollbackResult =
+							await window.electronAPI.resumeNativeScreenRecording();
+						if (!rollbackResult.success) {
+							console.warn(
+								"Failed to roll back native pause after cursor pause failure:",
+								rollbackResult.error ?? rollbackResult.message,
+							);
+						}
+					} catch (rollbackError) {
+						console.warn(
+							"Failed to roll back native pause after cursor pause failure:",
+							rollbackError,
+						);
+					}
+					if (webcamRecorder.current?.state === "paused") {
+						webcamRecorder.current.resume();
+					}
+					return;
 				}
-				markRecordingPaused(Date.now());
+				markRecordingPaused(boundaryMs);
 				setPaused(true);
 			})();
 			return;
@@ -1443,13 +1475,21 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			if (webcamRecorder.current?.state === "recording") {
 				webcamRecorder.current.pause();
 			}
+			const boundaryMs = Date.now();
 			void (async () => {
 				try {
-					await window.electronAPI.pauseCursorCapture();
+					await window.electronAPI.pauseCursorCapture(boundaryMs);
 				} catch (error) {
 					console.warn("Failed to pause cursor capture:", error);
+					if (mediaRecorder.current?.state === "paused") {
+						mediaRecorder.current.resume();
+					}
+					if (webcamRecorder.current?.state === "paused") {
+						webcamRecorder.current.resume();
+					}
+					return;
 				}
-				markRecordingPaused(Date.now());
+				markRecordingPaused(boundaryMs);
 				setPaused(true);
 			})();
 		}
@@ -1471,12 +1511,32 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (webcamRecorder.current?.state === "paused") {
 					webcamRecorder.current.resume();
 				}
+				const boundaryMs = Date.now();
 				try {
-					await window.electronAPI.resumeCursorCapture();
+					await window.electronAPI.resumeCursorCapture(boundaryMs);
 				} catch (error) {
 					console.warn("Failed to resume cursor capture:", error);
+					try {
+						const rollbackResult =
+							await window.electronAPI.pauseNativeScreenRecording();
+						if (!rollbackResult.success) {
+							console.warn(
+								"Failed to roll back native resume after cursor resume failure:",
+								rollbackResult.error ?? rollbackResult.message,
+							);
+						}
+					} catch (rollbackError) {
+						console.warn(
+							"Failed to roll back native resume after cursor resume failure:",
+							rollbackError,
+						);
+					}
+					if (webcamRecorder.current?.state === "recording") {
+						webcamRecorder.current.pause();
+					}
+					return;
 				}
-				markRecordingResumed(Date.now());
+				markRecordingResumed(boundaryMs);
 				setPaused(false);
 			})();
 			return;
@@ -1486,13 +1546,21 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			if (webcamRecorder.current?.state === "paused") {
 				webcamRecorder.current.resume();
 			}
+			const boundaryMs = Date.now();
 			void (async () => {
 				try {
-					await window.electronAPI.resumeCursorCapture();
+					await window.electronAPI.resumeCursorCapture(boundaryMs);
 				} catch (error) {
 					console.warn("Failed to resume cursor capture:", error);
+					if (mediaRecorder.current?.state === "recording") {
+						mediaRecorder.current.pause();
+					}
+					if (webcamRecorder.current?.state === "recording") {
+						webcamRecorder.current.pause();
+					}
+					return;
 				}
-				markRecordingResumed(Date.now());
+				markRecordingResumed(boundaryMs);
 				setPaused(false);
 			})();
 		}

@@ -45,10 +45,6 @@ function normalizeRecordingTimeOffsetMs(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : 0;
 }
 
-function normalizeBoolean(value: unknown, fallback = false): boolean {
-  return typeof value === "boolean" ? value : fallback;
-}
-
 /**
  * Produces a filesystem-safe project base name without the project extension.
  */
@@ -531,7 +527,7 @@ export function registerProjectHandlers() {
       return { success: false, error: String(error), message: 'Failed to open projects folder.' }
     }
   })
-  ipcMain.handle('set-current-video-path', async (_, path: string, options?: { preserveProjectPath?: boolean; hideOverlayCursorByDefault?: boolean }) => {
+  ipcMain.handle('set-current-video-path', async (_, path: string, options?: { preserveProjectPath?: boolean }) => {
     setCurrentVideoPath(normalizeVideoSourcePath(path) ?? path)
     approveUserPath(currentVideoPath)
     const resolvedSession = await resolveRecordingSession(currentVideoPath)
@@ -541,12 +537,7 @@ export function registerProjectHandlers() {
         timeOffsetMs: 0,
       }
 
-    setCurrentRecordingSession({
-      ...resolvedSession,
-      hideOverlayCursorByDefault:
-        normalizeBoolean(options?.hideOverlayCursorByDefault) ||
-        normalizeBoolean(resolvedSession.hideOverlayCursorByDefault),
-    })
+    setCurrentRecordingSession(resolvedSession)
     await replaceApprovedSessionLocalReadPaths([
       resolvedSession.videoPath,
       resolvedSession.webcamPath,
@@ -562,14 +553,13 @@ export function registerProjectHandlers() {
     return { success: true, webcamPath: resolvedSession.webcamPath ?? null }
   })
 
-  ipcMain.handle('set-current-recording-session', async (_, session: { videoPath: string; webcamPath?: string | null; timeOffsetMs?: number; hideOverlayCursorByDefault?: boolean }, options?: { preserveProjectPath?: boolean }) => {
+  ipcMain.handle('set-current-recording-session', async (_, session: { videoPath: string; webcamPath?: string | null; timeOffsetMs?: number }, options?: { preserveProjectPath?: boolean }) => {
     const normalizedVideoPath = normalizeVideoSourcePath(session.videoPath) ?? session.videoPath
     setCurrentVideoPath(normalizedVideoPath)
     setCurrentRecordingSession({
       videoPath: normalizedVideoPath,
       webcamPath: normalizeVideoSourcePath(session.webcamPath ?? null),
       timeOffsetMs: normalizeRecordingTimeOffsetMs(session.timeOffsetMs),
-      hideOverlayCursorByDefault: normalizeBoolean(session.hideOverlayCursorByDefault),
     });
     await replaceApprovedSessionLocalReadPaths([
       currentRecordingSession!.videoPath,

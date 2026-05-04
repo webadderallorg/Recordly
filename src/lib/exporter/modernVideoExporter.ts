@@ -59,9 +59,6 @@ interface VideoExporterConfig extends ExportConfig {
 	shadowIntensity: number;
 	backgroundBlur: number;
 	zoomMotionBlur?: number;
-	zoomTemporalMotionBlur?: number;
-	zoomMotionBlurSampleCount?: number | null;
-	zoomMotionBlurShutterFraction?: number | null;
 	connectZooms?: boolean;
 	zoomInDurationMs?: number;
 	zoomInOverlapMs?: number;
@@ -85,9 +82,6 @@ interface VideoExporterConfig extends ExportConfig {
 	cursorStyle?: CursorStyle;
 	cursorSize?: number;
 	cursorSmoothing?: number;
-	cursorSpringStiffnessMultiplier?: number;
-	cursorSpringDampingMultiplier?: number;
-	cursorSpringMassMultiplier?: number;
 	cursorMotionBlur?: number;
 	cursorClickBounce?: number;
 	cursorClickBounceDuration?: number;
@@ -152,7 +146,6 @@ export class ModernVideoExporter {
 	private encoderName: string | null = null;
 	private backpressureProfile: ExportBackpressureProfile | null = null;
 	private nativeExportSessionId: string | null = null;
-	private nativePendingWrite: Promise<void> = Promise.resolve();
 	private nativeWritePromises = new Set<Promise<void>>();
 	private nativeWriteError: Error | null = null;
 	private maxNativeWriteInFlight = 1;
@@ -309,9 +302,6 @@ export class ModernVideoExporter {
 				shadowIntensity: this.config.shadowIntensity,
 				backgroundBlur: this.config.backgroundBlur,
 				zoomMotionBlur: this.config.zoomMotionBlur,
-				zoomTemporalMotionBlur: this.config.zoomTemporalMotionBlur,
-				zoomMotionBlurSampleCount: this.config.zoomMotionBlurSampleCount,
-				zoomMotionBlurShutterFraction: this.config.zoomMotionBlurShutterFraction,
 				connectZooms: this.config.connectZooms,
 				zoomInDurationMs: this.config.zoomInDurationMs,
 				zoomInOverlapMs: this.config.zoomInOverlapMs,
@@ -339,9 +329,6 @@ export class ModernVideoExporter {
 				cursorStyle: this.config.cursorStyle,
 				cursorSize: this.config.cursorSize,
 				cursorSmoothing: this.config.cursorSmoothing,
-				cursorSpringStiffnessMultiplier: this.config.cursorSpringStiffnessMultiplier,
-				cursorSpringDampingMultiplier: this.config.cursorSpringDampingMultiplier,
-				cursorSpringMassMultiplier: this.config.cursorSpringMassMultiplier,
 				cursorMotionBlur: this.config.cursorMotionBlur,
 				cursorClickBounce: this.config.cursorClickBounce,
 				cursorClickBounceDuration: this.config.cursorClickBounceDuration,
@@ -395,8 +382,6 @@ export class ModernVideoExporter {
 						videoFrame,
 						sourceTimestampUs,
 						cursorTimestampUs,
-						frameDuration,
-						timestamp,
 					);
 					this.renderFrameTimeMs += this.getNowMs() - renderStartedAt;
 					videoFrame.close();
@@ -939,7 +924,6 @@ export class ModernVideoExporter {
 		this.lastNativeExportError = null;
 		this.encodeBackend = "ffmpeg";
 		this.encoderName = "h264-stream-copy";
-		this.nativePendingWrite = Promise.resolve();
 
 		const sessionId = result.sessionId;
 		const encoder = new VideoEncoder({
@@ -950,13 +934,8 @@ export class ModernVideoExporter {
 
 				const buffer = new ArrayBuffer(chunk.byteLength);
 				chunk.copyTo(buffer);
-				const writePromise = this.nativePendingWrite
-					.then(() =>
-						window.electronAPI.nativeVideoExportWriteFrame(
-							sessionId,
-							new Uint8Array(buffer),
-						),
-					)
+				const writePromise = window.electronAPI
+					.nativeVideoExportWriteFrame(sessionId, new Uint8Array(buffer))
 					.then((writeResult) => {
 						if (!writeResult.success && !this.cancelled) {
 							throw new Error(
@@ -978,7 +957,6 @@ export class ModernVideoExporter {
 						}
 						throw error;
 					});
-				this.nativePendingWrite = writePromise;
 
 				this.trackNativeWritePromise(writePromise);
 			},
@@ -1129,7 +1107,6 @@ export class ModernVideoExporter {
 			this.finalizationStageMs.ffmpegAudioMuxBreakdown = result.metrics;
 		}
 		this.nativeExportSessionId = null;
-		this.nativePendingWrite = Promise.resolve();
 
 		if (!result.success) {
 			return {
@@ -1822,7 +1799,6 @@ export class ModernVideoExporter {
 		this.lastProgressSampleTimeMs = 0;
 		this.lastProgressSampleFrame = 0;
 		this.nativeWritePromises = new Set();
-		this.nativePendingWrite = Promise.resolve();
 		this.nativeWriteError = null;
 		this.maxNativeWriteInFlight = 1;
 		this.videoDescription = undefined;

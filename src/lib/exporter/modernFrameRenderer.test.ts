@@ -103,7 +103,6 @@ function createMockContext() {
 	return {
 		clearRect: vi.fn(),
 		drawImage: vi.fn(),
-		fillRect: vi.fn(),
 		save: vi.fn(),
 		restore: vi.fn(),
 		getImageData: vi.fn(() => ({ data: new Uint8ClampedArray(0) })),
@@ -171,29 +170,8 @@ describe("ModernFrameRenderer blur export path", () => {
 	beforeEach(() => {
 		Object.assign(globalThis, {
 			window: globalThis,
-			HTMLMediaElement: {
-				HAVE_CURRENT_DATA: 2,
-			},
 			document: {
 				createElement: vi.fn((tag: string) => {
-					if (tag === "video") {
-						return {
-							duration: 5,
-							readyState: 2,
-							videoWidth: 1280,
-							videoHeight: 720,
-							muted: true,
-							loop: true,
-							playsInline: true,
-							preload: "auto",
-							src: "",
-							currentTime: 0,
-							load: vi.fn(),
-							pause: vi.fn(),
-							addEventListener: vi.fn(),
-							removeEventListener: vi.fn(),
-						};
-					}
 					if (tag !== "canvas") {
 						throw new Error(`Unexpected element requested in test: ${tag}`);
 					}
@@ -219,7 +197,7 @@ describe("ModernFrameRenderer blur export path", () => {
 		expect(renderer.capturePixelsForNativeExport()).not.toBeNull();
 	});
 
-	it("prefers decoder-backed sync for video wallpapers during export", async () => {
+	it("prefers decoder-backed video wallpapers during export", async () => {
 		const renderer = new FrameRenderer({
 			width: 1920,
 			height: 1080,

@@ -16,7 +16,6 @@ import {
 	getCursorSpringConfig,
 	resetSpringState,
 	stepSpringValue,
-	type CursorSpringTuning,
 } from "./motionSmoothing";
 import { cursorSetAssets, getCursorStyleSizeMultiplier } from "./uploadedCursorAssets";
 
@@ -57,8 +56,6 @@ export interface CursorRenderConfig {
 	trailLength: number;
 	/** Smoothing factor for cursor interpolation (0–1, lower = smoother/slower) */
 	smoothingFactor: number;
-	/** Optional multipliers applied on top of the derived cursor spring config. */
-	springTuning: CursorSpringTuning;
 	/** Directional cursor motion blur amount. */
 	motionBlur: number;
 	/** Click bounce multiplier. */
@@ -77,11 +74,6 @@ export const DEFAULT_CURSOR_CONFIG: CursorRenderConfig = {
 	dotAlpha: 0.95,
 	trailLength: 0,
 	smoothingFactor: 0.18,
-	springTuning: {
-		stiffnessMultiplier: 1,
-		dampingMultiplier: 1,
-		massMultiplier: 1,
-	},
 	motionBlur: 0,
 	clickBounce: 1,
 	clickBounceDuration: DEFAULT_CURSOR_CLICK_BOUNCE_DURATION,
@@ -652,10 +644,7 @@ function getCursorViewportScale(viewport: CursorViewportRect) {
 	return Math.max(MIN_CURSOR_VIEWPORT_SCALE, viewport.width / REFERENCE_WIDTH);
 }
 
-function getCursorSwaySpringConfig(
-	smoothingFactor: number,
-	springTuning: CursorSpringTuning,
-) {
+function getCursorSwaySpringConfig(smoothingFactor: number) {
 	const baseConfig = getCursorSpringConfig(
 		Math.min(
 			2,
@@ -664,7 +653,6 @@ function getCursorSwaySpringConfig(
 				smoothingFactor * CURSOR_SWAY_SMOOTHING_MULTIPLIER + CURSOR_SWAY_SMOOTHING_OFFSET,
 			),
 		),
-		springTuning,
 	);
 
 	return {
@@ -712,16 +700,14 @@ export class SmoothedCursorState {
 	public y = 0.5;
 	public trail: Array<{ x: number; y: number }> = [];
 	private smoothingFactor: number;
-	private springTuning: CursorSpringTuning;
 	private trailLength: number;
 	private initialized = false;
 	private lastTimeMs: number | null = null;
 	private xSpring = createSpringState(0.5);
 	private ySpring = createSpringState(0.5);
 
-	constructor(config: Pick<CursorRenderConfig, "smoothingFactor" | "trailLength" | "springTuning">) {
+	constructor(config: Pick<CursorRenderConfig, "smoothingFactor" | "trailLength">) {
 		this.smoothingFactor = config.smoothingFactor;
-		this.springTuning = config.springTuning;
 		this.trailLength = config.trailLength;
 	}
 
@@ -755,17 +741,13 @@ export class SmoothedCursorState {
 			this.lastTimeMs === null ? 1000 / 60 : Math.max(1, timeMs - this.lastTimeMs);
 		this.lastTimeMs = timeMs;
 
-		const springConfig = getCursorSpringConfig(this.smoothingFactor, this.springTuning);
+		const springConfig = getCursorSpringConfig(this.smoothingFactor);
 		this.x = stepSpringValue(this.xSpring, targetX, deltaMs, springConfig);
 		this.y = stepSpringValue(this.ySpring, targetY, deltaMs, springConfig);
 	}
 
 	setSmoothingFactor(smoothingFactor: number): void {
 		this.smoothingFactor = smoothingFactor;
-	}
-
-	setSpringTuning(springTuning: CursorSpringTuning): void {
-		this.springTuning = springTuning;
 	}
 
 	snapTo(targetX: number, targetY: number, timeMs: number): void {
@@ -809,14 +791,7 @@ export class PixiCursorOverlay {
 	private swaySpring = createSpringState(0);
 
 	constructor(config: Partial<CursorRenderConfig> = {}) {
-		this.config = {
-			...DEFAULT_CURSOR_CONFIG,
-			...config,
-			springTuning: {
-				...DEFAULT_CURSOR_CONFIG.springTuning,
-				...config.springTuning,
-			},
-		};
+		this.config = { ...DEFAULT_CURSOR_CONFIG, ...config };
 		this.state = new SmoothedCursorState(this.config);
 
 		this.container = new Container();
@@ -886,14 +861,6 @@ export class PixiCursorOverlay {
 	setSmoothingFactor(smoothingFactor: number) {
 		this.config.smoothingFactor = smoothingFactor;
 		this.state.setSmoothingFactor(smoothingFactor);
-	}
-
-	setSpringTuning(springTuning: CursorSpringTuning) {
-		this.config.springTuning = {
-			...DEFAULT_CURSOR_CONFIG.springTuning,
-			...springTuning,
-		};
-		this.state.setSpringTuning(this.config.springTuning);
 	}
 
 	setMotionBlur(motionBlur: number) {
@@ -1128,7 +1095,7 @@ export class PixiCursorOverlay {
 			this.swaySpring,
 			targetRotation,
 			deltaMs,
-			getCursorSwaySpringConfig(this.config.smoothingFactor, this.config.springTuning),
+			getCursorSwaySpringConfig(this.config.smoothingFactor),
 		);
 
 		if (Math.abs(this.swayRotation) < 0.0001 && targetRotation === 0) {

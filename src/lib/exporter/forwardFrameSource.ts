@@ -36,8 +36,6 @@ export class ForwardFrameSource {
 	private heldFrame: VideoFrame | null = null;
 	private heldFrameSec = 0;
 	private lastTargetTimeSec = 0;
-	private lastFrameIntervalSec = 0;
-	private resolvedDecodedDurationSec: number | null = null;
 	private firstFrameTimestampUs: number | null = null;
 	private frameTimelineOffsetUs = 0;
 
@@ -299,10 +297,6 @@ export class ForwardFrameSource {
 		while (!this.cancelled) {
 			const nextFrame = await this.getNextFrame();
 			if (!nextFrame) {
-				this.resolvedDecodedDurationSec = Math.max(
-					this.heldFrameSec,
-					this.heldFrameSec + Math.max(0, this.lastFrameIntervalSec),
-				);
 				return new VideoFrame(this.heldFrame, {
 					timestamp: this.heldFrame.timestamp,
 				});
@@ -326,21 +320,12 @@ export class ForwardFrameSource {
 				});
 			}
 
-			this.lastFrameIntervalSec = Math.max(0, nextFrameSec - this.heldFrameSec);
 			this.heldFrame.close();
 			this.heldFrame = nextFrame;
 			this.heldFrameSec = nextFrameSec;
 		}
 
 		return null;
-	}
-
-	getResolvedDurationSec(): number | null {
-		return this.resolvedDecodedDurationSec;
-	}
-
-	hasReachedEndOfStream(): boolean {
-		return this.decodeDone && this.pendingFrames.length === 0;
 	}
 
 	cancel(): void {
@@ -412,8 +397,6 @@ export class ForwardFrameSource {
 		this.decodeDone = false;
 		this.decodeError = null;
 		this.lastTargetTimeSec = 0;
-		this.lastFrameIntervalSec = 0;
-		this.resolvedDecodedDurationSec = null;
 		this.firstFrameTimestampUs = null;
 		this.frameTimelineOffsetUs = 0;
 	}

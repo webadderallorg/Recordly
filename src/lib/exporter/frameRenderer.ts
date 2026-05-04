@@ -1,6 +1,5 @@
-import { Application, Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
+import { Application, BlurFilter, Container, Graphics, Sprite, Texture } from "pixi.js";
 import { MotionBlurFilter } from "pixi-filters/motion-blur";
-import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
@@ -65,19 +64,12 @@ import {
 } from "@/lib/extensions/renderHooks";
 import { applyCanvasSceneTransform } from "@/lib/extensions/sceneTransform";
 import { drawSquircleOnCanvas, drawSquircleOnGraphics } from "@/lib/geometry/squircle";
-import {
-	clampMediaTimeToDuration,
-	getEffectiveVideoStreamDurationSeconds,
-} from "@/lib/mediaTiming";
+import { clampMediaTimeToDuration } from "@/lib/mediaTiming";
 import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import { renderAnnotations } from "./annotationRenderer";
 import { renderCaptions } from "./captionRenderer";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import { resolveMediaElementSource } from "./localMediaSource";
-import {
-	buildTemporalSamplePlanUs,
-	getTemporalMotionBlurConfig,
-} from "./temporalMotionBlur";
 
 interface FrameRenderConfig {
 	width: number;
@@ -89,9 +81,6 @@ interface FrameRenderConfig {
 	shadowIntensity: number;
 	backgroundBlur: number;
 	zoomMotionBlur?: number;
-	zoomTemporalMotionBlur?: number;
-	zoomMotionBlurSampleCount?: number | null;
-	zoomMotionBlurShutterFraction?: number | null;
 	connectZooms?: boolean;
 	zoomInDurationMs?: number;
 	zoomInOverlapMs?: number;
@@ -119,9 +108,6 @@ interface FrameRenderConfig {
 	cursorStyle?: CursorStyle;
 	cursorSize?: number;
 	cursorSmoothing?: number;
-	cursorSpringStiffnessMultiplier?: number;
-	cursorSpringDampingMultiplier?: number;
-	cursorSpringMassMultiplier?: number;
 	zoomSmoothness?: number;
 	zoomClassicMode?: boolean;
 	cursorMotionBlur?: number;
@@ -162,14 +148,6 @@ interface LayoutCache {
 	};
 }
 
-interface RenderSnapshot {
-	timeMs: number;
-	cursorTimeMs: number;
-	smoothedCursor: ReturnType<typeof mapSmoothedCursorToCanvasNormalized>;
-	sceneTransform: { scale: number; x: number; y: number };
-	zoom: { scale: number; focusX: number; focusY: number; progress: number };
-}
-
 function createAnimationState(): AnimationState {
 	return {
 		scale: 1,
@@ -206,22 +184,17 @@ export class FrameRenderer {
 	private videoTextureSource: VideoTextureSource | null = null;
 	private backgroundSprite: HTMLCanvasElement | null = null;
 	private maskGraphics: Graphics | null = null;
-	private zoomBlurFilter: ZoomBlurFilter | null = null;
+	private blurFilter: BlurFilter | null = null;
 	private motionBlurFilter: MotionBlurFilter | null = null;
 	private shadowCanvas: HTMLCanvasElement | null = null;
 	private shadowCtx: CanvasRenderingContext2D | null = null;
 	private compositeCanvas: HTMLCanvasElement | null = null;
 	private compositeCtx: CanvasRenderingContext2D | null = null;
-	private temporalAccumulationCanvas: HTMLCanvasElement | null = null;
-	private temporalAccumulationCtx: CanvasRenderingContext2D | null = null;
 	private backgroundForwardFrameSource: ForwardFrameSource | null = null;
-	private backgroundForwardFrameSourceUrl: string | null = null;
-	private backgroundForwardFrameDurationSec: number | null = null;
 	private backgroundDecodedFrame: VideoFrame | null = null;
 	private backgroundVideoElement: HTMLVideoElement | null = null;
 	private backgroundCtx: CanvasRenderingContext2D | null = null;
 	private backgroundSeekPromise: Promise<void> | null = null;
-	private lastSyncedBackgroundLoopTimeSec: number | null = null;
 	private cleanupBackgroundSource: (() => void) | null = null;
 	private config: FrameRenderConfig;
 	private animationState: AnimationState;
@@ -320,11 +293,6 @@ export class FrameRenderer {
 				style: this.config.cursorStyle ?? "tahoe",
 				smoothingFactor:
 					this.config.cursorSmoothing ?? DEFAULT_CURSOR_CONFIG.smoothingFactor,
-				springTuning: {
-					stiffnessMultiplier: this.config.cursorSpringStiffnessMultiplier,
-					dampingMultiplier: this.config.cursorSpringDampingMultiplier,
-					massMultiplier: this.config.cursorSpringMassMultiplier,
-				},
 				motionBlur: this.config.cursorMotionBlur ?? 0,
 				clickBounce: this.config.cursorClickBounce ?? DEFAULT_CURSOR_CONFIG.clickBounce,
 				clickBounceDuration:
@@ -339,19 +307,13 @@ export class FrameRenderer {
 		await this.setupWebcamSource();
 		await this.setupFrame();
 
-		if ((this.config.zoomMotionBlur ?? 0) > 0) {
-			this.zoomBlurFilter = new ZoomBlurFilter({ strength: 0 });
-			this.motionBlurFilter = new MotionBlurFilter([0, 0], 5, 0);
-			this.videoContainer.filterArea = new Rectangle(
-				0,
-				0,
-				this.config.width,
-				this.config.height,
-			);
-			this.videoContainer.filters = [this.zoomBlurFilter, this.motionBlurFilter];
-		} else {
-			this.videoContainer.filters = null;
-		}
+		// Setup blur filter for video container
+		this.blurFilter = new BlurFilter();
+		this.blurFilter.quality = 5;
+		this.blurFilter.resolution = this.app.renderer.resolution;
+		this.blurFilter.blur = 0;
+		this.motionBlurFilter = new MotionBlurFilter([0, 0], 5, 0);
+		this.videoContainer.filters = [this.blurFilter, this.motionBlurFilter];
 
 		// Setup composite canvas for final output with shadows
 		this.compositeCanvas = document.createElement("canvas");
@@ -365,19 +327,6 @@ export class FrameRenderer {
 
 		if (!this.compositeCtx) {
 			throw new Error("Failed to get 2D context for composite canvas");
-		}
-
-		this.temporalAccumulationCanvas = document.createElement("canvas");
-		this.temporalAccumulationCanvas.width = this.config.width;
-		this.temporalAccumulationCanvas.height = this.config.height;
-		this.temporalAccumulationCtx = configureHighQuality2DContext(
-			this.temporalAccumulationCanvas.getContext("2d", {
-				willReadFrequently: true,
-			}),
-		);
-
-		if (!this.temporalAccumulationCtx) {
-			throw new Error("Failed to get 2D context for temporal accumulation canvas");
 		}
 
 		// Setup shadow canvas if needed
@@ -422,12 +371,9 @@ export class FrameRenderer {
 		this.backgroundForwardFrameSource?.cancel();
 		void this.backgroundForwardFrameSource?.destroy();
 		this.backgroundForwardFrameSource = null;
-		this.backgroundForwardFrameSourceUrl = null;
-		this.backgroundForwardFrameDurationSec = null;
 		this.closeBackgroundDecodedFrame();
 		this.cleanupBackgroundSource?.();
 		this.cleanupBackgroundSource = null;
-		this.lastSyncedBackgroundLoopTimeSec = null;
 		if (this.backgroundVideoElement) {
 			this.backgroundVideoElement.pause();
 			this.backgroundVideoElement.src = "";
@@ -446,18 +392,8 @@ export class FrameRenderer {
 
 				try {
 					const frameSource = new ForwardFrameSource();
-					const metadata = await frameSource.initialize(videoSrc);
+					await frameSource.initialize(videoSrc);
 					this.backgroundForwardFrameSource = frameSource;
-					this.backgroundForwardFrameSourceUrl = videoSrc;
-					this.backgroundForwardFrameDurationSec = getEffectiveVideoStreamDurationSeconds(
-						{
-							duration: metadata?.duration,
-							streamDuration: metadata?.streamDuration,
-						},
-					);
-					this.backgroundVideoElement = null;
-					this.backgroundSeekPromise = null;
-					this.lastSyncedBackgroundLoopTimeSec = null;
 					this.backgroundSprite = bgCanvas;
 					return;
 				} catch (error) {
@@ -503,7 +439,6 @@ export class FrameRenderer {
 				});
 
 				this.backgroundVideoElement = video;
-				this.lastSyncedBackgroundLoopTimeSec = null;
 				this.drawVideoFrameToBackground();
 				this.backgroundSprite = bgCanvas;
 				return;
@@ -675,95 +610,14 @@ export class FrameRenderer {
 		this.backgroundDecodedFrame = null;
 	}
 
-	private async restartBackgroundForwardFrameSource(): Promise<void> {
-		const sourceUrl = this.backgroundForwardFrameSourceUrl;
-		if (!sourceUrl) {
-			return;
-		}
-
-		const nextSource = new ForwardFrameSource();
-		const metadata = await nextSource.initialize(sourceUrl);
-		const previousSource = this.backgroundForwardFrameSource;
-
-		this.backgroundForwardFrameSource = nextSource;
-		const effectiveDuration = getEffectiveVideoStreamDurationSeconds({
-			duration: metadata?.duration,
-			streamDuration: metadata?.streamDuration,
-		});
-		this.backgroundForwardFrameDurationSec =
-			Number.isFinite(effectiveDuration) && effectiveDuration > 0 ? effectiveDuration : null;
-		this.lastSyncedBackgroundLoopTimeSec = null;
-
-		previousSource?.cancel();
-		void previousSource?.destroy();
-	}
-
 	private async syncBackgroundFrame(timeSeconds: number): Promise<void> {
 		if (this.backgroundForwardFrameSource) {
-			const duration = this.backgroundForwardFrameDurationSec;
-			const shouldLoop = Number.isFinite(duration) && (duration ?? 0) > 0;
-			let normalizedTargetTime = shouldLoop
-				? ((timeSeconds % duration!) + duration!) % duration!
-				: Math.max(0, timeSeconds);
-
-			if (
-				shouldLoop &&
-				this.lastSyncedBackgroundLoopTimeSec !== null &&
-				normalizedTargetTime + 0.001 < this.lastSyncedBackgroundLoopTimeSec
-			) {
-				try {
-					await this.restartBackgroundForwardFrameSource();
-				} catch (error) {
-					console.warn(
-						"[FrameRenderer] Unable to restart looping video wallpaper decoder during export:",
-						error,
-					);
-				}
-			}
-
-			const decodedFrame =
-				await this.backgroundForwardFrameSource.getFrameAtTime(normalizedTargetTime);
-			const resolvedDecodedDuration =
-				this.backgroundForwardFrameSource.getResolvedDurationSec();
-			if (
-				shouldLoop &&
-				this.backgroundForwardFrameSource.hasReachedEndOfStream() &&
-				Number.isFinite(resolvedDecodedDuration) &&
-				(resolvedDecodedDuration ?? 0) > 0 &&
-				normalizedTargetTime > (resolvedDecodedDuration ?? 0) + 0.001
-			) {
-				this.backgroundForwardFrameDurationSec = resolvedDecodedDuration ?? null;
-				this.closeBackgroundDecodedFrame();
-				try {
-					await this.restartBackgroundForwardFrameSource();
-					normalizedTargetTime =
-						((timeSeconds % resolvedDecodedDuration!) + resolvedDecodedDuration!) %
-						resolvedDecodedDuration!;
-					const restartedFrame =
-						await this.backgroundForwardFrameSource.getFrameAtTime(
-							normalizedTargetTime,
-						);
-					this.backgroundDecodedFrame = restartedFrame;
-					if (restartedFrame) {
-						this.lastSyncedBackgroundLoopTimeSec = normalizedTargetTime;
-						this.drawBackgroundSourceToCanvas(
-							restartedFrame,
-							restartedFrame.displayWidth,
-							restartedFrame.displayHeight,
-						);
-					}
-					return;
-				} catch (error) {
-					console.warn(
-						"[FrameRenderer] Unable to wrap looping video wallpaper at decoded EOF during export:",
-						error,
-					);
-				}
-			}
+			const decodedFrame = await this.backgroundForwardFrameSource.getFrameAtTime(
+				Math.max(0, timeSeconds),
+			);
 			this.closeBackgroundDecodedFrame();
 			this.backgroundDecodedFrame = decodedFrame;
 			if (decodedFrame) {
-				this.lastSyncedBackgroundLoopTimeSec = normalizedTargetTime;
 				this.drawBackgroundSourceToCanvas(
 					decodedFrame,
 					decodedFrame.displayWidth,
@@ -1238,14 +1092,22 @@ export class FrameRenderer {
 		videoFrame: VideoFrame,
 		timestamp: number,
 		cursorTimestamp = timestamp,
-		frameDurationUs?: number,
-		backgroundTimelineTimestamp = timestamp,
 	): Promise<void> {
 		if (!this.app || !this.videoContainer || !this.cameraContainer) {
 			throw new Error("Renderer not initialized");
 		}
 
 		this.currentVideoTime = timestamp / 1000000;
+
+		if (this.webcamForwardFrameSource || this.webcamVideoElement) {
+			const targetTime = Math.max(0, this.currentVideoTime);
+			await this.syncWebcamFrame(targetTime);
+		}
+
+		// Sync video wallpaper frame
+		if (this.backgroundForwardFrameSource || this.backgroundVideoElement) {
+			await this.syncBackgroundFrame(this.currentVideoTime);
+		}
 
 		// Create or update video sprite from VideoFrame
 		if (!this.videoSprite) {
@@ -1271,140 +1133,6 @@ export class FrameRenderer {
 		const layoutCache = this.layoutCache;
 		if (!layoutCache) {
 			return;
-		}
-
-		const temporalSnapshot =
-			typeof frameDurationUs === "number" && frameDurationUs > 0
-				? await this.renderTemporalMotionBlurFrame(
-						timestamp,
-						cursorTimestamp,
-						backgroundTimelineTimestamp,
-						frameDurationUs,
-						layoutCache,
-					)
-				: null;
-
-		if (temporalSnapshot) {
-			extensionHost.setSmoothedCursor(
-				temporalSnapshot.smoothedCursor
-					? {
-							timeMs: temporalSnapshot.timeMs,
-							cx: temporalSnapshot.smoothedCursor.cx,
-							cy: temporalSnapshot.smoothedCursor.cy,
-							trail: temporalSnapshot.smoothedCursor.trail,
-						}
-					: null,
-			);
-
-			this.drawFrame();
-
-			if (
-				this.config.annotationRegions &&
-				this.config.annotationRegions.length > 0 &&
-				this.compositeCtx
-			) {
-				const scaleX = this.config.width / BASE_PREVIEW_WIDTH;
-				const scaleY = this.config.height / BASE_PREVIEW_HEIGHT;
-				const scaleFactor = (scaleX + scaleY) / 2;
-
-				await renderAnnotations(
-					this.compositeCtx,
-					this.config.annotationRegions,
-					this.config.width,
-					this.config.height,
-					temporalSnapshot.timeMs,
-					scaleFactor,
-				);
-			}
-
-			if (
-				this.config.autoCaptions &&
-				this.config.autoCaptions.length > 0 &&
-				this.config.autoCaptionSettings &&
-				this.compositeCtx
-			) {
-				renderCaptions(
-					this.compositeCtx,
-					this.config.autoCaptions,
-					this.config.autoCaptionSettings,
-					this.config.width,
-					this.config.height,
-					temporalSnapshot.timeMs,
-				);
-			}
-
-			if (this.compositeCtx) {
-				const maskRect = this.layoutCache?.maskRect;
-				const hookParams = {
-					width: this.config.width,
-					height: this.config.height,
-					timeMs: temporalSnapshot.timeMs,
-					durationMs: 0,
-					cursor: temporalSnapshot.smoothedCursor
-						? {
-								cx: temporalSnapshot.smoothedCursor.cx,
-								cy: temporalSnapshot.smoothedCursor.cy,
-								interactionType: this.getCursorPosition(
-									temporalSnapshot.cursorTimeMs,
-								)?.interactionType,
-							}
-						: this.getCursorPosition(temporalSnapshot.cursorTimeMs),
-					smoothedCursor: temporalSnapshot.smoothedCursor,
-					videoLayout: maskRect
-						? {
-								maskRect: {
-									x: maskRect.x,
-									y: maskRect.y,
-									width: maskRect.width,
-									height: maskRect.height,
-								},
-								borderRadius: this.config.borderRadius ?? 0,
-								padding: this.config.padding ?? 0,
-							}
-						: undefined,
-					zoom: temporalSnapshot.zoom,
-					shadow: {
-						enabled: this.config.showShadow,
-						intensity: this.config.shadowIntensity,
-					},
-					sceneTransform: temporalSnapshot.sceneTransform,
-				};
-
-				this.compositeCtx.save();
-				applyCanvasSceneTransform(this.compositeCtx, temporalSnapshot.sceneTransform);
-				executeExtensionRenderHooks("post-video", this.compositeCtx, hookParams);
-				executeExtensionRenderHooks("post-zoom", this.compositeCtx, hookParams);
-				executeExtensionRenderHooks("post-cursor", this.compositeCtx, hookParams);
-				this.emitCursorInteractions(temporalSnapshot.cursorTimeMs);
-				executeExtensionCursorEffects(
-					this.compositeCtx,
-					temporalSnapshot.timeMs,
-					this.config.width,
-					this.config.height,
-					{
-						zoom: hookParams.zoom,
-						sceneTransform: hookParams.sceneTransform,
-						videoLayout: hookParams.videoLayout,
-					},
-				);
-				this.compositeCtx.restore();
-
-				executeExtensionRenderHooks("post-webcam", this.compositeCtx, hookParams);
-				executeExtensionRenderHooks("post-annotations", this.compositeCtx, hookParams);
-				executeExtensionRenderHooks("final", this.compositeCtx, hookParams);
-			}
-
-			return;
-		}
-
-		if (this.webcamForwardFrameSource || this.webcamVideoElement) {
-			const targetTime = Math.max(0, this.currentVideoTime);
-			await this.syncWebcamFrame(targetTime);
-		}
-
-		// Sync video wallpaper frame
-		if (this.backgroundForwardFrameSource || this.backgroundVideoElement) {
-			await this.syncBackgroundFrame(Math.max(0, backgroundTimelineTimestamp / 1_000_000));
 		}
 
 		const timeMs = this.currentVideoTime * 1000;
@@ -1450,7 +1178,7 @@ export class FrameRenderer {
 		// Apply transform once with maximum motion intensity from all ticks
 		applyZoomTransform({
 			cameraContainer: this.cameraContainer,
-			zoomBlurFilter: this.zoomBlurFilter,
+			blurFilter: this.blurFilter,
 			motionBlurFilter: this.motionBlurFilter,
 			stageSize: layoutCache.stageSize,
 			baseMask: layoutCache.maskRect,
@@ -1733,8 +1461,6 @@ export class FrameRenderer {
 			timeMs,
 			{
 				connectZooms: this.config.connectZooms,
-				zoomInDurationMs: this.config.zoomInDurationMs,
-				zoomOutDurationMs: this.config.zoomOutDurationMs,
 			},
 		);
 
@@ -1873,159 +1599,6 @@ export class FrameRenderer {
 			Math.abs(state.x - prevX) / Math.max(1, this.layoutCache.stageSize.width),
 			Math.abs(state.y - prevY) / Math.max(1, this.layoutCache.stageSize.height),
 		);
-	}
-
-	private async renderSceneSample(
-		timestamp: number,
-		cursorTimestamp: number,
-		backgroundTimelineTimestamp: number,
-		layoutCache: LayoutCache,
-		useVelocityMotionBlur: boolean,
-	): Promise<RenderSnapshot> {
-		if (!this.app || !this.cameraContainer) {
-			throw new Error("Renderer not initialized");
-		}
-
-		this.currentVideoTime = timestamp / 1_000_000;
-
-		if (this.webcamForwardFrameSource || this.webcamVideoElement) {
-			await this.syncWebcamFrame(Math.max(0, this.currentVideoTime));
-		}
-
-		if (this.backgroundForwardFrameSource || this.backgroundVideoElement) {
-			await this.syncBackgroundFrame(Math.max(0, backgroundTimelineTimestamp / 1_000_000));
-		}
-
-		const timeMs = this.currentVideoTime * 1000;
-		const cursorTimeMs = cursorTimestamp / 1000;
-
-		if (this.cursorOverlay) {
-			this.cursorOverlay.update(
-				this.config.cursorTelemetry ?? [],
-				cursorTimeMs,
-				layoutCache.maskRect,
-				this.config.showCursor ?? true,
-				false,
-			);
-		}
-
-		const smoothedCursor = mapSmoothedCursorToCanvasNormalized(
-			this.cursorOverlay?.getSmoothedCursorSnapshot() ?? null,
-			{
-				maskRect: layoutCache.maskRect,
-				canvasWidth: this.config.width,
-				canvasHeight: this.config.height,
-			},
-		);
-
-		const motionIntensity = this.updateAnimationState(timeMs);
-
-		applyZoomTransform({
-			cameraContainer: this.cameraContainer,
-			zoomBlurFilter: this.zoomBlurFilter,
-			motionBlurFilter: this.motionBlurFilter,
-			stageSize: layoutCache.stageSize,
-			baseMask: layoutCache.maskRect,
-			zoomScale: this.animationState.scale,
-			zoomProgress: this.animationState.progress,
-			focusX: this.animationState.focusX,
-			focusY: this.animationState.focusY,
-			motionIntensity,
-			motionVector: this.lastMotionVector,
-			isPlaying: true,
-			motionBlurAmount: useVelocityMotionBlur ? (this.config.zoomMotionBlur ?? 0) : 0,
-			transformOverride: {
-				scale: this.animationState.appliedScale,
-				x: this.animationState.x,
-				y: this.animationState.y,
-			},
-			motionBlurState: this.motionBlurState,
-			frameTimeMs: timeMs,
-		});
-
-		this.app.renderer.render(this.app.stage);
-		this.compositeWithShadows();
-
-		return {
-			timeMs,
-			cursorTimeMs,
-			smoothedCursor,
-			sceneTransform: {
-				scale: this.animationState.appliedScale,
-				x: this.animationState.x,
-				y: this.animationState.y,
-			},
-			zoom: {
-				scale: this.animationState.scale,
-				focusX: this.animationState.focusX,
-				focusY: this.animationState.focusY,
-				progress: this.animationState.progress,
-			},
-		};
-	}
-
-	private async renderTemporalMotionBlurFrame(
-		timestamp: number,
-		cursorTimestamp: number,
-		backgroundTimelineTimestamp: number,
-		frameDurationUs: number,
-		layoutCache: LayoutCache,
-	): Promise<RenderSnapshot | null> {
-		if (
-			!this.compositeCanvas ||
-			!this.compositeCtx ||
-			!this.temporalAccumulationCtx
-		) {
-			return null;
-		}
-
-		const blurConfig = getTemporalMotionBlurConfig(
-			this.config.zoomTemporalMotionBlur ?? this.config.zoomMotionBlur,
-			{
-				sampleCount: this.config.zoomMotionBlurSampleCount,
-				shutterFraction: this.config.zoomMotionBlurShutterFraction,
-			},
-		);
-		if (!blurConfig) {
-			return null;
-		}
-
-		const samplePlan = buildTemporalSamplePlanUs(frameDurationUs, blurConfig);
-
-		this.temporalAccumulationCtx.clearRect(0, 0, this.config.width, this.config.height);
-
-		let centerSnapshot: RenderSnapshot | null = null;
-		let lastSnapshot: RenderSnapshot | null = null;
-
-		for (const { offsetUs: sampleOffsetUs, weight } of samplePlan) {
-			const sampleTimestamp = Math.max(0, timestamp + sampleOffsetUs);
-			const sampleCursorTimestamp = Math.max(0, cursorTimestamp + sampleOffsetUs);
-			const sampleBackgroundTimelineTimestamp = Math.max(
-				0,
-				backgroundTimelineTimestamp + sampleOffsetUs,
-			);
-			const snapshot = await this.renderSceneSample(
-				sampleTimestamp,
-				sampleCursorTimestamp,
-				sampleBackgroundTimelineTimestamp,
-				layoutCache,
-				false,
-			);
-			lastSnapshot = snapshot;
-			if (Math.abs(sampleOffsetUs) < 0.0001) {
-				centerSnapshot = snapshot;
-			}
-
-			this.temporalAccumulationCtx.save();
-			this.temporalAccumulationCtx.globalCompositeOperation = "lighter";
-			this.temporalAccumulationCtx.globalAlpha = weight;
-			this.temporalAccumulationCtx.drawImage(this.compositeCanvas, 0, 0);
-			this.temporalAccumulationCtx.restore();
-		}
-		this.compositeCtx.clearRect(0, 0, this.config.width, this.config.height);
-		this.compositeCtx.drawImage(this.temporalAccumulationCanvas!, 0, 0);
-
-		return centerSnapshot ?? lastSnapshot;
 	}
 
 	private compositeWithShadows(): void {
@@ -2334,12 +1907,10 @@ export class FrameRenderer {
 			});
 			this.app = null;
 		}
-		this.zoomBlurFilter?.destroy();
-		this.motionBlurFilter?.destroy();
 		this.cameraContainer = null;
 		this.videoContainer = null;
 		this.maskGraphics = null;
-		this.zoomBlurFilter = null;
+		this.blurFilter = null;
 		this.motionBlurFilter = null;
 		if (this.cursorOverlay) {
 			this.cursorOverlay.destroy();
@@ -2349,16 +1920,11 @@ export class FrameRenderer {
 		this.shadowCtx = null;
 		this.compositeCanvas = null;
 		this.compositeCtx = null;
-		this.temporalAccumulationCanvas = null;
-		this.temporalAccumulationCtx = null;
 		this.backgroundCtx = null;
 		this.closeBackgroundDecodedFrame();
 		this.backgroundForwardFrameSource?.cancel();
 		void this.backgroundForwardFrameSource?.destroy();
 		this.backgroundForwardFrameSource = null;
-		this.backgroundForwardFrameSourceUrl = null;
-		this.backgroundForwardFrameDurationSec = null;
-		this.lastSyncedBackgroundLoopTimeSec = null;
 		if (this.backgroundVideoElement) {
 			this.backgroundVideoElement.pause();
 			this.backgroundVideoElement.src = "";
