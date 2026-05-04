@@ -1,5 +1,5 @@
 import { constants as fsConstants } from "node:fs";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { app } from "electron";
@@ -54,14 +54,39 @@ export function isAllowedLocalReadPath(candidatePath: string) {
 	const allowedPrefixes = [RECORDINGS_DIR, USER_DATA_PATH, getAssetRootPath(), app.getPath("temp")];
 	const normalizedCandidatePath = normalizePath(candidatePath);
 
+	// Canonicalize so a symlink placed under an allowed prefix can't smuggle in a
+	// target that lives outside it. realpathSync throws when the path doesn't
+	// exist yet (e.g. a pending export approved before the file is written) — in
+	// that case fall back to the lexical path, which can only succeed via the
+	// approvedLocalReadPaths check below since no symlink target exists yet.
+	let canonicalCandidatePath = normalizedCandidatePath;
+	try {
+		canonicalCandidatePath = normalizePath(realpathSync(normalizedCandidatePath));
+	} catch {
+		// File may not exist yet; keep the lexical path.
+	}
+
 	// Security: only allow paths under app-managed directories or paths the user
 	// has explicitly opted into (recording session sources, files chosen via
-	// dialog, app-produced exports). Previously this returned true for any
-	// existing file, which made the allowlist a no-op for read-local-file and
-	// the local media URL handler.
-	return (
+	// dialog, app-produced exports). The lexical path must satisfy the policy
+	// AND the canonical (real) path must satisfy it too, so a symlink under an
+	// allowed prefix that points outside the allowlist is rejected. Previously
+	// this returned true for any existing file, which made the allowlist a no-op
+	// for read-local-file and the local media URL handler.
+	const lexicalAllowed =
 		allowedPrefixes.some((prefix) => isPathInsideDirectory(normalizedCandidatePath, prefix)) ||
-		approvedLocalReadPaths.has(normalizedCandidatePath)
+		approvedLocalReadPaths.has(normalizedCandidatePath);
+	if (!lexicalAllowed) {
+		return false;
+	}
+
+	if (canonicalCandidatePath === normalizedCandidatePath) {
+		return true;
+	}
+
+	return (
+		allowedPrefixes.some((prefix) => isPathInsideDirectory(canonicalCandidatePath, prefix)) ||
+		approvedLocalReadPaths.has(canonicalCandidatePath)
 	);
 }
 

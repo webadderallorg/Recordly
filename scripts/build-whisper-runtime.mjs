@@ -365,12 +365,20 @@ async function main() {
 	const cmake = findCmake();
 
 	if (!cmake) {
-		// Mirror build-windows-capture: if every target already has a staged
-		// runtime, postinstall is a no-op. This keeps `npm ci` working for
-		// contributors who do not have CMake installed and only need to run the
-		// app or tests against the bundled binaries.
+		// Soft-fail only when this script runs as part of `npm install`/`npm ci`,
+		// in CI, or when the developer explicitly opted in. Direct invocations
+		// (e.g. via `npm run build`, `build:win`, `build:mac`, `build:linux`)
+		// must still fail loudly so we never ship a release build that is
+		// missing the whisper runtime and silently ships broken auto-captions.
+		const isPostinstall = process.env.npm_lifecycle_event === "postinstall";
+		const isCI = process.env.CI === "true";
+		const allowMissing = process.env.WHISPER_RUNTIME_ALLOW_MISSING === "1";
+		const softFailAllowed = isPostinstall || isCI || allowMissing;
+
 		const skipChecks = await Promise.all(targets.map((target) => shouldSkipBuild(target)));
-		if (skipChecks.every(Boolean)) {
+		const allTargetsStaged = skipChecks.every(Boolean);
+
+		if (allTargetsStaged) {
 			console.log(
 				"[build-whisper-runtime] CMake not found; using bundled whisper runtime artifacts.",
 			);
@@ -381,12 +389,20 @@ async function main() {
 			.filter((_target, index) => !skipChecks[index])
 			.map((target) => target.archTag)
 			.join(", ");
-		console.warn(
-			`[build-whisper-runtime] CMake not found and no bundled runtime is staged for: ${missing}. ` +
-				"Auto-caption features that rely on whisper.cpp will be unavailable until you install CMake " +
-				"and rerun `npm run build:whisper-runtime`.",
+
+		if (softFailAllowed) {
+			console.warn(
+				`[build-whisper-runtime] CMake not found and no bundled runtime is staged for: ${missing}. ` +
+					"Auto-caption features that rely on whisper.cpp will be unavailable until you install CMake " +
+					"and rerun `npm run build:whisper-runtime`.",
+			);
+			return;
+		}
+
+		throw new Error(
+			`[build-whisper-runtime] CMake is required to stage the whisper runtime for: ${missing}. ` +
+				"Install CMake and retry, or set WHISPER_RUNTIME_ALLOW_MISSING=1 to build without auto-caption support.",
 		);
-		return;
 	}
 
 	const sourceDir = await ensureSourceTree();

@@ -114,6 +114,29 @@ describe("local media path policy", () => {
 		expect(isAllowedMediaPath(textPath)).toBe(false);
 	});
 
+	it("rejects symlinks under allowed prefixes that point outside the allowlist", async () => {
+		const outsideTarget = path.join(tempRoot, "outside-secret.mp4");
+		const symlinkInsideUserData = path.join(userDataPath, "shortcut-to-secret.mp4");
+		await fs.writeFile(outsideTarget, "secret-bytes");
+
+		try {
+			await fs.symlink(outsideTarget, symlinkInsideUserData);
+		} catch (error) {
+			// Windows requires Developer Mode or admin to create file symlinks. If
+			// we can't create one, the bypass we're guarding against also can't be
+			// crafted on this machine, so skipping is safe.
+			if ((error as NodeJS.ErrnoException).code === "EPERM") {
+				return;
+			}
+			throw error;
+		}
+
+		const { isAllowedLocalMediaPath, resolveApprovedLocalMediaPath } = await import("./manager");
+
+		await expect(isAllowedLocalMediaPath(symlinkInsideUserData)).resolves.toBe(false);
+		await expect(resolveApprovedLocalMediaPath(symlinkInsideUserData)).resolves.toBeNull();
+	});
+
 	it("preserves an existing project thumbnail when no replacement is provided", async () => {
 		const projectPath = path.join(tempRoot, "Projects", "demo.recordly");
 		const thumbnailDataUrl = `data:image/png;base64,${Buffer.from("png-thumbnail").toString("base64")}`;
