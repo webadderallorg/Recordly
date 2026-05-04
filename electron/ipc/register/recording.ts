@@ -247,7 +247,19 @@ export function registerRecordingHandlers(
 					};
 
 					let displayBounds: WindowsCaptureDisplayBounds | undefined;
-					if (Number.isFinite(windowHandle) && windowHandle && windowHandle > 0) {
+					if (isWindowSource) {
+						// A window source whose id we cannot parse must not silently widen to
+						// a display capture: that would record the whole screen and other
+						// apps the user did not select.
+						if (
+							!(Number.isFinite(windowHandle) && windowHandle && windowHandle > 0)
+						) {
+							return {
+								success: false,
+								message:
+									"Unable to resolve the selected window for native capture.",
+							};
+						}
 						config.windowHandle = windowHandle;
 					} else {
 						const resolvedDisplay = resolveWindowsCaptureDisplay(
