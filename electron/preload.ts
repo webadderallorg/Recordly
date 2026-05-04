@@ -368,7 +368,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	) => {
 		return ipcRenderer.invoke("mux-exported-video-audio", videoData, options) as Promise<{
 			success: boolean;
-			data?: Uint8Array;
+			tempPath?: string;
 			error?: string;
 			metrics?: NativeVideoAudioMuxMetrics;
 		}>;

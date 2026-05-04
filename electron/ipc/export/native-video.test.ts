@@ -2,19 +2,52 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
 	app: {
-		getAppPath: () => process.cwd(),
-		getPath: () => process.env.TEMP ?? process.cwd(),
+		getAppPath: vi.fn(() => process.cwd()),
+		getPath: vi.fn(() => process.env.TEMP ?? process.cwd()),
 		isPackaged: false,
 	},
 }));
 
 vi.mock("../ffmpeg/binary", () => ({
-	getFfmpegBinaryPath: () => "ffmpeg",
+	getFfmpegBinaryPath: vi.fn(() => "ffmpeg"),
+}));
+
+vi.mock("../state", () => ({
+	cachedNativeVideoEncoder: null,
+	setCachedNativeVideoEncoder: vi.fn(),
+}));
+
+const fsMocks = vi.hoisted(() => ({
+	access: vi.fn(async () => {
+		throw new Error("missing");
+	}),
+	writeFile: vi.fn(async () => undefined),
+	readFile: vi.fn(),
+	stat: vi.fn(async () => ({ size: 5_000_000_000 })),
+	unlink: vi.fn(async () => undefined),
+}));
+
+vi.mock("node:fs/promises", () => ({
+	default: fsMocks,
+	...fsMocks,
+}));
+
+const execFileMock = vi.hoisted(() =>
+	vi.fn((_cmd: string, _args: string[], _opts: unknown, cb: (err: Error | null) => void) => {
+		cb(null);
+		return { stdout: "", stderr: "" } as unknown;
+	}),
+);
+
+vi.mock("node:child_process", () => ({
+	execFile: execFileMock,
+	spawn: vi.fn(),
 }));
 
 import {
 	buildNativeVideoAudioMuxArgs,
 	getNvidiaCudaAudioExportSkipReason,
+	muxExportedVideoAudioBuffer,
 	normalizeNativeStaticLayoutBackground,
 	parseFfmpegDurationSeconds,
 	parseFfmpegFrameRate,
@@ -97,6 +130,26 @@ describe("getNvidiaCudaAudioExportSkipReason", () => {
 	});
 });
 
+describe("muxExportedVideoAudioBuffer", () => {
+	it("returns the muxed output path without reading the muxed file into memory", async () => {
+		const videoData = new ArrayBuffer(64);
+		const result = await muxExportedVideoAudioBuffer(videoData, { audioMode: "none" });
+
+		expect(typeof result.outputPath).toBe("string");
+		expect(result.outputPath.length).toBeGreaterThan(0);
+		// The >2 GiB fix relies on stat-only metric collection; readFile must stay unused.
+		expect(fsMocks.readFile).not.toHaveBeenCalled();
+		expect(result.metrics.muxedVideoBytes).toBe(5_000_000_000);
+	});
+
+	it("preserves the input temp path when audioMode='none' (no re-mux)", async () => {
+		const videoData = new ArrayBuffer(32);
+		const result = await muxExportedVideoAudioBuffer(videoData, { audioMode: "none" });
+
+		expect(result.outputPath).toMatch(/recordly-export-video-/);
+	});
+});
+
 describe("buildNativeVideoAudioMuxArgs", () => {
 	it("stream-copies source audio and preserves the requested video duration", () => {
 		const args = buildNativeVideoAudioMuxArgs("video.mp4", "source.mp4", "out.mp4", {
@@ -172,7 +225,7 @@ describe("parseWindowsGpuExportSummary", () => {
 });
 
 describe("parseNvidiaCudaExportSummary", () => {
-	it("parses the pretty JSON summary emitted by the CUDA lab wrapper", () => {
+	it("parses the pretty JSON summary emitted by the CUDA wrapper", () => {
 		const summary = parseNvidiaCudaExportSummary(
 			[
 				"preflight",
@@ -198,7 +251,7 @@ describe("parseNvidiaCudaExportSummary", () => {
 	});
 
 	it("returns null when the wrapper output has no JSON object", () => {
-		expect(parseNvidiaCudaExportSummary("native probe failed before summary")).toBeNull();
+		expect(parseNvidiaCudaExportSummary("native helper failed before summary")).toBeNull();
 	});
 });
 
