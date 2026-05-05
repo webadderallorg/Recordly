@@ -1,7 +1,7 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { calculateOutputDimensions, getGifRepeat } from "./gifExporter";
-import { GIF_SIZE_PRESETS, GifSizePreset } from "./types";
+import { calculateOutputDimensions, getGifEncoderQuality, getGifRepeat } from "./gifExporter";
+import { GIF_COMPRESSION_PRESETS, GIF_SIZE_PRESETS, GifSizePreset } from "./types";
 
 /**
  * Property 2: Loop Encoding Correctness
@@ -45,6 +45,16 @@ describe("GIF Exporter", () => {
 				}),
 				{ numRuns: 100 },
 			);
+		});
+	});
+
+	describe("GIF compression quality", () => {
+		it("maps compression presets to gif.js quality values", () => {
+			expect(getGifEncoderQuality("compact")).toBe(GIF_COMPRESSION_PRESETS.compact.quality);
+			expect(getGifEncoderQuality("balanced")).toBe(
+				GIF_COMPRESSION_PRESETS.balanced.quality,
+			);
+			expect(getGifEncoderQuality("quality")).toBe(GIF_COMPRESSION_PRESETS.quality.quality);
 		});
 	});
 
