@@ -34,8 +34,9 @@ export function normalizeCursorTelemetrySamples(rawSamples: unknown): CursorTele
 		: Array.isArray((rawSamples as { samples?: unknown[] } | null | undefined)?.samples)
 			? ((rawSamples as { samples: unknown[] }).samples ?? [])
 			: [];
+	const boundedSamples = samples.slice(0, MAX_CURSOR_SAMPLES);
 
-	return samples
+	return boundedSamples
 		.filter((sample: unknown) => Boolean(sample && typeof sample === "object"))
 		.map((sample: unknown) => {
 			const point = sample as Partial<CursorTelemetryPoint>;

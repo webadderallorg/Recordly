@@ -1,5 +1,4 @@
 import {
-	BookmarkSimple,
 	Check,
 	CaretDown as ChevronDown,
 	CaretUp as ChevronUp,
@@ -39,8 +38,6 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Toaster } from "@/components/ui/sonner";
 import { useI18n } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
@@ -105,17 +102,11 @@ const PhSettings = (props: { className?: string; weight?: "fill" | "regular" }) 
 import { extensionHost } from "@/lib/extensions";
 import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
 import { CropControl } from "./CropControl";
-import { updateCaptionCuesForEditedTarget, type CaptionEditTarget } from "./captionEditing";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
 import ExtensionManager from "./ExtensionManager";
 import {
 	loadEditorPreferences,
-	loadEditorPresets,
 	saveEditorPreferences,
-	saveEditorPresets,
-	serializeEditorPresetSnapshot,
-	type EditorPreset,
-	type EditorPresetSnapshot,
 } from "./editorPreferences";
 import ProjectBrowserDialog, { type ProjectLibraryEntry } from "./ProjectBrowserDialog";
 import {
@@ -635,6 +626,18 @@ export default function VideoEditor() {
 	const [cursorSmoothing, setCursorSmoothing] = useState(
 		initialEditorPreferences.cursorSmoothing,
 	);
+	const [cursorSpringStiffnessMultiplier, setCursorSpringStiffnessMultiplier] = useState(
+		initialEditorPreferences.cursorSpringStiffnessMultiplier,
+	);
+	const [cursorSpringDampingMultiplier, setCursorSpringDampingMultiplier] = useState(
+		initialEditorPreferences.cursorSpringDampingMultiplier,
+	);
+	const [cursorSpringMassMultiplier, setCursorSpringMassMultiplier] = useState(
+		initialEditorPreferences.cursorSpringMassMultiplier,
+	);
+	const [sessionShowCursorOverride, setSessionShowCursorOverride] = useState<boolean | null>(
+		null,
+	);
 	const [zoomSmoothness, setZoomSmoothness] = useState(0.5);
 	const [zoomClassicMode, setZoomClassicMode] = useState(false);
 	const [cursorMotionBlur, setCursorMotionBlur] = useState(
@@ -698,6 +701,7 @@ export default function VideoEditor() {
 	const [sourceAudioFallbackPaths, setSourceAudioFallbackPaths] = useState<string[]>([]);
 	const [sourceAudioFallbackStartDelayMsByPath, setSourceAudioFallbackStartDelayMsByPath] =
 		useState<Record<string, number>>({});
+	const effectiveShowCursor = sessionShowCursorOverride ?? showCursor;
 	const [aspectRatio, setAspectRatio] = useState<AspectRatio>(
 		initialEditorPreferences.aspectRatio,
 	);
@@ -730,10 +734,6 @@ export default function VideoEditor() {
 	const [exportedFilePath, setExportedFilePath] = useState<string | undefined>(undefined);
 	const [hasPendingExportSave, setHasPendingExportSave] = useState(false);
 	const [lastSavedSnapshot, setLastSavedSnapshot] = useState<EditorProjectData | null>(null);
-	const [editorPresets, setEditorPresets] = useState<EditorPreset[]>(() => loadEditorPresets());
-	const [activeEditorPresetId, setActiveEditorPresetId] = useState<string | null>(null);
-	const [presetPopoverOpen, setPresetPopoverOpen] = useState(false);
-	const [presetNameDraft, setPresetNameDraft] = useState("");
 	const [showCropModal, setShowCropModal] = useState(false);
 	const [previewVersion, setPreviewVersion] = useState(0);
 	const [isPreviewReady, setIsPreviewReady] = useState(false);
@@ -810,285 +810,6 @@ export default function VideoEditor() {
 	const syncHistoryButtons = useCallback(() => {
 		setHistoryVersion((version) => version + 1);
 	}, []);
-
-	const captureEditorPresetSnapshot = useCallback(
-		(): EditorPresetSnapshot => ({
-			wallpaper,
-			shadowIntensity,
-			backgroundBlur,
-			zoomMotionBlur,
-			connectZooms,
-			zoomInDurationMs,
-			zoomInOverlapMs,
-			zoomOutDurationMs,
-			connectedZoomGapMs,
-			connectedZoomDurationMs,
-			zoomInEasing,
-			zoomOutEasing,
-			connectedZoomEasing,
-			showCursor,
-			loopCursor,
-			cursorStyle,
-			cursorSize,
-			cursorSmoothing,
-			cursorMotionBlur,
-			cursorClickBounce,
-			cursorClickBounceDuration,
-			cursorSway,
-			borderRadius,
-			padding: { ...padding },
-			frame,
-			webcam: { ...webcam },
-			aspectRatio,
-			exportEncodingMode,
-			exportBackendPreference,
-			exportPipelineModel,
-			exportQuality,
-			mp4FrameRate,
-			exportFormat,
-			gifFrameRate,
-			gifLoop,
-			gifSizePreset,
-			autoCaptionSettings: { ...autoCaptionSettings },
-			whisperExecutablePath,
-			whisperModelPath,
-		}),
-		[
-			wallpaper,
-			shadowIntensity,
-			backgroundBlur,
-			zoomMotionBlur,
-			connectZooms,
-			zoomInDurationMs,
-			zoomInOverlapMs,
-			zoomOutDurationMs,
-			connectedZoomGapMs,
-			connectedZoomDurationMs,
-			zoomInEasing,
-			zoomOutEasing,
-			connectedZoomEasing,
-			showCursor,
-			loopCursor,
-			cursorStyle,
-			cursorSize,
-			cursorSmoothing,
-			cursorMotionBlur,
-			cursorClickBounce,
-			cursorClickBounceDuration,
-			cursorSway,
-			borderRadius,
-			padding,
-			frame,
-			webcam,
-			aspectRatio,
-			exportEncodingMode,
-			exportBackendPreference,
-			exportPipelineModel,
-			exportQuality,
-			mp4FrameRate,
-			exportFormat,
-			gifFrameRate,
-			gifLoop,
-			gifSizePreset,
-			autoCaptionSettings,
-			whisperExecutablePath,
-			whisperModelPath,
-		],
-	);
-
-	const currentPresetSnapshot = useMemo(
-		() => captureEditorPresetSnapshot(),
-		[captureEditorPresetSnapshot],
-	);
-	const currentPresetSignature = useMemo(
-		() => serializeEditorPresetSnapshot(currentPresetSnapshot),
-		[currentPresetSnapshot],
-	);
-	const currentEditorPreset = useMemo(
-		() => editorPresets.find((preset) => preset.id === activeEditorPresetId) ?? null,
-		[activeEditorPresetId, editorPresets],
-	);
-
-	useEffect(() => {
-		const activePreset = currentEditorPreset;
-		if (
-			activePreset &&
-			serializeEditorPresetSnapshot(activePreset.snapshot) === currentPresetSignature
-		) {
-			return;
-		}
-
-		const matchingPreset =
-			editorPresets.find(
-				(preset) =>
-					serializeEditorPresetSnapshot(preset.snapshot) === currentPresetSignature,
-			) ?? null;
-		const nextActivePresetId = matchingPreset?.id ?? null;
-		if (nextActivePresetId !== activeEditorPresetId) {
-			setActiveEditorPresetId(nextActivePresetId);
-		}
-	}, [activeEditorPresetId, currentEditorPreset, currentPresetSignature, editorPresets]);
-
-	useEffect(() => {
-		if (!presetPopoverOpen) {
-			setPresetNameDraft("");
-		}
-	}, [presetPopoverOpen]);
-
-	const applyEditorPresetSnapshot = useCallback((snapshot: EditorPresetSnapshot) => {
-		setWallpaper(snapshot.wallpaper);
-		setShadowIntensity(snapshot.shadowIntensity);
-		setBackgroundBlur(snapshot.backgroundBlur);
-		setZoomMotionBlur(snapshot.zoomMotionBlur);
-		setConnectZooms(snapshot.connectZooms);
-		setZoomInDurationMs(snapshot.zoomInDurationMs);
-		setZoomInOverlapMs(snapshot.zoomInOverlapMs);
-		setZoomOutDurationMs(snapshot.zoomOutDurationMs);
-		setConnectedZoomGapMs(snapshot.connectedZoomGapMs);
-		setConnectedZoomDurationMs(snapshot.connectedZoomDurationMs);
-		setZoomInEasing(snapshot.zoomInEasing);
-		setZoomOutEasing(snapshot.zoomOutEasing);
-		setConnectedZoomEasing(snapshot.connectedZoomEasing);
-		setShowCursor(snapshot.showCursor);
-		setLoopCursor(snapshot.loopCursor);
-		setCursorStyle(snapshot.cursorStyle);
-		setCursorSize(snapshot.cursorSize);
-		setCursorSmoothing(snapshot.cursorSmoothing);
-		setCursorMotionBlur(snapshot.cursorMotionBlur);
-		setCursorClickBounce(snapshot.cursorClickBounce);
-		setCursorClickBounceDuration(snapshot.cursorClickBounceDuration);
-		setCursorSway(snapshot.cursorSway);
-		setBorderRadius(snapshot.borderRadius);
-		setPadding({ ...snapshot.padding });
-		setFrame(snapshot.frame);
-		setWebcam({ ...snapshot.webcam });
-		setAspectRatio(snapshot.aspectRatio);
-		setExportEncodingMode(snapshot.exportEncodingMode);
-		setExportBackendPreference(snapshot.exportBackendPreference);
-		setExportPipelineModel(snapshot.exportPipelineModel);
-		setExportQuality(snapshot.exportQuality);
-		setMp4FrameRate(snapshot.mp4FrameRate);
-		setExportFormat(snapshot.exportFormat);
-		setGifFrameRate(snapshot.gifFrameRate);
-		setGifLoop(snapshot.gifLoop);
-		setGifSizePreset(snapshot.gifSizePreset);
-		setAutoCaptionSettings({ ...snapshot.autoCaptionSettings });
-		setWhisperExecutablePath(snapshot.whisperExecutablePath);
-		setWhisperModelPath(snapshot.whisperModelPath);
-	}, []);
-
-	const handleApplyEditorPreset = useCallback(
-		(presetId: string) => {
-			const preset = editorPresets.find((item) => item.id === presetId);
-			if (!preset) {
-				return;
-			}
-
-			setActiveEditorPresetId(preset.id);
-			applyEditorPresetSnapshot(preset.snapshot);
-			toast.success(
-				t("editor.presets.toasts.applied", "Applied preset \"{{name}}\"", {
-					name: preset.name,
-				}),
-			);
-		},
-		[applyEditorPresetSnapshot, editorPresets, t],
-	);
-
-	const handleSaveEditorPreset = useCallback(
-		(name: string) => {
-			const normalizedName = name.trim().replace(/\s+/g, " ");
-			if (normalizedName.length === 0) {
-				toast.error(t("editor.presets.errors.nameRequired", "Enter a preset name."));
-				return false;
-			}
-
-			const hasDuplicateName = editorPresets.some(
-				(preset) => preset.name.toLocaleLowerCase() === normalizedName.toLocaleLowerCase(),
-			);
-			if (hasDuplicateName) {
-				toast.error(
-					t(
-						"editor.presets.errors.duplicateName",
-						"A preset with that name already exists.",
-					),
-				);
-				return false;
-			}
-
-			const snapshot = captureEditorPresetSnapshot();
-			const timestamp = new Date().toISOString();
-			const nextPreset: EditorPreset = {
-				id: crypto.randomUUID(),
-				name: normalizedName,
-				createdAt: timestamp,
-				updatedAt: timestamp,
-				snapshot,
-			};
-			const nextPresets = [
-				nextPreset,
-				...editorPresets,
-			];
-
-			if (!saveEditorPresets(nextPresets)) {
-				toast.error(
-					t(
-						"editor.presets.errors.saveFailed",
-						"Could not save that preset. Check your browser storage settings and try again.",
-					),
-				);
-				return false;
-			}
-
-			setEditorPresets(nextPresets);
-			setActiveEditorPresetId(nextPreset.id);
-			toast.success(
-				t("editor.presets.toasts.saved", "Saved preset \"{{name}}\"", {
-					name: normalizedName,
-				}),
-			);
-			return true;
-		},
-		[captureEditorPresetSnapshot, editorPresets, t],
-	);
-
-	const handleDeleteEditorPreset = useCallback(
-		(presetId: string) => {
-			const preset = editorPresets.find((item) => item.id === presetId);
-			if (!preset) {
-				return;
-			}
-
-			const nextPresets = editorPresets.filter((item) => item.id !== presetId);
-			if (!saveEditorPresets(nextPresets)) {
-				toast.error(
-					t(
-						"editor.presets.errors.deleteFailed",
-						"Could not delete that preset. Check your browser storage settings and try again.",
-					),
-				);
-				return;
-			}
-
-			setEditorPresets(nextPresets);
-			if (preset.id === activeEditorPresetId) {
-				setActiveEditorPresetId(null);
-			}
-			toast.success(
-				t("editor.presets.toasts.deleted", "Deleted preset \"{{name}}\"", {
-					name: preset.name,
-				}),
-			);
-		},
-		[activeEditorPresetId, editorPresets, t],
-	);
-
-	const handleSavePresetSubmit = useCallback(() => {
-		const didSave = handleSaveEditorPreset(presetNameDraft);
-		if (didSave) {
-			setPresetNameDraft("");
-		}
-	}, [handleSaveEditorPreset, presetNameDraft]);
 
 	const clearPendingExportSave = useCallback(() => {
 		const pending = pendingExportSaveRef.current;
@@ -1213,10 +934,13 @@ export default function VideoEditor() {
 					previewWidth,
 					previewHeight,
 					cursorTelemetry,
-					showCursor,
+					effectiveShowCursor,
 					cursorStyle,
 					cursorSize,
 					cursorSmoothing,
+					cursorSpringStiffnessMultiplier,
+					cursorSpringDampingMultiplier,
+					cursorSpringMassMultiplier,
 					zoomSmoothness,
 					zoomClassicMode,
 					cursorMotionBlur,
@@ -1292,6 +1016,9 @@ export default function VideoEditor() {
 		cursorMotionBlur,
 		cursorSize,
 		cursorSmoothing,
+		cursorSpringDampingMultiplier,
+		cursorSpringMassMultiplier,
+		cursorSpringStiffnessMultiplier,
 		zoomSmoothness,
 		cursorStyle,
 		cursorSway,
@@ -1300,7 +1027,7 @@ export default function VideoEditor() {
 		padding,
 		resolvedWebcamVideoUrl,
 		shadowIntensity,
-		showCursor,
+		effectiveShowCursor,
 		speedRegions,
 		wallpaper,
 		webcam,
@@ -1326,6 +1053,11 @@ export default function VideoEditor() {
 			encoderName: previous?.encoderName,
 			phase: "saving",
 		}));
+	}, []);
+
+	const handleShowCursorChange = useCallback((nextShowCursor: boolean) => {
+		setSessionShowCursorOverride(null);
+		setShowCursor(nextShowCursor);
 	}, []);
 
 	const remountPreview = useCallback(() => {
@@ -1619,6 +1351,9 @@ export default function VideoEditor() {
 				cursorStyle: CursorStyle;
 				cursorSize: number;
 				cursorSmoothing: number;
+				cursorSpringStiffnessMultiplier: number;
+				cursorSpringDampingMultiplier: number;
+				cursorSpringMassMultiplier: number;
 				zoomSmoothness: number;
 				zoomClassicMode: boolean;
 				cursorMotionBlur: number;
@@ -1767,6 +1502,9 @@ export default function VideoEditor() {
 				cursorStyle,
 				cursorSize,
 				cursorSmoothing,
+				cursorSpringStiffnessMultiplier,
+				cursorSpringDampingMultiplier,
+				cursorSpringMassMultiplier,
 				zoomSmoothness,
 				zoomClassicMode,
 				cursorMotionBlur,
@@ -1817,6 +1555,9 @@ export default function VideoEditor() {
 			cursorStyle,
 			cursorSize,
 			cursorSmoothing,
+			cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier,
+			cursorSpringMassMultiplier,
 			zoomSmoothness,
 			zoomClassicMode,
 			cursorMotionBlur,
@@ -1990,11 +1731,19 @@ export default function VideoEditor() {
 			setZoomInEasing(normalizedEditor.zoomInEasing);
 			setZoomOutEasing(normalizedEditor.zoomOutEasing);
 			setConnectedZoomEasing(normalizedEditor.connectedZoomEasing);
+			setSessionShowCursorOverride(null);
 			setShowCursor(normalizedEditor.showCursor);
 			setLoopCursor(normalizedEditor.loopCursor);
 			setCursorStyle(normalizedEditor.cursorStyle);
 			setCursorSize(normalizedEditor.cursorSize);
 			setCursorSmoothing(normalizedEditor.cursorSmoothing);
+			setCursorSpringStiffnessMultiplier(
+				normalizedEditor.cursorSpringStiffnessMultiplier,
+			);
+			setCursorSpringDampingMultiplier(
+				normalizedEditor.cursorSpringDampingMultiplier,
+			);
+			setCursorSpringMassMultiplier(normalizedEditor.cursorSpringMassMultiplier);
 			setZoomSmoothness(normalizedEditor.zoomSmoothness);
 			setZoomClassicMode(normalizedEditor.zoomClassicMode);
 			setCursorMotionBlur(normalizedEditor.cursorMotionBlur);
@@ -2301,6 +2050,9 @@ export default function VideoEditor() {
 					pendingFreshRecordingAutoZoomPathRef.current = autoApplyFreshRecordingAutoZooms
 						? sourceVideoUrl
 						: null;
+					setSessionShowCursorOverride(
+						sessionResult.session.hideOverlayCursorByDefault ? false : null,
+					);
 					setWebcam((prev) => ({
 						...prev,
 						enabled: Boolean(sessionResult.session?.webcamPath),
@@ -2320,6 +2072,7 @@ export default function VideoEditor() {
 					setCurrentProjectPath(null);
 					setLastSavedSnapshot(null);
 					pendingFreshRecordingAutoZoomPathRef.current = null;
+					setSessionShowCursorOverride(null);
 					setWebcam((prev) => ({
 						...prev,
 						enabled: false,
@@ -2390,6 +2143,9 @@ export default function VideoEditor() {
 			cursorStyle,
 			cursorSize,
 			cursorSmoothing,
+			cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier,
+			cursorSpringMassMultiplier,
 			cursorMotionBlur,
 			cursorClickBounce,
 			cursorClickBounceDuration,
@@ -2431,6 +2187,9 @@ export default function VideoEditor() {
 		cursorStyle,
 		cursorSize,
 		cursorSmoothing,
+		cursorSpringStiffnessMultiplier,
+		cursorSpringDampingMultiplier,
+		cursorSpringMassMultiplier,
 		cursorMotionBlur,
 		cursorClickBounce,
 		cursorClickBounceDuration,
@@ -2632,14 +2391,6 @@ export default function VideoEditor() {
 		setAutoCaptions([]);
 		setAutoCaptionSettings((prev) => ({ ...prev, enabled: false }));
 	}, []);
-
-	const handleSaveAutoCaptionEdit = useCallback(
-		(target: CaptionEditTarget, text: string) => {
-			setAutoCaptions((captions) => updateCaptionCuesForEditedTarget(captions, target, text));
-			toast.success(t("settings.captions.editSaved", "Caption updated"));
-		},
-		[t],
-	);
 
 	const saveProject = useCallback(
 		async (forceSaveAs: boolean, options?: SaveProjectOptions) => {
@@ -3072,20 +2823,30 @@ export default function VideoEditor() {
 		if (totalMs <= 0) return;
 		if (!clipInitializedRef.current) {
 			if (clipRegions.length === 0) {
-				const id = `clip-${nextClipIdRef.current++}`;
-				autoFullTrackClipIdRef.current = id;
-				autoFullTrackClipEndMsRef.current = totalMs;
+				const nextClipRegions =
+					trimRegions.length > 0
+						? trimsToClips(trimRegions, totalMs)
+						: (() => {
+							const id = `clip-${nextClipIdRef.current++}`;
+							autoFullTrackClipIdRef.current = id;
+							autoFullTrackClipEndMsRef.current = totalMs;
+							return [{ id, startMs: 0, endMs: totalMs, speed: 1 }];
+						})();
+
 				if (trimRegions.length > 0) {
-					const derivedClipRegions = trimsToClips(trimRegions, totalMs);
 					nextClipIdRef.current = deriveNextId(
 						"clip",
-						derivedClipRegions.map((region) => region.id),
+						nextClipRegions.map((region) => region.id),
 					);
-					setClipRegions(derivedClipRegions);
-					clipInitializedRef.current = true;
-					return;
 				}
-				setClipRegions([{ id, startMs: 0, endMs: totalMs, speed: 1 }]);
+
+				setClipRegions(nextClipRegions);
+				if (speedRegions.length > 0) {
+					// Legacy speed regions no longer have dedicated editing surfaces.
+					// Clear them during clip bootstrap so old projects do not keep
+					// hidden playback changes that users cannot inspect or edit.
+					setSpeedRegions([]);
+				}
 			}
 			clipInitializedRef.current = true;
 			return;
@@ -3101,7 +2862,7 @@ export default function VideoEditor() {
 
 		autoFullTrackClipEndMsRef.current = totalMs;
 		setClipRegions(extendedClipRegions);
-	}, [duration, clipRegions, trimRegions]);
+	}, [duration, clipRegions, trimRegions, speedRegions]);
 
 	// Derive trimRegions from clipRegions so export/playback pipelines stay unchanged
 	useEffect(() => {
@@ -4271,10 +4032,13 @@ export default function VideoEditor() {
 						autoCaptionSettings,
 						zoomRegions: effectiveZoomRegions,
 						cursorTelemetry: effectiveCursorTelemetry,
-						showCursor,
+						effectiveShowCursor,
 						cursorStyle,
 						cursorSize,
 						cursorSmoothing,
+						cursorSpringStiffnessMultiplier,
+						cursorSpringDampingMultiplier,
+						cursorSpringMassMultiplier,
 						zoomSmoothness,
 						zoomClassicMode,
 						cursorMotionBlur,
@@ -4443,10 +4207,13 @@ export default function VideoEditor() {
 						autoCaptionSettings,
 						zoomRegions: effectiveZoomRegions,
 						cursorTelemetry: effectiveCursorTelemetry,
-						showCursor,
+						effectiveShowCursor,
 						cursorStyle,
 						cursorSize,
 						cursorSmoothing,
+						cursorSpringStiffnessMultiplier,
+						cursorSpringDampingMultiplier,
+						cursorSpringMassMultiplier,
 						zoomSmoothness,
 						zoomClassicMode,
 						cursorMotionBlur,
@@ -4679,11 +4446,14 @@ export default function VideoEditor() {
 			zoomInEasing,
 			zoomOutEasing,
 			connectedZoomEasing,
-			showCursor,
+			effectiveShowCursor,
 			cursorStyle,
 			effectiveCursorTelemetry,
 			cursorSize,
 			cursorSmoothing,
+			cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier,
+			cursorSpringMassMultiplier,
 			zoomSmoothness,
 			zoomClassicMode,
 			cursorMotionBlur,
@@ -5187,111 +4957,6 @@ export default function VideoEditor() {
 					className="flex items-center gap-2 justify-self-end pr-3"
 					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 				>
-					<Popover open={presetPopoverOpen} onOpenChange={setPresetPopoverOpen}>
-						<PopoverTrigger asChild>
-							<button
-								type="button"
-								title={t("editor.presets.open", "Open presets")}
-								aria-label={t("editor.presets.open", "Open presets")}
-								className="inline-flex items-center gap-1.5 bg-transparent p-0 text-sm font-medium tracking-tight text-foreground outline-none transition-opacity hover:opacity-80"
-							>
-								<span className="flex items-center gap-1.5">
-									<BookmarkSimple weight="fill" className="h-4 w-4" />
-									<span>{currentEditorPreset?.name ?? t("editor.presets.label", "Presets")}</span>
-								</span>
-								<ChevronDown className="h-3.5 w-3.5 text-foreground" />
-							</button>
-						</PopoverTrigger>
-						<PopoverContent
-							align="end"
-							sideOffset={10}
-							className="w-[300px] rounded-2xl border border-foreground/10 bg-editor-surface-alt p-3 shadow-xl"
-						>
-							<div className="space-y-3">
-								<form
-									onSubmit={(event) => {
-										event.preventDefault();
-										handleSavePresetSubmit();
-									}}
-									className="space-y-2"
-								>
-									<p className="text-[11px] font-medium text-foreground">
-										{t("editor.presets.saveCurrentAs", "Save current preset as")}
-									</p>
-									<div className="flex items-center gap-2">
-										<Input
-											value={presetNameDraft}
-											onChange={(event) => setPresetNameDraft(event.target.value)}
-											className="h-9 rounded-xl border-foreground/10 bg-background/70 text-sm"
-											placeholder={t("editor.presets.namePlaceholder", "Preset name")}
-											aria-label={t("editor.presets.namePlaceholder", "Preset name")}
-										/>
-										<Button
-											type="submit"
-											size="sm"
-											className="h-9 rounded-xl bg-[#2563EB] px-3 text-white hover:bg-[#1d4ed8]"
-										>
-											{t("common.actions.save", "Save")}
-										</Button>
-									</div>
-								</form>
-
-								<div className="space-y-2">
-									<p className="text-[11px] font-medium text-foreground">
-										{t("editor.presets.savedList", "Saved presets")}
-									</p>
-									<div className="max-h-56 space-y-1 overflow-y-auto pr-1 custom-scrollbar">
-										{editorPresets.length === 0 ? (
-											<div className="rounded-xl border border-dashed border-foreground/10 px-3 py-4 text-center text-[11px] text-muted-foreground">
-												{t("editor.presets.empty", "No presets yet.")}
-											</div>
-										) : (
-											editorPresets.map((preset) => {
-												const isActive = preset.id === currentEditorPreset?.id;
-												return (
-													<div
-														key={preset.id}
-														className={cn(
-															"flex items-center gap-2 rounded-xl border px-2 py-2 text-sm transition-colors",
-															isActive
-																? "border-[#2563EB]/20 bg-[#2563EB]/10 text-foreground"
-																: "border-foreground/8 bg-foreground/[0.03] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
-														)}
-													>
-														<button
-															type="button"
-															onClick={() => handleApplyEditorPreset(preset.id)}
-															className="flex min-w-0 flex-1 items-center justify-between text-left"
-														>
-															<span className="truncate pr-3">{preset.name}</span>
-															{isActive ? <Check className="h-3.5 w-3.5 shrink-0 text-[#2563EB]" /> : null}
-														</button>
-														<button
-															type="button"
-															onClick={() => handleDeleteEditorPreset(preset.id)}
-															className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground"
-															aria-label={t(
-																"editor.presets.deleteAriaLabel",
-																"Delete preset {{name}}",
-																{ name: preset.name },
-															)}
-															title={t(
-																"editor.presets.deleteAriaLabel",
-																"Delete preset {{name}}",
-																{ name: preset.name },
-															)}
-														>
-															<X className="h-3.5 w-3.5" />
-														</button>
-													</div>
-												);
-											})
-										)}
-									</div>
-								</div>
-							</div>
-						</PopoverContent>
-					</Popover>
 					<DropdownMenu
 						open={showExportDropdown}
 						onOpenChange={setShowExportDropdown}
@@ -5301,7 +4966,7 @@ export default function VideoEditor() {
 							<Button
 								type="button"
 								onClick={handleOpenExportDropdown}
-								className="ml-3 inline-flex h-8 min-w-[112px] items-center justify-center gap-2 rounded-[5px] bg-[#2563EB] px-4.5 text-white transition-colors hover:bg-[#2563EB]/92"
+								className="inline-flex h-8 min-w-[112px] items-center justify-center gap-2 rounded-[5px] bg-[#2563EB] px-4.5 text-white transition-colors hover:bg-[#2563EB]/92"
 							>
 								<Download className="h-4 w-4" />
 								<span className="text-sm font-semibold tracking-tight">
@@ -5634,8 +5299,6 @@ export default function VideoEditor() {
 								onShadowChange={setShadowIntensity}
 								backgroundBlur={backgroundBlur}
 								onBackgroundBlurChange={setBackgroundBlur}
-								zoomMotionBlur={zoomMotionBlur}
-								onZoomMotionBlurChange={setZoomMotionBlur}
 								autoApplyFreshRecordingAutoZooms={autoApplyFreshRecordingAutoZooms}
 								onAutoApplyFreshRecordingAutoZoomsChange={
 									setAutoApplyFreshRecordingAutoZooms
@@ -5658,8 +5321,8 @@ export default function VideoEditor() {
 								onZoomOutEasingChange={setZoomOutEasing}
 								connectedZoomEasing={connectedZoomEasing}
 								onConnectedZoomEasingChange={setConnectedZoomEasing}
-								showCursor={showCursor}
-								onShowCursorChange={setShowCursor}
+								showCursor={effectiveShowCursor}
+								onShowCursorChange={handleShowCursorChange}
 								loopCursor={loopCursor}
 								onLoopCursorChange={setLoopCursor}
 								cursorStyle={cursorStyle}
@@ -5668,8 +5331,16 @@ export default function VideoEditor() {
 								onCursorSizeChange={setCursorSize}
 								cursorSmoothing={cursorSmoothing}
 								onCursorSmoothingChange={setCursorSmoothing}
-								zoomSmoothness={zoomSmoothness}
-								onZoomSmoothnessChange={setZoomSmoothness}
+								cursorSpringStiffnessMultiplier={cursorSpringStiffnessMultiplier}
+								onCursorSpringStiffnessMultiplierChange={
+									setCursorSpringStiffnessMultiplier
+								}
+								cursorSpringDampingMultiplier={cursorSpringDampingMultiplier}
+								onCursorSpringDampingMultiplierChange={
+									setCursorSpringDampingMultiplier
+								}
+								cursorSpringMassMultiplier={cursorSpringMassMultiplier}
+								onCursorSpringMassMultiplierChange={setCursorSpringMassMultiplier}
 								zoomClassicMode={zoomClassicMode}
 								onZoomClassicModeChange={setZoomClassicMode}
 								cursorMotionBlur={cursorMotionBlur}
@@ -5829,7 +5500,6 @@ export default function VideoEditor() {
 												showShadow={shadowIntensity > 0}
 												shadowIntensity={shadowIntensity}
 												backgroundBlur={backgroundBlur}
-												zoomMotionBlur={zoomMotionBlur}
 												connectZooms={connectZooms}
 												zoomInDurationMs={zoomInDurationMs}
 												zoomInOverlapMs={zoomInOverlapMs}
@@ -5854,7 +5524,6 @@ export default function VideoEditor() {
 												annotationRegions={annotationRegions}
 												autoCaptions={autoCaptions}
 												autoCaptionSettings={autoCaptionSettings}
-												onEditAutoCaption={handleSaveAutoCaptionEdit}
 												selectedAnnotationId={selectedAnnotationId}
 												onSelectAnnotation={handleSelectAnnotation}
 												onAnnotationPositionChange={
@@ -5862,10 +5531,17 @@ export default function VideoEditor() {
 												}
 												onAnnotationSizeChange={handleAnnotationSizeChange}
 												cursorTelemetry={effectiveCursorTelemetry}
-												showCursor={showCursor}
+												showCursor={effectiveShowCursor}
 												cursorStyle={cursorStyle}
 												cursorSize={cursorSize}
 												cursorSmoothing={cursorSmoothing}
+												cursorSpringStiffnessMultiplier={
+													cursorSpringStiffnessMultiplier
+												}
+												cursorSpringDampingMultiplier={
+													cursorSpringDampingMultiplier
+												}
+												cursorSpringMassMultiplier={cursorSpringMassMultiplier}
 												zoomSmoothness={zoomSmoothness}
 												zoomClassicMode={zoomClassicMode}
 												cursorMotionBlur={cursorMotionBlur}
