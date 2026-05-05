@@ -334,7 +334,11 @@ export function usePhoneRemoteMedia(): UsePhoneRemoteMediaReturn {
 	const createPeer = useCallback(() => {
 		closePeer();
 		const peer = new RTCPeerConnection({
-			iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+			iceServers: [
+				{ urls: "stun:stun.l.google.com:19302" },
+				{ urls: "stun:stun1.l.google.com:19302" },
+				{ urls: "stun:stun2.l.google.com:19302" },
+			],
 		});
 
 		peer.addTransceiver("video", { direction: "recvonly" });
@@ -474,7 +478,11 @@ export function usePhoneRemoteMedia(): UsePhoneRemoteMediaReturn {
 	}, []);
 
 	useEffect(() => {
+		let active = true;
 		const removeSignalListener = window.electronAPI.onPhoneRemoteSignal(async (payload) => {
+			if (!active) {
+				return;
+			}
 			const currentSession = sessionRef.current;
 			if (!currentSession || payload.sessionId !== currentSession.id) {
 				return;
@@ -494,6 +502,9 @@ export function usePhoneRemoteMedia(): UsePhoneRemoteMediaReturn {
 						return;
 					}
 					await peer.setRemoteDescription(payload.message.description);
+					if (!active) {
+						return;
+					}
 					for (const candidate of pendingRemoteIceCandidatesRef.current.splice(0)) {
 						try {
 							await peer.addIceCandidate(candidate);
@@ -514,6 +525,9 @@ export function usePhoneRemoteMedia(): UsePhoneRemoteMediaReturn {
 					await peer.addIceCandidate(payload.message.candidate);
 				}
 			} catch (signalError) {
+				if (!active) {
+					return;
+				}
 				console.warn("Failed to apply phone remote signal:", signalError);
 				setStatus("reconnecting");
 				setStatusDetail("Phone signal failed. Waiting for reconnect.");
@@ -551,6 +565,7 @@ export function usePhoneRemoteMedia(): UsePhoneRemoteMediaReturn {
 		});
 
 		return () => {
+			active = false;
 			removeSignalListener();
 			removeStatusListener();
 		};

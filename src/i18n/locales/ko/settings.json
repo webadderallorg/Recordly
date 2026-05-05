@@ -42,6 +42,11 @@
 		},
 		"backgroundBlur": "배경 블러",
 		"zoomMotionBlur": "확대 모션 블러",
+		"temporalZoomMotionBlur": "Temporal Zoom Blur",
+		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
+		"zoomMotionBlurSamples": "Blur Samples",
+		"zoomMotionBlurShutter": "Shutter",
+		"auto": "Auto",
 		"connectZooms": "확대 구간 연결",
 		"connectZoomsDescription": "연속된 확대 구간을 하나의 부드러운 카메라 이동으로 연결합니다.",
 		"autoApplyFreshRecordingZooms": "새 녹화에 확대 자동 적용",
@@ -54,6 +59,20 @@
 		"zoomOutDescription": "카메라가 확대 구간에서 빠져나오는 방식을 제어합니다.",
 		"connectedZoomTitle": "확대 구간 사이",
 		"connectedZoomDescription": "연결이 활성화된 경우, 연속된 확대 구간 사이의 이동을 조정합니다.",
+		"motionPresetsTitle": "Motion Presets",
+		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"animationPresets": "Animation Presets",
+		"cursorMotionPresets": "Cursor Motion Presets",
+		"motionPresets": {
+			"focused": {
+				"label": "Focused",
+				"description": "Snappier motion for demos, walkthroughs, and everyday recordings."
+			},
+			"smooth": {
+				"label": "Smooth",
+				"description": "Gentler motion for presentations, keynote-style videos, and polished reveals."
+			}
+		},
 		"zoomInDuration": "확대 시작 시간",
 		"zoomInOverlap": "확대 시작 겹침",
 		"zoomOutDuration": "확대 종료 시간",
@@ -71,6 +90,9 @@
 		},
 		"cursorSize": "커서 크기",
 		"cursorSmoothing": "커서 보정",
+		"cursorSpringStiffness": "Cursor Spring Stiffness",
+		"cursorSpringDamping": "Cursor Spring Damping",
+		"cursorSpringMass": "Cursor Spring Mass",
 		"off": "끔",
 		"cursorMotionBlur": "커서 모션 블러",
 		"cursorClickBounce": "커서 클릭 바운스",
@@ -120,8 +142,6 @@
 		"generateFull": "자막 생성",
 		"regenerateFull": "자막 다시 생성",
 		"clearFull": "자막 지우기",
-		"editCurrent": "현재 자막 편집",
-		"editSaved": "자막이 업데이트되었습니다",
 		"fontSettings": "글꼴 설정",
 		"defaultFont": "기본값",
 		"fontFamily": "글꼴",

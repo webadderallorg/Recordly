@@ -48,6 +48,9 @@ interface VideoExporterConfig extends ExportConfig {
 	shadowIntensity: number;
 	backgroundBlur: number;
 	zoomMotionBlur?: number;
+	zoomTemporalMotionBlur?: number;
+	zoomMotionBlurSampleCount?: number | null;
+	zoomMotionBlurShutterFraction?: number | null;
 	connectZooms?: boolean;
 	zoomInDurationMs?: number;
 	zoomInOverlapMs?: number;
@@ -71,6 +74,9 @@ interface VideoExporterConfig extends ExportConfig {
 	cursorStyle?: CursorStyle;
 	cursorSize?: number;
 	cursorSmoothing?: number;
+	cursorSpringStiffnessMultiplier?: number;
+	cursorSpringDampingMultiplier?: number;
+	cursorSpringMassMultiplier?: number;
 	cursorMotionBlur?: number;
 	cursorClickBounce?: number;
 	cursorClickBounceDuration?: number;
@@ -192,6 +198,9 @@ export class VideoExporter {
 				shadowIntensity: this.config.shadowIntensity,
 				backgroundBlur: this.config.backgroundBlur,
 				zoomMotionBlur: this.config.zoomMotionBlur,
+				zoomTemporalMotionBlur: this.config.zoomTemporalMotionBlur,
+				zoomMotionBlurSampleCount: this.config.zoomMotionBlurSampleCount,
+				zoomMotionBlurShutterFraction: this.config.zoomMotionBlurShutterFraction,
 				connectZooms: this.config.connectZooms,
 				zoomInDurationMs: this.config.zoomInDurationMs,
 				zoomInOverlapMs: this.config.zoomInOverlapMs,
@@ -219,6 +228,9 @@ export class VideoExporter {
 				cursorStyle: this.config.cursorStyle,
 				cursorSize: this.config.cursorSize,
 				cursorSmoothing: this.config.cursorSmoothing,
+				cursorSpringStiffnessMultiplier: this.config.cursorSpringStiffnessMultiplier,
+				cursorSpringDampingMultiplier: this.config.cursorSpringDampingMultiplier,
+				cursorSpringMassMultiplier: this.config.cursorSpringMassMultiplier,
 				cursorMotionBlur: this.config.cursorMotionBlur,
 				cursorClickBounce: this.config.cursorClickBounce,
 				cursorClickBounceDuration: this.config.cursorClickBounceDuration,
@@ -274,6 +286,8 @@ export class VideoExporter {
 						videoFrame,
 						sourceTimestampUs,
 						cursorTimestampUs,
+						frameDuration,
+						timestamp,
 					);
 					videoFrame.close();
 

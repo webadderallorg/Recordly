@@ -220,7 +220,7 @@ export async function validateRecordedVideo(videoPath: string) {
 		ffmpegPath = getFfmpegBinaryPath();
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		if (message.includes("FFmpeg binary is unavailable")) {
+		if (/ffmpeg\s+binary\s+is\s+unavailable/i.test(message)) {
 			console.warn(
 				`[recording] FFmpeg is unavailable; skipping deep media validation for ${videoPath}.`,
 			);

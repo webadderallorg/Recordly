@@ -23,6 +23,7 @@ const FORMAT_DIVISOR = 0x537;
 const LOW_ECC_FORMAT_BITS = 1;
 const QUIET_ZONE_MODULES = 4;
 const PAD_CODEWORDS = [0xec, 0x11];
+const FINDER_LIKE_PATTERN = [true, false, true, true, true, false, true];
 
 const GF_EXP = new Array<number>(512);
 const GF_LOG = new Array<number>(256);
@@ -362,9 +363,12 @@ function scorePenalty(matrix: boolean[][]): number {
 
 	for (let row = 0; row < size; row += 1) {
 		penalty += scoreLine(matrix[row]);
+		penalty += scoreFinderLikePatterns(matrix[row]);
 	}
 	for (let col = 0; col < size; col += 1) {
-		penalty += scoreLine(matrix.map((row) => row[col]));
+		const column = matrix.map((row) => row[col]);
+		penalty += scoreLine(column);
+		penalty += scoreFinderLikePatterns(column);
 	}
 	for (let row = 0; row < size - 1; row += 1) {
 		for (let col = 0; col < size - 1; col += 1) {
@@ -383,6 +387,26 @@ function scorePenalty(matrix: boolean[][]): number {
 	const percent = (darkCount * 100) / (size * size);
 	penalty += Math.floor(Math.abs(percent - 50) / 5) * 10;
 
+	return penalty;
+}
+
+function scoreFinderLikePatterns(line: boolean[]): number {
+	let penalty = 0;
+	for (let i = 0; i <= line.length - FINDER_LIKE_PATTERN.length; i += 1) {
+		const matches = FINDER_LIKE_PATTERN.every((value, index) => line[i + index] === value);
+		if (!matches) {
+			continue;
+		}
+
+		const hasLightBefore = i >= 4 && line.slice(i - 4, i).every((value) => value === false);
+		const afterStart = i + FINDER_LIKE_PATTERN.length;
+		const hasLightAfter =
+			afterStart + 4 <= line.length &&
+			line.slice(afterStart, afterStart + 4).every((value) => value === false);
+		if (hasLightBefore || hasLightAfter) {
+			penalty += 40;
+		}
+	}
 	return penalty;
 }
 

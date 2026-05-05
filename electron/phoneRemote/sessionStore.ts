@@ -16,12 +16,15 @@ const sessions = new Map<string, PhoneRemoteSession>();
 const listeners = new Set<(event: PhoneRemoteStoreEvent) => void>();
 
 function createPairingCode(): string {
-	return crypto
-		.randomBytes(5)
-		.toString("base64url")
-		.replace(/[^A-Z0-9]/gi, "")
-		.slice(0, 8)
-		.toUpperCase();
+	let code = "";
+	while (code.length < 8) {
+		code += crypto
+			.randomBytes(6)
+			.toString("base64url")
+			.replace(/[^A-Z0-9]/gi, "")
+			.toUpperCase();
+	}
+	return code.slice(0, 8);
 }
 
 function appendSignal(
@@ -169,6 +172,7 @@ export function updatePhoneRemoteStatus(
 	session: PhoneRemoteSession,
 	status: PhoneRemoteStatusMessage,
 ) {
+	session.expiresAt = Date.now() + SESSION_TTL_MS;
 	session.status = status.status;
 	session.lastStatusDetail = status.detail;
 	emit({

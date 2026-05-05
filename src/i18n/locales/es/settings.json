@@ -42,6 +42,11 @@
 		},
 		"backgroundBlur": "Desenfoque de fondo",
 		"zoomMotionBlur": "Desenfoque de movimiento del zoom",
+		"temporalZoomMotionBlur": "Temporal Zoom Blur",
+		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
+		"zoomMotionBlurSamples": "Blur Samples",
+		"zoomMotionBlurShutter": "Shutter",
+		"auto": "Auto",
 		"connectZooms": "Conectar zooms",
 		"connectZoomsDescription": "Suaviza regiones de zoom consecutivas convirtiéndolas en un movimiento continuo de cámara.",
 		"autoApplyFreshRecordingZooms": "Aplicar automáticamente zooms a nuevas grabaciones",
@@ -54,6 +59,20 @@
 		"zoomOutDescription": "Controla cómo sale la cámara de una región de zoom.",
 		"connectedZoomTitle": "Entre zooms",
 		"connectedZoomDescription": "Ajusta el deslizamiento entre regiones de zoom consecutivas cuando la conexión está activada.",
+		"motionPresetsTitle": "Motion Presets",
+		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"animationPresets": "Animation Presets",
+		"cursorMotionPresets": "Cursor Motion Presets",
+		"motionPresets": {
+			"focused": {
+				"label": "Focused",
+				"description": "Snappier motion for demos, walkthroughs, and everyday recordings."
+			},
+			"smooth": {
+				"label": "Smooth",
+				"description": "Gentler motion for presentations, keynote-style videos, and polished reveals."
+			}
+		},
 		"zoomInDuration": "Duración de entrada",
 		"zoomInOverlap": "Solapamiento de entrada",
 		"zoomOutDuration": "Duración de salida",
@@ -71,6 +90,9 @@
 		},
 		"cursorSize": "Tamaño del cursor",
 		"cursorSmoothing": "Suavizado del cursor",
+		"cursorSpringStiffness": "Cursor Spring Stiffness",
+		"cursorSpringDamping": "Cursor Spring Damping",
+		"cursorSpringMass": "Cursor Spring Mass",
 		"off": "Desactivado",
 		"cursorMotionBlur": "Desenfoque de movimiento del cursor",
 		"cursorClickBounce": "Rebote de clic del cursor",
@@ -120,8 +142,6 @@
 		"generateFull": "Generar subtítulos",
 		"regenerateFull": "Regenerar subtítulos",
 		"clearFull": "Borrar subtítulos",
-		"editCurrent": "Editar subtítulo actual",
-		"editSaved": "Subtítulo actualizado",
 		"fontSettings": "Tipografía",
 		"defaultFont": "Predeterminado",
 		"fontFamily": "Fuente",

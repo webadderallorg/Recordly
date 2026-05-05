@@ -135,6 +135,9 @@ function parsePhoneRemoteSignal(value: unknown): PhoneRemoteSignalMessage | null
 		if (description.type !== "offer" && description.type !== "answer") {
 			return null;
 		}
+		if (description.type !== record.type) {
+			return null;
+		}
 		return {
 			type: record.type,
 			description: {
@@ -388,8 +391,15 @@ async function startQuickTunnel(localBaseUrl: string): Promise<string | null> {
 			return;
 		}
 
+		const spawnedProcess = tunnelProcess;
 		const timeout = setTimeout(() => {
 			tunnelError = "Secure tunnel did not become ready in time.";
+			if (!spawnedProcess.killed) {
+				spawnedProcess.kill();
+			}
+			if (tunnelProcess === spawnedProcess) {
+				tunnelProcess = null;
+			}
 			settle(null);
 		}, TUNNEL_READY_TIMEOUT_MS);
 
@@ -403,14 +413,14 @@ async function startQuickTunnel(localBaseUrl: string): Promise<string | null> {
 			}
 		};
 
-		tunnelProcess.stdout.on("data", inspectOutput);
-		tunnelProcess.stderr.on("data", inspectOutput);
-		tunnelProcess.once("error", (error) => {
+		spawnedProcess.stdout.on("data", inspectOutput);
+		spawnedProcess.stderr.on("data", inspectOutput);
+		spawnedProcess.once("error", (error) => {
 			tunnelError = error.message;
 			clearTimeout(timeout);
 			settle(null);
 		});
-		tunnelProcess.once("exit", (code) => {
+		spawnedProcess.once("exit", (code) => {
 			if (!settled) {
 				tunnelError =
 					typeof code === "number"
@@ -419,7 +429,9 @@ async function startQuickTunnel(localBaseUrl: string): Promise<string | null> {
 				clearTimeout(timeout);
 				settle(null);
 			}
-			tunnelProcess = null;
+			if (tunnelProcess === spawnedProcess) {
+				tunnelProcess = null;
+			}
 		});
 	});
 

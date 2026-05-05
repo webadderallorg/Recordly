@@ -36,6 +36,9 @@ function parseSignalMessage(value: unknown): PhoneRemoteSignalMessage | null {
 		if (description.type !== "offer" && description.type !== "answer") {
 			return null;
 		}
+		if (description.type !== record.type) {
+			return null;
+		}
 		return {
 			type: record.type,
 			description: {
@@ -82,23 +85,25 @@ function parseSignalMessage(value: unknown): PhoneRemoteSignalMessage | null {
 }
 
 export function registerPhoneRemoteHandlers() {
-	if (!subscribed) {
-		subscribed = true;
-		subscribePhoneRemoteStore((event) => {
-			if (event.type === "signal") {
-				sendToOwner(event.ownerWebContentsId, "phone-remote-signal", {
-					sessionId: event.sessionId,
-					message: event.message,
-				});
-				return;
-			}
-
-			sendToOwner(event.ownerWebContentsId, "phone-remote-status", {
-				sessionId: event.sessionId,
-				status: event.status,
-			});
-		});
+	if (subscribed) {
+		return;
 	}
+
+	subscribed = true;
+	subscribePhoneRemoteStore((event) => {
+		if (event.type === "signal") {
+			sendToOwner(event.ownerWebContentsId, "phone-remote-signal", {
+				sessionId: event.sessionId,
+				message: event.message,
+			});
+			return;
+		}
+
+		sendToOwner(event.ownerWebContentsId, "phone-remote-status", {
+			sessionId: event.sessionId,
+			status: event.status,
+		});
+	});
 
 	ipcMain.handle("phone-remote:create-session", async (event) => {
 		const urls = await getPhoneRemoteJoinUrls();

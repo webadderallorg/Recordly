@@ -32,6 +32,7 @@ describe("phone remote session store", () => {
 
 		expect(session.id).toBeTruthy();
 		expect(session.code).toMatch(/^[A-Z0-9]+$/);
+		expect(session.code).toHaveLength(8);
 		expect(session.status).toBe("waiting");
 		expect(session.expiresAt).toBe(now + 600_000);
 	});
@@ -92,5 +93,21 @@ describe("phone remote session store", () => {
 				status: expect.objectContaining({ status: "mic-active" }),
 			}),
 		);
+	});
+
+	it("refreshes the session expiry on phone status heartbeats", () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const createdAt = NOW.getTime();
+		const session = createPhoneRemoteSession(42, urls, createdAt);
+
+		vi.setSystemTime(createdAt + 300_000);
+		updatePhoneRemoteStatus(session, {
+			status: "preview-live",
+			hasAudio: true,
+			hasVideo: true,
+		});
+
+		expect(session.expiresAt).toBe(createdAt + 900_000);
 	});
 });

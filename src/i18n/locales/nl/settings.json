@@ -42,6 +42,11 @@
 		},
 		"backgroundBlur": "Achtergrondvervaging",
 		"zoomMotionBlur": "Zoom-bewegingsonscherpte",
+		"temporalZoomMotionBlur": "Temporal Zoom Blur",
+		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
+		"zoomMotionBlurSamples": "Blur Samples",
+		"zoomMotionBlurShutter": "Shutter",
+		"auto": "Auto",
 		"connectZooms": "Zooms verbinden",
 		"connectZoomsDescription": "Maak opeenvolgende zoomgebieden vloeiend tot een doorlopende camerabeweging.",
 		"autoApplyFreshRecordingZooms": "Zooms voor nieuwe opnames automatisch toepassen",
@@ -54,6 +59,20 @@
 		"zoomOutDescription": "Bepaal hoe de camera een zoomgebied verlaat.",
 		"connectedZoomTitle": "Tussen zooms",
 		"connectedZoomDescription": "Stel de overgang af tussen opeenvolgende zoomgebieden wanneer verbinding is ingeschakeld.",
+		"motionPresetsTitle": "Motion Presets",
+		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"animationPresets": "Animation Presets",
+		"cursorMotionPresets": "Cursor Motion Presets",
+		"motionPresets": {
+			"focused": {
+				"label": "Focused",
+				"description": "Snappier motion for demos, walkthroughs, and everyday recordings."
+			},
+			"smooth": {
+				"label": "Smooth",
+				"description": "Gentler motion for presentations, keynote-style videos, and polished reveals."
+			}
+		},
 		"zoomInDuration": "Inzoomduur",
 		"zoomInOverlap": "Inzoomoverlap",
 		"zoomOutDuration": "Uitzoomduur",
@@ -71,6 +90,9 @@
 		},
 		"cursorSize": "Cursorgrootte",
 		"cursorSmoothing": "Cursorverzachting",
+		"cursorSpringStiffness": "Cursor Spring Stiffness",
+		"cursorSpringDamping": "Cursor Spring Damping",
+		"cursorSpringMass": "Cursor Spring Mass",
 		"off": "Uit",
 		"cursorMotionBlur": "Cursor-bewegingsonscherpte",
 		"cursorClickBounce": "Cursorklikstuit",
@@ -120,8 +142,6 @@
 		"generateFull": "Ondertiteling genereren",
 		"regenerateFull": "Ondertiteling opnieuw genereren",
 		"clearFull": "Ondertiteling wissen",
-		"editCurrent": "Huidige ondertiteling bewerken",
-		"editSaved": "Ondertiteling bijgewerkt",
 		"fontSettings": "Lettertype-instellingen",
 		"defaultFont": "Standaard",
 		"fontFamily": "Lettertype",
