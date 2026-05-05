@@ -72,17 +72,18 @@ import { resolveMediaElementSource } from "@/lib/exporter/localMediaSource";
 import { resolveSourceAudioFallbackPaths } from "@/lib/exporter/sourceAudioFallback";
 import {
 	clampMediaTimeToDuration,
+	enablePitchPreservingPlayback,
 	estimateCompanionAudioStartDelaySeconds,
 	getMediaSyncPlaybackRate,
 } from "@/lib/mediaTiming";
 import { matchesShortcut } from "@/lib/shortcuts";
+import { cn } from "@/lib/utils";
 import {
 	ASPECT_RATIOS,
 	type AspectRatio,
 	getAspectRatioLabel,
 	getAspectRatioValue,
 } from "@/utils/aspectRatioUtils";
-import { cn } from "@/lib/utils";
 import { ExtensionIcon } from "./ExtensionIcon";
 
 const PhCursorFill = (props: { className?: string; weight?: "fill" | "regular" }) => (
@@ -110,13 +111,13 @@ import { CropControl } from "./CropControl";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
 import ExtensionManager from "./ExtensionManager";
 import {
+	type EditorPreset,
+	type EditorPresetSnapshot,
 	loadEditorPreferences,
 	loadEditorPresets,
 	saveEditorPreferences,
 	saveEditorPresets,
 	serializeEditorPresetSnapshot,
-	type EditorPreset,
-	type EditorPresetSnapshot,
 } from "./editorPreferences";
 import ProjectBrowserDialog, { type ProjectLibraryEntry } from "./ProjectBrowserDialog";
 import {
@@ -329,18 +330,6 @@ const SMOKE_EXPORT_READY_TIMEOUT_MS = 30_000;
 const DEFAULT_MP4_EXPORT_FRAME_RATE: ExportMp4FrameRate = 30;
 const SOURCE_AUDIO_FALLBACK_TOAST_ID = "source-audio-fallback-error";
 const PROJECT_AUTOSAVE_DELAY_MS = 1000;
-
-function getEncodingModeBitrateMultiplier(encodingMode: ExportEncodingMode): number {
-	switch (encodingMode) {
-		case "fast":
-			return 0.1;
-		case "quality":
-			return 0.9;
-		case "balanced":
-		default:
-			return 0.7;
-	}
-}
 
 function summarizeErrorMessage(message: string): string {
 	const firstLine = message
@@ -4194,6 +4183,7 @@ export default function VideoEditor() {
 			const isInRegion = currentTimeMs >= region.startMs && currentTimeMs < region.endMs;
 
 			if (isPlaying && isInRegion) {
+				enablePitchPreservingPlayback(audio);
 				const audioOffset = (currentTimeMs - region.startMs) / 1000;
 				// Only seek if significantly out of sync (> 200ms)
 				if (Math.abs(audio.currentTime - audioOffset) > 0.2) {
@@ -4234,6 +4224,7 @@ export default function VideoEditor() {
 		const driftThreshold = isPlaying ? 0.35 : 0.01;
 
 		for (const audio of sourceAudioElementsRef.current.values()) {
+			enablePitchPreservingPlayback(audio);
 			const audioDuration = Number.isFinite(audio.duration) ? audio.duration : null;
 			const startDelaySeconds = estimateCompanionAudioStartDelaySeconds(
 				duration,
@@ -4876,6 +4867,7 @@ export default function VideoEditor() {
 			smokeExportConfig.encodingMode,
 			smokeExportConfig.fps,
 			smokeExportConfig.quality,
+			saveBlobExport,
 		],
 	);
 
@@ -5166,6 +5158,8 @@ export default function VideoEditor() {
 	}, [t]);
 
 	const isExportSaving = exportProgress?.phase === "saving";
+	const isExportPreparing =
+		isExporting && (!exportProgress || exportProgress.phase === "preparing");
 	const isExportFinalizing = exportProgress?.phase === "finalizing";
 	const isRenderingAudio =
 		isExportFinalizing && typeof exportProgress?.audioProgress === "number";
@@ -5188,6 +5182,9 @@ export default function VideoEditor() {
 		exportPipelineModel === "legacy" &&
 		(isExporting || exportProgress !== null);
 	const exportRenderSpeedLabel =
+		!isExportPreparing &&
+		!isExportFinalizing &&
+		!isExportSaving &&
 		typeof exportProgress?.renderFps === "number" &&
 		Number.isFinite(exportProgress.renderFps) &&
 		exportProgress.renderFps > 0
@@ -5227,16 +5224,26 @@ export default function VideoEditor() {
 		? `Native skipped: ${exportProgress.nativeStaticLayoutSkipReason}`
 		: null;
 	const exportPercentLabel = exportProgress
-		? isExportSaving
+		? isExportPreparing
+			? t("editor.exportStatus.preparing", "Preparing export...")
+			: isExportSaving
 			? t("editor.exportStatus.saving", "Opening save dialog...")
 			: isRenderingAudio
 				? t("editor.exportStatus.renderingAudio", "Rendering audio {{percent}}%", {
 						percent: Math.round((exportProgress.audioProgress ?? 0) * 100),
 					})
 				: isExportFinalizing
-					? t("editor.exportStatus.finalizingPercent", "Finalizing {{percent}}%", {
-							percent: Math.round(exportFinalizingProgress ?? 100),
-						})
+					? exportFormat === "mp4" && exportPipelineModel === "modern"
+						? t(
+								"editor.exportStatus.muxingAndSavingPercent",
+								"Muxing and saving {{percent}}%",
+								{
+									percent: Math.round(exportFinalizingProgress ?? 100),
+								},
+							)
+						: t("editor.exportStatus.finalizingPercent", "Finalizing {{percent}}%", {
+								percent: Math.round(exportFinalizingProgress ?? 100),
+							})
 					: t("editor.exportStatus.completePercent", "{{percent}}% complete", {
 							percent: Math.round(exportProgress.percentage),
 						})
@@ -5577,7 +5584,7 @@ export default function VideoEditor() {
 										</Button>
 									</div>
 									<div className="h-2 overflow-hidden rounded-full border border-foreground/5 bg-foreground/5">
-										{isExportSaving ? (
+										{isExportPreparing || isExportSaving ? (
 											<div className="indeterminate-progress h-full rounded-full bg-transparent" />
 										) : (
 											<div

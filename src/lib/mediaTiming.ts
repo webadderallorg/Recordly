@@ -74,6 +74,19 @@ export function getMediaSyncPlaybackRate({
 	return Math.max(0.1, safeBasePlaybackRate + adjustment);
 }
 
+type PitchPreservingMediaElement = HTMLMediaElement & {
+	preservesPitch?: boolean;
+	mozPreservesPitch?: boolean;
+	webkitPreservesPitch?: boolean;
+};
+
+export function enablePitchPreservingPlayback(media: HTMLMediaElement) {
+	const pitchMedia = media as PitchPreservingMediaElement;
+	pitchMedia.preservesPitch = true;
+	pitchMedia.mozPreservesPitch = true;
+	pitchMedia.webkitPreservesPitch = true;
+}
+
 export function getEffectiveVideoStreamDurationSeconds({
 	duration,
 	streamDuration,

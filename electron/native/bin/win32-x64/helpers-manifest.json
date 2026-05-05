@@ -5,31 +5,31 @@
   "helpers": {
     "wgc-capture": {
       "binaryName": "wgc-capture.exe",
-      "binarySha256": "424c64fc9569e8f6add29130ee935dfcb4451c07c1036d3738c22d9b79ad39cd",
+      "binarySha256": "31beb9528e79262da6aa31fef09b6125153a838f957060ccc1ec5d4da844516c",
       "sourceDir": "electron/native/wgc-capture",
-      "sourceFingerprint": "4fd7e2f5d0e804a8aaaaddcba3a3e02b42739c0148a0d38be24325ddbb659ec1",
-      "updatedAt": "2026-05-03T15:39:44.054Z"
+      "sourceFingerprint": "4bb09b770a21eb32daf6325d46d73d0522f20a4cbce9dda8b3df2277f8cfd0be",
+      "updatedAt": "2026-05-05T18:41:50.078Z"
     },
     "cursor-monitor": {
       "binaryName": "cursor-monitor.exe",
       "binarySha256": "6ae6d91103b6e891a851e8ea5791e1c1f9aaab700134c18bc4c46cfffd7fdd12",
       "sourceDir": "electron/native/cursor-monitor",
       "sourceFingerprint": "6ad1b8b50bb336f2a48937b06f5ec56d90b6ab4a3e56a4bca278cf67a5d3e52e",
-      "updatedAt": "2026-05-03T15:39:52.446Z"
+      "updatedAt": "2026-05-05T18:42:26.007Z"
     },
     "recordly-gpu-export": {
       "binaryName": "recordly-gpu-export.exe",
-      "binarySha256": "9b3d4dff520356e5db563cc3992d777f8bab8eaf6d0bb718f9c1d7d7da37fac5",
+      "binarySha256": "e79cb823dd2cfade857db67696ae6456ae0ba3ae9381b6792c948ac648521bd4",
       "sourceDir": "electron/native/gpu-export-probe",
-      "sourceFingerprint": "75bf080c4a5cbbcb1d42fb088a1545130c613e42d9e7681cc23f9151d1c8072b",
-      "updatedAt": "2026-05-03T15:39:47.938Z"
+      "sourceFingerprint": "45aaa4c0cbeb45ecaa9ff0a87b870c33bd0d5b09fb5b3acef45b246970a12e7f",
+      "updatedAt": "2026-05-05T18:41:54.966Z"
     },
     "recordly-nvidia-cuda-compositor": {
       "binaryName": "recordly-nvidia-cuda-compositor.exe",
-      "binarySha256": "f274039c46445a3b8e57c9faa6307238d6facc04d5c88f7bb84c43563feda649",
+      "binarySha256": "2913d78e2c1114d32c92fb4238749f7ff46131ec92cf3ad0b55af910c7cdbb07",
       "sourceDir": "electron/native/nvidia-cuda-compositor",
-      "sourceFingerprint": "bc6f657ff3226f8c3bcdc89354de4118d0ef0f3ac1b5fde6d496bda9b77b65c6",
-      "updatedAt": "2026-05-04T02:54:12.432Z"
+      "sourceFingerprint": "a60538981da7dd3d9645f59926d42f4f2f0f1f0663d3905e0416fdff8becb314",
+      "updatedAt": "2026-05-05T18:42:20.123Z"
     }
   }
 }

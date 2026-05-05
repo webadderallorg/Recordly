@@ -12,7 +12,11 @@ import {
 	useState,
 } from "react";
 import { getAssetPath, getRenderableAssetUrl, getRenderableVideoUrl } from "@/lib/assetPath";
-import { clampMediaTimeToDuration, getMediaSyncPlaybackRate } from "@/lib/mediaTiming";
+import {
+	clampMediaTimeToDuration,
+	enablePitchPreservingPlayback,
+	getMediaSyncPlaybackRate,
+} from "@/lib/mediaTiming";
 import {
 	DEFAULT_WALLPAPER_PATH,
 	DEFAULT_WALLPAPER_RELATIVE_PATH,
@@ -895,6 +899,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const video = videoRef.current;
 			if (!video) return;
 
+			enablePitchPreservingPlayback(video);
 			const nextVolume = Math.max(0, Math.min(1, volume));
 			video.volume = nextVolume;
 			video.muted = nextVolume <= 0.001;
@@ -1222,6 +1227,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					currentTime * 1000 >= region.startMs && currentTime * 1000 < region.endMs,
 			);
 			const targetPlaybackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
+			enablePitchPreservingPlayback(bgVideo);
 			const syncedPlaybackRate = getMediaSyncPlaybackRate({
 				basePlaybackRate: targetPlaybackRate,
 				currentTime: bgVideo.currentTime,
@@ -1512,6 +1518,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				(region) => targetTime * 1000 >= region.startMs && targetTime * 1000 < region.endMs,
 			);
 			const targetPlaybackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
+			enablePitchPreservingPlayback(webcamVideo);
 			if (Math.abs(webcamVideo.playbackRate - targetPlaybackRate) > 0.001) {
 				webcamVideo.playbackRate = targetPlaybackRate;
 			}

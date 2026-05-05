@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("electron", () => ({
 	app: {
 		getAppPath: vi.fn(() => process.cwd()),
+		getGPUInfo: vi.fn(async () => ({ gpuDevice: [] })),
 		getPath: vi.fn(() => process.env.TEMP ?? process.cwd()),
 		isPackaged: false,
 	},
@@ -10,6 +11,7 @@ vi.mock("electron", () => ({
 
 vi.mock("../ffmpeg/binary", () => ({
 	getFfmpegBinaryPath: vi.fn(() => "ffmpeg"),
+	getFfprobeBinaryPath: vi.fn(() => "ffprobe"),
 }));
 
 vi.mock("../state", () => ({
@@ -44,19 +46,34 @@ vi.mock("node:child_process", () => ({
 	spawn: vi.fn(),
 }));
 
+import { app } from "electron";
 import {
+	buildExperimentalNvidiaCudaStaticLayoutArgs,
+	buildNativeStaticLayoutTimelineSegments,
 	buildNativeVideoAudioMuxArgs,
+	getExperimentalNvidiaCudaExportSkipReason,
 	getNvidiaCudaAudioExportSkipReason,
+	hasNvidiaGpuDeviceInGpuInfo,
+	mapNvidiaCudaWrapperProgressPercentage,
 	muxExportedVideoAudioBuffer,
+	type NativeStaticLayoutExportOptions,
 	normalizeNativeStaticLayoutBackground,
 	parseFfmpegDurationSeconds,
 	parseFfmpegFrameRate,
+	parseFfmpegProgressLineSeconds,
 	parseNativeVideoMetadataProbeOutput,
 	parseNvidiaCudaExportSummary,
 	parseWindowsGpuExportProgressLine,
 	parseWindowsGpuExportSummary,
+	resolveExperimentalNvidiaCudaExportScriptPath,
 	validateNvidiaCudaExportSummary,
 } from "./native-video";
+
+const electronAppMock = app as unknown as {
+	getAppPath: ReturnType<typeof vi.fn>;
+	getGPUInfo: ReturnType<typeof vi.fn>;
+	isPackaged: boolean;
+};
 
 function withNvidiaCudaAudioOverride<T>(value: string | undefined, callback: () => T) {
 	const envName = "RECORDLY_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT";
@@ -75,6 +92,57 @@ function withNvidiaCudaAudioOverride<T>(value: string | undefined, callback: () 
 		} else {
 			process.env[envName] = originalValue;
 		}
+	}
+}
+
+function resetFsAccessMock() {
+	fsMocks.access.mockImplementation(async () => {
+		throw new Error("missing");
+	});
+}
+
+function createNvidiaCudaSkipOptions(
+	overrides: Partial<NativeStaticLayoutExportOptions> = {},
+): NativeStaticLayoutExportOptions {
+	return {
+		inputPath: "input.mp4",
+		width: 1920,
+		height: 1080,
+		frameRate: 30,
+		bitrate: 8_000_000,
+		encodingMode: "quality",
+		durationSec: 10,
+		contentWidth: 1600,
+		contentHeight: 900,
+		offsetX: 160,
+		offsetY: 90,
+		backgroundColor: "#101010",
+		experimentalWindowsGpuCompositor: true,
+		...overrides,
+	};
+}
+
+async function withPackagedCudaCandidate<T>(gpuInfo: unknown, callback: () => Promise<T>) {
+	const envName = "RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
+	const originalEnv = process.env[envName];
+	const originalIsPackaged = electronAppMock.isPackaged;
+	electronAppMock.isPackaged = true;
+	electronAppMock.getGPUInfo.mockResolvedValue(gpuInfo);
+	fsMocks.access.mockResolvedValue(undefined);
+	delete process.env[envName];
+
+	try {
+		return await callback();
+	} finally {
+		if (originalEnv === undefined) {
+			delete process.env[envName];
+		} else {
+			process.env[envName] = originalEnv;
+		}
+		electronAppMock.isPackaged = originalIsPackaged;
+		electronAppMock.getGPUInfo.mockReset();
+		electronAppMock.getGPUInfo.mockResolvedValue({ gpuDevice: [] });
+		resetFsAccessMock();
 	}
 }
 
@@ -127,6 +195,284 @@ describe("getNvidiaCudaAudioExportSkipReason", () => {
 		withNvidiaCudaAudioOverride("1", () => {
 			expect(getNvidiaCudaAudioExportSkipReason("copy-source")).toBeNull();
 		});
+	});
+
+	it("allows validated fallback candidates to try CUDA audio exports", () => {
+		withNvidiaCudaAudioOverride(undefined, () => {
+			expect(
+				getNvidiaCudaAudioExportSkipReason("copy-source", {
+					allowValidatedFallbackCandidate: true,
+				}),
+			).toBeNull();
+		});
+	});
+});
+
+describe("hasNvidiaGpuDeviceInGpuInfo", () => {
+	it("detects NVIDIA GPUs by vendor id or device strings", () => {
+		expect(
+			hasNvidiaGpuDeviceInGpuInfo({
+				gpuDevice: [{ active: false, vendorId: 0x10de, deviceId: 0x1f91 }],
+			}),
+		).toBe(true);
+		expect(
+			hasNvidiaGpuDeviceInGpuInfo({
+				gpuDevice: [{ vendorString: "NVIDIA Corporation" }],
+			}),
+		).toBe(true);
+		expect(
+			hasNvidiaGpuDeviceInGpuInfo({
+				gpuDevice: [{ deviceString: "NVIDIA GeForce GTX 1650" }],
+			}),
+		).toBe(true);
+	});
+
+	it("rejects non-NVIDIA and malformed GPU info", () => {
+		expect(
+			hasNvidiaGpuDeviceInGpuInfo({
+				gpuDevice: [
+					{ vendorId: 0x1002, deviceString: "AMD Radeon" },
+					{ vendorId: 0x8086, deviceString: "Intel UHD Graphics" },
+				],
+			}),
+		).toBe(false);
+		expect(hasNvidiaGpuDeviceInGpuInfo({})).toBe(false);
+		expect(hasNvidiaGpuDeviceInGpuInfo(null)).toBe(false);
+	});
+});
+
+describe("getExperimentalNvidiaCudaExportSkipReason", () => {
+	it("auto-enables packaged CUDA candidates when the helper and an NVIDIA GPU are present", async () => {
+		const reason = await withPackagedCudaCandidate(
+			{ gpuDevice: [{ vendorId: 0x10de, deviceString: "NVIDIA GeForce GTX 1650" }] },
+			() =>
+				getExperimentalNvidiaCudaExportSkipReason(
+					createNvidiaCudaSkipOptions({
+						audioOptions: { audioMode: "copy-source", audioSourcePath: "input.mp4" },
+					}),
+				),
+		);
+
+		expect(reason).toBe(process.platform === "win32" ? null : "not-windows");
+	});
+
+	it("allows explicit lab CUDA audio exports when forced onto the shared mux path", async () => {
+		const exportEnvName = "RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
+		const forceEnvName = "RECORDLY_NVIDIA_CUDA_FORCE_VIDEO_ONLY";
+		const allowAudioEnvName = "RECORDLY_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT";
+		const originalExportEnv = process.env[exportEnvName];
+		const originalForceEnv = process.env[forceEnvName];
+		const originalAllowAudioEnv = process.env[allowAudioEnvName];
+		process.env[exportEnvName] = "1";
+		process.env[forceEnvName] = "1";
+		delete process.env[allowAudioEnvName];
+
+		try {
+			const reason = await getExperimentalNvidiaCudaExportSkipReason(
+				createNvidiaCudaSkipOptions({
+					audioOptions: { audioMode: "copy-source", audioSourcePath: "input.mp4" },
+				}),
+			);
+
+			expect(reason).toBe(process.platform === "win32" ? null : "not-windows");
+		} finally {
+			if (originalExportEnv === undefined) {
+				delete process.env[exportEnvName];
+			} else {
+				process.env[exportEnvName] = originalExportEnv;
+			}
+			if (originalForceEnv === undefined) {
+				delete process.env[forceEnvName];
+			} else {
+				process.env[forceEnvName] = originalForceEnv;
+			}
+			if (originalAllowAudioEnv === undefined) {
+				delete process.env[allowAudioEnvName];
+			} else {
+				process.env[allowAudioEnvName] = originalAllowAudioEnv;
+			}
+		}
+	});
+
+	it("skips packaged CUDA auto-candidates when Electron reports no NVIDIA GPU", async () => {
+		const reason = await withPackagedCudaCandidate(
+			{ gpuDevice: [{ vendorId: 0x8086, deviceString: "Intel UHD Graphics" }] },
+			() => getExperimentalNvidiaCudaExportSkipReason(createNvidiaCudaSkipOptions()),
+		);
+
+		expect(reason).toBe(
+			process.platform === "win32" ? "nvidia-gpu-unavailable" : "not-windows",
+		);
+	});
+
+	it("lets the packaged auto-candidate be explicitly disabled", async () => {
+		const reason = await withPackagedCudaCandidate(
+			{ gpuDevice: [{ vendorId: 0x10de, deviceString: "NVIDIA GeForce GTX 1650" }] },
+			async () => {
+				process.env.RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT = "0";
+				return getExperimentalNvidiaCudaExportSkipReason(createNvidiaCudaSkipOptions());
+			},
+		);
+
+		expect(reason).toBe(process.platform === "win32" ? "env-disabled" : "not-windows");
+	});
+});
+
+describe("resolveExperimentalNvidiaCudaExportScriptPath", () => {
+	it("prefers the packaged app.asar.unpacked CUDA wrapper over the virtual app.asar copy", async () => {
+		const envName = "RECORDLY_NVIDIA_CUDA_EXPORT_SCRIPT";
+		const originalEnv = process.env[envName];
+		const originalResourcesPath = Object.getOwnPropertyDescriptor(process, "resourcesPath");
+		delete process.env[envName];
+
+		try {
+			if (process.platform !== "win32") {
+				expect(await resolveExperimentalNvidiaCudaExportScriptPath()).toBeNull();
+				return;
+			}
+
+			const resourcesPath = "C:\\Recordly\\resources";
+			const unpackedScriptPath =
+				"C:\\Recordly\\resources\\app.asar.unpacked\\electron\\native\\nvidia-cuda-compositor\\run-mp4-pipeline.mjs";
+			const asarScriptPath =
+				"C:\\Recordly\\resources\\app.asar\\electron\\native\\nvidia-cuda-compositor\\run-mp4-pipeline.mjs";
+			Object.defineProperty(process, "resourcesPath", {
+				configurable: true,
+				value: resourcesPath,
+			});
+			electronAppMock.getAppPath.mockReturnValue("C:\\Recordly\\resources\\app.asar");
+			fsMocks.access.mockImplementation(async (candidate: string) => {
+				if (candidate === unpackedScriptPath || candidate === asarScriptPath) {
+					return;
+				}
+				throw new Error(`missing ${candidate}`);
+			});
+
+			expect(await resolveExperimentalNvidiaCudaExportScriptPath()).toBe(
+				unpackedScriptPath,
+			);
+		} finally {
+			if (originalEnv === undefined) {
+				delete process.env[envName];
+			} else {
+				process.env[envName] = originalEnv;
+			}
+			if (originalResourcesPath) {
+				Object.defineProperty(process, "resourcesPath", originalResourcesPath);
+			} else {
+				delete (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+			}
+			electronAppMock.getAppPath.mockReset();
+			electronAppMock.getAppPath.mockReturnValue(process.cwd());
+			resetFsAccessMock();
+		}
+	});
+});
+
+describe("buildExperimentalNvidiaCudaStaticLayoutArgs", () => {
+	it("keeps explicit copy-source CUDA audio inline by default", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				audioOptions: { audioMode: "copy-source", audioSourcePath: "input.mp4" },
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).not.toContain("--video-only");
+	});
+
+	it("forces packaged auto CUDA candidates onto the shared audio mux path", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				audioOptions: { audioMode: "copy-source", audioSourcePath: "input.mp4" },
+				nvidiaCudaForceVideoOnly: true,
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).toContain("--video-only");
+	});
+
+	it("passes native timeline maps to the CUDA wrapper", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				timelineMapPath: "timeline-map.csv",
+				timelineSegments: [
+					{
+						sourceStartMs: 0,
+						sourceEndMs: 6_000,
+						outputStartMs: 0,
+						outputEndMs: 4_000,
+						speed: 1.5,
+					},
+				],
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).toEqual(expect.arrayContaining(["--timeline-map", "timeline-map.csv"]));
+	});
+
+	it("passes webcam source-time controls to the CUDA wrapper", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				webcamInputPath: "webcam.mp4",
+				webcamLeft: 32,
+				webcamTop: 48,
+				webcamSize: 240,
+				webcamRadius: 18,
+				webcamTimeOffsetMs: -125.5,
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).toEqual(
+			expect.arrayContaining([
+				"--webcam-input",
+				"webcam.mp4",
+				"--webcam-time-offset-ms",
+				"-125.5",
+				"--webcam-stream",
+			]),
+		);
+	});
+});
+
+describe("buildNativeStaticLayoutTimelineSegments", () => {
+	it("derives contiguous output timeline ranges from edited-track source segments", () => {
+		expect(
+			buildNativeStaticLayoutTimelineSegments([
+				{ startMs: 0, endMs: 2_000, speed: 1 },
+				{ startMs: 2_000, endMs: 8_000, speed: 1.5 },
+				{ startMs: 8_000, endMs: 10_000, speed: 0.5 },
+			]),
+		).toEqual([
+			{
+				sourceStartMs: 0,
+				sourceEndMs: 2_000,
+				outputStartMs: 0,
+				outputEndMs: 2_000,
+				speed: 1,
+			},
+			{
+				sourceStartMs: 2_000,
+				sourceEndMs: 8_000,
+				outputStartMs: 2_000,
+				outputEndMs: 6_000,
+				speed: 1.5,
+			},
+			{
+				sourceStartMs: 8_000,
+				sourceEndMs: 10_000,
+				outputStartMs: 6_000,
+				outputEndMs: 10_000,
+				speed: 0.5,
+			},
+		]);
 	});
 });
 
@@ -192,6 +538,44 @@ describe("buildNativeVideoAudioMuxArgs", () => {
 
 		expect(args).toEqual(expect.arrayContaining(["-filter_complex"]));
 		expect(args).toEqual(expect.arrayContaining(["-c:a", "aac", "-b:a", "192k"]));
+	});
+
+	it("pads and trims edited-track filtergraph audio to the expected duration", () => {
+		const args = buildNativeVideoAudioMuxArgs("video.mp4", "source.mp4", "out.mp4", {
+			audioMode: "edited-track",
+			editedTrackStrategy: "filtergraph-fast-path",
+			audioSourceSampleRate: 48_000,
+			editedTrackSegments: [{ startMs: 0, endMs: 4_000, speed: 0.5 }],
+			outputDurationSec: 8,
+		});
+
+		expect(args).toEqual(expect.arrayContaining(["-map", "[aout_sync]"]));
+		expect(args.join(";")).toContain(
+			"[aout]apad,atrim=duration=8.000,asetpts=PTS-STARTPTS[aout_sync]",
+		);
+	});
+
+	it("can enable machine-readable FFmpeg mux progress", () => {
+		const args = buildNativeVideoAudioMuxArgs(
+			"video.mp4",
+			"source.mp4",
+			"out.mp4",
+			{ audioMode: "copy-source", outputDurationSec: 60 },
+			{ progressPipe: 2 },
+		);
+
+		expect(args).toEqual(
+			expect.arrayContaining(["-stats_period", "0.5", "-progress", "pipe:2", "-nostats"]),
+		);
+	});
+});
+
+describe("parseFfmpegProgressLineSeconds", () => {
+	it("parses FFmpeg progress timestamps into seconds", () => {
+		expect(parseFfmpegProgressLineSeconds("out_time_us=1500000")).toBe(1.5);
+		expect(parseFfmpegProgressLineSeconds("out_time_ms=2500000")).toBe(2.5);
+		expect(parseFfmpegProgressLineSeconds("out_time=00:01:02.500000")).toBe(62.5);
+		expect(parseFfmpegProgressLineSeconds("progress=continue")).toBeNull();
 	});
 });
 
@@ -309,9 +693,26 @@ describe("validateNvidiaCudaExportSummary", () => {
 			{ durationSec: 10, targetFrames: 300, requiresTimelineSync: true },
 		);
 
-		expect(issues).toEqual([
-			"CUDA timeline mode is not timestamp-aligned for audio export",
-		]);
+		expect(issues).toEqual(["CUDA timeline mode is not timestamp-aligned for audio export"]);
+	});
+
+	it("accepts video-only CUDA output when audio is muxed by the shared export path", () => {
+		const issues = validateNvidiaCudaExportSummary(
+			{
+				success: true,
+				targetFrames: 300,
+				durationSec: 10,
+				nativeSummary: {
+					success: true,
+					frames: 300,
+					selectionStage: "decoder-policy-mapped-callback",
+				},
+				outputVideo: { duration: "9.999900", nb_frames: "300" },
+			},
+			{ durationSec: 10, targetFrames: 300, requiresTimelineSync: false },
+		);
+
+		expect(issues).toEqual([]);
 	});
 
 	it("accepts audio CUDA output when the helper reports PTS-aligned selection", () => {
@@ -340,12 +741,13 @@ describe("parseWindowsGpuExportProgressLine", () => {
 	it("parses bounded helper progress lines", () => {
 		expect(
 			parseWindowsGpuExportProgressLine(
-				'PROGRESS {"currentFrame":30,"totalFrames":60,"percentage":50,"averageFps":240.5,"instantFps":180.25,"intervalMs":166.4,"intervalFrames":30,"intervalEncodeMs":120.2,"intervalPipelineWaitMs":46.2,"intervalMonolithicCompositeFrames":0}',
+				'PROGRESS {"currentFrame":30,"totalFrames":60,"percentage":50,"averageFps":240.5,"instantFps":180.25,"intervalMs":166.4,"intervalFrames":30,"intervalEncodeMs":120.2,"intervalPipelineWaitMs":46.2,"intervalMonolithicCompositeFrames":0,"stage":"finalizing"}',
 			),
 		).toEqual({
 			currentFrame: 30,
 			totalFrames: 60,
 			percentage: 50,
+			stage: "finalizing",
 			averageFps: 240.5,
 			instantFps: 180.25,
 			intervalMs: 166.4,
@@ -353,6 +755,19 @@ describe("parseWindowsGpuExportProgressLine", () => {
 			intervalEncodeMs: 120.2,
 			intervalPipelineWaitMs: 46.2,
 			intervalMonolithicCompositeFrames: 0,
+		});
+	});
+
+	it("preserves CUDA preparation progress as a non-rendering stage", () => {
+		expect(
+			parseWindowsGpuExportProgressLine(
+				'PROGRESS {"currentFrame":0,"totalFrames":100,"percentage":2.5,"stage":"preparing"}',
+			),
+		).toEqual({
+			currentFrame: 0,
+			totalFrames: 100,
+			percentage: 2.5,
+			stage: "preparing",
 		});
 	});
 
@@ -364,6 +779,47 @@ describe("parseWindowsGpuExportProgressLine", () => {
 				'PROGRESS {"currentFrame":1,"totalFrames":0,"percentage":999}',
 			),
 		).toBeNull();
+	});
+});
+
+describe("mapNvidiaCudaWrapperProgressPercentage", () => {
+	it("keeps preflight progress and maps native encode into the main export span", () => {
+		expect(
+			mapNvidiaCudaWrapperProgressPercentage({
+				currentFrame: 0,
+				totalFrames: 100,
+				percentage: 2.5,
+			}),
+		).toBe(2.5);
+		expect(
+			mapNvidiaCudaWrapperProgressPercentage({
+				currentFrame: 0,
+				totalFrames: 100,
+				percentage: 0,
+			}),
+		).toBe(3);
+		expect(
+			mapNvidiaCudaWrapperProgressPercentage({
+				currentFrame: 50,
+				totalFrames: 100,
+				percentage: 50,
+			}),
+		).toBe(50.5);
+		expect(
+			mapNvidiaCudaWrapperProgressPercentage({
+				currentFrame: 100,
+				totalFrames: 100,
+				percentage: 100,
+			}),
+		).toBe(98);
+		expect(
+			mapNvidiaCudaWrapperProgressPercentage({
+				currentFrame: 100,
+				totalFrames: 100,
+				percentage: 97.25,
+				stage: "finalizing",
+			}),
+		).toBe(97.25);
 	});
 });
 

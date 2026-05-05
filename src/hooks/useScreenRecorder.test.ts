@@ -131,6 +131,33 @@ async function resumeNativeRecording(
 	return true;
 }
 
+async function stopNativeRecordingWithCompanions({
+	getRecordingDurationMs,
+	markRecordingResumed,
+	now,
+	stopMicFallbackRecorder,
+	stopNativeScreenRecording,
+	stopWebcamRecorder,
+}: {
+	getRecordingDurationMs: (timestampMs: number) => number;
+	markRecordingResumed: (timestampMs: number) => void;
+	now: () => number;
+	stopMicFallbackRecorder: () => Promise<Blob | null>;
+	stopNativeScreenRecording: () => Promise<{ success: boolean; path?: string }>;
+	stopWebcamRecorder: () => Promise<string | null>;
+}) {
+	const stoppedAtMs = now();
+	markRecordingResumed(stoppedAtMs);
+	const expectedDurationMs = getRecordingDurationMs(stoppedAtMs);
+	const micFallbackBlobPromise = stopMicFallbackRecorder();
+	const webcamPathPromise = stopWebcamRecorder();
+	const result = await stopNativeScreenRecording();
+	const webcamPath = await webcamPathPromise;
+	const micFallbackBlob = await micFallbackBlobPromise;
+
+	return { expectedDurationMs, micFallbackBlob, result, webcamPath };
+}
+
 function cancelRecording(
 	recorder: ReturnType<typeof createMockMediaRecorder>,
 	isNativeRecording: boolean,
@@ -482,6 +509,57 @@ describe("useScreenRecorder state machine", () => {
 			expect(pausedResult).toBe(false);
 			expect(webcam.state).toBe("recording");
 			expect(webcam.pause).not.toHaveBeenCalled();
+		});
+
+		it("stops native capture before awaiting webcam finalization", async () => {
+			const callOrder: string[] = [];
+			let resolveWebcam: (path: string | null) => void = () => {};
+			const webcamPathPromise = new Promise<string | null>((resolve) => {
+				resolveWebcam = resolve;
+			});
+			const stopWebcamRecorder = vi.fn(() => {
+				callOrder.push("stop-webcam-started");
+				return webcamPathPromise;
+			});
+			const stopNativeScreenRecording = vi.fn(async () => {
+				callOrder.push("stop-native");
+				return { success: true, path: "screen.mp4" };
+			});
+			const markRecordingResumed = vi.fn((timestampMs: number) => {
+				callOrder.push(`mark-resumed-${timestampMs}`);
+			});
+			const getRecordingDurationMs = vi.fn((timestampMs: number) => {
+				callOrder.push(`duration-${timestampMs}`);
+				return 35000;
+			});
+
+			let finalized = false;
+			const stopped = stopNativeRecordingWithCompanions({
+				getRecordingDurationMs,
+				markRecordingResumed,
+				now: () => 123456,
+				stopMicFallbackRecorder: vi.fn(async () => null),
+				stopNativeScreenRecording,
+				stopWebcamRecorder,
+			}).then((result) => {
+				finalized = true;
+				return result;
+			});
+
+			await Promise.resolve();
+			expect(callOrder).toEqual([
+				"mark-resumed-123456",
+				"duration-123456",
+				"stop-webcam-started",
+				"stop-native",
+			]);
+			expect(finalized).toBe(false);
+
+			resolveWebcam("webcam.webm");
+			await expect(stopped).resolves.toMatchObject({
+				expectedDurationMs: 35000,
+				webcamPath: "webcam.webm",
+			});
 		});
 
 		it("cancel discards both screen and webcam recordings", () => {

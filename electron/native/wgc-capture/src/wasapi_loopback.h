@@ -50,6 +50,8 @@ private:
 
     UINT32 bufferFrameCount_ = 0;
     std::atomic<int64_t> firstPacketQpcHns_{-1};
+    std::atomic<int64_t> pauseStartQpcHns_{0};
+    std::atomic<int64_t> accumulatedPausedQpcHns_{0};
     std::atomic<uint32_t> dataDiscontinuityCount_{0};
     std::atomic<uint32_t> timestampErrorCount_{0};
 };

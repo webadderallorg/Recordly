@@ -10,6 +10,18 @@ namespace {
 constexpr int64_t kHundredNanosecondsPerSecond = 10000000;
 constexpr uint64_t kSilenceWriteChunkFrames = 4096;
 
+int64_t queryPerformanceCounterHns() {
+    LARGE_INTEGER counter;
+    LARGE_INTEGER frequency;
+    if (!QueryPerformanceCounter(&counter) || !QueryPerformanceFrequency(&frequency) || frequency.QuadPart <= 0) {
+        return 0;
+    }
+
+    return static_cast<int64_t>(
+        (static_cast<long double>(counter.QuadPart) * 10000000.0L) /
+        static_cast<long double>(frequency.QuadPart));
+}
+
 bool isFloatFormat(const WAVEFORMATEX* format) {
     if (!format) return false;
     if (format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) return true;
@@ -171,6 +183,8 @@ bool WasapiCapture::start() {
     totalDataBytes_ = 0;
     framesWritten_ = 0;
     firstPacketQpcHns_ = -1;
+    pauseStartQpcHns_ = 0;
+    accumulatedPausedQpcHns_ = 0;
     dataDiscontinuityCount_ = 0;
     timestampErrorCount_ = 0;
     writeWavHeader(outputFile_, 0);
@@ -190,14 +204,21 @@ bool WasapiCapture::start() {
 
 bool WasapiCapture::pause() {
     if (!capturing_ || paused_) return true;
+    pauseStartQpcHns_ = queryPerformanceCounterHns();
     paused_ = true;
     return audioClient_ ? SUCCEEDED(audioClient_->Stop()) : false;
 }
 
 bool WasapiCapture::resume() {
     if (!capturing_ || !paused_) return true;
+    const int64_t resumedQpcHns = queryPerformanceCounterHns();
+    const int64_t pauseStartQpcHns = pauseStartQpcHns_.load();
     HRESULT hr = audioClient_ ? audioClient_->Start() : E_FAIL;
     if (FAILED(hr)) return false;
+    if (pauseStartQpcHns > 0 && resumedQpcHns > pauseStartQpcHns) {
+        accumulatedPausedQpcHns_.fetch_add(resumedQpcHns - pauseStartQpcHns);
+    }
+    pauseStartQpcHns_ = 0;
     paused_ = false;
     return true;
 }
@@ -219,6 +240,8 @@ void WasapiCapture::stop() {
     }
 
     paused_ = false;
+    pauseStartQpcHns_ = 0;
+    accumulatedPausedQpcHns_ = 0;
 }
 
 static int16_t floatToInt16(float v) {
@@ -362,8 +385,11 @@ void WasapiCapture::captureThread() {
                 ) {
                     const int64_t elapsedHns =
                         static_cast<int64_t>(qpcPosition) - firstPacketQpcHns;
+                    const int64_t adjustedElapsedHns = std::max<int64_t>(
+                        0,
+                        elapsedHns - accumulatedPausedQpcHns_.load());
                     const uint64_t expectedStartFrame =
-                        (static_cast<uint64_t>(elapsedHns) * mixFormat_->nSamplesPerSec +
+                        (static_cast<uint64_t>(adjustedElapsedHns) * mixFormat_->nSamplesPerSec +
                          kHundredNanosecondsPerSecond / 2) /
                         kHundredNanosecondsPerSecond;
                     const uint64_t writtenFrames = framesWritten_.load();

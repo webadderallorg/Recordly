@@ -46,10 +46,12 @@
 		"capturekit": "^1.0.13",
 		"electron-updater": "^6.8.3",
 		"ffmpeg-static": "^5.3.0",
+		"ffprobe-static": "^3.1.0",
 		"uiohook-napi": "^1.5.4"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.3.13",
+		"@electron/rebuild": "^4.0.3",
 		"@fix-webm-duration/fix": "^1.0.1",
 		"@pixi/filter-drop-shadow": "^5.2.0",
 		"@pixi/filter-motion-blur": "^5.1.1",
@@ -79,7 +81,6 @@
 		"electron": "^39.2.7",
 		"electron-builder": "^26.7.0",
 		"electron-icon-builder": "^2.0.1",
-		"@electron/rebuild": "^4.0.3",
 		"emoji-picker-react": "^4.16.1",
 		"fast-check": "^4.5.2",
 		"fix-webm-duration": "^1.0.6",

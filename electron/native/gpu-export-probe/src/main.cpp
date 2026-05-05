@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <memory>
 #include <iostream>
 #include <sstream>
@@ -73,6 +74,7 @@ struct Options {
     std::wstring cursorAtlasMetadataPath;
     float cursorSize = 84.0f;
     std::wstring zoomTelemetryPath;
+    std::wstring timelineMapPath;
     bool preferHighPerformanceAdapter = false;
     int adapterIndex = -1;
     bool fastEncoderTuning = false;
@@ -155,6 +157,14 @@ struct ZoomSample {
     float scale = 1.0f;
     float x = 0.0f;
     float y = 0.0f;
+};
+
+struct TimelineSegment {
+    double sourceStartMs = 0.0;
+    double sourceEndMs = 0.0;
+    double outputStartMs = 0.0;
+    double outputEndMs = 0.0;
+    double speed = 1.0;
 };
 
 struct Timer {
@@ -256,6 +266,95 @@ bool parseHexColor(const std::wstring& value, float& red, float& green, float& b
     }
 }
 
+std::vector<TimelineSegment> loadTimelineMap(const std::wstring& path) {
+    std::vector<TimelineSegment> segments;
+    if (path.empty()) {
+        return segments;
+    }
+
+    FILE* file = nullptr;
+    if (_wfopen_s(&file, path.c_str(), L"rb") != 0 || !file) {
+        std::cerr << "[gpu-export] Unable to open timeline map" << std::endl;
+        return segments;
+    }
+
+    char line[512] = {};
+    double expectedOutputStartMs = 0.0;
+    while (fgets(line, sizeof(line), file)) {
+        TimelineSegment segment;
+        if (sscanf_s(
+                line,
+                "%lf,%lf,%lf,%lf,%lf",
+                &segment.sourceStartMs,
+                &segment.sourceEndMs,
+                &segment.outputStartMs,
+                &segment.outputEndMs,
+                &segment.speed) != 5) {
+            segments.clear();
+            break;
+        }
+        if (
+            !std::isfinite(segment.sourceStartMs) ||
+            !std::isfinite(segment.sourceEndMs) ||
+            !std::isfinite(segment.outputStartMs) ||
+            !std::isfinite(segment.outputEndMs) ||
+            !std::isfinite(segment.speed) ||
+            segment.sourceEndMs <= segment.sourceStartMs ||
+            segment.outputEndMs <= segment.outputStartMs ||
+            segment.speed <= 0.0 ||
+            std::abs(segment.outputStartMs - expectedOutputStartMs) > 2.0) {
+            segments.clear();
+            break;
+        }
+        expectedOutputStartMs = segment.outputEndMs;
+        segments.push_back(segment);
+    }
+    fclose(file);
+    return segments;
+}
+
+bool sourceToOutputMs(
+    const std::vector<TimelineSegment>& segments,
+    double sourceMs,
+    double& outputMs) {
+    if (segments.empty()) {
+        outputMs = sourceMs;
+        return true;
+    }
+
+    constexpr double kToleranceMs = 1.0;
+    for (const auto& segment : segments) {
+        if (sourceMs + kToleranceMs < segment.sourceStartMs) {
+            return false;
+        }
+        if (sourceMs <= segment.sourceEndMs + kToleranceMs) {
+            const double clampedSourceMs =
+                std::min(segment.sourceEndMs, std::max(segment.sourceStartMs, sourceMs));
+            outputMs = segment.outputStartMs + (clampedSourceMs - segment.sourceStartMs) / segment.speed;
+            outputMs = std::min(segment.outputEndMs, std::max(segment.outputStartMs, outputMs));
+            return true;
+        }
+    }
+
+    return false;
+}
+
+double outputToSourceMs(const std::vector<TimelineSegment>& segments, double outputMs) {
+    if (segments.empty()) {
+        return outputMs;
+    }
+
+    for (const auto& segment : segments) {
+        if (outputMs <= segment.outputEndMs + 1.0) {
+            const double clampedOutputMs =
+                std::min(segment.outputEndMs, std::max(segment.outputStartMs, outputMs));
+            return segment.sourceStartMs + (clampedOutputMs - segment.outputStartMs) * segment.speed;
+        }
+    }
+
+    return segments.back().sourceEndMs;
+}
+
 Options parseOptions(int argc, wchar_t** argv) {
     std::vector<std::wstring> args;
     args.reserve(static_cast<size_t>(argc));
@@ -328,6 +427,10 @@ Options parseOptions(int argc, wchar_t** argv) {
     if (!zoomTelemetry.empty()) {
         options.zoomTelemetryPath = zoomTelemetry;
     }
+    const auto timelineMap = getArgValue(args, L"--timeline-map");
+    if (!timelineMap.empty()) {
+        options.timelineMapPath = timelineMap;
+    }
     options.preferHighPerformanceAdapter = hasArg(args, L"--prefer-high-performance-adapter");
     options.adapterIndex = static_cast<int>(parseLongArg(args, L"--adapter-index", options.adapterIndex));
     options.fastEncoderTuning = hasArg(args, L"--fast-encoder-tuning");
@@ -376,6 +479,11 @@ public:
         options_ = options;
         loadCursorTelemetry();
         loadZoomTelemetry();
+        timelineSegments_ = loadTimelineMap(options_.timelineMapPath);
+        if (!options_.timelineMapPath.empty() && timelineSegments_.empty()) {
+            std::cerr << "[gpu-export] Timeline map is invalid or empty" << std::endl;
+            return false;
+        }
 
         {
             const Timer timer;
@@ -2867,11 +2975,34 @@ float4 main(PSIn input) : SV_Target {
             if (firstSourceTimestamp < 0) {
                 firstSourceTimestamp = timestamp;
             }
-            const LONGLONG outputTimestamp = std::max<LONGLONG>(0, timestamp - firstSourceTimestamp);
-            if (outputTimestamp >= maxOutputTimestamp) {
+            const LONGLONG sourceTimestamp = std::max<LONGLONG>(0, timestamp - firstSourceTimestamp);
+            const double sourceTimestampMs = static_cast<double>(sourceTimestamp) / 10'000.0;
+            double mappedOutputMs = sourceTimestampMs;
+            if (!sourceToOutputMs(timelineSegments_, mappedOutputMs, mappedOutputMs)) {
+                continue;
+            }
+            const LONGLONG outputTimestamp =
+                static_cast<LONGLONG>(std::llround(mappedOutputMs * 10'000.0));
+            if (
+                (timelineSegments_.empty() && outputTimestamp >= maxOutputTimestamp) ||
+                (!timelineSegments_.empty() && outputTimestamp > maxOutputTimestamp + outputFrameDuration)
+            ) {
                 break;
             }
             const LONGLONG sampleWindowEnd = outputTimestamp + (outputFrameDuration / 2);
+            const bool timelineSampleNearEnd =
+                !timelineSegments_.empty() &&
+                sourceTimestampMs >=
+                    (timelineSegments_.back().sourceEndMs - std::max(1.0, 2000.0 / options_.fps));
+            const UINT expectedFramesForSample = timelineSegments_.empty()
+                ? expectedOutputFrames
+                : timelineSampleNearEnd
+                    ? expectedOutputFrames
+                : std::min<UINT>(
+                    expectedOutputFrames,
+                    static_cast<UINT>(std::floor(
+                        (static_cast<double>(outputTimestamp) / 10'000'000.0) *
+                        static_cast<double>(options_.fps))) + 1);
             if (sampleWindowEnd < nextOutputTimestamp) {
                 continue;
             }
@@ -2911,18 +3042,29 @@ float4 main(PSIn input) : SV_Target {
                 while (
                     frameIndex < maxFrames &&
                     frameIndex < expectedOutputFrames &&
-                    nextOutputTimestamp <= sampleWindowEnd &&
-                    nextOutputTimestamp < maxOutputTimestamp
+                    (
+                        timelineSegments_.empty()
+                            ? (nextOutputTimestamp <= sampleWindowEnd &&
+                               nextOutputTimestamp < maxOutputTimestamp)
+                            : (frameIndex < expectedFramesForSample)
+                    )
                 ) {
+                    const LONGLONG overlayTimestamp = timelineSegments_.empty()
+                        ? nextOutputTimestamp
+                        : static_cast<LONGLONG>(std::llround(
+                            outputToSourceMs(
+                                timelineSegments_,
+                                static_cast<double>(nextOutputTimestamp) / 10'000.0) *
+                            10'000.0));
                     const Timer processTimer;
                     if (options_.shaderComposite) {
                         if (!convertSourceTextureToBgra(uploadedSourceTexture, 0, frameIndex)) {
                             return false;
                         }
-                        if (!readWebcamFrameForTimestamp(nextOutputTimestamp, frameIndex)) {
+                        if (!readWebcamFrameForTimestamp(overlayTimestamp, frameIndex)) {
                             return false;
                         }
-                        if (!renderShaderComposite(nextOutputTimestamp)) {
+                        if (!renderShaderComposite(overlayTimestamp)) {
                             return false;
                         }
                         if (!convertBgraToNv12(frameIndex)) {
@@ -2959,18 +3101,29 @@ float4 main(PSIn input) : SV_Target {
             while (
                 frameIndex < maxFrames &&
                 frameIndex < expectedOutputFrames &&
-                nextOutputTimestamp <= sampleWindowEnd &&
-                nextOutputTimestamp < maxOutputTimestamp
+                (
+                    timelineSegments_.empty()
+                        ? (nextOutputTimestamp <= sampleWindowEnd &&
+                           nextOutputTimestamp < maxOutputTimestamp)
+                        : (frameIndex < expectedFramesForSample)
+                )
             ) {
+                const LONGLONG overlayTimestamp = timelineSegments_.empty()
+                    ? nextOutputTimestamp
+                    : static_cast<LONGLONG>(std::llround(
+                        outputToSourceMs(
+                            timelineSegments_,
+                            static_cast<double>(nextOutputTimestamp) / 10'000.0) *
+                        10'000.0));
                 const Timer processTimer;
                 if (options_.shaderComposite) {
                     if (!convertSourceTextureToBgra(sourceTexture.Get(), subresourceIndex, frameIndex)) {
                         return false;
                     }
-                    if (!readWebcamFrameForTimestamp(nextOutputTimestamp, frameIndex)) {
+                    if (!readWebcamFrameForTimestamp(overlayTimestamp, frameIndex)) {
                         return false;
                     }
-                    if (!renderShaderComposite(nextOutputTimestamp)) {
+                    if (!renderShaderComposite(overlayTimestamp)) {
                         return false;
                     }
                     if (!convertBgraToNv12(frameIndex)) {
@@ -3020,6 +3173,8 @@ float4 main(PSIn input) : SV_Target {
             << "\"cursorOverlay\":" << (hasCursorOverlay() ? "true" : "false") << ","
             << "\"cursorAtlas\":" << (hasCursorAtlas_ ? "true" : "false") << ","
             << "\"zoomOverlay\":" << (hasZoomOverlay() ? "true" : "false") << ","
+            << "\"timelineMap\":" << (!timelineSegments_.empty() ? "true" : "false") << ","
+            << "\"timelineSegments\":" << timelineSegments_.size() << ","
             << "\"gpuDecodeSurface\":" << (sawDxgiSurface ? "true" : "false") << ","
             << "\"sourceWidth\":" << sourceWidth_ << ","
             << "\"sourceHeight\":" << sourceHeight_ << ","
@@ -3126,6 +3281,7 @@ float4 main(PSIn input) : SV_Target {
     ComPtr<ID3D11Texture2D> webcamUploadBgraTexture_;
     std::vector<BYTE> uploadScratch_;
     std::vector<BYTE> uploadPaddedScratch_;
+    std::vector<TimelineSegment> timelineSegments_;
     std::vector<ComPtr<ID3D11Texture2D>> nv12Textures_;
     std::vector<ComPtr<ID3D11VideoProcessorOutputView>> nv12OutputViews_;
     std::vector<ComPtr<ID3D11VideoProcessorOutputView>> bgraNv12OutputViews_;

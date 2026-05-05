@@ -51,11 +51,6 @@ const LINUX_PORTAL_SOURCE: ProcessedDesktopSource = {
 	sourceType: "screen",
 };
 
-type PauseSegment = {
-	startMs: number;
-	endMs: number;
-};
-
 type DesktopCaptureMediaDevices = {
 	getUserMedia: (constraints: unknown) => Promise<MediaStream>;
 	getDisplayMedia: (constraints: unknown) => Promise<MediaStream>;
@@ -155,7 +150,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const resolvedWebcamPath = useRef<string | null>(null);
 	const accumulatedPausedDurationMs = useRef(0);
 	const pauseStartedAtMs = useRef<number | null>(null);
-	const pauseSegmentsRef = useRef<PauseSegment[]>([]);
 	const micFallbackRecorder = useRef<MediaRecorder | null>(null);
 	const micFallbackChunks = useRef<Blob[]>([]);
 	const micFallbackStartDelayMs = useRef<number | null>(null);
@@ -219,7 +213,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		startTime.current = startedAt;
 		accumulatedPausedDurationMs.current = 0;
 		pauseStartedAtMs.current = null;
-		pauseSegmentsRef.current = [];
 	}, []);
 
 	const markRecordingPaused = useCallback((pausedAt: number) => {
@@ -236,9 +229,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		const pauseStart = pauseStartedAtMs.current;
 		const pauseDurationMs = Math.max(0, resumedAt - pauseStart);
 		accumulatedPausedDurationMs.current += pauseDurationMs;
-		if (pauseDurationMs > 0) {
-			pauseSegmentsRef.current.push({ startMs: pauseStart, endMs: resumedAt });
-		}
 		pauseStartedAtMs.current = null;
 	}, []);
 
@@ -693,15 +683,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			void (async () => {
 				const fallbackStartDelayMs = micFallbackStartDelayMs.current;
+				const stoppedAtMs = Date.now();
+				markRecordingResumed(stoppedAtMs);
+				const expectedDurationMs = getRecordingDurationMs(stoppedAtMs);
 				const micFallbackBlobPromise = stopMicFallbackRecorder();
-				const webcamPath = await stopWebcamRecorder();
+				const webcamPathPromise = stopWebcamRecorder();
 				const isNativeWindows = nativeWindowsRecording.current;
-				markRecordingResumed(Date.now());
-				const pauseSegments = pauseSegmentsRef.current.slice();
 				nativeWindowsRecording.current = false;
 
 				const result = await window.electronAPI.stopNativeScreenRecording();
 				await window.electronAPI?.setRecordingState(false);
+				const webcamPath = await webcamPathPromise;
 
 				if (!result.success || !result.path) {
 					console.error(
@@ -735,7 +727,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 				if (isNativeWindows) {
 					const muxResult =
-						await window.electronAPI.muxNativeWindowsRecording(pauseSegments);
+						await window.electronAPI.muxNativeWindowsRecording(expectedDurationMs);
 					if (!muxResult?.success || !muxResult.path) {
 						void logNativeCaptureDiagnostics("mux-native-windows-recording");
 						const fallbackPath = muxResult?.path ?? finalPath;

@@ -18,7 +18,6 @@
 
 static std::atomic<bool> g_stopRequested{false};
 static std::atomic<bool> g_pauseRequested{false};
-static std::atomic<bool> g_resumePending{false};
 static std::atomic<int64_t> g_lastFrameTimestampHns{0};
 static std::atomic<int64_t> g_pauseStartTimestampHns{0};
 static std::atomic<int64_t> g_accumulatedPausedHns{0};
@@ -157,6 +156,47 @@ static std::wstring utf8ToWide(const std::string& str) {
     return wstr;
 }
 
+static int64_t queryPerformanceCounterHns() {
+    LARGE_INTEGER counter;
+    LARGE_INTEGER frequency;
+    if (!QueryPerformanceCounter(&counter) || !QueryPerformanceFrequency(&frequency) || frequency.QuadPart <= 0) {
+        return g_lastFrameTimestampHns.load();
+    }
+
+    return static_cast<int64_t>(
+        (static_cast<long double>(counter.QuadPart) * 10000000.0L) /
+        static_cast<long double>(frequency.QuadPart));
+}
+
+static int64_t adjustedVideoTimestampHns(int64_t timestampHns) {
+    int64_t accumulatedPausedHns = g_accumulatedPausedHns.load();
+    if (g_pauseRequested.load()) {
+        const int64_t pauseStart = g_pauseStartTimestampHns.load();
+        if (pauseStart > 0 && timestampHns > pauseStart) {
+            accumulatedPausedHns += (timestampHns - pauseStart);
+        }
+    }
+
+    int64_t adjustedTimestampHns = timestampHns - accumulatedPausedHns;
+    if (adjustedTimestampHns < 0) {
+        adjustedTimestampHns = 0;
+    }
+    return adjustedTimestampHns;
+}
+
+static void openActivePauseAt(int64_t timestampHns) {
+    g_pauseStartTimestampHns.store(timestampHns);
+    g_pauseRequested.store(true);
+}
+
+static void closeActivePauseAt(int64_t timestampHns) {
+    const int64_t pauseStart = g_pauseStartTimestampHns.exchange(0);
+    if (pauseStart > 0 && timestampHns > pauseStart) {
+        g_accumulatedPausedHns.fetch_add(timestampHns - pauseStart);
+    }
+    g_pauseRequested.store(false);
+}
+
 static void writeCompanionAudioTimingMetadata(
     const std::string& audioPath,
     int64_t firstVideoTimestampHns,
@@ -205,14 +245,12 @@ static void stdinListenerThread() {
         }
 
         if (line == "pause") {
-            g_pauseRequested = true;
-            g_pauseStartTimestampHns = g_lastFrameTimestampHns.load();
+            openActivePauseAt(queryPerformanceCounterHns());
             continue;
         }
 
         if (line == "resume") {
-            g_pauseRequested = false;
-            g_resumePending = true;
+            closeActivePauseAt(queryPerformanceCounterHns());
             continue;
         }
 
@@ -300,18 +338,7 @@ int main(int argc, char* argv[]) {
 
         if (g_pauseRequested) return;
 
-        int64_t adjustedTimestampHns = timestampHns;
-        if (g_resumePending.exchange(false)) {
-            const int64_t pauseStart = g_pauseStartTimestampHns.load();
-            if (pauseStart > 0 && timestampHns > pauseStart) {
-                g_accumulatedPausedHns += (timestampHns - pauseStart);
-            }
-        }
-
-        adjustedTimestampHns -= g_accumulatedPausedHns.load();
-        if (adjustedTimestampHns < 0) {
-            adjustedTimestampHns = 0;
-        }
+        const int64_t adjustedTimestampHns = adjustedVideoTimestampHns(timestampHns);
 
         if (encoder.writeFrame(texture, adjustedTimestampHns)) {
             const int64_t writtenFrames = frameCount.fetch_add(1) + 1;
@@ -376,6 +403,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Stop capture and finalize
+    const int64_t adjustedStopTimestampHns = adjustedVideoTimestampHns(queryPerformanceCounterHns());
     session.stopCapture();
     if (audioActive) loopback.stop();
     if (micActive) micCapture.stop();
@@ -397,6 +425,10 @@ int main(int argc, char* argv[]) {
         std::cerr << "ERROR: No video frames were captured before stop" << std::endl;
         DeleteFileW(outputPathW.c_str());
         return 1;
+    }
+
+    if (!encoder.extendLastFrameTo(adjustedStopTimestampHns)) {
+        std::cerr << "WARNING: Failed to extend the last video frame to the stop timestamp" << std::endl;
     }
 
     if (!encoder.finalize()) {

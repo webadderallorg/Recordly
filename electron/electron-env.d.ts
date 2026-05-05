@@ -151,6 +151,7 @@ interface RendererNativeStaticLayoutMetrics extends RendererFfmpegAudioMuxMetric
 interface RendererNativeStaticLayoutProgress {
 	sessionId?: string;
 	backend?: RendererNativeStaticLayoutChunkMetric["backend"];
+	stage?: "preparing" | "finalizing";
 	elapsedMs?: number;
 	averageFps?: number;
 	instantFps?: number;
@@ -347,6 +348,13 @@ interface Window {
 				aspectRatio: number;
 			}>;
 			zoomTelemetry?: Array<{ timeMs: number; scale: number; x: number; y: number }>;
+			timelineSegments?: Array<{
+				sourceStartMs: number;
+				sourceEndMs: number;
+				outputStartMs: number;
+				outputEndMs: number;
+				speed: number;
+			}>;
 			chunkDurationSec?: number;
 			experimentalWindowsGpuCompositor?: boolean;
 			audioOptions?: {
@@ -755,9 +763,7 @@ interface Window {
 		setHasUnsavedChanges: (hasChanges: boolean) => void;
 		onRequestSaveBeforeClose: (callback: () => Promise<boolean>) => () => void;
 		isNativeWindowsCaptureAvailable: () => Promise<{ available: boolean }>;
-		muxNativeWindowsRecording: (
-			pauseSegments?: Array<{ startMs: number; endMs: number }>,
-		) => Promise<{
+		muxNativeWindowsRecording: (expectedDurationMs?: number) => Promise<{
 			success: boolean;
 			path?: string;
 			message?: string;

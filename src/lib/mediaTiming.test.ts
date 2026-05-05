@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	clampMediaTimeToDuration,
+	enablePitchPreservingPlayback,
 	estimateCompanionAudioStartDelaySeconds,
 	getEffectiveRecordingDurationMs,
 	getEffectiveVideoStreamDurationSeconds,
@@ -98,6 +99,22 @@ describe("getMediaSyncPlaybackRate", () => {
 				targetTime: 10.5,
 			}),
 		).toBeCloseTo(1.08);
+	});
+});
+
+describe("enablePitchPreservingPlayback", () => {
+	it("enables standard and vendor pitch-preserve switches", () => {
+		const media = {} as HTMLMediaElement & {
+			preservesPitch?: boolean;
+			mozPreservesPitch?: boolean;
+			webkitPreservesPitch?: boolean;
+		};
+
+		enablePitchPreservingPlayback(media);
+
+		expect(media.preservesPitch).toBe(true);
+		expect(media.mozPreservesPitch).toBe(true);
+		expect(media.webkitPreservesPitch).toBe(true);
 	});
 });
 

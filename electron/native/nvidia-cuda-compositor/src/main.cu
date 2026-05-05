@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
@@ -24,10 +25,20 @@ simplelogger::Logger* logger = simplelogger::LoggerFactory::CreateConsoleLogger(
 
 namespace {
 
+struct TimelineSegment {
+    double sourceStartMs = 0.0;
+    double sourceEndMs = 0.0;
+    double outputStartMs = 0.0;
+    double outputEndMs = 0.0;
+    double speed = 1.0;
+};
+
 struct Options {
     std::string inputPath;
     std::string outputPath = "recordly-nvidia-cuda-compositor.h264";
     std::string sourcePtsPath;
+    std::string timelineMapPath;
+    std::vector<TimelineSegment> timelineSegments;
     int fps = 30;
     int maxFrames = 0;
     int inputFrames = 0;
@@ -53,12 +64,14 @@ struct Options {
     std::string webcamAnnexbPath;
     int webcamInputFrames = 0;
     int webcamTargetFrames = 0;
+    double webcamSourceDurationMs = 0.0;
     int webcamSourceWidth = 0;
     int webcamSourceHeight = 0;
     int webcamX = 0;
     int webcamY = 0;
     int webcamSize = 0;
     int webcamRadius = 0;
+    double webcamTimeOffsetMs = 0.0;
     bool webcamMirror = false;
     std::string cursorSamplesPath;
     int cursorHeight = 0;
@@ -119,6 +132,17 @@ int parseNonNegativeInt(const char* value, const char* name) {
     return static_cast<int>(parsed);
 }
 
+double parseFiniteDouble(const char* value, const char* name) {
+    char* end = nullptr;
+    const double parsed = std::strtod(value, &end);
+    if (!end || *end != '\0' || !std::isfinite(parsed)) {
+        std::ostringstream stream;
+        stream << "Invalid " << name << ": " << value;
+        fail(stream.str());
+    }
+    return parsed;
+}
+
 Options parseOptions(int argc, char** argv) {
     Options options;
     for (int index = 1; index < argc; ++index) {
@@ -138,6 +162,8 @@ Options parseOptions(int argc, char** argv) {
             options.outputPath = requireValue("--output");
         } else if (arg == "--source-pts") {
             options.sourcePtsPath = requireValue("--source-pts");
+        } else if (arg == "--timeline-map") {
+            options.timelineMapPath = requireValue("--timeline-map");
         } else if (arg == "--fps") {
             options.fps = parsePositiveInt(requireValue("--fps"), "--fps");
         } else if (arg == "--max-frames") {
@@ -189,6 +215,9 @@ Options parseOptions(int argc, char** argv) {
         } else if (arg == "--webcam-target-frames") {
             options.webcamTargetFrames =
                 parsePositiveInt(requireValue("--webcam-target-frames"), "--webcam-target-frames");
+        } else if (arg == "--webcam-source-duration-ms") {
+            options.webcamSourceDurationMs =
+                parseFiniteDouble(requireValue("--webcam-source-duration-ms"), "--webcam-source-duration-ms");
         } else if (arg == "--webcam-source-width") {
             options.webcamSourceWidth = parsePositiveInt(requireValue("--webcam-source-width"), "--webcam-source-width");
         } else if (arg == "--webcam-source-height") {
@@ -202,6 +231,9 @@ Options parseOptions(int argc, char** argv) {
             options.webcamSize = parsePositiveInt(requireValue("--webcam-size"), "--webcam-size");
         } else if (arg == "--webcam-radius") {
             options.webcamRadius = parseNonNegativeInt(requireValue("--webcam-radius"), "--webcam-radius");
+        } else if (arg == "--webcam-time-offset-ms") {
+            options.webcamTimeOffsetMs =
+                parseFiniteDouble(requireValue("--webcam-time-offset-ms"), "--webcam-time-offset-ms");
         } else if (arg == "--webcam-mirror") {
             options.webcamMirror = true;
         } else if (arg == "--cursor-samples") {
@@ -227,7 +259,8 @@ Options parseOptions(int argc, char** argv) {
                          "[--content-x N --content-y N --content-width N --content-height N --radius N] "
                          "[--background-nv12 background.nv12] [--shadow-offset-y N --shadow-intensity-pct N] "
                          "[--webcam-nv12 webcam.nv12 --webcam-x N --webcam-y N --webcam-size N --webcam-radius N] "
-                         "[--webcam-annexb webcam.h264 --webcam-input-frames N --webcam-target-frames N] "
+                         "[--webcam-annexb webcam.h264 --webcam-input-frames N --webcam-target-frames N "
+                         "--webcam-source-duration-ms N --webcam-time-offset-ms N] "
                          "[--cursor-samples cursor.tsv --cursor-height N] "
                          "[--cursor-atlas-rgba cursor.rgba --cursor-atlas-metadata cursor.tsv "
                          "--cursor-atlas-width N --cursor-atlas-height N] "
@@ -266,14 +299,6 @@ bool hasWebcamOverlay(const Options& options) {
     return (!options.webcamNv12Path.empty() || !options.webcamAnnexbPath.empty()) && options.webcamSize > 0;
 }
 
-int webcamFrameIndexForOutputFrame(int outputFrameIndex, const Options& options) {
-    if (options.webcamInputFrames > 0 && options.webcamTargetFrames > 0) {
-        return static_cast<int>(
-            (static_cast<int64_t>(outputFrameIndex) * options.webcamInputFrames) / options.webcamTargetFrames);
-    }
-    return outputFrameIndex;
-}
-
 std::vector<double> loadFramePts(const std::string& path) {
     std::vector<double> timestamps;
     if (path.empty()) {
@@ -303,6 +328,125 @@ std::vector<double> loadFramePts(const std::string& path) {
     return timestamps;
 }
 
+std::vector<TimelineSegment> loadTimelineMap(const std::string& path) {
+    std::vector<TimelineSegment> segments;
+    if (path.empty()) {
+        return segments;
+    }
+
+    std::ifstream input(path);
+    if (!input) {
+        fail("Failed to open timeline map: " + path);
+    }
+
+    std::string line;
+    double expectedOutputStartMs = 0.0;
+    while (std::getline(input, line)) {
+        if (line.empty()) {
+            continue;
+        }
+        TimelineSegment segment;
+        if (std::sscanf(
+                line.c_str(),
+                "%lf,%lf,%lf,%lf,%lf",
+                &segment.sourceStartMs,
+                &segment.sourceEndMs,
+                &segment.outputStartMs,
+                &segment.outputEndMs,
+                &segment.speed) != 5) {
+            fail("Invalid timeline map row: " + line);
+        }
+        if (
+            !std::isfinite(segment.sourceStartMs) ||
+            !std::isfinite(segment.sourceEndMs) ||
+            !std::isfinite(segment.outputStartMs) ||
+            !std::isfinite(segment.outputEndMs) ||
+            !std::isfinite(segment.speed) ||
+            segment.sourceEndMs <= segment.sourceStartMs ||
+            segment.outputEndMs <= segment.outputStartMs ||
+            segment.speed <= 0.0 ||
+            std::abs(segment.outputStartMs - expectedOutputStartMs) > 2.0) {
+            fail("Invalid timeline map segment: " + line);
+        }
+        expectedOutputStartMs = segment.outputEndMs;
+        segments.push_back(segment);
+    }
+
+    if (!path.empty() && segments.empty()) {
+        fail("Timeline map is empty: " + path);
+    }
+    return segments;
+}
+
+bool sourceToOutputMs(
+    const std::vector<TimelineSegment>& segments,
+    double sourceMs,
+    double& outputMs) {
+    if (segments.empty()) {
+        outputMs = sourceMs;
+        return true;
+    }
+
+    constexpr double kToleranceMs = 1.0;
+    for (const auto& segment : segments) {
+        if (sourceMs + kToleranceMs < segment.sourceStartMs) {
+            return false;
+        }
+        if (sourceMs <= segment.sourceEndMs + kToleranceMs) {
+            const double clampedSourceMs =
+                std::min(segment.sourceEndMs, std::max(segment.sourceStartMs, sourceMs));
+            outputMs = segment.outputStartMs + (clampedSourceMs - segment.sourceStartMs) / segment.speed;
+            outputMs = std::min(segment.outputEndMs, std::max(segment.outputStartMs, outputMs));
+            return true;
+        }
+    }
+
+    return false;
+}
+
+double outputToSourceMs(const std::vector<TimelineSegment>& segments, double outputMs) {
+    if (segments.empty()) {
+        return outputMs;
+    }
+
+    for (const auto& segment : segments) {
+        if (outputMs <= segment.outputEndMs + 1.0) {
+            const double clampedOutputMs =
+                std::min(segment.outputEndMs, std::max(segment.outputStartMs, outputMs));
+            return segment.sourceStartMs + (clampedOutputMs - segment.outputStartMs) * segment.speed;
+        }
+    }
+
+    return segments.back().sourceEndMs;
+}
+
+int webcamFrameIndexForSourceTimeMs(double sourceTimeMs, const Options& options) {
+    const double adjustedSourceMs = std::max(0.0, sourceTimeMs - options.webcamTimeOffsetMs);
+    if (options.webcamInputFrames > 0) {
+        const double durationMs = options.webcamSourceDurationMs > 0.0
+            ? options.webcamSourceDurationMs
+            : (options.webcamTargetFrames > 0 && options.fps > 0
+                ? (static_cast<double>(options.webcamTargetFrames) * 1000.0) / options.fps
+                : 0.0);
+        if (durationMs > 0.0) {
+            const double ratio = std::min(1.0, std::max(0.0, adjustedSourceMs / durationMs));
+            const int index = ratio >= 1.0
+                ? options.webcamInputFrames - 1
+                : static_cast<int>(std::floor(ratio * options.webcamInputFrames));
+            return std::max(0, std::min(options.webcamInputFrames - 1, index));
+        }
+    }
+    return std::max(0, static_cast<int>(std::floor(adjustedSourceMs * options.fps / 1000.0)));
+}
+
+int webcamFrameIndexForOutputFrame(int outputFrameIndex, const Options& options) {
+    const double outputTimeMs =
+        static_cast<double>(std::max(0, outputFrameIndex)) * 1000.0 / static_cast<double>(options.fps);
+    return webcamFrameIndexForSourceTimeMs(
+        outputToSourceMs(options.timelineSegments, outputTimeMs),
+        options);
+}
+
 int maxSelectedFramesForTimeline(int targetFrames, int maxFrames) {
     if (targetFrames <= 0) {
         return maxFrames > 0 ? maxFrames : std::numeric_limits<int>::max();
@@ -316,14 +460,24 @@ int expectedOutputFramesForSourceFrame(
     int targetFrames,
     int maxFrames,
     int fps,
-    const std::vector<double>* sourcePts) {
+    const std::vector<double>* sourcePts,
+    const std::vector<TimelineSegment>* timelineSegments) {
     const int maxOutputFrames = maxSelectedFramesForTimeline(targetFrames, maxFrames);
     if (sourcePts && sourceFrameIndex >= 0 && sourceFrameIndex < static_cast<int>(sourcePts->size())) {
-        if (inputFrames > 0 && sourceFrameIndex + 1 >= inputFrames) {
+        const bool hasTimelineMap = timelineSegments && !timelineSegments->empty();
+        if (!hasTimelineMap && inputFrames > 0 && sourceFrameIndex + 1 >= inputFrames) {
+            return maxOutputFrames;
+        }
+        if (hasTimelineMap && inputFrames > 0 && sourceFrameIndex + 1 >= inputFrames) {
             return maxOutputFrames;
         }
         const double frameTimeSec = std::max(0.0, (*sourcePts)[sourceFrameIndex]);
-        const int64_t expected = static_cast<int64_t>(std::floor(frameTimeSec * fps)) + 1;
+        double outputTimeMs = frameTimeSec * 1000.0;
+        if (hasTimelineMap && !sourceToOutputMs(*timelineSegments, outputTimeMs, outputTimeMs)) {
+            return 0;
+        }
+        const int64_t expected =
+            static_cast<int64_t>(std::floor((outputTimeMs / 1000.0) * fps)) + 1;
         return static_cast<int>(std::min<int64_t>(std::max<int64_t>(1, expected), maxOutputFrames));
     }
     if (inputFrames <= 0 || targetFrames <= 0) {
@@ -347,6 +501,7 @@ struct FrameSelectionState {
     int selectedFrames = 0;
     int fps = 30;
     const std::vector<double>* sourcePts = nullptr;
+    const std::vector<TimelineSegment>* timelineSegments = nullptr;
 };
 
 bool shouldCopyDisplayFrame(int displayFrameIndex, void* userData) {
@@ -367,7 +522,8 @@ bool shouldCopyDisplayFrame(int displayFrameIndex, void* userData) {
         state->targetFrames,
         state->maxFrames,
         state->fps,
-        state->sourcePts);
+        state->sourcePts,
+        state->timelineSegments);
     if (state->selectedFrames >= expectedSelectedFrames) {
         return false;
     }
@@ -1824,8 +1980,11 @@ public:
         const NvEncInputFrame* inputFrame = encoder_.GetNextInputFrame();
         const dim3 block(16, 16);
         const dim3 grid((width_ + block.x - 1) / block.x, (height_ + block.y - 1) / block.y);
-        const unsigned char* webcamFrame = selectWebcamFrame(outputFrameIndex);
-        const double frameTimeMs = static_cast<double>(outputFrameIndex) * 1000.0 / static_cast<double>(fps_);
+        const double outputFrameTimeMs =
+            static_cast<double>(outputFrameIndex) * 1000.0 / static_cast<double>(fps_);
+        const double frameTimeMs =
+            outputToSourceMs(layoutOptions_.timelineSegments, outputFrameTimeMs);
+        const unsigned char* webcamFrame = selectWebcamFrame(frameTimeMs);
         const ZoomSample zoomSample = zoomTrack_ ? zoomTrack_->sampleAt(frameTimeMs) : ZoomSample{};
         const bool zoomEnabled = zoomTrack_ && zoomSample.scale > 0.01;
         const CursorPosition cursorPosition = cursorTrack_
@@ -2341,9 +2500,9 @@ private:
             layoutOptions_.shadowIntensityPct == 0;
     }
 
-    const unsigned char* selectWebcamFrame(int outputFrameIndex) const {
+    const unsigned char* selectWebcamFrame(double sourceTimeMs) const {
         if (webcamCache_ && !webcamCache_->frames.empty()) {
-            return webcamCache_->frameAt(webcamFrameIndexForOutputFrame(outputFrameIndex, layoutOptions_));
+            return webcamCache_->frameAt(webcamFrameIndexForSourceTimeMs(sourceTimeMs, layoutOptions_));
         }
         return webcamDevice_;
     }
@@ -2513,6 +2672,7 @@ struct CallbackEncodeState {
     bool oneFramePerMappedDisplayFrame = false;
     int mappedFrames = 0;
     const std::vector<double>* sourcePts = nullptr;
+    const std::vector<TimelineSegment>* timelineSegments = nullptr;
 };
 
 ProgressCounters collectProgressCounters(
@@ -2555,14 +2715,16 @@ bool shouldContinueEncoding(int encodedFrames, const Options& options) {
 int expectedCallbackOutputFramesForSourceFrame(
     int sourceFrameIndex,
     const Options& options,
-    const std::vector<double>* sourcePts) {
+    const std::vector<double>* sourcePts,
+    const std::vector<TimelineSegment>* timelineSegments) {
     return expectedOutputFramesForSourceFrame(
         sourceFrameIndex,
         options.inputFrames,
         options.targetFrames,
         options.maxFrames,
         options.fps,
-        sourcePts);
+        sourcePts,
+        timelineSegments);
 }
 
 void encodeMappedDisplayFrame(
@@ -2585,7 +2747,8 @@ void encodeMappedDisplayFrame(
         : expectedCallbackOutputFramesForSourceFrame(
             sourceFrameIndex,
             *state->options,
-            state->sourcePts);
+            state->sourcePts,
+            state->timelineSegments);
     if (*state->encodedFrames >= expectedOutputFrames) {
         return;
     }
@@ -2701,7 +2864,11 @@ void reportEncodingProgress(
 
 int main(int argc, char** argv) {
     try {
-        const Options options = parseOptions(argc, argv);
+        Options options = parseOptions(argc, argv);
+        options.timelineSegments = loadTimelineMap(options.timelineMapPath);
+        if (!options.timelineSegments.empty() && !options.callbackEncode) {
+            fail("Timeline-map CUDA export requires --callback-encode");
+        }
         const uint32_t bitrate = static_cast<uint32_t>(options.bitrateMbps) * 1000U * 1000U;
 
         checkCuda(cudaSetDevice(0), "cudaSetDevice");
@@ -2728,6 +2895,9 @@ int main(int argc, char** argv) {
         const bool useSourcePts =
             options.inputFrames > 0 &&
             sourcePts.size() >= static_cast<size_t>(options.inputFrames);
+        if (!options.timelineSegments.empty() && !useSourcePts) {
+            fail("Timeline-map CUDA export requires source frame PTS");
+        }
         auto decoder = std::make_unique<NvDecoder>(context, 0, 0, true, cudaVideoCodec_H264, nullptr, true, true);
         std::unique_ptr<NvencSink> sink;
         const bool useDecoderFramePolicy =
@@ -2744,6 +2914,7 @@ int main(int argc, char** argv) {
             0,
             options.fps,
             useSourcePts ? &sourcePts : nullptr,
+            options.timelineSegments.empty() ? nullptr : &options.timelineSegments,
         };
         if (useDecoderFramePolicy) {
             decoder->SetDisplayFramePolicy(shouldCopyDisplayFrame, &selectionState);
@@ -2778,6 +2949,7 @@ int main(int argc, char** argv) {
             useDecoderFramePolicy,
             0,
             useSourcePts ? &sourcePts : nullptr,
+            options.timelineSegments.empty() ? nullptr : &options.timelineSegments,
         };
         if (options.callbackEncode) {
             decoder->SetMappedFrameHandler(encodeMappedDisplayFrame, &callbackState);
@@ -2938,6 +3110,8 @@ int main(int argc, char** argv) {
                           : (useDecoderFramePolicy ? "decoder" : "post"))
                   << "\","
                   << "\"sourceTimestampMode\":\"" << (useSourcePts ? "pts" : "ordinal") << "\","
+                  << "\"timelineMap\":" << (!options.timelineSegments.empty() ? "true" : "false") << ","
+                  << "\"timelineSegments\":" << options.timelineSegments.size() << ","
                   << "\"syncMode\":\"" << (options.streamSync ? "stream" : "device") << "\","
                   << "\"prewarmMs\":" << options.prewarmMs << ","
                   << "\"chunkMb\":" << options.chunkMb << ","
@@ -2960,6 +3134,8 @@ int main(int argc, char** argv) {
                   << "\"webcamRadius\":" << options.webcamRadius << ","
                   << "\"webcamStream\":" << (!options.webcamAnnexbPath.empty() ? "true" : "false") << ","
                   << "\"webcamMirror\":" << (options.webcamMirror ? "true" : "false") << ","
+                  << "\"webcamTimeOffsetMs\":" << options.webcamTimeOffsetMs << ","
+                  << "\"webcamSourceDurationMs\":" << options.webcamSourceDurationMs << ","
                   << "\"webcamCachedFrames\":" << (webcamCachePtr ? webcamCachePtr->frames.size() : 0) << ","
                   << "\"webcamPeakCachedFrames\":" << (webcamCachePtr ? webcamCachePtr->peakFrames : 0) << ","
                   << "\"webcamCacheBaseFrame\":" << (webcamCachePtr ? webcamCachePtr->baseFrameIndex : 0) << ","

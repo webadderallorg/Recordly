@@ -178,10 +178,14 @@ export class VideoExporter {
 			let useNativeEncoder = shouldUseExperimentalNativeExport
 				? await this.tryStartNativeVideoExport()
 				: false;
+			const shouldUsePitchPreservingFfmpegAudio =
+				audioPlan.audioMode === "edited-track" &&
+				audioPlan.strategy === "filtergraph-fast-path";
 			const shouldUseFfmpegAudioFallback =
 				!useNativeEncoder &&
 				audioPlan.audioMode !== "none" &&
-				!(await isAacAudioEncodingSupported());
+				(shouldUsePitchPreservingFfmpegAudio ||
+					!(await isAacAudioEncodingSupported()));
 
 			if (!useNativeEncoder) {
 				await this.initializeEncoder();
@@ -406,7 +410,9 @@ export class VideoExporter {
 
 			if (shouldUseFfmpegAudioFallback) {
 				console.warn(
-					"[VideoExporter] Browser AAC encoding is unavailable; falling back to FFmpeg audio muxing.",
+					shouldUsePitchPreservingFfmpegAudio
+						? "[VideoExporter] Using FFmpeg audio muxing for pitch-preserving speed edits."
+						: "[VideoExporter] Browser AAC encoding is unavailable; falling back to FFmpeg audio muxing.",
 				);
 				const result = await this.finalizeExportWithFfmpegAudio(
 					muxerResult,

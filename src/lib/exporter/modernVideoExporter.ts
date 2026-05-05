@@ -158,6 +158,54 @@ type NativeAudioPlan =
 			editedTrackSegments: Array<{ startMs: number; endMs: number; speed: number }>;
 	  };
 
+type NativeStaticLayoutTimelineSegment = {
+	sourceStartMs: number;
+	sourceEndMs: number;
+	outputStartMs: number;
+	outputEndMs: number;
+	speed: number;
+};
+
+function buildNativeStaticLayoutTimelineSegments(
+	segments: Array<{ startMs: number; endMs: number; speed: number }>,
+): NativeStaticLayoutTimelineSegment[] {
+	const timelineSegments: NativeStaticLayoutTimelineSegment[] = [];
+	let outputCursorMs = 0;
+
+	for (const segment of segments) {
+		const sourceStartMs = Math.max(0, segment.startMs);
+		const sourceEndMs = Math.max(sourceStartMs, segment.endMs);
+		const speed = segment.speed;
+		if (
+			!Number.isFinite(sourceStartMs) ||
+			!Number.isFinite(sourceEndMs) ||
+			!Number.isFinite(speed) ||
+			sourceEndMs - sourceStartMs <= 0.5 ||
+			speed <= 0
+		) {
+			return [];
+		}
+
+		const outputDurationMs = (sourceEndMs - sourceStartMs) / speed;
+		if (!Number.isFinite(outputDurationMs) || outputDurationMs <= 0.5) {
+			return [];
+		}
+
+		const outputStartMs = outputCursorMs;
+		const outputEndMs = outputStartMs + outputDurationMs;
+		timelineSegments.push({
+			sourceStartMs,
+			sourceEndMs,
+			outputStartMs,
+			outputEndMs,
+			speed,
+		});
+		outputCursorMs = outputEndMs;
+	}
+
+	return timelineSegments;
+}
+
 type NativeStaticLayoutBackground =
 	| {
 			backgroundColor: string;
@@ -380,10 +428,14 @@ export class ModernVideoExporter {
 			const videoInfo = await this.streamingDecoder.loadMetadata(this.config.videoUrl);
 			this.metadataLoadTimeMs = this.getNowMs() - stageStartedAt;
 			const nativeAudioPlan = this.buildNativeAudioPlan(videoInfo);
+			const shouldUsePitchPreservingFfmpegAudio =
+				nativeAudioPlan.audioMode === "edited-track" &&
+				nativeAudioPlan.strategy === "filtergraph-fast-path";
 			const shouldUseFfmpegAudioFallback =
 				!useNativeEncoder &&
 				nativeAudioPlan.audioMode !== "none" &&
-				!(await isAacAudioEncodingSupported());
+				(shouldUsePitchPreservingFfmpegAudio ||
+					!(await isAacAudioEncodingSupported()));
 			const effectiveDuration = this.streamingDecoder.getEffectiveDuration(
 				this.config.trimRegions,
 				this.config.speedRegions,
@@ -663,7 +715,9 @@ export class ModernVideoExporter {
 
 			if (shouldUseFfmpegAudioFallback) {
 				console.warn(
-					`[VideoExporter] Browser AAC encoding is unavailable; falling back to FFmpeg audio muxing.`,
+					shouldUsePitchPreservingFfmpegAudio
+						? "[VideoExporter] Using FFmpeg audio muxing for pitch-preserving speed edits."
+						: "[VideoExporter] Browser AAC encoding is unavailable; falling back to FFmpeg audio muxing.",
 				);
 				const muxedResult = await this.finalizeExportWithFfmpegAudio(
 					muxerResult,
@@ -1076,6 +1130,25 @@ export class ModernVideoExporter {
 		);
 	}
 
+	private canUseNativeStaticLayoutAudioPlan(
+		audioPlan: NativeAudioPlan,
+		videoInfo: DecodedVideoInfo,
+		effectiveDurationSec: number,
+	): boolean {
+		switch (audioPlan.audioMode) {
+			case "none":
+			case "copy-source":
+				return true;
+			case "trim-source":
+				return this.canUseNativeStaticTailTrim(videoInfo, effectiveDurationSec);
+			case "edited-track":
+				return (
+					audioPlan.strategy === "offline-render-fallback" ||
+					audioPlan.strategy === "filtergraph-fast-path"
+				);
+		}
+	}
+
 	private getNativeStaticLayoutSkipReason(
 		audioPlan: NativeAudioPlan,
 		videoInfo: DecodedVideoInfo,
@@ -1093,27 +1166,29 @@ export class ModernVideoExporter {
 			return "odd-output-dimensions";
 		}
 
-		if (
-			audioPlan.audioMode !== "none" &&
-			audioPlan.audioMode !== "copy-source" &&
-			!(
-				audioPlan.audioMode === "trim-source" &&
-				this.canUseNativeStaticTailTrim(videoInfo, effectiveDurationSec)
-			)
-		) {
+		if (!this.canUseNativeStaticLayoutAudioPlan(audioPlan, videoInfo, effectiveDurationSec)) {
 			return `unsupported-audio-mode:${audioPlan.audioMode}`;
 		}
 
 		const trimRegions = this.config.trimRegions ?? [];
+		const speedRegions = this.config.speedRegions ?? [];
 		const hasZoomRegions = (this.config.zoomRegions ?? []).length > 0;
+		if (
+			speedRegions.length > 0 &&
+			!(
+				audioPlan.audioMode === "edited-track" &&
+				audioPlan.strategy === "filtergraph-fast-path" &&
+				audioPlan.editedTrackSegments.length > 0
+			)
+		) {
+			return "unsupported-native-speed-timeline";
+		}
 		if (
 			(trimRegions.length > 0 &&
 				!this.canUseNativeStaticTailTrim(videoInfo, effectiveDurationSec)) ||
-			(this.config.speedRegions ?? []).length > 0 ||
 			(hasZoomRegions && this.config.experimentalNativeExport !== true) ||
 			(this.config.annotationRegions ?? []).length > 0 ||
-			(this.config.autoCaptions ?? []).length > 0 ||
-			(this.config.audioRegions ?? []).length > 0
+			(this.config.autoCaptions ?? []).length > 0
 		) {
 			return "timeline-edits-present";
 		}
@@ -1209,20 +1284,72 @@ export class ModernVideoExporter {
 		return getLocalFilePath(assetUrl);
 	}
 
-	private getNativeStaticLayoutAudioOptions(audioPlan: NativeAudioPlan) {
-		if (audioPlan.audioMode === "none") {
-			return { audioMode: "none" as const };
-		}
+	private async renderEditedAudioForNativeMux(
+		description: string,
+		onProgress: (progress: number) => void,
+	) {
+		this.audioProcessor = new AudioProcessor();
+		this.audioProcessor.setOnProgress(onProgress);
+		const audioBlob = await this.measureFinalizationStage("editedAudioRenderMs", async () =>
+			this.awaitWithFinalizationTimeout(
+				this.audioProcessor!.renderEditedAudioTrack(
+					this.config.videoUrl,
+					this.config.trimRegions,
+					this.config.speedRegions,
+					this.config.audioRegions,
+					this.config.sourceAudioFallbackPaths,
+					this.config.sourceAudioFallbackStartDelayMsByPath,
+				),
+				description,
+				"audio",
+				true,
+			),
+		);
 
-		if (audioPlan.audioMode === "copy-source" || audioPlan.audioMode === "trim-source") {
-			return {
-				audioMode: audioPlan.audioMode,
-				audioSourcePath: audioPlan.audioSourcePath,
-				trimSegments: audioPlan.trimSegments,
-			};
-		}
+		return {
+			editedAudioData: await audioBlob.arrayBuffer(),
+			editedAudioMimeType: audioBlob.type || null,
+		};
+	}
 
-		return null;
+	private async getNativeStaticLayoutAudioOptions(
+		audioPlan: NativeAudioPlan,
+		totalFrames: number,
+	) {
+		switch (audioPlan.audioMode) {
+			case "none":
+				return { audioMode: "none" as const };
+			case "copy-source":
+			case "trim-source":
+				return {
+					audioMode: audioPlan.audioMode,
+					audioSourcePath: audioPlan.audioSourcePath,
+					trimSegments: audioPlan.trimSegments,
+				};
+			case "edited-track": {
+				if (audioPlan.strategy === "filtergraph-fast-path") {
+					return {
+						audioMode: audioPlan.audioMode,
+						audioSourcePath: audioPlan.audioSourcePath,
+						audioSourceSampleRate: audioPlan.audioSourceSampleRate,
+						editedTrackStrategy: audioPlan.strategy,
+						editedTrackSegments: audioPlan.editedTrackSegments,
+					};
+				}
+
+				const renderedAudio = await this.renderEditedAudioForNativeMux(
+					"Native static-layout edited audio rendering",
+					(progress) =>
+						this.reportProgress(0, totalFrames, "preparing", undefined, progress),
+				);
+
+				return {
+					audioMode: audioPlan.audioMode,
+					editedTrackStrategy: audioPlan.strategy,
+					...renderedAudio,
+				};
+			}
+		}
 	}
 
 	private getNativeStaticLayoutWebcamOverlay(): NativeStaticLayoutWebcamOverlay | null {
@@ -1502,7 +1629,10 @@ export class ModernVideoExporter {
 		}
 
 		const sourcePath = this.getNativeVideoSourcePath();
-		const audioOptions = this.getNativeStaticLayoutAudioOptions(audioPlan);
+		const audioOptions = await this.getNativeStaticLayoutAudioOptions(
+			audioPlan,
+			totalFrames,
+		);
 		if (!sourcePath || !audioOptions) {
 			this.nativeStaticLayoutSkipReason = !sourcePath
 				? "missing-source-path"
@@ -1562,6 +1692,16 @@ export class ModernVideoExporter {
 			totalFrames,
 			cursorTelemetry,
 		);
+		const timelineSegments =
+			(this.config.speedRegions ?? []).length > 0 &&
+			audioPlan.audioMode === "edited-track" &&
+			audioPlan.strategy === "filtergraph-fast-path"
+				? buildNativeStaticLayoutTimelineSegments(audioPlan.editedTrackSegments)
+				: undefined;
+		if ((this.config.speedRegions ?? []).length > 0 && !timelineSegments?.length) {
+			this.nativeStaticLayoutSkipReason = "invalid-native-speed-timeline";
+			return null;
+		}
 		const cursorAtlas =
 			cursorTelemetry && cursorTelemetry.length > 0
 				? await buildNativeCursorAtlas(this.config.cursorStyle ?? "tahoe").catch(
@@ -1602,7 +1742,7 @@ export class ModernVideoExporter {
 			this.config.experimentalNativeExport === true && runtimePlatform === "win32"
 				? "windows-native-compositor"
 				: "static-layout-h264-nvenc";
-		this.reportProgress(0, totalFrames, "extracting");
+		this.reportProgress(0, totalFrames, "preparing");
 		let unsubscribeNativeProgress: (() => void) | undefined;
 		unsubscribeNativeProgress = window.electronAPI.onNativeStaticLayoutExportProgress?.(
 			(progress) => {
@@ -1617,14 +1757,42 @@ export class ModernVideoExporter {
 				}
 
 				const nativeTotalFrames = Math.max(1, Math.floor(progress.totalFrames));
+				const rawNativeCurrentFrame = Math.max(0, Math.floor(progress.currentFrame));
+				const rawNativePercentage = Number.isFinite(progress.percentage)
+					? Math.max(0, progress.percentage)
+					: 0;
+				if (
+					progress.backend === "nvidia-cuda-compositor" ||
+					progress.backend === "windows-d3d11-compositor"
+				) {
+					this.encoderName = progress.backend;
+				}
+				if (
+					progress.stage === "preparing" ||
+					(progress.stage !== "finalizing" &&
+						rawNativeCurrentFrame === 0 &&
+						rawNativePercentage <= 3)
+				) {
+					this.nativeStaticLayoutAverageFps = null;
+					this.processedFrameCount = 0;
+					this.reportProgress(0, totalFrames, "preparing");
+					return;
+				}
 				const progressPercentFrame = Number.isFinite(progress.percentage)
 					? Math.floor((nativeTotalFrames * progress.percentage) / 100)
 					: 0;
 				const nativeCurrentFrame = Math.max(
-					Math.floor(progress.currentFrame),
+					rawNativeCurrentFrame,
 					progressPercentFrame,
 				);
 				const nativeFramesComplete = nativeCurrentFrame >= nativeTotalFrames;
+				const nativeFinalizingProgress =
+					progress.stage === "finalizing" && Number.isFinite(progress.percentage)
+						? Math.max(
+								NATIVE_STATIC_LAYOUT_FRAME_COMPLETE_PROGRESS,
+								Math.min(99, progress.percentage),
+							)
+						: NATIVE_STATIC_LAYOUT_FRAME_COMPLETE_PROGRESS;
 				const maxExtractingFrame = Math.max(
 					0,
 					Math.min(
@@ -1636,16 +1804,12 @@ export class ModernVideoExporter {
 					maxExtractingFrame,
 					Math.max(this.processedFrameCount, nativeCurrentFrame),
 				);
-				if (
-					progress.backend === "nvidia-cuda-compositor" ||
-					progress.backend === "windows-d3d11-compositor"
-				) {
-					this.encoderName = progress.backend;
-				}
 				this.nativeStaticLayoutAverageFps =
-					typeof progress.instantFps === "number" &&
-					Number.isFinite(progress.instantFps) &&
-					progress.instantFps > 0
+					progress.stage === "finalizing"
+						? null
+						: typeof progress.instantFps === "number" &&
+					  Number.isFinite(progress.instantFps) &&
+					  progress.instantFps > 0
 						? progress.instantFps
 						: typeof progress.averageFps === "number" &&
 							  Number.isFinite(progress.averageFps) &&
@@ -1653,10 +1817,10 @@ export class ModernVideoExporter {
 							? progress.averageFps
 							: null;
 				this.processedFrameCount = currentFrame;
-				if (nativeFramesComplete) {
+				if (progress.stage === "finalizing" || nativeFramesComplete) {
 					this.reportFinalizingProgress(
 						totalFrames,
-						NATIVE_STATIC_LAYOUT_FRAME_COMPLETE_PROGRESS,
+						nativeFinalizingProgress,
 					);
 				} else {
 					this.reportProgress(currentFrame, totalFrames, "extracting");
@@ -1695,6 +1859,7 @@ export class ModernVideoExporter {
 				cursorAtlasPngDataUrl: cursorAtlas?.dataUrl ?? null,
 				cursorAtlasEntries: cursorAtlas?.entries,
 				zoomTelemetry,
+				timelineSegments,
 				chunkDurationSec: STATIC_LAYOUT_CHUNK_DURATION_SEC,
 				experimentalWindowsGpuCompositor: this.config.experimentalNativeExport === true,
 				audioOptions: {
@@ -1967,27 +2132,12 @@ export class ModernVideoExporter {
 			audioPlan.audioMode === "edited-track" &&
 			audioPlan.strategy === "offline-render-fallback"
 		) {
-			this.audioProcessor = new AudioProcessor();
-			this.audioProcessor.setOnProgress((progress) => {
-				this.reportFinalizingProgress(this.processedFrameCount, 99, progress);
-			});
-			const audioBlob = await this.measureFinalizationStage("editedAudioRenderMs", async () =>
-				this.awaitWithFinalizationTimeout(
-					this.audioProcessor!.renderEditedAudioTrack(
-						this.config.videoUrl,
-						this.config.trimRegions,
-						this.config.speedRegions,
-						this.config.audioRegions,
-						this.config.sourceAudioFallbackPaths,
-						this.config.sourceAudioFallbackStartDelayMsByPath,
-					),
-					`${NATIVE_EXPORT_ENGINE_NAME} edited audio rendering`,
-					"audio",
-					true,
-				),
+			const renderedAudio = await this.renderEditedAudioForNativeMux(
+				`${NATIVE_EXPORT_ENGINE_NAME} edited audio rendering`,
+				(progress) => this.reportFinalizingProgress(this.processedFrameCount, 99, progress),
 			);
-			editedAudioBuffer = await audioBlob.arrayBuffer();
-			editedAudioMimeType = audioBlob.type || null;
+			editedAudioBuffer = renderedAudio.editedAudioData;
+			editedAudioMimeType = renderedAudio.editedAudioMimeType;
 		}
 
 		const sessionId = this.nativeExportSessionId;
@@ -2079,27 +2229,12 @@ export class ModernVideoExporter {
 			audioPlan.audioMode === "edited-track" &&
 			audioPlan.strategy === "offline-render-fallback"
 		) {
-			this.audioProcessor = new AudioProcessor();
-			this.audioProcessor.setOnProgress((progress) => {
-				this.reportFinalizingProgress(this.processedFrameCount, 99, progress);
-			});
-			const audioBlob = await this.measureFinalizationStage("editedAudioRenderMs", async () =>
-				this.awaitWithFinalizationTimeout(
-					this.audioProcessor!.renderEditedAudioTrack(
-						this.config.videoUrl,
-						this.config.trimRegions,
-						this.config.speedRegions,
-						this.config.audioRegions,
-						this.config.sourceAudioFallbackPaths,
-						this.config.sourceAudioFallbackStartDelayMsByPath,
-					),
-					"FFmpeg edited audio rendering",
-					"audio",
-					true,
-				),
+			const renderedAudio = await this.renderEditedAudioForNativeMux(
+				"FFmpeg edited audio rendering",
+				(progress) => this.reportFinalizingProgress(this.processedFrameCount, 99, progress),
 			);
-			editedAudioBuffer = await audioBlob.arrayBuffer();
-			editedAudioMimeType = audioBlob.type || null;
+			editedAudioBuffer = renderedAudio.editedAudioData;
+			editedAudioMimeType = renderedAudio.editedAudioMimeType;
 		}
 
 		const muxOptions = {
@@ -2296,7 +2431,9 @@ export class ModernVideoExporter {
 		const safeRenderProgress =
 			phase === "finalizing" ? Math.max(0, Math.min(renderProgress ?? 100, 100)) : undefined;
 		const percentage =
-			phase === "finalizing"
+			phase === "preparing"
+				? 0
+				: phase === "finalizing"
 				? (safeRenderProgress ?? 100)
 				: totalFrames > 0
 					? (currentFrame / totalFrames) * 100

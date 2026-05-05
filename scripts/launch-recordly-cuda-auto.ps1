@@ -53,8 +53,10 @@ $env:RECORDLY_NVIDIA_CUDA_SAMPLE_GPU = "1"
 
 if ($AllowCudaAudio) {
 	$env:RECORDLY_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT = "1"
+	Remove-Item Env:\RECORDLY_NVIDIA_CUDA_FORCE_VIDEO_ONLY -ErrorAction SilentlyContinue
 } else {
 	Remove-Item Env:\RECORDLY_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT -ErrorAction SilentlyContinue
+	$env:RECORDLY_NVIDIA_CUDA_FORCE_VIDEO_ONLY = "1"
 }
 
 if ($NoDiagnostics) {
@@ -66,14 +68,15 @@ if ($NoDiagnostics) {
 $resolvedAppPath = (Resolve-Path $AppPath).Path
 $appDirectory = Split-Path $resolvedAppPath -Parent
 if ($AllowCudaAudio) {
-	$cudaAudioMode = "candidate only; app still requires timestamp-aligned CUDA output"
+	$cudaAudioMode = "inline CUDA audio candidate; app still requires timestamp-aligned CUDA output"
 } else {
-	$cudaAudioMode = "guarded; audio exports fall back to Windows D3D11"
+	$cudaAudioMode = "CUDA video-only, then shared app audio mux"
 }
 
 Write-Host "Launching Recordly with guarded NVIDIA CUDA/NVENC auto export enabled:"
 Write-Host "  App: $resolvedAppPath"
 Write-Host "  CUDA wrapper: $env:RECORDLY_NVIDIA_CUDA_EXPORT_SCRIPT"
+Write-Host "  Force CUDA video-only: $($env:RECORDLY_NVIDIA_CUDA_FORCE_VIDEO_ONLY -eq '1')"
 Write-Host "  CUDA audio exports: $cudaAudioMode"
 Write-Host "  Diagnostics: $($env:RECORDLY_NVIDIA_CUDA_EXPORT_DIAGNOSTICS -eq '1')"
 

@@ -8,13 +8,14 @@ import type { Readable, Writable } from "node:stream";
 import { promisify } from "node:util";
 import type { WebContents } from "electron";
 import { app, powerSaveBlocker } from "electron";
-import { getFfmpegBinaryPath } from "../ffmpeg/binary";
+import { getFfmpegBinaryPath, getFfprobeBinaryPath } from "../ffmpeg/binary";
 import type {
 	NativeExportEncodingMode,
 	NativeStaticLayoutBackend,
 	NativeStaticLayoutExportArgsConfig,
 	NativeVideoAudioMuxMetrics,
 	NativeVideoExportAudioMode,
+	NativeVideoExportEditedTrackSegment,
 	NativeVideoExportFinishOptions,
 } from "../nativeVideoExport";
 import {
@@ -41,7 +42,20 @@ const getNowMs = () => performance.now();
 const formatFfmpegSeconds = (milliseconds: number) => (milliseconds / 1000).toFixed(3);
 const MISSING_NATIVE_STATIC_BACKGROUND_COLOR = "#ffffff";
 const NATIVE_EXPORT_HIGH_PRIORITY = os.constants.priority.PRIORITY_HIGH;
+const NVIDIA_PCI_VENDOR_ID = 0x10de;
+const NVIDIA_CUDA_EXPORT_ENV = "RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
 const NVIDIA_CUDA_ALLOW_AUDIO_EXPORT_ENV = "RECORDLY_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT";
+const NVIDIA_CUDA_FORCE_VIDEO_ONLY_ENV = "RECORDLY_NVIDIA_CUDA_FORCE_VIDEO_ONLY";
+
+type ElectronGpuDeviceLike = {
+	vendorId?: number | string;
+	vendorString?: string;
+	deviceString?: string;
+};
+
+type ElectronGpuInfoLike = {
+	gpuDevice?: ElectronGpuDeviceLike[];
+};
 
 export type NativeVideoExportSession = {
 	ffmpegProcess: ChildProcessByStdio<Writable, null, Readable>;
@@ -61,6 +75,14 @@ export type NativeVideoExportSession = {
 };
 
 export const nativeVideoExportSessions = new Map<string, NativeVideoExportSession>();
+
+export interface NativeStaticLayoutTimelineSegment {
+	sourceStartMs: number;
+	sourceEndMs: number;
+	outputStartMs: number;
+	outputEndMs: number;
+	speed: number;
+}
 
 export interface NativeStaticLayoutExportOptions {
 	sessionId?: string;
@@ -111,14 +133,18 @@ export interface NativeStaticLayoutExportOptions {
 	cursorAtlasMetadataPath?: string | null;
 	zoomTelemetry?: Array<{ timeMs: number; scale: number; x: number; y: number }>;
 	zoomTelemetryPath?: string | null;
+	timelineSegments?: NativeStaticLayoutTimelineSegment[];
+	timelineMapPath?: string | null;
 	chunkDurationSec?: number;
 	experimentalWindowsGpuCompositor?: boolean;
 	audioOptions?: NativeVideoExportFinishOptions;
+	nvidiaCudaForceVideoOnly?: boolean;
 }
 
 export interface NativeStaticLayoutExportProgress {
 	sessionId?: string;
 	backend?: NativeStaticLayoutBackend;
+	stage?: "preparing" | "finalizing";
 	elapsedMs?: number;
 	averageFps?: number;
 	instantFps?: number;
@@ -139,6 +165,16 @@ export interface NativeStaticLayoutExportProgress {
 	totalFrames: number;
 	percentage: number;
 }
+
+type NativeVideoAudioMuxProgress = {
+	ratio: number;
+	processedSec?: number;
+	totalSec?: number;
+};
+
+type NativeVideoAudioMuxArgsOptions = {
+	progressPipe?: 1 | 2;
+};
 
 export interface WindowsGpuExportSummary {
 	success?: boolean;
@@ -342,9 +378,7 @@ export function parseNvidiaCudaExportSummary(stdout: string): NvidiaCudaExportSu
 
 function getFiniteNumber(value: unknown) {
 	const numberValue = typeof value === "string" ? Number(value) : value;
-	return typeof numberValue === "number" && Number.isFinite(numberValue)
-		? numberValue
-		: null;
+	return typeof numberValue === "number" && Number.isFinite(numberValue) ? numberValue : null;
 }
 
 function getNvidiaCudaOutputStreamNumber(stream: unknown, property: string) {
@@ -367,41 +401,22 @@ export function validateNvidiaCudaExportSummary(
 	const expectedFrames = Math.max(1, Math.round(expected.targetFrames));
 	const minimumFrames = Math.max(1, Math.floor(expectedFrames * 0.95));
 	const expectedDurationSec = Math.max(0, expected.durationSec);
-	const durationToleranceSec = Math.min(
-		2,
-		Math.max(0.5, expectedDurationSec * 0.02),
-	);
+	const durationToleranceSec = Math.min(2, Math.max(0.5, expectedDurationSec * 0.02));
 	const nativeFrames = getFiniteNumber(summary.nativeSummary?.frames);
-	const outputVideoFrames = getNvidiaCudaOutputStreamNumber(
-		summary.outputVideo,
-		"nb_frames",
-	);
-	const outputVideoDurationSec = getNvidiaCudaOutputStreamNumber(
-		summary.outputVideo,
-		"duration",
-	);
-	const outputAudioDurationSec = getNvidiaCudaOutputStreamNumber(
-		summary.outputAudio,
-		"duration",
-	);
+	const outputVideoFrames = getNvidiaCudaOutputStreamNumber(summary.outputVideo, "nb_frames");
+	const outputVideoDurationSec = getNvidiaCudaOutputStreamNumber(summary.outputVideo, "duration");
+	const outputAudioDurationSec = getNvidiaCudaOutputStreamNumber(summary.outputAudio, "duration");
 
 	if (!summary.outputVideo) {
 		issues.push("missing output video probe");
 	}
-	if (
-		expected.requiresTimelineSync &&
-		!isNvidiaCudaTimestampAlignedSummary(summary)
-	) {
-		issues.push(
-			"CUDA timeline mode is not timestamp-aligned for audio export",
-		);
+	if (expected.requiresTimelineSync && !isNvidiaCudaTimestampAlignedSummary(summary)) {
+		issues.push("CUDA timeline mode is not timestamp-aligned for audio export");
 	}
 	if (nativeFrames === null) {
 		issues.push("missing native frame count");
 	} else if (nativeFrames < minimumFrames) {
-		issues.push(
-			`native frames ${nativeFrames} below expected minimum ${minimumFrames}`,
-		);
+		issues.push(`native frames ${nativeFrames} below expected minimum ${minimumFrames}`);
 	}
 	if (outputVideoFrames !== null && outputVideoFrames < minimumFrames) {
 		issues.push(
@@ -539,7 +554,10 @@ async function persistNvidiaCudaExportDiagnostics(params: {
 			),
 		]);
 	} catch (error) {
-		console.warn("[native-static-layout-export] Failed to persist NVIDIA CUDA diagnostics", error);
+		console.warn(
+			"[native-static-layout-export] Failed to persist NVIDIA CUDA diagnostics",
+			error,
+		);
 	}
 }
 
@@ -572,6 +590,7 @@ export function parseWindowsGpuExportProgressLine(
 			intervalRoiCompositeFrames?: unknown;
 			intervalMonolithicCompositeFrames?: unknown;
 			intervalCopyCompositeFrames?: unknown;
+			stage?: unknown;
 		};
 		const currentFrame = Number(parsed.currentFrame);
 		const totalFrames = Number(parsed.totalFrames);
@@ -590,6 +609,9 @@ export function parseWindowsGpuExportProgressLine(
 			totalFrames: Math.max(1, Math.floor(totalFrames)),
 			percentage: Math.min(100, Math.max(0, percentage)),
 		};
+		if (parsed.stage === "preparing" || parsed.stage === "finalizing") {
+			progress.stage = parsed.stage;
+		}
 		const optionalNumberFields = [
 			"averageFps",
 			"instantFps",
@@ -619,6 +641,18 @@ export function parseWindowsGpuExportProgressLine(
 	}
 }
 
+export function mapNvidiaCudaWrapperProgressPercentage(progress: NativeStaticLayoutExportProgress) {
+	if (progress.stage === "finalizing") {
+		return progress.percentage;
+	}
+
+	if (progress.currentFrame > 0 || progress.percentage === 0) {
+		return Math.min(98, 3 + progress.percentage * 0.95);
+	}
+
+	return progress.percentage;
+}
+
 function startNativeStaticLayoutExportPowerGuard() {
 	try {
 		const blockerId = powerSaveBlocker.start("prevent-app-suspension");
@@ -639,10 +673,7 @@ function startNativeStaticLayoutExportPowerGuard() {
 	}
 }
 
-function setNativeStaticLayoutExportProcessPriority(
-	pid: number | undefined,
-	label: string,
-) {
+function setNativeStaticLayoutExportProcessPriority(pid: number | undefined, label: string) {
 	if (!pid) {
 		return false;
 	}
@@ -651,10 +682,7 @@ function setNativeStaticLayoutExportProcessPriority(
 		os.setPriority(pid, NATIVE_EXPORT_HIGH_PRIORITY);
 		return true;
 	} catch (error) {
-		console.warn(
-			`[native-static-layout-export] Failed to raise ${label} priority`,
-			error,
-		);
+		console.warn(`[native-static-layout-export] Failed to raise ${label} priority`, error);
 		return false;
 	}
 }
@@ -842,6 +870,163 @@ async function runFfmpegWithMetrics(
 				code,
 				signal,
 			});
+		});
+	});
+}
+
+function parseFfmpegProgressClockSeconds(value: string) {
+	const match = value.match(/^(\d+):(\d+):(\d+(?:\.\d+)?)$/);
+	if (!match) {
+		return null;
+	}
+
+	const hours = Number(match[1]);
+	const minutes = Number(match[2]);
+	const seconds = Number(match[3]);
+	if (![hours, minutes, seconds].every(Number.isFinite)) {
+		return null;
+	}
+
+	return hours * 3600 + minutes * 60 + seconds;
+}
+
+export function parseFfmpegProgressLineSeconds(line: string) {
+	const separatorIndex = line.indexOf("=");
+	if (separatorIndex <= 0) {
+		return null;
+	}
+
+	const key = line.slice(0, separatorIndex).trim();
+	const value = line.slice(separatorIndex + 1).trim();
+	if (key === "out_time_us" || key === "out_time_ms") {
+		const microseconds = Number(value);
+		return Number.isFinite(microseconds) && microseconds >= 0 ? microseconds / 1_000_000 : null;
+	}
+	if (key === "out_time") {
+		return parseFfmpegProgressClockSeconds(value);
+	}
+
+	return null;
+}
+
+function createFfmpegMuxProgressHandler(
+	totalSec: number | undefined,
+	onProgress?: (progress: NativeVideoAudioMuxProgress) => void,
+) {
+	if (!onProgress || !Number.isFinite(totalSec) || !totalSec || totalSec <= 0) {
+		return () => undefined;
+	}
+
+	let lineBuffer = "";
+	let lastRatio = 0;
+	return (chunk: Buffer | string) => {
+		lineBuffer += chunk.toString();
+		const lines = lineBuffer.split(/\r?\n/);
+		lineBuffer = lines.pop() ?? "";
+		for (const line of lines) {
+			const processedSec = parseFfmpegProgressLineSeconds(line);
+			if (processedSec === null) {
+				continue;
+			}
+			const ratio = Math.max(0, Math.min(1, processedSec / totalSec));
+			if (ratio < lastRatio + 0.0025 && ratio < 1) {
+				continue;
+			}
+			lastRatio = Math.max(lastRatio, ratio);
+			onProgress({
+				ratio: lastRatio,
+				processedSec,
+				totalSec,
+			});
+		}
+	};
+}
+
+async function runFfmpegAudioMux(
+	ffmpegPath: string,
+	args: string[],
+	timeoutMs: number,
+	options: NativeVideoExportFinishOptions,
+	onProgress?: (progress: NativeVideoAudioMuxProgress) => void,
+	session?: NativeStaticLayoutExportSession,
+) {
+	if (!onProgress && !session) {
+		await execFileAsync(ffmpegPath, args, {
+			timeout: timeoutMs,
+			maxBuffer: 20 * 1024 * 1024,
+		});
+		return;
+	}
+
+	const handleProgressChunk = createFfmpegMuxProgressHandler(
+		options.outputDurationSec,
+		onProgress,
+	);
+	await new Promise<void>((resolve, reject) => {
+		const child = spawn(ffmpegPath, args, {
+			stdio: ["ignore", "ignore", "pipe"],
+		});
+		if (session) {
+			session.currentProcess = child;
+			if (session.terminating) {
+				child.kill("SIGKILL");
+			}
+		}
+
+		let stderr = "";
+		let settled = false;
+		const timeout = setTimeout(() => {
+			if (settled) return;
+			child.kill("SIGKILL");
+		}, timeoutMs);
+
+		child.stderr.on("data", (chunk: Buffer) => {
+			const text = chunk.toString();
+			stderr += text;
+			handleProgressChunk(text);
+		});
+		child.once("error", (error) => {
+			if (settled) return;
+			settled = true;
+			if (session?.currentProcess === child) {
+				session.currentProcess = null;
+			}
+			clearTimeout(timeout);
+			reject(error);
+		});
+		child.once("close", (code, signal) => {
+			if (settled) return;
+			settled = true;
+			if (session?.currentProcess === child) {
+				session.currentProcess = null;
+			}
+			clearTimeout(timeout);
+			if (session?.terminating) {
+				reject(new Error("Native static layout export was cancelled"));
+				return;
+			}
+			if (code !== 0) {
+				const suffix = signal ? ` (signal ${signal})` : "";
+				reject(
+					new Error(
+						`FFmpeg audio mux exited with code ${code ?? "unknown"}${suffix}` +
+							(stderr.trim() ? `\nSTDERR:\n${stderr.trim()}` : ""),
+					),
+				);
+				return;
+			}
+			if (onProgress) {
+				const completeProgress: NativeVideoAudioMuxProgress = { ratio: 1 };
+				if (
+					typeof options.outputDurationSec === "number" &&
+					Number.isFinite(options.outputDurationSec)
+				) {
+					completeProgress.processedSec = options.outputDurationSec;
+					completeProgress.totalSec = options.outputDurationSec;
+				}
+				onProgress(completeProgress);
+			}
+			resolve();
 		});
 	});
 }
@@ -1095,12 +1280,204 @@ function formatCliNumber(value: number) {
 		: value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 }
 
+function hasNativeStaticLayoutTimeline(options: NativeStaticLayoutExportOptions) {
+	return (options.timelineSegments?.length ?? 0) > 0;
+}
+
+export function buildNativeStaticLayoutTimelineSegments(
+	segments: NativeVideoExportEditedTrackSegment[],
+): NativeStaticLayoutTimelineSegment[] {
+	const timelineSegments: NativeStaticLayoutTimelineSegment[] = [];
+	let outputCursorMs = 0;
+
+	for (const segment of segments) {
+		const sourceStartMs = Math.max(0, segment.startMs);
+		const sourceEndMs = Math.max(sourceStartMs, segment.endMs);
+		const speed = segment.speed;
+		if (
+			!Number.isFinite(sourceStartMs) ||
+			!Number.isFinite(sourceEndMs) ||
+			!Number.isFinite(speed) ||
+			sourceEndMs - sourceStartMs <= 0.5 ||
+			speed <= 0
+		) {
+			return [];
+		}
+
+		const outputDurationMs = (sourceEndMs - sourceStartMs) / speed;
+		if (!Number.isFinite(outputDurationMs) || outputDurationMs <= 0.5) {
+			return [];
+		}
+
+		const outputStartMs = outputCursorMs;
+		const outputEndMs = outputStartMs + outputDurationMs;
+		timelineSegments.push({
+			sourceStartMs,
+			sourceEndMs,
+			outputStartMs,
+			outputEndMs,
+			speed,
+		});
+		outputCursorMs = outputEndMs;
+	}
+
+	return timelineSegments;
+}
+
+function validateNativeStaticLayoutTimelineSegments(
+	segments: NativeStaticLayoutTimelineSegment[] | undefined,
+	durationSec: number,
+) {
+	if (!segments?.length) {
+		return [];
+	}
+
+	const normalized: NativeStaticLayoutTimelineSegment[] = [];
+	let expectedOutputStartMs = 0;
+	for (const segment of segments) {
+		const sourceStartMs = Math.max(0, segment.sourceStartMs);
+		const sourceEndMs = Math.max(sourceStartMs, segment.sourceEndMs);
+		const outputStartMs = Math.max(0, segment.outputStartMs);
+		const outputEndMs = Math.max(outputStartMs, segment.outputEndMs);
+		const speed = segment.speed;
+		if (
+			!Number.isFinite(sourceStartMs) ||
+			!Number.isFinite(sourceEndMs) ||
+			!Number.isFinite(outputStartMs) ||
+			!Number.isFinite(outputEndMs) ||
+			!Number.isFinite(speed) ||
+			sourceEndMs - sourceStartMs <= 0.5 ||
+			outputEndMs - outputStartMs <= 0.5 ||
+			speed <= 0
+		) {
+			throw new Error("Native timeline map contains an invalid segment");
+		}
+
+		if (Math.abs(outputStartMs - expectedOutputStartMs) > 2) {
+			throw new Error("Native timeline map output ranges must be contiguous");
+		}
+
+		const expectedOutputDurationMs = (sourceEndMs - sourceStartMs) / speed;
+		if (Math.abs(expectedOutputDurationMs - (outputEndMs - outputStartMs)) > 2) {
+			throw new Error("Native timeline map segment speed does not match its output duration");
+		}
+
+		normalized.push({
+			sourceStartMs,
+			sourceEndMs,
+			outputStartMs,
+			outputEndMs,
+			speed,
+		});
+		expectedOutputStartMs = outputEndMs;
+	}
+
+	if (Math.abs(expectedOutputStartMs / 1000 - durationSec) > 0.05) {
+		throw new Error("Native timeline map duration does not match the export duration");
+	}
+
+	return normalized;
+}
+
+async function prepareNativeStaticLayoutTimelineMap(
+	options: NativeStaticLayoutExportOptions,
+	outputPath: string,
+) {
+	const segments = validateNativeStaticLayoutTimelineSegments(
+		options.timelineSegments,
+		options.durationSec,
+	);
+	if (segments.length === 0) {
+		return null;
+	}
+
+	const lines = segments.map((segment) =>
+		[
+			segment.sourceStartMs,
+			segment.sourceEndMs,
+			segment.outputStartMs,
+			segment.outputEndMs,
+			segment.speed,
+		]
+			.map(formatCliNumber)
+			.join(","),
+	);
+	await fs.writeFile(outputPath, `${lines.join("\n")}\n`, "utf8");
+	return outputPath;
+}
+
 async function pathExists(filePath: string) {
 	try {
 		await fs.access(filePath);
 		return true;
 	} catch {
 		return false;
+	}
+}
+
+function isNvidiaVendorId(value: unknown) {
+	if (typeof value === "number") {
+		return value === NVIDIA_PCI_VENDOR_ID;
+	}
+	if (typeof value !== "string") {
+		return false;
+	}
+
+	const normalized = value.trim().toLowerCase();
+	if (normalized.length === 0) {
+		return false;
+	}
+	const parsed = normalized.startsWith("0x")
+		? Number.parseInt(normalized.slice(2), 16)
+		: Number.parseInt(normalized, 10);
+
+	return Number.isFinite(parsed) && parsed === NVIDIA_PCI_VENDOR_ID;
+}
+
+function includesNvidiaGpuName(value: unknown) {
+	return typeof value === "string" && /\bnvidia\b/i.test(value);
+}
+
+function isNvidiaGpuDevice(device: unknown) {
+	if (!device || typeof device !== "object") {
+		return false;
+	}
+
+	const gpuDevice = device as ElectronGpuDeviceLike;
+	return (
+		isNvidiaVendorId(gpuDevice.vendorId) ||
+		includesNvidiaGpuName(gpuDevice.vendorString) ||
+		includesNvidiaGpuName(gpuDevice.deviceString)
+	);
+}
+
+export function hasNvidiaGpuDeviceInGpuInfo(gpuInfo: unknown) {
+	if (!gpuInfo || typeof gpuInfo !== "object") {
+		return false;
+	}
+
+	const devices = (gpuInfo as ElectronGpuInfoLike).gpuDevice;
+	return Array.isArray(devices) && devices.some(isNvidiaGpuDevice);
+}
+
+async function hasNvidiaGpuForCudaExportCandidate() {
+	const getGPUInfo = (
+		app as typeof app & {
+			getGPUInfo?: (infoType: "basic") => Promise<unknown>;
+		}
+	).getGPUInfo;
+	if (typeof getGPUInfo !== "function") {
+		return true;
+	}
+
+	try {
+		return hasNvidiaGpuDeviceInGpuInfo(await getGPUInfo.call(app, "basic"));
+	} catch (error) {
+		console.warn(
+			"[native-static-layout-export] Unable to inspect GPU info before NVIDIA CUDA export; letting the helper decide",
+			error,
+		);
+		return true;
 	}
 }
 
@@ -1163,6 +1540,7 @@ async function resolveExperimentalWindowsGpuExporterPath() {
 
 export function getNvidiaCudaAudioExportSkipReason(
 	audioMode: NativeVideoExportAudioMode | undefined,
+	options: { allowValidatedFallbackCandidate?: boolean } = {},
 ) {
 	const resolvedAudioMode = audioMode ?? "none";
 	if (resolvedAudioMode === "none") {
@@ -1171,27 +1549,64 @@ export function getNvidiaCudaAudioExportSkipReason(
 	if (process.env[NVIDIA_CUDA_ALLOW_AUDIO_EXPORT_ENV] === "1") {
 		return null;
 	}
+	if (options.allowValidatedFallbackCandidate) {
+		return null;
+	}
 
 	return `audio-mode:${resolvedAudioMode}`;
 }
 
-function getExperimentalNvidiaCudaExportSkipReason(
+function isExplicitNvidiaCudaExportEnabled() {
+	return process.env[NVIDIA_CUDA_EXPORT_ENV] === "1";
+}
+
+function isExplicitNvidiaCudaExportDisabled() {
+	return process.env[NVIDIA_CUDA_EXPORT_ENV] === "0";
+}
+
+function isPackagedNvidiaCudaExportAutoCandidateEnabled() {
+	return app.isPackaged && !isExplicitNvidiaCudaExportDisabled();
+}
+
+function isPackagedNvidiaCudaExportAutoCandidateActive() {
+	return isPackagedNvidiaCudaExportAutoCandidateEnabled() && !isExplicitNvidiaCudaExportEnabled();
+}
+
+function isNvidiaCudaForceVideoOnlyEnabled() {
+	return process.env[NVIDIA_CUDA_FORCE_VIDEO_ONLY_ENV] === "1";
+}
+
+export async function getExperimentalNvidiaCudaExportSkipReason(
 	options: NativeStaticLayoutExportOptions,
 ) {
 	if (process.platform !== "win32") {
 		return "not-windows";
 	}
-	if (process.env.RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT !== "1") {
+	const explicitCuda = isExplicitNvidiaCudaExportEnabled();
+	const packagedAutoCandidate = isPackagedNvidiaCudaExportAutoCandidateEnabled();
+	if (!explicitCuda && !packagedAutoCandidate) {
 		return "env-disabled";
 	}
 	if (!options.experimentalWindowsGpuCompositor) {
 		return "windows-gpu-compositor-disabled";
 	}
 
-	return getNvidiaCudaAudioExportSkipReason(options.audioOptions?.audioMode);
+	if (packagedAutoCandidate && !explicitCuda) {
+		if (!(await resolveExperimentalNvidiaCudaExportScriptPath())) {
+			return "cuda-wrapper-unavailable";
+		}
+		if (!(await hasNvidiaGpuForCudaExportCandidate())) {
+			return "nvidia-gpu-unavailable";
+		}
+	}
+
+	return getNvidiaCudaAudioExportSkipReason(options.audioOptions?.audioMode, {
+		allowValidatedFallbackCandidate:
+			packagedAutoCandidate || isNvidiaCudaForceVideoOnlyEnabled(),
+	});
 }
 
-async function resolveExperimentalNvidiaCudaExportScriptPath() {
+export async function resolveExperimentalNvidiaCudaExportScriptPath() {
 	if (process.platform !== "win32") {
 		return null;
 	}
@@ -1200,6 +1615,19 @@ async function resolveExperimentalNvidiaCudaExportScriptPath() {
 	const configuredPath = process.env.RECORDLY_NVIDIA_CUDA_EXPORT_SCRIPT;
 	if (configuredPath) {
 		candidates.push(configuredPath);
+	}
+	const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+	if (resourcesPath) {
+		candidates.push(
+			path.join(
+				resourcesPath,
+				"app.asar.unpacked",
+				"electron",
+				"native",
+				"nvidia-cuda-compositor",
+				"run-mp4-pipeline.mjs",
+			),
+		);
 	}
 	candidates.push(
 		path.join(
@@ -1210,15 +1638,14 @@ async function resolveExperimentalNvidiaCudaExportScriptPath() {
 			"run-mp4-pipeline.mjs",
 		),
 		path.join(
-			app.getAppPath(),
+			app.getAppPath().replace(/app\.asar$/, "app.asar.unpacked"),
 			"electron",
 			"native",
 			"nvidia-cuda-compositor",
 			"run-mp4-pipeline.mjs",
 		),
 		path.join(
-			process.resourcesPath,
-			"app.asar.unpacked",
+			app.getAppPath(),
 			"electron",
 			"native",
 			"nvidia-cuda-compositor",
@@ -1356,6 +1783,9 @@ function buildExperimentalWindowsGpuStaticLayoutArgs(
 	}
 	if (options.zoomTelemetryPath) {
 		args.push("--zoom-telemetry", options.zoomTelemetryPath);
+	}
+	if (options.timelineMapPath) {
+		args.push("--timeline-map", options.timelineMapPath);
 	}
 
 	return args;
@@ -1649,7 +2079,7 @@ async function prepareWindowsGpuWebcamInput(
 	return { inputPath: outputPath, elapsedMs: result.elapsedMs };
 }
 
-function buildExperimentalNvidiaCudaStaticLayoutArgs(
+export function buildExperimentalNvidiaCudaStaticLayoutArgs(
 	options: NativeStaticLayoutExportOptions,
 	outputPath: string,
 	workDir: string,
@@ -1718,6 +2148,8 @@ function buildExperimentalNvidiaCudaStaticLayoutArgs(
 			String(Math.round(options.webcamSize ?? 0)),
 			"--webcam-radius",
 			String(Math.round(Math.max(0, options.webcamRadius ?? 0))),
+			"--webcam-time-offset-ms",
+			formatCliNumber(options.webcamTimeOffsetMs ?? 0),
 			"--webcam-stream",
 		);
 		if (options.webcamMirror !== false) {
@@ -1745,6 +2177,9 @@ function buildExperimentalNvidiaCudaStaticLayoutArgs(
 	if (options.zoomTelemetryPath) {
 		args.push("--zoom-telemetry", options.zoomTelemetryPath);
 	}
+	if (options.timelineMapPath) {
+		args.push("--timeline-map", options.timelineMapPath);
+	}
 	if (process.env.RECORDLY_NVIDIA_CUDA_SAMPLE_GPU === "1") {
 		args.push("--sample-gpu");
 	}
@@ -1753,6 +2188,10 @@ function buildExperimentalNvidiaCudaStaticLayoutArgs(
 }
 
 function canMuxNvidiaCudaSourceAudioInline(options: NativeStaticLayoutExportOptions) {
+	if (options.nvidiaCudaForceVideoOnly) {
+		return false;
+	}
+
 	const audioOptions = options.audioOptions;
 	if (audioOptions?.audioMode !== "copy-source" || !audioOptions.audioSourcePath) {
 		return false;
@@ -1790,6 +2229,8 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 		...nodeCommand.env,
 		RECORDLY_NVIDIA_CUDA_EXPORT_HIGH_PRIORITY:
 			process.env.RECORDLY_NVIDIA_CUDA_EXPORT_HIGH_PRIORITY ?? "1",
+		RECORDLY_FFMPEG_EXE: ffmpegPath,
+		RECORDLY_FFPROBE_EXE: process.env.RECORDLY_FFPROBE_EXE ?? getFfprobeBinaryPath(),
 		[pathKey]: `${ffmpegDirectory}${path.delimiter}${process.env[pathKey] ?? ""}`,
 	};
 	const powerGuard = startNativeStaticLayoutExportPowerGuard();
@@ -1851,10 +2292,8 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 						: elapsedMs > 0 && progress.currentFrame > 0
 							? (progress.currentFrame * 1000) / elapsedMs
 							: undefined;
-				lastProgressPercentage = Math.max(
-					lastProgressPercentage,
-					progress.percentage,
-				);
+				const mappedPercentage = mapNvidiaCudaWrapperProgressPercentage(progress);
+				lastProgressPercentage = Math.max(lastProgressPercentage, mappedPercentage);
 				onProgress?.({
 					...progress,
 					percentage: lastProgressPercentage,
@@ -2106,6 +2545,19 @@ export async function exportNativeStaticLayoutVideo(
 	try {
 		nativeStaticLayoutExportSessions.set(sessionId, session);
 		await fs.mkdir(chunkDirectory, { recursive: true });
+		const timelineMapPath = await prepareNativeStaticLayoutTimelineMap(
+			options,
+			path.join(chunkDirectory, "timeline-map.csv"),
+		);
+		if (timelineMapPath) {
+			if (!(options.experimentalWindowsGpuCompositor && process.platform === "win32")) {
+				throw new Error("Native timeline-map export requires the Windows GPU compositor");
+			}
+			options = {
+				...options,
+				timelineMapPath,
+			};
+		}
 		const fullConfig: NativeStaticLayoutExportArgsConfig = {
 			inputPath: options.inputPath,
 			outputPath: videoOnlyPath,
@@ -2194,11 +2646,35 @@ export async function exportNativeStaticLayoutVideo(
 				}
 				let experimentalNvidiaCudaOptions = experimentalGpuOptions;
 				const nvidiaCudaSkipReason =
-					getExperimentalNvidiaCudaExportSkipReason(options);
+					await getExperimentalNvidiaCudaExportSkipReason(options);
 				let shouldTryNvidiaCuda = nvidiaCudaSkipReason === null;
 				if (
+					shouldTryNvidiaCuda &&
+					(isPackagedNvidiaCudaExportAutoCandidateActive() ||
+						isNvidiaCudaForceVideoOnlyEnabled()) &&
+					(experimentalNvidiaCudaOptions.audioOptions?.audioMode ?? "none") !== "none"
+				) {
+					experimentalNvidiaCudaOptions = {
+						...experimentalNvidiaCudaOptions,
+						nvidiaCudaForceVideoOnly: true,
+					};
+					console.info(
+						"[native-static-layout-export] NVIDIA CUDA candidate will use shared audio mux validation",
+						{
+							audioMode:
+								experimentalNvidiaCudaOptions.audioOptions?.audioMode ?? "none",
+							forcedByEnv: isNvidiaCudaForceVideoOnlyEnabled(),
+							packagedAutoCandidate: isPackagedNvidiaCudaExportAutoCandidateActive(),
+						},
+					);
+				}
+				const shouldLogNvidiaCudaSkip =
+					isExplicitNvidiaCudaExportEnabled() ||
+					(isPackagedNvidiaCudaExportAutoCandidateEnabled() &&
+						nvidiaCudaSkipReason !== "env-disabled");
+				if (
 					!shouldTryNvidiaCuda &&
-					process.env.RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT === "1" &&
+					shouldLogNvidiaCudaSkip &&
 					nvidiaCudaSkipReason !== "env-disabled"
 				) {
 					console.warn(
@@ -2207,6 +2683,7 @@ export async function exportNativeStaticLayoutVideo(
 							reason: nvidiaCudaSkipReason,
 							audioMode: options.audioOptions?.audioMode ?? "none",
 							overrideEnv: NVIDIA_CUDA_ALLOW_AUDIO_EXPORT_ENV,
+							packagedAutoCandidate: isPackagedNvidiaCudaExportAutoCandidateEnabled(),
 						},
 					);
 				}
@@ -2223,7 +2700,7 @@ export async function exportNativeStaticLayoutVideo(
 					shouldTryNvidiaCuda = Boolean(cursorTelemetryPath && cursorAtlas);
 					if (cursorTelemetryPath && cursorAtlas) {
 						experimentalNvidiaCudaOptions = {
-							...experimentalGpuOptions,
+							...experimentalNvidiaCudaOptions,
 							cursorTelemetryPath,
 							cursorAtlasPath: cursorAtlas.atlasPath,
 							cursorAtlasMetadataPath: cursorAtlas.metadataPath,
@@ -2233,8 +2710,9 @@ export async function exportNativeStaticLayoutVideo(
 
 				if (shouldTryNvidiaCuda) {
 					try {
-						const shouldMuxAudioInline =
-							canMuxNvidiaCudaSourceAudioInline(experimentalNvidiaCudaOptions);
+						const shouldMuxAudioInline = canMuxNvidiaCudaSourceAudioInline(
+							experimentalNvidiaCudaOptions,
+						);
 						const cudaResult = await runExperimentalNvidiaCudaStaticLayoutExport(
 							ffmpegPath,
 							experimentalNvidiaCudaOptions,
@@ -2248,14 +2726,18 @@ export async function exportNativeStaticLayoutVideo(
 							{
 								durationSec: options.durationSec,
 								targetFrames: Math.ceil(options.durationSec * options.frameRate),
-								requiresTimelineSync:
-									(experimentalNvidiaCudaOptions.audioOptions?.audioMode ??
-										"none") !== "none",
+								requiresTimelineSync: shouldMuxAudioInline,
 							},
 						);
 						if (cudaValidationIssues.length > 0) {
 							throw new Error(
 								`Experimental NVIDIA CUDA compositor produced an invalid output: ${cudaValidationIssues.join("; ")}`,
+							);
+						}
+						const outputStat = await fs.stat(videoOnlyPath);
+						if (outputStat.size <= 0) {
+							throw new Error(
+								"Experimental NVIDIA CUDA compositor produced an empty output file",
 							);
 						}
 						console.info(
@@ -2289,7 +2771,6 @@ export async function exportNativeStaticLayoutVideo(
 								zoomSamples: cudaResult.summary.nativeSummary?.zoomSamples,
 							},
 						);
-						const outputStat = await fs.stat(videoOnlyPath);
 						metrics.chunkCount = 1;
 						metrics.chunkDurationSec = options.durationSec;
 						metrics.chunkExecMs += cudaResult.elapsedMs;
@@ -2310,7 +2791,7 @@ export async function exportNativeStaticLayoutVideo(
 						}
 						metrics.fallbackChunkCount++;
 						console.warn(
-							"[native-static-layout-export] Experimental NVIDIA CUDA compositor unavailable; falling back to Windows GPU compositor:",
+							"[native-static-layout-export] Experimental NVIDIA CUDA compositor failed or produced invalid output; falling back to Windows GPU compositor:",
 							error,
 						);
 						await removeTemporaryExportFile(videoOnlyPath);
@@ -2364,6 +2845,9 @@ export async function exportNativeStaticLayoutVideo(
 				if (session.terminating) {
 					throw error;
 				}
+				if (hasNativeStaticLayoutTimeline(options)) {
+					throw error;
+				}
 				metrics.fallbackChunkCount++;
 				console.warn(
 					"[native-static-layout-export] Experimental Windows GPU compositor unavailable; falling back to FFmpeg static layout:",
@@ -2374,6 +2858,10 @@ export async function exportNativeStaticLayoutVideo(
 					throw error;
 				}
 			}
+		}
+
+		if (!didRenderVideo && hasNativeStaticLayoutTimeline(options)) {
+			throw new Error("Native timeline-map export requires a GPU compositor backend");
 		}
 
 		if (!didRenderVideo && usePrecompositedLayout) {
@@ -2566,9 +3054,30 @@ export async function exportNativeStaticLayoutVideo(
 				metrics,
 			};
 		}
+		const audioMuxProgressStart = 97.25;
+		const audioMuxProgressEnd = 99;
+		const progressTotalFrames = Math.max(1, Math.ceil(options.durationSec * options.frameRate));
 		const finalized = await muxNativeVideoExportAudio(
 			videoOnlyPath,
 			options.audioOptions ?? {},
+			(progress) => {
+				const ratio = Math.max(0, Math.min(1, progress.ratio));
+				const percentage =
+					audioMuxProgressStart + (audioMuxProgressEnd - audioMuxProgressStart) * ratio;
+				const progressPayload: NativeStaticLayoutExportProgress = {
+					sessionId,
+					stage: "finalizing",
+					currentFrame: progressTotalFrames,
+					totalFrames: progressTotalFrames,
+					percentage,
+				};
+				const backend = metrics.chunks[0]?.backend;
+				if (backend) {
+					progressPayload.backend = backend;
+				}
+				onProgress?.(progressPayload);
+			},
+			session,
 		);
 		Object.assign(metrics, finalized.metrics);
 		outputPathToKeep = finalized.outputPath;
@@ -2704,20 +3213,22 @@ export function buildNativeVideoAudioMuxArgs(
 	audioInputPath: string,
 	outputPath: string,
 	options: NativeVideoExportFinishOptions,
+	argsOptions: NativeVideoAudioMuxArgsOptions = {},
 ) {
 	const audioMode = options.audioMode ?? "none";
 	const useEditedTrackFiltergraph =
 		audioMode === "edited-track" && options.editedTrackStrategy === "filtergraph-fast-path";
-	const args = [
-		"-y",
-		"-hide_banner",
-		"-loglevel",
-		"error",
-		"-i",
-		videoPath,
-		"-i",
-		audioInputPath,
-	];
+	const args = ["-y", "-hide_banner", "-loglevel", "error"];
+	if (argsOptions.progressPipe) {
+		args.push(
+			"-stats_period",
+			"0.5",
+			"-progress",
+			`pipe:${argsOptions.progressPipe}`,
+			"-nostats",
+		);
+	}
+	args.push("-i", videoPath, "-i", audioInputPath);
 
 	if (audioMode === "trim-source") {
 		const filter = buildTrimmedSourceAudioFilter(options.trimSegments ?? []);
@@ -2734,7 +3245,23 @@ export function buildNativeVideoAudioMuxArgs(
 		if (!filter) {
 			throw new Error("Edited-track filtergraph inputs are incomplete for native export");
 		}
-		args.push("-filter_complex", filter, "-map", "0:v:0", "-map", "[aout]");
+		if (
+			typeof options.outputDurationSec === "number" &&
+			Number.isFinite(options.outputDurationSec) &&
+			options.outputDurationSec > 0
+		) {
+			const duration = formatFfmpegSeconds(options.outputDurationSec * 1000);
+			args.push(
+				"-filter_complex",
+				`${filter};[aout]apad,atrim=duration=${duration},asetpts=PTS-STARTPTS[aout_sync]`,
+				"-map",
+				"0:v:0",
+				"-map",
+				"[aout_sync]",
+			);
+		} else {
+			args.push("-filter_complex", filter, "-map", "0:v:0", "-map", "[aout]");
+		}
 	} else {
 		args.push("-map", "0:v:0", "-map", "1:a:0");
 	}
@@ -2762,6 +3289,8 @@ export function buildNativeVideoAudioMuxArgs(
 export async function muxNativeVideoExportAudio(
 	videoPath: string,
 	options: NativeVideoExportFinishOptions,
+	onProgress?: (progress: NativeVideoAudioMuxProgress) => void,
+	session?: NativeStaticLayoutExportSession,
 ) {
 	const audioMode = options.audioMode ?? "none";
 	if (audioMode === "none") {
@@ -2807,14 +3336,17 @@ export async function muxNativeVideoExportAudio(
 		`${path.basename(videoPath, path.extname(videoPath))}-final.mp4`,
 	);
 
-	const args = buildNativeVideoAudioMuxArgs(videoPath, audioInputPath, outputPath, options);
+	const args = buildNativeVideoAudioMuxArgs(
+		videoPath,
+		audioInputPath,
+		outputPath,
+		options,
+		onProgress ? { progressPipe: 2 } : {},
+	);
 
 	try {
 		const ffmpegExecStartedAt = getNowMs();
-		await execFileAsync(ffmpegPath, args, {
-			timeout: 15 * 60 * 1000,
-			maxBuffer: 20 * 1024 * 1024,
-		});
+		await runFfmpegAudioMux(ffmpegPath, args, 15 * 60 * 1000, options, onProgress, session);
 		metrics.ffmpegExecMs = getNowMs() - ffmpegExecStartedAt;
 		console.info("[native-video-export] Audio mux completed", {
 			ffmpegExecMs: metrics.ffmpegExecMs,
