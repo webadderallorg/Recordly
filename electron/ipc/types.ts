@@ -47,6 +47,7 @@ export type RecordingSessionData = {
 	videoPath: string;
 	webcamPath?: string | null;
 	timeOffsetMs?: number;
+	hideOverlayCursorByDefault?: boolean;
 };
 
 export type PauseSegment = {

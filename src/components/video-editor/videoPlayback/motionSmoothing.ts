@@ -1,4 +1,4 @@
-// Friendly reminder: Recordly is licensed under AGPL-3.0, author @webadderall, repo-> https://github.com/webadderallorg/Recordly
+// Friendly reminder: Recordly is licensed under AGPL-3.0, author @webadderall, repo-> https://github.com/webadderall/Recordly
 // Please use this code with the right attribution.
 
 export interface SpringState {
@@ -15,9 +15,37 @@ export interface SpringConfig {
 	restSpeed?: number;
 }
 
+export interface CursorSpringTuning {
+	stiffnessMultiplier?: number;
+	dampingMultiplier?: number;
+	massMultiplier?: number;
+}
+
 const CURSOR_SMOOTHING_MIN = 0;
 const CURSOR_SMOOTHING_MAX = 2;
 const CURSOR_SMOOTHING_LEGACY_MAX = 0.5;
+const DEFAULT_CURSOR_STIFFNESS_BOOST = 1.12;
+
+function clampSpringMultiplier(value: number | undefined) {
+	if (typeof value !== "number" || !Number.isFinite(value)) {
+		return 1;
+	}
+
+	const numericValue = value;
+	return Math.min(3, Math.max(0.25, numericValue));
+}
+
+function applyCursorSpringTuning(
+	config: SpringConfig,
+	tuning?: CursorSpringTuning,
+): SpringConfig {
+	return {
+		...config,
+		stiffness: config.stiffness * clampSpringMultiplier(tuning?.stiffnessMultiplier),
+		damping: config.damping * clampSpringMultiplier(tuning?.dampingMultiplier),
+		mass: config.mass * clampSpringMultiplier(tuning?.massMultiplier),
+	};
+}
 
 export function createSpringState(initialValue = 0): SpringState {
 	return {
@@ -191,17 +219,20 @@ export function stepSpringValue(
 	return state.value;
 }
 
-export function getCursorSpringConfig(smoothingFactor: number): SpringConfig {
+export function getCursorSpringConfig(
+	smoothingFactor: number,
+	tuning?: CursorSpringTuning,
+): SpringConfig {
 	const clamped = Math.min(CURSOR_SMOOTHING_MAX, Math.max(CURSOR_SMOOTHING_MIN, smoothingFactor));
 
 	if (clamped <= 0) {
-		return {
+		return applyCursorSpringTuning({
 			stiffness: 1000,
 			damping: 100,
 			mass: 1,
 			restDelta: 0.0001,
 			restSpeed: 0.001,
-		};
+		}, tuning);
 	}
 
 	if (clamped <= CURSOR_SMOOTHING_LEGACY_MAX) {
@@ -214,13 +245,13 @@ export function getCursorSpringConfig(smoothingFactor: number): SpringConfig {
 			),
 		);
 
-		return {
-			stiffness: 760 - legacyNormalized * 420,
+		return applyCursorSpringTuning({
+			stiffness: (760 - legacyNormalized * 420) * DEFAULT_CURSOR_STIFFNESS_BOOST,
 			damping: 34 + legacyNormalized * 24,
-			mass: 0.55 + legacyNormalized * 0.45,
+			mass: 0.85 + legacyNormalized * 0.55,
 			restDelta: 0.0002,
 			restSpeed: 0.01,
-		};
+		}, tuning);
 	}
 
 	const extendedNormalized = Math.min(
@@ -232,13 +263,13 @@ export function getCursorSpringConfig(smoothingFactor: number): SpringConfig {
 		),
 	);
 
-	return {
-		stiffness: 340 - extendedNormalized * 180,
+	return applyCursorSpringTuning({
+		stiffness: (340 - extendedNormalized * 180) * DEFAULT_CURSOR_STIFFNESS_BOOST,
 		damping: 58 + extendedNormalized * 22,
-		mass: 1 + extendedNormalized * 0.35,
+		mass: 1.35 + extendedNormalized * 0.45,
 		restDelta: 0.0002,
 		restSpeed: 0.01,
-	};
+	}, tuning);
 }
 
 export function getZoomSpringConfig(smoothnessFactor = 0.5): SpringConfig {

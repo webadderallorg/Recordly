@@ -6,7 +6,7 @@
 		"modeAuto": "Auto",
 		"modeManual": "Manual",
 		"modeManualDescription": "Set a fixed focus point for this zoom",
-		"modeAutoDescription": "Camera follows cursor automatically"
+		"modeAutoDescription": "Camera recenters when the cursor nears the edge of the zoomed view"
 	},
 	"trim": {
 		"deleteRegion": "Delete Trim Region"
@@ -42,10 +42,15 @@
 		},
 		"backgroundBlur": "Background Blur",
 		"zoomMotionBlur": "Zoom Motion Blur",
+		"temporalZoomMotionBlur": "Temporal Zoom Blur",
+		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
+		"zoomMotionBlurSamples": "Blur Samples",
+		"zoomMotionBlurShutter": "Shutter",
+		"auto": "Auto",
 		"connectZooms": "Connect Zooms",
 		"connectZoomsDescription": "Smooth consecutive zoom regions into a continuous camera move.",
 		"autoApplyFreshRecordingZooms": "Auto-apply fresh recording zooms",
-		"autoApplyFreshRecordingZoomsDescription": "Suggest cursor-follow zooms automatically when you open a new recording.",
+		"autoApplyFreshRecordingZoomsDescription": "Suggest edge-recentering zooms automatically when you open a new recording.",
 		"zoomGeneralTitle": "General",
 		"zoomGeneralDescription": "Global motion settings for every zoom transition.",
 		"zoomInTitle": "Zoom In",
@@ -54,6 +59,20 @@
 		"zoomOutDescription": "Control how the camera exits a zoom region.",
 		"connectedZoomTitle": "Between Zooms",
 		"connectedZoomDescription": "Tune the glide between consecutive zoom regions when connection is enabled.",
+		"motionPresetsTitle": "Motion Presets",
+		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"animationPresets": "Animation Presets",
+		"cursorMotionPresets": "Cursor Motion Presets",
+		"motionPresets": {
+			"focused": {
+				"label": "Focused",
+				"description": "Snappier motion for demos, walkthroughs, and everyday recordings."
+			},
+			"smooth": {
+				"label": "Smooth",
+				"description": "Gentler motion for presentations, keynote-style videos, and polished reveals."
+			}
+		},
 		"zoomInDuration": "Zoom In Duration",
 		"zoomInOverlap": "Zoom In Overlap",
 		"zoomOutDuration": "Zoom Out Duration",
@@ -71,6 +90,9 @@
 		},
 		"cursorSize": "Cursor Size",
 		"cursorSmoothing": "Cursor Smoothing",
+		"cursorSpringStiffness": "Cursor Spring Stiffness",
+		"cursorSpringDamping": "Cursor Spring Damping",
+		"cursorSpringMass": "Cursor Spring Mass",
 		"off": "Off",
 		"cursorMotionBlur": "Cursor Motion Blur",
 		"cursorClickBounce": "Cursor Click Bounce",
@@ -120,8 +142,6 @@
 		"generateFull": "Generate Captions",
 		"regenerateFull": "Regenerate Captions",
 		"clearFull": "Clear Captions",
-		"editCurrent": "Edit current caption",
-		"editSaved": "Caption updated",
 		"fontSettings": "Font Settings",
 		"defaultFont": "Default",
 		"fontFamily": "Font",
