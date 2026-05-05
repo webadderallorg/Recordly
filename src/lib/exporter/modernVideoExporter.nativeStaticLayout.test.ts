@@ -39,6 +39,7 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 		experimentalNativeExport: true,
 		...overrides,
 	} as never) as unknown as {
+		buildNativeAudioPlan: (videoInfo: DecodedVideoInfo) => unknown;
 		getNativeStaticLayoutSkipReason: (
 			audioPlan: unknown,
 			videoInfo: DecodedVideoInfo,
@@ -52,6 +53,59 @@ afterEach(() => {
 });
 
 describe("ModernVideoExporter native static-layout eligibility", () => {
+	it("uses FFmpeg filtergraph audio for speed edits with a single external source track", () => {
+		const speedRegions: SpeedRegion[] = [
+			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
+		];
+		const exporter = createExporter({
+			speedRegions,
+			sourceAudioFallbackPaths: ["C:\\recordly\\recording.system.wav"],
+		});
+
+		expect(
+			exporter.buildNativeAudioPlan({
+				...videoInfo,
+				hasAudio: false,
+				audioCodec: undefined,
+				audioSampleRate: undefined,
+			}),
+		).toMatchObject({
+			audioMode: "edited-track",
+			strategy: "filtergraph-fast-path",
+			audioSourcePath: "C:\\recordly\\recording.system.wav",
+			audioSourceSampleRate: 48_000,
+			editedTrackSegments: [
+				{ startMs: 0, endMs: 1_000, speed: 1 },
+				{ startMs: 1_000, endMs: 4_000, speed: 1.5 },
+				{ startMs: 4_000, endMs: 60_000, speed: 1 },
+			],
+		});
+	});
+
+	it("keeps timed companion audio on the offline render path", () => {
+		const audioPath = "C:\\recordly\\recording.system.wav";
+		const speedRegions: SpeedRegion[] = [
+			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
+		];
+		const exporter = createExporter({
+			speedRegions,
+			sourceAudioFallbackPaths: [audioPath],
+			sourceAudioFallbackStartDelayMsByPath: { [audioPath]: 250 },
+		});
+
+		expect(
+			exporter.buildNativeAudioPlan({
+				...videoInfo,
+				hasAudio: false,
+				audioCodec: undefined,
+				audioSampleRate: undefined,
+			}),
+		).toEqual({
+			audioMode: "edited-track",
+			strategy: "offline-render-fallback",
+		});
+	});
+
 	it("allows native video when only the audio track needs offline editing", () => {
 		const audioRegions: AudioRegion[] = [
 			{

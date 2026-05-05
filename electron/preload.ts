@@ -367,6 +367,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 			audioSourcePath?: string | null;
 			audioSourceSampleRate?: number;
+			outputDurationSec?: number;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
 			editedTrackStrategy?: "filtergraph-fast-path" | "offline-render-fallback";
 			editedTrackSegments?: Array<{ startMs: number; endMs: number; speed: number }>;
@@ -386,7 +387,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		options?: {
 			audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 			audioSourcePath?: string | null;
+			audioSourceSampleRate?: number;
+			outputDurationSec?: number;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
+			editedTrackStrategy?: "filtergraph-fast-path" | "offline-render-fallback";
+			editedTrackSegments?: Array<{ startMs: number; endMs: number; speed: number }>;
 			editedAudioData?: ArrayBuffer;
 			editedAudioMimeType?: string | null;
 		},
