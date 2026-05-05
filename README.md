@@ -55,7 +55,7 @@ Add webcam footage as an overlay bubble, position it with presets or custom coor
 Use drag-and-drop timeline tools for zooms, trims, speed regions, annotations, extra audio regions, and crop-aware edits. Save and reopen work as `.recordly` project files.
 
 <p>
-  <img src="./feature3.png" width="450" alt="Recordly timeline editor screenshot">
+  <img width="450" alt="timeline editor" src="https://github.com/user-attachments/assets/3692bd8f-7b8d-4a93-b696-d17c828487ea" />
 </p>
 
 ## Extensions & Marketplace
