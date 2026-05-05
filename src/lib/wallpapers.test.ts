@@ -12,9 +12,10 @@ describe("wallpapers", () => {
 	});
 
 	it("keeps the curated wallpaper list and default path aligned", () => {
-		expect(DEFAULT_WALLPAPER_PATH).toBe("/wallpapers/midnight-8.jpg");
-		expect(DEFAULT_WALLPAPER_RELATIVE_PATH).toBe("wallpapers/midnight-8.jpg");
+		expect(DEFAULT_WALLPAPER_PATH).toBe("/wallpapers/tahoe-light.jpg");
+		expect(DEFAULT_WALLPAPER_RELATIVE_PATH).toBe("wallpapers/tahoe-light.jpg");
 		expect(BUILT_IN_WALLPAPERS.at(0)?.publicPath).toBe(DEFAULT_WALLPAPER_PATH);
+		expect(BUILT_IN_WALLPAPERS.at(1)?.publicPath).toBe("/wallpapers/tahoe-dark.jpg");
 		expect(BUILT_IN_WALLPAPERS).toHaveLength(25);
 	});
 
@@ -37,8 +38,8 @@ describe("wallpapers", () => {
 		});
 
 		await expect(getAvailableWallpapers()).resolves.toEqual([
-			BUILT_IN_WALLPAPERS[0],
 			BUILT_IN_WALLPAPERS[2],
+			BUILT_IN_WALLPAPERS[4],
 			BUILT_IN_WALLPAPERS[15],
 			BUILT_IN_WALLPAPERS[16],
 			BUILT_IN_WALLPAPERS[23],

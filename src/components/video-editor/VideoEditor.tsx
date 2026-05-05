@@ -329,7 +329,7 @@ function getEncodingModeBitrateMultiplier(encodingMode: ExportEncodingMode): num
 			return 0.9;
 		case "balanced":
 		default:
-			return 0.5;
+			return 0.7;
 	}
 }
 

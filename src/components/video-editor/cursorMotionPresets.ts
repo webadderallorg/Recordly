@@ -19,7 +19,7 @@ export interface CursorMotionPreset {
 }
 
 const SHARED_CURSOR_PRESET_VALUES = {
-	cursorSize: 2.2,
+	cursorSize: 2.5,
 	cursorSmoothing: 0.67,
 	cursorSpringMassMultiplier: 1.29,
 	cursorMotionBlur: 0.4,

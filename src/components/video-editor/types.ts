@@ -51,7 +51,7 @@ export interface CursorVisualSettings {
 }
 
 export type CursorStyle = "macos" | "tahoe" | "tahoe-inverted" | "dot" | "figma" | (string & {}); // extension-contributed cursor styles
-export const DEFAULT_CURSOR_STYLE: CursorStyle = "tahoe";
+export const DEFAULT_CURSOR_STYLE: CursorStyle = "macos";
 
 export type EditorEffectSection =
 	| "scene"

@@ -9,14 +9,14 @@ const IMAGE_FILE_PATTERN = /\.(avif|gif|jpe?g|png|svg|webp)$/i;
 const VIDEO_FILE_PATTERN = /\.(avi|m4v|mkv|mov|mp4|webm)$/i;
 
 export const BUILT_IN_WALLPAPERS: BuiltInWallpaper[] = [
+	createWallpaperEntry("tahoe-light.jpg", "Tahoe Light"),
+	createWallpaperEntry("tahoe-dark.jpg", "Tahoe Dark"),
 	createWallpaperEntry("midnight-8.jpg", "Midnight 8"),
 	createWallpaperEntry("ipad-17-dark.jpg", "iPad 17 Dark"),
 	createWallpaperEntry("ipad-17-light.jpg", "iPad 17 Light"),
 	createWallpaperEntry("sequoia-blue.jpg", "Sequoia Blue"),
 	createWallpaperEntry("sequoia-blue-orange.jpg", "Sequoia Blue Orange"),
 	createWallpaperEntry("ventura.jpg", "Ventura"),
-	createWallpaperEntry("tahoe-light.jpg", "Tahoe Light"),
-	createWallpaperEntry("tahoe-dark.jpg", "Tahoe Dark"),
 	createWallpaperEntry("sonoma-clouds.jpg", "Sonoma Clouds"),
 	createWallpaperEntry("sonoma-light.jpg", "Sonoma Light"),
 	createWallpaperEntry("sonoma-dark.jpg", "Sonoma Dark"),
@@ -40,8 +40,8 @@ export const WALLPAPER_PATHS = BUILT_IN_WALLPAPERS.map((wallpaper) => wallpaper.
 export const WALLPAPER_RELATIVE_PATHS = BUILT_IN_WALLPAPERS.map(
 	(wallpaper) => wallpaper.relativePath,
 );
-export const DEFAULT_WALLPAPER_PATH = "/wallpapers/midnight-8.jpg";
-export const DEFAULT_WALLPAPER_RELATIVE_PATH = "wallpapers/midnight-8.jpg";
+export const DEFAULT_WALLPAPER_PATH = "/wallpapers/tahoe-light.jpg";
+export const DEFAULT_WALLPAPER_RELATIVE_PATH = "wallpapers/tahoe-light.jpg";
 
 export function isVideoWallpaperSource(value: string): boolean {
 	if (!value) {

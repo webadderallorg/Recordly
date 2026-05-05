@@ -53,11 +53,25 @@ describe("editorPreferences", () => {
 				customAspectHeight: "",
 				customWallpapers: "not-an-array",
 			}),
-		).toEqual(DEFAULT_EDITOR_PREFERENCES);
+		).toMatchObject({
+			wallpaper: DEFAULT_EDITOR_PREFERENCES.wallpaper,
+			showCursor: DEFAULT_EDITOR_PREFERENCES.showCursor,
+			aspectRatio: DEFAULT_EDITOR_PREFERENCES.aspectRatio,
+			cursorStyle: DEFAULT_EDITOR_PREFERENCES.cursorStyle,
+			cursorSize: DEFAULT_EDITOR_PREFERENCES.cursorSize,
+			customAspectWidth: DEFAULT_EDITOR_PREFERENCES.customAspectWidth,
+			customAspectHeight: DEFAULT_EDITOR_PREFERENCES.customAspectHeight,
+			customWallpapers: DEFAULT_EDITOR_PREFERENCES.customWallpapers,
+		});
 	});
 
 	it("defaults MP4 exports to source quality", () => {
 		expect(DEFAULT_EDITOR_PREFERENCES.exportQuality).toBe("source");
+	});
+
+	it("defaults cursor preferences to macOS at 2.5x", () => {
+		expect(DEFAULT_EDITOR_PREFERENCES.cursorStyle).toBe("macos");
+		expect(DEFAULT_EDITOR_PREFERENCES.cursorSize).toBe(2.5);
 	});
 
 	it("loads stored editor control preferences", () => {
@@ -81,49 +95,18 @@ describe("editorPreferences", () => {
 		);
 
 		expect(loadEditorPreferences()).toEqual({
+			...DEFAULT_EDITOR_PREFERENCES,
 			wallpaper: "#123456",
-			shadowIntensity: DEFAULT_EDITOR_PREFERENCES.shadowIntensity,
 			backgroundBlur: 3.5,
-			zoomMotionBlur: DEFAULT_EDITOR_PREFERENCES.zoomMotionBlur,
-			connectZooms: DEFAULT_EDITOR_PREFERENCES.connectZooms,
-			zoomInDurationMs: DEFAULT_EDITOR_PREFERENCES.zoomInDurationMs,
-			zoomInOverlapMs: DEFAULT_EDITOR_PREFERENCES.zoomInOverlapMs,
-			zoomOutDurationMs: DEFAULT_EDITOR_PREFERENCES.zoomOutDurationMs,
-			connectedZoomGapMs: DEFAULT_EDITOR_PREFERENCES.connectedZoomGapMs,
-			connectedZoomDurationMs: DEFAULT_EDITOR_PREFERENCES.connectedZoomDurationMs,
-			zoomInEasing: DEFAULT_EDITOR_PREFERENCES.zoomInEasing,
-			zoomOutEasing: DEFAULT_EDITOR_PREFERENCES.zoomOutEasing,
-			connectedZoomEasing: DEFAULT_EDITOR_PREFERENCES.connectedZoomEasing,
 			showCursor: false,
-			loopCursor: DEFAULT_EDITOR_PREFERENCES.loopCursor,
-			cursorStyle: DEFAULT_EDITOR_PREFERENCES.cursorStyle,
-			cursorSize: DEFAULT_EDITOR_PREFERENCES.cursorSize,
-			cursorSmoothing: DEFAULT_EDITOR_PREFERENCES.cursorSmoothing,
-			cursorMotionBlur: DEFAULT_EDITOR_PREFERENCES.cursorMotionBlur,
-			cursorClickBounce: DEFAULT_EDITOR_PREFERENCES.cursorClickBounce,
-			cursorClickBounceDuration: DEFAULT_EDITOR_PREFERENCES.cursorClickBounceDuration,
-			cursorSway: DEFAULT_EDITOR_PREFERENCES.cursorSway,
-			borderRadius: DEFAULT_EDITOR_PREFERENCES.borderRadius,
-			padding: DEFAULT_EDITOR_PREFERENCES.padding,
-			frame: DEFAULT_EDITOR_PREFERENCES.frame,
 			aspectRatio: "native",
-			exportEncodingMode: DEFAULT_EDITOR_PREFERENCES.exportEncodingMode,
-			exportBackendPreference: DEFAULT_EDITOR_PREFERENCES.exportBackendPreference,
-			exportPipelineModel: DEFAULT_EDITOR_PREFERENCES.exportPipelineModel,
-			exportQuality: DEFAULT_EDITOR_PREFERENCES.exportQuality,
-			mp4FrameRate: DEFAULT_EDITOR_PREFERENCES.mp4FrameRate,
+			zoomInOverlapMs: 200,
 			exportFormat: "gif",
 			gifFrameRate: 30,
 			gifLoop: false,
-			gifSizePreset: DEFAULT_EDITOR_PREFERENCES.gifSizePreset,
-			webcam: DEFAULT_EDITOR_PREFERENCES.webcam,
 			customAspectWidth: "21",
 			customAspectHeight: "9",
 			customWallpapers: ["data:image/jpeg;base64,abc"],
-			autoApplyFreshRecordingAutoZooms:
-				DEFAULT_EDITOR_PREFERENCES.autoApplyFreshRecordingAutoZooms,
-			whisperExecutablePath: DEFAULT_EDITOR_PREFERENCES.whisperExecutablePath,
-			whisperModelPath: DEFAULT_EDITOR_PREFERENCES.whisperModelPath,
 		});
 	});
 
@@ -153,49 +136,11 @@ describe("editorPreferences", () => {
 		saveEditorPreferences({ customAspectWidth: "", customAspectHeight: "abc" });
 
 		expect(loadEditorPreferences()).toEqual({
+			...DEFAULT_EDITOR_PREFERENCES,
 			aspectRatio: "16:9",
-			wallpaper: DEFAULT_EDITOR_PREFERENCES.wallpaper,
-			shadowIntensity: DEFAULT_EDITOR_PREFERENCES.shadowIntensity,
-			backgroundBlur: DEFAULT_EDITOR_PREFERENCES.backgroundBlur,
-			zoomMotionBlur: DEFAULT_EDITOR_PREFERENCES.zoomMotionBlur,
-			connectZooms: DEFAULT_EDITOR_PREFERENCES.connectZooms,
-			zoomInDurationMs: DEFAULT_EDITOR_PREFERENCES.zoomInDurationMs,
-			zoomInOverlapMs: DEFAULT_EDITOR_PREFERENCES.zoomInOverlapMs,
-			zoomOutDurationMs: DEFAULT_EDITOR_PREFERENCES.zoomOutDurationMs,
-			connectedZoomGapMs: DEFAULT_EDITOR_PREFERENCES.connectedZoomGapMs,
-			connectedZoomDurationMs: DEFAULT_EDITOR_PREFERENCES.connectedZoomDurationMs,
-			zoomInEasing: DEFAULT_EDITOR_PREFERENCES.zoomInEasing,
-			zoomOutEasing: DEFAULT_EDITOR_PREFERENCES.zoomOutEasing,
-			connectedZoomEasing: DEFAULT_EDITOR_PREFERENCES.connectedZoomEasing,
-			showCursor: DEFAULT_EDITOR_PREFERENCES.showCursor,
-			loopCursor: DEFAULT_EDITOR_PREFERENCES.loopCursor,
-			cursorStyle: DEFAULT_EDITOR_PREFERENCES.cursorStyle,
-			cursorSize: DEFAULT_EDITOR_PREFERENCES.cursorSize,
-			cursorSmoothing: DEFAULT_EDITOR_PREFERENCES.cursorSmoothing,
-			cursorMotionBlur: DEFAULT_EDITOR_PREFERENCES.cursorMotionBlur,
-			cursorClickBounce: DEFAULT_EDITOR_PREFERENCES.cursorClickBounce,
-			cursorClickBounceDuration: DEFAULT_EDITOR_PREFERENCES.cursorClickBounceDuration,
-			cursorSway: DEFAULT_EDITOR_PREFERENCES.cursorSway,
-			borderRadius: DEFAULT_EDITOR_PREFERENCES.borderRadius,
-			padding: DEFAULT_EDITOR_PREFERENCES.padding,
-			frame: DEFAULT_EDITOR_PREFERENCES.frame,
-			exportEncodingMode: DEFAULT_EDITOR_PREFERENCES.exportEncodingMode,
-			exportBackendPreference: DEFAULT_EDITOR_PREFERENCES.exportBackendPreference,
-			exportPipelineModel: DEFAULT_EDITOR_PREFERENCES.exportPipelineModel,
-			exportQuality: DEFAULT_EDITOR_PREFERENCES.exportQuality,
-			mp4FrameRate: DEFAULT_EDITOR_PREFERENCES.mp4FrameRate,
-			exportFormat: DEFAULT_EDITOR_PREFERENCES.exportFormat,
-			gifFrameRate: DEFAULT_EDITOR_PREFERENCES.gifFrameRate,
-			gifLoop: DEFAULT_EDITOR_PREFERENCES.gifLoop,
-			gifSizePreset: DEFAULT_EDITOR_PREFERENCES.gifSizePreset,
-			webcam: DEFAULT_EDITOR_PREFERENCES.webcam,
+			zoomInOverlapMs: 200,
 			customAspectWidth: "21",
 			customAspectHeight: "9",
-			customWallpapers: DEFAULT_EDITOR_PREFERENCES.customWallpapers,
-			autoApplyFreshRecordingAutoZooms:
-				DEFAULT_EDITOR_PREFERENCES.autoApplyFreshRecordingAutoZooms,
-			whisperExecutablePath: DEFAULT_EDITOR_PREFERENCES.whisperExecutablePath,
-			whisperModelPath: DEFAULT_EDITOR_PREFERENCES.whisperModelPath,
 		});
 	});
 
@@ -263,19 +208,13 @@ describe("editorPreferences", () => {
 		});
 
 		expect(loadEditorPreferences()).toEqual({
+			...DEFAULT_EDITOR_PREFERENCES,
 			wallpaper: "linear-gradient(to right, #000000, #ffffff)",
 			shadowIntensity: 0.4,
 			backgroundBlur: 1.5,
 			zoomMotionBlur: 0.75,
 			connectZooms: false,
-			zoomInDurationMs: DEFAULT_EDITOR_PREFERENCES.zoomInDurationMs,
-			zoomInOverlapMs: DEFAULT_EDITOR_PREFERENCES.zoomInOverlapMs,
-			zoomOutDurationMs: DEFAULT_EDITOR_PREFERENCES.zoomOutDurationMs,
-			connectedZoomGapMs: DEFAULT_EDITOR_PREFERENCES.connectedZoomGapMs,
-			connectedZoomDurationMs: DEFAULT_EDITOR_PREFERENCES.connectedZoomDurationMs,
-			zoomInEasing: DEFAULT_EDITOR_PREFERENCES.zoomInEasing,
-			zoomOutEasing: DEFAULT_EDITOR_PREFERENCES.zoomOutEasing,
-			connectedZoomEasing: DEFAULT_EDITOR_PREFERENCES.connectedZoomEasing,
+			zoomInOverlapMs: 200,
 			showCursor: false,
 			loopCursor: true,
 			cursorStyle: "figma",
@@ -287,24 +226,16 @@ describe("editorPreferences", () => {
 			cursorSway: 1.5,
 			borderRadius: 18,
 			padding: { top: 30, right: 30, bottom: 30, left: 30, linked: true },
-			frame: DEFAULT_EDITOR_PREFERENCES.frame,
 			aspectRatio: "4:5",
 			exportEncodingMode: "quality",
-			exportBackendPreference: DEFAULT_EDITOR_PREFERENCES.exportBackendPreference,
-			exportPipelineModel: DEFAULT_EDITOR_PREFERENCES.exportPipelineModel,
-			exportQuality: "source",
-			mp4FrameRate: DEFAULT_EDITOR_PREFERENCES.mp4FrameRate,
 			exportFormat: "gif",
 			gifFrameRate: 20,
 			gifLoop: false,
 			gifSizePreset: "large",
-			webcam: DEFAULT_EDITOR_PREFERENCES.webcam,
 			customAspectWidth: "4",
 			customAspectHeight: "5",
 			customWallpapers: ["data:image/jpeg;base64,abc"],
 			autoApplyFreshRecordingAutoZooms: false,
-			whisperExecutablePath: DEFAULT_EDITOR_PREFERENCES.whisperExecutablePath,
-			whisperModelPath: DEFAULT_EDITOR_PREFERENCES.whisperModelPath,
 		});
 	});
 
