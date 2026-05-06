@@ -39,7 +39,6 @@ const WEBCAM_HEIGHT = 720;
 const WEBCAM_FRAME_RATE = 30;
 const WEBCAM_SUFFIX = "-webcam";
 const SOURCE_AUDIO_MUX_TOAST_ID = "recording-audio-mux-warning";
-const MICROPHONE_FALLBACK_TOAST_ID = "recording-microphone-fallback";
 const MICROPHONE_FALLBACK_ERROR_TOAST_ID = "recording-microphone-fallback-error";
 const MICROPHONE_SIDECAR_ERROR_TOAST_ID = "recording-microphone-sidecar-error";
 const LINUX_PORTAL_SOURCE: ProcessedDesktopSource = {
@@ -1041,10 +1040,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					// record mic via browser getUserMedia as a sidecar file.
 					if (nativeResult.microphoneFallbackRequired && microphoneEnabled) {
 						void logNativeCaptureDiagnostics("start-browser-microphone-fallback");
-						toast.warning("Using browser microphone processing for this recording.", {
-							id: MICROPHONE_FALLBACK_TOAST_ID,
-							duration: 8000,
-						});
+						console.info("Using browser microphone processing for this recording.");
 						try {
 							const micStream = await navigator.mediaDevices.getUserMedia({
 								audio: microphoneDeviceId
