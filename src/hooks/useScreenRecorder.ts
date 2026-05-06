@@ -1037,14 +1037,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							? 0
 							: webcamStartTime.current - mainStartedAt;
 
-					// When native mic capture is unavailable (macOS < 14), record mic
-					// via browser getUserMedia so it can be saved as a sidecar file.
+					// When native mic capture is unavailable or explicitly bypassed,
+					// record mic via browser getUserMedia as a sidecar file.
 					if (nativeResult.microphoneFallbackRequired && microphoneEnabled) {
 						void logNativeCaptureDiagnostics("start-browser-microphone-fallback");
-						toast.warning(
-							"Native microphone capture is unavailable. Using browser microphone fallback for this recording.",
-							{ id: MICROPHONE_FALLBACK_TOAST_ID, duration: 8000 },
-						);
+						toast.warning("Using browser microphone fallback for this recording.", {
+							id: MICROPHONE_FALLBACK_TOAST_ID,
+							duration: 8000,
+						});
 						try {
 							const micStream = await navigator.mediaDevices.getUserMedia({
 								audio: microphoneDeviceId
@@ -1431,6 +1431,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (webcamRecorder.current?.state === "recording") {
 					webcamRecorder.current.pause();
 				}
+				if (micFallbackRecorder.current?.state === "recording") {
+					micFallbackRecorder.current.pause();
+				}
 				const boundaryMs = Date.now();
 				markRecordingPaused(boundaryMs);
 				setPaused(true);
@@ -1475,6 +1478,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 				if (webcamRecorder.current?.state === "paused") {
 					webcamRecorder.current.resume();
+				}
+				if (micFallbackRecorder.current?.state === "paused") {
+					micFallbackRecorder.current.resume();
 				}
 				const boundaryMs = Date.now();
 				markRecordingResumed(boundaryMs);

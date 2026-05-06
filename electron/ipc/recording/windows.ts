@@ -23,7 +23,11 @@ import {
 } from "../state";
 import type { AudioSyncAdjustment } from "../types";
 import { moveFileWithOverwrite } from "../utils";
-import { WINDOWS_NATIVE_MIC_PRE_FILTERS } from "./audioFilters";
+import {
+	RECORDING_AUDIO_SIDECAR_DEBUG_ENV,
+	shouldKeepRecordingAudioSidecars,
+	WINDOWS_NATIVE_MIC_PRE_FILTERS,
+} from "./audioFilters";
 import {
 	getCompanionAudioStartDelayMs,
 	getRecordingAudioMuxTimeoutMs,
@@ -222,6 +226,7 @@ export async function muxNativeWindowsVideoWithAudio(
 	micAudioPath: string | null,
 ) {
 	const ffmpegPath = getFfmpegBinaryPath();
+	const keepAudioSidecars = shouldKeepRecordingAudioSidecars();
 	const inputs: string[] = ["-i", videoPath];
 	const audioInputs: string[] = [];
 	const audioFilePaths: string[] = [];
@@ -235,7 +240,9 @@ export async function muxNativeWindowsVideoWithAudio(
 			const stat = await fs.stat(audioPath);
 			if (stat.size <= 0) {
 				console.warn(`[mux-win] Skipping ${label} audio: file is empty (${audioPath})`);
-				await fs.rm(audioPath, { force: true }).catch(() => undefined);
+				if (!keepAudioSidecars) {
+					await fs.rm(audioPath, { force: true }).catch(() => undefined);
+				}
 				continue;
 			}
 			inputs.push("-i", audioPath);
@@ -385,6 +392,13 @@ export async function muxNativeWindowsVideoWithAudio(
 	} catch (error) {
 		await fs.rm(mixedOutputPath, { force: true }).catch(() => undefined);
 		throw error;
+	}
+
+	if (keepAudioSidecars) {
+		console.log(
+			`[mux-win] Keeping native audio sidecars because ${RECORDING_AUDIO_SIDECAR_DEBUG_ENV} is enabled`,
+		);
+		return;
 	}
 
 	for (const audioPath of [systemAudioPath, micAudioPath]) {
