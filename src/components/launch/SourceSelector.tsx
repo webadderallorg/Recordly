@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Monitor, AppWindow, CaretUp as ChevronUp } from "@phosphor-icons/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,42 @@ interface SourceSelectorProps {
 	onOpenChange?: (open: boolean) => void;
 	/** Optional custom trigger element */
 	children?: React.ReactNode;
+}
+
+export function MarqueeText({ text }: { text: string }) {
+	const staticRef = useRef<HTMLSpanElement>(null);
+	const [overflowing, setOverflowing] = useState(false);
+
+	useLayoutEffect(() => {
+		const node = staticRef.current;
+		if (!node) return;
+		const checkOverflow = () => {
+			setOverflowing(node.scrollWidth > node.clientWidth + 1);
+		};
+		checkOverflow();
+		const observer = new ResizeObserver(checkOverflow);
+		observer.observe(node);
+		return () => observer.disconnect();
+	}, [text]);
+
+	return (
+		<div
+			className="w-full source-selector-marquee"
+			data-overflowing={overflowing ? "true" : "false"}
+		>
+			<span ref={staticRef} className="source-selector-marquee-static">
+				{text}
+			</span>
+			<span className="source-selector-marquee-animated">
+				<span className="source-selector-marquee-track">
+					<span className="source-selector-marquee-segment">{text}</span>
+					<span className="source-selector-marquee-segment source-selector-marquee-duplicate">
+						{text}
+					</span>
+				</span>
+			</span>
+		</div>
+	);
 }
 
 /**
@@ -84,9 +120,9 @@ export const SourceSelectorContent = ({
 					)}
 				</div>
 
-				<div className="flex-1 min-w-0 flex flex-col items-start text-left">
-					<div className="text-sm font-medium source-selector-text truncate w-full">
-						{source.windowTitle || source.name}
+					<div className="flex-1 min-w-0 flex flex-col items-start text-left">
+					<div className="text-sm font-medium source-selector-text w-full">
+						<MarqueeText text={source.windowTitle || source.name} />
 					</div>
 					<div className="text-xs source-selector-subtle truncate w-full text-left">
 						{source.sourceType === "screen" ? t("recording.screen") : t("recording.window")}
@@ -196,7 +232,9 @@ export const SourceSelector = React.memo(function SourceSelector({
 							title={selectedSource}
 						>
 							<Monitor size={16} className="shrink-0" />
-							<div className="flex-1 min-w-0 truncate">{selectedSource}</div>
+							<div className="flex-1 min-w-0">
+								<MarqueeText text={selectedSource} />
+							</div>
 							<ChevronUp
 								size={10}
 								className={cn(

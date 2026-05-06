@@ -33,6 +33,7 @@ import { MicPopover } from "./popovers/MicPopover";
 import { MorePopover } from "./popovers/MorePopover";
 import { SourcePopover } from "./popovers/SourcePopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
+import { MarqueeText } from "./SourceSelector";
 import styles from "./LaunchWindow.module.css";
 
 import { Separator } from "@/components/ui/separator";
@@ -235,7 +236,7 @@ function LaunchWindowContent() {
 							>
 								<MonitorIcon size={16} className="shrink-0" />
 								<div className="flex-1 min-w-0 overflow-hidden">
-									<div className="truncate">{selectedSource}</div>
+									<MarqueeText text={selectedSource} />
 								</div>
 								<CaretUpIcon
 									size={10}
