@@ -11,7 +11,9 @@ namespace {
 constexpr int64_t kHundredNanosecondsPerSecond = 10000000;
 constexpr uint64_t kSilenceWriteChunkFrames = 4096;
 constexpr uint32_t kMinimumGapFillThresholdMs = 50;
-constexpr uint32_t kDiscontinuityGapFillThresholdMs = 10;
+// Wireless headsets can flag short WASAPI discontinuities that are less audible
+// when compacted and later duration-corrected than when rendered as hard silence.
+constexpr uint32_t kDiscontinuityGapFillThresholdMs = 140;
 constexpr uint32_t kBoundaryFadeInMs = 5;
 
 int64_t queryPerformanceCounterHns() {
@@ -193,6 +195,8 @@ bool WasapiCapture::start() {
     timestampErrorCount_ = 0;
     gapFillCount_ = 0;
     insertedSilenceFrames_ = 0;
+    compactedDiscontinuityCount_ = 0;
+    compactedDiscontinuityFrames_ = 0;
     fadeInFramesRemaining_ = 0;
     writeWavHeader(outputFile_, 0);
 
@@ -461,8 +465,14 @@ void WasapiCapture::captureThread() {
                     const uint64_t gapThresholdFrames =
                         gapThresholdFrameCount > 0 ? gapThresholdFrameCount : 1;
 
-                    if (expectedStartFrame > writtenFrames + gapThresholdFrames) {
-                        writeSilenceFrames(expectedStartFrame - writtenFrames, channels);
+                    if (expectedStartFrame > writtenFrames) {
+                        const uint64_t missingFrames = expectedStartFrame - writtenFrames;
+                        if (missingFrames > gapThresholdFrames) {
+                            writeSilenceFrames(missingFrames, channels);
+                        } else if (hasDataDiscontinuity) {
+                            compactedDiscontinuityCount_.fetch_add(1);
+                            compactedDiscontinuityFrames_.fetch_add(missingFrames);
+                        }
                     }
                 }
             }
