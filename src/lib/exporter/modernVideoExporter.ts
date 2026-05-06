@@ -1014,6 +1014,22 @@ export class ModernVideoExporter {
 		return buildNativeStaticLayoutTimelineSegments(sourceSegments);
 	}
 
+	private shouldUseNativeStaticLayoutTimelineMap(
+		videoInfo: DecodedVideoInfo,
+		effectiveDurationSec: number,
+	): boolean {
+		const speedRegions = this.config.speedRegions ?? [];
+		if (speedRegions.length > 0) {
+			return true;
+		}
+
+		const trimRegions = this.config.trimRegions ?? [];
+		return (
+			trimRegions.length > 0 &&
+			!this.canUseNativeStaticTailTrim(videoInfo, effectiveDurationSec)
+		);
+	}
+
 	private buildNativeAudioPlan(videoInfo: DecodedVideoInfo): NativeAudioPlan {
 		const speedRegions = this.config.speedRegions ?? [];
 		const audioRegions = this.config.audioRegions ?? [];
@@ -1170,17 +1186,13 @@ export class ModernVideoExporter {
 		);
 	}
 
-	private canUseNativeStaticLayoutAudioPlan(
-		audioPlan: NativeAudioPlan,
-		videoInfo: DecodedVideoInfo,
-		effectiveDurationSec: number,
-	): boolean {
+	private canUseNativeStaticLayoutAudioPlan(audioPlan: NativeAudioPlan): boolean {
 		switch (audioPlan.audioMode) {
 			case "none":
 			case "copy-source":
 				return true;
 			case "trim-source":
-				return this.canUseNativeStaticTailTrim(videoInfo, effectiveDurationSec);
+				return true;
 			case "edited-track":
 				return (
 					audioPlan.strategy === "offline-render-fallback" ||
@@ -1206,27 +1218,35 @@ export class ModernVideoExporter {
 			return "odd-output-dimensions";
 		}
 
-		if (!this.canUseNativeStaticLayoutAudioPlan(audioPlan, videoInfo, effectiveDurationSec)) {
+		if (!this.canUseNativeStaticLayoutAudioPlan(audioPlan)) {
 			return `unsupported-audio-mode:${audioPlan.audioMode}`;
 		}
 
-		const trimRegions = this.config.trimRegions ?? [];
 		const speedRegions = this.config.speedRegions ?? [];
 		const hasZoomRegions = (this.config.zoomRegions ?? []).length > 0;
-		if (
-			speedRegions.length > 0 &&
-			this.buildNativeStaticLayoutVideoTimelineSegments(videoInfo).length === 0
-		) {
-			return "unsupported-native-speed-timeline";
+		const needsTimelineMap = this.shouldUseNativeStaticLayoutTimelineMap(
+			videoInfo,
+			effectiveDurationSec,
+		);
+		if (needsTimelineMap && this.config.experimentalNativeExport !== true) {
+			return "native-timeline-requires-windows-gpu";
 		}
 		if (
-			(trimRegions.length > 0 &&
-				!this.canUseNativeStaticTailTrim(videoInfo, effectiveDurationSec)) ||
-			(hasZoomRegions && this.config.experimentalNativeExport !== true) ||
-			(this.config.annotationRegions ?? []).length > 0 ||
-			(this.config.autoCaptions ?? []).length > 0
+			needsTimelineMap &&
+			this.buildNativeStaticLayoutVideoTimelineSegments(videoInfo).length === 0
 		) {
-			return "timeline-edits-present";
+			return speedRegions.length > 0
+				? "unsupported-native-speed-timeline"
+				: "unsupported-native-trim-timeline";
+		}
+		if (hasZoomRegions && this.config.experimentalNativeExport !== true) {
+			return "native-zoom-requires-windows-gpu";
+		}
+		if ((this.config.annotationRegions ?? []).length > 0) {
+			return "unsupported-annotation-overlay";
+		}
+		if ((this.config.autoCaptions ?? []).length > 0) {
+			return "unsupported-caption-overlay";
 		}
 
 		if (this.config.webcam?.enabled && !this.getNativeWebcamSourcePath()) {
@@ -1723,12 +1743,18 @@ export class ModernVideoExporter {
 			totalFrames,
 			cursorTelemetry,
 		);
-		const timelineSegments =
-			(this.config.speedRegions ?? []).length > 0
-				? this.buildNativeStaticLayoutVideoTimelineSegments(videoInfo)
-				: undefined;
-		if ((this.config.speedRegions ?? []).length > 0 && !timelineSegments?.length) {
-			this.nativeStaticLayoutSkipReason = "invalid-native-speed-timeline";
+		const needsTimelineMap = this.shouldUseNativeStaticLayoutTimelineMap(
+			videoInfo,
+			effectiveDuration,
+		);
+		const timelineSegments = needsTimelineMap
+			? this.buildNativeStaticLayoutVideoTimelineSegments(videoInfo)
+			: undefined;
+		if (needsTimelineMap && !timelineSegments?.length) {
+			this.nativeStaticLayoutSkipReason =
+				(this.config.speedRegions ?? []).length > 0
+					? "invalid-native-speed-timeline"
+					: "invalid-native-trim-timeline";
 			return null;
 		}
 		const cursorAtlas =

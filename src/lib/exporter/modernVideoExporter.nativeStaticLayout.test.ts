@@ -40,6 +40,13 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 		...overrides,
 	} as never) as unknown as {
 		buildNativeAudioPlan: (videoInfo: DecodedVideoInfo) => unknown;
+		buildNativeStaticLayoutVideoTimelineSegments: (videoInfo: DecodedVideoInfo) => Array<{
+			sourceStartMs: number;
+			sourceEndMs: number;
+			outputStartMs: number;
+			outputEndMs: number;
+			speed: number;
+		}>;
 		getNativeStaticLayoutEffectiveDuration: (videoInfo: DecodedVideoInfo) => number;
 		getNativeStaticLayoutSkipReason: (
 			audioPlan: unknown,
@@ -181,6 +188,67 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				60,
 			),
 		).toBe("unsupported-background-blur");
+	});
+
+	it("allows non-tail trim timelines with native static-layout", () => {
+		const exporter = createExporter({
+			trimRegions: [{ id: "trim-1", startMs: 10_000, endMs: 12_000 }],
+		});
+		const effectiveDuration = exporter.getNativeStaticLayoutEffectiveDuration(videoInfo);
+
+		expect(effectiveDuration).toBeCloseTo(58, 3);
+		expect(exporter.buildNativeStaticLayoutVideoTimelineSegments(videoInfo)).toEqual([
+			{
+				sourceStartMs: 0,
+				sourceEndMs: 10_000,
+				outputStartMs: 0,
+				outputEndMs: 10_000,
+				speed: 1,
+			},
+			{
+				sourceStartMs: 12_000,
+				sourceEndMs: 60_000,
+				outputStartMs: 10_000,
+				outputEndMs: 58_000,
+				speed: 1,
+			},
+		]);
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{
+					audioMode: "trim-source",
+					audioSourcePath: "recording.mp4",
+					trimSegments: [
+						{ startMs: 0, endMs: 10_000 },
+						{ startMs: 12_000, endMs: 60_000 },
+					],
+				},
+				videoInfo,
+				effectiveDuration,
+			),
+		).toBeNull();
+	});
+
+	it("requires the Windows GPU compositor for non-tail trim timelines", () => {
+		const exporter = createExporter({
+			experimentalNativeExport: false,
+			trimRegions: [{ id: "trim-1", startMs: 10_000, endMs: 12_000 }],
+		});
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{
+					audioMode: "trim-source",
+					audioSourcePath: "recording.mp4",
+					trimSegments: [
+						{ startMs: 0, endMs: 10_000 },
+						{ startMs: 12_000, endMs: 60_000 },
+					],
+				},
+				videoInfo,
+				58,
+			),
+		).toBe("native-timeline-requires-windows-gpu");
 	});
 
 	it("uses speed timeline duration during native static-layout preflight", () => {
