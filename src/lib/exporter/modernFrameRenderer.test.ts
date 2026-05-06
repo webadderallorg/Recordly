@@ -224,3 +224,27 @@ describe("ModernFrameRenderer blur export path", () => {
 		expect(renderer.backgroundVideoElement).toBeNull();
 	});
 });
+
+describe("ModernFrameRenderer webcam frame cache", () => {
+	it("keeps the refresh throttle for default crop regions", () => {
+		const renderer = createRenderer() as any;
+
+		renderer.config.webcam.cropRegion = { x: 0, y: 0, width: 1, height: 1 };
+		renderer.webcamFrameCacheCanvas = { width: 1280, height: 720 };
+		renderer.lastWebcamCacheRefreshTime = 10;
+		renderer.currentVideoTime = 10.1;
+
+		expect(renderer.shouldRefreshWebcamFrameCache(1280, 720)).toBe(false);
+	});
+
+	it("bypasses the refresh throttle for cropped webcam regions", () => {
+		const renderer = createRenderer() as any;
+
+		renderer.config.webcam.cropRegion = { x: 0.25, y: 0, width: 0.5, height: 1 };
+		renderer.webcamFrameCacheCanvas = { width: 640, height: 720 };
+		renderer.lastWebcamCacheRefreshTime = 10;
+		renderer.currentVideoTime = 10.1;
+
+		expect(renderer.shouldRefreshWebcamFrameCache(1280, 720)).toBe(true);
+	});
+});

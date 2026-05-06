@@ -453,6 +453,9 @@ interface SettingsPanelProps {
 	borderRadius?: number;
 	onBorderRadiusChange?: (radius: number) => void;
 	webcam?: WebcamOverlaySettings;
+	webcamPreviewSrc?: string | null;
+	webcamPreviewCurrentTime?: number;
+	webcamPreviewPlaying?: boolean;
 	onWebcamChange?: (webcam: WebcamOverlaySettings) => void;
 	onUploadWebcam?: () => void;
 	onClearWebcam?: () => void;
@@ -815,6 +818,9 @@ export function SettingsPanel({
 	borderRadius = 12.5,
 	onBorderRadiusChange,
 	webcam,
+	webcamPreviewSrc = null,
+	webcamPreviewCurrentTime = 0,
+	webcamPreviewPlaying = false,
 	onWebcamChange,
 	onUploadWebcam,
 	onClearWebcam,
@@ -2914,6 +2920,10 @@ export function SettingsPanel({
 								<WebcamCropControl
 									cropRegion={webcamCrop}
 									mirrored={webcam?.mirror ?? true}
+									previewSrc={webcamPreviewSrc}
+									previewCurrentTime={webcamPreviewCurrentTime}
+									previewPlaying={webcamPreviewPlaying}
+									previewTimeOffsetMs={webcam?.timeOffsetMs}
 									onCropChange={(cropRegion) => updateWebcam({ cropRegion })}
 								/>
 							</div>

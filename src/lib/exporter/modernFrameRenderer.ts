@@ -1812,7 +1812,8 @@ export class FrameRenderer {
 	}
 
 	private shouldRefreshWebcamFrameCache(width: number, height: number): boolean {
-		const sourceRect = getWebcamCropSourceRect(this.config.webcam?.cropRegion, width, height);
+		const cropRegion = this.config.webcam?.cropRegion;
+		const sourceRect = getWebcamCropSourceRect(cropRegion, width, height);
 		const targetWidth = Math.max(1, Math.ceil(sourceRect.sw));
 		const targetHeight = Math.max(1, Math.ceil(sourceRect.sh));
 
@@ -1821,6 +1822,10 @@ export class FrameRenderer {
 			this.webcamFrameCacheCanvas.width !== targetWidth ||
 			this.webcamFrameCacheCanvas.height !== targetHeight
 		) {
+			return true;
+		}
+
+		if (!isWebcamCropRegionDefault(cropRegion)) {
 			return true;
 		}
 

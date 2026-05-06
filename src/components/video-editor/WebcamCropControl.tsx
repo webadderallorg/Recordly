@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { CropRegion } from "./types";
+import { getWebcamPreviewTargetTimeSeconds } from "./videoPlayback/webcamSync";
 import { normalizeWebcamCropRegion } from "./webcamOverlay";
 
 type CropHandle = "move" | "nw" | "ne" | "sw" | "se";
@@ -16,6 +17,10 @@ const HANDLE_LABELS: Record<CropHandle, string> = {
 interface WebcamCropControlProps {
 	cropRegion: CropRegion;
 	mirrored?: boolean;
+	previewSrc?: string | null;
+	previewCurrentTime?: number;
+	previewPlaying?: boolean;
+	previewTimeOffsetMs?: number | null;
 	onCropChange: (cropRegion: CropRegion) => void;
 }
 
@@ -24,6 +29,12 @@ interface DragState {
 	startX: number;
 	startY: number;
 	initialCrop: CropRegion;
+}
+
+interface PreviewFrame {
+	src: string | null;
+	width: number;
+	height: number;
 }
 
 const MIN_CROP_SIZE = 0.08;
@@ -61,32 +72,51 @@ function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
 }
 
-function normalizeSquareCropRegion(cropRegion: CropRegion): CropRegion {
+function normalizeAspectCropRegion(cropRegion: CropRegion, displayAspectRatio: number): CropRegion {
 	const crop = normalizeWebcamCropRegion(cropRegion);
-	const size = clamp(Math.min(crop.width, crop.height), MIN_CROP_SIZE, 1);
-	const x = clamp(crop.x, 0, 1 - size);
-	const y = clamp(crop.y, 0, 1 - size);
+	const aspectRatio =
+		Number.isFinite(displayAspectRatio) && displayAspectRatio > 0 ? displayAspectRatio : 1;
+	const maxWidth = Math.min(1, 1 / aspectRatio);
+	const minWidth = Math.min(MIN_CROP_SIZE, maxWidth);
+	const width = clamp(Math.min(crop.width, crop.height / aspectRatio), minWidth, maxWidth);
+	const height = width * aspectRatio;
+	const centerX = crop.x + crop.width / 2;
+	const centerY = crop.y + crop.height / 2;
+	const x = clamp(centerX - width / 2, 0, 1 - width);
+	const y = clamp(centerY - height / 2, 0, 1 - height);
 
-	return { x, y, width: size, height: size };
+	return { x, y, width, height };
 }
 
-function flipCropHorizontally(cropRegion: CropRegion): CropRegion {
-	const crop = normalizeSquareCropRegion(cropRegion);
+function flipCropHorizontally(cropRegion: CropRegion, displayAspectRatio: number): CropRegion {
+	const crop = normalizeAspectCropRegion(cropRegion, displayAspectRatio);
 	return {
 		...crop,
 		x: clamp(1 - crop.x - crop.width, 0, 1 - crop.width),
 	};
 }
 
-function resizeCrop(cropRegion: CropRegion, handle: CropHandle, deltaX: number, deltaY: number) {
-	const crop = normalizeSquareCropRegion(cropRegion);
+function resizeCrop(
+	cropRegion: CropRegion,
+	handle: CropHandle,
+	deltaX: number,
+	deltaY: number,
+	displayAspectRatio: number,
+) {
+	const aspectRatio =
+		Number.isFinite(displayAspectRatio) && displayAspectRatio > 0 ? displayAspectRatio : 1;
+	const crop = normalizeAspectCropRegion(cropRegion, aspectRatio);
+	const minWidth = Math.min(MIN_CROP_SIZE, Math.min(1, 1 / aspectRatio));
 
 	if (handle === "move") {
-		return normalizeSquareCropRegion({
-			...crop,
-			x: clamp(crop.x + deltaX, 0, 1 - crop.width),
-			y: clamp(crop.y + deltaY, 0, 1 - crop.height),
-		});
+		return normalizeAspectCropRegion(
+			{
+				...crop,
+				x: clamp(crop.x + deltaX, 0, 1 - crop.width),
+				y: clamp(crop.y + deltaY, 0, 1 - crop.height),
+			},
+			aspectRatio,
+		);
 	}
 
 	let left = crop.x;
@@ -95,55 +125,87 @@ function resizeCrop(cropRegion: CropRegion, handle: CropHandle, deltaX: number, 
 	let bottom = crop.y + crop.height;
 
 	if (handle === "nw") {
-		const delta = Math.max(deltaX, deltaY);
-		const nextSize = clamp(crop.width - delta, MIN_CROP_SIZE, Math.min(right, bottom));
-		left = right - nextSize;
-		top = bottom - nextSize;
+		const delta = Math.max(deltaX, deltaY / aspectRatio);
+		const nextWidth = clamp(
+			crop.width - delta,
+			minWidth,
+			Math.min(right, bottom / aspectRatio),
+		);
+		left = right - nextWidth;
+		top = bottom - nextWidth * aspectRatio;
 	}
 
 	if (handle === "ne") {
-		const delta = Math.max(deltaX, -deltaY);
-		const nextSize = clamp(crop.width + delta, MIN_CROP_SIZE, Math.min(1 - left, bottom));
-		right = left + nextSize;
-		top = bottom - nextSize;
+		const delta = Math.max(deltaX, -deltaY / aspectRatio);
+		const nextWidth = clamp(
+			crop.width + delta,
+			minWidth,
+			Math.min(1 - left, bottom / aspectRatio),
+		);
+		right = left + nextWidth;
+		top = bottom - nextWidth * aspectRatio;
 	}
 
 	if (handle === "sw") {
-		const delta = Math.max(-deltaX, deltaY);
-		const nextSize = clamp(crop.width + delta, MIN_CROP_SIZE, Math.min(right, 1 - top));
-		left = right - nextSize;
-		bottom = top + nextSize;
+		const delta = Math.max(-deltaX, deltaY / aspectRatio);
+		const nextWidth = clamp(
+			crop.width + delta,
+			minWidth,
+			Math.min(right, (1 - top) / aspectRatio),
+		);
+		left = right - nextWidth;
+		bottom = top + nextWidth * aspectRatio;
 	}
 
 	if (handle === "se") {
-		const delta = Math.max(deltaX, deltaY);
-		const nextSize = clamp(crop.width + delta, MIN_CROP_SIZE, Math.min(1 - left, 1 - top));
-		right = left + nextSize;
-		bottom = top + nextSize;
+		const delta = Math.max(deltaX, deltaY / aspectRatio);
+		const nextWidth = clamp(
+			crop.width + delta,
+			minWidth,
+			Math.min(1 - left, (1 - top) / aspectRatio),
+		);
+		right = left + nextWidth;
+		bottom = top + nextWidth * aspectRatio;
 	}
 
-	return normalizeSquareCropRegion({
-		x: left,
-		y: top,
-		width: right - left,
-		height: bottom - top,
-	});
+	return normalizeAspectCropRegion(
+		{
+			x: left,
+			y: top,
+			width: right - left,
+			height: bottom - top,
+		},
+		aspectRatio,
+	);
 }
 
 export function WebcamCropControl({
 	cropRegion,
 	mirrored = false,
+	previewSrc = null,
+	previewCurrentTime = 0,
+	previewPlaying = false,
+	previewTimeOffsetMs = 0,
 	onCropChange,
 }: WebcamCropControlProps) {
 	const containerRef = useRef<HTMLDivElement | null>(null);
+	const previewVideoRef = useRef<HTMLVideoElement | null>(null);
 	const dragStateRef = useRef<DragState | null>(null);
 	const pendingCropRef = useRef<CropRegion | null>(null);
 	const pendingFrameRef = useRef<number | null>(null);
 	const maskId = `webcam-crop-mask-${useId().replace(/:/g, "")}`;
 	const [activeHandle, setActiveHandle] = useState<CropHandle | null>(null);
 	const [draftVisualCrop, setDraftVisualCrop] = useState<CropRegion | null>(null);
-	const sourceCrop = normalizeSquareCropRegion(cropRegion);
-	const propVisualCrop = mirrored ? flipCropHorizontally(sourceCrop) : sourceCrop;
+	const [previewFrame, setPreviewFrame] = useState<PreviewFrame | null>(null);
+	const hasPreviewFrame = previewSrc !== null && previewFrame?.src === previewSrc;
+	const previewAspectRatio =
+		hasPreviewFrame && previewFrame && previewFrame.width > 0 && previewFrame.height > 0
+			? previewFrame.width / previewFrame.height
+			: 1;
+	const sourceCrop = normalizeAspectCropRegion(cropRegion, previewAspectRatio);
+	const propVisualCrop = mirrored
+		? flipCropHorizontally(sourceCrop, previewAspectRatio)
+		: sourceCrop;
 	const crop = draftVisualCrop ?? propVisualCrop;
 	const cropLeft = crop.x * 100;
 	const cropTop = crop.y * 100;
@@ -164,8 +226,62 @@ export function WebcamCropControl({
 		pendingCropRef.current = null;
 		onCropChange(nextCrop);
 	};
+	const syncPreviewMedia = useCallback(() => {
+		const video = previewVideoRef.current;
+		if (!video || !previewSrc) {
+			return;
+		}
+
+		const webcamDuration = Number.isFinite(video.duration) ? video.duration : null;
+		const targetTime = getWebcamPreviewTargetTimeSeconds({
+			currentTime: previewCurrentTime,
+			webcamDuration,
+			timeOffsetMs: previewTimeOffsetMs,
+		});
+		const mediaTargetTime =
+			targetTime <= 0 && webcamDuration !== null && webcamDuration > 0
+				? Math.min(1 / 60, webcamDuration)
+				: targetTime;
+		const driftThreshold = previewPlaying ? 0.35 : 0.01;
+
+		if (Math.abs(video.currentTime - mediaTargetTime) > driftThreshold) {
+			try {
+				video.currentTime = mediaTargetTime;
+			} catch {
+				/* Ignore browsers that reject seeks while metadata is settling. */
+			}
+		}
+
+		if (previewPlaying) {
+			const playPromise = video.play();
+			if (playPromise) {
+				playPromise.catch(() => undefined);
+			}
+		} else {
+			video.pause();
+		}
+	}, [previewCurrentTime, previewPlaying, previewSrc, previewTimeOffsetMs]);
+
+	const handlePreviewFrameReady = useCallback(() => {
+		const video = previewVideoRef.current;
+		if (video && video.videoWidth > 0 && video.videoHeight > 0) {
+			setPreviewFrame({
+				src: previewSrc,
+				width: video.videoWidth,
+				height: video.videoHeight,
+			});
+		}
+		syncPreviewMedia();
+	}, [previewSrc, syncPreviewMedia]);
+
+	useEffect(() => {
+		syncPreviewMedia();
+	}, [syncPreviewMedia]);
+
 	const commitVisualCrop = (nextVisualCrop: CropRegion, immediate = false) => {
-		const nextCrop = mirrored ? flipCropHorizontally(nextVisualCrop) : nextVisualCrop;
+		const nextCrop = mirrored
+			? flipCropHorizontally(nextVisualCrop, previewAspectRatio)
+			: nextVisualCrop;
 		if (immediate) {
 			cancelPendingCommit();
 			pendingCropRef.current = null;
@@ -242,6 +358,7 @@ export function WebcamCropControl({
 			dragState.handle,
 			pointer.x - dragState.startX,
 			pointer.y - dragState.startY,
+			previewAspectRatio,
 		);
 		setDraftVisualCrop(nextVisualCrop);
 		commitVisualCrop(nextVisualCrop);
@@ -285,21 +402,42 @@ export function WebcamCropControl({
 		}
 		event.preventDefault();
 		event.stopPropagation();
-		commitVisualCrop(resizeCrop(crop, handle, delta.x, delta.y), true);
+		commitVisualCrop(resizeCrop(crop, handle, delta.x, delta.y, previewAspectRatio), true);
 	};
 
 	return (
 		<div
 			ref={containerRef}
 			className="relative w-full touch-none select-none overflow-hidden rounded-lg border border-foreground/10 bg-editor-dialog-alt"
-			style={{ aspectRatio: 1 }}
+			style={{ aspectRatio: previewAspectRatio }}
 			onPointerMove={handlePointerMove}
 			onPointerUp={endDrag}
 			onPointerCancel={endDrag}
 		>
-			<div className="absolute inset-0 bg-editor-dialog-alt" />
-			<div className="absolute inset-0 bg-[linear-gradient(hsl(var(--foreground)/0.12)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--foreground)/0.12)_1px,transparent_1px)] bg-[size:12.5%_12.5%]" />
-			<div className="absolute inset-0 bg-[linear-gradient(135deg,hsl(var(--foreground)/0.06),transparent_46%,hsl(var(--foreground)/0.04))]" />
+			{previewSrc ? (
+				<video
+					ref={previewVideoRef}
+					src={previewSrc}
+					className="pointer-events-none absolute inset-0 block h-full w-full object-fill"
+					style={{
+						opacity: hasPreviewFrame ? 1 : 0,
+						transform: mirrored ? "scaleX(-1)" : undefined,
+					}}
+					muted
+					playsInline
+					preload="auto"
+					aria-hidden="true"
+					onLoadedMetadata={handlePreviewFrameReady}
+					onLoadedData={handlePreviewFrameReady}
+					onSeeked={handlePreviewFrameReady}
+				/>
+			) : null}
+			<div
+				className={cn(
+					"absolute inset-0 bg-editor-dialog-alt transition-opacity",
+					previewSrc && hasPreviewFrame ? "opacity-0" : "opacity-100",
+				)}
+			/>
 
 			<svg className="pointer-events-none absolute inset-0 h-full w-full">
 				<defs>
