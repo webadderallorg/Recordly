@@ -1,7 +1,10 @@
 import { WebDemuxer } from "web-demuxer";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
-import { getDecodedFrameTimelineOffsetUs } from "./streamingDecoder";
 import { getLocalFilePath } from "./localMediaSource";
+import {
+	getDecodedFrameTimelineOffsetUs,
+	shouldKeepHeldFrameForTargetTime,
+} from "./streamingDecoder";
 
 const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
@@ -20,7 +23,7 @@ export interface ForwardFrameSourceMetadata {
  * Forward-only decoded frame source for monotonic timestamp access.
  *
  * This avoids per-frame HTMLVideoElement seeking during export and returns
- * the nearest decoded frame for increasing target timestamps.
+ * the frame that would still be presented at the requested timestamp.
  */
 export class ForwardFrameSource {
 	private demuxer: WebDemuxer | null = null;
@@ -318,8 +321,7 @@ export class ForwardFrameSource {
 						1_000_000,
 				),
 			);
-			const handoffBoundarySec = (this.heldFrameSec + nextFrameSec) / 2;
-			if (clampedTargetTime <= handoffBoundarySec) {
+			if (shouldKeepHeldFrameForTargetTime(clampedTargetTime, nextFrameSec)) {
 				this.pendingFrames.unshift(nextFrame);
 				return new VideoFrame(this.heldFrame, {
 					timestamp: this.heldFrame.timestamp,
