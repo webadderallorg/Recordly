@@ -53,6 +53,7 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 			videoInfo: DecodedVideoInfo,
 			effectiveDurationSec: number,
 		) => string | null;
+		resolveNativeStaticLayoutBackground: () => Promise<unknown>;
 	};
 }
 
@@ -188,6 +189,24 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				60,
 			),
 		).toBeNull();
+	});
+
+	it("uses the default wallpaper for native static-layout when the project has no wallpaper", async () => {
+		const exporter = createExporter({ wallpaper: "" });
+		const electronAPI = window.electronAPI as typeof window.electronAPI & {
+			getAssetBasePath: () => Promise<string>;
+			listAssetDirectory: () => Promise<{ success: true; files: string[] }>;
+		};
+		electronAPI.getAssetBasePath = vi.fn(async () => "file:///C:/Recordly/resources/");
+		electronAPI.listAssetDirectory = vi.fn(async () => ({
+			success: true,
+			files: ["tahoe-light.jpg"],
+		}));
+
+		await expect(exporter.resolveNativeStaticLayoutBackground()).resolves.toEqual({
+			backgroundColor: "#101010",
+			backgroundImagePath: "C:/Recordly/resources/wallpapers/tahoe-light.jpg",
+		});
 	});
 
 	it("allows non-tail trim timelines with native static-layout", () => {

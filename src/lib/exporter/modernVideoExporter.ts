@@ -40,7 +40,11 @@ import {
 } from "@/components/video-editor/webcamOverlay";
 import { extensionHost } from "@/lib/extensions";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
-import { DEFAULT_WALLPAPER_RELATIVE_PATH, isVideoWallpaperSource } from "@/lib/wallpapers";
+import {
+	DEFAULT_WALLPAPER_PATH,
+	DEFAULT_WALLPAPER_RELATIVE_PATH,
+	isVideoWallpaperSource,
+} from "@/lib/wallpapers";
 import { AudioProcessor, isAacAudioEncodingSupported } from "./audioEncoder";
 import {
 	getDefaultLightningRenderBackend,
@@ -1261,7 +1265,8 @@ export class ModernVideoExporter {
 	}
 
 	private async resolveNativeStaticLayoutBackground(): Promise<NativeStaticLayoutBackground | null> {
-		const wallpaper = this.config.wallpaper?.trim() ?? "";
+		const configuredWallpaper = this.config.wallpaper?.trim() ?? "";
+		const wallpaper = configuredWallpaper || DEFAULT_WALLPAPER_PATH;
 		if (/^#?[0-9a-f]{6}$/i.test(wallpaper)) {
 			return {
 				backgroundColor: wallpaper.startsWith("#") ? wallpaper : `#${wallpaper}`,
@@ -1270,7 +1275,6 @@ export class ModernVideoExporter {
 		}
 
 		if (
-			!wallpaper ||
 			isVideoWallpaperSource(wallpaper) ||
 			wallpaper.startsWith("data:") ||
 			wallpaper.startsWith("blob:") ||
