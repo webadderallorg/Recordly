@@ -50,38 +50,95 @@ function convertImportLine(line) {
 	return null;
 }
 
+function updateLexicalState(line, state) {
+	let mode = state.mode;
+	let escaped = false;
+
+	for (let index = 0; index < line.length; index += 1) {
+		const char = line[index];
+		const next = line[index + 1];
+
+		if (mode === "block-comment") {
+			if (char === "*" && next === "/") {
+				mode = null;
+				index += 1;
+			}
+			continue;
+		}
+
+		if (mode === "single-quote" || mode === "double-quote" || mode === "template") {
+			if (escaped) {
+				escaped = false;
+				continue;
+			}
+
+			if (char === "\\") {
+				escaped = true;
+				continue;
+			}
+
+			if (
+				(mode === "single-quote" && char === "'") ||
+				(mode === "double-quote" && char === '"') ||
+				(mode === "template" && char === "`")
+			) {
+				mode = null;
+			}
+			continue;
+		}
+
+		if (char === "/" && next === "/") {
+			break;
+		}
+
+		if (char === "/" && next === "*") {
+			mode = "block-comment";
+			index += 1;
+			continue;
+		}
+
+		if (char === "'") {
+			mode = "single-quote";
+		} else if (char === '"') {
+			mode = "double-quote";
+		} else if (char === "`") {
+			mode = "template";
+		}
+	}
+
+	if (mode === "single-quote" || mode === "double-quote") {
+		mode = null;
+	}
+
+	return { mode };
+}
+
 export function normalizeElectronMainCjsSource(source) {
 	let changed = false;
 	const lineBreak = source.includes("\r\n") ? "\r\n" : "\n";
 	const lines = source.split(/\r?\n/);
 	const normalizedLines = [];
-	let firstUnprocessedLine = 0;
+	let state = { mode: null };
 
 	for (const line of lines) {
-		if (/^[ \t]*$/.test(line)) {
-			normalizedLines.push(line);
-			firstUnprocessedLine += 1;
-			continue;
+		if (state.mode === null) {
+			const converted = convertImportLine(line);
+			if (converted !== null) {
+				normalizedLines.push(converted);
+				changed = true;
+				continue;
+			}
 		}
 
-		const converted = convertImportLine(line);
-		if (converted === null) {
-			break;
-		}
-
-		normalizedLines.push(converted);
-		firstUnprocessedLine += 1;
-		changed = true;
+		normalizedLines.push(line);
+		state = updateLexicalState(line, state);
 	}
 
 	if (!changed) {
 		return { source, changed };
 	}
 
-	const normalized = [
-		...normalizedLines,
-		...lines.slice(firstUnprocessedLine),
-	].join(lineBreak);
+	const normalized = normalizedLines.join(lineBreak);
 
 	return { source: normalized, changed };
 }
@@ -89,22 +146,22 @@ export function normalizeElectronMainCjsSource(source) {
 export function findElectronMainCjsEsmSyntax(source) {
 	const lines = source.split(/\r?\n/);
 	const matches = [];
+	let state = { mode: null };
 
 	for (let index = 0; index < lines.length; index += 1) {
 		const line = lines[index];
-		if (/^[ \t]*$/.test(line)) {
-			continue;
+		if (state.mode === null) {
+			const converted = convertImportLine(line);
+			if (converted !== null) {
+				matches.push({
+					line: index + 1,
+					text: line.trim(),
+				});
+				continue;
+			}
 		}
 
-		const converted = convertImportLine(line);
-		if (converted === null) {
-			break;
-		}
-
-		matches.push({
-			line: index + 1,
-			text: line.trim(),
-		});
+		state = updateLexicalState(line, state);
 	}
 
 	return matches;
