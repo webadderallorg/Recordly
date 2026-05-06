@@ -216,10 +216,12 @@ type NativeStaticLayoutBackground =
 	| {
 			backgroundColor: string;
 			backgroundImagePath?: null;
+			temporaryPath?: string;
 	  }
 	| {
 			backgroundColor: string;
 			backgroundImagePath: string;
+			temporaryPath?: string;
 	  };
 
 type NativeStaticLayoutWebcamOverlay = {
@@ -1274,6 +1276,14 @@ export class ModernVideoExporter {
 			};
 		}
 
+		if (wallpaper.startsWith("data:image/") || wallpaper.startsWith("blob:")) {
+			return this.materializeNativeStaticLayoutImageSource(wallpaper);
+		}
+
+		if (wallpaper.startsWith("linear-gradient") || wallpaper.startsWith("radial-gradient")) {
+			return this.materializeNativeStaticLayoutGradientBackground(wallpaper);
+		}
+
 		if (
 			isVideoWallpaperSource(wallpaper) ||
 			wallpaper.startsWith("data:") ||
@@ -1304,6 +1314,205 @@ export class ModernVideoExporter {
 
 		const localPath = getLocalFilePath(wallpaper);
 		return localPath ? { backgroundColor: "#101010", backgroundImagePath: localPath } : null;
+	}
+
+	private async materializeNativeStaticLayoutImageSource(
+		imageSource: string,
+	): Promise<NativeStaticLayoutBackground | null> {
+		if (typeof fetch !== "function") {
+			return null;
+		}
+
+		try {
+			const response = await fetch(imageSource);
+			if (!response.ok) {
+				return null;
+			}
+
+			const blob = await response.blob();
+			const mimeType = (blob.type || this.getDataUrlMimeType(imageSource)).toLowerCase();
+			if (!mimeType.startsWith("image/")) {
+				return null;
+			}
+
+			const extension = this.getNativeStaticLayoutImageExtension(mimeType);
+			if (!extension) {
+				return null;
+			}
+
+			const tempPath = await this.writeNativeStaticLayoutTempAsset(
+				new Uint8Array(await blob.arrayBuffer()),
+				extension,
+			);
+			return tempPath
+				? {
+						backgroundColor: "#101010",
+						backgroundImagePath: tempPath,
+						temporaryPath: tempPath,
+					}
+				: null;
+		} catch (error) {
+			console.warn("[VideoExporter] Unable to materialize native background image", error);
+			return null;
+		}
+	}
+
+	private async materializeNativeStaticLayoutGradientBackground(
+		wallpaper: string,
+	): Promise<NativeStaticLayoutBackground | null> {
+		if (typeof document === "undefined") {
+			return null;
+		}
+
+		try {
+			const canvas = document.createElement("canvas");
+			canvas.width = Math.max(1, Math.round(this.config.width));
+			canvas.height = Math.max(1, Math.round(this.config.height));
+			const ctx = canvas.getContext("2d");
+			if (!ctx) {
+				return null;
+			}
+
+			const gradient = this.createNativeStaticLayoutGradient(ctx, wallpaper);
+			if (!gradient) {
+				return null;
+			}
+
+			ctx.fillStyle = gradient;
+			ctx.fillRect(0, 0, canvas.width, canvas.height);
+			const blob = await new Promise<Blob | null>((resolve) =>
+				canvas.toBlob(resolve, "image/png"),
+			);
+			if (!blob) {
+				return null;
+			}
+
+			const tempPath = await this.writeNativeStaticLayoutTempAsset(
+				new Uint8Array(await blob.arrayBuffer()),
+				"png",
+			);
+			return tempPath
+				? {
+						backgroundColor: "#101010",
+						backgroundImagePath: tempPath,
+						temporaryPath: tempPath,
+					}
+				: null;
+		} catch (error) {
+			console.warn("[VideoExporter] Unable to materialize native gradient background", error);
+			return null;
+		}
+	}
+
+	private createNativeStaticLayoutGradient(
+		ctx: CanvasRenderingContext2D,
+		wallpaper: string,
+	): CanvasGradient | null {
+		const gradientMatch = wallpaper.match(/(linear|radial)-gradient\((.+)\)/);
+		if (!gradientMatch) {
+			return null;
+		}
+
+		const [, type, params] = gradientMatch;
+		const parts = params.split(",").map((part) => part.trim());
+		const colorStops = parts
+			.map((part) => part.match(/^(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|[a-z]+)/)?.[1])
+			.filter((color): color is string => Boolean(color));
+		if (colorStops.length === 0) {
+			return null;
+		}
+
+		const gradient =
+			type === "linear"
+				? ctx.createLinearGradient(0, 0, 0, this.config.height)
+				: ctx.createRadialGradient(
+						this.config.width / 2,
+						this.config.height / 2,
+						0,
+						this.config.width / 2,
+						this.config.height / 2,
+						Math.max(this.config.width, this.config.height) / 2,
+					);
+
+		if (colorStops.length === 1) {
+			gradient.addColorStop(0, colorStops[0]);
+			gradient.addColorStop(1, colorStops[0]);
+			return gradient;
+		}
+
+		colorStops.forEach((color, index) => {
+			gradient.addColorStop(index / (colorStops.length - 1), color);
+		});
+		return gradient;
+	}
+
+	private async writeNativeStaticLayoutTempAsset(
+		bytes: Uint8Array,
+		extension: string,
+	): Promise<string | null> {
+		if (typeof window === "undefined") {
+			return null;
+		}
+
+		const api = window.electronAPI;
+		if (
+			!api?.openExportStream ||
+			!api.writeExportStreamChunk ||
+			!api.closeExportStream ||
+			bytes.byteLength === 0
+		) {
+			return null;
+		}
+
+		let streamId: string | undefined;
+		try {
+			const openResult = await api.openExportStream({ extension });
+			if (!openResult.success || !openResult.streamId) {
+				return null;
+			}
+
+			streamId = openResult.streamId;
+			const writeResult = await api.writeExportStreamChunk(streamId, 0, bytes);
+			if (!writeResult.success) {
+				throw new Error(writeResult.error || "Failed to write native background temp file");
+			}
+
+			const closeResult = await api.closeExportStream(streamId);
+			streamId = undefined;
+			return closeResult.success && closeResult.tempPath ? closeResult.tempPath : null;
+		} catch (error) {
+			console.warn("[VideoExporter] Unable to write native background temp file", error);
+			if (streamId) {
+				await api.closeExportStream(streamId, { abort: true }).catch(() => undefined);
+			}
+			return null;
+		}
+	}
+
+	private async cleanupNativeStaticLayoutBackground(
+		background: NativeStaticLayoutBackground | null | undefined,
+	) {
+		const temporaryPath = background?.temporaryPath;
+		if (!temporaryPath || typeof window === "undefined") {
+			return;
+		}
+
+		try {
+			await window.electronAPI?.discardExportedTemp?.(temporaryPath);
+		} catch {
+			// Best-effort cleanup for temporary materialized background assets.
+		}
+	}
+
+	private getDataUrlMimeType(dataUrl: string) {
+		return dataUrl.match(/^data:([^;,]+)/)?.[1] ?? "";
+	}
+
+	private getNativeStaticLayoutImageExtension(mimeType: string): string | null {
+		if (mimeType === "image/jpeg" || mimeType === "image/jpg") return "jpg";
+		if (mimeType === "image/png") return "png";
+		if (mimeType === "image/bmp") return "bmp";
+		return null;
 	}
 
 	private async resolveNativeBundledAssetPath(assetPath: string): Promise<string | null> {
@@ -1717,6 +1926,7 @@ export class ModernVideoExporter {
 			effectiveDuration <= 0
 		) {
 			this.nativeStaticLayoutSkipReason = "invalid-layout-or-duration";
+			await this.cleanupNativeStaticLayoutBackground(background);
 			return null;
 		}
 
@@ -1755,6 +1965,7 @@ export class ModernVideoExporter {
 				(this.config.speedRegions ?? []).length > 0
 					? "invalid-native-speed-timeline"
 					: "invalid-native-trim-timeline";
+			await this.cleanupNativeStaticLayoutBackground(background);
 			return null;
 		}
 		const cursorAtlas =
@@ -1768,6 +1979,7 @@ export class ModernVideoExporter {
 				: null;
 		if (cursorTelemetry && cursorTelemetry.length > 0 && !cursorAtlas) {
 			this.nativeStaticLayoutSkipReason = "cursor-atlas-unavailable";
+			await this.cleanupNativeStaticLayoutBackground(background);
 			return null;
 		}
 		const startedAt = this.getNowMs();
@@ -1985,6 +2197,7 @@ export class ModernVideoExporter {
 			return null;
 		} finally {
 			unsubscribeNativeProgress?.();
+			await this.cleanupNativeStaticLayoutBackground(background);
 			if (this.nativeStaticLayoutSessionId === sessionId) {
 				this.nativeStaticLayoutSessionId = null;
 			}

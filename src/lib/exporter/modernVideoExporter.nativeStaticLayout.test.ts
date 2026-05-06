@@ -209,6 +209,40 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		});
 	});
 
+	it("materializes uploaded data-url image backgrounds for native static-layout", async () => {
+		const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+		const dataUrl = `data:image/jpeg;base64,${Buffer.from(jpegBytes).toString("base64")}`;
+		const exporter = createExporter({ wallpaper: dataUrl });
+		const electronAPI = window.electronAPI as typeof window.electronAPI & {
+			openExportStream: ReturnType<typeof vi.fn>;
+			writeExportStreamChunk: ReturnType<typeof vi.fn>;
+			closeExportStream: ReturnType<typeof vi.fn>;
+		};
+		electronAPI.openExportStream = vi.fn(async () => ({
+			success: true,
+			streamId: "background-stream",
+			tempPath: "C:/Temp/unused.jpg",
+		}));
+		electronAPI.writeExportStreamChunk = vi.fn(async () => ({ success: true }));
+		electronAPI.closeExportStream = vi.fn(async () => ({
+			success: true,
+			tempPath: "C:/Temp/recordly-background.jpg",
+			bytesWritten: jpegBytes.byteLength,
+		}));
+
+		await expect(exporter.resolveNativeStaticLayoutBackground()).resolves.toEqual({
+			backgroundColor: "#101010",
+			backgroundImagePath: "C:/Temp/recordly-background.jpg",
+			temporaryPath: "C:/Temp/recordly-background.jpg",
+		});
+		expect(electronAPI.openExportStream).toHaveBeenCalledWith({ extension: "jpg" });
+		expect(electronAPI.writeExportStreamChunk).toHaveBeenCalledTimes(1);
+		const [, position, chunk] = electronAPI.writeExportStreamChunk.mock.calls[0];
+		expect(position).toBe(0);
+		expect(Array.from(chunk as Uint8Array)).toEqual(Array.from(jpegBytes));
+		expect(electronAPI.closeExportStream).toHaveBeenCalledWith("background-stream");
+	});
+
 	it("allows non-tail trim timelines with native static-layout", () => {
 		const exporter = createExporter({
 			trimRegions: [{ id: "trim-1", startMs: 10_000, endMs: 12_000 }],
