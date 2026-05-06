@@ -126,7 +126,11 @@ import {
 	createMotionBlurState,
 	type MotionBlurState,
 } from "./videoPlayback/zoomTransform";
-import { getWebcamOverlayPosition, getWebcamOverlaySizePx } from "./webcamOverlay";
+import {
+	getWebcamCropSourceRect,
+	getWebcamOverlayPosition,
+	getWebcamOverlaySizePx,
+} from "./webcamOverlay";
 
 type PlaybackAnimationState = {
 	scale: number;
@@ -358,6 +362,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const webcamVideoRef = useRef<HTMLVideoElement | null>(null);
 		const webcamBubbleRef = useRef<HTMLDivElement | null>(null);
 		const webcamBubbleInnerRef = useRef<HTMLDivElement | null>(null);
+		const [webcamVideoDimensions, setWebcamVideoDimensions] = useState<{
+			width: number;
+			height: number;
+		} | null>(null);
 		const captionBoxRef = useRef<HTMLDivElement | null>(null);
 		const currentTimeRef = useRef(0);
 		const zoomRegionsRef = useRef<ZoomRegion[]>([]);
@@ -509,37 +517,74 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			return () => cancelAnimationFrame(frame);
 		}, [activeCaptionLayout, autoCaptionSettings]);
 		const motionBlurStateRef = useRef<MotionBlurState>(createMotionBlurState());
+		const webcamEnabled = webcam?.enabled ?? false;
+		const webcamMargin = webcam?.margin ?? 24;
+		const webcamSize = webcam?.size ?? DEFAULT_WEBCAM_SIZE;
+		const webcamReactToZoom = webcam?.reactToZoom ?? DEFAULT_WEBCAM_REACT_TO_ZOOM;
+		const webcamPositionPreset = webcam?.positionPreset ?? webcam?.corner ?? "bottom-right";
+		const webcamPositionX = webcam?.positionX ?? 1;
+		const webcamPositionY = webcam?.positionY ?? 1;
+		const webcamCorner = webcam?.corner ?? "bottom-right";
+		const webcamCornerRadius = webcam?.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS;
+		const webcamShadow = webcam?.shadow ?? DEFAULT_WEBCAM_SHADOW;
+		const webcamTimeOffsetMs = webcam?.timeOffsetMs;
+		const webcamCropRegion = webcam?.cropRegion;
+		const webcamMirror = webcam?.mirror ?? false;
+		const webcamCropPreviewContentStyle = useMemo<React.CSSProperties>(() => {
+			if (!webcamVideoDimensions) {
+				return { opacity: 0 };
+			}
+
+			const { sx, sy, sw, sh } = getWebcamCropSourceRect(
+				webcamCropRegion,
+				webcamVideoDimensions.width,
+				webcamVideoDimensions.height,
+			);
+			const coverScale = Math.max(1 / sw, 1 / sh);
+			const drawWidth = webcamVideoDimensions.width * coverScale;
+			const drawHeight = webcamVideoDimensions.height * coverScale;
+			const drawX = (1 - sw * coverScale) / 2 - sx * coverScale;
+			const drawY = (1 - sh * coverScale) / 2 - sy * coverScale;
+
+			return {
+				left: `${drawX * 100}%`,
+				top: `${drawY * 100}%`,
+				width: `${drawWidth * 100}%`,
+				height: `${drawHeight * 100}%`,
+				maxWidth: "none",
+				willChange: "left, top, width, height",
+			};
+		}, [webcamCropRegion, webcamVideoDimensions]);
 
 		const applyWebcamBubbleLayout = useCallback(
 			(zoomScale: number) => {
 				const bubble = webcamBubbleRef.current;
 				const bubbleInner = webcamBubbleInnerRef.current;
 				const overlay = overlayRef.current;
-				if (!bubble || !bubbleInner || !overlay || !webcam?.enabled || !webcamVideoPath) {
+				if (!bubble || !bubbleInner || !overlay || !webcamEnabled || !webcamVideoPath) {
 					if (bubble) {
 						bubble.style.display = "none";
 					}
 					return;
 				}
 
-				const margin = webcam.margin ?? 24;
 				const scaledSize = getWebcamOverlaySizePx({
 					containerWidth: overlay.clientWidth,
 					containerHeight: overlay.clientHeight,
-					sizePercent: webcam.size ?? DEFAULT_WEBCAM_SIZE,
-					margin,
+					sizePercent: webcamSize,
+					margin: webcamMargin,
 					zoomScale,
-					reactToZoom: webcam.reactToZoom ?? DEFAULT_WEBCAM_REACT_TO_ZOOM,
+					reactToZoom: webcamReactToZoom,
 				});
 				const { x, y } = getWebcamOverlayPosition({
 					containerWidth: overlay.clientWidth,
 					containerHeight: overlay.clientHeight,
 					size: scaledSize,
-					margin,
-					positionPreset: webcam.positionPreset ?? webcam.corner,
-					positionX: webcam.positionX ?? 1,
-					positionY: webcam.positionY ?? 1,
-					legacyCorner: webcam.corner,
+					margin: webcamMargin,
+					positionPreset: webcamPositionPreset,
+					positionX: webcamPositionX,
+					positionY: webcamPositionY,
+					legacyCorner: webcamCorner,
 				});
 
 				bubble.style.display = "block";
@@ -547,24 +592,39 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				bubble.style.top = `${y}px`;
 				bubble.style.width = `${scaledSize}px`;
 				bubble.style.height = `${scaledSize}px`;
+				bubble.style.aspectRatio = "1 / 1";
 				const squirclePath = getSquircleSvgPath({
 					x: 0,
 					y: 0,
 					width: scaledSize,
 					height: scaledSize,
-					radius: webcam.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS,
+					radius: webcamCornerRadius,
 				});
 				bubble.style.filter = `drop-shadow(0 ${Math.round(scaledSize * 0.06)}px ${Math.round(
 					scaledSize * 0.22,
-				)}px rgba(0, 0, 0, ${webcam.shadow ?? DEFAULT_WEBCAM_SHADOW}))`;
+				)}px rgba(0, 0, 0, ${webcamShadow}))`;
 				bubble.style.borderRadius = "0px";
 				bubble.style.boxShadow = "none";
 
 				bubbleInner.style.borderRadius = "0px";
+				bubbleInner.style.overflow = "hidden";
+				bubbleInner.style.contain = "paint";
 				bubbleInner.style.clipPath = `path('${squirclePath}')`;
 				bubbleInner.style.setProperty("-webkit-clip-path", `path('${squirclePath}')`);
 			},
-			[webcam, webcamVideoPath],
+			[
+				webcamCorner,
+				webcamCornerRadius,
+				webcamEnabled,
+				webcamMargin,
+				webcamPositionPreset,
+				webcamPositionX,
+				webcamPositionY,
+				webcamReactToZoom,
+				webcamShadow,
+				webcamSize,
+				webcamVideoPath,
+			],
 		);
 
 		const clampFocusToStage = useCallback((focus: ZoomFocus, depth: ZoomDepth) => {
@@ -1320,22 +1380,30 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		useEffect(() => {
 			if (!pixiReady || !videoReady) return;
 			applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
-		}, [applyWebcamBubbleLayout, pixiReady, videoReady, webcam, webcamVideoPath]);
+		}, [applyWebcamBubbleLayout, pixiReady, videoReady]);
 
-		useEffect(() => {
+		const syncWebcamMedia = useCallback(() => {
 			const webcamVideo = webcamVideoRef.current;
-			if (!webcamVideo || !webcam?.enabled || !webcamVideoPath) {
+			if (!webcamVideo || !webcamEnabled || !webcamVideoPath) {
 				return;
 			}
 
+			const webcamDuration = Number.isFinite(webcamVideo.duration)
+				? webcamVideo.duration
+				: null;
 			const targetTime = getWebcamMediaTargetTimeSeconds({
 				currentTime,
-				webcamDuration: Number.isFinite(webcamVideo.duration) ? webcamVideo.duration : null,
-				timeOffsetMs: webcam.timeOffsetMs,
+				webcamDuration,
+				timeOffsetMs: webcamTimeOffsetMs,
 			});
+			const mediaTargetTime =
+				targetTime <= 0 && webcamDuration !== null && webcamDuration > 0
+					? Math.min(1 / 60, webcamDuration)
+					: targetTime;
 
+			const timelineTimeMs = currentTime * 1000;
 			const activeSpeedRegion = speedRegionsRef.current.find(
-				(region) => targetTime * 1000 >= region.startMs && targetTime * 1000 < region.endMs,
+				(region) => timelineTimeMs >= region.startMs && timelineTimeMs < region.endMs,
 			);
 			const targetPlaybackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
 			if (Math.abs(webcamVideo.playbackRate - targetPlaybackRate) > 0.001) {
@@ -1346,9 +1414,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const timelineJumped =
 				previousTimelineTime === null || Math.abs(targetTime - previousTimelineTime) > 0.25;
 			const driftThreshold = isPlaying ? 0.35 : 0.01;
-			if (timelineJumped || Math.abs(webcamVideo.currentTime - targetTime) > driftThreshold) {
+			if (
+				timelineJumped ||
+				Math.abs(webcamVideo.currentTime - mediaTargetTime) > driftThreshold
+			) {
 				try {
-					webcamVideo.currentTime = targetTime;
+					webcamVideo.currentTime = mediaTargetTime;
 				} catch {
 					// no-op
 				}
@@ -1364,9 +1435,28 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			}
 
 			lastWebcamSyncTimeRef.current = targetTime;
-		}, [currentTime, isPlaying, webcam, webcamVideoPath]);
+		}, [currentTime, isPlaying, webcamEnabled, webcamTimeOffsetMs, webcamVideoPath]);
+
+		const handleWebcamMediaReady = useCallback(
+			(event: React.SyntheticEvent<HTMLVideoElement>) => {
+				const video = event.currentTarget;
+				if (video.videoWidth > 0 && video.videoHeight > 0 && video.readyState >= 2) {
+					setWebcamVideoDimensions({
+						width: video.videoWidth,
+						height: video.videoHeight,
+					});
+				}
+				syncWebcamMedia();
+			},
+			[syncWebcamMedia],
+		);
 
 		useEffect(() => {
+			syncWebcamMedia();
+		}, [syncWebcamMedia]);
+
+		useEffect(() => {
+			setWebcamVideoDimensions(null);
 			lastWebcamSyncTimeRef.current = null;
 		}, [webcamVideoPath]);
 
@@ -2378,19 +2468,32 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 							>
 								<div
 									ref={webcamBubbleInnerRef}
-									className="h-full w-full overflow-hidden bg-black/80"
+									className="relative h-full w-full overflow-hidden"
 								>
-									<video
-										ref={webcamVideoRef}
-										src={webcamVideoPath}
-										className="h-full w-full object-cover"
-										muted
-										playsInline
-										preload="auto"
+									<div
+										className="pointer-events-none absolute inset-0 overflow-hidden"
 										style={{
-											transform: webcam.mirror ? "scaleX(-1)" : undefined,
+											opacity: webcamVideoDimensions ? 1 : 0,
+											transform: webcamMirror ? "scaleX(-1)" : undefined,
 										}}
-									/>
+									>
+										<div
+											className="pointer-events-none absolute"
+											style={webcamCropPreviewContentStyle}
+										>
+											<video
+												ref={webcamVideoRef}
+												src={webcamVideoPath}
+												className="pointer-events-none absolute inset-0 block h-full w-full object-fill"
+												muted
+												playsInline
+												preload="auto"
+												aria-hidden="true"
+												onLoadedMetadata={handleWebcamMediaReady}
+												onLoadedData={handleWebcamMediaReady}
+											/>
+										</div>
+									</div>
 								</div>
 							</div>
 						) : null}

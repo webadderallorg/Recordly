@@ -57,8 +57,8 @@ import {
 	DEFAULT_ZOOM_IN_EASING,
 	DEFAULT_ZOOM_IN_OVERLAP_MS,
 	DEFAULT_ZOOM_MOTION_BLUR,
-	DEFAULT_ZOOM_SMOOTHNESS,
 	DEFAULT_ZOOM_OUT_EASING,
+	DEFAULT_ZOOM_SMOOTHNESS,
 	getDefaultCaptionFontFamily,
 	type Padding,
 	type SpeedRegion,
@@ -67,6 +67,7 @@ import {
 	type ZoomRegion,
 	type ZoomTransitionEasing,
 } from "./types";
+import { normalizeWebcamCropRegion } from "./webcamOverlay";
 
 export const PROJECT_VERSION = 1;
 
@@ -871,6 +872,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			sourcePath: webcamSourcePath,
 			mirror:
 				typeof webcam.mirror === "boolean" ? webcam.mirror : DEFAULT_WEBCAM_OVERLAY.mirror,
+			cropRegion: normalizeWebcamCropRegion(webcam.cropRegion),
 			positionPreset:
 				webcam.positionPreset === "top-left" ||
 				webcam.positionPreset === "top-center" ||

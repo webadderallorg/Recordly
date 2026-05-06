@@ -55,8 +55,10 @@ import {
 	type MotionBlurState,
 } from "@/components/video-editor/videoPlayback/zoomTransform";
 import {
+	getWebcamCropSourceRect,
 	getWebcamOverlayPosition,
 	getWebcamOverlaySizePx,
+	isWebcamCropRegionDefault,
 } from "@/components/video-editor/webcamOverlay";
 import { getAssetPath, getExportableVideoUrl, getRenderableAssetUrl } from "@/lib/assetPath";
 import { extensionHost } from "@/lib/extensions";
@@ -89,10 +91,7 @@ import {
 	VIDEO_SHADOW_LAYER_PROFILES,
 	WEBCAM_SHADOW_LAYER_PROFILES,
 } from "./shadowProfile";
-import {
-	buildTemporalSamplePlanUs,
-	getTemporalMotionBlurConfig,
-} from "./temporalMotionBlur";
+import { buildTemporalSamplePlanUs, getTemporalMotionBlurConfig } from "./temporalMotionBlur";
 import type { ExportRenderBackend } from "./types";
 
 interface FrameRenderConfig {
@@ -2016,14 +2015,20 @@ export class FrameRenderer {
 	}
 
 	private shouldRefreshWebcamFrameCache(width: number, height: number): boolean {
-		const targetWidth = Math.max(1, Math.ceil(width));
-		const targetHeight = Math.max(1, Math.ceil(height));
+		const cropRegion = this.config.webcam?.cropRegion;
+		const sourceRect = getWebcamCropSourceRect(cropRegion, width, height);
+		const targetWidth = Math.max(1, Math.ceil(sourceRect.sw));
+		const targetHeight = Math.max(1, Math.ceil(sourceRect.sh));
 
 		if (
 			!this.webcamFrameCacheCanvas ||
 			this.webcamFrameCacheCanvas.width !== targetWidth ||
 			this.webcamFrameCacheCanvas.height !== targetHeight
 		) {
+			return true;
+		}
+
+		if (!isWebcamCropRegionDefault(cropRegion)) {
 			return true;
 		}
 
@@ -2062,7 +2067,8 @@ export class FrameRenderer {
 		width: number,
 		height: number,
 	): boolean {
-		if (!this.ensureWebcamFrameCache(width, height)) {
+		const sourceRect = getWebcamCropSourceRect(this.config.webcam?.cropRegion, width, height);
+		if (!this.ensureWebcamFrameCache(sourceRect.sw, sourceRect.sh)) {
 			return false;
 		}
 
@@ -2078,6 +2084,10 @@ export class FrameRenderer {
 		);
 		this.webcamFrameCacheCtx.drawImage(
 			source,
+			sourceRect.sx,
+			sourceRect.sy,
+			sourceRect.sw,
+			sourceRect.sh,
 			0,
 			0,
 			this.webcamFrameCacheCanvas.width,
@@ -2113,6 +2123,13 @@ export class FrameRenderer {
 		if (canUseLiveSource && liveSource && liveSourceWidth > 0 && liveSourceHeight > 0) {
 			if (this.shouldRefreshWebcamFrameCache(liveSourceWidth, liveSourceHeight)) {
 				this.refreshWebcamFrameCache(liveSource, liveSourceWidth, liveSourceHeight);
+			}
+			if (!isWebcamCropRegionDefault(this.config.webcam?.cropRegion)) {
+				const cachedSource = this.getCachedWebcamRenderSource();
+				if (cachedSource) {
+					this.setWebcamRenderMode("live");
+					return cachedSource;
+				}
 			}
 			this.setWebcamRenderMode("live");
 			return {

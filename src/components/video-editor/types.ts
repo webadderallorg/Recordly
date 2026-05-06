@@ -83,6 +83,7 @@ export interface WebcamOverlaySettings {
 	sourcePath: string | null;
 	timeOffsetMs: number;
 	mirror: boolean;
+	cropRegion: CropRegion;
 	corner: WebcamCorner;
 	positionPreset: WebcamPositionPreset;
 	positionX: number;
@@ -125,6 +126,7 @@ export const DEFAULT_WEBCAM_OVERLAY: WebcamOverlaySettings = {
 	sourcePath: null,
 	timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
 	mirror: true,
+	cropRegion: { x: 0, y: 0, width: 1, height: 1 },
 	corner: "bottom-right",
 	positionPreset: DEFAULT_WEBCAM_POSITION_PRESET,
 	positionX: DEFAULT_WEBCAM_POSITION_X,
