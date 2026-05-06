@@ -207,8 +207,31 @@ export function computeZoomTransform({
 	const stageCenterX = stageSize.width / 2;
 	const stageCenterY = stageSize.height / 2;
 	const scale = 1 + (zoomScale - 1) * progress;
-	const finalX = stageCenterX - focusStagePxX * zoomScale;
-	const finalY = stageCenterY - focusStagePxY * zoomScale;
+
+	// Clamp the focus point so that the visible window at full zoom stays
+	// inside the displayed video rect (baseMask). Without this, zooming near
+	// the edge of a video that does not fill the canvas (e.g. a 16:9 recording
+	// on a 1:1 canvas) pans the letterbox/background into view. When the
+	// visible window is larger than baseMask along an axis, no clamp range
+	// exists and we snap to baseMask center on that axis instead.
+	const safeZoom = zoomScale > 0 ? zoomScale : 1;
+	const halfVisibleW = stageSize.width / (2 * safeZoom);
+	const halfVisibleH = stageSize.height / (2 * safeZoom);
+	const minFocusPxX = baseMask.x + halfVisibleW;
+	const maxFocusPxX = baseMask.x + baseMask.width - halfVisibleW;
+	const minFocusPxY = baseMask.y + halfVisibleH;
+	const maxFocusPxY = baseMask.y + baseMask.height - halfVisibleH;
+	const clampedFocusPxX =
+		minFocusPxX <= maxFocusPxX
+			? Math.min(maxFocusPxX, Math.max(minFocusPxX, focusStagePxX))
+			: baseMask.x + baseMask.width / 2;
+	const clampedFocusPxY =
+		minFocusPxY <= maxFocusPxY
+			? Math.min(maxFocusPxY, Math.max(minFocusPxY, focusStagePxY))
+			: baseMask.y + baseMask.height / 2;
+
+	const finalX = stageCenterX - clampedFocusPxX * zoomScale;
+	const finalY = stageCenterY - clampedFocusPxY * zoomScale;
 
 	return {
 		scale,
