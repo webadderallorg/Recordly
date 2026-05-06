@@ -105,7 +105,6 @@ const PhSettings = (props: { className?: string; weight?: "fill" | "regular" }) 
 import { extensionHost } from "@/lib/extensions";
 import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
 import { CropControl } from "./CropControl";
-import { type CaptionEditTarget, updateCaptionCuesForEditedTarget } from "./captionEditing";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
 import ExtensionManager from "./ExtensionManager";
 import {
@@ -160,7 +159,6 @@ import {
 	DEFAULT_CROP_REGION,
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_FIGURE_DATA,
-	DEFAULT_PLAYBACK_SPEED,
 	DEFAULT_WEBCAM_OVERLAY,
 	DEFAULT_WEBCAM_TIME_OFFSET_MS,
 	DEFAULT_ZOOM_IN_DURATION_MS,
@@ -173,9 +171,11 @@ import {
 	type FigureData,
 	getClipSourceEndMs,
 	type Padding,
-	type PlaybackSpeed,
+	mapSourceTimeToTimelineTime as resolveSourceTimeToTimelineTime,
+	mapTimelineTimeToSourceTime as resolveTimelineTimeToSourceTime,
 	type SpeedRegion,
 	type TrimRegion,
+	trimsToClips,
 	type WebcamOverlaySettings,
 	type ZoomDepth,
 	type ZoomFocus,
@@ -197,9 +197,7 @@ type EditorHistorySnapshot = {
 	audioRegions: AudioRegion[];
 	autoCaptions: CaptionCue[];
 	selectedZoomId: string | null;
-	selectedTrimId: string | null;
 	selectedClipId: string | null;
-	selectedSpeedId: string | null;
 	selectedAnnotationId: string | null;
 	selectedAudioId: string | null;
 };
@@ -237,6 +235,57 @@ type SmokeExportConfig = {
 	quality?: ExportQuality;
 	fps?: ExportMp4FrameRate;
 };
+
+const EXPORT_BLOB_STREAM_CHUNK_BYTES = 16 * 1024 * 1024;
+
+async function streamExportBlobToTempFile(blob: Blob, extension: string): Promise<string | null> {
+	if (
+		typeof window === "undefined" ||
+		!window.electronAPI?.openExportStream ||
+		!window.electronAPI?.writeExportStreamChunk ||
+		!window.electronAPI?.closeExportStream
+	) {
+		return null;
+	}
+
+	const openResult = await window.electronAPI.openExportStream({ extension });
+	if (!openResult.success || !openResult.streamId || !openResult.tempPath) {
+		throw new Error(openResult.error || "Failed to open export stream");
+	}
+
+	const { streamId } = openResult;
+	let position = 0;
+
+	try {
+		while (position < blob.size) {
+			const chunk = blob.slice(position, position + EXPORT_BLOB_STREAM_CHUNK_BYTES);
+			const chunkBuffer = await chunk.arrayBuffer();
+			const writeResult = await window.electronAPI.writeExportStreamChunk(
+				streamId,
+				position,
+				new Uint8Array(chunkBuffer),
+			);
+			if (!writeResult.success) {
+				throw new Error(writeResult.error || "Failed to write export stream chunk");
+			}
+			position += chunkBuffer.byteLength;
+		}
+
+		const closeResult = await window.electronAPI.closeExportStream(streamId);
+		if (!closeResult.success || !closeResult.tempPath) {
+			throw new Error(closeResult.error || "Failed to close export stream");
+		}
+
+		return closeResult.tempPath;
+	} catch (error) {
+		try {
+			await window.electronAPI.closeExportStream(streamId, { abort: true });
+		} catch {
+			// Best-effort cleanup; preserve the original error below.
+		}
+		throw error;
+	}
+}
 
 type SaveProjectOptions = {
 	silent?: boolean;
@@ -280,7 +329,7 @@ function getEncodingModeBitrateMultiplier(encodingMode: ExportEncodingMode): num
 			return 0.9;
 		case "balanced":
 		default:
-			return 0.5;
+			return 0.7;
 	}
 }
 
@@ -548,6 +597,15 @@ export default function VideoEditor() {
 	);
 	const [backgroundBlur, setBackgroundBlur] = useState(initialEditorPreferences.backgroundBlur);
 	const [zoomMotionBlur, setZoomMotionBlur] = useState(initialEditorPreferences.zoomMotionBlur);
+	const [zoomTemporalMotionBlur, setZoomTemporalMotionBlur] = useState(
+		initialEditorPreferences.zoomTemporalMotionBlur,
+	);
+	const [zoomMotionBlurSampleCount, setZoomMotionBlurSampleCount] = useState<number | null>(
+		initialEditorPreferences.zoomMotionBlurSampleCount,
+	);
+	const [zoomMotionBlurShutterFraction, setZoomMotionBlurShutterFraction] = useState<
+		number | null
+	>(initialEditorPreferences.zoomMotionBlurShutterFraction);
 	const [autoApplyFreshRecordingAutoZooms, setAutoApplyFreshRecordingAutoZooms] = useState(
 		initialEditorPreferences.autoApplyFreshRecordingAutoZooms,
 	);
@@ -585,6 +643,18 @@ export default function VideoEditor() {
 	const [cursorSmoothing, setCursorSmoothing] = useState(
 		initialEditorPreferences.cursorSmoothing,
 	);
+	const [cursorSpringStiffnessMultiplier, setCursorSpringStiffnessMultiplier] = useState(
+		initialEditorPreferences.cursorSpringStiffnessMultiplier,
+	);
+	const [cursorSpringDampingMultiplier, setCursorSpringDampingMultiplier] = useState(
+		initialEditorPreferences.cursorSpringDampingMultiplier,
+	);
+	const [cursorSpringMassMultiplier, setCursorSpringMassMultiplier] = useState(
+		initialEditorPreferences.cursorSpringMassMultiplier,
+	);
+	const [sessionShowCursorOverride, setSessionShowCursorOverride] = useState<boolean | null>(
+		null,
+	);
 	const [zoomSmoothness, setZoomSmoothness] = useState(0.5);
 	const [zoomClassicMode, setZoomClassicMode] = useState(false);
 	const [cursorMotionBlur, setCursorMotionBlur] = useState(
@@ -615,11 +685,9 @@ export default function VideoEditor() {
 	const [cursorTelemetrySourcePath, setCursorTelemetrySourcePath] = useState<string | null>(null);
 	const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
 	const [trimRegions, setTrimRegions] = useState<TrimRegion[]>([]);
-	const [selectedTrimId, setSelectedTrimId] = useState<string | null>(null);
 	const [clipRegions, setClipRegions] = useState<ClipRegion[]>([]);
 	const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
 	const [speedRegions, setSpeedRegions] = useState<SpeedRegion[]>([]);
-	const [selectedSpeedId, setSelectedSpeedId] = useState<string | null>(null);
 	const [annotationRegions, setAnnotationRegions] = useState<AnnotationRegion[]>([]);
 	const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
 	const [audioRegions, setAudioRegions] = useState<AudioRegion[]>([]);
@@ -650,6 +718,7 @@ export default function VideoEditor() {
 	const [sourceAudioFallbackPaths, setSourceAudioFallbackPaths] = useState<string[]>([]);
 	const [sourceAudioFallbackStartDelayMsByPath, setSourceAudioFallbackStartDelayMsByPath] =
 		useState<Record<string, number>>({});
+	const effectiveShowCursor = sessionShowCursorOverride ?? showCursor;
 	const [aspectRatio, setAspectRatio] = useState<AspectRatio>(
 		initialEditorPreferences.aspectRatio,
 	);
@@ -697,9 +766,7 @@ export default function VideoEditor() {
 	const projectBrowserFallbackTriggerRef = useRef<HTMLButtonElement | null>(null);
 	const projectNameInputRef = useRef<HTMLInputElement | null>(null);
 	const nextZoomIdRef = useRef(1);
-	const nextTrimIdRef = useRef(1);
 	const nextClipIdRef = useRef(1);
-	const nextSpeedIdRef = useRef(1);
 	const nextAudioIdRef = useRef(1);
 
 	const { shortcuts, isMac } = useShortcuts();
@@ -771,6 +838,9 @@ export default function VideoEditor() {
 			shadowIntensity,
 			backgroundBlur,
 			zoomMotionBlur,
+			zoomTemporalMotionBlur,
+			zoomMotionBlurSampleCount,
+			zoomMotionBlurShutterFraction,
 			connectZooms,
 			zoomInDurationMs,
 			zoomInOverlapMs,
@@ -785,6 +855,9 @@ export default function VideoEditor() {
 			cursorStyle,
 			cursorSize,
 			cursorSmoothing,
+			cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier,
+			cursorSpringMassMultiplier,
 			cursorMotionBlur,
 			cursorClickBounce,
 			cursorClickBounceDuration,
@@ -812,6 +885,9 @@ export default function VideoEditor() {
 			shadowIntensity,
 			backgroundBlur,
 			zoomMotionBlur,
+			zoomTemporalMotionBlur,
+			zoomMotionBlurSampleCount,
+			zoomMotionBlurShutterFraction,
 			connectZooms,
 			zoomInDurationMs,
 			zoomInOverlapMs,
@@ -826,6 +902,9 @@ export default function VideoEditor() {
 			cursorStyle,
 			cursorSize,
 			cursorSmoothing,
+			cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier,
+			cursorSpringMassMultiplier,
 			cursorMotionBlur,
 			cursorClickBounce,
 			cursorClickBounceDuration,
@@ -894,6 +973,9 @@ export default function VideoEditor() {
 		setShadowIntensity(snapshot.shadowIntensity);
 		setBackgroundBlur(snapshot.backgroundBlur);
 		setZoomMotionBlur(snapshot.zoomMotionBlur);
+		setZoomTemporalMotionBlur(snapshot.zoomTemporalMotionBlur);
+		setZoomMotionBlurSampleCount(snapshot.zoomMotionBlurSampleCount);
+		setZoomMotionBlurShutterFraction(snapshot.zoomMotionBlurShutterFraction);
 		setConnectZooms(snapshot.connectZooms);
 		setZoomInDurationMs(snapshot.zoomInDurationMs);
 		setZoomInOverlapMs(snapshot.zoomInOverlapMs);
@@ -908,6 +990,9 @@ export default function VideoEditor() {
 		setCursorStyle(snapshot.cursorStyle);
 		setCursorSize(snapshot.cursorSize);
 		setCursorSmoothing(snapshot.cursorSmoothing);
+		setCursorSpringStiffnessMultiplier(snapshot.cursorSpringStiffnessMultiplier);
+		setCursorSpringDampingMultiplier(snapshot.cursorSpringDampingMultiplier);
+		setCursorSpringMassMultiplier(snapshot.cursorSpringMassMultiplier);
 		setCursorMotionBlur(snapshot.cursorMotionBlur);
 		setCursorClickBounce(snapshot.cursorClickBounce);
 		setCursorClickBounceDuration(snapshot.cursorClickBounceDuration);
@@ -979,7 +1064,7 @@ export default function VideoEditor() {
 				updatedAt: timestamp,
 				snapshot,
 			};
-			const nextPresets = [nextPreset, ...editorPresets];
+			const nextPresets: EditorPreset[] = [nextPreset, ...editorPresets];
 
 			if (!saveEditorPresets(nextPresets)) {
 				toast.error(
@@ -1119,6 +1204,9 @@ export default function VideoEditor() {
 					shadowIntensity,
 					backgroundBlur,
 					zoomMotionBlur,
+					zoomTemporalMotionBlur,
+					zoomMotionBlurSampleCount,
+					zoomMotionBlurShutterFraction,
 					connectZooms,
 					zoomInDurationMs,
 					zoomInOverlapMs,
@@ -1164,10 +1252,13 @@ export default function VideoEditor() {
 					previewWidth,
 					previewHeight,
 					cursorTelemetry,
-					showCursor,
+					showCursor: effectiveShowCursor,
 					cursorStyle,
 					cursorSize,
 					cursorSmoothing,
+					cursorSpringStiffnessMultiplier,
+					cursorSpringDampingMultiplier,
+					cursorSpringMassMultiplier,
 					zoomSmoothness,
 					zoomClassicMode,
 					cursorMotionBlur,
@@ -1243,6 +1334,9 @@ export default function VideoEditor() {
 		cursorMotionBlur,
 		cursorSize,
 		cursorSmoothing,
+		cursorSpringDampingMultiplier,
+		cursorSpringMassMultiplier,
+		cursorSpringStiffnessMultiplier,
 		zoomSmoothness,
 		cursorStyle,
 		cursorSway,
@@ -1251,7 +1345,7 @@ export default function VideoEditor() {
 		padding,
 		resolvedWebcamVideoUrl,
 		shadowIntensity,
-		showCursor,
+		effectiveShowCursor,
 		speedRegions,
 		wallpaper,
 		webcam,
@@ -1259,6 +1353,9 @@ export default function VideoEditor() {
 		zoomInEasing,
 		zoomInOverlapMs,
 		zoomMotionBlur,
+		zoomTemporalMotionBlur,
+		zoomMotionBlurSampleCount,
+		zoomMotionBlurShutterFraction,
 		zoomOutDurationMs,
 		zoomOutEasing,
 		zoomRegions,
@@ -1279,6 +1376,11 @@ export default function VideoEditor() {
 		}));
 	}, []);
 
+	const handleShowCursorChange = useCallback((nextShowCursor: boolean) => {
+		setSessionShowCursorOverride(null);
+		setShowCursor(nextShowCursor);
+	}, []);
+
 	const remountPreview = useCallback(() => {
 		setIsPreviewReady(false);
 		setPreviewVersion((version) => version + 1);
@@ -1296,6 +1398,43 @@ export default function VideoEditor() {
 		projectSaveQueueRef.current = run.catch(() => undefined);
 		return run;
 	}, []);
+
+	const saveBlobExport = useCallback(
+		async (blob: Blob, fileName: string, outputPath: string | null = null) => {
+			const extension = fileName.split(".").pop()?.toLowerCase() || "bin";
+
+			try {
+				const tempFilePath = await streamExportBlobToTempFile(blob, extension);
+				if (tempFilePath) {
+					return {
+						saveResult: await window.electronAPI.finalizeExportedVideo({
+							tempPath: tempFilePath,
+							fileName,
+							outputPath,
+						}),
+						pendingSave: {
+							fileName,
+							tempFilePath,
+						} satisfies PendingExportSave,
+					};
+				}
+			} catch (error) {
+				console.warn("[export] Falling back to in-memory blob save", error);
+			}
+
+			const arrayBuffer = await blob.arrayBuffer();
+			return {
+				saveResult: outputPath
+					? await window.electronAPI.writeExportedVideoToPath(arrayBuffer, outputPath)
+					: await window.electronAPI.saveExportedVideo(arrayBuffer, fileName),
+				pendingSave: {
+					fileName,
+					arrayBuffer,
+				} satisfies PendingExportSave,
+			};
+		},
+		[],
+	);
 
 	useEffect(() => {
 		return () => {
@@ -1519,6 +1658,9 @@ export default function VideoEditor() {
 				shadowIntensity: number;
 				backgroundBlur: number;
 				zoomMotionBlur: number;
+				zoomTemporalMotionBlur: number;
+				zoomMotionBlurSampleCount: number | null;
+				zoomMotionBlurShutterFraction: number | null;
 				connectZooms: boolean;
 				zoomInDurationMs: number;
 				zoomInOverlapMs: number;
@@ -1533,6 +1675,9 @@ export default function VideoEditor() {
 				cursorStyle: CursorStyle;
 				cursorSize: number;
 				cursorSmoothing: number;
+				cursorSpringStiffnessMultiplier: number;
+				cursorSpringDampingMultiplier: number;
+				cursorSpringMassMultiplier: number;
 				zoomSmoothness: number;
 				zoomClassicMode: boolean;
 				cursorMotionBlur: number;
@@ -1667,6 +1812,9 @@ export default function VideoEditor() {
 				shadowIntensity,
 				backgroundBlur,
 				zoomMotionBlur,
+				zoomTemporalMotionBlur,
+				zoomMotionBlurSampleCount,
+				zoomMotionBlurShutterFraction,
 				connectZooms,
 				zoomInDurationMs,
 				zoomInOverlapMs,
@@ -1681,6 +1829,9 @@ export default function VideoEditor() {
 				cursorStyle,
 				cursorSize,
 				cursorSmoothing,
+				cursorSpringStiffnessMultiplier,
+				cursorSpringDampingMultiplier,
+				cursorSpringMassMultiplier,
 				zoomSmoothness,
 				zoomClassicMode,
 				cursorMotionBlur,
@@ -1690,6 +1841,7 @@ export default function VideoEditor() {
 				borderRadius,
 				padding,
 				frame,
+				cropRegion,
 				webcam,
 				zoomRegions,
 				trimRegions,
@@ -1716,6 +1868,9 @@ export default function VideoEditor() {
 			shadowIntensity,
 			backgroundBlur,
 			zoomMotionBlur,
+			zoomTemporalMotionBlur,
+			zoomMotionBlurSampleCount,
+			zoomMotionBlurShutterFraction,
 			connectZooms,
 			zoomInDurationMs,
 			zoomInOverlapMs,
@@ -1730,6 +1885,9 @@ export default function VideoEditor() {
 			cursorStyle,
 			cursorSize,
 			cursorSmoothing,
+			cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier,
+			cursorSpringMassMultiplier,
 			zoomSmoothness,
 			zoomClassicMode,
 			cursorMotionBlur,
@@ -1738,6 +1896,7 @@ export default function VideoEditor() {
 			cursorSway,
 			borderRadius,
 			padding,
+			cropRegion,
 			webcam,
 			zoomRegions,
 			trimRegions,
@@ -1770,9 +1929,7 @@ export default function VideoEditor() {
 			audioRegions,
 			autoCaptions,
 			selectedZoomId,
-			selectedTrimId,
 			selectedClipId,
-			selectedSpeedId,
 			selectedAnnotationId,
 			selectedAudioId,
 		};
@@ -1784,9 +1941,7 @@ export default function VideoEditor() {
 		audioRegions,
 		autoCaptions,
 		selectedZoomId,
-		selectedTrimId,
 		selectedClipId,
-		selectedSpeedId,
 		selectedAnnotationId,
 		selectedAudioId,
 	]);
@@ -1802,9 +1957,7 @@ export default function VideoEditor() {
 			setAudioRegions(cloned.audioRegions);
 			setAutoCaptions(cloned.autoCaptions);
 			setSelectedZoomId(cloned.selectedZoomId);
-			setSelectedTrimId(cloned.selectedTrimId);
 			setSelectedClipId(cloned.selectedClipId);
-			setSelectedSpeedId(cloned.selectedSpeedId);
 			setSelectedAnnotationId(cloned.selectedAnnotationId);
 			setSelectedAudioId(cloned.selectedAudioId);
 
@@ -1815,10 +1968,6 @@ export default function VideoEditor() {
 			nextClipIdRef.current = deriveNextId(
 				"clip",
 				cloned.clipRegions.map((region) => region.id),
-			);
-			nextSpeedIdRef.current = deriveNextId(
-				"speed",
-				cloned.speedRegions.map((region) => region.id),
 			);
 			nextAnnotationIdRef.current = deriveNextId(
 				"annotation",
@@ -1906,6 +2055,9 @@ export default function VideoEditor() {
 			setShadowIntensity(normalizedEditor.shadowIntensity);
 			setBackgroundBlur(normalizedEditor.backgroundBlur);
 			setZoomMotionBlur(normalizedEditor.zoomMotionBlur);
+			setZoomTemporalMotionBlur(normalizedEditor.zoomTemporalMotionBlur);
+			setZoomMotionBlurSampleCount(normalizedEditor.zoomMotionBlurSampleCount);
+			setZoomMotionBlurShutterFraction(normalizedEditor.zoomMotionBlurShutterFraction);
 			setConnectZooms(normalizedEditor.connectZooms);
 			setZoomInDurationMs(normalizedEditor.zoomInDurationMs);
 			setZoomInOverlapMs(normalizedEditor.zoomInOverlapMs);
@@ -1915,11 +2067,15 @@ export default function VideoEditor() {
 			setZoomInEasing(normalizedEditor.zoomInEasing);
 			setZoomOutEasing(normalizedEditor.zoomOutEasing);
 			setConnectedZoomEasing(normalizedEditor.connectedZoomEasing);
+			setSessionShowCursorOverride(null);
 			setShowCursor(normalizedEditor.showCursor);
 			setLoopCursor(normalizedEditor.loopCursor);
 			setCursorStyle(normalizedEditor.cursorStyle);
 			setCursorSize(normalizedEditor.cursorSize);
 			setCursorSmoothing(normalizedEditor.cursorSmoothing);
+			setCursorSpringStiffnessMultiplier(normalizedEditor.cursorSpringStiffnessMultiplier);
+			setCursorSpringDampingMultiplier(normalizedEditor.cursorSpringDampingMultiplier);
+			setCursorSpringMassMultiplier(normalizedEditor.cursorSpringMassMultiplier);
 			setZoomSmoothness(normalizedEditor.zoomSmoothness);
 			setZoomClassicMode(normalizedEditor.zoomClassicMode);
 			setCursorMotionBlur(normalizedEditor.cursorMotionBlur);
@@ -1954,9 +2110,7 @@ export default function VideoEditor() {
 			setGifSizePreset(normalizedEditor.gifSizePreset);
 
 			setSelectedZoomId(null);
-			setSelectedTrimId(null);
 			setSelectedClipId(null);
-			setSelectedSpeedId(null);
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
 
@@ -1964,17 +2118,9 @@ export default function VideoEditor() {
 				"zoom",
 				normalizedEditor.zoomRegions.map((region) => region.id),
 			);
-			nextTrimIdRef.current = deriveNextId(
-				"trim",
-				normalizedEditor.trimRegions.map((region) => region.id),
-			);
 			nextClipIdRef.current = deriveNextId(
 				"clip",
 				normalizedEditor.clipRegions.map((region: ClipRegion) => region.id),
-			);
-			nextSpeedIdRef.current = deriveNextId(
-				"speed",
-				normalizedEditor.speedRegions.map((region) => region.id),
 			);
 			nextAudioIdRef.current = deriveNextId(
 				"audio",
@@ -2242,6 +2388,9 @@ export default function VideoEditor() {
 					pendingFreshRecordingAutoZoomPathRef.current = autoApplyFreshRecordingAutoZooms
 						? sourceVideoUrl
 						: null;
+					setSessionShowCursorOverride(
+						sessionResult.session.hideOverlayCursorByDefault ? false : null,
+					);
 					setWebcam((prev) => ({
 						...prev,
 						enabled: Boolean(sessionResult.session?.webcamPath),
@@ -2261,6 +2410,7 @@ export default function VideoEditor() {
 					setCurrentProjectPath(null);
 					setLastSavedSnapshot(null);
 					pendingFreshRecordingAutoZoomPathRef.current = null;
+					setSessionShowCursorOverride(null);
 					setWebcam((prev) => ({
 						...prev,
 						enabled: false,
@@ -2316,6 +2466,9 @@ export default function VideoEditor() {
 			shadowIntensity,
 			backgroundBlur,
 			zoomMotionBlur,
+			zoomTemporalMotionBlur,
+			zoomMotionBlurSampleCount,
+			zoomMotionBlurShutterFraction,
 			autoApplyFreshRecordingAutoZooms,
 			connectZooms,
 			zoomInDurationMs,
@@ -2331,6 +2484,9 @@ export default function VideoEditor() {
 			cursorStyle,
 			cursorSize,
 			cursorSmoothing,
+			cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier,
+			cursorSpringMassMultiplier,
 			cursorMotionBlur,
 			cursorClickBounce,
 			cursorClickBounceDuration,
@@ -2357,6 +2513,9 @@ export default function VideoEditor() {
 		shadowIntensity,
 		backgroundBlur,
 		zoomMotionBlur,
+		zoomTemporalMotionBlur,
+		zoomMotionBlurSampleCount,
+		zoomMotionBlurShutterFraction,
 		autoApplyFreshRecordingAutoZooms,
 		connectZooms,
 		zoomInDurationMs,
@@ -2372,6 +2531,9 @@ export default function VideoEditor() {
 		cursorStyle,
 		cursorSize,
 		cursorSmoothing,
+		cursorSpringStiffnessMultiplier,
+		cursorSpringDampingMultiplier,
+		cursorSpringMassMultiplier,
 		cursorMotionBlur,
 		cursorClickBounce,
 		cursorClickBounceDuration,
@@ -2573,14 +2735,6 @@ export default function VideoEditor() {
 		setAutoCaptions([]);
 		setAutoCaptionSettings((prev) => ({ ...prev, enabled: false }));
 	}, []);
-
-	const handleSaveAutoCaptionEdit = useCallback(
-		(target: CaptionEditTarget, text: string) => {
-			setAutoCaptions((captions) => updateCaptionCuesForEditedTarget(captions, target, text));
-			toast.success(t("settings.captions.editSaved", "Caption updated"));
-		},
-		[t],
-	);
 
 	const saveProject = useCallback(
 		async (forceSaveAs: boolean, options?: SaveProjectOptions) => {
@@ -3016,10 +3170,30 @@ export default function VideoEditor() {
 		if (totalMs <= 0) return;
 		if (!clipInitializedRef.current) {
 			if (clipRegions.length === 0) {
-				const id = `clip-${nextClipIdRef.current++}`;
-				autoFullTrackClipIdRef.current = id;
-				autoFullTrackClipEndMsRef.current = totalMs;
-				setClipRegions([{ id, startMs: 0, endMs: totalMs, speed: 1 }]);
+				const nextClipRegions =
+					trimRegions.length > 0
+						? trimsToClips(trimRegions, totalMs)
+						: (() => {
+								const id = `clip-${nextClipIdRef.current++}`;
+								autoFullTrackClipIdRef.current = id;
+								autoFullTrackClipEndMsRef.current = totalMs;
+								return [{ id, startMs: 0, endMs: totalMs, speed: 1 }];
+							})();
+
+				if (trimRegions.length > 0) {
+					nextClipIdRef.current = deriveNextId(
+						"clip",
+						nextClipRegions.map((region) => region.id),
+					);
+				}
+
+				setClipRegions(nextClipRegions);
+				if (speedRegions.length > 0) {
+					// Legacy speed regions no longer have dedicated editing surfaces.
+					// Clear them during clip bootstrap so old projects do not keep
+					// hidden playback changes that users cannot inspect or edit.
+					setSpeedRegions([]);
+				}
 			}
 			clipInitializedRef.current = true;
 			return;
@@ -3035,7 +3209,7 @@ export default function VideoEditor() {
 
 		autoFullTrackClipEndMsRef.current = totalMs;
 		setClipRegions(extendedClipRegions);
-	}, [duration, clipRegions]);
+	}, [duration, clipRegions, trimRegions, speedRegions]);
 
 	// Derive trimRegions from clipRegions so export/playback pipelines stay unchanged
 	useEffect(() => {
@@ -3045,27 +3219,12 @@ export default function VideoEditor() {
 	}, [clipRegions, duration]);
 
 	const mapTimelineTimeToSourceTime = useCallback(
-		(timeMs: number) => {
-			for (const clip of clipRegions) {
-				if (timeMs < clip.startMs || timeMs > clip.endMs) continue;
-				const speed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
-				return Math.round(clip.startMs + (timeMs - clip.startMs) * speed);
-			}
-			return Math.round(timeMs);
-		},
+		(timeMs: number) => resolveTimelineTimeToSourceTime(timeMs, clipRegions),
 		[clipRegions],
 	);
 
 	const mapSourceTimeToTimelineTime = useCallback(
-		(timeMs: number) => {
-			for (const clip of clipRegions) {
-				const sourceEndMs = getClipSourceEndMs(clip);
-				if (timeMs < clip.startMs || timeMs > sourceEndMs) continue;
-				const speed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
-				return Math.round(clip.startMs + (timeMs - clip.startMs) / speed);
-			}
-			return Math.round(timeMs);
-		},
+		(timeMs: number) => resolveSourceTimeToTimelineTime(timeMs, clipRegions),
 		[clipRegions],
 	);
 
@@ -3133,7 +3292,6 @@ export default function VideoEditor() {
 		setSelectedZoomId(id);
 		if (id) {
 			setActiveEffectSection("zoom");
-			setSelectedTrimId(null);
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
 		} else {
@@ -3141,20 +3299,10 @@ export default function VideoEditor() {
 		}
 	}, []);
 
-	const handleSelectTrim = useCallback((id: string | null) => {
-		setSelectedTrimId(id);
-		if (id) {
-			setSelectedZoomId(null);
-			setSelectedAnnotationId(null);
-			setSelectedAudioId(null);
-		}
-	}, []);
-
 	const handleSelectAnnotation = useCallback((id: string | null) => {
 		setSelectedAnnotationId(id);
 		if (id) {
 			setSelectedZoomId(null);
-			setSelectedTrimId(null);
 			setSelectedAudioId(null);
 		}
 	}, []);
@@ -3177,7 +3325,6 @@ export default function VideoEditor() {
 			}
 			setZoomRegions((prev) => [...prev, newRegion]);
 			setSelectedZoomId(id);
-			setSelectedTrimId(null);
 			setSelectedAnnotationId(null);
 			extensionHost.emitEvent({
 				type: "timeline:region-added",
@@ -3271,35 +3418,8 @@ export default function VideoEditor() {
 		zoomRegions,
 	]);
 
-	const handleTrimAdded = useCallback((span: Span) => {
-		const id = `trim-${nextTrimIdRef.current++}`;
-		const newRegion: TrimRegion = {
-			id,
-			startMs: Math.round(span.start),
-			endMs: Math.round(span.end),
-		};
-		setTrimRegions((prev) => [...prev, newRegion]);
-		setSelectedTrimId(id);
-		setSelectedZoomId(null);
-		setSelectedAnnotationId(null);
-	}, []);
-
 	const handleZoomSpanChange = useCallback((id: string, span: Span) => {
 		setZoomRegions((prev) =>
-			prev.map((region) =>
-				region.id === id
-					? {
-							...region,
-							startMs: Math.round(span.start),
-							endMs: Math.round(span.end),
-						}
-					: region,
-			),
-		);
-	}, []);
-
-	const handleTrimSpanChange = useCallback((id: string, span: Span) => {
-		setTrimRegions((prev) =>
 			prev.map((region) =>
 				region.id === id
 					? {
@@ -3362,16 +3482,6 @@ export default function VideoEditor() {
 			extensionHost.emitEvent({ type: "timeline:region-removed", data: { id } });
 		},
 		[selectedZoomId],
-	);
-
-	const handleTrimDelete = useCallback(
-		(id: string) => {
-			setTrimRegions((prev) => prev.filter((region) => region.id !== id));
-			if (selectedTrimId === id) {
-				setSelectedTrimId(null);
-			}
-		},
-		[selectedTrimId],
 	);
 
 	const handleSelectClip = useCallback((id: string | null) => {
@@ -3552,62 +3662,11 @@ export default function VideoEditor() {
 		[clipRegions, selectedClipId],
 	);
 
-	const handleSelectSpeed = useCallback((id: string | null) => {
-		setSelectedSpeedId(id);
-		if (id) {
-			setSelectedZoomId(null);
-			setSelectedTrimId(null);
-			setSelectedAnnotationId(null);
-			setSelectedAudioId(null);
-		}
-	}, []);
-
-	const handleSpeedAdded = useCallback((span: Span) => {
-		const id = `speed-${nextSpeedIdRef.current++}`;
-		const newRegion: SpeedRegion = {
-			id,
-			startMs: Math.round(span.start),
-			endMs: Math.round(span.end),
-			speed: DEFAULT_PLAYBACK_SPEED,
-		};
-		setSpeedRegions((prev) => [...prev, newRegion]);
-		setSelectedSpeedId(id);
-		setSelectedZoomId(null);
-		setSelectedTrimId(null);
-		setSelectedAnnotationId(null);
-	}, []);
-
-	const handleSpeedSpanChange = useCallback((id: string, span: Span) => {
-		setSpeedRegions((prev) =>
-			prev.map((region) =>
-				region.id === id
-					? {
-							...region,
-							startMs: Math.round(span.start),
-							endMs: Math.round(span.end),
-						}
-					: region,
-			),
-		);
-	}, []);
-
-	const handleSpeedDelete = useCallback(
-		(id: string) => {
-			setSpeedRegions((prev) => prev.filter((region) => region.id !== id));
-			if (selectedSpeedId === id) {
-				setSelectedSpeedId(null);
-			}
-		},
-		[selectedSpeedId],
-	);
-
 	const handleSelectAudio = useCallback((id: string | null) => {
 		setSelectedAudioId(id);
 		if (id) {
 			setSelectedZoomId(null);
-			setSelectedTrimId(null);
 			setSelectedAnnotationId(null);
-			setSelectedSpeedId(null);
 		}
 	}, []);
 
@@ -3624,9 +3683,7 @@ export default function VideoEditor() {
 		setAudioRegions((prev) => [...prev, newRegion]);
 		setSelectedAudioId(id);
 		setSelectedZoomId(null);
-		setSelectedTrimId(null);
 		setSelectedAnnotationId(null);
-		setSelectedSpeedId(null);
 	}, []);
 
 	const handleAudioSpanChange = useCallback((id: string, span: Span, trackIndex?: number) => {
@@ -3681,18 +3738,6 @@ export default function VideoEditor() {
 		[selectedAudioId],
 	);
 
-	const handleSpeedChange = useCallback(
-		(speed: PlaybackSpeed) => {
-			if (!selectedSpeedId) return;
-			setSpeedRegions((prev) =>
-				prev.map((region) =>
-					region.id === selectedSpeedId ? { ...region, speed } : region,
-				),
-			);
-		},
-		[selectedSpeedId],
-	);
-
 	const handleAnnotationAdded = useCallback((span: Span, trackIndex = 0) => {
 		const id = `annotation-${nextAnnotationIdRef.current++}`;
 		const zIndex = nextAnnotationZIndexRef.current++; // Assign z-index based on creation order
@@ -3711,7 +3756,6 @@ export default function VideoEditor() {
 		setAnnotationRegions((prev) => [...prev, newRegion]);
 		setSelectedAnnotationId(id);
 		setSelectedZoomId(null);
-		setSelectedTrimId(null);
 	}, []);
 
 	const handleAnnotationSpanChange = useCallback(
@@ -3913,12 +3957,6 @@ export default function VideoEditor() {
 	}, [selectedZoomId, zoomRegions]);
 
 	useEffect(() => {
-		if (selectedTrimId && !trimRegions.some((region) => region.id === selectedTrimId)) {
-			setSelectedTrimId(null);
-		}
-	}, [selectedTrimId, trimRegions]);
-
-	useEffect(() => {
 		if (
 			selectedAnnotationId &&
 			!annotationRegions.some((region) => region.id === selectedAnnotationId)
@@ -3926,12 +3964,6 @@ export default function VideoEditor() {
 			setSelectedAnnotationId(null);
 		}
 	}, [selectedAnnotationId, annotationRegions]);
-
-	useEffect(() => {
-		if (selectedSpeedId && !speedRegions.some((region) => region.id === selectedSpeedId)) {
-			setSelectedSpeedId(null);
-		}
-	}, [selectedSpeedId, speedRegions]);
 
 	useEffect(() => {
 		if (selectedAudioId && !audioRegions.some((region) => region.id === selectedAudioId)) {
@@ -4117,7 +4149,7 @@ export default function VideoEditor() {
 	// Sync audio playback with video currentTime and isPlaying state
 	useEffect(() => {
 		const currentTimeMs = currentTime * 1000;
-		const activeSpeedRegion = speedRegions.find(
+		const activeSpeedRegion = effectiveSpeedRegions.find(
 			(region) => currentTimeMs >= region.startMs && currentTimeMs < region.endMs,
 		);
 		const targetPlaybackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
@@ -4151,7 +4183,7 @@ export default function VideoEditor() {
 				}
 			}
 		}
-	}, [isPlaying, currentTime, audioRegions, speedRegions]);
+	}, [isPlaying, currentTime, audioRegions, effectiveSpeedRegions]);
 
 	useEffect(() => {
 		if (previewSourceAudioFallbackPaths.length === 0) {
@@ -4159,7 +4191,7 @@ export default function VideoEditor() {
 			return;
 		}
 
-		const activeSpeedRegion = speedRegions.find(
+		const activeSpeedRegion = effectiveSpeedRegions.find(
 			(region) => currentTime * 1000 >= region.startMs && currentTime * 1000 < region.endMs,
 		);
 		const targetPlaybackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
@@ -4213,7 +4245,7 @@ export default function VideoEditor() {
 		isPlaying,
 		previewSourceAudioFallbackPaths,
 		sourceAudioFallbackStartDelayMsByPath,
-		speedRegions,
+		effectiveSpeedRegions,
 	]);
 
 	const showExportSuccessToast = useCallback((filePath: string) => {
@@ -4328,6 +4360,9 @@ export default function VideoEditor() {
 						shadowIntensity: effectiveShadowIntensity,
 						backgroundBlur,
 						zoomMotionBlur,
+						zoomTemporalMotionBlur,
+						zoomMotionBlurSampleCount,
+						zoomMotionBlurShutterFraction,
 						connectZooms,
 						zoomInDurationMs,
 						zoomInOverlapMs,
@@ -4350,10 +4385,13 @@ export default function VideoEditor() {
 						autoCaptionSettings,
 						zoomRegions: effectiveZoomRegions,
 						cursorTelemetry: effectiveCursorTelemetry,
-						showCursor,
+						showCursor: effectiveShowCursor,
 						cursorStyle,
 						cursorSize,
 						cursorSmoothing,
+						cursorSpringStiffnessMultiplier,
+						cursorSpringDampingMultiplier,
+						cursorSpringMassMultiplier,
 						zoomSmoothness,
 						zoomClassicMode,
 						cursorMotionBlur,
@@ -4375,21 +4413,18 @@ export default function VideoEditor() {
 					const result = await gifExporter.export();
 
 					if (result.success && result.blob) {
-						const arrayBuffer = await result.blob.arrayBuffer();
 						const timestamp = Date.now();
 						const fileName = `export-${timestamp}.gif`;
 						markExportAsSaving();
 
-						const saveResult =
-							smokeExportConfig.enabled && smokeExportConfig.outputPath
-								? await window.electronAPI.writeExportedVideoToPath(
-										arrayBuffer,
-										smokeExportConfig.outputPath,
-									)
-								: await window.electronAPI.saveExportedVideo(arrayBuffer, fileName);
+						const { saveResult, pendingSave } = await saveBlobExport(
+							result.blob,
+							fileName,
+							smokeExportConfig.enabled ? smokeExportConfig.outputPath : null,
+						);
 
 						if (saveResult.canceled) {
-							pendingExportSaveRef.current = { arrayBuffer, fileName };
+							pendingExportSaveRef.current = pendingSave;
 							setHasPendingExportSave(true);
 							setExportError(
 								"Save dialog canceled. Click Save Again to save without re-rendering.",
@@ -4504,6 +4539,9 @@ export default function VideoEditor() {
 						shadowIntensity: effectiveShadowIntensity,
 						backgroundBlur,
 						zoomMotionBlur,
+						zoomTemporalMotionBlur,
+						zoomMotionBlurSampleCount,
+						zoomMotionBlurShutterFraction,
 						connectZooms,
 						zoomInDurationMs,
 						zoomInOverlapMs,
@@ -4525,10 +4563,13 @@ export default function VideoEditor() {
 						autoCaptionSettings,
 						zoomRegions: effectiveZoomRegions,
 						cursorTelemetry: effectiveCursorTelemetry,
-						showCursor,
+						showCursor: effectiveShowCursor,
 						cursorStyle,
 						cursorSize,
 						cursorSmoothing,
+						cursorSpringStiffnessMultiplier,
+						cursorSpringDampingMultiplier,
+						cursorSpringMassMultiplier,
 						zoomSmoothness,
 						zoomClassicMode,
 						cursorMotionBlur,
@@ -4589,20 +4630,16 @@ export default function VideoEditor() {
 							});
 							pendingOnCancel = { fileName, tempFilePath: result.tempFilePath };
 						} else if (result.blob) {
-							// Legacy fallback: small exports may still surface a Blob (GIF,
-							// smoke tests in non-Electron environments, etc.).
-							const arrayBuffer = await result.blob.arrayBuffer();
-							saveResult =
-								smokeExportConfig.enabled && smokeExportConfig.outputPath
-									? await window.electronAPI.writeExportedVideoToPath(
-											arrayBuffer,
-											smokeExportConfig.outputPath,
-										)
-									: await window.electronAPI.saveExportedVideo(
-											arrayBuffer,
-											fileName,
-										);
-							pendingOnCancel = { fileName, arrayBuffer };
+							// Legacy fallback: some export paths still surface a Blob, but in
+							// Electron we stream it into a temp file first so save/finalize
+							// never requires a giant renderer ArrayBuffer.
+							const blobSave = await saveBlobExport(
+								result.blob,
+								fileName,
+								smokeExportConfig.enabled ? smokeExportConfig.outputPath : null,
+							);
+							saveResult = blobSave.saveResult;
+							pendingOnCancel = blobSave.pendingSave;
 						} else {
 							saveResult = { success: false, message: "Export produced no output" };
 							pendingOnCancel = { fileName };
@@ -4756,6 +4793,9 @@ export default function VideoEditor() {
 			shadowIntensity,
 			backgroundBlur,
 			zoomMotionBlur,
+			zoomTemporalMotionBlur,
+			zoomMotionBlurSampleCount,
+			zoomMotionBlurShutterFraction,
 			connectZooms,
 			zoomInDurationMs,
 			zoomInOverlapMs,
@@ -4765,11 +4805,14 @@ export default function VideoEditor() {
 			zoomInEasing,
 			zoomOutEasing,
 			connectedZoomEasing,
-			showCursor,
+			effectiveShowCursor,
 			cursorStyle,
 			effectiveCursorTelemetry,
 			cursorSize,
 			cursorSmoothing,
+			cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier,
+			cursorSpringMassMultiplier,
 			zoomSmoothness,
 			zoomClassicMode,
 			cursorMotionBlur,
@@ -5270,7 +5313,7 @@ export default function VideoEditor() {
 					)}
 				</div>
 				<div
-					className="flex items-center gap-2 justify-self-end pr-3"
+					className="flex items-center justify-self-end pr-3"
 					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 				>
 					<Popover open={presetPopoverOpen} onOpenChange={setPresetPopoverOpen}>
@@ -5401,6 +5444,10 @@ export default function VideoEditor() {
 							</div>
 						</PopoverContent>
 					</Popover>
+					<div
+						aria-hidden="true"
+						className="mx-2 h-4 w-px shrink-0 bg-foreground/10 opacity-0"
+					/>
 					<DropdownMenu
 						open={showExportDropdown}
 						onOpenChange={setShowExportDropdown}
@@ -5410,7 +5457,7 @@ export default function VideoEditor() {
 							<Button
 								type="button"
 								onClick={handleOpenExportDropdown}
-								className="ml-3 inline-flex h-8 min-w-[112px] items-center justify-center gap-2 rounded-[5px] bg-[#2563EB] px-4.5 text-white transition-colors hover:bg-[#2563EB]/92"
+								className="inline-flex h-8 min-w-[112px] items-center justify-center gap-2 rounded-[5px] bg-[#2563EB] px-4.5 text-white transition-colors hover:bg-[#2563EB]/92"
 							>
 								<Download className="h-4 w-4" />
 								<span className="text-sm font-semibold tracking-tight">
@@ -5710,8 +5757,6 @@ export default function VideoEditor() {
 									selectedZoomId && handleZoomModeChange(mode)
 								}
 								onZoomDelete={handleZoomDelete}
-								selectedTrimId={selectedTrimId}
-								onTrimDelete={handleTrimDelete}
 								selectedClipId={selectedClipId}
 								selectedClipSpeed={
 									selectedClipId
@@ -5745,8 +5790,14 @@ export default function VideoEditor() {
 								onShadowChange={setShadowIntensity}
 								backgroundBlur={backgroundBlur}
 								onBackgroundBlurChange={setBackgroundBlur}
-								zoomMotionBlur={zoomMotionBlur}
-								onZoomMotionBlurChange={setZoomMotionBlur}
+								zoomTemporalMotionBlur={zoomTemporalMotionBlur}
+								onZoomTemporalMotionBlurChange={setZoomTemporalMotionBlur}
+								zoomMotionBlurSampleCount={zoomMotionBlurSampleCount}
+								onZoomMotionBlurSampleCountChange={setZoomMotionBlurSampleCount}
+								zoomMotionBlurShutterFraction={zoomMotionBlurShutterFraction}
+								onZoomMotionBlurShutterFractionChange={
+									setZoomMotionBlurShutterFraction
+								}
 								autoApplyFreshRecordingAutoZooms={autoApplyFreshRecordingAutoZooms}
 								onAutoApplyFreshRecordingAutoZoomsChange={
 									setAutoApplyFreshRecordingAutoZooms
@@ -5769,8 +5820,8 @@ export default function VideoEditor() {
 								onZoomOutEasingChange={setZoomOutEasing}
 								connectedZoomEasing={connectedZoomEasing}
 								onConnectedZoomEasingChange={setConnectedZoomEasing}
-								showCursor={showCursor}
-								onShowCursorChange={setShowCursor}
+								showCursor={effectiveShowCursor}
+								onShowCursorChange={handleShowCursorChange}
 								loopCursor={loopCursor}
 								onLoopCursorChange={setLoopCursor}
 								cursorStyle={cursorStyle}
@@ -5779,8 +5830,16 @@ export default function VideoEditor() {
 								onCursorSizeChange={setCursorSize}
 								cursorSmoothing={cursorSmoothing}
 								onCursorSmoothingChange={setCursorSmoothing}
-								zoomSmoothness={zoomSmoothness}
-								onZoomSmoothnessChange={setZoomSmoothness}
+								cursorSpringStiffnessMultiplier={cursorSpringStiffnessMultiplier}
+								onCursorSpringStiffnessMultiplierChange={
+									setCursorSpringStiffnessMultiplier
+								}
+								cursorSpringDampingMultiplier={cursorSpringDampingMultiplier}
+								onCursorSpringDampingMultiplierChange={
+									setCursorSpringDampingMultiplier
+								}
+								cursorSpringMassMultiplier={cursorSpringMassMultiplier}
+								onCursorSpringMassMultiplierChange={setCursorSpringMassMultiplier}
 								zoomClassicMode={zoomClassicMode}
 								onZoomClassicModeChange={setZoomClassicMode}
 								cursorMotionBlur={cursorMotionBlur}
@@ -5833,15 +5892,6 @@ export default function VideoEditor() {
 								}
 								onAnnotationBlurColorChange={handleAnnotationBlurColorChange}
 								onAnnotationDelete={handleAnnotationDelete}
-								selectedSpeedId={selectedSpeedId}
-								selectedSpeedValue={
-									selectedSpeedId
-										? (speedRegions.find((r) => r.id === selectedSpeedId)
-												?.speed ?? null)
-										: null
-								}
-								onSpeedChange={handleSpeedChange}
-								onSpeedDelete={handleSpeedDelete}
 							/>
 						)}
 					</div>
@@ -5952,7 +6002,6 @@ export default function VideoEditor() {
 												showShadow={shadowIntensity > 0}
 												shadowIntensity={shadowIntensity}
 												backgroundBlur={backgroundBlur}
-												zoomMotionBlur={zoomMotionBlur}
 												connectZooms={connectZooms}
 												zoomInDurationMs={zoomInDurationMs}
 												zoomInOverlapMs={zoomInOverlapMs}
@@ -5977,7 +6026,6 @@ export default function VideoEditor() {
 												annotationRegions={annotationRegions}
 												autoCaptions={autoCaptions}
 												autoCaptionSettings={autoCaptionSettings}
-												onEditAutoCaption={handleSaveAutoCaptionEdit}
 												selectedAnnotationId={selectedAnnotationId}
 												onSelectAnnotation={handleSelectAnnotation}
 												onAnnotationPositionChange={
@@ -5985,10 +6033,19 @@ export default function VideoEditor() {
 												}
 												onAnnotationSizeChange={handleAnnotationSizeChange}
 												cursorTelemetry={effectiveCursorTelemetry}
-												showCursor={showCursor}
+												showCursor={effectiveShowCursor}
 												cursorStyle={cursorStyle}
 												cursorSize={cursorSize}
 												cursorSmoothing={cursorSmoothing}
+												cursorSpringStiffnessMultiplier={
+													cursorSpringStiffnessMultiplier
+												}
+												cursorSpringDampingMultiplier={
+													cursorSpringDampingMultiplier
+												}
+												cursorSpringMassMultiplier={
+													cursorSpringMassMultiplier
+												}
 												zoomSmoothness={zoomSmoothness}
 												zoomClassicMode={zoomClassicMode}
 												cursorMotionBlur={cursorMotionBlur}
@@ -6250,22 +6307,11 @@ export default function VideoEditor() {
 						selectedZoomId={selectedZoomId}
 						onSelectZoom={handleSelectZoom}
 						trimRegions={trimRegions}
-						onTrimAdded={handleTrimAdded}
-						onTrimSpanChange={handleTrimSpanChange}
-						onTrimDelete={handleTrimDelete}
-						selectedTrimId={selectedTrimId}
-						onSelectTrim={handleSelectTrim}
 						clipRegions={clipRegions}
 						onClipSplit={handleClipSplit}
 						onClipSpanChange={handleClipSpanChange}
 						selectedClipId={selectedClipId}
 						onSelectClip={handleSelectClip}
-						speedRegions={speedRegions}
-						onSpeedAdded={handleSpeedAdded}
-						onSpeedSpanChange={handleSpeedSpanChange}
-						onSpeedDelete={handleSpeedDelete}
-						selectedSpeedId={selectedSpeedId}
-						onSelectSpeed={handleSelectSpeed}
 						audioRegions={audioRegions}
 						onAudioAdded={handleAudioAdded}
 						onAudioSpanChange={handleAudioSpanChange}

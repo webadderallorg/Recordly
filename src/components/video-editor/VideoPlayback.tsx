@@ -1,13 +1,6 @@
-import {
-	Application,
-	BlurFilter,
-	Container,
-	Graphics,
-	Sprite,
-	Texture,
-	VideoSource,
-} from "pixi.js";
+import { Application, Container, Graphics, Rectangle, Sprite, Texture, VideoSource } from "pixi.js";
 import { MotionBlurFilter } from "pixi-filters/motion-blur";
+import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 import type React from "react";
 import {
 	forwardRef,
@@ -18,7 +11,6 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { useI18n } from "@/contexts/I18nContext";
 import { getAssetPath, getRenderableAssetUrl, getRenderableVideoUrl } from "@/lib/assetPath";
 import { clampMediaTimeToDuration, getMediaSyncPlaybackRate } from "@/lib/mediaTiming";
 import {
@@ -26,7 +18,6 @@ import {
 	DEFAULT_WALLPAPER_RELATIVE_PATH,
 	isVideoWallpaperSource,
 } from "@/lib/wallpapers";
-import { type CaptionEditTarget, normalizeCaptionEditText } from "./captionEditing";
 import { buildActiveCaptionLayout } from "./captionLayout";
 import {
 	CAPTION_FONT_WEIGHT,
@@ -238,7 +229,6 @@ interface VideoPlaybackProps {
 	showShadow?: boolean;
 	shadowIntensity?: number;
 	backgroundBlur?: number;
-	zoomMotionBlur?: number;
 	connectZooms?: boolean;
 	zoomInDurationMs?: number;
 	zoomInOverlapMs?: number;
@@ -260,7 +250,6 @@ interface VideoPlaybackProps {
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
-	onEditAutoCaption?: (target: CaptionEditTarget, text: string) => void;
 	selectedAnnotationId?: string | null;
 	onSelectAnnotation?: (id: string | null) => void;
 	onAnnotationPositionChange?: (id: string, position: { x: number; y: number }) => void;
@@ -270,6 +259,9 @@ interface VideoPlaybackProps {
 	cursorStyle?: CursorStyle;
 	cursorSize?: number;
 	cursorSmoothing?: number;
+	cursorSpringStiffnessMultiplier?: number;
+	cursorSpringDampingMultiplier?: number;
+	cursorSpringMassMultiplier?: number;
 	zoomSmoothness?: number;
 	zoomClassicMode?: boolean;
 	cursorMotionBlur?: number;
@@ -278,11 +270,6 @@ interface VideoPlaybackProps {
 	cursorSway?: number;
 	volume?: number;
 }
-
-type CaptionEditSession = {
-	target: CaptionEditTarget;
-	draft: string;
-};
 
 export interface VideoPlaybackRef {
 	video: HTMLVideoElement | null;
@@ -314,7 +301,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			showShadow,
 			shadowIntensity = 0,
 			backgroundBlur = 0,
-			zoomMotionBlur = 0,
 			connectZooms = true,
 			zoomInDurationMs = DEFAULT_ZOOM_IN_DURATION_MS,
 			zoomInOverlapMs = DEFAULT_ZOOM_IN_OVERLAP_MS,
@@ -336,7 +322,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			annotationRegions = [],
 			autoCaptions = [],
 			autoCaptionSettings,
-			onEditAutoCaption,
 			selectedAnnotationId,
 			onSelectAnnotation,
 			onAnnotationPositionChange,
@@ -346,6 +331,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			cursorStyle = "tahoe",
 			cursorSize = DEFAULT_CURSOR_SIZE,
 			cursorSmoothing = DEFAULT_CURSOR_SMOOTHING,
+			cursorSpringStiffnessMultiplier = 1,
+			cursorSpringDampingMultiplier = 1,
+			cursorSpringMassMultiplier = 1,
 			zoomSmoothness = 0.5,
 			zoomClassicMode = false,
 			cursorMotionBlur = DEFAULT_CURSOR_MOTION_BLUR,
@@ -356,14 +344,15 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		},
 		ref,
 	) => {
-		const { t } = useI18n();
-		const editCurrentCaptionLabel = t("settings.captions.editCurrent", "Edit current caption");
 		const videoRef = useRef<HTMLVideoElement | null>(null);
 		const containerRef = useRef<HTMLDivElement | null>(null);
 		const appRef = useRef<Application | null>(null);
 		const videoSpriteRef = useRef<Sprite | null>(null);
+		const videoEffectsContainerRef = useRef<Container | null>(null);
 		const videoContainerRef = useRef<Container | null>(null);
 		const cursorContainerRef = useRef<Container | null>(null);
+		const zoomBlurFilterRef = useRef<ZoomBlurFilter | null>(null);
+		const motionBlurFilterRef = useRef<MotionBlurFilter | null>(null);
 		const cameraContainerRef = useRef<Container | null>(null);
 		const timeUpdateAnimationRef = useRef<number | null>(null);
 		const [pixiReady, setPixiReady] = useState(false);
@@ -378,17 +367,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			height: number;
 		} | null>(null);
 		const captionBoxRef = useRef<HTMLDivElement | null>(null);
-		const captionEditInputRef = useRef<HTMLTextAreaElement | null>(null);
-		const captionEditSessionRef = useRef<CaptionEditSession | null>(null);
-		const [captionEditSession, setCaptionEditSession] = useState<CaptionEditSession | null>(
-			null,
-		);
 		const currentTimeRef = useRef(0);
 		const zoomRegionsRef = useRef<ZoomRegion[]>([]);
 		const selectedZoomIdRef = useRef<string | null>(null);
 		const animationStateRef = useRef<PlaybackAnimationState>(createPlaybackAnimationState());
-		const blurFilterRef = useRef<BlurFilter | null>(null);
-		const motionBlurFilterRef = useRef<MotionBlurFilter | null>(null);
 		const isDraggingFocusRef = useRef(false);
 		const stageSizeRef = useRef({ width: 0, height: 0 });
 		const videoSizeRef = useRef({ width: 0, height: 0 });
@@ -424,7 +406,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const lastWebcamSyncTimeRef = useRef<number | null>(null);
 		const lastBackgroundSyncTimeRef = useRef<number | null>(null);
 		const bgVideoRef = useRef<HTMLVideoElement | null>(null);
-		const zoomMotionBlurRef = useRef(zoomMotionBlur);
 		const connectZoomsRef = useRef(connectZooms);
 		const zoomInDurationMsRef = useRef(zoomInDurationMs);
 		const zoomInOverlapMsRef = useRef(zoomInOverlapMs);
@@ -442,6 +423,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const cursorSizeRef = useRef(cursorSize);
 		const cursorStyleRef = useRef(cursorStyle);
 		const cursorSmoothingRef = useRef(cursorSmoothing);
+		const cursorSpringStiffnessMultiplierRef = useRef(cursorSpringStiffnessMultiplier);
+		const cursorSpringDampingMultiplierRef = useRef(cursorSpringDampingMultiplier);
+		const cursorSpringMassMultiplierRef = useRef(cursorSpringMassMultiplier);
 		const cursorMotionBlurRef = useRef(cursorMotionBlur);
 		const cursorClickBounceRef = useRef(cursorClickBounce);
 		const cursorClickBounceDurationRef = useRef(cursorClickBounceDuration);
@@ -495,148 +479,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				measureText: (text) => measurementContext.measureText(text).width,
 			});
 		}, [autoCaptionSettings, autoCaptions, currentTime]);
-		const activeCaptionEditTarget = activeCaptionLayout?.editTarget ?? null;
-		const activeCaptionEditTargetId = activeCaptionEditTarget?.id ?? null;
-		const isCaptionEditing = captionEditSession !== null;
-		const captionEditDraft = captionEditSession?.draft ?? "";
-		const captionEditTargetId = captionEditSession?.target.id ?? null;
-		const captionEditTextMetrics = useMemo(() => {
-			if (!captionEditSession || !autoCaptionSettings || typeof document === "undefined") {
-				return null;
-			}
-
-			const overlayWidth = overlayRef.current?.clientWidth || 960;
-			const fontSize = getCaptionScaledFontSize(
-				autoCaptionSettings.fontSize,
-				overlayWidth,
-				autoCaptionSettings.maxWidth,
-			);
-			const maxTextWidthPx = getCaptionTextMaxWidth(
-				overlayWidth,
-				autoCaptionSettings.maxWidth,
-				fontSize,
-			);
-			const measurementCanvas = document.createElement("canvas");
-			const measurementContext = measurementCanvas.getContext("2d");
-			if (!measurementContext) {
-				return null;
-			}
-
-			measurementContext.font = `${CAPTION_FONT_WEIGHT} ${fontSize}px ${getDefaultCaptionFontFamily()}`;
-			const measuredWidth = Math.max(
-				...captionEditSession.draft
-					.split(/\r?\n/)
-					.map((line) => measurementContext.measureText(line || " ").width),
-			);
-
-			return {
-				fontSize,
-				maxTextWidthPx,
-				widthPx: Math.ceil(
-					Math.min(maxTextWidthPx, Math.max(fontSize * 2, measuredWidth + 2)),
-				),
-			};
-		}, [autoCaptionSettings, captionEditSession]);
-		const captionEditSizeKey = captionEditSession
-			? `${captionEditTextMetrics?.widthPx ?? 0}:${captionEditDraft}`
-			: "";
-
-		const beginCaptionEdit = useCallback(() => {
-			if (!activeCaptionLayout?.editTarget || !onEditAutoCaption) {
-				return;
-			}
-
-			videoRef.current?.pause();
-			onPlayStateChange(false);
-			const nextSession = {
-				target: activeCaptionLayout.editTarget,
-				draft: activeCaptionLayout.editTarget.text,
-			};
-			captionEditSessionRef.current = nextSession;
-			setCaptionEditSession(nextSession);
-		}, [activeCaptionLayout, onEditAutoCaption, onPlayStateChange]);
-
-		const commitCaptionEdit = useCallback(() => {
-			const session = captionEditSessionRef.current;
-			if (!session || !onEditAutoCaption) {
-				captionEditSessionRef.current = null;
-				setCaptionEditSession(null);
-				return;
-			}
-
-			const normalizedDraft = normalizeCaptionEditText(session.draft);
-			captionEditSessionRef.current = null;
-			if (!normalizedDraft) {
-				setCaptionEditSession(null);
-				return;
-			}
-
-			if (normalizedDraft !== normalizeCaptionEditText(session.target.text)) {
-				onEditAutoCaption(session.target, session.draft);
-			}
-			setCaptionEditSession(null);
-		}, [onEditAutoCaption]);
-
-		const cancelCaptionEdit = useCallback(() => {
-			captionEditSessionRef.current = null;
-			setCaptionEditSession(null);
-		}, []);
-
-		useEffect(() => {
-			if (!activeCaptionEditTarget) {
-				return;
-			}
-
-			setCaptionEditSession((session) => {
-				if (!session || session.target.id === activeCaptionEditTargetId) {
-					return session;
-				}
-
-				const nextSession = {
-					...session,
-					target: activeCaptionEditTarget,
-				};
-				captionEditSessionRef.current = nextSession;
-				return nextSession;
-			});
-		}, [activeCaptionEditTarget, activeCaptionEditTargetId]);
-
-		useEffect(() => {
-			if (!captionEditTargetId) {
-				return;
-			}
-
-			const frame = requestAnimationFrame(() => {
-				const input = captionEditInputRef.current;
-				if (!input) {
-					return;
-				}
-
-				input.focus();
-				const cursorPosition = input.value.length;
-				input.setSelectionRange(cursorPosition, cursorPosition);
-			});
-
-			return () => cancelAnimationFrame(frame);
-		}, [captionEditTargetId]);
-
-		useEffect(() => {
-			if (!captionEditSizeKey) {
-				return;
-			}
-
-			const frame = requestAnimationFrame(() => {
-				const input = captionEditInputRef.current;
-				if (!input) {
-					return;
-				}
-
-				input.style.height = "auto";
-				input.style.height = `${input.scrollHeight}px`;
-			});
-
-			return () => cancelAnimationFrame(frame);
-		}, [captionEditSizeKey]);
 
 		useEffect(() => {
 			const captionBox = captionBoxRef.current;
@@ -649,12 +491,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			}
 
 			const frame = requestAnimationFrame(() => {
-				if (isCaptionEditing) {
-					captionBox.dataset.editingCaption = captionEditSizeKey;
-				} else {
-					delete captionBox.dataset.editingCaption;
-				}
-
 				const width = captionBox.offsetWidth;
 				const height = captionBox.offsetHeight;
 				if (width <= 0 || height <= 0) {
@@ -679,7 +515,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			});
 
 			return () => cancelAnimationFrame(frame);
-		}, [activeCaptionLayout, autoCaptionSettings, captionEditSizeKey, isCaptionEditing]);
+		}, [activeCaptionLayout, autoCaptionSettings]);
 		const motionBlurStateRef = useRef<MotionBlurState>(createMotionBlurState());
 		const webcamEnabled = webcam?.enabled ?? false;
 		const webcamMargin = webcam?.margin ?? 24;
@@ -823,6 +659,28 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			[],
 		);
 
+		const syncPreviewMotionBlurQuality = useCallback(() => {
+			const app = appRef.current;
+			const videoEffectsContainer = videoEffectsContainerRef.current;
+			const zoomBlurFilter = zoomBlurFilterRef.current;
+			const motionBlurFilter = motionBlurFilterRef.current;
+
+			if (!app || !videoEffectsContainer || !zoomBlurFilter || !motionBlurFilter) {
+				return;
+			}
+
+			const filterResolution = Math.max(
+				1,
+				app.renderer.resolution || window.devicePixelRatio || 1,
+			);
+			const stageWidth = Math.max(1, stageSizeRef.current.width || app.screen.width);
+			const stageHeight = Math.max(1, stageSizeRef.current.height || app.screen.height);
+
+			zoomBlurFilter.resolution = filterResolution;
+			motionBlurFilter.resolution = filterResolution;
+			videoEffectsContainer.filterArea = new Rectangle(0, 0, stageWidth, stageHeight);
+		}, []);
+
 		const layoutVideoContent = useCallback(() => {
 			const container = containerRef.current;
 			const app = appRef.current;
@@ -880,6 +738,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 			if (result) {
 				stageSizeRef.current = result.stageSize;
+				syncPreviewMotionBlurQuality();
 				videoSizeRef.current = result.videoSize;
 				baseScaleRef.current = result.baseScale;
 				baseOffsetRef.current = result.baseOffset;
@@ -963,6 +822,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			showShadow,
 			shadowIntensity,
 			applyWebcamBubbleLayout,
+			syncPreviewMotionBlurQuality,
 		]);
 
 		useEffect(() => {
@@ -1294,8 +1154,23 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		}, [speedRegions]);
 
 		useEffect(() => {
-			zoomMotionBlurRef.current = zoomMotionBlur;
-		}, [zoomMotionBlur]);
+			const videoEffectsContainer = videoEffectsContainerRef.current;
+			const zoomBlurFilter = zoomBlurFilterRef.current;
+			const motionBlurFilter = motionBlurFilterRef.current;
+
+			if (!videoEffectsContainer || !zoomBlurFilter || !motionBlurFilter) {
+				return;
+			}
+
+			videoEffectsContainer.filters = null;
+			motionBlurFilter.velocity = { x: 0, y: 0 };
+			motionBlurFilter.kernelSize = 5;
+			motionBlurFilter.offset = 0;
+			zoomBlurFilter.strength = 0;
+			zoomBlurFilter.innerRadius = 0;
+			zoomBlurFilter.radius = -1;
+			motionBlurStateRef.current = createMotionBlurState();
+		}, [pixiReady]);
 
 		useEffect(() => {
 			connectZoomsRef.current = connectZooms;
@@ -1364,6 +1239,18 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		}, [cursorSmoothing]);
 
 		useEffect(() => {
+			cursorSpringStiffnessMultiplierRef.current = cursorSpringStiffnessMultiplier;
+		}, [cursorSpringStiffnessMultiplier]);
+
+		useEffect(() => {
+			cursorSpringDampingMultiplierRef.current = cursorSpringDampingMultiplier;
+		}, [cursorSpringDampingMultiplier]);
+
+		useEffect(() => {
+			cursorSpringMassMultiplierRef.current = cursorSpringMassMultiplier;
+		}, [cursorSpringMassMultiplier]);
+
+		useEffect(() => {
 			zoomSmoothnessRef.current = zoomSmoothness;
 		}, [zoomSmoothness]);
 
@@ -1421,10 +1308,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			cursorOverlayRef.current?.reset();
 			motionBlurStateRef.current = createMotionBlurState();
 
-			if (blurFilterRef.current) {
-				blurFilterRef.current.blur = 0;
-			}
-
 			requestAnimationFrame(() => {
 				const container = cameraContainerRef.current;
 				const videoStage = videoContainerRef.current;
@@ -1445,7 +1328,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 				applyZoomTransform({
 					cameraContainer: container,
-					blurFilter: blurFilterRef.current,
+					zoomBlurFilter: zoomBlurFilterRef.current,
+					motionBlurFilter: motionBlurFilterRef.current,
 					stageSize: stageSizeRef.current,
 					baseMask: baseMaskRef.current,
 					zoomScale: 1,
@@ -1453,7 +1337,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					focusY: DEFAULT_FOCUS.cy,
 					motionIntensity: 0,
 					isPlaying: false,
-					motionBlurAmount: zoomMotionBlurRef.current,
+					motionBlurAmount: 0,
+					motionBlurState: motionBlurStateRef.current,
 				});
 
 				requestAnimationFrame(() => {
@@ -1642,10 +1527,19 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				cameraContainerRef.current = cameraContainer;
 				app.stage.addChild(cameraContainer);
 
+				// Match the export scene graph so zoom motion blur is applied to the
+				// same layer in preview and export.
+				const videoEffectsContainer = new Container();
+				videoEffectsContainerRef.current = videoEffectsContainer;
+				zoomBlurFilterRef.current = new ZoomBlurFilter({ strength: 0 });
+				motionBlurFilterRef.current = new MotionBlurFilter([0, 0], 5, 0);
+				cameraContainer.addChild(videoEffectsContainer);
+				syncPreviewMotionBlurQuality();
+
 				// Video container - holds the masked video sprite
 				const videoContainer = new Container();
 				videoContainerRef.current = videoContainer;
-				cameraContainer.addChild(videoContainer);
+				videoEffectsContainer.addChild(videoContainer);
 
 				// Device frame overlay container — sits above video but below cursor
 				const frameContainer = new Container();
@@ -1663,6 +1557,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						dotRadius: DEFAULT_CURSOR_CONFIG.dotRadius * cursorSizeRef.current,
 						style: cursorStyleRef.current,
 						smoothingFactor: cursorSmoothingRef.current,
+						springTuning: {
+							stiffnessMultiplier: cursorSpringStiffnessMultiplierRef.current,
+							dampingMultiplier: cursorSpringDampingMultiplierRef.current,
+							massMultiplier: cursorSpringMassMultiplierRef.current,
+						},
 						motionBlur: cursorMotionBlurRef.current,
 						clickBounce: cursorClickBounceRef.current,
 						clickBounceDuration: cursorClickBounceDurationRef.current,
@@ -1691,6 +1590,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					cursorOverlayRef.current.destroy();
 					cursorOverlayRef.current = null;
 				}
+				zoomBlurFilterRef.current?.destroy();
+				motionBlurFilterRef.current?.destroy();
+				zoomBlurFilterRef.current = null;
+				motionBlurFilterRef.current = null;
 				if (app && app.renderer) {
 					app.destroy(true, {
 						children: true,
@@ -1700,6 +1603,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				}
 				appRef.current = null;
 				cameraContainerRef.current = null;
+				videoEffectsContainerRef.current = null;
 				videoContainerRef.current = null;
 				frameContainerRef.current = null;
 				frameSpriteRef.current = null;
@@ -1731,10 +1635,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 			const video = videoRef.current;
 			const app = appRef.current;
+			const videoEffectsContainer = videoEffectsContainerRef.current;
 			const videoContainer = videoContainerRef.current;
 			const cursorContainer = cursorContainerRef.current;
 
-			if (!video || !app || !videoContainer || !cursorContainer) return;
+			if (!video || !app || !videoEffectsContainer || !videoContainer || !cursorContainer)
+				return;
 			if (video.videoWidth === 0 || video.videoHeight === 0) return;
 
 			const source = VideoSource.from(video);
@@ -1759,19 +1665,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			}
 
 			animationStateRef.current = createPlaybackAnimationState();
-
-			const blurFilter = new BlurFilter();
-			blurFilter.quality = 3;
-			blurFilter.resolution = app.renderer.resolution;
-			blurFilter.blur = 0;
-			const motionBlurFilter = new MotionBlurFilter([0, 0], 5, 0);
-			// Don't attach filters by default — the filter pipeline forces the video
-			// through an intermediate RenderTexture at renderer resolution, downsampling
-			// the native video and destroying detail. Filters are attached conditionally
-			// in the ticker only when zoom motion blur is actually active.
-			videoContainer.filters = null;
-			blurFilterRef.current = blurFilter;
-			motionBlurFilterRef.current = motionBlurFilter;
 
 			layoutVideoContent();
 			video.pause();
@@ -1814,15 +1707,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				}
 				videoContainer.mask = null;
 				maskGraphicsRef.current = null;
-				if (blurFilterRef.current) {
-					videoContainer.filters = [];
-					blurFilterRef.current.destroy();
-					blurFilterRef.current = null;
-				}
-				if (motionBlurFilterRef.current) {
-					motionBlurFilterRef.current.destroy();
-					motionBlurFilterRef.current = null;
-				}
+				videoEffectsContainer.filters = null;
 				videoTexture.destroy(false);
 
 				videoSpriteRef.current = null;
@@ -1834,8 +1719,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 			const app = appRef.current;
 			const videoSprite = videoSpriteRef.current;
+			const videoEffectsContainer = videoEffectsContainerRef.current;
 			const videoContainer = videoContainerRef.current;
-			if (!app || !videoSprite || !videoContainer) return;
+			if (!app || !videoSprite || !videoEffectsContainer || !videoContainer) return;
 
 			const applyTransform = (
 				transform: { scale: number; x: number; y: number },
@@ -1850,7 +1736,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 				const appliedTransform = applyZoomTransform({
 					cameraContainer,
-					blurFilter: blurFilterRef.current,
+					zoomBlurFilter: zoomBlurFilterRef.current,
 					motionBlurFilter: motionBlurFilterRef.current,
 					stageSize: stageSizeRef.current,
 					baseMask: baseMaskRef.current,
@@ -1861,7 +1747,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					motionIntensity,
 					motionVector,
 					isPlaying: isPlayingRef.current,
-					motionBlurAmount: zoomMotionBlurRef.current,
+					motionBlurAmount: 0,
 					transformOverride: transform,
 					motionBlurState: motionBlurStateRef.current,
 					frameTimeMs: performance.now(),
@@ -1878,6 +1764,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					currentTimeRef.current,
 					{
 						connectZooms: connectZoomsRef.current,
+						zoomInDurationMs: zoomInDurationMsRef.current,
+						zoomOutDurationMs: zoomOutDurationMsRef.current,
 					},
 				);
 
@@ -2046,24 +1934,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					motionIntensity,
 					motionVector,
 				);
-
-				// Conditionally attach motion blur filter only when the camera is
-				// actually moving. When filters are attached, PixiJS routes the video
-				// through an intermediate RenderTexture at renderer resolution, which
-				// downsamples the native video and degrades preview quality.
-				// Hysteresis prevents flickering when motionIntensity oscillates near threshold.
-				const filtersActive =
-					Array.isArray(videoContainer.filters) && videoContainer.filters.length > 0;
-				const cameraIsMoving = filtersActive
-					? motionIntensity > 0.002
-					: motionIntensity > 0.008;
-				const needsFilters =
-					zoomMotionBlurRef.current > 0 && isPlayingRef.current && cameraIsMoving;
-				if (needsFilters && !filtersActive && motionBlurFilterRef.current) {
-					videoContainer.filters = [motionBlurFilterRef.current];
-				} else if (!needsFilters && filtersActive) {
-					videoContainer.filters = null;
-				}
 
 				applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
 
@@ -2277,6 +2147,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 			overlay.setDotRadius(DEFAULT_CURSOR_CONFIG.dotRadius * cursorSize);
 			overlay.setSmoothingFactor(cursorSmoothing);
+			overlay.setSpringTuning({
+				stiffnessMultiplier: cursorSpringStiffnessMultiplier,
+				dampingMultiplier: cursorSpringDampingMultiplier,
+				massMultiplier: cursorSpringMassMultiplier,
+			});
 			overlay.setMotionBlur(cursorMotionBlur);
 			overlay.setClickBounce(cursorClickBounce);
 			overlay.setClickBounceDuration(cursorClickBounceDuration);
@@ -2305,6 +2180,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			cursorStyle,
 			cursorSize,
 			cursorSmoothing,
+			cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier,
+			cursorSpringMassMultiplier,
 			cursorMotionBlur,
 			cursorClickBounce,
 			cursorClickBounceDuration,
@@ -2636,34 +2514,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 									}}
 								>
 									<div
-										role={
-											onEditAutoCaption && !captionEditSession
-												? "button"
-												: undefined
-										}
-										tabIndex={
-											onEditAutoCaption && !captionEditSession ? 0 : undefined
-										}
-										aria-label={
-											onEditAutoCaption && !captionEditSession
-												? editCurrentCaptionLabel
-												: undefined
-										}
 										ref={captionBoxRef}
-										onClick={() => {
-											if (!captionEditSession) {
-												beginCaptionEdit();
-											}
-										}}
-										onKeyDown={(event) => {
-											if (!onEditAutoCaption || captionEditSession) {
-												return;
-											}
-											if (event.key === "Enter" || event.key === " ") {
-												event.preventDefault();
-												beginCaptionEdit();
-											}
-										}}
 										style={{
 											backgroundColor: `rgba(0, 0, 0, ${autoCaptionSettings.backgroundOpacity})`,
 											fontFamily: getDefaultCaptionFontFamily(),
@@ -2701,137 +2552,42 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 												),
 											)}px`,
 											boxSizing: "border-box",
-											cursor:
-												onEditAutoCaption && !captionEditSession
-													? "text"
-													: undefined,
-											pointerEvents: onEditAutoCaption ? "auto" : undefined,
 										}}
 									>
-										{captionEditSession ? (
-											<textarea
-												ref={captionEditInputRef}
-												value={captionEditSession.draft}
-												onChange={(event) => {
-													const draft = event.target.value;
-													setCaptionEditSession((session) => {
-														const nextSession = session
-															? {
-																	...session,
-																	draft,
-																}
-															: session;
-														captionEditSessionRef.current = nextSession;
-														return nextSession;
-													});
-												}}
-												onBlur={commitCaptionEdit}
-												onClick={(event) => event.stopPropagation()}
-												onKeyDown={(event) => {
-													if (event.key === "Escape") {
-														event.preventDefault();
-														cancelCaptionEdit();
-														return;
-													}
-													if (event.key === "Enter" && !event.shiftKey) {
-														event.preventDefault();
-														event.currentTarget.blur();
-													}
-												}}
-												rows={Math.max(
-													1,
-													activeCaptionLayout.visibleLines.length,
-												)}
-												aria-label={editCurrentCaptionLabel}
+										{activeCaptionLayout.visibleLines.map((line) => (
+											<div
+												key={`${activeCaptionLayout.blockKey}-${line.startWordIndex}`}
 												style={{
-													display: "block",
-													width: `${
-														captionEditTextMetrics?.widthPx ??
-														Math.max(
-															48,
-															activeCaptionLayout.visibleLines.reduce(
-																(width, line) =>
-																	Math.max(width, line.width),
-																0,
-															),
-														)
-													}px`,
-													maxWidth: `${
-														captionEditTextMetrics?.maxTextWidthPx ??
-														getCaptionTextMaxWidth(
-															overlayRef.current?.clientWidth || 960,
-															autoCaptionSettings.maxWidth,
-															getCaptionScaledFontSize(
-																autoCaptionSettings.fontSize,
-																overlayRef.current?.clientWidth ||
-																	960,
-																autoCaptionSettings.maxWidth,
-															),
-														)
-													}px`,
-													minHeight: `${
-														Math.max(
-															1,
-															activeCaptionLayout.visibleLines.length,
-														) *
-														getCaptionScaledFontSize(
-															autoCaptionSettings.fontSize,
-															overlayRef.current?.clientWidth || 960,
-															autoCaptionSettings.maxWidth,
-														) *
-														CAPTION_LINE_HEIGHT
-													}px`,
-													resize: "none",
-													border: "0",
-													outline: "0",
-													padding: "0",
-													margin: "0",
-													overflow: "hidden",
-													background: "transparent",
-													color: autoCaptionSettings.textColor,
-													font: "inherit",
-													fontWeight: "inherit",
-													lineHeight: "inherit",
-													textAlign: "center",
+													display: "flex",
+													justifyContent: "center",
+													flexWrap: "nowrap",
+													whiteSpace: "nowrap",
 												}}
-											/>
-										) : (
-											activeCaptionLayout.visibleLines.map((line) => (
-												<div
-													key={`${activeCaptionLayout.blockKey}-${line.startWordIndex}`}
-													style={{
-														display: "flex",
-														justifyContent: "center",
-														flexWrap: "nowrap",
-														whiteSpace: "nowrap",
-													}}
-												>
-													{line.words.map((word) => {
-														const visualState =
-															getCaptionWordVisualState(
-																activeCaptionLayout.hasWordTimings,
-																word.state,
-															);
+											>
+												{line.words.map((word) => {
+													const visualState = getCaptionWordVisualState(
+														activeCaptionLayout.hasWordTimings,
+														word.state,
+													);
 
-														return (
-															<span
-																key={`${activeCaptionLayout.blockKey}-${word.index}`}
-																style={{
-																	display: "inline-block",
-																	whiteSpace: "pre",
-																	color: visualState.isInactive
-																		? autoCaptionSettings.inactiveTextColor
-																		: autoCaptionSettings.textColor,
-																	opacity: visualState.opacity,
-																}}
-															>
-																{`${word.leadingSpace ? " " : ""}${word.text}`}
-															</span>
-														);
-													})}
-												</div>
-											))
-										)}
+													return (
+														<span
+															key={`${activeCaptionLayout.blockKey}-${word.index}`}
+															style={{
+																display: "inline-block",
+																whiteSpace: "pre",
+																color: visualState.isInactive
+																	? autoCaptionSettings.inactiveTextColor
+																	: autoCaptionSettings.textColor,
+																opacity: visualState.opacity,
+															}}
+														>
+															{`${word.leadingSpace ? " " : ""}${word.text}`}
+														</span>
+													);
+												})}
+											</div>
+										))}
 									</div>
 								</div>
 							</div>

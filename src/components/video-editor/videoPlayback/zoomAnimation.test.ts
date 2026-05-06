@@ -208,16 +208,30 @@ describe("getCursorSpringConfig", () => {
 		const c = getCursorSpringConfig(0.25);
 		expect(c.stiffness).toBeLessThan(760);
 		expect(c.stiffness).toBeGreaterThan(300);
+		expect(c.mass).toBeGreaterThan(1);
 	});
 
 	it("returns config in extended range at 1.5", () => {
 		const c = getCursorSpringConfig(1.5);
 		expect(c.stiffness).toBeLessThan(340);
-		expect(c.mass).toBeGreaterThan(1);
+		expect(c.mass).toBeGreaterThan(1.6);
 	});
 
 	it("clamps at max smoothing", () => {
 		expect(getCursorSpringConfig(999)).toEqual(getCursorSpringConfig(2));
+	});
+
+	it("applies cursor spring tuning multipliers", () => {
+		const untuned = getCursorSpringConfig(0.5);
+		const tuned = getCursorSpringConfig(0.5, {
+			stiffnessMultiplier: 1.5,
+			dampingMultiplier: 0.75,
+			massMultiplier: 1.25,
+		});
+
+		expect(tuned.stiffness).toBeCloseTo(untuned.stiffness * 1.5, 6);
+		expect(tuned.damping).toBeCloseTo(untuned.damping * 0.75, 6);
+		expect(tuned.mass).toBeCloseTo(untuned.mass * 1.25, 6);
 	});
 });
 
@@ -317,6 +331,17 @@ describe("computeRegionStrength", () => {
 		const s = computeRegionStrength(region, zoomOutStart + 700);
 		expect(s).toBeGreaterThan(0);
 		expect(s).toBeLessThan(1);
+	});
+
+	it("shifts zoom timing when custom durations are provided", () => {
+		const defaultStrength = computeRegionStrength(region, region.startMs);
+		const fasterStrength = computeRegionStrength(region, region.startMs, {
+			zoomInDurationMs: 300,
+			zoomOutDurationMs: 300,
+		});
+
+		expect(fasterStrength).not.toBe(defaultStrength);
+		expect(fasterStrength).toBeGreaterThan(defaultStrength);
 	});
 });
 

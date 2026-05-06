@@ -1,4 +1,11 @@
-import { Palette, Trash as Trash2, UploadSimple as Upload, X } from "@phosphor-icons/react";
+import {
+	CursorClick,
+	Palette,
+	PresentationChart,
+	Trash as Trash2,
+	UploadSimple as Upload,
+	X,
+} from "@phosphor-icons/react";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -19,6 +26,14 @@ import {
 	getRenderableVideoUrl,
 	getWallpaperThumbnailUrl,
 } from "@/lib/assetPath";
+import {
+	TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT,
+	TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION,
+	TEMPORAL_MOTION_BLUR_MAX_SAMPLE_COUNT,
+	TEMPORAL_MOTION_BLUR_MAX_SHUTTER_FRACTION,
+	TEMPORAL_MOTION_BLUR_MIN_SAMPLE_COUNT,
+	TEMPORAL_MOTION_BLUR_MIN_SHUTTER_FRACTION,
+} from "@/lib/exporter/temporalMotionBlur";
 import type { ExtensionSettingField } from "@/lib/extensions";
 import { extensionHost, type FrameInstance } from "@/lib/extensions";
 import { cn } from "@/lib/utils";
@@ -34,6 +49,7 @@ import { useI18n, useScopedT } from "../../contexts/I18nContext";
 import type { AppLocale } from "../../i18n/config";
 import { SUPPORTED_LOCALES } from "../../i18n/config";
 import { AnnotationSettingsPanel } from "./AnnotationSettingsPanel";
+import { CURSOR_MOTION_PRESETS, type CursorMotionPresetId } from "./cursorMotionPresets";
 import { loadEditorPreferences, saveEditorPreferences } from "./editorPreferences";
 import { SliderControl } from "./SliderControl";
 import { KeyboardShortcutsDialog } from "./TutorialHelp";
@@ -48,7 +64,6 @@ import type {
 	EditorEffectSection,
 	FigureData,
 	Padding,
-	PlaybackSpeed,
 	WebcamOverlaySettings,
 	WebcamPositionPreset,
 	ZoomDepth,
@@ -62,7 +77,6 @@ import {
 	DEFAULT_CURSOR_CLICK_BOUNCE_DURATION,
 	DEFAULT_CURSOR_MOTION_BLUR,
 	DEFAULT_CURSOR_SIZE,
-	DEFAULT_CURSOR_SMOOTHING,
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_CURSOR_SWAY,
 	DEFAULT_PADDING,
@@ -74,8 +88,8 @@ import {
 	DEFAULT_WEBCAM_REACT_TO_ZOOM,
 	DEFAULT_WEBCAM_SHADOW,
 	DEFAULT_WEBCAM_SIZE,
-	DEFAULT_ZOOM_MOTION_BLUR,
-	SPEED_OPTIONS,
+	DEFAULT_ZOOM_IN_DURATION_MS,
+	DEFAULT_ZOOM_OUT_DURATION_MS,
 } from "./types";
 import { fromCursorSwaySliderValue, toCursorSwaySliderValue } from "./videoPlayback/cursorSway";
 import { isZeroPadding } from "./videoPlayback/layoutUtils";
@@ -379,6 +393,66 @@ function ExtensionSettingsSection({
 	);
 }
 
+const MOTION_PRESET_ORDER: CursorMotionPresetId[] = ["focused", "smooth"];
+
+function MotionPresetCards({
+	title,
+	activePresetId,
+	onApply,
+	tSettings,
+}: {
+	title: string;
+	activePresetId: CursorMotionPresetId | null;
+	onApply: (presetId: CursorMotionPresetId) => void;
+	tSettings: (key: string, fallback?: string) => string;
+}) {
+	return (
+		<div className="flex flex-col gap-2">
+			<div className="text-[10px] text-muted-foreground">{title}</div>
+			<div className="grid grid-cols-2 gap-2">
+				{MOTION_PRESET_ORDER.map((presetId) => {
+					const Icon = presetId === "focused" ? CursorClick : PresentationChart;
+					const isActive = activePresetId === presetId;
+
+					return (
+						<button
+							key={presetId}
+							type="button"
+							onClick={() => onApply(presetId)}
+							className={cn(
+								"rounded-xl border px-3 py-3 text-left transition-all",
+								"border-foreground/10 bg-foreground/[0.03] hover:border-foreground/20 hover:bg-foreground/[0.06]",
+								isActive &&
+									"border-[#2563EB]/70 bg-[#2563EB]/12 shadow-[inset_0_0_0_1px_rgba(37,99,235,0.15)]",
+							)}
+						>
+							<div className="flex items-start gap-3">
+								<div
+									className={cn(
+										"mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-foreground/10 bg-black/10 text-muted-foreground",
+										isActive &&
+											"border-[#2563EB]/30 bg-[#2563EB]/10 text-[#75A6FF]",
+									)}
+								>
+									<Icon className="h-4 w-4" />
+								</div>
+								<div className="min-w-0 flex-1">
+									<div className="text-[12px] font-medium text-foreground">
+										{tSettings(`effects.motionPresets.${presetId}.label`)}
+									</div>
+								</div>
+							</div>
+							<div className="mt-2 text-[10px] leading-4 text-muted-foreground">
+								{tSettings(`effects.motionPresets.${presetId}.description`)}
+							</div>
+						</button>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
 interface SettingsPanelProps {
 	panelMode?: "editor" | "background";
 	activeEffectSection?: EditorEffectSection;
@@ -390,8 +464,6 @@ interface SettingsPanelProps {
 	selectedZoomMode?: ZoomMode | null;
 	onZoomModeChange?: (mode: ZoomMode) => void;
 	onZoomDelete?: (id: string) => void;
-	selectedTrimId?: string | null;
-	onTrimDelete?: (id: string) => void;
 	selectedClipId?: string | null;
 	selectedClipSpeed?: number | null;
 	selectedClipMuted?: boolean | null;
@@ -406,8 +478,12 @@ interface SettingsPanelProps {
 	onShadowChange?: (intensity: number) => void;
 	backgroundBlur?: number;
 	onBackgroundBlurChange?: (amount: number) => void;
-	zoomMotionBlur?: number;
-	onZoomMotionBlurChange?: (amount: number) => void;
+	zoomTemporalMotionBlur?: number;
+	onZoomTemporalMotionBlurChange?: (amount: number) => void;
+	zoomMotionBlurSampleCount?: number | null;
+	onZoomMotionBlurSampleCountChange?: (count: number | null) => void;
+	zoomMotionBlurShutterFraction?: number | null;
+	onZoomMotionBlurShutterFractionChange?: (fraction: number | null) => void;
 	connectZooms?: boolean;
 	onConnectZoomsChange?: (enabled: boolean) => void;
 	autoApplyFreshRecordingAutoZooms?: boolean;
@@ -438,8 +514,12 @@ interface SettingsPanelProps {
 	onCursorSizeChange?: (size: number) => void;
 	cursorSmoothing?: number;
 	onCursorSmoothingChange?: (smoothing: number) => void;
-	zoomSmoothness?: number;
-	onZoomSmoothnessChange?: (smoothness: number) => void;
+	cursorSpringStiffnessMultiplier?: number;
+	onCursorSpringStiffnessMultiplierChange?: (multiplier: number) => void;
+	cursorSpringDampingMultiplier?: number;
+	onCursorSpringDampingMultiplierChange?: (multiplier: number) => void;
+	cursorSpringMassMultiplier?: number;
+	onCursorSpringMassMultiplierChange?: (multiplier: number) => void;
 	zoomClassicMode?: boolean;
 	onZoomClassicModeChange?: (enabled: boolean) => void;
 	cursorMotionBlur?: number;
@@ -490,10 +570,6 @@ interface SettingsPanelProps {
 	onClearAutoCaptions?: () => void;
 	onDownloadWhisperSmallModel?: () => void;
 	onDeleteWhisperSmallModel?: () => void;
-	selectedSpeedId?: string | null;
-	selectedSpeedValue?: PlaybackSpeed | null;
-	onSpeedChange?: (speed: PlaybackSpeed) => void;
-	onSpeedDelete?: (id: string) => void;
 }
 
 const ZOOM_DEPTH_OPTIONS: Array<{ depth: ZoomDepth; label: string }> = [
@@ -771,8 +847,6 @@ export function SettingsPanel({
 	selectedZoomMode,
 	onZoomModeChange,
 	onZoomDelete,
-	selectedTrimId,
-	onTrimDelete,
 	selectedClipId,
 	selectedClipSpeed,
 	selectedClipMuted,
@@ -787,12 +861,20 @@ export function SettingsPanel({
 	onShadowChange,
 	backgroundBlur = 0,
 	onBackgroundBlurChange,
-	zoomMotionBlur = 0,
-	onZoomMotionBlurChange,
+	zoomTemporalMotionBlur = 0,
+	onZoomTemporalMotionBlurChange,
+	zoomMotionBlurSampleCount = TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT,
+	onZoomMotionBlurSampleCountChange,
+	zoomMotionBlurShutterFraction = TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION,
+	onZoomMotionBlurShutterFractionChange,
 	connectZooms = true,
 	onConnectZoomsChange,
 	autoApplyFreshRecordingAutoZooms = true,
 	onAutoApplyFreshRecordingAutoZoomsChange,
+	zoomInDurationMs = DEFAULT_ZOOM_IN_DURATION_MS,
+	onZoomInDurationMsChange,
+	zoomOutDurationMs = DEFAULT_ZOOM_OUT_DURATION_MS,
+	onZoomOutDurationMsChange,
 	showCursor = false,
 	onShowCursorChange,
 	loopCursor = false,
@@ -803,8 +885,12 @@ export function SettingsPanel({
 	onCursorSizeChange,
 	cursorSmoothing = 2,
 	onCursorSmoothingChange,
-	zoomSmoothness = 0.5,
-	onZoomSmoothnessChange,
+	cursorSpringStiffnessMultiplier = 1,
+	onCursorSpringStiffnessMultiplierChange,
+	cursorSpringDampingMultiplier = 1,
+	onCursorSpringDampingMultiplierChange,
+	cursorSpringMassMultiplier = 1,
+	onCursorSpringMassMultiplierChange,
 	zoomClassicMode = false,
 	onZoomClassicModeChange,
 	cursorMotionBlur = DEFAULT_CURSOR_MOTION_BLUR,
@@ -853,10 +939,6 @@ export function SettingsPanel({
 	onClearAutoCaptions,
 	onDownloadWhisperSmallModel,
 	onDeleteWhisperSmallModel,
-	selectedSpeedId,
-	selectedSpeedValue,
-	onSpeedChange,
-	onSpeedDelete,
 }: SettingsPanelProps) {
 	const tSettings = useScopedT("settings");
 	const { locale, setLocale, t } = useI18n();
@@ -1060,6 +1142,7 @@ export function SettingsPanel({
 		() => ({ ...builtInCursorPreviewUrls, ...extensionCursorPreviewUrls }),
 		[builtInCursorPreviewUrls, extensionCursorPreviewUrls],
 	);
+	const showDevMotionControls = import.meta.env.DEV;
 	const cursorStyleOptions = useMemo<CursorStyleOption[]>(
 		() => [
 			...BUILTIN_CURSOR_STYLE_OPTIONS,
@@ -1338,12 +1421,6 @@ export function SettingsPanel({
 		</div>
 	);
 
-	const handleTrimDeleteClick = () => {
-		if (selectedTrimId && onTrimDelete) {
-			onTrimDelete(selectedTrimId);
-		}
-	};
-
 	const crop = cropRegion ?? {
 		x: 0,
 		y: 0,
@@ -1390,8 +1467,13 @@ export function SettingsPanel({
 	};
 
 	const resetZoomSection = () => {
-		onZoomSmoothnessChange?.(0.5);
-		onZoomMotionBlurChange?.(initialEditorPreferences.zoomMotionBlur);
+		onZoomTemporalMotionBlurChange?.(initialEditorPreferences.zoomTemporalMotionBlur);
+		onZoomMotionBlurSampleCountChange?.(initialEditorPreferences.zoomMotionBlurSampleCount);
+		onZoomMotionBlurShutterFractionChange?.(
+			initialEditorPreferences.zoomMotionBlurShutterFraction,
+		);
+		onZoomInDurationMsChange?.(initialEditorPreferences.zoomInDurationMs);
+		onZoomOutDurationMsChange?.(initialEditorPreferences.zoomOutDurationMs);
 		onZoomClassicModeChange?.(false);
 	};
 
@@ -1401,17 +1483,65 @@ export function SettingsPanel({
 		onCursorStyleChange?.(initialEditorPreferences.cursorStyle);
 		onCursorSizeChange?.(initialEditorPreferences.cursorSize);
 		onCursorSmoothingChange?.(initialEditorPreferences.cursorSmoothing);
+		onCursorSpringStiffnessMultiplierChange?.(
+			initialEditorPreferences.cursorSpringStiffnessMultiplier,
+		);
+		onCursorSpringDampingMultiplierChange?.(
+			initialEditorPreferences.cursorSpringDampingMultiplier,
+		);
+		onCursorSpringMassMultiplierChange?.(initialEditorPreferences.cursorSpringMassMultiplier);
 		onCursorMotionBlurChange?.(initialEditorPreferences.cursorMotionBlur);
 		onCursorClickBounceChange?.(initialEditorPreferences.cursorClickBounce);
 		onCursorClickBounceDurationChange?.(DEFAULT_CURSOR_CLICK_BOUNCE_DURATION);
 		onCursorSwayChange?.(initialEditorPreferences.cursorSway);
 	};
 
+	const activeMotionPresetId = useMemo(() => {
+		return (
+			MOTION_PRESET_ORDER.find((presetId) => {
+				const preset = CURSOR_MOTION_PRESETS[presetId];
+				return (
+					preset.zoomInDurationMs === zoomInDurationMs &&
+					preset.zoomOutDurationMs === zoomOutDurationMs &&
+					preset.cursorSize === cursorSize &&
+					preset.cursorSmoothing === cursorSmoothing &&
+					preset.cursorSpringStiffnessMultiplier === cursorSpringStiffnessMultiplier &&
+					preset.cursorSpringDampingMultiplier === cursorSpringDampingMultiplier &&
+					preset.cursorSpringMassMultiplier === cursorSpringMassMultiplier &&
+					preset.cursorMotionBlur === cursorMotionBlur &&
+					preset.cursorClickBounce === cursorClickBounce &&
+					preset.cursorClickBounceDuration === cursorClickBounceDuration
+				);
+			}) ?? null
+		);
+	}, [
+		cursorClickBounce,
+		cursorClickBounceDuration,
+		cursorMotionBlur,
+		cursorSize,
+		cursorSmoothing,
+		cursorSpringDampingMultiplier,
+		cursorSpringMassMultiplier,
+		cursorSpringStiffnessMultiplier,
+		zoomInDurationMs,
+		zoomOutDurationMs,
+	]);
+
+	const applyMotionPreset = (presetId: CursorMotionPresetId) => {
+		const preset = CURSOR_MOTION_PRESETS[presetId];
+		onZoomInDurationMsChange?.(preset.zoomInDurationMs);
+		onZoomOutDurationMsChange?.(preset.zoomOutDurationMs);
+		onCursorSizeChange?.(preset.cursorSize);
+		onCursorSmoothingChange?.(preset.cursorSmoothing);
+		onCursorSpringStiffnessMultiplierChange?.(preset.cursorSpringStiffnessMultiplier);
+		onCursorSpringDampingMultiplierChange?.(preset.cursorSpringDampingMultiplier);
+		onCursorSpringMassMultiplierChange?.(preset.cursorSpringMassMultiplier);
+		onCursorMotionBlurChange?.(preset.cursorMotionBlur);
+		onCursorClickBounceChange?.(preset.cursorClickBounce);
+		onCursorClickBounceDurationChange?.(preset.cursorClickBounceDuration);
+	};
+
 	const resetFrameSection = () => {
-		onShadowChange?.(initialEditorPreferences.shadowIntensity);
-		onBorderRadiusChange?.(initialEditorPreferences.borderRadius);
-		onPaddingChange?.(DEFAULT_PADDING);
-		onFrameChange?.(null);
 		onAspectRatioChange?.(initialEditorPreferences.aspectRatio);
 		removeBackgroundStateRef.current = null;
 	};
@@ -2445,6 +2575,15 @@ export function SettingsPanel({
 				</section>
 
 				<section className="flex flex-col gap-2">
+					<MotionPresetCards
+						title={tSettings("effects.motionPresetsTitle", "Motion Presets")}
+						activePresetId={activeMotionPresetId}
+						onApply={applyMotionPreset}
+						tSettings={tSettings}
+					/>
+				</section>
+
+				<section className="flex flex-col gap-2">
 					<SectionLabel>{t("editor.keyboardShortcuts.title")}</SectionLabel>
 					<KeyboardShortcutsDialog
 						triggerLabel={t("editor.keyboardShortcuts.customize")}
@@ -2514,7 +2653,7 @@ export function SettingsPanel({
 										)
 									: tSettings(
 											"zoom.modeAutoDescription",
-											"Camera follows cursor automatically",
+											"Camera recenters when the cursor nears the edge of the zoomed view",
 										)}
 							</p>
 						</div>
@@ -2564,29 +2703,87 @@ export function SettingsPanel({
 					/>
 				</div>
 				{!zoomClassicMode && (
-					<SliderControl
-						label={tSettings("effects.zoomSmoothness", "Zoom Smoothness")}
-						value={zoomSmoothness}
-						defaultValue={0.5}
-						min={0}
-						max={1}
-						step={0.01}
-						onChange={(v) => onZoomSmoothnessChange?.(v)}
-						formatValue={(v) => (v <= 0 ? tSettings("effects.off") : v.toFixed(2))}
-						parseInput={(text) => parseFloat(text)}
-					/>
+					<div className="text-[10px] text-muted-foreground">
+						{tSettings(
+							"effects.motionPresetsZoomHint",
+							"Zoom motion presets are available in Settings.",
+						)}
+					</div>
 				)}
-				<SliderControl
-					label={tSettings("effects.zoomMotionBlur")}
-					value={zoomMotionBlur}
-					defaultValue={DEFAULT_ZOOM_MOTION_BLUR}
-					min={0}
-					max={2}
-					step={0.05}
-					onChange={(v) => onZoomMotionBlurChange?.(v)}
-					formatValue={(v) => `${v.toFixed(2)}×`}
-					parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
-				/>
+				{showDevMotionControls ? (
+					<div className="space-y-1.5 rounded-lg border border-[#2563EB]/15 bg-[#2563EB]/5 px-3 py-3">
+						<div>
+							<div className="text-[11px] font-medium text-foreground">
+								{tSettings("effects.exportBlurDebug", "Export Blur Debug")}
+							</div>
+							<div className="mt-0.5 text-[10px] text-muted-foreground">
+								{tSettings(
+									"effects.exportBlurDebugHint",
+									"Development-only temporal blur tuning for export and preview parity checks.",
+								)}
+							</div>
+						</div>
+						<SliderControl
+							label={tSettings("effects.zoomTemporalMotionBlur", "Temporal blur")}
+							value={zoomTemporalMotionBlur}
+							defaultValue={initialEditorPreferences.zoomTemporalMotionBlur}
+							min={0}
+							max={2}
+							step={0.05}
+							onChange={(value) => onZoomTemporalMotionBlurChange?.(value)}
+							formatValue={(value) => `${value.toFixed(2)}×`}
+							parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
+						/>
+						<SliderControl
+							label={tSettings("effects.zoomMotionBlurSampleCount", "Sample count")}
+							value={
+								zoomMotionBlurSampleCount ??
+								TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT
+							}
+							defaultValue={
+								initialEditorPreferences.zoomMotionBlurSampleCount ??
+								TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT
+							}
+							min={TEMPORAL_MOTION_BLUR_MIN_SAMPLE_COUNT}
+							max={TEMPORAL_MOTION_BLUR_MAX_SAMPLE_COUNT}
+							step={2}
+							onChange={(value) =>
+								onZoomMotionBlurSampleCountChange?.(Math.round(value))
+							}
+							formatValue={(value) => `${Math.round(value)} samples`}
+							parseInput={(text) => parseFloat(text.replace(/samples?$/i, "").trim())}
+						/>
+						<SliderControl
+							label={tSettings("effects.zoomMotionBlurShutterFraction", "Shutter")}
+							value={
+								zoomMotionBlurShutterFraction ??
+								TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION
+							}
+							defaultValue={
+								initialEditorPreferences.zoomMotionBlurShutterFraction ??
+								TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION
+							}
+							min={TEMPORAL_MOTION_BLUR_MIN_SHUTTER_FRACTION}
+							max={TEMPORAL_MOTION_BLUR_MAX_SHUTTER_FRACTION}
+							step={0.01}
+							onChange={(value) => onZoomMotionBlurShutterFractionChange?.(value)}
+							formatValue={(value) => `${Math.round(value * 100)}%`}
+							parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
+						/>
+					</div>
+				) : (
+					<div className="rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2">
+						<div className="text-[10px] text-muted-foreground">
+							{tSettings(
+								"effects.exportBlurLocked",
+								"Export blur is fixed for this build.",
+							)}
+						</div>
+						<div className="mt-1 text-[12px] font-medium text-foreground">
+							{`${TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT} samples · ${Math.round(TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION * 100)}% shutter`}
+						</div>
+					</div>
+				)}
 				{selectedZoomId && (
 					<Button
 						onClick={() => {
@@ -2778,19 +2975,6 @@ export function SettingsPanel({
 								parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
 							/>
 							<SliderControl
-								label={tSettings("effects.cursorSmoothing")}
-								value={cursorSmoothing}
-								defaultValue={DEFAULT_CURSOR_SMOOTHING}
-								min={0}
-								max={2}
-								step={0.01}
-								onChange={(v) => onCursorSmoothingChange?.(v)}
-								formatValue={(v) =>
-									v <= 0 ? tSettings("effects.off") : v.toFixed(2)
-								}
-								parseInput={(text) => parseFloat(text)}
-							/>
-							<SliderControl
 								label={tSettings("effects.cursorMotionBlur")}
 								value={cursorMotionBlur}
 								defaultValue={DEFAULT_CURSOR_MOTION_BLUR}
@@ -2843,6 +3027,78 @@ export function SettingsPanel({
 									return parseFloat(text.replace(/×$/, ""));
 								}}
 							/>
+							{showDevMotionControls ? (
+								<div className="space-y-1.5 rounded-lg border border-[#2563EB]/15 bg-[#2563EB]/5 px-3 py-3">
+									<div>
+										<div className="text-[11px] font-medium text-foreground">
+											{tSettings(
+												"effects.cursorDebugTuning",
+												"Cursor Debug Tuning",
+											)}
+										</div>
+										<div className="mt-0.5 text-[10px] text-muted-foreground">
+											{tSettings(
+												"effects.cursorDebugTuningHint",
+												"Development-only spring tuning controls.",
+											)}
+										</div>
+									</div>
+									<SliderControl
+										label={tSettings(
+											"effects.cursorSpringStiffnessMultiplier",
+											"Spring stiffness",
+										)}
+										value={cursorSpringStiffnessMultiplier}
+										defaultValue={
+											initialEditorPreferences.cursorSpringStiffnessMultiplier
+										}
+										min={0.25}
+										max={3}
+										step={0.01}
+										onChange={(value) =>
+											onCursorSpringStiffnessMultiplierChange?.(value)
+										}
+										formatValue={(value) => `${value.toFixed(2)}×`}
+										parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
+									/>
+									<SliderControl
+										label={tSettings(
+											"effects.cursorSpringDampingMultiplier",
+											"Spring damping",
+										)}
+										value={cursorSpringDampingMultiplier}
+										defaultValue={
+											initialEditorPreferences.cursorSpringDampingMultiplier
+										}
+										min={0.25}
+										max={3}
+										step={0.01}
+										onChange={(value) =>
+											onCursorSpringDampingMultiplierChange?.(value)
+										}
+										formatValue={(value) => `${value.toFixed(2)}×`}
+										parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
+									/>
+									<SliderControl
+										label={tSettings(
+											"effects.cursorSpringMassMultiplier",
+											"Spring mass",
+										)}
+										value={cursorSpringMassMultiplier}
+										defaultValue={
+											initialEditorPreferences.cursorSpringMassMultiplier
+										}
+										min={0.25}
+										max={3}
+										step={0.01}
+										onChange={(value) =>
+											onCursorSpringMassMultiplierChange?.(value)
+										}
+										formatValue={(value) => `${value.toFixed(2)}×`}
+										parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
+									/>
+								</div>
+							) : null}
 						</div>
 						{renderExtensionPanelsForSections("cursor")}
 					</section>
@@ -3134,70 +3390,9 @@ export function SettingsPanel({
 			<div
 				className={cn(
 					"flex-shrink-0 border-t border-foreground/10 bg-editor-header p-4 pt-3",
-					!selectedTrimId && !selectedSpeedId && !selectedAudioId && "hidden",
+					!selectedAudioId && "hidden",
 				)}
 			>
-				{selectedTrimId && (
-					<div className="mb-4">
-						<Button
-							onClick={handleTrimDeleteClick}
-							variant="destructive"
-							size="sm"
-							className="mt-2 h-8 w-full gap-2 border border-red-500/20 bg-red-500/10 text-xs text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/20"
-						>
-							<Trash2 className="h-3 w-3" />
-							{tSettings("trim.deleteRegion")}
-						</Button>
-					</div>
-				)}
-
-				{selectedSpeedId && (
-					<div>
-						<div className="mb-3 flex items-center justify-between">
-							<span className="text-sm font-medium text-foreground">
-								{tSettings("speed.playbackSpeed")}
-							</span>
-							{selectedSpeedValue && (
-								<span className="rounded-full bg-[#d97706]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#d97706]">
-									{SPEED_OPTIONS.find((o) => o.speed === selectedSpeedValue)
-										?.label ?? `${selectedSpeedValue}×`}
-								</span>
-							)}
-						</div>
-						<div className="grid grid-cols-7 gap-1.5">
-							{SPEED_OPTIONS.map((option) => {
-								const isActive = selectedSpeedValue === option.speed;
-								return (
-									<Button
-										key={option.speed}
-										type="button"
-										onClick={() => onSpeedChange?.(option.speed)}
-										className={cn(
-											"h-auto w-full rounded-lg border px-1 py-2 text-center shadow-sm transition-all duration-200 ease-out cursor-pointer",
-											isActive
-												? "border-[#d97706] bg-[#d97706] text-white"
-												: "border-foreground/5 bg-foreground/5 text-muted-foreground hover:bg-foreground/10 hover:border-foreground/10 hover:text-foreground",
-										)}
-									>
-										<span className="text-xs font-semibold">
-											{option.label}
-										</span>
-									</Button>
-								);
-							})}
-						</div>
-						<Button
-							onClick={() => selectedSpeedId && onSpeedDelete?.(selectedSpeedId)}
-							variant="destructive"
-							size="sm"
-							className="mt-2 h-8 w-full gap-2 border border-red-500/20 bg-red-500/10 text-xs text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/20"
-						>
-							<Trash2 className="h-3 w-3" />
-							{tSettings("speed.deleteRegion")}
-						</Button>
-					</div>
-				)}
-
 				{selectedAudioId && (
 					<div>
 						<div className="mb-3 flex items-center justify-between">

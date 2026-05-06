@@ -86,6 +86,7 @@ type MockContext = {
 	closePath: MockFunction;
 	clip: MockFunction;
 	drawImage: MockFunction;
+	fillRect: MockFunction;
 	save: MockFunction;
 	restore: MockFunction;
 	translate: MockFunction;
@@ -214,6 +215,7 @@ function createMockContext() {
 		closePath: vi.fn(),
 		clip: vi.fn(),
 		drawImage: vi.fn(),
+		fillRect: vi.fn(),
 		save: vi.fn(),
 		restore: vi.fn(),
 		translate: vi.fn(),
@@ -273,6 +275,9 @@ describe("FrameRenderer webcam export path", () => {
 			},
 			document: {
 				createElement: vi.fn((tag: string) => {
+					if (tag === "video") {
+						return new FakeVideoElement();
+					}
 					if (tag !== "canvas") {
 						throw new Error(`Unexpected element requested in test: ${tag}`);
 					}
@@ -443,7 +448,7 @@ describe("FrameRenderer webcam export path", () => {
 		expect(createdCanvases).toHaveLength(2);
 	});
 
-	it("prefers decoder-backed video wallpapers during export", async () => {
+	it("prefers decoder-backed sync for video wallpapers during export", async () => {
 		const renderer = new FrameRenderer({
 			width: 1920,
 			height: 1080,

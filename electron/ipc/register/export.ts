@@ -382,9 +382,14 @@ export function registerExportHandlers() {
 		async (_, videoData: ArrayBuffer, options?: NativeVideoExportFinishOptions) => {
 			try {
 				const result = await muxExportedVideoAudioBuffer(videoData, options ?? {});
+				// Register the muxed output so finalize-exported-video / discard-
+				// exported-temp accept it. Returning a temp path (instead of the
+				// muxed bytes) keeps us off Node's >2 GiB fs.readFile cap and
+				// avoids a redundant copy through the renderer.
+				registerOwnedExportPath(result.outputPath);
 				return {
 					success: true,
-					data: result.data,
+					tempPath: result.outputPath,
 					metrics: result.metrics,
 				};
 			} catch (error) {
