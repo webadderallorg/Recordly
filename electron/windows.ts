@@ -310,22 +310,6 @@ ipcMain.on("hud-overlay-hide", () => {
 	}
 });
 
-ipcMain.on("set-hud-overlay-expanded", (_event, expanded: boolean) => {
-	// Compatibility no-op for launcher HUD: window bounds are now fixed to workArea.
-	void expanded;
-});
-
-ipcMain.on("set-hud-overlay-compact-width", (_event, width: number) => {
-	// Compatibility no-op for launcher HUD: window bounds are now fixed to workArea.
-	void width;
-});
-
-ipcMain.on("set-hud-overlay-measured-height", (_event, height: number, expanded: boolean) => {
-	// Compatibility no-op for launcher HUD: window bounds are now fixed to workArea.
-	void height;
-	void expanded;
-});
-
 ipcMain.handle("get-hud-overlay-capture-protection", () => {
 	const enabled = loadHudOverlayCaptureProtectionSetting();
 
