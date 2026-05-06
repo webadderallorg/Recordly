@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
-import { canShowFloatingWebcamPreview } from "@/components/launch/floatingWebcamPreview";
+import { canShowFloatingWebcamPreview } from "../floatingWebcamPreview";
 
 const WEBCAM_PREVIEW_DRAG_THRESHOLD = 6;
 const DEFAULT_WEBCAM_PREVIEW_OFFSET = { x: 0, y: 0 };

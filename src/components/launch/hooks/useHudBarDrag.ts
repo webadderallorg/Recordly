@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
-import { mergeHudInteractiveBounds, shouldRestoreHudMousePassthroughAfterDrag } from "@/components/launch/hudMousePassthrough";
+import { mergeHudInteractiveBounds, shouldRestoreHudMousePassthroughAfterDrag } from "../hudMousePassthrough";
 
 const DEFAULT_RECORDING_HUD_OFFSET = { x: 0, y: 0 };
 
