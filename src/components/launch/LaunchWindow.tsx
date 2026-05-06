@@ -187,6 +187,11 @@ export function LaunchWindow() {
 	const supportsHudCaptureProtection = platform !== "linux";
 
 	useEffect(() => {
+		// Tell main process to reveal the HUD only after renderer mounted.
+		window.electronAPI?.hudOverlayRendererReady?.();
+	}, []);
+
+	useEffect(() => {
 		if (!selectedDeviceId) {
 			return;
 		}

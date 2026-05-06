@@ -88,6 +88,7 @@ interface Window {
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;
 		hudOverlayHide: () => void;
 		hudOverlayClose: () => void;
+		hudOverlayRendererReady: () => void;
 		setHudOverlayExpanded: (expanded: boolean) => void;
 		setHudOverlayCompactWidth: (width: number) => void;
 		setHudOverlayMeasuredHeight: (height: number, expanded: boolean) => void;

@@ -84,6 +84,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	hudOverlayClose: () => {
 		ipcRenderer.send("hud-overlay-close");
 	},
+	hudOverlayRendererReady: () => {
+		ipcRenderer.send("hud-overlay-renderer-ready");
+	},
 	setHudOverlayExpanded: (expanded: boolean) => {
 		ipcRenderer.send("set-hud-overlay-expanded", expanded);
 	},

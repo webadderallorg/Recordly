@@ -364,6 +364,7 @@ ipcMain.handle("set-hud-overlay-capture-protection", (_event, enabled: boolean) 
 export function createHudOverlayWindow(): BrowserWindow {
 	loadHudOverlayCaptureProtectionSetting();
 	const initialBounds = getHudOverlayBounds();
+	let hasShownHudWindow = false;
 
 	const win = new BrowserWindow({
 		width: initialBounds.width,
@@ -372,6 +373,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 		y: initialBounds.y,
 		frame: false,
 		transparent: true,
+		backgroundColor: "#00000000",
 		resizable: false,
 		alwaysOnTop: true,
 		skipTaskbar: true,
@@ -385,6 +387,23 @@ export function createHudOverlayWindow(): BrowserWindow {
 			backgroundThrottling: false,
 		},
 	});
+
+	const showHudWindow = () => {
+		if (hasShownHudWindow || win.isDestroyed()) {
+			return;
+		}
+		hasShownHudWindow = true;
+		win.show();
+		win.moveTop();
+		if (process.platform === "win32" && isHudOverlayMousePassthroughSupported()) {
+			win.setIgnoreMouseEvents(false);
+			setTimeout(() => {
+				if (!win.isDestroyed()) {
+					win.setIgnoreMouseEvents(true, { forward: true });
+				}
+			}, 50);
+		}
+	};
 
 	if (isHudOverlayCaptureProtectionSupported()) {
 		win.setContentProtection(hudOverlayHiddenFromCapture);
@@ -415,32 +434,18 @@ export function createHudOverlayWindow(): BrowserWindow {
 
 	win.webContents.on("did-finish-load", () => {
 		win?.webContents.send("main-process-message", new Date().toLocaleString());
+		// Safety fallback if renderer-ready signal never arrives.
 		setTimeout(() => {
-			if (!win.isDestroyed()) {
-				win.show();
-				win.moveTop();
-				if (process.platform === "win32" && isHudOverlayMousePassthroughSupported()) {
-					win.setIgnoreMouseEvents(false);
-					setTimeout(() => {
-						if (!win.isDestroyed()) {
-							win.setIgnoreMouseEvents(true, { forward: true });
-						}
-					}, 50);
-				}
-			}
-		}, 100);
+			showHudWindow();
+		}, 1800);
 	});
 
-	// Safety net: on Linux the renderer may fail to fire did-finish-load
-	// (e.g. GPU/VAAPI errors). Show the window after ready-to-show as fallback.
-	win.once("ready-to-show", () => {
-		setTimeout(() => {
-			if (!win.isDestroyed() && !win.isVisible()) {
-				win.show();
-				win.moveTop();
-			}
-		}, 500);
-	});
+	const handleHudRendererReady = () => {
+		if (!win.isDestroyed()) {
+			showHudWindow();
+		}
+	};
+	ipcMain.on("hud-overlay-renderer-ready", handleHudRendererReady);
 
 	hudOverlayWindow = win;
 
@@ -480,6 +485,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 	screen.on("display-metrics-changed", handleDisplayMetricsChanged);
 
 	win.on("closed", () => {
+		ipcMain.removeListener("hud-overlay-renderer-ready", handleHudRendererReady);
 		screen.removeListener("display-removed", handleDisplayRemoved);
 		screen.removeListener("display-metrics-changed", handleDisplayMetricsChanged);
 		if (hudOverlayWindow === win) {

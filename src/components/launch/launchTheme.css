@@ -1,7 +1,9 @@
 .launch-theme {
-	--launch-surface: rgba(26, 28, 36, 0.92);
+	--launch-surface: rgba(18, 18, 24, 0.97);
 	--launch-panel: rgba(18, 18, 24, 0.82);
 	--launch-border: rgba(255, 255, 255, 0.07);
+	--launch-popover-blur: 24px;
+	--launch-popover-saturate: 145%;
 	--launch-border-strong: rgba(255, 255, 255, 0.12);
 	--launch-text: #f3f6ff;
 	--launch-text-muted: #aab3c7;

@@ -104,11 +104,13 @@
 	width: 300px;
 	max-height: 400px;
 	overflow-y: auto;
-	background: var(--launch-panel, rgba(34, 40, 56, 0.62));
+	background: var(--launch-surface, rgba(18, 18, 24, 0.97));
 	border: 1px solid var(--launch-border, rgba(255, 255, 255, 0.07));
 	border-radius: 16px;
-	backdrop-filter: blur(18px) saturate(140%);
-	-webkit-backdrop-filter: blur(18px) saturate(140%);
+	backdrop-filter: blur(var(--launch-popover-blur, 24px))
+		saturate(var(--launch-popover-saturate, 145%));
+	-webkit-backdrop-filter: blur(var(--launch-popover-blur, 24px))
+		saturate(var(--launch-popover-saturate, 145%));
 	padding: 8px;
 	margin-top: auto;
 	margin-bottom: 8px;
