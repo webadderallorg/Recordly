@@ -1041,7 +1041,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					// record mic via browser getUserMedia as a sidecar file.
 					if (nativeResult.microphoneFallbackRequired && microphoneEnabled) {
 						void logNativeCaptureDiagnostics("start-browser-microphone-fallback");
-						toast.warning("Using browser microphone fallback for this recording.", {
+						toast.warning("Using browser microphone processing for this recording.", {
 							id: MICROPHONE_FALLBACK_TOAST_ID,
 							duration: 8000,
 						});

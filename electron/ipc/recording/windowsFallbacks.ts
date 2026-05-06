@@ -10,6 +10,14 @@ export function shouldStartWindowsBrowserMicrophoneFallback(
 	}
 
 	const mode = env[WINDOWS_MIC_CAPTURE_MODE_ENV]?.trim().toLowerCase();
+	if (mode === "native" || mode === "wasapi") {
+		return false;
+	}
+
+	if (!mode) {
+		return true;
+	}
+
 	return mode === "browser" || mode === "fallback" || mode === "renderer";
 }
 

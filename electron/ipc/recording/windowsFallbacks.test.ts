@@ -7,6 +7,12 @@ import {
 } from "./windowsFallbacks";
 
 describe("shouldUseWindowsBrowserMicrophoneFallback", () => {
+	it("defaults Windows microphone capture to the browser fallback path", () => {
+		expect(shouldStartWindowsBrowserMicrophoneFallback({ capturesMicrophone: true }, {})).toBe(
+			true,
+		);
+	});
+
 	it("can be forced before native capture starts", () => {
 		expect(
 			shouldStartWindowsBrowserMicrophoneFallback(
@@ -14,6 +20,21 @@ describe("shouldUseWindowsBrowserMicrophoneFallback", () => {
 				{ [WINDOWS_MIC_CAPTURE_MODE_ENV]: "browser" },
 			),
 		).toBe(true);
+	});
+
+	it("allows lab runs to force native WASAPI microphone capture", () => {
+		expect(
+			shouldStartWindowsBrowserMicrophoneFallback(
+				{ capturesMicrophone: true },
+				{ [WINDOWS_MIC_CAPTURE_MODE_ENV]: "native" },
+			),
+		).toBe(false);
+		expect(
+			shouldStartWindowsBrowserMicrophoneFallback(
+				{ capturesMicrophone: true },
+				{ [WINDOWS_MIC_CAPTURE_MODE_ENV]: "wasapi" },
+			),
+		).toBe(false);
 	});
 
 	it("does not force fallback when microphone capture was not requested", () => {
@@ -39,6 +60,16 @@ describe("shouldUseWindowsBrowserMicrophoneFallback", () => {
 			shouldUseWindowsBrowserMicrophoneFallback(
 				"WARNING: Failed to initialize WASAPI mic capture\nRecording started",
 				{ capturesMicrophone: false },
+			),
+		).toBe(false);
+	});
+
+	it("returns false for a healthy native mic when lab mode forces native capture", () => {
+		expect(
+			shouldUseWindowsBrowserMicrophoneFallback(
+				"Recording started",
+				{ capturesMicrophone: true },
+				{ [WINDOWS_MIC_CAPTURE_MODE_ENV]: "native" },
 			),
 		).toBe(false);
 	});
