@@ -54,6 +54,10 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 			effectiveDurationSec: number,
 		) => string | null;
 		resolveNativeStaticLayoutBackground: () => Promise<unknown>;
+		createNativeStaticLayoutGradient: (
+			ctx: CanvasRenderingContext2D,
+			wallpaper: string,
+		) => CanvasGradient | null;
 	};
 }
 
@@ -241,6 +245,26 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		expect(position).toBe(0);
 		expect(Array.from(chunk as Uint8Array)).toEqual(Array.from(jpegBytes));
 		expect(electronAPI.closeExportStream).toHaveBeenCalledWith("background-stream");
+	});
+
+	it("parses rgba color stops in native gradient backgrounds", () => {
+		const exporter = createExporter();
+		const gradient = { addColorStop: vi.fn() };
+		const ctx = {
+			createLinearGradient: vi.fn(() => gradient),
+			createRadialGradient: vi.fn(() => gradient),
+		} as unknown as CanvasRenderingContext2D;
+
+		const result = exporter.createNativeStaticLayoutGradient(
+			ctx,
+			"linear-gradient( 111.6deg,  rgba(114,167,232,1) 9.4%, rgba(253,129,82,1) 43.9%, rgba(249,202,86,1) 86.3% )",
+		);
+
+		expect(result).toBe(gradient);
+		expect(gradient.addColorStop).toHaveBeenCalledTimes(3);
+		expect(gradient.addColorStop).toHaveBeenNthCalledWith(1, 0, "rgba(114,167,232,1)");
+		expect(gradient.addColorStop).toHaveBeenNthCalledWith(2, 0.5, "rgba(253,129,82,1)");
+		expect(gradient.addColorStop).toHaveBeenNthCalledWith(3, 1, "rgba(249,202,86,1)");
 	});
 
 	it("allows non-tail trim timelines with native static-layout", () => {

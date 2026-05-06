@@ -281,6 +281,7 @@ export class ModernVideoExporter {
 	private maxNativeWriteInFlight = 1;
 	private lastNativeExportError: string | null = null;
 	private nativeStaticLayoutSkipReason: string | null = null;
+	private nativeStaticLayoutBackgroundSkipReason: string | null = null;
 	private nativeH264Encoder: VideoEncoder | null = null;
 	private nativeEncoderError: Error | null = null;
 	private effectiveDurationSec = 0;
@@ -318,6 +319,7 @@ export class ModernVideoExporter {
 			this.encoderError = null;
 			this.nativeEncoderError = null;
 			this.nativeStaticLayoutSkipReason = null;
+			this.nativeStaticLayoutBackgroundSkipReason = null;
 			this.totalExportStartTimeMs = this.getNowMs();
 			const backendPreference = this.config.backendPreference ?? "auto";
 			let useNativeEncoder = false;
@@ -1267,6 +1269,7 @@ export class ModernVideoExporter {
 	}
 
 	private async resolveNativeStaticLayoutBackground(): Promise<NativeStaticLayoutBackground | null> {
+		this.nativeStaticLayoutBackgroundSkipReason = null;
 		const configuredWallpaper = this.config.wallpaper?.trim() ?? "";
 		const wallpaper = configuredWallpaper || DEFAULT_WALLPAPER_PATH;
 		if (/^#?[0-9a-f]{6}$/i.test(wallpaper)) {
@@ -1277,21 +1280,38 @@ export class ModernVideoExporter {
 		}
 
 		if (wallpaper.startsWith("data:image/") || wallpaper.startsWith("blob:")) {
-			return this.materializeNativeStaticLayoutImageSource(wallpaper);
+			const materialized = await this.materializeNativeStaticLayoutImageSource(wallpaper);
+			if (materialized) {
+				return materialized;
+			}
+			this.nativeStaticLayoutBackgroundSkipReason =
+				"unsupported-background-image-materialize-failed";
+			return null;
 		}
 
 		if (wallpaper.startsWith("linear-gradient") || wallpaper.startsWith("radial-gradient")) {
-			return this.materializeNativeStaticLayoutGradientBackground(wallpaper);
+			const materialized =
+				await this.materializeNativeStaticLayoutGradientBackground(wallpaper);
+			if (materialized) {
+				return materialized;
+			}
+			this.nativeStaticLayoutBackgroundSkipReason =
+				"unsupported-background-gradient-materialize-failed";
+			return null;
 		}
 
-		if (
-			isVideoWallpaperSource(wallpaper) ||
-			wallpaper.startsWith("data:") ||
-			wallpaper.startsWith("blob:") ||
-			wallpaper.startsWith("http") ||
-			wallpaper.startsWith("linear-gradient") ||
-			wallpaper.startsWith("radial-gradient")
-		) {
+		if (isVideoWallpaperSource(wallpaper)) {
+			this.nativeStaticLayoutBackgroundSkipReason = "unsupported-background-video";
+			return null;
+		}
+
+		if (wallpaper.startsWith("data:") || wallpaper.startsWith("blob:")) {
+			this.nativeStaticLayoutBackgroundSkipReason = "unsupported-background-data-or-blob";
+			return null;
+		}
+
+		if (wallpaper.startsWith("http")) {
+			this.nativeStaticLayoutBackgroundSkipReason = "unsupported-background-remote";
 			return null;
 		}
 
@@ -1313,7 +1333,12 @@ export class ModernVideoExporter {
 		}
 
 		const localPath = getLocalFilePath(wallpaper);
-		return localPath ? { backgroundColor: "#101010", backgroundImagePath: localPath } : null;
+		if (localPath) {
+			return { backgroundColor: "#101010", backgroundImagePath: localPath };
+		}
+
+		this.nativeStaticLayoutBackgroundSkipReason = "unsupported-background-local-path";
+		return null;
 	}
 
 	private async materializeNativeStaticLayoutImageSource(
@@ -1414,9 +1439,12 @@ export class ModernVideoExporter {
 		}
 
 		const [, type, params] = gradientMatch;
-		const parts = params.split(",").map((part) => part.trim());
+		const parts = this.splitCssGradientArguments(params).map((part) => part.trim());
 		const colorStops = parts
-			.map((part) => part.match(/^(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|[a-z]+)/)?.[1])
+			.map(
+				(part) =>
+					part.match(/^(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-z]+)/i)?.[1],
+			)
 			.filter((color): color is string => Boolean(color));
 		if (colorStops.length === 0) {
 			return null;
@@ -1444,6 +1472,40 @@ export class ModernVideoExporter {
 			gradient.addColorStop(index / (colorStops.length - 1), color);
 		});
 		return gradient;
+	}
+
+	private splitCssGradientArguments(params: string): string[] {
+		const parts: string[] = [];
+		let current = "";
+		let depth = 0;
+
+		for (const char of params) {
+			if (char === "(") {
+				depth++;
+				current += char;
+				continue;
+			}
+			if (char === ")") {
+				depth = Math.max(0, depth - 1);
+				current += char;
+				continue;
+			}
+			if (char === "," && depth === 0) {
+				if (current.trim()) {
+					parts.push(current.trim());
+				}
+				current = "";
+				continue;
+			}
+
+			current += char;
+		}
+
+		if (current.trim()) {
+			parts.push(current.trim());
+		}
+
+		return parts;
 	}
 
 	private async writeNativeStaticLayoutTempAsset(
@@ -1901,7 +1963,8 @@ export class ModernVideoExporter {
 		}
 		const background = await this.resolveNativeStaticLayoutBackground();
 		if (!background) {
-			this.nativeStaticLayoutSkipReason = "unsupported-background";
+			this.nativeStaticLayoutSkipReason =
+				this.nativeStaticLayoutBackgroundSkipReason ?? "unsupported-background";
 			return null;
 		}
 
