@@ -1189,7 +1189,9 @@ export function LaunchWindow() {
 					if (
 						!isHudDraggingRef.current &&
 						!isWebcamPreviewDraggingRef.current &&
-						!webcamPreviewDragStartRef.current
+						!webcamPreviewDragStartRef.current &&
+						!anyPopoverOpen &&
+						!projectBrowserOpen
 					) {
 						window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
 					}
