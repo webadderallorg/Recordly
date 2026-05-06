@@ -67,12 +67,14 @@ export function resolvePreferredWindowsNativeHelperPath(
 		return prebundledPath;
 	}
 
-	if (existsSync(buildOutputPath)) {
-		return buildOutputPath;
-	}
-
+	// Source checkouts should run the helper staged in the branch instead of a
+	// stale local CMake build left over from an earlier test run.
 	if (existsSync(prebundledPath)) {
 		return prebundledPath;
+	}
+
+	if (existsSync(buildOutputPath)) {
+		return buildOutputPath;
 	}
 
 	return buildOutputPath;
