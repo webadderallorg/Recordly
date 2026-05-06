@@ -117,28 +117,16 @@ interface SourceSelectorProps {
 }
 
 /**
- * SourceSelector - A rich source selection component with thumbnails
- * Uses Radix UI Popover for positioning and accessibility
+ * SourceSelectorContent - The actual list of sources
  */
-export const SourceSelector = React.memo(function SourceSelector({
+export const SourceSelectorContent = ({
 	screenSources = [],
 	windowSources = [],
 	selectedSource = "Screen",
 	loading = false,
 	onSourceSelect = () => {},
-	onFetchSources = async () => {},
-	open = false,
-	onOpenChange = () => {},
-	children,
-}: SourceSelectorProps) {
+}: Pick<SourceSelectorProps, "screenSources" | "windowSources" | "selectedSource" | "loading" | "onSourceSelect">) => {
 	const t = useScopedT("launch");
-
-	// Fetch sources when popover opens
-	useEffect(() => {
-		if (open) {
-			void onFetchSources();
-		}
-	}, [open, onFetchSources]);
 
 	// Memoized source item to prevent unnecessary re-renders
 	const SourceItem = useCallback(
@@ -246,6 +234,52 @@ export const SourceSelector = React.memo(function SourceSelector({
 		);
 	}, [windowSources, selectedSource, SourceItem, t]);
 
+	if (loading) {
+		return (
+			<div className="flex items-center justify-center py-8">
+				<div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+			</div>
+		);
+	}
+
+	return (
+		<div className="max-h-[320px] overflow-y-auto overflow-x-hidden p-2 source-selector-scroll">
+			{screenSection || windowSection ? (
+				<>
+					{screenSection}
+					{windowSection}
+				</>
+			) : (
+				<div className="text-center py-8 text-sm text-muted-foreground">
+					{t("recording.noSourcesFound")}
+				</div>
+			)}
+		</div>
+	);
+};
+
+/**
+ * SourceSelector - A rich source selection component with thumbnails
+ * Uses Radix UI Popover for positioning and accessibility
+ */
+export const SourceSelector = React.memo(function SourceSelector({
+	screenSources = [],
+	windowSources = [],
+	selectedSource = "Screen",
+	loading = false,
+	onSourceSelect = () => {},
+	onFetchSources = async () => {},
+	open = false,
+	onOpenChange = () => {},
+	children,
+}: SourceSelectorProps) {
+	// Fetch sources when popover opens
+	useEffect(() => {
+		if (open) {
+			void onFetchSources();
+		}
+	}, [open, onFetchSources]);
+
 	return (
 		<Popover open={open} onOpenChange={onOpenChange}>
 			<PopoverTrigger asChild>
@@ -287,24 +321,13 @@ export const SourceSelector = React.memo(function SourceSelector({
 				collisionPadding={10}
 				usePortal={false}
 			>
-				{loading ? (
-					<div className="flex items-center justify-center py-8">
-						<div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
-					</div>
-				) : (
-					<div className="max-h-[320px] overflow-y-auto overflow-x-hidden p-2 source-selector-scroll">
-						{screenSection || windowSection ? (
-							<>
-								{screenSection}
-								{windowSection}
-							</>
-						) : (
-							<div className="text-center py-8 text-sm text-muted-foreground">
-								{t("recording.noSourcesFound")}
-							</div>
-						)}
-					</div>
-				)}
+				<SourceSelectorContent 
+					screenSources={screenSources}
+					windowSources={windowSources}
+					selectedSource={selectedSource}
+					loading={loading}
+					onSourceSelect={onSourceSelect}
+				/>
 			</PopoverContent>
 		</Popover>
 	);

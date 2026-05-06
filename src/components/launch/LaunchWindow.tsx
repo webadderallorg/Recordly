@@ -31,7 +31,6 @@ import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { useVideoDevices } from "../../hooks/useVideoDevices";
 import { AudioLevelMeter } from "../ui/audio-level-meter";
-import { ContentClamp } from "../ui/content-clamp";
 import ProjectBrowserDialog, {
 	type ProjectLibraryEntry,
 } from "../video-editor/ProjectBrowserDialog";
@@ -45,7 +44,7 @@ import {
 } from "./hudMousePassthrough";
 import styles from "./LaunchWindow.module.css";
 import { RecordingControls } from "./RecordingControls";
-import { SourceSelector } from "./SourceSelector";
+import { SourceSelectorContent } from "./SourceSelector";
 
 interface DesktopSource {
 	id: string;
@@ -249,6 +248,20 @@ export function LaunchWindow() {
 	>(null);
 	const isHudDraggingRef = useRef(false);
 	const isWebcamPreviewDraggingRef = useRef(false);
+
+	const [isAtTop, setIsAtTop] = useState(false);
+
+	useEffect(() => {
+		const checkPosition = () => {
+			const screenHeight = window.screen.availHeight;
+			const windowY = window.screenY;
+			setIsAtTop(windowY < screenHeight / 2);
+		};
+		checkPosition();
+		if (activeDropdown !== "none" || projectBrowserOpen) {
+			checkPosition();
+		}
+	}, [activeDropdown, projectBrowserOpen]);
 
 	const micDropdownOpen = activeDropdown === "mic";
 	const webcamDropdownOpen = activeDropdown === "webcam";
@@ -868,8 +881,12 @@ export function LaunchWindow() {
 
 	const toggleDropdown = (which: "sources" | "more" | "mic" | "countdown" | "webcam") => {
 		setProjectBrowserOpen(false);
-		setActiveDropdown(activeDropdown === which ? "none" : which);
-		if (activeDropdown !== which && which === "sources") fetchSources();
+		const nextActive = activeDropdown === which ? "none" : which;
+		setActiveDropdown(nextActive);
+		if (nextActive !== "none") {
+			window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+		}
+		if (nextActive !== "none" && which === "sources") fetchSources();
 	};
 
 	const handleSourceSelect = async (source: DesktopSource) => {
@@ -988,16 +1005,24 @@ export function LaunchWindow() {
 		<>
 			{platform !== "linux" && (
 				<>
-					<SourceSelector
-						screenSources={screenSources}
-						windowSources={windowSources}
-						selectedSource={selectedSource}
-						loading={sourcesLoading}
-						onSourceSelect={handleSourceSelect}
-						onFetchSources={fetchSources}
-						open={activeDropdown === "sources"}
-						onOpenChange={(open) => setActiveDropdown(open ? "sources" : "none")}
-					/>
+					<Button
+						variant="outline"
+						size="lg"
+						className={`${styles.electronNoDrag} group gap-2 px-3 min-w-0 max-w-[180px] rounded-[11px] font-medium text-[12px] shrink-0 border-[#2a2a34] bg-[#1a1a22] text-[#eeeef2] hover:border-[#3e3e4c] hover:bg-[#20202a] transition-all ${activeDropdown === "sources" ? "border-[#3e3e4c] bg-[#20202a]" : ""}`}
+						onClick={() => toggleDropdown("sources")}
+						title={selectedSource}
+					>
+						<Monitor size={16} className="shrink-0" />
+						<div className="flex-1 min-w-0 overflow-hidden">
+							<div className="truncate">{selectedSource}</div>
+						</div>
+						<ChevronUp
+							size={10}
+							className={`text-[#6b6b78] ml-0.5 shrink-0 transition-transform duration-200 ${
+								activeDropdown === "sources" ? "" : "rotate-180"
+							}`}
+						/>
+					</Button>
 
 					<Separator orientation="vertical" className="mx-[5px] h-6" />
 				</>
@@ -1105,12 +1130,16 @@ export function LaunchWindow() {
 
 	return (
 		<div
-			className="w-full flex items-end justify-center bg-transparent overflow-visible pb-5"
+			className={`w-full flex justify-center bg-transparent overflow-visible ${
+				isAtTop ? "items-start pt-5" : "items-end pb-5"
+			}`}
 			style={{ height: "100vh" }}
 		>
 			<div
 				ref={hudContentRef}
-				className="flex flex-col items-center overflow-visible"
+				className={`flex items-center overflow-visible ${
+					isAtTop ? "flex-col" : "flex-col-reverse"
+				}`}
 				onMouseEnter={() => window.electronAPI?.hudOverlaySetIgnoreMouse?.(false)}
 				onMouseLeave={() => {
 					if (
@@ -1122,12 +1151,117 @@ export function LaunchWindow() {
 					}
 				}}
 			>
+				<div className="flex flex-col items-center pointer-events-auto">
+					<div
+						style={{
+							transform: `translate(${recordingHudOffset.x}px, ${recordingHudOffset.y}px)`,
+						}}
+					>
+						<motion.div
+							ref={hudBarRef}
+							layout={!showRecordingWebcamPreview}
+							transition={hudStateTransition}
+							className={`${styles.bar} ${isAtTop ? "mt-2" : "mb-2"}`}
+						>
+							<div
+								// On Linux (especially Wayland) the compositor owns window
+								// placement, so BrowserWindow.setBounds() is silently ignored.
+								// Fall back to a native OS drag via -webkit-app-region on the
+								// handle.  We still need JS pointer handlers in webcam-preview
+								// mode (which translates via CSS inside the window), so only
+								// mark the handle as a native drag region for the IPC path.
+								className={`flex items-center px-0.5 cursor-grab active:cursor-grabbing ${
+									platform === "linux" && !showRecordingWebcamPreview
+										? styles.electronDrag
+										: ""
+								}`}
+								onPointerDown={handleHudBarPointerDown}
+								onPointerMove={handleHudBarPointerMove}
+								onPointerUp={handleHudBarPointerUp}
+								onPointerCancel={handleHudBarPointerUp}
+							>
+								<RxDragHandleDots2 size={14} className="text-[#6b6b78]" />
+							</div>
+
+							<div className={styles.barStateViewport}>
+								<AnimatePresence initial={false} mode="wait">
+									<motion.div
+										key={hudMode}
+										layout={!showRecordingWebcamPreview}
+										className={styles.barState}
+										initial={{
+											opacity: 0,
+											y: 10,
+											scale: 0.985,
+											filter: "blur(8px)",
+										}}
+										animate={{
+											opacity: 1,
+											y: 0,
+											scale: 1,
+											filter: "blur(0px)",
+										}}
+										exit={{
+											opacity: 0,
+											y: -10,
+											scale: 0.985,
+											filter: "blur(6px)",
+										}}
+										transition={hudStateTransition}
+									>
+										{finalizing
+											? finalizingControls
+											: recording
+												? recordingControls
+												: idleControls}
+									</motion.div>
+								</AnimatePresence>
+							</div>
+						</motion.div>
+					</div>
+					{showRecordingWebcamPreview && (
+						<div
+							ref={recordingWebcamPreviewContainerRef}
+							className={`${styles.recordingWebcamPreview} ${styles.electronNoDrag}`}
+							title={t("recording.webcam")}
+							style={{
+								transform: `translate(${webcamPreviewOffset.x}px, ${webcamPreviewOffset.y}px)`,
+							}}
+							onPointerDown={handleWebcamPreviewPointerDown}
+							onPointerMove={handleWebcamPreviewPointerMove}
+							onPointerUp={handleWebcamPreviewPointerUp}
+							onPointerCancel={handleWebcamPreviewPointerUp}
+						>
+							<video
+								ref={setRecordingWebcamPreviewNode}
+								className={styles.recordingWebcamPreviewVideo}
+								muted
+								playsInline
+								style={{ transform: "scaleX(-1)" }}
+							/>
+						</div>
+					)}
+				</div>
+
 				{/* Only the visible HUD content should become interactive. */}
 				<div
 					className={styles.menuArea}
 					ref={dropdownRef}
 					style={{
 						transform: `translate(${recordingHudOffset.x}px, ${recordingHudOffset.y}px)`,
+						pointerEvents: activeDropdown !== "none" || projectBrowserOpen ? "auto" : "none",
+					}}
+					onMouseEnter={() => window.electronAPI?.hudOverlaySetIgnoreMouse?.(false)}
+					onMouseLeave={() => {
+						if (
+							!isHudDraggingRef.current &&
+							!isWebcamPreviewDraggingRef.current &&
+							!webcamPreviewDragStartRef.current &&
+							activeDropdown === "none" &&
+							!projectBrowserOpen
+						) {
+							window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
+						}
 					}}
 				>
 					{projectBrowserOpen ? (
@@ -1143,10 +1277,26 @@ export function LaunchWindow() {
 							/>
 						</div>
 					) : null}
-						{activeDropdown !== "none" && activeDropdown !== "sources" && (
-							<div className={`${styles.menuCard} ${styles.electronNoDrag}`}>
+					{activeDropdown !== "none" && (
+						<div
+							className={`${styles.menuCard} ${styles.electronNoDrag} ${
+								isAtTop ? styles.menuCardTop : ""
+							}`}
+						>
+							{activeDropdown === "sources" && (
+								<>
+									<div className={styles.ddLabel}>{t("recording.sources")}</div>
+									<SourceSelectorContent
+										screenSources={screenSources}
+										windowSources={windowSources}
+										selectedSource={selectedSource}
+										loading={sourcesLoading}
+										onSourceSelect={handleSourceSelect}
+									/>
+								</>
+							)}
 
-								{activeDropdown === "mic" && (
+							{activeDropdown === "mic" && (
 								<>
 									<div className={styles.ddLabel}>
 										{t("recording.microphone")}
@@ -1415,98 +1565,6 @@ export function LaunchWindow() {
 									)}
 								</>
 							)}
-						</div>
-					)}
-				</div>
-
-				<div className="flex flex-col items-center pointer-events-auto">
-					<div
-						style={{
-							transform: `translate(${recordingHudOffset.x}px, ${recordingHudOffset.y}px)`,
-						}}
-					>
-						<motion.div
-							ref={hudBarRef}
-							layout={!showRecordingWebcamPreview}
-							transition={hudStateTransition}
-							className={`${styles.bar} mb-2`}
-						>
-							<div
-								// On Linux (especially Wayland) the compositor owns window
-								// placement, so BrowserWindow.setBounds() is silently ignored.
-								// Fall back to a native OS drag via -webkit-app-region on the
-								// handle.  We still need JS pointer handlers in webcam-preview
-								// mode (which translates via CSS inside the window), so only
-								// mark the handle as a native drag region for the IPC path.
-								className={`flex items-center px-0.5 cursor-grab active:cursor-grabbing ${
-									platform === "linux" && !showRecordingWebcamPreview
-										? styles.electronDrag
-										: ""
-								}`}
-								onPointerDown={handleHudBarPointerDown}
-								onPointerMove={handleHudBarPointerMove}
-								onPointerUp={handleHudBarPointerUp}
-								onPointerCancel={handleHudBarPointerUp}
-							>
-								<RxDragHandleDots2 size={14} className="text-[#6b6b78]" />
-							</div>
-
-							<div className={styles.barStateViewport}>
-								<AnimatePresence initial={false} mode="wait">
-									<motion.div
-										key={hudMode}
-										layout={!showRecordingWebcamPreview}
-										className={styles.barState}
-										initial={{
-											opacity: 0,
-											y: 10,
-											scale: 0.985,
-											filter: "blur(8px)",
-										}}
-										animate={{
-											opacity: 1,
-											y: 0,
-											scale: 1,
-											filter: "blur(0px)",
-										}}
-										exit={{
-											opacity: 0,
-											y: -10,
-											scale: 0.985,
-											filter: "blur(6px)",
-										}}
-										transition={hudStateTransition}
-									>
-										{finalizing
-											? finalizingControls
-											: recording
-												? recordingControls
-												: idleControls}
-									</motion.div>
-								</AnimatePresence>
-							</div>
-						</motion.div>
-					</div>
-					{showRecordingWebcamPreview && (
-						<div
-							ref={recordingWebcamPreviewContainerRef}
-							className={`${styles.recordingWebcamPreview} ${styles.electronNoDrag}`}
-							title={t("recording.webcam")}
-							style={{
-								transform: `translate(${webcamPreviewOffset.x}px, ${webcamPreviewOffset.y}px)`,
-							}}
-							onPointerDown={handleWebcamPreviewPointerDown}
-							onPointerMove={handleWebcamPreviewPointerMove}
-							onPointerUp={handleWebcamPreviewPointerUp}
-							onPointerCancel={handleWebcamPreviewPointerUp}
-						>
-							<video
-								ref={setRecordingWebcamPreviewNode}
-								className={styles.recordingWebcamPreviewVideo}
-								muted
-								playsInline
-								style={{ transform: "scaleX(-1)" }}
-							/>
 						</div>
 					)}
 				</div>

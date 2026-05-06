@@ -20,20 +20,6 @@ function normalizeDesktopSourceName(value: string) {
 	return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function hasUsableSourceThumbnail(
-	thumbnail:
-		| {
-				isEmpty: () => boolean;
-				getSize: () => { width: number; height: number };
-		  }
-		| null
-		| undefined,
-) {
-	if (!thumbnail || thumbnail.isEmpty()) return false;
-	const size = thumbnail.getSize();
-	return size.width > 1 && size.height > 1;
-}
-
 function broadcastSelectedSourceChange() {
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) {

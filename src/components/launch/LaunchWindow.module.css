@@ -127,10 +127,27 @@
 	animation: menuCardIn 0.18s ease;
 }
 
+.menuCardTop {
+	margin-top: 8px;
+	margin-bottom: auto;
+	animation: menuCardInTop 0.18s ease;
+}
+
 @keyframes menuCardIn {
 	from {
 		opacity: 0;
 		transform: translateY(12px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes menuCardInTop {
+	from {
+		opacity: 0;
+		transform: translateY(-12px);
 	}
 	to {
 		opacity: 1;
