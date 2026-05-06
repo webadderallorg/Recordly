@@ -1,10 +1,10 @@
-import { type KeyboardEvent as ReactKeyboardEvent, useEffect, useState } from "react";
-import { MdCheck } from "react-icons/md";
-import { useScopedT } from "../../contexts/I18nContext";
-import { Button } from "../ui/button";
-import { Card } from "../ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import styles from "./SourceSelector.module.css";
+import * as React from "react";
+import { Monitor, AppWindow } from "@phosphor-icons/react";
+import { useMemo, useCallback, useEffect } from "react";
+import { useScopedT } from "@/contexts/I18nContext";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface DesktopSource {
 	id: string;
@@ -12,334 +12,202 @@ interface DesktopSource {
 	thumbnail: string | null;
 	display_id: string;
 	appIcon: string | null;
-	originalName: string;
-	sourceType: "screen" | "window";
+	sourceType?: "screen" | "window";
 	appName?: string;
 	windowTitle?: string;
 }
 
-function parseSourceMetadata(source: ProcessedDesktopSource) {
-	if (source.sourceType === "window" && (source.appName || source.windowTitle)) {
-		return {
-			sourceType: "window" as const,
-			appName: source.appName,
-			windowTitle: source.windowTitle ?? source.name,
-			displayName: source.windowTitle ?? source.name,
-		};
-	}
-
-	const sourceType: "screen" | "window" = source.id.startsWith("window:") ? "window" : "screen";
-	if (sourceType === "window") {
-		const [appNamePart, ...windowTitleParts] = source.name.split(" — ");
-		const appName = appNamePart?.trim() || undefined;
-		const windowTitle = windowTitleParts.join(" — ").trim() || source.name.trim();
-
-		return {
-			sourceType,
-			appName,
-			windowTitle,
-			displayName: windowTitle,
-		};
-	}
-
-	return {
-		sourceType,
-		appName: undefined,
-		windowTitle: undefined,
-		displayName: source.name,
-	};
+interface SourceSelectorProps {
+	/** List of available screen sources */
+	screenSources?: DesktopSource[];
+	/** List of available window sources */
+	windowSources?: DesktopSource[];
+	/** Currently selected source name */
+	selectedSource?: string;
+	/** Loading state */
+	loading?: boolean;
+	/** Callback when a source is selected */
+	onSourceSelect?: (source: DesktopSource) => void;
+	/** Callback to fetch sources */
+	onFetchSources?: () => Promise<void>;
+	/** Whether the popover is open */
+	open?: boolean;
+	/** Callback when open state changes */
+	onOpenChange?: (open: boolean) => void;
 }
 
-export function SourceSelector() {
+/**
+ * SourceSelector - A rich source selection component with thumbnails
+ * Uses Radix UI Popover for positioning and accessibility
+ */
+export const SourceSelector = React.memo(function SourceSelector({
+	screenSources = [],
+	windowSources = [],
+	selectedSource = "Screen",
+	loading = false,
+	onSourceSelect = () => {},
+	onFetchSources = async () => {},
+	open = false,
+	onOpenChange = () => {},
+}: SourceSelectorProps) {
 	const t = useScopedT("launch");
-	const [sources, setSources] = useState<DesktopSource[]>([]);
-	const [selectedSource, setSelectedSource] = useState<DesktopSource | null>(null);
-	const [activeTab, setActiveTab] = useState<"screens" | "windows">("screens");
-	const [loading, setLoading] = useState(true);
 
+	// Fetch sources when popover opens
 	useEffect(() => {
-		let isMounted = true;
-		async function fetchSources() {
-			setLoading(true);
-			try {
-				// Step 1: Fetch metadata quickly without thumbnails
-				const metadataSources = await window.electronAPI.getSources({
-					types: ["screen", "window"],
-					thumbnailSize: { width: 160, height: 90 },
-					fetchWindowIcons: true,
-				});
-
-				if (!isMounted) return;
-
-				const initialSources = metadataSources.map((source) => {
-					const metadata = parseSourceMetadata(source);
-					return {
-						id: source.id,
-						name: metadata.displayName,
-						thumbnail: null,
-						display_id: source.display_id,
-						appIcon: source.appIcon,
-						originalName: source.name,
-						sourceType: metadata.sourceType,
-						appName: metadata.appName,
-						windowTitle: metadata.windowTitle,
-					};
-				});
-
-				setSources(initialSources);
-				setLoading(false);
-
-				// Step 2: Fetch actual thumbnails in the background
-				const fullSources = await window.electronAPI.getSources({
-					types: ["screen", "window"],
-					thumbnailSize: { width: 240, height: 135 },
-					fetchWindowIcons: true,
-				});
-
-				if (!isMounted) return;
-
-				setSources((prev) =>
-					prev.map((s) => {
-						const full = fullSources.find((f) => f.id === s.id);
-						return full ? { ...s, thumbnail: full.thumbnail } : s;
-					}),
-				);
-			} catch (error) {
-				console.error("Error loading sources:", error);
-				if (isMounted) setLoading(false);
-			}
+		if (open) {
+			void onFetchSources();
 		}
-		fetchSources();
-		return () => {
-			isMounted = false;
-		};
-	}, []);
+	}, [open, onFetchSources]);
 
-	const screenSources = sources.filter((s) => s.id.startsWith("screen:"));
-	const windowSources = sources.filter((s) => s.id.startsWith("window:"));
-
-	useEffect(() => {
-		if (loading) {
-			return;
-		}
-
-		if (screenSources.length === 0 && windowSources.length > 0) {
-			setActiveTab("windows");
-			return;
-		}
-
-		if (windowSources.length === 0 && screenSources.length > 0) {
-			setActiveTab("screens");
-		}
-	}, [loading, screenSources.length, windowSources.length]);
-
-	const handleSourceSelect = (source: DesktopSource) => setSelectedSource(source);
-	const handleSourceKeyDown = (
-		event: ReactKeyboardEvent<HTMLDivElement>,
-		source: DesktopSource,
-	) => {
-		if (event.key !== "Enter" && event.key !== " ") {
-			return;
-		}
-
-		event.preventDefault();
-		handleSourceSelect(source);
-	};
-
-	const handleShare = async () => {
-		if (selectedSource) await window.electronAPI.selectSource(selectedSource);
-	};
-
-	if (loading) {
-		return (
-			<div
-				className={`h-full flex items-center justify-center ${styles.glassContainer}`}
-				style={{ minHeight: "100vh" }}
+	// Memoized source item to prevent unnecessary re-renders
+	const SourceItem = useCallback(
+		({ source, isSelected }: { source: DesktopSource; isSelected: boolean }) => (
+			<button
+				type="button"
+				className={cn(
+					"flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors",
+					"hover:bg-accent hover:text-accent-foreground",
+					isSelected && "bg-accent text-accent-foreground",
+				)}
+				onClick={() => onSourceSelect(source)}
 			>
-				<div className="text-center">
-					<div className="animate-spin rounded-full h-6 w-6 border-b-2 border-zinc-600 mx-auto mb-2" />
-					<p className="text-xs text-zinc-300">{t("sourceSelector.loadingSources")}</p>
+				{/* Thumbnail with fallback */}
+				<div className="relative flex-shrink-0">
+					{source.thumbnail ? (
+						<img
+							src={source.thumbnail}
+							alt=""
+							className="w-12 h-8 rounded-md object-cover bg-black/50"
+							onError={(e) => {
+								(e.target as HTMLImageElement).style.display = "none";
+							}}
+						/>
+					) : (
+						<div className="w-12 h-8 rounded-md bg-muted flex items-center justify-center">
+							{source.sourceType === "window" ? (
+								<AppWindow className="w-5 h-5 text-muted-foreground" />
+							) : (
+								<Monitor className="w-5 h-5 text-muted-foreground" />
+							)}
+						</div>
+					)}
+					{isSelected && (
+						<div className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary rounded-full flex items-center justify-center">
+							<div className="w-1.5 h-1.5 bg-primary-foreground rounded-full" />
+						</div>
+					)}
+				</div>
+
+				{/* Source info */}
+				<div className="flex-1 min-w-0">
+					<div className="flex items-center gap-2">
+						<span className="text-sm font-medium truncate">
+							{source.windowTitle || source.name}
+						</span>
+						{source.appName && source.appName !== source.name && (
+							<span className="text-xs text-muted-foreground truncate">
+								{source.appName}
+							</span>
+						)}
+					</div>
+					<div className="text-xs text-muted-foreground truncate">
+						{source.sourceType === "screen" ? t("recording.screen") : t("recording.window")}
+					</div>
+				</div>
+			</button>
+		),
+		[onSourceSelect, t],
+	);
+
+	// Memoized section for screens
+	const screenSection = useMemo(() => {
+		if (screenSources.length === 0) return null;
+
+		return (
+			<div className="space-y-1">
+				<div className="px-3 py-2 text-xs font-medium text-muted-foreground">
+					{t("recording.screens")}
+				</div>
+				<div className="space-y-0.5">
+					{screenSources.map((source) => (
+						<SourceItem
+							key={source.id}
+							source={source}
+							isSelected={selectedSource === source.name}
+						/>
+					))}
 				</div>
 			</div>
 		);
-	}
+	}, [screenSources, selectedSource, SourceItem, t]);
 
-	return (
-		<div
-			className={`min-h-screen flex flex-col items-center justify-center ${styles.glassContainer}`}
-		>
-			<div className="flex-1 flex flex-col w-full max-w-xl" style={{ padding: 0 }}>
-				<Tabs
-					value={activeTab}
-					onValueChange={(value) => setActiveTab(value as "screens" | "windows")}
-				>
-					<TabsList className="grid grid-cols-2 mb-3 bg-zinc-900/40 rounded-full">
-						<TabsTrigger
-							value="screens"
-							className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-zinc-200 rounded-full text-xs py-1"
-						>
-							{t("sourceSelector.screens")} ({screenSources.length})
-						</TabsTrigger>
-						<TabsTrigger
-							value="windows"
-							className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-zinc-200 rounded-full text-xs py-1"
-						>
-							{t("sourceSelector.windows")} ({windowSources.length})
-						</TabsTrigger>
-					</TabsList>
-					<div className="h-72 flex flex-col justify-stretch">
-						<TabsContent value="screens" className="h-full">
-							<div
-								className={`grid grid-cols-2 gap-2 h-full overflow-y-auto pr-1 relative ${styles.sourceGridScroll}`}
-							>
-								{screenSources.length === 0 && (
-									<div className="col-span-2 text-center text-xs text-zinc-500 py-8">
-										{t("sourceSelector.noScreensAvailable")}
-									</div>
-								)}
-								{screenSources.map((source) => {
-									const isSelected = selectedSource?.id === source.id;
+	// Memoized section for windows
+	const windowSection = useMemo(() => {
+		if (windowSources.length === 0) return null;
 
-									return (
-										<Card
-											key={source.id}
-											className={`${styles.sourceCard} ${isSelected ? styles.selected : ""} cursor-pointer h-fit p-2 scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent`}
-											style={{ margin: 8, width: "90%", maxWidth: 220 }}
-											onClick={() => handleSourceSelect(source)}
-											onKeyDown={(event) =>
-												handleSourceKeyDown(event, source)
-											}
-											role="button"
-											tabIndex={0}
-											aria-pressed={isSelected}
-										>
-											<div className="p-1">
-												<div className="relative mb-1">
-													<img
-														src={source.thumbnail || ""}
-														alt={source.name}
-														className="w-full aspect-video object-cover rounded border border-zinc-800"
-													/>
-													{isSelected && (
-														<div className="absolute -top-1 -right-1">
-															<div className="w-4 h-4 bg-[#2563EB] rounded-full flex items-center justify-center shadow-md">
-																<MdCheck className={styles.icon} />
-															</div>
-														</div>
-													)}
-												</div>
-												<div className={styles.name + " truncate"}>
-													{source.name}
-												</div>
-											</div>
-										</Card>
-									);
-								})}
-							</div>
-						</TabsContent>
-						<TabsContent value="windows" className="h-full">
-							<p className="text-[10px] text-zinc-500 mb-1 px-1">
-								{t("sourceSelector.windowsNote")}
-							</p>
-							<div
-								className={`grid grid-cols-2 gap-2 h-full overflow-y-auto pr-1 relative ${styles.sourceGridScroll}`}
-							>
-								{windowSources.length === 0 && (
-									<div className="col-span-2 text-center text-xs text-zinc-500 py-8">
-										{t("sourceSelector.noWindowsAvailable")}
-									</div>
-								)}
-								{windowSources.map((source) => {
-									const isSelected = selectedSource?.id === source.id;
-
-									return (
-										<Card
-											key={source.id}
-											className={`${styles.sourceCard} ${isSelected ? styles.selected : ""} cursor-pointer h-fit p-2 scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent`}
-											style={{ margin: 8, width: "90%", maxWidth: 220 }}
-											onClick={() => handleSourceSelect(source)}
-											onKeyDown={(event) =>
-												handleSourceKeyDown(event, source)
-											}
-											role="button"
-											tabIndex={0}
-											aria-pressed={isSelected}
-										>
-											<div className="p-1">
-												<div className="relative mb-1">
-													{source.thumbnail ? (
-														<img
-															src={source.thumbnail}
-															alt={source.name}
-															className="w-full aspect-video object-cover rounded border border-gray-700"
-														/>
-													) : (
-														<div className="w-full aspect-video rounded border border-gray-700 bg-zinc-900/80 flex flex-col items-center justify-center text-zinc-400 gap-2">
-															{source.appIcon ? (
-																<img
-																	src={source.appIcon}
-																	alt="App icon"
-																	className="w-8 h-8 rounded-md"
-																/>
-															) : (
-																<div className="w-8 h-8 rounded-md bg-zinc-800 border border-zinc-700" />
-															)}
-															<div className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
-																{t(
-																	"sourceSelector.windowPlaceholder",
-																)}
-															</div>
-														</div>
-													)}
-													{isSelected && (
-														<div className="absolute -top-1 -right-1">
-															<div className="w-4 h-4 bg-blue-600 rounded-full flex items-center justify-center shadow-md">
-																<MdCheck className={styles.icon} />
-															</div>
-														</div>
-													)}
-												</div>
-												<div className="flex items-center gap-1">
-													{source.appIcon && (
-														<img
-															src={source.appIcon}
-															alt="App icon"
-															className={
-																styles.icon + " flex-shrink-0"
-															}
-														/>
-													)}
-													<div className={styles.name + " truncate"}>
-														{source.name}
-													</div>
-												</div>
-											</div>
-										</Card>
-									);
-								})}
-							</div>
-						</TabsContent>
-					</div>
-				</Tabs>
-			</div>
-			<div className="border-t border-zinc-800 p-2 w-full max-w-xl">
-				<div className="flex justify-center gap-2">
-					<Button
-						variant="outline"
-						onClick={() => window.close()}
-						className="px-4 py-1 text-xs bg-zinc-800 border-zinc-700 text-zinc-200 hover:bg-zinc-700"
-					>
-						{t("sourceSelector.cancel")}
-					</Button>
-					<Button
-						onClick={handleShare}
-						disabled={!selectedSource}
-						className="px-4 py-1 text-xs bg-[#2563EB] text-white hover:bg-[#2563EB]/80 disabled:opacity-50 disabled:bg-zinc-700"
-					>
-						{t("sourceSelector.share")}
-					</Button>
+		return (
+			<div className="space-y-1">
+				<div className="px-3 py-2 text-xs font-medium text-muted-foreground">
+					{t("recording.windows")}
+				</div>
+				<div className="space-y-0.5">
+					{windowSources.map((source) => (
+						<SourceItem
+							key={source.id}
+							source={source}
+							isSelected={selectedSource === source.name}
+						/>
+					))}
 				</div>
 			</div>
-		</div>
+		);
+	}, [windowSources, selectedSource, SourceItem, t]);
+
+	return (
+		<Popover open={open} onOpenChange={onOpenChange}>
+			<PopoverTrigger asChild>
+				<Button
+					variant="outline"
+					size="sm"
+					className={cn(
+						"w-full justify-between",
+						"data-[state=open]:bg-accent",
+					)}
+				>
+					<span className="truncate">{selectedSource}</span>
+					<Monitor className="w-4 h-4 ml-2 opacity-50" />
+				</Button>
+			</PopoverTrigger>
+			<PopoverContent
+				className="w-80 p-0"
+				align="start"
+				sideOffset={8}
+				side="bottom"
+				alignOffset={-8}
+				avoidCollisions={true}
+				collisionPadding={10}
+			>
+				{loading ? (
+					<div className="flex items-center justify-center py-8">
+						<div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+					</div>
+				) : (
+					<div className="max-h-[320px] overflow-y-auto overflow-x-hidden p-2">
+						{screenSection || windowSection ? (
+							<>
+								{screenSection}
+								{windowSection}
+							</>
+						) : (
+							<div className="text-center py-8 text-sm text-muted-foreground">
+								{t("recording.noSourcesFound")}
+							</div>
+						)}
+					</div>
+				)}
+			</PopoverContent>
+		</Popover>
 	);
-}
+});
+
+SourceSelector.displayName = "SourceSelector";

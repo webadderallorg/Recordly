@@ -1,5 +1,4 @@
 import {
-	AppWindow,
 	CaretUp as ChevronUp,
 	Eye,
 	EyeSlash as EyeOff,
@@ -46,6 +45,7 @@ import {
 } from "./hudMousePassthrough";
 import styles from "./LaunchWindow.module.css";
 import { RecordingControls } from "./RecordingControls";
+import { SourceSelector } from "./SourceSelector";
 
 interface DesktopSource {
 	id: string;
@@ -1146,82 +1146,24 @@ export function LaunchWindow() {
 							/>
 						</div>
 					) : null}
-					{activeDropdown !== "none" && (
-						<div className={`${styles.menuCard} ${styles.electronNoDrag}`}>
-							{activeDropdown === "sources" && (
-								<>
-									{sourcesLoading ? (
-										<div className="flex items-center justify-center py-6">
-											<div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[#6b6b78]" />
-										</div>
-									) : (
-										<>
-											{screenSources.length > 0 && (
-												<>
-													<div className={styles.ddLabel}>
-														{t("recording.screens")}
-													</div>
-													{screenSources.map((source) => (
-														<DropdownItem
-															key={source.id}
-															icon={<Monitor size={16} />}
-															selected={
-																selectedSource === source.name
-															}
-															onClick={() =>
-																handleSourceSelect(source)
-															}
-														>
-															{source.name}
-														</DropdownItem>
-													))}
-												</>
-											)}
-											{windowSources.length > 0 && (
-												<>
-													<div
-														className={styles.ddLabel}
-														style={
-															screenSources.length > 0
-																? {
-																		marginTop: 4,
-																	}
-																: undefined
-														}
-													>
-														{t("recording.windows")}
-													</div>
-													{windowSources.map((source) => (
-														<DropdownItem
-															key={source.id}
-															icon={<AppWindow size={16} />}
-															selected={
-																selectedSource === source.name
-															}
-															onClick={() =>
-																handleSourceSelect(source)
-															}
-														>
-															{source.appName &&
-															source.appName !== source.name
-																? `${source.appName} — ${source.name}`
-																: source.name}
-														</DropdownItem>
-													))}
-												</>
-											)}
-											{screenSources.length === 0 &&
-												windowSources.length === 0 && (
-													<div className="text-center text-xs text-[#6b6b78] py-4">
-														{t("recording.noSourcesFound")}
-													</div>
-												)}
-										</>
-									)}
-								</>
-							)}
-
-							{activeDropdown === "mic" && (
+						{activeDropdown !== "none" && (
+							<div className={`${styles.menuCard} ${styles.electronNoDrag}`}>
+								{activeDropdown === "sources" && (
+									<div className="p-2">
+										<SourceSelector
+											screenSources={screenSources}
+											windowSources={windowSources}
+											selectedSource={selectedSource}
+											loading={sourcesLoading}
+											onSourceSelect={handleSourceSelect}
+											onFetchSources={fetchSources}
+											open={activeDropdown === "sources"}
+											onOpenChange={(open) => setActiveDropdown(open ? "sources" : "none")}
+										/>
+									</div>
+								)}
+								
+								{activeDropdown === "mic" && (
 								<>
 									<div className={styles.ddLabel}>
 										{t("recording.microphone")}
