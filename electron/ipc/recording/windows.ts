@@ -32,9 +32,9 @@ import {
 import { emitRecordingInterrupted } from "./events";
 
 const execFileAsync = promisify(execFile);
-// Match the browser path's "usable speech level" intent with a standard
-// loudness pass on native Windows mic audio instead of a fixed tiny boost.
-const WINDOWS_NATIVE_MIC_PRE_FILTERS = ["loudnorm=I=-16:TP=-1.5:LRA=11"];
+// Repair rare clipped mic peaks before loudness normalization so headset/driver
+// overloads do not get amplified into audible pops during mux/export.
+const WINDOWS_NATIVE_MIC_PRE_FILTERS = ["adeclip=threshold=1", "loudnorm=I=-16:TP=-1.5:LRA=11"];
 const MIN_NATIVE_WINDOWS_VIDEO_PAD_MS = 500;
 
 export async function isNativeWindowsCaptureAvailable(): Promise<boolean> {

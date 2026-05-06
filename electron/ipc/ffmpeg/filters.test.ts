@@ -116,11 +116,11 @@ describe("getAudioSyncAdjustment", () => {
 	it("can prepend mic normalization filters before sync handling", () => {
 		const filterParts: string[] = [];
 		appendSyncedAudioFilter(filterParts, "[1:a]", "aout", getAudioSyncAdjustment(120, 120), {
-			preFilters: ["loudnorm=I=-16:TP=-1.5:LRA=11"],
+			preFilters: ["adeclip=threshold=1", "loudnorm=I=-16:TP=-1.5:LRA=11"],
 		});
 
 		expect(filterParts).toEqual([
-			"[1:a]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS[aout]",
+			"[1:a]adeclip=threshold=1,loudnorm=I=-16:TP=-1.5:LRA=11,aresample=async=1:first_pts=0,asetpts=PTS-STARTPTS[aout]",
 		]);
 	});
 });
