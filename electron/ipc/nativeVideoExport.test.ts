@@ -205,6 +205,19 @@ describe("native static layout command builders", () => {
 		expect(args).toEqual(expect.arrayContaining(["-frames:v", "1", "background.png"]));
 	});
 
+	it("pre-blurs image wallpapers for native fallback static backgrounds", () => {
+		const args = buildNativeStaticBackgroundRenderArgs({
+			...baseConfig,
+			outputPath: "background.png",
+			backgroundImagePath: "wallpaper.jpg",
+			backgroundBlurPx: 36,
+		});
+		const filterComplex = args[args.indexOf("-filter_complex") + 1];
+
+		expect(filterComplex).toContain("[bg0]gblur=sigma=36:steps=2[bg_blur]");
+		expect(filterComplex).toContain("[bg_blur]format=rgba[out]");
+	});
+
 	it("builds a precomposited static layout command with a squircle alpha mask", () => {
 		const args = buildNativePrecompositedStaticLayoutArgs({
 			...baseConfig,

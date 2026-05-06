@@ -680,13 +680,7 @@ function ffprobeJson(args) {
 }
 
 async function ffprobeCsvAsync(args) {
-	const result = await runAsync(ffprobeCommand, [
-		"-v",
-		"error",
-		...args,
-		"-of",
-		"csv=p=0",
-	]);
+	const result = await runAsync(ffprobeCommand, ["-v", "error", ...args, "-of", "csv=p=0"]);
 	return result.stdout;
 }
 
@@ -865,15 +859,23 @@ function roundedRectMaskExpression({ x, y, width, height, radius }) {
 	return `${centerBand}+${middleBand}+${topLeft}+${topRight}+${bottomLeft}+${bottomRight}`;
 }
 
-function createBackgroundFilter(videoInfo, shadowOptions) {
-	const base = `[0:v]scale=${videoInfo.width}:${videoInfo.height}:force_original_aspect_ratio=increase,crop=${videoInfo.width}:${videoInfo.height},format=rgba[bg]`;
+function createBackgroundFilter(videoInfo, shadowOptions, blurPx = 0) {
+	const safeBlurPx = Math.max(0, Math.min(96, Math.round(Number.isFinite(blurPx) ? blurPx : 0)));
+	const scaled = `[0:v]scale=${videoInfo.width}:${videoInfo.height}:force_original_aspect_ratio=increase,crop=${videoInfo.width}:${videoInfo.height},format=rgba[bg_scaled]`;
+	const blurFilter =
+		safeBlurPx > 0
+			? `;[bg_scaled]boxblur=luma_radius=${safeBlurPx}:luma_power=1:chroma_radius=${safeBlurPx}:chroma_power=1:alpha_radius=${safeBlurPx}:alpha_power=1[bg]`
+			: ";[bg_scaled]null[bg]";
 	if (!shadowOptions) {
 		return {
 			filterArgs: [
-				"-vf",
-				`scale=${videoInfo.width}:${videoInfo.height}:force_original_aspect_ratio=increase,crop=${videoInfo.width}:${videoInfo.height},format=nv12`,
+				"-filter_complex",
+				`${scaled}${blurFilter};[bg]format=nv12[out]`,
+				"-map",
+				"[out]",
 			],
 			bakedShadow: false,
+			backgroundBlur: safeBlurPx,
 		};
 	}
 
@@ -894,13 +896,14 @@ function createBackgroundFilter(videoInfo, shadowOptions) {
 			"-i",
 			`color=c=black@0.0:s=${videoInfo.width}x${videoInfo.height}:d=1`,
 			"-filter_complex",
-			`${base};${shadow};[bg][shadow]overlay=format=auto,format=nv12[out]`,
+			`${scaled}${blurFilter};${shadow};[bg][shadow]overlay=format=auto,format=nv12[out]`,
 			"-map",
 			"[out]",
 		],
 		bakedShadow: true,
 		shadowAlpha,
 		shadowBlur,
+		backgroundBlur: safeBlurPx,
 	};
 }
 
@@ -949,6 +952,7 @@ const backgroundY = Math.round(getNonNegativeNumberArg("--background-y", 16));
 const backgroundU = Math.round(getNonNegativeNumberArg("--background-u", 128));
 const backgroundV = Math.round(getNonNegativeNumberArg("--background-v", 128));
 const backgroundImage = getArg("--background-image", "");
+const backgroundBlurPx = getNonNegativeNumberArg("--background-blur", 0);
 const backgroundNv12 = getArg("--background-nv12", "");
 const shadowOffsetY = Math.round(getNonNegativeNumberArg("--shadow-offset-y", 0));
 const shadowIntensityPct = Math.round(getNonNegativeNumberArg("--shadow-intensity-pct", 0));
@@ -1020,9 +1024,14 @@ const shouldBakeStaticShadow =
 	contentHeight > 0 &&
 	shadowOffsetY > 0 &&
 	shadowIntensityPct > 0;
-const backgroundSuffix = shouldBakeStaticShadow
-	? `.shadow-${shadowOffsetY}-${shadowIntensityPct}`
-	: "";
+const backgroundSuffixParts = [];
+if (shouldBakeStaticShadow) {
+	backgroundSuffixParts.push(`shadow-${shadowOffsetY}-${shadowIntensityPct}`);
+}
+if (backgroundBlurPx > 0) {
+	backgroundSuffixParts.push(`blur-${Math.round(backgroundBlurPx)}`);
+}
+const backgroundSuffix = backgroundSuffixParts.length ? `.${backgroundSuffixParts.join(".")}` : "";
 const generatedBackgroundNv12Path = join(workDir, `${baseName}${backgroundSuffix}.background.nv12`);
 const generatedWebcamNv12Path = join(
 	workDir,
@@ -1098,6 +1107,7 @@ const backgroundFilter = createBackgroundFilter(
 				intensityPct: shadowIntensityPct,
 			}
 		: null,
+	backgroundBlurPx,
 );
 
 const backgroundConvertPromise =

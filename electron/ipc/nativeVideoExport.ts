@@ -77,6 +77,7 @@ export interface NativeStaticLayoutExportArgsConfig {
 	offsetY: number;
 	backgroundColor: string;
 	backgroundImagePath?: string | null;
+	backgroundBlurPx?: number;
 	staticBackgroundPath?: string | null;
 	maskPath?: string | null;
 	borderRadius?: number;
@@ -185,16 +186,22 @@ function clampUnitInterval(value: number): number {
 }
 
 function formatFfmpegNumber(value: number): string {
-	return Number.isInteger(value) ? String(value) : value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
+	return Number.isInteger(value)
+		? String(value)
+		: value.toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 function isPointInsidePolygon(x: number, y: number, points: Array<{ x: number; y: number }>) {
 	let inside = false;
-	for (let index = 0, previousIndex = points.length - 1; index < points.length; previousIndex = index++) {
+	for (
+		let index = 0, previousIndex = points.length - 1;
+		index < points.length;
+		previousIndex = index++
+	) {
 		const current = points[index];
 		const previous = points[previousIndex];
 		const intersects =
-			(current.y > y) !== (previous.y > y) &&
+			current.y > y !== previous.y > y &&
 			x < ((previous.x - current.x) * (y - current.y)) / (previous.y - current.y) + current.x;
 
 		if (intersects) {
@@ -370,6 +377,7 @@ export function buildNativeStaticBackgroundRenderArgs(
 	config: NativeStaticLayoutExportArgsConfig,
 ): string[] {
 	const backgroundColor = formatFfmpegColor(config.backgroundColor);
+	const backgroundBlurPx = Math.max(0, config.backgroundBlurPx ?? 0);
 	const args = ["-y", "-hide_banner", "-loglevel", "error"];
 	if (config.backgroundImagePath) {
 		args.push("-i", config.backgroundImagePath);
@@ -402,6 +410,14 @@ export function buildNativeStaticBackgroundRenderArgs(
 			: "[0:v]format=rgba[bg0]",
 	];
 	let currentBackgroundLabel = "bg0";
+	if (backgroundBlurPx > 0 && config.backgroundImagePath) {
+		filterParts.push(
+			`[${currentBackgroundLabel}]gblur=sigma=${formatFfmpegNumber(
+				Math.min(96, backgroundBlurPx),
+			)}:steps=2[bg_blur]`,
+		);
+		currentBackgroundLabel = "bg_blur";
+	}
 
 	if (shadowLayers.length > 0) {
 		filterParts.push(
@@ -494,9 +510,7 @@ export function buildNativePrecompositedStaticLayoutArgs(
 	}
 
 	const foregroundFilter = `[0:v]scale_cuda=w=${config.contentWidth}:h=${config.contentHeight}:format=nv12:passthrough=0,hwdownload,format=nv12,fps=${config.frameRate},format=rgba[fgbase]`;
-	const maskFilter = useMask
-		? ";[2:v]format=gray[mask];[fgbase][mask]alphamerge[fg]"
-		: "";
+	const maskFilter = useMask ? ";[2:v]format=gray[mask];[fgbase][mask]alphamerge[fg]" : "";
 	const foregroundLabel = useMask ? "fg" : "fgbase";
 	const filterComplex = `${foregroundFilter}${maskFilter};[1:v]format=rgba[bg];[bg][${foregroundLabel}]overlay=x=${config.offsetX}:y=${config.offsetY}:format=auto,trim=duration=${durationSec},setpts=PTS-STARTPTS,format=yuv420p[out]`;
 
@@ -521,10 +535,7 @@ export function buildNativePrecompositedStaticLayoutArgs(
 	return args;
 }
 
-export function buildNativeConcatArgs(config: {
-	listPath: string;
-	outputPath: string;
-}): string[] {
+export function buildNativeConcatArgs(config: { listPath: string; outputPath: string }): string[] {
 	return [
 		"-y",
 		"-hide_banner",
@@ -554,7 +565,11 @@ export function buildNativeStaticLayoutChunks(
 
 	const safeChunkDuration = Math.max(1, Math.min(300, Math.floor(chunkDurationSec)));
 	const chunks: NativeStaticLayoutChunk[] = [];
-	for (let startSec = 0, index = 0; startSec < durationSec; startSec += safeChunkDuration, index++) {
+	for (
+		let startSec = 0, index = 0;
+		startSec < durationSec;
+		startSec += safeChunkDuration, index++
+	) {
 		chunks.push({
 			index,
 			startSec,

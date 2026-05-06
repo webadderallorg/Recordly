@@ -318,6 +318,7 @@ interface Window {
 			offsetY: number;
 			backgroundColor: string;
 			backgroundImagePath?: string | null;
+			backgroundBlurPx?: number;
 			borderRadius?: number;
 			shadowIntensity?: number;
 			webcamInputPath?: string | null;

@@ -99,6 +99,7 @@ export interface NativeStaticLayoutExportOptions {
 	offsetY: number;
 	backgroundColor: string;
 	backgroundImagePath?: string | null;
+	backgroundBlurPx?: number;
 	borderRadius?: number;
 	shadowIntensity?: number;
 	webcamInputPath?: string | null;
@@ -1699,11 +1700,12 @@ function getNvidiaCudaBitrateMbps(options: NativeStaticLayoutExportOptions) {
 	return Math.max(1, Math.round(options.bitrate / 1_000_000));
 }
 
-function buildExperimentalWindowsGpuStaticLayoutArgs(
+export function buildExperimentalWindowsGpuStaticLayoutArgs(
 	options: NativeStaticLayoutExportOptions,
 	outputPath: string,
 ) {
 	const shadowPixels = Math.round(clampUnit(options.shadowIntensity ?? 0) * 64);
+	const backgroundBlurPx = Math.max(0, options.backgroundBlurPx ?? 0);
 	const pixelCount = options.width * options.height;
 	const surfacePoolSize = pixelCount <= 1920 * 1080 ? 12 : 8;
 	const args = [
@@ -1742,6 +1744,9 @@ function buildExperimentalWindowsGpuStaticLayoutArgs(
 
 	if (options.backgroundImagePath) {
 		args.push("--background-image", options.backgroundImagePath);
+	}
+	if (backgroundBlurPx > 0) {
+		args.push("--background-blur", formatCliNumber(backgroundBlurPx));
 	}
 	if (options.webcamInputPath) {
 		const webcamShadowPixels = Math.round(clampUnit(options.webcamShadowIntensity ?? 0) * 64);
@@ -2085,6 +2090,7 @@ export function buildExperimentalNvidiaCudaStaticLayoutArgs(
 	workDir: string,
 ) {
 	const background = convertHexColorToNv12(options.backgroundColor);
+	const backgroundBlurPx = Math.max(0, options.backgroundBlurPx ?? 0);
 	const shadowIntensityPct = Math.round(clampUnit(options.shadowIntensity ?? 0) * 100);
 	const shadowOffsetY =
 		shadowIntensityPct > 0 ? Math.max(1, Math.round(options.height * 0.012)) : 0;
@@ -2127,6 +2133,9 @@ export function buildExperimentalNvidiaCudaStaticLayoutArgs(
 
 	if (options.backgroundImagePath) {
 		args.push("--background-image", options.backgroundImagePath);
+	}
+	if (backgroundBlurPx > 0) {
+		args.push("--background-blur", formatCliNumber(backgroundBlurPx));
 	}
 	if (shadowOffsetY > 0 && shadowIntensityPct > 0) {
 		args.push(
@@ -2572,6 +2581,7 @@ export async function exportNativeStaticLayoutVideo(
 			offsetY: options.offsetY,
 			backgroundColor: options.backgroundColor,
 			backgroundImagePath: options.backgroundImagePath,
+			backgroundBlurPx: options.backgroundBlurPx,
 			borderRadius: options.borderRadius,
 			shadowIntensity: options.shadowIntensity,
 			durationSec: options.durationSec,

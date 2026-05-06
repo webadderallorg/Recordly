@@ -1257,10 +1257,6 @@ export class ModernVideoExporter {
 			return "unsupported-frame-overlay";
 		}
 
-		if (this.config.backgroundBlur > 0) {
-			return "unsupported-background-blur";
-		}
-
 		return this.isDefaultCropRegion() ? null : "non-default-crop";
 	}
 
@@ -1895,6 +1891,7 @@ export class ModernVideoExporter {
 				offsetY,
 				backgroundColor: background.backgroundColor,
 				backgroundImagePath: background.backgroundImagePath ?? null,
+				backgroundBlurPx: Math.max(0, (this.config.backgroundBlur ?? 0) * 3),
 				borderRadius,
 				shadowIntensity,
 				webcamInputPath: webcamOverlay?.inputPath ?? null,

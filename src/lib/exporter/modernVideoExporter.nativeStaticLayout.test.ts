@@ -175,7 +175,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		).toBe("unsupported-frame-overlay");
 	});
 
-	it("reports background blur as the remaining native overlay blocker", () => {
+	it("allows native static-layout with background blur", () => {
 		const exporter = createExporter({ backgroundBlur: 12 });
 
 		expect(
@@ -187,7 +187,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				60,
 			),
-		).toBe("unsupported-background-blur");
+		).toBeNull();
 	});
 
 	it("allows non-tail trim timelines with native static-layout", () => {

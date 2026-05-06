@@ -49,6 +49,7 @@ vi.mock("node:child_process", () => ({
 import { app } from "electron";
 import {
 	buildExperimentalNvidiaCudaStaticLayoutArgs,
+	buildExperimentalWindowsGpuStaticLayoutArgs,
 	buildNativeStaticLayoutTimelineSegments,
 	buildNativeVideoAudioMuxArgs,
 	getExperimentalNvidiaCudaExportSkipReason,
@@ -348,9 +349,7 @@ describe("resolveExperimentalNvidiaCudaExportScriptPath", () => {
 				throw new Error(`missing ${candidate}`);
 			});
 
-			expect(await resolveExperimentalNvidiaCudaExportScriptPath()).toBe(
-				unpackedScriptPath,
-			);
+			expect(await resolveExperimentalNvidiaCudaExportScriptPath()).toBe(unpackedScriptPath);
 		} finally {
 			if (originalEnv === undefined) {
 				delete process.env[envName];
@@ -416,6 +415,19 @@ describe("buildExperimentalNvidiaCudaStaticLayoutArgs", () => {
 		expect(args).toEqual(expect.arrayContaining(["--timeline-map", "timeline-map.csv"]));
 	});
 
+	it("passes background blur to the CUDA wrapper", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				backgroundImagePath: "wallpaper.jpg",
+				backgroundBlurPx: 36,
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).toEqual(expect.arrayContaining(["--background-blur", "36"]));
+	});
+
 	it("passes webcam source-time controls to the CUDA wrapper", () => {
 		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
 			createNvidiaCudaSkipOptions({
@@ -467,6 +479,20 @@ describe("buildExperimentalNvidiaCudaStaticLayoutArgs", () => {
 				"cursor-atlas.tsv",
 			]),
 		);
+	});
+});
+
+describe("buildExperimentalWindowsGpuStaticLayoutArgs", () => {
+	it("passes background blur to the D3D11 compositor", () => {
+		const args = buildExperimentalWindowsGpuStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				backgroundImagePath: "wallpaper.jpg",
+				backgroundBlurPx: 36,
+			}),
+			"output.mp4",
+		);
+
+		expect(args).toEqual(expect.arrayContaining(["--background-blur", "36"]));
 	});
 });
 

@@ -60,6 +60,7 @@ struct Options {
     float backgroundR = 0.035f;
     float backgroundG = 0.035f;
     float backgroundB = 0.045f;
+    float backgroundBlurPx = 0.0f;
     std::wstring backgroundImagePath;
     std::wstring webcamInputPath;
     LONG webcamLeft = -1;
@@ -124,9 +125,9 @@ struct ShaderConstants {
     float cursorAtlasAnchorY;
     float cursorAtlasAspect;
     float cursorBounceScale;
-    float cursorPadding0;
-    float cursorPadding1;
-    float cursorPadding2;
+    float backgroundBlurPx;
+    float backgroundBlurPadding0;
+    float backgroundBlurPadding1;
     float zoomEnabled;
     float zoomScale;
     float zoomX;
@@ -380,6 +381,9 @@ Options parseOptions(int argc, wchar_t** argv) {
     options.radius = parseFloatArg(args, L"--radius", options.radius);
     options.shadow = parseFloatArg(args, L"--shadow", options.shadow);
     options.padding = parseFloatArg(args, L"--padding", options.padding);
+    options.backgroundBlurPx = std::max(
+        0.0f,
+        parseFloatArg(args, L"--background-blur", options.backgroundBlurPx));
     options.contentLeft = parseLongArg(args, L"--content-left", options.contentLeft);
     options.contentTop = parseLongArg(args, L"--content-top", options.contentTop);
     options.contentWidth = parseLongArg(args, L"--content-width", options.contentWidth);
@@ -1498,9 +1502,9 @@ cbuffer CompositorConstants : register(b0) {
     float cursorAtlasAnchorY;
     float cursorAtlasAspect;
     float cursorBounceScale;
-    float cursorPadding0;
-    float cursorPadding1;
-    float cursorPadding2;
+    float backgroundBlurPx;
+    float backgroundBlurPadding0;
+    float backgroundBlurPadding1;
     float zoomEnabled;
     float zoomScale;
     float zoomX;
@@ -1583,6 +1587,48 @@ float sampleCursorAtlasShadow(float2 cursorLocal, float cursorWidth, float curso
     return saturate(alpha);
 }
 
+float2 getBackgroundCoverUv(float2 uv) {
+    float2 backgroundUv = uv;
+    float outputAspect = outputWidth / outputHeight;
+    float backgroundAspect = backgroundImageWidth / backgroundImageHeight;
+    if (backgroundAspect > outputAspect) {
+        backgroundUv.x = 0.5 + ((backgroundUv.x - 0.5) * (outputAspect / backgroundAspect));
+    } else {
+        backgroundUv.y = 0.5 + ((backgroundUv.y - 0.5) * (backgroundAspect / outputAspect));
+    }
+    return saturate(backgroundUv);
+}
+
+float4 sampleBackground(float2 uv) {
+    if (backgroundImageEnabled <= 0.5) {
+        return float4(backgroundR, backgroundG, backgroundB, backgroundA);
+    }
+
+    float2 backgroundUv = getBackgroundCoverUv(uv);
+    float safeBlur = min(max(backgroundBlurPx, 0.0), 96.0);
+    if (safeBlur <= 0.001) {
+        return backgroundTexture.Sample(linearSampler, backgroundUv);
+    }
+
+    float2 texel = float2(1.0 / max(outputWidth, 1.0), 1.0 / max(outputHeight, 1.0));
+    float2 r1 = texel * safeBlur * 0.35;
+    float2 r2 = texel * safeBlur * 0.70;
+    float4 color = backgroundTexture.Sample(linearSampler, backgroundUv) * 0.20;
+    color += backgroundTexture.Sample(linearSampler, saturate(backgroundUv + float2( r1.x, 0.0))) * 0.10;
+    color += backgroundTexture.Sample(linearSampler, saturate(backgroundUv + float2(-r1.x, 0.0))) * 0.10;
+    color += backgroundTexture.Sample(linearSampler, saturate(backgroundUv + float2(0.0,  r1.y))) * 0.10;
+    color += backgroundTexture.Sample(linearSampler, saturate(backgroundUv + float2(0.0, -r1.y))) * 0.10;
+    color += backgroundTexture.Sample(linearSampler, saturate(backgroundUv + float2( r2.x,  r2.y))) * 0.05;
+    color += backgroundTexture.Sample(linearSampler, saturate(backgroundUv + float2(-r2.x,  r2.y))) * 0.05;
+    color += backgroundTexture.Sample(linearSampler, saturate(backgroundUv + float2( r2.x, -r2.y))) * 0.05;
+    color += backgroundTexture.Sample(linearSampler, saturate(backgroundUv + float2(-r2.x, -r2.y))) * 0.05;
+    color += backgroundTexture.Sample(linearSampler, saturate(backgroundUv + float2( r2.x, 0.0))) * 0.05;
+    color += backgroundTexture.Sample(linearSampler, saturate(backgroundUv + float2(-r2.x, 0.0))) * 0.05;
+    color += backgroundTexture.Sample(linearSampler, saturate(backgroundUv + float2(0.0,  r2.y))) * 0.05;
+    color += backgroundTexture.Sample(linearSampler, saturate(backgroundUv + float2(0.0, -r2.y))) * 0.05;
+    return color;
+}
+
 float4 main(PSIn input) : SV_Target {
     float2 outputSize = float2(outputWidth, outputHeight);
     float2 pixel = input.uv * outputSize;
@@ -1604,18 +1650,7 @@ float4 main(PSIn input) : SV_Target {
         outsideAlpha *
         shadowA;
 
-    float4 background = float4(backgroundR, backgroundG, backgroundB, backgroundA);
-    if (backgroundImageEnabled > 0.5) {
-        float2 backgroundUv = input.uv;
-        float outputAspect = outputWidth / outputHeight;
-        float backgroundAspect = backgroundImageWidth / backgroundImageHeight;
-        if (backgroundAspect > outputAspect) {
-            backgroundUv.x = 0.5 + ((backgroundUv.x - 0.5) * (outputAspect / backgroundAspect));
-        } else {
-            backgroundUv.y = 0.5 + ((backgroundUv.y - 0.5) * (backgroundAspect / outputAspect));
-        }
-        background = backgroundTexture.Sample(linearSampler, saturate(backgroundUv));
-    }
+    float4 background = sampleBackground(input.uv);
     float4 shadow = float4(shadowR, shadowG, shadowB, shadowAlpha);
     float4 content = contentTexture.Sample(linearSampler, saturate(contentPixel / outputSize));
 
@@ -2761,7 +2796,7 @@ float4 main(PSIn input) : SV_Target {
             cursorAtlasEnabled ? cursorAtlasEntry->anchorY : 0.0f,
             cursorAtlasEnabled ? cursorAtlasEntry->aspectRatio : 1.0f,
             cursorEnabled ? cursor.bounceScale : 1.0f,
-            0.0f,
+            hasBackgroundImage_ ? options_.backgroundBlurPx : 0.0f,
             0.0f,
             0.0f,
             zoomEnabled ? 1.0f : 0.0f,
