@@ -127,9 +127,8 @@ export function DropdownItem({
 	);
 }
 
-export function Separator({ dropdown = false }: { dropdown?: boolean }) {
-	return <div className={dropdown ? styles.ddSep : styles.sep} />;
-}
+import { Separator } from "@/components/ui/separator";
+import { Button } from "../ui/button";
 
 function MicDeviceRow({
 	device,
@@ -997,15 +996,20 @@ export function LaunchWindow() {
 						</ContentClamp>
 						<ChevronUp
 							size={10}
-							className={`text-[#6b6b78] ml-0.5 transition-transform duration-200 ${activeDropdown === "sources" ? "" : "rotate-180"}`}
+							className={`text-[#6b6b78] ml-0.5 transition-transform duration-200 ${
+								activeDropdown === "sources" ? "" : "rotate-180"
+							}`}
 						/>
 					</button>
 
-					<Separator />
+					<Separator orientation="vertical" className="mx-[5px] h-6" />
 				</>
 			)}
 
-			<IconButton
+			<Button
+				variant="ghost"
+				size="icon"
+				iconSize="lg"
 				onClick={toggleMicrophone}
 				title={
 					microphoneEnabled
@@ -1015,25 +1019,31 @@ export function LaunchWindow() {
 				className={microphoneEnabled ? styles.ibActive : ""}
 			>
 				{microphoneEnabled ? <Mic size={18} /> : <MicOff size={18} />}
-			</IconButton>
+			</Button>
 
-			<IconButton
+			<Button
+				variant="ghost"
+				size="icon"
+				iconSize="lg"
 				onClick={toggleWebcam}
 				title={webcamEnabled ? t("recording.disableWebcam") : t("recording.enableWebcam")}
 				className={webcamEnabled ? styles.ibActive : ""}
 			>
 				{webcamEnabled ? <Video size={18} /> : <VideoOff size={18} />}
-			</IconButton>
+			</Button>
 
-			<IconButton
+			<Button
+				variant="ghost"
+				size="icon"
+				iconSize="lg"
 				onClick={() => toggleDropdown("countdown")}
 				title={t("recording.countdownDelay")}
 				className={countdownDelay > 0 ? styles.ibActive : ""}
 			>
 				<Timer size={18} />
-			</IconButton>
+			</Button>
 
-			<Separator />
+			<Separator orientation="vertical" className="mx-[5px] h-6" />
 
 			<button
 				type="button"
@@ -1049,29 +1059,38 @@ export function LaunchWindow() {
 				<div className={styles.recDot} />
 			</button>
 
-			<Separator />
+			<Separator orientation="vertical" className="mx-[5px] h-6" />
 
-			<IconButton
-				buttonRef={moreButtonRef}
+			<Button
+				variant="ghost"
+				size="icon"
+				iconSize="lg"
+				ref={moreButtonRef}
 				onClick={() => toggleDropdown("more")}
 				title={t("recording.more")}
 			>
 				<MoreVertical size={18} />
-			</IconButton>
+			</Button>
 
-			<IconButton
+			<Button
+				variant="ghost"
+				size="icon"
+				iconSize="lg"
 				onClick={() => window.electronAPI?.hudOverlayHide?.()}
 				title={t("recording.hideHud")}
 			>
 				<Minus size={16} />
-			</IconButton>
+			</Button>
 
-			<IconButton
+			<Button
+				variant="ghost"
+				size="icon"
+				iconSize="lg"
 				onClick={() => window.electronAPI?.hudOverlayClose?.()}
 				title={t("recording.closeApp")}
 			>
 				<X size={16} />
-			</IconButton>
+			</Button>
 		</>
 	);
 

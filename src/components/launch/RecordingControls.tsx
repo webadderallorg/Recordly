@@ -1,8 +1,8 @@
 import { Microphone as Mic, MicrophoneSlash as MicOff, Minus, Pause, Play, Stop as Square, X } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
-import { IconButton } from "./LaunchWindow";
-import { Separator } from "./LaunchWindow";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import styles from "./LaunchWindow.module.css";
 
 interface RecordingControlsProps {
@@ -56,9 +56,12 @@ export const RecordingControls = ({
 					{formatTime(elapsed)}
 				</span>
 
-				<Separator />
+				<Separator orientation="vertical" className="mx-[5px] h-6" />
 
-				<IconButton
+				<Button
+					variant="ghost"
+					size="icon"
+					iconSize="lg"
 					title={
 						microphoneEnabled
 							? t("recording.disableMicrophone")
@@ -67,12 +70,19 @@ export const RecordingControls = ({
 					className={microphoneEnabled ? styles.ibActive : ""}
 					onClick={onToggleMicrophone}
 				>
-					{microphoneEnabled ? <Mic size={18} /> : <MicOff size={18} />}
-				</IconButton>
+					{microphoneEnabled ? (
+						<Mic size={18} />
+					) : (
+						<MicOff size={18} />
+					)}
+				</Button>
 
-				<Separator />
+				<Separator orientation="vertical" className="mx-[5px] h-6" />
 
-				<IconButton
+				<Button
+					variant={paused ? "default" : "ghost"}
+					size="icon"
+					iconSize="lg"
 					onClick={onPauseResume}
 					title={paused ? t("recording.resume") : t("recording.pause")}
 					className={paused ? styles.ibGreen : ""}
@@ -82,26 +92,38 @@ export const RecordingControls = ({
 					) : (
 						<Pause size={18} />
 					)}
-				</IconButton>
+				</Button>
 
-				<IconButton
+				<Button
+					variant="ghost"
+					size="icon"
+					iconSize="lg"
 					onClick={onStopRecording}
 					title={t("recording.stop")}
 					className={styles.ibRed}
 				>
 					<Square size={16} fill="currentColor" strokeWidth={0} />
-				</IconButton>
+				</Button>
 
-				<IconButton
+				<Button
+					variant="ghost"
+					size="icon"
+					iconSize="lg"
 					onClick={onHideHud}
 					title={t("recording.hideHud")}
 				>
 					<Minus size={16} />
-				</IconButton>
+				</Button>
 
-				<IconButton onClick={onCancelRecording} title={t("recording.cancel")}>
+				<Button
+					variant="ghost"
+					size="icon"
+					iconSize="lg"
+					onClick={onCancelRecording}
+					title={t("recording.cancel")}
+				>
 					<X size={18} />
-				</IconButton>
+				</Button>
 			</>
 		);
 	}, [
