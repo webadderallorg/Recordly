@@ -10,10 +10,6 @@ import {
 	Minus,
 	Monitor,
 	DotsThreeVertical as MoreVertical,
-	Pause,
-	Play,
-	ArrowClockwise as RefreshCw,
-	Stop as Square,
 	Timer,
 	VideoCamera as Video,
 	VideoCamera as VideoIcon,
@@ -21,6 +17,7 @@ import {
 	SpeakerHigh as Volume2,
 	SpeakerX as VolumeX,
 	X,
+	ArrowClockwise as RefreshCw,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import type { ReactNode } from "react";
@@ -48,6 +45,7 @@ import {
 	shouldRestoreHudMousePassthroughAfterDrag,
 } from "./hudMousePassthrough";
 import styles from "./LaunchWindow.module.css";
+import { RecordingControls } from "./RecordingControls";
 
 interface DesktopSource {
 	id: string;
@@ -77,7 +75,7 @@ const DEFAULT_WEBCAM_PREVIEW_OFFSET = { x: 0, y: 0 };
 const DEFAULT_RECORDING_HUD_OFFSET = { x: 0, y: 0 };
 const SHOW_DEV_UPDATE_PREVIEW = import.meta.env.DEV;
 
-function IconButton({
+export function IconButton({
 	onClick,
 	title,
 	className = "",
@@ -103,7 +101,7 @@ function IconButton({
 	);
 }
 
-function DropdownItem({
+export function DropdownItem({
 	onClick,
 	selected,
 	icon,
@@ -129,7 +127,7 @@ function DropdownItem({
 	);
 }
 
-function Separator({ dropdown = false }: { dropdown?: boolean }) {
+export function Separator({ dropdown = false }: { dropdown?: boolean }) {
 	return <div className={dropdown ? styles.ddSep : styles.sep} />;
 }
 
@@ -970,70 +968,17 @@ export function LaunchWindow() {
 	};
 
 	const recordingControls = (
-		<>
-			<div className="flex items-center gap-[5px]">
-				<div
-					className={`w-[7px] h-[7px] rounded-full ${paused ? "bg-[#fbbf24]" : `bg-[#f43f5e] ${styles.recDotBlink}`}`}
-				/>
-				<span
-					className={`text-[10px] font-bold tracking-[0.06em] ${paused ? "text-[#fbbf24]" : "text-[#f43f5e]"}`}
-				>
-					{paused ? t("recording.paused") : t("recording.rec")}
-				</span>
-			</div>
-
-			<span
-				className={`font-mono text-xs font-semibold min-w-[52px] text-center tracking-[0.02em] ${paused ? "text-[#fbbf24]" : "text-[#eeeef2]"}`}
-			>
-				{formatTime(elapsed)}
-			</span>
-
-			<Separator />
-
-			<IconButton
-				title={
-					microphoneEnabled
-						? t("recording.disableMicrophone")
-						: t("recording.enableMicrophone")
-				}
-				className={microphoneEnabled ? styles.ibActive : ""}
-			>
-				{microphoneEnabled ? <Mic size={18} /> : <MicOff size={18} />}
-			</IconButton>
-
-			<Separator />
-
-			<IconButton
-				onClick={paused ? resumeRecording : pauseRecording}
-				title={paused ? t("recording.resume") : t("recording.pause")}
-				className={paused ? styles.ibGreen : ""}
-			>
-				{paused ? (
-					<Play size={18} fill="currentColor" strokeWidth={0} />
-				) : (
-					<Pause size={18} />
-				)}
-			</IconButton>
-
-			<IconButton
-				onClick={toggleRecording}
-				title={t("recording.stop")}
-				className={styles.ibRed}
-			>
-				<Square size={16} fill="currentColor" strokeWidth={0} />
-			</IconButton>
-
-			<IconButton
-				onClick={() => window.electronAPI?.hudOverlayHide?.()}
-				title={t("recording.hideHud")}
-			>
-				<Minus size={16} />
-			</IconButton>
-
-			<IconButton onClick={cancelRecording} title={t("recording.cancel")}>
-				<X size={18} />
-			</IconButton>
-		</>
+		<RecordingControls
+			paused={paused}
+			microphoneEnabled={microphoneEnabled}
+			elapsed={elapsed}
+			onToggleMicrophone={() => setMicrophoneEnabled(!microphoneEnabled)}
+			onPauseResume={paused ? resumeRecording : pauseRecording}
+			onStopRecording={toggleRecording}
+			onHideHud={() => window.electronAPI?.hudOverlayHide?.()}
+			onCancelRecording={cancelRecording}
+			formatTime={formatTime}
+		/>
 	);
 
 	const idleControls = (

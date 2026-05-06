@@ -58,38 +58,61 @@ export function SourceSelector() {
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
+		let isMounted = true;
 		async function fetchSources() {
 			setLoading(true);
 			try {
-				const rawSources = await window.electronAPI.getSources({
+				// Step 1: Fetch metadata quickly without thumbnails
+				const metadataSources = await window.electronAPI.getSources({
 					types: ["screen", "window"],
-					thumbnailSize: { width: 320, height: 180 },
+					thumbnailSize: { width: 160, height: 90 },
 					fetchWindowIcons: true,
 				});
-				setSources(
-					rawSources.map((source) => {
-						const metadata = parseSourceMetadata(source);
 
-						return {
-							id: source.id,
-							name: metadata.displayName,
-							thumbnail: source.thumbnail,
-							display_id: source.display_id,
-							appIcon: source.appIcon,
-							originalName: source.name,
-							sourceType: metadata.sourceType,
-							appName: metadata.appName,
-							windowTitle: metadata.windowTitle,
-						};
+				if (!isMounted) return;
+
+				const initialSources = metadataSources.map((source) => {
+					const metadata = parseSourceMetadata(source);
+					return {
+						id: source.id,
+						name: metadata.displayName,
+						thumbnail: null,
+						display_id: source.display_id,
+						appIcon: source.appIcon,
+						originalName: source.name,
+						sourceType: metadata.sourceType,
+						appName: metadata.appName,
+						windowTitle: metadata.windowTitle,
+					};
+				});
+
+				setSources(initialSources);
+				setLoading(false);
+
+				// Step 2: Fetch actual thumbnails in the background
+				const fullSources = await window.electronAPI.getSources({
+					types: ["screen", "window"],
+					thumbnailSize: { width: 240, height: 135 },
+					fetchWindowIcons: true,
+				});
+
+				if (!isMounted) return;
+
+				setSources((prev) =>
+					prev.map((s) => {
+						const full = fullSources.find((f) => f.id === s.id);
+						return full ? { ...s, thumbnail: full.thumbnail } : s;
 					}),
 				);
 			} catch (error) {
 				console.error("Error loading sources:", error);
-			} finally {
-				setLoading(false);
+				if (isMounted) setLoading(false);
 			}
 		}
 		fetchSources();
+		return () => {
+			isMounted = false;
+		};
 	}, []);
 
 	const screenSources = sources.filter((s) => s.id.startsWith("screen:"));

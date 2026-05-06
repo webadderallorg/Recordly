@@ -133,7 +133,6 @@ export function registerSourceHandlers({
 		if (process.platform !== "darwin" || !includeWindows) {
 			const windowSources = electronSources
 				.filter((source) => source.id.startsWith("window:"))
-				.filter((source) => hasUsableSourceThumbnail(source.thumbnail))
 				.filter((source) => {
 					const normalizedName = normalizeDesktopSourceName(source.name);
 					if (!normalizedName) {
