@@ -149,6 +149,8 @@ export function LaunchWindow() {
 	const isWebcamPreviewDraggingRef = useRef(false);
 	const hudDragMoveRafRef = useRef<number | null>(null);
 	const hudDragPendingPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+	const anyPopoverOpenRef = useRef(false);
+	const projectBrowserOpenRef = useRef(false);
 
 	const anyPopoverOpen =
 		sourcePopoverOpen ||
@@ -156,6 +158,14 @@ export function LaunchWindow() {
 		webcamPopoverOpen ||
 		countdownPopoverOpen ||
 		morePopoverOpen;
+
+	useEffect(() => {
+		anyPopoverOpenRef.current = anyPopoverOpen;
+	}, [anyPopoverOpen]);
+
+	useEffect(() => {
+		projectBrowserOpenRef.current = projectBrowserOpen;
+	}, [projectBrowserOpen]);
 
 	const closeAllPopovers = useCallback(() => {
 		setSourcePopoverOpen(false);
@@ -814,8 +824,31 @@ export function LaunchWindow() {
 		[closeAllPopovers],
 	);
 
-	const screenSources = sources.filter((s) => s.sourceType === "screen");
-	const windowSources = sources.filter((s) => s.sourceType === "window");
+	const handleHudMouseLeave = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+		const nextTarget = event.relatedTarget;
+		if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+			return;
+		}
+
+		requestAnimationFrame(() => {
+			if (
+				!isHudDraggingRef.current &&
+				!isWebcamPreviewDraggingRef.current &&
+				!webcamPreviewDragStartRef.current &&
+				!anyPopoverOpenRef.current &&
+				!projectBrowserOpenRef.current
+			) {
+				window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
+			}
+		});
+	}, []);
+
+	const screenSources = sources.filter(
+		(s) => s.sourceType === "screen" || s.id.startsWith("screen:"),
+	);
+	const windowSources = sources.filter(
+		(s) => s.sourceType === "window" || s.id.startsWith("window:"),
+	);
 	const hudStateTransition = {
 		duration: 0.24,
 		ease: [0.22, 1, 0.36, 1] as const,
@@ -1078,17 +1111,7 @@ export function LaunchWindow() {
 				ref={hudContentRef}
 				className="flex items-center overflow-visible flex-col-reverse"
 				onMouseEnter={() => window.electronAPI?.hudOverlaySetIgnoreMouse?.(false)}
-				onMouseLeave={() => {
-					if (
-						!isHudDraggingRef.current &&
-						!isWebcamPreviewDraggingRef.current &&
-						!webcamPreviewDragStartRef.current &&
-						!anyPopoverOpen &&
-						!projectBrowserOpen
-					) {
-						window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
-					}
-				}}
+				onMouseLeave={handleHudMouseLeave}
 			>
 				<div className="flex flex-col items-center pointer-events-auto">
 					<div

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Monitor, AppWindow, CaretUp as ChevronUp } from "@phosphor-icons/react";
-import { useMemo, useCallback, useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -18,83 +18,6 @@ interface DesktopSource {
 	appName?: string;
 	windowTitle?: string;
 }
-
-const MarqueeText = ({
-	text,
-	className,
-	speed = 50, // px per second
-}: {
-	text: string;
-	className?: string;
-	speed?: number;
-}) => {
-	const containerRef = React.useRef<HTMLDivElement>(null);
-	const [shouldMarquee, setShouldMarquee] = React.useState(false);
-	const [duration, setDuration] = React.useState(0);
-	const [translate, setTranslate] = React.useState("0px");
-
-	React.useEffect(() => {
-		const checkOverflow = () => {
-			const container = containerRef.current;
-			if (container) {
-				const containerWidth = container.clientWidth;
-				// Create a temporary span to measure the text width accurately
-				const span = document.createElement("span");
-				span.style.visibility = "hidden";
-				span.style.position = "absolute";
-				span.style.whiteSpace = "nowrap";
-				span.style.font = window.getComputedStyle(container).font;
-				span.innerText = text;
-				document.body.appendChild(span);
-				
-				const textWidth = span.offsetWidth;
-				document.body.removeChild(span);
-
-				const hasOverflow = textWidth > containerWidth && containerWidth > 0;
-				setShouldMarquee(hasOverflow);
-				
-				if (hasOverflow) {
-					const overflow = textWidth - containerWidth;
-					setDuration(textWidth / speed);
-					setTranslate(`-${overflow}px`);
-				}
-			}
-		};
-
-		// Use a small timeout to ensure layout is done
-		const timeout = setTimeout(checkOverflow, 50);
-		
-		window.addEventListener("resize", checkOverflow);
-		return () => {
-			clearTimeout(timeout);
-			window.removeEventListener("resize", checkOverflow);
-		};
-	}, [text, speed]);
-
-	return (
-		<div
-			ref={containerRef}
-			className={cn("relative overflow-hidden w-full", className)}
-		>
-			<div
-				className={cn(
-					"whitespace-nowrap transition-all duration-500",
-					shouldMarquee ? "truncate group-hover:overflow-visible group-hover:w-max group-hover:animate-[marquee_var(--marquee-duration)_linear_infinite_alternate]" : "truncate"
-				)}
-				style={
-					shouldMarquee
-						? ({
-								"--marquee-duration": `${duration}s`,
-								"--marquee-translate": translate,
-						  } as React.CSSProperties)
-						: {}
-				}
-			>
-				{text}
-			</div>
-		</div>
-	);
-};
 
 interface SourceSelectorProps {
 	/** List of available screen sources */
@@ -128,20 +51,18 @@ export const SourceSelectorContent = ({
 	onSourceSelect = () => {},
 }: Pick<SourceSelectorProps, "screenSources" | "windowSources" | "selectedSource" | "loading" | "onSourceSelect">) => {
 	const t = useScopedT("launch");
-
-	// Memoized source item to prevent unnecessary re-renders
-	const SourceItem = useCallback(
-		({ source, isSelected }: { source: DesktopSource; isSelected: boolean }) => (
-			<Button
-				variant="ghost"
-				size="sm"
+	const renderSourceItem = (source: DesktopSource, index: number) => {
+		const isSelected = selectedSource === source.name;
+		return (
+			<button
+				key={`${source.id}-${index}`}
+				type="button"
 				className={cn(
-					"source-selector-item group !h-auto w-full justify-start gap-3 rounded-[11px] px-3 py-2.5 text-left font-medium",
+					"source-selector-item group min-h-[46px] w-full rounded-[11px] px-3 py-2.5 text-left font-medium flex items-center justify-start gap-3",
 					isSelected && "source-selector-item-selected",
 				)}
 				onClick={() => onSourceSelect(source)}
 			>
-				{/* Thumbnail with fallback */}
 				<div className="relative flex-shrink-0">
 					{source.thumbnail ? (
 						<img
@@ -161,81 +82,23 @@ export const SourceSelectorContent = ({
 							)}
 						</div>
 					)}
-					{isSelected && (
-						<div className="source-selector-dot absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center">
-							<div className="w-1.5 h-1.5 source-selector-dot-inner rounded-full" />
-						</div>
-					)}
 				</div>
 
-				{/* Source info */}
 				<div className="flex-1 min-w-0 flex flex-col items-start text-left">
-					<div className="flex items-center gap-2 w-full overflow-hidden">
-						<MarqueeText 
-							text={source.windowTitle || source.name}
-							className="text-sm font-medium source-selector-text"
-							speed={40}
-						/>
-						{source.appName && source.appName !== source.name && (
-							<span className="text-xs source-selector-muted truncate shrink-0">
-								{source.appName}
-							</span>
-						)}
+					<div className="text-sm font-medium source-selector-text truncate w-full">
+						{source.windowTitle || source.name}
 					</div>
 					<div className="text-xs source-selector-subtle truncate w-full text-left">
 						{source.sourceType === "screen" ? t("recording.screen") : t("recording.window")}
 					</div>
 				</div>
-			</Button>
-		),
-		[onSourceSelect, t],
-	);
-
-	// Memoized section for screens
-	const screenSection = useMemo(() => {
-		if (screenSources.length === 0) return null;
-
-		return (
-			<div className="space-y-1">
-				<div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label">
-					{t("recording.screens")}
-				</div>
-				<div className="space-y-0.5">
-					{screenSources.map((source) => (
-						<SourceItem
-							key={source.id}
-							source={source}
-							isSelected={selectedSource === source.name}
-						/>
-					))}
-				</div>
-			</div>
+			</button>
 		);
-	}, [screenSources, selectedSource, SourceItem, t]);
+	};
 
-	// Memoized section for windows
-	const windowSection = useMemo(() => {
-		if (windowSources.length === 0) return null;
+	const hasAnySources = screenSources.length > 0 || windowSources.length > 0;
 
-		return (
-			<div className="space-y-1">
-				<div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label">
-					{t("recording.windows")}
-				</div>
-				<div className="space-y-0.5">
-					{windowSources.map((source) => (
-						<SourceItem
-							key={source.id}
-							source={source}
-							isSelected={selectedSource === source.name}
-						/>
-					))}
-				</div>
-			</div>
-		);
-	}, [windowSources, selectedSource, SourceItem, t]);
-
-	if (loading) {
+	if (loading && !hasAnySources) {
 		return (
 			<div className="flex items-center justify-center py-8">
 				<div className="animate-spin rounded-full h-5 w-5 border-b-2 source-selector-accent-border" />
@@ -245,10 +108,36 @@ export const SourceSelectorContent = ({
 
 	return (
 		<div className="max-h-[320px] overflow-y-auto overflow-x-hidden p-2 source-selector-scroll">
-			{screenSection || windowSection ? (
+			{hasAnySources ? (
 				<>
-					{screenSection}
-					{windowSection}
+					{screenSources.length > 0 ? (
+						<div className="space-y-1">
+							<div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label flex items-center gap-2">
+								{t("recording.screens")}
+								<span
+									className={cn(
+										"normal-case tracking-normal text-[10px] source-selector-muted transition-opacity duration-150",
+										loading ? "opacity-100" : "opacity-0",
+									)}
+								>
+									{t("common.loading", "Refreshing...")}
+								</span>
+							</div>
+							<div className="space-y-0.5">
+								{screenSources.map((source, index) => renderSourceItem(source, index))}
+							</div>
+						</div>
+					) : null}
+					{windowSources.length > 0 ? (
+						<div className="space-y-1">
+							<div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label">
+								{t("recording.windows")}
+							</div>
+							<div className="space-y-0.5">
+								{windowSources.map((source, index) => renderSourceItem(source, index))}
+							</div>
+						</div>
+					) : null}
 				</>
 			) : (
 				<div className="text-center py-8 text-sm source-selector-muted">
@@ -274,6 +163,16 @@ export const SourceSelector = React.memo(function SourceSelector({
 	onOpenChange = () => {},
 	children,
 }: SourceSelectorProps) {
+	const hasPrefetchedRef = useRef(false);
+
+	const prefetchSources = React.useCallback(() => {
+		if (hasPrefetchedRef.current) {
+			return;
+		}
+		hasPrefetchedRef.current = true;
+		void onFetchSources();
+	}, [onFetchSources]);
+
 	// Fetch sources when popover opens
 	useEffect(() => {
 		if (open) {
@@ -284,33 +183,30 @@ export const SourceSelector = React.memo(function SourceSelector({
 	return (
 		<Popover open={open} onOpenChange={onOpenChange}>
 			<PopoverTrigger asChild>
-				{children || (
-					<Button
-						variant="outline"
-						size="lg"
-						className={cn(
-							"group gap-2 px-3 min-w-0 max-w-[180px] rounded-[11px] font-medium text-[12px] [ -webkit-app-region:no-drag ] shrink-0",
-							"border-[#2a2a34] bg-[#1a1a22] text-[#eeeef2] hover:border-[#3e3e4c] hover:bg-[#20202a] transition-all",
-							"data-[state=open]:border-[#3e3e4c] data-[state=open]:bg-[#20202a]",
-						)}
-						title={selectedSource}
-					>
-						<Monitor size={16} className="shrink-0" />
-						<div className="flex-1 min-w-0">
-							<MarqueeText 
-								text={selectedSource} 
-								speed={40}
-							/>
-						</div>
-						<ChevronUp
-							size={10}
+				<div onPointerEnter={prefetchSources} onFocusCapture={prefetchSources}>
+					{children || (
+						<Button
+							variant="outline"
+							size="lg"
 							className={cn(
-								"text-[#6b6b78] ml-0.5 shrink-0 transition-transform duration-200",
-								open ? "" : "rotate-180",
+								"group gap-2 px-3 min-w-0 max-w-[180px] rounded-[11px] font-medium text-[12px] [ -webkit-app-region:no-drag ] shrink-0",
+								"border-[#2a2a34] bg-[#1a1a22] text-[#eeeef2] hover:border-[#3e3e4c] hover:bg-[#20202a] transition-all",
+								"data-[state=open]:border-[#3e3e4c] data-[state=open]:bg-[#20202a]",
 							)}
-						/>
-					</Button>
-				)}
+							title={selectedSource}
+						>
+							<Monitor size={16} className="shrink-0" />
+							<div className="flex-1 min-w-0 truncate">{selectedSource}</div>
+							<ChevronUp
+								size={10}
+								className={cn(
+									"text-[#6b6b78] ml-0.5 shrink-0 transition-transform duration-200",
+									open ? "" : "rotate-180",
+								)}
+							/>
+						</Button>
+					)}
+				</div>
 			</PopoverTrigger>
 			<PopoverContent
 				className="launch-theme w-80 p-0 source-selector-popover"

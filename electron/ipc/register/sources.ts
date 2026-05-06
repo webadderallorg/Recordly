@@ -15,6 +15,14 @@ import {
 } from "../cursor/bounds";
 
 const execFileAsync = promisify(execFile);
+const SOURCE_LIST_CACHE_TTL_MS = 1200;
+let sourceListCache:
+	| {
+			key: string;
+			expiresAt: number;
+			value: Array<Record<string, unknown>>;
+	  }
+	| null = null;
 
 function normalizeDesktopSourceName(value: string) {
 	return value.trim().replace(/\s+/g, " ").toLowerCase();
@@ -38,8 +46,18 @@ export function registerSourceHandlers({
 	getSourceSelectorWindow: () => BrowserWindow | null;
 }) {
 	ipcMain.handle("get-sources", async (_, opts) => {
+		const cacheKey = JSON.stringify({
+			types: opts?.types,
+			thumbnailSize: opts?.thumbnailSize,
+			fetchWindowIcons: opts?.fetchWindowIcons,
+		});
+		if (sourceListCache && sourceListCache.key === cacheKey && sourceListCache.expiresAt > Date.now()) {
+			return sourceListCache.value;
+		}
+
 		const includeScreens = Array.isArray(opts?.types) ? opts.types.includes("screen") : true;
 		const includeWindows = Array.isArray(opts?.types) ? opts.types.includes("window") : true;
+		const includeWindowIcons = Boolean(opts?.fetchWindowIcons);
 		const electronTypes = [
 			...(includeScreens ? ["screen" as const] : []),
 			...(includeWindows ? ["window" as const] : []),
@@ -111,7 +129,7 @@ export function registerSourceHandlers({
 				originalName: matchedSource?.name ?? displayName,
 				display_id: displayId,
 				thumbnail: matchedSource?.thumbnail ? matchedSource.thumbnail.toDataURL() : null,
-				appIcon: matchedSource?.appIcon ? matchedSource.appIcon.toDataURL() : null,
+				appIcon: null,
 				sourceType: "screen" as const,
 			};
 		});
@@ -144,11 +162,17 @@ export function registerSourceHandlers({
 					originalName: source.name,
 					display_id: source.display_id,
 					thumbnail: source.thumbnail ? source.thumbnail.toDataURL() : null,
-					appIcon: source.appIcon ? source.appIcon.toDataURL() : null,
+					appIcon:
+						includeWindowIcons && source.appIcon ? source.appIcon.toDataURL() : null,
 					sourceType: "window" as const,
 				}));
-
-			return [...screenSources, ...windowSources];
+			const result = [...screenSources, ...windowSources];
+			sourceListCache = {
+				key: cacheKey,
+				expiresAt: Date.now() + SOURCE_LIST_CACHE_TTL_MS,
+				value: result,
+			};
+			return result;
 		}
 
 		try {
@@ -206,17 +230,25 @@ export function registerSourceHandlers({
 							? electronWindowSource.thumbnail.toDataURL()
 							: null,
 						appIcon:
-							source.appIcon ??
-							(electronWindowSource?.appIcon
-								? electronWindowSource.appIcon.toDataURL()
-								: null),
+							includeWindowIcons
+								? (source.appIcon ??
+									(electronWindowSource?.appIcon
+										? electronWindowSource.appIcon.toDataURL()
+										: null))
+								: null,
 						appName: source.appName,
 						windowTitle: source.windowTitle,
 						sourceType: "window" as const,
 					};
 				});
 
-			return [...screenSources, ...mergedWindowSources];
+			const result = [...screenSources, ...mergedWindowSources];
+			sourceListCache = {
+				key: cacheKey,
+				expiresAt: Date.now() + SOURCE_LIST_CACHE_TTL_MS,
+				value: result,
+			};
+			return result;
 		} catch (error) {
 			console.warn("Falling back to Electron window enumeration on macOS:", error);
 
@@ -251,11 +283,18 @@ export function registerSourceHandlers({
 					originalName: source.name,
 					display_id: source.display_id,
 					thumbnail: source.thumbnail ? source.thumbnail.toDataURL() : null,
-					appIcon: source.appIcon ? source.appIcon.toDataURL() : null,
+					appIcon:
+						includeWindowIcons && source.appIcon ? source.appIcon.toDataURL() : null,
 					sourceType: "window" as const,
 				}));
 
-			return [...screenSources, ...windowSources];
+			const result = [...screenSources, ...windowSources];
+			sourceListCache = {
+				key: cacheKey,
+				expiresAt: Date.now() + SOURCE_LIST_CACHE_TTL_MS,
+				value: result,
+			};
+			return result;
 		}
 	});
 
