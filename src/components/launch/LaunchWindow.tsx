@@ -1,15 +1,15 @@
 import {
-	CaretUp as ChevronUp,
-	Microphone as Mic,
-	MicrophoneSlash as MicOff,
-	Minus,
-	Monitor,
-	DotsThreeVertical as MoreVertical,
-	Timer,
-	VideoCamera as Video,
-	VideoCameraSlash as VideoOff,
-	X,
-	ArrowClockwise as RefreshCw,
+	CaretUpIcon,
+	MicrophoneIcon,
+	MicrophoneSlashIcon,
+	MinusIcon,
+	MonitorIcon,
+	DotsThreeVerticalIcon,
+	TimerIcon,
+	VideoCameraIcon,
+	VideoCameraSlashIcon,
+	XIcon,
+	ArrowClockwiseIcon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { RxDragHandleDots2 } from "react-icons/rx";
@@ -17,13 +17,13 @@ import { useScopedT } from "../../contexts/I18nContext";
 import { useHudBarDrag } from "./hooks/useHudBarDrag";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { useLaunchWindowSystemState } from "./hooks/useLaunchWindowSystemState";
+import { useLaunchHudInteractionState } from "./hooks/useLaunchHudInteractionState";
+import { useLaunchWindowActions } from "./hooks/useLaunchWindowActions";
 import { useRecordingTimer } from "./hooks/useRecordingTimer";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { useVideoDevices } from "../../hooks/useVideoDevices";
 import { useWebcamPreviewOverlay } from "./hooks/useWebcamPreviewOverlay";
-import ProjectBrowserDialog, {
-	type ProjectLibraryEntry,
-} from "../video-editor/ProjectBrowserDialog";
+import ProjectBrowserDialog from "../video-editor/ProjectBrowserDialog";
 import {
 	canToggleFloatingWebcamPreview,
 } from "./floatingWebcamPreview";
@@ -32,14 +32,13 @@ import { CountdownPopover } from "./popovers/CountdownPopover";
 import { MicPopover } from "./popovers/MicPopover";
 import { MorePopover } from "./popovers/MorePopover";
 import { SourcePopover } from "./popovers/SourcePopover";
-import type { DesktopSource } from "./popovers/types";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import styles from "./LaunchWindow.module.css";
 
 import { Separator } from "@/components/ui/separator";
 import { Button } from "../ui/button";
 import { RecordingControls } from "./RecordingControls";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 const SHOW_DEV_UPDATE_PREVIEW = import.meta.env.DEV;
 
@@ -80,38 +79,27 @@ function LaunchWindowContent() {
 	} = useScreenRecorder();
 
 	const { elapsed, formatTime } = useRecordingTimer(recording, paused);
-	const [selectedSource, setSelectedSource] = useState("Screen");
-	const [hasSelectedSource, setHasSelectedSource] = useState(false);
-	const [projectLibraryEntries, setProjectLibraryEntries] = useState<ProjectLibraryEntry[]>([]);
-	const [projectBrowserOpen, setProjectBrowserOpen] = useState(false);
 	const hudContentRef = useRef<HTMLDivElement>(null);
 	const hudBarRef = useRef<HTMLDivElement>(null);
-	const anyPopoverOpenRef = useRef(false);
-	const projectBrowserOpenRef = useRef(false);
-
-	const anyPopoverOpen = openId !== null;
-
-	useEffect(() => {
-		anyPopoverOpenRef.current = anyPopoverOpen;
-	}, [anyPopoverOpen]);
-
-	useEffect(() => {
-		if (!openId) {
-			return;
-		}
-		setProjectBrowserOpen(false);
-		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
-	}, [openId]);
-
-	useEffect(() => {
-		projectBrowserOpenRef.current = projectBrowserOpen;
-	}, [projectBrowserOpen]);
 
 	const closeAllPopovers = useCallback(() => {
 		if (openId) {
 			requestClose(openId);
 		}
 	}, [openId, requestClose]);
+
+	const {
+		selectedSource,
+		hasSelectedSource,
+		projectLibraryEntries,
+		projectBrowserOpen,
+		setProjectBrowserOpen,
+		handleSourceSelect,
+		openVideoFile,
+		openProjectBrowser,
+		openProjectFromLibrary,
+		syncSelectedSource,
+	} = useLaunchWindowActions({ closeAllPopovers });
 
 	const showWebcamControls = webcamEnabled && !recording;
 	const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(
@@ -184,112 +172,31 @@ function LaunchWindowContent() {
 		recordingWebcamPreviewContainerRef,
 	});
 
+	const { handleHudMouseLeave, beginInteractiveHudAction } = useLaunchHudInteractionState({
+		openId,
+		projectBrowserOpen,
+		setProjectBrowserOpen,
+		isHudDraggingRef,
+		isWebcamPreviewDraggingRef,
+		webcamPreviewDragStartRef,
+	});
+
 	useEffect(() => {
 		let mounted = true;
 
-		const applySelectedSource = (source: { name?: string } | null | undefined) => {
-			if (!mounted) {
-				return;
-			}
-
-			if (source?.name) {
-				setSelectedSource(source.name);
-				setHasSelectedSource(true);
-				return;
-			}
-
-			setSelectedSource("Screen");
-			setHasSelectedSource(false);
-		};
-
 		void window.electronAPI.getSelectedSource().then((source) => {
-			applySelectedSource(source);
+			if (mounted) syncSelectedSource(source);
 		});
 
 		const cleanup = window.electronAPI.onSelectedSourceChanged((source) => {
-			applySelectedSource(source);
+			if (mounted) syncSelectedSource(source);
 		});
 
 		return () => {
 			mounted = false;
 			cleanup?.();
 		};
-	}, []);
-
-	const handleSourceSelect = async (source: DesktopSource) => {
-		await window.electronAPI.selectSource(source);
-		setSelectedSource(source.name);
-		setHasSelectedSource(true);
-		window.electronAPI.showSourceHighlight?.({
-			...source,
-			name: source.appName ? `${source.appName} — ${source.name}` : source.name,
-			appName: source.appName,
-		});
-	};
-
-	const openVideoFile = async () => {
-		const result = await window.electronAPI.openVideoFilePicker();
-		if (result.canceled) return;
-		if (result.success && result.path) {
-			await window.electronAPI.setCurrentVideoPath(result.path);
-			await window.electronAPI.switchToEditor();
-		}
-	};
-
-	const refreshProjectLibrary = useCallback(async () => {
-		try {
-			const result = await window.electronAPI.listProjectFiles();
-			if (!result.success) return;
-
-			setProjectLibraryEntries(result.entries);
-		} catch (error) {
-			console.error("Failed to load project library:", error);
-		}
-	}, []);
-
-	const openProjectBrowser = useCallback(async () => {
-		if (projectBrowserOpen) {
-			setProjectBrowserOpen(false);
-			return;
-		}
-
-		closeAllPopovers();
-		await refreshProjectLibrary();
-		setProjectBrowserOpen(true);
-	}, [closeAllPopovers, projectBrowserOpen, refreshProjectLibrary]);
-
-	const openProjectFromLibrary = useCallback(async (projectPath: string) => {
-		try {
-			const result = await window.electronAPI.openProjectFileAtPath(projectPath);
-			if (result.canceled || !result.success) {
-				return;
-			}
-
-			setProjectBrowserOpen(false);
-			await window.electronAPI.switchToEditor();
-		} catch (error) {
-			console.error("Failed to open project from library:", error);
-		}
-	}, []);
-
-	const handleHudMouseLeave = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-		const nextTarget = event.relatedTarget;
-		if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
-			return;
-		}
-
-		requestAnimationFrame(() => {
-			if (
-				!isHudDraggingRef.current &&
-				!isWebcamPreviewDraggingRef.current &&
-				!webcamPreviewDragStartRef.current &&
-				!anyPopoverOpenRef.current &&
-				!projectBrowserOpenRef.current
-			) {
-				window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
-			}
-		});
-	}, []);
+	}, [syncSelectedSource]);
 
 	const hudStateTransition = {
 		duration: 0.24,
@@ -318,10 +225,7 @@ function LaunchWindowContent() {
 					<SourcePopover
 						selectedSource={selectedSource}
 						onSourceSelect={handleSourceSelect}
-						onOpen={() => {
-							setProjectBrowserOpen(false);
-							window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
-						}}
+						onOpen={beginInteractiveHudAction}
 						trigger={
 							<Button
 								variant="outline"
@@ -329,11 +233,11 @@ function LaunchWindowContent() {
 								className={`${styles.electronNoDrag} group gap-2 px-3 min-w-0 max-w-[180px] rounded-[11px] font-medium text-[12px] shrink-0 border-[#2a2a34] bg-[#1a1a22] text-[#eeeef2] hover:border-[#3e3e4c] hover:bg-[#20202a] transition-all ${openId === "sources" ? "border-[#3e3e4c] bg-[#20202a]" : ""}`}
 								title={selectedSource}
 							>
-								<Monitor size={16} className="shrink-0" />
+								<MonitorIcon size={16} className="shrink-0" />
 								<div className="flex-1 min-w-0 overflow-hidden">
 									<div className="truncate">{selectedSource}</div>
 								</div>
-								<ChevronUp
+								<CaretUpIcon
 									size={10}
 									className={`text-[#6b6b78] ml-0.5 shrink-0 transition-transform duration-200 ${
 										openId === "sources" ? "" : "rotate-180"
@@ -373,7 +277,7 @@ function LaunchWindowContent() {
 						}
 						className={microphoneEnabled ? styles.ibActive : ""}
 					>
-						{microphoneEnabled ? <Mic size={18} /> : <MicOff size={18} />}
+						{microphoneEnabled ? <MicrophoneIcon size={18} /> : <MicrophoneSlashIcon size={18} />}
 					</Button>
 				}
 			/>
@@ -411,7 +315,7 @@ function LaunchWindowContent() {
 						}
 						className={webcamEnabled ? styles.ibActive : ""}
 					>
-						{webcamEnabled ? <Video size={18} /> : <VideoOff size={18} />}
+						{webcamEnabled ? <VideoCameraIcon size={18} /> : <VideoCameraSlashIcon size={18} />}
 					</Button>
 				}
 			/>
@@ -427,7 +331,7 @@ function LaunchWindowContent() {
 						title={t("recording.countdownDelay")}
 						className={countdownDelay > 0 ? styles.ibActive : ""}
 					>
-						<Timer size={18} />
+						<TimerIcon size={18} />
 					</Button>
 				}
 			/>
@@ -441,8 +345,7 @@ function LaunchWindowContent() {
 					hasSelectedSource || platform === "linux"
 						? toggleRecording
 						: () => {
-								setProjectBrowserOpen(false);
-								window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+								beginInteractiveHudAction();
 								requestOpen("sources");
 						  }
 				}
@@ -484,7 +387,7 @@ function LaunchWindowContent() {
 						iconSize="lg"
 						title={t("recording.more")}
 					>
-						<MoreVertical size={18} />
+						<DotsThreeVerticalIcon size={18} />
 					</Button>
 				}
 			/>
@@ -496,7 +399,7 @@ function LaunchWindowContent() {
 				onClick={() => window.electronAPI?.hudOverlayHide?.()}
 				title={t("recording.hideHud")}
 			>
-				<Minus size={16} />
+				<MinusIcon size={16} />
 			</Button>
 
 			<Button
@@ -506,14 +409,14 @@ function LaunchWindowContent() {
 				onClick={() => window.electronAPI?.hudOverlayClose?.()}
 				title={t("recording.closeApp")}
 			>
-				<X size={16} />
+				<XIcon size={16} />
 			</Button>
 		</>
 	);
 
 	const finalizingControls = (
 		<div className={styles.finalizingState}>
-			<RefreshCw size={15} className={styles.finalizingSpin} />
+			<ArrowClockwiseIcon size={15} className={styles.finalizingSpin} />
 			<div className={styles.finalizingCopy}>
 				<span>{t("recording.preparing", "Preparing recording")}</span>
 				<small>{t("recording.preparingSubtitle", "Opening the editor in a moment")}</small>

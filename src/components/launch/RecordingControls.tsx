@@ -1,4 +1,4 @@
-import { Microphone as Mic, MicrophoneSlash as MicOff, Minus, Pause, Play, Stop as Square, X } from "@phosphor-icons/react";
+import { MicrophoneIcon, MicrophoneSlashIcon, MinusIcon, PauseIcon, PlayIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { useMemo } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import { Button } from "@/components/ui/button";
@@ -71,9 +71,9 @@ export const RecordingControls = ({
 					onClick={onToggleMicrophone}
 				>
 					{microphoneEnabled ? (
-						<Mic size={18} />
+						<MicrophoneIcon size={18} />
 					) : (
-						<MicOff size={18} />
+						<MicrophoneSlashIcon size={18} />
 					)}
 				</Button>
 
@@ -88,9 +88,9 @@ export const RecordingControls = ({
 					className={paused ? styles.ibGreen : ""}
 				>
 					{paused ? (
-						<Play size={18} fill="currentColor" strokeWidth={0} />
+						<PlayIcon size={18} fill="currentColor" strokeWidth={0} />
 					) : (
-						<Pause size={18} />
+						<PauseIcon size={18} />
 					)}
 				</Button>
 
@@ -102,7 +102,7 @@ export const RecordingControls = ({
 					title={t("recording.stop")}
 					className={styles.ibRed}
 				>
-					<Square size={16} fill="currentColor" strokeWidth={0} />
+					<SquareIcon size={16} fill="currentColor" strokeWidth={0} />
 				</Button>
 
 				<Button
@@ -112,7 +112,7 @@ export const RecordingControls = ({
 					onClick={onHideHud}
 					title={t("recording.hideHud")}
 				>
-					<Minus size={16} />
+					<MinusIcon size={16} />
 				</Button>
 
 				<Button
@@ -122,7 +122,7 @@ export const RecordingControls = ({
 					onClick={onCancelRecording}
 					title={t("recording.cancel")}
 				>
-					<X size={18} />
+					<XIcon size={18} />
 				</Button>
 			</>
 		);

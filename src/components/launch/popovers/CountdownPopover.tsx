@@ -1,4 +1,4 @@
-import { Timer } from "@phosphor-icons/react";
+import { TimerIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import styles from "../LaunchWindow.module.css";
@@ -38,7 +38,7 @@ export function CountdownPopover({
 			{COUNTDOWN_OPTIONS.map((delay) => (
 				<DropdownItem
 					key={delay}
-					icon={<Timer size={16} />}
+					icon={<TimerIcon size={16} />}
 					selected={countdownDelay === delay}
 					onClick={() => {
 						onSelectDelay(delay);

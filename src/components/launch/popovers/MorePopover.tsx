@@ -1,10 +1,10 @@
 import {
-	Eye,
-	EyeSlash as EyeOff,
-	FolderOpen,
-	Translate as Languages,
-	VideoCamera as VideoIcon,
-	ArrowClockwise as RefreshCw,
+	EyeIcon,
+	EyeSlashIcon,
+	FolderOpenIcon,
+	TranslateIcon,
+	VideoCameraIcon,
+	ArrowClockwiseIcon,
 } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useI18n } from "@/contexts/I18nContext";
@@ -71,7 +71,7 @@ export function MorePopover({
 		>
 			{supportsHudCaptureProtection && (
 				<DropdownItem
-					icon={hideHudFromCapture ? <EyeOff size={16} /> : <Eye size={16} />}
+					icon={hideHudFromCapture ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
 					selected={hideHudFromCapture}
 					onClick={onToggleHudCaptureProtection}
 				>
@@ -81,7 +81,7 @@ export function MorePopover({
 				</DropdownItem>
 			)}
 			<DropdownItem
-				icon={<FolderOpen size={16} />}
+				icon={<FolderOpenIcon size={16} />}
 				onClick={() => {
 					requestClose(POPOVER_ID);
 					onChooseRecordingsDirectory();
@@ -90,7 +90,7 @@ export function MorePopover({
 				{t("recording.recordingsFolder")}
 			</DropdownItem>
 			<DropdownItem
-				icon={<VideoIcon size={16} />}
+				icon={<VideoCameraIcon size={16} />}
 				onClick={() => {
 					requestClose(POPOVER_ID);
 					onOpenVideoFile();
@@ -99,7 +99,7 @@ export function MorePopover({
 				{t("recording.openVideoFile")}
 			</DropdownItem>
 			<DropdownItem
-				icon={<FolderOpen size={16} />}
+				icon={<FolderOpenIcon size={16} />}
 				onClick={() => {
 					requestClose(POPOVER_ID);
 					onOpenProjectBrowser();
@@ -109,7 +109,7 @@ export function MorePopover({
 			</DropdownItem>
 			{showDevUpdatePreview ? (
 				<DropdownItem
-					icon={<RefreshCw size={16} />}
+					icon={<ArrowClockwiseIcon size={16} />}
 					onClick={() => {
 						requestClose(POPOVER_ID);
 						onPreviewUpdateUi();
@@ -124,7 +124,7 @@ export function MorePopover({
 			{SUPPORTED_LOCALES.map((code) => (
 				<DropdownItem
 					key={code}
-					icon={<Languages size={16} />}
+					icon={<TranslateIcon size={16} />}
 					selected={locale === code}
 					onClick={() => {
 						setLocale(code as AppLocale);

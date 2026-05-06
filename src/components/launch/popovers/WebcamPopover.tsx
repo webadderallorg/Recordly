@@ -7,7 +7,7 @@ import {
 import { useScopedT } from "@/contexts/I18nContext";
 import { DropdownItem, HudPopover } from "./PopoverScaffold";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
-import type { DeviceOption } from "./types";
+import type { DeviceOption } from "./launchPopoverTypes";
 import type { ReactNode } from "react";
 
 const POPOVER_ID = "webcam";

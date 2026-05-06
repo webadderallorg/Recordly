@@ -1,7 +1,7 @@
 import { useCallback, useMemo, type ReactNode, useState } from "react";
 import { SourceSelector } from "../SourceSelector";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
-import type { DesktopSource } from "./types";
+import type { DesktopSource } from "./launchPopoverTypes";
 
 const POPOVER_ID = "sources";
 
