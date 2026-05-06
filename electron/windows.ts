@@ -59,6 +59,9 @@ function getEditorWindowQuery(): Record<string, string> {
 		if (process.env.RECORDLY_SMOKE_EXPORT_USE_NATIVE === "1") {
 			query.smokeUseNativeExport = "1";
 		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_SOURCE_ONLY === "1") {
+			query.smokeSourceOnly = "1";
+		}
 		if (process.env.RECORDLY_SMOKE_EXPORT_ENCODING_MODE) {
 			query.smokeEncodingMode = process.env.RECORDLY_SMOKE_EXPORT_ENCODING_MODE;
 		}

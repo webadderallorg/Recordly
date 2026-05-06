@@ -12,6 +12,11 @@ export {
 	resolveSupportedMp4EncoderPath,
 } from "./mp4Support";
 export { VideoMuxer } from "./muxer";
+export type { NativeFastVideoExportPlan } from "./nativeFastVideoExporter";
+export {
+	classifyNativeFastVideoExportPlan,
+	NativeFastVideoExporter,
+} from "./nativeFastVideoExporter";
 export { StreamingVideoDecoder } from "./streamingDecoder";
 export type {
 	ExportBackendPreference,
