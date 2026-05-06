@@ -104,15 +104,18 @@
 	width: 300px;
 	max-height: 400px;
 	overflow-y: auto;
-	background: rgba(22, 22, 30, 0.96);
-	border: 1px solid rgba(255, 255, 255, 0.07);
-	border-radius: 14px;
+	background: var(--launch-panel, rgba(34, 40, 56, 0.62));
+	border: 1px solid var(--launch-border, rgba(255, 255, 255, 0.07));
+	border-radius: 16px;
+	backdrop-filter: blur(18px) saturate(140%);
+	-webkit-backdrop-filter: blur(18px) saturate(140%);
 	padding: 8px;
 	margin-top: auto;
 	margin-bottom: 8px;
 	box-shadow:
-		0 12px 32px rgba(0, 0, 0, 0.22),
-		0 2px 10px rgba(0, 0, 0, 0.1);
+		0 16px 40px rgba(0, 0, 0, 0.28),
+		0 2px 12px rgba(0, 0, 0, 0.12),
+		inset 0 1px 0 rgba(255, 255, 255, 0.08);
 	pointer-events: auto;
 	animation: menuCardIn 0.18s ease;
 }
@@ -144,7 +147,7 @@
 .ddLabel {
 	font-size: 9px;
 	font-weight: 600;
-	color: #6b6b78;
+	color: var(--launch-label, #8f99b1);
 	text-transform: uppercase;
 	letter-spacing: 0.08em;
 	padding: 6px 10px 4px;
@@ -160,19 +163,20 @@
 	border: none;
 	background: transparent;
 	font-size: 12px;
-	color: #6b6b78;
+	color: var(--launch-text-muted, #aab3c7);
 	cursor: pointer;
 	transition: all 0.12s ease;
 	text-align: left;
 }
 
 .ddItem:hover {
-	background: rgba(255, 255, 255, 0.06);
-	color: #eeeef2;
+	background: var(--launch-hover, rgba(255, 255, 255, 0.1));
+	color: var(--launch-text, #f3f6ff);
 }
 
 .ddItemSelected {
-	color: #3d8bff;
+	background: var(--launch-selected, rgba(92, 153, 255, 0.22));
+	color: var(--launch-accent-soft, #dbeafe);
 }
 
 .finalizingState {

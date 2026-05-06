@@ -21,6 +21,7 @@ import { SUPPORTED_LOCALES } from "@/i18n/config";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useScopedT } from "../../contexts/I18nContext";
 import { AudioLevelMeter } from "../ui/audio-level-meter";
+import "./launchTheme.css";
 import { SourceSelector } from "./SourceSelector";
 import styles from "./LaunchWindow.module.css";
 
@@ -123,7 +124,8 @@ function HudPopover({
 		<Popover open={open} onOpenChange={onOpenChange}>
 			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
 			<PopoverContent
-				className={`${styles.menuCard} ${styles.electronNoDrag}`}
+				className={`launch-theme ${styles.menuCard} ${styles.electronNoDrag}`}
+				unstyled
 				side="bottom"
 				align={align}
 				sideOffset={8}

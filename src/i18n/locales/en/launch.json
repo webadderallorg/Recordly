@@ -20,6 +20,8 @@
 		"closeApp": "Close App",
 		"screens": "Screens",
 		"windows": "Windows",
+		"screen": "Screen",
+		"window": "Window",
 		"noSourcesFound": "No sources found",
 		"microphone": "Microphone",
 		"turnOffMicrophone": "Turn Off Microphone",

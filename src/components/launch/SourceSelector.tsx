@@ -5,6 +5,7 @@ import { useScopedT } from "@/contexts/I18nContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import "./launchTheme.css";
 import "./SourceSelector.css";
 
 interface DesktopSource {
@@ -131,12 +132,12 @@ export const SourceSelectorContent = ({
 	// Memoized source item to prevent unnecessary re-renders
 	const SourceItem = useCallback(
 		({ source, isSelected }: { source: DesktopSource; isSelected: boolean }) => (
-			<button
-				type="button"
+			<Button
+				variant="ghost"
+				size="sm"
 				className={cn(
-					"group flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors w-full text-left",
-					"hover:bg-accent hover:text-accent-foreground",
-					isSelected && "bg-accent text-accent-foreground",
+					"source-selector-item group !h-auto w-full justify-start gap-3 rounded-[11px] px-3 py-2.5 text-left font-medium",
+					isSelected && "source-selector-item-selected",
 				)}
 				onClick={() => onSourceSelect(source)}
 			>
@@ -146,23 +147,23 @@ export const SourceSelectorContent = ({
 						<img
 							src={source.thumbnail}
 							alt=""
-							className="w-12 h-8 rounded-md object-cover bg-black/50"
+							className="w-12 h-8 rounded-[8px] object-cover bg-black/50"
 							onError={(e) => {
 								(e.target as HTMLImageElement).style.display = "none";
 							}}
 						/>
 					) : (
-						<div className="w-12 h-8 rounded-md bg-muted flex items-center justify-center">
+						<div className="source-selector-thumb-fallback w-12 h-8 rounded-[8px] flex items-center justify-center">
 							{source.sourceType === "window" ? (
-								<AppWindow className="w-5 h-5 text-muted-foreground" />
+								<AppWindow className="w-5 h-5 source-selector-muted" />
 							) : (
-								<Monitor className="w-5 h-5 text-muted-foreground" />
+								<Monitor className="w-5 h-5 source-selector-muted" />
 							)}
 						</div>
 					)}
 					{isSelected && (
-						<div className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary rounded-full flex items-center justify-center">
-							<div className="w-1.5 h-1.5 bg-primary-foreground rounded-full" />
+						<div className="source-selector-dot absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center">
+							<div className="w-1.5 h-1.5 source-selector-dot-inner rounded-full" />
 						</div>
 					)}
 				</div>
@@ -172,20 +173,20 @@ export const SourceSelectorContent = ({
 					<div className="flex items-center gap-2 w-full overflow-hidden">
 						<MarqueeText 
 							text={source.windowTitle || source.name}
-							className="text-sm font-medium"
+							className="text-sm font-medium source-selector-text"
 							speed={40}
 						/>
 						{source.appName && source.appName !== source.name && (
-							<span className="text-xs text-muted-foreground truncate shrink-0">
+							<span className="text-xs source-selector-muted truncate shrink-0">
 								{source.appName}
 							</span>
 						)}
 					</div>
-					<div className="text-xs text-muted-foreground truncate w-full text-left">
+					<div className="text-xs source-selector-subtle truncate w-full text-left">
 						{source.sourceType === "screen" ? t("recording.screen") : t("recording.window")}
 					</div>
 				</div>
-			</button>
+			</Button>
 		),
 		[onSourceSelect, t],
 	);
@@ -196,7 +197,7 @@ export const SourceSelectorContent = ({
 
 		return (
 			<div className="space-y-1">
-				<div className="px-3 py-2 text-xs font-medium text-muted-foreground">
+				<div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label">
 					{t("recording.screens")}
 				</div>
 				<div className="space-y-0.5">
@@ -218,7 +219,7 @@ export const SourceSelectorContent = ({
 
 		return (
 			<div className="space-y-1">
-				<div className="px-3 py-2 text-xs font-medium text-muted-foreground">
+				<div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label">
 					{t("recording.windows")}
 				</div>
 				<div className="space-y-0.5">
@@ -237,7 +238,7 @@ export const SourceSelectorContent = ({
 	if (loading) {
 		return (
 			<div className="flex items-center justify-center py-8">
-				<div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
+				<div className="animate-spin rounded-full h-5 w-5 border-b-2 source-selector-accent-border" />
 			</div>
 		);
 	}
@@ -250,7 +251,7 @@ export const SourceSelectorContent = ({
 					{windowSection}
 				</>
 			) : (
-				<div className="text-center py-8 text-sm text-muted-foreground">
+				<div className="text-center py-8 text-sm source-selector-muted">
 					{t("recording.noSourcesFound")}
 				</div>
 			)}
@@ -312,7 +313,8 @@ export const SourceSelector = React.memo(function SourceSelector({
 				)}
 			</PopoverTrigger>
 			<PopoverContent
-				className="w-80 p-0"
+				className="launch-theme w-80 p-0 source-selector-popover"
+				unstyled
 				align="start"
 				sideOffset={8}
 				side="bottom"

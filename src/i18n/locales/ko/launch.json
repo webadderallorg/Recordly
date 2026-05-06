@@ -20,6 +20,8 @@
 		"closeApp": "앱 닫기",
 		"screens": "화면",
 		"windows": "창",
+		"screen": "화면",
+		"window": "창",
 		"noSourcesFound": "사용 가능한 소스를 찾을 수 없습니다",
 		"microphone": "마이크",
 		"turnOffMicrophone": "마이크 끄기",

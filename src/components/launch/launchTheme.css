@@ -1,0 +1,13 @@
+.launch-theme {
+	--launch-surface: rgba(26, 28, 36, 0.92);
+	--launch-panel: rgba(18, 18, 24, 0.82);
+	--launch-border: rgba(255, 255, 255, 0.07);
+	--launch-border-strong: rgba(255, 255, 255, 0.12);
+	--launch-text: #f3f6ff;
+	--launch-text-muted: #aab3c7;
+	--launch-label: #8f99b1;
+	--launch-hover: rgba(255, 255, 255, 0.1);
+	--launch-selected: rgba(92, 153, 255, 0.22);
+	--launch-accent: #3d8bff;
+	--launch-accent-soft: #dbeafe;
+}

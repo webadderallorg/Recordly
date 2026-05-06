@@ -20,6 +20,8 @@
 		"closeApp": "Fechar app",
 		"screens": "Telas",
 		"windows": "Janelas",
+		"screen": "Tela",
+		"window": "Janela",
 		"noSourcesFound": "Nenhuma fonte encontrada",
 		"microphone": "Microfone",
 		"turnOffMicrophone": "Desligar microfone",

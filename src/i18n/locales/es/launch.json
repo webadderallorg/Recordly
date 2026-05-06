@@ -20,6 +20,8 @@
 		"closeApp": "Cerrar aplicación",
 		"screens": "Pantallas",
 		"windows": "Ventanas",
+		"screen": "Pantalla",
+		"window": "Ventana",
 		"noSourcesFound": "No se encontraron fuentes",
 		"microphone": "Micrófono",
 		"turnOffMicrophone": "Desactivar micrófono",

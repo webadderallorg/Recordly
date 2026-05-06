@@ -26,22 +26,10 @@ let countdownWindow: BrowserWindow | null = null;
 let updateToastWindow: BrowserWindow | null = null;
 
 const HUD_OVERLAY_SETTINGS_FILE = path.join(USER_DATA_PATH, "hud-overlay-settings.json");
-const HUD_BOTTOM_CLEARANCE_CM = 3.5;
-const DIP_PER_INCH = 96;
-const CM_PER_INCH = 2.54;
 const HUD_EDGE_MARGIN_DIP = 16;
-const HUD_SHADOW_BLEED_DIP = 36;
-const HUD_MIN_WINDOW_WIDTH = 560;
-const HUD_COMPACT_HEIGHT = 96;
-const HUD_MIN_EXPANDED_HEIGHT = 520 + HUD_SHADOW_BLEED_DIP;
 const UPDATE_TOAST_WIDTH = 456;
 const UPDATE_TOAST_HEIGHT = 252;
 const UPDATE_TOAST_GAP_DIP = 18;
-
-let hudOverlayExpanded = false;
-let hudOverlayCompactWidth = HUD_MIN_WINDOW_WIDTH;
-let hudOverlayCompactHeight = HUD_COMPACT_HEIGHT;
-let hudOverlayExpandedHeight = HUD_MIN_EXPANDED_HEIGHT;
 
 function getEditorWindowQuery(): Record<string, string> {
 	const query: Record<string, string> = {
@@ -182,61 +170,21 @@ function getHudOverlayDisplay() {
 	return getScreen().getPrimaryDisplay();
 }
 
-function getHudOverlayBounds(expanded: boolean) {
-	const { bounds, workArea } = getHudOverlayDisplay();
-	const maxWindowWidth = Math.max(HUD_MIN_WINDOW_WIDTH, workArea.width - HUD_EDGE_MARGIN_DIP * 2);
-	const windowWidth = Math.min(
-		maxWindowWidth,
-		Math.max(HUD_MIN_WINDOW_WIDTH, Math.round(hudOverlayCompactWidth)),
-	);
-	const maxWindowHeight = Math.max(HUD_COMPACT_HEIGHT, workArea.height - HUD_EDGE_MARGIN_DIP * 2);
-	const desiredHeight = expanded
-		? Math.max(HUD_MIN_EXPANDED_HEIGHT, Math.round(hudOverlayExpandedHeight))
-		: Math.max(HUD_COMPACT_HEIGHT, Math.round(hudOverlayCompactHeight));
-	const windowHeight = Math.min(maxWindowHeight, desiredHeight);
-	const bottomClearanceDip = Math.round((HUD_BOTTOM_CLEARANCE_CM / CM_PER_INCH) * DIP_PER_INCH);
-	const screenBottom = bounds.y + bounds.height;
-	const workAreaBottom = workArea.y + workArea.height;
-	const preferredBottom = screenBottom - bottomClearanceDip;
-	const maximumSafeBottom = workAreaBottom - HUD_EDGE_MARGIN_DIP;
-	const windowBottom = Math.min(preferredBottom, maximumSafeBottom);
-
-	const x = Math.floor(workArea.x + (workArea.width - windowWidth) / 2);
-	const y = Math.max(workArea.y + HUD_EDGE_MARGIN_DIP, Math.floor(windowBottom - windowHeight));
-
+function getHudOverlayBounds() {
+	const { workArea } = getHudOverlayDisplay();
 	return {
-		x,
-		y,
-		width: windowWidth,
-		height: windowHeight,
+		x: workArea.x,
+		y: workArea.y,
+		width: workArea.width,
+		height: workArea.height,
 	};
 }
 
-function applyHudOverlayBounds(expanded: boolean) {
+function applyHudOverlayBounds() {
 	if (!hudOverlayWindow || hudOverlayWindow.isDestroyed()) {
 		return;
 	}
-
-	hudOverlayExpanded = expanded;
-
-	const computed = getHudOverlayBounds(expanded);
-
-	if (hudUserPosition) {
-		// Resize in-place at the user's dragged position, clamped so the
-		// window stays fully within the current display's work area.
-		const { workArea } = getHudOverlayDisplay();
-		const x = Math.max(
-			workArea.x,
-			Math.min(hudUserPosition.x, workArea.x + workArea.width - computed.width),
-		);
-		const y = Math.max(
-			workArea.y,
-			Math.min(hudUserPosition.y, workArea.y + workArea.height - computed.height),
-		);
-		hudOverlayWindow.setBounds({ x, y, width: computed.width, height: computed.height }, false);
-	} else {
-		hudOverlayWindow.setBounds(computed, false);
-	}
+	hudOverlayWindow.setBounds(getHudOverlayBounds(), false);
 
 	positionUpdateToastWindow();
 	if (!hudOverlayWindow.isVisible()) {
@@ -299,9 +247,7 @@ ipcMain.on("hud-overlay-set-ignore-mouse", (_event, ignore: boolean) => {
 	}
 });
 
-// When the user drags the HUD, remember their chosen position so that
-// subsequent size changes (e.g. idle → recording UI swap) resize in-place
-// instead of snapping back to the default centered location.
+// Keep compatibility with existing drag IPC/state.
 let hudUserPosition: { x: number; y: number } | null = null;
 let hudDragOffset: { x: number; y: number } | null = null;
 let hudDragLastCursor: { x: number; y: number } | null = null;
@@ -315,7 +261,7 @@ ipcMain.on("hud-overlay-drag", (_event, phase: string, screenX: number, screenY:
 	// the HUD appears "stuck".  The renderer marks the drag handle as
 	// -webkit-app-region: drag on Linux, letting the OS move the window for us.
 	// The resulting position is captured by the win.on("moved", ...) listener
-	// below so `hudUserPosition` stays in sync for in-place resize.
+	// below so `hudUserPosition` stays in sync.
 	if (process.platform === "linux") {
 		return;
 	}
@@ -365,52 +311,19 @@ ipcMain.on("hud-overlay-hide", () => {
 });
 
 ipcMain.on("set-hud-overlay-expanded", (_event, expanded: boolean) => {
-	applyHudOverlayBounds(Boolean(expanded));
+	// Compatibility no-op for launcher HUD: window bounds are now fixed to workArea.
+	void expanded;
 });
 
 ipcMain.on("set-hud-overlay-compact-width", (_event, width: number) => {
-	if (!Number.isFinite(width)) {
-		return;
-	}
-
-	const maxWindowWidth = Math.max(
-		HUD_MIN_WINDOW_WIDTH,
-		getHudOverlayDisplay().workArea.width - HUD_EDGE_MARGIN_DIP * 2,
-	);
-	const nextWidth = Math.min(maxWindowWidth, Math.max(HUD_MIN_WINDOW_WIDTH, Math.round(width)));
-
-	if (nextWidth === hudOverlayCompactWidth) {
-		return;
-	}
-
-	hudOverlayCompactWidth = nextWidth;
-	applyHudOverlayBounds(hudOverlayExpanded);
+	// Compatibility no-op for launcher HUD: window bounds are now fixed to workArea.
+	void width;
 });
 
 ipcMain.on("set-hud-overlay-measured-height", (_event, height: number, expanded: boolean) => {
-	if (!Number.isFinite(height)) {
-		return;
-	}
-
-	const maxWindowHeight = Math.max(
-		HUD_COMPACT_HEIGHT,
-		getHudOverlayDisplay().workArea.height - HUD_EDGE_MARGIN_DIP * 2,
-	);
-	const nextHeight = Math.min(maxWindowHeight, Math.max(HUD_COMPACT_HEIGHT, Math.round(height)));
-
-	if (expanded) {
-		if (nextHeight === hudOverlayExpandedHeight) {
-			return;
-		}
-		hudOverlayExpandedHeight = Math.max(HUD_MIN_EXPANDED_HEIGHT, nextHeight);
-	} else {
-		if (nextHeight === hudOverlayCompactHeight) {
-			return;
-		}
-		hudOverlayCompactHeight = nextHeight;
-	}
-
-	applyHudOverlayBounds(hudOverlayExpanded);
+	// Compatibility no-op for launcher HUD: window bounds are now fixed to workArea.
+	void height;
+	void expanded;
 });
 
 ipcMain.handle("get-hud-overlay-capture-protection", () => {
@@ -450,17 +363,11 @@ ipcMain.handle("set-hud-overlay-capture-protection", (_event, enabled: boolean) 
 
 export function createHudOverlayWindow(): BrowserWindow {
 	loadHudOverlayCaptureProtectionSetting();
-	const initialBounds = getHudOverlayBounds(false);
+	const initialBounds = getHudOverlayBounds();
 
 	const win = new BrowserWindow({
 		width: initialBounds.width,
 		height: initialBounds.height,
-		minWidth: HUD_MIN_WINDOW_WIDTH,
-		minHeight: HUD_COMPACT_HEIGHT,
-		maxHeight: Math.max(
-			HUD_COMPACT_HEIGHT,
-			getHudOverlayDisplay().workArea.height - HUD_EDGE_MARGIN_DIP * 2,
-		),
 		x: initialBounds.x,
 		y: initialBounds.y,
 		frame: false,
@@ -538,9 +445,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 	hudOverlayWindow = win;
 
 	// On Linux the HUD is dragged by the OS via -webkit-app-region (Wayland
-	// forbids client-side positioning).  Mirror the resulting bounds into
-	// hudUserPosition so subsequent expand/collapse resizes stay in place
-	// instead of snapping back to the default centered spot.
+	// forbids client-side positioning). Mirror moved bounds into drag state.
 	if (process.platform === "linux") {
 		win.on("moved", () => {
 			if (win.isDestroyed()) return;
@@ -569,7 +474,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 				hudUserPosition = null;
 			}
 		}
-		applyHudOverlayBounds(hudOverlayExpanded);
+		applyHudOverlayBounds();
 	};
 	screen.on("display-removed", handleDisplayRemoved);
 	screen.on("display-metrics-changed", handleDisplayMetricsChanged);

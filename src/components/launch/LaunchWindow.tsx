@@ -12,8 +12,6 @@ import {
 	ArrowClockwise as RefreshCw,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import type { ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
 import { RxDragHandleDots2 } from "react-icons/rx";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
@@ -42,6 +40,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Button } from "../ui/button";
 import { RecordingControls } from "./RecordingControls";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface DesktopSource {
 	id: string;
@@ -106,6 +105,7 @@ export function LaunchWindow() {
 	const [showFloatingWebcamPreview, setShowFloatingWebcamPreview] = useState(true);
 	const [webcamPreviewOffset, setWebcamPreviewOffset] = useState(DEFAULT_WEBCAM_PREVIEW_OFFSET);
 	const [recordingHudOffset, setRecordingHudOffset] = useState(DEFAULT_RECORDING_HUD_OFFSET);
+	const [isHudDragging, setIsHudDragging] = useState(false);
 	const [hudOverlayMousePassthroughSupported, setHudOverlayMousePassthroughSupported] = useState<
 		boolean | null
 	>(null);
@@ -113,6 +113,8 @@ export function LaunchWindow() {
 	const [appVersion, setAppVersion] = useState<string | null>(null);
 	const hudContentRef = useRef<HTMLDivElement>(null);
 	const hudBarRef = useRef<HTMLDivElement>(null);
+	const hudBarTransformRef = useRef<HTMLDivElement | null>(null);
+	const recordingHudOffsetRef = useRef(DEFAULT_RECORDING_HUD_OFFSET);
 	const webcamPreviewRef = useRef<HTMLVideoElement | null>(null);
 	const recordingWebcamPreviewRef = useRef<HTMLVideoElement | null>(null);
 	const recordingWebcamPreviewContainerRef = useRef<HTMLDivElement | null>(null);
@@ -132,7 +134,6 @@ export function LaunchWindow() {
 	const hudDragStartRef = useRef<
 		| {
 				pointerId: number;
-				mode: "webcam-preview";
 				startX: number;
 				startY: number;
 				originX: number;
@@ -142,18 +143,13 @@ export function LaunchWindow() {
 				hudWidth: number;
 				hudHeight: number;
 		  }
-		| {
-				pointerId: number;
-				mode: "overlay";
-		  }
 		| null
 	>(null);
 	const isHudDraggingRef = useRef(false);
 	const isWebcamPreviewDraggingRef = useRef(false);
 	const hudDragMoveRafRef = useRef<number | null>(null);
-	const hudDragPendingScreenPositionRef = useRef<{ x: number; y: number } | null>(null);
+	const hudDragPendingPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
 
-	const [isAtTop, setIsAtTop] = useState(false);
 	const anyPopoverOpen =
 		sourcePopoverOpen ||
 		micPopoverOpen ||
@@ -168,18 +164,6 @@ export function LaunchWindow() {
 		setCountdownPopoverOpen(false);
 		setMorePopoverOpen(false);
 	}, []);
-
-	useEffect(() => {
-		const checkPosition = () => {
-			const screenHeight = window.screen.availHeight;
-			const windowY = window.screenY;
-			setIsAtTop(windowY < screenHeight / 2);
-		};
-		checkPosition();
-		if (anyPopoverOpen || projectBrowserOpen) {
-			checkPosition();
-		}
-	}, [anyPopoverOpen, projectBrowserOpen]);
 
 	const showWebcamControls = webcamEnabled && !recording;
 	const showRecordingWebcamPreview =
@@ -219,7 +203,6 @@ export function LaunchWindow() {
 	useEffect(() => {
 		if (!webcamEnabled) {
 			setWebcamPreviewOffset(DEFAULT_WEBCAM_PREVIEW_OFFSET);
-			setRecordingHudOffset(DEFAULT_RECORDING_HUD_OFFSET);
 			webcamPreviewDragStartRef.current = null;
 			isWebcamPreviewDraggingRef.current = false;
 			setShowFloatingWebcamPreview(true);
@@ -227,10 +210,11 @@ export function LaunchWindow() {
 	}, [webcamEnabled]);
 
 	useEffect(() => {
-		if (!showRecordingWebcamPreview) {
-			setRecordingHudOffset(DEFAULT_RECORDING_HUD_OFFSET);
+		recordingHudOffsetRef.current = recordingHudOffset;
+		if (!isHudDraggingRef.current && hudBarTransformRef.current) {
+			hudBarTransformRef.current.style.transform = `translate3d(${recordingHudOffset.x}px, ${recordingHudOffset.y}px, 0)`;
 		}
-	}, [showRecordingWebcamPreview]);
+	}, [recordingHudOffset]);
 
 	const handleWebcamPreviewPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
 		if (event.button !== 0) {
@@ -318,31 +302,23 @@ export function LaunchWindow() {
 		event.preventDefault();
 		event.currentTarget.setPointerCapture(event.pointerId);
 		isHudDraggingRef.current = true;
+		setIsHudDragging(true);
 		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
-
-		if (showRecordingWebcamPreview && hudBarRef.current) {
-			const hudRect = hudBarRef.current.getBoundingClientRect();
-			hudDragStartRef.current = {
-				pointerId: event.pointerId,
-				mode: "webcam-preview",
-				startX: event.clientX,
-				startY: event.clientY,
-				originX: recordingHudOffset.x,
-				originY: recordingHudOffset.y,
-				initialLeft: hudRect.left,
-				initialTop: hudRect.top,
-				hudWidth: hudRect.width,
-				hudHeight: hudRect.height,
-			};
+		if (!hudBarRef.current) {
 			return;
 		}
-
+		const hudRect = hudBarRef.current.getBoundingClientRect();
 		hudDragStartRef.current = {
 			pointerId: event.pointerId,
-			mode: "overlay",
+			startX: event.clientX,
+			startY: event.clientY,
+			originX: recordingHudOffsetRef.current.x,
+			originY: recordingHudOffsetRef.current.y,
+			initialLeft: hudRect.left,
+			initialTop: hudRect.top,
+			hudWidth: hudRect.width,
+			hudHeight: hudRect.height,
 		};
-		hudDragPendingScreenPositionRef.current = null;
-		window.electronAPI?.hudOverlayDrag?.("start", event.screenX, event.screenY);
 	};
 
 	const handleHudBarPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -351,42 +327,42 @@ export function LaunchWindow() {
 			return;
 		}
 
-		if (dragState.mode === "webcam-preview") {
-			const deltaX = event.clientX - dragState.startX;
-			const deltaY = event.clientY - dragState.startY;
-			const viewportWidth = Math.max(window.innerWidth, window.screen?.width ?? 0);
-			const viewportHeight = Math.max(window.innerHeight, window.screen?.height ?? 0);
-			const unclampedLeft = dragState.initialLeft + deltaX;
-			const unclampedTop = dragState.initialTop + deltaY;
-			const clampedLeft = Math.min(
-				Math.max(0, unclampedLeft),
-				Math.max(0, viewportWidth - dragState.hudWidth),
-			);
-			const clampedTop = Math.min(
-				Math.max(0, unclampedTop),
-				Math.max(0, viewportHeight - dragState.hudHeight),
-			);
-
-			setRecordingHudOffset({
-				x: dragState.originX + (clampedLeft - dragState.initialLeft),
-				y: dragState.originY + (clampedTop - dragState.initialTop),
-			});
-			return;
-		}
-
-		hudDragPendingScreenPositionRef.current = { x: event.screenX, y: event.screenY };
+		hudDragPendingPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
 		if (hudDragMoveRafRef.current !== null) {
 			return;
 		}
 
 		hudDragMoveRafRef.current = requestAnimationFrame(() => {
 			hudDragMoveRafRef.current = null;
-			const position = hudDragPendingScreenPositionRef.current;
-			if (!position) {
+			const latestDragState = hudDragStartRef.current;
+			const pointer = hudDragPendingPointerRef.current;
+			if (!latestDragState || !pointer) {
 				return;
 			}
 
-			window.electronAPI?.hudOverlayDrag?.("move", position.x, position.y);
+			const deltaX = pointer.clientX - latestDragState.startX;
+			const deltaY = pointer.clientY - latestDragState.startY;
+			const viewportWidth = Math.max(window.innerWidth, window.screen?.width ?? 0);
+			const viewportHeight = Math.max(window.innerHeight, window.screen?.height ?? 0);
+			const unclampedLeft = latestDragState.initialLeft + deltaX;
+			const unclampedTop = latestDragState.initialTop + deltaY;
+			const clampedLeft = Math.min(
+				Math.max(0, unclampedLeft),
+				Math.max(0, viewportWidth - latestDragState.hudWidth),
+			);
+			const clampedTop = Math.min(
+				Math.max(0, unclampedTop),
+				Math.max(0, viewportHeight - latestDragState.hudHeight),
+			);
+
+			const nextOffset = {
+				x: latestDragState.originX + (clampedLeft - latestDragState.initialLeft),
+				y: latestDragState.originY + (clampedTop - latestDragState.initialTop),
+			};
+			recordingHudOffsetRef.current = nextOffset;
+			if (hudBarTransformRef.current) {
+				hudBarTransformRef.current.style.transform = `translate3d(${nextOffset.x}px, ${nextOffset.y}px, 0)`;
+			}
 		});
 	};
 
@@ -396,22 +372,17 @@ export function LaunchWindow() {
 			return;
 		}
 
-		if (dragState.mode === "overlay") {
-			if (hudDragMoveRafRef.current !== null) {
-				cancelAnimationFrame(hudDragMoveRafRef.current);
-				hudDragMoveRafRef.current = null;
-			}
-			const position = hudDragPendingScreenPositionRef.current;
-			if (position) {
-				window.electronAPI?.hudOverlayDrag?.("move", position.x, position.y);
-			}
-			hudDragPendingScreenPositionRef.current = null;
-			window.electronAPI?.hudOverlayDrag?.("end", 0, 0);
+		if (hudDragMoveRafRef.current !== null) {
+			cancelAnimationFrame(hudDragMoveRafRef.current);
+			hudDragMoveRafRef.current = null;
 		}
+		hudDragPendingPointerRef.current = null;
 
 		hudDragStartRef.current = null;
 		const wasDragging = isHudDraggingRef.current;
 		isHudDraggingRef.current = false;
+		setIsHudDragging(false);
+		setRecordingHudOffset({ ...recordingHudOffsetRef.current });
 		if (event.currentTarget.hasPointerCapture(event.pointerId)) {
 			event.currentTarget.releasePointerCapture(event.pointerId);
 		}
@@ -460,7 +431,8 @@ export function LaunchWindow() {
 				cancelAnimationFrame(hudDragMoveRafRef.current);
 			}
 			hudDragMoveRafRef.current = null;
-			hudDragPendingScreenPositionRef.current = null;
+			hudDragPendingPointerRef.current = null;
+			hudDragStartRef.current = null;
 		};
 	}, []);
 
@@ -691,86 +663,6 @@ export function LaunchWindow() {
 			cancelled = true;
 		};
 	}, []);
-
-	useEffect(() => {
-		const expanded =
-			anyPopoverOpen || projectBrowserOpen || showRecordingWebcamPreview;
-		window.electronAPI.setHudOverlayExpanded(expanded);
-
-		return () => {
-			window.electronAPI.setHudOverlayExpanded(false);
-		};
-	}, [anyPopoverOpen, projectBrowserOpen, showRecordingWebcamPreview]);
-
-	const reportHudSize = useCallback(() => {
-		const hudContent = hudContentRef.current;
-		const hudBar = hudBarRef.current;
-		if (!hudContent || !hudBar) {
-			return;
-		}
-
-		if (showRecordingWebcamPreview) {
-			const viewportWidth = Math.max(window.innerWidth, window.screen?.width ?? 0);
-			const viewportHeight = Math.max(window.innerHeight, window.screen?.height ?? 0);
-			window.electronAPI.setHudOverlayCompactWidth(Math.ceil(viewportWidth));
-			window.electronAPI.setHudOverlayMeasuredHeight(Math.ceil(viewportHeight), true);
-			return;
-		}
-
-		const hudContentRect = hudContent.getBoundingClientRect();
-		const hudBarRect = hudBar.getBoundingClientRect();
-		const standardWidth = Math.max(
-			hudBarRect.width,
-			hudBar.scrollWidth,
-			hudContentRect.width,
-			hudContent.scrollWidth,
-		);
-		const standardHeight = Math.max(hudContentRect.height, hudContent.scrollHeight);
-
-		window.electronAPI.setHudOverlayCompactWidth(Math.ceil(standardWidth + 24));
-		window.electronAPI.setHudOverlayMeasuredHeight(
-			Math.ceil(standardHeight + 24),
-			anyPopoverOpen || projectBrowserOpen,
-		);
-	}, [anyPopoverOpen, projectBrowserOpen, showRecordingWebcamPreview]);
-
-	useEffect(() => {
-		const hudContent = hudContentRef.current;
-		const hudBar = hudBarRef.current;
-		const previewContainer = recordingWebcamPreviewContainerRef.current;
-		if (!hudContent || !hudBar || typeof ResizeObserver === "undefined") {
-			return;
-		}
-
-		let frameId = 0;
-		const scheduleHudSizeReport = () => {
-			if (frameId !== 0) {
-				cancelAnimationFrame(frameId);
-			}
-			frameId = requestAnimationFrame(() => {
-				frameId = 0;
-				reportHudSize();
-			});
-		};
-
-		scheduleHudSizeReport();
-
-		const resizeObserver = new ResizeObserver(() => {
-			scheduleHudSizeReport();
-		});
-		resizeObserver.observe(hudContent);
-		resizeObserver.observe(hudBar);
-		if (previewContainer) {
-			resizeObserver.observe(previewContainer);
-		}
-
-		return () => {
-			resizeObserver.disconnect();
-			if (frameId !== 0) {
-				cancelAnimationFrame(frameId);
-			}
-		};
-	}, [reportHudSize]);
 
 	const fetchSources = useCallback(async () => {
 		if (!window.electronAPI) return;
@@ -1174,16 +1066,12 @@ export function LaunchWindow() {
 
 	return (
 		<div
-			className={`w-full flex justify-center bg-transparent overflow-visible ${
-				isAtTop ? "items-start pt-5" : "items-end pb-5"
-			}`}
+			className="w-full flex justify-center bg-transparent overflow-visible items-end pb-5"
 			style={{ height: "100vh" }}
 		>
 			<div
 				ref={hudContentRef}
-				className={`flex items-center overflow-visible ${
-					isAtTop ? "flex-col" : "flex-col-reverse"
-				}`}
+				className="flex items-center overflow-visible flex-col-reverse"
 				onMouseEnter={() => window.electronAPI?.hudOverlaySetIgnoreMouse?.(false)}
 				onMouseLeave={() => {
 					if (
@@ -1199,15 +1087,16 @@ export function LaunchWindow() {
 			>
 				<div className="flex flex-col items-center pointer-events-auto">
 					<div
+						ref={hudBarTransformRef}
 						style={{
-							transform: `translate(${recordingHudOffset.x}px, ${recordingHudOffset.y}px)`,
+							transform: `translate3d(${recordingHudOffset.x}px, ${recordingHudOffset.y}px, 0)`,
 						}}
 					>
 						<motion.div
 							ref={hudBarRef}
-							layout={!showRecordingWebcamPreview}
+							layout={!showRecordingWebcamPreview && !isHudDragging}
 							transition={hudStateTransition}
-							className={`${styles.bar} ${isAtTop ? "mt-2" : "mb-2"}`}
+							className={`${styles.bar} mb-2`}
 						>
 							<div
 								// On Linux (especially Wayland) the compositor owns window
@@ -1233,7 +1122,7 @@ export function LaunchWindow() {
 								<AnimatePresence initial={false} mode="wait">
 									<motion.div
 										key={hudMode}
-										layout={!showRecordingWebcamPreview}
+										layout={!showRecordingWebcamPreview && !isHudDragging}
 										className={styles.barState}
 										initial={{
 											opacity: 0,

@@ -1,3 +1,61 @@
+.source-selector-popover {
+	background: var(--launch-panel, rgba(34, 40, 56, 0.62));
+	border: 1px solid var(--launch-border, rgba(255, 255, 255, 0.07));
+	border-radius: 16px;
+	backdrop-filter: blur(18px) saturate(140%);
+	-webkit-backdrop-filter: blur(18px) saturate(140%);
+	box-shadow:
+		0 16px 40px rgba(0, 0, 0, 0.28),
+		0 2px 12px rgba(0, 0, 0, 0.12),
+		inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.source-selector-item {
+	color: var(--launch-text-muted, #aab3c7);
+}
+
+.source-selector-item:hover {
+	background: var(--launch-hover, rgba(255, 255, 255, 0.1));
+	color: var(--launch-text, #f3f6ff);
+}
+
+.source-selector-item-selected {
+	background: var(--launch-selected, rgba(92, 153, 255, 0.22));
+	color: var(--launch-accent-soft, #dbeafe);
+}
+
+.source-selector-thumb-fallback {
+	background: #23232d;
+}
+
+.source-selector-text {
+	color: var(--launch-text, #f3f6ff);
+}
+
+.source-selector-muted {
+	color: var(--launch-text-muted, #aab3c7);
+}
+
+.source-selector-subtle {
+	color: #747483;
+}
+
+.source-selector-label {
+	color: var(--launch-label, #8f99b1);
+}
+
+.source-selector-dot {
+	background: var(--launch-accent, #3d8bff);
+}
+
+.source-selector-dot-inner {
+	background: #f8fbff;
+}
+
+.source-selector-accent-border {
+	border-color: var(--launch-accent, #3d8bff);
+}
+
 /* Custom Scrollbar for Source Selector */
 .source-selector-scroll::-webkit-scrollbar {
 	width: 5px;

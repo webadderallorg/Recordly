@@ -20,6 +20,8 @@
 		"closeApp": "關閉應用程式",
 		"screens": "螢幕",
 		"windows": "視窗",
+		"screen": "螢幕",
+		"window": "視窗",
 		"noSourcesFound": "找不到可錄製的來源",
 		"microphone": "麥克風",
 		"turnOffMicrophone": "關閉麥克風",

@@ -20,6 +20,8 @@
 		"closeApp": "Fermer l’application",
 		"screens": "Écrans",
 		"windows": "Fenêtres",
+		"screen": "Écran",
+		"window": "Fenêtre",
 		"noSourcesFound": "Aucune source trouvée",
 		"microphone": "Microphone",
 		"turnOffMicrophone": "Désactiver le microphone",

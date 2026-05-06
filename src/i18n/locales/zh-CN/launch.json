@@ -20,6 +20,8 @@
 		"closeApp": "关闭应用",
 		"screens": "屏幕",
 		"windows": "窗口",
+		"screen": "屏幕",
+		"window": "窗口",
 		"noSourcesFound": "未找到源",
 		"microphone": "麦克风",
 		"turnOffMicrophone": "关闭麦克风",
