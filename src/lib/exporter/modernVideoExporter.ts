@@ -436,8 +436,7 @@ export class ModernVideoExporter {
 			const shouldUseFfmpegAudioFallback =
 				!useNativeEncoder &&
 				nativeAudioPlan.audioMode !== "none" &&
-				(shouldUsePitchPreservingFfmpegAudio ||
-					!(await isAacAudioEncodingSupported()));
+				(shouldUsePitchPreservingFfmpegAudio || !(await isAacAudioEncodingSupported()));
 			const effectiveDuration = this.streamingDecoder.getEffectiveDuration(
 				this.config.trimRegions,
 				this.config.speedRegions,
@@ -976,11 +975,43 @@ export class ModernVideoExporter {
 			duration: videoInfo.duration,
 			streamDuration: videoInfo.streamDuration,
 		});
-		const trimSegments = this.buildNativeTrimSegments(sourceDurationSec * 1000);
+		const sourceDurationMs = sourceDurationSec * 1000;
+		const speedRegions = this.config.speedRegions ?? [];
+		if (speedRegions.length > 0) {
+			const timelineSegments = this.buildNativeStaticLayoutSourceSegments(sourceDurationMs);
+			if (timelineSegments.length > 0) {
+				return timelineSegments.reduce(
+					(totalSec, segment) =>
+						totalSec + (segment.endMs - segment.startMs) / segment.speed / 1000,
+					0,
+				);
+			}
+		}
+
+		const trimSegments = this.buildNativeTrimSegments(sourceDurationMs);
 		return trimSegments.reduce(
 			(totalSec, segment) => totalSec + (segment.endMs - segment.startMs) / 1000,
 			0,
 		);
+	}
+
+	private buildNativeStaticLayoutSourceSegments(sourceDurationMs: number) {
+		return buildEditedTrackSourceSegments(
+			sourceDurationMs,
+			this.config.trimRegions ?? [],
+			this.config.speedRegions ?? [],
+		);
+	}
+
+	private buildNativeStaticLayoutVideoTimelineSegments(
+		videoInfo: DecodedVideoInfo,
+	): NativeStaticLayoutTimelineSegment[] {
+		const sourceDurationMs = Math.max(
+			0,
+			Math.round((videoInfo.streamDuration ?? videoInfo.duration) * 1000),
+		);
+		const sourceSegments = this.buildNativeStaticLayoutSourceSegments(sourceDurationMs);
+		return buildNativeStaticLayoutTimelineSegments(sourceSegments);
 	}
 
 	private buildNativeAudioPlan(videoInfo: DecodedVideoInfo): NativeAudioPlan {
@@ -1031,17 +1062,16 @@ export class ModernVideoExporter {
 				typeof primaryAudioSourceSampleRate === "number" &&
 				Number.isFinite(primaryAudioSourceSampleRate) &&
 				primaryAudioSourceSampleRate > 0;
-			const strategy =
-				canUsePrimaryAudioFiltergraph
-					? classifyEditedTrackStrategy({
-							primaryAudioSourcePath,
-							sourceDurationMs,
-							trimRegions,
-							speedRegions,
-							audioRegions,
-							sourceAudioFallbackPaths,
-						})
-					: "offline-render-fallback";
+			const strategy = canUsePrimaryAudioFiltergraph
+				? classifyEditedTrackStrategy({
+						primaryAudioSourcePath,
+						sourceDurationMs,
+						trimRegions,
+						speedRegions,
+						audioRegions,
+						sourceAudioFallbackPaths,
+					})
+				: "offline-render-fallback";
 
 			if (strategy === "filtergraph-fast-path") {
 				const audioSourcePath = primaryAudioSourcePath;
@@ -1185,11 +1215,7 @@ export class ModernVideoExporter {
 		const hasZoomRegions = (this.config.zoomRegions ?? []).length > 0;
 		if (
 			speedRegions.length > 0 &&
-			!(
-				audioPlan.audioMode === "edited-track" &&
-				audioPlan.strategy === "filtergraph-fast-path" &&
-				audioPlan.editedTrackSegments.length > 0
-			)
+			this.buildNativeStaticLayoutVideoTimelineSegments(videoInfo).length === 0
 		) {
 			return "unsupported-native-speed-timeline";
 		}
@@ -1637,10 +1663,7 @@ export class ModernVideoExporter {
 		}
 
 		const sourcePath = this.getNativeVideoSourcePath();
-		const audioOptions = await this.getNativeStaticLayoutAudioOptions(
-			audioPlan,
-			totalFrames,
-		);
+		const audioOptions = await this.getNativeStaticLayoutAudioOptions(audioPlan, totalFrames);
 		if (!sourcePath || !audioOptions) {
 			this.nativeStaticLayoutSkipReason = !sourcePath
 				? "missing-source-path"
@@ -1701,10 +1724,8 @@ export class ModernVideoExporter {
 			cursorTelemetry,
 		);
 		const timelineSegments =
-			(this.config.speedRegions ?? []).length > 0 &&
-			audioPlan.audioMode === "edited-track" &&
-			audioPlan.strategy === "filtergraph-fast-path"
-				? buildNativeStaticLayoutTimelineSegments(audioPlan.editedTrackSegments)
+			(this.config.speedRegions ?? []).length > 0
+				? this.buildNativeStaticLayoutVideoTimelineSegments(videoInfo)
 				: undefined;
 		if ((this.config.speedRegions ?? []).length > 0 && !timelineSegments?.length) {
 			this.nativeStaticLayoutSkipReason = "invalid-native-speed-timeline";
@@ -1789,10 +1810,7 @@ export class ModernVideoExporter {
 				const progressPercentFrame = Number.isFinite(progress.percentage)
 					? Math.floor((nativeTotalFrames * progress.percentage) / 100)
 					: 0;
-				const nativeCurrentFrame = Math.max(
-					rawNativeCurrentFrame,
-					progressPercentFrame,
-				);
+				const nativeCurrentFrame = Math.max(rawNativeCurrentFrame, progressPercentFrame);
 				const nativeFramesComplete = nativeCurrentFrame >= nativeTotalFrames;
 				const nativeFinalizingProgress =
 					progress.stage === "finalizing" && Number.isFinite(progress.percentage)
@@ -1805,7 +1823,9 @@ export class ModernVideoExporter {
 					0,
 					Math.min(
 						totalFrames - 1,
-						Math.floor(totalFrames * (NATIVE_STATIC_LAYOUT_MAX_EXTRACTING_PROGRESS / 100)),
+						Math.floor(
+							totalFrames * (NATIVE_STATIC_LAYOUT_MAX_EXTRACTING_PROGRESS / 100),
+						),
 					),
 				);
 				const currentFrame = Math.min(
@@ -1816,20 +1836,17 @@ export class ModernVideoExporter {
 					progress.stage === "finalizing"
 						? null
 						: typeof progress.instantFps === "number" &&
-					  Number.isFinite(progress.instantFps) &&
-					  progress.instantFps > 0
-						? progress.instantFps
-						: typeof progress.averageFps === "number" &&
-							  Number.isFinite(progress.averageFps) &&
-							  progress.averageFps > 0
-							? progress.averageFps
-							: null;
+								Number.isFinite(progress.instantFps) &&
+								progress.instantFps > 0
+							? progress.instantFps
+							: typeof progress.averageFps === "number" &&
+									Number.isFinite(progress.averageFps) &&
+									progress.averageFps > 0
+								? progress.averageFps
+								: null;
 				this.processedFrameCount = currentFrame;
 				if (progress.stage === "finalizing" || nativeFramesComplete) {
-					this.reportFinalizingProgress(
-						totalFrames,
-						nativeFinalizingProgress,
-					);
+					this.reportFinalizingProgress(totalFrames, nativeFinalizingProgress);
 				} else {
 					this.reportProgress(currentFrame, totalFrames, "extracting");
 				}
@@ -2443,10 +2460,10 @@ export class ModernVideoExporter {
 			phase === "preparing"
 				? 0
 				: phase === "finalizing"
-				? (safeRenderProgress ?? 100)
-				: totalFrames > 0
-					? (currentFrame / totalFrames) * 100
-					: 100;
+					? (safeRenderProgress ?? 100)
+					: totalFrames > 0
+						? (currentFrame / totalFrames) * 100
+						: 100;
 
 		if (nowMs - this.lastThroughputLogTimeMs >= 1000 || currentFrame === totalFrames) {
 			const safeFrameCount = Math.max(this.processedFrameCount, 1);

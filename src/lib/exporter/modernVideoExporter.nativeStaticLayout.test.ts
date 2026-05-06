@@ -40,6 +40,7 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 		...overrides,
 	} as never) as unknown as {
 		buildNativeAudioPlan: (videoInfo: DecodedVideoInfo) => unknown;
+		getNativeStaticLayoutEffectiveDuration: (videoInfo: DecodedVideoInfo) => number;
 		getNativeStaticLayoutSkipReason: (
 			audioPlan: unknown,
 			videoInfo: DecodedVideoInfo,
@@ -182,7 +183,16 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		).toBe("unsupported-background-blur");
 	});
 
-	it("rejects native static-layout when speed edits do not have a native timeline map", () => {
+	it("uses speed timeline duration during native static-layout preflight", () => {
+		const speedRegions: SpeedRegion[] = [
+			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
+		];
+		const exporter = createExporter({ speedRegions });
+
+		expect(exporter.getNativeStaticLayoutEffectiveDuration(videoInfo)).toBeCloseTo(59, 3);
+	});
+
+	it("allows native speed timelines when audio needs offline rendering", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
 		];
@@ -196,6 +206,24 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				},
 				videoInfo,
 				60,
+			),
+		).toBeNull();
+	});
+
+	it("rejects native static-layout when speed edits do not have a native timeline map", () => {
+		const speedRegions: SpeedRegion[] = [
+			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 3 },
+		];
+		const exporter = createExporter({ speedRegions });
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{
+					audioMode: "edited-track",
+					strategy: "offline-render-fallback",
+				},
+				videoInfo,
+				58,
 			),
 		).toBe("unsupported-native-speed-timeline");
 	});
@@ -243,6 +271,30 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 						{ startMs: 1_000, endMs: 4_000, speed: 0.5 },
 						{ startMs: 4_000, endMs: 60_000, speed: 1 },
 					],
+				},
+				videoInfo,
+				63,
+			),
+		).toBeNull();
+	});
+
+	it("allows slow-speed native timelines with webcam when audio renders offline", () => {
+		const speedRegions: SpeedRegion[] = [
+			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 0.5 },
+		];
+		const exporter = createExporter({
+			speedRegions,
+			webcam: {
+				enabled: true,
+				sourcePath: "C:\\recordly\\webcam.mp4",
+			},
+		});
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{
+					audioMode: "edited-track",
+					strategy: "offline-render-fallback",
 				},
 				videoInfo,
 				63,
