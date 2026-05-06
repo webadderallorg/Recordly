@@ -1207,14 +1207,12 @@ export class ModernVideoExporter {
 			return "unsupported-webcam-source";
 		}
 
-		const hasCursorOverlay =
-			this.config.showCursor === true && (this.config.cursorTelemetry ?? []).length > 0;
-		if (
-			this.config.frame ||
-			this.config.backgroundBlur > 0 ||
-			(hasCursorOverlay && this.config.experimentalNativeExport !== true)
-		) {
-			return "dynamic-overlay-present";
+		if (this.config.frame) {
+			return "unsupported-frame-overlay";
+		}
+
+		if (this.config.backgroundBlur > 0) {
+			return "unsupported-background-blur";
 		}
 
 		return this.isDefaultCropRegion() ? null : "non-default-crop";

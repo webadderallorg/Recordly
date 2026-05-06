@@ -440,6 +440,34 @@ describe("buildExperimentalNvidiaCudaStaticLayoutArgs", () => {
 			]),
 		);
 	});
+
+	it("passes cursor telemetry and atlas assets to the CUDA wrapper", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				cursorTelemetryPath: "cursor-telemetry.json",
+				cursorSize: 96,
+				cursorAtlasPath: "cursor-atlas.png",
+				cursorAtlasMetadataPath: "cursor-atlas.tsv",
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).toEqual(
+			expect.arrayContaining([
+				"--cursor-json",
+				"cursor-telemetry.json",
+				"--cursor-height",
+				"96",
+				"--cursor-style",
+				"external",
+				"--cursor-atlas-png",
+				"cursor-atlas.png",
+				"--cursor-atlas-metadata",
+				"cursor-atlas.tsv",
+			]),
+		);
+	});
 });
 
 describe("buildNativeStaticLayoutTimelineSegments", () => {

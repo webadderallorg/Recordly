@@ -130,6 +130,58 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		).toBeNull();
 	});
 
+	it("allows cursor overlay native static-layout without the experimental native flag", () => {
+		const exporter = createExporter({
+			experimentalNativeExport: false,
+			showCursor: true,
+			cursorTelemetry: [
+				{ timeMs: 0, cx: 0.25, cy: 0.35 },
+				{ timeMs: 1_000, cx: 0.5, cy: 0.55 },
+			],
+		});
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{
+					audioMode: "copy-source",
+					audioSourcePath: "recording.mp4",
+				},
+				videoInfo,
+				60,
+			),
+		).toBeNull();
+	});
+
+	it("reports frame overlays as the remaining native overlay blocker", () => {
+		const exporter = createExporter({ frame: "macbook" });
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{
+					audioMode: "copy-source",
+					audioSourcePath: "recording.mp4",
+				},
+				videoInfo,
+				60,
+			),
+		).toBe("unsupported-frame-overlay");
+	});
+
+	it("reports background blur as the remaining native overlay blocker", () => {
+		const exporter = createExporter({ backgroundBlur: 12 });
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{
+					audioMode: "copy-source",
+					audioSourcePath: "recording.mp4",
+				},
+				videoInfo,
+				60,
+			),
+		).toBe("unsupported-background-blur");
+	});
+
 	it("rejects native static-layout when speed edits do not have a native timeline map", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
