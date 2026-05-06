@@ -14,6 +14,7 @@ constexpr uint32_t kMinimumGapFillThresholdMs = 50;
 // Wireless headsets can flag short WASAPI discontinuities that are less audible
 // when compacted and later duration-corrected than when rendered as hard silence.
 constexpr uint32_t kDiscontinuityGapFillThresholdMs = 140;
+constexpr uint32_t kSilentDiscontinuityCompactThresholdMs = 40;
 constexpr uint32_t kBoundaryFadeInMs = 5;
 
 int64_t queryPerformanceCounterHns() {
@@ -197,6 +198,8 @@ bool WasapiCapture::start() {
     insertedSilenceFrames_ = 0;
     compactedDiscontinuityCount_ = 0;
     compactedDiscontinuityFrames_ = 0;
+    compactedSilentDiscontinuityCount_ = 0;
+    compactedSilentDiscontinuityFrames_ = 0;
     fadeInFramesRemaining_ = 0;
     writeWavHeader(outputFile_, 0);
 
@@ -478,8 +481,28 @@ void WasapiCapture::captureThread() {
             }
 
             UINT32 totalSamples = numFrames * channels;
+            const bool isSilentPacket = (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0;
+            const uint32_t silentCompactThresholdFrames =
+                (mixFormat_->nSamplesPerSec * kSilentDiscontinuityCompactThresholdMs) / 1000;
+            if (
+                hasDataDiscontinuity &&
+                isSilentPacket &&
+                framesWritten_.load() > 0 &&
+                numFrames > 0 &&
+                numFrames <= (silentCompactThresholdFrames > 0 ? silentCompactThresholdFrames : 1)
+            ) {
+                compactedSilentDiscontinuityCount_.fetch_add(1);
+                compactedSilentDiscontinuityFrames_.fetch_add(numFrames);
+                captureClient_->ReleaseBuffer(numFrames);
+                hr = captureClient_->GetNextPacketSize(&packetLength);
+                if (FAILED(hr)) {
+                    std::cerr << "WASAPI: GetNextPacketSize failed hr=0x" << std::hex << hr << std::dec << std::endl;
+                    break;
+                }
+                continue;
+            }
 
-            if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
+            if (isSilentPacket) {
                 pcmBuffer.assign(totalSamples, 0);
             } else if (isFloat && bitsPerSample == 32 && sourceBytesPerSample >= 4) {
                 pcmBuffer.resize(totalSamples);

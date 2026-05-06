@@ -231,6 +231,8 @@ static void writeCompanionAudioTimingMetadata(
     metadataFile << ",\"insertedSilenceFrames\":" << capture.insertedSilenceFrames();
     metadataFile << ",\"compactedDiscontinuityCount\":" << capture.compactedDiscontinuityCount();
     metadataFile << ",\"compactedDiscontinuityFrames\":" << capture.compactedDiscontinuityFrames();
+    metadataFile << ",\"compactedSilentDiscontinuityCount\":" << capture.compactedSilentDiscontinuityCount();
+    metadataFile << ",\"compactedSilentDiscontinuityFrames\":" << capture.compactedSilentDiscontinuityFrames();
     const uint32_t discontinuityCount = capture.dataDiscontinuityCount();
     if (discontinuityCount > 0) {
         metadataFile << ",\"dataDiscontinuityCount\":" << discontinuityCount;
@@ -448,7 +450,8 @@ int main(int argc, char* argv[]) {
             loopback.dataDiscontinuityCount() > 0 ||
             loopback.timestampErrorCount() > 0 ||
             loopback.gapFillCount() > 0 ||
-            loopback.compactedDiscontinuityCount() > 0
+            loopback.compactedDiscontinuityCount() > 0 ||
+            loopback.compactedSilentDiscontinuityCount() > 0
         ) {
             std::cerr << "WARNING: System audio timing metadata includes discontinuities="
                       << loopback.dataDiscontinuityCount()
@@ -457,6 +460,8 @@ int main(int argc, char* argv[]) {
                       << " insertedSilenceFrames=" << loopback.insertedSilenceFrames()
                       << " compactedDiscontinuities=" << loopback.compactedDiscontinuityCount()
                       << " compactedDiscontinuityFrames=" << loopback.compactedDiscontinuityFrames()
+                      << " compactedSilentDiscontinuities=" << loopback.compactedSilentDiscontinuityCount()
+                      << " compactedSilentDiscontinuityFrames=" << loopback.compactedSilentDiscontinuityFrames()
                       << std::endl;
         }
         std::cout << "Audio path: " << config.audioOutputPath << std::endl;
@@ -466,7 +471,8 @@ int main(int argc, char* argv[]) {
             micCapture.dataDiscontinuityCount() > 0 ||
             micCapture.timestampErrorCount() > 0 ||
             micCapture.gapFillCount() > 0 ||
-            micCapture.compactedDiscontinuityCount() > 0
+            micCapture.compactedDiscontinuityCount() > 0 ||
+            micCapture.compactedSilentDiscontinuityCount() > 0
         ) {
             std::cerr << "WARNING: Microphone timing metadata includes discontinuities="
                       << micCapture.dataDiscontinuityCount()
@@ -475,6 +481,8 @@ int main(int argc, char* argv[]) {
                       << " insertedSilenceFrames=" << micCapture.insertedSilenceFrames()
                       << " compactedDiscontinuities=" << micCapture.compactedDiscontinuityCount()
                       << " compactedDiscontinuityFrames=" << micCapture.compactedDiscontinuityFrames()
+                      << " compactedSilentDiscontinuities=" << micCapture.compactedSilentDiscontinuityCount()
+                      << " compactedSilentDiscontinuityFrames=" << micCapture.compactedSilentDiscontinuityFrames()
                       << std::endl;
         }
         std::cout << "Mic path: " << config.micOutputPath << std::endl;

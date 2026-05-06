@@ -30,6 +30,8 @@ public:
     uint64_t insertedSilenceFrames() const { return insertedSilenceFrames_.load(); }
     uint32_t compactedDiscontinuityCount() const { return compactedDiscontinuityCount_.load(); }
     uint64_t compactedDiscontinuityFrames() const { return compactedDiscontinuityFrames_.load(); }
+    uint32_t compactedSilentDiscontinuityCount() const { return compactedSilentDiscontinuityCount_.load(); }
+    uint64_t compactedSilentDiscontinuityFrames() const { return compactedSilentDiscontinuityFrames_.load(); }
 
 private:
     bool initializeCommon();
@@ -65,5 +67,7 @@ private:
     std::atomic<uint64_t> insertedSilenceFrames_{0};
     std::atomic<uint32_t> compactedDiscontinuityCount_{0};
     std::atomic<uint64_t> compactedDiscontinuityFrames_{0};
+    std::atomic<uint32_t> compactedSilentDiscontinuityCount_{0};
+    std::atomic<uint64_t> compactedSilentDiscontinuityFrames_{0};
     std::atomic<uint32_t> fadeInFramesRemaining_{0};
 };
