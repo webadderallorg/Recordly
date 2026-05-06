@@ -1,0 +1,35 @@
+/* Custom Scrollbar for Source Selector */
+.source-selector-scroll::-webkit-scrollbar {
+	width: 5px;
+	height: 5px;
+}
+
+.source-selector-scroll::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.source-selector-scroll::-webkit-scrollbar-thumb {
+	background: rgba(107, 107, 120, 0.2);
+	border-radius: 20px;
+	transition: background 0.2s ease;
+}
+
+.source-selector-scroll::-webkit-scrollbar-thumb:hover {
+	background: rgba(107, 107, 120, 0.4);
+}
+
+/* Support for Firefox */
+.source-selector-scroll {
+	scrollbar-width: thin;
+	scrollbar-color: rgba(107, 107, 120, 0.2) transparent;
+}
+
+/* Marquee Animation */
+@keyframes marquee {
+	0% {
+		transform: translateX(0);
+	}
+	100% {
+		transform: translateX(var(--marquee-translate));
+	}
+}

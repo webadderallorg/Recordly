@@ -98,39 +98,7 @@
 	color: #4eeeb0;
 }
 
-.screenSel {
-	position: relative;
-	display: inline-flex;
-	align-items: center;
-	gap: 7px;
-	height: 40px;
-	min-width: 0;
-	max-width: 640px;
-	padding: 0 14px 0 12px;
-	border-radius: 11px;
-	border: 1px solid #2a2a34;
-	background: #1a1a22;
-	color: #eeeef2;
-	font-size: 12px;
-	font-weight: 500;
-	cursor: pointer;
-	transition: all 0.15s ease;
-	flex: 0 1 auto;
-}
 
-.screenSel:hover {
-	border-color: #3e3e4c;
-	background: #20202a;
-}
-
-.sourceLabel {
-	display: inline-block;
-	min-width: 0;
-	max-width: 520px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
 
 .menuArea {
 	flex: 1;

@@ -812,7 +812,11 @@ export function LaunchWindow() {
 
 	useEffect(() => {
 		const handleClick = (e: MouseEvent) => {
-			if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+			const target = e.target as Node;
+			const isInsideDropdown = dropdownRef.current?.contains(target);
+			const isInsideHudBar = hudBarRef.current?.contains(target);
+
+			if (!isInsideDropdown && !isInsideHudBar) {
 				setActiveDropdown("none");
 				setProjectBrowserOpen(false);
 			}
@@ -984,23 +988,16 @@ export function LaunchWindow() {
 		<>
 			{platform !== "linux" && (
 				<>
-					<button
-						type="button"
-						className={`${styles.screenSel} ${styles.electronNoDrag}`}
-						onClick={() => toggleDropdown("sources")}
-						title={selectedSource}
-					>
-						<Monitor size={16} />
-						<ContentClamp className={styles.sourceLabel} truncateLength={36}>
-							{selectedSource}
-						</ContentClamp>
-						<ChevronUp
-							size={10}
-							className={`text-[#6b6b78] ml-0.5 transition-transform duration-200 ${
-								activeDropdown === "sources" ? "" : "rotate-180"
-							}`}
-						/>
-					</button>
+					<SourceSelector
+						screenSources={screenSources}
+						windowSources={windowSources}
+						selectedSource={selectedSource}
+						loading={sourcesLoading}
+						onSourceSelect={handleSourceSelect}
+						onFetchSources={fetchSources}
+						open={activeDropdown === "sources"}
+						onOpenChange={(open) => setActiveDropdown(open ? "sources" : "none")}
+					/>
 
 					<Separator orientation="vertical" className="mx-[5px] h-6" />
 				</>
@@ -1146,23 +1143,9 @@ export function LaunchWindow() {
 							/>
 						</div>
 					) : null}
-						{activeDropdown !== "none" && (
+						{activeDropdown !== "none" && activeDropdown !== "sources" && (
 							<div className={`${styles.menuCard} ${styles.electronNoDrag}`}>
-								{activeDropdown === "sources" && (
-									<div className="p-2">
-										<SourceSelector
-											screenSources={screenSources}
-											windowSources={windowSources}
-											selectedSource={selectedSource}
-											loading={sourcesLoading}
-											onSourceSelect={handleSourceSelect}
-											onFetchSources={fetchSources}
-											open={activeDropdown === "sources"}
-											onOpenChange={(open) => setActiveDropdown(open ? "sources" : "none")}
-										/>
-									</div>
-								)}
-								
+
 								{activeDropdown === "mic" && (
 								<>
 									<div className={styles.ddLabel}>
