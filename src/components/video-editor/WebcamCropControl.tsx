@@ -264,7 +264,7 @@ export function WebcamCropControl({
 
 	const handlePreviewFrameReady = useCallback(() => {
 		const video = previewVideoRef.current;
-		if (video && video.videoWidth > 0 && video.videoHeight > 0) {
+		if (video && video.videoWidth > 0 && video.videoHeight > 0 && video.readyState >= 2) {
 			setPreviewFrame({
 				src: previewSrc,
 				width: video.videoWidth,

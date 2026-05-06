@@ -1440,7 +1440,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const handleWebcamMediaReady = useCallback(
 			(event: React.SyntheticEvent<HTMLVideoElement>) => {
 				const video = event.currentTarget;
-				if (video.videoWidth > 0 && video.videoHeight > 0) {
+				if (video.videoWidth > 0 && video.videoHeight > 0 && video.readyState >= 2) {
 					setWebcamVideoDimensions({
 						width: video.videoWidth,
 						height: video.videoHeight,
