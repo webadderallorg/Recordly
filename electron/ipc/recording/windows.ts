@@ -23,6 +23,7 @@ import {
 } from "../state";
 import type { AudioSyncAdjustment } from "../types";
 import { moveFileWithOverwrite } from "../utils";
+import { WINDOWS_NATIVE_MIC_PRE_FILTERS } from "./audioFilters";
 import {
 	getCompanionAudioStartDelayMs,
 	getRecordingAudioMuxTimeoutMs,
@@ -32,9 +33,6 @@ import {
 import { emitRecordingInterrupted } from "./events";
 
 const execFileAsync = promisify(execFile);
-// Repair rare clipped mic peaks before loudness normalization so headset/driver
-// overloads do not get amplified into audible pops during mux/export.
-const WINDOWS_NATIVE_MIC_PRE_FILTERS = ["adeclip=threshold=1", "loudnorm=I=-16:TP=-1.5:LRA=11"];
 const MIN_NATIVE_WINDOWS_VIDEO_PAD_MS = 500;
 
 export async function isNativeWindowsCaptureAvailable(): Promise<boolean> {

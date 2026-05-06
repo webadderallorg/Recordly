@@ -54,6 +54,7 @@ import {
 	buildNativeVideoAudioMuxArgs,
 	getExperimentalNvidiaCudaExportSkipReason,
 	getNvidiaCudaAudioExportSkipReason,
+	getNvidiaCudaAutoStallTimeoutMs,
 	hasNvidiaGpuDeviceInGpuInfo,
 	mapNvidiaCudaWrapperProgressPercentage,
 	muxExportedVideoAudioBuffer,
@@ -206,6 +207,35 @@ describe("getNvidiaCudaAudioExportSkipReason", () => {
 				}),
 			).toBeNull();
 		});
+	});
+});
+
+describe("getNvidiaCudaAutoStallTimeoutMs", () => {
+	it("only applies the stall guard to packaged auto candidates by default", () => {
+		expect(getNvidiaCudaAutoStallTimeoutMs(false)).toBeNull();
+		expect(getNvidiaCudaAutoStallTimeoutMs(true)).toBe(120_000);
+	});
+
+	it("allows the CUDA auto stall guard to be disabled or tuned", () => {
+		const envName = "RECORDLY_NVIDIA_CUDA_AUTO_STALL_TIMEOUT_MS";
+		const originalValue = process.env[envName];
+
+		try {
+			process.env[envName] = "0";
+			expect(getNvidiaCudaAutoStallTimeoutMs(true)).toBeNull();
+
+			process.env[envName] = "5000";
+			expect(getNvidiaCudaAutoStallTimeoutMs(true)).toBe(10_000);
+
+			process.env[envName] = "45000";
+			expect(getNvidiaCudaAutoStallTimeoutMs(true)).toBe(45_000);
+		} finally {
+			if (originalValue === undefined) {
+				delete process.env[envName];
+			} else {
+				process.env[envName] = originalValue;
+			}
+		}
 	});
 });
 

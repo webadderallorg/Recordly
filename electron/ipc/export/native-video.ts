@@ -46,6 +46,8 @@ const NVIDIA_PCI_VENDOR_ID = 0x10de;
 const NVIDIA_CUDA_EXPORT_ENV = "RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
 const NVIDIA_CUDA_ALLOW_AUDIO_EXPORT_ENV = "RECORDLY_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT";
 const NVIDIA_CUDA_FORCE_VIDEO_ONLY_ENV = "RECORDLY_NVIDIA_CUDA_FORCE_VIDEO_ONLY";
+const NVIDIA_CUDA_AUTO_STALL_TIMEOUT_ENV = "RECORDLY_NVIDIA_CUDA_AUTO_STALL_TIMEOUT_MS";
+const DEFAULT_NVIDIA_CUDA_AUTO_STALL_TIMEOUT_MS = 120_000;
 
 type ElectronGpuDeviceLike = {
 	vendorId?: number | string;
@@ -1577,6 +1579,26 @@ function isNvidiaCudaForceVideoOnlyEnabled() {
 	return process.env[NVIDIA_CUDA_FORCE_VIDEO_ONLY_ENV] === "1";
 }
 
+export function getNvidiaCudaAutoStallTimeoutMs(
+	autoCandidateActive = isPackagedNvidiaCudaExportAutoCandidateActive(),
+) {
+	if (!autoCandidateActive) {
+		return null;
+	}
+
+	const rawValue = process.env[NVIDIA_CUDA_AUTO_STALL_TIMEOUT_ENV]?.trim();
+	if (rawValue === "0" || rawValue?.toLowerCase() === "off") {
+		return null;
+	}
+
+	const parsed = Number(rawValue);
+	if (Number.isFinite(parsed) && parsed > 0) {
+		return Math.max(10_000, Math.round(parsed));
+	}
+
+	return DEFAULT_NVIDIA_CUDA_AUTO_STALL_TIMEOUT_MS;
+}
+
 export async function getExperimentalNvidiaCudaExportSkipReason(
 	options: NativeStaticLayoutExportOptions,
 ) {
@@ -2231,6 +2253,7 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 	const startedAt = getNowMs();
 	const startedAtIso = new Date().toISOString();
 	const timeoutMs = Math.max(20 * 60 * 1000, options.durationSec * 2000);
+	const stallTimeoutMs = getNvidiaCudaAutoStallTimeoutMs();
 	const ffmpegDirectory = path.dirname(ffmpegPath);
 	const pathKey = process.platform === "win32" ? "Path" : "PATH";
 	const env = {
@@ -2272,17 +2295,39 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 		let stderr = "";
 		let stderrLineBuffer = "";
 		let lastProgressPercentage = 0;
+		let stallTimedOut = false;
 		let settled = false;
 		const timeout = setTimeout(() => {
 			if (settled) return;
 			child.kill("SIGKILL");
 		}, timeoutMs);
+		let stallTimeout: ReturnType<typeof setTimeout> | null = null;
+		const clearStallTimeout = () => {
+			if (stallTimeout) {
+				clearTimeout(stallTimeout);
+				stallTimeout = null;
+			}
+		};
+		const armStallTimeout = () => {
+			if (!stallTimeoutMs) {
+				return;
+			}
+			clearStallTimeout();
+			stallTimeout = setTimeout(() => {
+				if (settled) return;
+				stallTimedOut = true;
+				child.kill("SIGKILL");
+			}, stallTimeoutMs);
+		};
+		armStallTimeout();
 
 		child.stdout.on("data", (chunk: Buffer) => {
 			stdout += chunk.toString();
+			armStallTimeout();
 		});
 		child.stderr.on("data", (chunk: Buffer) => {
 			const text = chunk.toString();
+			armStallTimeout();
 			stderr += text;
 			stderrLineBuffer += text;
 			const lines = stderrLineBuffer.split(/\r?\n/);
@@ -2320,6 +2365,7 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 				session.currentProcess = null;
 			}
 			clearTimeout(timeout);
+			clearStallTimeout();
 			powerGuard.release();
 			reject(error);
 		});
@@ -2330,6 +2376,7 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 				session.currentProcess = null;
 			}
 			clearTimeout(timeout);
+			clearStallTimeout();
 			powerGuard.release();
 
 			if (session.terminating) {
@@ -2372,7 +2419,9 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 				const suffix = signal ? ` (signal ${signal})` : "";
 				reject(
 					new Error(
-						stderr.trim() ||
+						(stallTimedOut && stallTimeoutMs
+							? `Experimental NVIDIA CUDA exporter stalled for ${stallTimeoutMs}ms without output`
+							: stderr.trim()) ||
 							stdout.trim() ||
 							`Experimental NVIDIA CUDA exporter exited with code ${code ?? "unknown"}${suffix}`,
 					),
