@@ -3,12 +3,16 @@
 #include <iostream>
 #include <cstring>
 #include <algorithm>
+#include <cmath>
 
 #pragma comment(lib, "ole32.lib")
 
 namespace {
 constexpr int64_t kHundredNanosecondsPerSecond = 10000000;
 constexpr uint64_t kSilenceWriteChunkFrames = 4096;
+constexpr uint32_t kMinimumGapFillThresholdMs = 50;
+constexpr uint32_t kDiscontinuityGapFillThresholdMs = 10;
+constexpr uint32_t kBoundaryFadeInMs = 5;
 
 int64_t queryPerformanceCounterHns() {
     LARGE_INTEGER counter;
@@ -187,6 +191,9 @@ bool WasapiCapture::start() {
     accumulatedPausedQpcHns_ = 0;
     dataDiscontinuityCount_ = 0;
     timestampErrorCount_ = 0;
+    gapFillCount_ = 0;
+    insertedSilenceFrames_ = 0;
+    fadeInFramesRemaining_ = 0;
     writeWavHeader(outputFile_, 0);
 
     HRESULT hr = audioClient_->Start();
@@ -220,6 +227,7 @@ bool WasapiCapture::resume() {
     }
     pauseStartQpcHns_ = 0;
     paused_ = false;
+    fadeInFramesRemaining_ = boundaryFadeInFrameCount();
     return true;
 }
 
@@ -242,6 +250,7 @@ void WasapiCapture::stop() {
     paused_ = false;
     pauseStartQpcHns_ = 0;
     accumulatedPausedQpcHns_ = 0;
+    fadeInFramesRemaining_ = 0;
 }
 
 static int16_t floatToInt16(float v) {
@@ -282,6 +291,34 @@ void WasapiCapture::writePcmFrames(const int16_t* samples, UINT32 frameCount, WO
     }
 
     const DWORD bytesToWrite = frameCount * channels * sizeof(int16_t);
+    const uint32_t fadeFrames = fadeInFramesRemaining_.load();
+    if (fadeFrames > 0) {
+        const uint32_t totalFadeFrames = boundaryFadeInFrameCount();
+        const uint32_t remainingFadeFrames = (std::min)(fadeFrames, totalFadeFrames);
+        const uint32_t framesToFade =
+            (std::min)(static_cast<uint32_t>(frameCount), remainingFadeFrames);
+        const uint32_t completedFadeFrames = totalFadeFrames - remainingFadeFrames;
+        std::vector<int16_t> faded(samples, samples + frameCount * channels);
+        for (uint32_t frame = 0; frame < framesToFade; frame++) {
+            const double scale =
+                static_cast<double>(completedFadeFrames + frame + 1) /
+                static_cast<double>(totalFadeFrames);
+            for (WORD channel = 0; channel < channels; channel++) {
+                const size_t index = static_cast<size_t>(frame) * channels + channel;
+                const long scaled = std::lround(static_cast<double>(faded[index]) * scale);
+                faded[index] = static_cast<int16_t>(
+                    std::clamp<long>(scaled, -32768, 32767));
+            }
+        }
+        fadeInFramesRemaining_ = remainingFadeFrames - framesToFade;
+
+        DWORD written = 0;
+        WriteFile(outputFile_, faded.data(), bytesToWrite, &written, nullptr);
+        totalDataBytes_.fetch_add(written);
+        framesWritten_.fetch_add(written / (channels * sizeof(int16_t)));
+        return;
+    }
+
     DWORD written = 0;
     WriteFile(outputFile_, samples, bytesToWrite, &written, nullptr);
     totalDataBytes_.fetch_add(written);
@@ -293,12 +330,15 @@ void WasapiCapture::writeSilenceFrames(uint64_t frameCount, WORD channels) {
         return;
     }
 
+    gapFillCount_.fetch_add(1);
+    insertedSilenceFrames_.fetch_add(frameCount);
     std::vector<int16_t> silence(static_cast<size_t>(kSilenceWriteChunkFrames * channels), 0);
     while (frameCount > 0) {
-        const uint64_t chunkFrames = std::min<uint64_t>(frameCount, kSilenceWriteChunkFrames);
+        const uint64_t chunkFrames = (std::min)(frameCount, kSilenceWriteChunkFrames);
         writePcmFrames(silence.data(), static_cast<UINT32>(chunkFrames), channels);
         frameCount -= chunkFrames;
     }
+    fadeInFramesRemaining_ = boundaryFadeInFrameCount();
 }
 
 uint64_t WasapiCapture::capturedDurationMs() const {
@@ -307,6 +347,23 @@ uint64_t WasapiCapture::capturedDurationMs() const {
     }
 
     return (framesWritten_.load() * 1000) / mixFormat_->nSamplesPerSec;
+}
+
+uint32_t WasapiCapture::sampleRate() const {
+    return mixFormat_ ? mixFormat_->nSamplesPerSec : 0;
+}
+
+uint16_t WasapiCapture::channelCount() const {
+    return mixFormat_ ? mixFormat_->nChannels : 0;
+}
+
+uint32_t WasapiCapture::boundaryFadeInFrameCount() const {
+    const uint32_t rate = sampleRate();
+    if (rate == 0) {
+        return 1;
+    }
+    const uint32_t fadeFrames = (rate * kBoundaryFadeInMs) / 1000;
+    return fadeFrames > 0 ? fadeFrames : 1;
 }
 
 void WasapiCapture::captureThread() {
@@ -362,7 +419,9 @@ void WasapiCapture::captureThread() {
                 break;
             }
 
-            if ((flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0) {
+            const bool hasDataDiscontinuity =
+                (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) != 0;
+            if (hasDataDiscontinuity) {
                 dataDiscontinuityCount_.fetch_add(1);
             }
             if ((flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) != 0) {
@@ -385,15 +444,22 @@ void WasapiCapture::captureThread() {
                 ) {
                     const int64_t elapsedHns =
                         static_cast<int64_t>(qpcPosition) - firstPacketQpcHns;
-                    const int64_t adjustedElapsedHns = std::max<int64_t>(
-                        0,
-                        elapsedHns - accumulatedPausedQpcHns_.load());
+                    const int64_t adjustedElapsedHns =
+                        elapsedHns > accumulatedPausedQpcHns_.load()
+                            ? elapsedHns - accumulatedPausedQpcHns_.load()
+                            : 0;
                     const uint64_t expectedStartFrame =
                         (static_cast<uint64_t>(adjustedElapsedHns) * mixFormat_->nSamplesPerSec +
                          kHundredNanosecondsPerSecond / 2) /
                         kHundredNanosecondsPerSecond;
                     const uint64_t writtenFrames = framesWritten_.load();
-                    const uint64_t gapThresholdFrames = mixFormat_->nSamplesPerSec / 100;
+                    const uint32_t gapThresholdMs = hasDataDiscontinuity
+                        ? kDiscontinuityGapFillThresholdMs
+                        : kMinimumGapFillThresholdMs;
+                    const uint32_t gapThresholdFrameCount =
+                        (mixFormat_->nSamplesPerSec * gapThresholdMs) / 1000;
+                    const uint64_t gapThresholdFrames =
+                        gapThresholdFrameCount > 0 ? gapThresholdFrameCount : 1;
 
                     if (expectedStartFrame > writtenFrames + gapThresholdFrames) {
                         writeSilenceFrames(expectedStartFrame - writtenFrames, channels);

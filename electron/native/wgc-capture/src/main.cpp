@@ -225,6 +225,10 @@ static void writeCompanionAudioTimingMetadata(
     metadataFile << "{\"startDelayMs\":" << startDelayMs;
     metadataFile << ",\"capturedDurationMs\":" << capture.capturedDurationMs();
     metadataFile << ",\"dataBytes\":" << capture.totalDataBytes();
+    metadataFile << ",\"sampleRate\":" << capture.sampleRate();
+    metadataFile << ",\"channels\":" << capture.channelCount();
+    metadataFile << ",\"gapFillCount\":" << capture.gapFillCount();
+    metadataFile << ",\"insertedSilenceFrames\":" << capture.insertedSilenceFrames();
     const uint32_t discontinuityCount = capture.dataDiscontinuityCount();
     if (discontinuityCount > 0) {
         metadataFile << ",\"dataDiscontinuityCount\":" << discontinuityCount;
@@ -438,18 +442,32 @@ int main(int argc, char* argv[]) {
 
     std::cout << "Recording stopped. Output path: " << config.outputPath << std::endl;
     if (audioActive) {
-        if (loopback.dataDiscontinuityCount() > 0 || loopback.timestampErrorCount() > 0) {
+        if (
+            loopback.dataDiscontinuityCount() > 0 ||
+            loopback.timestampErrorCount() > 0 ||
+            loopback.gapFillCount() > 0
+        ) {
             std::cerr << "WARNING: System audio timing metadata includes discontinuities="
                       << loopback.dataDiscontinuityCount()
-                      << " timestampErrors=" << loopback.timestampErrorCount() << std::endl;
+                      << " timestampErrors=" << loopback.timestampErrorCount()
+                      << " gapFills=" << loopback.gapFillCount()
+                      << " insertedSilenceFrames=" << loopback.insertedSilenceFrames()
+                      << std::endl;
         }
         std::cout << "Audio path: " << config.audioOutputPath << std::endl;
     }
     if (micActive) {
-        if (micCapture.dataDiscontinuityCount() > 0 || micCapture.timestampErrorCount() > 0) {
+        if (
+            micCapture.dataDiscontinuityCount() > 0 ||
+            micCapture.timestampErrorCount() > 0 ||
+            micCapture.gapFillCount() > 0
+        ) {
             std::cerr << "WARNING: Microphone timing metadata includes discontinuities="
                       << micCapture.dataDiscontinuityCount()
-                      << " timestampErrors=" << micCapture.timestampErrorCount() << std::endl;
+                      << " timestampErrors=" << micCapture.timestampErrorCount()
+                      << " gapFills=" << micCapture.gapFillCount()
+                      << " insertedSilenceFrames=" << micCapture.insertedSilenceFrames()
+                      << std::endl;
         }
         std::cout << "Mic path: " << config.micOutputPath << std::endl;
     }

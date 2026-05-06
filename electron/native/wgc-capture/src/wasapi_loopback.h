@@ -22,8 +22,12 @@ public:
     int64_t firstPacketQpcHns() const { return firstPacketQpcHns_.load(); }
     uint64_t capturedDurationMs() const;
     uint64_t totalDataBytes() const { return totalDataBytes_.load(); }
+    uint32_t sampleRate() const;
+    uint16_t channelCount() const;
     uint32_t dataDiscontinuityCount() const { return dataDiscontinuityCount_.load(); }
     uint32_t timestampErrorCount() const { return timestampErrorCount_.load(); }
+    uint32_t gapFillCount() const { return gapFillCount_.load(); }
+    uint64_t insertedSilenceFrames() const { return insertedSilenceFrames_.load(); }
 
 private:
     bool initializeCommon();
@@ -31,6 +35,7 @@ private:
     bool writeWavHeader(HANDLE file, DWORD dataSize);
     void writePcmFrames(const int16_t* samples, UINT32 frameCount, WORD channels);
     void writeSilenceFrames(uint64_t frameCount, WORD channels);
+    uint32_t boundaryFadeInFrameCount() const;
     IMMDevice* findCaptureDeviceByName(const std::wstring& name);
 
     std::string outputPath_;
@@ -54,4 +59,7 @@ private:
     std::atomic<int64_t> accumulatedPausedQpcHns_{0};
     std::atomic<uint32_t> dataDiscontinuityCount_{0};
     std::atomic<uint32_t> timestampErrorCount_{0};
+    std::atomic<uint32_t> gapFillCount_{0};
+    std::atomic<uint64_t> insertedSilenceFrames_{0};
+    std::atomic<uint32_t> fadeInFramesRemaining_{0};
 };
