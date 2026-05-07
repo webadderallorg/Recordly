@@ -1,5 +1,5 @@
 import { MicrophoneIcon, MicrophoneSlashIcon } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAudioLevelMeter } from "@/hooks/useAudioLevelMeter";
 import { AudioLevelMeter } from "@/components/ui/audio-level-meter";
@@ -69,7 +69,7 @@ export function HudPopover({
 }: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	trigger: ReactNode;
+	trigger: ReactElement;
 	children: ReactNode;
 	align?: "start" | "center" | "end";
 }) {
