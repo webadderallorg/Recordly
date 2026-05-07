@@ -113,6 +113,11 @@
 	"project": {
 		"untitled": "未命名"
 	},
+	"nativeCaptureUnavailable": {
+		"title": "沒有出錯，但我們無法算繪動畫游標疊加層。",
+		"description": "你的裝置不支援原生擷取。這可能是由多種我們尚未確認的原因造成。Recordly 仍可繼續使用，但無法啟用游標平滑。",
+		"confirm": "好的"
+	},
 	"exportStatus": {
 		"exporting": "正在匯出",
 		"renderingFile": "正在渲染你的檔案。",

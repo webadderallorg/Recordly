@@ -31,7 +31,7 @@
 		"cursorStyleOptions": {
 			"macos": "macOS",
 			"tahoe": "Tahoe",
-			"tahoe-inverted": "Tahoe Inverted",
+			"tahoe-inverted": "Tahoe 反相",
 			"dot": "圓點",
 			"figma": "極簡",
 			"lavender": "Lavender",
@@ -107,7 +107,9 @@
 		"webcamFootageAdded": "已連結網路攝影機素材",
 		"webcamFootageRemoved": "已移除網路攝影機素材",
 		"webcamSize": "網路攝影機大小",
+		"webcamCrop": "網路攝影機裁剪",
 		"webcamReactToZoom": "網路攝影機跟隨縮放",
+		"webcamMirror": "鏡像網路攝影機",
 		"webcamRoundness": "網路攝影機圓角",
 		"webcamShadow": "網路攝影機陰影",
 		"shadow": "陰影",

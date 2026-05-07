@@ -113,6 +113,11 @@
 	"project": {
 		"untitled": "Sans titre"
 	},
+	"nativeCaptureUnavailable": {
+		"title": "Rien n'est cassé, mais nous ne pourrons pas afficher une superposition de curseur animée.",
+		"description": "Votre appareil ne prend pas en charge la capture native. Cela peut avoir plusieurs causes que nous n'avons pas encore identifiées. Recordly continuera de fonctionner, mais le lissage du curseur sera impossible.",
+		"confirm": "D'accord"
+	},
 	"exportStatus": {
 		"exporting": "Exportation",
 		"renderingFile": "Rendu de votre fichier.",

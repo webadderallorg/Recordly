@@ -12,6 +12,7 @@ type PersistedEditorControls = Pick<
 	| "shadowIntensity"
 	| "backgroundBlur"
 	| "zoomMotionBlur"
+	| "zoomMotionBlurTuning"
 	| "zoomTemporalMotionBlur"
 	| "zoomMotionBlurSampleCount"
 	| "zoomMotionBlurShutterFraction"
@@ -32,6 +33,9 @@ type PersistedEditorControls = Pick<
 	| "cursorSpringStiffnessMultiplier"
 	| "cursorSpringDampingMultiplier"
 	| "cursorSpringMassMultiplier"
+	| "cameraSpringStiffnessMultiplier"
+	| "cameraSpringDampingMultiplier"
+	| "cameraSpringMassMultiplier"
 	| "cursorMotionBlur"
 	| "cursorClickBounce"
 	| "cursorClickBounceDuration"
@@ -89,6 +93,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	shadowIntensity: DEFAULT_EDITOR_CONTROLS.shadowIntensity,
 	backgroundBlur: DEFAULT_EDITOR_CONTROLS.backgroundBlur,
 	zoomMotionBlur: DEFAULT_EDITOR_CONTROLS.zoomMotionBlur,
+	zoomMotionBlurTuning: DEFAULT_EDITOR_CONTROLS.zoomMotionBlurTuning,
 	zoomTemporalMotionBlur: DEFAULT_EDITOR_CONTROLS.zoomTemporalMotionBlur,
 	zoomMotionBlurSampleCount: DEFAULT_EDITOR_CONTROLS.zoomMotionBlurSampleCount,
 	zoomMotionBlurShutterFraction: DEFAULT_EDITOR_CONTROLS.zoomMotionBlurShutterFraction,
@@ -109,6 +114,9 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	cursorSpringStiffnessMultiplier: DEFAULT_EDITOR_CONTROLS.cursorSpringStiffnessMultiplier,
 	cursorSpringDampingMultiplier: DEFAULT_EDITOR_CONTROLS.cursorSpringDampingMultiplier,
 	cursorSpringMassMultiplier: DEFAULT_EDITOR_CONTROLS.cursorSpringMassMultiplier,
+	cameraSpringStiffnessMultiplier: DEFAULT_EDITOR_CONTROLS.cameraSpringStiffnessMultiplier,
+	cameraSpringDampingMultiplier: DEFAULT_EDITOR_CONTROLS.cameraSpringDampingMultiplier,
+	cameraSpringMassMultiplier: DEFAULT_EDITOR_CONTROLS.cameraSpringMassMultiplier,
 	cursorMotionBlur: DEFAULT_EDITOR_CONTROLS.cursorMotionBlur,
 	cursorClickBounce: DEFAULT_EDITOR_CONTROLS.cursorClickBounce,
 	cursorClickBounceDuration: DEFAULT_EDITOR_CONTROLS.cursorClickBounceDuration,
@@ -264,6 +272,7 @@ function normalizeEditorControls(
 		shadowIntensity: raw.shadowIntensity ?? fallback.shadowIntensity,
 		backgroundBlur: raw.backgroundBlur ?? fallback.backgroundBlur,
 		zoomMotionBlur: raw.zoomMotionBlur ?? fallback.zoomMotionBlur,
+		zoomMotionBlurTuning: raw.zoomMotionBlurTuning ?? fallback.zoomMotionBlurTuning,
 		zoomTemporalMotionBlur: raw.zoomTemporalMotionBlur ?? fallback.zoomTemporalMotionBlur,
 		zoomMotionBlurSampleCount:
 			raw.zoomMotionBlurSampleCount ?? fallback.zoomMotionBlurSampleCount,
@@ -289,6 +298,12 @@ function normalizeEditorControls(
 			raw.cursorSpringDampingMultiplier ?? fallback.cursorSpringDampingMultiplier,
 		cursorSpringMassMultiplier:
 			raw.cursorSpringMassMultiplier ?? fallback.cursorSpringMassMultiplier,
+		cameraSpringStiffnessMultiplier:
+			raw.cameraSpringStiffnessMultiplier ?? fallback.cameraSpringStiffnessMultiplier,
+		cameraSpringDampingMultiplier:
+			raw.cameraSpringDampingMultiplier ?? fallback.cameraSpringDampingMultiplier,
+		cameraSpringMassMultiplier:
+			raw.cameraSpringMassMultiplier ?? fallback.cameraSpringMassMultiplier,
 		cursorMotionBlur: raw.cursorMotionBlur ?? fallback.cursorMotionBlur,
 		cursorClickBounce: raw.cursorClickBounce ?? fallback.cursorClickBounce,
 		cursorClickBounceDuration:
@@ -326,6 +341,7 @@ function normalizeEditorControls(
 		shadowIntensity: normalized.shadowIntensity,
 		backgroundBlur: normalized.backgroundBlur,
 		zoomMotionBlur: normalized.zoomMotionBlur,
+		zoomMotionBlurTuning: normalized.zoomMotionBlurTuning,
 		zoomTemporalMotionBlur: normalized.zoomTemporalMotionBlur,
 		zoomMotionBlurSampleCount: normalized.zoomMotionBlurSampleCount,
 		zoomMotionBlurShutterFraction: normalized.zoomMotionBlurShutterFraction,
@@ -346,6 +362,9 @@ function normalizeEditorControls(
 		cursorSpringStiffnessMultiplier: normalized.cursorSpringStiffnessMultiplier,
 		cursorSpringDampingMultiplier: normalized.cursorSpringDampingMultiplier,
 		cursorSpringMassMultiplier: normalized.cursorSpringMassMultiplier,
+		cameraSpringStiffnessMultiplier: normalized.cameraSpringStiffnessMultiplier,
+		cameraSpringDampingMultiplier: normalized.cameraSpringDampingMultiplier,
+		cameraSpringMassMultiplier: normalized.cameraSpringMassMultiplier,
 		cursorMotionBlur: normalized.cursorMotionBlur,
 		cursorClickBounce: normalized.cursorClickBounce,
 		cursorClickBounceDuration: normalized.cursorClickBounceDuration,

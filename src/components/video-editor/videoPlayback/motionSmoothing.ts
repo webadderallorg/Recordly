@@ -272,17 +272,20 @@ export function getCursorSpringConfig(
 	}, tuning);
 }
 
-export function getZoomSpringConfig(smoothnessFactor = 0.5): SpringConfig {
+export function getZoomSpringConfig(
+	smoothnessFactor = 0.5,
+	tuning?: CursorSpringTuning,
+): SpringConfig {
 	const clamped = Math.max(0, Math.min(1, smoothnessFactor));
 
 	if (clamped <= 0) {
-		return {
+		return applyCursorSpringTuning({
 			stiffness: 1000,
 			damping: 100,
 			mass: 1,
 			restDelta: 0.0001,
 			restSpeed: 0.001,
-		};
+		}, tuning);
 	}
 
 	// Map 0-1 slider to the internal 0-2 spring range so that
@@ -294,11 +297,11 @@ export function getZoomSpringConfig(smoothnessFactor = 0.5): SpringConfig {
 	// The overshoot clamp in stepSpringValue prevents wobble even at
 	// this low damping, so animations stay fast and responsive.
 	// Higher scaled → lower stiffness + higher mass → slower, floatier settle.
-	return {
+	return applyCursorSpringTuning({
 		stiffness: 100 / scaled,
 		damping: 21,
 		mass: 1.0 * scaled,
 		restDelta: 0.0005,
 		restSpeed: 0.015,
-	};
+	}, tuning);
 }
