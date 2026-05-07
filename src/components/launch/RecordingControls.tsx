@@ -50,7 +50,7 @@ export const RecordingControls = ({
 
 				<span
 					className={`font-mono text-xs font-semibold min-w-[52px] text-center tracking-[0.02em] ${
-						paused ? "text-[#fbbf24]" : "text-[#eeeef2]"
+						paused ? "text-[#fbbf24]" : "text-[var(--launch-text)]"
 					}`}
 				>
 					{formatTime(elapsed)}

@@ -231,7 +231,7 @@ function LaunchWindowContent() {
 							<Button
 								variant="outline"
 								size="lg"
-								className={`${styles.electronNoDrag} group gap-2 px-3 min-w-0 max-w-[180px] rounded-[11px] font-medium text-[12px] shrink-0 border-[#2a2a34] bg-[#1a1a22] text-[#eeeef2] hover:border-[#3e3e4c] hover:bg-[#20202a] transition-all ${openId === "sources" ? "border-[#3e3e4c] bg-[#20202a]" : ""}`}
+								className={`${styles.electronNoDrag} group gap-2 px-3 min-w-0 max-w-[180px] rounded-[11px] font-medium text-[12px] shrink-0 border-[var(--launch-border)] bg-[var(--launch-surface)] text-[var(--launch-text)] hover:border-[var(--launch-border-strong)] hover:bg-[var(--launch-hover)] transition-all ${openId === "sources" ? "border-[var(--launch-border-strong)] bg-[var(--launch-hover)]" : ""}`}
 								title={selectedSource}
 							>
 								<MonitorIcon size={16} className="shrink-0" />
@@ -449,7 +449,7 @@ function LaunchWindowContent() {
 							ref={hudBarRef}
 							layout={!showRecordingWebcamPreview && !isHudDragging}
 							transition={hudStateTransition}
-							className={`${styles.bar} mb-2`}
+							className={`${styles.bar} launch-theme mb-2`}
 						>
 							<div
 								// On Linux (especially Wayland) the compositor owns window

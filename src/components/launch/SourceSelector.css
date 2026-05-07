@@ -1,53 +1,51 @@
 .source-selector-popover {
-	background: var(--launch-surface, rgba(18, 18, 24, 0.97));
-	border: 1px solid var(--launch-border, rgba(255, 255, 255, 0.07));
+	background: var(--launch-surface);
+	border: 1px solid var(--launch-border);
 	border-radius: 16px;
 	backdrop-filter: blur(var(--launch-popover-blur, 24px))
 		saturate(var(--launch-popover-saturate, 145%));
 	-webkit-backdrop-filter: blur(var(--launch-popover-blur, 24px))
 		saturate(var(--launch-popover-saturate, 145%));
-	box-shadow:
-		0 16px 40px rgba(0, 0, 0, 0.28),
-		0 2px 12px rgba(0, 0, 0, 0.12),
-		inset 0 1px 0 rgba(255, 255, 255, 0.08);
+	box-shadow: var(--launch-bar-shadow);
 }
 
 .source-selector-item {
-	color: var(--launch-text-muted, #aab3c7);
+	color: var(--launch-text-muted);
 }
 
 .source-selector-item:hover {
-	background: var(--launch-hover, rgba(255, 255, 255, 0.1));
-	color: var(--launch-text, #f3f6ff);
+	background: var(--launch-hover);
+	color: var(--launch-text);
 }
 
 .source-selector-item-selected {
-	background: var(--launch-selected, rgba(92, 153, 255, 0.22));
-	color: var(--launch-accent-soft, #dbeafe);
+	background: var(--launch-selected);
+	color: var(--launch-accent);
 }
 
 .source-selector-thumb-fallback {
-	background: #23232d;
+	background: var(--launch-panel);
 }
 
 .source-selector-text {
-	color: var(--launch-text, #f3f6ff);
+	color: var(--launch-text);
 }
 
 .source-selector-muted {
-	color: var(--launch-text-muted, #aab3c7);
+	color: var(--launch-text-muted);
 }
 
 .source-selector-subtle {
-	color: #747483;
+	color: var(--launch-text-muted);
+	opacity: 0.7;
 }
 
 .source-selector-label {
-	color: var(--launch-label, #8f99b1);
+	color: var(--launch-label);
 }
 
 .source-selector-dot {
-	background: var(--launch-accent, #3d8bff);
+	background: var(--launch-accent);
 }
 
 .source-selector-dot-inner {
@@ -55,7 +53,7 @@
 }
 
 .source-selector-accent-border {
-	border-color: var(--launch-accent, #3d8bff);
+	border-color: var(--launch-accent);
 }
 
 /* Custom Scrollbar for Source Selector */
@@ -96,7 +94,6 @@
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-	vertical-align: bottom;
 }
 
 .source-selector-marquee-animated {

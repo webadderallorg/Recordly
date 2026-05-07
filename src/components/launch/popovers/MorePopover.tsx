@@ -5,10 +5,14 @@ import {
 	TranslateIcon,
 	VideoCameraIcon,
 	ArrowClockwiseIcon,
+	SunIcon,
+	MoonIcon,
+	DesktopIcon,
 } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import type { ReactElement } from "react";
 import { useI18n } from "@/contexts/I18nContext";
 import { useScopedT } from "@/contexts/I18nContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import type { AppLocale } from "@/i18n/config";
 import { SUPPORTED_LOCALES } from "@/i18n/config";
 import styles from "../LaunchWindow.module.css";
@@ -40,7 +44,7 @@ export function MorePopover({
 	onPreviewUpdateUi,
 	appVersion,
 }: {
-	trigger: ReactNode;
+	trigger: ReactElement;
 	supportsHudCaptureProtection: boolean;
 	hideHudFromCapture: boolean;
 	onToggleHudCaptureProtection: () => void;
@@ -53,6 +57,7 @@ export function MorePopover({
 }) {
 	const t = useScopedT("launch");
 	const { locale, setLocale } = useI18n();
+	const { preference, setPreference } = useTheme();
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
 	const open = isOpen(POPOVER_ID);
 
@@ -119,6 +124,39 @@ export function MorePopover({
 				</DropdownItem>
 			) : null}
 			<div className={styles.ddLabel} style={{ marginTop: 4 }}>
+				{t("recording.appearance", "Appearance")}
+			</div>
+			<DropdownItem
+				icon={<SunIcon size={16} />}
+				selected={preference === "light"}
+				onClick={() => {
+					setPreference("light");
+					requestClose(POPOVER_ID);
+				}}
+			>
+				{t("common.light", "Light")}
+			</DropdownItem>
+			<DropdownItem
+				icon={<MoonIcon size={16} />}
+				selected={preference === "dark"}
+				onClick={() => {
+					setPreference("dark");
+					requestClose(POPOVER_ID);
+				}}
+			>
+				{t("common.dark", "Dark")}
+			</DropdownItem>
+			<DropdownItem
+				icon={<DesktopIcon size={16} />}
+				selected={preference === "system"}
+				onClick={() => {
+					setPreference("system");
+					requestClose(POPOVER_ID);
+				}}
+			>
+				{t("common.system", "System")}
+			</DropdownItem>
+			<div className={styles.ddLabel} style={{ marginTop: 4 }}>
 				{t("recording.language")}
 			</div>
 			{SUPPORTED_LOCALES.map((code) => (
@@ -140,7 +178,7 @@ export function MorePopover({
 						marginTop: 8,
 						padding: "4px 12px",
 						fontSize: 11,
-						color: "#6b6b78",
+						color: "var(--launch-text-muted)",
 						textAlign: "center",
 						userSelect: "text",
 					}}

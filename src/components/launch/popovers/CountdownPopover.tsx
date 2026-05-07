@@ -1,5 +1,5 @@
 import { TimerIcon } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import type { ReactElement } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import styles from "../LaunchWindow.module.css";
 import { DropdownItem, HudPopover } from "./PopoverScaffold";
@@ -13,7 +13,7 @@ export function CountdownPopover({
 	countdownDelay,
 	onSelectDelay,
 }: {
-	trigger: ReactNode;
+	trigger: ReactElement;
 	countdownDelay: number;
 	onSelectDelay: (delay: number) => void;
 }) {

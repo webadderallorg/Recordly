@@ -8,7 +8,7 @@ import { useScopedT } from "@/contexts/I18nContext";
 import { DropdownItem, HudPopover } from "./PopoverScaffold";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import type { DeviceOption } from "./launchPopoverTypes";
-import type { ReactNode } from "react";
+import type { ReactElement } from "react";
 
 const POPOVER_ID = "webcam";
 
@@ -27,7 +27,7 @@ export function WebcamPopover({
 	selectedVideoDeviceId,
 	onSelectVideoDevice,
 }: {
-	trigger: ReactNode;
+	trigger: ReactElement;
 	disabled?: boolean;
 	webcamEnabled: boolean;
 	onDisableWebcam: () => void;
@@ -61,7 +61,7 @@ export function WebcamPopover({
 			trigger={trigger}
 			align="center"
 		>
-			<div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#6b6b78]">
+			<div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--launch-label)]">
 				{t("recording.webcam")}
 			</div>
 			{webcamEnabled && (
@@ -86,11 +86,11 @@ export function WebcamPopover({
 				</>
 			)}
 			{!webcamEnabled && (
-				<div className="px-3 py-2 text-xs text-[#6b6b78]">{t("recording.selectWebcamToEnable")}</div>
+				<div className="px-3 py-2 text-xs text-[var(--launch-text-muted)]">{t("recording.selectWebcamToEnable")}</div>
 			)}
 			{showWebcamControls && (
 				<div className="flex justify-center px-3 py-2">
-					<div className="h-24 w-24 overflow-hidden rounded-2xl bg-white/5 ring-1 ring-white/10">
+					<div className="h-24 w-24 overflow-hidden rounded-2xl bg-[var(--launch-hover)] ring-1 ring-[var(--launch-border-strong)]">
 						<video
 							ref={setWebcamPreviewNode}
 							className="h-full w-full object-cover"
@@ -122,7 +122,7 @@ export function WebcamPopover({
 				</DropdownItem>
 			))}
 			{videoDevices.length === 0 && (
-				<div className="text-center text-xs text-[#6b6b78] py-4">{t("recording.noWebcamsFound")}</div>
+				<div className="text-center text-xs text-[var(--launch-text-muted)] py-4">{t("recording.noWebcamsFound")}</div>
 			)}
 		</HudPopover>
 	);

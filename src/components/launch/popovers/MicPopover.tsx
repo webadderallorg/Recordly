@@ -3,7 +3,7 @@ import { useScopedT } from "@/contexts/I18nContext";
 import { DropdownItem, HudPopover, MicDeviceRow } from "./PopoverScaffold";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import type { DeviceOption } from "./launchPopoverTypes";
-import type { ReactNode } from "react";
+import type { ReactElement } from "react";
 import styles from "../LaunchWindow.module.css";
 
 const POPOVER_ID = "mic";
@@ -20,7 +20,7 @@ export function MicPopover({
 	selectedDeviceId,
 	onSelectDevice,
 }: {
-	trigger: ReactNode;
+	trigger: ReactElement;
 	disabled?: boolean;
 	systemAudioEnabled: boolean;
 	onToggleSystemAudio: () => void;
@@ -73,7 +73,7 @@ export function MicPopover({
 				</DropdownItem>
 			)}
 			{!microphoneEnabled && (
-				<div className="px-3 py-2 text-xs text-[#6b6b78]">{t("recording.selectMicToEnable")}</div>
+				<div className="px-3 py-2 text-xs text-[var(--launch-text-muted)]">{t("recording.selectMicToEnable")}</div>
 			)}
 			{devices.map((device) => (
 				<MicDeviceRow
@@ -87,7 +87,7 @@ export function MicPopover({
 				/>
 			))}
 			{devices.length === 0 && (
-				<div className="text-center text-xs text-[#6b6b78] py-4">{t("recording.noMicrophonesFound")}</div>
+				<div className="text-center text-xs text-[var(--launch-text-muted)] py-4">{t("recording.noMicrophonesFound")}</div>
 			)}
 		</HudPopover>
 	);
