@@ -4310,6 +4310,7 @@ export default function VideoEditor() {
 	// Sync audio playback with video currentTime and isPlaying state
 	useEffect(() => {
 		const currentTimeMs = currentTime * 1000;
+		const currentTimelineTimeMs = mapSourceTimeToTimelineTime(currentTimeMs);
 		const activeSpeedRegion = effectiveSpeedRegions.find(
 			(region) => currentTimeMs >= region.startMs && currentTimeMs < region.endMs,
 		);
@@ -4319,10 +4320,12 @@ export default function VideoEditor() {
 			const audio = audioElementsRef.current.get(region.id);
 			if (!audio) continue;
 
-			const isInRegion = currentTimeMs >= region.startMs && currentTimeMs < region.endMs;
+			const isInRegion =
+				currentTimelineTimeMs >= region.startMs && currentTimelineTimeMs < region.endMs;
+			const regionSourceStartMs = mapTimelineTimeToSourceTime(region.startMs);
 
 			if (isPlaying && isInRegion) {
-				const audioOffset = (currentTimeMs - region.startMs) / 1000;
+				const audioOffset = (currentTimeMs - regionSourceStartMs) / 1000;
 				// Only seek if significantly out of sync (> 200ms)
 				if (Math.abs(audio.currentTime - audioOffset) > 0.2) {
 					audio.currentTime = audioOffset;
@@ -4344,7 +4347,14 @@ export default function VideoEditor() {
 				}
 			}
 		}
-	}, [isPlaying, currentTime, audioRegions, effectiveSpeedRegions]);
+	}, [
+		isPlaying,
+		currentTime,
+		audioRegions,
+		effectiveSpeedRegions,
+		mapSourceTimeToTimelineTime,
+		mapTimelineTimeToSourceTime,
+	]);
 
 	useEffect(() => {
 		if (previewSourceAudioFallbackPaths.length === 0) {
