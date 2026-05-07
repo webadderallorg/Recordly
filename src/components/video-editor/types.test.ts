@@ -129,6 +129,28 @@ describe("clip timeline mapping", () => {
 		expect(mapTimelineTimeToSourceTime(5_700, clips)).toBe(6_000);
 	});
 
+	it("snaps timeline gaps to nearest source boundary when clips are source-shifted", () => {
+		const shiftedClips = [
+			{ id: "clip-1", startMs: 0, endMs: 4_000, sourceStartMs: 1_000, speed: 1 },
+			{ id: "clip-2", startMs: 6_000, endMs: 8_000, sourceStartMs: 9_000, speed: 2 },
+		];
+
+		expect(mapTimelineTimeToSourceTime(4_300, shiftedClips)).toBe(5_000);
+		expect(mapTimelineTimeToSourceTime(5_700, shiftedClips)).toBe(9_000);
+	});
+
+	it("maps inside clips using sourceStartMs as source anchor", () => {
+		const shiftedClips = [
+			{ id: "clip-1", startMs: 1_000, endMs: 3_000, sourceStartMs: 4_000, speed: 1 },
+			{ id: "clip-2", startMs: 4_000, endMs: 6_000, sourceStartMs: 10_000, speed: 2 },
+		];
+
+		expect(mapTimelineTimeToSourceTime(1_500, shiftedClips)).toBe(4_500);
+		expect(mapTimelineTimeToSourceTime(5_000, shiftedClips)).toBe(12_000);
+		expect(mapSourceTimeToTimelineTime(4_500, shiftedClips)).toBe(1_500);
+		expect(mapSourceTimeToTimelineTime(12_000, shiftedClips)).toBe(5_000);
+	});
+
 	it("maps kept source time back into timeline time", () => {
 		expect(mapSourceTimeToTimelineTime(1_500, clips)).toBe(1_500);
 		expect(mapSourceTimeToTimelineTime(8_000, clips)).toBe(7_000);
@@ -137,6 +159,18 @@ describe("clip timeline mapping", () => {
 	it("snaps removed source gaps to the nearest kept boundary", () => {
 		expect(mapSourceTimeToTimelineTime(4_200, clips)).toBe(4_000);
 		expect(mapSourceTimeToTimelineTime(5_900, clips)).toBe(6_000);
+	});
+
+	it("handles exact clip-end boundaries consistently", () => {
+		const shiftedClips = [
+			{ id: "clip-1", startMs: 1_000, endMs: 3_000, sourceStartMs: 4_000, speed: 1 },
+			{ id: "clip-2", startMs: 4_000, endMs: 6_000, sourceStartMs: 10_000, speed: 2 },
+		];
+
+		expect(mapTimelineTimeToSourceTime(3_000, shiftedClips)).toBe(6_000);
+		expect(mapTimelineTimeToSourceTime(6_000, shiftedClips)).toBe(14_000);
+		expect(mapSourceTimeToTimelineTime(10_000, shiftedClips)).toBe(4_000);
+		expect(mapSourceTimeToTimelineTime(14_000, shiftedClips)).toBe(6_000);
 	});
 
 	it("finds clips only inside visible kept spans", () => {

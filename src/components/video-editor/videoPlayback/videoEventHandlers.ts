@@ -70,6 +70,16 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 	const skipPastTrimRegion = (trimRegion: TrimRegion) => {
 		const skipToTime = trimRegion.endMs / 1000;
 		const clampedSkipToTime = Math.min(skipToTime, video.duration);
+		const currentTime = video.currentTime;
+
+		// Prevent seek loops when trim snapping cannot advance any further.
+		if (!Number.isFinite(clampedSkipToTime) || clampedSkipToTime <= currentTime + 0.0005) {
+			emitTime(currentTime);
+			if (currentTime >= video.duration) {
+				video.pause();
+			}
+			return;
+		}
 
 		video.currentTime = clampedSkipToTime;
 		emitTime(clampedSkipToTime);
@@ -166,7 +176,6 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 
 		const currentTimeMs = video.currentTime * 1000;
 		const activeTrimRegion = findActiveTrimRegion(currentTimeMs);
-
 		// Never leave the preview parked on removed footage after a seek.
 		if (activeTrimRegion) {
 			skipPastTrimRegion(activeTrimRegion);

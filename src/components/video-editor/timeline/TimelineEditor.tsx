@@ -595,6 +595,7 @@ function ClipMarkerOverlay({ videoDurationMs }: { videoDurationMs: number }) {
 
 function Timeline({
 	items,
+	clipRegions = [],
 	videoDurationMs,
 	currentTimeMs,
 	onSeek,
@@ -618,6 +619,7 @@ function Timeline({
 	audioPeaks,
 }: {
 	items: TimelineRenderItem[];
+	clipRegions?: ClipRegion[];
 	videoDurationMs: number;
 	currentTimeMs: number;
 	onSeek?: (time: number) => void;
@@ -887,7 +889,7 @@ function Timeline({
 				style={{ minHeight: timelineRowsMinHeightPx }}
 			>
 				<Row id={CLIP_ROW_ID} isEmpty={clipItems.length === 0} hint="Press C to split clip">
-					{audioPeaks && <AudioWaveform peaks={audioPeaks} />}
+					{audioPeaks && <AudioWaveform peaks={audioPeaks} clipRegions={clipRegions} />}
 					<ClipMarkerOverlay videoDurationMs={videoDurationMs} />
 					{clipItems.map((item) => (
 						<Item
@@ -1088,15 +1090,40 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 	) {
 		const t = useScopedT("settings");
 		const initialEditorPreferences = useMemo(() => loadEditorPreferences(), []);
-		const totalMs = useMemo(
+		const sourceDurationMs = useMemo(
 			() => Math.max(0, Math.round(videoDuration * 1000)),
 			[videoDuration],
 		);
+		const totalMs = useMemo(() => {
+			const timelineRegionEnds = [
+				...zoomRegions.map((region) => region.endMs),
+				...clipRegions.map((region) => region.endMs),
+				...speedRegions.map((region) => region.endMs),
+				...annotationRegions.map((region) => region.endMs),
+				...audioRegions.map((region) => region.endMs),
+			];
+			const maxTimelineRegionEndMs =
+				timelineRegionEnds.length > 0
+					? Math.max(0, ...timelineRegionEnds.map((endMs) => Math.round(endMs)))
+					: 0;
+
+			return maxTimelineRegionEndMs > 0 ? maxTimelineRegionEndMs : sourceDurationMs;
+		}, [
+			sourceDurationMs,
+			zoomRegions,
+			clipRegions,
+			speedRegions,
+			annotationRegions,
+			audioRegions,
+		]);
 		const currentTimeMs = useMemo(
 			() => Math.round((playheadTime ?? currentTime) * 1000),
 			[currentTime, playheadTime],
 		);
-		const timelineScale = useMemo(() => calculateTimelineScale(videoDuration), [videoDuration]);
+		const timelineScale = useMemo(
+			() => calculateTimelineScale(totalMs / 1000),
+			[totalMs],
+		);
 		const safeMinDurationMs = useMemo(
 			() =>
 				totalMs > 0
@@ -1121,6 +1148,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		});
 		const isTimelineFocusedRef = useRef(false);
 		const timelineContainerRef = useRef<HTMLDivElement>(null);
+		const pendingWheelDeltaMsRef = useRef(0);
+		const wheelPanRafRef = useRef<number | null>(null);
 		const { shortcuts: keyShortcuts, isMac } = useShortcuts();
 		const audioPeaks = useAudioPeaks(videoPath);
 
@@ -1342,15 +1371,20 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				}
 			});
 
-			trimRegionsRef.current.forEach((region) => {
-				const clampedStart = Math.max(0, Math.min(region.startMs, totalMs));
-				const minEnd = clampedStart + safeMinDurationMs;
-				const clampedEnd = Math.min(totalMs, Math.max(minEnd, region.endMs));
-				const normalizedStart = Math.max(
-					0,
-					Math.min(clampedStart, totalMs - safeMinDurationMs),
-				);
-				const normalizedEnd = Math.max(minEnd, Math.min(clampedEnd, totalMs));
+		trimRegionsRef.current.forEach((region) => {
+			const trimMaxMs = sourceDurationMs;
+			const trimMinDurationMs =
+				trimMaxMs > 0
+					? Math.min(safeMinDurationMs, trimMaxMs)
+					: safeMinDurationMs;
+			const clampedStart = Math.max(0, Math.min(region.startMs, trimMaxMs));
+			const minEnd = clampedStart + trimMinDurationMs;
+			const clampedEnd = Math.min(trimMaxMs, Math.max(minEnd, region.endMs));
+			const normalizedStart = Math.max(
+				0,
+				Math.min(clampedStart, trimMaxMs - trimMinDurationMs),
+			);
+			const normalizedEnd = Math.max(minEnd, Math.min(clampedEnd, trimMaxMs));
 
 				if (normalizedStart !== region.startMs || normalizedEnd !== region.endMs) {
 					onTrimSpanChange?.(region.id, { start: normalizedStart, end: normalizedEnd });
@@ -1394,6 +1428,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onTrimSpanChange,
 			onSpeedSpanChange,
 			onAudioSpanChange,
+			sourceDurationMs,
 		]);
 
 		const hasOverlap = useCallback(
@@ -2086,6 +2121,25 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			[totalMs],
 		);
 
+		const flushWheelPan = useCallback(() => {
+			wheelPanRafRef.current = null;
+			const deltaMs = pendingWheelDeltaMsRef.current;
+			pendingWheelDeltaMsRef.current = 0;
+			if (deltaMs !== 0) {
+				panTimelineRange(deltaMs);
+			}
+		}, [panTimelineRange]);
+
+		useEffect(() => {
+			return () => {
+				if (wheelPanRafRef.current !== null) {
+					cancelAnimationFrame(wheelPanRafRef.current);
+					wheelPanRafRef.current = null;
+				}
+				pendingWheelDeltaMsRef.current = 0;
+			};
+		}, []);
+
 		const handleTimelineWheel = useCallback(
 			(event: WheelEvent<HTMLDivElement>) => {
 				if (event.ctrlKey || event.metaKey || totalMs <= 0) {
@@ -2117,10 +2171,12 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					event.deltaMode,
 				);
 				const deltaMs = (horizontalDeltaPx / containerWidth) * visibleRangeMs;
-
-				panTimelineRange(deltaMs);
+				pendingWheelDeltaMsRef.current += deltaMs;
+				if (wheelPanRafRef.current === null) {
+					wheelPanRafRef.current = requestAnimationFrame(flushWheelPan);
+				}
 			},
-			[clampedRange.end, clampedRange.start, panTimelineRange, totalMs],
+			[clampedRange.end, clampedRange.start, flushWheelPan, totalMs],
 		);
 
 		if (!videoDuration || videoDuration === 0) {
@@ -2344,6 +2400,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						/>
 						<Timeline
 							items={timelineItems}
+							clipRegions={clipRegions}
 							videoDurationMs={totalMs}
 							currentTimeMs={currentTimeMs}
 							onSeek={onSeek}

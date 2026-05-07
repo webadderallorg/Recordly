@@ -79,7 +79,6 @@ const KeyframeMarkers: React.FC<KeyframeMarkersProps> = ({
 						style={{
 							left: `${sidebarWidth + offset - 8}px`,
 							zIndex: isDragging ? 50 : 40,
-							transition: isDragging ? "none" : "left 0.1s ease-out",
 						}}
 						onMouseDown={(e) => {
 							e.stopPropagation();
