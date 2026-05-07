@@ -23,7 +23,6 @@ import { useRecordingTimer } from "./hooks/useRecordingTimer";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { useVideoDevices } from "../../hooks/useVideoDevices";
 import { useWebcamPreviewOverlay } from "./hooks/useWebcamPreviewOverlay";
-import ProjectBrowserDialog from "../video-editor/ProjectBrowserDialog";
 import {
 	canToggleFloatingWebcamPreview,
 } from "./floatingWebcamPreview";
@@ -31,6 +30,7 @@ import { LaunchPopoverCoordinatorProvider, useLaunchPopoverCoordinator } from ".
 import { CountdownPopover } from "./popovers/CountdownPopover";
 import { MicPopover } from "./popovers/MicPopover";
 import { MorePopover } from "./popovers/MorePopover";
+import { ProjectPopover } from "./popovers/ProjectPopover";
 import { SourcePopover } from "./popovers/SourcePopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { HudInteractionContext } from "./contexts/HudInteractionContext";
@@ -40,7 +40,7 @@ import styles from "./LaunchWindow.module.css";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "../ui/button";
 import { RecordingControls } from "./RecordingControls";
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 
 const SHOW_DEV_UPDATE_PREVIEW = import.meta.env.DEV;
 
@@ -84,24 +84,17 @@ function LaunchWindowContent() {
 	const hudContentRef = useRef<HTMLDivElement>(null);
 	const hudBarRef = useRef<HTMLDivElement>(null);
 
-	const closeAllPopovers = useCallback(() => {
-		if (openId) {
-			requestClose(openId);
-		}
-	}, [openId, requestClose]);
 
 	const {
 		selectedSource,
 		hasSelectedSource,
 		projectLibraryEntries,
-		projectBrowserOpen,
-		setProjectBrowserOpen,
 		handleSourceSelect,
 		openVideoFile,
-		openProjectBrowser,
 		openProjectFromLibrary,
 		syncSelectedSource,
-	} = useLaunchWindowActions({ closeAllPopovers });
+		refreshProjectLibrary,
+	} = useLaunchWindowActions();
 
 	const showWebcamControls = webcamEnabled && !recording;
 	const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(
@@ -176,8 +169,6 @@ function LaunchWindowContent() {
 
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } = useLaunchHudInteractionState({
 		openId,
-		projectBrowserOpen,
-		setProjectBrowserOpen,
 		isHudDraggingRef,
 		isWebcamPreviewDraggingRef,
 		webcamPreviewDragStartRef,
@@ -338,7 +329,6 @@ function LaunchWindowContent() {
 				}
 			/>
 
-			<Separator orientation="vertical" className="mx-[5px] h-6" />
 
 			<button
 				type="button"
@@ -359,6 +349,14 @@ function LaunchWindowContent() {
 
 			<Separator orientation="vertical" className="mx-[5px] h-6" />
 
+			<div className="relative w-0 h-0">
+				<ProjectPopover
+					entries={projectLibraryEntries}
+					onOpenProject={openProjectFromLibrary}
+					trigger={<div className="absolute inset-0 pointer-events-none opacity-0" />}
+				/>
+			</div>
+
 			<MorePopover
 				supportsHudCaptureProtection={supportsHudCaptureProtection}
 				hideHudFromCapture={hideHudFromCapture}
@@ -372,11 +370,13 @@ function LaunchWindowContent() {
 					void openVideoFile();
 				}}
 				onOpenProjectBrowser={() => {
-					void openProjectBrowser();
+					refreshProjectLibrary().then(() => {
+						requestOpen("projects");
+					});
 				}}
 				showDevUpdatePreview={SHOW_DEV_UPDATE_PREVIEW}
 				onPreviewUpdateUi={() => {
-					closeAllPopovers();
+					if (openId) requestClose(openId);
 					void window.electronAPI.previewUpdateToast().catch((error) => {
 						console.warn("Failed to preview update toast:", error);
 					});
@@ -537,19 +537,6 @@ function LaunchWindowContent() {
 					)}
 				</div>
 
-				{projectBrowserOpen ? (
-					<div className={`${styles.electronNoDrag} pointer-events-auto`}>
-						<ProjectBrowserDialog
-							open={projectBrowserOpen}
-							onOpenChange={setProjectBrowserOpen}
-							entries={projectLibraryEntries}
-							renderMode="inline"
-							onOpenProject={(projectPath) => {
-								void openProjectFromLibrary(projectPath);
-							}}
-						/>
-					</div>
-				) : null}
 			</div>
 		</div>
 		</HudInteractionContext.Provider>

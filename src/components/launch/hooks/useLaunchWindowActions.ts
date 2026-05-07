@@ -2,15 +2,10 @@ import { useCallback, useState } from "react";
 import type { ProjectLibraryEntry } from "@/components/video-editor/ProjectBrowserDialog";
 import type { DesktopSource } from "../popovers/launchPopoverTypes";
 
-export function useLaunchWindowActions({
-	closeAllPopovers,
-}: {
-	closeAllPopovers: () => void;
-}) {
+export function useLaunchWindowActions() {
 	const [selectedSource, setSelectedSource] = useState("Screen");
 	const [hasSelectedSource, setHasSelectedSource] = useState(false);
 	const [projectLibraryEntries, setProjectLibraryEntries] = useState<ProjectLibraryEntry[]>([]);
-	const [projectBrowserOpen, setProjectBrowserOpen] = useState(false);
 
 	const handleSourceSelect = useCallback(async (source: DesktopSource) => {
 		await window.electronAPI.selectSource(source);
@@ -41,24 +36,12 @@ export function useLaunchWindowActions({
 			console.error("Failed to load project library:", error);
 		}
 	}, []);
-
-	const openProjectBrowser = useCallback(async () => {
-		if (projectBrowserOpen) {
-			setProjectBrowserOpen(false);
-			return;
-		}
-		closeAllPopovers();
-		await refreshProjectLibrary();
-		setProjectBrowserOpen(true);
-	}, [closeAllPopovers, projectBrowserOpen, refreshProjectLibrary]);
-
 	const openProjectFromLibrary = useCallback(async (projectPath: string) => {
 		try {
 			const result = await window.electronAPI.openProjectFileAtPath(projectPath);
 			if (result.canceled || !result.success) {
 				return;
 			}
-			setProjectBrowserOpen(false);
 			await window.electronAPI.switchToEditor();
 		} catch (error) {
 			console.error("Failed to open project from library:", error);
@@ -79,12 +62,10 @@ export function useLaunchWindowActions({
 		selectedSource,
 		hasSelectedSource,
 		projectLibraryEntries,
-		projectBrowserOpen,
-		setProjectBrowserOpen,
 		handleSourceSelect,
 		openVideoFile,
-		openProjectBrowser,
 		openProjectFromLibrary,
 		syncSelectedSource,
+		refreshProjectLibrary,
 	};
 }

@@ -2,21 +2,16 @@ import { useCallback, useEffect, useRef, type MouseEvent, type RefObject } from 
 
 export function useLaunchHudInteractionState({
 	openId,
-	projectBrowserOpen,
-	setProjectBrowserOpen,
 	isHudDraggingRef,
 	isWebcamPreviewDraggingRef,
 	webcamPreviewDragStartRef,
 }: {
 	openId: string | null;
-	projectBrowserOpen: boolean;
-	setProjectBrowserOpen: (open: boolean) => void;
 	isHudDraggingRef: RefObject<boolean>;
 	isWebcamPreviewDraggingRef: RefObject<boolean>;
 	webcamPreviewDragStartRef: RefObject<unknown>;
 }) {
 	const anyPopoverOpenRef = useRef(false);
-	const projectBrowserOpenRef = useRef(false);
 	const isMouseOverHudRef = useRef(false);
 
 	useEffect(() => {
@@ -33,21 +28,10 @@ export function useLaunchHudInteractionState({
 		}
 	}, [openId]);
 
-	useEffect(() => {
-		if (!openId) return;
-		setProjectBrowserOpen(false);
-		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
-	}, [openId, setProjectBrowserOpen]);
-
-	useEffect(() => {
-		projectBrowserOpenRef.current = projectBrowserOpen;
-	}, [projectBrowserOpen]);
-
 	const beginInteractiveHudAction = useCallback(() => {
-		setProjectBrowserOpen(false);
 		isMouseOverHudRef.current = true;
 		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
-	}, [setProjectBrowserOpen]);
+	}, []);
 
 	const handleHudMouseEnter = useCallback(() => {
 		isMouseOverHudRef.current = true;
@@ -72,7 +56,6 @@ export function useLaunchHudInteractionState({
 				!isHudDraggingRef.current &&
 				!isWebcamPreviewDraggingRef.current &&
 				!webcamPreviewDragStartRef.current &&
-				!projectBrowserOpenRef.current &&
 				!isMouseOverHudRef.current &&
 				!anyPopoverOpenRef.current
 			) {
