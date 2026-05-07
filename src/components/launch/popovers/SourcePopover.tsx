@@ -77,9 +77,13 @@ export function SourcePopover({
 			windowSources={windowSources}
 			selectedSource={selectedSource}
 			loading={loading}
-			onSourceSelect={(source) => {
-				void onSourceSelect(source);
-				requestClose(POPOVER_ID);
+			onSourceSelect={async (source) => {
+				try {
+					await onSourceSelect(source);
+					requestClose(POPOVER_ID);
+				} catch (error) {
+					console.error("Failed to select source:", error);
+				}
 			}}
 			onFetchSources={fetchSources}
 			open={open}
