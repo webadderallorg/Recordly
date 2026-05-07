@@ -305,8 +305,12 @@ ipcMain.on("hud-overlay-drag", (_event, phase: string, screenX: number, screenY:
 });
 
 ipcMain.on("hud-overlay-hide", () => {
+	// Keep the HUD persistent: accidental hide events should not minimize it.
 	if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
-		hudOverlayWindow.minimize();
+		if (!hudOverlayWindow.isVisible()) {
+			hudOverlayWindow.show();
+		}
+		hudOverlayWindow.moveTop();
 	}
 });
 
