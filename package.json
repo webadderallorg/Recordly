@@ -48,7 +48,9 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.3.13",
+		"@electron/rebuild": "^4.0.3",
 		"@fix-webm-duration/fix": "^1.0.1",
+		"@mediapipe/tasks-vision": "^0.10.35",
 		"@pixi/filter-drop-shadow": "^5.2.0",
 		"@pixi/filter-motion-blur": "^5.1.1",
 		"@radix-ui/react-accordion": "^1.2.12",
@@ -77,7 +79,6 @@
 		"electron": "^39.2.7",
 		"electron-builder": "^26.7.0",
 		"electron-icon-builder": "^2.0.1",
-		"@electron/rebuild": "^4.0.3",
 		"emoji-picker-react": "^4.16.1",
 		"fast-check": "^4.5.2",
 		"fix-webm-duration": "^1.0.6",

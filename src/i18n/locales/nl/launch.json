@@ -31,6 +31,17 @@
 		"showFloatingWebcamPreview": "Zwevende voorbeeldweergave tonen",
 		"selectWebcamToEnable": "Selecteer een webcam om in te schakelen",
 		"noWebcamsFound": "Geen webcams gevonden",
+		"background": {
+			"label": "Achtergrond",
+			"none": "Geen",
+			"blur": "Vervagen",
+			"color": "Kleur",
+			"image": "Afbeelding",
+			"intensity": "Intensiteit",
+			"chooseImage": "Afbeelding kiezen",
+			"changeImage": "Afbeelding wijzigen",
+			"removeImage": "Verwijderen"
+		},
 		"recordingsFolder": "Opnamepad",
 		"language": "Taal",
 		"paused": "GEPAUZEERD",

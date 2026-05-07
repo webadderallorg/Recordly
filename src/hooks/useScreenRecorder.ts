@@ -1,8 +1,18 @@
 import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import {
+	type BackgroundEffectOptions,
+	createProcessedStream,
+	DEFAULT_BACKGROUND_OPTIONS,
+	type ProcessedStream,
+} from "@/lib/camera/backgroundEffect";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
 import { selectRecordingMimeType } from "./recordingMimeType";
+
+type UseScreenRecorderArgs = {
+	getBackgroundOptions?: () => BackgroundEffectOptions;
+};
 
 const TARGET_FRAME_RATE = 60;
 const TARGET_WIDTH = 3840;
@@ -111,7 +121,10 @@ function getErrorMessage(error: unknown) {
 	return "An unexpected error occurred";
 }
 
-export function useScreenRecorder(): UseScreenRecorderReturn {
+export function useScreenRecorder(args: UseScreenRecorderArgs = {}): UseScreenRecorderReturn {
+	const getBackgroundOptions = args.getBackgroundOptions;
+	const backgroundProcessor = useRef<ProcessedStream | null>(null);
+	const rawWebcamStream = useRef<MediaStream | null>(null);
 	const [recording, setRecording] = useState(false);
 	const [paused, setPaused] = useState(false);
 	const [starting, setStarting] = useState(false);
@@ -321,6 +334,20 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		if (microphoneStream.current) {
 			microphoneStream.current.getTracks().forEach((track) => track.stop());
 			microphoneStream.current = null;
+		}
+
+		if (backgroundProcessor.current) {
+			try {
+				backgroundProcessor.current.stop();
+			} catch {
+				/* ignore */
+			}
+			backgroundProcessor.current = null;
+		}
+
+		if (rawWebcamStream.current) {
+			rawWebcamStream.current.getTracks().forEach((track) => track.stop());
+			rawWebcamStream.current = null;
 		}
 
 		if (webcamStream.current) {
@@ -567,7 +594,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 
 		try {
-			webcamStream.current = await navigator.mediaDevices.getUserMedia({
+			const rawStream = await navigator.mediaDevices.getUserMedia({
 				video: webcamDeviceId
 					? {
 							deviceId: { exact: webcamDeviceId },
@@ -582,6 +609,27 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						},
 				audio: false,
 			});
+			rawWebcamStream.current = rawStream;
+
+			const bgOptions = getBackgroundOptions?.() ?? DEFAULT_BACKGROUND_OPTIONS;
+			if (bgOptions.mode !== "none") {
+				try {
+					const processor = await createProcessedStream(
+						rawStream,
+						getBackgroundOptions ?? (() => DEFAULT_BACKGROUND_OPTIONS),
+					);
+					backgroundProcessor.current = processor;
+					webcamStream.current = processor.stream;
+				} catch (effectError) {
+					console.warn(
+						"Background effect failed to initialize; recording without effect:",
+						effectError,
+					);
+					webcamStream.current = rawStream;
+				}
+			} else {
+				webcamStream.current = rawStream;
+			}
 
 			const mimeType = selectMimeType();
 			webcamChunks.current = [];
@@ -640,6 +688,18 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					webcamStopResolver.current = null;
 					webcamRecorder.current = null;
 					webcamStartTime.current = null;
+					if (backgroundProcessor.current) {
+						try {
+							backgroundProcessor.current.stop();
+						} catch {
+							/* ignore */
+						}
+						backgroundProcessor.current = null;
+					}
+					if (rawWebcamStream.current) {
+						rawWebcamStream.current.getTracks().forEach((track) => track.stop());
+						rawWebcamStream.current = null;
+					}
 					if (webcamStream.current) {
 						webcamStream.current.getTracks().forEach((track) => track.stop());
 						webcamStream.current = null;
@@ -657,12 +717,30 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			webcamRecorder.current = null;
 			webcamStartTime.current = null;
 			webcamTimeOffsetMs.current = 0;
+			if (backgroundProcessor.current) {
+				try {
+					backgroundProcessor.current.stop();
+				} catch {
+					/* ignore */
+				}
+				backgroundProcessor.current = null;
+			}
+			if (rawWebcamStream.current) {
+				rawWebcamStream.current.getTracks().forEach((track) => track.stop());
+				rawWebcamStream.current = null;
+			}
 			if (webcamStream.current) {
 				webcamStream.current.getTracks().forEach((track) => track.stop());
 				webcamStream.current = null;
 			}
 		}
-	}, [getRecordingDurationMs, selectMimeType, webcamDeviceId, webcamEnabled]);
+	}, [
+		getBackgroundOptions,
+		getRecordingDurationMs,
+		selectMimeType,
+		webcamDeviceId,
+		webcamEnabled,
+	]);
 
 	/** Start the prepared webcam MediaRecorder. Call after main recording begins. */
 	const beginWebcamCapture = useCallback(() => {

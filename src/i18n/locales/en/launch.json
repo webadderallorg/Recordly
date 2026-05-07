@@ -31,6 +31,17 @@
 		"showFloatingWebcamPreview": "Show Floating Preview",
 		"selectWebcamToEnable": "Select a webcam to enable",
 		"noWebcamsFound": "No webcams found",
+		"background": {
+			"label": "Background",
+			"none": "None",
+			"blur": "Blur",
+			"color": "Color",
+			"image": "Image",
+			"intensity": "Intensity",
+			"chooseImage": "Choose image",
+			"changeImage": "Change image",
+			"removeImage": "Remove"
+		},
 		"recordingsFolder": "Recordings Path",
 		"language": "Language",
 		"paused": "PAUSED",

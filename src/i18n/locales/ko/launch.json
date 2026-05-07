@@ -31,6 +31,17 @@
 		"showFloatingWebcamPreview": "플로팅 미리보기 표시",
 		"selectWebcamToEnable": "사용할 웹캠을 선택하세요",
 		"noWebcamsFound": "웹캠을 찾을 수 없습니다",
+		"background": {
+			"label": "배경",
+			"none": "없음",
+			"blur": "블러",
+			"color": "색상",
+			"image": "이미지",
+			"intensity": "강도",
+			"chooseImage": "이미지 선택",
+			"changeImage": "이미지 변경",
+			"removeImage": "제거"
+		},
 		"recordingsFolder": "녹화 폴더",
 		"language": "언어",
 		"paused": "일시 정지",

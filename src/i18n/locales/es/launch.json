@@ -31,6 +31,17 @@
 		"showFloatingWebcamPreview": "Mostrar vista flotante",
 		"selectWebcamToEnable": "Selecciona una cámara para activar",
 		"noWebcamsFound": "No se encontraron cámaras",
+		"background": {
+			"label": "Fondo",
+			"none": "Ninguno",
+			"blur": "Desenfoque",
+			"color": "Color",
+			"image": "Imagen",
+			"intensity": "Intensidad",
+			"chooseImage": "Elegir imagen",
+			"changeImage": "Cambiar imagen",
+			"removeImage": "Quitar"
+		},
 		"recordingsFolder": "Carpeta de grabaciones",
 		"language": "Idioma",
 		"paused": "PAUSADO",
