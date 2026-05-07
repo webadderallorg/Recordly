@@ -169,6 +169,7 @@ import {
 	type EditorEffectSection,
 	extendAutoFullTrackClip,
 	type FigureData,
+	getClipSourceStartMs,
 	getClipSourceEndMs,
 	mapSourceTimeToTimelineTime as resolveSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime as resolveTimelineTimeToSourceTime,
@@ -3234,6 +3235,13 @@ export default function VideoEditor() {
 		() => mapSourceTimeToTimelineTime(currentTime * 1000) / 1000,
 		[currentTime, mapSourceTimeToTimelineTime],
 	);
+	const timelineDuration = useMemo(
+		() =>
+			clipRegions.length > 0
+				? Math.max(0, ...clipRegions.map((clip) => Math.round(clip.endMs))) / 1000
+				: duration,
+		[clipRegions, duration],
+	);
 
 	// Merge clip speeds into speed regions so playback + export respect per-clip speed
 	const effectiveSpeedRegions = useMemo<SpeedRegion[]>(() => {
@@ -3241,7 +3249,7 @@ export default function VideoEditor() {
 			.filter((clip) => clip.speed !== 1)
 			.map((clip) => ({
 				id: `clip-speed-${clip.id}`,
-				startMs: clip.startMs,
+				startMs: getClipSourceStartMs(clip),
 				endMs: getClipSourceEndMs(clip),
 				speed: clip.speed as SpeedRegion["speed"],
 			}));
@@ -3277,7 +3285,22 @@ export default function VideoEditor() {
 	function handleSeek(time: number) {
 		const video = videoPlaybackRef.current?.video;
 		if (!video) return;
-		video.currentTime = mapTimelineTimeToSourceTime(time * 1000) / 1000;
+		const mappedSourceTime = mapTimelineTimeToSourceTime(time * 1000) / 1000;
+		if (!Number.isFinite(mappedSourceTime)) {
+			console.log("[seek][blocked][non-finite]", {
+				requestedTimelineSec: time,
+				mappedSourceSec: mappedSourceTime,
+			});
+			return;
+		}
+		const clamped = Math.max(0, Math.min(mappedSourceTime, duration));
+		console.log("[seek][apply]", {
+			requestedTimelineSec: time,
+			mappedSourceSec: mappedSourceTime,
+			clampedSourceSec: clamped,
+			durationSec: duration,
+		});
+		video.currentTime = clamped;
 	}
 
 	const handleSelectZoom = useCallback((id: string | null) => {
@@ -3493,12 +3516,16 @@ export default function VideoEditor() {
 			setClipRegions((prev) => {
 				const target = prev.find((c) => splitMs > c.startMs && splitMs < c.endMs);
 				if (!target) return prev;
+				const safeSpeed =
+					Number.isFinite(target.speed) && target.speed > 0 ? target.speed : 1;
+				const targetSourceStartMs = getClipSourceStartMs(target);
 				const leftId = `clip-${nextClipIdRef.current++}`;
 				const rightId = `clip-${nextClipIdRef.current++}`;
 				const left: ClipRegion = {
 					id: leftId,
 					startMs: target.startMs,
 					endMs: Math.round(splitMs),
+					sourceStartMs: targetSourceStartMs,
 					speed: target.speed,
 					muted: target.muted,
 				};
@@ -3506,6 +3533,9 @@ export default function VideoEditor() {
 					id: rightId,
 					startMs: Math.round(splitMs),
 					endMs: target.endMs,
+					sourceStartMs: Math.round(
+						targetSourceStartMs + (Math.round(splitMs) - target.startMs) * safeSpeed,
+					),
 					speed: target.speed,
 					muted: target.muted,
 				};
@@ -3514,6 +3544,23 @@ export default function VideoEditor() {
 				}
 				return prev.flatMap((c) => (c.id === target.id ? [left, right] : [c]));
 			});
+			setZoomRegions((prev) =>
+				prev.flatMap((region) => {
+					if (region.startMs < splitMs && region.endMs > splitMs) {
+						const leftZoom: ZoomRegion = {
+							...region,
+							endMs: Math.round(splitMs),
+						};
+						const rightZoom: ZoomRegion = {
+							...region,
+							id: `zoom-${nextZoomIdRef.current++}`,
+							startMs: Math.round(splitMs),
+						};
+						return [leftZoom, rightZoom];
+					}
+					return [region];
+				}),
+			);
 		},
 		[selectedClipId],
 	);
@@ -3594,26 +3641,60 @@ export default function VideoEditor() {
 			const clip = clipRegions.find((c) => c.id === selectedClipId);
 			if (!clip) return;
 			const oldSpeed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
-			const sourceDurationMs = (clip.endMs - clip.startMs) * oldSpeed;
+			const sourceDurationMs = getClipSourceEndMs(clip) - getClipSourceStartMs(clip);
 			const newEndMs = Math.round(clip.startMs + sourceDurationMs / speed);
 			const scaleFactor = oldSpeed / speed;
+			const deltaMs = newEndMs - clip.endMs;
+			const oldClipStartMs = clip.startMs;
+			const oldClipEndMs = clip.endMs;
+			const remapTimelineTime = (timeMs: number) => {
+				if (timeMs <= oldClipStartMs) {
+					return timeMs;
+				}
+				if (timeMs < oldClipEndMs) {
+					return Math.round(oldClipStartMs + (timeMs - oldClipStartMs) * scaleFactor);
+				}
+				return timeMs + deltaMs;
+			};
 
 			setClipRegions((prev) =>
-				prev.map((c) => (c.id === selectedClipId ? { ...c, speed, endMs: newEndMs } : c)),
+				prev.map((c) => {
+					if (c.id === selectedClipId) {
+						return { ...c, speed, endMs: newEndMs };
+					}
+					if (deltaMs !== 0 && c.startMs >= oldClipEndMs) {
+						return {
+							...c,
+							startMs: c.startMs + deltaMs,
+							endMs: c.endMs + deltaMs,
+							sourceStartMs: getClipSourceStartMs(c),
+						};
+					}
+					return c;
+				}),
 			);
-			// Scale zoom regions that lie within this clip proportionally
 			setZoomRegions((prev) =>
 				prev.map((zoom) => {
-					if (zoom.startMs < clip.startMs || zoom.startMs >= clip.endMs) return zoom;
 					return {
 						...zoom,
-						startMs: Math.round(
-							clip.startMs + (zoom.startMs - clip.startMs) * scaleFactor,
-						),
-						endMs: Math.round(clip.startMs + (zoom.endMs - clip.startMs) * scaleFactor),
+						startMs: remapTimelineTime(zoom.startMs),
+						endMs: remapTimelineTime(zoom.endMs),
 					};
 				}),
 			);
+			if (deltaMs !== 0) {
+				const remapRegions = <T extends { startMs: number; endMs: number }>(
+					regions: T[],
+				) =>
+					regions.map((region) => ({
+						...region,
+						startMs: remapTimelineTime(region.startMs),
+						endMs: remapTimelineTime(region.endMs),
+					}));
+				setAnnotationRegions((prev) => remapRegions(prev));
+				setAudioRegions((prev) => remapRegions(prev));
+				setSpeedRegions((prev) => remapRegions(prev));
+			}
 		},
 		[selectedClipId, clipRegions],
 	);
@@ -6169,14 +6250,17 @@ export default function VideoEditor() {
 											handleSeek(
 												next
 													? next.time / 1000
-													: Math.min(duration, timelinePlayheadTime + 5),
+													: Math.min(
+															timelineDuration,
+															timelinePlayheadTime + 5,
+														),
 											);
 										}}
 									>
 										<SkipForward className="w-3.5 h-3.5" weight="fill" />
 									</Button>
 									<span className="text-[10px] font-medium text-muted-foreground/70 tabular-nums ml-1">
-										{formatTime(duration)}
+										{formatTime(timelineDuration)}
 									</span>
 								</div>
 							</div>

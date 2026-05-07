@@ -146,18 +146,36 @@ export interface ClipRegion {
 	id: string;
 	startMs: number;
 	endMs: number;
+	sourceStartMs?: number;
 	speed: number;
 	muted?: boolean;
+}
+
+export function getClipSourceStartMs(clip: ClipRegion): number {
+	return Number.isFinite(clip.sourceStartMs) ? Math.round(clip.sourceStartMs ?? 0) : clip.startMs;
 }
 
 export function getClipSourceEndMs(clip: ClipRegion): number {
 	const displayDurationMs = Math.max(0, clip.endMs - clip.startMs);
 	const speed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
-	return Math.round(clip.startMs + displayDurationMs * speed);
+	return Math.round(getClipSourceStartMs(clip) + displayDurationMs * speed);
 }
 
 export function sortClipRegions(clips: ClipRegion[]): ClipRegion[] {
 	return [...clips].sort((left, right) => left.startMs - right.startMs);
+}
+
+function areClipRegionsSortedByStart(clips: ClipRegion[]) {
+	for (let index = 1; index < clips.length; index += 1) {
+		if (clips[index - 1].startMs > clips[index].startMs) {
+			return false;
+		}
+	}
+	return true;
+}
+
+function normalizeSortedClipRegions(clips: ClipRegion[]) {
+	return areClipRegionsSortedByStart(clips) ? clips : sortClipRegions(clips);
 }
 
 function getSafeClipSpeed(clip: ClipRegion) {
@@ -191,52 +209,150 @@ function clampToNearestClipBoundary(
 }
 
 export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[]): number {
+	if (!Number.isFinite(timeMs)) {
+		return 0;
+	}
 	const roundedTimeMs = Math.round(timeMs);
-	const sortedClips = sortClipRegions(clips);
+	const sortedClips = normalizeSortedClipRegions(clips);
+	const lastClip = sortedClips[sortedClips.length - 1];
+
+	if (lastClip && roundedTimeMs === Math.round(lastClip.endMs)) {
+		const sourceEnd = getClipSourceEndMs(lastClip);
+		console.log("[clip-map][t->s][last-end]", {
+			timelineMs: roundedTimeMs,
+			sourceMs: sourceEnd,
+			clipId: lastClip.id,
+		});
+		return sourceEnd;
+	}
 
 	for (const clip of sortedClips) {
-		if (roundedTimeMs < clip.startMs || roundedTimeMs > clip.endMs) {
+		if (roundedTimeMs < clip.startMs || roundedTimeMs >= clip.endMs) {
 			continue;
 		}
 
-		return Math.round(
-			clip.startMs + (roundedTimeMs - clip.startMs) * getSafeClipSpeed(clip),
+		const mapped = Math.round(
+			getClipSourceStartMs(clip) + (roundedTimeMs - clip.startMs) * getSafeClipSpeed(clip),
 		);
+		return mapped;
 	}
 
 	if (sortedClips.length === 0) {
 		return roundedTimeMs;
 	}
 
-	return clampToNearestClipBoundary(roundedTimeMs, sortedClips, "timeline");
+	const snapped = clampToNearestClipBoundary(roundedTimeMs, sortedClips, "timeline");
+	console.log("[clip-map][t->s][gap-snap]", {
+		timelineMs: roundedTimeMs,
+		snappedTimelineMs: snapped,
+		clips: sortedClips.map((clip) => ({
+			id: clip.id,
+			startMs: clip.startMs,
+			endMs: clip.endMs,
+			sourceStartMs: getClipSourceStartMs(clip),
+			sourceEndMs: getClipSourceEndMs(clip),
+			speed: clip.speed,
+		})),
+	});
+	return snapped;
 }
 
 export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[]): number {
+	if (!Number.isFinite(timeMs)) {
+		return 0;
+	}
 	const roundedTimeMs = Math.round(timeMs);
-	const sortedClips = sortClipRegions(clips);
+	const sortedClips = normalizeSortedClipRegions(clips);
+	const lastClip = sortedClips[sortedClips.length - 1];
+
+	if (lastClip && roundedTimeMs === getClipSourceEndMs(lastClip)) {
+		const timelineEnd = Math.round(lastClip.endMs);
+		console.log("[clip-map][s->t][last-end]", {
+			sourceMs: roundedTimeMs,
+			timelineMs: timelineEnd,
+			clipId: lastClip.id,
+		});
+		return timelineEnd;
+	}
 
 	for (const clip of sortedClips) {
 		const sourceEndMs = getClipSourceEndMs(clip);
-		if (roundedTimeMs < clip.startMs || roundedTimeMs > sourceEndMs) {
+		const sourceStartMs = getClipSourceStartMs(clip);
+		if (roundedTimeMs < sourceStartMs || roundedTimeMs >= sourceEndMs) {
 			continue;
 		}
 
 		return Math.round(
-			clip.startMs + (roundedTimeMs - clip.startMs) / getSafeClipSpeed(clip),
+			clip.startMs + (roundedTimeMs - sourceStartMs) / getSafeClipSpeed(clip),
 		);
+	}
+
+	// Handle tiny rounding gaps between adjacent source clip boundaries without jumping forward.
+	const boundaryGapEpsilonMs = 3;
+	for (let index = 0; index < sortedClips.length - 1; index += 1) {
+		const left = sortedClips[index];
+		const right = sortedClips[index + 1];
+		const leftSourceEndMs = getClipSourceEndMs(left);
+		const rightSourceStartMs = getClipSourceStartMs(right);
+
+		if (
+			roundedTimeMs >= leftSourceEndMs &&
+			roundedTimeMs < rightSourceStartMs &&
+			rightSourceStartMs - leftSourceEndMs <= boundaryGapEpsilonMs
+		) {
+			console.log("[clip-map][s->t][micro-gap]", {
+				sourceMs: roundedTimeMs,
+				leftClipId: left.id,
+				rightClipId: right.id,
+				leftSourceEndMs,
+				rightSourceStartMs,
+				returnedTimelineMs: Math.round(left.endMs),
+			});
+			return Math.round(left.endMs);
+		}
 	}
 
 	if (sortedClips.length === 0) {
 		return roundedTimeMs;
 	}
 
-	return clampToNearestClipBoundary(roundedTimeMs, sortedClips, "source");
+	let nearestTimelineTimeMs = roundedTimeMs;
+	let nearestDistance = Number.POSITIVE_INFINITY;
+
+	for (const clip of sortedClips) {
+		const sourceBoundaries: Array<{ sourceTimeMs: number; timelineTimeMs: number }> = [
+			{ sourceTimeMs: getClipSourceStartMs(clip), timelineTimeMs: clip.startMs },
+			{ sourceTimeMs: getClipSourceEndMs(clip), timelineTimeMs: clip.endMs },
+		];
+
+		for (const boundary of sourceBoundaries) {
+			const distance = Math.abs(roundedTimeMs - boundary.sourceTimeMs);
+			if (distance < nearestDistance) {
+				nearestDistance = distance;
+				nearestTimelineTimeMs = Math.round(boundary.timelineTimeMs);
+			}
+		}
+	}
+
+	console.log("[clip-map][s->t][boundary-snap]", {
+		sourceMs: roundedTimeMs,
+		timelineMs: nearestTimelineTimeMs,
+		clips: sortedClips.map((clip) => ({
+			id: clip.id,
+			startMs: clip.startMs,
+			endMs: clip.endMs,
+			sourceStartMs: getClipSourceStartMs(clip),
+			sourceEndMs: getClipSourceEndMs(clip),
+			speed: clip.speed,
+		})),
+	});
+	return nearestTimelineTimeMs;
 }
 
 export function findClipAtTimelineTime(timeMs: number, clips: ClipRegion[]): ClipRegion | null {
 	const roundedTimeMs = Math.round(timeMs);
 	return (
-		sortClipRegions(clips).find(
+		normalizeSortedClipRegions(clips).find(
 			(clip) => roundedTimeMs >= clip.startMs && roundedTimeMs < clip.endMs,
 		) ?? null
 	);
@@ -274,13 +390,20 @@ export function extendAutoFullTrackClip(
 /** Convert clip regions (kept segments) to trim regions (gaps to remove). */
 export function clipsToTrims(clips: ClipRegion[], totalDurationMs: number): TrimRegion[] {
 	if (clips.length === 0) return [];
-	const sorted = [...clips].sort((a, b) => a.startMs - b.startMs);
+	const sorted = [...clips].sort(
+		(a, b) => getClipSourceStartMs(a) - getClipSourceStartMs(b),
+	);
 	const trims: TrimRegion[] = [];
 	let cursor = 0;
 	let trimId = 1;
 	for (const clip of sorted) {
-		if (clip.startMs > cursor) {
-			trims.push({ id: `trim-gap-${trimId++}`, startMs: cursor, endMs: clip.startMs });
+		const clipSourceStartMs = getClipSourceStartMs(clip);
+		if (clipSourceStartMs > cursor) {
+			trims.push({
+				id: `trim-gap-${trimId++}`,
+				startMs: cursor,
+				endMs: clipSourceStartMs,
+			});
 		}
 		cursor = getClipSourceEndMs(clip);
 	}

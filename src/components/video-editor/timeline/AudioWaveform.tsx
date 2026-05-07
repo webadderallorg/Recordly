@@ -1,9 +1,11 @@
 import { useTimelineContext } from "dnd-timeline";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ClipRegion } from "../types";
 import type { AudioPeaksData } from "./useAudioPeaks";
 
 interface AudioWaveformProps {
 	peaks: AudioPeaksData;
+	clipRegions?: ClipRegion[];
 }
 
 /**
@@ -11,7 +13,7 @@ interface AudioWaveformProps {
  * Automatically syncs with the timeline's visible range so the waveform
  * scrolls and zooms together with the clip items above it.
  */
-export default function AudioWaveform({ peaks }: AudioWaveformProps) {
+export default function AudioWaveform({ peaks, clipRegions = [] }: AudioWaveformProps) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const { range } = useTimelineContext();
 	const [resizeKey, setResizeKey] = useState(0);
@@ -59,25 +61,55 @@ export default function AudioWaveform({ peaks }: AudioWaveformProps) {
 		if (visibleDurationMs <= 0) return;
 
 		const midY = height / 2;
+		const maxIndex = peakData.length - 1;
+		const timePerPixel = visibleDurationMs / width;
+		const scale = peakData.length / durationMs;
+		const sortedClips =
+			clipRegions.length > 1
+				? [...clipRegions].sort((left, right) => left.startMs - right.startMs)
+				: clipRegions;
+		const hasClipRegions = sortedClips.length > 0;
+		let clipIndex = 0;
 
-		ctx.beginPath();
+		ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
 		for (let px = 0; px < width; px++) {
-			const t = visibleStartMs + (px / width) * visibleDurationMs;
-			const binIndex = Math.min(
-				peakData.length - 1,
-				Math.max(0, Math.floor((t / durationMs) * peakData.length)),
-			);
+			const timelineTimeMs = visibleStartMs + px * timePerPixel;
+			let sourceTimeMs = timelineTimeMs;
+
+			if (hasClipRegions) {
+				while (
+					clipIndex < sortedClips.length &&
+					timelineTimeMs > sortedClips[clipIndex].endMs
+				) {
+					clipIndex += 1;
+				}
+
+				const activeClip =
+					clipIndex < sortedClips.length ? sortedClips[clipIndex] : null;
+				if (
+					!activeClip ||
+					timelineTimeMs < activeClip.startMs ||
+					timelineTimeMs > activeClip.endMs
+				) {
+					continue;
+				}
+
+				const speed =
+					Number.isFinite(activeClip.speed) && activeClip.speed > 0
+						? activeClip.speed
+						: 1;
+				sourceTimeMs = activeClip.startMs + (timelineTimeMs - activeClip.startMs) * speed;
+			}
+
+			const binIndex = Math.min(maxIndex, Math.max(0, Math.floor(sourceTimeMs * scale)));
 			const amplitude = peakData[binIndex];
 			const barHeight = amplitude * midY * 0.85;
 
-			ctx.moveTo(px, midY - barHeight);
-			ctx.lineTo(px, midY + barHeight);
+			const y = midY - barHeight;
+			const h = barHeight * 2;
+			ctx.fillRect(px, y, 1, h);
 		}
-
-		ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
-		ctx.lineWidth = dpr;
-		ctx.stroke();
-	}, [peaks, range.start, range.end, resizeKey]);
+	}, [peaks, clipRegions, range.start, range.end, resizeKey]);
 
 	return (
 		<canvas
