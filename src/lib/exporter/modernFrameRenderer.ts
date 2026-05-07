@@ -21,6 +21,7 @@ import type {
 	Padding,
 	SpeedRegion,
 	WebcamOverlaySettings,
+	ZoomMotionBlurTuning,
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
@@ -55,8 +56,10 @@ import {
 	type MotionBlurState,
 } from "@/components/video-editor/videoPlayback/zoomTransform";
 import {
+	getWebcamCropSourceRect,
 	getWebcamOverlayPosition,
 	getWebcamOverlaySizePx,
+	isWebcamCropRegionDefault,
 } from "@/components/video-editor/webcamOverlay";
 import { getAssetPath, getExportableVideoUrl, getRenderableAssetUrl } from "@/lib/assetPath";
 import { extensionHost } from "@/lib/extensions";
@@ -89,10 +92,10 @@ import {
 	VIDEO_SHADOW_LAYER_PROFILES,
 	WEBCAM_SHADOW_LAYER_PROFILES,
 } from "./shadowProfile";
-import {
-	buildTemporalSamplePlanUs,
-	getTemporalMotionBlurConfig,
-} from "./temporalMotionBlur";
+import { buildTemporalSamplePlanUs, getTemporalMotionBlurConfig } from "./temporalMotionBlur";
+
+const TEMPORAL_ZOOM_MOTION_BLUR_ENABLED = false;
+
 import type { ExportRenderBackend } from "./types";
 
 interface FrameRenderConfig {
@@ -105,6 +108,7 @@ interface FrameRenderConfig {
 	shadowIntensity: number;
 	backgroundBlur: number;
 	zoomMotionBlur?: number;
+	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
 	zoomTemporalMotionBlur?: number;
 	zoomMotionBlurSampleCount?: number | null;
 	zoomMotionBlurShutterFraction?: number | null;
@@ -138,6 +142,9 @@ interface FrameRenderConfig {
 	cursorSpringStiffnessMultiplier?: number;
 	cursorSpringDampingMultiplier?: number;
 	cursorSpringMassMultiplier?: number;
+	cameraSpringStiffnessMultiplier?: number;
+	cameraSpringDampingMultiplier?: number;
+	cameraSpringMassMultiplier?: number;
 	cursorMotionBlur?: number;
 	cursorClickBounce?: number;
 	cursorClickBounceDuration?: number;
@@ -395,7 +402,6 @@ export class FrameRenderer {
 	private lastContentTimeMs: number | null = null;
 	private layoutCache: LayoutCache | null = null;
 	private currentVideoTime = 0;
-	private lastMotionVector = { x: 0, y: 0 };
 	private cursorOverlay: PixiCursorOverlay | null = null;
 	private lastSyncedWebcamTime: number | null = null;
 	private lastWebcamCacheRefreshTime: number | null = null;
@@ -428,8 +434,8 @@ export class FrameRenderer {
 		}
 
 		const activeFilters =
-			this.shouldUseZoomMotionBlur() && this.zoomBlurFilter && this.motionBlurFilter
-				? [this.zoomBlurFilter, this.motionBlurFilter]
+			this.shouldUseZoomMotionBlur() && this.motionBlurFilter && this.zoomBlurFilter
+				? [this.motionBlurFilter, this.zoomBlurFilter]
 				: null;
 		this.videoEffectsContainer.filters = activeFilters;
 	}
@@ -542,7 +548,7 @@ export class FrameRenderer {
 		this.setupCaptionResources();
 
 		if (this.shouldUseZoomMotionBlur()) {
-			this.zoomBlurFilter = new ZoomBlurFilter({ strength: 0 });
+			this.zoomBlurFilter = new ZoomBlurFilter({ strength: 0, maxKernelSize: 13 });
 			this.motionBlurFilter = new MotionBlurFilter([0, 0], 5, 0);
 		}
 
@@ -2016,14 +2022,20 @@ export class FrameRenderer {
 	}
 
 	private shouldRefreshWebcamFrameCache(width: number, height: number): boolean {
-		const targetWidth = Math.max(1, Math.ceil(width));
-		const targetHeight = Math.max(1, Math.ceil(height));
+		const cropRegion = this.config.webcam?.cropRegion;
+		const sourceRect = getWebcamCropSourceRect(cropRegion, width, height);
+		const targetWidth = Math.max(1, Math.ceil(sourceRect.sw));
+		const targetHeight = Math.max(1, Math.ceil(sourceRect.sh));
 
 		if (
 			!this.webcamFrameCacheCanvas ||
 			this.webcamFrameCacheCanvas.width !== targetWidth ||
 			this.webcamFrameCacheCanvas.height !== targetHeight
 		) {
+			return true;
+		}
+
+		if (!isWebcamCropRegionDefault(cropRegion)) {
 			return true;
 		}
 
@@ -2062,7 +2074,8 @@ export class FrameRenderer {
 		width: number,
 		height: number,
 	): boolean {
-		if (!this.ensureWebcamFrameCache(width, height)) {
+		const sourceRect = getWebcamCropSourceRect(this.config.webcam?.cropRegion, width, height);
+		if (!this.ensureWebcamFrameCache(sourceRect.sw, sourceRect.sh)) {
 			return false;
 		}
 
@@ -2078,6 +2091,10 @@ export class FrameRenderer {
 		);
 		this.webcamFrameCacheCtx.drawImage(
 			source,
+			sourceRect.sx,
+			sourceRect.sy,
+			sourceRect.sw,
+			sourceRect.sh,
 			0,
 			0,
 			this.webcamFrameCacheCanvas.width,
@@ -2113,6 +2130,13 @@ export class FrameRenderer {
 		if (canUseLiveSource && liveSource && liveSourceWidth > 0 && liveSourceHeight > 0) {
 			if (this.shouldRefreshWebcamFrameCache(liveSourceWidth, liveSourceHeight)) {
 				this.refreshWebcamFrameCache(liveSource, liveSourceWidth, liveSourceHeight);
+			}
+			if (!isWebcamCropRegionDefault(this.config.webcam?.cropRegion)) {
+				const cachedSource = this.getCachedWebcamRenderSource();
+				if (cachedSource) {
+					this.setWebcamRenderMode("live");
+					return cachedSource;
+				}
 			}
 			this.setWebcamRenderMode("live");
 			return {
@@ -2496,7 +2520,7 @@ export class FrameRenderer {
 			);
 		}
 
-		const motionIntensity = this.updateAnimationState(timeMs);
+		this.updateAnimationState(timeMs);
 
 		applyZoomTransform({
 			cameraContainer: this.cameraContainer,
@@ -2508,10 +2532,9 @@ export class FrameRenderer {
 			zoomProgress: this.animationState.progress,
 			focusX: this.animationState.focusX,
 			focusY: this.animationState.focusY,
-			motionIntensity,
-			motionVector: this.lastMotionVector,
 			isPlaying: true,
 			motionBlurAmount: useVelocityMotionBlur ? (this.config.zoomMotionBlur ?? 0) : 0,
+			motionBlurTuning: this.config.zoomMotionBlurTuning,
 			transformOverride: {
 				scale: this.animationState.appliedScale,
 				x: this.animationState.x,
@@ -2578,13 +2601,10 @@ export class FrameRenderer {
 			return null;
 		}
 
-		const blurConfig = getTemporalMotionBlurConfig(
-			this.config.zoomTemporalMotionBlur ?? this.config.zoomMotionBlur,
-			{
-				sampleCount: this.config.zoomMotionBlurSampleCount,
-				shutterFraction: this.config.zoomMotionBlurShutterFraction,
-			},
-		);
+		const blurConfig = getTemporalMotionBlurConfig(this.config.zoomTemporalMotionBlur, {
+			sampleCount: this.config.zoomMotionBlurSampleCount,
+			shutterFraction: this.config.zoomMotionBlurShutterFraction,
+		});
 		if (!blurConfig) {
 			return null;
 		}
@@ -2699,7 +2719,10 @@ export class FrameRenderer {
 		}
 
 		const temporalSnapshot =
-			typeof frameDurationUs === "number" && frameDurationUs > 0
+			TEMPORAL_ZOOM_MOTION_BLUR_ENABLED &&
+			(this.config.zoomTemporalMotionBlur ?? 0) > 0 &&
+			typeof frameDurationUs === "number" &&
+			frameDurationUs > 0
 				? await this.renderTemporalMotionBlurFrame(
 						timestamp,
 						cursorTimestamp,
@@ -2744,9 +2767,7 @@ export class FrameRenderer {
 			);
 		}
 
-		let maxMotionIntensity = 0;
-		const motionIntensity = this.updateAnimationState(timeMs);
-		maxMotionIntensity = Math.max(maxMotionIntensity, motionIntensity);
+		this.updateAnimationState(timeMs);
 
 		applyZoomTransform({
 			cameraContainer: this.cameraContainer,
@@ -2758,10 +2779,9 @@ export class FrameRenderer {
 			zoomProgress: this.animationState.progress,
 			focusX: this.animationState.focusX,
 			focusY: this.animationState.focusY,
-			motionIntensity: maxMotionIntensity,
-			motionVector: this.lastMotionVector,
 			isPlaying: true,
 			motionBlurAmount: this.config.zoomMotionBlur ?? 0,
+			motionBlurTuning: this.config.zoomMotionBlurTuning,
 			transformOverride: {
 				scale: this.animationState.appliedScale,
 				x: this.animationState.x,
@@ -3227,7 +3247,11 @@ export class FrameRenderer {
 			this.lastContentTimeMs !== null ? timeMs - this.lastContentTimeMs : 1000 / 60;
 		this.lastContentTimeMs = timeMs;
 
-		const zoomSpringConfig = getZoomSpringConfig(this.config.zoomSmoothness);
+		const zoomSpringConfig = getZoomSpringConfig(this.config.zoomSmoothness, {
+			stiffnessMultiplier: this.config.cameraSpringStiffnessMultiplier,
+			dampingMultiplier: this.config.cameraSpringDampingMultiplier,
+			massMultiplier: this.config.cameraSpringMassMultiplier,
+		});
 
 		if (this.config.zoomClassicMode) {
 			state.appliedScale = projectedTransform.scale;
@@ -3256,11 +3280,6 @@ export class FrameRenderer {
 				zoomSpringConfig,
 			);
 		}
-
-		this.lastMotionVector = {
-			x: state.x - previousX,
-			y: state.y - previousY,
-		};
 
 		return Math.max(
 			Math.abs(state.appliedScale - previousScale),
