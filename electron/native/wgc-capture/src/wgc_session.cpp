@@ -112,6 +112,15 @@ bool WgcSession::initializeWithItem(int fps) {
     if (!captureItem_) return false;
 
     auto size = captureItem_.Size();
+    // Round to even dimensions so the frame pool textures match the H.264-aligned
+    // encoder staging texture exactly. Without this, window captures (which often
+    // produce odd sizes from DWM shadow/DPI) cause CopyResource to fail silently
+    // and the encoder reads zeroed memory, yielding pure black output.
+    size.Width = (size.Width / 2) * 2;
+    size.Height = (size.Height / 2) * 2;
+    if (size.Width < 2) size.Width = 2;
+    if (size.Height < 2) size.Height = 2;
+
     captureWidth_ = size.Width;
     captureHeight_ = size.Height;
 
@@ -128,7 +137,19 @@ bool WgcSession::initializeWithItem(int fps) {
     // IsBorderRequired is only available on Windows 11+ (build 22000). propagating an hresult_error results in Native Windows capture failure
     try {
         session_.IsBorderRequired(false);
-    } catch (winrt::hresult_error const& e) {
+    } catch (winrt::hresult_error const&) {
+    }
+
+    // IncludeSecondaryWindows (IGraphicsCaptureSession6, Windows 11 24H2+) pulls
+    // popup menus, dropdowns, tooltips and other owned top-level windows into the
+    // capture. Without it, "File / Edit / View" menus and context menus disappear
+    // from window-scoped recordings.
+    try {
+        if (auto session6 = session_.try_as<
+                winrt::Windows::Graphics::Capture::IGraphicsCaptureSession6>()) {
+            session6.IncludeSecondaryWindows(true);
+        }
+    } catch (winrt::hresult_error const&) {
     }
 
     return true;
