@@ -314,36 +314,45 @@ export const SourceSelector = React.memo(function SourceSelector({
 		}
 	}, [isAutonomous, internalOpen]);
 
+	const trigger = children ? (
+		React.isValidElement(children) ? (
+			React.cloneElement(children as React.ReactElement<any>, {
+				onPointerEnter: prefetchSources,
+				onFocusCapture: prefetchSources,
+			})
+		) : (
+			children
+		)
+	) : (
+		<Button
+			variant="outline"
+			size="lg"
+			onPointerEnter={prefetchSources}
+			onFocusCapture={prefetchSources}
+			className={cn(
+				"group gap-2 px-3 min-w-0 max-w-[180px] rounded-[11px] font-medium text-[12px] [ -webkit-app-region:no-drag ] shrink-0",
+				"border-[#2a2a34] bg-[#1a1a22] text-[#eeeef2] hover:border-[#3e3e4c] hover:bg-[#20202a] transition-all",
+				"data-[state=open]:border-[#3e3e4c] data-[state=open]:bg-[#20202a]",
+			)}
+			title={selectedSource}
+		>
+			<MonitorIcon size={16} className="shrink-0" />
+			<div className="flex-1 min-w-0">
+				<MarqueeText text={selectedSource} />
+			</div>
+			<CaretUpIcon
+				size={10}
+				className={cn(
+					"text-[#6b6b78] ml-0.5 shrink-0 transition-transform duration-200",
+					open ? "" : "rotate-180",
+				)}
+			/>
+		</Button>
+	);
+
 	return (
 		<Popover open={open} onOpenChange={onOpenChange}>
-			<PopoverTrigger asChild>
-				<div onPointerEnter={prefetchSources} onFocusCapture={prefetchSources}>
-					{children || (
-						<Button
-							variant="outline"
-							size="lg"
-							className={cn(
-								"group gap-2 px-3 min-w-0 max-w-[180px] rounded-[11px] font-medium text-[12px] [ -webkit-app-region:no-drag ] shrink-0",
-								"border-[#2a2a34] bg-[#1a1a22] text-[#eeeef2] hover:border-[#3e3e4c] hover:bg-[#20202a] transition-all",
-								"data-[state=open]:border-[#3e3e4c] data-[state=open]:bg-[#20202a]",
-							)}
-							title={selectedSource}
-						>
-							<MonitorIcon size={16} className="shrink-0" />
-							<div className="flex-1 min-w-0">
-								<MarqueeText text={selectedSource} />
-							</div>
-							<CaretUpIcon
-								size={10}
-								className={cn(
-									"text-[#6b6b78] ml-0.5 shrink-0 transition-transform duration-200",
-									open ? "" : "rotate-180",
-								)}
-							/>
-						</Button>
-					)}
-				</div>
-			</PopoverTrigger>
+			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
 			<PopoverContent
 				className="launch-theme w-80 p-0 source-selector-popover"
 				unstyled
