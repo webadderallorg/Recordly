@@ -6,6 +6,7 @@ import { AudioLevelMeter } from "@/components/ui/audio-level-meter";
 import styles from "../LaunchWindow.module.css";
 import "../launchTheme.css";
 import type { DeviceOption } from "./launchPopoverTypes";
+import { useHudInteraction } from "../contexts/HudInteractionContext";
 
 export function DropdownItem({
 	onClick,
@@ -73,6 +74,7 @@ export function HudPopover({
 	children: ReactNode;
 	align?: "start" | "center" | "end";
 }) {
+	const { onMouseEnter } = useHudInteraction();
 	return (
 		<Popover open={open} onOpenChange={onOpenChange} modal={false}>
 			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
@@ -85,6 +87,7 @@ export function HudPopover({
 				avoidCollisions
 				collisionPadding={10}
 				usePortal={false}
+				onMouseEnter={onMouseEnter}
 			>
 				{children}
 			</PopoverContent>

@@ -21,7 +21,9 @@ export function useLaunchHudInteractionState({
 
 	useEffect(() => {
 		anyPopoverOpenRef.current = openId !== null;
-		if (openId === null) {
+		if (openId !== null) {
+			window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+		} else {
 			// Proactively check if we should ignore mouse when popover closes
 			setTimeout(() => {
 				if (!isMouseOverHudRef.current && !anyPopoverOpenRef.current) {
@@ -71,7 +73,8 @@ export function useLaunchHudInteractionState({
 				!isWebcamPreviewDraggingRef.current &&
 				!webcamPreviewDragStartRef.current &&
 				!projectBrowserOpenRef.current &&
-				!isMouseOverHudRef.current
+				!isMouseOverHudRef.current &&
+				!anyPopoverOpenRef.current
 			) {
 				// If a popover is open, we can still ignore mouse if the mouse is truly gone,
 				// but we give a bit more breathing room (the 300ms timeout).

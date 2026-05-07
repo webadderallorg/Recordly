@@ -439,7 +439,7 @@ function LaunchWindowContent() {
 				className="flex items-center overflow-visible flex-col-reverse pointer-events-none"
 			>
 				<div
-					className="flex flex-col items-center pointer-events-auto"
+					className="flex flex-col items-center pointer-events-auto p-2"
 					onMouseEnter={handleHudMouseEnter}
 					onMouseLeave={handleHudMouseLeave}
 				>
@@ -519,12 +519,12 @@ function LaunchWindowContent() {
 							style={{
 								transform: `translate(${webcamPreviewOffset.x}px, ${webcamPreviewOffset.y}px)`,
 							}}
+							onMouseEnter={handleHudMouseEnter}
+							onMouseLeave={handleHudMouseLeave}
 							onPointerDown={handleWebcamPreviewPointerDown}
 							onPointerMove={handleWebcamPreviewPointerMove}
 							onPointerUp={handleWebcamPreviewPointerUp}
 							onPointerCancel={handleWebcamPreviewPointerUp}
-							onMouseEnter={handleHudMouseEnter}
-							onMouseLeave={handleHudMouseLeave}
 						>
 							<video
 								ref={setRecordingWebcamPreviewNode}

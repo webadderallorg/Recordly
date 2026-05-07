@@ -13,6 +13,7 @@ import {
 } from "./popovers/launchPopoverTypes";
 import "./launchTheme.css";
 import "./SourceSelector.css";
+import { useHudInteraction } from "./contexts/HudInteractionContext";
 
 interface SourceSelectorProps {
 	/** List of available screen sources */
@@ -341,6 +342,8 @@ export const SourceSelector = React.memo(function SourceSelector({
 		</Button>
 	);
 
+	const { onMouseEnter } = useHudInteraction();
+
 	return (
 		<Popover open={open} onOpenChange={onOpenChange} modal={false}>
 			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
@@ -354,6 +357,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 				avoidCollisions={true}
 				collisionPadding={10}
 				usePortal={false}
+				onMouseEnter={onMouseEnter}
 			>
 				<SourceSelectorContent
 					screenSources={screenSources}
