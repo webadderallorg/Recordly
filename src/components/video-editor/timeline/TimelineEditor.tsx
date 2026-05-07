@@ -1371,15 +1371,20 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				}
 			});
 
-			trimRegionsRef.current.forEach((region) => {
-				const clampedStart = Math.max(0, Math.min(region.startMs, totalMs));
-				const minEnd = clampedStart + safeMinDurationMs;
-				const clampedEnd = Math.min(totalMs, Math.max(minEnd, region.endMs));
-				const normalizedStart = Math.max(
-					0,
-					Math.min(clampedStart, totalMs - safeMinDurationMs),
-				);
-				const normalizedEnd = Math.max(minEnd, Math.min(clampedEnd, totalMs));
+		trimRegionsRef.current.forEach((region) => {
+			const trimMaxMs = sourceDurationMs;
+			const trimMinDurationMs =
+				trimMaxMs > 0
+					? Math.min(safeMinDurationMs, trimMaxMs)
+					: safeMinDurationMs;
+			const clampedStart = Math.max(0, Math.min(region.startMs, trimMaxMs));
+			const minEnd = clampedStart + trimMinDurationMs;
+			const clampedEnd = Math.min(trimMaxMs, Math.max(minEnd, region.endMs));
+			const normalizedStart = Math.max(
+				0,
+				Math.min(clampedStart, trimMaxMs - trimMinDurationMs),
+			);
+			const normalizedEnd = Math.max(minEnd, Math.min(clampedEnd, trimMaxMs));
 
 				if (normalizedStart !== region.startMs || normalizedEnd !== region.endMs) {
 					onTrimSpanChange?.(region.id, { start: normalizedStart, end: normalizedEnd });
@@ -1423,6 +1428,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onTrimSpanChange,
 			onSpeedSpanChange,
 			onAudioSpanChange,
+			sourceDurationMs,
 		]);
 
 		const hasOverlap = useCallback(

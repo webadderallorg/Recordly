@@ -3781,7 +3781,6 @@ export default function VideoEditor() {
 					}));
 				setAnnotationRegions((prev) => remapRegions(prev));
 				setAudioRegions((prev) => remapRegions(prev));
-				setSpeedRegions((prev) => remapRegions(prev));
 			}
 		},
 		[selectedClipId, clipRegions],
@@ -4322,10 +4321,9 @@ export default function VideoEditor() {
 
 			const isInRegion =
 				currentTimelineTimeMs >= region.startMs && currentTimelineTimeMs < region.endMs;
-			const regionSourceStartMs = mapTimelineTimeToSourceTime(region.startMs);
 
 			if (isPlaying && isInRegion) {
-				const audioOffset = (currentTimeMs - regionSourceStartMs) / 1000;
+				const audioOffset = (currentTimelineTimeMs - region.startMs) / 1000;
 				// Only seek if significantly out of sync (> 200ms)
 				if (Math.abs(audio.currentTime - audioOffset) > 0.2) {
 					audio.currentTime = audioOffset;
@@ -4353,7 +4351,6 @@ export default function VideoEditor() {
 		audioRegions,
 		effectiveSpeedRegions,
 		mapSourceTimeToTimelineTime,
-		mapTimelineTimeToSourceTime,
 	]);
 
 	useEffect(() => {
@@ -4951,6 +4948,7 @@ export default function VideoEditor() {
 				const typedError = error as
 					| (Error & { cause?: unknown; code?: string; details?: unknown })
 					| unknown;
+				const basenameOf = (value: string) => value.split(/[\\/]/).pop() || value;
 				console.error("[export][exception][details]", {
 					message: getErrorMessage(error),
 					stack:
@@ -4972,10 +4970,15 @@ export default function VideoEditor() {
 							endMs: region.endMs,
 							trackIndex: region.trackIndex ?? 0,
 							volume: region.volume,
-							audioPath: region.audioPath,
+							audioFileName: basenameOf(region.audioPath),
 						})),
-						sourceAudioFallbackPaths,
-						sourceAudioFallbackStartDelayMsByPath,
+						sourceAudioFallbackPathCount: sourceAudioFallbackPaths.length,
+						sourceAudioFallbackFileNames: sourceAudioFallbackPaths.map(basenameOf),
+						sourceAudioFallbackStartDelayMsByFileName: Object.fromEntries(
+							Object.entries(sourceAudioFallbackStartDelayMsByPath).map(
+								([audioPath, startDelayMs]) => [basenameOf(audioPath), startDelayMs],
+							),
+						),
 						effectiveSpeedRegions,
 					},
 				});
