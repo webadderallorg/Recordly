@@ -342,7 +342,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 	);
 
 	return (
-		<Popover open={open} onOpenChange={onOpenChange}>
+		<Popover open={open} onOpenChange={onOpenChange} modal={false}>
 			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
 			<PopoverContent
 				className="launch-theme w-80 p-0 source-selector-popover"

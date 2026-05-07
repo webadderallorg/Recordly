@@ -36,6 +36,7 @@ export default function App() {
 			document.documentElement.classList.add("hud-overlay-window");
 			document.body.classList.add("hud-overlay-window");
 			document.getElementById("root")?.classList.add("hud-overlay-window");
+			window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
 		} else if (type === "update-toast") {
 			document.documentElement.style.overflow = "visible";
 			document.body.style.overflow = "visible";

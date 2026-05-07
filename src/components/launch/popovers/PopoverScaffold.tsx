@@ -74,12 +74,12 @@ export function HudPopover({
 	align?: "start" | "center" | "end";
 }) {
 	return (
-		<Popover open={open} onOpenChange={onOpenChange}>
+		<Popover open={open} onOpenChange={onOpenChange} modal={false}>
 			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
 			<PopoverContent
 				className={`launch-theme ${styles.menuCard} ${styles.electronNoDrag}`}
 				unstyled
-				side="bottom"
+				side="top"
 				align={align}
 				sideOffset={8}
 				avoidCollisions

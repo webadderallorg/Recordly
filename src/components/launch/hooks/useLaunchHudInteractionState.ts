@@ -17,9 +17,18 @@ export function useLaunchHudInteractionState({
 }) {
 	const anyPopoverOpenRef = useRef(false);
 	const projectBrowserOpenRef = useRef(false);
+	const isMouseOverHudRef = useRef(false);
 
 	useEffect(() => {
 		anyPopoverOpenRef.current = openId !== null;
+		if (openId === null) {
+			// Proactively check if we should ignore mouse when popover closes
+			setTimeout(() => {
+				if (!isMouseOverHudRef.current && !anyPopoverOpenRef.current) {
+					window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
+				}
+			}, 150);
+		}
 	}, [openId]);
 
 	useEffect(() => {
@@ -34,8 +43,17 @@ export function useLaunchHudInteractionState({
 
 	const beginInteractiveHudAction = useCallback(() => {
 		setProjectBrowserOpen(false);
+		isMouseOverHudRef.current = true;
 		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
 	}, [setProjectBrowserOpen]);
+
+	const handleHudMouseEnter = useCallback(() => {
+		isMouseOverHudRef.current = true;
+		if (timeoutRef.current) clearTimeout(timeoutRef.current);
+		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+	}, []);
+
+	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 	const handleHudMouseLeave = useCallback((event: MouseEvent<HTMLDivElement>) => {
 		const nextTarget = event.relatedTarget;
@@ -43,20 +61,27 @@ export function useLaunchHudInteractionState({
 			return;
 		}
 
-		requestAnimationFrame(() => {
+		isMouseOverHudRef.current = false;
+
+		if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+		timeoutRef.current = setTimeout(() => {
 			if (
 				!isHudDraggingRef.current &&
 				!isWebcamPreviewDraggingRef.current &&
 				!webcamPreviewDragStartRef.current &&
-				!anyPopoverOpenRef.current &&
-				!projectBrowserOpenRef.current
+				!projectBrowserOpenRef.current &&
+				!isMouseOverHudRef.current
 			) {
+				// If a popover is open, we can still ignore mouse if the mouse is truly gone,
+				// but we give a bit more breathing room (the 300ms timeout).
 				window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
 			}
-		});
+		}, 300);
 	}, [isHudDraggingRef, isWebcamPreviewDraggingRef, webcamPreviewDragStartRef]);
 
 	return {
+		handleHudMouseEnter,
 		handleHudMouseLeave,
 		beginInteractiveHudAction,
 	};

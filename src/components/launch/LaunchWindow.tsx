@@ -33,6 +33,7 @@ import { MicPopover } from "./popovers/MicPopover";
 import { MorePopover } from "./popovers/MorePopover";
 import { SourcePopover } from "./popovers/SourcePopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
+import { HudInteractionContext } from "./contexts/HudInteractionContext";
 import { MarqueeText } from "./SourceSelector";
 import styles from "./LaunchWindow.module.css";
 
@@ -173,7 +174,7 @@ function LaunchWindowContent() {
 		recordingWebcamPreviewContainerRef,
 	});
 
-	const { handleHudMouseLeave, beginInteractiveHudAction } = useLaunchHudInteractionState({
+	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } = useLaunchHudInteractionState({
 		openId,
 		projectBrowserOpen,
 		setProjectBrowserOpen,
@@ -428,17 +429,20 @@ function LaunchWindowContent() {
 	const hudMode = finalizing ? "finalizing" : recording ? "recording" : "idle";
 
 	return (
-		<div
-			className="w-full flex justify-center bg-transparent overflow-visible items-end pb-5"
-			style={{ height: "100vh" }}
-		>
+		<HudInteractionContext.Provider value={{ onMouseEnter: handleHudMouseEnter, onMouseLeave: handleHudMouseLeave }}>
+			<div
+				className="w-full flex justify-center bg-transparent overflow-visible items-end pb-5 pointer-events-none"
+				style={{ height: "100vh" }}
+			>
 			<div
 				ref={hudContentRef}
-				className="flex items-center overflow-visible flex-col-reverse"
-				onMouseEnter={() => window.electronAPI?.hudOverlaySetIgnoreMouse?.(false)}
-				onMouseLeave={handleHudMouseLeave}
+				className="flex items-center overflow-visible flex-col-reverse pointer-events-none"
 			>
-				<div className="flex flex-col items-center pointer-events-auto">
+				<div
+					className="flex flex-col items-center pointer-events-auto"
+					onMouseEnter={handleHudMouseEnter}
+					onMouseLeave={handleHudMouseLeave}
+				>
 					<div
 						ref={hudBarTransformRef}
 						style={{
@@ -510,7 +514,7 @@ function LaunchWindowContent() {
 					{showRecordingWebcamPreview && (
 						<div
 							ref={recordingWebcamPreviewContainerRef}
-							className={`${styles.recordingWebcamPreview} ${styles.electronNoDrag}`}
+							className={`${styles.recordingWebcamPreview} ${styles.electronNoDrag} pointer-events-auto`}
 							title={t("recording.webcam")}
 							style={{
 								transform: `translate(${webcamPreviewOffset.x}px, ${webcamPreviewOffset.y}px)`,
@@ -519,6 +523,8 @@ function LaunchWindowContent() {
 							onPointerMove={handleWebcamPreviewPointerMove}
 							onPointerUp={handleWebcamPreviewPointerUp}
 							onPointerCancel={handleWebcamPreviewPointerUp}
+							onMouseEnter={handleHudMouseEnter}
+							onMouseLeave={handleHudMouseLeave}
 						>
 							<video
 								ref={setRecordingWebcamPreviewNode}
@@ -532,7 +538,7 @@ function LaunchWindowContent() {
 				</div>
 
 				{projectBrowserOpen ? (
-					<div className={styles.electronNoDrag}>
+					<div className={`${styles.electronNoDrag} pointer-events-auto`}>
 						<ProjectBrowserDialog
 							open={projectBrowserOpen}
 							onOpenChange={setProjectBrowserOpen}
@@ -546,5 +552,6 @@ function LaunchWindowContent() {
 				) : null}
 			</div>
 		</div>
+		</HudInteractionContext.Provider>
 	);
 }
