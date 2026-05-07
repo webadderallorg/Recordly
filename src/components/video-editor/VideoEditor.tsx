@@ -5230,9 +5230,21 @@ export default function VideoEditor() {
 
 		return encoderName ? `${pathLabel} (${encoderName})` : pathLabel;
 	}, [exportProgress]);
-	const exportNativeSkipLabel = exportProgress?.nativeStaticLayoutSkipReason
-		? `Native skipped: ${exportProgress.nativeStaticLayoutSkipReason}`
-		: null;
+	const exportNativeSkipReasons =
+		exportProgress?.nativeStaticLayoutSkipReasons &&
+		exportProgress.nativeStaticLayoutSkipReasons.length > 0
+			? exportProgress.nativeStaticLayoutSkipReasons
+			: exportProgress?.nativeStaticLayoutSkipReason
+				? [exportProgress.nativeStaticLayoutSkipReason]
+				: [];
+	const exportNativeSkipLabel =
+		exportNativeSkipReasons.length > 0
+			? `Native skipped: ${exportNativeSkipReasons[0]}${
+					exportNativeSkipReasons.length > 1
+						? ` (+${exportNativeSkipReasons.length - 1} more)`
+						: ""
+				}`
+			: null;
 	const exportPercentLabel = exportProgress
 		? isExportPreparing
 			? t("editor.exportStatus.preparing", "Preparing export...")

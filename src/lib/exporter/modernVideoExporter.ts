@@ -283,6 +283,7 @@ export class ModernVideoExporter {
 	private maxNativeWriteInFlight = 1;
 	private lastNativeExportError: string | null = null;
 	private nativeStaticLayoutSkipReason: string | null = null;
+	private nativeStaticLayoutSkipReasons: string[] = [];
 	private nativeStaticLayoutBackgroundSkipReason: string | null = null;
 	private nativeH264Encoder: VideoEncoder | null = null;
 	private nativeEncoderError: Error | null = null;
@@ -321,6 +322,7 @@ export class ModernVideoExporter {
 			this.encoderError = null;
 			this.nativeEncoderError = null;
 			this.nativeStaticLayoutSkipReason = null;
+			this.nativeStaticLayoutSkipReasons = [];
 			this.nativeStaticLayoutBackgroundSkipReason = null;
 			this.totalExportStartTimeMs = this.getNowMs();
 			const backendPreference = this.config.backendPreference ?? "auto";
@@ -1215,34 +1217,35 @@ export class ModernVideoExporter {
 		}
 	}
 
-	private getNativeStaticLayoutSkipReason(
+	private getNativeStaticLayoutSkipReasons(
 		audioPlan: NativeAudioPlan,
 		videoInfo: DecodedVideoInfo,
 		effectiveDurationSec: number,
-	): string | null {
+	): string[] {
+		const reasons: string[] = [];
 		if (
 			typeof window === "undefined" ||
 			!window.electronAPI?.nativeStaticLayoutExport ||
 			!window.electronAPI?.nativeStaticLayoutExportCancel
 		) {
-			return "native-static-api-unavailable";
+			reasons.push("native-static-api-unavailable");
 		}
 
 		if (this.config.width % 2 !== 0 || this.config.height % 2 !== 0) {
-			return "odd-output-dimensions";
+			reasons.push("odd-output-dimensions");
 		}
 
 		if (!this.canUseNativeStaticLayoutAudioPlan(audioPlan)) {
-			return `unsupported-audio-mode:${audioPlan.audioMode}`;
+			reasons.push(`unsupported-audio-mode:${audioPlan.audioMode}`);
 		}
 
 		const speedRegions = this.config.speedRegions ?? [];
 		const configuredWallpaper = this.config.wallpaper?.trim() ?? "";
 		if (isVideoWallpaperSource(configuredWallpaper)) {
-			return "unsupported-background-video";
+			reasons.push("unsupported-background-video");
 		}
 		if (speedRegions.length > 0) {
-			return "native-speed-timeline-validation-pending";
+			reasons.push("native-speed-timeline-validation-pending");
 		}
 
 		const hasZoomRegions = (this.config.zoomRegions ?? []).length > 0;
@@ -1251,35 +1254,49 @@ export class ModernVideoExporter {
 			effectiveDurationSec,
 		);
 		if (needsTimelineMap && this.config.experimentalNativeExport !== true) {
-			return "native-timeline-requires-windows-gpu";
+			reasons.push("native-timeline-requires-windows-gpu");
 		}
 		if (
+			speedRegions.length === 0 &&
 			needsTimelineMap &&
 			this.buildNativeStaticLayoutVideoTimelineSegments(videoInfo).length === 0
 		) {
-			return speedRegions.length > 0
-				? "unsupported-native-speed-timeline"
-				: "unsupported-native-trim-timeline";
+			reasons.push("unsupported-native-trim-timeline");
 		}
 		if (hasZoomRegions && this.config.experimentalNativeExport !== true) {
-			return "native-zoom-requires-windows-gpu";
+			reasons.push("native-zoom-requires-windows-gpu");
 		}
 		if ((this.config.annotationRegions ?? []).length > 0) {
-			return "unsupported-annotation-overlay";
+			reasons.push("unsupported-annotation-overlay");
 		}
 		if ((this.config.autoCaptions ?? []).length > 0) {
-			return "unsupported-caption-overlay";
+			reasons.push("unsupported-caption-overlay");
 		}
 
 		if (this.config.webcam?.enabled && !this.getNativeWebcamSourcePath()) {
-			return "unsupported-webcam-source";
+			reasons.push("unsupported-webcam-source");
 		}
 
 		if (this.config.frame) {
-			return "unsupported-frame-overlay";
+			reasons.push("unsupported-frame-overlay");
 		}
 
-		return this.isDefaultCropRegion() ? null : "non-default-crop";
+		if (!this.isDefaultCropRegion()) {
+			reasons.push("non-default-crop");
+		}
+
+		return reasons;
+	}
+
+	private getNativeStaticLayoutSkipReason(
+		audioPlan: NativeAudioPlan,
+		videoInfo: DecodedVideoInfo,
+		effectiveDurationSec: number,
+	): string | null {
+		return (
+			this.getNativeStaticLayoutSkipReasons(audioPlan, videoInfo, effectiveDurationSec)[0] ??
+			null
+		);
 	}
 
 	private async resolveNativeStaticLayoutBackground(): Promise<NativeStaticLayoutBackground | null> {
@@ -1950,10 +1967,15 @@ export class ModernVideoExporter {
 			videoInfo,
 			effectiveDuration,
 		);
+		const skipReasons = skipReason
+			? this.getNativeStaticLayoutSkipReasons(audioPlan, videoInfo, effectiveDuration)
+			: [];
 		if (skipReason) {
 			this.nativeStaticLayoutSkipReason = skipReason;
+			this.nativeStaticLayoutSkipReasons = skipReasons;
 			console.info("[VideoExporter] Native static layout skipped", {
 				reason: skipReason,
+				reasons: skipReasons,
 				audioMode: audioPlan.audioMode,
 				zoomRegions: this.config.zoomRegions?.length ?? 0,
 				speedRegions: this.config.speedRegions?.length ?? 0,
@@ -1975,12 +1997,14 @@ export class ModernVideoExporter {
 			this.nativeStaticLayoutSkipReason = !sourcePath
 				? "missing-source-path"
 				: "missing-audio-options";
+			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
 			return null;
 		}
 		const background = await this.resolveNativeStaticLayoutBackground();
 		if (!background) {
 			this.nativeStaticLayoutSkipReason =
 				this.nativeStaticLayoutBackgroundSkipReason ?? "unsupported-background";
+			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
 			return null;
 		}
 
@@ -2005,6 +2029,7 @@ export class ModernVideoExporter {
 			effectiveDuration <= 0
 		) {
 			this.nativeStaticLayoutSkipReason = "invalid-layout-or-duration";
+			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
 			await this.cleanupNativeStaticLayoutBackground(background);
 			return null;
 		}
@@ -2044,6 +2069,7 @@ export class ModernVideoExporter {
 				(this.config.speedRegions ?? []).length > 0
 					? "invalid-native-speed-timeline"
 					: "invalid-native-trim-timeline";
+			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
 			await this.cleanupNativeStaticLayoutBackground(background);
 			return null;
 		}
@@ -2058,6 +2084,7 @@ export class ModernVideoExporter {
 				: null;
 		if (cursorTelemetry && cursorTelemetry.length > 0 && !cursorAtlas) {
 			this.nativeStaticLayoutSkipReason = "cursor-atlas-unavailable";
+			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
 			await this.cleanupNativeStaticLayoutBackground(background);
 			return null;
 		}
@@ -2078,6 +2105,7 @@ export class ModernVideoExporter {
 		this.lastProgressSampleFrame = 0;
 		this.nativeStaticLayoutSessionId = sessionId;
 		this.nativeStaticLayoutSkipReason = null;
+		this.nativeStaticLayoutSkipReasons = [];
 		this.nativeStaticLayoutAverageFps = null;
 		this.encodeBackend = "ffmpeg";
 		const runtimePlatform =
@@ -2272,6 +2300,7 @@ export class ModernVideoExporter {
 
 			console.warn("[VideoExporter] Native static layout export failed; falling back", error);
 			this.nativeStaticLayoutSkipReason = "native-static-runtime-failed";
+			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
 			restoreEncoderState();
 			return null;
 		} finally {
@@ -2843,6 +2872,10 @@ export class ModernVideoExporter {
 				encodeBackend: this.encodeBackend ?? undefined,
 				encoderName: this.encoderName ?? undefined,
 				nativeStaticLayoutSkipReason: this.nativeStaticLayoutSkipReason ?? undefined,
+				nativeStaticLayoutSkipReasons:
+					this.nativeStaticLayoutSkipReasons.length > 0
+						? this.nativeStaticLayoutSkipReasons
+						: undefined,
 				phase,
 				renderProgress: safeRenderProgress,
 				audioProgress,
@@ -2877,6 +2910,10 @@ export class ModernVideoExporter {
 			encoderName: this.encoderName ?? undefined,
 			backpressureProfile: this.backpressureProfile?.name,
 			nativeStaticLayoutSkipReason: this.nativeStaticLayoutSkipReason ?? undefined,
+			nativeStaticLayoutSkipReasons:
+				this.nativeStaticLayoutSkipReasons.length > 0
+					? this.nativeStaticLayoutSkipReasons
+					: undefined,
 			effectiveDurationSec: this.effectiveDurationSec || undefined,
 			finalizationStageMs: hasFinalizationStageMetrics ? this.finalizationStageMs : undefined,
 			averageFrameCallbackMs:

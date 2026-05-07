@@ -53,6 +53,11 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 			videoInfo: DecodedVideoInfo,
 			effectiveDurationSec: number,
 		) => string | null;
+		getNativeStaticLayoutSkipReasons: (
+			audioPlan: unknown,
+			videoInfo: DecodedVideoInfo,
+			effectiveDurationSec: number,
+		) => string[];
 		resolveNativeStaticLayoutBackground: () => Promise<unknown>;
 		createNativeStaticLayoutGradient: (
 			ctx: CanvasRenderingContext2D,
@@ -272,6 +277,39 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				59,
 			),
 		).toBe("unsupported-background-video");
+	});
+
+	it("collects every native static-layout blocker for beta diagnostics", () => {
+		const exporter = createExporter({
+			width: 1921,
+			wallpaper: "file:///C:/Recordly/background.webm",
+			speedRegions: [{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 }],
+			annotationRegions: [{ id: "annotation-1", startMs: 0, endMs: 1_000 }],
+			autoCaptions: [{ id: "caption-1", text: "hello", startMs: 0, endMs: 1_000 }],
+			webcam: { enabled: true },
+			frame: "macbook",
+			cropRegion: { top: 0.1, bottom: 0, left: 0, right: 0 },
+		});
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReasons(
+				{
+					audioMode: "edited-track",
+					strategy: "offline-render-fallback",
+				},
+				videoInfo,
+				59,
+			),
+		).toEqual([
+			"odd-output-dimensions",
+			"unsupported-background-video",
+			"native-speed-timeline-validation-pending",
+			"unsupported-annotation-overlay",
+			"unsupported-caption-overlay",
+			"unsupported-webcam-source",
+			"unsupported-frame-overlay",
+			"non-default-crop",
+		]);
 	});
 
 	it("materializes uploaded data-url image backgrounds for native static-layout", async () => {
