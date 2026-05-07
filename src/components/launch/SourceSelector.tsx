@@ -1,6 +1,6 @@
 import * as React from "react";
-import { Monitor, AppWindow, CaretUp as ChevronUp } from "@phosphor-icons/react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { MonitorIcon, AppWindowIcon, CaretUpIcon } from "@phosphor-icons/react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -112,9 +112,9 @@ export const SourceSelectorContent = ({
 					) : (
 						<div className="source-selector-thumb-fallback w-12 h-8 rounded-[8px] flex items-center justify-center">
 							{source.sourceType === "window" ? (
-								<AppWindow className="w-5 h-5 source-selector-muted" />
+								<AppWindowIcon className="w-5 h-5 source-selector-muted" />
 							) : (
-								<Monitor className="w-5 h-5 source-selector-muted" />
+								<MonitorIcon className="w-5 h-5 source-selector-muted" />
 							)}
 						</div>
 					)}
@@ -189,16 +189,107 @@ export const SourceSelectorContent = ({
  * Uses Radix UI Popover for positioning and accessibility
  */
 export const SourceSelector = React.memo(function SourceSelector({
-	screenSources = [],
-	windowSources = [],
-	selectedSource = "Screen",
-	loading = false,
-	onSourceSelect = () => {},
-	onFetchSources = async () => {},
-	open = false,
-	onOpenChange = () => {},
+	screenSources: propsScreenSources,
+	windowSources: propsWindowSources,
+	selectedSource: propsSelectedSource,
+	loading: propsLoading,
+	onSourceSelect: propsOnSourceSelect,
+	onFetchSources: propsOnFetchSources,
+	open: propsOpen,
+	onOpenChange: propsOnOpenChange,
 	children,
 }: SourceSelectorProps) {
+	// Internal state for standalone/uncontrolled use
+	const [internalOpen, setInternalOpen] = useState(false);
+	const [internalSources, setInternalSources] = useState<DesktopSource[]>([]);
+	const [internalLoading, setInternalLoading] = useState(false);
+	const [internalSelectedSource, setInternalSelectedSource] = useState("Screen");
+
+	// Determine if we should use internal or external state/logic
+	const isAutonomous = propsOpen === undefined;
+	const open = propsOpen ?? internalOpen;
+	const onOpenChange = propsOnOpenChange ?? setInternalOpen;
+	const loading = propsLoading ?? internalLoading;
+	const selectedSource = propsSelectedSource ?? internalSelectedSource;
+
+	// Mapping logic for Electron sources
+	const mapSource = useCallback((s: any): DesktopSource => {
+		const isWindow = s.id.startsWith("window:");
+		const type = s.sourceType ?? (isWindow ? "window" : "screen");
+		let displayName = s.name;
+		let appName = s.appName;
+		if (isWindow && !appName && s.name.includes(" — ")) {
+			const parts = s.name.split(" — ");
+			appName = parts[0]?.trim();
+			displayName = parts.slice(1).join(" — ").trim() || s.name;
+		} else if (isWindow && s.windowTitle) {
+			displayName = s.windowTitle;
+		}
+		return {
+			id: s.id,
+			name: displayName,
+			thumbnail: s.thumbnail,
+			display_id: s.display_id,
+			appIcon: s.appIcon,
+			sourceType: type,
+			appName,
+			windowTitle: s.windowTitle ?? displayName,
+		};
+	}, []);
+
+	// Default fetching logic
+	const defaultFetchSources = useCallback(async () => {
+		if (!window.electronAPI) return;
+		setInternalLoading(true);
+		try {
+			const rawSources = await window.electronAPI.getSources({
+				types: ["screen", "window"],
+				thumbnailSize: { width: 160, height: 90 },
+				fetchWindowIcons: true,
+			});
+			setInternalSources(rawSources.map(mapSource));
+		} catch (error) {
+			console.error("Failed to fetch sources:", error);
+		} finally {
+			setInternalLoading(false);
+		}
+	}, [mapSource]);
+
+	const onFetchSources = propsOnFetchSources ?? defaultFetchSources;
+
+	// Default selection logic
+	const onSourceSelect = useCallback(
+		async (source: DesktopSource) => {
+			if (propsOnSourceSelect) {
+				propsOnSourceSelect(source);
+				return;
+			}
+			if (!window.electronAPI) return;
+			try {
+				const result = await window.electronAPI.selectSource(source);
+				if (result) {
+					setInternalSelectedSource(source.name);
+				}
+			} catch (error) {
+				console.error("Failed to select source:", error);
+			}
+		},
+		[propsOnSourceSelect],
+	);
+
+	// Split sources for internal use
+	const internalScreenSources = useMemo(
+		() => internalSources.filter((s) => s.sourceType === "screen" || s.id.startsWith("screen:")),
+		[internalSources],
+	);
+	const internalWindowSources = useMemo(
+		() => internalSources.filter((s) => s.sourceType === "window" || s.id.startsWith("window:")),
+		[internalSources],
+	);
+
+	const screenSources = propsScreenSources ?? internalScreenSources;
+	const windowSources = propsWindowSources ?? internalWindowSources;
+
 	const hasPrefetchedRef = useRef(false);
 
 	const prefetchSources = React.useCallback(() => {
@@ -216,6 +307,13 @@ export const SourceSelector = React.memo(function SourceSelector({
 		}
 	}, [open, onFetchSources]);
 
+	// In autonomous mode, we might want to start open
+	useEffect(() => {
+		if (isAutonomous && !internalOpen) {
+			setInternalOpen(true);
+		}
+	}, [isAutonomous, internalOpen]);
+
 	return (
 		<Popover open={open} onOpenChange={onOpenChange}>
 			<PopoverTrigger asChild>
@@ -231,11 +329,11 @@ export const SourceSelector = React.memo(function SourceSelector({
 							)}
 							title={selectedSource}
 						>
-							<Monitor size={16} className="shrink-0" />
+							<MonitorIcon size={16} className="shrink-0" />
 							<div className="flex-1 min-w-0">
 								<MarqueeText text={selectedSource} />
 							</div>
-							<ChevronUp
+							<CaretUpIcon
 								size={10}
 								className={cn(
 									"text-[#6b6b78] ml-0.5 shrink-0 transition-transform duration-200",
@@ -257,7 +355,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 				collisionPadding={10}
 				usePortal={false}
 			>
-				<SourceSelectorContent 
+				<SourceSelectorContent
 					screenSources={screenSources}
 					windowSources={windowSources}
 					selectedSource={selectedSource}
