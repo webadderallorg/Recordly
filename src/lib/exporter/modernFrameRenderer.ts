@@ -402,7 +402,6 @@ export class FrameRenderer {
 	private lastContentTimeMs: number | null = null;
 	private layoutCache: LayoutCache | null = null;
 	private currentVideoTime = 0;
-	private lastMotionVector = { x: 0, y: 0 };
 	private cursorOverlay: PixiCursorOverlay | null = null;
 	private lastSyncedWebcamTime: number | null = null;
 	private lastWebcamCacheRefreshTime: number | null = null;
@@ -2521,7 +2520,7 @@ export class FrameRenderer {
 			);
 		}
 
-		const motionIntensity = this.updateAnimationState(timeMs);
+		this.updateAnimationState(timeMs);
 
 		applyZoomTransform({
 			cameraContainer: this.cameraContainer,
@@ -2533,8 +2532,6 @@ export class FrameRenderer {
 			zoomProgress: this.animationState.progress,
 			focusX: this.animationState.focusX,
 			focusY: this.animationState.focusY,
-			motionIntensity,
-			motionVector: this.lastMotionVector,
 			isPlaying: true,
 			motionBlurAmount: useVelocityMotionBlur ? (this.config.zoomMotionBlur ?? 0) : 0,
 			motionBlurTuning: this.config.zoomMotionBlurTuning,
@@ -2770,9 +2767,7 @@ export class FrameRenderer {
 			);
 		}
 
-		let maxMotionIntensity = 0;
-		const motionIntensity = this.updateAnimationState(timeMs);
-		maxMotionIntensity = Math.max(maxMotionIntensity, motionIntensity);
+		this.updateAnimationState(timeMs);
 
 		applyZoomTransform({
 			cameraContainer: this.cameraContainer,
@@ -2784,8 +2779,6 @@ export class FrameRenderer {
 			zoomProgress: this.animationState.progress,
 			focusX: this.animationState.focusX,
 			focusY: this.animationState.focusY,
-			motionIntensity: maxMotionIntensity,
-			motionVector: this.lastMotionVector,
 			isPlaying: true,
 			motionBlurAmount: this.config.zoomMotionBlur ?? 0,
 			motionBlurTuning: this.config.zoomMotionBlurTuning,
@@ -3287,11 +3280,6 @@ export class FrameRenderer {
 				zoomSpringConfig,
 			);
 		}
-
-		this.lastMotionVector = {
-			x: state.x - previousX,
-			y: state.y - previousY,
-		};
 
 		return Math.max(
 			Math.abs(state.appliedScale - previousScale),

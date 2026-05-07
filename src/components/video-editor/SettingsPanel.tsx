@@ -1480,6 +1480,15 @@ export function SettingsPanel({
 
 	const resetZoomSection = () => {
 		onZoomMotionBlurTuningChange?.(initialEditorPreferences.zoomMotionBlurTuning);
+		onCameraSpringStiffnessMultiplierChange?.(
+			initialEditorPreferences.cameraSpringStiffnessMultiplier,
+		);
+		onCameraSpringDampingMultiplierChange?.(
+			initialEditorPreferences.cameraSpringDampingMultiplier,
+		);
+		onCameraSpringMassMultiplierChange?.(
+			initialEditorPreferences.cameraSpringMassMultiplier,
+		);
 		onZoomInDurationMsChange?.(initialEditorPreferences.zoomInDurationMs);
 		onZoomOutDurationMsChange?.(initialEditorPreferences.zoomOutDurationMs);
 		onZoomClassicModeChange?.(false);

@@ -1296,6 +1296,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				return;
 			}
 
+			motionBlurStateRef.current = createMotionBlurState();
 			videoEffectsContainer.filters =
 				zoomMotionBlur > 0 ? [motionBlurFilter, zoomBlurFilter] : null;
 		}, [zoomMotionBlur]);
@@ -1385,7 +1386,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					zoomScale: 1,
 					focusX: DEFAULT_FOCUS.cx,
 					focusY: DEFAULT_FOCUS.cy,
-					motionIntensity: 0,
 					isPlaying: false,
 					motionBlurAmount: 0,
 					motionBlurState: motionBlurStateRef.current,
@@ -1780,8 +1780,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const applyTransform = (
 				transform: { scale: number; x: number; y: number },
 				focus: ZoomFocus,
-				motionIntensity: number,
-				motionVector: { x: number; y: number },
 			) => {
 				const cameraContainer = cameraContainerRef.current;
 				if (!cameraContainer) return;
@@ -1798,8 +1796,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					zoomProgress: state.progress,
 					focusX: focus.cx,
 					focusY: focus.cy,
-					motionIntensity,
-					motionVector,
 					isPlaying: isPlayingRef.current,
 					motionBlurAmount: zoomMotionBlurRef.current,
 					motionBlurTuning: zoomMotionBlurTuningRef.current,
@@ -1903,9 +1899,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				}
 
 				const state = animationStateRef.current;
-				const prevScale = state.appliedScale;
-				const prevX = state.x;
-				const prevY = state.y;
 
 				state.scale = targetScaleFactor;
 				state.focusX = targetFocus.cx;
@@ -1976,22 +1969,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					resetSpringState(springYRef.current, appliedY);
 				}
 
-				const motionIntensity = Math.max(
-					Math.abs(appliedScale - prevScale),
-					Math.abs(appliedX - prevX) / Math.max(1, stageSizeRef.current.width),
-					Math.abs(appliedY - prevY) / Math.max(1, stageSizeRef.current.height),
-				);
-
-				const motionVector = {
-					x: appliedX - prevX,
-					y: appliedY - prevY,
-				};
-
 				applyTransform(
 					{ scale: appliedScale, x: appliedX, y: appliedY },
 					targetFocus,
-					motionIntensity,
-					motionVector,
 				);
 
 				applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);

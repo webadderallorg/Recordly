@@ -233,7 +233,6 @@ export class FrameRenderer {
 	private motionBlurState: MotionBlurState;
 	private layoutCache: LayoutCache | null = null;
 	private currentVideoTime = 0;
-	private lastMotionVector = { x: 0, y: 0 };
 	private springScale: SpringState;
 	private springX: SpringState;
 	private springY: SpringState;
@@ -1449,13 +1448,10 @@ export class FrameRenderer {
 
 		const TICKS_PER_FRAME = 1;
 
-		let maxMotionIntensity = 0;
 		for (let i = 0; i < TICKS_PER_FRAME; i++) {
-			const motionIntensity = this.updateAnimationState(timeMs);
-			maxMotionIntensity = Math.max(maxMotionIntensity, motionIntensity);
+			this.updateAnimationState(timeMs);
 		}
 
-		// Apply transform once with maximum motion intensity from all ticks
 		applyZoomTransform({
 			cameraContainer: this.cameraContainer,
 			zoomBlurFilter: this.zoomBlurFilter,
@@ -1466,8 +1462,6 @@ export class FrameRenderer {
 			zoomProgress: this.animationState.progress,
 			focusX: this.animationState.focusX,
 			focusY: this.animationState.focusY,
-			motionIntensity: maxMotionIntensity,
-			motionVector: this.lastMotionVector,
 			isPlaying: true,
 			motionBlurAmount: this.config.zoomMotionBlur ?? 0,
 			motionBlurTuning: this.config.zoomMotionBlurTuning,
@@ -1876,11 +1870,6 @@ export class FrameRenderer {
 			);
 		}
 
-		this.lastMotionVector = {
-			x: state.x - prevX,
-			y: state.y - prevY,
-		};
-
 		return Math.max(
 			Math.abs(state.appliedScale - prevScale),
 			Math.abs(state.x - prevX) / Math.max(1, this.layoutCache.stageSize.width),
@@ -1931,7 +1920,7 @@ export class FrameRenderer {
 			},
 		);
 
-		const motionIntensity = this.updateAnimationState(timeMs);
+		this.updateAnimationState(timeMs);
 
 		applyZoomTransform({
 			cameraContainer: this.cameraContainer,
@@ -1943,8 +1932,6 @@ export class FrameRenderer {
 			zoomProgress: this.animationState.progress,
 			focusX: this.animationState.focusX,
 			focusY: this.animationState.focusY,
-			motionIntensity,
-			motionVector: this.lastMotionVector,
 			isPlaying: true,
 			motionBlurAmount: useVelocityMotionBlur ? (this.config.zoomMotionBlur ?? 0) : 0,
 			motionBlurTuning: this.config.zoomMotionBlurTuning,

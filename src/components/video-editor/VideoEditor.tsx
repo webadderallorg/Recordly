@@ -1413,6 +1413,7 @@ export default function VideoEditor() {
 		zoomInEasing,
 		zoomInOverlapMs,
 		zoomMotionBlur,
+		zoomMotionBlurTuning,
 		zoomTemporalMotionBlur,
 		zoomMotionBlurSampleCount,
 		zoomMotionBlurShutterFraction,
@@ -2139,11 +2140,10 @@ export default function VideoEditor() {
 			setZoomOutDurationMs(normalizedEditor.zoomOutDurationMs);
 			setConnectedZoomGapMs(normalizedEditor.connectedZoomGapMs);
 			setConnectedZoomDurationMs(normalizedEditor.connectedZoomDurationMs);
-			setZoomInEasing(normalizedEditor.zoomInEasing);
-			setZoomOutEasing(normalizedEditor.zoomOutEasing);
-			setConnectedZoomEasing(normalizedEditor.connectedZoomEasing);
-			setSessionShowCursorOverride(null);
-			setShowCursor(normalizedEditor.showCursor);
+				setZoomInEasing(normalizedEditor.zoomInEasing);
+				setZoomOutEasing(normalizedEditor.zoomOutEasing);
+				setConnectedZoomEasing(normalizedEditor.connectedZoomEasing);
+				setShowCursor(normalizedEditor.showCursor);
 			setLoopCursor(normalizedEditor.loopCursor);
 			setCursorStyle(normalizedEditor.cursorStyle);
 			setCursorSize(normalizedEditor.cursorSize);

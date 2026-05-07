@@ -35,8 +35,6 @@ interface TransformParams {
 	zoomProgress?: number;
 	focusX: number;
 	focusY: number;
-	motionIntensity: number;
-	motionVector?: { x: number; y: number };
 	isPlaying: boolean;
 	motionBlurAmount?: number;
 	motionBlurTuning?: ZoomMotionBlurTuning;
@@ -471,8 +469,6 @@ export function applyZoomTransform({
 	zoomProgress = 1,
 	focusX,
 	focusY,
-	motionIntensity: _motionIntensity,
-	motionVector: _motionVector,
 	isPlaying,
 	motionBlurAmount = 0,
 	motionBlurTuning,
