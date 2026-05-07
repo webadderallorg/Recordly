@@ -1237,6 +1237,33 @@ export class ModernVideoExporter {
 		);
 	}
 
+	private getNativeStaticLayoutSourceCrop(videoInfo: DecodedVideoInfo) {
+		const crop = this.config.cropRegion;
+		const sourceWidth = Math.max(2, Math.round(videoInfo.width));
+		const sourceHeight = Math.max(2, Math.round(videoInfo.height));
+		const cropX = Math.min(1, Math.max(0, crop.x));
+		const cropY = Math.min(1, Math.max(0, crop.y));
+		const cropRight = Math.min(1, Math.max(cropX, crop.x + crop.width));
+		const cropBottom = Math.min(1, Math.max(cropY, crop.y + crop.height));
+
+		const left = Math.min(sourceWidth - 2, Math.max(0, Math.floor(cropX * sourceWidth))) & ~1;
+		const top = Math.min(sourceHeight - 2, Math.max(0, Math.floor(cropY * sourceHeight))) & ~1;
+		const right = Math.min(sourceWidth, Math.max(left + 2, Math.ceil(cropRight * sourceWidth)));
+		const bottom = Math.min(
+			sourceHeight,
+			Math.max(top + 2, Math.ceil(cropBottom * sourceHeight)),
+		);
+		const width = Math.max(2, right - left) & ~1;
+		const height = Math.max(2, bottom - top) & ~1;
+
+		return {
+			x: left,
+			y: top,
+			width: Math.min(width, sourceWidth - left),
+			height: Math.min(height, sourceHeight - top),
+		};
+	}
+
 	private canUseNativeStaticTailTrim(
 		videoInfo: DecodedVideoInfo,
 		effectiveDurationSec: number,
@@ -1343,8 +1370,16 @@ export class ModernVideoExporter {
 			reasons.push("unsupported-frame-overlay");
 		}
 
-		if (!this.isDefaultCropRegion()) {
-			reasons.push("non-default-crop");
+		const crop = this.config.cropRegion;
+		if (
+			!Number.isFinite(crop.x) ||
+			!Number.isFinite(crop.y) ||
+			!Number.isFinite(crop.width) ||
+			!Number.isFinite(crop.height) ||
+			crop.width <= 0 ||
+			crop.height <= 0
+		) {
+			reasons.push("invalid-crop-region");
 		}
 
 		return reasons;
@@ -1836,6 +1871,7 @@ export class ModernVideoExporter {
 			durationSec: this.effectiveDurationSec || 0,
 			clickBounce: this.config.cursorClickBounce,
 			clickBounceDurationMs: this.config.cursorClickBounceDuration,
+			sourceCrop: this.config.cropRegion,
 		});
 	}
 
@@ -2079,8 +2115,8 @@ export class ModernVideoExporter {
 			videoHeight: videoInfo.height,
 		});
 		const contentSize = roundNativeStaticLayoutContentSize({
-			width: layout.fullVideoDisplayWidth,
-			height: layout.fullVideoDisplayHeight,
+			width: layout.croppedDisplayWidth,
+			height: layout.croppedDisplayHeight,
 		});
 		const contentWidth = contentSize.width;
 		const contentHeight = contentSize.height;
@@ -2096,12 +2132,11 @@ export class ModernVideoExporter {
 			return null;
 		}
 
-		const offsetX = Math.round(
-			layout.centerOffsetX + layout.croppedDisplayWidth / 2 - contentWidth / 2,
-		);
-		const offsetY = Math.round(
-			layout.centerOffsetY + layout.croppedDisplayHeight / 2 - contentHeight / 2,
-		);
+		const offsetX = Math.round(layout.centerOffsetX);
+		const offsetY = Math.round(layout.centerOffsetY);
+		const sourceCrop = this.isDefaultCropRegion()
+			? null
+			: this.getNativeStaticLayoutSourceCrop(videoInfo);
 		const previewWidth = this.config.previewWidth || 1920;
 		const previewHeight = this.config.previewHeight || 1080;
 		const canvasScaleFactor = Math.min(
@@ -2274,6 +2309,10 @@ export class ModernVideoExporter {
 				contentHeight,
 				offsetX,
 				offsetY,
+				sourceCropX: sourceCrop?.x,
+				sourceCropY: sourceCrop?.y,
+				sourceCropWidth: sourceCrop?.width,
+				sourceCropHeight: sourceCrop?.height,
 				backgroundColor: background.backgroundColor,
 				backgroundImagePath: background.backgroundImagePath ?? null,
 				backgroundBlurPx: Math.max(0, (this.config.backgroundBlur ?? 0) * 3),

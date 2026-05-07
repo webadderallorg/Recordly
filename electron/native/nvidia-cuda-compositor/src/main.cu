@@ -54,6 +54,10 @@ struct Options {
     int contentY = 0;
     int contentWidth = 0;
     int contentHeight = 0;
+    int sourceCropX = 0;
+    int sourceCropY = 0;
+    int sourceCropWidth = 0;
+    int sourceCropHeight = 0;
     int radius = 0;
     int backgroundY = 16;
     int backgroundU = 128;
@@ -201,6 +205,14 @@ Options parseOptions(int argc, char** argv) {
             options.contentWidth = parsePositiveInt(requireValue("--content-width"), "--content-width");
         } else if (arg == "--content-height") {
             options.contentHeight = parsePositiveInt(requireValue("--content-height"), "--content-height");
+        } else if (arg == "--source-crop-x") {
+            options.sourceCropX = parseNonNegativeInt(requireValue("--source-crop-x"), "--source-crop-x");
+        } else if (arg == "--source-crop-y") {
+            options.sourceCropY = parseNonNegativeInt(requireValue("--source-crop-y"), "--source-crop-y");
+        } else if (arg == "--source-crop-width") {
+            options.sourceCropWidth = parsePositiveInt(requireValue("--source-crop-width"), "--source-crop-width");
+        } else if (arg == "--source-crop-height") {
+            options.sourceCropHeight = parsePositiveInt(requireValue("--source-crop-height"), "--source-crop-height");
         } else if (arg == "--radius") {
             options.radius = parseNonNegativeInt(requireValue("--radius"), "--radius");
         } else if (arg == "--background-y") {
@@ -623,6 +635,7 @@ struct CursorSample {
     double cy = 0.0;
     int typeIndex = 0;
     double bounceScale = 1.0;
+    bool visible = true;
 };
 
 struct CursorPosition {
@@ -641,10 +654,22 @@ struct CursorTrack {
             return {};
         }
         if (timeMs <= samples.front().timeMs) {
-            return {true, samples.front().cx, samples.front().cy, samples.front().typeIndex, samples.front().bounceScale};
+            return {
+                samples.front().visible,
+                samples.front().cx,
+                samples.front().cy,
+                samples.front().typeIndex,
+                samples.front().bounceScale,
+            };
         }
         if (timeMs >= samples.back().timeMs) {
-            return {true, samples.back().cx, samples.back().cy, samples.back().typeIndex, samples.back().bounceScale};
+            return {
+                samples.back().visible,
+                samples.back().cx,
+                samples.back().cy,
+                samples.back().typeIndex,
+                samples.back().bounceScale,
+            };
         }
 
         int low = 0;
@@ -662,12 +687,12 @@ struct CursorTrack {
         const CursorSample& right = samples[high];
         const double span = right.timeMs - left.timeMs;
         if (span <= 0.0) {
-            return {true, left.cx, left.cy, left.typeIndex, left.bounceScale};
+            return {left.visible, left.cx, left.cy, left.typeIndex, left.bounceScale};
         }
 
         const double t = (timeMs - left.timeMs) / span;
         return {
-            true,
+            left.visible && right.visible,
             left.cx + (right.cx - left.cx) * t,
             left.cy + (right.cy - left.cy) * t,
             t < 0.5 ? left.typeIndex : right.typeIndex,
@@ -705,6 +730,10 @@ std::unique_ptr<CursorTrack> loadCursorTrack(const Options& options) {
         }
         if (!(row >> sample.bounceScale)) {
             sample.bounceScale = 1.0;
+        }
+        int visible = 1;
+        if (row >> visible) {
+            sample.visible = visible != 0;
         }
         if (sample.cx < -1.0 || sample.cx > 2.0 || sample.cy < -1.0 || sample.cy > 2.0) {
             continue;
@@ -1046,7 +1075,11 @@ __global__ void overlayContentRectNv12Kernel(
     int contentX,
     int contentY,
     int contentWidth,
-    int contentHeight) {
+    int contentHeight,
+    int sourceCropX,
+    int sourceCropY,
+    int sourceCropWidth,
+    int sourceCropHeight) {
     const int localX = blockIdx.x * blockDim.x + threadIdx.x;
     const int localY = blockIdx.y * blockDim.y + threadIdx.y;
     if (localX >= contentWidth || localY >= contentHeight) {
@@ -1059,15 +1092,19 @@ __global__ void overlayContentRectNv12Kernel(
         return;
     }
 
-    const int srcX = min(srcWidth - 1, (localX * srcWidth) / contentWidth);
-    const int srcY = min(srcHeight - 1, (localY * srcHeight) / contentHeight);
+    const int cropWidth = max(1, min(sourceCropWidth > 0 ? sourceCropWidth : srcWidth, srcWidth - sourceCropX));
+    const int cropHeight = max(1, min(sourceCropHeight > 0 ? sourceCropHeight : srcHeight, srcHeight - sourceCropY));
+    const int cropX = max(0, min(sourceCropX, srcWidth - 1));
+    const int cropY = max(0, min(sourceCropY, srcHeight - 1));
+    const int srcX = min(srcWidth - 1, cropX + (localX * cropWidth) / contentWidth);
+    const int srcY = min(srcHeight - 1, cropY + (localY * cropHeight) / contentHeight);
     dst[y * dstPitch + x] = src[srcY * srcPitch + srcX];
 
     if ((x % 2) == 0 && (y % 2) == 0) {
         const int localUvX = max(0, min(contentWidth - 1, localX + 1));
         const int localUvY = max(0, min(contentHeight - 1, localY + 1));
-        const int srcUvX = min(srcWidth - 2, ((localUvX * srcWidth) / contentWidth) & ~1);
-        const int srcUvY = min((srcHeight / 2) - 1, ((localUvY * srcHeight) / contentHeight) / 2);
+        const int srcUvX = min(srcWidth - 2, (cropX + ((localUvX * cropWidth) / contentWidth)) & ~1);
+        const int srcUvY = min((srcHeight / 2) - 1, (cropY + ((localUvY * cropHeight) / contentHeight)) / 2);
         const unsigned char* srcUv = src + srcPitch * srcSurfaceHeight + srcUvY * srcPitch + srcUvX;
         unsigned char* dstUv = dst + dstChromaOffset + (y / 2) * dstPitch + x;
         dstUv[0] = srcUv[0];
@@ -1099,6 +1136,8 @@ __global__ void overlayContentTransformNv12Kernel(
     float invZoomScale,
     float srcScaleX,
     float srcScaleY,
+    int sourceCropX,
+    int sourceCropY,
     float zoomX,
     float zoomY) {
     const int localX = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1125,8 +1164,10 @@ __global__ void overlayContentTransformNv12Kernel(
         fminf(static_cast<float>(contentWidth - 1), fmaxf(0.0f, layoutXf - contentX));
     const float localContentY =
         fminf(static_cast<float>(contentHeight - 1), fmaxf(0.0f, layoutYf - contentY));
-    const int sx = min(srcWidth - 1, __float2int_rd(localContentX * srcScaleX));
-    const int sy = min(srcHeight - 1, __float2int_rd(localContentY * srcScaleY));
+    const int cropX = max(0, min(sourceCropX, srcWidth - 1));
+    const int cropY = max(0, min(sourceCropY, srcHeight - 1));
+    const int sx = min(srcWidth - 1, cropX + __float2int_rd(localContentX * srcScaleX));
+    const int sy = min(srcHeight - 1, cropY + __float2int_rd(localContentY * srcScaleY));
     dst[y * dstPitch + x] = src[sy * srcPitch + sx];
 
     if ((x % 2) == 0 && (y % 2) == 0 && x + 1 < dstWidth && y + 1 < dstHeight) {
@@ -1147,9 +1188,9 @@ __global__ void overlayContentTransformNv12Kernel(
             const float uvLocalContentY =
                 fminf(static_cast<float>(contentHeight - 1), fmaxf(0.0f, uvLayoutYf - contentY));
             const int suvX =
-                min(srcWidth - 2, __float2int_rd(uvLocalContentX * srcScaleX) & ~1);
+                min(srcWidth - 2, (cropX + __float2int_rd(uvLocalContentX * srcScaleX)) & ~1);
             const int suvY =
-                min((srcHeight / 2) - 1, __float2int_rd(uvLocalContentY * srcScaleY) / 2);
+                min((srcHeight / 2) - 1, (cropY + __float2int_rd(uvLocalContentY * srcScaleY)) / 2);
             const unsigned char* srcUv = src + srcPitch * srcSurfaceHeight + suvY * srcPitch + suvX;
             unsigned char* dstUv = dst + dstChromaOffset + (y / 2) * dstPitch + x;
             dstUv[0] = srcUv[0];
@@ -1438,6 +1479,10 @@ __global__ void compositeStaticNv12Kernel(
     int contentY,
     int contentWidth,
     int contentHeight,
+    int sourceCropX,
+    int sourceCropY,
+    int sourceCropWidth,
+    int sourceCropHeight,
     int radius,
     unsigned char backgroundY,
     unsigned char backgroundU,
@@ -1482,13 +1527,17 @@ __global__ void compositeStaticNv12Kernel(
     const int layoutX = static_cast<int>(floorf(layoutXf));
     const int layoutY = static_cast<int>(floorf(layoutYf));
 
+    const int cropX = max(0, min(sourceCropX, srcWidth - 1));
+    const int cropY = max(0, min(sourceCropY, srcHeight - 1));
+    const int cropWidth = max(1, min(sourceCropWidth > 0 ? sourceCropWidth : srcWidth, srcWidth - cropX));
+    const int cropHeight = max(1, min(sourceCropHeight > 0 ? sourceCropHeight : srcHeight, srcHeight - cropY));
     const bool inside = isInsideRoundedRect(layoutX, layoutY, contentX, contentY, contentWidth, contentHeight, radius);
     unsigned char outY = background ? background[y * dstWidth + x] : backgroundY;
     if (inside) {
         const float localX = fminf(static_cast<float>(contentWidth - 1), fmaxf(0.0f, layoutXf - contentX));
         const float localY = fminf(static_cast<float>(contentHeight - 1), fmaxf(0.0f, layoutYf - contentY));
-        const int sx = min(srcWidth - 1, static_cast<int>((localX * srcWidth) / contentWidth));
-        const int sy = min(srcHeight - 1, static_cast<int>((localY * srcHeight) / contentHeight));
+        const int sx = min(srcWidth - 1, cropX + static_cast<int>((localX * cropWidth) / contentWidth));
+        const int sy = min(srcHeight - 1, cropY + static_cast<int>((localY * cropHeight) / contentHeight));
         outY = src[sy * srcPitch + sx];
     } else {
         const bool shadowInside =
@@ -1590,8 +1639,10 @@ __global__ void compositeStaticNv12Kernel(
         if (uvInside) {
             const float localX = fminf(static_cast<float>(contentWidth - 1), fmaxf(0.0f, uvLayoutXf - contentX));
             const float localY = fminf(static_cast<float>(contentHeight - 1), fmaxf(0.0f, uvLayoutYf - contentY));
-            const int suvX = min(srcWidth - 2, (static_cast<int>((localX * srcWidth) / contentWidth)) & ~1);
-            const int suvY = min((srcHeight / 2) - 1, static_cast<int>(localY * srcHeight / contentHeight) / 2);
+            const int suvX =
+                min(srcWidth - 2, (cropX + static_cast<int>((localX * cropWidth) / contentWidth)) & ~1);
+            const int suvY =
+                min((srcHeight / 2) - 1, (cropY + static_cast<int>(localY * cropHeight / contentHeight)) / 2);
             const unsigned char* srcUv = src + srcPitch * srcSurfaceHeight + suvY * srcPitch + suvX;
             dstUv[0] = srcUv[0];
             dstUv[1] = srcUv[1];
@@ -2050,6 +2101,21 @@ public:
         const int cursorY = cursorPosition.visible
             ? static_cast<int>(std::round(cursorHotspotOutputY)) - cursorHotspotY
             : 0;
+        const bool hasSourceCrop =
+            layoutOptions_.sourceCropWidth >= 2 &&
+            layoutOptions_.sourceCropHeight >= 2;
+        const int sourceCropX = hasSourceCrop
+            ? std::max(0, std::min(layoutOptions_.sourceCropX, srcWidth - 2)) & ~1
+            : 0;
+        const int sourceCropY = hasSourceCrop
+            ? std::max(0, std::min(layoutOptions_.sourceCropY, srcHeight - 2)) & ~1
+            : 0;
+        const int sourceCropWidth = hasSourceCrop
+            ? std::max(2, std::min(layoutOptions_.sourceCropWidth, srcWidth - sourceCropX)) & ~1
+            : srcWidth;
+        const int sourceCropHeight = hasSourceCrop
+            ? std::max(2, std::min(layoutOptions_.sourceCropHeight, srcHeight - sourceCropY)) & ~1
+            : srcHeight;
         const bool zoomChangesLayout =
             zoomTrack_ &&
             (std::abs(zoomSample.scale - 1.0) > 0.001 ||
@@ -2190,9 +2256,9 @@ public:
             const float safeZoomScale = std::max(0.01f, static_cast<float>(zoomSample.scale));
             const float invZoomScale = 1.0f / safeZoomScale;
             const float srcScaleX =
-                static_cast<float>(srcWidth) / static_cast<float>(std::max(1, layoutOptions_.contentWidth));
+                static_cast<float>(sourceCropWidth) / static_cast<float>(std::max(1, layoutOptions_.contentWidth));
             const float srcScaleY =
-                static_cast<float>(srcHeight) / static_cast<float>(std::max(1, layoutOptions_.contentHeight));
+                static_cast<float>(sourceCropHeight) / static_cast<float>(std::max(1, layoutOptions_.contentHeight));
             const int transformedContentX = zoomChangesLayout
                 ? static_cast<int>(std::floor(layoutOptions_.contentX * safeZoomScale + zoomSample.x))
                 : layoutOptions_.contentX;
@@ -2248,6 +2314,8 @@ public:
                         invZoomScale,
                         srcScaleX,
                         srcScaleY,
+                        sourceCropX,
+                        sourceCropY,
                         static_cast<float>(zoomSample.x),
                         static_cast<float>(zoomSample.y));
                     checkCuda(cudaGetLastError(), "overlayContentTransformNv12Kernel");
@@ -2266,7 +2334,11 @@ public:
                         layoutOptions_.contentX,
                         layoutOptions_.contentY,
                         layoutOptions_.contentWidth,
-                        layoutOptions_.contentHeight);
+                        layoutOptions_.contentHeight,
+                        sourceCropX,
+                        sourceCropY,
+                        sourceCropWidth,
+                        sourceCropHeight);
                     checkCuda(cudaGetLastError(), "overlayContentRectNv12Kernel");
 
                     const int cornerRadius = std::min(
@@ -2388,6 +2460,10 @@ public:
                 layoutOptions_.contentY,
                 layoutOptions_.contentWidth,
                 layoutOptions_.contentHeight,
+                sourceCropX,
+                sourceCropY,
+                sourceCropWidth,
+                sourceCropHeight,
                 layoutOptions_.radius,
                 clampByte(layoutOptions_.backgroundY),
                 clampByte(layoutOptions_.backgroundU),
@@ -2518,6 +2594,8 @@ private:
             layoutOptions_.radius == 0 &&
             layoutOptions_.shadowIntensityPct == 0 &&
             backgroundDevice_ == nullptr &&
+            layoutOptions_.sourceCropWidth <= 0 &&
+            layoutOptions_.sourceCropHeight <= 0 &&
             !zoomChangesLayout;
     }
 

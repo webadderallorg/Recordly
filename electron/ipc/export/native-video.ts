@@ -105,6 +105,10 @@ export interface NativeStaticLayoutExportOptions {
 	contentHeight: number;
 	offsetX: number;
 	offsetY: number;
+	sourceCropX?: number;
+	sourceCropY?: number;
+	sourceCropWidth?: number;
+	sourceCropHeight?: number;
 	backgroundColor: string;
 	backgroundImagePath?: string | null;
 	backgroundBlurPx?: number;
@@ -124,6 +128,7 @@ export interface NativeStaticLayoutExportOptions {
 		cy: number;
 		cursorTypeIndex?: number;
 		bounceScale?: number;
+		visible?: boolean;
 	}>;
 	cursorTelemetryPath?: string | null;
 	cursorSize?: number;
@@ -1655,6 +1660,15 @@ function hasNativeStaticLayoutTimeline(options: NativeStaticLayoutExportOptions)
 	return (options.timelineSegments?.length ?? 0) > 0;
 }
 
+function hasNativeStaticLayoutSourceCrop(options: NativeStaticLayoutExportOptions) {
+	return Boolean(
+		Number.isFinite(options.sourceCropWidth) &&
+			Number.isFinite(options.sourceCropHeight) &&
+			(options.sourceCropWidth ?? 0) >= 2 &&
+			(options.sourceCropHeight ?? 0) >= 2,
+	);
+}
+
 export function buildNativeStaticLayoutTimelineSegments(
 	segments: NativeVideoExportEditedTrackSegment[],
 ): NativeStaticLayoutTimelineSegment[] {
@@ -2149,6 +2163,25 @@ export function buildExperimentalWindowsGpuStaticLayoutArgs(
 	if (options.backgroundImagePath) {
 		args.push("--background-image", options.backgroundImagePath);
 	}
+	if (
+		Number.isFinite(options.sourceCropX) &&
+		Number.isFinite(options.sourceCropY) &&
+		Number.isFinite(options.sourceCropWidth) &&
+		Number.isFinite(options.sourceCropHeight) &&
+		(options.sourceCropWidth ?? 0) >= 2 &&
+		(options.sourceCropHeight ?? 0) >= 2
+	) {
+		args.push(
+			"--source-crop-x",
+			String(Math.round(options.sourceCropX ?? 0)),
+			"--source-crop-y",
+			String(Math.round(options.sourceCropY ?? 0)),
+			"--source-crop-width",
+			String(Math.round(options.sourceCropWidth ?? 0)),
+			"--source-crop-height",
+			String(Math.round(options.sourceCropHeight ?? 0)),
+		);
+	}
 	if (backgroundBlurPx > 0) {
 		args.push("--background-blur", formatCliNumber(backgroundBlurPx));
 	}
@@ -2226,12 +2259,14 @@ async function prepareWindowsGpuCursorTelemetry(
 				Math.min(8, Math.round(sample.cursorTypeIndex ?? 0)),
 			);
 			const bounceScale = Math.min(2, Math.max(0.1, sample.bounceScale ?? 1));
+			const visible = sample.visible !== false ? 1 : 0;
 			return [
 				formatCliNumber(timeMs),
 				formatCliNumber(cx),
 				formatCliNumber(cy),
 				String(cursorTypeIndex),
 				formatCliNumber(bounceScale),
+				String(visible),
 			].join(",");
 		});
 
@@ -2318,6 +2353,7 @@ async function prepareNvidiaCudaCursorTelemetry(
 			cy: Math.min(1, Math.max(0, sample.cy)),
 			cursorTypeIndex: Math.max(0, Math.min(8, Math.round(sample.cursorTypeIndex ?? 0))),
 			bounceScale: Math.min(2, Math.max(0.1, sample.bounceScale ?? 1)),
+			visible: sample.visible !== false,
 		}));
 	if (samples.length === 0) {
 		return null;
@@ -2586,6 +2622,25 @@ export function buildExperimentalNvidiaCudaStaticLayoutArgs(
 
 	if (options.backgroundImagePath) {
 		args.push("--background-image", options.backgroundImagePath);
+	}
+	if (
+		Number.isFinite(options.sourceCropX) &&
+		Number.isFinite(options.sourceCropY) &&
+		Number.isFinite(options.sourceCropWidth) &&
+		Number.isFinite(options.sourceCropHeight) &&
+		(options.sourceCropWidth ?? 0) >= 2 &&
+		(options.sourceCropHeight ?? 0) >= 2
+	) {
+		args.push(
+			"--source-crop-x",
+			String(Math.round(options.sourceCropX ?? 0)),
+			"--source-crop-y",
+			String(Math.round(options.sourceCropY ?? 0)),
+			"--source-crop-width",
+			String(Math.round(options.sourceCropWidth ?? 0)),
+			"--source-crop-height",
+			String(Math.round(options.sourceCropHeight ?? 0)),
+		);
 	}
 	if (backgroundBlurPx > 0) {
 		args.push("--background-blur", formatCliNumber(backgroundBlurPx));
@@ -3158,6 +3213,10 @@ export async function exportNativeStaticLayoutVideo(
 			contentHeight: options.contentHeight,
 			offsetX: options.offsetX,
 			offsetY: options.offsetY,
+			sourceCropX: options.sourceCropX,
+			sourceCropY: options.sourceCropY,
+			sourceCropWidth: options.sourceCropWidth,
+			sourceCropHeight: options.sourceCropHeight,
 			backgroundColor: options.backgroundColor,
 			backgroundImagePath: options.backgroundImagePath,
 			backgroundBlurPx: options.backgroundBlurPx,
@@ -3462,6 +3521,9 @@ export async function exportNativeStaticLayoutVideo(
 
 		if (!didRenderVideo && hasNativeStaticLayoutTimeline(options)) {
 			throw new Error("Native timeline-map export requires a GPU compositor backend");
+		}
+		if (!didRenderVideo && hasNativeStaticLayoutSourceCrop(options)) {
+			throw new Error("Native crop export requires a GPU compositor backend");
 		}
 
 		if (!didRenderVideo && usePrecompositedLayout) {

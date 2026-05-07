@@ -109,4 +109,40 @@ describe("buildNativeStaticLayoutCursorTelemetry", () => {
 		expect(resampled?.map((sample) => sample.cursorTypeIndex)).toContain(1);
 		expect(resampled?.some((sample) => (sample.bounceScale ?? 1) < 1)).toBe(true);
 	});
+
+	it("projects cursor samples into the cropped viewport and marks out-of-crop samples hidden", () => {
+		const resampled = buildNativeStaticLayoutCursorTelemetry(
+			[
+				{ timeMs: 0, cx: 0.25, cy: 0.5 },
+				{ timeMs: 1000, cx: 0.75, cy: 0.5 },
+			],
+			{
+				frameRate: 1,
+				durationSec: 1,
+				sourceCrop: { x: 0.25, y: 0.25, width: 0.5, height: 0.5 },
+			},
+		);
+
+		expect(resampled?.[0]).toMatchObject({ timeMs: 0, cx: 0, cy: 0.5, visible: true });
+		expect(resampled?.[1]).toMatchObject({ timeMs: 1000, cx: 1, cy: 0.5, visible: true });
+
+		const hidden = buildNativeStaticLayoutCursorTelemetry(
+			[
+				{ timeMs: 0, cx: 0.1, cy: 0.5 },
+				{ timeMs: 1000, cx: 0.1, cy: 0.5 },
+			],
+			{
+				frameRate: 1,
+				durationSec: 1,
+				sourceCrop: { x: 0.25, y: 0.25, width: 0.5, height: 0.5 },
+			},
+		);
+
+		expect(hidden).toEqual([
+			expect.objectContaining({
+				timeMs: 1000,
+				visible: false,
+			}),
+		]);
+	});
 });

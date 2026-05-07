@@ -336,6 +336,10 @@ interface Window {
 			contentHeight: number;
 			offsetX: number;
 			offsetY: number;
+			sourceCropX?: number;
+			sourceCropY?: number;
+			sourceCropWidth?: number;
+			sourceCropHeight?: number;
 			backgroundColor: string;
 			backgroundImagePath?: string | null;
 			backgroundBlurPx?: number;
@@ -355,6 +359,7 @@ interface Window {
 				cy: number;
 				cursorTypeIndex?: number;
 				bounceScale?: number;
+				visible?: boolean;
 			}>;
 			cursorSize?: number;
 			cursorAtlasPngDataUrl?: string | null;

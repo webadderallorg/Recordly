@@ -58,6 +58,12 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 			videoInfo: DecodedVideoInfo,
 			effectiveDurationSec: number,
 		) => string[];
+		getNativeStaticLayoutSourceCrop: (videoInfo: DecodedVideoInfo) => {
+			x: number;
+			y: number;
+			width: number;
+			height: number;
+		};
 		resolveNativeStaticLayoutBackground: () => Promise<unknown>;
 		createNativeStaticLayoutGradient: (
 			ctx: CanvasRenderingContext2D,
@@ -243,6 +249,29 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		).toBeNull();
 	});
 
+	it("allows non-default crop when native source crop coordinates are valid", () => {
+		const exporter = createExporter({
+			cropRegion: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
+		});
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{
+					audioMode: "copy-source",
+					audioSourcePath: "recording.mp4",
+				},
+				videoInfo,
+				60,
+			),
+		).toBeNull();
+		expect(exporter.getNativeStaticLayoutSourceCrop(videoInfo)).toEqual({
+			x: 192,
+			y: 108,
+			width: 1536,
+			height: 864,
+		});
+	});
+
 	it("uses the default wallpaper for native static-layout when the project has no wallpaper", async () => {
 		const exporter = createExporter({ wallpaper: "" });
 		const electronAPI = window.electronAPI as typeof window.electronAPI & {
@@ -288,7 +317,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			autoCaptions: [{ id: "caption-1", text: "hello", startMs: 0, endMs: 1_000 }],
 			webcam: { enabled: true },
 			frame: "macbook",
-			cropRegion: { top: 0.1, bottom: 0, left: 0, right: 0 },
+			cropRegion: { x: 0.1, y: 0, width: 0.9, height: 1 },
 		});
 
 		expect(
@@ -307,8 +336,17 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			"unsupported-caption-overlay",
 			"unsupported-webcam-source",
 			"unsupported-frame-overlay",
-			"non-default-crop",
 		]);
+	});
+
+	it("reports invalid crop geometry instead of passing native export bad coordinates", () => {
+		const exporter = createExporter({
+			cropRegion: { x: 0, y: 0, width: 0, height: 1 },
+		});
+
+		expect(exporter.getNativeStaticLayoutSkipReason({ audioMode: "none" }, videoInfo, 60)).toBe(
+			"invalid-crop-region",
+		);
 	});
 
 	it("materializes uploaded data-url image backgrounds for native static-layout", async () => {

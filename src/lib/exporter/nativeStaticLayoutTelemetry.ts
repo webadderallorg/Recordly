@@ -1,4 +1,5 @@
-import type { CursorTelemetryPoint } from "@/components/video-editor/types";
+import type { CropRegion, CursorTelemetryPoint } from "@/components/video-editor/types";
+import { projectCursorPositionToViewport } from "@/components/video-editor/videoPlayback/cursorViewport";
 
 export type NativeStaticLayoutCursorTelemetrySample = {
 	timeMs: number;
@@ -8,6 +9,7 @@ export type NativeStaticLayoutCursorTelemetrySample = {
 	interactionType?: string;
 	cursorTypeIndex?: number;
 	bounceScale?: number;
+	visible?: boolean;
 };
 
 export type NativeStaticLayoutCursorTelemetryOptions = {
@@ -15,6 +17,7 @@ export type NativeStaticLayoutCursorTelemetryOptions = {
 	durationSec: number;
 	clickBounce?: number;
 	clickBounceDurationMs?: number;
+	sourceCrop?: CropRegion;
 };
 
 const CURSOR_POSITION_EPSILON = 0.00001;
@@ -186,12 +189,16 @@ function buildCursorRenderSample(
 ): NativeStaticLayoutCursorTelemetrySample {
 	const position = interpolateCursorSample(samples, timeMs);
 	const cursorType = findLatestStableCursorType(samples, timeMs);
+	const projectedPosition = projectCursorPositionToViewport(position, options.sourceCrop);
 
 	return {
 		...position,
+		cx: projectedPosition.cx,
+		cy: projectedPosition.cy,
 		cursorType,
 		cursorTypeIndex: getCursorTypeIndex(cursorType),
 		bounceScale: getCursorBounceScale(samples, timeMs, options),
+		...(options.sourceCrop ? { visible: projectedPosition.visible } : {}),
 	};
 }
 
@@ -205,7 +212,9 @@ function pushCursorSample(
 		Math.abs(previous.cx - sample.cx) <= CURSOR_POSITION_EPSILON &&
 		Math.abs(previous.cy - sample.cy) <= CURSOR_POSITION_EPSILON &&
 		previous.cursorTypeIndex === sample.cursorTypeIndex &&
-		Math.abs((previous.bounceScale ?? 1) - (sample.bounceScale ?? 1)) <= CURSOR_BOUNCE_EPSILON
+		Math.abs((previous.bounceScale ?? 1) - (sample.bounceScale ?? 1)) <=
+			CURSOR_BOUNCE_EPSILON &&
+		(previous.visible ?? true) === (sample.visible ?? true)
 	) {
 		previous.timeMs = sample.timeMs;
 		return;

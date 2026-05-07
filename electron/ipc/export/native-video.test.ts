@@ -646,6 +646,32 @@ describe("buildExperimentalNvidiaCudaStaticLayoutArgs", () => {
 			]),
 		);
 	});
+
+	it("passes source crop coordinates to the CUDA wrapper", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				sourceCropX: 192,
+				sourceCropY: 108,
+				sourceCropWidth: 1536,
+				sourceCropHeight: 864,
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).toEqual(
+			expect.arrayContaining([
+				"--source-crop-x",
+				"192",
+				"--source-crop-y",
+				"108",
+				"--source-crop-width",
+				"1536",
+				"--source-crop-height",
+				"864",
+			]),
+		);
+	});
 });
 
 describe("buildExperimentalWindowsGpuStaticLayoutArgs", () => {
@@ -659,6 +685,31 @@ describe("buildExperimentalWindowsGpuStaticLayoutArgs", () => {
 		);
 
 		expect(args).toEqual(expect.arrayContaining(["--background-blur", "36"]));
+	});
+
+	it("passes source crop coordinates to the D3D11 compositor", () => {
+		const args = buildExperimentalWindowsGpuStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				sourceCropX: 192,
+				sourceCropY: 108,
+				sourceCropWidth: 1536,
+				sourceCropHeight: 864,
+			}),
+			"output.mp4",
+		);
+
+		expect(args).toEqual(
+			expect.arrayContaining([
+				"--source-crop-x",
+				"192",
+				"--source-crop-y",
+				"108",
+				"--source-crop-width",
+				"1536",
+				"--source-crop-height",
+				"864",
+			]),
+		);
 	});
 });
 

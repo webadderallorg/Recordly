@@ -57,6 +57,10 @@ struct Options {
     LONG contentTop = -1;
     LONG contentWidth = 0;
     LONG contentHeight = 0;
+    LONG sourceCropLeft = 0;
+    LONG sourceCropTop = 0;
+    LONG sourceCropWidth = 0;
+    LONG sourceCropHeight = 0;
     float backgroundR = 0.035f;
     float backgroundG = 0.035f;
     float backgroundB = 0.045f;
@@ -140,6 +144,7 @@ struct CursorSample {
     float cy = 0.0f;
     int cursorTypeIndex = 0;
     float bounceScale = 1.0f;
+    bool visible = true;
 };
 
 struct CursorAtlasEntry {
@@ -388,6 +393,10 @@ Options parseOptions(int argc, wchar_t** argv) {
     options.contentTop = parseLongArg(args, L"--content-top", options.contentTop);
     options.contentWidth = parseLongArg(args, L"--content-width", options.contentWidth);
     options.contentHeight = parseLongArg(args, L"--content-height", options.contentHeight);
+    options.sourceCropLeft = parseLongArg(args, L"--source-crop-x", options.sourceCropLeft);
+    options.sourceCropTop = parseLongArg(args, L"--source-crop-y", options.sourceCropTop);
+    options.sourceCropWidth = parseLongArg(args, L"--source-crop-width", options.sourceCropWidth);
+    options.sourceCropHeight = parseLongArg(args, L"--source-crop-height", options.sourceCropHeight);
     const auto backgroundColor = getArgValue(args, L"--background-color");
     if (!backgroundColor.empty()) {
         parseHexColor(
@@ -875,12 +884,7 @@ private:
             return false;
         }
 
-        RECT rect = {
-            0,
-            0,
-            static_cast<LONG>(sourceWidth_),
-            static_cast<LONG>(sourceHeight_),
-        };
+        RECT rect = getSourceCropRect();
         RECT outputRect = {
             0,
             0,
@@ -2024,14 +2028,16 @@ float4 main(PSIn input) : SV_Target {
             float cy = 0.0f;
             int cursorTypeIndex = 0;
             float bounceScale = 1.0f;
+            int visible = 1;
             const int parsed = sscanf_s(
                 line,
-                "%lf,%f,%f,%d,%f",
+                "%lf,%f,%f,%d,%f,%d",
                 &timeMs,
                 &cx,
                 &cy,
                 &cursorTypeIndex,
-                &bounceScale);
+                &bounceScale,
+                &visible);
             if (parsed < 3) {
                 continue;
             }
@@ -2046,6 +2052,7 @@ float4 main(PSIn input) : SV_Target {
                 std::isfinite(bounceScale)
                     ? std::min(2.0f, std::max(0.1f, bounceScale))
                     : 1.0f,
+                parsed >= 6 ? visible != 0 : true,
             });
         }
         std::fclose(file);
@@ -2083,6 +2090,7 @@ float4 main(PSIn input) : SV_Target {
             a.cy + (b.cy - a.cy) * t,
             a.cursorTypeIndex,
             a.bounceScale + (b.bounceScale - a.bounceScale) * t,
+            a.visible && b.visible,
         };
     }
 
@@ -2186,6 +2194,41 @@ float4 main(PSIn input) : SV_Target {
                 static_cast<LONG>(options_.height) - top));
         const LONG safeSize = std::max<LONG>(2, size);
         return {left, top, left + safeSize, top + safeSize};
+    }
+
+    RECT getSourceCropRect() const {
+        if (
+            options_.sourceCropWidth >= 2 &&
+            options_.sourceCropHeight >= 2 &&
+            sourceWidth_ >= 2 &&
+            sourceHeight_ >= 2
+        ) {
+            const LONG left = std::min<LONG>(
+                std::max<LONG>(0, options_.sourceCropLeft),
+                static_cast<LONG>(sourceWidth_) - 2);
+            const LONG top = std::min<LONG>(
+                std::max<LONG>(0, options_.sourceCropTop),
+                static_cast<LONG>(sourceHeight_) - 2);
+            const LONG width = (std::min<LONG>(
+                options_.sourceCropWidth & ~1L,
+                static_cast<LONG>(sourceWidth_) - left)) & ~1L;
+            const LONG height = (std::min<LONG>(
+                options_.sourceCropHeight & ~1L,
+                static_cast<LONG>(sourceHeight_) - top)) & ~1L;
+            return {
+                left,
+                top,
+                left + std::max<LONG>(2, width),
+                top + std::max<LONG>(2, height),
+            };
+        }
+
+        return {
+            0,
+            0,
+            static_cast<LONG>(sourceWidth_),
+            static_cast<LONG>(sourceHeight_),
+        };
     }
 
     RECT getContentRect() const {
@@ -2730,15 +2773,16 @@ float4 main(PSIn input) : SV_Target {
         const CursorSample cursor = cursorEnabled
             ? getCursorSampleAt(static_cast<double>(outputTimestamp) / 10'000.0)
             : CursorSample{};
-        const CursorAtlasEntry* cursorAtlasEntry = cursorEnabled
+        const bool cursorVisible = cursorEnabled && cursor.visible;
+        const CursorAtlasEntry* cursorAtlasEntry = cursorVisible
             ? getCursorAtlasEntry(cursor.cursorTypeIndex)
             : nullptr;
         const bool cursorAtlasEnabled = cursorAtlasEntry != nullptr;
-        const float cursorX = cursorEnabled
+        const float cursorX = cursorVisible
             ? static_cast<float>(contentRect.left) +
                 cursor.cx * static_cast<float>(contentRect.right - contentRect.left)
             : 0.0f;
-        const float cursorY = cursorEnabled
+        const float cursorY = cursorVisible
             ? static_cast<float>(contentRect.top) +
                 cursor.cy * static_cast<float>(contentRect.bottom - contentRect.top)
             : 0.0f;
@@ -2773,7 +2817,7 @@ float4 main(PSIn input) : SV_Target {
             webcamEnabled ? options_.webcamShadow : 0.0f,
             webcamEnabled ? 0.42f : 0.0f,
             options_.webcamMirror ? 1.0f : 0.0f,
-            cursorEnabled ? 1.0f : 0.0f,
+            cursorVisible ? 1.0f : 0.0f,
             cursorX,
             cursorY,
             options_.cursorSize,

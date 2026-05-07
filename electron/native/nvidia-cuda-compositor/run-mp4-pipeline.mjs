@@ -505,6 +505,7 @@ function writeCursorSamples(cursorPayload, outputPath) {
 						? Math.max(0, Math.min(8, Math.round(sample.cursorTypeIndex)))
 						: 0),
 				Number(bounceScale.toFixed(4)),
+				sample.visible === false ? 0 : 1,
 			].join("\t");
 		})
 		.filter(Boolean)
@@ -951,6 +952,10 @@ const contentX = Math.round(getNonNegativeNumberArg("--content-x", 0));
 const contentY = Math.round(getNonNegativeNumberArg("--content-y", 0));
 const contentWidth = Math.round(getNumberArg("--content-width", 0));
 const contentHeight = Math.round(getNumberArg("--content-height", 0));
+const sourceCropX = Math.round(getNonNegativeNumberArg("--source-crop-x", 0));
+const sourceCropY = Math.round(getNonNegativeNumberArg("--source-crop-y", 0));
+const sourceCropWidth = Math.round(getNumberArg("--source-crop-width", 0));
+const sourceCropHeight = Math.round(getNumberArg("--source-crop-height", 0));
 const radius = Math.round(getNonNegativeNumberArg("--radius", 0));
 const backgroundY = Math.round(getNonNegativeNumberArg("--background-y", 16));
 const backgroundU = Math.round(getNonNegativeNumberArg("--background-u", 128));
@@ -1321,6 +1326,18 @@ if (contentWidth > 0 && contentHeight > 0) {
 	);
 	if (backgroundNv12Path) {
 		encodeArgs.push("--background-nv12", backgroundNv12Path);
+	}
+	if (sourceCropWidth >= 2 && sourceCropHeight >= 2) {
+		encodeArgs.push(
+			"--source-crop-x",
+			String(sourceCropX),
+			"--source-crop-y",
+			String(sourceCropY),
+			"--source-crop-width",
+			String(sourceCropWidth),
+			"--source-crop-height",
+			String(sourceCropHeight),
+		);
 	}
 	if (!shouldBakeStaticShadow && shadowOffsetY > 0 && shadowIntensityPct > 0) {
 		encodeArgs.push(
