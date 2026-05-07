@@ -1095,24 +1095,22 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			[videoDuration],
 		);
 		const totalMs = useMemo(() => {
-			const allRegionEnds = [
+			const timelineRegionEnds = [
 				...zoomRegions.map((region) => region.endMs),
-				...trimRegions.map((region) => region.endMs),
 				...clipRegions.map((region) => region.endMs),
 				...speedRegions.map((region) => region.endMs),
 				...annotationRegions.map((region) => region.endMs),
 				...audioRegions.map((region) => region.endMs),
 			];
-			const maxRegionEndMs =
-				allRegionEnds.length > 0
-					? Math.max(0, ...allRegionEnds.map((endMs) => Math.round(endMs)))
+			const maxTimelineRegionEndMs =
+				timelineRegionEnds.length > 0
+					? Math.max(0, ...timelineRegionEnds.map((endMs) => Math.round(endMs)))
 					: 0;
 
-			return Math.max(sourceDurationMs, maxRegionEndMs);
+			return maxTimelineRegionEndMs > 0 ? maxTimelineRegionEndMs : sourceDurationMs;
 		}, [
 			sourceDurationMs,
 			zoomRegions,
-			trimRegions,
 			clipRegions,
 			speedRegions,
 			annotationRegions,

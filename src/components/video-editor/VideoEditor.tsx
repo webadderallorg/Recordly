@@ -3743,7 +3743,12 @@ export default function VideoEditor() {
 			setClipRegions((prev) =>
 				prev.map((c) => {
 					if (c.id === selectedClipId) {
-						return { ...c, speed, endMs: newEndMs };
+						return {
+							...c,
+							speed,
+							endMs: newEndMs,
+							sourceStartMs: getClipSourceStartMs(c),
+						};
 					}
 					if (deltaMs !== 0 && c.startMs >= oldClipEndMs) {
 						return {

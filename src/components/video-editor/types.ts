@@ -215,7 +215,7 @@ function clampToNearestClipBoundary(
 		const boundaries =
 			kind === "timeline"
 				? [clip.startMs, clip.endMs]
-				: [clip.startMs, getClipSourceEndMs(clip)];
+				: [getClipSourceStartMs(clip), getClipSourceEndMs(clip)];
 
 		for (const boundary of boundaries) {
 			const distance = Math.abs(timeMs - boundary);
@@ -256,7 +256,25 @@ export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[])
 		return roundedTimeMs;
 	}
 
-	return clampToNearestClipBoundary(roundedTimeMs, sortedClips, "timeline");
+	let nearestSourceTimeMs = roundedTimeMs;
+	let nearestDistance = Number.POSITIVE_INFINITY;
+
+	for (const clip of sortedClips) {
+		const boundaries: Array<{ timelineTimeMs: number; sourceTimeMs: number }> = [
+			{ timelineTimeMs: clip.startMs, sourceTimeMs: getClipSourceStartMs(clip) },
+			{ timelineTimeMs: clip.endMs, sourceTimeMs: getClipSourceEndMs(clip) },
+		];
+
+		for (const boundary of boundaries) {
+			const distance = Math.abs(roundedTimeMs - boundary.timelineTimeMs);
+			if (distance < nearestDistance) {
+				nearestDistance = distance;
+				nearestSourceTimeMs = Math.round(boundary.sourceTimeMs);
+			}
+		}
+	}
+
+	return nearestSourceTimeMs;
 }
 
 export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[]): number {

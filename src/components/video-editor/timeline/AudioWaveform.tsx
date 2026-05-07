@@ -79,7 +79,7 @@ export default function AudioWaveform({ peaks, clipRegions = [] }: AudioWaveform
 			if (hasClipRegions) {
 				while (
 					clipIndex < sortedClips.length &&
-					timelineTimeMs > sortedClips[clipIndex].endMs
+					timelineTimeMs >= sortedClips[clipIndex].endMs
 				) {
 					clipIndex += 1;
 				}
@@ -89,7 +89,7 @@ export default function AudioWaveform({ peaks, clipRegions = [] }: AudioWaveform
 				if (
 					!activeClip ||
 					timelineTimeMs < activeClip.startMs ||
-					timelineTimeMs > activeClip.endMs
+					timelineTimeMs >= activeClip.endMs
 				) {
 					continue;
 				}
@@ -98,7 +98,11 @@ export default function AudioWaveform({ peaks, clipRegions = [] }: AudioWaveform
 					Number.isFinite(activeClip.speed) && activeClip.speed > 0
 						? activeClip.speed
 						: 1;
-				sourceTimeMs = activeClip.startMs + (timelineTimeMs - activeClip.startMs) * speed;
+				const sourceStartMs =
+					Number.isFinite(activeClip.sourceStartMs) && activeClip.sourceStartMs !== undefined
+						? activeClip.sourceStartMs
+						: activeClip.startMs;
+				sourceTimeMs = sourceStartMs + (timelineTimeMs - activeClip.startMs) * speed;
 			}
 
 			const binIndex = Math.min(maxIndex, Math.max(0, Math.floor(sourceTimeMs * scale)));
