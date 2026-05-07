@@ -203,32 +203,6 @@ function getSafeClipSpeed(clip: ClipRegion) {
 	return Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
 }
 
-function clampToNearestClipBoundary(
-	timeMs: number,
-	clips: ClipRegion[],
-	kind: "timeline" | "source",
-) {
-	let nearestTimeMs = Math.round(timeMs);
-	let nearestDistance = Number.POSITIVE_INFINITY;
-
-	for (const clip of clips) {
-		const boundaries =
-			kind === "timeline"
-				? [clip.startMs, clip.endMs]
-				: [getClipSourceStartMs(clip), getClipSourceEndMs(clip)];
-
-		for (const boundary of boundaries) {
-			const distance = Math.abs(timeMs - boundary);
-			if (distance < nearestDistance) {
-				nearestDistance = distance;
-				nearestTimeMs = Math.round(boundary);
-			}
-		}
-	}
-
-	return nearestTimeMs;
-}
-
 export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[]): number {
 	if (!Number.isFinite(timeMs)) {
 		return 0;
