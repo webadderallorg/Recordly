@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 const mainBundleUrl = new URL("../dist-electron/main.cjs", import.meta.url);
+const IMPORT_META_URL_CJS_REPLACEMENT = 'require("node:url").pathToFileURL(__filename).href';
 
 function convertNamedImports(namedSpec) {
 	return namedSpec.replace(/\s+as\s+/g, ": ");
@@ -35,9 +36,7 @@ function convertImportLine(line) {
 		return `${indent}const ${spec} = require(${moduleLiteral});`;
 	}
 
-	const sideEffectImportMatch = line.match(
-		/^([ \t]*)import\s+(["'][^"']+["'])\s*;?[ \t]*$/,
-	);
+	const sideEffectImportMatch = line.match(/^([ \t]*)import\s+(["'][^"']+["'])\s*;?[ \t]*$/);
 	if (sideEffectImportMatch) {
 		const [, indent, moduleLiteral] = sideEffectImportMatch;
 		return `${indent}require(${moduleLiteral});`;
@@ -130,8 +129,16 @@ export function normalizeElectronMainCjsSource(source) {
 			}
 		}
 
-		normalizedLines.push(line);
-		state = updateLexicalState(line, state);
+		const normalizedLine = line.replace(
+			/\bimport\.meta\.url\b/g,
+			IMPORT_META_URL_CJS_REPLACEMENT,
+		);
+		if (normalizedLine !== line) {
+			changed = true;
+		}
+
+		normalizedLines.push(normalizedLine);
+		state = updateLexicalState(normalizedLine, state);
 	}
 
 	if (!changed) {
@@ -153,6 +160,13 @@ export function findElectronMainCjsEsmSyntax(source) {
 		if (state.mode === null) {
 			const converted = convertImportLine(line);
 			if (converted !== null) {
+				matches.push({
+					line: index + 1,
+					text: line.trim(),
+				});
+				continue;
+			}
+			if (/\bimport\.meta\b/.test(line)) {
 				matches.push({
 					line: index + 1,
 					text: line.trim(),
@@ -183,8 +197,7 @@ export async function normalizeElectronMainCjs(bundleUrl = mainBundleUrl) {
 	return normalized;
 }
 
-const isDirectRun =
-	process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectRun) {
 	const result = await normalizeElectronMainCjs();
