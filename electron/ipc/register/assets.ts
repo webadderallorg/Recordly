@@ -19,9 +19,10 @@ export function registerAssetHandlers() {
   ipcMain.handle('generate-wallpaper-thumbnail', async (_, filePath: string) => {
     try {
       const resolved = normalizePath(filePath)
-      const realResolved = await fs.realpath(resolved).catch(() => resolved)
-
-      if (!isAllowedLocalReadPath(resolved) && !isAllowedLocalReadPath(realResolved)) {
+      // isAllowedLocalReadPath now canonicalizes via realpath internally and
+      // requires both the lexical and real paths to satisfy the policy, so a
+      // single check covers symlinks under allowed prefixes.
+      if (!isAllowedLocalReadPath(resolved)) {
         return { success: false, error: 'Access denied' }
       }
 
@@ -106,8 +107,7 @@ export function registerAssetHandlers() {
   ipcMain.handle('read-local-file', async (_, filePath: string) => {
     try {
       const resolved = normalizePath(filePath)
-      const realResolved = await fs.realpath(resolved).catch(() => resolved)
-      if (!isAllowedLocalReadPath(resolved) && !isAllowedLocalReadPath(realResolved)) {
+      if (!isAllowedLocalReadPath(resolved)) {
         console.warn(`[read-local-file] Blocked read outside allowed directories: ${resolved}`)
         return { success: false, error: 'Access denied: path outside allowed directories' }
       }
