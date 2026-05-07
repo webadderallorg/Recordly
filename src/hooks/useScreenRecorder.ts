@@ -682,15 +682,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			void (async () => {
 				const fallbackStartDelayMs = micFallbackStartDelayMs.current;
+				const stoppedAtMs = Date.now();
+				markRecordingResumed(stoppedAtMs);
+				const expectedDurationMs = getRecordingDurationMs(stoppedAtMs);
 				const micFallbackBlobPromise = stopMicFallbackRecorder();
-				const webcamPath = await stopWebcamRecorder();
+				const webcamPathPromise = stopWebcamRecorder();
 				const isNativeWindows = nativeWindowsRecording.current;
-				markRecordingResumed(Date.now());
-				const pauseSegments = pauseSegmentsRef.current.slice();
 				nativeWindowsRecording.current = false;
 
 				const result = await window.electronAPI.stopNativeScreenRecording();
 				await window.electronAPI?.setRecordingState(false);
+				const webcamPath = await webcamPathPromise;
 
 				if (!result.success || !result.path) {
 					console.error(
@@ -724,7 +726,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 				if (isNativeWindows) {
 					const muxResult =
-						await window.electronAPI.muxNativeWindowsRecording(pauseSegments);
+						await window.electronAPI.muxNativeWindowsRecording(expectedDurationMs);
 					if (!muxResult?.success || !muxResult.path) {
 						void logNativeCaptureDiagnostics("mux-native-windows-recording");
 						if (!muxResult?.path) {

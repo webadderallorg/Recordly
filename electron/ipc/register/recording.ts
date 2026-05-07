@@ -59,6 +59,7 @@ import {
 } from "../recording/mac";
 import {
 	attachWindowsCaptureLifecycle,
+	extendNativeWindowsVideoToDuration,
 	isNativeWindowsCaptureAvailable,
 	muxNativeWindowsVideoWithAudio,
 	waitForWindowsCaptureStart,
@@ -125,7 +126,6 @@ import {
 import type {
 	CursorTelemetryPoint,
 	NativeMacRecordingOptions,
-	PauseSegment,
 	SelectedSource,
 } from "../types";
 import {
@@ -1035,7 +1035,7 @@ export function registerRecordingHandlers(
 
 	ipcMain.handle(
 		"mux-native-windows-recording",
-		async (_event, pauseSegments?: PauseSegment[]) => {
+		async (_event, expectedDurationMs?: number) => {
 			const videoPath = windowsPendingVideoPath;
 			const orphanedMicAudioPath = windowsOrphanedMicAudioPath;
 			setWindowsPendingVideoPath(null);
@@ -1046,12 +1046,28 @@ export function registerRecordingHandlers(
 			}
 
 			try {
+				try {
+					const padding = await extendNativeWindowsVideoToDuration(
+						videoPath,
+						expectedDurationMs,
+					);
+					if (padding.padded) {
+						console.log(
+							`[mux-win] Extended native Windows video to ${padding.durationSeconds.toFixed(3)}s using the final frame`,
+						);
+					}
+				} catch (paddingError) {
+					console.warn(
+						"[mux-win] Failed to extend native Windows video duration:",
+						paddingError,
+					);
+				}
+
 				if (windowsSystemAudioPath || windowsMicAudioPath) {
 					await muxNativeWindowsVideoWithAudio(
 						videoPath,
 						windowsSystemAudioPath,
 						windowsMicAudioPath,
-						pauseSegments ?? [],
 					);
 					setWindowsSystemAudioPath(null);
 					setWindowsMicAudioPath(null);

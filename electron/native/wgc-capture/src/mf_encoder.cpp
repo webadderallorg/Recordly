@@ -167,17 +167,47 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
 
     context_->Unmap(stagingTexture_.Get(), 0);
 
+    bool wroteSample = writeNv12SampleLocked(nv12Buffer_, timestampHns);
+    if (wroteSample) {
+        lastFrameBuffer_ = nv12Buffer_;
+        lastSampleTimeHns_ = timestampHns;
+    }
+    return wroteSample;
+}
+
+bool MFEncoder::extendLastFrameTo(int64_t timestampHns) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (!initialized_ || !sinkWriter_) return false;
+    if (lastFrameBuffer_.empty()) return false;
+
+    const int64_t frameDurationHns = 10000000LL / fps_;
+    if (lastSampleTimeHns_ >= 0 && timestampHns <= lastSampleTimeHns_ + frameDurationHns) {
+        return true;
+    }
+
+    if (!writeNv12SampleLocked(lastFrameBuffer_, timestampHns)) {
+        return false;
+    }
+
+    lastSampleTimeHns_ = timestampHns;
+    return true;
+}
+
+bool MFEncoder::writeNv12SampleLocked(const std::vector<uint8_t>& frameBuffer, int64_t timestampHns) {
+    if (frameBuffer.empty()) return false;
+
     // Create MF sample
-    DWORD bufferSize = static_cast<DWORD>(nv12Buffer_.size());
+    DWORD bufferSize = static_cast<DWORD>(frameBuffer.size());
     ComPtr<IMFMediaBuffer> buffer;
-    hr = MFCreateMemoryBuffer(bufferSize, &buffer);
+    HRESULT hr = MFCreateMemoryBuffer(bufferSize, &buffer);
     if (FAILED(hr)) return false;
 
     BYTE* bufferData = nullptr;
     hr = buffer->Lock(&bufferData, nullptr, nullptr);
     if (FAILED(hr)) return false;
 
-    std::memcpy(bufferData, nv12Buffer_.data(), bufferSize);
+    std::memcpy(bufferData, frameBuffer.data(), bufferSize);
     buffer->Unlock();
     buffer->SetCurrentLength(bufferSize);
 
@@ -211,7 +241,10 @@ bool MFEncoder::finalize() {
     sinkWriter_.Reset();
     stagingTexture_.Reset();
     nv12Buffer_.clear();
+    lastFrameBuffer_.clear();
     nv12Buffer_.shrink_to_fit();
+    lastFrameBuffer_.shrink_to_fit();
+    lastSampleTimeHns_ = -1;
     MFShutdown();
     return SUCCEEDED(hr);
 }

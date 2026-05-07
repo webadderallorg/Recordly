@@ -13,7 +13,6 @@
 
 static std::atomic<bool> g_stopRequested{false};
 static std::atomic<bool> g_pauseRequested{false};
-static std::atomic<bool> g_resumePending{false};
 static std::atomic<int64_t> g_lastFrameTimestampHns{0};
 static std::atomic<int64_t> g_pauseStartTimestampHns{0};
 static std::atomic<int64_t> g_accumulatedPausedHns{0};
@@ -135,6 +134,40 @@ static std::wstring utf8ToWide(const std::string& str) {
     return wstr;
 }
 
+static int64_t steadyClockHns() {
+    return std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, 10000000>>>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+static int64_t adjustedVideoTimestampHns(int64_t timestampHns) {
+    int64_t accumulatedPausedHns = g_accumulatedPausedHns.load();
+    if (g_pauseRequested.load()) {
+        const int64_t pauseStart = g_pauseStartTimestampHns.load();
+        if (pauseStart > 0 && timestampHns > pauseStart) {
+            accumulatedPausedHns += (timestampHns - pauseStart);
+        }
+    }
+
+    int64_t adjustedTimestampHns = timestampHns - accumulatedPausedHns;
+    if (adjustedTimestampHns < 0) {
+        adjustedTimestampHns = 0;
+    }
+    return adjustedTimestampHns;
+}
+
+static void openActivePauseAt(int64_t timestampHns) {
+    g_pauseStartTimestampHns.store(timestampHns);
+    g_pauseRequested.store(true);
+}
+
+static void closeActivePauseAt(int64_t timestampHns) {
+    const int64_t pauseStart = g_pauseStartTimestampHns.exchange(0);
+    if (pauseStart > 0 && timestampHns > pauseStart) {
+        g_accumulatedPausedHns.fetch_add(timestampHns - pauseStart);
+    }
+    g_pauseRequested.store(false);
+}
+
 static void stdinListenerThread() {
     std::string line;
     while (std::getline(std::cin, line)) {
@@ -144,14 +177,12 @@ static void stdinListenerThread() {
         }
 
         if (line == "pause") {
-            g_pauseRequested = true;
-            g_pauseStartTimestampHns = g_lastFrameTimestampHns.load();
+            openActivePauseAt(steadyClockHns());
             continue;
         }
 
         if (line == "resume") {
-            g_pauseRequested = false;
-            g_resumePending = true;
+            closeActivePauseAt(steadyClockHns());
             continue;
         }
 
@@ -227,18 +258,7 @@ int main(int argc, char* argv[]) {
 
         if (g_pauseRequested) return;
 
-        int64_t adjustedTimestampHns = timestampHns;
-        if (g_resumePending.exchange(false)) {
-            const int64_t pauseStart = g_pauseStartTimestampHns.load();
-            if (pauseStart > 0 && timestampHns > pauseStart) {
-                g_accumulatedPausedHns += (timestampHns - pauseStart);
-            }
-        }
-
-        adjustedTimestampHns -= g_accumulatedPausedHns.load();
-        if (adjustedTimestampHns < 0) {
-            adjustedTimestampHns = 0;
-        }
+        const int64_t adjustedTimestampHns = adjustedVideoTimestampHns(timestampHns);
 
         if (encoder.writeFrame(texture, adjustedTimestampHns)) {
             frameCount++;
