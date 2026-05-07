@@ -16,11 +16,19 @@ export function useLaunchWindowSystemState(
 	}, []);
 
 	useEffect(() => {
+		let cancelled = false;
 		const load = async () => {
-			const result = await window.electronAPI.getRecordingsDirectory();
-			if (result.success) setRecordingsDirectory(result.path);
+			try {
+				const result = await window.electronAPI.getRecordingsDirectory();
+				if (!cancelled && result.success) setRecordingsDirectory(result.path);
+			} catch (error) {
+				console.error("Failed to load recordings directory:", error);
+			}
 		};
 		void load();
+		return () => {
+			cancelled = true;
+		};
 	}, []);
 
 	useEffect(() => {

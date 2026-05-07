@@ -5,19 +5,9 @@ import { useScopedT } from "@/contexts/I18nContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { mapRawSource, type DesktopSource, type RawDesktopSource } from "./popovers/launchPopoverTypes";
 import "./launchTheme.css";
 import "./SourceSelector.css";
-
-interface DesktopSource {
-	id: string;
-	name: string;
-	thumbnail: string | null;
-	display_id: string;
-	appIcon: string | null;
-	sourceType?: "screen" | "window";
-	appName?: string;
-	windowTitle?: string;
-}
 
 interface SourceSelectorProps {
 	/** List of available screen sources */
@@ -212,31 +202,6 @@ export const SourceSelector = React.memo(function SourceSelector({
 	const loading = propsLoading ?? internalLoading;
 	const selectedSource = propsSelectedSource ?? internalSelectedSource;
 
-	// Mapping logic for Electron sources
-	const mapSource = useCallback((s: any): DesktopSource => {
-		const isWindow = s.id.startsWith("window:");
-		const type = s.sourceType ?? (isWindow ? "window" : "screen");
-		let displayName = s.name;
-		let appName = s.appName;
-		if (isWindow && !appName && s.name.includes(" — ")) {
-			const parts = s.name.split(" — ");
-			appName = parts[0]?.trim();
-			displayName = parts.slice(1).join(" — ").trim() || s.name;
-		} else if (isWindow && s.windowTitle) {
-			displayName = s.windowTitle;
-		}
-		return {
-			id: s.id,
-			name: displayName,
-			thumbnail: s.thumbnail,
-			display_id: s.display_id,
-			appIcon: s.appIcon,
-			sourceType: type,
-			appName,
-			windowTitle: s.windowTitle ?? displayName,
-		};
-	}, []);
-
 	// Default fetching logic
 	const defaultFetchSources = useCallback(async () => {
 		if (!window.electronAPI) return;
@@ -247,13 +212,13 @@ export const SourceSelector = React.memo(function SourceSelector({
 				thumbnailSize: { width: 160, height: 90 },
 				fetchWindowIcons: true,
 			});
-			setInternalSources(rawSources.map(mapSource));
+			setInternalSources(rawSources.map((s) => mapRawSource(s as RawDesktopSource)));
 		} catch (error) {
 			console.error("Failed to fetch sources:", error);
 		} finally {
 			setInternalLoading(false);
 		}
-	}, [mapSource]);
+	}, []);
 
 	const onFetchSources = propsOnFetchSources ?? defaultFetchSources;
 
@@ -291,21 +256,42 @@ export const SourceSelector = React.memo(function SourceSelector({
 	const windowSources = propsWindowSources ?? internalWindowSources;
 
 	const hasPrefetchedRef = useRef(false);
+	const fetchInFlightRef = useRef(false);
+	const lastFetchedAtRef = useRef(0);
+
+	const fetchSourcesOnce = useCallback(
+		async (allowRecentSkip: boolean) => {
+			if (fetchInFlightRef.current) {
+				return;
+			}
+			if (allowRecentSkip && Date.now() - lastFetchedAtRef.current < 750) {
+				return;
+			}
+			fetchInFlightRef.current = true;
+			try {
+				await onFetchSources();
+				lastFetchedAtRef.current = Date.now();
+			} finally {
+				fetchInFlightRef.current = false;
+			}
+		},
+		[onFetchSources],
+	);
 
 	const prefetchSources = React.useCallback(() => {
 		if (hasPrefetchedRef.current) {
 			return;
 		}
 		hasPrefetchedRef.current = true;
-		void onFetchSources();
-	}, [onFetchSources]);
+		void fetchSourcesOnce(false);
+	}, [fetchSourcesOnce]);
 
 	// Fetch sources when popover opens
 	useEffect(() => {
 		if (open) {
-			void onFetchSources();
+			void fetchSourcesOnce(true);
 		}
-	}, [open, onFetchSources]);
+	}, [open, fetchSourcesOnce]);
 
 	// In autonomous mode, we might want to start open
 	useEffect(() => {

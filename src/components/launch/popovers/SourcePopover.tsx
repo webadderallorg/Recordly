@@ -1,7 +1,7 @@
 import { useCallback, useMemo, type ReactNode, useState } from "react";
 import { SourceSelector } from "../SourceSelector";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
-import type { DesktopSource } from "./launchPopoverTypes";
+import { mapRawSource, type DesktopSource, type RawDesktopSource } from "./launchPopoverTypes";
 
 const POPOVER_ID = "sources";
 
@@ -30,31 +30,7 @@ export function SourcePopover({
 				thumbnailSize: { width: 160, height: 90 },
 				fetchWindowIcons: true,
 			});
-			setSources(
-				rawSources.map((s) => {
-					const isWindow = s.id.startsWith("window:");
-					const type = s.sourceType ?? (isWindow ? "window" : "screen");
-					let displayName = s.name;
-					let appName = s.appName;
-					if (isWindow && !appName && s.name.includes(" — ")) {
-						const parts = s.name.split(" — ");
-						appName = parts[0]?.trim();
-						displayName = parts.slice(1).join(" — ").trim() || s.name;
-					} else if (isWindow && s.windowTitle) {
-						displayName = s.windowTitle;
-					}
-					return {
-						id: s.id,
-						name: displayName,
-						thumbnail: s.thumbnail,
-						display_id: s.display_id,
-						appIcon: s.appIcon,
-						sourceType: type,
-						appName,
-						windowTitle: s.windowTitle ?? displayName,
-					};
-				}),
-			);
+			setSources(rawSources.map((s) => mapRawSource(s as RawDesktopSource)));
 		} catch (error) {
 			console.error("Failed to fetch sources:", error);
 		} finally {
