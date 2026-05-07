@@ -17,6 +17,7 @@ import {
 	useCallback,
 	useEffect,
 	useImperativeHandle,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -320,14 +321,20 @@ function PlaybackCursor({
 	const sideProperty = direction === "rtl" ? "right" : "left";
 	const [isDragging, setIsDragging] = useState(false);
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		if (!isDragging) return;
 
-		const handleMouseMove = (e: MouseEvent) => {
-			if (!timelineRef.current || !onSeek) return;
+		let frameId: number | null = null;
+		let lastMouseEvent: MouseEvent | null = null;
+
+		const updateSeek = () => {
+			if (!lastMouseEvent || !timelineRef.current || !onSeek) {
+				frameId = null;
+				return;
+			}
 
 			const rect = timelineRef.current.getBoundingClientRect();
-			const clickX = e.clientX - rect.left - sidebarWidth;
+			const clickX = lastMouseEvent.clientX - rect.left - sidebarWidth;
 
 			// Allow dragging outside to 0 or max, but clamp the value
 			const relativeMs = pixelsToValue(clickX);
@@ -347,6 +354,14 @@ function PlaybackCursor({
 			}
 
 			onSeek(absoluteMs / 1000);
+			frameId = null;
+		};
+
+		const handleMouseMove = (e: MouseEvent) => {
+			lastMouseEvent = e;
+			if (frameId === null) {
+				frameId = requestAnimationFrame(updateSeek);
+			}
 		};
 
 		const handleMouseUp = () => {
@@ -359,6 +374,9 @@ function PlaybackCursor({
 		document.body.style.cursor = "ew-resize";
 
 		return () => {
+			if (frameId !== null) {
+				cancelAnimationFrame(frameId);
+			}
 			window.removeEventListener("mousemove", handleMouseMove);
 			window.removeEventListener("mouseup", handleMouseUp);
 			document.body.style.cursor = "";
@@ -427,9 +445,11 @@ function PlaybackCursor({
 function TimelineAxis({
 	videoDurationMs,
 	currentTimeMs,
+	onMouseDown,
 }: {
 	videoDurationMs: number;
 	currentTimeMs: number;
+	onMouseDown?: React.MouseEventHandler<HTMLDivElement>;
 }) {
 	const { sidebarWidth, direction, range, valueToPixels } = useTimelineContext();
 	const sideProperty = direction === "rtl" ? "right" : "left";
@@ -494,10 +514,11 @@ function TimelineAxis({
 
 	return (
 		<div
-			className="h-8 bg-editor-bg border-b border-foreground/10 relative overflow-hidden select-none"
+			className="h-8 bg-editor-bg border-b border-foreground/10 relative overflow-hidden select-none cursor-ew-resize"
 			style={{
 				[sideProperty === "right" ? "marginRight" : "marginLeft"]: `${sidebarWidth}px`,
 			}}
+			onMouseDown={onMouseDown}
 		>
 			{/* Minor Ticks */}
 			{markers.minorTicks.map((time) => {
@@ -645,6 +666,7 @@ function Timeline({
 	const localTimelineRef = useRef<HTMLDivElement | null>(null);
 	const [isTimelineHovered, setIsTimelineHovered] = useState(false);
 	const [timelineHoverMs, setTimelineHoverMs] = useState<number | null>(null);
+	const [isSeeking, setIsSeeking] = useState(false);
 	const [isZoomRowHovered, setIsZoomRowHovered] = useState(false);
 	const [zoomRowHoverMs, setZoomRowHoverMs] = useState<number | null>(null);
 
@@ -656,12 +678,23 @@ function Timeline({
 		[setTimelineRef],
 	);
 
-	const handleTimelineClick = useCallback(
+	const handleTimelineMouseDown = useCallback(
 		(e: React.MouseEvent<HTMLDivElement>) => {
-			if (!onSeek || videoDurationMs <= 0) return;
+			e.stopPropagation();
+			if (e.button !== 0 || !onSeek || videoDurationMs <= 0 || !localTimelineRef.current) return;
 
-			// Only clear selection if clicking on empty space (not on items)
-			// This is handled by event propagation - items stop propagation
+			const rect = localTimelineRef.current.getBoundingClientRect();
+			const clickX = e.clientX - rect.left - sidebarWidth;
+
+			if (clickX < 0) return;
+
+			setIsSeeking(true);
+
+			const relativeMs = pixelsToValue(clickX);
+			const absoluteMs = Math.max(0, Math.min(range.start + relativeMs, videoDurationMs));
+			onSeek(absoluteMs / 1000);
+
+			// Clear selection when clicking on empty space
 			onSelectZoom?.(null);
 			onSelectTrim?.(null);
 			onSelectClip?.(null);
@@ -669,20 +702,13 @@ function Timeline({
 			onSelectSpeed?.(null);
 			onSelectAudio?.(null);
 			onClearBlockSelection?.();
-
-			const rect = e.currentTarget.getBoundingClientRect();
-			const clickX = e.clientX - rect.left - sidebarWidth;
-
-			if (clickX < 0) return;
-
-			const relativeMs = pixelsToValue(clickX);
-			const absoluteMs = Math.max(0, Math.min(range.start + relativeMs, videoDurationMs));
-			const timeInSeconds = absoluteMs / 1000;
-
-			onSeek(timeInSeconds);
 		},
 		[
 			onSeek,
+			videoDurationMs,
+			sidebarWidth,
+			range.start,
+			pixelsToValue,
 			onSelectZoom,
 			onSelectTrim,
 			onSelectClip,
@@ -690,12 +716,53 @@ function Timeline({
 			onSelectSpeed,
 			onSelectAudio,
 			onClearBlockSelection,
-			videoDurationMs,
-			sidebarWidth,
-			range.start,
-			pixelsToValue,
 		],
 	);
+
+	useLayoutEffect(() => {
+		if (!isSeeking) return;
+
+		let frameId: number | null = null;
+		let lastMouseEvent: MouseEvent | null = null;
+
+		const updateSeek = () => {
+			if (!lastMouseEvent || !localTimelineRef.current || !onSeek || videoDurationMs <= 0) {
+				frameId = null;
+				return;
+			}
+
+			const rect = localTimelineRef.current.getBoundingClientRect();
+			const clickX = lastMouseEvent.clientX - rect.left - sidebarWidth;
+
+			const relativeMs = pixelsToValue(clickX);
+			const absoluteMs = Math.max(0, Math.min(range.start + relativeMs, videoDurationMs));
+
+			onSeek(absoluteMs / 1000);
+			frameId = null;
+		};
+
+		const handleMouseMove = (e: MouseEvent) => {
+			lastMouseEvent = e;
+			if (frameId === null) {
+				frameId = requestAnimationFrame(updateSeek);
+			}
+		};
+
+		const handleMouseUp = () => {
+			setIsSeeking(false);
+		};
+
+		window.addEventListener("mousemove", handleMouseMove);
+		window.addEventListener("mouseup", handleMouseUp);
+
+		return () => {
+			if (frameId !== null) {
+				cancelAnimationFrame(frameId);
+			}
+			window.removeEventListener("mousemove", handleMouseMove);
+			window.removeEventListener("mouseup", handleMouseUp);
+		};
+	}, [isSeeking, onSeek, videoDurationMs, sidebarWidth, pixelsToValue, range.start]);
 
 	const zoomItems = items.filter((item) => item.rowId === ZOOM_ROW_ID);
 	const clipItems = items.filter((item) => item.rowId === CLIP_ROW_ID);
@@ -845,6 +912,29 @@ function Timeline({
 		[canPlaceZoomAtMs, onAddZoomAtMs, videoDurationMs, zoomRowHoverMs],
 	);
 
+	const handleBackgroundMouseDown = useCallback((e: React.MouseEvent) => {
+		// Do not clear selection if clicking on an item
+		if ((e.target as HTMLElement).closest("[data-timeline-item]")) {
+			return;
+		}
+
+		onSelectZoom?.(null);
+		onSelectTrim?.(null);
+		onSelectClip?.(null);
+		onSelectAnnotation?.(null);
+		onSelectSpeed?.(null);
+		onSelectAudio?.(null);
+		onClearBlockSelection?.();
+	}, [
+		onSelectZoom,
+		onSelectTrim,
+		onSelectClip,
+		onSelectAnnotation,
+		onSelectSpeed,
+		onSelectAudio,
+		onClearBlockSelection,
+	]);
+
 	return (
 		<div
 			ref={setRefs}
@@ -852,14 +942,18 @@ function Timeline({
 				...style,
 				height: `max(100%, ${timelineContentMinHeightPx}px, calc(${TIMELINE_AXIS_HEIGHT_PX}px + (100% - ${TIMELINE_AXIS_HEIGHT_PX}px) * ${timelineViewportStretchFactor}))`,
 			}}
-			className="select-none bg-editor-bg relative cursor-pointer group flex flex-col"
-			onClick={handleTimelineClick}
+			className="select-none bg-editor-bg relative group flex flex-col"
 			onMouseEnter={handleTimelineMouseEnter}
 			onMouseMove={handleTimelineMouseMove}
 			onMouseLeave={handleTimelineMouseLeave}
+			onMouseDown={handleBackgroundMouseDown}
 		>
 			<div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--foreground)/0.03)_1px,transparent_1px)] bg-[length:20px_100%] pointer-events-none" />
-			<TimelineAxis videoDurationMs={videoDurationMs} currentTimeMs={currentTimeMs} />
+			<TimelineAxis
+				videoDurationMs={videoDurationMs}
+				currentTimeMs={currentTimeMs}
+				onMouseDown={handleTimelineMouseDown}
+			/>
 			<PlaybackCursor
 				currentTimeMs={currentTimeMs}
 				videoDurationMs={videoDurationMs}
