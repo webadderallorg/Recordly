@@ -96,9 +96,13 @@ export function useLaunchWindowSystemState(
 	}, []);
 
 	const chooseRecordingsDirectory = useCallback(async () => {
-		const result = await window.electronAPI.chooseRecordingsDirectory();
-		if (result.canceled) return;
-		if (result.success && result.path) setRecordingsDirectory(result.path);
+		try {
+			const result = await window.electronAPI.chooseRecordingsDirectory();
+			if (result.canceled) return;
+			if (result.success && result.path) setRecordingsDirectory(result.path);
+		} catch (error) {
+			console.error("Failed to choose recordings directory:", error);
+		}
 	}, []);
 
 	const toggleHudCaptureProtection = useCallback(async () => {
