@@ -64,6 +64,7 @@ export const RecordingControls = ({
 						size="icon"
 						iconSize="lg"
 						className={microphoneEnabled ? styles.ibActive : ""}
+						aria-label={t("recording.micToggleDisabledTip")}
 						disabled
 						onClick={onToggleMicrophone}
 					>
@@ -83,6 +84,7 @@ export const RecordingControls = ({
 					iconSize="lg"
 					onClick={onPauseResume}
 					title={paused ? t("recording.resume") : t("recording.pause")}
+					aria-label={paused ? t("recording.resume") : t("recording.pause")}
 					className={paused ? styles.ibGreen : ""}
 				>
 					{paused ? (
@@ -98,6 +100,7 @@ export const RecordingControls = ({
 					iconSize="lg"
 					onClick={onStopRecording}
 					title={t("recording.stop")}
+					aria-label={t("recording.stop")}
 					className={styles.ibRed}
 				>
 					<SquareIcon size={16} fill="currentColor" strokeWidth={0} />
@@ -109,6 +112,7 @@ export const RecordingControls = ({
 					iconSize="lg"
 					onClick={onHideHud}
 					title={t("recording.hideHud")}
+					aria-label={t("recording.hideHud")}
 				>
 					<MinusIcon size={16} />
 				</Button>
@@ -119,6 +123,7 @@ export const RecordingControls = ({
 					iconSize="lg"
 					onClick={onCancelRecording}
 					title={t("recording.cancel")}
+					aria-label={t("recording.cancel")}
 				>
 					<XIcon size={18} />
 				</Button>
