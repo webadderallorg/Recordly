@@ -217,6 +217,115 @@
 	color: #3d8bff;
 }
 
+.phoneStatusPill {
+	margin-left: auto;
+	max-width: 92px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	border-radius: 999px;
+	background: rgba(255, 255, 255, 0.07);
+	padding: 2px 7px;
+	color: #a5a5b3;
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: capitalize;
+}
+
+.phoneRemotePanel {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 6px 2px 8px;
+	border-radius: 12px;
+	border: 1px solid rgba(61, 139, 255, 0.18);
+	background: rgba(61, 139, 255, 0.08);
+	padding: 10px;
+	color: #d8d8df;
+	font-size: 12px;
+}
+
+.phoneRemoteHeader {
+	display: flex;
+	justify-content: space-between;
+	gap: 8px;
+	color: #9ea8bd;
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+}
+
+.phoneRemoteCode {
+	border-radius: 10px;
+	background: rgba(255, 255, 255, 0.08);
+	padding: 10px;
+	text-align: center;
+	color: #eeeef2;
+	font-size: 22px;
+	font-weight: 800;
+	letter-spacing: 0.12em;
+	user-select: text;
+}
+
+.phoneRemoteQr {
+	display: flex;
+	justify-content: center;
+	border-radius: 12px;
+	background: rgba(255, 255, 255, 0.08);
+	padding: 10px;
+}
+
+.phoneRemoteQr svg {
+	display: block;
+	width: min(100%, 176px);
+	height: auto;
+	border-radius: 8px;
+	box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.phoneRemoteLink {
+	overflow-wrap: anywhere;
+	border-radius: 8px;
+	background: rgba(0, 0, 0, 0.18);
+	padding: 7px 8px;
+	color: #9cbfff;
+	font-size: 11px;
+	line-height: 1.35;
+	user-select: text;
+}
+
+.phoneRemoteButton {
+	width: 100%;
+	border: 0;
+	border-radius: 9px;
+	background: #3d8bff;
+	padding: 8px 10px;
+	color: #fff;
+	font-size: 12px;
+	font-weight: 800;
+	cursor: pointer;
+}
+
+.phoneRemoteButton:hover {
+	background: #62a4ff;
+}
+
+.phoneRemoteWarning {
+	border-radius: 9px;
+	background: rgba(245, 158, 11, 0.12);
+	padding: 8px 9px;
+	color: #f8d28a;
+	font-size: 11px;
+	line-height: 1.35;
+}
+
+.phoneRemoteDetail {
+	color: #a5a5b3;
+	font-size: 11px;
+	line-height: 1.35;
+}
+
 .finalizingState {
 	display: inline-flex;
 	align-items: center;

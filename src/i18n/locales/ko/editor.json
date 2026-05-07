@@ -114,6 +114,11 @@
 	"project": {
 		"untitled": "제목 없음"
 	},
+	"nativeCaptureUnavailable": {
+		"title": "문제가 발생한 것은 아니지만 애니메이션 커서 오버레이를 렌더링할 수 없습니다.",
+		"description": "이 기기는 네이티브 캡처를 지원하지 않습니다. 아직 확인하지 못한 여러 원인이 있을 수 있습니다. Recordly는 계속 작동하지만 커서 부드럽게 처리는 사용할 수 없습니다.",
+		"confirm": "확인"
+	},
 	"exportStatus": {
 		"exporting": "내보내는 중",
 		"renderingFile": "파일을 렌더링하고 있습니다.",

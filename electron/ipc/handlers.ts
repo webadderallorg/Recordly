@@ -3,6 +3,7 @@ import { registerAssetHandlers } from "./register/assets";
 import { registerCaptionHandlers } from "./register/captions";
 import { registerExportHandlers } from "./register/export";
 import { registerPermissionHandlers } from "./register/permissions";
+import { registerPhoneRemoteHandlers } from "./register/phoneRemote";
 import { registerProjectHandlers } from "./register/project";
 import { registerRecordingHandlers } from "./register/recording";
 import { registerSettingsHandlers } from "./register/settings";
@@ -69,4 +70,5 @@ export function registerIpcHandlers(
 	registerCaptionHandlers();
 	registerProjectHandlers();
 	registerSettingsHandlers();
+	registerPhoneRemoteHandlers();
 }

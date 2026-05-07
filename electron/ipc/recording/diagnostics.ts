@@ -215,7 +215,22 @@ export async function validateRecordedVideo(videoPath: string) {
 		);
 	}
 
-	const ffmpegPath = getFfmpegBinaryPath();
+	let ffmpegPath: string;
+	try {
+		ffmpegPath = getFfmpegBinaryPath();
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (/ffmpeg\s+binary\s+is\s+unavailable/i.test(message)) {
+			console.warn(
+				`[recording] FFmpeg is unavailable; skipping deep media validation for ${videoPath}.`,
+			);
+			return {
+				fileSizeBytes: stat.size,
+				durationSeconds: null,
+			};
+		}
+		throw error;
+	}
 	let stderr = "";
 
 	try {

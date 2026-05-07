@@ -113,6 +113,11 @@
 	"project": {
 		"untitled": "未命名"
 	},
+	"nativeCaptureUnavailable": {
+		"title": "没有出错，但我们无法渲染动画光标叠加层。",
+		"description": "你的设备不支持原生捕获。这可能由多种我们尚未确认的原因造成。Recordly 仍可继续使用，但无法启用光标平滑。",
+		"confirm": "好的"
+	},
 	"exportStatus": {
 		"exporting": "正在导出",
 		"renderingFile": "正在渲染你的文件。",

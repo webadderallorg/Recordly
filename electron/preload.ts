@@ -670,6 +670,27 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	startCountdown: (seconds: number) => ipcRenderer.invoke("start-countdown", seconds),
 	cancelCountdown: () => ipcRenderer.invoke("cancel-countdown"),
 	getActiveCountdown: () => ipcRenderer.invoke("get-active-countdown"),
+	createPhoneRemoteSession: () => ipcRenderer.invoke("phone-remote:create-session"),
+	endPhoneRemoteSession: (sessionId: string) =>
+		ipcRenderer.invoke("phone-remote:end-session", sessionId),
+	sendPhoneRemoteSignal: (sessionId: string, message: unknown) =>
+		ipcRenderer.invoke("phone-remote:send-signal", sessionId, message),
+	onPhoneRemoteSignal: (callback: (payload: { sessionId: string; message: unknown }) => void) => {
+		const listener = (
+			_event: Electron.IpcRendererEvent,
+			payload: { sessionId: string; message: unknown },
+		) => callback(payload);
+		ipcRenderer.on("phone-remote-signal", listener);
+		return () => ipcRenderer.removeListener("phone-remote-signal", listener);
+	},
+	onPhoneRemoteStatus: (callback: (payload: { sessionId: string; status: unknown }) => void) => {
+		const listener = (
+			_event: Electron.IpcRendererEvent,
+			payload: { sessionId: string; status: unknown },
+		) => callback(payload);
+		ipcRenderer.on("phone-remote-status", listener);
+		return () => ipcRenderer.removeListener("phone-remote-status", listener);
+	},
 	onCountdownTick: (callback: (seconds: number) => void) => {
 		const listener = (_event: Electron.IpcRendererEvent, seconds: number) => callback(seconds);
 		ipcRenderer.on("countdown-tick", listener);

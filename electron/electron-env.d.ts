@@ -64,6 +64,51 @@ interface UpdateStatusSummary {
 	detail?: string;
 }
 
+type RendererPhoneRemoteSessionStatus =
+	| "waiting"
+	| "phone-connected"
+	| "preview-live"
+	| "mic-active"
+	| "reconnecting"
+	| "disconnected"
+	| "camera-permission-denied"
+	| "microphone-permission-denied"
+	| "no-audio-track"
+	| "phone-backgrounded"
+	| "phone-sleeping"
+	| "error";
+
+type RendererPhoneRemoteSignalMessage =
+	| {
+			type: "offer" | "answer";
+			description: RTCSessionDescriptionInit;
+	  }
+	| {
+			type: "ice-candidate";
+			candidate: RTCIceCandidateInit | null;
+	  };
+
+interface RendererPhoneRemoteStatusMessage {
+	status: RendererPhoneRemoteSessionStatus;
+	detail?: string;
+	hasAudio?: boolean;
+	hasVideo?: boolean;
+	facingMode?: "user" | "environment";
+}
+
+interface RendererPhoneRemoteSession {
+	id: string;
+	code: string;
+	joinUrl: string;
+	localJoinUrl: string;
+	lanJoinUrl: string;
+	tunnelJoinUrl?: string;
+	urlMode: "secure-tunnel" | "lan";
+	tunnelError?: string;
+	expiresAt: number;
+	status: RendererPhoneRemoteSessionStatus;
+}
+
 type RendererExtensionInfo = import("./extensions/extensionTypes").ExtensionInfo;
 type RendererExtensionReview = import("./extensions/extensionTypes").ExtensionReview;
 type RendererMarketplaceExtension = import("./extensions/extensionTypes").MarketplaceExtension;
@@ -605,6 +650,28 @@ interface Window {
 		cancelCountdown: () => Promise<{ success: boolean }>;
 		getActiveCountdown: () => Promise<{ success: boolean; seconds: number | null }>;
 		onCountdownTick: (callback: (seconds: number) => void) => () => void;
+		createPhoneRemoteSession: () => Promise<{
+			success: boolean;
+			session: RendererPhoneRemoteSession;
+			error?: string;
+		}>;
+		endPhoneRemoteSession: (sessionId: string) => Promise<{ success: boolean }>;
+		sendPhoneRemoteSignal: (
+			sessionId: string,
+			message: RendererPhoneRemoteSignalMessage,
+		) => Promise<{ success: boolean; index?: number; error?: string }>;
+		onPhoneRemoteSignal: (
+			callback: (payload: {
+				sessionId: string;
+				message: RendererPhoneRemoteSignalMessage;
+			}) => void,
+		) => () => void;
+		onPhoneRemoteStatus: (
+			callback: (payload: {
+				sessionId: string;
+				status: RendererPhoneRemoteStatusMessage;
+			}) => void,
+		) => () => void;
 		extensionsDiscover: () => Promise<RendererExtensionInfo[]>;
 		extensionsList: () => Promise<RendererExtensionInfo[]>;
 		extensionsGet: (id: string) => Promise<RendererExtensionInfo | null>;

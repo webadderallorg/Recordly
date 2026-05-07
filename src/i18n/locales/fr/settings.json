@@ -42,6 +42,11 @@
 		},
 		"backgroundBlur": "Flou d’arrière-plan",
 		"zoomMotionBlur": "Flou de mouvement du zoom",
+		"temporalZoomMotionBlur": "Temporal Zoom Blur",
+		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
+		"zoomMotionBlurSamples": "Blur Samples",
+		"zoomMotionBlurShutter": "Shutter",
+		"auto": "Auto",
 		"connectZooms": "Relier les zooms",
 		"connectZoomsDescription": "Lisse les zones de zoom consécutives pour créer un mouvement de caméra continu.",
 		"autoApplyFreshRecordingZooms": "Appliquer automatiquement les zooms des nouveaux enregistrements",
@@ -54,6 +59,20 @@
 		"zoomOutDescription": "Contrôle la manière dont la caméra sort d’une zone de zoom.",
 		"connectedZoomTitle": "Entre les zooms",
 		"connectedZoomDescription": "Ajuste la transition entre des zones de zoom consécutives lorsque la connexion est activée.",
+		"motionPresetsTitle": "Motion Presets",
+		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"animationPresets": "Animation Presets",
+		"cursorMotionPresets": "Cursor Motion Presets",
+		"motionPresets": {
+			"focused": {
+				"label": "Focused",
+				"description": "Snappier motion for demos, walkthroughs, and everyday recordings."
+			},
+			"smooth": {
+				"label": "Smooth",
+				"description": "Gentler motion for presentations, keynote-style videos, and polished reveals."
+			}
+		},
 		"zoomInDuration": "Durée du zoom avant",
 		"zoomInOverlap": "Chevauchement du zoom avant",
 		"zoomOutDuration": "Durée du zoom arrière",
@@ -71,6 +90,9 @@
 		},
 		"cursorSize": "Taille du curseur",
 		"cursorSmoothing": "Lissage du curseur",
+		"cursorSpringStiffness": "Cursor Spring Stiffness",
+		"cursorSpringDamping": "Cursor Spring Damping",
+		"cursorSpringMass": "Cursor Spring Mass",
 		"off": "Désactivé",
 		"cursorMotionBlur": "Flou de mouvement du curseur",
 		"cursorClickBounce": "Rebond au clic du curseur",
@@ -122,8 +144,6 @@
 		"generateFull": "Générer les sous-titres",
 		"regenerateFull": "Régénérer les sous-titres",
 		"clearFull": "Effacer les sous-titres",
-		"editCurrent": "Modifier le sous-titre actuel",
-		"editSaved": "Sous-titre mis à jour",
 		"fontSettings": "Paramètres de police",
 		"defaultFont": "Par défaut",
 		"fontFamily": "Police",

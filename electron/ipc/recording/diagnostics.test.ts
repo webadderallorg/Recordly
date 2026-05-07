@@ -188,4 +188,24 @@ describe("getCompanionAudioFallbackPaths", () => {
 			"Recorded output is too small to contain playable video",
 		);
 	});
+
+	it("keeps a non-empty recording usable when FFmpeg is missing in a dev install", async () => {
+		vi.doMock("../ffmpeg/binary", () => ({
+			getFfmpegBinaryPath: () => {
+				throw new Error(
+					"FFmpeg binary is unavailable. Install ffmpeg-static for this platform or make ffmpeg available on PATH.",
+				);
+			},
+		}));
+
+		const videoPath = path.join(tempRoot, "recording-456.mp4");
+		await fs.writeFile(videoPath, Buffer.alloc(4096));
+
+		const { validateRecordedVideo } = await import("./diagnostics");
+
+		await expect(validateRecordedVideo(videoPath)).resolves.toEqual({
+			fileSizeBytes: 4096,
+			durationSeconds: null,
+		});
+	});
 });

@@ -24,16 +24,19 @@ import {
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RxDragHandleDots2 } from "react-icons/rx";
+import { toast } from "sonner";
 import { useI18n } from "@/contexts/I18nContext";
 import type { AppLocale } from "@/i18n/config";
 import { SUPPORTED_LOCALES } from "@/i18n/config";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useAudioLevelMeter } from "../../hooks/useAudioLevelMeter";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
+import { usePhoneRemoteMedia } from "../../hooks/usePhoneRemoteMedia";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { useVideoDevices } from "../../hooks/useVideoDevices";
+import { createQrSvgPath } from "../../lib/simpleQr";
 import { AudioLevelMeter } from "../ui/audio-level-meter";
 import { ContentClamp } from "../ui/content-clamp";
 import ProjectBrowserDialog, {
@@ -163,6 +166,7 @@ function MicDeviceRow({
 export function LaunchWindow() {
 	const { locale, setLocale } = useI18n();
 	const t = useScopedT("launch");
+	const phoneRemote = usePhoneRemoteMedia();
 
 	const {
 		recording,
@@ -181,12 +185,19 @@ export function LaunchWindow() {
 		setSystemAudioEnabled,
 		webcamEnabled,
 		setWebcamEnabled,
+		webcamSource,
+		setWebcamSource,
 		webcamDeviceId,
 		setWebcamDeviceId,
+		phoneMicrophoneEnabled,
+		setPhoneMicrophoneEnabled,
 		countdownDelay,
 		setCountdownDelay,
 		preparePermissions,
-	} = useScreenRecorder();
+	} = useScreenRecorder({
+		remoteWebcamStream: phoneRemote.videoActive ? phoneRemote.videoCaptureStream : null,
+		remoteMicrophoneStream: phoneRemote.micActive ? phoneRemote.audioStream : null,
+	});
 
 	const [recordingStart, setRecordingStart] = useState<number | null>(null);
 	const [elapsed, setElapsed] = useState(0);
@@ -219,6 +230,7 @@ export function LaunchWindow() {
 	const recordingWebcamPreviewRef = useRef<HTMLVideoElement | null>(null);
 	const recordingWebcamPreviewContainerRef = useRef<HTMLDivElement | null>(null);
 	const previewStreamRef = useRef<MediaStream | null>(null);
+	const previewStreamOwnedByLaunchRef = useRef(true);
 	const webcamPreviewDragStartRef = useRef<{
 		pointerId: number;
 		startX: number;
@@ -255,6 +267,21 @@ export function LaunchWindow() {
 
 	const micDropdownOpen = activeDropdown === "mic";
 	const webcamDropdownOpen = activeDropdown === "webcam";
+	const isPhoneWebcamSelected = webcamEnabled && webcamSource === "phone";
+	const isPhoneMicAvailable = phoneRemote.micActive && phoneMicrophoneEnabled;
+	const phoneJoinUrl = phoneRemote.session?.joinUrl ?? null;
+	const phoneJoinQr = useMemo(
+		() => (phoneJoinUrl ? createQrSvgPath(phoneJoinUrl) : null),
+		[phoneJoinUrl],
+	);
+	const narratorMicrophoneActive = microphoneEnabled || isPhoneMicAvailable;
+	const narratorMicrophoneTitle = isPhoneMicAvailable
+		? "Phone microphone active"
+		: phoneMicrophoneEnabled
+			? "Phone microphone waiting"
+			: microphoneEnabled
+				? t("recording.disableMicrophone")
+				: t("recording.enableMicrophone");
 	const showWebcamControls = webcamEnabled && !recording;
 	const showRecordingWebcamPreview =
 		webcamEnabled &&
@@ -272,7 +299,7 @@ export function LaunchWindow() {
 		devices: videoDevices,
 		selectedDeviceId: selectedVideoDeviceId,
 		setSelectedDeviceId: setSelectedVideoDeviceId,
-	} = useVideoDevices(webcamEnabled || webcamDropdownOpen);
+	} = useVideoDevices(webcamSource === "local" && (webcamEnabled || webcamDropdownOpen));
 
 	const supportsHudCaptureProtection = platform !== "linux";
 
@@ -530,6 +557,19 @@ export function LaunchWindow() {
 			}
 
 			try {
+				if (webcamSource === "phone") {
+					const remotePreviewStream = phoneRemote.previewStream;
+					if (!remotePreviewStream) {
+						return;
+					}
+
+					previewStreamOwnedByLaunchRef.current = false;
+					previewStreamRef.current = remotePreviewStream;
+					attachPreviewStreamToNode(webcamPreviewRef.current);
+					attachPreviewStreamToNode(recordingWebcamPreviewRef.current);
+					return;
+				}
+
 				const previewStream = await navigator.mediaDevices.getUserMedia({
 					video: webcamDeviceId
 						? {
@@ -552,6 +592,7 @@ export function LaunchWindow() {
 				}
 
 				previewStreamRef.current = previewStream;
+				previewStreamOwnedByLaunchRef.current = true;
 				attachPreviewStreamToNode(webcamPreviewRef.current);
 				attachPreviewStreamToNode(recordingWebcamPreviewRef.current);
 			} catch (error) {
@@ -573,12 +614,21 @@ export function LaunchWindow() {
 					videoElement.pause();
 					videoElement.srcObject = null;
 				});
-			previewStream?.getTracks().forEach((track) => track.stop());
+			if (previewStreamOwnedByLaunchRef.current) {
+				previewStream?.getTracks().forEach((track) => track.stop());
+			}
 			if (previewStreamRef.current === previewStream) {
 				previewStreamRef.current = null;
 			}
+			previewStreamOwnedByLaunchRef.current = true;
 		};
-	}, [attachPreviewStreamToNode, shouldStreamWebcamPreview, webcamDeviceId]);
+	}, [
+		attachPreviewStreamToNode,
+		phoneRemote.previewStream,
+		shouldStreamWebcamPreview,
+		webcamDeviceId,
+		webcamSource,
+	]);
 
 	useEffect(() => {
 		let timer: NodeJS.Timeout | null = null;
@@ -941,6 +991,100 @@ export function LaunchWindow() {
 		toggleDropdown("mic");
 	};
 
+	const showRecordingMicrophoneStatus = () => {
+		if (isPhoneMicAvailable) {
+			toast.info("Phone microphone is recording.");
+			return;
+		}
+		if (phoneMicrophoneEnabled) {
+			toast.info(
+				"Phone microphone is waiting or disconnected. Screen recording is continuing.",
+			);
+			return;
+		}
+		if (microphoneEnabled) {
+			toast.info("Laptop microphone is recording.");
+			return;
+		}
+		toast.info("No narrator microphone is active.");
+	};
+
+	const togglePhoneMicrophone = () => {
+		if (!phoneMicrophoneEnabled && !phoneRemote.session) {
+			void selectPhoneAsCamera();
+			return;
+		}
+
+		const nextEnabled = !phoneMicrophoneEnabled;
+		setPhoneMicrophoneEnabled(nextEnabled);
+		if (nextEnabled) {
+			setMicrophoneEnabled(false);
+		}
+	};
+
+	const selectPhoneAsCamera = async () => {
+		if (recording) return;
+		setWebcamSource("phone");
+		setWebcamEnabled(true);
+		setPhoneMicrophoneEnabled(true);
+		setMicrophoneEnabled(false);
+		if (!phoneRemote.session) {
+			await phoneRemote.startSession();
+		}
+	};
+
+	const selectLaptopWebcam = () => {
+		if (recording) return;
+		setWebcamSource("local");
+		setPhoneMicrophoneEnabled(false);
+		phoneRemote.stopSession();
+	};
+
+	const phoneRemoteStatusLabel = (() => {
+		switch (phoneRemote.status) {
+			case "idle":
+				return "Not connected";
+			case "waiting":
+				return "Waiting for phone";
+			case "phone-connected":
+				return "Phone connected";
+			case "preview-live":
+				return "Preview live";
+			case "mic-active":
+				return "Mic active";
+			case "reconnecting":
+				return "Reconnecting";
+			case "disconnected":
+				return "Disconnected";
+			case "error":
+				return "Connection error";
+		}
+	})();
+
+	const handleRecordClick = () => {
+		if (!hasSelectedSource && platform !== "linux") {
+			toggleDropdown("sources");
+			return;
+		}
+
+		if (
+			webcamSource === "phone" &&
+			webcamEnabled &&
+			!phoneRemote.videoActive &&
+			!phoneRemote.micActive
+		) {
+			const shouldContinue = window.confirm(
+				"Phone is not connected yet. Start recording the laptop screen without phone camera or phone mic?",
+			);
+			if (!shouldContinue) {
+				setActiveDropdown("webcam");
+				return;
+			}
+		}
+
+		void toggleRecording();
+	};
+
 	const toggleHudCaptureProtection = async () => {
 		const nextValue = !hideHudFromCapture;
 		setHideHudFromCapture(nextValue);
@@ -991,14 +1135,11 @@ export function LaunchWindow() {
 			<Separator />
 
 			<IconButton
-				title={
-					microphoneEnabled
-						? t("recording.disableMicrophone")
-						: t("recording.enableMicrophone")
-				}
-				className={microphoneEnabled ? styles.ibActive : ""}
+				onClick={showRecordingMicrophoneStatus}
+				title={narratorMicrophoneTitle}
+				className={narratorMicrophoneActive ? styles.ibActive : ""}
 			>
-				{microphoneEnabled ? <Mic size={18} /> : <MicOff size={18} />}
+				{narratorMicrophoneActive ? <Mic size={18} /> : <MicOff size={18} />}
 			</IconButton>
 
 			<Separator />
@@ -1062,14 +1203,10 @@ export function LaunchWindow() {
 
 			<IconButton
 				onClick={toggleMicrophone}
-				title={
-					microphoneEnabled
-						? t("recording.disableMicrophone")
-						: t("recording.enableMicrophone")
-				}
-				className={microphoneEnabled ? styles.ibActive : ""}
+				title={narratorMicrophoneTitle}
+				className={narratorMicrophoneActive ? styles.ibActive : ""}
 			>
-				{microphoneEnabled ? <Mic size={18} /> : <MicOff size={18} />}
+				{narratorMicrophoneActive ? <Mic size={18} /> : <MicOff size={18} />}
 			</IconButton>
 
 			<IconButton
@@ -1093,11 +1230,7 @@ export function LaunchWindow() {
 			<button
 				type="button"
 				className={`${styles.recBtn} ${styles.electronNoDrag}`}
-				onClick={
-					hasSelectedSource || platform === "linux"
-						? toggleRecording
-						: () => toggleDropdown("sources")
-				}
+				onClick={handleRecordClick}
 				disabled={countdownActive}
 				title={t("recording.record")}
 			>
@@ -1279,6 +1412,32 @@ export function LaunchWindow() {
 											? t("recording.disableSystemAudio")
 											: t("recording.enableSystemAudio")}
 									</DropdownItem>
+									<DropdownItem
+										icon={
+											isPhoneMicAvailable ? (
+												<Mic size={16} />
+											) : (
+												<MicOff size={16} />
+											)
+										}
+										selected={phoneMicrophoneEnabled}
+										onClick={togglePhoneMicrophone}
+										trailing={
+											<span className={styles.phoneStatusPill}>
+												{isPhoneMicAvailable
+													? "active"
+													: phoneRemote.status}
+											</span>
+										}
+									>
+										Phone microphone
+									</DropdownItem>
+									{phoneMicrophoneEnabled && microphoneEnabled ? (
+										<div className={styles.phoneRemoteWarning}>
+											Both phone and laptop microphones are enabled. Echo or
+											duplicated voice is likely.
+										</div>
+									) : null}
 									{microphoneEnabled && (
 										<DropdownItem
 											icon={<MicOff size={16} />}
@@ -1326,12 +1485,119 @@ export function LaunchWindow() {
 							{activeDropdown === "webcam" && (
 								<>
 									<div className={styles.ddLabel}>{t("recording.webcam")}</div>
+									<DropdownItem
+										icon={
+											isPhoneWebcamSelected ? (
+												<Video size={16} />
+											) : (
+												<VideoOff size={16} />
+											)
+										}
+										selected={isPhoneWebcamSelected}
+										onClick={() => void selectPhoneAsCamera()}
+										trailing={
+											<span className={styles.phoneStatusPill}>
+												{phoneRemoteStatusLabel}
+											</span>
+										}
+									>
+										Use phone as camera
+									</DropdownItem>
+									{isPhoneWebcamSelected ? (
+										<div className={styles.phoneRemotePanel}>
+											<div className={styles.phoneRemoteHeader}>
+												<span>{phoneRemoteStatusLabel}</span>
+												<span>
+													{phoneRemote.micActive
+														? "Mic active"
+														: "Mic waiting"}
+												</span>
+											</div>
+											<div className={styles.phoneRemoteCode}>
+												{phoneRemote.session?.code ?? "Start pairing"}
+											</div>
+											{phoneRemote.session ? (
+												<>
+													{phoneJoinQr ? (
+														<div className={styles.phoneRemoteQr}>
+															<svg
+																role="img"
+																aria-labelledby="phone-remote-qr-title"
+																viewBox={`0 0 ${phoneJoinQr.size} ${phoneJoinQr.size}`}
+																shapeRendering="crispEdges"
+															>
+																<title id="phone-remote-qr-title">
+																	Scan to connect phone
+																</title>
+																<rect
+																	width={phoneJoinQr.size}
+																	height={phoneJoinQr.size}
+																	fill="#ffffff"
+																/>
+																<path
+																	d={phoneJoinQr.path}
+																	fill="#111827"
+																/>
+															</svg>
+														</div>
+													) : null}
+													<div className={styles.phoneRemoteLink}>
+														{phoneRemote.session.joinUrl}
+													</div>
+													<button
+														type="button"
+														className={styles.phoneRemoteButton}
+														onClick={() =>
+															void phoneRemote.copyJoinLink()
+														}
+													>
+														Copy join link
+													</button>
+													{!phoneRemote.secureJoinReady ? (
+														<div className={styles.phoneRemoteWarning}>
+															Phone browsers usually require HTTPS for
+															camera and mic access. A secure tunnel
+															was unavailable, so use the LAN link
+															only if your browser allows it.
+														</div>
+													) : null}
+													{phoneRemote.error ||
+													phoneRemote.statusDetail ? (
+														<div className={styles.phoneRemoteDetail}>
+															{phoneRemote.error ??
+																phoneRemote.statusDetail}
+														</div>
+													) : null}
+												</>
+											) : (
+												<button
+													type="button"
+													className={styles.phoneRemoteButton}
+													onClick={() => void selectPhoneAsCamera()}
+												>
+													Create phone session
+												</button>
+											)}
+										</div>
+									) : null}
+									{webcamSource === "phone" ? (
+										<DropdownItem
+											icon={<Video size={16} />}
+											onClick={selectLaptopWebcam}
+										>
+											Use laptop webcam instead
+										</DropdownItem>
+									) : null}
 									{webcamEnabled && (
 										<>
 											<DropdownItem
 												icon={<VideoOff size={16} />}
 												onClick={() => {
 													setWebcamEnabled(false);
+													if (webcamSource === "phone") {
+														setPhoneMicrophoneEnabled(false);
+														phoneRemote.stopSession();
+													}
 													setActiveDropdown("none");
 												}}
 											>
@@ -1376,39 +1642,47 @@ export function LaunchWindow() {
 													muted
 													playsInline
 													style={{
-														transform: "scaleX(-1)",
+														transform:
+															webcamSource === "local"
+																? "scaleX(-1)"
+																: undefined,
 													}}
 												/>
 											</div>
 										</div>
 									)}
-									{videoDevices.map((device) => (
-										<DropdownItem
-											key={device.deviceId}
-											icon={
-												webcamEnabled &&
-												(webcamDeviceId === device.deviceId ||
-													selectedVideoDeviceId === device.deviceId) ? (
-													<Video size={16} />
-												) : (
-													<VideoOff size={16} />
-												)
-											}
-											selected={
-												webcamEnabled &&
-												(webcamDeviceId === device.deviceId ||
-													selectedVideoDeviceId === device.deviceId)
-											}
-											onClick={() => {
-												setWebcamEnabled(true);
-												setSelectedVideoDeviceId(device.deviceId);
-												setWebcamDeviceId(device.deviceId);
-											}}
-										>
-											{device.label}
-										</DropdownItem>
-									))}
-									{videoDevices.length === 0 && (
+									{webcamSource === "local"
+										? videoDevices.map((device) => (
+												<DropdownItem
+													key={device.deviceId}
+													icon={
+														webcamEnabled &&
+														(webcamDeviceId === device.deviceId ||
+															selectedVideoDeviceId ===
+																device.deviceId) ? (
+															<Video size={16} />
+														) : (
+															<VideoOff size={16} />
+														)
+													}
+													selected={
+														webcamEnabled &&
+														(webcamDeviceId === device.deviceId ||
+															selectedVideoDeviceId ===
+																device.deviceId)
+													}
+													onClick={() => {
+														selectLaptopWebcam();
+														setWebcamEnabled(true);
+														setSelectedVideoDeviceId(device.deviceId);
+														setWebcamDeviceId(device.deviceId);
+													}}
+												>
+													{device.label}
+												</DropdownItem>
+											))
+										: null}
+									{webcamSource === "local" && videoDevices.length === 0 && (
 										<div className="text-center text-xs text-[#6b6b78] py-4">
 											{t("recording.noWebcamsFound")}
 										</div>
@@ -1616,7 +1890,9 @@ export function LaunchWindow() {
 								className={styles.recordingWebcamPreviewVideo}
 								muted
 								playsInline
-								style={{ transform: "scaleX(-1)" }}
+								style={{
+									transform: webcamSource === "local" ? "scaleX(-1)" : undefined,
+								}}
 							/>
 						</div>
 					)}

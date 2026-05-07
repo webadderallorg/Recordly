@@ -1486,9 +1486,7 @@ export function SettingsPanel({
 		onCameraSpringDampingMultiplierChange?.(
 			initialEditorPreferences.cameraSpringDampingMultiplier,
 		);
-		onCameraSpringMassMultiplierChange?.(
-			initialEditorPreferences.cameraSpringMassMultiplier,
-		);
+		onCameraSpringMassMultiplierChange?.(initialEditorPreferences.cameraSpringMassMultiplier);
 		onZoomInDurationMsChange?.(initialEditorPreferences.zoomInDurationMs);
 		onZoomOutDurationMsChange?.(initialEditorPreferences.zoomOutDurationMs);
 		onZoomClassicModeChange?.(false);
@@ -3003,21 +3001,21 @@ export function SettingsPanel({
 						)}
 					</div>
 				)}
-					<div className="rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2">
-						<div className="text-[10px] text-muted-foreground">
-							{showDevMotionControls
-								? tSettings(
-										"effects.exportBlurMovedToDev",
-										"Export blur tuning is available in Settings > Dev.",
-									)
-								: tSettings(
-										"effects.exportBlurLocked",
-										"Export blur is fixed for this build.",
-									)}
-						</div>
-						<div className="mt-1 text-[12px] font-medium text-foreground">
-							{`${TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT} samples · ${Math.round(TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION * 100)}% shutter`}
-						</div>
+				<div className="rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2">
+					<div className="text-[10px] text-muted-foreground">
+						{showDevMotionControls
+							? tSettings(
+									"effects.exportBlurMovedToDev",
+									"Export blur tuning is available in Settings > Dev.",
+								)
+							: tSettings(
+									"effects.exportBlurLocked",
+									"Export blur is fixed for this build.",
+								)}
+					</div>
+					<div className="mt-1 text-[12px] font-medium text-foreground">
+						{`${TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT} samples · ${Math.round(TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION * 100)}% shutter`}
+					</div>
 				</div>
 				{selectedZoomId && (
 					<Button

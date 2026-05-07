@@ -42,6 +42,11 @@
 		},
 		"backgroundBlur": "Desfoque de fundo",
 		"zoomMotionBlur": "Desfoque de movimento do zoom",
+		"temporalZoomMotionBlur": "Temporal Zoom Blur",
+		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
+		"zoomMotionBlurSamples": "Blur Samples",
+		"zoomMotionBlurShutter": "Shutter",
+		"auto": "Auto",
 		"connectZooms": "Conectar zooms",
 		"connectZoomsDescription": "Suaviza regiões de zoom consecutivas em um movimento contínuo de câmera.",
 		"autoApplyFreshRecordingZooms": "Aplicar zooms automaticamente em gravações novas",
@@ -54,6 +59,20 @@
 		"zoomOutDescription": "Controla como a câmera sai de uma região de zoom.",
 		"connectedZoomTitle": "Entre zooms",
 		"connectedZoomDescription": "Ajuste o deslizamento entre regiões de zoom consecutivas quando a conexão estiver ativada.",
+		"motionPresetsTitle": "Motion Presets",
+		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"animationPresets": "Animation Presets",
+		"cursorMotionPresets": "Cursor Motion Presets",
+		"motionPresets": {
+			"focused": {
+				"label": "Focused",
+				"description": "Snappier motion for demos, walkthroughs, and everyday recordings."
+			},
+			"smooth": {
+				"label": "Smooth",
+				"description": "Gentler motion for presentations, keynote-style videos, and polished reveals."
+			}
+		},
 		"zoomInDuration": "Duração do zoom in",
 		"zoomInOverlap": "Sobreposição do zoom in",
 		"zoomOutDuration": "Duração do zoom out",
@@ -71,6 +90,9 @@
 		},
 		"cursorSize": "Tamanho do cursor",
 		"cursorSmoothing": "Suavização do cursor",
+		"cursorSpringStiffness": "Cursor Spring Stiffness",
+		"cursorSpringDamping": "Cursor Spring Damping",
+		"cursorSpringMass": "Cursor Spring Mass",
 		"off": "Desligado",
 		"cursorMotionBlur": "Desfoque de movimento do cursor",
 		"cursorClickBounce": "Salto de clique do cursor",
@@ -122,8 +144,6 @@
 		"generateFull": "Gerar legendas",
 		"regenerateFull": "Gerar legendas novamente",
 		"clearFull": "Limpar legendas",
-		"editCurrent": "Editar legenda atual",
-		"editSaved": "Legenda atualizada",
 		"fontSettings": "Configurações da fonte",
 		"defaultFont": "Padrão",
 		"fontFamily": "Fonte",
