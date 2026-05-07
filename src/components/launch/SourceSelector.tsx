@@ -309,10 +309,10 @@ export const SourceSelector = React.memo(function SourceSelector({
 
 	// In autonomous mode, we might want to start open
 	useEffect(() => {
-		if (isAutonomous && !internalOpen) {
+		if (isAutonomous) {
 			setInternalOpen(true);
 		}
-	}, [isAutonomous, internalOpen]);
+	}, [isAutonomous]);
 
 	const trigger = children ? (
 		React.isValidElement(children) ? (
