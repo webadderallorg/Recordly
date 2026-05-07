@@ -165,6 +165,8 @@ type NativeAudioPlan =
 	  };
 
 const FILTERGRAPH_FALLBACK_AUDIO_SAMPLE_RATE = 48_000;
+const MIN_NATIVE_STATIC_LAYOUT_SPEED = 0.25;
+const MAX_NATIVE_STATIC_LAYOUT_SPEED = 30;
 
 type NativeStaticLayoutTimelineSegment = {
 	sourceStartMs: number;
@@ -173,6 +175,14 @@ type NativeStaticLayoutTimelineSegment = {
 	outputEndMs: number;
 	speed: number;
 };
+
+function canUseNativeStaticLayoutSpeed(speed: number): boolean {
+	return (
+		Number.isFinite(speed) &&
+		speed >= MIN_NATIVE_STATIC_LAYOUT_SPEED &&
+		speed <= MAX_NATIVE_STATIC_LAYOUT_SPEED
+	);
+}
 
 function buildNativeStaticLayoutTimelineSegments(
 	segments: Array<{ startMs: number; endMs: number; speed: number }>,
@@ -1008,11 +1018,63 @@ export class ModernVideoExporter {
 	}
 
 	private buildNativeStaticLayoutSourceSegments(sourceDurationMs: number) {
-		return buildEditedTrackSourceSegments(
-			sourceDurationMs,
-			this.config.trimRegions ?? [],
-			this.config.speedRegions ?? [],
-		);
+		if (!Number.isFinite(sourceDurationMs) || sourceDurationMs <= 0) {
+			return [];
+		}
+
+		const speedRegions = this.config.speedRegions ?? [];
+		if (
+			speedRegions.some(
+				(region) =>
+					!Number.isFinite(region.startMs) ||
+					!Number.isFinite(region.endMs) ||
+					!canUseNativeStaticLayoutSpeed(region.speed),
+			)
+		) {
+			return [];
+		}
+
+		const normalizedSpeedRegions = speedRegions
+			.map((region) => ({
+				startMs: Math.max(0, Math.min(region.startMs, sourceDurationMs)),
+				endMs: Math.max(0, Math.min(region.endMs, sourceDurationMs)),
+				speed: region.speed,
+			}))
+			.filter((region) => region.endMs - region.startMs > 0.5);
+		const sourceSegments: Array<{ startMs: number; endMs: number; speed: number }> = [];
+
+		for (const keptRange of this.buildNativeTrimSegments(sourceDurationMs)) {
+			const boundaries = new Set<number>([keptRange.startMs, keptRange.endMs]);
+			for (const speedRegion of normalizedSpeedRegions) {
+				const startMs = Math.max(keptRange.startMs, speedRegion.startMs);
+				const endMs = Math.min(keptRange.endMs, speedRegion.endMs);
+				if (endMs - startMs > 0.5) {
+					boundaries.add(startMs);
+					boundaries.add(endMs);
+				}
+			}
+
+			const orderedBoundaries = [...boundaries].sort((left, right) => left - right);
+			for (let index = 0; index < orderedBoundaries.length - 1; index += 1) {
+				const startMs = orderedBoundaries[index] ?? 0;
+				const endMs = orderedBoundaries[index + 1] ?? 0;
+				if (endMs - startMs <= 0.5) {
+					continue;
+				}
+
+				const midpointMs = startMs + (endMs - startMs) / 2;
+				const speedRegion = normalizedSpeedRegions.find(
+					(region) => midpointMs >= region.startMs && midpointMs < region.endMs,
+				);
+				sourceSegments.push({
+					startMs,
+					endMs,
+					speed: speedRegion?.speed ?? 1,
+				});
+			}
+		}
+
+		return sourceSegments;
 	}
 
 	private buildNativeStaticLayoutVideoTimelineSegments(
@@ -1244,9 +1306,6 @@ export class ModernVideoExporter {
 		if (isVideoWallpaperSource(configuredWallpaper)) {
 			reasons.push("unsupported-background-video");
 		}
-		if (speedRegions.length > 0) {
-			reasons.push("native-speed-timeline-validation-pending");
-		}
 
 		const hasZoomRegions = (this.config.zoomRegions ?? []).length > 0;
 		const needsTimelineMap = this.shouldUseNativeStaticLayoutTimelineMap(
@@ -1257,11 +1316,14 @@ export class ModernVideoExporter {
 			reasons.push("native-timeline-requires-windows-gpu");
 		}
 		if (
-			speedRegions.length === 0 &&
 			needsTimelineMap &&
 			this.buildNativeStaticLayoutVideoTimelineSegments(videoInfo).length === 0
 		) {
-			reasons.push("unsupported-native-trim-timeline");
+			reasons.push(
+				speedRegions.length > 0
+					? "unsupported-native-speed-timeline"
+					: "unsupported-native-trim-timeline",
+			);
 		}
 		if (hasZoomRegions && this.config.experimentalNativeExport !== true) {
 			reasons.push("native-zoom-requires-windows-gpu");

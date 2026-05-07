@@ -59,6 +59,7 @@ import {
 	getNativeStaticLayoutSourceProxyBitrate,
 	getNvidiaCudaAudioExportSkipReason,
 	getNvidiaCudaAutoStallTimeoutMs,
+	hasNativeStaticLayoutProgressAdvanced,
 	hasNvidiaGpuDeviceInGpuInfo,
 	mapNvidiaCudaWrapperProgressPercentage,
 	muxExportedVideoAudioBuffer,
@@ -1131,6 +1132,37 @@ describe("mapNvidiaCudaWrapperProgressPercentage", () => {
 				stage: "finalizing",
 			}),
 		).toBe(97.25);
+	});
+});
+
+describe("hasNativeStaticLayoutProgressAdvanced", () => {
+	it("treats repeated preparation heartbeats as stalled until real progress arrives", () => {
+		const previous = { currentFrame: 0, percentage: 2.5 };
+
+		expect(
+			hasNativeStaticLayoutProgressAdvanced(
+				{ currentFrame: 0, totalFrames: 100, percentage: 2.5, stage: "preparing" },
+				previous,
+			),
+		).toBe(false);
+		expect(
+			hasNativeStaticLayoutProgressAdvanced(
+				{ currentFrame: 0, totalFrames: 100, percentage: 2.7, stage: "preparing" },
+				previous,
+			),
+		).toBe(true);
+		expect(
+			hasNativeStaticLayoutProgressAdvanced(
+				{ currentFrame: 1, totalFrames: 100, percentage: 2.5 },
+				previous,
+			),
+		).toBe(true);
+		expect(
+			hasNativeStaticLayoutProgressAdvanced(
+				{ currentFrame: 100, totalFrames: 100, percentage: 97.25, stage: "finalizing" },
+				{ currentFrame: 100, percentage: 97.25 },
+			),
+		).toBe(true);
 	});
 });
 

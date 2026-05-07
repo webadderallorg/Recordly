@@ -261,7 +261,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		});
 	});
 
-	it("reports video backgrounds before speed timeline gating", () => {
+	it("reports video backgrounds while speed can use native timeline maps", () => {
 		const exporter = createExporter({
 			wallpaper: "file:///C:/Recordly/background.webm",
 			speedRegions: [{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 }],
@@ -303,7 +303,6 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		).toEqual([
 			"odd-output-dimensions",
 			"unsupported-background-video",
-			"native-speed-timeline-validation-pending",
 			"unsupported-annotation-overlay",
 			"unsupported-caption-overlay",
 			"unsupported-webcam-source",
@@ -427,6 +426,24 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		).toBe("native-timeline-requires-windows-gpu");
 	});
 
+	it("requires the Windows GPU compositor for speed timelines", () => {
+		const speedRegions: SpeedRegion[] = [
+			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
+		];
+		const exporter = createExporter({ experimentalNativeExport: false, speedRegions });
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{
+					audioMode: "edited-track",
+					strategy: "offline-render-fallback",
+				},
+				videoInfo,
+				59,
+			),
+		).toBe("native-timeline-requires-windows-gpu");
+	});
+
 	it("uses speed timeline duration during native static-layout preflight", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
@@ -436,12 +453,59 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		expect(exporter.getNativeStaticLayoutEffectiveDuration(videoInfo)).toBeCloseTo(59, 3);
 	});
 
-	it("skips native speed timelines while compositor validation is pending", () => {
+	it("builds native timeline maps for the editor speed range endpoints", () => {
+		const speedRegions: SpeedRegion[] = [
+			{ id: "speed-1", startMs: 1_000, endMs: 2_000, speed: 0.25 },
+			{ id: "speed-2", startMs: 4_000, endMs: 5_000, speed: 30 },
+		];
+		const exporter = createExporter({ speedRegions });
+
+		expect(
+			exporter
+				.buildNativeStaticLayoutVideoTimelineSegments(videoInfo)
+				.map((segment) => segment.speed),
+		).toEqual([1, 0.25, 1, 30, 1]);
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{
+					audioMode: "edited-track",
+					strategy: "offline-render-fallback",
+				},
+				videoInfo,
+				63.033,
+			),
+		).toBeNull();
+	});
+
+	it("allows native speed timelines through the Windows GPU timeline map", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
 		];
 		const exporter = createExporter({ speedRegions });
 
+		expect(exporter.buildNativeStaticLayoutVideoTimelineSegments(videoInfo)).toEqual([
+			{
+				sourceStartMs: 0,
+				sourceEndMs: 1_000,
+				outputStartMs: 0,
+				outputEndMs: 1_000,
+				speed: 1,
+			},
+			{
+				sourceStartMs: 1_000,
+				sourceEndMs: 4_000,
+				outputStartMs: 1_000,
+				outputEndMs: 3_000,
+				speed: 1.5,
+			},
+			{
+				sourceStartMs: 4_000,
+				sourceEndMs: 60_000,
+				outputStartMs: 3_000,
+				outputEndMs: 59_000,
+				speed: 1,
+			},
+		]);
 		expect(
 			exporter.getNativeStaticLayoutSkipReason(
 				{
@@ -451,12 +515,12 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				60,
 			),
-		).toBe("native-speed-timeline-validation-pending");
+		).toBeNull();
 	});
 
-	it("rejects native static-layout when speed edits do not have a native timeline map", () => {
+	it("rejects native static-layout when speed edits are outside the editor speed range", () => {
 		const speedRegions: SpeedRegion[] = [
-			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 3 },
+			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 31 },
 		];
 		const exporter = createExporter({ speedRegions });
 
@@ -469,10 +533,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				58,
 			),
-		).toBe("native-speed-timeline-validation-pending");
+		).toBe("unsupported-native-speed-timeline");
 	});
 
-	it("keeps speed-only projects on the renderer path even when audio and video share filtergraph segments", () => {
+	it("allows speed-only projects when audio and video share filtergraph segments", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
 		];
@@ -494,10 +558,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				59,
 			),
-		).toBe("native-speed-timeline-validation-pending");
+		).toBeNull();
 	});
 
-	it("keeps slow-speed timelines on the renderer path until native duplication is revalidated", () => {
+	it("allows slow-speed timelines through native frame duplication", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 0.5 },
 		];
@@ -519,10 +583,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				63,
 			),
-		).toBe("native-speed-timeline-validation-pending");
+		).toBeNull();
 	});
 
-	it("keeps slow-speed webcam timelines on the renderer path while native source-time mapping is pending", () => {
+	it("allows slow-speed webcam timelines through native source-time mapping", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 0.5 },
 		];
@@ -543,10 +607,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				63,
 			),
-		).toBe("native-speed-timeline-validation-pending");
+		).toBeNull();
 	});
 
-	it("skips native speed timelines even with a resolvable webcam source", () => {
+	it("allows native speed timelines with a resolvable webcam source", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
 		];
@@ -574,6 +638,6 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				59,
 			),
-		).toBe("native-speed-timeline-validation-pending");
+		).toBeNull();
 	});
 });

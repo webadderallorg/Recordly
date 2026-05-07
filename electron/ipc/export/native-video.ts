@@ -635,6 +635,7 @@ async function persistNvidiaCudaExportDiagnostics(params: {
 	stderr: string;
 	stdout: string;
 	summary: NvidiaCudaExportSummary | null;
+	timedOut: boolean;
 }) {
 	if (!shouldPersistNvidiaCudaExportDiagnostics()) {
 		return;
@@ -651,6 +652,7 @@ async function persistNvidiaCudaExportDiagnostics(params: {
 		outputPath: params.outputPath,
 		exitCode: params.code,
 		signal: params.signal,
+		timedOut: params.timedOut,
 		args: params.args,
 		summary: params.summary,
 	};
@@ -850,6 +852,24 @@ export function mapNvidiaCudaWrapperProgressPercentage(progress: NativeStaticLay
 	}
 
 	return progress.percentage;
+}
+
+export function hasNativeStaticLayoutProgressAdvanced(
+	progress: { currentFrame: number; percentage: number; stage?: string },
+	previous: { currentFrame: number; percentage: number; stage?: string },
+) {
+	const currentFrame = Math.max(0, Math.floor(progress.currentFrame));
+	const percentage =
+		typeof progress.percentage === "number" && Number.isFinite(progress.percentage)
+			? progress.percentage
+			: 0;
+	if (currentFrame > previous.currentFrame) {
+		return true;
+	}
+	if (percentage > previous.percentage + 0.1) {
+		return true;
+	}
+	return progress.stage === "finalizing" && previous.stage !== "finalizing";
 }
 
 function startNativeStaticLayoutExportPowerGuard() {
@@ -2706,6 +2726,11 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 		let stderr = "";
 		let stderrLineBuffer = "";
 		let lastProgressPercentage = 0;
+		let lastProgressForStallGuard: {
+			currentFrame: number;
+			percentage: number;
+			stage?: string;
+		} = { currentFrame: -1, percentage: -1 };
 		let stallTimedOut = false;
 		let settled = false;
 		const timeout = setTimeout(() => {
@@ -2734,11 +2759,9 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 
 		child.stdout.on("data", (chunk: Buffer) => {
 			stdout += chunk.toString();
-			armStallTimeout();
 		});
 		child.stderr.on("data", (chunk: Buffer) => {
 			const text = chunk.toString();
-			armStallTimeout();
 			stderr += text;
 			stderrLineBuffer += text;
 			const lines = stderrLineBuffer.split(/\r?\n/);
@@ -2759,6 +2782,20 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 							: undefined;
 				const mappedPercentage = mapNvidiaCudaWrapperProgressPercentage(progress);
 				lastProgressPercentage = Math.max(lastProgressPercentage, mappedPercentage);
+				const progressForStallGuard = {
+					currentFrame: progress.currentFrame,
+					percentage: mappedPercentage,
+					stage: progress.stage,
+				};
+				if (
+					hasNativeStaticLayoutProgressAdvanced(
+						progressForStallGuard,
+						lastProgressForStallGuard,
+					)
+				) {
+					lastProgressForStallGuard = progressForStallGuard;
+					armStallTimeout();
+				}
 				onProgress?.({
 					...progress,
 					percentage: lastProgressPercentage,
@@ -2825,13 +2862,14 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 				stderr,
 				stdout,
 				summary,
+				timedOut: stallTimedOut,
 			});
 			if (code !== 0 || !summary?.success) {
 				const suffix = signal ? ` (signal ${signal})` : "";
 				reject(
 					new Error(
 						(stallTimedOut && stallTimeoutMs
-							? `Experimental NVIDIA CUDA exporter stalled for ${stallTimeoutMs}ms without output`
+							? `Experimental NVIDIA CUDA exporter stalled for ${stallTimeoutMs}ms without progress`
 							: stderr.trim()) ||
 							stdout.trim() ||
 							`Experimental NVIDIA CUDA exporter exited with code ${code ?? "unknown"}${suffix}`,
@@ -2884,6 +2922,11 @@ async function runExperimentalWindowsGpuStaticLayoutExport(
 		let stdout = "";
 		let stderr = "";
 		let stderrLineBuffer = "";
+		let lastProgressForStallGuard: {
+			currentFrame: number;
+			percentage: number;
+			stage?: string;
+		} = { currentFrame: -1, percentage: -1 };
 		let stallTimedOut = false;
 		let settled = false;
 		const timeout = setTimeout(() => {
@@ -2912,11 +2955,9 @@ async function runExperimentalWindowsGpuStaticLayoutExport(
 
 		child.stdout.on("data", (chunk: Buffer) => {
 			stdout += chunk.toString();
-			armStallTimeout();
 		});
 		child.stderr.on("data", (chunk: Buffer) => {
 			const text = chunk.toString();
-			armStallTimeout();
 			stderr += text;
 			stderrLineBuffer += text;
 			const lines = stderrLineBuffer.split(/\r?\n/);
@@ -2925,6 +2966,14 @@ async function runExperimentalWindowsGpuStaticLayoutExport(
 				const progress = parseWindowsGpuExportProgressLine(line);
 				if (!progress) {
 					continue;
+				}
+				if (hasNativeStaticLayoutProgressAdvanced(progress, lastProgressForStallGuard)) {
+					lastProgressForStallGuard = {
+						currentFrame: progress.currentFrame,
+						percentage: progress.percentage,
+						stage: progress.stage,
+					};
+					armStallTimeout();
 				}
 				const elapsedMs = Math.max(0, getNowMs() - startedAt);
 				onProgress?.({
@@ -2983,7 +3032,7 @@ async function runExperimentalWindowsGpuStaticLayoutExport(
 				reject(
 					new Error(
 						(stallTimedOut && stallTimeoutMs
-							? `Experimental Windows GPU exporter stalled for ${stallTimeoutMs}ms without output`
+							? `Experimental Windows GPU exporter stalled for ${stallTimeoutMs}ms without progress`
 							: stderr.trim()) ||
 							stdout.trim() ||
 							`Experimental Windows GPU exporter exited with code ${code ?? "unknown"}${suffix}`,
