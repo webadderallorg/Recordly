@@ -45,8 +45,11 @@ import {
 import {
 	getCompanionAudioFallbackInfo,
 	getFileSizeIfPresent,
+	type MicrophoneChunkTimingEvent,
+	type MicrophonePauseInterval,
 	type RecordingDiagnosticsSnapshot,
 	recordNativeCaptureDiagnostics,
+	summarizeMicrophoneChunkTiming,
 	validateRecordedVideo,
 	writeRecordingDiagnosticsSnapshot,
 } from "../recording/diagnostics";
@@ -189,7 +192,7 @@ function pickPrimitiveRecord(value: unknown) {
 	return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
-function pickMicrophoneChunkEvents(value: unknown) {
+function pickMicrophoneChunkEvents(value: unknown): MicrophoneChunkTimingEvent[] | null {
 	if (!Array.isArray(value)) {
 		return null;
 	}
@@ -200,7 +203,7 @@ function pickMicrophoneChunkEvents(value: unknown) {
 				return null;
 			}
 
-			const { index, size, elapsedMs, deltaMs } = event;
+			const { index, size, elapsedMs, deltaMs, recordedElapsedMs, recordedDeltaMs } = event;
 			if (
 				typeof index !== "number" ||
 				typeof size !== "number" ||
@@ -214,11 +217,51 @@ function pickMicrophoneChunkEvents(value: unknown) {
 				size: Math.round(size),
 				elapsedMs: Math.round(elapsedMs),
 				deltaMs: typeof deltaMs === "number" ? Math.round(deltaMs) : null,
+				...(typeof recordedElapsedMs === "number" &&
+				Number.isFinite(recordedElapsedMs) &&
+				recordedElapsedMs >= 0
+					? { recordedElapsedMs: Math.round(recordedElapsedMs) }
+					: {}),
+				recordedDeltaMs:
+					typeof recordedDeltaMs === "number" && Number.isFinite(recordedDeltaMs)
+						? Math.max(0, Math.round(recordedDeltaMs))
+						: null,
 			};
 		})
 		.filter((event): event is NonNullable<typeof event> => event !== null);
 
 	return events.length > 0 ? events : null;
+}
+
+function pickMicrophonePauseIntervals(value: unknown): MicrophonePauseInterval[] | null {
+	if (!Array.isArray(value)) {
+		return null;
+	}
+
+	const intervals = value
+		.map((interval) => {
+			if (!isRecord(interval) || typeof interval.startElapsedMs !== "number") {
+				return null;
+			}
+
+			const startElapsedMs = Math.max(0, Math.round(interval.startElapsedMs));
+			return {
+				startElapsedMs,
+				...(typeof interval.endElapsedMs === "number" &&
+				Number.isFinite(interval.endElapsedMs) &&
+				interval.endElapsedMs >= startElapsedMs
+					? { endElapsedMs: Math.round(interval.endElapsedMs) }
+					: {}),
+				...(typeof interval.durationMs === "number" &&
+				Number.isFinite(interval.durationMs) &&
+				interval.durationMs >= 0
+					? { durationMs: Math.round(interval.durationMs) }
+					: {}),
+			};
+		})
+		.filter((interval): interval is NonNullable<typeof interval> => interval !== null);
+
+	return intervals.length > 0 ? intervals : null;
 }
 
 function pickAudioInputDevices(value: unknown) {
@@ -1415,6 +1458,7 @@ export function registerRecordingHandlers(
 				audioInputDevices?: unknown;
 				mediaRecorder?: unknown;
 				chunkEvents?: unknown;
+				pauseIntervals?: unknown;
 			},
 		) => {
 			const baseName = videoPath.replace(/\.[^.]+$/, "");
@@ -1478,6 +1522,15 @@ export function registerRecordingHandlers(
 						}
 					: null;
 				const chunkEvents = pickMicrophoneChunkEvents(options?.chunkEvents);
+				const pauseIntervals = pickMicrophonePauseIntervals(options?.pauseIntervals);
+				const chunkTiming =
+					chunkEvents || pauseIntervals
+						? summarizeMicrophoneChunkTiming(
+								chunkEvents,
+								pauseIntervals,
+								mediaRecorder?.timesliceMs,
+							)
+						: null;
 				const metadata = {
 					...(Number.isFinite(startDelayMs) && (startDelayMs ?? 0) >= 0
 						? { startDelayMs: Math.round(startDelayMs ?? 0) }
@@ -1500,6 +1553,8 @@ export function registerRecordingHandlers(
 						? { mediaRecorder }
 						: {}),
 					...(chunkEvents ? { chunkEvents } : {}),
+					...(pauseIntervals ? { pauseIntervals } : {}),
+					...(chunkTiming ? { chunkTiming } : {}),
 				};
 				if (Object.keys(metadata).length > 0) {
 					try {

@@ -84,6 +84,13 @@ type MicrophoneFallbackChunkEvent = {
 	size: number;
 	elapsedMs: number;
 	deltaMs: number | null;
+	recordedElapsedMs: number;
+	recordedDeltaMs: number | null;
+};
+type MicrophoneFallbackPauseInterval = {
+	startElapsedMs: number;
+	endElapsedMs?: number;
+	durationMs?: number;
 };
 type MicrophoneFallbackRecorderMetadata = {
 	mimeType: string;
@@ -99,6 +106,7 @@ type MicrophoneSidecarOptions = {
 	audioInputDevices?: MicrophoneAudioInputDeviceSnapshot[];
 	mediaRecorder?: MicrophoneFallbackRecorderMetadata;
 	chunkEvents?: MicrophoneFallbackChunkEvent[];
+	pauseIntervals?: MicrophoneFallbackPauseInterval[];
 };
 const LINUX_PORTAL_SOURCE: ProcessedDesktopSource = {
 	id: "screen:linux-portal",
@@ -299,6 +307,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const micFallbackRecorderMetadata = useRef<MicrophoneFallbackRecorderMetadata | null>(null);
 	const micFallbackChunkEvents = useRef<MicrophoneFallbackChunkEvent[]>([]);
 	const micFallbackRecorderStartedAt = useRef<number | null>(null);
+	const micFallbackPauseStartedAt = useRef<number | null>(null);
+	const micFallbackPausedDurationMs = useRef(0);
+	const micFallbackPauseIntervals = useRef<MicrophoneFallbackPauseInterval[]>([]);
 	const browserMicrophoneProfile = useRef<BrowserMicrophoneProfile>(
 		DEFAULT_BROWSER_MICROPHONE_PROFILE,
 	);
@@ -389,6 +400,32 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			accumulatedPausedDurationMs: accumulatedPausedDurationMs.current,
 			pauseStartedAtMs: pauseStartedAtMs.current,
 		});
+	}, []);
+
+	const getMicFallbackRecordedElapsedMs = useCallback((now = performance.now()) => {
+		const startedAt = micFallbackRecorderStartedAt.current;
+		if (startedAt === null) {
+			return 0;
+		}
+
+		const currentPauseDurationMs =
+			micFallbackPauseStartedAt.current === null
+				? 0
+				: Math.max(0, now - micFallbackPauseStartedAt.current);
+		return Math.max(
+			0,
+			Math.round(
+				now - startedAt - micFallbackPausedDurationMs.current - currentPauseDurationMs,
+			),
+		);
+	}, []);
+
+	const resetMicFallbackTimingDiagnostics = useCallback(() => {
+		micFallbackChunkEvents.current = [];
+		micFallbackRecorderStartedAt.current = null;
+		micFallbackPauseStartedAt.current = null;
+		micFallbackPausedDurationMs.current = 0;
+		micFallbackPauseIntervals.current = [];
 	}, []);
 
 	const preparePermissions = useCallback(async (options: { startup?: boolean } = {}) => {
@@ -497,31 +534,40 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			micFallbackRequestedConstraints.current = null;
 			micFallbackAudioInputDevices.current = null;
 			micFallbackRecorderMetadata.current = null;
-			micFallbackChunkEvents.current = [];
-			micFallbackRecorderStartedAt.current = null;
+			resetMicFallbackTimingDiagnostics();
 		}
-	}, []);
+	}, [resetMicFallbackTimingDiagnostics]);
 
-	const appendMicFallbackChunk = useCallback((event: BlobEvent) => {
-		if (event.data.size <= 0) {
-			return;
-		}
+	const appendMicFallbackChunk = useCallback(
+		(event: BlobEvent) => {
+			if (event.data.size <= 0) {
+				return;
+			}
 
-		micFallbackChunks.current.push(event.data);
-		const startedAt = micFallbackRecorderStartedAt.current;
-		if (startedAt === null) {
-			return;
-		}
+			micFallbackChunks.current.push(event.data);
+			const startedAt = micFallbackRecorderStartedAt.current;
+			if (startedAt === null) {
+				return;
+			}
 
-		const elapsedMs = Math.max(0, Math.round(performance.now() - startedAt));
-		const previous = micFallbackChunkEvents.current[micFallbackChunkEvents.current.length - 1];
-		micFallbackChunkEvents.current.push({
-			index: micFallbackChunkEvents.current.length,
-			size: event.data.size,
-			elapsedMs,
-			deltaMs: previous ? Math.max(0, elapsedMs - previous.elapsedMs) : null,
-		});
-	}, []);
+			const now = performance.now();
+			const elapsedMs = Math.max(0, Math.round(now - startedAt));
+			const recordedElapsedMs = getMicFallbackRecordedElapsedMs(now);
+			const previous =
+				micFallbackChunkEvents.current[micFallbackChunkEvents.current.length - 1];
+			micFallbackChunkEvents.current.push({
+				index: micFallbackChunkEvents.current.length,
+				size: event.data.size,
+				elapsedMs,
+				deltaMs: previous ? Math.max(0, elapsedMs - previous.elapsedMs) : null,
+				recordedElapsedMs,
+				recordedDeltaMs: previous
+					? Math.max(0, recordedElapsedMs - previous.recordedElapsedMs)
+					: null,
+			});
+		},
+		[getMicFallbackRecordedElapsedMs],
+	);
 
 	const resolveBrowserCaptureSource = useCallback(async (source: ProcessedDesktopSource) => {
 		if (!source?.id?.startsWith("screen:")) {
@@ -606,6 +652,27 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		[],
 	);
 
+	const closeMicFallbackPauseInterval = useCallback((now = performance.now()) => {
+		const pauseStartedAt = micFallbackPauseStartedAt.current;
+		if (pauseStartedAt === null) {
+			return;
+		}
+
+		const durationMs = Math.max(0, Math.round(now - pauseStartedAt));
+		micFallbackPausedDurationMs.current += durationMs;
+		const startedAt = micFallbackRecorderStartedAt.current ?? now;
+		const lastInterval =
+			micFallbackPauseIntervals.current[micFallbackPauseIntervals.current.length - 1];
+		if (lastInterval && lastInterval.endElapsedMs === undefined) {
+			lastInterval.endElapsedMs = Math.max(
+				lastInterval.startElapsedMs,
+				Math.round(now - startedAt),
+			);
+			lastInterval.durationMs = durationMs;
+		}
+		micFallbackPauseStartedAt.current = null;
+	}, []);
+
 	const stopMicFallbackRecorder = useCallback((): Promise<Blob | null> => {
 		return new Promise((resolve) => {
 			const recorder = micFallbackRecorder.current;
@@ -614,6 +681,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				resolve(null);
 				return;
 			}
+			closeMicFallbackPauseInterval();
 			recorder.ondataavailable = appendMicFallbackChunk;
 			recorder.onstop = () => {
 				const blob =
@@ -628,7 +696,38 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			};
 			recorder.stop();
 		});
-	}, [appendMicFallbackChunk]);
+	}, [appendMicFallbackChunk, closeMicFallbackPauseInterval]);
+
+	const pauseMicFallbackRecorder = useCallback(() => {
+		const recorder = micFallbackRecorder.current;
+		if (recorder?.state !== "recording") {
+			return;
+		}
+
+		try {
+			recorder.requestData();
+		} catch (error) {
+			console.warn("Failed to flush microphone fallback chunk before pause:", error);
+		}
+
+		recorder.pause();
+		const now = performance.now();
+		const startedAt = micFallbackRecorderStartedAt.current ?? now;
+		micFallbackPauseStartedAt.current = now;
+		micFallbackPauseIntervals.current.push({
+			startElapsedMs: Math.max(0, Math.round(now - startedAt)),
+		});
+	}, []);
+
+	const resumeMicFallbackRecorder = useCallback(() => {
+		const recorder = micFallbackRecorder.current;
+		if (recorder?.state !== "paused") {
+			return;
+		}
+
+		closeMicFallbackPauseInterval();
+		recorder.resume();
+	}, [closeMicFallbackPauseInterval]);
 
 	const storeMicrophoneSidecar = useCallback(
 		async (
@@ -644,7 +743,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				micFallbackRequestedConstraints.current = null;
 				micFallbackAudioInputDevices.current = null;
 				micFallbackRecorderMetadata.current = null;
-				micFallbackChunkEvents.current = [];
+				resetMicFallbackTimingDiagnostics();
 				return;
 			}
 
@@ -679,6 +778,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					...(micFallbackChunkEvents.current.length > 0
 						? { chunkEvents: [...micFallbackChunkEvents.current] }
 						: {}),
+					...(micFallbackPauseIntervals.current.length > 0
+						? {
+								pauseIntervals: micFallbackPauseIntervals.current.map(
+									(interval) => ({ ...interval }),
+								),
+							}
+						: {}),
 				};
 				const result = await window.electronAPI.storeMicrophoneSidecar(
 					arrayBuffer,
@@ -706,10 +812,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				micFallbackRequestedConstraints.current = null;
 				micFallbackAudioInputDevices.current = null;
 				micFallbackRecorderMetadata.current = null;
-				micFallbackChunkEvents.current = [];
+				resetMicFallbackTimingDiagnostics();
 			}
 		},
-		[],
+		[resetMicFallbackTimingDiagnostics],
 	);
 
 	const stopWebcamRecorder = useCallback(async () => {
@@ -1306,7 +1412,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 								audioBitsPerSecond: AUDIO_BITRATE_VOICE,
 								timesliceMs: RECORDER_TIMESLICE_MS,
 							};
-							micFallbackChunkEvents.current = [];
+							resetMicFallbackTimingDiagnostics();
 							micFallbackRecorderStartedAt.current = performance.now();
 							recorder.ondataavailable = appendMicFallbackChunk;
 							micFallbackStartDelayMs.current = Math.max(
@@ -1321,8 +1427,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							micFallbackRequestedConstraints.current = null;
 							micFallbackAudioInputDevices.current = null;
 							micFallbackRecorderMetadata.current = null;
-							micFallbackChunkEvents.current = [];
-							micFallbackRecorderStartedAt.current = null;
+							resetMicFallbackTimingDiagnostics();
 							console.warn("Browser microphone fallback failed:", micError);
 							const permissionDenied =
 								micError instanceof DOMException &&
@@ -1667,9 +1772,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (webcamRecorder.current?.state === "recording") {
 					webcamRecorder.current.pause();
 				}
-				if (micFallbackRecorder.current?.state === "recording") {
-					micFallbackRecorder.current.pause();
-				}
+				pauseMicFallbackRecorder();
 				const boundaryMs = Date.now();
 				markRecordingPaused(boundaryMs);
 				setPaused(true);
@@ -1697,7 +1800,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}
 			})();
 		}
-	}, [markRecordingPaused, paused, recording]);
+	}, [markRecordingPaused, pauseMicFallbackRecorder, paused, recording]);
 
 	const resumeRecording = useCallback(() => {
 		if (!recording || !paused) return;
@@ -1715,9 +1818,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (webcamRecorder.current?.state === "paused") {
 					webcamRecorder.current.resume();
 				}
-				if (micFallbackRecorder.current?.state === "paused") {
-					micFallbackRecorder.current.resume();
-				}
+				resumeMicFallbackRecorder();
 				const boundaryMs = Date.now();
 				markRecordingResumed(boundaryMs);
 				setPaused(false);
@@ -1745,7 +1846,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}
 			})();
 		}
-	}, [markRecordingResumed, paused, recording]);
+	}, [markRecordingResumed, paused, recording, resumeMicFallbackRecorder]);
 
 	const cancelRecording = useCallback(() => {
 		if (!recording) return;

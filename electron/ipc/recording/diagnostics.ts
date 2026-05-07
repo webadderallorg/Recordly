@@ -16,6 +16,21 @@ type CompanionAudioTimingMetadata = {
 	startDelayMs?: number;
 };
 
+export type MicrophoneChunkTimingEvent = {
+	index: number;
+	size: number;
+	elapsedMs: number;
+	deltaMs: number | null;
+	recordedElapsedMs?: number;
+	recordedDeltaMs?: number | null;
+};
+
+export type MicrophonePauseInterval = {
+	startElapsedMs: number;
+	endElapsedMs?: number;
+	durationMs?: number;
+};
+
 export type VideoStreamDurationProbe = {
 	durationSeconds: number | null;
 	frameCount: number | null;
@@ -100,6 +115,77 @@ export function getRecordingAudioMuxTimeoutMs(durationSeconds: number) {
 		RECORDING_AUDIO_MUX_MAX_TIMEOUT_MS,
 		Math.max(RECORDING_AUDIO_MUX_MIN_TIMEOUT_MS, realtimeMuxBudgetMs),
 	);
+}
+
+function getFiniteNonNegativeNumber(value: unknown) {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+export function summarizeMicrophoneChunkTiming(
+	chunkEvents: MicrophoneChunkTimingEvent[] | null | undefined,
+	pauseIntervals: MicrophonePauseInterval[] | null | undefined = [],
+	timesliceMs = 250,
+) {
+	const normalizedTimesliceMs =
+		Number.isFinite(timesliceMs) && timesliceMs > 0 ? Math.round(timesliceMs) : 250;
+	const thresholdMs = Math.max(600, Math.round(normalizedTimesliceMs * 2.5));
+	const events = Array.isArray(chunkEvents) ? chunkEvents : [];
+	const pauses = Array.isArray(pauseIntervals) ? pauseIntervals : [];
+	const pausedDurationMs = pauses.reduce((total, interval) => {
+		const durationMs = getFiniteNonNegativeNumber(interval.durationMs);
+		return durationMs === null ? total : total + Math.round(durationMs);
+	}, 0);
+
+	const wallClockGaps = events
+		.filter((event) => (event.deltaMs ?? 0) > thresholdMs)
+		.map((event) => ({
+			index: event.index,
+			deltaMs: Math.round(event.deltaMs ?? 0),
+			elapsedMs: Math.round(event.elapsedMs),
+		}));
+	const recordedGaps = events
+		.filter((event) => {
+			const recordedDeltaMs =
+				getFiniteNonNegativeNumber(event.recordedDeltaMs) ?? event.deltaMs ?? 0;
+			return recordedDeltaMs > thresholdMs;
+		})
+		.map((event) => ({
+			index: event.index,
+			deltaMs: Math.round(
+				getFiniteNonNegativeNumber(event.recordedDeltaMs) ?? event.deltaMs ?? 0,
+			),
+			recordedElapsedMs: Math.round(event.recordedElapsedMs ?? event.elapsedMs),
+		}));
+	const maxWallClockDeltaMs = events.reduce(
+		(maxDeltaMs, event) => Math.max(maxDeltaMs, event.deltaMs ?? 0),
+		0,
+	);
+	const maxRecordedDeltaMs = events.reduce((maxDeltaMs, event) => {
+		const recordedDeltaMs =
+			getFiniteNonNegativeNumber(event.recordedDeltaMs) ?? event.deltaMs ?? 0;
+		return Math.max(maxDeltaMs, recordedDeltaMs);
+	}, 0);
+	const status =
+		recordedGaps.length > 0
+			? "needs-review"
+			: wallClockGaps.length > 0 && pausedDurationMs > 0
+				? "pause-accounted"
+				: "ok";
+
+	return {
+		status,
+		timesliceMs: normalizedTimesliceMs,
+		thresholdMs,
+		eventCount: events.length,
+		pauseIntervalCount: pauses.length,
+		pausedDurationMs,
+		maxWallClockDeltaMs: Math.round(maxWallClockDeltaMs),
+		maxRecordedDeltaMs: Math.round(maxRecordedDeltaMs),
+		wallClockGapCount: wallClockGaps.length,
+		recordedGapCount: recordedGaps.length,
+		wallClockGaps: wallClockGaps.slice(0, 10),
+		recordedGaps: recordedGaps.slice(0, 10),
+	};
 }
 
 /** Probe the duration of a media file (in seconds) using the container header. */

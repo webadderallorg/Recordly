@@ -19,6 +19,7 @@ function createMockMediaRecorder(initialState: RecordingState = "inactive") {
 		resume: vi.fn(() => {
 			if (_state === "paused") _state = "recording";
 		}),
+		requestData: vi.fn(),
 		stop: vi.fn(() => {
 			_state = "inactive";
 		}),
@@ -151,6 +152,7 @@ function pauseRecording(
 			webcamRecorder.pause();
 		}
 		if (micFallbackRecorder?.state === "recording") {
+			micFallbackRecorder.requestData();
 			micFallbackRecorder.pause();
 		}
 		return true;
@@ -206,6 +208,7 @@ async function pauseNativeRecording(
 		webcamRecorder.pause();
 	}
 	if (micFallbackRecorder?.state === "recording") {
+		micFallbackRecorder.requestData();
 		micFallbackRecorder.pause();
 	}
 
@@ -430,6 +433,7 @@ describe("useScreenRecorder state machine", () => {
 			const result = pauseRecording(recorder, true, false, true, null, micFallback);
 
 			expect(result).toBe(true);
+			expect(micFallback.requestData).toHaveBeenCalled();
 			expect(micFallback.state).toBe("paused");
 		});
 
@@ -613,6 +617,7 @@ describe("useScreenRecorder state machine", () => {
 			const pausedResult = await pauseNativeRecording(webcam, { success: true }, micFallback);
 			expect(pausedResult).toBe(true);
 			expect(webcam.state).toBe("paused");
+			expect(micFallback.requestData).toHaveBeenCalled();
 			expect(micFallback.state).toBe("paused");
 			expect(recorder.pause).not.toHaveBeenCalled();
 

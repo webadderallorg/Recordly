@@ -304,6 +304,73 @@ describe("getCompanionAudioFallbackPaths", () => {
 		await expect(getCompanionAudioStartDelayMs(micPath)).resolves.toBeNull();
 	});
 
+	it("classifies wall-clock mic chunk gaps covered by pause intervals", async () => {
+		const { summarizeMicrophoneChunkTiming } = await import("./diagnostics");
+
+		expect(
+			summarizeMicrophoneChunkTiming(
+				[
+					{
+						index: 0,
+						size: 1024,
+						elapsedMs: 250,
+						deltaMs: null,
+						recordedElapsedMs: 250,
+						recordedDeltaMs: null,
+					},
+					{
+						index: 1,
+						size: 1024,
+						elapsedMs: 8250,
+						deltaMs: 8000,
+						recordedElapsedMs: 500,
+						recordedDeltaMs: 250,
+					},
+				],
+				[{ startElapsedMs: 250, endElapsedMs: 8250, durationMs: 7750 }],
+				250,
+			),
+		).toMatchObject({
+			status: "pause-accounted",
+			wallClockGapCount: 1,
+			recordedGapCount: 0,
+			pausedDurationMs: 7750,
+		});
+	});
+
+	it("flags recorded mic chunk gaps that remain after pause accounting", async () => {
+		const { summarizeMicrophoneChunkTiming } = await import("./diagnostics");
+
+		expect(
+			summarizeMicrophoneChunkTiming(
+				[
+					{
+						index: 0,
+						size: 1024,
+						elapsedMs: 250,
+						deltaMs: null,
+						recordedElapsedMs: 250,
+						recordedDeltaMs: null,
+					},
+					{
+						index: 1,
+						size: 1024,
+						elapsedMs: 2500,
+						deltaMs: 2250,
+						recordedElapsedMs: 2500,
+						recordedDeltaMs: 2250,
+					},
+				],
+				[],
+				250,
+			),
+		).toMatchObject({
+			status: "needs-review",
+			wallClockGapCount: 1,
+			recordedGapCount: 1,
+		});
+	});
+
 	it("rejects tiny MP4 container-only outputs before they reach the editor", async () => {
 		const videoPath = path.join(tempRoot, "recording-123.mp4");
 		await fs.writeFile(videoPath, Buffer.alloc(261));
