@@ -349,7 +349,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 				unstyled
 				align="start"
 				sideOffset={8}
-				side="bottom"
+				side="top"
 				alignOffset={-8}
 				avoidCollisions={true}
 				collisionPadding={10}
