@@ -17,6 +17,7 @@ import {
 	useCallback,
 	useEffect,
 	useImperativeHandle,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -320,7 +321,7 @@ function PlaybackCursor({
 	const sideProperty = direction === "rtl" ? "right" : "left";
 	const [isDragging, setIsDragging] = useState(false);
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		if (!isDragging) return;
 
 		let frameId: number | null = null;
@@ -679,6 +680,7 @@ function Timeline({
 
 	const handleTimelineMouseDown = useCallback(
 		(e: React.MouseEvent<HTMLDivElement>) => {
+			e.stopPropagation();
 			if (e.button !== 0 || !onSeek || videoDurationMs <= 0 || !localTimelineRef.current) return;
 
 			const rect = localTimelineRef.current.getBoundingClientRect();
@@ -717,7 +719,7 @@ function Timeline({
 		],
 	);
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		if (!isSeeking) return;
 
 		let frameId: number | null = null;
@@ -910,6 +912,29 @@ function Timeline({
 		[canPlaceZoomAtMs, onAddZoomAtMs, videoDurationMs, zoomRowHoverMs],
 	);
 
+	const handleBackgroundMouseDown = useCallback((e: React.MouseEvent) => {
+		// Do not clear selection if clicking on an item
+		if ((e.target as HTMLElement).closest("[data-timeline-item]")) {
+			return;
+		}
+
+		onSelectZoom?.(null);
+		onSelectTrim?.(null);
+		onSelectClip?.(null);
+		onSelectAnnotation?.(null);
+		onSelectSpeed?.(null);
+		onSelectAudio?.(null);
+		onClearBlockSelection?.();
+	}, [
+		onSelectZoom,
+		onSelectTrim,
+		onSelectClip,
+		onSelectAnnotation,
+		onSelectSpeed,
+		onSelectAudio,
+		onClearBlockSelection,
+	]);
+
 	return (
 		<div
 			ref={setRefs}
@@ -921,6 +946,7 @@ function Timeline({
 			onMouseEnter={handleTimelineMouseEnter}
 			onMouseMove={handleTimelineMouseMove}
 			onMouseLeave={handleTimelineMouseLeave}
+			onMouseDown={handleBackgroundMouseDown}
 		>
 			<div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--foreground)/0.03)_1px,transparent_1px)] bg-[length:20px_100%] pointer-events-none" />
 			<TimelineAxis

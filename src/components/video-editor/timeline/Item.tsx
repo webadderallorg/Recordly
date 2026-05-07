@@ -102,6 +102,7 @@ export default function Item({
 			{...listeners}
 			{...attributes}
 			onPointerDownCapture={() => onSelect?.()}
+			data-timeline-item="true"
 			className="group h-full"
 		>
 			<div
