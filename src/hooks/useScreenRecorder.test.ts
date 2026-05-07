@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+	createProcessedMicrophoneConstraints,
+	normalizeBrowserMicrophoneProfile,
+} from "./useScreenRecorder";
+
 type RecordingState = "inactive" | "recording" | "paused";
 
 function createMockMediaRecorder(initialState: RecordingState = "inactive") {
@@ -22,6 +27,85 @@ function createMockMediaRecorder(initialState: RecordingState = "inactive") {
 		}),
 	};
 }
+
+describe("createProcessedMicrophoneConstraints", () => {
+	it("requests browser voice processing without AGC for the default microphone", () => {
+		expect(createProcessedMicrophoneConstraints()).toEqual({
+			audio: {
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: false,
+				channelCount: { ideal: 1 },
+				sampleRate: { ideal: 48000 },
+			},
+			video: false,
+		});
+	});
+
+	it("keeps no-AGC voice processing when a specific microphone is selected", () => {
+		expect(createProcessedMicrophoneConstraints("device-123")).toMatchObject({
+			audio: {
+				deviceId: { exact: "device-123" },
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: false,
+				channelCount: { ideal: 1 },
+				sampleRate: { ideal: 48000 },
+			},
+			video: false,
+		});
+	});
+
+	it("can request the legacy browser processed profile for lab comparisons", () => {
+		expect(createProcessedMicrophoneConstraints(undefined, "processed")).toMatchObject({
+			audio: {
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: true,
+			},
+			video: false,
+		});
+	});
+
+	it("can disable AGC for lab comparisons", () => {
+		expect(createProcessedMicrophoneConstraints(undefined, "no-agc")).toMatchObject({
+			audio: {
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: false,
+			},
+			video: false,
+		});
+	});
+
+	it("can disable echo cancellation for lab comparisons", () => {
+		expect(createProcessedMicrophoneConstraints(undefined, "no-echo")).toMatchObject({
+			audio: {
+				echoCancellation: false,
+				noiseSuppression: true,
+				autoGainControl: true,
+			},
+			video: false,
+		});
+	});
+
+	it("can request a raw browser microphone stream for lab comparisons", () => {
+		expect(createProcessedMicrophoneConstraints(undefined, "raw")).toMatchObject({
+			audio: {
+				echoCancellation: false,
+				noiseSuppression: false,
+				autoGainControl: false,
+			},
+			video: false,
+		});
+	});
+
+	it("normalizes invalid lab microphone profiles to production no-AGC processing", () => {
+		expect(normalizeBrowserMicrophoneProfile("RAW")).toBe("raw");
+		expect(normalizeBrowserMicrophoneProfile("unknown")).toBe("no-agc");
+		expect(normalizeBrowserMicrophoneProfile(null)).toBe("no-agc");
+	});
+});
 
 function stopRecording(
 	recorder: ReturnType<typeof createMockMediaRecorder>,

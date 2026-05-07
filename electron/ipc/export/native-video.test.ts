@@ -50,9 +50,12 @@ import { app } from "electron";
 import {
 	buildExperimentalNvidiaCudaStaticLayoutArgs,
 	buildExperimentalWindowsGpuStaticLayoutArgs,
+	buildNativeStaticLayoutSourceProxyArgs,
 	buildNativeStaticLayoutTimelineSegments,
 	buildNativeVideoAudioMuxArgs,
+	canCopyAudioCodecIntoMp4,
 	getExperimentalNvidiaCudaExportSkipReason,
+	getNativeStaticLayoutSourceProxyBitrate,
 	getNvidiaCudaAudioExportSkipReason,
 	getNvidiaCudaAutoStallTimeoutMs,
 	hasNvidiaGpuDeviceInGpuInfo,
@@ -64,11 +67,16 @@ import {
 	parseFfmpegFrameRate,
 	parseFfmpegProgressLineSeconds,
 	parseNativeVideoMetadataProbeOutput,
+	parseNativeVideoStreamStatsProbeOutput,
 	parseNvidiaCudaExportSummary,
 	parseWindowsGpuExportProgressLine,
 	parseWindowsGpuExportSummary,
 	resolveExperimentalNvidiaCudaExportScriptPath,
+	shouldCreateNativeStaticLayoutSourceProxy,
+	validateNativeStaticLayoutSourceProxyMetadata,
+	validateNativeVideoStreamStats,
 	validateNvidiaCudaExportSummary,
+	validateWindowsGpuExportSummary,
 } from "./native-video";
 
 const electronAppMock = app as unknown as {
@@ -168,6 +176,92 @@ describe("normalizeNativeStaticLayoutBackground", () => {
 
 		expect(normalized.backgroundImagePath).toBeNull();
 		expect(normalized.backgroundColor).toBe("#ffffff");
+	});
+});
+
+describe("native static-layout source proxy", () => {
+	const h264Metadata = {
+		width: 1920,
+		height: 1080,
+		duration: 45,
+		frameRate: 30,
+		codec: "h264 (High)",
+		hasAudio: true,
+		audioCodec: "aac",
+	};
+
+	it("proxies non-H.264 codecs and non-MP4-like containers", () => {
+		expect(shouldCreateNativeStaticLayoutSourceProxy(h264Metadata, "recording.mp4")).toBe(
+			false,
+		);
+		expect(shouldCreateNativeStaticLayoutSourceProxy(h264Metadata, "recording.webm")).toBe(
+			true,
+		);
+		expect(
+			shouldCreateNativeStaticLayoutSourceProxy(
+				{ ...h264Metadata, codec: "vp9 (Profile 0)" },
+				"recording.webm",
+			),
+		).toBe(true);
+	});
+
+	it("builds a CFR H.264 MP4 proxy at visually safe bitrate", () => {
+		const options = createNvidiaCudaSkipOptions({
+			inputPath: "recording.webm",
+			bitrate: 22_000_000,
+			durationSec: 30,
+		});
+		const metadata = {
+			...h264Metadata,
+			codec: "vp9 (Profile 0)",
+			audioCodec: "opus",
+			duration: 45.036,
+			streamDuration: 45.036,
+		};
+		const args = buildNativeStaticLayoutSourceProxyArgs(options, "source-proxy.mp4", metadata);
+
+		expect(args).toEqual(
+			expect.arrayContaining([
+				"-i",
+				"recording.webm",
+				"-an",
+				"-t",
+				"45.036",
+				"-c:v",
+				"libx264",
+				"-preset",
+				"veryfast",
+				"-pix_fmt",
+				"yuv420p",
+				"-movflags",
+				"+faststart",
+				"source-proxy.mp4",
+			]),
+		);
+		expect(args).toEqual(
+			expect.arrayContaining([
+				"-vf",
+				"fps=fps=30:start_time=0,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1,format=yuv420p,setpts=PTS-STARTPTS",
+			]),
+		);
+		expect(getNativeStaticLayoutSourceProxyBitrate(options, metadata)).toBeGreaterThan(
+			options.bitrate,
+		);
+	});
+
+	it("validates proxy codec and duration before native composition", () => {
+		expect(
+			validateNativeStaticLayoutSourceProxyMetadata(
+				{ ...h264Metadata, codec: "vp9", duration: 45 },
+				{ sourceDurationSec: 45 },
+			),
+		).toEqual(["proxy codec is not H.264/AVC: vp9"]);
+		expect(
+			validateNativeStaticLayoutSourceProxyMetadata(
+				{ ...h264Metadata, duration: 10 },
+				{ sourceDurationSec: 45 },
+			),
+		).toEqual(["proxy duration 10.000s shorter than expected 45.000s"]);
 	});
 });
 
@@ -458,6 +552,18 @@ describe("buildExperimentalNvidiaCudaStaticLayoutArgs", () => {
 		expect(args).toEqual(expect.arrayContaining(["--background-blur", "36"]));
 	});
 
+	it("passes the export encoding mode to the CUDA wrapper", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				encodingMode: "quality",
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).toEqual(expect.arrayContaining(["--encoding-mode", "quality"]));
+	});
+
 	it("passes webcam source-time controls to the CUDA wrapper", () => {
 		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
 			createNvidiaCudaSkipOptions({
@@ -584,6 +690,7 @@ describe("buildNativeVideoAudioMuxArgs", () => {
 	it("stream-copies source audio and preserves the requested video duration", () => {
 		const args = buildNativeVideoAudioMuxArgs("video.mp4", "source.mp4", "out.mp4", {
 			audioMode: "copy-source",
+			audioSourceCodec: "aac (LC) (mp4a / 0x6134706D)",
 			outputDurationSec: 60,
 		});
 
@@ -607,10 +714,22 @@ describe("buildNativeVideoAudioMuxArgs", () => {
 	it("does not shorten copy-source muxes when no explicit duration is available", () => {
 		const args = buildNativeVideoAudioMuxArgs("video.mp4", "source.mp4", "out.mp4", {
 			audioMode: "copy-source",
+			audioSourceCodec: "aac",
 		});
 
 		expect(args).toEqual(expect.arrayContaining(["-c:a", "copy"]));
 		expect(args).not.toContain("-shortest");
+	});
+
+	it("transcodes WebM/Opus source audio when muxing into MP4", () => {
+		const args = buildNativeVideoAudioMuxArgs("video.mp4", "source.webm", "out.mp4", {
+			audioMode: "copy-source",
+			audioSourceCodec: "opus",
+			outputDurationSec: 60,
+		});
+
+		expect(args).toEqual(expect.arrayContaining(["-c:a", "aac", "-b:a", "192k"]));
+		expect(args.join(";")).not.toContain("-c:a;copy");
 	});
 
 	it("keeps filtered audio on the AAC encode path", () => {
@@ -644,13 +763,69 @@ describe("buildNativeVideoAudioMuxArgs", () => {
 			"video.mp4",
 			"source.mp4",
 			"out.mp4",
-			{ audioMode: "copy-source", outputDurationSec: 60 },
+			{ audioMode: "copy-source", audioSourceCodec: "aac", outputDurationSec: 60 },
 			{ progressPipe: 2 },
 		);
 
 		expect(args).toEqual(
 			expect.arrayContaining(["-stats_period", "0.5", "-progress", "pipe:2", "-nostats"]),
 		);
+	});
+});
+
+describe("canCopyAudioCodecIntoMp4", () => {
+	it("allows common MP4-compatible audio codecs", () => {
+		expect(canCopyAudioCodecIntoMp4("aac (LC) (mp4a / 0x6134706D)")).toBe(true);
+		expect(canCopyAudioCodecIntoMp4("mp3")).toBe(true);
+	});
+
+	it("blocks Opus so native exports transcode it to AAC for MP4", () => {
+		expect(canCopyAudioCodecIntoMp4("opus")).toBe(false);
+	});
+});
+
+describe("validateNativeVideoStreamStats", () => {
+	it("accepts a complete video stream", () => {
+		expect(
+			validateNativeVideoStreamStats(
+				{ durationSec: 45, frameCount: 1350, frameRate: 30 },
+				{ durationSec: 45, targetFrames: 1350 },
+			),
+		).toEqual([]);
+	});
+
+	it("rejects files with container duration but too few video frames", () => {
+		expect(
+			validateNativeVideoStreamStats(
+				{ durationSec: 0.067, frameCount: 2, frameRate: 30 },
+				{ durationSec: 45, targetFrames: 1350 },
+			),
+		).toEqual([
+			"video frames 2 below expected minimum 1282",
+			"video stream duration 0.067s differs from expected 45.000s",
+		]);
+	});
+});
+
+describe("parseNativeVideoStreamStatsProbeOutput", () => {
+	it("parses FFprobe count-frame JSON output", () => {
+		expect(
+			parseNativeVideoStreamStatsProbeOutput(
+				JSON.stringify({
+					streams: [
+						{
+							duration: "44.999000",
+							nb_read_frames: "1349",
+							avg_frame_rate: "30000/1001",
+						},
+					],
+				}),
+			),
+		).toEqual({
+			durationSec: 44.999,
+			frameCount: 1349,
+			frameRate: 30000 / 1001,
+		});
 	});
 });
 
@@ -689,6 +864,29 @@ describe("parseWindowsGpuExportSummary", () => {
 	it("returns null when helper stdout has no valid JSON summary", () => {
 		expect(parseWindowsGpuExportSummary("initializing\nnot-json")).toBeNull();
 		expect(parseWindowsGpuExportSummary("")).toBeNull();
+	});
+});
+
+describe("validateWindowsGpuExportSummary", () => {
+	it("rejects short Windows GPU outputs before muxing audio", () => {
+		expect(
+			validateWindowsGpuExportSummary(
+				{ success: true, frames: 2, seconds: 0.067 },
+				{ durationSec: 45, targetFrames: 1350 },
+			),
+		).toEqual([
+			"Windows GPU frames 2 below expected minimum 1282",
+			"Windows GPU duration 0.067s differs from expected 45.000s",
+		]);
+	});
+
+	it("accepts complete Windows GPU outputs within tolerance", () => {
+		expect(
+			validateWindowsGpuExportSummary(
+				{ success: true, frames: 1345, seconds: 44.9 },
+				{ durationSec: 45, targetFrames: 1350 },
+			),
+		).toEqual([]);
 	});
 });
 

@@ -66,6 +66,49 @@ afterEach(() => {
 });
 
 describe("ModernVideoExporter native static-layout eligibility", () => {
+	it("allows native static-layout eligibility for VP9/WebM sources so main can proxy them", () => {
+		const exporter = createExporter();
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{ audioMode: "none" },
+				{
+					...videoInfo,
+					codec: "vp9 (Profile 0)",
+					audioCodec: "opus",
+				},
+				60,
+			),
+		).toBeNull();
+	});
+
+	it("carries embedded audio codec into native mux options", () => {
+		const exporter = createExporter();
+
+		expect(
+			exporter.buildNativeAudioPlan({
+				...videoInfo,
+				codec: "vp9 (Profile 0)",
+				audioCodec: "opus",
+			}),
+		).toMatchObject({
+			audioMode: "copy-source",
+			audioSourceCodec: "opus",
+		});
+	});
+
+	it("allows native static-layout for H.264 source metadata", () => {
+		const exporter = createExporter();
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{ audioMode: "none" },
+				{ ...videoInfo, codec: "avc1.640034" },
+				60,
+			),
+		).toBeNull();
+	});
+
 	it("uses FFmpeg filtergraph audio for speed edits with a single external source track", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },

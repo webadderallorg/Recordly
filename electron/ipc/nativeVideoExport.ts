@@ -37,6 +37,7 @@ export interface NativeVideoExportEditedTrackSegment extends NativeVideoExportAu
 export interface NativeVideoExportFinishOptions {
 	audioMode?: NativeVideoExportAudioMode;
 	audioSourcePath?: string | null;
+	audioSourceCodec?: string | null;
 	audioSourceSampleRate?: number;
 	outputDurationSec?: number;
 	trimSegments?: NativeVideoExportAudioSegment[];

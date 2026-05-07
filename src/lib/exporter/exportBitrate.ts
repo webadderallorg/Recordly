@@ -48,9 +48,33 @@ function getModernNativeStaticLayoutBitrateCap(
 	quality: ExportQuality,
 ): number {
 	const referenceCap =
-		quality === "source" ? 14_000_000 : quality === "high" ? 12_000_000 : 8_000_000;
+		quality === "source"
+			? 36_000_000
+			: quality === "high"
+				? 28_000_000
+				: quality === "good"
+					? 20_000_000
+					: 14_000_000;
 	const pixelRateScale = Math.max((width * height * frameRate) / REFERENCE_PIXEL_RATE, 0.1);
 	return Math.round(referenceCap * Math.sqrt(pixelRateScale));
+}
+
+function getModernNativeStaticLayoutBitrateFloor(
+	width: number,
+	height: number,
+	frameRate: ExportMp4FrameRate,
+	quality: ExportQuality,
+): number {
+	const referenceFloor =
+		quality === "source"
+			? 22_000_000
+			: quality === "high"
+				? 16_000_000
+				: quality === "good"
+					? 12_000_000
+					: 8_000_000;
+	const pixelRateScale = Math.max((width * height * frameRate) / REFERENCE_PIXEL_RATE, 0.1);
+	return Math.round(referenceFloor * Math.sqrt(pixelRateScale));
 }
 
 export function getMp4ExportBitrate(options: {
@@ -65,9 +89,21 @@ export function getMp4ExportBitrate(options: {
 		getBaseMp4ExportBitrate(options.width, options.height, options.quality) *
 			getEncodingModeBitrateMultiplier(options.encodingMode),
 	);
+	const nativeStaticLayoutBitrate =
+		options.useModernNativeStaticLayout && options.encodingMode !== "fast"
+			? Math.max(
+					requestedBitrate,
+					getModernNativeStaticLayoutBitrateFloor(
+						options.width,
+						options.height,
+						options.frameRate,
+						options.quality,
+					),
+				)
+			: requestedBitrate;
 	const cappedBitrate = options.useModernNativeStaticLayout
 		? Math.min(
-				requestedBitrate,
+				nativeStaticLayoutBitrate,
 				getModernNativeStaticLayoutBitrateCap(
 					options.width,
 					options.height,

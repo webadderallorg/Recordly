@@ -284,6 +284,26 @@ interface Window {
 			videoPath: string,
 			options?: {
 				startDelayMs?: number;
+				browserMicrophoneProfile?: string;
+				requestedBrowserMicrophoneProfile?: string | null;
+				requestedConstraints?: unknown;
+				mediaTrackSettings?: Record<string, boolean | number | string>;
+				audioInputDevices?: Array<{
+					deviceId: string;
+					groupId?: string;
+					label: string;
+				}>;
+				mediaRecorder?: {
+					mimeType?: string;
+					audioBitsPerSecond?: number;
+					timesliceMs?: number;
+				};
+				chunkEvents?: Array<{
+					index: number;
+					size: number;
+					elapsedMs: number;
+					deltaMs: number | null;
+				}>;
 			},
 		) => Promise<{ success: boolean; path?: string; error?: string }>;
 		getRecordedVideoPath: () => Promise<{ success: boolean; path?: string; message?: string }>;
@@ -361,6 +381,7 @@ interface Window {
 			audioOptions?: {
 				audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 				audioSourcePath?: string | null;
+				audioSourceCodec?: string | null;
 				audioSourceSampleRate?: number;
 				outputDurationSec?: number;
 				trimSegments?: Array<{ startMs: number; endMs: number }>;
@@ -404,6 +425,7 @@ interface Window {
 			options?: {
 				audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 				audioSourcePath?: string | null;
+				audioSourceCodec?: string | null;
 				audioSourceSampleRate?: number;
 				outputDurationSec?: number;
 				trimSegments?: Array<{ startMs: number; endMs: number }>;
@@ -427,6 +449,7 @@ interface Window {
 			options?: {
 				audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 				audioSourcePath?: string | null;
+				audioSourceCodec?: string | null;
 				audioSourceSampleRate?: number;
 				outputDurationSec?: number;
 				trimSegments?: Array<{ startMs: number; endMs: number }>;
@@ -446,6 +469,7 @@ interface Window {
 			options?: {
 				audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 				audioSourcePath?: string | null;
+				audioSourceCodec?: string | null;
 				audioSourceSampleRate?: number;
 				outputDurationSec?: number;
 				trimSegments?: Array<{ startMs: number; endMs: number }>;
@@ -782,6 +806,10 @@ interface Window {
 			microphoneEnabled: boolean;
 			microphoneDeviceId?: string;
 			systemAudioEnabled: boolean;
+		}>;
+		getRecordingAudioLabConfig: () => Promise<{
+			browserMicrophoneProfile: string;
+			requestedBrowserMicrophoneProfile: string | null;
 		}>;
 		setRecordingPreferences: (prefs: {
 			microphoneEnabled?: boolean;

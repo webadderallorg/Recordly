@@ -48,6 +48,10 @@ const NVIDIA_CUDA_ALLOW_AUDIO_EXPORT_ENV = "RECORDLY_NVIDIA_CUDA_ALLOW_AUDIO_EXP
 const NVIDIA_CUDA_FORCE_VIDEO_ONLY_ENV = "RECORDLY_NVIDIA_CUDA_FORCE_VIDEO_ONLY";
 const NVIDIA_CUDA_AUTO_STALL_TIMEOUT_ENV = "RECORDLY_NVIDIA_CUDA_AUTO_STALL_TIMEOUT_MS";
 const DEFAULT_NVIDIA_CUDA_AUTO_STALL_TIMEOUT_MS = 120_000;
+const NATIVE_STATIC_LAYOUT_SOURCE_PROXY_REFERENCE_PIXEL_RATE = 1920 * 1080 * 30;
+const NATIVE_STATIC_LAYOUT_SOURCE_PROXY_1080P30_BITRATE = 24_000_000;
+const NATIVE_STATIC_LAYOUT_SOURCE_PROXY_MAX_BITRATE = 80_000_000;
+const NATIVE_STATIC_LAYOUT_SOURCE_PROXY_CONTAINERS = new Set([".mp4", ".m4v", ".mov"]);
 
 type ElectronGpuDeviceLike = {
 	vendorId?: number | string;
@@ -286,6 +290,12 @@ export interface NativeVideoMetadataProbe {
 	audioSampleRate?: number;
 }
 
+export interface NativeVideoStreamStatsProbe {
+	durationSec: number | null;
+	frameCount: number | null;
+	frameRate: number | null;
+}
+
 export interface NativeStaticLayoutChunkMetric {
 	index: number;
 	startSec: number;
@@ -442,6 +452,130 @@ export function validateNvidiaCudaExportSummary(
 	) {
 		issues.push(
 			`output audio duration ${outputAudioDurationSec.toFixed(
+				3,
+			)}s differs from expected ${expectedDurationSec.toFixed(3)}s`,
+		);
+	}
+
+	return issues;
+}
+
+export function validateWindowsGpuExportSummary(
+	summary: WindowsGpuExportSummary,
+	expected: {
+		durationSec: number;
+		targetFrames: number;
+	},
+) {
+	const issues: string[] = [];
+	const expectedFrames = Math.max(1, Math.round(expected.targetFrames));
+	const minimumFrames = Math.max(1, Math.floor(expectedFrames * 0.95));
+	const expectedDurationSec = Math.max(0, expected.durationSec);
+	const durationToleranceSec = Math.min(2, Math.max(0.5, expectedDurationSec * 0.02));
+	const frames = getFiniteNumber(summary.frames);
+	const mediaMs = getFiniteNumber(summary.mediaMs);
+	const seconds = getFiniteNumber(summary.seconds) ?? (mediaMs !== null ? mediaMs / 1000 : null);
+
+	if (frames === null) {
+		issues.push("missing Windows GPU frame count");
+	} else if (frames < minimumFrames) {
+		issues.push(`Windows GPU frames ${frames} below expected minimum ${minimumFrames}`);
+	}
+	if (
+		seconds !== null &&
+		Number.isFinite(seconds) &&
+		Math.abs(seconds - expectedDurationSec) > durationToleranceSec
+	) {
+		issues.push(
+			`Windows GPU duration ${seconds.toFixed(3)}s differs from expected ${expectedDurationSec.toFixed(3)}s`,
+		);
+	}
+
+	return issues;
+}
+
+function parseRationalFrameRate(value: unknown) {
+	if (typeof value !== "string") {
+		return null;
+	}
+	const [numeratorRaw, denominatorRaw] = value.split("/");
+	const numerator = Number(numeratorRaw);
+	const denominator = Number(denominatorRaw);
+	if (
+		!Number.isFinite(numerator) ||
+		!Number.isFinite(denominator) ||
+		numerator <= 0 ||
+		denominator <= 0
+	) {
+		return null;
+	}
+
+	return numerator / denominator;
+}
+
+function parseOptionalPositiveNumber(value: unknown) {
+	const parsed =
+		typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseOptionalPositiveInteger(value: unknown) {
+	const parsed = parseOptionalPositiveNumber(value);
+	return parsed === null ? null : Math.max(0, Math.round(parsed));
+}
+
+export function parseNativeVideoStreamStatsProbeOutput(
+	output: string,
+): NativeVideoStreamStatsProbe | null {
+	const parsed = JSON.parse(output) as {
+		streams?: Array<{
+			duration?: unknown;
+			nb_frames?: unknown;
+			nb_read_frames?: unknown;
+			avg_frame_rate?: unknown;
+			r_frame_rate?: unknown;
+		}>;
+	};
+	const stream = parsed.streams?.[0];
+	if (!stream) {
+		return null;
+	}
+
+	return {
+		durationSec: parseOptionalPositiveNumber(stream.duration),
+		frameCount:
+			parseOptionalPositiveInteger(stream.nb_read_frames) ??
+			parseOptionalPositiveInteger(stream.nb_frames),
+		frameRate:
+			parseRationalFrameRate(stream.avg_frame_rate) ??
+			parseRationalFrameRate(stream.r_frame_rate),
+	};
+}
+
+export function validateNativeVideoStreamStats(
+	stats: NativeVideoStreamStatsProbe,
+	expected: {
+		durationSec: number;
+		targetFrames: number;
+	},
+) {
+	const issues: string[] = [];
+	const expectedFrames = Math.max(1, Math.round(expected.targetFrames));
+	const minimumFrames = Math.max(1, Math.floor(expectedFrames * 0.95));
+	const expectedDurationSec = Math.max(0, expected.durationSec);
+	const durationToleranceSec = Math.min(2, Math.max(0.5, expectedDurationSec * 0.02));
+
+	if (stats.frameCount === null) {
+		issues.push("missing video frame count");
+	} else if (stats.frameCount < minimumFrames) {
+		issues.push(`video frames ${stats.frameCount} below expected minimum ${minimumFrames}`);
+	}
+
+	if (stats.durationSec === null) {
+		issues.push("missing video stream duration");
+	} else if (Math.abs(stats.durationSec - expectedDurationSec) > durationToleranceSec) {
+		issues.push(
+			`video stream duration ${stats.durationSec.toFixed(
 				3,
 			)}s differs from expected ${expectedDurationSec.toFixed(3)}s`,
 		);
@@ -800,6 +934,158 @@ export async function probeNativeVideoMetadata(
 	}
 
 	return metadata;
+}
+
+export async function probeNativeVideoStreamStats(
+	ffprobePath: string,
+	inputPath: string,
+): Promise<NativeVideoStreamStatsProbe> {
+	const result = await execFileAsync(
+		ffprobePath,
+		[
+			"-v",
+			"error",
+			"-select_streams",
+			"v:0",
+			"-count_frames",
+			"-show_entries",
+			"stream=duration,nb_frames,nb_read_frames,avg_frame_rate,r_frame_rate",
+			"-of",
+			"json",
+			inputPath,
+		],
+		{ timeout: 120_000, maxBuffer: 2 * 1024 * 1024 },
+	);
+	const stats = parseNativeVideoStreamStatsProbeOutput(result.stdout);
+	if (!stats) {
+		throw new Error("Unable to parse native video stream stats from FFprobe output");
+	}
+
+	return stats;
+}
+
+async function validateNativeVideoOutputFile(
+	ffprobePath: string,
+	videoPath: string,
+	expected: {
+		durationSec: number;
+		targetFrames: number;
+	},
+) {
+	const stats = await probeNativeVideoStreamStats(ffprobePath, videoPath);
+	const issues = validateNativeVideoStreamStats(stats, expected);
+	if (issues.length > 0) {
+		throw new Error(`Native video output is invalid: ${issues.join("; ")}`);
+	}
+}
+
+export function isNativeStaticLayoutH264SourceCodec(codec: string | undefined) {
+	const normalized = (codec ?? "").trim().toLowerCase();
+	return (
+		/\bh\.?264\b/.test(normalized) ||
+		normalized.includes("avc1") ||
+		normalized.includes("avc3") ||
+		normalized.includes("mpeg-4 avc")
+	);
+}
+
+export function shouldCreateNativeStaticLayoutSourceProxy(
+	metadata: Pick<NativeVideoMetadataProbe, "codec">,
+	inputPath: string,
+) {
+	const extension = path.extname(inputPath).toLowerCase();
+	return (
+		!isNativeStaticLayoutH264SourceCodec(metadata.codec) ||
+		!NATIVE_STATIC_LAYOUT_SOURCE_PROXY_CONTAINERS.has(extension)
+	);
+}
+
+export function getNativeStaticLayoutSourceProxyBitrate(
+	options: Pick<NativeStaticLayoutExportOptions, "bitrate" | "frameRate" | "width" | "height">,
+	metadata?: Pick<NativeVideoMetadataProbe, "width" | "height">,
+) {
+	const frameRate = Math.max(1, Math.round(options.frameRate));
+	const width = Math.max(1, Math.round(metadata?.width ?? options.width));
+	const height = Math.max(1, Math.round(metadata?.height ?? options.height));
+	const pixelRateScale = Math.sqrt(
+		(width * height * frameRate) / NATIVE_STATIC_LAYOUT_SOURCE_PROXY_REFERENCE_PIXEL_RATE,
+	);
+	const qualityFloor = Math.round(
+		NATIVE_STATIC_LAYOUT_SOURCE_PROXY_1080P30_BITRATE * pixelRateScale,
+	);
+	return Math.min(
+		NATIVE_STATIC_LAYOUT_SOURCE_PROXY_MAX_BITRATE,
+		Math.max(Math.round(options.bitrate * 1.2), qualityFloor),
+	);
+}
+
+export function buildNativeStaticLayoutSourceProxyArgs(
+	options: NativeStaticLayoutExportOptions,
+	outputPath: string,
+	metadata: NativeVideoMetadataProbe,
+) {
+	const frameRate = Math.max(1, Math.round(options.frameRate));
+	const sourceDurationSec = Math.max(
+		0.001,
+		metadata.streamDuration ?? metadata.duration ?? options.durationSec,
+	);
+	const proxyBitrate = getNativeStaticLayoutSourceProxyBitrate(options, metadata);
+	return [
+		"-y",
+		"-hide_banner",
+		"-loglevel",
+		"error",
+		"-i",
+		options.inputPath,
+		"-map",
+		"0:v:0",
+		"-an",
+		"-t",
+		formatCliNumber(sourceDurationSec),
+		"-vf",
+		`fps=fps=${frameRate}:start_time=0,scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1,format=yuv420p,setpts=PTS-STARTPTS`,
+		"-c:v",
+		"libx264",
+		"-preset",
+		"veryfast",
+		"-tune",
+		"zerolatency",
+		"-g",
+		String(Math.max(1, Math.round(frameRate * 2))),
+		"-b:v",
+		String(proxyBitrate),
+		"-maxrate",
+		String(Math.round(proxyBitrate * 1.25)),
+		"-bufsize",
+		String(proxyBitrate * 2),
+		"-pix_fmt",
+		"yuv420p",
+		"-movflags",
+		"+faststart",
+		outputPath,
+	];
+}
+
+export function validateNativeStaticLayoutSourceProxyMetadata(
+	metadata: NativeVideoMetadataProbe,
+	expected: { sourceDurationSec: number },
+) {
+	const issues: string[] = [];
+	const expectedDurationSec = Math.max(0, expected.sourceDurationSec);
+	const durationToleranceSec = Math.min(2, Math.max(0.5, expectedDurationSec * 0.03));
+	if (!isNativeStaticLayoutH264SourceCodec(metadata.codec)) {
+		issues.push(`proxy codec is not H.264/AVC: ${metadata.codec || "unknown"}`);
+	}
+	if (!Number.isFinite(metadata.duration) || metadata.duration <= 0) {
+		issues.push("proxy duration is unavailable");
+	} else if (metadata.duration + durationToleranceSec < expectedDurationSec) {
+		issues.push(
+			`proxy duration ${metadata.duration.toFixed(
+				3,
+			)}s shorter than expected ${expectedDurationSec.toFixed(3)}s`,
+		);
+	}
+	return issues;
 }
 
 export function getNativeVideoExportMaxQueuedWriteBytes(inputByteSize: number) {
@@ -2106,6 +2392,53 @@ async function prepareWindowsGpuWebcamInput(
 	return { inputPath: outputPath, elapsedMs: result.elapsedMs };
 }
 
+async function prepareNativeStaticLayoutSourceInput(
+	ffmpegPath: string,
+	options: NativeStaticLayoutExportOptions,
+	outputPath: string,
+	session: NativeStaticLayoutExportSession,
+) {
+	const metadata = await probeNativeVideoMetadata(ffmpegPath, options.inputPath);
+	if (!shouldCreateNativeStaticLayoutSourceProxy(metadata, options.inputPath)) {
+		return {
+			inputPath: options.inputPath,
+			elapsedMs: 0,
+			sourceCodec: metadata.codec,
+			proxyCreated: false,
+		};
+	}
+
+	const sourceDurationSec = Math.max(
+		0.001,
+		metadata.streamDuration ?? metadata.duration ?? options.durationSec,
+	);
+	const result = await runFfmpegWithMetrics(
+		ffmpegPath,
+		buildNativeStaticLayoutSourceProxyArgs(options, outputPath, metadata),
+		Math.max(5 * 60 * 1000, sourceDurationSec * 2000),
+		session,
+	);
+	if (!result.success) {
+		throw new Error(getFfmpegFailureMessage(result));
+	}
+
+	const proxyMetadata = await probeNativeVideoMetadata(ffmpegPath, outputPath);
+	const validationIssues = validateNativeStaticLayoutSourceProxyMetadata(proxyMetadata, {
+		sourceDurationSec,
+	});
+	if (validationIssues.length > 0) {
+		throw new Error(`Native source proxy is invalid: ${validationIssues.join("; ")}`);
+	}
+
+	return {
+		inputPath: outputPath,
+		elapsedMs: result.elapsedMs,
+		sourceCodec: metadata.codec,
+		proxyCodec: proxyMetadata.codec,
+		proxyCreated: true,
+	};
+}
+
 export function buildExperimentalNvidiaCudaStaticLayoutArgs(
 	options: NativeStaticLayoutExportOptions,
 	outputPath: string,
@@ -2127,6 +2460,8 @@ export function buildExperimentalNvidiaCudaStaticLayoutArgs(
 		String(Math.max(1, Math.round(options.frameRate))),
 		"--bitrate-mbps",
 		String(getNvidiaCudaBitrateMbps(options)),
+		"--encoding-mode",
+		options.encodingMode,
 		"--duration-sec",
 		formatCliNumber(options.durationSec),
 		"--stream-sync",
@@ -2591,7 +2926,9 @@ export async function exportNativeStaticLayoutVideo(
 	const chunkDirectory = path.join(app.getPath("temp"), sessionId);
 	const concatListPath = path.join(chunkDirectory, "chunks.txt");
 	const videoOnlyPath = path.join(app.getPath("temp"), `${sessionId}.mp4`);
+	const ffprobePath = getFfprobeBinaryPath();
 	let outputPathToKeep: string | null = null;
+	let videoOutputValidated = false;
 	const metrics: NativeStaticLayoutExportMetrics = {
 		chunkCount: chunks.length,
 		chunkDurationSec,
@@ -2599,10 +2936,37 @@ export async function exportNativeStaticLayoutVideo(
 		fallbackChunkCount: 0,
 		chunks: [],
 	};
+	const validateRenderedVideoOutput = async () => {
+		await validateNativeVideoOutputFile(ffprobePath, videoOnlyPath, {
+			durationSec: options.durationSec,
+			targetFrames: Math.ceil(options.durationSec * options.frameRate),
+		});
+		videoOutputValidated = true;
+	};
 
 	try {
 		nativeStaticLayoutExportSessions.set(sessionId, session);
 		await fs.mkdir(chunkDirectory, { recursive: true });
+		const sourceInput = await prepareNativeStaticLayoutSourceInput(
+			ffmpegPath,
+			options,
+			path.join(chunkDirectory, "source-proxy.mp4"),
+			session,
+		);
+		if (sourceInput.elapsedMs > 0) {
+			metrics.staticAssetExecMs = (metrics.staticAssetExecMs ?? 0) + sourceInput.elapsedMs;
+		}
+		if (sourceInput.inputPath !== options.inputPath) {
+			console.info("[native-static-layout-export] Prepared H.264 source proxy", {
+				sourceCodec: sourceInput.sourceCodec,
+				proxyCodec: sourceInput.proxyCodec,
+				elapsedMs: sourceInput.elapsedMs,
+			});
+			options = {
+				...options,
+				inputPath: sourceInput.inputPath,
+			};
+		}
 		const timelineMapPath = await prepareNativeStaticLayoutTimelineMap(
 			options,
 			path.join(chunkDirectory, "timeline-map.csv"),
@@ -2799,6 +3163,7 @@ export async function exportNativeStaticLayoutVideo(
 								"Experimental NVIDIA CUDA compositor produced an empty output file",
 							);
 						}
+						await validateRenderedVideoOutput();
 						console.info(
 							"[native-static-layout-export] NVIDIA CUDA compositor completed",
 							{
@@ -2864,6 +3229,16 @@ export async function exportNativeStaticLayoutVideo(
 						session,
 						onProgress,
 					);
+					const gpuValidationIssues = validateWindowsGpuExportSummary(gpuResult.summary, {
+						durationSec: options.durationSec,
+						targetFrames: Math.ceil(options.durationSec * options.frameRate),
+					});
+					if (gpuValidationIssues.length > 0) {
+						throw new Error(
+							`Experimental Windows GPU compositor produced an invalid output: ${gpuValidationIssues.join("; ")}`,
+						);
+					}
+					await validateRenderedVideoOutput();
 					console.info("[native-static-layout-export] Windows GPU compositor completed", {
 						elapsedMs: gpuResult.elapsedMs,
 						width: gpuResult.summary.width,
@@ -3106,6 +3481,9 @@ export async function exportNativeStaticLayoutVideo(
 
 		const videoOnlyStat = await fs.stat(videoOnlyPath);
 		metrics.videoOnlyBytes = videoOnlyStat.size;
+		if (!videoOutputValidated) {
+			await validateRenderedVideoOutput();
+		}
 		if (didMuxAudioInline) {
 			outputPathToKeep = videoOnlyPath;
 			return {
@@ -3267,6 +3645,21 @@ export async function resolveNativeVideoEncoder(
 	throw new Error("No usable FFmpeg encoder was available for native export");
 }
 
+export function canCopyAudioCodecIntoMp4(codec?: string | null) {
+	const normalized = (codec ?? "").trim().toLowerCase();
+	if (!normalized) {
+		return true;
+	}
+
+	return (
+		normalized.includes("aac") ||
+		normalized.includes("mp4a") ||
+		normalized.includes("mpeg-4 audio") ||
+		normalized.includes("mp3") ||
+		normalized.includes("alac")
+	);
+}
+
 export function buildNativeVideoAudioMuxArgs(
 	videoPath: string,
 	audioInputPath: string,
@@ -3326,7 +3719,7 @@ export function buildNativeVideoAudioMuxArgs(
 	}
 
 	args.push("-c:v", "copy");
-	if (audioMode === "copy-source") {
+	if (audioMode === "copy-source" && canCopyAudioCodecIntoMp4(options.audioSourceCodec)) {
 		args.push("-c:a", "copy");
 	} else {
 		args.push("-c:a", "aac", "-b:a", "192k");

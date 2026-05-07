@@ -931,6 +931,10 @@ const outputPath = resolve(
 );
 const fps = Math.round(getNumberArg("--fps", 30));
 const bitrateMbps = Math.round(getNumberArg("--bitrate-mbps", 18));
+const encodingMode = getArg("--encoding-mode", "balanced");
+if (!["fast", "balanced", "quality"].includes(encodingMode)) {
+	throw new Error(`Unsupported --encoding-mode: ${encodingMode}`);
+}
 const workDir = resolve(getArg("--work-dir", join(scriptDir, "mp4-work")));
 const reuseIntermediates = hasArg("--reuse-intermediates");
 const reuseDemux = hasArg("--reuse-demux") || reuseIntermediates;
@@ -1260,6 +1264,8 @@ const encodeArgs = [
 	String(targetFrames),
 	"--bitrate-mbps",
 	String(bitrateMbps),
+	"--encoding-mode",
+	encodingMode,
 	"--callback-encode",
 	"--chunk-mb",
 	String(chunkMb),
@@ -1456,6 +1462,7 @@ console.log(
 			outputPath,
 			fps,
 			bitrateMbps,
+			encodingMode,
 			streamSync,
 			prewarmMs,
 			maxOutputFrames,

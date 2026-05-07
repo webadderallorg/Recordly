@@ -5171,6 +5171,16 @@ export default function VideoEditor() {
 				100,
 			)
 		: null;
+	const exportFinalizingPercent = isExportFinalizing
+		? Math.round(exportFinalizingProgress ?? 100)
+		: null;
+	const isExportMuxingAndSaving =
+		isExportFinalizing &&
+		exportFormat === "mp4" &&
+		exportPipelineModel === "modern" &&
+		!isRenderingAudio;
+	const isExportFinalSaveIndeterminate =
+		isExportMuxingAndSaving && (exportFinalizingPercent ?? 0) >= 98;
 	const isLightningExportInProgress =
 		exportFormat === "mp4" &&
 		exportPipelineModel === "modern" &&
@@ -5234,15 +5244,20 @@ export default function VideoEditor() {
 					})
 				: isExportFinalizing
 					? exportFormat === "mp4" && exportPipelineModel === "modern"
-						? t(
+						? isExportFinalSaveIndeterminate
+							? t(
+									"editor.exportStatus.muxingAndSaving",
+									"Muxing audio and saving file...",
+								)
+							: t(
 								"editor.exportStatus.muxingAndSavingPercent",
 								"Muxing and saving {{percent}}%",
 								{
-									percent: Math.round(exportFinalizingProgress ?? 100),
+									percent: exportFinalizingPercent ?? 100,
 								},
 							)
 						: t("editor.exportStatus.finalizingPercent", "Finalizing {{percent}}%", {
-								percent: Math.round(exportFinalizingProgress ?? 100),
+								percent: exportFinalizingPercent ?? 100,
 							})
 					: t("editor.exportStatus.completePercent", "{{percent}}% complete", {
 							percent: Math.round(exportProgress.percentage),
@@ -5584,7 +5599,9 @@ export default function VideoEditor() {
 										</Button>
 									</div>
 									<div className="h-2 overflow-hidden rounded-full border border-foreground/5 bg-foreground/5">
-										{isExportPreparing || isExportSaving ? (
+										{isExportPreparing ||
+										isExportSaving ||
+										isExportFinalSaveIndeterminate ? (
 											<div className="indeterminate-progress h-full rounded-full bg-transparent" />
 										) : (
 											<div

@@ -19,6 +19,27 @@ import {
 } from "../state";
 import { parseJsonWithByteOrderMark } from "../utils";
 
+const BROWSER_MICROPHONE_PROFILE_ENV = "RECORDLY_BROWSER_MIC_PROFILE";
+const DEFAULT_BROWSER_MICROPHONE_PROFILE = "no-agc";
+const BROWSER_MICROPHONE_PROFILES = new Set([
+	"processed",
+	"no-agc",
+	"no-echo",
+	"no-noise-suppression",
+	"raw",
+]);
+
+function getBrowserMicrophoneProfileFromEnv() {
+	const requested = process.env[BROWSER_MICROPHONE_PROFILE_ENV]?.trim() || null;
+	const normalized = requested?.toLowerCase() ?? DEFAULT_BROWSER_MICROPHONE_PROFILE;
+	return {
+		browserMicrophoneProfile: BROWSER_MICROPHONE_PROFILES.has(normalized)
+			? normalized
+			: DEFAULT_BROWSER_MICROPHONE_PROFILE,
+		requestedBrowserMicrophoneProfile: requested,
+	};
+}
+
 export function registerSettingsHandlers() {
   ipcMain.handle('app:getVersion', () => {
     return app.getVersion()
@@ -70,11 +91,15 @@ export function registerSettingsHandlers() {
           success: true,
           microphoneEnabled: parsed.microphoneEnabled === true,
           microphoneDeviceId: typeof parsed.microphoneDeviceId === 'string' ? parsed.microphoneDeviceId : undefined,
-          systemAudioEnabled: parsed.systemAudioEnabled !== false,
+          systemAudioEnabled: parsed.systemAudioEnabled === true,
         }
       } catch {
-        return { success: true, microphoneEnabled: false, microphoneDeviceId: undefined, systemAudioEnabled: true }
+        return { success: true, microphoneEnabled: false, microphoneDeviceId: undefined, systemAudioEnabled: false }
       }
+    })
+
+    ipcMain.handle('get-recording-audio-lab-config', () => {
+      return getBrowserMicrophoneProfileFromEnv()
     })
 
     ipcMain.handle('set-recording-preferences', async (_, prefs: { microphoneEnabled?: boolean; microphoneDeviceId?: string; systemAudioEnabled?: boolean }) => {

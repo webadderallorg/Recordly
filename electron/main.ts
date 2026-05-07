@@ -55,6 +55,18 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IS_SMOKE_EXPORT = process.env.RECORDLY_SMOKE_EXPORT === "1";
 
+function ignoreBrokenConsolePipe(stream: NodeJS.WritableStream | undefined) {
+	stream?.on("error", (error: NodeJS.ErrnoException) => {
+		if (error.code === "EPIPE") {
+			return;
+		}
+		throw error;
+	});
+}
+
+ignoreBrokenConsolePipe(process.stdout);
+ignoreBrokenConsolePipe(process.stderr);
+
 app.commandLine.appendSwitch("ignore-gpu-blocklist");
 app.commandLine.appendSwitch("enable-unsafe-webgpu");
 app.commandLine.appendSwitch("enable-gpu-rasterization");

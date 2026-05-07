@@ -148,6 +148,7 @@ type NativeAudioPlan =
 	| {
 			audioMode: "copy-source" | "trim-source";
 			audioSourcePath: string;
+			audioSourceCodec?: string;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
 	  }
 	| {
@@ -158,6 +159,7 @@ type NativeAudioPlan =
 			audioMode: "edited-track";
 			strategy: "filtergraph-fast-path";
 			audioSourcePath: string;
+			audioSourceCodec?: string;
 			audioSourceSampleRate: number;
 			editedTrackSegments: Array<{ startMs: number; endMs: number; speed: number }>;
 	  };
@@ -1058,6 +1060,7 @@ export class ModernVideoExporter {
 		const primaryAudioSourceSampleRate = usesEmbeddedPrimaryAudio
 			? videoInfo.audioSampleRate
 			: FILTERGRAPH_FALLBACK_AUDIO_SAMPLE_RATE;
+		const primaryAudioSourceCodec = usesEmbeddedPrimaryAudio ? videoInfo.audioCodec : undefined;
 
 		if (
 			!videoInfo.hasAudio &&
@@ -1114,6 +1117,7 @@ export class ModernVideoExporter {
 						audioMode: "edited-track",
 						strategy,
 						audioSourcePath,
+						audioSourceCodec: primaryAudioSourceCodec,
 						audioSourceSampleRate,
 						editedTrackSegments,
 					};
@@ -1146,6 +1150,7 @@ export class ModernVideoExporter {
 			return {
 				audioMode: "trim-source",
 				audioSourcePath: primaryAudioSourcePath,
+				audioSourceCodec: primaryAudioSourceCodec,
 				trimSegments,
 			};
 		}
@@ -1153,6 +1158,7 @@ export class ModernVideoExporter {
 		return {
 			audioMode: "copy-source",
 			audioSourcePath: primaryAudioSourcePath,
+			audioSourceCodec: primaryAudioSourceCodec,
 		};
 	}
 
@@ -1649,6 +1655,7 @@ export class ModernVideoExporter {
 				return {
 					audioMode: audioPlan.audioMode,
 					audioSourcePath: audioPlan.audioSourcePath,
+					audioSourceCodec: audioPlan.audioSourceCodec,
 					trimSegments: audioPlan.trimSegments,
 				};
 			case "edited-track": {
@@ -1656,6 +1663,7 @@ export class ModernVideoExporter {
 					return {
 						audioMode: audioPlan.audioMode,
 						audioSourcePath: audioPlan.audioSourcePath,
+						audioSourceCodec: audioPlan.audioSourceCodec,
 						audioSourceSampleRate: audioPlan.audioSourceSampleRate,
 						editedTrackStrategy: audioPlan.strategy,
 						editedTrackSegments: audioPlan.editedTrackSegments,

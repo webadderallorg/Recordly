@@ -44,6 +44,7 @@ struct Options {
     int inputFrames = 0;
     int targetFrames = 0;
     int bitrateMbps = 18;
+    std::string encodingMode = "balanced";
     bool postSelect = false;
     bool callbackEncode = false;
     bool streamSync = false;
@@ -174,6 +175,14 @@ Options parseOptions(int argc, char** argv) {
             options.targetFrames = parsePositiveInt(requireValue("--target-frames"), "--target-frames");
         } else if (arg == "--bitrate-mbps") {
             options.bitrateMbps = parsePositiveInt(requireValue("--bitrate-mbps"), "--bitrate-mbps");
+        } else if (arg == "--encoding-mode") {
+            options.encodingMode = requireValue("--encoding-mode");
+            if (
+                options.encodingMode != "fast" &&
+                options.encodingMode != "balanced" &&
+                options.encodingMode != "quality") {
+                fail("Unsupported --encoding-mode: " + options.encodingMode);
+            }
         } else if (arg == "--post-select") {
             options.postSelect = true;
         } else if (arg == "--callback-encode") {
@@ -254,7 +263,7 @@ Options parseOptions(int argc, char** argv) {
         } else if (arg == "--help") {
             std::cout << "Usage: recordly-nvidia-cuda-compositor --input input.annexb.h264 "
                          "[--output out.h264] [--source-pts source-pts.csv] [--fps 30] "
-                         "[--max-frames N] [--bitrate-mbps N] "
+                         "[--max-frames N] [--bitrate-mbps N] [--encoding-mode fast|balanced|quality] "
                          "[--post-select] [--callback-encode] [--stream-sync] [--prewarm-ms N] [--chunk-mb N] "
                          "[--content-x N --content-y N --content-width N --content-height N --radius N] "
                          "[--background-nv12 background.nv12] [--shadow-offset-y N --shadow-intensity-pct N] "
@@ -1914,6 +1923,23 @@ void prewarmCuda(int durationMs) {
     checkCuda(cudaFree(state), "cudaFree prewarm");
 }
 
+GUID getNvencPresetGuid(const std::string& encodingMode) {
+    return encodingMode == "fast" ? NV_ENC_PRESET_HP_GUID : NV_ENC_PRESET_HQ_GUID;
+}
+
+uint32_t getNvencMaxBitrate(uint32_t bitrate, const std::string& encodingMode) {
+    const uint64_t multiplier = encodingMode == "fast" ? 3 : 2;
+    const uint64_t divisor = encodingMode == "fast" ? 2 : 1;
+    return static_cast<uint32_t>(
+        std::min<uint64_t>(0xffffffffu, (static_cast<uint64_t>(bitrate) * multiplier) / divisor));
+}
+
+uint32_t getNvencBufferSize(uint32_t bitrate, const std::string& encodingMode) {
+    const uint64_t multiplier = encodingMode == "fast" ? 1 : 2;
+    return static_cast<uint32_t>(
+        std::min<uint64_t>(0xffffffffu, static_cast<uint64_t>(bitrate) * multiplier));
+}
+
 class NvencSink {
 public:
     NvencSink(
@@ -1947,7 +1973,10 @@ public:
         NV_ENC_INITIALIZE_PARAMS initializeParams = {NV_ENC_INITIALIZE_PARAMS_VER};
         NV_ENC_CONFIG encodeConfig = {NV_ENC_CONFIG_VER};
         initializeParams.encodeConfig = &encodeConfig;
-        encoder_.CreateDefaultEncoderParams(&initializeParams, NV_ENC_CODEC_H264_GUID, NV_ENC_PRESET_HP_GUID);
+        encoder_.CreateDefaultEncoderParams(
+            &initializeParams,
+            NV_ENC_CODEC_H264_GUID,
+            getNvencPresetGuid(layoutOptions_.encodingMode));
 
         initializeParams.frameRateNum = static_cast<uint32_t>(fps);
         initializeParams.frameRateDen = 1;
@@ -1957,10 +1986,13 @@ public:
         encodeConfig.frameIntervalP = 1;
         encodeConfig.rcParams.rateControlMode = NV_ENC_PARAMS_RC_VBR;
         encodeConfig.rcParams.averageBitRate = bitrate;
-        encodeConfig.rcParams.maxBitRate = static_cast<uint32_t>(
-            std::min<uint64_t>(0xffffffffu, static_cast<uint64_t>(bitrate) * 3 / 2));
-        encodeConfig.rcParams.vbvBufferSize = bitrate;
+        encodeConfig.rcParams.maxBitRate = getNvencMaxBitrate(bitrate, layoutOptions_.encodingMode);
+        encodeConfig.rcParams.vbvBufferSize = getNvencBufferSize(bitrate, layoutOptions_.encodingMode);
         encodeConfig.rcParams.vbvInitialDelay = bitrate;
+        if (layoutOptions_.encodingMode != "fast") {
+            encodeConfig.rcParams.enableAQ = 1;
+            encodeConfig.rcParams.aqStrength = layoutOptions_.encodingMode == "quality" ? 10 : 8;
+        }
         encodeConfig.encodeCodecConfig.h264Config.idrPeriod = encodeConfig.gopLength;
         encoder_.CreateEncoder(&initializeParams);
 
@@ -3118,6 +3150,7 @@ int main(int argc, char** argv) {
                   << "\"width\":" << decoder->GetWidth() << ","
                   << "\"height\":" << decoder->GetHeight() << ","
                   << "\"fps\":" << options.fps << ","
+                  << "\"encodingMode\":\"" << options.encodingMode << "\","
                   << "\"staticLayout\":" << (hasStaticLayout(options) ? "true" : "false") << ","
                   << "\"contentX\":" << options.contentX << ","
                   << "\"contentY\":" << options.contentY << ","

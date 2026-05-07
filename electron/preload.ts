@@ -258,6 +258,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		audioOptions?: {
 			audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 			audioSourcePath?: string | null;
+			audioSourceCodec?: string | null;
 			audioSourceSampleRate?: number;
 			outputDurationSec?: number;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
@@ -320,6 +321,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		options?: {
 			audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 			audioSourcePath?: string | null;
+			audioSourceCodec?: string | null;
 			audioSourceSampleRate?: number;
 			outputDurationSec?: number;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
@@ -367,6 +369,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		options?: {
 			audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 			audioSourcePath?: string | null;
+			audioSourceCodec?: string | null;
 			audioSourceSampleRate?: number;
 			outputDurationSec?: number;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
@@ -388,6 +391,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		options?: {
 			audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 			audioSourcePath?: string | null;
+			audioSourceCodec?: string | null;
 			audioSourceSampleRate?: number;
 			outputDurationSec?: number;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
@@ -491,7 +495,29 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	storeMicrophoneSidecar: (
 		audioData: ArrayBuffer,
 		videoPath: string,
-		options?: { startDelayMs?: number },
+		options?: {
+			startDelayMs?: number;
+			browserMicrophoneProfile?: string;
+			requestedBrowserMicrophoneProfile?: string | null;
+			requestedConstraints?: unknown;
+			mediaTrackSettings?: Record<string, boolean | number | string>;
+			audioInputDevices?: Array<{
+				deviceId: string;
+				groupId?: string;
+				label: string;
+			}>;
+			mediaRecorder?: {
+				mimeType?: string;
+				audioBitsPerSecond?: number;
+				timesliceMs?: number;
+			};
+			chunkEvents?: Array<{
+				index: number;
+				size: number;
+				elapsedMs: number;
+				deltaMs: number | null;
+			}>;
+		},
 	) => {
 		return ipcRenderer.invoke("store-microphone-sidecar", audioData, videoPath, options);
 	},
@@ -840,6 +866,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	hideOsCursor: () => ipcRenderer.invoke("hide-cursor"),
 	getAppVersion: () => ipcRenderer.invoke("app:getVersion"),
 	getRecordingPreferences: () => ipcRenderer.invoke("get-recording-preferences"),
+	getRecordingAudioLabConfig: () => ipcRenderer.invoke("get-recording-audio-lab-config"),
 	setRecordingPreferences: (prefs: {
 		microphoneEnabled?: boolean;
 		microphoneDeviceId?: string;

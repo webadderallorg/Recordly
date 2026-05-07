@@ -32,12 +32,40 @@ import {
 	getCompanionAudioStartDelayMs,
 	getRecordingAudioMuxTimeoutMs,
 	probeMediaDurationSeconds,
+	probeVideoStreamDurationSeconds,
 	validateRecordedVideo,
 } from "./diagnostics";
 import { emitRecordingInterrupted } from "./events";
 
 const execFileAsync = promisify(execFile);
 const MIN_NATIVE_WINDOWS_VIDEO_PAD_MS = 500;
+
+export type NativeWindowsVideoPaddingResult = {
+	padded: boolean;
+	durationSeconds: number;
+	containerDurationSeconds: number;
+	targetDurationSeconds: number;
+	padDurationSeconds: number;
+};
+
+export type NativeWindowsAudioMuxResult = {
+	muxed: boolean;
+	videoDurationSeconds: number;
+	muxTimeoutMs: number;
+	audioInputs: string[];
+	audio: Record<
+		string,
+		{
+			path: string;
+			sizeBytes: number;
+			durationSeconds: number;
+			startDelayMs: number | null;
+			adjustment: AudioSyncAdjustment;
+		}
+	>;
+	outputPath?: string;
+	keptAudioSidecars: boolean;
+};
 
 export async function isNativeWindowsCaptureAvailable(): Promise<boolean> {
 	if (process.platform !== "win32") return false;
@@ -165,20 +193,39 @@ export function attachWindowsCaptureLifecycle(proc: ChildProcessWithoutNullStrea
 export async function extendNativeWindowsVideoToDuration(
 	videoPath: string,
 	targetDurationMs: number | null | undefined,
-) {
+): Promise<NativeWindowsVideoPaddingResult> {
 	if (!Number.isFinite(targetDurationMs) || (targetDurationMs ?? 0) <= 0) {
-		return { padded: false, durationSeconds: 0 };
+		return {
+			padded: false,
+			durationSeconds: 0,
+			containerDurationSeconds: await probeMediaDurationSeconds(videoPath),
+			targetDurationSeconds: 0,
+			padDurationSeconds: 0,
+		};
 	}
 
-	const currentDurationSeconds = await probeMediaDurationSeconds(videoPath);
+	const containerDurationSeconds = await probeMediaDurationSeconds(videoPath);
+	const currentDurationSeconds = await probeVideoStreamDurationSeconds(videoPath);
 	if (currentDurationSeconds <= 0) {
-		return { padded: false, durationSeconds: currentDurationSeconds };
+		return {
+			padded: false,
+			durationSeconds: currentDurationSeconds,
+			containerDurationSeconds,
+			targetDurationSeconds: (targetDurationMs ?? 0) / 1000,
+			padDurationSeconds: 0,
+		};
 	}
 
 	const targetDurationSeconds = (targetDurationMs ?? 0) / 1000;
 	const padDurationSeconds = targetDurationSeconds - currentDurationSeconds;
 	if (padDurationSeconds * 1000 < MIN_NATIVE_WINDOWS_VIDEO_PAD_MS) {
-		return { padded: false, durationSeconds: currentDurationSeconds };
+		return {
+			padded: false,
+			durationSeconds: currentDurationSeconds,
+			containerDurationSeconds,
+			targetDurationSeconds,
+			padDurationSeconds: Math.max(0, padDurationSeconds),
+		};
 	}
 
 	const ffmpegPath = getFfmpegBinaryPath();
@@ -213,7 +260,13 @@ export async function extendNativeWindowsVideoToDuration(
 		);
 		await validateRecordedVideo(paddedOutputPath);
 		await moveFileWithOverwrite(paddedOutputPath, videoPath);
-		return { padded: true, durationSeconds: targetDurationSeconds };
+		return {
+			padded: true,
+			durationSeconds: targetDurationSeconds,
+			containerDurationSeconds,
+			targetDurationSeconds,
+			padDurationSeconds,
+		};
 	} catch (error) {
 		await fs.rm(paddedOutputPath, { force: true }).catch(() => undefined);
 		throw error;
@@ -224,12 +277,13 @@ export async function muxNativeWindowsVideoWithAudio(
 	videoPath: string,
 	systemAudioPath: string | null,
 	micAudioPath: string | null,
-) {
+): Promise<NativeWindowsAudioMuxResult> {
 	const ffmpegPath = getFfmpegBinaryPath();
 	const keepAudioSidecars = shouldKeepRecordingAudioSidecars();
 	const inputs: string[] = ["-i", videoPath];
 	const audioInputs: string[] = [];
 	const audioFilePaths: string[] = [];
+	const audio: NativeWindowsAudioMuxResult["audio"] = {};
 
 	for (const [label, audioPath] of [
 		["system", systemAudioPath],
@@ -248,16 +302,36 @@ export async function muxNativeWindowsVideoWithAudio(
 			inputs.push("-i", audioPath);
 			audioInputs.push(label);
 			audioFilePaths.push(audioPath);
+			audio[label] = {
+				path: audioPath,
+				sizeBytes: stat.size,
+				durationSeconds: 0,
+				startDelayMs: null,
+				adjustment: {
+					mode: "none",
+					delayMs: 0,
+					tempoRatio: 1,
+					durationDeltaMs: 0,
+				},
+			};
 		} catch {
 			console.warn(`[mux-win] Skipping ${label} audio: file not accessible (${audioPath})`);
 		}
 	}
 
-	if (audioInputs.length === 0) return;
-
-	const videoDuration = await probeMediaDurationSeconds(videoPath);
+	const videoDuration = await probeVideoStreamDurationSeconds(videoPath);
 	const muxTimeoutMs = getRecordingAudioMuxTimeoutMs(videoDuration);
 	const audioAdjustments: Map<string, AudioSyncAdjustment> = new Map();
+	if (audioInputs.length === 0) {
+		return {
+			muxed: false,
+			videoDurationSeconds: videoDuration,
+			muxTimeoutMs,
+			audioInputs,
+			audio,
+			keptAudioSidecars: keepAudioSidecars,
+		};
+	}
 
 	if (videoDuration > 0) {
 		for (let i = 0; i < audioFilePaths.length; i++) {
@@ -268,6 +342,12 @@ export async function muxNativeWindowsVideoWithAudio(
 				recordedStartDelayMs,
 			);
 			audioAdjustments.set(audioInputs[i], adjustment);
+			audio[audioInputs[i]] = {
+				...audio[audioInputs[i]],
+				durationSeconds: audioDuration,
+				startDelayMs: recordedStartDelayMs,
+				adjustment,
+			};
 			if (Number.isFinite(recordedStartDelayMs) && adjustment.mode === "delay") {
 				console.log(
 					`[mux-win] ${audioInputs[i]} audio recorded a start delay of ${adjustment.delayMs}ms`,
@@ -398,7 +478,15 @@ export async function muxNativeWindowsVideoWithAudio(
 		console.log(
 			`[mux-win] Keeping native audio sidecars because ${RECORDING_AUDIO_SIDECAR_DEBUG_ENV} is enabled`,
 		);
-		return;
+		return {
+			muxed: true,
+			videoDurationSeconds: videoDuration,
+			muxTimeoutMs,
+			audioInputs,
+			audio,
+			outputPath: videoPath,
+			keptAudioSidecars: true,
+		};
 	}
 
 	for (const audioPath of [systemAudioPath, micAudioPath]) {
@@ -409,4 +497,14 @@ export async function muxNativeWindowsVideoWithAudio(
 			]);
 		}
 	}
+
+	return {
+		muxed: true,
+		videoDurationSeconds: videoDuration,
+		muxTimeoutMs,
+		audioInputs,
+		audio,
+		outputPath: videoPath,
+		keptAudioSidecars: false,
+	};
 }
