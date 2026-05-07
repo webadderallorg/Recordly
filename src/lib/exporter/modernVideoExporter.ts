@@ -14,6 +14,7 @@ import type {
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
 import { extensionHost } from "@/lib/extensions";
+import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { AudioProcessor, isAacAudioEncodingSupported } from "./audioEncoder";
 import { normalizeLightningRuntimePlatform } from "./backendPolicy";
 import { buildEditedTrackSourceSegments, classifyEditedTrackStrategy } from "./editedTrackStrategy";
@@ -787,7 +788,12 @@ export class ModernVideoExporter {
 		) {
 			const sourceDurationMs = Math.max(
 				0,
-				Math.round((videoInfo.streamDuration ?? videoInfo.duration) * 1000),
+				Math.round(
+					getEffectiveVideoStreamDurationSeconds({
+						duration: videoInfo.duration,
+						streamDuration: videoInfo.streamDuration,
+					}) * 1000,
+				),
 			);
 			const trimRegions = this.config.trimRegions ?? [];
 			const strategy =
@@ -846,7 +852,12 @@ export class ModernVideoExporter {
 		if ((this.config.trimRegions ?? []).length > 0) {
 			const sourceDurationMs = Math.max(
 				0,
-				Math.round((videoInfo.streamDuration ?? videoInfo.duration) * 1000),
+				Math.round(
+					getEffectiveVideoStreamDurationSeconds({
+						duration: videoInfo.duration,
+						streamDuration: videoInfo.streamDuration,
+					}) * 1000,
+				),
 			);
 			const trimSegments = this.buildNativeTrimSegments(sourceDurationMs);
 			if (trimSegments.length === 0) {

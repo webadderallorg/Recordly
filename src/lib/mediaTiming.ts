@@ -81,12 +81,29 @@ export function getEffectiveVideoStreamDurationSeconds({
 	duration?: number | null;
 	streamDuration?: number | null;
 }): number {
-	if (Number.isFinite(streamDuration) && (streamDuration ?? 0) > 0) {
-		return Math.max(0, streamDuration ?? 0);
+	const safeDuration =
+		Number.isFinite(duration) && (duration ?? 0) > 0 ? Math.max(0, duration ?? 0) : 0;
+	const safeStreamDuration =
+		Number.isFinite(streamDuration) && (streamDuration ?? 0) > 0
+			? Math.max(0, streamDuration ?? 0)
+			: 0;
+
+	if (safeDuration > 0 && safeStreamDuration > 0) {
+		const gapSeconds = safeDuration - safeStreamDuration;
+		const largeMismatchThresholdSeconds = Math.max(2, safeDuration * 0.1);
+		if (gapSeconds > largeMismatchThresholdSeconds) {
+			return safeDuration;
+		}
+
+		return safeStreamDuration;
 	}
 
-	if (Number.isFinite(duration) && (duration ?? 0) > 0) {
-		return Math.max(0, duration ?? 0);
+	if (safeStreamDuration > 0) {
+		return safeStreamDuration;
+	}
+
+	if (safeDuration > 0) {
+		return safeDuration;
 	}
 
 	return 0;

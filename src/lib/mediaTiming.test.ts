@@ -111,6 +111,15 @@ describe("getEffectiveVideoStreamDurationSeconds", () => {
 		).toBe(11.2);
 	});
 
+	it("uses the container duration when the video stream is much shorter", () => {
+		expect(
+			getEffectiveVideoStreamDurationSeconds({
+				duration: 60,
+				streamDuration: 40,
+			}),
+		).toBe(60);
+	});
+
 	it("falls back to the container duration when stream duration is missing", () => {
 		expect(
 			getEffectiveVideoStreamDurationSeconds({
