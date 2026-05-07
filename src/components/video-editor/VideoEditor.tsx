@@ -3275,8 +3275,14 @@ export default function VideoEditor() {
 	}, []);
 
 	function handleSeek(time: number) {
-		const video = videoPlaybackRef.current?.video;
+		const playback = videoPlaybackRef.current;
+		const video = playback?.video;
 		if (!video) return;
+
+		if (!video.paused) {
+			playback?.pause();
+		}
+
 		video.currentTime = mapTimelineTimeToSourceTime(time * 1000) / 1000;
 	}
 
