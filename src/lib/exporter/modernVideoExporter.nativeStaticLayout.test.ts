@@ -256,6 +256,24 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		});
 	});
 
+	it("reports video backgrounds before speed timeline gating", () => {
+		const exporter = createExporter({
+			wallpaper: "file:///C:/Recordly/background.webm",
+			speedRegions: [{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 }],
+		});
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{
+					audioMode: "edited-track",
+					strategy: "offline-render-fallback",
+				},
+				videoInfo,
+				59,
+			),
+		).toBe("unsupported-background-video");
+	});
+
 	it("materializes uploaded data-url image backgrounds for native static-layout", async () => {
 		const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 		const dataUrl = `data:image/jpeg;base64,${Buffer.from(jpegBytes).toString("base64")}`;
@@ -380,7 +398,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		expect(exporter.getNativeStaticLayoutEffectiveDuration(videoInfo)).toBeCloseTo(59, 3);
 	});
 
-	it("allows native speed timelines when audio needs offline rendering", () => {
+	it("skips native speed timelines while compositor validation is pending", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
 		];
@@ -395,7 +413,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				60,
 			),
-		).toBeNull();
+		).toBe("native-speed-timeline-validation-pending");
 	});
 
 	it("rejects native static-layout when speed edits do not have a native timeline map", () => {
@@ -413,10 +431,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				58,
 			),
-		).toBe("unsupported-native-speed-timeline");
+		).toBe("native-speed-timeline-validation-pending");
 	});
 
-	it("allows speed-only native static-layout when audio and video share filtergraph segments", () => {
+	it("keeps speed-only projects on the renderer path even when audio and video share filtergraph segments", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
 		];
@@ -438,10 +456,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				59,
 			),
-		).toBeNull();
+		).toBe("native-speed-timeline-validation-pending");
 	});
 
-	it("allows slow-speed native static-layout when a timeline map is available", () => {
+	it("keeps slow-speed timelines on the renderer path until native duplication is revalidated", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 0.5 },
 		];
@@ -463,10 +481,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				63,
 			),
-		).toBeNull();
+		).toBe("native-speed-timeline-validation-pending");
 	});
 
-	it("allows slow-speed native timelines with webcam when audio renders offline", () => {
+	it("keeps slow-speed webcam timelines on the renderer path while native source-time mapping is pending", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 0.5 },
 		];
@@ -487,10 +505,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				63,
 			),
-		).toBeNull();
+		).toBe("native-speed-timeline-validation-pending");
 	});
 
-	it("allows native speed timelines with a resolvable webcam source", () => {
+	it("skips native speed timelines even with a resolvable webcam source", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
 		];
@@ -518,6 +536,6 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				59,
 			),
-		).toBeNull();
+		).toBe("native-speed-timeline-validation-pending");
 	});
 });

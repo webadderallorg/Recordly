@@ -48,6 +48,8 @@ const NVIDIA_CUDA_ALLOW_AUDIO_EXPORT_ENV = "RECORDLY_NVIDIA_CUDA_ALLOW_AUDIO_EXP
 const NVIDIA_CUDA_FORCE_VIDEO_ONLY_ENV = "RECORDLY_NVIDIA_CUDA_FORCE_VIDEO_ONLY";
 const NVIDIA_CUDA_AUTO_STALL_TIMEOUT_ENV = "RECORDLY_NVIDIA_CUDA_AUTO_STALL_TIMEOUT_MS";
 const DEFAULT_NVIDIA_CUDA_AUTO_STALL_TIMEOUT_MS = 120_000;
+const NATIVE_GPU_STALL_TIMEOUT_ENV = "RECORDLY_NATIVE_GPU_STALL_TIMEOUT_MS";
+const DEFAULT_NATIVE_GPU_STALL_TIMEOUT_MS = 120_000;
 const NATIVE_STATIC_LAYOUT_SOURCE_PROXY_REFERENCE_PIXEL_RATE = 1920 * 1080 * 30;
 const NATIVE_STATIC_LAYOUT_SOURCE_PROXY_1080P30_BITRATE = 24_000_000;
 const NATIVE_STATIC_LAYOUT_SOURCE_PROXY_MAX_BITRATE = 80_000_000;
@@ -597,10 +599,15 @@ function isNvidiaCudaTimestampAlignedSummary(summary: NvidiaCudaExportSummary) {
 	});
 }
 
+function shouldPersistNativeExportDiagnostics() {
+	const rawValue = process.env.RECORDLY_NATIVE_EXPORT_DIAGNOSTICS?.trim().toLowerCase();
+	return rawValue !== "0" && rawValue !== "off" && rawValue !== "false";
+}
+
 function shouldPersistNvidiaCudaExportDiagnostics() {
 	return (
-		process.env.RECORDLY_NVIDIA_CUDA_EXPORT_DIAGNOSTICS === "1" ||
-		process.env.RECORDLY_NATIVE_EXPORT_DIAGNOSTICS === "1"
+		shouldPersistNativeExportDiagnostics() ||
+		process.env.RECORDLY_NVIDIA_CUDA_EXPORT_DIAGNOSTICS === "1"
 	);
 }
 
@@ -693,6 +700,61 @@ async function persistNvidiaCudaExportDiagnostics(params: {
 	} catch (error) {
 		console.warn(
 			"[native-static-layout-export] Failed to persist NVIDIA CUDA diagnostics",
+			error,
+		);
+	}
+}
+
+async function persistWindowsGpuExportDiagnostics(params: {
+	args: string[];
+	code: number | null;
+	elapsedMs: number;
+	outputPath: string;
+	signal: NodeJS.Signals | null;
+	startedAtIso: string;
+	stderr: string;
+	stdout: string;
+	summary: WindowsGpuExportSummary | null;
+	timedOut: boolean;
+}) {
+	if (!shouldPersistNativeExportDiagnostics()) {
+		return;
+	}
+
+	const diagnosticsDirectory = path.join(app.getPath("userData"), "native-export-diagnostics");
+	const filePrefix = `${Date.now()}-windows-d3d11-compositor`;
+	const manifest = {
+		backend: "windows-d3d11-compositor",
+		startedAt: params.startedAtIso,
+		completedAt: new Date().toISOString(),
+		elapsedMs: Number(params.elapsedMs.toFixed(2)),
+		outputPath: params.outputPath,
+		exitCode: params.code,
+		signal: params.signal,
+		timedOut: params.timedOut,
+		args: params.args,
+		summary: params.summary,
+	};
+
+	try {
+		await fs.mkdir(diagnosticsDirectory, { recursive: true });
+		await Promise.allSettled([
+			fs.writeFile(
+				path.join(diagnosticsDirectory, `${filePrefix}.manifest.json`),
+				`${JSON.stringify(manifest, null, 2)}\n`,
+			),
+			fs.writeFile(
+				path.join(diagnosticsDirectory, `${filePrefix}.stdout.log`),
+				params.stdout,
+			),
+			fs.writeFile(
+				path.join(diagnosticsDirectory, `${filePrefix}.stderr.log`),
+				params.stderr,
+			),
+		]);
+	} catch (error) {
+		console.warn(
+			"[native-static-layout-export] Failed to persist Windows GPU diagnostics",
 			error,
 		);
 	}
@@ -1868,7 +1930,7 @@ function isNvidiaCudaForceVideoOnlyEnabled() {
 export function getNvidiaCudaAutoStallTimeoutMs(
 	autoCandidateActive = isPackagedNvidiaCudaExportAutoCandidateActive(),
 ) {
-	if (!autoCandidateActive) {
+	if (!autoCandidateActive && !isExplicitNvidiaCudaExportEnabled()) {
 		return null;
 	}
 
@@ -1883,6 +1945,20 @@ export function getNvidiaCudaAutoStallTimeoutMs(
 	}
 
 	return DEFAULT_NVIDIA_CUDA_AUTO_STALL_TIMEOUT_MS;
+}
+
+export function getNativeGpuCompositorStallTimeoutMs() {
+	const rawValue = process.env[NATIVE_GPU_STALL_TIMEOUT_ENV]?.trim();
+	if (rawValue === "0" || rawValue?.toLowerCase() === "off") {
+		return null;
+	}
+
+	const parsed = Number(rawValue);
+	if (Number.isFinite(parsed) && parsed > 0) {
+		return Math.max(10_000, Math.round(parsed));
+	}
+
+	return DEFAULT_NATIVE_GPU_STALL_TIMEOUT_MS;
 }
 
 export async function getExperimentalNvidiaCudaExportSkipReason(
@@ -2787,7 +2863,9 @@ async function runExperimentalWindowsGpuStaticLayoutExport(
 
 	const args = buildExperimentalWindowsGpuStaticLayoutArgs(options, outputPath);
 	const startedAt = getNowMs();
+	const startedAtIso = new Date().toISOString();
 	const timeoutMs = Math.max(15 * 60 * 1000, options.durationSec * 1000);
+	const stallTimeoutMs = getNativeGpuCompositorStallTimeoutMs();
 
 	return await new Promise<{
 		elapsedMs: number;
@@ -2806,17 +2884,39 @@ async function runExperimentalWindowsGpuStaticLayoutExport(
 		let stdout = "";
 		let stderr = "";
 		let stderrLineBuffer = "";
+		let stallTimedOut = false;
 		let settled = false;
 		const timeout = setTimeout(() => {
 			if (settled) return;
 			child.kill("SIGKILL");
 		}, timeoutMs);
+		let stallTimeout: ReturnType<typeof setTimeout> | null = null;
+		const clearStallTimeout = () => {
+			if (stallTimeout) {
+				clearTimeout(stallTimeout);
+				stallTimeout = null;
+			}
+		};
+		const armStallTimeout = () => {
+			if (!stallTimeoutMs) {
+				return;
+			}
+			clearStallTimeout();
+			stallTimeout = setTimeout(() => {
+				if (settled) return;
+				stallTimedOut = true;
+				child.kill("SIGKILL");
+			}, stallTimeoutMs);
+		};
+		armStallTimeout();
 
 		child.stdout.on("data", (chunk: Buffer) => {
 			stdout += chunk.toString();
+			armStallTimeout();
 		});
 		child.stderr.on("data", (chunk: Buffer) => {
 			const text = chunk.toString();
+			armStallTimeout();
 			stderr += text;
 			stderrLineBuffer += text;
 			const lines = stderrLineBuffer.split(/\r?\n/);
@@ -2846,28 +2946,45 @@ async function runExperimentalWindowsGpuStaticLayoutExport(
 				session.currentProcess = null;
 			}
 			clearTimeout(timeout);
+			clearStallTimeout();
 			reject(error);
 		});
-		child.once("close", (code, signal) => {
+		child.once("close", async (code, signal) => {
 			if (settled) return;
 			settled = true;
 			if (session.currentProcess === child) {
 				session.currentProcess = null;
 			}
 			clearTimeout(timeout);
+			clearStallTimeout();
 
 			if (session.terminating) {
 				reject(new Error("Native static layout export was cancelled"));
 				return;
 			}
 
+			const elapsedMs = getNowMs() - startedAt;
 			const summary = parseWindowsGpuExportSummary(stdout);
+			await persistWindowsGpuExportDiagnostics({
+				args,
+				code,
+				elapsedMs,
+				outputPath,
+				signal,
+				startedAtIso,
+				stderr,
+				stdout,
+				summary,
+				timedOut: stallTimedOut,
+			});
 
 			if (code !== 0 || !summary?.success) {
 				const suffix = signal ? ` (signal ${signal})` : "";
 				reject(
 					new Error(
-						stderr.trim() ||
+						(stallTimedOut && stallTimeoutMs
+							? `Experimental Windows GPU exporter stalled for ${stallTimeoutMs}ms without output`
+							: stderr.trim()) ||
 							stdout.trim() ||
 							`Experimental Windows GPU exporter exited with code ${code ?? "unknown"}${suffix}`,
 					),
@@ -2876,7 +2993,7 @@ async function runExperimentalWindowsGpuStaticLayoutExport(
 			}
 
 			resolve({
-				elapsedMs: getNowMs() - startedAt,
+				elapsedMs,
 				stdout,
 				stderr,
 				summary,

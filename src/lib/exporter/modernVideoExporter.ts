@@ -1237,6 +1237,14 @@ export class ModernVideoExporter {
 		}
 
 		const speedRegions = this.config.speedRegions ?? [];
+		const configuredWallpaper = this.config.wallpaper?.trim() ?? "";
+		if (isVideoWallpaperSource(configuredWallpaper)) {
+			return "unsupported-background-video";
+		}
+		if (speedRegions.length > 0) {
+			return "native-speed-timeline-validation-pending";
+		}
+
 		const hasZoomRegions = (this.config.zoomRegions ?? []).length > 0;
 		const needsTimelineMap = this.shouldUseNativeStaticLayoutTimelineMap(
 			videoInfo,

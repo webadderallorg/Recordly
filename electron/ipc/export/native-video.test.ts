@@ -55,6 +55,7 @@ import {
 	buildNativeVideoAudioMuxArgs,
 	canCopyAudioCodecIntoMp4,
 	getExperimentalNvidiaCudaExportSkipReason,
+	getNativeGpuCompositorStallTimeoutMs,
 	getNativeStaticLayoutSourceProxyBitrate,
 	getNvidiaCudaAudioExportSkipReason,
 	getNvidiaCudaAutoStallTimeoutMs,
@@ -323,6 +324,34 @@ describe("getNvidiaCudaAutoStallTimeoutMs", () => {
 
 			process.env[envName] = "45000";
 			expect(getNvidiaCudaAutoStallTimeoutMs(true)).toBe(45_000);
+		} finally {
+			if (originalValue === undefined) {
+				delete process.env[envName];
+			} else {
+				process.env[envName] = originalValue;
+			}
+		}
+	});
+});
+
+describe("getNativeGpuCompositorStallTimeoutMs", () => {
+	it("guards Windows GPU compositor stalls by default", () => {
+		expect(getNativeGpuCompositorStallTimeoutMs()).toBe(120_000);
+	});
+
+	it("allows the Windows GPU stall guard to be disabled or tuned", () => {
+		const envName = "RECORDLY_NATIVE_GPU_STALL_TIMEOUT_MS";
+		const originalValue = process.env[envName];
+
+		try {
+			process.env[envName] = "0";
+			expect(getNativeGpuCompositorStallTimeoutMs()).toBeNull();
+
+			process.env[envName] = "5000";
+			expect(getNativeGpuCompositorStallTimeoutMs()).toBe(10_000);
+
+			process.env[envName] = "45000";
+			expect(getNativeGpuCompositorStallTimeoutMs()).toBe(45_000);
 		} finally {
 			if (originalValue === undefined) {
 				delete process.env[envName];
