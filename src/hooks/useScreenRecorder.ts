@@ -934,11 +934,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}
 			}
 
-			const permissionsReady = await preparePermissions();
-			if (!permissionsReady) {
-				return;
-			}
-
 			recordingSessionTimestamp.current = Date.now();
 			resetRecordingClock(recordingSessionTimestamp.current);
 			await prepareWebcamRecorder();
@@ -1566,20 +1561,40 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			return;
 		}
 
-		// Start recording with optional countdown
-		if (countdownDelay > 0) {
-			setCountdownActive(true);
-			try {
-				const result = await window.electronAPI.startCountdown(countdownDelay);
-				if (!result.success || result.cancelled) {
-					return;
+		// Request permissions BEFORE the countdown so:
+		// 1. The permission dialog doesn't interrupt or visually overlap the countdown.
+		// 2. We don't run a countdown only to fail at the end if permissions are denied.
+		// Set `starting` to guard against duplicate toggle calls while the
+		// (possibly async) permission dialog is open.
+		setStarting(true);
+		try {
+			const permissionsReady = await preparePermissions();
+			if (!permissionsReady) {
+				return;
+			}
+
+			// Start recording with optional countdown
+			if (countdownDelay > 0) {
+				setCountdownActive(true);
+				try {
+					const result = await window.electronAPI.startCountdown(countdownDelay);
+					if (!result.success || result.cancelled) {
+						return;
+					}
+				} finally {
+					setCountdownActive(false);
 				}
-			} finally {
-				setCountdownActive(false);
+			}
+
+			startRecording();
+		} finally {
+			// startRecording sets/clears `starting` itself once it takes over.
+			// If we returned early (permissions denied, countdown cancelled, or
+			// startRecording never ran), make sure we clear the flag here.
+			if (!startInFlight.current) {
+				setStarting(false);
 			}
 		}
-
-		startRecording();
 	};
 
 	return {
