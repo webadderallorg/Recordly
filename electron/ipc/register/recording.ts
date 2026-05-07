@@ -237,23 +237,36 @@ export function registerRecordingHandlers(
 					let systemAudioPath: string | null = null;
 					let microphonePath: string | null = null;
 					let orphanedMicAudioPath: string | null = null;
-					const resolvedDisplay = resolveWindowsCaptureDisplay(
-						source,
-						getScreen().getAllDisplays(),
-						getScreen().getPrimaryDisplay(),
-					);
-					const displayBounds = resolvedDisplay.bounds;
+					const isWindowSource = Boolean(source?.id?.startsWith("window:"));
+					const parsedWindowHandle = isWindowSource ? parseWindowId(source?.id) : null;
+					let resolvedDisplay: ReturnType<typeof resolveWindowsCaptureDisplay> | null = null;
+					const displayBounds =
+						parsedWindowHandle && parsedWindowHandle > 0
+							? null
+							: (() => {
+								resolvedDisplay = resolveWindowsCaptureDisplay(
+									source,
+									getScreen().getAllDisplays(),
+									getScreen().getPrimaryDisplay(),
+								);
+								return resolvedDisplay.bounds;
+							})();
 					setWindowsOrphanedMicAudioPath(null);
 
 					const config: Record<string, unknown> = {
 						outputPath,
 						fps: 60,
-						displayId: resolvedDisplay.displayId,
-						displayX: Math.round(resolvedDisplay.bounds.x),
-						displayY: Math.round(resolvedDisplay.bounds.y),
-						displayW: Math.round(resolvedDisplay.bounds.width),
-						displayH: Math.round(resolvedDisplay.bounds.height),
 					};
+
+					if (parsedWindowHandle && parsedWindowHandle > 0) {
+						config.windowHandle = parsedWindowHandle;
+					} else if (resolvedDisplay) {
+						config.displayId = resolvedDisplay.displayId;
+						config.displayX = Math.round(resolvedDisplay.bounds.x);
+						config.displayY = Math.round(resolvedDisplay.bounds.y);
+						config.displayW = Math.round(resolvedDisplay.bounds.width);
+						config.displayH = Math.round(resolvedDisplay.bounds.height);
+					}
 
 					if (options?.capturesSystemAudio) {
 						systemAudioPath = path.join(
