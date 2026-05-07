@@ -94,8 +94,6 @@ import {
 } from "./shadowProfile";
 import { buildTemporalSamplePlanUs, getTemporalMotionBlurConfig } from "./temporalMotionBlur";
 
-const TEMPORAL_ZOOM_MOTION_BLUR_ENABLED = false;
-
 import type { ExportRenderBackend } from "./types";
 
 interface FrameRenderConfig {
@@ -2719,7 +2717,6 @@ export class FrameRenderer {
 		}
 
 		const temporalSnapshot =
-			TEMPORAL_ZOOM_MOTION_BLUR_ENABLED &&
 			(this.config.zoomTemporalMotionBlur ?? 0) > 0 &&
 			typeof frameDurationUs === "number" &&
 			frameDurationUs > 0

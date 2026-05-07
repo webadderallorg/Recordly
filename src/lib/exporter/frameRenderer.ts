@@ -78,8 +78,6 @@ import { ForwardFrameSource } from "./forwardFrameSource";
 import { resolveMediaElementSource } from "./localMediaSource";
 import { buildTemporalSamplePlanUs, getTemporalMotionBlurConfig } from "./temporalMotionBlur";
 
-const TEMPORAL_ZOOM_MOTION_BLUR_ENABLED = false;
-
 interface FrameRenderConfig {
 	width: number;
 	height: number;
@@ -1278,7 +1276,6 @@ export class FrameRenderer {
 		}
 
 		const temporalSnapshot =
-			TEMPORAL_ZOOM_MOTION_BLUR_ENABLED &&
 			(this.config.zoomTemporalMotionBlur ?? 0) > 0 &&
 			typeof frameDurationUs === "number" &&
 			frameDurationUs > 0

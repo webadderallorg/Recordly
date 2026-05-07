@@ -1299,7 +1299,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			motionBlurStateRef.current = createMotionBlurState();
 			videoEffectsContainer.filters =
 				zoomMotionBlur > 0 ? [motionBlurFilter, zoomBlurFilter] : null;
-		}, [zoomMotionBlur]);
+		}, [videoPath, zoomMotionBlur]);
 
 		useEffect(() => {
 			zoomMotionBlurTuningRef.current = zoomMotionBlurTuning;

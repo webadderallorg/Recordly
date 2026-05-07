@@ -376,7 +376,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		(editor as Partial<ProjectEditorState>).zoomTemporalMotionBlur,
 	)
 		? clamp((editor as Partial<ProjectEditorState>).zoomTemporalMotionBlur as number, 0, 2)
-		: 0;
+		: normalizedZoomMotionBlur;
 	const normalizedBackgroundBlur = isFiniteNumber(
 		(editor as Partial<ProjectEditorState>).backgroundBlur,
 	)

@@ -5282,18 +5282,21 @@ export default function VideoEditor() {
 			<DialogContent className="max-w-md bg-editor-dialog border-foreground/10 text-foreground">
 				<DialogHeader>
 					<DialogTitle>
-						Nothing&apos;s broken, but we won&apos;t be able to render an animated
-						cursor overlay.
+						{t(
+							"editor.nativeCaptureUnavailable.title",
+							"Nothing’s broken, but we won’t be able to render an animated cursor overlay.",
+						)}
 					</DialogTitle>
 					<DialogDescription className="text-muted-foreground">
-						Your device does not support native capture. This could be for a variety of
-						reasons we haven&apos;t figured out yet. This doesn&apos;t break Recordly,
-						but it does make cursor smoothening impossible.
+						{t(
+							"editor.nativeCaptureUnavailable.description",
+							"Your device does not support native capture. This could be for a variety of reasons we haven’t figured out yet. This doesn’t break Recordly, but it does make cursor smoothing impossible.",
+						)}
 					</DialogDescription>
 				</DialogHeader>
 				<DialogFooter>
 					<Button onClick={() => setNativeCaptureUnavailableModalOpen(false)}>
-						Okay
+						{t("editor.nativeCaptureUnavailable.confirm", "Okay")}
 					</Button>
 				</DialogFooter>
 			</DialogContent>
