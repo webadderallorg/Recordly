@@ -4,6 +4,7 @@
 		"enableSystemAudio": "시스템 오디오 켜기",
 		"disableMicrophone": "마이크 끄기",
 		"enableMicrophone": "마이크 켜기",
+		"micToggleDisabledTip": "녹음 중에는 마이크를 전환할 수 없습니다",
 		"disableWebcam": "웹캠 오버레이 끄기",
 		"enableWebcam": "웹캠 오버레이 켜기",
 		"countdownDelay": "카운트다운 지연",

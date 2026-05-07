@@ -4,6 +4,7 @@
 		"enableSystemAudio": "Systeemaudio inschakelen",
 		"disableMicrophone": "Microfoon uitschakelen",
 		"enableMicrophone": "Microfoon inschakelen",
+		"micToggleDisabledTip": "Microfoon kan niet worden gewijzigd tijdens de opname",
 		"disableWebcam": "Webcam-overlay uitschakelen",
 		"enableWebcam": "Webcam-overlay inschakelen",
 		"countdownDelay": "Aftelvertraging",

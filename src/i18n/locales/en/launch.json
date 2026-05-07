@@ -4,6 +4,7 @@
 		"enableSystemAudio": "Enable system audio",
 		"disableMicrophone": "Disable microphone",
 		"enableMicrophone": "Enable microphone",
+		"micToggleDisabledTip": "Microphone cannot be toggled during recording",
 		"disableWebcam": "Disable webcam overlay",
 		"enableWebcam": "Enable webcam overlay",
 		"countdownDelay": "Countdown delay",

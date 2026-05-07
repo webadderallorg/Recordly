@@ -4,6 +4,7 @@
 		"enableSystemAudio": "启用系统音频",
 		"disableMicrophone": "禁用麦克风",
 		"enableMicrophone": "启用麦克风",
+		"micToggleDisabledTip": "录制过程中无法切换麦克风",
 		"disableWebcam": "禁用摄像头叠加",
 		"enableWebcam": "启用摄像头叠加",
 		"countdownDelay": "倒计时延迟",

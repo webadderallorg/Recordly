@@ -4,6 +4,7 @@
 		"enableSystemAudio": "Ativar áudio do sistema",
 		"disableMicrophone": "Desativar microfone",
 		"enableMicrophone": "Ativar microfone",
+		"micToggleDisabledTip": "O microfone não pode ser alternado durante a gravação",
 		"disableWebcam": "Desativar sobreposição da webcam",
 		"enableWebcam": "Ativar sobreposição da webcam",
 		"countdownDelay": "Atraso da contagem regressiva",

@@ -58,16 +58,21 @@ export const RecordingControls = ({
 
 				<Separator orientation="vertical" className="mx-[5px] h-6" />
 
+				{/* This is a disable button.
+				Ideally, microphone mute/unmute will be handled but 
+				for now it's non-functional. */}
 				<Button
 					variant="ghost"
 					size="icon"
 					iconSize="lg"
-					title={
-						microphoneEnabled
-							? t("recording.disableMicrophone")
-							: t("recording.enableMicrophone")
-					}
+					//title={
+					//	microphoneEnabled
+					//		? t("recording.disableMicrophone")
+					//		: t("recording.enableMicrophone")
+					//}
+					title={t("recording.micToggleDisabledTip")}
 					className={microphoneEnabled ? styles.ibActive : ""}
+					disabled
 					onClick={onToggleMicrophone}
 				>
 					{microphoneEnabled ? (
