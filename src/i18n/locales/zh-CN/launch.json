@@ -31,6 +31,17 @@
 		"showFloatingWebcamPreview": "显示悬浮预览",
 		"selectWebcamToEnable": "选择一个摄像头以启用",
 		"noWebcamsFound": "未找到摄像头",
+		"background": {
+			"label": "背景",
+			"none": "无",
+			"blur": "模糊",
+			"color": "颜色",
+			"image": "图片",
+			"intensity": "强度",
+			"chooseImage": "选择图片",
+			"changeImage": "更换图片",
+			"removeImage": "移除"
+		},
 		"recordingsFolder": "录制文件夹",
 		"language": "语言",
 		"paused": "已暂停",

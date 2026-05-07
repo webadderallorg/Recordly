@@ -29,8 +29,14 @@ import { RxDragHandleDots2 } from "react-icons/rx";
 import { useI18n } from "@/contexts/I18nContext";
 import type { AppLocale } from "@/i18n/config";
 import { SUPPORTED_LOCALES } from "@/i18n/config";
+import {
+	type BackgroundMode,
+	createProcessedStream,
+	type ProcessedStream,
+} from "@/lib/camera/backgroundEffect";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useAudioLevelMeter } from "../../hooks/useAudioLevelMeter";
+import { useBackgroundEffect } from "../../hooks/useBackgroundEffect";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { useVideoDevices } from "../../hooks/useVideoDevices";
@@ -103,6 +109,128 @@ function IconButton({
 	);
 }
 
+const BACKGROUND_MODES: { value: BackgroundMode; labelKey: string }[] = [
+	{ value: "none", labelKey: "recording.background.none" },
+	{ value: "blur", labelKey: "recording.background.blur" },
+	{ value: "color", labelKey: "recording.background.color" },
+	{ value: "image", labelKey: "recording.background.image" },
+];
+
+function BackgroundEffectControls({
+	mode,
+	blurIntensity,
+	color,
+	imageDataUrl,
+	onModeChange,
+	onBlurIntensityChange,
+	onColorChange,
+	onImageChange,
+	t,
+}: {
+	mode: BackgroundMode;
+	blurIntensity: number;
+	color: string;
+	imageDataUrl: string | null;
+	onModeChange: (mode: BackgroundMode) => void;
+	onBlurIntensityChange: (value: number) => void;
+	onColorChange: (color: string) => void;
+	onImageChange: (dataUrl: string | null) => void;
+	t: (key: string) => string;
+}) {
+	const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+	const onPickImage = () => fileInputRef.current?.click();
+	const onFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
+		const file = event.target.files?.[0];
+		event.target.value = "";
+		if (!file) return;
+		const reader = new FileReader();
+		reader.onload = () => {
+			const result = reader.result;
+			if (typeof result === "string") onImageChange(result);
+		};
+		reader.readAsDataURL(file);
+	};
+
+	return (
+		<div className="px-3 py-2 space-y-2">
+			<div className={styles.ddLabel}>{t("recording.background.label")}</div>
+			<div className="grid grid-cols-4 gap-1">
+				{BACKGROUND_MODES.map((option) => (
+					<button
+						key={option.value}
+						type="button"
+						onClick={() => onModeChange(option.value)}
+						className={`rounded-md px-2 py-1 text-xs ring-1 ${
+							mode === option.value
+								? "bg-white/15 ring-white/30 text-white"
+								: "bg-white/5 ring-white/10 text-[#b6b6c0] hover:bg-white/10"
+						}`}
+					>
+						{t(option.labelKey)}
+					</button>
+				))}
+			</div>
+			{mode === "blur" && (
+				<label className="flex flex-col gap-1 text-xs text-[#b6b6c0]">
+					<span>
+						{t("recording.background.intensity")}: {Math.round(blurIntensity)}
+					</span>
+					<input
+						type="range"
+						min={0}
+						max={100}
+						step={1}
+						value={blurIntensity}
+						onChange={(event) => onBlurIntensityChange(Number(event.target.value))}
+						className="w-full"
+					/>
+				</label>
+			)}
+			{mode === "color" && (
+				<label className="flex items-center gap-2 text-xs text-[#b6b6c0]">
+					<span>{t("recording.background.color")}</span>
+					<input
+						type="color"
+						value={color}
+						onChange={(event) => onColorChange(event.target.value)}
+						className="h-6 w-10 cursor-pointer rounded border border-white/10 bg-transparent"
+					/>
+				</label>
+			)}
+			{mode === "image" && (
+				<div className="flex items-center gap-2 text-xs text-[#b6b6c0]">
+					<button
+						type="button"
+						onClick={onPickImage}
+						className="rounded-md bg-white/10 px-2 py-1 ring-1 ring-white/10 hover:bg-white/15"
+					>
+						{imageDataUrl
+							? t("recording.background.changeImage")
+							: t("recording.background.chooseImage")}
+					</button>
+					{imageDataUrl && (
+						<button
+							type="button"
+							onClick={() => onImageChange(null)}
+							className="rounded-md bg-white/5 px-2 py-1 ring-1 ring-white/10 hover:bg-white/10"
+						>
+							{t("recording.background.removeImage")}
+						</button>
+					)}
+					<input
+						ref={fileInputRef}
+						type="file"
+						accept="image/*"
+						className="hidden"
+						onChange={onFileSelected}
+					/>
+				</div>
+			)}
+		</div>
+	);
+}
+
 function DropdownItem({
 	onClick,
 	selected,
@@ -165,6 +293,15 @@ export function LaunchWindow() {
 	const t = useScopedT("launch");
 
 	const {
+		options: backgroundOptions,
+		getOptions: getBackgroundOptions,
+		setMode: setBackgroundMode,
+		setBlurIntensity: setBackgroundBlurIntensity,
+		setColor: setBackgroundColor,
+		setImageDataUrl: setBackgroundImageDataUrl,
+	} = useBackgroundEffect();
+
+	const {
 		recording,
 		paused,
 		finalizing,
@@ -186,7 +323,7 @@ export function LaunchWindow() {
 		countdownDelay,
 		setCountdownDelay,
 		preparePermissions,
-	} = useScreenRecorder();
+	} = useScreenRecorder({ getBackgroundOptions });
 
 	const [recordingStart, setRecordingStart] = useState<number | null>(null);
 	const [elapsed, setElapsed] = useState(0);
@@ -523,6 +660,8 @@ export function LaunchWindow() {
 
 	useEffect(() => {
 		let mounted = true;
+		let rawStream: MediaStream | null = null;
+		let processor: ProcessedStream | null = null;
 
 		const startPreview = async () => {
 			if (!shouldStreamWebcamPreview) {
@@ -530,7 +669,7 @@ export function LaunchWindow() {
 			}
 
 			try {
-				const previewStream = await navigator.mediaDevices.getUserMedia({
+				rawStream = await navigator.mediaDevices.getUserMedia({
 					video: webcamDeviceId
 						? {
 								deviceId: { exact: webcamDeviceId },
@@ -547,11 +686,32 @@ export function LaunchWindow() {
 				});
 
 				if (!mounted) {
-					previewStream.getTracks().forEach((track) => track.stop());
+					rawStream.getTracks().forEach((track) => track.stop());
+					rawStream = null;
 					return;
 				}
 
-				previewStreamRef.current = previewStream;
+				let displayStream: MediaStream = rawStream;
+				if (backgroundOptions.mode !== "none") {
+					try {
+						processor = await createProcessedStream(rawStream, getBackgroundOptions);
+						if (!mounted) {
+							processor.stop();
+							processor = null;
+							rawStream.getTracks().forEach((track) => track.stop());
+							rawStream = null;
+							return;
+						}
+						displayStream = processor.stream;
+					} catch (effectError) {
+						console.warn(
+							"Background effect failed for preview; showing raw stream:",
+							effectError,
+						);
+					}
+				}
+
+				previewStreamRef.current = displayStream;
 				attachPreviewStreamToNode(webcamPreviewRef.current);
 				attachPreviewStreamToNode(recordingWebcamPreviewRef.current);
 			} catch (error) {
@@ -573,12 +733,26 @@ export function LaunchWindow() {
 					videoElement.pause();
 					videoElement.srcObject = null;
 				});
+			if (processor) {
+				try {
+					processor.stop();
+				} catch {
+					/* ignore */
+				}
+			}
+			rawStream?.getTracks().forEach((track) => track.stop());
 			previewStream?.getTracks().forEach((track) => track.stop());
 			if (previewStreamRef.current === previewStream) {
 				previewStreamRef.current = null;
 			}
 		};
-	}, [attachPreviewStreamToNode, shouldStreamWebcamPreview, webcamDeviceId]);
+	}, [
+		attachPreviewStreamToNode,
+		backgroundOptions.mode,
+		getBackgroundOptions,
+		shouldStreamWebcamPreview,
+		webcamDeviceId,
+	]);
 
 	useEffect(() => {
 		let timer: NodeJS.Timeout | null = null;
@@ -1412,6 +1586,22 @@ export function LaunchWindow() {
 										<div className="text-center text-xs text-[#6b6b78] py-4">
 											{t("recording.noWebcamsFound")}
 										</div>
+									)}
+									{showWebcamControls && (
+										<>
+											<Separator dropdown />
+											<BackgroundEffectControls
+												mode={backgroundOptions.mode}
+												blurIntensity={backgroundOptions.blurIntensity}
+												color={backgroundOptions.color}
+												imageDataUrl={backgroundOptions.imageDataUrl}
+												onModeChange={setBackgroundMode}
+												onBlurIntensityChange={setBackgroundBlurIntensity}
+												onColorChange={setBackgroundColor}
+												onImageChange={setBackgroundImageDataUrl}
+												t={t}
+											/>
+										</>
 									)}
 								</>
 							)}

@@ -31,6 +31,17 @@
 		"showFloatingWebcamPreview": "顯示浮動預覽",
 		"selectWebcamToEnable": "選擇要啟用的網路攝影機",
 		"noWebcamsFound": "找不到網路攝影機",
+		"background": {
+			"label": "背景",
+			"none": "無",
+			"blur": "模糊",
+			"color": "顏色",
+			"image": "圖片",
+			"intensity": "強度",
+			"chooseImage": "選擇圖片",
+			"changeImage": "更換圖片",
+			"removeImage": "移除"
+		},
 		"recordingsFolder": "錄影儲存路徑",
 		"language": "語言",
 		"paused": "已暫停",

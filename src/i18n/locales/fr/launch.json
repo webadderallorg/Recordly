@@ -31,6 +31,17 @@
 		"showFloatingWebcamPreview": "Afficher l’aperçu flottant",
 		"selectWebcamToEnable": "Sélectionnez une webcam à activer",
 		"noWebcamsFound": "Aucune webcam trouvée",
+		"background": {
+			"label": "Arrière-plan",
+			"none": "Aucun",
+			"blur": "Flou",
+			"color": "Couleur",
+			"image": "Image",
+			"intensity": "Intensité",
+			"chooseImage": "Choisir une image",
+			"changeImage": "Changer d'image",
+			"removeImage": "Supprimer"
+		},
 		"recordingsFolder": "Chemin des enregistrements",
 		"language": "Langue",
 		"paused": "EN PAUSE",
