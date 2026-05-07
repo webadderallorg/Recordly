@@ -84,14 +84,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	hudOverlayClose: () => {
 		ipcRenderer.send("hud-overlay-close");
 	},
-	setHudOverlayExpanded: (expanded: boolean) => {
-		ipcRenderer.send("set-hud-overlay-expanded", expanded);
-	},
-	setHudOverlayCompactWidth: (width: number) => {
-		ipcRenderer.send("set-hud-overlay-compact-width", width);
-	},
-	setHudOverlayMeasuredHeight: (height: number, expanded: boolean) => {
-		ipcRenderer.send("set-hud-overlay-measured-height", height, expanded);
+	hudOverlayRendererReady: () => {
+		ipcRenderer.send("hud-overlay-renderer-ready");
 	},
 	getHudOverlayCaptureProtection: () => {
 		return ipcRenderer.invoke("get-hud-overlay-capture-protection");

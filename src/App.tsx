@@ -19,6 +19,7 @@ export default function App() {
 		const type = params.get("windowType") || "";
 		const isMacOS = /mac/i.test(navigator.platform);
 		setWindowType(type);
+		document.documentElement.dataset.windowType = type;
 
 		if (
 			type === "hud-overlay" ||
@@ -31,7 +32,12 @@ export default function App() {
 			document.getElementById("root")?.style.setProperty("background", "transparent");
 		}
 
-		if (type === "hud-overlay" || type === "update-toast") {
+		if (type === "hud-overlay") {
+			document.documentElement.classList.add("hud-overlay-window");
+			document.body.classList.add("hud-overlay-window");
+			document.getElementById("root")?.classList.add("hud-overlay-window");
+			window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
+		} else if (type === "update-toast") {
 			document.documentElement.style.overflow = "visible";
 			document.body.style.overflow = "visible";
 			document.getElementById("root")?.style.setProperty("overflow", "visible");

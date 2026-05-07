@@ -88,9 +88,7 @@ interface Window {
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;
 		hudOverlayHide: () => void;
 		hudOverlayClose: () => void;
-		setHudOverlayExpanded: (expanded: boolean) => void;
-		setHudOverlayCompactWidth: (width: number) => void;
-		setHudOverlayMeasuredHeight: (height: number, expanded: boolean) => void;
+		hudOverlayRendererReady: () => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
