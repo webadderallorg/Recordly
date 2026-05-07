@@ -3380,19 +3380,9 @@ export default function VideoEditor() {
 		if (!video) return;
 		const mappedSourceTime = mapTimelineTimeToSourceTime(time * 1000) / 1000;
 		if (!Number.isFinite(mappedSourceTime)) {
-			console.log("[seek][blocked][non-finite]", {
-				requestedTimelineSec: time,
-				mappedSourceSec: mappedSourceTime,
-			});
 			return;
 		}
 		const clamped = Math.max(0, Math.min(mappedSourceTime, duration));
-		console.log("[seek][apply]", {
-			requestedTimelineSec: time,
-			mappedSourceSec: mappedSourceTime,
-			clampedSourceSec: clamped,
-			durationSec: duration,
-		});
 		video.currentTime = clamped;
 	}
 

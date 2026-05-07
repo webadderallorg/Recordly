@@ -238,13 +238,7 @@ export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[])
 	const lastClip = sortedClips[sortedClips.length - 1];
 
 	if (lastClip && roundedTimeMs === Math.round(lastClip.endMs)) {
-		const sourceEnd = getClipSourceEndMs(lastClip);
-		console.log("[clip-map][t->s][last-end]", {
-			timelineMs: roundedTimeMs,
-			sourceMs: sourceEnd,
-			clipId: lastClip.id,
-		});
-		return sourceEnd;
+		return getClipSourceEndMs(lastClip);
 	}
 
 	for (const clip of sortedClips) {
@@ -262,20 +256,7 @@ export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[])
 		return roundedTimeMs;
 	}
 
-	const snapped = clampToNearestClipBoundary(roundedTimeMs, sortedClips, "timeline");
-	console.log("[clip-map][t->s][gap-snap]", {
-		timelineMs: roundedTimeMs,
-		snappedTimelineMs: snapped,
-		clips: sortedClips.map((clip) => ({
-			id: clip.id,
-			startMs: clip.startMs,
-			endMs: clip.endMs,
-			sourceStartMs: getClipSourceStartMs(clip),
-			sourceEndMs: getClipSourceEndMs(clip),
-			speed: clip.speed,
-		})),
-	});
-	return snapped;
+	return clampToNearestClipBoundary(roundedTimeMs, sortedClips, "timeline");
 }
 
 export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[]): number {
@@ -287,13 +268,7 @@ export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[])
 	const lastClip = sortedClips[sortedClips.length - 1];
 
 	if (lastClip && roundedTimeMs === getClipSourceEndMs(lastClip)) {
-		const timelineEnd = Math.round(lastClip.endMs);
-		console.log("[clip-map][s->t][last-end]", {
-			sourceMs: roundedTimeMs,
-			timelineMs: timelineEnd,
-			clipId: lastClip.id,
-		});
-		return timelineEnd;
+		return Math.round(lastClip.endMs);
 	}
 
 	for (const clip of sortedClips) {
@@ -321,14 +296,6 @@ export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[])
 			roundedTimeMs < rightSourceStartMs &&
 			rightSourceStartMs - leftSourceEndMs <= boundaryGapEpsilonMs
 		) {
-			console.log("[clip-map][s->t][micro-gap]", {
-				sourceMs: roundedTimeMs,
-				leftClipId: left.id,
-				rightClipId: right.id,
-				leftSourceEndMs,
-				rightSourceStartMs,
-				returnedTimelineMs: Math.round(left.endMs),
-			});
 			return Math.round(left.endMs);
 		}
 	}
@@ -355,18 +322,6 @@ export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[])
 		}
 	}
 
-	console.log("[clip-map][s->t][boundary-snap]", {
-		sourceMs: roundedTimeMs,
-		timelineMs: nearestTimelineTimeMs,
-		clips: sortedClips.map((clip) => ({
-			id: clip.id,
-			startMs: clip.startMs,
-			endMs: clip.endMs,
-			sourceStartMs: getClipSourceStartMs(clip),
-			sourceEndMs: getClipSourceEndMs(clip),
-			speed: clip.speed,
-		})),
-	});
 	return nearestTimelineTimeMs;
 }
 
