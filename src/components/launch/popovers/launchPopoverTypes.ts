@@ -9,28 +9,31 @@ export interface DesktopSource {
 	windowTitle?: string;
 }
 
-export interface RawDesktopSource {
-	id: string;
-	name: string;
-	thumbnail: string | null;
-	display_id: string;
-	appIcon: string | null;
-	sourceType?: "screen" | "window";
-	appName?: string;
-	windowTitle?: string;
+/**
+ * Check if a source is a screen/display
+ */
+export function isScreenSource(s: DesktopSource): boolean {
+	return s.sourceType === "screen" || s.id.startsWith("screen:");
 }
 
-export function mapRawSource(s: RawDesktopSource): DesktopSource {
-	const isWindow = s.id.startsWith("window:");
+/**
+ * Check if a source is an application window
+ */
+export function isWindowSource(s: DesktopSource): boolean {
+	return s.sourceType === "window" || s.id.startsWith("window:");
+}
+
+export function mapRawSource(s: DesktopSource): DesktopSource {
+	const isWindow = isWindowSource(s);
 	const type = s.sourceType ?? (isWindow ? "window" : "screen");
 	let displayName = s.name;
 	let appName = s.appName;
-	if (isWindow && !appName && s.name.includes(" — ")) {
+	if (isWindow && s.windowTitle) {
+		displayName = s.windowTitle;
+	} else if (isWindow && !appName && s.name.includes(" — ")) {
 		const parts = s.name.split(" — ");
 		appName = parts[0]?.trim();
 		displayName = parts.slice(1).join(" — ").trim() || s.name;
-	} else if (isWindow && s.windowTitle) {
-		displayName = s.windowTitle;
 	}
 	return {
 		id: s.id,

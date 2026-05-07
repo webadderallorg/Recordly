@@ -5,7 +5,12 @@ import { useScopedT } from "@/contexts/I18nContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { mapRawSource, type DesktopSource, type RawDesktopSource } from "./popovers/launchPopoverTypes";
+import {
+	mapRawSource,
+	isScreenSource,
+	isWindowSource,
+	type DesktopSource,
+} from "./popovers/launchPopoverTypes";
 import "./launchTheme.css";
 import "./SourceSelector.css";
 
@@ -212,7 +217,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 				thumbnailSize: { width: 160, height: 90 },
 				fetchWindowIcons: true,
 			});
-			setInternalSources(rawSources.map((s) => mapRawSource(s as RawDesktopSource)));
+			setInternalSources(rawSources.map((s) => mapRawSource(s as DesktopSource)));
 		} catch (error) {
 			console.error("Failed to fetch sources:", error);
 		} finally {
@@ -244,11 +249,11 @@ export const SourceSelector = React.memo(function SourceSelector({
 
 	// Split sources for internal use
 	const internalScreenSources = useMemo(
-		() => internalSources.filter((s) => s.sourceType === "screen" || s.id.startsWith("screen:")),
+		() => internalSources.filter(isScreenSource),
 		[internalSources],
 	);
 	const internalWindowSources = useMemo(
-		() => internalSources.filter((s) => s.sourceType === "window" || s.id.startsWith("window:")),
+		() => internalSources.filter(isWindowSource),
 		[internalSources],
 	);
 
@@ -302,7 +307,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 
 	const trigger = children ? (
 		React.isValidElement(children) ? (
-			React.cloneElement(children as React.ReactElement<any>, {
+			React.cloneElement(children as React.ReactElement<React.HTMLAttributes<HTMLElement>>, {
 				onPointerEnter: prefetchSources,
 				onFocusCapture: prefetchSources,
 			})
