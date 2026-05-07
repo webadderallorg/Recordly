@@ -100,9 +100,28 @@ export const DEFAULT_CURSOR_SMOOTHING = 0.67;
 export const DEFAULT_CURSOR_MOTION_BLUR = 0.4;
 export const DEFAULT_CURSOR_CLICK_BOUNCE = 2.5;
 export const DEFAULT_CURSOR_CLICK_BOUNCE_DURATION = 350;
-export const DEFAULT_CURSOR_SWAY = 0.25;
+export const DEFAULT_CURSOR_SWAY = 0.4;
 export const DEFAULT_ZOOM_SMOOTHNESS = 0.5;
 export const DEFAULT_ZOOM_MOTION_BLUR = 0.35;
+export interface ZoomMotionBlurTuning {
+	panVelocityThreshold: number;
+	zoomVelocityThreshold: number;
+	maxDirectionalBlurPx: number;
+	maxRadialBlurStrength: number;
+	panResponsePerSecond: number;
+	zoomResponsePerSecond: number;
+	zoomSafeZoneRadiusPx: number;
+}
+
+export const DEFAULT_ZOOM_MOTION_BLUR_TUNING: ZoomMotionBlurTuning = {
+	panVelocityThreshold: 24,
+	zoomVelocityThreshold: 0.05,
+	maxDirectionalBlurPx: 11,
+	maxRadialBlurStrength: 0.14,
+	panResponsePerSecond: 11,
+	zoomResponsePerSecond: 9,
+	zoomSafeZoneRadiusPx: 6,
+};
 export const DEFAULT_ZOOM_IN_DURATION_MS = 1522.575;
 export const DEFAULT_ZOOM_IN_OVERLAP_MS = 500;
 export const DEFAULT_ZOOM_OUT_DURATION_MS = 1015.05;
@@ -201,9 +220,7 @@ export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[])
 			continue;
 		}
 
-		return Math.round(
-			clip.startMs + (roundedTimeMs - clip.startMs) * getSafeClipSpeed(clip),
-		);
+		return Math.round(clip.startMs + (roundedTimeMs - clip.startMs) * getSafeClipSpeed(clip));
 	}
 
 	if (sortedClips.length === 0) {
@@ -223,9 +240,7 @@ export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[])
 			continue;
 		}
 
-		return Math.round(
-			clip.startMs + (roundedTimeMs - clip.startMs) / getSafeClipSpeed(clip),
-		);
+		return Math.round(clip.startMs + (roundedTimeMs - clip.startMs) / getSafeClipSpeed(clip));
 	}
 
 	if (sortedClips.length === 0) {

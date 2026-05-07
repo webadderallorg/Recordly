@@ -10,6 +10,7 @@ import type {
 	SpeedRegion,
 	TrimRegion,
 	WebcamOverlaySettings,
+	ZoomMotionBlurTuning,
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
@@ -48,6 +49,7 @@ interface VideoExporterConfig extends ExportConfig {
 	shadowIntensity: number;
 	backgroundBlur: number;
 	zoomMotionBlur?: number;
+	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
 	zoomTemporalMotionBlur?: number;
 	zoomMotionBlurSampleCount?: number | null;
 	zoomMotionBlurShutterFraction?: number | null;
@@ -77,6 +79,9 @@ interface VideoExporterConfig extends ExportConfig {
 	cursorSpringStiffnessMultiplier?: number;
 	cursorSpringDampingMultiplier?: number;
 	cursorSpringMassMultiplier?: number;
+	cameraSpringStiffnessMultiplier?: number;
+	cameraSpringDampingMultiplier?: number;
+	cameraSpringMassMultiplier?: number;
 	cursorMotionBlur?: number;
 	cursorClickBounce?: number;
 	cursorClickBounceDuration?: number;
@@ -198,6 +203,7 @@ export class VideoExporter {
 				shadowIntensity: this.config.shadowIntensity,
 				backgroundBlur: this.config.backgroundBlur,
 				zoomMotionBlur: this.config.zoomMotionBlur,
+				zoomMotionBlurTuning: this.config.zoomMotionBlurTuning,
 				zoomTemporalMotionBlur: this.config.zoomTemporalMotionBlur,
 				zoomMotionBlurSampleCount: this.config.zoomMotionBlurSampleCount,
 				zoomMotionBlurShutterFraction: this.config.zoomMotionBlurShutterFraction,
@@ -231,6 +237,9 @@ export class VideoExporter {
 				cursorSpringStiffnessMultiplier: this.config.cursorSpringStiffnessMultiplier,
 				cursorSpringDampingMultiplier: this.config.cursorSpringDampingMultiplier,
 				cursorSpringMassMultiplier: this.config.cursorSpringMassMultiplier,
+				cameraSpringStiffnessMultiplier: this.config.cameraSpringStiffnessMultiplier,
+				cameraSpringDampingMultiplier: this.config.cameraSpringDampingMultiplier,
+				cameraSpringMassMultiplier: this.config.cameraSpringMassMultiplier,
 				cursorMotionBlur: this.config.cursorMotionBlur,
 				cursorClickBounce: this.config.cursorClickBounce,
 				cursorClickBounceDuration: this.config.cursorClickBounceDuration,

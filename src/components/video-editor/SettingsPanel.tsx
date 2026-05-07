@@ -29,10 +29,6 @@ import {
 import {
 	TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT,
 	TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION,
-	TEMPORAL_MOTION_BLUR_MAX_SAMPLE_COUNT,
-	TEMPORAL_MOTION_BLUR_MAX_SHUTTER_FRACTION,
-	TEMPORAL_MOTION_BLUR_MIN_SAMPLE_COUNT,
-	TEMPORAL_MOTION_BLUR_MIN_SHUTTER_FRACTION,
 } from "@/lib/exporter/temporalMotionBlur";
 import type { ExtensionSettingField } from "@/lib/extensions";
 import { extensionHost, type FrameInstance } from "@/lib/extensions";
@@ -68,6 +64,7 @@ import type {
 	WebcamPositionPreset,
 	ZoomDepth,
 	ZoomMode,
+	ZoomMotionBlurTuning,
 	ZoomTransitionEasing,
 } from "./types";
 import {
@@ -89,6 +86,7 @@ import {
 	DEFAULT_WEBCAM_SHADOW,
 	DEFAULT_WEBCAM_SIZE,
 	DEFAULT_ZOOM_IN_DURATION_MS,
+	DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 	DEFAULT_ZOOM_OUT_DURATION_MS,
 } from "./types";
 import { fromCursorSwaySliderValue, toCursorSwaySliderValue } from "./videoPlayback/cursorSway";
@@ -478,6 +476,8 @@ interface SettingsPanelProps {
 	onShadowChange?: (intensity: number) => void;
 	backgroundBlur?: number;
 	onBackgroundBlurChange?: (amount: number) => void;
+	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
+	onZoomMotionBlurTuningChange?: (tuning: ZoomMotionBlurTuning) => void;
 	zoomTemporalMotionBlur?: number;
 	onZoomTemporalMotionBlurChange?: (amount: number) => void;
 	zoomMotionBlurSampleCount?: number | null;
@@ -520,6 +520,12 @@ interface SettingsPanelProps {
 	onCursorSpringDampingMultiplierChange?: (multiplier: number) => void;
 	cursorSpringMassMultiplier?: number;
 	onCursorSpringMassMultiplierChange?: (multiplier: number) => void;
+	cameraSpringStiffnessMultiplier?: number;
+	onCameraSpringStiffnessMultiplierChange?: (multiplier: number) => void;
+	cameraSpringDampingMultiplier?: number;
+	onCameraSpringDampingMultiplierChange?: (multiplier: number) => void;
+	cameraSpringMassMultiplier?: number;
+	onCameraSpringMassMultiplierChange?: (multiplier: number) => void;
 	zoomClassicMode?: boolean;
 	onZoomClassicModeChange?: (enabled: boolean) => void;
 	cursorMotionBlur?: number;
@@ -570,6 +576,8 @@ interface SettingsPanelProps {
 	onClearAutoCaptions?: () => void;
 	onDownloadWhisperSmallModel?: () => void;
 	onDeleteWhisperSmallModel?: () => void;
+	nativeCaptureUnavailableSession?: boolean;
+	onOpenNativeCaptureUnavailableModal?: () => void;
 }
 
 const ZOOM_DEPTH_OPTIONS: Array<{ depth: ZoomDepth; label: string }> = [
@@ -861,12 +869,8 @@ export function SettingsPanel({
 	onShadowChange,
 	backgroundBlur = 0,
 	onBackgroundBlurChange,
-	zoomTemporalMotionBlur = 0,
-	onZoomTemporalMotionBlurChange,
-	zoomMotionBlurSampleCount = TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT,
-	onZoomMotionBlurSampleCountChange,
-	zoomMotionBlurShutterFraction = TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION,
-	onZoomMotionBlurShutterFractionChange,
+	zoomMotionBlurTuning = DEFAULT_ZOOM_MOTION_BLUR_TUNING,
+	onZoomMotionBlurTuningChange,
 	connectZooms = true,
 	onConnectZoomsChange,
 	autoApplyFreshRecordingAutoZooms = true,
@@ -891,6 +895,12 @@ export function SettingsPanel({
 	onCursorSpringDampingMultiplierChange,
 	cursorSpringMassMultiplier = 1,
 	onCursorSpringMassMultiplierChange,
+	cameraSpringStiffnessMultiplier = 1,
+	onCameraSpringStiffnessMultiplierChange,
+	cameraSpringDampingMultiplier = 1,
+	onCameraSpringDampingMultiplierChange,
+	cameraSpringMassMultiplier = 1,
+	onCameraSpringMassMultiplierChange,
 	zoomClassicMode = false,
 	onZoomClassicModeChange,
 	cursorMotionBlur = DEFAULT_CURSOR_MOTION_BLUR,
@@ -939,6 +949,8 @@ export function SettingsPanel({
 	onClearAutoCaptions,
 	onDownloadWhisperSmallModel,
 	onDeleteWhisperSmallModel,
+	nativeCaptureUnavailableSession = false,
+	onOpenNativeCaptureUnavailableModal,
 }: SettingsPanelProps) {
 	const tSettings = useScopedT("settings");
 	const { locale, setLocale, t } = useI18n();
@@ -1467,10 +1479,15 @@ export function SettingsPanel({
 	};
 
 	const resetZoomSection = () => {
-		onZoomTemporalMotionBlurChange?.(initialEditorPreferences.zoomTemporalMotionBlur);
-		onZoomMotionBlurSampleCountChange?.(initialEditorPreferences.zoomMotionBlurSampleCount);
-		onZoomMotionBlurShutterFractionChange?.(
-			initialEditorPreferences.zoomMotionBlurShutterFraction,
+		onZoomMotionBlurTuningChange?.(initialEditorPreferences.zoomMotionBlurTuning);
+		onCameraSpringStiffnessMultiplierChange?.(
+			initialEditorPreferences.cameraSpringStiffnessMultiplier,
+		);
+		onCameraSpringDampingMultiplierChange?.(
+			initialEditorPreferences.cameraSpringDampingMultiplier,
+		);
+		onCameraSpringMassMultiplierChange?.(
+			initialEditorPreferences.cameraSpringMassMultiplier,
 		);
 		onZoomInDurationMsChange?.(initialEditorPreferences.zoomInDurationMs);
 		onZoomOutDurationMsChange?.(initialEditorPreferences.zoomOutDurationMs);
@@ -2590,6 +2607,282 @@ export function SettingsPanel({
 						triggerClassName="h-10 w-full justify-start rounded-xl border border-foreground/10 bg-foreground/5 px-3 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
 					/>
 				</section>
+
+				{showDevMotionControls ? (
+					<section className="flex flex-col gap-2 rounded-xl border border-[#2563EB]/15 bg-[#2563EB]/5 p-3">
+						<div className="flex items-center justify-between gap-3">
+							<div>
+								<SectionLabel>
+									{tSettings("effects.devSection", "Dev")}
+								</SectionLabel>
+								<div className="mt-0.5 text-[10px] text-muted-foreground">
+									{tSettings(
+										"effects.devSectionHint",
+										"Temporary testing controls for native capture and motion tuning.",
+									)}
+								</div>
+							</div>
+							<span className="rounded-full bg-[#2563EB]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#2563EB]">
+								DEV
+							</span>
+						</div>
+
+						<div className="rounded-lg border border-foreground/10 bg-background/60 px-3 py-3">
+							<div className="flex items-start justify-between gap-3">
+								<div>
+									<div className="text-[11px] font-medium text-foreground">
+										{tSettings(
+											"effects.nativeCaptureWarningTester",
+											"Native capture warning",
+										)}
+									</div>
+									<div className="mt-0.5 text-[10px] text-muted-foreground">
+										{nativeCaptureUnavailableSession
+											? tSettings(
+													"effects.nativeCaptureWarningTesterUnavailable",
+													"This project is currently marked as native capture unavailable.",
+												)
+											: tSettings(
+													"effects.nativeCaptureWarningTesterAvailable",
+													"This project is not marked as unsupported, but you can still open the modal for UI testing.",
+												)}
+									</div>
+								</div>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onClick={() => onOpenNativeCaptureUnavailableModal?.()}
+									className="h-8 shrink-0 border-[#2563EB]/20 bg-[#2563EB]/10 text-[#2563EB] hover:bg-[#2563EB]/15"
+								>
+									{tSettings("effects.openNativeCaptureWarning", "Open warning")}
+								</Button>
+							</div>
+						</div>
+
+						<div className="space-y-1.5 rounded-lg border border-foreground/10 bg-background/60 px-3 py-3">
+							<div>
+								<div className="text-[11px] font-medium text-foreground">
+									{tSettings("effects.motionBlurDebug", "Motion Blur Debug")}
+								</div>
+								<div className="mt-0.5 text-[10px] text-muted-foreground">
+									{tSettings(
+										"effects.motionBlurDebugHint",
+										"Development-only tuning for the split move-vs-zoom blur path. Pan controls drive the streak filter, and zoom controls drive the focus-centered zoom filter.",
+									)}
+								</div>
+							</div>
+							<SliderControl
+								label={tSettings("effects.motionBlurPanThreshold", "Pan threshold")}
+								value={zoomMotionBlurTuning.panVelocityThreshold}
+								defaultValue={
+									initialEditorPreferences.zoomMotionBlurTuning
+										.panVelocityThreshold
+								}
+								min={0}
+								max={240}
+								step={1}
+								onChange={(value) =>
+									onZoomMotionBlurTuningChange?.({
+										...zoomMotionBlurTuning,
+										panVelocityThreshold: value,
+									})
+								}
+								formatValue={(value) => `${Math.round(value)} px/s`}
+								parseInput={(text) =>
+									parseFloat(text.replace(/px\/s$/i, "").trim())
+								}
+							/>
+							<SliderControl
+								label={tSettings("effects.motionBlurPanStrength", "Pan max blur")}
+								value={zoomMotionBlurTuning.maxDirectionalBlurPx}
+								defaultValue={
+									initialEditorPreferences.zoomMotionBlurTuning
+										.maxDirectionalBlurPx
+								}
+								min={0}
+								max={32}
+								step={0.1}
+								onChange={(value) =>
+									onZoomMotionBlurTuningChange?.({
+										...zoomMotionBlurTuning,
+										maxDirectionalBlurPx: value,
+									})
+								}
+								formatValue={(value) => `${value.toFixed(1)} px`}
+								parseInput={(text) => parseFloat(text.replace(/px$/i, "").trim())}
+							/>
+							<SliderControl
+								label={tSettings(
+									"effects.motionBlurZoomThreshold",
+									"Zoom threshold",
+								)}
+								value={zoomMotionBlurTuning.zoomVelocityThreshold}
+								defaultValue={
+									initialEditorPreferences.zoomMotionBlurTuning
+										.zoomVelocityThreshold
+								}
+								min={0}
+								max={0.4}
+								step={0.005}
+								onChange={(value) =>
+									onZoomMotionBlurTuningChange?.({
+										...zoomMotionBlurTuning,
+										zoomVelocityThreshold: value,
+									})
+								}
+								formatValue={(value) => value.toFixed(3)}
+								parseInput={(text) => parseFloat(text)}
+							/>
+							<SliderControl
+								label={tSettings(
+									"effects.motionBlurZoomStrength",
+									"Zoom blur strength",
+								)}
+								value={zoomMotionBlurTuning.maxRadialBlurStrength}
+								defaultValue={
+									initialEditorPreferences.zoomMotionBlurTuning
+										.maxRadialBlurStrength
+								}
+								min={0}
+								max={0.5}
+								step={0.005}
+								onChange={(value) =>
+									onZoomMotionBlurTuningChange?.({
+										...zoomMotionBlurTuning,
+										maxRadialBlurStrength: value,
+									})
+								}
+								formatValue={(value) => value.toFixed(3)}
+								parseInput={(text) => parseFloat(text)}
+							/>
+						</div>
+
+						<div className="space-y-1.5 rounded-lg border border-foreground/10 bg-background/60 px-3 py-3">
+							<div>
+								<div className="text-[11px] font-medium text-foreground">
+									{tSettings("effects.cameraDebugTuning", "Camera Debug Tuning")}
+								</div>
+								<div className="mt-0.5 text-[10px] text-muted-foreground">
+									{tSettings(
+										"effects.cameraDebugTuningHint",
+										"Development-only spring tuning controls for camera motion.",
+									)}
+								</div>
+							</div>
+							<SliderControl
+								label={tSettings(
+									"effects.cameraSpringStiffnessMultiplier",
+									"Camera stiffness",
+								)}
+								value={cameraSpringStiffnessMultiplier}
+								defaultValue={
+									initialEditorPreferences.cameraSpringStiffnessMultiplier
+								}
+								min={0.25}
+								max={3}
+								step={0.01}
+								onChange={(value) =>
+									onCameraSpringStiffnessMultiplierChange?.(value)
+								}
+								formatValue={(value) => `${value.toFixed(2)}×`}
+								parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
+							/>
+							<SliderControl
+								label={tSettings(
+									"effects.cameraSpringDampingMultiplier",
+									"Camera damping",
+								)}
+								value={cameraSpringDampingMultiplier}
+								defaultValue={
+									initialEditorPreferences.cameraSpringDampingMultiplier
+								}
+								min={0.25}
+								max={3}
+								step={0.01}
+								onChange={(value) => onCameraSpringDampingMultiplierChange?.(value)}
+								formatValue={(value) => `${value.toFixed(2)}×`}
+								parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
+							/>
+							<SliderControl
+								label={tSettings(
+									"effects.cameraSpringMassMultiplier",
+									"Camera mass",
+								)}
+								value={cameraSpringMassMultiplier}
+								defaultValue={initialEditorPreferences.cameraSpringMassMultiplier}
+								min={0.25}
+								max={3}
+								step={0.01}
+								onChange={(value) => onCameraSpringMassMultiplierChange?.(value)}
+								formatValue={(value) => `${value.toFixed(2)}×`}
+								parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
+							/>
+						</div>
+
+						<div className="space-y-1.5 rounded-lg border border-foreground/10 bg-background/60 px-3 py-3">
+							<div>
+								<div className="text-[11px] font-medium text-foreground">
+									{tSettings("effects.cursorDebugTuning", "Cursor Debug Tuning")}
+								</div>
+								<div className="mt-0.5 text-[10px] text-muted-foreground">
+									{tSettings(
+										"effects.cursorDebugTuningHint",
+										"Development-only spring tuning controls.",
+									)}
+								</div>
+							</div>
+							<SliderControl
+								label={tSettings(
+									"effects.cursorSpringStiffnessMultiplier",
+									"Spring stiffness",
+								)}
+								value={cursorSpringStiffnessMultiplier}
+								defaultValue={
+									initialEditorPreferences.cursorSpringStiffnessMultiplier
+								}
+								min={0.25}
+								max={3}
+								step={0.01}
+								onChange={(value) =>
+									onCursorSpringStiffnessMultiplierChange?.(value)
+								}
+								formatValue={(value) => `${value.toFixed(2)}×`}
+								parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
+							/>
+							<SliderControl
+								label={tSettings(
+									"effects.cursorSpringDampingMultiplier",
+									"Spring damping",
+								)}
+								value={cursorSpringDampingMultiplier}
+								defaultValue={
+									initialEditorPreferences.cursorSpringDampingMultiplier
+								}
+								min={0.25}
+								max={3}
+								step={0.01}
+								onChange={(value) => onCursorSpringDampingMultiplierChange?.(value)}
+								formatValue={(value) => `${value.toFixed(2)}×`}
+								parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
+							/>
+							<SliderControl
+								label={tSettings(
+									"effects.cursorSpringMassMultiplier",
+									"Spring mass",
+								)}
+								value={cursorSpringMassMultiplier}
+								defaultValue={initialEditorPreferences.cursorSpringMassMultiplier}
+								min={0.25}
+								max={3}
+								step={0.01}
+								onChange={(value) => onCursorSpringMassMultiplierChange?.(value)}
+								formatValue={(value) => `${value.toFixed(2)}×`}
+								parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
+							/>
+						</div>
+					</section>
+				) : null}
 			</div>
 		);
 
@@ -2710,80 +3003,22 @@ export function SettingsPanel({
 						)}
 					</div>
 				)}
-				{showDevMotionControls ? (
-					<div className="space-y-1.5 rounded-lg border border-[#2563EB]/15 bg-[#2563EB]/5 px-3 py-3">
-						<div>
-							<div className="text-[11px] font-medium text-foreground">
-								{tSettings("effects.exportBlurDebug", "Export Blur Debug")}
-							</div>
-							<div className="mt-0.5 text-[10px] text-muted-foreground">
-								{tSettings(
-									"effects.exportBlurDebugHint",
-									"Development-only temporal blur tuning for export and preview parity checks.",
-								)}
-							</div>
-						</div>
-						<SliderControl
-							label={tSettings("effects.zoomTemporalMotionBlur", "Temporal blur")}
-							value={zoomTemporalMotionBlur}
-							defaultValue={initialEditorPreferences.zoomTemporalMotionBlur}
-							min={0}
-							max={2}
-							step={0.05}
-							onChange={(value) => onZoomTemporalMotionBlurChange?.(value)}
-							formatValue={(value) => `${value.toFixed(2)}×`}
-							parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
-						/>
-						<SliderControl
-							label={tSettings("effects.zoomMotionBlurSampleCount", "Sample count")}
-							value={
-								zoomMotionBlurSampleCount ??
-								TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT
-							}
-							defaultValue={
-								initialEditorPreferences.zoomMotionBlurSampleCount ??
-								TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT
-							}
-							min={TEMPORAL_MOTION_BLUR_MIN_SAMPLE_COUNT}
-							max={TEMPORAL_MOTION_BLUR_MAX_SAMPLE_COUNT}
-							step={2}
-							onChange={(value) =>
-								onZoomMotionBlurSampleCountChange?.(Math.round(value))
-							}
-							formatValue={(value) => `${Math.round(value)} samples`}
-							parseInput={(text) => parseFloat(text.replace(/samples?$/i, "").trim())}
-						/>
-						<SliderControl
-							label={tSettings("effects.zoomMotionBlurShutterFraction", "Shutter")}
-							value={
-								zoomMotionBlurShutterFraction ??
-								TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION
-							}
-							defaultValue={
-								initialEditorPreferences.zoomMotionBlurShutterFraction ??
-								TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION
-							}
-							min={TEMPORAL_MOTION_BLUR_MIN_SHUTTER_FRACTION}
-							max={TEMPORAL_MOTION_BLUR_MAX_SHUTTER_FRACTION}
-							step={0.01}
-							onChange={(value) => onZoomMotionBlurShutterFractionChange?.(value)}
-							formatValue={(value) => `${Math.round(value * 100)}%`}
-							parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
-						/>
-					</div>
-				) : (
 					<div className="rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2">
 						<div className="text-[10px] text-muted-foreground">
-							{tSettings(
-								"effects.exportBlurLocked",
-								"Export blur is fixed for this build.",
-							)}
+							{showDevMotionControls
+								? tSettings(
+										"effects.exportBlurMovedToDev",
+										"Export blur tuning is available in Settings > Dev.",
+									)
+								: tSettings(
+										"effects.exportBlurLocked",
+										"Export blur is fixed for this build.",
+									)}
 						</div>
 						<div className="mt-1 text-[12px] font-medium text-foreground">
 							{`${TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT} samples · ${Math.round(TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION * 100)}% shutter`}
 						</div>
-					</div>
-				)}
+				</div>
 				{selectedZoomId && (
 					<Button
 						onClick={() => {
@@ -3028,75 +3263,13 @@ export function SettingsPanel({
 								}}
 							/>
 							{showDevMotionControls ? (
-								<div className="space-y-1.5 rounded-lg border border-[#2563EB]/15 bg-[#2563EB]/5 px-3 py-3">
-									<div>
-										<div className="text-[11px] font-medium text-foreground">
-											{tSettings(
-												"effects.cursorDebugTuning",
-												"Cursor Debug Tuning",
-											)}
-										</div>
-										<div className="mt-0.5 text-[10px] text-muted-foreground">
-											{tSettings(
-												"effects.cursorDebugTuningHint",
-												"Development-only spring tuning controls.",
-											)}
-										</div>
+								<div className="rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2">
+									<div className="text-[10px] text-muted-foreground">
+										{tSettings(
+											"effects.cursorDebugMovedToDev",
+											"Cursor spring tuning is available in Settings > Dev.",
+										)}
 									</div>
-									<SliderControl
-										label={tSettings(
-											"effects.cursorSpringStiffnessMultiplier",
-											"Spring stiffness",
-										)}
-										value={cursorSpringStiffnessMultiplier}
-										defaultValue={
-											initialEditorPreferences.cursorSpringStiffnessMultiplier
-										}
-										min={0.25}
-										max={3}
-										step={0.01}
-										onChange={(value) =>
-											onCursorSpringStiffnessMultiplierChange?.(value)
-										}
-										formatValue={(value) => `${value.toFixed(2)}×`}
-										parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
-									/>
-									<SliderControl
-										label={tSettings(
-											"effects.cursorSpringDampingMultiplier",
-											"Spring damping",
-										)}
-										value={cursorSpringDampingMultiplier}
-										defaultValue={
-											initialEditorPreferences.cursorSpringDampingMultiplier
-										}
-										min={0.25}
-										max={3}
-										step={0.01}
-										onChange={(value) =>
-											onCursorSpringDampingMultiplierChange?.(value)
-										}
-										formatValue={(value) => `${value.toFixed(2)}×`}
-										parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
-									/>
-									<SliderControl
-										label={tSettings(
-											"effects.cursorSpringMassMultiplier",
-											"Spring mass",
-										)}
-										value={cursorSpringMassMultiplier}
-										defaultValue={
-											initialEditorPreferences.cursorSpringMassMultiplier
-										}
-										min={0.25}
-										max={3}
-										step={0.01}
-										onChange={(value) =>
-											onCursorSpringMassMultiplierChange?.(value)
-										}
-										formatValue={(value) => `${value.toFixed(2)}×`}
-										parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
-									/>
 								</div>
 							) : null}
 						</div>

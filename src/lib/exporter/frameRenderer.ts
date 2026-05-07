@@ -11,6 +11,7 @@ import type {
 	Padding,
 	SpeedRegion,
 	WebcamOverlaySettings,
+	ZoomMotionBlurTuning,
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
@@ -75,10 +76,9 @@ import { renderAnnotations } from "./annotationRenderer";
 import { renderCaptions } from "./captionRenderer";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import { resolveMediaElementSource } from "./localMediaSource";
-import {
-	buildTemporalSamplePlanUs,
-	getTemporalMotionBlurConfig,
-} from "./temporalMotionBlur";
+import { buildTemporalSamplePlanUs, getTemporalMotionBlurConfig } from "./temporalMotionBlur";
+
+const TEMPORAL_ZOOM_MOTION_BLUR_ENABLED = false;
 
 interface FrameRenderConfig {
 	width: number;
@@ -90,6 +90,7 @@ interface FrameRenderConfig {
 	shadowIntensity: number;
 	backgroundBlur: number;
 	zoomMotionBlur?: number;
+	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
 	zoomTemporalMotionBlur?: number;
 	zoomMotionBlurSampleCount?: number | null;
 	zoomMotionBlurShutterFraction?: number | null;
@@ -123,6 +124,9 @@ interface FrameRenderConfig {
 	cursorSpringStiffnessMultiplier?: number;
 	cursorSpringDampingMultiplier?: number;
 	cursorSpringMassMultiplier?: number;
+	cameraSpringStiffnessMultiplier?: number;
+	cameraSpringDampingMultiplier?: number;
+	cameraSpringMassMultiplier?: number;
 	zoomSmoothness?: number;
 	zoomClassicMode?: boolean;
 	cursorMotionBlur?: number;
@@ -229,7 +233,6 @@ export class FrameRenderer {
 	private motionBlurState: MotionBlurState;
 	private layoutCache: LayoutCache | null = null;
 	private currentVideoTime = 0;
-	private lastMotionVector = { x: 0, y: 0 };
 	private springScale: SpringState;
 	private springX: SpringState;
 	private springY: SpringState;
@@ -341,7 +344,7 @@ export class FrameRenderer {
 		await this.setupFrame();
 
 		if ((this.config.zoomMotionBlur ?? 0) > 0) {
-			this.zoomBlurFilter = new ZoomBlurFilter({ strength: 0 });
+			this.zoomBlurFilter = new ZoomBlurFilter({ strength: 0, maxKernelSize: 13 });
 			this.motionBlurFilter = new MotionBlurFilter([0, 0], 5, 0);
 			this.videoContainer.filterArea = new Rectangle(
 				0,
@@ -349,7 +352,7 @@ export class FrameRenderer {
 				this.config.width,
 				this.config.height,
 			);
-			this.videoContainer.filters = [this.zoomBlurFilter, this.motionBlurFilter];
+			this.videoContainer.filters = [this.motionBlurFilter, this.zoomBlurFilter];
 		} else {
 			this.videoContainer.filters = null;
 		}
@@ -1275,7 +1278,10 @@ export class FrameRenderer {
 		}
 
 		const temporalSnapshot =
-			typeof frameDurationUs === "number" && frameDurationUs > 0
+			TEMPORAL_ZOOM_MOTION_BLUR_ENABLED &&
+			(this.config.zoomTemporalMotionBlur ?? 0) > 0 &&
+			typeof frameDurationUs === "number" &&
+			frameDurationUs > 0
 				? await this.renderTemporalMotionBlurFrame(
 						timestamp,
 						cursorTimestamp,
@@ -1442,13 +1448,10 @@ export class FrameRenderer {
 
 		const TICKS_PER_FRAME = 1;
 
-		let maxMotionIntensity = 0;
 		for (let i = 0; i < TICKS_PER_FRAME; i++) {
-			const motionIntensity = this.updateAnimationState(timeMs);
-			maxMotionIntensity = Math.max(maxMotionIntensity, motionIntensity);
+			this.updateAnimationState(timeMs);
 		}
 
-		// Apply transform once with maximum motion intensity from all ticks
 		applyZoomTransform({
 			cameraContainer: this.cameraContainer,
 			zoomBlurFilter: this.zoomBlurFilter,
@@ -1459,10 +1462,9 @@ export class FrameRenderer {
 			zoomProgress: this.animationState.progress,
 			focusX: this.animationState.focusX,
 			focusY: this.animationState.focusY,
-			motionIntensity: maxMotionIntensity,
-			motionVector: this.lastMotionVector,
 			isPlaying: true,
 			motionBlurAmount: this.config.zoomMotionBlur ?? 0,
+			motionBlurTuning: this.config.zoomMotionBlurTuning,
 			transformOverride: {
 				scale: this.animationState.appliedScale,
 				x: this.animationState.x,
@@ -1834,7 +1836,11 @@ export class FrameRenderer {
 			this.lastContentTimeMs !== null ? timeMs - this.lastContentTimeMs : 1000 / 60;
 		this.lastContentTimeMs = timeMs;
 
-		const zoomSpringConfig = getZoomSpringConfig(this.config.zoomSmoothness);
+		const zoomSpringConfig = getZoomSpringConfig(this.config.zoomSmoothness, {
+			stiffnessMultiplier: this.config.cameraSpringStiffnessMultiplier,
+			dampingMultiplier: this.config.cameraSpringDampingMultiplier,
+			massMultiplier: this.config.cameraSpringMassMultiplier,
+		});
 
 		if (this.config.zoomClassicMode) {
 			state.appliedScale = projectedTransform.scale;
@@ -1863,11 +1869,6 @@ export class FrameRenderer {
 				zoomSpringConfig,
 			);
 		}
-
-		this.lastMotionVector = {
-			x: state.x - prevX,
-			y: state.y - prevY,
-		};
 
 		return Math.max(
 			Math.abs(state.appliedScale - prevScale),
@@ -1919,7 +1920,7 @@ export class FrameRenderer {
 			},
 		);
 
-		const motionIntensity = this.updateAnimationState(timeMs);
+		this.updateAnimationState(timeMs);
 
 		applyZoomTransform({
 			cameraContainer: this.cameraContainer,
@@ -1931,10 +1932,9 @@ export class FrameRenderer {
 			zoomProgress: this.animationState.progress,
 			focusX: this.animationState.focusX,
 			focusY: this.animationState.focusY,
-			motionIntensity,
-			motionVector: this.lastMotionVector,
 			isPlaying: true,
 			motionBlurAmount: useVelocityMotionBlur ? (this.config.zoomMotionBlur ?? 0) : 0,
+			motionBlurTuning: this.config.zoomMotionBlurTuning,
 			transformOverride: {
 				scale: this.animationState.appliedScale,
 				x: this.animationState.x,
@@ -1972,21 +1972,14 @@ export class FrameRenderer {
 		frameDurationUs: number,
 		layoutCache: LayoutCache,
 	): Promise<RenderSnapshot | null> {
-		if (
-			!this.compositeCanvas ||
-			!this.compositeCtx ||
-			!this.temporalAccumulationCtx
-		) {
+		if (!this.compositeCanvas || !this.compositeCtx || !this.temporalAccumulationCtx) {
 			return null;
 		}
 
-		const blurConfig = getTemporalMotionBlurConfig(
-			this.config.zoomTemporalMotionBlur ?? this.config.zoomMotionBlur,
-			{
-				sampleCount: this.config.zoomMotionBlurSampleCount,
-				shutterFraction: this.config.zoomMotionBlurShutterFraction,
-			},
-		);
+		const blurConfig = getTemporalMotionBlurConfig(this.config.zoomTemporalMotionBlur, {
+			sampleCount: this.config.zoomMotionBlurSampleCount,
+			shutterFraction: this.config.zoomMotionBlurShutterFraction,
+		});
 		if (!blurConfig) {
 			return null;
 		}

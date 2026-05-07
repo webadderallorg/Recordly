@@ -40,6 +40,7 @@ import {
 	ZOOM_DEPTH_SCALES,
 	type ZoomDepth,
 	type ZoomFocus,
+	type ZoomMotionBlurTuning,
 	type ZoomRegion,
 	type ZoomTransitionEasing,
 } from "./types";
@@ -102,6 +103,8 @@ import {
 	DEFAULT_ZOOM_IN_DURATION_MS,
 	DEFAULT_ZOOM_IN_EASING,
 	DEFAULT_ZOOM_IN_OVERLAP_MS,
+	DEFAULT_ZOOM_MOTION_BLUR,
+	DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 	DEFAULT_ZOOM_OUT_DURATION_MS,
 	DEFAULT_ZOOM_OUT_EASING,
 	getDefaultCaptionFontFamily,
@@ -262,8 +265,13 @@ interface VideoPlaybackProps {
 	cursorSpringStiffnessMultiplier?: number;
 	cursorSpringDampingMultiplier?: number;
 	cursorSpringMassMultiplier?: number;
+	cameraSpringStiffnessMultiplier?: number;
+	cameraSpringDampingMultiplier?: number;
+	cameraSpringMassMultiplier?: number;
 	zoomSmoothness?: number;
 	zoomClassicMode?: boolean;
+	zoomMotionBlur?: number;
+	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
 	cursorMotionBlur?: number;
 	cursorClickBounce?: number;
 	cursorClickBounceDuration?: number;
@@ -334,8 +342,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			cursorSpringStiffnessMultiplier = 1,
 			cursorSpringDampingMultiplier = 1,
 			cursorSpringMassMultiplier = 1,
+			cameraSpringStiffnessMultiplier = 1,
+			cameraSpringDampingMultiplier = 1,
+			cameraSpringMassMultiplier = 1,
 			zoomSmoothness = 0.5,
 			zoomClassicMode = false,
+			zoomMotionBlur = DEFAULT_ZOOM_MOTION_BLUR,
+			zoomMotionBlurTuning = DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 			cursorMotionBlur = DEFAULT_CURSOR_MOTION_BLUR,
 			cursorClickBounce = DEFAULT_CURSOR_CLICK_BOUNCE,
 			cursorClickBounceDuration = DEFAULT_CURSOR_CLICK_BOUNCE_DURATION,
@@ -426,10 +439,15 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const cursorSpringStiffnessMultiplierRef = useRef(cursorSpringStiffnessMultiplier);
 		const cursorSpringDampingMultiplierRef = useRef(cursorSpringDampingMultiplier);
 		const cursorSpringMassMultiplierRef = useRef(cursorSpringMassMultiplier);
+		const cameraSpringStiffnessMultiplierRef = useRef(cameraSpringStiffnessMultiplier);
+		const cameraSpringDampingMultiplierRef = useRef(cameraSpringDampingMultiplier);
+		const cameraSpringMassMultiplierRef = useRef(cameraSpringMassMultiplier);
 		const cursorMotionBlurRef = useRef(cursorMotionBlur);
 		const cursorClickBounceRef = useRef(cursorClickBounce);
 		const cursorClickBounceDurationRef = useRef(cursorClickBounceDuration);
 		const cursorSwayRef = useRef(cursorSway);
+		const zoomMotionBlurRef = useRef(zoomMotionBlur);
+		const zoomMotionBlurTuningRef = useRef(zoomMotionBlurTuning);
 		const lastEmittedClickTimeMsRef = useRef(-1);
 
 		// Spring animation state for smooth zoom transitions
@@ -665,7 +683,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const zoomBlurFilter = zoomBlurFilterRef.current;
 			const motionBlurFilter = motionBlurFilterRef.current;
 
-			if (!app || !videoEffectsContainer || !zoomBlurFilter || !motionBlurFilter) {
+			if (!app || !videoEffectsContainer || !motionBlurFilter || !zoomBlurFilter) {
 				return;
 			}
 
@@ -676,8 +694,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const stageWidth = Math.max(1, stageSizeRef.current.width || app.screen.width);
 			const stageHeight = Math.max(1, stageSizeRef.current.height || app.screen.height);
 
-			zoomBlurFilter.resolution = filterResolution;
 			motionBlurFilter.resolution = filterResolution;
+			zoomBlurFilter.resolution = filterResolution;
 			videoEffectsContainer.filterArea = new Rectangle(0, 0, stageWidth, stageHeight);
 		}, []);
 
@@ -1158,11 +1176,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const zoomBlurFilter = zoomBlurFilterRef.current;
 			const motionBlurFilter = motionBlurFilterRef.current;
 
-			if (!videoEffectsContainer || !zoomBlurFilter || !motionBlurFilter) {
+			if (!videoEffectsContainer || !motionBlurFilter || !zoomBlurFilter) {
 				return;
 			}
 
-			videoEffectsContainer.filters = null;
+			videoEffectsContainer.filters =
+				(zoomMotionBlurRef.current ?? 0) > 0 ? [motionBlurFilter, zoomBlurFilter] : null;
 			motionBlurFilter.velocity = { x: 0, y: 0 };
 			motionBlurFilter.kernelSize = 5;
 			motionBlurFilter.offset = 0;
@@ -1251,8 +1270,40 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		}, [cursorSpringMassMultiplier]);
 
 		useEffect(() => {
+			cameraSpringStiffnessMultiplierRef.current = cameraSpringStiffnessMultiplier;
+		}, [cameraSpringStiffnessMultiplier]);
+
+		useEffect(() => {
+			cameraSpringDampingMultiplierRef.current = cameraSpringDampingMultiplier;
+		}, [cameraSpringDampingMultiplier]);
+
+		useEffect(() => {
+			cameraSpringMassMultiplierRef.current = cameraSpringMassMultiplier;
+		}, [cameraSpringMassMultiplier]);
+
+		useEffect(() => {
 			zoomSmoothnessRef.current = zoomSmoothness;
 		}, [zoomSmoothness]);
+
+		useEffect(() => {
+			zoomMotionBlurRef.current = zoomMotionBlur;
+
+			const videoEffectsContainer = videoEffectsContainerRef.current;
+			const zoomBlurFilter = zoomBlurFilterRef.current;
+			const motionBlurFilter = motionBlurFilterRef.current;
+
+			if (!videoEffectsContainer || !zoomBlurFilter || !motionBlurFilter) {
+				return;
+			}
+
+			motionBlurStateRef.current = createMotionBlurState();
+			videoEffectsContainer.filters =
+				zoomMotionBlur > 0 ? [motionBlurFilter, zoomBlurFilter] : null;
+		}, [videoPath, zoomMotionBlur]);
+
+		useEffect(() => {
+			zoomMotionBlurTuningRef.current = zoomMotionBlurTuning;
+		}, [zoomMotionBlurTuning]);
 
 		useEffect(() => {
 			zoomClassicModeRef.current = zoomClassicMode;
@@ -1335,7 +1386,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					zoomScale: 1,
 					focusX: DEFAULT_FOCUS.cx,
 					focusY: DEFAULT_FOCUS.cy,
-					motionIntensity: 0,
 					isPlaying: false,
 					motionBlurAmount: 0,
 					motionBlurState: motionBlurStateRef.current,
@@ -1531,8 +1581,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				// same layer in preview and export.
 				const videoEffectsContainer = new Container();
 				videoEffectsContainerRef.current = videoEffectsContainer;
-				zoomBlurFilterRef.current = new ZoomBlurFilter({ strength: 0 });
+				zoomBlurFilterRef.current = new ZoomBlurFilter({ strength: 0, maxKernelSize: 13 });
 				motionBlurFilterRef.current = new MotionBlurFilter([0, 0], 5, 0);
+				videoEffectsContainer.filters = [
+					motionBlurFilterRef.current,
+					zoomBlurFilterRef.current,
+				];
 				cameraContainer.addChild(videoEffectsContainer);
 				syncPreviewMotionBlurQuality();
 
@@ -1726,8 +1780,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const applyTransform = (
 				transform: { scale: number; x: number; y: number },
 				focus: ZoomFocus,
-				motionIntensity: number,
-				motionVector: { x: number; y: number },
 			) => {
 				const cameraContainer = cameraContainerRef.current;
 				if (!cameraContainer) return;
@@ -1744,10 +1796,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					zoomProgress: state.progress,
 					focusX: focus.cx,
 					focusY: focus.cy,
-					motionIntensity,
-					motionVector,
 					isPlaying: isPlayingRef.current,
-					motionBlurAmount: 0,
+					motionBlurAmount: zoomMotionBlurRef.current,
+					motionBlurTuning: zoomMotionBlurTuningRef.current,
 					transformOverride: transform,
 					motionBlurState: motionBlurStateRef.current,
 					frameTimeMs: performance.now(),
@@ -1848,9 +1899,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				}
 
 				const state = animationStateRef.current;
-				const prevScale = state.appliedScale;
-				const prevX = state.x;
-				const prevY = state.y;
 
 				state.scale = targetScaleFactor;
 				state.focusX = targetFocus.cx;
@@ -1880,7 +1928,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					lastTickTimeRef.current !== null ? now - lastTickTimeRef.current : 1000 / 60;
 				lastTickTimeRef.current = now;
 
-				const zoomSpringConfig = getZoomSpringConfig(zoomSmoothnessRef.current);
+				const zoomSpringConfig = getZoomSpringConfig(zoomSmoothnessRef.current, {
+					stiffnessMultiplier: cameraSpringStiffnessMultiplierRef.current,
+					dampingMultiplier: cameraSpringDampingMultiplierRef.current,
+					massMultiplier: cameraSpringMassMultiplierRef.current,
+				});
 				const useSpring =
 					isPlayingRef.current && !isSeekingRef.current && !zoomClassicModeRef.current;
 
@@ -1917,22 +1969,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					resetSpringState(springYRef.current, appliedY);
 				}
 
-				const motionIntensity = Math.max(
-					Math.abs(appliedScale - prevScale),
-					Math.abs(appliedX - prevX) / Math.max(1, stageSizeRef.current.width),
-					Math.abs(appliedY - prevY) / Math.max(1, stageSizeRef.current.height),
-				);
-
-				const motionVector = {
-					x: appliedX - prevX,
-					y: appliedY - prevY,
-				};
-
 				applyTransform(
 					{ scale: appliedScale, x: appliedX, y: appliedY },
 					targetFocus,
-					motionIntensity,
-					motionVector,
 				);
 
 				applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);

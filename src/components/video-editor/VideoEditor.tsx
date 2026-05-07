@@ -34,6 +34,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
@@ -164,6 +172,7 @@ import {
 	DEFAULT_ZOOM_IN_DURATION_MS,
 	DEFAULT_ZOOM_IN_EASING,
 	DEFAULT_ZOOM_IN_OVERLAP_MS,
+	DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 	DEFAULT_ZOOM_OUT_DURATION_MS,
 	DEFAULT_ZOOM_OUT_EASING,
 	type EditorEffectSection,
@@ -180,6 +189,7 @@ import {
 	type ZoomDepth,
 	type ZoomFocus,
 	type ZoomMode,
+	type ZoomMotionBlurTuning,
 	type ZoomRegion,
 	type ZoomTransitionEasing,
 } from "./types";
@@ -597,6 +607,9 @@ export default function VideoEditor() {
 	);
 	const [backgroundBlur, setBackgroundBlur] = useState(initialEditorPreferences.backgroundBlur);
 	const [zoomMotionBlur, setZoomMotionBlur] = useState(initialEditorPreferences.zoomMotionBlur);
+	const [zoomMotionBlurTuning, setZoomMotionBlurTuning] = useState<ZoomMotionBlurTuning>(
+		initialEditorPreferences.zoomMotionBlurTuning ?? DEFAULT_ZOOM_MOTION_BLUR_TUNING,
+	);
 	const [zoomTemporalMotionBlur, setZoomTemporalMotionBlur] = useState(
 		initialEditorPreferences.zoomTemporalMotionBlur,
 	);
@@ -652,9 +665,21 @@ export default function VideoEditor() {
 	const [cursorSpringMassMultiplier, setCursorSpringMassMultiplier] = useState(
 		initialEditorPreferences.cursorSpringMassMultiplier,
 	);
+	const [cameraSpringStiffnessMultiplier, setCameraSpringStiffnessMultiplier] = useState(
+		initialEditorPreferences.cameraSpringStiffnessMultiplier,
+	);
+	const [cameraSpringDampingMultiplier, setCameraSpringDampingMultiplier] = useState(
+		initialEditorPreferences.cameraSpringDampingMultiplier,
+	);
+	const [cameraSpringMassMultiplier, setCameraSpringMassMultiplier] = useState(
+		initialEditorPreferences.cameraSpringMassMultiplier,
+	);
 	const [sessionShowCursorOverride, setSessionShowCursorOverride] = useState<boolean | null>(
 		null,
 	);
+	const [sessionNativeCaptureUnavailable, setSessionNativeCaptureUnavailable] = useState(false);
+	const [nativeCaptureUnavailableModalOpen, setNativeCaptureUnavailableModalOpen] =
+		useState(false);
 	const [zoomSmoothness, setZoomSmoothness] = useState(0.5);
 	const [zoomClassicMode, setZoomClassicMode] = useState(false);
 	const [cursorMotionBlur, setCursorMotionBlur] = useState(
@@ -718,6 +743,22 @@ export default function VideoEditor() {
 	const [sourceAudioFallbackPaths, setSourceAudioFallbackPaths] = useState<string[]>([]);
 	const [sourceAudioFallbackStartDelayMsByPath, setSourceAudioFallbackStartDelayMsByPath] =
 		useState<Record<string, number>>({});
+	const applySessionPresentation = useCallback(
+		(
+			session:
+				| {
+						hideOverlayCursorByDefault?: boolean;
+						nativeCaptureUnavailable?: boolean;
+				  }
+				| null
+				| undefined,
+		) => {
+			setSessionShowCursorOverride(session?.hideOverlayCursorByDefault ? false : null);
+			setSessionNativeCaptureUnavailable(Boolean(session?.nativeCaptureUnavailable));
+			setNativeCaptureUnavailableModalOpen(Boolean(session?.nativeCaptureUnavailable));
+		},
+		[],
+	);
 	const effectiveShowCursor = sessionShowCursorOverride ?? showCursor;
 	const [aspectRatio, setAspectRatio] = useState<AspectRatio>(
 		initialEditorPreferences.aspectRatio,
@@ -838,6 +879,7 @@ export default function VideoEditor() {
 			shadowIntensity,
 			backgroundBlur,
 			zoomMotionBlur,
+			zoomMotionBlurTuning: { ...zoomMotionBlurTuning },
 			zoomTemporalMotionBlur,
 			zoomMotionBlurSampleCount,
 			zoomMotionBlurShutterFraction,
@@ -858,6 +900,9 @@ export default function VideoEditor() {
 			cursorSpringStiffnessMultiplier,
 			cursorSpringDampingMultiplier,
 			cursorSpringMassMultiplier,
+			cameraSpringStiffnessMultiplier,
+			cameraSpringDampingMultiplier,
+			cameraSpringMassMultiplier,
 			cursorMotionBlur,
 			cursorClickBounce,
 			cursorClickBounceDuration,
@@ -885,6 +930,7 @@ export default function VideoEditor() {
 			shadowIntensity,
 			backgroundBlur,
 			zoomMotionBlur,
+			zoomMotionBlurTuning,
 			zoomTemporalMotionBlur,
 			zoomMotionBlurSampleCount,
 			zoomMotionBlurShutterFraction,
@@ -905,6 +951,9 @@ export default function VideoEditor() {
 			cursorSpringStiffnessMultiplier,
 			cursorSpringDampingMultiplier,
 			cursorSpringMassMultiplier,
+			cameraSpringStiffnessMultiplier,
+			cameraSpringDampingMultiplier,
+			cameraSpringMassMultiplier,
 			cursorMotionBlur,
 			cursorClickBounce,
 			cursorClickBounceDuration,
@@ -973,6 +1022,7 @@ export default function VideoEditor() {
 		setShadowIntensity(snapshot.shadowIntensity);
 		setBackgroundBlur(snapshot.backgroundBlur);
 		setZoomMotionBlur(snapshot.zoomMotionBlur);
+		setZoomMotionBlurTuning({ ...snapshot.zoomMotionBlurTuning });
 		setZoomTemporalMotionBlur(snapshot.zoomTemporalMotionBlur);
 		setZoomMotionBlurSampleCount(snapshot.zoomMotionBlurSampleCount);
 		setZoomMotionBlurShutterFraction(snapshot.zoomMotionBlurShutterFraction);
@@ -993,6 +1043,9 @@ export default function VideoEditor() {
 		setCursorSpringStiffnessMultiplier(snapshot.cursorSpringStiffnessMultiplier);
 		setCursorSpringDampingMultiplier(snapshot.cursorSpringDampingMultiplier);
 		setCursorSpringMassMultiplier(snapshot.cursorSpringMassMultiplier);
+		setCameraSpringStiffnessMultiplier(snapshot.cameraSpringStiffnessMultiplier);
+		setCameraSpringDampingMultiplier(snapshot.cameraSpringDampingMultiplier);
+		setCameraSpringMassMultiplier(snapshot.cameraSpringMassMultiplier);
 		setCursorMotionBlur(snapshot.cursorMotionBlur);
 		setCursorClickBounce(snapshot.cursorClickBounce);
 		setCursorClickBounceDuration(snapshot.cursorClickBounceDuration);
@@ -1204,6 +1257,7 @@ export default function VideoEditor() {
 					shadowIntensity,
 					backgroundBlur,
 					zoomMotionBlur,
+					zoomMotionBlurTuning,
 					zoomTemporalMotionBlur,
 					zoomMotionBlurSampleCount,
 					zoomMotionBlurShutterFraction,
@@ -1259,6 +1313,9 @@ export default function VideoEditor() {
 					cursorSpringStiffnessMultiplier,
 					cursorSpringDampingMultiplier,
 					cursorSpringMassMultiplier,
+					cameraSpringStiffnessMultiplier,
+					cameraSpringDampingMultiplier,
+					cameraSpringMassMultiplier,
 					zoomSmoothness,
 					zoomClassicMode,
 					cursorMotionBlur,
@@ -1337,6 +1394,9 @@ export default function VideoEditor() {
 		cursorSpringDampingMultiplier,
 		cursorSpringMassMultiplier,
 		cursorSpringStiffnessMultiplier,
+		cameraSpringStiffnessMultiplier,
+		cameraSpringDampingMultiplier,
+		cameraSpringMassMultiplier,
 		zoomSmoothness,
 		cursorStyle,
 		cursorSway,
@@ -1353,6 +1413,7 @@ export default function VideoEditor() {
 		zoomInEasing,
 		zoomInOverlapMs,
 		zoomMotionBlur,
+		zoomMotionBlurTuning,
 		zoomTemporalMotionBlur,
 		zoomMotionBlurSampleCount,
 		zoomMotionBlurShutterFraction,
@@ -1652,15 +1713,16 @@ export default function VideoEditor() {
 	}, [activeEffectSection]);
 
 	const buildPersistedEditorState = useCallback(
-		(
-			editor: Partial<{
-				wallpaper: string;
-				shadowIntensity: number;
-				backgroundBlur: number;
-				zoomMotionBlur: number;
-				zoomTemporalMotionBlur: number;
-				zoomMotionBlurSampleCount: number | null;
-				zoomMotionBlurShutterFraction: number | null;
+			(
+				editor: Partial<{
+					wallpaper: string;
+					shadowIntensity: number;
+					backgroundBlur: number;
+					zoomMotionBlur: number;
+					zoomMotionBlurTuning: ZoomMotionBlurTuning;
+					zoomTemporalMotionBlur: number;
+					zoomMotionBlurSampleCount: number | null;
+					zoomMotionBlurShutterFraction: number | null;
 				connectZooms: boolean;
 				zoomInDurationMs: number;
 				zoomInOverlapMs: number;
@@ -1678,6 +1740,9 @@ export default function VideoEditor() {
 				cursorSpringStiffnessMultiplier: number;
 				cursorSpringDampingMultiplier: number;
 				cursorSpringMassMultiplier: number;
+				cameraSpringStiffnessMultiplier: number;
+				cameraSpringDampingMultiplier: number;
+				cameraSpringMassMultiplier: number;
 				zoomSmoothness: number;
 				zoomClassicMode: boolean;
 				cursorMotionBlur: number;
@@ -1812,6 +1877,7 @@ export default function VideoEditor() {
 				shadowIntensity,
 				backgroundBlur,
 				zoomMotionBlur,
+				zoomMotionBlurTuning,
 				zoomTemporalMotionBlur,
 				zoomMotionBlurSampleCount,
 				zoomMotionBlurShutterFraction,
@@ -1832,6 +1898,9 @@ export default function VideoEditor() {
 				cursorSpringStiffnessMultiplier,
 				cursorSpringDampingMultiplier,
 				cursorSpringMassMultiplier,
+				cameraSpringStiffnessMultiplier,
+				cameraSpringDampingMultiplier,
+				cameraSpringMassMultiplier,
 				zoomSmoothness,
 				zoomClassicMode,
 				cursorMotionBlur,
@@ -1868,6 +1937,7 @@ export default function VideoEditor() {
 			shadowIntensity,
 			backgroundBlur,
 			zoomMotionBlur,
+			zoomMotionBlurTuning,
 			zoomTemporalMotionBlur,
 			zoomMotionBlurSampleCount,
 			zoomMotionBlurShutterFraction,
@@ -1888,6 +1958,9 @@ export default function VideoEditor() {
 			cursorSpringStiffnessMultiplier,
 			cursorSpringDampingMultiplier,
 			cursorSpringMassMultiplier,
+			cameraSpringStiffnessMultiplier,
+			cameraSpringDampingMultiplier,
+			cameraSpringMassMultiplier,
 			zoomSmoothness,
 			zoomClassicMode,
 			cursorMotionBlur,
@@ -2045,16 +2118,19 @@ export default function VideoEditor() {
 						preserveProjectPath: Boolean(path),
 					},
 				);
-			} else {
-				await window.electronAPI.setCurrentVideoPath(sourcePath, {
-					preserveProjectPath: Boolean(path),
-				});
-			}
+				} else {
+					await window.electronAPI.setCurrentVideoPath(sourcePath, {
+						preserveProjectPath: Boolean(path),
+					});
+				}
+				const sessionResult = await window.electronAPI.getCurrentRecordingSession?.();
+				applySessionPresentation(sessionResult?.success ? sessionResult.session : null);
 
-			setWallpaper(normalizedEditor.wallpaper);
+				setWallpaper(normalizedEditor.wallpaper);
 			setShadowIntensity(normalizedEditor.shadowIntensity);
 			setBackgroundBlur(normalizedEditor.backgroundBlur);
 			setZoomMotionBlur(normalizedEditor.zoomMotionBlur);
+			setZoomMotionBlurTuning({ ...normalizedEditor.zoomMotionBlurTuning });
 			setZoomTemporalMotionBlur(normalizedEditor.zoomTemporalMotionBlur);
 			setZoomMotionBlurSampleCount(normalizedEditor.zoomMotionBlurSampleCount);
 			setZoomMotionBlurShutterFraction(normalizedEditor.zoomMotionBlurShutterFraction);
@@ -2064,11 +2140,10 @@ export default function VideoEditor() {
 			setZoomOutDurationMs(normalizedEditor.zoomOutDurationMs);
 			setConnectedZoomGapMs(normalizedEditor.connectedZoomGapMs);
 			setConnectedZoomDurationMs(normalizedEditor.connectedZoomDurationMs);
-			setZoomInEasing(normalizedEditor.zoomInEasing);
-			setZoomOutEasing(normalizedEditor.zoomOutEasing);
-			setConnectedZoomEasing(normalizedEditor.connectedZoomEasing);
-			setSessionShowCursorOverride(null);
-			setShowCursor(normalizedEditor.showCursor);
+				setZoomInEasing(normalizedEditor.zoomInEasing);
+				setZoomOutEasing(normalizedEditor.zoomOutEasing);
+				setConnectedZoomEasing(normalizedEditor.connectedZoomEasing);
+				setShowCursor(normalizedEditor.showCursor);
 			setLoopCursor(normalizedEditor.loopCursor);
 			setCursorStyle(normalizedEditor.cursorStyle);
 			setCursorSize(normalizedEditor.cursorSize);
@@ -2076,6 +2151,9 @@ export default function VideoEditor() {
 			setCursorSpringStiffnessMultiplier(normalizedEditor.cursorSpringStiffnessMultiplier);
 			setCursorSpringDampingMultiplier(normalizedEditor.cursorSpringDampingMultiplier);
 			setCursorSpringMassMultiplier(normalizedEditor.cursorSpringMassMultiplier);
+			setCameraSpringStiffnessMultiplier(normalizedEditor.cameraSpringStiffnessMultiplier);
+			setCameraSpringDampingMultiplier(normalizedEditor.cameraSpringDampingMultiplier);
+			setCameraSpringMassMultiplier(normalizedEditor.cameraSpringMassMultiplier);
 			setZoomSmoothness(normalizedEditor.zoomSmoothness);
 			setZoomClassicMode(normalizedEditor.zoomClassicMode);
 			setCursorMotionBlur(normalizedEditor.cursorMotionBlur);
@@ -2388,9 +2466,7 @@ export default function VideoEditor() {
 					pendingFreshRecordingAutoZoomPathRef.current = autoApplyFreshRecordingAutoZooms
 						? sourceVideoUrl
 						: null;
-					setSessionShowCursorOverride(
-						sessionResult.session.hideOverlayCursorByDefault ? false : null,
-					);
+					applySessionPresentation(sessionResult.session);
 					setWebcam((prev) => ({
 						...prev,
 						enabled: Boolean(sessionResult.session?.webcamPath),
@@ -2410,7 +2486,7 @@ export default function VideoEditor() {
 					setCurrentProjectPath(null);
 					setLastSavedSnapshot(null);
 					pendingFreshRecordingAutoZoomPathRef.current = null;
-					setSessionShowCursorOverride(null);
+					applySessionPresentation(null);
 					setWebcam((prev) => ({
 						...prev,
 						enabled: false,
@@ -2430,6 +2506,7 @@ export default function VideoEditor() {
 		loadInitialData();
 	}, [
 		applyLoadedProject,
+		applySessionPresentation,
 		autoApplyFreshRecordingAutoZooms,
 		initialEditorPreferences,
 		smokeExportConfig.enabled,
@@ -2466,6 +2543,7 @@ export default function VideoEditor() {
 			shadowIntensity,
 			backgroundBlur,
 			zoomMotionBlur,
+			zoomMotionBlurTuning,
 			zoomTemporalMotionBlur,
 			zoomMotionBlurSampleCount,
 			zoomMotionBlurShutterFraction,
@@ -2487,6 +2565,9 @@ export default function VideoEditor() {
 			cursorSpringStiffnessMultiplier,
 			cursorSpringDampingMultiplier,
 			cursorSpringMassMultiplier,
+			cameraSpringStiffnessMultiplier,
+			cameraSpringDampingMultiplier,
+			cameraSpringMassMultiplier,
 			cursorMotionBlur,
 			cursorClickBounce,
 			cursorClickBounceDuration,
@@ -2513,6 +2594,7 @@ export default function VideoEditor() {
 		shadowIntensity,
 		backgroundBlur,
 		zoomMotionBlur,
+		zoomMotionBlurTuning,
 		zoomTemporalMotionBlur,
 		zoomMotionBlurSampleCount,
 		zoomMotionBlurShutterFraction,
@@ -2534,6 +2616,9 @@ export default function VideoEditor() {
 		cursorSpringStiffnessMultiplier,
 		cursorSpringDampingMultiplier,
 		cursorSpringMassMultiplier,
+		cameraSpringStiffnessMultiplier,
+		cameraSpringDampingMultiplier,
+		cameraSpringMassMultiplier,
 		cursorMotionBlur,
 		cursorClickBounce,
 		cursorClickBounceDuration,
@@ -3780,7 +3865,7 @@ export default function VideoEditor() {
 				),
 			);
 		},
-		[],
+		[applySessionPresentation],
 	);
 
 	const handleAnnotationDelete = useCallback(
@@ -4360,6 +4445,7 @@ export default function VideoEditor() {
 						shadowIntensity: effectiveShadowIntensity,
 						backgroundBlur,
 						zoomMotionBlur,
+						zoomMotionBlurTuning,
 						zoomTemporalMotionBlur,
 						zoomMotionBlurSampleCount,
 						zoomMotionBlurShutterFraction,
@@ -4392,6 +4478,9 @@ export default function VideoEditor() {
 						cursorSpringStiffnessMultiplier,
 						cursorSpringDampingMultiplier,
 						cursorSpringMassMultiplier,
+						cameraSpringStiffnessMultiplier,
+						cameraSpringDampingMultiplier,
+						cameraSpringMassMultiplier,
 						zoomSmoothness,
 						zoomClassicMode,
 						cursorMotionBlur,
@@ -4539,6 +4628,7 @@ export default function VideoEditor() {
 						shadowIntensity: effectiveShadowIntensity,
 						backgroundBlur,
 						zoomMotionBlur,
+						zoomMotionBlurTuning,
 						zoomTemporalMotionBlur,
 						zoomMotionBlurSampleCount,
 						zoomMotionBlurShutterFraction,
@@ -4570,6 +4660,9 @@ export default function VideoEditor() {
 						cursorSpringStiffnessMultiplier,
 						cursorSpringDampingMultiplier,
 						cursorSpringMassMultiplier,
+						cameraSpringStiffnessMultiplier,
+						cameraSpringDampingMultiplier,
+						cameraSpringMassMultiplier,
 						zoomSmoothness,
 						zoomClassicMode,
 						cursorMotionBlur,
@@ -4793,6 +4886,7 @@ export default function VideoEditor() {
 			shadowIntensity,
 			backgroundBlur,
 			zoomMotionBlur,
+			zoomMotionBlurTuning,
 			zoomTemporalMotionBlur,
 			zoomMotionBlurSampleCount,
 			zoomMotionBlurShutterFraction,
@@ -4813,6 +4907,9 @@ export default function VideoEditor() {
 			cursorSpringStiffnessMultiplier,
 			cursorSpringDampingMultiplier,
 			cursorSpringMassMultiplier,
+			cameraSpringStiffnessMultiplier,
+			cameraSpringDampingMultiplier,
+			cameraSpringMassMultiplier,
 			zoomSmoothness,
 			zoomClassicMode,
 			cursorMotionBlur,
@@ -5177,12 +5274,41 @@ export default function VideoEditor() {
 			}}
 		/>
 	);
+	const nativeCaptureUnavailableDialog = (
+		<Dialog
+			open={nativeCaptureUnavailableModalOpen}
+			onOpenChange={setNativeCaptureUnavailableModalOpen}
+		>
+			<DialogContent className="max-w-md bg-editor-dialog border-foreground/10 text-foreground">
+				<DialogHeader>
+					<DialogTitle>
+						{t(
+							"editor.nativeCaptureUnavailable.title",
+							"Nothing’s broken, but we won’t be able to render an animated cursor overlay.",
+						)}
+					</DialogTitle>
+					<DialogDescription className="text-muted-foreground">
+						{t(
+							"editor.nativeCaptureUnavailable.description",
+							"Your device does not support native capture. This could be for a variety of reasons we haven’t figured out yet. This doesn’t break Recordly, but it does make cursor smoothing impossible.",
+						)}
+					</DialogDescription>
+				</DialogHeader>
+				<DialogFooter>
+					<Button onClick={() => setNativeCaptureUnavailableModalOpen(false)}>
+						{t("editor.nativeCaptureUnavailable.confirm", "Okay")}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
 
 	if (loading) {
 		return (
 			<div className="flex h-screen items-center justify-center bg-background">
 				<div className="text-foreground">Loading video...</div>
 				{projectBrowser}
+				{nativeCaptureUnavailableDialog}
 				<Toaster className="pointer-events-auto" />
 			</div>
 		);
@@ -5202,6 +5328,7 @@ export default function VideoEditor() {
 					</button>
 				</div>
 				{projectBrowser}
+				{nativeCaptureUnavailableDialog}
 				<Toaster className="pointer-events-auto" />
 			</div>
 		);
@@ -5790,6 +5917,8 @@ export default function VideoEditor() {
 								onShadowChange={setShadowIntensity}
 								backgroundBlur={backgroundBlur}
 								onBackgroundBlurChange={setBackgroundBlur}
+								zoomMotionBlurTuning={zoomMotionBlurTuning}
+								onZoomMotionBlurTuningChange={setZoomMotionBlurTuning}
 								zoomTemporalMotionBlur={zoomTemporalMotionBlur}
 								onZoomTemporalMotionBlurChange={setZoomTemporalMotionBlur}
 								zoomMotionBlurSampleCount={zoomMotionBlurSampleCount}
@@ -5840,6 +5969,16 @@ export default function VideoEditor() {
 								}
 								cursorSpringMassMultiplier={cursorSpringMassMultiplier}
 								onCursorSpringMassMultiplierChange={setCursorSpringMassMultiplier}
+								cameraSpringStiffnessMultiplier={cameraSpringStiffnessMultiplier}
+								onCameraSpringStiffnessMultiplierChange={
+									setCameraSpringStiffnessMultiplier
+								}
+								cameraSpringDampingMultiplier={cameraSpringDampingMultiplier}
+								onCameraSpringDampingMultiplierChange={
+									setCameraSpringDampingMultiplier
+								}
+								cameraSpringMassMultiplier={cameraSpringMassMultiplier}
+								onCameraSpringMassMultiplierChange={setCameraSpringMassMultiplier}
 								zoomClassicMode={zoomClassicMode}
 								onZoomClassicModeChange={setZoomClassicMode}
 								cursorMotionBlur={cursorMotionBlur}
@@ -5883,6 +6022,10 @@ export default function VideoEditor() {
 								onClearAutoCaptions={handleClearAutoCaptions}
 								onDownloadWhisperSmallModel={handleDownloadWhisperSmallModel}
 								onDeleteWhisperSmallModel={handleDeleteWhisperSmallModel}
+								nativeCaptureUnavailableSession={sessionNativeCaptureUnavailable}
+								onOpenNativeCaptureUnavailableModal={() =>
+									setNativeCaptureUnavailableModalOpen(true)
+								}
 								onAnnotationContentChange={handleAnnotationContentChange}
 								onAnnotationTypeChange={handleAnnotationTypeChange}
 								onAnnotationStyleChange={handleAnnotationStyleChange}
@@ -6046,8 +6189,19 @@ export default function VideoEditor() {
 												cursorSpringMassMultiplier={
 													cursorSpringMassMultiplier
 												}
+												cameraSpringStiffnessMultiplier={
+													cameraSpringStiffnessMultiplier
+												}
+												cameraSpringDampingMultiplier={
+													cameraSpringDampingMultiplier
+												}
+												cameraSpringMassMultiplier={
+													cameraSpringMassMultiplier
+												}
 												zoomSmoothness={zoomSmoothness}
 												zoomClassicMode={zoomClassicMode}
+												zoomMotionBlur={zoomMotionBlur}
+												zoomMotionBlurTuning={zoomMotionBlurTuning}
 												cursorMotionBlur={cursorMotionBlur}
 												cursorClickBounce={cursorClickBounce}
 												cursorClickBounceDuration={
@@ -6374,6 +6528,7 @@ export default function VideoEditor() {
 			) : null}
 
 			{projectBrowser}
+			{nativeCaptureUnavailableDialog}
 
 			<Toaster className="pointer-events-auto" />
 		</div>
