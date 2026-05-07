@@ -89,8 +89,8 @@ export function useHudBarDrag({
 
 			const deltaX = pointer.clientX - latestDragState.startX;
 			const deltaY = pointer.clientY - latestDragState.startY;
-			const viewportWidth = Math.max(window.innerWidth, window.screen?.width ?? 0);
-			const viewportHeight = Math.max(window.innerHeight, window.screen?.height ?? 0);
+			const viewportWidth = window.innerWidth;
+			const viewportHeight = window.innerHeight;
 			const unclampedLeft = latestDragState.initialLeft + deltaX;
 			const unclampedTop = latestDragState.initialTop + deltaY;
 			const clampedLeft = Math.min(
@@ -119,6 +119,26 @@ export function useHudBarDrag({
 			return;
 		}
 
+		const pointer = hudDragPendingPointerRef.current || { clientX: event.clientX, clientY: event.clientY };
+		const deltaX = pointer.clientX - dragState.startX;
+		const deltaY = pointer.clientY - dragState.startY;
+		const viewportWidth = window.innerWidth;
+		const viewportHeight = window.innerHeight;
+
+		const clampedLeft = Math.min(
+			Math.max(0, dragState.initialLeft + deltaX),
+			Math.max(0, viewportWidth - dragState.hudWidth),
+		);
+		const clampedTop = Math.min(
+			Math.max(0, dragState.initialTop + deltaY),
+			Math.max(0, viewportHeight - dragState.hudHeight),
+		);
+
+		recordingHudOffsetRef.current = {
+			x: dragState.originX + (clampedLeft - dragState.initialLeft),
+			y: dragState.originY + (clampedTop - dragState.initialTop),
+		};
+
 		if (hudDragMoveRafRef.current !== null) {
 			cancelAnimationFrame(hudDragMoveRafRef.current);
 			hudDragMoveRafRef.current = null;
@@ -128,8 +148,8 @@ export function useHudBarDrag({
 		hudDragStartRef.current = null;
 		const wasDragging = isHudDraggingRef.current;
 		isHudDraggingRef.current = false;
-		setIsHudDragging(false);
 		setRecordingHudOffset({ ...recordingHudOffsetRef.current });
+		setIsHudDragging(false);
 		if (event.currentTarget.hasPointerCapture(event.pointerId)) {
 			event.currentTarget.releasePointerCapture(event.pointerId);
 		}
