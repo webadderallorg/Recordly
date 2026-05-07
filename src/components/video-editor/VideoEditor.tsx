@@ -4762,6 +4762,16 @@ export default function VideoEditor() {
 
 					exporterRef.current = exporter;
 					const result = await exporter.export();
+					console.log("[export][result]", {
+						success: result.success,
+						hasBlob: Boolean(result.blob),
+						hasTempFilePath: Boolean(result.tempFilePath),
+						error: result.error ?? null,
+						metrics: result.metrics ?? null,
+						audioRegionCount: audioRegions.length,
+						sourceAudioFallbackPathCount: sourceAudioFallbackPaths.length,
+						effectiveSpeedRegionCount: effectiveSpeedRegions.length,
+					});
 					const smokeExportElapsedMs =
 						smokeExportStartedAt !== null
 							? Math.round(performance.now() - smokeExportStartedAt)
@@ -4923,6 +4933,37 @@ export default function VideoEditor() {
 				}
 			} catch (error) {
 				console.error("Export error:", error);
+				const typedError = error as
+					| (Error & { cause?: unknown; code?: string; details?: unknown })
+					| unknown;
+				console.error("[export][exception][details]", {
+					message: getErrorMessage(error),
+					stack:
+						typedError && typeof typedError === "object" && "stack" in typedError
+							? (typedError as { stack?: string }).stack ?? null
+							: null,
+					cause:
+						typedError && typeof typedError === "object" && "cause" in typedError
+							? (typedError as { cause?: unknown }).cause ?? null
+							: null,
+					code:
+						typedError && typeof typedError === "object" && "code" in typedError
+							? (typedError as { code?: string }).code ?? null
+							: null,
+					audioContext: {
+						audioRegions: audioRegions.map((region) => ({
+							id: region.id,
+							startMs: region.startMs,
+							endMs: region.endMs,
+							trackIndex: region.trackIndex ?? 0,
+							volume: region.volume,
+							audioPath: region.audioPath,
+						})),
+						sourceAudioFallbackPaths,
+						sourceAudioFallbackStartDelayMsByPath,
+						effectiveSpeedRegions,
+					},
+				});
 				const errorMessage = error instanceof Error ? error.message : "Unknown error";
 				if (smokeExportConfig.enabled) {
 					await writeSmokeExportReport(smokeExportConfig.outputPath, {
