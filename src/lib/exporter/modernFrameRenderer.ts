@@ -749,11 +749,20 @@ export class FrameRenderer {
 		layer.container.visible = true;
 	}
 
-	private shouldUseStartupVideoFrameStaging(): boolean {
-		return (
-			this.rendererBackend === "webgpu" &&
-			this.currentVideoTime < VIDEO_FRAME_STARTUP_STAGING_WINDOW_SEC
-		);
+	private shouldUseVideoFrameStaging(kind: "scene" | "background" | "webcam"): boolean {
+		if (this.rendererBackend !== "webgpu") {
+			return false;
+		}
+
+		// Decoder-owned VideoFrames can be closed immediately after renderFrame()
+		// returns. WebGPU texture uploads are not reliably complete by then, so
+		// stage export frames through a stable canvas source instead of letting
+		// Pixi hold the ephemeral VideoFrame directly.
+		if (kind === "scene") {
+			return true;
+		}
+
+		return this.currentVideoTime < VIDEO_FRAME_STARTUP_STAGING_WINDOW_SEC;
 	}
 
 	private ensureVideoFrameStagingCanvas(
@@ -815,7 +824,7 @@ export class FrameRenderer {
 		fallbackWidth: number,
 		fallbackHeight: number,
 	): CanvasImageSource | VideoFrame {
-		if (!this.shouldUseStartupVideoFrameStaging()) {
+		if (!this.shouldUseVideoFrameStaging(kind)) {
 			return frame;
 		}
 

@@ -191,6 +191,7 @@ export class ModernVideoExporter {
 	private lastFinalizationAudioProgress = INITIAL_FINALIZATION_PROGRESS_STATE.lastAudioProgress;
 	private lastProgressSampleTimeMs = 0;
 	private lastProgressSampleFrame = 0;
+	private displayedRenderFps = 0;
 
 	constructor(config: VideoExporterConfig) {
 		this.config = config;
@@ -404,6 +405,7 @@ export class ModernVideoExporter {
 			this.lastThroughputLogTimeMs = this.exportStartTimeMs;
 			this.lastProgressSampleTimeMs = this.exportStartTimeMs;
 			this.lastProgressSampleFrame = 0;
+			this.displayedRenderFps = 0;
 			const decodeLoopStartedAt = this.getNowMs();
 
 			await this.streamingDecoder.decodeAll(
@@ -1445,6 +1447,14 @@ export class ModernVideoExporter {
 		const sampleElapsedMs = Math.max(nowMs - this.lastProgressSampleTimeMs, 1);
 		const sampleFrameDelta = Math.max(currentFrame - this.lastProgressSampleFrame, 0);
 		const sampleRenderFps = (sampleFrameDelta * 1000) / sampleElapsedMs;
+		if (sampleElapsedMs >= 500 || currentFrame === totalFrames) {
+			this.displayedRenderFps =
+				this.displayedRenderFps > 0
+					? this.displayedRenderFps * 0.35 + sampleRenderFps * 0.65
+					: sampleRenderFps;
+		} else if (this.displayedRenderFps <= 0) {
+			this.displayedRenderFps = averageRenderFps;
+		}
 		const remainingFrames = Math.max(totalFrames - currentFrame, 0);
 		const estimatedTimeRemaining =
 			averageRenderFps > 0 ? remainingFrames / averageRenderFps : 0;
@@ -1510,7 +1520,7 @@ export class ModernVideoExporter {
 				totalFrames,
 				percentage,
 				estimatedTimeRemaining,
-				renderFps: sampleRenderFps,
+				renderFps: this.displayedRenderFps,
 				renderBackend: this.renderBackend ?? undefined,
 				encodeBackend: this.encodeBackend ?? undefined,
 				encoderName: this.encoderName ?? undefined,
@@ -1896,6 +1906,7 @@ export class ModernVideoExporter {
 		this.lastFinalizationAudioProgress = INITIAL_FINALIZATION_PROGRESS_STATE.lastAudioProgress;
 		this.lastProgressSampleTimeMs = 0;
 		this.lastProgressSampleFrame = 0;
+		this.displayedRenderFps = 0;
 		this.nativeWritePromises = new Set();
 		this.nativeWriteError = null;
 		this.pendingNativeWriteChunks = [];
