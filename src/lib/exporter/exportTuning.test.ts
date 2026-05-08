@@ -50,9 +50,9 @@ describe("exportTuning", () => {
 		expect(webCodecsProfile.maxDecodeQueue).toBe(12);
 		expect(webCodecsProfile.maxPendingFrames).toBe(32);
 		expect(breezeProfile.name).toBe("breeze-balanced-plus");
-		expect(breezeProfile.maxDecodeQueue).toBe(10);
-		expect(breezeProfile.maxPendingFrames).toBe(24);
-		expect(breezeProfile.maxInFlightNativeWrites).toBe(4);
+		expect(breezeProfile.maxDecodeQueue).toBe(14);
+		expect(breezeProfile.maxPendingFrames).toBe(40);
+		expect(breezeProfile.maxInFlightNativeWrites).toBe(8);
 	});
 
 	it("falls back to conservative native settings on low-core or very heavy workloads", () => {
@@ -72,12 +72,12 @@ describe("exportTuning", () => {
 		});
 
 		expect(breezeLowCoreProfile.name).toBe("breeze-conservative");
-		expect(breezeLowCoreProfile.maxDecodeQueue).toBe(6);
-		expect(breezeLowCoreProfile.maxPendingFrames).toBe(12);
-		expect(breezeLowCoreProfile.maxInFlightNativeWrites).toBe(1);
+		expect(breezeLowCoreProfile.maxDecodeQueue).toBe(8);
+		expect(breezeLowCoreProfile.maxPendingFrames).toBe(16);
+		expect(breezeLowCoreProfile.maxInFlightNativeWrites).toBe(2);
 
 		expect(breezeHeavyProfile.name).toBe("breeze-conservative");
-		expect(breezeHeavyProfile.maxDecodeQueue).toBe(6);
-		expect(breezeHeavyProfile.maxPendingFrames).toBe(12);
+		expect(breezeHeavyProfile.maxDecodeQueue).toBe(8);
+		expect(breezeHeavyProfile.maxPendingFrames).toBe(16);
 	});
 });

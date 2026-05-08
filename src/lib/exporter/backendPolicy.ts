@@ -23,5 +23,5 @@ export function normalizeLightningRuntimePlatform(
 }
 
 export function shouldPreferNativeAutoBackend(_platform: LightningRuntimePlatform): boolean {
-	return false;
+	return _platform === "darwin" || _platform === "win32";
 }

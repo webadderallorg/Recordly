@@ -10,10 +10,10 @@ describe("backendPolicy", () => {
 		expect(normalizeLightningRuntimePlatform("unknown")).toBe("unknown");
 	});
 
-	it("keeps auto backend WebCodecs-first on every platform", () => {
-		expect(shouldPreferNativeAutoBackend("win32")).toBe(false);
+	it("prefers native auto backend on desktop platforms with the fastest native path", () => {
+		expect(shouldPreferNativeAutoBackend("win32")).toBe(true);
 		expect(shouldPreferNativeAutoBackend("linux")).toBe(false);
-		expect(shouldPreferNativeAutoBackend("darwin")).toBe(false);
+		expect(shouldPreferNativeAutoBackend("darwin")).toBe(true);
 		expect(shouldPreferNativeAutoBackend("unknown")).toBe(false);
 	});
 });

@@ -357,6 +357,24 @@ export class AudioProcessor {
 		let encodeError: Error | null = null;
 		let muxError: Error | null = null;
 		let pendingMuxing = Promise.resolve();
+		const capacityWaiters = new Set<() => void>();
+
+		const notifyCapacityAvailable = () => {
+			if (capacityWaiters.size === 0) {
+				return;
+			}
+
+			const waiters = [...capacityWaiters];
+			capacityWaiters.clear();
+			for (const resolve of waiters) {
+				resolve();
+			}
+		};
+
+		const waitForCapacity = () =>
+			new Promise<void>((resolve) => {
+				capacityWaiters.add(resolve);
+			});
 
 		const failIfNeeded = () => {
 			if (decodeError) throw decodeError;
@@ -380,6 +398,7 @@ export class AudioProcessor {
 
 				encoder.encode(frame);
 				frame.close();
+				notifyCapacityAvailable();
 			}
 		};
 
@@ -416,10 +435,13 @@ export class AudioProcessor {
 					})
 					.catch((error) => {
 						muxError = error instanceof Error ? error : new Error(String(error));
+						notifyCapacityAvailable();
 					});
+				notifyCapacityAvailable();
 			},
 			error: (error: DOMException) => {
 				encodeError = new Error(`[AudioProcessor] Encode error: ${error.message}`);
+				notifyCapacityAvailable();
 			},
 		});
 
@@ -445,9 +467,11 @@ export class AudioProcessor {
 				}
 
 				pendingFrames.push(transformed);
+				notifyCapacityAvailable();
 			},
 			error: (error: DOMException) => {
 				decodeError = new Error(`[AudioProcessor] Decode error: ${error.message}`);
+				notifyCapacityAvailable();
 			},
 		});
 		decoder.configure(audioConfig);
@@ -477,7 +501,7 @@ export class AudioProcessor {
 				) {
 					failIfNeeded();
 					pumpEncodedFrames();
-					await new Promise((resolve) => setTimeout(resolve, 1));
+					await waitForCapacity();
 				}
 			}
 
@@ -489,7 +513,7 @@ export class AudioProcessor {
 				failIfNeeded();
 				pumpEncodedFrames();
 				if (pendingFrames.length > 0 || encoder.encodeQueueSize > 0) {
-					await new Promise((resolve) => setTimeout(resolve, 1));
+					await waitForCapacity();
 				}
 			}
 
@@ -502,6 +526,7 @@ export class AudioProcessor {
 			await pendingMuxing;
 			failIfNeeded();
 		} finally {
+			notifyCapacityAvailable();
 			if (reader) {
 				try {
 					await reader.cancel();
@@ -914,16 +939,9 @@ export class AudioProcessor {
 		let demuxer: WebDemuxer | null = null;
 
 		try {
-			const response = await fetch(source.src);
-			const blob = await response.blob();
-			const filename = url.split("/").pop() || "audio";
-			const file = new File([blob], filename, {
-				type: blob.type || "video/mp4",
-			});
-
 			const wasmUrl = new URL("./wasm/web-demuxer.wasm", window.location.href).href;
 			demuxer = new WebDemuxer({ wasmFilePath: wasmUrl });
-			await demuxer.load(file);
+			await demuxer.load(source.src);
 
 			let audioConfig: AudioDecoderConfig;
 			try {
@@ -939,6 +957,24 @@ export class AudioProcessor {
 			const channelChunks: Float32Array[][] = Array.from({ length: numChannels }, () => []);
 			let totalFrames = 0;
 			let decodeError: Error | null = null;
+			const decodeCapacityWaiters = new Set<() => void>();
+
+			const notifyDecodeCapacityAvailable = () => {
+				if (decodeCapacityWaiters.size === 0) {
+					return;
+				}
+
+				const waiters = [...decodeCapacityWaiters];
+				decodeCapacityWaiters.clear();
+				for (const resolve of waiters) {
+					resolve();
+				}
+			};
+
+			const waitForDecodeCapacity = () =>
+				new Promise<void>((resolve) => {
+					decodeCapacityWaiters.add(resolve);
+				});
 
 			const decoder = new AudioDecoder({
 				output: (data: AudioData) => {
@@ -986,10 +1022,12 @@ export class AudioProcessor {
 						totalFrames += frames;
 					} finally {
 						data.close();
+						notifyDecodeCapacityAvailable();
 					}
 				},
 				error: (err: DOMException) => {
 					decodeError = new Error(`Streaming audio decode error: ${err.message}`);
+					notifyDecodeCapacityAvailable();
 				},
 			});
 
@@ -1008,7 +1046,7 @@ export class AudioProcessor {
 
 					while (decoder.decodeQueueSize > DECODE_BACKPRESSURE_LIMIT && !this.cancelled) {
 						if (decodeError) throw decodeError;
-						await new Promise((r) => setTimeout(r, 1));
+						await waitForDecodeCapacity();
 					}
 				}
 
@@ -1017,6 +1055,7 @@ export class AudioProcessor {
 				}
 				if (decodeError) throw decodeError;
 			} finally {
+				notifyDecodeCapacityAvailable();
 				try {
 					await reader.cancel();
 				} catch {
@@ -1376,13 +1415,9 @@ export class AudioProcessor {
 		try {
 			const source = await resolveMediaElementSource(audioPath);
 			try {
-				const response = await fetch(source.src);
-				const blob = await response.blob();
-				const filename = audioPath.split("/").pop() || "sidecar-audio";
-				const file = new File([blob], filename, { type: blob.type || "audio/webm" });
 				const wasmUrl = new URL("./wasm/web-demuxer.wasm", window.location.href).href;
 				const demuxer = new WebDemuxer({ wasmFilePath: wasmUrl });
-				await demuxer.load(file);
+				await demuxer.load(source.src);
 				return demuxer;
 			} finally {
 				source.revoke();
