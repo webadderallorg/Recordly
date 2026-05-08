@@ -16,7 +16,7 @@ import type {
 } from "@/components/video-editor/types";
 import { extensionHost } from "@/lib/extensions";
 import { AudioProcessor, isAacAudioEncodingSupported } from "./audioEncoder";
-import { normalizeLightningRuntimePlatform } from "./backendPolicy";
+import { normalizeLightningRuntimePlatform, shouldPreferNativeAutoBackend } from "./backendPolicy";
 import { buildEditedTrackSourceSegments, classifyEditedTrackStrategy } from "./editedTrackStrategy";
 import {
 	type ExportBackpressureProfile,
@@ -134,7 +134,9 @@ const NATIVE_EXPORT_ENGINE_NAME = "Breeze";
 const LIGHTNING_PIPELINE_NAME = "Lightning (Beta)";
 
 export class ModernVideoExporter {
-	private static readonly NATIVE_ENCODER_QUEUE_LIMIT = 32;
+	private static readonly NATIVE_ENCODER_QUEUE_LIMIT = 64;
+	private static readonly NATIVE_WRITE_BATCH_MAX_CHUNKS = 12;
+	private static readonly NATIVE_WRITE_BATCH_MAX_BYTES = 2 * 1024 * 1024;
 
 	private config: VideoExporterConfig;
 	private streamingDecoder: StreamingVideoDecoder | null = null;
@@ -157,9 +159,10 @@ export class ModernVideoExporter {
 	private encoderName: string | null = null;
 	private backpressureProfile: ExportBackpressureProfile | null = null;
 	private nativeExportSessionId: string | null = null;
-	private nativePendingWrite: Promise<void> = Promise.resolve();
 	private nativeWritePromises = new Set<Promise<void>>();
 	private nativeWriteError: Error | null = null;
+	private pendingNativeWriteChunks: Uint8Array[] = [];
+	private pendingNativeWriteBytes = 0;
 	private maxNativeWriteInFlight = 1;
 	private lastNativeExportError: string | null = null;
 	private nativeH264Encoder: VideoEncoder | null = null;
@@ -182,11 +185,13 @@ export class ModernVideoExporter {
 	private finalizationTimeMs = 0;
 	private finalizationStageMs: ExportFinalizationStageMetrics = {};
 	private processedFrameCount = 0;
+	private encodeCapacityWaiters = new Set<() => void>();
 	private activeFinalizationProgressWatchdog: FinalizationProgressWatchdog | null = null;
 	private lastFinalizationRenderProgress = INITIAL_FINALIZATION_PROGRESS_STATE.lastRenderProgress;
 	private lastFinalizationAudioProgress = INITIAL_FINALIZATION_PROGRESS_STATE.lastAudioProgress;
 	private lastProgressSampleTimeMs = 0;
 	private lastProgressSampleFrame = 0;
+	private displayedRenderFps = 0;
 
 	constructor(config: VideoExporterConfig) {
 		this.config = config;
@@ -200,6 +205,7 @@ export class ModernVideoExporter {
 			this.nativeEncoderError = null;
 			this.totalExportStartTimeMs = this.getNowMs();
 			const backendPreference = this.config.backendPreference ?? "auto";
+			const runtimePlatform = this.getRuntimePlatform();
 			let useNativeEncoder = false;
 			this.lastNativeExportError = null;
 
@@ -212,6 +218,22 @@ export class ModernVideoExporter {
 						this.lastNativeExportError ??
 							`${NATIVE_EXPORT_ENGINE_NAME} export is unavailable for this output profile on this system.`,
 					);
+				}
+			} else if (
+				backendPreference === "auto" &&
+				shouldPreferNativeAutoBackend(runtimePlatform)
+			) {
+				stageStartedAt = this.getNowMs();
+				useNativeEncoder = await this.tryStartNativeVideoExport();
+				this.nativeSessionStartTimeMs = this.getNowMs() - stageStartedAt;
+
+				if (!useNativeEncoder) {
+					console.warn(
+						`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} auto-preferred native export was unavailable; falling back to WebCodecs.`,
+						this.lastNativeExportError,
+					);
+					stageStartedAt = this.getNowMs();
+					await this.initializeEncoder();
 				}
 			} else {
 				try {
@@ -307,7 +329,7 @@ export class ModernVideoExporter {
 			this.renderer = new ModernFrameRenderer({
 				width: this.config.width,
 				height: this.config.height,
-				preferredRenderBackend: useNativeEncoder ? "webgl" : undefined,
+				preferredRenderBackend: undefined,
 				wallpaper: this.config.wallpaper,
 				zoomRegions: this.config.zoomRegions,
 				showShadow: this.config.showShadow,
@@ -383,6 +405,7 @@ export class ModernVideoExporter {
 			this.lastThroughputLogTimeMs = this.exportStartTimeMs;
 			this.lastProgressSampleTimeMs = this.exportStartTimeMs;
 			this.lastProgressSampleFrame = 0;
+			this.displayedRenderFps = 0;
 			const decodeLoopStartedAt = this.getNowMs();
 
 			await this.streamingDecoder.decodeAll(
@@ -392,7 +415,6 @@ export class ModernVideoExporter {
 				async (videoFrame, _exportTimestampUs, sourceTimestampMs, cursorTimestampMs) => {
 					const callbackStartedAt = this.getNowMs();
 					if (this.cancelled) {
-						videoFrame.close();
 						return;
 					}
 
@@ -408,7 +430,6 @@ export class ModernVideoExporter {
 						timestamp,
 					);
 					this.renderFrameTimeMs += this.getNowMs() - renderStartedAt;
-					videoFrame.close();
 
 					if (this.cancelled) {
 						return;
@@ -609,12 +630,7 @@ export class ModernVideoExporter {
 	}
 
 	private getPlatformLabel(): string {
-		if (typeof navigator === "undefined") {
-			return "Unknown";
-		}
-
-		const platformHint = navigator.platform || navigator.userAgent || "";
-		switch (normalizeLightningRuntimePlatform(platformHint)) {
+		switch (this.getRuntimePlatform()) {
 			case "win32":
 				return "Windows";
 			case "linux":
@@ -622,8 +638,20 @@ export class ModernVideoExporter {
 			case "darwin":
 				return "macOS";
 			default:
-				return platformHint || "Unknown";
+				if (typeof navigator === "undefined") {
+					return "Unknown";
+				}
+
+				return navigator.platform || navigator.userAgent || "Unknown";
 		}
+	}
+
+	private getRuntimePlatform() {
+		if (typeof navigator === "undefined") {
+			return "unknown";
+		}
+
+		return normalizeLightningRuntimePlatform(navigator.platform || navigator.userAgent || "");
 	}
 
 	private getLightningErrorGuidance(message: string): string[] {
@@ -948,7 +976,8 @@ export class ModernVideoExporter {
 		this.lastNativeExportError = null;
 		this.encodeBackend = "ffmpeg";
 		this.encoderName = "h264-stream-copy";
-		this.nativePendingWrite = Promise.resolve();
+		this.pendingNativeWriteChunks = [];
+		this.pendingNativeWriteBytes = 0;
 
 		const sessionId = result.sessionId;
 		const encoder = new VideoEncoder({
@@ -959,40 +988,11 @@ export class ModernVideoExporter {
 
 				const buffer = new ArrayBuffer(chunk.byteLength);
 				chunk.copyTo(buffer);
-				const writePromise = this.nativePendingWrite
-					.then(() =>
-						window.electronAPI.nativeVideoExportWriteFrame(
-							sessionId,
-							new Uint8Array(buffer),
-						),
-					)
-					.then((writeResult) => {
-						if (!writeResult.success && !this.cancelled) {
-							throw new Error(
-								writeResult.error ||
-									"Failed to write H.264 chunk to native encoder",
-							);
-						}
-					})
-					.catch((error) => {
-						if (!this.cancelled) {
-							const resolvedError =
-								error instanceof Error ? error : new Error(String(error));
-							if (!this.nativeEncoderError) {
-								this.nativeEncoderError = resolvedError;
-							}
-							if (!this.nativeWriteError) {
-								this.nativeWriteError = resolvedError;
-							}
-						}
-						throw error;
-					});
-				this.nativePendingWrite = writePromise;
-
-				this.trackNativeWritePromise(writePromise);
+				this.queueNativeWriteChunk(sessionId, new Uint8Array(buffer));
 			},
 			error: (error) => {
 				this.nativeEncoderError = error;
+				this.notifyEncodeCapacityAvailable();
 			},
 		});
 
@@ -1043,7 +1043,7 @@ export class ModernVideoExporter {
 		while (
 			this.nativeH264Encoder.encodeQueueSize >= ModernVideoExporter.NATIVE_ENCODER_QUEUE_LIMIT
 		) {
-			await new Promise<void>((r) => setTimeout(r, 2));
+			await this.waitForEncodeCapacity();
 			if (this.cancelled) return;
 			if (this.nativeEncoderError) throw this.nativeEncoderError;
 		}
@@ -1100,6 +1100,7 @@ export class ModernVideoExporter {
 			encoderName: this.encoderName ?? "unknown",
 		});
 
+		this.flushPendingNativeWriteBatch(sessionId);
 		await this.awaitPendingNativeWrites();
 
 		const result = await this.measureFinalizationStage("nativeExportFinalizeMs", async () =>
@@ -1138,7 +1139,6 @@ export class ModernVideoExporter {
 			this.finalizationStageMs.ffmpegAudioMuxBreakdown = result.metrics;
 		}
 		this.nativeExportSessionId = null;
-		this.nativePendingWrite = Promise.resolve();
 
 		if (!result.success) {
 			return {
@@ -1317,7 +1317,7 @@ export class ModernVideoExporter {
 		) {
 			const encodeWaitStartedAt = this.getNowMs();
 			this.encodeWaitEvents++;
-			await new Promise((resolve) => setTimeout(resolve, 2));
+			await this.waitForEncodeCapacity();
 			this.encodeWaitTimeMs += this.getNowMs() - encodeWaitStartedAt;
 		}
 
@@ -1368,6 +1368,72 @@ export class ModernVideoExporter {
 		this.reportProgress(totalFrames, totalFrames, "finalizing", renderProgress, audioProgress);
 	}
 
+	private queueNativeWriteChunk(sessionId: string, chunk: Uint8Array): void {
+		this.pendingNativeWriteChunks.push(chunk);
+		this.pendingNativeWriteBytes += chunk.byteLength;
+
+		if (
+			this.pendingNativeWriteChunks.length >=
+				ModernVideoExporter.NATIVE_WRITE_BATCH_MAX_CHUNKS ||
+			this.pendingNativeWriteBytes >= ModernVideoExporter.NATIVE_WRITE_BATCH_MAX_BYTES
+		) {
+			this.flushPendingNativeWriteBatch(sessionId);
+		}
+	}
+
+	private flushPendingNativeWriteBatch(sessionId: string): void {
+		if (this.pendingNativeWriteChunks.length === 0) {
+			return;
+		}
+
+		const chunks = this.pendingNativeWriteChunks;
+		this.pendingNativeWriteChunks = [];
+		this.pendingNativeWriteBytes = 0;
+		const writePromise = window.electronAPI
+			.nativeVideoExportWriteFrames(sessionId, chunks)
+			.then((writeResult) => {
+				if (!writeResult.success && !this.cancelled) {
+					throw new Error(
+						writeResult.error || "Failed to write H.264 chunks to native encoder",
+					);
+				}
+			})
+			.catch((error) => {
+				if (!this.cancelled) {
+					const resolvedError =
+						error instanceof Error ? error : new Error(String(error));
+					if (!this.nativeEncoderError) {
+						this.nativeEncoderError = resolvedError;
+					}
+					if (!this.nativeWriteError) {
+						this.nativeWriteError = resolvedError;
+					}
+				}
+				throw error;
+			});
+
+		this.trackNativeWritePromise(writePromise);
+		this.notifyEncodeCapacityAvailable();
+	}
+
+	private waitForEncodeCapacity(): Promise<void> {
+		return new Promise((resolve) => {
+			this.encodeCapacityWaiters.add(resolve);
+		});
+	}
+
+	private notifyEncodeCapacityAvailable(): void {
+		if (this.encodeCapacityWaiters.size === 0) {
+			return;
+		}
+
+		const waiters = [...this.encodeCapacityWaiters];
+		this.encodeCapacityWaiters.clear();
+		for (const resolve of waiters) {
+			resolve();
+		}
+	}
+
 	private reportProgress(
 		currentFrame: number,
 		totalFrames: number,
@@ -1381,6 +1447,14 @@ export class ModernVideoExporter {
 		const sampleElapsedMs = Math.max(nowMs - this.lastProgressSampleTimeMs, 1);
 		const sampleFrameDelta = Math.max(currentFrame - this.lastProgressSampleFrame, 0);
 		const sampleRenderFps = (sampleFrameDelta * 1000) / sampleElapsedMs;
+		if (sampleElapsedMs >= 500 || currentFrame === totalFrames) {
+			this.displayedRenderFps =
+				this.displayedRenderFps > 0
+					? this.displayedRenderFps * 0.35 + sampleRenderFps * 0.65
+					: sampleRenderFps;
+		} else if (this.displayedRenderFps <= 0) {
+			this.displayedRenderFps = averageRenderFps;
+		}
 		const remainingFrames = Math.max(totalFrames - currentFrame, 0);
 		const estimatedTimeRemaining =
 			averageRenderFps > 0 ? remainingFrames / averageRenderFps : 0;
@@ -1446,7 +1520,7 @@ export class ModernVideoExporter {
 				totalFrames,
 				percentage,
 				estimatedTimeRemaining,
-				renderFps: sampleRenderFps,
+				renderFps: this.displayedRenderFps,
 				renderBackend: this.renderBackend ?? undefined,
 				encodeBackend: this.encodeBackend ?? undefined,
 				encoderName: this.encoderName ?? undefined,
@@ -1656,6 +1730,7 @@ export class ModernVideoExporter {
 					}
 				});
 				this.encodeQueue--;
+				this.notifyEncodeCapacityAvailable();
 			},
 			error: (error) => {
 				console.error(
@@ -1664,6 +1739,7 @@ export class ModernVideoExporter {
 				);
 				this.encoderError = error instanceof Error ? error : new Error(String(error));
 				this.cancelled = true;
+				this.notifyEncodeCapacityAvailable();
 			},
 		});
 
@@ -1830,10 +1906,14 @@ export class ModernVideoExporter {
 		this.lastFinalizationAudioProgress = INITIAL_FINALIZATION_PROGRESS_STATE.lastAudioProgress;
 		this.lastProgressSampleTimeMs = 0;
 		this.lastProgressSampleFrame = 0;
+		this.displayedRenderFps = 0;
 		this.nativeWritePromises = new Set();
-		this.nativePendingWrite = Promise.resolve();
 		this.nativeWriteError = null;
+		this.pendingNativeWriteChunks = [];
+		this.pendingNativeWriteBytes = 0;
 		this.maxNativeWriteInFlight = 1;
+		this.notifyEncodeCapacityAvailable();
+		this.encodeCapacityWaiters.clear();
 		this.videoDescription = undefined;
 		this.videoColorSpace = undefined;
 		this.renderBackend = null;

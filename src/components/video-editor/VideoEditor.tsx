@@ -330,6 +330,7 @@ async function writeSmokeExportReport(
 const DEFAULT_MP4_EXPORT_FRAME_RATE: ExportMp4FrameRate = 30;
 const SOURCE_AUDIO_FALLBACK_TOAST_ID = "source-audio-fallback-error";
 const PROJECT_AUTOSAVE_DELAY_MS = 1000;
+const EXPORT_ERROR_TOAST_DURATION_MS = 20000;
 
 function getEncodingModeBitrateMultiplier(encodingMode: ExportEncodingMode): number {
 	switch (encodingMode) {
@@ -350,6 +351,14 @@ function summarizeErrorMessage(message: string): string {
 		.find((line) => line.length > 0);
 
 	return firstLine ?? message;
+}
+
+function showExportErrorToast(message: string) {
+	const summary = summarizeErrorMessage(message);
+	toast.error(summary, {
+		description: summary === message ? undefined : message,
+		duration: EXPORT_ERROR_TOAST_DURATION_MS,
+	});
 }
 
 function cloneStructured<T>(value: T): T {
@@ -4805,7 +4814,7 @@ export default function VideoEditor() {
 								});
 							}
 							setExportError(saveResult.message || "Failed to save video");
-							toast.error(saveResult.message || "Failed to save video");
+							showExportErrorToast(saveResult.message || "Failed to save video");
 							// Keep the pending-save entry so the user can retry without
 							// re-rendering. The temp file is still on disk (the main
 							// process only moves/deletes it on success) and the
@@ -4837,7 +4846,8 @@ export default function VideoEditor() {
 							});
 						}
 						setExportError(result.error || "Export failed");
-						toast.error(summarizeErrorMessage(result.error || "Export failed"));
+						showExportErrorToast(result.error || "Export failed");
+						keepExportDialogOpen = true;
 						if (smokeExportConfig.enabled) {
 							window.close();
 							return;
@@ -4866,7 +4876,8 @@ export default function VideoEditor() {
 					});
 				}
 				setExportError(errorMessage);
-				toast.error(`Export failed: ${summarizeErrorMessage(errorMessage)}`);
+				showExportErrorToast(`Export failed: ${errorMessage}`);
+				keepExportDialogOpen = true;
 				if (smokeExportConfig.enabled) {
 					window.close();
 				}

@@ -1,10 +1,16 @@
 import { WebDemuxer } from "web-demuxer";
 import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
-import { getLocalFilePath } from "./localMediaSource";
+import {
+	createReadableMediaResourceFile,
+	resolveMediaResourceUrl,
+} from "./localMediaSource";
 
 const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
+const STARTUP_STABILIZATION_SECONDS = 1.25;
+const STARTUP_MAX_DECODE_QUEUE = 12;
+const STARTUP_MAX_PENDING_FRAMES = 28;
 
 export interface DecodedVideoInfo {
 	width: number;
@@ -20,7 +26,7 @@ export interface DecodedVideoInfo {
 	audioSampleRate?: number;
 }
 
-/** Caller must close the VideoFrame after use. */
+/** Decoder retains ownership of the VideoFrame and closes it after use. */
 type OnFrameCallback = (
 	frame: VideoFrame,
 	exportTimestampUs: number,
@@ -81,66 +87,6 @@ export class StreamingVideoDecoder {
 		);
 	}
 
-	private inferMimeType(fileName: string): string {
-		const extension = fileName.split(".").pop()?.toLowerCase();
-		switch (extension) {
-			case "mov":
-				return "video/quicktime";
-			case "webm":
-				return "video/webm";
-			case "mkv":
-				return "video/x-matroska";
-			case "avi":
-				return "video/x-msvideo";
-			case "mp4":
-			default:
-				return "video/mp4";
-		}
-	}
-
-	private async loadVideoFile(resourceUrl: string): Promise<File> {
-		const localFilePath = getLocalFilePath(resourceUrl);
-		const filename =
-			(localFilePath ?? resourceUrl).split(/[\\/]/).pop()?.split("?")[0] || "video";
-
-		if (localFilePath) {
-			const result = await window.electronAPI.readLocalFile(localFilePath);
-			if (!result.success || !result.data) {
-				throw new Error(result.error || "Failed to read local video file");
-			}
-
-			const bytes =
-				result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
-			const arrayBuffer = bytes.buffer.slice(
-				bytes.byteOffset,
-				bytes.byteOffset + bytes.byteLength,
-			) as ArrayBuffer;
-			return new File([arrayBuffer], filename, { type: this.inferMimeType(filename) });
-		}
-
-		const response = await fetch(resourceUrl);
-		if (!response.ok) {
-			throw new Error(
-				`Failed to load video resource: ${response.status} ${response.statusText}`,
-			);
-		}
-
-		const blob = await response.blob();
-		return new File([blob], filename, { type: blob.type || this.inferMimeType(filename) });
-	}
-
-	private resolveVideoResourceUrl(videoUrl: string): string {
-		if (/^(blob:|data:|https?:|file:)/i.test(videoUrl)) {
-			return videoUrl;
-		}
-
-		if (videoUrl.startsWith("/")) {
-			return `file://${encodeURI(videoUrl)}`;
-		}
-
-		return videoUrl;
-	}
-
 	async loadMetadata(videoUrl: string): Promise<DecodedVideoInfo> {
 		if (this.decoder) {
 			try {
@@ -162,15 +108,35 @@ export class StreamingVideoDecoder {
 			this.demuxer = null;
 		}
 
-		const resourceUrl = this.resolveVideoResourceUrl(videoUrl);
+		const resourceUrl = await resolveMediaResourceUrl(videoUrl);
 
 		// Relative URL so it resolves correctly in both dev (http) and packaged (file://) builds
 		const wasmUrl = new URL("./wasm/web-demuxer.wasm", window.location.href).href;
-		this.demuxer = new WebDemuxer({ wasmFilePath: wasmUrl });
-		const file = await this.loadVideoFile(resourceUrl);
-		await this.demuxer.load(file);
+		const loadMediaInfo = async (source: string | File) => {
+			this.demuxer = new WebDemuxer({ wasmFilePath: wasmUrl });
+			await this.demuxer.load(source);
+			return this.demuxer.getMediaInfo();
+		};
 
-		const mediaInfo = await this.demuxer.getMediaInfo();
+		let mediaInfo;
+		try {
+			mediaInfo = await loadMediaInfo(resourceUrl);
+		} catch (error) {
+			console.warn(
+				"[StreamingVideoDecoder] Direct source load failed, retrying with file fallback:",
+				error,
+			);
+			const currentDemuxer = this.demuxer;
+			if (currentDemuxer) {
+				try {
+					(currentDemuxer as unknown as { destroy: () => void }).destroy();
+				} catch {
+					// Ignore cleanup errors before fallback re-init.
+				}
+			}
+			mediaInfo = await loadMediaInfo(await createReadableMediaResourceFile(videoUrl));
+		}
+
 		const videoStream = mediaInfo.streams.find((s) => s.codec_type_string === "video");
 		const audioStream = mediaInfo.streams.find((s) => s.codec_type_string === "audio");
 		const mediaStartTime =
@@ -245,13 +211,31 @@ export class StreamingVideoDecoder {
 		);
 		const frameDurationUs = 1_000_000 / targetFrameRate;
 		const epsilonSec = 0.001;
-		const startupStabilizationSeconds = 3;
+		const startupStabilizationSeconds = STARTUP_STABILIZATION_SECONDS;
 		const startupFrameBudget = Math.max(
 			1,
 			Math.round(targetFrameRate * startupStabilizationSeconds),
 		);
 		let exportFrameIndex = 0;
 		let loggedSteadyStateBackpressure = false;
+		const backpressureWaiters = new Set<() => void>();
+
+		const notifyBackpressureProgress = () => {
+			if (backpressureWaiters.size === 0) {
+				return;
+			}
+
+			const waiters = [...backpressureWaiters];
+			backpressureWaiters.clear();
+			for (const resolve of waiters) {
+				resolve();
+			}
+		};
+
+		const waitForBackpressureProgress = () =>
+			new Promise<void>((resolve) => {
+				backpressureWaiters.add(resolve);
+			});
 
 		console.log(
 			`[StreamingVideoDecoder] Startup-safe decode backpressure active for first ${startupStabilizationSeconds}s (${startupFrameBudget} frames)`,
@@ -275,6 +259,7 @@ export class StreamingVideoDecoder {
 				} else {
 					pendingFrames.push(frame);
 				}
+				notifyBackpressureProgress();
 			},
 			error: (e: DOMException) => {
 				decodeError = new Error(`VideoDecoder error: ${e.message}`);
@@ -283,6 +268,7 @@ export class StreamingVideoDecoder {
 					frameResolve = null;
 					resolve(null);
 				}
+				notifyBackpressureProgress();
 			},
 		});
 		const preferredDecoderConfig = shouldPreferSoftwareDecode
@@ -304,7 +290,11 @@ export class StreamingVideoDecoder {
 
 		const getNextFrame = (): Promise<VideoFrame | null> => {
 			if (decodeError) throw decodeError;
-			if (pendingFrames.length > 0) return Promise.resolve(pendingFrames.shift()!);
+			if (pendingFrames.length > 0) {
+				const frame = pendingFrames.shift()!;
+				notifyBackpressureProgress();
+				return Promise.resolve(frame);
+			}
 			if (decodeDone) return Promise.resolve(null);
 			return new Promise((resolve) => {
 				frameResolve = resolve;
@@ -337,11 +327,11 @@ export class StreamingVideoDecoder {
 
 					const decodeQueueLimit =
 						exportFrameIndex < startupFrameBudget
-							? Math.min(this.maxDecodeQueue, 10)
+							? Math.min(this.maxDecodeQueue, STARTUP_MAX_DECODE_QUEUE)
 							: this.maxDecodeQueue;
 					const pendingFrameLimit =
 						exportFrameIndex < startupFrameBudget
-							? Math.min(this.maxPendingFrames, 24)
+							? Math.min(this.maxPendingFrames, STARTUP_MAX_PENDING_FRAMES)
 							: this.maxPendingFrames;
 
 					// Backpressure on both decode queue and decoded frame backlog.
@@ -350,7 +340,7 @@ export class StreamingVideoDecoder {
 							pendingFrames.length > pendingFrameLimit) &&
 						!this.cancelled
 					) {
-						await new Promise((resolve) => setTimeout(resolve, 1));
+						await waitForBackpressureProgress();
 					}
 					if (this.cancelled) break;
 
@@ -369,6 +359,7 @@ export class StreamingVideoDecoder {
 					frameResolve = null;
 					resolve(null);
 				}
+				notifyBackpressureProgress();
 			}
 		})();
 
@@ -393,10 +384,9 @@ export class StreamingVideoDecoder {
 				segment.startSec + (segmentFrameIndex / segmentFrameCount) * segmentDurationSec;
 			if (sourceTimeSec >= segment.endSec - epsilonSec) return false;
 
-			const clone = new VideoFrame(heldFrame, { timestamp: heldFrame.timestamp });
 			const sourceTimestampMs = sourceTimeSec * 1000;
 			await onFrame(
-				clone,
+				heldFrame,
 				exportFrameIndex * frameDurationUs,
 				sourceTimestampMs,
 				sourceTimestampMs,
@@ -489,10 +479,9 @@ export class StreamingVideoDecoder {
 					break;
 				}
 
-				const clone = new VideoFrame(heldFrame, { timestamp: heldFrame.timestamp });
 				const sourceTimestampMs = sourceTimeSec * 1000;
 				await onFrame(
-					clone,
+					heldFrame,
 					exportFrameIndex * frameDurationUs,
 					sourceTimestampMs,
 					sourceTimestampMs,

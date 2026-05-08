@@ -208,6 +208,10 @@ interface Window {
 			sessionId: string,
 			frameData: Uint8Array,
 		) => Promise<{ success: boolean; error?: string }>;
+		nativeVideoExportWriteFrames: (
+			sessionId: string,
+			frameDataList: Uint8Array[],
+		) => Promise<{ success: boolean; error?: string }>;
 		nativeVideoExportFinish: (
 			sessionId: string,
 			options?: {

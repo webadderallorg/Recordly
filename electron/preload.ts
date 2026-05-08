@@ -135,6 +135,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			});
 		});
 	},
+	nativeVideoExportWriteFrames: (sessionId: string, frameDataList: Uint8Array[]) => {
+		ensureNativeVideoExportWriteResultListener();
+
+		return new Promise<NativeVideoExportWriteResult>((resolve) => {
+			const requestId = nextNativeVideoExportWriteRequestId++;
+			nativeVideoExportWriteRequests.set(requestId, {
+				sessionId,
+				resolve,
+			});
+
+			ipcRenderer.send("native-video-export-write-frames-async", {
+				sessionId,
+				requestId,
+				frameDataList,
+			});
+		});
+	},
 	nativeVideoExportFinish: (
 		sessionId: string,
 		options?: {
