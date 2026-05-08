@@ -330,8 +330,6 @@ function areNearlyEqual(first: number, second: number, epsilon = 0.01): boolean 
 	return Math.abs(first - second) <= epsilon;
 }
 
-const VIDEO_FRAME_STARTUP_STAGING_WINDOW_SEC = 2.25;
-
 // Renders video frames with all effects directly into a GPU-backed Pixi scene for export.
 export class FrameRenderer {
 	private app: Application | null = null;
@@ -411,6 +409,14 @@ export class FrameRenderer {
 	private webcamTextureUsesStartupStaging = false;
 	private retainedSceneSourceFrame: VideoFrame | null = null;
 	private retainedSceneTextureFrame: VideoFrame | null = null;
+	private retainedBackgroundSourceFrame: VideoFrame | null = null;
+	private retainedBackgroundTextureFrame: VideoFrame | null = null;
+	private retainedWebcamSourceFrame: VideoFrame | null = null;
+	private retainedWebcamTextureFrame: VideoFrame | null = null;
+	private retainedSceneBitmapTimestamp: number | null = null;
+	private retainedSceneBitmap: ImageBitmap | null = null;
+	private retainedBackgroundBitmapTimestamp: number | null = null;
+	private retainedBackgroundBitmap: ImageBitmap | null = null;
 	private compositeCanvas: HTMLCanvasElement | null = null;
 	private compositeCtx: CanvasRenderingContext2D | null = null;
 	private lastEmittedClickTimeMs = -1;
@@ -751,44 +757,135 @@ export class FrameRenderer {
 		layer.container.visible = true;
 	}
 
-	private shouldUseVideoFrameStaging(kind: "scene" | "background" | "webcam"): boolean {
-		if (this.rendererBackend !== "webgpu") {
-			return false;
+	private getRetainedVideoFrameState(kind: "scene" | "background" | "webcam") {
+		if (kind === "scene") {
+			return {
+				sourceFrame: this.retainedSceneSourceFrame,
+				textureFrame: this.retainedSceneTextureFrame,
+			};
 		}
 
-		return kind !== "scene" && this.currentVideoTime < VIDEO_FRAME_STARTUP_STAGING_WINDOW_SEC;
+		if (kind === "background") {
+			return {
+				sourceFrame: this.retainedBackgroundSourceFrame,
+				textureFrame: this.retainedBackgroundTextureFrame,
+			};
+		}
+
+		return {
+			sourceFrame: this.retainedWebcamSourceFrame,
+			textureFrame: this.retainedWebcamTextureFrame,
+		};
 	}
 
-	private closeRetainedSceneTextureFrame(): void {
-		if (!this.retainedSceneTextureFrame) {
+	private setRetainedVideoFrameState(
+		kind: "scene" | "background" | "webcam",
+		sourceFrame: VideoFrame | null,
+		textureFrame: VideoFrame | null,
+	): void {
+		if (kind === "scene") {
+			this.retainedSceneSourceFrame = sourceFrame;
+			this.retainedSceneTextureFrame = textureFrame;
 			return;
 		}
 
-		this.retainedSceneTextureFrame.close();
-		this.retainedSceneTextureFrame = null;
-		this.retainedSceneSourceFrame = null;
+		if (kind === "background") {
+			this.retainedBackgroundSourceFrame = sourceFrame;
+			this.retainedBackgroundTextureFrame = textureFrame;
+			return;
+		}
+
+		this.retainedWebcamSourceFrame = sourceFrame;
+		this.retainedWebcamTextureFrame = textureFrame;
 	}
 
-	private resolveSceneVideoFrameSource(frame: VideoFrame): CanvasImageSource | VideoFrame {
+	private closeRetainedVideoFrame(kind: "scene" | "background" | "webcam"): void {
+		const state = this.getRetainedVideoFrameState(kind);
+		if (!state.textureFrame) {
+			this.setRetainedVideoFrameState(kind, null, null);
+			return;
+		}
+
+		state.textureFrame.close();
+		this.setRetainedVideoFrameState(kind, null, null);
+	}
+
+	private closeRetainedBitmap(kind: "scene" | "background"): void {
+		if (kind === "scene") {
+			this.retainedSceneBitmap?.close();
+			this.retainedSceneBitmap = null;
+			this.retainedSceneBitmapTimestamp = null;
+			return;
+		}
+
+		this.retainedBackgroundBitmap?.close();
+		this.retainedBackgroundBitmap = null;
+		this.retainedBackgroundBitmapTimestamp = null;
+	}
+
+	private async resolveDetachedVideoFrameSource(
+		frame: VideoFrame,
+		kind: "scene" | "background",
+		fallbackWidth: number,
+		fallbackHeight: number,
+	): Promise<CanvasImageSource | VideoFrame> {
+		if (this.rendererBackend !== "webgpu" || typeof createImageBitmap !== "function") {
+			return this.stageVideoFrameForTexture(frame, kind, fallbackWidth, fallbackHeight);
+		}
+
+		const cachedTimestamp =
+			kind === "scene" ? this.retainedSceneBitmapTimestamp : this.retainedBackgroundBitmapTimestamp;
+		const cachedBitmap =
+			kind === "scene" ? this.retainedSceneBitmap : this.retainedBackgroundBitmap;
+		if (cachedTimestamp === frame.timestamp && cachedBitmap) {
+			return cachedBitmap;
+		}
+
+		try {
+			const bitmap = await createImageBitmap(frame);
+			this.closeRetainedBitmap(kind);
+			if (kind === "scene") {
+				this.retainedSceneBitmap = bitmap;
+				this.retainedSceneBitmapTimestamp = frame.timestamp;
+			} else {
+				this.retainedBackgroundBitmap = bitmap;
+				this.retainedBackgroundBitmapTimestamp = frame.timestamp;
+			}
+			return bitmap;
+		} catch (error) {
+			console.warn(
+				`[ModernFrameRenderer] Failed to detach ${kind} VideoFrame to ImageBitmap, falling back to retained VideoFrame:`,
+				error,
+			);
+			return this.stageVideoFrameForTexture(frame, kind, fallbackWidth, fallbackHeight);
+		}
+	}
+
+	private resolveRetainedVideoFrameSource(
+		frame: VideoFrame,
+		kind: "scene" | "background" | "webcam",
+		_fallbackWidth: number,
+		_fallbackHeight: number,
+	): CanvasImageSource | VideoFrame {
 		if (this.rendererBackend !== "webgpu") {
 			return frame;
 		}
 
-		if (this.retainedSceneSourceFrame === frame && this.retainedSceneTextureFrame) {
-			return this.retainedSceneTextureFrame;
+		const state = this.getRetainedVideoFrameState(kind);
+		if (state.sourceFrame === frame && state.textureFrame) {
+			return state.textureFrame;
 		}
 
 		try {
 			const retainedFrame = new VideoFrame(frame, {
 				timestamp: frame.timestamp,
 			});
-			this.closeRetainedSceneTextureFrame();
-			this.retainedSceneSourceFrame = frame;
-			this.retainedSceneTextureFrame = retainedFrame;
+			this.closeRetainedVideoFrame(kind);
+			this.setRetainedVideoFrameState(kind, frame, retainedFrame);
 			return retainedFrame;
 		} catch (error) {
 			console.warn(
-				"[ModernFrameRenderer] Failed to retain scene VideoFrame, falling back to staging canvas:",
+				`[ModernFrameRenderer] Failed to retain ${kind} VideoFrame, falling back to staging canvas:`,
 				error,
 			);
 			return this.stageVideoFrameForTexture(
@@ -859,8 +956,13 @@ export class FrameRenderer {
 		fallbackWidth: number,
 		fallbackHeight: number,
 	): CanvasImageSource | VideoFrame {
-		if (!this.shouldUseVideoFrameStaging(kind)) {
-			return frame;
+		if (this.rendererBackend === "webgpu") {
+			return this.resolveRetainedVideoFrameSource(
+				frame,
+				kind,
+				fallbackWidth,
+				fallbackHeight,
+			);
 		}
 
 		const width = Math.max(1, frame.displayWidth || fallbackWidth);
@@ -1152,18 +1254,23 @@ export class FrameRenderer {
 		}
 	}
 
-	private ensureBackgroundSprite(
+	private async ensureBackgroundSprite(
 		source: CanvasImageSource | VideoFrame,
 		sourceWidth: number,
 		sourceHeight: number,
-	): void {
+	): Promise<void> {
 		if (!this.backgroundContainer) {
 			return;
 		}
 
 		const resolvedSource =
 			typeof VideoFrame !== "undefined" && source instanceof VideoFrame
-				? this.stageVideoFrameForTexture(source, "background", sourceWidth, sourceHeight)
+				? await this.resolveDetachedVideoFrameSource(
+						source,
+						"background",
+						sourceWidth,
+						sourceHeight,
+					)
 				: typeof HTMLVideoElement !== "undefined" &&
 						source instanceof HTMLVideoElement &&
 						sourceWidth > 0 &&
@@ -1711,7 +1818,7 @@ export class FrameRenderer {
 							restartedFrame.displayWidth,
 							restartedFrame.displayHeight,
 						);
-						this.ensureBackgroundSprite(
+						await this.ensureBackgroundSprite(
 							resolvedBackgroundSource,
 							restartedFrame.displayWidth,
 							restartedFrame.displayHeight,
@@ -1735,7 +1842,7 @@ export class FrameRenderer {
 					decodedFrame.displayWidth,
 					decodedFrame.displayHeight,
 				);
-				this.ensureBackgroundSprite(
+				await this.ensureBackgroundSprite(
 					resolvedBackgroundSource,
 					decodedFrame.displayWidth,
 					decodedFrame.displayHeight,
@@ -2729,7 +2836,12 @@ export class FrameRenderer {
 
 		this.currentVideoTime = timestamp / 1_000_000;
 
-		const resolvedVideoSource = this.resolveSceneVideoFrameSource(videoFrame);
+		const resolvedVideoSource = await this.resolveDetachedVideoFrameSource(
+			videoFrame,
+			"scene",
+			this.config.videoWidth,
+			this.config.videoHeight,
+		);
 		const usesStartupStaging = resolvedVideoSource !== videoFrame;
 
 		if (!this.videoSprite) {
@@ -3492,7 +3604,11 @@ export class FrameRenderer {
 		this.webcamVideoFrameStagingCtx = null;
 		this.videoTextureUsesStartupStaging = false;
 		this.webcamTextureUsesStartupStaging = false;
-		this.closeRetainedSceneTextureFrame();
+		this.closeRetainedVideoFrame("scene");
+		this.closeRetainedVideoFrame("background");
+		this.closeRetainedVideoFrame("webcam");
+		this.closeRetainedBitmap("scene");
+		this.closeRetainedBitmap("background");
 
 		this.captionCanvas = null;
 		this.captionCtx = null;
