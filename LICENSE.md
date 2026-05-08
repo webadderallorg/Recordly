@@ -9,6 +9,7 @@ Version 3, 19 November 2007
   source code** (including all edits) p**ublicly available** under this 
   same AGPLv3 license.
 - You CANNOT use the "Recordly" name or branding for your own project.
+- If you use Recordly's code or create code derived from Recordly you must attribute Recordly in the user-facing UI and the repo.
 
 Copyright (C) 2026 webadderall
 

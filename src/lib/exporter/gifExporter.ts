@@ -10,6 +10,7 @@ import type {
 	SpeedRegion,
 	TrimRegion,
 	WebcamOverlaySettings,
+	ZoomMotionBlurTuning,
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
@@ -42,6 +43,7 @@ interface GifExporterConfig {
 	shadowIntensity: number;
 	backgroundBlur: number;
 	zoomMotionBlur?: number;
+	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
 	zoomTemporalMotionBlur?: number;
 	zoomMotionBlurSampleCount?: number | null;
 	zoomMotionBlurShutterFraction?: number | null;
@@ -71,6 +73,9 @@ interface GifExporterConfig {
 	cursorSpringStiffnessMultiplier?: number;
 	cursorSpringDampingMultiplier?: number;
 	cursorSpringMassMultiplier?: number;
+	cameraSpringStiffnessMultiplier?: number;
+	cameraSpringDampingMultiplier?: number;
+	cameraSpringMassMultiplier?: number;
 	zoomSmoothness?: number;
 	zoomClassicMode?: boolean;
 	cursorMotionBlur?: number;
@@ -164,6 +169,7 @@ export class GifExporter {
 				shadowIntensity: this.config.shadowIntensity,
 				backgroundBlur: this.config.backgroundBlur,
 				zoomMotionBlur: this.config.zoomMotionBlur,
+				zoomMotionBlurTuning: this.config.zoomMotionBlurTuning,
 				zoomTemporalMotionBlur: this.config.zoomTemporalMotionBlur,
 				zoomMotionBlurSampleCount: this.config.zoomMotionBlurSampleCount,
 				zoomMotionBlurShutterFraction: this.config.zoomMotionBlurShutterFraction,
@@ -197,6 +203,9 @@ export class GifExporter {
 				cursorSpringStiffnessMultiplier: this.config.cursorSpringStiffnessMultiplier,
 				cursorSpringDampingMultiplier: this.config.cursorSpringDampingMultiplier,
 				cursorSpringMassMultiplier: this.config.cursorSpringMassMultiplier,
+				cameraSpringStiffnessMultiplier: this.config.cameraSpringStiffnessMultiplier,
+				cameraSpringDampingMultiplier: this.config.cameraSpringDampingMultiplier,
+				cameraSpringMassMultiplier: this.config.cameraSpringMassMultiplier,
 				zoomSmoothness: this.config.zoomSmoothness,
 				zoomClassicMode: this.config.zoomClassicMode,
 				cursorMotionBlur: this.config.cursorMotionBlur,
@@ -253,7 +262,6 @@ export class GifExporter {
 				this.config.speedRegions,
 				async (videoFrame, _exportTimestampUs, sourceTimestampMs, cursorTimestampMs) => {
 					if (this.cancelled) {
-						videoFrame.close();
 						return;
 					}
 
@@ -266,7 +274,6 @@ export class GifExporter {
 						frameDurationUs,
 						frameIndex * frameDurationUs,
 					);
-					videoFrame.close();
 
 					this.addRenderedGifFrame(frameDelay);
 					frameIndex++;

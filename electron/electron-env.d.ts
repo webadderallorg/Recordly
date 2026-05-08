@@ -193,9 +193,7 @@ interface Window {
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;
 		hudOverlayHide: () => void;
 		hudOverlayClose: () => void;
-		setHudOverlayExpanded: (expanded: boolean) => void;
-		setHudOverlayCompactWidth: (width: number) => void;
-		setHudOverlayMeasuredHeight: (height: number, expanded: boolean) => void;
+		hudOverlayRendererReady: () => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
@@ -424,6 +422,10 @@ interface Window {
 		nativeVideoExportWriteFrame: (
 			sessionId: string,
 			frameData: Uint8Array,
+		) => Promise<{ success: boolean; error?: string }>;
+		nativeVideoExportWriteFrames: (
+			sessionId: string,
+			frameDataList: Uint8Array[],
 		) => Promise<{ success: boolean; error?: string }>;
 		nativeVideoExportFinish: (
 			sessionId: string,

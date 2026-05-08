@@ -3779,6 +3779,24 @@ export async function enqueueNativeVideoExportFrameWrite(
 	await writePromise;
 }
 
+export async function enqueueNativeVideoExportFrameWrites(
+	session: NativeVideoExportSession,
+	frameDataList: Array<Uint8Array | ArrayBuffer>,
+) {
+	const writePromise = session.writeSequence.then(async () => {
+		if (session.terminating) {
+			throw new Error("Native video export session was cancelled");
+		}
+
+		for (const frameData of frameDataList) {
+			await writeNativeVideoExportFrame(session, frameData);
+		}
+	});
+
+	session.writeSequence = writePromise.catch(() => undefined);
+	await writePromise;
+}
+
 export async function getAvailableNativeVideoEncoders(ffmpegPath: string) {
 	const { stdout } = await execFileAsync(ffmpegPath, ["-hide_banner", "-encoders"], {
 		timeout: 15000,

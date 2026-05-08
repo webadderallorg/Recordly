@@ -15,6 +15,7 @@ import {
 } from "../export/exportStream";
 import {
 	enqueueNativeVideoExportFrameWrite,
+	enqueueNativeVideoExportFrameWrites,
 	exportNativeStaticLayoutVideo,
 	flushNativeVideoExportPendingWriteRequests,
 	getNativeVideoExportMaxQueuedWriteBytes,
@@ -158,7 +159,7 @@ export function registerExportHandlers() {
 					inputMode,
 					maxQueuedWriteBytes:
 						inputMode === "h264-stream"
-							? 8 * 1024 * 1024
+							? 32 * 1024 * 1024
 							: getNativeVideoExportMaxQueuedWriteBytes(inputByteSize),
 					stderrOutput: "",
 					encoderName,
@@ -323,6 +324,79 @@ export function registerExportHandlers() {
 
 		return { success: true };
 	});
+
+	ipcMain.on(
+		"native-video-export-write-frames-async",
+		(
+			event,
+			payload: {
+				sessionId: string;
+				requestId: number;
+				frameDataList: Uint8Array[];
+			},
+		) => {
+			const sessionId = payload?.sessionId;
+			const requestId = payload?.requestId;
+			const frameDataList = payload?.frameDataList;
+
+			if (
+				typeof sessionId !== "string" ||
+				typeof requestId !== "number" ||
+				!Array.isArray(frameDataList) ||
+				frameDataList.length === 0
+			) {
+				return;
+			}
+
+			const session = nativeVideoExportSessions.get(sessionId);
+			if (!session) {
+				sendNativeVideoExportWriteFrameResult(event.sender, sessionId, requestId, {
+					success: false,
+					error: "Invalid native export session",
+				});
+				return;
+			}
+
+			session.sender = event.sender;
+			session.pendingWriteRequestIds.add(requestId);
+
+			if (session.terminating) {
+				settleNativeVideoExportWriteFrameRequest(sessionId, session, requestId, {
+					success: false,
+					error: "Native video export session was cancelled",
+				});
+				return;
+			}
+
+			if (
+				session.inputMode !== "h264-stream" &&
+				frameDataList.some((frameData) => frameData.byteLength !== session.inputByteSize)
+			) {
+				settleNativeVideoExportWriteFrameRequest(sessionId, session, requestId, {
+					success: false,
+					error: "Native video export batch contained invalid frame sizes",
+				});
+				return;
+			}
+
+			void enqueueNativeVideoExportFrameWrites(session, frameDataList)
+				.then(() => {
+					settleNativeVideoExportWriteFrameRequest(sessionId, session, requestId, {
+						success: true,
+					});
+				})
+				.catch((error) => {
+					session.stdinError = error instanceof Error ? error : new Error(String(error));
+					settleNativeVideoExportWriteFrameRequest(sessionId, session, requestId, {
+						success: false,
+						error: getNativeVideoExportSessionError(
+							session,
+							session.stdinError.message,
+						),
+					});
+				});
+		},
+	);
 
 	ipcMain.on(
 		"native-video-export-write-frame-async",

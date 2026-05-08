@@ -44,6 +44,7 @@ import {
 	ZOOM_DEPTH_SCALES,
 	type ZoomDepth,
 	type ZoomFocus,
+	type ZoomMotionBlurTuning,
 	type ZoomRegion,
 	type ZoomTransitionEasing,
 } from "./types";
@@ -106,6 +107,8 @@ import {
 	DEFAULT_ZOOM_IN_DURATION_MS,
 	DEFAULT_ZOOM_IN_EASING,
 	DEFAULT_ZOOM_IN_OVERLAP_MS,
+	DEFAULT_ZOOM_MOTION_BLUR,
+	DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 	DEFAULT_ZOOM_OUT_DURATION_MS,
 	DEFAULT_ZOOM_OUT_EASING,
 	getDefaultCaptionFontFamily,
@@ -130,7 +133,11 @@ import {
 	createMotionBlurState,
 	type MotionBlurState,
 } from "./videoPlayback/zoomTransform";
-import { getWebcamOverlayPosition, getWebcamOverlaySizePx } from "./webcamOverlay";
+import {
+	getWebcamCropSourceRect,
+	getWebcamOverlayPosition,
+	getWebcamOverlaySizePx,
+} from "./webcamOverlay";
 
 type PlaybackAnimationState = {
 	scale: number;
@@ -312,8 +319,13 @@ interface VideoPlaybackProps {
 	cursorSpringStiffnessMultiplier?: number;
 	cursorSpringDampingMultiplier?: number;
 	cursorSpringMassMultiplier?: number;
+	cameraSpringStiffnessMultiplier?: number;
+	cameraSpringDampingMultiplier?: number;
+	cameraSpringMassMultiplier?: number;
 	zoomSmoothness?: number;
 	zoomClassicMode?: boolean;
+	zoomMotionBlur?: number;
+	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
 	cursorMotionBlur?: number;
 	cursorClickBounce?: number;
 	cursorClickBounceDuration?: number;
@@ -385,8 +397,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			cursorSpringStiffnessMultiplier = 1,
 			cursorSpringDampingMultiplier = 1,
 			cursorSpringMassMultiplier = 1,
+			cameraSpringStiffnessMultiplier = 1,
+			cameraSpringDampingMultiplier = 1,
+			cameraSpringMassMultiplier = 1,
 			zoomSmoothness = 0.5,
 			zoomClassicMode = false,
+			zoomMotionBlur = DEFAULT_ZOOM_MOTION_BLUR,
+			zoomMotionBlurTuning = DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 			cursorMotionBlur = DEFAULT_CURSOR_MOTION_BLUR,
 			cursorClickBounce = DEFAULT_CURSOR_CLICK_BOUNCE,
 			cursorClickBounceDuration = DEFAULT_CURSOR_CLICK_BOUNCE_DURATION,
@@ -418,6 +435,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const webcamVideoRef = useRef<HTMLVideoElement | null>(null);
 		const webcamBubbleRef = useRef<HTMLDivElement | null>(null);
 		const webcamBubbleInnerRef = useRef<HTMLDivElement | null>(null);
+		const [webcamVideoDimensions, setWebcamVideoDimensions] = useState<{
+			width: number;
+			height: number;
+		} | null>(null);
 		const captionBoxRef = useRef<HTMLDivElement | null>(null);
 		const currentTimeRef = useRef(0);
 		const zoomRegionsRef = useRef<ZoomRegion[]>([]);
@@ -479,10 +500,15 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const cursorSpringStiffnessMultiplierRef = useRef(cursorSpringStiffnessMultiplier);
 		const cursorSpringDampingMultiplierRef = useRef(cursorSpringDampingMultiplier);
 		const cursorSpringMassMultiplierRef = useRef(cursorSpringMassMultiplier);
+		const cameraSpringStiffnessMultiplierRef = useRef(cameraSpringStiffnessMultiplier);
+		const cameraSpringDampingMultiplierRef = useRef(cameraSpringDampingMultiplier);
+		const cameraSpringMassMultiplierRef = useRef(cameraSpringMassMultiplier);
 		const cursorMotionBlurRef = useRef(cursorMotionBlur);
 		const cursorClickBounceRef = useRef(cursorClickBounce);
 		const cursorClickBounceDurationRef = useRef(cursorClickBounceDuration);
 		const cursorSwayRef = useRef(cursorSway);
+		const zoomMotionBlurRef = useRef(zoomMotionBlur);
+		const zoomMotionBlurTuningRef = useRef(zoomMotionBlurTuning);
 		const lastEmittedClickTimeMsRef = useRef(-1);
 
 		// Spring animation state for smooth zoom transitions
@@ -639,37 +665,74 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			return () => cancelAnimationFrame(frame);
 		}, [activeCaptionLayout, autoCaptionSettings]);
 		const motionBlurStateRef = useRef<MotionBlurState>(createMotionBlurState());
+		const webcamEnabled = webcam?.enabled ?? false;
+		const webcamMargin = webcam?.margin ?? 24;
+		const webcamSize = webcam?.size ?? DEFAULT_WEBCAM_SIZE;
+		const webcamReactToZoom = webcam?.reactToZoom ?? DEFAULT_WEBCAM_REACT_TO_ZOOM;
+		const webcamPositionPreset = webcam?.positionPreset ?? webcam?.corner ?? "bottom-right";
+		const webcamPositionX = webcam?.positionX ?? 1;
+		const webcamPositionY = webcam?.positionY ?? 1;
+		const webcamCorner = webcam?.corner ?? "bottom-right";
+		const webcamCornerRadius = webcam?.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS;
+		const webcamShadow = webcam?.shadow ?? DEFAULT_WEBCAM_SHADOW;
+		const webcamTimeOffsetMs = webcam?.timeOffsetMs;
+		const webcamCropRegion = webcam?.cropRegion;
+		const webcamMirror = webcam?.mirror ?? false;
+		const webcamCropPreviewContentStyle = useMemo<React.CSSProperties>(() => {
+			if (!webcamVideoDimensions) {
+				return { opacity: 0 };
+			}
+
+			const { sx, sy, sw, sh } = getWebcamCropSourceRect(
+				webcamCropRegion,
+				webcamVideoDimensions.width,
+				webcamVideoDimensions.height,
+			);
+			const coverScale = Math.max(1 / sw, 1 / sh);
+			const drawWidth = webcamVideoDimensions.width * coverScale;
+			const drawHeight = webcamVideoDimensions.height * coverScale;
+			const drawX = (1 - sw * coverScale) / 2 - sx * coverScale;
+			const drawY = (1 - sh * coverScale) / 2 - sy * coverScale;
+
+			return {
+				left: `${drawX * 100}%`,
+				top: `${drawY * 100}%`,
+				width: `${drawWidth * 100}%`,
+				height: `${drawHeight * 100}%`,
+				maxWidth: "none",
+				willChange: "left, top, width, height",
+			};
+		}, [webcamCropRegion, webcamVideoDimensions]);
 
 		const applyWebcamBubbleLayout = useCallback(
 			(zoomScale: number) => {
 				const bubble = webcamBubbleRef.current;
 				const bubbleInner = webcamBubbleInnerRef.current;
 				const overlay = overlayRef.current;
-				if (!bubble || !bubbleInner || !overlay || !webcam?.enabled || !webcamVideoPath) {
+				if (!bubble || !bubbleInner || !overlay || !webcamEnabled || !webcamVideoPath) {
 					if (bubble) {
 						bubble.style.display = "none";
 					}
 					return;
 				}
 
-				const margin = webcam.margin ?? 24;
 				const scaledSize = getWebcamOverlaySizePx({
 					containerWidth: overlay.clientWidth,
 					containerHeight: overlay.clientHeight,
-					sizePercent: webcam.size ?? DEFAULT_WEBCAM_SIZE,
-					margin,
+					sizePercent: webcamSize,
+					margin: webcamMargin,
 					zoomScale,
-					reactToZoom: webcam.reactToZoom ?? DEFAULT_WEBCAM_REACT_TO_ZOOM,
+					reactToZoom: webcamReactToZoom,
 				});
 				const { x, y } = getWebcamOverlayPosition({
 					containerWidth: overlay.clientWidth,
 					containerHeight: overlay.clientHeight,
 					size: scaledSize,
-					margin,
-					positionPreset: webcam.positionPreset ?? webcam.corner,
-					positionX: webcam.positionX ?? 1,
-					positionY: webcam.positionY ?? 1,
-					legacyCorner: webcam.corner,
+					margin: webcamMargin,
+					positionPreset: webcamPositionPreset,
+					positionX: webcamPositionX,
+					positionY: webcamPositionY,
+					legacyCorner: webcamCorner,
 				});
 
 				bubble.style.display = "block";
@@ -677,24 +740,39 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				bubble.style.top = `${y}px`;
 				bubble.style.width = `${scaledSize}px`;
 				bubble.style.height = `${scaledSize}px`;
+				bubble.style.aspectRatio = "1 / 1";
 				const squirclePath = getSquircleSvgPath({
 					x: 0,
 					y: 0,
 					width: scaledSize,
 					height: scaledSize,
-					radius: webcam.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS,
+					radius: webcamCornerRadius,
 				});
 				bubble.style.filter = `drop-shadow(0 ${Math.round(scaledSize * 0.06)}px ${Math.round(
 					scaledSize * 0.22,
-				)}px rgba(0, 0, 0, ${webcam.shadow ?? DEFAULT_WEBCAM_SHADOW}))`;
+				)}px rgba(0, 0, 0, ${webcamShadow}))`;
 				bubble.style.borderRadius = "0px";
 				bubble.style.boxShadow = "none";
 
 				bubbleInner.style.borderRadius = "0px";
+				bubbleInner.style.overflow = "hidden";
+				bubbleInner.style.contain = "paint";
 				bubbleInner.style.clipPath = `path('${squirclePath}')`;
 				bubbleInner.style.setProperty("-webkit-clip-path", `path('${squirclePath}')`);
 			},
-			[webcam, webcamVideoPath],
+			[
+				webcamCorner,
+				webcamCornerRadius,
+				webcamEnabled,
+				webcamMargin,
+				webcamPositionPreset,
+				webcamPositionX,
+				webcamPositionY,
+				webcamReactToZoom,
+				webcamShadow,
+				webcamSize,
+				webcamVideoPath,
+			],
 		);
 
 		const clampFocusToStage = useCallback((focus: ZoomFocus, depth: ZoomDepth) => {
@@ -735,7 +813,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const zoomBlurFilter = zoomBlurFilterRef.current;
 			const motionBlurFilter = motionBlurFilterRef.current;
 
-			if (!app || !videoEffectsContainer || !zoomBlurFilter || !motionBlurFilter) {
+			if (!app || !videoEffectsContainer || !motionBlurFilter || !zoomBlurFilter) {
 				return;
 			}
 
@@ -746,8 +824,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const stageWidth = Math.max(1, stageSizeRef.current.width || app.screen.width);
 			const stageHeight = Math.max(1, stageSizeRef.current.height || app.screen.height);
 
-			zoomBlurFilter.resolution = filterResolution;
 			motionBlurFilter.resolution = filterResolution;
+			zoomBlurFilter.resolution = filterResolution;
 			videoEffectsContainer.filterArea = new Rectangle(0, 0, stageWidth, stageHeight);
 		}, []);
 
@@ -1278,11 +1356,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const zoomBlurFilter = zoomBlurFilterRef.current;
 			const motionBlurFilter = motionBlurFilterRef.current;
 
-			if (!videoEffectsContainer || !zoomBlurFilter || !motionBlurFilter) {
+			if (!videoEffectsContainer || !motionBlurFilter || !zoomBlurFilter) {
 				return;
 			}
 
-			videoEffectsContainer.filters = null;
+			videoEffectsContainer.filters =
+				(zoomMotionBlurRef.current ?? 0) > 0 ? [motionBlurFilter, zoomBlurFilter] : null;
 			motionBlurFilter.velocity = { x: 0, y: 0 };
 			motionBlurFilter.kernelSize = 5;
 			motionBlurFilter.offset = 0;
@@ -1371,8 +1450,40 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		}, [cursorSpringMassMultiplier]);
 
 		useEffect(() => {
+			cameraSpringStiffnessMultiplierRef.current = cameraSpringStiffnessMultiplier;
+		}, [cameraSpringStiffnessMultiplier]);
+
+		useEffect(() => {
+			cameraSpringDampingMultiplierRef.current = cameraSpringDampingMultiplier;
+		}, [cameraSpringDampingMultiplier]);
+
+		useEffect(() => {
+			cameraSpringMassMultiplierRef.current = cameraSpringMassMultiplier;
+		}, [cameraSpringMassMultiplier]);
+
+		useEffect(() => {
 			zoomSmoothnessRef.current = zoomSmoothness;
 		}, [zoomSmoothness]);
+
+		useEffect(() => {
+			zoomMotionBlurRef.current = zoomMotionBlur;
+
+			const videoEffectsContainer = videoEffectsContainerRef.current;
+			const zoomBlurFilter = zoomBlurFilterRef.current;
+			const motionBlurFilter = motionBlurFilterRef.current;
+
+			if (!videoEffectsContainer || !zoomBlurFilter || !motionBlurFilter) {
+				return;
+			}
+
+			motionBlurStateRef.current = createMotionBlurState();
+			videoEffectsContainer.filters =
+				zoomMotionBlur > 0 ? [motionBlurFilter, zoomBlurFilter] : null;
+		}, [videoPath, zoomMotionBlur]);
+
+		useEffect(() => {
+			zoomMotionBlurTuningRef.current = zoomMotionBlurTuning;
+		}, [zoomMotionBlurTuning]);
 
 		useEffect(() => {
 			zoomClassicModeRef.current = zoomClassicMode;
@@ -1455,7 +1566,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					zoomScale: 1,
 					focusX: DEFAULT_FOCUS.cx,
 					focusY: DEFAULT_FOCUS.cy,
-					motionIntensity: 0,
 					isPlaying: false,
 					motionBlurAmount: 0,
 					motionBlurState: motionBlurStateRef.current,
@@ -1500,22 +1610,30 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		useEffect(() => {
 			if (!pixiReady || !videoReady) return;
 			applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
-		}, [applyWebcamBubbleLayout, pixiReady, videoReady, webcam, webcamVideoPath]);
+		}, [applyWebcamBubbleLayout, pixiReady, videoReady]);
 
-		useEffect(() => {
+		const syncWebcamMedia = useCallback(() => {
 			const webcamVideo = webcamVideoRef.current;
-			if (!webcamVideo || !webcam?.enabled || !webcamVideoPath) {
+			if (!webcamVideo || !webcamEnabled || !webcamVideoPath) {
 				return;
 			}
 
+			const webcamDuration = Number.isFinite(webcamVideo.duration)
+				? webcamVideo.duration
+				: null;
 			const targetTime = getWebcamMediaTargetTimeSeconds({
 				currentTime,
-				webcamDuration: Number.isFinite(webcamVideo.duration) ? webcamVideo.duration : null,
-				timeOffsetMs: webcam.timeOffsetMs,
+				webcamDuration,
+				timeOffsetMs: webcamTimeOffsetMs,
 			});
+			const mediaTargetTime =
+				targetTime <= 0 && webcamDuration !== null && webcamDuration > 0
+					? Math.min(1 / 60, webcamDuration)
+					: targetTime;
 
+			const timelineTimeMs = currentTime * 1000;
 			const activeSpeedRegion = speedRegionsRef.current.find(
-				(region) => targetTime * 1000 >= region.startMs && targetTime * 1000 < region.endMs,
+				(region) => timelineTimeMs >= region.startMs && timelineTimeMs < region.endMs,
 			);
 			const targetPlaybackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
 			enablePitchPreservingPlayback(webcamVideo);
@@ -1527,9 +1645,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const timelineJumped =
 				previousTimelineTime === null || Math.abs(targetTime - previousTimelineTime) > 0.25;
 			const driftThreshold = isPlaying ? 0.35 : 0.01;
-			if (timelineJumped || Math.abs(webcamVideo.currentTime - targetTime) > driftThreshold) {
+			if (
+				timelineJumped ||
+				Math.abs(webcamVideo.currentTime - mediaTargetTime) > driftThreshold
+			) {
 				try {
-					webcamVideo.currentTime = targetTime;
+					webcamVideo.currentTime = mediaTargetTime;
 				} catch {
 					// no-op
 				}
@@ -1545,9 +1666,28 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			}
 
 			lastWebcamSyncTimeRef.current = targetTime;
-		}, [currentTime, isPlaying, webcam, webcamVideoPath]);
+		}, [currentTime, isPlaying, webcamEnabled, webcamTimeOffsetMs, webcamVideoPath]);
+
+		const handleWebcamMediaReady = useCallback(
+			(event: React.SyntheticEvent<HTMLVideoElement>) => {
+				const video = event.currentTarget;
+				if (video.videoWidth > 0 && video.videoHeight > 0 && video.readyState >= 2) {
+					setWebcamVideoDimensions({
+						width: video.videoWidth,
+						height: video.videoHeight,
+					});
+				}
+				syncWebcamMedia();
+			},
+			[syncWebcamMedia],
+		);
 
 		useEffect(() => {
+			syncWebcamMedia();
+		}, [syncWebcamMedia]);
+
+		useEffect(() => {
+			setWebcamVideoDimensions(null);
 			lastWebcamSyncTimeRef.current = null;
 		}, [webcamVideoPath]);
 
@@ -1615,8 +1755,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				// same layer in preview and export.
 				const videoEffectsContainer = new Container();
 				videoEffectsContainerRef.current = videoEffectsContainer;
-				zoomBlurFilterRef.current = new ZoomBlurFilter({ strength: 0 });
+				zoomBlurFilterRef.current = new ZoomBlurFilter({ strength: 0, maxKernelSize: 13 });
 				motionBlurFilterRef.current = new MotionBlurFilter([0, 0], 5, 0);
+				videoEffectsContainer.filters = [
+					motionBlurFilterRef.current,
+					zoomBlurFilterRef.current,
+				];
 				cameraContainer.addChild(videoEffectsContainer);
 				syncPreviewMotionBlurQuality();
 
@@ -1817,8 +1961,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const applyTransform = (
 				transform: { scale: number; x: number; y: number },
 				focus: ZoomFocus,
-				motionIntensity: number,
-				motionVector: { x: number; y: number },
 			) => {
 				const cameraContainer = cameraContainerRef.current;
 				if (!cameraContainer) return;
@@ -1835,10 +1977,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					zoomProgress: state.progress,
 					focusX: focus.cx,
 					focusY: focus.cy,
-					motionIntensity,
-					motionVector,
 					isPlaying: isPlayingRef.current,
-					motionBlurAmount: 0,
+					motionBlurAmount: zoomMotionBlurRef.current,
+					motionBlurTuning: zoomMotionBlurTuningRef.current,
 					transformOverride: transform,
 					motionBlurState: motionBlurStateRef.current,
 					frameTimeMs: performance.now(),
@@ -1943,9 +2084,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				}
 
 				const state = animationStateRef.current;
-				const prevScale = state.appliedScale;
-				const prevX = state.x;
-				const prevY = state.y;
 
 				state.scale = targetScaleFactor;
 				state.focusX = targetFocus.cx;
@@ -1975,7 +2113,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					lastTickTimeRef.current !== null ? now - lastTickTimeRef.current : 1000 / 60;
 				lastTickTimeRef.current = now;
 
-				const zoomSpringConfig = getZoomSpringConfig(zoomSmoothnessRef.current);
+				const zoomSpringConfig = getZoomSpringConfig(zoomSmoothnessRef.current, {
+					stiffnessMultiplier: cameraSpringStiffnessMultiplierRef.current,
+					dampingMultiplier: cameraSpringDampingMultiplierRef.current,
+					massMultiplier: cameraSpringMassMultiplierRef.current,
+				});
 				const useSpring =
 					isPlayingRef.current && !isSeekingRef.current && !zoomClassicModeRef.current;
 
@@ -2012,22 +2154,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					resetSpringState(springYRef.current, appliedY);
 				}
 
-				const motionIntensity = Math.max(
-					Math.abs(appliedScale - prevScale),
-					Math.abs(appliedX - prevX) / Math.max(1, stageSizeRef.current.width),
-					Math.abs(appliedY - prevY) / Math.max(1, stageSizeRef.current.height),
-				);
-
-				const motionVector = {
-					x: appliedX - prevX,
-					y: appliedY - prevY,
-				};
-
 				applyTransform(
 					{ scale: appliedScale, x: appliedX, y: appliedY },
 					targetFocus,
-					motionIntensity,
-					motionVector,
 				);
 
 				applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
@@ -2576,19 +2705,32 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 							>
 								<div
 									ref={webcamBubbleInnerRef}
-									className="h-full w-full overflow-hidden bg-black/80"
+									className="relative h-full w-full overflow-hidden"
 								>
-									<video
-										ref={webcamVideoRef}
-										src={webcamVideoPath}
-										className="h-full w-full object-cover"
-										muted
-										playsInline
-										preload="auto"
+									<div
+										className="pointer-events-none absolute inset-0 overflow-hidden"
 										style={{
-											transform: webcam.mirror ? "scaleX(-1)" : undefined,
+											opacity: webcamVideoDimensions ? 1 : 0,
+											transform: webcamMirror ? "scaleX(-1)" : undefined,
 										}}
-									/>
+									>
+										<div
+											className="pointer-events-none absolute"
+											style={webcamCropPreviewContentStyle}
+										>
+											<video
+												ref={webcamVideoRef}
+												src={webcamVideoPath}
+												className="pointer-events-none absolute inset-0 block h-full w-full object-fill"
+												muted
+												playsInline
+												preload="auto"
+												aria-hidden="true"
+												onLoadedMetadata={handleWebcamMediaReady}
+												onLoadedData={handleWebcamMediaReady}
+											/>
+										</div>
+									</div>
 								</div>
 							</div>
 						) : null}

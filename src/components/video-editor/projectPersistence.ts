@@ -57,16 +57,19 @@ import {
 	DEFAULT_ZOOM_IN_EASING,
 	DEFAULT_ZOOM_IN_OVERLAP_MS,
 	DEFAULT_ZOOM_MOTION_BLUR,
-	DEFAULT_ZOOM_SMOOTHNESS,
+	DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 	DEFAULT_ZOOM_OUT_EASING,
+	DEFAULT_ZOOM_SMOOTHNESS,
 	getDefaultCaptionFontFamily,
 	type Padding,
 	type SpeedRegion,
 	type TrimRegion,
 	type WebcamOverlaySettings,
+	type ZoomMotionBlurTuning,
 	type ZoomRegion,
 	type ZoomTransitionEasing,
 } from "./types";
+import { normalizeWebcamCropRegion } from "./webcamOverlay";
 
 export const PROJECT_VERSION = 1;
 
@@ -77,6 +80,7 @@ export interface ProjectEditorState {
 	shadowIntensity: number;
 	backgroundBlur: number;
 	zoomMotionBlur: number;
+	zoomMotionBlurTuning: ZoomMotionBlurTuning;
 	zoomTemporalMotionBlur: number;
 	zoomMotionBlurSampleCount: number | null;
 	zoomMotionBlurShutterFraction: number | null;
@@ -97,6 +101,9 @@ export interface ProjectEditorState {
 	cursorSpringStiffnessMultiplier: number;
 	cursorSpringDampingMultiplier: number;
 	cursorSpringMassMultiplier: number;
+	cameraSpringStiffnessMultiplier: number;
+	cameraSpringDampingMultiplier: number;
+	cameraSpringMassMultiplier: number;
 	zoomSmoothness: number;
 	zoomClassicMode: boolean;
 	cursorMotionBlur: number;
@@ -167,7 +174,7 @@ export function normalizeExportPipelineModel(value: unknown): ExportPipelineMode
 		return value;
 	}
 
-	return "legacy";
+	return "modern";
 }
 
 export function normalizeExportMp4FrameRate(value: unknown): ExportMp4FrameRate {
@@ -336,6 +343,35 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		: legacyMotionBlurEnabled
 			? 0.35
 			: DEFAULT_ZOOM_MOTION_BLUR;
+	const rawZoomMotionBlurTuning =
+		(editor as Partial<ProjectEditorState>).zoomMotionBlurTuning &&
+		typeof (editor as Partial<ProjectEditorState>).zoomMotionBlurTuning === "object"
+			? ((editor as Partial<ProjectEditorState>)
+					.zoomMotionBlurTuning as Partial<ZoomMotionBlurTuning>)
+			: {};
+	const normalizedZoomMotionBlurTuning: ZoomMotionBlurTuning = {
+		panVelocityThreshold: isFiniteNumber(rawZoomMotionBlurTuning.panVelocityThreshold)
+			? clamp(rawZoomMotionBlurTuning.panVelocityThreshold, 0, 240)
+			: DEFAULT_ZOOM_MOTION_BLUR_TUNING.panVelocityThreshold,
+		zoomVelocityThreshold: isFiniteNumber(rawZoomMotionBlurTuning.zoomVelocityThreshold)
+			? clamp(rawZoomMotionBlurTuning.zoomVelocityThreshold, 0, 0.4)
+			: DEFAULT_ZOOM_MOTION_BLUR_TUNING.zoomVelocityThreshold,
+		maxDirectionalBlurPx: isFiniteNumber(rawZoomMotionBlurTuning.maxDirectionalBlurPx)
+			? clamp(rawZoomMotionBlurTuning.maxDirectionalBlurPx, 0, 32)
+			: DEFAULT_ZOOM_MOTION_BLUR_TUNING.maxDirectionalBlurPx,
+		maxRadialBlurStrength: isFiniteNumber(rawZoomMotionBlurTuning.maxRadialBlurStrength)
+			? clamp(rawZoomMotionBlurTuning.maxRadialBlurStrength, 0, 0.5)
+			: DEFAULT_ZOOM_MOTION_BLUR_TUNING.maxRadialBlurStrength,
+		panResponsePerSecond: isFiniteNumber(rawZoomMotionBlurTuning.panResponsePerSecond)
+			? clamp(rawZoomMotionBlurTuning.panResponsePerSecond, 1, 30)
+			: DEFAULT_ZOOM_MOTION_BLUR_TUNING.panResponsePerSecond,
+		zoomResponsePerSecond: isFiniteNumber(rawZoomMotionBlurTuning.zoomResponsePerSecond)
+			? clamp(rawZoomMotionBlurTuning.zoomResponsePerSecond, 1, 30)
+			: DEFAULT_ZOOM_MOTION_BLUR_TUNING.zoomResponsePerSecond,
+		zoomSafeZoneRadiusPx: isFiniteNumber(rawZoomMotionBlurTuning.zoomSafeZoneRadiusPx)
+			? clamp(rawZoomMotionBlurTuning.zoomSafeZoneRadiusPx, 0, 80)
+			: DEFAULT_ZOOM_MOTION_BLUR_TUNING.zoomSafeZoneRadiusPx,
+	};
 	const normalizedZoomTemporalMotionBlur = isFiniteNumber(
 		(editor as Partial<ProjectEditorState>).zoomTemporalMotionBlur,
 	)
@@ -767,6 +803,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		shadowIntensity: typeof editor.shadowIntensity === "number" ? editor.shadowIntensity : 0.67,
 		backgroundBlur: normalizedBackgroundBlur,
 		zoomMotionBlur: normalizedZoomMotionBlur,
+		zoomMotionBlurTuning: normalizedZoomMotionBlurTuning,
 		zoomTemporalMotionBlur: normalizedZoomTemporalMotionBlur,
 		zoomMotionBlurSampleCount: normalizedZoomMotionBlurSampleCount,
 		zoomMotionBlurShutterFraction: normalizedZoomMotionBlurShutterFraction,
@@ -800,6 +837,15 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		cursorSpringMassMultiplier: isFiniteNumber(editor.cursorSpringMassMultiplier)
 			? clamp(editor.cursorSpringMassMultiplier, 0.25, 3)
 			: DEFAULT_MOTION_PRESET.cursorSpringMassMultiplier,
+		cameraSpringStiffnessMultiplier: isFiniteNumber(editor.cameraSpringStiffnessMultiplier)
+			? clamp(editor.cameraSpringStiffnessMultiplier, 0.25, 3)
+			: 1,
+		cameraSpringDampingMultiplier: isFiniteNumber(editor.cameraSpringDampingMultiplier)
+			? clamp(editor.cameraSpringDampingMultiplier, 0.25, 3)
+			: 1,
+		cameraSpringMassMultiplier: isFiniteNumber(editor.cameraSpringMassMultiplier)
+			? clamp(editor.cameraSpringMassMultiplier, 0.25, 3)
+			: 1,
 		zoomSmoothness: DEFAULT_ZOOM_SMOOTHNESS,
 		zoomClassicMode:
 			typeof editor.zoomClassicMode === "boolean" ? editor.zoomClassicMode : false,
@@ -871,6 +917,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			sourcePath: webcamSourcePath,
 			mirror:
 				typeof webcam.mirror === "boolean" ? webcam.mirror : DEFAULT_WEBCAM_OVERLAY.mirror,
+			cropRegion: normalizeWebcamCropRegion(webcam.cropRegion),
 			positionPreset:
 				webcam.positionPreset === "top-left" ||
 				webcam.positionPreset === "top-center" ||

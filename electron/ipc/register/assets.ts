@@ -5,9 +5,18 @@ import { pathToFileURL } from "node:url";
 import { ipcMain } from "electron";
 import { USER_DATA_PATH } from "../../appPaths";
 import { normalizePath } from "../utils";
-import { isAllowedLocalReadPath, getAssetRootPath } from "../project/manager";
+import { getAssetRootPath } from "../project/manager";
 
 export function registerAssetHandlers() {
+  async function resolveReadableLocalFilePath(filePath: string) {
+    const normalizedPath = normalizePath(filePath)
+    const resolvedPath = await fs.realpath(normalizedPath).catch(() => normalizedPath)
+    const stats = await fs.stat(resolvedPath)
+    if (!stats.isFile()) {
+      throw new Error('Path is not a readable file')
+    }
+    return normalizePath(resolvedPath)
+  }
 
   // Generate a tiny thumbnail for a wallpaper image and cache it in userData.
   // Returns the cached thumbnail as raw JPEG bytes for fast grid rendering.
@@ -18,12 +27,7 @@ export function registerAssetHandlers() {
 
   ipcMain.handle('generate-wallpaper-thumbnail', async (_, filePath: string) => {
     try {
-      const resolved = normalizePath(filePath)
-      const realResolved = await fs.realpath(resolved).catch(() => resolved)
-
-      if (!isAllowedLocalReadPath(resolved) && !isAllowedLocalReadPath(realResolved)) {
-        return { success: false, error: 'Access denied' }
-      }
+      const resolved = await resolveReadableLocalFilePath(filePath)
 
       // Deterministic cache key from file path + mtime
       const stat = await fs.stat(resolved)
@@ -105,12 +109,12 @@ export function registerAssetHandlers() {
 
   ipcMain.handle('read-local-file', async (_, filePath: string) => {
     try {
-      const resolved = normalizePath(filePath)
-      const realResolved = await fs.realpath(resolved).catch(() => resolved)
-      if (!isAllowedLocalReadPath(resolved) && !isAllowedLocalReadPath(realResolved)) {
-        console.warn(`[read-local-file] Blocked read outside allowed directories: ${resolved}`)
-        return { success: false, error: 'Access denied: path outside allowed directories' }
-      }
+      // Intentionally more permissive than the media-server allowlist: this IPC
+      // is used for direct renderer-side local file reads after the app has
+      // already accepted a path, while URL-based media serving must stay scoped
+      // to approved/app-managed locations. We still canonicalize the path and
+      // require a real on-disk file so this cannot be used to read directories.
+      const resolved = await resolveReadableLocalFilePath(filePath)
 
       const data = await fs.readFile(resolved)
       return { success: true, data }
