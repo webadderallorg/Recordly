@@ -109,6 +109,11 @@ export function registerAssetHandlers() {
 
   ipcMain.handle('read-local-file', async (_, filePath: string) => {
     try {
+      // Intentionally more permissive than the media-server allowlist: this IPC
+      // is used for direct renderer-side local file reads after the app has
+      // already accepted a path, while URL-based media serving must stay scoped
+      // to approved/app-managed locations. We still canonicalize the path and
+      // require a real on-disk file so this cannot be used to read directories.
       const resolved = await resolveReadableLocalFilePath(filePath)
 
       const data = await fs.readFile(resolved)

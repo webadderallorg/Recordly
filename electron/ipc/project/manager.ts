@@ -90,8 +90,10 @@ export function isAllowedLocalReadPath(candidatePath: string) {
 	);
 }
 
-// Keep media-server access rules aligned with read-local-file so exported videos
-// saved outside the active recording session can still be reopened in the editor.
+// Keep loopback media-server access restricted to allowlisted or explicitly
+// approved files. Direct renderer-side read-local-file calls can be more
+// permissive, but URL-based serving must stay scoped so arbitrary paths do not
+// become fetchable inside the app.
 export async function isAllowedLocalMediaPath(candidatePath: string) {
 	const normalizedCandidatePath = normalizePath(candidatePath);
 	return isAllowedLocalReadPath(normalizedCandidatePath);
