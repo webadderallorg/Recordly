@@ -1,15 +1,15 @@
-import { createRequire } from "node:module";
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app } from "electron";
 import { RECORDINGS_DIR } from "../appPaths";
-import { RECORDINGS_SETTINGS_FILE, AUTO_RECORDING_PREFIX } from "./constants";
+import { AUTO_RECORDING_PREFIX, RECORDINGS_SETTINGS_FILE } from "./constants";
 import {
 	approvedLocalReadPaths,
 	customRecordingsDir,
-	setCustomRecordingsDir,
 	recordingsDirLoaded,
+	setCustomRecordingsDir,
 	setRecordingsDirLoaded,
 } from "./state";
 
@@ -47,6 +47,14 @@ export function normalizeVideoSourcePath(videoPath?: string | null): string | nu
 	}
 
 	return trimmed;
+}
+
+export function stripJsonByteOrderMark(content: string) {
+	return content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+}
+
+export function parseJsonWithByteOrderMark<T = unknown>(content: string): T {
+	return JSON.parse(stripJsonByteOrderMark(content)) as T;
 }
 
 export function parseWindowId(sourceId?: string) {
@@ -89,7 +97,7 @@ async function loadRecordingsDirectorySetting() {
 
 	try {
 		const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, "utf-8");
-		const parsed = JSON.parse(content) as { recordingsDir?: unknown };
+		const parsed = parseJsonWithByteOrderMark<{ recordingsDir?: unknown }>(content);
 		if (typeof parsed.recordingsDir === "string" && parsed.recordingsDir.trim()) {
 			setCustomRecordingsDir(path.resolve(parsed.recordingsDir));
 		}

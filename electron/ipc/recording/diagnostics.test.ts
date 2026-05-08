@@ -54,6 +54,7 @@ describe("getCompanionAudioFallbackPaths", () => {
 		}));
 		vi.doMock("../ffmpeg/binary", () => ({
 			getFfmpegBinaryPath: () => "ffmpeg",
+			getFfprobeBinaryPath: () => "ffprobe",
 		}));
 	});
 
@@ -140,7 +141,7 @@ describe("getCompanionAudioFallbackPaths", () => {
 		await Promise.all([
 			fs.writeFile(videoPath, "video"),
 			fs.writeFile(micPath, "mic"),
-			fs.writeFile(`${micPath}.json`, JSON.stringify({ startDelayMs: 2750 })),
+			fs.writeFile(`${micPath}.json`, `\ufeff${JSON.stringify({ startDelayMs: 2750 })}`),
 		]);
 
 		execFileMock.mockImplementation(
@@ -166,6 +167,131 @@ describe("getCompanionAudioFallbackPaths", () => {
 		});
 	});
 
+	it("scales audio mux timeout for long recordings", async () => {
+		const { getRecordingAudioMuxTimeoutMs } = await import("./diagnostics");
+
+		expect(getRecordingAudioMuxTimeoutMs(0)).toBe(5 * 60 * 1000);
+		expect(getRecordingAudioMuxTimeoutMs(29 * 60 + 29.41)).toBeGreaterThan(120000);
+		expect(getRecordingAudioMuxTimeoutMs(29 * 60 + 29.41)).toBeCloseTo(
+			(29 * 60 + 29.41) * 1000 + 60 * 1000,
+			0,
+		);
+	});
+
+	it("uses video stream frames when container duration is misleading", async () => {
+		const { parseFfprobeVideoStreamDuration } = await import("./diagnostics");
+
+		expect(
+			parseFfprobeVideoStreamDuration(
+				JSON.stringify({
+					streams: [
+						{
+							duration: "18.000000",
+							nb_read_frames: "540",
+							avg_frame_rate: "30/1",
+						},
+					],
+				}),
+			),
+		).toEqual({
+			durationSeconds: 18,
+			frameCount: 540,
+			frameRate: 30,
+		});
+	});
+
+	it("derives video stream duration from frame count when stream duration is absent", async () => {
+		const { parseFfprobeVideoStreamDuration } = await import("./diagnostics");
+
+		expect(
+			parseFfprobeVideoStreamDuration(
+				JSON.stringify({
+					streams: [
+						{
+							nb_read_frames: "540",
+							avg_frame_rate: "30/1",
+						},
+					],
+				}),
+			),
+		).toEqual({
+			durationSeconds: 18,
+			frameCount: 540,
+			frameRate: 30,
+		});
+	});
+
+	it("writes a recording diagnostics sidecar with stream and audio probes", async () => {
+		const videoPath = path.join(tempRoot, "recording-123.mp4");
+		const micPath = path.join(tempRoot, "recording-123.mic.wav");
+		await Promise.all([
+			fs.writeFile(videoPath, "video"),
+			fs.writeFile(micPath, "mic"),
+			fs.writeFile(`${micPath}.json`, JSON.stringify({ startDelayMs: 125 })),
+		]);
+
+		execFileMock.mockImplementation(
+			(
+				file: string,
+				args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				if (file === "ffprobe" || args.includes("-of")) {
+					callback(
+						null,
+						JSON.stringify({
+							streams: [
+								{
+									duration: "18.000000",
+									nb_read_frames: "540",
+									avg_frame_rate: "30/1",
+								},
+							],
+						}),
+						"",
+					);
+					return;
+				}
+
+				const error = new Error("ffmpeg probe") as Error & { stderr?: string };
+				error.stderr = "Duration: 00:00:18.00, start: 0.000000";
+				callback(error, "", error.stderr);
+			},
+		);
+
+		const { getRecordingDiagnosticsPath, writeRecordingDiagnosticsSnapshot } = await import(
+			"./diagnostics"
+		);
+
+		const diagnosticsPath = await writeRecordingDiagnosticsSnapshot(videoPath, {
+			backend: "windows-wgc",
+			phase: "mux-start",
+			expectedDurationMs: 60_000,
+			outputPath: videoPath,
+			microphonePath: micPath,
+			details: {
+				hasMicrophone: true,
+			},
+		});
+		const diagnostics = JSON.parse(await fs.readFile(diagnosticsPath, "utf8"));
+
+		expect(diagnosticsPath).toBe(getRecordingDiagnosticsPath(videoPath));
+		expect(diagnostics.events).toHaveLength(1);
+		expect(diagnostics.latest.expectedDurationMs).toBe(60_000);
+		expect(diagnostics.latest.media.video.stream).toEqual({
+			durationSeconds: 18,
+			frameCount: 540,
+			frameRate: 30,
+		});
+		expect(diagnostics.latest.media.microphone).toMatchObject({
+			path: micPath,
+			exists: true,
+			containerDurationSeconds: 18,
+			startDelayMs: 125,
+		});
+	});
+
 	it("ignores invalid sidecar timing metadata values", async () => {
 		const micPath = path.join(tempRoot, "recording.mic.wav");
 		await Promise.all([
@@ -176,6 +302,73 @@ describe("getCompanionAudioFallbackPaths", () => {
 		const { getCompanionAudioStartDelayMs } = await import("./diagnostics");
 
 		await expect(getCompanionAudioStartDelayMs(micPath)).resolves.toBeNull();
+	});
+
+	it("classifies wall-clock mic chunk gaps covered by pause intervals", async () => {
+		const { summarizeMicrophoneChunkTiming } = await import("./diagnostics");
+
+		expect(
+			summarizeMicrophoneChunkTiming(
+				[
+					{
+						index: 0,
+						size: 1024,
+						elapsedMs: 250,
+						deltaMs: null,
+						recordedElapsedMs: 250,
+						recordedDeltaMs: null,
+					},
+					{
+						index: 1,
+						size: 1024,
+						elapsedMs: 8250,
+						deltaMs: 8000,
+						recordedElapsedMs: 500,
+						recordedDeltaMs: 250,
+					},
+				],
+				[{ startElapsedMs: 250, endElapsedMs: 8250, durationMs: 7750 }],
+				250,
+			),
+		).toMatchObject({
+			status: "pause-accounted",
+			wallClockGapCount: 1,
+			recordedGapCount: 0,
+			pausedDurationMs: 7750,
+		});
+	});
+
+	it("flags recorded mic chunk gaps that remain after pause accounting", async () => {
+		const { summarizeMicrophoneChunkTiming } = await import("./diagnostics");
+
+		expect(
+			summarizeMicrophoneChunkTiming(
+				[
+					{
+						index: 0,
+						size: 1024,
+						elapsedMs: 250,
+						deltaMs: null,
+						recordedElapsedMs: 250,
+						recordedDeltaMs: null,
+					},
+					{
+						index: 1,
+						size: 1024,
+						elapsedMs: 2500,
+						deltaMs: 2250,
+						recordedElapsedMs: 2500,
+						recordedDeltaMs: 2250,
+					},
+				],
+				[],
+				250,
+			),
+		).toMatchObject({
+			status: "needs-review",
+			wallClockGapCount: 1,
+			recordedGapCount: 1,
+		});
 	});
 
 	it("rejects tiny MP4 container-only outputs before they reach the editor", async () => {

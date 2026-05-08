@@ -158,7 +158,11 @@ export function classifyEditedTrackStrategy(input: EditedTrackStrategyInput): Ed
 		return "offline-render-fallback";
 	}
 
-	if (input.sourceAudioFallbackPaths.length > 0) {
+	if (
+		input.sourceAudioFallbackPaths.some(
+			(audioPath) => audioPath !== input.primaryAudioSourcePath,
+		)
+	) {
 		return "offline-render-fallback";
 	}
 

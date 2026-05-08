@@ -55,6 +55,18 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IS_SMOKE_EXPORT = process.env.RECORDLY_SMOKE_EXPORT === "1";
 
+function ignoreBrokenConsolePipe(stream: NodeJS.WritableStream | undefined) {
+	stream?.on("error", (error: NodeJS.ErrnoException) => {
+		if (error.code === "EPIPE") {
+			return;
+		}
+		throw error;
+	});
+}
+
+ignoreBrokenConsolePipe(process.stdout);
+ignoreBrokenConsolePipe(process.stderr);
+
 app.commandLine.appendSwitch("ignore-gpu-blocklist");
 app.commandLine.appendSwitch("enable-unsafe-webgpu");
 app.commandLine.appendSwitch("enable-gpu-rasterization");
@@ -954,13 +966,19 @@ app.whenReady().then(async () => {
 
 	registerExtensionIpcHandlers();
 
-	if (IS_SMOKE_EXPORT) {
+	if (IS_SMOKE_EXPORT || process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {
 		await logSmokeExportGpuDiagnostics();
-		const smokeSource =
-			process.env.RECORDLY_SMOKE_EXPORT_PROJECT ??
-			process.env.RECORDLY_SMOKE_EXPORT_INPUT ??
-			"<missing input>";
-		console.log(`[smoke-export] Starting editor smoke export for ${smokeSource}`);
+		if (IS_SMOKE_EXPORT) {
+			const smokeSource =
+				process.env.RECORDLY_SMOKE_EXPORT_PROJECT ??
+				process.env.RECORDLY_SMOKE_EXPORT_INPUT ??
+				"<missing input>";
+			console.log(`[smoke-export] Starting editor smoke export for ${smokeSource}`);
+		} else {
+			console.log(
+				`[dev-open-recording] Starting editor for ${process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT}`,
+			);
+		}
 		createEditorWindowWrapper();
 		return;
 	}

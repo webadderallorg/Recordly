@@ -43,6 +43,46 @@ export const WALLPAPER_RELATIVE_PATHS = BUILT_IN_WALLPAPERS.map(
 export const DEFAULT_WALLPAPER_PATH = "/wallpapers/tahoe-light.jpg";
 export const DEFAULT_WALLPAPER_RELATIVE_PATH = "wallpapers/tahoe-light.jpg";
 
+function safeDecodeFileName(fileName: string) {
+	try {
+		return decodeURIComponent(fileName);
+	} catch {
+		return fileName;
+	}
+}
+
+function getBundledWallpaperFileName(value: string) {
+	if (!value.startsWith("/wallpapers/")) {
+		return null;
+	}
+
+	const normalizedValue = value.split("?")[0] ?? value;
+	const fileName = normalizedValue.split("/").filter(Boolean).pop();
+	return fileName ? safeDecodeFileName(fileName) : null;
+}
+
+export async function resolveAvailableWallpaperPath(wallpaper: string): Promise<string> {
+	const bundledFileName = getBundledWallpaperFileName(wallpaper);
+	if (
+		!bundledFileName ||
+		typeof window === "undefined" ||
+		!window.electronAPI?.listAssetDirectory
+	) {
+		return wallpaper;
+	}
+
+	try {
+		const result = await window.electronAPI.listAssetDirectory("wallpapers");
+		if (!result.success || !result.files?.length) {
+			return wallpaper;
+		}
+
+		return result.files.includes(bundledFileName) ? wallpaper : DEFAULT_WALLPAPER_PATH;
+	} catch {
+		return wallpaper;
+	}
+}
+
 export function isVideoWallpaperSource(value: string): boolean {
 	if (!value) {
 		return false;

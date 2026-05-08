@@ -238,6 +238,61 @@ interface CaptionRenderState {
 	centerY: number;
 }
 
+type PixiRendererAttempt = {
+	backend: ExportRenderBackend;
+	message: string;
+};
+
+const CANVAS_RENDERER_NOT_IMPLEMENTED_HINT = "CanvasRenderer is not yet implemented";
+const NO_RENDERER_HINT = "no available renderer";
+const PIXI_RENDERER_INIT_TIMEOUT_MS = 8_000;
+
+function isCanvasRenderer(application: Application): boolean {
+	const rendererName = application?.renderer?.constructor?.name?.toLowerCase();
+	return Boolean(rendererName && (rendererName.includes("canvasrenderer") || rendererName.includes("canvas")));
+}
+
+function toErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error ?? "Unknown renderer init error");
+}
+
+function summarizeRendererAttempts(attempts: readonly PixiRendererAttempt[]): string {
+	const details = attempts.map((attempt) => `${attempt.backend}: ${attempt.message}`).join(" | ");
+	return `No supported Pixi modern renderer was available. Attempted: ${details}`;
+}
+
+function isKnownRendererUnavailableError(error: unknown): boolean {
+	const message = toErrorMessage(error).toLowerCase();
+	return (
+		message.includes(CANVAS_RENDERER_NOT_IMPLEMENTED_HINT.toLowerCase()) ||
+		message.includes(NO_RENDERER_HINT)
+	);
+}
+
+type PixiInitOptions = Parameters<Application["init"]>[0];
+
+async function initApplicationWithTimeout(
+	app: Application,
+	options: PixiInitOptions,
+	backend: ExportRenderBackend,
+): Promise<void> {
+	const timeoutErrorMessage = `Initialization timed out after ${PIXI_RENDERER_INIT_TIMEOUT_MS}ms for ${backend} renderer`;
+	let timeoutId: ReturnType<typeof setTimeout> | undefined;
+	const timeoutPromise = new Promise<never>((_, reject) => {
+		timeoutId = setTimeout(() => {
+			reject(new Error(timeoutErrorMessage));
+		}, PIXI_RENDERER_INIT_TIMEOUT_MS);
+	});
+
+	try {
+		await Promise.race([app.init(options), timeoutPromise]);
+	} finally {
+		if (timeoutId !== undefined) {
+			clearTimeout(timeoutId);
+		}
+	}
+}
+
 interface RenderSnapshot {
 	timeMs: number;
 	cursorTimeMs: number;
@@ -603,52 +658,57 @@ export class FrameRenderer {
 					: typeof navigator !== "undefined" && "gpu" in navigator
 						? ["webgpu", "webgl"]
 						: ["webgl"];
-		let lastError: unknown = null;
+		const failures: PixiRendererAttempt[] = [];
 
 		for (const backend of backendOrder) {
-			if (backend === "webgpu") {
-				if (!(typeof navigator !== "undefined" && "gpu" in navigator)) {
-					continue;
-				}
-
-				const webgpuApp = new Application();
-				try {
-					await webgpuApp.init({
-						...baseOptions,
-						preference: "webgpu",
-					});
-					return { app: webgpuApp, backend: "webgpu" };
-				} catch (error) {
-					lastError = error;
-					console.warn(
-						"[FrameRenderer] WebGPU export renderer unavailable; trying next backend:",
-						error,
-					);
-					webgpuApp.destroy(true);
-				}
+			if (backend === "webgpu" && !(typeof navigator !== "undefined" && "gpu" in navigator)) {
+				failures.push({
+					backend,
+					message: "WebGPU runtime is unavailable in this environment.",
+				});
 				continue;
 			}
 
-			const webglApp = new Application();
+			const app = new Application();
+			const initStarted = typeof performance === "undefined" ? Date.now() : performance.now();
 			try {
-				await webglApp.init({
-					...baseOptions,
-					preference: "webgl",
-				});
-				return { app: webglApp, backend: "webgl" };
+				await initApplicationWithTimeout(
+					app,
+					{
+						...baseOptions,
+						preference: backend,
+					},
+					backend,
+				);
+				const elapsed = Math.round(
+					(typeof performance === "undefined" ? Date.now() : performance.now()) - initStarted,
+				);
+				if (isCanvasRenderer(app)) {
+					throw new Error(
+						`Renderer initialized with unsupported fallback backend after ${elapsed}ms: ${app.renderer.constructor?.name ?? "unknown"}`,
+					);
+				}
+				return { app, backend };
 			} catch (error) {
-				lastError = error;
+				const elapsed = Math.round(
+					(typeof performance === "undefined" ? Date.now() : performance.now()) - initStarted,
+				);
+				failures.push({
+					backend,
+					message: `${toErrorMessage(error)} (after ${elapsed}ms)`,
+				});
+				const rendererMessage = isKnownRendererUnavailableError(error)
+					? "renderer backend unavailable in this runtime"
+					: "renderer init failed";
 				console.warn(
-					"[FrameRenderer] WebGL export renderer unavailable; trying next backend:",
+					`[FrameRenderer] ${backend} export renderer unavailable (${rendererMessage}) after ${elapsed}ms; trying next backend:`,
 					error,
 				);
-				webglApp.destroy(true);
+				app.destroy(true);
 			}
 		}
 
-		throw lastError instanceof Error
-			? lastError
-			: new Error("No supported Pixi export renderer was available");
+		throw new Error(summarizeRendererAttempts(failures));
 	}
 
 	private createShadowLayers(

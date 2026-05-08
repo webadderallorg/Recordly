@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { RECORDING_SESSION_MANIFEST_SUFFIX } from "../constants";
 import type { RecordingSessionData, RecordingSessionManifest } from "../types";
-import { normalizeVideoSourcePath } from "../utils";
+import { normalizeVideoSourcePath, parseJsonWithByteOrderMark } from "../utils";
 
 function normalizeRecordingTimeOffsetMs(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : 0;
@@ -51,7 +51,8 @@ export async function resolveRecordingSessionManifest(
 
 	try {
 		const content = await fs.readFile(manifestPath, "utf-8");
-		const parsed = JSON.parse(content) as Partial<RecordingSessionManifest>;
+		const parsed =
+			parseJsonWithByteOrderMark<Partial<RecordingSessionManifest>>(content);
 		if (parsed.version !== 1 && parsed.version !== 2) {
 			return null;
 		}

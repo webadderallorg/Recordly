@@ -8,9 +8,7 @@ import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import {
 	appendSyncedAudioFilter,
 	applyRecordedAudioStartDelay,
-	buildPausedAudioFilter,
 	getAudioSyncAdjustment,
-	normalizePauseSegments,
 } from "../ffmpeg/filters";
 import { getWindowsCaptureExePath } from "../paths/binaries";
 import {
@@ -23,19 +21,51 @@ import {
 	windowsCaptureTargetPath,
 	windowsNativeCaptureActive,
 } from "../state";
-import type { AudioSyncAdjustment, PauseSegment } from "../types";
+import type { AudioSyncAdjustment } from "../types";
 import { moveFileWithOverwrite } from "../utils";
 import {
+	RECORDING_AUDIO_SIDECAR_DEBUG_ENV,
+	shouldKeepRecordingAudioSidecars,
+	WINDOWS_NATIVE_MIC_PRE_FILTERS,
+} from "./audioFilters";
+import {
 	getCompanionAudioStartDelayMs,
+	getRecordingAudioMuxTimeoutMs,
 	probeMediaDurationSeconds,
+	probeVideoStreamDurationSeconds,
 	validateRecordedVideo,
 } from "./diagnostics";
 import { emitRecordingInterrupted } from "./events";
 
 const execFileAsync = promisify(execFile);
-// Match the browser path's "usable speech level" intent with a standard
-// loudness pass on native Windows mic audio instead of a fixed tiny boost.
-const WINDOWS_NATIVE_MIC_PRE_FILTERS = ["loudnorm=I=-16:TP=-1.5:LRA=11"];
+const MIN_NATIVE_WINDOWS_VIDEO_PAD_MS = 500;
+
+export type NativeWindowsVideoPaddingResult = {
+	padded: boolean;
+	durationSeconds: number;
+	containerDurationSeconds: number;
+	targetDurationSeconds: number;
+	padDurationSeconds: number;
+};
+
+export type NativeWindowsAudioMuxResult = {
+	muxed: boolean;
+	videoDurationSeconds: number;
+	muxTimeoutMs: number;
+	audioInputs: string[];
+	audio: Record<
+		string,
+		{
+			path: string;
+			sizeBytes: number;
+			durationSeconds: number;
+			startDelayMs: number | null;
+			adjustment: AudioSyncAdjustment;
+		}
+	>;
+	outputPath?: string;
+	keptAudioSidecars: boolean;
+};
 
 export async function isNativeWindowsCaptureAvailable(): Promise<boolean> {
 	if (process.platform !== "win32") return false;
@@ -160,16 +190,100 @@ export function attachWindowsCaptureLifecycle(proc: ChildProcessWithoutNullStrea
 	});
 }
 
+export async function extendNativeWindowsVideoToDuration(
+	videoPath: string,
+	targetDurationMs: number | null | undefined,
+): Promise<NativeWindowsVideoPaddingResult> {
+	if (!Number.isFinite(targetDurationMs) || (targetDurationMs ?? 0) <= 0) {
+		return {
+			padded: false,
+			durationSeconds: 0,
+			containerDurationSeconds: await probeMediaDurationSeconds(videoPath),
+			targetDurationSeconds: 0,
+			padDurationSeconds: 0,
+		};
+	}
+
+	const containerDurationSeconds = await probeMediaDurationSeconds(videoPath);
+	const currentDurationSeconds = await probeVideoStreamDurationSeconds(videoPath);
+	if (currentDurationSeconds <= 0) {
+		return {
+			padded: false,
+			durationSeconds: currentDurationSeconds,
+			containerDurationSeconds,
+			targetDurationSeconds: (targetDurationMs ?? 0) / 1000,
+			padDurationSeconds: 0,
+		};
+	}
+
+	const targetDurationSeconds = (targetDurationMs ?? 0) / 1000;
+	const padDurationSeconds = targetDurationSeconds - currentDurationSeconds;
+	if (padDurationSeconds * 1000 < MIN_NATIVE_WINDOWS_VIDEO_PAD_MS) {
+		return {
+			padded: false,
+			durationSeconds: currentDurationSeconds,
+			containerDurationSeconds,
+			targetDurationSeconds,
+			padDurationSeconds: Math.max(0, padDurationSeconds),
+		};
+	}
+
+	const ffmpegPath = getFfmpegBinaryPath();
+	const paddedOutputPath = `${videoPath}.duration-padded.mp4`;
+
+	try {
+		await execFileAsync(
+			ffmpegPath,
+			[
+				"-y",
+				"-hide_banner",
+				"-nostdin",
+				"-nostats",
+				"-i",
+				videoPath,
+				"-vf",
+				`tpad=stop_mode=clone:stop_duration=${padDurationSeconds.toFixed(3)}`,
+				"-an",
+				"-c:v",
+				"libx264",
+				"-preset",
+				"veryfast",
+				"-crf",
+				"18",
+				"-pix_fmt",
+				"yuv420p",
+				"-movflags",
+				"+faststart",
+				paddedOutputPath,
+			],
+			{ timeout: 300000, maxBuffer: 10 * 1024 * 1024 },
+		);
+		await validateRecordedVideo(paddedOutputPath);
+		await moveFileWithOverwrite(paddedOutputPath, videoPath);
+		return {
+			padded: true,
+			durationSeconds: targetDurationSeconds,
+			containerDurationSeconds,
+			targetDurationSeconds,
+			padDurationSeconds,
+		};
+	} catch (error) {
+		await fs.rm(paddedOutputPath, { force: true }).catch(() => undefined);
+		throw error;
+	}
+}
+
 export async function muxNativeWindowsVideoWithAudio(
 	videoPath: string,
 	systemAudioPath: string | null,
 	micAudioPath: string | null,
-	pauseSegments: PauseSegment[] = [],
-) {
+): Promise<NativeWindowsAudioMuxResult> {
 	const ffmpegPath = getFfmpegBinaryPath();
+	const keepAudioSidecars = shouldKeepRecordingAudioSidecars();
 	const inputs: string[] = ["-i", videoPath];
 	const audioInputs: string[] = [];
 	const audioFilePaths: string[] = [];
+	const audio: NativeWindowsAudioMuxResult["audio"] = {};
 
 	for (const [label, audioPath] of [
 		["system", systemAudioPath],
@@ -180,21 +294,44 @@ export async function muxNativeWindowsVideoWithAudio(
 			const stat = await fs.stat(audioPath);
 			if (stat.size <= 0) {
 				console.warn(`[mux-win] Skipping ${label} audio: file is empty (${audioPath})`);
-				await fs.rm(audioPath, { force: true }).catch(() => undefined);
+				if (!keepAudioSidecars) {
+					await fs.rm(audioPath, { force: true }).catch(() => undefined);
+				}
 				continue;
 			}
 			inputs.push("-i", audioPath);
 			audioInputs.push(label);
 			audioFilePaths.push(audioPath);
+			audio[label] = {
+				path: audioPath,
+				sizeBytes: stat.size,
+				durationSeconds: 0,
+				startDelayMs: null,
+				adjustment: {
+					mode: "none",
+					delayMs: 0,
+					tempoRatio: 1,
+					durationDeltaMs: 0,
+				},
+			};
 		} catch {
 			console.warn(`[mux-win] Skipping ${label} audio: file not accessible (${audioPath})`);
 		}
 	}
 
-	if (audioInputs.length === 0) return;
-
-	const videoDuration = await probeMediaDurationSeconds(videoPath);
+	const videoDuration = await probeVideoStreamDurationSeconds(videoPath);
+	const muxTimeoutMs = getRecordingAudioMuxTimeoutMs(videoDuration);
 	const audioAdjustments: Map<string, AudioSyncAdjustment> = new Map();
+	if (audioInputs.length === 0) {
+		return {
+			muxed: false,
+			videoDurationSeconds: videoDuration,
+			muxTimeoutMs,
+			audioInputs,
+			audio,
+			keptAudioSidecars: keepAudioSidecars,
+		};
+	}
 
 	if (videoDuration > 0) {
 		for (let i = 0; i < audioFilePaths.length; i++) {
@@ -205,6 +342,12 @@ export async function muxNativeWindowsVideoWithAudio(
 				recordedStartDelayMs,
 			);
 			audioAdjustments.set(audioInputs[i], adjustment);
+			audio[audioInputs[i]] = {
+				...audio[audioInputs[i]],
+				durationSeconds: audioDuration,
+				startDelayMs: recordedStartDelayMs,
+				adjustment,
+			};
 			if (Number.isFinite(recordedStartDelayMs) && adjustment.mode === "delay") {
 				console.log(
 					`[mux-win] ${audioInputs[i]} audio recorded a start delay of ${adjustment.delayMs}ms`,
@@ -230,7 +373,6 @@ export async function muxNativeWindowsVideoWithAudio(
 	}
 
 	const mixedOutputPath = `${videoPath}.muxed.mp4`;
-	const normalizedPauseSegments = normalizePauseSegments(pauseSegments);
 	const systemAdjustment = audioAdjustments.get("system") ?? {
 		mode: "none",
 		delayMs: 0,
@@ -247,29 +389,8 @@ export async function muxNativeWindowsVideoWithAudio(
 	try {
 		if (audioInputs.length === 2) {
 			const filterParts: string[] = [];
-			const systemPauseFilter = buildPausedAudioFilter(
-				"1:a",
-				"system_trimmed",
-				normalizedPauseSegments,
-			);
-			const micPauseFilter = buildPausedAudioFilter(
-				"2:a",
-				"mic_trimmed",
-				normalizedPauseSegments,
-			);
-
-			if (systemPauseFilter) {
-				filterParts.push(systemPauseFilter);
-			}
-			if (micPauseFilter) {
-				filterParts.push(micPauseFilter);
-			}
-
-			const systemLabel = systemPauseFilter ? "[system_trimmed]" : "[1:a]";
-			const micLabel = micPauseFilter ? "[mic_trimmed]" : "[2:a]";
-
-			appendSyncedAudioFilter(filterParts, systemLabel, "s", systemAdjustment);
-			appendSyncedAudioFilter(filterParts, micLabel, "m", micAdjustment, {
+			appendSyncedAudioFilter(filterParts, "[1:a]", "s", systemAdjustment);
+			appendSyncedAudioFilter(filterParts, "[2:a]", "m", micAdjustment, {
 				preFilters: WINDOWS_NATIVE_MIC_PRE_FILTERS,
 			});
 			filterParts.push("[s][m]amix=inputs=2:duration=longest:normalize=0[aout]");
@@ -278,6 +399,9 @@ export async function muxNativeWindowsVideoWithAudio(
 				ffmpegPath,
 				[
 					"-y",
+					"-hide_banner",
+					"-nostdin",
+					"-nostats",
 					...inputs,
 					"-filter_complex",
 					filterParts.join(";"),
@@ -294,14 +418,9 @@ export async function muxNativeWindowsVideoWithAudio(
 					"-shortest",
 					mixedOutputPath,
 				],
-				{ timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
+				{ timeout: muxTimeoutMs, maxBuffer: 20 * 1024 * 1024 },
 			);
 		} else {
-			const pauseFilter = buildPausedAudioFilter(
-				"1:a",
-				"trimmed_audio",
-				normalizedPauseSegments,
-			);
 			const singleAdjustment = audioAdjustments.get(audioInputs[0]) ?? {
 				mode: "none",
 				delayMs: 0,
@@ -309,17 +428,13 @@ export async function muxNativeWindowsVideoWithAudio(
 				durationDeltaMs: 0,
 			};
 
+			const filterParts: string[] = [];
 			// Always route through the filter graph so that aresample=async=1 is
 			// applied.  This corrects progressive clock drift between video and
 			// audio tracks that a simple duration comparison cannot detect.
-			const filterParts: string[] = [];
-			if (pauseFilter) {
-				filterParts.push(pauseFilter);
-			}
-			const srcLabel = pauseFilter ? "[trimmed_audio]" : "[1:a]";
 			appendSyncedAudioFilter(
 				filterParts,
-				srcLabel,
+				"[1:a]",
 				"aout",
 				singleAdjustment,
 				audioInputs[0] === "mic" ? { preFilters: WINDOWS_NATIVE_MIC_PRE_FILTERS } : 1,
@@ -329,6 +444,9 @@ export async function muxNativeWindowsVideoWithAudio(
 				ffmpegPath,
 				[
 					"-y",
+					"-hide_banner",
+					"-nostdin",
+					"-nostats",
 					...inputs,
 					"-filter_complex",
 					filterParts.join(";"),
@@ -345,7 +463,7 @@ export async function muxNativeWindowsVideoWithAudio(
 					"-shortest",
 					mixedOutputPath,
 				],
-				{ timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
+				{ timeout: muxTimeoutMs, maxBuffer: 20 * 1024 * 1024 },
 			);
 		}
 
@@ -356,6 +474,21 @@ export async function muxNativeWindowsVideoWithAudio(
 		throw error;
 	}
 
+	if (keepAudioSidecars) {
+		console.log(
+			`[mux-win] Keeping native audio sidecars because ${RECORDING_AUDIO_SIDECAR_DEBUG_ENV} is enabled`,
+		);
+		return {
+			muxed: true,
+			videoDurationSeconds: videoDuration,
+			muxTimeoutMs,
+			audioInputs,
+			audio,
+			outputPath: videoPath,
+			keptAudioSidecars: true,
+		};
+	}
+
 	for (const audioPath of [systemAudioPath, micAudioPath]) {
 		if (audioPath) {
 			await Promise.all([
@@ -364,4 +497,14 @@ export async function muxNativeWindowsVideoWithAudio(
 			]);
 		}
 	}
+
+	return {
+		muxed: true,
+		videoDurationSeconds: videoDuration,
+		muxTimeoutMs,
+		audioInputs,
+		audio,
+		outputPath: videoPath,
+		keptAudioSidecars: false,
+	};
 }

@@ -146,6 +146,52 @@ interface AnimationState {
 	y: number;
 }
 
+type ExportRenderBackend = "webgl" | "webgpu";
+type PixiRendererAttempt = {
+	backend: ExportRenderBackend;
+	message: string;
+};
+
+const PIXI_RENDERER_INIT_TIMEOUT_MS = 8_000;
+
+function isCanvasRenderer(renderer: Application): boolean {
+	const rendererName = renderer?.renderer?.constructor?.name?.toLowerCase();
+	return Boolean(rendererName && (rendererName.includes("canvasrenderer") || rendererName.includes("canvas")));
+}
+
+function toErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error ?? "Unknown renderer init error");
+}
+
+type PixiInitOptions = Parameters<Application["init"]>[0];
+
+async function initApplicationWithTimeout(
+	app: Application,
+	options: PixiInitOptions,
+	backend: ExportRenderBackend,
+): Promise<void> {
+	const timeoutErrorMessage = `Initialization timed out after ${PIXI_RENDERER_INIT_TIMEOUT_MS}ms for ${backend} renderer`;
+	let timeoutId: ReturnType<typeof setTimeout> | undefined;
+	const timeoutPromise = new Promise<never>((_, reject) => {
+		timeoutId = setTimeout(() => {
+			reject(new Error(timeoutErrorMessage));
+		}, PIXI_RENDERER_INIT_TIMEOUT_MS);
+	});
+
+	try {
+		await Promise.race([app.init(options), timeoutPromise]);
+	} finally {
+		if (timeoutId !== undefined) {
+			clearTimeout(timeoutId);
+		}
+	}
+}
+
+function summarizeRendererAttempts(attempts: readonly PixiRendererAttempt[]): string {
+	const details = attempts.map((attempt) => `${attempt.backend}: ${attempt.message}`).join(" | ");
+	return `No supported Pixi export backend was available. Attempted: ${details}`;
+}
+
 interface VideoTextureSource {
 	resource: VideoFrame | CanvasImageSource;
 	update: () => void;
@@ -264,6 +310,77 @@ export class FrameRenderer {
 		this.cursorFollowCamera = createCursorFollowCameraState();
 	}
 
+	private async createPixiApplication(
+		canvas: HTMLCanvasElement,
+	): Promise<{ app: Application; backend: ExportRenderBackend }> {
+		const baseOptions = {
+			canvas,
+			width: this.config.width,
+			height: this.config.height,
+			backgroundAlpha: 0,
+			antialias: true,
+			failIfMajorPerformanceCaveat: false,
+			resolution: 1,
+			autoDensity: true,
+			autoStart: false,
+			sharedTicker: false,
+			powerPreference: "high-performance" as const,
+		};
+
+		const preferredRenderBackend = this.config.preferredRenderBackend;
+		const backendOrder =
+			preferredRenderBackend === "webgpu"
+				? (["webgpu", "webgl"] as const)
+				: preferredRenderBackend === "webgl"
+					? (["webgl", "webgpu"] as const)
+					: (["webgl", "webgpu"] as const);
+		const failures: PixiRendererAttempt[] = [];
+
+		for (const backend of backendOrder) {
+			if (backend === "webgpu" && !(typeof navigator !== "undefined" && "gpu" in navigator)) {
+				failures.push({
+					backend,
+					message: "WebGPU runtime is unavailable in this environment.",
+				});
+				continue;
+			}
+
+			const app = new Application();
+			const initStarted = typeof performance === "undefined" ? Date.now() : performance.now();
+			try {
+				await initApplicationWithTimeout(
+					app,
+					{
+						...baseOptions,
+						preference: backend,
+					},
+					backend,
+				);
+				const elapsed = Math.round(
+					(typeof performance === "undefined" ? Date.now() : performance.now()) - initStarted,
+				);
+				if (isCanvasRenderer(app)) {
+					throw new Error(
+						`Renderer initialized with unsupported fallback backend after ${elapsed}ms: ${app.renderer.constructor?.name ?? "unknown"}`,
+					);
+				}
+				return { app, backend };
+			} catch (error) {
+				const elapsed = Math.round(
+					(typeof performance === "undefined" ? Date.now() : performance.now()) - initStarted,
+				);
+				failures.push({ backend, message: `${toErrorMessage(error)} (after ${elapsed}ms)` });
+				console.warn(
+					`[FrameRenderer] ${backend} renderer unavailable after ${elapsed}ms; trying next backend.`,
+					error,
+				);
+				app.destroy(true);
+			}
+		}
+
+		throw new Error(summarizeRendererAttempts(failures));
+	}
+
 	async initialize(): Promise<void> {
 		let cursorOverlayEnabled = true;
 		try {
@@ -292,23 +409,9 @@ export class FrameRenderer {
 		}
 
 		// Initialize PixiJS with optimized settings for export performance
-		this.app = new Application();
-		await this.app.init({
-			canvas,
-			width: this.config.width,
-			height: this.config.height,
-			backgroundAlpha: 0,
-			antialias: true,
-			failIfMajorPerformanceCaveat: false,
-			resolution: 1,
-			autoDensity: true,
-			autoStart: false,
-			sharedTicker: false,
-			powerPreference: "high-performance",
-			...(this.config.preferredRenderBackend
-				? { preference: this.config.preferredRenderBackend }
-				: {}),
-		});
+		const { app, backend } = await this.createPixiApplication(canvas);
+		this.app = app;
+		console.log(`[FrameRenderer] Export renderer backend: ${backend}`);
 
 		// Setup containers
 		this.cameraContainer = new Container();

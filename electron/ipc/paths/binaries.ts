@@ -63,12 +63,18 @@ export function resolvePreferredWindowsNativeHelperPath(
 	);
 	const prebundledPath = getPrebundledNativeHelperPath(binaryName);
 
-	if (existsSync(buildOutputPath)) {
-		return buildOutputPath;
+	if (app.isPackaged && existsSync(prebundledPath)) {
+		return prebundledPath;
 	}
 
+	// Source checkouts should run the helper staged in the branch instead of a
+	// stale local CMake build left over from an earlier test run.
 	if (existsSync(prebundledPath)) {
 		return prebundledPath;
+	}
+
+	if (existsSync(buildOutputPath)) {
+		return buildOutputPath;
 	}
 
 	return buildOutputPath;

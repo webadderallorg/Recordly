@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+	createProcessedMicrophoneConstraints,
+	normalizeBrowserMicrophoneProfile,
+} from "./useScreenRecorder";
+
 type RecordingState = "inactive" | "recording" | "paused";
 
 function createMockMediaRecorder(initialState: RecordingState = "inactive") {
@@ -14,6 +19,7 @@ function createMockMediaRecorder(initialState: RecordingState = "inactive") {
 		resume: vi.fn(() => {
 			if (_state === "paused") _state = "recording";
 		}),
+		requestData: vi.fn(),
 		stop: vi.fn(() => {
 			_state = "inactive";
 		}),
@@ -22,6 +28,85 @@ function createMockMediaRecorder(initialState: RecordingState = "inactive") {
 		}),
 	};
 }
+
+describe("createProcessedMicrophoneConstraints", () => {
+	it("requests browser voice processing without AGC for the default microphone", () => {
+		expect(createProcessedMicrophoneConstraints()).toEqual({
+			audio: {
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: false,
+				channelCount: { ideal: 1 },
+				sampleRate: { ideal: 48000 },
+			},
+			video: false,
+		});
+	});
+
+	it("keeps no-AGC voice processing when a specific microphone is selected", () => {
+		expect(createProcessedMicrophoneConstraints("device-123")).toMatchObject({
+			audio: {
+				deviceId: { exact: "device-123" },
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: false,
+				channelCount: { ideal: 1 },
+				sampleRate: { ideal: 48000 },
+			},
+			video: false,
+		});
+	});
+
+	it("can request the legacy browser processed profile for lab comparisons", () => {
+		expect(createProcessedMicrophoneConstraints(undefined, "processed")).toMatchObject({
+			audio: {
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: true,
+			},
+			video: false,
+		});
+	});
+
+	it("can disable AGC for lab comparisons", () => {
+		expect(createProcessedMicrophoneConstraints(undefined, "no-agc")).toMatchObject({
+			audio: {
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: false,
+			},
+			video: false,
+		});
+	});
+
+	it("can disable echo cancellation for lab comparisons", () => {
+		expect(createProcessedMicrophoneConstraints(undefined, "no-echo")).toMatchObject({
+			audio: {
+				echoCancellation: false,
+				noiseSuppression: true,
+				autoGainControl: true,
+			},
+			video: false,
+		});
+	});
+
+	it("can request a raw browser microphone stream for lab comparisons", () => {
+		expect(createProcessedMicrophoneConstraints(undefined, "raw")).toMatchObject({
+			audio: {
+				echoCancellation: false,
+				noiseSuppression: false,
+				autoGainControl: false,
+			},
+			video: false,
+		});
+	});
+
+	it("normalizes invalid lab microphone profiles to production no-AGC processing", () => {
+		expect(normalizeBrowserMicrophoneProfile("RAW")).toBe("raw");
+		expect(normalizeBrowserMicrophoneProfile("unknown")).toBe("no-agc");
+		expect(normalizeBrowserMicrophoneProfile(null)).toBe("no-agc");
+	});
+});
 
 function stopRecording(
 	recorder: ReturnType<typeof createMockMediaRecorder>,
@@ -59,11 +144,16 @@ function pauseRecording(
 	paused: boolean,
 	isNativeRecording: boolean,
 	webcamRecorder?: ReturnType<typeof createMockMediaRecorder> | null,
+	micFallbackRecorder?: ReturnType<typeof createMockMediaRecorder> | null,
 ): boolean {
 	if (!recording || paused) return false;
 	if (isNativeRecording) {
 		if (webcamRecorder?.state === "recording") {
 			webcamRecorder.pause();
+		}
+		if (micFallbackRecorder?.state === "recording") {
+			micFallbackRecorder.requestData();
+			micFallbackRecorder.pause();
 		}
 		return true;
 	}
@@ -83,11 +173,15 @@ function resumeRecording(
 	paused: boolean,
 	isNativeRecording: boolean,
 	webcamRecorder?: ReturnType<typeof createMockMediaRecorder> | null,
+	micFallbackRecorder?: ReturnType<typeof createMockMediaRecorder> | null,
 ): boolean {
 	if (!recording || !paused) return false;
 	if (isNativeRecording) {
 		if (webcamRecorder?.state === "paused") {
 			webcamRecorder.resume();
+		}
+		if (micFallbackRecorder?.state === "paused") {
+			micFallbackRecorder.resume();
 		}
 		return true;
 	}
@@ -104,6 +198,7 @@ function resumeRecording(
 async function pauseNativeRecording(
 	webcamRecorder?: ReturnType<typeof createMockMediaRecorder> | null,
 	result: { success: boolean } = { success: true },
+	micFallbackRecorder?: ReturnType<typeof createMockMediaRecorder> | null,
 ): Promise<boolean> {
 	if (!result.success) {
 		return false;
@@ -112,6 +207,10 @@ async function pauseNativeRecording(
 	if (webcamRecorder?.state === "recording") {
 		webcamRecorder.pause();
 	}
+	if (micFallbackRecorder?.state === "recording") {
+		micFallbackRecorder.requestData();
+		micFallbackRecorder.pause();
+	}
 
 	return true;
 }
@@ -119,6 +218,7 @@ async function pauseNativeRecording(
 async function resumeNativeRecording(
 	webcamRecorder?: ReturnType<typeof createMockMediaRecorder> | null,
 	result: { success: boolean } = { success: true },
+	micFallbackRecorder?: ReturnType<typeof createMockMediaRecorder> | null,
 ): Promise<boolean> {
 	if (!result.success) {
 		return false;
@@ -127,8 +227,38 @@ async function resumeNativeRecording(
 	if (webcamRecorder?.state === "paused") {
 		webcamRecorder.resume();
 	}
+	if (micFallbackRecorder?.state === "paused") {
+		micFallbackRecorder.resume();
+	}
 
 	return true;
+}
+
+async function stopNativeRecordingWithCompanions({
+	getRecordingDurationMs,
+	markRecordingResumed,
+	now,
+	stopMicFallbackRecorder,
+	stopNativeScreenRecording,
+	stopWebcamRecorder,
+}: {
+	getRecordingDurationMs: (timestampMs: number) => number;
+	markRecordingResumed: (timestampMs: number) => void;
+	now: () => number;
+	stopMicFallbackRecorder: () => Promise<Blob | null>;
+	stopNativeScreenRecording: () => Promise<{ success: boolean; path?: string }>;
+	stopWebcamRecorder: () => Promise<string | null>;
+}) {
+	const stoppedAtMs = now();
+	markRecordingResumed(stoppedAtMs);
+	const expectedDurationMs = getRecordingDurationMs(stoppedAtMs);
+	const micFallbackBlobPromise = stopMicFallbackRecorder();
+	const webcamPathPromise = stopWebcamRecorder();
+	const result = await stopNativeScreenRecording();
+	const webcamPath = await webcamPathPromise;
+	const micFallbackBlob = await micFallbackBlobPromise;
+
+	return { expectedDurationMs, micFallbackBlob, result, webcamPath };
 }
 
 function cancelRecording(
@@ -297,6 +427,16 @@ describe("useScreenRecorder state machine", () => {
 			expect(webcam.state).toBe("paused");
 		});
 
+		it("pauses browser mic fallback during native recording pause", () => {
+			const micFallback = createMockMediaRecorder("recording");
+
+			const result = pauseRecording(recorder, true, false, true, null, micFallback);
+
+			expect(result).toBe(true);
+			expect(micFallback.requestData).toHaveBeenCalled();
+			expect(micFallback.state).toBe("paused");
+		});
+
 		it("skips webcam pause when webcam is not recording", () => {
 			const webcam = createMockMediaRecorder("inactive");
 
@@ -349,6 +489,16 @@ describe("useScreenRecorder state machine", () => {
 
 			expect(result).toBe(true);
 			expect(webcam.state).toBe("recording");
+		});
+
+		it("resumes browser mic fallback during native recording resume", () => {
+			const micFallback = createMockMediaRecorder("recording");
+			micFallback.pause();
+
+			const result = resumeRecording(recorder, true, true, true, null, micFallback);
+
+			expect(result).toBe(true);
+			expect(micFallback.state).toBe("recording");
 		});
 
 		it("skips webcam resume when webcam is not paused", () => {
@@ -462,26 +612,92 @@ describe("useScreenRecorder state machine", () => {
 
 		it("native recording pauses webcam only after native pause succeeds", async () => {
 			const webcam = createMockMediaRecorder("recording");
+			const micFallback = createMockMediaRecorder("recording");
 
-			const pausedResult = await pauseNativeRecording(webcam);
+			const pausedResult = await pauseNativeRecording(webcam, { success: true }, micFallback);
 			expect(pausedResult).toBe(true);
 			expect(webcam.state).toBe("paused");
+			expect(micFallback.requestData).toHaveBeenCalled();
+			expect(micFallback.state).toBe("paused");
 			expect(recorder.pause).not.toHaveBeenCalled();
 
-			const resumedResult = await resumeNativeRecording(webcam);
+			const resumedResult = await resumeNativeRecording(
+				webcam,
+				{ success: true },
+				micFallback,
+			);
 			expect(resumedResult).toBe(true);
 			expect(webcam.state).toBe("recording");
+			expect(micFallback.state).toBe("recording");
 			expect(recorder.resume).not.toHaveBeenCalled();
 		});
 
 		it("native recording leaves webcam state alone when native pause fails", async () => {
 			const webcam = createMockMediaRecorder("recording");
+			const micFallback = createMockMediaRecorder("recording");
 
-			const pausedResult = await pauseNativeRecording(webcam, { success: false });
+			const pausedResult = await pauseNativeRecording(
+				webcam,
+				{ success: false },
+				micFallback,
+			);
 
 			expect(pausedResult).toBe(false);
 			expect(webcam.state).toBe("recording");
 			expect(webcam.pause).not.toHaveBeenCalled();
+			expect(micFallback.state).toBe("recording");
+			expect(micFallback.pause).not.toHaveBeenCalled();
+		});
+
+		it("stops native capture before awaiting webcam finalization", async () => {
+			const callOrder: string[] = [];
+			let resolveWebcam: (path: string | null) => void = () => {};
+			const webcamPathPromise = new Promise<string | null>((resolve) => {
+				resolveWebcam = resolve;
+			});
+			const stopWebcamRecorder = vi.fn(() => {
+				callOrder.push("stop-webcam-started");
+				return webcamPathPromise;
+			});
+			const stopNativeScreenRecording = vi.fn(async () => {
+				callOrder.push("stop-native");
+				return { success: true, path: "screen.mp4" };
+			});
+			const markRecordingResumed = vi.fn((timestampMs: number) => {
+				callOrder.push(`mark-resumed-${timestampMs}`);
+			});
+			const getRecordingDurationMs = vi.fn((timestampMs: number) => {
+				callOrder.push(`duration-${timestampMs}`);
+				return 35000;
+			});
+
+			let finalized = false;
+			const stopped = stopNativeRecordingWithCompanions({
+				getRecordingDurationMs,
+				markRecordingResumed,
+				now: () => 123456,
+				stopMicFallbackRecorder: vi.fn(async () => null),
+				stopNativeScreenRecording,
+				stopWebcamRecorder,
+			}).then((result) => {
+				finalized = true;
+				return result;
+			});
+
+			await Promise.resolve();
+			expect(callOrder).toEqual([
+				"mark-resumed-123456",
+				"duration-123456",
+				"stop-webcam-started",
+				"stop-native",
+			]);
+			expect(finalized).toBe(false);
+
+			resolveWebcam("webcam.webm");
+			await expect(stopped).resolves.toMatchObject({
+				expectedDurationMs: 35000,
+				webcamPath: "webcam.webm",
+			});
 		});
 
 		it("cancel discards both screen and webcam recordings", () => {

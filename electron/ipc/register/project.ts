@@ -1,45 +1,46 @@
-import { constants as fsConstants } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { dialog, ipcMain, shell } from "electron";
 import { RECORDINGS_DIR } from "../../appPaths";
 import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
 import {
-	PROJECT_FILE_EXTENSION,
 	LEGACY_PROJECT_FILE_EXTENSIONS,
+	PROJECT_FILE_EXTENSION,
 } from "../constants";
-import {
-	currentProjectPath,
-	setCurrentProjectPath,
-	currentVideoPath,
-	setCurrentVideoPath,
-	currentRecordingSession,
-	setCurrentRecordingSession,
-} from "../state";
 import {
 	getProjectsDir,
   getProjectThumbnailPath,
 	isPathInsideDirectory,
 	isTrustedProjectPath,
 	listProjectLibraryEntries,
-  loadRecentProjectPaths,
 	loadProjectFromPath,
+  loadRecentProjectPaths,
 	persistRecordingsDirectorySetting,
+	rememberRecentProject,
 	replaceApprovedSessionLocalReadPaths,
 	resolveApprovedLocalMediaPath,
-	rememberRecentProject,
-  saveRecentProjectPaths,
 	saveProjectThumbnail,
+  saveRecentProjectPaths,
 } from "../project/manager";
+import { persistRecordingSessionManifest, resolveRecordingSession } from "../project/session";
 import {
+	currentProjectPath,
+	currentRecordingSession,
+	currentVideoPath,
+	setCurrentProjectPath,
+	setCurrentRecordingSession,
+	setCurrentVideoPath,
+} from "../state";
+import {
+	approveUserPath,
+	getRecordingsDir,
 	getTelemetryPathForVideo,
 	isAutoRecordingPath,
-	getRecordingsDir,
-	approveUserPath,
 	normalizeVideoSourcePath,
+	parseJsonWithByteOrderMark,
 } from "../utils";
-import { persistRecordingSessionManifest, resolveRecordingSession } from "../project/session";
 
 function normalizeRecordingTimeOffsetMs(value: unknown): number {
 	return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : 0;
@@ -162,7 +163,7 @@ async function ensureNamedProjectSaveDoesNotOverwriteDifferentProject(
 
   try {
     const existingProjectRaw = await fs.readFile(targetProjectPath, "utf-8");
-    const existingProjectData = JSON.parse(existingProjectRaw) as unknown;
+    const existingProjectData = parseJsonWithByteOrderMark(existingProjectRaw);
     const existingProjectId = getProjectId(existingProjectData);
     const existingVideoPath = getProjectVideoPath(existingProjectData);
 
@@ -619,7 +620,7 @@ export function registerProjectHandlers() {
       await fs.unlink(resolvedPath);
       // Also delete the cursor telemetry sidecar if it exists
       const telemetryPath = getTelemetryPathForVideo(resolvedPath);
-      await fs.unlink(telemetryPath).catch(() => {});
+      await fs.unlink(telemetryPath).catch(() => undefined);
 			const currentResolved = currentVideoPath
 				? await fs.realpath(currentVideoPath).catch(() => currentVideoPath)
 				: null;
