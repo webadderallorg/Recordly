@@ -47,13 +47,17 @@ describe("local media path policy", () => {
 		}
 	});
 
-	it("allows existing exported media files outside the session directories", async () => {
+	it("rejects existing media files outside allowed directories until they are approved", async () => {
 		const downloadsPath = path.join(tempRoot, "Downloads");
 		const exportPath = path.join(downloadsPath, "export-test.mp4");
 		await fs.mkdir(downloadsPath, { recursive: true });
 		await fs.writeFile(exportPath, "test-video");
 
-		const { isAllowedLocalMediaPath } = await import("./manager");
+		const { isAllowedLocalMediaPath, rememberApprovedLocalReadPath } = await import("./manager");
+
+		await expect(isAllowedLocalMediaPath(exportPath)).resolves.toBe(false);
+
+		await rememberApprovedLocalReadPath(exportPath);
 
 		await expect(isAllowedLocalMediaPath(exportPath)).resolves.toBe(true);
 	});
@@ -74,17 +78,25 @@ describe("local media path policy", () => {
 		await expect(isAllowedLocalMediaPath(pendingExportPath)).resolves.toBe(true);
 	});
 
-	it("approves media-server access for existing external files resolved through the URL policy", async () => {
+	it("approves media-server access for approved external files resolved through the URL policy", async () => {
 		const downloadsPath = path.join(tempRoot, "Downloads");
 		const videoPath = path.join(downloadsPath, "external-video.mp4");
 		await fs.mkdir(downloadsPath, { recursive: true });
 		await fs.writeFile(videoPath, "test-video");
 		const resolvedVideoPath = await fs.realpath(videoPath);
 
-		const { resolveApprovedLocalMediaPath } = await import("./manager");
+		const { resolveApprovedLocalMediaPath, rememberApprovedLocalReadPath } = await import(
+			"./manager"
+		);
 		const { isAllowedMediaPath } = await import("../../mediaServer");
 
+		// Unapproved external paths are rejected before they ever reach the media server.
 		expect(isAllowedMediaPath(videoPath)).toBe(false);
+		await expect(resolveApprovedLocalMediaPath(videoPath)).resolves.toBeNull();
+
+		// Once the user opts in (via dialog/export/etc.) the path is approved.
+		await rememberApprovedLocalReadPath(videoPath);
+
 		await expect(resolveApprovedLocalMediaPath(videoPath)).resolves.toBe(resolvedVideoPath);
 		expect(isAllowedMediaPath(videoPath)).toBe(true);
 	});
@@ -100,6 +112,29 @@ describe("local media path policy", () => {
 
 		await expect(resolveApprovedLocalMediaPath(textPath)).resolves.toBeNull();
 		expect(isAllowedMediaPath(textPath)).toBe(false);
+	});
+
+	it("rejects symlinks under allowed prefixes that point outside the allowlist", async () => {
+		const outsideTarget = path.join(tempRoot, "outside-secret.mp4");
+		const symlinkInsideUserData = path.join(userDataPath, "shortcut-to-secret.mp4");
+		await fs.writeFile(outsideTarget, "secret-bytes");
+
+		try {
+			await fs.symlink(outsideTarget, symlinkInsideUserData);
+		} catch (error) {
+			// Windows requires Developer Mode or admin to create file symlinks. If
+			// we can't create one, the bypass we're guarding against also can't be
+			// crafted on this machine, so skipping is safe.
+			if ((error as NodeJS.ErrnoException).code === "EPERM") {
+				return;
+			}
+			throw error;
+		}
+
+		const { isAllowedLocalMediaPath, resolveApprovedLocalMediaPath } = await import("./manager");
+
+		await expect(isAllowedLocalMediaPath(symlinkInsideUserData)).resolves.toBe(false);
+		await expect(resolveApprovedLocalMediaPath(symlinkInsideUserData)).resolves.toBeNull();
 	});
 
 	it("preserves an existing project thumbnail when no replacement is provided", async () => {

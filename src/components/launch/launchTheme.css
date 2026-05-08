@@ -1,0 +1,40 @@
+.launch-theme {
+	/* Ultra-Refined Light Mode (Premium OS style) */
+	--launch-surface: #ffffff;
+	--launch-panel: #f8fafc;
+	--launch-border: rgba(0, 0, 0, 0.08);
+	--launch-border-strong: rgba(0, 0, 0, 0.16);
+	--launch-text: #020617; /* Deepest Navy/Black */
+	--launch-text-muted: #475569; /* Slate 600 */
+	--launch-label: #64748b; /* Slate 500 - increased contrast */
+	--launch-hover: rgba(0, 0, 0, 0.045);
+	--launch-selected: rgba(37, 99, 235, 0.12); /* Blue 600 at 12% */
+	--launch-accent: #2563eb; /* Blue 600 */
+	--launch-accent-soft: #f1f5f9; /* Slate 100 */
+	--launch-popover-blur: 40px;
+	--launch-popover-saturate: 200%;
+	--launch-bar-bg: rgba(255, 255, 255, 0.98);
+	--launch-bar-border: rgba(0, 0, 0, 0.08);
+	--launch-bar-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
+
+	color: var(--launch-text);
+}
+
+.dark .launch-theme,
+.launch-theme.dark {
+	/* Dark Mode values */
+	--launch-surface: rgba(18, 18, 24, 0.97);
+	--launch-panel: rgba(18, 18, 24, 0.82);
+	--launch-border: rgba(255, 255, 255, 0.07);
+	--launch-border-strong: rgba(255, 255, 255, 0.12);
+	--launch-text: #f3f6ff;
+	--launch-text-muted: #aab3c7;
+	--launch-label: #8f99b1;
+	--launch-hover: rgba(255, 255, 255, 0.1);
+	--launch-selected: rgba(92, 153, 255, 0.22);
+	--launch-accent: #3d8bff;
+	--launch-accent-soft: #dbeafe;
+	--launch-bar-bg: rgba(18, 18, 24, 0.97);
+	--launch-bar-border: rgba(255, 255, 255, 0.07);
+	--launch-bar-shadow: 0 10px 30px rgba(0, 0, 0, 0.24), 0 2px 10px rgba(0, 0, 0, 0.12);
+}

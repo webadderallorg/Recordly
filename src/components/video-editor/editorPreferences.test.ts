@@ -69,9 +69,14 @@ describe("editorPreferences", () => {
 		expect(DEFAULT_EDITOR_PREFERENCES.exportQuality).toBe("source");
 	});
 
-	it("defaults cursor preferences to macOS at 2.5x", () => {
-		expect(DEFAULT_EDITOR_PREFERENCES.cursorStyle).toBe("macos");
+	it("defaults cursor preferences to Tahoe at 2.5x with lighter sway", () => {
+		expect(DEFAULT_EDITOR_PREFERENCES.cursorStyle).toBe("tahoe");
 		expect(DEFAULT_EDITOR_PREFERENCES.cursorSize).toBe(2.5);
+		expect(DEFAULT_EDITOR_PREFERENCES.cursorSway).toBe(0.25);
+	});
+
+	it("defaults MP4 exports to the Lightning pipeline", () => {
+		expect(DEFAULT_EDITOR_PREFERENCES.exportPipelineModel).toBe("modern");
 	});
 
 	it("loads stored editor control preferences", () => {

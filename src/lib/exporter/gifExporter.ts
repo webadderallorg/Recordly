@@ -262,7 +262,6 @@ export class GifExporter {
 				this.config.speedRegions,
 				async (videoFrame, _exportTimestampUs, sourceTimestampMs, cursorTimestampMs) => {
 					if (this.cancelled) {
-						videoFrame.close();
 						return;
 					}
 
@@ -275,7 +274,6 @@ export class GifExporter {
 						frameDurationUs,
 						frameIndex * frameDurationUs,
 					);
-					videoFrame.close();
 
 					this.addRenderedGifFrame(frameDelay);
 					frameIndex++;

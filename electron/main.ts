@@ -113,6 +113,7 @@ process.env.APP_ROOT = path.join(__dirname, "..");
 export const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 export const MAIN_DIST = path.join(process.env.APP_ROOT, "dist-electron");
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
+const IS_DEV = Boolean(VITE_DEV_SERVER_URL);
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 	? path.join(process.env.APP_ROOT, "public")
@@ -126,9 +127,14 @@ let trayContextMenu: Menu | null = null;
 let selectedSourceName = "";
 let editorHasUnsavedChanges = false;
 let isForceClosing = false;
+let isCreatingMainWindow = false;
+let isCreatingEditorWindow = false;
 let activeUpdateNotification: Notification | null = null;
 let activeUpdateNotificationKey: string | null = null;
-const hasSingleInstanceLock = app.requestSingleInstanceLock();
+const shouldEnforceSingleInstanceLock = !IS_DEV;
+const hasSingleInstanceLock = shouldEnforceSingleInstanceLock
+	? app.requestSingleInstanceLock()
+	: true;
 
 if (!hasSingleInstanceLock) {
 	app.quit();
@@ -166,6 +172,14 @@ function restoreWindowSafely(window: BrowserWindow | null) {
 
 	window.moveTop();
 	window.focus();
+}
+
+function getExistingEditorWindow(): BrowserWindow | null {
+	return (
+		BrowserWindow.getAllWindows().find(
+			(window) => !window.isDestroyed() && isEditorWindow(window),
+		) ?? null
+	);
 }
 
 // Tray Icons (lazily created after app is ready to avoid accessing Electron APIs too early)
@@ -223,7 +237,31 @@ function createWindow() {
 		return;
 	}
 
-	mainWindow = createHudOverlayWindow();
+	if (isCreatingMainWindow) {
+		return;
+	}
+
+	if (mainWindow && !mainWindow.isDestroyed()) {
+		restoreWindowSafely(mainWindow);
+		return;
+	}
+
+	const existingHudWindow = getHudOverlayWindow();
+	if (existingHudWindow) {
+		mainWindow = existingHudWindow;
+		restoreWindowSafely(existingHudWindow);
+		return;
+	}
+
+	isCreatingMainWindow = true;
+	const createdHudWindow = createHudOverlayWindow();
+	mainWindow = createdHudWindow;
+	createdHudWindow.once("closed", () => {
+		if (mainWindow === createdHudWindow) {
+			mainWindow = null;
+		}
+	});
+	isCreatingMainWindow = false;
 }
 
 function focusOrCreateMainWindow() {
@@ -720,6 +758,27 @@ function updateTrayMenu(recording: boolean = false) {
 }
 
 function createEditorWindowWrapper() {
+	const existingEditorWindow = getExistingEditorWindow();
+	if (existingEditorWindow) {
+		mainWindow = existingEditorWindow;
+		restoreWindowSafely(existingEditorWindow);
+		return existingEditorWindow;
+	}
+
+	if (isCreatingEditorWindow) {
+		const currentWindow = mainWindow;
+		if (currentWindow && !currentWindow.isDestroyed()) {
+			return currentWindow;
+		}
+
+		const currentEditorWindow = getExistingEditorWindow();
+		if (currentEditorWindow) {
+			mainWindow = currentEditorWindow;
+			return currentEditorWindow;
+		}
+	}
+
+	isCreatingEditorWindow = true;
 	const previousWindow = mainWindow;
 	if (previousWindow && !previousWindow.isDestroyed()) {
 		const closingEditorWindow = isEditorWindow(previousWindow);
@@ -739,6 +798,7 @@ function createEditorWindowWrapper() {
 		if (mainWindow === editorWindow) {
 			mainWindow = null;
 		}
+		isCreatingEditorWindow = false;
 		isForceClosing = false;
 		editorHasUnsavedChanges = false;
 	});
@@ -771,6 +831,8 @@ function createEditorWindowWrapper() {
 			closeEditorWindowBypassingUnsavedPrompt(editorWindow);
 		}
 	});
+
+	return editorWindow;
 }
 
 function createSourceSelectorWindowWrapper() {

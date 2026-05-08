@@ -22,6 +22,12 @@
 		margin: 0;
 	}
 
+	html.hud-overlay-window,
+	body.hud-overlay-window,
+	#root.hud-overlay-window {
+		overflow: hidden;
+	}
+
 	:root {
 		--app-font-sans: "SF Pro Display", "SF Pro Text", Helvetica, sans-serif;
 		--brand-accent: #2563eb;
@@ -115,7 +121,6 @@
 		--slider-glow: 0 0% 100% / 0.5;
 	}
 }
-
 @layer base {
 	* {
 		@apply border-border;

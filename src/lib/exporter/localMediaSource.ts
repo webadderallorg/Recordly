@@ -60,7 +60,7 @@ function isRemoteMediaResource(resource: string) {
 	return REMOTE_MEDIA_URL_PATTERN.test(resource) && !isLocalMediaServerUrl(resource);
 }
 
-function getNormalizedResourceUrl(resource: string) {
+export function getNormalizedMediaResourceUrl(resource: string) {
 	const localFilePath = getLocalFilePath(resource);
 	if (!localFilePath) {
 		return resource;
@@ -92,6 +92,60 @@ function inferMimeType(filePath: string) {
 	return "application/octet-stream";
 }
 
+export async function resolveMediaResourceUrl(resource: string): Promise<string> {
+	const localFilePath = getLocalFilePath(resource);
+	if (!localFilePath) {
+		return resource;
+	}
+
+	if (isLocalMediaServerUrl(resource)) {
+		return resource;
+	}
+
+	if (typeof window !== "undefined" && window.electronAPI?.getLocalMediaUrl) {
+		try {
+			const result = await window.electronAPI.getLocalMediaUrl(localFilePath);
+			if (result.success) {
+				return result.url;
+			}
+		} catch {
+			// Fall through to a file URL when the local media server is unavailable.
+		}
+	}
+
+	return /^file:\/\//i.test(resource) ? resource : toFileUrl(localFilePath);
+}
+
+export async function createReadableMediaResourceFile(resource: string): Promise<File> {
+	const localFilePath = getLocalFilePath(resource);
+	const filename = (localFilePath ?? resource).split(/[\\/]/).pop()?.split("?")[0] || "media";
+
+	if (localFilePath && typeof window !== "undefined" && window.electronAPI?.readLocalFile) {
+		const result = await window.electronAPI.readLocalFile(localFilePath);
+		if (!result.success || !result.data) {
+			throw new Error(result.error || "Failed to read local media file");
+		}
+
+		const bytes = result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
+		const arrayBuffer = bytes.buffer.slice(
+			bytes.byteOffset,
+			bytes.byteOffset + bytes.byteLength,
+		) as ArrayBuffer;
+		return new File([arrayBuffer], filename, { type: inferMimeType(filename) });
+	}
+
+	const resourceUrl = await resolveMediaResourceUrl(resource);
+	const response = await fetch(resourceUrl);
+	if (!response.ok) {
+		throw new Error(
+			`Failed to load media resource: ${response.status} ${response.statusText}`,
+		);
+	}
+
+	const blob = await response.blob();
+	return new File([blob], filename, { type: blob.type || inferMimeType(filename) });
+}
+
 export async function resolveMediaElementSource(resource: string): Promise<{
 	src: string;
 	revoke: () => void;
@@ -100,29 +154,8 @@ export async function resolveMediaElementSource(resource: string): Promise<{
 		return { src: resource, revoke: NOOP };
 	}
 
-	const normalizedResource = getNormalizedResourceUrl(resource);
-	const localFilePath = getLocalFilePath(resource) ?? getLocalFilePath(normalizedResource);
-	if (!localFilePath || typeof window === "undefined" || !window.electronAPI?.readLocalFile) {
-		return { src: normalizedResource, revoke: NOOP };
-	}
-
-	try {
-		const result = await window.electronAPI.readLocalFile(localFilePath);
-		if (!result.success || !result.data) {
-			return { src: normalizedResource, revoke: NOOP };
-		}
-
-		const bytes = result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
-		const blob = new Blob([Uint8Array.from(bytes)], { type: inferMimeType(localFilePath) });
-		const objectUrl = URL.createObjectURL(blob);
-
-		return {
-			src: objectUrl,
-			revoke: () => {
-				URL.revokeObjectURL(objectUrl);
-			},
-		};
-	} catch {
-		return { src: normalizedResource, revoke: NOOP };
-	}
+	return {
+		src: await resolveMediaResourceUrl(resource),
+		revoke: NOOP,
+	};
 }

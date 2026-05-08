@@ -51,7 +51,7 @@ export interface CursorVisualSettings {
 }
 
 export type CursorStyle = "macos" | "tahoe" | "tahoe-inverted" | "dot" | "figma" | (string & {}); // extension-contributed cursor styles
-export const DEFAULT_CURSOR_STYLE: CursorStyle = "macos";
+export const DEFAULT_CURSOR_STYLE: CursorStyle = "tahoe";
 
 export type EditorEffectSection =
 	| "scene"
@@ -100,7 +100,7 @@ export const DEFAULT_CURSOR_SMOOTHING = 0.67;
 export const DEFAULT_CURSOR_MOTION_BLUR = 0.4;
 export const DEFAULT_CURSOR_CLICK_BOUNCE = 2.5;
 export const DEFAULT_CURSOR_CLICK_BOUNCE_DURATION = 350;
-export const DEFAULT_CURSOR_SWAY = 0.4;
+export const DEFAULT_CURSOR_SWAY = 0.25;
 export const DEFAULT_ZOOM_SMOOTHNESS = 0.5;
 export const DEFAULT_ZOOM_MOTION_BLUR = 0.35;
 export interface ZoomMotionBlurTuning {

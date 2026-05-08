@@ -284,7 +284,6 @@ export class VideoExporter {
 				this.config.speedRegions,
 				async (videoFrame, _exportTimestampUs, sourceTimestampMs, cursorTimestampMs) => {
 					if (this.cancelled) {
-						videoFrame.close();
 						return;
 					}
 
@@ -298,7 +297,6 @@ export class VideoExporter {
 						frameDuration,
 						timestamp,
 					);
-					videoFrame.close();
 
 					if (useNativeEncoder) {
 						await this.encodeRenderedFrameNative(timestamp, frameDuration, frameIndex);

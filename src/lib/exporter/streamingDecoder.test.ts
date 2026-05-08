@@ -5,35 +5,107 @@ import {
 	StreamingVideoDecoder,
 } from "./streamingDecoder";
 
+const {
+	mockDemuxerLoad,
+	mockDemuxerGetMediaInfo,
+	mockDemuxerDestroy,
+	mockDemuxerGetDecoderConfig,
+} = vi.hoisted(() => ({
+	mockDemuxerLoad: vi.fn(),
+	mockDemuxerGetMediaInfo: vi.fn(async () => ({
+		duration: 4,
+		start_time: 0,
+		streams: [
+			{
+				codec_type_string: "video",
+				width: 1920,
+				height: 1080,
+				avg_frame_rate: "30/1",
+				codec_string: "avc1.640034",
+				start_time: 0,
+				duration: 4,
+			},
+		],
+	})),
+	mockDemuxerDestroy: vi.fn(),
+	mockDemuxerGetDecoderConfig: vi.fn(),
+}));
+
+vi.mock("web-demuxer", () => ({
+	WebDemuxer: class MockWebDemuxer {
+		load = mockDemuxerLoad;
+		getMediaInfo = mockDemuxerGetMediaInfo;
+		destroy = mockDemuxerDestroy;
+		getDecoderConfig = mockDemuxerGetDecoderConfig;
+	},
+}));
+
 describe("StreamingVideoDecoder local media loading", () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
+		mockDemuxerLoad.mockReset();
+		mockDemuxerGetMediaInfo.mockClear();
+		mockDemuxerDestroy.mockClear();
+		mockDemuxerGetDecoderConfig.mockClear();
 		Object.assign(globalThis, {
 			window: {
+				location: {
+					href: "http://localhost:5173/",
+				},
 				electronAPI: {
 					readLocalFile: vi.fn(),
+					getLocalMediaUrl: vi.fn(async (filePath: string) => ({
+						success: true,
+						url: `http://127.0.0.1:4321/video?path=${encodeURIComponent(filePath)}`,
+					})),
 				},
 			},
 		});
 	});
 
-	it("loads loopback media-server URLs through Electron IPC instead of fetch", async () => {
-		const readLocalFile = vi.fn(async () => ({
+	it("loads loopback media-server URLs directly into WebDemuxer", async () => {
+		const decoder = new StreamingVideoDecoder();
+		await decoder.loadMetadata("http://127.0.0.1:43123/video?path=%2Ftmp%2Fcapture.mp4");
+
+		expect((window as any).electronAPI.readLocalFile).not.toHaveBeenCalled();
+		expect(mockDemuxerLoad).toHaveBeenCalledWith(
+			"http://127.0.0.1:43123/video?path=%2Ftmp%2Fcapture.mp4",
+		);
+	});
+
+	it("normalizes absolute local paths to file URLs before loading them", async () => {
+		const decoder = new StreamingVideoDecoder();
+		await decoder.loadMetadata("/tmp/capture.mp4");
+
+		expect((window as any).electronAPI.getLocalMediaUrl).toHaveBeenCalledWith(
+			"/tmp/capture.mp4",
+		);
+		expect(mockDemuxerLoad).toHaveBeenCalledWith(
+			"http://127.0.0.1:4321/video?path=%2Ftmp%2Fcapture.mp4",
+		);
+	});
+
+	it("falls back to a readable File when direct loading fails", async () => {
+		mockDemuxerLoad.mockReset();
+		mockDemuxerLoad
+			.mockRejectedValueOnce(new Error("get_media_info failed: Failed after 3 attempts"))
+			.mockResolvedValueOnce(undefined);
+		(window as any).electronAPI.readLocalFile = vi.fn(async () => ({
 			success: true,
 			data: new Uint8Array([1, 2, 3]),
 		}));
-		(window as any).electronAPI.readLocalFile = readLocalFile;
-		const fetchSpy = vi.fn();
-		vi.stubGlobal("fetch", fetchSpy);
 
 		const decoder = new StreamingVideoDecoder();
-		const file = await (decoder as any).loadVideoFile(
-			"http://127.0.0.1:43123/video?path=%2Ftmp%2Fcapture.mp4",
-		);
+		await decoder.loadMetadata("/tmp/fallback.mp4");
 
-		expect(readLocalFile).toHaveBeenCalledWith("/tmp/capture.mp4");
-		expect(fetchSpy).not.toHaveBeenCalled();
-		expect(file.name).toBe("capture.mp4");
+		expect(mockDemuxerLoad).toHaveBeenNthCalledWith(
+			1,
+			"http://127.0.0.1:4321/video?path=%2Ftmp%2Ffallback.mp4",
+		);
+		expect(mockDemuxerLoad.mock.calls[1]?.[0]).toBeInstanceOf(File);
+		expect((window as any).electronAPI.readLocalFile).toHaveBeenCalledWith(
+			"/tmp/fallback.mp4",
+		);
 	});
 });
 
