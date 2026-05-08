@@ -23,7 +23,7 @@ describe("editedTrackStrategy", () => {
 		).toBe("filtergraph-fast-path");
 	});
 
-	it("falls back when the edited track depends on sidecar sources", () => {
+	it("marks a single external source audio track as a filtergraph candidate", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 2_000, endMs: 10_000, speed: 1.25 },
 		];
@@ -37,7 +37,7 @@ describe("editedTrackStrategy", () => {
 				audioRegions: [],
 				sourceAudioFallbackPaths: ["mic.m4a"],
 			}),
-		).toBe("offline-render-fallback");
+		).toBe("filtergraph-fast-path");
 	});
 
 	it("falls back for multi-source mixes", () => {

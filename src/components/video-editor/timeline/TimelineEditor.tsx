@@ -585,7 +585,7 @@ function ClipMarkerOverlay({ videoDurationMs }: { videoDurationMs: number }) {
 						bottom: "7.5%",
 						[sideProperty]: `${offset}px`,
 						background:
-							"linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.10) 35%, rgba(255,255,255,0.10) 65%, transparent 100%)",
+							"linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.32) 35%, rgba(255,255,255,0.32) 65%, transparent 100%)",
 					}}
 				/>
 			))}
@@ -858,7 +858,6 @@ function Timeline({
 			onMouseMove={handleTimelineMouseMove}
 			onMouseLeave={handleTimelineMouseLeave}
 		>
-			<div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--foreground)/0.03)_1px,transparent_1px)] bg-[length:20px_100%] pointer-events-none" />
 			<TimelineAxis videoDurationMs={videoDurationMs} currentTimeMs={currentTimeMs} />
 			<PlaybackCursor
 				currentTimeMs={currentTimeMs}
@@ -1236,12 +1235,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onSelectAnnotation?.(null);
 			onSelectAudio?.(null);
 			setSelectAllBlocksActive(false);
-		}, [
-			onSelectAnnotation,
-			onSelectAudio,
-			onSelectClip,
-			onSelectZoom,
-		]);
+		}, [onSelectAnnotation, onSelectAudio, onSelectClip, onSelectZoom]);
 
 		const hasAnyTimelineBlocks =
 			zoomRegions.length > 0 ||
@@ -1479,7 +1473,9 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				const activeClip =
 					clipRegions.length === 0
 						? { startMs: 0, endMs: totalMs }
-						: clipRegions.find((clip) => startPos >= clip.startMs && startPos < clip.endMs);
+						: clipRegions.find(
+								(clip) => startPos >= clip.startMs && startPos < clip.endMs,
+							);
 				if (!activeClip) {
 					return false;
 				}
@@ -1487,7 +1483,9 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				const sorted = [...zoomRegions].sort((a, b) => a.startMs - b.startMs);
 				const nextRegion = sorted.find((region) => region.startMs > startPos);
 				const gapToNextClipEdge = activeClip.endMs - startPos;
-				const gapToNextRegion = nextRegion ? nextRegion.startMs - startPos : gapToNextClipEdge;
+				const gapToNextRegion = nextRegion
+					? nextRegion.startMs - startPos
+					: gapToNextClipEdge;
 				const availableDuration = Math.min(gapToNextClipEdge, gapToNextRegion);
 
 				const isOverlapping = sorted.some(

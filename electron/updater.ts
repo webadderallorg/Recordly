@@ -9,8 +9,6 @@ const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export const UPDATE_REMINDER_DELAY_MS = 3 * 60 * 60 * 1000;
 const DISMISSED_READY_REMINDER_DELAY_MS = 5 * 60 * 1000;
 const AUTO_UPDATES_DISABLED = process.env.RECORDLY_DISABLE_AUTO_UPDATES === "1";
-const AUTO_UPDATE_ERROR_TOASTS_DISABLED =
-	process.env.RECORDLY_DISABLE_AUTO_UPDATE_ERROR_TOASTS === "1";
 const UPDATE_FEED_URL_OVERRIDE = process.env.RECORDLY_UPDATE_FEED_URL?.trim() ?? "";
 const UPDATER_LOG_PATH =
 	process.env.RECORDLY_UPDATER_LOG_PATH?.trim() || path.join(USER_DATA_PATH, "updater.log");
@@ -75,9 +73,7 @@ let pendingDownloadedVersion: string | null = null;
 let downloadInProgress = false;
 let downloadToastDismissed = false;
 let skippedVersion: string | null = null;
-let updateCheckErrorHandled = false;
 let installAfterDownloadRequested = false;
-let activeUpdateToastSender: UpdateToastSender | undefined;
 let updateStatusSummary: UpdateStatusSummary = {
 	status: "idle",
 	currentVersion: app.getVersion(),
@@ -112,20 +108,6 @@ function writeUpdaterLog(message: string, detail?: unknown) {
 	} catch (logError) {
 		console.error("Failed to write updater log:", logError);
 	}
-}
-
-function createAutoCheckErrorToastPayload(): UpdateToastPayload {
-	return {
-		version: app.getVersion(),
-		phase: "error",
-		detail: "Recordly could not check for updates automatically. Retry now, or inspect updater.log in your user data folder.",
-		delayMs: UPDATE_REMINDER_DELAY_MS,
-		primaryAction: "retry-check",
-	};
-}
-
-function shouldSurfaceAutomaticCheckErrors() {
-	return !AUTO_UPDATE_ERROR_TOASTS_DISABLED;
 }
 
 function configureUpdateFeed() {
@@ -290,15 +272,6 @@ export function getUpdaterLogPath() {
 
 export function getUpdateStatusSummary() {
 	return updateStatusSummary;
-}
-
-async function showUpdateErrorDialog(getMainWindow: () => BrowserWindow | null, error: unknown) {
-	await showMessageBox(getMainWindow, {
-		type: "error",
-		title: "Update Check Failed",
-		message: "Recordly could not check for updates.",
-		detail: String(error),
-	});
 }
 
 function resetDevPreviewState(sendToRenderer?: UpdateToastSender) {
@@ -643,7 +616,6 @@ export async function checkForAppUpdates(
 
 	manualCheckRequested = Boolean(options?.manual);
 	updateCheckInProgress = true;
-	updateCheckErrorHandled = false;
 	setUpdateStatusSummary({ status: "checking", detail: "Checking for updates..." });
 	writeUpdaterLog(`Starting ${manualCheckRequested ? "manual" : "automatic"} update check.`);
 
@@ -652,7 +624,6 @@ export async function checkForAppUpdates(
 		writeUpdaterLog("Update check request completed.");
 	} catch (error) {
 		updateCheckInProgress = false;
-		const shouldReport = manualCheckRequested;
 		manualCheckRequested = false;
 		setUpdateStatusSummary({
 			status: "error",
@@ -661,11 +632,6 @@ export async function checkForAppUpdates(
 		});
 		writeUpdaterLog("Update check failed.", error);
 		console.error("Auto-update check failed:", error);
-		if (shouldReport && !updateCheckErrorHandled) {
-			await showUpdateErrorDialog(getMainWindow, error);
-		} else if (!updateCheckErrorHandled && shouldSurfaceAutomaticCheckErrors()) {
-			emitUpdateToastState(activeUpdateToastSender, createAutoCheckErrorToastPayload());
-		}
 	}
 }
 
@@ -683,7 +649,6 @@ export function setupAutoUpdates(
 	}
 
 	updaterInitialized = true;
-	activeUpdateToastSender = sendToRenderer;
 	configureUpdateFeed();
 	autoUpdater.autoDownload = false;
 	autoUpdater.autoInstallOnAppQuit = false;
@@ -776,11 +741,7 @@ export function setupAutoUpdates(
 
 	autoUpdater.on("error", (error) => {
 		updateCheckInProgress = false;
-		const shouldReport = manualCheckRequested;
 		manualCheckRequested = false;
-		if (!downloadInProgress) {
-			updateCheckErrorHandled = true;
-		}
 		setUpdateStatusSummary({
 			status: "error",
 			availableVersion,
@@ -796,11 +757,6 @@ export function setupAutoUpdates(
 				sendToRenderer,
 				createUpdateErrorToastPayload(availableVersion, error),
 			);
-		}
-		if (shouldReport) {
-			void showUpdateErrorDialog(getMainWindow, error);
-		} else if (shouldSurfaceAutomaticCheckErrors()) {
-			emitUpdateToastState(sendToRenderer, createAutoCheckErrorToastPayload());
 		}
 	});
 

@@ -43,6 +43,26 @@ type CursorPackSource = {
 	pointerAnchor: { x: number; y: number };
 };
 
+export type NativeCursorAtlasEntry = {
+	cursorType: CursorAssetKey;
+	index: number;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	anchorX: number;
+	anchorY: number;
+	aspectRatio: number;
+};
+
+export type NativeCursorAtlas = {
+	style: CursorStyle;
+	width: number;
+	height: number;
+	dataUrl: string;
+	entries: NativeCursorAtlasEntry[];
+};
+
 /**
  * Configuration for cursor rendering.
  */
@@ -103,6 +123,8 @@ const CURSOR_SHADOW_OFFSET_X = 0;
 const CURSOR_SHADOW_OFFSET_Y = 2;
 const CURSOR_SHADOW_BLUR = 3;
 const CURSOR_SHADOW_PADDING = 12;
+const NATIVE_CURSOR_ATLAS_DRAW_HEIGHT = 256;
+const NATIVE_CURSOR_ATLAS_PADDING = 2;
 let cursorAssetsPromise: Promise<void> | null = null;
 let cursorPackAssetsPromise: Promise<void> | null = null;
 let loadedCursorPackSourcesSignature = "";
@@ -525,6 +547,77 @@ export async function preloadCursorAssets() {
 
 	await cursorAssetsPromise;
 	await ensureCursorPackAssetsLoaded();
+}
+
+function getNativeCursorAtlasAsset(style: CursorStyle, key: CursorAssetKey) {
+	if (isStatefulCursorStyle(style)) {
+		return getStatefulCursorAsset(style, key);
+	}
+
+	if (isSingleCursorStyle(style)) {
+		return getCursorStyleAsset(style);
+	}
+
+	return getCursorPackStyleAsset(style, key);
+}
+
+export async function buildNativeCursorAtlas(
+	style: CursorStyle = DEFAULT_CURSOR_STYLE,
+): Promise<NativeCursorAtlas | null> {
+	if (typeof document === "undefined") {
+		return null;
+	}
+
+	await preloadCursorAssets();
+
+	const entries: NativeCursorAtlasEntry[] = [];
+	const packedAssets = SUPPORTED_CURSOR_KEYS.map((key, index) => {
+		const asset = getNativeCursorAtlasAsset(style, key);
+		const height = NATIVE_CURSOR_ATLAS_DRAW_HEIGHT;
+		const width = Math.max(1, Math.round(height * asset.aspectRatio));
+		return { key, index, asset, width, height };
+	});
+
+	const atlasWidth = packedAssets.reduce(
+		(total, item) => total + item.width + NATIVE_CURSOR_ATLAS_PADDING,
+		NATIVE_CURSOR_ATLAS_PADDING,
+	);
+	const atlasHeight = NATIVE_CURSOR_ATLAS_DRAW_HEIGHT + NATIVE_CURSOR_ATLAS_PADDING * 2;
+	const canvas = document.createElement("canvas");
+	canvas.width = atlasWidth;
+	canvas.height = atlasHeight;
+
+	const ctx = canvas.getContext("2d");
+	if (!ctx) {
+		return null;
+	}
+
+	ctx.clearRect(0, 0, atlasWidth, atlasHeight);
+	let x = NATIVE_CURSOR_ATLAS_PADDING;
+	for (const { key, index, asset, width, height } of packedAssets) {
+		const y = NATIVE_CURSOR_ATLAS_PADDING;
+		ctx.drawImage(asset.image, x, y, width, height);
+		entries.push({
+			cursorType: key,
+			index,
+			x,
+			y,
+			width,
+			height,
+			anchorX: asset.anchorX,
+			anchorY: asset.anchorY,
+			aspectRatio: asset.aspectRatio,
+		});
+		x += width + NATIVE_CURSOR_ATLAS_PADDING;
+	}
+
+	return {
+		style,
+		width: atlasWidth,
+		height: atlasHeight,
+		dataUrl: canvas.toDataURL("image/png"),
+		entries,
+	};
 }
 
 /**

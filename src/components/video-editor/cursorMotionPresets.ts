@@ -18,6 +18,19 @@ export interface CursorMotionPreset {
 	cursorClickBounceDuration: number;
 }
 
+export interface CursorMotionPresetSelectionInput {
+	zoomInDurationMs: number;
+	zoomOutDurationMs: number;
+	cursorSize: number;
+	cursorSmoothing: number;
+	cursorSpringStiffnessMultiplier: number;
+	cursorSpringDampingMultiplier: number;
+	cursorSpringMassMultiplier: number;
+	cursorMotionBlur: number;
+	cursorClickBounce: number;
+	cursorClickBounceDuration: number;
+}
+
 const SHARED_CURSOR_PRESET_VALUES = {
 	cursorSize: 2.5,
 	cursorSmoothing: 0.67,
@@ -49,3 +62,34 @@ export const CURSOR_MOTION_PRESETS: Record<CursorMotionPresetId, CursorMotionPre
 		cursorSpringDampingMultiplier: 1.36,
 	},
 };
+
+export function getMatchingCursorMotionPresetId(
+	values: CursorMotionPresetSelectionInput,
+): CursorMotionPresetId | null {
+	for (const presetId of Object.keys(CURSOR_MOTION_PRESETS) as CursorMotionPresetId[]) {
+		const preset = CURSOR_MOTION_PRESETS[presetId];
+		if (
+			preset.zoomInDurationMs === values.zoomInDurationMs &&
+			preset.zoomOutDurationMs === values.zoomOutDurationMs &&
+			preset.cursorSize === values.cursorSize &&
+			preset.cursorSmoothing === values.cursorSmoothing &&
+			preset.cursorSpringStiffnessMultiplier === values.cursorSpringStiffnessMultiplier &&
+			preset.cursorSpringDampingMultiplier === values.cursorSpringDampingMultiplier &&
+			preset.cursorSpringMassMultiplier === values.cursorSpringMassMultiplier &&
+			preset.cursorMotionBlur === values.cursorMotionBlur &&
+			preset.cursorClickBounce === values.cursorClickBounce &&
+			preset.cursorClickBounceDuration === values.cursorClickBounceDuration
+		) {
+			return presetId;
+		}
+	}
+
+	return null;
+}
+
+export function resolveCursorMotionPresetId(
+	values: CursorMotionPresetSelectionInput,
+	fallback: CursorMotionPresetId = "focused",
+): CursorMotionPresetId {
+	return getMatchingCursorMotionPresetId(values) ?? fallback;
+}

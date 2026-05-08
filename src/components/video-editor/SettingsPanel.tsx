@@ -45,7 +45,11 @@ import { useI18n, useScopedT } from "../../contexts/I18nContext";
 import type { AppLocale } from "../../i18n/config";
 import { SUPPORTED_LOCALES } from "../../i18n/config";
 import { AnnotationSettingsPanel } from "./AnnotationSettingsPanel";
-import { CURSOR_MOTION_PRESETS, type CursorMotionPresetId } from "./cursorMotionPresets";
+import {
+	CURSOR_MOTION_PRESETS,
+	type CursorMotionPresetId,
+	getMatchingCursorMotionPresetId,
+} from "./cursorMotionPresets";
 import { loadEditorPreferences, saveEditorPreferences } from "./editorPreferences";
 import { SliderControl } from "./SliderControl";
 import { KeyboardShortcutsDialog } from "./TutorialHelp";
@@ -897,9 +901,9 @@ export function SettingsPanel({
 	onCursorSpringMassMultiplierChange,
 	cameraSpringStiffnessMultiplier = 1,
 	onCameraSpringStiffnessMultiplierChange,
-	cameraSpringDampingMultiplier = 1,
+	cameraSpringDampingMultiplier = 1.13,
 	onCameraSpringDampingMultiplierChange,
-	cameraSpringMassMultiplier = 1,
+	cameraSpringMassMultiplier = 1.12,
 	onCameraSpringMassMultiplierChange,
 	zoomClassicMode = false,
 	onZoomClassicModeChange,
@@ -1513,21 +1517,18 @@ export function SettingsPanel({
 
 	const activeMotionPresetId = useMemo(() => {
 		return (
-			MOTION_PRESET_ORDER.find((presetId) => {
-				const preset = CURSOR_MOTION_PRESETS[presetId];
-				return (
-					preset.zoomInDurationMs === zoomInDurationMs &&
-					preset.zoomOutDurationMs === zoomOutDurationMs &&
-					preset.cursorSize === cursorSize &&
-					preset.cursorSmoothing === cursorSmoothing &&
-					preset.cursorSpringStiffnessMultiplier === cursorSpringStiffnessMultiplier &&
-					preset.cursorSpringDampingMultiplier === cursorSpringDampingMultiplier &&
-					preset.cursorSpringMassMultiplier === cursorSpringMassMultiplier &&
-					preset.cursorMotionBlur === cursorMotionBlur &&
-					preset.cursorClickBounce === cursorClickBounce &&
-					preset.cursorClickBounceDuration === cursorClickBounceDuration
-				);
-			}) ?? null
+			getMatchingCursorMotionPresetId({
+				zoomInDurationMs,
+				zoomOutDurationMs,
+				cursorSize,
+				cursorSmoothing,
+				cursorSpringStiffnessMultiplier,
+				cursorSpringDampingMultiplier,
+				cursorSpringMassMultiplier,
+				cursorMotionBlur,
+				cursorClickBounce,
+				cursorClickBounceDuration,
+			}) ?? "focused"
 		);
 	}, [
 		cursorClickBounce,

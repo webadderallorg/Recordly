@@ -10,27 +10,28 @@ import {
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { appendSyncedAudioFilter, getAudioSyncAdjustment } from "../ffmpeg/filters";
 import {
-	nativeScreenRecordingActive,
-	setNativeScreenRecordingActive,
-	setNativeCaptureProcess,
-	nativeCaptureOutputBuffer,
-	nativeCaptureTargetPath,
-	setNativeCaptureTargetPath,
-	nativeCaptureStopRequested,
-	setNativeCaptureStopRequested,
-	nativeCaptureSystemAudioPath,
-	setNativeCaptureSystemAudioPath,
-	nativeCaptureMicrophonePath,
-	setNativeCaptureMicrophonePath,
 	lastNativeCaptureDiagnostics,
-	setCurrentVideoPath,
-	setCurrentProjectPath,
+	nativeCaptureMicrophonePath,
+	nativeCaptureOutputBuffer,
+	nativeCaptureStopRequested,
+	nativeCaptureSystemAudioPath,
+	nativeCaptureTargetPath,
+	nativeScreenRecordingActive,
 	selectedSource,
+	setCurrentProjectPath,
+	setCurrentVideoPath,
+	setNativeCaptureMicrophonePath,
+	setNativeCaptureProcess,
+	setNativeCaptureStopRequested,
+	setNativeCaptureSystemAudioPath,
+	setNativeCaptureTargetPath,
+	setNativeScreenRecordingActive,
 } from "../state";
 import type { AudioSyncAdjustment } from "../types";
 import { isAutoRecordingPath, moveFileWithOverwrite } from "../utils";
 import {
 	getFileSizeIfPresent,
+	getRecordingAudioMuxTimeoutMs,
 	getUsableCompanionAudioCandidates,
 	probeMediaDurationSeconds,
 	recordNativeCaptureDiagnostics,
@@ -163,6 +164,7 @@ export async function muxNativeMacRecordingWithAudio(
 	}
 
 	const videoDuration = await probeMediaDurationSeconds(videoPath);
+	const muxTimeoutMs = getRecordingAudioMuxTimeoutMs(videoDuration);
 	const audioAdjustments: Map<string, AudioSyncAdjustment> = new Map();
 
 	if (videoDuration > 0) {
@@ -207,6 +209,9 @@ export async function muxNativeMacRecordingWithAudio(
 		filterParts.push("[s][m]amix=inputs=2:duration=longest:normalize=0[aout]");
 		args = [
 			"-y",
+			"-hide_banner",
+			"-nostdin",
+			"-nostats",
 			...inputs,
 			"-filter_complex",
 			filterParts.join(";"),
@@ -234,6 +239,9 @@ export async function muxNativeMacRecordingWithAudio(
 		appendSyncedAudioFilter(filterParts, "[1:a]", "aout", singleAdjustment);
 		args = [
 			"-y",
+			"-hide_banner",
+			"-nostdin",
+			"-nostats",
 			...inputs,
 			"-filter_complex",
 			filterParts.join(";"),
@@ -255,7 +263,10 @@ export async function muxNativeMacRecordingWithAudio(
 	console.log("[mux] Running ffmpeg:", ffmpegPath, args.join(" "));
 
 	try {
-		await execFileAsync(ffmpegPath, args, { timeout: 120000, maxBuffer: 10 * 1024 * 1024 });
+		await execFileAsync(ffmpegPath, args, {
+			timeout: muxTimeoutMs,
+			maxBuffer: 20 * 1024 * 1024,
+		});
 		await validateRecordedVideo(mixedOutputPath);
 	} catch (error) {
 		const execError = error as NodeJS.ErrnoException & { stderr?: string };

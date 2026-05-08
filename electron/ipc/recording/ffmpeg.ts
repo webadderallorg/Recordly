@@ -1,12 +1,12 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { access } from "node:fs/promises";
-import type { SelectedSource } from "../types";
+import fs from "node:fs/promises";
+import { resolveLinuxWindowBounds } from "../cursor/bounds";
 import {
 	ffmpegCaptureOutputBuffer,
 } from "../state";
+import type { SelectedSource } from "../types";
 import { getScreen, parseWindowId } from "../utils";
 import { resolveWindowsCaptureDisplay } from "../windowsCaptureSelection";
-import { resolveLinuxWindowBounds } from "../cursor/bounds";
 
 export function getDisplayBoundsForSource(source: SelectedSource) {
 	return resolveWindowsCaptureDisplay(
@@ -175,7 +175,7 @@ export function waitForFfmpegCaptureStop(process: ChildProcessWithoutNullStreams
 			cleanup();
 
 			try {
-				await access(outputPath);
+				await fs.access(outputPath);
 				if (code === 0 || code === null) {
 					resolve(outputPath);
 					return;

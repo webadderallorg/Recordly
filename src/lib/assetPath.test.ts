@@ -1,5 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getExportableVideoUrl, getRenderableVideoUrl } from "./assetPath";
+import { getExportableVideoUrl, getRenderableAssetUrl, getRenderableVideoUrl } from "./assetPath";
+
+describe("getRenderableAssetUrl", () => {
+	beforeEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("keeps absolute POSIX image paths on the local-file path", async () => {
+		const readLocalFile = vi.fn(async () => ({
+			success: false,
+		}));
+		vi.stubGlobal("window", {
+			electronAPI: {
+				readLocalFile,
+			},
+		});
+
+		await expect(getRenderableAssetUrl("/Users/egg/Desktop/bg.jpg")).resolves.toBe(
+			"file:///Users/egg/Desktop/bg.jpg",
+		);
+		expect(readLocalFile).toHaveBeenCalledWith("/Users/egg/Desktop/bg.jpg");
+	});
+});
 
 describe("getRenderableVideoUrl", () => {
 	beforeEach(() => {

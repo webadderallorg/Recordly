@@ -159,17 +159,30 @@ function getRequiredArchTags() {
 
 function getExpectedNativeHelperFiles(archTag) {
 	if (archTag.startsWith("win32-")) {
-		return [
+		const helpers = [
 			{ name: "wgc-capture.exe", label: "Windows capture helper", executable: true },
 			{
 				name: "cursor-monitor.exe",
 				label: "Windows cursor monitor helper",
 				executable: true,
 			},
+			{
+				name: "recordly-gpu-export.exe",
+				label: "Windows GPU export helper",
+				executable: true,
+			},
 			{ name: "helpers-manifest.json", label: "Windows helper manifest" },
 			{ name: "whisper-cli.exe", label: "Whisper CLI runtime", executable: true },
 			{ name: "whisper-runtime.json", label: "Whisper runtime manifest" },
 		];
+		if (archTag === "win32-x64") {
+			helpers.push({
+				name: "recordly-nvidia-cuda-compositor.exe",
+				label: "NVIDIA CUDA compositor helper",
+				executable: true,
+			});
+		}
+		return helpers;
 	}
 
 	if (archTag.startsWith("darwin-")) {
