@@ -409,6 +409,8 @@ export class FrameRenderer {
 	private webcamLayoutCache: WebcamLayoutCache | null = null;
 	private videoTextureUsesStartupStaging = false;
 	private webcamTextureUsesStartupStaging = false;
+	private retainedSceneSourceFrame: VideoFrame | null = null;
+	private retainedSceneTextureFrame: VideoFrame | null = null;
 	private compositeCanvas: HTMLCanvasElement | null = null;
 	private compositeCtx: CanvasRenderingContext2D | null = null;
 	private lastEmittedClickTimeMs = -1;
@@ -754,15 +756,48 @@ export class FrameRenderer {
 			return false;
 		}
 
-		// Decoder-owned VideoFrames can be closed immediately after renderFrame()
-		// returns. WebGPU texture uploads are not reliably complete by then, so
-		// stage export frames through a stable canvas source instead of letting
-		// Pixi hold the ephemeral VideoFrame directly.
-		if (kind === "scene") {
-			return true;
+		return kind !== "scene" && this.currentVideoTime < VIDEO_FRAME_STARTUP_STAGING_WINDOW_SEC;
+	}
+
+	private closeRetainedSceneTextureFrame(): void {
+		if (!this.retainedSceneTextureFrame) {
+			return;
 		}
 
-		return this.currentVideoTime < VIDEO_FRAME_STARTUP_STAGING_WINDOW_SEC;
+		this.retainedSceneTextureFrame.close();
+		this.retainedSceneTextureFrame = null;
+		this.retainedSceneSourceFrame = null;
+	}
+
+	private resolveSceneVideoFrameSource(frame: VideoFrame): CanvasImageSource | VideoFrame {
+		if (this.rendererBackend !== "webgpu") {
+			return frame;
+		}
+
+		if (this.retainedSceneSourceFrame === frame && this.retainedSceneTextureFrame) {
+			return this.retainedSceneTextureFrame;
+		}
+
+		try {
+			const retainedFrame = new VideoFrame(frame, {
+				timestamp: frame.timestamp,
+			});
+			this.closeRetainedSceneTextureFrame();
+			this.retainedSceneSourceFrame = frame;
+			this.retainedSceneTextureFrame = retainedFrame;
+			return retainedFrame;
+		} catch (error) {
+			console.warn(
+				"[ModernFrameRenderer] Failed to retain scene VideoFrame, falling back to staging canvas:",
+				error,
+			);
+			return this.stageVideoFrameForTexture(
+				frame,
+				"scene",
+				this.config.videoWidth,
+				this.config.videoHeight,
+			);
+		}
 	}
 
 	private ensureVideoFrameStagingCanvas(
@@ -2694,12 +2729,7 @@ export class FrameRenderer {
 
 		this.currentVideoTime = timestamp / 1_000_000;
 
-		const resolvedVideoSource = this.stageVideoFrameForTexture(
-			videoFrame,
-			"scene",
-			this.config.videoWidth,
-			this.config.videoHeight,
-		);
+		const resolvedVideoSource = this.resolveSceneVideoFrameSource(videoFrame);
 		const usesStartupStaging = resolvedVideoSource !== videoFrame;
 
 		if (!this.videoSprite) {
@@ -3462,6 +3492,7 @@ export class FrameRenderer {
 		this.webcamVideoFrameStagingCtx = null;
 		this.videoTextureUsesStartupStaging = false;
 		this.webcamTextureUsesStartupStaging = false;
+		this.closeRetainedSceneTextureFrame();
 
 		this.captionCanvas = null;
 		this.captionCtx = null;
