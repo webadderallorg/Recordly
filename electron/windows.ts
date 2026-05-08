@@ -305,12 +305,8 @@ ipcMain.on("hud-overlay-drag", (_event, phase: string, screenX: number, screenY:
 });
 
 ipcMain.on("hud-overlay-hide", () => {
-	// Keep the HUD persistent: accidental hide events should not minimize it.
 	if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
-		if (!hudOverlayWindow.isVisible()) {
-			hudOverlayWindow.show();
-		}
-		hudOverlayWindow.moveTop();
+		hudOverlayWindow.minimize();
 	}
 });
 
@@ -426,6 +422,17 @@ export function createHudOverlayWindow(): BrowserWindow {
 		setTimeout(() => {
 			showHudWindow();
 		}, 1800);
+	});
+
+	// Safety net: on Linux the renderer may fail to fire did-finish-load
+	// (for example due to GPU/VAAPI startup issues). Show the window after
+	// ready-to-show as a fallback so the HUD still appears.
+	win.once("ready-to-show", () => {
+		setTimeout(() => {
+			if (!win.isDestroyed() && !win.isVisible()) {
+				showHudWindow();
+			}
+		}, 500);
 	});
 
 	const handleHudRendererReady = () => {
