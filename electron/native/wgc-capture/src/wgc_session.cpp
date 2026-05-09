@@ -118,6 +118,12 @@ bool WgcSession::initializeWithItem(int fps) {
     if (!captureItem_) return false;
 
     auto size = captureItem_.Size();
+    // Keep the WGC frame-pool textures aligned with the fixed-size H.264
+    // encoder staging texture. Window captures can start with odd dimensions
+    // from DWM shadows or fractional DPI.
+    size.Width = normalizeFramePoolExtent(size.Width);
+    size.Height = normalizeFramePoolExtent(size.Height);
+
     captureWidth_ = size.Width;
     captureHeight_ = size.Height;
     framePoolWidth_ = size.Width;
@@ -138,6 +144,20 @@ bool WgcSession::initializeWithItem(int fps) {
         session_.IsBorderRequired(false);
     } catch (winrt::hresult_error const&) {
     }
+
+    // IncludeSecondaryWindows was introduced in UniversalApiContract v19
+    // (Windows 11 24H2 / SDK 10.0.26100). Older SDK headers do not declare
+    // IGraphicsCaptureSession6, so keep this as an optional compile-time path.
+#if defined(WINDOWS_FOUNDATION_UNIVERSALAPICONTRACT_VERSION) && \
+    WINDOWS_FOUNDATION_UNIVERSALAPICONTRACT_VERSION >= 0x130000
+    try {
+        if (auto session6 = session_.try_as<
+                winrt::Windows::Graphics::Capture::IGraphicsCaptureSession6>()) {
+            session6.IncludeSecondaryWindows(true);
+        }
+    } catch (winrt::hresult_error const&) {
+    }
+#endif
 
     return true;
 }
