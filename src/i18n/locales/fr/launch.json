@@ -43,6 +43,22 @@
 		"stop": "Arrêter",
 		"cancel": "Annuler",
 		"more": "Plus",
+		"shortcuts": {
+			"menu": "Raccourcis clavier",
+			"title": "Raccourcis de lancement",
+			"pressKeys": "Appuyez sur les touches...",
+			"conflict": "Raccourci déjà utilisé par {{action}}.",
+			"globalRecordingOnly": "Les raccourcis globaux sont actifs uniquement pendant l’enregistrement.",
+			"reset": "Réinitialiser",
+			"save": "Enregistrer",
+			"actions": {
+				"startRecording": "Démarrer l’enregistrement",
+				"stopRecording": "Arrêter l’enregistrement",
+				"pauseRecording": "Mettre en pause l’enregistrement",
+				"resumeRecording": "Reprendre l’enregistrement",
+				"muteMicrophone": "Couper / réactiver le micro"
+			}
+		},
 		"update": {
 			"update": "Mettre à jour",
 			"updated": "Mis à jour",

@@ -43,6 +43,22 @@
 		"stop": "Detener",
 		"cancel": "Cancelar",
 		"more": "Más",
+		"shortcuts": {
+			"menu": "Atajos de teclado",
+			"title": "Atajos de inicio",
+			"pressKeys": "Pulsa las teclas...",
+			"conflict": "El atajo ya está en uso por {{action}}.",
+			"globalRecordingOnly": "Los atajos globales solo están activos durante la grabación.",
+			"reset": "Restablecer",
+			"save": "Guardar",
+			"actions": {
+				"startRecording": "Iniciar grabación",
+				"stopRecording": "Detener grabación",
+				"pauseRecording": "Pausar grabación",
+				"resumeRecording": "Reanudar grabación",
+				"muteMicrophone": "Silenciar / activar micrófono"
+			}
+		},
 		"update": {
 			"update": "Actualizar",
 			"updated": "Actualizado",

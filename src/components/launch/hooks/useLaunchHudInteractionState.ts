@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, type MouseEvent, type RefObject } from 
 
 export function useLaunchHudInteractionState({
 	openId,
+	hasModalOpen,
 	isHudDraggingRef,
 	isWebcamPreviewDraggingRef,
 	webcamPreviewDragStartRef,
 }: {
 	openId: string | null;
+	hasModalOpen: boolean;
 	isHudDraggingRef: RefObject<boolean>;
 	isWebcamPreviewDraggingRef: RefObject<boolean>;
 	webcamPreviewDragStartRef: RefObject<unknown>;
@@ -15,8 +17,15 @@ export function useLaunchHudInteractionState({
 	const isMouseOverHudRef = useRef(false);
 
 	useEffect(() => {
-		anyPopoverOpenRef.current = openId !== null;
-		if (openId !== null) {
+		if (hasModalOpen) {
+			anyPopoverOpenRef.current = true;
+			window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+			return;
+		}
+
+		const isOpen = openId !== null;
+		anyPopoverOpenRef.current = isOpen;
+		if (isOpen) {
 			window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
 		} else {
 			// Proactively check if we should ignore mouse when popover closes
@@ -26,7 +35,7 @@ export function useLaunchHudInteractionState({
 				}
 			}, 150);
 		}
-	}, [openId]);
+	}, [openId, hasModalOpen]);
 
 	const beginInteractiveHudAction = useCallback(() => {
 		isMouseOverHudRef.current = true;

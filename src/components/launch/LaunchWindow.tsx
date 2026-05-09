@@ -14,12 +14,14 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { RxDragHandleDots2 } from "react-icons/rx";
 import { useScopedT } from "../../contexts/I18nContext";
+import { useShortcuts } from "../../contexts/ShortcutsContext";
 import { useHudBarDrag } from "./hooks/useHudBarDrag";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { useLaunchWindowSystemState } from "./hooks/useLaunchWindowSystemState";
 import { useLaunchHudInteractionState } from "./hooks/useLaunchHudInteractionState";
 import { useLaunchWindowActions } from "./hooks/useLaunchWindowActions";
 import { useRecordingTimer } from "./hooks/useRecordingTimer";
+import { useLaunchShortcuts } from "./hooks/useLaunchShortcuts";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { useVideoDevices } from "../../hooks/useVideoDevices";
 import { useWebcamPreviewOverlay } from "./hooks/useWebcamPreviewOverlay";
@@ -32,6 +34,7 @@ import { MicPopover } from "./popovers/MicPopover";
 import { MorePopover } from "./popovers/MorePopover";
 import { ProjectPopover } from "./popovers/ProjectPopover";
 import { SourcePopover } from "./popovers/SourcePopover";
+import { ShortcutsPopover } from "./popovers/ShortcutsPopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { HudInteractionContext } from "./contexts/HudInteractionContext";
 import { MarqueeText } from "./SourceSelector";
@@ -40,7 +43,7 @@ import styles from "./LaunchWindow.module.css";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "../ui/button";
 import { RecordingControls } from "./RecordingControls";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 const SHOW_DEV_UPDATE_PREVIEW = import.meta.env.DEV;
 
@@ -54,6 +57,7 @@ export function LaunchWindow() {
 
 function LaunchWindowContent() {
 	const t = useScopedT("launch");
+	const { launchShortcuts, isMac } = useShortcuts();
 	const { openId, requestClose, requestOpen } = useLaunchPopoverCoordinator();
 
 	const {
@@ -169,6 +173,7 @@ function LaunchWindowContent() {
 
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } = useLaunchHudInteractionState({
 		openId,
+		hasModalOpen: false,
 		isHudDraggingRef,
 		isWebcamPreviewDraggingRef,
 		webcamPreviewDragStartRef,
@@ -196,13 +201,16 @@ function LaunchWindowContent() {
 		ease: [0.22, 1, 0.36, 1] as const,
 	};
 
+	const toggleMicrophoneMute = useCallback(() => {
+		setMicrophoneEnabled(!microphoneEnabled);
+	}, [microphoneEnabled, setMicrophoneEnabled]);
 
 	const recordingControls = (
 		<RecordingControls
 			paused={paused}
 			microphoneEnabled={microphoneEnabled}
 			elapsed={elapsed}
-			onToggleMicrophone={() => setMicrophoneEnabled(!microphoneEnabled)}
+			onToggleMicrophone={toggleMicrophoneMute}
 			onPauseResume={paused ? resumeRecording : pauseRecording}
 			onStopRecording={toggleRecording}
 			onHideHud={() => window.electronAPI?.hudOverlayHide?.()}
@@ -210,6 +218,21 @@ function LaunchWindowContent() {
 			formatTime={formatTime}
 		/>
 	);
+
+	useLaunchShortcuts({
+		launchShortcuts,
+		isMac,
+		recording,
+		paused,
+		countdownActive,
+		hasSelectedSource,
+		platform,
+		toggleRecording,
+		pauseRecording,
+		resumeRecording,
+		toggleMicrophoneMute,
+		openSources: () => requestOpen("sources"),
+	});
 
 	const idleControls = (
 		<>
@@ -353,6 +376,11 @@ function LaunchWindowContent() {
 				<ProjectPopover
 					entries={projectLibraryEntries}
 					onOpenProject={openProjectFromLibrary}
+					trigger={<div className="absolute inset-0 pointer-events-none opacity-0" />}
+				/>
+			</div>
+			<div className="relative w-0 h-0">
+				<ShortcutsPopover
 					trigger={<div className="absolute inset-0 pointer-events-none opacity-0" />}
 				/>
 			</div>

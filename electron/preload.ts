@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { LaunchShortcutAction } from "./ipc/shortcutTypes";
 
 type NativeVideoExportWriteResult = { success: boolean; error?: string };
 type NativeVideoAudioMuxMetrics = {
@@ -858,6 +859,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	saveShortcuts: (shortcuts: unknown) => {
 		return ipcRenderer.invoke("save-shortcuts", shortcuts);
+	},
+	registerLaunchGlobalShortcuts: (config: unknown) => {
+		return ipcRenderer.invoke("register-launch-global-shortcuts", config);
+	},
+	unregisterLaunchGlobalShortcuts: () => {
+		return ipcRenderer.invoke("unregister-launch-global-shortcuts");
+	},
+	onLaunchShortcutTriggered: (
+		callback: (action: LaunchShortcutAction) => void,
+	) => {
+		const listener = (
+			_event: Electron.IpcRendererEvent,
+			action: LaunchShortcutAction,
+		) => callback(action);
+		ipcRenderer.on("launch-shortcut-triggered", listener);
+		return () => ipcRenderer.removeListener("launch-shortcut-triggered", listener);
 	},
 	setHasUnsavedChanges: (hasChanges: boolean) => {
 		ipcRenderer.send("set-has-unsaved-changes", hasChanges);

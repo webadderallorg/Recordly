@@ -1,4 +1,7 @@
 /// <reference types="vite-plugin-electron/electron-env" />
+import type { LaunchShortcutAction } from "./ipc/shortcutTypes";
+
+declare global {
 
 declare namespace NodeJS {
 	interface ProcessEnv {
@@ -801,6 +804,13 @@ interface Window {
 		}>;
 		getShortcuts: () => Promise<Record<string, unknown> | null>;
 		saveShortcuts: (shortcuts: unknown) => Promise<{ success: boolean; error?: string }>;
+		registerLaunchGlobalShortcuts: (
+			config: unknown,
+		) => Promise<{ success: boolean; error?: string }>;
+		unregisterLaunchGlobalShortcuts: () => Promise<{ success: boolean; error?: string }>;
+		onLaunchShortcutTriggered: (
+			callback: (action: LaunchShortcutAction) => void,
+		) => () => void;
 		setHasUnsavedChanges: (hasChanges: boolean) => void;
 		onRequestSaveBeforeClose: (callback: () => Promise<boolean>) => () => void;
 		isNativeWindowsCaptureAvailable: () => Promise<{ available: boolean }>;
@@ -935,4 +945,6 @@ interface AutoCaptionCue {
 		endMs: number;
 		leadingSpace?: boolean;
 	}>;
+}
+
 }

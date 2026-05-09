@@ -12,12 +12,12 @@ import {
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import {
 	DEFAULT_SHORTCUTS,
+	EDITOR_SHORTCUT_ACTIONS,
 	FIXED_SHORTCUTS,
 	findConflict,
 	formatBinding,
-	SHORTCUT_ACTIONS,
 	SHORTCUT_LABELS,
-	type ShortcutAction,
+	type EditorShortcutAction,
 	type ShortcutBinding,
 	type ShortcutConflict,
 	type ShortcutsConfig,
@@ -32,9 +32,9 @@ export function ShortcutsConfigDialog() {
 		useShortcuts();
 
 	const [draft, setDraft] = useState<ShortcutsConfig>(shortcuts);
-	const [captureFor, setCaptureFor] = useState<ShortcutAction | null>(null);
+	const [captureFor, setCaptureFor] = useState<EditorShortcutAction | null>(null);
 	const [conflict, setConflict] = useState<{
-		forAction: ShortcutAction;
+		forAction: EditorShortcutAction;
 		pending: ShortcutBinding;
 		conflictWith: ShortcutConflict;
 	} | null>(null);
@@ -138,7 +138,7 @@ export function ShortcutsConfigDialog() {
 					<p className="text-[10px] text-muted-foreground/70 mb-2 uppercase tracking-wide font-semibold">
 						{t("shortcutsConfig.configurable")}
 					</p>
-					{SHORTCUT_ACTIONS.map((action) => {
+					{EDITOR_SHORTCUT_ACTIONS.map((action) => {
 						const isCapturing = captureFor === action;
 						const hasConflict = conflict?.forAction === action;
 						return (

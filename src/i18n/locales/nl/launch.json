@@ -43,6 +43,22 @@
 		"stop": "Stoppen",
 		"cancel": "Annuleren",
 		"more": "Meer",
+		"shortcuts": {
+			"menu": "Sneltoetsen",
+			"title": "Launch-sneltoetsen",
+			"pressKeys": "Druk op toetsen...",
+			"conflict": "Sneltoets wordt al gebruikt door {{action}}.",
+			"globalRecordingOnly": "Globale sneltoetsen zijn alleen actief tijdens opname.",
+			"reset": "Resetten",
+			"save": "Opslaan",
+			"actions": {
+				"startRecording": "Opname starten",
+				"stopRecording": "Opname stoppen",
+				"pauseRecording": "Opname pauzeren",
+				"resumeRecording": "Opname hervatten",
+				"muteMicrophone": "Microfoon dempen / aanzetten"
+			}
+		},
 		"update": {
 			"update": "Bijwerken",
 			"updated": "Bijgewerkt",

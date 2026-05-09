@@ -1,7 +1,17 @@
 import fs from "node:fs/promises";
-import { app, ipcMain } from "electron";
+import { app, globalShortcut, ipcMain } from "electron";
 import { hideCursor } from "../../cursorHider";
-import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from "../../windows";
+import {
+	closeCountdownWindow,
+	createCountdownWindow,
+	getCountdownWindow,
+	getHudOverlayWindow,
+} from "../../windows";
+import {
+	isLaunchShortcutAction,
+	type LaunchShortcutAction,
+	type ShortcutBinding,
+} from "../shortcutTypes";
 import {
 	COUNTDOWN_SETTINGS_FILE,
 	RECORDINGS_SETTINGS_FILE,
@@ -38,6 +48,63 @@ function getBrowserMicrophoneProfileFromEnv() {
 			: DEFAULT_BROWSER_MICROPHONE_PROFILE,
 		requestedBrowserMicrophoneProfile: requested,
 	};
+}
+
+let launchShortcutRegisteredAccelerators: string[] = [];
+const ELECTRON_KEY_MAP: Record<string, string> = {
+	arrowup: "Up",
+	arrowdown: "Down",
+	arrowleft: "Left",
+	arrowright: "Right",
+	escape: "Escape",
+	backspace: "Backspace",
+	delete: "Delete",
+	enter: "Enter",
+	tab: "Tab",
+};
+
+function toElectronAccelerator(binding: ShortcutBinding): string | null {
+	const rawKey = binding.key;
+	if (rawKey === " ") {
+		const parts: string[] = [];
+		if (binding.ctrl) parts.push("CommandOrControl");
+		if (binding.shift) parts.push("Shift");
+		if (binding.alt) parts.push("Alt");
+		parts.push("Space");
+		return parts.join("+");
+	}
+
+	const key = rawKey?.trim().toLowerCase();
+	if (!key) return null;
+	let mappedKey: string;
+	if (ELECTRON_KEY_MAP[key]) {
+		mappedKey = ELECTRON_KEY_MAP[key];
+	} else if (key.length === 1) {
+		mappedKey = key.toUpperCase();
+	} else {
+		mappedKey = key.charAt(0).toUpperCase() + key.slice(1);
+	}
+	const parts: string[] = [];
+	if (binding.ctrl) parts.push("CommandOrControl");
+	if (binding.shift) parts.push("Shift");
+	if (binding.alt) parts.push("Alt");
+	parts.push(mappedKey);
+	return parts.join("+");
+}
+
+function unregisterLaunchGlobalShortcuts() {
+	for (const accelerator of launchShortcutRegisteredAccelerators) {
+		globalShortcut.unregister(accelerator);
+	}
+	launchShortcutRegisteredAccelerators = [];
+}
+
+function notifyLaunchShortcutTriggered(action: LaunchShortcutAction) {
+	const hud = getHudOverlayWindow();
+	if (!hud || hud.isDestroyed()) {
+		return;
+	}
+	hud.webContents.send("launch-shortcut-triggered", action);
 }
 
 export function registerSettingsHandlers() {
@@ -79,6 +146,51 @@ export function registerSettingsHandlers() {
       return { success: false, error: String(error) };
     }
   });
+
+	ipcMain.handle("register-launch-global-shortcuts", async (_, config: unknown) => {
+		try {
+			unregisterLaunchGlobalShortcuts();
+			if (!config || typeof config !== "object") {
+				return { success: true };
+			}
+
+			const failedRegistrations: Array<{ action: LaunchShortcutAction; accelerator: string }> = [];
+			const entries = Object.entries(config as Record<string, ShortcutBinding>);
+			for (const [action, binding] of entries) {
+				if (!isLaunchShortcutAction(action)) {
+					console.warn("Ignoring unknown launch shortcut action in config:", action);
+					continue;
+				}
+				const accelerator = toElectronAccelerator(binding);
+				if (!accelerator) continue;
+				const registered = globalShortcut.register(accelerator, () => {
+					notifyLaunchShortcutTriggered(action);
+				});
+				if (registered) {
+					launchShortcutRegisteredAccelerators.push(accelerator);
+				} else {
+					const failedRegistration = {
+						action,
+						accelerator,
+					};
+					failedRegistrations.push(failedRegistration);
+					console.warn("Failed to register launch global shortcut:", failedRegistration);
+				}
+			}
+			return { success: true, failedRegistrations };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
+
+	ipcMain.handle("unregister-launch-global-shortcuts", async () => {
+		try {
+			unregisterLaunchGlobalShortcuts();
+			return { success: true };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
 
   // ---------------------------------------------------------------------------
   // Countdown timer before recording

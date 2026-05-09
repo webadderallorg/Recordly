@@ -43,6 +43,22 @@
 		"stop": "Stop",
 		"cancel": "Cancel",
 		"more": "More",
+		"shortcuts": {
+			"menu": "Keyboard shortcuts",
+			"title": "Launch shortcuts",
+			"pressKeys": "Press keys...",
+			"conflict": "Shortcut already used by {{action}}.",
+			"globalRecordingOnly": "Global shortcuts are active only while recording.",
+			"reset": "Reset",
+			"save": "Save",
+			"actions": {
+				"startRecording": "Start recording",
+				"stopRecording": "Stop recording",
+				"pauseRecording": "Pause recording",
+				"resumeRecording": "Resume recording",
+				"muteMicrophone": "Mute / unmute microphone"
+			}
+		},
 		"update": {
 			"update": "Update",
 			"updated": "Updated",

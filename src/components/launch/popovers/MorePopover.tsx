@@ -8,6 +8,7 @@ import {
 	SunIcon,
 	MoonIcon,
 	DesktopIcon,
+	Keyboard,
 } from "@phosphor-icons/react";
 import type { ReactElement } from "react";
 import { useI18n } from "@/contexts/I18nContext";
@@ -111,6 +112,15 @@ export function MorePopover({
 				}}
 			>
 				{t("recording.openProject")}
+			</DropdownItem>
+			<DropdownItem
+				icon={<Keyboard size={16} />}
+				onClick={() => {
+					requestClose(POPOVER_ID);
+					requestOpen("shortcuts");
+				}}
+			>
+				{t("recording.shortcuts.menu")}
 			</DropdownItem>
 			{showDevUpdatePreview ? (
 				<DropdownItem

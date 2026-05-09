@@ -58,10 +58,10 @@ export default function App() {
 	switch (windowType) {
 		case "hud-overlay":
 			return (
-				<>
+				<ShortcutsProvider>
 					<LaunchWindow />
 					<Toaster className="pointer-events-auto" />
-				</>
+				</ShortcutsProvider>
 			);
 		case "source-selector":
 			return <SourceSelector />;

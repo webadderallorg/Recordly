@@ -116,6 +116,10 @@
 	animation: menuCardIn 0.18s ease;
 }
 
+.shortcutsMenuCard {
+	width: 360px;
+}
+
 @keyframes menuCardIn {
 	from {
 		opacity: 0;

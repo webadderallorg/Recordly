@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { useScopedT } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
-import { formatBinding, SHORTCUT_ACTIONS, SHORTCUT_LABELS } from "@/lib/shortcuts";
+import { EDITOR_SHORTCUT_ACTIONS, formatBinding, SHORTCUT_LABELS } from "@/lib/shortcuts";
 import { formatShortcut } from "@/utils/platformUtils";
 import { toast } from "sonner";
 
@@ -185,7 +185,7 @@ export function KeyboardShortcutsDialog({
 				</DialogHeader>
 				<div className="mt-4 space-y-4">
 					<div className="rounded-xl border border-foreground/10 bg-foreground/[0.03] p-4 space-y-2 text-xs">
-						{SHORTCUT_ACTIONS.map((action) => (
+						{EDITOR_SHORTCUT_ACTIONS.map((action) => (
 							<div key={action} className="flex items-center justify-between gap-3 rounded-lg border border-foreground/5 bg-foreground/5 px-3 py-2.5">
 								<span className="text-muted-foreground">{SHORTCUT_LABELS[action]}</span>
 								<kbd className="rounded border border-foreground/10 bg-foreground/10 px-2 py-1 font-mono text-[#2563EB]">

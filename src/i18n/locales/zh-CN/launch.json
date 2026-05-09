@@ -43,6 +43,22 @@
 		"stop": "停止",
 		"cancel": "取消",
 		"more": "更多",
+		"shortcuts": {
+			"menu": "键盘快捷键",
+			"title": "启动快捷键",
+			"pressKeys": "请按下按键...",
+			"conflict": "该快捷键已被 {{action}} 使用。",
+			"globalRecordingOnly": "全局快捷键仅在录制期间生效。",
+			"reset": "重置",
+			"save": "保存",
+			"actions": {
+				"startRecording": "开始录制",
+				"stopRecording": "停止录制",
+				"pauseRecording": "暂停录制",
+				"resumeRecording": "继续录制",
+				"muteMicrophone": "麦克风静音 / 取消静音"
+			}
+		},
 		"update": {
 			"update": "更新",
 			"updated": "已是最新",

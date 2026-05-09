@@ -43,6 +43,22 @@
 		"stop": "중지",
 		"cancel": "취소",
 		"more": "더 보기",
+		"shortcuts": {
+			"menu": "키보드 단축키",
+			"title": "런치 단축키",
+			"pressKeys": "키를 누르세요...",
+			"conflict": "{{action}}에서 이미 사용 중인 단축키입니다.",
+			"globalRecordingOnly": "전역 단축키는 녹화 중에만 활성화됩니다.",
+			"reset": "초기화",
+			"save": "저장",
+			"actions": {
+				"startRecording": "녹화 시작",
+				"stopRecording": "녹화 중지",
+				"pauseRecording": "녹화 일시 정지",
+				"resumeRecording": "녹화 다시 시작",
+				"muteMicrophone": "마이크 음소거 / 해제"
+			}
+		},
 		"update": {
 			"update": "업데이트",
 			"updated": "업데이트 완료",
