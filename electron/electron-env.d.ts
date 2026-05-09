@@ -82,15 +82,118 @@ interface RendererFfmpegAudioMuxMetrics {
 	muxedVideoBytes?: number;
 }
 
+interface RendererWindowsGpuExportSummary {
+	success?: boolean;
+	width?: number;
+	height?: number;
+	fps?: number;
+	seconds?: number;
+	mediaMs?: number;
+	frames?: number;
+	gpuDecodeSurface?: boolean;
+	webcamOverlay?: boolean;
+	cursorOverlay?: boolean;
+	zoomOverlay?: boolean;
+	surfacePoolSize?: number;
+	adapterIndex?: number;
+	adapterVendorId?: number;
+	adapterDeviceId?: number;
+	adapterDedicatedVideoMemoryMB?: number;
+	encoderBackend?: string;
+	encoderTuningApplied?: boolean;
+	nvencOutputBytes?: number;
+	initializeMs?: number;
+	initCoInitializeMs?: number;
+	initMfStartupMs?: number;
+	initD3DDeviceMs?: number;
+	initSourceReaderMs?: number;
+	initWebcamReaderMs?: number;
+	initVideoProcessorMs?: number;
+	initTexturesMs?: number;
+	initShaderPipelineMs?: number;
+	initSinkWriterMs?: number;
+	totalMs?: number;
+	readMs?: number;
+	clearMs?: number;
+	videoProcessMs?: number;
+	writeSampleMs?: number;
+	finalizeMs?: number;
+	realtimeMultiplier?: number;
+}
+
+interface RendererNativeStaticLayoutChunkMetric {
+	index: number;
+	startSec: number;
+	durationSec: number;
+	backend:
+		| "cuda-overlay"
+		| "cuda-scale-cpu-pad"
+		| "cuda-static-composite"
+		| "nvidia-cuda-compositor"
+		| "windows-d3d11-compositor";
+	elapsedMs: number;
+	outputBytes: number;
+	fallbackReason?: string;
+	windowsGpuSummary?: RendererWindowsGpuExportSummary;
+}
+
+interface RendererNativeStaticLayoutMetrics extends RendererFfmpegAudioMuxMetrics {
+	chunkCount: number;
+	chunkDurationSec: number;
+	chunkExecMs: number;
+	concatExecMs?: number;
+	staticAssetExecMs?: number;
+	fallbackChunkCount: number;
+	videoOnlyBytes?: number;
+	chunks: RendererNativeStaticLayoutChunkMetric[];
+}
+
+interface RendererNativeStaticLayoutProgress {
+	sessionId?: string;
+	backend?: RendererNativeStaticLayoutChunkMetric["backend"];
+	stage?: "preparing" | "finalizing";
+	elapsedMs?: number;
+	averageFps?: number;
+	instantFps?: number;
+	intervalMs?: number;
+	intervalFrames?: number;
+	intervalDecodeWallMs?: number;
+	intervalEncodeMs?: number;
+	intervalPipelineWaitMs?: number;
+	intervalCompositeMs?: number;
+	intervalNvencMs?: number;
+	intervalPacketWriteMs?: number;
+	intervalWebcamDecodeMs?: number;
+	intervalWebcamCopyMs?: number;
+	intervalRoiCompositeFrames?: number;
+	intervalMonolithicCompositeFrames?: number;
+	intervalCopyCompositeFrames?: number;
+	currentFrame: number;
+	totalFrames: number;
+	percentage: number;
+}
+
+interface RendererNativeVideoMetadataProbe {
+	width: number;
+	height: number;
+	duration: number;
+	mediaStartTime?: number;
+	streamStartTime?: number;
+	streamDuration?: number;
+	frameRate: number;
+	codec: string;
+	hasAudio: boolean;
+	audioCodec?: string;
+	audioSampleRate?: number;
+}
+
 interface Window {
 	electronAPI: {
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;
 		hudOverlayHide: () => void;
 		hudOverlayClose: () => void;
-		setHudOverlayExpanded: (expanded: boolean) => void;
-		setHudOverlayCompactWidth: (width: number) => void;
-		setHudOverlayMeasuredHeight: (height: number, expanded: boolean) => void;
+		hudOverlayRendererReady: () => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
@@ -151,12 +254,12 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
-		pauseCursorCapture: (boundaryMs?: number) => Promise<{
+		pauseCursorCapture: () => Promise<{
 			success: boolean;
 			message?: string;
 			error?: string;
 		}>;
-		resumeCursorCapture: (boundaryMs?: number) => Promise<{
+		resumeCursorCapture: () => Promise<{
 			success: boolean;
 			message?: string;
 			error?: string;
@@ -179,6 +282,33 @@ interface Window {
 			videoPath: string,
 			options?: {
 				startDelayMs?: number;
+				browserMicrophoneProfile?: string;
+				requestedBrowserMicrophoneProfile?: string | null;
+				requestedConstraints?: unknown;
+				mediaTrackSettings?: Record<string, boolean | number | string>;
+				audioInputDevices?: Array<{
+					deviceId: string;
+					groupId?: string;
+					label: string;
+				}>;
+				mediaRecorder?: {
+					mimeType?: string;
+					audioBitsPerSecond?: number;
+					timesliceMs?: number;
+				};
+				chunkEvents?: Array<{
+					index: number;
+					size: number;
+					elapsedMs: number;
+					deltaMs: number | null;
+					recordedElapsedMs?: number;
+					recordedDeltaMs?: number | null;
+				}>;
+				pauseIntervals?: Array<{
+					startElapsedMs: number;
+					endElapsedMs?: number;
+					durationMs?: number;
+				}>;
 			},
 		) => Promise<{ success: boolean; path?: string; error?: string }>;
 		getRecordedVideoPath: () => Promise<{ success: boolean; path?: string; message?: string }>;
@@ -193,6 +323,96 @@ interface Window {
 		generateWallpaperThumbnail: (
 			filePath: string,
 		) => Promise<{ success: boolean; data?: Uint8Array; error?: string }>;
+		probeNativeVideoMetadata: (filePath: string) => Promise<{
+			success: boolean;
+			metadata?: RendererNativeVideoMetadataProbe;
+			error?: string;
+		}>;
+		nativeStaticLayoutExport: (options: {
+			sessionId?: string;
+			inputPath: string;
+			width: number;
+			height: number;
+			frameRate: number;
+			bitrate: number;
+			encodingMode: "fast" | "balanced" | "quality";
+			durationSec: number;
+			contentWidth: number;
+			contentHeight: number;
+			offsetX: number;
+			offsetY: number;
+			sourceCropX?: number;
+			sourceCropY?: number;
+			sourceCropWidth?: number;
+			sourceCropHeight?: number;
+			backgroundColor: string;
+			backgroundImagePath?: string | null;
+			backgroundBlurPx?: number;
+			borderRadius?: number;
+			shadowIntensity?: number;
+			webcamInputPath?: string | null;
+			webcamLeft?: number;
+			webcamTop?: number;
+			webcamSize?: number;
+			webcamRadius?: number;
+			webcamShadowIntensity?: number;
+			webcamMirror?: boolean;
+			webcamTimeOffsetMs?: number;
+			cursorTelemetry?: Array<{
+				timeMs: number;
+				cx: number;
+				cy: number;
+				cursorTypeIndex?: number;
+				bounceScale?: number;
+				visible?: boolean;
+			}>;
+			cursorSize?: number;
+			cursorAtlasPngDataUrl?: string | null;
+			cursorAtlasEntries?: Array<{
+				index: number;
+				x: number;
+				y: number;
+				width: number;
+				height: number;
+				anchorX: number;
+				anchorY: number;
+				aspectRatio: number;
+			}>;
+			zoomTelemetry?: Array<{ timeMs: number; scale: number; x: number; y: number }>;
+			timelineSegments?: Array<{
+				sourceStartMs: number;
+				sourceEndMs: number;
+				outputStartMs: number;
+				outputEndMs: number;
+				speed: number;
+			}>;
+			chunkDurationSec?: number;
+			experimentalWindowsGpuCompositor?: boolean;
+			audioOptions?: {
+				audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
+				audioSourcePath?: string | null;
+				audioSourceCodec?: string | null;
+				audioSourceSampleRate?: number;
+				outputDurationSec?: number;
+				trimSegments?: Array<{ startMs: number; endMs: number }>;
+				editedTrackStrategy?: "filtergraph-fast-path" | "offline-render-fallback";
+				editedTrackSegments?: Array<{ startMs: number; endMs: number; speed: number }>;
+				editedAudioData?: ArrayBuffer;
+				editedAudioMimeType?: string | null;
+			};
+		}) => Promise<{
+			success: boolean;
+			tempPath?: string;
+			encoderName?: string;
+			error?: string;
+			metrics?: RendererNativeStaticLayoutMetrics;
+		}>;
+		nativeStaticLayoutExportCancel: (sessionId: string) => Promise<{
+			success: boolean;
+		}>;
+		onNativeStaticLayoutExportProgress: (
+			callback: (progress: RendererNativeStaticLayoutProgress) => void,
+		) => () => void;
 		nativeVideoExportStart: (options: {
 			width: number;
 			height: number;
@@ -210,12 +430,18 @@ interface Window {
 			sessionId: string,
 			frameData: Uint8Array,
 		) => Promise<{ success: boolean; error?: string }>;
+		nativeVideoExportWriteFrames: (
+			sessionId: string,
+			frameDataList: Uint8Array[],
+		) => Promise<{ success: boolean; error?: string }>;
 		nativeVideoExportFinish: (
 			sessionId: string,
 			options?: {
 				audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 				audioSourcePath?: string | null;
+				audioSourceCodec?: string | null;
 				audioSourceSampleRate?: number;
+				outputDurationSec?: number;
 				trimSegments?: Array<{ startMs: number; endMs: number }>;
 				editedTrackStrategy?: "filtergraph-fast-path" | "offline-render-fallback";
 				editedTrackSegments?: Array<{ startMs: number; endMs: number; speed: number }>;
@@ -237,7 +463,9 @@ interface Window {
 			options?: {
 				audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 				audioSourcePath?: string | null;
+				audioSourceCodec?: string | null;
 				audioSourceSampleRate?: number;
+				outputDurationSec?: number;
 				trimSegments?: Array<{ startMs: number; endMs: number }>;
 				editedTrackStrategy?: "filtergraph-fast-path" | "offline-render-fallback";
 				editedTrackSegments?: Array<{ startMs: number; endMs: number; speed: number }>;
@@ -255,7 +483,9 @@ interface Window {
 			options?: {
 				audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 				audioSourcePath?: string | null;
+				audioSourceCodec?: string | null;
 				audioSourceSampleRate?: number;
+				outputDurationSec?: number;
 				trimSegments?: Array<{ startMs: number; endMs: number }>;
 				editedTrackStrategy?: "filtergraph-fast-path" | "offline-render-fallback";
 				editedTrackSegments?: Array<{ startMs: number; endMs: number; speed: number }>;
@@ -308,6 +538,15 @@ interface Window {
 		}>;
 		setRecordingState: (recording: boolean) => Promise<void>;
 		getCursorTelemetry: (videoPath?: string) => Promise<{
+			success: boolean;
+			samples: CursorTelemetryPoint[];
+			message?: string;
+			error?: string;
+		}>;
+		setCursorTelemetry: (
+			videoPath: string | undefined,
+			samples: CursorTelemetryPoint[],
+		) => Promise<{
 			success: boolean;
 			samples: CursorTelemetryPoint[];
 			message?: string;
@@ -410,16 +649,28 @@ interface Window {
 		}>;
 		setCurrentVideoPath: (
 			path: string,
-			options?: { preserveProjectPath?: boolean },
+			options?: {
+				preserveProjectPath?: boolean;
+				hideOverlayCursorByDefault?: boolean;
+			},
 		) => Promise<{ success: boolean; webcamPath: string | null }>;
-		setCurrentRecordingSession: (session: {
-			videoPath: string;
-			webcamPath?: string | null;
-			timeOffsetMs?: number;
-		}, options?: { preserveProjectPath?: boolean }) => Promise<{ success: boolean }>;
+		setCurrentRecordingSession: (
+			session: {
+				videoPath: string;
+				webcamPath?: string | null;
+				timeOffsetMs?: number;
+				hideOverlayCursorByDefault?: boolean;
+			},
+			options?: { preserveProjectPath?: boolean },
+		) => Promise<{ success: boolean }>;
 		getCurrentRecordingSession: () => Promise<{
 			success: boolean;
-			session?: { videoPath: string; webcamPath?: string | null; timeOffsetMs?: number };
+			session?: {
+				videoPath: string;
+				webcamPath?: string | null;
+				timeOffsetMs?: number;
+				hideOverlayCursorByDefault?: boolean;
+			};
 		}>;
 		getCurrentVideoPath: () => Promise<{ success: boolean; path?: string }>;
 		clearCurrentVideoPath: () => Promise<{ success: boolean }>;
@@ -529,6 +780,7 @@ interface Window {
 		onMenuSaveProject: (callback: () => void) => () => void;
 		onMenuSaveProjectAs: (callback: () => void) => () => void;
 		getPlatform: () => Promise<string>;
+		getLinuxWindowSystem: () => Promise<"wayland" | "x11" | null>;
 		revealInFolder: (
 			filePath: string,
 		) => Promise<{ success: boolean; error?: string; message?: string }>;
@@ -552,9 +804,7 @@ interface Window {
 		setHasUnsavedChanges: (hasChanges: boolean) => void;
 		onRequestSaveBeforeClose: (callback: () => Promise<boolean>) => () => void;
 		isNativeWindowsCaptureAvailable: () => Promise<{ available: boolean }>;
-		muxNativeWindowsRecording: (
-			pauseSegments?: Array<{ startMs: number; endMs: number }>,
-		) => Promise<{
+		muxNativeWindowsRecording: (expectedDurationMs?: number) => Promise<{
 			success: boolean;
 			path?: string;
 			message?: string;
@@ -570,6 +820,10 @@ interface Window {
 			microphoneEnabled: boolean;
 			microphoneDeviceId?: string;
 			systemAudioEnabled: boolean;
+		}>;
+		getRecordingAudioLabConfig: () => Promise<{
+			browserMicrophoneProfile: string;
+			requestedBrowserMicrophoneProfile: string | null;
 		}>;
 		setRecordingPreferences: (prefs: {
 			microphoneEnabled?: boolean;

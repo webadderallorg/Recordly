@@ -114,6 +114,13 @@ export function appendSyncedAudioFilter(
 		filters.push(`adelay=${adjustment.delayMs}|${adjustment.delayMs}`);
 	}
 
+	if (
+		adjustment.mode === "delay" &&
+		adjustment.durationDeltaMs > adjustment.delayMs + 20
+	) {
+		filters.push(`apad=pad_dur=${formatFfmpegSeconds(adjustment.durationDeltaMs - adjustment.delayMs)}`);
+	}
+
 	if (adjustment.mode === "tempo") {
 		filters.push(...buildAtempoFilters(adjustment.tempoRatio));
 	}

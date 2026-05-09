@@ -6,6 +6,7 @@ export interface ExportConfig {
 	codec?: string;
 	encodingMode?: ExportEncodingMode;
 	backendPreference?: ExportBackendPreference;
+	preferredRenderBackend?: ExportRenderBackend;
 	experimentalNativeExport?: boolean;
 	maxEncodeQueue?: number;
 	maxDecodeQueue?: number;
@@ -28,7 +29,9 @@ export interface ExportProgress {
 	renderBackend?: ExportRenderBackend;
 	encodeBackend?: ExportEncodeBackend;
 	encoderName?: string;
-	phase?: "extracting" | "finalizing" | "saving"; // Phase of export
+	nativeStaticLayoutSkipReason?: string;
+	nativeStaticLayoutSkipReasons?: string[];
+	phase?: "preparing" | "extracting" | "finalizing" | "saving"; // Phase of export
 	renderProgress?: number; // 0-100, progress of GIF rendering phase
 	audioProgress?: number; // 0-1, progress of real-time audio rendering (speed/audio regions)
 }
@@ -53,6 +56,60 @@ export interface ExportFfmpegAudioMuxBreakdown {
 	tempVideoBytes?: number;
 	tempEditedAudioBytes?: number;
 	muxedVideoBytes?: number;
+	chunkCount?: number;
+	chunkDurationSec?: number;
+	chunkExecMs?: number;
+	concatExecMs?: number;
+	staticAssetExecMs?: number;
+	fallbackChunkCount?: number;
+	videoOnlyBytes?: number;
+	chunks?: Array<{
+		index: number;
+		startSec: number;
+		durationSec: number;
+		backend: string;
+		elapsedMs: number;
+		outputBytes: number;
+		fallbackReason?: string;
+		windowsGpuSummary?: {
+			success?: boolean;
+			width?: number;
+			height?: number;
+			fps?: number;
+			seconds?: number;
+			mediaMs?: number;
+			frames?: number;
+			gpuDecodeSurface?: boolean;
+			webcamOverlay?: boolean;
+			cursorOverlay?: boolean;
+			zoomOverlay?: boolean;
+			surfacePoolSize?: number;
+			adapterIndex?: number;
+			adapterVendorId?: number;
+			adapterDeviceId?: number;
+			adapterDedicatedVideoMemoryMB?: number;
+			encoderBackend?: string;
+			encoderTuningApplied?: boolean;
+			nvencOutputBytes?: number;
+			initializeMs?: number;
+			initCoInitializeMs?: number;
+			initMfStartupMs?: number;
+			initD3DDeviceMs?: number;
+			initSourceReaderMs?: number;
+			initWebcamReaderMs?: number;
+			initVideoProcessorMs?: number;
+			initTexturesMs?: number;
+			initShaderPipelineMs?: number;
+			initSinkWriterMs?: number;
+			totalMs?: number;
+			readMs?: number;
+			clearMs?: number;
+			videoProcessMs?: number;
+			writeSampleMs?: number;
+			finalizeMs?: number;
+			realtimeMultiplier?: number;
+		};
+	}>;
 }
 
 export interface ExportMetrics {
@@ -75,6 +132,8 @@ export interface ExportMetrics {
 	encodeBackend?: ExportEncodeBackend;
 	encoderName?: string;
 	backpressureProfile?: string;
+	nativeStaticLayoutSkipReason?: string;
+	nativeStaticLayoutSkipReasons?: string[];
 	averageFrameCallbackMs?: number;
 	averageRenderFrameMs?: number;
 	averageEncodeWaitMs?: number;

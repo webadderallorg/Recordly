@@ -361,15 +361,51 @@ async function stageRuntimeArtifacts(target, candidateDir, runtimeEntries) {
 }
 
 async function main() {
+	const targets = getTargetConfigs();
 	const cmake = findCmake();
+
 	if (!cmake) {
+		// Soft-fail only when this script runs as part of `npm install`/`npm ci`,
+		// in CI, or when the developer explicitly opted in. Direct invocations
+		// (e.g. via `npm run build`, `build:win`, `build:mac`, `build:linux`)
+		// must still fail loudly so we never ship a release build that is
+		// missing the whisper runtime and silently ships broken auto-captions.
+		const isPostinstall = process.env.npm_lifecycle_event === "postinstall";
+		const isCI = process.env.CI === "true";
+		const allowMissing = process.env.WHISPER_RUNTIME_ALLOW_MISSING === "1";
+		const softFailAllowed = isPostinstall || isCI || allowMissing;
+
+		const skipChecks = await Promise.all(targets.map((target) => shouldSkipBuild(target)));
+		const allTargetsStaged = skipChecks.every(Boolean);
+
+		if (allTargetsStaged) {
+			console.log(
+				"[build-whisper-runtime] CMake not found; using bundled whisper runtime artifacts.",
+			);
+			return;
+		}
+
+		const missing = targets
+			.filter((_target, index) => !skipChecks[index])
+			.map((target) => target.archTag)
+			.join(", ");
+
+		if (softFailAllowed) {
+			console.warn(
+				`[build-whisper-runtime] CMake not found and no bundled runtime is staged for: ${missing}. ` +
+					"Auto-caption features that rely on whisper.cpp will be unavailable until you install CMake " +
+					"and rerun `npm run build:whisper-runtime`.",
+			);
+			return;
+		}
+
 		throw new Error(
-			"[build-whisper-runtime] CMake is required to build the bundled Whisper runtime.",
+			`[build-whisper-runtime] CMake is required to stage the whisper runtime for: ${missing}. ` +
+				"Install CMake and retry, or set WHISPER_RUNTIME_ALLOW_MISSING=1 to build without auto-caption support.",
 		);
 	}
 
 	const sourceDir = await ensureSourceTree();
-	const targets = getTargetConfigs();
 
 	console.log(
 		`[build-whisper-runtime] Target architectures for ${process.platform}: ${targets.map((target) => target.archTag).join(", ")}`,

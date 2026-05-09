@@ -1,7 +1,10 @@
 import { WebDemuxer } from "web-demuxer";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { getDecodedFrameTimelineOffsetUs } from "./streamingDecoder";
-import { getLocalFilePath } from "./localMediaSource";
+import {
+	createReadableMediaResourceFile,
+	resolveMediaResourceUrl,
+} from "./localMediaSource";
 
 const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
@@ -36,87 +39,40 @@ export class ForwardFrameSource {
 	private heldFrame: VideoFrame | null = null;
 	private heldFrameSec = 0;
 	private lastTargetTimeSec = 0;
+	private lastFrameIntervalSec = 0;
+	private resolvedDecodedDurationSec: number | null = null;
 	private firstFrameTimestampUs: number | null = null;
 	private frameTimelineOffsetUs = 0;
-
-	private inferMimeType(fileName: string): string {
-		const extension = fileName.split(".").pop()?.toLowerCase();
-		switch (extension) {
-			case "mov":
-				return "video/quicktime";
-			case "webm":
-				return "video/webm";
-			case "mkv":
-				return "video/x-matroska";
-			case "avi":
-				return "video/x-msvideo";
-			case "mp4":
-			default:
-				return "video/mp4";
-		}
-	}
-
-	private async loadVideoFile(resourceUrl: string): Promise<File> {
-		const localFilePath = getLocalFilePath(resourceUrl);
-		const filename =
-			(localFilePath ?? resourceUrl).split(/[\\/]/).pop()?.split("?")[0] || "video";
-
-		if (localFilePath) {
-			const result = await window.electronAPI.readLocalFile(localFilePath);
-			if (!result.success || !result.data) {
-				throw new Error(result.error || "Failed to read local video file");
-			}
-
-			const bytes =
-				result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
-			const arrayBuffer = bytes.buffer.slice(
-				bytes.byteOffset,
-				bytes.byteOffset + bytes.byteLength,
-			) as ArrayBuffer;
-			return new File([arrayBuffer], filename, {
-				type: this.inferMimeType(filename),
-			});
-		}
-
-		const response = await fetch(resourceUrl);
-		if (!response.ok) {
-			throw new Error(
-				`Failed to load video resource: ${response.status} ${response.statusText}`,
-			);
-		}
-
-		const blob = await response.blob();
-		return new File([blob], filename, {
-			type: blob.type || this.inferMimeType(filename),
-		});
-	}
-
-	private resolveVideoResourceUrl(videoUrl: string): string {
-		if (/^(blob:|data:|https?:|file:)/i.test(videoUrl)) {
-			return videoUrl;
-		}
-
-		if (/^[A-Za-z]:[\\/]/.test(videoUrl)) {
-			const normalized = videoUrl.replace(/\\/g, "/");
-			return `file:///${encodeURI(normalized)}`;
-		}
-
-		if (videoUrl.startsWith("/")) {
-			return `file://${encodeURI(videoUrl)}`;
-		}
-
-		return videoUrl;
-	}
+	private decodeCapacityWaiters = new Set<() => void>();
 
 	async initialize(videoUrl: string): Promise<ForwardFrameSourceMetadata> {
-		const resourceUrl = this.resolveVideoResourceUrl(videoUrl);
+		const resourceUrl = await resolveMediaResourceUrl(videoUrl);
 		const wasmUrl = new URL("./wasm/web-demuxer.wasm", window.location.href).href;
-		this.demuxer = new WebDemuxer({ wasmFilePath: wasmUrl });
+		const loadMediaInfo = async (source: string | File) => {
+			this.demuxer = new WebDemuxer({ wasmFilePath: wasmUrl });
+			await this.demuxer.load(source);
+			return this.demuxer.getMediaInfo();
+		};
 
-		const file = await this.loadVideoFile(resourceUrl);
-		await this.demuxer.load(file);
+		let mediaInfo;
+		try {
+			mediaInfo = await loadMediaInfo(resourceUrl);
+		} catch (error) {
+			console.warn(
+				"[ForwardFrameSource] Direct source load failed, retrying with file fallback:",
+				error,
+			);
+			const currentDemuxer = this.demuxer;
+			if (currentDemuxer) {
+				try {
+					(currentDemuxer as unknown as { destroy: () => void }).destroy();
+				} catch {
+					// Ignore cleanup errors before fallback re-init.
+				}
+			}
+			mediaInfo = await loadMediaInfo(await createReadableMediaResourceFile(videoUrl));
+		}
 
-		const mediaInfo = await this.demuxer.getMediaInfo();
 		const videoStream = mediaInfo.streams.find(
 			(stream) => stream.codec_type_string === "video",
 		);
@@ -164,6 +120,7 @@ export class ForwardFrameSource {
 				} else {
 					this.pendingFrames.push(frame);
 				}
+				this.notifyDecoderCapacityAvailable();
 			},
 			error: (error: DOMException) => {
 				this.decodeError = new Error(`VideoDecoder error: ${error.message}`);
@@ -172,6 +129,7 @@ export class ForwardFrameSource {
 					this.frameResolve = null;
 					resolve(null);
 				}
+				this.notifyDecoderCapacityAvailable();
 			},
 		});
 
@@ -212,7 +170,7 @@ export class ForwardFrameSource {
 							this.pendingFrames.length > DEFAULT_MAX_PENDING_FRAMES) &&
 						!this.cancelled
 					) {
-						await new Promise((resolve) => setTimeout(resolve, 1));
+						await this.waitForDecoderCapacity();
 					}
 
 					if (this.cancelled) {
@@ -229,6 +187,7 @@ export class ForwardFrameSource {
 				this.decodeError = error instanceof Error ? error : new Error(String(error));
 			} finally {
 				this.decodeDone = true;
+				this.notifyDecoderCapacityAvailable();
 				if (this.frameResolve) {
 					const resolve = this.frameResolve;
 					this.frameResolve = null;
@@ -244,7 +203,9 @@ export class ForwardFrameSource {
 		}
 
 		if (this.pendingFrames.length > 0) {
-			return Promise.resolve(this.pendingFrames.shift()!);
+			const frame = this.pendingFrames.shift()!;
+			this.notifyDecoderCapacityAvailable();
+			return Promise.resolve(frame);
 		}
 
 		if (this.decodeDone) {
@@ -258,6 +219,24 @@ export class ForwardFrameSource {
 		return new Promise((resolve) => {
 			this.frameResolve = resolve;
 		});
+	}
+
+	private waitForDecoderCapacity(): Promise<void> {
+		return new Promise((resolve) => {
+			this.decodeCapacityWaiters.add(resolve);
+		});
+	}
+
+	private notifyDecoderCapacityAvailable(): void {
+		if (this.decodeCapacityWaiters.size === 0) {
+			return;
+		}
+
+		const waiters = [...this.decodeCapacityWaiters];
+		this.decodeCapacityWaiters.clear();
+		for (const resolve of waiters) {
+			resolve();
+		}
 	}
 
 	async getFrameAtTime(targetTimeSec: number): Promise<VideoFrame | null> {
@@ -297,6 +276,10 @@ export class ForwardFrameSource {
 		while (!this.cancelled) {
 			const nextFrame = await this.getNextFrame();
 			if (!nextFrame) {
+				this.resolvedDecodedDurationSec = Math.max(
+					this.heldFrameSec,
+					this.heldFrameSec + Math.max(0, this.lastFrameIntervalSec),
+				);
 				return new VideoFrame(this.heldFrame, {
 					timestamp: this.heldFrame.timestamp,
 				});
@@ -320,6 +303,7 @@ export class ForwardFrameSource {
 				});
 			}
 
+			this.lastFrameIntervalSec = Math.max(0, nextFrameSec - this.heldFrameSec);
 			this.heldFrame.close();
 			this.heldFrame = nextFrame;
 			this.heldFrameSec = nextFrameSec;
@@ -328,8 +312,17 @@ export class ForwardFrameSource {
 		return null;
 	}
 
+	getResolvedDurationSec(): number | null {
+		return this.resolvedDecodedDurationSec;
+	}
+
+	hasReachedEndOfStream(): boolean {
+		return this.decodeDone && this.pendingFrames.length === 0;
+	}
+
 	cancel(): void {
 		this.cancelled = true;
+		this.notifyDecoderCapacityAvailable();
 		if (this.frameResolve) {
 			const resolve = this.frameResolve;
 			this.frameResolve = null;
@@ -397,7 +390,10 @@ export class ForwardFrameSource {
 		this.decodeDone = false;
 		this.decodeError = null;
 		this.lastTargetTimeSec = 0;
+		this.lastFrameIntervalSec = 0;
+		this.resolvedDecodedDurationSec = null;
 		this.firstFrameTimestampUs = null;
 		this.frameTimelineOffsetUs = 0;
+		this.decodeCapacityWaiters.clear();
 	}
 }

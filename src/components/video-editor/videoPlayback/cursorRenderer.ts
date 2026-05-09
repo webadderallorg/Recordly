@@ -2,7 +2,7 @@ import { Assets, BlurFilter, Container, Graphics, Sprite, Texture } from "pixi.j
 import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import { getRenderableAssetUrl } from "@/lib/assetPath";
 import { extensionHost } from "@/lib/extensions";
-import minimalCursorUrl from "../../../../Minimal Cursor.svg";
+import minimalCursorUrl from "@/assets/cursors/custom/minimal-cursor.svg";
 import {
 	type CursorStyle,
 	type CursorTelemetryPoint,
@@ -16,6 +16,7 @@ import {
 	getCursorSpringConfig,
 	resetSpringState,
 	stepSpringValue,
+	type CursorSpringTuning,
 } from "./motionSmoothing";
 import { cursorSetAssets, getCursorStyleSizeMultiplier } from "./uploadedCursorAssets";
 
@@ -42,6 +43,26 @@ type CursorPackSource = {
 	pointerAnchor: { x: number; y: number };
 };
 
+export type NativeCursorAtlasEntry = {
+	cursorType: CursorAssetKey;
+	index: number;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	anchorX: number;
+	anchorY: number;
+	aspectRatio: number;
+};
+
+export type NativeCursorAtlas = {
+	style: CursorStyle;
+	width: number;
+	height: number;
+	dataUrl: string;
+	entries: NativeCursorAtlasEntry[];
+};
+
 /**
  * Configuration for cursor rendering.
  */
@@ -56,6 +77,8 @@ export interface CursorRenderConfig {
 	trailLength: number;
 	/** Smoothing factor for cursor interpolation (0–1, lower = smoother/slower) */
 	smoothingFactor: number;
+	/** Optional multipliers applied on top of the derived cursor spring config. */
+	springTuning: CursorSpringTuning;
 	/** Directional cursor motion blur amount. */
 	motionBlur: number;
 	/** Click bounce multiplier. */
@@ -74,6 +97,11 @@ export const DEFAULT_CURSOR_CONFIG: CursorRenderConfig = {
 	dotAlpha: 0.95,
 	trailLength: 0,
 	smoothingFactor: 0.18,
+	springTuning: {
+		stiffnessMultiplier: 1,
+		dampingMultiplier: 1,
+		massMultiplier: 1,
+	},
 	motionBlur: 0,
 	clickBounce: 1,
 	clickBounceDuration: DEFAULT_CURSOR_CLICK_BOUNCE_DURATION,
@@ -95,6 +123,8 @@ const CURSOR_SHADOW_OFFSET_X = 0;
 const CURSOR_SHADOW_OFFSET_Y = 2;
 const CURSOR_SHADOW_BLUR = 3;
 const CURSOR_SHADOW_PADDING = 12;
+const NATIVE_CURSOR_ATLAS_DRAW_HEIGHT = 256;
+const NATIVE_CURSOR_ATLAS_PADDING = 2;
 let cursorAssetsPromise: Promise<void> | null = null;
 let cursorPackAssetsPromise: Promise<void> | null = null;
 let loadedCursorPackSourcesSignature = "";
@@ -519,6 +549,77 @@ export async function preloadCursorAssets() {
 	await ensureCursorPackAssetsLoaded();
 }
 
+function getNativeCursorAtlasAsset(style: CursorStyle, key: CursorAssetKey) {
+	if (isStatefulCursorStyle(style)) {
+		return getStatefulCursorAsset(style, key);
+	}
+
+	if (isSingleCursorStyle(style)) {
+		return getCursorStyleAsset(style);
+	}
+
+	return getCursorPackStyleAsset(style, key);
+}
+
+export async function buildNativeCursorAtlas(
+	style: CursorStyle = DEFAULT_CURSOR_STYLE,
+): Promise<NativeCursorAtlas | null> {
+	if (typeof document === "undefined") {
+		return null;
+	}
+
+	await preloadCursorAssets();
+
+	const entries: NativeCursorAtlasEntry[] = [];
+	const packedAssets = SUPPORTED_CURSOR_KEYS.map((key, index) => {
+		const asset = getNativeCursorAtlasAsset(style, key);
+		const height = NATIVE_CURSOR_ATLAS_DRAW_HEIGHT;
+		const width = Math.max(1, Math.round(height * asset.aspectRatio));
+		return { key, index, asset, width, height };
+	});
+
+	const atlasWidth = packedAssets.reduce(
+		(total, item) => total + item.width + NATIVE_CURSOR_ATLAS_PADDING,
+		NATIVE_CURSOR_ATLAS_PADDING,
+	);
+	const atlasHeight = NATIVE_CURSOR_ATLAS_DRAW_HEIGHT + NATIVE_CURSOR_ATLAS_PADDING * 2;
+	const canvas = document.createElement("canvas");
+	canvas.width = atlasWidth;
+	canvas.height = atlasHeight;
+
+	const ctx = canvas.getContext("2d");
+	if (!ctx) {
+		return null;
+	}
+
+	ctx.clearRect(0, 0, atlasWidth, atlasHeight);
+	let x = NATIVE_CURSOR_ATLAS_PADDING;
+	for (const { key, index, asset, width, height } of packedAssets) {
+		const y = NATIVE_CURSOR_ATLAS_PADDING;
+		ctx.drawImage(asset.image, x, y, width, height);
+		entries.push({
+			cursorType: key,
+			index,
+			x,
+			y,
+			width,
+			height,
+			anchorX: asset.anchorX,
+			anchorY: asset.anchorY,
+			aspectRatio: asset.aspectRatio,
+		});
+		x += width + NATIVE_CURSOR_ATLAS_PADDING;
+	}
+
+	return {
+		style,
+		width: atlasWidth,
+		height: atlasHeight,
+		dataUrl: canvas.toDataURL("image/png"),
+		entries,
+	};
+}
+
 /**
  * Interpolates cursor position from telemetry samples at a given time.
  * Uses linear interpolation between the two nearest samples.
@@ -644,7 +745,10 @@ function getCursorViewportScale(viewport: CursorViewportRect) {
 	return Math.max(MIN_CURSOR_VIEWPORT_SCALE, viewport.width / REFERENCE_WIDTH);
 }
 
-function getCursorSwaySpringConfig(smoothingFactor: number) {
+function getCursorSwaySpringConfig(
+	smoothingFactor: number,
+	springTuning: CursorSpringTuning,
+) {
 	const baseConfig = getCursorSpringConfig(
 		Math.min(
 			2,
@@ -653,6 +757,7 @@ function getCursorSwaySpringConfig(smoothingFactor: number) {
 				smoothingFactor * CURSOR_SWAY_SMOOTHING_MULTIPLIER + CURSOR_SWAY_SMOOTHING_OFFSET,
 			),
 		),
+		springTuning,
 	);
 
 	return {
@@ -700,14 +805,16 @@ export class SmoothedCursorState {
 	public y = 0.5;
 	public trail: Array<{ x: number; y: number }> = [];
 	private smoothingFactor: number;
+	private springTuning: CursorSpringTuning;
 	private trailLength: number;
 	private initialized = false;
 	private lastTimeMs: number | null = null;
 	private xSpring = createSpringState(0.5);
 	private ySpring = createSpringState(0.5);
 
-	constructor(config: Pick<CursorRenderConfig, "smoothingFactor" | "trailLength">) {
+	constructor(config: Pick<CursorRenderConfig, "smoothingFactor" | "trailLength" | "springTuning">) {
 		this.smoothingFactor = config.smoothingFactor;
+		this.springTuning = config.springTuning;
 		this.trailLength = config.trailLength;
 	}
 
@@ -741,13 +848,17 @@ export class SmoothedCursorState {
 			this.lastTimeMs === null ? 1000 / 60 : Math.max(1, timeMs - this.lastTimeMs);
 		this.lastTimeMs = timeMs;
 
-		const springConfig = getCursorSpringConfig(this.smoothingFactor);
+		const springConfig = getCursorSpringConfig(this.smoothingFactor, this.springTuning);
 		this.x = stepSpringValue(this.xSpring, targetX, deltaMs, springConfig);
 		this.y = stepSpringValue(this.ySpring, targetY, deltaMs, springConfig);
 	}
 
 	setSmoothingFactor(smoothingFactor: number): void {
 		this.smoothingFactor = smoothingFactor;
+	}
+
+	setSpringTuning(springTuning: CursorSpringTuning): void {
+		this.springTuning = springTuning;
 	}
 
 	snapTo(targetX: number, targetY: number, timeMs: number): void {
@@ -791,7 +902,14 @@ export class PixiCursorOverlay {
 	private swaySpring = createSpringState(0);
 
 	constructor(config: Partial<CursorRenderConfig> = {}) {
-		this.config = { ...DEFAULT_CURSOR_CONFIG, ...config };
+		this.config = {
+			...DEFAULT_CURSOR_CONFIG,
+			...config,
+			springTuning: {
+				...DEFAULT_CURSOR_CONFIG.springTuning,
+				...config.springTuning,
+			},
+		};
 		this.state = new SmoothedCursorState(this.config);
 
 		this.container = new Container();
@@ -861,6 +979,14 @@ export class PixiCursorOverlay {
 	setSmoothingFactor(smoothingFactor: number) {
 		this.config.smoothingFactor = smoothingFactor;
 		this.state.setSmoothingFactor(smoothingFactor);
+	}
+
+	setSpringTuning(springTuning: CursorSpringTuning) {
+		this.config.springTuning = {
+			...DEFAULT_CURSOR_CONFIG.springTuning,
+			...springTuning,
+		};
+		this.state.setSpringTuning(this.config.springTuning);
 	}
 
 	setMotionBlur(motionBlur: number) {
@@ -1095,7 +1221,7 @@ export class PixiCursorOverlay {
 			this.swaySpring,
 			targetRotation,
 			deltaMs,
-			getCursorSwaySpringConfig(this.config.smoothingFactor),
+			getCursorSwaySpringConfig(this.config.smoothingFactor, this.config.springTuning),
 		);
 
 		if (Math.abs(this.swayRotation) < 0.0001 && targetRotation === 0) {

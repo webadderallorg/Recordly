@@ -10,6 +10,7 @@ import type {
 	SpeedRegion,
 	TrimRegion,
 	WebcamOverlaySettings,
+	ZoomMotionBlurTuning,
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
@@ -42,6 +43,10 @@ interface GifExporterConfig {
 	shadowIntensity: number;
 	backgroundBlur: number;
 	zoomMotionBlur?: number;
+	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
+	zoomTemporalMotionBlur?: number;
+	zoomMotionBlurSampleCount?: number | null;
+	zoomMotionBlurShutterFraction?: number | null;
 	connectZooms?: boolean;
 	zoomInDurationMs?: number;
 	zoomInOverlapMs?: number;
@@ -65,6 +70,12 @@ interface GifExporterConfig {
 	cursorStyle?: CursorStyle;
 	cursorSize?: number;
 	cursorSmoothing?: number;
+	cursorSpringStiffnessMultiplier?: number;
+	cursorSpringDampingMultiplier?: number;
+	cursorSpringMassMultiplier?: number;
+	cameraSpringStiffnessMultiplier?: number;
+	cameraSpringDampingMultiplier?: number;
+	cameraSpringMassMultiplier?: number;
 	zoomSmoothness?: number;
 	zoomClassicMode?: boolean;
 	cursorMotionBlur?: number;
@@ -158,6 +169,10 @@ export class GifExporter {
 				shadowIntensity: this.config.shadowIntensity,
 				backgroundBlur: this.config.backgroundBlur,
 				zoomMotionBlur: this.config.zoomMotionBlur,
+				zoomMotionBlurTuning: this.config.zoomMotionBlurTuning,
+				zoomTemporalMotionBlur: this.config.zoomTemporalMotionBlur,
+				zoomMotionBlurSampleCount: this.config.zoomMotionBlurSampleCount,
+				zoomMotionBlurShutterFraction: this.config.zoomMotionBlurShutterFraction,
 				connectZooms: this.config.connectZooms,
 				zoomInDurationMs: this.config.zoomInDurationMs,
 				zoomInOverlapMs: this.config.zoomInOverlapMs,
@@ -185,6 +200,12 @@ export class GifExporter {
 				cursorStyle: this.config.cursorStyle,
 				cursorSize: this.config.cursorSize,
 				cursorSmoothing: this.config.cursorSmoothing,
+				cursorSpringStiffnessMultiplier: this.config.cursorSpringStiffnessMultiplier,
+				cursorSpringDampingMultiplier: this.config.cursorSpringDampingMultiplier,
+				cursorSpringMassMultiplier: this.config.cursorSpringMassMultiplier,
+				cameraSpringStiffnessMultiplier: this.config.cameraSpringStiffnessMultiplier,
+				cameraSpringDampingMultiplier: this.config.cameraSpringDampingMultiplier,
+				cameraSpringMassMultiplier: this.config.cameraSpringMassMultiplier,
 				zoomSmoothness: this.config.zoomSmoothness,
 				zoomClassicMode: this.config.zoomClassicMode,
 				cursorMotionBlur: this.config.cursorMotionBlur,
@@ -232,6 +253,7 @@ export class GifExporter {
 			console.log("[GifExporter] Using streaming decode (web-demuxer + VideoDecoder)");
 
 			let frameIndex = 0;
+			const frameDurationUs = 1_000_000 / this.config.frameRate;
 
 			// Stream decode and process frames — no seeking!
 			await this.streamingDecoder.decodeAll(
@@ -240,7 +262,6 @@ export class GifExporter {
 				this.config.speedRegions,
 				async (videoFrame, _exportTimestampUs, sourceTimestampMs, cursorTimestampMs) => {
 					if (this.cancelled) {
-						videoFrame.close();
 						return;
 					}
 
@@ -250,8 +271,9 @@ export class GifExporter {
 						videoFrame,
 						sourceTimestampUs,
 						cursorTimestampUs,
+						frameDurationUs,
+						frameIndex * frameDurationUs,
 					);
-					videoFrame.close();
 
 					this.addRenderedGifFrame(frameDelay);
 					frameIndex++;

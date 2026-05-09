@@ -1,7 +1,7 @@
 Language: EN | [简中](README.zh-CN.md)
 
 <p align="center">
-  <img src="https://i.postimg.cc/tRnL8gHp/Frame-5.png" width="220" alt="Recordly logo">
+  <img width="220" alt="Recordly logo" src="https://github.com/user-attachments/assets/082bb4b0-5fc5-4e9f-abda-55611fd6aded" />
 </p>
 
 <p align="center">
@@ -41,21 +41,21 @@ Platform notes:
 Recordly can automatically emphasize activity with zoom suggestions, smooth cursor movement, add motion effects, and place the final composition inside a styled frame with wallpapers, colors, gradients, blur, padding, and shadows.
 
 <p>
-  <img src="./feature1.gif" width="450" alt="Recordly cursor and zoom demo video">
+  <img src="./docs/media/feature1.gif" width="450" alt="Recordly cursor and zoom demo video">
 </p>
 
 ## Dynamic webcam bubble overlays
 Add webcam footage as an overlay bubble, position it with presets or custom coordinates, mirror it, control shadow and roundness, and optionally make it react to zoom so it stays visually balanced during motion.
 
 <p>
-  <img src="./feature2.gif" width="450" alt="Recordly webcam overlay demo video">
+  <img src="./docs/media/feature2.gif" width="450" alt="Recordly webcam overlay demo video">
 </p>
 
 ## Timeline editing built for demos
 Use drag-and-drop timeline tools for zooms, trims, speed regions, annotations, extra audio regions, and crop-aware edits. Save and reopen work as `.recordly` project files.
 
 <p>
-  <img src="./feature3.png" width="450" alt="Recordly timeline editor screenshot">
+  <img width="450" alt="timeline editor" src="https://github.com/user-attachments/assets/3692bd8f-7b8d-4a93-b696-d17c828487ea" />
 </p>
 
 ## Extensions & Marketplace
@@ -397,4 +397,3 @@ Created by
 [@webadderall](https://x.com/webadderall)
 
 ---
-

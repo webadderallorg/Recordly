@@ -2,6 +2,7 @@
 #include <mfapi.h>
 #include <mferror.h>
 #include <codecapi.h>
+#include <algorithm>
 #include <iostream>
 #include <cstring>
 
@@ -116,10 +117,37 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
         return false;
     }
 
+    // WGC window captures can change frame size while recording. Keep the muxer
+    // output dimensions stable by compositing resized frames into this fixed
+    // BGRA surface before CPU readback.
+    D3D11_TEXTURE2D_DESC compositeDesc = {};
+    compositeDesc.Width = width_;
+    compositeDesc.Height = height_;
+    compositeDesc.MipLevels = 1;
+    compositeDesc.ArraySize = 1;
+    compositeDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    compositeDesc.SampleDesc.Count = 1;
+    compositeDesc.Usage = D3D11_USAGE_DEFAULT;
+    compositeDesc.BindFlags = D3D11_BIND_RENDER_TARGET;
+
+    hr = device_->CreateTexture2D(&compositeDesc, nullptr, &resizeCompositeTexture_);
+    if (FAILED(hr)) {
+        std::cerr << "ERROR: Failed to create resize composite texture: 0x" << std::hex << hr << std::endl;
+        return false;
+    }
+
+    hr = device_->CreateRenderTargetView(resizeCompositeTexture_.Get(), nullptr, &resizeCompositeView_);
+    if (FAILED(hr)) {
+        std::cerr << "ERROR: Failed to create resize composite view: 0x" << std::hex << hr << std::endl;
+        return false;
+    }
+
     // Pre-allocate NV12 buffer
     const int ySize = width_ * height_;
     const int uvSize = (width_ / 2) * (height_ / 2) * 2;
     nv12Buffer_.resize(ySize + uvSize);
+    lastFrameBuffer_.clear();
+    lastSampleTimeHns_ = -1;
 
     initialized_ = true;
     return true;
@@ -130,7 +158,39 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
 
     if (!initialized_ || !sinkWriter_) return false;
 
-    context_->CopyResource(stagingTexture_.Get(), texture);
+    D3D11_TEXTURE2D_DESC sourceDesc = {};
+    texture->GetDesc(&sourceDesc);
+
+    if (sourceDesc.Width == static_cast<UINT>(width_) &&
+        sourceDesc.Height == static_cast<UINT>(height_)) {
+        context_->CopyResource(stagingTexture_.Get(), texture);
+    } else {
+        if (!resizeCompositeTexture_ || !resizeCompositeView_) return false;
+
+        const FLOAT clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        context_->ClearRenderTargetView(resizeCompositeView_.Get(), clearColor);
+
+        D3D11_BOX sourceBox = {};
+        sourceBox.left = 0;
+        sourceBox.top = 0;
+        sourceBox.front = 0;
+        sourceBox.right = (std::min)(sourceDesc.Width, static_cast<UINT>(width_));
+        sourceBox.bottom = (std::min)(sourceDesc.Height, static_cast<UINT>(height_));
+        sourceBox.back = 1;
+
+        if (sourceBox.right == 0 || sourceBox.bottom == 0) return false;
+
+        context_->CopySubresourceRegion(
+            resizeCompositeTexture_.Get(),
+            0,
+            0,
+            0,
+            0,
+            texture,
+            0,
+            &sourceBox);
+        context_->CopyResource(stagingTexture_.Get(), resizeCompositeTexture_.Get());
+    }
 
     D3D11_MAPPED_SUBRESOURCE mapped;
     HRESULT hr = context_->Map(stagingTexture_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
@@ -167,17 +227,47 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
 
     context_->Unmap(stagingTexture_.Get(), 0);
 
+    bool wroteSample = writeNv12SampleLocked(nv12Buffer_, timestampHns);
+    if (wroteSample) {
+        lastFrameBuffer_ = nv12Buffer_;
+        lastSampleTimeHns_ = timestampHns;
+    }
+    return wroteSample;
+}
+
+bool MFEncoder::extendLastFrameTo(int64_t timestampHns) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    if (!initialized_ || !sinkWriter_) return false;
+    if (lastFrameBuffer_.empty()) return false;
+
+    const int64_t frameDurationHns = 10000000LL / fps_;
+    if (lastSampleTimeHns_ >= 0 && timestampHns <= lastSampleTimeHns_ + frameDurationHns) {
+        return true;
+    }
+
+    if (!writeNv12SampleLocked(lastFrameBuffer_, timestampHns)) {
+        return false;
+    }
+
+    lastSampleTimeHns_ = timestampHns;
+    return true;
+}
+
+bool MFEncoder::writeNv12SampleLocked(const std::vector<uint8_t>& frameBuffer, int64_t timestampHns) {
+    if (frameBuffer.empty()) return false;
+
     // Create MF sample
-    DWORD bufferSize = static_cast<DWORD>(nv12Buffer_.size());
+    DWORD bufferSize = static_cast<DWORD>(frameBuffer.size());
     ComPtr<IMFMediaBuffer> buffer;
-    hr = MFCreateMemoryBuffer(bufferSize, &buffer);
+    HRESULT hr = MFCreateMemoryBuffer(bufferSize, &buffer);
     if (FAILED(hr)) return false;
 
     BYTE* bufferData = nullptr;
     hr = buffer->Lock(&bufferData, nullptr, nullptr);
     if (FAILED(hr)) return false;
 
-    std::memcpy(bufferData, nv12Buffer_.data(), bufferSize);
+    std::memcpy(bufferData, frameBuffer.data(), bufferSize);
     buffer->Unlock();
     buffer->SetCurrentLength(bufferSize);
 
@@ -210,8 +300,13 @@ bool MFEncoder::finalize() {
     initialized_ = false;
     sinkWriter_.Reset();
     stagingTexture_.Reset();
+    resizeCompositeView_.Reset();
+    resizeCompositeTexture_.Reset();
     nv12Buffer_.clear();
+    lastFrameBuffer_.clear();
     nv12Buffer_.shrink_to_fit();
+    lastFrameBuffer_.shrink_to_fit();
+    lastSampleTimeHns_ = -1;
     MFShutdown();
     return SUCCEEDED(hr);
 }

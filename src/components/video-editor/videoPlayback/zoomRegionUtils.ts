@@ -15,6 +15,8 @@ const ZOOM_ANIMATION_LEAD_MS = 200;
 
 type DominantRegionOptions = {
 	connectZooms?: boolean;
+	zoomInDurationMs?: number;
+	zoomOutDurationMs?: number;
 };
 
 type ConnectedRegionPair = {
@@ -40,10 +42,17 @@ function easeConnectedPan(value: number) {
 	return cubicBezier(0.1, 0.0, 0.2, 1.0, value);
 }
 
-export function computeRegionStrength(region: ZoomRegion, timeMs: number) {
+export function computeRegionStrength(
+	region: ZoomRegion,
+	timeMs: number,
+	options: Pick<DominantRegionOptions, "zoomInDurationMs" | "zoomOutDurationMs"> = {},
+) {
+	const zoomInDurationMs = Math.max(1, options.zoomInDurationMs ?? ZOOM_IN_TRANSITION_WINDOW_MS);
+	const zoomOutDurationMs = Math.max(1, options.zoomOutDurationMs ?? TRANSITION_WINDOW_MS);
 	const adjustedTimeMs = timeMs - ZOOM_ANIMATION_LEAD_MS;
+	const leadInStart = region.startMs + ZOOM_IN_OVERLAP_MS - ZOOM_IN_TRANSITION_WINDOW_MS;
 	let zoomOutStart = region.endMs - ZOOM_OUT_EARLY_START_MS;
-	let zoomInEnd = region.startMs + ZOOM_IN_OVERLAP_MS;
+	let zoomInEnd = leadInStart + zoomInDurationMs;
 
 	if (zoomInEnd > zoomOutStart) {
 		const midpoint = (zoomInEnd + zoomOutStart) / 2;
@@ -51,15 +60,14 @@ export function computeRegionStrength(region: ZoomRegion, timeMs: number) {
 		zoomOutStart = midpoint;
 	}
 
-	const leadInStart = zoomInEnd - ZOOM_IN_TRANSITION_WINDOW_MS;
-	const leadOutEnd = zoomOutStart + TRANSITION_WINDOW_MS;
+	const leadOutEnd = zoomOutStart + zoomOutDurationMs;
 
 	if (adjustedTimeMs < leadInStart || adjustedTimeMs > leadOutEnd) {
 		return 0;
 	}
 
 	if (adjustedTimeMs < zoomInEnd) {
-		const progress = (adjustedTimeMs - leadInStart) / ZOOM_IN_TRANSITION_WINDOW_MS;
+		const progress = (adjustedTimeMs - leadInStart) / zoomInDurationMs;
 		return easeOutZoom(progress);
 	}
 
@@ -67,7 +75,7 @@ export function computeRegionStrength(region: ZoomRegion, timeMs: number) {
 		return 1;
 	}
 
-	const progress = clamp01((adjustedTimeMs - zoomOutStart) / TRANSITION_WINDOW_MS);
+	const progress = clamp01((adjustedTimeMs - zoomOutStart) / zoomOutDurationMs);
 	return 1 - easeOutZoom(progress);
 }
 
@@ -111,6 +119,7 @@ function getActiveRegion(
 	regions: ZoomRegion[],
 	timeMs: number,
 	connectedPairs: ConnectedRegionPair[],
+	options: DominantRegionOptions,
 ) {
 	const activeRegions = regions
 		.map((region) => {
@@ -134,7 +143,7 @@ function getActiveRegion(
 				}
 			}
 
-			return { region, strength: computeRegionStrength(region, timeMs) };
+			return { region, strength: computeRegionStrength(region, timeMs, options) };
 		})
 		.filter((entry) => entry.strength > 0)
 		.sort((left, right) => {
@@ -242,7 +251,7 @@ export function findDominantRegion(
 		}
 	}
 
-	const activeRegion = getActiveRegion(regions, timeMs, connectedPairs);
+	const activeRegion = getActiveRegion(regions, timeMs, connectedPairs, options);
 	return activeRegion
 		? { ...activeRegion, transition: null }
 		: { region: null, strength: 0, blendedScale: null, transition: null };

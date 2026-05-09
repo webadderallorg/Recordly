@@ -24,6 +24,12 @@ extern "C" {
         IInspectable** graphicsDevice);
 }
 
+static int normalizeFramePoolExtent(int value) {
+    int normalized = value < 2 ? 2 : value;
+    if ((normalized % 2) != 0) ++normalized;
+    return normalized;
+}
+
 WgcSession::WgcSession() {}
 
 WgcSession::~WgcSession() {
@@ -112,17 +118,16 @@ bool WgcSession::initializeWithItem(int fps) {
     if (!captureItem_) return false;
 
     auto size = captureItem_.Size();
-    // Round to even dimensions so the frame pool textures match the H.264-aligned
-    // encoder staging texture exactly. Without this, window captures (which often
-    // produce odd sizes from DWM shadow/DPI) cause CopyResource to fail silently
-    // and the encoder reads zeroed memory, yielding pure black output.
-    size.Width = (size.Width / 2) * 2;
-    size.Height = (size.Height / 2) * 2;
-    if (size.Width < 2) size.Width = 2;
-    if (size.Height < 2) size.Height = 2;
+    // Keep the WGC frame-pool textures aligned with the fixed-size H.264
+    // encoder staging texture. Window captures can start with odd dimensions
+    // from DWM shadows or fractional DPI.
+    size.Width = normalizeFramePoolExtent(size.Width);
+    size.Height = normalizeFramePoolExtent(size.Height);
 
     captureWidth_ = size.Width;
     captureHeight_ = size.Height;
+    framePoolWidth_ = size.Width;
+    framePoolHeight_ = size.Height;
 
     framePool_ = winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
         winrtDevice_,
@@ -140,16 +145,53 @@ bool WgcSession::initializeWithItem(int fps) {
     } catch (winrt::hresult_error const&) {
     }
 
-    // IncludeSecondaryWindows (IGraphicsCaptureSession6, Windows 11 24H2+) pulls
-    // popup menus, dropdowns, tooltips and other owned top-level windows into the
-    // capture. Without it, "File / Edit / View" menus and context menus disappear
-    // from window-scoped recordings.
+    // IncludeSecondaryWindows was introduced in UniversalApiContract v19
+    // (Windows 11 24H2 / SDK 10.0.26100). Older SDK headers do not declare
+    // IGraphicsCaptureSession6, so keep this as an optional compile-time path.
+#if defined(WINDOWS_FOUNDATION_UNIVERSALAPICONTRACT_VERSION) && \
+    WINDOWS_FOUNDATION_UNIVERSALAPICONTRACT_VERSION >= 0x130000
     try {
         if (auto session6 = session_.try_as<
                 winrt::Windows::Graphics::Capture::IGraphicsCaptureSession6>()) {
             session6.IncludeSecondaryWindows(true);
         }
     } catch (winrt::hresult_error const&) {
+    }
+#endif
+
+    return true;
+}
+
+bool WgcSession::recreateFramePoolIfNeeded(
+    winrt::Windows::Graphics::SizeInt32 const& contentSize) {
+    if (!framePool_) return false;
+
+    const int normalizedWidth = normalizeFramePoolExtent(contentSize.Width);
+    const int normalizedHeight = normalizeFramePoolExtent(contentSize.Height);
+    if (normalizedWidth == framePoolWidth_ && normalizedHeight == framePoolHeight_) {
+        return false;
+    }
+
+    winrt::Windows::Graphics::SizeInt32 normalizedSize{
+        normalizedWidth,
+        normalizedHeight,
+    };
+
+    try {
+        framePool_.Recreate(
+            winrtDevice_,
+            winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
+            2,
+            normalizedSize);
+        framePoolWidth_ = normalizedWidth;
+        framePoolHeight_ = normalizedHeight;
+        std::cerr << "INFO: Recreated WGC frame pool for resized content "
+                  << framePoolWidth_ << "x" << framePoolHeight_ << std::endl;
+    } catch (winrt::hresult_error const& e) {
+        fatalError_ = true;
+        capturing_ = false;
+        std::cerr << "ERROR: Failed to recreate WGC frame pool after resize: 0x"
+                  << std::hex << e.code() << std::dec << std::endl;
     }
 
     return true;
@@ -195,6 +237,7 @@ bool WgcSession::startCapture() {
     if (!session_ || !framePool_) return false;
 
     capturing_ = true;
+    fatalError_ = false;
     lastFrameTimeHns_ = 0;
 
     frameArrivedRevoker_ = framePool_.FrameArrived(
@@ -226,10 +269,15 @@ void WgcSession::onFrameArrived(
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& sender,
     winrt::Windows::Foundation::IInspectable const&) {
 
-    if (!capturing_) return;
+    if (!capturing_ || fatalError_) return;
 
     auto frame = sender.TryGetNextFrame();
     if (!frame) return;
+    auto contentSize = frame.ContentSize();
+    if (recreateFramePoolIfNeeded(contentSize)) {
+        frame.Close();
+        return;
+    }
 
     auto timestamp = frame.SystemRelativeTime();
     int64_t frameTimeHns = std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, 10000000>>>(timestamp).count();

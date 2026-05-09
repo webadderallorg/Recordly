@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	clampMediaTimeToDuration,
+	enablePitchPreservingPlayback,
 	estimateCompanionAudioStartDelaySeconds,
 	getEffectiveRecordingDurationMs,
 	getEffectiveVideoStreamDurationSeconds,
@@ -101,6 +102,22 @@ describe("getMediaSyncPlaybackRate", () => {
 	});
 });
 
+describe("enablePitchPreservingPlayback", () => {
+	it("enables standard and vendor pitch-preserve switches", () => {
+		const media = {} as HTMLMediaElement & {
+			preservesPitch?: boolean;
+			mozPreservesPitch?: boolean;
+			webkitPreservesPitch?: boolean;
+		};
+
+		enablePitchPreservingPlayback(media);
+
+		expect(media.preservesPitch).toBe(true);
+		expect(media.mozPreservesPitch).toBe(true);
+		expect(media.webkitPreservesPitch).toBe(true);
+	});
+});
+
 describe("getEffectiveVideoStreamDurationSeconds", () => {
 	it("prefers the video stream duration when present", () => {
 		expect(
@@ -109,6 +126,15 @@ describe("getEffectiveVideoStreamDurationSeconds", () => {
 				streamDuration: 11.2,
 			}),
 		).toBe(11.2);
+	});
+
+	it("uses the container duration when the video stream is much shorter", () => {
+		expect(
+			getEffectiveVideoStreamDurationSeconds({
+				duration: 60,
+				streamDuration: 40,
+			}),
+		).toBe(60);
 	});
 
 	it("falls back to the container duration when stream duration is missing", () => {

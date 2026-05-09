@@ -1,5 +1,6 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
+import { CURSOR_MOTION_PRESETS } from "./cursorMotionPresets";
 import { fromFileUrl, normalizeProjectEditor, toFileUrl } from "./projectPersistence";
 
 describe("Audio path handling", () => {
@@ -233,5 +234,57 @@ describe("Audio region normalization", () => {
 			const result = normalizeProjectEditor({ audioRegions: null } as any);
 			expect(result.audioRegions).toEqual([]);
 		});
+	});
+});
+
+describe("Motion preset normalization", () => {
+	it("preserves the smooth preset when the saved values match it exactly", () => {
+		const smooth = CURSOR_MOTION_PRESETS.smooth;
+		const result = normalizeProjectEditor({
+			zoomInDurationMs: smooth.zoomInDurationMs,
+			zoomOutDurationMs: smooth.zoomOutDurationMs,
+			cursorSize: smooth.cursorSize,
+			cursorSmoothing: smooth.cursorSmoothing,
+			cursorSpringStiffnessMultiplier: smooth.cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier: smooth.cursorSpringDampingMultiplier,
+			cursorSpringMassMultiplier: smooth.cursorSpringMassMultiplier,
+			cursorMotionBlur: smooth.cursorMotionBlur,
+			cursorClickBounce: smooth.cursorClickBounce,
+			cursorClickBounceDuration: smooth.cursorClickBounceDuration,
+		} as any);
+
+		expect(result.zoomInDurationMs).toBe(smooth.zoomInDurationMs);
+		expect(result.zoomOutDurationMs).toBe(smooth.zoomOutDurationMs);
+		expect(result.cursorSpringStiffnessMultiplier).toBe(smooth.cursorSpringStiffnessMultiplier);
+		expect(result.cursorSpringDampingMultiplier).toBe(smooth.cursorSpringDampingMultiplier);
+	});
+
+	it("falls back to focused when the saved values do not match a supported preset", () => {
+		const focused = CURSOR_MOTION_PRESETS.focused;
+		const result = normalizeProjectEditor({
+			zoomInDurationMs: 275,
+			zoomOutDurationMs: 410,
+			cursorSize: 3.25,
+			cursorSmoothing: 0.52,
+			cursorSpringStiffnessMultiplier: 1.1,
+			cursorSpringDampingMultiplier: 1.05,
+			cursorSpringMassMultiplier: 1.6,
+			cursorMotionBlur: 0.9,
+			cursorClickBounce: 2.25,
+			cursorClickBounceDuration: 280,
+		} as any);
+
+		expect(result.zoomInDurationMs).toBe(focused.zoomInDurationMs);
+		expect(result.zoomOutDurationMs).toBe(focused.zoomOutDurationMs);
+		expect(result.cursorSize).toBe(focused.cursorSize);
+		expect(result.cursorSmoothing).toBe(focused.cursorSmoothing);
+		expect(result.cursorSpringStiffnessMultiplier).toBe(
+			focused.cursorSpringStiffnessMultiplier,
+		);
+		expect(result.cursorSpringDampingMultiplier).toBe(focused.cursorSpringDampingMultiplier);
+		expect(result.cursorSpringMassMultiplier).toBe(focused.cursorSpringMassMultiplier);
+		expect(result.cursorMotionBlur).toBe(focused.cursorMotionBlur);
+		expect(result.cursorClickBounce).toBe(focused.cursorClickBounce);
+		expect(result.cursorClickBounceDuration).toBe(focused.cursorClickBounceDuration);
 	});
 });

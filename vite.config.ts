@@ -1,7 +1,28 @@
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import electron from "vite-plugin-electron/simple";
+
+function electronMainCjsGuardPlugin(): Plugin {
+	return {
+		name: "recordly-electron-main-cjs-guard",
+		closeBundle() {
+			const scriptPath = path.resolve(__dirname, "scripts/smoke-electron-main-cjs.mjs");
+			const result = spawnSync(process.execPath, [scriptPath], {
+				cwd: __dirname,
+				encoding: "utf8",
+			});
+
+			if (result.status !== 0) {
+				const details = [result.stdout, result.stderr].filter(Boolean).join("\n");
+				throw new Error(
+					`Electron main CJS smoke failed after Vite build.${details ? `\n${details}` : ""}`,
+				);
+			}
+		},
+	};
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -20,11 +41,13 @@ export default defineConfig({
 						rollupOptions: {
 							external: ["ffmpeg-static", "uiohook-napi"],
 							output: {
+								format: "cjs",
 								entryFileNames: "[name].cjs",
 								chunkFileNames: "[name].cjs",
 							},
 						},
 					},
+					plugins: [electronMainCjsGuardPlugin()],
 				},
 			},
 			preload: {

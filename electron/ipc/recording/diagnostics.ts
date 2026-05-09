@@ -2,15 +2,67 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import { promisify } from "node:util";
 import { COMPANION_AUDIO_LAYOUTS } from "../constants";
-import { getFfmpegBinaryPath } from "../ffmpeg/binary";
+import { getFfmpegBinaryPath, getFfprobeBinaryPath } from "../ffmpeg/binary";
 import { lastNativeCaptureDiagnostics, setLastNativeCaptureDiagnostics } from "../state";
 import type { CompanionAudioCandidate, NativeCaptureDiagnostics } from "../types";
+import { parseJsonWithByteOrderMark } from "../utils";
 
 const execFileAsync = promisify(execFile);
 export const MIN_VALID_RECORDED_VIDEO_BYTES = 1024;
+export const RECORDING_AUDIO_MUX_MIN_TIMEOUT_MS = 5 * 60 * 1000;
+export const RECORDING_AUDIO_MUX_MAX_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
 type CompanionAudioTimingMetadata = {
 	startDelayMs?: number;
+};
+
+export type MicrophoneChunkTimingEvent = {
+	index: number;
+	size: number;
+	elapsedMs: number;
+	deltaMs: number | null;
+	recordedElapsedMs?: number;
+	recordedDeltaMs?: number | null;
+};
+
+export type MicrophonePauseInterval = {
+	startElapsedMs: number;
+	endElapsedMs?: number;
+	durationMs?: number;
+};
+
+export type VideoStreamDurationProbe = {
+	durationSeconds: number | null;
+	frameCount: number | null;
+	frameRate: number | null;
+};
+
+export type RecordingDiagnosticsSnapshot = {
+	backend: NativeCaptureDiagnostics["backend"];
+	phase:
+		| `${NativeCaptureDiagnostics["phase"]}`
+		| "pad"
+		| "mic-sidecar"
+		| "mux-start"
+		| "mux-complete"
+		| "mux-error";
+	expectedDurationMs?: number | null;
+	outputPath?: string | null;
+	systemAudioPath?: string | null;
+	microphonePath?: string | null;
+	processOutput?: string;
+	error?: string;
+	details?: Record<string, unknown>;
+};
+
+type RecordingDiagnosticsLog = {
+	version: 1;
+	createdAt: string;
+	updatedAt: string;
+	videoPath: string;
+	diagnosticsPath: string;
+	events: unknown[];
+	latest?: unknown;
 };
 
 export function recordNativeCaptureDiagnostics(
@@ -53,6 +105,89 @@ export function parseFfmpegDurationSeconds(stderr: string) {
 	return hours * 3600 + minutes * 60 + seconds;
 }
 
+export function getRecordingAudioMuxTimeoutMs(durationSeconds: number) {
+	if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+		return RECORDING_AUDIO_MUX_MIN_TIMEOUT_MS;
+	}
+
+	const realtimeMuxBudgetMs = Math.ceil(durationSeconds * 1000) + 60 * 1000;
+	return Math.min(
+		RECORDING_AUDIO_MUX_MAX_TIMEOUT_MS,
+		Math.max(RECORDING_AUDIO_MUX_MIN_TIMEOUT_MS, realtimeMuxBudgetMs),
+	);
+}
+
+function getFiniteNonNegativeNumber(value: unknown) {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+export function summarizeMicrophoneChunkTiming(
+	chunkEvents: MicrophoneChunkTimingEvent[] | null | undefined,
+	pauseIntervals: MicrophonePauseInterval[] | null | undefined = [],
+	timesliceMs = 250,
+) {
+	const normalizedTimesliceMs =
+		Number.isFinite(timesliceMs) && timesliceMs > 0 ? Math.round(timesliceMs) : 250;
+	const thresholdMs = Math.max(600, Math.round(normalizedTimesliceMs * 2.5));
+	const events = Array.isArray(chunkEvents) ? chunkEvents : [];
+	const pauses = Array.isArray(pauseIntervals) ? pauseIntervals : [];
+	const pausedDurationMs = pauses.reduce((total, interval) => {
+		const durationMs = getFiniteNonNegativeNumber(interval.durationMs);
+		return durationMs === null ? total : total + Math.round(durationMs);
+	}, 0);
+
+	const wallClockGaps = events
+		.filter((event) => (event.deltaMs ?? 0) > thresholdMs)
+		.map((event) => ({
+			index: event.index,
+			deltaMs: Math.round(event.deltaMs ?? 0),
+			elapsedMs: Math.round(event.elapsedMs),
+		}));
+	const recordedGaps = events
+		.filter((event) => {
+			const recordedDeltaMs =
+				getFiniteNonNegativeNumber(event.recordedDeltaMs) ?? event.deltaMs ?? 0;
+			return recordedDeltaMs > thresholdMs;
+		})
+		.map((event) => ({
+			index: event.index,
+			deltaMs: Math.round(
+				getFiniteNonNegativeNumber(event.recordedDeltaMs) ?? event.deltaMs ?? 0,
+			),
+			recordedElapsedMs: Math.round(event.recordedElapsedMs ?? event.elapsedMs),
+		}));
+	const maxWallClockDeltaMs = events.reduce(
+		(maxDeltaMs, event) => Math.max(maxDeltaMs, event.deltaMs ?? 0),
+		0,
+	);
+	const maxRecordedDeltaMs = events.reduce((maxDeltaMs, event) => {
+		const recordedDeltaMs =
+			getFiniteNonNegativeNumber(event.recordedDeltaMs) ?? event.deltaMs ?? 0;
+		return Math.max(maxDeltaMs, recordedDeltaMs);
+	}, 0);
+	const status =
+		recordedGaps.length > 0
+			? "needs-review"
+			: wallClockGaps.length > 0 && pausedDurationMs > 0
+				? "pause-accounted"
+				: "ok";
+
+	return {
+		status,
+		timesliceMs: normalizedTimesliceMs,
+		thresholdMs,
+		eventCount: events.length,
+		pauseIntervalCount: pauses.length,
+		pausedDurationMs,
+		maxWallClockDeltaMs: Math.round(maxWallClockDeltaMs),
+		maxRecordedDeltaMs: Math.round(maxRecordedDeltaMs),
+		wallClockGapCount: wallClockGaps.length,
+		recordedGapCount: recordedGaps.length,
+		wallClockGaps: wallClockGaps.slice(0, 10),
+		recordedGaps: recordedGaps.slice(0, 10),
+	};
+}
+
 /** Probe the duration of a media file (in seconds) using the container header. */
 export async function probeMediaDurationSeconds(filePath: string): Promise<number> {
 	const ffmpegPath = getFfmpegBinaryPath();
@@ -66,6 +201,210 @@ export async function probeMediaDurationSeconds(filePath: string): Promise<numbe
 		}
 	}
 	return 0;
+}
+
+function parsePositiveNumber(value: unknown) {
+	const parsed =
+		typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parsePositiveInteger(value: unknown) {
+	const parsed = parsePositiveNumber(value);
+	return parsed === null ? null : Math.max(0, Math.round(parsed));
+}
+
+function parseFrameRate(value: unknown) {
+	if (typeof value !== "string") {
+		return null;
+	}
+	const [numeratorRaw, denominatorRaw] = value.split("/");
+	const numerator = Number(numeratorRaw);
+	const denominator = Number(denominatorRaw);
+	if (
+		!Number.isFinite(numerator) ||
+		!Number.isFinite(denominator) ||
+		numerator <= 0 ||
+		denominator <= 0
+	) {
+		return null;
+	}
+
+	return numerator / denominator;
+}
+
+export function parseFfprobeVideoStreamDuration(output: string): VideoStreamDurationProbe | null {
+	const parsed = JSON.parse(output) as {
+		streams?: Array<{
+			duration?: unknown;
+			nb_frames?: unknown;
+			nb_read_frames?: unknown;
+			avg_frame_rate?: unknown;
+			r_frame_rate?: unknown;
+		}>;
+	};
+	const stream = parsed.streams?.[0];
+	if (!stream) {
+		return null;
+	}
+
+	const frameRate = parseFrameRate(stream.avg_frame_rate) ?? parseFrameRate(stream.r_frame_rate);
+	const frameCount =
+		parsePositiveInteger(stream.nb_read_frames) ?? parsePositiveInteger(stream.nb_frames);
+	const streamDuration = parsePositiveNumber(stream.duration);
+	const frameDerivedDuration =
+		frameCount !== null && frameRate !== null && frameRate > 0 ? frameCount / frameRate : null;
+
+	return {
+		durationSeconds: streamDuration ?? frameDerivedDuration,
+		frameCount,
+		frameRate,
+	};
+}
+
+export async function probeVideoStreamDuration(
+	filePath: string,
+): Promise<VideoStreamDurationProbe | null> {
+	try {
+		const result = await execFileAsync(
+			getFfprobeBinaryPath(),
+			[
+				"-v",
+				"error",
+				"-select_streams",
+				"v:0",
+				"-count_frames",
+				"-show_entries",
+				"stream=duration,nb_frames,nb_read_frames,avg_frame_rate,r_frame_rate",
+				"-of",
+				"json",
+				filePath,
+			],
+			{ timeout: 30000, maxBuffer: 2 * 1024 * 1024 },
+		);
+		const stdout = typeof result === "string" ? result : result.stdout;
+		return parseFfprobeVideoStreamDuration(stdout);
+	} catch {
+		return null;
+	}
+}
+
+export async function probeVideoStreamDurationSeconds(filePath: string): Promise<number> {
+	const probe = await probeVideoStreamDuration(filePath);
+	return probe?.durationSeconds && probe.durationSeconds > 0
+		? probe.durationSeconds
+		: probeMediaDurationSeconds(filePath);
+}
+
+export function getRecordingDiagnosticsPath(videoPath: string) {
+	return `${videoPath.replace(/\.[^.]+$/u, "")}.recording-diagnostics.json`;
+}
+
+function truncateDiagnosticsText(value: string | undefined, maxLength = 12000) {
+	if (!value || value.length <= maxLength) {
+		return value;
+	}
+
+	return `${value.slice(-maxLength)}\n[recordly: truncated to last ${maxLength} chars]`;
+}
+
+async function describeMediaFile(filePath: string | null | undefined) {
+	if (!filePath) {
+		return null;
+	}
+
+	try {
+		const stat = await fs.stat(filePath);
+		if (!stat.isFile()) {
+			return {
+				path: filePath,
+				exists: false,
+			};
+		}
+
+		return {
+			path: filePath,
+			exists: true,
+			sizeBytes: stat.size,
+			containerDurationSeconds: await probeMediaDurationSeconds(filePath),
+		};
+	} catch {
+		return {
+			path: filePath,
+			exists: false,
+		};
+	}
+}
+
+async function describeVideoFile(filePath: string | null | undefined) {
+	const media = await describeMediaFile(filePath);
+	if (!media?.exists || !filePath) {
+		return media;
+	}
+
+	return {
+		...media,
+		stream: await probeVideoStreamDuration(filePath),
+	};
+}
+
+async function describeAudioFile(filePath: string | null | undefined) {
+	const media = await describeMediaFile(filePath);
+	if (!media?.exists || !filePath) {
+		return media;
+	}
+
+	const startDelayMs = await getCompanionAudioStartDelayMs(filePath);
+	return {
+		...media,
+		startDelayMs,
+	};
+}
+
+export async function writeRecordingDiagnosticsSnapshot(
+	videoPath: string,
+	snapshot: RecordingDiagnosticsSnapshot,
+) {
+	const diagnosticsPath = getRecordingDiagnosticsPath(videoPath);
+	const now = new Date().toISOString();
+	let existing: RecordingDiagnosticsLog | null = null;
+
+	try {
+		const raw = await fs.readFile(diagnosticsPath, "utf8");
+		const parsed = parseJsonWithByteOrderMark<RecordingDiagnosticsLog | null>(raw);
+		if (parsed?.version === 1 && Array.isArray(parsed.events)) {
+			existing = parsed;
+		}
+	} catch {
+		// First diagnostics event for this recording.
+	}
+
+	const event = {
+		timestamp: now,
+		...snapshot,
+		processOutput: truncateDiagnosticsText(snapshot.processOutput),
+		media: {
+			video: await describeVideoFile(videoPath),
+			systemAudio: await describeAudioFile(snapshot.systemAudioPath),
+			microphone: await describeAudioFile(snapshot.microphonePath),
+		},
+	};
+	const log: RecordingDiagnosticsLog = existing ?? {
+		version: 1,
+		createdAt: now,
+		updatedAt: now,
+		videoPath,
+		diagnosticsPath,
+		events: [],
+	};
+	log.updatedAt = now;
+	log.videoPath = videoPath;
+	log.diagnosticsPath = diagnosticsPath;
+	log.events.push(event);
+	log.latest = event;
+
+	await fs.writeFile(diagnosticsPath, JSON.stringify(log, null, 2), "utf8");
+	return diagnosticsPath;
 }
 
 export async function getUsableCompanionAudioCandidates(
@@ -108,7 +447,7 @@ async function readCompanionAudioTimingMetadata(
 ): Promise<CompanionAudioTimingMetadata | null> {
 	try {
 		const raw = await fs.readFile(`${companionPath}.json`, "utf8");
-		const parsed = JSON.parse(raw) as CompanionAudioTimingMetadata | null;
+		const parsed = parseJsonWithByteOrderMark<CompanionAudioTimingMetadata | null>(raw);
 		if (!parsed || typeof parsed !== "object") {
 			return null;
 		}

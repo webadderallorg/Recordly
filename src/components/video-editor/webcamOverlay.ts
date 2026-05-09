@@ -1,4 +1,4 @@
-import type { WebcamCorner, WebcamPositionPreset } from "./types";
+import type { CropRegion, WebcamCorner, WebcamPositionPreset } from "./types";
 
 const MIN_WEBCAM_OVERLAY_SIZE_PX = 56;
 
@@ -109,4 +109,45 @@ export function getWebcamOverlayPosition({
 		x: safeMargin + availableWidth * presetPosition.x,
 		y: safeMargin + availableHeight * presetPosition.y,
 	};
+}
+
+export function normalizeWebcamCropRegion(cropRegion?: Partial<CropRegion> | null): CropRegion {
+	const candidate = cropRegion ?? {};
+	const rawX = Number.isFinite(candidate.x) ? (candidate.x as number) : 0;
+	const rawY = Number.isFinite(candidate.y) ? (candidate.y as number) : 0;
+	const x = clamp(rawX, 0, 0.99);
+	const y = clamp(rawY, 0, 0.99);
+	const width = clamp(
+		Number.isFinite(candidate.width) ? (candidate.width as number) : 1,
+		0.01,
+		1 - x,
+	);
+	const height = clamp(
+		Number.isFinite(candidate.height) ? (candidate.height as number) : 1,
+		0.01,
+		1 - y,
+	);
+
+	return { x, y, width, height };
+}
+
+export function isWebcamCropRegionDefault(cropRegion?: Partial<CropRegion> | null): boolean {
+	const crop = normalizeWebcamCropRegion(cropRegion);
+	return crop.x <= 0 && crop.y <= 0 && crop.width >= 1 && crop.height >= 1;
+}
+
+export function getWebcamCropSourceRect(
+	cropRegion: Partial<CropRegion> | null | undefined,
+	sourceWidth: number,
+	sourceHeight: number,
+): { sx: number; sy: number; sw: number; sh: number } {
+	const crop = normalizeWebcamCropRegion(cropRegion);
+	const safeWidth = Math.max(1, sourceWidth);
+	const safeHeight = Math.max(1, sourceHeight);
+	const sx = clamp(crop.x * safeWidth, 0, safeWidth - 1);
+	const sy = clamp(crop.y * safeHeight, 0, safeHeight - 1);
+	const sw = clamp(crop.width * safeWidth, 1, safeWidth - sx);
+	const sh = clamp(crop.height * safeHeight, 1, safeHeight - sy);
+
+	return { sx, sy, sw, sh };
 }

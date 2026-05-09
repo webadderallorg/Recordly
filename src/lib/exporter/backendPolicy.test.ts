@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeLightningRuntimePlatform, shouldPreferNativeAutoBackend } from "./backendPolicy";
+import {
+	getDefaultLightningRenderBackend,
+	normalizeLightningRuntimePlatform,
+	shouldPreferNativeAutoBackend,
+} from "./backendPolicy";
 
 describe("backendPolicy", () => {
 	it("normalizes common platform hints", () => {
@@ -10,10 +14,14 @@ describe("backendPolicy", () => {
 		expect(normalizeLightningRuntimePlatform("unknown")).toBe("unknown");
 	});
 
-	it("keeps auto backend WebCodecs-first on every platform", () => {
-		expect(shouldPreferNativeAutoBackend("win32")).toBe(false);
+	it("prefers native auto backend on desktop platforms with the fastest native path", () => {
+		expect(shouldPreferNativeAutoBackend("win32")).toBe(true);
 		expect(shouldPreferNativeAutoBackend("linux")).toBe(false);
-		expect(shouldPreferNativeAutoBackend("darwin")).toBe(false);
+		expect(shouldPreferNativeAutoBackend("darwin")).toBe(true);
 		expect(shouldPreferNativeAutoBackend("unknown")).toBe(false);
+	});
+
+	it("keeps Lightning exports on the stable WebGL renderer by default", () => {
+		expect(getDefaultLightningRenderBackend()).toBe("webgl");
 	});
 });

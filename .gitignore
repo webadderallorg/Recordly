@@ -36,7 +36,12 @@ vite.config.d.ts
 # Native capture build artifacts
 electron/native/wgc-capture/build/
 electron/native/cursor-monitor/build/
+electron/native/gpu-export-probe/build/
+electron/native/nvidia-cuda-compositor/build/
+electron/native/bin/*/whisper-*
+electron/native/bin/*/whisper-runtime.json
 
 # Local debug helpers
 tmp-*.ps1
 .tmp-*.ps1
+gpu-export-probe.mp4

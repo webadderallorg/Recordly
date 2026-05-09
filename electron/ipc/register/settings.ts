@@ -3,20 +3,42 @@ import { app, ipcMain } from "electron";
 import { hideCursor } from "../../cursorHider";
 import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from "../../windows";
 import {
-	SHORTCUTS_FILE,
-	RECORDINGS_SETTINGS_FILE,
 	COUNTDOWN_SETTINGS_FILE,
+	RECORDINGS_SETTINGS_FILE,
+	SHORTCUTS_FILE,
 } from "../constants";
 import {
-	countdownTimer,
-	setCountdownTimer,
 	countdownCancelled,
-	setCountdownCancelled,
 	countdownInProgress,
-	setCountdownInProgress,
 	countdownRemaining,
+	countdownTimer,
+	setCountdownCancelled,
+	setCountdownInProgress,
 	setCountdownRemaining,
+	setCountdownTimer,
 } from "../state";
+import { parseJsonWithByteOrderMark } from "../utils";
+
+const BROWSER_MICROPHONE_PROFILE_ENV = "RECORDLY_BROWSER_MIC_PROFILE";
+const DEFAULT_BROWSER_MICROPHONE_PROFILE = "no-agc";
+const BROWSER_MICROPHONE_PROFILES = new Set([
+	"processed",
+	"no-agc",
+	"no-echo",
+	"no-noise-suppression",
+	"raw",
+]);
+
+function getBrowserMicrophoneProfileFromEnv() {
+	const requested = process.env[BROWSER_MICROPHONE_PROFILE_ENV]?.trim() || null;
+	const normalized = requested?.toLowerCase() ?? DEFAULT_BROWSER_MICROPHONE_PROFILE;
+	return {
+		browserMicrophoneProfile: BROWSER_MICROPHONE_PROFILES.has(normalized)
+			? normalized
+			: DEFAULT_BROWSER_MICROPHONE_PROFILE,
+		requestedBrowserMicrophoneProfile: requested,
+	};
+}
 
 export function registerSettingsHandlers() {
   ipcMain.handle('app:getVersion', () => {
@@ -42,7 +64,7 @@ export function registerSettingsHandlers() {
   ipcMain.handle('get-shortcuts', async () => {
     try {
       const data = await fs.readFile(SHORTCUTS_FILE, 'utf-8');
-      return JSON.parse(data);
+      return parseJsonWithByteOrderMark(data);
     } catch {
       return null;
     }
@@ -64,16 +86,20 @@ export function registerSettingsHandlers() {
     ipcMain.handle('get-recording-preferences', async () => {
       try {
         const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, 'utf-8')
-        const parsed = JSON.parse(content) as Record<string, unknown>
+        const parsed = parseJsonWithByteOrderMark<Record<string, unknown>>(content)
         return {
           success: true,
           microphoneEnabled: parsed.microphoneEnabled === true,
           microphoneDeviceId: typeof parsed.microphoneDeviceId === 'string' ? parsed.microphoneDeviceId : undefined,
-          systemAudioEnabled: parsed.systemAudioEnabled !== false,
+          systemAudioEnabled: parsed.systemAudioEnabled === true,
         }
       } catch {
-        return { success: true, microphoneEnabled: false, microphoneDeviceId: undefined, systemAudioEnabled: true }
+        return { success: true, microphoneEnabled: false, microphoneDeviceId: undefined, systemAudioEnabled: false }
       }
+    })
+
+    ipcMain.handle('get-recording-audio-lab-config', () => {
+      return getBrowserMicrophoneProfileFromEnv()
     })
 
     ipcMain.handle('set-recording-preferences', async (_, prefs: { microphoneEnabled?: boolean; microphoneDeviceId?: string; systemAudioEnabled?: boolean }) => {
@@ -81,7 +107,7 @@ export function registerSettingsHandlers() {
         let existing: Record<string, unknown> = {}
         try {
           const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, 'utf-8')
-          existing = JSON.parse(content) as Record<string, unknown>
+          existing = parseJsonWithByteOrderMark<Record<string, unknown>>(content)
         } catch {
           // file doesn't exist yet
         }
@@ -97,7 +123,7 @@ export function registerSettingsHandlers() {
   ipcMain.handle('get-countdown-delay', async () => {
     try {
       const content = await fs.readFile(COUNTDOWN_SETTINGS_FILE, 'utf-8')
-      const parsed = JSON.parse(content) as { delay?: number }
+      const parsed = parseJsonWithByteOrderMark<{ delay?: number }>(content)
       return { success: true, delay: parsed.delay ?? 3 }
     } catch {
       return { success: true, delay: 3 }

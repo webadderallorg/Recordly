@@ -10,6 +10,85 @@ type NativeVideoAudioMuxMetrics = {
 	tempEditedAudioBytes?: number;
 	muxedVideoBytes?: number;
 };
+type WindowsGpuExportSummary = {
+	success?: boolean;
+	width?: number;
+	height?: number;
+	fps?: number;
+	seconds?: number;
+	mediaMs?: number;
+	frames?: number;
+	cursorOverlay?: boolean;
+	zoomOverlay?: boolean;
+	adapterVendorId?: number;
+	adapterDeviceId?: number;
+	adapterDedicatedVideoMemoryMB?: number;
+	initializeMs?: number;
+	initCoInitializeMs?: number;
+	initMfStartupMs?: number;
+	initD3DDeviceMs?: number;
+	initSourceReaderMs?: number;
+	initWebcamReaderMs?: number;
+	initVideoProcessorMs?: number;
+	initTexturesMs?: number;
+	initShaderPipelineMs?: number;
+	initSinkWriterMs?: number;
+	totalMs?: number;
+	readMs?: number;
+	clearMs?: number;
+	videoProcessMs?: number;
+	writeSampleMs?: number;
+	finalizeMs?: number;
+	realtimeMultiplier?: number;
+};
+type NativeStaticLayoutChunkMetric = {
+	index: number;
+	startSec: number;
+	durationSec: number;
+	backend:
+		| "cuda-overlay"
+		| "cuda-scale-cpu-pad"
+		| "cuda-static-composite"
+		| "nvidia-cuda-compositor"
+		| "windows-d3d11-compositor";
+	elapsedMs: number;
+	outputBytes: number;
+	fallbackReason?: string;
+	windowsGpuSummary?: WindowsGpuExportSummary;
+};
+type NativeStaticLayoutMetrics = NativeVideoAudioMuxMetrics & {
+	chunkCount: number;
+	chunkDurationSec: number;
+	chunkExecMs: number;
+	concatExecMs?: number;
+	staticAssetExecMs?: number;
+	fallbackChunkCount: number;
+	videoOnlyBytes?: number;
+	chunks: NativeStaticLayoutChunkMetric[];
+};
+type NativeStaticLayoutProgress = {
+	sessionId?: string;
+	backend?: NativeStaticLayoutChunkMetric["backend"];
+	stage?: "preparing" | "finalizing";
+	elapsedMs?: number;
+	averageFps?: number;
+	currentFrame: number;
+	totalFrames: number;
+	percentage: number;
+};
+type NativeVideoMetadataProbe = {
+	width: number;
+	height: number;
+	duration: number;
+	mediaStartTime?: number;
+	streamStartTime?: number;
+	streamDuration?: number;
+	frameRate: number;
+	codec: string;
+	hasAudio: boolean;
+	audioCodec?: string;
+	audioSampleRate?: number;
+};
 
 const nativeVideoExportWriteRequests = new Map<
 	number,
@@ -84,14 +163,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	hudOverlayClose: () => {
 		ipcRenderer.send("hud-overlay-close");
 	},
-	setHudOverlayExpanded: (expanded: boolean) => {
-		ipcRenderer.send("set-hud-overlay-expanded", expanded);
-	},
-	setHudOverlayCompactWidth: (width: number) => {
-		ipcRenderer.send("set-hud-overlay-compact-width", width);
-	},
-	setHudOverlayMeasuredHeight: (height: number, expanded: boolean) => {
-		ipcRenderer.send("set-hud-overlay-measured-height", height, expanded);
+	hudOverlayRendererReady: () => {
+		ipcRenderer.send("hud-overlay-renderer-ready");
 	},
 	getHudOverlayCaptureProtection: () => {
 		return ipcRenderer.invoke("get-hud-overlay-capture-protection");
@@ -113,6 +186,107 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	generateWallpaperThumbnail: (filePath: string) => {
 		return ipcRenderer.invoke("generate-wallpaper-thumbnail", filePath);
+	},
+	probeNativeVideoMetadata: (filePath: string) => {
+		return ipcRenderer.invoke("probe-native-video-metadata", filePath) as Promise<{
+			success: boolean;
+			metadata?: NativeVideoMetadataProbe;
+			error?: string;
+		}>;
+	},
+	nativeStaticLayoutExport: (options: {
+		sessionId?: string;
+		inputPath: string;
+		width: number;
+		height: number;
+		frameRate: number;
+		bitrate: number;
+		encodingMode: "fast" | "balanced" | "quality";
+		durationSec: number;
+		contentWidth: number;
+		contentHeight: number;
+		offsetX: number;
+		offsetY: number;
+		sourceCropX?: number;
+		sourceCropY?: number;
+		sourceCropWidth?: number;
+		sourceCropHeight?: number;
+		backgroundColor: string;
+		backgroundImagePath?: string | null;
+		backgroundBlurPx?: number;
+		borderRadius?: number;
+		shadowIntensity?: number;
+		webcamInputPath?: string | null;
+		webcamLeft?: number;
+		webcamTop?: number;
+		webcamSize?: number;
+		webcamRadius?: number;
+		webcamShadowIntensity?: number;
+		webcamMirror?: boolean;
+		webcamTimeOffsetMs?: number;
+		cursorTelemetry?: Array<{
+			timeMs: number;
+			cx: number;
+			cy: number;
+			cursorTypeIndex?: number;
+			bounceScale?: number;
+			visible?: boolean;
+		}>;
+		cursorSize?: number;
+		cursorAtlasPngDataUrl?: string | null;
+		cursorAtlasEntries?: Array<{
+			index: number;
+			x: number;
+			y: number;
+			width: number;
+			height: number;
+			anchorX: number;
+			anchorY: number;
+			aspectRatio: number;
+		}>;
+		zoomTelemetry?: Array<{ timeMs: number; scale: number; x: number; y: number }>;
+		timelineSegments?: Array<{
+			sourceStartMs: number;
+			sourceEndMs: number;
+			outputStartMs: number;
+			outputEndMs: number;
+			speed: number;
+		}>;
+		chunkDurationSec?: number;
+		experimentalWindowsGpuCompositor?: boolean;
+		audioOptions?: {
+			audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
+			audioSourcePath?: string | null;
+			audioSourceCodec?: string | null;
+			audioSourceSampleRate?: number;
+			outputDurationSec?: number;
+			trimSegments?: Array<{ startMs: number; endMs: number }>;
+			editedTrackStrategy?: "filtergraph-fast-path" | "offline-render-fallback";
+			editedTrackSegments?: Array<{ startMs: number; endMs: number; speed: number }>;
+			editedAudioData?: ArrayBuffer;
+			editedAudioMimeType?: string | null;
+		};
+	}) => {
+		return ipcRenderer.invoke("native-static-layout-export", options) as Promise<{
+			success: boolean;
+			tempPath?: string;
+			encoderName?: string;
+			error?: string;
+			metrics?: NativeStaticLayoutMetrics;
+		}>;
+	},
+	nativeStaticLayoutExportCancel: (sessionId: string) => {
+		return ipcRenderer.invoke("native-static-layout-export-cancel", sessionId) as Promise<{
+			success: boolean;
+		}>;
+	},
+	onNativeStaticLayoutExportProgress: (
+		callback: (progress: NativeStaticLayoutProgress) => void,
+	) => {
+		const listener = (_event: Electron.IpcRendererEvent, payload: NativeStaticLayoutProgress) =>
+			callback(payload);
+		ipcRenderer.on("native-static-layout-export-progress", listener);
+		return () => ipcRenderer.removeListener("native-static-layout-export-progress", listener);
 	},
 	nativeVideoExportStart: (options: {
 		width: number;
@@ -141,12 +315,31 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			});
 		});
 	},
+	nativeVideoExportWriteFrames: (sessionId: string, frameDataList: Uint8Array[]) => {
+		ensureNativeVideoExportWriteResultListener();
+
+		return new Promise<NativeVideoExportWriteResult>((resolve) => {
+			const requestId = nextNativeVideoExportWriteRequestId++;
+			nativeVideoExportWriteRequests.set(requestId, {
+				sessionId,
+				resolve,
+			});
+
+			ipcRenderer.send("native-video-export-write-frames-async", {
+				sessionId,
+				requestId,
+				frameDataList,
+			});
+		});
+	},
 	nativeVideoExportFinish: (
 		sessionId: string,
 		options?: {
 			audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 			audioSourcePath?: string | null;
+			audioSourceCodec?: string | null;
 			audioSourceSampleRate?: number;
+			outputDurationSec?: number;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
 			editedTrackStrategy?: "filtergraph-fast-path" | "offline-render-fallback";
 			editedTrackSegments?: Array<{ startMs: number; endMs: number; speed: number }>;
@@ -192,7 +385,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		options?: {
 			audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 			audioSourcePath?: string | null;
+			audioSourceCodec?: string | null;
 			audioSourceSampleRate?: number;
+			outputDurationSec?: number;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
 			editedTrackStrategy?: "filtergraph-fast-path" | "offline-render-fallback";
 			editedTrackSegments?: Array<{ startMs: number; endMs: number; speed: number }>;
@@ -212,7 +407,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		options?: {
 			audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 			audioSourcePath?: string | null;
+			audioSourceCodec?: string | null;
+			audioSourceSampleRate?: number;
+			outputDurationSec?: number;
 			trimSegments?: Array<{ startMs: number; endMs: number }>;
+			editedTrackStrategy?: "filtergraph-fast-path" | "offline-render-fallback";
+			editedTrackSegments?: Array<{ startMs: number; endMs: number; speed: number }>;
 			editedAudioData?: ArrayBuffer;
 			editedAudioMimeType?: string | null;
 		},
@@ -293,11 +493,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	resumeNativeScreenRecording: () => {
 		return ipcRenderer.invoke("resume-native-screen-recording");
 	},
-	pauseCursorCapture: (boundaryMs?: number) => {
-		return ipcRenderer.invoke("pause-cursor-capture", boundaryMs);
+	pauseCursorCapture: () => {
+		return ipcRenderer.invoke("pause-cursor-capture");
 	},
-	resumeCursorCapture: (boundaryMs?: number) => {
-		return ipcRenderer.invoke("resume-cursor-capture", boundaryMs);
+	resumeCursorCapture: () => {
+		return ipcRenderer.invoke("resume-cursor-capture");
 	},
 	startFfmpegRecording: (source: ProcessedDesktopSource) => {
 		return ipcRenderer.invoke("start-ffmpeg-recording", source);
@@ -311,7 +511,29 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	storeMicrophoneSidecar: (
 		audioData: ArrayBuffer,
 		videoPath: string,
-		options?: { startDelayMs?: number },
+		options?: {
+			startDelayMs?: number;
+			browserMicrophoneProfile?: string;
+			requestedBrowserMicrophoneProfile?: string | null;
+			requestedConstraints?: unknown;
+			mediaTrackSettings?: Record<string, boolean | number | string>;
+			audioInputDevices?: Array<{
+				deviceId: string;
+				groupId?: string;
+				label: string;
+			}>;
+			mediaRecorder?: {
+				mimeType?: string;
+				audioBitsPerSecond?: number;
+				timesliceMs?: number;
+			};
+			chunkEvents?: Array<{
+				index: number;
+				size: number;
+				elapsedMs: number;
+				deltaMs: number | null;
+			}>;
+		},
 	) => {
 		return ipcRenderer.invoke("store-microphone-sidecar", audioData, videoPath, options);
 	},
@@ -326,6 +548,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	getCursorTelemetry: (videoPath?: string) => {
 		return ipcRenderer.invoke("get-cursor-telemetry", videoPath);
+	},
+	setCursorTelemetry: (videoPath: string | undefined, samples: CursorTelemetryPoint[]) => {
+		return ipcRenderer.invoke("set-cursor-telemetry", videoPath, samples);
 	},
 	getSystemCursorAssets: () => {
 		return ipcRenderer.invoke("get-system-cursor-assets");
@@ -436,14 +661,24 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	}) => {
 		return ipcRenderer.invoke("generate-auto-captions", options);
 	},
-	setCurrentVideoPath: (path: string, options?: { preserveProjectPath?: boolean }) => {
+	setCurrentVideoPath: (
+		path: string,
+		options?: {
+			preserveProjectPath?: boolean;
+			hideOverlayCursorByDefault?: boolean;
+		},
+	) => {
 		return ipcRenderer.invoke("set-current-video-path", path, options);
 	},
-	setCurrentRecordingSession: (session: {
-		videoPath: string;
-		webcamPath?: string | null;
-		timeOffsetMs?: number;
-	}, options?: { preserveProjectPath?: boolean }) => {
+	setCurrentRecordingSession: (
+		session: {
+			videoPath: string;
+			webcamPath?: string | null;
+			timeOffsetMs?: number;
+			hideOverlayCursorByDefault?: boolean;
+		},
+		options?: { preserveProjectPath?: boolean },
+	) => {
 		return ipcRenderer.invoke("set-current-recording-session", session, options);
 	},
 	getCurrentRecordingSession: () => {
@@ -603,6 +838,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getPlatform: () => {
 		return ipcRenderer.invoke("get-platform");
 	},
+	getLinuxWindowSystem: () => {
+		return ipcRenderer.invoke("get-linux-window-system");
+	},
 	revealInFolder: (filePath: string) => {
 		return ipcRenderer.invoke("reveal-in-folder", filePath);
 	},
@@ -639,11 +877,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	isNativeWindowsCaptureAvailable: () =>
 		ipcRenderer.invoke("is-native-windows-capture-available"),
-	muxNativeWindowsRecording: (pauseSegments?: Array<{ startMs: number; endMs: number }>) =>
-		ipcRenderer.invoke("mux-native-windows-recording", pauseSegments),
+	muxNativeWindowsRecording: (expectedDurationMs?: number) =>
+		ipcRenderer.invoke("mux-native-windows-recording", expectedDurationMs),
 	hideOsCursor: () => ipcRenderer.invoke("hide-cursor"),
 	getAppVersion: () => ipcRenderer.invoke("app:getVersion"),
 	getRecordingPreferences: () => ipcRenderer.invoke("get-recording-preferences"),
+	getRecordingAudioLabConfig: () => ipcRenderer.invoke("get-recording-audio-lab-config"),
 	setRecordingPreferences: (prefs: {
 		microphoneEnabled?: boolean;
 		microphoneDeviceId?: string;
