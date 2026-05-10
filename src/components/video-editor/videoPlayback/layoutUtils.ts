@@ -8,12 +8,7 @@ export function isZeroPadding(padding: Padding | number): boolean {
 	if (typeof padding === "number") {
 		return padding === 0;
 	}
-	return (
-		padding.top === 0 &&
-		padding.bottom === 0 &&
-		padding.left === 0 &&
-		padding.right === 0
-	);
+	return padding.top === 0 && padding.bottom === 0 && padding.left === 0 && padding.right === 0;
 }
 
 export interface PaddedLayoutResult {
@@ -93,12 +88,8 @@ export function computePaddedLayout(params: {
 	const frameCenterX = availableCenterX - fullFrameDisplayW / 2;
 	const frameCenterY = availableCenterY - fullFrameDisplayH / 2;
 
-	const centerOffsetX = insets
-		? frameCenterX + insets.left * fullFrameDisplayW
-		: frameCenterX;
-	const centerOffsetY = insets
-		? frameCenterY + insets.top * fullFrameDisplayH
-		: frameCenterY;
+	const centerOffsetX = insets ? frameCenterX + insets.left * fullFrameDisplayW : frameCenterX;
+	const centerOffsetY = insets ? frameCenterY + insets.top * fullFrameDisplayH : frameCenterY;
 
 	const spriteX = centerOffsetX - crop.x * fullVideoDisplayWidth;
 	const spriteY = centerOffsetY - crop.y * fullVideoDisplayHeight;

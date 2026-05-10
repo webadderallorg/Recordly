@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type MouseEvent, type RefObject } from "react";
+import { type MouseEvent, type RefObject, useCallback, useEffect, useRef } from "react";
 
 export function useLaunchHudInteractionState({
 	openId,
@@ -41,30 +41,33 @@ export function useLaunchHudInteractionState({
 
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-	const handleHudMouseLeave = useCallback((event: MouseEvent<HTMLDivElement>) => {
-		const nextTarget = event.relatedTarget;
-		if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
-			return;
-		}
-
-		isMouseOverHudRef.current = false;
-
-		if (timeoutRef.current) clearTimeout(timeoutRef.current);
-
-		timeoutRef.current = setTimeout(() => {
-			if (
-				!isHudDraggingRef.current &&
-				!isWebcamPreviewDraggingRef.current &&
-				!webcamPreviewDragStartRef.current &&
-				!isMouseOverHudRef.current &&
-				!anyPopoverOpenRef.current
-			) {
-				// If a popover is open, we can still ignore mouse if the mouse is truly gone,
-				// but we give a bit more breathing room (the 300ms timeout).
-				window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
+	const handleHudMouseLeave = useCallback(
+		(event: MouseEvent<HTMLDivElement>) => {
+			const nextTarget = event.relatedTarget;
+			if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+				return;
 			}
-		}, 300);
-	}, [isHudDraggingRef, isWebcamPreviewDraggingRef, webcamPreviewDragStartRef]);
+
+			isMouseOverHudRef.current = false;
+
+			if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+			timeoutRef.current = setTimeout(() => {
+				if (
+					!isHudDraggingRef.current &&
+					!isWebcamPreviewDraggingRef.current &&
+					!webcamPreviewDragStartRef.current &&
+					!isMouseOverHudRef.current &&
+					!anyPopoverOpenRef.current
+				) {
+					// If a popover is open, we can still ignore mouse if the mouse is truly gone,
+					// but we give a bit more breathing room (the 300ms timeout).
+					window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
+				}
+			}, 300);
+		},
+		[isHudDraggingRef, isWebcamPreviewDraggingRef, webcamPreviewDragStartRef],
+	);
 
 	return {
 		handleHudMouseEnter,

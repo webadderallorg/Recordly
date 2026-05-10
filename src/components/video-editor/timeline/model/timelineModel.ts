@@ -2,10 +2,10 @@ import type {
 	AnnotationRegion,
 	AudioRegion,
 	ClipRegion,
+	TrimRegion,
 	ZoomRegion,
 } from "../../types";
-import type { TimelineRegionSpan, TimelineRenderItem } from "../core/timelineTypes";
-import { CLIP_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
+import { CLIP_ROW_ID, TRIM_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
 import {
 	getAnnotationTrackIndex,
 	getAnnotationTrackRowId,
@@ -14,6 +14,7 @@ import {
 	isAnnotationTrackRowId,
 	isAudioTrackRowId,
 } from "../core/rows";
+import type { TimelineRegionSpan, TimelineRenderItem } from "../core/timelineTypes";
 
 export function getAnnotationLabel(region: AnnotationRegion): string {
 	if (region.type === "text") {
@@ -27,16 +28,22 @@ export function getAnnotationLabel(region: AnnotationRegion): string {
 }
 
 export function getAudioLabel(region: AudioRegion): string {
-	return region.audioPath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "Audio";
+	return (
+		region.audioPath
+			.split(/[\\/]/)
+			.pop()
+			?.replace(/\.[^.]+$/, "") || "Audio"
+	);
 }
 
 export function buildTimelineItems(params: {
 	zoomRegions: ZoomRegion[];
+	trimRegions: TrimRegion[];
 	clipRegions: ClipRegion[];
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];
 }): TimelineRenderItem[] {
-	const { zoomRegions, clipRegions, annotationRegions, audioRegions } = params;
+	const { zoomRegions, trimRegions, clipRegions, annotationRegions, audioRegions } = params;
 	const zooms: TimelineRenderItem[] = zoomRegions.map((region, index) => ({
 		id: region.id,
 		rowId: ZOOM_ROW_ID,
@@ -45,6 +52,14 @@ export function buildTimelineItems(params: {
 		zoomDepth: region.depth,
 		zoomMode: region.mode ?? "auto",
 		variant: "zoom",
+	}));
+
+	const trims: TimelineRenderItem[] = trimRegions.map((region, index) => ({
+		id: region.id,
+		rowId: TRIM_ROW_ID,
+		span: { start: region.startMs, end: region.endMs },
+		label: `Trim ${index + 1}`,
+		variant: "trim",
 	}));
 
 	const clips: TimelineRenderItem[] = clipRegions.map((region, index) => ({
@@ -71,20 +86,27 @@ export function buildTimelineItems(params: {
 		variant: "audio",
 	}));
 
-	return [...zooms, ...clips, ...annotations, ...audios];
+	return [...zooms, ...trims, ...clips, ...annotations, ...audios];
 }
 
 export function buildAllRegionSpans(params: {
 	zoomRegions: ZoomRegion[];
+	trimRegions: TrimRegion[];
 	clipRegions: ClipRegion[];
 	audioRegions: AudioRegion[];
 }): TimelineRegionSpan[] {
-	const { zoomRegions, clipRegions, audioRegions } = params;
+	const { zoomRegions, trimRegions, clipRegions, audioRegions } = params;
 	const zooms = zoomRegions.map((r) => ({
 		id: r.id,
 		start: r.startMs,
 		end: r.endMs,
 		rowId: ZOOM_ROW_ID,
+	}));
+	const trims = trimRegions.map((r) => ({
+		id: r.id,
+		start: r.startMs,
+		end: r.endMs,
+		rowId: TRIM_ROW_ID,
 	}));
 	const clips = clipRegions.map((r) => ({
 		id: r.id,
@@ -98,7 +120,7 @@ export function buildAllRegionSpans(params: {
 		end: r.endMs,
 		rowId: getAudioTrackRowId(r.trackIndex ?? 0),
 	}));
-	return [...zooms, ...clips, ...audios];
+	return [...zooms, ...trims, ...clips, ...audios];
 }
 
 export function resolveDropRowId(

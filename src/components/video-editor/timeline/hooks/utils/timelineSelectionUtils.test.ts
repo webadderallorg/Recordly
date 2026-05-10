@@ -8,6 +8,7 @@ describe("timelineSelectionUtils", () => {
 				selectAllBlocksActive: true,
 				selectedKeyframeId: "kf-1",
 				selectedZoomId: "z-1",
+				selectedTrimId: "t-1",
 				selectedClipId: "c-1",
 				selectedAnnotationId: "a-1",
 				selectedAudioId: "au-1",
@@ -28,6 +29,7 @@ describe("timelineSelectionUtils", () => {
 				selectAllBlocksActive: false,
 				selectedKeyframeId: null,
 				selectedZoomId: "z-1",
+				selectedTrimId: "t-1",
 				selectedClipId: "c-1",
 			}),
 		).toBe("zoom");
@@ -36,6 +38,16 @@ describe("timelineSelectionUtils", () => {
 				selectAllBlocksActive: false,
 				selectedKeyframeId: null,
 				selectedZoomId: null,
+				selectedTrimId: "t-1",
+				selectedClipId: "c-1",
+			}),
+		).toBe("trim");
+		expect(
+			resolveDeleteSelectionTarget({
+				selectAllBlocksActive: false,
+				selectedKeyframeId: null,
+				selectedZoomId: null,
+				selectedTrimId: null,
 				selectedClipId: "c-1",
 				selectedAnnotationId: "a-1",
 			}),

@@ -340,18 +340,9 @@ function analyzeCameraStep({
 	motionBlurTuning: ZoomMotionBlurTuning;
 	deltaSeconds: number;
 }): CameraStepAnalysis {
-	const mode = classifyMotionMode(
-		previousQuad,
-		currentQuad,
-		motionBlurTuning,
-		deltaSeconds,
-	);
+	const mode = classifyMotionMode(previousQuad, currentQuad, motionBlurTuning, deltaSeconds);
 	const moveDelta = computeMoveDelta(previousQuad, currentQuad);
-	const blurChannels = resolveBlurChannels(
-		motionBlurAmount,
-		motionBlurTuning,
-		deltaSeconds,
-	);
+	const blurChannels = resolveBlurChannels(motionBlurAmount, motionBlurTuning, deltaSeconds);
 	const moveBlurVelocity = {
 		x: moveDelta.x * blurChannels.motion,
 		y: moveDelta.y * blurChannels.motion,

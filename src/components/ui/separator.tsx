@@ -11,10 +11,7 @@ interface SeparatorProps {
  * A reusable separator component that can be used as a horizontal or vertical divider.
  * Replaces the inline div separators used throughout the application.
  */
-export function Separator({
-	orientation = "horizontal",
-	className,
-}: SeparatorProps) {
+export function Separator({ orientation = "horizontal", className }: SeparatorProps) {
 	return (
 		<div
 			role="separator"

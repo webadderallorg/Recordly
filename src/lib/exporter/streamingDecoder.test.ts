@@ -103,9 +103,7 @@ describe("StreamingVideoDecoder local media loading", () => {
 			"http://127.0.0.1:4321/video?path=%2Ftmp%2Ffallback.mp4",
 		);
 		expect(mockDemuxerLoad.mock.calls[1]?.[0]).toBeInstanceOf(File);
-		expect((window as any).electronAPI.readLocalFile).toHaveBeenCalledWith(
-			"/tmp/fallback.mp4",
-		);
+		expect((window as any).electronAPI.readLocalFile).toHaveBeenCalledWith("/tmp/fallback.mp4");
 	});
 });
 

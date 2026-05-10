@@ -170,7 +170,10 @@ const PIXI_RENDERER_INIT_TIMEOUT_MS = 8_000;
 
 function isCanvasRenderer(application: Application): boolean {
 	const rendererName = application?.renderer?.constructor?.name?.toLowerCase();
-	return Boolean(rendererName && (rendererName.includes("canvasrenderer") || rendererName.includes("canvas")));
+	return Boolean(
+		rendererName &&
+			(rendererName.includes("canvasrenderer") || rendererName.includes("canvas")),
+	);
 }
 
 function toRendererErrorMessage(error: unknown): string {
@@ -179,7 +182,10 @@ function toRendererErrorMessage(error: unknown): string {
 
 function isRendererUnavailableError(error: unknown): boolean {
 	const message = toRendererErrorMessage(error).toLowerCase();
-	return message.includes("canvasrenderer is not yet implemented") || message.includes("no available renderer");
+	return (
+		message.includes("canvasrenderer is not yet implemented") ||
+		message.includes("no available renderer")
+	);
 }
 
 function summarizeRendererAttempts(attempts: readonly PixiRendererAttempt[]): string {
@@ -523,7 +529,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		);
 
 		const initializePixiRenderer = useCallback(
-			async (container: HTMLDivElement): Promise<{
+			async (
+				container: HTMLDivElement,
+			): Promise<{
 				app: Application;
 				backend: PixiPreviewBackend;
 			}> => {
@@ -543,7 +551,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					}
 
 					const rendererApp = new Application();
-					const initStarted = typeof performance === "undefined" ? Date.now() : performance.now();
+					const initStarted =
+						typeof performance === "undefined" ? Date.now() : performance.now();
 					try {
 						await initApplicationWithTimeout(
 							rendererApp,
@@ -562,7 +571,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 							backend,
 						);
 						const elapsed = Math.round(
-							(typeof performance === "undefined" ? Date.now() : performance.now()) - initStarted,
+							(typeof performance === "undefined" ? Date.now() : performance.now()) -
+								initStarted,
 						);
 						if (isCanvasRenderer(rendererApp)) {
 							throw new Error(
@@ -572,9 +582,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						return { app: rendererApp, backend };
 					} catch (error) {
 						const elapsed = Math.round(
-							(typeof performance === "undefined" ? Date.now() : performance.now()) - initStarted,
+							(typeof performance === "undefined" ? Date.now() : performance.now()) -
+								initStarted,
 						);
-						attempts.push({ backend, message: `${toRendererErrorMessage(error)} (after ${elapsed}ms)` });
+						attempts.push({
+							backend,
+							message: `${toRendererErrorMessage(error)} (after ${elapsed}ms)`,
+						});
 						const statusMessage = isRendererUnavailableError(error)
 							? "renderer backend unavailable in this runtime"
 							: "renderer init failed";
@@ -2155,10 +2169,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					resetSpringState(springYRef.current, appliedY);
 				}
 
-				applyTransform(
-					{ scale: appliedScale, x: appliedX, y: appliedY },
-					targetFocus,
-				);
+				applyTransform({ scale: appliedScale, x: appliedX, y: appliedY }, targetFocus);
 
 				applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
 
@@ -2661,7 +2672,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						filter:
 							showShadow && shadowIntensity > 0
 								? `drop-shadow(0 ${shadowIntensity * 12}px ${shadowIntensity * 48}px rgba(0,0,0,${shadowIntensity * 0.7})) drop-shadow(0 ${shadowIntensity * 4}px ${shadowIntensity * 16}px rgba(0,0,0,${shadowIntensity * 0.5})) drop-shadow(0 ${shadowIntensity * 2}px ${shadowIntensity * 8}px rgba(0,0,0,${shadowIntensity * 0.3}))`
-							: "none",
+								: "none",
 					}}
 				/>
 				{hasRendererFallback && (
@@ -2669,7 +2680,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						<div className="rounded-md bg-black/70 px-3 py-1.5 text-xs text-white">
 							{`Pixi renderer unavailable on this environment (${pixiRendererBackend ?? "unknown"}).`}
 							<br />
-							Fallback to 2D native preview so you can continue working while the GPU path is unavailable.
+							Fallback to 2D native preview so you can continue working while the GPU
+							path is unavailable.
 						</div>
 					</div>
 				)}

@@ -9,7 +9,10 @@ export interface DndEngineConfig {
 	hasOverlap: (newSpan: Span, excludeId?: string, rowId?: string) => boolean;
 }
 
-export function clampSpanToBounds(span: Span, config: Pick<DndEngineConfig, "totalMs" | "minItemDurationMs">): Span {
+export function clampSpanToBounds(
+	span: Span,
+	config: Pick<DndEngineConfig, "totalMs" | "minItemDurationMs">,
+): Span {
 	const { totalMs, minItemDurationMs } = config;
 	const rawDuration = Math.max(span.end - span.start, 0);
 	const normalizedStart = Number.isFinite(span.start) ? span.start : 0;
@@ -27,7 +30,10 @@ export function clampSpanToBounds(span: Span, config: Pick<DndEngineConfig, "tot
 	return { start, end: start + duration };
 }
 
-export function clampRange(candidate: Range, config: Pick<DndEngineConfig, "totalMs" | "minVisibleRangeMs">): Range {
+export function clampRange(
+	candidate: Range,
+	config: Pick<DndEngineConfig, "totalMs" | "minVisibleRangeMs">,
+): Range {
 	const { totalMs, minVisibleRangeMs } = config;
 	if (totalMs === 0) {
 		const minSpan = Math.max(minVisibleRangeMs, 1);
@@ -53,7 +59,11 @@ export function clampRange(candidate: Range, config: Pick<DndEngineConfig, "tota
 	return { start: finalStart, end: finalEnd };
 }
 
-export function getSiblingSpans(activeItemId: string, rowId: string | undefined, allRegionSpans: TimelineRegionSpan[]) {
+export function getSiblingSpans(
+	activeItemId: string,
+	rowId: string | undefined,
+	allRegionSpans: TimelineRegionSpan[],
+) {
 	const activeItem = allRegionSpans.find((region) => region.id === activeItemId);
 	const resolvedRowId = rowId ?? activeItem?.rowId;
 	if (!resolvedRowId) {
@@ -65,7 +75,11 @@ export function getSiblingSpans(activeItemId: string, rowId: string | undefined,
 		.sort((left, right) => left.start - right.start);
 }
 
-export function clampResizedSpanToNeighbours(span: Span, activeItemId: string, config: Pick<DndEngineConfig, "allRegionSpans" | "minItemDurationMs" | "totalMs">): Span {
+export function clampResizedSpanToNeighbours(
+	span: Span,
+	activeItemId: string,
+	config: Pick<DndEngineConfig, "allRegionSpans" | "minItemDurationMs" | "totalMs">,
+): Span {
 	const { allRegionSpans, minItemDurationMs, totalMs } = config;
 	const siblings = getSiblingSpans(activeItemId, undefined, allRegionSpans);
 	const activeItem = allRegionSpans.find((region) => region.id === activeItemId);
@@ -82,7 +96,9 @@ export function clampResizedSpanToNeighbours(span: Span, activeItemId: string, c
 
 	const minDur = Math.min(minItemDurationMs, totalMs || minItemDurationMs);
 	if (end - start < minDur) {
-		const resizedLeft = Boolean(activeItem && span.start !== activeItem.start && span.end === activeItem.end);
+		const resizedLeft = Boolean(
+			activeItem && span.start !== activeItem.start && span.end === activeItem.end,
+		);
 		if (resizedLeft) {
 			start = end - minDur;
 		} else {
@@ -93,7 +109,12 @@ export function clampResizedSpanToNeighbours(span: Span, activeItemId: string, c
 	return { start: Math.max(0, start), end: Math.min(end, totalMs || end) };
 }
 
-export function clampDraggedSpanToNeighbours(span: Span, activeItemId: string, rowId: string | undefined, config: Pick<DndEngineConfig, "allRegionSpans" | "minItemDurationMs" | "totalMs">): Span {
+export function clampDraggedSpanToNeighbours(
+	span: Span,
+	activeItemId: string,
+	rowId: string | undefined,
+	config: Pick<DndEngineConfig, "allRegionSpans" | "minItemDurationMs" | "totalMs">,
+): Span {
 	const { allRegionSpans, minItemDurationMs, totalMs } = config;
 	const activeItem = allRegionSpans.find((region) => region.id === activeItemId);
 	if (!activeItem) {
@@ -107,19 +128,33 @@ export function clampDraggedSpanToNeighbours(span: Span, activeItemId: string, r
 	);
 	const proposedStart = Number.isFinite(span.start) ? span.start : activeItem.start;
 
-	const previousSibling = [...siblings].reverse().find((region) => region.end <= activeItem.start);
+	const previousSibling = [...siblings]
+		.reverse()
+		.find((region) => region.end <= activeItem.start);
 	const nextSibling = siblings.find((region) => region.start >= activeItem.end);
 	const minStart = previousSibling ? previousSibling.end : 0;
-	const maxStart = nextSibling ? nextSibling.start - duration : totalMs > 0 ? totalMs - duration : proposedStart;
+	const maxStart = nextSibling
+		? nextSibling.start - duration
+		: totalMs > 0
+			? totalMs - duration
+			: proposedStart;
 
 	const start = Math.max(minStart, Math.min(proposedStart, maxStart));
 	return clampSpanToBounds({ start, end: start + duration }, { totalMs, minItemDurationMs });
 }
 
-export function resolveResizeEnd(activeItemId: string, updatedSpan: Span, config: Pick<DndEngineConfig, "totalMs" | "minItemDurationMs" | "allRegionSpans" | "hasOverlap">): Span | null {
+export function resolveResizeEnd(
+	activeItemId: string,
+	updatedSpan: Span,
+	config: Pick<
+		DndEngineConfig,
+		"totalMs" | "minItemDurationMs" | "allRegionSpans" | "hasOverlap"
+	>,
+): Span | null {
 	const { totalMs, minItemDurationMs, allRegionSpans, hasOverlap } = config;
 	let clamped = clampSpanToBounds(updatedSpan, { totalMs, minItemDurationMs });
-	const effectiveMinDuration = totalMs > 0 ? Math.min(minItemDurationMs, totalMs) : minItemDurationMs;
+	const effectiveMinDuration =
+		totalMs > 0 ? Math.min(minItemDurationMs, totalMs) : minItemDurationMs;
 	if (clamped.end - clamped.start < effectiveMinDuration) {
 		return null;
 	}
@@ -145,14 +180,19 @@ export function resolveDragEnd(
 	activeItemId: string,
 	updatedSpan: Span,
 	proposedRowId: string,
-	config: Pick<DndEngineConfig, "allRegionSpans" | "totalMs" | "minItemDurationMs" | "hasOverlap">,
+	config: Pick<
+		DndEngineConfig,
+		"allRegionSpans" | "totalMs" | "minItemDurationMs" | "hasOverlap"
+	>,
 	resolveTargetRowId?: (id: string, proposedRowId: string) => string,
 ): { span: Span; rowId: string } | null {
 	const { allRegionSpans, totalMs, minItemDurationMs, hasOverlap } = config;
 	const resolvedRowId = resolveTargetRowId?.(activeItemId, proposedRowId) ?? proposedRowId;
 
 	const activeItem = allRegionSpans.find((r) => r.id === activeItemId);
-	const originalDuration = activeItem ? activeItem.end - activeItem.start : updatedSpan.end - updatedSpan.start;
+	const originalDuration = activeItem
+		? activeItem.end - activeItem.start
+		: updatedSpan.end - updatedSpan.start;
 	const dragSpan: Span = { start: updatedSpan.start, end: updatedSpan.start + originalDuration };
 
 	let clamped = clampSpanToBounds(dragSpan, { totalMs, minItemDurationMs });

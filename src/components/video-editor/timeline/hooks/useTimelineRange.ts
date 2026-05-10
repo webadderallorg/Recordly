@@ -1,5 +1,5 @@
 import type { Range } from "dnd-timeline";
-import { useCallback, useEffect, useMemo, useState, type RefObject, type WheelEvent } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useState, type WheelEvent } from "react";
 import { createInitialRange, normalizeWheelDeltaToPixels } from "../core/time";
 
 interface UseTimelineRangeParams {
@@ -64,7 +64,10 @@ export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineR
 			}
 
 			event.preventDefault();
-			const horizontalDeltaPx = normalizeWheelDeltaToPixels(rawHorizontalDelta, event.deltaMode);
+			const horizontalDeltaPx = normalizeWheelDeltaToPixels(
+				rawHorizontalDelta,
+				event.deltaMode,
+			);
 			const deltaMs = (horizontalDeltaPx / containerWidth) * visibleRangeMs;
 			panTimelineRange(deltaMs);
 		},

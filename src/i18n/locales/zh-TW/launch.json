@@ -44,15 +44,15 @@
 		"cancel": "取消",
 		"more": "更多",
 		"update": {
-		"update": "更新",
-		"updated": "已更新",
-		"idleTitle": "檢查更新。",
-		"checkingTitle": "正在檢查更新...",
-		"downloadingTitle": "正在下載更新...",
-		"errorTitle": "檢查更新失敗，點一下重試。",
-		"upToDateTitle": "Recordly {{version}} 已是最新版本。",
-		"availableTitle": "Recordly {{version}} 已推出新版本。",
-		"availableGenericTitle": "有可用更新。"
+			"update": "更新",
+			"updated": "已更新",
+			"idleTitle": "檢查更新。",
+			"checkingTitle": "正在檢查更新...",
+			"downloadingTitle": "正在下載更新...",
+			"errorTitle": "檢查更新失敗，點一下重試。",
+			"upToDateTitle": "Recordly {{version}} 已是最新版本。",
+			"availableTitle": "Recordly {{version}} 已推出新版本。",
+			"availableGenericTitle": "有可用更新。"
 		}
 	},
 	"sourceSelector": {

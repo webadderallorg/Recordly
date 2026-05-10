@@ -56,5 +56,5 @@
 		"marketplaceInstalled": "已安裝並啟用 {{name}}",
 		"marketplaceInstallFailed": "安裝 {{name}} 失敗",
 		"enableFailed": "啟用擴充功能失敗"
-		}
 	}
+}

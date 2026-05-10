@@ -111,8 +111,8 @@ function resolvePhosphorIcon(name: string): Icon | null {
 }
 
 /**
-	* Renders either a Phosphor icon (by PascalCase name) or an image (by path/URL).
-	* Falls back to the PuzzlePiece icon if nothing matches.
+ * Renders either a Phosphor icon (by PascalCase name) or an image (by path/URL).
+ * Falls back to the PuzzlePiece icon if nothing matches.
  */
 export function ExtensionIcon({
 	icon,

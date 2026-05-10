@@ -75,5 +75,4 @@ describe("temporalMotionBlur", () => {
 		expect(centerSample?.weight ?? 0).toBeGreaterThan(edgeSample?.weight ?? 0);
 		expect(plan.map((sample) => sample.offsetUs)).toContain(0);
 	});
-
 });

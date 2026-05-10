@@ -8,9 +8,14 @@ import type {
 	TrimRegion,
 	ZoomRegion,
 } from "../../types";
-import type { TimelineRenderItem } from "../core/timelineTypes";
-import { getAnnotationTrackIndex, getAudioTrackIndex, isAnnotationTrackRowId, isAudioTrackRowId } from "../core/rows";
+import {
+	getAnnotationTrackIndex,
+	getAudioTrackIndex,
+	isAnnotationTrackRowId,
+	isAudioTrackRowId,
+} from "../core/rows";
 import { spansOverlap } from "../core/spans";
+import type { TimelineRenderItem } from "../core/timelineTypes";
 import { buildAllRegionSpans, buildTimelineItems, resolveDropRowId } from "../model/timelineModel";
 
 interface UseTimelineDndBindingsParams {
@@ -115,21 +120,23 @@ export function useTimelineDndBindings({
 		() =>
 			buildTimelineItems({
 				zoomRegions,
+				trimRegions,
 				clipRegions,
 				annotationRegions,
 				audioRegions,
 			}),
-		[zoomRegions, clipRegions, annotationRegions, audioRegions],
+		[zoomRegions, trimRegions, clipRegions, annotationRegions, audioRegions],
 	);
 
 	const allRegionSpans = useMemo(
 		() =>
 			buildAllRegionSpans({
 				zoomRegions,
+				trimRegions,
 				clipRegions,
 				audioRegions,
 			}),
-		[zoomRegions, clipRegions, audioRegions],
+		[zoomRegions, trimRegions, clipRegions, audioRegions],
 	);
 
 	const getResolvedDropRowId = useCallback(

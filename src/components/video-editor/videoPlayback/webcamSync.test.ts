@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	getWebcamMediaTargetTimeSeconds,
-	getWebcamPreviewTargetTimeSeconds,
-} from "./webcamSync";
+import { getWebcamMediaTargetTimeSeconds, getWebcamPreviewTargetTimeSeconds } from "./webcamSync";
 
 describe("getWebcamPreviewTargetTimeSeconds", () => {
 	it("subtracts positive webcam offsets when the webcam started after the main capture", () => {

@@ -155,7 +155,12 @@ describe("clip timeline mapping", () => {
 		);
 
 		expect(clipsFromTrims.map((clip) => clip.id)).toEqual(["clip-1", "clip-2", "clip-3"]);
-		expect(deriveNextId("clip", clipsFromTrims.map((clip) => clip.id))).toBe(4);
+		expect(
+			deriveNextId(
+				"clip",
+				clipsFromTrims.map((clip) => clip.id),
+			),
+		).toBe(4);
 	});
 });
 
@@ -171,10 +176,7 @@ describe("getTimelineDurationMs", () => {
 
 	it("keeps the source duration when speed edits make clips shorter", () => {
 		expect(
-			getTimelineDurationMs(
-				[{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }],
-				10_000,
-			),
+			getTimelineDurationMs([{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }], 10_000),
 		).toBe(10_000);
 	});
 });

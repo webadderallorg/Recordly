@@ -9,5 +9,6 @@ export interface TimelineNotifications {
 export const timelineNotifications: TimelineNotifications = {
 	error: (title, description) => toast.error(title, description ? { description } : undefined),
 	info: (title, description) => toast.info(title, description ? { description } : undefined),
-	success: (title, description) => toast.success(title, description ? { description } : undefined),
+	success: (title, description) =>
+		toast.success(title, description ? { description } : undefined),
 };

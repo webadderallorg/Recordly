@@ -152,9 +152,7 @@ export function computeCursorFollowFocus(
 
 	const cursorPos = interpolateCursorPosition(cursorSamples, timeMs);
 	if (!cursorPos) {
-		return state.initialized
-			? { cx: state.focusX, cy: state.focusY }
-			: clampedRegionFocus;
+		return state.initialized ? { cx: state.focusX, cy: state.focusY } : clampedRegionFocus;
 	}
 
 	// Track when zoom reaches full strength

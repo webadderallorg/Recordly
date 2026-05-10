@@ -329,7 +329,9 @@ function ScreenshotGallery({ screenshots }: { screenshots: string[] }) {
 									key={i}
 									className={cn(
 										"w-1.5 h-1.5 rounded-full transition-colors",
-										i === index ? "bg-white" : "bg-white/30 hover:bg-foreground/50",
+										i === index
+											? "bg-white"
+											: "bg-white/30 hover:bg-foreground/50",
 									)}
 									onClick={() => setIndex(i)}
 								/>
@@ -604,7 +606,9 @@ function TabSwitcher({
 							<span
 								className={cn(
 									"relative z-10 flex items-center justify-center gap-1",
-									isActive ? "text-white" : "text-muted-foreground hover:text-foreground",
+									isActive
+										? "text-white"
+										: "text-muted-foreground hover:text-foreground",
 								)}
 							>
 								{t(option.labelKey)}
@@ -952,7 +956,9 @@ function InstalledTab({
 					<Puzzle className="w-5 h-5 text-muted-foreground" />
 				</div>
 				<div className="text-center">
-					<p className="text-[13px] font-medium text-muted-foreground">{t("empty.title")}</p>
+					<p className="text-[13px] font-medium text-muted-foreground">
+						{t("empty.title")}
+					</p>
 					<p className="text-[11px] text-muted-foreground mt-1 leading-relaxed max-w-[200px]">
 						{t("empty.description")}
 					</p>

@@ -1,5 +1,5 @@
-import type { ShortcutBinding } from "@/lib/shortcuts";
 import type { Span } from "dnd-timeline";
+import type { ShortcutBinding } from "@/lib/shortcuts";
 import type { ZoomMode } from "../../types";
 
 export interface TimelineRegionSpan {
@@ -22,6 +22,7 @@ export interface TimelineAudioRegion extends TimelineRegion {
 export interface TimelineShortcutBindings {
 	addKeyframe: ShortcutBinding;
 	addZoom: ShortcutBinding;
+	addTrim: ShortcutBinding;
 	splitClip: ShortcutBinding;
 	addAnnotation: ShortcutBinding;
 	deleteSelected: ShortcutBinding;

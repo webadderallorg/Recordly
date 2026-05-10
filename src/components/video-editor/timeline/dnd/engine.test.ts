@@ -18,49 +18,67 @@ const BASE_SPANS = [
 
 describe("timeline dnd engine", () => {
 	it("clamps item span to timeline bounds and min duration", () => {
-		expect(clampSpanToBounds({ start: -100, end: 20 }, { totalMs: 5000, minItemDurationMs: 100 })).toEqual({ start: 0, end: 120 });
-		expect(clampSpanToBounds({ start: 4900, end: 7000 }, { totalMs: 5000, minItemDurationMs: 100 })).toEqual({ start: 2900, end: 5000 });
+		expect(
+			clampSpanToBounds({ start: -100, end: 20 }, { totalMs: 5000, minItemDurationMs: 100 }),
+		).toEqual({ start: 0, end: 120 });
+		expect(
+			clampSpanToBounds(
+				{ start: 4900, end: 7000 },
+				{ totalMs: 5000, minItemDurationMs: 100 },
+			),
+		).toEqual({ start: 2900, end: 5000 });
 	});
 
 	it("handles zero-duration timelines in span clamping", () => {
-		expect(clampSpanToBounds({ start: -10, end: -5 }, { totalMs: 0, minItemDurationMs: 100 })).toEqual({ start: 0, end: 100 });
-		expect(clampSpanToBounds({ start: 50, end: 60 }, { totalMs: 0, minItemDurationMs: 1 })).toEqual({ start: 50, end: 60 });
+		expect(
+			clampSpanToBounds({ start: -10, end: -5 }, { totalMs: 0, minItemDurationMs: 100 }),
+		).toEqual({ start: 0, end: 100 });
+		expect(
+			clampSpanToBounds({ start: 50, end: 60 }, { totalMs: 0, minItemDurationMs: 1 }),
+		).toEqual({ start: 50, end: 60 });
 	});
 
 	it("clamps visible range for bounded and unbounded timelines", () => {
-		expect(clampRange({ start: 4900, end: 5200 }, { totalMs: 5000, minVisibleRangeMs: 300 })).toEqual({ start: 4700, end: 5000 });
-		expect(clampRange({ start: -20, end: 50 }, { totalMs: 0, minVisibleRangeMs: 300 })).toEqual({ start: 0, end: 300 });
+		expect(
+			clampRange({ start: 4900, end: 5200 }, { totalMs: 5000, minVisibleRangeMs: 300 }),
+		).toEqual({ start: 4700, end: 5000 });
+		expect(clampRange({ start: -20, end: 50 }, { totalMs: 0, minVisibleRangeMs: 300 })).toEqual(
+			{ start: 0, end: 300 },
+		);
 	});
 
 	it("resolves siblings by row and active item", () => {
 		expect(getSiblingSpans("b", undefined, BASE_SPANS).map((s) => s.id)).toEqual(["a", "c"]);
-		expect(getSiblingSpans("missing", "row-clip", BASE_SPANS).map((s) => s.id)).toEqual(["a", "b", "c"]);
+		expect(getSiblingSpans("missing", "row-clip", BASE_SPANS).map((s) => s.id)).toEqual([
+			"a",
+			"b",
+			"c",
+		]);
 		expect(getSiblingSpans("missing", undefined, BASE_SPANS)).toEqual([]);
 	});
 
 	it("clamps resize against nearest neighbours and min duration", () => {
-		const resizedRight = clampResizedSpanToNeighbours(
-			{ start: 900, end: 2000 },
-			"a",
-			{ allRegionSpans: BASE_SPANS, minItemDurationMs: 100, totalMs: 5000 },
-		);
+		const resizedRight = clampResizedSpanToNeighbours({ start: 900, end: 2000 }, "a", {
+			allRegionSpans: BASE_SPANS,
+			minItemDurationMs: 100,
+			totalMs: 5000,
+		});
 		expect(resizedRight.end).toBe(1500);
 
-		const resizedLeft = clampResizedSpanToNeighbours(
-			{ start: 900, end: 2500 },
-			"b",
-			{ allRegionSpans: BASE_SPANS, minItemDurationMs: 100, totalMs: 5000 },
-		);
+		const resizedLeft = clampResizedSpanToNeighbours({ start: 900, end: 2500 }, "b", {
+			allRegionSpans: BASE_SPANS,
+			minItemDurationMs: 100,
+			totalMs: 5000,
+		});
 		expect(resizedLeft.start).toBe(1000);
 	});
 
 	it("keeps drag unchanged when already inside valid neighbour gap", () => {
-		const dragged = clampDraggedSpanToNeighbours(
-			{ start: 1400, end: 2400 },
-			"b",
-			"row-clip",
-			{ allRegionSpans: BASE_SPANS, minItemDurationMs: 100, totalMs: 5000 },
-		);
+		const dragged = clampDraggedSpanToNeighbours({ start: 1400, end: 2400 }, "b", "row-clip", {
+			allRegionSpans: BASE_SPANS,
+			minItemDurationMs: 100,
+			totalMs: 5000,
+		});
 		expect(dragged).toEqual({ start: 1400, end: 2400 });
 	});
 
@@ -93,22 +111,30 @@ describe("timeline dnd engine", () => {
 	});
 
 	it("resolves resize end with overlap fallback semantics", () => {
-		const result = resolveResizeEnd("a", { start: 900, end: 2200 }, {
-			totalMs: 5000,
-			minItemDurationMs: 100,
-			allRegionSpans: BASE_SPANS,
-			hasOverlap: (span, id) => id === "a" && span.end > 1500,
-		});
+		const result = resolveResizeEnd(
+			"a",
+			{ start: 900, end: 2200 },
+			{
+				totalMs: 5000,
+				minItemDurationMs: 100,
+				allRegionSpans: BASE_SPANS,
+				hasOverlap: (span, id) => id === "a" && span.end > 1500,
+			},
+		);
 		expect(result).toEqual({ start: 900, end: 1500 });
 	});
 
 	it("returns null when resize still overlaps after neighbour clamp", () => {
-		const result = resolveResizeEnd("a", { start: 900, end: 2200 }, {
-			totalMs: 5000,
-			minItemDurationMs: 100,
-			allRegionSpans: BASE_SPANS,
-			hasOverlap: () => true,
-		});
+		const result = resolveResizeEnd(
+			"a",
+			{ start: 900, end: 2200 },
+			{
+				totalMs: 5000,
+				minItemDurationMs: 100,
+				allRegionSpans: BASE_SPANS,
+				hasOverlap: () => true,
+			},
+		);
 		expect(result).toBeNull();
 	});
 
@@ -129,32 +155,22 @@ describe("timeline dnd engine", () => {
 	});
 
 	it("returns null when drag still overlaps after neighbour clamp", () => {
-		const result = resolveDragEnd(
-			"b",
-			{ start: 1200, end: 1800 },
-			"row-clip",
-			{
-				allRegionSpans: BASE_SPANS,
-				totalMs: 5000,
-				minItemDurationMs: 100,
-				hasOverlap: () => true,
-			},
-		);
+		const result = resolveDragEnd("b", { start: 1200, end: 1800 }, "row-clip", {
+			allRegionSpans: BASE_SPANS,
+			totalMs: 5000,
+			minItemDurationMs: 100,
+			hasOverlap: () => true,
+		});
 		expect(result).toBeNull();
 	});
 
 	it("keeps proposed row when no target row resolver is provided", () => {
-		const result = resolveDragEnd(
-			"aud-1",
-			{ start: 700, end: 1000 },
-			"row-audio-2",
-			{
-				allRegionSpans: BASE_SPANS,
-				totalMs: 5000,
-				minItemDurationMs: 100,
-				hasOverlap: () => false,
-			},
-		);
+		const result = resolveDragEnd("aud-1", { start: 700, end: 1000 }, "row-audio-2", {
+			allRegionSpans: BASE_SPANS,
+			totalMs: 5000,
+			minItemDurationMs: 100,
+			hasOverlap: () => false,
+		});
 		expect(result?.rowId).toBe("row-audio-2");
 	});
 });

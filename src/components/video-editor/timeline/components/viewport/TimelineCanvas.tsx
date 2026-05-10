@@ -1,28 +1,17 @@
 import { Plus } from "@phosphor-icons/react";
 import { useTimelineContext } from "dnd-timeline";
 import {
+	type MouseEvent,
+	type MouseEventHandler,
 	memo,
 	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
 	useState,
-	type MouseEvent,
-	type MouseEventHandler,
 } from "react";
 import { cn } from "@/lib/utils";
-import {
-	getTimelineContentMinHeightPx,
-	getTimelineRowsMinHeightPx,
-	getTimelineViewportStretchFactor,
-	TIMELINE_AXIS_HEIGHT_PX,
-} from "../../timelineLayout";
-import AudioWaveform from "../waveform/AudioWaveform";
-import glassStyles from "../../ItemGlass.module.css";
-import Item from "../../Item";
-import Row from "../../Row";
-import { CLIP_ROW_ID, ZOOM_ROW_ID } from "../../core/constants";
-import type { AudioPeaksData, TimelineRenderItem } from "../../core/timelineTypes";
+import { CLIP_ROW_ID, TRIM_ROW_ID, ZOOM_ROW_ID } from "../../core/constants";
 import {
 	getAnnotationTrackIndex,
 	getAnnotationTrackRowId,
@@ -31,11 +20,23 @@ import {
 	isAnnotationTrackRowId,
 	isAudioTrackRowId,
 } from "../../core/rows";
+import type { AudioPeaksData, TimelineRenderItem } from "../../core/timelineTypes";
+import Item from "../../Item";
+import glassStyles from "../../ItemGlass.module.css";
+import Row from "../../Row";
+import {
+	getTimelineContentMinHeightPx,
+	getTimelineRowsMinHeightPx,
+	getTimelineViewportStretchFactor,
+	TIMELINE_AXIS_HEIGHT_PX,
+} from "../../timelineLayout";
 import TimelineAxis from "../axis/TimelineAxis";
 import ClipMarkerOverlay from "../overlays/ClipMarkerOverlay";
 import PlaybackCursor from "../playhead/PlaybackCursor";
+import AudioWaveform from "../waveform/AudioWaveform";
 
 const HINT_CLIP = "Press C to split clip";
+const HINT_TRIM = "Press T to add trim";
 const HINT_ANNOTATION = "Press A to add annotation";
 const HINT_AUDIO = "Click music icon to add audio";
 
@@ -46,11 +47,13 @@ interface TimelineCanvasProps {
 	onSeek?: (time: number) => void;
 	canPlaceZoomAtMs?: (startMs: number) => boolean;
 	onSelectZoom?: (id: string | null) => void;
+	onSelectTrim?: (id: string | null) => void;
 	onSelectClip?: (id: string | null) => void;
 	onSelectAnnotation?: (id: string | null) => void;
 	onSelectAudio?: (id: string | null) => void;
 	onAddZoomAtMs?: (startMs: number) => void;
 	selectedZoomId: string | null;
+	selectedTrimId?: string | null;
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
@@ -92,7 +95,9 @@ function useTimelineHover({
 		(clientX: number, rect: DOMRect) => {
 			const contentWidth = Math.max(1, rect.width - sidebarWidth);
 			const contentX =
-				direction === "rtl" ? rect.right - sidebarWidth - clientX : clientX - rect.left - sidebarWidth;
+				direction === "rtl"
+					? rect.right - sidebarWidth - clientX
+					: clientX - rect.left - sidebarWidth;
 			const clampedX = Math.max(0, Math.min(contentX, contentWidth));
 			const ratio = clampedX / contentWidth;
 			const nextMs = rangeStart + ratio * visibleDurationMs;
@@ -179,7 +184,8 @@ function useTimelineHover({
 			: Math.max(ghostStartMs, Math.min(videoDurationMs, ghostStartMs + ghostDurationMs));
 	const ghostStartOffsetPx =
 		ghostStartMs === null ? 0 : valueToPixels(Math.max(0, ghostStartMs - rangeStart));
-	const ghostEndOffsetPx = ghostEndMs === null ? 0 : valueToPixels(Math.max(0, ghostEndMs - rangeStart));
+	const ghostEndOffsetPx =
+		ghostEndMs === null ? 0 : valueToPixels(Math.max(0, ghostEndMs - rangeStart));
 	const ghostWidthPx = Math.max(18, ghostEndOffsetPx - ghostStartOffsetPx);
 	const timelineGhostOffsetPx =
 		timelineHoverMs === null ? 0 : valueToPixels(Math.max(0, timelineHoverMs - rangeStart));
@@ -211,10 +217,12 @@ interface TimelineCanvasRowsProps {
 	videoDurationMs: number;
 	selectAllBlocksActive: boolean;
 	selectedZoomId: string | null;
+	selectedTrimId?: string | null;
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
 	onSelectZoom?: (id: string | null) => void;
+	onSelectTrim?: (id: string | null) => void;
 	onSelectClip?: (id: string | null) => void;
 	onSelectAnnotation?: (id: string | null) => void;
 	onSelectAudio?: (id: string | null) => void;
@@ -235,10 +243,12 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	videoDurationMs,
 	selectAllBlocksActive,
 	selectedZoomId,
+	selectedTrimId,
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
 	onSelectZoom,
+	onSelectTrim,
 	onSelectClip,
 	onSelectAnnotation,
 	onSelectAudio,
@@ -253,9 +263,10 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	onZoomRowMouseLeave,
 	onZoomRowClick,
 }: TimelineCanvasRowsProps) {
-	const { clipItems, zoomItems, annotationRows, audioRows } = useMemo(() => {
+	const { clipItems, zoomItems, trimItems, annotationRows, audioRows } = useMemo(() => {
 		const nextClipItems: TimelineRenderItem[] = [];
 		const nextZoomItems: TimelineRenderItem[] = [];
+		const nextTrimItems: TimelineRenderItem[] = [];
 		const annotationBuckets = new Map<number, TimelineRenderItem[]>();
 		const audioBuckets = new Map<number, TimelineRenderItem[]>();
 
@@ -266,6 +277,10 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			}
 			if (item.rowId === ZOOM_ROW_ID) {
 				nextZoomItems.push(item);
+				continue;
+			}
+			if (item.rowId === TRIM_ROW_ID) {
+				nextTrimItems.push(item);
 				continue;
 			}
 			if (isAnnotationTrackRowId(item.rowId)) {
@@ -299,6 +314,7 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 		return {
 			clipItems: nextClipItems,
 			zoomItems: nextZoomItems,
+			trimItems: nextTrimItems,
 			annotationRows: annotationRowsSorted,
 			audioRows: audioRowsSorted,
 		};
@@ -338,8 +354,14 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 							className="absolute top-1/2 -translate-y-1/2 h-[85%] min-h-[22px]"
 							style={
 								direction === "rtl"
-									? { right: `${ghostStartOffsetPx}px`, width: `${ghostWidthPx}px` }
-									: { left: `${ghostStartOffsetPx}px`, width: `${ghostWidthPx}px` }
+									? {
+											right: `${ghostStartOffsetPx}px`,
+											width: `${ghostWidthPx}px`,
+										}
+									: {
+											left: `${ghostStartOffsetPx}px`,
+											width: `${ghostWidthPx}px`,
+										}
 							}
 						>
 							<div
@@ -374,8 +396,29 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				))}
 			</Row>
 
+			<Row id={TRIM_ROW_ID} isEmpty={trimItems.length === 0} hint={HINT_TRIM}>
+				{trimItems.map((item) => (
+					<Item
+						id={item.id}
+						key={item.id}
+						rowId={item.rowId}
+						span={item.span}
+						isSelected={selectAllBlocksActive || item.id === selectedTrimId}
+						onSelectId={onSelectTrim}
+						variant="trim"
+					>
+						{item.label}
+					</Item>
+				))}
+			</Row>
+
 			{annotationRows.map(({ rowId, items: rowItems }, index) => (
-				<Row key={rowId} id={rowId} isEmpty={rowItems.length === 0} hint={index === 0 ? HINT_ANNOTATION : undefined}>
+				<Row
+					key={rowId}
+					id={rowId}
+					isEmpty={rowItems.length === 0}
+					hint={index === 0 ? HINT_ANNOTATION : undefined}
+				>
 					{rowItems.map((item) => (
 						<Item
 							id={item.id}
@@ -393,7 +436,12 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			))}
 
 			{audioRows.map(({ rowId, items: rowItems }, index) => (
-				<Row key={rowId} id={rowId} isEmpty={rowItems.length === 0} hint={index === 0 ? HINT_AUDIO : undefined}>
+				<Row
+					key={rowId}
+					id={rowId}
+					isEmpty={rowItems.length === 0}
+					hint={index === 0 ? HINT_AUDIO : undefined}
+				>
 					{rowItems.map((item) => (
 						<Item
 							id={item.id}
@@ -421,10 +469,12 @@ export default function TimelineCanvas({
 	onAddZoomAtMs,
 	canPlaceZoomAtMs,
 	onSelectZoom,
+	onSelectTrim,
 	onSelectClip,
 	onSelectAnnotation,
 	onSelectAudio,
 	selectedZoomId,
+	selectedTrimId,
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
@@ -502,7 +552,8 @@ export default function TimelineCanvas({
 
 	const handleTimelineMouseDown = useCallback(
 		(e: MouseEvent<HTMLDivElement>) => {
-			if (e.button !== 0 || !onSeek || videoDurationMs <= 0 || !localTimelineRef.current) return;
+			if (e.button !== 0 || !onSeek || videoDurationMs <= 0 || !localTimelineRef.current)
+				return;
 			if ((e.target as HTMLElement).closest("[data-timeline-item]")) {
 				return;
 			}
@@ -538,7 +589,8 @@ export default function TimelineCanvas({
 
 		const flushSeek = () => {
 			seekRafRef.current = null;
-			if (!onSeek || !localTimelineRef.current || pendingSeekClientXRef.current === null) return;
+			if (!onSeek || !localTimelineRef.current || pendingSeekClientXRef.current === null)
+				return;
 			const rect = localTimelineRef.current.getBoundingClientRect();
 			onSeek(getAbsoluteMsFromClientX(pendingSeekClientXRef.current, rect) / 1000);
 		};
@@ -583,7 +635,7 @@ export default function TimelineCanvas({
 			if (isAnnotationTrackRowId(item.rowId)) annotationRowIds.add(item.rowId);
 			if (isAudioTrackRowId(item.rowId)) audioRowIds.add(item.rowId);
 		}
-		return 2 + annotationRowIds.size + audioRowIds.size;
+		return 3 + annotationRowIds.size + audioRowIds.size;
 	}, [items]);
 	const timelineRowsMinHeightPx = getTimelineRowsMinHeightPx(timelineRowCount);
 	const timelineContentMinHeightPx = getTimelineContentMinHeightPx(timelineRowCount);
@@ -640,23 +692,32 @@ export default function TimelineCanvas({
 				<div
 					className="absolute top-0 bottom-0 z-[45] pointer-events-none"
 					style={{
-						[sideProperty === "right" ? "marginRight" : "marginLeft"]: `${sidebarWidth - 1}px`,
+						[sideProperty === "right" ? "marginRight" : "marginLeft"]:
+							`${sidebarWidth - 1}px`,
 					}}
 				>
-					<div className="absolute top-0 bottom-0 w-px bg-foreground/35" style={{ [sideProperty]: `${timelineGhostOffsetPx}px` }} />
+					<div
+						className="absolute top-0 bottom-0 w-px bg-foreground/35"
+						style={{ [sideProperty]: `${timelineGhostOffsetPx}px` }}
+					/>
 				</div>
 			)}
 
-			<div className="relative z-10 flex flex-1 min-h-0 flex-col" style={{ minHeight: timelineRowsMinHeightPx }}>
+			<div
+				className="relative z-10 flex flex-1 min-h-0 flex-col"
+				style={{ minHeight: timelineRowsMinHeightPx }}
+			>
 				<TimelineCanvasRows
 					items={items}
 					videoDurationMs={videoDurationMs}
 					selectAllBlocksActive={selectAllBlocksActive}
 					selectedZoomId={selectedZoomId}
+					selectedTrimId={selectedTrimId}
 					selectedClipId={selectedClipId}
 					selectedAnnotationId={selectedAnnotationId}
 					selectedAudioId={selectedAudioId}
 					onSelectZoom={onSelectZoom}
+					onSelectTrim={onSelectTrim}
 					onSelectClip={onSelectClip}
 					onSelectAnnotation={onSelectAnnotation}
 					onSelectAudio={onSelectAudio}

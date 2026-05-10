@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { type RefObject, useEffect } from "react";
 import { matchesShortcut } from "@/lib/shortcuts";
 import type { TimelineShortcutBindings } from "../core/timelineTypes";
 import { resolveDeleteSelectionTarget } from "./utils/timelineSelectionUtils";
@@ -11,6 +11,7 @@ interface UseTimelineKeyboardShortcutsParams {
 	annotationCount: number;
 	selectedKeyframeId: string | null;
 	selectedZoomId: string | null;
+	selectedTrimId?: string | null;
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
@@ -19,11 +20,13 @@ interface UseTimelineKeyboardShortcutsParams {
 	setSelectedKeyframeId: (id: string | null) => void;
 	addKeyframe: () => void;
 	handleAddZoom: () => void;
+	handleAddTrim: () => void;
 	handleSplitClip: () => void;
 	handleAddAnnotation: () => void;
 	deleteAllBlocks: () => void;
 	deleteSelectedKeyframe: () => void;
 	deleteSelectedZoom: () => void;
+	deleteSelectedTrim: () => void;
 	deleteSelectedClip: () => void;
 	deleteSelectedAnnotation: () => void;
 	deleteSelectedAudio: () => void;
@@ -38,6 +41,7 @@ export function useTimelineKeyboardShortcuts({
 	annotationCount,
 	selectedKeyframeId,
 	selectedZoomId,
+	selectedTrimId,
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
@@ -46,11 +50,13 @@ export function useTimelineKeyboardShortcuts({
 	setSelectedKeyframeId,
 	addKeyframe,
 	handleAddZoom,
+	handleAddTrim,
 	handleSplitClip,
 	handleAddAnnotation,
 	deleteAllBlocks,
 	deleteSelectedKeyframe,
 	deleteSelectedZoom,
+	deleteSelectedTrim,
 	deleteSelectedClip,
 	deleteSelectedAnnotation,
 	deleteSelectedAudio,
@@ -84,6 +90,7 @@ export function useTimelineKeyboardShortcuts({
 
 			if (matchesShortcut(e, keyShortcuts.addKeyframe, isMac)) addKeyframe();
 			if (matchesShortcut(e, keyShortcuts.addZoom, isMac)) handleAddZoom();
+			if (matchesShortcut(e, keyShortcuts.addTrim, isMac)) handleAddTrim();
 			if (matchesShortcut(e, keyShortcuts.splitClip, isMac)) handleSplitClip();
 			if (matchesShortcut(e, keyShortcuts.addAnnotation, isMac)) {
 				handleAddAnnotation();
@@ -104,6 +111,7 @@ export function useTimelineKeyboardShortcuts({
 					selectAllBlocksActive,
 					selectedKeyframeId,
 					selectedZoomId,
+					selectedTrimId,
 					selectedClipId,
 					selectedAnnotationId,
 					selectedAudioId,
@@ -117,6 +125,8 @@ export function useTimelineKeyboardShortcuts({
 					deleteSelectedKeyframe();
 				} else if (target === "zoom") {
 					deleteSelectedZoom();
+				} else if (target === "trim") {
+					deleteSelectedTrim();
 				} else if (target === "clip") {
 					deleteSelectedClip();
 				} else if (target === "annotation") {
@@ -138,8 +148,10 @@ export function useTimelineKeyboardShortcuts({
 		deleteSelectedAudio,
 		deleteSelectedClip,
 		deleteSelectedKeyframe,
+		deleteSelectedTrim,
 		deleteSelectedZoom,
 		handleAddAnnotation,
+		handleAddTrim,
 		handleAddZoom,
 		handleSplitClip,
 		hasAnyTimelineBlocks,
@@ -151,6 +163,7 @@ export function useTimelineKeyboardShortcuts({
 		selectedAudioId,
 		selectedClipId,
 		selectedKeyframeId,
+		selectedTrimId,
 		selectedZoomId,
 		setSelectAllBlocksActive,
 		setSelectedKeyframeId,

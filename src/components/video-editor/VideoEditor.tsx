@@ -97,10 +97,7 @@ import {
 	getAspectRatioValue,
 } from "@/utils/aspectRatioUtils";
 import { ExtensionIcon } from "./ExtensionIcon";
-import {
-	calculateMp4ExportDimensions,
-	calculateMp4SourceDimensions,
-} from "./exportDimensions";
+import { calculateMp4ExportDimensions, calculateMp4SourceDimensions } from "./exportDimensions";
 
 const PhCursorFill = (props: { className?: string; weight?: "fill" | "regular" }) => (
 	<Cursor weight="fill" className={props.className} />
@@ -670,6 +667,7 @@ export default function VideoEditor() {
 	const [cursorTelemetrySourcePath, setCursorTelemetrySourcePath] = useState<string | null>(null);
 	const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
 	const [trimRegions, setTrimRegions] = useState<TrimRegion[]>([]);
+	const [selectedTrimId, setSelectedTrimId] = useState<string | null>(null);
 	const [clipRegions, setClipRegions] = useState<ClipRegion[]>([]);
 	const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
 	const [speedRegions, setSpeedRegions] = useState<SpeedRegion[]>([]);
@@ -767,6 +765,7 @@ export default function VideoEditor() {
 	const projectBrowserFallbackTriggerRef = useRef<HTMLButtonElement | null>(null);
 	const projectNameInputRef = useRef<HTMLInputElement | null>(null);
 	const nextZoomIdRef = useRef(1);
+	const nextTrimIdRef = useRef(1);
 	const nextClipIdRef = useRef(1);
 	const nextAudioIdRef = useRef(1);
 
@@ -3397,21 +3396,27 @@ export default function VideoEditor() {
 		setAutoSuggestZoomsTrigger(0);
 	}, []);
 
-	const handleSeek = useCallback((time: number, options: { pause?: boolean } = {}) => {
-		const playback = videoPlaybackRef.current;
-		const video = playback?.video;
-		if (!video) return;
+	const handleSeek = useCallback(
+		(time: number, options: { pause?: boolean } = {}) => {
+			const playback = videoPlaybackRef.current;
+			const video = playback?.video;
+			if (!video) return;
 
-		if (options.pause && !video.paused) {
-			playback?.pause();
-		}
+			if (options.pause && !video.paused) {
+				playback?.pause();
+			}
 
-		video.currentTime = mapTimelineTimeToSourceTime(time * 1000) / 1000;
-	}, [mapTimelineTimeToSourceTime]);
+			video.currentTime = mapTimelineTimeToSourceTime(time * 1000) / 1000;
+		},
+		[mapTimelineTimeToSourceTime],
+	);
 
-	const handleTimelineSeek = useCallback((time: number) => {
-		handleSeek(time, { pause: true });
-	}, [handleSeek]);
+	const handleTimelineSeek = useCallback(
+		(time: number) => {
+			handleSeek(time, { pause: true });
+		},
+		[handleSeek],
+	);
 
 	const handleSelectZoom = useCallback((id: string | null) => {
 		setSelectedZoomId(id);
@@ -3557,6 +3562,20 @@ export default function VideoEditor() {
 		);
 	}, []);
 
+	const handleTrimSpanChange = useCallback((id: string, span: Span) => {
+		setTrimRegions((prev) =>
+			prev.map((region) =>
+				region.id === id
+					? {
+							...region,
+							startMs: Math.round(span.start),
+							endMs: Math.round(span.end),
+						}
+					: region,
+			),
+		);
+	}, []);
+
 	const handleZoomFocusChange = useCallback((id: string, focus: ZoomFocus) => {
 		setZoomRegions((prev) =>
 			prev.map((region) =>
@@ -3607,6 +3626,26 @@ export default function VideoEditor() {
 			extensionHost.emitEvent({ type: "timeline:region-removed", data: { id } });
 		},
 		[selectedZoomId],
+	);
+
+	const handleSelectTrim = useCallback((id: string | null) => {
+		setSelectedTrimId(id);
+		if (id) {
+			setSelectedZoomId(null);
+			setSelectedClipId(null);
+			setSelectedAnnotationId(null);
+			setSelectedAudioId(null);
+		}
+	}, []);
+
+	const handleTrimDelete = useCallback(
+		(id: string) => {
+			setTrimRegions((prev) => prev.filter((region) => region.id !== id));
+			if (selectedTrimId === id) {
+				setSelectedTrimId(null);
+			}
+		},
+		[selectedTrimId],
 	);
 
 	const handleSelectClip = useCallback((id: string | null) => {
@@ -3786,6 +3825,21 @@ export default function VideoEditor() {
 		},
 		[clipRegions, selectedClipId],
 	);
+
+	const handleTrimAdded = useCallback((trimStartMs: number, trimDurationMs: number) => {
+		const id = `trim-${nextTrimIdRef.current++}`;
+		const newRegion: TrimRegion = {
+			id,
+			startMs: Math.round(trimStartMs),
+			endMs: Math.round(trimStartMs + trimDurationMs),
+		};
+		setTrimRegions((prev) => [...prev, newRegion]);
+		setSelectedTrimId(id);
+		setSelectedZoomId(null);
+		setSelectedClipId(null);
+		setSelectedAnnotationId(null);
+		setSelectedAudioId(null);
+	}, []);
 
 	const handleSelectAudio = useCallback((id: string | null) => {
 		setSelectedAudioId(id);
@@ -6429,6 +6483,15 @@ export default function VideoEditor() {
 									<ZoomIn className="w-4 h-4" />
 								</Button>
 								<Button
+									onClick={() => timelineRef.current?.addTrim()}
+									variant="ghost"
+									size="icon"
+									className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-[#ef4444]/10 hover:text-[#ef4444]"
+									title={t("timeline.trim.addTrim")}
+								>
+									<Scissors className="w-4 h-4" />
+								</Button>
+								<Button
 									onClick={() => timelineRef.current?.suggestZooms()}
 									variant="ghost"
 									size="icon"
@@ -6610,6 +6673,11 @@ export default function VideoEditor() {
 						selectedZoomId={selectedZoomId}
 						onSelectZoom={handleSelectZoom}
 						trimRegions={trimRegions}
+						onTrimSpanChange={handleTrimSpanChange}
+						onTrimAdded={handleTrimAdded}
+						onTrimDelete={handleTrimDelete}
+						selectedTrimId={selectedTrimId}
+						onSelectTrim={handleSelectTrim}
 						clipRegions={clipRegions}
 						onClipSplit={handleClipSplit}
 						onClipSpanChange={handleClipSpanChange}

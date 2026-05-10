@@ -11,11 +11,7 @@ import { TimelineContext } from "dnd-timeline";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useCallback, useRef } from "react";
 import type { TimelineRegionSpan } from "../../core/timelineTypes";
-import {
-	clampRange,
-	resolveDragEnd,
-	resolveResizeEnd,
-} from "../../dnd/engine";
+import { clampRange, resolveDragEnd, resolveResizeEnd } from "../../dnd/engine";
 
 interface TimelineWrapperProps {
 	children: ReactNode;

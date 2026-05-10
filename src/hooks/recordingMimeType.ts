@@ -38,9 +38,7 @@ function selectMimeTypeFromPreferences(
 	return playableType ?? supportedTypes[0];
 }
 
-export function selectRecordingMimeType(
-	options: MimeTypeSelectorOptions = {},
-): string | undefined {
+export function selectRecordingMimeType(options: MimeTypeSelectorOptions = {}): string | undefined {
 	return selectMimeTypeFromPreferences(RECORDING_MIME_TYPE_PREFERENCES, options);
 }
 
@@ -54,6 +52,8 @@ export function isWebmMimeType(mimeType: string | undefined | null): boolean {
 	return /^video\/webm(?:[;\s]|$)/i.test(mimeType ?? "");
 }
 
-export function getVideoExtensionForMimeType(mimeType: string | undefined | null): ".mp4" | ".webm" {
+export function getVideoExtensionForMimeType(
+	mimeType: string | undefined | null,
+): ".mp4" | ".webm" {
 	return /^video\/mp4(?:[;\s]|$)/i.test(mimeType ?? "") ? ".mp4" : ".webm";
 }

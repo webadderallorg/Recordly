@@ -113,7 +113,10 @@ function toWallpaperLabel(fileName: string) {
 		.replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
-function createWallpaperEntry(fileName: string, label = toWallpaperLabel(fileName)): BuiltInWallpaper {
+function createWallpaperEntry(
+	fileName: string,
+	label = toWallpaperLabel(fileName),
+): BuiltInWallpaper {
 	const encodedFileName = encodeURIComponent(fileName);
 	return {
 		id: toWallpaperId(fileName) || `wallpaper-${encodedFileName.toLowerCase()}`,

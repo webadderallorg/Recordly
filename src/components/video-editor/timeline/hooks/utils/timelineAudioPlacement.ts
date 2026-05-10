@@ -30,7 +30,10 @@ export function resolveAudioPlacement({
 	const normalizedPreferredTrackIndex = Number.isFinite(preferredTrackIndex)
 		? Math.max(0, Math.floor(preferredTrackIndex ?? 0))
 		: null;
-	const maxTrackIndex = audioRegions.reduce((max, region) => Math.max(max, region.trackIndex ?? 0), -1);
+	const maxTrackIndex = audioRegions.reduce(
+		(max, region) => Math.max(max, region.trackIndex ?? 0),
+		-1,
+	);
 	const candidateTrackIndexes =
 		normalizedPreferredTrackIndex === null
 			? Array.from({ length: maxTrackIndex + 2 }, (_, index) => index)

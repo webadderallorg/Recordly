@@ -1,12 +1,12 @@
 import { MicrophoneIcon, MicrophoneSlashIcon } from "@phosphor-icons/react";
 import type { ReactElement, ReactNode } from "react";
+import { AudioLevelMeter } from "@/components/ui/audio-level-meter";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAudioLevelMeter } from "@/hooks/useAudioLevelMeter";
-import { AudioLevelMeter } from "@/components/ui/audio-level-meter";
 import styles from "../LaunchWindow.module.css";
 import "../launchTheme.css";
-import type { DeviceOption } from "./launchPopoverTypes";
 import { useHudInteraction } from "../contexts/HudInteractionContext";
+import type { DeviceOption } from "./launchPopoverTypes";
 
 export function DropdownItem({
 	onClick,
@@ -54,7 +54,9 @@ export function MicDeviceRow({
 			className={`${styles.ddItem} ${selected ? styles.ddItemSelected : ""}`}
 			onClick={onSelect}
 		>
-			<span className="shrink-0">{selected ? <MicrophoneIcon size={16} /> : <MicrophoneSlashIcon size={16} />}</span>
+			<span className="shrink-0">
+				{selected ? <MicrophoneIcon size={16} /> : <MicrophoneSlashIcon size={16} />}
+			</span>
 			<span className="truncate flex-1">{device.label}</span>
 			<AudioLevelMeter level={level} className="w-16 shrink-0" />
 		</button>

@@ -109,7 +109,9 @@ export function GifOptionsPanel({
 					<label className="text-sm font-medium text-foreground">
 						{t("gifOptions.loopAnimation")}
 					</label>
-					<p className="text-xs text-muted-foreground/70">{t("gifOptions.loopDescription")}</p>
+					<p className="text-xs text-muted-foreground/70">
+						{t("gifOptions.loopDescription")}
+					</p>
 				</div>
 				<Switch checked={loop} onCheckedChange={onLoopChange} disabled={disabled} />
 			</div>

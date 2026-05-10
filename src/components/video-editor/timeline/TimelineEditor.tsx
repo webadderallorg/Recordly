@@ -1,5 +1,5 @@
-import type { Span } from "dnd-timeline";
 import { Plus } from "@phosphor-icons/react";
+import type { Span } from "dnd-timeline";
 import {
 	forwardRef,
 	type KeyboardEvent as ReactKeyboardEvent,
@@ -12,9 +12,7 @@ import {
 import { toast } from "sonner";
 import { useScopedT } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
-import {
-	type AspectRatio,
-} from "@/utils/aspectRatioUtils";
+import { type AspectRatio } from "@/utils/aspectRatioUtils";
 import { formatShortcut } from "@/utils/platformUtils";
 import { loadEditorPreferences, saveEditorPreferences } from "../editorPreferences";
 import type {
@@ -28,13 +26,13 @@ import type {
 	ZoomRegion,
 } from "../types";
 import KeyframeMarkers from "./components/markers/KeyframeMarkers";
+import TimelineToolbar from "./components/toolbar/TimelineToolbar";
+import TimelineCanvas from "./components/viewport/TimelineCanvas";
 import TimelineWrapper from "./components/wrapper/TimelineWrapper";
-import { useTimelineAudioPeaks } from "./hooks/useTimelineAudioPeaks";
 import { calculateTimelineScale } from "./core/time";
+import { useTimelineAudioPeaks } from "./hooks/useTimelineAudioPeaks";
 import { useTimelineEditorRuntime } from "./hooks/useTimelineEditorRuntime";
 import { useTimelineRange } from "./hooks/useTimelineRange";
-import TimelineCanvas from "./components/viewport/TimelineCanvas";
-import TimelineToolbar from "./components/toolbar/TimelineToolbar";
 
 export interface TimelineEditorProps {
 	videoDuration: number;
@@ -54,6 +52,10 @@ export interface TimelineEditorProps {
 	onSelectZoom: (id: string | null) => void;
 	trimRegions?: TrimRegion[];
 	onTrimSpanChange?: (id: string, span: Span) => void;
+	onTrimAdded?: (splitMs: number, trimDurationMs: number) => void;
+	onTrimDelete?: (id: string) => void;
+	selectedTrimId?: string | null;
+	onSelectTrim?: (id: string | null) => void;
 	clipRegions?: ClipRegion[];
 	onClipSplit?: (splitMs: number) => void;
 	onClipSpanChange?: (id: string, span: Span) => void;
@@ -84,13 +86,13 @@ export interface TimelineEditorProps {
 
 export interface TimelineEditorHandle {
 	addZoom: () => void;
+	addTrim: () => void;
 	suggestZooms: () => void;
 	splitClip: () => void;
 	addAnnotation: (trackIndex?: number) => void;
 	addAudio: (trackIndex?: number) => Promise<void>;
 	keyframes: { id: string; time: number }[];
 }
-
 
 const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 	function TimelineEditor(
@@ -112,6 +114,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onSelectZoom,
 			trimRegions = [],
 			onTrimSpanChange,
+			onTrimAdded,
+			onTrimDelete,
+			selectedTrimId,
+			onSelectTrim,
 			clipRegions = [],
 			onClipSplit,
 			onClipSpanChange,
@@ -237,6 +243,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			handleKeyframeMove,
 			clearSelectedBlocks,
 			handleSelectZoom,
+			handleSelectTrim,
 			handleSelectClip,
 			handleSelectAnnotation,
 			handleSelectAudio,
@@ -248,6 +255,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			canPlaceZoomAtMs,
 			addZoomAtMs,
 			handleAddZoom,
+			handleAddTrim,
 			handleSuggestZooms,
 			handleSplitClip,
 			handleAddAudio,
@@ -271,6 +279,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onSelectZoom,
 			trimRegions,
 			onTrimSpanChange,
+			onTrimAdded,
+			onTrimDelete,
+			selectedTrimId,
+			onSelectTrim,
 			clipRegions,
 			onClipSplit,
 			onClipSpanChange,
@@ -334,14 +346,22 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 						onAspectRatioChange={onAspectRatioChange}
 						onOpenCropEditor={onOpenCropEditor}
 						onAddZoom={handleAddZoom}
+						onAddTrim={handleAddTrim}
 						onSuggestZooms={handleSuggestZooms}
 						onAddAnnotation={handleToolbarAddAnnotation}
 						onAddAudio={handleToolbarAddAudio}
 						onSplitClip={handleSplitClip}
 						cropLabel={t("sections.crop", "Crop")}
 						addZoomLabel={tTimeline("zoom.addZoom", "Add Zoom (Z)")}
-						suggestZoomsLabel={tTimeline("zoom.suggestZooms", "Suggest Zooms from Cursor")}
-						addAnnotationLabel={tTimeline("annotation.addAnnotation", "Add Annotation (A)")}
+						addTrimLabel={tTimeline("trim.addTrim", "Add Trim (T)")}
+						suggestZoomsLabel={tTimeline(
+							"zoom.suggestZooms",
+							"Suggest Zooms from Cursor",
+						)}
+						addAnnotationLabel={tTimeline(
+							"annotation.addAnnotation",
+							"Add Annotation (A)",
+						)}
 						addAudioLabel={tTimeline("audio.label", "Audio")}
 						splitClipLabel={tEditor("toolbar.splitClip", "Split Clip (C)")}
 					/>
@@ -393,10 +413,12 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							onAddZoomAtMs={addZoomAtMs}
 							canPlaceZoomAtMs={canPlaceZoomAtMs}
 							onSelectZoom={handleSelectZoom}
+							onSelectTrim={handleSelectTrim}
 							onSelectClip={handleSelectClip}
 							onSelectAnnotation={handleSelectAnnotation}
 							onSelectAudio={handleSelectAudio}
 							selectedZoomId={selectedZoomId}
+							selectedTrimId={selectedTrimId}
 							selectedClipId={selectedClipId}
 							selectedAnnotationId={selectedAnnotationId}
 							selectedAudioId={selectedAudioId}

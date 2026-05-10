@@ -745,10 +745,7 @@ function getCursorViewportScale(viewport: CursorViewportRect) {
 	return Math.max(MIN_CURSOR_VIEWPORT_SCALE, viewport.width / REFERENCE_WIDTH);
 }
 
-function getCursorSwaySpringConfig(
-	smoothingFactor: number,
-	springTuning: CursorSpringTuning,
-) {
+function getCursorSwaySpringConfig(smoothingFactor: number, springTuning: CursorSpringTuning) {
 	const baseConfig = getCursorSpringConfig(
 		Math.min(
 			2,
@@ -812,7 +809,9 @@ export class SmoothedCursorState {
 	private xSpring = createSpringState(0.5);
 	private ySpring = createSpringState(0.5);
 
-	constructor(config: Pick<CursorRenderConfig, "smoothingFactor" | "trailLength" | "springTuning">) {
+	constructor(
+		config: Pick<CursorRenderConfig, "smoothingFactor" | "trailLength" | "springTuning">,
+	) {
 		this.smoothingFactor = config.smoothingFactor;
 		this.springTuning = config.springTuning;
 		this.trailLength = config.trailLength;

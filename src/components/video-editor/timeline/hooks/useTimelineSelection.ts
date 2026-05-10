@@ -6,18 +6,22 @@ interface UseTimelineSelectionParams {
 	totalMs: number;
 	currentTimeMs: number;
 	zoomRegions: TimelineRegion[];
+	trimRegions: TimelineRegion[];
 	clipRegions: TimelineRegion[];
 	annotationRegions: (TimelineRegion & { zIndex: number })[];
 	audioRegions: TimelineRegion[];
 	selectedZoomId: string | null;
+	selectedTrimId?: string | null;
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
 	onZoomDelete: (id: string) => void;
+	onTrimDelete?: (id: string) => void;
 	onClipDelete?: (id: string) => void;
 	onAnnotationDelete?: (id: string) => void;
 	onAudioDelete?: (id: string) => void;
 	onSelectZoom: (id: string | null) => void;
+	onSelectTrim?: (id: string | null) => void;
 	onSelectClip?: (id: string | null) => void;
 	onSelectAnnotation?: (id: string | null) => void;
 	onSelectAudio?: (id: string | null) => void;
@@ -27,18 +31,22 @@ export function useTimelineSelection({
 	totalMs,
 	currentTimeMs,
 	zoomRegions,
+	trimRegions,
 	clipRegions,
 	annotationRegions,
 	audioRegions,
 	selectedZoomId,
+	selectedTrimId,
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
 	onZoomDelete,
+	onTrimDelete,
 	onClipDelete,
 	onAnnotationDelete,
 	onAudioDelete,
 	onSelectZoom,
+	onSelectTrim,
 	onSelectClip,
 	onSelectAnnotation,
 	onSelectAudio,
@@ -77,6 +85,12 @@ export function useTimelineSelection({
 		onSelectZoom(null);
 	}, [selectedZoomId, onZoomDelete, onSelectZoom]);
 
+	const deleteSelectedTrim = useCallback(() => {
+		if (!selectedTrimId || !onTrimDelete || !onSelectTrim) return;
+		onTrimDelete(selectedTrimId);
+		onSelectTrim(null);
+	}, [selectedTrimId, onTrimDelete, onSelectTrim]);
+
 	const deleteSelectedClip = useCallback(() => {
 		if (!selectedClipId || !onClipDelete || !onSelectClip) return;
 		onClipDelete(selectedClipId);
@@ -97,23 +111,32 @@ export function useTimelineSelection({
 
 	const clearSelectedBlocks = useCallback(() => {
 		onSelectZoom(null);
+		onSelectTrim?.(null);
 		onSelectClip?.(null);
 		onSelectAnnotation?.(null);
 		onSelectAudio?.(null);
 		setSelectAllBlocksActive(false);
-	}, [onSelectZoom, onSelectClip, onSelectAnnotation, onSelectAudio]);
+	}, [onSelectZoom, onSelectTrim, onSelectClip, onSelectAnnotation, onSelectAudio]);
 
 	const hasAnyTimelineBlocks = useMemo(
 		() =>
 			zoomRegions.length > 0 ||
+			trimRegions.length > 0 ||
 			clipRegions.length > 0 ||
 			annotationRegions.length > 0 ||
 			audioRegions.length > 0,
-		[zoomRegions.length, clipRegions.length, annotationRegions.length, audioRegions.length],
+		[
+			zoomRegions.length,
+			trimRegions.length,
+			clipRegions.length,
+			annotationRegions.length,
+			audioRegions.length,
+		],
 	);
 
 	const deleteAllBlocks = useCallback(() => {
 		zoomRegions.map((r) => r.id).forEach((id) => onZoomDelete(id));
+		trimRegions.map((r) => r.id).forEach((id) => onTrimDelete?.(id));
 		clipRegions.map((r) => r.id).forEach((id) => onClipDelete?.(id));
 		annotationRegions.map((r) => r.id).forEach((id) => onAnnotationDelete?.(id));
 		audioRegions.map((r) => r.id).forEach((id) => onAudioDelete?.(id));
@@ -121,10 +144,12 @@ export function useTimelineSelection({
 		setSelectedKeyframeId(null);
 	}, [
 		zoomRegions,
+		trimRegions,
 		clipRegions,
 		annotationRegions,
 		audioRegions,
 		onZoomDelete,
+		onTrimDelete,
 		onClipDelete,
 		onAnnotationDelete,
 		onAudioDelete,
@@ -137,6 +162,14 @@ export function useTimelineSelection({
 			onSelectZoom(id);
 		},
 		[onSelectZoom],
+	);
+
+	const handleSelectTrim = useCallback(
+		(id: string | null) => {
+			setSelectAllBlocksActive(false);
+			onSelectTrim?.(id);
+		},
+		[onSelectTrim],
 	);
 
 	const handleSelectClip = useCallback(
@@ -198,12 +231,14 @@ export function useTimelineSelection({
 		deleteSelectedKeyframe,
 		handleKeyframeMove,
 		deleteSelectedZoom,
+		deleteSelectedTrim,
 		deleteSelectedClip,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
 		clearSelectedBlocks,
 		deleteAllBlocks,
 		handleSelectZoom,
+		handleSelectTrim,
 		handleSelectClip,
 		handleSelectAnnotation,
 		handleSelectAudio,

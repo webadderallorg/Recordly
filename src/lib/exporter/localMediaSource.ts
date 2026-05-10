@@ -137,9 +137,7 @@ export async function createReadableMediaResourceFile(resource: string): Promise
 	const resourceUrl = await resolveMediaResourceUrl(resource);
 	const response = await fetch(resourceUrl);
 	if (!response.ok) {
-		throw new Error(
-			`Failed to load media resource: ${response.status} ${response.statusText}`,
-		);
+		throw new Error(`Failed to load media resource: ${response.status} ${response.statusText}`);
 	}
 
 	const blob = await response.blob();

@@ -1,7 +1,7 @@
 "use client";
 
+import { Check, CaretDown as ChevronDown, CaretUp as ChevronUp } from "@phosphor-icons/react";
 import * as SelectPrimitive from "@radix-ui/react-select";
-import { CaretDown as ChevronDown, CaretUp as ChevronUp, Check } from "@phosphor-icons/react";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";

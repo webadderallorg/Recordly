@@ -33,12 +33,25 @@ describe("timeline model", () => {
 			zoomRegions: [
 				{ id: "z1", startMs: 0, endMs: 1000, depth: 2, focus: { cx: 0.5, cy: 0.5 } },
 			],
+			trimRegions: [],
 			clipRegions: [{ id: "c1", startMs: 0, endMs: 4000, speed: 1 }],
 			annotationRegions: [
-				{ ...BASE_ANNOTATION, type: "text" as const, content: "Hello timeline", trackIndex: 1 },
+				{
+					...BASE_ANNOTATION,
+					type: "text" as const,
+					content: "Hello timeline",
+					trackIndex: 1,
+				},
 			],
 			audioRegions: [
-				{ id: "au1", startMs: 500, endMs: 2000, audioPath: "/tmp/foo.mp3", volume: 1, trackIndex: 0 },
+				{
+					id: "au1",
+					startMs: 500,
+					endMs: 2000,
+					audioPath: "/tmp/foo.mp3",
+					volume: 1,
+					trackIndex: 0,
+				},
 			],
 		});
 
@@ -65,8 +78,18 @@ describe("timeline model", () => {
 			"Annotation",
 		);
 
-		expect(getAudioLabel({ id: "1", startMs: 0, endMs: 1, audioPath: "C:\\x\\y\\z.wav", volume: 1 })).toBe("z");
-		expect(getAudioLabel({ id: "2", startMs: 0, endMs: 1, audioPath: "", volume: 1 })).toBe("Audio");
+		expect(
+			getAudioLabel({
+				id: "1",
+				startMs: 0,
+				endMs: 1,
+				audioPath: "C:\\x\\y\\z.wav",
+				volume: 1,
+			}),
+		).toBe("z");
+		expect(getAudioLabel({ id: "2", startMs: 0, endMs: 1, audioPath: "", volume: 1 })).toBe(
+			"Audio",
+		);
 	});
 
 	it("builds row spans for dnd constraints", () => {
@@ -74,9 +97,17 @@ describe("timeline model", () => {
 			zoomRegions: [
 				{ id: "z1", startMs: 0, endMs: 1000, depth: 2, focus: { cx: 0.5, cy: 0.5 } },
 			],
+			trimRegions: [],
 			clipRegions: [{ id: "c1", startMs: 0, endMs: 4000, speed: 1 }],
 			audioRegions: [
-				{ id: "au1", startMs: 500, endMs: 2000, audioPath: "x.wav", volume: 1, trackIndex: 2 },
+				{
+					id: "au1",
+					startMs: 500,
+					endMs: 2000,
+					audioPath: "x.wav",
+					volume: 1,
+					trackIndex: 2,
+				},
 			],
 		});
 		expect(spans.map((s) => s.rowId)).toEqual(["row-zoom", "row-clip", "row-audio-2"]);
@@ -84,9 +115,27 @@ describe("timeline model", () => {
 
 	it("keeps items in their domain rows during dnd", () => {
 		const items = [
-			{ id: "a1", rowId: "row-annotation-1", span: { start: 0, end: 1 }, label: "A", variant: "annotation" as const },
-			{ id: "au1", rowId: "row-audio-2", span: { start: 0, end: 1 }, label: "X", variant: "audio" as const },
-			{ id: "z1", rowId: "row-zoom", span: { start: 0, end: 1 }, label: "Z", variant: "zoom" as const },
+			{
+				id: "a1",
+				rowId: "row-annotation-1",
+				span: { start: 0, end: 1 },
+				label: "A",
+				variant: "annotation" as const,
+			},
+			{
+				id: "au1",
+				rowId: "row-audio-2",
+				span: { start: 0, end: 1 },
+				label: "X",
+				variant: "audio" as const,
+			},
+			{
+				id: "z1",
+				rowId: "row-zoom",
+				span: { start: 0, end: 1 },
+				label: "Z",
+				variant: "zoom" as const,
+			},
 		];
 		expect(resolveDropRowId("a1", "row-audio-0", items)).toBe("row-annotation-1");
 		expect(resolveDropRowId("a1", "row-annotation-3", items)).toBe("row-annotation-3");
@@ -94,5 +143,42 @@ describe("timeline model", () => {
 		expect(resolveDropRowId("au1", "row-audio-7", items)).toBe("row-audio-7");
 		expect(resolveDropRowId("z1", "row-audio-1", items)).toBe("row-zoom");
 		expect(resolveDropRowId("unknown", "row-audio-1", items)).toBe("row-audio-1");
+	});
+
+	it("includes trim items with correct row, variant, and labels", () => {
+		const items = buildTimelineItems({
+			zoomRegions: [],
+			trimRegions: [
+				{ id: "t1", startMs: 1000, endMs: 3000 },
+				{ id: "t2", startMs: 5000, endMs: 7000 },
+			],
+			clipRegions: [],
+			annotationRegions: [],
+			audioRegions: [],
+		});
+
+		const trimItems = items.filter((i) => i.variant === "trim");
+		expect(trimItems).toHaveLength(2);
+		expect(trimItems[0].rowId).toBe("row-trim");
+		expect(trimItems[0].label).toBe("Trim 1");
+		expect(trimItems[0].span).toEqual({ start: 1000, end: 3000 });
+		expect(trimItems[1].label).toBe("Trim 2");
+	});
+
+	it("includes trim spans in region spans for dnd constraints", () => {
+		const spans = buildAllRegionSpans({
+			zoomRegions: [],
+			trimRegions: [{ id: "t1", startMs: 2000, endMs: 4000 }],
+			clipRegions: [],
+			audioRegions: [],
+		});
+
+		expect(spans).toHaveLength(1);
+		expect(spans[0]).toEqual({
+			id: "t1",
+			start: 2000,
+			end: 4000,
+			rowId: "row-trim",
+		});
 	});
 });

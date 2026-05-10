@@ -2,8 +2,8 @@ import { TimerIcon } from "@phosphor-icons/react";
 import type { ReactElement } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import styles from "../LaunchWindow.module.css";
-import { DropdownItem, HudPopover } from "./PopoverScaffold";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
+import { DropdownItem, HudPopover } from "./PopoverScaffold";
 
 const POPOVER_ID = "countdown";
 const COUNTDOWN_OPTIONS = [0, 3, 5, 10];
