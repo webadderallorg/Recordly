@@ -1,0 +1,26 @@
+{
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Editor Recordly",
+		"subtitle": "Registrazione e modifica dello schermo",
+		"language": "Lingua",
+		"manageRecordings": "Apri cartella registrazioni"
+	},
+	"actions": {
+		"cancel": "Annulla",
+		"close": "Chiudi",
+		"export": "Esporta",
+		"load": "Carica",
+		"redo": "Ripeti",
+		"reset": "Ripristina",
+		"save": "Salva",
+		"undo": "Annulla",
+		"delete": "Elimina",
+		"done": "Fatto"
+	},
+	"errors": {
+		"invalidFileType": "Tipo di file non valido",
+		"failedToUploadImage": "Caricamento immagine non riuscito",
+		"fileReadError": "Si è verificato un errore durante la lettura del file."
+	}
+}

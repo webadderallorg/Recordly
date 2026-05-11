@@ -53,7 +53,7 @@ import {
 	showUpdateToastWindow,
 } from "./windows";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const electronMainDir = path.dirname(fileURLToPath(import.meta.url));
 const IS_SMOKE_EXPORT = process.env.RECORDLY_SMOKE_EXPORT === "1";
 
 function ignoreBrokenConsolePipe(stream: NodeJS.WritableStream | undefined) {
@@ -119,7 +119,7 @@ async function ensureRecordingsDir() {
 // │ │ ├── main.js
 // │ │ └── preload.mjs
 // │
-process.env.APP_ROOT = path.join(__dirname, "..");
+process.env.APP_ROOT = path.join(electronMainDir, "..");
 
 // Use ['ENV_NAME'] avoid vite:define plugin - Vite@2.x
 export const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
@@ -198,9 +198,14 @@ function getExistingEditorWindow(): BrowserWindow | null {
 let defaultTrayIcon: ReturnType<typeof getTrayIcon> | null = null;
 let recordingTrayIcon: ReturnType<typeof getTrayIcon> | null = null;
 
+function getPlatformAppIconFilename(size: 32 | 128 | 512) {
+	const baseName = process.platform === "darwin" ? "recordlymac" : "recordly";
+	return `app-icons/${baseName}-${size}.png`;
+}
+
 function getDefaultTrayIcon() {
 	if (!defaultTrayIcon) {
-		defaultTrayIcon = getTrayIcon("app-icons/recordly-32.png");
+		defaultTrayIcon = getTrayIcon(getPlatformAppIconFilename(32));
 	}
 	return defaultTrayIcon;
 }
@@ -284,9 +289,14 @@ function focusOrCreateMainWindow() {
 		return;
 	}
 
-	if (BrowserWindow.getAllWindows().length === 0) {
-		createWindow();
-		return;
+	if (!mainWindow || mainWindow.isDestroyed()) {
+		const existingHud = getHudOverlayWindow();
+		if (existingHud && !existingHud.isDestroyed()) {
+			mainWindow = existingHud;
+		} else {
+			createWindow();
+			return;
+		}
 	}
 
 	if (mainWindow && !mainWindow.isDestroyed()) {
@@ -525,7 +535,7 @@ function syncDockIcon() {
 		return;
 	}
 
-	const dockIcon = getAppImage("app-icons/recordly-512.png");
+	const dockIcon = getAppImage(getPlatformAppIconFilename(512));
 	if (!dockIcon.isEmpty()) {
 		app.dock.setIcon(dockIcon);
 	}
@@ -596,7 +606,7 @@ function sendUpdateToastToWindows(channel: "update-toast-state", payload: unknow
 		const notification = new Notification({
 			title: getUpdateNotificationTitle(updatePayload),
 			body: getUpdateNotificationBody(updatePayload),
-			icon: getAppImage("app-icons/recordly-128.png"),
+			icon: getAppImage(getPlatformAppIconFilename(128)),
 			silent: false,
 		});
 
@@ -794,7 +804,15 @@ function createEditorWindowWrapper() {
 	const previousWindow = mainWindow;
 	if (previousWindow && !previousWindow.isDestroyed()) {
 		const closingEditorWindow = isEditorWindow(previousWindow);
-		closeEditorWindowBypassingUnsavedPrompt(previousWindow);
+		
+		if (closingEditorWindow) {
+			closeEditorWindowBypassingUnsavedPrompt(previousWindow);
+		} else {
+			// It's the HUD or another window. Hide it instead of closing so background
+			// tasks (like webcam finalizing) can finish in its renderer process.
+			previousWindow.hide();
+		}
+
 		if (!closingEditorWindow) {
 			isForceClosing = false;
 		}
@@ -925,7 +943,21 @@ app.whenReady().then(async () => {
 	}
 
 	ipcMain.on("hud-overlay-close", () => {
-		app.quit();
+		const hud = getHudOverlayWindow();
+		if (hud) {
+			console.log("[main] Closing HUD window via hud-overlay-close");
+			hud.close();
+		}
+
+		// If this was the last window (or we are in a state where we should quit), do it.
+		// We use a small delay to allow window.close() to propagate.
+		setTimeout(() => {
+			const windows = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+			if (windows.length === 0) {
+				console.log("[main] No windows left, quitting app");
+				app.quit();
+			}
+		}, 100);
 	});
 	syncDockIcon();
 	createTray();

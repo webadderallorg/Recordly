@@ -13,6 +13,7 @@ import {
 	resolveLinuxWindowBounds,
 	stopWindowBoundsCapture,
 } from "../cursor/bounds";
+import { reassertHudOverlayMousePassthrough } from "../../windows";
 
 const execFileAsync = promisify(execFile);
 const SOURCE_LIST_CACHE_TTL_MS = 1200;
@@ -487,11 +488,24 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 				throw loadError
 			}
 
-      setTimeout(() => {
-        if (!highlightWin.isDestroyed()) highlightWin.close()
-      }, 1700)
+			// The highlight window appearing (even with focusable:false) can corrupt
+			// the WS_EX_TRANSPARENT flag on the HUD on Windows 11+, breaking hover
+			// detection until the user moves their mouse over the bar again.
+			// Re-assert passthrough immediately so click-through is restored at once.
+			reassertHudOverlayMousePassthrough();
 
-      return { success: true }
+			const highlightCloseTimer = setTimeout(() => {
+				if (!highlightWin.isDestroyed()) highlightWin.close()
+			}, 1700)
+
+			highlightWin.on("closed", () => {
+				clearTimeout(highlightCloseTimer);
+				// Re-assert once more when the window is actually destroyed so the
+				// native flag is clean regardless of timing.
+				reassertHudOverlayMousePassthrough();
+			});
+
+			return { success: true }
     } catch (error) {
       console.error('Failed to show source highlight:', error)
       return { success: false }

@@ -3,12 +3,18 @@ import type {
 	AudioRegion,
 	ClipRegion,
 	SpeedRegion,
+	SourceAudioTrackSettings,
 	TrimRegion,
 } from "@/components/video-editor/types";
+import {
+	buildResolvedAudioPlan,
+	SourceTrackId,
+} from "@/lib/exporter/audioRoutingEngine";
 import { estimateCompanionAudioStartDelaySeconds } from "@/lib/mediaTiming";
 import { resolveMediaElementSource } from "./localMediaSource";
 import type { VideoMuxer } from "./muxer";
-import { resolveSourceAudioFallbackPaths } from "./sourceAudioFallback";
+import { resolveSourceTrackRoutingPolicy } from "./sourceTrackRoutingPolicy";
+import { SOURCE_AUDIO_NORMALIZE_GAIN } from "@/components/video-editor/audio/audioTypes";
 
 const AUDIO_BITRATE = 128_000;
 const DECODE_BACKPRESSURE_LIMIT = 20;
@@ -19,6 +25,60 @@ const OFFLINE_AUDIO_SAMPLE_RATE = 48_000;
 const OFFLINE_ENCODE_CHUNK_FRAMES = 1024;
 const OFFLINE_CHUNK_DURATION_SEC = 30;
 
+function resolveSourceTrackGain(
+	sourceAudioTrackSettings: SourceAudioTrackSettings | undefined,
+	trackId: "mic" | "system" | "mixed",
+) {
+	const settings = sourceAudioTrackSettings?.[trackId];
+	if (!settings) {
+		return 1;
+	}
+	const normalizeGain = settings.normalize ? SOURCE_AUDIO_NORMALIZE_GAIN : 1;
+	return Math.max(0, Math.min(2, settings.volume * normalizeGain));
+}
+
+export function getSourceTrackIdFromPath(audioPath: string): SourceTrackId {
+	const normalized = audioPath.toLowerCase();
+	// Check for common patterns like .mic., -mic., mic.mp4, etc.
+	if (
+		normalized.includes(".mic.") ||
+		normalized.includes("-mic.") ||
+		normalized.includes("_mic_") ||
+		normalized.includes("/mic.") ||
+		normalized.includes("\\mic.") ||
+		normalized.endsWith("mic.mp4") ||
+		normalized.endsWith("mic.m4a") ||
+		normalized.endsWith("mic.wav")
+	) {
+		return "mic";
+	}
+	if (
+		normalized.includes(".system.") ||
+		normalized.includes("-system.") ||
+		normalized.includes("_system_") ||
+		normalized.includes("/system.") ||
+		normalized.includes("\\system.") ||
+		normalized.endsWith("system.mp4") ||
+		normalized.endsWith("system.m4a") ||
+		normalized.endsWith("system.wav")
+	) {
+		return "system";
+	}
+	return "mixed";
+}
+
+export function hasNonDefaultSourceTrackSettings(
+	sourceAudioTrackSettings?: SourceAudioTrackSettings,
+) {
+	if (!sourceAudioTrackSettings) {
+		return false;
+	}
+	return Object.values(sourceAudioTrackSettings).some(
+		(settings) =>
+			Math.abs((settings?.volume ?? 1) - 1) > 0.0005 || Boolean(settings?.normalize),
+	);
+}
+
 interface TimelineSlice {
 	sourceStartMs: number;
 	sourceEndMs: number;
@@ -26,9 +86,10 @@ interface TimelineSlice {
 }
 
 interface PreparedOfflineRender {
-	mainBuffer: AudioBuffer | null;
-	companionEntries: Array<{ buffer: AudioBuffer; startDelaySec: number }>;
+	mainBufferEntry: { buffer: AudioBuffer; gain: number } | null;
+	companionEntries: Array<{ buffer: AudioBuffer; startDelaySec: number; gain: number }>;
 	regionEntries: Array<{ buffer: AudioBuffer; region: AudioRegion }>;
+	mutedSourceOutputRangesSec: Array<{ startSec: number; endSec: number }>;
 	slices: TimelineSlice[];
 	outputDurationMs: number;
 	numChannels: number;
@@ -144,6 +205,8 @@ export class AudioProcessor {
 		audioRegions?: AudioRegion[],
 		sourceAudioFallbackPaths?: string[],
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
+		sourceAudioTrackSettings?: SourceAudioTrackSettings,
+		clipRegions?: ClipRegion[],
 	): Promise<void> {
 		const sortedTrims = trimRegions
 			? [...trimRegions].sort((a, b) => a.startMs - b.startMs)
@@ -161,23 +224,25 @@ export class AudioProcessor {
 					(audioPath) => typeof audioPath === "string" && audioPath.trim().length > 0,
 				)
 			: [];
-		const { hasEmbeddedSourceAudio, externalAudioPaths } = resolveSourceAudioFallbackPaths(
+		const routingPolicy = resolveSourceTrackRoutingPolicy(
 			videoUrl,
 			sortedSourceAudioFallbackPaths,
 		);
-		const hasTimedCompanionAudio = externalAudioPaths.some(
+		const hasTimedCompanionAudio = routingPolicy.playbackPaths.some(
 			(audioPath) => (sourceAudioFallbackStartDelayMsByPath?.[audioPath] ?? 0) > 0,
 		);
 		const needsSourceAudioMixing =
-			externalAudioPaths.length > 1 ||
-			(hasEmbeddedSourceAudio && externalAudioPaths.length > 0) ||
+			routingPolicy.playbackPaths.length > 1 ||
+			(routingPolicy.hasEmbeddedSourceAudio && routingPolicy.playbackPaths.length > 0) ||
 			hasTimedCompanionAudio;
 
 		// When speed edits, audio regions, or multiple audio sources need mixing, use offline AudioContext pipeline.
 		if (
 			sortedSpeedRegions.length > 0 ||
 			sortedAudioRegions.length > 0 ||
-			needsSourceAudioMixing
+			needsSourceAudioMixing ||
+			hasNonDefaultSourceTrackSettings(sourceAudioTrackSettings) ||
+			(clipRegions ?? []).some((clip) => Boolean(clip.muted))
 		) {
 			await this.renderAndMuxOfflineAudio(
 				videoUrl,
@@ -186,14 +251,16 @@ export class AudioProcessor {
 				sortedAudioRegions,
 				sortedSourceAudioFallbackPaths,
 				sourceAudioFallbackStartDelayMsByPath,
+				sourceAudioTrackSettings,
+				clipRegions,
 				muxer,
 			);
 			return;
 		}
 
 		// Single sidecar audio with no speed/audio edits: demux directly (skips slow real-time rendering).
-		if (!hasEmbeddedSourceAudio && externalAudioPaths.length === 1) {
-			const sidecarDemuxer = await this.loadAudioFileDemuxer(externalAudioPaths[0]);
+		if (!routingPolicy.hasEmbeddedSourceAudio && routingPolicy.playbackPaths.length === 1) {
+			const sidecarDemuxer = await this.loadAudioFileDemuxer(routingPolicy.playbackPaths[0]);
 			if (sidecarDemuxer) {
 				try {
 					await this.processTrimOnlyAudio(sidecarDemuxer, muxer, sortedTrims);
@@ -215,8 +282,10 @@ export class AudioProcessor {
 				sortedTrims,
 				[],
 				[],
-				externalAudioPaths,
+				routingPolicy.playbackPaths,
 				sourceAudioFallbackStartDelayMsByPath,
+				sourceAudioTrackSettings,
+				clipRegions,
 				muxer,
 			);
 			return;
@@ -263,6 +332,8 @@ export class AudioProcessor {
 		audioRegions?: AudioRegion[],
 		sourceAudioFallbackPaths?: string[],
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
+		sourceAudioTrackSettings?: SourceAudioTrackSettings,
+		clipRegions?: ClipRegion[],
 	): Promise<Blob> {
 		const sortedTrims = trimRegions
 			? [...trimRegions].sort((a, b) => a.startMs - b.startMs)
@@ -288,6 +359,8 @@ export class AudioProcessor {
 			sortedAudioRegions,
 			sortedSourceAudioFallbackPaths,
 			sourceAudioFallbackStartDelayMsByPath,
+			sourceAudioTrackSettings,
+			clipRegions,
 		);
 		return this.renderToWavBlobChunked(prepared);
 	}
@@ -563,6 +636,8 @@ export class AudioProcessor {
 		audioRegions: AudioRegion[],
 		sourceAudioFallbackPaths: string[],
 		sourceAudioFallbackStartDelayMsByPath: Record<string, number> | undefined,
+		sourceAudioTrackSettings: SourceAudioTrackSettings | undefined,
+		clipRegions: ClipRegion[] | undefined,
 		muxer: VideoMuxer,
 	): Promise<void> {
 		const prepared = await this.prepareOfflineRender(
@@ -572,6 +647,8 @@ export class AudioProcessor {
 			audioRegions,
 			sourceAudioFallbackPaths,
 			sourceAudioFallbackStartDelayMsByPath,
+			sourceAudioTrackSettings,
+			clipRegions,
 		);
 		if (this.cancelled) return;
 		await this.renderAndEncodeChunked(prepared, muxer);
@@ -584,31 +661,59 @@ export class AudioProcessor {
 		audioRegions: AudioRegion[],
 		sourceAudioFallbackPaths: string[],
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
+		sourceAudioTrackSettings?: SourceAudioTrackSettings,
+		clipRegions?: ClipRegion[],
 	): Promise<PreparedOfflineRender> {
 		if (this.cancelled) throw new Error("Export cancelled");
 		this.onProgress?.(0);
 
-		const { externalAudioPaths } = resolveSourceAudioFallbackPaths(
-			videoUrl,
+		const resolvedPlan = buildResolvedAudioPlan({
+			videoResource: videoUrl,
 			sourceAudioFallbackPaths,
-		);
+			audioRegions,
+			sourceTrackGainById: {
+				mic: resolveSourceTrackGain(sourceAudioTrackSettings, "mic"),
+				system: resolveSourceTrackGain(sourceAudioTrackSettings, "system"),
+				mixed: resolveSourceTrackGain(sourceAudioTrackSettings, "mixed"),
+			},
+			embeddedGain: Math.max(
+				0,
+				Math.min(
+					2,
+					sourceAudioTrackSettings?.mixed
+						? resolveSourceTrackGain(sourceAudioTrackSettings, "mixed")
+						: sourceAudioTrackSettings?.system
+							? resolveSourceTrackGain(sourceAudioTrackSettings, "system")
+							: 1,
+				),
+			),
+		});
 
 		// Decode embedded source audio separately from companion sidecars.
-		const mainBuffer = await this.decodeAudioFromUrl(videoUrl);
+		const mainBuffer = resolvedPlan.includeEmbeddedInExport
+			? await this.decodeAudioFromUrl(videoUrl)
+			: null;
+		const mainBufferGain = resolveSourceTrackGain(sourceAudioTrackSettings, "mixed");
+		const mainBufferEntry = mainBuffer ? { buffer: mainBuffer, gain: mainBufferGain } : null;
 		if (this.cancelled) throw new Error("Export cancelled");
 
 		// Decode companion / sidecar audio files
-		const companionEntries: Array<{ buffer: AudioBuffer; startDelaySec: number }> = [];
+		const companionEntries: Array<{ buffer: AudioBuffer; startDelaySec: number; gain: number }> =
+			[];
 		const refDuration =
 			mainBuffer?.duration ??
-			(externalAudioPaths.length > 0 ? await this.getMediaDurationSec(videoUrl) : 0);
-		for (const audioPath of externalAudioPaths) {
+			(resolvedPlan.playbackPaths.length > 0 ? await this.getMediaDurationSec(videoUrl) : 0);
+		for (const audioPath of resolvedPlan.playbackPaths) {
 			if (this.cancelled) throw new Error("Export cancelled");
 			const buffer = await this.decodeAudioFromUrl(audioPath);
 			if (!buffer) continue;
 
 			companionEntries.push({
 				buffer,
+				gain: resolveSourceTrackGain(
+					sourceAudioTrackSettings,
+					getSourceTrackIdFromPath(audioPath),
+				),
 				startDelaySec: estimateCompanionAudioStartDelaySeconds(
 					refDuration,
 					buffer.duration,
@@ -629,15 +734,15 @@ export class AudioProcessor {
 		this.onProgress?.(0.2);
 
 		// Determine source duration for timeline calculation
-		const primaryBuffer = mainBuffer ?? companionEntries[0]?.buffer ?? null;
+		const primaryBuffer = mainBufferEntry?.buffer ?? companionEntries[0]?.buffer ?? null;
 		if (!primaryBuffer && regionEntries.length === 0) {
 			throw new Error("No decodable audio sources found");
 		}
 
 		let sourceDurationSec: number;
-		if (mainBuffer) {
-			sourceDurationSec = mainBuffer.duration;
-		} else if (externalAudioPaths.length > 0 || regionEntries.length > 0) {
+		if (mainBufferEntry?.buffer) {
+			sourceDurationSec = mainBufferEntry.buffer.duration;
+		} else if (resolvedPlan.playbackPaths.length > 0 || regionEntries.length > 0) {
 			sourceDurationSec = await this.getMediaDurationSec(videoUrl);
 		} else {
 			sourceDurationSec = primaryBuffer?.duration ?? 0;
@@ -659,11 +764,24 @@ export class AudioProcessor {
 		}
 
 		const numChannels = Math.min(primaryBuffer?.numberOfChannels ?? 2, 2);
+		const mutedSourceOutputRangesSec = (clipRegions ?? [])
+			.filter(
+				(clip) =>
+					Boolean(clip.muted) &&
+					Number.isFinite(clip.startMs) &&
+					Number.isFinite(clip.endMs) &&
+					clip.endMs > clip.startMs,
+			)
+			.map((clip) => ({
+				startSec: Math.max(0, clip.startMs / 1000),
+				endSec: Math.max(0, clip.endMs / 1000),
+			}));
 
 		return {
-			mainBuffer,
+			mainBufferEntry,
 			companionEntries,
 			regionEntries,
+			mutedSourceOutputRangesSec,
 			slices,
 			outputDurationMs,
 			numChannels,
@@ -788,14 +906,16 @@ export class AudioProcessor {
 			);
 
 			// Schedule main audio
-			if (prepared.mainBuffer) {
+			if (prepared.mainBufferEntry) {
 				this.scheduleBufferThroughTimeline(
 					offlineCtx,
-					prepared.mainBuffer,
+					prepared.mainBufferEntry.buffer,
 					slices,
 					0,
+					prepared.mainBufferEntry.gain,
 					outputOffsetSec,
 					chunkSec,
+					prepared.mutedSourceOutputRangesSec,
 				);
 			}
 
@@ -806,8 +926,10 @@ export class AudioProcessor {
 					entry.buffer,
 					slices,
 					entry.startDelaySec,
+					entry.gain,
 					outputOffsetSec,
 					chunkSec,
+					prepared.mutedSourceOutputRangesSec,
 				);
 			}
 
@@ -865,7 +987,8 @@ export class AudioProcessor {
 		if (duration <= 0.001) return;
 
 		const gainNode = ctx.createGain();
-		gainNode.gain.value = Math.max(0, Math.min(1, region.volume));
+		const normalizeGain = region.normalize ? SOURCE_AUDIO_NORMALIZE_GAIN : 1;
+		gainNode.gain.value = Math.max(0, Math.min(1, region.volume * normalizeGain));
 		gainNode.connect(ctx.destination);
 
 		const source = ctx.createBufferSource();
@@ -1265,8 +1388,10 @@ export class AudioProcessor {
 		buffer: AudioBuffer,
 		slices: TimelineSlice[],
 		sourceStartDelaySec: number,
+		gain = 1,
 		chunkOutputStartSec = 0,
 		chunkDurationSec = Number.POSITIVE_INFINITY,
+		mutedOutputRangesSec: Array<{ startSec: number; endSec: number }> = [],
 	): void {
 		let outputOffsetSec = 0;
 
@@ -1330,15 +1455,197 @@ export class AudioProcessor {
 				continue;
 			}
 
-			const source = ctx.createBufferSource();
-			source.buffer = buffer;
-			source.playbackRate.value = slice.speed;
-			source.connect(ctx.destination);
+			const audibleRanges: Array<{ startSec: number; endSec: number }> = [
+				{
+					startSec: localOutputStartSec + chunkOutputStartSec,
+					endSec:
+						localOutputStartSec + chunkOutputStartSec + effectiveSourceDurationSec / slice.speed,
+				},
+			];
+			for (const mutedRange of mutedOutputRangesSec) {
+				for (let rangeIndex = audibleRanges.length - 1; rangeIndex >= 0; rangeIndex -= 1) {
+					const current = audibleRanges[rangeIndex];
+					const overlapStart = Math.max(current.startSec, mutedRange.startSec);
+					const overlapEnd = Math.min(current.endSec, mutedRange.endSec);
+					if (overlapEnd <= overlapStart) {
+						continue;
+					}
+					audibleRanges.splice(rangeIndex, 1);
+					if (current.startSec < overlapStart) {
+						audibleRanges.push({ startSec: current.startSec, endSec: overlapStart });
+					}
+					if (overlapEnd < current.endSec) {
+						audibleRanges.push({ startSec: overlapEnd, endSec: current.endSec });
+					}
+				}
+			}
 
-			source.start(localOutputStartSec, effectiveBufferStartSec, effectiveSourceDurationSec);
+			for (const audibleRange of audibleRanges) {
+				const audibleDurationSec = audibleRange.endSec - audibleRange.startSec;
+				if (audibleDurationSec <= 0.001) {
+					continue;
+				}
+				const source = ctx.createBufferSource();
+				const gainNode = ctx.createGain();
+				gainNode.gain.value = Math.max(0, Math.min(2, gain));
+
+				const sourceOffsetSec =
+					effectiveBufferStartSec +
+					(audibleRange.startSec - (localOutputStartSec + chunkOutputStartSec)) * slice.speed;
+				const localStartSec = audibleRange.startSec - chunkOutputStartSec;
+				const sourceDurationSec = audibleDurationSec * slice.speed;
+
+				const stretchedBuffer = this.stretchAudioBuffer(
+					buffer,
+					slice.speed,
+					sourceOffsetSec,
+					sourceDurationSec,
+					audibleDurationSec,
+					ctx,
+				);
+
+				source.buffer = stretchedBuffer;
+				source.playbackRate.value = 1;
+				source.connect(gainNode);
+				gainNode.connect(ctx.destination);
+
+				source.start(localStartSec);
+			}
 
 			outputOffsetSec += sliceOutputDurationSec;
 		}
+	}
+
+	private stretchAudioBuffer(
+		originalBuffer: AudioBuffer,
+		speed: number,
+		sourceOffsetSec: number,
+		sourceDurationSec: number,
+		audibleDurationSec: number,
+		ctx: BaseAudioContext,
+	): AudioBuffer {
+		const sampleRate = originalBuffer.sampleRate;
+		const channels = originalBuffer.numberOfChannels;
+
+		const startSample = Math.max(0, Math.floor(sourceOffsetSec * sampleRate));
+		const sourceSamples = Math.floor(sourceDurationSec * sampleRate);
+		const endSample = Math.min(originalBuffer.length, startSample + sourceSamples);
+
+		const outSamples = Math.floor(audibleDurationSec * sampleRate);
+		if (outSamples <= 0 || startSample >= originalBuffer.length) {
+			return ctx.createBuffer(channels, 1, sampleRate);
+		}
+
+		const outBuffer = ctx.createBuffer(channels, outSamples, sampleRate);
+
+		if (Math.abs(speed - 1) < 0.001) {
+			const copyLength = Math.min(endSample - startSample, outSamples);
+			if (copyLength > 0) {
+				for (let c = 0; c < channels; c++) {
+					outBuffer.copyToChannel(
+						originalBuffer.getChannelData(c).subarray(startSample, startSample + copyLength),
+						c,
+					);
+				}
+			}
+			return outBuffer;
+		}
+
+		// WSOLA uses windowing which causes fade-in at the start and fade-out at the end.
+		// To avoid clicks at chunk boundaries, we render with 100ms of padding and trim it.
+		const paddingSec = 0.1;
+		const paddingOutSamples = Math.floor(sampleRate * paddingSec);
+		const paddingInSamples = Math.floor(paddingOutSamples * speed);
+
+		const workStartIn = Math.max(0, startSample - paddingInSamples);
+		const workEndIn = Math.min(originalBuffer.length, endSample + paddingInSamples);
+		
+		const actualPaddingInStart = startSample - workStartIn;
+		// We expect the output offset for the requested start to be roughly:
+		const actualPaddingOutStart = Math.floor(actualPaddingInStart / speed);
+
+		const windowSize = Math.floor(sampleRate * 0.04);
+		const hopOut = Math.floor(windowSize * 0.5);
+		const hopIn = Math.floor(hopOut * speed);
+		const searchRange = Math.floor(sampleRate * 0.015);
+
+		const workOutSamples = Math.floor((workEndIn - workStartIn) / speed) + windowSize * 2;
+		const workOutBuffer = ctx.createBuffer(channels, workOutSamples, sampleRate);
+
+		const inDataByChannel = Array.from({ length: channels }, (_, c) => originalBuffer.getChannelData(c));
+		const workOutDataByChannel = Array.from({ length: channels }, (_, c) => workOutBuffer.getChannelData(c));
+
+		const window = new Float32Array(windowSize);
+		for (let i = 0; i < windowSize; i++) {
+			window[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (windowSize - 1)));
+		}
+
+		let inOffset = workStartIn;
+		let outOffset = 0;
+
+		// Initial window
+		for (let i = 0; i < windowSize; i++) {
+			if (inOffset + i < workEndIn && outOffset + i < workOutSamples) {
+				for (let c = 0; c < channels; c++) {
+					workOutDataByChannel[c][outOffset + i] += inDataByChannel[c][inOffset + i] * window[i];
+				}
+			}
+		}
+
+		outOffset += hopOut;
+		inOffset += hopIn;
+
+		while (outOffset + windowSize < workOutSamples && inOffset + windowSize < workEndIn) {
+			let bestOffset = inOffset;
+			const minSearch = Math.max(workStartIn, inOffset - searchRange);
+			const maxSearch = Math.min(workEndIn - windowSize, inOffset + searchRange);
+
+			if (maxSearch > minSearch) {
+				let maxCorr = -Infinity;
+				let bestDelta = 0;
+
+				for (let testOffset = minSearch; testOffset <= maxSearch; testOffset += 4) {
+					let corr = 0;
+					for (let i = 0; i < hopOut; i += 4) {
+						if (outOffset + i < workOutSamples && testOffset + i < workEndIn) {
+							for (let c = 0; c < channels; c++) {
+								corr += workOutDataByChannel[c][outOffset + i] * inDataByChannel[c][testOffset + i];
+							}
+						}
+					}
+					if (corr > maxCorr) {
+						maxCorr = corr;
+						bestDelta = testOffset - inOffset;
+					}
+				}
+				bestOffset = inOffset + bestDelta;
+			}
+
+			for (let i = 0; i < windowSize; i++) {
+				if (bestOffset + i < workEndIn && outOffset + i < workOutSamples) {
+					for (let c = 0; c < channels; c++) {
+						workOutDataByChannel[c][outOffset + i] += inDataByChannel[c][bestOffset + i] * window[i];
+					}
+				}
+			}
+
+			outOffset += hopOut;
+			inOffset += hopIn;
+		}
+
+		// Transfer the stable middle portion to the final buffer
+		for (let c = 0; c < channels; c++) {
+			const finalData = outBuffer.getChannelData(c);
+			const tempData = workOutBuffer.getChannelData(c);
+			for (let i = 0; i < outSamples; i++) {
+				const srcIdx = actualPaddingOutStart + i;
+				if (srcIdx < workOutSamples) {
+					finalData[i] = tempData[srcIdx];
+				}
+			}
+		}
+
+		return outBuffer;
 	}
 
 	// Create a WAV file header for the given audio parameters.

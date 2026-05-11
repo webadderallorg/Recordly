@@ -1,0 +1,60 @@
+{
+	"title": "Расширения",
+	"tabs": {
+		"browse": "Обзор",
+		"installed": "Установленные"
+	},
+	"actions": {
+		"submit": "Отправить расширение",
+		"docs": "Документация",
+		"refresh": "Обновить",
+		"openFolder": "Открыть папку с расширениями",
+		"uninstall": "Удалить",
+		"install": "Установить",
+		"installing": "Установка",
+		"add": "Добавить",
+		"retry": "Повторить",
+		"close": "Закрыть",
+		"folder": "Папка с расширениями"
+	},
+	"status": {
+		"enabled": "Включить",
+		"disabled": "Выключить",
+		"installed": "Установлено"
+	},
+	"detail": {
+		"by": "Автор: {{author}}",
+		"unknownAuthor": "Неизвестный автор",
+		"noDescription": "Описание отсутствует",
+		"downloads": "Загрузок: {{count}}",
+		"preview": "Предпросмотр",
+		"screenshotAlt": "Скриншот {{number}}",
+		"description": "Описание",
+		"tags": "Теги",
+		"permissions": "Разрешения",
+		"location": "Расположение",
+		"error": "Ошибка: {{message}}"
+	},
+	"empty": {
+		"title": "У вас пока нет расширений",
+		"description": "Устанавливайте расширения: рамки, курсоры и дополнительные инструменты для редактирования."
+	},
+	"search": {
+		"placeholder": "Поиск расширений...",
+		"noResults": "Ничего не найдено",
+		"noMarketplace": "В магазине пока нет доступных расширений",
+		"count": "Найдено расширений: {{count}}",
+		"countPlural": "Найдено расширений: {{count}}"
+	},
+	"toast": {
+		"installedAndEnabled": "Расширение установлено и включено",
+		"uninstalled": "Удалено: {{name}}",
+		"uninstallFailed": "Не удалось удалить {{name}}",
+		"searchFailed": "Ошибка при поиске в магазине расширений",
+		"refreshed": "Список расширений обновлен",
+		"refreshFailed": "Не удалось обновить расширения",
+		"marketplaceInstalled": "Установлено и включено: {{name}}",
+		"marketplaceInstallFailed": "Не удалось установить {{name}}",
+		"enableFailed": "Не удалось включить расширение"
+	}
+}

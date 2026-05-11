@@ -1,7 +1,12 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { CURSOR_MOTION_PRESETS } from "./cursorMotionPresets";
-import { fromFileUrl, normalizeProjectEditor, toFileUrl } from "./projectPersistence";
+import {
+	fromFileUrl,
+	normalizeProjectEditor,
+	stripPersistedDevMotionBlurSettings,
+	toFileUrl,
+} from "./projectPersistence";
 
 describe("Audio path handling", () => {
 	describe("toFileUrl produces valid file:// URLs for audio paths", () => {
@@ -286,5 +291,26 @@ describe("Motion preset normalization", () => {
 		expect(result.cursorMotionBlur).toBe(focused.cursorMotionBlur);
 		expect(result.cursorClickBounce).toBe(focused.cursorClickBounce);
 		expect(result.cursorClickBounceDuration).toBe(focused.cursorClickBounceDuration);
+	});
+});
+
+describe("Dev-only motion blur persistence", () => {
+	it("strips legacy dev-only blur tuning from project data before normalization", () => {
+		const defaults = normalizeProjectEditor({} as any);
+		const stripped = stripPersistedDevMotionBlurSettings({
+			zoomMotionBlurTuning: {
+				...defaults.zoomMotionBlurTuning,
+				maxDirectionalBlurPx: 96,
+				maxRadialBlurStrength: 1.5,
+			},
+			wallpaper: "/wallpapers/wallpaper2.jpg",
+		} as any);
+
+		expect(stripped).not.toHaveProperty("zoomMotionBlurTuning");
+
+		const result = normalizeProjectEditor(stripped as any);
+
+		expect(result.wallpaper).toBe("/wallpapers/wallpaper2.jpg");
+		expect(result.zoomMotionBlurTuning).toEqual(defaults.zoomMotionBlurTuning);
 	});
 });

@@ -123,6 +123,35 @@ describe("createVideoEventHandlers", () => {
 		expect(onTimeUpdate).toHaveBeenCalledWith(0.75);
 	});
 
+	it("skips removed footage when playback reaches a cut region", () => {
+		let animationFrameCallback: FrameRequestCallback | null = null;
+		requestAnimationFrameMock.mockImplementation((callback: FrameRequestCallback) => {
+			animationFrameCallback = callback;
+			return 29;
+		});
+		const video = createMockVideo({ currentTime: 1.25, duration: 10 });
+		const onTimeUpdate = vi.fn();
+		const handlers = createVideoEventHandlers({
+			video,
+			isSeekingRef: createMutableRef(false),
+			isPlayingRef: createMutableRef(false),
+			allowPlaybackRef: createMutableRef(true),
+			currentTimeRef: createMutableRef(0),
+			timeUpdateAnimationRef: createMutableRef<number | null>(null),
+			onPlayStateChange: vi.fn(),
+			onTimeUpdate,
+			trimRegionsRef: createMutableRef([{ id: "trim-1", startMs: 1000, endMs: 2000 }]),
+			speedRegionsRef: createMutableRef([]),
+		});
+
+		handlers.handlePlay();
+		animationFrameCallback?.(0);
+
+		expect(video.currentTime).toBe(2);
+		expect(video.pause).not.toHaveBeenCalled();
+		expect(onTimeUpdate).toHaveBeenLastCalledWith(2);
+	});
+
 	it("cancels a pending requestVideoFrameCallback on pause and dispose", () => {
 		const cancelVideoFrameCallback = vi.fn();
 		const video = createMockVideo({

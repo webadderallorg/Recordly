@@ -19,7 +19,10 @@
 	},
 	"clip": {
 		"title": "片段",
-		"muteAudio": "静音音频",
+		"mute": "静音",
+		"mutedState": "音频已静音",
+		"unmutedState": "音频正在播放",
+		"separateClipFromAudio": "将剪辑与音频分离",
 		"delete": "删除片段"
 	},
 	"effects": {
@@ -200,6 +203,17 @@
 		"saveProject": "保存项目",
 		"exportVideo": "导出{{format}}",
 		"reportBug": "报告问题",
-		"starOnGithub": "在 GitHub 上加星"
+		"starOnGithub": "在 GitHub 上点赞"
+	},
+	"audio": {
+		"title": "音频",
+		"volumeTitle": "音频",
+		"volume": "音量",
+		"normalize": "标准化",
+		"sourceTracksTitle": "剪辑源音频",
+		"systemLabel": "系统声音",
+		"micLabel": "麦克风",
+		"mixedLabel": "来源",
+		"deleteRegion": "删除音频"
 	}
 }

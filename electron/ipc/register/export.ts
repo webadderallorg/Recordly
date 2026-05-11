@@ -51,6 +51,16 @@ function getPartialExportDestinationPath(destinationPath: string) {
 	return path.join(parsed.dir, `.recordly-partial-${parsed.name}-${suffix}${parsed.ext}`);
 }
 
+const MAX_IN_MEMORY_EXPORT_BYTES = 0x7fffffff;
+
+function getInMemoryExportTooLargeMessage(byteLength: number) {
+	if (byteLength <= MAX_IN_MEMORY_EXPORT_BYTES) {
+		return null;
+	}
+
+	return "Export is too large for the legacy in-memory save path. Please retry with temp-file streaming enabled.";
+}
+
 export async function moveExportedTempFile(tempPath: string, destinationPath: string) {
 	await fs.mkdir(path.dirname(destinationPath), { recursive: true });
 	try {
@@ -700,6 +710,14 @@ export function registerExportHandlers() {
 		"mux-exported-video-audio",
 		async (_, videoData: ArrayBuffer, options?: NativeVideoExportFinishOptions) => {
 			try {
+				const sizeError = getInMemoryExportTooLargeMessage(videoData.byteLength);
+				if (sizeError) {
+					return {
+						success: false,
+						error: sizeError,
+					};
+				}
+
 				const result = await muxExportedVideoAudioBuffer(videoData, options ?? {});
 				// Register the muxed output so finalize-exported-video / discard-
 				// exported-temp accept it. Returning a temp path (instead of the
@@ -797,6 +815,15 @@ export function registerExportHandlers() {
 		"save-exported-video",
 		async (event, videoData: ArrayBuffer, fileName: string) => {
 			try {
+				const sizeError = getInMemoryExportTooLargeMessage(videoData.byteLength);
+				if (sizeError) {
+					return {
+						success: false,
+						message: sizeError,
+						error: sizeError,
+					};
+				}
+
 				// Determine file type from extension
 				const isGif = fileName.toLowerCase().endsWith(".gif");
 				const filters = isGif
@@ -845,6 +872,16 @@ export function registerExportHandlers() {
 		"write-exported-video-to-path",
 		async (_event, videoData: ArrayBuffer, outputPath: string) => {
 			try {
+				const sizeError = getInMemoryExportTooLargeMessage(videoData.byteLength);
+				if (sizeError) {
+					return {
+						success: false,
+						message: sizeError,
+						canceled: false,
+						error: sizeError,
+					};
+				}
+
 				const resolvedPath = path.resolve(outputPath);
 				await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
 				await fs.writeFile(resolvedPath, Buffer.from(videoData));

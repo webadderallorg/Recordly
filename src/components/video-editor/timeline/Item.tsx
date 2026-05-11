@@ -5,25 +5,38 @@ import {
 	MusicNotes as Music,
 	MouseLeftClickIcon as PhMouseLeftClick,
 	Scissors,
+	SpeakerX,
 	MagnifyingGlassPlus as ZoomIn,
 } from "@phosphor-icons/react";
 import type { Span } from "dnd-timeline";
 import { useItem } from "dnd-timeline";
 import { useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
+import AudioWaveform from "./components/waveform/AudioWaveform";
+import type { AudioPeaksData } from "./core/timelineTypes";
 import glassStyles from "./ItemGlass.module.css";
 
 interface ItemProps {
 	id: string;
 	span: Span;
 	rowId: string;
+	disabled?: boolean;
 	children: React.ReactNode;
 	isSelected?: boolean;
 	onSelect?: () => void;
+	onSelectId?: (id: string) => void;
 	zoomDepth?: number;
 	zoomMode?: "auto" | "manual";
 	speedValue?: number;
+	waveformPeaks?: AudioPeaksData | null;
+	waveformSegmentSpan?: Span;
+	waveformGain?: number;
+	waveformNormalize?: boolean;
+	muted?: boolean;
 	variant?: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio";
+	isLoading?: boolean;
+	loadingLabel?: string;
 }
 
 // Map zoom depth to multiplier labels
@@ -50,25 +63,68 @@ export default function Item({
 	id,
 	span,
 	rowId,
+	disabled = false,
 	isSelected = false,
 	onSelect,
+	onSelectId,
 	zoomDepth = 1,
 	zoomMode = "auto",
 	speedValue,
+	waveformPeaks = null,
+	waveformSegmentSpan,
+	waveformGain = 1,
+	waveformNormalize = false,
+	muted = false,
 	variant = "zoom",
+	isLoading = false,
+	loadingLabel,
 	children,
 }: ItemProps) {
 	const { setNodeRef, attributes, listeners, itemStyle, itemContentStyle } = useItem({
 		id,
 		span,
+		disabled: disabled || isLoading,
 		data: { rowId },
 	});
+
+	const timeLabel = useMemo(
+		() => `${formatMs(span.start)} – ${formatMs(span.end)}`,
+		[span.start, span.end],
+	);
+
+	if (isLoading) {
+		return (
+			<div
+				ref={setNodeRef}
+				style={{
+					...itemStyle,
+					height: "100%",
+					display: "flex",
+					alignItems: "center",
+				}}
+				{...listeners}
+				{...attributes}
+				data-timeline-item="true"
+				onMouseDownCapture={(event) => event.stopPropagation()}
+				onClickCapture={(event) => event.stopPropagation()}
+			>
+				<Skeleton
+					variant="clip"
+					animation="shimmer-premium"
+					label={loadingLabel || "Loading..."}
+					className="w-full"
+					style={{ height: "85%", minHeight: 22 }}
+				/>
+			</div>
+		);
+	}
 
 	const isZoom = variant === "zoom";
 	const isTrim = variant === "trim";
 	const isClip = variant === "clip";
 	const isSpeed = variant === "speed";
 	const isAudio = variant === "audio";
+	const showAudioWaveform = isAudio && Boolean(waveformPeaks);
 
 	const glassClass = isZoom
 		? glassStyles.glassPurple
@@ -82,12 +138,11 @@ export default function Item({
 						? glassStyles.glassDarkGreen
 						: glassStyles.glassYellow;
 
-	const timeLabel = useMemo(
-		() => `${formatMs(span.start)} – ${formatMs(span.end)}`,
-		[span.start, span.end],
-	);
-
 	const MIN_ITEM_PX = 6;
+	const handleSelect = () => {
+		onSelect?.();
+		onSelectId?.(id);
+	};
 	const safeItemStyle = {
 		...itemStyle,
 		minWidth: MIN_ITEM_PX,
@@ -101,7 +156,8 @@ export default function Item({
 			style={safeItemStyle}
 			{...listeners}
 			{...attributes}
-			onPointerDownCapture={() => onSelect?.()}
+			data-timeline-item="true"
+			onPointerDownCapture={handleSelect}
 			className="group h-full"
 		>
 			<div
@@ -127,7 +183,6 @@ export default function Item({
 					}}
 					onClick={(event) => {
 						event.stopPropagation();
-						onSelect?.();
 					}}
 				>
 					<div
@@ -140,6 +195,22 @@ export default function Item({
 						style={{ cursor: "col-resize", pointerEvents: "auto" }}
 						title="Resize right"
 					/>
+					{showAudioWaveform && waveformPeaks && (
+						<AudioWaveform
+							peaks={waveformPeaks}
+							segmentStartMs={waveformSegmentSpan?.start ?? span.start}
+							segmentEndMs={waveformSegmentSpan?.end ?? span.end}
+							gain={waveformGain}
+							normalize={waveformNormalize}
+							className="absolute inset-0 w-full h-full pointer-events-none opacity-45"
+						/>
+					)}
+					{/* Muted overlay for source audio track items */}
+					{isAudio && muted && (
+						<div className="absolute inset-0 z-20 flex items-center justify-center gap-1 bg-red-900/40 pointer-events-none">
+							<SpeakerX className="w-3 h-3 text-red-300/90 shrink-0" />
+						</div>
+					)}
 					{/* Content */}
 					<div className="relative z-10 flex flex-col items-center justify-center text-black/70 dark:text-white/90 opacity-80 group-hover:opacity-100 transition-opacity select-none overflow-hidden">
 						<div className="flex items-center gap-1.5">

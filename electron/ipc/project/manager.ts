@@ -428,6 +428,7 @@ export async function loadProjectFromPath(projectPath: string) {
 	const projectObj = project as Record<string, unknown>;
 	const editorObj = projectObj?.editor as Record<string, unknown> | undefined;
 	const audioTracks = editorObj?.audioTracks as { sourcePath?: unknown }[] | undefined;
+	const audioRegions = editorObj?.audioRegions as { audioPath?: unknown }[] | undefined;
 	const approvedProjectPaths: Array<string | null | undefined> = [
 		mediaSources.videoPath,
 		mediaSources.webcamPath,
@@ -436,6 +437,13 @@ export async function loadProjectFromPath(projectPath: string) {
 		for (const track of audioTracks) {
 			if (typeof track?.sourcePath === "string") {
 				approvedProjectPaths.push(track.sourcePath);
+			}
+		}
+	}
+	if (Array.isArray(audioRegions)) {
+		for (const region of audioRegions) {
+			if (typeof region?.audioPath === "string") {
+				approvedProjectPaths.push(region.audioPath);
 			}
 		}
 	}

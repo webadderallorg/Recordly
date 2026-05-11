@@ -1,7 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WEBCAM_OVERLAY } from "../../components/video-editor/types";
 
-const { initializeForwardFrameSourceMock, resolveMediaElementSourceMock } = vi.hoisted(() => ({
+const {
+	cancelForwardFrameSourceMock,
+	destroyForwardFrameSourceMock,
+	getForwardFrameAtTimeMock,
+	initializeForwardFrameSourceMock,
+	resolveMediaElementSourceMock,
+} = vi.hoisted(() => ({
+	cancelForwardFrameSourceMock: vi.fn(),
+	destroyForwardFrameSourceMock: vi.fn(async () => undefined),
+	getForwardFrameAtTimeMock: vi.fn(async () => null),
 	initializeForwardFrameSourceMock: vi.fn(async () => undefined),
 	resolveMediaElementSourceMock: vi.fn(async () => ({
 		src: "blob:background",
@@ -68,6 +77,9 @@ vi.mock("@/components/video-editor/videoPlayback/cursorRenderer", () => ({
 
 vi.mock("./forwardFrameSource", () => ({
 	ForwardFrameSource: class {
+		cancel = cancelForwardFrameSourceMock;
+		destroy = destroyForwardFrameSourceMock;
+		getFrameAtTime = getForwardFrameAtTimeMock;
 		initialize = initializeForwardFrameSourceMock;
 	},
 }));
@@ -449,6 +461,7 @@ describe("FrameRenderer webcam export path", () => {
 	});
 
 	it("prefers decoder-backed sync for video wallpapers during export", async () => {
+		vi.clearAllMocks();
 		const renderer = new FrameRenderer({
 			width: 1920,
 			height: 1080,
@@ -478,5 +491,47 @@ describe("FrameRenderer webcam export path", () => {
 		expect(renderer.backgroundForwardFrameSource).toBeTruthy();
 		expect(renderer.backgroundVideoElement).toBeNull();
 		expect(renderer.backgroundSprite).toBeTruthy();
+	});
+
+	it("falls back to media-element sync when video wallpaper packet streaming fails", async () => {
+		vi.clearAllMocks();
+		initializeForwardFrameSourceMock.mockResolvedValue(undefined);
+		getForwardFrameAtTimeMock.mockRejectedValueOnce(
+			new Error("readAVPacket pipeline failed: Failed after 3 attempts"),
+		);
+		resolveMediaElementSourceMock.mockResolvedValueOnce({
+			src: "blob:background-video",
+			revoke: vi.fn(),
+		});
+		const renderer = new FrameRenderer({
+			width: 1920,
+			height: 1080,
+			wallpaper: "/wallpapers/wispysky.mp4",
+			zoomRegions: [],
+			showShadow: false,
+			shadowIntensity: 0,
+			backgroundBlur: 0,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			webcam: {
+				...DEFAULT_WEBCAM_OVERLAY,
+				enabled: false,
+			},
+			videoWidth: 1920,
+			videoHeight: 1080,
+		}) as unknown as {
+			setupBackground: () => Promise<void>;
+			syncBackgroundFrame: (timeSeconds: number) => Promise<void>;
+			backgroundForwardFrameSource: unknown;
+			backgroundVideoElement: FakeVideoElement | null;
+		};
+
+		await renderer.setupBackground();
+		await expect(renderer.syncBackgroundFrame(1)).resolves.toBeUndefined();
+
+		expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
+		expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
+		expect(resolveMediaElementSourceMock).toHaveBeenCalledWith("wallpapers/wispysky.mp4");
+		expect(renderer.backgroundForwardFrameSource).toBeNull();
+		expect(renderer.backgroundVideoElement).toBeTruthy();
 	});
 });

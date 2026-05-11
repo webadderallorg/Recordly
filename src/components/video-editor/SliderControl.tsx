@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, memo, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
 interface SliderControlProps {
@@ -27,7 +27,7 @@ function quantizeToStep(value: number, min: number, step: number) {
 	return min + Math.round((value - min) / step) * step;
 }
 
-export function SliderControl({
+export const SliderControl = memo(function SliderControl({
 	label,
 	value,
 	defaultValue: _defaultValue,
@@ -40,30 +40,51 @@ export function SliderControl({
 	accentColor = "blue",
 }: SliderControlProps) {
 	const rootRef = useRef<HTMLDivElement | null>(null);
+	const valueTextRef = useRef<HTMLSpanElement | null>(null);
+	const boundsRef = useRef<DOMRect | null>(null);
+	const requestRef = useRef<number | null>(null);
+
 	const pct = Math.min(100, Math.max(0, ((value - min) / (max - min || 1)) * 100));
+
 	const dividerClass =
 		accentColor === "purple"
 			? "bg-foreground/95 shadow-[0_0_10px_rgba(139,92,246,0.28)]"
 			: "bg-foreground/95 shadow-[0_0_10px_rgba(37,99,235,0.28)]";
 
-	const setValueFromClientX = useCallback(
+	// Sync initial and prop-driven changes to CSS variable
+	useEffect(() => {
+		if (rootRef.current) {
+			rootRef.current.style.setProperty("--slider-pct", String(pct / 100));
+		}
+	}, [pct]);
+
+	const updateValue = useCallback(
 		(clientX: number) => {
-			const root = rootRef.current;
-			if (!root) {
+			const bounds = boundsRef.current;
+			if (!bounds || bounds.width <= 6) {
 				return;
 			}
 
-			const bounds = root.getBoundingClientRect();
-			if (!(bounds.width > 0)) {
-				return;
-			}
-
-			const normalized = clamp((clientX - bounds.left) / bounds.width, 0, 1);
+			const normalized = clamp((clientX - (bounds.left + 3)) / (bounds.width - 6), 0, 1);
 			const rawValue = min + normalized * (max - min);
 			const nextValue = clamp(quantizeToStep(rawValue, min, step), min, max);
-			onChange(Number(nextValue.toFixed(6)));
+			const finalValue = Number(nextValue.toFixed(6));
+			const finalPct = (((finalValue - min) / (max - min || 1)) * 100).toFixed(4);
+
+			// Direct DOM update for instant feedback
+			if (rootRef.current) {
+				rootRef.current.style.setProperty("--slider-pct", String(Number(finalPct) / 100));
+				rootRef.current.setAttribute("aria-valuenow", String(finalValue));
+				rootRef.current.setAttribute("aria-valuetext", formatValue(finalValue));
+			}
+			if (valueTextRef.current) {
+				valueTextRef.current.textContent = formatValue(finalValue);
+			}
+
+			// Notify parent
+			onChange(finalValue);
 		},
-		[max, min, onChange, step],
+		[max, min, onChange, step, formatValue],
 	);
 
 	const handlePointerDown = useCallback(
@@ -72,15 +93,24 @@ export function SliderControl({
 			const pointerId = event.pointerId;
 			const target = event.currentTarget;
 
+			// Cache bounds to avoid layout thrashing during move
+			boundsRef.current = target.getBoundingClientRect();
+
 			target.setPointerCapture(pointerId);
-			setValueFromClientX(event.clientX);
+			updateValue(event.clientX);
 
 			const handlePointerMove = (moveEvent: PointerEvent) => {
 				if (moveEvent.pointerId !== pointerId) {
 					return;
 				}
 
-				setValueFromClientX(moveEvent.clientX);
+				if (requestRef.current) {
+					cancelAnimationFrame(requestRef.current);
+				}
+
+				requestRef.current = requestAnimationFrame(() => {
+					updateValue(moveEvent.clientX);
+				});
 			};
 
 			const finishPointer = (finishEvent: PointerEvent) => {
@@ -88,17 +118,27 @@ export function SliderControl({
 					return;
 				}
 
+				if (requestRef.current) {
+					cancelAnimationFrame(requestRef.current);
+					requestRef.current = null;
+				}
+
+				if (finishEvent.type === "pointerup") {
+					updateValue(finishEvent.clientX);
+				}
+
 				target.releasePointerCapture(pointerId);
 				target.removeEventListener("pointermove", handlePointerMove);
 				target.removeEventListener("pointerup", finishPointer);
 				target.removeEventListener("pointercancel", finishPointer);
+				boundsRef.current = null;
 			};
 
 			target.addEventListener("pointermove", handlePointerMove);
 			target.addEventListener("pointerup", finishPointer);
 			target.addEventListener("pointercancel", finishPointer);
 		},
-		[setValueFromClientX],
+		[updateValue],
 	);
 
 	return (
@@ -124,11 +164,16 @@ export function SliderControl({
 				}
 			}}
 			className="relative flex h-10 w-full select-none items-center overflow-hidden rounded-xl bg-editor-bg/80 px-1.5 outline-none focus-visible:ring-1 focus-visible:ring-[#2563EB]/40"
+			style={
+				{
+					"--slider-pct": String(pct / 100),
+				} as React.CSSProperties
+			}
 		>
 			<div
 				className="pointer-events-none absolute inset-y-[3px] left-[3px] right-auto rounded-[10px] bg-foreground/[0.08] shadow-[0_4px_10px_0_rgba(0,0,0,0.18)] transition-none"
 				style={{
-					width: pct > 0 ? `max(calc(${pct}% - 6px), 2.1rem)` : 0,
+					width: "calc(var(--slider-pct) * (100% - 6px))",
 				}}
 			/>
 			<div
@@ -136,14 +181,19 @@ export function SliderControl({
 					"pointer-events-none absolute bottom-[18%] top-[18%] z-10 w-[2px] rounded-full transition-none",
 					dividerClass,
 				)}
-				style={{ left: `calc(${pct}% - 8px)` }}
+				style={{
+					left: "calc(var(--slider-pct) * (100% - 6px) - 6px)",
+				}}
 			/>
 			<span className="pointer-events-none relative z-10 flex-1 pl-3 text-[12px] font-medium text-muted-foreground">
 				{label}
 			</span>
-			<span className="pointer-events-none relative z-10 pr-3 text-[12px] font-medium tabular-nums text-foreground">
+			<span
+				ref={valueTextRef}
+				className="pointer-events-none relative z-10 pr-3 text-[12px] font-medium tabular-nums text-foreground"
+			>
 				{formatValue(value)}
 			</span>
 		</div>
 	);
-}
+});

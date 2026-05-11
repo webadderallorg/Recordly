@@ -230,7 +230,26 @@ api.getActiveFrame();
 api.isExtensionActive(extensionId);
 api.getPlaybackState();
 api.getCanvasDimensions();
+api.drawIcon(ctx, "Sparkle", 100, 100, 20, "#2563EB", "regular");
 ```
+
+### Drawing Icons
+
+Extensions can draw icons from Recordly's bundled Phosphor icon set directly on a canvas context:
+
+```js
+api.drawIcon(
+  ctx,
+  "ArrowClockwise", // icon name from @phosphor-icons/react
+  120,              // x (center)
+  80,               // y (center)
+  18,               // size in px
+  "#ffffff",        // color
+  "bold",           // optional weight: thin | light | regular | bold | fill
+);
+```
+
+This is useful for lightweight overlays and avoids bundling your own icon assets.
 
 ## Settings Panels
 

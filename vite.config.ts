@@ -4,6 +4,36 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 import electron from "vite-plugin-electron/simple";
 
+function electronMainCjsOutputPlugin(): Plugin {
+	return {
+		name: "recordly-electron-main-cjs-output",
+		enforce: "post",
+		config(config) {
+			// Vite mergeConfig concatenates lib.formats with the plugin's ESM default.
+			config.build ??= {};
+			const build = config.build;
+			const lib = build.lib;
+			if (lib && typeof lib === "object") {
+				lib.formats = ["cjs"];
+				lib.fileName = (_format, entryName) => `${entryName}.cjs`;
+			}
+
+			build.rollupOptions ??= {};
+			const rollupOptions = build.rollupOptions;
+			const cjsOutput = {
+				format: "cjs" as const,
+				inlineDynamicImports: true,
+				entryFileNames: "[name].cjs",
+				chunkFileNames: "[name]-[hash].cjs",
+			};
+
+			rollupOptions.output = Array.isArray(rollupOptions.output)
+				? rollupOptions.output.map((output) => ({ ...output, ...cjsOutput }))
+				: { ...(rollupOptions.output ?? {}), ...cjsOutput };
+		},
+	};
+}
+
 function electronMainCjsGuardPlugin(): Plugin {
 	return {
 		name: "recordly-electron-main-cjs-guard",
@@ -37,17 +67,19 @@ export default defineConfig({
 						lib: {
 							entry: "electron/main.ts",
 							formats: ["cjs"],
+							fileName: (_format, entryName) => `${entryName}.cjs`,
 						},
 						rollupOptions: {
 							external: ["ffmpeg-static", "uiohook-napi"],
 							output: {
 								format: "cjs",
+								inlineDynamicImports: true,
 								entryFileNames: "[name].cjs",
-								chunkFileNames: "[name].cjs",
+								chunkFileNames: "[name]-[hash].cjs",
 							},
 						},
 					},
-					plugins: [electronMainCjsGuardPlugin()],
+					plugins: [electronMainCjsOutputPlugin(), electronMainCjsGuardPlugin()],
 				},
 			},
 			preload: {

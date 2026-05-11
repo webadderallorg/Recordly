@@ -1,0 +1,60 @@
+{
+	"title": "Estensioni",
+	"tabs": {
+		"browse": "Esplora",
+		"installed": "Installate"
+	},
+	"actions": {
+		"submit": "Invia un'estensione",
+		"docs": "Documentazione estensioni",
+		"refresh": "Aggiorna",
+		"openFolder": "Apri cartella estensioni",
+		"uninstall": "Disinstalla",
+		"install": "Installa",
+		"installing": "Installazione in corso",
+		"add": "Aggiungi",
+		"retry": "Riprova",
+		"close": "Chiudi",
+		"folder": "Cartella"
+	},
+	"status": {
+		"enabled": "Abilitata",
+		"disabled": "Disabilitata",
+		"installed": "Installata"
+	},
+	"detail": {
+		"by": "Di {{author}}",
+		"unknownAuthor": "Autore sconosciuto",
+		"noDescription": "Nessuna descrizione",
+		"downloads": "{{count}} download",
+		"preview": "Anteprima",
+		"screenshotAlt": "Schermata {{number}}",
+		"description": "Descrizione",
+		"tags": "Tag",
+		"permissions": "Autorizzazioni",
+		"location": "Posizione",
+		"error": "Errore: {{message}}"
+	},
+	"empty": {
+		"title": "Nessuna estensione",
+		"description": "Installa estensioni per aggiungere cornici, effetti del cursore e strumenti per l'editor."
+	},
+	"search": {
+		"placeholder": "Cerca estensioni...",
+		"noResults": "Nessuna estensione trovata",
+		"noMarketplace": "Nessuna estensione del marketplace ancora disponibile",
+		"count": "{{count}} estensione",
+		"countPlural": "{{count}} estensioni"
+	},
+	"toast": {
+		"installedAndEnabled": "Estensione installata e abilitata",
+		"uninstalled": "{{name}} disinstallata",
+		"uninstallFailed": "Disinstallazione di {{name}} non riuscita",
+		"searchFailed": "Ricerca nel marketplace non riuscita",
+		"refreshed": "Estensioni aggiornate",
+		"refreshFailed": "Aggiornamento delle estensioni non riuscito",
+		"marketplaceInstalled": "{{name}} installata e abilitata",
+		"marketplaceInstallFailed": "Installazione di {{name}} non riuscita",
+		"enableFailed": "Abilitazione dell'estensione non riuscita"
+	}
+}

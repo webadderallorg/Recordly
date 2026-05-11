@@ -6,6 +6,7 @@
  */
 
 import { createExtensionModuleUrl, resolveExtensionRelativeFileUrl } from "./fileUrls";
+import { resolveIconPath } from "./iconDraw";
 import type {
 	ContributedCursorStyle,
 	ContributedFrame,
@@ -143,6 +144,9 @@ export class ExtensionHost {
 		Set<(settingId: string, value: unknown) => void>
 	>();
 	private listeners = new Set<() => void>();
+	private fullSettingsStore: Record<string, Record<string, unknown>> | null = null;
+	private persistTimeout: ReturnType<typeof setTimeout> | null = null;
+	private iconPathCache = new Map<string, Path2D>();
 
 	// Shared playback/project state — set by the app, queried by extensions
 	private _videoInfo: { width: number; height: number; durationMs: number; fps: number } | null =
@@ -180,6 +184,14 @@ export class ExtensionHost {
 		durationMs: number;
 		isPlaying: boolean;
 	} | null = null;
+
+	constructor() {
+		if (typeof window !== "undefined") {
+			window.addEventListener("beforeunload", () => {
+				this.flushPersistedSettings();
+			});
+		}
+	}
 
 	/**
 	 * Activate an extension given its info and resolved module URL.
@@ -270,6 +282,7 @@ export class ExtensionHost {
 		}
 
 		this.activeExtensions.delete(extensionId);
+		this.flushPersistedSettings();
 		this.notifyListeners();
 		console.log(`[extensions] Deactivated: ${extensionId}`);
 	}
@@ -282,6 +295,7 @@ export class ExtensionHost {
 		for (const id of ids) {
 			await this.deactivateExtension(id);
 		}
+		this.flushPersistedSettings();
 	}
 
 	// ---------------------------------------------------------------------------
@@ -572,12 +586,20 @@ export class ExtensionHost {
 		}
 	}
 
+	private getFullSettingsStore(): Record<string, Record<string, unknown>> {
+		if (this.fullSettingsStore) {
+			return this.fullSettingsStore;
+		}
+		this.fullSettingsStore = this.readPersistedSettingsStore();
+		return this.fullSettingsStore;
+	}
+
 	private ensureExtensionSettingsLoaded(extensionId: string): void {
 		if (this.extensionSettings.has(extensionId)) {
 			return;
 		}
 
-		const store = this.readPersistedSettingsStore();
+		const store = this.getFullSettingsStore();
 		const persisted = store[extensionId];
 		const normalized =
 			persisted && typeof persisted === "object" && !Array.isArray(persisted)
@@ -588,7 +610,7 @@ export class ExtensionHost {
 	}
 
 	private persistExtensionSettings(extensionId: string): void {
-		const store = this.readPersistedSettingsStore();
+		const store = this.getFullSettingsStore();
 		const settings = this.extensionSettings.get(extensionId) ?? {};
 
 		if (Object.keys(settings).length === 0) {
@@ -597,7 +619,22 @@ export class ExtensionHost {
 			store[extensionId] = { ...settings };
 		}
 
-		this.writePersistedSettingsStore(store);
+		// Debounce the actual write to localStorage to avoid blocking the UI thread during rapid changes
+		if (this.persistTimeout) {
+			clearTimeout(this.persistTimeout);
+		}
+		this.persistTimeout = setTimeout(() => {
+			this.writePersistedSettingsStore(store);
+			this.persistTimeout = null;
+		}, 500);
+	}
+
+	private flushPersistedSettings(): void {
+		if (this.persistTimeout) {
+			clearTimeout(this.persistTimeout);
+			this.persistTimeout = null;
+		}
+		this.writePersistedSettingsStore(this.getFullSettingsStore());
 	}
 
 	/**
@@ -955,6 +992,29 @@ export class ExtensionHost {
 					width: host._videoLayout.canvasWidth,
 					height: host._videoLayout.canvasHeight,
 				};
+			},
+
+			drawIcon(
+				ctx: CanvasRenderingContext2D,
+				name: string,
+				x: number,
+				y: number,
+				size: number,
+				color: string,
+				weight: "thin" | "light" | "regular" | "bold" | "fill" = "regular",
+			): void {
+				const path = resolveIconPath(name, weight, host.iconPathCache);
+
+				if (path) {
+					ctx.save();
+					ctx.translate(x, y);
+					const scale = size / 256; // Phosphor icons use a 256x256 grid
+					ctx.scale(scale, scale);
+					ctx.translate(-128, -128); // Center the icon
+					ctx.fillStyle = color;
+					ctx.fill(path);
+					ctx.restore();
+				}
 			},
 
 			onSettingChange(callback: (settingId: string, value: unknown) => void): () => void {

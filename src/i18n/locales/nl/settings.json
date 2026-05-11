@@ -19,7 +19,10 @@
 	},
 	"clip": {
 		"title": "Clip",
-		"muteAudio": "Audio dempen",
+		"mute": "Dempen",
+		"mutedState": "Audio is gedempt",
+		"unmutedState": "Audio wordt afgespeeld",
+		"separateClipFromAudio": "Clip van audio scheiden",
 		"delete": "Clip verwijderen"
 	},
 	"effects": {
@@ -201,5 +204,16 @@
 		"exportVideo": "{{format}} exporteren",
 		"reportBug": "Bug melden",
 		"starOnGithub": "Ster op GitHub"
+	},
+	"audio": {
+		"title": "Audio",
+		"volumeTitle": "Audio",
+		"volume": "Volume",
+		"normalize": "Normaliseren",
+		"sourceTracksTitle": "Bronaudio clip",
+		"systemLabel": "Systeemaudio",
+		"micLabel": "Microfoon",
+		"mixedLabel": "Bron",
+		"deleteRegion": "Audio verwijderen"
 	}
 }

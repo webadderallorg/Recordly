@@ -40,6 +40,8 @@ jobs:
       - name: Validate release tag
         id: prepare
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "release" ]; then
@@ -47,7 +49,7 @@ jobs:
             IS_PRERELEASE="${{ github.event.release.prerelease }}"
           else
             TAG_NAME="${{ github.event.inputs.tag_name }}"
-            IS_PRERELEASE="false"
+            IS_PRERELEASE="$(gh release view "$TAG_NAME" --repo "${{ github.repository }}" --json isPrerelease --jq '.isPrerelease' 2>/dev/null || echo false)"
           fi
 
           if [ -z "$TAG_NAME" ]; then
@@ -72,9 +74,6 @@ jobs:
           echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   build-macos-x64:
     name: Build macOS x64
     needs: prepare-release
@@ -556,6 +555,8 @@ jobs:
 
       - name: Stage release assets
         shell: bash
+        env:
+          IS_PRERELEASE: ${{ needs.prepare-release.outputs.prerelease }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -568,14 +569,19 @@ jobs:
             release-assets/macos-arm64/*.dmg
             release-assets/macos-arm64/*.zip
             release-assets/macos-arm64/*.blockmap
-            release-assets/macos-merged/latest-mac.yml
             release-assets/windows-x64/*.exe
             release-assets/windows-x64/*.blockmap
-            release-assets/windows-x64/latest*.yml
             release-assets/linux-x64/*.AppImage
             release-assets/linux-x64/*.blockmap
-            release-assets/linux-x64/latest-linux.yml
           )
+
+          if [ "$IS_PRERELEASE" != "true" ]; then
+            assets+=(
+              release-assets/macos-merged/latest-mac.yml
+              release-assets/windows-x64/latest*.yml
+              release-assets/linux-x64/latest-linux.yml
+            )
+          fi
 
           if [ ${#assets[@]} -eq 0 ]; then
             echo "No release assets found to checksum."

@@ -565,6 +565,26 @@ export interface RecordlyExtensionAPI {
 	 * Useful for bulk-reading initial state on activation.
 	 */
 	getAllSettings(): Record<string, unknown>;
+
+	/**
+	 * Draw a Phosphor icon from the project's library onto the canvas.
+	 * @param ctx The 2D rendering context
+	 * @param name The name of the icon (e.g. "CaretLeft", "ArrowClockwise")
+	 * @param x X coordinate (center)
+	 * @param y Y coordinate (center)
+	 * @param size Icon size in pixels
+	 * @param color Icon color (CSS color string)
+	 * @param weight Icon weight (optional: 'thin' | 'light' | 'regular' | 'bold' | 'fill', default 'regular')
+	 */
+	drawIcon(
+		ctx: CanvasRenderingContext2D,
+		name: string,
+		x: number,
+		y: number,
+		size: number,
+		color: string,
+		weight?: "thin" | "light" | "regular" | "bold" | "fill",
+	): void;
 }
 
 // ---------------------------------------------------------------------------

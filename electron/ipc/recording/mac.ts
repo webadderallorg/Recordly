@@ -1,14 +1,10 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
-import { promisify } from "node:util";
 import { BrowserWindow } from "electron";
 import {
 	persistPendingCursorTelemetry,
 	snapshotCursorTelemetryForPersistence,
 } from "../cursor/telemetry";
-import { getFfmpegBinaryPath } from "../ffmpeg/binary";
-import { appendSyncedAudioFilter, getAudioSyncAdjustment } from "../ffmpeg/filters";
 import {
 	lastNativeCaptureDiagnostics,
 	nativeCaptureMicrophonePath,
@@ -27,21 +23,15 @@ import {
 	setNativeCaptureTargetPath,
 	setNativeScreenRecordingActive,
 } from "../state";
-import type { AudioSyncAdjustment } from "../types";
 import { isAutoRecordingPath, moveFileWithOverwrite } from "../utils";
 import {
 	getFileSizeIfPresent,
-	getRecordingAudioMuxTimeoutMs,
-	getUsableCompanionAudioCandidates,
-	probeMediaDurationSeconds,
 	recordNativeCaptureDiagnostics,
 	validateRecordedVideo,
 } from "./diagnostics";
 import { emitRecordingInterrupted } from "./events";
 import { pruneAutoRecordings } from "./prune";
-import { muxNativeWindowsVideoWithAudio } from "./windows";
 
-const execFileAsync = promisify(execFile);
 
 export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStreams) {
 	return new Promise<void>((resolve, reject) => {
@@ -128,159 +118,33 @@ export async function muxNativeMacRecordingWithAudio(
 	systemAudioPath?: string | null,
 	microphonePath?: string | null,
 ) {
-	const ffmpegPath = getFfmpegBinaryPath();
-	const mixedOutputPath = `${videoPath}.mixed.mp4`;
+	console.log("[mac-mux] Optimization active: keeping tracks separate.");
+	
+	const videoPathWithoutExt = videoPath.replace(/\.[^.]+$/u, "");
 
-	const inputs = ["-i", videoPath];
-	const availableAudioInputs: string[] = [];
-	const audioFilePaths: string[] = [];
-
-	for (const [label, audioPath] of [
-		["system", systemAudioPath],
-		["microphone", microphonePath],
-	] as const) {
-		if (!audioPath) continue;
+	// Optimization: instead of heavy FFmpeg muxing, we ensure audio sidecars
+	// are available alongside the video for the editor.
+	if (systemAudioPath) {
+		const finalSystemPath = `${videoPathWithoutExt}.system.wav`;
 		try {
-			const stat = await fs.stat(audioPath);
-			if (stat.size <= 0) {
-				console.warn(`[mux] Skipping ${label} audio: file is empty (${audioPath})`);
-				await fs.rm(audioPath, { force: true }).catch(() => undefined);
-				continue;
+			const stat = await fs.stat(systemAudioPath);
+			if (stat.size > 0 && systemAudioPath !== finalSystemPath) {
+				await moveFileWithOverwrite(systemAudioPath, finalSystemPath);
 			}
-			inputs.push("-i", audioPath);
-			availableAudioInputs.push(label);
-			audioFilePaths.push(audioPath);
-		} catch {
-			console.warn(`[mux] Skipping ${label} audio: file not accessible (${audioPath})`);
+		} catch (err) {
+			console.error(`[mac-mux] Failed to handle system audio:`, err);
 		}
 	}
 
-	if (availableAudioInputs.length === 0) {
-		console.warn(
-			"[mux] No valid audio files to mux — video will have no audio. " +
-				`system=${systemAudioPath ?? "none"} mic=${microphonePath ?? "none"}`,
-		);
-		return;
-	}
-
-	const videoDuration = await probeMediaDurationSeconds(videoPath);
-	const muxTimeoutMs = getRecordingAudioMuxTimeoutMs(videoDuration);
-	const audioAdjustments: Map<string, AudioSyncAdjustment> = new Map();
-
-	if (videoDuration > 0) {
-		for (let i = 0; i < audioFilePaths.length; i++) {
-			const audioDuration = await probeMediaDurationSeconds(audioFilePaths[i]);
-			const adjustment = getAudioSyncAdjustment(videoDuration, audioDuration);
-			audioAdjustments.set(availableAudioInputs[i], adjustment);
-			if (adjustment.mode === "tempo") {
-				console.log(
-					`[mux] ${availableAudioInputs[i]} audio differs from video by ${adjustment.durationDeltaMs}ms — applying tempo ratio ${adjustment.tempoRatio.toFixed(6)}`,
-				);
-			} else if (adjustment.mode === "delay" && adjustment.delayMs > 0) {
-				console.log(
-					`[mux] ${availableAudioInputs[i]} audio appears to start late by ${adjustment.delayMs}ms — adding leading silence`,
-				);
+	if (microphonePath) {
+		const finalMicPath = `${videoPathWithoutExt}.mic.wav`;
+		try {
+			const stat = await fs.stat(microphonePath);
+			if (stat.size > 0 && microphonePath !== finalMicPath) {
+				await moveFileWithOverwrite(microphonePath, finalMicPath);
 			}
-		}
-	}
-
-	const systemAdjustment = audioAdjustments.get("system") ?? {
-		mode: "none",
-		delayMs: 0,
-		tempoRatio: 1,
-		durationDeltaMs: 0,
-	};
-	const micAdjustment = audioAdjustments.get("microphone") ?? {
-		mode: "none",
-		delayMs: 0,
-		tempoRatio: 1,
-		durationDeltaMs: 0,
-	};
-
-	// Always route through the filter graph so that aresample=async=1 is
-	// applied to every audio stream.  This corrects progressive clock drift
-	// between the video and audio tracks that a simple duration comparison
-	// cannot detect (e.g. audio gradually falling behind under CPU load).
-	let args: string[];
-	if (availableAudioInputs.length === 2) {
-		const filterParts: string[] = [];
-		appendSyncedAudioFilter(filterParts, "[1:a]", "s", systemAdjustment);
-		appendSyncedAudioFilter(filterParts, "[2:a]", "m", micAdjustment);
-		filterParts.push("[s][m]amix=inputs=2:duration=longest:normalize=0[aout]");
-		args = [
-			"-y",
-			"-hide_banner",
-			"-nostdin",
-			"-nostats",
-			...inputs,
-			"-filter_complex",
-			filterParts.join(";"),
-			"-map",
-			"0:v:0",
-			"-map",
-			"[aout]",
-			"-c:v",
-			"copy",
-			"-c:a",
-			"aac",
-			"-b:a",
-			"192k",
-			"-shortest",
-			mixedOutputPath,
-		];
-	} else {
-		const singleAdjustment = audioAdjustments.get(availableAudioInputs[0]) ?? {
-			mode: "none",
-			delayMs: 0,
-			tempoRatio: 1,
-			durationDeltaMs: 0,
-		};
-		const filterParts: string[] = [];
-		appendSyncedAudioFilter(filterParts, "[1:a]", "aout", singleAdjustment);
-		args = [
-			"-y",
-			"-hide_banner",
-			"-nostdin",
-			"-nostats",
-			...inputs,
-			"-filter_complex",
-			filterParts.join(";"),
-			"-map",
-			"0:v:0",
-			"-map",
-			"[aout]",
-			"-c:v",
-			"copy",
-			"-c:a",
-			"aac",
-			"-b:a",
-			"192k",
-			"-shortest",
-			mixedOutputPath,
-		];
-	}
-
-	console.log("[mux] Running ffmpeg:", ffmpegPath, args.join(" "));
-
-	try {
-		await execFileAsync(ffmpegPath, args, {
-			timeout: muxTimeoutMs,
-			maxBuffer: 20 * 1024 * 1024,
-		});
-		await validateRecordedVideo(mixedOutputPath);
-	} catch (error) {
-		const execError = error as NodeJS.ErrnoException & { stderr?: string };
-		console.error("[mux] failed:", execError.stderr || execError.message || String(error));
-		await fs.rm(mixedOutputPath, { force: true }).catch(() => undefined);
-		throw error;
-	}
-
-	await moveFileWithOverwrite(mixedOutputPath, videoPath);
-	console.log("[mux] Successfully muxed audio into video:", videoPath);
-
-	for (const audioPath of [systemAudioPath, microphonePath]) {
-		if (audioPath) {
-			await fs.rm(audioPath, { force: true }).catch(() => undefined);
+		} catch (err) {
+			console.error(`[mac-mux] Failed to handle mic audio:`, err);
 		}
 	}
 }
@@ -295,6 +159,7 @@ export function attachNativeCaptureLifecycle(process: ChildProcessWithoutNullStr
 		}
 
 		setNativeScreenRecordingActive(false);
+		console.log("[mac-finalize] Optimization active: skipping safety-net muxing.");
 		setNativeCaptureTargetPath(null);
 		setNativeCaptureStopRequested(false);
 		setNativeCaptureSystemAudioPath(null);
@@ -323,28 +188,7 @@ export function attachNativeCaptureLifecycle(process: ChildProcessWithoutNullStr
 }
 
 export async function finalizeStoredVideo(videoPath: string) {
-	// Safety net: if companion audio files still exist, the mux was skipped — attempt it now
-	if (videoPath.endsWith(".mp4")) {
-		const companionCandidates = await getUsableCompanionAudioCandidates(videoPath);
-		for (const { systemPath, micPath, platform } of companionCandidates) {
-			if (platform === "mac" || platform === "win") {
-				console.log(
-					`[finalize] Detected un-muxed ${platform} audio files alongside video — attempting safety-net mux`,
-				);
-				try {
-					if (platform === "win") {
-						await muxNativeWindowsVideoWithAudio(videoPath, systemPath, micPath);
-					} else {
-						await muxNativeMacRecordingWithAudio(videoPath, systemPath, micPath);
-					}
-					console.log("[finalize] Safety-net mux completed successfully");
-				} catch (error) {
-					console.warn("[finalize] Safety-net mux failed:", error);
-				}
-				break;
-			}
-		}
-	}
+	console.log("[finalize] Optimization active: skipping safety-net muxing.");
 
 	let validation: { fileSizeBytes: number; durationSeconds: number | null };
 	try {
@@ -380,7 +224,11 @@ export async function finalizeStoredVideo(videoPath: string) {
 	snapshotCursorTelemetryForPersistence();
 	setCurrentVideoPath(videoPath);
 	setCurrentProjectPath(null);
-	await persistPendingCursorTelemetry(videoPath);
+	try {
+		await persistPendingCursorTelemetry(videoPath);
+	} catch (error) {
+		console.warn("[mac-stop] Failed to persist cursor telemetry:", error);
+	}
 	if (isAutoRecordingPath(videoPath)) {
 		await pruneAutoRecordings([videoPath]);
 	}

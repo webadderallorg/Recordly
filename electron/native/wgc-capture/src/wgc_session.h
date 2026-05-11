@@ -28,6 +28,7 @@ public:
     void setFrameCallback(FrameCallback callback);
     bool startCapture();
     void stopCapture();
+    bool hasFatalError() const { return fatalError_.load(); }
 
     int captureWidth() const { return captureWidth_; }
     int captureHeight() const { return captureHeight_; }
@@ -45,9 +46,12 @@ private:
 
     FrameCallback frameCallback_;
     std::atomic<bool> capturing_{false};
+    std::atomic<bool> fatalError_{false};
     int fps_ = 60;
     int captureWidth_ = 0;
     int captureHeight_ = 0;
+    int framePoolWidth_ = 0;
+    int framePoolHeight_ = 0;
     int64_t frameIntervalHns_ = 0;
     int64_t lastFrameTimeHns_ = 0;
 
@@ -56,6 +60,8 @@ private:
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem createCaptureItemForMonitor(HMONITOR monitor);
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem createCaptureItemForWindow(HWND hwnd);
     bool initializeWithItem(int fps);
+    bool recreateFramePoolIfNeeded(
+        winrt::Windows::Graphics::SizeInt32 const& contentSize);
     void onFrameArrived(
         winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& sender,
         winrt::Windows::Foundation::IInspectable const& args);

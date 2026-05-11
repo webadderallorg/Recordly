@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { deriveNextId } from "./projectPersistence";
 
 import {
 	extendAutoFullTrackClip,
 	findClipAtTimelineTime,
+	getTimelineDurationMs,
 	mapSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime,
 	trimsToClips,
 } from "./types";
-import { deriveNextId } from "./projectPersistence";
 
 describe("extendAutoFullTrackClip", () => {
 	it("extends the default full-track clip when metadata duration grows", () => {
@@ -155,5 +156,25 @@ describe("clip timeline mapping", () => {
 
 		expect(clipsFromTrims.map((clip) => clip.id)).toEqual(["clip-1", "clip-2", "clip-3"]);
 		expect(deriveNextId("clip", clipsFromTrims.map((clip) => clip.id))).toBe(4);
+	});
+});
+
+describe("getTimelineDurationMs", () => {
+	it("extends the timeline when a slow clip becomes longer than the source duration", () => {
+		expect(
+			getTimelineDurationMs(
+				[{ id: "clip-1", startMs: 0, endMs: 20_000, speed: 0.5 }],
+				10_000,
+			),
+		).toBe(20_000);
+	});
+
+	it("keeps the source duration when speed edits make clips shorter", () => {
+		expect(
+			getTimelineDurationMs(
+				[{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }],
+				10_000,
+			),
+		).toBe(10_000);
 	});
 });

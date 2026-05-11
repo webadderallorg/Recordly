@@ -80,6 +80,7 @@ export function HudPopover({
 			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
 			<PopoverContent
 				className={`launch-theme ${styles.menuCard} ${styles.electronNoDrag}`}
+				data-hud-interactive
 				unstyled
 				side="top"
 				align={align}

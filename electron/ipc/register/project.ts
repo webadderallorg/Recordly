@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { dialog, ipcMain, shell } from "electron";
+import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { RECORDINGS_DIR } from "../../appPaths";
 import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
 import {
@@ -20,6 +20,7 @@ import {
 	persistRecordingsDirectorySetting,
 	rememberRecentProject,
 	replaceApprovedSessionLocalReadPaths,
+	rememberApprovedLocalReadPath,
 	resolveApprovedLocalMediaPath,
 	saveProjectThumbnail,
   saveRecentProjectPaths,
@@ -562,6 +563,13 @@ export function registerProjectHandlers() {
     if (!options?.preserveProjectPath) {
       setCurrentProjectPath(null)
     }
+
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send('recording-session-changed', nextSession);
+      }
+    }
+
     return { success: true, webcamPath: nextSession.webcamPath ?? null }
   })
 
@@ -574,14 +582,19 @@ export function registerProjectHandlers() {
       timeOffsetMs: normalizeRecordingTimeOffsetMs(session.timeOffsetMs),
       hideOverlayCursorByDefault: normalizeBoolean(session.hideOverlayCursorByDefault),
     });
-    await replaceApprovedSessionLocalReadPaths([
-      currentRecordingSession!.videoPath,
-      currentRecordingSession!.webcamPath,
-    ])
+    await rememberApprovedLocalReadPath(currentRecordingSession!.videoPath)
+    await rememberApprovedLocalReadPath(currentRecordingSession!.webcamPath)
     if (!options?.preserveProjectPath) {
       setCurrentProjectPath(null)
     }
     await persistRecordingSessionManifest(currentRecordingSession!)
+
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send('recording-session-changed', currentRecordingSession);
+      }
+    }
+
     return { success: true }
   })
 

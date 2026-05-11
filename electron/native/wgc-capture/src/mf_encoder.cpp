@@ -2,6 +2,7 @@
 #include <mfapi.h>
 #include <mferror.h>
 #include <codecapi.h>
+#include <algorithm>
 #include <iostream>
 #include <cstring>
 
@@ -116,6 +117,31 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
         return false;
     }
 
+    // WGC window captures can change frame size while recording. Keep the muxer
+    // output dimensions stable by compositing resized frames into this fixed
+    // BGRA surface before CPU readback.
+    D3D11_TEXTURE2D_DESC compositeDesc = {};
+    compositeDesc.Width = width_;
+    compositeDesc.Height = height_;
+    compositeDesc.MipLevels = 1;
+    compositeDesc.ArraySize = 1;
+    compositeDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    compositeDesc.SampleDesc.Count = 1;
+    compositeDesc.Usage = D3D11_USAGE_DEFAULT;
+    compositeDesc.BindFlags = D3D11_BIND_RENDER_TARGET;
+
+    hr = device_->CreateTexture2D(&compositeDesc, nullptr, &resizeCompositeTexture_);
+    if (FAILED(hr)) {
+        std::cerr << "ERROR: Failed to create resize composite texture: 0x" << std::hex << hr << std::endl;
+        return false;
+    }
+
+    hr = device_->CreateRenderTargetView(resizeCompositeTexture_.Get(), nullptr, &resizeCompositeView_);
+    if (FAILED(hr)) {
+        std::cerr << "ERROR: Failed to create resize composite view: 0x" << std::hex << hr << std::endl;
+        return false;
+    }
+
     // Pre-allocate NV12 buffer
     const int ySize = width_ * height_;
     const int uvSize = (width_ / 2) * (height_ / 2) * 2;
@@ -132,7 +158,39 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
 
     if (!initialized_ || !sinkWriter_) return false;
 
-    context_->CopyResource(stagingTexture_.Get(), texture);
+    D3D11_TEXTURE2D_DESC sourceDesc = {};
+    texture->GetDesc(&sourceDesc);
+
+    if (sourceDesc.Width == static_cast<UINT>(width_) &&
+        sourceDesc.Height == static_cast<UINT>(height_)) {
+        context_->CopyResource(stagingTexture_.Get(), texture);
+    } else {
+        if (!resizeCompositeTexture_ || !resizeCompositeView_) return false;
+
+        const FLOAT clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+        context_->ClearRenderTargetView(resizeCompositeView_.Get(), clearColor);
+
+        D3D11_BOX sourceBox = {};
+        sourceBox.left = 0;
+        sourceBox.top = 0;
+        sourceBox.front = 0;
+        sourceBox.right = (std::min)(sourceDesc.Width, static_cast<UINT>(width_));
+        sourceBox.bottom = (std::min)(sourceDesc.Height, static_cast<UINT>(height_));
+        sourceBox.back = 1;
+
+        if (sourceBox.right == 0 || sourceBox.bottom == 0) return false;
+
+        context_->CopySubresourceRegion(
+            resizeCompositeTexture_.Get(),
+            0,
+            0,
+            0,
+            0,
+            texture,
+            0,
+            &sourceBox);
+        context_->CopyResource(stagingTexture_.Get(), resizeCompositeTexture_.Get());
+    }
 
     D3D11_MAPPED_SUBRESOURCE mapped;
     HRESULT hr = context_->Map(stagingTexture_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
@@ -242,6 +300,8 @@ bool MFEncoder::finalize() {
     initialized_ = false;
     sinkWriter_.Reset();
     stagingTexture_.Reset();
+    resizeCompositeView_.Reset();
+    resizeCompositeTexture_.Reset();
     nv12Buffer_.clear();
     lastFrameBuffer_.clear();
     nv12Buffer_.shrink_to_fit();

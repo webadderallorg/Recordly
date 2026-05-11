@@ -29,21 +29,24 @@ vi.mock("../utils", () => ({
 	})),
 }));
 
+import { activeCursorSamples, setActiveCursorSamples, setCursorCaptureStartTimeMs } from "../state";
 import {
 	getCursorCaptureElapsedMs,
 	normalizeCursorTelemetrySamples,
 	pauseCursorCapture,
+	pauseCursorCaptureAtBoundary,
+	pushCursorSample,
 	resetCursorCaptureClock,
 	resumeCursorCapture,
 	writeCursorTelemetry,
 } from "./telemetry";
-import { setCursorCaptureStartTimeMs } from "../state";
 
 describe("cursor telemetry pause clock", () => {
 	beforeEach(() => {
 		writeFile.mockReset();
 		rm.mockReset();
 		setCursorCaptureStartTimeMs(1_000);
+		setActiveCursorSamples([]);
 		resetCursorCaptureClock();
 	});
 
@@ -64,6 +67,20 @@ describe("cursor telemetry pause clock", () => {
 		resumeCursorCapture(1_650);
 
 		expect(getCursorCaptureElapsedMs(1_900)).toBe(550);
+	});
+
+	it("drops cursor samples captured after the renderer pause boundary", () => {
+		pushCursorSample(0.1, 0.1, 120, "move");
+		pushCursorSample(0.2, 0.2, 205, "move");
+		pushCursorSample(0.3, 0.3, 260, "move");
+
+		pauseCursorCaptureAtBoundary(1_200);
+
+		expect(getCursorCaptureElapsedMs(1_500)).toBe(200);
+		expect(activeCursorSamples.map((sample) => sample.timeMs)).toEqual([120]);
+
+		resumeCursorCapture(1_700);
+		expect(getCursorCaptureElapsedMs(1_900)).toBe(400);
 	});
 
 	it("normalizes cursor telemetry samples before persisting them", async () => {

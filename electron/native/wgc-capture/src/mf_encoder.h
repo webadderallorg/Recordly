@@ -30,6 +30,8 @@ private:
     ID3D11Device* device_ = nullptr;
     ID3D11DeviceContext* context_ = nullptr;
     ComPtr<ID3D11Texture2D> stagingTexture_;
+    ComPtr<ID3D11Texture2D> resizeCompositeTexture_;
+    ComPtr<ID3D11RenderTargetView> resizeCompositeView_;
     std::vector<uint8_t> nv12Buffer_;
     std::vector<uint8_t> lastFrameBuffer_;
     DWORD streamIndex_ = 0;

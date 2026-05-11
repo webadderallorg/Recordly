@@ -20,6 +20,7 @@ import {
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
 import { CURSOR_MOTION_PRESETS, resolveCursorMotionPresetId } from "./cursorMotionPresets";
+import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import {
 	type AnnotationRegion,
 	type AudioRegion,
@@ -127,6 +128,8 @@ export interface ProjectEditorState {
 	autoCaptionSettings: AutoCaptionSettings;
 	webcam: WebcamOverlaySettings;
 	aspectRatio: AspectRatio;
+	sourceAudioTrackSettingsByClip?: Record<string, SourceAudioTrackSettings>;
+	defaultSourceAudioTrackSettings?: SourceAudioTrackSettings;
 	exportEncodingMode: ExportEncodingMode;
 	exportBackendPreference: ExportBackendPreference;
 	exportPipelineModel: ExportPipelineModel;
@@ -151,6 +154,21 @@ function isFiniteNumber(value: unknown): value is number {
 
 function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
+}
+
+type PersistedDevMotionBlurSettings = {
+	zoomMotionBlurTuning?: unknown;
+};
+
+export function stripPersistedDevMotionBlurSettings<T extends PersistedDevMotionBlurSettings>(
+	editor: T,
+): Omit<T, keyof PersistedDevMotionBlurSettings> {
+	const {
+		zoomMotionBlurTuning: _zoomMotionBlurTuning,
+		...persistedEditor
+	} = editor;
+
+	return persistedEditor;
 }
 
 export function normalizeExportEncodingMode(value: unknown): ExportEncodingMode {
@@ -357,10 +375,10 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			? clamp(rawZoomMotionBlurTuning.zoomVelocityThreshold, 0, 0.4)
 			: DEFAULT_ZOOM_MOTION_BLUR_TUNING.zoomVelocityThreshold,
 		maxDirectionalBlurPx: isFiniteNumber(rawZoomMotionBlurTuning.maxDirectionalBlurPx)
-			? clamp(rawZoomMotionBlurTuning.maxDirectionalBlurPx, 0, 32)
+			? clamp(rawZoomMotionBlurTuning.maxDirectionalBlurPx, 0, 96)
 			: DEFAULT_ZOOM_MOTION_BLUR_TUNING.maxDirectionalBlurPx,
 		maxRadialBlurStrength: isFiniteNumber(rawZoomMotionBlurTuning.maxRadialBlurStrength)
-			? clamp(rawZoomMotionBlurTuning.maxRadialBlurStrength, 0, 0.5)
+			? clamp(rawZoomMotionBlurTuning.maxRadialBlurStrength, 0, 1.5)
 			: DEFAULT_ZOOM_MOTION_BLUR_TUNING.maxRadialBlurStrength,
 		panResponsePerSecond: isFiniteNumber(rawZoomMotionBlurTuning.panResponsePerSecond)
 			? clamp(rawZoomMotionBlurTuning.panResponsePerSecond, 1, 30)
@@ -496,6 +514,10 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						endMs,
 						speed: isFiniteNumber(region.speed) ? region.speed : 1,
 						muted: typeof region.muted === "boolean" ? region.muted : false,
+						showSourceAudio:
+							typeof region.showSourceAudio === "boolean"
+								? region.showSourceAudio
+								: false,
 					};
 				})
 		: [];
@@ -647,16 +669,17 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 					const startMs = Math.max(0, Math.min(rawStart, rawEnd));
 					const endMs = Math.max(startMs + 1, rawEnd);
 
-					return {
-						id: region.id,
-						startMs,
-						endMs,
-						audioPath: typeof region.audioPath === "string" ? region.audioPath : "",
-						volume: isFiniteNumber(region.volume) ? clamp(region.volume, 0, 1) : 1,
-						trackIndex: isFiniteNumber(region.trackIndex)
-							? Math.max(0, Math.floor(region.trackIndex))
-							: 0,
-					};
+						return {
+							id: region.id,
+							startMs,
+							endMs,
+							audioPath: typeof region.audioPath === "string" ? region.audioPath : "",
+							volume: isFiniteNumber(region.volume) ? clamp(region.volume, 0, 1) : 1,
+							normalize: Boolean(region.normalize),
+							trackIndex: isFiniteNumber(region.trackIndex)
+								? Math.max(0, Math.floor(region.trackIndex))
+								: 0,
+						};
 				})
 		: [];
 
@@ -983,6 +1006,16 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				? clamp(webcam.margin, 0, 96)
 				: DEFAULT_WEBCAM_MARGIN,
 		},
+		sourceAudioTrackSettingsByClip:
+			editor.sourceAudioTrackSettingsByClip &&
+			typeof editor.sourceAudioTrackSettingsByClip === "object"
+				? editor.sourceAudioTrackSettingsByClip
+				: {},
+		defaultSourceAudioTrackSettings:
+			editor.defaultSourceAudioTrackSettings &&
+			typeof editor.defaultSourceAudioTrackSettings === "object"
+				? editor.defaultSourceAudioTrackSettings
+				: {},
 		aspectRatio:
 			typeof editor.aspectRatio === "string" &&
 			(validAspectRatios.has(editor.aspectRatio as AspectRatio) ||

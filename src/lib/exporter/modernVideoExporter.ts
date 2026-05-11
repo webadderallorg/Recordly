@@ -3,11 +3,13 @@ import type {
 	AudioRegion,
 	AutoCaptionSettings,
 	CaptionCue,
+	ClipRegion,
 	CropRegion,
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
 	SpeedRegion,
+	SourceAudioTrackSettings,
 	TrimRegion,
 	WebcamOverlaySettings,
 	ZoomMotionBlurTuning,
@@ -135,8 +137,10 @@ interface VideoExporterConfig extends ExportConfig {
 	zoomClassicMode?: boolean;
 	frame?: string | null;
 	audioRegions?: AudioRegion[];
+	clipRegions?: ClipRegion[];
 	sourceAudioFallbackPaths?: string[];
 	sourceAudioFallbackStartDelayMsByPath?: Record<string, number>;
+	sourceAudioTrackSettings?: SourceAudioTrackSettings;
 	previewWidth?: number;
 	previewHeight?: number;
 	onProgress?: (progress: ExportProgress) => void;
@@ -167,6 +171,16 @@ type NativeAudioPlan =
 	  };
 
 const FILTERGRAPH_FALLBACK_AUDIO_SAMPLE_RATE = 48_000;
+
+function hasNonDefaultSourceTrackSettings(sourceAudioTrackSettings?: SourceAudioTrackSettings) {
+	if (!sourceAudioTrackSettings) {
+		return false;
+	}
+	return Object.values(sourceAudioTrackSettings).some(
+		(settings) =>
+			Math.abs((settings?.volume ?? 1) - 1) > 0.0005 || Boolean(settings?.normalize),
+	);
+}
 const MIN_NATIVE_STATIC_LAYOUT_SPEED = 0.25;
 const MAX_NATIVE_STATIC_LAYOUT_SPEED = 30;
 
@@ -346,7 +360,7 @@ export class ModernVideoExporter {
 			const runtimePlatform = this.getRuntimePlatform();
 			let useNativeEncoder = false;
 			let triedNativeStaticLayoutWithProbe = false;
-			const shouldDeferNativeEncoderStart = backendPreference === "breeze";
+			let shouldDeferNativeEncoderStart = backendPreference === "breeze";
 			this.lastNativeExportError = null;
 
 			let stageStartedAt = this.getNowMs();
@@ -512,10 +526,23 @@ export class ModernVideoExporter {
 				useNativeEncoder = await this.tryStartNativeVideoExport();
 				this.nativeSessionStartTimeMs = this.getNowMs() - stageStartedAt;
 				if (!useNativeEncoder) {
-					throw new Error(
+					const nativeFailure =
 						this.lastNativeExportError ??
-							`${NATIVE_EXPORT_ENGINE_NAME} export is unavailable for this output profile on this system.`,
+						`${NATIVE_EXPORT_ENGINE_NAME} export is unavailable for this output profile on this system.`;
+					console.warn(
+						`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} native export unavailable after static-layout fallback; falling back to WebCodecs.`,
+						nativeFailure,
 					);
+					shouldDeferNativeEncoderStart = false;
+					this.backpressureProfile = getExportBackpressureProfile({
+						encodeBackend: "webcodecs",
+						width: this.config.width,
+						height: this.config.height,
+						frameRate: this.config.frameRate,
+						encodingMode: this.config.encodingMode,
+					});
+					this.maxNativeWriteInFlight = 1;
+					await this.initializeEncoder();
 				}
 			}
 
@@ -739,6 +766,8 @@ export class ModernVideoExporter {
 								this.config.audioRegions,
 								this.config.sourceAudioFallbackPaths,
 								this.config.sourceAudioFallbackStartDelayMsByPath,
+								this.config.sourceAudioTrackSettings,
+								this.config.clipRegions,
 							),
 							"audio processing",
 							"audio",
@@ -1168,7 +1197,9 @@ export class ModernVideoExporter {
 			speedRegions.length > 0 ||
 			audioRegions.length > 0 ||
 			sourceAudioFallbackPaths.length > 1 ||
-			hasTimedSourceAudioFallback
+			hasTimedSourceAudioFallback ||
+			hasNonDefaultSourceTrackSettings(this.config.sourceAudioTrackSettings) ||
+			(this.config.clipRegions ?? []).some((clip) => Boolean(clip.muted))
 		) {
 			const sourceDurationMs = Math.max(
 				0,
@@ -1188,16 +1219,20 @@ export class ModernVideoExporter {
 				typeof primaryAudioSourceSampleRate === "number" &&
 				Number.isFinite(primaryAudioSourceSampleRate) &&
 				primaryAudioSourceSampleRate > 0;
-			const strategy = canUsePrimaryAudioFiltergraph
-				? classifyEditedTrackStrategy({
-						primaryAudioSourcePath,
-						sourceDurationMs,
-						trimRegions,
-						speedRegions,
-						audioRegions,
-						sourceAudioFallbackPaths,
-					})
-				: "offline-render-fallback";
+			const requiresRenderedEditedTrack =
+				hasNonDefaultSourceTrackSettings(this.config.sourceAudioTrackSettings) ||
+				(this.config.clipRegions ?? []).some((clip) => Boolean(clip.muted));
+			const strategy =
+				canUsePrimaryAudioFiltergraph && !requiresRenderedEditedTrack
+					? classifyEditedTrackStrategy({
+							primaryAudioSourcePath,
+							sourceDurationMs,
+							trimRegions,
+							speedRegions,
+							audioRegions,
+							sourceAudioFallbackPaths,
+						})
+					: "offline-render-fallback";
 
 			if (strategy === "filtergraph-fast-path") {
 				const audioSourcePath = primaryAudioSourcePath;
@@ -1792,6 +1827,8 @@ export class ModernVideoExporter {
 					this.config.audioRegions,
 					this.config.sourceAudioFallbackPaths,
 					this.config.sourceAudioFallbackStartDelayMsByPath,
+					this.config.sourceAudioTrackSettings,
+					this.config.clipRegions,
 				),
 				description,
 				"audio",

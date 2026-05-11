@@ -172,4 +172,34 @@ describe("local media path policy", () => {
 		expect(result.path).toBe(projectPath);
 		expect(result.project).toMatchObject({ videoPath });
 	});
+
+	it("approves editor audioRegions audioPath entries when loading a project", async () => {
+		const downloadsPath = path.join(tempRoot, "Downloads");
+		const videoPath = path.join(tempPath, "recording.mp4");
+		const audioPath = path.join(downloadsPath, "music.ogg");
+		const projectPath = path.join(tempPath, "recording.recordly");
+		await fs.mkdir(downloadsPath, { recursive: true });
+		await fs.writeFile(videoPath, "test-video");
+		await fs.writeFile(audioPath, "test-audio");
+		await fs.writeFile(
+			projectPath,
+			JSON.stringify({
+				version: 1,
+				videoPath,
+				editor: {
+					audioRegions: [
+						{ id: "a1", startMs: 0, endMs: 1000, audioPath, volume: 1 },
+					],
+				},
+			}),
+			"utf-8",
+		);
+
+		const { loadProjectFromPath, resolveApprovedLocalMediaPath } = await import("./manager");
+		const resolvedAudioPath = await fs.realpath(audioPath);
+
+		const result = await loadProjectFromPath(projectPath);
+		expect(result.success).toBe(true);
+		await expect(resolveApprovedLocalMediaPath(audioPath)).resolves.toBe(resolvedAudioPath);
+	});
 });

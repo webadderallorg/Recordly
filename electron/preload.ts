@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { RecordingSessionData } from "./ipc/types";
 
 type NativeVideoExportWriteResult = { success: boolean; error?: string };
 type NativeVideoAudioMuxMetrics = {
@@ -493,11 +494,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	resumeNativeScreenRecording: () => {
 		return ipcRenderer.invoke("resume-native-screen-recording");
 	},
-	pauseCursorCapture: () => {
-		return ipcRenderer.invoke("pause-cursor-capture");
+	pauseCursorCapture: (pausedAtMs?: number) => {
+		return ipcRenderer.invoke("pause-cursor-capture", pausedAtMs);
 	},
-	resumeCursorCapture: () => {
-		return ipcRenderer.invoke("resume-cursor-capture");
+	resumeCursorCapture: (resumedAtMs?: number) => {
+		return ipcRenderer.invoke("resume-cursor-capture", resumedAtMs);
 	},
 	startFfmpegRecording: (source: ProcessedDesktopSource) => {
 		return ipcRenderer.invoke("start-ffmpeg-recording", source);
@@ -680,6 +681,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		options?: { preserveProjectPath?: boolean },
 	) => {
 		return ipcRenderer.invoke("set-current-recording-session", session, options);
+	},
+	onRecordingSessionChanged: (callback: (session: RecordingSessionData | null) => void) => {
+		const listener = (_event: Electron.IpcRendererEvent, payload: RecordingSessionData | null) =>
+			callback(payload);
+		ipcRenderer.on("recording-session-changed", listener);
+		return () => ipcRenderer.removeListener("recording-session-changed", listener);
 	},
 	getCurrentRecordingSession: () => {
 		return ipcRenderer.invoke("get-current-recording-session");

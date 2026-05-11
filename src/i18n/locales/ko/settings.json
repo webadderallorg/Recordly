@@ -19,7 +19,10 @@
 	},
 	"clip": {
 		"title": "클립",
-		"muteAudio": "오디오 음소거",
+		"mute": "음소거",
+		"mutedState": "오디오가 음소거됨",
+		"unmutedState": "오디오가 재생 중",
+		"separateClipFromAudio": "클립에서 오디오 분리",
 		"delete": "클립 삭제"
 	},
 	"effects": {
@@ -201,5 +204,16 @@
 		"exportVideo": "{{format}} 내보내기",
 		"reportBug": "버그 신고",
 		"starOnGithub": "GitHub에서 별표 주기"
+	},
+	"audio": {
+		"title": "오디오",
+		"volumeTitle": "오디오",
+		"volume": "볼륨",
+		"normalize": "정규화",
+		"sourceTracksTitle": "클립 소스 오디오",
+		"systemLabel": "시스템 소스",
+		"micLabel": "마이크 소스",
+		"mixedLabel": "소스",
+		"deleteRegion": "오디오 삭제"
 	}
 }

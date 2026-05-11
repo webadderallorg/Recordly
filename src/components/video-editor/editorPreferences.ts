@@ -3,6 +3,7 @@ import {
 	normalizeExportMp4FrameRate,
 	normalizeExportPipelineModel,
 	normalizeProjectEditor,
+	stripPersistedDevMotionBlurSettings,
 	type ProjectEditorState,
 } from "./projectPersistence";
 
@@ -267,71 +268,74 @@ function normalizeEditorControls(
 	raw: Partial<EditorPreferences>,
 	fallback: EditorPreferences,
 ): PersistedEditorControls {
+	const sanitizedRaw = stripPersistedDevMotionBlurSettings(raw);
 	const candidate: PartialEditorControls = {
-		wallpaper: raw.wallpaper ?? fallback.wallpaper,
-		shadowIntensity: raw.shadowIntensity ?? fallback.shadowIntensity,
-		backgroundBlur: raw.backgroundBlur ?? fallback.backgroundBlur,
-		zoomMotionBlur: raw.zoomMotionBlur ?? fallback.zoomMotionBlur,
-		zoomMotionBlurTuning: raw.zoomMotionBlurTuning ?? fallback.zoomMotionBlurTuning,
-		zoomTemporalMotionBlur: raw.zoomTemporalMotionBlur ?? fallback.zoomTemporalMotionBlur,
-		zoomMotionBlurSampleCount:
-			raw.zoomMotionBlurSampleCount ?? fallback.zoomMotionBlurSampleCount,
-		zoomMotionBlurShutterFraction:
-			raw.zoomMotionBlurShutterFraction ?? fallback.zoomMotionBlurShutterFraction,
-		connectZooms: raw.connectZooms ?? fallback.connectZooms,
-		zoomInDurationMs: raw.zoomInDurationMs ?? fallback.zoomInDurationMs,
-		zoomInOverlapMs: raw.zoomInOverlapMs ?? fallback.zoomInOverlapMs,
-		zoomOutDurationMs: raw.zoomOutDurationMs ?? fallback.zoomOutDurationMs,
-		connectedZoomGapMs: raw.connectedZoomGapMs ?? fallback.connectedZoomGapMs,
-		connectedZoomDurationMs: raw.connectedZoomDurationMs ?? fallback.connectedZoomDurationMs,
-		zoomInEasing: raw.zoomInEasing ?? fallback.zoomInEasing,
-		zoomOutEasing: raw.zoomOutEasing ?? fallback.zoomOutEasing,
-		connectedZoomEasing: raw.connectedZoomEasing ?? fallback.connectedZoomEasing,
-		showCursor: raw.showCursor ?? fallback.showCursor,
-		loopCursor: raw.loopCursor ?? fallback.loopCursor,
-		cursorStyle: raw.cursorStyle ?? fallback.cursorStyle,
-		cursorSize: raw.cursorSize ?? fallback.cursorSize,
-		cursorSmoothing: raw.cursorSmoothing ?? fallback.cursorSmoothing,
+		wallpaper: sanitizedRaw.wallpaper ?? fallback.wallpaper,
+		shadowIntensity: sanitizedRaw.shadowIntensity ?? fallback.shadowIntensity,
+		backgroundBlur: sanitizedRaw.backgroundBlur ?? fallback.backgroundBlur,
+		zoomMotionBlur: sanitizedRaw.zoomMotionBlur ?? fallback.zoomMotionBlur,
+		connectZooms: sanitizedRaw.connectZooms ?? fallback.connectZooms,
+		zoomInDurationMs: sanitizedRaw.zoomInDurationMs ?? fallback.zoomInDurationMs,
+		zoomInOverlapMs: sanitizedRaw.zoomInOverlapMs ?? fallback.zoomInOverlapMs,
+		zoomOutDurationMs: sanitizedRaw.zoomOutDurationMs ?? fallback.zoomOutDurationMs,
+		connectedZoomGapMs:
+			sanitizedRaw.connectedZoomGapMs ?? fallback.connectedZoomGapMs,
+		connectedZoomDurationMs:
+			sanitizedRaw.connectedZoomDurationMs ?? fallback.connectedZoomDurationMs,
+		zoomInEasing: sanitizedRaw.zoomInEasing ?? fallback.zoomInEasing,
+		zoomOutEasing: sanitizedRaw.zoomOutEasing ?? fallback.zoomOutEasing,
+		connectedZoomEasing:
+			sanitizedRaw.connectedZoomEasing ?? fallback.connectedZoomEasing,
+		showCursor: sanitizedRaw.showCursor ?? fallback.showCursor,
+		loopCursor: sanitizedRaw.loopCursor ?? fallback.loopCursor,
+		cursorStyle: sanitizedRaw.cursorStyle ?? fallback.cursorStyle,
+		cursorSize: sanitizedRaw.cursorSize ?? fallback.cursorSize,
+		cursorSmoothing: sanitizedRaw.cursorSmoothing ?? fallback.cursorSmoothing,
 		cursorSpringStiffnessMultiplier:
-			raw.cursorSpringStiffnessMultiplier ?? fallback.cursorSpringStiffnessMultiplier,
+			sanitizedRaw.cursorSpringStiffnessMultiplier ??
+			fallback.cursorSpringStiffnessMultiplier,
 		cursorSpringDampingMultiplier:
-			raw.cursorSpringDampingMultiplier ?? fallback.cursorSpringDampingMultiplier,
+			sanitizedRaw.cursorSpringDampingMultiplier ??
+			fallback.cursorSpringDampingMultiplier,
 		cursorSpringMassMultiplier:
-			raw.cursorSpringMassMultiplier ?? fallback.cursorSpringMassMultiplier,
+			sanitizedRaw.cursorSpringMassMultiplier ?? fallback.cursorSpringMassMultiplier,
 		cameraSpringStiffnessMultiplier:
-			raw.cameraSpringStiffnessMultiplier ?? fallback.cameraSpringStiffnessMultiplier,
+			sanitizedRaw.cameraSpringStiffnessMultiplier ??
+			fallback.cameraSpringStiffnessMultiplier,
 		cameraSpringDampingMultiplier:
-			raw.cameraSpringDampingMultiplier ?? fallback.cameraSpringDampingMultiplier,
+			sanitizedRaw.cameraSpringDampingMultiplier ??
+			fallback.cameraSpringDampingMultiplier,
 		cameraSpringMassMultiplier:
-			raw.cameraSpringMassMultiplier ?? fallback.cameraSpringMassMultiplier,
-		cursorMotionBlur: raw.cursorMotionBlur ?? fallback.cursorMotionBlur,
-		cursorClickBounce: raw.cursorClickBounce ?? fallback.cursorClickBounce,
+			sanitizedRaw.cameraSpringMassMultiplier ?? fallback.cameraSpringMassMultiplier,
+		cursorMotionBlur: sanitizedRaw.cursorMotionBlur ?? fallback.cursorMotionBlur,
+		cursorClickBounce: sanitizedRaw.cursorClickBounce ?? fallback.cursorClickBounce,
 		cursorClickBounceDuration:
-			raw.cursorClickBounceDuration ?? fallback.cursorClickBounceDuration,
-		cursorSway: raw.cursorSway ?? fallback.cursorSway,
-		borderRadius: raw.borderRadius ?? fallback.borderRadius,
-		padding: raw.padding ?? fallback.padding,
-		frame: raw.frame !== undefined ? raw.frame : fallback.frame,
-		webcam: raw.webcam ?? fallback.webcam,
-		aspectRatio: raw.aspectRatio ?? fallback.aspectRatio,
-		exportEncodingMode: raw.exportEncodingMode ?? fallback.exportEncodingMode,
+			sanitizedRaw.cursorClickBounceDuration ?? fallback.cursorClickBounceDuration,
+		cursorSway: sanitizedRaw.cursorSway ?? fallback.cursorSway,
+		borderRadius: sanitizedRaw.borderRadius ?? fallback.borderRadius,
+		padding: sanitizedRaw.padding ?? fallback.padding,
+		frame: sanitizedRaw.frame !== undefined ? sanitizedRaw.frame : fallback.frame,
+		webcam: sanitizedRaw.webcam ?? fallback.webcam,
+		aspectRatio: sanitizedRaw.aspectRatio ?? fallback.aspectRatio,
+		exportEncodingMode:
+			sanitizedRaw.exportEncodingMode ?? fallback.exportEncodingMode,
 		exportBackendPreference:
-			raw.exportBackendPreference === undefined
+			sanitizedRaw.exportBackendPreference === undefined
 				? fallback.exportBackendPreference
-				: normalizeExportBackendPreference(raw.exportBackendPreference),
+				: normalizeExportBackendPreference(sanitizedRaw.exportBackendPreference),
 		exportPipelineModel:
-			raw.exportPipelineModel === undefined
+			sanitizedRaw.exportPipelineModel === undefined
 				? fallback.exportPipelineModel
-				: normalizeExportPipelineModel(raw.exportPipelineModel),
-		exportQuality: raw.exportQuality ?? fallback.exportQuality,
+				: normalizeExportPipelineModel(sanitizedRaw.exportPipelineModel),
+		exportQuality: sanitizedRaw.exportQuality ?? fallback.exportQuality,
 		mp4FrameRate:
-			raw.mp4FrameRate === undefined
+			sanitizedRaw.mp4FrameRate === undefined
 				? fallback.mp4FrameRate
-				: normalizeExportMp4FrameRate(raw.mp4FrameRate),
-		exportFormat: raw.exportFormat ?? fallback.exportFormat,
-		gifFrameRate: raw.gifFrameRate ?? fallback.gifFrameRate,
-		gifLoop: raw.gifLoop ?? fallback.gifLoop,
-		gifSizePreset: raw.gifSizePreset ?? fallback.gifSizePreset,
+				: normalizeExportMp4FrameRate(sanitizedRaw.mp4FrameRate),
+		exportFormat: sanitizedRaw.exportFormat ?? fallback.exportFormat,
+		gifFrameRate: sanitizedRaw.gifFrameRate ?? fallback.gifFrameRate,
+		gifLoop: sanitizedRaw.gifLoop ?? fallback.gifLoop,
+		gifSizePreset: sanitizedRaw.gifSizePreset ?? fallback.gifSizePreset,
 	};
 
 	const normalized = normalizeProjectEditor(candidate);
@@ -442,7 +446,10 @@ export function saveEditorPreferences(preferences: Partial<EditorPreferences>): 
 	try {
 		const current = loadEditorPreferences();
 		const merged = normalizeEditorPreferences({ ...current, ...preferences }, current);
-		globalThis.localStorage.setItem(EDITOR_PREFERENCES_STORAGE_KEY, JSON.stringify(merged));
+		globalThis.localStorage.setItem(
+			EDITOR_PREFERENCES_STORAGE_KEY,
+			JSON.stringify(stripPersistedDevMotionBlurSettings(merged)),
+		);
 	} catch {
 		// Ignore storage failures so editor controls still work.
 	}

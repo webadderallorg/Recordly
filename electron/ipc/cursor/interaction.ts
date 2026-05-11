@@ -1,4 +1,6 @@
+import fs from "node:fs";
 import { createRequire } from "node:module";
+import path from "node:path";
 import type { HookMouseEvent, UiohookLike, UiohookModuleNamespace, CursorInteractionType } from "../types";
 import {
 	isCursorCaptureActive,
@@ -54,8 +56,7 @@ function isUiohookLike(value: unknown): value is UiohookLike {
 	return typeof candidate?.on === "function" && typeof candidate?.start === "function";
 }
 
-function loadUiohookModule() {
-	const moduleExports = nodeRequire("uiohook-napi") as UiohookModuleNamespace;
+function resolveUiohookModule(moduleExports: UiohookModuleNamespace) {
 	const defaultExport = moduleExports.default;
 
 	if (moduleExports.uIOhook) {
@@ -87,6 +88,88 @@ function loadUiohookModule() {
 	}
 
 	return null;
+}
+
+function shouldRepairBundledUiohookBinary(error: unknown): error is NodeJS.ErrnoException {
+	if (process.platform !== "darwin") {
+		return false;
+	}
+
+	if (process.arch !== "arm64") {
+		return false;
+	}
+
+	const candidate = error as NodeJS.ErrnoException | null;
+	return (
+		candidate?.code === "ERR_DLOPEN_FAILED" &&
+		typeof candidate.message === "string" &&
+		candidate.message.includes("incompatible architecture")
+	);
+}
+
+export function repairBundledUiohookBinaryForCurrentArch(
+	error: unknown,
+	options?: {
+		packageRoot?: string;
+		platform?: NodeJS.Platform;
+		arch?: string;
+		log?: (message: string) => void;
+	},
+) {
+	const platform = options?.platform ?? process.platform;
+	const arch = options?.arch ?? process.arch;
+
+	if (platform !== "darwin" || arch !== "arm64") {
+		return false;
+	}
+
+	const candidate = error as NodeJS.ErrnoException | null;
+	if (
+		candidate?.code !== "ERR_DLOPEN_FAILED" ||
+		typeof candidate.message !== "string" ||
+		!candidate.message.includes("incompatible architecture")
+	) {
+		return false;
+	}
+
+	const packageRoot =
+		options?.packageRoot ?? path.dirname(nodeRequire.resolve("uiohook-napi/package.json"));
+	const prebuildPath = path.join(packageRoot, "prebuilds", `darwin-${arch}`, "node.napi.node");
+	const buildPath = path.join(packageRoot, "build", "Release", "uiohook_napi.node");
+
+	if (!fs.existsSync(prebuildPath)) {
+		return false;
+	}
+
+	try {
+		fs.mkdirSync(path.dirname(buildPath), { recursive: true });
+		fs.copyFileSync(prebuildPath, buildPath);
+		(options?.log ?? console.warn)(
+			"[CursorTelemetry] Repaired stale uiohook-napi binary using bundled darwin-arm64 prebuild.",
+		);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function loadUiohookModule() {
+	try {
+		const moduleExports = nodeRequire("uiohook-napi") as UiohookModuleNamespace;
+		return resolveUiohookModule(moduleExports);
+	} catch (error) {
+		if (!shouldRepairBundledUiohookBinary(error)) {
+			throw error;
+		}
+
+		if (!repairBundledUiohookBinaryForCurrentArch(error)) {
+			throw error;
+		}
+
+		delete nodeRequire.cache[nodeRequire.resolve("uiohook-napi")];
+		const moduleExports = nodeRequire("uiohook-napi") as UiohookModuleNamespace;
+		return resolveUiohookModule(moduleExports);
+	}
 }
 
 export async function startInteractionCapture() {

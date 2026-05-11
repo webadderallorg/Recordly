@@ -19,7 +19,10 @@
 	},
 	"clip": {
 		"title": "片段",
-		"muteAudio": "靜音",
+		"mute": "靜音",
+		"mutedState": "音訊已靜音",
+		"unmutedState": "音訊正在播放",
+		"separateClipFromAudio": "將片段與音訊分離",
 		"delete": "刪除片段"
 	},
 	"effects": {
@@ -201,5 +204,16 @@
 		"exportVideo": "匯出 {{format}}",
 		"reportBug": "回報錯誤",
 		"starOnGithub": "在 GitHub 按讚"
+	},
+	"audio": {
+		"title": "音訊",
+		"volumeTitle": "音訊",
+		"volume": "音量",
+		"normalize": "正規化",
+		"sourceTracksTitle": "剪輯源音訊",
+		"systemLabel": "系統源",
+		"micLabel": "麥克風源",
+		"mixedLabel": "源",
+		"deleteRegion": "刪除音訊"
 	}
 }

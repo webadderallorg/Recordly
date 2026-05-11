@@ -3,11 +3,13 @@ import type {
 	AudioRegion,
 	AutoCaptionSettings,
 	CaptionCue,
+	ClipRegion,
 	CropRegion,
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
 	SpeedRegion,
+	SourceAudioTrackSettings,
 	TrimRegion,
 	WebcamOverlaySettings,
 	ZoomMotionBlurTuning,
@@ -90,8 +92,10 @@ interface VideoExporterConfig extends ExportConfig {
 	zoomSmoothness?: number;
 	frame?: string | null;
 	audioRegions?: AudioRegion[];
+	clipRegions?: ClipRegion[];
 	sourceAudioFallbackPaths?: string[];
 	sourceAudioFallbackStartDelayMsByPath?: Record<string, number>;
+	sourceAudioTrackSettings?: SourceAudioTrackSettings;
 	previewWidth?: number;
 	previewHeight?: number;
 	onProgress?: (progress: ExportProgress) => void;
@@ -120,6 +124,16 @@ type NativeAudioPlan =
 	  };
 
 const FILTERGRAPH_FALLBACK_AUDIO_SAMPLE_RATE = 48_000;
+
+function hasNonDefaultSourceTrackSettings(sourceAudioTrackSettings?: SourceAudioTrackSettings) {
+	if (!sourceAudioTrackSettings) {
+		return false;
+	}
+	return Object.values(sourceAudioTrackSettings).some(
+		(settings) =>
+			Math.abs((settings?.volume ?? 1) - 1) > 0.0005 || Boolean(settings?.normalize),
+	);
+}
 
 export class VideoExporter {
 	private config: VideoExporterConfig;
@@ -398,6 +412,7 @@ export class VideoExporter {
 								this.config.audioRegions,
 								this.config.sourceAudioFallbackPaths,
 								this.config.sourceAudioFallbackStartDelayMsByPath,
+								this.config.sourceAudioTrackSettings,
 							),
 							"audio processing",
 							"audio",
@@ -560,7 +575,9 @@ export class VideoExporter {
 			speedRegions.length > 0 ||
 			audioRegions.length > 0 ||
 			sourceAudioFallbackPaths.length > 1 ||
-			hasTimedSourceAudioFallback
+			hasTimedSourceAudioFallback ||
+			hasNonDefaultSourceTrackSettings(this.config.sourceAudioTrackSettings) ||
+			(this.config.clipRegions ?? []).some((clip) => Boolean(clip.muted))
 		) {
 			const sourceDurationMs = Math.max(
 				0,
@@ -847,6 +864,8 @@ export class VideoExporter {
 						this.config.audioRegions,
 						this.config.sourceAudioFallbackPaths,
 						this.config.sourceAudioFallbackStartDelayMsByPath,
+						this.config.sourceAudioTrackSettings,
+						this.config.clipRegions,
 					),
 					"native edited audio rendering",
 					"audio",
@@ -943,6 +962,8 @@ export class VideoExporter {
 						this.config.audioRegions,
 						this.config.sourceAudioFallbackPaths,
 						this.config.sourceAudioFallbackStartDelayMsByPath,
+						this.config.sourceAudioTrackSettings,
+						this.config.clipRegions,
 					),
 					"ffmpeg edited audio rendering",
 					"audio",

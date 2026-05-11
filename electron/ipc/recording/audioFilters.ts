@@ -32,7 +32,7 @@ export function getBrowserMicSidecarFilters(profile?: string | null) {
 	return BROWSER_MIC_SIDECAR_FILTERS;
 }
 
-export const RECORDING_AUDIO_SIDECAR_DEBUG_ENV = "RECORDLY_KEEP_RECORDING_AUDIO_SIDECARS";
+export const RECORDING_AUDIO_SIDECAR_DEBUG_ENV = "RECORDLY_KEEP_RECORDING_AUDIO_SIDECARS"; // not used yet, because we need to have seperate audio files for system and mic for each recording
 
 export function shouldKeepRecordingAudioSidecars(env: NodeJS.ProcessEnv = process.env) {
 	const value = env[RECORDING_AUDIO_SIDECAR_DEBUG_ENV]?.trim().toLowerCase();

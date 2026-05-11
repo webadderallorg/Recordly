@@ -74,6 +74,44 @@ function getContributedCursorStylesSignature() {
 		.join("|");
 }
 
+function getRegisteredFramesSignature() {
+	return extensionHost
+		.getFrames()
+		.map(
+			(frame) =>
+				`${frame.id}:${frame.filePath}:${frame.thumbnailPath}:${frame.appearance ?? ""}`,
+		)
+		.sort()
+		.join("|");
+}
+
+function serializeExtensionSettingValue(value: unknown): string {
+	try {
+		const serialized = JSON.stringify(value);
+		return serialized ?? "undefined";
+	} catch {
+		try {
+			return String(value);
+		} catch {
+			return "[unserializable]";
+		}
+	}
+}
+
+function getExtensionSettingsSignature() {
+	return extensionHost
+		.getSettingsPanels()
+		.flatMap((registeredPanel) => {
+			const { extensionId, panel } = registeredPanel;
+			return panel.fields.map((field) => {
+				const value = extensionHost.getExtensionSetting(extensionId, field.id);
+				return `${extensionId}:${panel.id}:${field.id}:${serializeExtensionSettingValue(value)}`;
+			});
+		})
+		.sort()
+		.join("|");
+}
+
 import { extensionHost } from "@/lib/extensions";
 import {
 	mapCursorToCanvasNormalized,
@@ -97,6 +135,7 @@ import {
 	DEFAULT_CURSOR_CLICK_BOUNCE_DURATION,
 	DEFAULT_CURSOR_MOTION_BLUR,
 	DEFAULT_CURSOR_SIZE,
+	DEFAULT_CURSOR_STYLE,
 	DEFAULT_CURSOR_SMOOTHING,
 	DEFAULT_CURSOR_SWAY,
 	DEFAULT_PADDING,
@@ -391,7 +430,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			onAnnotationSizeChange,
 			cursorTelemetry = [],
 			showCursor = false,
-			cursorStyle = "tahoe",
+			cursorStyle = DEFAULT_CURSOR_STYLE,
 			cursorSize = DEFAULT_CURSOR_SIZE,
 			cursorSmoothing = DEFAULT_CURSOR_SMOOTHING,
 			cursorSpringStiffnessMultiplier = 1,
@@ -430,6 +469,26 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const [pixiRendererBackend, setPixiRendererBackend] = useState<PixiPreviewBackend | null>(
 			null,
 		);
+		const [frameUpdateCounter, setFrameUpdateCounter] = useState(0);
+
+		useEffect(() => {
+			let framesSignature = getRegisteredFramesSignature();
+			let settingsSignature = getExtensionSettingsSignature();
+			return extensionHost.onChange(() => {
+				const nextFramesSignature = getRegisteredFramesSignature();
+				const nextSettingsSignature = getExtensionSettingsSignature();
+				if (
+					nextFramesSignature === framesSignature &&
+					nextSettingsSignature === settingsSignature
+				) {
+					return;
+				}
+				framesSignature = nextFramesSignature;
+				settingsSignature = nextSettingsSignature;
+				setFrameUpdateCounter((c) => c + 1);
+			});
+		}, []);
+
 		const overlayRef = useRef<HTMLDivElement | null>(null);
 		const focusIndicatorRef = useRef<HTMLDivElement | null>(null);
 		const webcamVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -466,6 +525,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const frameSpriteRef = useRef<Sprite | null>(null);
 		const frameContainerRef = useRef<Container | null>(null);
 		const frameIdRef = useRef<string | null>(frame);
+		const frameReloadKeyRef = useRef<string | null>(null);
 		const isPlayingRef = useRef(isPlaying);
 		const suspendRenderingRef = useRef(suspendRendering);
 		const isSeekingRef = useRef(false);
@@ -997,11 +1057,27 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		useEffect(() => {
 			const frameContainer = frameContainerRef.current;
 			if (!frameContainer) return;
+			const nextFrameReloadKey = `${frame ?? ""}:${frameUpdateCounter}`;
+			const activeFrameData = frame
+				? extensionHost.getFrames().find((registeredFrame) => registeredFrame.id === frame)
+				: null;
+			const shouldRedrawDynamicFrame = Boolean(activeFrameData?.draw && frameSpriteRef.current);
 
-			// Clear existing frame sprite
+			// Layout-only changes should not force texture/sprite recreation.
+			if (frameReloadKeyRef.current === nextFrameReloadKey && !shouldRedrawDynamicFrame) {
+				layoutVideoContentRef.current?.();
+				return;
+			}
+			frameReloadKeyRef.current = nextFrameReloadKey;
+
+			// Clear existing frame sprite and its texture to free memory
 			if (frameSpriteRef.current) {
-				frameContainer.removeChild(frameSpriteRef.current);
-				frameSpriteRef.current.destroy();
+				const sprite = frameSpriteRef.current;
+				frameContainer.removeChild(sprite);
+				if (sprite.texture) {
+					sprite.texture.destroy(true); // destroy texture and its baseTexture
+				}
+				sprite.destroy();
 				frameSpriteRef.current = null;
 			}
 
@@ -1065,7 +1141,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			return () => {
 				cancelled = true;
 			};
-		}, [frame]);
+		}, [aspectRatio, borderRadius, cropRegion, frame, frameUpdateCounter, padding]);
+
+		// Always re-run geometric layout when layout props change, even if frame sprite isn't reloaded.
+		useEffect(() => {
+			layoutVideoContentRef.current?.();
+		}, [aspectRatio, borderRadius, cropRegion, padding]);
 
 		const selectedZoom = useMemo(() => {
 			if (!selectedZoomId) return null;

@@ -1,28 +1,29 @@
 import fs from "node:fs/promises";
-import { getTelemetryPathForVideo, getScreen } from "../utils";
 import {
+	CURSOR_SAMPLE_INTERVAL_MS,
 	CURSOR_TELEMETRY_VERSION,
 	MAX_CURSOR_SAMPLES,
-	CURSOR_SAMPLE_INTERVAL_MS,
 } from "../constants";
-import type { CursorVisualType, CursorInteractionType, CursorTelemetryPoint } from "../types";
 import {
-	cursorCaptureInterval,
-	setCursorCaptureInterval,
+	activeCursorSamples,
+	currentCursorVisualType,
 	cursorCaptureAccumulatedPausedMs,
+	cursorCaptureInterval,
 	cursorCapturePauseStartedAtMs,
 	cursorCaptureStartTimeMs,
-	activeCursorSamples,
-	pendingCursorSamples,
-	setPendingCursorSamples,
 	isCursorCaptureActive,
-	currentCursorVisualType,
 	linuxCursorScreenPoint,
+	pendingCursorSamples,
 	selectedSource,
 	selectedWindowBounds,
+	setActiveCursorSamples,
 	setCursorCaptureAccumulatedPausedMs,
+	setCursorCaptureInterval,
 	setCursorCapturePauseStartedAtMs,
+	setPendingCursorSamples,
 } from "../state";
+import type { CursorInteractionType, CursorTelemetryPoint, CursorVisualType } from "../types";
+import { getScreen, getTelemetryPathForVideo } from "../utils";
 
 export function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
@@ -122,6 +123,18 @@ export function pauseCursorCapture(pausedAtMs: number) {
 		return;
 	}
 
+	setCursorCapturePauseStartedAtMs(pausedAtMs);
+}
+
+export function pauseCursorCaptureAtBoundary(pausedAtMs: number) {
+	if (cursorCapturePauseStartedAtMs !== null) {
+		return;
+	}
+
+	const pausedElapsedMs = getCursorCaptureElapsedMs(pausedAtMs);
+	setActiveCursorSamples(
+		activeCursorSamples.filter((sample) => sample.timeMs <= pausedElapsedMs),
+	);
 	setCursorCapturePauseStartedAtMs(pausedAtMs);
 }
 
@@ -310,6 +323,6 @@ export function startCursorSampling() {
 	setCursorCaptureInterval(setTimeout(tick, CURSOR_SAMPLE_INTERVAL_MS));
 }
 
+export { CURSOR_SAMPLE_INTERVAL_MS } from "../constants";
 // Re-export for consumers that use it from this module
 export { getTelemetryPathForVideo } from "../utils";
-export { CURSOR_SAMPLE_INTERVAL_MS } from "../constants";

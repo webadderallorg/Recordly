@@ -1,0 +1,142 @@
+{
+	"playback": {
+		"play": "Воспроизвести",
+		"pause": "Пауза",
+		"skipBack": "Перемотать назад",
+		"skipForward": "Перемотать вперёд",
+		"muteUnmute": "Вкл./выкл. звук"
+	},
+	"annotations": {
+		"settings": "Настройки аннотации",
+		"active": "Активно",
+		"text": "Текст",
+		"image": "Изображение",
+		"arrow": "Стрелки",
+		"blur": "Размытие",
+		"textContent": "Текст",
+		"textPlaceholder": "Введите текст...",
+		"fontStyle": "Стиль шрифта",
+		"selectStyle": "Выберите стиль",
+		"size": "Размер",
+		"toggleBold": "Жирный",
+		"toggleItalic": "Курсив",
+		"toggleUnderline": "Подчёркивание",
+		"alignLeft": "По левому краю",
+		"alignCenter": "По центру",
+		"alignRight": "По правому краю",
+		"textColor": "Цвет текста",
+		"background": "Фон",
+		"none": "Нет",
+		"clearBackground": "Убрать фон",
+		"uploadImage": "Загрузить изображение",
+		"supportedFormats": "Форматы: JPG, PNG, GIF, WebP",
+		"arrowDirection": "Направление стрелки",
+		"strokeWidth": "Толщина: {{width}}px",
+		"arrowColor": "Цвет стрелки",
+		"deleteAnnotation": "Удалить аннотацию",
+		"shortcutsAndTips": "Горячие клавиши и советы",
+		"tipSelectAnnotation": "Переместите ползунок в область пересечения аннотаций и выберите нужную.",
+		"tipCycleForward": "Нажмите Tab для переключения между элементами.",
+		"tipCycleBackward": "Shift+Tab — для переключения в обратном направлении.",
+		"imageUploadSuccess": "Изображение загружено.",
+		"imageUploadError": "Загрузите файл JPG, PNG, GIF, или WebP.",
+		"blurStrength": "Сила размытия: {{strength}}",
+		"solidColor": "Сплошной цвет (цензура)",
+		"borderRadius": "Скругление углов"
+	},
+
+	"fontStyles": {
+		"classic": "Классический",
+		"editor": "Базовый",
+		"strong": "Акцентный",
+		"typewriter": "Моноширинный",
+		"deco": "Декоративный",
+		"simple": "Простой",
+		"modern": "Современный",
+		"clean": "Минималистичный"
+	},
+	"format": {
+		"mp4Video": "Видео MP4",
+		"mp4Description": "Высококачественный видеофайл",
+		"gifAnimation": "GIF-анимация",
+		"gifDescription": "Анимированное изображение для соцсетей и мессенджеров"
+	},
+	"gifOptions": {
+		"frameRate": "Частота кадров",
+		"outputSize": "Размер",
+		"outputDimensions": "Разрешение: {{width}} × {{height}}px",
+		"loopAnimation": "Зациклить анимацию",
+		"loopDescription": "GIF будет воспроизводиться непрерывно"
+	},
+	"tutorial": {
+		"howTrimmingWorks": "Как работает обрезка",
+		"title": "Как работает обрезка",
+		"understanding": "Как вырезать ненужные фрагменты из видео.",
+		"descriptionP1": "Инструмент обрезки позволяет задать участки, которые нужно",
+		"descriptionRemove": "удалить",
+		"descriptionP2": "из видео.",
+		"descriptionP3": "Все красные части таймлайна будут вырезаны при экспорте.",
+		"visualExample": "Пример",
+		"removed": "УДАЛЕНО",
+		"kept": "Оставлено",
+		"finalVideo": "Итоговое видео",
+		"part": "Часть {{number}}",
+		"addTrimStep": "1. Добавьте обрезку",
+		"addTrimDesc": "Нажмите T или иконку ножниц, чтобы отметить участок для удаления.",
+		"adjustStep": "2. Настройте",
+		"adjustDesc": "Перетащите края красной области, чтобы точно выделить нужный фрагмент."
+	},
+	"feedback": {
+		"trigger": "Обратная связь",
+		"title": "Обратная связь и контакты",
+		"description": "Свяжитесь с нами или сообщите о проблеме, если что-то не работает или отсутствует.",
+		"emailLabel": "Email",
+		"xLabel": "X",
+		"reportIssue": "Сообщить о проблеме / отправить отзыв",
+		"openFailed": "Не удалось открыть ссылку."
+	},
+	"keyboardShortcuts": {
+		"trigger": "Горячие клавиши",
+		"title": "Горячие клавиши",
+		"description": "Памятка для работы с таймлайном.",
+		"customizeTooltip": "Настроить клавиши",
+		"customize": "Настроить",
+		"panTimeline": "Перемещение по таймлайну",
+		"zoomTimeline": "Увеличение таймлайна",
+		"cycleAnnotations": "Переключение аннотаций",
+		"tab": "Tab"
+	},
+	"actions": {
+		"saveAgain": "Сохранить ещё раз",
+		"showInFolder": "Показать в папке"
+	},
+	"project": {
+		"untitled": "Без названия"
+	},
+	"nativeCaptureUnavailable": {
+		"title": "Всё в порядке, но мы не можем отобразить анимированное наложение курсора.",
+		"description": "Устройство не поддерживает нативный захват изображения. Запись продолжится, но без сглаживания курсора.",
+		"confirm": "Хорошо"
+	},
+	"exportStatus": {
+		"exporting": "Экспорт",
+		"renderingFile": "Обработка файла.",
+		"preparing": "Подготовка к экспорту...",
+		"completePercent": "Готово: {{percent}}%",
+		"issue": "Ошибка экспорта",
+		"complete": "Экспорт завершён",
+		"savedSuccessfully": "Файл сохранён"
+	},
+	"export": {
+		"processingAudioEdits": "Обработка звука (скорость, наложения)"
+	},
+	"toolbar": {
+		"addLayer": "Добавить слой",
+		"splitClip": "Разрезать клип (C)"
+	},
+	"timeline": {
+		"expand": "Развернуть таймлайн",
+		"collapse": "Свернуть таймлайн"
+	},
+	"openRecordingsFolder": "Открыть папку с записями"
+}

@@ -1,8 +1,8 @@
 import { Assets, BlurFilter, Container, Graphics, Sprite, Texture } from "pixi.js";
 import { MotionBlurFilter } from "pixi-filters/motion-blur";
+import minimalCursorUrl from "@/assets/cursors/custom/minimal-cursor.svg";
 import { getRenderableAssetUrl } from "@/lib/assetPath";
 import { extensionHost } from "@/lib/extensions";
-import minimalCursorUrl from "../../../../Minimal Cursor.svg";
 import {
 	type CursorStyle,
 	type CursorTelemetryPoint,
@@ -12,11 +12,11 @@ import {
 import { computeCursorSwayRotation } from "./cursorSway";
 import { type CursorViewportRect, projectCursorPositionToViewport } from "./cursorViewport";
 import {
+	type CursorSpringTuning,
 	createSpringState,
 	getCursorSpringConfig,
 	resetSpringState,
 	stepSpringValue,
-	type CursorSpringTuning,
 } from "./motionSmoothing";
 import { cursorSetAssets, getCursorStyleSizeMultiplier } from "./uploadedCursorAssets";
 

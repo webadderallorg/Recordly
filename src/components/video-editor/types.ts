@@ -51,7 +51,7 @@ export interface CursorVisualSettings {
 }
 
 export type CursorStyle = "macos" | "tahoe" | "tahoe-inverted" | "dot" | "figma" | (string & {}); // extension-contributed cursor styles
-export const DEFAULT_CURSOR_STYLE: CursorStyle = "tahoe";
+export const DEFAULT_CURSOR_STYLE: CursorStyle = "macos";
 
 export type EditorEffectSection =
 	| "scene"
@@ -64,6 +64,7 @@ export type EditorEffectSection =
 	| "crop"
 	| "extensions"
 	| "clip"
+	| "audio"
 	| `ext:${string}`;
 
 export type ZoomTransitionEasing = "recordly" | "glide" | "smooth" | "snappy" | "linear";
@@ -115,9 +116,9 @@ export interface ZoomMotionBlurTuning {
 
 export const DEFAULT_ZOOM_MOTION_BLUR_TUNING: ZoomMotionBlurTuning = {
 	panVelocityThreshold: 0,
-	zoomVelocityThreshold: 0.025,
-	maxDirectionalBlurPx: 11,
-	maxRadialBlurStrength: 0.175,
+	zoomVelocityThreshold: 0,
+	maxDirectionalBlurPx: 41.8,
+	maxRadialBlurStrength: 1,
 	panResponsePerSecond: 11,
 	zoomResponsePerSecond: 9,
 	zoomSafeZoneRadiusPx: 6,
@@ -169,12 +170,25 @@ export interface ClipRegion {
 	endMs: number;
 	speed: number;
 	muted?: boolean;
+	showSourceAudio?: boolean;
 }
 
 export function getClipSourceEndMs(clip: ClipRegion): number {
 	const displayDurationMs = Math.max(0, clip.endMs - clip.startMs);
 	const speed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
 	return Math.round(clip.startMs + displayDurationMs * speed);
+}
+
+export function getTimelineDurationMs(clips: ClipRegion[], sourceDurationMs: number): number {
+	const baseDurationMs = Math.max(0, Math.round(sourceDurationMs));
+	if (clips.length === 0) {
+		return baseDurationMs;
+	}
+
+	return clips.reduce(
+		(durationMs, clip) => Math.max(durationMs, Math.max(0, Math.round(clip.endMs))),
+		baseDurationMs,
+	);
 }
 
 export function sortClipRegions(clips: ClipRegion[]): ClipRegion[] {
@@ -452,6 +466,7 @@ export const DEFAULT_PADDING: Padding = {
 	right: 20,
 	linked: true,
 };
+export type { SourceAudioTrackSetting, SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 
 export interface AudioRegion {
 	id: string;
@@ -459,6 +474,7 @@ export interface AudioRegion {
 	endMs: number;
 	audioPath: string;
 	volume: number;
+	normalize?: boolean;
 	trackIndex?: number;
 }
 

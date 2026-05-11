@@ -19,7 +19,10 @@
 	},
 	"clip": {
 		"title": "Clip",
-		"muteAudio": "Couper le son",
+		"mute": "Sourdine",
+		"mutedState": "Le son est coupé",
+		"unmutedState": "Le son est activé",
+		"separateClipFromAudio": "Séparer le clip de l'audio",
 		"delete": "Supprimer le clip"
 	},
 	"effects": {
@@ -201,5 +204,16 @@
 		"exportVideo": "Exporter en {{format}}",
 		"reportBug": "Signaler un bug",
 		"starOnGithub": "Mettre une étoile sur GitHub"
+	},
+	"audio": {
+		"title": "Audio",
+		"volumeTitle": "Audio",
+		"volume": "Volume",
+		"normalize": "Normaliser",
+		"sourceTracksTitle": "Source audio du clip",
+		"systemLabel": "Son système",
+		"micLabel": "Microphone",
+		"mixedLabel": "Source",
+		"deleteRegion": "Supprimer la zone audio"
 	}
 }

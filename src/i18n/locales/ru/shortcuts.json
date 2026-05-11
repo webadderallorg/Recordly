@@ -1,0 +1,16 @@
+{
+	"actions": {
+		"addZoom": "Добавить зум",
+		"addTrim": "Обрезать",
+		"addSpeed": "Увеличить скорость",
+		"addAnnotation": "Добавить аннотацию",
+		"addKeyframe": "Добавить ключ",
+		"deleteSelected": "Удалить выбранное",
+		"playPause": "Воспроизведение / Пауза",
+		"cycleForward": "Следующая аннотация",
+		"cycleBackward": "Предыдущая аннотация",
+		"deleteSelectedAlt": "Удалить выбранное (alt)",
+		"panTimeline": "Прокрутка таймлайна",
+		"zoomTimeline": "Масштабирование таймлайна"
+	}
+}

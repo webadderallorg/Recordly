@@ -139,8 +139,9 @@ export function AnnotationSettingsPanel({
 	};
 
 	return (
-		<div className="flex-[2] min-w-0 bg-editor-panel border border-foreground/10 rounded-2xl p-4 flex flex-col shadow-xl h-full overflow-y-auto custom-scrollbar">
-			<div className="mb-6">
+		<div className="flex-[2] min-w-0 bg-editor-panel border border-foreground/10 rounded-2xl flex flex-col shadow-xl h-full overflow-hidden">
+			<div className="flex-1 min-h-0 p-4 overflow-y-auto custom-scrollbar">
+				<div className="mb-6">
 				<div className="flex items-center justify-between mb-4">
 					<span className="text-sm font-medium text-foreground">
 						{t("annotations.settings")}
@@ -772,16 +773,6 @@ export function AnnotationSettingsPanel({
 					</TabsContent>
 				</Tabs>
 
-				<Button
-					onClick={onDelete}
-					variant="destructive"
-					size="sm"
-					className="w-full gap-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30 transition-all mt-4"
-				>
-					<Trash2 className="w-4 h-4" />
-					{t("annotations.deleteAnnotation")}
-				</Button>
-
 				<div className="mt-6 p-3 bg-foreground/5 rounded-lg border border-foreground/5">
 					<div className="flex items-center gap-2 mb-2 text-muted-foreground">
 						<Info className="w-3.5 h-3.5" />
@@ -795,6 +786,18 @@ export function AnnotationSettingsPanel({
 						<li>{t("annotations.tipCycleBackward")}</li>
 					</ul>
 				</div>
+				</div>
+			</div>
+			<div className="flex-shrink-0 border-t border-foreground/10 bg-editor-panel p-4 pt-3">
+				<Button
+					onClick={onDelete}
+					variant="destructive"
+					size="sm"
+					className="w-full gap-2 bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 hover:border-red-500/30 transition-all"
+				>
+					<Trash2 className="w-4 h-4" />
+					{t("annotations.deleteAnnotation")}
+				</Button>
 			</div>
 		</div>
 	);

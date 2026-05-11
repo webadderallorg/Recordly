@@ -1,0 +1,26 @@
+{
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Recordly Editor",
+		"subtitle": "Запись экрана и редактирование видео",
+		"language": "Язык",
+		"manageRecordings": "Открыть папку с записями"
+	},
+	"actions": {
+		"cancel": "Отмена",
+		"close": "Закрыть",
+		"export": "Экспорт",
+		"load": "Загрузить",
+		"redo": "Повторить",
+		"reset": "Сброс",
+		"save": "Сохранить",
+		"undo": "Отменить",
+		"delete": "Удалить",
+		"done": "Готово"
+	},
+	"errors": {
+		"invalidFileType": "Неверный формат файла",
+		"failedToUploadImage": "Не удалось загрузить изображение",
+		"fileReadError": "Произошла ошибка при чтении файла."
+	}
+}

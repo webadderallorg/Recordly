@@ -24,6 +24,12 @@ extern "C" {
         IInspectable** graphicsDevice);
 }
 
+static int normalizeFramePoolExtent(int value) {
+    int normalized = value < 2 ? 2 : value;
+    if ((normalized % 2) != 0) ++normalized;
+    return normalized;
+}
+
 WgcSession::WgcSession() {}
 
 WgcSession::~WgcSession() {
@@ -114,6 +120,8 @@ bool WgcSession::initializeWithItem(int fps) {
     auto size = captureItem_.Size();
     captureWidth_ = size.Width;
     captureHeight_ = size.Height;
+    framePoolWidth_ = size.Width;
+    framePoolHeight_ = size.Height;
 
     framePool_ = winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
         winrtDevice_,
@@ -128,7 +136,42 @@ bool WgcSession::initializeWithItem(int fps) {
     // IsBorderRequired is only available on Windows 11+ (build 22000). propagating an hresult_error results in Native Windows capture failure
     try {
         session_.IsBorderRequired(false);
+    } catch (winrt::hresult_error const&) {
+    }
+
+    return true;
+}
+
+bool WgcSession::recreateFramePoolIfNeeded(
+    winrt::Windows::Graphics::SizeInt32 const& contentSize) {
+    if (!framePool_) return false;
+
+    const int normalizedWidth = normalizeFramePoolExtent(contentSize.Width);
+    const int normalizedHeight = normalizeFramePoolExtent(contentSize.Height);
+    if (normalizedWidth == framePoolWidth_ && normalizedHeight == framePoolHeight_) {
+        return false;
+    }
+
+    winrt::Windows::Graphics::SizeInt32 normalizedSize{
+        normalizedWidth,
+        normalizedHeight,
+    };
+
+    try {
+        framePool_.Recreate(
+            winrtDevice_,
+            winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
+            2,
+            normalizedSize);
+        framePoolWidth_ = normalizedWidth;
+        framePoolHeight_ = normalizedHeight;
+        std::cerr << "INFO: Recreated WGC frame pool for resized content "
+                  << framePoolWidth_ << "x" << framePoolHeight_ << std::endl;
     } catch (winrt::hresult_error const& e) {
+        fatalError_ = true;
+        capturing_ = false;
+        std::cerr << "ERROR: Failed to recreate WGC frame pool after resize: 0x"
+                  << std::hex << e.code() << std::dec << std::endl;
     }
 
     return true;
@@ -174,6 +217,7 @@ bool WgcSession::startCapture() {
     if (!session_ || !framePool_) return false;
 
     capturing_ = true;
+    fatalError_ = false;
     lastFrameTimeHns_ = 0;
 
     frameArrivedRevoker_ = framePool_.FrameArrived(
@@ -205,10 +249,15 @@ void WgcSession::onFrameArrived(
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const& sender,
     winrt::Windows::Foundation::IInspectable const&) {
 
-    if (!capturing_) return;
+    if (!capturing_ || fatalError_) return;
 
     auto frame = sender.TryGetNextFrame();
     if (!frame) return;
+    auto contentSize = frame.ContentSize();
+    if (recreateFramePoolIfNeeded(contentSize)) {
+        frame.Close();
+        return;
+    }
 
     auto timestamp = frame.SystemRelativeTime();
     int64_t frameTimeHns = std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, 10000000>>>(timestamp).count();

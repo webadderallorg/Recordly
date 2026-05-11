@@ -7,16 +7,17 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { USER_DATA_PATH } from "./appPaths";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const electronWindowsDir = path.dirname(fileURLToPath(import.meta.url));
 const nodeRequire = createRequire(import.meta.url);
 
-const APP_ROOT = path.join(__dirname, "..");
+const APP_ROOT = path.join(electronWindowsDir, "..");
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 const RENDERER_DIST = path.join(APP_ROOT, "dist");
+const WINDOW_ICON_FILENAME = process.platform === "darwin" ? "recordlymac-512.png" : "recordly-512.png";
 const WINDOW_ICON_PATH = path.join(
 	process.env.VITE_PUBLIC || RENDERER_DIST,
 	"app-icons",
-	"recordly-512.png",
+	WINDOW_ICON_FILENAME,
 );
 
 let hudOverlayWindow: BrowserWindow | null = null;
@@ -373,8 +374,9 @@ export function createHudOverlayWindow(): BrowserWindow {
 		skipTaskbar: true,
 		hasShadow: false,
 		show: false,
+		focusable: false,
 		webPreferences: {
-			preload: path.join(__dirname, "preload.mjs"),
+			preload: path.join(electronWindowsDir, "preload.mjs"),
 			nodeIntegration: false,
 			contextIsolation: true,
 			webSecurity: false,
@@ -513,6 +515,36 @@ export function getHudOverlayWindow(): BrowserWindow | null {
 	return hudOverlayWindow && !hudOverlayWindow.isDestroyed() ? hudOverlayWindow : null;
 }
 
+/**
+ * Re-initialise the HUD overlay's mouse passthrough state.
+ *
+ * On Windows 11+, any new BrowserWindow appearing (even focusable:false ones
+ * like the source highlight overlay) can silently corrupt the
+ * WS_EX_TRANSPARENT flag that backs setIgnoreMouseEvents forwarding.  Call
+ * this after any operation that creates or destroys a sibling window so that
+ * hover detection on the HUD is immediately restored without requiring the
+ * user to move their mouse over the bar.
+ */
+export function reassertHudOverlayMousePassthrough(): void {
+	if (process.platform !== "win32" || !isHudOverlayMousePassthroughSupported()) {
+		return;
+	}
+
+	const hud = getHudOverlayWindow();
+	if (!hud) {
+		return;
+	}
+
+	// Toggle off then back on so the native WS_EX_TRANSPARENT flag is fully
+	// re-initialised rather than merely re-asserted in a potentially broken state.
+	hud.setIgnoreMouseEvents(false);
+	setTimeout(() => {
+		if (!hud.isDestroyed()) {
+			hud.setIgnoreMouseEvents(true, { forward: true });
+		}
+	}, 50);
+}
+
 export function createUpdateToastWindow(): BrowserWindow {
 	const initialBounds = getUpdateToastBounds();
 	const parentWindow =
@@ -537,7 +569,7 @@ export function createUpdateToastWindow(): BrowserWindow {
 		...(parentWindow ? { parent: parentWindow } : {}),
 		backgroundColor: useTransparentToastWindow ? "#00000000" : "#101418",
 		webPreferences: {
-			preload: path.join(__dirname, "preload.mjs"),
+			preload: path.join(electronWindowsDir, "preload.mjs"),
 			nodeIntegration: false,
 			contextIsolation: true,
 			backgroundThrottling: false,
@@ -696,6 +728,8 @@ function loadPackagedEditorWindow(win: BrowserWindow) {
 }
 
 export function createEditorWindow(): BrowserWindow {
+	const perfStart = Date.now();
+	console.log("[PERF:MAIN] createEditorWindow: STARTED");
 	const isMac = process.platform === "darwin";
 	const { workArea, workAreaSize } = getScreen().getPrimaryDisplay();
 	const initialWidth = isMac ? Math.round(workAreaSize.width * 0.85) : workArea.width;
@@ -726,7 +760,7 @@ export function createEditorWindow(): BrowserWindow {
 		show: false,
 		backgroundColor: "#000000",
 		webPreferences: {
-			preload: path.join(__dirname, "preload.mjs"),
+			preload: path.join(electronWindowsDir, "preload.mjs"),
 			nodeIntegration: false,
 			contextIsolation: true,
 			webSecurity: false,
@@ -735,12 +769,12 @@ export function createEditorWindow(): BrowserWindow {
 	});
 
 	win.once("ready-to-show", () => {
-		console.log("[editor-window] ready-to-show");
+		console.log(`[PERF:MAIN] Editor Window: ready-to-show in ${Date.now() - perfStart}ms`);
 		win.show();
 	});
 
 	win.webContents.on("did-finish-load", () => {
-		console.log("[editor-window] did-finish-load", win.webContents.getURL());
+		console.log(`[PERF:MAIN] Editor Window: did-finish-load in ${Date.now() - perfStart}ms`);
 		win?.webContents.send("main-process-message", new Date().toLocaleString());
 		// Fallback for Linux/Wayland where `ready-to-show` may not fire reliably.
 		if (!win.isDestroyed() && !win.isVisible()) {
@@ -799,7 +833,7 @@ export function createSourceSelectorWindow(): BrowserWindow {
 		}),
 		backgroundColor: "#00000000",
 		webPreferences: {
-			preload: path.join(__dirname, "preload.mjs"),
+			preload: path.join(electronWindowsDir, "preload.mjs"),
 			nodeIntegration: false,
 			contextIsolation: true,
 		},
@@ -846,7 +880,7 @@ export function createCountdownWindow(): BrowserWindow {
 		focusable: true,
 		show: false,
 		webPreferences: {
-			preload: path.join(__dirname, "preload.mjs"),
+			preload: path.join(electronWindowsDir, "preload.mjs"),
 			nodeIntegration: false,
 			contextIsolation: true,
 		},

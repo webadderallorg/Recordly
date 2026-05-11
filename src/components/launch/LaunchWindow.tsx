@@ -664,6 +664,7 @@ function LaunchWindowContent() {
 							<div
 								ref={recordingWebcamPreviewContainerRef}
 								className={`${styles.recordingWebcamPreview} ${styles.electronNoDrag} pointer-events-auto`}
+								data-hud-interactive
 								title={t("recording.webcam")}
 								style={{
 									transform: `translate(${webcamPreviewOffset.x}px, ${webcamPreviewOffset.y}px)`,

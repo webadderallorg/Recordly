@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 interface LaunchPopoverCoordinatorValue {
 	openId: string | null;
@@ -21,6 +21,12 @@ export function LaunchPopoverCoordinatorProvider({ children }: { children: React
 	}, []);
 
 	const isOpen = useCallback((id: string) => openId === id, [openId]);
+
+	useEffect(() => {
+		const handleBlur = () => setOpenId(null);
+		window.addEventListener("blur", handleBlur);
+		return () => window.removeEventListener("blur", handleBlur);
+	}, []);
 
 	const value = useMemo(
 		() => ({

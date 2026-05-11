@@ -132,6 +132,11 @@ function stopRecording(
 		if (webcamRecorder && webcamRecorder.state !== "inactive") {
 			webcamRecorder.stop();
 		}
+		try {
+			recorder.requestData();
+		} catch {
+			// Stopping should continue even if the browser refuses an explicit flush.
+		}
 		recorder.stop();
 		return { stopped: true, wasNative: false };
 	}
@@ -326,6 +331,69 @@ describe("useScreenRecorder state machine", () => {
 			stopRecording(recorder, false);
 
 			expect(callOrder).toEqual(["resume", "stop"]);
+		});
+
+		it("flushes the current recorder data before stopping", () => {
+			const callOrder: string[] = [];
+			recorder.requestData.mockImplementation(() => {
+				callOrder.push("requestData");
+			});
+			recorder.stop.mockImplementation(() => {
+				callOrder.push("stop");
+			});
+
+			stopRecording(recorder, false);
+
+			expect(callOrder).toEqual(["requestData", "stop"]);
+		});
+
+		it("resumes, flushes, then stops from paused state", () => {
+			recorder.pause();
+			const callOrder: string[] = [];
+			recorder.resume.mockImplementation(() => {
+				callOrder.push("resume");
+			});
+			recorder.requestData.mockImplementation(() => {
+				callOrder.push("requestData");
+			});
+			recorder.stop.mockImplementation(() => {
+				callOrder.push("stop");
+			});
+
+			stopRecording(recorder, false);
+
+			expect(callOrder).toEqual(["resume", "requestData", "stop"]);
+		});
+
+		it("still stops when the explicit data flush fails", () => {
+			recorder.requestData.mockImplementation(() => {
+				throw new Error("flush failed");
+			});
+
+			const result = stopRecording(recorder, false);
+
+			expect(result.stopped).toBe(true);
+			expect(recorder.stop).toHaveBeenCalled();
+		});
+
+		it("still stops from paused state when the explicit data flush fails", () => {
+			recorder.pause();
+			const callOrder: string[] = [];
+			recorder.resume.mockImplementation(() => {
+				callOrder.push("resume");
+			});
+			recorder.requestData.mockImplementation(() => {
+				callOrder.push("requestData");
+				throw new Error("flush failed");
+			});
+			recorder.stop.mockImplementation(() => {
+				callOrder.push("stop");
+			});
+
+			const result = stopRecording(recorder, false);
+
+			expect(result.stopped).toBe(true);
+			expect(callOrder).toEqual(["resume", "requestData", "stop"]);
 		});
 
 		it("still stops when resume throws from paused state", () => {

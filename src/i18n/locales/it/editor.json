@@ -1,0 +1,142 @@
+{
+	"playback": {
+		"play": "Riproduci",
+		"pause": "Pausa",
+		"skipBack": "Indietro",
+		"skipForward": "Avanti",
+		"muteUnmute": "Disattiva/Attiva audio"
+	},
+	"annotations": {
+		"settings": "Impostazioni annotazione",
+		"active": "Attiva",
+		"text": "Testo",
+		"image": "Immagine",
+		"arrow": "Freccia",
+		"blur": "Sfocatura",
+		"textContent": "Contenuto del testo",
+		"textPlaceholder": "Inserisci il tuo testo...",
+		"fontStyle": "Stile font",
+		"selectStyle": "Seleziona stile",
+		"size": "Dimensione",
+		"toggleBold": "Attiva grassetto",
+		"toggleItalic": "Attiva corsivo",
+		"toggleUnderline": "Attiva sottolineato",
+		"alignLeft": "Allinea a sinistra",
+		"alignCenter": "Allinea al centro",
+		"alignRight": "Allinea a destra",
+		"textColor": "Colore testo",
+		"background": "Sfondo",
+		"none": "Nessuno",
+		"clearBackground": "Rimuovi sfondo",
+		"uploadImage": "Carica immagine",
+		"supportedFormats": "Formati supportati: JPG, PNG, GIF, WebP",
+		"arrowDirection": "Direzione freccia",
+		"strokeWidth": "Spessore tratto: {{width}}px",
+		"arrowColor": "Colore freccia",
+		"deleteAnnotation": "Elimina annotazione",
+		"shortcutsAndTips": "Scorciatoie e consigli",
+		"tipSelectAnnotation": "Sposta il cursore sulla sezione dell'annotazione sovrapposta e seleziona un elemento.",
+		"tipCycleForward": "Usa Tab per scorrere tra gli elementi sovrapposti.",
+		"tipCycleBackward": "Usa Shift+Tab per scorrere indietro.",
+		"imageUploadSuccess": "Immagine caricata con successo!",
+		"imageUploadError": "Carica un file immagine JPG, PNG, GIF o WebP.",
+		"blurStrength": "Intensità sfocatura: {{strength}}",
+		"solidColor": "Colore pieno (Censura)",
+		"borderRadius": "Raggio bordo"
+	},
+
+	"fontStyles": {
+		"classic": "Classico",
+		"editor": "Editor",
+		"strong": "Grassetto",
+		"typewriter": "Macchina da scrivere",
+		"deco": "Deco",
+		"simple": "Semplice",
+		"modern": "Moderno",
+		"clean": "Pulito"
+	},
+	"format": {
+		"mp4Video": "Video MP4",
+		"mp4Description": "File video di alta qualità",
+		"gifAnimation": "Animazione GIF",
+		"gifDescription": "Immagine animata da condividere"
+	},
+	"gifOptions": {
+		"frameRate": "Frequenza fotogrammi",
+		"outputSize": "Dimensione output",
+		"outputDimensions": "Output: {{width}} × {{height}}px",
+		"loopAnimation": "Riproduci in loop",
+		"loopDescription": "La GIF verrà riprodotta continuamente"
+	},
+	"tutorial": {
+		"howTrimmingWorks": "Come funziona il taglio",
+		"title": "Come funziona il taglio",
+		"understanding": "Capire come tagliare le parti indesiderate del tuo video.",
+		"descriptionP1": "Lo strumento Taglia funziona definendo i segmenti che vuoi",
+		"descriptionRemove": "rimuovere",
+		"descriptionP2": "dal tuo video.",
+		"descriptionP3": "Qualsiasi parte della timeline coperta da un segmento di taglio rosso verrà rimossa durante l'esportazione.",
+		"visualExample": "Esempio visivo",
+		"removed": "RIMOSSO",
+		"kept": "Mantenuto",
+		"finalVideo": "Video finale",
+		"part": "Parte {{number}}",
+		"addTrimStep": "1. Aggiungi taglio",
+		"addTrimDesc": "Premi T o clicca sull'icona delle forbici per contrassegnare una sezione da rimuovere.",
+		"adjustStep": "2. Regola",
+		"adjustDesc": "Trascina i bordi della regione rossa per coprire esattamente ciò che vuoi tagliare."
+	},
+	"feedback": {
+		"trigger": "Feedback",
+		"title": "Feedback e contatti",
+		"description": "Contattaci direttamente o apri una segnalazione se qualcosa non funziona o manca.",
+		"emailLabel": "Email",
+		"xLabel": "X",
+		"reportIssue": "Segnala problema / invia feedback",
+		"openFailed": "Apertura del link non riuscita."
+	},
+	"keyboardShortcuts": {
+		"trigger": "Scorciatoie",
+		"title": "Scorciatoie da tastiera",
+		"description": "Riferimento rapido per i controlli della timeline e dell'editor.",
+		"customizeTooltip": "Personalizza scorciatoie",
+		"customize": "Personalizza",
+		"panTimeline": "Sposta timeline",
+		"zoomTimeline": "Zoom timeline",
+		"cycleAnnotations": "Scorri annotazioni",
+		"tab": "Tab"
+	},
+	"actions": {
+		"saveAgain": "Salva di nuovo",
+		"showInFolder": "Mostra nella cartella"
+	},
+	"project": {
+		"untitled": "Senza titolo"
+	},
+	"nativeCaptureUnavailable": {
+		"title": "Niente è rotto, ma non sarà possibile renderizzare un overlay del cursore animato.",
+		"description": "Il tuo dispositivo non supporta la cattura nativa. Le cause possono essere varie e non ancora identificate. Recordly funziona comunque, ma non è possibile applicare lo smoothing del cursore.",
+		"confirm": "Ok"
+	},
+	"exportStatus": {
+		"exporting": "Esportazione in corso",
+		"renderingFile": "Rendering del file in corso.",
+		"preparing": "Preparazione esportazione...",
+		"completePercent": "{{percent}}% completato",
+		"issue": "Problema di esportazione",
+		"complete": "Esportazione completata",
+		"savedSuccessfully": "Il tuo file è stato salvato con successo."
+	},
+	"export": {
+		"processingAudioEdits": "Elaborazione audio con modifiche di velocità/overlay"
+	},
+	"toolbar": {
+		"addLayer": "Aggiungi livello",
+		"splitClip": "Dividi clip (C)"
+	},
+	"timeline": {
+		"expand": "Espandi timeline",
+		"collapse": "Comprimi timeline"
+	},
+	"openRecordingsFolder": "Apri cartella registrazioni"
+}

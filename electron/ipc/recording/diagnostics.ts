@@ -190,6 +190,7 @@ export function summarizeMicrophoneChunkTiming(
 
 /** Probe the duration of a media file (in seconds) using the container header. */
 export async function probeMediaDurationSeconds(filePath: string): Promise<number> {
+	const start = Date.now();
 	const ffmpegPath = getFfmpegBinaryPath();
 	try {
 		await execFileAsync(ffmpegPath, ["-i", filePath, "-hide_banner"], { timeout: 5000 });
@@ -199,6 +200,10 @@ export async function probeMediaDurationSeconds(filePath: string): Promise<numbe
 		if (duration !== null) {
 			return duration;
 		}
+	} finally {
+		console.log(
+			`[PERF:MAIN] probeMediaDurationSeconds: COMPLETED in ${Date.now() - start}ms`,
+		);
 	}
 	return 0;
 }
@@ -265,6 +270,7 @@ export function parseFfprobeVideoStreamDuration(output: string): VideoStreamDura
 export async function probeVideoStreamDuration(
 	filePath: string,
 ): Promise<VideoStreamDurationProbe | null> {
+	const start = Date.now();
 	try {
 		const result = await execFileAsync(
 			getFfprobeBinaryPath(),
@@ -273,7 +279,6 @@ export async function probeVideoStreamDuration(
 				"error",
 				"-select_streams",
 				"v:0",
-				"-count_frames",
 				"-show_entries",
 				"stream=duration,nb_frames,nb_read_frames,avg_frame_rate,r_frame_rate",
 				"-of",
@@ -286,6 +291,10 @@ export async function probeVideoStreamDuration(
 		return parseFfprobeVideoStreamDuration(stdout);
 	} catch {
 		return null;
+	} finally {
+		console.log(
+			`[PERF:MAIN] probeVideoStreamDuration: COMPLETED in ${Date.now() - start}ms`,
+		);
 	}
 }
 
@@ -499,20 +508,18 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 
 	let paths: string[];
 	if (await hasEmbeddedAudioStream(videoPath)) {
-		const microphoneCompanionPaths = Array.from(
+		const companionPaths = Array.from(
 			new Set(
 				companionCandidates.flatMap((candidate) =>
-					candidate.usablePaths.filter(
-						(companionPath) => companionPath === candidate.micPath,
-					),
+					candidate.usablePaths.filter((companionPath) => companionPath === candidate.micPath),
 				),
 			),
 		);
-		if (microphoneCompanionPaths.length === 0) {
+		if (companionPaths.length === 0) {
 			return { paths: [], startDelayMsByPath: {} };
 		}
 
-		paths = [videoPath, ...microphoneCompanionPaths];
+		paths = [videoPath, ...companionPaths];
 	} else {
 		paths = Array.from(
 			new Set(companionCandidates.flatMap((candidate) => candidate.usablePaths)),

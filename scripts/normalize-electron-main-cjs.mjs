@@ -49,6 +49,49 @@ function convertImportLine(line) {
 	return null;
 }
 
+function convertNamedExports(namedSpec, indent = "") {
+	const statements = [];
+	for (const rawSpecifier of namedSpec.split(",")) {
+		const specifier = rawSpecifier.trim();
+		if (!specifier) {
+			continue;
+		}
+
+		const aliasMatch = specifier.match(
+			/^([A-Za-z_$][A-Za-z0-9_$]*)\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)$/,
+		);
+		const localName = aliasMatch ? aliasMatch[1] : specifier;
+		const exportName = aliasMatch ? aliasMatch[2] : specifier;
+		if (
+			!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(localName) ||
+			!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(exportName)
+		) {
+			return null;
+		}
+
+		statements.push(`${indent}exports.${exportName} = ${localName};`);
+	}
+
+	return statements;
+}
+
+function convertExportLine(line) {
+	const singleLineMatch = line.match(
+		/^([ \t]*)export\s*\{\s*([^}]*)\s*\}\s*;?[ \t]*$/,
+	);
+	if (singleLineMatch) {
+		const [, indent, namedSpec] = singleLineMatch;
+		return convertNamedExports(namedSpec, indent);
+	}
+
+	const blockStartMatch = line.match(/^([ \t]*)export\s*\{\s*$/);
+	if (blockStartMatch) {
+		return { indent: blockStartMatch[1], specifiers: [], rawLines: [line] };
+	}
+
+	return null;
+}
+
 function updateLexicalState(line, state) {
 	let mode = state.mode;
 	let escaped = false;
@@ -296,13 +339,46 @@ export function normalizeElectronMainCjsSource(source) {
 	const lines = source.split(/\r?\n/);
 	const normalizedLines = [];
 	let state = { mode: null };
+	let exportBlock = null;
 
 	for (const line of lines) {
+		if (exportBlock) {
+			if (/^[ \t]*\}\s*;?[ \t]*$/.test(line)) {
+				const statements = convertNamedExports(
+					exportBlock.specifiers.join(","),
+					exportBlock.indent,
+				);
+				if (statements === null) {
+					normalizedLines.push(...exportBlock.rawLines, line);
+				} else {
+					normalizedLines.push(...statements);
+					changed = true;
+				}
+				exportBlock = null;
+				continue;
+			}
+
+			exportBlock.specifiers.push(line.trim().replace(/,$/, ""));
+			exportBlock.rawLines.push(line);
+			continue;
+		}
+
 		if (state.mode === null) {
 			const converted = convertImportLine(line);
 			if (converted !== null) {
 				normalizedLines.push(converted);
 				changed = true;
+				continue;
+			}
+
+			const convertedExport = convertExportLine(line);
+			if (convertedExport !== null) {
+				if (Array.isArray(convertedExport)) {
+					normalizedLines.push(...convertedExport);
+					changed = true;
+				} else {
+					exportBlock = convertedExport;
+				}
 				continue;
 			}
 		}
@@ -342,6 +418,13 @@ export function findElectronMainCjsEsmSyntax(source) {
 				continue;
 			}
 			if (containsImportMetaInCode(line, state)) {
+				matches.push({
+					line: index + 1,
+					text: line.trim(),
+				});
+				continue;
+			}
+			if (/^[ \t]*export\b/.test(line)) {
 				matches.push({
 					line: index + 1,
 					text: line.trim(),
