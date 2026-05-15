@@ -143,6 +143,13 @@ Browse and install community extensions from the [Recordly Marketplace](https://
 - Feedback and issue links from the editor
 - Project persistence for editor preferences
 - Faster preview recovery after export
+
+### Performance and Reliability
+
+- Stream browser-captured recording chunks to disk to avoid large in-memory video buffers
+- Keep editor playback responsive during long recordings with throttled timeline state updates
+- Cache caption, zoom, and cursor lookups used by preview rendering
+
 ---
 
 # Screenshots

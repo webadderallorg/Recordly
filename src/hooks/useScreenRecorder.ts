@@ -107,6 +107,150 @@ type MicrophoneSidecarOptions = {
 	chunkEvents?: MicrophoneFallbackChunkEvent[];
 	pauseIntervals?: MicrophoneFallbackPauseInterval[];
 };
+
+type ChunkStreamWriter = {
+	readonly path?: string;
+	write: (blob: Blob) => void;
+	close: (options?: {
+		mimeType?: string;
+	}) => Promise<{ success: boolean; path?: string; message?: string; error?: string }>;
+	abort: () => Promise<void>;
+};
+
+type MicrophoneSidecarStreamWriter = {
+	write: (blob: Blob) => void;
+	close: (
+		videoPath: string,
+		options?: MicrophoneSidecarOptions,
+	) => Promise<{ success: boolean; path?: string; error?: string }>;
+	abort: () => Promise<void>;
+};
+
+function createQueuedBlobWriter(params: {
+	streamId: string;
+	writeChunk: (
+		streamId: string,
+		position: number,
+		chunk: Uint8Array,
+	) => Promise<{ success: boolean; error?: string }>;
+}) {
+	let position = 0;
+	let writeQueue = Promise.resolve();
+	let writeError: Error | null = null;
+
+	const write = (blob: Blob) => {
+		if (blob.size <= 0 || writeError) {
+			return;
+		}
+
+		writeQueue = writeQueue
+			.then(async () => {
+				const buffer = await blob.arrayBuffer();
+				const bytes = new Uint8Array(buffer);
+				const writePosition = position;
+				position += bytes.byteLength;
+				const result = await params.writeChunk(params.streamId, writePosition, bytes);
+				if (!result.success) {
+					throw new Error(result.error || "Failed to write recording chunk");
+				}
+			})
+			.catch((error) => {
+				writeError = error instanceof Error ? error : new Error(String(error));
+			});
+	};
+
+	const waitForWrites = async () => {
+		await writeQueue;
+		if (writeError) {
+			throw writeError;
+		}
+	};
+
+	return { write, waitForWrites };
+}
+
+async function createRecordingStreamWriter(fileName: string): Promise<ChunkStreamWriter | null> {
+	if (
+		!window.electronAPI?.openRecordingStream ||
+		!window.electronAPI?.writeRecordingStreamChunk ||
+		!window.electronAPI?.closeRecordingStream
+	) {
+		return null;
+	}
+
+	const openResult = await window.electronAPI.openRecordingStream(fileName);
+	if (!openResult.success || !openResult.streamId) {
+		console.warn("Recording stream unavailable:", openResult.error);
+		return null;
+	}
+
+	const writer = createQueuedBlobWriter({
+		streamId: openResult.streamId,
+		writeChunk: window.electronAPI.writeRecordingStreamChunk,
+	});
+
+	return {
+		path: openResult.path,
+		write: writer.write,
+		close: async (options) => {
+			try {
+				await writer.waitForWrites();
+				return window.electronAPI.closeRecordingStream(openResult.streamId!, options);
+			} catch (error) {
+				await window.electronAPI.closeRecordingStream(openResult.streamId!, { abort: true });
+				throw error;
+			}
+		},
+		abort: async () => {
+			await window.electronAPI.closeRecordingStream(openResult.streamId!, { abort: true });
+		},
+	};
+}
+
+async function createMicrophoneSidecarStreamWriter(): Promise<MicrophoneSidecarStreamWriter | null> {
+	if (
+		!window.electronAPI?.openMicrophoneSidecarStream ||
+		!window.electronAPI?.writeMicrophoneSidecarStreamChunk ||
+		!window.electronAPI?.closeMicrophoneSidecarStream
+	) {
+		return null;
+	}
+
+	const openResult = await window.electronAPI.openMicrophoneSidecarStream();
+	if (!openResult.success || !openResult.streamId) {
+		console.warn("Microphone sidecar stream unavailable:", openResult.error);
+		return null;
+	}
+
+	const writer = createQueuedBlobWriter({
+		streamId: openResult.streamId,
+		writeChunk: window.electronAPI.writeMicrophoneSidecarStreamChunk,
+	});
+
+	return {
+		write: writer.write,
+		close: async (videoPath, options) => {
+			try {
+				await writer.waitForWrites();
+				return window.electronAPI.closeMicrophoneSidecarStream(
+					openResult.streamId!,
+					videoPath,
+					options,
+				);
+			} catch (error) {
+				await window.electronAPI.closeMicrophoneSidecarStream(openResult.streamId!, "", {
+					abort: true,
+				});
+				throw error;
+			}
+		},
+		abort: async () => {
+			await window.electronAPI.closeMicrophoneSidecarStream(openResult.streamId!, "", {
+				abort: true,
+			});
+		},
+	};
+}
 const LINUX_PORTAL_SOURCE: ProcessedDesktopSource = {
 	id: "screen:linux-portal",
 	name: "Linux Portal",
@@ -280,6 +424,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const mixingContext = useRef<AudioContext | null>(null);
 	const chunks = useRef<Blob[]>([]);
 	const webcamChunks = useRef<Blob[]>([]);
+	const recordingStreamWriter = useRef<ChunkStreamWriter | null>(null);
+	const webcamStreamWriter = useRef<ChunkStreamWriter | null>(null);
 	const startTime = useRef<number>(0);
 	const webcamStartTime = useRef<number | null>(null);
 	const webcamTimeOffsetMs = useRef(0);
@@ -299,6 +445,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const pauseStartedAtMs = useRef<number | null>(null);
 	const micFallbackRecorder = useRef<MediaRecorder | null>(null);
 	const micFallbackChunks = useRef<Blob[]>([]);
+	const micFallbackStreamWriter = useRef<MicrophoneSidecarStreamWriter | null>(null);
 	const micFallbackStartDelayMs = useRef<number | null>(null);
 	const micFallbackTrackSettings = useRef<MicrophoneTrackSettingsSnapshot | null>(null);
 	const micFallbackRequestedConstraints = useRef<MediaStreamConstraints | null>(null);
@@ -314,10 +461,33 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	);
 	const requestedBrowserMicrophoneProfile = useRef<string | null>(null);
 	const hideEditorOverlayCursorByDefault = useRef(false);
+	const discardRecording = useRef(false);
 
 	const notifyRecordingFinalizationFailure = useCallback(async (message: string) => {
 		setFinalizing(false);
 		toast.error(message, { duration: 10000 });
+	}, []);
+
+	const abortOpenChunkStreams = useCallback(() => {
+		const abortWriter = (
+			writer: { abort: () => Promise<void> } | null,
+			label: string,
+		) => {
+			if (!writer) {
+				return;
+			}
+
+			void writer.abort().catch((error) => {
+				console.warn(`Failed to abort ${label} stream:`, error);
+			});
+		};
+
+		abortWriter(recordingStreamWriter.current, "recording");
+		abortWriter(webcamStreamWriter.current, "webcam");
+		abortWriter(micFallbackStreamWriter.current, "microphone sidecar");
+		recordingStreamWriter.current = null;
+		webcamStreamWriter.current = null;
+		micFallbackStreamWriter.current = null;
 	}, []);
 
 	const logNativeCaptureDiagnostics = useCallback(async (context: string) => {
@@ -476,10 +646,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		return selectWebcamRecordingMimeType();
 	}, []);
 
-	const computeBitrate = (width: number, height: number) => {
+	const computeBitrate = (width: number, height: number, frameRate = TARGET_FRAME_RATE) => {
 		const pixels = width * height;
+		const normalizedFrameRate = Number.isFinite(frameRate) ? frameRate : TARGET_FRAME_RATE;
 		const highFrameRateBoost =
-			TARGET_FRAME_RATE >= HIGH_FRAME_RATE_THRESHOLD ? HIGH_FRAME_RATE_BOOST : 1;
+			normalizedFrameRate >= HIGH_FRAME_RATE_THRESHOLD
+				? Math.min(HIGH_FRAME_RATE_BOOST, normalizedFrameRate / MIN_FRAME_RATE)
+				: 1;
 
 		if (pixels >= FOUR_K_PIXELS) {
 			return Math.round(BITRATE_4K * highFrameRateBoost);
@@ -543,7 +716,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				return;
 			}
 
-			micFallbackChunks.current.push(event.data);
+			const streamWriter = micFallbackStreamWriter.current;
+			if (streamWriter) {
+				streamWriter.write(event.data);
+			} else {
+				micFallbackChunks.current.push(event.data);
+			}
 			const startedAt = micFallbackRecorderStartedAt.current;
 			if (startedAt === null) {
 				return;
@@ -688,8 +866,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			closeMicFallbackPauseInterval();
 			recorder.ondataavailable = appendMicFallbackChunk;
 			recorder.onstop = () => {
-				const blob =
-					micFallbackChunks.current.length > 0
+				const blob = micFallbackStreamWriter.current
+					? null
+					: micFallbackChunks.current.length > 0
 						? new Blob(micFallbackChunks.current, { type: recorder.mimeType })
 						: null;
 				micFallbackChunks.current = [];
@@ -741,55 +920,66 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			mediaTrackSettings?: MicrophoneTrackSettingsSnapshot | null,
 		) => {
 			const micFallbackBlob = await micFallbackBlobPromise;
-			if (!micFallbackBlob) {
-				micFallbackStartDelayMs.current = null;
-				micFallbackTrackSettings.current = null;
-				micFallbackRequestedConstraints.current = null;
-				micFallbackAudioInputDevices.current = null;
-				micFallbackRecorderMetadata.current = null;
-				resetMicFallbackTimingDiagnostics();
-				return;
-			}
+			const effectiveStartDelayMs = startDelayMs ?? micFallbackStartDelayMs.current;
+			const effectiveTrackSettings =
+				mediaTrackSettings ?? micFallbackTrackSettings.current;
+			const sidecarOptions: MicrophoneSidecarOptions = {
+				...(Number.isFinite(effectiveStartDelayMs) && (effectiveStartDelayMs ?? 0) >= 0
+					? { startDelayMs: effectiveStartDelayMs ?? 0 }
+					: {}),
+				browserMicrophoneProfile: browserMicrophoneProfile.current,
+				...(requestedBrowserMicrophoneProfile.current
+					? {
+							requestedBrowserMicrophoneProfile:
+								requestedBrowserMicrophoneProfile.current,
+						}
+					: {}),
+				...(micFallbackRequestedConstraints.current
+					? { requestedConstraints: micFallbackRequestedConstraints.current }
+					: {}),
+				...(effectiveTrackSettings
+					? { mediaTrackSettings: effectiveTrackSettings }
+					: {}),
+				...(micFallbackAudioInputDevices.current
+					? { audioInputDevices: micFallbackAudioInputDevices.current }
+					: {}),
+				...(micFallbackRecorderMetadata.current
+					? { mediaRecorder: micFallbackRecorderMetadata.current }
+					: {}),
+				...(micFallbackChunkEvents.current.length > 0
+					? { chunkEvents: [...micFallbackChunkEvents.current] }
+					: {}),
+				...(micFallbackPauseIntervals.current.length > 0
+					? {
+							pauseIntervals: micFallbackPauseIntervals.current.map((interval) => ({
+								...interval,
+							})),
+						}
+					: {}),
+			};
 
 			try {
+				const streamWriter = micFallbackStreamWriter.current;
+				if (streamWriter) {
+					micFallbackStreamWriter.current = null;
+					const result = await streamWriter.close(finalPath, sidecarOptions);
+					if (!result.success) {
+						const errorMessage =
+							result.error || "Failed to save the fallback microphone audio track";
+						console.warn("Failed to store microphone sidecar:", errorMessage);
+						toast.error(
+							`${errorMessage}. Recording was saved without the fallback microphone track.`,
+							{ id: MICROPHONE_SIDECAR_ERROR_TOAST_ID, duration: 10000 },
+						);
+					}
+					return;
+				}
+
+				if (!micFallbackBlob) {
+					return;
+				}
+
 				const arrayBuffer = await micFallbackBlob.arrayBuffer();
-				const effectiveStartDelayMs = startDelayMs ?? micFallbackStartDelayMs.current;
-				const effectiveTrackSettings =
-					mediaTrackSettings ?? micFallbackTrackSettings.current;
-				const sidecarOptions: MicrophoneSidecarOptions = {
-					...(Number.isFinite(effectiveStartDelayMs) && (effectiveStartDelayMs ?? 0) >= 0
-						? { startDelayMs: effectiveStartDelayMs ?? 0 }
-						: {}),
-					browserMicrophoneProfile: browserMicrophoneProfile.current,
-					...(requestedBrowserMicrophoneProfile.current
-						? {
-								requestedBrowserMicrophoneProfile:
-									requestedBrowserMicrophoneProfile.current,
-							}
-						: {}),
-					...(micFallbackRequestedConstraints.current
-						? { requestedConstraints: micFallbackRequestedConstraints.current }
-						: {}),
-					...(effectiveTrackSettings
-						? { mediaTrackSettings: effectiveTrackSettings }
-						: {}),
-					...(micFallbackAudioInputDevices.current
-						? { audioInputDevices: micFallbackAudioInputDevices.current }
-						: {}),
-					...(micFallbackRecorderMetadata.current
-						? { mediaRecorder: micFallbackRecorderMetadata.current }
-						: {}),
-					...(micFallbackChunkEvents.current.length > 0
-						? { chunkEvents: [...micFallbackChunkEvents.current] }
-						: {}),
-					...(micFallbackPauseIntervals.current.length > 0
-						? {
-								pauseIntervals: micFallbackPauseIntervals.current.map(
-									(interval) => ({ ...interval }),
-								),
-							}
-						: {}),
-				};
 				const result = await window.electronAPI.storeMicrophoneSidecar(
 					arrayBuffer,
 					finalPath,
@@ -914,7 +1104,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			});
 
 			const mimeType = selectWebcamMimeType();
+			const sessionTimestamp = recordingSessionTimestamp.current ?? Date.now();
+			const webcamFileName = `${RECORDING_FILE_PREFIX}${sessionTimestamp}${WEBCAM_SUFFIX}${getVideoExtensionForMimeType(mimeType)}`;
 			webcamChunks.current = [];
+			webcamStreamWriter.current = await createRecordingStreamWriter(webcamFileName).catch(
+				(error) => {
+					console.warn("Webcam recording stream unavailable:", error);
+					return null;
+				},
+			);
 			resolvedWebcamPath.current = null;
 			webcamStopPromise.current = new Promise((resolve) => {
 				webcamStopResolver.current = resolve;
@@ -928,7 +1126,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			webcamRecorder.current = recorder;
 			recorder.ondataavailable = (event) => {
-				if (event.data && event.data.size > 0) {
+				if (!event.data || event.data.size <= 0 || discardRecording.current) {
+					return;
+				}
+
+				if (webcamStreamWriter.current) {
+					webcamStreamWriter.current.write(event.data);
+				} else {
 					webcamChunks.current.push(event.data);
 				}
 			};
@@ -937,12 +1141,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				webcamStopResolver.current = null;
 			};
 			recorder.onstop = async () => {
-				const sessionTimestamp = recordingSessionTimestamp.current ?? Date.now();
 				const webcamMimeType = recorder.mimeType || mimeType;
-				const webcamFileName = `${RECORDING_FILE_PREFIX}${sessionTimestamp}${WEBCAM_SUFFIX}${getVideoExtensionForMimeType(webcamMimeType)}`;
+				const streamWriter = webcamStreamWriter.current;
+				webcamStreamWriter.current = null;
 
 				try {
-					if (webcamChunks.current.length === 0) {
+					if (discardRecording.current) {
+						webcamChunks.current = [];
 						webcamStopResolver.current?.(null);
 						return;
 					}
@@ -951,6 +1156,26 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						0,
 						getRecordingDurationMs(Date.now()) - webcamTimeOffsetMs.current,
 					);
+
+					if (streamWriter) {
+						const result = await streamWriter.close({
+							mimeType: webcamMimeType,
+						});
+						if (!result.success) {
+							console.warn(
+								"Failed to store webcam recording:",
+								result.error ?? result.message,
+							);
+						}
+						webcamStopResolver.current?.(result.success ? (result.path ?? null) : null);
+						return;
+					}
+
+					if (webcamChunks.current.length === 0) {
+						webcamStopResolver.current?.(null);
+						return;
+					}
+
 					const webcamBlob = new Blob(
 						webcamChunks.current,
 						webcamMimeType ? { type: webcamMimeType } : undefined,
@@ -979,6 +1204,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}
 			};
 		} catch (error) {
+			const streamWriter = webcamStreamWriter.current;
+			webcamStreamWriter.current = null;
+			void streamWriter?.abort().catch(() => undefined);
 			console.warn(
 				"Failed to start webcam recording; continuing without webcam layer:",
 				error,
@@ -1270,6 +1498,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			cleanup?.();
 			removeRecordingStateListener?.();
 			removeRecordingInterruptedListener?.();
+			discardRecording.current = true;
+			abortOpenChunkStreams();
 
 			if (nativeScreenRecording.current) {
 				nativeScreenRecording.current = false;
@@ -1284,7 +1514,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			cleanupCapturedMedia();
 		};
-	}, [cleanupCapturedMedia, recoverNativeRecordingSession]);
+	}, [abortOpenChunkStreams, cleanupCapturedMedia, recoverNativeRecordingSession]);
 
 	const startRecording = async () => {
 		if (startInFlight.current) {
@@ -1292,6 +1522,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 
 		hasPromptedForReselect.current = false;
+		discardRecording.current = false;
 		startInFlight.current = true;
 		setStarting(true);
 
@@ -1449,6 +1680,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 								micFallbackAudioInputDevices.current,
 							);
 							micFallbackChunks.current = [];
+							micFallbackStreamWriter.current =
+								await createMicrophoneSidecarStreamWriter().catch((error) => {
+									console.warn("Microphone sidecar stream unavailable:", error);
+									return null;
+								});
 							const recorder = new MediaRecorder(micStream, {
 								mimeType: "audio/webm;codecs=opus",
 								audioBitsPerSecond: AUDIO_BITRATE_VOICE,
@@ -1468,6 +1704,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							recorder.start(RECORDER_TIMESLICE_MS);
 							micFallbackRecorder.current = recorder;
 						} catch (micError) {
+							const streamWriter = micFallbackStreamWriter.current;
+							micFallbackStreamWriter.current = null;
+							void streamWriter?.abort().catch(() => undefined);
 							micFallbackStartDelayMs.current = null;
 							micFallbackTrackSettings.current = null;
 							micFallbackRequestedConstraints.current = null;
@@ -1693,7 +1932,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			width = Math.floor(width / CODEC_ALIGNMENT) * CODEC_ALIGNMENT;
 			height = Math.floor(height / CODEC_ALIGNMENT) * CODEC_ALIGNMENT;
 
-			const videoBitsPerSecond = computeBitrate(width, height);
+			const videoBitsPerSecond = computeBitrate(
+				width,
+				height,
+				frameRate ?? TARGET_FRAME_RATE,
+			);
 			const mimeType = selectMimeType();
 
 			console.log(
@@ -1703,6 +1946,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			);
 
 			chunks.current = [];
+			const timestamp = recordingSessionTimestamp.current ?? Date.now();
+			const videoFileName = `${RECORDING_FILE_PREFIX}${timestamp}${VIDEO_FILE_EXTENSION}`;
+			recordingStreamWriter.current = await createRecordingStreamWriter(videoFileName).catch(
+				(error) => {
+					console.warn("Recording stream unavailable:", error);
+					return null;
+				},
+			);
 			const hasAudio = stream.current.getAudioTracks().length > 0;
 			const recorder = new MediaRecorder(stream.current, {
 				videoBitsPerSecond,
@@ -1718,43 +1969,30 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			mediaRecorder.current = recorder;
 			recorder.ondataavailable = (event) => {
-				if (event.data && event.data.size > 0) chunks.current.push(event.data);
+				if (!event.data || event.data.size <= 0 || discardRecording.current) {
+					return;
+				}
+
+				if (recordingStreamWriter.current) {
+					recordingStreamWriter.current.write(event.data);
+				} else {
+					chunks.current.push(event.data);
+				}
 			};
 			recorder.onstop = async () => {
 				cleanupCapturedMedia();
-				if (chunks.current.length === 0) {
+				const streamWriter = recordingStreamWriter.current;
+				recordingStreamWriter.current = null;
+
+				if (discardRecording.current) {
+					chunks.current = [];
+					discardRecording.current = false;
 					setFinalizing(false);
 					return;
 				}
 
-				const duration = getRecordingDurationMs(Date.now());
-				const recordedChunks = chunks.current;
-				const recordingBlobType = recorder.mimeType || mimeType;
-				const buggyBlob = new Blob(
-					recordedChunks,
-					recordingBlobType ? { type: recordingBlobType } : undefined,
-				);
-				chunks.current = [];
-				const timestamp = recordingSessionTimestamp.current ?? Date.now();
-				const videoFileName = `${RECORDING_FILE_PREFIX}${timestamp}${VIDEO_FILE_EXTENSION}`;
-
 				try {
-					const videoBlob = await fixWebmDuration(buggyBlob, duration);
-					const arrayBuffer = await videoBlob.arrayBuffer();
-					const videoResult = await window.electronAPI.storeRecordedVideo(
-						arrayBuffer,
-						videoFileName,
-					);
-					if (!videoResult.success) {
-						console.error("Failed to store video:", videoResult.message);
-						await notifyRecordingFinalizationFailure(
-							videoResult.message || "Failed to store the recording.",
-						);
-						return;
-					}
-
-					if (videoResult.path) {
-						const finalVideoPath = videoResult.path;
+					const finalizeStoredBrowserVideo = async (finalVideoPath: string) => {
 						// 1. Launch editor immediately (Optimistic UI)
 						await finalizeRecordingSession(finalVideoPath, null);
 
@@ -1777,11 +2015,63 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 								// After all background tasks are done (webcam),
 								// we can safely close the HUD window to release hardware and resources.
 								if (typeof window.electronAPI?.hudOverlayClose === "function") {
-									console.log("[useScreenRecorder:browser] All background tasks finished, closing HUD");
+									console.log(
+										"[useScreenRecorder:browser] All background tasks finished, closing HUD",
+									);
 									window.electronAPI.hudOverlayClose();
 								}
 							}
 						})();
+					};
+					const duration = getRecordingDurationMs(Date.now());
+					const recordingBlobType = recorder.mimeType || mimeType;
+
+					if (streamWriter) {
+						const videoResult = await streamWriter.close({
+							mimeType: recordingBlobType,
+						});
+						if (!videoResult.success || !videoResult.path) {
+							console.error(
+								"Failed to store video:",
+								videoResult.error ?? videoResult.message,
+							);
+							await notifyRecordingFinalizationFailure(
+								videoResult.message || videoResult.error || "Failed to store the recording.",
+							);
+							return;
+						}
+
+						await finalizeStoredBrowserVideo(videoResult.path);
+						return;
+					}
+
+					if (chunks.current.length === 0) {
+						setFinalizing(false);
+						return;
+					}
+
+					const recordedChunks = chunks.current;
+					const buggyBlob = new Blob(
+						recordedChunks,
+						recordingBlobType ? { type: recordingBlobType } : undefined,
+					);
+					chunks.current = [];
+					const videoBlob = await fixWebmDuration(buggyBlob, duration);
+					const arrayBuffer = await videoBlob.arrayBuffer();
+					const videoResult = await window.electronAPI.storeRecordedVideo(
+						arrayBuffer,
+						videoFileName,
+					);
+					if (!videoResult.success) {
+						console.error("Failed to store video:", videoResult.message);
+						await notifyRecordingFinalizationFailure(
+							videoResult.message || "Failed to store the recording.",
+						);
+						return;
+					}
+
+					if (videoResult.path) {
+						await finalizeStoredBrowserVideo(videoResult.path);
 					} else {
 						await notifyRecordingFinalizationFailure("Failed to save the recording.");
 					}
@@ -1805,6 +2095,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			setRecording(true);
 			window.electronAPI?.setRecordingState(true);
 		} catch (error) {
+			discardRecording.current = true;
+			abortOpenChunkStreams();
 			console.error("Failed to start recording:", error);
 			alert(
 				error instanceof Error
@@ -1920,6 +2212,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 	const cancelRecording = useCallback(() => {
 		if (!recording) return;
+		discardRecording.current = true;
+		abortOpenChunkStreams();
 		setPaused(false);
 		markRecordingResumed(Date.now());
 
@@ -1963,7 +2257,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			setRecording(false);
 			window.electronAPI?.setRecordingState(false);
 		}
-	}, [cleanupCapturedMedia, markRecordingResumed, recording]);
+	}, [abortOpenChunkStreams, cleanupCapturedMedia, markRecordingResumed, recording]);
 
 	const toggleRecording = async () => {
 		if (starting || countdownActive || finalizing) {

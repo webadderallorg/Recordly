@@ -682,10 +682,27 @@ function findLatestSample(samples: CursorTelemetryPoint[], timeMs: number) {
 }
 
 function findLatestInteractionSample(samples: CursorTelemetryPoint[], timeMs: number) {
-	for (let index = samples.length - 1; index >= 0; index -= 1) {
+	if (samples.length === 0) return null;
+
+	const oldestRelevantTimeMs = timeMs - CLICK_RING_FADE_MS;
+	let lo = 0;
+	let hi = samples.length - 1;
+	while (lo < hi) {
+		const mid = Math.ceil((lo + hi) / 2);
+		if (samples[mid].timeMs <= timeMs) {
+			lo = mid;
+		} else {
+			hi = mid - 1;
+		}
+	}
+
+	for (let index = lo; index >= 0; index -= 1) {
 		const sample = samples[index];
 		if (sample.timeMs > timeMs) {
 			continue;
+		}
+		if (sample.timeMs < oldestRelevantTimeMs) {
+			break;
 		}
 
 		if (

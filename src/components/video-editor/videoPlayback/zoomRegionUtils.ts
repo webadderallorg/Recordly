@@ -34,6 +34,14 @@ type ConnectedPanTransition = {
 	endScale: number;
 };
 
+type ConnectedRegionCache = {
+	pairs: ConnectedRegionPair[];
+	outgoingByRegionId: Map<string, ConnectedRegionPair>;
+	incomingByRegionId: Map<string, ConnectedRegionPair>;
+};
+
+const connectedRegionCache = new WeakMap<ZoomRegion[], ConnectedRegionCache>();
+
 function lerp(start: number, end: number, amount: number) {
 	return start + (end - start) * amount;
 }
@@ -115,50 +123,74 @@ function getConnectedRegionPairs(regions: ZoomRegion[]) {
 	return pairs;
 }
 
+function getConnectedRegionCache(regions: ZoomRegion[]): ConnectedRegionCache {
+	const cached = connectedRegionCache.get(regions);
+	if (cached) {
+		return cached;
+	}
+
+	const pairs = getConnectedRegionPairs(regions);
+	const outgoingByRegionId = new Map<string, ConnectedRegionPair>();
+	const incomingByRegionId = new Map<string, ConnectedRegionPair>();
+
+	for (const pair of pairs) {
+		outgoingByRegionId.set(pair.currentRegion.id, pair);
+		incomingByRegionId.set(pair.nextRegion.id, pair);
+	}
+
+	const cache = { pairs, outgoingByRegionId, incomingByRegionId };
+	connectedRegionCache.set(regions, cache);
+	return cache;
+}
+
 function getActiveRegion(
 	regions: ZoomRegion[],
 	timeMs: number,
-	connectedPairs: ConnectedRegionPair[],
+	connectedCache: ConnectedRegionCache,
 	options: DominantRegionOptions,
 ) {
-	const activeRegions = regions
-		.map((region) => {
-			const outgoingPair = connectedPairs.find((pair) => pair.currentRegion.id === region.id);
-			if (outgoingPair && timeMs >= outgoingPair.transitionStart) {
-				return { region, strength: 0 };
-			}
+	let activeRegion: ZoomRegion | null = null;
+	let activeStrength = 0;
 
-			const incomingPair = connectedPairs.find((pair) => pair.nextRegion.id === region.id);
+	for (const region of regions) {
+		let strength = 0;
+		const outgoingPair = connectedCache.outgoingByRegionId.get(region.id);
+		if (outgoingPair && timeMs >= outgoingPair.transitionStart) {
+			strength = 0;
+		} else {
+			const incomingPair = connectedCache.incomingByRegionId.get(region.id);
 			if (incomingPair) {
 				if (timeMs < incomingPair.transitionStart) {
-					return { region, strength: 0 };
+					strength = 0;
+				} else {
+					const nextRegionZoomOutStart =
+						incomingPair.nextRegion.endMs -
+						ZOOM_OUT_EARLY_START_MS +
+						ZOOM_ANIMATION_LEAD_MS;
+					strength = timeMs < nextRegionZoomOutStart
+						? 1
+						: computeRegionStrength(region, timeMs, options);
 				}
-
-				const nextRegionZoomOutStart =
-					incomingPair.nextRegion.endMs -
-					ZOOM_OUT_EARLY_START_MS +
-					ZOOM_ANIMATION_LEAD_MS;
-				if (timeMs < nextRegionZoomOutStart) {
-					return { region, strength: 1 };
-				}
+			} else {
+				strength = computeRegionStrength(region, timeMs, options);
 			}
+		}
 
-			return { region, strength: computeRegionStrength(region, timeMs, options) };
-		})
-		.filter((entry) => entry.strength > 0)
-		.sort((left, right) => {
-			if (right.strength !== left.strength) {
-				return right.strength - left.strength;
-			}
+		if (
+			strength > 0 &&
+			(!activeRegion ||
+				strength > activeStrength ||
+				(strength === activeStrength && region.startMs > activeRegion.startMs))
+		) {
+			activeRegion = region;
+			activeStrength = strength;
+		}
+	}
 
-			return right.region.startMs - left.region.startMs;
-		});
-
-	if (activeRegions.length === 0) {
+	if (!activeRegion) {
 		return null;
 	}
 
-	const activeRegion = activeRegions[0].region;
 	const activeScale = ZOOM_DEPTH_SCALES[activeRegion.depth];
 
 	return {
@@ -166,7 +198,7 @@ function getActiveRegion(
 			...activeRegion,
 			focus: getResolvedFocus(activeRegion, activeScale),
 		},
-		strength: activeRegions[0].strength,
+		strength: activeStrength,
 		blendedScale: null,
 	};
 }
@@ -237,21 +269,23 @@ export function findDominantRegion(
 	blendedScale: number | null;
 	transition: ConnectedPanTransition | null;
 } {
-	const connectedPairs = options.connectZooms ? getConnectedRegionPairs(regions) : [];
+	const connectedCache = options.connectZooms
+		? getConnectedRegionCache(regions)
+		: { pairs: [], outgoingByRegionId: new Map(), incomingByRegionId: new Map() };
 
 	if (options.connectZooms) {
-		const connectedTransition = getConnectedRegionTransition(connectedPairs, timeMs);
+		const connectedTransition = getConnectedRegionTransition(connectedCache.pairs, timeMs);
 		if (connectedTransition) {
 			return connectedTransition;
 		}
 
-		const connectedHold = getConnectedRegionHold(timeMs, connectedPairs);
+		const connectedHold = getConnectedRegionHold(timeMs, connectedCache.pairs);
 		if (connectedHold) {
 			return { ...connectedHold, transition: null };
 		}
 	}
 
-	const activeRegion = getActiveRegion(regions, timeMs, connectedPairs, options);
+	const activeRegion = getActiveRegion(regions, timeMs, connectedCache, options);
 	return activeRegion
 		? { ...activeRegion, transition: null }
 		: { region: null, strength: 0, blendedScale: null, transition: null };

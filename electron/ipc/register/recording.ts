@@ -1,5 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { execFile, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -149,6 +150,156 @@ import {
 import { resolveWindowsCaptureDisplay } from "../windowsCaptureSelection";
 
 const execFileAsync = promisify(execFile);
+
+type BrowserMicrophoneSidecarOptions = {
+	startDelayMs?: number;
+	browserMicrophoneProfile?: string;
+	requestedBrowserMicrophoneProfile?: string | null;
+	requestedConstraints?: unknown;
+	mediaTrackSettings?: Record<string, boolean | number | string>;
+	audioInputDevices?: unknown;
+	mediaRecorder?: unknown;
+	chunkEvents?: unknown;
+	pauseIntervals?: unknown;
+};
+
+type FileStreamSession = {
+	streamId: string;
+	fileHandle: Awaited<ReturnType<typeof fs.open>>;
+	tempPath: string;
+	bytesWritten: number;
+	highestWatermark: number;
+	writeQueue: Promise<void>;
+	aborted: boolean;
+};
+
+type RecordingFileStreamSession = FileStreamSession & {
+	finalPath: string;
+};
+
+type RecordingStreamCloseOptions = {
+	abort?: boolean;
+	mimeType?: string | null;
+};
+
+const recordingFileStreams = new Map<string, RecordingFileStreamSession>();
+const microphoneSidecarStreams = new Map<string, FileStreamSession>();
+
+function getSafeRecordingFileName(fileName: string) {
+	const sanitizedBaseName = path.basename(fileName).replace(/[<>:"|?*]/g, "_");
+	const baseName = Array.from(sanitizedBaseName, (char) =>
+		char.charCodeAt(0) < 32 ? "_" : char,
+	).join("");
+	return baseName || `recording-${Date.now()}.webm`;
+}
+
+async function openWritableStreamSession(tempPath: string): Promise<FileStreamSession> {
+	await fs.mkdir(path.dirname(tempPath), { recursive: true });
+	const streamId = `recordly-recording-stream-${randomUUID()}`;
+	const fileHandle = await fs.open(tempPath, "w");
+	return {
+		streamId,
+		fileHandle,
+		tempPath,
+		bytesWritten: 0,
+		highestWatermark: 0,
+		writeQueue: Promise.resolve(),
+		aborted: false,
+	};
+}
+
+async function writeStreamSessionChunk<T extends FileStreamSession>(
+	sessions: Map<string, T>,
+	streamId: string,
+	position: number,
+	chunk: Uint8Array,
+) {
+	const session = sessions.get(streamId);
+	if (!session) {
+		throw new Error(`Recording stream not found: ${streamId}`);
+	}
+	if (session.aborted) {
+		throw new Error("Recording stream was aborted");
+	}
+
+	const next = session.writeQueue.then(async () => {
+		if (session.aborted) return;
+		const buffer = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+		await session.fileHandle.write(buffer, 0, buffer.byteLength, position);
+		session.bytesWritten += buffer.byteLength;
+		session.highestWatermark = Math.max(session.highestWatermark, position + buffer.byteLength);
+	});
+	session.writeQueue = next.catch(() => undefined);
+	await next;
+}
+
+async function closeStreamSession<T extends FileStreamSession>(
+	sessions: Map<string, T>,
+	streamId: string,
+	options?: { abort?: boolean },
+) {
+	const session = sessions.get(streamId);
+	if (!session) {
+		throw new Error(`Recording stream not found: ${streamId}`);
+	}
+
+	if (options?.abort) {
+		session.aborted = true;
+	}
+
+	try {
+		await session.writeQueue;
+	} finally {
+		await session.fileHandle.close().catch(() => undefined);
+		sessions.delete(streamId);
+	}
+
+	if (session.aborted) {
+		await fs.rm(session.tempPath, { force: true }).catch(() => undefined);
+	}
+
+	return session;
+}
+
+function isWebmRecording(filePath: string, mimeType?: string | null) {
+	return /^video\/webm(?:[;\s]|$)/i.test(mimeType ?? "") || /\.webm$/i.test(filePath);
+}
+
+async function remuxStreamedWebmRecording(
+	videoPath: string,
+	options?: RecordingStreamCloseOptions,
+) {
+	if (!isWebmRecording(videoPath, options?.mimeType)) {
+		return;
+	}
+
+	const remuxedPath = `${videoPath}.${randomUUID()}.fixed.webm`;
+	try {
+		await execFileAsync(
+			getFfmpegBinaryPath(),
+			[
+				"-y",
+				"-hide_banner",
+				"-nostdin",
+				"-nostats",
+				"-i",
+				videoPath,
+				"-map",
+				"0",
+				"-c",
+				"copy",
+				"-avoid_negative_ts",
+				"make_zero",
+				remuxedPath,
+			],
+			{ timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
+		);
+		await moveFileWithOverwrite(remuxedPath, videoPath);
+	} catch (error) {
+		await fs.rm(remuxedPath, { force: true }).catch(() => undefined);
+		console.warn("Failed to remux streamed WebM recording:", error);
+	}
+}
 
 async function writeWindowsRecordingDiagnostics(
 	videoPath: string | null | undefined,
@@ -364,6 +515,136 @@ async function cleanupWindowsOrphanedMicAudioPath(filePath: string | null) {
 	}
 
 	await fs.rm(filePath, { force: true }).catch(() => undefined);
+}
+
+async function finalizeMicrophoneSidecarFromWebm(
+	tempWebmPath: string,
+	videoPath: string,
+	options?: BrowserMicrophoneSidecarOptions,
+) {
+	const baseName = videoPath.replace(/\.[^.]+$/, "");
+	const sidecarPath = `${baseName}.mic.wav`;
+	const sourceWebmPath = `${baseName}.mic.source.webm`;
+	const sourceBytes = await getFileSizeIfPresent(tempWebmPath);
+
+	try {
+		await execFileAsync(
+			getFfmpegBinaryPath(),
+			[
+				"-y",
+				"-hide_banner",
+				"-nostdin",
+				"-nostats",
+				"-i",
+				tempWebmPath,
+				"-vn",
+				"-ac",
+				"1",
+				"-ar",
+				"48000",
+				"-af",
+				[
+					...getBrowserMicSidecarFilters(options?.browserMicrophoneProfile),
+					"aresample=async=1:first_pts=0",
+				].join(","),
+				"-c:a",
+				"pcm_s16le",
+				sidecarPath,
+			],
+			{ timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
+		);
+		if (shouldKeepRecordingAudioSidecars()) {
+			await fs.rename(tempWebmPath, sourceWebmPath).catch(async () => {
+				await fs.copyFile(tempWebmPath, sourceWebmPath);
+				await fs.rm(tempWebmPath, { force: true });
+			});
+		} else {
+			await fs.rm(tempWebmPath, { force: true });
+		}
+		const startDelayMs = options?.startDelayMs;
+		const mediaTrackSettings = pickPrimitiveRecord(options?.mediaTrackSettings);
+		const audioInputDevices = pickAudioInputDevices(options?.audioInputDevices);
+		const mediaRecorder = isRecord(options?.mediaRecorder)
+			? {
+					...(typeof options.mediaRecorder.mimeType === "string"
+						? { mimeType: options.mediaRecorder.mimeType }
+						: {}),
+					...(typeof options.mediaRecorder.audioBitsPerSecond === "number"
+						? {
+								audioBitsPerSecond: Math.round(
+									options.mediaRecorder.audioBitsPerSecond,
+								),
+							}
+						: {}),
+					...(typeof options.mediaRecorder.timesliceMs === "number"
+						? { timesliceMs: Math.round(options.mediaRecorder.timesliceMs) }
+						: {}),
+				}
+			: null;
+		const chunkEvents = pickMicrophoneChunkEvents(options?.chunkEvents);
+		const pauseIntervals = pickMicrophonePauseIntervals(options?.pauseIntervals);
+		const chunkTiming =
+			chunkEvents || pauseIntervals
+				? summarizeMicrophoneChunkTiming(
+						chunkEvents,
+						pauseIntervals,
+						mediaRecorder?.timesliceMs,
+					)
+				: null;
+		const metadata = {
+			...(Number.isFinite(startDelayMs) && (startDelayMs ?? 0) >= 0
+				? { startDelayMs: Math.round(startDelayMs ?? 0) }
+				: {}),
+			...(typeof options?.browserMicrophoneProfile === "string"
+				? { browserMicrophoneProfile: options.browserMicrophoneProfile }
+				: {}),
+			...(typeof options?.requestedBrowserMicrophoneProfile === "string"
+				? {
+						requestedBrowserMicrophoneProfile:
+							options.requestedBrowserMicrophoneProfile,
+					}
+				: {}),
+			...(isRecord(options?.requestedConstraints)
+				? { requestedConstraints: options.requestedConstraints }
+				: {}),
+			...(mediaTrackSettings ? { mediaTrackSettings } : {}),
+			...(audioInputDevices ? { audioInputDevices } : {}),
+			...(mediaRecorder && Object.keys(mediaRecorder).length > 0
+				? { mediaRecorder }
+				: {}),
+			...(chunkEvents ? { chunkEvents } : {}),
+			...(pauseIntervals ? { pauseIntervals } : {}),
+			...(chunkTiming ? { chunkTiming } : {}),
+		};
+		if (Object.keys(metadata).length > 0) {
+			try {
+				await fs.writeFile(`${sidecarPath}.json`, JSON.stringify(metadata));
+			} catch (metadataError) {
+				console.warn("Failed to store microphone sidecar timing metadata:", metadataError);
+			}
+		}
+		await writeRecordingDiagnosticsSnapshot(videoPath, {
+			backend: "browser-store",
+			phase: "mic-sidecar",
+			outputPath: videoPath,
+			microphonePath: sidecarPath,
+			details: {
+				sourceBytes,
+				sourceWebmPath: shouldKeepRecordingAudioSidecars() ? sourceWebmPath : null,
+				metadata,
+			},
+		}).catch((diagnosticsError) => {
+			console.warn("Failed to write microphone sidecar diagnostics:", diagnosticsError);
+		});
+		return { success: true, path: sidecarPath };
+	} catch (error) {
+		await Promise.all([
+			fs.rm(tempWebmPath, { force: true }).catch(() => undefined),
+			fs.rm(sidecarPath, { force: true }).catch(() => undefined),
+		]);
+		console.error("Failed to store microphone sidecar:", error);
+		return { success: false, error: String(error) };
+	}
 }
 
 export function registerRecordingHandlers(
@@ -1468,154 +1749,115 @@ export function registerRecordingHandlers(
 		}
 	});
 
+	ipcMain.handle("recording-stream-open", async (_event, fileName: string) => {
+		try {
+			const recordingsDir = await getRecordingsDir();
+			const safeFileName = getSafeRecordingFileName(fileName);
+			const finalPath = path.join(recordingsDir, safeFileName);
+			const tempPath = path.join(recordingsDir, `${safeFileName}.${randomUUID()}.tmp`);
+			const session = (await openWritableStreamSession(tempPath)) as RecordingFileStreamSession;
+			session.finalPath = finalPath;
+			recordingFileStreams.set(session.streamId, session);
+			return { success: true, streamId: session.streamId, path: finalPath };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
+
+	ipcMain.handle(
+		"recording-stream-write",
+		async (_event, streamId: string, position: number, chunk: Uint8Array) => {
+			try {
+				await writeStreamSessionChunk(recordingFileStreams, streamId, position, chunk);
+				return { success: true };
+			} catch (error) {
+				return { success: false, error: String(error) };
+			}
+		},
+	);
+
+	ipcMain.handle(
+		"recording-stream-close",
+		async (_event, streamId: string, options?: RecordingStreamCloseOptions) => {
+			try {
+				const session = await closeStreamSession(recordingFileStreams, streamId, options);
+				if (options?.abort) {
+					return { success: true, bytesWritten: 0 };
+				}
+				await moveFileWithOverwrite(session.tempPath, session.finalPath);
+				await remuxStreamedWebmRecording(session.finalPath, options);
+				const result = await finalizeStoredVideo(session.finalPath);
+				return { ...result, bytesWritten: session.highestWatermark };
+			} catch (error) {
+				return { success: false, error: String(error), message: "Failed to store video" };
+			}
+		},
+	);
+
+	ipcMain.handle("microphone-sidecar-stream-open", async () => {
+		try {
+			const recordingsDir = await getRecordingsDir();
+			const tempPath = path.join(
+				recordingsDir,
+				`recordly-microphone-${Date.now()}-${randomUUID()}.source.webm.tmp`,
+			);
+			const session = await openWritableStreamSession(tempPath);
+			microphoneSidecarStreams.set(session.streamId, session);
+			return { success: true, streamId: session.streamId };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
+
+	ipcMain.handle(
+		"microphone-sidecar-stream-write",
+		async (_event, streamId: string, position: number, chunk: Uint8Array) => {
+			try {
+				await writeStreamSessionChunk(microphoneSidecarStreams, streamId, position, chunk);
+				return { success: true };
+			} catch (error) {
+				return { success: false, error: String(error) };
+			}
+		},
+	);
+
+	ipcMain.handle(
+		"microphone-sidecar-stream-close",
+		async (
+			_event,
+			streamId: string,
+			videoPath: string,
+			options?: BrowserMicrophoneSidecarOptions & { abort?: boolean },
+		) => {
+			try {
+				const session = await closeStreamSession(microphoneSidecarStreams, streamId, options);
+				if (options?.abort) {
+					return { success: true };
+				}
+				return await finalizeMicrophoneSidecarFromWebm(session.tempPath, videoPath, options);
+			} catch (error) {
+				return { success: false, error: String(error) };
+			}
+		},
+	);
+
 	ipcMain.handle(
 		"store-microphone-sidecar",
 		async (
 			_,
 			audioData: ArrayBuffer,
 			videoPath: string,
-			options?: {
-				startDelayMs?: number;
-				browserMicrophoneProfile?: string;
-				requestedBrowserMicrophoneProfile?: string | null;
-				requestedConstraints?: unknown;
-				mediaTrackSettings?: Record<string, boolean | number | string>;
-				audioInputDevices?: unknown;
-				mediaRecorder?: unknown;
-				chunkEvents?: unknown;
-				pauseIntervals?: unknown;
-			},
+			options?: BrowserMicrophoneSidecarOptions,
 		) => {
 			const baseName = videoPath.replace(/\.[^.]+$/, "");
-			const sidecarPath = `${baseName}.mic.wav`;
-			const sourceWebmPath = `${baseName}.mic.source.webm`;
-			const tempWebmPath = `${sourceWebmPath}.tmp`;
-
+			const tempWebmPath = `${baseName}.mic.source.webm.tmp`;
 			try {
 				await fs.writeFile(tempWebmPath, Buffer.from(audioData));
-				await execFileAsync(
-					getFfmpegBinaryPath(),
-					[
-						"-y",
-						"-hide_banner",
-						"-nostdin",
-						"-nostats",
-						"-i",
-						tempWebmPath,
-						"-vn",
-						"-ac",
-						"1",
-						"-ar",
-						"48000",
-						"-af",
-						[
-							...getBrowserMicSidecarFilters(options?.browserMicrophoneProfile),
-							"aresample=async=1:first_pts=0",
-						].join(","),
-						"-c:a",
-						"pcm_s16le",
-						sidecarPath,
-					],
-					{ timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
-				);
-				if (shouldKeepRecordingAudioSidecars()) {
-					await fs.rename(tempWebmPath, sourceWebmPath).catch(async () => {
-						await fs.copyFile(tempWebmPath, sourceWebmPath);
-						await fs.rm(tempWebmPath, { force: true });
-					});
-				} else {
-					await fs.rm(tempWebmPath, { force: true });
-				}
-				const startDelayMs = options?.startDelayMs;
-				const mediaTrackSettings = pickPrimitiveRecord(options?.mediaTrackSettings);
-				const audioInputDevices = pickAudioInputDevices(options?.audioInputDevices);
-				const mediaRecorder = isRecord(options?.mediaRecorder)
-					? {
-							...(typeof options.mediaRecorder.mimeType === "string"
-								? { mimeType: options.mediaRecorder.mimeType }
-								: {}),
-							...(typeof options.mediaRecorder.audioBitsPerSecond === "number"
-								? {
-										audioBitsPerSecond: Math.round(
-											options.mediaRecorder.audioBitsPerSecond,
-										),
-									}
-								: {}),
-							...(typeof options.mediaRecorder.timesliceMs === "number"
-								? { timesliceMs: Math.round(options.mediaRecorder.timesliceMs) }
-								: {}),
-						}
-					: null;
-				const chunkEvents = pickMicrophoneChunkEvents(options?.chunkEvents);
-				const pauseIntervals = pickMicrophonePauseIntervals(options?.pauseIntervals);
-				const chunkTiming =
-					chunkEvents || pauseIntervals
-						? summarizeMicrophoneChunkTiming(
-								chunkEvents,
-								pauseIntervals,
-								mediaRecorder?.timesliceMs,
-							)
-						: null;
-				const metadata = {
-					...(Number.isFinite(startDelayMs) && (startDelayMs ?? 0) >= 0
-						? { startDelayMs: Math.round(startDelayMs ?? 0) }
-						: {}),
-					...(typeof options?.browserMicrophoneProfile === "string"
-						? { browserMicrophoneProfile: options.browserMicrophoneProfile }
-						: {}),
-					...(typeof options?.requestedBrowserMicrophoneProfile === "string"
-						? {
-								requestedBrowserMicrophoneProfile:
-									options.requestedBrowserMicrophoneProfile,
-							}
-						: {}),
-					...(isRecord(options?.requestedConstraints)
-						? { requestedConstraints: options.requestedConstraints }
-						: {}),
-					...(mediaTrackSettings ? { mediaTrackSettings } : {}),
-					...(audioInputDevices ? { audioInputDevices } : {}),
-					...(mediaRecorder && Object.keys(mediaRecorder).length > 0
-						? { mediaRecorder }
-						: {}),
-					...(chunkEvents ? { chunkEvents } : {}),
-					...(pauseIntervals ? { pauseIntervals } : {}),
-					...(chunkTiming ? { chunkTiming } : {}),
-				};
-				if (Object.keys(metadata).length > 0) {
-					try {
-						await fs.writeFile(`${sidecarPath}.json`, JSON.stringify(metadata));
-					} catch (metadataError) {
-						console.warn(
-							"Failed to store microphone sidecar timing metadata:",
-							metadataError,
-						);
-					}
-				}
-				await writeRecordingDiagnosticsSnapshot(videoPath, {
-					backend: "browser-store",
-					phase: "mic-sidecar",
-					outputPath: videoPath,
-					microphonePath: sidecarPath,
-					details: {
-						sourceBytes: audioData.byteLength,
-						sourceWebmPath: shouldKeepRecordingAudioSidecars() ? sourceWebmPath : null,
-						metadata,
-					},
-				}).catch((diagnosticsError) => {
-					console.warn(
-						"Failed to write microphone sidecar diagnostics:",
-						diagnosticsError,
-					);
-				});
-				return { success: true, path: sidecarPath };
 			} catch (error) {
-				await Promise.all([
-					fs.rm(tempWebmPath, { force: true }).catch(() => undefined),
-					fs.rm(sidecarPath, { force: true }).catch(() => undefined),
-				]);
 				console.error("Failed to store microphone sidecar:", error);
 				return { success: false, error: String(error) };
 			}
+			return await finalizeMicrophoneSidecarFromWebm(tempWebmPath, videoPath, options);
 		},
 	);
 
