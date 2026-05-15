@@ -181,8 +181,22 @@ function getHudOverlayDisplay() {
 	return getScreen().getPrimaryDisplay();
 }
 
+
 function getHudOverlayBounds() {
 	const { workArea } = getHudOverlayDisplay();
+
+	if (process.platform === "linux") {
+		const width = 520;
+		const height = 220;
+
+		return {
+			width,
+			height, 
+			x: Math.round(workArea.x + (workArea.width - width) / 2),
+			y: workArea.y + workArea.height - 240,
+		};
+	}
+
 	return {
 		x: workArea.x,
 		y: workArea.y,
@@ -250,7 +264,11 @@ ipcMain.on("hud-overlay-set-ignore-mouse", (_event, ignore: boolean) => {
 		}
 
 		if (ignore) {
-			hudOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
+						if (process.platform === "linux") {
+				hudOverlayWindow.setIgnoreMouseEvents(true);
+			} else {
+				hudOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
+			}
 			return;
 		}
 
@@ -360,7 +378,6 @@ export function createHudOverlayWindow(): BrowserWindow {
 	loadHudOverlayCaptureProtectionSetting();
 	const initialBounds = getHudOverlayBounds();
 	let hasShownHudWindow = false;
-
 	const win = new BrowserWindow({
 		width: initialBounds.width,
 		height: initialBounds.height,
@@ -383,7 +400,6 @@ export function createHudOverlayWindow(): BrowserWindow {
 			backgroundThrottling: false,
 		},
 	});
-
 	const showHudWindow = () => {
 		if (hasShownHudWindow || win.isDestroyed()) {
 			return;
