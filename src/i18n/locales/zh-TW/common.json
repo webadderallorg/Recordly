@@ -4,23 +4,23 @@
 		"editorTitle": "Recordly 編輯器",
 		"subtitle": "螢幕錄製與編輯",
 		"language": "語言",
-		"manageRecordings": "打開錄製影像文件夾"
+		"manageRecordings": "開啟錄影資料夾"
 	},
 	"actions": {
 		"cancel": "取消",
 		"close": "關閉",
-		"export": "導出",
-		"load": "讀取",
+		"export": "匯出",
+		"load": "載入",
 		"redo": "重做",
-		"reset": "重置",
-		"save": "保存",
-		"undo": "撤銷",
+		"reset": "重設",
+		"save": "儲存",
+		"undo": "復原",
 		"delete": "刪除",
 		"done": "完成"
 	},
 	"errors": {
-		"invalidFileType": "無效的檔案類型",
+		"invalidFileType": "檔案類型無效",
 		"failedToUploadImage": "上傳圖片失敗",
-		"fileReadError": "讀取檔案時出錯。"
+		"fileReadError": "讀取檔案時發生錯誤。"
 	}
 }

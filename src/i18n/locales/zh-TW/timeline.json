@@ -4,17 +4,17 @@
 		"existsOrNoSpace": "此位置已存在縮放，或可用空間不足。",
 		"suggestHandlerUnavailable": "無法使用縮放建議功能",
 		"noTelemetry": "沒有可用的游標追蹤資料",
-		"recordFirst": "請先錄製螢幕影片，以產生基於游標的建議。",
+		"recordFirst": "請先完成一段螢幕錄影，以產生游標建議。",
 		"noUsableTelemetry": "沒有可用的游標追蹤資料",
 		"notEnoughMovement": "此錄影缺少足夠的游標移動資料。",
-		"noInteractionMoments": "找不到明確的互動時刻",
-		"tryRecording": "請嘗試在重要操作前後加入停頓或點擊再錄製。",
-		"noAutoZoomSlots": "沒有可用的自動縮放插槽",
+		"noInteractionMoments": "找不到明確的互動時點",
+		"tryRecording": "請嘗試在重要操作前後加入停頓或點選再錄製。",
+		"noAutoZoomSlots": "沒有可用的自動縮放位置",
 		"dwellPointsOverlap": "偵測到的停留點與既有縮放區域重疊。",
 		"addedSuggestions": "已新增 {{count}} 個依互動產生的縮放建議",
 		"label": "縮放 {{index}}",
 		"addZoom": "新增縮放（Z）",
-		"suggestZooms": "依游標建議縮放"
+		"suggestZooms": "依游標動作建議縮放"
 	},
 	"trim": {
 		"cannotPlace": "無法在此處新增修剪",
@@ -23,9 +23,9 @@
 		"addTrim": "新增修剪（T）"
 	},
 	"speed": {
-		"cannotPlace": "無法在此處新增速度區域",
-		"existsOrNoSpace": "此位置已存在速度區域，或可用空間不足。",
-		"label": "速度"
+		"cannotPlace": "無法在此處新增變速區段",
+		"existsOrNoSpace": "此位置已存在變速區段，或可用空間不足。",
+		"label": "變速"
 	},
 	"annotation": {
 		"label": "註解",
@@ -35,7 +35,7 @@
 	"audio": {
 		"label": "音訊"
 	},
-	"addSpeed": "新增速度（S）",
-	"resizeLeft": "向左調整大小",
-	"resizeRight": "向右調整大小"
+	"addSpeed": "新增變速（S）",
+	"resizeLeft": "調整左側大小",
+	"resizeRight": "調整右側大小"
 }
