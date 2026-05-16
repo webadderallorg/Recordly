@@ -9,7 +9,10 @@ import type {
 	Padding,
 	SpeedRegion,
 	TrimRegion,
+	WebcamFocusRegion,
 	WebcamOverlaySettings,
+	WebcamPositionRegion,
+	WebcamSizeRegion,
 	ZoomMotionBlurTuning,
 	ZoomRegion,
 	ZoomTransitionEasing,
@@ -62,6 +65,9 @@ interface GifExporterConfig {
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
 	webcamUrl?: string | null;
+	webcamSizeRegions?: WebcamSizeRegion[];
+	webcamFocusRegions?: WebcamFocusRegion[];
+	webcamPositionRegions?: WebcamPositionRegion[];
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
@@ -187,6 +193,9 @@ export class GifExporter {
 				cropRegion: this.config.cropRegion,
 				webcam: this.config.webcam,
 				webcamUrl: this.config.webcamUrl,
+				webcamSizeRegions: this.config.webcamSizeRegions,
+				webcamFocusRegions: this.config.webcamFocusRegions,
+				webcamPositionRegions: this.config.webcamPositionRegions,
 				videoWidth: videoInfo.width,
 				videoHeight: videoInfo.height,
 				annotationRegions: this.config.annotationRegions,

@@ -11,7 +11,10 @@ import type {
 	SpeedRegion,
 	SourceAudioTrackSettings,
 	TrimRegion,
+	WebcamFocusRegion,
 	WebcamOverlaySettings,
+	WebcamPositionRegion,
+	WebcamSizeRegion,
 	ZoomMotionBlurTuning,
 	ZoomRegion,
 	ZoomTransitionEasing,
@@ -115,6 +118,9 @@ interface VideoExporterConfig extends ExportConfig {
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
 	webcamUrl?: string | null;
+	webcamSizeRegions?: WebcamSizeRegion[];
+	webcamFocusRegions?: WebcamFocusRegion[];
+	webcamPositionRegions?: WebcamPositionRegion[];
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
@@ -593,6 +599,9 @@ export class ModernVideoExporter {
 					cropRegion: this.config.cropRegion,
 					webcam: this.config.webcam,
 					webcamUrl: this.config.webcamUrl,
+					webcamSizeRegions: this.config.webcamSizeRegions,
+					webcamFocusRegions: this.config.webcamFocusRegions,
+					webcamPositionRegions: this.config.webcamPositionRegions,
 					videoWidth: videoInfo.width,
 					videoHeight: videoInfo.height,
 					annotationRegions: this.config.annotationRegions,
@@ -1512,6 +1521,22 @@ export class ModernVideoExporter {
 		if (this.config.webcam?.enabled && !this.getNativeWebcamSourcePath()) {
 			reasons.push("unsupported-webcam-source");
 		}
+		if ((this.config.webcamSizeRegions ?? []).length > 0) {
+			reasons.push("unsupported-webcam-size-regions");
+		}
+		if ((this.config.webcamFocusRegions ?? []).length > 0) {
+			reasons.push("unsupported-webcam-focus-regions");
+		}
+		if (this.config.webcam?.enabled && this.config.webcam.avoidCursor) {
+			reasons.push("unsupported-webcam-avoid-cursor");
+		}
+		if (
+			this.config.webcam?.enabled &&
+			Math.round(this.config.webcam.height ?? this.config.webcam.size ?? 40) !==
+				Math.round(this.config.webcam.size ?? 40)
+		) {
+			reasons.push("unsupported-webcam-vertical-stretch");
+		}
 
 		if (this.config.frame) {
 			reasons.push("unsupported-frame-overlay");
@@ -1964,6 +1989,9 @@ export class ModernVideoExporter {
 
 		const inputPath = this.getNativeWebcamSourcePath();
 		if (!inputPath) {
+			return null;
+		}
+		if (Math.round(webcam.height ?? webcam.size ?? 40) !== Math.round(webcam.size ?? 40)) {
 			return null;
 		}
 

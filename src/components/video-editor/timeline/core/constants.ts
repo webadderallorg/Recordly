@@ -3,6 +3,9 @@ export const CLIP_ROW_ID = "row-clip";
 export const ANNOTATION_ROW_ID = "row-annotation";
 export const AUDIO_ROW_ID = "row-audio";
 export const SOURCE_AUDIO_ROW_ID = "row-source-audio";
+export const WEBCAM_SIZE_ROW_ID = "row-webcam-size";
+export const WEBCAM_FOCUS_ROW_ID = "row-webcam-focus";
+export const WEBCAM_POSITION_ROW_ID = "row-webcam-position";
 export const ANNOTATION_ROW_PREFIX = `${ANNOTATION_ROW_ID}-`;
 export const AUDIO_ROW_PREFIX = `${AUDIO_ROW_ID}-`;
 

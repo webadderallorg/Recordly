@@ -1,3 +1,4 @@
+import { CursorClick, FlipHorizontal } from "@phosphor-icons/react";
 import { Application, Container, Graphics, Rectangle, Sprite, Texture, VideoSource } from "pixi.js";
 import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
@@ -40,7 +41,10 @@ import {
 	type Padding,
 	type SpeedRegion,
 	type TrimRegion,
+	type WebcamFocusRegion,
 	type WebcamOverlaySettings,
+	type WebcamPositionRegion,
+	type WebcamSizeRegion,
 	ZOOM_DEPTH_SCALES,
 	type ZoomDepth,
 	type ZoomFocus,
@@ -62,6 +66,8 @@ import {
 	type SpringState,
 	stepSpringValue,
 } from "./videoPlayback/motionSmoothing";
+import { getInterpolatedWebcamPositionAtTime } from "./webcamPositionRegions";
+import { getInterpolatedWebcamDimensionsAtTime } from "./webcamSizeRegions";
 
 function getContributedCursorStylesSignature() {
 	return extensionHost
@@ -135,11 +141,13 @@ import {
 	DEFAULT_CURSOR_CLICK_BOUNCE_DURATION,
 	DEFAULT_CURSOR_MOTION_BLUR,
 	DEFAULT_CURSOR_SIZE,
-	DEFAULT_CURSOR_STYLE,
 	DEFAULT_CURSOR_SMOOTHING,
+	DEFAULT_CURSOR_STYLE,
 	DEFAULT_CURSOR_SWAY,
 	DEFAULT_PADDING,
+	DEFAULT_WEBCAM_AVOID_CURSOR,
 	DEFAULT_WEBCAM_CORNER_RADIUS,
+	DEFAULT_WEBCAM_HEIGHT,
 	DEFAULT_WEBCAM_REACT_TO_ZOOM,
 	DEFAULT_WEBCAM_SHADOW,
 	DEFAULT_WEBCAM_SIZE,
@@ -173,9 +181,18 @@ import {
 	type MotionBlurState,
 } from "./videoPlayback/zoomTransform";
 import {
-	getWebcamCropSourceRect,
+	getInterpolatedFocusStateAtTime,
+	getWebcamFocusScreenTransform,
+	type WebcamFocusState,
+} from "./webcamFocusRegions";
+import {
+	clampWebcamOverlayPosition,
+	getSnappedWebcamPositionPoint,
+	getWebcamAvoidCursorPosition,
+	getWebcamCropDrawLayout,
 	getWebcamOverlayPosition,
 	getWebcamOverlaySizePx,
+	getWebcamSizePercentFromPx,
 } from "./webcamOverlay";
 
 type PlaybackAnimationState = {
@@ -209,7 +226,10 @@ const PIXI_RENDERER_INIT_TIMEOUT_MS = 8_000;
 
 function isCanvasRenderer(application: Application): boolean {
 	const rendererName = application?.renderer?.constructor?.name?.toLowerCase();
-	return Boolean(rendererName && (rendererName.includes("canvasrenderer") || rendererName.includes("canvas")));
+	return Boolean(
+		rendererName &&
+			(rendererName.includes("canvasrenderer") || rendererName.includes("canvas")),
+	);
 }
 
 function toRendererErrorMessage(error: unknown): string {
@@ -218,7 +238,10 @@ function toRendererErrorMessage(error: unknown): string {
 
 function isRendererUnavailableError(error: unknown): boolean {
 	const message = toRendererErrorMessage(error).toLowerCase();
-	return message.includes("canvasrenderer is not yet implemented") || message.includes("no available renderer");
+	return (
+		message.includes("canvasrenderer is not yet implemented") ||
+		message.includes("no available renderer")
+	);
 }
 
 function summarizeRendererAttempts(attempts: readonly PixiRendererAttempt[]): string {
@@ -340,6 +363,20 @@ interface VideoPlaybackProps {
 	cropRegion?: import("./types").CropRegion;
 	webcam?: WebcamOverlaySettings;
 	webcamVideoPath?: string | null;
+	webcamSizeRegions?: WebcamSizeRegion[];
+	webcamFocusRegions?: WebcamFocusRegion[];
+	selectedWebcamFocusRegionId?: string | null;
+	webcamPositionRegions?: WebcamPositionRegion[];
+	selectedWebcamPositionRegionId?: string | null;
+	onSelectWebcamPositionRegion?: (id: string | null) => void;
+	onWebcamPositionDragStart?: (positionX?: number, positionY?: number) => string | null;
+	onWebcamPositionDrag?: (id: string, positionX: number, positionY: number) => void;
+	onWebcamSizeResizeStart?: () => void;
+	onWebcamSizeResize?: (sizePercent: number) => void;
+	onWebcamHeightResize?: (heightPercent: number) => void;
+	onWebcamSizeResizeEnd?: () => void;
+	onWebcamMirrorToggle?: () => void;
+	onWebcamAvoidCursorToggle?: () => void;
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
 	aspectRatio: AspectRatio;
@@ -418,6 +455,19 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			cropRegion,
 			webcam,
 			webcamVideoPath,
+			webcamSizeRegions = [],
+			webcamFocusRegions = [],
+			webcamPositionRegions = [],
+			selectedWebcamPositionRegionId = null,
+			onSelectWebcamPositionRegion,
+			onWebcamPositionDragStart,
+			onWebcamPositionDrag,
+			onWebcamSizeResizeStart,
+			onWebcamSizeResize,
+			onWebcamHeightResize,
+			onWebcamSizeResizeEnd,
+			onWebcamMirrorToggle,
+			onWebcamAvoidCursorToggle,
 			trimRegions = [],
 			speedRegions = [],
 			aspectRatio,
@@ -494,6 +544,21 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const webcamVideoRef = useRef<HTMLVideoElement | null>(null);
 		const webcamBubbleRef = useRef<HTMLDivElement | null>(null);
 		const webcamBubbleInnerRef = useRef<HTMLDivElement | null>(null);
+		const webcamCropContentRef = useRef<HTMLDivElement | null>(null);
+		const webcamResizeBadgeRef = useRef<HTMLDivElement | null>(null);
+		const webcamPositionDragRef = useRef<{
+			regionId: string | null;
+			pointerId: number;
+			startClientX: number;
+			startClientY: number;
+			startPositionX: number;
+			startPositionY: number;
+			startLeftPx: number;
+			startTopPx: number;
+			startWidthPx: number;
+			startHeightPx: number;
+			active: boolean;
+		} | null>(null);
 		const [webcamVideoDimensions, setWebcamVideoDimensions] = useState<{
 			width: number;
 			height: number;
@@ -570,6 +635,25 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const zoomMotionBlurRef = useRef(zoomMotionBlur);
 		const zoomMotionBlurTuningRef = useRef(zoomMotionBlurTuning);
 		const lastEmittedClickTimeMsRef = useRef(-1);
+		const webcamSizeResizeRef = useRef<{
+			handle: string;
+			startClientX: number;
+			startClientY: number;
+			startSizePx: number;
+			startWidthPx: number;
+			startHeightPx: number;
+			startLeftPx: number;
+			startTopPx: number;
+			startBottomPx: number;
+			positionRegionId: string | null;
+			currentPercent: number;
+			currentWidthPercent: number;
+			currentHeightPercent: number;
+			currentWidthPx: number;
+			currentHeightPx: number;
+			currentLeftPx: number;
+			currentTopPx: number;
+		} | null>(null);
 
 		// Spring animation state for smooth zoom transitions
 		const springScaleRef = useRef<SpringState>(createSpringState(1));
@@ -583,7 +667,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		);
 
 		const initializePixiRenderer = useCallback(
-			async (container: HTMLDivElement): Promise<{
+			async (
+				container: HTMLDivElement,
+			): Promise<{
 				app: Application;
 				backend: PixiPreviewBackend;
 			}> => {
@@ -603,7 +689,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					}
 
 					const rendererApp = new Application();
-					const initStarted = typeof performance === "undefined" ? Date.now() : performance.now();
+					const initStarted =
+						typeof performance === "undefined" ? Date.now() : performance.now();
 					try {
 						await initApplicationWithTimeout(
 							rendererApp,
@@ -622,7 +709,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 							backend,
 						);
 						const elapsed = Math.round(
-							(typeof performance === "undefined" ? Date.now() : performance.now()) - initStarted,
+							(typeof performance === "undefined" ? Date.now() : performance.now()) -
+								initStarted,
 						);
 						if (isCanvasRenderer(rendererApp)) {
 							throw new Error(
@@ -632,9 +720,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						return { app: rendererApp, backend };
 					} catch (error) {
 						const elapsed = Math.round(
-							(typeof performance === "undefined" ? Date.now() : performance.now()) - initStarted,
+							(typeof performance === "undefined" ? Date.now() : performance.now()) -
+								initStarted,
 						);
-						attempts.push({ backend, message: `${toRendererErrorMessage(error)} (after ${elapsed}ms)` });
+						attempts.push({
+							backend,
+							message: `${toRendererErrorMessage(error)} (after ${elapsed}ms)`,
+						});
 						const statusMessage = isRendererUnavailableError(error)
 							? "renderer backend unavailable in this runtime"
 							: "renderer init failed";
@@ -728,41 +820,58 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const webcamEnabled = webcam?.enabled ?? false;
 		const webcamMargin = webcam?.margin ?? 24;
 		const webcamSize = webcam?.size ?? DEFAULT_WEBCAM_SIZE;
+		const webcamHeight = webcam?.height ?? webcamSize ?? DEFAULT_WEBCAM_HEIGHT;
 		const webcamReactToZoom = webcam?.reactToZoom ?? DEFAULT_WEBCAM_REACT_TO_ZOOM;
 		const webcamPositionPreset = webcam?.positionPreset ?? webcam?.corner ?? "bottom-right";
 		const webcamPositionX = webcam?.positionX ?? 1;
 		const webcamPositionY = webcam?.positionY ?? 1;
 		const webcamCorner = webcam?.corner ?? "bottom-right";
 		const webcamCornerRadius = webcam?.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS;
+		const webcamAvoidCursor = webcam?.avoidCursor ?? DEFAULT_WEBCAM_AVOID_CURSOR;
 		const webcamShadow = webcam?.shadow ?? DEFAULT_WEBCAM_SHADOW;
 		const webcamTimeOffsetMs = webcam?.timeOffsetMs;
 		const webcamCropRegion = webcam?.cropRegion;
 		const webcamMirror = webcam?.mirror ?? false;
-		const webcamCropPreviewContentStyle = useMemo<React.CSSProperties>(() => {
-			if (!webcamVideoDimensions) {
-				return { opacity: 0 };
-			}
 
-			const { sx, sy, sw, sh } = getWebcamCropSourceRect(
-				webcamCropRegion,
-				webcamVideoDimensions.width,
-				webcamVideoDimensions.height,
+		const getCurrentWebcamFocusState = useCallback((): WebcamFocusState | null => {
+			return getInterpolatedFocusStateAtTime(
+				webcamSize,
+				webcamFocusRegions,
+				currentTimeRef.current,
+				webcamCorner,
 			);
-			const coverScale = Math.max(1 / sw, 1 / sh);
-			const drawWidth = webcamVideoDimensions.width * coverScale;
-			const drawHeight = webcamVideoDimensions.height * coverScale;
-			const drawX = (1 - sw * coverScale) / 2 - sx * coverScale;
-			const drawY = (1 - sh * coverScale) / 2 - sy * coverScale;
+		}, [webcamCorner, webcamFocusRegions, webcamSize]);
 
-			return {
-				left: `${drawX * 100}%`,
-				top: `${drawY * 100}%`,
-				width: `${drawWidth * 100}%`,
-				height: `${drawHeight * 100}%`,
-				maxWidth: "none",
-				willChange: "left, top, width, height",
-			};
-		}, [webcamCropRegion, webcamVideoDimensions]);
+		const applyCameraFocusLayout = useCallback(
+			(focusState: WebcamFocusState | null) => {
+				const screenLayer = containerRef.current;
+				const overlay = overlayRef.current;
+				if (!screenLayer || !overlay) {
+					return;
+				}
+
+				if (!focusState || focusState.progress <= 0.001) {
+					screenLayer.style.transform = "";
+					screenLayer.style.transformOrigin = "";
+					screenLayer.style.opacity = "";
+					screenLayer.style.zIndex = "";
+					return;
+				}
+
+				const transform = getWebcamFocusScreenTransform({
+					containerWidth: overlay.clientWidth,
+					containerHeight: overlay.clientHeight,
+					screenSizePercent: focusState.screenSize,
+					screenCorner: focusState.screenCorner,
+					margin: webcamMargin,
+				});
+				screenLayer.style.transformOrigin = "top left";
+				screenLayer.style.transform = `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`;
+				screenLayer.style.opacity = `${Math.max(0, Math.min(1, focusState.screenOpacity))}`;
+				screenLayer.style.zIndex = focusState.screenMode === "hidden" ? "0" : "2";
+			},
+			[webcamMargin],
+		);
 
 		const applyWebcamBubbleLayout = useCallback(
 			(zoomScale: number) => {
@@ -773,43 +882,177 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					if (bubble) {
 						bubble.style.display = "none";
 					}
+					applyCameraFocusLayout(null);
 					return;
 				}
 
-				const scaledSize = getWebcamOverlaySizePx({
+				const activeResize = webcamSizeResizeRef.current;
+				const focusState = activeResize ? null : getCurrentWebcamFocusState();
+				const regionalWebcamDimensions = activeResize
+					? {
+							size: activeResize.currentWidthPercent,
+							height: activeResize.currentHeightPercent,
+						}
+					: getInterpolatedWebcamDimensionsAtTime(
+							webcamSize,
+							webcamHeight,
+							webcamSizeRegions,
+							currentTimeRef.current,
+						);
+				const effectiveWebcamWidth =
+					focusState?.webcamSize ?? regionalWebcamDimensions.size;
+				const effectiveWebcamHeight =
+					focusState?.webcamSize ?? regionalWebcamDimensions.height;
+
+				const scaledWidth =
+					activeResize?.currentWidthPx ??
+					getWebcamOverlaySizePx({
+						containerWidth: overlay.clientWidth,
+						containerHeight: overlay.clientHeight,
+						sizePercent: effectiveWebcamWidth,
+						margin: webcamMargin,
+						zoomScale: focusState ? 1 : zoomScale,
+						reactToZoom: focusState ? false : webcamReactToZoom,
+					});
+				const scaledHeight =
+					activeResize?.currentHeightPx ??
+					getWebcamOverlaySizePx({
+						containerWidth: overlay.clientWidth,
+						containerHeight: overlay.clientHeight,
+						sizePercent: effectiveWebcamHeight,
+						margin: webcamMargin,
+						zoomScale: focusState ? 1 : zoomScale,
+						reactToZoom: focusState ? false : webcamReactToZoom,
+					});
+				const normalWidth =
+					activeResize?.currentWidthPx ??
+					getWebcamOverlaySizePx({
+						containerWidth: overlay.clientWidth,
+						containerHeight: overlay.clientHeight,
+						sizePercent: regionalWebcamDimensions.size,
+						margin: webcamMargin,
+						zoomScale,
+						reactToZoom: webcamReactToZoom,
+					});
+				const normalHeight =
+					activeResize?.currentHeightPx ??
+					getWebcamOverlaySizePx({
+						containerWidth: overlay.clientWidth,
+						containerHeight: overlay.clientHeight,
+						sizePercent: regionalWebcamDimensions.height,
+						margin: webcamMargin,
+						zoomScale,
+						reactToZoom: webcamReactToZoom,
+					});
+				const interpolatedPosition = getInterpolatedWebcamPositionAtTime(
+					{ positionX: webcamPositionX, positionY: webcamPositionY },
+					webcamPositionRegions,
+					currentTimeRef.current,
+				);
+				const hasActivePositionRegion = webcamPositionRegions.length > 0;
+				const normalPosition = activeResize
+					? { x: activeResize.currentLeftPx, y: activeResize.currentTopPx }
+					: getWebcamOverlayPosition({
+							containerWidth: overlay.clientWidth,
+							containerHeight: overlay.clientHeight,
+							size: normalWidth,
+							height: normalHeight,
+							margin: webcamMargin,
+							positionPreset: hasActivePositionRegion
+								? "custom"
+								: webcamPositionPreset,
+							positionX: interpolatedPosition.positionX,
+							positionY: interpolatedPosition.positionY,
+							legacyCorner: webcamCorner,
+						});
+				const focusPosition = {
+					x: (overlay.clientWidth - scaledWidth) / 2,
+					y: (overlay.clientHeight - scaledHeight) / 2,
+				};
+				const focusProgress = focusState?.progress ?? 0;
+				const blendedPosition = clampWebcamOverlayPosition({
 					containerWidth: overlay.clientWidth,
 					containerHeight: overlay.clientHeight,
-					sizePercent: webcamSize,
+					size: scaledWidth,
+					height: scaledHeight,
 					margin: webcamMargin,
-					zoomScale,
-					reactToZoom: webcamReactToZoom,
+					position: {
+						x: normalPosition.x + (focusPosition.x - normalPosition.x) * focusProgress,
+						y: normalPosition.y + (focusPosition.y - normalPosition.y) * focusProgress,
+					},
 				});
-				const { x, y } = getWebcamOverlayPosition({
-					containerWidth: overlay.clientWidth,
-					containerHeight: overlay.clientHeight,
-					size: scaledSize,
-					margin: webcamMargin,
-					positionPreset: webcamPositionPreset,
-					positionX: webcamPositionX,
-					positionY: webcamPositionY,
-					legacyCorner: webcamCorner,
-				});
+				let x = blendedPosition.x;
+				let y = blendedPosition.y;
+
+				if (webcamAvoidCursor && (!focusState || focusState.progress <= 0.001)) {
+					const cursor = getCursorPositionAtTime(
+						cursorTelemetryRef.current,
+						currentTimeRef.current,
+						{
+							maskRect: baseMaskRef.current,
+							canvasWidth: overlay.clientWidth,
+							canvasHeight: overlay.clientHeight,
+						},
+					);
+					const avoidedPosition = getWebcamAvoidCursorPosition({
+						containerWidth: overlay.clientWidth,
+						containerHeight: overlay.clientHeight,
+						size: scaledWidth,
+						height: scaledHeight,
+						margin: webcamMargin,
+						currentPosition: { x, y },
+						cursor: cursor
+							? {
+									x: cursor.cx * overlay.clientWidth,
+									y: cursor.cy * overlay.clientHeight,
+								}
+							: null,
+						legacyCorner: webcamCorner,
+					});
+					const clampedAvoidedPosition = clampWebcamOverlayPosition({
+						containerWidth: overlay.clientWidth,
+						containerHeight: overlay.clientHeight,
+						size: scaledWidth,
+						height: scaledHeight,
+						margin: webcamMargin,
+						position: avoidedPosition,
+					});
+					x = clampedAvoidedPosition.x;
+					y = clampedAvoidedPosition.y;
+				}
 
 				bubble.style.display = "block";
 				bubble.style.left = `${x}px`;
 				bubble.style.top = `${y}px`;
-				bubble.style.width = `${scaledSize}px`;
-				bubble.style.height = `${scaledSize}px`;
-				bubble.style.aspectRatio = "1 / 1";
+				bubble.style.width = `${scaledWidth}px`;
+				bubble.style.height = `${scaledHeight}px`;
+				bubble.style.transition = "";
+				bubble.style.zIndex = focusState ? "6" : "";
+				bubble.style.aspectRatio = `${Math.max(1, scaledWidth)} / ${Math.max(1, scaledHeight)}`;
+				const cropContent = webcamCropContentRef.current;
+				if (cropContent && webcamVideoDimensions) {
+					const cropLayout = getWebcamCropDrawLayout({
+						cropRegion: webcamCropRegion,
+						sourceWidth: webcamVideoDimensions.width,
+						sourceHeight: webcamVideoDimensions.height,
+						targetWidth: scaledWidth,
+						targetHeight: scaledHeight,
+					});
+					cropContent.style.left = `${cropLayout.drawX}px`;
+					cropContent.style.top = `${cropLayout.drawY}px`;
+					cropContent.style.width = `${cropLayout.drawWidth}px`;
+					cropContent.style.height = `${cropLayout.drawHeight}px`;
+				}
 				const squirclePath = getSquircleSvgPath({
 					x: 0,
 					y: 0,
-					width: scaledSize,
-					height: scaledSize,
+					width: scaledWidth,
+					height: scaledHeight,
 					radius: webcamCornerRadius,
 				});
-				bubble.style.filter = `drop-shadow(0 ${Math.round(scaledSize * 0.06)}px ${Math.round(
-					scaledSize * 0.22,
+				const shadowBasis = Math.max(scaledWidth, scaledHeight);
+				bubble.style.filter = `drop-shadow(0 ${Math.round(shadowBasis * 0.06)}px ${Math.round(
+					shadowBasis * 0.22,
 				)}px rgba(0, 0, 0, ${webcamShadow}))`;
 				bubble.style.borderRadius = "0px";
 				bubble.style.boxShadow = "none";
@@ -819,18 +1062,27 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				bubbleInner.style.contain = "paint";
 				bubbleInner.style.clipPath = `path('${squirclePath}')`;
 				bubbleInner.style.setProperty("-webkit-clip-path", `path('${squirclePath}')`);
+				applyCameraFocusLayout(focusState);
 			},
 			[
+				applyCameraFocusLayout,
+				webcamAvoidCursor,
 				webcamCorner,
 				webcamCornerRadius,
 				webcamEnabled,
+				getCurrentWebcamFocusState,
 				webcamMargin,
 				webcamPositionPreset,
+				webcamPositionRegions,
 				webcamPositionX,
 				webcamPositionY,
 				webcamReactToZoom,
 				webcamShadow,
+				webcamCropRegion,
+				webcamHeight,
 				webcamSize,
+				webcamSizeRegions,
+				webcamVideoDimensions,
 				webcamVideoPath,
 			],
 		);
@@ -1061,7 +1313,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const activeFrameData = frame
 				? extensionHost.getFrames().find((registeredFrame) => registeredFrame.id === frame)
 				: null;
-			const shouldRedrawDynamicFrame = Boolean(activeFrameData?.draw && frameSpriteRef.current);
+			const shouldRedrawDynamicFrame = Boolean(
+				activeFrameData?.draw && frameSpriteRef.current,
+			);
 
 			// Layout-only changes should not force texture/sprite recreation.
 			if (frameReloadKeyRef.current === nextFrameReloadKey && !shouldRedrawDynamicFrame) {
@@ -1694,6 +1948,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
 		}, [applyWebcamBubbleLayout, pixiReady, videoReady]);
 
+		// Re-apply layout when the playhead moves while paused so that webcam
+		// size regions take effect on seek without waiting for the next zoom tick.
+		useEffect(() => {
+			if (!pixiReady || !videoReady) return;
+			if (!webcamSizeRegions || webcamSizeRegions.length === 0) return;
+			applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
+		}, [currentTime, webcamSizeRegions, applyWebcamBubbleLayout, pixiReady, videoReady]);
+
 		const syncWebcamMedia = useCallback(() => {
 			const webcamVideo = webcamVideoRef.current;
 			if (!webcamVideo || !webcamEnabled || !webcamVideoPath) {
@@ -2236,10 +2498,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					resetSpringState(springYRef.current, appliedY);
 				}
 
-				applyTransform(
-					{ scale: appliedScale, x: appliedX, y: appliedY },
-					targetFocus,
-				);
+				applyTransform({ scale: appliedScale, x: appliedX, y: appliedY }, targetFocus);
 
 				applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
 
@@ -2704,6 +2963,409 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			return 16 / 9;
 		})();
 
+		const handleWebcamBubblePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+			if (!onWebcamPositionDragStart && !onWebcamPositionDrag) {
+				return;
+			}
+			const target = event.target as HTMLElement | null;
+			if (target?.dataset.webcamResize || target?.closest("[data-webcam-control]")) {
+				return;
+			}
+			const focusState = getCurrentWebcamFocusState();
+			if (focusState && focusState.progress > 0.001) {
+				return;
+			}
+			const bubble = webcamBubbleRef.current;
+			const overlay = overlayRef.current;
+			if (!bubble || !overlay) {
+				return;
+			}
+
+			event.preventDefault();
+			event.stopPropagation();
+			bubble.style.cursor = "grabbing";
+
+			const overlayRect = overlay.getBoundingClientRect();
+			const bubbleRect = bubble.getBoundingClientRect();
+			const startLeftPx = bubbleRect.left - overlayRect.left;
+			const startTopPx = bubbleRect.top - overlayRect.top;
+			const startWidthPx = bubbleRect.width;
+			const startHeightPx = bubbleRect.height;
+			const startAvailableWidth = Math.max(
+				1,
+				overlay.clientWidth - startWidthPx - webcamMargin * 2,
+			);
+			const startAvailableHeight = Math.max(
+				1,
+				overlay.clientHeight - startHeightPx - webcamMargin * 2,
+			);
+			const startPositionX = Math.max(
+				0,
+				Math.min(1, (startLeftPx - webcamMargin) / startAvailableWidth),
+			);
+			const startPositionY = Math.max(
+				0,
+				Math.min(1, (startTopPx - webcamMargin) / startAvailableHeight),
+			);
+
+			webcamPositionDragRef.current = {
+				regionId: null,
+				pointerId: event.pointerId,
+				startClientX: event.clientX,
+				startClientY: event.clientY,
+				startPositionX,
+				startPositionY,
+				startLeftPx,
+				startTopPx,
+				startWidthPx,
+				startHeightPx,
+				active: false,
+			};
+
+			const handleMove = (moveEvent: PointerEvent) => {
+				const drag = webcamPositionDragRef.current;
+				if (!drag || moveEvent.pointerId !== drag.pointerId) return;
+				const overlayElement = overlayRef.current;
+				if (!overlayElement) return;
+
+				const deltaX = moveEvent.clientX - drag.startClientX;
+				const deltaY = moveEvent.clientY - drag.startClientY;
+				if (!drag.active && Math.abs(deltaX) < 4 && Math.abs(deltaY) < 4) {
+					return;
+				}
+
+				const availableWidth = Math.max(
+					1,
+					overlayElement.clientWidth - drag.startWidthPx - webcamMargin * 2,
+				);
+				const availableHeight = Math.max(
+					1,
+					overlayElement.clientHeight - drag.startHeightPx - webcamMargin * 2,
+				);
+				const rawX = Math.max(
+					0,
+					Math.min(1, (drag.startLeftPx + deltaX - webcamMargin) / availableWidth),
+				);
+				const rawY = Math.max(
+					0,
+					Math.min(1, (drag.startTopPx + deltaY - webcamMargin) / availableHeight),
+				);
+				const snappedPosition = getSnappedWebcamPositionPoint({ x: rawX, y: rawY });
+				const nextX = snappedPosition.x;
+				const nextY = snappedPosition.y;
+
+				if (!drag.active) {
+					drag.active = true;
+					if (onWebcamPositionDragStart) {
+						drag.regionId = onWebcamPositionDragStart(nextX, nextY) ?? null;
+					}
+				}
+
+				if (drag.regionId && onWebcamPositionDrag) {
+					onWebcamPositionDrag(drag.regionId, nextX, nextY);
+				}
+			};
+
+			const handleUp = (upEvent: PointerEvent) => {
+				const drag = webcamPositionDragRef.current;
+				if (!drag || upEvent.pointerId !== drag.pointerId) return;
+				window.removeEventListener("pointermove", handleMove);
+				window.removeEventListener("pointerup", handleUp);
+				window.removeEventListener("pointercancel", handleUp);
+				if (webcamBubbleRef.current) {
+					webcamBubbleRef.current.style.cursor =
+						onWebcamPositionDragStart || onWebcamPositionDrag ? "grab" : "";
+				}
+				if (!drag.active && onSelectWebcamPositionRegion) {
+					onSelectWebcamPositionRegion(
+						drag.regionId ?? selectedWebcamPositionRegionId ?? null,
+					);
+				}
+				webcamPositionDragRef.current = null;
+			};
+
+			window.addEventListener("pointermove", handleMove);
+			window.addEventListener("pointerup", handleUp);
+			window.addEventListener("pointercancel", handleUp);
+		};
+
+		const handleWebcamResizePointerDown = (
+			event: React.PointerEvent<HTMLDivElement>,
+			handle: string,
+		) => {
+			if (!onWebcamSizeResize && !onWebcamHeightResize) {
+				return;
+			}
+			const focusState = getCurrentWebcamFocusState();
+			if (focusState && focusState.progress > 0.001) {
+				return;
+			}
+
+			const bubble = webcamBubbleRef.current;
+			const overlay = overlayRef.current;
+			if (!bubble || !overlay) {
+				return;
+			}
+
+			event.preventDefault();
+			event.stopPropagation();
+			const rect = bubble.getBoundingClientRect();
+			const overlayRect = overlay.getBoundingClientRect();
+			const startLeftPx = rect.left - overlayRect.left;
+			const startTopPx = rect.top - overlayRect.top;
+			const startWidthPx = rect.width;
+			const startHeightPx = rect.height;
+			const startAvailableWidth = Math.max(
+				1,
+				overlay.clientWidth - startWidthPx - webcamMargin * 2,
+			);
+			const startAvailableHeight = Math.max(
+				1,
+				overlay.clientHeight - startHeightPx - webcamMargin * 2,
+			);
+			const startPositionX = Math.max(
+				0,
+				Math.min(1, (startLeftPx - webcamMargin) / startAvailableWidth),
+			);
+			const startPositionY = Math.max(
+				0,
+				Math.min(1, (startTopPx - webcamMargin) / startAvailableHeight),
+			);
+			const isVerticalStretch = handle === "top";
+			const positionRegionId = onWebcamPositionDragStart
+				? (onWebcamPositionDragStart(startPositionX, startPositionY) ?? null)
+				: null;
+			webcamSizeResizeRef.current = {
+				handle,
+				startClientX: event.clientX,
+				startClientY: event.clientY,
+				startSizePx: rect.width,
+				startWidthPx,
+				startHeightPx,
+				startLeftPx,
+				startTopPx,
+				startBottomPx: startTopPx + startHeightPx,
+				positionRegionId,
+				currentPercent: isVerticalStretch ? webcamHeight : webcamSize,
+				currentWidthPercent: webcamSize,
+				currentHeightPercent: webcamHeight,
+				currentWidthPx: startWidthPx,
+				currentHeightPx: startHeightPx,
+				currentLeftPx: startLeftPx,
+				currentTopPx: startTopPx,
+			};
+			onWebcamSizeResizeStart?.();
+
+			const updateBadge = (clientX: number, clientY: number, label: string) => {
+				const badge = webcamResizeBadgeRef.current;
+				if (!badge) return;
+				badge.style.display = "block";
+				badge.style.left = `${clientX + 12}px`;
+				badge.style.top = `${clientY + 12}px`;
+				badge.textContent = label;
+			};
+
+			const persistResizePosition = (
+				drag: NonNullable<typeof webcamSizeResizeRef.current>,
+				activeOverlay: HTMLDivElement,
+				widthPx: number,
+				heightPx: number,
+				leftPx: number,
+				topPx: number,
+			) => {
+				if (!drag.positionRegionId || !onWebcamPositionDrag) {
+					return;
+				}
+				const availableWidth = Math.max(
+					1,
+					activeOverlay.clientWidth - widthPx - webcamMargin * 2,
+				);
+				const availableHeight = Math.max(
+					1,
+					activeOverlay.clientHeight - heightPx - webcamMargin * 2,
+				);
+				const nextX = Math.max(0, Math.min(1, (leftPx - webcamMargin) / availableWidth));
+				const nextY = Math.max(0, Math.min(1, (topPx - webcamMargin) / availableHeight));
+				onWebcamPositionDrag(drag.positionRegionId, nextX, nextY);
+			};
+
+			const handlePointerMove = (moveEvent: PointerEvent) => {
+				const drag = webcamSizeResizeRef.current;
+				const activeOverlay = overlayRef.current;
+				if (!drag || !activeOverlay) {
+					return;
+				}
+
+				const deltaX = moveEvent.clientX - drag.startClientX;
+				const deltaY = moveEvent.clientY - drag.startClientY;
+
+				if (drag.handle === "top") {
+					const maxHeightPx = Math.max(
+						56,
+						Math.min(activeOverlay.clientWidth, activeOverlay.clientHeight) -
+							webcamMargin * 2,
+					);
+					const nextHeightPx = Math.max(
+						56,
+						Math.min(maxHeightPx, drag.startHeightPx - deltaY),
+					);
+					const nextPercent = getWebcamSizePercentFromPx({
+						sizePx: nextHeightPx,
+						containerWidth: activeOverlay.clientWidth,
+						containerHeight: activeOverlay.clientHeight,
+						zoomScale: animationStateRef.current.appliedScale || 1,
+						reactToZoom: webcamReactToZoom,
+					});
+					drag.currentPercent = nextPercent;
+					drag.currentHeightPercent = nextPercent;
+					drag.currentHeightPx = nextHeightPx;
+					drag.currentTopPx = drag.startBottomPx - nextHeightPx;
+					const clampedPosition = clampWebcamOverlayPosition({
+						containerWidth: activeOverlay.clientWidth,
+						containerHeight: activeOverlay.clientHeight,
+						size: drag.currentWidthPx,
+						height: nextHeightPx,
+						margin: webcamMargin,
+						position: { x: drag.currentLeftPx, y: drag.currentTopPx },
+					});
+					drag.currentLeftPx = clampedPosition.x;
+					drag.currentTopPx = clampedPosition.y;
+					applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
+					onWebcamHeightResize?.(nextPercent);
+					persistResizePosition(
+						drag,
+						activeOverlay,
+						drag.currentWidthPx,
+						nextHeightPx,
+						drag.currentLeftPx,
+						drag.currentTopPx,
+					);
+
+					updateBadge(
+						moveEvent.clientX,
+						moveEvent.clientY,
+						`H ${Math.round(nextPercent)}%`,
+					);
+					return;
+				}
+
+				const horizontalDelta = drag.handle.includes("right")
+					? deltaX
+					: drag.handle.includes("left")
+						? -deltaX
+						: 0;
+				const verticalDelta = drag.handle.includes("bottom")
+					? deltaY
+					: drag.handle.includes("top")
+						? -deltaY
+						: 0;
+				const delta =
+					Math.abs(horizontalDelta) > Math.abs(verticalDelta)
+						? horizontalDelta
+						: verticalDelta;
+				const maxSizePx = Math.max(
+					56,
+					Math.min(activeOverlay.clientWidth, activeOverlay.clientHeight) -
+						webcamMargin * 2,
+				);
+				const nextSizePx = Math.max(56, Math.min(maxSizePx, drag.startSizePx + delta));
+				const nextPercent = getWebcamSizePercentFromPx({
+					sizePx: nextSizePx,
+					containerWidth: activeOverlay.clientWidth,
+					containerHeight: activeOverlay.clientHeight,
+					zoomScale: animationStateRef.current.appliedScale || 1,
+					reactToZoom: webcamReactToZoom,
+				});
+				drag.currentPercent = nextPercent;
+				drag.currentWidthPercent = nextPercent;
+				drag.currentHeightPercent = nextPercent;
+				drag.currentWidthPx = nextSizePx;
+				drag.currentHeightPx = nextSizePx;
+				const nextLeftPx = drag.handle.includes("left")
+					? drag.startLeftPx + drag.startWidthPx - nextSizePx
+					: drag.handle.includes("right")
+						? drag.startLeftPx
+						: drag.startLeftPx + (drag.startWidthPx - nextSizePx) / 2;
+				const nextTopPx = drag.handle.includes("top")
+					? drag.startTopPx + drag.startHeightPx - nextSizePx
+					: drag.handle.includes("bottom")
+						? drag.startTopPx
+						: drag.startTopPx + (drag.startHeightPx - nextSizePx) / 2;
+				const clampedPosition = clampWebcamOverlayPosition({
+					containerWidth: activeOverlay.clientWidth,
+					containerHeight: activeOverlay.clientHeight,
+					size: nextSizePx,
+					height: nextSizePx,
+					margin: webcamMargin,
+					position: { x: nextLeftPx, y: nextTopPx },
+				});
+				drag.currentLeftPx = clampedPosition.x;
+				drag.currentTopPx = clampedPosition.y;
+				applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
+				onWebcamSizeResize?.(nextPercent);
+				onWebcamHeightResize?.(nextPercent);
+				persistResizePosition(
+					drag,
+					activeOverlay,
+					nextSizePx,
+					nextSizePx,
+					drag.currentLeftPx,
+					drag.currentTopPx,
+				);
+				updateBadge(moveEvent.clientX, moveEvent.clientY, `${Math.round(nextPercent)}%`);
+			};
+
+			const handlePointerUp = () => {
+				window.removeEventListener("pointermove", handlePointerMove);
+				window.removeEventListener("pointerup", handlePointerUp);
+				window.removeEventListener("pointercancel", handlePointerUp);
+				webcamSizeResizeRef.current = null;
+				if (webcamResizeBadgeRef.current) {
+					webcamResizeBadgeRef.current.style.display = "none";
+				}
+				onWebcamSizeResizeEnd?.();
+			};
+
+			window.addEventListener("pointermove", handlePointerMove);
+			window.addEventListener("pointerup", handlePointerUp, { once: true });
+			window.addEventListener("pointercancel", handlePointerUp, { once: true });
+		};
+
+		const webcamResizeHandles = [
+			{
+				id: "top-left",
+				className: "left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize",
+			},
+			{
+				id: "top",
+				className: "left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize",
+			},
+			{
+				id: "top-right",
+				className: "right-0 top-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize",
+			},
+			{
+				id: "right",
+				className: "right-0 top-1/2 -translate-y-1/2 translate-x-1/2 cursor-ew-resize",
+			},
+			{
+				id: "bottom-right",
+				className: "right-0 bottom-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize",
+			},
+			{
+				id: "bottom",
+				className: "left-1/2 bottom-0 -translate-x-1/2 translate-y-1/2 cursor-ns-resize",
+			},
+			{
+				id: "bottom-left",
+				className: "left-0 bottom-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize",
+			},
+			{
+				id: "left",
+				className: "left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize",
+			},
+		];
+
 		return (
 			<div
 				className="relative rounded-sm overflow-hidden"
@@ -2742,7 +3404,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						filter:
 							showShadow && shadowIntensity > 0
 								? `drop-shadow(0 ${shadowIntensity * 12}px ${shadowIntensity * 48}px rgba(0,0,0,${shadowIntensity * 0.7})) drop-shadow(0 ${shadowIntensity * 4}px ${shadowIntensity * 16}px rgba(0,0,0,${shadowIntensity * 0.5})) drop-shadow(0 ${shadowIntensity * 2}px ${shadowIntensity * 8}px rgba(0,0,0,${shadowIntensity * 0.3}))`
-							: "none",
+								: "none",
 					}}
 				/>
 				{hasRendererFallback && (
@@ -2750,7 +3412,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						<div className="rounded-md bg-black/70 px-3 py-1.5 text-xs text-white">
 							{`Pixi renderer unavailable on this environment (${pixiRendererBackend ?? "unknown"}).`}
 							<br />
-							Fallback to 2D native preview so you can continue working while the GPU path is unavailable.
+							Fallback to 2D native preview so you can continue working while the GPU
+							path is unavailable.
 						</div>
 					</div>
 				)}
@@ -2779,11 +3442,16 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						{webcam && webcamVideoPath ? (
 							<div
 								ref={webcamBubbleRef}
-								className="absolute"
+								className="group absolute"
 								style={{
 									display: webcam.enabled ? "block" : "none",
-									pointerEvents: "none",
+									pointerEvents: "auto",
+									cursor:
+										onWebcamPositionDragStart || onWebcamPositionDrag
+											? "grab"
+											: undefined,
 								}}
+								onPointerDown={handleWebcamBubblePointerDown}
 							>
 								<div
 									ref={webcamBubbleInnerRef}
@@ -2797,8 +3465,16 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 										}}
 									>
 										<div
+											ref={webcamCropContentRef}
 											className="pointer-events-none absolute"
-											style={webcamCropPreviewContentStyle}
+											style={{
+												left: 0,
+												top: 0,
+												width: "100%",
+												height: "100%",
+												maxWidth: "none",
+												willChange: "left, top, width, height",
+											}}
 										>
 											<video
 												ref={webcamVideoRef}
@@ -2814,8 +3490,84 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 										</div>
 									</div>
 								</div>
+								<div
+									data-webcam-control="true"
+									className="absolute right-1 top-1 z-[72] flex gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+								>
+									{onWebcamAvoidCursorToggle ? (
+										<button
+											type="button"
+											className={`pointer-events-auto flex h-6 w-6 items-center justify-center rounded-md border text-white shadow-[0_2px_8px_rgba(0,0,0,0.35)] ${
+												webcamAvoidCursor
+													? "border-[#2563EB] bg-[#2563EB]"
+													: "border-white/70 bg-black/55"
+											}`}
+											title={
+												webcamAvoidCursor
+													? "Disable avoid cursor"
+													: "Enable avoid cursor"
+											}
+											aria-label={
+												webcamAvoidCursor
+													? "Disable avoid cursor"
+													: "Enable avoid cursor"
+											}
+											onPointerDown={(event) => {
+												event.preventDefault();
+												event.stopPropagation();
+											}}
+											onClick={(event) => {
+												event.preventDefault();
+												event.stopPropagation();
+												onWebcamAvoidCursorToggle();
+											}}
+										>
+											<CursorClick className="h-3.5 w-3.5" />
+										</button>
+									) : null}
+									{onWebcamMirrorToggle ? (
+										<button
+											type="button"
+											className="pointer-events-auto flex h-6 w-6 items-center justify-center rounded-md border border-white/70 bg-black/55 text-white shadow-[0_2px_8px_rgba(0,0,0,0.35)]"
+											title="Mirror webcam"
+											aria-label="Mirror webcam"
+											onPointerDown={(event) => {
+												event.preventDefault();
+												event.stopPropagation();
+											}}
+											onClick={(event) => {
+												event.preventDefault();
+												event.stopPropagation();
+												onWebcamMirrorToggle();
+											}}
+										>
+											<FlipHorizontal className="h-3.5 w-3.5" />
+										</button>
+									) : null}
+								</div>
+								<div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100">
+									{webcamResizeHandles.map((handle) => (
+										<div
+											key={handle.id}
+											data-webcam-resize="true"
+											className={`pointer-events-auto absolute h-3 w-3 rounded-full border border-white/90 bg-[#2563EB] shadow-[0_2px_8px_rgba(0,0,0,0.35)] ${handle.className}`}
+											title={
+												handle.id === "top"
+													? "Stretch camera upward"
+													: "Resize camera"
+											}
+											onPointerDown={(event) =>
+												handleWebcamResizePointerDown(event, handle.id)
+											}
+										/>
+									))}
+								</div>
 							</div>
 						) : null}
+						<div
+							ref={webcamResizeBadgeRef}
+							className="pointer-events-none absolute z-[70] hidden rounded-md bg-black/80 px-2 py-1 text-[10px] font-medium text-white shadow-lg"
+						/>
 						{activeCaptionLayout && autoCaptionSettings ? (
 							<div
 								className="pointer-events-none absolute inset-x-0 flex justify-center"

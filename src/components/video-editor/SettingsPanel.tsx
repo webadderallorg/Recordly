@@ -9,6 +9,7 @@ import {
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import minimalCursorUrl from "@/assets/cursors/custom/minimal-cursor.svg";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -40,7 +41,6 @@ import {
 	isVideoWallpaperSource,
 } from "@/lib/wallpapers";
 import { type AspectRatio } from "@/utils/aspectRatioUtils";
-import minimalCursorUrl from "@/assets/cursors/custom/minimal-cursor.svg";
 import { useI18n, useScopedT } from "../../contexts/I18nContext";
 import type { AppLocale } from "../../i18n/config";
 import { SUPPORTED_LOCALES } from "../../i18n/config";
@@ -64,8 +64,11 @@ import type {
 	EditorEffectSection,
 	FigureData,
 	Padding,
+	WebcamFocusRegion,
 	WebcamOverlaySettings,
 	WebcamPositionPreset,
+	WebcamPositionRegion,
+	WebcamSizeRegion,
 	ZoomDepth,
 	ZoomMode,
 	ZoomMotionBlurTuning,
@@ -81,7 +84,13 @@ import {
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_CURSOR_SWAY,
 	DEFAULT_PADDING,
+	DEFAULT_WEBCAM_AVOID_CURSOR,
 	DEFAULT_WEBCAM_CORNER_RADIUS,
+	DEFAULT_WEBCAM_FOCUS_SCREEN_MODE,
+	DEFAULT_WEBCAM_FOCUS_SCREEN_PIP_SIZE,
+	DEFAULT_WEBCAM_FOCUS_SIZE,
+	DEFAULT_WEBCAM_FOCUS_TRANSITION_IN_MS,
+	DEFAULT_WEBCAM_FOCUS_TRANSITION_OUT_MS,
 	DEFAULT_WEBCAM_MARGIN,
 	DEFAULT_WEBCAM_POSITION_PRESET,
 	DEFAULT_WEBCAM_POSITION_X,
@@ -89,6 +98,8 @@ import {
 	DEFAULT_WEBCAM_REACT_TO_ZOOM,
 	DEFAULT_WEBCAM_SHADOW,
 	DEFAULT_WEBCAM_SIZE,
+	DEFAULT_WEBCAM_SIZE_TRANSITION_IN_MS,
+	DEFAULT_WEBCAM_SIZE_TRANSITION_OUT_MS,
 	DEFAULT_ZOOM_IN_DURATION_MS,
 	DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 	DEFAULT_ZOOM_OUT_DURATION_MS,
@@ -277,7 +288,11 @@ function ExtensionSettingsSection({
 						<div key={field.id} className="mt-1">
 							<SliderControl
 								label={field.label}
-								value={typeof value === "number" ? value : (field.defaultValue as number)}
+								value={
+									typeof value === "number"
+										? value
+										: (field.defaultValue as number)
+								}
 								defaultValue={field.defaultValue as number}
 								min={field.min ?? 0}
 								max={field.max ?? 1}
@@ -549,6 +564,49 @@ interface SettingsPanelProps {
 	onWebcamChange?: (webcam: WebcamOverlaySettings) => void;
 	onUploadWebcam?: () => void;
 	onClearWebcam?: () => void;
+	webcamSizeRegions?: WebcamSizeRegion[];
+	selectedWebcamSizeRegionId?: string | null;
+	onAddWebcamSizeRegionAtPlayhead?: () => void;
+	onSelectWebcamSizeRegion?: (id: string | null) => void;
+	onWebcamSizeRegionSizeChange?: (id: string, size: number) => void;
+	onWebcamSizeRegionTransitionChange?: (
+		id: string,
+		field: "transitionInMs" | "transitionOutMs",
+		durationMs: number,
+	) => void;
+	onWebcamSizeRegionDelete?: (id: string) => void;
+	webcamFocusRegions?: WebcamFocusRegion[];
+	selectedWebcamFocusRegionId?: string | null;
+	onAddWebcamFocusRegionAtPlayhead?: () => void;
+	onSelectWebcamFocusRegion?: (id: string | null) => void;
+	onWebcamFocusRegionSizeChange?: (id: string, focusSize: number) => void;
+	onWebcamFocusRegionPipSizeChange?: (id: string, screenPipSize: number) => void;
+	onWebcamFocusRegionScreenModeChange?: (
+		id: string,
+		screenMode: WebcamFocusRegion["screenMode"],
+	) => void;
+	onWebcamFocusRegionCornerChange?: (
+		id: string,
+		screenPipCorner: WebcamFocusRegion["screenPipCorner"],
+	) => void;
+	onWebcamFocusRegionTransitionChange?: (
+		id: string,
+		field: "transitionInMs" | "transitionOutMs",
+		durationMs: number,
+	) => void;
+	onWebcamFocusRegionDelete?: (id: string) => void;
+	onAddFullscreenWebcamRegionAtPlayhead?: () => void;
+	webcamPositionEnabled?: boolean;
+	onWebcamPositionEnabledChange?: (enabled: boolean) => void;
+	webcamPositionRegions?: WebcamPositionRegion[];
+	selectedWebcamPositionRegionId?: string | null;
+	onSelectWebcamPositionRegion?: (id: string | null) => void;
+	onWebcamPositionRegionTransitionChange?: (
+		id: string,
+		field: "transitionInMs" | "transitionOutMs",
+		durationMs: number,
+	) => void;
+	onWebcamPositionRegionDelete?: (id: string) => void;
 	padding?: Padding;
 	onPaddingChange?: (padding: Padding) => void;
 	frame?: string | null;
@@ -606,6 +664,17 @@ const WEBCAM_POSITION_PRESETS: Array<{
 	{ preset: "bottom-left", label: "↙" },
 	{ preset: "bottom-center", label: "↓" },
 	{ preset: "bottom-right", label: "↘" },
+];
+
+const WEBCAM_SHAPE_PRESETS: Array<{
+	id: string;
+	label: string;
+	cornerRadius: number;
+}> = [
+	{ id: "circle", label: "Circle", cornerRadius: 160 },
+	{ id: "squircle", label: "Squircle", cornerRadius: 90 },
+	{ id: "rounded", label: "Rounded", cornerRadius: 28 },
+	{ id: "rectangle", label: "Rectangle", cornerRadius: 0 },
 ];
 
 type CursorStyleOption = { value: CursorStyle; label: string };
@@ -934,6 +1003,31 @@ export function SettingsPanel({
 	onWebcamChange,
 	onUploadWebcam,
 	onClearWebcam,
+	webcamSizeRegions = [],
+	selectedWebcamSizeRegionId = null,
+	onAddWebcamSizeRegionAtPlayhead,
+	onSelectWebcamSizeRegion,
+	onWebcamSizeRegionSizeChange,
+	onWebcamSizeRegionTransitionChange,
+	onWebcamSizeRegionDelete,
+	webcamFocusRegions = [],
+	selectedWebcamFocusRegionId = null,
+	onAddWebcamFocusRegionAtPlayhead,
+	onSelectWebcamFocusRegion,
+	onWebcamFocusRegionSizeChange,
+	onWebcamFocusRegionPipSizeChange,
+	onWebcamFocusRegionScreenModeChange,
+	onWebcamFocusRegionCornerChange,
+	onWebcamFocusRegionTransitionChange,
+	onWebcamFocusRegionDelete,
+	onAddFullscreenWebcamRegionAtPlayhead,
+	webcamPositionEnabled = false,
+	onWebcamPositionEnabledChange,
+	webcamPositionRegions = [],
+	selectedWebcamPositionRegionId = null,
+	onSelectWebcamPositionRegion,
+	onWebcamPositionRegionTransitionChange,
+	onWebcamPositionRegionDelete,
 	padding = DEFAULT_PADDING,
 	onPaddingChange,
 	frame = null,
@@ -1241,12 +1335,7 @@ export function SettingsPanel({
 		if (!isKnownWallpaper && isVideoWallpaperSource(selected)) {
 			setCustomImages((prev) => (prev.includes(selected) ? prev : [selected, ...prev]));
 		}
-	}, [
-		builtInWallpaperPaths,
-		extensionWallpaperPaths,
-		selected,
-		wallpaperPreviewPaths,
-	]);
+	}, [builtInWallpaperPaths, extensionWallpaperPaths, selected, wallpaperPreviewPaths]);
 
 	const imageWallpaperTiles = useMemo<WallpaperTile[]>(() => {
 		const imageWallpapers = builtInWallpapers.filter(
@@ -3069,8 +3158,8 @@ export function SettingsPanel({
 			</section>
 		);
 
-			const audioSectionContent = (
-				<section className="flex flex-col gap-3">
+		const audioSectionContent = (
+			<section className="flex flex-col gap-3">
 				<div className="flex items-center justify-between gap-3">
 					<SectionLabel>{tSettings("audio.volumeTitle", "Audio")}</SectionLabel>
 					<button
@@ -3084,8 +3173,8 @@ export function SettingsPanel({
 						{t("common.actions.reset", "Reset")}
 					</button>
 				</div>
-					<SliderControl
-						label={tSettings("audio.volume", "Volume")}
+				<SliderControl
+					label={tSettings("audio.volume", "Volume")}
 					value={selectedAudioVolume ?? 1}
 					defaultValue={1}
 					min={0}
@@ -3093,20 +3182,20 @@ export function SettingsPanel({
 					step={0.01}
 					onChange={(v) => onAudioVolumeChange?.(v)}
 					formatValue={(v) => `${Math.round(v * 100)}%`}
-						parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
+					parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
+				/>
+				<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
+					<span className="text-[10px] text-muted-foreground">
+						{tSettings("audio.normalize", "Normalize")}
+					</span>
+					<Switch
+						checked={Boolean(selectedAudioNormalize)}
+						onCheckedChange={(v) => onAudioNormalizeChange?.(v)}
+						className="data-[state=checked]:bg-[#2563EB] scale-75"
 					/>
-					<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
-						<span className="text-[10px] text-muted-foreground">
-							{tSettings("audio.normalize", "Normalize")}
-						</span>
-						<Switch
-							checked={Boolean(selectedAudioNormalize)}
-							onCheckedChange={(v) => onAudioNormalizeChange?.(v)}
-							className="data-[state=checked]:bg-[#2563EB] scale-75"
-						/>
-					</div>
-				</section>
-			);
+				</div>
+			</section>
+		);
 
 		const clipSectionContent = (
 			<section className="flex flex-col gap-2">
@@ -3183,7 +3272,10 @@ export function SettingsPanel({
 					{hasClipSourceAudio && (
 						<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
 							<span className="text-[10px] text-muted-foreground">
-								{tSettings("clip.separateClipFromAudio", "Separate clip from audio")}
+								{tSettings(
+									"clip.separateClipFromAudio",
+									"Separate clip from audio",
+								)}
 							</span>
 							<Switch
 								checked={selectedClipShowSourceAudio ?? false}
@@ -3194,65 +3286,68 @@ export function SettingsPanel({
 					)}
 				</div>
 
-				{selectedClipId &&
-					hasClipSourceAudio &&
-					sourceAudioTrackMeta.length > 0 && (
-						<div className="mt-1 flex flex-col gap-3">
-							{sourceAudioTrackMeta.map((track) => {
-								const settings = sourceAudioTrackSettings[track.id] ?? {
-									volume: 1,
-									normalize: false,
-								};
-								return (
-									<div
-										key={track.id}
-										className="rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2"
-									>
-										<div className="mb-2 flex items-center justify-between">
-											<span className="text-[11px] font-medium text-foreground">
-												{track.label}
-											</span>
-											<button
-												type="button"
-												onClick={() => {
-													onSourceAudioTrackVolumeChange?.(track.id, 1);
-													onSourceAudioTrackNormalizeChange?.(track.id, false);
-												}}
-												className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
-											>
-												{t("common.actions.reset", "Reset")}
-											</button>
-										</div>
-										<div className="mb-2 flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
-											<span className="text-[10px] text-muted-foreground">
-												{tSettings("audio.normalize", "Normalize")}
-											</span>
-											<Switch
-												checked={settings.normalize}
-												onCheckedChange={(v) =>
-													onSourceAudioTrackNormalizeChange?.(track.id, v)
-												}
-												className="data-[state=checked]:bg-[#06b6d4] scale-75"
-											/>
-										</div>
-										<SliderControl
-											label={tSettings("audio.volume", "Volume")}
-											value={settings.volume}
-											defaultValue={1}
-											min={0}
-											max={1}
-											step={0.01}
-											onChange={(v) => onSourceAudioTrackVolumeChange?.(track.id, v)}
-											formatValue={(v) => `${Math.round(v * 100)}%`}
-											parseInput={(text) =>
-												parseFloat(text.replace(/%$/, "")) / 100
+				{selectedClipId && hasClipSourceAudio && sourceAudioTrackMeta.length > 0 && (
+					<div className="mt-1 flex flex-col gap-3">
+						{sourceAudioTrackMeta.map((track) => {
+							const settings = sourceAudioTrackSettings[track.id] ?? {
+								volume: 1,
+								normalize: false,
+							};
+							return (
+								<div
+									key={track.id}
+									className="rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2"
+								>
+									<div className="mb-2 flex items-center justify-between">
+										<span className="text-[11px] font-medium text-foreground">
+											{track.label}
+										</span>
+										<button
+											type="button"
+											onClick={() => {
+												onSourceAudioTrackVolumeChange?.(track.id, 1);
+												onSourceAudioTrackNormalizeChange?.(
+													track.id,
+													false,
+												);
+											}}
+											className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
+										>
+											{t("common.actions.reset", "Reset")}
+										</button>
+									</div>
+									<div className="mb-2 flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
+										<span className="text-[10px] text-muted-foreground">
+											{tSettings("audio.normalize", "Normalize")}
+										</span>
+										<Switch
+											checked={settings.normalize}
+											onCheckedChange={(v) =>
+												onSourceAudioTrackNormalizeChange?.(track.id, v)
 											}
+											className="data-[state=checked]:bg-[#06b6d4] scale-75"
 										/>
 									</div>
-								);
-							})}
-						</div>
-					)}
+									<SliderControl
+										label={tSettings("audio.volume", "Volume")}
+										value={settings.volume}
+										defaultValue={1}
+										min={0}
+										max={1}
+										step={0.01}
+										onChange={(v) =>
+											onSourceAudioTrackVolumeChange?.(track.id, v)
+										}
+										formatValue={(v) => `${Math.round(v * 100)}%`}
+										parseInput={(text) =>
+											parseFloat(text.replace(/%$/, "")) / 100
+										}
+									/>
+								</div>
+							);
+						})}
+					</div>
+				)}
 			</section>
 		);
 
@@ -3466,17 +3561,739 @@ export function SettingsPanel({
 									className="data-[state=checked]:bg-[#2563EB] scale-75"
 								/>
 							</div>
-							<SliderControl
-								label={tSettings("effects.webcamSize")}
-								value={webcam?.size ?? DEFAULT_WEBCAM_SIZE}
-								defaultValue={DEFAULT_WEBCAM_SIZE}
-								min={10}
-								max={100}
-								step={1}
-								onChange={(v) => updateWebcam({ size: v })}
-								formatValue={(v) => `${Math.round(v)}%`}
-								parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
-							/>
+							<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
+								<span className="text-[10px] text-muted-foreground">
+									{tSettings("effects.webcamAvoidCursor", "Avoid cursor")}
+								</span>
+								<Switch
+									checked={webcam?.avoidCursor ?? DEFAULT_WEBCAM_AVOID_CURSOR}
+									onCheckedChange={(avoidCursor) => updateWebcam({ avoidCursor })}
+									className="data-[state=checked]:bg-[#2563EB] scale-75"
+								/>
+							</div>
+							{(() => {
+								const selectedWebcamSizeRegion = selectedWebcamSizeRegionId
+									? (webcamSizeRegions.find(
+											(region) => region.id === selectedWebcamSizeRegionId,
+										) ?? null)
+									: null;
+								const displayedSize =
+									selectedWebcamSizeRegion?.size ??
+									webcam?.size ??
+									DEFAULT_WEBCAM_SIZE;
+								const handleSizeChange = (value: number) => {
+									if (selectedWebcamSizeRegion && onWebcamSizeRegionSizeChange) {
+										onWebcamSizeRegionSizeChange(
+											selectedWebcamSizeRegion.id,
+											value,
+										);
+										return;
+									}
+									const currentSize = webcam?.size ?? DEFAULT_WEBCAM_SIZE;
+									const currentHeight = webcam?.height ?? currentSize;
+									updateWebcam({
+										size: value,
+										...(Math.round(currentHeight) === Math.round(currentSize)
+											? { height: value }
+											: {}),
+									});
+								};
+								const formatRegionTime = (ms: number) => {
+									const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+									const minutes = Math.floor(totalSeconds / 60);
+									const seconds = totalSeconds % 60;
+									const millis = Math.max(0, Math.floor(ms % 1000));
+									return `${minutes}:${seconds.toString().padStart(2, "0")}.${millis
+										.toString()
+										.padStart(3, "0")}`;
+								};
+
+								return (
+									<>
+										<SliderControl
+											label={
+												selectedWebcamSizeRegion
+													? tSettings(
+															"effects.webcamSizeRegion",
+															"Camera size (region)",
+														)
+													: tSettings("effects.webcamSize")
+											}
+											value={displayedSize}
+											defaultValue={DEFAULT_WEBCAM_SIZE}
+											min={10}
+											max={100}
+											step={1}
+											onChange={handleSizeChange}
+											formatValue={(v) => `${Math.round(v)}%`}
+											parseInput={(text) =>
+												parseFloat(text.replace(/%$/, ""))
+											}
+										/>
+										{selectedWebcamSizeRegion ? (
+											<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2 text-[10px] text-muted-foreground space-y-1.5">
+												<div className="flex items-center justify-between">
+													<span>
+														{tSettings(
+															"effects.webcamSizeRegionEditing",
+															"Editing camera size region",
+														)}
+													</span>
+													<button
+														type="button"
+														onClick={() =>
+															onSelectWebcamSizeRegion?.(null)
+														}
+														className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
+													>
+														{tSettings(
+															"effects.webcamSizeRegionDeselect",
+															"Edit global instead",
+														)}
+													</button>
+												</div>
+												<div className="font-mono text-[10px] text-foreground/80">
+													{formatRegionTime(
+														selectedWebcamSizeRegion.startMs,
+													)}
+													{" → "}
+													{formatRegionTime(
+														selectedWebcamSizeRegion.endMs,
+													)}
+												</div>
+												<SliderControl
+													label={tSettings(
+														"effects.webcamSizeRegionTransitionIn",
+														"Transition in",
+													)}
+													value={
+														selectedWebcamSizeRegion.transitionInMs ??
+														DEFAULT_WEBCAM_SIZE_TRANSITION_IN_MS
+													}
+													defaultValue={
+														DEFAULT_WEBCAM_SIZE_TRANSITION_IN_MS
+													}
+													min={0}
+													max={2000}
+													step={50}
+													onChange={(value) =>
+														onWebcamSizeRegionTransitionChange?.(
+															selectedWebcamSizeRegion.id,
+															"transitionInMs",
+															value,
+														)
+													}
+													formatValue={(v) => `${Math.round(v)}ms`}
+													parseInput={(text) =>
+														parseFloat(text.replace(/ms$/, ""))
+													}
+												/>
+												<SliderControl
+													label={tSettings(
+														"effects.webcamSizeRegionTransitionOut",
+														"Transition out",
+													)}
+													value={
+														selectedWebcamSizeRegion.transitionOutMs ??
+														DEFAULT_WEBCAM_SIZE_TRANSITION_OUT_MS
+													}
+													defaultValue={
+														DEFAULT_WEBCAM_SIZE_TRANSITION_OUT_MS
+													}
+													min={0}
+													max={2000}
+													step={50}
+													onChange={(value) =>
+														onWebcamSizeRegionTransitionChange?.(
+															selectedWebcamSizeRegion.id,
+															"transitionOutMs",
+															value,
+														)
+													}
+													formatValue={(v) => `${Math.round(v)}ms`}
+													parseInput={(text) =>
+														parseFloat(text.replace(/ms$/, ""))
+													}
+												/>
+												{onWebcamSizeRegionDelete ? (
+													<button
+														type="button"
+														onClick={() =>
+															onWebcamSizeRegionDelete(
+																selectedWebcamSizeRegion.id,
+															)
+														}
+														className="w-full rounded-md border border-foreground/10 px-2 py-1 text-[10px] text-foreground/80 transition-opacity hover:opacity-80"
+													>
+														{tSettings(
+															"effects.webcamSizeRegionDelete",
+															"Delete selected camera size region",
+														)}
+													</button>
+												) : null}
+											</div>
+										) : onAddWebcamSizeRegionAtPlayhead ? (
+											<button
+												type="button"
+												onClick={() => onAddWebcamSizeRegionAtPlayhead()}
+												className="w-full rounded-md border border-foreground/10 px-2 py-1.5 text-[10px] text-foreground/80 transition-opacity hover:opacity-80"
+											>
+												{tSettings(
+													"effects.webcamSizeRegionAdd",
+													"Add camera size region at playhead",
+												)}
+											</button>
+										) : null}
+										{webcamSizeRegions.length > 0 ? (
+											<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2 space-y-1">
+												<div className="text-[10px] text-muted-foreground">
+													{tSettings(
+														"effects.webcamSizeRegionList",
+														"Camera size regions",
+													)}
+												</div>
+												<div className="flex flex-col gap-1">
+													{webcamSizeRegions.map((region) => {
+														const isSelected =
+															region.id ===
+															selectedWebcamSizeRegionId;
+														return (
+															<button
+																key={region.id}
+																type="button"
+																onClick={() =>
+																	onSelectWebcamSizeRegion?.(
+																		isSelected
+																			? null
+																			: region.id,
+																	)
+																}
+																className={`flex w-full items-center justify-between rounded-md border px-2 py-1 text-[10px] transition-opacity hover:opacity-80 ${
+																	isSelected
+																		? "border-[#2563EB] text-foreground"
+																		: "border-foreground/10 text-foreground/80"
+																}`}
+															>
+																<span className="font-mono">
+																	{formatRegionTime(
+																		region.startMs,
+																	)}
+																	{" → "}
+																	{formatRegionTime(region.endMs)}
+																</span>
+																<span>
+																	{Math.round(region.size)}%
+																</span>
+															</button>
+														);
+													})}
+												</div>
+											</div>
+										) : null}
+										{(() => {
+											const selectedWebcamFocusRegion =
+												selectedWebcamFocusRegionId
+													? (webcamFocusRegions.find(
+															(region) =>
+																region.id ===
+																selectedWebcamFocusRegionId,
+														) ?? null)
+													: null;
+
+											return (
+												<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2 space-y-2">
+													<div className="flex items-center justify-between gap-2">
+														<div className="text-[10px] text-muted-foreground">
+															{tSettings(
+																"effects.webcamFocus",
+																"Camera focus",
+															)}
+														</div>
+														<div className="flex items-center gap-2">
+															{onAddFullscreenWebcamRegionAtPlayhead ? (
+																<button
+																	type="button"
+																	onClick={() =>
+																		onAddFullscreenWebcamRegionAtPlayhead()
+																	}
+																	className="rounded-md border border-[#2563EB] px-2 py-0.5 text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
+																>
+																	{tSettings(
+																		"effects.webcamFullscreen",
+																		"Fullscreen webcam",
+																	)}
+																</button>
+															) : null}
+															{onAddWebcamFocusRegionAtPlayhead ? (
+																<button
+																	type="button"
+																	onClick={() =>
+																		onAddWebcamFocusRegionAtPlayhead()
+																	}
+																	className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
+																>
+																	{tSettings(
+																		"effects.webcamFocusAdd",
+																		"Add focus",
+																	)}
+																</button>
+															) : null}
+														</div>
+													</div>
+													{selectedWebcamFocusRegion ? (
+														<div className="space-y-2">
+															<div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+																<span className="font-mono text-foreground/80">
+																	{formatRegionTime(
+																		selectedWebcamFocusRegion.startMs,
+																	)}
+																	{" -> "}
+																	{formatRegionTime(
+																		selectedWebcamFocusRegion.endMs,
+																	)}
+																</span>
+																<button
+																	type="button"
+																	onClick={() =>
+																		onSelectWebcamFocusRegion?.(
+																			null,
+																		)
+																	}
+																	className="text-[#2563EB] transition-opacity hover:opacity-80"
+																>
+																	{tSettings(
+																		"effects.webcamFocusDeselect",
+																		"Close",
+																	)}
+																</button>
+															</div>
+															<SliderControl
+																label={tSettings(
+																	"effects.webcamFocusSize",
+																	"Focus size",
+																)}
+																value={
+																	selectedWebcamFocusRegion.focusSize ??
+																	DEFAULT_WEBCAM_FOCUS_SIZE
+																}
+																defaultValue={
+																	DEFAULT_WEBCAM_FOCUS_SIZE
+																}
+																min={50}
+																max={100}
+																step={1}
+																onChange={(value) =>
+																	onWebcamFocusRegionSizeChange?.(
+																		selectedWebcamFocusRegion.id,
+																		value,
+																	)
+																}
+																formatValue={(v) =>
+																	`${Math.round(v)}%`
+																}
+																parseInput={(text) =>
+																	parseFloat(
+																		text.replace(/%$/, ""),
+																	)
+																}
+															/>
+															<div className="flex items-center justify-between gap-2">
+																<span className="text-[10px] text-muted-foreground">
+																	{tSettings(
+																		"effects.webcamFocusMode",
+																		"Screen mode",
+																	)}
+																</span>
+																<Select
+																	value={
+																		selectedWebcamFocusRegion.screenMode ??
+																		DEFAULT_WEBCAM_FOCUS_SCREEN_MODE
+																	}
+																	onValueChange={(value) =>
+																		onWebcamFocusRegionScreenModeChange?.(
+																			selectedWebcamFocusRegion.id,
+																			value as WebcamFocusRegion["screenMode"],
+																		)
+																	}
+																>
+																	<SelectTrigger className="h-7 w-24 rounded-md border-foreground/10 bg-foreground/5 px-2 text-[10px]">
+																		<SelectValue />
+																	</SelectTrigger>
+																	<SelectContent>
+																		<SelectItem value="pip">
+																			PiP
+																		</SelectItem>
+																		<SelectItem value="hidden">
+																			Hidden
+																		</SelectItem>
+																	</SelectContent>
+																</Select>
+															</div>
+															{selectedWebcamFocusRegion.screenMode !==
+															"hidden" ? (
+																<>
+																	<SliderControl
+																		label={tSettings(
+																			"effects.webcamFocusPipSize",
+																			"Screen PiP size",
+																		)}
+																		value={
+																			selectedWebcamFocusRegion.screenPipSize ??
+																			DEFAULT_WEBCAM_FOCUS_SCREEN_PIP_SIZE
+																		}
+																		defaultValue={
+																			DEFAULT_WEBCAM_FOCUS_SCREEN_PIP_SIZE
+																		}
+																		min={8}
+																		max={40}
+																		step={1}
+																		onChange={(value) =>
+																			onWebcamFocusRegionPipSizeChange?.(
+																				selectedWebcamFocusRegion.id,
+																				value,
+																			)
+																		}
+																		formatValue={(v) =>
+																			`${Math.round(v)}%`
+																		}
+																		parseInput={(text) =>
+																			parseFloat(
+																				text.replace(
+																					/%$/,
+																					"",
+																				),
+																			)
+																		}
+																	/>
+																	<div className="grid grid-cols-4 gap-1">
+																		{[
+																			"top-left",
+																			"top-right",
+																			"bottom-left",
+																			"bottom-right",
+																		].map((corner) => (
+																			<Button
+																				key={corner}
+																				type="button"
+																				onClick={() =>
+																					onWebcamFocusRegionCornerChange?.(
+																						selectedWebcamFocusRegion.id,
+																						corner as WebcamFocusRegion["screenPipCorner"],
+																					)
+																				}
+																				className={cn(
+																					"h-7 rounded-md border px-1 text-[10px]",
+																					selectedWebcamFocusRegion.screenPipCorner ===
+																						corner
+																						? "border-[#2563EB] bg-[#2563EB] text-white"
+																						: "border-foreground/10 bg-foreground/5 text-muted-foreground",
+																				)}
+																			>
+																				{corner
+																					.split("-")
+																					.map((part) =>
+																						part[0].toUpperCase(),
+																					)
+																					.join("")}
+																			</Button>
+																		))}
+																	</div>
+																</>
+															) : null}
+															<SliderControl
+																label={tSettings(
+																	"effects.webcamFocusTransitionIn",
+																	"Transition in",
+																)}
+																value={
+																	selectedWebcamFocusRegion.transitionInMs ??
+																	DEFAULT_WEBCAM_FOCUS_TRANSITION_IN_MS
+																}
+																defaultValue={
+																	DEFAULT_WEBCAM_FOCUS_TRANSITION_IN_MS
+																}
+																min={0}
+																max={2000}
+																step={50}
+																onChange={(value) =>
+																	onWebcamFocusRegionTransitionChange?.(
+																		selectedWebcamFocusRegion.id,
+																		"transitionInMs",
+																		value,
+																	)
+																}
+																formatValue={(v) =>
+																	`${Math.round(v)}ms`
+																}
+																parseInput={(text) =>
+																	parseFloat(
+																		text.replace(/ms$/, ""),
+																	)
+																}
+															/>
+															<SliderControl
+																label={tSettings(
+																	"effects.webcamFocusTransitionOut",
+																	"Transition out",
+																)}
+																value={
+																	selectedWebcamFocusRegion.transitionOutMs ??
+																	DEFAULT_WEBCAM_FOCUS_TRANSITION_OUT_MS
+																}
+																defaultValue={
+																	DEFAULT_WEBCAM_FOCUS_TRANSITION_OUT_MS
+																}
+																min={0}
+																max={2000}
+																step={50}
+																onChange={(value) =>
+																	onWebcamFocusRegionTransitionChange?.(
+																		selectedWebcamFocusRegion.id,
+																		"transitionOutMs",
+																		value,
+																	)
+																}
+																formatValue={(v) =>
+																	`${Math.round(v)}ms`
+																}
+																parseInput={(text) =>
+																	parseFloat(
+																		text.replace(/ms$/, ""),
+																	)
+																}
+															/>
+															{onWebcamFocusRegionDelete ? (
+																<button
+																	type="button"
+																	onClick={() =>
+																		onWebcamFocusRegionDelete(
+																			selectedWebcamFocusRegion.id,
+																		)
+																	}
+																	className="w-full rounded-md border border-foreground/10 px-2 py-1 text-[10px] text-foreground/80 transition-opacity hover:opacity-80"
+																>
+																	{tSettings(
+																		"effects.webcamFocusDelete",
+																		"Delete selected focus region",
+																	)}
+																</button>
+															) : null}
+														</div>
+													) : null}
+													{webcamFocusRegions.length > 0 ? (
+														<div className="flex flex-col gap-1">
+															{webcamFocusRegions.map((region) => {
+																const isSelected =
+																	region.id ===
+																	selectedWebcamFocusRegionId;
+																return (
+																	<button
+																		key={region.id}
+																		type="button"
+																		onClick={() =>
+																			onSelectWebcamFocusRegion?.(
+																				isSelected
+																					? null
+																					: region.id,
+																			)
+																		}
+																		className={`flex w-full items-center justify-between rounded-md border px-2 py-1 text-[10px] transition-opacity hover:opacity-80 ${
+																			isSelected
+																				? "border-[#2563EB] text-foreground"
+																				: "border-foreground/10 text-foreground/80"
+																		}`}
+																	>
+																		<span className="font-mono">
+																			{formatRegionTime(
+																				region.startMs,
+																			)}
+																			{" -> "}
+																			{formatRegionTime(
+																				region.endMs,
+																			)}
+																		</span>
+																		<span>
+																			{Math.round(
+																				region.focusSize,
+																			)}
+																			%
+																		</span>
+																	</button>
+																);
+															})}
+														</div>
+													) : null}
+												</div>
+											);
+										})()}
+									</>
+								);
+							})()}
+							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+								<div className="mb-2 flex items-center justify-between gap-2">
+									<div className="text-[10px] text-muted-foreground">
+										{tSettings(
+											"effects.webcamPosition",
+											"Camera movement (timeline)",
+										)}
+									</div>
+									<button
+										type="button"
+										role="switch"
+										aria-checked={webcamPositionEnabled}
+										onClick={() =>
+											onWebcamPositionEnabledChange?.(!webcamPositionEnabled)
+										}
+										className={`relative h-4 w-7 rounded-full transition-colors ${
+											webcamPositionEnabled
+												? "bg-[#2563EB]"
+												: "bg-foreground/20"
+										}`}
+									>
+										<span
+											className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
+												webcamPositionEnabled
+													? "translate-x-3.5"
+													: "translate-x-0.5"
+											}`}
+										/>
+									</button>
+								</div>
+								{!webcamPositionEnabled ? (
+									<p className="text-[10px] text-muted-foreground/70">
+										{tSettings(
+											"effects.webcamPositionHint",
+											"Off. Enable to drag the camera in the preview and create position regions on the timeline.",
+										)}
+									</p>
+								) : webcamPositionRegions.length === 0 ? (
+									<p className="text-[10px] text-muted-foreground/70">
+										{tSettings(
+											"effects.webcamPositionEmpty",
+											"Drag the camera in the preview to create a position region.",
+										)}
+									</p>
+								) : (
+									<div className="flex flex-col gap-1">
+										{webcamPositionRegions.map((region) => {
+											const isSelected =
+												region.id === selectedWebcamPositionRegionId;
+											return (
+												<div
+													key={region.id}
+													className={`flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1 text-[10px] ${
+														isSelected
+															? "border-[#2563EB] text-foreground"
+															: "border-foreground/10 text-foreground/80"
+													}`}
+												>
+													<button
+														type="button"
+														onClick={() =>
+															onSelectWebcamPositionRegion?.(
+																isSelected ? null : region.id,
+															)
+														}
+														className="flex-1 text-left font-mono"
+													>
+														{(region.startMs / 1000).toFixed(2)}s
+														{" -> "}
+														{(region.endMs / 1000).toFixed(2)}s
+													</button>
+													<span className="font-mono">
+														{Math.round(region.positionX * 100)},
+														{Math.round(region.positionY * 100)}
+													</span>
+													{onWebcamPositionRegionDelete ? (
+														<button
+															type="button"
+															onClick={() =>
+																onWebcamPositionRegionDelete(
+																	region.id,
+																)
+															}
+															className="text-foreground/60 hover:opacity-80"
+															aria-label="Delete"
+														>
+															×
+														</button>
+													) : null}
+												</div>
+											);
+										})}
+									</div>
+									)}
+									{webcamPositionEnabled &&
+									selectedWebcamPositionRegionId &&
+									onWebcamPositionRegionTransitionChange
+										? (() => {
+												const selected = webcamPositionRegions.find(
+													(r) => r.id === selectedWebcamPositionRegionId,
+												);
+												if (!selected) return null;
+												return (
+													<div className="mt-2 flex flex-col gap-1.5">
+														<div className="flex items-center gap-2">
+															<span className="w-12 text-[10px] text-muted-foreground">
+																{tSettings(
+																	"effects.webcamTransitionIn",
+																	"In",
+																)}
+															</span>
+															<input
+																type="number"
+																min={0}
+																max={2000}
+																step={50}
+																value={
+																	selected.transitionInMs ?? 400
+																}
+																onChange={(event) =>
+																	onWebcamPositionRegionTransitionChange(
+																		selected.id,
+																		"transitionInMs",
+																		Number(event.target.value),
+																	)
+																}
+																className="w-16 rounded-md border border-foreground/10 bg-transparent px-1.5 py-0.5 text-[10px] text-foreground"
+															/>
+															<span className="text-[10px] text-muted-foreground">
+																ms
+															</span>
+														</div>
+														<div className="flex items-center gap-2">
+															<span className="w-12 text-[10px] text-muted-foreground">
+																{tSettings(
+																	"effects.webcamTransitionOut",
+																	"Out",
+																)}
+															</span>
+															<input
+																type="number"
+																min={0}
+																max={2000}
+																step={50}
+																value={
+																	selected.transitionOutMs ?? 400
+																}
+																onChange={(event) =>
+																	onWebcamPositionRegionTransitionChange(
+																		selected.id,
+																		"transitionOutMs",
+																		Number(event.target.value),
+																	)
+																}
+																className="w-16 rounded-md border border-foreground/10 bg-transparent px-1.5 py-0.5 text-[10px] text-foreground"
+															/>
+															<span className="text-[10px] text-muted-foreground">
+																ms
+															</span>
+														</div>
+													</div>
+												);
+											})()
+										: null}
+							</div>
 							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
 								<div className="mb-2 flex items-center justify-between gap-2">
 									<div className="text-[10px] text-muted-foreground">
@@ -3593,6 +4410,50 @@ export function SettingsPanel({
 								formatValue={(v) => `${Math.round(v)}px`}
 								parseInput={(text) => parseFloat(text.replace(/px$/, ""))}
 							/>
+							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+								<div className="mb-2 text-[10px] text-muted-foreground">
+									{tSettings("effects.webcamShape", "Shape")}
+								</div>
+								<div className="grid grid-cols-4 gap-1">
+									{WEBCAM_SHAPE_PRESETS.map((preset) => {
+										const currentRadius =
+											webcam?.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS;
+										const isActive =
+											Math.abs(currentRadius - preset.cornerRadius) <= 2;
+										return (
+											<Button
+												key={preset.id}
+												type="button"
+												onClick={() =>
+													updateWebcam({
+														cornerRadius: preset.cornerRadius,
+													})
+												}
+												className={cn(
+													"h-14 flex-col gap-1 rounded-md border px-1 text-[9px]",
+													isActive
+														? "border-[#2563EB] bg-[#2563EB] text-white"
+														: "border-foreground/10 bg-foreground/5 text-muted-foreground hover:border-foreground/20 hover:bg-foreground/10",
+												)}
+											>
+												<span
+													className="block h-5 w-7 border border-current"
+													style={{
+														borderRadius:
+															preset.id === "circle"
+																? "999px"
+																: `${Math.min(
+																		preset.cornerRadius,
+																		12,
+																	)}px`,
+													}}
+												/>
+												<span className="truncate">{preset.label}</span>
+											</Button>
+										);
+									})}
+								</div>
+							</div>
 							<SliderControl
 								label={tSettings("effects.webcamRoundness")}
 								value={webcam?.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS}

@@ -2,10 +2,18 @@ import type {
 	AnnotationRegion,
 	AudioRegion,
 	ClipRegion,
+	WebcamFocusRegion,
+	WebcamPositionRegion,
+	WebcamSizeRegion,
 	ZoomRegion,
 } from "../../types";
-import type { TimelineRegionSpan, TimelineRenderItem } from "../core/timelineTypes";
-import { CLIP_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
+import {
+	CLIP_ROW_ID,
+	WEBCAM_FOCUS_ROW_ID,
+	WEBCAM_POSITION_ROW_ID,
+	WEBCAM_SIZE_ROW_ID,
+	ZOOM_ROW_ID,
+} from "../core/constants";
 import {
 	getAnnotationTrackIndex,
 	getAnnotationTrackRowId,
@@ -14,6 +22,7 @@ import {
 	isAnnotationTrackRowId,
 	isAudioTrackRowId,
 } from "../core/rows";
+import type { TimelineRegionSpan, TimelineRenderItem } from "../core/timelineTypes";
 
 export function getAnnotationLabel(region: AnnotationRegion): string {
 	if (region.type === "text") {
@@ -27,7 +36,12 @@ export function getAnnotationLabel(region: AnnotationRegion): string {
 }
 
 export function getAudioLabel(region: AudioRegion): string {
-	return region.audioPath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "Audio";
+	return (
+		region.audioPath
+			.split(/[\\/]/)
+			.pop()
+			?.replace(/\.[^.]+$/, "") || "Audio"
+	);
 }
 
 export function buildTimelineItems(params: {
@@ -35,8 +49,19 @@ export function buildTimelineItems(params: {
 	clipRegions: ClipRegion[];
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];
+	webcamSizeRegions?: WebcamSizeRegion[];
+	webcamFocusRegions?: WebcamFocusRegion[];
+	webcamPositionRegions?: WebcamPositionRegion[];
 }): TimelineRenderItem[] {
-	const { zoomRegions, clipRegions, annotationRegions, audioRegions } = params;
+	const {
+		zoomRegions,
+		clipRegions,
+		annotationRegions,
+		audioRegions,
+		webcamSizeRegions = [],
+		webcamFocusRegions = [],
+		webcamPositionRegions = [],
+	} = params;
 	const zooms: TimelineRenderItem[] = zoomRegions.map((region, index) => ({
 		id: region.id,
 		rowId: ZOOM_ROW_ID,
@@ -83,15 +108,65 @@ export function buildTimelineItems(params: {
 		variant: "audio",
 	}));
 
-	return [...zooms, ...clips, ...annotations, ...audios];
+	const webcamSizes: TimelineRenderItem[] = webcamSizeRegions.map((region) => ({
+		id: region.id,
+		rowId: WEBCAM_SIZE_ROW_ID,
+		span: { start: region.startMs, end: region.endMs },
+		label:
+			region.height !== undefined && Math.round(region.height) !== Math.round(region.size)
+				? `${Math.round(region.size)}x${Math.round(region.height)}%`
+				: `${Math.round(region.size)}%`,
+		webcamSizePercent: region.size,
+		webcamHeightPercent: region.height,
+		variant: "webcam-size",
+	}));
+
+	const webcamFocuses: TimelineRenderItem[] = webcamFocusRegions.map((region) => ({
+		id: region.id,
+		rowId: WEBCAM_FOCUS_ROW_ID,
+		span: { start: region.startMs, end: region.endMs },
+		label: `Focus ${Math.round(region.focusSize)}%`,
+		webcamFocusPercent: region.focusSize,
+		variant: "webcam-focus",
+	}));
+
+	const webcamPositions: TimelineRenderItem[] = webcamPositionRegions.map((region) => ({
+		id: region.id,
+		rowId: WEBCAM_POSITION_ROW_ID,
+		span: { start: region.startMs, end: region.endMs },
+		label: `${Math.round(region.positionX * 100)},${Math.round(region.positionY * 100)}`,
+		webcamPositionX: region.positionX,
+		webcamPositionY: region.positionY,
+		variant: "webcam-position",
+	}));
+
+	return [
+		...zooms,
+		...clips,
+		...annotations,
+		...audios,
+		...webcamSizes,
+		...webcamFocuses,
+		...webcamPositions,
+	];
 }
 
 export function buildAllRegionSpans(params: {
 	zoomRegions: ZoomRegion[];
 	clipRegions: ClipRegion[];
 	audioRegions: AudioRegion[];
+	webcamSizeRegions?: WebcamSizeRegion[];
+	webcamFocusRegions?: WebcamFocusRegion[];
+	webcamPositionRegions?: WebcamPositionRegion[];
 }): TimelineRegionSpan[] {
-	const { zoomRegions, clipRegions, audioRegions } = params;
+	const {
+		zoomRegions,
+		clipRegions,
+		audioRegions,
+		webcamSizeRegions = [],
+		webcamFocusRegions = [],
+		webcamPositionRegions = [],
+	} = params;
 	const zooms = zoomRegions.map((r) => ({
 		id: r.id,
 		start: r.startMs,
@@ -110,7 +185,25 @@ export function buildAllRegionSpans(params: {
 		end: r.endMs,
 		rowId: getAudioTrackRowId(r.trackIndex ?? 0),
 	}));
-	return [...zooms, ...clips, ...audios];
+	const webcamSizes = webcamSizeRegions.map((r) => ({
+		id: r.id,
+		start: r.startMs,
+		end: r.endMs,
+		rowId: WEBCAM_SIZE_ROW_ID,
+	}));
+	const webcamFocuses = webcamFocusRegions.map((r) => ({
+		id: r.id,
+		start: r.startMs,
+		end: r.endMs,
+		rowId: WEBCAM_FOCUS_ROW_ID,
+	}));
+	const webcamPositions = webcamPositionRegions.map((r) => ({
+		id: r.id,
+		start: r.startMs,
+		end: r.endMs,
+		rowId: WEBCAM_POSITION_ROW_ID,
+	}));
+	return [...zooms, ...clips, ...audios, ...webcamSizes, ...webcamFocuses, ...webcamPositions];
 }
 
 export function resolveDropRowId(

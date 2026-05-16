@@ -1,13 +1,6 @@
 import type { Span } from "dnd-timeline";
-import { useCallback, useImperativeHandle } from "react";
 import type { ForwardedRef, RefObject } from "react";
-import type { TimelineShortcutBindings } from "../core/timelineTypes";
-import { useTimelineDndBindings } from "./useTimelineDndBindings";
-import { useTimelineAudioActions } from "./actions/useTimelineAudioActions";
-import { useTimelineKeyboardShortcuts } from "./useTimelineKeyboardShortcuts";
-import { useTimelineNormalization } from "./useTimelineNormalization";
-import { useTimelineSelection } from "./useTimelineSelection";
-import { useTimelineZoomActions } from "./actions/useTimelineZoomActions";
+import { useCallback, useImperativeHandle } from "react";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -15,10 +8,20 @@ import type {
 	CursorTelemetryPoint,
 	SpeedRegion,
 	TrimRegion,
+	WebcamFocusRegion,
+	WebcamPositionRegion,
+	WebcamSizeRegion,
 	ZoomFocus,
 	ZoomRegion,
 } from "../../types";
+import type { TimelineShortcutBindings } from "../core/timelineTypes";
 import type { TimelineEditorHandle } from "../TimelineEditor";
+import { useTimelineAudioActions } from "./actions/useTimelineAudioActions";
+import { useTimelineZoomActions } from "./actions/useTimelineZoomActions";
+import { useTimelineDndBindings } from "./useTimelineDndBindings";
+import { useTimelineKeyboardShortcuts } from "./useTimelineKeyboardShortcuts";
+import { useTimelineNormalization } from "./useTimelineNormalization";
+import { useTimelineSelection } from "./useTimelineSelection";
 
 interface UseTimelineEditorRuntimeParams {
 	ref: ForwardedRef<TimelineEditorHandle>;
@@ -59,6 +62,21 @@ interface UseTimelineEditorRuntimeParams {
 	onAudioDelete?: (id: string) => void;
 	selectedAudioId?: string | null;
 	onSelectAudio?: (id: string | null) => void;
+	webcamSizeRegions: WebcamSizeRegion[];
+	webcamFocusRegions: WebcamFocusRegion[];
+	webcamPositionRegions: WebcamPositionRegion[];
+	onWebcamSizeSpanChange?: (id: string, span: Span) => void;
+	onWebcamSizeDelete?: (id: string) => void;
+	selectedWebcamSizeRegionId?: string | null;
+	onSelectWebcamSize?: (id: string | null) => void;
+	onWebcamFocusSpanChange?: (id: string, span: Span) => void;
+	onWebcamFocusDelete?: (id: string) => void;
+	selectedWebcamFocusRegionId?: string | null;
+	onSelectWebcamFocus?: (id: string | null) => void;
+	onWebcamPositionSpanChange?: (id: string, span: Span) => void;
+	onWebcamPositionDelete?: (id: string) => void;
+	selectedWebcamPositionRegionId?: string | null;
+	onSelectWebcamPosition?: (id: string | null) => void;
 	isMac: boolean;
 	keyShortcuts: TimelineShortcutBindings;
 	isTimelineFocusedRef: RefObject<boolean>;
@@ -103,6 +121,21 @@ export function useTimelineEditorRuntime({
 	onAudioDelete,
 	selectedAudioId,
 	onSelectAudio,
+	webcamSizeRegions,
+	webcamFocusRegions,
+	webcamPositionRegions,
+	onWebcamSizeSpanChange,
+	onWebcamSizeDelete,
+	selectedWebcamSizeRegionId,
+	onSelectWebcamSize,
+	onWebcamFocusSpanChange,
+	onWebcamFocusDelete,
+	selectedWebcamFocusRegionId,
+	onSelectWebcamFocus,
+	onWebcamPositionSpanChange,
+	onWebcamPositionDelete,
+	selectedWebcamPositionRegionId,
+	onSelectWebcamPosition,
 	isMac,
 	keyShortcuts,
 	isTimelineFocusedRef,
@@ -121,12 +154,18 @@ export function useTimelineEditorRuntime({
 		deleteSelectedClip,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
+		deleteSelectedWebcamSize,
+		deleteSelectedWebcamFocus,
+		deleteSelectedWebcamPosition,
 		clearSelectedBlocks,
 		deleteAllBlocks,
 		handleSelectZoom,
 		handleSelectClip,
 		handleSelectAnnotation,
 		handleSelectAudio,
+		handleSelectWebcamSize,
+		handleSelectWebcamFocus,
+		handleSelectWebcamPosition,
 		cycleAnnotationsAtCurrentTime,
 	} = useTimelineSelection({
 		totalMs,
@@ -135,18 +174,30 @@ export function useTimelineEditorRuntime({
 		clipRegions,
 		annotationRegions,
 		audioRegions,
+		webcamSizeRegions,
+		webcamFocusRegions,
+		webcamPositionRegions,
 		selectedZoomId,
 		selectedClipId,
 		selectedAnnotationId,
 		selectedAudioId,
+		selectedWebcamSizeRegionId,
+		selectedWebcamFocusRegionId,
+		selectedWebcamPositionRegionId,
 		onZoomDelete,
 		onClipDelete,
 		onAnnotationDelete,
 		onAudioDelete,
+		onWebcamSizeDelete,
+		onWebcamFocusDelete,
+		onWebcamPositionDelete,
 		onSelectZoom,
 		onSelectClip,
 		onSelectAnnotation,
 		onSelectAudio,
+		onSelectWebcamSize,
+		onSelectWebcamFocus,
+		onSelectWebcamPosition,
 	});
 
 	useTimelineNormalization({
@@ -156,39 +207,61 @@ export function useTimelineEditorRuntime({
 		trimRegions,
 		speedRegions,
 		audioRegions,
+		webcamSizeRegions,
+		webcamFocusRegions,
+		webcamPositionRegions,
 		onZoomSpanChange,
 		onTrimSpanChange,
 		onSpeedSpanChange,
 		onAudioSpanChange,
+		onWebcamSizeSpanChange,
+		onWebcamFocusSpanChange,
+		onWebcamPositionSpanChange,
 	});
 
-	const { hasOverlap, timelineItems, allRegionSpans, getResolvedDropRowId, handleItemSpanChange } =
-		useTimelineDndBindings({
-			zoomRegions,
-			trimRegions,
-			clipRegions,
-			annotationRegions,
-			speedRegions,
-			audioRegions,
-			onZoomSpanChange,
-			onTrimSpanChange,
-			onClipSpanChange,
-			onAnnotationSpanChange,
-			onSpeedSpanChange,
-			onAudioSpanChange,
-		});
+	const {
+		hasOverlap,
+		timelineItems,
+		allRegionSpans,
+		getResolvedDropRowId,
+		handleItemSpanChange,
+	} = useTimelineDndBindings({
+		zoomRegions,
+		trimRegions,
+		clipRegions,
+		annotationRegions,
+		speedRegions,
+		audioRegions,
+		webcamSizeRegions,
+		webcamFocusRegions,
+		webcamPositionRegions,
+		onZoomSpanChange,
+		onTrimSpanChange,
+		onClipSpanChange,
+		onAnnotationSpanChange,
+		onSpeedSpanChange,
+		onAudioSpanChange,
+		onWebcamSizeSpanChange,
+		onWebcamFocusSpanChange,
+		onWebcamPositionSpanChange,
+	});
 
-	const { defaultRegionDurationMs, canPlaceZoomAtMs, addZoomAtMs, handleAddZoom, handleSuggestZooms } =
-		useTimelineZoomActions({
-			timeline: { videoDuration, totalMs, currentTimeMs },
-			regions: { zoom: zoomRegions, clip: clipRegions },
-			cursorTelemetry,
-			options: { disableSuggestedZooms },
-			autoSuggestZoomsTrigger,
-			onAutoSuggestZoomsConsumed,
-			onZoomAdded,
-			onZoomSuggested,
-		});
+	const {
+		defaultRegionDurationMs,
+		canPlaceZoomAtMs,
+		addZoomAtMs,
+		handleAddZoom,
+		handleSuggestZooms,
+	} = useTimelineZoomActions({
+		timeline: { videoDuration, totalMs, currentTimeMs },
+		regions: { zoom: zoomRegions, clip: clipRegions },
+		cursorTelemetry,
+		options: { disableSuggestedZooms },
+		autoSuggestZoomsTrigger,
+		onAutoSuggestZoomsConsumed,
+		onZoomAdded,
+		onZoomSuggested,
+	});
 
 	const handleSplitClip = useCallback(() => {
 		if (!videoDuration || videoDuration === 0 || totalMs === 0 || !onClipSplit) {
@@ -233,6 +306,9 @@ export function useTimelineEditorRuntime({
 		selectedClipId,
 		selectedAnnotationId,
 		selectedAudioId,
+		selectedWebcamSizeRegionId,
+		selectedWebcamFocusRegionId,
+		selectedWebcamPositionRegionId,
 		selectAllBlocksActive,
 		setSelectAllBlocksActive,
 		setSelectedKeyframeId,
@@ -246,6 +322,9 @@ export function useTimelineEditorRuntime({
 		deleteSelectedClip,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
+		deleteSelectedWebcamSize,
+		deleteSelectedWebcamFocus,
+		deleteSelectedWebcamPosition,
 		cycleAnnotationsAtCurrentTime,
 	});
 
@@ -259,7 +338,14 @@ export function useTimelineEditorRuntime({
 			addAudio: handleAddAudio,
 			keyframes,
 		}),
-		[handleAddAnnotation, handleAddAudio, handleAddZoom, handleSuggestZooms, handleSplitClip, keyframes],
+		[
+			handleAddAnnotation,
+			handleAddAudio,
+			handleAddZoom,
+			handleSuggestZooms,
+			handleSplitClip,
+			keyframes,
+		],
 	);
 
 	return {
@@ -274,6 +360,9 @@ export function useTimelineEditorRuntime({
 		handleSelectClip,
 		handleSelectAnnotation,
 		handleSelectAudio,
+		handleSelectWebcamSize,
+		handleSelectWebcamFocus,
+		handleSelectWebcamPosition,
 		hasOverlap,
 		timelineItems,
 		allRegionSpans,
