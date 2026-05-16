@@ -1198,6 +1198,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					setMicrophoneDeviceId(result.microphoneDeviceId);
 				}
 				setSystemAudioEnabled(result.systemAudioEnabled);
+				if (result.webcamEnabled) {
+					setWebcamEnabled(true);
+				}
+				if (result.webcamDeviceId) {
+					setWebcamDeviceId(result.webcamDeviceId);
+				}
 			}
 		})();
 	}, []);
@@ -1215,6 +1221,16 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const persistSystemAudioEnabled = useCallback((enabled: boolean) => {
 		setSystemAudioEnabled(enabled);
 		void window.electronAPI.setRecordingPreferences({ systemAudioEnabled: enabled });
+	}, []);
+
+	const persistWebcamEnabled = useCallback((enabled: boolean) => {
+		setWebcamEnabled(enabled);
+		void window.electronAPI.setRecordingPreferences({ webcamEnabled: enabled });
+	}, []);
+
+	const persistWebcamDeviceId = useCallback((deviceId: string | undefined) => {
+		setWebcamDeviceId(deviceId);
+		void window.electronAPI.setRecordingPreferences({ webcamDeviceId: deviceId });
 	}, []);
 
 	useEffect(() => {
@@ -2009,9 +2025,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		systemAudioEnabled,
 		setSystemAudioEnabled: persistSystemAudioEnabled,
 		webcamEnabled,
-		setWebcamEnabled,
+		setWebcamEnabled: persistWebcamEnabled,
 		webcamDeviceId,
-		setWebcamDeviceId,
+		setWebcamDeviceId: persistWebcamDeviceId,
 		countdownDelay,
 		setCountdownDelay,
 	};

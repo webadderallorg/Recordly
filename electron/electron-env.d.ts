@@ -826,6 +826,10 @@ interface Window {
 			microphoneEnabled: boolean;
 			microphoneDeviceId?: string;
 			systemAudioEnabled: boolean;
+			webcamEnabled?: boolean;
+			webcamDeviceId?: string;
+			selectedSourceId?: string;
+			selectedSourceName?: string;
 		}>;
 		getRecordingAudioLabConfig: () => Promise<{
 			browserMicrophoneProfile: string;
@@ -835,6 +839,10 @@ interface Window {
 			microphoneEnabled?: boolean;
 			microphoneDeviceId?: string;
 			systemAudioEnabled?: boolean;
+			webcamEnabled?: boolean;
+			webcamDeviceId?: string;
+			selectedSourceId?: string;
+			selectedSourceName?: string;
 		}) => Promise<{ success: boolean; error?: string }>;
 		/** Countdown timer before recording */
 		getCountdownDelay: () => Promise<{ success: boolean; delay: number }>;
