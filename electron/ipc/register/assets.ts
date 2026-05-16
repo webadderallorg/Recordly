@@ -131,7 +131,7 @@ export function registerAssetHandlers() {
           if (bytesRead === 0) break
           offset += bytesRead
         }
-        return { success: true as const, data: buffer }
+        return { success: true as const, data: offset < fileSize ? buffer.slice(0, offset) : buffer }
       } finally {
         await fileHandle.close()
       }
