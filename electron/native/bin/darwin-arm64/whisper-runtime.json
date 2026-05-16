@@ -1,6 +1,0 @@
-{
-	"version": "v1.8.4",
-	"platform": "darwin",
-	"arch": "arm64",
-	"binary": "whisper-cli"
-}
