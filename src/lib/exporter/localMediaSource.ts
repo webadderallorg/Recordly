@@ -122,16 +122,16 @@ export async function createReadableMediaResourceFile(resource: string): Promise
 
 	if (localFilePath && typeof window !== "undefined" && window.electronAPI?.readLocalFile) {
 		const result = await window.electronAPI.readLocalFile(localFilePath);
-		if (!result.success || !result.data) {
-			throw new Error(result.error || "Failed to read local media file");
+		if (result.success && result.data) {
+			const bytes =
+				result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
+			const arrayBuffer = bytes.buffer.slice(
+				bytes.byteOffset,
+				bytes.byteOffset + bytes.byteLength,
+			) as ArrayBuffer;
+			return new File([arrayBuffer], filename, { type: inferMimeType(filename) });
 		}
-
-		const bytes = result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
-		const arrayBuffer = bytes.buffer.slice(
-			bytes.byteOffset,
-			bytes.byteOffset + bytes.byteLength,
-		) as ArrayBuffer;
-		return new File([arrayBuffer], filename, { type: inferMimeType(filename) });
+		// readLocalFile failed — fall through to URL-based fetch
 	}
 
 	const resourceUrl = await resolveMediaResourceUrl(resource);

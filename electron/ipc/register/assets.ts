@@ -116,11 +116,28 @@ export function registerAssetHandlers() {
       // require a real on-disk file so this cannot be used to read directories.
       const resolved = await resolveReadableLocalFilePath(filePath)
 
-      const data = await fs.readFile(resolved)
-      return { success: true, data }
+      // Use fileHandle.read instead of fs.readFile to support files >2 GiB.
+      // fs.readFile throws ERR_FS_FILE_TOO_LARGE on large files, but
+      // fileHandle.read has no such restriction.
+      const fileHandle = await fs.open(resolved, 'r')
+      try {
+        const stat = await fileHandle.stat()
+        const fileSize = stat.size
+        const buffer = Buffer.allocUnsafe(fileSize)
+        let offset = 0
+        while (offset < fileSize) {
+          const chunkSize = Math.min(64 * 1024 * 1024, fileSize - offset) // 64 MiB chunks
+          const { bytesRead } = await fileHandle.read(buffer, offset, chunkSize, offset)
+          if (bytesRead === 0) break
+          offset += bytesRead
+        }
+        return { success: true as const, data: buffer }
+      } finally {
+        await fileHandle.close()
+      }
     } catch (error) {
       console.error('Failed to read local file:', error)
-      return { success: false, error: String(error) }
+      return { success: false as const, error: String(error) }
     }
   })
 
