@@ -1,101 +1,204 @@
-import { useEffect, useState } from "react";
-import { CountdownOverlay } from "./components/countdown/CountdownOverlay";
-import { LaunchWindow } from "./components/launch/LaunchWindow";
-import { SourceSelector } from "./components/launch/SourceSelector";
-import { UpdateToastWindow } from "./components/launch/UpdateToastWindow";
-import { Toaster } from "./components/ui/sonner";
-import { ShortcutsConfigDialog } from "./components/video-editor/ShortcutsConfigDialog";
-import VideoEditor from "./components/video-editor/VideoEditor";
-import { useI18n } from "./contexts/I18nContext";
-import { ShortcutsProvider } from "./contexts/ShortcutsContext";
-import { loadAllCustomFonts } from "./lib/customFonts";
+import { useCallback, useEffect, useState } from "react";
+import { MockupScene } from "@/scene/MockupScene";
+import { useAnimationTimeline } from "@/hooks/engine/useAnimationTimeline";
+import { useVideoUpload } from "@/hooks/engine/useVideoUpload";
+import { generateAnimation } from "@/engine/claudeBridge";
+
+// ─── Placeholder shell ────────────────────────────────────────────────────────
+// Minimal wiring harness — not the final UI.
+// Replace this render when the HTML design arrives from Claude design tool.
+// All engine hooks stay exactly as-is; only this JSX changes.
 
 export default function App() {
-	const [windowType, setWindowType] = useState("");
-	const { t } = useI18n();
-	const isMacOS = /mac/i.test(navigator.platform);
-	const appIconSrc = "/app-icons/recordly-128.png";
+	const [timeline, controls] = useAnimationTimeline(5);
+	const [videoState, videoControls] = useVideoUpload();
+	const [isGenerating, setIsGenerating] = useState(false);
+	const [log, setLog] = useState<string[]>([]);
+	const [apiKey, setApiKey] = useState("");
+
+	// Sync video currentTime to timeline scrub position
+	useEffect(() => {
+		videoControls.seekTo(timeline.position);
+	}, [timeline.position, videoControls]);
 
 	useEffect(() => {
-		const params = new URLSearchParams(window.location.search);
-		const type = params.get("windowType") || "";
-		setWindowType(type);
-		document.documentElement.dataset.windowType = type;
-
-		if (
-			type === "hud-overlay" ||
-			type === "source-selector" ||
-			type === "countdown" ||
-			(type === "update-toast" && isMacOS)
-		) {
-			document.body.style.background = "transparent";
-			document.documentElement.style.background = "transparent";
-			document.getElementById("root")?.style.setProperty("background", "transparent");
+		if (timeline.isPlaying) {
+			videoControls.play();
+		} else {
+			videoControls.pause();
 		}
+	}, [timeline.isPlaying, videoControls]);
 
-		if (type === "hud-overlay") {
-			document.documentElement.classList.add("hud-overlay-window");
-			document.body.classList.add("hud-overlay-window");
-			document.getElementById("root")?.classList.add("hud-overlay-window");
-			window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
-		} else if (type === "update-toast") {
-			document.documentElement.style.overflow = "visible";
-			document.body.style.overflow = "visible";
-			document.getElementById("root")?.style.setProperty("overflow", "visible");
+	const handleDrop = useCallback(
+		(e: React.DragEvent) => {
+			e.preventDefault();
+			const file = e.dataTransfer.files[0];
+			if (file?.type.startsWith("video/")) {
+				videoControls.loadFile(file);
+			}
+		},
+		[videoControls],
+	);
+
+	const handleGenerate = useCallback(async () => {
+		if (!apiKey) {
+			alert("Enter your Anthropic API key first");
+			return;
 		}
+		setIsGenerating(true);
+		setLog([]);
+		try {
+			await generateAnimation({
+				apiKey,
+				style: "apple",
+				duration: timeline.duration,
+				fps: 30,
+				deviceType: "phone",
+				onProgress: (msg) => setLog((prev) => [...prev, msg]),
+				onFinalize: (summary) => setLog((prev) => [...prev, `✓ ${summary}`]),
+			});
+		} finally {
+			setIsGenerating(false);
+		}
+	}, [apiKey, timeline.duration]);
 
-		loadAllCustomFonts().catch((error) => {
-			console.error("Failed to load custom fonts:", error);
-		});
-	}, []);
+	return (
+		<div
+			style={{
+				display: "flex",
+				height: "100vh",
+				background: "#0f0f12",
+				color: "#fff",
+				fontFamily: "monospace",
+			}}
+		>
+			{/* LEFT: controls placeholder */}
+			<div
+				style={{
+					width: 280,
+					padding: 16,
+					borderRight: "1px solid #222",
+					display: "flex",
+					flexDirection: "column",
+					gap: 12,
+					overflow: "auto",
+				}}
+			>
+				<div style={{ fontSize: 13, fontWeight: 600, color: "#888" }}>MOCKLY STUDIO</div>
+				<div style={{ fontSize: 11, color: "#555" }}>engine wiring — UI coming from design</div>
 
-	useEffect(() => {
-		document.title =
-			windowType === "editor"
-				? t("app.editorTitle", "Recordly Editor")
-				: t("app.name", "Recordly");
-	}, [windowType, t]);
+				<label style={{ fontSize: 11, color: "#888" }}>
+					Anthropic API Key
+					<input
+						type="password"
+						value={apiKey}
+						onChange={(e) => setApiKey(e.target.value)}
+						style={{
+							display: "block",
+							width: "100%",
+							marginTop: 4,
+							padding: "4px 8px",
+							background: "#1a1a20",
+							border: "1px solid #333",
+							borderRadius: 4,
+							color: "#fff",
+							fontSize: 11,
+						}}
+						placeholder="sk-ant-..."
+					/>
+				</label>
 
-	switch (windowType) {
-		case "hud-overlay":
-			return (
-				<>
-					<LaunchWindow />
-					<Toaster className="pointer-events-auto" />
-				</>
-			);
-		case "source-selector":
-			return <SourceSelector />;
-		case "countdown":
-			return <CountdownOverlay />;
-		case "update-toast":
-			return <UpdateToastWindow />;
-		case "editor":
-			return (
-				<ShortcutsProvider>
-					<VideoEditor />
-					<ShortcutsConfigDialog />
-				</ShortcutsProvider>
-			);
-		default:
-			return (
-				<div className="flex h-full w-full items-center justify-center bg-editor-bg text-foreground">
-					<div className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-foreground/5 px-6 py-5 shadow-2xl shadow-black/30 backdrop-blur-xl">
-						<img
-							src={appIconSrc}
-							alt={t("app.name", "Recordly")}
-							className="h-12 w-12 rounded-xl"
-						/>
-						<div>
-							<h1 className="text-xl font-semibold tracking-tight">
-								{t("app.name", "Recordly")}
-							</h1>
-							<p className="text-sm text-foreground/65">
-								{t("app.subtitle", "Screen recording and editing")}
-							</p>
-						</div>
-					</div>
+				<button
+					type="button"
+					onClick={handleGenerate}
+					disabled={isGenerating}
+					style={{
+						padding: "8px 12px",
+						background: isGenerating ? "#333" : "#2563eb",
+						border: "none",
+						borderRadius: 6,
+						color: "#fff",
+						cursor: "pointer",
+						fontSize: 12,
+					}}
+				>
+					{isGenerating ? "Generating…" : "✦ Generate Animation"}
+				</button>
+
+				<button
+					type="button"
+					onClick={timeline.isPlaying ? controls.pause : controls.play}
+					style={{
+						padding: "8px 12px",
+						background: "#1a1a20",
+						border: "1px solid #333",
+						borderRadius: 6,
+						color: "#fff",
+						cursor: "pointer",
+						fontSize: 12,
+					}}
+				>
+					{timeline.isPlaying ? "⏸ Pause" : "▶ Play"}
+				</button>
+
+				<div style={{ fontSize: 11, color: "#555" }}>
+					{timeline.position.toFixed(2)}s / {timeline.duration}s
 				</div>
-			);
-	}
+
+				<div
+					style={{
+						maxHeight: 200,
+						overflow: "auto",
+						fontSize: 10,
+						color: "#666",
+						lineHeight: 1.6,
+					}}
+				>
+					{log.map((l, i) => (
+						// biome-ignore lint/suspicious/noArrayIndexKey: stable log lines
+						<div key={i}>{l}</div>
+					))}
+				</div>
+
+				<div style={{ fontSize: 11, color: "#555", marginTop: "auto" }}>
+					Drop a video file on the canvas →
+				</div>
+			</div>
+
+			{/* CENTER: 3D canvas */}
+			<div
+				style={{ flex: 1, position: "relative" }}
+				onDrop={handleDrop}
+				onDragOver={(e) => e.preventDefault()}
+			>
+				<MockupScene
+					cameraValues={timeline.cameraValues}
+					deviceValues={timeline.deviceValues}
+					screenTexture={videoState.videoTexture}
+					deviceType="phone"
+					hdri="studio"
+					background={null}
+					depthOfField={false}
+					bloom={false}
+				/>
+
+				{!videoState.isReady && (
+					<div
+						style={{
+							position: "absolute",
+							inset: 0,
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "center",
+							color: "#333",
+							pointerEvents: "none",
+							fontSize: 13,
+						}}
+					>
+						Drop a video file here
+					</div>
+				)}
+			</div>
+		</div>
+	);
 }
