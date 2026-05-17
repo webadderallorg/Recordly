@@ -6,12 +6,12 @@ const REFERENCE_PIXEL_RATE = 1920 * 1080 * 30;
 export function getEncodingModeBitrateMultiplier(encodingMode: ExportEncodingMode): number {
 	switch (encodingMode) {
 		case "fast":
-			return 0.1;
+			return 0.35;
 		case "quality":
-			return 0.9;
+			return 1;
 		case "balanced":
 		default:
-			return 0.5;
+			return 0.75;
 	}
 }
 

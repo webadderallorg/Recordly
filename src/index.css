@@ -34,7 +34,7 @@
 		--brand-accent-rgb: 37, 99, 235;
 		--background: 0 0% 100%;
 		--foreground: 20 14.3% 4.1%;
-		--card: 0 0% 100%;
+		--card: oklch(1 0 0);
 		--card-foreground: 20 14.3% 4.1%;
 		--popover: 0 0% 100%;
 		--popover-foreground: 20 14.3% 4.1%;
@@ -48,22 +48,22 @@
 		--accent-foreground: 221 83% 40%;
 		--destructive: 0 84.2% 60.2%;
 		--destructive-foreground: 60 9.1% 97.8%;
-		--border: 20 5.9% 90%;
-		--input: 20 5.9% 90%;
+		--border: #f5f5f5;
+		--input: #f5f5f5;
 		--ring: 221 83% 53%;
 		--chart-1: 12 76% 61%;
 		--chart-2: 173 58% 39%;
 		--chart-3: 197 37% 24%;
 		--chart-4: 43 74% 66%;
 		--chart-5: 27 87% 67%;
-		--radius: 0.5rem;
+		--radius: 8px;
 
 		/* Editor surface colors — light mode */
 		--editor-bg: 0 0% 100%;
 		--editor-header: 0 0% 97%;
-		--editor-panel: 0 0% 98%;
-		--editor-surface: 0 0% 97%;
-		--editor-surface-alt: 0 0% 95%;
+		--editor-panel: 0 0% 98.5%;
+		--editor-surface: 0 0% 100%;
+		--editor-surface-alt: 0 0% 98%;
 		--editor-dialog: 0 0% 100%;
 		--editor-dialog-alt: 0 0% 98%;
 		--editor-timeline: 220 13% 91%;
@@ -79,7 +79,7 @@
 	.dark {
 		--background: 20 14.3% 4.1%;
 		--foreground: 60 9.1% 97.8%;
-		--card: 20 14.3% 4.1%;
+		--card: #070a0f;
 		--card-foreground: 60 9.1% 97.8%;
 		--popover: 20 14.3% 4.1%;
 		--popover-foreground: 60 9.1% 97.8%;
@@ -93,8 +93,8 @@
 		--accent-foreground: 210 40% 98%;
 		--destructive: 0 62.8% 30.6%;
 		--destructive-foreground: 60 9.1% 97.8%;
-		--border: 12 6.5% 15.1%;
-		--input: 12 6.5% 15.1%;
+		--border: #16191f;
+		--input: #16191f;
 		--ring: 221 83% 53%;
 		--chart-1: 220 70% 50%;
 		--chart-2: 160 60% 45%;
@@ -103,16 +103,16 @@
 		--chart-5: 340 75% 55%;
 
 		/* Editor surface colors — dark mode */
-		--editor-bg: 240 6% 7%;
-		--editor-header: 240 5% 8.5%;
-		--editor-panel: 240 5% 9%;
-		--editor-surface: 240 4% 10%;
-		--editor-surface-alt: 240 5% 11%;
-		--editor-dialog: 240 10% 3%;
-		--editor-dialog-alt: 237 9% 5%;
-		--editor-timeline: 240 6% 7%;
-		--editor-row: 240 4% 10%;
-		--editor-subrow: 240 7% 15%;
+		--editor-bg: 220 36% 4%;
+		--editor-header: 220 30% 5%;
+		--editor-panel: 218 25% 6%;
+		--editor-surface: 220 36% 4%;
+		--editor-surface-alt: 220 24% 7%;
+		--editor-dialog: 220 36% 4%;
+		--editor-dialog-alt: 220 24% 7%;
+		--editor-timeline: 220 30% 5%;
+		--editor-row: 220 24% 8%;
+		--editor-subrow: 220 20% 12%;
 
 		/* Slider track colors — dark mode */
 		--slider-track: 0 0% 100% / 0.12;
@@ -268,6 +268,3 @@
 		transform: translateX(270%);
 	}
 }
-
-
-

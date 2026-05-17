@@ -87,6 +87,10 @@ describe("editorPreferences", () => {
 		expect(DEFAULT_EDITOR_PREFERENCES.exportQuality).toBe("source");
 	});
 
+	it("defaults GIF exports to large output to avoid soft text", () => {
+		expect(DEFAULT_EDITOR_PREFERENCES.gifSizePreset).toBe("large");
+	});
+
 	it("defaults cursor preferences to macOS at 2.5x with gentler sway", () => {
 		expect(DEFAULT_EDITOR_PREFERENCES.cursorStyle).toBe("macos");
 		expect(DEFAULT_EDITOR_PREFERENCES.cursorSize).toBe(2.5);
@@ -126,7 +130,9 @@ describe("editorPreferences", () => {
 
 		const loaded = loadEditorPreferences();
 
-		expect(loaded.zoomMotionBlurTuning).toEqual(DEFAULT_EDITOR_PREFERENCES.zoomMotionBlurTuning);
+		expect(loaded.zoomMotionBlurTuning).toEqual(
+			DEFAULT_EDITOR_PREFERENCES.zoomMotionBlurTuning,
+		);
 	});
 
 	it("does not save dev-only split blur tuning overrides to editor preferences", () => {
@@ -178,6 +184,7 @@ describe("editorPreferences", () => {
 			exportFormat: "gif",
 			gifFrameRate: 30,
 			gifLoop: false,
+			gifSizePreset: "large",
 			customAspectWidth: "21",
 			customAspectHeight: "9",
 			customWallpapers: ["data:image/jpeg;base64,abc"],

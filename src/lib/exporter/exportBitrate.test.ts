@@ -12,7 +12,7 @@ describe("export bitrate policy", () => {
 				quality: "source",
 				encodingMode: "quality",
 			}),
-		).toBe(27_000_000);
+		).toBe(30_000_000);
 	});
 
 	it("keeps modern native static-layout source exports high enough for screen text", () => {
@@ -25,7 +25,7 @@ describe("export bitrate policy", () => {
 				encodingMode: "balanced",
 				useModernNativeStaticLayout: true,
 			}),
-		).toBe(22_000_000);
+		).toBe(22_500_000);
 		expect(
 			getMp4ExportBitrate({
 				width: 1920,
@@ -35,10 +35,10 @@ describe("export bitrate policy", () => {
 				encodingMode: "quality",
 				useModernNativeStaticLayout: true,
 			}),
-		).toBe(27_000_000);
+		).toBe(30_000_000);
 	});
 
-	it("does not raise fast exports when the requested bitrate is already lower than the cap", () => {
+	it("keeps fast exports above the visibly blurry floor for screen text", () => {
 		expect(
 			getMp4ExportBitrate({
 				width: 1920,
@@ -48,7 +48,7 @@ describe("export bitrate policy", () => {
 				encodingMode: "fast",
 				useModernNativeStaticLayout: true,
 			}),
-		).toBe(3_000_000);
+		).toBe(10_500_000);
 	});
 
 	it("scales the modern native cap with output pixel rate", () => {

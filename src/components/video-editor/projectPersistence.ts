@@ -1,3 +1,4 @@
+import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import type {
 	ExportBackendPreference,
 	ExportEncodingMode,
@@ -20,7 +21,6 @@ import {
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
 import { CURSOR_MOTION_PRESETS, resolveCursorMotionPresetId } from "./cursorMotionPresets";
-import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import {
 	type AnnotationRegion,
 	type AudioRegion,
@@ -163,10 +163,7 @@ type PersistedDevMotionBlurSettings = {
 export function stripPersistedDevMotionBlurSettings<T extends PersistedDevMotionBlurSettings>(
 	editor: T,
 ): Omit<T, keyof PersistedDevMotionBlurSettings> {
-	const {
-		zoomMotionBlurTuning: _zoomMotionBlurTuning,
-		...persistedEditor
-	} = editor;
+	const { zoomMotionBlurTuning: _zoomMotionBlurTuning, ...persistedEditor } = editor;
 
 	return persistedEditor;
 }
@@ -669,17 +666,17 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 					const startMs = Math.max(0, Math.min(rawStart, rawEnd));
 					const endMs = Math.max(startMs + 1, rawEnd);
 
-						return {
-							id: region.id,
-							startMs,
-							endMs,
-							audioPath: typeof region.audioPath === "string" ? region.audioPath : "",
-							volume: isFiniteNumber(region.volume) ? clamp(region.volume, 0, 1) : 1,
-							normalize: Boolean(region.normalize),
-							trackIndex: isFiniteNumber(region.trackIndex)
-								? Math.max(0, Math.floor(region.trackIndex))
-								: 0,
-						};
+					return {
+						id: region.id,
+						startMs,
+						endMs,
+						audioPath: typeof region.audioPath === "string" ? region.audioPath : "",
+						volume: isFiniteNumber(region.volume) ? clamp(region.volume, 0, 1) : 1,
+						normalize: Boolean(region.normalize),
+						trackIndex: isFiniteNumber(region.trackIndex)
+							? Math.max(0, Math.floor(region.trackIndex))
+							: 0,
+					};
 				})
 		: [];
 
@@ -1047,7 +1044,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			editor.gifSizePreset === "large" ||
 			editor.gifSizePreset === "original"
 				? editor.gifSizePreset
-				: "medium",
+				: "large",
 	};
 }
 

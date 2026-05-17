@@ -683,8 +683,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		return ipcRenderer.invoke("set-current-recording-session", session, options);
 	},
 	onRecordingSessionChanged: (callback: (session: RecordingSessionData | null) => void) => {
-		const listener = (_event: Electron.IpcRendererEvent, payload: RecordingSessionData | null) =>
-			callback(payload);
+		const listener = (
+			_event: Electron.IpcRendererEvent,
+			payload: RecordingSessionData | null,
+		) => callback(payload);
 		ipcRenderer.on("recording-session-changed", listener);
 		return () => ipcRenderer.removeListener("recording-session-changed", listener);
 	},
@@ -871,13 +873,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			success?: boolean;
 			value?: unknown;
 		};
-		return result?.success ? result.value ?? null : null;
+		return result?.success ? (result.value ?? null) : null;
 	},
 	setAppSetting: (key: string, value: unknown) => {
 		const result = ipcRenderer.sendSync("app-settings:set", key, value) as {
 			success?: boolean;
 		};
 		return result?.success === true;
+	},
+	setWindowTheme: (theme: "light" | "dark") => {
+		ipcRenderer.send("app-window:set-theme", theme);
 	},
 	setHasUnsavedChanges: (hasChanges: boolean) => {
 		ipcRenderer.send("set-has-unsaved-changes", hasChanges);

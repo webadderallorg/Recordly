@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme } from "electron";
 import { USER_DATA_PATH } from "./appPaths";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
@@ -13,7 +13,8 @@ const nodeRequire = createRequire(import.meta.url);
 const APP_ROOT = path.join(electronWindowsDir, "..");
 const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 const RENDERER_DIST = path.join(APP_ROOT, "dist");
-const WINDOW_ICON_FILENAME = process.platform === "darwin" ? "recordlymac-512.png" : "recordly-512.png";
+const WINDOW_ICON_FILENAME =
+	process.platform === "darwin" ? "recordlymac-512.png" : "recordly-512.png";
 const WINDOW_ICON_PATH = path.join(
 	process.env.VITE_PUBLIC || RENDERER_DIST,
 	"app-icons",
@@ -27,10 +28,60 @@ let countdownWindow: BrowserWindow | null = null;
 let updateToastWindow: BrowserWindow | null = null;
 
 const HUD_OVERLAY_SETTINGS_FILE = path.join(USER_DATA_PATH, "hud-overlay-settings.json");
+const APP_SETTINGS_FILE = path.join(USER_DATA_PATH, "app-settings.json");
+const THEME_STORAGE_KEY = "recordly.theme";
 const HUD_EDGE_MARGIN_DIP = 16;
 const UPDATE_TOAST_WIDTH = 456;
 const UPDATE_TOAST_HEIGHT = 252;
 const UPDATE_TOAST_GAP_DIP = 18;
+
+type ResolvedWindowTheme = "light" | "dark";
+
+const EDITOR_TITLE_BAR_THEME: Record<
+	ResolvedWindowTheme,
+	{ backgroundColor: string; symbolColor: string }
+> = {
+	light: {
+		backgroundColor: "#ffffff",
+		symbolColor: "#111827",
+	},
+	dark: {
+		backgroundColor: "#070a0f",
+		symbolColor: "#f9fafb",
+	},
+};
+
+function readPersistedEditorTheme(): ResolvedWindowTheme {
+	try {
+		const raw = fs.readFileSync(APP_SETTINGS_FILE, "utf-8");
+		const parsed = JSON.parse(raw) as Record<string, unknown>;
+		const preference = parsed[THEME_STORAGE_KEY];
+		if (preference === "dark") return "dark";
+		if (preference === "light") return "light";
+	} catch {
+		// Fall back to the OS theme when settings are unavailable.
+	}
+
+	return nativeTheme.shouldUseDarkColors ? "dark" : "light";
+}
+
+function getEditorTitleBarTheme(theme: ResolvedWindowTheme) {
+	return EDITOR_TITLE_BAR_THEME[theme];
+}
+
+export function applyEditorWindowTheme(win: BrowserWindow | null, theme: ResolvedWindowTheme) {
+	if (!win || win.isDestroyed()) return;
+
+	const titleBarTheme = getEditorTitleBarTheme(theme);
+	win.setBackgroundColor(titleBarTheme.backgroundColor);
+	if (process.platform !== "darwin") {
+		win.setTitleBarOverlay({
+			color: titleBarTheme.backgroundColor,
+			symbolColor: titleBarTheme.symbolColor,
+			height: 36,
+		});
+	}
+}
 
 function getEditorWindowQuery(): Record<string, string> {
 	const query: Record<string, string> = {
@@ -734,6 +785,8 @@ export function createEditorWindow(): BrowserWindow {
 	const { workArea, workAreaSize } = getScreen().getPrimaryDisplay();
 	const initialWidth = isMac ? Math.round(workAreaSize.width * 0.85) : workArea.width;
 	const initialHeight = isMac ? Math.round(workAreaSize.height * 0.85) : workArea.height;
+	const initialTheme = readPersistedEditorTheme();
+	const titleBarTheme = getEditorTitleBarTheme(initialTheme);
 
 	const win = new BrowserWindow({
 		width: initialWidth,
@@ -751,6 +804,14 @@ export function createEditorWindow(): BrowserWindow {
 			titleBarStyle: "hiddenInset",
 			trafficLightPosition: { x: 12, y: 12 },
 		}),
+		...(!isMac && {
+			titleBarStyle: "hidden",
+			titleBarOverlay: {
+				color: titleBarTheme.backgroundColor,
+				symbolColor: titleBarTheme.symbolColor,
+				height: 36,
+			},
+		}),
 		autoHideMenuBar: !isMac,
 		transparent: false,
 		resizable: true,
@@ -758,7 +819,7 @@ export function createEditorWindow(): BrowserWindow {
 		skipTaskbar: false,
 		title: "Recordly",
 		show: false,
-		backgroundColor: "#000000",
+		backgroundColor: titleBarTheme.backgroundColor,
 		webPreferences: {
 			preload: path.join(electronWindowsDir, "preload.mjs"),
 			nodeIntegration: false,
@@ -767,6 +828,7 @@ export function createEditorWindow(): BrowserWindow {
 			backgroundThrottling: false,
 		},
 	});
+	applyEditorWindowTheme(win, initialTheme);
 
 	win.once("ready-to-show", () => {
 		console.log(`[PERF:MAIN] Editor Window: ready-to-show in ${Date.now() - perfStart}ms`);

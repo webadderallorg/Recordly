@@ -15,6 +15,15 @@ static int clampByte(int v) {
     return v < 0 ? 0 : (v > 255 ? 255 : v);
 }
 
+static UINT32 computeTargetBitrate(int width, int height, int fps) {
+    const double pixelRate = static_cast<double>(width) * static_cast<double>(height) * static_cast<double>(fps);
+    const double bitsPerPixel = 0.18;
+    const double target = pixelRate * bitsPerPixel;
+    const double minBitrate = 20000000.0;
+    const double maxBitrate = 45000000.0;
+    return static_cast<UINT32>((std::max)(minBitrate, (std::min)(target, maxBitrate)));
+}
+
 MFEncoder::MFEncoder() {}
 
 MFEncoder::~MFEncoder() {
@@ -51,7 +60,7 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
 
     outputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
     outputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
-    outputType->SetUINT32(MF_MT_AVG_BITRATE, 20000000);
+    outputType->SetUINT32(MF_MT_AVG_BITRATE, computeTargetBitrate(width_, height_, fps_));
     MFSetAttributeSize(outputType.Get(), MF_MT_FRAME_SIZE, width_, height_);
     MFSetAttributeRatio(outputType.Get(), MF_MT_FRAME_RATE, fps_, 1);
     MFSetAttributeRatio(outputType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);

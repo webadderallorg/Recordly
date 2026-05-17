@@ -2536,11 +2536,7 @@ export class FrameRenderer {
 					liveSource instanceof HTMLVideoElement);
 
 			if (needsCacheBackedSource) {
-				this.refreshWebcamFrameCache(
-					liveSource,
-					liveSourceWidth,
-					liveSourceHeight,
-				);
+				this.refreshWebcamFrameCache(liveSource, liveSourceWidth, liveSourceHeight);
 				const cachedSource = this.getCachedWebcamRenderSource();
 				if (cachedSource) {
 					this.setWebcamRenderMode("live");

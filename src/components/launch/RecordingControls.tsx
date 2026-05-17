@@ -1,8 +1,16 @@
-import { MicrophoneIcon, MicrophoneSlashIcon, MinusIcon, PauseIcon, PlayIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
+import {
+	MicrophoneIcon,
+	MicrophoneSlashIcon,
+	MinusIcon,
+	PauseIcon,
+	PlayIcon,
+	SquareIcon,
+	XIcon,
+} from "@phosphor-icons/react";
 import { useMemo } from "react";
-import { useScopedT } from "@/contexts/I18nContext";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { useScopedT } from "@/contexts/I18nContext";
 import styles from "./LaunchWindow.module.css";
 
 interface RecordingControlsProps {
@@ -63,7 +71,7 @@ export const RecordingControls = ({
 						variant="ghost"
 						size="icon"
 						iconSize="lg"
-						className={microphoneEnabled ? styles.ibActive : ""}
+						className={`${styles.hudIconButton} ${microphoneEnabled ? styles.ibActive : ""}`}
 						aria-label={t("recording.micToggleDisabledTip")}
 						disabled
 						onClick={onToggleMicrophone}
@@ -85,7 +93,7 @@ export const RecordingControls = ({
 					onClick={onPauseResume}
 					title={paused ? t("recording.resume") : t("recording.pause")}
 					aria-label={paused ? t("recording.resume") : t("recording.pause")}
-					className={paused ? styles.ibGreen : ""}
+					className={`${styles.hudIconButton} ${paused ? styles.ibGreen : ""}`}
 				>
 					{paused ? (
 						<PlayIcon size={18} fill="currentColor" strokeWidth={0} />
@@ -101,7 +109,7 @@ export const RecordingControls = ({
 					onClick={onStopRecording}
 					title={t("recording.stop")}
 					aria-label={t("recording.stop")}
-					className={styles.ibRed}
+					className={`${styles.hudIconButton} ${styles.ibRed}`}
 				>
 					<SquareIcon size={16} fill="currentColor" strokeWidth={0} />
 				</Button>
@@ -113,6 +121,7 @@ export const RecordingControls = ({
 					onClick={onHideHud}
 					title={t("recording.hideHud")}
 					aria-label={t("recording.hideHud")}
+					className={styles.hudIconButton}
 				>
 					<MinusIcon size={16} />
 				</Button>
@@ -124,6 +133,7 @@ export const RecordingControls = ({
 					onClick={onCancelRecording}
 					title={t("recording.cancel")}
 					aria-label={t("recording.cancel")}
+					className={styles.hudIconButton}
 				>
 					<XIcon size={18} />
 				</Button>

@@ -83,7 +83,7 @@ function InstalledExtensionCard({
 	return (
 		<div
 			className={cn(
-				"flex items-start gap-3 p-3 rounded-xl border transition-colors cursor-pointer",
+				"flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer",
 				isError
 					? "border-red-500/30 bg-red-500/5"
 					: isActive
@@ -192,7 +192,7 @@ function MarketplaceCard({
 	const homepageUrl = toSafeHttpUrl(extension.homepage);
 	return (
 		<div
-			className="flex items-start gap-3 p-3 rounded-xl border border-foreground/[0.06] bg-white/[0.02] hover:bg-foreground/[0.04] transition-colors cursor-pointer"
+			className="flex items-start gap-3 p-3 rounded-lg border border-foreground/[0.06] bg-white/[0.02] hover:bg-foreground/[0.04] transition-colors cursor-pointer"
 			onClick={onClick}
 		>
 			<div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-white/10 to-white/5 border border-foreground/10 flex items-center justify-center overflow-hidden">
@@ -329,7 +329,9 @@ function ScreenshotGallery({ screenshots }: { screenshots: string[] }) {
 									key={i}
 									className={cn(
 										"w-1.5 h-1.5 rounded-full transition-colors",
-										i === index ? "bg-white" : "bg-white/30 hover:bg-foreground/50",
+										i === index
+											? "bg-white"
+											: "bg-white/30 hover:bg-foreground/50",
 									)}
 									onClick={() => setIndex(i)}
 								/>
@@ -387,7 +389,7 @@ function ExtensionDetailModal({
 				{/* Header */}
 				<div className="p-5 pb-4">
 					<div className="flex items-start gap-3.5">
-						<div className="flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br from-[#2563EB]/20 to-[#2563EB]/5 border border-foreground/10 flex items-center justify-center">
+						<div className="flex-shrink-0 w-12 h-12 rounded-lg bg-gradient-to-br from-[#2563EB]/20 to-[#2563EB]/5 border border-foreground/10 flex items-center justify-center">
 							{detail.source === "marketplace" && detail.ext.iconUrl ? (
 								<img
 									src={detail.ext.iconUrl}
@@ -583,7 +585,7 @@ function TabSwitcher({
 	const t = useScopedT("extensions");
 	return (
 		<LayoutGroup id="extension-tab-switcher">
-			<div className="grid h-8 w-full grid-cols-2 rounded-xl border border-foreground/10 bg-foreground/[0.04] p-1">
+			<div className="grid h-8 w-full grid-cols-2 rounded-lg border border-foreground/10 bg-foreground/[0.04] p-1">
 				{TAB_OPTIONS.map((option) => {
 					const isActive = activeTab === option.value;
 					const count = option.value === "installed" ? extensionCount : undefined;
@@ -604,7 +606,9 @@ function TabSwitcher({
 							<span
 								className={cn(
 									"relative z-10 flex items-center justify-center gap-1",
-									isActive ? "text-white" : "text-muted-foreground hover:text-foreground",
+									isActive
+										? "text-white"
+										: "text-muted-foreground hover:text-foreground",
 								)}
 							>
 								{t(option.labelKey)}
@@ -776,7 +780,7 @@ export default function ExtensionManager() {
 	);
 
 	return (
-		<div className="flex-[2] w-[332px] min-w-[280px] max-w-[332px] bg-editor-panel border border-foreground/10 rounded-2xl flex flex-col shadow-xl h-full overflow-hidden">
+		<div className="flex-[2] w-[332px] min-w-[280px] max-w-[332px] bg-editor-panel border border-foreground/10 rounded-lg flex flex-col shadow-xl h-full overflow-hidden">
 			{/* Header */}
 			<div className="flex-shrink-0 p-4 pb-3">
 				<div className="flex items-center justify-between mb-3">
@@ -952,7 +956,9 @@ function InstalledTab({
 					<Puzzle className="w-5 h-5 text-muted-foreground" />
 				</div>
 				<div className="text-center">
-					<p className="text-[13px] font-medium text-muted-foreground">{t("empty.title")}</p>
+					<p className="text-[13px] font-medium text-muted-foreground">
+						{t("empty.title")}
+					</p>
 					<p className="text-[11px] text-muted-foreground mt-1 leading-relaxed max-w-[200px]">
 						{t("empty.description")}
 					</p>

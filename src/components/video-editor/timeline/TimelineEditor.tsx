@@ -1,20 +1,14 @@
-import type { Span } from "dnd-timeline";
 import { Plus } from "@phosphor-icons/react";
-import {
-	forwardRef,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
-import { useScopedT } from "@/contexts/I18nContext";
-import { useShortcuts } from "@/contexts/ShortcutsContext";
-import { fromFileUrl } from "../projectPersistence";
+import type { Span } from "dnd-timeline";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type {
 	SourceAudioTrackMeta,
 	SourceAudioTrackSettings,
 	SourceAudioTrackWithPeaks,
 } from "@/components/video-editor/audio/audioTypes";
+import { useScopedT } from "@/contexts/I18nContext";
+import { useShortcuts } from "@/contexts/ShortcutsContext";
+import { fromFileUrl } from "../projectPersistence";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -26,12 +20,12 @@ import type {
 	ZoomRegion,
 } from "../types";
 import KeyframeMarkers from "./components/markers/KeyframeMarkers";
+import TimelineCanvas from "./components/viewport/TimelineCanvas";
 import TimelineWrapper from "./components/wrapper/TimelineWrapper";
-import { useTimelineAudioPeaks } from "./hooks/useTimelineAudioPeaks";
 import { calculateTimelineScale } from "./core/time";
+import { useTimelineAudioPeaks } from "./hooks/useTimelineAudioPeaks";
 import { useTimelineEditorRuntime } from "./hooks/useTimelineEditorRuntime";
 import { useTimelineRange } from "./hooks/useTimelineRange";
-import TimelineCanvas from "./components/viewport/TimelineCanvas";
 
 export interface TimelineEditorProps {
 	videoDuration: number;
@@ -77,9 +71,7 @@ export interface TimelineEditorProps {
 	showSourceAudioTrack?: boolean;
 	onSourceAudioAvailabilityChange?: (available: boolean) => void;
 	sourceAudioTrackSettings?: SourceAudioTrackSettings;
-	getSourceAudioTrackSettingsForClip?: (
-		clipId: string | null,
-	) => SourceAudioTrackSettings;
+	getSourceAudioTrackSettingsForClip?: (clipId: string | null) => SourceAudioTrackSettings;
 	onSourceAudioTracksMetaChange?: (tracks: SourceAudioTrackMeta) => void;
 }
 
@@ -116,7 +108,6 @@ export interface TimelineEditorHandle {
 	addAudio: (trackIndex?: number) => Promise<void>;
 	keyframes: { id: string; time: number }[];
 }
-
 
 const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 	function TimelineEditor(
@@ -209,9 +200,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					...(newStart > oldClip.startMs
 						? [{ startMs: oldClip.startMs, endMs: newStart }]
 						: []),
-					...(newEnd < oldClip.endMs
-						? [{ startMs: newEnd, endMs: oldClip.endMs }]
-						: []),
+					...(newEnd < oldClip.endMs ? [{ startMs: newEnd, endMs: oldClip.endMs }] : []),
 				];
 
 				const startDelta = newStart - oldClip.startMs;
@@ -245,9 +234,12 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			return { previewSpans, hiddenZoomIds };
 		}, [clipRegions, liveSpanPreviewById, zoomRegions]);
 		const { shortcuts: keyShortcuts, isMac } = useShortcuts();
-		const { peaks: sourceAudioPeaks, loading: sourceAudioLoading } = useTimelineAudioPeaks(videoPath, {
-			enableSourceSidecarFallback: true,
-		});
+		const { peaks: sourceAudioPeaks, loading: sourceAudioLoading } = useTimelineAudioPeaks(
+			videoPath,
+			{
+				enableSourceSidecarFallback: true,
+			},
+		);
 		const localSourcePath = useMemo(() => {
 			if (!videoPath) return null;
 			return (
@@ -263,8 +255,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			() => (localSourcePath ? buildSourceSidecarPath(localSourcePath, "system") : null),
 			[localSourcePath],
 		);
-		const { peaks: micSidecarPeaks, loading: micSidecarLoading } = useTimelineAudioPeaks(micSidecarPath);
-		const { peaks: systemSidecarPeaks, loading: systemSidecarLoading } = useTimelineAudioPeaks(systemSidecarPath);
+		const { peaks: micSidecarPeaks, loading: micSidecarLoading } =
+			useTimelineAudioPeaks(micSidecarPath);
+		const { peaks: systemSidecarPeaks, loading: systemSidecarLoading } =
+			useTimelineAudioPeaks(systemSidecarPath);
 		const sourceAudioTracks = useMemo<SourceAudioTrackWithPeaks[]>(() => {
 			if (systemSidecarPeaks || micSidecarPeaks) {
 				const tracks: SourceAudioTrackWithPeaks[] = [];
@@ -295,16 +289,26 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 
 		const isLoading = useMemo(() => {
 			// If we are still actively trying to load audio peaks (main or sidecars)
-			if (videoPath && (sourceAudioLoading || micSidecarLoading || systemSidecarLoading)) return true;
+			if (videoPath && (sourceAudioLoading || micSidecarLoading || systemSidecarLoading))
+				return true;
 
 			// Robust telemetry loading detection:
 			// If a source path is set but telemetry hasn't arrived (or failed/retried) for it yet.
 			if (videoSourcePath && cursorTelemetrySourcePath !== videoSourcePath) return true;
 
 			return false;
-		}, [videoPath, videoSourcePath, cursorTelemetrySourcePath, sourceAudioLoading, micSidecarLoading, systemSidecarLoading]);
+		}, [
+			videoPath,
+			videoSourcePath,
+			cursorTelemetrySourcePath,
+			sourceAudioLoading,
+			micSidecarLoading,
+			systemSidecarLoading,
+		]);
 		useEffect(() => {
-			onSourceAudioTracksMetaChange?.(sourceAudioTracks.map((t) => ({ id: t.id, label: t.label })));
+			onSourceAudioTracksMetaChange?.(
+				sourceAudioTracks.map((t) => ({ id: t.id, label: t.label })),
+			);
 		}, [onSourceAudioTracksMetaChange, sourceAudioTracks]);
 		void sourceAudioTrackSettings;
 		useEffect(() => {

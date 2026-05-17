@@ -1,19 +1,20 @@
+import { AppWindowIcon, CaretUpIcon, MonitorIcon } from "@phosphor-icons/react";
 import * as React from "react";
-import { MonitorIcon, AppWindowIcon, CaretUpIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useScopedT } from "@/contexts/I18nContext";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useScopedT } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";
 import {
-	mapRawSource,
+	type DesktopSource,
 	isScreenSource,
 	isWindowSource,
-	type DesktopSource,
+	mapRawSource,
 } from "./popovers/launchPopoverTypes";
 import "./launchTheme.css";
 import "./SourceSelector.css";
 import { useHudInteraction } from "./contexts/HudInteractionContext";
+import styles from "./LaunchWindow.module.css";
 
 interface SourceSelectorProps {
 	/** List of available screen sources */
@@ -35,6 +36,8 @@ interface SourceSelectorProps {
 	/** Optional custom trigger element */
 	children?: React.ReactNode;
 }
+
+const noopSourceSelect = () => undefined;
 
 export function MarqueeText({ text }: { text: string }) {
 	const staticRef = useRef<HTMLSpanElement>(null);
@@ -80,8 +83,11 @@ export const SourceSelectorContent = ({
 	windowSources = [],
 	selectedSource = "Screen",
 	loading = false,
-	onSourceSelect = () => {},
-}: Pick<SourceSelectorProps, "screenSources" | "windowSources" | "selectedSource" | "loading" | "onSourceSelect">) => {
+	onSourceSelect = noopSourceSelect,
+}: Pick<
+	SourceSelectorProps,
+	"screenSources" | "windowSources" | "selectedSource" | "loading" | "onSourceSelect"
+>) => {
 	const t = useScopedT("launch");
 	const renderSourceItem = (source: DesktopSource, index: number) => {
 		const isSelected = selectedSource === source.name;
@@ -90,7 +96,7 @@ export const SourceSelectorContent = ({
 				key={`${source.id}-${index}`}
 				type="button"
 				className={cn(
-					"source-selector-item group min-h-[46px] w-full rounded-[11px] px-3 py-2.5 text-left font-medium flex items-center justify-start gap-3",
+					"source-selector-item group min-h-10 w-full rounded-lg px-2.5 py-2 text-left font-medium flex items-center justify-start gap-2.5",
 					isSelected && "source-selector-item-selected",
 				)}
 				onClick={() => onSourceSelect(source)}
@@ -100,28 +106,30 @@ export const SourceSelectorContent = ({
 						<img
 							src={source.thumbnail}
 							alt=""
-							className="w-12 h-8 rounded-[8px] object-cover bg-black/50"
+							className="w-10 h-7 rounded-md object-cover bg-black/50"
 							onError={(e) => {
 								(e.target as HTMLImageElement).style.display = "none";
 							}}
 						/>
 					) : (
-						<div className="source-selector-thumb-fallback w-12 h-8 rounded-[8px] flex items-center justify-center">
+						<div className="source-selector-thumb-fallback w-10 h-7 rounded-md flex items-center justify-center">
 							{source.sourceType === "window" ? (
-								<AppWindowIcon className="w-5 h-5 source-selector-muted" />
+								<AppWindowIcon className="h-[18px] w-[18px] source-selector-muted" />
 							) : (
-								<MonitorIcon className="w-5 h-5 source-selector-muted" />
+								<MonitorIcon className="h-[18px] w-[18px] source-selector-muted" />
 							)}
 						</div>
 					)}
 				</div>
 
-					<div className="flex-1 min-w-0 flex flex-col items-start text-left">
-					<div className="text-sm font-medium source-selector-text w-full">
+				<div className="flex-1 min-w-0 flex flex-col items-start text-left">
+					<div className="text-[13px] leading-4 font-medium source-selector-text w-full">
 						<MarqueeText text={source.windowTitle || source.name} />
 					</div>
-					<div className="text-xs source-selector-subtle truncate w-full text-left">
-						{source.sourceType === "screen" ? t("recording.screen") : t("recording.window")}
+					<div className="text-[11px] leading-3 source-selector-subtle truncate w-full text-left">
+						{source.sourceType === "screen"
+							? t("recording.screen")
+							: t("recording.window")}
 					</div>
 				</div>
 			</button>
@@ -139,12 +147,12 @@ export const SourceSelectorContent = ({
 	}
 
 	return (
-		<div className="max-h-[320px] overflow-y-auto overflow-x-hidden p-2 source-selector-scroll">
+		<div className="max-h-[280px] overflow-y-auto overflow-x-hidden p-1.5 source-selector-scroll">
 			{hasAnySources ? (
 				<>
 					{screenSources.length > 0 ? (
-						<div className="space-y-1">
-							<div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label flex items-center gap-2">
+						<div className="space-y-0.5">
+							<div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label flex items-center gap-2">
 								{t("recording.screens")}
 								<span
 									className={cn(
@@ -156,17 +164,21 @@ export const SourceSelectorContent = ({
 								</span>
 							</div>
 							<div className="space-y-0.5">
-								{screenSources.map((source, index) => renderSourceItem(source, index))}
+								{screenSources.map((source, index) =>
+									renderSourceItem(source, index),
+								)}
 							</div>
 						</div>
 					) : null}
 					{windowSources.length > 0 ? (
-						<div className="space-y-1">
-							<div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label">
+						<div className="space-y-0.5">
+							<div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label">
 								{t("recording.windows")}
 							</div>
 							<div className="space-y-0.5">
-								{windowSources.map((source, index) => renderSourceItem(source, index))}
+								{windowSources.map((source, index) =>
+									renderSourceItem(source, index),
+								)}
 							</div>
 						</div>
 					) : null}
@@ -215,7 +227,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 		try {
 			const rawSources = await window.electronAPI.getSources({
 				types: ["screen", "window"],
-				thumbnailSize: { width: 160, height: 90 },
+				thumbnailSize: { width: 120, height: 68 },
 				fetchWindowIcons: true,
 			});
 			setInternalSources(rawSources.map((s) => mapRawSource(s as DesktopSource)));
@@ -322,7 +334,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 			onPointerEnter={prefetchSources}
 			onFocusCapture={prefetchSources}
 			className={cn(
-				"group gap-2 px-3 min-w-0 max-w-[180px] rounded-[11px] font-medium text-[12px] [ -webkit-app-region:no-drag ] shrink-0",
+				"group gap-2 px-3 min-w-0 max-w-[180px] !h-8 rounded-lg font-medium text-[12px] [-webkit-app-region:no-drag] shrink-0",
 				"border-[#2a2a34] bg-[#1a1a22] text-[#eeeef2] hover:border-[#3e3e4c] hover:bg-[#20202a] transition-all",
 				"data-[state=open]:border-[#3e3e4c] data-[state=open]:bg-[#20202a]",
 			)}
@@ -348,7 +360,11 @@ export const SourceSelector = React.memo(function SourceSelector({
 		<Popover open={open} onOpenChange={onOpenChange} modal={false}>
 			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
 			<PopoverContent
-				className="launch-theme w-80 p-0 source-selector-popover"
+				className={cn(
+					"launch-theme w-72 p-0 source-selector-popover",
+					styles.electronNoDrag,
+				)}
+				data-hud-interactive
 				unstyled
 				align="start"
 				sideOffset={8}

@@ -1,7 +1,7 @@
 .source-selector-popover {
 	background: var(--launch-surface);
 	border: 1px solid var(--launch-border);
-	border-radius: 16px;
+	border-radius: 8px;
 	backdrop-filter: blur(var(--launch-popover-blur, 24px))
 		saturate(var(--launch-popover-saturate, 145%));
 	-webkit-backdrop-filter: blur(var(--launch-popover-blur, 24px))

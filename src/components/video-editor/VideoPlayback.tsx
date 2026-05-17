@@ -2706,7 +2706,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 		return (
 			<div
-				className="relative rounded-sm overflow-hidden"
+				className="relative rounded-lg overflow-hidden"
 				style={{
 					width: "100%",
 					aspectRatio: formatAspectRatioForCSS(aspectRatio, nativeAspectRatio),

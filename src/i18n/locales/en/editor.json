@@ -16,6 +16,7 @@
 		"textContent": "Text Content",
 		"textPlaceholder": "Enter your text...",
 		"fontStyle": "Font Style",
+		"customFonts": "Custom Fonts",
 		"selectStyle": "Select style",
 		"size": "Size",
 		"toggleBold": "Toggle bold",

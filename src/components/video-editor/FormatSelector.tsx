@@ -49,7 +49,7 @@ export function FormatSelector({
 						disabled={disabled}
 						onClick={() => onFormatChange(option.value)}
 						className={cn(
-							"relative flex flex-col items-center gap-2 p-4 rounded-xl border transition-all duration-200",
+							"relative flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200",
 							"focus:outline-none focus:ring-2 focus:ring-[#2563EB]/50 focus:ring-offset-2 focus:ring-offset-editor-dialog",
 							isSelected
 								? "bg-[#2563EB]/10 border-[#2563EB]/50 text-[#2563EB] dark:text-white"

@@ -8,8 +8,8 @@ import type {
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
-	SpeedRegion,
 	SourceAudioTrackSettings,
+	SpeedRegion,
 	TrimRegion,
 	WebcamOverlaySettings,
 	ZoomMotionBlurTuning,
@@ -827,9 +827,9 @@ export class VideoExporter {
 			duration: frameDuration,
 			colorSpace: {
 				primaries: "bt709",
-				transfer: "iec61966-2-1",
-				matrix: "rgb",
-				fullRange: true,
+				transfer: "bt709",
+				matrix: "bt709",
+				fullRange: false,
 			},
 		});
 		this.nativeH264Encoder.encode(frame, { keyFrame: frameIndex % 300 === 0 });
@@ -1079,9 +1079,9 @@ export class VideoExporter {
 			duration: frameDuration,
 			colorSpace: {
 				primaries: "bt709",
-				transfer: "iec61966-2-1",
-				matrix: "rgb",
-				fullRange: true,
+				transfer: "bt709",
+				matrix: "bt709",
+				fullRange: false,
 			},
 		});
 
@@ -1272,9 +1272,9 @@ export class VideoExporter {
 							// Add decoder config for the first chunk
 							const colorSpace = this.videoColorSpace || {
 								primaries: "bt709",
-								transfer: "iec61966-2-1",
-								matrix: "rgb",
-								fullRange: true,
+								transfer: "bt709",
+								matrix: "bt709",
+								fullRange: false,
 							};
 
 							const metadata: EncodedVideoChunkMetadata = {

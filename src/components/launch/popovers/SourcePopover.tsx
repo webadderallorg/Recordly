@@ -1,11 +1,11 @@
-import { useCallback, useMemo, type ReactNode, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { SourceSelector } from "../SourceSelector";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import {
-	mapRawSource,
+	type DesktopSource,
 	isScreenSource,
 	isWindowSource,
-	type DesktopSource,
+	mapRawSource,
 } from "./launchPopoverTypes";
 
 const POPOVER_ID = "sources";
@@ -32,7 +32,7 @@ export function SourcePopover({
 		try {
 			const rawSources = await window.electronAPI.getSources({
 				types: ["screen", "window"],
-				thumbnailSize: { width: 160, height: 90 },
+				thumbnailSize: { width: 120, height: 68 },
 				fetchWindowIcons: true,
 			});
 			setSources(rawSources.map((s) => mapRawSource(s as DesktopSource)));

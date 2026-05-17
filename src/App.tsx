@@ -80,11 +80,11 @@ export default function App() {
 		default:
 			return (
 				<div className="flex h-full w-full items-center justify-center bg-editor-bg text-foreground">
-					<div className="flex items-center gap-4 rounded-2xl border border-foreground/10 bg-foreground/5 px-6 py-5 shadow-2xl shadow-black/30 backdrop-blur-xl">
+					<div className="flex items-center gap-4 rounded-lg border border-foreground/10 bg-foreground/5 px-6 py-5 shadow-2xl shadow-black/30 backdrop-blur-xl">
 						<img
 							src={appIconSrc}
 							alt={t("app.name", "Recordly")}
-							className="h-12 w-12 rounded-xl"
+							className="h-12 w-12 rounded-lg"
 						/>
 						<div>
 							<h1 className="text-xl font-semibold tracking-tight">

@@ -15,6 +15,10 @@ import { GIF_SIZE_PRESETS, GifSizePreset } from "./types";
  * Feature: gif-export, Property 2: Loop Encoding Correctness
  */
 describe("GIF Exporter", () => {
+	it("defaults GIF size presets to large for sharper text", () => {
+		expect(GIF_SIZE_PRESETS.large.maxHeight).toBe(1080);
+	});
+
 	describe("Property 2: Loop Encoding Correctness", () => {
 		/**
 		 * Test the loop configuration mapping logic.

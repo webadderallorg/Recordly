@@ -9,6 +9,7 @@ import {
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import minimalCursorUrl from "@/assets/cursors/custom/minimal-cursor.svg";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -40,7 +41,6 @@ import {
 	isVideoWallpaperSource,
 } from "@/lib/wallpapers";
 import { type AspectRatio } from "@/utils/aspectRatioUtils";
-import minimalCursorUrl from "@/assets/cursors/custom/minimal-cursor.svg";
 import { useI18n, useScopedT } from "../../contexts/I18nContext";
 import type { AppLocale } from "../../i18n/config";
 import { SUPPORTED_LOCALES } from "../../i18n/config";
@@ -277,7 +277,11 @@ function ExtensionSettingsSection({
 						<div key={field.id} className="mt-1">
 							<SliderControl
 								label={field.label}
-								value={typeof value === "number" ? value : (field.defaultValue as number)}
+								value={
+									typeof value === "number"
+										? value
+										: (field.defaultValue as number)
+								}
 								defaultValue={field.defaultValue as number}
 								min={field.min ?? 0}
 								max={field.max ?? 1}
@@ -413,7 +417,7 @@ function MotionPresetCards({
 							type="button"
 							onClick={() => onApply(presetId)}
 							className={cn(
-								"rounded-xl border px-3 py-3 text-left transition-all",
+								"rounded-lg border px-3 py-3 text-left transition-all",
 								"border-foreground/10 bg-foreground/[0.03] hover:border-foreground/20 hover:bg-foreground/[0.06]",
 								isActive &&
 									"border-[#2563EB]/70 bg-[#2563EB]/12 shadow-[inset_0_0_0_1px_rgba(37,99,235,0.15)]",
@@ -1241,12 +1245,7 @@ export function SettingsPanel({
 		if (!isKnownWallpaper && isVideoWallpaperSource(selected)) {
 			setCustomImages((prev) => (prev.includes(selected) ? prev : [selected, ...prev]));
 		}
-	}, [
-		builtInWallpaperPaths,
-		extensionWallpaperPaths,
-		selected,
-		wallpaperPreviewPaths,
-	]);
+	}, [builtInWallpaperPaths, extensionWallpaperPaths, selected, wallpaperPreviewPaths]);
 
 	const imageWallpaperTiles = useMemo<WallpaperTile[]>(() => {
 		const imageWallpapers = builtInWallpapers.filter(
@@ -1731,7 +1730,7 @@ export function SettingsPanel({
 
 			<div className="w-full">
 				<LayoutGroup id="background-picker-switcher">
-					<div className="grid h-8 w-full grid-cols-4 rounded-xl border border-foreground/10 bg-foreground/[0.04] p-1">
+					<div className="grid h-8 w-full grid-cols-4 rounded-lg border border-foreground/10 bg-foreground/[0.04] p-1">
 						{(
 							[
 								{ value: "image", label: tSettings("background.image") },
@@ -2032,7 +2031,7 @@ export function SettingsPanel({
 
 	if (isBackgroundPanel) {
 		return (
-			<div className="flex-[2] w-[332px] min-w-[280px] max-w-[332px] bg-editor-panel rounded-2xl flex flex-col shadow-xl h-full overflow-hidden">
+			<div className="flex-[2] w-[332px] min-w-[280px] max-w-[332px] bg-editor-panel rounded-lg flex flex-col h-full overflow-hidden">
 				<div
 					className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 pb-0"
 					style={{ scrollbarGutter: "stable" }}
@@ -2322,7 +2321,7 @@ export function SettingsPanel({
 						type="button"
 						variant="outline"
 						onClick={onPickWhisperModel}
-						className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
+						className="h-10 w-full rounded-lg border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
 					>
 						{tSettings("captions.selectModel", "Select Model")}
 					</Button>
@@ -2335,7 +2334,7 @@ export function SettingsPanel({
 						value={autoCaptionSettings.language || "auto"}
 						onValueChange={(value) => updateAutoCaptionSettings({ language: value })}
 					>
-						<SelectTrigger className="h-10 w-[180px] rounded-xl border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
+						<SelectTrigger className="h-10 w-[180px] rounded-lg border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent className="border-foreground/10 bg-editor-surface-alt text-foreground">
@@ -2353,7 +2352,7 @@ export function SettingsPanel({
 							<Button
 								type="button"
 								disabled
-								className="h-10 w-full rounded-xl bg-foreground/10 px-4 text-sm font-medium text-foreground hover:bg-foreground/10"
+								className="h-10 w-full rounded-lg bg-foreground/10 px-4 text-sm font-medium text-foreground hover:bg-foreground/10"
 							>
 								{tSettings("captions.downloading", "Downloading...")}{" "}
 								{Math.round(whisperModelDownloadProgress)}%
@@ -2363,7 +2362,7 @@ export function SettingsPanel({
 								type="button"
 								variant="outline"
 								onClick={onDeleteWhisperSmallModel}
-								className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
+								className="h-10 w-full rounded-lg border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
 							>
 								{tSettings("captions.deleteModel", "Delete Model")}
 							</Button>
@@ -2371,7 +2370,7 @@ export function SettingsPanel({
 							<Button
 								type="button"
 								onClick={onDownloadWhisperSmallModel}
-								className="h-10 w-full rounded-xl bg-[#2563EB] px-4 text-sm font-medium text-white hover:bg-[#2563EB]/90"
+								className="h-10 w-full rounded-lg bg-[#2563EB] px-4 text-sm font-medium text-white hover:bg-[#2563EB]/90"
 							>
 								{tSettings("captions.downloadModel", "Download Model")}
 							</Button>
@@ -2381,7 +2380,7 @@ export function SettingsPanel({
 							variant="outline"
 							onClick={onClearAutoCaptions}
 							disabled={captionCueCount === 0}
-							className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+							className="h-10 w-full rounded-lg border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
 						>
 							{tSettings("captions.clearFull", "Clear Captions")}
 						</Button>
@@ -2392,7 +2391,7 @@ export function SettingsPanel({
 						type="button"
 						onClick={onGenerateAutoCaptions}
 						disabled={isGeneratingCaptions || !whisperModelPath}
-						className="h-10 w-full rounded-xl bg-[#2563EB] px-4 text-sm font-medium text-white hover:bg-[#2563EB]/90 disabled:opacity-60"
+						className="h-10 w-full rounded-lg bg-[#2563EB] px-4 text-sm font-medium text-white hover:bg-[#2563EB]/90 disabled:opacity-60"
 					>
 						{isGeneratingCaptions
 							? tSettings("captions.generating", "Generating...")
@@ -2435,7 +2434,7 @@ export function SettingsPanel({
 							})
 						}
 					>
-						<SelectTrigger className="h-9 w-[160px] rounded-xl border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
+						<SelectTrigger className="h-9 w-[160px] rounded-lg border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent className="border-foreground/10 bg-editor-surface-alt text-foreground">
@@ -2569,7 +2568,7 @@ export function SettingsPanel({
 				<section className="flex flex-col gap-2">
 					<SectionLabel>{t("common.app.language", "Language")}</SectionLabel>
 					<Select value={locale} onValueChange={(value) => setLocale(value as AppLocale)}>
-						<SelectTrigger className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
+						<SelectTrigger className="h-10 w-full rounded-lg border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent className="border-foreground/10 bg-editor-surface-alt text-foreground">
@@ -2637,12 +2636,12 @@ export function SettingsPanel({
 					<SectionLabel>{t("editor.keyboardShortcuts.title")}</SectionLabel>
 					<KeyboardShortcutsDialog
 						triggerLabel={t("editor.keyboardShortcuts.customize")}
-						triggerClassName="h-10 w-full justify-start rounded-xl border border-foreground/10 bg-foreground/5 px-3 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
+						triggerClassName="h-10 w-full justify-start rounded-lg border border-foreground/10 bg-foreground/5 px-3 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
 					/>
 				</section>
 
 				{showDevMotionControls ? (
-					<section className="flex flex-col gap-2 rounded-xl border border-[#2563EB]/15 bg-[#2563EB]/5 p-3">
+					<section className="flex flex-col gap-2 rounded-lg border border-[#2563EB]/15 bg-[#2563EB]/5 p-3">
 						<div className="flex items-center justify-between gap-3">
 							<div>
 								<SectionLabel>
@@ -3069,8 +3068,8 @@ export function SettingsPanel({
 			</section>
 		);
 
-			const audioSectionContent = (
-				<section className="flex flex-col gap-3">
+		const audioSectionContent = (
+			<section className="flex flex-col gap-3">
 				<div className="flex items-center justify-between gap-3">
 					<SectionLabel>{tSettings("audio.volumeTitle", "Audio")}</SectionLabel>
 					<button
@@ -3084,8 +3083,8 @@ export function SettingsPanel({
 						{t("common.actions.reset", "Reset")}
 					</button>
 				</div>
-					<SliderControl
-						label={tSettings("audio.volume", "Volume")}
+				<SliderControl
+					label={tSettings("audio.volume", "Volume")}
 					value={selectedAudioVolume ?? 1}
 					defaultValue={1}
 					min={0}
@@ -3093,20 +3092,20 @@ export function SettingsPanel({
 					step={0.01}
 					onChange={(v) => onAudioVolumeChange?.(v)}
 					formatValue={(v) => `${Math.round(v * 100)}%`}
-						parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
+					parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
+				/>
+				<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
+					<span className="text-[10px] text-muted-foreground">
+						{tSettings("audio.normalize", "Normalize")}
+					</span>
+					<Switch
+						checked={Boolean(selectedAudioNormalize)}
+						onCheckedChange={(v) => onAudioNormalizeChange?.(v)}
+						className="data-[state=checked]:bg-[#2563EB] scale-75"
 					/>
-					<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
-						<span className="text-[10px] text-muted-foreground">
-							{tSettings("audio.normalize", "Normalize")}
-						</span>
-						<Switch
-							checked={Boolean(selectedAudioNormalize)}
-							onCheckedChange={(v) => onAudioNormalizeChange?.(v)}
-							className="data-[state=checked]:bg-[#2563EB] scale-75"
-						/>
-					</div>
-				</section>
-			);
+				</div>
+			</section>
+		);
 
 		const clipSectionContent = (
 			<section className="flex flex-col gap-2">
@@ -3183,7 +3182,10 @@ export function SettingsPanel({
 					{hasClipSourceAudio && (
 						<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
 							<span className="text-[10px] text-muted-foreground">
-								{tSettings("clip.separateClipFromAudio", "Separate clip from audio")}
+								{tSettings(
+									"clip.separateClipFromAudio",
+									"Separate clip from audio",
+								)}
 							</span>
 							<Switch
 								checked={selectedClipShowSourceAudio ?? false}
@@ -3194,65 +3196,68 @@ export function SettingsPanel({
 					)}
 				</div>
 
-				{selectedClipId &&
-					hasClipSourceAudio &&
-					sourceAudioTrackMeta.length > 0 && (
-						<div className="mt-1 flex flex-col gap-3">
-							{sourceAudioTrackMeta.map((track) => {
-								const settings = sourceAudioTrackSettings[track.id] ?? {
-									volume: 1,
-									normalize: false,
-								};
-								return (
-									<div
-										key={track.id}
-										className="rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2"
-									>
-										<div className="mb-2 flex items-center justify-between">
-											<span className="text-[11px] font-medium text-foreground">
-												{track.label}
-											</span>
-											<button
-												type="button"
-												onClick={() => {
-													onSourceAudioTrackVolumeChange?.(track.id, 1);
-													onSourceAudioTrackNormalizeChange?.(track.id, false);
-												}}
-												className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
-											>
-												{t("common.actions.reset", "Reset")}
-											</button>
-										</div>
-										<div className="mb-2 flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
-											<span className="text-[10px] text-muted-foreground">
-												{tSettings("audio.normalize", "Normalize")}
-											</span>
-											<Switch
-												checked={settings.normalize}
-												onCheckedChange={(v) =>
-													onSourceAudioTrackNormalizeChange?.(track.id, v)
-												}
-												className="data-[state=checked]:bg-[#06b6d4] scale-75"
-											/>
-										</div>
-										<SliderControl
-											label={tSettings("audio.volume", "Volume")}
-											value={settings.volume}
-											defaultValue={1}
-											min={0}
-											max={1}
-											step={0.01}
-											onChange={(v) => onSourceAudioTrackVolumeChange?.(track.id, v)}
-											formatValue={(v) => `${Math.round(v * 100)}%`}
-											parseInput={(text) =>
-												parseFloat(text.replace(/%$/, "")) / 100
+				{selectedClipId && hasClipSourceAudio && sourceAudioTrackMeta.length > 0 && (
+					<div className="mt-1 flex flex-col gap-3">
+						{sourceAudioTrackMeta.map((track) => {
+							const settings = sourceAudioTrackSettings[track.id] ?? {
+								volume: 1,
+								normalize: false,
+							};
+							return (
+								<div
+									key={track.id}
+									className="rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2"
+								>
+									<div className="mb-2 flex items-center justify-between">
+										<span className="text-[11px] font-medium text-foreground">
+											{track.label}
+										</span>
+										<button
+											type="button"
+											onClick={() => {
+												onSourceAudioTrackVolumeChange?.(track.id, 1);
+												onSourceAudioTrackNormalizeChange?.(
+													track.id,
+													false,
+												);
+											}}
+											className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
+										>
+											{t("common.actions.reset", "Reset")}
+										</button>
+									</div>
+									<div className="mb-2 flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
+										<span className="text-[10px] text-muted-foreground">
+											{tSettings("audio.normalize", "Normalize")}
+										</span>
+										<Switch
+											checked={settings.normalize}
+											onCheckedChange={(v) =>
+												onSourceAudioTrackNormalizeChange?.(track.id, v)
 											}
+											className="data-[state=checked]:bg-[#06b6d4] scale-75"
 										/>
 									</div>
-								);
-							})}
-						</div>
-					)}
+									<SliderControl
+										label={tSettings("audio.volume", "Volume")}
+										value={settings.volume}
+										defaultValue={1}
+										min={0}
+										max={1}
+										step={0.01}
+										onChange={(v) =>
+											onSourceAudioTrackVolumeChange?.(track.id, v)
+										}
+										formatValue={(v) => `${Math.round(v * 100)}%`}
+										parseInput={(text) =>
+											parseFloat(text.replace(/%$/, "")) / 100
+										}
+									/>
+								</div>
+							);
+						})}
+					</div>
+				)}
 			</section>
 		);
 
@@ -3688,7 +3693,7 @@ export function SettingsPanel({
 	})();
 
 	return (
-		<div className="flex-[2] w-[332px] min-w-[280px] max-w-[332px] bg-editor-panel rounded-2xl flex flex-col shadow-xl h-full overflow-hidden">
+		<div className="flex-[2] w-[332px] min-w-[280px] max-w-[332px] bg-editor-panel rounded-lg flex flex-col h-full overflow-hidden">
 			<div
 				className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 pb-0"
 				style={{ scrollbarGutter: "stable" }}

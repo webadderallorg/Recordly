@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { useCallback, useRef, memo, useEffect } from "react";
+import { memo, useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 interface SliderControlProps {
@@ -163,7 +163,7 @@ export const SliderControl = memo(function SliderControl({
 					onChange(clamp(quantizeToStep(value + step, min, step), min, max));
 				}
 			}}
-			className="relative flex h-10 w-full select-none items-center overflow-hidden rounded-xl bg-editor-bg/80 px-1.5 outline-none focus-visible:ring-1 focus-visible:ring-[#2563EB]/40"
+			className="relative flex h-10 w-full select-none items-center overflow-hidden rounded-lg bg-editor-bg/80 px-1.5 outline-none focus-visible:ring-1 focus-visible:ring-[#2563EB]/40"
 			style={
 				{
 					"--slider-pct": String(pct / 100),

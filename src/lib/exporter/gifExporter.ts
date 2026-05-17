@@ -231,7 +231,7 @@ export class GifExporter {
 				repeat,
 				background: "#000000",
 				transparent: null,
-				dither: "FloydSteinberg",
+				dither: false,
 			});
 
 			// Calculate effective duration and frame count (excluding trim regions)
@@ -240,6 +240,12 @@ export class GifExporter {
 				this.config.speedRegions,
 			);
 			const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
+			if (totalFrames <= 0) {
+				return {
+					success: false,
+					error: "GIF export has no frames. Check the trim range or source video duration.",
+				};
+			}
 
 			// Calculate frame delay in milliseconds (gif.js uses ms)
 			const frameDelay = Math.round(1000 / this.config.frameRate);
@@ -298,9 +304,20 @@ export class GifExporter {
 			}
 
 			// Render the GIF
-			const blob = await new Promise<Blob>((resolve, _reject) => {
+			if (frameIndex <= 0) {
+				return {
+					success: false,
+					error: "GIF export could not decode any frames from the source video.",
+				};
+			}
+
+			const blob = await new Promise<Blob>((resolve, reject) => {
 				this.gif!.on("finished", (blob: Blob) => {
 					resolve(blob);
+				});
+
+				this.gif!.on("abort", () => {
+					reject(new Error("GIF export was aborted before it finished."));
 				});
 
 				// Track rendering progress
