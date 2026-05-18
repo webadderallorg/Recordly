@@ -9,6 +9,14 @@ export function useLaunchWindowActions() {
 
 	const handleSourceSelect = useCallback(async (source: DesktopSource) => {
 		await window.electronAPI.selectSource(source);
+		void window.electronAPI.setRecordingPreferences({
+			selectedSourceId: source.id,
+			selectedSourceName: source.name,
+			selectedSourceDisplayId: source.display_id,
+			selectedSourceThumbnail: source.thumbnail,
+			selectedSourceAppIcon: source.appIcon,
+			selectedSourceType: source.sourceType,
+		});
 		setSelectedSource(source.name);
 		setHasSelectedSource(true);
 		window.electronAPI.showSourceHighlight?.({

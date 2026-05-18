@@ -1204,6 +1204,16 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (result.webcamDeviceId) {
 					setWebcamDeviceId(result.webcamDeviceId);
 				}
+				if (result.selectedSourceId && result.selectedSourceName) {
+					void window.electronAPI.selectSource({
+						id: result.selectedSourceId,
+						name: result.selectedSourceName,
+						display_id: result.selectedSourceDisplayId || "",
+						thumbnail: result.selectedSourceThumbnail || null,
+						appIcon: result.selectedSourceAppIcon || null,
+						sourceType: result.selectedSourceType || "screen",
+					});
+				}
 			}
 		})();
 	}, []);

@@ -830,6 +830,10 @@ interface Window {
 			webcamDeviceId?: string;
 			selectedSourceId?: string;
 			selectedSourceName?: string;
+			selectedSourceDisplayId?: string;
+			selectedSourceThumbnail?: string | null;
+			selectedSourceAppIcon?: string | null;
+			selectedSourceType?: "screen" | "window";
 		}>;
 		getRecordingAudioLabConfig: () => Promise<{
 			browserMicrophoneProfile: string;
@@ -843,6 +847,10 @@ interface Window {
 			webcamDeviceId?: string;
 			selectedSourceId?: string;
 			selectedSourceName?: string;
+			selectedSourceDisplayId?: string;
+			selectedSourceThumbnail?: string | null;
+			selectedSourceAppIcon?: string | null;
+			selectedSourceType?: "screen" | "window";
 		}) => Promise<{ success: boolean; error?: string }>;
 		/** Countdown timer before recording */
 		getCountdownDelay: () => Promise<{ success: boolean; delay: number }>;
