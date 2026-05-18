@@ -278,6 +278,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const microphoneStream = useRef<MediaStream | null>(null);
 	const webcamStream = useRef<MediaStream | null>(null);
 	const mixingContext = useRef<AudioContext | null>(null);
+	// Retain strong JS references to every node in the mixing graph for the
+	// whole recording. A MediaStreamAudioSourceNode with no JS reference can
+	// be garbage-collected even while connected, silently killing the mixed
+	// audio after a few dozen seconds. Keeping only the AudioContext alive is
+	// not enough.
+	const mixingNodes = useRef<{
+		systemSource: MediaStreamAudioSourceNode;
+		micSource: MediaStreamAudioSourceNode;
+		micGain: GainNode;
+		destination: MediaStreamAudioDestinationNode;
+	} | null>(null);
 	const chunks = useRef<Blob[]>([]);
 	const webcamChunks = useRef<Blob[]>([]);
 	const startTime = useRef<number>(0);
@@ -511,6 +522,19 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		if (webcamStream.current) {
 			webcamStream.current.getTracks().forEach((track) => track.stop());
 			webcamStream.current = null;
+		}
+
+		if (mixingNodes.current) {
+			const { systemSource, micSource, micGain, destination } = mixingNodes.current;
+			try {
+				systemSource.disconnect();
+				micSource.disconnect();
+				micGain.disconnect();
+				destination.disconnect();
+			} catch {
+				/* ignore */
+			}
+			mixingNodes.current = null;
 		}
 
 		if (mixingContext.current) {
@@ -1630,6 +1654,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 					systemSource.connect(destination);
 					micSource.connect(micGain).connect(destination);
+
+					// Hold references so the graph is not garbage-collected
+					// mid-recording.
+					mixingNodes.current = {
+						systemSource,
+						micSource,
+						micGain,
+						destination,
+					};
 
 					const mixedTrack = destination.stream.getAudioTracks()[0];
 					if (mixedTrack) {
