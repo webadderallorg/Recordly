@@ -45,7 +45,7 @@ function lerp(start: number, end: number, amount: number) {
 }
 
 function easeWebcamSizeTransition(t: number): number {
-	return cubicBezier(0.4, 0.0, 0.2, 1.0, t);
+	return cubicBezier(0.4, 0.0, 0.2, 1.0, clamp01(t));
 }
 
 function resolveDefaults(
@@ -177,13 +177,33 @@ export function normalizeWebcamSizeRegions(
 		});
 	}
 
-	return normalized.sort((left, right) => {
+	const sorted = normalized.sort((left, right) => {
 		if (left.startMs !== right.startMs) {
 			return left.startMs - right.startMs;
 		}
 
 		return left.endMs - right.endMs;
 	});
+
+	// Resolve overlaps deterministically: an earlier-starting region is
+	// clipped so it ends where the next region begins. This keeps preview
+	// and export in sync (both rely on a single active region per instant)
+	// and removes the ambiguity of overlapping spans.
+	const resolved: WebcamSizeRegion[] = [];
+	for (const region of sorted) {
+		const previous = resolved[resolved.length - 1];
+		if (previous && region.startMs < previous.endMs) {
+			const clippedEndMs = region.startMs;
+			if (clippedEndMs - previous.startMs < WEBCAM_SIZE_REGION_MIN_DURATION_MS) {
+				resolved.pop();
+			} else {
+				resolved[resolved.length - 1] = { ...previous, endMs: clippedEndMs };
+			}
+		}
+		resolved.push(region);
+	}
+
+	return resolved;
 }
 
 export function getActiveWebcamSizeRegion(

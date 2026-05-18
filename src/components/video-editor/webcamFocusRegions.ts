@@ -61,7 +61,7 @@ function lerp(start: number, end: number, amount: number) {
 }
 
 function easeFocusTransition(t: number): number {
-	return cubicBezier(0.4, 0.0, 0.2, 1.0, t);
+	return cubicBezier(0.4, 0.0, 0.2, 1.0, clamp01(t));
 }
 
 function isWebcamCorner(value: unknown): value is WebcamCorner {
@@ -215,10 +215,29 @@ export function normalizeWebcamFocusRegions(
 		});
 	}
 
-	return normalized.sort((left, right) => {
+	const sorted = normalized.sort((left, right) => {
 		if (left.startMs !== right.startMs) return left.startMs - right.startMs;
 		return left.endMs - right.endMs;
 	});
+
+	// Resolve overlaps deterministically: clip an earlier region to end
+	// where the next one starts so preview and export agree on a single
+	// active region per instant.
+	const resolved: WebcamFocusRegion[] = [];
+	for (const region of sorted) {
+		const previous = resolved[resolved.length - 1];
+		if (previous && region.startMs < previous.endMs) {
+			const clippedEndMs = region.startMs;
+			if (clippedEndMs - previous.startMs < WEBCAM_FOCUS_REGION_MIN_DURATION_MS) {
+				resolved.pop();
+			} else {
+				resolved[resolved.length - 1] = { ...previous, endMs: clippedEndMs };
+			}
+		}
+		resolved.push(region);
+	}
+
+	return resolved;
 }
 
 export function getActiveWebcamFocusRegion(

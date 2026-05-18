@@ -111,14 +111,35 @@ describe("webcamSizeRegions", () => {
 		expect(normalizeWebcamSizeRegions({ foo: 1 })).toEqual([]);
 	});
 
-	it("sorts regions by start and end", () => {
+	it("sorts non-overlapping regions by start", () => {
 		const normalized = normalizeWebcamSizeRegions([
 			{ id: "b", startMs: 4_000, endMs: 5_000, size: 50 },
 			{ id: "a", startMs: 1_000, endMs: 2_000, size: 50 },
-			{ id: "c", startMs: 1_000, endMs: 1_500, size: 50 },
+			{ id: "c", startMs: 2_500, endMs: 3_000, size: 50 },
 		]);
 
-		expect(normalized.map((region) => region.id)).toEqual(["c", "a", "b"]);
+		expect(normalized.map((region) => region.id)).toEqual(["a", "c", "b"]);
+	});
+
+	it("clips an earlier region so it ends where the next one starts", () => {
+		const normalized = normalizeWebcamSizeRegions([
+			{ id: "a", startMs: 1_000, endMs: 5_000, size: 50 },
+			{ id: "b", startMs: 3_000, endMs: 6_000, size: 70 },
+		]);
+
+		expect(normalized).toEqual([
+			{ id: "a", startMs: 1_000, endMs: 3_000, size: 50 },
+			{ id: "b", startMs: 3_000, endMs: 6_000, size: 70 },
+		]);
+	});
+
+	it("drops a region fully shadowed by an overlapping one at the same start", () => {
+		const normalized = normalizeWebcamSizeRegions([
+			{ id: "short", startMs: 1_000, endMs: 1_500, size: 50 },
+			{ id: "long", startMs: 1_000, endMs: 4_000, size: 70 },
+		]);
+
+		expect(normalized.map((region) => region.id)).toEqual(["long"]);
 	});
 
 	it("generates unique ids that do not collide with existing ones", () => {
