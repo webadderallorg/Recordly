@@ -3488,19 +3488,9 @@ export default function VideoEditor() {
 			return;
 		}
 
-		const playheadMs = Math.max(
-			0,
-			Math.min(timelineDurationMs, Math.round((timelinePlayheadTime ?? currentTime) * 1000)),
-		);
-		const defaultDurationMs = 3000;
 		const minDurationMs = WEBCAM_SIZE_REGION_MIN_DURATION_MS;
-
-		const latestStartMs = Math.max(0, timelineDurationMs - minDurationMs);
-		const startMs = Math.min(playheadMs, latestStartMs);
-		const endMs = Math.min(
-			timelineDurationMs,
-			Math.max(startMs + minDurationMs, startMs + defaultDurationMs),
-		);
+		const startMs = 0;
+		const endMs = timelineDurationMs;
 
 		if (endMs - startMs < minDurationMs) {
 			return;
@@ -3517,7 +3507,7 @@ export default function VideoEditor() {
 			setSelectedWebcamSizeRegionId(nextRegion.id);
 			return normalizeWebcamSizeRegions([...current, nextRegion], timelineDurationMs);
 		});
-	}, [currentTime, timelineDurationMs, timelinePlayheadTime, webcam.height, webcam.size]);
+	}, [timelineDurationMs, webcam.height, webcam.size]);
 
 	const handleWebcamSizeRegionSizeChange = useCallback((id: string, size: number) => {
 		setWebcamSizeRegions((current) =>
@@ -3697,21 +3687,9 @@ export default function VideoEditor() {
 
 	const addWebcamFocusRegionAtPlayhead = useCallback(
 		(overrides?: Partial<Pick<WebcamFocusRegion, "focusSize" | "screenMode">>) => {
-			const playheadMs = Math.max(
-				0,
-				Math.min(
-					timelineDurationMs,
-					Math.round((timelinePlayheadTime ?? currentTime) * 1000),
-				),
-			);
-			const defaultDurationMs = 3000;
 			const minDurationMs = WEBCAM_FOCUS_REGION_MIN_DURATION_MS;
-			const latestStartMs = Math.max(0, timelineDurationMs - minDurationMs);
-			const startMs = Math.min(playheadMs, latestStartMs);
-			const endMs = Math.min(
-				timelineDurationMs,
-				Math.max(startMs + minDurationMs, startMs + defaultDurationMs),
-			);
+			const startMs = 0;
+			const endMs = timelineDurationMs;
 			if (endMs - startMs < minDurationMs) {
 				return;
 			}
@@ -3729,7 +3707,7 @@ export default function VideoEditor() {
 				return normalizeWebcamFocusRegions([...current, nextRegion], timelineDurationMs);
 			});
 		},
-		[currentTime, timelineDurationMs, timelinePlayheadTime],
+		[timelineDurationMs],
 	);
 
 	const handleAddWebcamFocusRegionAtPlayhead = useCallback(() => {
@@ -3875,13 +3853,8 @@ export default function VideoEditor() {
 				startMs = activeSizeRegion.startMs;
 				endMs = activeSizeRegion.endMs;
 			} else {
-				const defaultDurationMs = 3000;
-				const latestStartMs = Math.max(0, timelineDurationMs - minDurationMs);
-				startMs = Math.min(playheadMs, latestStartMs);
-				endMs = Math.min(
-					timelineDurationMs,
-					Math.max(startMs + minDurationMs, startMs + defaultDurationMs),
-				);
+				startMs = 0;
+				endMs = timelineDurationMs;
 			}
 			if (endMs - startMs < minDurationMs) {
 				return null;
