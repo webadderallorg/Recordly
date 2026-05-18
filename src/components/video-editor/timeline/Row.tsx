@@ -6,6 +6,7 @@ interface RowProps extends RowDefinition {
 	label?: string;
 	hint?: string;
 	isEmpty?: boolean;
+	baseline?: boolean;
 	labelColor?: string;
 	onMouseEnter?: React.MouseEventHandler<HTMLDivElement>;
 	onMouseMove?: React.MouseEventHandler<HTMLDivElement>;
@@ -20,6 +21,7 @@ export default function Row({
 	label,
 	hint,
 	isEmpty,
+	baseline,
 	labelColor = "#666",
 	onMouseEnter,
 	onMouseMove,
@@ -57,6 +59,11 @@ export default function Row({
 				onMouseDown={onMouseDown}
 				onClick={onClick}
 			>
+				{baseline && !isEmpty && (
+					<div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[55%] rounded-md bg-foreground/[0.04] border border-foreground/[0.06] pointer-events-none select-none z-0">
+						<div className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t border-dashed border-foreground/10" />
+					</div>
+				)}
 				{children}
 			</div>
 		</div>

@@ -573,7 +573,11 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				</Row>
 			))}
 
-			<Row id={WEBCAM_SIZE_ROW_ID} isEmpty={webcamSizeItems.length === 0}>
+			<Row
+				id={WEBCAM_SIZE_ROW_ID}
+				isEmpty={webcamSizeItems.length === 0}
+				baseline={webcamSizeItems.length > 0}
+			>
 				{webcamSizeItems.map((item) => (
 					<Item
 						id={item.id}
@@ -590,7 +594,11 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 					</Item>
 				))}
 			</Row>
-			<Row id={WEBCAM_FOCUS_ROW_ID} isEmpty={webcamFocusItems.length === 0}>
+			<Row
+				id={WEBCAM_FOCUS_ROW_ID}
+				isEmpty={webcamFocusItems.length === 0}
+				baseline={webcamFocusItems.length > 0}
+			>
 				{webcamFocusItems.map((item) => (
 					<Item
 						id={item.id}
@@ -611,6 +619,7 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			<Row
 				id={WEBCAM_POSITION_ROW_ID}
 				isEmpty={webcamPositionItems.length === 0}
+				baseline={webcamPositionItems.length > 0}
 			>
 				{webcamPositionItems.map((item) => (
 					<Item
