@@ -12,10 +12,6 @@ export function useLaunchWindowActions() {
 		void window.electronAPI.setRecordingPreferences({
 			selectedSourceId: source.id,
 			selectedSourceName: source.name,
-			selectedSourceDisplayId: source.display_id,
-			selectedSourceThumbnail: source.thumbnail,
-			selectedSourceAppIcon: source.appIcon,
-			selectedSourceType: source.sourceType,
 		});
 		setSelectedSource(source.name);
 		setHasSelectedSource(true);

@@ -1205,14 +1205,23 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					setWebcamDeviceId(result.webcamDeviceId);
 				}
 				if (result.selectedSourceId && result.selectedSourceName) {
-					void window.electronAPI.selectSource({
-						id: result.selectedSourceId,
-						name: result.selectedSourceName,
-						display_id: result.selectedSourceDisplayId || "",
-						thumbnail: result.selectedSourceThumbnail || null,
-						appIcon: result.selectedSourceAppIcon || null,
-						sourceType: result.selectedSourceType || "screen",
-					});
+					// Electron desktopCapturer ids are not stable across
+					// reboots / display changes. Only restore the source if it
+					// still exists in the current capture list, otherwise the
+					// app would silently capture a non-existent target.
+					try {
+						const available = await window.electronAPI.getSources({
+							types: ["screen", "window"],
+						});
+						const match = available.find(
+							(source) => source.id === result.selectedSourceId,
+						);
+						if (match) {
+							void window.electronAPI.selectSource(match);
+						}
+					} catch {
+						// Source enumeration failed — skip restore silently.
+					}
 				}
 			}
 		})();
