@@ -102,11 +102,11 @@ function LaunchWindowContent() {
 		microphoneDeviceId,
 	);
 	useEffect(() => {
-		if (!selectedDeviceId) {
+		if (!selectedDeviceId || selectedDeviceId === "default") {
 			return;
 		}
 
-		setMicrophoneDeviceId(selectedDeviceId === "default" ? undefined : selectedDeviceId);
+		setMicrophoneDeviceId(selectedDeviceId);
 	}, [selectedDeviceId, setMicrophoneDeviceId]);
 
 	const webcamPreview = useWebcamPreviewOverlay({

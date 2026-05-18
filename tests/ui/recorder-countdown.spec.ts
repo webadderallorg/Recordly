@@ -359,3 +359,70 @@ for (const reducedMotion of [false, true]) {
 		expect(await countdown.boundingBox()).toEqual(before);
 	});
 }
+
+test("retains the chosen USB microphone while recording preferences load", async ({ page }) => {
+	await installDesktopBridge(page);
+	await installDesktopBridgeOverrides(page, () => {
+		let storedMicrophone: string | undefined = "usb-mic";
+		let readPreferences!: () => void;
+		const pendingPreferences = new Promise<void>((resolve) => {
+			readPreferences = resolve;
+		});
+		window.addEventListener("test:read-recording-preferences", () => readPreferences());
+		navigator.mediaDevices.enumerateDevices = async () =>
+			[
+				{ kind: "audioinput", deviceId: "default", label: "Default microphone" },
+				{ kind: "audioinput", deviceId: "laptop-mic", label: "Laptop microphone" },
+				{ kind: "audioinput", deviceId: "usb-mic", label: "USB microphone" },
+			] as MediaDeviceInfo[];
+		navigator.mediaDevices.getUserMedia = async () => new MediaStream();
+		Object.assign(window.electronAPI, {
+			getPlatform: async () => "win32",
+			getSelectedSource: async () => ({ id: "window:101:0", name: "Notes" }),
+			getCountdownDelay: async () => ({ success: true, delay: 0 }),
+			getRecordingPreferences: async () => {
+				await pendingPreferences;
+				return {
+					success: true,
+					microphoneEnabled: true,
+					microphoneDeviceId: storedMicrophone,
+				};
+			},
+			setRecordingPreferences: async (patch: { microphoneDeviceId?: string }) => {
+				if ("microphoneDeviceId" in patch) {
+					storedMicrophone = patch.microphoneDeviceId;
+					document.documentElement.dataset.savedMicrophone =
+						storedMicrophone ?? "default";
+				}
+				return { success: true };
+			},
+			isNativeWindowsCaptureAvailable: async () => ({ available: true }),
+			startNativeScreenRecording: async (
+				_source: unknown,
+				options: { microphoneDeviceId?: string },
+			) => {
+				document.documentElement.dataset.requestedMicrophone =
+					options.microphoneDeviceId ?? "default";
+				return { success: true };
+			},
+		});
+	});
+	await page.goto("/?windowType=hud-overlay");
+	const record = page.getByRole("button", { name: "Record", exact: true });
+	await expect(record).toBeEnabled({ timeout: 15000 });
+	await page.evaluate(() => window.dispatchEvent(new Event("test:read-recording-preferences")));
+	const menu = page.getByRole("button", { name: "Audio settings", exact: true });
+	await menu.click();
+	await expect(page.getByRole("button", { name: /^USB microphone\b/ })).toHaveAttribute(
+		"aria-pressed",
+		"true",
+	);
+	await expect(page.getByRole("button", { name: /^Default microphone\b/ })).toHaveAttribute(
+		"aria-pressed",
+		"false",
+	);
+	await expect(page.locator("html")).not.toHaveAttribute("data-saved-microphone", "default");
+	await page.keyboard.press("Escape");
+	await record.click();
+	await expect(page.locator("html")).toHaveAttribute("data-requested-microphone", "usb-mic");
+});
