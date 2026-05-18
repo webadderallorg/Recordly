@@ -60,8 +60,8 @@ export default function Row({
 				onClick={onClick}
 			>
 				{baseline && !isEmpty && (
-					<div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[55%] rounded-md bg-foreground/[0.04] border border-foreground/[0.06] pointer-events-none select-none z-0">
-						<div className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t border-dashed border-foreground/10" />
+					<div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[60%] rounded-md bg-zinc-700/60 border border-zinc-600 pointer-events-none select-none z-0">
+						<div className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t border-dashed border-zinc-500" />
 					</div>
 				)}
 				{children}
