@@ -1,4 +1,5 @@
 import {
+	ArrowsOutSimple,
 	FilmSlate as Film,
 	Gauge,
 	ChatCircle as MessageSquare,
@@ -6,13 +7,14 @@ import {
 	MouseLeftClickIcon as PhMouseLeftClick,
 	Scissors,
 	SpeakerX,
+	VideoCamera,
 	MagnifyingGlassPlus as ZoomIn,
 } from "@phosphor-icons/react";
 import type { Span } from "dnd-timeline";
 import { useItem } from "dnd-timeline";
 import { useMemo } from "react";
-import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import AudioWaveform from "./components/waveform/AudioWaveform";
 import type { AudioPeaksData } from "./core/timelineTypes";
 import glassStyles from "./ItemGlass.module.css";
@@ -34,7 +36,19 @@ interface ItemProps {
 	waveformGain?: number;
 	waveformNormalize?: boolean;
 	muted?: boolean;
-	variant?: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio";
+	webcamSizePercent?: number;
+	webcamHeightPercent?: number;
+	webcamFocusPercent?: number;
+	variant?:
+		| "zoom"
+		| "trim"
+		| "clip"
+		| "annotation"
+		| "speed"
+		| "audio"
+		| "webcam-size"
+		| "webcam-focus"
+		| "webcam-position";
 	isLoading?: boolean;
 	loadingLabel?: string;
 }
@@ -75,6 +89,9 @@ export default function Item({
 	waveformGain = 1,
 	waveformNormalize = false,
 	muted = false,
+	webcamSizePercent,
+	webcamHeightPercent,
+	webcamFocusPercent,
 	variant = "zoom",
 	isLoading = false,
 	loadingLabel,
@@ -124,7 +141,17 @@ export default function Item({
 	const isClip = variant === "clip";
 	const isSpeed = variant === "speed";
 	const isAudio = variant === "audio";
+	const isWebcamSize = variant === "webcam-size";
+	const isWebcamFocus = variant === "webcam-focus";
+	const isWebcamPosition = variant === "webcam-position";
 	const showAudioWaveform = isAudio && Boolean(waveformPeaks);
+	const webcamSizeLabel =
+		webcamSizePercent !== undefined
+			? webcamHeightPercent !== undefined &&
+				Math.round(webcamHeightPercent) !== Math.round(webcamSizePercent)
+				? `${Math.round(webcamSizePercent)}x${Math.round(webcamHeightPercent)}%`
+				: `${Math.round(webcamSizePercent)}%`
+			: "Camera";
 
 	const glassClass = isZoom
 		? glassStyles.glassPurple
@@ -136,7 +163,13 @@ export default function Item({
 					? glassStyles.glassAmber
 					: isAudio
 						? glassStyles.glassDarkGreen
-						: glassStyles.glassYellow;
+						: isWebcamSize
+							? glassStyles.glassGreen
+							: isWebcamFocus
+								? glassStyles.glassPink
+								: isWebcamPosition
+									? (glassStyles.glassBlue ?? glassStyles.glassPink)
+									: glassStyles.glassYellow;
 
 	const MIN_ITEM_PX = 6;
 	const handleSelect = () => {
@@ -247,6 +280,22 @@ export default function Item({
 									<Music className="w-3.5 h-3.5 shrink-0" />
 									<span className="text-[11px] font-semibold tracking-tight truncate max-w-full">
 										{children}
+									</span>
+								</>
+							) : isWebcamSize ? (
+								<>
+									<VideoCamera className="w-3.5 h-3.5 shrink-0" />
+									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
+										{webcamSizeLabel}
+									</span>
+								</>
+							) : isWebcamFocus ? (
+								<>
+									<ArrowsOutSimple className="w-3.5 h-3.5 shrink-0" />
+									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
+										{webcamFocusPercent !== undefined
+											? `Focus ${Math.round(webcamFocusPercent)}%`
+											: "Focus"}
 									</span>
 								</>
 							) : (

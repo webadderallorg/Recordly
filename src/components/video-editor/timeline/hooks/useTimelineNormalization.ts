@@ -1,6 +1,14 @@
 import { useEffect } from "react";
+import type {
+	AudioRegion,
+	SpeedRegion,
+	TrimRegion,
+	WebcamFocusRegion,
+	WebcamPositionRegion,
+	WebcamSizeRegion,
+	ZoomRegion,
+} from "../../types";
 import { normalizeRegionSpan } from "../core/spans";
-import type { AudioRegion, SpeedRegion, TrimRegion, ZoomRegion } from "../../types";
 
 interface UseTimelineNormalizationParams {
 	totalMs: number;
@@ -9,10 +17,16 @@ interface UseTimelineNormalizationParams {
 	trimRegions: TrimRegion[];
 	speedRegions: SpeedRegion[];
 	audioRegions: AudioRegion[];
+	webcamSizeRegions: WebcamSizeRegion[];
+	webcamFocusRegions: WebcamFocusRegion[];
+	webcamPositionRegions: WebcamPositionRegion[];
 	onZoomSpanChange: (id: string, span: { start: number; end: number }) => void;
 	onTrimSpanChange?: (id: string, span: { start: number; end: number }) => void;
 	onSpeedSpanChange?: (id: string, span: { start: number; end: number }) => void;
 	onAudioSpanChange?: (id: string, span: { start: number; end: number }) => void;
+	onWebcamSizeSpanChange?: (id: string, span: { start: number; end: number }) => void;
+	onWebcamFocusSpanChange?: (id: string, span: { start: number; end: number }) => void;
+	onWebcamPositionSpanChange?: (id: string, span: { start: number; end: number }) => void;
 }
 
 export function useTimelineNormalization({
@@ -22,10 +36,16 @@ export function useTimelineNormalization({
 	trimRegions,
 	speedRegions,
 	audioRegions,
+	webcamSizeRegions,
+	webcamFocusRegions,
+	webcamPositionRegions,
 	onZoomSpanChange,
 	onTrimSpanChange,
 	onSpeedSpanChange,
 	onAudioSpanChange,
+	onWebcamSizeSpanChange,
+	onWebcamFocusSpanChange,
+	onWebcamPositionSpanChange,
 }: UseTimelineNormalizationParams) {
 	useEffect(() => {
 		if (totalMs === 0 || safeMinDurationMs <= 0) {
@@ -83,6 +103,45 @@ export function useTimelineNormalization({
 				onAudioSpanChange?.(region.id, normalized);
 			}
 		});
+
+		webcamSizeRegions.forEach((region) => {
+			const normalized = normalizeRegionSpan({
+				startMs: region.startMs,
+				endMs: region.endMs,
+				totalMs,
+				minDurationMs: safeMinDurationMs,
+			});
+
+			if (normalized.start !== region.startMs || normalized.end !== region.endMs) {
+				onWebcamSizeSpanChange?.(region.id, normalized);
+			}
+		});
+
+		webcamFocusRegions.forEach((region) => {
+			const normalized = normalizeRegionSpan({
+				startMs: region.startMs,
+				endMs: region.endMs,
+				totalMs,
+				minDurationMs: safeMinDurationMs,
+			});
+
+			if (normalized.start !== region.startMs || normalized.end !== region.endMs) {
+				onWebcamFocusSpanChange?.(region.id, normalized);
+			}
+		});
+
+		webcamPositionRegions.forEach((region) => {
+			const normalized = normalizeRegionSpan({
+				startMs: region.startMs,
+				endMs: region.endMs,
+				totalMs,
+				minDurationMs: safeMinDurationMs,
+			});
+
+			if (normalized.start !== region.startMs || normalized.end !== region.endMs) {
+				onWebcamPositionSpanChange?.(region.id, normalized);
+			}
+		});
 	}, [
 		totalMs,
 		safeMinDurationMs,
@@ -90,9 +149,15 @@ export function useTimelineNormalization({
 		trimRegions,
 		speedRegions,
 		audioRegions,
+		webcamSizeRegions,
+		webcamFocusRegions,
+		webcamPositionRegions,
 		onZoomSpanChange,
 		onTrimSpanChange,
 		onSpeedSpanChange,
 		onAudioSpanChange,
+		onWebcamSizeSpanChange,
+		onWebcamFocusSpanChange,
+		onWebcamPositionSpanChange,
 	]);
 }

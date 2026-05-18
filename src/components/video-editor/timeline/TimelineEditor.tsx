@@ -1,20 +1,14 @@
-import type { Span } from "dnd-timeline";
 import { Plus } from "@phosphor-icons/react";
-import {
-	forwardRef,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
-import { useScopedT } from "@/contexts/I18nContext";
-import { useShortcuts } from "@/contexts/ShortcutsContext";
-import { fromFileUrl } from "../projectPersistence";
+import type { Span } from "dnd-timeline";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type {
 	SourceAudioTrackMeta,
 	SourceAudioTrackSettings,
 	SourceAudioTrackWithPeaks,
 } from "@/components/video-editor/audio/audioTypes";
+import { useScopedT } from "@/contexts/I18nContext";
+import { useShortcuts } from "@/contexts/ShortcutsContext";
+import { fromFileUrl } from "../projectPersistence";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -22,16 +16,19 @@ import type {
 	CursorTelemetryPoint,
 	SpeedRegion,
 	TrimRegion,
+	WebcamFocusRegion,
+	WebcamPositionRegion,
+	WebcamSizeRegion,
 	ZoomFocus,
 	ZoomRegion,
 } from "../types";
 import KeyframeMarkers from "./components/markers/KeyframeMarkers";
+import TimelineCanvas from "./components/viewport/TimelineCanvas";
 import TimelineWrapper from "./components/wrapper/TimelineWrapper";
-import { useTimelineAudioPeaks } from "./hooks/useTimelineAudioPeaks";
 import { calculateTimelineScale } from "./core/time";
+import { useTimelineAudioPeaks } from "./hooks/useTimelineAudioPeaks";
 import { useTimelineEditorRuntime } from "./hooks/useTimelineEditorRuntime";
 import { useTimelineRange } from "./hooks/useTimelineRange";
-import TimelineCanvas from "./components/viewport/TimelineCanvas";
 
 export interface TimelineEditorProps {
 	videoDuration: number;
@@ -71,15 +68,28 @@ export interface TimelineEditorProps {
 	onAudioDelete?: (id: string) => void;
 	selectedAudioId?: string | null;
 	onSelectAudio?: (id: string | null) => void;
+	webcamSizeRegions?: WebcamSizeRegion[];
+	onWebcamSizeSpanChange?: (id: string, span: Span) => void;
+	onWebcamSizeDelete?: (id: string) => void;
+	selectedWebcamSizeRegionId?: string | null;
+	onSelectWebcamSize?: (id: string | null) => void;
+	webcamFocusRegions?: WebcamFocusRegion[];
+	onWebcamFocusSpanChange?: (id: string, span: Span) => void;
+	onWebcamFocusDelete?: (id: string) => void;
+	selectedWebcamFocusRegionId?: string | null;
+	onSelectWebcamFocus?: (id: string | null) => void;
+	webcamPositionRegions?: WebcamPositionRegion[];
+	onWebcamPositionSpanChange?: (id: string, span: Span) => void;
+	onWebcamPositionDelete?: (id: string) => void;
+	selectedWebcamPositionRegionId?: string | null;
+	onSelectWebcamPosition?: (id: string | null) => void;
 	videoPath?: string | null;
 	videoSourcePath?: string | null;
 	cursorTelemetrySourcePath?: string | null;
 	showSourceAudioTrack?: boolean;
 	onSourceAudioAvailabilityChange?: (available: boolean) => void;
 	sourceAudioTrackSettings?: SourceAudioTrackSettings;
-	getSourceAudioTrackSettingsForClip?: (
-		clipId: string | null,
-	) => SourceAudioTrackSettings;
+	getSourceAudioTrackSettingsForClip?: (clipId: string | null) => SourceAudioTrackSettings;
 	onSourceAudioTracksMetaChange?: (tracks: SourceAudioTrackMeta) => void;
 }
 
@@ -116,7 +126,6 @@ export interface TimelineEditorHandle {
 	addAudio: (trackIndex?: number) => Promise<void>;
 	keyframes: { id: string; time: number }[];
 }
-
 
 const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 	function TimelineEditor(
@@ -158,6 +167,21 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAudioDelete,
 			selectedAudioId,
 			onSelectAudio,
+			webcamSizeRegions = [],
+			onWebcamSizeSpanChange,
+			onWebcamSizeDelete,
+			selectedWebcamSizeRegionId = null,
+			onSelectWebcamSize,
+			webcamFocusRegions = [],
+			onWebcamFocusSpanChange,
+			onWebcamFocusDelete,
+			selectedWebcamFocusRegionId = null,
+			onSelectWebcamFocus,
+			webcamPositionRegions = [],
+			onWebcamPositionSpanChange,
+			onWebcamPositionDelete,
+			selectedWebcamPositionRegionId = null,
+			onSelectWebcamPosition,
 			videoPath,
 			videoSourcePath,
 			cursorTelemetrySourcePath,
@@ -209,9 +233,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					...(newStart > oldClip.startMs
 						? [{ startMs: oldClip.startMs, endMs: newStart }]
 						: []),
-					...(newEnd < oldClip.endMs
-						? [{ startMs: newEnd, endMs: oldClip.endMs }]
-						: []),
+					...(newEnd < oldClip.endMs ? [{ startMs: newEnd, endMs: oldClip.endMs }] : []),
 				];
 
 				const startDelta = newStart - oldClip.startMs;
@@ -245,9 +267,12 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			return { previewSpans, hiddenZoomIds };
 		}, [clipRegions, liveSpanPreviewById, zoomRegions]);
 		const { shortcuts: keyShortcuts, isMac } = useShortcuts();
-		const { peaks: sourceAudioPeaks, loading: sourceAudioLoading } = useTimelineAudioPeaks(videoPath, {
-			enableSourceSidecarFallback: true,
-		});
+		const { peaks: sourceAudioPeaks, loading: sourceAudioLoading } = useTimelineAudioPeaks(
+			videoPath,
+			{
+				enableSourceSidecarFallback: true,
+			},
+		);
 		const localSourcePath = useMemo(() => {
 			if (!videoPath) return null;
 			return (
@@ -263,8 +288,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			() => (localSourcePath ? buildSourceSidecarPath(localSourcePath, "system") : null),
 			[localSourcePath],
 		);
-		const { peaks: micSidecarPeaks, loading: micSidecarLoading } = useTimelineAudioPeaks(micSidecarPath);
-		const { peaks: systemSidecarPeaks, loading: systemSidecarLoading } = useTimelineAudioPeaks(systemSidecarPath);
+		const { peaks: micSidecarPeaks, loading: micSidecarLoading } =
+			useTimelineAudioPeaks(micSidecarPath);
+		const { peaks: systemSidecarPeaks, loading: systemSidecarLoading } =
+			useTimelineAudioPeaks(systemSidecarPath);
 		const sourceAudioTracks = useMemo<SourceAudioTrackWithPeaks[]>(() => {
 			if (systemSidecarPeaks || micSidecarPeaks) {
 				const tracks: SourceAudioTrackWithPeaks[] = [];
@@ -295,16 +322,26 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 
 		const isLoading = useMemo(() => {
 			// If we are still actively trying to load audio peaks (main or sidecars)
-			if (videoPath && (sourceAudioLoading || micSidecarLoading || systemSidecarLoading)) return true;
+			if (videoPath && (sourceAudioLoading || micSidecarLoading || systemSidecarLoading))
+				return true;
 
 			// Robust telemetry loading detection:
 			// If a source path is set but telemetry hasn't arrived (or failed/retried) for it yet.
 			if (videoSourcePath && cursorTelemetrySourcePath !== videoSourcePath) return true;
 
 			return false;
-		}, [videoPath, videoSourcePath, cursorTelemetrySourcePath, sourceAudioLoading, micSidecarLoading, systemSidecarLoading]);
+		}, [
+			videoPath,
+			videoSourcePath,
+			cursorTelemetrySourcePath,
+			sourceAudioLoading,
+			micSidecarLoading,
+			systemSidecarLoading,
+		]);
 		useEffect(() => {
-			onSourceAudioTracksMetaChange?.(sourceAudioTracks.map((t) => ({ id: t.id, label: t.label })));
+			onSourceAudioTracksMetaChange?.(
+				sourceAudioTracks.map((t) => ({ id: t.id, label: t.label })),
+			);
 		}, [onSourceAudioTracksMetaChange, sourceAudioTracks]);
 		void sourceAudioTrackSettings;
 		useEffect(() => {
@@ -323,6 +360,9 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			handleSelectClip,
 			handleSelectAnnotation,
 			handleSelectAudio,
+			handleSelectWebcamSize,
+			handleSelectWebcamFocus,
+			handleSelectWebcamPosition,
 			hasOverlap,
 			timelineItems,
 			allRegionSpans,
@@ -369,6 +409,21 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAudioDelete,
 			selectedAudioId,
 			onSelectAudio,
+			webcamSizeRegions,
+			webcamFocusRegions,
+			webcamPositionRegions,
+			onWebcamSizeSpanChange,
+			onWebcamSizeDelete,
+			selectedWebcamSizeRegionId,
+			onSelectWebcamSize,
+			onWebcamFocusSpanChange,
+			onWebcamFocusDelete,
+			selectedWebcamFocusRegionId,
+			onSelectWebcamFocus,
+			onWebcamPositionSpanChange,
+			onWebcamPositionDelete,
+			selectedWebcamPositionRegionId,
+			onSelectWebcamPosition,
 			isMac,
 			keyShortcuts,
 			isTimelineFocusedRef,
@@ -394,7 +449,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			<div className="flex-1 min-h-0 flex flex-col bg-editor-bg overflow-hidden">
 				<div
 					ref={timelineContainerRef}
-					className="flex-1 min-h-0 overflow-auto bg-editor-bg relative"
+					className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden bg-editor-bg relative"
 					tabIndex={0}
 					onFocus={() => {
 						isTimelineFocusedRef.current = true;
@@ -461,10 +516,16 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							onSelectClip={handleSelectClip}
 							onSelectAnnotation={handleSelectAnnotation}
 							onSelectAudio={handleSelectAudio}
+							onSelectWebcamSize={handleSelectWebcamSize}
+							onSelectWebcamFocus={handleSelectWebcamFocus}
+							onSelectWebcamPosition={handleSelectWebcamPosition}
 							selectedZoomId={selectedZoomId}
 							selectedClipId={selectedClipId}
 							selectedAnnotationId={selectedAnnotationId}
 							selectedAudioId={selectedAudioId}
+							selectedWebcamSizeRegionId={selectedWebcamSizeRegionId}
+							selectedWebcamFocusRegionId={selectedWebcamFocusRegionId}
+							selectedWebcamPositionRegionId={selectedWebcamPositionRegionId}
 							selectAllBlocksActive={selectAllBlocksActive}
 							onClearBlockSelection={clearSelectedBlocks}
 							keyframes={keyframes}

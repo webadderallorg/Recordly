@@ -8,10 +8,13 @@ import type {
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
-	SpeedRegion,
 	SourceAudioTrackSettings,
+	SpeedRegion,
 	TrimRegion,
+	WebcamFocusRegion,
 	WebcamOverlaySettings,
+	WebcamPositionRegion,
+	WebcamSizeRegion,
 	ZoomMotionBlurTuning,
 	ZoomRegion,
 	ZoomTransitionEasing,
@@ -71,6 +74,9 @@ interface VideoExporterConfig extends ExportConfig {
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
 	webcamUrl?: string | null;
+	webcamSizeRegions?: WebcamSizeRegion[];
+	webcamFocusRegions?: WebcamFocusRegion[];
+	webcamPositionRegions?: WebcamPositionRegion[];
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
@@ -241,6 +247,9 @@ export class VideoExporter {
 				cropRegion: this.config.cropRegion,
 				webcam: this.config.webcam,
 				webcamUrl: this.config.webcamUrl,
+				webcamSizeRegions: this.config.webcamSizeRegions,
+				webcamFocusRegions: this.config.webcamFocusRegions,
+				webcamPositionRegions: this.config.webcamPositionRegions,
 				videoWidth: videoInfo.width,
 				videoHeight: videoInfo.height,
 				annotationRegions: this.config.annotationRegions,

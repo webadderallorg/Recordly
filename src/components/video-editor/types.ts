@@ -90,10 +90,46 @@ export interface WebcamOverlaySettings {
 	positionX: number;
 	positionY: number;
 	size: number;
+	height?: number;
 	reactToZoom: boolean;
+	avoidCursor: boolean;
 	cornerRadius: number;
 	shadow: number;
 	margin: number;
+}
+
+export interface WebcamSizeRegion {
+	id: string;
+	startMs: number;
+	endMs: number;
+	size: number;
+	height?: number;
+	transitionInMs?: number;
+	transitionOutMs?: number;
+}
+
+export type WebcamFocusScreenMode = "pip" | "hidden";
+
+export interface WebcamFocusRegion {
+	id: string;
+	startMs: number;
+	endMs: number;
+	focusSize: number;
+	screenMode: WebcamFocusScreenMode;
+	screenPipSize?: number;
+	screenPipCorner?: WebcamCorner;
+	transitionInMs?: number;
+	transitionOutMs?: number;
+}
+
+export interface WebcamPositionRegion {
+	id: string;
+	startMs: number;
+	endMs: number;
+	positionX: number;
+	positionY: number;
+	transitionInMs?: number;
+	transitionOutMs?: number;
 }
 
 export const DEFAULT_CURSOR_SIZE = 3.0;
@@ -132,13 +168,24 @@ export const DEFAULT_ZOOM_IN_EASING: ZoomTransitionEasing = "recordly";
 export const DEFAULT_ZOOM_OUT_EASING: ZoomTransitionEasing = "recordly";
 export const DEFAULT_CONNECTED_ZOOM_EASING: ZoomTransitionEasing = "glide";
 export const DEFAULT_WEBCAM_SIZE = 40;
+export const DEFAULT_WEBCAM_HEIGHT = DEFAULT_WEBCAM_SIZE;
+export const DEFAULT_WEBCAM_SIZE_TRANSITION_IN_MS = 400;
+export const DEFAULT_WEBCAM_SIZE_TRANSITION_OUT_MS = 400;
+export const DEFAULT_WEBCAM_FOCUS_SIZE = 95;
+export const DEFAULT_WEBCAM_FOCUS_SCREEN_MODE: WebcamFocusScreenMode = "pip";
+export const DEFAULT_WEBCAM_FOCUS_SCREEN_PIP_SIZE = 20;
+export const DEFAULT_WEBCAM_FOCUS_TRANSITION_IN_MS = 400;
+export const DEFAULT_WEBCAM_FOCUS_TRANSITION_OUT_MS = 400;
 export const DEFAULT_WEBCAM_REACT_TO_ZOOM = true;
+export const DEFAULT_WEBCAM_AVOID_CURSOR = false;
 export const DEFAULT_WEBCAM_CORNER_RADIUS = 90;
 export const DEFAULT_WEBCAM_SHADOW = 0.67;
 export const DEFAULT_WEBCAM_MARGIN = 24;
 export const DEFAULT_WEBCAM_POSITION_PRESET: WebcamPositionPreset = "bottom-right";
 export const DEFAULT_WEBCAM_POSITION_X = 1;
 export const DEFAULT_WEBCAM_POSITION_Y = 1;
+export const DEFAULT_WEBCAM_POSITION_TRANSITION_IN_MS = 400;
+export const DEFAULT_WEBCAM_POSITION_TRANSITION_OUT_MS = 400;
 export const DEFAULT_WEBCAM_TIME_OFFSET_MS = 0;
 
 export const DEFAULT_WEBCAM_OVERLAY: WebcamOverlaySettings = {
@@ -152,7 +199,9 @@ export const DEFAULT_WEBCAM_OVERLAY: WebcamOverlaySettings = {
 	positionX: DEFAULT_WEBCAM_POSITION_X,
 	positionY: DEFAULT_WEBCAM_POSITION_Y,
 	size: DEFAULT_WEBCAM_SIZE,
+	height: DEFAULT_WEBCAM_HEIGHT,
 	reactToZoom: DEFAULT_WEBCAM_REACT_TO_ZOOM,
+	avoidCursor: DEFAULT_WEBCAM_AVOID_CURSOR,
 	cornerRadius: DEFAULT_WEBCAM_CORNER_RADIUS,
 	shadow: DEFAULT_WEBCAM_SHADOW,
 	margin: DEFAULT_WEBCAM_MARGIN,
@@ -466,7 +515,10 @@ export const DEFAULT_PADDING: Padding = {
 	right: 20,
 	linked: true,
 };
-export type { SourceAudioTrackSetting, SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
+export type {
+	SourceAudioTrackSetting,
+	SourceAudioTrackSettings,
+} from "@/components/video-editor/audio/audioTypes";
 
 export interface AudioRegion {
 	id: string;

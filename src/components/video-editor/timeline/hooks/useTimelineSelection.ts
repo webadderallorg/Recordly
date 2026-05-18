@@ -9,18 +9,30 @@ interface UseTimelineSelectionParams {
 	clipRegions: TimelineRegion[];
 	annotationRegions: (TimelineRegion & { zIndex: number })[];
 	audioRegions: TimelineRegion[];
+	webcamSizeRegions: TimelineRegion[];
+	webcamFocusRegions: TimelineRegion[];
+	webcamPositionRegions: TimelineRegion[];
 	selectedZoomId: string | null;
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
+	selectedWebcamSizeRegionId?: string | null;
+	selectedWebcamFocusRegionId?: string | null;
+	selectedWebcamPositionRegionId?: string | null;
 	onZoomDelete: (id: string) => void;
 	onClipDelete?: (id: string) => void;
 	onAnnotationDelete?: (id: string) => void;
 	onAudioDelete?: (id: string) => void;
+	onWebcamSizeDelete?: (id: string) => void;
+	onWebcamFocusDelete?: (id: string) => void;
+	onWebcamPositionDelete?: (id: string) => void;
 	onSelectZoom: (id: string | null) => void;
 	onSelectClip?: (id: string | null) => void;
 	onSelectAnnotation?: (id: string | null) => void;
 	onSelectAudio?: (id: string | null) => void;
+	onSelectWebcamSize?: (id: string | null) => void;
+	onSelectWebcamFocus?: (id: string | null) => void;
+	onSelectWebcamPosition?: (id: string | null) => void;
 }
 
 export function useTimelineSelection({
@@ -30,18 +42,30 @@ export function useTimelineSelection({
 	clipRegions,
 	annotationRegions,
 	audioRegions,
+	webcamSizeRegions,
+	webcamFocusRegions,
+	webcamPositionRegions,
 	selectedZoomId,
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
+	selectedWebcamSizeRegionId,
+	selectedWebcamFocusRegionId,
+	selectedWebcamPositionRegionId,
 	onZoomDelete,
 	onClipDelete,
 	onAnnotationDelete,
 	onAudioDelete,
+	onWebcamSizeDelete,
+	onWebcamFocusDelete,
+	onWebcamPositionDelete,
 	onSelectZoom,
 	onSelectClip,
 	onSelectAnnotation,
 	onSelectAudio,
+	onSelectWebcamSize,
+	onSelectWebcamFocus,
+	onSelectWebcamPosition,
 }: UseTimelineSelectionParams) {
 	const [keyframes, setKeyframes] = useState<{ id: string; time: number }[]>([]);
 	const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(null);
@@ -95,21 +119,62 @@ export function useTimelineSelection({
 		onSelectAudio(null);
 	}, [selectedAudioId, onAudioDelete, onSelectAudio]);
 
+	const deleteSelectedWebcamSize = useCallback(() => {
+		if (!selectedWebcamSizeRegionId || !onWebcamSizeDelete || !onSelectWebcamSize) return;
+		onWebcamSizeDelete(selectedWebcamSizeRegionId);
+		onSelectWebcamSize(null);
+	}, [selectedWebcamSizeRegionId, onWebcamSizeDelete, onSelectWebcamSize]);
+
+	const deleteSelectedWebcamFocus = useCallback(() => {
+		if (!selectedWebcamFocusRegionId || !onWebcamFocusDelete || !onSelectWebcamFocus) return;
+		onWebcamFocusDelete(selectedWebcamFocusRegionId);
+		onSelectWebcamFocus(null);
+	}, [selectedWebcamFocusRegionId, onWebcamFocusDelete, onSelectWebcamFocus]);
+
+	const deleteSelectedWebcamPosition = useCallback(() => {
+		if (!selectedWebcamPositionRegionId || !onWebcamPositionDelete || !onSelectWebcamPosition)
+			return;
+		onWebcamPositionDelete(selectedWebcamPositionRegionId);
+		onSelectWebcamPosition(null);
+	}, [selectedWebcamPositionRegionId, onWebcamPositionDelete, onSelectWebcamPosition]);
+
 	const clearSelectedBlocks = useCallback(() => {
 		onSelectZoom(null);
 		onSelectClip?.(null);
 		onSelectAnnotation?.(null);
 		onSelectAudio?.(null);
+		onSelectWebcamSize?.(null);
+		onSelectWebcamFocus?.(null);
+		onSelectWebcamPosition?.(null);
 		setSelectAllBlocksActive(false);
-	}, [onSelectZoom, onSelectClip, onSelectAnnotation, onSelectAudio]);
+	}, [
+		onSelectZoom,
+		onSelectClip,
+		onSelectAnnotation,
+		onSelectAudio,
+		onSelectWebcamSize,
+		onSelectWebcamFocus,
+		onSelectWebcamPosition,
+	]);
 
 	const hasAnyTimelineBlocks = useMemo(
 		() =>
 			zoomRegions.length > 0 ||
 			clipRegions.length > 0 ||
 			annotationRegions.length > 0 ||
-			audioRegions.length > 0,
-		[zoomRegions.length, clipRegions.length, annotationRegions.length, audioRegions.length],
+			audioRegions.length > 0 ||
+			webcamSizeRegions.length > 0 ||
+			webcamFocusRegions.length > 0 ||
+			webcamPositionRegions.length > 0,
+		[
+			zoomRegions.length,
+			clipRegions.length,
+			annotationRegions.length,
+			audioRegions.length,
+			webcamSizeRegions.length,
+			webcamFocusRegions.length,
+			webcamPositionRegions.length,
+		],
 	);
 
 	const deleteAllBlocks = useCallback(() => {
@@ -117,6 +182,9 @@ export function useTimelineSelection({
 		clipRegions.map((r) => r.id).forEach((id) => onClipDelete?.(id));
 		annotationRegions.map((r) => r.id).forEach((id) => onAnnotationDelete?.(id));
 		audioRegions.map((r) => r.id).forEach((id) => onAudioDelete?.(id));
+		webcamSizeRegions.map((r) => r.id).forEach((id) => onWebcamSizeDelete?.(id));
+		webcamFocusRegions.map((r) => r.id).forEach((id) => onWebcamFocusDelete?.(id));
+		webcamPositionRegions.map((r) => r.id).forEach((id) => onWebcamPositionDelete?.(id));
 		clearSelectedBlocks();
 		setSelectedKeyframeId(null);
 	}, [
@@ -124,10 +192,16 @@ export function useTimelineSelection({
 		clipRegions,
 		annotationRegions,
 		audioRegions,
+		webcamSizeRegions,
+		webcamFocusRegions,
+		webcamPositionRegions,
 		onZoomDelete,
 		onClipDelete,
 		onAnnotationDelete,
 		onAudioDelete,
+		onWebcamSizeDelete,
+		onWebcamFocusDelete,
+		onWebcamPositionDelete,
 		clearSelectedBlocks,
 	]);
 
@@ -161,6 +235,30 @@ export function useTimelineSelection({
 			onSelectAudio?.(id);
 		},
 		[onSelectAudio],
+	);
+
+	const handleSelectWebcamSize = useCallback(
+		(id: string | null) => {
+			setSelectAllBlocksActive(false);
+			onSelectWebcamSize?.(id);
+		},
+		[onSelectWebcamSize],
+	);
+
+	const handleSelectWebcamFocus = useCallback(
+		(id: string | null) => {
+			setSelectAllBlocksActive(false);
+			onSelectWebcamFocus?.(id);
+		},
+		[onSelectWebcamFocus],
+	);
+
+	const handleSelectWebcamPosition = useCallback(
+		(id: string | null) => {
+			setSelectAllBlocksActive(false);
+			onSelectWebcamPosition?.(id);
+		},
+		[onSelectWebcamPosition],
 	);
 
 	const cycleAnnotationsAtCurrentTime = useCallback(
@@ -201,12 +299,18 @@ export function useTimelineSelection({
 		deleteSelectedClip,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
+		deleteSelectedWebcamSize,
+		deleteSelectedWebcamFocus,
+		deleteSelectedWebcamPosition,
 		clearSelectedBlocks,
 		deleteAllBlocks,
 		handleSelectZoom,
 		handleSelectClip,
 		handleSelectAnnotation,
 		handleSelectAudio,
+		handleSelectWebcamSize,
+		handleSelectWebcamFocus,
+		handleSelectWebcamPosition,
 		cycleAnnotationsAtCurrentTime,
 	};
 }

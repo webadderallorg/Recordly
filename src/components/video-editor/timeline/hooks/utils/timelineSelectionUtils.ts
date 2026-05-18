@@ -5,6 +5,9 @@ export type DeleteSelectionTarget =
 	| "clip"
 	| "annotation"
 	| "audio"
+	| "webcam-size"
+	| "webcam-focus"
+	| "webcam-position"
 	| "none";
 
 interface ResolveDeleteSelectionTargetParams {
@@ -14,6 +17,9 @@ interface ResolveDeleteSelectionTargetParams {
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
+	selectedWebcamSizeRegionId?: string | null;
+	selectedWebcamFocusRegionId?: string | null;
+	selectedWebcamPositionRegionId?: string | null;
 }
 
 export function resolveDeleteSelectionTarget({
@@ -23,6 +29,9 @@ export function resolveDeleteSelectionTarget({
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
+	selectedWebcamSizeRegionId,
+	selectedWebcamFocusRegionId,
+	selectedWebcamPositionRegionId,
 }: ResolveDeleteSelectionTargetParams): DeleteSelectionTarget {
 	if (selectAllBlocksActive) return "all";
 	if (selectedKeyframeId) return "keyframe";
@@ -30,5 +39,8 @@ export function resolveDeleteSelectionTarget({
 	if (selectedClipId) return "clip";
 	if (selectedAnnotationId) return "annotation";
 	if (selectedAudioId) return "audio";
+	if (selectedWebcamSizeRegionId) return "webcam-size";
+	if (selectedWebcamFocusRegionId) return "webcam-focus";
+	if (selectedWebcamPositionRegionId) return "webcam-position";
 	return "none";
 }
