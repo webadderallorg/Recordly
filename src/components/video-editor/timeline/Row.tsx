@@ -31,7 +31,7 @@ export default function Row({
 
 	return (
 		<div
-			className="bg-transparent relative flex-1 min-h-[26px]"
+			className="bg-transparent relative flex-1 min-h-0"
 			style={{ ...rowWrapperStyle, marginBottom: 2 }}
 		>
 			{label && (
@@ -49,7 +49,7 @@ export default function Row({
 			)}
 			<div
 				ref={setNodeRef}
-				className="relative h-full min-h-[26px] overflow-hidden"
+				className="relative h-full min-h-0 overflow-hidden"
 				style={rowStyle}
 				onMouseEnter={onMouseEnter}
 				onMouseMove={onMouseMove}

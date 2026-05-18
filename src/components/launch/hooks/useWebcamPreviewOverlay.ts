@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
+import { type PointerEvent, useCallback, useEffect, useRef, useState } from "react";
 import { canShowFloatingWebcamPreview } from "../floatingWebcamPreview";
+import { shouldRestoreHudMousePassthroughAfterDrag } from "../hudMousePassthrough";
 
 const WEBCAM_PREVIEW_DRAG_THRESHOLD = 6;
 const DEFAULT_WEBCAM_PREVIEW_OFFSET = { x: 0, y: 0 };
@@ -26,6 +27,7 @@ export function useWebcamPreviewOverlay({
 	const previewStreamRef = useRef<MediaStream | null>(null);
 	const previewDragMoveRafRef = useRef<number | null>(null);
 	const previewDragPendingPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+	const previewDragWindowCleanupRef = useRef<(() => void) | null>(null);
 	const webcamPreviewDragStartRef = useRef<{
 		pointerId: number;
 		startX: number;
@@ -57,9 +59,129 @@ export function useWebcamPreviewOverlay({
 			}
 			webcamPreviewDragStartRef.current = null;
 			isWebcamPreviewDraggingRef.current = false;
+			previewDragWindowCleanupRef.current?.();
+			previewDragWindowCleanupRef.current = null;
 			setShowFloatingWebcamPreview(true);
 		}
 	}, [webcamEnabled]);
+
+	const updateWebcamPreviewDrag = useCallback(
+		(pointerId: number, clientX: number, clientY: number) => {
+			const dragState = webcamPreviewDragStartRef.current;
+			if (!dragState || dragState.pointerId !== pointerId) {
+				return;
+			}
+
+			const deltaX = clientX - dragState.startX;
+			const deltaY = clientY - dragState.startY;
+
+			if (!dragState.dragging && Math.hypot(deltaX, deltaY) < WEBCAM_PREVIEW_DRAG_THRESHOLD) {
+				return;
+			}
+
+			if (!dragState.dragging) {
+				dragState.dragging = true;
+				isWebcamPreviewDraggingRef.current = true;
+			}
+
+			previewDragPendingPointerRef.current = { clientX, clientY };
+			if (previewDragMoveRafRef.current !== null) {
+				return;
+			}
+
+			previewDragMoveRafRef.current = requestAnimationFrame(() => {
+				previewDragMoveRafRef.current = null;
+				const latestDragState = webcamPreviewDragStartRef.current;
+				const pointer = previewDragPendingPointerRef.current;
+				if (!latestDragState || !pointer) {
+					return;
+				}
+
+				const latestDeltaX = pointer.clientX - latestDragState.startX;
+				const latestDeltaY = pointer.clientY - latestDragState.startY;
+				const viewportWidth = Math.max(window.innerWidth, window.screen?.width ?? 0);
+				const viewportHeight = Math.max(window.innerHeight, window.screen?.height ?? 0);
+				const unclampedLeft = latestDragState.initialLeft + latestDeltaX;
+				const unclampedTop = latestDragState.initialTop + latestDeltaY;
+				const clampedLeft = Math.min(
+					Math.max(0, unclampedLeft),
+					Math.max(0, viewportWidth - latestDragState.previewWidth),
+				);
+				const clampedTop = Math.min(
+					Math.max(0, unclampedTop),
+					Math.max(0, viewportHeight - latestDragState.previewHeight),
+				);
+
+				const nextOffset = {
+					x: latestDragState.originX + (clampedLeft - latestDragState.initialLeft),
+					y: latestDragState.originY + (clampedTop - latestDragState.initialTop),
+				};
+				webcamPreviewOffsetRef.current = nextOffset;
+				if (recordingWebcamPreviewContainerRef.current) {
+					recordingWebcamPreviewContainerRef.current.style.transform = `translate(${nextOffset.x}px, ${nextOffset.y}px)`;
+				}
+			});
+		},
+		[],
+	);
+
+	const finishWebcamPreviewDrag = useCallback(
+		(
+			pointerId: number,
+			clientX: number,
+			clientY: number,
+			captureTarget?: HTMLDivElement | null,
+		) => {
+			const dragState = webcamPreviewDragStartRef.current;
+			if (!dragState || dragState.pointerId !== pointerId) {
+				return;
+			}
+
+			previewDragWindowCleanupRef.current?.();
+			previewDragWindowCleanupRef.current = null;
+
+			if (previewDragMoveRafRef.current !== null) {
+				cancelAnimationFrame(previewDragMoveRafRef.current);
+				previewDragMoveRafRef.current = null;
+			}
+			previewDragPendingPointerRef.current = null;
+
+			const wasDragging = dragState.dragging;
+			webcamPreviewDragStartRef.current = null;
+			isWebcamPreviewDraggingRef.current = false;
+			setWebcamPreviewOffset({ ...webcamPreviewOffsetRef.current });
+
+			if (captureTarget) {
+				try {
+					if (captureTarget.hasPointerCapture(pointerId)) {
+						captureTarget.releasePointerCapture(pointerId);
+					}
+				} catch {
+					// Chromium can drop pointer capture while Electron toggles mouse passthrough.
+				}
+			}
+
+			if (wasDragging) {
+				const bounds = recordingWebcamPreviewContainerRef.current?.getBoundingClientRect();
+				const shouldRestorePassthrough = shouldRestoreHudMousePassthroughAfterDrag(
+					bounds
+						? {
+								left: bounds.left,
+								top: bounds.top,
+								right: bounds.right,
+								bottom: bounds.bottom,
+							}
+						: null,
+					clientX,
+					clientY,
+				);
+				if (shouldRestorePassthrough) {
+					setTimeout(() => window.electronAPI?.hudOverlaySetIgnoreMouse?.(true), 0);
+				}
+			}
+		},
+		[],
+	);
 
 	const handleWebcamPreviewPointerDown = useCallback(
 		(event: PointerEvent<HTMLDivElement>) => {
@@ -71,6 +193,7 @@ export function useWebcamPreviewOverlay({
 
 			event.preventDefault();
 			window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+			previewDragWindowCleanupRef.current?.();
 			webcamPreviewDragStartRef.current = {
 				pointerId: event.pointerId,
 				startX: event.clientX,
@@ -83,90 +206,55 @@ export function useWebcamPreviewOverlay({
 				previewHeight: previewRect.height,
 				dragging: false,
 			};
-			event.currentTarget.setPointerCapture(event.pointerId);
+
+			const target = event.currentTarget;
+			try {
+				target.setPointerCapture(event.pointerId);
+			} catch {
+				// Keep dragging through window listeners if pointer capture is unavailable.
+			}
+
+			const handleWindowPointerMove = (moveEvent: globalThis.PointerEvent) => {
+				updateWebcamPreviewDrag(moveEvent.pointerId, moveEvent.clientX, moveEvent.clientY);
+			};
+			const handleWindowPointerUp = (upEvent: globalThis.PointerEvent) => {
+				finishWebcamPreviewDrag(
+					upEvent.pointerId,
+					upEvent.clientX,
+					upEvent.clientY,
+					target,
+				);
+			};
+			window.addEventListener("pointermove", handleWindowPointerMove);
+			window.addEventListener("pointerup", handleWindowPointerUp);
+			window.addEventListener("pointercancel", handleWindowPointerUp);
+			previewDragWindowCleanupRef.current = () => {
+				window.removeEventListener("pointermove", handleWindowPointerMove);
+				window.removeEventListener("pointerup", handleWindowPointerUp);
+				window.removeEventListener("pointercancel", handleWindowPointerUp);
+			};
 		},
-		[],
+		[finishWebcamPreviewDrag, updateWebcamPreviewDrag],
 	);
 
-	const handleWebcamPreviewPointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
-		const dragState = webcamPreviewDragStartRef.current;
-		if (!dragState || dragState.pointerId !== event.pointerId) {
-			return;
-		}
+	const handleWebcamPreviewPointerMove = useCallback(
+		(event: PointerEvent<HTMLDivElement>) => {
+			updateWebcamPreviewDrag(event.pointerId, event.clientX, event.clientY);
+		},
+		[updateWebcamPreviewDrag],
+	);
 
-		const deltaX = event.clientX - dragState.startX;
-		const deltaY = event.clientY - dragState.startY;
-
-		if (!dragState.dragging && Math.hypot(deltaX, deltaY) < WEBCAM_PREVIEW_DRAG_THRESHOLD) {
-			return;
-		}
-
-		if (!dragState.dragging) {
-			dragState.dragging = true;
-			isWebcamPreviewDraggingRef.current = true;
-		}
-
-		previewDragPendingPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
-		if (previewDragMoveRafRef.current !== null) {
-			return;
-		}
-
-		previewDragMoveRafRef.current = requestAnimationFrame(() => {
-			previewDragMoveRafRef.current = null;
-			const latestDragState = webcamPreviewDragStartRef.current;
-			const pointer = previewDragPendingPointerRef.current;
-			if (!latestDragState || !pointer) {
-				return;
-			}
-
-			const latestDeltaX = pointer.clientX - latestDragState.startX;
-			const latestDeltaY = pointer.clientY - latestDragState.startY;
-			const viewportWidth = Math.max(window.innerWidth, window.screen?.width ?? 0);
-			const viewportHeight = Math.max(window.innerHeight, window.screen?.height ?? 0);
-			const unclampedLeft = latestDragState.initialLeft + latestDeltaX;
-			const unclampedTop = latestDragState.initialTop + latestDeltaY;
-			const clampedLeft = Math.min(
-				Math.max(0, unclampedLeft),
-				Math.max(0, viewportWidth - latestDragState.previewWidth),
+	const handleWebcamPreviewPointerUp = useCallback(
+		(event: PointerEvent<HTMLDivElement>) => {
+			finishWebcamPreviewDrag(
+				event.pointerId,
+				event.clientX,
+				event.clientY,
+				event.currentTarget,
 			);
-			const clampedTop = Math.min(
-				Math.max(0, unclampedTop),
-				Math.max(0, viewportHeight - latestDragState.previewHeight),
-			);
-
-			const nextOffset = {
-				x: latestDragState.originX + (clampedLeft - latestDragState.initialLeft),
-				y: latestDragState.originY + (clampedTop - latestDragState.initialTop),
-			};
-			webcamPreviewOffsetRef.current = nextOffset;
-			if (recordingWebcamPreviewContainerRef.current) {
-				recordingWebcamPreviewContainerRef.current.style.transform = `translate(${nextOffset.x}px, ${nextOffset.y}px)`;
-			}
-		});
-	}, []);
-
-	const handleWebcamPreviewPointerUp = useCallback((event: PointerEvent<HTMLDivElement>) => {
-		const dragState = webcamPreviewDragStartRef.current;
-		if (!dragState || dragState.pointerId !== event.pointerId) {
-			return;
-		}
-		if (previewDragMoveRafRef.current !== null) {
-			cancelAnimationFrame(previewDragMoveRafRef.current);
-			previewDragMoveRafRef.current = null;
-		}
-		previewDragPendingPointerRef.current = null;
-
-		const wasDragging = dragState.dragging;
-		webcamPreviewDragStartRef.current = null;
-		isWebcamPreviewDraggingRef.current = false;
-		setWebcamPreviewOffset({ ...webcamPreviewOffsetRef.current });
-		if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-			event.currentTarget.releasePointerCapture(event.pointerId);
-		}
-		if (wasDragging) {
-			window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
-		}
-	}, []);
+		},
+		[finishWebcamPreviewDrag],
+	);
 
 	const attachPreviewStreamToNode = useCallback((videoElement: HTMLVideoElement | null) => {
 		const previewStream = previewStreamRef.current;
@@ -204,8 +292,12 @@ export function useWebcamPreviewOverlay({
 			if (previewDragMoveRafRef.current !== null) {
 				cancelAnimationFrame(previewDragMoveRafRef.current);
 			}
+			previewDragWindowCleanupRef.current?.();
+			previewDragWindowCleanupRef.current = null;
 			previewDragMoveRafRef.current = null;
 			previewDragPendingPointerRef.current = null;
+			webcamPreviewDragStartRef.current = null;
+			isWebcamPreviewDraggingRef.current = false;
 		};
 	}, []);
 
@@ -225,12 +317,12 @@ export function useWebcamPreviewOverlay({
 								width: { ideal: 320 },
 								height: { ideal: 320 },
 								frameRate: { ideal: 24, max: 30 },
-						  }
+							}
 						: {
 								width: { ideal: 320 },
 								height: { ideal: 320 },
 								frameRate: { ideal: 24, max: 30 },
-						  },
+							},
 					audio: false,
 				});
 

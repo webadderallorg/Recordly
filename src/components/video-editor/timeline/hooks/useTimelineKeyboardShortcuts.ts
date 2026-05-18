@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { type RefObject, useEffect } from "react";
 import { matchesShortcut } from "@/lib/shortcuts";
 import type { TimelineShortcutBindings } from "../core/timelineTypes";
 import { resolveDeleteSelectionTarget } from "./utils/timelineSelectionUtils";
@@ -14,6 +14,9 @@ interface UseTimelineKeyboardShortcutsParams {
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
+	selectedWebcamSizeRegionId?: string | null;
+	selectedWebcamFocusRegionId?: string | null;
+	selectedWebcamPositionRegionId?: string | null;
 	selectAllBlocksActive: boolean;
 	setSelectAllBlocksActive: (active: boolean) => void;
 	setSelectedKeyframeId: (id: string | null) => void;
@@ -27,6 +30,9 @@ interface UseTimelineKeyboardShortcutsParams {
 	deleteSelectedClip: () => void;
 	deleteSelectedAnnotation: () => void;
 	deleteSelectedAudio: () => void;
+	deleteSelectedWebcamSize: () => void;
+	deleteSelectedWebcamFocus: () => void;
+	deleteSelectedWebcamPosition: () => void;
 	cycleAnnotationsAtCurrentTime: (backward?: boolean) => boolean;
 }
 
@@ -41,6 +47,9 @@ export function useTimelineKeyboardShortcuts({
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
+	selectedWebcamSizeRegionId,
+	selectedWebcamFocusRegionId,
+	selectedWebcamPositionRegionId,
 	selectAllBlocksActive,
 	setSelectAllBlocksActive,
 	setSelectedKeyframeId,
@@ -54,6 +63,9 @@ export function useTimelineKeyboardShortcuts({
 	deleteSelectedClip,
 	deleteSelectedAnnotation,
 	deleteSelectedAudio,
+	deleteSelectedWebcamSize,
+	deleteSelectedWebcamFocus,
+	deleteSelectedWebcamPosition,
 	cycleAnnotationsAtCurrentTime,
 }: UseTimelineKeyboardShortcutsParams) {
 	useEffect(() => {
@@ -107,6 +119,9 @@ export function useTimelineKeyboardShortcuts({
 					selectedClipId,
 					selectedAnnotationId,
 					selectedAudioId,
+					selectedWebcamSizeRegionId,
+					selectedWebcamFocusRegionId,
+					selectedWebcamPositionRegionId,
 				});
 				if (target !== "none") {
 					e.preventDefault();
@@ -123,6 +138,12 @@ export function useTimelineKeyboardShortcuts({
 					deleteSelectedAnnotation();
 				} else if (target === "audio") {
 					deleteSelectedAudio();
+				} else if (target === "webcam-size") {
+					deleteSelectedWebcamSize();
+				} else if (target === "webcam-focus") {
+					deleteSelectedWebcamFocus();
+				} else if (target === "webcam-position") {
+					deleteSelectedWebcamPosition();
 				}
 			}
 		};
@@ -136,8 +157,11 @@ export function useTimelineKeyboardShortcuts({
 		deleteAllBlocks,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
+		deleteSelectedWebcamFocus,
+		deleteSelectedWebcamPosition,
 		deleteSelectedClip,
 		deleteSelectedKeyframe,
+		deleteSelectedWebcamSize,
 		deleteSelectedZoom,
 		handleAddAnnotation,
 		handleAddZoom,
@@ -150,7 +174,10 @@ export function useTimelineKeyboardShortcuts({
 		selectedAnnotationId,
 		selectedAudioId,
 		selectedClipId,
+		selectedWebcamFocusRegionId,
+		selectedWebcamPositionRegionId,
 		selectedKeyframeId,
+		selectedWebcamSizeRegionId,
 		selectedZoomId,
 		setSelectAllBlocksActive,
 		setSelectedKeyframeId,

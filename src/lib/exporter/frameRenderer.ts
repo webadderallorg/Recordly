@@ -10,7 +10,10 @@ import type {
 	CursorTelemetryPoint,
 	Padding,
 	SpeedRegion,
+	WebcamFocusRegion,
 	WebcamOverlaySettings,
+	WebcamPositionRegion,
+	WebcamSizeRegion,
 	ZoomMotionBlurTuning,
 	ZoomRegion,
 	ZoomTransitionEasing,
@@ -50,10 +53,19 @@ import {
 	type MotionBlurState,
 } from "@/components/video-editor/videoPlayback/zoomTransform";
 import {
-	getWebcamCropSourceRect,
+	getInterpolatedFocusStateAtTime,
+	getWebcamFocusScreenTransform,
+	type WebcamFocusState,
+} from "@/components/video-editor/webcamFocusRegions";
+import {
+	clampWebcamOverlayPosition,
+	getWebcamAvoidCursorPosition,
+	getWebcamCropDrawLayout,
 	getWebcamOverlayPosition,
 	getWebcamOverlaySizePx,
 } from "@/components/video-editor/webcamOverlay";
+import { getInterpolatedWebcamPositionAtTime } from "@/components/video-editor/webcamPositionRegions";
+import { getInterpolatedWebcamDimensionsAtTime } from "@/components/video-editor/webcamSizeRegions";
 import { getAssetPath, getExportableVideoUrl, getRenderableAssetUrl } from "@/lib/assetPath";
 import { extensionHost } from "@/lib/extensions";
 import {
@@ -108,6 +120,9 @@ interface FrameRenderConfig {
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
 	webcamUrl?: string | null;
+	webcamSizeRegions?: WebcamSizeRegion[];
+	webcamFocusRegions?: WebcamFocusRegion[];
+	webcamPositionRegions?: WebcamPositionRegion[];
 	videoWidth: number;
 	videoHeight: number;
 	annotationRegions?: AnnotationRegion[];
@@ -283,6 +298,7 @@ export class FrameRenderer {
 	private motionBlurState: MotionBlurState;
 	private layoutCache: LayoutCache | null = null;
 	private currentVideoTime = 0;
+	private currentTimelineTimeMs = 0;
 	private springScale: SpringState;
 	private springX: SpringState;
 	private springY: SpringState;
@@ -1459,6 +1475,7 @@ export class FrameRenderer {
 		}
 
 		this.currentVideoTime = timestamp / 1000000;
+		this.currentTimelineTimeMs = Math.max(0, Math.round(backgroundTimelineTimestamp / 1000));
 
 		// Create or update video sprite from VideoFrame
 		if (!this.videoSprite) {
@@ -1512,7 +1529,7 @@ export class FrameRenderer {
 					: null,
 			);
 
-			this.drawFrame(temporalSnapshot.sceneTransform);
+			this.drawFrame(this.getFocusSceneTransform(temporalSnapshot.sceneTransform));
 
 			if (
 				this.config.annotationRegions &&
@@ -1690,11 +1707,13 @@ export class FrameRenderer {
 		this.compositeWithShadows();
 
 		// Draw device frame overlay on top of video content
-		this.drawFrame({
-			scale: this.animationState.appliedScale,
-			x: this.animationState.x,
-			y: this.animationState.y,
-		});
+		this.drawFrame(
+			this.getFocusSceneTransform({
+				scale: this.animationState.appliedScale,
+				x: this.animationState.x,
+				y: this.animationState.y,
+			}),
+		);
 
 		// Render annotations on top if present
 		if (
@@ -2102,6 +2121,7 @@ export class FrameRenderer {
 		}
 
 		this.currentVideoTime = timestamp / 1_000_000;
+		this.currentTimelineTimeMs = Math.max(0, Math.round(backgroundTimelineTimestamp / 1000));
 
 		if (this.webcamForwardFrameSource || this.webcamVideoElement) {
 			await this.syncWebcamFrame(Math.max(0, this.currentVideoTime));
@@ -2242,6 +2262,7 @@ export class FrameRenderer {
 		const ctx = this.compositeCtx;
 		const w = this.compositeCanvas.width;
 		const h = this.compositeCanvas.height;
+		const focusState = this.getCurrentWebcamFocusState();
 
 		// Clear composite canvas
 		ctx.clearRect(0, 0, w, h);
@@ -2263,6 +2284,35 @@ export class FrameRenderer {
 		} else {
 			console.warn("[FrameRenderer] No background sprite found during compositing!");
 		}
+
+		const drawVideoLayer = (targetCtx: CanvasRenderingContext2D) => {
+			if (!focusState || focusState.progress <= 0.001) {
+				targetCtx.drawImage(videoCanvas, 0, 0, w, h);
+				return;
+			}
+
+			if (focusState.screenMode === "hidden") {
+				targetCtx.save();
+				targetCtx.globalAlpha = Math.max(0, Math.min(1, focusState.screenOpacity));
+				targetCtx.drawImage(videoCanvas, 0, 0, w, h);
+				targetCtx.restore();
+				return;
+			}
+
+			const transform = getWebcamFocusScreenTransform({
+				containerWidth: w,
+				containerHeight: h,
+				screenSizePercent: focusState.screenSize,
+				screenCorner: focusState.screenCorner,
+				margin: this.config.webcam?.margin ?? 24,
+			});
+			targetCtx.save();
+			targetCtx.globalAlpha = Math.max(0, Math.min(1, focusState.screenOpacity));
+			targetCtx.translate(transform.x, transform.y);
+			targetCtx.scale(transform.scale, transform.scale);
+			targetCtx.drawImage(videoCanvas, 0, 0, w, h);
+			targetCtx.restore();
+		};
 
 		// Draw video layer with shadows on top of background
 		if (
@@ -2288,14 +2338,53 @@ export class FrameRenderer {
 			const baseOffset = 12 * intensity;
 
 			shadowCtx.filter = `drop-shadow(0 ${baseOffset}px ${baseBlur1}px rgba(0,0,0,${baseAlpha1})) drop-shadow(0 ${baseOffset / 3}px ${baseBlur2}px rgba(0,0,0,${baseAlpha2})) drop-shadow(0 ${baseOffset / 6}px ${baseBlur3}px rgba(0,0,0,${baseAlpha3}))`;
-			shadowCtx.drawImage(videoCanvas, 0, 0, w, h);
+			drawVideoLayer(shadowCtx);
 			shadowCtx.restore();
 			ctx.drawImage(this.shadowCanvas, 0, 0, w, h);
 		} else {
-			ctx.drawImage(videoCanvas, 0, 0, w, h);
+			drawVideoLayer(ctx);
 		}
 
 		this.drawWebcamOverlay(ctx, w, h);
+	}
+
+	private getCurrentWebcamFocusState(): WebcamFocusState | null {
+		const webcam = this.config.webcam;
+		if (!webcam?.enabled) {
+			return null;
+		}
+
+		return getInterpolatedFocusStateAtTime(
+			webcam.size ?? 50,
+			this.config.webcamFocusRegions,
+			this.currentTimelineTimeMs,
+			webcam.corner ?? "bottom-right",
+		);
+	}
+
+	private getFocusSceneTransform(sceneTransform: { scale: number; x: number; y: number }): {
+		scale: number;
+		x: number;
+		y: number;
+	} {
+		const focusState = this.getCurrentWebcamFocusState();
+		if (!focusState || focusState.progress <= 0.001 || focusState.screenMode === "hidden") {
+			return sceneTransform;
+		}
+
+		const transform = getWebcamFocusScreenTransform({
+			containerWidth: this.config.width,
+			containerHeight: this.config.height,
+			screenSizePercent: focusState.screenSize,
+			screenCorner: focusState.screenCorner,
+			margin: this.config.webcam?.margin ?? 24,
+		});
+
+		return {
+			scale: sceneTransform.scale * transform.scale,
+			x: transform.x + sceneTransform.x * transform.scale,
+			y: transform.y + sceneTransform.y * transform.scale,
+		};
 	}
 
 	private drawFrame(sceneTransform?: { scale: number; x: number; y: number }): void {
@@ -2306,8 +2395,16 @@ export class FrameRenderer {
 		const maskRect = this.layoutCache.maskRect;
 		const insets = this.frameInsets;
 		const transform = sceneTransform ?? { scale: 1, x: 0, y: 0 };
+		const focusState = this.getCurrentWebcamFocusState();
+		const screenOpacity =
+			focusState?.screenMode === "hidden"
+				? Math.max(0, Math.min(1, focusState.screenOpacity))
+				: 1;
+		if (screenOpacity <= 0.001) return;
+
 		const drawWithTransform = (draw: () => void) => {
 			ctx.save();
+			ctx.globalAlpha *= screenOpacity;
 			applyCanvasSceneTransform(ctx, transform);
 			draw();
 			ctx.restore();
@@ -2389,31 +2486,118 @@ export class FrameRenderer {
 		}
 
 		const margin = webcam.margin ?? 24;
-		const size = getWebcamOverlaySizePx({
+		const focusState = this.getCurrentWebcamFocusState();
+		const regionalDimensionsPercent = getInterpolatedWebcamDimensionsAtTime(
+			webcam.size ?? 50,
+			webcam.height ?? webcam.size ?? 50,
+			this.config.webcamSizeRegions,
+			this.currentTimelineTimeMs,
+		);
+		const effectiveWidthPercent = focusState?.webcamSize ?? regionalDimensionsPercent.size;
+		const effectiveHeightPercent = focusState?.webcamSize ?? regionalDimensionsPercent.height;
+		const bubbleWidth = getWebcamOverlaySizePx({
 			containerWidth: width,
 			containerHeight: height,
-			sizePercent: webcam.size ?? 50,
+			sizePercent: effectiveWidthPercent,
+			margin,
+			zoomScale: focusState ? 1 : this.animationState.appliedScale || 1,
+			reactToZoom: focusState ? false : (webcam.reactToZoom ?? true),
+		});
+		const bubbleHeight = getWebcamOverlaySizePx({
+			containerWidth: width,
+			containerHeight: height,
+			sizePercent: effectiveHeightPercent,
+			margin,
+			zoomScale: focusState ? 1 : this.animationState.appliedScale || 1,
+			reactToZoom: focusState ? false : (webcam.reactToZoom ?? true),
+		});
+		const normalWidth = getWebcamOverlaySizePx({
+			containerWidth: width,
+			containerHeight: height,
+			sizePercent: regionalDimensionsPercent.size,
 			margin,
 			zoomScale: this.animationState.appliedScale || 1,
 			reactToZoom: webcam.reactToZoom ?? true,
 		});
-		const { x, y } = getWebcamOverlayPosition({
+		const normalHeight = getWebcamOverlaySizePx({
 			containerWidth: width,
 			containerHeight: height,
-			size,
+			sizePercent: regionalDimensionsPercent.height,
 			margin,
-			positionPreset: webcam.positionPreset ?? webcam.corner,
-			positionX: webcam.positionX ?? 1,
-			positionY: webcam.positionY ?? 1,
+			zoomScale: this.animationState.appliedScale || 1,
+			reactToZoom: webcam.reactToZoom ?? true,
+		});
+		const interpolatedWebcamPosition = getInterpolatedWebcamPositionAtTime(
+			{ positionX: webcam.positionX ?? 1, positionY: webcam.positionY ?? 1 },
+			this.config.webcamPositionRegions,
+			this.currentTimelineTimeMs,
+		);
+		const hasActiveWebcamPositionRegion = (this.config.webcamPositionRegions ?? []).length > 0;
+		const normalPosition = getWebcamOverlayPosition({
+			containerWidth: width,
+			containerHeight: height,
+			size: normalWidth,
+			height: normalHeight,
+			margin,
+			positionPreset: hasActiveWebcamPositionRegion
+				? "custom"
+				: (webcam.positionPreset ?? webcam.corner),
+			positionX: interpolatedWebcamPosition.positionX,
+			positionY: interpolatedWebcamPosition.positionY,
 			legacyCorner: webcam.corner,
 		});
+		const focusPosition = {
+			x: (width - bubbleWidth) / 2,
+			y: (height - bubbleHeight) / 2,
+		};
+		const focusProgress = focusState?.progress ?? 0;
+		const blendedPosition = clampWebcamOverlayPosition({
+			containerWidth: width,
+			containerHeight: height,
+			size: bubbleWidth,
+			height: bubbleHeight,
+			margin,
+			position: {
+				x: normalPosition.x + (focusPosition.x - normalPosition.x) * focusProgress,
+				y: normalPosition.y + (focusPosition.y - normalPosition.y) * focusProgress,
+			},
+		});
+		let x = blendedPosition.x;
+		let y = blendedPosition.y;
+		if (webcam.avoidCursor && (!focusState || focusState.progress <= 0.001)) {
+			const cursor = this.getCursorPosition(this.currentTimelineTimeMs);
+			const avoidedPosition = getWebcamAvoidCursorPosition({
+				containerWidth: width,
+				containerHeight: height,
+				size: bubbleWidth,
+				height: bubbleHeight,
+				margin,
+				currentPosition: { x, y },
+				cursor: cursor ? { x: cursor.cx * width, y: cursor.cy * height } : null,
+				legacyCorner: webcam.corner,
+			});
+			const clampedAvoidedPosition = clampWebcamOverlayPosition({
+				containerWidth: width,
+				containerHeight: height,
+				size: bubbleWidth,
+				height: bubbleHeight,
+				margin,
+				position: avoidedPosition,
+			});
+			x = clampedAvoidedPosition.x;
+			y = clampedAvoidedPosition.y;
+		}
 		const radius = Math.max(0, webcam.cornerRadius ?? 18);
 
 		const bubbleCanvas = this.webcamBubbleCanvas ?? document.createElement("canvas");
-		const bubbleSize = Math.max(1, Math.ceil(size));
-		if (bubbleCanvas.width !== bubbleSize || bubbleCanvas.height !== bubbleSize) {
-			bubbleCanvas.width = bubbleSize;
-			bubbleCanvas.height = bubbleSize;
+		const bubbleCanvasWidth = Math.max(1, Math.ceil(bubbleWidth));
+		const bubbleCanvasHeight = Math.max(1, Math.ceil(bubbleHeight));
+		if (
+			bubbleCanvas.width !== bubbleCanvasWidth ||
+			bubbleCanvas.height !== bubbleCanvasHeight
+		) {
+			bubbleCanvas.width = bubbleCanvasWidth;
+			bubbleCanvas.height = bubbleCanvasHeight;
 		}
 		this.webcamBubbleCanvas = bubbleCanvas;
 		const bubbleCtx =
@@ -2484,68 +2668,72 @@ export class FrameRenderer {
 				? webcamFrameSource.displayWidth
 				: "videoWidth" in webcamFrameSource
 					? webcamFrameSource.videoWidth
-					: webcamFrameSource.width) || size;
+					: webcamFrameSource.width) || bubbleWidth;
 		const sourceHeight =
 			("displayHeight" in webcamFrameSource
 				? webcamFrameSource.displayHeight
 				: "videoHeight" in webcamFrameSource
 					? webcamFrameSource.videoHeight
-					: webcamFrameSource.height) || size;
-		const { sx, sy, sw, sh } = getWebcamCropSourceRect(
-			webcam.cropRegion,
+					: webcamFrameSource.height) || bubbleHeight;
+		const cropLayout = getWebcamCropDrawLayout({
+			cropRegion: webcam.cropRegion,
 			sourceWidth,
 			sourceHeight,
-		);
-		const coverScale = Math.max(size / sw, size / sh);
-		const drawWidth = sw * coverScale;
-		const drawHeight = sh * coverScale;
-		const drawX = (size - drawWidth) / 2;
-		const drawY = (size - drawHeight) / 2;
+			targetWidth: bubbleWidth,
+			targetHeight: bubbleHeight,
+		});
 
 		bubbleCtx.save();
-		drawSquircleOnCanvas(bubbleCtx, { x: 0, y: 0, width: size, height: size, radius });
+		drawSquircleOnCanvas(bubbleCtx, {
+			x: 0,
+			y: 0,
+			width: bubbleWidth,
+			height: bubbleHeight,
+			radius,
+		});
 		bubbleCtx.clip();
 		if (webcam.mirror) {
 			bubbleCtx.save();
-			bubbleCtx.translate(size, 0);
+			bubbleCtx.translate(bubbleWidth, 0);
 			bubbleCtx.scale(-1, 1);
 			bubbleCtx.drawImage(
 				webcamFrameSource,
-				sx,
-				sy,
-				sw,
-				sh,
-				drawX,
-				drawY,
-				drawWidth,
-				drawHeight,
+				cropLayout.sx,
+				cropLayout.sy,
+				cropLayout.sw,
+				cropLayout.sh,
+				cropLayout.drawX,
+				cropLayout.drawY,
+				cropLayout.drawWidth,
+				cropLayout.drawHeight,
 			);
 			bubbleCtx.restore();
 		} else {
 			bubbleCtx.drawImage(
 				webcamFrameSource,
-				sx,
-				sy,
-				sw,
-				sh,
-				drawX,
-				drawY,
-				drawWidth,
-				drawHeight,
+				cropLayout.sx,
+				cropLayout.sy,
+				cropLayout.sw,
+				cropLayout.sh,
+				cropLayout.drawX,
+				cropLayout.drawY,
+				cropLayout.drawWidth,
+				cropLayout.drawHeight,
 			);
 		}
 		bubbleCtx.restore();
 
 		if ((webcam.shadow ?? 0) > 0) {
 			const shadow = Math.max(0, Math.min(1, webcam.shadow));
+			const shadowBasis = Math.max(bubbleWidth, bubbleHeight);
 			ctx.save();
-			ctx.filter = `drop-shadow(0 ${Math.round(size * 0.06)}px ${Math.round(size * 0.22)}px rgba(0,0,0,${shadow}))`;
-			ctx.drawImage(bubbleCanvas, x, y, size, size);
+			ctx.filter = `drop-shadow(0 ${Math.round(shadowBasis * 0.06)}px ${Math.round(shadowBasis * 0.22)}px rgba(0,0,0,${shadow}))`;
+			ctx.drawImage(bubbleCanvas, x, y, bubbleWidth, bubbleHeight);
 			ctx.restore();
 			return;
 		}
 
-		ctx.drawImage(bubbleCanvas, x, y, size, size);
+		ctx.drawImage(bubbleCanvas, x, y, bubbleWidth, bubbleHeight);
 	}
 
 	private closeWebcamDecodedFrame(): void {

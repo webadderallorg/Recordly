@@ -89,10 +89,7 @@ import {
 	getAspectRatioValue,
 } from "@/utils/aspectRatioUtils";
 import { ExtensionIcon } from "./ExtensionIcon";
-import {
-	calculateMp4ExportDimensions,
-	calculateMp4SourceDimensions,
-} from "./exportDimensions";
+import { calculateMp4ExportDimensions, calculateMp4SourceDimensions } from "./exportDimensions";
 
 const PhCursorFill = (props: { className?: string; weight?: "fill" | "regular" }) => (
 	<Cursor weight="fill" className={props.className} />
@@ -113,7 +110,9 @@ const PhSettings = (props: { className?: string; weight?: "fill" | "regular" }) 
 	<Gear weight={props.weight ?? "regular"} className={props.className} />
 );
 
+import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import { extensionHost } from "@/lib/extensions";
+import { useVideoEditorAudio } from "./audio/useVideoEditorAudio";
 import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
 import { CropControl } from "./CropControl";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
@@ -140,7 +139,6 @@ import {
 	validateProjectData,
 } from "./projectPersistence";
 import { SettingsPanel } from "./SettingsPanel";
-import { useVideoEditorAudio } from "./audio/useVideoEditorAudio";
 import {
 	APP_HEADER_ICON_BUTTON_CLASS,
 	DiscordLinkButton,
@@ -150,7 +148,6 @@ import {
 } from "./TutorialHelp";
 import TimelineEditor, { type TimelineEditorHandle } from "./timeline/TimelineEditor";
 import { normalizeCursorTelemetry } from "./timeline/zoomSuggestionUtils";
-import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import {
 	type AnnotationRegion,
 	type AudioRegion,
@@ -173,6 +170,10 @@ import {
 	DEFAULT_CROP_REGION,
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_FIGURE_DATA,
+	DEFAULT_WEBCAM_AVOID_CURSOR,
+	DEFAULT_WEBCAM_FOCUS_SCREEN_MODE,
+	DEFAULT_WEBCAM_FOCUS_SCREEN_PIP_SIZE,
+	DEFAULT_WEBCAM_FOCUS_SIZE,
 	DEFAULT_WEBCAM_OVERLAY,
 	DEFAULT_WEBCAM_TIME_OFFSET_MS,
 	DEFAULT_ZOOM_IN_DURATION_MS,
@@ -192,7 +193,10 @@ import {
 	type SpeedRegion,
 	type TrimRegion,
 	trimsToClips,
+	type WebcamFocusRegion,
 	type WebcamOverlaySettings,
+	type WebcamPositionRegion,
+	type WebcamSizeRegion,
 	type ZoomDepth,
 	type ZoomFocus,
 	type ZoomMode,
@@ -205,6 +209,31 @@ import {
 	buildLoopedCursorTelemetry,
 	getDisplayedTimelineWindowMs,
 } from "./videoPlayback/cursorLoopTelemetry";
+import {
+	clampWebcamFocusRegionPipSize,
+	clampWebcamFocusRegionSize,
+	clampWebcamFocusRegionTransitionMs,
+	getActiveWebcamFocusRegion,
+	getNextWebcamFocusRegionId,
+	normalizeWebcamFocusRegions,
+	WEBCAM_FOCUS_REGION_MIN_DURATION_MS,
+} from "./webcamFocusRegions";
+import {
+	clampWebcamPositionCoordinate,
+	clampWebcamPositionRegionTransitionMs,
+	getNextWebcamPositionRegionId,
+	normalizeWebcamPositionRegions,
+	WEBCAM_POSITION_REGION_MIN_DURATION_MS,
+} from "./webcamPositionRegions";
+import {
+	clampWebcamSizeRegionHeight,
+	clampWebcamSizeRegionSize,
+	clampWebcamSizeRegionTransitionMs,
+	getActiveWebcamSizeRegion,
+	getNextWebcamSizeRegionId,
+	normalizeWebcamSizeRegions,
+	WEBCAM_SIZE_REGION_MIN_DURATION_MS,
+} from "./webcamSizeRegions";
 
 type EditorHistorySnapshot = {
 	zoomRegions: ZoomRegion[];
@@ -213,10 +242,16 @@ type EditorHistorySnapshot = {
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];
 	autoCaptions: CaptionCue[];
+	webcamSizeRegions: WebcamSizeRegion[];
+	webcamFocusRegions: WebcamFocusRegion[];
+	webcamPositionRegions: WebcamPositionRegion[];
 	selectedZoomId: string | null;
 	selectedClipId: string | null;
 	selectedAnnotationId: string | null;
 	selectedAudioId: string | null;
+	selectedWebcamSizeRegionId: string | null;
+	selectedWebcamFocusRegionId: string | null;
+	selectedWebcamPositionRegionId: string | null;
 };
 
 type PendingExportSave = {
@@ -253,6 +288,11 @@ type SmokeExportConfig = {
 	quality?: ExportQuality;
 	fps?: ExportMp4FrameRate;
 };
+
+// Stable empty array so gated-off webcam position props keep a constant
+// reference across renders (a fresh [] each render thrashes memoized
+// callbacks/effects in VideoPlayback and loops play/pause).
+const EMPTY_WEBCAM_POSITION_REGIONS: WebcamPositionRegion[] = [];
 
 const EXPORT_BLOB_STREAM_CHUNK_BYTES = 16 * 1024 * 1024;
 
@@ -666,12 +706,28 @@ export default function VideoEditor() {
 	const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
 	const [audioRegions, setAudioRegions] = useState<AudioRegion[]>([]);
 	const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
+	const [webcamSizeRegions, setWebcamSizeRegions] = useState<WebcamSizeRegion[]>([]);
+	const [selectedWebcamSizeRegionId, setSelectedWebcamSizeRegionId] = useState<string | null>(
+		null,
+	);
+	const [webcamFocusRegions, setWebcamFocusRegions] = useState<WebcamFocusRegion[]>([]);
+	const [selectedWebcamFocusRegionId, setSelectedWebcamFocusRegionId] = useState<string | null>(
+		null,
+	);
+	const [webcamPositionRegions, setWebcamPositionRegions] = useState<WebcamPositionRegion[]>([]);
+	const [selectedWebcamPositionRegionId, setSelectedWebcamPositionRegionId] = useState<
+		string | null
+	>(null);
+	// Master gate for the "drag camera in preview -> timeline position
+	// region" feature. On by default. Turning it off hides the timeline
+	// row, makes the preview drag inert, and creates nothing. To fully
+	// revert the feature, delete this flag and the blocks guarded by it.
+	const [webcamPositionEnabled, setWebcamPositionEnabled] = useState(true);
 	const [sourceAudioTrackSettingsByClip, setSourceAudioTrackSettingsByClip] = useState<
 		Record<string, SourceAudioTrackSettings>
 	>({});
-	const [defaultSourceAudioTrackSettings, setDefaultSourceAudioTrackSettings] = useState<
-		SourceAudioTrackSettings
-	>({});
+	const [defaultSourceAudioTrackSettings, setDefaultSourceAudioTrackSettings] =
+		useState<SourceAudioTrackSettings>({});
 	const [hasClipSourceAudio, setHasClipSourceAudio] = useState(false);
 	const [autoCaptions, setAutoCaptions] = useState<CaptionCue[]>([]);
 	const [autoCaptionSettings, setAutoCaptionSettings] = useState<AutoCaptionSettings>(
@@ -783,6 +839,7 @@ export default function VideoEditor() {
 	const projectAutosaveTimeoutRef = useRef<number | null>(null);
 	const projectSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 	const smokeExportReadyStateRef = useRef<Record<string, unknown>>({});
+	const webcamSizeResizeTargetRegionIdRef = useRef<string | null>(null);
 	const [historyVersion, setHistoryVersion] = useState(0);
 	const timelineRef = useRef<TimelineEditorHandle>(null);
 
@@ -794,6 +851,44 @@ export default function VideoEditor() {
 	}
 
 	const [timelineCollapsed, setTimelineCollapsed] = useState(false);
+	// User-resizable timeline panel height in px (null = use default 30%).
+	const [timelineHeightPx, setTimelineHeightPx] = useState<number | null>(null);
+	const timelineResizeRef = useRef<{
+		startY: number;
+		startHeight: number;
+	} | null>(null);
+
+	const handleTimelineResizePointerDown = useCallback(
+		(event: React.PointerEvent<HTMLDivElement>) => {
+			event.preventDefault();
+			const panel = event.currentTarget.parentElement;
+			const startHeight = panel?.getBoundingClientRect().height ?? 240;
+			timelineResizeRef.current = { startY: event.clientY, startHeight };
+
+			const handleMove = (moveEvent: PointerEvent) => {
+				const drag = timelineResizeRef.current;
+				if (!drag) return;
+				// Dragging the handle upward grows the timeline.
+				const delta = drag.startY - moveEvent.clientY;
+				const viewportH = window.innerHeight || 900;
+				const next = Math.max(
+					160,
+					Math.min(viewportH * 0.85, drag.startHeight + delta),
+				);
+				setTimelineHeightPx(next);
+			};
+			const handleUp = () => {
+				timelineResizeRef.current = null;
+				window.removeEventListener("pointermove", handleMove);
+				window.removeEventListener("pointerup", handleUp);
+				window.removeEventListener("pointercancel", handleUp);
+			};
+			window.addEventListener("pointermove", handleMove);
+			window.addEventListener("pointerup", handleUp);
+			window.addEventListener("pointercancel", handleUp);
+		},
+		[],
+	);
 
 	useEffect(() => {
 		void window.electronAPI?.getPlatform?.()?.then((platform) => {
@@ -1231,6 +1326,9 @@ export default function VideoEditor() {
 					webcamUrl:
 						resolvedWebcamVideoUrl ??
 						(webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
+					webcamSizeRegions,
+					webcamFocusRegions,
+					webcamPositionRegions,
 					videoWidth: previewVideo.videoWidth,
 					videoHeight: previewVideo.videoHeight,
 					annotationRegions,
@@ -1363,6 +1461,9 @@ export default function VideoEditor() {
 		speedRegions,
 		wallpaper,
 		webcam,
+		webcamFocusRegions,
+		webcamPositionRegions,
+		webcamSizeRegions,
 		zoomInDurationMs,
 		zoomInEasing,
 		zoomInOverlapMs,
@@ -1753,6 +1854,9 @@ export default function VideoEditor() {
 				frame: string | null;
 				cropRegion: CropRegion;
 				webcam: WebcamOverlaySettings;
+				webcamSizeRegions: WebcamSizeRegion[];
+				webcamFocusRegions: WebcamFocusRegion[];
+				webcamPositionRegions: WebcamPositionRegion[];
 				zoomRegions: ZoomRegion[];
 				trimRegions: TrimRegion[];
 				clipRegions: ClipRegion[];
@@ -1856,6 +1960,9 @@ export default function VideoEditor() {
 				frame,
 				cropRegion,
 				webcam,
+				webcamSizeRegions,
+				webcamFocusRegions,
+				webcamPositionRegions,
 				zoomRegions,
 				trimRegions,
 				clipRegions,
@@ -1917,6 +2024,9 @@ export default function VideoEditor() {
 			padding,
 			cropRegion,
 			webcam,
+			webcamSizeRegions,
+			webcamFocusRegions,
+			webcamPositionRegions,
 			zoomRegions,
 			trimRegions,
 			clipRegions,
@@ -1949,10 +2059,16 @@ export default function VideoEditor() {
 			annotationRegions,
 			audioRegions,
 			autoCaptions,
+			webcamSizeRegions,
+			webcamFocusRegions,
+			webcamPositionRegions,
 			selectedZoomId,
 			selectedClipId,
 			selectedAnnotationId,
 			selectedAudioId,
+			selectedWebcamSizeRegionId,
+			selectedWebcamFocusRegionId,
+			selectedWebcamPositionRegionId,
 		};
 	}, [
 		zoomRegions,
@@ -1961,10 +2077,16 @@ export default function VideoEditor() {
 		annotationRegions,
 		audioRegions,
 		autoCaptions,
+		webcamSizeRegions,
+		webcamFocusRegions,
+		webcamPositionRegions,
 		selectedZoomId,
 		selectedClipId,
 		selectedAnnotationId,
 		selectedAudioId,
+		selectedWebcamSizeRegionId,
+		selectedWebcamFocusRegionId,
+		selectedWebcamPositionRegionId,
 	]);
 
 	const applyHistorySnapshot = useCallback(
@@ -1977,10 +2099,16 @@ export default function VideoEditor() {
 			setAnnotationRegions(cloned.annotationRegions);
 			setAudioRegions(cloned.audioRegions);
 			setAutoCaptions(cloned.autoCaptions);
+			setWebcamSizeRegions(cloned.webcamSizeRegions ?? []);
+			setWebcamFocusRegions(cloned.webcamFocusRegions ?? []);
+			setWebcamPositionRegions(cloned.webcamPositionRegions ?? []);
 			setSelectedZoomId(cloned.selectedZoomId);
 			setSelectedClipId(cloned.selectedClipId);
 			setSelectedAnnotationId(cloned.selectedAnnotationId);
 			setSelectedAudioId(cloned.selectedAudioId);
+			setSelectedWebcamSizeRegionId(cloned.selectedWebcamSizeRegionId ?? null);
+			setSelectedWebcamFocusRegionId(cloned.selectedWebcamFocusRegionId ?? null);
+			setSelectedWebcamPositionRegionId(cloned.selectedWebcamPositionRegionId ?? null);
 
 			nextZoomIdRef.current = deriveNextId(
 				"zoom",
@@ -2125,7 +2253,12 @@ export default function VideoEditor() {
 			setSpeedRegions(normalizedEditor.speedRegions);
 			setAnnotationRegions(normalizedEditor.annotationRegions);
 			setAudioRegions(normalizedEditor.audioRegions);
-			setSourceAudioTrackSettingsByClip(normalizedEditor.sourceAudioTrackSettingsByClip ?? {});
+			setWebcamSizeRegions(normalizedEditor.webcamSizeRegions ?? []);
+			setWebcamFocusRegions(normalizedEditor.webcamFocusRegions ?? []);
+			setWebcamPositionRegions(normalizedEditor.webcamPositionRegions ?? []);
+			setSourceAudioTrackSettingsByClip(
+				normalizedEditor.sourceAudioTrackSettingsByClip ?? {},
+			);
 			setDefaultSourceAudioTrackSettings(
 				normalizedEditor.defaultSourceAudioTrackSettings ?? {},
 			);
@@ -2146,6 +2279,7 @@ export default function VideoEditor() {
 			setSelectedClipId(null);
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
+			setSelectedWebcamSizeRegionId(null);
 
 			nextZoomIdRef.current = deriveNextId(
 				"zoom",
@@ -2512,7 +2646,7 @@ export default function VideoEditor() {
 				sessionVideoPath: session?.videoPath,
 				videoSourcePath: videoSourcePath,
 				match: session?.videoPath === videoSourcePath,
-				webcamPath: session?.webcamPath
+				webcamPath: session?.webcamPath,
 			});
 
 			if (!session || session.videoPath !== videoSourcePath) {
@@ -3344,6 +3478,573 @@ export default function VideoEditor() {
 		() => getTimelineDurationMs(clipRegions, duration * 1000) / 1000,
 		[clipRegions, duration],
 	);
+	const timelineDurationMs = useMemo(
+		() => Math.max(0, Math.round(timelineDuration * 1000)),
+		[timelineDuration],
+	);
+
+	const handleAddWebcamSizeRegionAtPlayhead = useCallback(() => {
+		if (timelineDurationMs <= 0) {
+			return;
+		}
+
+		const minDurationMs = WEBCAM_SIZE_REGION_MIN_DURATION_MS;
+		const startMs = 0;
+		const endMs = timelineDurationMs;
+
+		if (endMs - startMs < minDurationMs) {
+			return;
+		}
+
+		setWebcamSizeRegions((current) => {
+			const nextRegion: WebcamSizeRegion = {
+				id: getNextWebcamSizeRegionId(current),
+				startMs,
+				endMs,
+				size: clampWebcamSizeRegionSize(webcam.size),
+				height: clampWebcamSizeRegionHeight(webcam.height, webcam.size),
+			};
+			setSelectedWebcamSizeRegionId(nextRegion.id);
+			return normalizeWebcamSizeRegions([...current, nextRegion], timelineDurationMs);
+		});
+	}, [timelineDurationMs, webcam.height, webcam.size]);
+
+	const handleWebcamSizeRegionSizeChange = useCallback((id: string, size: number) => {
+		setWebcamSizeRegions((current) =>
+			current.map((region) => {
+				if (region.id !== id) return region;
+				const nextSize = clampWebcamSizeRegionSize(size);
+				return {
+					...region,
+					size: nextSize,
+					...(region.height !== undefined &&
+					Math.round(region.height) === Math.round(region.size)
+						? { height: nextSize }
+						: {}),
+				};
+			}),
+		);
+	}, []);
+
+	const handleWebcamSizeRegionHeightChange = useCallback((id: string, height: number) => {
+		setWebcamSizeRegions((current) =>
+			current.map((region) =>
+				region.id === id
+					? {
+							...region,
+							height: clampWebcamSizeRegionHeight(height, region.size),
+						}
+					: region,
+			),
+		);
+	}, []);
+
+	const handleWebcamSizeRegionTransitionChange = useCallback(
+		(id: string, field: "transitionInMs" | "transitionOutMs", durationMs: number) => {
+			const clamped = clampWebcamSizeRegionTransitionMs(durationMs);
+			setWebcamSizeRegions((current) =>
+				current.map((region) =>
+					region.id === id && clamped !== undefined
+						? { ...region, [field]: clamped }
+						: region,
+				),
+			);
+		},
+		[],
+	);
+
+	const handleWebcamSizeRegionDelete = useCallback((id: string) => {
+		setWebcamSizeRegions((current) => current.filter((region) => region.id !== id));
+		setSelectedWebcamSizeRegionId((selectedId) => (selectedId === id ? null : selectedId));
+	}, []);
+
+	const handleSelectWebcamSizeRegion = useCallback((id: string | null) => {
+		setSelectedWebcamSizeRegionId(id);
+	}, []);
+
+	const handleWebcamSizeRegionSpanChange = useCallback((id: string, span: Span) => {
+		setWebcamSizeRegions((current) =>
+			current.map((region) =>
+				region.id === id
+					? {
+							...region,
+							startMs: Math.max(0, Math.round(span.start)),
+							endMs: Math.max(0, Math.round(span.end)),
+						}
+					: region,
+			),
+		);
+	}, []);
+
+	const getWebcamSizeResizeTargetRegionId = useCallback(() => {
+		const playheadMs = Math.max(
+			0,
+			Math.min(timelineDurationMs, Math.round((timelinePlayheadTime ?? currentTime) * 1000)),
+		);
+		if (getActiveWebcamFocusRegion(webcamFocusRegions, playheadMs)) {
+			return null;
+		}
+		const selectedRegion =
+			selectedWebcamSizeRegionId !== null
+				? (webcamSizeRegions.find((region) => region.id === selectedWebcamSizeRegionId) ??
+					null)
+				: null;
+		if (
+			selectedRegion &&
+			playheadMs >= selectedRegion.startMs &&
+			playheadMs < selectedRegion.endMs
+		) {
+			return selectedRegion.id;
+		}
+
+		const activeRegion = getActiveWebcamSizeRegion(webcamSizeRegions, playheadMs);
+		if (activeRegion) {
+			setSelectedWebcamSizeRegionId(activeRegion.id);
+			return activeRegion.id;
+		}
+
+		const minDurationMs = WEBCAM_SIZE_REGION_MIN_DURATION_MS;
+		if (timelineDurationMs < minDurationMs) {
+			return null;
+		}
+
+		const defaultDurationMs = Math.min(3000, timelineDurationMs);
+		const latestStartMs = Math.max(0, timelineDurationMs - minDurationMs);
+		const startMs = Math.min(playheadMs, latestStartMs);
+		const endMs = Math.min(
+			timelineDurationMs,
+			Math.max(startMs + minDurationMs, startMs + defaultDurationMs),
+		);
+		if (endMs - startMs < minDurationMs) {
+			return null;
+		}
+
+		const nextRegion: WebcamSizeRegion = {
+			id: getNextWebcamSizeRegionId(webcamSizeRegions),
+			startMs,
+			endMs,
+			size: clampWebcamSizeRegionSize(webcam.size),
+			height: clampWebcamSizeRegionHeight(webcam.height, webcam.size),
+		};
+		setWebcamSizeRegions((current) =>
+			normalizeWebcamSizeRegions([...current, nextRegion], timelineDurationMs),
+		);
+		setSelectedWebcamSizeRegionId(nextRegion.id);
+		return nextRegion.id;
+	}, [
+		currentTime,
+		selectedWebcamSizeRegionId,
+		timelineDurationMs,
+		timelinePlayheadTime,
+		webcam.height,
+		webcam.size,
+		webcamFocusRegions,
+		webcamSizeRegions,
+	]);
+
+	const handleWebcamSizePreviewResizeStart = useCallback(() => {
+		webcamSizeResizeTargetRegionIdRef.current = getWebcamSizeResizeTargetRegionId();
+	}, [getWebcamSizeResizeTargetRegionId]);
+
+	const handleWebcamSizePreviewResize = useCallback(
+		(size: number) => {
+			let targetId = webcamSizeResizeTargetRegionIdRef.current;
+			if (!targetId) {
+				targetId = getWebcamSizeResizeTargetRegionId();
+				webcamSizeResizeTargetRegionIdRef.current = targetId;
+			}
+			if (targetId) {
+				handleWebcamSizeRegionSizeChange(targetId, size);
+				return;
+			}
+			setWebcam((previous) => ({ ...previous, size: clampWebcamSizeRegionSize(size) }));
+		},
+		[getWebcamSizeResizeTargetRegionId, handleWebcamSizeRegionSizeChange],
+	);
+
+	const handleWebcamHeightPreviewResize = useCallback(
+		(height: number) => {
+			let targetId = webcamSizeResizeTargetRegionIdRef.current;
+			if (!targetId) {
+				targetId = getWebcamSizeResizeTargetRegionId();
+				webcamSizeResizeTargetRegionIdRef.current = targetId;
+			}
+			if (targetId) {
+				handleWebcamSizeRegionHeightChange(targetId, height);
+				return;
+			}
+			setWebcam((previous) => ({
+				...previous,
+				height: clampWebcamSizeRegionHeight(height, previous.size),
+			}));
+		},
+		[getWebcamSizeResizeTargetRegionId, handleWebcamSizeRegionHeightChange],
+	);
+
+	const handleWebcamSizePreviewResizeEnd = useCallback(() => {
+		webcamSizeResizeTargetRegionIdRef.current = null;
+	}, []);
+
+	const addWebcamFocusRegionAtPlayhead = useCallback(
+		(overrides?: Partial<Pick<WebcamFocusRegion, "focusSize" | "screenMode">>) => {
+			const minDurationMs = WEBCAM_FOCUS_REGION_MIN_DURATION_MS;
+			const startMs = 0;
+			const endMs = timelineDurationMs;
+			if (endMs - startMs < minDurationMs) {
+				return;
+			}
+
+			setWebcamFocusRegions((current) => {
+				const nextRegion: WebcamFocusRegion = {
+					id: getNextWebcamFocusRegionId(current),
+					startMs,
+					endMs,
+					focusSize: overrides?.focusSize ?? DEFAULT_WEBCAM_FOCUS_SIZE,
+					screenMode: overrides?.screenMode ?? DEFAULT_WEBCAM_FOCUS_SCREEN_MODE,
+					screenPipSize: DEFAULT_WEBCAM_FOCUS_SCREEN_PIP_SIZE,
+				};
+				setSelectedWebcamFocusRegionId(nextRegion.id);
+				return normalizeWebcamFocusRegions([...current, nextRegion], timelineDurationMs);
+			});
+		},
+		[timelineDurationMs],
+	);
+
+	const handleAddWebcamFocusRegionAtPlayhead = useCallback(() => {
+		addWebcamFocusRegionAtPlayhead();
+	}, [addWebcamFocusRegionAtPlayhead]);
+
+	const handleAddFullscreenWebcamRegionAtPlayhead = useCallback(() => {
+		addWebcamFocusRegionAtPlayhead({ focusSize: 100, screenMode: "hidden" });
+	}, [addWebcamFocusRegionAtPlayhead]);
+
+	const handleWebcamFocusRegionSizeChange = useCallback((id: string, focusSize: number) => {
+		setWebcamFocusRegions((current) =>
+			current.map((region) =>
+				region.id === id
+					? { ...region, focusSize: clampWebcamFocusRegionSize(focusSize) }
+					: region,
+			),
+		);
+	}, []);
+
+	const handleWebcamFocusRegionPipSizeChange = useCallback(
+		(id: string, screenPipSize: number) => {
+			setWebcamFocusRegions((current) =>
+				current.map((region) =>
+					region.id === id
+						? { ...region, screenPipSize: clampWebcamFocusRegionPipSize(screenPipSize) }
+						: region,
+				),
+			);
+		},
+		[],
+	);
+
+	const handleWebcamFocusRegionScreenModeChange = useCallback(
+		(id: string, screenMode: WebcamFocusRegion["screenMode"]) => {
+			setWebcamFocusRegions((current) =>
+				current.map((region) => (region.id === id ? { ...region, screenMode } : region)),
+			);
+		},
+		[],
+	);
+
+	const handleWebcamFocusRegionCornerChange = useCallback(
+		(id: string, screenPipCorner: WebcamFocusRegion["screenPipCorner"]) => {
+			setWebcamFocusRegions((current) =>
+				current.map((region) =>
+					region.id === id ? { ...region, screenPipCorner } : region,
+				),
+			);
+		},
+		[],
+	);
+
+	const handleWebcamFocusRegionTransitionChange = useCallback(
+		(id: string, field: "transitionInMs" | "transitionOutMs", durationMs: number) => {
+			const clamped = clampWebcamFocusRegionTransitionMs(durationMs);
+			setWebcamFocusRegions((current) =>
+				current.map((region) =>
+					region.id === id && clamped !== undefined
+						? { ...region, [field]: clamped }
+						: region,
+				),
+			);
+		},
+		[],
+	);
+
+	const handleWebcamFocusRegionDelete = useCallback((id: string) => {
+		setWebcamFocusRegions((current) => current.filter((region) => region.id !== id));
+		setSelectedWebcamFocusRegionId((selectedId) => (selectedId === id ? null : selectedId));
+	}, []);
+
+	const handleSelectWebcamFocusRegion = useCallback((id: string | null) => {
+		setSelectedWebcamFocusRegionId(id);
+	}, []);
+
+	const handleWebcamFocusRegionSpanChange = useCallback((id: string, span: Span) => {
+		setWebcamFocusRegions((current) =>
+			current.map((region) =>
+				region.id === id
+					? {
+							...region,
+							startMs: Math.max(0, Math.round(span.start)),
+							endMs: Math.max(0, Math.round(span.end)),
+						}
+					: region,
+			),
+		);
+	}, []);
+
+	const handleAddWebcamPositionRegionAtPlayhead = useCallback(
+		(positionX?: number, positionY?: number) => {
+			const playheadMs = Math.max(
+				0,
+				Math.min(
+					timelineDurationMs,
+					Math.round((timelinePlayheadTime ?? currentTime) * 1000),
+				),
+			);
+
+			// Reuse the region under the playhead instead of stacking a new one
+			// on every drag. Only create a fresh region when none covers the
+			// current playhead.
+			const existing = webcamPositionRegions.find(
+				(region) => playheadMs >= region.startMs && playheadMs < region.endMs,
+			);
+			if (existing) {
+				setSelectedWebcamPositionRegionId(existing.id);
+				if (positionX !== undefined && positionY !== undefined) {
+					setWebcamPositionRegions((current) =>
+						current.map((region) =>
+							region.id === existing.id
+								? {
+										...region,
+										positionX: clampWebcamPositionCoordinate(
+											positionX,
+											region.positionX,
+										),
+										positionY: clampWebcamPositionCoordinate(
+											positionY,
+											region.positionY,
+										),
+									}
+								: region,
+						),
+					);
+				}
+				return existing.id;
+			}
+
+			const minDurationMs = WEBCAM_POSITION_REGION_MIN_DURATION_MS;
+
+			// If a webcam size region covers the playhead, align the new
+			// position region to its exact span so size + position stay
+			// in sync for that moment.
+			const activeSizeRegion = webcamSizeRegions.find(
+				(region) => playheadMs >= region.startMs && playheadMs < region.endMs,
+			);
+
+			let startMs: number;
+			let endMs: number;
+			if (activeSizeRegion) {
+				startMs = activeSizeRegion.startMs;
+				endMs = activeSizeRegion.endMs;
+			} else {
+				startMs = 0;
+				endMs = timelineDurationMs;
+			}
+			if (endMs - startMs < minDurationMs) {
+				return null;
+			}
+
+			let createdId: string | null = null;
+			setWebcamPositionRegions((current) => {
+				const nextRegion: WebcamPositionRegion = {
+					id: getNextWebcamPositionRegionId(current),
+					startMs,
+					endMs,
+					positionX: clampWebcamPositionCoordinate(positionX ?? webcam.positionX, 1),
+					positionY: clampWebcamPositionCoordinate(positionY ?? webcam.positionY, 1),
+				};
+				createdId = nextRegion.id;
+				setSelectedWebcamPositionRegionId(nextRegion.id);
+				return normalizeWebcamPositionRegions([...current, nextRegion], timelineDurationMs);
+			});
+			return createdId;
+		},
+		[
+			currentTime,
+			timelineDurationMs,
+			timelinePlayheadTime,
+			webcam.positionX,
+			webcam.positionY,
+			webcamPositionRegions,
+			webcamSizeRegions,
+		],
+	);
+
+	const handleWebcamPositionRegionPositionChange = useCallback(
+		(id: string, positionX: number, positionY: number) => {
+			setWebcamPositionRegions((current) =>
+				current.map((region) =>
+					region.id === id
+						? {
+								...region,
+								positionX: clampWebcamPositionCoordinate(
+									positionX,
+									region.positionX,
+								),
+								positionY: clampWebcamPositionCoordinate(
+									positionY,
+									region.positionY,
+								),
+							}
+						: region,
+				),
+			);
+		},
+		[],
+	);
+
+	const handleWebcamPositionRegionTransitionChange = useCallback(
+		(id: string, field: "transitionInMs" | "transitionOutMs", durationMs: number) => {
+			const clamped = clampWebcamPositionRegionTransitionMs(durationMs);
+			setWebcamPositionRegions((current) =>
+				current.map((region) =>
+					region.id === id && clamped !== undefined
+						? { ...region, [field]: clamped }
+						: region,
+				),
+			);
+		},
+		[],
+	);
+
+	const handleWebcamPositionRegionDelete = useCallback((id: string) => {
+		setWebcamPositionRegions((current) => current.filter((region) => region.id !== id));
+		setSelectedWebcamPositionRegionId((selectedId) => (selectedId === id ? null : selectedId));
+	}, []);
+
+	const handleSelectWebcamPositionRegion = useCallback((id: string | null) => {
+		setSelectedWebcamPositionRegionId(id);
+	}, []);
+
+	const handleWebcamPositionRegionSpanChange = useCallback((id: string, span: Span) => {
+		setWebcamPositionRegions((current) =>
+			current.map((region) =>
+				region.id === id
+					? {
+							...region,
+							startMs: Math.max(0, Math.round(span.start)),
+							endMs: Math.max(0, Math.round(span.end)),
+						}
+					: region,
+			),
+		);
+	}, []);
+
+	useEffect(() => {
+		if (timelineDurationMs <= 0) return;
+		setWebcamSizeRegions((current) => {
+			const renormalized = normalizeWebcamSizeRegions(current, timelineDurationMs);
+			if (
+				renormalized.length === current.length &&
+				renormalized.every((region, index) => {
+					const previous = current[index];
+					return (
+						previous &&
+						previous.id === region.id &&
+						previous.startMs === region.startMs &&
+						previous.endMs === region.endMs &&
+						previous.size === region.size
+					);
+				})
+			) {
+				return current;
+			}
+			return renormalized;
+		});
+	}, [timelineDurationMs]);
+
+	useEffect(() => {
+		if (timelineDurationMs <= 0) return;
+		setWebcamFocusRegions((current) => {
+			const renormalized = normalizeWebcamFocusRegions(current, timelineDurationMs);
+			if (
+				renormalized.length === current.length &&
+				renormalized.every((region, index) => {
+					const previous = current[index];
+					return (
+						previous &&
+						previous.id === region.id &&
+						previous.startMs === region.startMs &&
+						previous.endMs === region.endMs &&
+						previous.focusSize === region.focusSize &&
+						previous.screenMode === region.screenMode &&
+						previous.screenPipSize === region.screenPipSize &&
+						previous.screenPipCorner === region.screenPipCorner
+					);
+				})
+			) {
+				return current;
+			}
+			return renormalized;
+		});
+	}, [timelineDurationMs]);
+
+	useEffect(() => {
+		if (timelineDurationMs <= 0) return;
+		setWebcamPositionRegions((current) => {
+			const renormalized = normalizeWebcamPositionRegions(current, timelineDurationMs);
+			if (
+				renormalized.length === current.length &&
+				renormalized.every((region, index) => {
+					const previous = current[index];
+					return (
+						previous &&
+						previous.id === region.id &&
+						previous.startMs === region.startMs &&
+						previous.endMs === region.endMs &&
+						previous.positionX === region.positionX &&
+						previous.positionY === region.positionY
+					);
+				})
+			) {
+				return current;
+			}
+			return renormalized;
+		});
+	}, [timelineDurationMs]);
+
+	useEffect(() => {
+		if (
+			selectedWebcamSizeRegionId &&
+			!webcamSizeRegions.some((region) => region.id === selectedWebcamSizeRegionId)
+		) {
+			setSelectedWebcamSizeRegionId(null);
+		}
+	}, [selectedWebcamSizeRegionId, webcamSizeRegions]);
+
+	useEffect(() => {
+		if (
+			selectedWebcamFocusRegionId &&
+			!webcamFocusRegions.some((region) => region.id === selectedWebcamFocusRegionId)
+		) {
+			setSelectedWebcamFocusRegionId(null);
+		}
+	}, [selectedWebcamFocusRegionId, webcamFocusRegions]);
+
+	useEffect(() => {
+		if (
+			selectedWebcamPositionRegionId &&
+			!webcamPositionRegions.some((region) => region.id === selectedWebcamPositionRegionId)
+		) {
+			setSelectedWebcamPositionRegionId(null);
+		}
+	}, [selectedWebcamPositionRegionId, webcamPositionRegions]);
 
 	// Merge clip speeds into speed regions so playback + export respect per-clip speed
 	const effectiveSpeedRegions = useMemo<SpeedRegion[]>(() => {
@@ -3407,21 +4108,27 @@ export default function VideoEditor() {
 		setAutoSuggestZoomsTrigger(0);
 	}, []);
 
-	const handleSeek = useCallback((time: number, options: { pause?: boolean } = {}) => {
-		const playback = videoPlaybackRef.current;
-		const video = playback?.video;
-		if (!video) return;
+	const handleSeek = useCallback(
+		(time: number, options: { pause?: boolean } = {}) => {
+			const playback = videoPlaybackRef.current;
+			const video = playback?.video;
+			if (!video) return;
 
-		if (options.pause && !video.paused) {
-			playback?.pause();
-		}
+			if (options.pause && !video.paused) {
+				playback?.pause();
+			}
 
-		video.currentTime = mapTimelineTimeToSourceTime(time * 1000) / 1000;
-	}, [mapTimelineTimeToSourceTime]);
+			video.currentTime = mapTimelineTimeToSourceTime(time * 1000) / 1000;
+		},
+		[mapTimelineTimeToSourceTime],
+	);
 
-	const handleTimelineSeek = useCallback((time: number) => {
-		handleSeek(time, { pause: true });
-	}, [handleSeek]);
+	const handleTimelineSeek = useCallback(
+		(time: number) => {
+			handleSeek(time, { pause: true });
+		},
+		[handleSeek],
+	);
 
 	const handleSelectZoom = useCallback((id: string | null) => {
 		setSelectedZoomId(id);
@@ -3818,17 +4525,17 @@ export default function VideoEditor() {
 		}
 	}, []);
 
-		const handleAudioAdded = useCallback((span: Span, audioPath: string, trackIndex?: number) => {
-			const id = `audio-${nextAudioIdRef.current++}`;
-			const newRegion: AudioRegion = {
-				id,
-				startMs: Math.round(span.start),
-				endMs: Math.round(span.end),
-				audioPath,
-				volume: 1,
-				normalize: false,
-				trackIndex,
-			};
+	const handleAudioAdded = useCallback((span: Span, audioPath: string, trackIndex?: number) => {
+		const id = `audio-${nextAudioIdRef.current++}`;
+		const newRegion: AudioRegion = {
+			id,
+			startMs: Math.round(span.start),
+			endMs: Math.round(span.end),
+			audioPath,
+			volume: 1,
+			normalize: false,
+			trackIndex,
+		};
 		setAudioRegions((prev) => [...prev, newRegion]);
 		setSelectedAudioId(id);
 		setSelectedZoomId(null);
@@ -3878,29 +4585,29 @@ export default function VideoEditor() {
 		[selectedAudioId],
 	);
 
-		const handleAudioDelete = useCallback(
-			(id: string) => {
+	const handleAudioDelete = useCallback(
+		(id: string) => {
 			setAudioRegions((prev) => prev.filter((region) => region.id !== id));
 			if (selectedAudioId === id) {
 				setSelectedAudioId(null);
 			}
 		},
-			[selectedAudioId],
-		);
+		[selectedAudioId],
+	);
 
-		const handleAudioNormalizeChange = useCallback(
-			(normalize: boolean) => {
-				if (!selectedAudioId) {
-					return;
-				}
-				setAudioRegions((prev) =>
-					prev.map((region) =>
-						region.id === selectedAudioId ? { ...region, normalize } : region,
-					),
-				);
-			},
-			[selectedAudioId],
-		);
+	const handleAudioNormalizeChange = useCallback(
+		(normalize: boolean) => {
+			if (!selectedAudioId) {
+				return;
+			}
+			setAudioRegions((prev) =>
+				prev.map((region) =>
+					region.id === selectedAudioId ? { ...region, normalize } : region,
+				),
+			);
+		},
+		[selectedAudioId],
+	);
 
 	const handleAnnotationAdded = useCallback((span: Span, trackIndex = 0) => {
 		const id = `annotation-${nextAnnotationIdRef.current++}`;
@@ -4268,6 +4975,9 @@ export default function VideoEditor() {
 						webcamUrl:
 							resolvedWebcamVideoUrl ??
 							(webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
+						webcamSizeRegions,
+						webcamFocusRegions,
+						webcamPositionRegions,
 						annotationRegions,
 						autoCaptions,
 						autoCaptionSettings,
@@ -4440,6 +5150,9 @@ export default function VideoEditor() {
 						webcamUrl:
 							resolvedWebcamVideoUrl ??
 							(webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
+						webcamSizeRegions,
+						webcamFocusRegions,
+						webcamPositionRegions,
 						annotationRegions,
 						autoCaptions,
 						autoCaptionSettings,
@@ -5798,19 +6511,20 @@ export default function VideoEditor() {
 								selectedClipId={selectedClipId}
 								selectedClipSpeed={
 									selectedClipId
-										? clipRegions.find((c) => c.id === selectedClipId)?.speed ?? 1
+										? (clipRegions.find((c) => c.id === selectedClipId)
+												?.speed ?? 1)
 										: null
 								}
 								selectedClipMuted={
 									selectedClipId
-										? clipRegions.find((c) => c.id === selectedClipId)?.muted ??
-											false
+										? (clipRegions.find((c) => c.id === selectedClipId)
+												?.muted ?? false)
 										: null
 								}
 								selectedClipShowSourceAudio={
 									selectedClipId
-										? clipRegions.find((c) => c.id === selectedClipId)
-												?.showSourceAudio ?? false
+										? (clipRegions.find((c) => c.id === selectedClipId)
+												?.showSourceAudio ?? false)
 										: null
 								}
 								onClipSpeedChange={handleClipSpeedChange}
@@ -5819,7 +6533,9 @@ export default function VideoEditor() {
 								onClipDelete={handleClipDelete}
 								hasClipSourceAudio={hasClipSourceAudio}
 								sourceAudioTrackMeta={audio.sourceAudioTrackMeta}
-								sourceAudioTrackSettings={audio.selectedClipSourceAudioTrackSettings}
+								sourceAudioTrackSettings={
+									audio.selectedClipSourceAudioTrackSettings
+								}
 								onSourceAudioTrackVolumeChange={
 									audio.onSelectedClipSourceAudioTrackVolumeChange
 								}
@@ -5827,21 +6543,21 @@ export default function VideoEditor() {
 									audio.onSelectedClipSourceAudioTrackNormalizeChange
 								}
 								selectedAudioId={selectedAudioId}
-									selectedAudioVolume={
-										selectedAudioId
-											? (audioRegions.find((r) => r.id === selectedAudioId)
-													?.volume ?? null)
-											: null
-									}
-									selectedAudioNormalize={
-										selectedAudioId
-											? (audioRegions.find((r) => r.id === selectedAudioId)
-													?.normalize ?? false)
-											: null
-									}
-									onAudioVolumeChange={handleAudioVolumeChange}
-									onAudioNormalizeChange={handleAudioNormalizeChange}
-									onAudioDelete={handleAudioDelete}
+								selectedAudioVolume={
+									selectedAudioId
+										? (audioRegions.find((r) => r.id === selectedAudioId)
+												?.volume ?? null)
+										: null
+								}
+								selectedAudioNormalize={
+									selectedAudioId
+										? (audioRegions.find((r) => r.id === selectedAudioId)
+												?.normalize ?? false)
+										: null
+								}
+								onAudioVolumeChange={handleAudioVolumeChange}
+								onAudioNormalizeChange={handleAudioNormalizeChange}
+								onAudioDelete={handleAudioDelete}
 								shadowIntensity={shadowIntensity}
 								onShadowChange={setShadowIntensity}
 								backgroundBlur={backgroundBlur}
@@ -5927,6 +6643,49 @@ export default function VideoEditor() {
 								onWebcamChange={setWebcam}
 								onUploadWebcam={handleUploadWebcam}
 								onClearWebcam={handleClearWebcam}
+								webcamSizeRegions={webcamSizeRegions}
+								selectedWebcamSizeRegionId={selectedWebcamSizeRegionId}
+								onAddWebcamSizeRegionAtPlayhead={
+									handleAddWebcamSizeRegionAtPlayhead
+								}
+								onSelectWebcamSizeRegion={handleSelectWebcamSizeRegion}
+								onWebcamSizeRegionSizeChange={handleWebcamSizeRegionSizeChange}
+								onWebcamSizeRegionTransitionChange={
+									handleWebcamSizeRegionTransitionChange
+								}
+								onWebcamSizeRegionDelete={handleWebcamSizeRegionDelete}
+								webcamFocusRegions={webcamFocusRegions}
+								selectedWebcamFocusRegionId={selectedWebcamFocusRegionId}
+								onAddWebcamFocusRegionAtPlayhead={
+									handleAddWebcamFocusRegionAtPlayhead
+								}
+								onSelectWebcamFocusRegion={handleSelectWebcamFocusRegion}
+								onWebcamFocusRegionSizeChange={handleWebcamFocusRegionSizeChange}
+								onWebcamFocusRegionPipSizeChange={
+									handleWebcamFocusRegionPipSizeChange
+								}
+								onWebcamFocusRegionScreenModeChange={
+									handleWebcamFocusRegionScreenModeChange
+								}
+								onWebcamFocusRegionCornerChange={
+									handleWebcamFocusRegionCornerChange
+								}
+								onWebcamFocusRegionTransitionChange={
+									handleWebcamFocusRegionTransitionChange
+								}
+								onWebcamFocusRegionDelete={handleWebcamFocusRegionDelete}
+								onAddFullscreenWebcamRegionAtPlayhead={
+									handleAddFullscreenWebcamRegionAtPlayhead
+								}
+								webcamPositionEnabled={webcamPositionEnabled}
+								onWebcamPositionEnabledChange={setWebcamPositionEnabled}
+								webcamPositionRegions={webcamPositionRegions}
+								selectedWebcamPositionRegionId={selectedWebcamPositionRegionId}
+								onSelectWebcamPositionRegion={handleSelectWebcamPositionRegion}
+								onWebcamPositionRegionTransitionChange={
+									handleWebcamPositionRegionTransitionChange
+								}
+								onWebcamPositionRegionDelete={handleWebcamPositionRegionDelete}
 								padding={padding}
 								onPaddingChange={setPadding}
 								frame={frame}
@@ -6093,6 +6852,61 @@ export default function VideoEditor() {
 														? resolvedWebcamVideoUrl
 														: null
 												}
+												webcamSizeRegions={webcamSizeRegions}
+												webcamFocusRegions={webcamFocusRegions}
+												selectedWebcamFocusRegionId={
+													selectedWebcamFocusRegionId
+												}
+												webcamPositionRegions={
+													webcamPositionEnabled
+														? webcamPositionRegions
+														: EMPTY_WEBCAM_POSITION_REGIONS
+												}
+												selectedWebcamPositionRegionId={
+													webcamPositionEnabled
+														? selectedWebcamPositionRegionId
+														: null
+												}
+												onSelectWebcamPositionRegion={
+													webcamPositionEnabled
+														? handleSelectWebcamPositionRegion
+														: undefined
+												}
+												onWebcamPositionDragStart={
+													webcamPositionEnabled
+														? handleAddWebcamPositionRegionAtPlayhead
+														: undefined
+												}
+												onWebcamPositionDrag={
+													webcamPositionEnabled
+														? handleWebcamPositionRegionPositionChange
+														: undefined
+												}
+												onWebcamSizeResizeStart={
+													handleWebcamSizePreviewResizeStart
+												}
+												onWebcamSizeResize={handleWebcamSizePreviewResize}
+												onWebcamHeightResize={
+													handleWebcamHeightPreviewResize
+												}
+												onWebcamSizeResizeEnd={
+													handleWebcamSizePreviewResizeEnd
+												}
+												onWebcamMirrorToggle={() =>
+													setWebcam((previous) => ({
+														...previous,
+														mirror: !(previous.mirror ?? true),
+													}))
+												}
+												onWebcamAvoidCursorToggle={() =>
+													setWebcam((previous) => ({
+														...previous,
+														avoidCursor: !(
+															previous.avoidCursor ??
+															DEFAULT_WEBCAM_AVOID_CURSOR
+														),
+													}))
+												}
 												trimRegions={trimRegions}
 												speedRegions={effectiveSpeedRegions}
 												annotationRegions={annotationRegions}
@@ -6138,13 +6952,15 @@ export default function VideoEditor() {
 												}
 												cursorSway={cursorSway}
 												volume={
-													audio.shouldMutePreviewVideo || audio.isCurrentClipMuted
+													audio.shouldMutePreviewVideo ||
+													audio.isCurrentClipMuted
 														? 0
 														: Math.max(
 																0,
 																Math.min(
 																	1,
-																	previewVolume * audio.embeddedSourcePreviewGain,
+																	previewVolume *
+																		audio.embeddedSourcePreviewGain,
 																),
 															)
 												}
@@ -6381,10 +7197,23 @@ export default function VideoEditor() {
 				<div
 					className="flex-shrink-0 flex flex-col"
 					style={{
-						height: timelineCollapsed ? undefined : "15%",
-						minHeight: timelineCollapsed ? 0 : 160,
+						height: timelineCollapsed
+							? undefined
+							: (timelineHeightPx ?? "30%"),
+						minHeight: timelineCollapsed ? 0 : 240,
 					}}
 				>
+					{!timelineCollapsed ? (
+						<div
+							role="separator"
+							aria-orientation="horizontal"
+							aria-label="Resize timeline"
+							onPointerDown={handleTimelineResizePointerDown}
+							className="group relative -mt-1 h-2 w-full shrink-0 cursor-row-resize"
+						>
+							<div className="absolute left-1/2 top-1/2 h-1 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/15 transition-colors group-hover:bg-[#2563EB]/70" />
+						</div>
+					) : null}
 					<TimelineEditor
 						ref={timelineRef}
 						videoDuration={timelineDuration}
@@ -6423,6 +7252,25 @@ export default function VideoEditor() {
 						onAnnotationDelete={handleAnnotationDelete}
 						selectedAnnotationId={selectedAnnotationId}
 						onSelectAnnotation={handleSelectAnnotation}
+						webcamSizeRegions={webcamSizeRegions}
+						onWebcamSizeSpanChange={handleWebcamSizeRegionSpanChange}
+						onWebcamSizeDelete={handleWebcamSizeRegionDelete}
+						selectedWebcamSizeRegionId={selectedWebcamSizeRegionId}
+						onSelectWebcamSize={handleSelectWebcamSizeRegion}
+						webcamFocusRegions={webcamFocusRegions}
+						onWebcamFocusSpanChange={handleWebcamFocusRegionSpanChange}
+						onWebcamFocusDelete={handleWebcamFocusRegionDelete}
+						selectedWebcamFocusRegionId={selectedWebcamFocusRegionId}
+						onSelectWebcamFocus={handleSelectWebcamFocusRegion}
+						webcamPositionRegions={
+							webcamPositionEnabled
+								? webcamPositionRegions
+								: EMPTY_WEBCAM_POSITION_REGIONS
+						}
+						onWebcamPositionSpanChange={handleWebcamPositionRegionSpanChange}
+						onWebcamPositionDelete={handleWebcamPositionRegionDelete}
+						selectedWebcamPositionRegionId={selectedWebcamPositionRegionId}
+						onSelectWebcamPosition={handleSelectWebcamPositionRegion}
 						showSourceAudioTrack={clipRegions.some((c) => c.showSourceAudio)}
 						sourceAudioTrackSettings={audio.activeSourceAudioTrackSettings}
 						getSourceAudioTrackSettingsForClip={

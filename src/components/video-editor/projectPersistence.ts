@@ -1,3 +1,4 @@
+import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import type {
 	ExportBackendPreference,
 	ExportEncodingMode,
@@ -20,7 +21,6 @@ import {
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
 import { CURSOR_MOTION_PRESETS, resolveCursorMotionPresetId } from "./cursorMotionPresets";
-import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import {
 	type AnnotationRegion,
 	type AudioRegion,
@@ -44,7 +44,9 @@ import {
 	DEFAULT_FIGURE_DATA,
 	DEFAULT_PADDING,
 	DEFAULT_PLAYBACK_SPEED,
+	DEFAULT_WEBCAM_AVOID_CURSOR,
 	DEFAULT_WEBCAM_CORNER_RADIUS,
+	DEFAULT_WEBCAM_HEIGHT,
 	DEFAULT_WEBCAM_MARGIN,
 	DEFAULT_WEBCAM_OVERLAY,
 	DEFAULT_WEBCAM_POSITION_PRESET,
@@ -65,12 +67,18 @@ import {
 	type Padding,
 	type SpeedRegion,
 	type TrimRegion,
+	type WebcamFocusRegion,
 	type WebcamOverlaySettings,
+	type WebcamPositionRegion,
+	type WebcamSizeRegion,
 	type ZoomMotionBlurTuning,
 	type ZoomRegion,
 	type ZoomTransitionEasing,
 } from "./types";
+import { normalizeWebcamFocusRegions } from "./webcamFocusRegions";
 import { normalizeWebcamCropRegion } from "./webcamOverlay";
+import { normalizeWebcamPositionRegions } from "./webcamPositionRegions";
+import { normalizeWebcamSizeRegions } from "./webcamSizeRegions";
 
 export const PROJECT_VERSION = 1;
 
@@ -127,6 +135,9 @@ export interface ProjectEditorState {
 	autoCaptions: CaptionCue[];
 	autoCaptionSettings: AutoCaptionSettings;
 	webcam: WebcamOverlaySettings;
+	webcamSizeRegions: WebcamSizeRegion[];
+	webcamFocusRegions: WebcamFocusRegion[];
+	webcamPositionRegions: WebcamPositionRegion[];
 	aspectRatio: AspectRatio;
 	sourceAudioTrackSettingsByClip?: Record<string, SourceAudioTrackSettings>;
 	defaultSourceAudioTrackSettings?: SourceAudioTrackSettings;
@@ -163,10 +174,7 @@ type PersistedDevMotionBlurSettings = {
 export function stripPersistedDevMotionBlurSettings<T extends PersistedDevMotionBlurSettings>(
 	editor: T,
 ): Omit<T, keyof PersistedDevMotionBlurSettings> {
-	const {
-		zoomMotionBlurTuning: _zoomMotionBlurTuning,
-		...persistedEditor
-	} = editor;
+	const { zoomMotionBlurTuning: _zoomMotionBlurTuning, ...persistedEditor } = editor;
 
 	return persistedEditor;
 }
@@ -652,6 +660,16 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				})
 		: [];
 
+	const normalizedWebcamSizeRegions: WebcamSizeRegion[] = normalizeWebcamSizeRegions(
+		(editor as Partial<ProjectEditorState>).webcamSizeRegions,
+	);
+	const normalizedWebcamFocusRegions: WebcamFocusRegion[] = normalizeWebcamFocusRegions(
+		(editor as Partial<ProjectEditorState>).webcamFocusRegions,
+	);
+	const normalizedWebcamPositionRegions: WebcamPositionRegion[] = normalizeWebcamPositionRegions(
+		(editor as Partial<ProjectEditorState>).webcamPositionRegions,
+	);
+
 	const normalizedAudioRegions: AudioRegion[] = Array.isArray(
 		(editor as Partial<ProjectEditorState>).audioRegions,
 	)
@@ -669,17 +687,17 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 					const startMs = Math.max(0, Math.min(rawStart, rawEnd));
 					const endMs = Math.max(startMs + 1, rawEnd);
 
-						return {
-							id: region.id,
-							startMs,
-							endMs,
-							audioPath: typeof region.audioPath === "string" ? region.audioPath : "",
-							volume: isFiniteNumber(region.volume) ? clamp(region.volume, 0, 1) : 1,
-							normalize: Boolean(region.normalize),
-							trackIndex: isFiniteNumber(region.trackIndex)
-								? Math.max(0, Math.floor(region.trackIndex))
-								: 0,
-						};
+					return {
+						id: region.id,
+						startMs,
+						endMs,
+						audioPath: typeof region.audioPath === "string" ? region.audioPath : "",
+						volume: isFiniteNumber(region.volume) ? clamp(region.volume, 0, 1) : 1,
+						normalize: Boolean(region.normalize),
+						trackIndex: isFiniteNumber(region.trackIndex)
+							? Math.max(0, Math.floor(region.trackIndex))
+							: 0,
+					};
 				})
 		: [];
 
@@ -987,12 +1005,21 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 					? webcam.corner
 					: DEFAULT_WEBCAM_OVERLAY.corner,
 			size: isFiniteNumber(webcam.size) ? clamp(webcam.size, 10, 100) : DEFAULT_WEBCAM_SIZE,
+			height: isFiniteNumber(webcam.height)
+				? clamp(webcam.height, 10, 100)
+				: isFiniteNumber(webcam.size)
+					? clamp(webcam.size, 10, 100)
+					: DEFAULT_WEBCAM_HEIGHT,
 			reactToZoom:
 				typeof webcam.reactToZoom === "boolean"
 					? webcam.reactToZoom
 					: legacyZoomScaleEffect != null
 						? legacyZoomScaleEffect > 0
 						: DEFAULT_WEBCAM_REACT_TO_ZOOM,
+			avoidCursor:
+				typeof webcam.avoidCursor === "boolean"
+					? webcam.avoidCursor
+					: DEFAULT_WEBCAM_AVOID_CURSOR,
 			cornerRadius: isFiniteNumber(webcam.cornerRadius)
 				? clamp(webcam.cornerRadius, 0, 160)
 				: DEFAULT_WEBCAM_CORNER_RADIUS,
@@ -1006,6 +1033,9 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				? clamp(webcam.margin, 0, 96)
 				: DEFAULT_WEBCAM_MARGIN,
 		},
+		webcamSizeRegions: normalizedWebcamSizeRegions,
+		webcamFocusRegions: normalizedWebcamFocusRegions,
+		webcamPositionRegions: normalizedWebcamPositionRegions,
 		sourceAudioTrackSettingsByClip:
 			editor.sourceAudioTrackSettingsByClip &&
 			typeof editor.sourceAudioTrackSettingsByClip === "object"
