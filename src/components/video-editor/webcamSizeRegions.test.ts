@@ -223,6 +223,28 @@ describe("webcamSizeRegions", () => {
 			expect(between).toBeLessThan(80);
 		});
 
+		it("stays continuous across a region boundary when the next transition-in started early", () => {
+			// r2's transition-in (600ms) begins at 4600, before r1 ends at
+			// 5000, so the active branch is already blending toward r2 when
+			// r1 ends. The blend must not snap back at 5000.
+			const regions: WebcamSizeRegion[] = [
+				{ id: "r1", startMs: 1_000, endMs: 5_000, size: 40 },
+				{ id: "r2", startMs: 5_200, endMs: 8_000, size: 80, transitionInMs: 600 },
+			];
+
+			const before = getInterpolatedWebcamSizeAtTime(30, regions, 4_999);
+			const at = getInterpolatedWebcamSizeAtTime(30, regions, 5_000);
+			const after = getInterpolatedWebcamSizeAtTime(30, regions, 5_001);
+
+			// No discontinuity: 1ms steps should move by well under a size unit.
+			expect(Math.abs(at - before)).toBeLessThan(1);
+			expect(Math.abs(after - at)).toBeLessThan(1);
+			// And it should be mid-blend (between the two region sizes), not
+			// reset to 40.
+			expect(at).toBeGreaterThan(40);
+			expect(at).toBeLessThan(80);
+		});
+
 		it("applies easing monotonically through the ramp-in", () => {
 			const regions: WebcamSizeRegion[] = [
 				{ id: "r1", startMs: 1_000, endMs: 3_000, size: 80, transitionInMs: 400 },

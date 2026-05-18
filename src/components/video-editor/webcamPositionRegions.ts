@@ -351,8 +351,17 @@ export function getInterpolatedWebcamPositionAtTime(
 				return regionToPoint(nextRegion);
 			}
 
+			// Use the same blend origin as the active-region branch so the
+			// curve is continuous across previousRegion.endMs even when
+			// nextRegion's transition-in started before the previous region
+			// ended. Falls back to the plain gap blend when it didn't.
+			const blendStartMs = Math.min(
+				previousRegion.endMs,
+				nextRegion.startMs - nextInMs,
+			);
+			const blendDurationMs = nextRegion.startMs - blendStartMs;
 			const progress = easeWebcamPositionTransition(
-				clamp01((roundedTimeMs - previousRegion.endMs) / gapMs),
+				clamp01((roundedTimeMs - blendStartMs) / blendDurationMs),
 			);
 			return lerpPoint(regionToPoint(previousRegion), regionToPoint(nextRegion), progress);
 		}

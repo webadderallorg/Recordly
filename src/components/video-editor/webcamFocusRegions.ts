@@ -419,10 +419,21 @@ export function getInterpolatedFocusStateAtTime(
 			gapMs <= previousOutMs + nextInMs &&
 			roundedTimeMs <= nextRegion.startMs
 		) {
+			// Use the same blend origin as the active-region branch so the
+			// curve is continuous across previousRegion.endMs even when
+			// nextRegion's transition-in started before the previous region
+			// ended. Falls back to the plain gap blend when it didn't.
+			const blendStartMs = Math.min(
+				previousRegion.endMs,
+				nextRegion.startMs - nextInMs,
+			);
+			const blendDurationMs = nextRegion.startMs - blendStartMs;
 			const progress =
-				gapMs <= 0
+				gapMs <= 0 || blendDurationMs <= 0
 					? 1
-					: easeFocusTransition((roundedTimeMs - previousRegion.endMs) / gapMs);
+					: easeFocusTransition(
+							clamp01((roundedTimeMs - blendStartMs) / blendDurationMs),
+						);
 			return blendFocusStates(
 				buildFullFocusState({ baseWebcamSize, region: previousRegion, webcamCorner }),
 				buildFullFocusState({ baseWebcamSize, region: nextRegion, webcamCorner }),

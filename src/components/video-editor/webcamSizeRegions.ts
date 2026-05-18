@@ -353,8 +353,17 @@ export function getInterpolatedWebcamSizeAtTime(
 				return clampWebcamSizeRegionSize(nextRegion.size);
 			}
 
+			// Use the same blend origin as the active-region branch so the
+			// curve is continuous across previousRegion.endMs even when
+			// nextRegion's transition-in started before the previous region
+			// ended. Falls back to the plain gap blend when it didn't.
+			const blendStartMs = Math.min(
+				previousRegion.endMs,
+				nextRegion.startMs - nextInMs,
+			);
+			const blendDurationMs = nextRegion.startMs - blendStartMs;
 			const progress = easeWebcamSizeTransition(
-				clamp01((roundedTimeMs - previousRegion.endMs) / gapMs),
+				clamp01((roundedTimeMs - blendStartMs) / blendDurationMs),
 			);
 			return lerp(
 				clampWebcamSizeRegionSize(previousRegion.size),
@@ -461,8 +470,14 @@ export function getInterpolatedWebcamDimensionsAtTime(
 				return getRegionDimensions(nextRegion);
 			}
 
+			// Same continuous blend origin as getInterpolatedWebcamSizeAtTime.
+			const blendStartMs = Math.min(
+				previousRegion.endMs,
+				nextRegion.startMs - nextInMs,
+			);
+			const blendDurationMs = nextRegion.startMs - blendStartMs;
 			const progress = easeWebcamSizeTransition(
-				clamp01((roundedTimeMs - previousRegion.endMs) / gapMs),
+				clamp01((roundedTimeMs - blendStartMs) / blendDurationMs),
 			);
 			return lerpDimensions(
 				getRegionDimensions(previousRegion),
