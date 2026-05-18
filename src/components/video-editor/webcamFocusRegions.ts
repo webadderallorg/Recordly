@@ -168,6 +168,7 @@ export function normalizeWebcamFocusRegions(
 	const hasDurationLimit = isFiniteNumber(totalDurationMs) && totalDurationMs > 0;
 	const maxEndMs = hasDurationLimit ? Math.round(totalDurationMs) : null;
 	const normalized: WebcamFocusRegion[] = [];
+	const usedIds = new Set<string>();
 
 	for (let index = 0; index < input.length; index += 1) {
 		const raw = input[index];
@@ -195,11 +196,23 @@ export function normalizeWebcamFocusRegions(
 		const transitionInMs = clampWebcamFocusRegionTransitionMs(candidate.transitionInMs);
 		const transitionOutMs = clampWebcamFocusRegionTransitionMs(candidate.transitionOutMs);
 
+		let id =
+			typeof candidate.id === "string" && candidate.id.trim().length > 0
+				? candidate.id
+				: `webcam-focus-${index + 1}`;
+		if (usedIds.has(id)) {
+			let suffix = index + 1;
+			let candidateId = `webcam-focus-${suffix}`;
+			while (usedIds.has(candidateId)) {
+				suffix += 1;
+				candidateId = `webcam-focus-${suffix}`;
+			}
+			id = candidateId;
+		}
+		usedIds.add(id);
+
 		normalized.push({
-			id:
-				typeof candidate.id === "string" && candidate.id.trim().length > 0
-					? candidate.id
-					: `webcam-focus-${index + 1}`,
+			id,
 			startMs,
 			endMs,
 			focusSize: clampWebcamFocusRegionSize(candidate.focusSize),
@@ -220,24 +233,34 @@ export function normalizeWebcamFocusRegions(
 		return left.endMs - right.endMs;
 	});
 
-	// Resolve overlaps deterministically: clip an earlier region to end
-	// where the next one starts so preview and export agree on a single
-	// active region per instant.
-	const resolved: WebcamFocusRegion[] = [];
+	// Resolve overlaps deterministically so preview and export always agree
+	// on a single active region per instant. Two phases:
+	//  1. Greedily keep regions, dropping any earlier one that would be left
+	//     shorter than the minimum once clipped to a later region's start.
+	//     Dropping re-checks the new tail, so a short middle region can't
+	//     leave a false gap between its neighbours.
+	//  2. Clip every kept region to end where the next kept region begins.
+	const kept: WebcamFocusRegion[] = [];
 	for (const region of sorted) {
-		const previous = resolved[resolved.length - 1];
-		if (previous && region.startMs < previous.endMs) {
-			const clippedEndMs = region.startMs;
-			if (clippedEndMs - previous.startMs < WEBCAM_FOCUS_REGION_MIN_DURATION_MS) {
-				resolved.pop();
-			} else {
-				resolved[resolved.length - 1] = { ...previous, endMs: clippedEndMs };
+		while (kept.length > 0) {
+			const previous = kept[kept.length - 1];
+			if (region.startMs >= previous.endMs) {
+				break;
 			}
+			if (region.startMs - previous.startMs >= WEBCAM_FOCUS_REGION_MIN_DURATION_MS) {
+				break;
+			}
+			kept.pop();
 		}
-		resolved.push(region);
+		kept.push(region);
 	}
 
-	return resolved;
+	return kept.map((region, index) => {
+		const next = kept[index + 1];
+		return next && region.endMs > next.startMs
+			? { ...region, endMs: next.startMs }
+			: region;
+	});
 }
 
 export function getActiveWebcamFocusRegion(

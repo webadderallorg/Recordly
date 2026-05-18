@@ -161,6 +161,29 @@ describe("webcamPositionRegions", () => {
 		expect(normalized.map((region) => region.id)).toEqual(["long"]);
 	});
 
+	it("clips the survivor to the next region after dropping a short middle overlap", () => {
+		const normalized = normalizeWebcamPositionRegions([
+			{ id: "a", startMs: 0, endMs: 2_000, positionX: 0.1, positionY: 0.1 },
+			{ id: "b", startMs: 1_900, endMs: 2_050, positionX: 0.5, positionY: 0.5 },
+			{ id: "c", startMs: 2_000, endMs: 4_000, positionX: 0.9, positionY: 0.9 },
+		]);
+
+		expect(normalized).toEqual([
+			{ id: "a", startMs: 0, endMs: 2_000, positionX: 0.1, positionY: 0.1 },
+			{ id: "c", startMs: 2_000, endMs: 4_000, positionX: 0.9, positionY: 0.9 },
+		]);
+	});
+
+	it("does not let a fallback id collide with an existing persisted id", () => {
+		const normalized = normalizeWebcamPositionRegions([
+			{ id: "webcam-position-2", startMs: 0, endMs: 1_000, positionX: 0.1, positionY: 0.1 },
+			{ startMs: 2_000, endMs: 3_000, positionX: 0.5, positionY: 0.5 },
+		]);
+
+		const ids = normalized.map((region) => region.id);
+		expect(new Set(ids).size).toBe(ids.length);
+	});
+
 	it("generates unique ids that do not collide with existing ones", () => {
 		const existing: WebcamPositionRegion[] = [
 			{ id: "webcam-position-1", startMs: 0, endMs: 1_000, positionX: 1, positionY: 1 },

@@ -127,6 +127,7 @@ export function normalizeWebcamSizeRegions(
 	const maxEndMs = hasDurationLimit ? Math.round(totalDurationMs) : null;
 
 	const normalized: WebcamSizeRegion[] = [];
+	const usedIds = new Set<string>();
 
 	for (let index = 0; index < input.length; index += 1) {
 		const raw = input[index];
@@ -156,10 +157,20 @@ export function normalizeWebcamSizeRegions(
 			continue;
 		}
 
-		const id =
+		let id =
 			typeof candidate.id === "string" && candidate.id.trim().length > 0
 				? candidate.id
 				: `webcam-size-${index + 1}`;
+		if (usedIds.has(id)) {
+			let suffix = index + 1;
+			let candidateId = `webcam-size-${suffix}`;
+			while (usedIds.has(candidateId)) {
+				suffix += 1;
+				candidateId = `webcam-size-${suffix}`;
+			}
+			id = candidateId;
+		}
+		usedIds.add(id);
 		const transitionInMs = clampWebcamSizeRegionTransitionMs(candidate.transitionInMs);
 		const transitionOutMs = clampWebcamSizeRegionTransitionMs(candidate.transitionOutMs);
 		const height = isFiniteNumber(candidate.height)
@@ -185,25 +196,34 @@ export function normalizeWebcamSizeRegions(
 		return left.endMs - right.endMs;
 	});
 
-	// Resolve overlaps deterministically: an earlier-starting region is
-	// clipped so it ends where the next region begins. This keeps preview
-	// and export in sync (both rely on a single active region per instant)
-	// and removes the ambiguity of overlapping spans.
-	const resolved: WebcamSizeRegion[] = [];
+	// Resolve overlaps deterministically so preview and export always agree
+	// on a single active region per instant. Two phases:
+	//  1. Greedily keep regions, dropping any earlier one that would be left
+	//     shorter than the minimum once clipped to a later region's start.
+	//     Dropping re-checks the new tail, so a short middle region can't
+	//     leave a false gap between its neighbours.
+	//  2. Clip every kept region to end where the next kept region begins.
+	const kept: WebcamSizeRegion[] = [];
 	for (const region of sorted) {
-		const previous = resolved[resolved.length - 1];
-		if (previous && region.startMs < previous.endMs) {
-			const clippedEndMs = region.startMs;
-			if (clippedEndMs - previous.startMs < WEBCAM_SIZE_REGION_MIN_DURATION_MS) {
-				resolved.pop();
-			} else {
-				resolved[resolved.length - 1] = { ...previous, endMs: clippedEndMs };
+		while (kept.length > 0) {
+			const previous = kept[kept.length - 1];
+			if (region.startMs >= previous.endMs) {
+				break;
 			}
+			if (region.startMs - previous.startMs >= WEBCAM_SIZE_REGION_MIN_DURATION_MS) {
+				break;
+			}
+			kept.pop();
 		}
-		resolved.push(region);
+		kept.push(region);
 	}
 
-	return resolved;
+	return kept.map((region, index) => {
+		const next = kept[index + 1];
+		return next && region.endMs > next.startMs
+			? { ...region, endMs: next.startMs }
+			: region;
+	});
 }
 
 export function getActiveWebcamSizeRegion(

@@ -142,6 +142,31 @@ describe("webcamSizeRegions", () => {
 		expect(normalized.map((region) => region.id)).toEqual(["long"]);
 	});
 
+	it("clips the survivor to the next region after dropping a short middle overlap", () => {
+		const normalized = normalizeWebcamSizeRegions([
+			{ id: "a", startMs: 0, endMs: 2_000, size: 40 },
+			{ id: "b", startMs: 1_900, endMs: 2_050, size: 60 },
+			{ id: "c", startMs: 2_000, endMs: 4_000, size: 80 },
+		]);
+
+		// b is too short once clipped, so it is dropped and a is clipped to
+		// c's start with no false gap left between a and c.
+		expect(normalized).toEqual([
+			{ id: "a", startMs: 0, endMs: 2_000, size: 40 },
+			{ id: "c", startMs: 2_000, endMs: 4_000, size: 80 },
+		]);
+	});
+
+	it("does not let a fallback id collide with an existing persisted id", () => {
+		const normalized = normalizeWebcamSizeRegions([
+			{ id: "webcam-size-2", startMs: 0, endMs: 1_000, size: 40 },
+			{ startMs: 2_000, endMs: 3_000, size: 50 },
+		]);
+
+		const ids = normalized.map((region) => region.id);
+		expect(new Set(ids).size).toBe(ids.length);
+	});
+
 	it("generates unique ids that do not collide with existing ones", () => {
 		const existing: WebcamSizeRegion[] = [
 			{ id: "webcam-size-1", startMs: 0, endMs: 1_000, size: 40 },
