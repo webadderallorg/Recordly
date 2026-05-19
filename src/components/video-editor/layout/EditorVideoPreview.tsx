@@ -104,6 +104,7 @@ export function EditorVideoPreview({
 			selectedAnnotationId={timeline.selectedAnnotationId}
 			cursorTelemetry={effectiveCursorTelemetry}
 			showCursor={effectiveShowCursor}
+			alwaysUsePointerCursor={appearance.alwaysUsePointerCursor}
 			cursorStyle={appearance.cursorStyle}
 			cursorSize={appearance.cursorSize}
 			cursorSmoothing={appearance.cursorSmoothing}

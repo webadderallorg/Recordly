@@ -261,6 +261,7 @@ interface VideoPlaybackProps {
 	onAnnotationSizeChange?: (id: string, size: { width: number; height: number }) => void;
 	cursorTelemetry?: CursorTelemetryPoint[];
 	showCursor?: boolean;
+	alwaysUsePointerCursor?: boolean;
 	cursorStyle?: CursorStyle;
 	cursorSize?: number;
 	cursorSmoothing?: number;
@@ -347,6 +348,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			onAnnotationSizeChange,
 			cursorTelemetry = [],
 			showCursor = false,
+			alwaysUsePointerCursor = false,
 			cursorStyle = DEFAULT_CURSOR_STYLE,
 			cursorSize = DEFAULT_CURSOR_SIZE,
 			cursorSmoothing = DEFAULT_CURSOR_SMOOTHING,
@@ -492,6 +494,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const cursorOverlayRef = useRef<PixiCursorOverlay | null>(null);
 		const cursorTelemetryRef = useRef<CursorTelemetryPoint[]>([]);
 		const showCursorRef = useRef(showCursor);
+		const alwaysUsePointerCursorRef = useRef(alwaysUsePointerCursor);
 		const cursorSizeRef = useRef(cursorSize);
 		const cursorStyleRef = useRef(cursorStyle);
 		const cursorSmoothingRef = useRef(cursorSmoothing);
@@ -1428,6 +1431,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		}, [cursorStyle, requestPausedFrameRefresh]);
 
 		useEffect(() => {
+			alwaysUsePointerCursorRef.current = alwaysUsePointerCursor;
+			cursorOverlayRef.current?.setAlwaysUsePointerCursor(alwaysUsePointerCursor);
+			requestPausedFrameRefresh();
+		}, [alwaysUsePointerCursor, requestPausedFrameRefresh]);
+
+		useEffect(() => {
 			cursorSizeRef.current = cursorSize;
 			requestPausedFrameRefresh();
 		}, [cursorSize, requestPausedFrameRefresh]);
@@ -1794,6 +1803,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						dotRadius: DEFAULT_CURSOR_CONFIG.dotRadius * cursorSizeRef.current,
 						minViewportScale: 0,
 						style: cursorStyleRef.current,
+						alwaysUsePointerCursor: alwaysUsePointerCursorRef.current,
 						smoothingFactor: cursorSmoothingRef.current,
 						springTuning: {
 							stiffnessMultiplier: cursorSpringStiffnessMultiplierRef.current,

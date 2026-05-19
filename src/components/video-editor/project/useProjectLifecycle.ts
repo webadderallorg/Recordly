@@ -144,6 +144,7 @@ export function useProjectLifecycle(input: Input) {
 		appearance.setConnectedZoomEasing(editor.connectedZoomEasing);
 		appearance.setShowCursor(editor.showCursor);
 		appearance.setLoopCursor(editor.loopCursor);
+		appearance.setAlwaysUsePointerCursor(editor.alwaysUsePointerCursor);
 		appearance.setCursorStyle(editor.cursorStyle);
 		appearance.setCursorSize(editor.cursorSize);
 		appearance.setCursorSmoothing(editor.cursorSmoothing);

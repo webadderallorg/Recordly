@@ -133,6 +133,8 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onShowCursorChange: handleShowCursorChange,
 		loopCursor: appearance.loopCursor,
 		onLoopCursorChange: appearance.setLoopCursor,
+		alwaysUsePointerCursor: appearance.alwaysUsePointerCursor,
+		onAlwaysUsePointerCursorChange: appearance.setAlwaysUsePointerCursor,
 		cursorStyle: appearance.cursorStyle,
 		onCursorStyleChange: appearance.setCursorStyle,
 		cursorSize: appearance.cursorSize,

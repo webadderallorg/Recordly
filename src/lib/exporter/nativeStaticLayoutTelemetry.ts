@@ -18,6 +18,7 @@ export type NativeStaticLayoutCursorTelemetryOptions = {
 	clickBounce?: number;
 	clickBounceDurationMs?: number;
 	sourceCrop?: CropRegion;
+	alwaysUsePointerCursor?: boolean;
 };
 
 const CURSOR_POSITION_EPSILON = 0.00001;
@@ -202,6 +203,15 @@ export function buildNativeStaticLayoutCursorTelemetry(
 	const last = resampled[resampled.length - 1];
 	if (!last || Math.abs(last.timeMs - durationMs) > 0.5) {
 		pushCursorSample(resampled, sampleCursorAt(durationMs));
+	}
+
+	if (options.alwaysUsePointerCursor) {
+		const arrowIndex = getCursorTypeIndex("arrow");
+		return resampled.map((sample) => ({
+			...sample,
+			cursorType: "arrow" as const,
+			cursorTypeIndex: arrowIndex,
+		}));
 	}
 
 	return resampled;

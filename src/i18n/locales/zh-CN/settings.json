@@ -31,6 +31,7 @@
 		"show": "显示",
 		"showCursor": "显示光标",
 		"loopCursor": "循环光标",
+		"alwaysUsePointerCursor": "始终使用默认光标",
 		"cursorStyle": "光标样式",
 		"cursorStyleOptions": {
 			"macos": "macOS",
