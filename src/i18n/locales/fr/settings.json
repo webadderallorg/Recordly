@@ -30,6 +30,7 @@
 		"show": "Afficher",
 		"showCursor": "Afficher le curseur",
 		"loopCursor": "Boucler le curseur",
+		"alwaysUsePointerCursor": "Toujours utiliser le curseur pointeur",
 		"cursorStyle": "Style du curseur",
 		"cursorStyleOptions": {
 			"macos": "macOS",

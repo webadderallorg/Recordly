@@ -30,6 +30,7 @@
 		"show": "표시",
 		"showCursor": "커서 표시",
 		"loopCursor": "커서 반복",
+		"alwaysUsePointerCursor": "항상 포인터 커서 사용",
 		"cursorStyle": "커서 스타일",
 		"cursorStyleOptions": {
 			"macos": "macOS",

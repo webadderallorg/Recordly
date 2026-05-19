@@ -30,6 +30,7 @@
 		"show": "顯示",
 		"showCursor": "顯示游標",
 		"loopCursor": "游標循環",
+		"alwaysUsePointerCursor": "始終使用指針游標",
 		"cursorStyle": "游標樣式",
 		"cursorStyleOptions": {
 			"macos": "macOS",
