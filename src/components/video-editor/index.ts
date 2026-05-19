@@ -1,5 +1,5 @@
 export { default as PlaybackControls } from "./PlaybackControls";
-export { SettingsPanel } from "./SettingsPanel";
+export { SettingsPanel } from "./settings/SettingsPanel";
 export { default as TimelineEditor } from "./timeline/TimelineEditor";
 export type {
 	TimelineEditorHandle,

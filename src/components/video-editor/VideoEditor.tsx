@@ -139,7 +139,7 @@ import {
 	toFileUrl,
 	validateProjectData,
 } from "./projectPersistence";
-import { SettingsPanel } from "./SettingsPanel";
+import { SettingsPanel } from "./settings/SettingsPanel";
 import { useVideoEditorAudio } from "./audio/useVideoEditorAudio";
 import {
 	APP_HEADER_ICON_BUTTON_CLASS,

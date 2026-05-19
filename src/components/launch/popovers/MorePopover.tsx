@@ -14,24 +14,12 @@ import { useI18n } from "@/contexts/I18nContext";
 import { useScopedT } from "@/contexts/I18nContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { AppLocale } from "@/i18n/config";
-import { SUPPORTED_LOCALES } from "@/i18n/config";
+import { APP_LANGUAGE_LABELS, SUPPORTED_LOCALES } from "@/i18n/config";
 import styles from "../LaunchWindow.module.css";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import { DropdownItem, HudPopover } from "./PopoverScaffold";
 
 const POPOVER_ID = "more";
-
-const LOCALE_LABELS: Record<string, string> = {
-	en: "English",
-	es: "Español",
-	fr: "Français",
-	it: "Italiano",
-	nl: "Nederlands",
-	ko: "한국어",
-	"pt-BR": "Português",
-	"zh-CN": "簡體中文",
-	"zh-TW": "繁體中文",
-};
 
 export function MorePopover({
 	trigger,
@@ -170,7 +158,7 @@ export function MorePopover({
 						requestClose(POPOVER_ID);
 					}}
 				>
-					{LOCALE_LABELS[code] ?? code}
+					{APP_LANGUAGE_LABELS[code] ?? code}
 				</DropdownItem>
 			))}
 			{appVersion && (
