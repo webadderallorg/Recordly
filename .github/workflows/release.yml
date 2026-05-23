@@ -132,7 +132,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Install bundled FFmpeg binary
-        run: node node_modules/ffmpeg-static/install.js
+        run: node scripts/install-ffmpeg-static.mjs
 
       - name: Verify bundled FFmpeg binary
         run: |
@@ -233,7 +233,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Install bundled FFmpeg binary
-        run: node node_modules/ffmpeg-static/install.js
+        run: node scripts/install-ffmpeg-static.mjs
 
       - name: Verify bundled FFmpeg binary
         run: |
@@ -392,7 +392,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Install bundled FFmpeg binary
-        run: node node_modules/ffmpeg-static/install.js
+        run: node scripts/install-ffmpeg-static.mjs
 
       - name: Verify bundled FFmpeg binary
         run: |
@@ -470,7 +470,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Install bundled FFmpeg binary
-        run: node node_modules/ffmpeg-static/install.js
+        run: node scripts/install-ffmpeg-static.mjs
 
       - name: Verify bundled FFmpeg binary
         run: |

@@ -151,6 +151,7 @@ export interface NativeStaticLayoutExportOptions {
 	timelineMapPath?: string | null;
 	chunkDurationSec?: number;
 	experimentalWindowsGpuCompositor?: boolean;
+	experimentalNvidiaCudaExport?: boolean;
 	audioOptions?: NativeVideoExportFinishOptions;
 	nvidiaCudaForceVideoOnly?: boolean;
 }
@@ -433,6 +434,15 @@ export function validateNvidiaCudaExportSummary(
 	if (expected.requiresTimelineSync && !isNvidiaCudaTimestampAlignedSummary(summary)) {
 		issues.push("CUDA timeline mode is not timestamp-aligned for audio export");
 	}
+	if (expected.requiresTimelineSync) {
+		if (!summary.outputAudio) {
+			issues.push("missing output audio stream");
+		} else if (outputAudioDurationSec === null) {
+			issues.push("missing output audio duration");
+		} else if (outputAudioDurationSec <= 0) {
+			issues.push("output audio duration is not positive");
+		}
+	}
 	if (nativeFrames === null) {
 		issues.push("missing native frame count");
 	} else if (nativeFrames < minimumFrames) {
@@ -455,6 +465,7 @@ export function validateNvidiaCudaExportSummary(
 	}
 	if (
 		outputAudioDurationSec !== null &&
+		outputAudioDurationSec > 0 &&
 		Math.abs(outputAudioDurationSec - expectedDurationSec) > durationToleranceSec
 	) {
 		issues.push(
@@ -912,6 +923,19 @@ function setNativeStaticLayoutExportProcessPriority(pid: number | undefined, lab
 }
 
 export const nativeStaticLayoutExportSessions = new Map<string, NativeStaticLayoutExportSession>();
+
+export interface NativeExportCapabilities {
+	platform: NodeJS.Platform;
+	nvidiaCuda: {
+		available: boolean;
+		skipReason: string | null;
+		hasNvidiaGpu: boolean | null;
+		hasWrapper: boolean;
+		explicitEnabled: boolean;
+		explicitDisabled: boolean;
+		userOptInRequired: boolean;
+	};
+}
 
 export function parseFfmpegDurationSeconds(value: string): number | null {
 	const parts = value.trim().split(":");
@@ -1846,13 +1870,18 @@ export function hasNvidiaGpuDeviceInGpuInfo(gpuInfo: unknown) {
 }
 
 async function hasNvidiaGpuForCudaExportCandidate() {
+	const hasNvidiaGpu = await probeNvidiaGpuForCudaExportCandidate();
+	return hasNvidiaGpu ?? true;
+}
+
+async function probeNvidiaGpuForCudaExportCandidate(): Promise<boolean | null> {
 	const getGPUInfo = (
 		app as typeof app & {
 			getGPUInfo?: (infoType: "basic") => Promise<unknown>;
 		}
 	).getGPUInfo;
 	if (typeof getGPUInfo !== "function") {
-		return true;
+		return null;
 	}
 
 	try {
@@ -1862,7 +1891,7 @@ async function hasNvidiaGpuForCudaExportCandidate() {
 			"[native-static-layout-export] Unable to inspect GPU info before NVIDIA CUDA export; letting the helper decide",
 			error,
 		);
-		return true;
+		return null;
 	}
 }
 
@@ -1949,12 +1978,12 @@ function isExplicitNvidiaCudaExportDisabled() {
 	return process.env[NVIDIA_CUDA_EXPORT_ENV] === "0";
 }
 
-function isPackagedNvidiaCudaExportAutoCandidateEnabled() {
-	return app.isPackaged && !isExplicitNvidiaCudaExportDisabled();
+function isUserOptedInNvidiaCudaExport(options: NativeStaticLayoutExportOptions) {
+	return options.experimentalNvidiaCudaExport === true && !isExplicitNvidiaCudaExportDisabled();
 }
 
-function isPackagedNvidiaCudaExportAutoCandidateActive() {
-	return isPackagedNvidiaCudaExportAutoCandidateEnabled() && !isExplicitNvidiaCudaExportEnabled();
+function isValidatedNvidiaCudaFallbackCandidate(options: NativeStaticLayoutExportOptions) {
+	return isUserOptedInNvidiaCudaExport(options) && !isExplicitNvidiaCudaExportEnabled();
 }
 
 function isNvidiaCudaForceVideoOnlyEnabled() {
@@ -1962,7 +1991,7 @@ function isNvidiaCudaForceVideoOnlyEnabled() {
 }
 
 export function getNvidiaCudaAutoStallTimeoutMs(
-	autoCandidateActive = isPackagedNvidiaCudaExportAutoCandidateActive(),
+	autoCandidateActive = false,
 ) {
 	if (!autoCandidateActive && !isExplicitNvidiaCudaExportEnabled()) {
 		return null;
@@ -2001,16 +2030,19 @@ export async function getExperimentalNvidiaCudaExportSkipReason(
 	if (process.platform !== "win32") {
 		return "not-windows";
 	}
+	if (isExplicitNvidiaCudaExportDisabled()) {
+		return "env-disabled";
+	}
 	const explicitCuda = isExplicitNvidiaCudaExportEnabled();
-	const packagedAutoCandidate = isPackagedNvidiaCudaExportAutoCandidateEnabled();
-	if (!explicitCuda && !packagedAutoCandidate) {
+	const userOptIn = isUserOptedInNvidiaCudaExport(options);
+	if (!explicitCuda && !userOptIn) {
 		return "env-disabled";
 	}
 	if (!options.experimentalWindowsGpuCompositor) {
 		return "windows-gpu-compositor-disabled";
 	}
 
-	if (packagedAutoCandidate && !explicitCuda) {
+	if (userOptIn) {
 		if (!(await resolveExperimentalNvidiaCudaExportScriptPath())) {
 			return "cuda-wrapper-unavailable";
 		}
@@ -2021,8 +2053,52 @@ export async function getExperimentalNvidiaCudaExportSkipReason(
 
 	return getNvidiaCudaAudioExportSkipReason(options.audioOptions?.audioMode, {
 		allowValidatedFallbackCandidate:
-			packagedAutoCandidate || isNvidiaCudaForceVideoOnlyEnabled(),
+			isValidatedNvidiaCudaFallbackCandidate(options) || isNvidiaCudaForceVideoOnlyEnabled(),
 	});
+}
+
+export async function getNativeExportCapabilities(): Promise<NativeExportCapabilities> {
+	if (process.platform !== "win32") {
+		return {
+			platform: process.platform,
+			nvidiaCuda: {
+				available: false,
+				skipReason: "not-windows",
+				hasNvidiaGpu: null,
+				hasWrapper: false,
+				explicitEnabled: isExplicitNvidiaCudaExportEnabled(),
+				explicitDisabled: isExplicitNvidiaCudaExportDisabled(),
+				userOptInRequired: true,
+			},
+		};
+	}
+
+	const explicitEnabled = isExplicitNvidiaCudaExportEnabled();
+	const explicitDisabled = isExplicitNvidiaCudaExportDisabled();
+	const wrapperPath = await resolveExperimentalNvidiaCudaExportScriptPath();
+	const hasNvidiaGpu = await probeNvidiaGpuForCudaExportCandidate();
+	const skipReason = explicitDisabled
+		? "env-disabled"
+		: !wrapperPath
+			? "cuda-wrapper-unavailable"
+			: hasNvidiaGpu === false
+				? "nvidia-gpu-unavailable"
+				: hasNvidiaGpu === null
+					? "nvidia-gpu-probe-unavailable"
+					: null;
+
+	return {
+		platform: process.platform,
+		nvidiaCuda: {
+			available: skipReason === null,
+			skipReason,
+			hasNvidiaGpu,
+			hasWrapper: Boolean(wrapperPath),
+			explicitEnabled,
+			explicitDisabled,
+			userOptInRequired: !explicitEnabled,
+		},
+	};
 }
 
 export async function resolveExperimentalNvidiaCudaExportScriptPath() {
@@ -2739,7 +2815,9 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 	const startedAt = getNowMs();
 	const startedAtIso = new Date().toISOString();
 	const timeoutMs = Math.max(20 * 60 * 1000, options.durationSec * 2000);
-	const stallTimeoutMs = getNvidiaCudaAutoStallTimeoutMs();
+	const stallTimeoutMs = getNvidiaCudaAutoStallTimeoutMs(
+		isValidatedNvidiaCudaFallbackCandidate(options),
+	);
 	const ffmpegDirectory = path.dirname(ffmpegPath);
 	const pathKey = process.platform === "win32" ? "Path" : "PATH";
 	const env = {
@@ -3296,10 +3374,11 @@ export async function exportNativeStaticLayoutVideo(
 				const nvidiaCudaSkipReason =
 					await getExperimentalNvidiaCudaExportSkipReason(options);
 				let shouldTryNvidiaCuda = nvidiaCudaSkipReason === null;
+				const validatedCudaFallbackCandidate =
+					isValidatedNvidiaCudaFallbackCandidate(options);
 				if (
 					shouldTryNvidiaCuda &&
-					(isPackagedNvidiaCudaExportAutoCandidateActive() ||
-						isNvidiaCudaForceVideoOnlyEnabled()) &&
+					(validatedCudaFallbackCandidate || isNvidiaCudaForceVideoOnlyEnabled()) &&
 					(experimentalNvidiaCudaOptions.audioOptions?.audioMode ?? "none") !== "none"
 				) {
 					experimentalNvidiaCudaOptions = {
@@ -3312,13 +3391,13 @@ export async function exportNativeStaticLayoutVideo(
 							audioMode:
 								experimentalNvidiaCudaOptions.audioOptions?.audioMode ?? "none",
 							forcedByEnv: isNvidiaCudaForceVideoOnlyEnabled(),
-							packagedAutoCandidate: isPackagedNvidiaCudaExportAutoCandidateActive(),
+							userOptIn: options.experimentalNvidiaCudaExport === true,
 						},
 					);
 				}
 				const shouldLogNvidiaCudaSkip =
 					isExplicitNvidiaCudaExportEnabled() ||
-					(isPackagedNvidiaCudaExportAutoCandidateEnabled() &&
+					(options.experimentalNvidiaCudaExport === true &&
 						nvidiaCudaSkipReason !== "env-disabled");
 				if (
 					!shouldTryNvidiaCuda &&
@@ -3331,7 +3410,7 @@ export async function exportNativeStaticLayoutVideo(
 							reason: nvidiaCudaSkipReason,
 							audioMode: options.audioOptions?.audioMode ?? "none",
 							overrideEnv: NVIDIA_CUDA_ALLOW_AUDIO_EXPORT_ENV,
-							packagedAutoCandidate: isPackagedNvidiaCudaExportAutoCandidateEnabled(),
+							userOptIn: options.experimentalNvidiaCudaExport === true,
 						},
 					);
 				}
@@ -3894,7 +3973,7 @@ export async function resolveNativeVideoEncoder(
 export function canCopyAudioCodecIntoMp4(codec?: string | null) {
 	const normalized = (codec ?? "").trim().toLowerCase();
 	if (!normalized) {
-		return true;
+		return false;
 	}
 
 	return (

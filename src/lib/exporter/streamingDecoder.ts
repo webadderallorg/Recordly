@@ -1,10 +1,7 @@
 import { WebDemuxer } from "web-demuxer";
 import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
-import {
-	createReadableMediaResourceFile,
-	resolveMediaResourceUrl,
-} from "./localMediaSource";
+import { createReadableMediaResourceFile, resolveMediaResourceUrl } from "./localMediaSource";
 
 const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
@@ -24,6 +21,10 @@ export interface DecodedVideoInfo {
 	hasAudio: boolean;
 	audioCodec?: string;
 	audioSampleRate?: number;
+}
+
+interface StreamingVideoDecoderLoadOptions {
+	forceReadableFileSource?: boolean;
 }
 
 /** Decoder retains ownership of the VideoFrame and closes it after use. */
@@ -76,7 +77,10 @@ export class StreamingVideoDecoder {
 	private readonly maxDecodeQueue: number;
 	private readonly maxPendingFrames: number;
 
-	constructor(options?: { maxDecodeQueue?: number; maxPendingFrames?: number }) {
+	constructor(options?: {
+		maxDecodeQueue?: number;
+		maxPendingFrames?: number;
+	}) {
 		this.maxDecodeQueue = Math.max(
 			1,
 			Math.floor(options?.maxDecodeQueue ?? DEFAULT_MAX_DECODE_QUEUE),
@@ -87,7 +91,10 @@ export class StreamingVideoDecoder {
 		);
 	}
 
-	async loadMetadata(videoUrl: string): Promise<DecodedVideoInfo> {
+	async loadMetadata(
+		videoUrl: string,
+		options: StreamingVideoDecoderLoadOptions = {},
+	): Promise<DecodedVideoInfo> {
 		if (this.decoder) {
 			try {
 				if (this.decoder.state === "configured") {
@@ -119,22 +126,26 @@ export class StreamingVideoDecoder {
 		};
 
 		let mediaInfo;
-		try {
-			mediaInfo = await loadMediaInfo(resourceUrl);
-		} catch (error) {
-			console.warn(
-				"[StreamingVideoDecoder] Direct source load failed, retrying with file fallback:",
-				error,
-			);
-			const currentDemuxer = this.demuxer;
-			if (currentDemuxer) {
-				try {
-					(currentDemuxer as unknown as { destroy: () => void }).destroy();
-				} catch {
-					// Ignore cleanup errors before fallback re-init.
-				}
-			}
+		if (options.forceReadableFileSource) {
 			mediaInfo = await loadMediaInfo(await createReadableMediaResourceFile(videoUrl));
+		} else {
+			try {
+				mediaInfo = await loadMediaInfo(resourceUrl);
+			} catch (error) {
+				console.warn(
+					"[StreamingVideoDecoder] Direct source load failed, retrying with file fallback:",
+					error,
+				);
+				const currentDemuxer = this.demuxer;
+				if (currentDemuxer) {
+					try {
+						(currentDemuxer as unknown as { destroy: () => void }).destroy();
+					} catch {
+						// Ignore cleanup errors before fallback re-init.
+					}
+				}
+				mediaInfo = await loadMediaInfo(await createReadableMediaResourceFile(videoUrl));
+			}
 		}
 
 		const videoStream = mediaInfo.streams.find((s) => s.codec_type_string === "video");
@@ -628,7 +639,11 @@ export class StreamingVideoDecoder {
 				}
 				const effectiveStart = Math.max(cursor, srStart);
 				if (srEnd > effectiveStart) {
-					result.push({ startSec: effectiveStart, endSec: srEnd, speed: sr.speed });
+					result.push({
+						startSec: effectiveStart,
+						endSec: srEnd,
+						speed: sr.speed,
+					});
 				}
 				cursor = Math.max(cursor, srEnd);
 			}

@@ -82,11 +82,11 @@ async function loadSavedProjectMediaPaths() {
 						editor?: { webcam?: { sourcePath?: unknown } };
 					}>(await fs.readFile(projectPath, "utf-8"));
 				} catch (error) {
-					console.warn("[prune] Skipping unreadable project while pruning recordings", {
+					console.warn("[prune] Aborting recording prune because a saved project is unreadable", {
 						projectPath,
 						error,
 					});
-					return;
+					throw error;
 				}
 				const candidatePaths = [
 					rawProject.videoPath,

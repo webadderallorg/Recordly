@@ -8,6 +8,7 @@ export interface ExportConfig {
 	backendPreference?: ExportBackendPreference;
 	preferredRenderBackend?: ExportRenderBackend;
 	experimentalNativeExport?: boolean;
+	experimentalNvidiaCudaExport?: boolean;
 	maxEncodeQueue?: number;
 	maxDecodeQueue?: number;
 	maxPendingFrames?: number;

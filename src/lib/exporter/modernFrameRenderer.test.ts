@@ -304,6 +304,28 @@ describe("ModernFrameRenderer blur export path", () => {
 });
 
 describe("ModernFrameRenderer webcam frame cache", () => {
+	it("stages webcam video frames on WebGPU instead of using retained frame uploads", () => {
+		const renderer = createRenderer() as any;
+		renderer.rendererBackend = "webgpu";
+
+		const frame = {
+			displayWidth: 320,
+			displayHeight: 180,
+			timestamp: 0,
+		} as VideoFrame;
+
+		const result = renderer.stageVideoFrameForTexture(frame, "webcam", 640, 360);
+
+		expect(result).toBe(renderer.webcamVideoFrameStagingCanvas);
+		expect(renderer.webcamVideoFrameStagingCtx.drawImage).toHaveBeenCalledWith(
+			frame,
+			0,
+			0,
+			320,
+			180,
+		);
+	});
+
 	it("uses staging canvas instead of recursing when WebGPU frame retention fails", () => {
 		const renderer = createRenderer() as any;
 		const originalVideoFrame = (globalThis as any).VideoFrame;
@@ -355,7 +377,12 @@ describe("ModernFrameRenderer webcam frame cache", () => {
 	it("bypasses the refresh throttle for cropped webcam regions", () => {
 		const renderer = createRenderer() as any;
 
-		renderer.config.webcam.cropRegion = { x: 0.25, y: 0, width: 0.5, height: 1 };
+		renderer.config.webcam.cropRegion = {
+			x: 0.25,
+			y: 0,
+			width: 0.5,
+			height: 1,
+		};
 		renderer.webcamFrameCacheCanvas = { width: 640, height: 720 };
 		renderer.lastWebcamCacheRefreshTime = 10;
 		renderer.currentVideoTime = 10.1;
@@ -505,5 +532,222 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 			(globalThis as any).document.createElement = originalCreateElement;
 			vi.useRealTimers();
 		}
+	});
+
+	it("keeps the webcam live when sync uses an offset timeline", () => {
+		const renderer = createRenderer() as any;
+		renderer.config.webcam = {
+			...DEFAULT_WEBCAM_OVERLAY,
+			enabled: true,
+			timeOffsetMs: 500,
+		};
+		renderer.currentVideoTime = 10;
+		renderer.lastSyncedWebcamTime = 9.5;
+		renderer.webcamVideoElement = {
+			readyState: 2,
+			seeking: false,
+			videoWidth: 640,
+			videoHeight: 360,
+			duration: Number.NaN,
+		};
+		renderer.webcamRootContainer = {
+			visible: false,
+			position: { set: vi.fn() },
+		};
+		renderer.webcamContainer = {
+			addChildAt: vi.fn(),
+		};
+		renderer.webcamMaskGraphics = {
+			clear: vi.fn(),
+			moveTo: vi.fn(),
+			lineTo: vi.fn(),
+			closePath: vi.fn(),
+			fill: vi.fn(),
+		};
+		renderer.webcamShadowLayers = [];
+		renderer.animationState = {
+			appliedScale: 1,
+		};
+
+		renderer.updateWebcamOverlay();
+
+		expect(renderer.webcamRootContainer.visible).toBe(true);
+		expect(renderer.webcamSprite).toBeTruthy();
+	});
+
+	it("keeps the webcam live when the media element time is current but lastSyncedWebcamTime is stale", () => {
+		const renderer = createRenderer() as any;
+		renderer.config.webcam = {
+			...DEFAULT_WEBCAM_OVERLAY,
+			enabled: true,
+			timeOffsetMs: 500,
+		};
+		renderer.currentVideoTime = 10;
+		renderer.lastSyncedWebcamTime = 8;
+		renderer.webcamVideoElement = {
+			currentTime: 9.5,
+			readyState: 2,
+			seeking: false,
+			videoWidth: 640,
+			videoHeight: 360,
+			duration: Number.NaN,
+		};
+		renderer.webcamRootContainer = {
+			visible: false,
+			position: { set: vi.fn() },
+		};
+		renderer.webcamContainer = {
+			addChildAt: vi.fn(),
+		};
+		renderer.webcamMaskGraphics = {
+			clear: vi.fn(),
+			moveTo: vi.fn(),
+			lineTo: vi.fn(),
+			closePath: vi.fn(),
+			fill: vi.fn(),
+		};
+		renderer.webcamShadowLayers = [];
+		renderer.animationState = {
+			appliedScale: 1,
+		};
+
+		renderer.updateWebcamOverlay();
+
+		expect(renderer.webcamRootContainer.visible).toBe(true);
+		expect(renderer.webcamSprite).toBeTruthy();
+	});
+
+	it("snapshots media-element webcam frames into the cache before rendering", () => {
+		const renderer = createRenderer() as any;
+		renderer.config.webcam = {
+			...DEFAULT_WEBCAM_OVERLAY,
+			enabled: true,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+		};
+		renderer.currentVideoTime = 4;
+		const previousHtmlVideoElement = (
+			globalThis as typeof globalThis & { HTMLVideoElement?: unknown }
+		).HTMLVideoElement;
+		class MockHtmlVideoElement {
+			currentTime = 4;
+			readyState = 2;
+			seeking = false;
+			videoWidth = 640;
+			videoHeight = 360;
+			duration = Number.NaN;
+		}
+		Object.assign(globalThis, {
+			HTMLVideoElement: MockHtmlVideoElement,
+		});
+
+		const webcamVideoElement = new MockHtmlVideoElement();
+
+		try {
+			const renderableSource = renderer.resolveRenderableWebcamSource(
+				webcamVideoElement,
+				640,
+				360,
+				true,
+			);
+
+			expect(renderableSource?.source).toBe(renderer.webcamFrameCacheCanvas);
+			expect(renderer.webcamFrameCacheCtx.drawImage).toHaveBeenCalledWith(
+				webcamVideoElement,
+				0,
+				0,
+				640,
+				360,
+				0,
+				0,
+				640,
+				360,
+			);
+		} finally {
+			Object.assign(globalThis, {
+				HTMLVideoElement: previousHtmlVideoElement,
+			});
+		}
+	});
+
+	it("renders decoder-backed webcam frames directly for the default crop region", () => {
+		const renderer = createRenderer() as any;
+		renderer.config.webcam = {
+			...DEFAULT_WEBCAM_OVERLAY,
+			enabled: true,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+		};
+
+		const previousVideoFrame = (globalThis as typeof globalThis & { VideoFrame?: unknown })
+			.VideoFrame;
+		class MockVideoFrame {}
+		Object.assign(globalThis, {
+			VideoFrame: MockVideoFrame,
+		});
+
+		try {
+			const webcamFrame = new MockVideoFrame();
+			const renderableSource = renderer.resolveRenderableWebcamSource(
+				webcamFrame,
+				640,
+				360,
+				true,
+			);
+
+			expect(renderableSource?.source).toBe(webcamFrame);
+			expect(renderer.webcamFrameCacheCanvas).toBeNull();
+		} finally {
+			Object.assign(globalThis, {
+				VideoFrame: previousVideoFrame,
+			});
+		}
+	});
+});
+
+describe("ModernFrameRenderer temporal webcam sync", () => {
+	it("pins webcam sync to the frame center during temporal blur sampling", async () => {
+		const renderer = createRenderer() as any;
+		renderer.config.annotationRegions = [];
+		renderer.config.zoomTemporalMotionBlur = 1;
+		renderer.config.zoomMotionBlurSampleCount = 3;
+		renderer.config.zoomMotionBlurShutterFraction = 0.5;
+		renderer.app = { canvas: createMockCanvas() };
+		renderer.updateCaptionLayer = vi.fn();
+		renderer.renderSceneSample = vi.fn(async (sampleTimestamp: number) => ({
+			timeMs: sampleTimestamp / 1000,
+			cursorTimeMs: sampleTimestamp / 1000,
+			backgroundTimelineTimeMs: sampleTimestamp / 1000,
+			sceneTransform: { scale: 1, x: 0, y: 0 },
+			zoom: { scale: 1, focusX: 0.5, focusY: 0.5, progress: 0 },
+		}));
+
+		await renderer.renderTemporalMotionBlurFrame(
+			1_000_000,
+			1_000_000,
+			1_000_000,
+			33_333,
+			{
+				stageSize: { width: 1920, height: 1080 },
+				videoSize: { width: 1920, height: 1080 },
+				baseScale: 1,
+				baseOffset: { x: 0, y: 0 },
+				maskRect: {
+					x: 0,
+					y: 0,
+					width: 1920,
+					height: 1080,
+					sourceCrop: { x: 0, y: 0, width: 1, height: 1 },
+				},
+			},
+		);
+
+		expect(renderer.renderSceneSample).toHaveBeenCalledTimes(3);
+		expect(renderer.renderSceneSample.mock.calls.map((call: unknown[]) => call[6])).toEqual([
+			1,
+			1,
+			1,
+		]);
+		expect(
+			new Set(renderer.renderSceneSample.mock.calls.map((call: unknown[]) => call[0])).size,
+		).toBeGreaterThan(1);
 	});
 });

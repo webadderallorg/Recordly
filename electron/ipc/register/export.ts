@@ -18,6 +18,7 @@ import {
 	enqueueNativeVideoExportFrameWrites,
 	exportNativeStaticLayoutVideo,
 	flushNativeVideoExportPendingWriteRequests,
+	getNativeExportCapabilities,
 	getNativeVideoExportMaxQueuedWriteBytes,
 	getNativeVideoExportSessionError,
 	isHardwareAcceleratedVideoEncoder,
@@ -406,6 +407,21 @@ export function registerExportHandlers() {
 			};
 		} catch (error) {
 			console.warn("[probe-native-video-metadata] Failed:", error);
+			return {
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
+	});
+
+	ipcMain.handle("get-native-export-capabilities", async () => {
+		try {
+			return {
+				success: true,
+				capabilities: await getNativeExportCapabilities(),
+			};
+		} catch (error) {
+			console.warn("[native-export-capabilities] Failed:", error);
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : String(error),

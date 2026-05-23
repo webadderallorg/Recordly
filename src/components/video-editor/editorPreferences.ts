@@ -6,6 +6,7 @@ import {
 	stripPersistedDevMotionBlurSettings,
 	type ProjectEditorState,
 } from "./projectPersistence";
+import { loadAppSetting, saveAppSetting } from "../../lib/appSettings";
 
 type PersistedEditorControls = Pick<
 	ProjectEditorState,
@@ -422,12 +423,13 @@ export function normalizeEditorPreferences(
 }
 
 export function loadEditorPreferences(): EditorPreferences {
-	if (typeof globalThis.localStorage === "undefined") {
-		return DEFAULT_EDITOR_PREFERENCES;
+	const persisted = loadAppSetting<unknown>(EDITOR_PREFERENCES_STORAGE_KEY);
+	if (persisted !== null) {
+		return normalizeEditorPreferences(persisted);
 	}
 
 	try {
-		const stored = globalThis.localStorage.getItem(EDITOR_PREFERENCES_STORAGE_KEY);
+		const stored = globalThis.localStorage?.getItem(EDITOR_PREFERENCES_STORAGE_KEY);
 		if (!stored) {
 			return DEFAULT_EDITOR_PREFERENCES;
 		}
@@ -439,16 +441,14 @@ export function loadEditorPreferences(): EditorPreferences {
 }
 
 export function saveEditorPreferences(preferences: Partial<EditorPreferences>): void {
-	if (typeof globalThis.localStorage === "undefined") {
-		return;
-	}
-
 	try {
 		const current = loadEditorPreferences();
 		const merged = normalizeEditorPreferences({ ...current, ...preferences }, current);
-		globalThis.localStorage.setItem(
+		const persisted = stripPersistedDevMotionBlurSettings(merged);
+		saveAppSetting(EDITOR_PREFERENCES_STORAGE_KEY, persisted);
+		globalThis.localStorage?.setItem(
 			EDITOR_PREFERENCES_STORAGE_KEY,
-			JSON.stringify(stripPersistedDevMotionBlurSettings(merged)),
+			JSON.stringify(persisted),
 		);
 	} catch {
 		// Ignore storage failures so editor controls still work.
@@ -456,12 +456,13 @@ export function saveEditorPreferences(preferences: Partial<EditorPreferences>): 
 }
 
 export function loadEditorPresets(): EditorPreset[] {
-	if (typeof globalThis.localStorage === "undefined") {
-		return [];
+	const persisted = loadAppSetting<unknown>(EDITOR_PRESETS_STORAGE_KEY);
+	if (persisted !== null) {
+		return normalizeEditorPresets(persisted);
 	}
 
 	try {
-		const stored = globalThis.localStorage.getItem(EDITOR_PRESETS_STORAGE_KEY);
+		const stored = globalThis.localStorage?.getItem(EDITOR_PRESETS_STORAGE_KEY);
 		if (!stored) {
 			return [];
 		}
@@ -473,14 +474,11 @@ export function loadEditorPresets(): EditorPreset[] {
 }
 
 export function saveEditorPresets(presets: EditorPreset[]): boolean {
-	if (typeof globalThis.localStorage === "undefined") {
-		return false;
-	}
-
 	try {
 		const normalized = normalizeEditorPresets(presets);
-		globalThis.localStorage.setItem(EDITOR_PRESETS_STORAGE_KEY, JSON.stringify(normalized));
-		return true;
+		const persisted = saveAppSetting(EDITOR_PRESETS_STORAGE_KEY, normalized);
+		globalThis.localStorage?.setItem(EDITOR_PRESETS_STORAGE_KEY, JSON.stringify(normalized));
+		return persisted || typeof globalThis.localStorage !== "undefined";
 	} catch {
 		// Ignore storage failures so editor controls still work.
 		return false;

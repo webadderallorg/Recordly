@@ -1,8 +1,10 @@
+import { readFileSync, writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import { app, ipcMain } from "electron";
 import { hideCursor } from "../../cursorHider";
 import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from "../../windows";
 import {
+	APP_SETTINGS_FILE,
 	COUNTDOWN_SETTINGS_FILE,
 	RECORDINGS_SETTINGS_FILE,
 	SHORTCUTS_FILE,
@@ -40,6 +42,24 @@ function getBrowserMicrophoneProfileFromEnv() {
 	};
 }
 
+function readAppSettingsStore(): Record<string, unknown> {
+	try {
+		const content = readFileSync(APP_SETTINGS_FILE, "utf-8");
+		const parsed = parseJsonWithByteOrderMark<unknown>(content);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+			return {};
+		}
+
+		return parsed as Record<string, unknown>;
+	} catch {
+		return {};
+	}
+}
+
+function writeAppSettingsStore(store: Record<string, unknown>) {
+	writeFileSync(APP_SETTINGS_FILE, JSON.stringify(store, null, 2), "utf-8");
+}
+
 export function registerSettingsHandlers() {
   ipcMain.handle('app:getVersion', () => {
     return app.getVersion()
@@ -48,6 +68,41 @@ export function registerSettingsHandlers() {
   ipcMain.handle('get-platform', () => {
     return process.platform;
   });
+
+	ipcMain.on("app-settings:get", (event, key: unknown) => {
+		try {
+			if (typeof key !== "string" || key.length === 0) {
+				event.returnValue = { success: false, value: null };
+				return;
+			}
+
+			const store = readAppSettingsStore();
+			event.returnValue = {
+				success: true,
+				value: Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null,
+			};
+		} catch (error) {
+			console.error("Failed to read app setting:", error);
+			event.returnValue = { success: false, value: null };
+		}
+	});
+
+	ipcMain.on("app-settings:set", (event, key: unknown, value: unknown) => {
+		try {
+			if (typeof key !== "string" || key.length === 0) {
+				event.returnValue = { success: false };
+				return;
+			}
+
+			const store = readAppSettingsStore();
+			store[key] = value;
+			writeAppSettingsStore(store);
+			event.returnValue = { success: true };
+		} catch (error) {
+			console.error("Failed to save app setting:", error);
+			event.returnValue = { success: false };
+		}
+	});
 
   // ---------------------------------------------------------------------------
   // Cursor hiding for the browser-capture fallback.

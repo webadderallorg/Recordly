@@ -512,8 +512,7 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 			new Set(
 				companionCandidates.flatMap((candidate) =>
 					candidate.usablePaths.filter(
-						(companionPath) =>
-							companionPath === candidate.micPath || companionPath === candidate.systemPath,
+						(companionPath) => companionPath === candidate.micPath,
 					),
 				),
 			),

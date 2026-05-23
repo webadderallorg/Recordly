@@ -1,4 +1,4 @@
-import type { ExportRenderBackend } from "./types";
+import type { ExportBackendPreference, ExportRenderBackend } from "./types";
 
 export type LightningRuntimePlatform = "darwin" | "win32" | "linux" | "unknown";
 
@@ -26,6 +26,116 @@ export function normalizeLightningRuntimePlatform(
 
 export function shouldPreferNativeAutoBackend(_platform: LightningRuntimePlatform): boolean {
 	return _platform === "darwin" || _platform === "win32";
+}
+
+export type LightningExportRoute = "native-static-layout" | "breeze-stream" | "webcodecs";
+
+export interface LightningExportRouteDecision {
+	route: LightningExportRoute;
+	status: "selected" | "fallback" | "rejected";
+	reasons: string[];
+}
+
+export interface LightningExportRoutePlan {
+	selectedRoute: LightningExportRoute;
+	decisions: LightningExportRouteDecision[];
+}
+
+export function shouldPreferNativeStaticLayoutBeforeBreeze(
+	platform: LightningRuntimePlatform,
+	backendPreference: ExportBackendPreference,
+): boolean {
+	return backendPreference === "auto" && platform === "win32";
+}
+
+export function planLightningExportRoutes(options: {
+	backendPreference: ExportBackendPreference;
+	platform: LightningRuntimePlatform;
+	nativeStaticLayoutAvailable: boolean;
+	nativeStaticLayoutSkipReasons?: string[];
+}): LightningExportRoutePlan {
+	const decisions: LightningExportRouteDecision[] = [];
+	const nativeStaticLayoutSkipReasons = options.nativeStaticLayoutSkipReasons ?? [];
+	const canUseNativeStaticLayout =
+		options.nativeStaticLayoutAvailable && nativeStaticLayoutSkipReasons.length === 0;
+
+	const addNativeStaticLayoutDecision = (status: LightningExportRouteDecision["status"]) => {
+		decisions.push({
+			route: "native-static-layout",
+			status,
+			reasons: canUseNativeStaticLayout
+				? ["visually-compatible"]
+				: nativeStaticLayoutSkipReasons.length > 0
+					? nativeStaticLayoutSkipReasons
+					: ["native-static-unavailable"],
+		});
+	};
+
+	if (options.backendPreference === "webcodecs") {
+		decisions.push({
+			route: "webcodecs",
+			status: "selected",
+			reasons: ["user-selected-webcodecs"],
+		});
+		return { selectedRoute: "webcodecs", decisions };
+	}
+
+	const preferStaticFirst =
+		options.backendPreference === "breeze" ||
+		shouldPreferNativeStaticLayoutBeforeBreeze(options.platform, options.backendPreference);
+
+	if (preferStaticFirst) {
+		addNativeStaticLayoutDecision(canUseNativeStaticLayout ? "selected" : "rejected");
+		decisions.push({
+			route: "breeze-stream",
+			status: canUseNativeStaticLayout ? "fallback" : "selected",
+			reasons: [
+				options.backendPreference === "breeze"
+					? "user-selected-breeze"
+					: "windows-native-static-fallback",
+			],
+		});
+		decisions.push({
+			route: "webcodecs",
+			status: "fallback",
+			reasons: ["breeze-unavailable-fallback"],
+		});
+		return {
+			selectedRoute: canUseNativeStaticLayout ? "native-static-layout" : "breeze-stream",
+			decisions,
+		};
+	}
+
+	if (options.backendPreference === "auto" && shouldPreferNativeAutoBackend(options.platform)) {
+		decisions.push({
+			route: "native-static-layout",
+			status: "rejected",
+			reasons: ["platform-does-not-use-native-static-layout"],
+		});
+		decisions.push({
+			route: "breeze-stream",
+			status: "selected",
+			reasons: ["platform-prefers-native-streaming"],
+		});
+		decisions.push({
+			route: "webcodecs",
+			status: "fallback",
+			reasons: ["breeze-unavailable-fallback"],
+		});
+		return { selectedRoute: "breeze-stream", decisions };
+	}
+
+	decisions.push({
+		route: "webcodecs",
+		status: "selected",
+		reasons: ["default-webcodecs-first"],
+	});
+	decisions.push({
+		route: "breeze-stream",
+		status: "fallback",
+		reasons: ["webcodecs-software-or-unavailable-fallback"],
+	});
+	return { selectedRoute: "webcodecs", decisions };
 }
 
 export function getDefaultLightningRenderBackend(): ExportRenderBackend {

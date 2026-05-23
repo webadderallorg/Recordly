@@ -37,9 +37,27 @@ function createStorageMock(initialValues: Record<string, string> = {}): Storage 
 	};
 }
 
+function stubElectronSettings(initialValues: Record<string, unknown> = {}) {
+	const store = new Map(Object.entries(initialValues));
+
+	Object.defineProperty(globalThis, "electronAPI", {
+		configurable: true,
+		value: {
+			getAppSetting: (key: string) => (store.has(key) ? store.get(key) : null),
+			setAppSetting: (key: string, value: unknown) => {
+				store.set(key, value);
+				return true;
+			},
+		} as Pick<Window["electronAPI"], "getAppSetting" | "setAppSetting">,
+	});
+
+	return store;
+}
+
 describe("editorPreferences", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
+		Reflect.deleteProperty(globalThis, "electronAPI");
 	});
 
 	it("normalizes invalid values back to safe defaults", () => {
@@ -69,10 +87,10 @@ describe("editorPreferences", () => {
 		expect(DEFAULT_EDITOR_PREFERENCES.exportQuality).toBe("source");
 	});
 
-	it("defaults cursor preferences to macOS at 2.5x with lighter sway", () => {
+	it("defaults cursor preferences to macOS at 2.5x with gentler sway", () => {
 		expect(DEFAULT_EDITOR_PREFERENCES.cursorStyle).toBe("macos");
 		expect(DEFAULT_EDITOR_PREFERENCES.cursorSize).toBe(2.5);
-		expect(DEFAULT_EDITOR_PREFERENCES.cursorSway).toBe(0.25);
+		expect(DEFAULT_EDITOR_PREFERENCES.cursorSway).toBe(0.4);
 	});
 
 	it("defaults MP4 exports to the Lightning pipeline", () => {
@@ -309,6 +327,24 @@ describe("editorPreferences", () => {
 		});
 	});
 
+	it("loads editor preferences from Electron app settings when available", () => {
+		stubElectronSettings({
+			[EDITOR_PREFERENCES_STORAGE_KEY]: {
+				wallpaper: "#0f172a",
+				showCursor: false,
+				customAspectWidth: "3",
+				customAspectHeight: "2",
+			},
+		});
+
+		expect(loadEditorPreferences()).toMatchObject({
+			wallpaper: "#0f172a",
+			showCursor: false,
+			customAspectWidth: "3",
+			customAspectHeight: "2",
+		});
+	});
+
 	it("saves editor presets and reports success", () => {
 		const localStorage = createStorageMock();
 		vi.stubGlobal("localStorage", localStorage);
@@ -330,6 +366,32 @@ describe("editorPreferences", () => {
 
 		expect(localStorage.getItem(EDITOR_PRESETS_STORAGE_KEY)).not.toBeNull();
 		expect(loadEditorPresets()).toMatchObject([
+			{
+				id: "preset-1",
+				name: "Demo Preset",
+			},
+		]);
+	});
+
+	it("saves editor presets to Electron app settings when available", () => {
+		const settingsStore = stubElectronSettings();
+
+		expect(
+			saveEditorPresets([
+				{
+					id: "preset-1",
+					name: "Demo Preset",
+					createdAt: "2026-05-01T00:00:00.000Z",
+					updatedAt: "2026-05-02T00:00:00.000Z",
+					snapshot: {
+						...DEFAULT_EDITOR_PREFERENCES,
+						autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+					},
+				},
+			]),
+		).toBe(true);
+
+		expect(settingsStore.get(EDITOR_PRESETS_STORAGE_KEY)).toMatchObject([
 			{
 				id: "preset-1",
 				name: "Demo Preset",
