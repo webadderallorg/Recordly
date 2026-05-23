@@ -134,4 +134,89 @@ describe("AudioProcessor offline render preparation", () => {
 		expect(loadAudioFileDemuxer).not.toHaveBeenCalled();
 		expect(renderAndMuxOfflineAudio).toHaveBeenCalled();
 	});
+
+	it("reuses decoded buffers for repeated overlay audio paths", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const mainBuffer = { duration: 10, numberOfChannels: 2 } as AudioBuffer;
+		const clickBuffer = { duration: 0.2, numberOfChannels: 1 } as AudioBuffer;
+		const decodeAudioFromUrl = vi
+			.spyOn(processor, "decodeAudioFromUrl")
+			.mockImplementation(async (url: string) => {
+				if (url === "file:///tmp/recording.mp4") {
+					return mainBuffer;
+				}
+				if (url === "file:///tmp/click.wav") {
+					return clickBuffer;
+				}
+				return null;
+			});
+		vi.spyOn(processor, "getMediaDurationSec").mockResolvedValue(10);
+
+		await processor.prepareOfflineRender(
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			[
+				{
+					id: "click-a",
+					startMs: 1_000,
+					endMs: 1_100,
+					audioPath: "file:///tmp/click.wav",
+					volume: 1,
+				},
+				{
+					id: "click-b",
+					startMs: 2_000,
+					endMs: 2_100,
+					audioPath: "file:///tmp/click.wav",
+					volume: 0.8,
+				},
+			] as never[],
+			["/tmp/recording.mp4"],
+		);
+
+		const clickDecodeCalls = decodeAudioFromUrl.mock.calls.filter(
+			([url]) => url === "file:///tmp/click.wav",
+		).length;
+		expect(clickDecodeCalls).toBe(1);
+	});
+
+	it("caps cached overlay buffers to avoid unbounded growth", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const mainBuffer = { duration: 10, numberOfChannels: 2 } as AudioBuffer;
+		const clickBuffer = { duration: 0.2, numberOfChannels: 1 } as AudioBuffer;
+		const decodeAudioFromUrl = vi
+			.spyOn(processor, "decodeAudioFromUrl")
+			.mockImplementation(async (url: string) => {
+				if (url === "file:///tmp/recording.mp4") {
+					return mainBuffer;
+				}
+				if (url.startsWith("file:///tmp/click-")) {
+					return clickBuffer;
+				}
+				return null;
+			});
+		vi.spyOn(processor, "getMediaDurationSec").mockResolvedValue(10);
+
+		const audioRegions = Array.from({ length: 102 }, (_, index) => ({
+			id: `click-${index}`,
+			startMs: 1_000 + index * 10,
+			endMs: 1_100 + index * 10,
+			audioPath: `file:///tmp/click-${index < 101 ? index : 100}.wav`,
+			volume: 1,
+		}));
+
+		await processor.prepareOfflineRender(
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			audioRegions as never[],
+			["/tmp/recording.mp4"],
+		);
+
+		const cappedPathDecodeCalls = decodeAudioFromUrl.mock.calls.filter(
+			([url]) => url === "file:///tmp/click-100.wav",
+		).length;
+		expect(cappedPathDecodeCalls).toBe(2);
+	});
 });

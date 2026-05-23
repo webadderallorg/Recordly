@@ -149,6 +149,48 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		});
 	});
 
+	it("forces rendered audio when extension click-sound capture is active", () => {
+		const speedRegions: SpeedRegion[] = [
+			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
+		];
+		const exporter = createExporter({
+			speedRegions,
+			sourceAudioFallbackPaths: ["C:\\recordly\\recording.system.wav"],
+		}) as ReturnType<typeof createExporter> & { extensionAudioCaptureEnabled: boolean };
+		exporter.extensionAudioCaptureEnabled = true;
+
+		expect(
+			exporter.buildNativeAudioPlan({
+				...videoInfo,
+				hasAudio: false,
+				audioCodec: undefined,
+				audioSampleRate: undefined,
+			}),
+		).toMatchObject({
+			audioMode: "edited-track",
+			strategy: "offline-render-fallback",
+		});
+	});
+
+	it("produces an edited-track plan when extension click-sound capture is the only audio source", () => {
+		const exporter = createExporter({}) as ReturnType<typeof createExporter> & {
+			extensionAudioCaptureEnabled: boolean;
+		};
+		exporter.extensionAudioCaptureEnabled = true;
+
+		expect(
+			exporter.buildNativeAudioPlan({
+				...videoInfo,
+				hasAudio: false,
+				audioCodec: undefined,
+				audioSampleRate: undefined,
+			}),
+		).toMatchObject({
+			audioMode: "edited-track",
+			strategy: "offline-render-fallback",
+		});
+	});
+
 	it("mixes companion sidecar audio when the source MP4 also has an audio track", () => {
 		const videoPath = "C:\\recordly\\recording.mp4";
 		const micPath = "C:\\recordly\\recording.mic.wav";

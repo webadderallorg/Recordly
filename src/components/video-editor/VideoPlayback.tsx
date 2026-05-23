@@ -117,6 +117,7 @@ import {
 	mapCursorToCanvasNormalized,
 	mapSmoothedCursorToCanvasNormalized,
 } from "@/lib/extensions/cursorCoordinates";
+import { selectCursorClickForEmission } from "@/lib/extensions/cursorClickSelection";
 import {
 	clearCursorEffects,
 	executeExtensionCursorEffects,
@@ -2286,43 +2287,38 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 					// Emit cursor:click events for extensions
 					if (isPlayingRef.current && telemetry.length > 0) {
-						for (let i = telemetry.length - 1; i >= 0; i--) {
-							const p = telemetry[i];
-							if (p.timeMs > timeMs) continue;
-							if (p.timeMs < timeMs - 100) break;
-							if (
-								p.interactionType &&
-								p.interactionType !== "move" &&
-								p.timeMs !== lastEmittedClickTimeMsRef.current
-							) {
-								const extensionCursor = mapCursorToCanvasNormalized(
-									{
-										cx: p.cx,
-										cy: p.cy,
-										interactionType: p.interactionType,
-									},
-									{
-										maskRect: baseMaskRef.current,
-										canvasWidth: extensionCanvasWidth,
-										canvasHeight: extensionCanvasHeight,
-									},
+						const clickPoint = selectCursorClickForEmission(
+							telemetry,
+							timeMs,
+							lastEmittedClickTimeMsRef.current,
+						);
+						if (clickPoint) {
+							const extensionCursor = mapCursorToCanvasNormalized(
+								{
+									cx: clickPoint.cx,
+									cy: clickPoint.cy,
+									interactionType: clickPoint.interactionType,
+								},
+								{
+									maskRect: baseMaskRef.current,
+									canvasWidth: extensionCanvasWidth,
+									canvasHeight: extensionCanvasHeight,
+								},
+							);
+							lastEmittedClickTimeMsRef.current = clickPoint.timeMs;
+							extensionHost.emitEvent({
+								type: "cursor:click",
+								timeMs: clickPoint.timeMs,
+								data: extensionCursor,
+							});
+							if (extensionCursor) {
+								notifyCursorInteraction(
+									clickPoint.timeMs,
+									extensionCursor.cx,
+									extensionCursor.cy,
+									clickPoint.interactionType,
 								);
-								lastEmittedClickTimeMsRef.current = p.timeMs;
-								extensionHost.emitEvent({
-									type: "cursor:click",
-									timeMs: p.timeMs,
-									data: extensionCursor,
-								});
-								if (extensionCursor) {
-									notifyCursorInteraction(
-										p.timeMs,
-										extensionCursor.cx,
-										extensionCursor.cy,
-										p.interactionType,
-									);
-								}
 							}
-							break;
 						}
 					}
 				}

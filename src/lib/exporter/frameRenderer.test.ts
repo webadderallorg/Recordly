@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WEBCAM_OVERLAY } from "../../components/video-editor/types";
+import { extensionHost } from "@/lib/extensions";
 
 const {
 	cancelForwardFrameSourceMock,
@@ -533,5 +534,61 @@ describe("FrameRenderer webcam export path", () => {
 		expect(resolveMediaElementSourceMock).toHaveBeenCalledWith("wallpapers/wispysky.mp4");
 		expect(renderer.backgroundForwardFrameSource).toBeNull();
 		expect(renderer.backgroundVideoElement).toBeTruthy();
+	});
+});
+
+describe("FrameRenderer cursor click emission parity", () => {
+	it("emits a click behind a newer move in the frame window", () => {
+		const renderer = Object.create(FrameRenderer.prototype) as FrameRenderer & {
+			config: {
+				cursorTelemetry: Array<{
+					timeMs: number;
+					cx: number;
+					cy: number;
+					interactionType?: string;
+				}>;
+				width: number;
+				height: number;
+			};
+			layoutCache: {
+				maskRect: {
+					x: number;
+					y: number;
+					width: number;
+					height: number;
+					sourceCrop: { x: number; y: number; width: number; height: number };
+				};
+			};
+			lastEmittedClickTimeMs: number;
+			emitCursorInteractions(timeMs: number): void;
+		};
+		renderer.config = {
+			cursorTelemetry: [
+				{ timeMs: 1_000, cx: 100, cy: 100, interactionType: "click" },
+				{ timeMs: 1_020, cx: 120, cy: 120, interactionType: "move" },
+			],
+			width: 1920,
+			height: 1080,
+		};
+		renderer.layoutCache = {
+			maskRect: {
+				x: 0,
+				y: 0,
+				width: 1920,
+				height: 1080,
+				sourceCrop: { x: 0, y: 0, width: 1, height: 1 },
+			},
+		};
+		renderer.lastEmittedClickTimeMs = -1;
+
+		const emitSpy = vi.spyOn(extensionHost, "emitEvent");
+		renderer.emitCursorInteractions(1_020);
+		expect(emitSpy).toHaveBeenCalledTimes(1);
+		expect(emitSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "cursor:click",
+				timeMs: 1_000,
+			}),
+		);
 	});
 });

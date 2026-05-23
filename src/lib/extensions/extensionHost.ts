@@ -7,6 +7,7 @@
 
 import { createExtensionModuleUrl, resolveExtensionRelativeFileUrl } from "./fileUrls";
 import { resolveIconPath } from "./iconDraw";
+import type { AudioRegion } from "@/components/video-editor/types";
 import type {
 	ContributedCursorStyle,
 	ContributedFrame,
@@ -27,6 +28,15 @@ import type {
 } from "./types";
 
 const EXTENSION_SETTINGS_STORAGE_KEY = "recordly.extension-settings.v1";
+// Prevent unbounded memory growth during export while still allowing long recordings.
+const EXPORT_CAPTURE_MAX_EVENTS = 10_000;
+const EXPORT_CAPTURE_FALLBACK_DURATION_MS = 1_000;
+
+interface CapturedExtensionSoundEvent {
+	timeMs: number;
+	audioPath: string;
+	volume: number;
+}
 
 // ---------------------------------------------------------------------------
 // Security: Hide electronAPI from extension code
@@ -184,6 +194,10 @@ export class ExtensionHost {
 		durationMs: number;
 		isPlaying: boolean;
 	} | null = null;
+	private currentEventContext: ExtensionEvent | null = null;
+	private exportAudioCaptureEnabled = false;
+	private capturedExportSoundEvents: CapturedExtensionSoundEvent[] = [];
+	private exportAudioCaptureLimitWarningLogged = false;
 
 	constructor() {
 		if (typeof window !== "undefined") {
@@ -350,9 +364,12 @@ export class ExtensionHost {
 
 		for (const { handler } of handlers) {
 			try {
+				this.currentEventContext = event;
 				handler(event);
 			} catch (err) {
 				console.warn(`[extensions] Event handler error (${event.type}):`, err);
+			} finally {
+				this.currentEventContext = null;
 			}
 		}
 	}
@@ -385,6 +402,54 @@ export class ExtensionHost {
 
 	hasCursorEffects(): boolean {
 		return this.cursorEffects.length > 0;
+	}
+
+	hasEventListeners(eventType: ExtensionEventType): boolean {
+		return (this.eventHandlers.get(eventType)?.length ?? 0) > 0;
+	}
+
+	beginExportAudioCapture(): void {
+		this.exportAudioCaptureEnabled = true;
+		this.capturedExportSoundEvents = [];
+		this.exportAudioCaptureLimitWarningLogged = false;
+	}
+
+	endExportAudioCapture(): void {
+		this.exportAudioCaptureEnabled = false;
+		this.currentEventContext = null;
+	}
+
+	drainExportAudioRegions(durationMs?: number): AudioRegion[] {
+		if (this.capturedExportSoundEvents.length === 0) {
+			return [];
+		}
+		const resolvedDurationMs =
+			typeof durationMs === "number" && Number.isFinite(durationMs) && durationMs > 0
+				? durationMs
+				: this._videoInfo?.durationMs;
+		const upperBoundMs =
+			typeof resolvedDurationMs === "number" && Number.isFinite(resolvedDurationMs)
+				? Math.max(0, resolvedDurationMs)
+				: Number.POSITIVE_INFINITY;
+		const events = this.capturedExportSoundEvents;
+		this.capturedExportSoundEvents = [];
+		return events.map((event, index) => {
+			const clampedStartMs = Math.max(0, Math.min(event.timeMs, upperBoundMs));
+			const clampedEndMs =
+				upperBoundMs === Number.POSITIVE_INFINITY
+					? clampedStartMs + EXPORT_CAPTURE_FALLBACK_DURATION_MS
+					: Math.min(
+							upperBoundMs,
+							clampedStartMs + EXPORT_CAPTURE_FALLBACK_DURATION_MS,
+						);
+			return {
+				id: `extension-sound-${index}-${Math.round(clampedStartMs)}`,
+				startMs: clampedStartMs,
+				endMs: Math.max(clampedStartMs + 1, clampedEndMs),
+				audioPath: event.audioPath,
+				volume: event.volume,
+			};
+		});
 	}
 
 	getExtensionSetting(extensionId: string, settingId: string): unknown {
@@ -874,10 +939,34 @@ export class ExtensionHost {
 
 			playSound(relativePath: string, options?: { volume?: number }): () => void {
 				requirePermission("audio", "playSound");
-				const audio = new Audio(
-					resolveExtensionRelativeFileUrl(extensionPath, relativePath),
-				);
-				audio.volume = Math.max(0, Math.min(1, options?.volume ?? 1));
+				const resolvedPath = resolveExtensionRelativeFileUrl(extensionPath, relativePath);
+				const volume = Math.max(0, Math.min(1, options?.volume ?? 1));
+				if (host.exportAudioCaptureEnabled) {
+					const eventTimeMs =
+						host.currentEventContext?.timeMs ?? host._playbackState?.currentTimeMs;
+					if (typeof eventTimeMs === "number" && Number.isFinite(eventTimeMs)) {
+						if (host.capturedExportSoundEvents.length < EXPORT_CAPTURE_MAX_EVENTS) {
+							host.capturedExportSoundEvents.push({
+								timeMs: eventTimeMs,
+								audioPath: resolvedPath,
+								volume,
+							});
+						} else if (!host.exportAudioCaptureLimitWarningLogged) {
+							host.exportAudioCaptureLimitWarningLogged = true;
+							console.warn(
+								`[ext:${extensionId}] Export sound capture limit (${EXPORT_CAPTURE_MAX_EVENTS}) reached; additional sound events are ignored`,
+							);
+						}
+					} else {
+						console.warn(
+							`[ext:${extensionId}] Skipping export sound capture: missing event time`,
+						);
+					}
+					return () => {};
+				}
+
+				const audio = new Audio(resolvedPath);
+				audio.volume = volume;
 				audio.play().catch((err) => {
 					console.warn(`[ext:${extensionId}] Failed to play sound:`, err);
 				});
