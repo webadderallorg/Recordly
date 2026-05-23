@@ -962,7 +962,7 @@ export class ExtensionHost {
 							`[ext:${extensionId}] Skipping export sound capture: missing event time`,
 						);
 					}
-					return () => {};
+					return () => undefined;
 				}
 
 				const audio = new Audio(resolvedPath);

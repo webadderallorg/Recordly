@@ -586,7 +586,8 @@ export class VideoExporter {
 		if (
 			!videoInfo.hasAudio &&
 			sourceAudioFallbackPaths.length === 0 &&
-			audioRegions.length === 0
+			audioRegions.length === 0 &&
+			!this.extensionAudioCaptureEnabled
 		) {
 			return { audioMode: "none" };
 		}

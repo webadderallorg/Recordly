@@ -3276,8 +3276,10 @@ export class FrameRenderer {
 	private shouldCompositeExtensionFrame(): boolean {
 		return (
 			extensionHost.hasCursorEffects() ||
+			extensionHost.hasRenderHooks("post-video") ||
 			extensionHost.hasRenderHooks("post-zoom") ||
 			extensionHost.hasRenderHooks("post-cursor") ||
+			extensionHost.hasRenderHooks("post-webcam") ||
 			extensionHost.hasRenderHooks("post-annotations") ||
 			extensionHost.hasRenderHooks("final") ||
 			extensionHost.hasEventListeners("cursor:click")
