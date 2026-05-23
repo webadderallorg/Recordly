@@ -771,6 +771,23 @@ describe("ModernFrameRenderer cursor click emission parity", () => {
 		}
 	});
 
+	it("enables extension compositing for post-webcam render hooks", () => {
+		const renderer = createRenderer() as any;
+		const hasCursorEffectsSpy = vi.spyOn(extensionHost, "hasCursorEffects").mockReturnValue(false);
+		const hasRenderHooksSpy = vi
+			.spyOn(extensionHost, "hasRenderHooks")
+			.mockImplementation((phase: string) => phase === "post-webcam");
+		const hasEventListenersSpy = vi.spyOn(extensionHost, "hasEventListeners").mockReturnValue(false);
+
+		try {
+			expect(renderer.shouldCompositeExtensionFrame()).toBe(true);
+		} finally {
+			hasCursorEffectsSpy.mockRestore();
+			hasRenderHooksSpy.mockRestore();
+			hasEventListenersSpy.mockRestore();
+		}
+	});
+
 	it("enables extension compositing for cursor-click event listeners", () => {
 		const renderer = createRenderer() as any;
 		const hasCursorEffectsSpy = vi.spyOn(extensionHost, "hasCursorEffects").mockReturnValue(false);
