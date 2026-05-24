@@ -201,9 +201,7 @@ export async function probeMediaDurationSeconds(filePath: string): Promise<numbe
 			return duration;
 		}
 	} finally {
-		console.log(
-			`[PERF:MAIN] probeMediaDurationSeconds: COMPLETED in ${Date.now() - start}ms`,
-		);
+		console.log(`[PERF:MAIN] probeMediaDurationSeconds: COMPLETED in ${Date.now() - start}ms`);
 	}
 	return 0;
 }
@@ -292,9 +290,7 @@ export async function probeVideoStreamDuration(
 	} catch {
 		return null;
 	} finally {
-		console.log(
-			`[PERF:MAIN] probeVideoStreamDuration: COMPLETED in ${Date.now() - start}ms`,
-		);
+		console.log(`[PERF:MAIN] probeVideoStreamDuration: COMPLETED in ${Date.now() - start}ms`);
 	}
 }
 
@@ -511,7 +507,9 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 		const companionPaths = Array.from(
 			new Set(
 				companionCandidates.flatMap((candidate) =>
-					candidate.usablePaths.filter((companionPath) => companionPath === candidate.micPath),
+					candidate.usablePaths.filter(
+						(companionPath) => companionPath === candidate.micPath,
+					),
 				),
 			),
 		);

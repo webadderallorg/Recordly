@@ -8,6 +8,48 @@ import { getMediaContentType } from "./mediaTypes";
 let mediaServerBaseUrl: string | null = null;
 let mediaServerStartPromise: Promise<string> | null = null;
 
+export function resolveHttpByteRange(
+	rangeHeader: string,
+	fileSize: number,
+): { start: number; end: number } | null {
+	const match = rangeHeader.trim().match(/^bytes=(\d*)-(\d*)$/);
+	if (!match || (!match[1] && !match[2])) {
+		return null;
+	}
+
+	if (fileSize === 0) {
+		return null;
+	}
+
+	if (!match[1] && match[2]) {
+		// Suffix range: bytes=-500
+		const suffixLength = Number.parseInt(match[2], 10);
+		if (Number.isNaN(suffixLength) || suffixLength <= 0) {
+			return null;
+		}
+
+		return {
+			start: Math.max(0, fileSize - suffixLength),
+			end: fileSize - 1,
+		};
+	}
+
+	const start = Number.parseInt(match[1], 10);
+	if (Number.isNaN(start) || start < 0 || start >= fileSize) {
+		return null;
+	}
+
+	const requestedEnd = match[2] ? Number.parseInt(match[2], 10) : fileSize - 1;
+	if (Number.isNaN(requestedEnd) || requestedEnd < start) {
+		return null;
+	}
+
+	return {
+		start,
+		end: Math.min(requestedEnd, fileSize - 1),
+	};
+}
+
 async function resolveRealPath(filePath: string): Promise<string | null> {
 	try {
 		return await fs.realpath(path.resolve(filePath));
@@ -76,42 +118,20 @@ async function handleMediaRequest(
 		}
 
 		if (rangeHeader) {
-			const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
-			if (!match || (!match[1] && !match[2])) {
-				response.writeHead(416, { ...corsHeaders, "Content-Range": `bytes */${fileSize}` });
-				response.end();
-				return;
-			}
-
-			let start: number;
-			let end: number;
-
-			if (!match[1] && match[2]) {
-				// Suffix range: bytes=-500
-				const suffixLength = Number.parseInt(match[2], 10);
-				if (Number.isNaN(suffixLength) || suffixLength <= 0) {
-					response.writeHead(416, { ...corsHeaders, "Content-Range": `bytes */${fileSize}` });
-					response.end();
-					return;
-				}
-				start = Math.max(0, fileSize - suffixLength);
-				end = fileSize - 1;
-			} else {
-				start = Number.parseInt(match[1], 10);
-				end = match[2] ? Number.parseInt(match[2], 10) : fileSize - 1;
-			}
-
-			if (Number.isNaN(start) || Number.isNaN(end) || start > end || start >= fileSize || end >= fileSize) {
-				response.writeHead(416, { ...corsHeaders, "Content-Range": `bytes */${fileSize}` });
-				response.end();
-				return;
-			}
-
 			if (fileSize === 0) {
 				response.writeHead(416, { ...corsHeaders, "Content-Range": `bytes */0` });
 				response.end();
 				return;
 			}
+
+			const byteRange = resolveHttpByteRange(rangeHeader, fileSize);
+			if (!byteRange) {
+				response.writeHead(416, { ...corsHeaders, "Content-Range": `bytes */${fileSize}` });
+				response.end();
+				return;
+			}
+
+			const { start, end } = byteRange;
 
 			const chunkSize = end - start + 1;
 			response.writeHead(206, {

@@ -117,4 +117,115 @@ describe("ModernVideoExporter native fallback routing", () => {
 		expect(initializeEncoder).toHaveBeenCalledTimes(1);
 		expect(mocks.muxerFinalize).toHaveBeenCalledTimes(1);
 	}, 15_000);
+
+	it("tries Windows auto static-layout before starting the streaming native encoder", async () => {
+		vi.stubGlobal("navigator", {
+			platform: "Win32",
+			userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+		});
+
+		const { ModernVideoExporter } = await import("./modernVideoExporter");
+		const staticLayoutResult = {
+			success: true,
+			blob: new Blob([], { type: "video/mp4" }),
+		};
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#101010",
+			padding: 0,
+			borderRadius: 0,
+			backgroundBlur: 0,
+			shadowIntensity: 0,
+			showShadow: false,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			experimentalNativeExport: true,
+			backendPreference: "auto",
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean; blob?: Blob; error?: string }>;
+			initializeEncoder: () => Promise<unknown>;
+			loadNativeStaticLayoutVideoInfo: () => Promise<unknown>;
+			tryExportNativeStaticLayout: () => Promise<unknown>;
+			tryStartNativeVideoExport: () => Promise<boolean>;
+		};
+
+		const initializeEncoder = vi.spyOn(exporter, "initializeEncoder").mockResolvedValue({
+			codec: "avc1.640034",
+			hardwareAcceleration: "prefer-hardware",
+		});
+		const loadNativeStaticLayoutVideoInfo = vi
+			.spyOn(exporter, "loadNativeStaticLayoutVideoInfo")
+			.mockResolvedValue(mocks.videoInfo);
+		const tryExportNativeStaticLayout = vi
+			.spyOn(exporter, "tryExportNativeStaticLayout")
+			.mockResolvedValue(staticLayoutResult);
+		const tryStartNativeVideoExport = vi
+			.spyOn(exporter, "tryStartNativeVideoExport")
+			.mockResolvedValue(true);
+
+		const result = await exporter.export();
+
+		expect(result).toBe(staticLayoutResult);
+		expect(loadNativeStaticLayoutVideoInfo).toHaveBeenCalledTimes(1);
+		expect(tryExportNativeStaticLayout).toHaveBeenCalledTimes(1);
+		expect(tryStartNativeVideoExport).not.toHaveBeenCalled();
+		expect(initializeEncoder).not.toHaveBeenCalled();
+		expect(mocks.streamingDecoderLoadMetadata).not.toHaveBeenCalled();
+	}, 15_000);
+
+	it("retries the main decode path once with a readable file-backed source", async () => {
+		const { ModernVideoExporter } = await import("./modernVideoExporter");
+		mocks.streamingDecoderGetEffectiveDuration.mockReturnValue(1);
+		mocks.streamingDecoderDecodeAll
+			.mockRejectedValueOnce(
+				new Error("readAVPacket pipeline failed: Failed after 3 attempts"),
+			)
+			.mockResolvedValueOnce(undefined);
+
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#101010",
+			padding: 0,
+			borderRadius: 0,
+			backgroundBlur: 0,
+			shadowIntensity: 0,
+			showShadow: false,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			backendPreference: "webcodecs",
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean; blob?: Blob; error?: string }>;
+			initializeEncoder: () => Promise<unknown>;
+		};
+
+		vi.spyOn(exporter, "initializeEncoder").mockResolvedValue({
+			codec: "avc1.640034",
+			hardwareAcceleration: "prefer-hardware",
+		});
+
+		const result = await exporter.export();
+
+		expect(result.success).toBe(true);
+		expect(mocks.streamingDecoderLoadMetadata).toHaveBeenCalledTimes(2);
+		expect(mocks.streamingDecoderLoadMetadata.mock.calls[0]).toEqual([
+			"file:///recording.mp4",
+			{
+				forceReadableFileSource: false,
+			},
+		]);
+		expect(mocks.streamingDecoderLoadMetadata.mock.calls[1]).toEqual([
+			"file:///recording.mp4",
+			{
+				forceReadableFileSource: true,
+			},
+		]);
+		expect(mocks.streamingDecoderDecodeAll).toHaveBeenCalledTimes(2);
+		expect(mocks.muxerFinalize).toHaveBeenCalledTimes(1);
+	});
 });

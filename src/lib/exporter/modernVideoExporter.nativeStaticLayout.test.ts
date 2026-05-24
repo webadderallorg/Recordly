@@ -149,6 +149,21 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		});
 	});
 
+	it("mixes companion sidecar audio when the source MP4 also has an audio track", () => {
+		const videoPath = "C:\\recordly\\recording.mp4";
+		const micPath = "C:\\recordly\\recording.mic.wav";
+		const exporter = createExporter({
+			videoUrl: `file:///${videoPath.replace(/\\/g, "/")}`,
+			sourceAudioFallbackPaths: [micPath],
+		});
+
+		expect(exporter.buildNativeAudioPlan(videoInfo)).toMatchObject({
+			audioMode: "edited-track",
+			strategy: "offline-render-fallback",
+			sourceAudioFallbackPaths: [expect.stringMatching(/recording\.mp4$/), micPath],
+		});
+	});
+
 	it("keeps timed companion audio on the offline render path", () => {
 		const audioPath = "C:\\recordly\\recording.system.wav";
 		const speedRegions: SpeedRegion[] = [
@@ -167,9 +182,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				audioCodec: undefined,
 				audioSampleRate: undefined,
 			}),
-		).toEqual({
+		).toMatchObject({
 			audioMode: "edited-track",
 			strategy: "offline-render-fallback",
+			sourceAudioFallbackPaths: [audioPath],
 		});
 	});
 

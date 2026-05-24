@@ -16,6 +16,12 @@ Language: EN | [简中](README.zh-CN.md)
 https://github.com/user-attachments/assets/9b66c71d-ac97-49ff-a0c9-63ac26edf2e4
 
 ---
+# Sponsors
+> Keep Recordly open-source and <a href="https://github.com/sponsors/webadderall">get eyes on your logo</a>
+
+<a href="https://coderabbit.link/recordly"><img width="400" alt="CodeRabbit Typemark" src="https://github.com/user-attachments/assets/3926ecfd-8652-4f2d-8da8-ac7641017cf5" /></a>
+
+---
 
 ## What is Recordly?
 
@@ -391,7 +397,7 @@ Recordly is licensed under the **AGPL 3.0**.
 
 ## Acknowledgements
 
-Recordly originally started as a fork of [OpenScreen](https://github.com/siddharthvaddem/openscreen) and has since diverged.
+Recordly originally started as a fork of [OpenScreen](https://github.com/siddharthvaddem/openscreen) and has been rewritten (majority code).
 
 Created by  
 [@webadderall](https://x.com/webadderall)

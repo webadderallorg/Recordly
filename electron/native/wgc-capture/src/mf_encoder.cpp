@@ -27,6 +27,11 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
 
     if (initialized_) return false;
 
+    if (fps <= 0) {
+        std::cerr << "ERROR: Encoder fps must be positive, got " << fps << std::endl;
+        return false;
+    }
+
     if (width % 2 != 0 || height % 2 != 0) {
         std::cerr << "ERROR: Encoder dimensions must be even, got " << width << "x" << height << std::endl;
         return false;
@@ -147,6 +152,7 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
     const int uvSize = (width_ / 2) * (height_ / 2) * 2;
     nv12Buffer_.resize(ySize + uvSize);
     lastFrameBuffer_.clear();
+    firstSampleTimeHns_ = -1;
     lastSampleTimeHns_ = -1;
 
     initialized_ = true;
@@ -227,10 +233,19 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
 
     context_->Unmap(stagingTexture_.Get(), 0);
 
-    bool wroteSample = writeNv12SampleLocked(nv12Buffer_, timestampHns);
+    // WGC may stop delivering frames while the scene is static; keep the MP4
+    // timeline continuous by repeating the previous frame before writing a new one.
+    int64_t normalizedTimestampHns = 0;
+    normalizeWriteTimestampHnsLocked(timestampHns, normalizedTimestampHns);
+
+    if (!lastFrameBuffer_.empty() && !extendLastFrameToLocked(normalizedTimestampHns)) {
+        return false;
+    }
+
+    bool wroteSample = writeNv12SampleLocked(nv12Buffer_, normalizedTimestampHns);
     if (wroteSample) {
         lastFrameBuffer_ = nv12Buffer_;
-        lastSampleTimeHns_ = timestampHns;
+        lastSampleTimeHns_ = normalizedTimestampHns;
     }
     return wroteSample;
 }
@@ -238,24 +253,68 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
 bool MFEncoder::extendLastFrameTo(int64_t timestampHns) {
     std::lock_guard<std::mutex> lock(mutex_);
 
-    if (!initialized_ || !sinkWriter_) return false;
-    if (lastFrameBuffer_.empty()) return false;
-
-    const int64_t frameDurationHns = 10000000LL / fps_;
-    if (lastSampleTimeHns_ >= 0 && timestampHns <= lastSampleTimeHns_ + frameDurationHns) {
-        return true;
-    }
-
-    if (!writeNv12SampleLocked(lastFrameBuffer_, timestampHns)) {
+    int64_t normalizedTimestampHns = 0;
+    if (!normalizeTimelineTimestampHnsLocked(timestampHns, normalizedTimestampHns)) {
         return false;
     }
 
-    lastSampleTimeHns_ = timestampHns;
+    return extendLastFrameToLocked(normalizedTimestampHns);
+}
+
+void MFEncoder::normalizeWriteTimestampHnsLocked(int64_t timestampHns, int64_t& normalizedTimestampHns) {
+    if (firstSampleTimeHns_ < 0) {
+        firstSampleTimeHns_ = timestampHns < 0 ? 0 : timestampHns;
+    }
+
+    normalizedTimestampHns = timestampHns - firstSampleTimeHns_;
+    if (normalizedTimestampHns < 0) {
+        normalizedTimestampHns = 0;
+    }
+}
+
+bool MFEncoder::normalizeTimelineTimestampHnsLocked(
+    int64_t timestampHns,
+    int64_t& normalizedTimestampHns
+) const {
+    if (firstSampleTimeHns_ < 0) return false;
+
+    normalizedTimestampHns = timestampHns - firstSampleTimeHns_;
+    if (normalizedTimestampHns < 0) {
+        normalizedTimestampHns = 0;
+    }
+    return true;
+}
+
+bool MFEncoder::extendLastFrameToLocked(int64_t timestampHns) {
+    if (!initialized_ || !sinkWriter_) return false;
+    if (lastFrameBuffer_.empty()) return false;
+    if (lastSampleTimeHns_ < 0) return false;
+
+    if (fps_ <= 0) return false;
+    const int64_t frameDurationHns = 10000000LL / fps_;
+    if (frameDurationHns <= 0) return false;
+    if (timestampHns <= lastSampleTimeHns_ + frameDurationHns) {
+        return true;
+    }
+
+    int64_t nextSampleTimeHns = lastSampleTimeHns_ + frameDurationHns;
+    while (nextSampleTimeHns + frameDurationHns <= timestampHns) {
+        if (!writeNv12SampleLocked(lastFrameBuffer_, nextSampleTimeHns)) {
+            return false;
+        }
+        lastSampleTimeHns_ = nextSampleTimeHns;
+        nextSampleTimeHns += frameDurationHns;
+    }
+
     return true;
 }
 
 bool MFEncoder::writeNv12SampleLocked(const std::vector<uint8_t>& frameBuffer, int64_t timestampHns) {
     if (frameBuffer.empty()) return false;
+    if (fps_ <= 0) return false;
+
+    const int64_t frameDurationHns = 10000000LL / fps_;
+    if (frameDurationHns <= 0) return false;
 
     // Create MF sample
     DWORD bufferSize = static_cast<DWORD>(frameBuffer.size());
@@ -277,7 +336,7 @@ bool MFEncoder::writeNv12SampleLocked(const std::vector<uint8_t>& frameBuffer, i
 
     sample->AddBuffer(buffer.Get());
     sample->SetSampleTime(timestampHns);
-    sample->SetSampleDuration(10000000LL / fps_);
+    sample->SetSampleDuration(frameDurationHns);
 
     hr = sinkWriter_->WriteSample(streamIndex_, sample.Get());
     if (FAILED(hr)) {
@@ -306,6 +365,7 @@ bool MFEncoder::finalize() {
     lastFrameBuffer_.clear();
     nv12Buffer_.shrink_to_fit();
     lastFrameBuffer_.shrink_to_fit();
+    firstSampleTimeHns_ = -1;
     lastSampleTimeHns_ = -1;
     MFShutdown();
     return SUCCEEDED(hr);

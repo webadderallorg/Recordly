@@ -26,6 +26,9 @@ interface ExportSettingsMenuProps {
 	onMp4FrameRateChange?: (frameRate: ExportMp4FrameRate) => void;
 	exportPipelineModel?: ExportPipelineModel;
 	onExportPipelineModelChange?: (pipelineModel: ExportPipelineModel) => void;
+	experimentalNvidiaCudaExport?: boolean;
+	onExperimentalNvidiaCudaExportChange?: (enabled: boolean) => void;
+	nvidiaCudaExportAvailable?: boolean;
 	mp4OutputDimensions?: Record<ExportQuality, { width: number; height: number }>;
 	gifFrameRate: GifFrameRate;
 	onGifFrameRateChange?: (rate: GifFrameRate) => void;
@@ -49,6 +52,9 @@ export function ExportSettingsMenu({
 	onMp4FrameRateChange,
 	exportPipelineModel = "modern",
 	onExportPipelineModelChange,
+	experimentalNvidiaCudaExport = false,
+	onExperimentalNvidiaCudaExportChange,
+	nvidiaCudaExportAvailable = false,
 	mp4OutputDimensions,
 	gifFrameRate,
 	onGifFrameRateChange,
@@ -330,6 +336,35 @@ export function ExportSettingsMenu({
 									"Lightning (Beta) automatically uses the fastest compatible backend and falls back when needed.",
 								)}
 					</p>
+					{!isLegacyModel && nvidiaCudaExportAvailable ? (
+						<div className="mb-3 flex min-h-12 items-center justify-between gap-3 rounded-lg border border-[#2563EB]/20 bg-[#2563EB]/5 px-3 py-2">
+							<div className="min-w-0">
+								<div className="flex items-center gap-1.5">
+									<span className="text-[11px] font-semibold text-foreground">
+										{tSettings("export.nvidiaCuda.title", "NVIDIA CUDA")}
+									</span>
+									<span className="rounded bg-[#2563EB]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[#2563EB]">
+										{tSettings("export.nvidiaCuda.badge", "Experimental")}
+									</span>
+								</div>
+								<p className="mt-0.5 truncate text-[10px] text-muted-foreground/75">
+									{tSettings(
+										"export.nvidiaCuda.hint",
+										"Try GPU export on this Windows device.",
+									)}
+								</p>
+							</div>
+							<Switch
+								checked={experimentalNvidiaCudaExport}
+								onCheckedChange={onExperimentalNvidiaCudaExportChange}
+								aria-label={tSettings(
+									"export.nvidiaCuda.toggle",
+									"Enable experimental NVIDIA CUDA export",
+								)}
+								className="shrink-0 scale-75 data-[state=checked]:bg-[#2563EB]"
+							/>
+						</div>
+					) : null}
 				</LayoutGroup>
 			) : (
 				<div className="mb-3 space-y-2">

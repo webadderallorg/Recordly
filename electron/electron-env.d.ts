@@ -233,6 +233,19 @@ interface RendererNativeVideoMetadataProbe {
 	audioSampleRate?: number;
 }
 
+interface RendererNativeExportCapabilities {
+	platform: NodeJS.Platform;
+	nvidiaCuda: {
+		available: boolean;
+		skipReason: string | null;
+		hasNvidiaGpu: boolean | null;
+		hasWrapper: boolean;
+		explicitEnabled: boolean;
+		explicitDisabled: boolean;
+		userOptInRequired: boolean;
+	};
+}
+
 interface Window {
 	electronAPI: {
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
@@ -374,6 +387,11 @@ interface Window {
 			metadata?: RendererNativeVideoMetadataProbe;
 			error?: string;
 		}>;
+		getNativeExportCapabilities: () => Promise<{
+			success: boolean;
+			capabilities?: RendererNativeExportCapabilities;
+			error?: string;
+		}>;
 		nativeStaticLayoutExport: (options: {
 			sessionId?: string;
 			inputPath: string;
@@ -434,6 +452,7 @@ interface Window {
 			}>;
 			chunkDurationSec?: number;
 			experimentalWindowsGpuCompositor?: boolean;
+			experimentalNvidiaCudaExport?: boolean;
 			audioOptions?: {
 				audioMode?: "none" | "copy-source" | "trim-source" | "edited-track";
 				audioSourcePath?: string | null;
@@ -850,6 +869,8 @@ interface Window {
 		}>;
 		getShortcuts: () => Promise<Record<string, unknown> | null>;
 		saveShortcuts: (shortcuts: unknown) => Promise<{ success: boolean; error?: string }>;
+		getAppSetting: (key: string) => unknown;
+		setAppSetting: (key: string, value: unknown) => boolean;
 		setHasUnsavedChanges: (hasChanges: boolean) => void;
 		onRequestSaveBeforeClose: (callback: () => Promise<boolean>) => () => void;
 		isNativeWindowsCaptureAvailable: () => Promise<{ available: boolean }>;

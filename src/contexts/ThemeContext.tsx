@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { loadAppSetting, saveAppSetting } from "../lib/appSettings";
 
 export type ThemePreference = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
@@ -16,7 +17,12 @@ const THEME_STORAGE_KEY = "recordly.theme";
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function getStoredPreference(): ThemePreference {
+export function loadThemePreference(): ThemePreference {
+	const persisted = loadAppSetting<unknown>(THEME_STORAGE_KEY);
+	if (persisted === "light" || persisted === "dark" || persisted === "system") {
+		return persisted;
+	}
+
 	try {
 		const stored = globalThis.localStorage?.getItem(THEME_STORAGE_KEY);
 		if (stored === "light" || stored === "dark" || stored === "system") {
@@ -26,6 +32,16 @@ function getStoredPreference(): ThemePreference {
 		// Ignore storage errors
 	}
 	return "system";
+}
+
+export function persistThemePreference(pref: ThemePreference): void {
+	saveAppSetting(THEME_STORAGE_KEY, pref);
+
+	try {
+		globalThis.localStorage?.setItem(THEME_STORAGE_KEY, pref);
+	} catch {
+		// Ignore storage errors
+	}
 }
 
 function resolveTheme(pref: ThemePreference): ResolvedTheme {
@@ -49,7 +65,7 @@ function applyThemeToDOM(theme: ResolvedTheme) {
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
 	const [preference, setPreferenceState] = useState<ThemePreference>(() => {
-		const stored = getStoredPreference();
+		const stored = loadThemePreference();
 		applyThemeToDOM(resolveTheme(stored));
 		return stored;
 	});
@@ -63,11 +79,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 		const r = resolveTheme(pref);
 		setResolved(r);
 		applyThemeToDOM(r);
-		try {
-			globalThis.localStorage?.setItem(THEME_STORAGE_KEY, pref);
-		} catch {
-			// Ignore storage errors
-		}
+		persistThemePreference(pref);
 	}, []);
 
 	const toggleTheme = useCallback(() => {

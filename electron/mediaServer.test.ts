@@ -70,3 +70,36 @@ describe("media server path policy", () => {
 		expect(isAllowedMediaPath(missingPath)).toBe(false);
 	});
 });
+
+describe("resolveHttpByteRange", () => {
+	it("rejects malformed and multi-range headers", async () => {
+		const { resolveHttpByteRange } = await import("./mediaServer");
+
+		expect(resolveHttpByteRange("bytes=0-1,2-3", 100)).toBeNull();
+		expect(resolveHttpByteRange("bytes=0-1foo", 100)).toBeNull();
+	});
+
+	it("clamps oversized explicit end offsets to EOF", async () => {
+		const { resolveHttpByteRange } = await import("./mediaServer");
+
+		expect(resolveHttpByteRange("bytes=0-9999999999", 3_221_225_472)).toEqual({
+			start: 0,
+			end: 3_221_225_471,
+		});
+	});
+
+	it("rejects ranges that start beyond EOF", async () => {
+		const { resolveHttpByteRange } = await import("./mediaServer");
+
+		expect(resolveHttpByteRange("bytes=500-999", 500)).toBeNull();
+	});
+
+	it("preserves suffix range semantics", async () => {
+		const { resolveHttpByteRange } = await import("./mediaServer");
+
+		expect(resolveHttpByteRange("bytes=-500", 1_000)).toEqual({
+			start: 500,
+			end: 999,
+		});
+	});
+});
