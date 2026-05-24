@@ -27,8 +27,8 @@ import {
 	MagicWand as WandSparkles,
 	X,
 	MagnifyingGlassPlus as ZoomIn,
-} from "@phosphor-icons/react";
-import type { Span } from "dnd-timeline";
+	MagnifyingGlassMinus as ZoomOut,
+	} from "@phosphor-icons/react";import type { Span } from "dnd-timeline";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -6007,6 +6007,25 @@ export default function VideoEditor() {
 									title={t("editor.toolbar.splitClip")}
 								>
 									<Scissors className="w-4 h-4" />
+								</Button>
+								<div className="w-[1px] h-4 bg-foreground/10 mx-1" />
+								<Button
+									onClick={() => timelineRef.current?.zoomOut()}
+									variant="ghost"
+									size="icon"
+									className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
+									title="Zoom Timeline Out"
+								>
+									<ZoomOut className="w-4 h-4" />
+								</Button>
+								<Button
+									onClick={() => timelineRef.current?.zoomIn()}
+									variant="ghost"
+									size="icon"
+									className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
+									title="Zoom Timeline In"
+								>
+									<ZoomIn className="w-4 h-4" />
 								</Button>
 							</div>
 							{/* Playback controls - centered */}

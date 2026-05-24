@@ -62,6 +62,8 @@ interface UseTimelineEditorRuntimeParams {
 	isMac: boolean;
 	keyShortcuts: TimelineShortcutBindings;
 	isTimelineFocusedRef: RefObject<boolean>;
+        zoomIn: () => void;
+        zoomOut: () => void;
 }
 
 export function useTimelineEditorRuntime({
@@ -106,6 +108,8 @@ export function useTimelineEditorRuntime({
 	isMac,
 	keyShortcuts,
 	isTimelineFocusedRef,
+        zoomIn,
+        zoomOut,
 }: UseTimelineEditorRuntimeParams) {
 	const {
 		keyframes,
@@ -258,8 +262,10 @@ export function useTimelineEditorRuntime({
 			addAnnotation: handleAddAnnotation,
 			addAudio: handleAddAudio,
 			keyframes,
+                        zoomIn,
+                        zoomOut,
 		}),
-		[handleAddAnnotation, handleAddAudio, handleAddZoom, handleSuggestZooms, handleSplitClip, keyframes],
+		[handleAddAnnotation, handleAddAudio, handleAddZoom, handleSuggestZooms, handleSplitClip, keyframes, zoomIn, zoomOut],
 	);
 
 	return {

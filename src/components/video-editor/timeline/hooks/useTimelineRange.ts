@@ -25,23 +25,52 @@ export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineR
 	}, [range, totalMs]);
 
 	const panTimelineRange = useCallback(
-		(deltaMs: number) => {
-			if (!Number.isFinite(deltaMs) || deltaMs === 0 || totalMs <= 0) {
-				return;
-			}
+	        (deltaMs: number) => {
+	                if (!Number.isFinite(deltaMs) || deltaMs === 0 || totalMs <= 0) {
+	                        return;
+	                }
 
-			setRange((previous) => {
-				const visibleSpan = Math.max(1, previous.end - previous.start);
-				const maxStart = Math.max(0, totalMs - visibleSpan);
-				const nextStart = Math.max(0, Math.min(previous.start + deltaMs, maxStart));
-				return { start: nextStart, end: nextStart + visibleSpan };
-			});
-		},
-		[totalMs],
+	                setRange((previous) => {
+	                        const visibleSpan = Math.max(1, previous.end - previous.start);
+	                        const maxStart = Math.max(0, totalMs - visibleSpan);
+	                        const nextStart = Math.max(0, Math.min(previous.start + deltaMs, maxStart));
+	                        return { start: nextStart, end: nextStart + visibleSpan };
+	                });
+	        },
+	        [totalMs],
 	);
 
-	const handleTimelineWheel = useCallback(
-		(event: WheelEvent<HTMLDivElement>) => {
+	const zoomTimelineRange = useCallback(
+	        (scaleFactor: number) => {
+	                if (totalMs <= 0) return;
+
+	                setRange((previous) => {
+	                        const currentVisibleSpan = Math.max(1, previous.end - previous.start);
+	                        const currentCenter = previous.start + currentVisibleSpan / 2;
+
+	                        const newVisibleSpan = Math.max(10, Math.min(totalMs, currentVisibleSpan * scaleFactor));
+
+	                        let newStart = currentCenter - newVisibleSpan / 2;
+	                        let newEnd = currentCenter + newVisibleSpan / 2;
+
+	                        if (newStart < 0) {
+	                                newStart = 0;
+	                                newEnd = Math.min(totalMs, newVisibleSpan);
+	                        } else if (newEnd > totalMs) {
+	                                newEnd = totalMs;
+	                                newStart = Math.max(0, totalMs - newVisibleSpan);
+	                        }
+
+	                        return { start: newStart, end: newEnd };
+	                });
+	        },
+	        [totalMs],
+	);
+
+	const zoomIn = useCallback(() => zoomTimelineRange(0.75), [zoomTimelineRange]);
+	const zoomOut = useCallback(() => zoomTimelineRange(1.33), [zoomTimelineRange]);
+
+	const handleTimelineWheel = useCallback(		(event: WheelEvent<HTMLDivElement>) => {
 			if (event.ctrlKey || event.metaKey || totalMs <= 0) {
 				return;
 			}
@@ -72,9 +101,10 @@ export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineR
 	);
 
 	return {
-		range,
-		setRange,
-		clampedRange,
-		handleTimelineWheel,
-	};
-}
+	        range,
+	        setRange,
+	        clampedRange,
+	        handleTimelineWheel,
+	        zoomIn,
+	        zoomOut,
+	};}

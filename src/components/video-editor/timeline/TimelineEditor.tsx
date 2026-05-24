@@ -109,14 +109,15 @@ function buildSourceSidecarPath(source: string, suffix: "mic" | "system"): strin
 }
 
 export interface TimelineEditorHandle {
-	addZoom: () => void;
-	suggestZooms: () => void;
-	splitClip: () => void;
-	addAnnotation: (trackIndex?: number) => void;
-	addAudio: (trackIndex?: number) => Promise<void>;
-	keyframes: { id: string; time: number }[];
+        addZoom: () => void;
+        suggestZooms: () => void;
+        splitClip: () => void;
+        addAnnotation: (trackIndex?: number) => void;
+        addAudio: (trackIndex?: number) => Promise<void>;
+        keyframes: { id: string; time: number }[];
+        zoomIn: () => void;
+        zoomOut: () => void;
 }
-
 
 const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 	function TimelineEditor(
@@ -189,7 +190,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 
 		const timelineContainerRef = useRef<HTMLDivElement>(null);
 		const isTimelineFocusedRef = useRef(false);
-		const { setRange, clampedRange, handleTimelineWheel } = useTimelineRange({
+		const { setRange, clampedRange, handleTimelineWheel, zoomIn, zoomOut } = useTimelineRange({
 			totalMs,
 			timelineContainerRef,
 		});
@@ -372,6 +373,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			isMac,
 			keyShortcuts,
 			isTimelineFocusedRef,
+			zoomIn,
+			zoomOut,
 		});
 
 		if (!videoDuration || videoDuration === 0) {
