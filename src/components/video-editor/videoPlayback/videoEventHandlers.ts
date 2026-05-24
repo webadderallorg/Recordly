@@ -23,6 +23,7 @@ interface VideoEventHandlersParams {
 	timeUpdateAnimationRef: React.MutableRefObject<number | null>;
 	onPlayStateChange: (playing: boolean) => void;
 	onTimeUpdate: (time: number) => void;
+	onTimeUpdateMinIntervalMs?: number;
 	trimRegionsRef: React.MutableRefObject<TrimRegion[]>;
 	speedRegionsRef: React.MutableRefObject<SpeedRegion[]>;
 }
@@ -37,17 +38,34 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		timeUpdateAnimationRef,
 		onPlayStateChange,
 		onTimeUpdate,
+		onTimeUpdateMinIntervalMs = 0,
 		trimRegionsRef,
 		speedRegionsRef,
 	} = params;
 	const presentedFrameVideo = video as PresentedFrameVideoElement;
 	let videoFrameRequestId: number | null = null;
+	let lastReactTimeUpdateAtMs = 0;
+	let lastReactTimeUpdateValue = Number.NaN;
 	enablePitchPreservingPlayback(video);
 
-	const emitTime = (timeValue: number) => {
+	const emitTime = (timeValue: number, options?: { forceReactUpdate?: boolean }) => {
 		currentTimeRef.current = timeValue * 1000;
-		onTimeUpdate(timeValue);
 		extensionHost.emitEvent({ type: "playback:timeupdate", timeMs: timeValue * 1000 });
+
+		const now = performance.now();
+		const timeJumped =
+			Number.isFinite(lastReactTimeUpdateValue) &&
+			Math.abs(timeValue - lastReactTimeUpdateValue) > 0.25;
+		if (
+			options?.forceReactUpdate ||
+			onTimeUpdateMinIntervalMs <= 0 ||
+			now - lastReactTimeUpdateAtMs >= onTimeUpdateMinIntervalMs ||
+			timeJumped
+		) {
+			lastReactTimeUpdateAtMs = now;
+			lastReactTimeUpdateValue = timeValue;
+			onTimeUpdate(timeValue);
+		}
 	};
 
 	// Helper function to check if current time is within a trim region
@@ -74,7 +92,7 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		const clampedSkipToTime = Math.min(skipToTime, video.duration);
 
 		video.currentTime = clampedSkipToTime;
-		emitTime(clampedSkipToTime);
+		emitTime(clampedSkipToTime, { forceReactUpdate: true });
 
 		if (clampedSkipToTime >= video.duration) {
 			video.pause();
@@ -161,7 +179,7 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		isPlayingRef.current = false;
 		onPlayStateChange(false);
 		cancelScheduledUpdate();
-		emitTime(video.currentTime);
+		emitTime(video.currentTime, { forceReactUpdate: true });
 	};
 
 	const handleSeeked = () => {
@@ -174,13 +192,13 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		if (activeTrimRegion) {
 			skipPastTrimRegion(activeTrimRegion);
 		} else {
-			emitTime(video.currentTime);
+			emitTime(video.currentTime, { forceReactUpdate: true });
 		}
 	};
 
 	const handleSeeking = () => {
 		isSeekingRef.current = true;
-		emitTime(video.currentTime);
+		emitTime(video.currentTime, { forceReactUpdate: true });
 	};
 
 	return {

@@ -529,6 +529,70 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	storeRecordedVideo: (videoData: ArrayBuffer, fileName: string) => {
 		return ipcRenderer.invoke("store-recorded-video", videoData, fileName);
 	},
+	openRecordingStream: (fileName: string) => {
+		return ipcRenderer.invoke("recording-stream-open", fileName);
+	},
+	writeRecordingStreamChunk: (streamId: string, position: number, chunk: Uint8Array) => {
+		return ipcRenderer.invoke("recording-stream-write", streamId, position, chunk);
+	},
+	closeRecordingStream: (
+		streamId: string,
+		options?: { abort?: boolean; mimeType?: string },
+	) => {
+		return ipcRenderer.invoke("recording-stream-close", streamId, options);
+	},
+	openMicrophoneSidecarStream: () => {
+		return ipcRenderer.invoke("microphone-sidecar-stream-open");
+	},
+	writeMicrophoneSidecarStreamChunk: (
+		streamId: string,
+		position: number,
+		chunk: Uint8Array,
+	) => {
+		return ipcRenderer.invoke("microphone-sidecar-stream-write", streamId, position, chunk);
+	},
+	closeMicrophoneSidecarStream: (
+		streamId: string,
+		videoPath: string,
+		options?: {
+			abort?: boolean;
+			startDelayMs?: number;
+			browserMicrophoneProfile?: string;
+			requestedBrowserMicrophoneProfile?: string | null;
+			requestedConstraints?: unknown;
+			mediaTrackSettings?: Record<string, boolean | number | string>;
+			audioInputDevices?: Array<{
+				deviceId: string;
+				groupId?: string;
+				label: string;
+			}>;
+			mediaRecorder?: {
+				mimeType?: string;
+				audioBitsPerSecond?: number;
+				timesliceMs?: number;
+			};
+			chunkEvents?: Array<{
+				index: number;
+				size: number;
+				elapsedMs: number;
+				deltaMs: number | null;
+				recordedElapsedMs?: number;
+				recordedDeltaMs?: number | null;
+			}>;
+			pauseIntervals?: Array<{
+				startElapsedMs: number;
+				endElapsedMs?: number;
+				durationMs?: number;
+			}>;
+		},
+	) => {
+		return ipcRenderer.invoke(
+			"microphone-sidecar-stream-close",
+			streamId,
+			videoPath,
+			options,
+		);
+	},
 	storeMicrophoneSidecar: (
 		audioData: ArrayBuffer,
 		videoPath: string,

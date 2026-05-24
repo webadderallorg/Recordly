@@ -291,6 +291,72 @@ interface Window {
 			videoData: ArrayBuffer,
 			fileName: string,
 		) => Promise<{ success: boolean; path?: string; message?: string }>;
+		openRecordingStream: (fileName: string) => Promise<{
+			success: boolean;
+			streamId?: string;
+			path?: string;
+			error?: string;
+		}>;
+		writeRecordingStreamChunk: (
+			streamId: string,
+			position: number,
+			chunk: Uint8Array,
+		) => Promise<{ success: boolean; error?: string }>;
+		closeRecordingStream: (
+			streamId: string,
+			options?: { abort?: boolean; mimeType?: string },
+		) => Promise<{
+			success: boolean;
+			path?: string;
+			message?: string;
+			error?: string;
+			bytesWritten?: number;
+		}>;
+		openMicrophoneSidecarStream: () => Promise<{
+			success: boolean;
+			streamId?: string;
+			error?: string;
+		}>;
+		writeMicrophoneSidecarStreamChunk: (
+			streamId: string,
+			position: number,
+			chunk: Uint8Array,
+		) => Promise<{ success: boolean; error?: string }>;
+		closeMicrophoneSidecarStream: (
+			streamId: string,
+			videoPath: string,
+			options?: {
+				abort?: boolean;
+				startDelayMs?: number;
+				browserMicrophoneProfile?: string;
+				requestedBrowserMicrophoneProfile?: string | null;
+				requestedConstraints?: unknown;
+				mediaTrackSettings?: Record<string, boolean | number | string>;
+				audioInputDevices?: Array<{
+					deviceId: string;
+					groupId?: string;
+					label: string;
+				}>;
+				mediaRecorder?: {
+					mimeType?: string;
+					audioBitsPerSecond?: number;
+					timesliceMs?: number;
+				};
+				chunkEvents?: Array<{
+					index: number;
+					size: number;
+					elapsedMs: number;
+					deltaMs: number | null;
+					recordedElapsedMs?: number;
+					recordedDeltaMs?: number | null;
+				}>;
+				pauseIntervals?: Array<{
+					startElapsedMs: number;
+					endElapsedMs?: number;
+					durationMs?: number;
+				}>;
+			},
+		) => Promise<{ success: boolean; path?: string; error?: string }>;
 		storeMicrophoneSidecar: (
 			audioData: ArrayBuffer,
 			videoPath: string,

@@ -206,6 +206,7 @@ type PixiRendererAttempt = {
 	message: string;
 };
 const PIXI_RENDERER_INIT_TIMEOUT_MS = 8_000;
+const REACT_PLAYBACK_TIME_UPDATE_INTERVAL_MS = 80;
 
 function isCanvasRenderer(application: Application): boolean {
 	const rendererName = application?.renderer?.constructor?.name?.toLowerCase();
@@ -263,20 +264,45 @@ function getCursorPositionAtTime(
 		return null;
 	}
 
-	let closest = telemetry[0];
-	let minDist = Math.abs(telemetry[0].timeMs - timeMs);
+	if (timeMs <= telemetry[0].timeMs) {
+		const first = telemetry[0];
+		return mapCursorToCanvasNormalized(
+			{
+				cx: first.cx,
+				cy: first.cy,
+				interactionType: first.interactionType,
+			},
+			params ?? { canvasWidth: 1, canvasHeight: 1 },
+		);
+	}
 
-	for (let index = 1; index < telemetry.length; index++) {
-		const point = telemetry[index];
-		const distance = Math.abs(point.timeMs - timeMs);
-		if (distance < minDist) {
-			minDist = distance;
-			closest = point;
-		}
-		if (point.timeMs > timeMs) {
-			break;
+	if (timeMs >= telemetry[telemetry.length - 1].timeMs) {
+		const last = telemetry[telemetry.length - 1];
+		return mapCursorToCanvasNormalized(
+			{
+				cx: last.cx,
+				cy: last.cy,
+				interactionType: last.interactionType,
+			},
+			params ?? { canvasWidth: 1, canvasHeight: 1 },
+		);
+	}
+
+	let lo = 0;
+	let hi = telemetry.length - 1;
+	while (lo < hi - 1) {
+		const mid = (lo + hi) >> 1;
+		if (telemetry[mid].timeMs <= timeMs) {
+			lo = mid;
+		} else {
+			hi = mid;
 		}
 	}
+
+	const before = telemetry[lo];
+	const after = telemetry[hi];
+	const closest =
+		Math.abs(before.timeMs - timeMs) <= Math.abs(after.timeMs - timeMs) ? before : after;
 
 	return mapCursorToCanvasNormalized(
 		{
@@ -1314,12 +1340,24 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const bgVideo = bgVideoRef.current;
 			if (bgVideo) {
 				if (isPlaying) {
-					bgVideo.play().catch(() => undefined);
+					if (bgVideo.paused) {
+						bgVideo.play().catch(() => undefined);
+					}
 				} else {
 					bgVideo.pause();
 				}
 			}
-		}, [isPlaying]);
+			const webcamVideo = webcamVideoRef.current;
+			if (webcamVideo) {
+				if (isPlaying && webcamEnabled && webcamVideoPath) {
+					if (webcamVideo.paused) {
+						webcamVideo.play().catch(() => undefined);
+					}
+				} else {
+					webcamVideo.pause();
+				}
+			}
+		}, [isPlaying, webcamEnabled, webcamVideoPath]);
 
 		useEffect(() => {
 			suspendRenderingRef.current = suspendRendering;
@@ -1411,15 +1449,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				} catch {
 					// no-op
 				}
-			}
-
-			if (isPlaying) {
-				const playPromise = bgVideo.play();
-				if (playPromise) {
-					playPromise.catch(() => undefined);
-				}
-			} else {
-				bgVideo.pause();
 			}
 
 			lastBackgroundSyncTimeRef.current = clipTimelineTime;
@@ -1738,15 +1767,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				}
 			}
 
-			if (isPlaying) {
-				const playPromise = webcamVideo.play();
-				if (playPromise) {
-					playPromise.catch(() => undefined);
-				}
-			} else {
-				webcamVideo.pause();
-			}
-
 			lastWebcamSyncTimeRef.current = targetTime;
 		}, [currentTime, isPlaying, webcamEnabled, webcamTimeOffsetMs, webcamVideoPath]);
 
@@ -1996,6 +2016,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					timeUpdateAnimationRef,
 					onPlayStateChange,
 					onTimeUpdate,
+					onTimeUpdateMinIntervalMs: REACT_PLAYBACK_TIME_UPDATE_INTERVAL_MS,
 					trimRegionsRef,
 					speedRegionsRef,
 				});

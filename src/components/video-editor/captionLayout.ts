@@ -48,6 +48,13 @@ export interface ActiveCaptionLayout {
 	scale: number;
 }
 
+interface CaptionStaticLayout {
+	sourceWords: ReturnType<typeof flattenCaptionWords>;
+	lines: CaptionLineLayout[];
+	pages: CaptionPageLayout[];
+	maxRows: number;
+}
+
 type CaptionSourceWord = {
 	cueId: string;
 	cueWordIndex: number;
@@ -61,6 +68,7 @@ type CaptionSourceWord = {
 const CAPTION_ENTER_MS = 180;
 const CAPTION_EXIT_MS = 140;
 const CAPTION_BLOCK_GAP_BREAK_MS = 500;
+const captionStaticLayoutCache = new WeakMap<CaptionCue[], Map<string, CaptionStaticLayout>>();
 
 function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
@@ -405,31 +413,83 @@ function getVisibleCaptionText(lines: CaptionLineLayout[]) {
 		.join(" ");
 }
 
-export function buildActiveCaptionLayout(options: {
+function getCaptionLayoutCacheKey(settings: AutoCaptionSettings, maxWidthPx: number) {
+	return [
+		Math.round(maxWidthPx * 100) / 100,
+		clamp(Math.round(settings.maxRows || 1), 1, 4),
+	].join(":");
+}
+
+function getCaptionWordState(index: number, activeWordIndex: number): CaptionWordState {
+	return index < activeWordIndex
+		? "spoken"
+		: index === activeWordIndex
+			? "active"
+			: "upcoming";
+}
+
+function applyCaptionWordStates(
+	lines: CaptionLineLayout[],
+	activeWordIndex: number,
+): CaptionLineLayout[] {
+	return lines.map((line) => ({
+		...line,
+		words: line.words.map((word) => ({
+			...word,
+			state: getCaptionWordState(word.index, activeWordIndex),
+		})),
+	}));
+}
+
+function findActiveCaptionWordIndex(
+	sourceWords: CaptionStaticLayout["sourceWords"],
+	timeMs: number,
+) {
+	if (sourceWords.length === 0) {
+		return -1;
+	}
+
+	let lo = 0;
+	let hi = sourceWords.length - 1;
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1;
+		const word = sourceWords[mid];
+		if (timeMs < word.startMs) {
+			hi = mid - 1;
+		} else if (timeMs >= word.endMs) {
+			lo = mid + 1;
+		} else {
+			return mid;
+		}
+	}
+
+	return clamp(hi, 0, sourceWords.length - 1);
+}
+
+function getOrBuildCaptionStaticLayout(options: {
 	cues: CaptionCue[];
-	timeMs: number;
 	settings: AutoCaptionSettings;
 	maxWidthPx: number;
 	measureText: (text: string) => number;
-}) {
+}): CaptionStaticLayout | null {
+	let cueCache = captionStaticLayoutCache.get(options.cues);
+	if (!cueCache) {
+		cueCache = new Map();
+		captionStaticLayoutCache.set(options.cues, cueCache);
+	}
+
+	const cacheKey = getCaptionLayoutCacheKey(options.settings, options.maxWidthPx);
+	const cached = cueCache.get(cacheKey);
+	if (cached) {
+		return cached;
+	}
+
 	const sourceWords = flattenCaptionWords(options.cues);
 	if (sourceWords.length === 0) {
 		return null;
 	}
 
-	let activeWordIndex = -1;
-	activeWordIndex = sourceWords.findIndex(
-		(word) => options.timeMs >= word.startMs && options.timeMs < word.endMs,
-	);
-	if (activeWordIndex < 0) {
-		activeWordIndex = sourceWords.findIndex((word) => options.timeMs < word.startMs);
-		activeWordIndex =
-			activeWordIndex < 0
-				? sourceWords.length - 1
-				: clamp(activeWordIndex - 1, 0, sourceWords.length - 1);
-	}
 	const maxRows = clamp(Math.round(options.settings.maxRows || 1), 1, 4);
-
 	const words: CaptionWordLayout[] = sourceWords.map((word, index) => {
 		return {
 			cueId: word.cueId,
@@ -441,12 +501,7 @@ export function buildActiveCaptionLayout(options: {
 			startMs: word.startMs,
 			endMs: word.endMs,
 			hasRealTiming: word.hasRealTiming,
-			state:
-				index < activeWordIndex
-					? "spoken"
-					: index === activeWordIndex
-						? "active"
-						: "upcoming",
+			state: "upcoming",
 		};
 	});
 
@@ -468,13 +523,39 @@ export function buildActiveCaptionLayout(options: {
 			text: "",
 		},
 	});
+
+	const layout = { sourceWords, lines, pages, maxRows };
+	cueCache.set(cacheKey, layout);
+	return layout;
+}
+
+export function buildActiveCaptionLayout(options: {
+	cues: CaptionCue[];
+	timeMs: number;
+	settings: AutoCaptionSettings;
+	maxWidthPx: number;
+	measureText: (text: string) => number;
+}) {
+	const staticLayout = getOrBuildCaptionStaticLayout(options);
+	if (!staticLayout) {
+		return null;
+	}
+
+	const { sourceWords, lines, pages, maxRows } = staticLayout;
+	const activeWordIndex = findActiveCaptionWordIndex(sourceWords, options.timeMs);
 	const visiblePageIndex = getVisibleCaptionPageIndex(pages, options.timeMs);
 	if (visiblePageIndex < 0) {
 		return null;
 	}
 	const visiblePage = pages[visiblePageIndex] ?? null;
-	const visibleLines = visiblePage?.lines ?? lines.slice(0, maxRows);
-	const activeWord = activeWordIndex >= 0 ? words[activeWordIndex] : null;
+	const visibleLines = applyCaptionWordStates(
+		visiblePage?.lines ?? lines.slice(0, maxRows),
+		activeWordIndex,
+	);
+	const activeWord =
+		activeWordIndex >= 0
+			? visibleLines.flatMap((line) => line.words).find((word) => word.index === activeWordIndex)
+			: null;
 	const activeWordProgress = activeWord
 		? clamp01(
 				(options.timeMs - activeWord.startMs) /
