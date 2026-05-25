@@ -19,7 +19,13 @@ https://github.com/user-attachments/assets/9b66c71d-ac97-49ff-a0c9-63ac26edf2e4
 # Sponsors
 > Keep Recordly open-source and <a href="https://github.com/sponsors/webadderall">get eyes on your logo</a>
 
-<a href="https://coderabbit.link/recordly"><img width="400" alt="CodeRabbit Typemark" src="https://github.com/user-attachments/assets/3926ecfd-8652-4f2d-8da8-ac7641017cf5" /></a>
+<a href="https://coderabbit.link/recordly">        
+    <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="https://victorious-bubble-f69a016683.media.strapiapp.com/White_Typemark_79b9189d19.svg">
+          <source media="(prefers-color-scheme: light)" srcset="https://victorious-bubble-f69a016683.media.strapiapp.com/Orange_Typemark_43bf516c9d.svg">
+          <img alt="CodeRabbit" height="44" src="https://victorious-bubble-f69a016683.media.strapiapp.com/Orange_Typemark_43bf516c9d.svg" />
+    </picture>
+</a>
 
 ---
 
