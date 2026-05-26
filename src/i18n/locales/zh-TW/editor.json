@@ -2,28 +2,28 @@
 	"playback": {
 		"play": "播放",
 		"pause": "暫停",
-		"skipBack": "後退",
-		"skipForward": "前進",
-		"muteUnmute": "靜音/取消靜音"
+		"skipBack": "向後跳轉",
+		"skipForward": "向前跳轉",
+		"muteUnmute": "靜音／取消靜音"
 	},
 	"annotations": {
-		"settings": "註釋設定",
-		"active": "活動",
+		"settings": "註解設定",
+		"active": "啟用",
 		"text": "文字",
 		"image": "圖片",
 		"arrow": "箭頭",
 		"blur": "模糊",
 		"textContent": "文字內容",
-		"textPlaceholder": "輸入文字...",
+		"textPlaceholder": "請輸入文字……",
 		"fontStyle": "字型樣式",
 		"selectStyle": "選擇樣式",
 		"size": "大小",
 		"toggleBold": "切換粗體",
 		"toggleItalic": "切換斜體",
-		"toggleUnderline": "切換下劃線",
-		"alignLeft": "左對齊",
-		"alignCenter": "居中對齊",
-		"alignRight": "右對齊",
+		"toggleUnderline": "切換底線",
+		"alignLeft": "靠左對齊",
+		"alignCenter": "置中對齊",
+		"alignRight": "靠右對齊",
 		"textColor": "文字顏色",
 		"background": "背景",
 		"none": "無",
@@ -31,24 +31,24 @@
 		"uploadImage": "上傳圖片",
 		"supportedFormats": "支援格式：JPG、PNG、GIF、WebP",
 		"arrowDirection": "箭頭方向",
-		"strokeWidth": "描邊寬度：{{width}}px",
+		"strokeWidth": "線條寬度：{{width}}px",
 		"arrowColor": "箭頭顏色",
-		"deleteAnnotation": "刪除註釋",
-		"shortcutsAndTips": "快速鍵與提示",
-		"tipSelectAnnotation": "將播放頭移動到註釋重疊區域並選擇項目。",
-		"tipCycleForward": "使用 Tab 循環切換重疊項目。",
-		"tipCycleBackward": "使用 Shift+Tab 反向循環切換。",
+		"deleteAnnotation": "刪除註解",
+		"shortcutsAndTips": "快捷鍵與提示",
+		"tipSelectAnnotation": "將播放頭移到註解重疊區段，然後選取物件。",
+		"tipCycleForward": "使用 Tab 依序切換重疊物件。",
+		"tipCycleBackward": "使用 Shift+Tab 反向切換。",
 		"imageUploadSuccess": "圖片上傳成功！",
 		"imageUploadError": "請上傳 JPG、PNG、GIF 或 WebP 圖片檔案。",
-		"blurStrength": "模糊強度: {{strength}}",
-		"solidColor": "純色 (審查)",
-		"borderRadius": "邊框半徑"
+		"blurStrength": "模糊強度：{{strength}}",
+		"solidColor": "純色（遮蔽）",
+		"borderRadius": "圓角半徑"
 	},
 
 	"fontStyles": {
 		"classic": "經典",
 		"editor": "編輯器",
-		"strong": "加粗",
+		"strong": "粗體",
 		"typewriter": "打字機",
 		"deco": "裝飾",
 		"simple": "簡約",
@@ -56,8 +56,8 @@
 		"clean": "清爽"
 	},
 	"format": {
-		"mp4Video": "MP4 視訊",
-		"mp4Description": "高品質視訊檔案",
+		"mp4Video": "MP4 影片",
+		"mp4Description": "高畫質影片檔",
 		"gifAnimation": "GIF 動畫",
 		"gifDescription": "可分享的動態圖片"
 	},
@@ -69,69 +69,74 @@
 		"loopDescription": "GIF 將持續播放"
 	},
 	"tutorial": {
-		"howTrimmingWorks": "修剪的工作方式",
-		"title": "修剪的工作方式",
-		"understanding": "瞭解如何裁剪視訊中不需要的部分。",
-		"descriptionP1": "修剪工具的運作方式是：先定義你想要的區段，然後將其",
-		"descriptionRemove": "移除",
-		"descriptionP2": "的片段來工作。",
-		"descriptionP3": "只要時間軸上有被紅色修剪區段蓋到的地方，匯出時就不會包含那段內容。",
+		"howTrimmingWorks": "修剪的運作方式",
+		"title": "修剪的運作方式",
+		"understanding": "瞭解如何剪掉影片中不需要的部分。",
+		"descriptionP1": "修剪工具會先標示",
+		"descriptionRemove": "要移除的片段",
+		"descriptionP2": "的片段。",
+		"descriptionP3": "時間軸上被紅色修剪區段覆蓋的任何部分，都會在匯出時移除。",
 		"visualExample": "視覺範例",
 		"removed": "已移除",
 		"kept": "保留",
-		"finalVideo": "最終視訊",
-		"part": "第 {{number}} 部分",
+		"finalVideo": "最終影片",
+		"part": "第 {{number}} 段",
 		"addTrimStep": "1. 新增修剪",
 		"addTrimDesc": "按 T 或點選剪刀圖示標記要移除的部分。",
 		"adjustStep": "2. 調整",
-		"adjustDesc": "拖動紅色區域的邊緣，精確覆蓋要剪掉的部分。"
+		"adjustDesc": "拖曳紅色區域邊緣，精確覆蓋要剪掉的部分。"
 	},
 	"feedback": {
-		"trigger": "反饋",
-		"title": "反饋與聯絡",
-		"description": "如果有問題或缺失功能，可以直接聯絡或提交 issue。",
-		"emailLabel": "信箱",
+		"trigger": "意見回饋",
+		"title": "意見回饋與聯絡",
+		"description": "如果遇到功能故障或缺少功能，可以直接聯絡我們或建立 GitHub issue。",
+		"emailLabel": "電子郵件",
 		"xLabel": "X",
-		"reportIssue": "報告問題 / 提交反饋",
-		"openFailed": "打開連結失敗。"
+		"reportIssue": "回報問題／提供意見回饋",
+		"openFailed": "無法開啟連結。"
 	},
 	"keyboardShortcuts": {
-		"trigger": "快速鍵",
-		"title": "鍵盤快速鍵",
-		"description": "時間線和編輯器控制的快速參考。",
-		"customizeTooltip": "自訂快速鍵",
+		"trigger": "快捷鍵",
+		"title": "鍵盤快捷鍵",
+		"description": "時間軸與編輯器控制項的快速參考。",
+		"customizeTooltip": "自訂快捷鍵",
 		"customize": "自訂",
-		"panTimeline": "平移時間線",
-		"zoomTimeline": "縮放時間線",
-		"cycleAnnotations": "循環切換註釋",
+		"panTimeline": "平移時間軸",
+		"zoomTimeline": "縮放時間軸",
+		"cycleAnnotations": "依序切換註解",
 		"tab": "Tab"
 	},
 	"actions": {
-		"saveAgain": "再次保存",
+		"saveAgain": "再次儲存",
 		"showInFolder": "在資料夾中顯示"
 	},
 	"project": {
 		"untitled": "未命名"
 	},
+	"nativeCaptureUnavailable": {
+		"title": "功能沒有異常，但無法產生動畫游標疊加層。",
+		"description": "裝置不支援原生擷取，可能有多種原因，目前還無法完整判定。這不會影響 Recordly 的基本功能，但會讓游標平滑化無法使用。",
+		"confirm": "好"
+	},
 	"exportStatus": {
 		"exporting": "正在匯出",
-		"renderingFile": "正在渲染你的檔案。",
-		"preparing": "正在準備匯出...",
+		"renderingFile": "正在渲染檔案。",
+		"preparing": "正在準備匯出……",
 		"completePercent": "已完成 {{percent}}%",
 		"issue": "匯出問題",
 		"complete": "匯出完成",
-		"savedSuccessfully": "檔案已成功保存。"
+		"savedSuccessfully": "檔案已成功儲存。"
 	},
 	"export": {
-		"processingAudioEdits": "正在處理帶有速度/疊加編輯的音訊"
+		"processingAudioEdits": "正在處理含變速／疊加編輯的音訊"
 	},
 	"toolbar": {
 		"addLayer": "新增圖層",
-		"splitClip": "拆分片段 (C)"
+		"splitClip": "分割片段（C）"
 	},
 	"timeline": {
 		"expand": "展開時間軸",
-		"collapse": "摺疊時間軸"
+		"collapse": "收合時間軸"
 	},
-	"openRecordingsFolder": "打開錄製資料夾"
+	"openRecordingsFolder": "開啟錄影資料夾"
 }

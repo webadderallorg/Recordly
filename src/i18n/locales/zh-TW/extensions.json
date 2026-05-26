@@ -6,7 +6,7 @@
 	},
 	"actions": {
 		"submit": "提交擴充功能",
-		"docs": "擴充功能文件",
+		"docs": "擴充功能說明文件",
 		"refresh": "重新整理",
 		"openFolder": "開啟擴充功能資料夾",
 		"uninstall": "解除安裝",
@@ -25,11 +25,11 @@
 	"detail": {
 		"by": "作者：{{author}}",
 		"unknownAuthor": "未知作者",
-		"noDescription": "無描述",
-		"downloads": "下載次數：{{count}}",
+		"noDescription": "沒有說明",
+		"downloads": "{{count}} 次下載",
 		"preview": "預覽",
 		"screenshotAlt": "截圖 {{number}}",
-		"description": "描述",
+		"description": "說明",
 		"tags": "標籤",
 		"permissions": "權限",
 		"location": "位置",
@@ -40,14 +40,14 @@
 		"description": "安裝擴充功能以新增外框、游標特效與編輯器工具。"
 	},
 	"search": {
-		"placeholder": "搜尋擴充功能...",
+		"placeholder": "搜尋擴充功能……",
 		"noResults": "找不到擴充功能",
-		"noMarketplace": "目前尚無市集擴充功能",
+		"noMarketplace": "目前還沒有可用的市集擴充功能",
 		"count": "{{count}} 個擴充功能",
 		"countPlural": "{{count}} 個擴充功能"
 	},
 	"toast": {
-		"installedAndEnabled": "擴充功能已安裝並啟用",
+		"installedAndEnabled": "已安裝並啟用擴充功能",
 		"uninstalled": "已解除安裝 {{name}}",
 		"uninstallFailed": "解除安裝 {{name}} 失敗",
 		"searchFailed": "搜尋市集失敗",
@@ -56,5 +56,5 @@
 		"marketplaceInstalled": "已安裝並啟用 {{name}}",
 		"marketplaceInstallFailed": "安裝 {{name}} 失敗",
 		"enableFailed": "啟用擴充功能失敗"
-		}
 	}
+}
