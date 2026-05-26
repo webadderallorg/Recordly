@@ -118,11 +118,11 @@ function LaunchWindowContent() {
 	const supportsHudCaptureProtection = platform !== "linux";
 
 	useEffect(() => {
-		if (!selectedDeviceId) {
+		if (!selectedDeviceId || selectedDeviceId === "default") {
 			return;
 		}
 
-		setMicrophoneDeviceId(selectedDeviceId === "default" ? undefined : selectedDeviceId);
+		setMicrophoneDeviceId(selectedDeviceId);
 	}, [selectedDeviceId, setMicrophoneDeviceId]);
 
 	useEffect(() => {

@@ -147,9 +147,22 @@ export function registerSettingsHandlers() {
           microphoneEnabled: parsed.microphoneEnabled === true,
           microphoneDeviceId: typeof parsed.microphoneDeviceId === 'string' ? parsed.microphoneDeviceId : undefined,
           systemAudioEnabled: parsed.systemAudioEnabled === true,
+          webcamEnabled: parsed.webcamEnabled === true,
+          webcamDeviceId: typeof parsed.webcamDeviceId === 'string' ? parsed.webcamDeviceId : undefined,
+          selectedSourceId: typeof parsed.selectedSourceId === 'string' ? parsed.selectedSourceId : undefined,
+          selectedSourceName: typeof parsed.selectedSourceName === 'string' ? parsed.selectedSourceName : undefined,
         }
       } catch {
-        return { success: true, microphoneEnabled: false, microphoneDeviceId: undefined, systemAudioEnabled: false }
+        return {
+          success: true,
+          microphoneEnabled: false,
+          microphoneDeviceId: undefined,
+          systemAudioEnabled: false,
+          webcamEnabled: false,
+          webcamDeviceId: undefined,
+          selectedSourceId: undefined,
+          selectedSourceName: undefined,
+        }
       }
     })
 
@@ -157,7 +170,7 @@ export function registerSettingsHandlers() {
       return getBrowserMicrophoneProfileFromEnv()
     })
 
-    ipcMain.handle('set-recording-preferences', async (_, prefs: { microphoneEnabled?: boolean; microphoneDeviceId?: string; systemAudioEnabled?: boolean }) => {
+    ipcMain.handle('set-recording-preferences', async (_, prefs: { microphoneEnabled?: boolean; microphoneDeviceId?: string; systemAudioEnabled?: boolean; webcamEnabled?: boolean; webcamDeviceId?: string; selectedSourceId?: string; selectedSourceName?: string }) => {
       try {
         let existing: Record<string, unknown> = {}
         try {

@@ -1232,6 +1232,31 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					setMicrophoneDeviceId(result.microphoneDeviceId);
 				}
 				setSystemAudioEnabled(result.systemAudioEnabled);
+				if (result.webcamEnabled) {
+					setWebcamEnabled(true);
+				}
+				if (result.webcamDeviceId) {
+					setWebcamDeviceId(result.webcamDeviceId);
+				}
+				if (result.selectedSourceId && result.selectedSourceName) {
+					// Electron desktopCapturer ids are not stable across
+					// reboots / display changes. Only restore the source if it
+					// still exists in the current capture list, otherwise the
+					// app would silently capture a non-existent target.
+					try {
+						const available = await window.electronAPI.getSources({
+							types: ["screen", "window"],
+						});
+						const match = available.find(
+							(source) => source.id === result.selectedSourceId,
+						);
+						if (match) {
+							void window.electronAPI.selectSource(match);
+						}
+					} catch {
+						// Source enumeration failed — skip restore silently.
+					}
+				}
 			}
 		})();
 	}, []);
@@ -1249,6 +1274,16 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const persistSystemAudioEnabled = useCallback((enabled: boolean) => {
 		setSystemAudioEnabled(enabled);
 		void window.electronAPI.setRecordingPreferences({ systemAudioEnabled: enabled });
+	}, []);
+
+	const persistWebcamEnabled = useCallback((enabled: boolean) => {
+		setWebcamEnabled(enabled);
+		void window.electronAPI.setRecordingPreferences({ webcamEnabled: enabled });
+	}, []);
+
+	const persistWebcamDeviceId = useCallback((deviceId: string | undefined) => {
+		setWebcamDeviceId(deviceId);
+		void window.electronAPI.setRecordingPreferences({ webcamDeviceId: deviceId });
 	}, []);
 
 	useEffect(() => {
@@ -2052,9 +2087,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		systemAudioEnabled,
 		setSystemAudioEnabled: persistSystemAudioEnabled,
 		webcamEnabled,
-		setWebcamEnabled,
+		setWebcamEnabled: persistWebcamEnabled,
 		webcamDeviceId,
-		setWebcamDeviceId,
+		setWebcamDeviceId: persistWebcamDeviceId,
 		countdownDelay,
 		setCountdownDelay,
 	};
