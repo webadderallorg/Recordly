@@ -29,16 +29,20 @@ export type {
 	ExportSettings,
 	GifExportConfig,
 	GifFrameRate,
+	GifQualityPreset,
 	GifSizePreset,
 	VideoFrameData,
 } from "./types";
 export {
 	GIF_FRAME_RATES,
+	GIF_QUALITY_PRESETS,
 	GIF_SIZE_PRESETS,
 	isValidGifFrameRate,
+	isValidGifQualityPreset,
 	isValidMp4FrameRate,
 	MP4_FRAME_RATES,
 	VALID_GIF_FRAME_RATES,
+	VALID_GIF_QUALITY_PRESETS,
 } from "./types";
 export { VideoFileDecoder } from "./videoDecoder";
 export { VideoExporter } from "./videoExporter";

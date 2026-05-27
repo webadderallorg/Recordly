@@ -1,11 +1,81 @@
 import * as fc from "fast-check";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const gifMockState = vi.hoisted(() => ({
+	constructorOptions: [] as Array<Record<string, unknown>>,
+}));
+
+vi.mock("gif.js", () => ({
+	default: vi.fn((options: Record<string, unknown>) => {
+		gifMockState.constructorOptions.push(options);
+		const handlers = new Map<string, (value: Blob | number) => void>();
+		const quality = typeof options.quality === "number" ? options.quality : 10;
+
+		return {
+			addFrame: vi.fn(),
+			abort: vi.fn(),
+			on: vi.fn((event: string, handler: (value: Blob | number) => void) => {
+				handlers.set(event, handler);
+			}),
+			render: vi.fn(() => {
+				const size = Math.max(1, 21 - quality);
+				handlers.get("finished")?.(new Blob(["x".repeat(size)], { type: "image/gif" }));
+			}),
+		};
+	}),
+}));
+
+vi.mock("./frameRenderer", () => ({
+	FrameRenderer: vi.fn(() => ({
+		destroy: vi.fn(),
+		getCanvas: vi.fn(() => ({})),
+		initialize: vi.fn(),
+		renderFrame: vi.fn(),
+	})),
+}));
+
+vi.mock("./streamingDecoder", () => ({
+	StreamingVideoDecoder: vi.fn(() => ({
+		cancel: vi.fn(),
+		decodeAll: vi.fn(),
+		destroy: vi.fn(),
+		getEffectiveDuration: vi.fn(() => 0),
+		loadMetadata: vi.fn(() => Promise.resolve({ width: 2, height: 2, duration: 2 })),
+	})),
+}));
+
 import {
 	buildGifFrameRendererConfig,
 	calculateOutputDimensions,
+	getGifQuality,
 	getGifRepeat,
+	GifExporter,
 } from "./gifExporter";
-import { GIF_SIZE_PRESETS, GifSizePreset } from "./types";
+import { GIF_SIZE_PRESETS, type GifSizePreset } from "./types";
+
+type GifExporterTestConfig = ConstructorParameters<typeof GifExporter>[0];
+
+function createGifExporterConfig(
+	overrides: Partial<GifExporterTestConfig> = {},
+): GifExporterTestConfig {
+	return {
+		videoUrl: "file:///test.mp4",
+		width: 2,
+		height: 2,
+		frameRate: 15,
+		loop: true,
+		sizePreset: "medium",
+		wallpaper: "#000000",
+		zoomRegions: [],
+		trimRegions: [],
+		speedRegions: [],
+		showShadow: false,
+		shadowIntensity: 0,
+		backgroundBlur: 0,
+		cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+		...overrides,
+	};
+}
 
 /**
  * Property 2: Loop Encoding Correctness
@@ -19,6 +89,15 @@ import { GIF_SIZE_PRESETS, GifSizePreset } from "./types";
  * Feature: gif-export, Property 2: Loop Encoding Correctness
  */
 describe("GIF Exporter", () => {
+	beforeEach(() => {
+		gifMockState.constructorOptions = [];
+		vi.stubGlobal("navigator", { hardwareConcurrency: 4 });
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
 	describe("Property 2: Loop Encoding Correctness", () => {
 		/**
 		 * Test the loop configuration mapping logic.
@@ -49,6 +128,37 @@ describe("GIF Exporter", () => {
 				}),
 				{ numRuns: 100 },
 			);
+		});
+	});
+
+	describe("GIF quality preset mapping", () => {
+		it("should pass the small preset quality to gif.js", async () => {
+			await new GifExporter(createGifExporterConfig({ qualityPreset: "small" })).export();
+
+			expect(gifMockState.constructorOptions.at(-1)).toMatchObject({ quality: 20 });
+		});
+
+		it("should default to balanced quality when qualityPreset is omitted", async () => {
+			await new GifExporter(createGifExporterConfig()).export();
+
+			expect(gifMockState.constructorOptions.at(-1)).toMatchObject({ quality: 10 });
+		});
+
+		it("should fall back to balanced quality for unknown quality presets", () => {
+			expect(getGifQuality("future")).toBe(10);
+		});
+
+		it("should produce a smaller blob for the small preset than the high preset", async () => {
+			const highResult = await new GifExporter(
+				createGifExporterConfig({ qualityPreset: "high" }),
+			).export();
+			const smallResult = await new GifExporter(
+				createGifExporterConfig({ qualityPreset: "small" }),
+			).export();
+
+			expect(highResult.success).toBe(true);
+			expect(smallResult.success).toBe(true);
+			expect(smallResult.blob?.size).toBeLessThan(highResult.blob?.size ?? 0);
 		});
 	});
 

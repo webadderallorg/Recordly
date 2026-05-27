@@ -66,6 +66,7 @@ import {
 	GIF_SIZE_PRESETS,
 	GifExporter,
 	type GifFrameRate,
+	type GifQualityPreset,
 	type GifSizePreset,
 	ModernVideoExporter,
 	probeSupportedMp4Dimensions,
@@ -645,6 +646,9 @@ export default function VideoEditor() {
 	const [gifSizePreset, setGifSizePreset] = useState<GifSizePreset>(
 		initialEditorPreferences.gifSizePreset,
 	);
+	const [gifQualityPreset, setGifQualityPreset] = useState<GifQualityPreset>(
+		initialEditorPreferences.gifQualityPreset,
+	);
 	const hasCaptionsForSidecar = autoCaptionSettings.enabled && autoCaptions.length > 0;
 	const captionSidecarCues = useMemo(
 		() =>
@@ -810,6 +814,7 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			gifQualityPreset,
 			autoCaptionSettings: { ...autoCaptionSettings },
 			whisperExecutablePath,
 			whisperModelPath,
@@ -867,6 +872,7 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			gifQualityPreset,
 			autoCaptionSettings,
 			whisperExecutablePath,
 			whisperModelPath,
@@ -965,6 +971,7 @@ export default function VideoEditor() {
 		setGifFrameRate(snapshot.gifFrameRate);
 		setGifLoop(snapshot.gifLoop);
 		setGifSizePreset(snapshot.gifSizePreset);
+		setGifQualityPreset(snapshot.gifQualityPreset);
 		setAutoCaptionSettings({ ...snapshot.autoCaptionSettings });
 		setWhisperExecutablePath(snapshot.whisperExecutablePath);
 		setWhisperModelPath(snapshot.whisperModelPath);
@@ -1755,6 +1762,7 @@ export default function VideoEditor() {
 				gifFrameRate: GifFrameRate;
 				gifLoop: boolean;
 				gifSizePreset: GifSizePreset;
+				gifQualityPreset: GifQualityPreset;
 				sourceAudioTrackSettingsByClip: Record<string, SourceAudioTrackSettings>;
 				defaultSourceAudioTrackSettings: SourceAudioTrackSettings;
 			}>,
@@ -1878,6 +1886,7 @@ export default function VideoEditor() {
 				gifFrameRate,
 				gifLoop,
 				gifSizePreset,
+				gifQualityPreset,
 				sourceAudioTrackSettingsByClip,
 				defaultSourceAudioTrackSettings,
 			}),
@@ -1944,6 +1953,7 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			gifQualityPreset,
 			frame,
 			sourceAudioTrackSettingsByClip,
 			defaultSourceAudioTrackSettings,
@@ -2143,6 +2153,7 @@ export default function VideoEditor() {
 			setGifFrameRate(normalizedEditor.gifFrameRate);
 			setGifLoop(normalizedEditor.gifLoop);
 			setGifSizePreset(normalizedEditor.gifSizePreset);
+			setGifQualityPreset(normalizedEditor.gifQualityPreset);
 
 			setSelectedZoomId(null);
 			setSelectedClipId(null);
@@ -2497,6 +2508,7 @@ export default function VideoEditor() {
 						setGifFrameRate(initialEditorPreferences.gifFrameRate);
 						setGifLoop(initialEditorPreferences.gifLoop);
 						setGifSizePreset(initialEditorPreferences.gifSizePreset);
+						setGifQualityPreset(initialEditorPreferences.gifQualityPreset);
 						return;
 					}
 				}
@@ -2674,6 +2686,7 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			gifQualityPreset,
 			whisperExecutablePath,
 			whisperModelPath,
 		});
@@ -2730,6 +2743,7 @@ export default function VideoEditor() {
 		gifFrameRate,
 		gifLoop,
 		gifSizePreset,
+		gifQualityPreset,
 		whisperExecutablePath,
 		whisperModelPath,
 	]);
@@ -4639,6 +4653,7 @@ export default function VideoEditor() {
 						frameRate: settings.gifConfig.frameRate,
 						loop: settings.gifConfig.loop,
 						sizePreset: settings.gifConfig.sizePreset,
+						qualityPreset: settings.gifConfig.qualityPreset,
 						wallpaper,
 						trimRegions,
 						speedRegions: effectiveSpeedRegions,
@@ -5329,6 +5344,7 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			gifQualityPreset,
 		});
 
 		setExportError(null);
@@ -5344,6 +5360,7 @@ export default function VideoEditor() {
 		gifFrameRate,
 		gifLoop,
 		gifSizePreset,
+		gifQualityPreset,
 		hasCaptionsForSidecar,
 		includeCaptionSidecar,
 		exportBackendPreference,
@@ -6246,6 +6263,8 @@ export default function VideoEditor() {
 									onGifLoopChange={setGifLoop}
 									gifSizePreset={gifSizePreset}
 									onGifSizePresetChange={setGifSizePreset}
+									gifQualityPreset={gifQualityPreset}
+									onGifQualityPresetChange={setGifQualityPreset}
 									showCaptionSidecarOption={
 										hasCaptionsForSidecar && exportFormat === "mp4"
 									}

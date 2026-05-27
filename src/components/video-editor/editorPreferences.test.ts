@@ -87,6 +87,20 @@ describe("editorPreferences", () => {
 		expect(DEFAULT_EDITOR_PREFERENCES.exportQuality).toBe("source");
 	});
 
+	it("defaults GIF quality to balanced and clamps invalid stored presets", () => {
+		vi.stubGlobal(
+			"localStorage",
+			createStorageMock({
+				[EDITOR_PREFERENCES_STORAGE_KEY]: JSON.stringify({
+					gifQualityPreset: "tiny",
+				}),
+			}),
+		);
+
+		expect(DEFAULT_EDITOR_PREFERENCES.gifQualityPreset).toBe("balanced");
+		expect(loadEditorPreferences().gifQualityPreset).toBe("balanced");
+	});
+
 	it("defaults cursor preferences to Tahoe at 2.5x with gentler sway", () => {
 		expect(DEFAULT_EDITOR_PREFERENCES.cursorStyle).toBe("tahoe");
 		expect(DEFAULT_EDITOR_PREFERENCES.cursorSize).toBe(2.5);
@@ -163,6 +177,7 @@ describe("editorPreferences", () => {
 					exportFormat: "gif",
 					gifFrameRate: 30,
 					gifLoop: false,
+					gifQualityPreset: "small",
 					customAspectWidth: "21",
 					customAspectHeight: "9",
 					customWallpapers: ["data:image/jpeg;base64,abc"],
@@ -180,6 +195,7 @@ describe("editorPreferences", () => {
 			exportFormat: "gif",
 			gifFrameRate: 30,
 			gifLoop: false,
+			gifQualityPreset: "small",
 			customAspectWidth: "21",
 			customAspectHeight: "9",
 			customWallpapers: ["data:image/jpeg;base64,abc"],
@@ -277,6 +293,7 @@ describe("editorPreferences", () => {
 			gifFrameRate: 20,
 			gifLoop: false,
 			gifSizePreset: "large",
+			gifQualityPreset: "small",
 			customAspectWidth: "4",
 			customAspectHeight: "5",
 			customWallpapers: ["data:image/jpeg;base64,abc", "data:image/jpeg;base64,abc"],
@@ -307,6 +324,7 @@ describe("editorPreferences", () => {
 			gifFrameRate: 20,
 			gifLoop: false,
 			gifSizePreset: "large",
+			gifQualityPreset: "small",
 			customAspectWidth: "4",
 			customAspectHeight: "5",
 			customWallpapers: ["data:image/jpeg;base64,abc"],

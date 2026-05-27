@@ -1,6 +1,14 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { GifFrameRate, isValidGifFrameRate, VALID_GIF_FRAME_RATES } from "./types";
+import {
+	GIF_QUALITY_PRESETS,
+	GifFrameRate,
+	GifQualityPreset,
+	isValidGifFrameRate,
+	isValidGifQualityPreset,
+	VALID_GIF_FRAME_RATES,
+	VALID_GIF_QUALITY_PRESETS,
+} from "./types";
 
 /**
  * Property 1: Valid Frame Rate Acceptance
@@ -51,6 +59,38 @@ describe("GIF Export Types", () => {
 				}),
 				{ numRuns: 100 },
 			);
+		});
+	});
+
+	describe("GIF quality presets", () => {
+		it("should accept all valid quality presets", () => {
+			fc.assert(
+				fc.property(
+					fc.constantFrom(...VALID_GIF_QUALITY_PRESETS),
+					(qualityPreset: GifQualityPreset) => {
+						expect(isValidGifQualityPreset(qualityPreset)).toBe(true);
+					},
+				),
+				{ numRuns: 100 },
+			);
+		});
+
+		it("should reject unknown quality presets", () => {
+			fc.assert(
+				fc.property(
+					fc.string().filter((value) => !isValidGifQualityPreset(value)),
+					(invalidQualityPreset: string) => {
+						expect(isValidGifQualityPreset(invalidQualityPreset)).toBe(false);
+					},
+				),
+				{ numRuns: 100 },
+			);
+		});
+
+		it("should map high, balanced, and small presets to gif.js quality values", () => {
+			expect(GIF_QUALITY_PRESETS.high.quality).toBe(1);
+			expect(GIF_QUALITY_PRESETS.balanced.quality).toBe(10);
+			expect(GIF_QUALITY_PRESETS.small.quality).toBe(20);
 		});
 	});
 });

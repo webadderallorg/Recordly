@@ -183,10 +183,13 @@ export type GifFrameRate = 15 | 20 | 25 | 30;
 
 export type GifSizePreset = "medium" | "large" | "original";
 
+export type GifQualityPreset = "high" | "balanced" | "small";
+
 export interface GifExportConfig {
 	frameRate: GifFrameRate;
 	loop: boolean;
 	sizePreset: GifSizePreset;
+	qualityPreset?: GifQualityPreset;
 	width: number;
 	height: number;
 }
@@ -216,6 +219,15 @@ export const GIF_SIZE_PRESETS: Record<GifSizePreset, { maxHeight: number; label:
 	original: { maxHeight: Infinity, label: "Original" },
 };
 
+export const GIF_QUALITY_PRESETS: Record<
+	GifQualityPreset,
+	{ quality: number; label: string }
+> = {
+	high: { quality: 1, label: "High" },
+	balanced: { quality: 10, label: "Balanced" },
+	small: { quality: 20, label: "Small file" },
+};
+
 export const GIF_FRAME_RATES: { value: GifFrameRate; label: string }[] = [
 	{ value: 15, label: "15 FPS - Balanced" },
 	{ value: 20, label: "20 FPS - Smooth" },
@@ -226,6 +238,16 @@ export const GIF_FRAME_RATES: { value: GifFrameRate; label: string }[] = [
 // Valid frame rates for validation
 export const VALID_GIF_FRAME_RATES: readonly GifFrameRate[] = [15, 20, 25, 30] as const;
 
+export const VALID_GIF_QUALITY_PRESETS: readonly GifQualityPreset[] = [
+	"high",
+	"balanced",
+	"small",
+] as const;
+
 export function isValidGifFrameRate(rate: number): rate is GifFrameRate {
 	return VALID_GIF_FRAME_RATES.includes(rate as GifFrameRate);
+}
+
+export function isValidGifQualityPreset(value: unknown): value is GifQualityPreset {
+	return VALID_GIF_QUALITY_PRESETS.includes(value as GifQualityPreset);
 }
