@@ -512,6 +512,8 @@ interface SettingsPanelProps {
 	onShowCursorChange?: (enabled: boolean) => void;
 	loopCursor?: boolean;
 	onLoopCursorChange?: (enabled: boolean) => void;
+	alwaysUsePointerCursor?: boolean;
+	onAlwaysUsePointerCursorChange?: (enabled: boolean) => void;
 	cursorStyle?: CursorStyle;
 	onCursorStyleChange?: (style: CursorStyle) => void;
 	cursorSize?: number;
@@ -897,6 +899,8 @@ export function SettingsPanel({
 	onShowCursorChange,
 	loopCursor = false,
 	onLoopCursorChange,
+	alwaysUsePointerCursor = false,
+	onAlwaysUsePointerCursorChange,
 	cursorStyle = DEFAULT_CURSOR_STYLE,
 	onCursorStyleChange,
 	cursorSize = 5,
@@ -1523,6 +1527,7 @@ export function SettingsPanel({
 	const resetCursorSection = () => {
 		onShowCursorChange?.(initialEditorPreferences.showCursor);
 		onLoopCursorChange?.(initialEditorPreferences.loopCursor);
+		onAlwaysUsePointerCursorChange?.(initialEditorPreferences.alwaysUsePointerCursor);
 		onCursorStyleChange?.(initialEditorPreferences.cursorStyle);
 		onCursorSizeChange?.(initialEditorPreferences.cursorSize);
 		onCursorSmoothingChange?.(initialEditorPreferences.cursorSmoothing);
@@ -3308,6 +3313,19 @@ export function SettingsPanel({
 								</label>
 							</div>
 						</div>
+						<label className="flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
+							<span>
+								{tSettings(
+									"effects.alwaysUsePointerCursor",
+									"Always use pointer cursor",
+								)}
+							</span>
+							<Switch
+								checked={alwaysUsePointerCursor}
+								onCheckedChange={onAlwaysUsePointerCursorChange}
+								className="data-[state=checked]:bg-[#2563EB] scale-75"
+							/>
+						</label>
 						<div className="flex flex-col gap-1.5">
 							<div className="space-y-1.5">
 								<ToggleGroup

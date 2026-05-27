@@ -96,6 +96,7 @@ export interface ProjectEditorState {
 	connectedZoomEasing: ZoomTransitionEasing;
 	showCursor: boolean;
 	loopCursor: boolean;
+	alwaysUsePointerCursor: boolean;
 	cursorStyle: CursorStyle;
 	cursorSize: number;
 	cursorSmoothing: number;
@@ -880,6 +881,10 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		),
 		showCursor: typeof editor.showCursor === "boolean" ? editor.showCursor : true,
 		loopCursor: typeof editor.loopCursor === "boolean" ? editor.loopCursor : false,
+		alwaysUsePointerCursor:
+			typeof editor.alwaysUsePointerCursor === "boolean"
+				? editor.alwaysUsePointerCursor
+				: false,
 		cursorStyle: normalizedCursorStyle,
 		cursorSize: normalizedMotionPreset.cursorSize,
 		cursorSmoothing: normalizedMotionPreset.cursorSmoothing,

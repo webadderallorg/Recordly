@@ -18,6 +18,7 @@ export type NativeStaticLayoutCursorTelemetryOptions = {
 	clickBounce?: number;
 	clickBounceDurationMs?: number;
 	sourceCrop?: CropRegion;
+	alwaysUsePointerCursor?: boolean;
 };
 
 const CURSOR_POSITION_EPSILON = 0.00001;
@@ -144,12 +145,15 @@ function createMonotonicCursorRenderSampler(
 		}
 
 		const projectedPosition = projectCursorPositionToViewport(position, options.sourceCrop);
+		const effectiveCursorType: CursorTelemetryPoint["cursorType"] = options.alwaysUsePointerCursor
+			? "pointer"
+			: latestStableCursorType;
 		return {
 			...position,
 			cx: projectedPosition.cx,
 			cy: projectedPosition.cy,
-			cursorType: latestStableCursorType,
-			cursorTypeIndex: getCursorTypeIndex(latestStableCursorType),
+			cursorType: effectiveCursorType,
+			cursorTypeIndex: getCursorTypeIndex(effectiveCursorType),
 			bounceScale: getCursorBounceScale(latestClick, timeMs, options),
 			...(options.sourceCrop ? { visible: projectedPosition.visible } : {}),
 		};

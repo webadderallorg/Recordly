@@ -89,6 +89,7 @@ export interface CursorRenderConfig {
 	sway: number;
 	/** Cursor visual style. */
 	style: CursorStyle;
+	alwaysUsePointerCursor: boolean;
 }
 
 export const DEFAULT_CURSOR_CONFIG: CursorRenderConfig = {
@@ -107,6 +108,7 @@ export const DEFAULT_CURSOR_CONFIG: CursorRenderConfig = {
 	clickBounceDuration: DEFAULT_CURSOR_CLICK_BOUNCE_DURATION,
 	sway: 0,
 	style: DEFAULT_CURSOR_STYLE,
+	alwaysUsePointerCursor: false,
 };
 
 const REFERENCE_WIDTH = 1920;
@@ -1011,6 +1013,10 @@ export class PixiCursorOverlay {
 		this.config.sway = clamp(sway, 0, 2);
 	}
 
+	setAlwaysUsePointerCursor(enabled: boolean) {
+		this.config.alwaysUsePointerCursor = enabled;
+	}
+
 	setStyle(style: CursorStyle) {
 		this.config.style = style;
 		if (isStatefulCursorStyle(style)) {
@@ -1108,11 +1114,14 @@ export class PixiCursorOverlay {
 		const px = viewport.x + this.state.x * viewport.width;
 		const py = viewport.y + this.state.y * viewport.height;
 		const h = this.config.dotRadius * getCursorViewportScale(viewport);
-		const { cursorType, clickBounceProgress } = getCursorVisualState(
+		const { cursorType: rawCursorType, clickBounceProgress } = getCursorVisualState(
 			samples,
 			timeMs,
 			this.config.clickBounceDuration,
 		);
+		const cursorType: CursorAssetKey = this.config.alwaysUsePointerCursor
+			? "pointer"
+			: rawCursorType;
 		const bounceScale = Math.max(
 			0.72,
 			1 - Math.sin(clickBounceProgress * Math.PI) * (0.08 * this.config.clickBounce),
@@ -1317,11 +1326,12 @@ export function drawCursorOnCanvas(
 	const px = viewport.x + smoothedState.x * viewport.width;
 	const py = viewport.y + smoothedState.y * viewport.height;
 	const h = config.dotRadius * getCursorViewportScale(viewport);
-	const { cursorType, clickBounceProgress } = getCursorVisualState(
+	const { cursorType: rawCursorType, clickBounceProgress } = getCursorVisualState(
 		samples,
 		timeMs,
 		config.clickBounceDuration,
 	);
+	const cursorType: CursorAssetKey = config.alwaysUsePointerCursor ? "pointer" : rawCursorType;
 	const spriteKey = (
 		cursorType && loadedCursorAssets[cursorType] ? cursorType : "arrow"
 	) as CursorAssetKey;
