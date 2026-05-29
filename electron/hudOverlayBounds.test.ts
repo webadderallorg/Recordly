@@ -21,19 +21,19 @@ describe("getHudOverlayWindowBounds", () => {
 
 	it("uses a bottom-centered compact fallback when mouse passthrough is unavailable", () => {
 		expect(getHudOverlayWindowBounds(workArea, false)).toEqual({
-			x: 650,
-			y: 920,
-			width: 860,
-			height: 160,
+			x: 720,
+			y: 960,
+			width: 720,
+			height: 120,
 		});
 	});
 
 	it("expands the non-passthrough fallback for HUD menus and hover interaction", () => {
 		expect(getHudOverlayWindowBounds(workArea, false, true)).toEqual({
-			x: 650,
-			y: 540,
-			width: 860,
-			height: 540,
+			x: 720,
+			y: 560,
+			width: 720,
+			height: 520,
 		});
 	});
 
@@ -50,9 +50,9 @@ describe("getHudOverlayWindowBounds", () => {
 			),
 		).toEqual({
 			x: -100,
-			y: 280,
+			y: 320,
 			width: 640,
-			height: 160,
+			height: 120,
 		});
 	});
 
@@ -92,16 +92,16 @@ describe("resizeHudOverlayFallbackBounds", () => {
 				{
 					x: 420,
 					y: 700,
-					width: 860,
-					height: 160,
+					width: 720,
+					height: 120,
 				},
 				true,
 			),
 		).toEqual({
 			x: 420,
-			y: 320,
-			width: 860,
-			height: 540,
+			y: 300,
+			width: 720,
+			height: 520,
 		});
 	});
 
@@ -111,17 +111,17 @@ describe("resizeHudOverlayFallbackBounds", () => {
 				workArea,
 				{
 					x: 420,
-					y: 320,
-					width: 860,
-					height: 540,
+					y: 300,
+					width: 720,
+					height: 520,
 				},
 				false,
 			),
 		).toEqual({
 			x: 420,
 			y: 700,
-			width: 860,
-			height: 160,
+			width: 720,
+			height: 120,
 		});
 	});
 
@@ -132,16 +132,16 @@ describe("resizeHudOverlayFallbackBounds", () => {
 				{
 					x: 1500,
 					y: 900,
-					width: 860,
-					height: 160,
+					width: 720,
+					height: 120,
 				},
 				true,
 			),
 		).toEqual({
-			x: 1060,
-			y: 520,
-			width: 860,
-			height: 540,
+			x: 1200,
+			y: 500,
+			width: 720,
+			height: 520,
 		});
 	});
 });
