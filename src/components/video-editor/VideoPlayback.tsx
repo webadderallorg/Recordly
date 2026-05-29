@@ -311,6 +311,11 @@ function getEffectiveNativeAspectRatio(
 interface VideoPlaybackProps {
 	videoPath: string;
 	onDurationChange: (duration: number) => void;
+	onVideoMetadataChange?: (metadata: {
+		width: number;
+		height: number;
+		duration: number;
+	}) => void;
 	onPreviewReadyChange?: (ready: boolean) => void;
 	onTimeUpdate: (time: number) => void;
 	currentTime: number;
@@ -389,6 +394,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		{
 			videoPath,
 			onDurationChange,
+			onVideoMetadataChange,
 			onPreviewReadyChange,
 			onTimeUpdate,
 			currentTime,
@@ -2539,6 +2545,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const handleLoadedMetadata = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
 			const video = e.currentTarget;
 			onDurationChange(video.duration);
+			onVideoMetadataChange?.({
+				width: video.videoWidth,
+				height: video.videoHeight,
+				duration: video.duration,
+			});
 
 			// Push video info to extension host for query APIs
 			extensionHost.setVideoInfo({
