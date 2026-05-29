@@ -383,6 +383,10 @@ export default function VideoEditor() {
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [duration, setDuration] = useState(0);
+	const [sourceVideoDimensions, setSourceVideoDimensions] = useState<{
+		width: number;
+		height: number;
+	} | null>(null);
 	const [wallpaper, setWallpaper] = useState<string>(initialEditorPreferences.wallpaper);
 	const [shadowIntensity, setShadowIntensity] = useState(
 		initialEditorPreferences.shadowIntensity,
@@ -635,6 +639,10 @@ export default function VideoEditor() {
 	}
 
 	const [timelineCollapsed, setTimelineCollapsed] = useState(false);
+	const effectiveSourceVideoDimensions = sourceVideoDimensions ?? {
+		width: 1920,
+		height: 1080,
+	};
 
 	useEffect(() => {
 		void window.electronAPI?.getPlatform?.()?.then((platform) => {
@@ -1243,6 +1251,25 @@ export default function VideoEditor() {
 		setPreviewVersion((version) => version + 1);
 	}, []);
 
+	useEffect(() => {
+		setSourceVideoDimensions(null);
+	}, [videoPath]);
+
+	const handleVideoMetadataChange = useCallback(
+		(metadata: { width: number; height: number }) => {
+			const width = Math.floor(metadata.width);
+			const height = Math.floor(metadata.height);
+			if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+				return;
+			}
+
+			setSourceVideoDimensions((current) =>
+				current?.width === width && current.height === height ? current : { width, height },
+			);
+		},
+		[],
+	);
+
 	const clearPendingProjectAutosave = useCallback(() => {
 		if (projectAutosaveTimeoutRef.current !== null) {
 			window.clearTimeout(projectAutosaveTimeoutRef.current);
@@ -1363,22 +1390,30 @@ export default function VideoEditor() {
 	const gifOutputDimensions = useMemo(
 		() =>
 			calculateOutputDimensions(
-				videoPlaybackRef.current?.video?.videoWidth || 1920,
-				videoPlaybackRef.current?.video?.videoHeight || 1080,
+				effectiveSourceVideoDimensions.width,
+				effectiveSourceVideoDimensions.height,
 				gifSizePreset,
 				GIF_SIZE_PRESETS,
 			),
-		[gifSizePreset],
+		[
+			effectiveSourceVideoDimensions.height,
+			effectiveSourceVideoDimensions.width,
+			gifSizePreset,
+		],
 	);
 
 	const desiredMp4SourceDimensions = useMemo(
 		() =>
 			calculateMp4SourceDimensions(
-				videoPlaybackRef.current?.video?.videoWidth || 1920,
-				videoPlaybackRef.current?.video?.videoHeight || 1080,
+				effectiveSourceVideoDimensions.width,
+				effectiveSourceVideoDimensions.height,
 				aspectRatio,
 			),
-		[aspectRatio],
+		[
+			aspectRatio,
+			effectiveSourceVideoDimensions.height,
+			effectiveSourceVideoDimensions.width,
+		],
 	);
 
 	const mp4OutputDimensions = useMemo(() => {
@@ -4763,8 +4798,8 @@ export default function VideoEditor() {
 			return;
 		}
 
-		const sourceWidth = video.videoWidth || 1920;
-		const sourceHeight = video.videoHeight || 1080;
+		const sourceWidth = sourceVideoDimensions?.width || video.videoWidth || 1920;
+		const sourceHeight = sourceVideoDimensions?.height || video.videoHeight || 1080;
 		const settings = resolveExportStartSettings({
 			sourceWidth,
 			sourceHeight,
@@ -4794,6 +4829,8 @@ export default function VideoEditor() {
 		gifSizePreset,
 		exportBackendPreference,
 		exportPipelineModel,
+		sourceVideoDimensions?.height,
+		sourceVideoDimensions?.width,
 		handleExport,
 	]);
 
@@ -5853,15 +5890,13 @@ export default function VideoEditor() {
 												aspectRatio: getAspectRatioValue(
 													aspectRatio,
 													(() => {
-														const previewVideo =
-															videoPlaybackRef.current?.video;
 														if (
-															previewVideo &&
-															previewVideo.videoHeight > 0
+															sourceVideoDimensions &&
+															sourceVideoDimensions.height > 0
 														) {
 															return (
-																previewVideo.videoWidth /
-																previewVideo.videoHeight
+																sourceVideoDimensions.width /
+																sourceVideoDimensions.height
 															);
 														}
 														return 16 / 9;
@@ -5878,6 +5913,7 @@ export default function VideoEditor() {
 												ref={videoPlaybackRef}
 												videoPath={videoPath || ""}
 												onDurationChange={setDuration}
+												onVideoMetadataChange={handleVideoMetadataChange}
 												onPreviewReadyChange={setIsPreviewReady}
 												onTimeUpdate={setCurrentTime}
 												currentTime={currentTime}
