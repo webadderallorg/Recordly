@@ -16,6 +16,7 @@ constexpr uint32_t kMinimumGapFillThresholdMs = 50;
 constexpr uint32_t kDiscontinuityGapFillThresholdMs = 140;
 constexpr uint32_t kSilentDiscontinuityCompactThresholdMs = 40;
 constexpr uint32_t kBoundaryFadeInMs = 5;
+constexpr uint32_t kMaxRecoverableWasapiErrorWarnings = 10;
 
 int64_t queryPerformanceCounterHns() {
     LARGE_INTEGER counter;
@@ -53,6 +54,10 @@ int16_t pcm24ToInt16(const BYTE* sample) {
         value |= ~0xFFFFFF;
     }
     return static_cast<int16_t>(value >> 8);
+}
+
+bool isRecoverableWasapiCaptureError(HRESULT hr) {
+    return hr == AUDCLNT_E_BUFFER_ERROR;
 }
 }
 
@@ -200,7 +205,9 @@ bool WasapiCapture::start() {
     compactedDiscontinuityFrames_ = 0;
     compactedSilentDiscontinuityCount_ = 0;
     compactedSilentDiscontinuityFrames_ = 0;
+    recoverableErrorCount_ = 0;
     fadeInFramesRemaining_ = 0;
+    fatalError_ = false;
     writeWavHeader(outputFile_, 0);
 
     HRESULT hr = audioClient_->Start();
@@ -392,8 +399,15 @@ void WasapiCapture::captureThread() {
 
     DWORD sleepMs = static_cast<DWORD>((static_cast<double>(bufferFrameCount_) / mixFormat_->nSamplesPerSec) * 500.0);
     if (sleepMs < 5) sleepMs = 5;
+    auto logRecoverableError = [this](const char* operation, HRESULT hr) {
+        const uint32_t count = recoverableErrorCount_.fetch_add(1) + 1;
+        if (count <= kMaxRecoverableWasapiErrorWarnings) {
+            std::cerr << "WASAPI: Recovering from " << operation << " hr=0x"
+                      << std::hex << hr << std::dec << std::endl;
+        }
+    };
 
-    while (capturing_) {
+    while (capturing_ && !fatalError_) {
         if (paused_) {
             Sleep(10);
             continue;
@@ -404,7 +418,13 @@ void WasapiCapture::captureThread() {
         UINT32 packetLength = 0;
         HRESULT hr = captureClient_->GetNextPacketSize(&packetLength);
         if (FAILED(hr)) {
+            if (isRecoverableWasapiCaptureError(hr)) {
+                logRecoverableError("GetNextPacketSize", hr);
+                Sleep(sleepMs);
+                continue;
+            }
             std::cerr << "WASAPI: GetNextPacketSize failed hr=0x" << std::hex << hr << std::dec << std::endl;
+            fatalError_ = true;
             break;
         }
 
@@ -422,7 +442,13 @@ void WasapiCapture::captureThread() {
                 &devicePosition,
                 &qpcPosition);
             if (FAILED(hr)) {
+                if (isRecoverableWasapiCaptureError(hr)) {
+                    logRecoverableError("GetBuffer", hr);
+                    packetLength = 0;
+                    break;
+                }
                 std::cerr << "WASAPI: GetBuffer failed hr=0x" << std::hex << hr << std::dec << std::endl;
+                fatalError_ = true;
                 break;
             }
 
@@ -496,7 +522,13 @@ void WasapiCapture::captureThread() {
                 captureClient_->ReleaseBuffer(numFrames);
                 hr = captureClient_->GetNextPacketSize(&packetLength);
                 if (FAILED(hr)) {
+                    if (isRecoverableWasapiCaptureError(hr)) {
+                        logRecoverableError("GetNextPacketSize", hr);
+                        packetLength = 0;
+                        continue;
+                    }
                     std::cerr << "WASAPI: GetNextPacketSize failed hr=0x" << std::hex << hr << std::dec << std::endl;
+                    fatalError_ = true;
                     break;
                 }
                 continue;
@@ -563,7 +595,13 @@ void WasapiCapture::captureThread() {
 
             hr = captureClient_->GetNextPacketSize(&packetLength);
             if (FAILED(hr)) {
+                if (isRecoverableWasapiCaptureError(hr)) {
+                    logRecoverableError("GetNextPacketSize", hr);
+                    packetLength = 0;
+                    continue;
+                }
                 std::cerr << "WASAPI: GetNextPacketSize failed hr=0x" << std::hex << hr << std::dec << std::endl;
+                fatalError_ = true;
                 break;
             }
         }

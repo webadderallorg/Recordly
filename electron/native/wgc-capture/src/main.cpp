@@ -241,6 +241,10 @@ static void writeCompanionAudioTimingMetadata(
     if (timestampErrorCount > 0) {
         metadataFile << ",\"timestampErrorCount\":" << timestampErrorCount;
     }
+    const uint32_t recoverableErrorCount = capture.recoverableErrorCount();
+    if (recoverableErrorCount > 0) {
+        metadataFile << ",\"recoverableWasapiErrorCount\":" << recoverableErrorCount;
+    }
     metadataFile << "}";
 }
 
@@ -470,11 +474,13 @@ int main(int argc, char* argv[]) {
             loopback.timestampErrorCount() > 0 ||
             loopback.gapFillCount() > 0 ||
             loopback.compactedDiscontinuityCount() > 0 ||
-            loopback.compactedSilentDiscontinuityCount() > 0
+            loopback.compactedSilentDiscontinuityCount() > 0 ||
+            loopback.recoverableErrorCount() > 0
         ) {
             std::cerr << "WARNING: System audio timing metadata includes discontinuities="
                       << loopback.dataDiscontinuityCount()
                       << " timestampErrors=" << loopback.timestampErrorCount()
+                      << " recoverableWasapiErrors=" << loopback.recoverableErrorCount()
                       << " gapFills=" << loopback.gapFillCount()
                       << " insertedSilenceFrames=" << loopback.insertedSilenceFrames()
                       << " compactedDiscontinuities=" << loopback.compactedDiscontinuityCount()
@@ -491,11 +497,13 @@ int main(int argc, char* argv[]) {
             micCapture.timestampErrorCount() > 0 ||
             micCapture.gapFillCount() > 0 ||
             micCapture.compactedDiscontinuityCount() > 0 ||
-            micCapture.compactedSilentDiscontinuityCount() > 0
+            micCapture.compactedSilentDiscontinuityCount() > 0 ||
+            micCapture.recoverableErrorCount() > 0
         ) {
             std::cerr << "WARNING: Microphone timing metadata includes discontinuities="
                       << micCapture.dataDiscontinuityCount()
                       << " timestampErrors=" << micCapture.timestampErrorCount()
+                      << " recoverableWasapiErrors=" << micCapture.recoverableErrorCount()
                       << " gapFills=" << micCapture.gapFillCount()
                       << " insertedSilenceFrames=" << micCapture.insertedSilenceFrames()
                       << " compactedDiscontinuities=" << micCapture.compactedDiscontinuityCount()

@@ -32,6 +32,7 @@ public:
     uint64_t compactedDiscontinuityFrames() const { return compactedDiscontinuityFrames_.load(); }
     uint32_t compactedSilentDiscontinuityCount() const { return compactedSilentDiscontinuityCount_.load(); }
     uint64_t compactedSilentDiscontinuityFrames() const { return compactedSilentDiscontinuityFrames_.load(); }
+    uint32_t recoverableErrorCount() const { return recoverableErrorCount_.load(); }
 
 private:
     bool initializeCommon();
@@ -45,6 +46,7 @@ private:
     std::string outputPath_;
     std::thread thread_;
     std::atomic<bool> capturing_{false};
+    std::atomic<bool> fatalError_{false};
     std::atomic<bool> paused_{false};
     HANDLE outputFile_ = INVALID_HANDLE_VALUE;
     std::atomic<uint64_t> totalDataBytes_{0};
@@ -69,5 +71,6 @@ private:
     std::atomic<uint64_t> compactedDiscontinuityFrames_{0};
     std::atomic<uint32_t> compactedSilentDiscontinuityCount_{0};
     std::atomic<uint64_t> compactedSilentDiscontinuityFrames_{0};
+    std::atomic<uint32_t> recoverableErrorCount_{0};
     std::atomic<uint32_t> fadeInFramesRemaining_{0};
 };
