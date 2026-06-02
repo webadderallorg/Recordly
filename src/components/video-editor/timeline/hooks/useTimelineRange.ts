@@ -7,6 +7,40 @@ interface UseTimelineRangeParams {
 	timelineContainerRef: RefObject<HTMLDivElement>;
 }
 
+export interface TimelineWheelPanDeltaInput {
+	deltaX: number;
+	deltaY: number;
+	deltaMode: number;
+	shiftKey?: boolean;
+	ctrlKey?: boolean;
+	metaKey?: boolean;
+	canScrollVertically?: boolean;
+}
+
+export function resolveTimelineWheelPanDeltaPx({
+	deltaX,
+	deltaY,
+	deltaMode,
+	shiftKey = false,
+	ctrlKey = false,
+	metaKey = false,
+	canScrollVertically = true,
+}: TimelineWheelPanDeltaInput) {
+	if ((ctrlKey || metaKey) && !shiftKey) {
+		return 0;
+	}
+
+	if (Math.abs(deltaX) > 0) {
+		return normalizeWheelDeltaToPixels(deltaX, deltaMode);
+	}
+
+	if ((shiftKey || !canScrollVertically) && Math.abs(deltaY) > 0) {
+		return normalizeWheelDeltaToPixels(deltaY, deltaMode);
+	}
+
+	return 0;
+}
+
 export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineRangeParams) {
 	const [range, setRange] = useState<Range>(() => createInitialRange(totalMs));
 
@@ -42,29 +76,34 @@ export function useTimelineRange({ totalMs, timelineContainerRef }: UseTimelineR
 
 	const handleTimelineWheel = useCallback(
 		(event: WheelEvent<HTMLDivElement>) => {
-			if (event.ctrlKey || event.metaKey || totalMs <= 0) {
+			if (((event.ctrlKey || event.metaKey) && !event.shiftKey) || totalMs <= 0) {
 				return;
 			}
 
-			const rawHorizontalDelta =
-				Math.abs(event.deltaX) > 0
-					? event.deltaX
-					: event.shiftKey && Math.abs(event.deltaY) > 0
-						? event.deltaY
-						: 0;
+			const container = timelineContainerRef.current;
+			const horizontalDeltaPx = resolveTimelineWheelPanDeltaPx({
+				deltaX: event.deltaX,
+				deltaY: event.deltaY,
+				deltaMode: event.deltaMode,
+				shiftKey: event.shiftKey,
+				ctrlKey: event.ctrlKey,
+				metaKey: event.metaKey,
+				canScrollVertically: container
+					? container.scrollHeight > container.clientHeight + 1
+					: true,
+			});
 
-			if (rawHorizontalDelta === 0) {
+			if (horizontalDeltaPx === 0) {
 				return;
 			}
 
-			const containerWidth = timelineContainerRef.current?.clientWidth ?? 0;
+			const containerWidth = container?.clientWidth ?? 0;
 			const visibleRangeMs = clampedRange.end - clampedRange.start;
 			if (containerWidth <= 0 || visibleRangeMs <= 0) {
 				return;
 			}
 
 			event.preventDefault();
-			const horizontalDeltaPx = normalizeWheelDeltaToPixels(rawHorizontalDelta, event.deltaMode);
 			const deltaMs = (horizontalDeltaPx / containerWidth) * visibleRangeMs;
 			panTimelineRange(deltaMs);
 		},

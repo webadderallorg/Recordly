@@ -5,6 +5,7 @@ import type {
 	CaptionCue,
 	ClipRegion,
 	CropRegion,
+	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
@@ -135,6 +136,11 @@ interface VideoExporterConfig extends ExportConfig {
 	cameraSpringDampingMultiplier?: number;
 	cameraSpringMassMultiplier?: number;
 	cursorMotionBlur?: number;
+	cursorClickEffect?: CursorClickEffectStyle;
+	cursorClickEffectColor?: string;
+	cursorClickEffectScale?: number;
+	cursorClickEffectOpacity?: number;
+	cursorClickEffectDurationMs?: number;
 	cursorClickBounce?: number;
 	cursorClickBounceDuration?: number;
 	cursorSway?: number;
@@ -386,9 +392,16 @@ export class ModernVideoExporter {
 				const runtimePlatform = this.getRuntimePlatform();
 				let useNativeEncoder = false;
 				let triedNativeStaticLayoutWithProbe = false;
+				const prefersNativeStaticLayoutBeforeBreeze =
+					shouldPreferNativeStaticLayoutBeforeBreeze(runtimePlatform, backendPreference);
+				const shouldTryNativeStaticLayout =
+					backendPreference === "breeze" ||
+					this.config.experimentalNvidiaCudaExport === true ||
+					prefersNativeStaticLayoutBeforeBreeze;
 				let shouldDeferNativeEncoderStart =
 					backendPreference === "breeze" ||
-					shouldPreferNativeStaticLayoutBeforeBreeze(runtimePlatform, backendPreference);
+					this.config.experimentalNvidiaCudaExport === true ||
+					prefersNativeStaticLayoutBeforeBreeze;
 				this.lastNativeExportError = null;
 
 				let stageStartedAt = this.getNowMs();
@@ -482,10 +495,7 @@ export class ModernVideoExporter {
 					maxInFlightNativeWrites: this.maxNativeWriteInFlight,
 				});
 
-				if (
-					(backendPreference === "auto" || backendPreference === "breeze") &&
-					!useNativeEncoder
-				) {
+				if (shouldTryNativeStaticLayout && !useNativeEncoder) {
 					const nativeVideoInfo = await this.loadNativeStaticLayoutVideoInfo();
 					if (nativeVideoInfo) {
 						triedNativeStaticLayoutWithProbe = true;
@@ -534,7 +544,7 @@ export class ModernVideoExporter {
 				const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
 
 				if (
-					(backendPreference === "auto" || backendPreference === "breeze") &&
+					shouldTryNativeStaticLayout &&
 					!useNativeEncoder &&
 					!triedNativeStaticLayoutWithProbe
 				) {
@@ -624,6 +634,11 @@ export class ModernVideoExporter {
 					cameraSpringDampingMultiplier: this.config.cameraSpringDampingMultiplier,
 					cameraSpringMassMultiplier: this.config.cameraSpringMassMultiplier,
 					cursorMotionBlur: this.config.cursorMotionBlur,
+					cursorClickEffect: this.config.cursorClickEffect,
+					cursorClickEffectColor: this.config.cursorClickEffectColor,
+					cursorClickEffectScale: this.config.cursorClickEffectScale,
+					cursorClickEffectOpacity: this.config.cursorClickEffectOpacity,
+					cursorClickEffectDurationMs: this.config.cursorClickEffectDurationMs,
 					cursorClickBounce: this.config.cursorClickBounce,
 					cursorClickBounceDuration: this.config.cursorClickBounceDuration,
 					cursorSway: this.config.cursorSway,
@@ -1526,9 +1541,15 @@ export class ModernVideoExporter {
 		}
 
 		const speedRegions = this.config.speedRegions ?? [];
+		const hasCursorClickEffect =
+			(this.config.cursorTelemetry?.length ?? 0) > 0 &&
+			(this.config.cursorClickEffect ?? "none") !== "none";
 		const configuredWallpaper = this.config.wallpaper?.trim() ?? "";
 		if (isVideoWallpaperSource(configuredWallpaper)) {
 			reasons.push("unsupported-background-video");
+		}
+		if (hasCursorClickEffect) {
+			reasons.push("unsupported-cursor-click-effect");
 		}
 
 		const hasZoomRegions = (this.config.zoomRegions ?? []).length > 0;

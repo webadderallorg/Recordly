@@ -3,6 +3,7 @@ import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
 	CaptionCue,
+	CursorClickEffectStyle,
 	CropRegion,
 	CursorStyle,
 	CursorTelemetryPoint,
@@ -79,6 +80,11 @@ interface GifExporterConfig {
 	zoomSmoothness?: number;
 	zoomClassicMode?: boolean;
 	cursorMotionBlur?: number;
+	cursorClickEffect?: CursorClickEffectStyle;
+	cursorClickEffectColor?: string;
+	cursorClickEffectScale?: number;
+	cursorClickEffectOpacity?: number;
+	cursorClickEffectDurationMs?: number;
 	cursorClickBounce?: number;
 	cursorClickBounceDuration?: number;
 	cursorSway?: number;
@@ -128,6 +134,71 @@ export function getGifRepeat(loop: boolean): 0 | 1 {
 	return loop ? 0 : 1;
 }
 
+export function buildGifFrameRendererConfig(
+	config: GifExporterConfig,
+	videoInfo: { width: number; height: number },
+) {
+	return {
+		width: config.width,
+		height: config.height,
+		wallpaper: config.wallpaper,
+		zoomRegions: config.zoomRegions,
+		showShadow: config.showShadow,
+		shadowIntensity: config.shadowIntensity,
+		backgroundBlur: config.backgroundBlur,
+		zoomMotionBlur: config.zoomMotionBlur,
+		zoomMotionBlurTuning: config.zoomMotionBlurTuning,
+		zoomTemporalMotionBlur: config.zoomTemporalMotionBlur,
+		zoomMotionBlurSampleCount: config.zoomMotionBlurSampleCount,
+		zoomMotionBlurShutterFraction: config.zoomMotionBlurShutterFraction,
+		connectZooms: config.connectZooms,
+		zoomInDurationMs: config.zoomInDurationMs,
+		zoomInOverlapMs: config.zoomInOverlapMs,
+		zoomOutDurationMs: config.zoomOutDurationMs,
+		connectedZoomGapMs: config.connectedZoomGapMs,
+		connectedZoomDurationMs: config.connectedZoomDurationMs,
+		zoomInEasing: config.zoomInEasing,
+		zoomOutEasing: config.zoomOutEasing,
+		connectedZoomEasing: config.connectedZoomEasing,
+		borderRadius: config.borderRadius,
+		padding: config.padding,
+		cropRegion: config.cropRegion,
+		webcam: config.webcam,
+		webcamUrl: config.webcamUrl,
+		videoWidth: videoInfo.width,
+		videoHeight: videoInfo.height,
+		annotationRegions: config.annotationRegions,
+		autoCaptions: config.autoCaptions,
+		autoCaptionSettings: config.autoCaptionSettings,
+		speedRegions: config.speedRegions,
+		previewWidth: config.previewWidth,
+		previewHeight: config.previewHeight,
+		cursorTelemetry: config.cursorTelemetry,
+		showCursor: config.showCursor,
+		cursorStyle: config.cursorStyle,
+		cursorSize: config.cursorSize,
+		cursorSmoothing: config.cursorSmoothing,
+		cursorSpringStiffnessMultiplier: config.cursorSpringStiffnessMultiplier,
+		cursorSpringDampingMultiplier: config.cursorSpringDampingMultiplier,
+		cursorSpringMassMultiplier: config.cursorSpringMassMultiplier,
+		cameraSpringStiffnessMultiplier: config.cameraSpringStiffnessMultiplier,
+		cameraSpringDampingMultiplier: config.cameraSpringDampingMultiplier,
+		cameraSpringMassMultiplier: config.cameraSpringMassMultiplier,
+		zoomSmoothness: config.zoomSmoothness,
+		zoomClassicMode: config.zoomClassicMode,
+		cursorMotionBlur: config.cursorMotionBlur,
+		cursorClickEffect: config.cursorClickEffect,
+		cursorClickEffectColor: config.cursorClickEffectColor,
+		cursorClickEffectScale: config.cursorClickEffectScale,
+		cursorClickEffectOpacity: config.cursorClickEffectOpacity,
+		cursorClickEffectDurationMs: config.cursorClickEffectDurationMs,
+		cursorClickBounce: config.cursorClickBounce,
+		cursorClickBounceDuration: config.cursorClickBounceDuration,
+		cursorSway: config.cursorSway,
+		frame: config.frame,
+	};
+}
+
 export class GifExporter {
 	private config: GifExporterConfig;
 	private streamingDecoder: StreamingVideoDecoder | null = null;
@@ -160,60 +231,7 @@ export class GifExporter {
 			const videoInfo = await this.streamingDecoder.loadMetadata(this.config.videoUrl);
 
 			// Initialize frame renderer
-			this.renderer = new FrameRenderer({
-				width: this.config.width,
-				height: this.config.height,
-				wallpaper: this.config.wallpaper,
-				zoomRegions: this.config.zoomRegions,
-				showShadow: this.config.showShadow,
-				shadowIntensity: this.config.shadowIntensity,
-				backgroundBlur: this.config.backgroundBlur,
-				zoomMotionBlur: this.config.zoomMotionBlur,
-				zoomMotionBlurTuning: this.config.zoomMotionBlurTuning,
-				zoomTemporalMotionBlur: this.config.zoomTemporalMotionBlur,
-				zoomMotionBlurSampleCount: this.config.zoomMotionBlurSampleCount,
-				zoomMotionBlurShutterFraction: this.config.zoomMotionBlurShutterFraction,
-				connectZooms: this.config.connectZooms,
-				zoomInDurationMs: this.config.zoomInDurationMs,
-				zoomInOverlapMs: this.config.zoomInOverlapMs,
-				zoomOutDurationMs: this.config.zoomOutDurationMs,
-				connectedZoomGapMs: this.config.connectedZoomGapMs,
-				connectedZoomDurationMs: this.config.connectedZoomDurationMs,
-				zoomInEasing: this.config.zoomInEasing,
-				zoomOutEasing: this.config.zoomOutEasing,
-				connectedZoomEasing: this.config.connectedZoomEasing,
-				borderRadius: this.config.borderRadius,
-				padding: this.config.padding,
-				cropRegion: this.config.cropRegion,
-				webcam: this.config.webcam,
-				webcamUrl: this.config.webcamUrl,
-				videoWidth: videoInfo.width,
-				videoHeight: videoInfo.height,
-				annotationRegions: this.config.annotationRegions,
-				autoCaptions: this.config.autoCaptions,
-				autoCaptionSettings: this.config.autoCaptionSettings,
-				speedRegions: this.config.speedRegions,
-				previewWidth: this.config.previewWidth,
-				previewHeight: this.config.previewHeight,
-				cursorTelemetry: this.config.cursorTelemetry,
-				showCursor: this.config.showCursor,
-				cursorStyle: this.config.cursorStyle,
-				cursorSize: this.config.cursorSize,
-				cursorSmoothing: this.config.cursorSmoothing,
-				cursorSpringStiffnessMultiplier: this.config.cursorSpringStiffnessMultiplier,
-				cursorSpringDampingMultiplier: this.config.cursorSpringDampingMultiplier,
-				cursorSpringMassMultiplier: this.config.cursorSpringMassMultiplier,
-				cameraSpringStiffnessMultiplier: this.config.cameraSpringStiffnessMultiplier,
-				cameraSpringDampingMultiplier: this.config.cameraSpringDampingMultiplier,
-				cameraSpringMassMultiplier: this.config.cameraSpringMassMultiplier,
-				zoomSmoothness: this.config.zoomSmoothness,
-				zoomClassicMode: this.config.zoomClassicMode,
-				cursorMotionBlur: this.config.cursorMotionBlur,
-				cursorClickBounce: this.config.cursorClickBounce,
-				cursorClickBounceDuration: this.config.cursorClickBounceDuration,
-				cursorSway: this.config.cursorSway,
-				frame: this.config.frame,
-			});
+			this.renderer = new FrameRenderer(buildGifFrameRendererConfig(this.config, videoInfo));
 			await this.renderer.initialize();
 
 			// Initialize GIF encoder

@@ -147,7 +147,7 @@ import {
 	parseJsonWithByteOrderMark,
 	parseWindowId,
 } from "../utils";
-import { resolveWindowsCaptureDisplay } from "../windowsCaptureSelection";
+import { resolveWindowsCaptureTarget } from "../windowsCaptureSelection";
 
 const execFileAsync = promisify(execFile);
 
@@ -442,15 +442,13 @@ export function registerRecordingHandlers(
 					
 					const browserMicFallbackRequested =
 						shouldStartWindowsBrowserMicrophoneFallback(options);
-					const windowId = parseWindowId(source?.id);
-					const isWindowCapture = Boolean(windowId && source?.id?.startsWith("window:"));
-
-					const resolvedDisplay = resolveWindowsCaptureDisplay(
+					const captureTarget = resolveWindowsCaptureTarget(
 						source,
 						getScreen().getAllDisplays(),
 						getScreen().getPrimaryDisplay(),
 					);
-					const displayBounds = resolvedDisplay.bounds;
+					const displayBounds =
+						captureTarget.kind === "display" ? captureTarget.bounds : null;
 					setWindowsOrphanedMicAudioPath(null);
 
 					const config: Record<string, unknown> = {
@@ -458,29 +456,37 @@ export function registerRecordingHandlers(
 						fps: 60,
 					};
 
-					if (isWindowCapture) {
-						config.windowHandle = windowId;
+					if (captureTarget.kind === "invalid-window") {
+						return {
+							success: false,
+							message:
+								"Selected window is no longer available. Please choose the window again.",
+						};
+					}
+
+					if (captureTarget.kind === "window") {
+						config.windowHandle = captureTarget.windowHandle;
 					} else {
 						// Windows Graphics Capture (WGC) requires a raw HMONITOR handle.
 						// We attempt to resolve the handle by matching the physical coordinates of the target display.
 						const monitors = getMonitorHandles();
 						const matchedMonitor = monitors.find(
 							(monitor) =>
-								monitor.x === Math.round(displayBounds.x) &&
-								monitor.y === Math.round(displayBounds.y),
+								monitor.x === Math.round(captureTarget.bounds.x) &&
+								monitor.y === Math.round(captureTarget.bounds.y),
 						);
 
 						if (matchedMonitor) {
 							config.displayId = matchedMonitor.handle;
 						} else {
 							// Fallback to coordinate-based matching if handle resolution fails
-							config.displayId = resolvedDisplay.displayId;
+							config.displayId = captureTarget.displayId;
 						}
 						
-						config.displayX = Math.round(resolvedDisplay.bounds.x);
-						config.displayY = Math.round(resolvedDisplay.bounds.y);
-						config.displayW = Math.round(resolvedDisplay.bounds.width);
-						config.displayH = Math.round(resolvedDisplay.bounds.height);
+						config.displayX = Math.round(captureTarget.bounds.x);
+						config.displayY = Math.round(captureTarget.bounds.y);
+						config.displayW = Math.round(captureTarget.bounds.width);
+						config.displayH = Math.round(captureTarget.bounds.height);
 					}
 
 					if (options?.capturesSystemAudio) {

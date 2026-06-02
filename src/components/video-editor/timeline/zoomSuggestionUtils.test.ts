@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import type { CursorTelemetryPoint } from "../types";
 import {
+	buildInteractionZoomSuggestions,
 	CLICK_CLUSTER_MERGE_GAP_MS,
 	CLICK_CLUSTER_PAD_MS,
-	buildInteractionZoomSuggestions,
+	shouldAutoApplyFreshRecordingZoomsForSource,
 } from "./zoomSuggestionUtils";
-import type { CursorTelemetryPoint } from "../types";
 
 function makeClick(
 	timeMs: number,
@@ -20,18 +21,27 @@ function makeMove(timeMs: number, cx = 0.5, cy = 0.5): CursorTelemetryPoint {
 }
 
 /** Wraps click samples with surrounding move events to mimic real mixed telemetry. */
-function withMoves(
-	clicks: CursorTelemetryPoint[],
-	totalMs: number,
-): CursorTelemetryPoint[] {
-	return [
-		makeMove(0),
-		...clicks,
-		makeMove(totalMs),
-	];
+function withMoves(clicks: CursorTelemetryPoint[], totalMs: number): CursorTelemetryPoint[] {
+	return [makeMove(0), ...clicks, makeMove(totalMs)];
 }
 
 const TOTAL_MS = 30_000;
+
+describe("shouldAutoApplyFreshRecordingZoomsForSource", () => {
+	it("allows automatic fresh-recording zooms for landscape captures", () => {
+		expect(shouldAutoApplyFreshRecordingZoomsForSource(1920, 1080)).toBe(true);
+		expect(shouldAutoApplyFreshRecordingZoomsForSource(1280, 960)).toBe(true);
+	});
+
+	it("blocks automatic fresh-recording zooms for narrow or near-square captures", () => {
+		expect(shouldAutoApplyFreshRecordingZoomsForSource(960, 1020)).toBe(false);
+		expect(shouldAutoApplyFreshRecordingZoomsForSource(1080, 1080)).toBe(false);
+	});
+
+	it("does not block when source dimensions are not available yet", () => {
+		expect(shouldAutoApplyFreshRecordingZoomsForSource()).toBe(true);
+	});
+});
 
 describe("buildInteractionZoomSuggestions (click-cluster logic)", () => {
 	it("creates one zoom track for a single isolated click with 500ms padding", () => {
@@ -62,23 +72,23 @@ describe("buildInteractionZoomSuggestions (click-cluster logic)", () => {
 		expect(result.suggestions).toHaveLength(1);
 	});
 
-	it.each(["right-click", "middle-click"] as const)(
-		"accepts %s telemetry like a standard click",
-		(interactionType) => {
-			const result = buildInteractionZoomSuggestions({
-				cursorTelemetry: withMoves([makeClick(5_000, 0.5, 0.5, interactionType)], TOTAL_MS),
-				totalMs: TOTAL_MS,
-				defaultDurationMs: 3_000,
-			});
+	it.each([
+		"right-click",
+		"middle-click",
+	] as const)("accepts %s telemetry like a standard click", (interactionType) => {
+		const result = buildInteractionZoomSuggestions({
+			cursorTelemetry: withMoves([makeClick(5_000, 0.5, 0.5, interactionType)], TOTAL_MS),
+			totalMs: TOTAL_MS,
+			defaultDurationMs: 3_000,
+		});
 
-			expect(result.status).toBe("ok");
-			expect(result.suggestions).toHaveLength(1);
+		expect(result.status).toBe("ok");
+		expect(result.suggestions).toHaveLength(1);
 
-			const [suggestion] = result.suggestions;
-			expect(suggestion.start).toBe(5_000 - CLICK_CLUSTER_PAD_MS);
-			expect(suggestion.end).toBe(5_000 + CLICK_CLUSTER_PAD_MS);
-		},
-	);
+		const [suggestion] = result.suggestions;
+		expect(suggestion.start).toBe(5_000 - CLICK_CLUSTER_PAD_MS);
+		expect(suggestion.end).toBe(5_000 + CLICK_CLUSTER_PAD_MS);
+	});
 
 	it("merges two clicks within 2500ms into one zoom track", () => {
 		const telemetry = withMoves(

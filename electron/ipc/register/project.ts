@@ -533,7 +533,7 @@ export function registerProjectHandlers() {
       return { success: false, error: String(error), message: 'Failed to open projects folder.' }
     }
   })
-  ipcMain.handle('set-current-video-path', async (_, path: string, options?: { preserveProjectPath?: boolean; hideOverlayCursorByDefault?: boolean }) => {
+  ipcMain.handle('set-current-video-path', async (_, path: string, options?: { preserveProjectPath?: boolean; hideOverlayCursorByDefault?: boolean; nativeCaptureUnavailable?: boolean }) => {
     setCurrentVideoPath(normalizeVideoSourcePath(path) ?? path)
     approveUserPath(currentVideoPath)
     const resolvedSession = await resolveRecordingSession(currentVideoPath)
@@ -548,6 +548,10 @@ export function registerProjectHandlers() {
       hideOverlayCursorByDefault:
         normalizeBoolean(options?.hideOverlayCursorByDefault) ||
         normalizeBoolean(resolvedSession.hideOverlayCursorByDefault),
+      nativeCaptureUnavailable:
+        normalizeBoolean(
+          options?.nativeCaptureUnavailable ?? resolvedSession.nativeCaptureUnavailable,
+        ),
     }
 
     setCurrentRecordingSession(nextSession)
@@ -573,7 +577,7 @@ export function registerProjectHandlers() {
     return { success: true, webcamPath: nextSession.webcamPath ?? null }
   })
 
-  ipcMain.handle('set-current-recording-session', async (_, session: { videoPath: string; webcamPath?: string | null; timeOffsetMs?: number; hideOverlayCursorByDefault?: boolean }, options?: { preserveProjectPath?: boolean }) => {
+  ipcMain.handle('set-current-recording-session', async (_, session: { videoPath: string; webcamPath?: string | null; timeOffsetMs?: number; hideOverlayCursorByDefault?: boolean; nativeCaptureUnavailable?: boolean }, options?: { preserveProjectPath?: boolean }) => {
     const normalizedVideoPath = normalizeVideoSourcePath(session.videoPath) ?? session.videoPath
     setCurrentVideoPath(normalizedVideoPath)
     setCurrentRecordingSession({
@@ -581,6 +585,7 @@ export function registerProjectHandlers() {
       webcamPath: normalizeVideoSourcePath(session.webcamPath ?? null),
       timeOffsetMs: normalizeRecordingTimeOffsetMs(session.timeOffsetMs),
       hideOverlayCursorByDefault: normalizeBoolean(session.hideOverlayCursorByDefault),
+      nativeCaptureUnavailable: normalizeBoolean(session.nativeCaptureUnavailable),
     });
     await rememberApprovedLocalReadPath(currentRecordingSession!.videoPath)
     await rememberApprovedLocalReadPath(currentRecordingSession!.webcamPath)

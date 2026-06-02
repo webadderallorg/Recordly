@@ -107,4 +107,24 @@ describe("computeCursorFollowFocus", () => {
 
 		expect(clampedFocus).toEqual({ cx: 0.75, cy: 0.75 });
 	});
+
+	it("starts auto zooms from the saved region focus before following the cursor", () => {
+		const state = createCursorFollowCameraState();
+		const cursorSamples = [
+			{ timeMs: 0, cx: 0.8, cy: 0.2, interactionType: "move" as const },
+			{ timeMs: 100, cx: 0.82, cy: 0.22, interactionType: "move" as const },
+		];
+
+		const initialFocus = computeCursorFollowFocus(
+			state,
+			cursorSamples,
+			0,
+			2,
+			1,
+			{ cx: 0.3, cy: 0.7 },
+			{ snapToEdgesRatio: 0.25 },
+		);
+
+		expect(initialFocus).toEqual({ cx: 0.3, cy: 0.7 });
+	});
 });

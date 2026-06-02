@@ -1,31 +1,21 @@
 import { Plus } from "@phosphor-icons/react";
 import { useTimelineContext } from "dnd-timeline";
 import {
+	type MouseEvent,
+	type MouseEventHandler,
 	memo,
 	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
 	useState,
-	type MouseEvent,
-	type MouseEventHandler,
 } from "react";
-import { cn } from "@/lib/utils";
 import type {
 	SourceAudioTrackSettings,
 	SourceAudioTrackWithPeaks,
 } from "@/components/video-editor/audio/audioTypes";
-import {
-	getTimelineContentMinHeightPx,
-	getTimelineRowsMinHeightPx,
-	getTimelineViewportStretchFactor,
-	TIMELINE_AXIS_HEIGHT_PX,
-} from "../../timelineLayout";
-import glassStyles from "../../ItemGlass.module.css";
-import Item from "../../Item";
-import Row from "../../Row";
+import { cn } from "@/lib/utils";
 import { CLIP_ROW_ID, SOURCE_AUDIO_ROW_ID, ZOOM_ROW_ID } from "../../core/constants";
-import type { TimelineRenderItem } from "../../core/timelineTypes";
 import {
 	getAnnotationTrackIndex,
 	getAnnotationTrackRowId,
@@ -34,10 +24,20 @@ import {
 	isAnnotationTrackRowId,
 	isAudioTrackRowId,
 } from "../../core/rows";
+import type { TimelineRenderItem } from "../../core/timelineTypes";
+import { useTimelineAudioPeaks } from "../../hooks/useTimelineAudioPeaks";
+import Item from "../../Item";
+import glassStyles from "../../ItemGlass.module.css";
+import Row from "../../Row";
+import {
+	getTimelineContentMinHeightPx,
+	getTimelineRowsMinHeightPx,
+	getTimelineViewportStretchFactor,
+	TIMELINE_AXIS_HEIGHT_PX,
+} from "../../timelineLayout";
 import TimelineAxis from "../axis/TimelineAxis";
 import ClipMarkerOverlay from "../overlays/ClipMarkerOverlay";
 import PlaybackCursor from "../playhead/PlaybackCursor";
-import { useTimelineAudioPeaks } from "../../hooks/useTimelineAudioPeaks";
 
 const HINT_CLIP = "Press C to split clip";
 const HINT_ANNOTATION = "Press A to add annotation";
@@ -62,9 +62,7 @@ interface TimelineCanvasProps {
 	onClearBlockSelection?: () => void;
 	keyframes?: { id: string; time: number }[];
 	sourceAudioTracks?: SourceAudioTrackWithPeaks[];
-	getSourceAudioTrackSettingsForClip?: (
-		clipId: string | null,
-	) => SourceAudioTrackSettings;
+	getSourceAudioTrackSettingsForClip?: (clipId: string | null) => SourceAudioTrackSettings;
 	showSourceAudioTrack?: boolean;
 	liveSpanPreviewById?: Record<string, { start: number; end: number }>;
 	liveHiddenItemIds?: string[];
@@ -103,7 +101,9 @@ function useTimelineHover({
 		(clientX: number, rect: DOMRect) => {
 			const contentWidth = Math.max(1, rect.width - sidebarWidth);
 			const contentX =
-				direction === "rtl" ? rect.right - sidebarWidth - clientX : clientX - rect.left - sidebarWidth;
+				direction === "rtl"
+					? rect.right - sidebarWidth - clientX
+					: clientX - rect.left - sidebarWidth;
 			const clampedX = Math.max(0, Math.min(contentX, contentWidth));
 			const ratio = clampedX / contentWidth;
 			const nextMs = rangeStart + ratio * visibleDurationMs;
@@ -194,7 +194,8 @@ function useTimelineHover({
 			: Math.max(ghostStartMs, Math.min(videoDurationMs, ghostStartMs + ghostDurationMs));
 	const ghostStartOffsetPx =
 		ghostStartMs === null ? 0 : valueToPixels(Math.max(0, ghostStartMs - rangeStart));
-	const ghostEndOffsetPx = ghostEndMs === null ? 0 : valueToPixels(Math.max(0, ghostEndMs - rangeStart));
+	const ghostEndOffsetPx =
+		ghostEndMs === null ? 0 : valueToPixels(Math.max(0, ghostEndMs - rangeStart));
 	const ghostWidthPx = Math.max(18, ghostEndOffsetPx - ghostStartOffsetPx);
 	const timelineGhostOffsetPx =
 		timelineHoverMs === null ? 0 : valueToPixels(Math.max(0, timelineHoverMs - rangeStart));
@@ -235,9 +236,7 @@ interface TimelineCanvasRowsProps {
 	onSelectAnnotation?: (id: string | null) => void;
 	onSelectAudio?: (id: string | null) => void;
 	sourceAudioTracks?: SourceAudioTrackWithPeaks[];
-	getSourceAudioTrackSettingsForClip?: (
-		clipId: string | null,
-	) => SourceAudioTrackSettings;
+	getSourceAudioTrackSettingsForClip?: (clipId: string | null) => SourceAudioTrackSettings;
 	showSourceAudioTrack?: boolean;
 	liveSpanPreviewById?: Record<string, { start: number; end: number }>;
 	liveHiddenItemIds?: string[];
@@ -251,7 +250,6 @@ interface TimelineCanvasRowsProps {
 	onZoomRowMouseLeave: MouseEventHandler<HTMLDivElement>;
 	onZoomRowMouseDown: MouseEventHandler<HTMLDivElement>;
 	onZoomRowClick: MouseEventHandler<HTMLDivElement>;
-	isLoading?: boolean;
 }
 
 interface AudioItemWithWaveformProps {
@@ -275,18 +273,18 @@ function AudioItemWithWaveform({
 		return { start: 0, end: duration };
 	}, [waveformSpan.end, waveformSpan.start]);
 	return (
-			<Item
-				id={item.id}
-				rowId={item.rowId}
-				span={span}
-				isSelected={isSelected}
-				onSelectId={onSelectAudio}
-				variant="audio"
-				waveformPeaks={peaks}
-				waveformSegmentSpan={normalizedWaveformSpan}
-				waveformGain={Math.max(0, Math.min(1, item.audioGain ?? 1))}
-				waveformNormalize={Boolean(item.audioNormalize)}
-			>
+		<Item
+			id={item.id}
+			rowId={item.rowId}
+			span={span}
+			isSelected={isSelected}
+			onSelectId={onSelectAudio}
+			variant="audio"
+			waveformPeaks={peaks}
+			waveformSegmentSpan={normalizedWaveformSpan}
+			waveformGain={Math.max(0, Math.min(1, item.audioGain ?? 1))}
+			waveformNormalize={Boolean(item.audioNormalize)}
+		>
 			{item.label}
 		</Item>
 	);
@@ -319,7 +317,6 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	onZoomRowMouseLeave,
 	onZoomRowMouseDown,
 	onZoomRowClick,
-	isLoading = false,
 }: TimelineCanvasRowsProps) {
 	const hiddenIds = useMemo(() => new Set(liveHiddenItemIds ?? []), [liveHiddenItemIds]);
 	const { clipItems, zoomItems, annotationRows, audioRows } = useMemo(() => {
@@ -383,11 +380,10 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 						key={item.id}
 						rowId={item.rowId}
 						span={item.span}
-						isSelected={selectAllBlocksActive || item.id === selectedClipId}
+						isSelected={item.id === selectedClipId}
 						onSelectId={onSelectClip}
 						variant="clip"
-						isLoading={isLoading}
-						loadingLabel="Analyzing..."
+						speedValue={item.speedValue}
 					>
 						{item.label}
 					</Item>
@@ -396,30 +392,32 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			{showSourceAudioTrack &&
 				sourceAudioTracks.map((track) => (
 					<Row key={track.id} id={`${SOURCE_AUDIO_ROW_ID}-${track.id}`}>
-						{clipItems.filter(item => item.showSourceAudio).map((item) => {
-							const settings = getSourceAudioTrackSettingsForClip?.(item.id)?.[
-								track.id
-							] ?? { volume: 1, normalize: false };
-							return (
-								<Item
-									key={`source-audio-${track.id}-${item.id}`}
-									id={`source-audio-${track.id}-${item.id}`}
-									rowId={`${SOURCE_AUDIO_ROW_ID}-${track.id}`}
-									span={liveSpanPreviewById?.[item.id] ?? item.span}
-									disabled
-									isSelected={selectAllBlocksActive || item.id === selectedClipId}
-									onSelect={() => onSelectClip?.(item.id)}
-									variant="audio"
-									waveformPeaks={track.peaks}
-									waveformSegmentSpan={item.sourceSpan ?? item.span}
-									waveformGain={Math.max(0, Math.min(1, settings.volume))}
-									waveformNormalize={Boolean(settings.normalize)}
-									muted={item.muted}
-								>
-									{track.label}
-								</Item>
-							);
-						})}
+						{clipItems
+							.filter((item) => item.showSourceAudio)
+							.map((item) => {
+								const settings = getSourceAudioTrackSettingsForClip?.(item.id)?.[
+									track.id
+								] ?? { volume: 1, normalize: false };
+								return (
+									<Item
+										key={`source-audio-${track.id}-${item.id}`}
+										id={`source-audio-${track.id}-${item.id}`}
+										rowId={`${SOURCE_AUDIO_ROW_ID}-${track.id}`}
+										span={liveSpanPreviewById?.[item.id] ?? item.span}
+										disabled
+										isSelected={item.id === selectedClipId}
+										onSelect={() => onSelectClip?.(item.id)}
+										variant="audio"
+										waveformPeaks={track.peaks}
+										waveformSegmentSpan={item.sourceSpan ?? item.span}
+										waveformGain={Math.max(0, Math.min(1, settings.volume))}
+										waveformNormalize={Boolean(settings.normalize)}
+										muted={item.muted}
+									>
+										{track.label}
+									</Item>
+								);
+							})}
 					</Row>
 				))}
 
@@ -438,8 +436,14 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 							className="absolute top-1/2 -translate-y-1/2 h-[85%] min-h-[22px]"
 							style={
 								direction === "rtl"
-									? { right: `${ghostStartOffsetPx}px`, width: `${ghostWidthPx}px` }
-									: { left: `${ghostStartOffsetPx}px`, width: `${ghostWidthPx}px` }
+									? {
+											right: `${ghostStartOffsetPx}px`,
+											width: `${ghostWidthPx}px`,
+										}
+									: {
+											left: `${ghostStartOffsetPx}px`,
+											width: `${ghostWidthPx}px`,
+										}
 							}
 						>
 							<div
@@ -460,31 +464,36 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				{zoomItems
 					.filter((item) => !hiddenIds.has(item.id))
 					.map((item) => (
-					<Item
-						id={item.id}
-						key={item.id}
-						rowId={item.rowId}
-						span={item.span}
-						isSelected={selectAllBlocksActive || item.id === selectedZoomId}
-						onSelectId={onSelectZoom}
-						zoomDepth={item.zoomDepth}
-						zoomMode={item.zoomMode}
-						variant="zoom"
-					>
-						{item.label}
-					</Item>
-				))}
+						<Item
+							id={item.id}
+							key={item.id}
+							rowId={item.rowId}
+							span={item.span}
+							isSelected={selectAllBlocksActive || item.id === selectedZoomId}
+							onSelectId={onSelectZoom}
+							zoomDepth={item.zoomDepth}
+							zoomMode={item.zoomMode}
+							variant="zoom"
+						>
+							{item.label}
+						</Item>
+					))}
 			</Row>
 
 			{annotationRows.map(({ rowId, items: rowItems }, index) => (
-				<Row key={rowId} id={rowId} isEmpty={rowItems.length === 0} hint={index === 0 ? HINT_ANNOTATION : undefined}>
+				<Row
+					key={rowId}
+					id={rowId}
+					isEmpty={rowItems.length === 0}
+					hint={index === 0 ? HINT_ANNOTATION : undefined}
+				>
 					{rowItems.map((item) => (
 						<Item
 							id={item.id}
 							key={item.id}
 							rowId={item.rowId}
 							span={item.span}
-							isSelected={selectAllBlocksActive || item.id === selectedAnnotationId}
+							isSelected={item.id === selectedAnnotationId}
 							onSelectId={onSelectAnnotation}
 							variant="annotation"
 						>
@@ -495,14 +504,19 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			))}
 
 			{audioRows.map(({ rowId, items: rowItems }, index) => (
-				<Row key={rowId} id={rowId} isEmpty={rowItems.length === 0} hint={index === 0 ? HINT_AUDIO : undefined}>
+				<Row
+					key={rowId}
+					id={rowId}
+					isEmpty={rowItems.length === 0}
+					hint={index === 0 ? HINT_AUDIO : undefined}
+				>
 					{rowItems.map((item) => (
 						<AudioItemWithWaveform
 							key={item.id}
 							item={item}
 							span={item.span}
 							waveformSpan={liveSpanPreviewById?.[item.id] ?? item.span}
-							isSelected={selectAllBlocksActive || item.id === selectedAudioId}
+							isSelected={item.id === selectedAudioId}
 							onSelectAudio={onSelectAudio}
 						/>
 					))}
@@ -606,7 +620,8 @@ export default function TimelineCanvas({
 
 	const handleTimelineMouseDown = useCallback(
 		(e: MouseEvent<HTMLDivElement>) => {
-			if (e.button !== 0 || !onSeek || videoDurationMs <= 0 || !localTimelineRef.current) return;
+			if (e.button !== 0 || !onSeek || videoDurationMs <= 0 || !localTimelineRef.current)
+				return;
 			if ((e.target as HTMLElement).closest("[data-timeline-item]")) {
 				return;
 			}
@@ -642,7 +657,8 @@ export default function TimelineCanvas({
 
 		const flushSeek = () => {
 			seekRafRef.current = null;
-			if (!onSeek || !localTimelineRef.current || pendingSeekClientXRef.current === null) return;
+			if (!onSeek || !localTimelineRef.current || pendingSeekClientXRef.current === null)
+				return;
 			const rect = localTimelineRef.current.getBoundingClientRect();
 			onSeek(getAbsoluteMsFromClientX(pendingSeekClientXRef.current, rect) / 1000);
 		};
@@ -747,14 +763,21 @@ export default function TimelineCanvas({
 				<div
 					className="absolute top-0 bottom-0 z-[45] pointer-events-none"
 					style={{
-						[sideProperty === "right" ? "marginRight" : "marginLeft"]: `${sidebarWidth - 1}px`,
+						[sideProperty === "right" ? "marginRight" : "marginLeft"]:
+							`${sidebarWidth - 1}px`,
 					}}
 				>
-					<div className="absolute top-0 bottom-0 w-px bg-foreground/35" style={{ [sideProperty]: `${timelineGhostOffsetPx}px` }} />
+					<div
+						className="absolute top-0 bottom-0 w-px bg-foreground/35"
+						style={{ [sideProperty]: `${timelineGhostOffsetPx}px` }}
+					/>
 				</div>
 			)}
 
-			<div className="relative z-10 flex flex-1 min-h-0 flex-col" style={{ minHeight: timelineRowsMinHeightPx }}>
+			<div
+				className="relative z-10 flex flex-1 min-h-0 flex-col"
+				style={{ minHeight: timelineRowsMinHeightPx }}
+			>
 				<TimelineCanvasRows
 					items={items}
 					videoDurationMs={videoDurationMs}
@@ -782,7 +805,6 @@ export default function TimelineCanvas({
 					onZoomRowMouseLeave={handleZoomRowMouseLeave}
 					onZoomRowMouseDown={handleZoomRowMouseDown}
 					onZoomRowClick={handleZoomRowClick}
-					isLoading={isLoading}
 				/>
 			</div>
 		</div>

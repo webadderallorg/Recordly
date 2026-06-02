@@ -114,6 +114,11 @@
 	"project": {
 		"untitled": "Naamloos"
 	},
+	"nativeCaptureUnavailable": {
+		"title": "Er is niets kapot, maar we kunnen geen geanimeerde cursor-overlay renderen.",
+		"description": "Je apparaat ondersteunt geen native capture. Dit kan verschillende oorzaken hebben die we nog niet hebben achterhaald. Recordly blijft werken, maar cursor smoothing is dan niet mogelijk.",
+		"confirm": "Oké"
+	},
 	"exportStatus": {
 		"exporting": "Exporteren",
 		"renderingFile": "Je bestand wordt gerenderd.",

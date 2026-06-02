@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type MouseEvent, type RefObject } from "react";
+import { type MouseEvent, type RefObject, useCallback, useEffect, useRef } from "react";
 
 export function useLaunchHudInteractionState({
 	openId,
@@ -13,6 +13,23 @@ export function useLaunchHudInteractionState({
 }) {
 	const isMouseOverHudRef = useRef(false);
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+	const lastInteractiveReassertAtRef = useRef(0);
+
+	const setHudMouseInteractive = useCallback((force = false) => {
+		const now = performance.now();
+		if (
+			!force &&
+			isMouseOverHudRef.current &&
+			now - lastInteractiveReassertAtRef.current < 250
+		) {
+			return;
+		}
+
+		isMouseOverHudRef.current = true;
+		lastInteractiveReassertAtRef.current = now;
+		if (timeoutRef.current) clearTimeout(timeoutRef.current);
+		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+	}, []);
 
 	useEffect(() => {
 		if (openId !== null) {
@@ -28,17 +45,15 @@ export function useLaunchHudInteractionState({
 	}, [openId]);
 
 	useEffect(() => {
-		const handleMouseOver = (e: globalThis.MouseEvent) => {
+		const handleMouseTracking = (e: globalThis.MouseEvent) => {
 			const target = e.target as HTMLElement | null;
 			if (!target) return;
 			const isInteractive = !!target.closest(
-				".pointer-events-auto, [data-hud-interactive], [data-radix-popper-content-wrapper]"
+				".pointer-events-auto, [data-hud-interactive], [data-radix-popper-content-wrapper]",
 			);
 
 			if (isInteractive) {
-				isMouseOverHudRef.current = true;
-				if (timeoutRef.current) clearTimeout(timeoutRef.current);
-				window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+				setHudMouseInteractive();
 			} else {
 				isMouseOverHudRef.current = false;
 				if (timeoutRef.current) clearTimeout(timeoutRef.current);
@@ -55,42 +70,51 @@ export function useLaunchHudInteractionState({
 			}
 		};
 
-		window.addEventListener("mouseover", handleMouseOver);
-		return () => window.removeEventListener("mouseover", handleMouseOver);
-	}, [isHudDraggingRef, isWebcamPreviewDraggingRef, webcamPreviewDragStartRef]);
+		window.addEventListener("mouseover", handleMouseTracking);
+		window.addEventListener("mousemove", handleMouseTracking);
+		return () => {
+			window.removeEventListener("mouseover", handleMouseTracking);
+			window.removeEventListener("mousemove", handleMouseTracking);
+		};
+	}, [
+		isHudDraggingRef,
+		isWebcamPreviewDraggingRef,
+		setHudMouseInteractive,
+		webcamPreviewDragStartRef,
+	]);
 
 	const beginInteractiveHudAction = useCallback(() => {
-		isMouseOverHudRef.current = true;
-		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
-	}, []);
+		setHudMouseInteractive(true);
+	}, [setHudMouseInteractive]);
 
 	const handleHudMouseEnter = useCallback(() => {
-		isMouseOverHudRef.current = true;
-		if (timeoutRef.current) clearTimeout(timeoutRef.current);
-		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
-	}, []);
+		setHudMouseInteractive(true);
+	}, [setHudMouseInteractive]);
 
-	const handleHudMouseLeave = useCallback((event: MouseEvent<HTMLDivElement>) => {
-		const nextTarget = event.relatedTarget;
-		if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
-			return;
-		}
-
-		isMouseOverHudRef.current = false;
-
-		if (timeoutRef.current) clearTimeout(timeoutRef.current);
-
-		timeoutRef.current = setTimeout(() => {
-			if (
-				!isHudDraggingRef.current &&
-				!isWebcamPreviewDraggingRef.current &&
-				!webcamPreviewDragStartRef.current &&
-				!isMouseOverHudRef.current
-			) {
-				window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
+	const handleHudMouseLeave = useCallback(
+		(event: MouseEvent<HTMLDivElement>) => {
+			const nextTarget = event.relatedTarget;
+			if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+				return;
 			}
-		}, 300);
-	}, [isHudDraggingRef, isWebcamPreviewDraggingRef, webcamPreviewDragStartRef]);
+
+			isMouseOverHudRef.current = false;
+
+			if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+			timeoutRef.current = setTimeout(() => {
+				if (
+					!isHudDraggingRef.current &&
+					!isWebcamPreviewDraggingRef.current &&
+					!webcamPreviewDragStartRef.current &&
+					!isMouseOverHudRef.current
+				) {
+					window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
+				}
+			}, 300);
+		},
+		[isHudDraggingRef, isWebcamPreviewDraggingRef, webcamPreviewDragStartRef],
+	);
 
 	return {
 		handleHudMouseEnter,

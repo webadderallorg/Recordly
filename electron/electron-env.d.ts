@@ -204,10 +204,12 @@ interface RendererNativeExportCapabilities {
 interface Window {
 	electronAPI: {
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
+		hudOverlaySetSourceSelectionActive: (active: boolean) => void;
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;
 		hudOverlayHide: () => void;
 		hudOverlayClose: () => void;
 		hudOverlayRendererReady: () => void;
+		hudOverlaySetWebcamPreviewVisible: (visible: boolean) => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
@@ -675,6 +677,7 @@ interface Window {
 			options?: {
 				preserveProjectPath?: boolean;
 				hideOverlayCursorByDefault?: boolean;
+				nativeCaptureUnavailable?: boolean;
 			},
 		) => Promise<{ success: boolean; webcamPath: string | null }>;
 		setCurrentRecordingSession: (
@@ -683,6 +686,7 @@ interface Window {
 				webcamPath?: string | null;
 				timeOffsetMs?: number;
 				hideOverlayCursorByDefault?: boolean;
+				nativeCaptureUnavailable?: boolean;
 			},
 			options?: { preserveProjectPath?: boolean },
 		) => Promise<{ success: boolean }>;
@@ -693,6 +697,7 @@ interface Window {
 				webcamPath?: string | null;
 				timeOffsetMs?: number;
 				hideOverlayCursorByDefault?: boolean;
+				nativeCaptureUnavailable?: boolean;
 			};
 		}>;
 		getCurrentVideoPath: () => Promise<{ success: boolean; path?: string }>;
@@ -838,7 +843,11 @@ interface Window {
 		/** Returns the app version from package.json */
 		getAppVersion: () => Promise<string>;
 		/** Hide the OS cursor before browser capture starts. */
-		hideOsCursor: () => Promise<{ success: boolean }>;
+		hideOsCursor: () => Promise<{
+			success: boolean;
+			unsupported?: boolean;
+			platform?: string;
+		}>;
 		/** Recording preferences (mic, system audio) */
 		getRecordingPreferences: () => Promise<{
 			success: boolean;

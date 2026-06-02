@@ -27,8 +27,8 @@ describe("backendPolicy", () => {
 		expect(getDefaultLightningRenderBackend()).toBe("webgl");
 	});
 
-	it("puts visually compatible Windows auto exports on native static layout before Breeze", () => {
-		expect(shouldPreferNativeStaticLayoutBeforeBreeze("win32", "auto")).toBe(true);
+	it("keeps Windows auto exports on the streaming route by default", () => {
+		expect(shouldPreferNativeStaticLayoutBeforeBreeze("win32", "auto")).toBe(false);
 		expect(shouldPreferNativeStaticLayoutBeforeBreeze("darwin", "auto")).toBe(false);
 
 		expect(
@@ -38,16 +38,16 @@ describe("backendPolicy", () => {
 				nativeStaticLayoutAvailable: true,
 			}),
 		).toMatchObject({
-			selectedRoute: "native-static-layout",
+			selectedRoute: "breeze-stream",
 			decisions: [
-				{ route: "native-static-layout", status: "selected" },
-				{ route: "breeze-stream", status: "fallback" },
+				{ route: "native-static-layout", status: "rejected" },
+				{ route: "breeze-stream", status: "selected" },
 				{ route: "webcodecs", status: "fallback" },
 			],
 		});
 	});
 
-	it("documents the Breeze fallback when Windows static native is rejected", () => {
+	it("ignores native static skip reasons for Windows auto routing", () => {
 		expect(
 			planLightningExportRoutes({
 				backendPreference: "auto",
@@ -61,12 +61,12 @@ describe("backendPolicy", () => {
 				{
 					route: "native-static-layout",
 					status: "rejected",
-					reasons: ["unsupported-frame-overlay"],
+					reasons: ["platform-does-not-use-native-static-layout"],
 				},
 				{
 					route: "breeze-stream",
 					status: "selected",
-					reasons: ["windows-native-static-fallback"],
+					reasons: ["platform-prefers-native-streaming"],
 				},
 				{
 					route: "webcodecs",

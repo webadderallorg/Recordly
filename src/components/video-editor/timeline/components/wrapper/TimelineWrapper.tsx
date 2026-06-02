@@ -11,11 +11,7 @@ import { TimelineContext } from "dnd-timeline";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useCallback, useRef } from "react";
 import type { TimelineRegionSpan } from "../../core/timelineTypes";
-import {
-	clampRange,
-	resolveDragEnd,
-	resolveResizeEnd,
-} from "../../dnd/engine";
+import { clampRange, resolveDragEnd, resolveResizeEnd } from "../../dnd/engine";
 
 interface TimelineWrapperProps {
 	children: ReactNode;
@@ -130,6 +126,30 @@ export default function TimelineWrapper({
 		[formatTooltipMs],
 	);
 
+	const resolveDragPreviewSpan = useCallback(
+		(event: DragMoveEvent, span: Span): Span | null => {
+			const proposedRowId = event.over?.id as string | undefined;
+			if (!proposedRowId) return span;
+
+			const activeItemId = event.active.id as string;
+			const resolved = resolveDragEnd(
+				activeItemId,
+				span,
+				proposedRowId,
+				{
+					allRegionSpans,
+					totalMs,
+					minItemDurationMs,
+					hasOverlap,
+				},
+				resolveTargetRowId,
+			);
+
+			return resolved?.span ?? null;
+		},
+		[allRegionSpans, hasOverlap, minItemDurationMs, resolveTargetRowId, totalMs],
+	);
+
 	const onDragStart = useCallback(
 		(event: DragStartEvent) => {
 			const span = event.active.data.current.getSpanFromDragEvent?.(event);
@@ -141,17 +161,22 @@ export default function TimelineWrapper({
 	const onDragMove = useCallback(
 		(event: DragMoveEvent) => {
 			const span = event.active.data.current.getSpanFromDragEvent?.(event);
+			const previewSpan = span ? resolveDragPreviewSpan(event, span) : null;
 			const screenX =
 				event.activatorEvent && "clientX" in event.activatorEvent
 					? (event.activatorEvent as PointerEvent).clientX + (event.delta?.x ?? 0)
 					: undefined;
-			if (span) showTooltip(span, screenX);
+			if (previewSpan) {
+				showTooltip(previewSpan, screenX);
+			} else {
+				showTooltip(null);
+			}
 			const moved = Math.hypot(event.delta?.x ?? 0, event.delta?.y ?? 0) > 0.01;
 			if (moved) {
-				onLiveSpanPreviewChange?.(event.active.id as string, span ?? null);
+				onLiveSpanPreviewChange?.(event.active.id as string, previewSpan);
 			}
 		},
-		[onLiveSpanPreviewChange, showTooltip],
+		[onLiveSpanPreviewChange, resolveDragPreviewSpan, showTooltip],
 	);
 
 	const onResizeMove = useCallback(
@@ -162,9 +187,10 @@ export default function TimelineWrapper({
 					? (event.activatorEvent as PointerEvent).clientX + (event.delta?.x ?? 0)
 					: undefined;
 			if (span) showTooltip(span, screenX);
-			onLiveSpanPreviewChange?.(event.active.id as string, span ?? null);
+			// dnd-timeline mutates the active item's DOM during resize; React preview
+			// renders here can reset that inline width/edge position and make trims stutter.
 		},
-		[onLiveSpanPreviewChange, showTooltip],
+		[showTooltip],
 	);
 
 	const hideTooltip = useCallback(() => showTooltip(null), [showTooltip]);
@@ -213,7 +239,13 @@ export default function TimelineWrapper({
 			onDragStart={onDragStart}
 			onDragMove={onDragMove}
 			onDragEnd={onDragEndWithTooltip}
-			autoScroll={{ enabled: false }}
+			autoScroll={{
+				enabled: true,
+				threshold: { x: 0.08, y: 0.08 },
+				acceleration: 3,
+				interval: 16,
+				layoutShiftCompensation: { x: false, y: false },
+			}}
 			resizeHandleWidth={28}
 		>
 			<div className="relative h-full min-h-0">

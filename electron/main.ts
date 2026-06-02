@@ -25,6 +25,7 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
+import { shouldUseSyntheticLinuxPortalSource } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
 import type { UpdateToastPayload } from "./updater";
@@ -49,6 +50,8 @@ import {
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
+	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
+	setHudOverlayRecordingActive,
 	showUpdateToastWindow,
 } from "./windows";
 
@@ -229,7 +232,7 @@ function showHudOverlayFromTray() {
 	if (process.platform === "win32" && isHudOverlayMousePassthroughSupported()) {
 		hud.showInactive();
 		hud.moveTop();
-		reassertHudOverlayMouseState();
+		reassertHudOverlayMouseState({ interactiveGraceMs: 1200 });
 		return true;
 	}
 
@@ -335,32 +338,6 @@ function focusOrCreateMainWindow() {
 		mainWindow.moveTop();
 		mainWindow.focus();
 	}
-}
-
-/**
- * On Windows 10, focus changes and native notifications can break
- * {@link BrowserWindow.setIgnoreMouseEvents} forwarding on the transparent HUD
- * overlay, causing it to become permanently click-through.  Call this after any
- * operation that may alter focus or z-order so that hover detection keeps working.
- */
-function reassertHudOverlayMouseState() {
-	if (process.platform !== "win32" || !isHudOverlayMousePassthroughSupported()) {
-		return;
-	}
-
-	const hud = getHudOverlayWindow();
-	if (!hud) {
-		return;
-	}
-
-	// Toggle off then back on so the native WS_EX_TRANSPARENT flag is fully
-	// re-initialised rather than merely re-asserted in a potentially broken state.
-	hud.setIgnoreMouseEvents(false);
-	setTimeout(() => {
-		if (!hud.isDestroyed()) {
-			hud.setIgnoreMouseEvents(true, { forward: true });
-		}
-	}, 50);
 }
 
 function isEditorWindow(window: BrowserWindow) {
@@ -803,7 +780,7 @@ function createEditorWindowWrapper() {
 	const previousWindow = mainWindow;
 	if (previousWindow && !previousWindow.isDestroyed()) {
 		const closingEditorWindow = isEditorWindow(previousWindow);
-		
+
 		if (closingEditorWindow) {
 			closeEditorWindowBypassingUnsavedPrompt(previousWindow);
 		} else {
@@ -985,6 +962,7 @@ app.whenReady().then(async () => {
 		() => sourceSelectorWindow,
 		(recording: boolean, sourceName: string) => {
 			selectedSourceName = sourceName;
+			setHudOverlayRecordingActive(recording);
 			if (!tray) createTray();
 			updateTrayMenu(recording);
 			if (recording) {
@@ -1037,12 +1015,18 @@ app.whenReady().then(async () => {
 			// is set we skip getSources entirely and hand back a synthetic
 			// source id; Chromium then opens the portal once to actually
 			// resolve the capture.
-			// Default to the sentinel on Linux when no source has been
+			// Default to the sentinel on Linux/Wayland when no source has been
 			// pre-selected (e.g. fresh session where the renderer skipped the
 			// source picker entirely). This avoids calling getSources() which
 			// would itself trigger an extra portal dialog.
-			const isLinuxPortalSentinel =
-				process.platform === "linux" && (sourceId === "screen:linux-portal" || !sourceId);
+			// X11 does not need this synthetic path; use Electron's documented
+			// desktopCapturer source flow there so getDisplayMedia receives a
+			// real source id instead of a Wayland-only portal sentinel.
+			const isLinuxPortalSentinel = shouldUseSyntheticLinuxPortalSource({
+				env: process.env,
+				platform: process.platform,
+				sourceId,
+			});
 			if (isLinuxPortalSentinel) {
 				callback({ video: { id: "screen:0:0", name: "Entire screen" } });
 				return;

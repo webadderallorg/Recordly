@@ -11,8 +11,9 @@ import {
 import type { Span } from "dnd-timeline";
 import { useItem } from "dnd-timeline";
 import { useMemo } from "react";
-import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+import { formatClipSpeedLabel } from "../clipSpeedChange";
 import AudioWaveform from "./components/waveform/AudioWaveform";
 import type { AudioPeaksData } from "./core/timelineTypes";
 import glassStyles from "./ItemGlass.module.css";
@@ -125,6 +126,7 @@ export default function Item({
 	const isSpeed = variant === "speed";
 	const isAudio = variant === "audio";
 	const showAudioWaveform = isAudio && Boolean(waveformPeaks);
+	const clipSpeedLabel = isClip ? formatClipSpeedLabel(speedValue ?? 1) : null;
 
 	const glassClass = isZoom
 		? glassStyles.glassPurple
@@ -234,6 +236,11 @@ export default function Item({
 									<span className="text-[11px] font-semibold tracking-tight whitespace-nowrap">
 										Clip
 									</span>
+									{clipSpeedLabel && (
+										<span className="rounded-[4px] bg-black/10 px-1 text-[9px] font-bold tabular-nums text-black/65 dark:bg-white/15 dark:text-white/80">
+											{clipSpeedLabel}
+										</span>
+									)}
 								</>
 							) : isSpeed ? (
 								<>

@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -114,6 +114,110 @@ function findCmake() {
 if (!existsSync(path.join(videoCodecSdkRoot, "Samples", "NvCodec"))) {
 	fallbackToBundledHelperOrExit(
 		`NVIDIA Video Codec SDK samples not found at ${videoCodecSdkRoot}. Set RECORDLY_NVIDIA_VIDEO_CODEC_SDK_ROOT to build from source.`,
+	);
+}
+
+function replaceOrThrow(filePath, content, pattern, replacement, label) {
+	const updated = content.replace(pattern, replacement);
+	if (updated === content) {
+		throw new Error(`Unable to patch ${label} in ${filePath}`);
+	}
+	return updated;
+}
+
+function patchNvDecoderForRecordlyCallbacks() {
+	const nvDecoderDir = path.join(videoCodecSdkRoot, "Samples", "NvCodec", "NvDecoder");
+	const headerPath = path.join(nvDecoderDir, "NvDecoder.h");
+	const sourcePath = path.join(nvDecoderDir, "NvDecoder.cpp");
+
+	let header = readFileSync(headerPath, "utf8");
+	if (!header.includes("RecordlyMappedFrameHandler")) {
+		header = replaceOrThrow(
+			headerPath,
+			header,
+			/#include "nvcuvid\.h"\r?\n/,
+			`#include "nvcuvid.h"
+
+using RecordlyMappedFrameHandler = void (*)(CUdeviceptr, unsigned int, int, int, int, int64_t, void*);
+using RecordlyDisplayFramePolicy = bool (*)(int, void*);
+`,
+			"NvDecoder callback aliases",
+		);
+		header = replaceOrThrow(
+			headerPath,
+			header,
+			/ {4}int setReconfigParams\(const Rect \* pCropRect, const Dim \* pResizeDim\);\r?\n/,
+			`    int setReconfigParams(const Rect * pCropRect, const Dim * pResizeDim);
+    void SetMappedFrameHandler(RecordlyMappedFrameHandler handler, void* userData) { m_recordlyMappedFrameHandler = handler; m_recordlyMappedFrameUserData = userData; }
+    void SetDisplayFramePolicy(RecordlyDisplayFramePolicy policy, void* userData) { m_recordlyDisplayFramePolicy = policy; m_recordlyDisplayFramePolicyUserData = userData; }
+    int GetDisplayFrameCount() const { return m_nDisplayFrameCount; }
+`,
+			"NvDecoder public callback methods",
+		);
+		header = replaceOrThrow(
+			headerPath,
+			header,
+			/ {4}int m_nDecodedFrame = 0, m_nDecodedFrameReturned = 0;\r?\n/,
+			`    int m_nDecodedFrame = 0, m_nDecodedFrameReturned = 0;
+    int m_nDisplayFrameCount = 0;
+    RecordlyMappedFrameHandler m_recordlyMappedFrameHandler = nullptr;
+    void* m_recordlyMappedFrameUserData = nullptr;
+    RecordlyDisplayFramePolicy m_recordlyDisplayFramePolicy = nullptr;
+    void* m_recordlyDisplayFramePolicyUserData = nullptr;
+`,
+			"NvDecoder callback state",
+		);
+		writeFileSync(headerPath, header);
+	}
+
+	let source = readFileSync(sourcePath, "utf8");
+	if (!source.includes("Recordly mapped frame callback")) {
+		source = replaceOrThrow(
+			sourcePath,
+			source,
+			/ {4}if \(result == CUDA_SUCCESS && \(DecodeStatus\.decodeStatus == cuvidDecodeStatus_Error \|\| DecodeStatus\.decodeStatus == cuvidDecodeStatus_Error_Concealed\)\)\r?\n {4}\{\r?\n {8}printf\("Decode Error occurred for picture %d\\n", m_nPicNumInDecodeOrder\[pDispInfo->picture_index\]\);\r?\n {4}\}\r?\n {4}uint8_t \*pDecodedFrame = nullptr;\r?\n/,
+			`    if (result == CUDA_SUCCESS && (DecodeStatus.decodeStatus == cuvidDecodeStatus_Error || DecodeStatus.decodeStatus == cuvidDecodeStatus_Error_Concealed))
+    {
+        printf("Decode Error occurred for picture %d\\n", m_nPicNumInDecodeOrder[pDispInfo->picture_index]);
+    }
+
+    const int displayFrameIndex = m_nDisplayFrameCount++;
+    if (m_recordlyDisplayFramePolicy &&
+        !m_recordlyDisplayFramePolicy(displayFrameIndex, m_recordlyDisplayFramePolicyUserData))
+    {
+        NVDEC_API_CALL(cuvidUnmapVideoFrame(m_hDecoder, dpSrcFrame));
+        return 1;
+    }
+
+    // Recordly mapped frame callback keeps the CUDA helper from making an
+    // extra device-to-device copy when the caller can consume mapped NV12.
+    if (m_recordlyMappedFrameHandler)
+    {
+        m_recordlyMappedFrameHandler(
+            dpSrcFrame,
+            nSrcPitch,
+            m_nWidth,
+            m_nHeight,
+            m_nSurfaceHeight,
+            pDispInfo->timestamp,
+            m_recordlyMappedFrameUserData);
+        NVDEC_API_CALL(cuvidUnmapVideoFrame(m_hDecoder, dpSrcFrame));
+        return 1;
+    }
+
+    uint8_t *pDecodedFrame = nullptr;
+`,
+			"NvDecoder mapped frame callback hook",
+		);
+		writeFileSync(sourcePath, source);
+	}
+}
+
+try {
+	patchNvDecoderForRecordlyCallbacks();
+} catch (error) {
+	fallbackToBundledHelperOrExit(
+		`Failed to patch NVIDIA Video Codec SDK samples: ${error instanceof Error ? error.message : String(error)}`,
 	);
 }
 

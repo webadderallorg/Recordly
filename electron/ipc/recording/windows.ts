@@ -16,8 +16,10 @@ import {
 import {
 	AudioSyncAdjustment,
 } from "../types";
-import { emitRecordingInterrupted } from "./events";
 import { moveFileWithOverwrite } from "../utils";
+import { emitRecordingInterrupted } from "./events";
+
+const WINDOWS_CAPTURE_STOP_TIMEOUT_MS = 45_000;
 
 export type NativeWindowsVideoPaddingResult = {
 	padded: boolean;
@@ -107,33 +109,58 @@ export function waitForWindowsCaptureStart(proc: ChildProcessWithoutNullStreams)
 	});
 }
 
-export function waitForWindowsCaptureStop(proc: ChildProcessWithoutNullStreams) {
+export function waitForWindowsCaptureStop(
+	proc: ChildProcessWithoutNullStreams,
+	timeoutMs = WINDOWS_CAPTURE_STOP_TIMEOUT_MS,
+) {
 	return new Promise<string>((resolve, reject) => {
-		const onClose = (code: number | null) => {
+		let settled = false;
+		const finish = (callback: () => void) => {
+			if (settled) return;
+			settled = true;
 			cleanup();
-			const match = windowsCaptureOutputBuffer.match(/Recording stopped\. Output path: (.+)/);
-			if (match?.[1]) {
-				resolve(match[1].trim());
-				return;
-			}
-			if (code === 0 && windowsCaptureTargetPath) {
-				resolve(windowsCaptureTargetPath);
-				return;
-			}
-			reject(
-				new Error(
-					windowsCaptureOutputBuffer.trim() ||
-						`Native Windows capture exited with code ${code ?? "unknown"}`,
-				),
-			);
+			callback();
+		};
+
+		const timer = setTimeout(() => {
+			finish(() => {
+				try {
+					if (!proc.killed) proc.kill();
+				} catch {
+					// The process may already be gone; the caller only needs the timeout error.
+				}
+				reject(new Error("Timed out waiting for native Windows capture to stop"));
+			});
+		}, timeoutMs);
+
+		const onClose = (code: number | null) => {
+			finish(() => {
+				const match = windowsCaptureOutputBuffer.match(/Recording stopped\. Output path: (.+)/);
+				if (match?.[1]) {
+					resolve(match[1].trim());
+					return;
+				}
+				if (code === 0 && windowsCaptureTargetPath) {
+					resolve(windowsCaptureTargetPath);
+					return;
+				}
+				reject(
+					new Error(
+						windowsCaptureOutputBuffer.trim() ||
+							`Native Windows capture exited with code ${code ?? "unknown"}`,
+					),
+				);
+			});
 		};
 
 		const onError = (error: Error) => {
-			cleanup();
-			reject(error);
+			finish(() => {
+				reject(error);
+			});
 		};
 
 		const cleanup = () => {
+			clearTimeout(timer);
 			proc.off("close", onClose);
 			proc.off("error", onError);
 		};

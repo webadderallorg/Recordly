@@ -29,10 +29,9 @@ const BITS_PER_MEGABIT = 1_000_000;
 const MIN_FRAME_RATE = 30;
 const CHROME_MEDIA_SOURCE = "desktop";
 const RECORDING_FILE_PREFIX = "recording-";
-const VIDEO_FILE_EXTENSION = ".webm";
 const AUDIO_BITRATE_VOICE = 128_000;
 const AUDIO_BITRATE_SYSTEM = 192_000;
-const MIC_GAIN_BOOST = 1;
+const MIC_GAIN_BOOST = 1.4;
 const WEBCAM_BITRATE = 8_000_000;
 const WEBCAM_WIDTH = 1280;
 const WEBCAM_HEIGHT = 720;
@@ -46,7 +45,15 @@ export type BrowserMicrophoneProfile =
 	| "no-echo"
 	| "no-noise-suppression"
 	| "raw";
-const DEFAULT_BROWSER_MICROPHONE_PROFILE: BrowserMicrophoneProfile = "no-agc";
+type BrowserCaptureCursorMode = "always" | "never";
+type BrowserCaptureCursorSetting = BrowserCaptureCursorMode | "motion";
+export type BrowserCaptureCursorPolicy = {
+	streamCursor: BrowserCaptureCursorMode;
+	hideOsCursorBeforeRecording: boolean;
+	hideEditorOverlayCursorByDefault: boolean;
+	nativeCaptureUnavailable: boolean;
+};
+const DEFAULT_BROWSER_MICROPHONE_PROFILE: BrowserMicrophoneProfile = "processed";
 const BROWSER_MICROPHONE_PROFILES = new Set<BrowserMicrophoneProfile>([
 	"processed",
 	"no-agc",
@@ -121,6 +128,33 @@ type DesktopCaptureMediaDevices = {
 	getDisplayMedia: (constraints: unknown) => Promise<MediaStream>;
 };
 
+export function shouldUseLinuxPortalCapture({
+	browserCaptureSourceId,
+	selectedSourceId,
+}: {
+	browserCaptureSourceId?: string;
+	selectedSourceId?: string;
+}) {
+	if (browserCaptureSourceId && browserCaptureSourceId !== LINUX_PORTAL_SOURCE.id) {
+		return false;
+	}
+
+	return (
+		selectedSourceId === LINUX_PORTAL_SOURCE.id ||
+		browserCaptureSourceId === LINUX_PORTAL_SOURCE.id
+	);
+}
+
+export function shouldLockHudDuringDisplaySelection({
+	platform,
+	useLinuxPortal,
+}: {
+	platform?: string;
+	useLinuxPortal: boolean;
+}) {
+	return platform === "linux" && useLinuxPortal;
+}
+
 type UseScreenRecorderReturn = {
 	recording: boolean;
 	paused: boolean;
@@ -183,6 +217,80 @@ export function normalizeBrowserMicrophoneProfile(value?: string | null): Browse
 		: DEFAULT_BROWSER_MICROPHONE_PROFILE;
 }
 
+export function resolveBrowserCaptureCursorPolicy({
+	nativeWindowsCaptureStartFailed = false,
+	platform,
+}: {
+	nativeWindowsCaptureStartFailed?: boolean;
+	platform?: string;
+} = {}): BrowserCaptureCursorPolicy {
+	if (nativeWindowsCaptureStartFailed) {
+		// If WGC already failed, avoid the telemetry overlay path that can lag on
+		// constrained Windows systems; keep the browser-captured cursor instead.
+		return {
+			streamCursor: "always",
+			hideOsCursorBeforeRecording: false,
+			hideEditorOverlayCursorByDefault: true,
+			nativeCaptureUnavailable: true,
+		};
+	}
+
+	if (platform === "linux") {
+		// Linux screen capture runs through xdg-desktop-portal/PipeWire. Ask the
+		// portal to omit the cursor, but do not pretend we can globally hide the
+		// OS cursor from Electron when the portal/compositor ignores that request.
+		return {
+			streamCursor: "never",
+			hideOsCursorBeforeRecording: false,
+			hideEditorOverlayCursorByDefault: true,
+			nativeCaptureUnavailable: true,
+		};
+	}
+
+	return {
+		streamCursor: "never",
+		hideOsCursorBeforeRecording: true,
+		hideEditorOverlayCursorByDefault: true,
+		nativeCaptureUnavailable: false,
+	};
+}
+
+export function getScreenCaptureCursorSetting(
+	settings: MediaTrackSettings | null | undefined,
+): BrowserCaptureCursorSetting | null {
+	const cursor = (settings as { cursor?: unknown } | null | undefined)?.cursor;
+	return cursor === "always" || cursor === "never" || cursor === "motion" ? cursor : null;
+}
+
+export function resolveLinuxPortalCursorPresentation({
+	actualCursor,
+	requestedCursor,
+}: {
+	actualCursor: BrowserCaptureCursorSetting | null;
+	requestedCursor: BrowserCaptureCursorMode;
+}): Pick<
+	BrowserCaptureCursorPolicy,
+	"hideEditorOverlayCursorByDefault" | "nativeCaptureUnavailable"
+> {
+	if (requestedCursor === "never" && actualCursor === "never") {
+		return {
+			hideEditorOverlayCursorByDefault: false,
+			nativeCaptureUnavailable: false,
+		};
+	}
+
+	return {
+		hideEditorOverlayCursorByDefault: true,
+		nativeCaptureUnavailable: true,
+	};
+}
+
+export function shouldUseNativeWindowsCaptureForSource(
+	source: Pick<ProcessedDesktopSource, "id"> | null | undefined,
+): boolean {
+	return source?.id?.startsWith("screen:") === true;
+}
+
 export function createProcessedMicrophoneConstraints(
 	microphoneDeviceId?: string,
 	profile: BrowserMicrophoneProfile = DEFAULT_BROWSER_MICROPHONE_PROFILE,
@@ -202,6 +310,31 @@ export function createProcessedMicrophoneConstraints(
 	}
 
 	return { audio, video: false };
+}
+
+export function createBrowserRecordingOptions({
+	audioBitsPerSecond,
+	mimeType,
+	videoBitsPerSecond,
+}: {
+	audioBitsPerSecond?: number;
+	mimeType?: string;
+	videoBitsPerSecond: number;
+}): MediaRecorderOptions {
+	const options: MediaRecorderOptions = {
+		videoBitsPerSecond,
+		bitsPerSecond: videoBitsPerSecond + (audioBitsPerSecond ?? 0),
+	};
+
+	if (audioBitsPerSecond !== undefined) {
+		options.audioBitsPerSecond = audioBitsPerSecond;
+	}
+
+	if (mimeType) {
+		options.mimeType = mimeType;
+	}
+
+	return options;
 }
 
 function createMicrophoneTrackSettingsSnapshot(
@@ -314,6 +447,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	);
 	const requestedBrowserMicrophoneProfile = useRef<string | null>(null);
 	const hideEditorOverlayCursorByDefault = useRef(false);
+	const nativeCaptureUnavailableForCursorOverlay = useRef(false);
 
 	const notifyRecordingFinalizationFailure = useCallback(async (message: string) => {
 		setFinalizing(false);
@@ -577,7 +711,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		// on Wayland that triggers an additional xdg-desktop-portal dialog.
 		// The sentinel is handled later by routing through getDisplayMedia,
 		// which lets the portal pick the source in a single dialog.
-		if (source.id === "screen:linux-portal") {
+		if (source.id === LINUX_PORTAL_SOURCE.id) {
 			return source;
 		}
 
@@ -622,6 +756,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			const start = performance.now();
 			console.log("[PERF:RENDERER] Finalize Session & Switch to Editor: STARTED");
 			const shouldHideOverlayCursor = hideEditorOverlayCursorByDefault.current;
+			const nativeCaptureUnavailable = nativeCaptureUnavailableForCursorOverlay.current;
 			try {
 				if (webcamPath) {
 					await window.electronAPI.setCurrentRecordingSession({
@@ -629,10 +764,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						webcamPath,
 						timeOffsetMs: webcamTimeOffsetMs.current,
 						hideOverlayCursorByDefault: shouldHideOverlayCursor,
+						nativeCaptureUnavailable,
 					});
 				} else {
 					await window.electronAPI.setCurrentVideoPath(videoPath, {
 						hideOverlayCursorByDefault: shouldHideOverlayCursor,
+						nativeCaptureUnavailable,
 					});
 				}
 			} catch (error) {
@@ -641,6 +778,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				try {
 					await window.electronAPI.setCurrentVideoPath(videoPath, {
 						hideOverlayCursorByDefault: shouldHideOverlayCursor,
+						nativeCaptureUnavailable,
 					});
 				} catch (fallbackError) {
 					console.error("Failed to persist fallback video path:", fallbackError);
@@ -867,7 +1005,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			const webcamPath = await stopWebcamRecorder();
 			await storeMicrophoneSidecar(resolvedMicFallbackBlobPromise, result.path, startDelayMs);
 			await finalizeRecordingSession(result.path, webcamPath);
-			
+
 			if (typeof window.electronAPI?.hudOverlayClose === "function") {
 				window.electronAPI.hudOverlayClose();
 			}
@@ -1072,52 +1210,62 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				// We pass null for webcamPath initially to avoid blocking on webcam disk writes/muxing.
 				await finalizeRecordingSession(finalPath, null);
 
-						// 2. Perform background finalization (webcam, muxing, sidecars)
-						// We don't await this to keep the UI responsive
-						void (async () => {
-							try {
-								// Await the webcam path in the background
-								const webcamPath = await webcamPathPromise;
-								console.log("[useScreenRecorder] Background native processing: webcamPath is", webcamPath);
+				// 2. Perform background finalization (webcam, muxing, sidecars)
+				// We don't await this to keep the UI responsive
+				void (async () => {
+					try {
+						// Await the webcam path in the background
+						const webcamPath = await webcamPathPromise;
+						console.log(
+							"[useScreenRecorder] Background native processing: webcamPath is",
+							webcamPath,
+						);
 
-								// Store sidecars
-								await storeMicrophoneSidecar(
-									micFallbackBlobPromise,
-									finalPath,
-									fallbackStartDelayMs,
-									fallbackTrackSettings,
-								);
+						// Store sidecars
+						await storeMicrophoneSidecar(
+							micFallbackBlobPromise,
+							finalPath,
+							fallbackStartDelayMs,
+							fallbackTrackSettings,
+						);
 
-								// Perform muxing/renaming if on Windows
-								if (isNativeWindows) {
-									await window.electronAPI.muxNativeWindowsRecording(expectedDurationMs);
-								}
+						// Perform muxing/renaming if on Windows
+						if (isNativeWindows) {
+							await window.electronAPI.muxNativeWindowsRecording(expectedDurationMs);
+						}
 
-								console.log("[useScreenRecorder] Emitting setCurrentRecordingSession with:", { finalPath, webcamPath });
+						console.log(
+							"[useScreenRecorder] Emitting setCurrentRecordingSession with:",
+							{ finalPath, webcamPath },
+						);
 
-								// Update the session state to notify the editor that all background assets (webcam, mic, etc.) are now ready.
-								// This broadcasts a 'recording-session-changed' event that the open editor listens to for re-scanning assets.
-								await window.electronAPI.setCurrentRecordingSession({
-									videoPath: finalPath,
-									webcamPath,
-									timeOffsetMs: webcamTimeOffsetMs.current,
-									hideOverlayCursorByDefault: hideEditorOverlayCursorByDefault.current,
-								});
+						// Update the session state to notify the editor that all background assets (webcam, mic, etc.) are now ready.
+						// This broadcasts a 'recording-session-changed' event that the open editor listens to for re-scanning assets.
+						await window.electronAPI.setCurrentRecordingSession({
+							videoPath: finalPath,
+							webcamPath,
+							timeOffsetMs: webcamTimeOffsetMs.current,
+							hideOverlayCursorByDefault: hideEditorOverlayCursorByDefault.current,
+							nativeCaptureUnavailable:
+								nativeCaptureUnavailableForCursorOverlay.current,
+						});
 
-								console.log(
-									`[PERF:RENDERER] Background Stop Sequence: COMPLETED in ${(performance.now() - stopStart).toFixed(2)}ms`,
-								);
-							} catch (bgError) {
-								console.error("Error in background finalization:", bgError);
-							} finally {
-								// After all background tasks are done (webcam, mic sidecars, muxing),
-								// we can safely close the HUD window to release hardware and resources.
-								if (typeof window.electronAPI?.hudOverlayClose === "function") {
-									console.log("[useScreenRecorder] All background tasks finished, closing HUD");
-									window.electronAPI.hudOverlayClose();
-								}
-							}
-						})();
+						console.log(
+							`[PERF:RENDERER] Background Stop Sequence: COMPLETED in ${(performance.now() - stopStart).toFixed(2)}ms`,
+						);
+					} catch (bgError) {
+						console.error("Error in background finalization:", bgError);
+					} finally {
+						// After all background tasks are done (webcam, mic sidecars, muxing),
+						// we can safely close the HUD window to release hardware and resources.
+						if (typeof window.electronAPI?.hudOverlayClose === "function") {
+							console.log(
+								"[useScreenRecorder] All background tasks finished, closing HUD",
+							);
+							window.electronAPI.hudOverlayClose();
+						}
+					}
+				})();
 			})();
 			return;
 		}
@@ -1291,6 +1439,16 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			return;
 		}
 
+		let hudSourceSelectionActive = false;
+		const setHudSourceSelectionActive = (active: boolean) => {
+			if (hudSourceSelectionActive === active) {
+				return;
+			}
+
+			hudSourceSelectionActive = active;
+			window.electronAPI?.hudOverlaySetSourceSelectionActive?.(active);
+		};
+
 		hasPromptedForReselect.current = false;
 		startInFlight.current = true;
 		setStarting(true);
@@ -1298,6 +1456,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		try {
 			const platform = await window.electronAPI.getPlatform();
 			hideEditorOverlayCursorByDefault.current = false;
+			nativeCaptureUnavailableForCursorOverlay.current = false;
 			const existingSource = await window.electronAPI.getSelectedSource();
 			const selectedSource =
 				existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
@@ -1308,7 +1467,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			// Persist the synthetic Linux portal sentinel to main so that the
 			// setDisplayMediaRequestHandler can short-circuit getSources() and
 			// avoid triggering an extra portal dialog.
-			if (!existingSource && selectedSource.id === "screen:linux-portal") {
+			if (!existingSource && selectedSource.id === LINUX_PORTAL_SOURCE.id) {
 				try {
 					await window.electronAPI.selectSource(selectedSource);
 				} catch (err) {
@@ -1331,10 +1490,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				typeof window.electronAPI.startNativeScreenRecording === "function";
 
 			let useNativeWindowsCapture = false;
+			let nativeWindowsCaptureStartFailed = false;
 			if (
 				platform === "win32" &&
-				(selectedSource.id?.startsWith("screen:") ||
-					selectedSource.id?.startsWith("window:")) &&
+				shouldUseNativeWindowsCaptureForSource(selectedSource) &&
 				typeof window.electronAPI.isNativeWindowsCaptureAvailable === "function"
 			) {
 				try {
@@ -1385,7 +1544,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				);
 				if (!nativeResult.success) {
 					if (useNativeWindowsCapture) {
-						hideEditorOverlayCursorByDefault.current = true;
+						nativeWindowsCaptureStartFailed = true;
 						console.warn(
 							"Native Windows capture failed, falling back to browser capture:",
 							nativeResult.error ?? nativeResult.message,
@@ -1489,13 +1648,27 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					}
 
 					setRecording(true);
-					window.electronAPI?.setRecordingState(true);
+					try {
+						await window.electronAPI?.setRecordingState(true);
+					} catch (stateError) {
+						console.warn(
+							"Failed to notify main process that native recording started:",
+							stateError,
+						);
+					}
 
 					return;
 				}
 			}
 
-			hideEditorOverlayCursorByDefault.current = true;
+			const browserCursorPolicy = resolveBrowserCaptureCursorPolicy({
+				nativeWindowsCaptureStartFailed,
+				platform,
+			});
+			hideEditorOverlayCursorByDefault.current =
+				browserCursorPolicy.hideEditorOverlayCursorByDefault;
+			nativeCaptureUnavailableForCursorOverlay.current =
+				browserCursorPolicy.nativeCaptureUnavailable;
 
 			const wantsAudioCapture = microphoneEnabled || systemAudioEnabled;
 			const browserCaptureSource = await resolveBrowserCaptureSource(selectedSource);
@@ -1509,16 +1682,30 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				);
 			}
 
-			try {
-				await window.electronAPI.hideOsCursor?.();
-			} catch {
-				console.warn("Could not hide OS cursor before recording.");
+			if (browserCursorPolicy.hideOsCursorBeforeRecording) {
+				try {
+					const hideCursorResult = await window.electronAPI.hideOsCursor?.();
+					if (hideCursorResult && !hideCursorResult.success) {
+						console.warn(
+							"Could not hide OS cursor before recording.",
+							hideCursorResult,
+						);
+					}
+				} catch {
+					console.warn("Could not hide OS cursor before recording.");
+				}
 			}
 
 			let videoTrack: MediaStreamTrack | undefined;
 			let systemAudioIncluded = false;
 			const mediaDevices = navigator.mediaDevices as DesktopCaptureMediaDevices;
-			const useLinuxPortal = selectedSource.id === "screen:linux-portal";
+			const useLinuxPortal = shouldUseLinuxPortalCapture({
+				browserCaptureSourceId: browserCaptureSource.id,
+				selectedSourceId: selectedSource.id,
+			});
+			if (shouldLockHudDuringDisplaySelection({ platform, useLinuxPortal })) {
+				setHudSourceSelectionActive(true);
+			}
 			const browserScreenVideoConstraints = {
 				mandatory: {
 					chromeMediaSource: CHROME_MEDIA_SOURCE,
@@ -1527,9 +1714,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					maxHeight: TARGET_HEIGHT,
 					maxFrameRate: TARGET_FRAME_RATE,
 					minFrameRate: MIN_FRAME_RATE,
-					googCaptureCursor: false,
+					googCaptureCursor: browserCursorPolicy.streamCursor === "always",
 				},
-				cursor: "never" as const,
+				cursor: browserCursorPolicy.streamCursor,
 			};
 
 			if (wantsAudioCapture) {
@@ -1542,7 +1729,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							width: { ideal: TARGET_WIDTH, max: TARGET_WIDTH },
 							height: { ideal: TARGET_HEIGHT, max: TARGET_HEIGHT },
 							frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
-							cursor: "never",
+							cursor: browserCursorPolicy.streamCursor,
 						},
 						selfBrowserSurface: "exclude",
 						surfaceSwitching: "exclude",
@@ -1653,7 +1840,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 								width: { ideal: TARGET_WIDTH, max: TARGET_WIDTH },
 								height: { ideal: TARGET_HEIGHT, max: TARGET_HEIGHT },
 								frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
-								cursor: "never",
+								cursor: browserCursorPolicy.streamCursor,
 							},
 							selfBrowserSurface: "exclude",
 							surfaceSwitching: "exclude",
@@ -1669,6 +1856,27 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			if (!stream.current || !videoTrack) {
 				throw new Error("Media stream is not available.");
+			}
+
+			if (useLinuxPortal) {
+				const actualCursor = getScreenCaptureCursorSetting(videoTrack.getSettings());
+				const cursorPresentation = resolveLinuxPortalCursorPresentation({
+					actualCursor,
+					requestedCursor: browserCursorPolicy.streamCursor,
+				});
+				hideEditorOverlayCursorByDefault.current =
+					cursorPresentation.hideEditorOverlayCursorByDefault;
+				nativeCaptureUnavailableForCursorOverlay.current =
+					cursorPresentation.nativeCaptureUnavailable;
+				if (cursorPresentation.nativeCaptureUnavailable) {
+					console.warn(
+						"Linux portal did not confirm cursor-hidden capture; disabling Recordly cursor overlay for this recording.",
+						{
+							actualCursor,
+							requestedCursor: browserCursorPolicy.streamCursor,
+						},
+					);
+				}
 			}
 
 			try {
@@ -1704,17 +1912,19 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			chunks.current = [];
 			const hasAudio = stream.current.getAudioTracks().length > 0;
-			const recorder = new MediaRecorder(stream.current, {
-				videoBitsPerSecond,
-				...(mimeType ? { mimeType } : {}),
-				...(hasAudio
-					? {
-							audioBitsPerSecond: systemAudioIncluded
-								? AUDIO_BITRATE_SYSTEM
-								: AUDIO_BITRATE_VOICE,
-						}
-					: {}),
-			});
+			const audioBitsPerSecond = hasAudio
+				? systemAudioIncluded
+					? AUDIO_BITRATE_SYSTEM
+					: AUDIO_BITRATE_VOICE
+				: undefined;
+			const recorder = new MediaRecorder(
+				stream.current,
+				createBrowserRecordingOptions({
+					audioBitsPerSecond,
+					mimeType,
+					videoBitsPerSecond,
+				}),
+			);
 
 			mediaRecorder.current = recorder;
 			recorder.ondataavailable = (event) => {
@@ -1736,10 +1946,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				);
 				chunks.current = [];
 				const timestamp = recordingSessionTimestamp.current ?? Date.now();
-				const videoFileName = `${RECORDING_FILE_PREFIX}${timestamp}${VIDEO_FILE_EXTENSION}`;
+				const videoFileName = `${RECORDING_FILE_PREFIX}${timestamp}${getVideoExtensionForMimeType(recordingBlobType)}`;
 
 				try {
-					const videoBlob = await fixWebmDuration(buggyBlob, duration);
+					const videoBlob = isWebmMimeType(recordingBlobType)
+						? await fixWebmDuration(buggyBlob, duration)
+						: buggyBlob;
 					const arrayBuffer = await videoBlob.arrayBuffer();
 					const videoResult = await window.electronAPI.storeRecordedVideo(
 						arrayBuffer,
@@ -1770,14 +1982,19 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 										videoPath: finalVideoPath,
 										webcamPath,
 										timeOffsetMs: webcamTimeOffsetMs.current,
-										hideOverlayCursorByDefault: hideEditorOverlayCursorByDefault.current,
+										hideOverlayCursorByDefault:
+											hideEditorOverlayCursorByDefault.current,
+										nativeCaptureUnavailable:
+											nativeCaptureUnavailableForCursorOverlay.current,
 									});
 								}
 							} finally {
 								// After all background tasks are done (webcam),
 								// we can safely close the HUD window to release hardware and resources.
 								if (typeof window.electronAPI?.hudOverlayClose === "function") {
-									console.log("[useScreenRecorder:browser] All background tasks finished, closing HUD");
+									console.log(
+										"[useScreenRecorder:browser] All background tasks finished, closing HUD",
+									);
 									window.electronAPI.hudOverlayClose();
 								}
 							}
@@ -1803,7 +2020,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
 			recorder.start(RECORDER_TIMESLICE_MS);
 			setRecording(true);
-			window.electronAPI?.setRecordingState(true);
+			try {
+				await window.electronAPI?.setRecordingState(true);
+			} catch (stateError) {
+				console.warn("Failed to notify main process that recording started:", stateError);
+			}
 		} catch (error) {
 			console.error("Failed to start recording:", error);
 			alert(
@@ -1821,6 +2042,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				await stopWebcamRecorder();
 			}
 		} finally {
+			setHudSourceSelectionActive(false);
 			startInFlight.current = false;
 			setStarting(false);
 		}

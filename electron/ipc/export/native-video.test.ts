@@ -406,7 +406,9 @@ describe("getNativeExportCapabilities", () => {
 
 		expect(capabilities.nvidiaCuda.available).toBe(process.platform === "win32");
 		expect(capabilities.nvidiaCuda.hasWrapper).toBe(process.platform === "win32");
-		expect(capabilities.nvidiaCuda.hasNvidiaGpu).toBe(process.platform === "win32" ? true : null);
+		expect(capabilities.nvidiaCuda.hasNvidiaGpu).toBe(
+			process.platform === "win32" ? true : null,
+		);
 	});
 });
 
@@ -600,6 +602,16 @@ describe("resolveExperimentalNvidiaCudaExportScriptPath", () => {
 });
 
 describe("buildExperimentalNvidiaCudaStaticLayoutArgs", () => {
+	it("passes output canvas dimensions to the CUDA wrapper", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({ width: 1020, height: 572 }),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).toEqual(expect.arrayContaining(["--width", "1020", "--height", "572"]));
+	});
+
 	it("keeps explicit copy-source CUDA audio inline by default", () => {
 		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
 			createNvidiaCudaSkipOptions({
