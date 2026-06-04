@@ -187,6 +187,7 @@ export function attachWindowsCaptureLifecycle(proc: ChildProcessWithoutNullStrea
 			if (!window.isDestroyed()) {
 				window.webContents.send("recording-state-changed", {
 					recording: false,
+					paused: false,
 					sourceName,
 				});
 			}

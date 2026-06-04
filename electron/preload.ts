@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { LaunchShortcutAction } from "./ipc/shortcutTypes";
 import type { RecordingSessionData } from "./ipc/types";
 
 type NativeVideoExportWriteResult = { success: boolean; error?: string };
@@ -567,8 +568,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getRecordedVideoPath: () => {
 		return ipcRenderer.invoke("get-recorded-video-path");
 	},
-	setRecordingState: (recording: boolean) => {
-		return ipcRenderer.invoke("set-recording-state", recording);
+	setRecordingState: (recording: boolean, paused?: boolean) => {
+		return ipcRenderer.invoke("set-recording-state", recording, paused);
 	},
 	setCursorScale: (scale: number) => {
 		return ipcRenderer.invoke("set-cursor-scale", scale);
@@ -587,12 +588,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("stop-recording-from-tray", listener);
 		return () => ipcRenderer.removeListener("stop-recording-from-tray", listener);
 	},
-	onRecordingStateChanged: (
-		callback: (state: { recording: boolean; sourceName: string }) => void,
+	onTrayRecordingCommand: (
+		callback: (command: "start" | "pause" | "resume" | "stop") => void,
 	) => {
 		const listener = (
 			_event: Electron.IpcRendererEvent,
-			payload: { recording: boolean; sourceName: string },
+			command: "start" | "pause" | "resume" | "stop",
+		) => callback(command);
+		ipcRenderer.on("tray-recording-command", listener);
+		return () => ipcRenderer.removeListener("tray-recording-command", listener);
+	},
+	onRecordingStateChanged: (
+		callback: (state: { recording: boolean; paused: boolean; sourceName: string }) => void,
+	) => {
+		const listener = (
+			_event: Electron.IpcRendererEvent,
+			payload: { recording: boolean; paused: boolean; sourceName: string },
 		) => callback(payload);
 		ipcRenderer.on("recording-state-changed", listener);
 		return () => ipcRenderer.removeListener("recording-state-changed", listener);
@@ -895,6 +906,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	saveShortcuts: (shortcuts: unknown) => {
 		return ipcRenderer.invoke("save-shortcuts", shortcuts);
+	},
+	registerLaunchGlobalShortcuts: (config: unknown) => {
+		return ipcRenderer.invoke("register-launch-global-shortcuts", config);
+	},
+	unregisterLaunchGlobalShortcuts: () => {
+		return ipcRenderer.invoke("unregister-launch-global-shortcuts");
+	},
+	onLaunchShortcutTriggered: (callback: (action: LaunchShortcutAction) => void) => {
+		const listener = (_event: Electron.IpcRendererEvent, action: LaunchShortcutAction) => {
+			callback(action);
+		};
+		ipcRenderer.on("launch-shortcut-triggered", listener);
+		return () => ipcRenderer.removeListener("launch-shortcut-triggered", listener);
 	},
 	getAppSetting: (key: string) => {
 		const result = ipcRenderer.sendSync("app-settings:get", key) as {

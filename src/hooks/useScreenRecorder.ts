@@ -1171,7 +1171,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					`[PERF:RENDERER] IPC: stopNativeScreenRecording: COMPLETED in ${(performance.now() - ipcStopStart).toFixed(2)}ms`,
 				);
 
-				await window.electronAPI?.setRecordingState(false);
+				await window.electronAPI?.setRecordingState(false, false);
 
 				if (!result.success || !result.path) {
 					console.error(
@@ -1290,7 +1290,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			recorder.stop();
 			setRecording(false);
 			setFinalizing(true);
-			window.electronAPI?.setRecordingState(false);
+			window.electronAPI?.setRecordingState(false, false);
 		}
 	});
 
@@ -1377,6 +1377,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		const removeRecordingStateListener = window.electronAPI?.onRecordingStateChanged?.(
 			(state) => {
 				setRecording(state.recording);
+				setPaused(state.paused);
 			},
 		);
 
@@ -1384,9 +1385,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			(state) => {
 				void (async () => {
 					setRecording(false);
+					setPaused(false);
 					nativeScreenRecording.current = false;
 					cleanupCapturedMedia();
-					await window.electronAPI.setRecordingState(false);
+					await window.electronAPI.setRecordingState(false, false);
 
 					if (state.reason !== "window-unavailable") {
 						try {
@@ -1649,7 +1651,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 					setRecording(true);
 					try {
-						await window.electronAPI?.setRecordingState(true);
+						await window.electronAPI?.setRecordingState(true, false);
 					} catch (stateError) {
 						console.warn(
 							"Failed to notify main process that native recording started:",
@@ -2021,7 +2023,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			recorder.start(RECORDER_TIMESLICE_MS);
 			setRecording(true);
 			try {
-				await window.electronAPI?.setRecordingState(true);
+				await window.electronAPI?.setRecordingState(true, false);
 			} catch (stateError) {
 				console.warn("Failed to notify main process that recording started:", stateError);
 			}
@@ -2034,7 +2036,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			);
 			setRecording(false);
 			try {
-				await window.electronAPI?.setRecordingState(false);
+				await window.electronAPI?.setRecordingState(false, false);
 			} catch (stateError) {
 				console.warn("Failed to reset main-process recording state:", stateError);
 			} finally {
@@ -2068,6 +2070,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				const boundaryMs = Date.now();
 				markRecordingPaused(boundaryMs);
 				setPaused(true);
+				void window.electronAPI.setRecordingState(true, true);
 				try {
 					await window.electronAPI.pauseCursorCapture(boundaryMs);
 				} catch (error) {
@@ -2085,6 +2088,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				const boundaryMs = Date.now();
 				markRecordingPaused(boundaryMs);
 				setPaused(true);
+				void window.electronAPI.setRecordingState(true, true);
 				try {
 					await window.electronAPI.pauseCursorCapture(boundaryMs);
 				} catch (error) {
@@ -2114,6 +2118,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				const boundaryMs = Date.now();
 				markRecordingResumed(boundaryMs);
 				setPaused(false);
+				void window.electronAPI.setRecordingState(true, false);
 				try {
 					await window.electronAPI.resumeCursorCapture(boundaryMs);
 				} catch (error) {
@@ -2131,6 +2136,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				const boundaryMs = Date.now();
 				markRecordingResumed(boundaryMs);
 				setPaused(false);
+				void window.electronAPI.setRecordingState(true, false);
 				try {
 					await window.electronAPI.resumeCursorCapture(boundaryMs);
 				} catch (error) {
@@ -2162,7 +2168,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			nativeScreenRecording.current = false;
 			nativeWindowsRecording.current = false;
 			setRecording(false);
-			window.electronAPI?.setRecordingState(false);
+			window.electronAPI?.setRecordingState(false, false);
 			void (async () => {
 				try {
 					const result = await window.electronAPI.stopNativeScreenRecording();
@@ -2183,7 +2189,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				mediaRecorder.current.stop();
 			}
 			setRecording(false);
-			window.electronAPI?.setRecordingState(false);
+			window.electronAPI?.setRecordingState(false, false);
 		}
 	}, [cleanupCapturedMedia, markRecordingResumed, recording]);
 
@@ -2212,6 +2218,29 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		startRecording();
 	};
+
+	useEffect(() => {
+		if (!window.electronAPI?.onTrayRecordingCommand) {
+			return;
+		}
+
+		return window.electronAPI.onTrayRecordingCommand((command) => {
+			switch (command) {
+				case "start":
+					void toggleRecording();
+					break;
+				case "pause":
+					pauseRecording();
+					break;
+				case "resume":
+					resumeRecording();
+					break;
+				case "stop":
+					stopRecording.current();
+					break;
+			}
+		});
+	}, [pauseRecording, resumeRecording, toggleRecording]);
 
 	return {
 		recording,

@@ -139,6 +139,7 @@ let sourceSelectorWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let trayContextMenu: Menu | null = null;
 let selectedSourceName = "";
+let isRecordingPaused = false;
 let editorHasUnsavedChanges = false;
 let isForceClosing = false;
 let isCreatingMainWindow = false;
@@ -240,6 +241,33 @@ function showHudOverlayFromTray() {
 	hud.moveTop();
 	hud.focus();
 	return true;
+}
+
+function sendTrayRecordingCommand(command: "start" | "pause" | "resume" | "stop") {
+	let targetWindow = getHudOverlayWindow() ?? mainWindow;
+	if (!targetWindow || targetWindow.isDestroyed()) {
+		createWindow();
+		targetWindow = getHudOverlayWindow() ?? mainWindow;
+	}
+
+	if (!targetWindow || targetWindow.isDestroyed()) {
+		return;
+	}
+
+	const sendCommand = () => {
+		if (!targetWindow || targetWindow.isDestroyed()) {
+			return;
+		}
+
+		targetWindow.webContents.send("tray-recording-command", command);
+	};
+
+	if (targetWindow.webContents.isLoadingMainFrame()) {
+		targetWindow.webContents.once("did-finish-load", sendCommand);
+		return;
+	}
+
+	sendCommand();
 }
 
 ipcMain.on("set-has-unsaved-changes", (_event, hasChanges: boolean) => {
@@ -414,7 +442,7 @@ function setupApplicationMenu() {
 			submenu: [
 				{ role: "undo" },
 				{ role: "redo" },
-				{ type: "separator" },
+				{ type: "separator" as const },
 				{ role: "cut" },
 				{ role: "copy" },
 				{ role: "paste" },
@@ -427,7 +455,7 @@ function setupApplicationMenu() {
 				{ role: "reload" },
 				{ role: "forceReload" },
 				{ role: "toggleDevTools" },
-				{ type: "separator" },
+				{ type: "separator" as const },
 				{ role: "resetZoom" },
 				{ role: "zoomIn" },
 				{ role: "zoomOut" },
@@ -710,8 +738,10 @@ ipcMain.handle("check-for-app-updates", async () => {
 function updateTrayMenu(recording: boolean = false) {
 	if (!tray) return;
 	const trayIcon = recording ? getRecordingTrayIcon() : getDefaultTrayIcon();
-	const trayToolTip = recording ? `Recording: ${selectedSourceName}` : "Recordly";
-	const menuTemplate = recording
+	const trayToolTip = recording
+		? `${isRecordingPaused ? "Paused" : "Recording"}: ${selectedSourceName}`
+		: "Recordly";
+	const menuTemplate: Electron.MenuItemConstructorOptions[] = recording
 		? [
 				{
 					label: "Show Controls",
@@ -722,11 +752,22 @@ function updateTrayMenu(recording: boolean = false) {
 					},
 				},
 				{
+					label: isRecordingPaused ? "Resume Recording" : "Pause Recording",
+					click: () => {
+						sendTrayRecordingCommand(isRecordingPaused ? "resume" : "pause");
+					},
+				},
+				{
 					label: "Stop Recording",
 					click: () => {
-						if (mainWindow && !mainWindow.isDestroyed()) {
-							mainWindow.webContents.send("stop-recording-from-tray");
-						}
+						sendTrayRecordingCommand("stop");
+					},
+				},
+				{ type: "separator" },
+				{
+					label: "Quit",
+					click: () => {
+						app.quit();
 					},
 				},
 			]
@@ -739,6 +780,16 @@ function updateTrayMenu(recording: boolean = false) {
 						}
 					},
 				},
+				{
+					label: "Start Recording",
+					click: () => {
+						if (!showHudOverlayFromTray()) {
+							focusOrCreateMainWindow();
+						}
+						sendTrayRecordingCommand("start");
+					},
+				},
+				{ type: "separator" },
 				{
 					label: "Quit",
 					click: () => {
@@ -960,8 +1011,9 @@ app.whenReady().then(async () => {
 		createSourceSelectorWindowWrapper,
 		() => mainWindow,
 		() => sourceSelectorWindow,
-		(recording: boolean, sourceName: string) => {
+		(recording: boolean, paused: boolean, sourceName: string) => {
 			selectedSourceName = sourceName;
+			isRecordingPaused = recording ? paused : false;
 			setHudOverlayRecordingActive(recording);
 			if (!tray) createTray();
 			updateTrayMenu(recording);

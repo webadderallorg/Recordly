@@ -391,7 +391,7 @@ async function resolveExistingPath(...candidates: Array<string | null | undefine
 }
 
 export function registerRecordingHandlers(
-	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
+	onRecordingStateChange?: (recording: boolean, paused: boolean, sourceName: string) => void,
 ) {
 	ipcMain.handle(
 		"start-native-screen-recording",
@@ -1810,7 +1810,7 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("set-recording-state", (_, recording: boolean) => {
+	ipcMain.handle("set-recording-state", (_, recording: boolean, paused = false) => {
 		if (recording) {
 			stopCursorCapture();
 			stopInteractionCapture();
@@ -1844,13 +1844,14 @@ export function registerRecordingHandlers(
 			if (!window.isDestroyed()) {
 				window.webContents.send("recording-state-changed", {
 					recording,
+					paused,
 					sourceName: source.name,
 				});
 			}
 		});
 
 		if (onRecordingStateChange) {
-			onRecordingStateChange(recording, source.name);
+			onRecordingStateChange(recording, paused, source.name);
 		}
 	});
 

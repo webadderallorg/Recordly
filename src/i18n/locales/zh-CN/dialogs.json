@@ -45,6 +45,9 @@
 	"shortcutsConfig": {
 		"title": "键盘快捷键",
 		"configurable": "可配置",
+		"localShortcuts": "Local shortcuts",
+		"globalShortcuts": "Global recording shortcuts",
+		"globalDescription": "Available on macOS even when Recordly is in the background.",
 		"fixed": "固定",
 		"pressEscToCancel": "按 Esc 取消",
 		"clickToChange": "点击以更改",

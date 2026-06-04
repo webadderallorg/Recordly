@@ -1,14 +1,24 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
-import { app, ipcMain } from "electron";
+import { app, globalShortcut, ipcMain } from "electron";
 import { hideCursor } from "../../cursorHider";
-import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from "../../windows";
+import {
+	closeCountdownWindow,
+	createCountdownWindow,
+	getCountdownWindow,
+	getHudOverlayWindow,
+} from "../../windows";
 import {
 	APP_SETTINGS_FILE,
 	COUNTDOWN_SETTINGS_FILE,
 	RECORDINGS_SETTINGS_FILE,
 	SHORTCUTS_FILE,
 } from "../constants";
+import {
+	isLaunchShortcutAction,
+	type LaunchShortcutAction,
+	type ShortcutBinding,
+} from "../shortcutTypes";
 import {
 	countdownCancelled,
 	countdownInProgress,
@@ -64,7 +74,70 @@ function hasAppSetting(store: Record<string, unknown>, key: string): boolean {
 	return Reflect.getOwnPropertyDescriptor(store, key) !== undefined;
 }
 
+let launchShortcutRegisteredAccelerators: string[] = [];
+let launchShortcutWillQuitCleanupRegistered = false;
+
+const ELECTRON_KEY_MAP: Record<string, string> = {
+	arrowup: "Up",
+	arrowdown: "Down",
+	arrowleft: "Left",
+	arrowright: "Right",
+	escape: "Escape",
+	backspace: "Backspace",
+	delete: "Delete",
+	enter: "Enter",
+	tab: "Tab",
+};
+
+function toElectronAccelerator(binding: ShortcutBinding): string | null {
+	const rawKey = binding.key;
+	if (rawKey === " ") {
+		const parts: string[] = [];
+		if (binding.ctrl) parts.push("CommandOrControl");
+		if (binding.shift) parts.push("Shift");
+		if (binding.alt) parts.push("Alt");
+		parts.push("Space");
+		return parts.join("+");
+	}
+
+	const key = rawKey?.trim().toLowerCase();
+	if (!key) {
+		return null;
+	}
+
+	const mappedKey =
+		ELECTRON_KEY_MAP[key] ??
+		(key.length === 1 ? key.toUpperCase() : key.charAt(0).toUpperCase() + key.slice(1));
+	const parts: string[] = [];
+	if (binding.ctrl) parts.push("CommandOrControl");
+	if (binding.shift) parts.push("Shift");
+	if (binding.alt) parts.push("Alt");
+	parts.push(mappedKey);
+	return parts.join("+");
+}
+
+function unregisterLaunchGlobalShortcuts() {
+	for (const accelerator of launchShortcutRegisteredAccelerators) {
+		globalShortcut.unregister(accelerator);
+	}
+	launchShortcutRegisteredAccelerators = [];
+}
+
+function notifyLaunchShortcutTriggered(action: LaunchShortcutAction) {
+	const hud = getHudOverlayWindow();
+	if (!hud || hud.isDestroyed()) {
+		return;
+	}
+
+	hud.webContents.send("launch-shortcut-triggered", action);
+}
+
 export function registerSettingsHandlers() {
+	if (!launchShortcutWillQuitCleanupRegistered) {
+		launchShortcutWillQuitCleanupRegistered = true;
+		app.on("will-quit", unregisterLaunchGlobalShortcuts);
+	}
+
 	ipcMain.handle("app:getVersion", () => {
 		return app.getVersion();
 	});
@@ -135,6 +208,64 @@ export function registerSettingsHandlers() {
 			return { success: true };
 		} catch (error) {
 			console.error("Failed to save shortcuts:", error);
+			return { success: false, error: String(error) };
+		}
+	});
+
+	ipcMain.handle("register-launch-global-shortcuts", async (_, config: unknown) => {
+		try {
+			unregisterLaunchGlobalShortcuts();
+
+			if (process.platform !== "darwin") {
+				return { success: true, unsupported: true };
+			}
+
+			if (!config || typeof config !== "object") {
+				return { success: true };
+			}
+
+			const failedRegistrations: Array<{
+				action: LaunchShortcutAction;
+				accelerator: string;
+			}> = [];
+
+			for (const [action, binding] of Object.entries(
+				config as Record<string, ShortcutBinding>,
+			)) {
+				if (!isLaunchShortcutAction(action)) {
+					console.warn("Ignoring unknown launch shortcut action in config:", action);
+					continue;
+				}
+
+				const accelerator = toElectronAccelerator(binding);
+				if (!accelerator) {
+					continue;
+				}
+
+				const registered = globalShortcut.register(accelerator, () => {
+					notifyLaunchShortcutTriggered(action);
+				});
+
+				if (registered) {
+					launchShortcutRegisteredAccelerators.push(accelerator);
+				} else {
+					const failedRegistration = { action, accelerator };
+					failedRegistrations.push(failedRegistration);
+					console.warn("Failed to register launch global shortcut:", failedRegistration);
+				}
+			}
+
+			return { success: true, failedRegistrations };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
+
+	ipcMain.handle("unregister-launch-global-shortcuts", async () => {
+		try {
+			unregisterLaunchGlobalShortcuts();
+			return { success: true };
+		} catch (error) {
 			return { success: false, error: String(error) };
 		}
 	});

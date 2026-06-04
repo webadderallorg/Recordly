@@ -45,6 +45,9 @@
 	"shortcutsConfig": {
 		"title": "Сочетания клавиш",
 		"configurable": "Настраиваемые",
+		"localShortcuts": "Local shortcuts",
+		"globalShortcuts": "Global recording shortcuts",
+		"globalDescription": "Available on macOS even when Recordly is in the background.",
 		"fixed": "Фиксированные",
 		"pressEscToCancel": "Нажмите Esc для отмены",
 		"clickToChange": "Нажмите, чтобы изменить",

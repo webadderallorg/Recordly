@@ -47,7 +47,7 @@ export default function App() {
 		loadAllCustomFonts().catch((error) => {
 			console.error("Failed to load custom fonts:", error);
 		});
-	}, []);
+	}, [isMacOS]);
 
 	useEffect(() => {
 		document.title =
@@ -59,10 +59,10 @@ export default function App() {
 	switch (windowType) {
 		case "hud-overlay":
 			return (
-				<>
+				<ShortcutsProvider>
 					<LaunchWindow />
 					<Toaster className="pointer-events-auto" />
-				</>
+				</ShortcutsProvider>
 			);
 		case "source-selector":
 			return <SourceSelector />;

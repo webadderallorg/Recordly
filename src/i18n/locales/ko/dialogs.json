@@ -45,6 +45,9 @@
 	"shortcutsConfig": {
 		"title": "키보드 단축키",
 		"configurable": "변경 가능",
+		"localShortcuts": "Local shortcuts",
+		"globalShortcuts": "Global recording shortcuts",
+		"globalDescription": "Available on macOS even when Recordly is in the background.",
 		"fixed": "고정",
 		"pressEscToCancel": "Esc를 눌러 취소",
 		"clickToChange": "클릭해서 변경",

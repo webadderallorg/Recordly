@@ -170,6 +170,16 @@
 	color: var(--launch-text);
 }
 
+.ddItem:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.ddItem:disabled:hover {
+	background: transparent;
+	color: var(--launch-text-muted);
+}
+
 .ddItemSelected {
 	background: var(--launch-selected);
 	color: var(--launch-accent);
