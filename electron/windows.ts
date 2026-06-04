@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, ipcMain } from "electron";
@@ -119,22 +118,15 @@ function isHudOverlayCaptureProtectionSupported(): boolean {
 	return process.platform !== "linux";
 }
 
-function getWindowsBuildNumber(): number | null {
-	if (process.platform !== "win32") {
-		return null;
-	}
-
-	const build = Number.parseInt(os.release().split(".")[2] ?? "", 10);
-	return Number.isFinite(build) ? build : null;
-}
-
 export function isHudOverlayMousePassthroughSupported(): boolean {
 	if (process.platform === "linux") {
 		return false;
 	}
 
-	const build = getWindowsBuildNumber();
-	if (build !== null && build < 22000) {
+	// Windows can forward transparent-window mouse events, but keeping a full-screen
+	// topmost HUD in that mode interferes with native popups and file pickers.
+	// Treat Windows as compact-HUD-only so the overlay never spans the desktop.
+	if (process.platform === "win32") {
 		return false;
 	}
 

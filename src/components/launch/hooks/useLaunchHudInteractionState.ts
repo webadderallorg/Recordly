@@ -5,31 +5,40 @@ export function useLaunchHudInteractionState({
 	isHudDraggingRef,
 	isWebcamPreviewDraggingRef,
 	webcamPreviewDragStartRef,
+	useMousePassthroughTracking,
 }: {
 	openId: string | null;
 	isHudDraggingRef: RefObject<boolean>;
 	isWebcamPreviewDraggingRef: RefObject<boolean>;
 	webcamPreviewDragStartRef: RefObject<unknown>;
+	useMousePassthroughTracking: boolean;
 }) {
 	const isMouseOverHudRef = useRef(false);
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 	const lastInteractiveReassertAtRef = useRef(0);
 
-	const setHudMouseInteractive = useCallback((force = false) => {
-		const now = performance.now();
-		if (
-			!force &&
-			isMouseOverHudRef.current &&
-			now - lastInteractiveReassertAtRef.current < 250
-		) {
-			return;
-		}
+	const setHudMouseInteractive = useCallback(
+		(force = false) => {
+			if (!useMousePassthroughTracking) {
+				return;
+			}
 
-		isMouseOverHudRef.current = true;
-		lastInteractiveReassertAtRef.current = now;
-		if (timeoutRef.current) clearTimeout(timeoutRef.current);
-		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
-	}, []);
+			const now = performance.now();
+			if (
+				!force &&
+				isMouseOverHudRef.current &&
+				now - lastInteractiveReassertAtRef.current < 250
+			) {
+				return;
+			}
+
+			isMouseOverHudRef.current = true;
+			lastInteractiveReassertAtRef.current = now;
+			if (timeoutRef.current) clearTimeout(timeoutRef.current);
+			window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+		},
+		[useMousePassthroughTracking],
+	);
 
 	useEffect(() => {
 		if (openId !== null) {
@@ -46,6 +55,10 @@ export function useLaunchHudInteractionState({
 
 	useEffect(() => {
 		const handleMouseTracking = (e: globalThis.MouseEvent) => {
+			if (!useMousePassthroughTracking) {
+				return;
+			}
+
 			const target = e.target as HTMLElement | null;
 			if (!target) return;
 			const isInteractive = !!target.closest(
@@ -70,6 +83,10 @@ export function useLaunchHudInteractionState({
 			}
 		};
 
+		if (!useMousePassthroughTracking) {
+			return;
+		}
+
 		window.addEventListener("mouseover", handleMouseTracking);
 		window.addEventListener("mousemove", handleMouseTracking);
 		return () => {
@@ -80,6 +97,7 @@ export function useLaunchHudInteractionState({
 		isHudDraggingRef,
 		isWebcamPreviewDraggingRef,
 		setHudMouseInteractive,
+		useMousePassthroughTracking,
 		webcamPreviewDragStartRef,
 	]);
 
@@ -93,6 +111,10 @@ export function useLaunchHudInteractionState({
 
 	const handleHudMouseLeave = useCallback(
 		(event: MouseEvent<HTMLDivElement>) => {
+			if (!useMousePassthroughTracking) {
+				return;
+			}
+
 			const nextTarget = event.relatedTarget;
 			if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
 				return;
@@ -113,7 +135,12 @@ export function useLaunchHudInteractionState({
 				}
 			}, 300);
 		},
-		[isHudDraggingRef, isWebcamPreviewDraggingRef, webcamPreviewDragStartRef],
+		[
+			isHudDraggingRef,
+			isWebcamPreviewDraggingRef,
+			useMousePassthroughTracking,
+			webcamPreviewDragStartRef,
+		],
 	);
 
 	return {

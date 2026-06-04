@@ -182,6 +182,7 @@ function LaunchWindowContent() {
 			isHudDraggingRef,
 			isWebcamPreviewDraggingRef,
 			webcamPreviewDragStartRef,
+			useMousePassthroughTracking: hudOverlayMousePassthroughSupported !== false,
 		});
 
 	useEffect(() => {
