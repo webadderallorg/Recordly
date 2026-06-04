@@ -1402,7 +1402,7 @@ export default function VideoEditor() {
 				gifSizePreset,
 				GIF_SIZE_PRESETS,
 			),
-		[gifSizePreset],
+		[gifSizePreset, isPreviewReady],
 	);
 
 	const desiredMp4SourceDimensions = useMemo(
@@ -1412,7 +1412,7 @@ export default function VideoEditor() {
 				videoPlaybackRef.current?.video?.videoHeight || 1080,
 				aspectRatio,
 			),
-		[aspectRatio],
+		[aspectRatio, isPreviewReady],
 	);
 
 	const mp4OutputDimensions = useMemo(() => {
