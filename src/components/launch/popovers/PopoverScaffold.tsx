@@ -11,12 +11,14 @@ import { useHudInteraction } from "../contexts/HudInteractionContext";
 export function DropdownItem({
 	onClick,
 	selected,
+	disabled,
 	icon,
 	children,
 	trailing,
 }: {
 	onClick: () => void;
 	selected?: boolean;
+	disabled?: boolean;
 	icon: ReactNode;
 	children: ReactNode;
 	trailing?: ReactNode;
@@ -26,10 +28,13 @@ export function DropdownItem({
 			type="button"
 			className={`${styles.ddItem} ${selected ? styles.ddItemSelected : ""}`}
 			onClick={onClick}
+			disabled={disabled}
 		>
 			<span className="shrink-0">{icon}</span>
-			<span className="truncate">{children}</span>
-			{trailing}
+			<span className="truncate flex-1">{children}</span>
+			{trailing ? (
+				<span className="shrink-0 text-[11px] text-[var(--launch-label)]">{trailing}</span>
+			) : null}
 		</button>
 	);
 }

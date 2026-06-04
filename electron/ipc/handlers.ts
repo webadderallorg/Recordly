@@ -55,7 +55,7 @@ export function registerIpcHandlers(
 	createSourceSelectorWindow: () => BrowserWindow,
 	_getMainWindow: () => BrowserWindow | null,
 	getSourceSelectorWindow: () => BrowserWindow | null,
-	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
+	onRecordingStateChange?: (recording: boolean, paused: boolean, sourceName: string) => void,
 ) {
 	registerSourceHandlers({
 		createEditorWindow,

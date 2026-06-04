@@ -396,6 +396,9 @@ function LaunchWindowContent() {
 			<MorePopover
 				supportsHudCaptureProtection={supportsHudCaptureProtection}
 				hideHudFromCapture={hideHudFromCapture}
+				recording={recording}
+				paused={paused}
+				countdownActive={countdownActive}
 				onToggleHudCaptureProtection={() => {
 					void toggleHudCaptureProtection();
 				}}
@@ -410,6 +413,21 @@ function LaunchWindowContent() {
 						requestOpen("projects");
 					});
 				}}
+				onStartOrOpenSources={() => {
+					if (hasSelectedSource || platform === "linux") {
+						void toggleRecording();
+						return;
+					}
+
+					beginInteractiveHudAction();
+					requestOpen("sources");
+				}}
+				onStopRecording={() => {
+					void toggleRecording();
+				}}
+				onPauseRecording={pauseRecording}
+				onResumeRecording={resumeRecording}
+				onToggleMicrophoneMute={toggleMicrophoneMute}
 				showDevUpdatePreview={SHOW_DEV_UPDATE_PREVIEW}
 				onPreviewUpdateUi={() => {
 					if (openId) requestClose(openId);

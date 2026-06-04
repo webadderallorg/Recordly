@@ -559,7 +559,7 @@ interface Window {
 			startDelayMsByPath?: Record<string, number>;
 			error?: string;
 		}>;
-		setRecordingState: (recording: boolean) => Promise<void>;
+		setRecordingState: (recording: boolean, paused?: boolean) => Promise<void>;
 		getCursorTelemetry: (videoPath?: string) => Promise<{
 			success: boolean;
 			samples: CursorTelemetryPoint[];
@@ -580,10 +580,13 @@ interface Window {
 			cursors: Record<string, SystemCursorAsset>;
 			error?: string;
 		}>;
-		onStopRecordingFromTray: (callback: () => void) => () => void;
-		onRecordingStateChanged: (
-			callback: (state: { recording: boolean; sourceName: string }) => void,
-		) => () => void;
+	onStopRecordingFromTray: (callback: () => void) => () => void;
+	onTrayRecordingCommand: (
+		callback: (command: "start" | "pause" | "resume" | "stop") => void,
+	) => () => void;
+	onRecordingStateChanged: (
+		callback: (state: { recording: boolean; paused: boolean; sourceName: string }) => void,
+	) => () => void;
 		onRecordingSessionChanged: (
 			callback: (session: RendererRecordingSessionData | null) => void,
 		) => () => void;

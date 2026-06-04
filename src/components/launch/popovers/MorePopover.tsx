@@ -1,20 +1,25 @@
 import {
+	ArrowClockwiseIcon,
+	DesktopIcon,
 	EyeIcon,
 	EyeSlashIcon,
 	FolderOpenIcon,
+	MicrophoneIcon,
+	MoonIcon,
+	PauseIcon,
+	PlayIcon,
+	SquareIcon,
+	SunIcon,
 	TranslateIcon,
 	VideoCameraIcon,
-	ArrowClockwiseIcon,
-	SunIcon,
-	MoonIcon,
-	DesktopIcon,
 } from "@phosphor-icons/react";
 import type { ReactElement } from "react";
-import { useI18n } from "@/contexts/I18nContext";
-import { useScopedT } from "@/contexts/I18nContext";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
+import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { AppLocale } from "@/i18n/config";
 import { SUPPORTED_LOCALES } from "@/i18n/config";
+import { formatBinding } from "@/lib/shortcuts";
 import styles from "../LaunchWindow.module.css";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import { DropdownItem, HudPopover } from "./PopoverScaffold";
@@ -37,10 +42,18 @@ export function MorePopover({
 	trigger,
 	supportsHudCaptureProtection,
 	hideHudFromCapture,
+	recording,
+	paused,
+	countdownActive,
 	onToggleHudCaptureProtection,
 	onChooseRecordingsDirectory,
 	onOpenVideoFile,
 	onOpenProjectBrowser,
+	onStartOrOpenSources,
+	onStopRecording,
+	onPauseRecording,
+	onResumeRecording,
+	onToggleMicrophoneMute,
 	showDevUpdatePreview,
 	onPreviewUpdateUi,
 	appVersion,
@@ -48,10 +61,18 @@ export function MorePopover({
 	trigger: ReactElement;
 	supportsHudCaptureProtection: boolean;
 	hideHudFromCapture: boolean;
+	recording: boolean;
+	paused: boolean;
+	countdownActive: boolean;
 	onToggleHudCaptureProtection: () => void;
 	onChooseRecordingsDirectory: () => void;
 	onOpenVideoFile: () => void;
 	onOpenProjectBrowser: () => void;
+	onStartOrOpenSources: () => void;
+	onStopRecording: () => void;
+	onPauseRecording: () => void;
+	onResumeRecording: () => void;
+	onToggleMicrophoneMute: () => void;
 	showDevUpdatePreview: boolean;
 	onPreviewUpdateUi: () => void;
 	appVersion: string | null;
@@ -59,15 +80,30 @@ export function MorePopover({
 	const t = useScopedT("launch");
 	const { locale, setLocale } = useI18n();
 	const { preference, setPreference } = useTheme();
+	const { launchShortcuts, isMac } = useShortcuts();
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
 	const open = isOpen(POPOVER_ID);
+	const closePopover = () => requestClose(POPOVER_ID);
+
+	const launchShortcutLabels = {
+		startRecording: formatBinding(launchShortcuts.startRecording, isMac),
+		stopRecording: formatBinding(launchShortcuts.stopRecording, isMac),
+		pauseRecording: formatBinding(launchShortcuts.pauseRecording, isMac),
+		resumeRecording: formatBinding(launchShortcuts.resumeRecording, isMac),
+		muteMicrophone: formatBinding(launchShortcuts.muteMicrophone, isMac),
+	} as const;
+
+	const runMenuAction = (action: () => void) => {
+		closePopover();
+		action();
+	};
 
 	return (
 		<HudPopover
 			open={open}
 			onOpenChange={(nextOpen) => {
 				if (!nextOpen) {
-					requestClose(POPOVER_ID);
+					closePopover();
 					return;
 				}
 				requestOpen(POPOVER_ID);
@@ -75,6 +111,51 @@ export function MorePopover({
 			trigger={trigger}
 			align="end"
 		>
+			{recording ? (
+				<>
+					<DropdownItem
+						icon={
+							paused ? (
+								<PlayIcon size={16} fill="currentColor" strokeWidth={0} />
+							) : (
+								<PauseIcon size={16} />
+							)
+						}
+						onClick={() => runMenuAction(paused ? onResumeRecording : onPauseRecording)}
+						trailing={
+							paused
+								? launchShortcutLabels.resumeRecording
+								: launchShortcutLabels.pauseRecording
+						}
+					>
+						{paused ? t("recording.resume") : t("recording.pause")}
+					</DropdownItem>
+					<DropdownItem
+						icon={<SquareIcon size={14} fill="currentColor" strokeWidth={0} />}
+						onClick={() => runMenuAction(onStopRecording)}
+						trailing={launchShortcutLabels.stopRecording}
+					>
+						{t("recording.stop")}
+					</DropdownItem>
+					<DropdownItem
+						icon={<MicrophoneIcon size={16} />}
+						onClick={() => runMenuAction(onToggleMicrophoneMute)}
+						trailing={launchShortcutLabels.muteMicrophone}
+					>
+						{t("recording.toggleMicrophoneMute", "Mute / Unmute Microphone")}
+					</DropdownItem>
+				</>
+			) : (
+				<DropdownItem
+					icon={<PlayIcon size={16} fill="currentColor" strokeWidth={0} />}
+					onClick={() => runMenuAction(onStartOrOpenSources)}
+					disabled={countdownActive}
+					trailing={launchShortcutLabels.startRecording}
+				>
+					{t("recording.startRecording", "Start Recording")}
+				</DropdownItem>
+			)}
+			<div className="mx-2 my-1 h-px bg-[var(--launch-border)]" />
 			{supportsHudCaptureProtection && (
 				<DropdownItem
 					icon={hideHudFromCapture ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
@@ -89,7 +170,7 @@ export function MorePopover({
 			<DropdownItem
 				icon={<FolderOpenIcon size={16} />}
 				onClick={() => {
-					requestClose(POPOVER_ID);
+					closePopover();
 					onChooseRecordingsDirectory();
 				}}
 			>
@@ -98,7 +179,7 @@ export function MorePopover({
 			<DropdownItem
 				icon={<VideoCameraIcon size={16} />}
 				onClick={() => {
-					requestClose(POPOVER_ID);
+					closePopover();
 					onOpenVideoFile();
 				}}
 			>
@@ -107,7 +188,7 @@ export function MorePopover({
 			<DropdownItem
 				icon={<FolderOpenIcon size={16} />}
 				onClick={() => {
-					requestClose(POPOVER_ID);
+					closePopover();
 					onOpenProjectBrowser();
 				}}
 			>
@@ -117,7 +198,7 @@ export function MorePopover({
 				<DropdownItem
 					icon={<ArrowClockwiseIcon size={16} />}
 					onClick={() => {
-						requestClose(POPOVER_ID);
+						closePopover();
 						onPreviewUpdateUi();
 					}}
 				>
@@ -132,7 +213,7 @@ export function MorePopover({
 				selected={preference === "light"}
 				onClick={() => {
 					setPreference("light");
-					requestClose(POPOVER_ID);
+					closePopover();
 				}}
 			>
 				{t("common.light", "Light")}
@@ -142,7 +223,7 @@ export function MorePopover({
 				selected={preference === "dark"}
 				onClick={() => {
 					setPreference("dark");
-					requestClose(POPOVER_ID);
+					closePopover();
 				}}
 			>
 				{t("common.dark", "Dark")}
@@ -152,7 +233,7 @@ export function MorePopover({
 				selected={preference === "system"}
 				onClick={() => {
 					setPreference("system");
-					requestClose(POPOVER_ID);
+					closePopover();
 				}}
 			>
 				{t("common.system", "System")}
@@ -167,7 +248,7 @@ export function MorePopover({
 					selected={locale === code}
 					onClick={() => {
 						setLocale(code as AppLocale);
-						requestClose(POPOVER_ID);
+						closePopover();
 					}}
 				>
 					{LOCALE_LABELS[code] ?? code}
