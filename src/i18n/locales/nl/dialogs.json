@@ -45,6 +45,9 @@
 	"shortcutsConfig": {
 		"title": "Sneltoetsen",
 		"configurable": "Aanpasbaar",
+		"localShortcuts": "Local shortcuts",
+		"globalShortcuts": "Global recording shortcuts",
+		"globalDescription": "Available on macOS even when Recordly is in the background.",
 		"fixed": "Vast",
 		"pressEscToCancel": "Druk op Esc om te annuleren",
 		"clickToChange": "Klik om te wijzigen",

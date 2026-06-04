@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
+const SHOULD_PREPARE_PERMISSIONS_ON_STARTUP = !import.meta.env.DEV;
+
 export function useLaunchWindowSystemState(
 	preparePermissions: (args: { startup?: boolean }) => Promise<unknown>,
 ) {
@@ -66,6 +68,10 @@ export function useLaunchWindowSystemState(
 	}, []);
 
 	useEffect(() => {
+		if (!SHOULD_PREPARE_PERMISSIONS_ON_STARTUP) {
+			return;
+		}
+
 		void preparePermissions({ startup: true });
 	}, [preparePermissions]);
 

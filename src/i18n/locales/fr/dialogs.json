@@ -45,6 +45,9 @@
 	"shortcutsConfig": {
 		"title": "Raccourcis clavier",
 		"configurable": "Configurable",
+		"localShortcuts": "Local shortcuts",
+		"globalShortcuts": "Global recording shortcuts",
+		"globalDescription": "Available on macOS even when Recordly is in the background.",
 		"fixed": "Fixe",
 		"pressEscToCancel": "Appuyez sur Échap pour annuler",
 		"clickToChange": "Cliquez pour modifier",

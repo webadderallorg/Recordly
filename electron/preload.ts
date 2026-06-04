@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { LaunchShortcutAction } from "./ipc/shortcutTypes";
 import type { RecordingSessionData } from "./ipc/types";
 
 type NativeVideoExportWriteResult = { success: boolean; error?: string };
@@ -895,6 +896,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	saveShortcuts: (shortcuts: unknown) => {
 		return ipcRenderer.invoke("save-shortcuts", shortcuts);
+	},
+	registerLaunchGlobalShortcuts: (config: unknown) => {
+		return ipcRenderer.invoke("register-launch-global-shortcuts", config);
+	},
+	unregisterLaunchGlobalShortcuts: () => {
+		return ipcRenderer.invoke("unregister-launch-global-shortcuts");
+	},
+	onLaunchShortcutTriggered: (callback: (action: LaunchShortcutAction) => void) => {
+		const listener = (_event: Electron.IpcRendererEvent, action: LaunchShortcutAction) => {
+			callback(action);
+		};
+		ipcRenderer.on("launch-shortcut-triggered", listener);
+		return () => ipcRenderer.removeListener("launch-shortcut-triggered", listener);
 	},
 	getAppSetting: (key: string) => {
 		const result = ipcRenderer.sendSync("app-settings:get", key) as {

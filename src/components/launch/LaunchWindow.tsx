@@ -12,9 +12,10 @@ import {
 	XIcon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { RxDragHandleDots2 } from "react-icons/rx";
 import { Separator } from "@/components/ui/separator";
+import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
@@ -24,6 +25,7 @@ import { HudInteractionContext } from "./contexts/HudInteractionContext";
 import { canToggleFloatingWebcamPreview } from "./floatingWebcamPreview";
 import { useHudBarDrag } from "./hooks/useHudBarDrag";
 import { useLaunchHudInteractionState } from "./hooks/useLaunchHudInteractionState";
+import { useLaunchShortcuts } from "./hooks/useLaunchShortcuts";
 import { useLaunchWindowActions } from "./hooks/useLaunchWindowActions";
 import { useLaunchWindowSystemState } from "./hooks/useLaunchWindowSystemState";
 import { useRecordingTimer } from "./hooks/useRecordingTimer";
@@ -55,6 +57,7 @@ export function LaunchWindow() {
 function LaunchWindowContent() {
 	const t = useScopedT("launch");
 	const { openId, requestClose, requestOpen } = useLaunchPopoverCoordinator();
+	const { launchShortcuts, isMac } = useShortcuts();
 
 	const {
 		recording,
@@ -206,12 +209,16 @@ function LaunchWindowContent() {
 		ease: [0.22, 1, 0.36, 1] as const,
 	};
 
+	const toggleMicrophoneMute = useCallback(() => {
+		setMicrophoneEnabled(!microphoneEnabled);
+	}, [microphoneEnabled, setMicrophoneEnabled]);
+
 	const recordingControls = (
 		<RecordingControls
 			paused={paused}
 			microphoneEnabled={microphoneEnabled}
 			elapsed={elapsed}
-			onToggleMicrophone={() => setMicrophoneEnabled(!microphoneEnabled)}
+			onToggleMicrophone={toggleMicrophoneMute}
 			onPauseResume={paused ? resumeRecording : pauseRecording}
 			onStopRecording={toggleRecording}
 			onHideHud={() => window.electronAPI?.hudOverlayHide?.()}
@@ -219,6 +226,21 @@ function LaunchWindowContent() {
 			formatTime={formatTime}
 		/>
 	);
+
+	useLaunchShortcuts({
+		launchShortcuts,
+		isMac,
+		recording,
+		paused,
+		countdownActive,
+		hasSelectedSource,
+		platform,
+		toggleRecording,
+		pauseRecording,
+		resumeRecording,
+		toggleMicrophoneMute,
+		openSources: () => requestOpen("sources"),
+	});
 
 	const idleControls = (
 		<>
