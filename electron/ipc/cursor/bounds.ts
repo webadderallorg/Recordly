@@ -1,9 +1,15 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { NativeMacWindowSource, WindowBounds, SelectedSource } from "../types";
 import {
 	selectedSource,
+	selectedWindowBounds,
+	selectedWindowsWgcCaptureSize,
 	setSelectedWindowBounds,
+	setSelectedWindowsWgcCaptureSize,
 	interactionCaptureCleanup,
 	setInteractionCaptureCleanup,
 	windowBoundsCaptureInterval,
@@ -13,10 +19,31 @@ import {
 	cachedNativeMacWindowSourcesAtMs,
 	setCachedNativeMacWindowSourcesAtMs,
 } from "../state";
-import { parseWindowId } from "../utils";
+import { getScreen, parseWindowId } from "../utils";
 import { ensureNativeWindowListBinary } from "../paths/binaries";
 
 const execFileAsync = promisify(execFile);
+const WINDOWS_WINDOW_BOUNDS_TIMEOUT_MS = 8000;
+
+function resolveWindowsWindowBoundsScriptPath(): string {
+	const candidates = [
+		process.env.APP_ROOT
+			? path.join(process.env.APP_ROOT, "electron", "ipc", "cursor", "get-window-bounds.ps1")
+			: null,
+		process.env.APP_ROOT
+			? path.join(process.env.APP_ROOT, "dist-electron", "get-window-bounds.ps1")
+			: null,
+		path.join(path.dirname(fileURLToPath(import.meta.url)), "get-window-bounds.ps1"),
+	].filter((candidate): candidate is string => Boolean(candidate));
+
+	for (const candidate of candidates) {
+		if (existsSync(candidate)) {
+			return candidate;
+		}
+	}
+
+	return candidates[candidates.length - 1] ?? "get-window-bounds.ps1";
+}
 
 export async function getNativeMacWindowSources(options?: { maxAgeMs?: number }) {
 	if (process.platform !== "darwin") {
@@ -153,7 +180,141 @@ export async function resolveLinuxWindowBounds(source: SelectedSource): Promise<
 	}
 }
 
-export async function resolveWindowsWindowBounds(source: SelectedSource): Promise<WindowBounds | null> {
+export type WindowsWindowBounds = WindowBounds & {
+	dpi?: number;
+};
+
+export function parseWgcCaptureSize(
+	output: string,
+): { width: number; height: number } | null {
+	const match = output.match(/CAPTURE_SIZE:(\d+)x(\d+)/);
+	if (!match) {
+		return null;
+	}
+
+	const width = Number.parseInt(match[1], 10);
+	const height = Number.parseInt(match[2], 10);
+	if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+		return null;
+	}
+
+	return { width, height };
+}
+
+export function normalizeWindowsWindowBoundsToElectronDip(
+	bounds: WindowsWindowBounds,
+): WindowBounds {
+	const centerX = bounds.x + bounds.width / 2;
+	const centerY = bounds.y + bounds.height / 2;
+	const display = getScreen().getDisplayNearestPoint({ x: centerX, y: centerY });
+	const electronSf = display.scaleFactor || 1;
+	const boundsSf = (bounds.dpi ?? 96) / 96;
+
+	if (Math.abs(electronSf - boundsSf) < 0.01) {
+		return {
+			x: bounds.x,
+			y: bounds.y,
+			width: bounds.width,
+			height: bounds.height,
+		};
+	}
+
+	const physicalX = bounds.x * boundsSf;
+	const physicalY = bounds.y * boundsSf;
+	const physicalWidth = bounds.width * boundsSf;
+	const physicalHeight = bounds.height * boundsSf;
+
+	return {
+		x: physicalX / electronSf,
+		y: physicalY / electronSf,
+		width: Math.max(1, physicalWidth / electronSf),
+		height: Math.max(1, physicalHeight / electronSf),
+	};
+}
+
+export function alignWindowBoundsToWgcCaptureSize(
+	bounds: Pick<WindowBounds, "x" | "y">,
+	captureSize: { width: number; height: number },
+	scaleFactor: number,
+): WindowBounds {
+	const scale = scaleFactor > 0 ? scaleFactor : 1;
+
+	return {
+		x: bounds.x,
+		y: bounds.y,
+		width: Math.max(1, captureSize.width / scale),
+		height: Math.max(1, captureSize.height / scale),
+	};
+}
+
+export function resolveWindowsWindowTelemetryBounds(
+	windowsBounds: WindowsWindowBounds,
+	captureSize: { width: number; height: number } | null = null,
+): WindowBounds {
+	const dipBounds = normalizeWindowsWindowBoundsToElectronDip(windowsBounds);
+	if (!captureSize) {
+		return dipBounds;
+	}
+
+	const display = getScreen().getDisplayNearestPoint({
+		x: dipBounds.x + dipBounds.width / 2,
+		y: dipBounds.y + dipBounds.height / 2,
+	});
+
+	return alignWindowBoundsToWgcCaptureSize(
+		dipBounds,
+		captureSize,
+		display.scaleFactor || 1,
+	);
+}
+
+export async function applyWindowsWindowTelemetryBounds(
+	source: SelectedSource,
+	captureSize: { width: number; height: number } | null = selectedWindowsWgcCaptureSize,
+): Promise<WindowBounds | null> {
+	const windowsBounds = await resolveWindowsWindowBounds(source);
+	if (!windowsBounds) {
+		return null;
+	}
+
+	const telemetryBounds = resolveWindowsWindowTelemetryBounds(windowsBounds, captureSize);
+	setSelectedWindowBounds(telemetryBounds);
+	return telemetryBounds;
+}
+
+export async function ensureSelectedWindowBoundsReady(): Promise<boolean> {
+	if (!selectedSource?.id?.startsWith("window:")) {
+		return true;
+	}
+
+	if (selectedWindowBounds) {
+		return true;
+	}
+
+	for (let attempt = 0; attempt < 6; attempt += 1) {
+		await refreshSelectedWindowBounds();
+		if (selectedWindowBounds) {
+			return true;
+		}
+
+		if (process.platform === "win32") {
+			const resolved = await applyWindowsWindowTelemetryBounds(selectedSource);
+			if (resolved) {
+				return true;
+			}
+		}
+
+		if (attempt < 5) {
+			await new Promise((resolve) => setTimeout(resolve, 200));
+		}
+	}
+
+	return selectedWindowBounds !== null;
+}
+
+export async function resolveWindowsWindowBounds(
+	source: SelectedSource,
+): Promise<WindowsWindowBounds | null> {
 	const windowId = parseWindowId(source?.id);
 	const windowTitle =
 		typeof source.windowTitle === "string" ? source.windowTitle.trim() : source.name.trim();
@@ -162,53 +323,32 @@ export async function resolveWindowsWindowBounds(source: SelectedSource): Promis
 		return null;
 	}
 
-	const script = [
-		"param([string]$windowId, [string]$windowTitle)",
-		'Add-Type -TypeDefinition @"',
-		"using System;",
-		"using System.Runtime.InteropServices;",
-		"public static class RecordlyWindowBounds {",
-		"  [StructLayout(LayoutKind.Sequential)]",
-		"  public struct RECT {",
-		"    public int Left;",
-		"    public int Top;",
-		"    public int Right;",
-		"    public int Bottom;",
-		"  }",
-		'  [DllImport("user32.dll")]',
-		"  [return: MarshalAs(UnmanagedType.Bool)]",
-		"  public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);",
-		"}",
-		'"@',
-		"$handle = [Int64]0",
-		"if ($windowId) {",
-		"  $handle = [Int64]$windowId",
-		"}",
-		"$escapedWindowTitle = if ($windowTitle) { [WildcardPattern]::Escape($windowTitle) } else { $null }",
-		"if ($handle -le 0 -and $windowTitle) {",
-		'  $matchingProcess = Get-Process | Where-Object { $_.MainWindowTitle -eq $windowTitle -or ($escapedWindowTitle -and $_.MainWindowTitle -like "*$escapedWindowTitle*") } | Select-Object -First 1',
-		"  if ($matchingProcess) {",
-		"    $handle = $matchingProcess.MainWindowHandle.ToInt64()",
-		"  }",
-		"}",
-		"if ($handle -le 0) {",
-		"  exit 1",
-		"}",
-		"$rect = New-Object RecordlyWindowBounds+RECT",
-		"if (-not [RecordlyWindowBounds]::GetWindowRect([IntPtr]$handle, [ref]$rect)) {",
-		"  exit 1",
-		"}",
-		"@{ x = $rect.Left; y = $rect.Top; width = $rect.Right - $rect.Left; height = $rect.Bottom - $rect.Top } | ConvertTo-Json -Compress",
-	].join("\n");
-
 	try {
 		const { stdout } = await execFileAsync(
 			"powershell.exe",
-			["-NoProfile", "-Command", script, String(windowId ?? ""), windowTitle],
-			{ timeout: 1500 },
+			[
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				resolveWindowsWindowBoundsScriptPath(),
+				String(windowId ?? ""),
+				windowTitle,
+			],
+			{ timeout: WINDOWS_WINDOW_BOUNDS_TIMEOUT_MS },
 		);
-		const bounds = JSON.parse(stdout) as WindowBounds;
-		return bounds && bounds.width > 0 && bounds.height > 0 ? bounds : null;
+
+		const trimmedStdout = stdout.trim();
+		if (!trimmedStdout) {
+			return null;
+		}
+
+		const bounds = JSON.parse(trimmedStdout) as WindowsWindowBounds;
+		if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+			return null;
+		}
+
+		return bounds;
 	} catch {
 		return null;
 	}
@@ -227,6 +367,7 @@ export function stopWindowBoundsCapture() {
 		setWindowBoundsCaptureInterval(null);
 	}
 	setSelectedWindowBounds(null);
+	setSelectedWindowsWgcCaptureSize(null);
 }
 
 async function refreshSelectedWindowBounds() {
@@ -240,16 +381,24 @@ async function refreshSelectedWindowBounds() {
 	if (process.platform === "darwin") {
 		bounds = await resolveMacWindowBounds(selectedSource);
 	} else if (process.platform === "win32") {
-		bounds = await resolveWindowsWindowBounds(selectedSource);
+		const windowsBounds = await resolveWindowsWindowBounds(selectedSource);
+		bounds = windowsBounds
+			? resolveWindowsWindowTelemetryBounds(windowsBounds, selectedWindowsWgcCaptureSize)
+			: null;
 	} else if (process.platform === "linux") {
 		bounds = await resolveLinuxWindowBounds(selectedSource);
 	}
 
-	setSelectedWindowBounds(bounds);
+	if (bounds) {
+		setSelectedWindowBounds(bounds);
+	}
 }
 
 export function startWindowBoundsCapture() {
-	stopWindowBoundsCapture();
+	if (windowBoundsCaptureInterval) {
+		clearInterval(windowBoundsCaptureInterval);
+		setWindowBoundsCaptureInterval(null);
+	}
 
 	if (
 		!["darwin", "win32", "linux"].includes(process.platform) ||

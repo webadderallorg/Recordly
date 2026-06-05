@@ -6,7 +6,7 @@ import {
 	getScreenCaptureCursorSetting,
 	normalizeBrowserMicrophoneProfile,
 	resolveBrowserCaptureCursorPolicy,
-	resolveLinuxPortalCursorPresentation,
+	resolveBrowserCursorPresentation,
 	shouldLockHudDuringDisplaySelection,
 	shouldUseLinuxPortalCapture,
 	shouldUseNativeWindowsCaptureForSource,
@@ -174,10 +174,10 @@ describe("resolveBrowserCaptureCursorPolicy", () => {
 	});
 });
 
-describe("resolveLinuxPortalCursorPresentation", () => {
-	it("enables the Recordly overlay only when the portal confirms cursor-hidden capture", () => {
+describe("resolveBrowserCursorPresentation", () => {
+	it("enables the Recordly overlay only when capture confirms cursor-hidden recording", () => {
 		expect(
-			resolveLinuxPortalCursorPresentation({
+			resolveBrowserCursorPresentation({
 				requestedCursor: "never",
 				actualCursor: "never",
 			}),
@@ -187,9 +187,9 @@ describe("resolveLinuxPortalCursorPresentation", () => {
 		});
 	});
 
-	it("keeps the overlay disabled when the portal embeds or omits cursor settings", () => {
+	it("keeps the overlay disabled when capture embeds the cursor", () => {
 		expect(
-			resolveLinuxPortalCursorPresentation({
+			resolveBrowserCursorPresentation({
 				requestedCursor: "never",
 				actualCursor: "always",
 			}),
@@ -197,8 +197,24 @@ describe("resolveLinuxPortalCursorPresentation", () => {
 			hideEditorOverlayCursorByDefault: true,
 			nativeCaptureUnavailable: true,
 		});
+	});
+
+	it("keeps the overlay disabled when window capture omits cursor settings", () => {
 		expect(
-			resolveLinuxPortalCursorPresentation({
+			resolveBrowserCursorPresentation({
+				requestedCursor: "never",
+				actualCursor: null,
+				isWindowSource: true,
+			}),
+		).toEqual({
+			hideEditorOverlayCursorByDefault: true,
+			nativeCaptureUnavailable: true,
+		});
+	});
+
+	it("keeps the overlay disabled when non-window capture omits cursor settings", () => {
+		expect(
+			resolveBrowserCursorPresentation({
 				requestedCursor: "never",
 				actualCursor: null,
 			}),
@@ -289,8 +305,8 @@ describe("shouldUseNativeWindowsCaptureForSource", () => {
 		expect(shouldUseNativeWindowsCaptureForSource({ id: "screen:101:0" })).toBe(true);
 	});
 
-	it("routes window sources through browser capture", () => {
-		expect(shouldUseNativeWindowsCaptureForSource({ id: "window:123456:0" })).toBe(false);
+	it("uses native Windows capture for window sources", () => {
+		expect(shouldUseNativeWindowsCaptureForSource({ id: "window:123456:0" })).toBe(true);
 	});
 });
 

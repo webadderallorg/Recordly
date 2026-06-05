@@ -262,12 +262,14 @@ export function getScreenCaptureCursorSetting(
 	return cursor === "always" || cursor === "never" || cursor === "motion" ? cursor : null;
 }
 
-export function resolveLinuxPortalCursorPresentation({
+export function resolveBrowserCursorPresentation({
 	actualCursor,
 	requestedCursor,
+	isWindowSource = false,
 }: {
 	actualCursor: BrowserCaptureCursorSetting | null;
 	requestedCursor: BrowserCaptureCursorMode;
+	isWindowSource?: boolean;
 }): Pick<
 	BrowserCaptureCursorPolicy,
 	"hideEditorOverlayCursorByDefault" | "nativeCaptureUnavailable"
@@ -276,6 +278,13 @@ export function resolveLinuxPortalCursorPresentation({
 		return {
 			hideEditorOverlayCursorByDefault: false,
 			nativeCaptureUnavailable: false,
+		};
+	}
+
+	if (isWindowSource && actualCursor === null) {
+		return {
+			hideEditorOverlayCursorByDefault: true,
+			nativeCaptureUnavailable: true,
 		};
 	}
 
@@ -288,7 +297,10 @@ export function resolveLinuxPortalCursorPresentation({
 export function shouldUseNativeWindowsCaptureForSource(
 	source: Pick<ProcessedDesktopSource, "id"> | null | undefined,
 ): boolean {
-	return source?.id?.startsWith("screen:") === true;
+	return (
+		source?.id?.startsWith("screen:") === true ||
+		source?.id?.startsWith("window:") === true
+	);
 }
 
 export function createProcessedMicrophoneConstraints(
@@ -1858,11 +1870,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				throw new Error("Media stream is not available.");
 			}
 
-			if (useLinuxPortal) {
+			if (useLinuxPortal || platform === "win32") {
 				const actualCursor = getScreenCaptureCursorSetting(videoTrack.getSettings());
-				const cursorPresentation = resolveLinuxPortalCursorPresentation({
+				const isWindowSource = selectedSource.id?.startsWith("window:") === true;
+				const cursorPresentation = resolveBrowserCursorPresentation({
 					actualCursor,
 					requestedCursor: browserCursorPolicy.streamCursor,
+					isWindowSource,
 				});
 				hideEditorOverlayCursorByDefault.current =
 					cursorPresentation.hideEditorOverlayCursorByDefault;
@@ -1870,10 +1884,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					cursorPresentation.nativeCaptureUnavailable;
 				if (cursorPresentation.nativeCaptureUnavailable) {
 					console.warn(
-						"Linux portal did not confirm cursor-hidden capture; disabling Recordly cursor overlay for this recording.",
+						useLinuxPortal
+							? "Linux portal did not confirm cursor-hidden capture; disabling Recordly cursor overlay for this recording."
+							: "Windows browser capture did not confirm cursor-hidden capture; disabling Recordly cursor overlay for this recording.",
 						{
 							actualCursor,
 							requestedCursor: browserCursorPolicy.streamCursor,
+							isWindowSource,
 						},
 					);
 				}

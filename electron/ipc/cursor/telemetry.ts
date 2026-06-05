@@ -20,8 +20,13 @@ import {
 	setCursorCaptureAccumulatedPausedMs,
 	setCursorCaptureInterval,
 	setCursorCapturePauseStartedAtMs,
+	setCursorCaptureStartTimeMs,
+	setIsCursorCaptureActive,
+	setLastLeftClick,
+	setLinuxCursorScreenPoint,
 	setPendingCursorSamples,
 } from "../state";
+import { startInteractionCapture, stopInteractionCapture } from "./interaction";
 import type { CursorInteractionType, CursorTelemetryPoint, CursorVisualType } from "../types";
 import { getScreen, getTelemetryPathForVideo } from "../utils";
 
@@ -170,7 +175,7 @@ export function getCursorCaptureElapsedMs(nowMs = Date.now()) {
 	);
 }
 
-export function getNormalizedCursorPoint() {
+export function getNormalizedCursorPoint(): { cx: number; cy: number } | null {
 	const fallbackCursor = getScreen().getCursorScreenPoint();
 	const linuxCursorCache = process.platform === "linux" ? linuxCursorScreenPoint : null;
 	const isLinuxCacheFresh = !!linuxCursorCache && Date.now() - linuxCursorCache.updatedAt <= 1000;
@@ -182,8 +187,23 @@ export function getNormalizedCursorPoint() {
 		? { x: linuxCursorCache.x / primarySf, y: linuxCursorCache.y / primarySf }
 		: fallbackCursor;
 
-	const windowBounds = selectedSource?.id?.startsWith("window:") ? selectedWindowBounds : null;
-	if (windowBounds) {
+	const isWindowSource = selectedSource?.id?.startsWith("window:") === true;
+	const windowBounds = isWindowSource ? selectedWindowBounds : null;
+	if (isWindowSource) {
+		if (!windowBounds) {
+			return null;
+		}
+		if (process.platform === "win32") {
+			// resolveWindowsWindowBounds returns DIP-aligned bounds for WGC/browser window capture
+			const width = Math.max(1, windowBounds.width);
+			const height = Math.max(1, windowBounds.height);
+
+			return {
+				cx: clamp((cursor.x - windowBounds.x) / width, 0, 1),
+				cy: clamp((cursor.y - windowBounds.y) / height, 0, 1),
+			};
+		}
+
 		const sf =
 			process.platform !== "darwin"
 				? getScreen().getDisplayNearestPoint({
@@ -256,6 +276,10 @@ export function pushCursorSample(
 
 export function sampleCursorPoint() {
 	const point = getNormalizedCursorPoint();
+	if (!point) {
+		return;
+	}
+
 	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "move");
 }
 
@@ -290,6 +314,31 @@ export function snapshotCursorTelemetryForPersistence() {
 		...pendingCursorSamples,
 		...activeCursorSamples.filter((sample) => sample.timeMs > lastPendingTimeMs),
 	]);
+}
+
+export function beginCursorCaptureSession({
+	startTimeMs = Date.now(),
+	resetSamples = true,
+}: {
+	startTimeMs?: number;
+	resetSamples?: boolean;
+} = {}) {
+	stopCursorCapture();
+	stopInteractionCapture();
+
+	if (resetSamples) {
+		setActiveCursorSamples([]);
+		setPendingCursorSamples([]);
+		resetCursorCaptureClock();
+		setLinuxCursorScreenPoint(null);
+		setLastLeftClick(null);
+	}
+
+	setIsCursorCaptureActive(true);
+	setCursorCaptureStartTimeMs(startTimeMs);
+	sampleCursorPoint();
+	startCursorSampling();
+	void startInteractionCapture();
 }
 
 export function startCursorSampling() {

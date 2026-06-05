@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
@@ -30,6 +31,19 @@ function electronMainCjsOutputPlugin(): Plugin {
 			rollupOptions.output = Array.isArray(rollupOptions.output)
 				? rollupOptions.output.map((output) => ({ ...output, ...cjsOutput }))
 				: { ...(rollupOptions.output ?? {}), ...cjsOutput };
+		},
+	};
+}
+
+function copyWindowBoundsScriptPlugin(): Plugin {
+	const sourceScript = path.resolve(__dirname, "electron/ipc/cursor/get-window-bounds.ps1");
+	const outputDir = path.resolve(__dirname, "dist-electron");
+
+	return {
+		name: "recordly-copy-window-bounds-script",
+		closeBundle() {
+			mkdirSync(outputDir, { recursive: true });
+			copyFileSync(sourceScript, path.join(outputDir, "get-window-bounds.ps1"));
 		},
 	};
 }
@@ -79,7 +93,11 @@ export default defineConfig({
 							},
 						},
 					},
-					plugins: [electronMainCjsOutputPlugin(), electronMainCjsGuardPlugin()],
+					plugins: [
+						electronMainCjsOutputPlugin(),
+						copyWindowBoundsScriptPlugin(),
+						electronMainCjsGuardPlugin(),
+					],
 				},
 			},
 			preload: {
