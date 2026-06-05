@@ -15,10 +15,17 @@ import {
 import { showCursor } from "../../cursorHider";
 import { getMonitorHandles } from "../monitorResolver";
 import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
-import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../cursor/bounds";
+import {
+	applyWindowsWindowTelemetryBounds,
+	ensureSelectedWindowBoundsReady,
+	parseWgcCaptureSize,
+	startWindowBoundsCapture,
+	stopWindowBoundsCapture,
+} from "../cursor/bounds";
 import { startInteractionCapture, stopInteractionCapture } from "../cursor/interaction";
 import { startNativeCursorMonitor, stopNativeCursorMonitor } from "../cursor/monitor";
 import {
+	beginCursorCaptureSession,
 	normalizeCursorTelemetrySamples,
 	pauseCursorCaptureAtBoundary,
 	persistPendingCursorTelemetry,
@@ -26,7 +33,6 @@ import {
 	resumeCursorCapture,
 	sampleCursorPoint,
 	snapshotCursorTelemetryForPersistence,
-	startCursorSampling,
 	stopCursorCapture,
 	writeCursorTelemetry,
 } from "../cursor/telemetry";
@@ -87,7 +93,9 @@ import {
 	ffmpegCaptureProcess,
 	ffmpegCaptureTargetPath,
 	ffmpegScreenRecordingActive,
+	isCursorCaptureActive,
 	lastNativeCaptureDiagnostics,
+	nativeVideoRecordingStartedAtMs,
 	nativeCaptureMicrophonePath,
 	nativeCaptureOutputBuffer,
 	nativeCapturePaused,
@@ -99,7 +107,7 @@ import {
 	setActiveCursorSamples,
 	setCachedSystemCursorAssets,
 	setCachedSystemCursorAssetsSourceMtimeMs,
-	setCursorCaptureStartTimeMs,
+	setNativeVideoRecordingStartedAtMs,
 	setFfmpegCaptureOutputBuffer,
 	setFfmpegCaptureProcess,
 	setFfmpegCaptureTargetPath,
@@ -116,6 +124,7 @@ import {
 	setNativeCaptureTargetPath,
 	setNativeScreenRecordingActive,
 	setPendingCursorSamples,
+	setSelectedWindowsWgcCaptureSize,
 	setWindowsCaptureOutputBuffer,
 	setWindowsCapturePaused,
 	setWindowsCaptureProcess,
@@ -564,6 +573,15 @@ export function registerRecordingHandlers(
 					});
 
 					await waitForWindowsCaptureStart(wcProc);
+					const videoStartedAtMs = Date.now();
+					setNativeVideoRecordingStartedAtMs(videoStartedAtMs);
+					if (captureTarget.kind === "window") {
+						const captureSize = parseWgcCaptureSize(captureOutput);
+						setSelectedWindowsWgcCaptureSize(captureSize);
+						await applyWindowsWindowTelemetryBounds(source, captureSize);
+						startWindowBoundsCapture();
+					}
+					beginCursorCaptureSession({ startTimeMs: videoStartedAtMs });
 					const microphoneFallbackRequired =
 						browserMicFallbackRequested ||
 						shouldUseWindowsBrowserMicrophoneFallback(captureOutput, options);
@@ -766,6 +784,12 @@ export function registerRecordingHandlers(
 				});
 
 				await waitForNativeCaptureStart(captProc);
+				const videoStartedAtMs = Date.now();
+				setNativeVideoRecordingStartedAtMs(videoStartedAtMs);
+				if (source?.id?.startsWith("window:")) {
+					startWindowBoundsCapture();
+				}
+				beginCursorCaptureSession({ startTimeMs: videoStartedAtMs });
 				setNativeScreenRecordingActive(true);
 
 				// If the native helper reported MICROPHONE_CAPTURE_UNAVAILABLE, it started
@@ -1810,23 +1834,18 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("set-recording-state", (_, recording: boolean) => {
+	ipcMain.handle("set-recording-state", async (_, recording: boolean) => {
 		if (recording) {
-			stopCursorCapture();
-			stopInteractionCapture();
-			startWindowBoundsCapture();
+			if (!isCursorCaptureActive) {
+				startWindowBoundsCapture();
+				await ensureSelectedWindowBoundsReady();
+				beginCursorCaptureSession({
+					startTimeMs: nativeVideoRecordingStartedAtMs ?? Date.now(),
+				});
+			}
 			void startNativeCursorMonitor();
-			setIsCursorCaptureActive(true);
-			setActiveCursorSamples([]);
-			setPendingCursorSamples([]);
-			setCursorCaptureStartTimeMs(Date.now());
-			resetCursorCaptureClock();
-			setLinuxCursorScreenPoint(null);
-			setLastLeftClick(null);
-			sampleCursorPoint();
-			startCursorSampling();
-			void startInteractionCapture();
 		} else {
+			setNativeVideoRecordingStartedAtMs(null);
 			setIsCursorCaptureActive(false);
 			stopCursorCapture();
 			stopInteractionCapture();

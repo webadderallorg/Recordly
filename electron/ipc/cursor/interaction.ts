@@ -185,20 +185,11 @@ export async function startInteractionCapture() {
 
 	try {
 		const hook = loadUiohookModule();
-		console.log(
-			"[CursorTelemetry] hook loaded:",
-			!!hook,
-			"has.on:",
-			typeof hook?.on,
-			"has.start:",
-			typeof hook?.start,
-		);
 		if (!isCursorCaptureActive) {
 			return;
 		}
 
 		if (!hook || typeof hook.on !== "function" || typeof hook.start !== "function") {
-			console.log("[CursorTelemetry] hook unusable — aborting interaction capture");
 			return;
 		}
 

@@ -76,6 +76,7 @@ export let currentCursorVisualType: CursorVisualType | undefined = undefined;
 // ── Cursor telemetry ──────────────────────────────────────────────────────────
 export let cursorCaptureInterval: NodeJS.Timeout | null = null;
 export let cursorCaptureStartTimeMs = 0;
+export let nativeVideoRecordingStartedAtMs: number | null = null;
 export let cursorCaptureAccumulatedPausedMs = 0;
 export let cursorCapturePauseStartedAtMs: number | null = null;
 export let activeCursorSamples: CursorTelemetryPoint[] = [];
@@ -86,6 +87,7 @@ export let hasLoggedInteractionHookFailure = false;
 export let lastLeftClick: { timeMs: number; cx: number; cy: number } | null = null;
 export let linuxCursorScreenPoint: { x: number; y: number; updatedAt: number } | null = null;
 export let selectedWindowBounds: WindowBounds | null = null;
+export let selectedWindowsWgcCaptureSize: { width: number; height: number } | null = null;
 export let windowBoundsCaptureInterval: NodeJS.Timeout | null = null;
 
 // ── Native macOS window source cache ─────────────────────────────────────────
@@ -239,6 +241,9 @@ export function setCursorCaptureInterval(v: NodeJS.Timeout | null) {
 export function setCursorCaptureStartTimeMs(v: number) {
 	cursorCaptureStartTimeMs = v;
 }
+export function setNativeVideoRecordingStartedAtMs(v: number | null) {
+	nativeVideoRecordingStartedAtMs = v;
+}
 export function setCursorCaptureAccumulatedPausedMs(v: number) {
 	cursorCaptureAccumulatedPausedMs = v;
 }
@@ -268,6 +273,11 @@ export function setLinuxCursorScreenPoint(v: { x: number; y: number; updatedAt: 
 }
 export function setSelectedWindowBounds(v: WindowBounds | null) {
 	selectedWindowBounds = v;
+}
+export function setSelectedWindowsWgcCaptureSize(
+	v: { width: number; height: number } | null,
+) {
+	selectedWindowsWgcCaptureSize = v;
 }
 export function setWindowBoundsCaptureInterval(v: NodeJS.Timeout | null) {
 	windowBoundsCaptureInterval = v;
