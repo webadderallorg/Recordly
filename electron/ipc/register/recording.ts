@@ -363,6 +363,10 @@ function normalizeDesktopSourceName(value: string) {
 	return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function resetNativeVideoRecordingStartAnchor() {
+	setNativeVideoRecordingStartedAtMs(null);
+}
+
 async function cleanupWindowsOrphanedMicAudioPath(filePath: string | null) {
 	if (!filePath) {
 		return;
@@ -641,6 +645,7 @@ export function registerRecordingHandlers(
 					]);
 					setWindowsNativeCaptureActive(false);
 					setNativeScreenRecordingActive(false);
+					resetNativeVideoRecordingStartAnchor();
 					setWindowsCaptureProcess(null);
 					setWindowsCaptureTargetPath(null);
 					setWindowsSystemAudioPath(null);
@@ -844,6 +849,7 @@ export function registerRecordingHandlers(
 						/* ignore */
 					}
 					setNativeScreenRecordingActive(false);
+					resetNativeVideoRecordingStartAnchor();
 					setNativeCaptureProcess(null);
 					setNativeCaptureTargetPath(null);
 					setNativeCaptureSystemAudioPath(null);
@@ -877,6 +883,7 @@ export function registerRecordingHandlers(
 						/* ignore */
 					}
 					setNativeScreenRecordingActive(false);
+					resetNativeVideoRecordingStartAnchor();
 					setNativeCaptureProcess(null);
 					setNativeCaptureTargetPath(null);
 					setNativeCaptureSystemAudioPath(null);
@@ -910,6 +917,7 @@ export function registerRecordingHandlers(
 					// ignore cleanup failures
 				}
 				setNativeScreenRecordingActive(false);
+				resetNativeVideoRecordingStartAnchor();
 				setNativeCaptureProcess(null);
 				setNativeCaptureTargetPath(null);
 				setNativeCaptureSystemAudioPath(null);
@@ -1845,7 +1853,7 @@ export function registerRecordingHandlers(
 			}
 			void startNativeCursorMonitor();
 		} else {
-			setNativeVideoRecordingStartedAtMs(null);
+			resetNativeVideoRecordingStartAnchor();
 			setIsCursorCaptureActive(false);
 			stopCursorCapture();
 			stopInteractionCapture();
