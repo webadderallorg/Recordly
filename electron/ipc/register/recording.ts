@@ -1384,6 +1384,35 @@ export function registerRecordingHandlers(
 		return { success: true, diagnostics: lastNativeCaptureDiagnostics };
 	});
 
+	ipcMain.handle("list-native-microphones", async () => {
+		if (process.platform !== "darwin") {
+			return { success: true, devices: [] as Array<{ id: string; name: string }> };
+		}
+		try {
+			const helperPath = await ensureNativeCaptureHelperBinary();
+			const { stdout } = await execFileAsync(helperPath, ["--list-microphones"], {
+				timeout: 10000,
+			});
+			const parsed = JSON.parse(stdout.trim());
+			const devices = Array.isArray(parsed)
+				? parsed.filter(
+						(entry): entry is { id: string; name: string } =>
+							Boolean(entry) &&
+							typeof entry.id === "string" &&
+							typeof entry.name === "string",
+					)
+				: [];
+			return { success: true, devices };
+		} catch (error) {
+			console.error("Failed to enumerate native microphones:", error);
+			return {
+				success: false,
+				devices: [] as Array<{ id: string; name: string }>,
+				error: String(error),
+			};
+		}
+	});
+
 	ipcMain.handle("get-video-audio-fallback-paths", async (_event, videoPath: string) => {
 		if (!videoPath) {
 			return { success: true, paths: [], startDelayMsByPath: {} };

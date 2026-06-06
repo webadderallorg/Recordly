@@ -1441,6 +1441,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			if (useNativeMacScreenCapture || useNativeWindowsCapture) {
 				// Resolve the selected mic label for native capture backends.
 				let micLabel: string | undefined;
+				let nativeMicId: string | undefined;
 				if (microphoneEnabled) {
 					try {
 						const devices = await navigator.mediaDevices.enumerateDevices();
@@ -1451,6 +1452,30 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					} catch {
 						// Fall through — native process will use the default mic
 					}
+
+					// The web deviceId is an opaque per-origin hash that never matches a
+					// Core Audio uniqueID, so the native recorder can't honor it directly.
+					// Map the selected mic to its real native uniqueID via the helper's
+					// enumeration so ScreenCaptureKit records the chosen device instead of
+					// silently falling back to the system default.
+					if (useNativeMacScreenCapture && micLabel) {
+						try {
+							const nativeMics = await window.electronAPI.listNativeMicrophones?.();
+							if (nativeMics?.success && nativeMics.devices.length > 0) {
+								const normalize = (value: string) => value.trim().toLowerCase();
+								const target = normalize(micLabel);
+								const match =
+									nativeMics.devices.find((d) => normalize(d.name) === target) ??
+									nativeMics.devices.find((d) => {
+										const name = normalize(d.name);
+										return name.length > 0 && (name.includes(target) || target.includes(name));
+									});
+								nativeMicId = match?.id;
+							}
+						} catch {
+							// Fall through — native side still attempts label matching.
+						}
+					}
 				}
 
 				const nativeResult = await window.electronAPI.startNativeScreenRecording(
@@ -1458,7 +1483,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					{
 						capturesSystemAudio: systemAudioEnabled,
 						capturesMicrophone: microphoneEnabled,
-						microphoneDeviceId,
+						microphoneDeviceId: nativeMicId ?? microphoneDeviceId,
 						microphoneLabel: micLabel,
 					},
 				);

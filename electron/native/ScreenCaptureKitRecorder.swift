@@ -528,15 +528,31 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private static func resolveMicrophoneCaptureDeviceID(config: CaptureConfig) -> String? {
 		let audioDevices = AVCaptureDevice.devices(for: .audio)
 
+		// Prefer an exact Core Audio uniqueID — the app resolves the selected
+		// device to its uniqueID via the --list-microphones enumeration and passes
+		// it here, so this is the authoritative match.
+		if let microphoneDeviceId = config.microphoneDeviceId?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneDeviceId.isEmpty {
+			if audioDevices.contains(where: { $0.uniqueID == microphoneDeviceId }) {
+				return microphoneDeviceId
+			}
+		}
+
+		// Fall back to matching by name. Web device labels don't always equal the
+		// Core Audio localizedName verbatim, so match exact, then case-insensitive,
+		// then a containment match in either direction.
 		if let microphoneLabel = config.microphoneLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneLabel.isEmpty {
 			if let matchedDevice = audioDevices.first(where: { $0.localizedName == microphoneLabel }) {
 				return matchedDevice.uniqueID
 			}
-		}
-
-		if let microphoneDeviceId = config.microphoneDeviceId?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneDeviceId.isEmpty {
-			if audioDevices.contains(where: { $0.uniqueID == microphoneDeviceId }) {
-				return microphoneDeviceId
+			let target = microphoneLabel.lowercased()
+			if let matchedDevice = audioDevices.first(where: { $0.localizedName.lowercased() == target }) {
+				return matchedDevice.uniqueID
+			}
+			if let matchedDevice = audioDevices.first(where: {
+				let name = $0.localizedName.lowercased()
+				return !name.isEmpty && (name.contains(target) || target.contains(name))
+			}) {
+				return matchedDevice.uniqueID
 			}
 		}
 
@@ -649,6 +665,22 @@ guard CommandLine.arguments.count >= 2 else {
 	fputs("Missing config JSON\n", stderr)
 	fflush(stderr)
 	exit(1)
+}
+
+// Microphone enumeration mode: print the real Core Audio input devices as JSON
+// (uniqueID + localizedName) so the app can let the user pick a device and pass
+// back its uniqueID. Runs before any screen-capture preflight so it never
+// triggers screen-recording permission prompts.
+if CommandLine.arguments[1] == "--list-microphones" {
+	let audioDevices = AVCaptureDevice.devices(for: .audio)
+	let payload = audioDevices.map { ["id": $0.uniqueID, "name": $0.localizedName] }
+	if let data = try? JSONSerialization.data(withJSONObject: payload),
+	   let json = String(data: data, encoding: .utf8) {
+		print(json)
+	} else {
+		print("[]")
+	}
+	exit(0)
 }
 
 // Force CoreGraphics Services initialization on the main thread.
