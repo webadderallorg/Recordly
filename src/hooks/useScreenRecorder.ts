@@ -1483,7 +1483,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					{
 						capturesSystemAudio: systemAudioEnabled,
 						capturesMicrophone: microphoneEnabled,
-						microphoneDeviceId: nativeMicId ?? microphoneDeviceId,
+						// On macOS, only the resolved Core Audio uniqueID is usable; the web
+						// deviceId can't match, so pass the resolved id (or nothing and let
+						// the helper fall back to label matching) rather than a web id.
+						microphoneDeviceId: useNativeMacScreenCapture
+							? nativeMicId
+							: microphoneDeviceId,
 						microphoneLabel: micLabel,
 					},
 				);
