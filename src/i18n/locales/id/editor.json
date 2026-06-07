@@ -1,0 +1,141 @@
+{
+	"playback": {
+		"play": "Putar",
+		"pause": "Jeda",
+		"skipBack": "Lompat ke Belakang",
+		"skipForward": "Lompat ke Depan",
+		"muteUnmute": "Bisukan/Bunyikan"
+	},
+	"annotations": {
+		"settings": "Pengaturan Anotasi",
+		"active": "Aktif",
+		"text": "Teks",
+		"image": "Gambar",
+		"arrow": "Panah",
+		"blur": "Buram",
+		"textContent": "Konten Teks",
+		"textPlaceholder": "Masukkan teks Anda...",
+		"fontStyle": "Gaya Font",
+		"selectStyle": "Pilih gaya",
+		"size": "Ukuran",
+		"toggleBold": "Alihkan tebal",
+		"toggleItalic": "Alihkan miring",
+		"toggleUnderline": "Alihkan garis bawah",
+		"alignLeft": "Rata kiri",
+		"alignCenter": "Rata tengah",
+		"alignRight": "Rata kanan",
+		"textColor": "Warna Teks",
+		"background": "Latar Belakang",
+		"none": "Tidak ada",
+		"clearBackground": "Hapus Latar Belakang",
+		"uploadImage": "Unggah Gambar",
+		"supportedFormats": "Format yang didukung: JPG, PNG, GIF, WebP",
+		"arrowDirection": "Arah Panah",
+		"strokeWidth": "Lebar Garis: {{width}}px",
+		"arrowColor": "Warna Panah",
+		"deleteAnnotation": "Hapus Anotasi",
+		"shortcutsAndTips": "Pintasan & Tips",
+		"tipSelectAnnotation": "Pindahkan playhead ke bagian anotasi yang tumpang tindih dan pilih item.",
+		"tipCycleForward": "Gunakan Tab untuk menelusuri item yang tumpang tindih.",
+		"tipCycleBackward": "Gunakan Shift+Tab untuk menelusuri mundur.",
+		"imageUploadSuccess": "Gambar berhasil diunggah!",
+		"imageUploadError": "Harap unggah file gambar JPG, PNG, GIF, atau WebP.",
+		"blurStrength": "Kekuatan Buram: {{strength}}",
+		"solidColor": "Warna Solid (Penyensoran)",
+		"borderRadius": "Radius Batas"
+	},
+	"fontStyles": {
+		"classic": "Klasik",
+		"editor": "Editor",
+		"strong": "Kuat",
+		"typewriter": "Mesik Tik",
+		"deco": "Deko",
+		"simple": "Sederhana",
+		"modern": "Modern",
+		"clean": "Bersih"
+	},
+	"format": {
+		"mp4Video": "Video MP4",
+		"mp4Description": "File video kualitas tinggi",
+		"gifAnimation": "Animasi GIF",
+		"gifDescription": "Gambar animasi untuk dibagikan"
+	},
+	"gifOptions": {
+		"frameRate": "Kecepatan Bingkai",
+		"outputSize": "Ukuran Keluaran",
+		"outputDimensions": "Keluaran: {{width}} × {{height}}px",
+		"loopAnimation": "Putar Ulang Animasi",
+		"loopDescription": "GIF akan diputar terus-menerus"
+	},
+	"tutorial": {
+		"howTrimmingWorks": "Bagaimana pemangkasan bekerja",
+		"title": "Bagaimana Pemangkasan Bekerja",
+		"understanding": "Memahami cara memotong bagian yang tidak diinginkan dari video Anda.",
+		"descriptionP1": "Alat Pangkas bekerja dengan menentukan segmen yang ingin Anda",
+		"descriptionRemove": "hapus",
+		"descriptionP2": "dari video Anda.",
+		"descriptionP3": "Setiap bagian dari timeline yang ditutupi oleh segmen potong merah akan dihilangkan saat Anda mengekspor.",
+		"visualExample": "Contoh Visual",
+		"removed": "DIHAPUS",
+		"kept": "Disimpan",
+		"finalVideo": "Video Akhir",
+		"part": "Bagian {{number}}",
+		"addTrimStep": "1. Tambah Pangkas",
+		"addTrimDesc": "Tekan T atau klik ikon gunting untuk menandai bagian yang akan dihapus.",
+		"adjustStep": "2. Sesuaikan",
+		"adjustDesc": "Tarik tepi wilayah merah untuk menutupi bagian yang tepat yang ingin Anda potong."
+	},
+	"feedback": {
+		"trigger": "Umpan Balik",
+		"title": "Umpan Balik & Kontak",
+		"description": "Hubungi langsung atau buka masalah jika ada yang rusak atau hilang.",
+		"emailLabel": "Email",
+		"xLabel": "X",
+		"reportIssue": "Laporkan masalah / kirim umpan balik",
+		"openFailed": "Gagal membuka tautan."
+	},
+	"keyboardShortcuts": {
+		"trigger": "Pintasan",
+		"title": "Pintasan Keyboard",
+		"description": "Referensi cepat untuk kontrol timeline dan editor.",
+		"customizeTooltip": "Sesuaikan pintasan",
+		"customize": "Sesuaikan",
+		"panTimeline": "Geser Timeline",
+		"zoomTimeline": "Perbesar Timeline",
+		"cycleAnnotations": "Siklus Anotasi",
+		"tab": "Tab"
+	},
+	"actions": {
+		"saveAgain": "Simpan Lagi",
+		"showInFolder": "Tampilkan Dalam Folder"
+	},
+	"project": {
+		"untitled": "Tanpa Judul"
+	},
+	"nativeCaptureUnavailable": {
+		"title": "Tidak ada yang rusak, tetapi kami tidak dapat merender overlay kursor animasi.",
+		"description": "Perangkat Anda tidak mendukung perekaman asli. Ini mungkin karena berbagai alasan yang belum kami ketahui. Ini tidak merusak Recordly, tetapi membuat penghalusan kursor menjadi tidak mungkin.",
+		"confirm": "Oke"
+	},
+	"exportStatus": {
+		"exporting": "Mengekspor",
+		"renderingFile": "Merender file Anda.",
+		"preparing": "Menyiapkan ekspor...",
+		"completePercent": "{{percent}}% selesai",
+		"issue": "Masalah ekspor",
+		"complete": "Ekspor selesai",
+		"savedSuccessfully": "File Anda berhasil disimpan."
+	},
+	"export": {
+		"processingAudioEdits": "Memproses audio dengan pengeditan kecepatan/overlay"
+	},
+	"toolbar": {
+		"addLayer": "Tambah Lapisan",
+		"splitClip": "Pisahkan Klip (C)"
+	},
+	"timeline": {
+		"expand": "Perluas Timeline",
+		"collapse": "Ciutkan Timeline"
+	},
+	"openRecordingsFolder": "Buka folder rekaman"
+}

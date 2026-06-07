@@ -1,0 +1,16 @@
+{
+	"actions": {
+		"addZoom": "Tambah Zoom",
+		"addTrim": "Tambah Pangkas",
+		"addSpeed": "Tambah Kecepatan",
+		"addAnnotation": "Tambah Anotasi",
+		"addKeyframe": "Tambah Bingkai Utama",
+		"deleteSelected": "Hapus yang Dipilih",
+		"playPause": "Putar / Jeda",
+		"cycleForward": "Siklus Anotasi Maju",
+		"cycleBackward": "Siklus Anotasi Mundur",
+		"deleteSelectedAlt": "Hapus yang Dipilih (alt)",
+		"panTimeline": "Geser Timeline",
+		"zoomTimeline": "Perbesar Timeline"
+	}
+}

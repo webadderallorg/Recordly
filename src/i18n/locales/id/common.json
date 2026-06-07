@@ -1,0 +1,26 @@
+{
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Editor Recordly",
+		"subtitle": "Perekaman dan pengeditan layar",
+		"language": "Bahasa",
+		"manageRecordings": "Buka folder rekaman"
+	},
+	"actions": {
+		"cancel": "Batal",
+		"close": "Tutup",
+		"export": "Ekspor",
+		"load": "Muat",
+		"redo": "Ulangi",
+		"reset": "Atur Ulang",
+		"save": "Simpan",
+		"undo": "Urungkan",
+		"delete": "Hapus",
+		"done": "Selesai"
+	},
+	"errors": {
+		"invalidFileType": "Jenis file tidak valid",
+		"failedToUploadImage": "Gagal mengunggah gambar",
+		"fileReadError": "Terjadi kesalahan saat membaca file."
+	}
+}

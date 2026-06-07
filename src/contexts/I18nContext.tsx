@@ -38,6 +38,14 @@ import frLaunch from "@/i18n/locales/fr/launch.json";
 import frSettings from "@/i18n/locales/fr/settings.json";
 import frShortcuts from "@/i18n/locales/fr/shortcuts.json";
 import frTimeline from "@/i18n/locales/fr/timeline.json";
+import idCommon from "@/i18n/locales/id/common.json";
+import idDialogs from "@/i18n/locales/id/dialogs.json";
+import idEditor from "@/i18n/locales/id/editor.json";
+import idExtensions from "@/i18n/locales/id/extensions.json";
+import idLaunch from "@/i18n/locales/id/launch.json";
+import idSettings from "@/i18n/locales/id/settings.json";
+import idShortcuts from "@/i18n/locales/id/shortcuts.json";
+import idTimeline from "@/i18n/locales/id/timeline.json";
 import itCommon from "@/i18n/locales/it/common.json";
 import itDialogs from "@/i18n/locales/it/dialogs.json";
 import itEditor from "@/i18n/locales/it/editor.json";
@@ -121,6 +129,16 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		dialogs: frDialogs,
 		shortcuts: frShortcuts,
 		extensions: frExtensions,
+	},
+	id: {
+		common: idCommon,
+		launch: idLaunch,
+		editor: idEditor,
+		timeline: idTimeline,
+		settings: idSettings,
+		dialogs: idDialogs,
+		shortcuts: idShortcuts,
+		extensions: idExtensions,
 	},
 	it: {
 		common: itCommon,
