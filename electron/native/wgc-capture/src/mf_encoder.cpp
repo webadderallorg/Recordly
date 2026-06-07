@@ -3,6 +3,7 @@
 #include <mferror.h>
 #include <codecapi.h>
 #include <algorithm>
+#include <cstdint>
 #include <iostream>
 #include <cstring>
 
@@ -13,6 +14,25 @@
 
 static int clampByte(int v) {
     return v < 0 ? 0 : (v > 255 ? 255 : v);
+}
+
+static UINT32 calculateScreenRecordingBitrate(int width, int height, int fps) {
+    constexpr uint64_t kFourKPixels = 3840ULL * 2160ULL;
+    constexpr uint64_t kQhdPixels = 2560ULL * 1440ULL;
+    constexpr UINT32 kBitrate4K = 45000000;
+    constexpr UINT32 kBitrateQhd = 28000000;
+    constexpr UINT32 kBitrateBase = 18000000;
+    constexpr double kHighFrameRateBoost = 1.35;
+
+    const uint64_t pixels =
+        static_cast<uint64_t>((std::max)(width, 1)) *
+        static_cast<uint64_t>((std::max)(height, 1));
+    const UINT32 baseBitrate =
+        pixels >= kFourKPixels ? kBitrate4K :
+        pixels >= kQhdPixels ? kBitrateQhd :
+        kBitrateBase;
+    const double boost = fps >= 60 ? kHighFrameRateBoost : 1.0;
+    return static_cast<UINT32>(static_cast<double>(baseBitrate) * boost + 0.5);
 }
 
 MFEncoder::MFEncoder() {}
@@ -56,11 +76,14 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
 
     outputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
     outputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
-    outputType->SetUINT32(MF_MT_AVG_BITRATE, 20000000);
+    const UINT32 videoBitrate = calculateScreenRecordingBitrate(width_, height_, fps_);
+    outputType->SetUINT32(MF_MT_AVG_BITRATE, videoBitrate);
     MFSetAttributeSize(outputType.Get(), MF_MT_FRAME_SIZE, width_, height_);
     MFSetAttributeRatio(outputType.Get(), MF_MT_FRAME_RATE, fps_, 1);
     MFSetAttributeRatio(outputType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
     outputType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    std::cerr << "Encoder bitrate: " << videoBitrate << " bps for "
+              << width_ << "x" << height_ << "@" << fps_ << "fps" << std::endl;
 
     // Input media type (NV12)
     ComPtr<IMFMediaType> inputType;

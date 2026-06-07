@@ -41,11 +41,19 @@ export interface LightningExportRoutePlan {
 	decisions: LightningExportRouteDecision[];
 }
 
+// Disabled while stabilizing v1.3.0: the Windows auto static-layout probe can
+// leave Lightning at "Preparing export..." before the stable streaming fallback.
+const WINDOWS_AUTO_STATIC_LAYOUT_FIRST_ENABLED = false;
+
 export function shouldPreferNativeStaticLayoutBeforeBreeze(
 	platform: LightningRuntimePlatform,
 	backendPreference: ExportBackendPreference,
 ): boolean {
-	return backendPreference === "auto" && platform === "win32";
+	return (
+		WINDOWS_AUTO_STATIC_LAYOUT_FIRST_ENABLED &&
+		backendPreference === "auto" &&
+		platform === "win32"
+	);
 }
 
 export function planLightningExportRoutes(options: {
@@ -92,7 +100,7 @@ export function planLightningExportRoutes(options: {
 			reasons: [
 				options.backendPreference === "breeze"
 					? "user-selected-breeze"
-					: "windows-native-static-fallback",
+					: "native-static-layout-not-auto-default",
 			],
 		});
 		decisions.push({

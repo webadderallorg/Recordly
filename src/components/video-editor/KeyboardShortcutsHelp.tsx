@@ -10,13 +10,13 @@ export function KeyboardShortcutsHelp() {
 	const t = useScopedT("editor");
 
 	const [scrollLabels, setScrollLabels] = useState({
-		pan: "Shift + Ctrl + Scroll",
+		pan: "Shift + Scroll",
 		zoom: "Ctrl + Scroll",
 	});
 
 	useEffect(() => {
 		Promise.all([
-			formatShortcut(["shift", "mod", "Scroll"]),
+			formatShortcut(["shift", "Scroll"]),
 			formatShortcut(["mod", "Scroll"]),
 		]).then(([pan, zoom]) => setScrollLabels({ pan, zoom }));
 	}, []);

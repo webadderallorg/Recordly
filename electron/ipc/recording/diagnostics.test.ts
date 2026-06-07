@@ -134,6 +134,32 @@ describe("getCompanionAudioFallbackPaths", () => {
 		]);
 	});
 
+	it("prefers the mac mic companion alone when embedded audio already exists and no system sidecar is present", async () => {
+		const videoPath = path.join(tempRoot, "recording.mp4");
+		const micPath = path.join(tempRoot, "recording.mic.m4a");
+
+		await Promise.all([fs.writeFile(videoPath, "video"), fs.writeFile(micPath, "mic")]);
+
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				const error = new Error("ffmpeg probe found embedded audio") as Error & {
+					stderr?: string;
+				};
+				error.stderr = "Stream #0:1: Audio: aac";
+				callback(error, "", error.stderr);
+			},
+		);
+
+		const { getCompanionAudioFallbackPaths } = await import("./diagnostics");
+
+		await expect(getCompanionAudioFallbackPaths(videoPath)).resolves.toEqual([micPath]);
+	});
+
 	it("loads saved sidecar timing metadata alongside companion audio paths", async () => {
 		const videoPath = path.join(tempRoot, "recording.mp4");
 		const micPath = path.join(tempRoot, "recording.mic.webm");

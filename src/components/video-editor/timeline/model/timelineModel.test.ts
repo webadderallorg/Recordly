@@ -47,6 +47,21 @@ describe("timeline model", () => {
 		expect(items.find((i) => i.id === "au1")?.label).toBe("foo");
 	});
 
+	it("exposes clip speed for non-default speed labels", () => {
+		const items = buildTimelineItems({
+			zoomRegions: [],
+			clipRegions: [{ id: "c1", startMs: 0, endMs: 8000, speed: 0.5 }],
+			annotationRegions: [],
+			audioRegions: [],
+		});
+
+		expect(items[0]).toMatchObject({
+			id: "c1",
+			label: "Clip 1 0.5x",
+			speedValue: 0.5,
+		});
+	});
+
 	it("builds all variant labels for annotation and audio", () => {
 		expect(getAnnotationLabel({ ...BASE_ANNOTATION, type: "text", content: "   " })).toBe(
 			"Empty text",

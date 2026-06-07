@@ -1990,9 +1990,7 @@ function isNvidiaCudaForceVideoOnlyEnabled() {
 	return process.env[NVIDIA_CUDA_FORCE_VIDEO_ONLY_ENV] === "1";
 }
 
-export function getNvidiaCudaAutoStallTimeoutMs(
-	autoCandidateActive = false,
-) {
+export function getNvidiaCudaAutoStallTimeoutMs(autoCandidateActive = false) {
 	if (!autoCandidateActive && !isExplicitNvidiaCudaExportEnabled()) {
 		return null;
 	}
@@ -2664,6 +2662,10 @@ export function buildExperimentalNvidiaCudaStaticLayoutArgs(
 		outputPath,
 		"--work-dir",
 		workDir,
+		"--width",
+		String(options.width),
+		"--height",
+		String(options.height),
 		"--fps",
 		String(Math.max(1, Math.round(options.frameRate))),
 		"--bitrate-mbps",

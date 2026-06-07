@@ -860,9 +860,9 @@ function roundedRectMaskExpression({ x, y, width, height, radius }) {
 	return `${centerBand}+${middleBand}+${topLeft}+${topRight}+${bottomLeft}+${bottomRight}`;
 }
 
-function createBackgroundFilter(videoInfo, shadowOptions, blurPx = 0) {
+function createBackgroundFilter(outputSize, shadowOptions, blurPx = 0) {
 	const safeBlurPx = Math.max(0, Math.min(96, Math.round(Number.isFinite(blurPx) ? blurPx : 0)));
-	const scaled = `[0:v]scale=${videoInfo.width}:${videoInfo.height}:force_original_aspect_ratio=increase,crop=${videoInfo.width}:${videoInfo.height},format=rgba[bg_scaled]`;
+	const scaled = `[0:v]scale=${outputSize.width}:${outputSize.height}:force_original_aspect_ratio=increase,crop=${outputSize.width}:${outputSize.height},format=rgba[bg_scaled]`;
 	const blurFilter =
 		safeBlurPx > 0
 			? `;[bg_scaled]boxblur=luma_radius=${safeBlurPx}:luma_power=1:chroma_radius=${safeBlurPx}:chroma_power=1:alpha_radius=${safeBlurPx}:alpha_power=1[bg]`
@@ -895,7 +895,7 @@ function createBackgroundFilter(videoInfo, shadowOptions, blurPx = 0) {
 			"-f",
 			"lavfi",
 			"-i",
-			`color=c=black@0.0:s=${videoInfo.width}x${videoInfo.height}:d=1`,
+			`color=c=black@0.0:s=${outputSize.width}x${outputSize.height}:d=1`,
 			"-filter_complex",
 			`${scaled}${blurFilter};${shadow};[bg][shadow]overlay=format=auto,format=nv12[out]`,
 			"-map",
@@ -930,6 +930,8 @@ const inputPath = resolve(getArg("--input"));
 const outputPath = resolve(
 	getArg("--output", join(scriptDir, "recordly-nvdec-nvenc-mp4-output.mp4")),
 );
+const requestedOutputWidth = Math.round(getNumberArg("--width", 0));
+const requestedOutputHeight = Math.round(getNumberArg("--height", 0));
 const fps = Math.round(getNumberArg("--fps", 30));
 const bitrateMbps = Math.round(getNumberArg("--bitrate-mbps", 18));
 const encodingMode = getArg("--encoding-mode", "balanced");
@@ -1050,6 +1052,17 @@ const sourcePtsPath = join(workDir, `${baseName}.source-pts.csv`);
 
 const videoInfo = getVideoInfo(inputPath);
 const webcamInfo = webcamInput ? getVideoInfo(webcamInput) : null;
+if (requestedOutputWidth > 0 !== requestedOutputHeight > 0) {
+	fail("--width and --height must be specified together");
+}
+if (
+	requestedOutputWidth > 0 &&
+	(requestedOutputWidth % 2 !== 0 || requestedOutputHeight % 2 !== 0)
+) {
+	fail("--width and --height must be even numbers for NV12 encoding");
+}
+const outputWidth = requestedOutputWidth > 0 ? requestedOutputWidth : videoInfo.width;
+const outputHeight = requestedOutputHeight > 0 ? requestedOutputHeight : videoInfo.height;
 const timelineSegments = readTimelineSegments(timelineMap);
 const timelineOutputDurationSec = timelineSegments.length
 	? Math.max(...timelineSegments.map((segment) => segment.outputEndMs)) / 1000
@@ -1105,7 +1118,7 @@ let webcamSourceWindowFrames = webcamInfo
 	: 0;
 const backgroundNv12Path = backgroundImage ? generatedBackgroundNv12Path : backgroundNv12;
 const backgroundFilter = createBackgroundFilter(
-	videoInfo,
+	{ width: outputWidth, height: outputHeight },
 	shouldBakeStaticShadow
 		? {
 				x: contentX,
@@ -1275,6 +1288,9 @@ const encodeArgs = [
 	"--chunk-mb",
 	String(chunkMb),
 ];
+if (requestedOutputWidth > 0 && requestedOutputHeight > 0) {
+	encodeArgs.push("--width", String(outputWidth), "--height", String(outputHeight));
+}
 if (sourcePts.path && sourcePts.frames >= sourceWindowFrames) {
 	encodeArgs.push("--source-pts", sourcePts.path);
 }

@@ -6,6 +6,7 @@ import { selectedSource, setSelectedSource } from "../state";
 import type { SelectedSource } from "../types";
 import { getScreen, parseWindowId } from "../utils";
 import { getDisplayBoundsForSource, getDisplayWorkAreaForSource } from "../recording/ffmpeg";
+import { getScreenSourceIdForDisplay } from "./sourceMapping";
 import {
 	getNativeMacWindowSources,
 	resolveMacWindowBounds,
@@ -125,7 +126,12 @@ export function registerSourceHandlers({
 					: `Screen ${index + 1}`;
 
 			return {
-				id: matchedSource?.id ?? `screen:fallback:${displayId}`,
+				id: getScreenSourceIdForDisplay({
+					displayId,
+					env: process.env,
+					matchedSourceId: matchedSource?.id,
+					platform: process.platform,
+				}),
 				name: displayName,
 				originalName: matchedSource?.name ?? displayName,
 				display_id: displayId,

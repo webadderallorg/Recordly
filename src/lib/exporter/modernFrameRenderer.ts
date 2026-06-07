@@ -15,6 +15,7 @@ import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
 	CaptionCue,
+	CursorClickEffectStyle,
 	CropRegion,
 	CursorStyle,
 	CursorTelemetryPoint,
@@ -146,6 +147,11 @@ interface FrameRenderConfig {
 	cameraSpringDampingMultiplier?: number;
 	cameraSpringMassMultiplier?: number;
 	cursorMotionBlur?: number;
+	cursorClickEffect?: CursorClickEffectStyle;
+	cursorClickEffectColor?: string;
+	cursorClickEffectScale?: number;
+	cursorClickEffectOpacity?: number;
+	cursorClickEffectDurationMs?: number;
 	cursorClickBounce?: number;
 	cursorClickBounceDuration?: number;
 	cursorSway?: number;
@@ -616,6 +622,17 @@ export class FrameRenderer {
 					massMultiplier: this.config.cursorSpringMassMultiplier,
 				},
 				motionBlur: this.config.cursorMotionBlur ?? 0,
+				clickEffect:
+					this.config.cursorClickEffect ?? DEFAULT_CURSOR_CONFIG.clickEffect,
+				clickEffectColor:
+					this.config.cursorClickEffectColor ?? DEFAULT_CURSOR_CONFIG.clickEffectColor,
+				clickEffectScale:
+					this.config.cursorClickEffectScale ?? DEFAULT_CURSOR_CONFIG.clickEffectScale,
+				clickEffectOpacity:
+					this.config.cursorClickEffectOpacity ?? DEFAULT_CURSOR_CONFIG.clickEffectOpacity,
+				clickEffectDurationMs:
+					this.config.cursorClickEffectDurationMs ??
+					DEFAULT_CURSOR_CONFIG.clickEffectDurationMs,
 				clickBounce: this.config.cursorClickBounce ?? DEFAULT_CURSOR_CONFIG.clickBounce,
 				clickBounceDuration:
 					this.config.cursorClickBounceDuration ??

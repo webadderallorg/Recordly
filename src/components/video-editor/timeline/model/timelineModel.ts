@@ -1,10 +1,10 @@
+import { formatClipSpeedLabel } from "../../clipSpeedChange";
 import type {
 	AnnotationRegion,
 	AudioRegion,
 	ClipRegion,
 	ZoomRegion,
 } from "../../types";
-import type { TimelineRegionSpan, TimelineRenderItem } from "../core/timelineTypes";
 import { CLIP_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
 import {
 	getAnnotationTrackIndex,
@@ -14,6 +14,7 @@ import {
 	isAnnotationTrackRowId,
 	isAudioTrackRowId,
 } from "../core/rows";
+import type { TimelineRegionSpan, TimelineRenderItem } from "../core/timelineTypes";
 
 export function getAnnotationLabel(region: AnnotationRegion): string {
 	if (region.type === "text") {
@@ -51,13 +52,15 @@ export function buildTimelineItems(params: {
 		const displayDurationMs = Math.max(0, region.endMs - region.startMs);
 		const speed = Number.isFinite(region.speed) && region.speed > 0 ? region.speed : 1;
 		const sourceEndMs = region.startMs + displayDurationMs * speed;
+		const speedLabel = formatClipSpeedLabel(speed);
 
 		return {
 			id: region.id,
 			rowId: CLIP_ROW_ID,
 			span: { start: region.startMs, end: region.endMs },
 			sourceSpan: { start: region.startMs, end: sourceEndMs },
-			label: `Clip ${index + 1}`,
+			label: speedLabel ? `Clip ${index + 1} ${speedLabel}` : `Clip ${index + 1}`,
+			speedValue: speedLabel ? speed : undefined,
 			showSourceAudio: region.showSourceAudio,
 			muted: Boolean(region.muted),
 			variant: "clip",

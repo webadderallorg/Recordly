@@ -4,10 +4,17 @@ import minimalCursorUrl from "@/assets/cursors/custom/minimal-cursor.svg";
 import { getRenderableAssetUrl } from "@/lib/assetPath";
 import { extensionHost } from "@/lib/extensions";
 import {
+	type CursorClickEffectStyle,
 	type CursorStyle,
 	type CursorTelemetryPoint,
 	DEFAULT_CURSOR_CLICK_BOUNCE_DURATION,
+	DEFAULT_CURSOR_CLICK_EFFECT,
+	DEFAULT_CURSOR_CLICK_EFFECT_COLOR,
+	DEFAULT_CURSOR_CLICK_EFFECT_DURATION_MS,
+	DEFAULT_CURSOR_CLICK_EFFECT_OPACITY,
+	DEFAULT_CURSOR_CLICK_EFFECT_SCALE,
 	DEFAULT_CURSOR_STYLE,
+	normalizeCursorClickEffectColor,
 } from "../types";
 import { computeCursorSwayRotation } from "./cursorSway";
 import { type CursorViewportRect, projectCursorPositionToViewport } from "./cursorViewport";
@@ -85,6 +92,16 @@ export interface CursorRenderConfig {
 	clickBounce: number;
 	/** Click bounce duration in milliseconds. */
 	clickBounceDuration: number;
+	/** Click effect graphics rendered around the pointer. */
+	clickEffect: CursorClickEffectStyle;
+	/** Click effect base color. */
+	clickEffectColor: string;
+	/** Click effect size multiplier. */
+	clickEffectScale: number;
+	/** Click effect opacity multiplier. */
+	clickEffectOpacity: number;
+	/** Click effect duration in milliseconds. */
+	clickEffectDurationMs: number;
 	/** Cursor sway multiplier. */
 	sway: number;
 	/** Cursor visual style. */
@@ -105,13 +122,17 @@ export const DEFAULT_CURSOR_CONFIG: CursorRenderConfig = {
 	motionBlur: 0,
 	clickBounce: 1,
 	clickBounceDuration: DEFAULT_CURSOR_CLICK_BOUNCE_DURATION,
+	clickEffect: DEFAULT_CURSOR_CLICK_EFFECT,
+	clickEffectColor: DEFAULT_CURSOR_CLICK_EFFECT_COLOR,
+	clickEffectScale: DEFAULT_CURSOR_CLICK_EFFECT_SCALE,
+	clickEffectOpacity: DEFAULT_CURSOR_CLICK_EFFECT_OPACITY,
+	clickEffectDurationMs: DEFAULT_CURSOR_CLICK_EFFECT_DURATION_MS,
 	sway: 0,
 	style: DEFAULT_CURSOR_STYLE,
 };
 
 const REFERENCE_WIDTH = 1920;
 const MIN_CURSOR_VIEWPORT_SCALE = 0.55;
-const CLICK_RING_FADE_MS = 600;
 const CURSOR_MOTION_BLUR_BASE_MULTIPLIER = 0.08;
 const CURSOR_TIME_DISCONTINUITY_MS = 100;
 const CURSOR_SWAY_SMOOTHING_MULTIPLIER = 0.7;
@@ -200,7 +221,7 @@ async function createCursorStyleAsset(style: SingleCursorStyle): Promise<LoadedC
 		const trimmed = trimCanvasToAlpha(sourceCanvas, { x: 40, y: 22 });
 		await Assets.load(trimmed.dataUrl);
 		const trimmedImage = await loadImage(trimmed.dataUrl);
-		const texture = Texture.from(trimmed.dataUrl);
+		const texture = configureCursorTexture(Texture.from(trimmed.dataUrl));
 
 		return {
 			texture,
@@ -229,7 +250,7 @@ async function createCursorStyleAsset(style: SingleCursorStyle): Promise<LoadedC
 	const dataUrl = canvas.toDataURL("image/png");
 	await Assets.load(dataUrl);
 	const image = await loadImage(dataUrl);
-	const texture = Texture.from(dataUrl);
+	const texture = configureCursorTexture(Texture.from(dataUrl));
 
 	return {
 		texture,
@@ -247,7 +268,7 @@ async function createCursorPackAsset(
 	const renderableUrl = await getRenderableAssetUrl(url);
 	await Assets.load(renderableUrl);
 	const image = await loadImage(renderableUrl);
-	const texture = Texture.from(renderableUrl);
+	const texture = configureCursorTexture(Texture.from(renderableUrl));
 
 	return {
 		texture,
@@ -255,6 +276,53 @@ async function createCursorPackAsset(
 		aspectRatio: image.naturalHeight > 0 ? image.naturalWidth / image.naturalHeight : 1,
 		anchorX: clamp(anchor.x, 0, 1),
 		anchorY: clamp(anchor.y, 0, 1),
+	};
+}
+
+async function createRasterizedCursorAsset(
+	url: string,
+	anchor: { x: number; y: number },
+): Promise<LoadedCursorAsset> {
+	const image = await loadImage(url);
+	const sourceCanvas = document.createElement("canvas");
+	sourceCanvas.width = image.naturalWidth;
+	sourceCanvas.height = image.naturalHeight;
+	const sourceCtx = sourceCanvas.getContext("2d");
+	if (!sourceCtx) {
+		await Assets.load(url);
+		const texture = configureCursorTexture(Texture.from(url));
+		return {
+			texture,
+			image,
+			aspectRatio: image.naturalHeight > 0 ? image.naturalWidth / image.naturalHeight : 1,
+			anchorX: clamp(anchor.x, 0, 1),
+			anchorY: clamp(anchor.y, 0, 1),
+		};
+	}
+
+	sourceCtx.clearRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+	sourceCtx.drawImage(image, 0, 0);
+
+	const trimmed = trimCanvasToAlpha(sourceCanvas, {
+		x: sourceCanvas.width * clamp(anchor.x, 0, 1),
+		y: sourceCanvas.height * clamp(anchor.y, 0, 1),
+	});
+	await Assets.load(trimmed.dataUrl);
+	const trimmedImage = await loadImage(trimmed.dataUrl);
+	const texture = configureCursorTexture(Texture.from(trimmed.dataUrl));
+
+	return {
+		texture,
+		image: trimmedImage,
+		aspectRatio: trimmed.height > 0 ? trimmed.width / trimmed.height : 1,
+		anchorX:
+			trimmed.hotspot && trimmed.width > 0
+				? clamp(trimmed.hotspot.x / trimmed.width, 0, 1)
+				: clamp(anchor.x, 0, 1),
+		anchorY:
+			trimmed.hotspot && trimmed.height > 0
+				? clamp(trimmed.hotspot.y / trimmed.height, 0, 1)
+				: clamp(anchor.y, 0, 1),
 	};
 }
 
@@ -270,6 +338,12 @@ function loadImage(dataUrl: string) {
 
 function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
+}
+
+function configureCursorTexture(texture: Texture) {
+	texture.source.scaleMode = "linear";
+	texture.source.autoGenerateMipmaps = false;
+	return texture;
 }
 
 function trimCanvasToAlpha(canvas: HTMLCanvasElement, hotspot?: { x: number; y: number }) {
@@ -367,7 +441,7 @@ async function createInvertedCursorAsset(asset: LoadedCursorAsset): Promise<Load
 	const dataUrl = canvas.toDataURL("image/png");
 	await Assets.load(dataUrl);
 	const image = await loadImage(dataUrl);
-	const texture = Texture.from(dataUrl);
+	const texture = configureCursorTexture(Texture.from(dataUrl));
 
 	return {
 		texture,
@@ -477,22 +551,14 @@ export async function preloadCursorAssets() {
 						}
 
 						try {
-							await Assets.load(sourceAsset.url);
-							const image = await loadImage(sourceAsset.url);
-							const texture = Texture.from(sourceAsset.url);
+							const asset = await createRasterizedCursorAsset(
+								sourceAsset.url,
+								sourceAsset.fallbackAnchor,
+							);
 
 							return [
 								key,
-								{
-									texture,
-									image,
-									aspectRatio:
-										image.naturalHeight > 0
-											? image.naturalWidth / image.naturalHeight
-											: 1,
-									anchorX: clamp(sourceAsset.fallbackAnchor.x, 0, 1),
-									anchorY: clamp(sourceAsset.fallbackAnchor.y, 0, 1),
-								} satisfies LoadedCursorAsset,
+								asset,
 							] as const;
 						} catch (error) {
 							console.warn(
@@ -745,10 +811,7 @@ function getCursorViewportScale(viewport: CursorViewportRect) {
 	return Math.max(MIN_CURSOR_VIEWPORT_SCALE, viewport.width / REFERENCE_WIDTH);
 }
 
-function getCursorSwaySpringConfig(
-	smoothingFactor: number,
-	springTuning: CursorSpringTuning,
-) {
+function getCursorSwaySpringConfig(smoothingFactor: number, springTuning: CursorSpringTuning) {
 	const baseConfig = getCursorSpringConfig(
 		Math.min(
 			2,
@@ -769,14 +832,168 @@ function getCursorSwaySpringConfig(
 	};
 }
 
+function getClickEffectColor(clickEffectColor: string) {
+	const normalized = normalizeCursorClickEffectColor(clickEffectColor);
+	return Number.parseInt(normalized.slice(1), 16);
+}
+
+function getExtensionStyleRippleMetrics(
+	cursorSize: number,
+	clickProgress: number,
+	effectScale: number,
+	effectOpacity: number,
+) {
+	const eased = 1 - Math.pow(clickProgress, 3);
+	const fade = Math.pow(clickProgress, 3);
+
+	return {
+		radius: Math.max(0.5, eased * cursorSize * 1.95 * effectScale),
+		alpha: Math.max(0, Math.min(1, fade * 0.6 * effectOpacity)),
+		strokeWidth: Math.max(1, 2 * fade),
+	};
+}
+
+function drawClickEffectGraphics(
+	graphics: Graphics,
+	effect: CursorClickEffectStyle,
+	px: number,
+	py: number,
+	cursorSize: number,
+	clickProgress: number,
+	effectScale: number,
+	effectOpacity: number,
+	effectColor: string = DEFAULT_CURSOR_CLICK_EFFECT_COLOR,
+) {
+	graphics.clear();
+	if (effect === "none" || clickProgress <= 0) {
+		return;
+	}
+
+	const reveal = 1 - clickProgress;
+	const alpha = clickProgress * effectOpacity;
+	const color = getClickEffectColor(effectColor);
+	const baseRadius = Math.max(12, cursorSize * 0.55 * effectScale);
+	const strokeWidth = Math.max(2, cursorSize * 0.08);
+
+	if (effect === "ripple") {
+		const ripple = getExtensionStyleRippleMetrics(
+			cursorSize,
+			clickProgress,
+			effectScale,
+			effectOpacity,
+		);
+		graphics.circle(px, py, ripple.radius);
+		graphics.stroke({ width: ripple.strokeWidth, color, alpha: ripple.alpha });
+		return;
+	}
+
+	if (effect === "spotlight") {
+		const glowRadius = baseRadius + reveal * cursorSize * effectScale;
+		const innerRadius = Math.max(baseRadius * 0.72, glowRadius * 0.76);
+		graphics.circle(px, py, glowRadius);
+		graphics.stroke({ width: Math.max(1.25, strokeWidth * 0.68), color, alpha: alpha * 0.28 });
+		graphics.circle(px, py, innerRadius);
+		graphics.stroke({ width: Math.max(1.5, strokeWidth * 0.75), color, alpha: alpha * 0.5 });
+		return;
+	}
+
+	const echoOuterRadius = baseRadius + reveal * cursorSize * 1.22 * effectScale;
+	const echoInnerRadius = Math.max(baseRadius * 0.58, echoOuterRadius * 0.62);
+	graphics.circle(px, py, echoOuterRadius);
+	graphics.stroke({ width: strokeWidth, color, alpha: alpha * 0.72 });
+	graphics.circle(px, py, echoInnerRadius);
+	graphics.stroke({ width: Math.max(1.4, strokeWidth * 0.72), color, alpha: alpha * 0.42 });
+	graphics.circle(px, py, Math.max(3, baseRadius * 0.18));
+	graphics.fill({ color, alpha: alpha * 0.14 });
+}
+
+function drawClickEffectOnCanvas(
+	ctx: CanvasRenderingContext2D,
+	effect: CursorClickEffectStyle,
+	px: number,
+	py: number,
+	cursorSize: number,
+	clickProgress: number,
+	effectScale: number,
+	effectOpacity: number,
+	effectColor: string = DEFAULT_CURSOR_CLICK_EFFECT_COLOR,
+) {
+	if (effect === "none" || clickProgress <= 0) {
+		return;
+	}
+
+	const reveal = 1 - clickProgress;
+	const alpha = clickProgress * effectOpacity;
+	const color = getClickEffectColor(effectColor);
+	const strokeColor = `rgba(${(color >> 16) & 255}, ${(color >> 8) & 255}, ${color & 255}, `;
+	const baseRadius = Math.max(12, cursorSize * 0.55 * effectScale);
+	const strokeWidth = Math.max(2, cursorSize * 0.08);
+
+	ctx.save();
+
+	if (effect === "ripple") {
+		const ripple = getExtensionStyleRippleMetrics(
+			cursorSize,
+			clickProgress,
+			effectScale,
+			effectOpacity,
+		);
+		ctx.lineWidth = ripple.strokeWidth;
+		ctx.strokeStyle = `${strokeColor}${ripple.alpha.toFixed(3)})`;
+		ctx.beginPath();
+		ctx.arc(px, py, ripple.radius, 0, Math.PI * 2);
+		ctx.stroke();
+		ctx.restore();
+		return;
+	}
+
+	if (effect === "spotlight") {
+		const glowRadius = baseRadius + reveal * cursorSize * effectScale;
+		const innerRadius = Math.max(baseRadius * 0.72, glowRadius * 0.76);
+		ctx.lineWidth = Math.max(1.25, strokeWidth * 0.68);
+		ctx.strokeStyle = `${strokeColor}${(alpha * 0.28).toFixed(3)})`;
+		ctx.beginPath();
+		ctx.arc(px, py, glowRadius, 0, Math.PI * 2);
+		ctx.stroke();
+		ctx.lineWidth = Math.max(1.5, strokeWidth * 0.75);
+		ctx.strokeStyle = `${strokeColor}${(alpha * 0.5).toFixed(3)})`;
+		ctx.beginPath();
+		ctx.arc(px, py, innerRadius, 0, Math.PI * 2);
+		ctx.stroke();
+		ctx.restore();
+		return;
+	}
+
+	const echoOuterRadius = baseRadius + reveal * cursorSize * 1.22 * effectScale;
+	const echoInnerRadius = Math.max(baseRadius * 0.58, echoOuterRadius * 0.62);
+	ctx.lineWidth = strokeWidth;
+	ctx.strokeStyle = `${strokeColor}${(alpha * 0.72).toFixed(3)})`;
+	ctx.beginPath();
+	ctx.arc(px, py, echoOuterRadius, 0, Math.PI * 2);
+	ctx.stroke();
+	ctx.lineWidth = Math.max(1.4, strokeWidth * 0.72);
+	ctx.strokeStyle = `${strokeColor}${(alpha * 0.42).toFixed(3)})`;
+	ctx.beginPath();
+	ctx.arc(px, py, echoInnerRadius, 0, Math.PI * 2);
+	ctx.stroke();
+	ctx.fillStyle = `${strokeColor}${(alpha * 0.14).toFixed(3)})`;
+	ctx.beginPath();
+	ctx.arc(px, py, Math.max(3, baseRadius * 0.18), 0, Math.PI * 2);
+	ctx.fill();
+	ctx.restore();
+}
+
 function getCursorVisualState(
 	samples: CursorTelemetryPoint[],
 	timeMs: number,
 	clickBounceDuration: number,
+	clickEffectDurationMs: number,
 ) {
 	const latestClick = findLatestInteractionSample(samples, timeMs);
 	const interactionType = latestClick?.interactionType;
 	const ageMs = latestClick ? Math.max(0, timeMs - latestClick.timeMs) : Number.POSITIVE_INFINITY;
+	const clickEffectDelayMs = clickBounceDuration * 0.5;
+	const clickEffectAgeMs = ageMs - clickEffectDelayMs;
 	const isClickEvent =
 		interactionType === "click" ||
 		interactionType === "double-click" ||
@@ -789,10 +1006,15 @@ function getCursorVisualState(
 
 	return {
 		cursorType: findLatestStableCursorType(samples, timeMs),
+		interactionType,
+		clickSample: latestClick && isClickEvent ? latestClick : null,
 		clickBounceProgress,
 		clickProgress:
-			latestClick && isClickEvent && ageMs <= CLICK_RING_FADE_MS
-				? 1 - ageMs / CLICK_RING_FADE_MS
+			latestClick &&
+			isClickEvent &&
+			clickEffectAgeMs >= 0 &&
+			clickEffectAgeMs <= clickEffectDurationMs
+				? 1 - clickEffectAgeMs / clickEffectDurationMs
 				: 0,
 	};
 }
@@ -812,7 +1034,9 @@ export class SmoothedCursorState {
 	private xSpring = createSpringState(0.5);
 	private ySpring = createSpringState(0.5);
 
-	constructor(config: Pick<CursorRenderConfig, "smoothingFactor" | "trailLength" | "springTuning">) {
+	constructor(
+		config: Pick<CursorRenderConfig, "smoothingFactor" | "trailLength" | "springTuning">,
+	) {
 		this.smoothingFactor = config.smoothingFactor;
 		this.springTuning = config.springTuning;
 		this.trailLength = config.trailLength;
@@ -898,6 +1122,7 @@ export class PixiCursorOverlay {
 	private config: CursorRenderConfig;
 	private lastRenderedPoint: { px: number; py: number } | null = null;
 	private lastRenderedTimeMs: number | null = null;
+	private cursorVisible = false;
 	private swayRotation = 0;
 	private swaySpring = createSpringState(0);
 
@@ -923,6 +1148,7 @@ export class PixiCursorOverlay {
 			initialCustomAsset.anchorY,
 		);
 		this.customCursorShadowSprite.visible = false;
+		this.customCursorShadowSprite.roundPixels = true;
 		this.customCursorShadowSprite.tint = CURSOR_SHADOW_COLOR;
 		this.customCursorShadowSprite.alpha = CURSOR_SHADOW_ALPHA;
 		this.customCursorShadowFilter = new BlurFilter();
@@ -934,6 +1160,7 @@ export class PixiCursorOverlay {
 		this.customCursorSprite = new Sprite(initialCustomAsset.texture);
 		this.customCursorSprite.anchor.set(initialCustomAsset.anchorX, initialCustomAsset.anchorY);
 		this.customCursorSprite.visible = false;
+		this.customCursorSprite.roundPixels = true;
 		this.cursorShadowSprites = {};
 		this.cursorShadowFilters = {};
 		this.cursorSprites = {};
@@ -942,6 +1169,7 @@ export class PixiCursorOverlay {
 			const shadowSprite = new Sprite(asset.texture);
 			shadowSprite.anchor.set(asset.anchorX, asset.anchorY);
 			shadowSprite.visible = false;
+			shadowSprite.roundPixels = true;
 			shadowSprite.tint = CURSOR_SHADOW_COLOR;
 			shadowSprite.alpha = CURSOR_SHADOW_ALPHA;
 			const shadowFilter = new BlurFilter();
@@ -955,6 +1183,7 @@ export class PixiCursorOverlay {
 			const sprite = new Sprite(asset.texture);
 			sprite.anchor.set(asset.anchorX, asset.anchorY);
 			sprite.visible = false;
+			sprite.roundPixels = true;
 			this.cursorSprites[key] = sprite;
 		}
 
@@ -1003,6 +1232,26 @@ export class PixiCursorOverlay {
 		this.config.clickBounce = Math.max(0, clickBounce);
 	}
 
+	setClickEffect(clickEffect: CursorClickEffectStyle) {
+		this.config.clickEffect = clickEffect;
+	}
+
+	setClickEffectColor(clickEffectColor: string) {
+		this.config.clickEffectColor = normalizeCursorClickEffectColor(clickEffectColor);
+	}
+
+	setClickEffectScale(clickEffectScale: number) {
+		this.config.clickEffectScale = clamp(clickEffectScale, 0.5, 2);
+	}
+
+	setClickEffectOpacity(clickEffectOpacity: number) {
+		this.config.clickEffectOpacity = clamp(clickEffectOpacity, 0, 1);
+	}
+
+	setClickEffectDurationMs(clickEffectDurationMs: number) {
+		this.config.clickEffectDurationMs = clamp(clickEffectDurationMs, 120, 1200);
+	}
+
 	setClickBounceDuration(clickBounceDuration: number) {
 		this.config.clickBounceDuration = clamp(clickBounceDuration, 60, 500);
 	}
@@ -1044,7 +1293,7 @@ export class PixiCursorOverlay {
 		cy: number;
 		trail: Array<{ cx: number; cy: number }>;
 	} | null {
-		if (!this.container.visible) {
+		if (!this.container.visible || !this.cursorVisible) {
 			return null;
 		}
 
@@ -1062,25 +1311,73 @@ export class PixiCursorOverlay {
 		visible: boolean,
 		freeze = false,
 	): void {
-		if (!visible || samples.length === 0 || viewport.width <= 0 || viewport.height <= 0) {
+		if (samples.length === 0 || viewport.width <= 0 || viewport.height <= 0) {
 			this.container.visible = false;
+			this.cursorVisible = false;
+			this.clickRingGraphics.clear();
 			this.lastRenderedPoint = null;
 			this.lastRenderedTimeMs = null;
 			this.swayRotation = 0;
 			resetSpringState(this.swaySpring, 0);
 			this.cursorMotionBlurFilter.velocity = { x: 0, y: 0 };
+			this.customCursorShadowSprite.visible = false;
+			this.customCursorSprite.visible = false;
+			for (const shadowSprite of Object.values(this.cursorShadowSprites)) {
+				shadowSprite.visible = false;
+			}
+			for (const sprite of Object.values(this.cursorSprites)) {
+				sprite.visible = false;
+			}
 			return;
 		}
 
 		const target = interpolateCursorPosition(samples, timeMs);
 		if (!target) {
 			this.container.visible = false;
+			this.cursorVisible = false;
+			this.clickRingGraphics.clear();
 			return;
 		}
 
 		const projectedTarget = projectCursorPositionToViewport(target, viewport.sourceCrop);
-		if (!projectedTarget.visible) {
+
+		const h = this.config.dotRadius * getCursorViewportScale(viewport);
+		const { cursorType, clickSample, clickBounceProgress, clickProgress } =
+			getCursorVisualState(
+				samples,
+				timeMs,
+				this.config.clickBounceDuration,
+				this.config.clickEffectDurationMs,
+			);
+		const projectedClickSample = clickSample
+			? projectCursorPositionToViewport(clickSample, viewport.sourceCrop)
+			: null;
+		const clickEffectPx =
+			projectedClickSample && projectedClickSample.visible
+				? viewport.x + projectedClickSample.cx * viewport.width
+				: viewport.x + projectedTarget.cx * viewport.width;
+		const clickEffectPy =
+			projectedClickSample && projectedClickSample.visible
+				? viewport.y + projectedClickSample.cy * viewport.height
+				: viewport.y + projectedTarget.cy * viewport.height;
+		const shouldShowCursorSprite = visible && projectedTarget.visible;
+		const shouldDrawClickEffect =
+			this.config.clickEffect !== "none" &&
+			clickProgress > 0 &&
+			Boolean(projectedClickSample?.visible);
+
+		if (!shouldShowCursorSprite && !shouldDrawClickEffect) {
 			this.container.visible = false;
+			this.cursorVisible = false;
+			this.clickRingGraphics.clear();
+			this.customCursorShadowSprite.visible = false;
+			this.customCursorSprite.visible = false;
+			for (const shadowSprite of Object.values(this.cursorShadowSprites)) {
+				shadowSprite.visible = false;
+			}
+			for (const sprite of Object.values(this.cursorSprites)) {
+				sprite.visible = false;
+			}
 			this.lastRenderedPoint = null;
 			this.lastRenderedTimeMs = null;
 			this.swayRotation = 0;
@@ -1089,30 +1386,42 @@ export class PixiCursorOverlay {
 			return;
 		}
 
-		const sameFrameTime =
-			this.lastRenderedTimeMs !== null && Math.abs(this.lastRenderedTimeMs - timeMs) < 0.0001;
-		const hasTimeDiscontinuity =
-			this.lastRenderedTimeMs !== null &&
-			Math.abs(timeMs - this.lastRenderedTimeMs) > CURSOR_TIME_DISCONTINUITY_MS;
-		const shouldFreezeCursorMotion = freeze || hasTimeDiscontinuity;
-
-		if (shouldFreezeCursorMotion) {
-			if (!sameFrameTime || !this.lastRenderedPoint) {
-				this.state.snapTo(projectedTarget.cx, projectedTarget.cy, timeMs);
-			}
-		} else {
-			this.state.update(projectedTarget.cx, projectedTarget.cy, timeMs);
-		}
 		this.container.visible = true;
+		this.cursorVisible = shouldShowCursorSprite;
 
-		const px = viewport.x + this.state.x * viewport.width;
-		const py = viewport.y + this.state.y * viewport.height;
-		const h = this.config.dotRadius * getCursorViewportScale(viewport);
-		const { cursorType, clickBounceProgress } = getCursorVisualState(
-			samples,
-			timeMs,
-			this.config.clickBounceDuration,
-		);
+		let px = viewport.x + projectedTarget.cx * viewport.width;
+		let py = viewport.y + projectedTarget.cy * viewport.height;
+		let shouldFreezeCursorMotion = true;
+
+		if (shouldShowCursorSprite) {
+			const sameFrameTime =
+				this.lastRenderedTimeMs !== null && Math.abs(this.lastRenderedTimeMs - timeMs) < 0.0001;
+			const hasTimeDiscontinuity =
+				this.lastRenderedTimeMs !== null &&
+				Math.abs(timeMs - this.lastRenderedTimeMs) > CURSOR_TIME_DISCONTINUITY_MS;
+			shouldFreezeCursorMotion = freeze || hasTimeDiscontinuity;
+
+			if (shouldFreezeCursorMotion) {
+				if (!sameFrameTime || !this.lastRenderedPoint) {
+					this.state.snapTo(projectedTarget.cx, projectedTarget.cy, timeMs);
+				}
+			} else {
+				this.state.update(projectedTarget.cx, projectedTarget.cy, timeMs);
+			}
+
+			px = viewport.x + this.state.x * viewport.width;
+			py = viewport.y + this.state.y * viewport.height;
+		} else {
+			this.customCursorShadowSprite.visible = false;
+			this.customCursorSprite.visible = false;
+			for (const shadowSprite of Object.values(this.cursorShadowSprites)) {
+				shadowSprite.visible = false;
+			}
+			for (const sprite of Object.values(this.cursorSprites)) {
+				sprite.visible = false;
+			}
+		}
+
 		const bounceScale = Math.max(
 			0.72,
 			1 - Math.sin(clickBounceProgress * Math.PI) * (0.08 * this.config.clickBounce),
@@ -1120,13 +1429,23 @@ export class PixiCursorOverlay {
 		const scaledH = h * getCursorStyleSizeMultiplier(this.config.style);
 		const swayRotation = this.updateCursorSway(px, py, timeMs, shouldFreezeCursorMotion);
 
-		this.clickRingGraphics.clear();
+		drawClickEffectGraphics(
+			this.clickRingGraphics,
+			this.config.clickEffect,
+			clickEffectPx,
+			clickEffectPy,
+			scaledH,
+			clickProgress,
+			this.config.clickEffectScale,
+			this.config.clickEffectOpacity,
+			this.config.clickEffectColor,
+		);
 
 		const spriteKey = (
 			cursorType in this.cursorSprites ? cursorType : "arrow"
 		) as CursorAssetKey;
 
-		if (isStatefulCursorStyle(this.config.style)) {
+		if (shouldShowCursorSprite && isStatefulCursorStyle(this.config.style)) {
 			this.customCursorShadowSprite.visible = false;
 			this.customCursorSprite.visible = false;
 
@@ -1161,7 +1480,7 @@ export class PixiCursorOverlay {
 				sprite.position.set(px, py);
 				sprite.rotation = swayRotation;
 			}
-		} else {
+		} else if (shouldShowCursorSprite) {
 			for (const currentShadowSprite of Object.values(this.cursorShadowSprites)) {
 				currentShadowSprite.visible = false;
 			}
@@ -1198,7 +1517,7 @@ export class PixiCursorOverlay {
 		}
 
 		this.applyCursorMotionBlur(px, py, timeMs, shouldFreezeCursorMotion);
-		this.lastRenderedPoint = { px, py };
+		this.lastRenderedPoint = shouldShowCursorSprite ? { px, py } : null;
 		this.lastRenderedTimeMs = timeMs;
 	}
 
@@ -1263,6 +1582,7 @@ export class PixiCursorOverlay {
 	reset(): void {
 		this.state.reset();
 		this.clickRingGraphics.clear();
+		this.cursorVisible = false;
 		for (const shadowSprite of Object.values(this.cursorShadowSprites)) {
 			shadowSprite.visible = false;
 			shadowSprite.scale.set(1);
@@ -1317,11 +1637,24 @@ export function drawCursorOnCanvas(
 	const px = viewport.x + smoothedState.x * viewport.width;
 	const py = viewport.y + smoothedState.y * viewport.height;
 	const h = config.dotRadius * getCursorViewportScale(viewport);
-	const { cursorType, clickBounceProgress } = getCursorVisualState(
-		samples,
-		timeMs,
-		config.clickBounceDuration,
-	);
+	const { cursorType, clickSample, clickBounceProgress, clickProgress } =
+		getCursorVisualState(
+			samples,
+			timeMs,
+			config.clickBounceDuration,
+			config.clickEffectDurationMs,
+		);
+	const projectedClickSample = clickSample
+		? projectCursorPositionToViewport(clickSample, viewport.sourceCrop)
+		: null;
+	const clickEffectPx =
+		projectedClickSample && projectedClickSample.visible
+			? viewport.x + projectedClickSample.cx * viewport.width
+			: px;
+	const clickEffectPy =
+		projectedClickSample && projectedClickSample.visible
+			? viewport.y + projectedClickSample.cy * viewport.height
+			: py;
 	const spriteKey = (
 		cursorType && loadedCursorAssets[cursorType] ? cursorType : "arrow"
 	) as CursorAssetKey;
@@ -1334,13 +1667,25 @@ export function drawCursorOnCanvas(
 		0.72,
 		1 - Math.sin(clickBounceProgress * Math.PI) * (0.08 * config.clickBounce),
 	);
+	const effectHeight = h * getCursorStyleSizeMultiplier(config.style);
+	const drawHeight = effectHeight * bounceScale;
+	drawClickEffectOnCanvas(
+		ctx,
+		config.clickEffect,
+		clickEffectPx,
+		clickEffectPy,
+		effectHeight,
+		clickProgress,
+		config.clickEffectScale,
+		config.clickEffectOpacity,
+		config.clickEffectColor,
+	);
 
 	ctx.save();
 	if (config.style !== "figma") {
 		ctx.filter = CURSOR_SVG_DROP_SHADOW_FILTER;
 	}
 
-	const drawHeight = h * bounceScale * getCursorStyleSizeMultiplier(config.style);
 	const drawWidth = drawHeight * asset.aspectRatio;
 	const hotspotX = asset.anchorX * drawWidth;
 	const hotspotY = asset.anchorY * drawHeight;

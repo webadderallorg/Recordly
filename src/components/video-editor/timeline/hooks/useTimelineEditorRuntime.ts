@@ -1,13 +1,6 @@
 import type { Span } from "dnd-timeline";
-import { useCallback, useImperativeHandle } from "react";
 import type { ForwardedRef, RefObject } from "react";
-import type { TimelineShortcutBindings } from "../core/timelineTypes";
-import { useTimelineDndBindings } from "./useTimelineDndBindings";
-import { useTimelineAudioActions } from "./actions/useTimelineAudioActions";
-import { useTimelineKeyboardShortcuts } from "./useTimelineKeyboardShortcuts";
-import { useTimelineNormalization } from "./useTimelineNormalization";
-import { useTimelineSelection } from "./useTimelineSelection";
-import { useTimelineZoomActions } from "./actions/useTimelineZoomActions";
+import { useCallback, useImperativeHandle } from "react";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -18,7 +11,14 @@ import type {
 	ZoomFocus,
 	ZoomRegion,
 } from "../../types";
+import type { TimelineShortcutBindings } from "../core/timelineTypes";
 import type { TimelineEditorHandle } from "../TimelineEditor";
+import { useTimelineAudioActions } from "./actions/useTimelineAudioActions";
+import { useTimelineZoomActions } from "./actions/useTimelineZoomActions";
+import { useTimelineDndBindings } from "./useTimelineDndBindings";
+import { useTimelineKeyboardShortcuts } from "./useTimelineKeyboardShortcuts";
+import { useTimelineNormalization } from "./useTimelineNormalization";
+import { useTimelineSelection } from "./useTimelineSelection";
 
 interface UseTimelineEditorRuntimeParams {
 	ref: ForwardedRef<TimelineEditorHandle>;
@@ -113,7 +113,8 @@ export function useTimelineEditorRuntime({
 		setSelectedKeyframeId,
 		selectAllBlocksActive,
 		setSelectAllBlocksActive,
-		hasAnyTimelineBlocks,
+		hasAnyZoomBlocks,
+		activateSelectAllZooms,
 		addKeyframe,
 		deleteSelectedKeyframe,
 		handleKeyframeMove,
@@ -122,7 +123,6 @@ export function useTimelineEditorRuntime({
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
 		clearSelectedBlocks,
-		deleteAllBlocks,
 		handleSelectZoom,
 		handleSelectClip,
 		handleSelectAnnotation,
@@ -162,33 +162,43 @@ export function useTimelineEditorRuntime({
 		onAudioSpanChange,
 	});
 
-	const { hasOverlap, timelineItems, allRegionSpans, getResolvedDropRowId, handleItemSpanChange } =
-		useTimelineDndBindings({
-			zoomRegions,
-			trimRegions,
-			clipRegions,
-			annotationRegions,
-			speedRegions,
-			audioRegions,
-			onZoomSpanChange,
-			onTrimSpanChange,
-			onClipSpanChange,
-			onAnnotationSpanChange,
-			onSpeedSpanChange,
-			onAudioSpanChange,
-		});
+	const {
+		hasOverlap,
+		timelineItems,
+		allRegionSpans,
+		getResolvedDropRowId,
+		handleItemSpanChange,
+	} = useTimelineDndBindings({
+		zoomRegions,
+		trimRegions,
+		clipRegions,
+		annotationRegions,
+		speedRegions,
+		audioRegions,
+		onZoomSpanChange,
+		onTrimSpanChange,
+		onClipSpanChange,
+		onAnnotationSpanChange,
+		onSpeedSpanChange,
+		onAudioSpanChange,
+	});
 
-	const { defaultRegionDurationMs, canPlaceZoomAtMs, addZoomAtMs, handleAddZoom, handleSuggestZooms } =
-		useTimelineZoomActions({
-			timeline: { videoDuration, totalMs, currentTimeMs },
-			regions: { zoom: zoomRegions, clip: clipRegions },
-			cursorTelemetry,
-			options: { disableSuggestedZooms },
-			autoSuggestZoomsTrigger,
-			onAutoSuggestZoomsConsumed,
-			onZoomAdded,
-			onZoomSuggested,
-		});
+	const {
+		defaultRegionDurationMs,
+		canPlaceZoomAtMs,
+		addZoomAtMs,
+		handleAddZoom,
+		handleSuggestZooms,
+	} = useTimelineZoomActions({
+		timeline: { videoDuration, totalMs, currentTimeMs },
+		regions: { zoom: zoomRegions, clip: clipRegions },
+		cursorTelemetry,
+		options: { disableSuggestedZooms },
+		autoSuggestZoomsTrigger,
+		onAutoSuggestZoomsConsumed,
+		onZoomAdded,
+		onZoomSuggested,
+	});
 
 	const handleSplitClip = useCallback(() => {
 		if (!videoDuration || videoDuration === 0 || totalMs === 0 || !onClipSplit) {
@@ -226,7 +236,8 @@ export function useTimelineEditorRuntime({
 		isMac,
 		keyShortcuts,
 		isTimelineFocusedRef,
-		hasAnyTimelineBlocks,
+		hasAnyZoomBlocks,
+		activateSelectAllZooms,
 		annotationCount: annotationRegions.length,
 		selectedKeyframeId,
 		selectedZoomId,
@@ -234,13 +245,10 @@ export function useTimelineEditorRuntime({
 		selectedAnnotationId,
 		selectedAudioId,
 		selectAllBlocksActive,
-		setSelectAllBlocksActive,
-		setSelectedKeyframeId,
 		addKeyframe,
 		handleAddZoom,
 		handleSplitClip,
 		handleAddAnnotation: () => handleAddAnnotation(),
-		deleteAllBlocks,
 		deleteSelectedKeyframe,
 		deleteSelectedZoom,
 		deleteSelectedClip,
@@ -259,7 +267,14 @@ export function useTimelineEditorRuntime({
 			addAudio: handleAddAudio,
 			keyframes,
 		}),
-		[handleAddAnnotation, handleAddAudio, handleAddZoom, handleSuggestZooms, handleSplitClip, keyframes],
+		[
+			handleAddAnnotation,
+			handleAddAudio,
+			handleAddZoom,
+			handleSuggestZooms,
+			handleSplitClip,
+			keyframes,
+		],
 	);
 
 	return {

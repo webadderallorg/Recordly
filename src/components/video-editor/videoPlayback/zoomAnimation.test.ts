@@ -380,15 +380,11 @@ describe("findDominantRegion", () => {
 			{ id: "b", startMs: 3500, endMs: 6000, depth: 3, focus: { cx: 0.8, cy: 0.8 } },
 		];
 
-		// During the connected transition (between a.endMs + 200 and a.endMs + 1200)
+		// During the connected handoff, the next region becomes the spring target.
 		const result = findDominantRegion(regions, 3200, { connectZooms: true });
 		expect(result.strength).toBe(1);
-		expect(result.transition).not.toBeNull();
-
-		// Focus should be blending between the two
-		if (result.region) {
-			expect(result.region.focus.cx).toBeGreaterThan(0.2);
-		}
+		expect(result.transition).toBeNull();
+		expect(result.region?.id).toBe("b");
 	});
 
 	it("keeps the outgoing region active until the connected transition begins", () => {

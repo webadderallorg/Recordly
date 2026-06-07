@@ -235,6 +235,50 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		).toBeNull();
 	});
 
+	it("skips native static-layout when cursor click effects are enabled", () => {
+		const exporter = createExporter({
+			showCursor: true,
+			cursorClickEffect: "echo",
+			cursorTelemetry: [
+				{ timeMs: 0, cx: 0.25, cy: 0.35 },
+				{ timeMs: 1_000, cx: 0.5, cy: 0.55, interactionType: "click" },
+			],
+		});
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{
+					audioMode: "copy-source",
+					audioSourcePath: "recording.mp4",
+				},
+				videoInfo,
+				60,
+			),
+		).toBe("unsupported-cursor-click-effect");
+	});
+
+	it("skips native static-layout when click effects are enabled and cursor is hidden", () => {
+		const exporter = createExporter({
+			showCursor: false,
+			cursorClickEffect: "echo",
+			cursorTelemetry: [
+				{ timeMs: 0, cx: 0.25, cy: 0.35 },
+				{ timeMs: 1_000, cx: 0.5, cy: 0.55, interactionType: "click" },
+			],
+		});
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReason(
+				{
+					audioMode: "copy-source",
+					audioSourcePath: "recording.mp4",
+				},
+				videoInfo,
+				60,
+			),
+		).toBe("unsupported-cursor-click-effect");
+	});
+
 	it("reports frame overlays as the remaining native overlay blocker", () => {
 		const exporter = createExporter({ frame: "macbook" });
 

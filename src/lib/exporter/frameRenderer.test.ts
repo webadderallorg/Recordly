@@ -439,6 +439,38 @@ describe("FrameRenderer webcam export path", () => {
 		expect((outputContext as MockContext).drawImage.mock.calls[0][0]).toBe(bubbleCanvas);
 	});
 
+	it("uses the live webcam frame when sync is correct on an offset webcam timeline", () => {
+		const renderer = createRenderer() as unknown as FrameRendererTestAccess & {
+			config: { webcam: { timeOffsetMs?: number } };
+		};
+		const outputContext = createMockContext();
+		const webcamVideo = new FakeVideoElement({
+			currentTime: 1.75,
+			readyState: 2,
+			videoWidth: 800,
+			videoHeight: 600,
+			duration: 10,
+		});
+
+		renderer.config.webcam = {
+			...renderer.config.webcam,
+			timeOffsetMs: 250,
+		};
+		renderer.webcamVideoElement = webcamVideo;
+		renderer.lastSyncedWebcamTime = 1.75;
+		renderer.currentVideoTime = 2;
+		renderer.animationState.appliedScale = 1;
+
+		renderer.drawWebcamOverlay(outputContext as unknown as CanvasRenderingContext2D, 1280, 720);
+
+		const bubbleCanvas = createdCanvases[0];
+		const cacheCanvas = createdCanvases[1];
+		expect(cacheCanvas).toBeDefined();
+		expect((cacheCanvas.context as MockContext).drawImage.mock.calls[0][0]).toBe(webcamVideo);
+		expect((bubbleCanvas.context as MockContext).drawImage.mock.calls[0][0]).toBe(cacheCanvas);
+		expect((outputContext as MockContext).drawImage.mock.calls[0][0]).toBe(bubbleCanvas);
+	});
+
 	it("reuses the webcam bubble canvas across frames", () => {
 		const renderer = createRenderer() as unknown as FrameRendererTestAccess;
 		const outputContext = createMockContext();

@@ -7,15 +7,15 @@ import {
 } from "./recordingMimeType";
 
 describe("selectRecordingMimeType", () => {
-	it("prefers codecs the editor can play back", () => {
+	it("keeps browser screen captures in WebM/H.264 when supported", () => {
 		const mimeType = selectRecordingMimeType({
 			isTypeSupported: () => true,
 			canPlayType: (type) => {
-				if (type === "video/webm;codecs=vp9") {
+				if (type === "video/webm;codecs=h264") {
 					return "probably";
 				}
 
-				if (type === "video/webm") {
+				if (type === "video/webm;codecs=vp9") {
 					return "maybe";
 				}
 
@@ -23,16 +23,13 @@ describe("selectRecordingMimeType", () => {
 			},
 		});
 
-		expect(mimeType).toBe("video/webm;codecs=vp9");
+		expect(mimeType).toBe("video/webm;codecs=h264");
 	});
 
 	it("skips recorder-only codecs when playback support is missing", () => {
 		const mimeType = selectRecordingMimeType({
 			isTypeSupported: (type) =>
-				[
-					"video/webm;codecs=vp9",
-					"video/webm;codecs=vp8",
-				].includes(type),
+				["video/webm;codecs=vp9", "video/webm;codecs=vp8"].includes(type),
 			canPlayType: (type) => (type === "video/webm;codecs=vp8" ? "probably" : ""),
 		});
 
@@ -42,14 +39,11 @@ describe("selectRecordingMimeType", () => {
 	it("falls back to the first supported codec when playback probing is unavailable", () => {
 		const mimeType = selectRecordingMimeType({
 			isTypeSupported: (type) =>
-				[
-					"video/webm;codecs=av1",
-					"video/webm;codecs=h264",
-				].includes(type),
+				["video/webm;codecs=av1", "video/webm;codecs=h264"].includes(type),
 			canPlayType: () => "",
 		});
 
-		expect(mimeType).toBe("video/webm;codecs=av1");
+		expect(mimeType).toBe("video/webm;codecs=h264");
 	});
 
 	it("returns undefined when no preferred mime type is supported", () => {
@@ -64,9 +58,7 @@ describe("selectRecordingMimeType", () => {
 	it("prefers MP4/H.264 for webcam captures when supported", () => {
 		const mimeType = selectWebcamRecordingMimeType({
 			isTypeSupported: (type) =>
-				["video/mp4;codecs=avc1.42E01E", "video/webm;codecs=vp9"].includes(
-					type,
-				),
+				["video/mp4;codecs=avc1.42E01E", "video/webm;codecs=vp9"].includes(type),
 			canPlayType: () => "probably",
 		});
 
@@ -75,8 +67,7 @@ describe("selectRecordingMimeType", () => {
 
 	it("falls back to WebM webcam capture when MP4 is unavailable", () => {
 		const mimeType = selectWebcamRecordingMimeType({
-			isTypeSupported: (type) =>
-				["video/webm;codecs=vp9", "video/webm"].includes(type),
+			isTypeSupported: (type) => ["video/webm;codecs=vp9", "video/webm"].includes(type),
 			canPlayType: () => "probably",
 		});
 

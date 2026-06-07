@@ -114,8 +114,8 @@
 		"untitled": "未命名"
 	},
 	"nativeCaptureUnavailable": {
-		"title": "沒有出錯，但我們無法算繪動畫游標疊加層。",
-		"description": "你的裝置不支援原生擷取。這可能是由多種我們尚未確認的原因造成。Recordly 仍可繼續使用，但無法啟用游標平滑。",
+		"title": "沒有出錯，但我們無法轉譯動畫游標覆蓋層。",
+		"description": "你的裝置不支援原生擷取。這可能是由我們尚未釐清的多種原因造成的。Recordly 仍可繼續運作，但無法進行游標平滑處理。",
 		"confirm": "好的"
 	},
 	"exportStatus": {

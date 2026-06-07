@@ -1,11 +1,11 @@
 import React, { useMemo } from "react";
+import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import { resolveSourceTrackRoutingPolicy } from "@/lib/exporter/sourceTrackRoutingPolicy";
 import type {
 	AudioRegion,
 	ClipRegion,
 	SpeedRegion,
 } from "../types";
-import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import { getActiveClipIdAtSourceTime, isClipMutedById } from "./clipAudio";
 import { useAudioPreviewSync } from "./useAudioPreviewSync";
 import { useClipAudioSettingsController } from "./useClipAudioSettingsController";
@@ -45,6 +45,7 @@ interface UseVideoEditorAudioParams {
 	duration: number;
 	isPlaying: boolean;
 	previewVolume: number;
+	sourceAudioFallbackRefreshKey?: number;
 	summarizeErrorMessage: (message: string) => string;
 	onSourceFallbackLoadError: (error: unknown) => void;
 }
@@ -64,6 +65,7 @@ export function useVideoEditorAudio({
 	duration,
 	isPlaying,
 	previewVolume,
+	sourceAudioFallbackRefreshKey = 0,
 	summarizeErrorMessage,
 	onSourceFallbackLoadError,
 }: UseVideoEditorAudioParams) {
@@ -75,6 +77,7 @@ export function useVideoEditorAudio({
 	const { sourceAudioFallbackPaths, sourceAudioFallbackStartDelayMsByPath } =
 		useSourceAudioFallback({
 			currentSourcePath: fallbackLookupSourcePath,
+			refreshKey: sourceAudioFallbackRefreshKey,
 			summarizeErrorMessage,
 		});
 
@@ -113,7 +116,7 @@ export function useVideoEditorAudio({
 		setDefaultSourceAudioTrackSettings,
 	});
 
-	useAudioPreviewSync({
+	const { playSourceAudioPreview } = useAudioPreviewSync({
 		audioRegions,
 		previewVolume,
 		isPlaying,
@@ -138,6 +141,7 @@ export function useVideoEditorAudio({
 		sourceAudioTrackMeta,
 		activeSourceAudioTrackSettings,
 		selectedClipSourceAudioTrackSettings,
+		playSourceAudioPreview,
 		getSourceAudioTrackSettingsForClip,
 		onSourceAudioTracksMetaChange,
 		onSelectedClipSourceAudioTrackVolumeChange,

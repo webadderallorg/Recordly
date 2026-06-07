@@ -50,6 +50,8 @@ import {
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
+	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
+	setHudOverlayRecordingActive,
 	showUpdateToastWindow,
 } from "./windows";
 
@@ -336,32 +338,6 @@ function focusOrCreateMainWindow() {
 		mainWindow.moveTop();
 		mainWindow.focus();
 	}
-}
-
-/**
- * On Windows 10, focus changes and native notifications can break
- * {@link BrowserWindow.setIgnoreMouseEvents} forwarding on the transparent HUD
- * overlay, causing it to become permanently click-through.  Call this after any
- * operation that may alter focus or z-order so that hover detection keeps working.
- */
-function reassertHudOverlayMouseState() {
-	if (process.platform !== "win32" || !isHudOverlayMousePassthroughSupported()) {
-		return;
-	}
-
-	const hud = getHudOverlayWindow();
-	if (!hud) {
-		return;
-	}
-
-	// Toggle off then back on so the native WS_EX_TRANSPARENT flag is fully
-	// re-initialised rather than merely re-asserted in a potentially broken state.
-	hud.setIgnoreMouseEvents(false);
-	setTimeout(() => {
-		if (!hud.isDestroyed()) {
-			hud.setIgnoreMouseEvents(true, { forward: true });
-		}
-	}, 50);
 }
 
 function isEditorWindow(window: BrowserWindow) {
@@ -804,7 +780,7 @@ function createEditorWindowWrapper() {
 	const previousWindow = mainWindow;
 	if (previousWindow && !previousWindow.isDestroyed()) {
 		const closingEditorWindow = isEditorWindow(previousWindow);
-		
+
 		if (closingEditorWindow) {
 			closeEditorWindowBypassingUnsavedPrompt(previousWindow);
 		} else {
@@ -987,6 +963,7 @@ app.whenReady().then(async () => {
 		() => sourceSelectorWindow,
 		(recording: boolean, sourceName: string) => {
 			selectedSourceName = sourceName;
+			setHudOverlayRecordingActive(recording);
 			if (!tray) createTray();
 			updateTrayMenu(recording);
 			if (recording) {

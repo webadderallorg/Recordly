@@ -363,19 +363,30 @@ describe("ModernFrameRenderer webcam frame cache", () => {
 		}
 	});
 
-	it("keeps the refresh throttle for default crop regions", () => {
+	it("renders non-video webcam frames directly for default crop regions", () => {
 		const renderer = createRenderer() as any;
+		const liveSource = {};
 
 		renderer.config.webcam.cropRegion = { x: 0, y: 0, width: 1, height: 1 };
-		renderer.webcamFrameCacheCanvas = { width: 1280, height: 720 };
-		renderer.lastWebcamCacheRefreshTime = 10;
-		renderer.currentVideoTime = 10.1;
+		const renderableSource = renderer.resolveRenderableWebcamSource(
+			liveSource,
+			1280,
+			720,
+			true,
+		);
 
-		expect(renderer.shouldRefreshWebcamFrameCache(1280, 720)).toBe(false);
+		expect(renderableSource).toMatchObject({
+			source: liveSource,
+			width: 1280,
+			height: 720,
+			mode: "live",
+		});
+		expect(renderer.webcamFrameCacheCanvas).toBeNull();
 	});
 
-	it("bypasses the refresh throttle for cropped webcam regions", () => {
+	it("uses a cache-backed source for cropped webcam regions", () => {
 		const renderer = createRenderer() as any;
+		const liveSource = {};
 
 		renderer.config.webcam.cropRegion = {
 			x: 0.25,
@@ -383,11 +394,30 @@ describe("ModernFrameRenderer webcam frame cache", () => {
 			width: 0.5,
 			height: 1,
 		};
-		renderer.webcamFrameCacheCanvas = { width: 640, height: 720 };
-		renderer.lastWebcamCacheRefreshTime = 10;
-		renderer.currentVideoTime = 10.1;
+		const renderableSource = renderer.resolveRenderableWebcamSource(
+			liveSource,
+			1280,
+			720,
+			true,
+		);
 
-		expect(renderer.shouldRefreshWebcamFrameCache(1280, 720)).toBe(true);
+		expect(renderableSource?.source).toBe(renderer.webcamFrameCacheCanvas);
+		expect(renderableSource).toMatchObject({
+			width: 640,
+			height: 720,
+			mode: "cached",
+		});
+		expect(renderer.webcamFrameCacheCtx.drawImage).toHaveBeenCalledWith(
+			liveSource,
+			320,
+			0,
+			640,
+			720,
+			0,
+			0,
+			640,
+			720,
+		);
 	});
 });
 
@@ -517,14 +547,14 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 			};
 			renderer.config.webcamUrl = "file:///tmp/webcam.webm";
 
-			await renderer.setupWebcamSource();
-			const syncPromise = renderer.syncWebcamFrame(1);
+				await renderer.setupWebcamSource();
+				const syncPromise = renderer.syncWebcamFrame(1);
 
 			await vi.advanceTimersByTimeAsync(5_001);
-			await expect(syncPromise).resolves.toBeUndefined();
+				await expect(syncPromise).resolves.toBeUndefined();
 
-			expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
-			expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
+				expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
+				expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
 			expect(revoke).toHaveBeenCalled();
 			expect(renderer.webcamForwardFrameSource).toBeNull();
 			expect(renderer.webcamVideoElement).toBeNull();
@@ -720,31 +750,23 @@ describe("ModernFrameRenderer temporal webcam sync", () => {
 			zoom: { scale: 1, focusX: 0.5, focusY: 0.5, progress: 0 },
 		}));
 
-		await renderer.renderTemporalMotionBlurFrame(
-			1_000_000,
-			1_000_000,
-			1_000_000,
-			33_333,
-			{
-				stageSize: { width: 1920, height: 1080 },
-				videoSize: { width: 1920, height: 1080 },
-				baseScale: 1,
-				baseOffset: { x: 0, y: 0 },
-				maskRect: {
-					x: 0,
-					y: 0,
-					width: 1920,
-					height: 1080,
-					sourceCrop: { x: 0, y: 0, width: 1, height: 1 },
-				},
+		await renderer.renderTemporalMotionBlurFrame(1_000_000, 1_000_000, 1_000_000, 33_333, {
+			stageSize: { width: 1920, height: 1080 },
+			videoSize: { width: 1920, height: 1080 },
+			baseScale: 1,
+			baseOffset: { x: 0, y: 0 },
+			maskRect: {
+				x: 0,
+				y: 0,
+				width: 1920,
+				height: 1080,
+				sourceCrop: { x: 0, y: 0, width: 1, height: 1 },
 			},
-		);
+		});
 
 		expect(renderer.renderSceneSample).toHaveBeenCalledTimes(3);
 		expect(renderer.renderSceneSample.mock.calls.map((call: unknown[]) => call[6])).toEqual([
-			1,
-			1,
-			1,
+			1, 1, 1,
 		]);
 		expect(
 			new Set(renderer.renderSceneSample.mock.calls.map((call: unknown[]) => call[0])).size,

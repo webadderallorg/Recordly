@@ -1,6 +1,10 @@
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { calculateOutputDimensions, getGifRepeat } from "./gifExporter";
+import {
+	buildGifFrameRendererConfig,
+	calculateOutputDimensions,
+	getGifRepeat,
+} from "./gifExporter";
 import { GIF_SIZE_PRESETS, GifSizePreset } from "./types";
 
 /**
@@ -246,6 +250,41 @@ describe("Property 3: Size Preset Resolution Mapping", () => {
 			),
 			{ numRuns: 100 },
 		);
+	});
+});
+
+describe("GIF renderer config", () => {
+	it("forwards cursor click-effect settings into the frame renderer config", () => {
+		const config = buildGifFrameRendererConfig(
+			{
+				videoUrl: "file:///recording.mp4",
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				loop: true,
+				sizePreset: "original",
+				wallpaper: "#101010",
+				zoomRegions: [],
+				showShadow: false,
+				shadowIntensity: 0,
+				backgroundBlur: 0,
+				cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+				cursorClickEffect: "echo",
+				cursorClickEffectColor: "#22C55E",
+				cursorClickEffectScale: 1.4,
+				cursorClickEffectOpacity: 0.65,
+				cursorClickEffectDurationMs: 720,
+			} as never,
+			{ width: 1920, height: 1080 },
+		);
+
+		expect(config).toMatchObject({
+			cursorClickEffect: "echo",
+			cursorClickEffectColor: "#22C55E",
+			cursorClickEffectScale: 1.4,
+			cursorClickEffectOpacity: 0.65,
+			cursorClickEffectDurationMs: 720,
+		});
 	});
 });
 

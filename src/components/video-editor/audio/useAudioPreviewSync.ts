@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { buildResolvedAudioPlan } from "@/lib/exporter/audioRoutingEngine";
 import { resolveMediaElementSource } from "@/lib/exporter/localMediaSource";
 import {
@@ -72,7 +72,7 @@ export function useAudioPreviewSync({
   const sourceAudioResumePromiseRef = useRef<Promise<void> | null>(null);
   const lastSourceAudioSyncTimeRef = useRef<number | null>(null);
 
-  const ensureSourceAudioContext = () => {
+  const ensureSourceAudioContext = useCallback(() => {
     if (!sourceAudioContextRef.current) {
       const context = new AudioContext({ latencyHint: "interactive" });
       const masterGain = context.createGain();
@@ -82,9 +82,9 @@ export function useAudioPreviewSync({
       sourceAudioMasterGainRef.current = masterGain;
     }
     return sourceAudioContextRef.current;
-  };
+  }, []);
 
-  const ensureSourceAudioRunning = () => {
+  const ensureSourceAudioRunning = useCallback(() => {
     const context = ensureSourceAudioContext();
     if (context.state === "running") {
       return Promise.resolve();
@@ -98,7 +98,15 @@ export function useAudioPreviewSync({
         });
     }
     return sourceAudioResumePromiseRef.current;
-  };
+  }, [ensureSourceAudioContext]);
+
+  const playSourceAudioPreview = useCallback(() => {
+    void ensureSourceAudioRunning();
+    for (const audio of sourceAudioElementsRef.current.values()) {
+      if (!audio.src) continue;
+      audio.play().catch(() => undefined);
+    }
+  }, [ensureSourceAudioRunning]);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,6 +224,10 @@ export function useAudioPreviewSync({
 
             sourceAudioElementRevokersRef.current.set(audioPath, resolved.revoke);
             latestAudio.src = resolved.src;
+            latestAudio.load();
+            if (isPlaying) {
+              playSourceAudioPreview();
+            }
           } catch (error) {
             if (cancelled) {
               return;
@@ -252,10 +264,12 @@ export function useAudioPreviewSync({
     };
   }, [
     getSourceTrackPreviewGain,
+    isPlaying,
     isCurrentClipMuted,
     onSourceFallbackLoadError,
     resolvedSourceTracks,
     previewVolume,
+    playSourceAudioPreview,
   ]);
 
   useEffect(() => {
@@ -425,6 +439,7 @@ export function useAudioPreviewSync({
     previewVolume,
     resolvedSourceTracks,
     sourceAudioFallbackStartDelayMsByPath,
+    ensureSourceAudioRunning,
   ]);
 
   useEffect(() => {
@@ -438,5 +453,7 @@ export function useAudioPreviewSync({
         }
       }
     });
-  }, [isPlaying, resolvedSourceTracks.length]);
+  }, [isPlaying, resolvedSourceTracks.length, ensureSourceAudioRunning]);
+
+  return { playSourceAudioPreview };
 }

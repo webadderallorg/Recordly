@@ -152,9 +152,11 @@ export function computeCursorFollowFocus(
 
 	const cursorPos = interpolateCursorPosition(cursorSamples, timeMs);
 	if (!cursorPos) {
-		return state.initialized
-			? { cx: state.focusX, cy: state.focusY }
-			: clampedRegionFocus;
+		if (state.initialized) {
+			return { cx: state.focusX, cy: state.focusY };
+		}
+
+		return clampedRegionFocus;
 	}
 
 	// Track when zoom reaches full strength
@@ -170,12 +172,7 @@ export function computeCursorFollowFocus(
 	const timeWentBackwards = state.initialized && timeMs + 0.5 < state.lastTimeMs;
 
 	if (!state.initialized || !state.wasZoomed || timeWentBackwards) {
-		const initialFocus = recenterFocusWhenCursorLeavesSafeZone(
-			clampedRegionFocus,
-			{ cx: cursorPos.cx, cy: cursorPos.cy },
-			zoomScale,
-			config.snapToEdgesRatio,
-		);
+		const initialFocus = clampedRegionFocus;
 		state.lastTimeMs = timeMs;
 		state.initialized = true;
 		state.wasZoomed = true;

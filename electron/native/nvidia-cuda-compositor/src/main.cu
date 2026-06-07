@@ -39,6 +39,8 @@ struct Options {
     std::string sourcePtsPath;
     std::string timelineMapPath;
     std::vector<TimelineSegment> timelineSegments;
+    int width = 0;
+    int height = 0;
     int fps = 30;
     int maxFrames = 0;
     int inputFrames = 0;
@@ -167,6 +169,10 @@ Options parseOptions(int argc, char** argv) {
             options.outputPath = requireValue("--output");
         } else if (arg == "--source-pts") {
             options.sourcePtsPath = requireValue("--source-pts");
+        } else if (arg == "--width") {
+            options.width = parsePositiveInt(requireValue("--width"), "--width");
+        } else if (arg == "--height") {
+            options.height = parsePositiveInt(requireValue("--height"), "--height");
         } else if (arg == "--timeline-map") {
             options.timelineMapPath = requireValue("--timeline-map");
         } else if (arg == "--fps") {
@@ -274,7 +280,7 @@ Options parseOptions(int argc, char** argv) {
             options.zoomSamplesPath = requireValue("--zoom-samples");
         } else if (arg == "--help") {
             std::cout << "Usage: recordly-nvidia-cuda-compositor --input input.annexb.h264 "
-                         "[--output out.h264] [--source-pts source-pts.csv] [--fps 30] "
+                         "[--output out.h264] [--source-pts source-pts.csv] [--width N --height N] [--fps 30] "
                          "[--max-frames N] [--bitrate-mbps N] [--encoding-mode fast|balanced|quality] "
                          "[--post-select] [--callback-encode] [--stream-sync] [--prewarm-ms N] [--chunk-mb N] "
                          "[--content-x N --content-y N --content-width N --content-height N --radius N] "
@@ -295,6 +301,12 @@ Options parseOptions(int argc, char** argv) {
     }
     if (options.inputPath.empty()) {
         fail("--input is required");
+    }
+    if ((options.width > 0) != (options.height > 0)) {
+        fail("--width and --height must be specified together");
+    }
+    if (options.width > 0 && (options.width % 2 != 0 || options.height % 2 != 0)) {
+        fail("--width and --height must be even numbers for NV12 encoding");
     }
     return options;
 }
@@ -318,6 +330,14 @@ bool hasStaticLayout(const Options& options) {
 
 bool hasWebcamOverlay(const Options& options) {
     return (!options.webcamNv12Path.empty() || !options.webcamAnnexbPath.empty()) && options.webcamSize > 0;
+}
+
+int outputWidthForSource(const Options& options, int sourceWidth) {
+    return options.width > 0 ? options.width : sourceWidth;
+}
+
+int outputHeightForSource(const Options& options, int sourceHeight) {
+    return options.height > 0 ? options.height : sourceHeight;
 }
 
 std::vector<double> loadFramePts(const std::string& path) {
@@ -2866,8 +2886,8 @@ void encodeMappedDisplayFrame(
     if (!*state->sink) {
         *state->sink = std::make_unique<NvencSink>(
             state->context,
-            width,
-            height,
+            outputWidthForSource(*state->options, width),
+            outputHeightForSource(*state->options, height),
             state->options->fps,
             state->bitrate,
             state->options->outputPath,
@@ -3106,8 +3126,8 @@ int main(int argc, char** argv) {
                 if (!sink) {
                     sink = std::make_unique<NvencSink>(
                         context,
-                        decoder->GetWidth(),
-                        decoder->GetHeight(),
+                        outputWidthForSource(options, decoder->GetWidth()),
+                        outputHeightForSource(options, decoder->GetHeight()),
                         options.fps,
                         bitrate,
                         options.outputPath,
@@ -3152,8 +3172,8 @@ int main(int argc, char** argv) {
                 if (!sink) {
                     sink = std::make_unique<NvencSink>(
                         context,
-                        decoder->GetWidth(),
-                        decoder->GetHeight(),
+                        outputWidthForSource(options, decoder->GetWidth()),
+                        outputHeightForSource(options, decoder->GetHeight()),
                         options.fps,
                         bitrate,
                         options.outputPath,
@@ -3225,8 +3245,8 @@ int main(int argc, char** argv) {
                   << "\"syncMode\":\"" << (options.streamSync ? "stream" : "device") << "\","
                   << "\"prewarmMs\":" << options.prewarmMs << ","
                   << "\"chunkMb\":" << options.chunkMb << ","
-                  << "\"width\":" << decoder->GetWidth() << ","
-                  << "\"height\":" << decoder->GetHeight() << ","
+                  << "\"width\":" << outputWidthForSource(options, decoder->GetWidth()) << ","
+                  << "\"height\":" << outputHeightForSource(options, decoder->GetHeight()) << ","
                   << "\"fps\":" << options.fps << ","
                   << "\"encodingMode\":\"" << options.encodingMode << "\","
                   << "\"staticLayout\":" << (hasStaticLayout(options) ? "true" : "false") << ","
