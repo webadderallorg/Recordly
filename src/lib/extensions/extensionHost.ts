@@ -156,6 +156,7 @@ export class ExtensionHost {
 	private persistTimeout: ReturnType<typeof setTimeout> | null = null;
 	private iconPathCache = new Map<string, Path2D>();
 	private exportAudioCues: ExtensionExportAudioCue[] | null = null;
+	private exportAudioCanceledCueIds: Set<string> | null = null;
 	private exportAudioCaptureTimeMs: number | null = null;
 	private exportAudioCueCounter = 0;
 
@@ -370,6 +371,7 @@ export class ExtensionHost {
 
 	beginExportAudioCapture(): void {
 		this.exportAudioCues = [];
+		this.exportAudioCanceledCueIds = new Set();
 		this.exportAudioCaptureTimeMs = null;
 		this.exportAudioCueCounter = 0;
 	}
@@ -383,14 +385,20 @@ export class ExtensionHost {
 	}
 
 	finishExportAudioCapture(): ExtensionExportAudioCue[] {
-		const cues = this.exportAudioCues ?? [];
+		const canceledCueIds = this.exportAudioCanceledCueIds;
+		const cues =
+			canceledCueIds && canceledCueIds.size > 0
+				? (this.exportAudioCues ?? []).filter((cue) => !canceledCueIds.has(cue.id))
+				: (this.exportAudioCues ?? []);
 		this.exportAudioCues = null;
+		this.exportAudioCanceledCueIds = null;
 		this.exportAudioCaptureTimeMs = null;
 		return cues;
 	}
 
 	cancelExportAudioCapture(): void {
 		this.exportAudioCues = null;
+		this.exportAudioCanceledCueIds = null;
 		this.exportAudioCaptureTimeMs = null;
 	}
 
@@ -927,9 +935,8 @@ export class ExtensionHost {
 						host.exportAudioCues.push(cue);
 					}
 					return () => {
-						if (!cue || !host.exportAudioCues) return;
-						const index = host.exportAudioCues.indexOf(cue);
-						if (index >= 0) host.exportAudioCues.splice(index, 1);
+						if (!cue || !host.exportAudioCanceledCueIds) return;
+						host.exportAudioCanceledCueIds.add(cue.id);
 					};
 				}
 

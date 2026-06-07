@@ -4363,7 +4363,9 @@ export default function VideoEditor() {
 					);
 					const audioRegionsForExport =
 						extensionAudioRegions.length > 0
-							? [...audioRegions, ...extensionAudioRegions]
+							? [...audioRegions, ...extensionAudioRegions].sort(
+									(a, b) => a.startMs - b.startMs || a.id.localeCompare(b.id),
+								)
 							: audioRegions;
 
 					const exporterConfig = {

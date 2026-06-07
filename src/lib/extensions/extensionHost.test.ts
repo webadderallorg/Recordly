@@ -63,4 +63,28 @@ describe("ExtensionHost export audio capture", () => {
 
 		expect(host.finishExportAudioCapture()).toEqual([]);
 	});
+
+	it("clamps negative export capture times to zero", () => {
+		const host = new ExtensionHost();
+		const api = createAudioApi(host);
+
+		host.beginExportAudioCapture();
+		host.setExportAudioCaptureTime(-10);
+		api.playSound("sounds/click.mp3");
+
+		expect(host.finishExportAudioCapture()[0]).toMatchObject({ timeMs: 0 });
+	});
+
+	it("does not capture sounds for non-finite export capture times", () => {
+		const host = new ExtensionHost();
+		const api = createAudioApi(host);
+
+		host.beginExportAudioCapture();
+		host.setExportAudioCaptureTime(Number.NaN);
+		api.playSound("sounds/click.mp3");
+		host.setExportAudioCaptureTime(Number.POSITIVE_INFINITY);
+		api.playSound("sounds/click.mp3");
+
+		expect(host.finishExportAudioCapture()).toEqual([]);
+	});
 });
