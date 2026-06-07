@@ -71,8 +71,17 @@ describe("ExtensionHost export audio capture", () => {
 		host.beginExportAudioCapture();
 		host.setExportAudioCaptureTime(-10);
 		api.playSound("sounds/click.mp3");
+		const cues = host.finishExportAudioCapture();
 
-		expect(host.finishExportAudioCapture()[0]).toMatchObject({ timeMs: 0 });
+		expect(cues).toEqual([
+			{
+				id: "com.test.click-sound-sound-0",
+				extensionId: "com.test.click-sound",
+				timeMs: 0,
+				audioPath: "file:///tmp/recordly-extension/sounds/click.mp3",
+				volume: 1,
+			},
+		]);
 	});
 
 	it("does not capture sounds for non-finite export capture times", () => {
@@ -86,5 +95,34 @@ describe("ExtensionHost export audio capture", () => {
 		api.playSound("sounds/click.mp3");
 
 		expect(host.finishExportAudioCapture()).toEqual([]);
+	});
+
+	it("defaults non-finite sound volumes before capturing export audio cues", () => {
+		const host = new ExtensionHost();
+		const api = createAudioApi(host);
+
+		host.beginExportAudioCapture();
+		host.setExportAudioCaptureTime(100);
+		api.playSound("sounds/click.mp3", { volume: Number.NaN });
+		host.setExportAudioCaptureTime(200);
+		api.playSound("sounds/click.mp3", { volume: Number.POSITIVE_INFINITY });
+		const cues = host.finishExportAudioCapture();
+
+		expect(cues).toEqual([
+			{
+				id: "com.test.click-sound-sound-0",
+				extensionId: "com.test.click-sound",
+				timeMs: 100,
+				audioPath: "file:///tmp/recordly-extension/sounds/click.mp3",
+				volume: 1,
+			},
+			{
+				id: "com.test.click-sound-sound-1",
+				extensionId: "com.test.click-sound",
+				timeMs: 200,
+				audioPath: "file:///tmp/recordly-extension/sounds/click.mp3",
+				volume: 1,
+			},
+		]);
 	});
 });

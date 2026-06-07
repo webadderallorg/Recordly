@@ -920,7 +920,11 @@ export class ExtensionHost {
 			playSound(relativePath: string, options?: { volume?: number }): () => void {
 				requirePermission("audio", "playSound");
 				const audioPath = resolveExtensionRelativeFileUrl(extensionPath, relativePath);
-				const volume = Math.max(0, Math.min(1, options?.volume ?? 1));
+				const requestedVolume = options?.volume;
+				const volume =
+					typeof requestedVolume === "number" && Number.isFinite(requestedVolume)
+						? Math.max(0, Math.min(1, requestedVolume))
+						: 1;
 
 				if (host.exportAudioCues) {
 					let cue: ExtensionExportAudioCue | null = null;
