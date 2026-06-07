@@ -215,6 +215,8 @@ api.playSound("sounds/click.mp3", { volume: 0.8 });
 api.log("hello", payload);
 ```
 
+Sounds played from cursor interaction handlers are also included in MP4 exports.
+
 ### Read-only Queries
 
 ```js

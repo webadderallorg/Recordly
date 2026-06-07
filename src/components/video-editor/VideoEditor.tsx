@@ -138,6 +138,7 @@ import {
 	saveEditorPresets,
 	serializeEditorPresetSnapshot,
 } from "./editorPreferences";
+import { collectExtensionAudioRegionsForExport } from "./extensionExportAudio";
 import ProjectBrowserDialog, { type ProjectLibraryEntry } from "./ProjectBrowserDialog";
 import { hasUnsavedProjectChanges } from "./projectDirtyState";
 import {
@@ -3347,7 +3348,9 @@ export default function VideoEditor() {
 	const handlePreviewSkipBack = useCallback(() => {
 		const currentMs = timelinePlayheadTime * 1000;
 		const keyframes = timelineRef.current?.keyframes ?? [];
-		const previous = [...keyframes].reverse().find((keyframe) => keyframe.time < currentMs - 50);
+		const previous = [...keyframes]
+			.reverse()
+			.find((keyframe) => keyframe.time < currentMs - 50);
 		handleSeek(previous ? previous.time / 1000 : Math.max(0, timelinePlayheadTime - 5));
 	}, [handleSeek, timelinePlayheadTime]);
 
@@ -3355,9 +3358,7 @@ export default function VideoEditor() {
 		const currentMs = timelinePlayheadTime * 1000;
 		const keyframes = timelineRef.current?.keyframes ?? [];
 		const next = keyframes.find((keyframe) => keyframe.time > currentMs + 50);
-		handleSeek(
-			next ? next.time / 1000 : Math.min(timelineDuration, timelinePlayheadTime + 5),
-		);
+		handleSeek(next ? next.time / 1000 : Math.min(timelineDuration, timelinePlayheadTime + 5));
 	}, [handleSeek, timelineDuration, timelinePlayheadTime]);
 
 	const handleSelectZoom = useCallback((id: string | null) => {
@@ -4356,6 +4357,14 @@ export default function VideoEditor() {
 						selectedClipId !== null
 							? audio.selectedClipSourceAudioTrackSettings
 							: audio.activeSourceAudioTrackSettings;
+					const extensionAudioRegions = collectExtensionAudioRegionsForExport(
+						extensionHost,
+						effectiveCursorTelemetry,
+					);
+					const audioRegionsForExport =
+						extensionAudioRegions.length > 0
+							? [...audioRegions, ...extensionAudioRegions]
+							: audioRegions;
 
 					const exporterConfig = {
 						videoUrl: videoPath,
@@ -4426,7 +4435,7 @@ export default function VideoEditor() {
 						cursorClickBounceDuration,
 						cursorSway,
 						frame,
-						audioRegions,
+						audioRegions: audioRegionsForExport,
 						clipRegions,
 						sourceAudioFallbackPaths: audio.sourceAudioFallbackPaths,
 						sourceAudioFallbackStartDelayMsByPath:
@@ -5148,10 +5157,7 @@ export default function VideoEditor() {
 			volume={
 				audio.shouldMutePreviewVideo || audio.isCurrentClipMuted
 					? 0
-					: Math.max(
-							0,
-							Math.min(1, previewVolume * audio.embeddedSourcePreviewGain),
-						)
+					: Math.max(0, Math.min(1, previewVolume * audio.embeddedSourcePreviewGain))
 			}
 			suspendRendering={suspendRendering}
 		/>
