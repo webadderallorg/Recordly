@@ -13,10 +13,16 @@ type ExtensionAudioCaptureHost = Pick<
 	| "cancelExportAudioCapture"
 >;
 
+/**
+ * Match preview playback by treating every non-move cursor interaction as a click event.
+ */
 export function isExportableCursorInteraction(point: CursorTelemetryPoint): boolean {
 	return Boolean(point.interactionType && point.interactionType !== "move");
 }
 
+/**
+ * Build the extension event payload emitted during export audio cue collection.
+ */
 function createCursorClickEvent(point: CursorTelemetryPoint): ExtensionEvent {
 	return {
 		type: "cursor:click",
@@ -29,6 +35,9 @@ function createCursorClickEvent(point: CursorTelemetryPoint): ExtensionEvent {
 	};
 }
 
+/**
+ * Convert captured extension sound cues into temporary audio regions for the exporter.
+ */
 export function extensionAudioCuesToRegions(
 	cues: ExtensionExportAudioCue[],
 	durationMs = DEFAULT_EXTENSION_SOUND_CUE_DURATION_MS,
@@ -45,6 +54,9 @@ export function extensionAudioCuesToRegions(
 	}));
 }
 
+/**
+ * Emit export-time cursor interaction events and collect resulting extension audio regions.
+ */
 export function collectExtensionAudioRegionsForExport(
 	extensionHost: ExtensionAudioCaptureHost,
 	cursorTelemetry: CursorTelemetryPoint[],

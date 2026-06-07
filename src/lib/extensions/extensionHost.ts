@@ -369,6 +369,9 @@ export class ExtensionHost {
 		}
 	}
 
+	/**
+	 * Start collecting extension-triggered audio cues for an MP4 export pass.
+	 */
 	beginExportAudioCapture(): void {
 		this.exportAudioCues = [];
 		this.exportAudioCanceledCueIds = new Set();
@@ -376,6 +379,9 @@ export class ExtensionHost {
 		this.exportAudioCueCounter = 0;
 	}
 
+	/**
+	 * Set the source-timeline timestamp assigned to subsequently captured sounds.
+	 */
 	setExportAudioCaptureTime(timeMs: number | null): void {
 		if (!this.exportAudioCues) return;
 		this.exportAudioCaptureTimeMs =
@@ -384,6 +390,9 @@ export class ExtensionHost {
 				: null;
 	}
 
+	/**
+	 * Stop capture and return uncanceled extension audio cues.
+	 */
 	finishExportAudioCapture(): ExtensionExportAudioCue[] {
 		const canceledCueIds = this.exportAudioCanceledCueIds;
 		const cues =
@@ -396,6 +405,9 @@ export class ExtensionHost {
 		return cues;
 	}
 
+	/**
+	 * Abort export audio capture and discard all pending cues.
+	 */
 	cancelExportAudioCapture(): void {
 		this.exportAudioCues = null;
 		this.exportAudioCanceledCueIds = null;
