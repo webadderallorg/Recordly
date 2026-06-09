@@ -337,4 +337,83 @@ describe("ModernVideoExporter native fallback routing", () => {
 			}),
 		);
 	});
+
+	it("uses the stable Lightning render backend by default", async () => {
+		const { ModernVideoExporter } = await import("./modernVideoExporter");
+		const { FrameRenderer } = await import("./modernFrameRenderer");
+		mocks.streamingDecoderGetEffectiveDuration.mockReturnValue(1);
+
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#101010",
+			padding: 0,
+			borderRadius: 0,
+			backgroundBlur: 0,
+			shadowIntensity: 0,
+			showShadow: false,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			backendPreference: "webcodecs",
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean; blob?: Blob; error?: string }>;
+			initializeEncoder: () => Promise<unknown>;
+		};
+
+		vi.spyOn(exporter, "initializeEncoder").mockResolvedValue({
+			codec: "avc1.640034",
+			hardwareAcceleration: "prefer-hardware",
+		});
+
+		const result = await exporter.export();
+
+		expect(result.success).toBe(true);
+		expect(FrameRenderer).toHaveBeenCalledWith(
+			expect.objectContaining({
+				preferredRenderBackend: "webgl",
+			}),
+		);
+	});
+
+	it("allows an explicit Lightning render backend override", async () => {
+		const { ModernVideoExporter } = await import("./modernVideoExporter");
+		const { FrameRenderer } = await import("./modernFrameRenderer");
+		mocks.streamingDecoderGetEffectiveDuration.mockReturnValue(1);
+
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#101010",
+			padding: 0,
+			borderRadius: 0,
+			backgroundBlur: 0,
+			shadowIntensity: 0,
+			showShadow: false,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			backendPreference: "webcodecs",
+			preferredRenderBackend: "webgpu",
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean; blob?: Blob; error?: string }>;
+			initializeEncoder: () => Promise<unknown>;
+		};
+
+		vi.spyOn(exporter, "initializeEncoder").mockResolvedValue({
+			codec: "avc1.640034",
+			hardwareAcceleration: "prefer-hardware",
+		});
+
+		const result = await exporter.export();
+
+		expect(result.success).toBe(true);
+		expect(FrameRenderer).toHaveBeenCalledWith(
+			expect.objectContaining({
+				preferredRenderBackend: "webgpu",
+			}),
+		);
+	});
 });
