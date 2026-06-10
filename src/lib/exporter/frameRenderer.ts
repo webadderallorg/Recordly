@@ -76,6 +76,7 @@ import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import { renderAnnotations } from "./annotationRenderer";
 import { renderCaptions } from "./captionRenderer";
 import { ForwardFrameSource } from "./forwardFrameSource";
+import { parseGradientBackground } from "./gradientBackground";
 import { resolveMediaElementSource } from "./localMediaSource";
 import { buildTemporalSamplePlanUs, getTemporalMotionBlurConfig } from "./temporalMotionBlur";
 
@@ -665,43 +666,21 @@ export class FrameRenderer {
 				wallpaper.startsWith("linear-gradient") ||
 				wallpaper.startsWith("radial-gradient")
 			) {
-				const gradientMatch = wallpaper.match(/(linear|radial)-gradient\((.+)\)/);
-				if (gradientMatch) {
-					const [, type, params] = gradientMatch;
-					const parts = params.split(",").map((s) => s.trim());
-
+				const parsedGradient = parseGradientBackground(wallpaper);
+				if (parsedGradient && parsedGradient.stops.length > 0) {
 					let gradient: CanvasGradient;
 
-					if (type === "linear") {
+					if (parsedGradient.type === "linear") {
 						gradient = bgCtx.createLinearGradient(0, 0, 0, this.config.height);
-						parts.forEach((part, index) => {
-							if (part.startsWith("to ") || part.includes("deg")) return;
-
-							const colorMatch = part.match(
-								/^(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|[a-z]+)/,
-							);
-							if (colorMatch) {
-								const color = colorMatch[1];
-								const position = index / (parts.length - 1);
-								gradient.addColorStop(position, color);
-							}
-						});
 					} else {
 						const cx = this.config.width / 2;
 						const cy = this.config.height / 2;
 						const radius = Math.max(this.config.width, this.config.height) / 2;
 						gradient = bgCtx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+					}
 
-						parts.forEach((part, index) => {
-							const colorMatch = part.match(
-								/^(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|[a-z]+)/,
-							);
-							if (colorMatch) {
-								const color = colorMatch[1];
-								const position = index / (parts.length - 1);
-								gradient.addColorStop(position, color);
-							}
-						});
+					for (const stop of parsedGradient.stops) {
+						gradient.addColorStop(stop.position, stop.color);
 					}
 
 					bgCtx.fillStyle = gradient;
