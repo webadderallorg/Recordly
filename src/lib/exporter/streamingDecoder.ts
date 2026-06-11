@@ -2,6 +2,7 @@ import { WebDemuxer } from "web-demuxer";
 import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { createReadableMediaResourceFile, resolveMediaResourceUrl } from "./localMediaSource";
+import { configureVideoDecoder } from "./videoDecoderConfig";
 
 const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
@@ -203,8 +204,6 @@ export class StreamingVideoDecoder {
 		}
 
 		const decoderConfig = await this.demuxer.getDecoderConfig("video");
-		const codec = this.metadata.codec.toLowerCase();
-		const shouldPreferSoftwareDecode = codec.includes("av01") || codec.includes("av1");
 		const effectiveVideoDuration = getEffectiveVideoStreamDurationSeconds({
 			duration: this.metadata.duration,
 			streamDuration: this.metadata.streamDuration,
@@ -282,22 +281,7 @@ export class StreamingVideoDecoder {
 				notifyBackpressureProgress();
 			},
 		});
-		const preferredDecoderConfig = shouldPreferSoftwareDecode
-			? {
-					...decoderConfig,
-					hardwareAcceleration: "prefer-software" as const,
-				}
-			: decoderConfig;
-
-		try {
-			this.decoder.configure(preferredDecoderConfig);
-		} catch (error) {
-			if (!shouldPreferSoftwareDecode) {
-				throw error;
-			}
-			// Fall back to default decoder config if software preference is unsupported.
-			this.decoder.configure(decoderConfig);
-		}
+		await configureVideoDecoder(this.decoder, decoderConfig);
 
 		const getNextFrame = (): Promise<VideoFrame | null> => {
 			if (decodeError) throw decodeError;

@@ -1,10 +1,8 @@
 import { WebDemuxer } from "web-demuxer";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
+import { createReadableMediaResourceFile, resolveMediaResourceUrl } from "./localMediaSource";
 import { getDecodedFrameTimelineOffsetUs } from "./streamingDecoder";
-import {
-	createReadableMediaResourceFile,
-	resolveMediaResourceUrl,
-} from "./localMediaSource";
+import { configureVideoDecoder } from "./videoDecoderConfig";
 
 const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
@@ -108,8 +106,6 @@ export class ForwardFrameSource {
 		}
 
 		const decoderConfig = await this.demuxer.getDecoderConfig("video");
-		const codec = this.metadata.codec.toLowerCase();
-		const shouldPreferSoftwareDecode = codec.includes("av01") || codec.includes("av1");
 
 		this.decoder = new VideoDecoder({
 			output: (frame: VideoFrame) => {
@@ -133,21 +129,7 @@ export class ForwardFrameSource {
 			},
 		});
 
-		const preferredDecoderConfig = shouldPreferSoftwareDecode
-			? {
-					...decoderConfig,
-					hardwareAcceleration: "prefer-software" as const,
-				}
-			: decoderConfig;
-
-		try {
-			this.decoder.configure(preferredDecoderConfig);
-		} catch (error) {
-			if (!shouldPreferSoftwareDecode) {
-				throw error;
-			}
-			this.decoder.configure(decoderConfig);
-		}
+		await configureVideoDecoder(this.decoder, decoderConfig);
 
 		const readEndSec =
 			Math.max(
