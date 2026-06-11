@@ -1,5 +1,6 @@
 export const FALLBACK_H264_CODEC = "avc1.640033";
 
+/** Normalizes demuxer codec aliases into WebCodecs-compatible identifiers. */
 export function normalizeVideoDecoderConfig(config: VideoDecoderConfig): VideoDecoderConfig {
 	let codec = config.codec;
 
@@ -11,15 +12,18 @@ export function normalizeVideoDecoderConfig(config: VideoDecoderConfig): VideoDe
 	return codec === config.codec ? config : { ...config, codec };
 }
 
+/** Returns whether software decoding should be attempted before the default decoder path. */
 function prefersSoftwareDecode(codec: string): boolean {
 	const normalizedCodec = codec.toLowerCase();
 	return (
 		normalizedCodec.includes("av01") ||
 		normalizedCodec.includes("av1") ||
-		normalizedCodec === "vp9"
+		normalizedCodec === "vp9" ||
+		normalizedCodec.startsWith("vp09.")
 	);
 }
 
+/** Builds decoder candidates in preference and fallback order. */
 function decoderConfigCandidates(config: VideoDecoderConfig): VideoDecoderConfig[] {
 	const normalizedConfig = normalizeVideoDecoderConfig(config);
 	const candidates: VideoDecoderConfig[] = [];
@@ -40,6 +44,7 @@ function decoderConfigCandidates(config: VideoDecoderConfig): VideoDecoderConfig
 	return candidates;
 }
 
+/** Configures a decoder with the first supported normalized codec candidate. */
 export async function configureVideoDecoder(
 	decoder: VideoDecoder,
 	config: VideoDecoderConfig,

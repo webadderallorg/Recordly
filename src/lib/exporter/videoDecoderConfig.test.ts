@@ -58,17 +58,20 @@ describe("configureVideoDecoder", () => {
 		);
 	});
 
-	it("tries software decoding first for VP9", async () => {
+	it.each(["vp09", "vp09.00.10.08"])("tries software decoding first for %s", async (codec) => {
 		isConfigSupported.mockResolvedValue({ supported: true });
 
 		await configureVideoDecoder({ configure } as unknown as VideoDecoder, {
-			codec: "vp09",
+			codec,
 			codedWidth: 1920,
 			codedHeight: 1080,
 		});
 
 		expect(configure).toHaveBeenCalledWith(
-			expect.objectContaining({ codec: "vp9", hardwareAcceleration: "prefer-software" }),
+			expect.objectContaining({
+				codec: codec === "vp09" ? "vp9" : codec,
+				hardwareAcceleration: "prefer-software",
+			}),
 		);
 	});
 });
