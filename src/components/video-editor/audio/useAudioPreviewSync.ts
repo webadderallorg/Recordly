@@ -110,6 +110,17 @@ export function shouldPlaySourceAudioElement({
 	return isPlaying && !beforeAudioStart && !atEnd;
 }
 
+export function syncSourceAudioElementPlayback(
+	audio: Pick<HTMLAudioElement, "paused" | "pause" | "play">,
+	shouldPlay: boolean,
+) {
+	if (shouldPlay) {
+		audio.play().catch(() => undefined);
+	} else if (!audio.paused) {
+		audio.pause();
+	}
+}
+
 export function shouldUseDecodedWavSourcePreview(
 	audioPath: string,
 	mediaInfo?: SourceAudioMediaInfo | null,
@@ -183,6 +194,13 @@ function createAudioBufferFromDecodedWav(context: AudioContext, decoded: Decoded
 		buffer.copyToChannel(new Float32Array(decoded.channels[channelIndex]), channelIndex);
 	}
 	return buffer;
+}
+
+export async function decodeSourceWavAudioBuffer(context: AudioContext, arrayBuffer: ArrayBuffer) {
+	const decoded = decodeWavAudioData(arrayBuffer);
+	return decoded
+		? createAudioBufferFromDecodedWav(context, decoded)
+		: context.decodeAudioData(arrayBuffer);
 }
 
 function getDecodedSourcePredictedTime(
@@ -491,10 +509,6 @@ export function useAudioPreviewSync({
 						try {
 							const file = await createReadableMediaResourceFile(audioPath);
 							const arrayBuffer = await file.arrayBuffer();
-							const decoded = decodeWavAudioData(arrayBuffer);
-							if (!decoded) {
-								throw new Error("Failed to decode companion WAV audio");
-							}
 
 							if (
 								!isAudioResourceLoadCurrent(
@@ -507,7 +521,17 @@ export function useAudioPreviewSync({
 							}
 
 							const context = ensureSourceAudioContext();
-							const buffer = createAudioBufferFromDecodedWav(context, decoded);
+							const buffer = await decodeSourceWavAudioBuffer(context, arrayBuffer);
+							if (
+								!isAudioResourceLoadCurrent(
+									decodedSourceAudioResourcesRef.current,
+									audioPath,
+									resourceKey,
+								)
+							) {
+								return;
+							}
+
 							decodedSourceAudioBuffersRef.current.set(audioPath, {
 								resourceKey,
 								buffer,
@@ -870,13 +894,10 @@ export function useAudioPreviewSync({
 				audio.playbackRate = syncedPlaybackRate;
 			}
 
-			if (shouldPlaySourceAudioElement({ isPlaying, beforeAudioStart, atEnd })) {
-				void ensureSourceAudioRunning().then(() => {
-					audio.play().catch(() => undefined);
-				});
-			} else if (!audio.paused) {
-				audio.pause();
-			}
+			syncSourceAudioElementPlayback(
+				audio,
+				shouldPlaySourceAudioElement({ isPlaying, beforeAudioStart, atEnd }),
+			);
 		}
 
 		lastSourceAudioSyncTimeRef.current = currentTime;

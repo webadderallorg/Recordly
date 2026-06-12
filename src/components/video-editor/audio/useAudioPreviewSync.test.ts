@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+	decodeSourceWavAudioBuffer,
 	getDecodedSourcePreviewSyncAction,
 	getSourceAudioElementResourceKey,
 	getSourceAudioPreviewVolume,
 	isAudioResourceLoadCurrent,
 	shouldPlaySourceAudioElement,
 	shouldUseDecodedWavSourcePreview,
+	syncSourceAudioElementPlayback,
 } from "./useAudioPreviewSync";
 
 describe("getSourceAudioElementResourceKey", () => {
@@ -107,6 +109,62 @@ describe("shouldPlaySourceAudioElement", () => {
 				atEnd: true,
 			}),
 		).toBe(false);
+	});
+});
+
+describe("syncSourceAudioElementPlayback", () => {
+	it("starts direct media playback immediately without waiting for Web Audio", () => {
+		let playCalls = 0;
+		const audio = {
+			paused: true,
+			play: () => {
+				playCalls += 1;
+				return Promise.resolve();
+			},
+			pause: () => undefined,
+		};
+
+		syncSourceAudioElementPlayback(audio, true);
+
+		expect(playCalls).toBe(1);
+	});
+
+	it("pauses a direct media element when the current sync pass disallows playback", () => {
+		let pauseCalls = 0;
+		const audio = {
+			paused: false,
+			play: () => Promise.resolve(),
+			pause: () => {
+				pauseCalls += 1;
+			},
+		};
+
+		syncSourceAudioElementPlayback(audio, false);
+
+		expect(pauseCalls).toBe(1);
+	});
+});
+
+describe("decodeSourceWavAudioBuffer", () => {
+	it("falls back to browser decoding when the custom WAV decoder rejects the subformat", async () => {
+		const arrayBuffer = new ArrayBuffer(8);
+		const browserDecodedBuffer = { duration: 1.5 } as AudioBuffer;
+		let fallbackCalls = 0;
+		const context = {
+			createBuffer: () => {
+				throw new Error("custom WAV conversion should not run");
+			},
+			decodeAudioData: async (input: ArrayBuffer) => {
+				fallbackCalls += 1;
+				expect(input).toBe(arrayBuffer);
+				return browserDecodedBuffer;
+			},
+		} as unknown as AudioContext;
+
+		await expect(decodeSourceWavAudioBuffer(context, arrayBuffer)).resolves.toBe(
+			browserDecodedBuffer,
+		);
+		expect(fallbackCalls).toBe(1);
 	});
 });
 
