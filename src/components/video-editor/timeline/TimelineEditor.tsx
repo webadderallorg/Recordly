@@ -2,11 +2,13 @@ import { Plus } from "@phosphor-icons/react";
 import type { Span } from "dnd-timeline";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type {
+	SourceAudioMediaInfo,
 	SourceAudioTrackMeta,
 	SourceAudioTrackSettings,
 } from "@/components/video-editor/audio/audioTypes";
 import { useScopedT } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
+import { resolveSourceTrackRoutingPolicy } from "@/lib/exporter/sourceTrackRoutingPolicy";
 import { fromFileUrl } from "../projectPersistence";
 import type {
 	AnnotationRegion,
@@ -25,10 +27,7 @@ import { calculateTimelineScale } from "./core/time";
 import { useTimelineAudioPeaks } from "./hooks/useTimelineAudioPeaks";
 import { useTimelineEditorRuntime } from "./hooks/useTimelineEditorRuntime";
 import { useTimelineRange } from "./hooks/useTimelineRange";
-import {
-	buildSourceSidecarPathCandidates,
-	buildTimelineSourceAudioTracks,
-} from "./sourceAudioTracks";
+import { buildTimelineSourceAudioTracks } from "./sourceAudioTracks";
 
 export interface TimelineEditorProps {
 	videoDuration: number;
@@ -76,6 +75,8 @@ export interface TimelineEditorProps {
 	sourceAudioTrackSettings?: SourceAudioTrackSettings;
 	getSourceAudioTrackSettingsForClip?: (clipId: string | null) => SourceAudioTrackSettings;
 	onSourceAudioTracksMetaChange?: (tracks: SourceAudioTrackMeta) => void;
+	sourceAudioFallbackPaths?: string[];
+	sourceAudioFallbackMediaInfoByPath?: Record<string, SourceAudioMediaInfo>;
 }
 
 function extractLocalPathFromMediaServerUrl(input: string | null | undefined): string | null {
@@ -150,6 +151,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			sourceAudioTrackSettings = {},
 			getSourceAudioTrackSettingsForClip,
 			onSourceAudioTracksMetaChange,
+			sourceAudioFallbackPaths = [],
+			sourceAudioFallbackMediaInfoByPath = {},
 		},
 		ref,
 	) {
@@ -236,48 +239,78 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				(/^file:\/\//i.test(videoPath) ? fromFileUrl(videoPath) : videoPath)
 			);
 		}, [videoPath]);
-		const micSidecarPaths = useMemo(
-			() => (localSourcePath ? buildSourceSidecarPathCandidates(localSourcePath, "mic") : []),
-			[localSourcePath],
+		const sourceTrackRoutingPolicy = useMemo(
+			() => resolveSourceTrackRoutingPolicy(videoPath, sourceAudioFallbackPaths),
+			[videoPath, sourceAudioFallbackPaths],
 		);
-		const micSidecarFallbackPaths = useMemo(() => micSidecarPaths.slice(1), [micSidecarPaths]);
-		const systemSidecarPaths = useMemo(
-			() =>
-				localSourcePath ? buildSourceSidecarPathCandidates(localSourcePath, "system") : [],
-			[localSourcePath],
-		);
-		const systemSidecarFallbackPaths = useMemo(
-			() => systemSidecarPaths.slice(1),
-			[systemSidecarPaths],
-		);
+		const micSidecarPath = sourceTrackRoutingPolicy.pathsByTrack.mic ?? null;
+		const systemSidecarPath = sourceTrackRoutingPolicy.pathsByTrack.system ?? null;
+		const mixedSidecarPath = sourceTrackRoutingPolicy.pathsByTrack.mixed ?? null;
 		const { peaks: micSidecarPeaks, loading: micSidecarLoading } = useTimelineAudioPeaks(
-			micSidecarPaths[0] ?? null,
-			{ fallbackResources: micSidecarFallbackPaths },
+			micSidecarPath,
+			{
+				cacheKeyVersion: micSidecarPath
+					? sourceAudioFallbackMediaInfoByPath[micSidecarPath]?.durationMs
+					: null,
+			},
 		);
 		const { peaks: systemSidecarPeaks, loading: systemSidecarLoading } = useTimelineAudioPeaks(
-			systemSidecarPaths[0] ?? null,
+			systemSidecarPath,
 			{
-				fallbackResources: systemSidecarFallbackPaths,
+				cacheKeyVersion: systemSidecarPath
+					? sourceAudioFallbackMediaInfoByPath[systemSidecarPath]?.durationMs
+					: null,
+			},
+		);
+		const { peaks: mixedSidecarPeaks, loading: mixedSidecarLoading } = useTimelineAudioPeaks(
+			mixedSidecarPath,
+			{
+				cacheKeyVersion: mixedSidecarPath
+					? sourceAudioFallbackMediaInfoByPath[mixedSidecarPath]?.durationMs
+					: null,
 			},
 		);
 		const sourceAudioTracks = useMemo(
 			() =>
 				buildTimelineSourceAudioTracks({
+					routingPolicy: sourceTrackRoutingPolicy,
+					videoResource: localSourcePath,
 					sourceAudioPeaks,
 					micSidecarPeaks,
 					systemSidecarPeaks,
+					mixedSidecarPeaks,
+					probedDurationMsByPath: Object.fromEntries(
+						Object.entries(sourceAudioFallbackMediaInfoByPath).map(
+							([audioPath, info]) => [audioPath, info.durationMs],
+						),
+					),
 					labels: {
 						system: t("audio.systemLabel", "Source System"),
 						mic: t("audio.micLabel", "Source Mic"),
 						mixed: t("audio.mixedLabel", "Source"),
 					},
 				}),
-			[micSidecarPeaks, sourceAudioPeaks, systemSidecarPeaks, t],
+			[
+				localSourcePath,
+				micSidecarPeaks,
+				mixedSidecarPeaks,
+				sourceAudioPeaks,
+				sourceAudioFallbackMediaInfoByPath,
+				sourceTrackRoutingPolicy,
+				systemSidecarPeaks,
+				t,
+			],
 		);
 
 		const isLoading = useMemo(() => {
 			// If we are still actively trying to load audio peaks (main or sidecars)
-			if (videoPath && (sourceAudioLoading || micSidecarLoading || systemSidecarLoading))
+			if (
+				videoPath &&
+				(sourceAudioLoading ||
+					micSidecarLoading ||
+					systemSidecarLoading ||
+					mixedSidecarLoading)
+			)
 				return true;
 
 			// Robust telemetry loading detection:
@@ -289,6 +322,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			videoPath,
 			videoSourcePath,
 			cursorTelemetrySourcePath,
+			mixedSidecarLoading,
 			sourceAudioLoading,
 			micSidecarLoading,
 			systemSidecarLoading,

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { SourceAudioMediaInfo } from "@/components/video-editor/audio/audioTypes";
 import { SOURCE_AUDIO_FALLBACK_TOAST_ID } from "@/components/video-editor/audio/audioTypes";
 
 interface UseSourceAudioFallbackParams {
@@ -16,6 +17,9 @@ export function useSourceAudioFallback({
   const [sourceAudioFallbackPaths, setSourceAudioFallbackPaths] = useState<string[]>([]);
   const [sourceAudioFallbackStartDelayMsByPath, setSourceAudioFallbackStartDelayMsByPath] =
     useState<Record<string, number>>({});
+  const [sourceAudioFallbackMediaInfoByPath, setSourceAudioFallbackMediaInfoByPath] = useState<
+    Record<string, SourceAudioMediaInfo>
+  >({});
   const previousSourcePathRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -27,6 +31,7 @@ export function useSourceAudioFallback({
     if (sourceChanged) {
       setSourceAudioFallbackPaths([]);
       setSourceAudioFallbackStartDelayMsByPath({});
+      setSourceAudioFallbackMediaInfoByPath({});
     }
 
     if (!currentSourcePath) {
@@ -45,6 +50,7 @@ export function useSourceAudioFallback({
           if (sourceChanged) {
             setSourceAudioFallbackPaths([]);
             setSourceAudioFallbackStartDelayMsByPath({});
+            setSourceAudioFallbackMediaInfoByPath({});
           }
           toast.warning(
             result.error
@@ -58,11 +64,13 @@ export function useSourceAudioFallback({
         toast.dismiss(SOURCE_AUDIO_FALLBACK_TOAST_ID);
         setSourceAudioFallbackPaths(result.paths ?? []);
         setSourceAudioFallbackStartDelayMsByPath(result.startDelayMsByPath ?? {});
+        setSourceAudioFallbackMediaInfoByPath(result.mediaInfoByPath ?? {});
       } catch (error) {
         if (!cancelled) {
           if (sourceChanged) {
             setSourceAudioFallbackPaths([]);
             setSourceAudioFallbackStartDelayMsByPath({});
+            setSourceAudioFallbackMediaInfoByPath({});
           }
           toast.warning(
             `Could not load companion audio sources: ${summarizeErrorMessage(String(error))}`,
@@ -77,5 +85,9 @@ export function useSourceAudioFallback({
     };
   }, [currentSourcePath, refreshKey, summarizeErrorMessage]);
 
-  return { sourceAudioFallbackPaths, sourceAudioFallbackStartDelayMsByPath };
+  return {
+    sourceAudioFallbackPaths,
+    sourceAudioFallbackStartDelayMsByPath,
+    sourceAudioFallbackMediaInfoByPath,
+  };
 }

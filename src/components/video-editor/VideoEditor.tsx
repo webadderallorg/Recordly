@@ -6366,6 +6366,10 @@ export default function VideoEditor() {
 						onSourceAudioTracksMetaChange={(tracks) => {
 							audio.onSourceAudioTracksMetaChange(tracks);
 						}}
+						sourceAudioFallbackPaths={audio.sourceAudioFallbackPaths}
+						sourceAudioFallbackMediaInfoByPath={
+							audio.sourceAudioFallbackMediaInfoByPath
+						}
 					/>
 				</div>
 			</div>

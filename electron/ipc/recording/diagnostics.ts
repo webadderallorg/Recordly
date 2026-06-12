@@ -37,6 +37,13 @@ export type VideoStreamDurationProbe = {
 	frameRate: number | null;
 };
 
+export type CompanionAudioMediaInfo = {
+	durationMs: number;
+	sampleRate: number | null;
+	channels: number | null;
+	hasAudioStream: boolean;
+};
+
 export type RecordingDiagnosticsSnapshot = {
 	backend: NativeCaptureDiagnostics["backend"];
 	phase:
@@ -305,6 +312,72 @@ export async function probeVideoStreamDurationSeconds(filePath: string): Promise
 		: probeMediaDurationSeconds(filePath);
 }
 
+function parseFfprobeAudioStreamInfo(output: string): CompanionAudioMediaInfo {
+	try {
+		const parsed = JSON.parse(output) as {
+			streams?: Array<{
+				duration?: unknown;
+				sample_rate?: unknown;
+				channels?: unknown;
+			}>;
+		};
+		const stream = parsed.streams?.[0];
+		if (!stream) {
+			return {
+				durationMs: 0,
+				sampleRate: null,
+				channels: null,
+				hasAudioStream: false,
+			};
+		}
+
+		return {
+			durationMs: Math.round((parsePositiveNumber(stream.duration) ?? 0) * 1000),
+			sampleRate: parsePositiveInteger(stream.sample_rate),
+			channels: parsePositiveInteger(stream.channels),
+			hasAudioStream: true,
+		};
+	} catch {
+		return {
+			durationMs: 0,
+			sampleRate: null,
+			channels: null,
+			hasAudioStream: false,
+		};
+	}
+}
+
+export async function probeCompanionAudioMediaInfo(
+	filePath: string,
+): Promise<CompanionAudioMediaInfo> {
+	try {
+		const result = await execFileAsync(
+			getFfprobeBinaryPath(),
+			[
+				"-v",
+				"error",
+				"-select_streams",
+				"a:0",
+				"-show_entries",
+				"stream=duration,sample_rate,channels",
+				"-of",
+				"json",
+				filePath,
+			],
+			{ timeout: 30000, maxBuffer: 2 * 1024 * 1024 },
+		);
+		const stdout = typeof result === "string" ? result : result.stdout;
+		return parseFfprobeAudioStreamInfo(stdout);
+	} catch {
+		return {
+			durationMs: 0,
+			sampleRate: null,
+			channels: null,
+			hasAudioStream: false,
+		};
+	}
+}
+
 export function getRecordingDiagnosticsPath(videoPath: string) {
 	return `${videoPath.replace(/\.[^.]+$/u, "")}.recording-diagnostics.json`;
 }
@@ -364,9 +437,11 @@ async function describeAudioFile(filePath: string | null | undefined) {
 	}
 
 	const startDelayMs = await getCompanionAudioStartDelayMs(filePath);
+	const stream = await probeCompanionAudioMediaInfo(filePath);
 	return {
 		...media,
 		startDelayMs,
+		stream,
 	};
 }
 
@@ -503,7 +578,7 @@ export async function getCompanionAudioFallbackPaths(videoPath: string) {
 export async function getCompanionAudioFallbackInfo(videoPath: string) {
 	const companionCandidates = await getUsableCompanionAudioCandidates(videoPath);
 	if (companionCandidates.length === 0) {
-		return { paths: [], startDelayMsByPath: {} };
+		return { paths: [], startDelayMsByPath: {}, mediaInfoByPath: {} };
 	}
 
 	let paths: string[];
@@ -538,7 +613,7 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 				),
 			);
 			if (companionPaths.length === 0) {
-				return { paths: [], startDelayMsByPath: {} };
+				return { paths: [], startDelayMsByPath: {}, mediaInfoByPath: {} };
 			}
 
 			paths = [videoPath, ...companionPaths];
@@ -559,11 +634,25 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 			return [audioPath, startDelayMs] as const;
 		}),
 	);
+	const mediaInfoEntries = await Promise.all(
+		paths.map(async (audioPath) => {
+			if (audioPath === videoPath) {
+				return null;
+			}
+
+			return [audioPath, await probeCompanionAudioMediaInfo(audioPath)] as const;
+		}),
+	);
 
 	return {
 		paths,
 		startDelayMsByPath: Object.fromEntries(
 			metadataEntries.filter((entry): entry is readonly [string, number] => entry !== null),
+		),
+		mediaInfoByPath: Object.fromEntries(
+			mediaInfoEntries.filter(
+				(entry): entry is readonly [string, CompanionAudioMediaInfo] => entry !== null,
+			),
 		),
 	};
 }

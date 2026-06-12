@@ -563,6 +563,15 @@ interface Window {
 			success: boolean;
 			paths: string[];
 			startDelayMsByPath?: Record<string, number>;
+			mediaInfoByPath?: Record<
+				string,
+				{
+					durationMs: number;
+					sampleRate: number | null;
+					channels: number | null;
+					hasAudioStream: boolean;
+				}
+			>;
 			error?: string;
 		}>;
 		setRecordingState: (recording: boolean) => Promise<void>;

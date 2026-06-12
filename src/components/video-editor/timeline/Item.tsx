@@ -32,8 +32,10 @@ interface ItemProps {
 	speedValue?: number;
 	waveformPeaks?: AudioPeaksData | null;
 	waveformSegmentSpan?: Span;
+	waveformDurationMs?: number | null;
 	waveformGain?: number;
 	waveformNormalize?: boolean;
+	waveformCoverage?: "full" | "partial" | "none";
 	muted?: boolean;
 	variant?: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio";
 	isLoading?: boolean;
@@ -73,8 +75,10 @@ export default function Item({
 	speedValue,
 	waveformPeaks = null,
 	waveformSegmentSpan,
+	waveformDurationMs = null,
 	waveformGain = 1,
 	waveformNormalize = false,
+	waveformCoverage = "none",
 	muted = false,
 	variant = "zoom",
 	isLoading = false,
@@ -200,11 +204,22 @@ export default function Item({
 					{showAudioWaveform && waveformPeaks && (
 						<AudioWaveform
 							peaks={waveformPeaks}
+							audioDurationMs={waveformDurationMs}
 							segmentStartMs={waveformSegmentSpan?.start ?? span.start}
 							segmentEndMs={waveformSegmentSpan?.end ?? span.end}
 							gain={waveformGain}
 							normalize={waveformNormalize}
 							className="absolute inset-0 w-full h-full pointer-events-none opacity-45"
+						/>
+					)}
+					{isAudio && waveformCoverage === "partial" && (
+						<div
+							className="absolute inset-y-0 right-0 z-[5] pointer-events-none"
+							style={{
+								width: "18%",
+								background:
+									"repeating-linear-gradient(135deg, rgba(255,255,255,0.08) 0 6px, rgba(255,255,255,0.02) 6px 12px)",
+							}}
 						/>
 					)}
 					{/* Muted overlay for source audio track items */}

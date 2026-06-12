@@ -4,6 +4,7 @@ import type { AudioPeaksData } from "../../core/timelineTypes";
 
 interface AudioWaveformProps {
 	peaks: AudioPeaksData;
+	audioDurationMs?: number | null;
 	segmentStartMs?: number;
 	segmentEndMs?: number;
 	gain?: number;
@@ -18,6 +19,7 @@ interface AudioWaveformProps {
  */
 function AudioWaveformComponent({
 	peaks,
+	audioDurationMs,
 	segmentStartMs,
 	segmentEndMs,
 	gain = 1,
@@ -48,6 +50,7 @@ function AudioWaveformComponent({
 		const canvas = canvasRef.current;
 		if (!canvas) return;
 		let rafId = 0;
+		void resizeKey;
 
 		const draw = () => {
 			const now = performance.now();
@@ -72,35 +75,45 @@ function AudioWaveformComponent({
 
 			ctx.clearRect(0, 0, width, height);
 
-			const { peaks: peakData, durationMs } = peaks;
-			if (durationMs <= 0 || peakData.length === 0) return;
+			const { peaks: peakData, durationMs: peaksDurationMs } = peaks;
+			const effectiveDurationMs =
+				Number.isFinite(audioDurationMs) && (audioDurationMs ?? 0) > 0
+					? Math.max(0, audioDurationMs ?? 0)
+					: peaksDurationMs;
+			if (effectiveDurationMs <= 0 || peakData.length === 0) return;
 
 			// Use raw values for smooth zooming/panning (no snapping)
 			const visibleStartMs = segmentStartMs ?? range.start;
 			const visibleEndMs = segmentEndMs ?? range.end;
 			const visibleDurationMs = visibleEndMs - visibleStartMs;
-			
+
 			if (visibleDurationMs <= 0) return;
 
 			const midY = height / 2;
 			ctx.beginPath();
-			
+
 			for (let px = 0; px < width; px++) {
 				const t = visibleStartMs + (px / width) * visibleDurationMs;
-				
-				// If the timeline time is beyond the actual audio duration, we draw nothing (flat line)
-				if (t < 0 || t > durationMs) continue;
 
-				const exactIndex = (t / durationMs) * (peakData.length - 1);
+				// If the timeline time is beyond the actual audio duration, we draw nothing (flat line)
+				if (t < 0 || t > effectiveDurationMs) continue;
+				if (t > peaksDurationMs) {
+					const guideHeight = midY * 0.18;
+					ctx.moveTo(px, midY - guideHeight);
+					ctx.lineTo(px, midY + guideHeight);
+					continue;
+				}
+
+				const exactIndex = (t / peaksDurationMs) * (peakData.length - 1);
 				const leftIndex = Math.floor(exactIndex);
 				const rightIndex = Math.min(peakData.length - 1, leftIndex + 1);
 				const mix = exactIndex - leftIndex;
-				
+
 				let amplitude = peakData[leftIndex] * (1 - mix) + peakData[rightIndex] * mix;
-				
+
 				if (normalize) amplitude = Math.sqrt(Math.max(0, amplitude));
 				amplitude = Math.max(0, Math.min(1, amplitude * gain));
-				
+
 				const barHeight = amplitude * midY * 0.85;
 
 				ctx.moveTo(px, midY - barHeight);
@@ -113,7 +126,17 @@ function AudioWaveformComponent({
 		};
 		rafId = requestAnimationFrame(draw);
 		return () => cancelAnimationFrame(rafId);
-	}, [gain, normalize, peaks, range.start, range.end, resizeKey, segmentStartMs, segmentEndMs]);
+	}, [
+		audioDurationMs,
+		gain,
+		normalize,
+		peaks,
+		range.start,
+		range.end,
+		resizeKey,
+		segmentStartMs,
+		segmentEndMs,
+	]);
 
 	return (
 		<canvas

@@ -74,12 +74,15 @@ export function useVideoEditorAudio({
 		[currentSourcePath],
 	);
 
-	const { sourceAudioFallbackPaths, sourceAudioFallbackStartDelayMsByPath } =
-		useSourceAudioFallback({
-			currentSourcePath: fallbackLookupSourcePath,
-			refreshKey: sourceAudioFallbackRefreshKey,
-			summarizeErrorMessage,
-		});
+	const {
+		sourceAudioFallbackPaths,
+		sourceAudioFallbackStartDelayMsByPath,
+		sourceAudioFallbackMediaInfoByPath,
+	} = useSourceAudioFallback({
+		currentSourcePath: fallbackLookupSourcePath,
+		refreshKey: sourceAudioFallbackRefreshKey,
+		summarizeErrorMessage,
+	});
 
 	const sourceTrackRoutingPolicy = useMemo(
 		() => resolveSourceTrackRoutingPolicy(currentSourcePath, sourceAudioFallbackPaths),
@@ -126,6 +129,7 @@ export function useVideoEditorAudio({
 		effectiveSpeedRegions,
 		previewSourceAudioFallbackPaths,
 		sourceAudioFallbackStartDelayMsByPath,
+		sourceAudioFallbackMediaInfoByPath,
 		isCurrentClipMuted,
 		getSourceTrackPreviewGain,
 		onSourceFallbackLoadError,
@@ -134,6 +138,7 @@ export function useVideoEditorAudio({
 	return {
 		sourceAudioFallbackPaths,
 		sourceAudioFallbackStartDelayMsByPath,
+		sourceAudioFallbackMediaInfoByPath,
 		previewSourceAudioFallbackPaths,
 		shouldMutePreviewVideo,
 		activeClipIdAtCurrentTime,
