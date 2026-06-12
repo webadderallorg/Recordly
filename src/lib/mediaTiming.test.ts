@@ -100,7 +100,7 @@ describe("resolveCompanionAudioPreviewTiming", () => {
 			audioDurationSeconds: 72,
 			recordedStartDelayMs: 143,
 			probedAudioDurationSeconds: 147.36,
-		} as never);
+		});
 
 		expect(result.targetTime).toBeCloseTo(146.657, 2);
 		expect(result.atEnd).toBe(false);

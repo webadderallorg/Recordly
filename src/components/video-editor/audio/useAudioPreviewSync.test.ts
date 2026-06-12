@@ -2,23 +2,27 @@ import { describe, expect, it } from "vitest";
 import {
 	getDecodedSourcePreviewSyncAction,
 	getSourceAudioElementResourceKey,
+	getSourceAudioPreviewVolume,
+	isAudioResourceLoadCurrent,
+	shouldPlaySourceAudioElement,
 	shouldUseDecodedWavSourcePreview,
 } from "./useAudioPreviewSync";
 
 describe("getSourceAudioElementResourceKey", () => {
 	it("changes when probed companion audio media info arrives after an initial partial load", () => {
 		const audioPath = "C:\\Recordly\\recording.mic.wav";
-
-		const withoutProbe = getSourceAudioElementResourceKey(audioPath, undefined);
-		const withProbe = getSourceAudioElementResourceKey(audioPath, {
+		const mediaInfo = {
 			durationMs: 122_100,
 			sampleRate: 48_000,
 			channels: 1,
 			hasAudioStream: true,
-		});
+		};
+
+		const withoutProbe = getSourceAudioElementResourceKey(audioPath, undefined);
+		const withProbe = getSourceAudioElementResourceKey(audioPath, mediaInfo);
 
 		expect(withoutProbe).not.toBe(withProbe);
-		expect(withProbe).toContain("122100");
+		expect(getSourceAudioElementResourceKey(audioPath, mediaInfo)).toBe(withProbe);
 	});
 
 	it("changes when the probed duration changes for the same sidecar path", () => {
@@ -72,6 +76,35 @@ describe("shouldUseDecodedWavSourcePreview", () => {
 				sampleRate: null,
 				channels: null,
 				hasAudioStream: false,
+			}),
+		).toBe(false);
+	});
+});
+
+describe("shouldPlaySourceAudioElement", () => {
+	it("plays only while the companion track is inside its active range", () => {
+		expect(
+			shouldPlaySourceAudioElement({
+				isPlaying: true,
+				beforeAudioStart: false,
+				atEnd: false,
+			}),
+		).toBe(true);
+	});
+
+	it("does not start a delayed companion track early or restart it after the end", () => {
+		expect(
+			shouldPlaySourceAudioElement({
+				isPlaying: true,
+				beforeAudioStart: true,
+				atEnd: false,
+			}),
+		).toBe(false);
+		expect(
+			shouldPlaySourceAudioElement({
+				isPlaying: true,
+				beforeAudioStart: false,
+				atEnd: true,
 			}),
 		).toBe(false);
 	});
@@ -148,15 +181,7 @@ describe("getDecodedSourcePreviewSyncAction", () => {
 });
 
 describe("async source audio resource loading", () => {
-	it("keeps an in-flight load valid across playback rerenders but rejects stale versions", async () => {
-		const previewModule = (await import("./useAudioPreviewSync")) as Record<string, unknown>;
-		expect(typeof previewModule.isAudioResourceLoadCurrent).toBe("function");
-
-		const isAudioResourceLoadCurrent = previewModule.isAudioResourceLoadCurrent as (
-			resources: ReadonlyMap<string, string>,
-			audioPath: string,
-			expectedResourceKey: string,
-		) => boolean;
+	it("keeps an in-flight load valid across playback rerenders but rejects stale versions", () => {
 		const audioPath = "C:\\Recordly\\recording.mic.wav";
 		const resources = new Map([[audioPath, `${audioPath}::v1`]]);
 
@@ -166,16 +191,7 @@ describe("async source audio resource loading", () => {
 		expect(isAudioResourceLoadCurrent(resources, audioPath, `${audioPath}::v1`)).toBe(false);
 	});
 
-	it("applies the current preview volume as soon as a media element is created", async () => {
-		const previewModule = (await import("./useAudioPreviewSync")) as Record<string, unknown>;
-		expect(typeof previewModule.getSourceAudioPreviewVolume).toBe("function");
-
-		const getSourceAudioPreviewVolume = previewModule.getSourceAudioPreviewVolume as (
-			trackGain: number,
-			previewVolume: number,
-			muted: boolean,
-		) => number;
-
+	it("applies the current preview volume as soon as a media element is created", () => {
 		expect(getSourceAudioPreviewVolume(0.5, 0.8, false)).toBe(0.4);
 		expect(getSourceAudioPreviewVolume(0.5, 0.8, true)).toBe(0);
 	});

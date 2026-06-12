@@ -78,7 +78,7 @@ function AudioWaveformComponent({
 			const { peaks: peakData, durationMs: peaksDurationMs } = peaks;
 			const effectiveDurationMs =
 				Number.isFinite(audioDurationMs) && (audioDurationMs ?? 0) > 0
-					? Math.max(0, audioDurationMs ?? 0)
+					? (audioDurationMs ?? 0)
 					: peaksDurationMs;
 			if (effectiveDurationMs <= 0 || peakData.length === 0) return;
 

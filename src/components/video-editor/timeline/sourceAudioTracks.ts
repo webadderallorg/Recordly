@@ -50,8 +50,9 @@ export function buildTimelineSourceAudioTracks({
 		probedDurationMs: number | null,
 	): "full" | "partial" | "none" => {
 		if (!peaks) return "none";
-		if (!Number.isFinite(probedDurationMs) || probedDurationMs === null) return "full";
-		return peaks.durationMs + 250 < probedDurationMs ? "partial" : "full";
+		const durationMs = probedDurationMs ?? Number.NaN;
+		if (!Number.isFinite(durationMs)) return "full";
+		return peaks.durationMs + 250 < durationMs ? "partial" : "full";
 	};
 	const systemResourcePath = routingPolicy.pathsByTrack.system ?? null;
 	const micResourcePath = routingPolicy.pathsByTrack.mic ?? null;

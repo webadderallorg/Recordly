@@ -98,6 +98,18 @@ export function getSourceAudioPreviewVolume(
 	return Math.max(0, Math.min(1, trackGain * previewVolume));
 }
 
+export function shouldPlaySourceAudioElement({
+	isPlaying,
+	beforeAudioStart,
+	atEnd,
+}: {
+	isPlaying: boolean;
+	beforeAudioStart: boolean;
+	atEnd: boolean;
+}) {
+	return isPlaying && !beforeAudioStart && !atEnd;
+}
+
 export function shouldUseDecodedWavSourcePreview(
 	audioPath: string,
 	mediaInfo?: SourceAudioMediaInfo | null,
@@ -223,6 +235,10 @@ export function useAudioPreviewSync({
 		(value: number) => value + 1,
 		0,
 	);
+	const [sourceAudioElementLoadVersion, bumpSourceAudioElementLoadVersion] = useReducer(
+		(value: number) => value + 1,
+		0,
+	);
 
 	const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 	const audioElementRevokersRef = useRef<Map<string, () => void>>(new Map());
@@ -244,12 +260,10 @@ export function useAudioPreviewSync({
 	);
 	const decodedSourceAudioGainNodesRef = useRef<Map<string, GainNode>>(new Map());
 	const lastSourceAudioSyncTimeRef = useRef<number | null>(null);
-	const isPlayingRef = useRef(isPlaying);
 	const onSourceFallbackLoadErrorRef = useRef(onSourceFallbackLoadError);
 	const getSourceTrackPreviewGainRef = useRef(getSourceTrackPreviewGain);
 	const previewVolumeRef = useRef(previewVolume);
 	const isCurrentClipMutedRef = useRef(isCurrentClipMuted);
-	isPlayingRef.current = isPlaying;
 	onSourceFallbackLoadErrorRef.current = onSourceFallbackLoadError;
 	getSourceTrackPreviewGainRef.current = getSourceTrackPreviewGain;
 	previewVolumeRef.current = previewVolume;
@@ -314,10 +328,6 @@ export function useAudioPreviewSync({
 
 	const playSourceAudioPreview = useCallback(() => {
 		void ensureSourceAudioRunning();
-		for (const audio of sourceAudioElementsRef.current.values()) {
-			if (!audio.src) continue;
-			audio.play().catch(() => undefined);
-		}
 	}, [ensureSourceAudioRunning]);
 
 	const startDecodedSourceAudioPreview = useCallback(
@@ -574,9 +584,7 @@ export function useAudioPreviewSync({
 							isCurrentClipMutedRef.current,
 						);
 						latestAudio.load();
-						if (isPlayingRef.current) {
-							playSourceAudioPreview();
-						}
+						bumpSourceAudioElementLoadVersion();
 					} catch (error) {
 						const latestAudio = existing.get(audioPath);
 						if (
@@ -606,7 +614,6 @@ export function useAudioPreviewSync({
 		}
 	}, [
 		resolvedSourceTracks,
-		playSourceAudioPreview,
 		disconnectDecodedSourceAudioPreview,
 		ensureSourceAudioContext,
 		stopDecodedSourceAudioPreview,
@@ -733,6 +740,9 @@ export function useAudioPreviewSync({
 	}, [effectiveSpeedRegions, isPlaying, resolvedUserTracks, timelineTime]);
 
 	useEffect(() => {
+		// Re-sync when an async media element resource finishes loading.
+		void sourceAudioElementLoadVersion;
+
 		// Re-sync when an async decoded WAV buffer finishes loading.
 		void decodedSourceAudioLoadVersion;
 
@@ -860,7 +870,7 @@ export function useAudioPreviewSync({
 				audio.playbackRate = syncedPlaybackRate;
 			}
 
-			if (isPlaying && !beforeAudioStart && !atEnd) {
+			if (shouldPlaySourceAudioElement({ isPlaying, beforeAudioStart, atEnd })) {
 				void ensureSourceAudioRunning().then(() => {
 					audio.play().catch(() => undefined);
 				});
@@ -880,25 +890,13 @@ export function useAudioPreviewSync({
 		isPlaying,
 		previewVolume,
 		resolvedSourceTracks,
+		sourceAudioElementLoadVersion,
 		sourceAudioFallbackStartDelayMsByPath,
 		sourceAudioFallbackMediaInfoByPath,
 		ensureSourceAudioRunning,
 		startDecodedSourceAudioPreview,
 		stopDecodedSourceAudioPreview,
 	]);
-
-	useEffect(() => {
-		if (!isPlaying || resolvedSourceTracks.length === 0) {
-			return;
-		}
-		void ensureSourceAudioRunning().then(() => {
-			for (const audio of sourceAudioElementsRef.current.values()) {
-				if (audio.paused) {
-					audio.play().catch(() => undefined);
-				}
-			}
-		});
-	}, [isPlaying, resolvedSourceTracks.length, ensureSourceAudioRunning]);
 
 	return { playSourceAudioPreview };
 }

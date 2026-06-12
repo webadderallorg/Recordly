@@ -82,6 +82,13 @@ export function decodeWavAudioData(arrayBuffer: ArrayBuffer): DecodedWavAudio | 
 		return null;
 	}
 
+	if (audioFormat === 3 && bitsPerSample !== 32) {
+		return null;
+	}
+	if (audioFormat === 1 && ![8, 16, 24, 32].includes(bitsPerSample)) {
+		return null;
+	}
+
 	const bytesPerSample = bitsPerSample / 8;
 	if (!Number.isInteger(bytesPerSample) || bytesPerSample <= 0) {
 		return null;
@@ -104,7 +111,7 @@ export function decodeWavAudioData(arrayBuffer: ArrayBuffer): DecodedWavAudio | 
 		for (let channelIndex = 0; channelIndex < channelCount; channelIndex++) {
 			const sampleOffset = frameOffset + channelIndex * bytesPerSample;
 			channels[channelIndex][frameIndex] =
-				audioFormat === 3 && bitsPerSample === 32
+				audioFormat === 3
 					? view.getFloat32(sampleOffset, true)
 					: decodePcmSample(view, sampleOffset, bitsPerSample);
 		}

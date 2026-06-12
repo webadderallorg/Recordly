@@ -54,6 +54,38 @@ function createPcm16Wav({ sampleRate, channels }: { sampleRate: number; channels
 	return buffer;
 }
 
+function createSingleFrameWav({
+	audioFormat,
+	bitsPerSample,
+}: {
+	audioFormat: number;
+	bitsPerSample: number;
+}) {
+	const channelCount = 1;
+	const sampleRate = 48_000;
+	const bytesPerSample = bitsPerSample / 8;
+	const dataSize = channelCount * bytesPerSample;
+	const totalSize = 44 + dataSize;
+	const buffer = new ArrayBuffer(totalSize);
+	const view = new DataView(buffer);
+
+	writeAscii(view, 0, "RIFF");
+	view.setUint32(4, totalSize - 8, true);
+	writeAscii(view, 8, "WAVE");
+	writeAscii(view, 12, "fmt ");
+	view.setUint32(16, 16, true);
+	view.setUint16(20, audioFormat, true);
+	view.setUint16(22, channelCount, true);
+	view.setUint32(24, sampleRate, true);
+	view.setUint32(28, sampleRate * dataSize, true);
+	view.setUint16(32, dataSize, true);
+	view.setUint16(34, bitsPerSample, true);
+	writeAscii(view, 36, "data");
+	view.setUint32(40, dataSize, true);
+
+	return buffer;
+}
+
 describe("decodeWavAudioData", () => {
 	it("decodes PCM wav channels, sample rate, and duration without using media elements", () => {
 		const wav = createPcm16Wav({
@@ -81,5 +113,17 @@ describe("decodeWavAudioData", () => {
 			expect.closeTo(0.25, 4),
 			expect.closeTo(-0.25, 4),
 		]);
+	});
+
+	it("rejects unsupported 64-bit float WAV data instead of decoding silence", () => {
+		expect(
+			decodeWavAudioData(createSingleFrameWav({ audioFormat: 3, bitsPerSample: 64 })),
+		).toBe(null);
+	});
+
+	it("rejects unsupported 64-bit PCM WAV data instead of decoding silence", () => {
+		expect(
+			decodeWavAudioData(createSingleFrameWav({ audioFormat: 1, bitsPerSample: 64 })),
+		).toBe(null);
 	});
 });
