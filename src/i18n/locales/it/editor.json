@@ -44,7 +44,6 @@
 		"solidColor": "Colore pieno (Censura)",
 		"borderRadius": "Raggio bordo"
 	},
-
 	"fontStyles": {
 		"classic": "Classico",
 		"editor": "Editor",
@@ -132,11 +131,14 @@
 	},
 	"toolbar": {
 		"addLayer": "Aggiungi livello",
-		"splitClip": "Dividi clip (C)"
+		"splitClip": "Dividi clip (B)",
+		"magnetOn": "Calamita attiva: eliminare clip chiude lo spazio",
+		"magnetOff": "Calamita disattiva: gli spazi rimangono neri"
 	},
 	"timeline": {
 		"expand": "Espandi timeline",
-		"collapse": "Comprimi timeline"
+		"collapse": "Comprimi timeline",
+		"magnetClipEdit": "Disattiva la calamita per regolare i bordi della clip"
 	},
 	"openRecordingsFolder": "Apri cartella registrazioni"
 }

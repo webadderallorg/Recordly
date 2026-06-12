@@ -44,7 +44,6 @@
 		"solidColor": "Cor sólida (censura)",
 		"borderRadius": "Raio da borda"
 	},
-
 	"fontStyles": {
 		"classic": "Classic",
 		"editor": "Editor",
@@ -132,11 +131,14 @@
 	},
 	"toolbar": {
 		"addLayer": "Adicionar camada",
-		"splitClip": "Dividir clipe (C)"
+		"splitClip": "Dividir clipe (B)",
+		"magnetOn": "Magneto ativo: excluir clipes fecha o espaço",
+		"magnetOff": "Magneto desativo: os espaços ficam em preto"
 	},
 	"timeline": {
 		"expand": "Expandir linha do tempo",
-		"collapse": "Recolher linha do tempo"
+		"collapse": "Recolher linha do tempo",
+		"magnetClipEdit": "Desative o magneto para ajustar as bordas do clipe"
 	},
 	"openRecordingsFolder": "Abrir pasta de gravações"
 }

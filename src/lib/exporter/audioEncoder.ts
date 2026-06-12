@@ -11,6 +11,7 @@ import { buildResolvedAudioPlan, SourceTrackId } from "@/lib/exporter/audioRouti
 import { estimateCompanionAudioStartDelaySeconds } from "@/lib/mediaTiming";
 import { resolveMediaElementSource } from "./localMediaSource";
 import type { VideoMuxer } from "./muxer";
+import { buildOutputTimeline } from "./outputTimeline";
 import { resolveSourceTrackRoutingPolicy } from "./sourceTrackRoutingPolicy";
 
 const AUDIO_BITRATE = 128_000;
@@ -118,6 +119,8 @@ interface TimelineSlice {
 	sourceStartMs: number;
 	sourceEndMs: number;
 	speed: number;
+	/** Black-gap slice: advances output time but schedules no source audio. */
+	silent?: boolean;
 }
 
 interface PreparedOfflineRender {
@@ -242,6 +245,7 @@ export class AudioProcessor {
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 		sourceAudioTrackSettings?: SourceAudioTrackSettings,
 		clipRegions?: ClipRegion[],
+		gapsAsBlack = false,
 	): Promise<void> {
 		const sortedTrims = trimRegions
 			? [...trimRegions].sort((a, b) => a.startMs - b.startMs)
@@ -277,13 +281,15 @@ export class AudioProcessor {
 			requiresLegacyMacMicSidecarMix ||
 			hasTimedCompanionAudio;
 
-		// When speed edits, audio regions, or multiple audio sources need mixing, use offline AudioContext pipeline.
+		// When speed edits, audio regions, multiple audio sources, or black-gap
+		// silence insertion are needed, use the offline AudioContext pipeline.
 		if (
 			sortedSpeedRegions.length > 0 ||
 			sortedAudioRegions.length > 0 ||
 			needsSourceAudioMixing ||
 			hasNonDefaultSourceTrackSettings(sourceAudioTrackSettings) ||
-			(clipRegions ?? []).some((clip) => Boolean(clip.muted))
+			(clipRegions ?? []).some((clip) => Boolean(clip.muted)) ||
+			(gapsAsBlack && sortedTrims.length > 0)
 		) {
 			await this.renderAndMuxOfflineAudio(
 				videoUrl,
@@ -295,6 +301,7 @@ export class AudioProcessor {
 				sourceAudioTrackSettings,
 				clipRegions,
 				muxer,
+				gapsAsBlack,
 			);
 			return;
 		}
@@ -328,6 +335,7 @@ export class AudioProcessor {
 				sourceAudioTrackSettings,
 				clipRegions,
 				muxer,
+				gapsAsBlack,
 			);
 			return;
 		}
@@ -375,6 +383,7 @@ export class AudioProcessor {
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 		sourceAudioTrackSettings?: SourceAudioTrackSettings,
 		clipRegions?: ClipRegion[],
+		gapsAsBlack = false,
 	): Promise<Blob> {
 		const sortedTrims = trimRegions
 			? [...trimRegions].sort((a, b) => a.startMs - b.startMs)
@@ -402,6 +411,7 @@ export class AudioProcessor {
 			sourceAudioFallbackStartDelayMsByPath,
 			sourceAudioTrackSettings,
 			clipRegions,
+			gapsAsBlack,
 		);
 		return this.renderToWavBlobChunked(prepared);
 	}
@@ -680,6 +690,7 @@ export class AudioProcessor {
 		sourceAudioTrackSettings: SourceAudioTrackSettings | undefined,
 		clipRegions: ClipRegion[] | undefined,
 		muxer: VideoMuxer,
+		gapsAsBlack = false,
 	): Promise<void> {
 		const prepared = await this.prepareOfflineRender(
 			videoUrl,
@@ -690,6 +701,7 @@ export class AudioProcessor {
 			sourceAudioFallbackStartDelayMsByPath,
 			sourceAudioTrackSettings,
 			clipRegions,
+			gapsAsBlack,
 		);
 		if (this.cancelled) return;
 		await this.renderAndEncodeChunked(prepared, muxer);
@@ -704,6 +716,7 @@ export class AudioProcessor {
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 		sourceAudioTrackSettings?: SourceAudioTrackSettings,
 		clipRegions?: ClipRegion[],
+		gapsAsBlack = false,
 	): Promise<PreparedOfflineRender> {
 		if (this.cancelled) throw new Error("Export cancelled");
 		this.onProgress?.(0);
@@ -793,8 +806,14 @@ export class AudioProcessor {
 		}
 		const sourceDurationMs = sourceDurationSec * 1000;
 
-		// Build timeline slices (non-trimmed segments with speed info)
-		const slices = this.buildTimelineSlices(sourceDurationMs, trimRegions, speedRegions);
+		// Build timeline slices (non-trimmed segments with speed info; black-gap
+		// exports additionally keep trimmed intervals as silent slices)
+		const slices = this.buildTimelineSlices(
+			sourceDurationMs,
+			trimRegions,
+			speedRegions,
+			gapsAsBlack,
+		);
 
 		let outputDurationMs = 0;
 		for (const slice of slices) {
@@ -1357,12 +1376,28 @@ export class AudioProcessor {
 	}
 
 	// Build non-overlapping timeline slices from the source timeline, excluding
-	// trimmed regions and tagging each slice with its playback speed.
+	// trimmed regions and tagging each slice with its playback speed. When
+	// gapsAsBlack is set, trimmed intervals stay on the output timeline as
+	// silent slices instead, mirroring the exporter's black video segments.
 	private buildTimelineSlices(
 		sourceDurationMs: number,
 		trimRegions: TrimLikeRegion[],
 		speedRegions: SpeedRegion[],
+		gapsAsBlack = false,
 	): TimelineSlice[] {
+		if (gapsAsBlack) {
+			// Derive from the shared output-timeline model so audio slice
+			// boundaries match the exporter's black video slices exactly.
+			return buildOutputTimeline(sourceDurationMs, trimRegions, speedRegions, true).map(
+				(slice) => ({
+					sourceStartMs: slice.sourceStartMs,
+					sourceEndMs: slice.sourceEndMs,
+					speed: slice.speed,
+					silent: slice.kind === "black",
+				}),
+			);
+		}
+
 		const boundaries = new Set<number>();
 		boundaries.add(0);
 		boundaries.add(sourceDurationMs);
@@ -1443,6 +1478,12 @@ export class AudioProcessor {
 		for (const slice of slices) {
 			const sliceSourceDurationSec = (slice.sourceEndMs - slice.sourceStartMs) / 1000;
 			const sliceOutputDurationSec = sliceSourceDurationSec / slice.speed;
+
+			// Silent black-gap slices advance output time without scheduling audio.
+			if (slice.silent) {
+				outputOffsetSec += sliceOutputDurationSec;
+				continue;
+			}
 
 			// Where in the buffer does this slice read from?
 			const bufferOffsetSec = slice.sourceStartMs / 1000 - sourceStartDelaySec;

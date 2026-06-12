@@ -11,12 +11,16 @@ import {
 	getCaptionTextMaxWidth,
 	getCaptionWordVisualState,
 } from "@/components/video-editor/captionStyle";
+import {
+	type FillFrameRegion,
+	fillFrameProgressAtMs,
+} from "@/components/video-editor/fillFrameRegions";
 import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
 	CaptionCue,
-	CursorClickEffectStyle,
 	CropRegion,
+	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
@@ -57,6 +61,13 @@ import {
 	type MotionBlurState,
 } from "@/components/video-editor/videoPlayback/zoomTransform";
 import {
+	CAMERA_FULL_PADDING_FRACTION,
+	expandRectToAspect,
+	getLetterboxRect,
+	isCameraFullAtMs,
+	type WebcamLayoutRegion,
+} from "@/components/video-editor/webcamLayoutRegions";
+import {
 	getWebcamCropSourceRect,
 	getWebcamOverlayPosition,
 	getWebcamOverlaySizePx,
@@ -80,6 +91,11 @@ import {
 	getEffectiveVideoStreamDurationSeconds,
 } from "@/lib/mediaTiming";
 import { isVideoWallpaperSource } from "@/lib/wallpapers";
+import {
+	isProcessingActive,
+	resolveProcessingSettings,
+	WebcamProcessor,
+} from "@/lib/webcamProcessing/webcamProcessor";
 import {
 	type AnnotationRenderAssets,
 	preloadAnnotationAssets,
@@ -126,6 +142,9 @@ interface FrameRenderConfig {
 	padding?: Padding | number;
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
+	webcamLayoutRegions?: WebcamLayoutRegion[];
+	/** Camera-full rendering style: "fit" letterboxes the webcam, "fill" covers the frame. */
+	webcamLayoutStyle?: "fit" | "fill";
 	webcamUrl?: string | null;
 	videoWidth: number;
 	videoHeight: number;
@@ -159,6 +178,10 @@ interface FrameRenderConfig {
 	zoomClassicMode?: boolean;
 	frame?: string | null;
 	nativeReadbackMode?: "pixels" | "canvas";
+	/** Time ranges where the video covers the full canvas (no framed chrome). */
+	fillFrameRegions?: FillFrameRegion[];
+	/** "Remove background": whole video renders fill-frame regardless of regions. */
+	fillFrameDefault?: boolean;
 }
 
 interface AnimationState {
@@ -211,7 +234,8 @@ interface WebcamRenderSource {
 interface WebcamLayoutCache {
 	sourceWidth: number;
 	sourceHeight: number;
-	size: number;
+	width: number;
+	height: number;
 	positionX: number;
 	positionY: number;
 	radius: number;
@@ -417,6 +441,7 @@ export class FrameRenderer {
 	private backgroundTextureSource: MutableVideoTextureSource | null = null;
 	private videoMaskGraphics: Graphics | null = null;
 	private webcamMaskGraphics: Graphics | null = null;
+	private blackFrameGraphics: Graphics | null = null;
 	private zoomBlurFilter: ZoomBlurFilter | null = null;
 	private motionBlurFilter: MotionBlurFilter | null = null;
 	private backgroundBlurFilter: BlurFilter | null = null;
@@ -440,6 +465,8 @@ export class FrameRenderer {
 	private webcamVideoElement: HTMLVideoElement | null = null;
 	private webcamSeekPromise: Promise<void> | null = null;
 	private webcamFrameCacheCanvas: HTMLCanvasElement | null = null;
+	private webcamProcessor: WebcamProcessor | null = null;
+	private webcamProcessorBgPath: string | null = null;
 	private webcamFrameCacheCtx: CanvasRenderingContext2D | null = null;
 	private sceneVideoFrameStagingCanvas: HTMLCanvasElement | null = null;
 	private sceneVideoFrameStagingCtx: CanvasRenderingContext2D | null = null;
@@ -481,12 +508,15 @@ export class FrameRenderer {
 	private lastContentTimeMs: number | null = null;
 	private layoutCache: LayoutCache | null = null;
 	private currentVideoTime = 0;
+	private lastFillFrameProgress = 0;
 	private cursorOverlay: PixiCursorOverlay | null = null;
 	private lastSyncedWebcamTime: number | null = null;
 	private webcamRenderMode: "hidden" | "live" | "cached" = "hidden";
 	private webcamLayoutCache: WebcamLayoutCache | null = null;
 	private videoTextureUsesStartupStaging = false;
 	private webcamTextureUsesStartupStaging = false;
+	private webcamTextureSourceWidth = 0;
+	private webcamTextureSourceHeight = 0;
 	private retainedSceneSourceFrame: VideoFrame | null = null;
 	private retainedSceneTextureFrame: VideoFrame | null = null;
 	private retainedBackgroundSourceFrame: VideoFrame | null = null;
@@ -622,14 +652,14 @@ export class FrameRenderer {
 					massMultiplier: this.config.cursorSpringMassMultiplier,
 				},
 				motionBlur: this.config.cursorMotionBlur ?? 0,
-				clickEffect:
-					this.config.cursorClickEffect ?? DEFAULT_CURSOR_CONFIG.clickEffect,
+				clickEffect: this.config.cursorClickEffect ?? DEFAULT_CURSOR_CONFIG.clickEffect,
 				clickEffectColor:
 					this.config.cursorClickEffectColor ?? DEFAULT_CURSOR_CONFIG.clickEffectColor,
 				clickEffectScale:
 					this.config.cursorClickEffectScale ?? DEFAULT_CURSOR_CONFIG.clickEffectScale,
 				clickEffectOpacity:
-					this.config.cursorClickEffectOpacity ?? DEFAULT_CURSOR_CONFIG.clickEffectOpacity,
+					this.config.cursorClickEffectOpacity ??
+					DEFAULT_CURSOR_CONFIG.clickEffectOpacity,
 				clickEffectDurationMs:
 					this.config.cursorClickEffectDurationMs ??
 					DEFAULT_CURSOR_CONFIG.clickEffectDurationMs,
@@ -2372,7 +2402,33 @@ export class FrameRenderer {
 		return false;
 	}
 
+	private async setupWebcamProcessing(): Promise<void> {
+		if (!isProcessingActive(this.config.webcam)) {
+			return;
+		}
+		this.webcamProcessor ??= new WebcamProcessor();
+		const bgPath = this.config.webcam?.greenscreen?.backgroundImagePath ?? null;
+		if (bgPath === this.webcamProcessorBgPath) {
+			return;
+		}
+		this.webcamProcessorBgPath = bgPath;
+		if (!bgPath) {
+			this.webcamProcessor.setBackgroundImage(null);
+			return;
+		}
+		try {
+			const image = new Image();
+			image.src = bgPath;
+			await image.decode();
+			this.webcamProcessor.setBackgroundImage(image);
+		} catch (error) {
+			console.warn("[export] failed to load greenscreen background image:", error);
+			this.webcamProcessor.setBackgroundImage(null);
+		}
+	}
+
 	private async setupWebcamSource(): Promise<void> {
+		await this.setupWebcamProcessing();
 		const webcamUrl = this.config.webcamUrl;
 		if (!this.config.webcam?.enabled || !webcamUrl) {
 			this.webcamForwardFrameSource?.cancel();
@@ -2438,9 +2494,29 @@ export class FrameRenderer {
 			this.webcamTextureSource = texture.source as unknown as MutableVideoTextureSource;
 			this.webcamContainer.addChildAt(this.webcamSprite, 0);
 			this.webcamTextureUsesStartupStaging = usesStartupStaging;
+			this.webcamTextureSourceWidth = sourceWidth;
+			this.webcamTextureSourceHeight = sourceHeight;
 		} else if (this.webcamTextureUsesStartupStaging !== usesStartupStaging) {
 			this.webcamTextureSource = this.replaceSpriteTexture(this.webcamSprite, resolvedSource);
 			this.webcamTextureUsesStartupStaging = usesStartupStaging;
+			this.webcamTextureSourceWidth = sourceWidth;
+			this.webcamTextureSourceHeight = sourceHeight;
+		} else if (
+			this.webcamTextureSource &&
+			(this.webcamTextureSourceWidth !== sourceWidth ||
+				this.webcamTextureSourceHeight !== sourceHeight)
+		) {
+			// The source changed size (the camera-full fill style expands the
+			// square bubble crop cache to the frame aspect mid-export). Pixi
+			// sprites only forward texture "update" events for dynamic textures,
+			// so resizing the existing texture in place via a resource swap
+			// leaves the sprite's batched quad at the stale dimensions while the
+			// cover-fit scale is computed for the new ones — rendering the
+			// camera as a shrunken pillarboxed rect. Replace the texture so the
+			// sprite re-reads its dimensions.
+			this.webcamTextureSource = this.replaceSpriteTexture(this.webcamSprite, resolvedSource);
+			this.webcamTextureSourceWidth = sourceWidth;
+			this.webcamTextureSourceHeight = sourceHeight;
 		} else if (this.webcamTextureSource) {
 			this.webcamTextureSource.resource = resolvedSource;
 			this.webcamTextureSource.update();
@@ -2492,8 +2568,41 @@ export class FrameRenderer {
 		source: CanvasImageSource | VideoFrame,
 		width: number,
 		height: number,
+		expandCropToFrameAspect: boolean,
 	): boolean {
-		const sourceRect = getWebcamCropSourceRect(this.config.webcam?.cropRegion, width, height);
+		// Greenscreen/mask/color pipeline: swap in the processed frame (same
+		// dimensions) before cropping so downstream layout code is unchanged.
+		if (isProcessingActive(this.config.webcam)) {
+			this.webcamProcessor ??= new WebcamProcessor();
+			const processed = this.webcamProcessor.processFrame(
+				source as TexImageSource,
+				width,
+				height,
+				resolveProcessingSettings(this.config.webcam),
+				{ mirrored: this.config.webcam?.mirror ?? false },
+			);
+			if (processed) {
+				source = processed;
+			}
+		}
+		let sourceRect = getWebcamCropSourceRect(this.config.webcam?.cropRegion, width, height);
+		if (expandCropToFrameAspect) {
+			// Camera-full fill: the stored crop is a pixel-square bubble viewport.
+			// Expand it to the output frame aspect (centered on the crop, clamped
+			// to the source) so the fill barely crops; mirrors the preview's
+			// camera-full fill branch in VideoPlayback.
+			const expanded = expandRectToAspect(
+				{ x: sourceRect.sx, y: sourceRect.sy, width: sourceRect.sw, height: sourceRect.sh },
+				{ width, height },
+				{ width: this.config.width, height: this.config.height },
+			);
+			sourceRect = {
+				sx: expanded.x,
+				sy: expanded.y,
+				sw: expanded.width,
+				sh: expanded.height,
+			};
+		}
 		if (!this.ensureWebcamFrameCache(sourceRect.sw, sourceRect.sh)) {
 			return false;
 		}
@@ -2544,19 +2653,20 @@ export class FrameRenderer {
 		liveSourceWidth: number,
 		liveSourceHeight: number,
 		canUseLiveSource: boolean,
+		expandCropToFrameAspect: boolean,
 	): WebcamRenderSource | null {
 		if (canUseLiveSource && liveSource && liveSourceWidth > 0 && liveSourceHeight > 0) {
 			const usesDefaultCropRegion = isWebcamCropRegionDefault(this.config.webcam?.cropRegion);
 			const needsCacheBackedSource =
 				!usesDefaultCropRegion ||
-				(typeof HTMLVideoElement !== "undefined" &&
-					liveSource instanceof HTMLVideoElement);
+				(typeof HTMLVideoElement !== "undefined" && liveSource instanceof HTMLVideoElement);
 
 			if (needsCacheBackedSource) {
 				this.refreshWebcamFrameCache(
 					liveSource,
 					liveSourceWidth,
 					liveSourceHeight,
+					expandCropToFrameAspect,
 				);
 				const cachedSource = this.getCachedWebcamRenderSource();
 				if (cachedSource) {
@@ -2604,7 +2714,8 @@ export class FrameRenderer {
 			previousLayout.mirror === nextLayout.mirror &&
 			areNearlyEqual(previousLayout.sourceWidth, nextLayout.sourceWidth) &&
 			areNearlyEqual(previousLayout.sourceHeight, nextLayout.sourceHeight) &&
-			areNearlyEqual(previousLayout.size, nextLayout.size) &&
+			areNearlyEqual(previousLayout.width, nextLayout.width) &&
+			areNearlyEqual(previousLayout.height, nextLayout.height) &&
 			areNearlyEqual(previousLayout.positionX, nextLayout.positionX) &&
 			areNearlyEqual(previousLayout.positionY, nextLayout.positionY) &&
 			areNearlyEqual(previousLayout.radius, nextLayout.radius) &&
@@ -2623,10 +2734,10 @@ export class FrameRenderer {
 			this.webcamSprite,
 			nextLayout.sourceWidth,
 			nextLayout.sourceHeight,
-			nextLayout.size,
-			nextLayout.size,
-			nextLayout.size / 2,
-			nextLayout.size / 2,
+			nextLayout.width,
+			nextLayout.height,
+			nextLayout.width / 2,
+			nextLayout.height / 2,
 			nextLayout.mirror,
 		);
 
@@ -2634,28 +2745,32 @@ export class FrameRenderer {
 		drawSquircleOnGraphics(this.webcamMaskGraphics, {
 			x: 0,
 			y: 0,
-			width: nextLayout.size,
-			height: nextLayout.size,
+			width: nextLayout.width,
+			height: nextLayout.height,
 			radius: nextLayout.radius,
 		});
 		this.webcamMaskGraphics.fill({ color: 0xffffff });
 
+		// Bubble layouts are square (width === height === legacy size), so this
+		// basis matches the previous size-driven shadow math exactly; camera-full
+		// rects use the short edge, mirroring the preview's drop-shadow basis.
+		const shadowBasis = Math.min(nextLayout.width, nextLayout.height);
 		for (const layer of this.webcamShadowLayers) {
 			if (nextLayout.shadowStrength <= 0) {
 				layer.container.visible = false;
 				continue;
 			}
 
-			const offsetY = nextLayout.size * layer.offsetScale * nextLayout.shadowStrength;
+			const offsetY = shadowBasis * layer.offsetScale * nextLayout.shadowStrength;
 			this.rasterizeShadowLayer(layer, {
 				x: 0,
 				y: 0,
-				width: nextLayout.size,
-				height: nextLayout.size,
+				width: nextLayout.width,
+				height: nextLayout.height,
 				radius: nextLayout.radius,
 				offsetY,
 				alpha: layer.alphaScale * nextLayout.shadowStrength,
-				blur: Math.max(0, nextLayout.size * layer.blurScale * nextLayout.shadowStrength),
+				blur: Math.max(0, shadowBasis * layer.blurScale * nextLayout.shadowStrength),
 			});
 		}
 
@@ -2846,6 +2961,18 @@ export class FrameRenderer {
 	}
 
 	private updateWebcamOverlay(referenceTimeSeconds = this.currentVideoTime): void {
+		const cameraFull = isCameraFullAtMs(
+			this.config.webcamLayoutRegions ?? [],
+			this.currentVideoTime * 1000,
+		);
+		// Camera-full segments hide the screen layer (video, frame, cursor, and
+		// the screen shadow layers all live inside cameraContainer) while the
+		// sibling backgroundContainer keeps rendering. Assigned unconditionally
+		// every frame so cuts between segments can never leave stale state.
+		if (this.cameraContainer) {
+			this.cameraContainer.visible = !cameraFull;
+		}
+
 		const webcam = this.config.webcam;
 		if (!webcam?.enabled || !this.webcamRootContainer || !this.webcamMaskGraphics) {
 			if (this.webcamRootContainer) {
@@ -2880,11 +3007,13 @@ export class FrameRenderer {
 			(!activeWebcamVideoElement ||
 				(activeWebcamVideoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
 					!activeWebcamVideoElement.seeking));
+		const cameraFullFill = cameraFull && this.config.webcamLayoutStyle === "fill";
 		const renderableWebcamSource = this.resolveRenderableWebcamSource(
 			webcamSource,
 			liveSourceDimensions.width,
 			liveSourceDimensions.height,
 			canUseLiveSource,
+			cameraFullFill,
 		);
 
 		if (!renderableWebcamSource) {
@@ -2903,36 +3032,60 @@ export class FrameRenderer {
 			return;
 		}
 
-		const margin = webcam.margin ?? 24;
-		const size = getWebcamOverlaySizePx({
-			containerWidth: this.config.width,
-			containerHeight: this.config.height,
-			sizePercent: webcam.size ?? 50,
-			margin,
-			zoomScale: this.animationState.appliedScale || 1,
-			reactToZoom: webcam.reactToZoom ?? true,
-		});
-		const position = getWebcamOverlayPosition({
-			containerWidth: this.config.width,
-			containerHeight: this.config.height,
-			size,
-			margin,
-			positionPreset: webcam.positionPreset ?? webcam.corner,
-			positionX: webcam.positionX ?? 1,
-			positionY: webcam.positionY ?? 1,
-			legacyCorner: webcam.corner,
-		});
-		const radius = Math.max(0, webcam.cornerRadius ?? 18);
-		const shadowStrength = clampUnitInterval(webcam.shadow ?? 0);
+		let layoutRect: { x: number; y: number; width: number; height: number };
+		if (cameraFullFill) {
+			// Fill style: the webcam covers the whole output frame edge to edge.
+			// The sprite cover-fit inside the rect crops the overflowing axis.
+			layoutRect = { x: 0, y: 0, width: this.config.width, height: this.config.height };
+		} else if (cameraFull) {
+			// Letterbox the cropped webcam over the background. The renderable
+			// source dimensions already reflect the crop region (cropped sources
+			// render via the frame cache canvas), and with the rect at exactly
+			// that aspect the cover fit shows the whole cropped frame. Zoom
+			// intentionally does not affect this rect.
+			layoutRect = getLetterboxRect(
+				{
+					width: renderableWebcamSource.width,
+					height: renderableWebcamSource.height,
+				},
+				{ width: this.config.width, height: this.config.height },
+				Math.min(this.config.width, this.config.height) * CAMERA_FULL_PADDING_FRACTION,
+			);
+		} else {
+			const margin = webcam.margin ?? 24;
+			const size = getWebcamOverlaySizePx({
+				containerWidth: this.config.width,
+				containerHeight: this.config.height,
+				sizePercent: webcam.size ?? 50,
+				margin,
+				zoomScale: this.animationState.appliedScale || 1,
+				reactToZoom: webcam.reactToZoom ?? true,
+			});
+			const position = getWebcamOverlayPosition({
+				containerWidth: this.config.width,
+				containerHeight: this.config.height,
+				size,
+				margin,
+				positionPreset: webcam.positionPreset ?? webcam.corner,
+				positionX: webcam.positionX ?? 1,
+				positionY: webcam.positionY ?? 1,
+				legacyCorner: webcam.corner,
+			});
+			layoutRect = { x: position.x, y: position.y, width: size, height: size };
+		}
+		// Fill renders edge to edge: no squircle rounding and no drop shadow.
+		const radius = cameraFullFill ? 0 : Math.max(0, webcam.cornerRadius ?? 18);
+		const shadowStrength = cameraFullFill ? 0 : clampUnitInterval(webcam.shadow ?? 0);
 
 		this.webcamRootContainer.visible = true;
 
 		const nextLayout: WebcamLayoutCache = {
 			sourceWidth: renderableWebcamSource.width,
 			sourceHeight: renderableWebcamSource.height,
-			size,
-			positionX: position.x,
-			positionY: position.y,
+			width: layoutRect.width,
+			height: layoutRect.height,
+			positionX: layoutRect.x,
+			positionY: layoutRect.y,
 			radius,
 			shadowStrength,
 			mirror: webcam.mirror,
@@ -3175,7 +3328,8 @@ export class FrameRenderer {
 			this.videoTextureSource.update();
 		}
 
-		if (!this.layoutCache) {
+		// Relayout when the fill-frame transition moves (layout is otherwise static).
+		if (!this.layoutCache || this.getFillFrameProgress() !== this.lastFillFrameProgress) {
 			this.updateLayout();
 		}
 		const layoutCache = this.layoutCache;
@@ -3287,6 +3441,70 @@ export class FrameRenderer {
 		this.outputCanvasOverride = null;
 		this.app.render();
 		this.compositeExtensions(timeMs, cursorTimeMs);
+	}
+
+	/**
+	 * Renders a fully black frame for black-gap exports (timeline magnet off).
+	 * Hides the background, screen, and overlay (webcam/annotation/caption)
+	 * containers, renders an opaque black cover, then restores visibility so
+	 * the next renderFrame call is unaffected.
+	 */
+	async renderBlackFrame(_timestampUs: number, _frameDurationUs?: number): Promise<void> {
+		if (!this.app) {
+			throw new Error("Renderer not initialized");
+		}
+
+		if (!this.blackFrameGraphics) {
+			this.blackFrameGraphics = new Graphics();
+			this.blackFrameGraphics
+				.rect(0, 0, this.config.width, this.config.height)
+				.fill({ color: 0x000000 });
+			this.blackFrameGraphics.visible = false;
+			this.app.stage.addChild(this.blackFrameGraphics);
+		}
+
+		const backgroundVisible = this.backgroundContainer?.visible ?? true;
+		const cameraVisible = this.cameraContainer?.visible ?? true;
+		const overlayVisible = this.overlayContainer?.visible ?? true;
+
+		if (this.backgroundContainer) {
+			this.backgroundContainer.visible = false;
+		}
+		if (this.cameraContainer) {
+			this.cameraContainer.visible = false;
+		}
+		if (this.overlayContainer) {
+			this.overlayContainer.visible = false;
+		}
+		this.blackFrameGraphics.visible = true;
+
+		try {
+			this.outputCanvasOverride = null;
+			this.app.render();
+
+			// Keep the extension composite canvas consistent when extensions are
+			// active, since getCanvas() prefers it over the Pixi canvas.
+			if (this.shouldCompositeExtensionFrame() && this.compositeCtx && this.compositeCanvas) {
+				this.compositeCtx.fillStyle = "#000000";
+				this.compositeCtx.fillRect(
+					0,
+					0,
+					this.compositeCanvas.width,
+					this.compositeCanvas.height,
+				);
+			}
+		} finally {
+			this.blackFrameGraphics.visible = false;
+			if (this.backgroundContainer) {
+				this.backgroundContainer.visible = backgroundVisible;
+			}
+			if (this.cameraContainer) {
+				this.cameraContainer.visible = cameraVisible;
+			}
+			if (this.overlayContainer) {
+				this.overlayContainer.visible = overlayVisible;
+			}
+		}
 	}
 
 	private shouldCompositeExtensionFrame(): boolean {
@@ -3510,6 +3728,17 @@ export class FrameRenderer {
 		}
 	}
 
+	/** Eased fill-frame progress at the current frame time (0 = framed, 1 = cover). */
+	private getFillFrameProgress(): number {
+		if (this.config.fillFrameDefault) {
+			return 1;
+		}
+		return fillFrameProgressAtMs(
+			this.config.fillFrameRegions ?? [],
+			this.currentVideoTime * 1000,
+		);
+	}
+
 	private updateLayout(): void {
 		if (!this.app || !this.videoSprite || !this.videoMaskGraphics) return;
 
@@ -3523,6 +3752,10 @@ export class FrameRenderer {
 			videoHeight,
 		} = this.config;
 
+		const fillFrameProgress = this.getFillFrameProgress();
+		const fillFrameFade = 1 - fillFrameProgress;
+		this.lastFillFrameProgress = fillFrameProgress;
+
 		const layout = computePaddedLayout({
 			width,
 			height,
@@ -3531,6 +3764,7 @@ export class FrameRenderer {
 			cropRegion,
 			videoWidth,
 			videoHeight,
+			fillFrameProgress,
 		});
 
 		this.videoSprite.scale.set(layout.scale);
@@ -3539,7 +3773,12 @@ export class FrameRenderer {
 		const previewWidth = this.config.previewWidth || 1920;
 		const previewHeight = this.config.previewHeight || 1080;
 		const canvasScaleFactor = Math.min(width / previewWidth, height / previewHeight);
-		const scaledBorderRadius = borderRadius * canvasScaleFactor;
+		const scaledBorderRadius = borderRadius * canvasScaleFactor * fillFrameFade;
+
+		// Background wallpaper fades out as the video covers the canvas.
+		if (this.backgroundContainer) {
+			this.backgroundContainer.alpha = fillFrameFade;
+		}
 
 		this.videoMaskGraphics.clear();
 		drawSquircleOnGraphics(this.videoMaskGraphics, {
@@ -3557,6 +3796,7 @@ export class FrameRenderer {
 			maskWidth: layout.croppedDisplayWidth,
 			maskHeight: layout.croppedDisplayHeight,
 			maskRadius: scaledBorderRadius,
+			strengthScale: fillFrameFade,
 		});
 
 		this.layoutCache = {
@@ -3662,8 +3902,11 @@ export class FrameRenderer {
 		maskWidth: number;
 		maskHeight: number;
 		maskRadius: number;
+		/** Fill-frame fade: shadows vanish as the video covers the canvas. */
+		strengthScale?: number;
 	}): void {
-		const shadowStrength = clampUnitInterval(this.config.shadowIntensity);
+		const shadowStrength =
+			clampUnitInterval(this.config.shadowIntensity) * (layout.strengthScale ?? 1);
 		for (const layer of this.videoShadowLayers) {
 			if (!this.config.showShadow || shadowStrength <= 0) {
 				layer.container.visible = false;
@@ -3689,15 +3932,18 @@ export class FrameRenderer {
 			return 0;
 		}
 
-		const { region, strength, blendedScale, transition } = findDominantRegion(
-			this.config.zoomRegions,
-			timeMs,
-			{
-				connectZooms: this.config.connectZooms,
-				zoomInDurationMs: this.config.zoomInDurationMs,
-				zoomOutDurationMs: this.config.zoomOutDurationMs,
-			},
-		);
+		const {
+			region,
+			strength: rawZoomStrength,
+			blendedScale,
+			transition,
+		} = findDominantRegion(this.config.zoomRegions, timeMs, {
+			connectZooms: this.config.connectZooms,
+			zoomInDurationMs: this.config.zoomInDurationMs,
+			zoomOutDurationMs: this.config.zoomOutDurationMs,
+		});
+		// Fullscreen (fill-frame) segments are presentations — never zoom them.
+		const strength = rawZoomStrength * (1 - this.getFillFrameProgress());
 
 		let targetScaleFactor = 1;
 		let targetFocus = { ...DEFAULT_FOCUS };
@@ -3996,12 +4242,17 @@ export class FrameRenderer {
 		this.cleanupWebcamSource = null;
 		this.webcamFrameCacheCanvas = null;
 		this.webcamFrameCacheCtx = null;
+		this.webcamProcessor?.destroy();
+		this.webcamProcessor = null;
+		this.webcamProcessorBgPath = null;
 		this.sceneVideoFrameStagingCanvas = null;
 		this.sceneVideoFrameStagingCtx = null;
 		this.webcamVideoFrameStagingCanvas = null;
 		this.webcamVideoFrameStagingCtx = null;
 		this.videoTextureUsesStartupStaging = false;
 		this.webcamTextureUsesStartupStaging = false;
+		this.webcamTextureSourceWidth = 0;
+		this.webcamTextureSourceHeight = 0;
 		this.closeRetainedVideoFrame("scene");
 		this.closeRetainedVideoFrame("background");
 		this.closeRetainedVideoFrame("webcam");

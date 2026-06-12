@@ -7,6 +7,11 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { USER_DATA_PATH } from "./appPaths";
 import { getHudOverlayWindowBounds, resizeHudOverlayFallbackBounds } from "./hudOverlayBounds";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
+import { getTeleprompterDefaultBounds } from "./teleprompterBounds";
+import {
+	registerTeleprompterScrollShortcuts,
+	unregisterTeleprompterScrollShortcuts,
+} from "./teleprompterShortcuts";
 
 const electronWindowsDir = path.dirname(fileURLToPath(import.meta.url));
 const nodeRequire = createRequire(import.meta.url);
@@ -31,6 +36,7 @@ let hudOverlaySourceSelectionActive = false;
 let hudOverlayMouseReassertTimer: NodeJS.Timeout | null = null;
 let hudOverlayRecordingActive = false;
 let countdownWindow: BrowserWindow | null = null;
+let teleprompterWindow: BrowserWindow | null = null;
 let updateToastWindow: BrowserWindow | null = null;
 
 const HUD_OVERLAY_SETTINGS_FILE = path.join(USER_DATA_PATH, "hud-overlay-settings.json");
@@ -457,6 +463,14 @@ export function createHudOverlayWindow(): BrowserWindow {
 			backgroundThrottling: false,
 		},
 	});
+
+	// Follow the user into fullscreen Spaces (e.g. a fullscreen presentation)
+	// instead of staying behind on the original desktop. The screen-saver level
+	// keeps the HUD above fullscreen app content on macOS.
+	if (process.platform === "darwin") {
+		win.setAlwaysOnTop(true, "screen-saver");
+	}
+	win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
 	const showHudWindow = () => {
 		if (hasShownHudWindow || win.isDestroyed()) {
@@ -1023,4 +1037,121 @@ export function closeCountdownWindow(): void {
 		countdownWindow.close();
 		countdownWindow = null;
 	}
+}
+
+export function createTeleprompterWindow(): BrowserWindow {
+	if (teleprompterWindow && !teleprompterWindow.isDestroyed()) {
+		teleprompterWindow.show();
+		teleprompterWindow.moveTop();
+		return teleprompterWindow;
+	}
+
+	const bounds = getTeleprompterDefaultBounds(getScreen().getPrimaryDisplay().workArea);
+
+	const win = new BrowserWindow({
+		...bounds,
+		minWidth: 280,
+		minHeight: 180,
+		frame: false,
+		backgroundColor: "#161616",
+		resizable: true,
+		alwaysOnTop: true,
+		skipTaskbar: true,
+		show: false,
+		webPreferences: {
+			preload: path.join(electronWindowsDir, "preload.mjs"),
+			nodeIntegration: false,
+			contextIsolation: true,
+			webSecurity: false,
+			backgroundThrottling: false,
+		},
+	});
+
+	// Hide from screen capture so recordings never show the script.
+	if (isHudOverlayCaptureProtectionSupported()) {
+		win.setContentProtection(true);
+	}
+
+	win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+
+	win.once("ready-to-show", () => {
+		if (!win.isDestroyed()) {
+			win.show();
+		}
+	});
+
+	registerTeleprompterScrollShortcuts((command) => {
+		if (!win.isDestroyed()) {
+			win.webContents.send("teleprompter-command", command);
+		}
+	});
+
+	win.on("closed", () => {
+		unregisterTeleprompterScrollShortcuts();
+		if (teleprompterWindow === win) {
+			teleprompterWindow = null;
+		}
+	});
+
+	if (VITE_DEV_SERVER_URL) {
+		win.loadURL(VITE_DEV_SERVER_URL + "?windowType=teleprompter");
+	} else {
+		win.loadFile(path.join(RENDERER_DIST, "index.html"), {
+			query: { windowType: "teleprompter" },
+		});
+	}
+
+	teleprompterWindow = win;
+	return win;
+}
+
+export function getTeleprompterWindow(): BrowserWindow | null {
+	return teleprompterWindow && !teleprompterWindow.isDestroyed() ? teleprompterWindow : null;
+}
+
+export function toggleTeleprompterWindow(): void {
+	const existing = getTeleprompterWindow();
+	if (existing) {
+		existing.close();
+	} else {
+		createTeleprompterWindow();
+	}
+}
+
+ipcMain.on("teleprompter-toggle", () => {
+	toggleTeleprompterWindow();
+});
+
+ipcMain.on("teleprompter-close", () => {
+	getTeleprompterWindow()?.close();
+});
+
+// Second listener on the recording toggle channel (the recorder of events lives
+// in ipc/register/recording.ts): relays the mode so the teleprompter can show
+// its camera-full highlight while the user reads near the lens.
+ipcMain.on("webcam-layout-toggle", (_event, payload: { mode?: string }) => {
+	const mode = payload?.mode === "camera-full" ? "camera-full" : "screen";
+	getTeleprompterWindow()?.webContents.send("teleprompter-camera-mode", mode);
+});
+
+let selectedWebcamDeviceId: string | null = null;
+
+ipcMain.on("webcam-device-changed", (_event, deviceId: string | null) => {
+	selectedWebcamDeviceId = typeof deviceId === "string" && deviceId.length > 0 ? deviceId : null;
+});
+
+ipcMain.handle("get-selected-webcam-device", () => {
+	return selectedWebcamDeviceId;
+});
+
+// Facecam fullscreen style chosen in the HUD before recording; read by the
+// recording-start path so the layout-events sidecar carries it to the editor.
+let selectedWebcamLayoutStyle: "fit" | "fill" = "fit";
+
+ipcMain.on("webcam-layout-style-changed", (_event, style: unknown) => {
+	selectedWebcamLayoutStyle = style === "fill" ? "fill" : "fit";
+});
+
+export function getSelectedWebcamLayoutStyle(): "fit" | "fill" {
+	return selectedWebcamLayoutStyle;
 }

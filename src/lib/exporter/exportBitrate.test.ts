@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getMp4ExportBitrate, getSourceQualityBitrate } from "./exportBitrate";
 
 describe("export bitrate policy", () => {
-	it("keeps the legacy source-quality bitrate unchanged", () => {
+	it("uses the full source bitrate for source-quality exports in quality mode", () => {
 		expect(getSourceQualityBitrate(1920, 1080)).toBe(30_000_000);
 		expect(
 			getMp4ExportBitrate({
@@ -12,7 +12,7 @@ describe("export bitrate policy", () => {
 				quality: "source",
 				encodingMode: "quality",
 			}),
-		).toBe(27_000_000);
+		).toBe(30_000_000);
 	});
 
 	it("raises high-resolution 60fps source-quality exports above the 30fps budget", () => {
@@ -32,9 +32,9 @@ describe("export bitrate policy", () => {
 			frameRate: 60,
 		});
 
-		expect(thirtyFpsBitrate).toBe(45_000_000);
+		expect(thirtyFpsBitrate).toBe(50_000_000);
 		expect(sixtyFpsBitrate).toBeGreaterThan(thirtyFpsBitrate);
-		expect(sixtyFpsBitrate).toBe(63_639_610);
+		expect(sixtyFpsBitrate).toBe(70_710_678);
 	});
 
 	it("keeps modern native static-layout source exports high enough for screen text", () => {
@@ -57,7 +57,7 @@ describe("export bitrate policy", () => {
 				encodingMode: "quality",
 				useModernNativeStaticLayout: true,
 			}),
-		).toBe(27_000_000);
+		).toBe(30_000_000);
 	});
 
 	it("scales modern native static-layout source exports at 60fps", () => {
@@ -78,9 +78,9 @@ describe("export bitrate policy", () => {
 			frameRate: 60,
 		});
 
-		expect(thirtyFpsBitrate).toBe(27_000_000);
+		expect(thirtyFpsBitrate).toBe(30_000_000);
 		expect(sixtyFpsBitrate).toBeGreaterThan(thirtyFpsBitrate);
-		expect(sixtyFpsBitrate).toBe(38_183_766);
+		expect(sixtyFpsBitrate).toBe(42_426_407);
 	});
 
 	it("does not raise fast exports when the requested bitrate is already lower than the cap", () => {

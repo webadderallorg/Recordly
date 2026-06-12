@@ -42,6 +42,45 @@ describe("timelineSelectionUtils", () => {
 		).toBe("clip");
 	});
 
+	it("targets camera selection after the other block types", () => {
+		expect(
+			resolveDeleteSelectionTarget({
+				selectAllBlocksActive: false,
+				selectedKeyframeId: null,
+				selectedZoomId: null,
+				selectedCameraId: "cam-1",
+			}),
+		).toBe("camera");
+		expect(
+			resolveDeleteSelectionTarget({
+				selectAllBlocksActive: false,
+				selectedKeyframeId: null,
+				selectedZoomId: null,
+				selectedAudioId: "au-1",
+				selectedCameraId: "cam-1",
+			}),
+		).toBe("audio");
+	});
+
+	it("targets the marquee multi-selection over single selections", () => {
+		expect(
+			resolveDeleteSelectionTarget({
+				selectAllBlocksActive: false,
+				multiSelectedCount: 3,
+				selectedKeyframeId: "kf-1",
+				selectedZoomId: "z-1",
+			}),
+		).toBe("multi");
+		expect(
+			resolveDeleteSelectionTarget({
+				selectAllBlocksActive: false,
+				multiSelectedCount: 0,
+				selectedKeyframeId: null,
+				selectedZoomId: "z-1",
+			}),
+		).toBe("zoom");
+	});
+
 	it("returns none when nothing is selected", () => {
 		expect(
 			resolveDeleteSelectionTarget({

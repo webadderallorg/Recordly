@@ -5,6 +5,7 @@ import {
 	clampResizedSpanToNeighbours,
 	clampSpanToBounds,
 	getSiblingSpans,
+	isNoOpSpanCommit,
 	resolveDragEnd,
 	resolveResizeEnd,
 } from "./engine";
@@ -239,5 +240,83 @@ describe("timeline dnd engine", () => {
 			hasOverlap: () => false,
 		});
 		expect(result?.rowId).toBe("row-audio-2");
+	});
+});
+
+describe("isNoOpSpanCommit", () => {
+	const clip = { id: "a", start: 0, end: 1000, rowId: "row-clip" };
+
+	it("skips zero-distance gestures (selection clicks)", () => {
+		// A plain click on an item fires a full drag cycle with delta {0,0};
+		// regression: with the magnet on this used to surface the clip-edit
+		// toast when a clip was merely selected before pressing Delete.
+		expect(
+			isNoOpSpanCommit({
+				deltaX: 0,
+				deltaY: 0,
+				resolvedSpan: { start: 0.4, end: 1000.4 },
+				resolvedRowId: "row-clip",
+				currentItem: clip,
+			}),
+		).toBe(true);
+		// Clicking a resize edge only reports an x delta.
+		expect(
+			isNoOpSpanCommit({
+				deltaX: 0,
+				resolvedSpan: { start: 0, end: 1000 },
+				currentItem: clip,
+			}),
+		).toBe(true);
+	});
+
+	it("skips jittery gestures that resolve back to the current placement", () => {
+		expect(
+			isNoOpSpanCommit({
+				deltaX: 1,
+				deltaY: 0,
+				resolvedSpan: { start: 0, end: 1000 },
+				resolvedRowId: "row-clip",
+				currentItem: clip,
+			}),
+		).toBe(true);
+	});
+
+	it("commits genuine moves, resizes, and row changes", () => {
+		expect(
+			isNoOpSpanCommit({
+				deltaX: 40,
+				deltaY: 0,
+				resolvedSpan: { start: 200, end: 1200 },
+				resolvedRowId: "row-clip",
+				currentItem: clip,
+			}),
+		).toBe(false);
+		expect(
+			isNoOpSpanCommit({
+				deltaX: -25,
+				resolvedSpan: { start: 0, end: 900 },
+				currentItem: clip,
+			}),
+		).toBe(false);
+		// Vertical-only drag onto another row still commits.
+		expect(
+			isNoOpSpanCommit({
+				deltaX: 1,
+				deltaY: 30,
+				resolvedSpan: { start: 0, end: 1000 },
+				resolvedRowId: "row-audio-1",
+				currentItem: clip,
+			}),
+		).toBe(false);
+	});
+
+	it("commits moved gestures when the item is unknown", () => {
+		expect(
+			isNoOpSpanCommit({
+				deltaX: 12,
+				deltaY: 0,
+				resolvedSpan: { start: 100, end: 1100 },
+			}),
+		).toBe(false);
 	});
 });

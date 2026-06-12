@@ -29,9 +29,6 @@ interface ExportSettingsMenuProps {
 	experimentalNvidiaCudaExport?: boolean;
 	onExperimentalNvidiaCudaExportChange?: (enabled: boolean) => void;
 	nvidiaCudaExportAvailable?: boolean;
-	showCaptionSidecarOption?: boolean;
-	includeCaptionSidecar?: boolean;
-	onIncludeCaptionSidecarChange?: (enabled: boolean) => void;
 	mp4OutputDimensions?: Record<ExportQuality, { width: number; height: number }>;
 	gifFrameRate: GifFrameRate;
 	onGifFrameRateChange?: (rate: GifFrameRate) => void;
@@ -58,9 +55,6 @@ export function ExportSettingsMenu({
 	experimentalNvidiaCudaExport = false,
 	onExperimentalNvidiaCudaExportChange,
 	nvidiaCudaExportAvailable = false,
-	showCaptionSidecarOption = false,
-	includeCaptionSidecar = false,
-	onIncludeCaptionSidecarChange,
 	mp4OutputDimensions,
 	gifFrameRate,
 	onGifFrameRateChange,
@@ -366,30 +360,6 @@ export function ExportSettingsMenu({
 								aria-label={tSettings(
 									"export.nvidiaCuda.toggle",
 									"Enable experimental NVIDIA CUDA export",
-								)}
-								className="shrink-0 scale-75 data-[state=checked]:bg-[#2563EB]"
-							/>
-						</div>
-					) : null}
-					{showCaptionSidecarOption ? (
-						<div className="mb-3 flex min-h-12 items-center justify-between gap-3 rounded-lg border border-foreground/10 bg-foreground/5 px-3 py-2">
-							<div className="min-w-0">
-								<p className="text-[11px] font-semibold text-foreground">
-									{tSettings("export.captionSidecar.title", "Export captions file")}
-								</p>
-								<p className="mt-0.5 truncate text-[10px] text-muted-foreground/75">
-									{tSettings(
-										"export.captionSidecar.hint",
-										"Save .srt and .vtt files next to your exported video.",
-									)}
-								</p>
-							</div>
-							<Switch
-								checked={includeCaptionSidecar}
-								onCheckedChange={onIncludeCaptionSidecarChange}
-								aria-label={tSettings(
-									"export.captionSidecar.toggle",
-									"Export captions sidecar files",
 								)}
 								className="shrink-0 scale-75 data-[state=checked]:bg-[#2563EB]"
 							/>

@@ -130,6 +130,28 @@
 	z-index: 10;
 }
 
+.glassBlue {
+	position: relative;
+	border-radius: 8px;
+	background: #1d3f8f;
+	border: 1px solid #2a55b8;
+	transition:
+		background 0.15s ease,
+		border-color 0.15s ease;
+}
+
+.glassBlue:hover {
+	background: #234ba8;
+	border-color: #3463ce;
+}
+
+.glassBlue.selected {
+	background: #2853b6;
+	border-color: #60a5fa;
+	box-shadow: inset 0 0 0 1.5px #60a5fa;
+	z-index: 10;
+}
+
 .glassDarkGreen {
 	position: relative;
 	border-radius: 8px;
@@ -258,6 +280,20 @@
 	box-shadow: inset 0 0 0 1.5px #2563eb;
 }
 
+:global(:root:not(.dark)) .glassBlue {
+	background: linear-gradient(180deg, #dbeafe 0%, #60a5fa 100%);
+	border-color: #3b82f6;
+}
+:global(:root:not(.dark)) .glassBlue:hover {
+	background: linear-gradient(180deg, #bfdbfe 0%, #3b82f6 100%);
+	border-color: #2563eb;
+}
+:global(:root:not(.dark)) .glassBlue.selected {
+	background: linear-gradient(180deg, #93c5fd 0%, #3b82f6 100%);
+	border-color: #60a5fa;
+	box-shadow: inset 0 0 0 1.5px #60a5fa;
+}
+
 :global(:root:not(.dark)) .glassDarkGreen {
 	background: linear-gradient(180deg, #dcfce7 0%, #86efac 100%);
 	border-color: #4ade80;
@@ -289,6 +325,7 @@
 .glassAmber:hover .zoomEndCap,
 .glassPurple:hover .zoomEndCap,
 .glassCyan:hover .zoomEndCap,
+.glassBlue:hover .zoomEndCap,
 .glassDarkGreen:hover .zoomEndCap {
 	opacity: 1;
 }

@@ -1,5 +1,6 @@
 import type { RowDefinition } from "dnd-timeline";
 import { useRow } from "dnd-timeline";
+import { cn } from "@/lib/utils";
 
 interface RowProps extends RowDefinition {
 	children: React.ReactNode;
@@ -7,11 +8,13 @@ interface RowProps extends RowDefinition {
 	hint?: string;
 	isEmpty?: boolean;
 	labelColor?: string;
+	slim?: boolean;
 	onMouseEnter?: React.MouseEventHandler<HTMLDivElement>;
 	onMouseMove?: React.MouseEventHandler<HTMLDivElement>;
 	onMouseLeave?: React.MouseEventHandler<HTMLDivElement>;
 	onMouseDown?: React.MouseEventHandler<HTMLDivElement>;
 	onClick?: React.MouseEventHandler<HTMLDivElement>;
+	onDoubleClick?: React.MouseEventHandler<HTMLDivElement>;
 }
 
 export default function Row({
@@ -21,17 +24,19 @@ export default function Row({
 	hint,
 	isEmpty,
 	labelColor = "#666",
+	slim = false,
 	onMouseEnter,
 	onMouseMove,
 	onMouseLeave,
 	onMouseDown,
 	onClick,
+	onDoubleClick,
 }: RowProps) {
 	const { setNodeRef, rowWrapperStyle, rowStyle } = useRow({ id });
 
 	return (
 		<div
-			className="bg-transparent relative flex-1 min-h-[26px]"
+			className={cn("bg-transparent relative min-h-[26px]", slim ? "flex-[0.7]" : "flex-1")}
 			style={{ ...rowWrapperStyle, marginBottom: 2 }}
 		>
 			{label && (
@@ -56,6 +61,7 @@ export default function Row({
 				onMouseLeave={onMouseLeave}
 				onMouseDown={onMouseDown}
 				onClick={onClick}
+				onDoubleClick={onDoubleClick}
 			>
 				{children}
 			</div>

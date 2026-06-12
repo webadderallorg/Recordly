@@ -38,6 +38,7 @@ import {
 	computeFocusFromTransform,
 	computeZoomTransform,
 } from "@/components/video-editor/videoPlayback/zoomTransform";
+import type { WebcamLayoutRegion } from "@/components/video-editor/webcamLayoutRegions";
 import {
 	getWebcamOverlayPosition,
 	getWebcamOverlaySizePx,
@@ -79,6 +80,7 @@ import {
 import { VideoMuxer } from "./muxer";
 import { roundNativeStaticLayoutContentSize } from "./nativeStaticLayoutGeometry";
 import { buildNativeStaticLayoutCursorTelemetry } from "./nativeStaticLayoutTelemetry";
+import { buildOutputTimeline, type OutputSlice, outputDurationMs } from "./outputTimeline";
 import { resolveSourceAudioFallbackPaths } from "./sourceAudioFallback";
 import { type DecodedVideoInfo, StreamingVideoDecoder } from "./streamingDecoder";
 import type {
@@ -98,6 +100,8 @@ interface VideoExporterConfig extends ExportConfig {
 	zoomRegions: ZoomRegion[];
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
+	/** When false, trimmed gaps export as black time instead of being removed. */
+	magnetEnabled?: boolean;
 	showShadow: boolean;
 	shadowIntensity: number;
 	backgroundBlur: number;
@@ -120,6 +124,9 @@ interface VideoExporterConfig extends ExportConfig {
 	videoPadding?: Padding | number;
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
+	webcamLayoutRegions?: WebcamLayoutRegion[];
+	/** Camera-full rendering style; plumbed in Task 2, consumed by the camera-full layout in Task 3. */
+	webcamLayoutStyle?: "fit" | "fill";
 	webcamUrl?: string | null;
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
@@ -532,10 +539,15 @@ export class ModernVideoExporter {
 					!useNativeEncoder &&
 					nativeAudioPlan.audioMode !== "none" &&
 					(shouldUsePitchPreservingFfmpegAudio || !(await isAacAudioEncodingSupported()));
-				const effectiveDuration = this.streamingDecoder.getEffectiveDuration(
-					this.config.trimRegions,
-					this.config.speedRegions,
-				);
+				const blackGapTimeline = this.isGapsAsBlackExport()
+					? this.buildGapsAsBlackOutputTimeline(videoInfo)
+					: null;
+				const effectiveDuration = blackGapTimeline
+					? outputDurationMs(blackGapTimeline) / 1000
+					: this.streamingDecoder.getEffectiveDuration(
+							this.config.trimRegions,
+							this.config.speedRegions,
+						);
 				this.effectiveDurationSec = effectiveDuration;
 				const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
 
@@ -609,6 +621,8 @@ export class ModernVideoExporter {
 					padding: this.config.padding,
 					cropRegion: this.config.cropRegion,
 					webcam: this.config.webcam,
+					webcamLayoutRegions: this.config.webcamLayoutRegions,
+					webcamLayoutStyle: this.config.webcamLayoutStyle,
 					webcamUrl: this.config.webcamUrl,
 					videoWidth: videoInfo.width,
 					videoHeight: videoInfo.height,
@@ -672,6 +686,42 @@ export class ModernVideoExporter {
 				this.displayedRenderFps = 0;
 				const decodeLoopStartedAt = this.getNowMs();
 
+				// Black-gap exports interleave synthetic black frames where trimmed
+				// source time would otherwise be removed, so kept source frames stay
+				// at their gap-inclusive output timestamps.
+				const pendingBlackSlices =
+					blackGapTimeline?.filter((slice) => slice.kind === "black") ?? [];
+				let nextBlackSliceIndex = 0;
+				const emitBlackFramesThrough = async (outputEndMs: number) => {
+					const targetFrameCount = Math.max(
+						frameIndex,
+						Math.round((outputEndMs / 1000) * this.config.frameRate),
+					);
+					while (frameIndex < targetFrameCount && !this.cancelled) {
+						const timestamp = frameIndex * frameDuration;
+						const renderStartedAt = this.getNowMs();
+						await this.renderer!.renderBlackFrame(timestamp, frameDuration);
+						this.renderFrameTimeMs += this.getNowMs() - renderStartedAt;
+
+						if (useNativeEncoder) {
+							await this.encodeRenderedFrameNative(
+								timestamp,
+								frameDuration,
+								frameIndex,
+							);
+						} else {
+							await this.encodeRenderedFrame(timestamp, frameDuration, frameIndex);
+						}
+						frameIndex++;
+						this.processedFrameCount = frameIndex;
+						this.reportProgress(frameIndex, totalFrames, "extracting");
+						extensionHost.emitEvent({
+							type: "export:frame",
+							data: { frameIndex, totalFrames },
+						});
+					}
+				};
+
 				await this.streamingDecoder.decodeAll(
 					this.config.frameRate,
 					this.config.trimRegions,
@@ -683,6 +733,20 @@ export class ModernVideoExporter {
 						cursorTimestampMs,
 					) => {
 						const callbackStartedAt = this.getNowMs();
+						if (this.cancelled) {
+							return;
+						}
+
+						while (
+							nextBlackSliceIndex < pendingBlackSlices.length &&
+							sourceTimestampMs >=
+								pendingBlackSlices[nextBlackSliceIndex].sourceEndMs - 0.5
+						) {
+							await emitBlackFramesThrough(
+								pendingBlackSlices[nextBlackSliceIndex].outputEndMs,
+							);
+							nextBlackSliceIndex++;
+						}
 						if (this.cancelled) {
 							return;
 						}
@@ -723,6 +787,15 @@ export class ModernVideoExporter {
 						});
 					},
 				);
+
+				// Flush black slices past the last kept source frame (e.g. a trim
+				// that extends to the end of the recording).
+				while (!this.cancelled && nextBlackSliceIndex < pendingBlackSlices.length) {
+					await emitBlackFramesThrough(
+						pendingBlackSlices[nextBlackSliceIndex].outputEndMs,
+					);
+					nextBlackSliceIndex++;
+				}
 				this.decodeLoopTimeMs = this.getNowMs() - decodeLoopStartedAt;
 
 				if (this.cancelled) {
@@ -827,6 +900,7 @@ export class ModernVideoExporter {
 									this.config.sourceAudioFallbackStartDelayMsByPath,
 									this.config.sourceAudioTrackSettings,
 									this.config.clipRegions,
+									this.isGapsAsBlackExport(),
 								),
 								"audio processing",
 								"audio",
@@ -1114,6 +1188,28 @@ export class ModernVideoExporter {
 		}
 	}
 
+	/**
+	 * When the timeline magnet is off, trimmed gaps stay on the output timeline
+	 * as black time instead of being removed.
+	 */
+	private isGapsAsBlackExport(): boolean {
+		return this.config.magnetEnabled === false && (this.config.trimRegions ?? []).length > 0;
+	}
+
+	private buildGapsAsBlackOutputTimeline(videoInfo: DecodedVideoInfo): OutputSlice[] {
+		const sourceDurationMs =
+			getEffectiveVideoStreamDurationSeconds({
+				duration: videoInfo.duration,
+				streamDuration: videoInfo.streamDuration,
+			}) * 1000;
+		return buildOutputTimeline(
+			sourceDurationMs,
+			this.config.trimRegions ?? [],
+			this.config.speedRegions ?? [],
+			true,
+		);
+	}
+
 	private buildNativeTrimSegments(durationMs: number): Array<{ startMs: number; endMs: number }> {
 		const trimRegions = [...(this.config.trimRegions ?? [])].sort(
 			(a, b) => a.startMs - b.startMs,
@@ -1303,6 +1399,18 @@ export class ModernVideoExporter {
 			audioRegions.length === 0
 		) {
 			return { audioMode: "none" };
+		}
+
+		// Black-gap exports keep trimmed time on the output timeline as silence,
+		// which only the offline-rendered audio pipeline can produce. The
+		// trim-source and filtergraph paths would remove the trimmed time and
+		// desync audio from the black video segments.
+		if (this.isGapsAsBlackExport()) {
+			return {
+				audioMode: "edited-track",
+				strategy: "offline-render-fallback",
+				sourceAudioFallbackPaths,
+			};
 		}
 
 		if (
@@ -1552,6 +1660,12 @@ export class ModernVideoExporter {
 		}
 		if ((this.config.annotationRegions ?? []).length > 0) {
 			reasons.push("unsupported-annotation-overlay");
+		}
+		if (this.isGapsAsBlackExport()) {
+			reasons.push("unsupported-black-gaps");
+		}
+		if ((this.config.webcamLayoutRegions ?? []).length > 0) {
+			reasons.push("unsupported-webcam-layout-regions");
 		}
 		if ((this.config.autoCaptions ?? []).length > 0) {
 			reasons.push("unsupported-caption-overlay");
@@ -1950,6 +2064,7 @@ export class ModernVideoExporter {
 					this.config.sourceAudioFallbackStartDelayMsByPath,
 					this.config.sourceAudioTrackSettings,
 					this.config.clipRegions,
+					this.isGapsAsBlackExport(),
 				),
 				description,
 				"audio",
@@ -2533,8 +2648,7 @@ export class ModernVideoExporter {
 				timelineSegments,
 				chunkDurationSec: STATIC_LAYOUT_CHUNK_DURATION_SEC,
 				experimentalWindowsGpuCompositor: this.config.experimentalNativeExport === true,
-				experimentalNvidiaCudaExport:
-					this.config.experimentalNvidiaCudaExport === true,
+				experimentalNvidiaCudaExport: this.config.experimentalNvidiaCudaExport === true,
 				audioOptions: {
 					...audioOptions,
 					outputDurationSec: effectiveDuration,

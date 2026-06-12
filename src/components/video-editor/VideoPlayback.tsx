@@ -63,6 +63,7 @@ import {
 	type SpringState,
 	stepSpringValue,
 } from "./videoPlayback/motionSmoothing";
+import { useProcessedWebcamPreview } from "./videoPlayback/useProcessedWebcamPreview";
 
 function getContributedCursorStylesSignature() {
 	return extensionHost
@@ -128,6 +129,7 @@ import { applyCanvasSceneTransform } from "@/lib/extensions/sceneTransform";
 import { getSquircleSvgPath } from "@/lib/geometry/squircle";
 import { type AspectRatio, formatAspectRatioForCSS } from "@/utils/aspectRatioUtils";
 import { AnnotationOverlay } from "./AnnotationOverlay";
+import { type FillFrameRegion, fillFrameProgressAtMs } from "./fillFrameRegions";
 import {
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
 	DEFAULT_CONNECTED_ZOOM_EASING,
@@ -169,10 +171,7 @@ import { clampFocusToStage as clampFocusToStageUtil } from "./videoPlayback/focu
 import { layoutVideoContent as layoutVideoContentUtil } from "./videoPlayback/layoutUtils";
 import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
 import { createVideoEventHandlers } from "./videoPlayback/videoEventHandlers";
-import {
-	getWebcamMediaTargetTimeSeconds,
-	shouldSeekWebcamMedia,
-} from "./videoPlayback/webcamSync";
+import { getWebcamMediaTargetTimeSeconds, shouldSeekWebcamMedia } from "./videoPlayback/webcamSync";
 import { findDominantRegion } from "./videoPlayback/zoomRegionUtils";
 import {
 	applyZoomTransform,
@@ -181,6 +180,14 @@ import {
 	createMotionBlurState,
 	type MotionBlurState,
 } from "./videoPlayback/zoomTransform";
+import {
+	CAMERA_FULL_PADDING_FRACTION,
+	expandRectToAspect,
+	getCoverRect,
+	getLetterboxRect,
+	isCameraFullAtMs,
+	type WebcamLayoutRegion,
+} from "./webcamLayoutRegions";
 import {
 	getWebcamCropSourceRect,
 	getWebcamOverlayPosition,
@@ -354,9 +361,18 @@ interface VideoPlaybackProps {
 	frame?: string | null;
 	cropRegion?: import("./types").CropRegion;
 	webcam?: WebcamOverlaySettings;
+	webcamLayoutRegions?: WebcamLayoutRegion[];
+	/** Camera-full rendering style: "fit" letterboxes the webcam, "fill" covers the frame. */
+	webcamLayoutStyle?: "fit" | "fill";
+	/** Time ranges where the screen recording covers the full canvas (no framed chrome). */
+	fillFrameRegions?: FillFrameRegion[];
+	/** "Remove background": whole video renders fill-frame regardless of regions. */
+	fillFrameDefault?: boolean;
 	webcamVideoPath?: string | null;
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
+	/** When false (magnet off), trims play back as black wall-clock time instead of being skipped. */
+	magnetEnabled?: boolean;
 	aspectRatio: AspectRatio;
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
@@ -404,6 +420,16 @@ export interface VideoPlaybackRef {
 	refreshFrame: () => Promise<void>;
 }
 
+// Stable default so the regions-changed effect does not re-run every render
+// when the prop is omitted.
+const EMPTY_WEBCAM_LAYOUT_REGIONS: WebcamLayoutRegion[] = [];
+const EMPTY_FILL_FRAME_REGIONS: FillFrameRegion[] = [];
+
+function buildShadowFilterCss(intensity: number): string {
+	if (intensity <= 0) return "none";
+	return `drop-shadow(0 ${intensity * 12}px ${intensity * 48}px rgba(0,0,0,${intensity * 0.7})) drop-shadow(0 ${intensity * 4}px ${intensity * 16}px rgba(0,0,0,${intensity * 0.5})) drop-shadow(0 ${intensity * 2}px ${intensity * 8}px rgba(0,0,0,${intensity * 0.3}))`;
+}
+
 const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 	(
 		{
@@ -437,9 +463,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			frame = null,
 			cropRegion,
 			webcam,
+			webcamLayoutRegions = EMPTY_WEBCAM_LAYOUT_REGIONS,
+			webcamLayoutStyle = "fit",
+			fillFrameRegions = EMPTY_FILL_FRAME_REGIONS,
+			fillFrameDefault = false,
 			webcamVideoPath,
 			trimRegions = [],
 			speedRegions = [],
+			magnetEnabled = true,
 			aspectRatio,
 			annotationRegions = [],
 			autoCaptions = [],
@@ -518,8 +549,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const overlayRef = useRef<HTMLDivElement | null>(null);
 		const focusIndicatorRef = useRef<HTMLDivElement | null>(null);
 		const webcamVideoRef = useRef<HTMLVideoElement | null>(null);
+		const webcamProcessedCanvasRef = useRef<HTMLCanvasElement | null>(null);
 		const webcamBubbleRef = useRef<HTMLDivElement | null>(null);
 		const webcamBubbleInnerRef = useRef<HTMLDivElement | null>(null);
+		const webcamCropContentRef = useRef<HTMLDivElement | null>(null);
 		const [webcamVideoDimensions, setWebcamVideoDimensions] = useState<{
 			width: number;
 			height: number;
@@ -565,6 +598,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const layoutVideoContentRef = useRef<(() => void) | null>(null);
 		const trimRegionsRef = useRef<TrimRegion[]>([]);
 		const speedRegionsRef = useRef<SpeedRegion[]>([]);
+		const magnetEnabledRef = useRef(magnetEnabled);
+		// True while the wall-clock gap driver is playing a trim region as black time.
+		const [gapDriveActive, setGapDriveActive] = useState(false);
 		const lastWebcamSyncTimeRef = useRef<number | null>(null);
 		const lastBackgroundSyncTimeRef = useRef<number | null>(null);
 		const bgVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -779,6 +815,42 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const webcamTimeOffsetMs = webcam?.timeOffsetMs;
 		const webcamCropRegion = webcam?.cropRegion;
 		const webcamMirror = webcam?.mirror ?? false;
+		const webcamProcessingActive = useProcessedWebcamPreview({
+			webcam,
+			videoRef: webcamVideoRef,
+			canvasRef: webcamProcessedCanvasRef,
+			// The bubble (and its video/canvas elements) only mounts once the
+			// player is ready; the render loop must re-arm when that happens.
+			elementsReady: pixiReady && videoReady,
+			videoPath: webcamVideoPath ?? null,
+		});
+		const latestWebcamLayoutInputs = {
+			webcamEnabled,
+			webcamMargin,
+			webcamSize,
+			webcamReactToZoom,
+			webcamPositionPreset,
+			webcamPositionX,
+			webcamPositionY,
+			webcamCorner,
+			webcamCornerRadius,
+			webcamShadow,
+			webcamVideoPath,
+			webcamCropRegion,
+			webcamVideoDimensions,
+			webcamLayoutStyle,
+		};
+		const webcamLayoutInputsRef = useRef(latestWebcamLayoutInputs);
+		webcamLayoutInputsRef.current = latestWebcamLayoutInputs;
+		const webcamLayoutRegionsRef = useRef<WebcamLayoutRegion[]>(webcamLayoutRegions);
+		webcamLayoutRegionsRef.current = webcamLayoutRegions;
+		const fillFrameRegionsRef = useRef<FillFrameRegion[]>(fillFrameRegions);
+		fillFrameRegionsRef.current = fillFrameRegions;
+		const fillFrameDefaultRef = useRef(fillFrameDefault);
+		fillFrameDefaultRef.current = fillFrameDefault;
+		const fillFrameProgressRef = useRef(0);
+		const backgroundLayerRef = useRef<HTMLElement | null>(null);
+		const cameraFullActiveRef = useRef(false);
 		const webcamCropPreviewContentStyle = useMemo<React.CSSProperties>(() => {
 			if (!webcamVideoDimensions) {
 				return { opacity: 0 };
@@ -805,76 +877,252 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			};
 		}, [webcamCropRegion, webcamVideoDimensions]);
 
-		const applyWebcamBubbleLayout = useCallback(
-			(zoomScale: number) => {
-				const bubble = webcamBubbleRef.current;
-				const bubbleInner = webcamBubbleInnerRef.current;
-				const overlay = overlayRef.current;
-				if (!bubble || !bubbleInner || !overlay || !webcamEnabled || !webcamVideoPath) {
-					if (bubble) {
-						bubble.style.display = "none";
+		const applyWebcamBubbleLayout = useCallback((zoomScale: number) => {
+			const inputs = webcamLayoutInputsRef.current;
+			const bubble = webcamBubbleRef.current;
+			const bubbleInner = webcamBubbleInnerRef.current;
+			const overlay = overlayRef.current;
+			if (
+				!bubble ||
+				!bubbleInner ||
+				!overlay ||
+				!inputs.webcamEnabled ||
+				!inputs.webcamVideoPath
+			) {
+				if (bubble) {
+					bubble.style.display = "none";
+				}
+				return;
+			}
+
+			// Restores the percent-based cover position that React renders via
+			// webcamCropPreviewContentStyle (same formula). The camera-full fill
+			// branch overrides these inline styles with pixel values, so every
+			// other branch must explicitly put them back — clearing them would
+			// also erase React's own inline values until the memo next changes.
+			const applyPercentContentLayout = () => {
+				const content = webcamCropContentRef.current;
+				const videoDims = inputs.webcamVideoDimensions;
+				if (!content || !videoDims) {
+					return;
+				}
+				const { sx, sy, sw, sh } = getWebcamCropSourceRect(
+					inputs.webcamCropRegion,
+					videoDims.width,
+					videoDims.height,
+				);
+				const coverScale = Math.max(1 / sw, 1 / sh);
+				content.style.left = `${((1 - sw * coverScale) / 2 - sx * coverScale) * 100}%`;
+				content.style.top = `${((1 - sh * coverScale) / 2 - sy * coverScale) * 100}%`;
+				content.style.width = `${videoDims.width * coverScale * 100}%`;
+				content.style.height = `${videoDims.height * coverScale * 100}%`;
+			};
+
+			if (cameraFullActiveRef.current) {
+				// Camera-full segment: the screen layer is hidden, so zoomScale is
+				// intentionally ignored — the camera stays letterboxed over the
+				// background regardless of zoom regions / reactToZoom.
+				const videoDims = inputs.webcamVideoDimensions;
+				let contentWidth = 16;
+				let contentHeight = 9;
+				if (videoDims) {
+					const { sw, sh } = getWebcamCropSourceRect(
+						inputs.webcamCropRegion,
+						videoDims.width,
+						videoDims.height,
+					);
+					contentWidth = sw;
+					contentHeight = sh;
+				}
+
+				if (inputs.webcamLayoutStyle === "fill") {
+					// Fill style: the bubble covers the whole frame edge to edge —
+					// no squircle clip, no drop shadow. The inner content is
+					// positioned in pixels (aspect-correct cover of the frame,
+					// matching the exporter's sprite cover-fit) because the
+					// percent-based cover math is only aspect-true in square boxes.
+					bubble.style.display = "block";
+					bubble.style.left = "0px";
+					bubble.style.top = "0px";
+					bubble.style.width = `${overlay.clientWidth}px`;
+					bubble.style.height = `${overlay.clientHeight}px`;
+					bubble.style.aspectRatio = "auto";
+					bubble.style.filter = "none";
+					bubble.style.borderRadius = "0px";
+					bubble.style.boxShadow = "none";
+
+					bubbleInner.style.borderRadius = "0px";
+					bubbleInner.style.overflow = "hidden";
+					bubbleInner.style.contain = "paint";
+					bubbleInner.style.clipPath = "none";
+					bubbleInner.style.setProperty("-webkit-clip-path", "none");
+
+					const content = webcamCropContentRef.current;
+					if (content && videoDims) {
+						const { sx, sy, sw, sh } = getWebcamCropSourceRect(
+							inputs.webcamCropRegion,
+							videoDims.width,
+							videoDims.height,
+						);
+						// The stored crop is a pixel-square bubble viewport; expand it
+						// to the frame aspect (centered, clamped to the source) so the
+						// fill barely crops instead of cover-fitting the square. The
+						// exporter applies the same expansion to its frame cache.
+						const expanded = expandRectToAspect(
+							{ x: sx, y: sy, width: sw, height: sh },
+							videoDims,
+							{ width: overlay.clientWidth, height: overlay.clientHeight },
+						);
+						const coverRect = getCoverRect(
+							{ width: expanded.width, height: expanded.height },
+							{ width: overlay.clientWidth, height: overlay.clientHeight },
+						);
+						const scale = coverRect.width / expanded.width;
+						content.style.left = `${coverRect.x - expanded.x * scale}px`;
+						content.style.top = `${coverRect.y - expanded.y * scale}px`;
+						content.style.width = `${videoDims.width * scale}px`;
+						content.style.height = `${videoDims.height * scale}px`;
 					}
 					return;
 				}
 
-				const scaledSize = getWebcamOverlaySizePx({
-					containerWidth: overlay.clientWidth,
-					containerHeight: overlay.clientHeight,
-					sizePercent: webcamSize,
-					margin: webcamMargin,
-					zoomScale,
-					reactToZoom: webcamReactToZoom,
-				});
-				const { x, y } = getWebcamOverlayPosition({
-					containerWidth: overlay.clientWidth,
-					containerHeight: overlay.clientHeight,
-					size: scaledSize,
-					margin: webcamMargin,
-					positionPreset: webcamPositionPreset,
-					positionX: webcamPositionX,
-					positionY: webcamPositionY,
-					legacyCorner: webcamCorner,
-				});
+				applyPercentContentLayout();
+				const rect = getLetterboxRect(
+					{ width: contentWidth, height: contentHeight },
+					{ width: overlay.clientWidth, height: overlay.clientHeight },
+					Math.min(overlay.clientWidth, overlay.clientHeight) *
+						CAMERA_FULL_PADDING_FRACTION,
+				);
 
 				bubble.style.display = "block";
-				bubble.style.left = `${x}px`;
-				bubble.style.top = `${y}px`;
-				bubble.style.width = `${scaledSize}px`;
-				bubble.style.height = `${scaledSize}px`;
-				bubble.style.aspectRatio = "1 / 1";
-				const squirclePath = getSquircleSvgPath({
+				bubble.style.left = `${rect.x}px`;
+				bubble.style.top = `${rect.y}px`;
+				bubble.style.width = `${rect.width}px`;
+				bubble.style.height = `${rect.height}px`;
+				bubble.style.aspectRatio = "auto";
+				const cameraFullSquirclePath = getSquircleSvgPath({
 					x: 0,
 					y: 0,
-					width: scaledSize,
-					height: scaledSize,
-					radius: webcamCornerRadius,
+					width: rect.width,
+					height: rect.height,
+					radius: inputs.webcamCornerRadius,
 				});
-				bubble.style.filter = `drop-shadow(0 ${Math.round(scaledSize * 0.06)}px ${Math.round(
-					scaledSize * 0.22,
-				)}px rgba(0, 0, 0, ${webcamShadow}))`;
+				const shadowBase = Math.min(rect.width, rect.height);
+				bubble.style.filter = `drop-shadow(0 ${Math.round(shadowBase * 0.06)}px ${Math.round(
+					shadowBase * 0.22,
+				)}px rgba(0, 0, 0, ${inputs.webcamShadow}))`;
 				bubble.style.borderRadius = "0px";
 				bubble.style.boxShadow = "none";
 
 				bubbleInner.style.borderRadius = "0px";
 				bubbleInner.style.overflow = "hidden";
 				bubbleInner.style.contain = "paint";
-				bubbleInner.style.clipPath = `path('${squirclePath}')`;
-				bubbleInner.style.setProperty("-webkit-clip-path", `path('${squirclePath}')`);
+				bubbleInner.style.clipPath = `path('${cameraFullSquirclePath}')`;
+				bubbleInner.style.setProperty(
+					"-webkit-clip-path",
+					`path('${cameraFullSquirclePath}')`,
+				);
+				return;
+			}
+
+			applyPercentContentLayout();
+			const scaledSize = getWebcamOverlaySizePx({
+				containerWidth: overlay.clientWidth,
+				containerHeight: overlay.clientHeight,
+				sizePercent: inputs.webcamSize,
+				margin: inputs.webcamMargin,
+				zoomScale,
+				reactToZoom: inputs.webcamReactToZoom,
+			});
+			const { x, y } = getWebcamOverlayPosition({
+				containerWidth: overlay.clientWidth,
+				containerHeight: overlay.clientHeight,
+				size: scaledSize,
+				margin: inputs.webcamMargin,
+				positionPreset: inputs.webcamPositionPreset,
+				positionX: inputs.webcamPositionX,
+				positionY: inputs.webcamPositionY,
+				legacyCorner: inputs.webcamCorner,
+			});
+
+			bubble.style.display = "block";
+			bubble.style.left = `${x}px`;
+			bubble.style.top = `${y}px`;
+			bubble.style.width = `${scaledSize}px`;
+			bubble.style.height = `${scaledSize}px`;
+			bubble.style.aspectRatio = "1 / 1";
+			const squirclePath = getSquircleSvgPath({
+				x: 0,
+				y: 0,
+				width: scaledSize,
+				height: scaledSize,
+				radius: inputs.webcamCornerRadius,
+			});
+			bubble.style.filter = `drop-shadow(0 ${Math.round(scaledSize * 0.06)}px ${Math.round(
+				scaledSize * 0.22,
+			)}px rgba(0, 0, 0, ${inputs.webcamShadow}))`;
+			bubble.style.borderRadius = "0px";
+			bubble.style.boxShadow = "none";
+
+			bubbleInner.style.borderRadius = "0px";
+			bubbleInner.style.overflow = "hidden";
+			bubbleInner.style.contain = "paint";
+			bubbleInner.style.clipPath = `path('${squirclePath}')`;
+			bubbleInner.style.setProperty("-webkit-clip-path", `path('${squirclePath}')`);
+		}, []);
+
+		// Webcam layout inputs changed: restyle only the bubble. Must NOT run the
+		// heavy stage-layout effect (it resets the zoom container and causes a
+		// visible scale flicker while dragging position sliders).
+		// biome-ignore lint/correctness/useExhaustiveDependencies: the webcam values are read via webcamLayoutInputsRef inside the stable callback; they are listed here as the re-run trigger.
+		useEffect(() => {
+			applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
+		}, [
+			applyWebcamBubbleLayout,
+			webcamEnabled,
+			webcamMargin,
+			webcamSize,
+			webcamReactToZoom,
+			webcamPositionPreset,
+			webcamPositionX,
+			webcamPositionY,
+			webcamCorner,
+			webcamCornerRadius,
+			webcamShadow,
+			webcamVideoPath,
+			webcamCropRegion,
+			webcamVideoDimensions,
+			webcamLayoutStyle,
+		]);
+
+		const updateWebcamLayoutMode = useCallback(
+			(force = false) => {
+				const active = isCameraFullAtMs(
+					webcamLayoutRegionsRef.current,
+					currentTimeRef.current,
+				);
+				const changed = cameraFullActiveRef.current !== active;
+				cameraFullActiveRef.current = active;
+				// Enforce screen visibility unconditionally: the Pixi container can be
+				// (re)created after the active state was computed.
+				const cameraContainer = cameraContainerRef.current;
+				if (cameraContainer && cameraContainer.visible === active) {
+					cameraContainer.visible = !active;
+				}
+				if (changed || force) {
+					applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
+				}
 			},
-			[
-				webcamCorner,
-				webcamCornerRadius,
-				webcamEnabled,
-				webcamMargin,
-				webcamPositionPreset,
-				webcamPositionX,
-				webcamPositionY,
-				webcamReactToZoom,
-				webcamShadow,
-				webcamSize,
-				webcamVideoPath,
-			],
+			[applyWebcamBubbleLayout],
 		);
+
+		// Re-evaluate camera-full mode when the regions list changes (sidecar load /
+		// checkbox toggle) and once on mount. Forced so the bubble restyles even when
+		// the active state is unchanged.
+		// biome-ignore lint/correctness/useExhaustiveDependencies: webcamLayoutRegions is read via webcamLayoutRegionsRef inside the stable callback; it is listed here as the re-run trigger.
+		useEffect(() => {
+			updateWebcamLayoutMode(true);
+		}, [webcamLayoutRegions, updateWebcamLayoutMode]);
 
 		const clampFocusToStage = useCallback((focus: ZoomFocus, depth: ZoomDepth) => {
 			return clampFocusToStageUtil(focus, depth, stageSizeRef.current);
@@ -930,6 +1178,25 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			videoEffectsContainer.filterArea = new Rectangle(0, 0, stageWidth, stageHeight);
 		}, []);
 
+		// Fades the framed chrome (wallpaper layer + shadow) as fill-frame
+		// progress approaches 1; applied imperatively per frame from the ticker.
+		const applyFillFrameChrome = useCallback(
+			(progress: number) => {
+				const fade = 1 - progress;
+				const backgroundEl = backgroundLayerRef.current;
+				if (backgroundEl) {
+					backgroundEl.style.opacity = progress > 0 ? String(fade) : "";
+				}
+				const containerEl = containerRef.current;
+				if (containerEl) {
+					containerEl.style.filter = buildShadowFilterCss(
+						showShadow ? shadowIntensity * fade : 0,
+					);
+				}
+			},
+			[showShadow, shadowIntensity],
+		);
+
 		const layoutVideoContent = useCallback(() => {
 			const container = containerRef.current;
 			const app = appRef.current;
@@ -972,6 +1239,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				}
 			}
 
+			const fillFrameProgress = fillFrameProgressRef.current;
+			const fillFrameFade = 1 - fillFrameProgress;
 			const result = layoutVideoContentUtil({
 				container,
 				app,
@@ -983,6 +1252,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				borderRadius,
 				padding,
 				frameInsets,
+				fillFrameProgress,
 			});
 
 			if (result) {
@@ -1020,12 +1290,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					},
 					canvasWidth: result.stageSize.width,
 					canvasHeight: result.stageSize.height,
-					borderRadius,
+					borderRadius: borderRadius * fillFrameFade,
 					padding,
 				});
 				extensionHost.setShadowConfig({
-					enabled: Boolean(showShadow) && shadowIntensity > 0,
-					intensity: shadowIntensity,
+					enabled: Boolean(showShadow) && shadowIntensity * fillFrameFade > 0,
+					intensity: shadowIntensity * fillFrameFade,
 				});
 
 				// Position device frame sprite to fill the stage
@@ -1478,6 +1748,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		}, [trimRegions]);
 
 		useEffect(() => {
+			magnetEnabledRef.current = magnetEnabled;
+		}, [magnetEnabled]);
+
+		useEffect(() => {
 			speedRegionsRef.current = speedRegions;
 		}, [speedRegions]);
 
@@ -1658,13 +1932,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		useEffect(() => {
 			const timeMs = currentTime * 1000;
 			currentTimeRef.current = timeMs;
+			updateWebcamLayoutMode();
 			const videoInfo = extensionHost.getVideoInfoSnapshot();
 			extensionHost.setPlaybackState({
 				currentTimeMs: timeMs,
 				durationMs: videoInfo?.durationMs ?? 0,
 				isPlaying,
 			});
-		}, [currentTime, isPlaying]);
+		}, [currentTime, isPlaying, updateWebcamLayoutMode]);
 
 		useEffect(() => {
 			if (!pixiReady || !videoReady) return;
@@ -2121,6 +2396,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					onTimeUpdate,
 					trimRegionsRef,
 					speedRegionsRef,
+					magnetEnabledRef,
+					onGapStateChange: setGapDriveActive,
 				});
 
 			video.addEventListener("play", handlePlay);
@@ -2200,15 +2477,31 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					return;
 				}
 
-				const { region, strength, blendedScale, transition } = findDominantRegion(
-					zoomRegionsRef.current,
-					currentTimeRef.current,
-					{
-						connectZooms: connectZoomsRef.current,
-						zoomInDurationMs: zoomInDurationMsRef.current,
-						zoomOutDurationMs: zoomOutDurationMsRef.current,
-					},
-				);
+				// Fill-frame transition: relayout only when the eased progress moves,
+				// but keep the chrome fade applied every frame (it is cheap and
+				// survives React re-renders of the background/shadow layers).
+				const fillFrameProgress = fillFrameDefaultRef.current
+					? 1
+					: fillFrameProgressAtMs(fillFrameRegionsRef.current, currentTimeRef.current);
+				if (fillFrameProgress !== fillFrameProgressRef.current) {
+					fillFrameProgressRef.current = fillFrameProgress;
+					layoutVideoContentRef.current?.();
+				}
+				applyFillFrameChrome(fillFrameProgress);
+
+				const {
+					region,
+					strength: rawZoomStrength,
+					blendedScale,
+					transition,
+				} = findDominantRegion(zoomRegionsRef.current, currentTimeRef.current, {
+					connectZooms: connectZoomsRef.current,
+					zoomInDurationMs: zoomInDurationMsRef.current,
+					zoomOutDurationMs: zoomOutDurationMsRef.current,
+				});
+				// Fullscreen (fill-frame) segments are presentations — zooming in on
+				// them is never wanted, so zoom strength fades out with the segment.
+				const strength = rawZoomStrength * (1 - fillFrameProgress);
 
 				const defaultFocus = DEFAULT_FOCUS;
 				let targetScaleFactor = 1;
@@ -2361,6 +2654,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 				applyTransform({ scale: appliedScale, x: appliedX, y: appliedY }, targetFocus);
 
+				updateWebcamLayoutMode();
 				applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
 
 				const timeMs = currentTimeRef.current;
@@ -2490,7 +2784,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 												width: maskRect.width,
 												height: maskRect.height,
 											},
-											borderRadius,
+											borderRadius: borderRadius * (1 - fillFrameProgress),
 											padding,
 										}
 									: undefined,
@@ -2501,8 +2795,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								progress: animationState.progress,
 							},
 							shadow: {
-								enabled: Boolean(showShadow) && shadowIntensity > 0,
-								intensity: shadowIntensity,
+								enabled:
+									Boolean(showShadow) &&
+									shadowIntensity * (1 - fillFrameProgress) > 0,
+								intensity: shadowIntensity * (1 - fillFrameProgress),
 							},
 							sceneTransform: {
 								scale: animationState.appliedScale,
@@ -2557,6 +2853,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			videoReady,
 			clampFocusToStage,
 			applyWebcamBubbleLayout,
+			updateWebcamLayoutMode,
+			applyFillFrameChrome,
 			borderRadius,
 			padding,
 			showShadow,
@@ -2834,6 +3132,19 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			return 16 / 9;
 		})();
 
+		// Magnet off: the playhead can sit inside (or wall-clock-play through) a
+		// trim region — those moments render as pure black in the preview frame.
+		// Deriving from currentTime also covers scrubbing into a gap while paused,
+		// when the gap driver is not running.
+		const currentTimeMsForGap = currentTime * 1000;
+		const inBlackGap =
+			!magnetEnabled &&
+			(gapDriveActive ||
+				trimRegions.some(
+					(region) =>
+						currentTimeMsForGap >= region.startMs && currentTimeMsForGap < region.endMs,
+				));
+
 		return (
 			<div
 				ref={previewFrameRef}
@@ -2848,7 +3159,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				{resolvedWallpaperKind === "video" && resolvedWallpaper ? (
 					<video
 						key={resolvedWallpaper}
-						ref={bgVideoRef}
+						ref={(el) => {
+							bgVideoRef.current = el;
+							backgroundLayerRef.current = el;
+						}}
 						className="absolute inset-0 h-full w-full object-cover"
 						src={resolvedWallpaper}
 						muted
@@ -2860,6 +3174,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					/>
 				) : (
 					<div
+						ref={(el) => {
+							backgroundLayerRef.current = el;
+						}}
 						className="absolute inset-0 bg-cover bg-center"
 						style={{
 							...backgroundStyle,
@@ -2871,10 +3188,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					ref={containerRef}
 					className="absolute inset-0"
 					style={{
-						filter:
-							showShadow && shadowIntensity > 0
-								? `drop-shadow(0 ${shadowIntensity * 12}px ${shadowIntensity * 48}px rgba(0,0,0,${shadowIntensity * 0.7})) drop-shadow(0 ${shadowIntensity * 4}px ${shadowIntensity * 16}px rgba(0,0,0,${shadowIntensity * 0.5})) drop-shadow(0 ${shadowIntensity * 2}px ${shadowIntensity * 8}px rgba(0,0,0,${shadowIntensity * 0.3}))`
-								: "none",
+						filter: buildShadowFilterCss(showShadow ? shadowIntensity : 0),
 					}}
 				/>
 				{hasRendererFallback && (
@@ -2930,6 +3244,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 										}}
 									>
 										<div
+											ref={webcamCropContentRef}
 											className="pointer-events-none absolute"
 											style={webcamCropPreviewContentStyle}
 										>
@@ -2937,12 +3252,27 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 												ref={webcamVideoRef}
 												src={webcamVideoPath}
 												className="pointer-events-none absolute inset-0 block h-full w-full object-fill"
+												style={{
+													visibility: webcamProcessingActive
+														? "hidden"
+														: undefined,
+												}}
 												muted
 												playsInline
 												preload="auto"
 												aria-hidden="true"
 												onLoadedMetadata={handleWebcamMediaReady}
 												onLoadedData={handleWebcamMediaReady}
+											/>
+											<canvas
+												ref={webcamProcessedCanvasRef}
+												className="pointer-events-none absolute inset-0 block h-full w-full"
+												style={{
+													display: webcamProcessingActive
+														? "block"
+														: "none",
+												}}
+												aria-hidden="true"
 											/>
 										</div>
 									</div>
@@ -3097,6 +3427,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 							));
 						})()}
 					</div>
+				)}
+				{/* Magnet off: trimmed ranges play as black time. Rendered as the last
+					visual child of the preview frame so it covers the background, the
+					Pixi canvas and the webcam bubble. Selected annotations boost their
+					z-index by +1000 (AnnotationOverlay), so this must sit above that. */}
+				{inBlackGap && (
+					<div className="pointer-events-none absolute inset-0 z-[1100] bg-black" />
 				)}
 				{/* Keep the source video off-screen instead of display:none so the
 					browser continues producing presented frames for Pixi and preview sync. */}

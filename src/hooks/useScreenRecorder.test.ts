@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createBrowserRecordingOptions,
 	createProcessedMicrophoneConstraints,
+	createWebcamRecordingOptions,
 	normalizeBrowserMicrophoneProfile,
 	resolveBrowserCaptureCursorPolicy,
 	shouldUseNativeWindowsCaptureForSource,
@@ -135,6 +136,20 @@ describe("createBrowserRecordingOptions", () => {
 		).toEqual({
 			bitsPerSecond: 30_600_000,
 			videoBitsPerSecond: 30_600_000,
+		});
+	});
+});
+
+describe("webcam recording quality", () => {
+	// Camera constraints are covered by webcamSession.test.ts; the recorder
+	// now acquires its stream through the shared webcam session.
+	it("records the webcam sidecar at a 4K-friendly bitrate", () => {
+		expect(createWebcamRecordingOptions()).toEqual({
+			videoBitsPerSecond: 45_000_000,
+		});
+		expect(createWebcamRecordingOptions("video/mp4")).toEqual({
+			videoBitsPerSecond: 45_000_000,
+			mimeType: "video/mp4",
 		});
 	});
 });

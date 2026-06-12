@@ -34,6 +34,8 @@
 		"showFloatingWebcamPreview": "顯示浮動預覽",
 		"selectWebcamToEnable": "選擇要啟用的網路攝影機",
 		"noWebcamsFound": "找不到網路攝影機",
+		"webcamStyleFit": "攝影機全螢幕：適應並顯示背景",
+		"webcamStyleFill": "攝影機全螢幕：填滿螢幕",
 		"recordingsFolder": "錄影儲存路徑",
 		"language": "語言",
 		"paused": "已暫停",
@@ -42,6 +44,8 @@
 		"pause": "暫停",
 		"stop": "停止",
 		"cancel": "取消",
+		"cameraLayoutToCameraFull": "攝影機全螢幕",
+		"cameraLayoutToScreen": "返回螢幕",
 		"more": "更多",
 		"update": {
 		"update": "更新",
@@ -65,6 +69,24 @@
 		"windowPlaceholder": "視窗",
 		"cancel": "取消",
 		"share": "分享"
+	},
+	"teleprompter": {
+		"menuLabel": "提詞器",
+		"scriptPlaceholder": "在此貼上或輸入您的文稿…",
+		"startReading": "開始閱讀",
+		"edit": "編輯",
+		"play": "播放",
+		"pause": "暫停",
+		"slower": "減速",
+		"faster": "加速",
+		"smallerText": "縮小文字",
+		"biggerText": "放大文字",
+		"close": "關閉",
+		"hotkeyHint": "⌥F8 播放/暫停 · ⌥F7/⌥F9 速度 · ⌥T 顯示/隱藏",
+		"cameraOn": "顯示攝影機",
+		"cameraOff": "隱藏攝影機",
+		"cameraFade": "攝影機淡化",
+		"cameraError": "攝影機無法使用"
 	},
 	"permissions": {
 		"screenRecordingNeeded": "Recordly 需要「螢幕錄製」權限才能開始。已開啟系統設定。啟用後，請結束並重新開啟 Recordly。",

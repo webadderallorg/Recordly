@@ -1,17 +1,17 @@
 import {
+	ArrowClockwiseIcon,
+	ArticleIcon,
+	DesktopIcon,
 	EyeIcon,
 	EyeSlashIcon,
 	FolderOpenIcon,
+	MoonIcon,
+	SunIcon,
 	TranslateIcon,
 	VideoCameraIcon,
-	ArrowClockwiseIcon,
-	SunIcon,
-	MoonIcon,
-	DesktopIcon,
 } from "@phosphor-icons/react";
 import type { ReactElement } from "react";
-import { useI18n } from "@/contexts/I18nContext";
-import { useScopedT } from "@/contexts/I18nContext";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { AppLocale } from "@/i18n/config";
 import { SUPPORTED_LOCALES } from "@/i18n/config";
@@ -112,6 +112,14 @@ export function MorePopover({
 				}}
 			>
 				{t("recording.openProject")}
+			</DropdownItem>
+			<DropdownItem
+				icon={<ArticleIcon size={15} weight="bold" />}
+				onClick={() => {
+					window.electronAPI.teleprompterToggle();
+				}}
+			>
+				{t("teleprompter.menuLabel", "Teleprompter")}
 			</DropdownItem>
 			{showDevUpdatePreview ? (
 				<DropdownItem

@@ -9,8 +9,13 @@ import {
 	normalizeEditorPreferences,
 	saveEditorPreferences,
 	saveEditorPresets,
+	serializeEditorPresetSnapshot,
 } from "./editorPreferences";
-import { DEFAULT_AUTO_CAPTION_SETTINGS, DEFAULT_CROP_REGION } from "./types";
+import {
+	DEFAULT_AUTO_CAPTION_SETTINGS,
+	DEFAULT_CROP_REGION,
+	DEFAULT_WEBCAM_OVERLAY,
+} from "./types";
 
 function createStorageMock(initialValues: Record<string, string> = {}): Storage {
 	const store = new Map(Object.entries(initialValues));
@@ -461,6 +466,29 @@ describe("editorPreferences", () => {
 			width: 0.8,
 			height: 0.7,
 		});
+	});
+
+	it("strips per-recording webcam fields from persisted preset snapshots", () => {
+		const snapshot = serializeEditorPresetSnapshot({
+			...DEFAULT_EDITOR_PREFERENCES,
+			cropRegion: DEFAULT_CROP_REGION,
+			autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+			whisperExecutablePath: null,
+			whisperModelPath: null,
+			webcam: {
+				...DEFAULT_WEBCAM_OVERLAY,
+				enabled: true,
+				sourcePath: "/tmp/old-recording.webcam.webm",
+				timeOffsetMs: 500,
+				positionX: 0.95,
+				size: 32,
+			},
+		});
+		const parsed = JSON.parse(snapshot);
+		expect(parsed.webcam.sourcePath).toBeNull();
+		expect(parsed.webcam.enabled).toBe(false);
+		expect(parsed.webcam.positionX).toBe(0.95);
+		expect(parsed.webcam.size).toBe(32);
 	});
 
 	it("returns false when preset persistence fails", () => {

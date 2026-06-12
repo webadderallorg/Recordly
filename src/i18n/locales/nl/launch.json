@@ -34,6 +34,8 @@
 		"showFloatingWebcamPreview": "Zwevende voorbeeldweergave tonen",
 		"selectWebcamToEnable": "Selecteer een webcam om in te schakelen",
 		"noWebcamsFound": "Geen webcams gevonden",
+		"webcamStyleFit": "Camera volledig scherm: passend met achtergrond",
+		"webcamStyleFill": "Camera volledig scherm: scherm vullen",
 		"recordingsFolder": "Opnamepad",
 		"language": "Taal",
 		"paused": "GEPAUZEERD",
@@ -42,6 +44,8 @@
 		"pause": "Pauzeren",
 		"stop": "Stoppen",
 		"cancel": "Annuleren",
+		"cameraLayoutToCameraFull": "Camera volledig scherm",
+		"cameraLayoutToScreen": "Terug naar scherm",
 		"more": "Meer",
 		"update": {
 			"update": "Bijwerken",
@@ -65,6 +69,24 @@
 		"windowPlaceholder": "Venster",
 		"cancel": "Annuleren",
 		"share": "Delen"
+	},
+	"teleprompter": {
+		"menuLabel": "Teleprompter",
+		"scriptPlaceholder": "Plak of typ hier je script…",
+		"startReading": "Beginnen met lezen",
+		"edit": "Bewerken",
+		"play": "Afspelen",
+		"pause": "Pauzeren",
+		"slower": "Langzamer",
+		"faster": "Sneller",
+		"smallerText": "Kleinere tekst",
+		"biggerText": "Grotere tekst",
+		"close": "Sluiten",
+		"hotkeyHint": "⌥F8 afspelen/pauzeren · ⌥F7/⌥F9 snelheid · ⌥T tonen/verbergen",
+		"cameraOn": "Camera tonen",
+		"cameraOff": "Camera verbergen",
+		"cameraFade": "Camera vervagen",
+		"cameraError": "Camera niet beschikbaar"
 	},
 	"permissions": {
 		"screenRecordingNeeded": "Recordly heeft toestemming voor schermopname nodig voordat je begint. Systeeminstellingen zijn geopend. Schakel het in, sluit Recordly en open het opnieuw.",

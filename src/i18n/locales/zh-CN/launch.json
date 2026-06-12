@@ -34,6 +34,8 @@
 		"showFloatingWebcamPreview": "显示悬浮预览",
 		"selectWebcamToEnable": "选择一个摄像头以启用",
 		"noWebcamsFound": "未找到摄像头",
+		"webcamStyleFit": "摄像头全屏：适应并显示背景",
+		"webcamStyleFill": "摄像头全屏：填满屏幕",
 		"recordingsFolder": "录制文件夹",
 		"language": "语言",
 		"paused": "已暂停",
@@ -42,6 +44,8 @@
 		"pause": "暂停",
 		"stop": "停止",
 		"cancel": "取消",
+		"cameraLayoutToCameraFull": "摄像头全屏",
+		"cameraLayoutToScreen": "返回屏幕",
 		"more": "更多",
 		"update": {
 			"update": "更新",
@@ -65,6 +69,24 @@
 		"windowPlaceholder": "窗口",
 		"cancel": "取消",
 		"share": "共享"
+	},
+	"teleprompter": {
+		"menuLabel": "提词器",
+		"scriptPlaceholder": "在此粘贴或输入您的文稿…",
+		"startReading": "开始阅读",
+		"edit": "编辑",
+		"play": "播放",
+		"pause": "暂停",
+		"slower": "减速",
+		"faster": "加速",
+		"smallerText": "缩小文字",
+		"biggerText": "放大文字",
+		"close": "关闭",
+		"hotkeyHint": "⌥F8 播放/暂停 · ⌥F7/⌥F9 速度 · ⌥T 显示/隐藏",
+		"cameraOn": "显示摄像头",
+		"cameraOff": "隐藏摄像头",
+		"cameraFade": "摄像头淡化",
+		"cameraError": "摄像头不可用"
 	},
 	"permissions": {
 		"screenRecordingNeeded": "Recordly 需要屏幕录制权限才能开始。系统设置已打开。启用后请退出并重新打开 Recordly。",

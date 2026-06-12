@@ -246,121 +246,6 @@ function isTempPathSafe(tempPath: string): boolean {
 	return candidate.startsWith(withSep);
 }
 
-type CaptionSidecarCue = {
-	startMs: number;
-	endMs: number;
-	text: string;
-};
-
-type CaptionSidecarPayload = {
-	format: "srt" | "vtt" | "both";
-	cues: CaptionSidecarCue[];
-};
-
-function toSrtTimestamp(totalMs: number): string {
-	const ms = Math.max(0, Math.round(totalMs));
-	const hours = Math.floor(ms / 3_600_000);
-	const minutes = Math.floor((ms % 3_600_000) / 60_000);
-	const seconds = Math.floor((ms % 60_000) / 1000);
-	const millis = ms % 1000;
-	return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")},${String(millis).padStart(3, "0")}`;
-}
-
-function toVttTimestamp(totalMs: number): string {
-	const ms = Math.max(0, Math.round(totalMs));
-	const hours = Math.floor(ms / 3_600_000);
-	const minutes = Math.floor((ms % 3_600_000) / 60_000);
-	const seconds = Math.floor((ms % 60_000) / 1000);
-	const millis = ms % 1000;
-	return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
-}
-
-function normalizeCaptionSidecarCues(cues: unknown): CaptionSidecarCue[] {
-	if (!Array.isArray(cues)) {
-		return [];
-	}
-
-	return cues
-		.filter((cue): cue is CaptionSidecarCue => {
-			return (
-				typeof cue === "object" &&
-				cue !== null &&
-				typeof cue.startMs === "number" &&
-				typeof cue.endMs === "number" &&
-				typeof cue.text === "string" &&
-				Number.isFinite(cue.startMs) &&
-				Number.isFinite(cue.endMs) &&
-				cue.endMs > cue.startMs &&
-				cue.text.trim().length > 0
-			);
-		})
-		.map((cue) => ({
-			startMs: cue.startMs,
-			endMs: cue.endMs,
-			text: cue.text.replace(/\r\n/g, "\n").trim(),
-		}));
-}
-
-function parseCaptionSidecarPayload(payload: unknown): CaptionSidecarPayload | null {
-	if (typeof payload !== "object" || payload === null) {
-		return null;
-	}
-
-	const candidate = payload as {
-		format?: unknown;
-		cues?: unknown;
-	};
-
-	const format =
-		candidate.format === "srt" || candidate.format === "vtt" || candidate.format === "both"
-			? candidate.format
-			: null;
-	if (!format) {
-		return null;
-	}
-
-	const cues = normalizeCaptionSidecarCues(candidate.cues);
-	if (cues.length === 0) {
-		return null;
-	}
-
-	return { format, cues };
-}
-
-function serializeSrt(cues: CaptionSidecarCue[]): string {
-	return cues
-		.map((cue, index) => {
-			return `${index + 1}\n${toSrtTimestamp(cue.startMs)} --> ${toSrtTimestamp(cue.endMs)}\n${cue.text}`;
-		})
-		.join("\n\n");
-}
-
-function serializeVtt(cues: CaptionSidecarCue[]): string {
-	const body = cues
-		.map((cue) => {
-			return `${toVttTimestamp(cue.startMs)} --> ${toVttTimestamp(cue.endMs)}\n${cue.text}`;
-		})
-		.join("\n\n");
-	return `WEBVTT\n\n${body}`;
-}
-
-async function writeCaptionSidecars(videoPath: string, payload: CaptionSidecarPayload | null) {
-	if (!payload) {
-		return;
-	}
-
-	const parsed = path.parse(videoPath);
-	const basePath = path.join(parsed.dir, parsed.name);
-
-	if (payload.format === "srt" || payload.format === "both") {
-		await fs.writeFile(`${basePath}.srt`, serializeSrt(payload.cues), "utf8");
-	}
-
-	if (payload.format === "vtt" || payload.format === "both") {
-		await fs.writeFile(`${basePath}.vtt`, serializeVtt(payload.cues), "utf8");
-	}
-}
-
 export function registerExportHandlers() {
 	ipcMain.handle(
 		"native-video-export-start",
@@ -944,14 +829,8 @@ export function registerExportHandlers() {
 
 	ipcMain.handle(
 		"save-exported-video",
-		async (
-			event,
-			videoData: ArrayBuffer,
-			fileName: string,
-			captionSidecar?: CaptionSidecarPayload,
-		) => {
+		async (event, videoData: ArrayBuffer, fileName: string) => {
 			try {
-				const sidecarPayload = parseCaptionSidecarPayload(captionSidecar);
 				const sizeError = getInMemoryExportTooLargeMessage(videoData.byteLength);
 				if (sizeError) {
 					return {
@@ -987,7 +866,6 @@ export function registerExportHandlers() {
 				}
 
 				await fs.writeFile(result.filePath, Buffer.from(videoData));
-				await writeCaptionSidecars(result.filePath, sidecarPayload);
 				approveUserPath(result.filePath);
 
 				return {
@@ -1008,14 +886,8 @@ export function registerExportHandlers() {
 
 	ipcMain.handle(
 		"write-exported-video-to-path",
-		async (
-			_event,
-			videoData: ArrayBuffer,
-			outputPath: string,
-			captionSidecar?: CaptionSidecarPayload,
-		) => {
+		async (_event, videoData: ArrayBuffer, outputPath: string) => {
 			try {
-				const sidecarPayload = parseCaptionSidecarPayload(captionSidecar);
 				const sizeError = getInMemoryExportTooLargeMessage(videoData.byteLength);
 				if (sizeError) {
 					return {
@@ -1029,7 +901,6 @@ export function registerExportHandlers() {
 				const resolvedPath = path.resolve(outputPath);
 				await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
 				await fs.writeFile(resolvedPath, Buffer.from(videoData));
-				await writeCaptionSidecars(resolvedPath, sidecarPayload);
 				approveUserPath(resolvedPath);
 
 				return {
@@ -1058,7 +929,6 @@ export function registerExportHandlers() {
 				tempPath: string;
 				fileName: string;
 				outputPath?: string | null;
-				captionSidecar?: CaptionSidecarPayload;
 			},
 		) => {
 			const tempPath = payload?.tempPath;
@@ -1084,11 +954,9 @@ export function registerExportHandlers() {
 			}
 
 			try {
-				const sidecarPayload = parseCaptionSidecarPayload(payload.captionSidecar);
 				if (payload.outputPath) {
 					const resolvedPath = path.resolve(payload.outputPath);
 					await moveExportedTempFile(tempPath, resolvedPath);
-					await writeCaptionSidecars(resolvedPath, sidecarPayload);
 					releaseOwnedExportPath(tempPath);
 					approveUserPath(resolvedPath);
 					return {
@@ -1126,7 +994,6 @@ export function registerExportHandlers() {
 				}
 
 				await moveExportedTempFile(tempPath, result.filePath);
-				await writeCaptionSidecars(result.filePath, sidecarPayload);
 				releaseOwnedExportPath(tempPath);
 				approveUserPath(result.filePath);
 

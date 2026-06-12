@@ -32,6 +32,8 @@ import {
 import { emitRecordingInterrupted } from "./events";
 import { getFinalMacCompanionAudioPath } from "./macCompanionAudio";
 import { pruneAutoRecordings } from "./prune";
+import { persistSceneStyleEvents } from "./sceneStyleEvents";
+import { persistWebcamLayoutEvents } from "./webcamLayoutEvents";
 
 export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStreams) {
 	return new Promise<void>((resolve, reject) => {
@@ -227,6 +229,8 @@ export async function finalizeStoredVideo(videoPath: string) {
 	} catch (error) {
 		console.warn("[mac-stop] Failed to persist cursor telemetry:", error);
 	}
+	await persistWebcamLayoutEvents(videoPath);
+	await persistSceneStyleEvents(videoPath);
 	if (isAutoRecordingPath(videoPath)) {
 		await pruneAutoRecordings([videoPath]);
 	}

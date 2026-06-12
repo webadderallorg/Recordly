@@ -209,6 +209,28 @@ interface Window {
 		hudOverlayHide: () => void;
 		hudOverlayClose: () => void;
 		hudOverlayRendererReady: () => void;
+		teleprompterToggle: () => void;
+		teleprompterClose: () => void;
+		onTeleprompterCommand: (callback: (command: string) => void) => () => void;
+		webcamLayoutToggle: (payload: { timeMs: number; mode: "screen" | "camera-full" }) => void;
+		onWebcamLayoutHotkey: (callback: () => void) => () => void;
+		getWebcamLayoutEvents: (videoPath: string) => Promise<{
+			success: boolean;
+			style?: "fit" | "fill";
+			events: Array<{ timeMs: number; mode: "screen" | "camera-full" }>;
+		}>;
+		sceneStyleToggle: (payload: { timeMs: number; mode: "fill" | "framed" }) => void;
+		onSceneStyleHotkey: (callback: (mode: "fill" | "framed") => void) => () => void;
+		getSceneStyleEvents: (videoPath: string) => Promise<{
+			success: boolean;
+			events: Array<{ timeMs: number; mode: "fill" | "framed" }>;
+		}>;
+		webcamDeviceChanged: (deviceId: string | null) => void;
+		webcamLayoutStyleChanged: (style: "fit" | "fill") => void;
+		getSelectedWebcamDevice: () => Promise<string | null>;
+		onTeleprompterCameraMode: (
+			callback: (mode: "screen" | "camera-full") => void,
+		) => () => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
@@ -543,14 +565,6 @@ interface Window {
 			tempPath: string;
 			fileName: string;
 			outputPath?: string | null;
-			captionSidecar?: {
-				format: "srt" | "vtt" | "both";
-				cues: Array<{
-					startMs: number;
-					endMs: number;
-					text: string;
-				}>;
-			};
 		}) => Promise<{
 			success: boolean;
 			path?: string;
@@ -622,26 +636,10 @@ interface Window {
 		saveExportedVideo: (
 			videoData: ArrayBuffer,
 			fileName: string,
-			captionSidecar?: {
-				format: "srt" | "vtt" | "both";
-				cues: Array<{
-					startMs: number;
-					endMs: number;
-					text: string;
-				}>;
-			},
 		) => Promise<{ success: boolean; path?: string; message?: string; canceled?: boolean }>;
 		writeExportedVideoToPath: (
 			videoData: ArrayBuffer,
 			outputPath: string,
-			captionSidecar?: {
-				format: "srt" | "vtt" | "both";
-				cues: Array<{
-					startMs: number;
-					endMs: number;
-					text: string;
-				}>;
-			},
 		) => Promise<{
 			success: boolean;
 			path?: string;
@@ -870,6 +868,7 @@ interface Window {
 			microphoneEnabled: boolean;
 			microphoneDeviceId?: string;
 			systemAudioEnabled: boolean;
+			webcamFrameRate?: number;
 		}>;
 		getRecordingAudioLabConfig: () => Promise<{
 			browserMicrophoneProfile: string;
@@ -879,6 +878,7 @@ interface Window {
 			microphoneEnabled?: boolean;
 			microphoneDeviceId?: string;
 			systemAudioEnabled?: boolean;
+			webcamFrameRate?: number;
 		}) => Promise<{ success: boolean; error?: string }>;
 		/** Countdown timer before recording */
 		getCountdownDelay: () => Promise<{ success: boolean; delay: number }>;

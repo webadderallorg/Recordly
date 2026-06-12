@@ -34,6 +34,8 @@
 		"showFloatingWebcamPreview": "Afficher l’aperçu flottant",
 		"selectWebcamToEnable": "Sélectionnez une webcam à activer",
 		"noWebcamsFound": "Aucune webcam trouvée",
+		"webcamStyleFit": "Caméra plein écran : ajuster avec arrière-plan",
+		"webcamStyleFill": "Caméra plein écran : remplir l'écran",
 		"recordingsFolder": "Chemin des enregistrements",
 		"language": "Langue",
 		"paused": "EN PAUSE",
@@ -42,6 +44,8 @@
 		"pause": "Pause",
 		"stop": "Arrêter",
 		"cancel": "Annuler",
+		"cameraLayoutToCameraFull": "Caméra plein écran",
+		"cameraLayoutToScreen": "Retour à l'écran",
 		"more": "Plus",
 		"update": {
 			"update": "Mettre à jour",
@@ -65,6 +69,24 @@
 		"windowPlaceholder": "Fenêtre",
 		"cancel": "Annuler",
 		"share": "Partager"
+	},
+	"teleprompter": {
+		"menuLabel": "Téléprompteur",
+		"scriptPlaceholder": "Collez ou tapez votre script ici…",
+		"startReading": "Commencer la lecture",
+		"edit": "Modifier",
+		"play": "Lecture",
+		"pause": "Pause",
+		"slower": "Plus lent",
+		"faster": "Plus rapide",
+		"smallerText": "Texte plus petit",
+		"biggerText": "Texte plus grand",
+		"close": "Fermer",
+		"hotkeyHint": "⌥F8 lecture/pause · ⌥F7/⌥F9 vitesse · ⌥T afficher/masquer",
+		"cameraOn": "Afficher la caméra",
+		"cameraOff": "Masquer la caméra",
+		"cameraFade": "Fondu de la caméra",
+		"cameraError": "Caméra indisponible"
 	},
 	"permissions": {
 		"screenRecordingNeeded": "Recordly nécessite l’autorisation d’enregistrement d’écran avant de commencer. Les paramètres système ont été ouverts. Après l’avoir activée, quittez et relancez Recordly.",

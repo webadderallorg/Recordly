@@ -38,4 +38,16 @@ describe("resolveSourceTrackRoutingPolicy", () => {
 		expect(policy.muteEmbeddedPreview).toBe(false);
 		expect(policy.includeEmbeddedInExport).toBe(true);
 	});
+
+	it("mutes embedded preview when only a mic sidecar exists without an embedded source entry", () => {
+		// macOS mic-only recordings duplicate the mic into the video's inline track
+		// and into the .mic sidecar; playing both echoes the voice in preview.
+		const policy = resolveSourceTrackRoutingPolicy("/tmp/recording.mp4", [
+			"/tmp/recording.mic.m4a",
+		]);
+
+		expect(policy.playbackPaths).toEqual(["/tmp/recording.mic.m4a"]);
+		expect(policy.muteEmbeddedPreview).toBe(true);
+		expect(policy.includeEmbeddedInExport).toBe(true);
+	});
 });

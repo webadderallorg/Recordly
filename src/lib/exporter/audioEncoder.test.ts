@@ -26,6 +26,17 @@ type OfflineRenderTestHarness = AudioProcessor & {
 		sourceAudioFallbackStartDelayMsByPath: Record<string, number> | undefined,
 		muxer: unknown,
 	): Promise<void>;
+	buildTimelineSlices(
+		sourceDurationMs: number,
+		trimRegions: Array<{ id: string; startMs: number; endMs: number }>,
+		speedRegions: never[],
+		gapsAsBlack?: boolean,
+	): Array<{
+		sourceStartMs: number;
+		sourceEndMs: number;
+		speed: number;
+		silent?: boolean;
+	}>;
 	renderChunked(
 		prepared: {
 			mainBufferEntry: null;
@@ -181,6 +192,64 @@ describe("AudioProcessor offline render preparation", () => {
 
 		expect(loadAudioFileDemuxer).not.toHaveBeenCalled();
 		expect(renderAndMuxOfflineAudio).toHaveBeenCalled();
+	});
+
+	it("keeps trimmed intervals as silent slices when gaps export as black", () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+
+		const slices = processor.buildTimelineSlices(
+			10_000,
+			[{ id: "trim-1", startMs: 2_000, endMs: 5_000 }],
+			[],
+			true,
+		);
+
+		expect(slices).toEqual([
+			{ sourceStartMs: 0, sourceEndMs: 2_000, speed: 1, silent: false },
+			{ sourceStartMs: 2_000, sourceEndMs: 5_000, speed: 1, silent: true },
+			{ sourceStartMs: 5_000, sourceEndMs: 10_000, speed: 1, silent: false },
+		]);
+	});
+
+	it("drops trimmed intervals entirely when gaps are not exported as black", () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+
+		const slices = processor.buildTimelineSlices(
+			10_000,
+			[{ id: "trim-1", startMs: 2_000, endMs: 5_000 }],
+			[],
+			false,
+		);
+
+		expect(slices).toEqual([
+			{ sourceStartMs: 0, sourceEndMs: 2_000, speed: 1 },
+			{ sourceStartMs: 5_000, sourceEndMs: 10_000, speed: 1 },
+		]);
+	});
+
+	it("forces the offline render path for trimmed source audio when gaps export as black", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const renderAndMuxOfflineAudio = vi
+			.spyOn(processor, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+
+		await processor.process(
+			null,
+			{} as never,
+			"file:///tmp/recording.mp4",
+			[{ id: "trim-1", startMs: 1_000, endMs: 2_000 }],
+			[],
+			undefined,
+			[],
+			[],
+			undefined,
+			undefined,
+			undefined,
+			true,
+		);
+
+		expect(renderAndMuxOfflineAudio).toHaveBeenCalledTimes(1);
+		expect(renderAndMuxOfflineAudio.mock.calls[0]?.at(-1)).toBe(true);
 	});
 
 	it("soft-limits mixed peaks before encoding or WAV conversion", () => {

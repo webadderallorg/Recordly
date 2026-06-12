@@ -87,8 +87,11 @@ import {
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_CURSOR_SWAY,
 	DEFAULT_PADDING,
+	DEFAULT_WEBCAM_COLOR,
 	DEFAULT_WEBCAM_CORNER_RADIUS,
+	DEFAULT_WEBCAM_GREENSCREEN,
 	DEFAULT_WEBCAM_MARGIN,
+	DEFAULT_WEBCAM_MASK,
 	DEFAULT_WEBCAM_POSITION_PRESET,
 	DEFAULT_WEBCAM_POSITION_X,
 	DEFAULT_WEBCAM_POSITION_Y,
@@ -106,6 +109,9 @@ import {
 	getCursorStyleSizeMultiplier,
 } from "./videoPlayback/uploadedCursorAssets";
 import { WebcamCropControl } from "./WebcamCropControl";
+import { WebcamKeyColorPicker } from "./WebcamKeyColorPicker";
+import { WebcamMaskEditorDialog } from "./WebcamMaskEditorDialog";
+import { WebcamMaskPenEditor } from "./WebcamMaskPenEditor";
 import {
 	getWebcamPositionForPreset,
 	normalizeWebcamCropRegion,
@@ -177,9 +183,10 @@ function isHexWallpaper(value: string): boolean {
 
 function hexToRgba(hex: string, alpha: number) {
 	const normalized = isHexWallpaper(hex) ? hex : DEFAULT_CURSOR_CLICK_EFFECT_COLOR;
-	const value = normalized.length === 4
-		? `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`
-		: normalized;
+	const value =
+		normalized.length === 4
+			? `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`
+			: normalized;
 	const color = Number.parseInt(value.slice(1), 16);
 	const red = (color >> 16) & 255;
 	const green = (color >> 8) & 255;
@@ -527,8 +534,23 @@ function CursorClickEffectPreview({
 					viewBox="0 0 40 40"
 					aria-hidden="true"
 				>
-					<circle cx="20" cy="20" r="11.5" fill="none" stroke="currentColor" strokeWidth="1.8" opacity="0.75" />
-					<path d="M12.5 27.5 27.5 12.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" opacity="0.92" />
+					<circle
+						cx="20"
+						cy="20"
+						r="11.5"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.8"
+						opacity="0.75"
+					/>
+					<path
+						d="M12.5 27.5 27.5 12.5"
+						fill="none"
+						stroke="currentColor"
+						strokeLinecap="round"
+						strokeWidth="2.2"
+						opacity="0.92"
+					/>
 				</svg>
 			) : null}
 			{effect === "ripple" ? (
@@ -569,13 +591,17 @@ function CursorClickEffectPreview({
 					viewBox="0 0 48 48"
 					aria-hidden="true"
 				>
-					<g
-						fill="none"
-						stroke="currentColor"
-					>
+					<g fill="none" stroke="currentColor">
 						<circle cx="24" cy="24" r="9" strokeWidth="1.8" opacity="0.72" />
 						<circle cx="24" cy="24" r="14.5" strokeWidth="1.5" opacity="0.4" />
-						<circle cx="24" cy="24" r="4.25" fill="currentColor" opacity="0.22" stroke="none" />
+						<circle
+							cx="24"
+							cy="24"
+							r="4.25"
+							fill="currentColor"
+							opacity="0.22"
+							stroke="none"
+						/>
 					</g>
 				</svg>
 			) : null}
@@ -658,7 +684,10 @@ function CursorClickEffectCards({
 						>
 							<div className="flex h-full flex-col items-center justify-between gap-3">
 								<div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[8px] px-2 py-1.5">
-									<CursorClickEffectPreview effect={effect.id} color={effectColor} />
+									<CursorClickEffectPreview
+										effect={effect.id}
+										color={effectColor}
+									/>
 								</div>
 							</div>
 						</ToggleGroupItem>
@@ -780,6 +809,13 @@ interface SettingsPanelProps {
 	webcamPreviewCurrentTime?: number;
 	webcamPreviewPlaying?: boolean;
 	onWebcamChange?: (webcam: WebcamOverlaySettings) => void;
+	webcamLayoutRegionsAvailable?: boolean;
+	webcamLayoutRegionsEnabled?: boolean;
+	onWebcamLayoutRegionsEnabledChange?: (enabled: boolean) => void;
+	webcamLayoutStyle?: "fit" | "fill";
+	onWebcamLayoutStyleChange?: (style: "fit" | "fill") => void;
+	/** Playhead currently inside a camera-full segment: bubble-only controls are hidden. */
+	playheadInCameraFull?: boolean;
 	onUploadWebcam?: () => void;
 	onClearWebcam?: () => void;
 	padding?: Padding;
@@ -790,6 +826,8 @@ interface SettingsPanelProps {
 	onCropChange?: (region: CropRegion) => void;
 	aspectRatio: AspectRatio;
 	onAspectRatioChange?: (ratio: AspectRatio) => void;
+	fillFrameDefault?: boolean;
+	onFillFrameDefaultChange?: (enabled: boolean) => void;
 	selectedAnnotationId?: string | null;
 	annotationRegions?: AnnotationRegion[];
 	onAnnotationContentChange?: (id: string, content: string) => void;
@@ -1216,6 +1254,12 @@ export function SettingsPanel({
 	webcamPreviewCurrentTime = 0,
 	webcamPreviewPlaying = false,
 	onWebcamChange,
+	webcamLayoutRegionsAvailable = false,
+	webcamLayoutRegionsEnabled = true,
+	onWebcamLayoutRegionsEnabledChange,
+	webcamLayoutStyle = "fit",
+	onWebcamLayoutStyleChange,
+	playheadInCameraFull = false,
 	onUploadWebcam,
 	onClearWebcam,
 	padding = DEFAULT_PADDING,
@@ -1226,6 +1270,8 @@ export function SettingsPanel({
 	onCropChange,
 	aspectRatio,
 	onAspectRatioChange,
+	fillFrameDefault = false,
+	onFillFrameDefaultChange,
 	selectedAnnotationId,
 	annotationRegions = [],
 	onAnnotationContentChange,
@@ -1397,7 +1443,8 @@ export function SettingsPanel({
 	const [gradient, setGradient] = useState<string>(
 		GRADIENTS.includes(selected) ? selected : GRADIENTS[0],
 	);
-	const removeBackgroundEnabled = aspectRatio === "native" && isZeroPadding(padding);
+	const removeBackgroundEnabled =
+		fillFrameDefault || (aspectRatio === "native" && isZeroPadding(padding));
 
 	// Device frames from extension system
 	const [availableFrames, setAvailableFrames] = useState<FrameInstance[]>([]);
@@ -1594,27 +1641,28 @@ export function SettingsPanel({
 	}, [customImages]);
 
 	const handleRemoveBackgroundToggle = (checked: boolean) => {
+		// "Remove background" now means fill-frame for the whole video: the
+		// canvas keeps its aspect and the recording cover-crops it, instead of
+		// the legacy native-aspect + zero-padding switch that defeated the
+		// per-segment fullscreen regions.
+		onFillFrameDefaultChange?.(checked);
 		if (checked) {
-			removeBackgroundStateRef.current = {
-				aspectRatio,
-				padding,
-			};
-			onAspectRatioChange?.("native");
-			onPaddingChange?.({ top: 0, bottom: 0, left: 0, right: 0, linked: padding.linked });
 			return;
 		}
 
-		const previousState = removeBackgroundStateRef.current;
-		if (previousState) {
-			onAspectRatioChange?.(previousState.aspectRatio);
-			onPaddingChange?.(previousState.padding);
-			removeBackgroundStateRef.current = null;
-			return;
+		// Toggling off a legacy "background removed" project (native aspect +
+		// zero padding) restores a framed canvas too.
+		if (aspectRatio === "native" && isZeroPadding(padding)) {
+			const previousState = removeBackgroundStateRef.current;
+			if (previousState) {
+				onAspectRatioChange?.(previousState.aspectRatio);
+				onPaddingChange?.(previousState.padding);
+				removeBackgroundStateRef.current = null;
+				return;
+			}
+			onAspectRatioChange?.(initialEditorPreferences.aspectRatio);
+			onPaddingChange?.({ ...DEFAULT_PADDING });
 		}
-
-		// Fallback if the project loaded in a "background removed" state already
-		onAspectRatioChange?.(initialEditorPreferences.aspectRatio);
-		onPaddingChange?.({ ...DEFAULT_PADDING });
 	};
 
 	const togglePaddingLink = () => {
@@ -1894,6 +1942,54 @@ export function SettingsPanel({
 	const updateWebcam = (patch: Partial<WebcamOverlaySettings>) => {
 		if (!webcam || !onWebcamChange) return;
 		onWebcamChange({ ...webcam, ...patch });
+	};
+
+	const webcamGreenscreen = webcam?.greenscreen ?? DEFAULT_WEBCAM_GREENSCREEN;
+	// Which key-color swatch the eyedropper writes to (1 = primary, 2 = optional
+	// second sample for unevenly lit screens).
+	const [activeKeySlot, setActiveKeySlot] = useState<1 | 2>(1);
+	const webcamMask = webcam?.mask ?? DEFAULT_WEBCAM_MASK;
+	const webcamColor = webcam?.color ?? DEFAULT_WEBCAM_COLOR;
+	const [maskEditorDialogOpen, setMaskEditorDialogOpen] = useState(false);
+	const updateWebcamGreenscreen = (
+		patch: Partial<NonNullable<WebcamOverlaySettings["greenscreen"]>>,
+	) => {
+		updateWebcam({ greenscreen: { ...webcamGreenscreen, ...patch } });
+	};
+	const updateWebcamMask = (patch: Partial<NonNullable<WebcamOverlaySettings["mask"]>>) => {
+		updateWebcam({ mask: { ...webcamMask, ...patch } });
+	};
+	const updateWebcamColor = (patch: Partial<NonNullable<WebcamOverlaySettings["color"]>>) => {
+		updateWebcam({ color: { ...webcamColor, ...patch } });
+	};
+
+	const handleGreenscreenImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+		const file = event.target.files?.[0];
+		event.target.value = "";
+		if (!file) return;
+
+		const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+		if (!validTypes.includes(file.type)) {
+			toast.error(tSettings("background.uploadError"), {
+				description: tSettings("background.uploadErrorDescription"),
+			});
+			return;
+		}
+
+		const reader = new FileReader();
+		reader.onload = (e) => {
+			const dataUrl = e.target?.result as string;
+			if (dataUrl) {
+				updateWebcamGreenscreen({ backgroundImagePath: dataUrl, enabled: true });
+				toast.success(tSettings("background.uploadSuccess"));
+			}
+		};
+		reader.onerror = () => {
+			toast.error(t("common.errors.failedToUploadImage"), {
+				description: t("common.errors.fileReadError"),
+			});
+		};
+		reader.readAsDataURL(file);
 	};
 
 	const applyWebcamPositionPreset = (preset: WebcamPositionPreset) => {
@@ -3693,12 +3789,15 @@ export function SettingsPanel({
 										<div className="flex flex-wrap gap-1.5">
 											{CLICK_EFFECT_COLOR_OPTIONS.map((color) => {
 												const isSelected =
-													cursorClickEffectColor.toLowerCase() === color.toLowerCase();
+													cursorClickEffectColor.toLowerCase() ===
+													color.toLowerCase();
 												return (
 													<button
 														key={color}
 														type="button"
-														onClick={() => onCursorClickEffectColorChange?.(color)}
+														onClick={() =>
+															onCursorClickEffectColorChange?.(color)
+														}
 														className={cn(
 															"h-6 w-6 rounded-[8px] border transition-transform hover:scale-[1.04]",
 															isSelected
@@ -3712,7 +3811,9 @@ export function SettingsPanel({
 											})}
 											<button
 												type="button"
-												onClick={() => cursorClickEffectColorInputRef.current?.click()}
+												onClick={() =>
+													cursorClickEffectColorInputRef.current?.click()
+												}
 												className="relative h-6 w-10 overflow-hidden rounded-[8px] border border-foreground/10 text-[8px] font-semibold uppercase tracking-[0.18em] text-foreground"
 												style={{
 													background: `linear-gradient(135deg, ${cursorClickEffectColor} 0%, ${cursorClickEffectColor} 58%, rgba(255,255,255,0.92) 58%, rgba(255,255,255,0.92) 100%)`,
@@ -3873,17 +3974,19 @@ export function SettingsPanel({
 									className="data-[state=checked]:bg-[#2563EB] scale-75"
 								/>
 							</div>
-							<SliderControl
-								label={tSettings("effects.webcamSize")}
-								value={webcam?.size ?? DEFAULT_WEBCAM_SIZE}
-								defaultValue={DEFAULT_WEBCAM_SIZE}
-								min={10}
-								max={100}
-								step={1}
-								onChange={(v) => updateWebcam({ size: v })}
-								formatValue={(v) => `${Math.round(v)}%`}
-								parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
-							/>
+							{!playheadInCameraFull && (
+								<SliderControl
+									label={tSettings("effects.webcamSize")}
+									value={webcam?.size ?? DEFAULT_WEBCAM_SIZE}
+									defaultValue={DEFAULT_WEBCAM_SIZE}
+									min={10}
+									max={100}
+									step={1}
+									onChange={(v) => updateWebcam({ size: v })}
+									formatValue={(v) => `${Math.round(v)}%`}
+									parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
+								/>
+							)}
 							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
 								<div className="mb-2 flex items-center justify-between gap-2">
 									<div className="text-[10px] text-muted-foreground">
@@ -3910,50 +4013,469 @@ export function SettingsPanel({
 								/>
 							</div>
 							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
-								<div className="mb-2 text-[10px] text-muted-foreground">
-									{tSettings("effects.webcamPosition", "Position")}
-								</div>
-								<div className="grid grid-cols-3 gap-1.5">
-									{WEBCAM_POSITION_PRESETS.map((option) => {
-										const isActive = webcamPositionPreset === option.preset;
-										return (
-											<Button
-												key={option.preset}
-												type="button"
-												onClick={() =>
-													applyWebcamPositionPreset(option.preset)
-												}
-												className={cn(
-													"h-8 rounded-lg border px-0 text-sm font-semibold transition-all",
-													isActive
-														? "border-[#2563EB] bg-[#2563EB] text-white"
-														: "border-foreground/10 bg-foreground/5 text-muted-foreground hover:border-foreground/20 hover:bg-foreground/10",
-												)}
-											>
-												{option.label}
-											</Button>
-										);
-									})}
-								</div>
-								<div className="mt-2 flex items-center justify-between rounded-lg bg-black/10 px-2.5 py-1.5">
+								<div className="mb-2 flex items-center justify-between gap-2">
 									<span className="text-[10px] text-muted-foreground">
-										{tSettings(
-											"effects.webcamCustomPosition",
-											"Custom position",
-										)}
+										{tSettings("effects.webcamGreenscreen", "Green Screen")}
 									</span>
 									<Switch
-										checked={webcamPositionPreset === "custom"}
-										onCheckedChange={(checked) =>
-											applyWebcamPositionPreset(
-												checked ? "custom" : DEFAULT_WEBCAM_POSITION_PRESET,
-											)
+										checked={webcamGreenscreen.enabled}
+										onCheckedChange={(enabled) =>
+											updateWebcamGreenscreen({ enabled })
 										}
 										className="data-[state=checked]:bg-[#2563EB] scale-75"
 									/>
 								</div>
+								{webcamGreenscreen.enabled && (
+									<div className="flex flex-col gap-1.5">
+										<label className="flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-foreground/10 bg-foreground/5 text-[10px] text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-foreground/10">
+											<input
+												type="file"
+												accept="image/jpeg,image/png,image/webp"
+												className="hidden"
+												onChange={handleGreenscreenImageUpload}
+											/>
+											<Upload className="h-3 w-3" />
+											{webcamGreenscreen.backgroundImagePath
+												? tSettings(
+														"effects.webcamGreenscreenReplaceImage",
+														"Replace background image",
+													)
+												: tSettings(
+														"effects.webcamGreenscreenChooseImage",
+														"Choose background image",
+													)}
+										</label>
+										{webcamGreenscreen.backgroundImagePath ? (
+											<img
+												src={webcamGreenscreen.backgroundImagePath}
+												alt=""
+												className="h-14 w-full rounded-md object-cover"
+											/>
+										) : (
+											<div className="rounded-md bg-black/10 px-2.5 py-1.5 text-[10px] leading-4 text-muted-foreground/70">
+												{tSettings(
+													"effects.webcamGreenscreenNoImage",
+													"Without an image, keyed areas show the layer behind the camera",
+												)}
+											</div>
+										)}
+										<div className="rounded-md bg-black/10 px-2.5 py-2">
+											<div className="mb-1.5 flex items-center justify-between gap-2">
+												<span className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+													<button
+														type="button"
+														title="Key color 1 — clicks set this color"
+														onClick={() => setActiveKeySlot(1)}
+														className={cn(
+															"inline-block h-3.5 w-3.5 rounded-sm transition-shadow",
+															activeKeySlot === 1
+																? "ring-2 ring-[#2563EB]"
+																: "ring-1 ring-foreground/20",
+														)}
+														style={{
+															backgroundColor:
+																webcamGreenscreen.keyColor,
+														}}
+													/>
+													<button
+														type="button"
+														title={
+															webcamGreenscreen.keyColor2
+																? "Key color 2 — clicks set this color"
+																: "Add a second key color for unevenly lit screens"
+														}
+														onClick={() => setActiveKeySlot(2)}
+														className={cn(
+															"inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm text-[9px] leading-none text-muted-foreground transition-shadow",
+															activeKeySlot === 2
+																? "ring-2 ring-[#2563EB]"
+																: "ring-1 ring-foreground/20",
+														)}
+														style={
+															webcamGreenscreen.keyColor2
+																? {
+																		backgroundColor:
+																			webcamGreenscreen.keyColor2,
+																	}
+																: undefined
+														}
+													>
+														{webcamGreenscreen.keyColor2 ? "" : "+"}
+													</button>
+													{webcamGreenscreen.keyColor2 ? (
+														<button
+															type="button"
+															onClick={() => {
+																updateWebcamGreenscreen({
+																	keyColor2: null,
+																});
+																setActiveKeySlot(1);
+															}}
+															className="text-[10px] text-muted-foreground transition-opacity hover:opacity-80"
+														>
+															×2
+														</button>
+													) : null}
+													{tSettings(
+														"effects.webcamGreenscreenKeyColors",
+														"Key colors — click your green screen below",
+													)}
+												</span>
+												<button
+													type="button"
+													onClick={() => {
+														updateWebcamGreenscreen({
+															keyColor:
+																DEFAULT_WEBCAM_GREENSCREEN.keyColor,
+															keyColor2: null,
+														});
+														setActiveKeySlot(1);
+													}}
+													className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
+												>
+													{t("common.actions.reset", "Reset")}
+												</button>
+											</div>
+											<WebcamKeyColorPicker
+												mirrored={webcam?.mirror ?? true}
+												previewSrc={webcamPreviewSrc}
+												previewCurrentTime={webcamPreviewCurrentTime}
+												previewPlaying={webcamPreviewPlaying}
+												previewTimeOffsetMs={webcam?.timeOffsetMs}
+												onPickColor={(picked) =>
+													activeKeySlot === 2
+														? updateWebcamGreenscreen({
+																keyColor2: picked,
+															})
+														: updateWebcamGreenscreen({
+																keyColor: picked,
+															})
+												}
+											/>
+										</div>
+										<SliderControl
+											label={tSettings(
+												"effects.webcamGreenscreenStrength",
+												"Key strength",
+											)}
+											value={webcamGreenscreen.keyStrength * 100}
+											defaultValue={
+												DEFAULT_WEBCAM_GREENSCREEN.keyStrength * 100
+											}
+											min={0}
+											max={100}
+											step={1}
+											onChange={(v) =>
+												updateWebcamGreenscreen({ keyStrength: v / 100 })
+											}
+											formatValue={(v) => `${Math.round(v)}%`}
+											parseInput={(text) =>
+												parseFloat(text.replace(/%$/, ""))
+											}
+										/>
+										<SliderControl
+											label={tSettings(
+												"effects.webcamGreenscreenSoftness",
+												"Edge softness",
+											)}
+											value={webcamGreenscreen.edgeSoftness * 100}
+											defaultValue={
+												DEFAULT_WEBCAM_GREENSCREEN.edgeSoftness * 100
+											}
+											min={0}
+											max={100}
+											step={1}
+											onChange={(v) =>
+												updateWebcamGreenscreen({ edgeSoftness: v / 100 })
+											}
+											formatValue={(v) => `${Math.round(v)}%`}
+											parseInput={(text) =>
+												parseFloat(text.replace(/%$/, ""))
+											}
+										/>
+									</div>
+								)}
 							</div>
-							{webcamPositionPreset === "custom" ? (
+							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+								<div className="mb-2 flex items-center justify-between gap-2">
+									<span className="text-[10px] text-muted-foreground">
+										{tSettings("effects.webcamMask", "Mask")}
+									</span>
+									<div className="flex items-center gap-2">
+										<button
+											type="button"
+											onClick={() =>
+												updateWebcam({ mask: DEFAULT_WEBCAM_MASK })
+											}
+											className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
+										>
+											{t("common.actions.reset", "Reset")}
+										</button>
+										<Switch
+											checked={webcamMask.enabled}
+											onCheckedChange={(enabled) =>
+												updateWebcamMask({ enabled })
+											}
+											className="data-[state=checked]:bg-[#2563EB] scale-75"
+										/>
+									</div>
+								</div>
+								{webcamMask.enabled && (
+									<div className="flex flex-col gap-1.5">
+										<div className="grid grid-cols-2 gap-1 rounded-md bg-black/10 p-1">
+											{(
+												[
+													[
+														"rect",
+														tSettings(
+															"effects.webcamMaskShapeBox",
+															"Box",
+														),
+													],
+													[
+														"polygon",
+														tSettings(
+															"effects.webcamMaskShapePen",
+															"Pen",
+														),
+													],
+												] as const
+											).map(([shape, label]) => (
+												<button
+													key={shape}
+													type="button"
+													onClick={() => updateWebcamMask({ shape })}
+													className={cn(
+														"rounded px-2 py-1 text-[10px] transition-colors",
+														webcamMask.shape === shape
+															? "bg-[#2563EB] text-white"
+															: "text-muted-foreground hover:bg-foreground/10",
+													)}
+												>
+													{label}
+												</button>
+											))}
+										</div>
+										{webcamMask.shape === "rect" ? (
+											<>
+												<div className="rounded-md bg-black/10 px-2.5 py-1.5 text-[10px] leading-4 text-muted-foreground/70">
+													{tSettings(
+														"effects.webcamMaskHint",
+														"Keep the area inside the box; everything outside is replaced like the green screen",
+													)}
+												</div>
+												<WebcamCropControl
+													cropRegion={webcamMask.rect}
+													mirrored={webcam?.mirror ?? true}
+													previewSrc={webcamPreviewSrc}
+													previewCurrentTime={webcamPreviewCurrentTime}
+													previewPlaying={webcamPreviewPlaying}
+													previewTimeOffsetMs={webcam?.timeOffsetMs}
+													onCropChange={(rect) =>
+														updateWebcamMask({ rect })
+													}
+												/>
+											</>
+										) : (
+											<>
+												<div className="rounded-md bg-black/10 px-2.5 py-1.5 text-[10px] leading-4 text-muted-foreground/70">
+													{tSettings(
+														"effects.webcamMaskPenHint",
+														"Click to add points around your green screen",
+													)}
+												</div>
+												<WebcamMaskPenEditor
+													points={webcamMask.points}
+													mirrored={webcam?.mirror ?? true}
+													previewSrc={webcamPreviewSrc}
+													previewCurrentTime={webcamPreviewCurrentTime}
+													previewPlaying={webcamPreviewPlaying}
+													previewTimeOffsetMs={webcam?.timeOffsetMs}
+													onPointsChange={(points) =>
+														updateWebcamMask({ points })
+													}
+												/>
+												<div className="grid grid-cols-2 gap-1.5">
+													<button
+														type="button"
+														onClick={() =>
+															setMaskEditorDialogOpen(true)
+														}
+														className="flex h-7 items-center justify-center rounded-lg border border-foreground/10 bg-foreground/5 text-[10px] text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-foreground/10"
+													>
+														{tSettings(
+															"effects.webcamMaskEditFullscreen",
+															"Edit fullscreen",
+														)}
+													</button>
+													<button
+														type="button"
+														onClick={() =>
+															updateWebcamMask({ points: [] })
+														}
+														disabled={webcamMask.points.length === 0}
+														className="flex h-7 items-center justify-center rounded-lg border border-foreground/10 bg-foreground/5 text-[10px] text-muted-foreground transition-colors hover:border-foreground/20 hover:bg-foreground/10 disabled:cursor-not-allowed disabled:opacity-50"
+													>
+														{tSettings(
+															"effects.webcamMaskClearPoints",
+															"Clear points",
+														)}
+													</button>
+												</div>
+												<WebcamMaskEditorDialog
+													open={maskEditorDialogOpen}
+													onOpenChange={setMaskEditorDialogOpen}
+													points={webcamMask.points}
+													mirrored={webcam?.mirror ?? true}
+													previewSrc={webcamPreviewSrc}
+													previewCurrentTime={webcamPreviewCurrentTime}
+													previewPlaying={webcamPreviewPlaying}
+													previewTimeOffsetMs={webcam?.timeOffsetMs}
+													onPointsChange={(points) =>
+														updateWebcamMask({ points })
+													}
+												/>
+											</>
+										)}
+										<SliderControl
+											label={tSettings(
+												"effects.webcamMaskFeather",
+												"Feather",
+											)}
+											value={webcamMask.feather * 100}
+											defaultValue={DEFAULT_WEBCAM_MASK.feather * 100}
+											min={0}
+											max={100}
+											step={1}
+											onChange={(v) => updateWebcamMask({ feather: v / 100 })}
+											formatValue={(v) => `${Math.round(v)}%`}
+											parseInput={(text) =>
+												parseFloat(text.replace(/%$/, ""))
+											}
+										/>
+										{webcamMask.shape === "rect" && (
+											<SliderControl
+												label={tSettings(
+													"effects.webcamMaskCornerRadius",
+													"Corner radius",
+												)}
+												value={webcamMask.cornerRadius * 100}
+												defaultValue={
+													DEFAULT_WEBCAM_MASK.cornerRadius * 100
+												}
+												min={0}
+												max={100}
+												step={1}
+												onChange={(v) =>
+													updateWebcamMask({ cornerRadius: v / 100 })
+												}
+												formatValue={(v) => `${Math.round(v)}%`}
+												parseInput={(text) =>
+													parseFloat(text.replace(/%$/, ""))
+												}
+											/>
+										)}
+									</div>
+								)}
+							</div>
+							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+								<div className="mb-2 flex items-center justify-between gap-2">
+									<span className="text-[10px] text-muted-foreground">
+										{tSettings("effects.webcamColor", "Color")}
+									</span>
+									<button
+										type="button"
+										onClick={() =>
+											updateWebcam({ color: DEFAULT_WEBCAM_COLOR })
+										}
+										className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
+									>
+										{t("common.actions.reset", "Reset")}
+									</button>
+								</div>
+								<div className="flex flex-col gap-1.5">
+									{(
+										[
+											["brightness", "Brightness"],
+											["contrast", "Contrast"],
+											["temperature", "Temperature"],
+											["saturation", "Saturation"],
+											["highlights", "Highlights"],
+											["shadows", "Shadows"],
+										] as const
+									).map(([key, label]) => (
+										<SliderControl
+											key={key}
+											label={tSettings(`effects.webcamColor_${key}`, label)}
+											value={webcamColor[key] * 100}
+											defaultValue={0}
+											min={-100}
+											max={100}
+											step={1}
+											onChange={(v) => updateWebcamColor({ [key]: v / 100 })}
+											formatValue={(v) => `${Math.round(v)}`}
+											parseInput={(text) => parseFloat(text)}
+										/>
+									))}
+								</div>
+							</div>
+							{playheadInCameraFull && (
+								<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-1.5 text-[10px] leading-4 text-muted-foreground/70">
+									{tSettings(
+										"effects.webcamBubbleControlsHidden",
+										"Position controls apply when the camera is in the corner bubble",
+									)}
+								</div>
+							)}
+							{!playheadInCameraFull && (
+								<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+									<div className="mb-2 text-[10px] text-muted-foreground">
+										{tSettings("effects.webcamPosition", "Position")}
+									</div>
+									<div className="grid grid-cols-3 gap-1.5">
+										{WEBCAM_POSITION_PRESETS.map((option) => {
+											const isActive = webcamPositionPreset === option.preset;
+											return (
+												<Button
+													key={option.preset}
+													type="button"
+													onClick={() =>
+														applyWebcamPositionPreset(option.preset)
+													}
+													className={cn(
+														"h-8 rounded-lg border px-0 text-sm font-semibold transition-all",
+														isActive
+															? "border-[#2563EB] bg-[#2563EB] text-white"
+															: "border-foreground/10 bg-foreground/5 text-muted-foreground hover:border-foreground/20 hover:bg-foreground/10",
+													)}
+												>
+													{option.label}
+												</Button>
+											);
+										})}
+									</div>
+									<div className="mt-2 flex items-center justify-between rounded-lg bg-black/10 px-2.5 py-1.5">
+										<span className="text-[10px] text-muted-foreground">
+											{tSettings(
+												"effects.webcamCustomPosition",
+												"Custom position",
+											)}
+										</span>
+										<Switch
+											checked={webcamPositionPreset === "custom"}
+											onCheckedChange={(checked) =>
+												applyWebcamPositionPreset(
+													checked
+														? "custom"
+														: DEFAULT_WEBCAM_POSITION_PRESET,
+												)
+											}
+											className="data-[state=checked]:bg-[#2563EB] scale-75"
+										/>
+									</div>
+								</div>
+							)}
+							{!playheadInCameraFull && webcamPositionPreset === "custom" ? (
 								<>
 									<SliderControl
 										label={tSettings("effects.webcamHorizontal", "Horizontal")}
@@ -3989,39 +4511,113 @@ export function SettingsPanel({
 									/>
 								</>
 							) : null}
-							<SliderControl
-								label={tSettings("effects.webcamMargin", "Margin")}
-								value={webcam?.margin ?? DEFAULT_WEBCAM_MARGIN}
-								defaultValue={DEFAULT_WEBCAM_MARGIN}
-								min={0}
-								max={96}
-								step={1}
-								onChange={(v) => updateWebcam({ margin: v })}
-								formatValue={(v) => `${Math.round(v)}px`}
-								parseInput={(text) => parseFloat(text.replace(/px$/, ""))}
-							/>
-							<SliderControl
-								label={tSettings("effects.webcamRoundness")}
-								value={webcam?.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS}
-								defaultValue={DEFAULT_WEBCAM_CORNER_RADIUS}
-								min={0}
-								max={160}
-								step={1}
-								onChange={(v) => updateWebcam({ cornerRadius: v })}
-								formatValue={(v) => `${Math.round(v)}px`}
-								parseInput={(text) => parseFloat(text.replace(/px$/, ""))}
-							/>
-							<SliderControl
-								label={tSettings("effects.webcamShadow")}
-								value={webcam?.shadow ?? DEFAULT_WEBCAM_SHADOW}
-								defaultValue={DEFAULT_WEBCAM_SHADOW}
-								min={0}
-								max={1}
-								step={0.01}
-								onChange={(v) => updateWebcam({ shadow: v })}
-								formatValue={(v) => `${Math.round(v * 100)}%`}
-								parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
-							/>
+							{webcamLayoutRegionsAvailable ? (
+								<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
+									<span className="text-[10px] text-muted-foreground">
+										{tSettings(
+											"effects.webcamUseRecordedSwitches",
+											"Use recorded camera switches",
+										)}
+									</span>
+									<Switch
+										checked={webcamLayoutRegionsEnabled}
+										onCheckedChange={(enabled) =>
+											onWebcamLayoutRegionsEnabledChange?.(enabled)
+										}
+										className="data-[state=checked]:bg-[#2563EB] scale-75"
+									/>
+								</div>
+							) : null}
+							{webcamLayoutRegionsAvailable ? (
+								<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+									<div className="mb-2 text-[10px] text-muted-foreground">
+										{tSettings(
+											"effects.webcamLayoutStyle",
+											"Camera fullscreen style",
+										)}
+									</div>
+									<div className="grid grid-cols-2 gap-1.5">
+										{[
+											{
+												style: "fit" as const,
+												label: tSettings(
+													"effects.webcamLayoutStyleFit",
+													"Fit with background",
+												),
+											},
+											{
+												style: "fill" as const,
+												label: tSettings(
+													"effects.webcamLayoutStyleFill",
+													"Fill screen",
+												),
+											},
+										].map((option) => {
+											const isActive = webcamLayoutStyle === option.style;
+											return (
+												<Button
+													key={option.style}
+													type="button"
+													onClick={() =>
+														onWebcamLayoutStyleChange?.(option.style)
+													}
+													className={cn(
+														"h-8 rounded-lg border px-0 text-[11px] font-semibold transition-all",
+														isActive
+															? "border-[#2563EB] bg-[#2563EB] text-white"
+															: "border-foreground/10 bg-foreground/5 text-muted-foreground hover:border-foreground/20 hover:bg-foreground/10",
+													)}
+												>
+													{option.label}
+												</Button>
+											);
+										})}
+									</div>
+								</div>
+							) : null}
+							{!playheadInCameraFull && (
+								<SliderControl
+									label={tSettings("effects.webcamMargin", "Margin")}
+									value={webcam?.margin ?? DEFAULT_WEBCAM_MARGIN}
+									defaultValue={DEFAULT_WEBCAM_MARGIN}
+									min={0}
+									max={96}
+									step={1}
+									onChange={(v) => updateWebcam({ margin: v })}
+									formatValue={(v) => `${Math.round(v)}px`}
+									parseInput={(text) => parseFloat(text.replace(/px$/, ""))}
+								/>
+							)}
+							{/* Fill renders edge-to-edge: roundness/shadow only apply to the
+							    bubble and the camera-full "fit" letterbox. */}
+							{!(playheadInCameraFull && webcamLayoutStyle === "fill") && (
+								<>
+									<SliderControl
+										label={tSettings("effects.webcamRoundness")}
+										value={webcam?.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS}
+										defaultValue={DEFAULT_WEBCAM_CORNER_RADIUS}
+										min={0}
+										max={160}
+										step={1}
+										onChange={(v) => updateWebcam({ cornerRadius: v })}
+										formatValue={(v) => `${Math.round(v)}px`}
+										parseInput={(text) => parseFloat(text.replace(/px$/, ""))}
+									/>
+									<SliderControl
+										label={tSettings("effects.webcamShadow")}
+										value={webcam?.shadow ?? DEFAULT_WEBCAM_SHADOW}
+										defaultValue={DEFAULT_WEBCAM_SHADOW}
+										min={0}
+										max={1}
+										step={0.01}
+										onChange={(v) => updateWebcam({ shadow: v })}
+										formatValue={(v) => `${Math.round(v * 100)}%`}
+										parseInput={(text) =>
+											parseFloat(text.replace(/%$/, "")) / 100
+										}
+									/>
+								</>
+							)}
 							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
 								<div className="flex flex-col gap-2">
 									<div className="min-w-0">

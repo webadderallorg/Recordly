@@ -3,6 +3,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
 import {
+	acquireWebcamSession,
+	coerceWebcamFrameRate,
+	DEFAULT_WEBCAM_FRAME_RATE,
+	type WebcamFrameRate,
+	type WebcamSessionHandle,
+} from "@/lib/webcamSession";
+import {
 	getVideoExtensionForMimeType,
 	isWebmMimeType,
 	selectRecordingMimeType,
@@ -32,10 +39,7 @@ const RECORDING_FILE_PREFIX = "recording-";
 const AUDIO_BITRATE_VOICE = 128_000;
 const AUDIO_BITRATE_SYSTEM = 192_000;
 const MIC_GAIN_BOOST = 1.4;
-const WEBCAM_BITRATE = 8_000_000;
-const WEBCAM_WIDTH = 1280;
-const WEBCAM_HEIGHT = 720;
-const WEBCAM_FRAME_RATE = 30;
+const WEBCAM_BITRATE = 45_000_000;
 const WEBCAM_SUFFIX = "-webcam";
 const MICROPHONE_FALLBACK_ERROR_TOAST_ID = "recording-microphone-fallback-error";
 const MICROPHONE_SIDECAR_ERROR_TOAST_ID = "recording-microphone-sidecar-error";
@@ -147,6 +151,12 @@ type UseScreenRecorderReturn = {
 	setWebcamEnabled: (enabled: boolean) => void;
 	webcamDeviceId: string | undefined;
 	setWebcamDeviceId: (deviceId: string | undefined) => void;
+	webcamFrameRate: WebcamFrameRate;
+	setWebcamFrameRate: (frameRate: WebcamFrameRate) => void;
+	cameraFullActive: boolean;
+	toggleCameraLayout: () => void;
+	sceneStyleMode: "fill" | "framed";
+	applySceneStyleHotkey: (mode: "fill" | "framed") => void;
 	countdownDelay: number;
 	setCountdownDelay: (delay: number) => void;
 };
@@ -213,10 +223,7 @@ export function resolveBrowserCaptureCursorPolicy({
 export function shouldUseNativeWindowsCaptureForSource(
 	source: Pick<ProcessedDesktopSource, "id"> | null | undefined,
 ): boolean {
-	return (
-		source?.id?.startsWith("screen:") === true ||
-		source?.id?.startsWith("window:") === true
-	);
+	return source?.id?.startsWith("screen:") === true || source?.id?.startsWith("window:") === true;
 }
 
 export function createProcessedMicrophoneConstraints(
@@ -263,6 +270,62 @@ export function createBrowserRecordingOptions({
 	}
 
 	return options;
+}
+
+export function createWebcamRecordingOptions(mimeType?: string): MediaRecorderOptions {
+	return {
+		videoBitsPerSecond: WEBCAM_BITRATE,
+		...(mimeType ? { mimeType } : {}),
+	};
+}
+
+/**
+ * Logs webcam frame-delivery stalls during recording. Chromium mutes a
+ * MediaStreamTrack while its capture device stops delivering frames (device
+ * renegotiation, Continuity Camera hiccups, phone lock); any gap recorded
+ * into the webcam file shows up here with timestamps, so a frozen facecam in
+ * a recording is diagnosable instead of a mystery.
+ */
+export function attachWebcamFrameWatchdog(stream: MediaStream): () => void {
+	const track = stream.getVideoTracks()[0];
+	if (!track) {
+		return () => {
+			/* no track to detach from */
+		};
+	}
+
+	const attachedAt = Date.now();
+	let mutedAt: number | null = null;
+	const elapsed = () => `${((Date.now() - attachedAt) / 1000).toFixed(2)}s`;
+
+	const handleMute = () => {
+		mutedAt = Date.now();
+		console.warn(
+			`[webcam-watchdog] camera stopped delivering frames at ${elapsed()} into recording`,
+		);
+	};
+	const handleUnmute = () => {
+		const stallMs = mutedAt === null ? null : Date.now() - mutedAt;
+		mutedAt = null;
+		console.warn(
+			`[webcam-watchdog] camera resumed at ${elapsed()}${
+				stallMs === null ? "" : ` after a ${(stallMs / 1000).toFixed(2)}s stall`
+			}`,
+		);
+	};
+	const handleEnded = () => {
+		console.warn(`[webcam-watchdog] camera track ended at ${elapsed()} into recording`);
+	};
+
+	track.addEventListener("mute", handleMute);
+	track.addEventListener("unmute", handleUnmute);
+	track.addEventListener("ended", handleEnded);
+
+	return () => {
+		track.removeEventListener("mute", handleMute);
+		track.removeEventListener("unmute", handleUnmute);
+		track.removeEventListener("ended", handleEnded);
+	};
 }
 
 function createMicrophoneTrackSettingsSnapshot(
@@ -331,6 +394,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const [systemAudioEnabled, setSystemAudioEnabled] = useState(false);
 	const [webcamEnabled, setWebcamEnabled] = useState(false);
 	const [webcamDeviceId, setWebcamDeviceId] = useState<string | undefined>(undefined);
+	const [webcamFrameRate, setWebcamFrameRate] =
+		useState<WebcamFrameRate>(DEFAULT_WEBCAM_FRAME_RATE);
+	const [cameraFullActive, setCameraFullActive] = useState(false);
+	const cameraFullActiveRef = useRef(false);
+	const [sceneStyleMode, setSceneStyleMode] = useState<"fill" | "framed">("framed");
+	const sceneStyleModeRef = useRef<"fill" | "framed">("framed");
 	const [countdownDelay, setCountdownDelayState] = useState(3);
 	const mediaRecorder = useRef<MediaRecorder | null>(null);
 	const webcamRecorder = useRef<MediaRecorder | null>(null);
@@ -338,6 +407,20 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const screenStream = useRef<MediaStream | null>(null);
 	const microphoneStream = useRef<MediaStream | null>(null);
 	const webcamStream = useRef<MediaStream | null>(null);
+	const webcamSessionHandle = useRef<WebcamSessionHandle | null>(null);
+	const webcamWatchdogCleanup = useRef<(() => void) | null>(null);
+
+	// Stops the recorder's cloned webcam tracks and releases the shared camera
+	// session. The physical device only powers down once the preview (or any
+	// other consumer) has released it too — never mid-renegotiation.
+	const releaseWebcamCapture = useCallback(() => {
+		webcamWatchdogCleanup.current?.();
+		webcamWatchdogCleanup.current = null;
+		webcamStream.current?.getTracks().forEach((track) => track.stop());
+		webcamStream.current = null;
+		webcamSessionHandle.current?.release();
+		webcamSessionHandle.current = null;
+	}, []);
 	const mixingContext = useRef<AudioContext | null>(null);
 	const chunks = useRef<Blob[]>([]);
 	const webcamChunks = useRef<Blob[]>([]);
@@ -434,6 +517,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		startTime.current = startedAt;
 		accumulatedPausedDurationMs.current = 0;
 		pauseStartedAtMs.current = null;
+		cameraFullActiveRef.current = false;
+		setCameraFullActive(false);
+		sceneStyleModeRef.current = "framed";
+		setSceneStyleMode("framed");
 	}, []);
 
 	const markRecordingPaused = useCallback((pausedAt: number) => {
@@ -461,6 +548,33 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			pauseStartedAtMs: pauseStartedAtMs.current,
 		});
 	}, []);
+
+	const toggleCameraLayout = useCallback(() => {
+		if (!recording || !webcamEnabled) {
+			return;
+		}
+		const timeMs = Math.round(getRecordingDurationMs(Date.now()));
+		const next = !cameraFullActiveRef.current;
+		cameraFullActiveRef.current = next;
+		setCameraFullActive(next);
+		window.electronAPI?.webcamLayoutToggle?.({
+			timeMs,
+			mode: next ? "camera-full" : "screen",
+		});
+	}, [getRecordingDurationMs, webcamEnabled, recording]);
+
+	const applySceneStyleHotkey = useCallback(
+		(mode: "fill" | "framed") => {
+			if (!recording || paused || sceneStyleModeRef.current === mode) {
+				return;
+			}
+			const timeMs = Math.round(getRecordingDurationMs(Date.now()));
+			sceneStyleModeRef.current = mode;
+			setSceneStyleMode(mode);
+			window.electronAPI?.sceneStyleToggle?.({ timeMs, mode });
+		},
+		[getRecordingDurationMs, recording, paused],
+	);
 
 	const getMicFallbackRecordedElapsedMs = useCallback((now = performance.now()) => {
 		const startedAt = micFallbackRecorderStartedAt.current;
@@ -569,10 +683,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			microphoneStream.current = null;
 		}
 
-		if (webcamStream.current) {
-			webcamStream.current.getTracks().forEach((track) => track.stop());
-			webcamStream.current = null;
-		}
+		releaseWebcamCapture();
 
 		if (mixingContext.current) {
 			mixingContext.current.close().catch(() => undefined);
@@ -596,7 +707,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			micFallbackRecorderMetadata.current = null;
 			resetMicFallbackTimingDiagnostics();
 		}
-	}, [resetMicFallbackTimingDiagnostics]);
+	}, [releaseWebcamCapture, resetMicFallbackTimingDiagnostics]);
 
 	const appendMicFallbackChunk = useCallback(
 		(event: BlobEvent) => {
@@ -897,9 +1008,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		if (recorder.state !== "inactive") {
 			recorder.stop();
-		} else if (pending && webcamStopResolver.current) {
-			webcamStopResolver.current(resolvedWebcamPath.current);
-			webcamStopResolver.current = null;
+		} else {
+			if (pending && webcamStopResolver.current) {
+				webcamStopResolver.current(resolvedWebcamPath.current);
+				webcamStopResolver.current = null;
+			}
+			// Recorder was prepared but never started, so its onstop handler
+			// (which normally releases the camera) will never run.
+			webcamRecorder.current = null;
+			releaseWebcamCapture();
 		}
 
 		const result = pending ? await pending : resolvedWebcamPath.current;
@@ -907,7 +1024,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		pendingWebcamPathPromise.current = null;
 		resolvedWebcamPath.current = result ?? null;
 		return result ?? null;
-	}, []);
+	}, [releaseWebcamCapture]);
 
 	const recoverNativeRecordingSession = useCallback(
 		async (
@@ -958,21 +1075,19 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 
 		try {
-			webcamStream.current = await navigator.mediaDevices.getUserMedia({
-				video: webcamDeviceId
-					? {
-							deviceId: { exact: webcamDeviceId },
-							width: { ideal: WEBCAM_WIDTH },
-							height: { ideal: WEBCAM_HEIGHT },
-							frameRate: { ideal: WEBCAM_FRAME_RATE, max: WEBCAM_FRAME_RATE },
-						}
-					: {
-							width: { ideal: WEBCAM_WIDTH },
-							height: { ideal: WEBCAM_HEIGHT },
-							frameRate: { ideal: WEBCAM_FRAME_RATE, max: WEBCAM_FRAME_RATE },
-						},
-				audio: false,
-			});
+			// Share the camera with the floating preview through the session
+			// manager. Recording a clone of the shared track means stopping the
+			// recorder never touches the preview, and preview show/hide never
+			// restarts the device — device restarts stall frame delivery for
+			// seconds on slow-renegotiation cameras (iPhone Continuity Camera),
+			// which used to leave multi-second frozen gaps in the webcam file.
+			webcamSessionHandle.current = await acquireWebcamSession(
+				webcamDeviceId,
+				webcamFrameRate,
+			);
+			const recordingStream = webcamSessionHandle.current.stream.clone();
+			webcamStream.current = recordingStream;
+			webcamWatchdogCleanup.current = attachWebcamFrameWatchdog(recordingStream);
 
 			const mimeType = selectWebcamMimeType();
 			webcamChunks.current = [];
@@ -982,10 +1097,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			});
 			pendingWebcamPathPromise.current = webcamStopPromise.current;
 
-			const recorder = new MediaRecorder(webcamStream.current, {
-				videoBitsPerSecond: WEBCAM_BITRATE,
-				...(mimeType ? { mimeType } : {}),
-			});
+			const recorder = new MediaRecorder(
+				recordingStream,
+				createWebcamRecordingOptions(mimeType),
+			);
 
 			webcamRecorder.current = recorder;
 			recorder.ondataavailable = (event) => {
@@ -1033,10 +1148,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					webcamStopResolver.current = null;
 					webcamRecorder.current = null;
 					webcamStartTime.current = null;
-					if (webcamStream.current) {
-						webcamStream.current.getTracks().forEach((track) => track.stop());
-						webcamStream.current = null;
-					}
+					releaseWebcamCapture();
 				}
 			};
 		} catch (error) {
@@ -1050,12 +1162,16 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			webcamRecorder.current = null;
 			webcamStartTime.current = null;
 			webcamTimeOffsetMs.current = 0;
-			if (webcamStream.current) {
-				webcamStream.current.getTracks().forEach((track) => track.stop());
-				webcamStream.current = null;
-			}
+			releaseWebcamCapture();
 		}
-	}, [getRecordingDurationMs, selectWebcamMimeType, webcamDeviceId, webcamEnabled]);
+	}, [
+		getRecordingDurationMs,
+		releaseWebcamCapture,
+		selectWebcamMimeType,
+		webcamDeviceId,
+		webcamEnabled,
+		webcamFrameRate,
+	]);
 
 	/** Start the prepared webcam MediaRecorder. Call after main recording begins. */
 	const beginWebcamCapture = useCallback(() => {
@@ -1267,6 +1383,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					setMicrophoneDeviceId(result.microphoneDeviceId);
 				}
 				setSystemAudioEnabled(result.systemAudioEnabled);
+				setWebcamFrameRate(coerceWebcamFrameRate(result.webcamFrameRate));
 			}
 		})();
 	}, []);
@@ -1284,6 +1401,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const persistSystemAudioEnabled = useCallback((enabled: boolean) => {
 		setSystemAudioEnabled(enabled);
 		void window.electronAPI.setRecordingPreferences({ systemAudioEnabled: enabled });
+	}, []);
+
+	const persistWebcamFrameRate = useCallback((frameRate: WebcamFrameRate) => {
+		setWebcamFrameRate(frameRate);
+		void window.electronAPI.setRecordingPreferences({ webcamFrameRate: frameRate });
 	}, []);
 
 	useEffect(() => {
@@ -2041,8 +2163,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		webcamRecorder.current = null;
 		webcamStartTime.current = null;
 		webcamTimeOffsetMs.current = 0;
-		webcamStream.current?.getTracks().forEach((t) => t.stop());
-		webcamStream.current = null;
+		releaseWebcamCapture();
 		pendingWebcamPathPromise.current = null;
 		resolvedWebcamPath.current = null;
 
@@ -2073,7 +2194,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			setRecording(false);
 			window.electronAPI?.setRecordingState(false);
 		}
-	}, [cleanupCapturedMedia, markRecordingResumed, recording]);
+	}, [cleanupCapturedMedia, markRecordingResumed, recording, releaseWebcamCapture]);
 
 	const toggleRecording = async () => {
 		if (starting || countdownActive || finalizing) {
@@ -2122,6 +2243,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		setWebcamEnabled,
 		webcamDeviceId,
 		setWebcamDeviceId,
+		webcamFrameRate,
+		setWebcamFrameRate: persistWebcamFrameRate,
+		cameraFullActive,
+		toggleCameraLayout,
+		sceneStyleMode,
+		applySceneStyleHotkey,
 		countdownDelay,
 		setCountdownDelay,
 	};

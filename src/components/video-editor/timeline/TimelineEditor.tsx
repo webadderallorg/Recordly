@@ -22,6 +22,7 @@ import KeyframeMarkers from "./components/markers/KeyframeMarkers";
 import TimelineCanvas from "./components/viewport/TimelineCanvas";
 import TimelineWrapper from "./components/wrapper/TimelineWrapper";
 import { calculateTimelineScale } from "./core/time";
+import type { TimelineRegion } from "./core/timelineTypes";
 import { useTimelineAudioPeaks } from "./hooks/useTimelineAudioPeaks";
 import { useTimelineEditorRuntime } from "./hooks/useTimelineEditorRuntime";
 import { useTimelineRange } from "./hooks/useTimelineRange";
@@ -29,6 +30,7 @@ import {
 	buildSourceSidecarPathCandidates,
 	buildTimelineSourceAudioTracks,
 } from "./sourceAudioTracks";
+import { countTimelineRows } from "./timelineLayout";
 
 export interface TimelineEditorProps {
 	videoDuration: number;
@@ -68,6 +70,20 @@ export interface TimelineEditorProps {
 	onAudioDelete?: (id: string) => void;
 	selectedAudioId?: string | null;
 	onSelectAudio?: (id: string | null) => void;
+	cameraRegions?: TimelineRegion[];
+	onCameraSpanChange?: (id: string, span: Span) => void;
+	onCameraDelete?: (id: string) => void;
+	selectedCameraId?: string | null;
+	onSelectCamera?: (id: string | null) => void;
+	cameraTrackVisible?: boolean;
+	cameraRegionsDimmed?: boolean;
+	fillFrameRegions?: TimelineRegion[];
+	onFillFrameSpanChange?: (id: string, span: Span) => void;
+	onFillFrameDelete?: (id: string) => void;
+	onFillFrameAddAtMs?: (timeMs: number) => void;
+	selectedFillFrameId?: string | null;
+	onSelectFillFrame?: (id: string | null) => void;
+	fillFrameTrackVisible?: boolean;
 	videoPath?: string | null;
 	videoSourcePath?: string | null;
 	cursorTelemetrySourcePath?: string | null;
@@ -76,6 +92,7 @@ export interface TimelineEditorProps {
 	sourceAudioTrackSettings?: SourceAudioTrackSettings;
 	getSourceAudioTrackSettingsForClip?: (clipId: string | null) => SourceAudioTrackSettings;
 	onSourceAudioTracksMetaChange?: (tracks: SourceAudioTrackMeta) => void;
+	onTimelineRowCountChange?: (rowCount: number) => void;
 }
 
 function extractLocalPathFromMediaServerUrl(input: string | null | undefined): string | null {
@@ -142,6 +159,20 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAudioDelete,
 			selectedAudioId,
 			onSelectAudio,
+			cameraRegions = [],
+			onCameraSpanChange,
+			onCameraDelete,
+			selectedCameraId,
+			onSelectCamera,
+			cameraTrackVisible = false,
+			cameraRegionsDimmed = false,
+			fillFrameRegions = [],
+			onFillFrameSpanChange,
+			onFillFrameDelete,
+			onFillFrameAddAtMs,
+			selectedFillFrameId,
+			onSelectFillFrame,
+			fillFrameTrackVisible = false,
 			videoPath,
 			videoSourcePath,
 			cursorTelemetrySourcePath,
@@ -150,6 +181,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			sourceAudioTrackSettings = {},
 			getSourceAudioTrackSettingsForClip,
 			onSourceAudioTracksMetaChange,
+			onTimelineRowCountChange,
 		},
 		ref,
 	) {
@@ -170,6 +202,37 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					: timelineScale.minItemDurationMs,
 			[timelineScale.minItemDurationMs, totalMs],
 		);
+
+		// Camera regions seeded from an unterminated recording toggle can carry an
+		// open-ended endMs (MAX_SAFE_INTEGER); bound them to the video for display.
+		const boundedCameraRegions = useMemo(
+			() =>
+				totalMs > 0
+					? cameraRegions
+							.filter((region) => region.startMs < totalMs)
+							.map((region) =>
+								region.endMs > totalMs ? { ...region, endMs: totalMs } : region,
+							)
+					: cameraRegions,
+			[cameraRegions, totalMs],
+		);
+		const showCameraTrack = cameraTrackVisible || boundedCameraRegions.length > 0;
+
+		// Fill-frame regions imported from an unterminated recording toggle can
+		// carry an open-ended endMs (MAX_SAFE_INTEGER); bound them like camera
+		// regions for display.
+		const boundedFillFrameRegions = useMemo(
+			() =>
+				totalMs > 0
+					? fillFrameRegions
+							.filter((region) => region.startMs < totalMs)
+							.map((region) =>
+								region.endMs > totalMs ? { ...region, endMs: totalMs } : region,
+							)
+					: fillFrameRegions,
+			[fillFrameRegions, totalMs],
+		);
+		const showFillFrameTrack = fillFrameTrackVisible || boundedFillFrameRegions.length > 0;
 
 		const timelineContainerRef = useRef<HTMLDivElement>(null);
 		const isTimelineFocusedRef = useRef(false);
@@ -309,12 +372,16 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			setSelectedKeyframeId,
 			selectAllBlocksActive,
 			setSelectAllBlocksActive,
+			multiSelectedIds,
+			applyMarqueeSelection,
 			handleKeyframeMove,
 			clearSelectedBlocks,
 			handleSelectZoom,
 			handleSelectClip,
 			handleSelectAnnotation,
 			handleSelectAudio,
+			handleSelectCamera,
+			handleSelectFillFrame,
 			hasOverlap,
 			timelineItems,
 			allRegionSpans,
@@ -361,10 +428,42 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAudioDelete,
 			selectedAudioId,
 			onSelectAudio,
+			cameraRegions: boundedCameraRegions,
+			onCameraSpanChange,
+			onCameraDelete,
+			selectedCameraId,
+			onSelectCamera,
+			fillFrameRegions: boundedFillFrameRegions,
+			onFillFrameSpanChange,
+			onFillFrameDelete,
+			selectedFillFrameId,
+			onSelectFillFrame,
 			isMac,
 			keyShortcuts,
 			isTimelineFocusedRef,
 		});
+
+		// Report how many rows the timeline renders so the editor layout can size
+		// the timeline panel to fit every visible track without internal scrolling.
+		const timelineRowCount = useMemo(
+			() =>
+				countTimelineRows(timelineItems, {
+					showCameraTrack,
+					showFillFrameTrack,
+					showSourceAudioTrack,
+					sourceAudioTrackCount: sourceAudioTracks.length,
+				}),
+			[
+				timelineItems,
+				showCameraTrack,
+				showFillFrameTrack,
+				showSourceAudioTrack,
+				sourceAudioTracks.length,
+			],
+		);
+		useEffect(() => {
+			onTimelineRowCountChange?.(timelineRowCount);
+		}, [onTimelineRowCountChange, timelineRowCount]);
 
 		if (!videoDuration || videoDuration === 0) {
 			return (
@@ -448,15 +547,25 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							currentTimeMs={currentTimeMs}
 							onSeek={onSeek}
 							onAddZoomAtMs={addZoomAtMs}
+							onFillFrameAddAtMs={onFillFrameAddAtMs}
+							onMarqueeSelect={applyMarqueeSelection}
+							multiSelectedIds={multiSelectedIds}
 							canPlaceZoomAtMs={canPlaceZoomAtMs}
 							onSelectZoom={handleSelectZoom}
 							onSelectClip={handleSelectClip}
 							onSelectAnnotation={handleSelectAnnotation}
 							onSelectAudio={handleSelectAudio}
+							onSelectCamera={handleSelectCamera}
+							onSelectFillFrame={handleSelectFillFrame}
 							selectedZoomId={selectedZoomId}
 							selectedClipId={selectedClipId}
 							selectedAnnotationId={selectedAnnotationId}
 							selectedAudioId={selectedAudioId}
+							selectedCameraId={selectedCameraId}
+							selectedFillFrameId={selectedFillFrameId}
+							showCameraTrack={showCameraTrack}
+							showFillFrameTrack={showFillFrameTrack}
+							cameraRegionsDimmed={cameraRegionsDimmed}
 							selectAllBlocksActive={selectAllBlocksActive}
 							onClearBlockSelection={clearSelectedBlocks}
 							keyframes={keyframes}

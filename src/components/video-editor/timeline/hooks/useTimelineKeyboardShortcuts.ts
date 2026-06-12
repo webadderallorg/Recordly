@@ -15,7 +15,10 @@ interface UseTimelineKeyboardShortcutsParams {
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
 	selectedAudioId?: string | null;
+	selectedCameraId?: string | null;
+	selectedFillFrameId?: string | null;
 	selectAllBlocksActive: boolean;
+	multiSelectedCount: number;
 	addKeyframe: () => void;
 	handleAddZoom: () => void;
 	handleSplitClip: () => void;
@@ -25,6 +28,9 @@ interface UseTimelineKeyboardShortcutsParams {
 	deleteSelectedClip: () => void;
 	deleteSelectedAnnotation: () => void;
 	deleteSelectedAudio: () => void;
+	deleteSelectedCamera: () => void;
+	deleteSelectedFillFrame: () => void;
+	deleteMultiSelectedItems: () => void;
 	cycleAnnotationsAtCurrentTime: (backward?: boolean) => boolean;
 }
 
@@ -40,7 +46,10 @@ export function useTimelineKeyboardShortcuts({
 	selectedClipId,
 	selectedAnnotationId,
 	selectedAudioId,
+	selectedCameraId,
+	selectedFillFrameId,
 	selectAllBlocksActive,
+	multiSelectedCount,
 	addKeyframe,
 	handleAddZoom,
 	handleSplitClip,
@@ -50,6 +59,9 @@ export function useTimelineKeyboardShortcuts({
 	deleteSelectedClip,
 	deleteSelectedAnnotation,
 	deleteSelectedAudio,
+	deleteSelectedCamera,
+	deleteSelectedFillFrame,
+	deleteMultiSelectedItems,
 	cycleAnnotationsAtCurrentTime,
 }: UseTimelineKeyboardShortcutsParams) {
 	useEffect(() => {
@@ -97,16 +109,21 @@ export function useTimelineKeyboardShortcuts({
 			) {
 				const target = resolveDeleteSelectionTarget({
 					selectAllBlocksActive,
+					multiSelectedCount,
 					selectedKeyframeId,
 					selectedZoomId,
 					selectedClipId,
 					selectedAnnotationId,
 					selectedAudioId,
+					selectedCameraId,
+					selectedFillFrameId,
 				});
 				if (target !== "none") {
 					e.preventDefault();
 				}
-				if (target === "keyframe") {
+				if (target === "multi") {
+					deleteMultiSelectedItems();
+				} else if (target === "keyframe") {
 					deleteSelectedKeyframe();
 				} else if (target === "zoom") {
 					deleteSelectedZoom();
@@ -116,6 +133,10 @@ export function useTimelineKeyboardShortcuts({
 					deleteSelectedAnnotation();
 				} else if (target === "audio") {
 					deleteSelectedAudio();
+				} else if (target === "camera") {
+					deleteSelectedCamera();
+				} else if (target === "fillFrame") {
+					deleteSelectedFillFrame();
 				}
 			}
 		};
@@ -129,9 +150,12 @@ export function useTimelineKeyboardShortcuts({
 		cycleAnnotationsAtCurrentTime,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
+		deleteSelectedCamera,
 		deleteSelectedClip,
+		deleteSelectedFillFrame,
 		deleteSelectedKeyframe,
 		deleteSelectedZoom,
+		deleteMultiSelectedItems,
 		handleAddAnnotation,
 		handleAddZoom,
 		handleSplitClip,
@@ -139,10 +163,13 @@ export function useTimelineKeyboardShortcuts({
 		isMac,
 		isTimelineFocusedRef,
 		keyShortcuts,
+		multiSelectedCount,
 		selectAllBlocksActive,
 		selectedAnnotationId,
 		selectedAudioId,
+		selectedCameraId,
 		selectedClipId,
+		selectedFillFrameId,
 		selectedKeyframeId,
 		selectedZoomId,
 	]);

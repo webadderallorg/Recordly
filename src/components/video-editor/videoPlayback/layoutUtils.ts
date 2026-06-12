@@ -6,11 +6,7 @@ export const PADDING_SCALE_FACTOR = 0.2;
 export const BASE_PREVIEW_WIDTH = 1920;
 export const BASE_PREVIEW_HEIGHT = 1080;
 
-export function scalePreviewBorderRadius(
-	width: number,
-	height: number,
-	borderRadius = 0,
-): number {
+export function scalePreviewBorderRadius(width: number, height: number, borderRadius = 0): number {
 	if (width <= 0 || height <= 0) {
 		return 0;
 	}
@@ -23,12 +19,7 @@ export function isZeroPadding(padding: Padding | number): boolean {
 	if (typeof padding === "number") {
 		return padding === 0;
 	}
-	return (
-		padding.top === 0 &&
-		padding.bottom === 0 &&
-		padding.left === 0 &&
-		padding.right === 0
-	);
+	return padding.top === 0 && padding.bottom === 0 && padding.left === 0 && padding.right === 0;
 }
 
 export interface PaddedLayoutResult {
@@ -47,16 +38,24 @@ export interface PaddedLayoutResult {
 	cropStartY: number;
 }
 
-export function computePaddedLayout(params: {
+interface LayoutGeometryParams {
 	width: number;
 	height: number;
-	padding: Padding | number;
-	frameInsets?: { top: number; right: number; bottom: number; left: number } | null;
 	cropRegion: CropRegion;
 	videoWidth: number;
 	videoHeight: number;
-}): PaddedLayoutResult {
-	const { width, height, padding, frameInsets, cropRegion, videoWidth, videoHeight } = params;
+}
+
+function computeLayoutVariant(
+	params: LayoutGeometryParams,
+	options: {
+		padding: Padding | number;
+		frameInsets: { top: number; right: number; bottom: number; left: number } | null;
+		fit: "contain" | "cover";
+	},
+): PaddedLayoutResult {
+	const { width, height, cropRegion, videoWidth, videoHeight } = params;
+	const { padding, frameInsets, fit } = options;
 
 	// Apply asymmetrical padding
 	const p =
@@ -89,10 +88,9 @@ export function computePaddedLayout(params: {
 	const fullFrameVideoW = croppedVideoWidth / screenFracW;
 	const fullFrameVideoH = croppedVideoHeight / screenFracH;
 
-	const scale = Math.min(
-		fullFrameVideoW > 0 ? maxDisplayWidth / fullFrameVideoW : 0,
-		fullFrameVideoH > 0 ? maxDisplayHeight / fullFrameVideoH : 0,
-	);
+	const scaleW = fullFrameVideoW > 0 ? maxDisplayWidth / fullFrameVideoW : 0;
+	const scaleH = fullFrameVideoH > 0 ? maxDisplayHeight / fullFrameVideoH : 0;
+	const scale = fit === "cover" ? Math.max(scaleW, scaleH) : Math.min(scaleW, scaleH);
 
 	const fullVideoDisplayWidth = videoWidth * scale;
 	const fullVideoDisplayHeight = videoHeight * scale;
@@ -108,12 +106,8 @@ export function computePaddedLayout(params: {
 	const frameCenterX = availableCenterX - fullFrameDisplayW / 2;
 	const frameCenterY = availableCenterY - fullFrameDisplayH / 2;
 
-	const centerOffsetX = insets
-		? frameCenterX + insets.left * fullFrameDisplayW
-		: frameCenterX;
-	const centerOffsetY = insets
-		? frameCenterY + insets.top * fullFrameDisplayH
-		: frameCenterY;
+	const centerOffsetX = insets ? frameCenterX + insets.left * fullFrameDisplayW : frameCenterX;
+	const centerOffsetY = insets ? frameCenterY + insets.top * fullFrameDisplayH : frameCenterY;
 
 	const spriteX = centerOffsetX - crop.x * fullVideoDisplayWidth;
 	const spriteY = centerOffsetY - crop.y * fullVideoDisplayHeight;
@@ -135,6 +129,60 @@ export function computePaddedLayout(params: {
 	};
 }
 
+/**
+ * Computes the framed (padded, contain-fit) layout. `fillFrameProgress`
+ * animates toward a cover layout (no padding/insets, video covers the canvas,
+ * overflow cropped): 0 is the framed result, 1 is the cover result, and
+ * in-between values linearly interpolate every field. The caller passes
+ * already-eased progress.
+ */
+export function computePaddedLayout(params: {
+	width: number;
+	height: number;
+	padding: Padding | number;
+	frameInsets?: { top: number; right: number; bottom: number; left: number } | null;
+	cropRegion: CropRegion;
+	videoWidth: number;
+	videoHeight: number;
+	fillFrameProgress?: number;
+}): PaddedLayoutResult {
+	const rawProgress = params.fillFrameProgress;
+	const progress = Number.isFinite(rawProgress)
+		? Math.min(1, Math.max(0, rawProgress as number))
+		: 0;
+
+	const framed = computeLayoutVariant(params, {
+		padding: params.padding,
+		frameInsets: params.frameInsets ?? null,
+		fit: "contain",
+	});
+	if (progress <= 0) return framed;
+
+	const cover = computeLayoutVariant(params, {
+		padding: 0,
+		frameInsets: null,
+		fit: "cover",
+	});
+	if (progress >= 1) return cover;
+
+	const lerp = (a: number, b: number) => a + (b - a) * progress;
+	return {
+		scale: lerp(framed.scale, cover.scale),
+		centerOffsetX: lerp(framed.centerOffsetX, cover.centerOffsetX),
+		centerOffsetY: lerp(framed.centerOffsetY, cover.centerOffsetY),
+		spriteX: lerp(framed.spriteX, cover.spriteX),
+		spriteY: lerp(framed.spriteY, cover.spriteY),
+		fullFrameDisplayW: lerp(framed.fullFrameDisplayW, cover.fullFrameDisplayW),
+		fullFrameDisplayH: lerp(framed.fullFrameDisplayH, cover.fullFrameDisplayH),
+		fullVideoDisplayWidth: lerp(framed.fullVideoDisplayWidth, cover.fullVideoDisplayWidth),
+		fullVideoDisplayHeight: lerp(framed.fullVideoDisplayHeight, cover.fullVideoDisplayHeight),
+		croppedDisplayWidth: lerp(framed.croppedDisplayWidth, cover.croppedDisplayWidth),
+		croppedDisplayHeight: lerp(framed.croppedDisplayHeight, cover.croppedDisplayHeight),
+		cropStartX: lerp(framed.cropStartX, cover.cropStartX),
+		cropStartY: lerp(framed.cropStartY, cover.cropStartY),
+	};
+}
+
 interface LayoutParams {
 	container: HTMLDivElement;
 	app: Application;
@@ -147,6 +195,8 @@ interface LayoutParams {
 	padding?: Padding | number;
 	/** Screen insets from the active device frame, used to scale/center the full frame */
 	frameInsets?: { top: number; right: number; bottom: number; left: number } | null;
+	/** Eased 0..1 fill-frame progress; 1 means the video covers the canvas. */
+	fillFrameProgress?: number;
 }
 
 interface LayoutResult {
@@ -176,6 +226,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		borderRadius = 0,
 		padding = 0,
 		frameInsets,
+		fillFrameProgress = 0,
 	} = params;
 
 	const videoWidth = lockedVideoDimensions?.width || videoElement.videoWidth;
@@ -205,6 +256,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		cropRegion: crop,
 		videoWidth,
 		videoHeight,
+		fillFrameProgress,
 	});
 
 	videoSprite.scale.set(layout.scale);
@@ -216,7 +268,9 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		y: layout.centerOffsetY,
 		width: layout.croppedDisplayWidth,
 		height: layout.croppedDisplayHeight,
-		radius: scalePreviewBorderRadius(width, height, borderRadius),
+		radius:
+			scalePreviewBorderRadius(width, height, borderRadius) *
+			(1 - Math.min(1, Math.max(0, fillFrameProgress))),
 	});
 	maskGraphics.fill({ color: 0xffffff });
 

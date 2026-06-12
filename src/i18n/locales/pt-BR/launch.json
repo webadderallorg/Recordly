@@ -34,6 +34,8 @@
 		"showFloatingWebcamPreview": "Mostrar prévia flutuante",
 		"selectWebcamToEnable": "Selecione uma webcam para ativar",
 		"noWebcamsFound": "Nenhuma webcam encontrada",
+		"webcamStyleFit": "Câmera em tela cheia: ajustar com fundo",
+		"webcamStyleFill": "Câmera em tela cheia: preencher a tela",
 		"recordingsFolder": "Caminho das gravações",
 		"language": "Idioma",
 		"paused": "PAUSADO",
@@ -42,6 +44,8 @@
 		"pause": "Pausar",
 		"stop": "Parar",
 		"cancel": "Cancelar",
+		"cameraLayoutToCameraFull": "Câmera em tela cheia",
+		"cameraLayoutToScreen": "Voltar para a tela",
 		"more": "Mais",
 		"update": {
 			"update": "Atualizar",
@@ -65,6 +69,24 @@
 		"windowPlaceholder": "Janela",
 		"cancel": "Cancelar",
 		"share": "Compartilhar"
+	},
+	"teleprompter": {
+		"menuLabel": "Teleprompter",
+		"scriptPlaceholder": "Cole ou digite seu roteiro aqui…",
+		"startReading": "Começar a ler",
+		"edit": "Editar",
+		"play": "Reproduzir",
+		"pause": "Pausar",
+		"slower": "Mais devagar",
+		"faster": "Mais rápido",
+		"smallerText": "Texto menor",
+		"biggerText": "Texto maior",
+		"close": "Fechar",
+		"hotkeyHint": "⌥F8 reproduzir/pausar · ⌥F7/⌥F9 velocidade · ⌥T mostrar/ocultar",
+		"cameraOn": "Mostrar câmera",
+		"cameraOff": "Ocultar câmera",
+		"cameraFade": "Esmaecimento da câmera",
+		"cameraError": "Câmera indisponível"
 	},
 	"permissions": {
 		"screenRecordingNeeded": "O Recordly precisa da permissão de Gravação de Tela antes de iniciar. Ajustes do Sistema foram abertos. Depois de ativar, feche e reabra o Recordly.",

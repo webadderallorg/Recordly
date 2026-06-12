@@ -11,7 +11,7 @@ import { TimelineContext } from "dnd-timeline";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useCallback, useRef } from "react";
 import type { TimelineRegionSpan } from "../../core/timelineTypes";
-import { clampRange, resolveDragEnd, resolveResizeEnd } from "../../dnd/engine";
+import { clampRange, isNoOpSpanCommit, resolveDragEnd, resolveResizeEnd } from "../../dnd/engine";
 
 interface TimelineWrapperProps {
 	children: ReactNode;
@@ -57,6 +57,17 @@ export default function TimelineWrapper({
 				hasOverlap,
 			});
 			if (!resolvedSpan) return;
+			// Selection clicks near an item edge run a full resize cycle with a
+			// zero-pixel delta; they must not commit (or trigger edit feedback).
+			if (
+				isNoOpSpanCommit({
+					deltaX: event.delta.x,
+					resolvedSpan,
+					currentItem: allRegionSpans.find((region) => region.id === activeItemId),
+				})
+			) {
+				return;
+			}
 			onItemSpanChange(activeItemId, resolvedSpan);
 		},
 		[allRegionSpans, hasOverlap, minItemDurationMs, onItemSpanChange, totalMs],
@@ -82,6 +93,20 @@ export default function TimelineWrapper({
 				resolveTargetRowId,
 			);
 			if (!resolved) return;
+			// Plain clicks on an item run a full drag cycle (no sensor activation
+			// constraint); skip zero-distance gestures and drags that resolve back
+			// to the item's current placement so selecting never commits a span.
+			if (
+				isNoOpSpanCommit({
+					deltaX: event.delta.x,
+					deltaY: event.delta.y,
+					resolvedSpan: resolved.span,
+					resolvedRowId: resolved.rowId,
+					currentItem: allRegionSpans.find((region) => region.id === activeItemId),
+				})
+			) {
+				return;
+			}
 			onItemSpanChange(activeItemId, resolved.span, resolved.rowId);
 		},
 		[

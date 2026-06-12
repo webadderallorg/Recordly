@@ -9,7 +9,7 @@ export function getEncodingModeBitrateMultiplier(encodingMode: ExportEncodingMod
 		case "fast":
 			return 0.1;
 		case "quality":
-			return 0.9;
+			return 1;
 		case "balanced":
 		default:
 			return 0.5;

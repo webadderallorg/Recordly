@@ -34,6 +34,8 @@
 		"showFloatingWebcamPreview": "플로팅 미리보기 표시",
 		"selectWebcamToEnable": "사용할 웹캠을 선택하세요",
 		"noWebcamsFound": "웹캠을 찾을 수 없습니다",
+		"webcamStyleFit": "카메라 전체 화면: 배경과 함께 맞춤",
+		"webcamStyleFill": "카메라 전체 화면: 화면 채우기",
 		"recordingsFolder": "녹화 폴더",
 		"language": "언어",
 		"paused": "일시 정지",
@@ -42,6 +44,8 @@
 		"pause": "일시 정지",
 		"stop": "중지",
 		"cancel": "취소",
+		"cameraLayoutToCameraFull": "카메라 전체 화면",
+		"cameraLayoutToScreen": "화면으로 돌아가기",
 		"more": "더 보기",
 		"update": {
 			"update": "업데이트",
@@ -65,6 +69,24 @@
 		"windowPlaceholder": "창",
 		"cancel": "취소",
 		"share": "공유"
+	},
+	"teleprompter": {
+		"menuLabel": "텔레프롬프터",
+		"scriptPlaceholder": "여기에 대본을 붙여넣거나 입력하세요…",
+		"startReading": "읽기 시작",
+		"edit": "편집",
+		"play": "재생",
+		"pause": "일시정지",
+		"slower": "느리게",
+		"faster": "빠르게",
+		"smallerText": "글자 작게",
+		"biggerText": "글자 크게",
+		"close": "닫기",
+		"hotkeyHint": "⌥F8 재생/일시정지 · ⌥F7/⌥F9 속도 · ⌥T 표시/숨기기",
+		"cameraOn": "카메라 표시",
+		"cameraOff": "카메라 숨기기",
+		"cameraFade": "카메라 페이드",
+		"cameraError": "카메라를 사용할 수 없음"
 	},
 	"permissions": {
 		"screenRecordingNeeded": "녹화를 시작하기 전에 Recordly에 화면 녹화 권한이 필요합니다. 시스템 설정을 열었습니다. 권한을 허용한 뒤 Recordly를 종료하고 다시 실행해 주세요.",

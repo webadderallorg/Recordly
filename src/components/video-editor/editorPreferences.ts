@@ -7,6 +7,7 @@ import {
 	type ProjectEditorState,
 	stripPersistedDevMotionBlurSettings,
 } from "./projectPersistence";
+import { stripWebcamPerRecordingFields } from "./webcamSettingsFields";
 
 type PersistedEditorControls = Pick<
 	ProjectEditorState,
@@ -337,7 +338,7 @@ function normalizeEditorControls(
 		borderRadius: sanitizedRaw.borderRadius ?? fallback.borderRadius,
 		padding: sanitizedRaw.padding ?? fallback.padding,
 		frame: sanitizedRaw.frame !== undefined ? sanitizedRaw.frame : fallback.frame,
-		webcam: sanitizedRaw.webcam ?? fallback.webcam,
+		webcam: stripWebcamPerRecordingFields(sanitizedRaw.webcam ?? fallback.webcam),
 		aspectRatio: sanitizedRaw.aspectRatio ?? fallback.aspectRatio,
 		exportEncodingMode: sanitizedRaw.exportEncodingMode ?? fallback.exportEncodingMode,
 		exportBackendPreference:

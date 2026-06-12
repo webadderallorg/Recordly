@@ -6,6 +6,7 @@ import {
 	BrowserWindow,
 	desktopCapturer,
 	dialog,
+	globalShortcut,
 	ipcMain,
 	Menu,
 	Notification,
@@ -25,8 +26,20 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
+import { beginSceneStyleSession } from "./ipc/recording/sceneStyleEvents";
+import {
+	beginWebcamLayoutSession,
+	setWebcamLayoutSessionStyle,
+} from "./ipc/recording/webcamLayoutEvents";
 import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
+import {
+	registerCameraLayoutShortcut,
+	registerSceneStyleShortcuts,
+	registerTeleprompterToggleShortcut,
+	unregisterCameraLayoutShortcut,
+	unregisterSceneStyleShortcuts,
+} from "./teleprompterShortcuts";
 import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
@@ -46,12 +59,15 @@ import {
 	createHudOverlayWindow,
 	createSourceSelectorWindow,
 	getHudOverlayWindow,
+	getSelectedWebcamLayoutStyle,
+	getTeleprompterWindow,
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
 	setHudOverlayRecordingActive,
 	showUpdateToastWindow,
+	toggleTeleprompterWindow,
 } from "./windows";
 
 const electronMainDir = path.dirname(fileURLToPath(import.meta.url));
@@ -857,6 +873,13 @@ app.on("before-quit", () => {
 	void cleanupAllExportStreams();
 });
 
+// will-quit (not before-quit): a quit can be canceled by the editor's
+// unsaved-changes dialog, and shortcuts unregistered there would stay dead
+// for the rest of the session.
+app.on("will-quit", () => {
+	globalShortcut.unregisterAll();
+});
+
 app.on("window-all-closed", () => {
 	if (IS_SMOKE_EXPORT || process.platform !== "darwin") {
 		app.quit();
@@ -890,6 +913,8 @@ app.whenReady().then(async () => {
 	});
 
 	session.defaultSession.setDevicePermissionHandler((_details) => true);
+
+	registerTeleprompterToggleShortcut(toggleTeleprompterWindow);
 
 	if (process.platform === "darwin") {
 		const cameraStatus = systemPreferences.getMediaAccessStatus("camera");
@@ -966,8 +991,22 @@ app.whenReady().then(async () => {
 			updateTrayMenu(recording);
 			if (recording) {
 				reassertHudOverlayMouseState();
+				beginWebcamLayoutSession();
+				setWebcamLayoutSessionStyle(getSelectedWebcamLayoutStyle());
+				beginSceneStyleSession();
+				registerCameraLayoutShortcut(() => {
+					getHudOverlayWindow()?.webContents.send("webcam-layout-hotkey");
+				});
+				registerSceneStyleShortcuts((mode) => {
+					getHudOverlayWindow()?.webContents.send("scene-style-hotkey", { mode });
+				});
 			}
 			if (!recording) {
+				unregisterCameraLayoutShortcut();
+				unregisterSceneStyleShortcuts();
+				// Recording ended: the teleprompter has served its purpose — close
+				// it so the user lands straight in the editor.
+				getTeleprompterWindow()?.close();
 				restoreWindowSafely(mainWindow);
 			}
 		},

@@ -5,6 +5,8 @@ export const SHORTCUT_ACTIONS = [
 	"addKeyframe",
 	"deleteSelected",
 	"playPause",
+	"fillFrameOn",
+	"fillFrameOff",
 ] as const;
 
 export type ShortcutAction = (typeof SHORTCUT_ACTIONS)[number];
@@ -74,11 +76,13 @@ export function findConflict(
 
 export const DEFAULT_SHORTCUTS: ShortcutsConfig = {
 	addZoom: { key: "z" },
-	splitClip: { key: "c" },
+	splitClip: { key: "b" },
 	addAnnotation: { key: "a" },
 	addKeyframe: { key: "f" },
 	deleteSelected: { key: "d", ctrl: true },
 	playPause: { key: " " },
+	fillFrameOn: { key: ".", alt: true },
+	fillFrameOff: { key: ",", alt: true },
 };
 
 export const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
@@ -88,6 +92,16 @@ export const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
 	addKeyframe: "Add Keyframe",
 	deleteSelected: "Delete Selected",
 	playPause: "Play / Pause",
+	fillFrameOn: "Fullscreen video (fill frame)",
+	fillFrameOff: "Framed video (show background)",
+};
+
+// On macOS, Option+punctuation produces a transformed character in e.key
+// (e.g. Option+. is "≥"), so punctuation bindings also match on the physical
+// key code.
+const CODE_KEYS: Record<string, string> = {
+	Period: ".",
+	Comma: ",",
 };
 
 export function matchesShortcut(
@@ -95,7 +109,8 @@ export function matchesShortcut(
 	binding: ShortcutBinding,
 	isMacPlatform: boolean,
 ): boolean {
-	if (e.key.toLowerCase() !== binding.key.toLowerCase()) return false;
+	const bindingKey = binding.key.toLowerCase();
+	if (e.key.toLowerCase() !== bindingKey && CODE_KEYS[e.code] !== bindingKey) return false;
 
 	const primaryMod = isMacPlatform ? e.metaKey : e.ctrlKey;
 	if (primaryMod !== !!binding.ctrl) return false;

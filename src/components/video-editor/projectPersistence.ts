@@ -21,6 +21,7 @@ import {
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
 import { CURSOR_MOTION_PRESETS, resolveCursorMotionPresetId } from "./cursorMotionPresets";
+import { type FillFrameRegion, normalizeFillFrameRegions } from "./fillFrameRegions";
 import {
 	type AnnotationRegion,
 	type AudioRegion,
@@ -78,7 +79,17 @@ import {
 	type ZoomRegion,
 	type ZoomTransitionEasing,
 } from "./types";
-import { normalizeWebcamCropRegion } from "./webcamOverlay";
+import {
+	normalizeWebcamLayoutStyle,
+	type WebcamLayoutRegion,
+	type WebcamLayoutStyle,
+} from "./webcamLayoutRegions";
+import {
+	normalizeWebcamColor,
+	normalizeWebcamCropRegion,
+	normalizeWebcamGreenscreen,
+	normalizeWebcamMask,
+} from "./webcamOverlay";
 
 export const PROJECT_VERSION = 1;
 
@@ -140,6 +151,13 @@ export interface ProjectEditorState {
 	autoCaptions: CaptionCue[];
 	autoCaptionSettings: AutoCaptionSettings;
 	webcam: WebcamOverlaySettings;
+	webcamLayoutRegions: WebcamLayoutRegion[];
+	webcamLayoutRegionsEnabled: boolean;
+	webcamLayoutStyle: WebcamLayoutStyle;
+	fillFrameRegions: FillFrameRegion[];
+	/** "Remove background": the whole video renders fill-frame (cover) regardless of regions. */
+	fillFrameDefault: boolean;
+	magnetEnabled: boolean;
 	aspectRatio: AspectRatio;
 	sourceAudioTrackSettingsByClip?: Record<string, SourceAudioTrackSettings>;
 	defaultSourceAudioTrackSettings?: SourceAudioTrackSettings;
@@ -693,6 +711,27 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				})
 		: [];
 
+	const normalizedWebcamLayoutRegions: WebcamLayoutRegion[] = Array.isArray(
+		editor.webcamLayoutRegions,
+	)
+		? editor.webcamLayoutRegions
+				.filter((region): region is WebcamLayoutRegion =>
+					Boolean(
+						region &&
+							typeof region.id === "string" &&
+							isFiniteNumber(region.startMs) &&
+							isFiniteNumber(region.endMs) &&
+							region.startMs < region.endMs,
+					),
+				)
+				.map((region) => ({
+					id: region.id,
+					startMs: Math.max(0, Math.round(region.startMs)),
+					endMs: Math.round(region.endMs),
+				}))
+				.filter((region) => region.startMs < region.endMs)
+		: [];
+
 	const normalizedAutoCaptions: CaptionCue[] = Array.isArray(
 		(editor as Partial<ProjectEditorState>).autoCaptions,
 	)
@@ -1046,7 +1085,19 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			margin: isFiniteNumber(webcam.margin)
 				? clamp(webcam.margin, 0, 96)
 				: DEFAULT_WEBCAM_MARGIN,
+			greenscreen: normalizeWebcamGreenscreen(webcam.greenscreen),
+			mask: normalizeWebcamMask(webcam.mask),
+			color: normalizeWebcamColor(webcam.color),
 		},
+		webcamLayoutRegions: normalizedWebcamLayoutRegions,
+		webcamLayoutRegionsEnabled:
+			typeof editor.webcamLayoutRegionsEnabled === "boolean"
+				? editor.webcamLayoutRegionsEnabled
+				: true,
+		webcamLayoutStyle: normalizeWebcamLayoutStyle(editor.webcamLayoutStyle),
+		fillFrameRegions: normalizeFillFrameRegions(editor.fillFrameRegions),
+		fillFrameDefault: editor.fillFrameDefault === true,
+		magnetEnabled: typeof editor.magnetEnabled === "boolean" ? editor.magnetEnabled : true,
 		sourceAudioTrackSettingsByClip:
 			editor.sourceAudioTrackSettingsByClip &&
 			typeof editor.sourceAudioTrackSettingsByClip === "object"

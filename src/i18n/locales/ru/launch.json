@@ -34,6 +34,8 @@
 		"showFloatingWebcamPreview": "Включить предпросмотр",
 		"selectWebcamToEnable": "Выберите веб-камеру",
 		"noWebcamsFound": "Нет доступных веб-камер",
+		"webcamStyleFit": "Камера на весь экран: вписать с фоном",
+		"webcamStyleFill": "Камера на весь экран: заполнить экран",
 		"recordingsFolder": "Место сохранения",
 		"language": "Язык",
 		"paused": "ПАУЗА",
@@ -42,6 +44,8 @@
 		"pause": "Пауза",
 		"stop": "Стоп",
 		"cancel": "Отмена",
+		"cameraLayoutToCameraFull": "Камера на весь экран",
+		"cameraLayoutToScreen": "Вернуться к экрану",
 		"more": "Ещё",
 		"update": {
 			"update": "Обновить",
@@ -65,6 +69,24 @@
 		"windowPlaceholder": "Окно",
 		"cancel": "Отменить",
 		"share": "Поделиться"
+	},
+	"teleprompter": {
+		"menuLabel": "Телесуфлёр",
+		"scriptPlaceholder": "Вставьте или введите текст сценария…",
+		"startReading": "Начать чтение",
+		"edit": "Редактировать",
+		"play": "Воспроизвести",
+		"pause": "Пауза",
+		"slower": "Медленнее",
+		"faster": "Быстрее",
+		"smallerText": "Мельче текст",
+		"biggerText": "Крупнее текст",
+		"close": "Закрыть",
+		"hotkeyHint": "⌥F8 воспроизведение/пауза · ⌥F7/⌥F9 скорость · ⌥T показать/скрыть",
+		"cameraOn": "Показать камеру",
+		"cameraOff": "Скрыть камеру",
+		"cameraFade": "Затемнение камеры",
+		"cameraError": "Камера недоступна"
 	},
 	"permissions": {
 		"screenRecordingNeeded": "Recordly нужно разрешение на запись экрана. Мы открыли настройки – включите доступ и перезапустите приложение.",

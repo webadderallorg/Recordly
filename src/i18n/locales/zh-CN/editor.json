@@ -44,7 +44,6 @@
 		"solidColor": "纯色 (审查)",
 		"borderRadius": "边框半径"
 	},
-
 	"fontStyles": {
 		"classic": "经典",
 		"editor": "编辑器",
@@ -132,11 +131,14 @@
 	},
 	"toolbar": {
 		"addLayer": "添加图层",
-		"splitClip": "拆分片段 (C)"
+		"splitClip": "拆分片段 (B)",
+		"magnetOn": "磁吸开启：删除片段时间隙自动闭合",
+		"magnetOff": "磁吸关闭：间隙显示为黑色"
 	},
 	"timeline": {
 		"expand": "展开时间轴",
-		"collapse": "折叠时间轴"
+		"collapse": "折叠时间轴",
+		"magnetClipEdit": "关闭磁吸后才能调整剪辑边缘"
 	},
 	"openRecordingsFolder": "打开录制文件夹"
 }

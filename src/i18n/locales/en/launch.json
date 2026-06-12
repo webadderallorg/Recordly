@@ -34,6 +34,8 @@
 		"showFloatingWebcamPreview": "Show Floating Preview",
 		"selectWebcamToEnable": "Select a webcam to enable",
 		"noWebcamsFound": "No webcams found",
+		"webcamStyleFit": "Camera fullscreen: fit with background",
+		"webcamStyleFill": "Camera fullscreen: fill screen",
 		"recordingsFolder": "Recordings Path",
 		"language": "Language",
 		"paused": "PAUSED",
@@ -42,6 +44,9 @@
 		"pause": "Pause",
 		"stop": "Stop",
 		"cancel": "Cancel",
+		"cameraLayoutToCameraFull": "Camera fullscreen",
+		"cameraLayoutToScreen": "Back to screen",
+		"sceneFillBadge": "Fullscreen",
 		"more": "More",
 		"update": {
 			"update": "Update",
@@ -65,6 +70,24 @@
 		"windowPlaceholder": "Window",
 		"cancel": "Cancel",
 		"share": "Share"
+	},
+	"teleprompter": {
+		"menuLabel": "Teleprompter",
+		"scriptPlaceholder": "Paste or type your script here…",
+		"startReading": "Start reading",
+		"edit": "Edit",
+		"play": "Play",
+		"pause": "Pause",
+		"slower": "Slower",
+		"faster": "Faster",
+		"smallerText": "Smaller text",
+		"biggerText": "Bigger text",
+		"close": "Close",
+		"hotkeyHint": "⌥F8 play/pause · ⌥F7/⌥F9 speed · ⌥T show/hide",
+		"cameraOn": "Show camera",
+		"cameraOff": "Hide camera",
+		"cameraFade": "Camera fade",
+		"cameraError": "Camera unavailable"
 	},
 	"permissions": {
 		"screenRecordingNeeded": "Recordly needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen Recordly.",

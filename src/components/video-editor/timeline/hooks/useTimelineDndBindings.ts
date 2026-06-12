@@ -8,9 +8,14 @@ import type {
 	TrimRegion,
 	ZoomRegion,
 } from "../../types";
-import type { TimelineRenderItem } from "../core/timelineTypes";
-import { getAnnotationTrackIndex, getAudioTrackIndex, isAnnotationTrackRowId, isAudioTrackRowId } from "../core/rows";
+import {
+	getAnnotationTrackIndex,
+	getAudioTrackIndex,
+	isAnnotationTrackRowId,
+	isAudioTrackRowId,
+} from "../core/rows";
 import { spansOverlap } from "../core/spans";
+import type { TimelineRegion, TimelineRenderItem } from "../core/timelineTypes";
 import { buildAllRegionSpans, buildTimelineItems, resolveDropRowId } from "../model/timelineModel";
 
 interface UseTimelineDndBindingsParams {
@@ -20,15 +25,28 @@ interface UseTimelineDndBindingsParams {
 	annotationRegions: AnnotationRegion[];
 	speedRegions: SpeedRegion[];
 	audioRegions: AudioRegion[];
+	cameraRegions: TimelineRegion[];
+	fillFrameRegions: TimelineRegion[];
 	onZoomSpanChange: (id: string, span: Span) => void;
 	onTrimSpanChange?: (id: string, span: Span) => void;
 	onClipSpanChange?: (id: string, span: Span) => void;
 	onAnnotationSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
 	onSpeedSpanChange?: (id: string, span: Span) => void;
 	onAudioSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
+	onCameraSpanChange?: (id: string, span: Span) => void;
+	onFillFrameSpanChange?: (id: string, span: Span) => void;
 }
 
-type TimelineItemKind = "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio" | null;
+type TimelineItemKind =
+	| "zoom"
+	| "trim"
+	| "clip"
+	| "annotation"
+	| "speed"
+	| "audio"
+	| "camera"
+	| "fillFrame"
+	| null;
 
 export function useTimelineDndBindings({
 	zoomRegions,
@@ -37,12 +55,16 @@ export function useTimelineDndBindings({
 	annotationRegions,
 	speedRegions,
 	audioRegions,
+	cameraRegions,
+	fillFrameRegions,
 	onZoomSpanChange,
 	onTrimSpanChange,
 	onClipSpanChange,
 	onAnnotationSpanChange,
 	onSpeedSpanChange,
 	onAudioSpanChange,
+	onCameraSpanChange,
+	onFillFrameSpanChange,
 }: UseTimelineDndBindingsParams) {
 	const resolveItemKind = useCallback(
 		(id: string): TimelineItemKind => {
@@ -52,9 +74,20 @@ export function useTimelineDndBindings({
 			if (annotationRegions.some((r) => r.id === id)) return "annotation";
 			if (speedRegions.some((r) => r.id === id)) return "speed";
 			if (audioRegions.some((r) => r.id === id)) return "audio";
+			if (cameraRegions.some((r) => r.id === id)) return "camera";
+			if (fillFrameRegions.some((r) => r.id === id)) return "fillFrame";
 			return null;
 		},
-		[zoomRegions, trimRegions, clipRegions, annotationRegions, speedRegions, audioRegions],
+		[
+			zoomRegions,
+			trimRegions,
+			clipRegions,
+			annotationRegions,
+			speedRegions,
+			audioRegions,
+			cameraRegions,
+			fillFrameRegions,
+		],
 	);
 
 	const resolveTrackIndex = useCallback(
@@ -79,7 +112,14 @@ export function useTimelineDndBindings({
 			if (itemKind === "annotation") return false;
 
 			const checkOverlap = (
-				regions: (ZoomRegion | TrimRegion | ClipRegion | SpeedRegion | AudioRegion)[],
+				regions: (
+					| ZoomRegion
+					| TrimRegion
+					| ClipRegion
+					| SpeedRegion
+					| AudioRegion
+					| TimelineRegion
+				)[],
 			) =>
 				regions.some((region) => {
 					if (region.id === excludeId) return false;
@@ -90,6 +130,8 @@ export function useTimelineDndBindings({
 			if (itemKind === "trim") return checkOverlap(trimRegions);
 			if (itemKind === "clip") return checkOverlap(clipRegions);
 			if (itemKind === "speed") return checkOverlap(speedRegions);
+			if (itemKind === "camera") return checkOverlap(cameraRegions);
+			if (itemKind === "fillFrame") return checkOverlap(fillFrameRegions);
 
 			if (itemKind === "audio") {
 				const activeTrackIndex = resolveTrackIndex("audio", excludeId, rowId);
@@ -108,6 +150,8 @@ export function useTimelineDndBindings({
 			clipRegions,
 			audioRegions,
 			speedRegions,
+			cameraRegions,
+			fillFrameRegions,
 		],
 	);
 
@@ -118,8 +162,17 @@ export function useTimelineDndBindings({
 				clipRegions,
 				annotationRegions,
 				audioRegions,
+				cameraRegions,
+				fillFrameRegions,
 			}),
-		[zoomRegions, clipRegions, annotationRegions, audioRegions],
+		[
+			zoomRegions,
+			clipRegions,
+			annotationRegions,
+			audioRegions,
+			cameraRegions,
+			fillFrameRegions,
+		],
 	);
 
 	const allRegionSpans = useMemo(
@@ -128,8 +181,10 @@ export function useTimelineDndBindings({
 				zoomRegions,
 				clipRegions,
 				audioRegions,
+				cameraRegions,
+				fillFrameRegions,
 			}),
-		[zoomRegions, clipRegions, audioRegions],
+		[zoomRegions, clipRegions, audioRegions, cameraRegions, fillFrameRegions],
 	);
 
 	const getResolvedDropRowId = useCallback(
@@ -154,6 +209,10 @@ export function useTimelineDndBindings({
 			} else if (itemKind === "audio") {
 				const nextTrackIndex = resolveTrackIndex("audio", id, rowId);
 				onAudioSpanChange?.(id, span, nextTrackIndex);
+			} else if (itemKind === "camera") {
+				onCameraSpanChange?.(id, span);
+			} else if (itemKind === "fillFrame") {
+				onFillFrameSpanChange?.(id, span);
 			}
 		},
 		[
@@ -165,6 +224,8 @@ export function useTimelineDndBindings({
 			onAnnotationSpanChange,
 			onSpeedSpanChange,
 			onAudioSpanChange,
+			onCameraSpanChange,
+			onFillFrameSpanChange,
 		],
 	);
 

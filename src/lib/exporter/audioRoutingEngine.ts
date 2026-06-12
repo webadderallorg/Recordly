@@ -121,7 +121,14 @@ export function buildResolvedAudioPlan(input: {
 		hasEmbeddedSourceAudio,
 		pathsByTrack,
 		playbackPaths,
-		muteEmbeddedPreview: hasDedicatedTracks && !includeEmbeddedInExport,
+		// Mute embedded preview in two situations:
+		// 1. !includeEmbeddedInExport: a system or mixed sidecar supersedes the
+		//    embedded audio, so the sidecars are the canonical playback source.
+		// 2. !hasEmbeddedSourceAudio: the video path was not listed as a distinct
+		//    audio source; on macOS mic-only recordings the inline track duplicates
+		//    the .mic sidecar, and playing both echoes the voice.
+		muteEmbeddedPreview:
+			hasDedicatedTracks && (!includeEmbeddedInExport || !hasEmbeddedSourceAudio),
 		includeEmbeddedInExport,
 		tracks,
 		masterGain: clampGain(input.masterGain ?? 1, 1),

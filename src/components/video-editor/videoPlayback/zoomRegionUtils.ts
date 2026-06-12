@@ -6,7 +6,7 @@ import {
 	ZOOM_OUT_EARLY_START_MS,
 } from "./constants";
 import { clampFocusToScale } from "./focusUtils";
-import { clamp01, cubicBezier, easeOutZoom } from "./mathUtils";
+import { clamp01, easeOutZoom } from "./mathUtils";
 
 const CHAINED_ZOOM_PAN_GAP_MS = 1350;
 const CONNECTED_ZOOM_PAN_DURATION_MS = 1000;
@@ -33,14 +33,6 @@ type ConnectedPanTransition = {
 	startScale: number;
 	endScale: number;
 };
-
-function lerp(start: number, end: number, amount: number) {
-	return start + (end - start) * amount;
-}
-
-function easeConnectedPan(value: number) {
-	return cubicBezier(0.1, 0.0, 0.2, 1.0, value);
-}
 
 export function computeRegionStrength(
 	region: ZoomRegion,
@@ -77,13 +69,6 @@ export function computeRegionStrength(
 
 	const progress = clamp01((adjustedTimeMs - zoomOutStart) / zoomOutDurationMs);
 	return 1 - easeOutZoom(progress);
-}
-
-function getLinearFocus(start: ZoomFocus, end: ZoomFocus, amount: number): ZoomFocus {
-	return {
-		cx: lerp(start.cx, end.cx, amount),
-		cy: lerp(start.cy, end.cy, amount),
-	};
 }
 
 function getResolvedFocus(region: ZoomRegion, zoomScale: number): ZoomFocus {
@@ -194,44 +179,6 @@ function getConnectedRegionHold(timeMs: number, connectedPairs: ConnectedRegionP
 				blendedScale: null,
 			};
 		}
-	}
-
-	return null;
-}
-
-function getConnectedRegionTransition(connectedPairs: ConnectedRegionPair[], timeMs: number) {
-	for (const pair of connectedPairs) {
-		const { currentRegion, nextRegion, transitionStart, transitionEnd } = pair;
-
-		if (timeMs < transitionStart || timeMs > transitionEnd) {
-			continue;
-		}
-
-		const transitionProgress = easeConnectedPan(
-			clamp01((timeMs - transitionStart) / Math.max(1, transitionEnd - transitionStart)),
-		);
-		const currentScale = ZOOM_DEPTH_SCALES[currentRegion.depth];
-		const nextScale = ZOOM_DEPTH_SCALES[nextRegion.depth];
-		const transitionScale = lerp(currentScale, nextScale, transitionProgress);
-		const currentFocus = getResolvedFocus(currentRegion, currentScale);
-		const nextFocus = getResolvedFocus(nextRegion, nextScale);
-		const transitionFocus = getLinearFocus(currentFocus, nextFocus, transitionProgress);
-
-		return {
-			region: {
-				...nextRegion,
-				focus: transitionFocus,
-			},
-			strength: 1,
-			blendedScale: transitionScale,
-			transition: {
-				progress: transitionProgress,
-				startFocus: currentFocus,
-				endFocus: nextFocus,
-				startScale: currentScale,
-				endScale: nextScale,
-			},
-		};
 	}
 
 	return null;

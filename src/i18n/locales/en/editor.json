@@ -44,7 +44,6 @@
 		"solidColor": "Solid Color (Censorship)",
 		"borderRadius": "Border Radius"
 	},
-
 	"fontStyles": {
 		"classic": "Classic",
 		"editor": "Editor",
@@ -132,11 +131,14 @@
 	},
 	"toolbar": {
 		"addLayer": "Add Layer",
-		"splitClip": "Split Clip (C)"
+		"splitClip": "Split Clip (B)",
+		"magnetOn": "Magnet on: deleting clips closes the gap",
+		"magnetOff": "Magnet off: gaps stay as black space"
 	},
 	"timeline": {
 		"expand": "Expand Timeline",
-		"collapse": "Collapse Timeline"
+		"collapse": "Collapse Timeline",
+		"magnetClipEdit": "Turn the magnet off to adjust clip edges"
 	},
 	"openRecordingsFolder": "Open recordings folder"
 }

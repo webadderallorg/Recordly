@@ -265,6 +265,44 @@ export function clampDraggedSpanToNeighbours(
 	);
 }
 
+/**
+ * True when a drag/resize gesture must not commit a span change.
+ *
+ * The dnd sensors have no activation constraint, so a plain selection click
+ * on an item runs a full drag (or, near an edge, resize) cycle and lands in
+ * the span-commit path with a zero-pixel delta. Likewise a jittery click can
+ * resolve back to the item's current placement once clamped against its
+ * neighbors. Committing those "changes" is at best a no-op write and at
+ * worst surfaces user-facing feedback meant for real edits (e.g. the
+ * magnet-on "Turn the magnet off to adjust clip edges" toast firing when a
+ * clip is merely selected before being deleted).
+ */
+export function isNoOpSpanCommit(params: {
+	deltaX: number;
+	deltaY?: number;
+	resolvedSpan: Span;
+	resolvedRowId?: string;
+	currentItem?: TimelineRegionSpan;
+}): boolean {
+	const { deltaX, deltaY = 0, resolvedSpan, resolvedRowId, currentItem } = params;
+
+	if (deltaX === 0 && deltaY === 0) {
+		return true;
+	}
+
+	if (!currentItem) {
+		return false;
+	}
+
+	const sameRow = resolvedRowId === undefined || resolvedRowId === currentItem.rowId;
+	const epsilonMs = 0.001;
+	return (
+		sameRow &&
+		Math.abs(resolvedSpan.start - currentItem.start) < epsilonMs &&
+		Math.abs(resolvedSpan.end - currentItem.end) < epsilonMs
+	);
+}
+
 export function resolveResizeEnd(
 	activeItemId: string,
 	updatedSpan: Span,

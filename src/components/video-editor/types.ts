@@ -125,6 +125,61 @@ export type WebcamPositionPreset =
 	| "bottom-center"
 	| "custom";
 
+export interface WebcamGreenscreenSettings {
+	enabled: boolean;
+	/** Image composited behind the keyed facecam; project-assets path. */
+	backgroundImagePath: string | null;
+	/** 0..1 chroma tolerance */
+	keyStrength: number;
+	/** 0..1 edge transition softness */
+	edgeSoftness: number;
+	/** Hex key color, eyedropper-pickable; lighting shifts real screens far from pure green. */
+	keyColor: string;
+	/** Optional second key color for unevenly lit screens; null = unused. */
+	keyColor2: string | null;
+}
+
+/**
+ * One anchor of the pen mask path in normalized source coordinates. The
+ * optional in/out bezier handles are ABSOLUTE normalized coordinates; a point
+ * without handles behaves as a corner point (segments touching it use the
+ * anchor itself as the control point, so the path degenerates to a straight
+ * line when both segment ends are corner points).
+ */
+export interface WebcamMaskPoint {
+	x: number;
+	y: number;
+	inX?: number;
+	inY?: number;
+	outX?: number;
+	outY?: number;
+}
+
+export interface WebcamMaskSettings {
+	enabled: boolean;
+	/** Which keep-shape the mask uses: the draggable box or the pen path. */
+	shape: "rect" | "polygon";
+	/** Normalized "keep" region; everything outside is treated as keyed out. */
+	rect: CropRegion;
+	/** 0..1 relative to the rect's shorter half-extent */
+	cornerRadius: number;
+	/** 0..1 edge softness band */
+	feather: number;
+	/** normalized source-coordinate bezier anchors; meaningful when shape === "polygon" (>= 3 points) */
+	points: WebcamMaskPoint[];
+}
+
+export interface WebcamColorSettings {
+	/** all -1..1, 0 = neutral */
+	brightness: number;
+	contrast: number;
+	highlights: number;
+	shadows: number;
+	/** warm (+) / cool (-) white-balance shift */
+	temperature: number;
+	saturation: number;
+}
+
 export interface WebcamOverlaySettings {
 	enabled: boolean;
 	sourcePath: string | null;
@@ -140,6 +195,9 @@ export interface WebcamOverlaySettings {
 	cornerRadius: number;
 	shadow: number;
 	margin: number;
+	greenscreen?: WebcamGreenscreenSettings;
+	mask?: WebcamMaskSettings;
+	color?: WebcamColorSettings;
 }
 
 export const DEFAULT_CURSOR_SIZE = 3.0;
@@ -187,6 +245,35 @@ export const DEFAULT_WEBCAM_POSITION_X = 1;
 export const DEFAULT_WEBCAM_POSITION_Y = 1;
 export const DEFAULT_WEBCAM_TIME_OFFSET_MS = 0;
 
+export const DEFAULT_WEBCAM_KEY_COLOR = "#00cc00";
+
+export const DEFAULT_WEBCAM_GREENSCREEN: WebcamGreenscreenSettings = {
+	enabled: false,
+	backgroundImagePath: null,
+	keyStrength: 0.5,
+	edgeSoftness: 0.35,
+	keyColor: DEFAULT_WEBCAM_KEY_COLOR,
+	keyColor2: null,
+};
+
+export const DEFAULT_WEBCAM_MASK: WebcamMaskSettings = {
+	enabled: false,
+	shape: "rect",
+	rect: { x: 0, y: 0, width: 1, height: 1 },
+	cornerRadius: 0,
+	feather: 0.2,
+	points: [],
+};
+
+export const DEFAULT_WEBCAM_COLOR: WebcamColorSettings = {
+	brightness: 0,
+	contrast: 0,
+	highlights: 0,
+	shadows: 0,
+	temperature: 0,
+	saturation: 0,
+};
+
 export const DEFAULT_WEBCAM_OVERLAY: WebcamOverlaySettings = {
 	enabled: false,
 	sourcePath: null,
@@ -202,6 +289,9 @@ export const DEFAULT_WEBCAM_OVERLAY: WebcamOverlaySettings = {
 	cornerRadius: DEFAULT_WEBCAM_CORNER_RADIUS,
 	shadow: DEFAULT_WEBCAM_SHADOW,
 	margin: DEFAULT_WEBCAM_MARGIN,
+	greenscreen: DEFAULT_WEBCAM_GREENSCREEN,
+	mask: DEFAULT_WEBCAM_MASK,
+	color: DEFAULT_WEBCAM_COLOR,
 };
 
 export interface TrimRegion {
