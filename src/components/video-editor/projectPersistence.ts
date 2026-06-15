@@ -825,6 +825,11 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 	)
 		? (webcam as Partial<{ zoomScaleEffect: number }>).zoomScaleEffect
 		: null;
+	const normalizedWebcamSize = isFiniteNumber(webcam.width)
+		? clamp(webcam.width, 10, 100)
+		: isFiniteNumber(webcam.size)
+			? clamp(webcam.size, 10, 100)
+			: DEFAULT_WEBCAM_SIZE;
 	const normalizedCursorStyle =
 		typeof editor.cursorStyle === "string" && editor.cursorStyle.trim().length > 0
 			? editor.cursorStyle === "mono"
@@ -1031,7 +1036,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				webcam.corner === "bottom-right"
 					? webcam.corner
 					: DEFAULT_WEBCAM_OVERLAY.corner,
-			size: isFiniteNumber(webcam.size) ? clamp(webcam.size, 10, 100) : DEFAULT_WEBCAM_SIZE,
+			size: normalizedWebcamSize,
 			width: isFiniteNumber(webcam.width)
 				? clamp(webcam.width, 10, 100)
 				: isFiniteNumber(webcam.size)

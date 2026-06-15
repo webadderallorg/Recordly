@@ -19,6 +19,7 @@ import type {
 import {
 	BASE_PREVIEW_HEIGHT,
 	BASE_PREVIEW_WIDTH,
+	DEFAULT_WEBCAM_SIZE,
 	ZOOM_DEPTH_SCALES,
 } from "@/components/video-editor/types";
 import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
@@ -2459,10 +2460,10 @@ export class FrameRenderer {
 					? webcamFrameSource.videoHeight
 					: webcamFrameSource.height) || sourceWidth;
 		const margin = webcam.margin ?? 24;
-		const widthPercent = webcam.width ?? webcam.size ?? 50;
+		const widthPercent = webcam.width ?? webcam.size ?? DEFAULT_WEBCAM_SIZE;
 		const heightPercent = getCropMatchedWebcamHeightPercent(
 			widthPercent,
-			webcam.height ?? webcam.size ?? 50,
+			webcam.height ?? webcam.size ?? DEFAULT_WEBCAM_SIZE,
 			sourceWidth,
 			sourceHeight,
 			webcam.cropRegion,

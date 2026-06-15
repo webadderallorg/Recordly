@@ -26,7 +26,11 @@ import type {
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
-import { getDefaultCaptionFontFamily, ZOOM_DEPTH_SCALES } from "@/components/video-editor/types";
+import {
+	DEFAULT_WEBCAM_SIZE,
+	getDefaultCaptionFontFamily,
+	ZOOM_DEPTH_SCALES,
+} from "@/components/video-editor/types";
 import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
 import {
 	type CursorFollowCameraState,
@@ -2916,21 +2920,27 @@ export class FrameRenderer {
 		}
 
 		const margin = webcam.margin ?? 24;
-		const widthPercent = webcam.width ?? webcam.size ?? 50;
-		const aspectSourceWidth =
+		const widthPercent = webcam.width ?? webcam.size ?? DEFAULT_WEBCAM_SIZE;
+		const cropMatchSourceWidth =
 			liveSourceDimensions.width > 0
 				? liveSourceDimensions.width
 				: renderableWebcamSource.width;
-		const aspectSourceHeight =
+		const cropMatchSourceHeight =
 			liveSourceDimensions.height > 0
 				? liveSourceDimensions.height
 				: renderableWebcamSource.height;
+		const cropMatchRegion =
+			liveSourceDimensions.width > 0 && liveSourceDimensions.height > 0
+				? webcam.cropRegion
+				: isWebcamCropRegionDefault(webcam.cropRegion)
+					? webcam.cropRegion
+					: null;
 		const heightPercent = getCropMatchedWebcamHeightPercent(
 			widthPercent,
-			webcam.height ?? webcam.size ?? 50,
-			aspectSourceWidth,
-			aspectSourceHeight,
-			webcam.cropRegion,
+			webcam.height ?? webcam.size ?? DEFAULT_WEBCAM_SIZE,
+			cropMatchSourceWidth,
+			cropMatchSourceHeight,
+			cropMatchRegion,
 		);
 		const dimensions = getWebcamOverlayDimensionsPx({
 			containerWidth: this.config.width,

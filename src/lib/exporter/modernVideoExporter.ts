@@ -17,7 +17,7 @@ import type {
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
-import { ZOOM_DEPTH_SCALES } from "@/components/video-editor/types";
+import { DEFAULT_WEBCAM_SIZE, ZOOM_DEPTH_SCALES } from "@/components/video-editor/types";
 import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
 import {
 	computeCursorFollowFocus,
@@ -1502,8 +1502,17 @@ export class ModernVideoExporter {
 			return false;
 		}
 
-		const width = webcam.width ?? webcam.size ?? 40;
-		const height = webcam.height ?? webcam.size ?? 40;
+		if (
+			(webcam.size != null && !Number.isFinite(webcam.size)) ||
+			(webcam.width != null && !Number.isFinite(webcam.width)) ||
+			(webcam.height != null && !Number.isFinite(webcam.height))
+		) {
+			return true;
+		}
+
+		const fallbackSize = Number.isFinite(webcam.size) ? webcam.size : DEFAULT_WEBCAM_SIZE;
+		const width = Number.isFinite(webcam.width) ? webcam.width : fallbackSize;
+		const height = Number.isFinite(webcam.height) ? webcam.height : fallbackSize;
 		return Math.abs(width - height) > 0.001 || !isWebcamCropRegionDefault(webcam.cropRegion);
 	}
 
