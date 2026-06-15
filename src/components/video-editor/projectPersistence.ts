@@ -22,6 +22,7 @@ import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
 import { CURSOR_MOTION_PRESETS, resolveCursorMotionPresetId } from "./cursorMotionPresets";
 import {
+	ADVANCED_VERTICAL_PADDING_MAX,
 	type AnnotationRegion,
 	type AudioRegion,
 	type AutoCaptionAnimation,
@@ -950,14 +951,17 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			const p = editor.padding;
 			if (p && typeof p === "object") {
 				const linked = typeof p.linked === "boolean" ? p.linked : true;
-				const top = isFiniteNumber(p.top) ? clamp(p.top, 0, 100) : DEFAULT_PADDING.top;
+				const verticalMax = linked ? 100 : ADVANCED_VERTICAL_PADDING_MAX;
+				const top = isFiniteNumber(p.top)
+					? clamp(p.top, 0, verticalMax)
+					: DEFAULT_PADDING.top;
 				if (linked) {
 					return { top, bottom: top, left: top, right: top, linked: true };
 				}
 				return {
 					top,
 					bottom: isFiniteNumber(p.bottom)
-						? clamp(p.bottom, 0, 100)
+						? clamp(p.bottom, 0, verticalMax)
 						: DEFAULT_PADDING.bottom,
 					left: isFiniteNumber(p.left) ? clamp(p.left, 0, 100) : DEFAULT_PADDING.left,
 					right: isFiniteNumber(p.right) ? clamp(p.right, 0, 100) : DEFAULT_PADDING.right,

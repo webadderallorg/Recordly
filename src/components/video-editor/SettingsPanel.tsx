@@ -73,6 +73,7 @@ import type {
 	ZoomTransitionEasing,
 } from "./types";
 import {
+	ADVANCED_VERTICAL_PADDING_MAX,
 	DEFAULT_AUTO_CAPTION_SETTINGS,
 	DEFAULT_CROP_REGION,
 	DEFAULT_CURSOR_CLICK_BOUNCE,
@@ -1622,8 +1623,14 @@ export function SettingsPanel({
 		const nextLinked = !isLinked;
 		if (nextLinked) {
 			// Compute average for relinking to avoid sudden shifts
-			const avg = Math.round(
-				(padding.top + padding.bottom + padding.left + padding.right) / 4,
+			const avg = Math.min(
+				100,
+				Math.max(
+					0,
+					Math.round(
+						(padding.top + padding.bottom + padding.left + padding.right) / 4,
+					),
+				),
 			);
 			onPaddingChange?.({
 				top: avg,
@@ -2413,7 +2420,7 @@ export function SettingsPanel({
 								value={padding.top}
 								defaultValue={DEFAULT_PADDING.top}
 								min={0}
-								max={100}
+								max={ADVANCED_VERTICAL_PADDING_MAX}
 								step={1}
 								onChange={(v) => handlePaddingSideChange("top", v)}
 								formatValue={(v) => `${v}%`}
@@ -2424,7 +2431,7 @@ export function SettingsPanel({
 								value={padding.bottom}
 								defaultValue={DEFAULT_PADDING.bottom}
 								min={0}
-								max={100}
+								max={ADVANCED_VERTICAL_PADDING_MAX}
 								step={1}
 								onChange={(v) => handlePaddingSideChange("bottom", v)}
 								formatValue={(v) => `${v}%`}

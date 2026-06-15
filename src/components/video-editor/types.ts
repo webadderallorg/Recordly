@@ -497,6 +497,8 @@ export const DEFAULT_CROP_REGION: CropRegion = {
 	height: 1,
 };
 
+export const ADVANCED_VERTICAL_PADDING_MAX = 250;
+
 export interface Padding {
 	top: number;
 	bottom: number;
