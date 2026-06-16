@@ -548,14 +548,14 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 			};
 			renderer.config.webcamUrl = "file:///tmp/webcam.webm";
 
-			await renderer.setupWebcamSource();
-			const syncPromise = renderer.syncWebcamFrame(1);
+				await renderer.setupWebcamSource();
+				const syncPromise = renderer.syncWebcamFrame(1);
 
 			await vi.advanceTimersByTimeAsync(5_001);
-			await expect(syncPromise).resolves.toBeUndefined();
+				await expect(syncPromise).resolves.toBeUndefined();
 
-			expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
-			expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
+				expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
+				expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
 			expect(revoke).toHaveBeenCalled();
 			expect(renderer.webcamForwardFrameSource).toBeNull();
 			expect(renderer.webcamVideoElement).toBeNull();

@@ -5,6 +5,7 @@ const baseOptions = {
 	sourceWidth: 1920,
 	sourceHeight: 1080,
 	exportFormat: "mp4" as const,
+	includeCaptionSidecar: true,
 	exportEncodingMode: "balanced" as const,
 	exportQuality: "good" as const,
 	mp4FrameRate: 30 as const,
@@ -19,6 +20,7 @@ describe("resolveExportStartSettings", () => {
 	it("preserves MP4 dropdown settings", () => {
 		expect(resolveExportStartSettings(baseOptions)).toEqual({
 			format: "mp4",
+			includeCaptionSidecar: true,
 			encodingMode: "balanced",
 			mp4FrameRate: 30,
 			backendPreference: "auto",
@@ -41,6 +43,7 @@ describe("resolveExportStartSettings", () => {
 			}),
 		).toEqual({
 			format: "gif",
+			includeCaptionSidecar: false,
 			encodingMode: undefined,
 			mp4FrameRate: undefined,
 			backendPreference: undefined,

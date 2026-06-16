@@ -124,8 +124,18 @@ function getActiveRegion(
 	const activeRegions = regions
 		.map((region) => {
 			const outgoingPair = connectedPairs.find((pair) => pair.currentRegion.id === region.id);
-			if (outgoingPair && timeMs >= outgoingPair.transitionStart) {
-				return { region, strength: 0 };
+			if (outgoingPair) {
+				if (timeMs >= outgoingPair.transitionStart) {
+					return { region, strength: 0 };
+				}
+
+				const zoomOutStart =
+					outgoingPair.currentRegion.endMs -
+					ZOOM_OUT_EARLY_START_MS +
+					ZOOM_ANIMATION_LEAD_MS;
+				if (timeMs >= zoomOutStart) {
+					return { region, strength: 1 };
+				}
 			}
 
 			const incomingPair = connectedPairs.find((pair) => pair.nextRegion.id === region.id);
@@ -240,11 +250,6 @@ export function findDominantRegion(
 	const connectedPairs = options.connectZooms ? getConnectedRegionPairs(regions) : [];
 
 	if (options.connectZooms) {
-		const connectedTransition = getConnectedRegionTransition(connectedPairs, timeMs);
-		if (connectedTransition) {
-			return connectedTransition;
-		}
-
 		const connectedHold = getConnectedRegionHold(timeMs, connectedPairs);
 		if (connectedHold) {
 			return { ...connectedHold, transition: null };

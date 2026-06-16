@@ -193,6 +193,7 @@ export interface GifExportConfig {
 
 export interface ExportSettings {
 	format: ExportFormat;
+	includeCaptionSidecar?: boolean;
 	// MP4 settings
 	quality?: ExportQuality;
 	encodingMode?: ExportEncodingMode;

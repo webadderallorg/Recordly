@@ -264,12 +264,18 @@ export class AudioProcessor {
 			videoUrl,
 			sortedSourceAudioFallbackPaths,
 		);
+		const requiresLegacyMacMicSidecarMix =
+			routingPolicy.includeEmbeddedInExport &&
+			!routingPolicy.hasEmbeddedSourceAudio &&
+			routingPolicy.playbackPaths.length === 1 &&
+			routingPolicy.playbackPaths[0]?.toLowerCase().endsWith(".mic.m4a") === true;
 		const hasTimedCompanionAudio = routingPolicy.playbackPaths.some(
 			(audioPath) => (sourceAudioFallbackStartDelayMsByPath?.[audioPath] ?? 0) > 0,
 		);
 		const needsSourceAudioMixing =
 			routingPolicy.playbackPaths.length > 1 ||
 			(routingPolicy.hasEmbeddedSourceAudio && routingPolicy.playbackPaths.length > 0) ||
+			requiresLegacyMacMicSidecarMix ||
 			hasTimedCompanionAudio;
 
 		// When speed edits, audio regions, or multiple audio sources need mixing, use offline AudioContext pipeline.

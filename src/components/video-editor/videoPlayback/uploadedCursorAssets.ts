@@ -1,6 +1,6 @@
 import macosClosedHandUrl from "../../../assets/cursors/macos/closedhand-1__50-50.svg";
 import macosCrosshairUrl from "../../../assets/cursors/macos/crosshair-1__50-50.svg";
-import macosTextUrl from "../../../assets/cursors/macos/ibeam-1__50-50.svg";
+import macosTextUrl from "../../../assets/cursors/macos/ibeamstroke-1__50-50.svg";
 import macosNotAllowedUrl from "../../../assets/cursors/macos/notallowed-1__23-0.svg";
 import macosOpenHandUrl from "../../../assets/cursors/macos/openhand-1__50-50.svg";
 import macosArrowUrl from "../../../assets/cursors/macos/pointer-1__34-24.svg";

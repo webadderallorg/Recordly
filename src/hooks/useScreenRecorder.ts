@@ -46,12 +46,10 @@ export type BrowserMicrophoneProfile =
 	| "no-noise-suppression"
 	| "raw";
 type BrowserCaptureCursorMode = "always" | "never";
-type BrowserCaptureCursorSetting = BrowserCaptureCursorMode | "motion";
 export type BrowserCaptureCursorPolicy = {
 	streamCursor: BrowserCaptureCursorMode;
 	hideOsCursorBeforeRecording: boolean;
 	hideEditorOverlayCursorByDefault: boolean;
-	nativeCaptureUnavailable: boolean;
 };
 const DEFAULT_BROWSER_MICROPHONE_PROFILE: BrowserMicrophoneProfile = "processed";
 const BROWSER_MICROPHONE_PROFILES = new Set<BrowserMicrophoneProfile>([
@@ -128,33 +126,6 @@ type DesktopCaptureMediaDevices = {
 	getDisplayMedia: (constraints: unknown) => Promise<MediaStream>;
 };
 
-export function shouldUseLinuxPortalCapture({
-	browserCaptureSourceId,
-	selectedSourceId,
-}: {
-	browserCaptureSourceId?: string;
-	selectedSourceId?: string;
-}) {
-	if (browserCaptureSourceId && browserCaptureSourceId !== LINUX_PORTAL_SOURCE.id) {
-		return false;
-	}
-
-	return (
-		selectedSourceId === LINUX_PORTAL_SOURCE.id ||
-		browserCaptureSourceId === LINUX_PORTAL_SOURCE.id
-	);
-}
-
-export function shouldLockHudDuringDisplaySelection({
-	platform,
-	useLinuxPortal,
-}: {
-	platform?: string;
-	useLinuxPortal: boolean;
-}) {
-	return platform === "linux" && useLinuxPortal;
-}
-
 type UseScreenRecorderReturn = {
 	recording: boolean;
 	paused: boolean;
@@ -219,10 +190,8 @@ export function normalizeBrowserMicrophoneProfile(value?: string | null): Browse
 
 export function resolveBrowserCaptureCursorPolicy({
 	nativeWindowsCaptureStartFailed = false,
-	platform,
 }: {
 	nativeWindowsCaptureStartFailed?: boolean;
-	platform?: string;
 } = {}): BrowserCaptureCursorPolicy {
 	if (nativeWindowsCaptureStartFailed) {
 		// If WGC already failed, avoid the telemetry overlay path that can lag on
@@ -231,19 +200,6 @@ export function resolveBrowserCaptureCursorPolicy({
 			streamCursor: "always",
 			hideOsCursorBeforeRecording: false,
 			hideEditorOverlayCursorByDefault: true,
-			nativeCaptureUnavailable: true,
-		};
-	}
-
-	if (platform === "linux") {
-		// Linux screen capture runs through xdg-desktop-portal/PipeWire. Ask the
-		// portal to omit the cursor, but do not pretend we can globally hide the
-		// OS cursor from Electron when the portal/compositor ignores that request.
-		return {
-			streamCursor: "never",
-			hideOsCursorBeforeRecording: false,
-			hideEditorOverlayCursorByDefault: true,
-			nativeCaptureUnavailable: true,
 		};
 	}
 
@@ -251,44 +207,16 @@ export function resolveBrowserCaptureCursorPolicy({
 		streamCursor: "never",
 		hideOsCursorBeforeRecording: true,
 		hideEditorOverlayCursorByDefault: true,
-		nativeCaptureUnavailable: false,
-	};
-}
-
-export function getScreenCaptureCursorSetting(
-	settings: MediaTrackSettings | null | undefined,
-): BrowserCaptureCursorSetting | null {
-	const cursor = (settings as { cursor?: unknown } | null | undefined)?.cursor;
-	return cursor === "always" || cursor === "never" || cursor === "motion" ? cursor : null;
-}
-
-export function resolveLinuxPortalCursorPresentation({
-	actualCursor,
-	requestedCursor,
-}: {
-	actualCursor: BrowserCaptureCursorSetting | null;
-	requestedCursor: BrowserCaptureCursorMode;
-}): Pick<
-	BrowserCaptureCursorPolicy,
-	"hideEditorOverlayCursorByDefault" | "nativeCaptureUnavailable"
-> {
-	if (requestedCursor === "never" && actualCursor === "never") {
-		return {
-			hideEditorOverlayCursorByDefault: false,
-			nativeCaptureUnavailable: false,
-		};
-	}
-
-	return {
-		hideEditorOverlayCursorByDefault: true,
-		nativeCaptureUnavailable: true,
 	};
 }
 
 export function shouldUseNativeWindowsCaptureForSource(
 	source: Pick<ProcessedDesktopSource, "id"> | null | undefined,
 ): boolean {
-	return source?.id?.startsWith("screen:") === true;
+	return (
+		source?.id?.startsWith("screen:") === true ||
+		source?.id?.startsWith("window:") === true
+	);
 }
 
 export function createProcessedMicrophoneConstraints(
@@ -447,7 +375,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	);
 	const requestedBrowserMicrophoneProfile = useRef<string | null>(null);
 	const hideEditorOverlayCursorByDefault = useRef(false);
-	const nativeCaptureUnavailableForCursorOverlay = useRef(false);
 
 	const notifyRecordingFinalizationFailure = useCallback(async (message: string) => {
 		setFinalizing(false);
@@ -711,7 +638,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		// on Wayland that triggers an additional xdg-desktop-portal dialog.
 		// The sentinel is handled later by routing through getDisplayMedia,
 		// which lets the portal pick the source in a single dialog.
-		if (source.id === LINUX_PORTAL_SOURCE.id) {
+		if (source.id === "screen:linux-portal") {
 			return source;
 		}
 
@@ -756,7 +683,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			const start = performance.now();
 			console.log("[PERF:RENDERER] Finalize Session & Switch to Editor: STARTED");
 			const shouldHideOverlayCursor = hideEditorOverlayCursorByDefault.current;
-			const nativeCaptureUnavailable = nativeCaptureUnavailableForCursorOverlay.current;
 			try {
 				if (webcamPath) {
 					await window.electronAPI.setCurrentRecordingSession({
@@ -764,12 +690,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						webcamPath,
 						timeOffsetMs: webcamTimeOffsetMs.current,
 						hideOverlayCursorByDefault: shouldHideOverlayCursor,
-						nativeCaptureUnavailable,
 					});
 				} else {
 					await window.electronAPI.setCurrentVideoPath(videoPath, {
 						hideOverlayCursorByDefault: shouldHideOverlayCursor,
-						nativeCaptureUnavailable,
 					});
 				}
 			} catch (error) {
@@ -778,7 +702,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				try {
 					await window.electronAPI.setCurrentVideoPath(videoPath, {
 						hideOverlayCursorByDefault: shouldHideOverlayCursor,
-						nativeCaptureUnavailable,
 					});
 				} catch (fallbackError) {
 					console.error("Failed to persist fallback video path:", fallbackError);
@@ -1246,8 +1169,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							webcamPath,
 							timeOffsetMs: webcamTimeOffsetMs.current,
 							hideOverlayCursorByDefault: hideEditorOverlayCursorByDefault.current,
-							nativeCaptureUnavailable:
-								nativeCaptureUnavailableForCursorOverlay.current,
 						});
 
 						console.log(
@@ -1456,7 +1377,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		try {
 			const platform = await window.electronAPI.getPlatform();
 			hideEditorOverlayCursorByDefault.current = false;
-			nativeCaptureUnavailableForCursorOverlay.current = false;
 			const existingSource = await window.electronAPI.getSelectedSource();
 			const selectedSource =
 				existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
@@ -1467,7 +1387,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			// Persist the synthetic Linux portal sentinel to main so that the
 			// setDisplayMediaRequestHandler can short-circuit getSources() and
 			// avoid triggering an extra portal dialog.
-			if (!existingSource && selectedSource.id === LINUX_PORTAL_SOURCE.id) {
+			if (!existingSource && selectedSource.id === "screen:linux-portal") {
 				try {
 					await window.electronAPI.selectSource(selectedSource);
 				} catch (err) {
@@ -1663,12 +1583,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			const browserCursorPolicy = resolveBrowserCaptureCursorPolicy({
 				nativeWindowsCaptureStartFailed,
-				platform,
 			});
 			hideEditorOverlayCursorByDefault.current =
 				browserCursorPolicy.hideEditorOverlayCursorByDefault;
-			nativeCaptureUnavailableForCursorOverlay.current =
-				browserCursorPolicy.nativeCaptureUnavailable;
 
 			const wantsAudioCapture = microphoneEnabled || systemAudioEnabled;
 			const browserCaptureSource = await resolveBrowserCaptureSource(selectedSource);
@@ -1699,13 +1616,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			let videoTrack: MediaStreamTrack | undefined;
 			let systemAudioIncluded = false;
 			const mediaDevices = navigator.mediaDevices as DesktopCaptureMediaDevices;
-			const useLinuxPortal = shouldUseLinuxPortalCapture({
-				browserCaptureSourceId: browserCaptureSource.id,
-				selectedSourceId: selectedSource.id,
-			});
-			if (shouldLockHudDuringDisplaySelection({ platform, useLinuxPortal })) {
-				setHudSourceSelectionActive(true);
-			}
+			const useLinuxPortal = selectedSource.id === "screen:linux-portal";
 			const browserScreenVideoConstraints = {
 				mandatory: {
 					chromeMediaSource: CHROME_MEDIA_SOURCE,
@@ -1858,27 +1769,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				throw new Error("Media stream is not available.");
 			}
 
-			if (useLinuxPortal) {
-				const actualCursor = getScreenCaptureCursorSetting(videoTrack.getSettings());
-				const cursorPresentation = resolveLinuxPortalCursorPresentation({
-					actualCursor,
-					requestedCursor: browserCursorPolicy.streamCursor,
-				});
-				hideEditorOverlayCursorByDefault.current =
-					cursorPresentation.hideEditorOverlayCursorByDefault;
-				nativeCaptureUnavailableForCursorOverlay.current =
-					cursorPresentation.nativeCaptureUnavailable;
-				if (cursorPresentation.nativeCaptureUnavailable) {
-					console.warn(
-						"Linux portal did not confirm cursor-hidden capture; disabling Recordly cursor overlay for this recording.",
-						{
-							actualCursor,
-							requestedCursor: browserCursorPolicy.streamCursor,
-						},
-					);
-				}
-			}
-
 			try {
 				await videoTrack.applyConstraints({
 					frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
@@ -1984,8 +1874,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 										timeOffsetMs: webcamTimeOffsetMs.current,
 										hideOverlayCursorByDefault:
 											hideEditorOverlayCursorByDefault.current,
-										nativeCaptureUnavailable:
-											nativeCaptureUnavailableForCursorOverlay.current,
 									});
 								}
 							} finally {

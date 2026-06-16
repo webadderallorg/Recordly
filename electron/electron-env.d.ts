@@ -209,7 +209,6 @@ interface Window {
 		hudOverlayHide: () => void;
 		hudOverlayClose: () => void;
 		hudOverlayRendererReady: () => void;
-		hudOverlaySetWebcamPreviewVisible: (visible: boolean) => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
@@ -544,6 +543,14 @@ interface Window {
 			tempPath: string;
 			fileName: string;
 			outputPath?: string | null;
+			captionSidecar?: {
+				format: "srt" | "vtt" | "both";
+				cues: Array<{
+					startMs: number;
+					endMs: number;
+					text: string;
+				}>;
+			};
 		}) => Promise<{
 			success: boolean;
 			path?: string;
@@ -615,10 +622,26 @@ interface Window {
 		saveExportedVideo: (
 			videoData: ArrayBuffer,
 			fileName: string,
+			captionSidecar?: {
+				format: "srt" | "vtt" | "both";
+				cues: Array<{
+					startMs: number;
+					endMs: number;
+					text: string;
+				}>;
+			},
 		) => Promise<{ success: boolean; path?: string; message?: string; canceled?: boolean }>;
 		writeExportedVideoToPath: (
 			videoData: ArrayBuffer,
 			outputPath: string,
+			captionSidecar?: {
+				format: "srt" | "vtt" | "both";
+				cues: Array<{
+					startMs: number;
+					endMs: number;
+					text: string;
+				}>;
+			},
 		) => Promise<{
 			success: boolean;
 			path?: string;
@@ -677,7 +700,6 @@ interface Window {
 			options?: {
 				preserveProjectPath?: boolean;
 				hideOverlayCursorByDefault?: boolean;
-				nativeCaptureUnavailable?: boolean;
 			},
 		) => Promise<{ success: boolean; webcamPath: string | null }>;
 		setCurrentRecordingSession: (
@@ -686,7 +708,6 @@ interface Window {
 				webcamPath?: string | null;
 				timeOffsetMs?: number;
 				hideOverlayCursorByDefault?: boolean;
-				nativeCaptureUnavailable?: boolean;
 			},
 			options?: { preserveProjectPath?: boolean },
 		) => Promise<{ success: boolean }>;
@@ -697,7 +718,6 @@ interface Window {
 				webcamPath?: string | null;
 				timeOffsetMs?: number;
 				hideOverlayCursorByDefault?: boolean;
-				nativeCaptureUnavailable?: boolean;
 			};
 		}>;
 		getCurrentVideoPath: () => Promise<{ success: boolean; path?: string }>;
@@ -843,11 +863,7 @@ interface Window {
 		/** Returns the app version from package.json */
 		getAppVersion: () => Promise<string>;
 		/** Hide the OS cursor before browser capture starts. */
-		hideOsCursor: () => Promise<{
-			success: boolean;
-			unsupported?: boolean;
-			platform?: string;
-		}>;
+		hideOsCursor: () => Promise<{ success: boolean }>;
 		/** Recording preferences (mic, system audio) */
 		getRecordingPreferences: () => Promise<{
 			success: boolean;

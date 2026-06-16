@@ -5,12 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, ipcMain } from "electron";
 import { USER_DATA_PATH } from "./appPaths";
-import {
-	getHudOverlayWindowBounds,
-	resizeHudOverlayFallbackBounds,
-	shouldExpandHudOverlayFallback,
-	shouldResizeHudOverlayFallback,
-} from "./hudOverlayBounds";
+import { getHudOverlayWindowBounds, resizeHudOverlayFallbackBounds } from "./hudOverlayBounds";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
 const electronWindowsDir = path.dirname(fileURLToPath(import.meta.url));
@@ -35,7 +30,6 @@ let hudOverlayIgnoringMouse = true;
 let hudOverlaySourceSelectionActive = false;
 let hudOverlayMouseReassertTimer: NodeJS.Timeout | null = null;
 let hudOverlayRecordingActive = false;
-let hudOverlayWebcamPreviewVisible = false;
 let countdownWindow: BrowserWindow | null = null;
 let updateToastWindow: BrowserWindow | null = null;
 
@@ -196,15 +190,10 @@ function getHudOverlayDisplay() {
 
 function getHudOverlayBounds() {
 	const { workArea } = getHudOverlayDisplay();
-	const fallbackExpanded = shouldExpandHudOverlayFallback({
-		fallbackExpanded: hudOverlayFallbackExpanded,
-		recordingActive: hudOverlayRecordingActive,
-		webcamPreviewVisible: hudOverlayWebcamPreviewVisible,
-	});
 	return getHudOverlayWindowBounds(
 		workArea,
 		isHudOverlayMousePassthroughSupported() && !hudOverlayRecordingActive,
-		fallbackExpanded,
+		hudOverlayFallbackExpanded,
 	);
 }
 
@@ -311,21 +300,8 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 		return;
 	}
 
-	if (hudOverlaySourceSelectionActive) {
-		hudOverlayFallbackExpanded = false;
-		hudOverlayWindow.setIgnoreMouseEvents(false);
-		return;
-	}
-
-	const mousePassthroughSupported = isHudOverlayMousePassthroughSupported();
-	if (!mousePassthroughSupported) {
-		if (
-			shouldResizeHudOverlayFallback(
-				mousePassthroughSupported,
-				hudOverlayRecordingActive,
-				hudOverlaySourceSelectionActive,
-			)
-		) {
+	if (!isHudOverlayMousePassthroughSupported()) {
+		if (process.platform !== "linux") {
 			setHudOverlayFallbackExpanded(!ignore);
 		}
 		hudOverlayWindow.setIgnoreMouseEvents(false);
@@ -434,18 +410,6 @@ ipcMain.handle("get-hud-overlay-mouse-passthrough-supported", () => {
 	};
 });
 
-ipcMain.on("hud-overlay-set-webcam-preview-visible", (_event, visible: boolean) => {
-	const nextVisible = Boolean(visible);
-	if (hudOverlayWebcamPreviewVisible === nextVisible) {
-		return;
-	}
-
-	hudOverlayWebcamPreviewVisible = nextVisible;
-	if (hudOverlayRecordingActive) {
-		applyHudOverlayBounds();
-	}
-});
-
 ipcMain.handle("set-hud-overlay-capture-protection", (_event, enabled: boolean) => {
 	loadHudOverlayCaptureProtectionSetting();
 	hudOverlayHiddenFromCapture = Boolean(enabled);
@@ -468,7 +432,6 @@ ipcMain.handle("set-hud-overlay-capture-protection", (_event, enabled: boolean) 
 export function createHudOverlayWindow(): BrowserWindow {
 	loadHudOverlayCaptureProtectionSetting();
 	hudOverlayFallbackExpanded = false;
-	hudOverlayWebcamPreviewVisible = false;
 	const initialBounds = getHudOverlayBounds();
 	let hasShownHudWindow = false;
 
@@ -642,11 +605,7 @@ export function getHudOverlayWindow(): BrowserWindow | null {
  * hover detection on the HUD is immediately restored without requiring the
  * user to move their mouse over the bar.
  */
-export function reassertHudOverlayMousePassthrough({
-	interactiveGraceMs = 50,
-}: {
-	interactiveGraceMs?: number;
-} = {}): void {
+export function reassertHudOverlayMousePassthrough(): void {
 	if (process.platform !== "win32" || !isHudOverlayMousePassthroughSupported()) {
 		return;
 	}
@@ -672,7 +631,7 @@ export function reassertHudOverlayMousePassthrough({
 		if (!hud.isDestroyed()) {
 			setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 		}
-	}, interactiveGraceMs);
+	}, 50);
 }
 
 export function setHudOverlayRecordingActive(recording: boolean): void {

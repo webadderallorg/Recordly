@@ -170,7 +170,10 @@ import { clampFocusToStage as clampFocusToStageUtil } from "./videoPlayback/focu
 import { layoutVideoContent as layoutVideoContentUtil } from "./videoPlayback/layoutUtils";
 import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
 import { createVideoEventHandlers } from "./videoPlayback/videoEventHandlers";
-import { getWebcamMediaTargetTimeSeconds } from "./videoPlayback/webcamSync";
+import {
+	getWebcamMediaTargetTimeSeconds,
+	shouldSeekWebcamMedia,
+} from "./videoPlayback/webcamSync";
 import { findDominantRegion } from "./videoPlayback/zoomRegionUtils";
 import {
 	applyZoomTransform,
@@ -1837,12 +1840,15 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			}
 
 			const previousTimelineTime = lastWebcamSyncTimeRef.current;
-			const timelineJumped =
-				previousTimelineTime === null || Math.abs(targetTime - previousTimelineTime) > 0.25;
-			const driftThreshold = isPlaying ? 0.35 : 0.01;
 			if (
-				timelineJumped ||
-				Math.abs(webcamVideo.currentTime - mediaTargetTime) > driftThreshold
+				shouldSeekWebcamMedia({
+					desiredTime: mediaTargetTime,
+					isPlaying,
+					isSeeking: webcamVideo.seeking,
+					previousTimelineTime,
+					timelineTime: targetTime,
+					webcamCurrentTime: webcamVideo.currentTime,
+				})
 			) {
 				try {
 					webcamVideo.currentTime = mediaTargetTime;

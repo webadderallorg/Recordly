@@ -3587,7 +3587,6 @@ export function SettingsPanel({
 									<Switch
 										checked={showCursor}
 										onCheckedChange={onShowCursorChange}
-										disabled={nativeCaptureUnavailableSession}
 										className="data-[state=checked]:bg-[#2563EB] scale-75"
 									/>
 								</label>
@@ -3596,20 +3595,11 @@ export function SettingsPanel({
 									<Switch
 										checked={loopCursor}
 										onCheckedChange={onLoopCursorChange}
-										disabled={nativeCaptureUnavailableSession}
 										className="data-[state=checked]:bg-[#2563EB] scale-75"
 									/>
 								</label>
 							</div>
 						</div>
-						{nativeCaptureUnavailableSession ? (
-							<div className="rounded-lg border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-[10px] leading-4 text-muted-foreground">
-								{tSettings(
-									"effects.cursorOverlayUnavailable",
-									"Cursor overlay is unavailable for this recording because the captured video already contains the system cursor.",
-								)}
-							</div>
-						) : null}
 						<div className="flex flex-col gap-1.5">
 							<div className="space-y-1.5">
 								<ToggleGroup

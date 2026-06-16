@@ -182,9 +182,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	hudOverlayRendererReady: () => {
 		ipcRenderer.send("hud-overlay-renderer-ready");
 	},
-	hudOverlaySetWebcamPreviewVisible: (visible: boolean) => {
-		ipcRenderer.send("hud-overlay-set-webcam-preview-visible", visible);
-	},
 	getHudOverlayCaptureProtection: () => {
 		return ipcRenderer.invoke("get-hud-overlay-capture-protection");
 	},
@@ -459,6 +456,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		tempPath: string;
 		fileName: string;
 		outputPath?: string | null;
+		captionSidecar?: {
+			format: "srt" | "vtt" | "both";
+			cues: Array<{
+				startMs: number;
+				endMs: number;
+				text: string;
+			}>;
+		};
 	}) => {
 		return ipcRenderer.invoke("finalize-exported-video", payload);
 	},
@@ -633,11 +638,38 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	openAccessibilityPreferences: () => {
 		return ipcRenderer.invoke("open-accessibility-preferences");
 	},
-	saveExportedVideo: (videoData: ArrayBuffer, fileName: string) => {
-		return ipcRenderer.invoke("save-exported-video", videoData, fileName);
+	saveExportedVideo: (
+		videoData: ArrayBuffer,
+		fileName: string,
+		captionSidecar?: {
+			format: "srt" | "vtt" | "both";
+			cues: Array<{
+				startMs: number;
+				endMs: number;
+				text: string;
+			}>;
+		},
+	) => {
+		return ipcRenderer.invoke("save-exported-video", videoData, fileName, captionSidecar);
 	},
-	writeExportedVideoToPath: (videoData: ArrayBuffer, outputPath: string) => {
-		return ipcRenderer.invoke("write-exported-video-to-path", videoData, outputPath);
+	writeExportedVideoToPath: (
+		videoData: ArrayBuffer,
+		outputPath: string,
+		captionSidecar?: {
+			format: "srt" | "vtt" | "both";
+			cues: Array<{
+				startMs: number;
+				endMs: number;
+				text: string;
+			}>;
+		},
+	) => {
+		return ipcRenderer.invoke(
+			"write-exported-video-to-path",
+			videoData,
+			outputPath,
+			captionSidecar,
+		);
 	},
 	openVideoFilePicker: () => {
 		return ipcRenderer.invoke("open-video-file-picker");
@@ -693,7 +725,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		options?: {
 			preserveProjectPath?: boolean;
 			hideOverlayCursorByDefault?: boolean;
-			nativeCaptureUnavailable?: boolean;
 		},
 	) => {
 		return ipcRenderer.invoke("set-current-video-path", path, options);
@@ -704,7 +735,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			webcamPath?: string | null;
 			timeOffsetMs?: number;
 			hideOverlayCursorByDefault?: boolean;
-			nativeCaptureUnavailable?: boolean;
 		},
 		options?: { preserveProjectPath?: boolean },
 	) => {

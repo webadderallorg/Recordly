@@ -246,6 +246,27 @@ describe("AudioProcessor offline render preparation", () => {
 		expect(cappedPathDecodeCalls).toBe(2);
 	});
 
+	it("avoids the single-sidecar fast path for legacy mac mic sidecars that still need embedded audio", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const loadAudioFileDemuxer = vi.spyOn(processor, "loadAudioFileDemuxer");
+		const renderAndMuxOfflineAudio = vi
+			.spyOn(processor, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+
+		await processor.process(
+			{} as never,
+			{} as never,
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			["/tmp/recording.mic.m4a"],
+		);
+		expect(loadAudioFileDemuxer).not.toHaveBeenCalled();
+		expect(renderAndMuxOfflineAudio).toHaveBeenCalled();
+	});
+
 	it("soft-limits mixed peaks before encoding or WAV conversion", () => {
 		const samples = new Float32Array([
 			-1.6,

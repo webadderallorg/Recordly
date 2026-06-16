@@ -508,20 +508,41 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 
 	let paths: string[];
 	if (await hasEmbeddedAudioStream(videoPath)) {
-		const companionPaths = Array.from(
+		const hasUsableMacSystemCompanion = companionCandidates.some(
+			(candidate) =>
+				candidate.platform === "mac" &&
+				candidate.usablePaths.includes(candidate.systemPath),
+		);
+		const usableMacMicOnlyCompanions = Array.from(
 			new Set(
 				companionCandidates.flatMap((candidate) =>
-					candidate.usablePaths.filter(
-						(companionPath) => companionPath === candidate.micPath,
-					),
+					candidate.platform === "mac" &&
+					!candidate.usablePaths.includes(candidate.systemPath) &&
+					candidate.usablePaths.includes(candidate.micPath)
+						? [candidate.micPath]
+						: [],
 				),
 			),
 		);
-		if (companionPaths.length === 0) {
-			return { paths: [], startDelayMsByPath: {} };
-		}
 
-		paths = [videoPath, ...companionPaths];
+		if (!hasUsableMacSystemCompanion && usableMacMicOnlyCompanions.length > 0) {
+			paths = usableMacMicOnlyCompanions;
+		} else {
+			const companionPaths = Array.from(
+				new Set(
+					companionCandidates.flatMap((candidate) =>
+						candidate.usablePaths.filter(
+							(companionPath) => companionPath === candidate.micPath,
+						),
+					),
+				),
+			);
+			if (companionPaths.length === 0) {
+				return { paths: [], startDelayMsByPath: {} };
+			}
+
+			paths = [videoPath, ...companionPaths];
+		}
 	} else {
 		paths = Array.from(
 			new Set(companionCandidates.flatMap((candidate) => candidate.usablePaths)),

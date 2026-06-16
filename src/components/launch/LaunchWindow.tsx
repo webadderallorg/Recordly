@@ -152,16 +152,6 @@ function LaunchWindowContent() {
 		hudOverlayMousePassthroughSupported,
 	});
 
-	useEffect(() => {
-		window.electronAPI?.hudOverlaySetWebcamPreviewVisible?.(showRecordingWebcamPreview);
-	}, [showRecordingWebcamPreview]);
-
-	useEffect(() => {
-		return () => {
-			window.electronAPI?.hudOverlaySetWebcamPreviewVisible?.(false);
-		};
-	}, []);
-
 	const {
 		recordingHudOffset,
 		isHudDragging,

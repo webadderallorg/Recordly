@@ -37,27 +37,6 @@ export function getHudOverlayWindowBounds(
 		height,
 	};
 }
-
-export function shouldResizeHudOverlayFallback(
-	mousePassthroughSupported: boolean,
-	recordingActive: boolean,
-	interactionLocked = false,
-): boolean {
-	return !mousePassthroughSupported && !recordingActive && !interactionLocked;
-}
-
-export function shouldExpandHudOverlayFallback({
-	fallbackExpanded,
-	recordingActive,
-	webcamPreviewVisible,
-}: {
-	fallbackExpanded: boolean;
-	recordingActive: boolean;
-	webcamPreviewVisible: boolean;
-}): boolean {
-	return fallbackExpanded || (recordingActive && webcamPreviewVisible);
-}
-
 export function resizeHudOverlayFallbackBounds(
 	workArea: HudOverlayWorkArea,
 	currentBounds: HudOverlayWorkArea,

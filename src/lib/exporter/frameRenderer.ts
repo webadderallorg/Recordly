@@ -2447,16 +2447,22 @@ export class FrameRenderer {
 		bubbleCtx.imageSmoothingEnabled = true;
 		bubbleCtx.imageSmoothingQuality = "high";
 
+		const expectedWebcamTargetTime = getWebcamMediaTargetTimeSeconds({
+			currentTime: this.currentVideoTime,
+			webcamDuration: Number.isFinite(webcamVideo?.duration) ? webcamVideo?.duration : null,
+			timeOffsetMs: webcam.timeOffsetMs,
+		});
+
 		const canRefreshCache =
 			hasLiveWebcamFrame &&
 			this.lastSyncedWebcamTime !== null &&
-			Math.abs(this.lastSyncedWebcamTime - this.currentVideoTime) <= 0.02 &&
+			Math.abs(this.lastSyncedWebcamTime - expectedWebcamTargetTime) <= 0.02 &&
 			(webcamDecodedFrame
 				? true
 				: Boolean(
 						webcamVideo &&
 							!webcamVideo.seeking &&
-							Math.abs(webcamVideo.currentTime - this.currentVideoTime) <= 0.02 &&
+							Math.abs(webcamVideo.currentTime - expectedWebcamTargetTime) <= 0.02 &&
 							webcamVideo.videoWidth > 0 &&
 							webcamVideo.videoHeight > 0,
 					));

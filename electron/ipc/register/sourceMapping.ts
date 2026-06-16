@@ -33,27 +33,3 @@ export function getScreenSourceIdForDisplay({
 
 	return `screen:fallback:${displayId}`;
 }
-
-export function shouldUseSyntheticLinuxPortalSource({
-	env,
-	platform,
-	sourceId,
-}: {
-	env: NodeJS.ProcessEnv;
-	platform: NodeJS.Platform | string;
-	sourceId?: string | null;
-}) {
-	if (platform !== "linux") {
-		return false;
-	}
-
-	if (
-		sourceId &&
-		sourceId !== LINUX_PORTAL_SCREEN_SOURCE_ID &&
-		!sourceId.startsWith("screen:fallback:")
-	) {
-		return false;
-	}
-
-	return isLikelyLinuxWaylandSession(env);
-}

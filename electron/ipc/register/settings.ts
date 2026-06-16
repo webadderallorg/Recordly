@@ -114,7 +114,7 @@ export function registerSettingsHandlers() {
 	// ---------------------------------------------------------------------------
 	ipcMain.handle("hide-cursor", () => {
 		if (process.platform !== "win32") {
-			return { success: false, unsupported: true, platform: process.platform };
+			return { success: true };
 		}
 
 		return { success: hideCursor() };

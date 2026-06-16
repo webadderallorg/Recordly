@@ -3,12 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createBrowserRecordingOptions,
 	createProcessedMicrophoneConstraints,
-	getScreenCaptureCursorSetting,
 	normalizeBrowserMicrophoneProfile,
 	resolveBrowserCaptureCursorPolicy,
-	resolveLinuxPortalCursorPresentation,
-	shouldLockHudDuringDisplaySelection,
-	shouldUseLinuxPortalCapture,
 	shouldUseNativeWindowsCaptureForSource,
 } from "./useScreenRecorder";
 
@@ -149,7 +145,6 @@ describe("resolveBrowserCaptureCursorPolicy", () => {
 			streamCursor: "never",
 			hideOsCursorBeforeRecording: true,
 			hideEditorOverlayCursorByDefault: true,
-			nativeCaptureUnavailable: false,
 		});
 	});
 
@@ -160,127 +155,7 @@ describe("resolveBrowserCaptureCursorPolicy", () => {
 			streamCursor: "always",
 			hideOsCursorBeforeRecording: false,
 			hideEditorOverlayCursorByDefault: true,
-			nativeCaptureUnavailable: true,
 		});
-	});
-
-	it("does not fake OS cursor hiding on Linux portal capture", () => {
-		expect(resolveBrowserCaptureCursorPolicy({ platform: "linux" })).toEqual({
-			streamCursor: "never",
-			hideOsCursorBeforeRecording: false,
-			hideEditorOverlayCursorByDefault: true,
-			nativeCaptureUnavailable: true,
-		});
-	});
-});
-
-describe("resolveLinuxPortalCursorPresentation", () => {
-	it("enables the Recordly overlay only when the portal confirms cursor-hidden capture", () => {
-		expect(
-			resolveLinuxPortalCursorPresentation({
-				requestedCursor: "never",
-				actualCursor: "never",
-			}),
-		).toEqual({
-			hideEditorOverlayCursorByDefault: false,
-			nativeCaptureUnavailable: false,
-		});
-	});
-
-	it("keeps the overlay disabled when the portal embeds or omits cursor settings", () => {
-		expect(
-			resolveLinuxPortalCursorPresentation({
-				requestedCursor: "never",
-				actualCursor: "always",
-			}),
-		).toEqual({
-			hideEditorOverlayCursorByDefault: true,
-			nativeCaptureUnavailable: true,
-		});
-		expect(
-			resolveLinuxPortalCursorPresentation({
-				requestedCursor: "never",
-				actualCursor: null,
-			}),
-		).toEqual({
-			hideEditorOverlayCursorByDefault: true,
-			nativeCaptureUnavailable: true,
-		});
-	});
-});
-
-describe("shouldUseLinuxPortalCapture", () => {
-	it("uses the portal when the selected source is the Linux sentinel", () => {
-		expect(
-			shouldUseLinuxPortalCapture({
-				browserCaptureSourceId: "screen:linux-portal",
-				selectedSourceId: "screen:linux-portal",
-			}),
-		).toBe(true);
-	});
-
-	it("uses the portal when a stale screen fallback resolves to the Linux sentinel", () => {
-		expect(
-			shouldUseLinuxPortalCapture({
-				browserCaptureSourceId: "screen:linux-portal",
-				selectedSourceId: "screen:fallback:42",
-			}),
-		).toBe(true);
-	});
-
-	it("keeps live Electron screen sources on browser getUserMedia", () => {
-		expect(
-			shouldUseLinuxPortalCapture({
-				browserCaptureSourceId: "screen:42:0",
-				selectedSourceId: "screen:42:0",
-			}),
-		).toBe(false);
-	});
-
-	it("prefers a live Electron source over stale portal selection state", () => {
-		expect(
-			shouldUseLinuxPortalCapture({
-				browserCaptureSourceId: "screen:42:0",
-				selectedSourceId: "screen:linux-portal",
-			}),
-		).toBe(false);
-	});
-});
-
-describe("shouldLockHudDuringDisplaySelection", () => {
-	it("locks HUD fallback resizing while Linux portal selection is active", () => {
-		expect(
-			shouldLockHudDuringDisplaySelection({
-				platform: "linux",
-				useLinuxPortal: true,
-			}),
-		).toBe(true);
-	});
-
-	it("keeps non-portal capture flows interactive", () => {
-		expect(
-			shouldLockHudDuringDisplaySelection({
-				platform: "linux",
-				useLinuxPortal: false,
-			}),
-		).toBe(false);
-		expect(
-			shouldLockHudDuringDisplaySelection({
-				platform: "win32",
-				useLinuxPortal: true,
-			}),
-		).toBe(false);
-	});
-});
-
-describe("getScreenCaptureCursorSetting", () => {
-	it("normalizes only supported screen-capture cursor settings", () => {
-		expect(getScreenCaptureCursorSetting({ cursor: "motion" } as MediaTrackSettings)).toBe(
-			"motion",
-		);
-		expect(
-			getScreenCaptureCursorSetting({ cursor: "hidden" } as MediaTrackSettings),
-		).toBeNull();
 	});
 });
 
@@ -289,8 +164,12 @@ describe("shouldUseNativeWindowsCaptureForSource", () => {
 		expect(shouldUseNativeWindowsCaptureForSource({ id: "screen:101:0" })).toBe(true);
 	});
 
-	it("routes window sources through browser capture", () => {
-		expect(shouldUseNativeWindowsCaptureForSource({ id: "window:123456:0" })).toBe(false);
+	it("keeps native Windows capture on window sources", () => {
+		expect(shouldUseNativeWindowsCaptureForSource({ id: "window:123456:0" })).toBe(true);
+	});
+
+	it("keeps browser capture for non-desktop sources", () => {
+		expect(shouldUseNativeWindowsCaptureForSource({ id: "browser-tab:abc" })).toBe(false);
 	});
 });
 

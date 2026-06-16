@@ -25,7 +25,6 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
-import { shouldUseSyntheticLinuxPortalSource } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
 import type { UpdateToastPayload } from "./updater";
@@ -232,7 +231,7 @@ function showHudOverlayFromTray() {
 	if (process.platform === "win32" && isHudOverlayMousePassthroughSupported()) {
 		hud.showInactive();
 		hud.moveTop();
-		reassertHudOverlayMouseState({ interactiveGraceMs: 1200 });
+		reassertHudOverlayMouseState();
 		return true;
 	}
 
@@ -1015,18 +1014,12 @@ app.whenReady().then(async () => {
 			// is set we skip getSources entirely and hand back a synthetic
 			// source id; Chromium then opens the portal once to actually
 			// resolve the capture.
-			// Default to the sentinel on Linux/Wayland when no source has been
+			// Default to the sentinel on Linux when no source has been
 			// pre-selected (e.g. fresh session where the renderer skipped the
 			// source picker entirely). This avoids calling getSources() which
 			// would itself trigger an extra portal dialog.
-			// X11 does not need this synthetic path; use Electron's documented
-			// desktopCapturer source flow there so getDisplayMedia receives a
-			// real source id instead of a Wayland-only portal sentinel.
-			const isLinuxPortalSentinel = shouldUseSyntheticLinuxPortalSource({
-				env: process.env,
-				platform: process.platform,
-				sourceId,
-			});
+			const isLinuxPortalSentinel =
+				process.platform === "linux" && (sourceId === "screen:linux-portal" || !sourceId);
 			if (isLinuxPortalSentinel) {
 				callback({ video: { id: "screen:0:0", name: "Entire screen" } });
 				return;
