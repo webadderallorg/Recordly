@@ -7,6 +7,7 @@ import type {
 	CaptionCue,
 	CursorClickEffectStyle,
 	CropRegion,
+	CursorFollowCropSettings,
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
@@ -28,6 +29,16 @@ import {
 	createCursorFollowCameraState,
 	SNAP_TO_EDGES_RATIO_AUTO,
 } from "@/components/video-editor/videoPlayback/cursorFollowCamera";
+import {
+	type CursorFollowCropState,
+	computeCursorFollowCrop,
+	createCursorFollowCropState,
+} from "@/components/video-editor/videoPlayback/cursorFollowCrop";
+import {
+	type CursorTextZoomState,
+	computeCursorTextZoom,
+	createCursorTextZoomState,
+} from "@/components/video-editor/videoPlayback/cursorTextZoom";
 import {
 	DEFAULT_CURSOR_CONFIG,
 	PixiCursorOverlay,
@@ -107,6 +118,7 @@ interface FrameRenderConfig {
 	borderRadius?: number;
 	padding?: Padding | number;
 	cropRegion: CropRegion;
+	cursorFollowCrop?: CursorFollowCropSettings;
 	webcam?: WebcamOverlaySettings;
 	webcamUrl?: string | null;
 	videoWidth: number;
@@ -293,6 +305,8 @@ export class FrameRenderer {
 	private springX: SpringState;
 	private springY: SpringState;
 	private cursorFollowCamera: CursorFollowCameraState;
+	private cursorFollowCropState: CursorFollowCropState = createCursorFollowCropState();
+	private cursorTextZoomState: CursorTextZoomState = createCursorTextZoomState();
 	private lastContentTimeMs: number | null = null;
 	private cursorOverlay: PixiCursorOverlay | null = null;
 	private webcamForwardFrameSource: ForwardFrameSource | null = null;
@@ -1643,6 +1657,8 @@ export class FrameRenderer {
 		const timeMs = this.currentVideoTime * 1000;
 		const cursorTimeMs = cursorTimestamp / 1000;
 
+		this.applyCursorFollowCrop(timeMs, layoutCache);
+
 		if (this.cursorOverlay) {
 			this.cursorOverlay.update(
 				this.config.cursorTelemetry ?? [],
@@ -1894,6 +1910,37 @@ export class FrameRenderer {
 		}
 	}
 
+	private applyCursorFollowCrop(timeMs: number, layoutCache: LayoutCache): void {
+		const settings = this.config.cursorFollowCrop;
+		const baseCrop = this.config.cropRegion;
+		if (!settings?.enabled || !this.videoSprite || !baseCrop) {
+			if (this.videoSprite) {
+				this.videoSprite.position.set(
+					layoutCache.baseOffset.x,
+					layoutCache.baseOffset.y,
+				);
+			}
+			layoutCache.maskRect.sourceCrop = baseCrop;
+			return;
+		}
+		const effectiveCrop = computeCursorFollowCrop(
+			this.cursorFollowCropState,
+			this.config.cursorTelemetry ?? [],
+			timeMs,
+			baseCrop,
+			settings,
+		);
+		const fullVideoDisplayWidth = this.config.videoWidth * layoutCache.baseScale;
+		const fullVideoDisplayHeight = this.config.videoHeight * layoutCache.baseScale;
+		const dx = (effectiveCrop.x - baseCrop.x) * fullVideoDisplayWidth;
+		const dy = (effectiveCrop.y - baseCrop.y) * fullVideoDisplayHeight;
+		this.videoSprite.position.set(
+			layoutCache.baseOffset.x - dx,
+			layoutCache.baseOffset.y - dy,
+		);
+		layoutCache.maskRect.sourceCrop = effectiveCrop;
+	}
+
 	private updateLayout(): void {
 		if (!this.app || !this.videoSprite || !this.maskGraphics || !this.videoContainer) return;
 
@@ -2040,6 +2087,30 @@ export class FrameRenderer {
 			}
 		}
 
+		// Text-zoom layer (independent of crop pan and explicit zoom regions;
+		// explicit zooms win). The zoom spring below eases it in and out.
+		const explicitZoomActive = Boolean(region && strength > 0);
+		if (
+			this.config.cursorFollowCrop?.textZoomEnabled &&
+			!explicitZoomActive &&
+			this.config.cursorTelemetry &&
+			this.config.cursorTelemetry.length > 0
+		) {
+			const textZoom = computeCursorTextZoom(
+				this.cursorTextZoomState,
+				this.config.cursorTelemetry,
+				timeMs,
+				this.config.cursorFollowCrop,
+			);
+			if (textZoom.active) {
+				targetScaleFactor = textZoom.scale;
+				targetFocus = textZoom.focus;
+				targetProgress = 1;
+			}
+		} else if (!this.config.cursorFollowCrop?.textZoomEnabled) {
+			this.cursorTextZoomState = createCursorTextZoomState();
+		}
+
 		const state = this.animationState;
 
 		const prevScale = state.appliedScale;
@@ -2130,6 +2201,8 @@ export class FrameRenderer {
 
 		const timeMs = this.currentVideoTime * 1000;
 		const cursorTimeMs = cursorTimestamp / 1000;
+
+		this.applyCursorFollowCrop(timeMs, layoutCache);
 
 		if (this.cursorOverlay) {
 			this.cursorOverlay.update(

@@ -4,8 +4,13 @@ import { WAVEFORM_DEFAULT_PEAK_COUNT } from "../../timeline/core/constants";
 
 const MAX_WAVEFORM_PEAKS = 200_000;
 
+// Waveform peaks only need coarse amplitude data (~500 peaks/sec), so decode at
+// a low sample rate. Decoding long recordings at the native 48kHz allocates
+// gigabytes of PCM (50min stereo float32 ≈ 1.15 GB per file) and OOMs the
+// renderer; 8kHz cuts that 6x while remaining visually identical.
+const WAVEFORM_DECODE_SAMPLE_RATE = 8000;
+
 export class WaveformGenerator {
-	private audioContext: AudioContext;
 	private worker: Worker;
 	private peaksCache = new Map<string, AudioPeaksData>();
 	private pending = new Map<string, Promise<AudioPeaksData>>();
@@ -13,7 +18,6 @@ export class WaveformGenerator {
 	private workerResolvers = new Map<number, { resolve: (peaks: Float32Array) => void; reject: (err: Error) => void }>();
 
 	constructor() {
-		this.audioContext = new (window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)();
 		this.worker = new WorkerConstructor();
 		
 		this.worker.addEventListener(
@@ -60,6 +64,10 @@ export class WaveformGenerator {
 		});
 	}
 
+	// Files larger than this threshold are skipped to avoid OOMing the renderer.
+	// Audio sidecars are typically <100 MB; main video files can be several GB.
+	static readonly MAX_DECODE_BYTES = 200 * 1024 * 1024; // 200 MB
+
 	public async generate(url: string, peakCount = WAVEFORM_DEFAULT_PEAK_COUNT): Promise<AudioPeaksData> {
 		const cacheKey = `${url}::${peakCount}`;
 		const cached = this.peaksCache.get(cacheKey);
@@ -69,13 +77,31 @@ export class WaveformGenerator {
 		if (inflight) return inflight;
 
 		const request = (async () => {
+			const headResponse = await fetch(url, { method: "HEAD" });
+			if (!headResponse.ok) {
+				throw new Error(`Failed to probe media: ${headResponse.status}`);
+			}
+			const contentLength = parseInt(headResponse.headers.get("content-length") ?? "0", 10);
+			if (contentLength > WaveformGenerator.MAX_DECODE_BYTES) {
+				throw new Error(
+					`File too large for in-memory audio decode (${Math.round(contentLength / 1024 / 1024)} MB)`,
+				);
+			}
+
 			const response = await fetch(url);
 			if (!response.ok) {
 				throw new Error(`Failed to load media: ${response.status}`);
 			}
 
 			const arrayBuffer = await response.arrayBuffer();
-			const decoded = await this.audioContext.decodeAudioData(arrayBuffer);
+			// A throwaway OfflineAudioContext decodes (and resamples) at the low
+			// waveform rate instead of the hardware rate of a live AudioContext.
+			const decodeContext = new OfflineAudioContext({
+				numberOfChannels: 1,
+				length: 1,
+				sampleRate: WAVEFORM_DECODE_SAMPLE_RATE,
+			});
+			const decoded = await decodeContext.decodeAudioData(arrayBuffer);
 			const adaptivePeakCount = Math.max(
 				peakCount,
 				Math.floor(decoded.duration * 500)

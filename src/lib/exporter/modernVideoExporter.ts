@@ -6,6 +6,7 @@ import type {
 	ClipRegion,
 	CropRegion,
 	CursorClickEffectStyle,
+	CursorFollowCropSettings,
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
@@ -119,6 +120,7 @@ interface VideoExporterConfig extends ExportConfig {
 	padding?: Padding | number;
 	videoPadding?: Padding | number;
 	cropRegion: CropRegion;
+	cursorFollowCrop?: CursorFollowCropSettings;
 	webcam?: WebcamOverlaySettings;
 	webcamUrl?: string | null;
 	annotationRegions?: AnnotationRegion[];
@@ -608,6 +610,7 @@ export class ModernVideoExporter {
 					borderRadius: this.config.borderRadius,
 					padding: this.config.padding,
 					cropRegion: this.config.cropRegion,
+					cursorFollowCrop: this.config.cursorFollowCrop,
 					webcam: this.config.webcam,
 					webcamUrl: this.config.webcamUrl,
 					videoWidth: videoInfo.width,
@@ -1575,6 +1578,10 @@ export class ModernVideoExporter {
 			crop.height <= 0
 		) {
 			reasons.push("invalid-crop-region");
+		}
+
+		if (this.config.cursorFollowCrop?.enabled) {
+			reasons.push("cursor-follow-crop-dynamic-layout");
 		}
 
 		return reasons;

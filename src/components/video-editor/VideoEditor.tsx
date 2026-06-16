@@ -174,6 +174,7 @@ import {
 	type ClipRegion,
 	type CropRegion,
 	type CursorClickEffectStyle,
+	type CursorFollowCropSettings,
 	type CursorStyle,
 	type CursorTelemetryPoint,
 	clampFocusToDepth,
@@ -187,6 +188,7 @@ import {
 	DEFAULT_CONNECTED_ZOOM_EASING,
 	DEFAULT_CONNECTED_ZOOM_GAP_MS,
 	DEFAULT_CROP_REGION,
+	DEFAULT_CURSOR_FOLLOW_CROP,
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_FIGURE_DATA,
 	DEFAULT_WEBCAM_OVERLAY,
@@ -497,6 +499,9 @@ export default function VideoEditor() {
 	const [padding, setPadding] = useState(initialEditorPreferences.padding);
 	const [frame, setFrame] = useState<string | null>(initialEditorPreferences.frame);
 	const [cropRegion, setCropRegion] = useState<CropRegion>(DEFAULT_CROP_REGION);
+	const [cursorFollowCrop, setCursorFollowCrop] = useState<CursorFollowCropSettings>(
+		DEFAULT_CURSOR_FOLLOW_CROP,
+	);
 	const [webcam, setWebcam] = useState<WebcamOverlaySettings>(
 		initialEditorPreferences.webcam ?? DEFAULT_WEBCAM_OVERLAY,
 	);
@@ -1130,6 +1135,7 @@ export default function VideoEditor() {
 					borderRadius,
 					padding,
 					cropRegion,
+					cursorFollowCrop,
 					webcam,
 					webcamUrl:
 						resolvedWebcamVideoUrl ??
@@ -1672,6 +1678,7 @@ export default function VideoEditor() {
 				padding: Padding;
 				frame: string | null;
 				cropRegion: CropRegion;
+				cursorFollowCrop: CursorFollowCropSettings;
 				webcam: WebcamOverlaySettings;
 				zoomRegions: ZoomRegion[];
 				trimRegions: TrimRegion[];
@@ -1780,6 +1787,7 @@ export default function VideoEditor() {
 				padding,
 				frame,
 				cropRegion,
+				cursorFollowCrop,
 				webcam,
 				zoomRegions,
 				trimRegions,
@@ -1846,6 +1854,7 @@ export default function VideoEditor() {
 			borderRadius,
 			padding,
 			cropRegion,
+			cursorFollowCrop,
 			webcam,
 			zoomRegions,
 			trimRegions,
@@ -2036,6 +2045,7 @@ export default function VideoEditor() {
 			setPadding(normalizedEditor.padding);
 			setFrame(normalizedEditor.frame);
 			setCropRegion(normalizedEditor.cropRegion);
+			setCursorFollowCrop(normalizedEditor.cursorFollowCrop);
 			setWebcam(normalizedEditor.webcam);
 			setZoomRegions(normalizedEditor.zoomRegions);
 			setTrimRegions(normalizedEditor.trimRegions);
@@ -4263,6 +4273,7 @@ export default function VideoEditor() {
 						padding,
 						videoPadding: padding,
 						cropRegion,
+						cursorFollowCrop,
 						webcam,
 						webcamUrl:
 							resolvedWebcamVideoUrl ??
@@ -4446,6 +4457,7 @@ export default function VideoEditor() {
 						borderRadius,
 						padding,
 						cropRegion,
+						cursorFollowCrop,
 						webcam,
 						webcamUrl:
 							resolvedWebcamVideoUrl ??
@@ -4757,6 +4769,7 @@ export default function VideoEditor() {
 			borderRadius,
 			padding,
 			cropRegion,
+			cursorFollowCrop,
 			webcam,
 			resolvedWebcamVideoUrl,
 			annotationRegions,
@@ -5177,6 +5190,7 @@ export default function VideoEditor() {
 			padding={padding}
 			frame={frame}
 			cropRegion={cropRegion}
+			cursorFollowCrop={cursorFollowCrop}
 			webcam={webcam}
 			webcamVideoPath={webcam.sourcePath ? resolvedWebcamVideoUrl : null}
 			trimRegions={trimRegions}
@@ -6400,6 +6414,10 @@ export default function VideoEditor() {
 							cropRegion={cropRegion}
 							onCropChange={setCropRegion}
 							aspectRatio={aspectRatio}
+							cursorFollow={cursorFollowCrop}
+							onCursorFollowChange={setCursorFollowCrop}
+							cursorTelemetry={cursorTelemetry}
+							currentTimeMs={currentTime * 1000}
 						/>
 						<div className="mt-6 flex justify-end">
 							<Button

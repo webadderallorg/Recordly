@@ -497,6 +497,44 @@ export const DEFAULT_CROP_REGION: CropRegion = {
 	height: 1,
 };
 
+export type CursorFollowCropPreviewMode = "source" | "output";
+
+export interface CursorFollowCropSettings {
+	enabled: boolean;
+	/** Safe-zone inset 0..0.49 — fraction of viewport edge before camera pans. */
+	safeZoneRatio: number;
+	/** 0..1, smoothing applied per frame (higher = slower follow, less jitter). */
+	smoothness: number;
+	/** Editor-only: which view to show in the crop panel. */
+	previewMode: CursorFollowCropPreviewMode;
+	/**
+	 * When true: while typing (I-beam active + mouse still), the viewport gently
+	 * pans to center the I-beam (the typing spot); it snaps back to safe-zone
+	 * mouse-following the moment the mouse moves. Mouse always wins; transitions
+	 * are debounced to avoid jarring cuts.
+	 */
+	trackTextCursor: boolean;
+	/**
+	 * Independent "text zoom" layer. When true, the camera eases a zoom-in
+	 * centered on the typing spot whenever sustained typing is detected
+	 * (I-beam active + mouse still), then eases back out once the mouse moves.
+	 * This is a separate layer from `enabled` (the crop pan) and from explicit
+	 * zoom regions — explicit zooms always win over it.
+	 */
+	textZoomEnabled?: boolean;
+	/** Zoom depth scale for the text-zoom layer (>1). Defaults to DEFAULT_TEXT_ZOOM_DEPTH_SCALE. */
+	textZoomDepth?: number;
+}
+
+export const DEFAULT_CURSOR_FOLLOW_CROP: CursorFollowCropSettings = {
+	enabled: false,
+	safeZoneRatio: 0.25,
+	smoothness: 0.5,
+	previewMode: "source",
+	trackTextCursor: false,
+	textZoomEnabled: false,
+};
+
 export interface Padding {
 	top: number;
 	bottom: number;
