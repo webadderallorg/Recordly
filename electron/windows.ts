@@ -605,7 +605,7 @@ export function reassertHudOverlayMousePassthrough(): void {
 	}
 
 	if (hudOverlayRecordingActive) {
-		hud.setIgnoreMouseEvents(true, { forward: true });
+		setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 		return;
 	}
 
