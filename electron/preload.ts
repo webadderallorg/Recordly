@@ -754,6 +754,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("recording-session-changed", listener);
 		return () => ipcRenderer.removeListener("recording-session-changed", listener);
 	},
+	onRecordingHudClosed: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("recording-hud-closed", listener);
+		return () => ipcRenderer.removeListener("recording-hud-closed", listener);
+	},
 	getCurrentRecordingSession: () => {
 		return ipcRenderer.invoke("get-current-recording-session");
 	},

@@ -28,6 +28,13 @@ function getConcatListLine(filePath: string) {
 	return `file '${filePath.replace(/'/g, "'\\''")}'`;
 }
 
+function isInsideDirectory(candidatePath: string, directoryPath: string) {
+	const relativePath = path.relative(directoryPath, candidatePath);
+	return Boolean(
+		relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath),
+	);
+}
+
 export function registerCaptionHandlers() {
 	ipcMain.handle("open-video-file-picker", async (_, options?: OpenVideoFilePickerOptions) => {
 		try {
@@ -103,11 +110,48 @@ export function registerCaptionHandlers() {
 
 				const recordingsDir = await getRecordingsDir();
 				await fs.mkdir(recordingsDir, { recursive: true });
+				const realRecordingsDir = await fs.realpath(recordingsDir);
+				const realBasePath = await fs.realpath(basePath);
+				const realAppendPath = await fs.realpath(appendPath);
+
+				if (
+					!isInsideDirectory(realBasePath, realRecordingsDir) ||
+					!isInsideDirectory(realAppendPath, realRecordingsDir)
+				) {
+					return {
+						success: false,
+						message: "Only Recordly-managed recordings can be stitched.",
+					};
+				}
+
+				const baseExtension = path.extname(realBasePath).toLowerCase();
+				const appendExtension = path.extname(realAppendPath).toLowerCase();
+				const supportedConcatExtensions = new Set([".mp4", ".mov", ".webm"]);
+				if (
+					!supportedConcatExtensions.has(baseExtension) ||
+					!supportedConcatExtensions.has(appendExtension)
+				) {
+					return {
+						success: false,
+						message: "Only MP4, MOV, and WebM recordings can be stitched.",
+					};
+				}
+
+				if (baseExtension !== appendExtension) {
+					return {
+						success: false,
+						message:
+							"Recordings must use the same file format before they can be stitched.",
+					};
+				}
 
 				const timestamp = Date.now();
-				const outputPath = path.join(recordingsDir, `stitched-recording-${timestamp}.mp4`);
+				const outputPath = path.join(
+					recordingsDir,
+					`stitched-recording-${timestamp}${baseExtension}`,
+				);
 				const listPath = path.join(recordingsDir, `stitched-recording-${timestamp}.txt`);
-				const listContent = `${getConcatListLine(basePath)}\n${getConcatListLine(appendPath)}\n`;
+				const listContent = `${getConcatListLine(realBasePath)}\n${getConcatListLine(realAppendPath)}\n`;
 
 				await fs.writeFile(listPath, listContent, "utf8");
 
@@ -143,7 +187,7 @@ export function registerCaptionHandlers() {
 				return {
 					success: false,
 					message:
-						"Failed to stitch recordings. Make sure both clips were recorded with compatible settings.",
+						"Failed to stitch recordings. Make sure both clips are Recordly recordings with the same format and compatible encoding settings.",
 					error: String(error),
 				};
 			}

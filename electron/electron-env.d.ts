@@ -594,6 +594,7 @@ interface Window {
 		onRecordingSessionChanged: (
 			callback: (session: RendererRecordingSessionData | null) => void,
 		) => () => void;
+		onRecordingHudClosed: (callback: () => void) => () => void;
 		onRecordingInterrupted: (
 			callback: (state: { reason: string; message: string }) => void,
 		) => () => void;

@@ -675,7 +675,7 @@ export default function VideoEditor() {
 	const pendingFreshRecordingAutoSuggestTimeoutRef = useRef<number | null>(null);
 	const pendingFreshRecordingAutoSuggestTelemetryCountRef = useRef(0);
 	const pendingAppendedClipStartMsRef = useRef<number | null>(null);
-	const pendingInlineAppendRef = useRef(false);
+	const pendingInlineAppendRef = useRef<{ baseSourcePath: string } | null>(null);
 	const cropSnapshotRef = useRef<CropRegion | null>(null);
 	const mp4SupportRequestRef = useRef(0);
 	const smokeExportStartedRef = useRef(false);
@@ -2571,14 +2571,17 @@ export default function VideoEditor() {
 				hasWebcamPath: Boolean(sessionWebcamPath),
 			});
 
-			if (
-				pendingInlineAppendRef.current &&
+			const pendingInlineAppend = pendingInlineAppendRef.current;
+			if (pendingInlineAppend && pendingInlineAppend.baseSourcePath !== videoSourcePath) {
+				pendingInlineAppendRef.current = null;
+			} else if (
+				pendingInlineAppend &&
 				session &&
 				sessionSourcePath &&
 				videoSourcePath &&
-				sessionSourcePath !== videoSourcePath
+				sessionSourcePath !== pendingInlineAppend.baseSourcePath
 			) {
-				pendingInlineAppendRef.current = false;
+				pendingInlineAppendRef.current = null;
 				void appendRecordingSource(sessionSourcePath);
 				return;
 			}
@@ -2598,6 +2601,16 @@ export default function VideoEditor() {
 			setSourceAudioFallbackRefreshKey((key) => key + 1);
 		});
 	}, [appendRecordingSource, videoSourcePath]);
+
+	useEffect(() => {
+		if (!window.electronAPI.onRecordingHudClosed) {
+			return;
+		}
+
+		return window.electronAPI.onRecordingHudClosed(() => {
+			pendingInlineAppendRef.current = null;
+		});
+	}, []);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -3327,17 +3340,27 @@ export default function VideoEditor() {
 			toast.error("No current recording is loaded");
 			return;
 		}
+		if (isExporting) {
+			toast.error("Wait for the current export to finish before appending a recording.");
+			return;
+		}
 
-		pendingInlineAppendRef.current = true;
-		const result = await window.electronAPI.openRecordingHud();
-		if (!result.success) {
-			pendingInlineAppendRef.current = false;
+		pendingInlineAppendRef.current = { baseSourcePath: videoSourcePath };
+		try {
+			const result = await window.electronAPI.openRecordingHud();
+			if (!result.success) {
+				pendingInlineAppendRef.current = null;
+				toast.error("Could not open recording controls");
+				return;
+			}
+		} catch {
+			pendingInlineAppendRef.current = null;
 			toast.error("Could not open recording controls");
 			return;
 		}
 
 		toast.info("Record another segment. It will append when you stop.");
-	}, [videoSourcePath]);
+	}, [isExporting, videoSourcePath]);
 
 	const handleOpenProjectBrowser = useCallback(async () => {
 		if (projectBrowserOpen) {
@@ -5679,7 +5702,7 @@ export default function VideoEditor() {
 						variant="ghost"
 						size="sm"
 						onClick={() => void handleRecordInlineAppend()}
-						disabled={!videoSourcePath || isStitchingRecording}
+						disabled={!videoSourcePath || isStitchingRecording || isExporting}
 						className={APP_HEADER_ICON_BUTTON_CLASS}
 						title={
 							isStitchingRecording

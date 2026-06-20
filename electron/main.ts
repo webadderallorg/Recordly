@@ -944,6 +944,12 @@ app.whenReady().then(async () => {
 			hud.close();
 		}
 
+		for (const window of BrowserWindow.getAllWindows()) {
+			if (!window.isDestroyed()) {
+				window.webContents.send("recording-hud-closed");
+			}
+		}
+
 		// If this was the last window (or we are in a state where we should quit), do it.
 		// We use a small delay to allow window.close() to propagate.
 		setTimeout(() => {
