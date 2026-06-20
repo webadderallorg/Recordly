@@ -1,4 +1,7 @@
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 import { dialog, ipcMain } from "electron";
 import { generateAutoCaptionsFromVideo } from "../captions/generate";
 import {
@@ -8,16 +11,22 @@ import {
 	sendWhisperModelDownloadProgress,
 } from "../captions/whisper";
 import { LEGACY_PROJECT_FILE_EXTENSIONS, PROJECT_FILE_EXTENSION } from "../constants";
+import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { hasProjectFileExtension, loadProjectFromPath } from "../project/manager";
 import { setCurrentProjectPath } from "../state";
 import { approveUserPath, getRecordingsDir } from "../utils";
 
 const VIDEO_FILE_EXTENSIONS = ["webm", "mp4", "mov", "avi", "mkv"];
 const PROJECT_FILE_EXTENSIONS = [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS];
+const execFileAsync = promisify(execFile);
 
 type OpenVideoFilePickerOptions = {
 	includeProjects?: boolean;
 };
+
+function getConcatListLine(filePath: string) {
+	return `file '${filePath.replace(/'/g, "'\\''")}'`;
+}
 
 export function registerCaptionHandlers() {
 	ipcMain.handle("open-video-file-picker", async (_, options?: OpenVideoFilePickerOptions) => {
@@ -78,6 +87,68 @@ export function registerCaptionHandlers() {
 			};
 		}
 	});
+
+	ipcMain.handle(
+		"stitch-video-sources",
+		async (_, options: { basePath?: string; appendPath?: string }) => {
+			try {
+				const basePath =
+					typeof options?.basePath === "string" ? path.resolve(options.basePath) : "";
+				const appendPath =
+					typeof options?.appendPath === "string" ? path.resolve(options.appendPath) : "";
+
+				if (!basePath || !appendPath) {
+					return { success: false, message: "Choose two recordings to stitch." };
+				}
+
+				const recordingsDir = await getRecordingsDir();
+				await fs.mkdir(recordingsDir, { recursive: true });
+
+				const timestamp = Date.now();
+				const outputPath = path.join(recordingsDir, `stitched-recording-${timestamp}.mp4`);
+				const listPath = path.join(recordingsDir, `stitched-recording-${timestamp}.txt`);
+				const listContent = `${getConcatListLine(basePath)}\n${getConcatListLine(appendPath)}\n`;
+
+				await fs.writeFile(listPath, listContent, "utf8");
+
+				try {
+					await execFileAsync(
+						getFfmpegBinaryPath(),
+						[
+							"-y",
+							"-hide_banner",
+							"-f",
+							"concat",
+							"-safe",
+							"0",
+							"-i",
+							listPath,
+							"-c",
+							"copy",
+							outputPath,
+						],
+						{ timeout: 15 * 60 * 1000, maxBuffer: 1024 * 1024 * 16 },
+					);
+				} finally {
+					await fs.rm(listPath, { force: true }).catch(() => undefined);
+				}
+
+				approveUserPath(outputPath);
+				return {
+					success: true,
+					path: outputPath,
+				};
+			} catch (error) {
+				console.error("Failed to stitch video sources:", error);
+				return {
+					success: false,
+					message:
+						"Failed to stitch recordings. Make sure both clips were recorded with compatible settings.",
+					error: String(error),
+				};
+			}
+		},
+	);
 
 	ipcMain.handle("open-audio-file-picker", async () => {
 		try {

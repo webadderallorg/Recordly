@@ -649,6 +649,7 @@ export default function VideoEditor() {
 	const [showCropModal, setShowCropModal] = useState(false);
 	const [previewVersion, setPreviewVersion] = useState(0);
 	const [isPreviewReady, setIsPreviewReady] = useState(false);
+	const [isStitchingRecording, setIsStitchingRecording] = useState(false);
 	const [autoSuggestZoomsTrigger, setAutoSuggestZoomsTrigger] = useState(0);
 	const headerLeftControlsPaddingClass = appPlatform === "darwin" ? "pl-[76px]" : "";
 
@@ -673,6 +674,8 @@ export default function VideoEditor() {
 	const pendingTelemetryRetryTimeoutRef = useRef<number | null>(null);
 	const pendingFreshRecordingAutoSuggestTimeoutRef = useRef<number | null>(null);
 	const pendingFreshRecordingAutoSuggestTelemetryCountRef = useRef(0);
+	const pendingAppendedClipStartMsRef = useRef<number | null>(null);
+	const pendingInlineAppendRef = useRef(false);
 	const cropSnapshotRef = useRef<CropRegion | null>(null);
 	const mp4SupportRequestRef = useRef(0);
 	const smokeExportStartedRef = useRef(false);
@@ -2486,6 +2489,72 @@ export default function VideoEditor() {
 		smokeExportConfig.webcamSize,
 	]);
 
+	const appendRecordingSource = useCallback(
+		async (appendSourcePath: string) => {
+			if (!videoSourcePath) {
+				toast.error("No current recording is loaded");
+				return false;
+			}
+
+			const previousDurationMs = Math.max(0, Math.round(duration * 1000));
+			const isAutoFullTrackClip =
+				clipRegions.length === 1 &&
+				clipRegions[0]?.id === autoFullTrackClipIdRef.current &&
+				clipRegions[0]?.startMs === 0 &&
+				clipRegions[0]?.endMs === autoFullTrackClipEndMsRef.current &&
+				clipRegions[0]?.speed === 1;
+
+			setIsStitchingRecording(true);
+			const stitchToastId = toast.loading("Stitching recordings...");
+			try {
+				videoPlaybackRef.current?.pause();
+				setIsPlaying(false);
+
+				const stitchResult = await window.electronAPI.stitchVideoSources({
+					basePath: videoSourcePath,
+					appendPath: appendSourcePath,
+				});
+
+				if (!stitchResult.success || !stitchResult.path) {
+					toast.error(stitchResult.message || "Failed to stitch recordings", {
+						id: stitchToastId,
+					});
+					return false;
+				}
+
+				const stitchedSourcePath = fromFileUrl(stitchResult.path);
+				const stitchedVideoUrl = await resolveVideoUrl(stitchedSourcePath);
+				if (!isAutoFullTrackClip && previousDurationMs > 0) {
+					pendingAppendedClipStartMsRef.current = previousDurationMs;
+				}
+
+				setCurrentTime(0);
+				setDuration(0);
+				setVideoSourcePath(stitchedSourcePath);
+				setVideoPath(stitchedVideoUrl);
+				setLastSavedSnapshot(null);
+				setWebcam((prev) => ({
+					...prev,
+					enabled: false,
+					sourcePath: null,
+					timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
+				}));
+				applySessionPresentation(null);
+				await window.electronAPI.setCurrentVideoPath(stitchedSourcePath, {
+					preserveProjectPath: Boolean(currentProjectPath),
+				});
+				toast.success("Recording appended", { id: stitchToastId });
+				return true;
+			} catch (error) {
+				toast.error(getErrorMessage(error), { id: stitchToastId });
+				return false;
+			} finally {
+				setIsStitchingRecording(false);
+			}
+		},
+		[applySessionPresentation, clipRegions, currentProjectPath, duration, videoSourcePath],
+	);
+
 	useEffect(() => {
 		if (!window.electronAPI.onRecordingSessionChanged) {
 			return;
@@ -2502,6 +2571,18 @@ export default function VideoEditor() {
 				hasWebcamPath: Boolean(sessionWebcamPath),
 			});
 
+			if (
+				pendingInlineAppendRef.current &&
+				session &&
+				sessionSourcePath &&
+				videoSourcePath &&
+				sessionSourcePath !== videoSourcePath
+			) {
+				pendingInlineAppendRef.current = false;
+				void appendRecordingSource(sessionSourcePath);
+				return;
+			}
+
 			if (!session || sessionSourcePath !== videoSourcePath) {
 				return;
 			}
@@ -2516,7 +2597,7 @@ export default function VideoEditor() {
 			}));
 			setSourceAudioFallbackRefreshKey((key) => key + 1);
 		});
-	}, [videoSourcePath]);
+	}, [appendRecordingSource, videoSourcePath]);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -3241,6 +3322,23 @@ export default function VideoEditor() {
 		resetSourceScopedEditorState,
 	]);
 
+	const handleRecordInlineAppend = useCallback(async () => {
+		if (!videoSourcePath) {
+			toast.error("No current recording is loaded");
+			return;
+		}
+
+		pendingInlineAppendRef.current = true;
+		const result = await window.electronAPI.openRecordingHud();
+		if (!result.success) {
+			pendingInlineAppendRef.current = false;
+			toast.error("Could not open recording controls");
+			return;
+		}
+
+		toast.info("Record another segment. It will append when you stop.");
+	}, [videoSourcePath]);
+
 	const handleOpenProjectBrowser = useCallback(async () => {
 		if (projectBrowserOpen) {
 			setProjectBrowserOpen(false);
@@ -3423,6 +3521,38 @@ export default function VideoEditor() {
 		autoFullTrackClipEndMsRef.current = totalMs;
 		setClipRegions(extendedClipRegions);
 	}, [duration, clipRegions, trimRegions, speedRegions]);
+
+	useEffect(() => {
+		const appendedClipStartMs = pendingAppendedClipStartMsRef.current;
+		const totalMs = Math.round(duration * 1000);
+		if (appendedClipStartMs === null || totalMs <= appendedClipStartMs) {
+			return;
+		}
+
+		pendingAppendedClipStartMsRef.current = null;
+		setClipRegions((prev) => {
+			if (
+				prev.some(
+					(clip) =>
+						clip.startMs >= appendedClipStartMs &&
+						clip.endMs <= totalMs &&
+						clip.endMs > clip.startMs,
+				)
+			) {
+				return prev;
+			}
+
+			return [
+				...prev,
+				{
+					id: `clip-${nextClipIdRef.current++}`,
+					startMs: appendedClipStartMs,
+					endMs: totalMs,
+					speed: 1,
+				},
+			];
+		});
+	}, [duration]);
 
 	// Derive trimRegions from clipRegions so export/playback pipelines stay unchanged
 	useEffect(() => {
@@ -5543,6 +5673,22 @@ export default function VideoEditor() {
 						aria-label={t("editor.project.projects", "Open projects")}
 					>
 						<FolderOpen className="h-4 w-4" />
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						onClick={() => void handleRecordInlineAppend()}
+						disabled={!videoSourcePath || isStitchingRecording}
+						className={APP_HEADER_ICON_BUTTON_CLASS}
+						title={
+							isStitchingRecording
+								? "Stitching recordings..."
+								: "Record and append another segment"
+						}
+						aria-label="Record and append another segment"
+					>
+						<Plus className="h-4 w-4" />
 					</Button>
 					<DiscordLinkButton />
 					<FeedbackDialog />

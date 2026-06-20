@@ -245,6 +245,33 @@ ipcMain.on("set-has-unsaved-changes", (_event, hasChanges: boolean) => {
 	editorHasUnsavedChanges = hasChanges;
 });
 
+function showOrCreateHudOverlayWindow() {
+	if (!app.isReady()) {
+		void app.whenReady().then(() => {
+			showOrCreateHudOverlayWindow();
+		});
+		return null;
+	}
+
+	const existingHudWindow = getHudOverlayWindow();
+	if (existingHudWindow) {
+		restoreWindowSafely(existingHudWindow);
+		return existingHudWindow;
+	}
+
+	const createdHudWindow = createHudOverlayWindow();
+	if (!mainWindow || mainWindow.isDestroyed() || !isEditorWindow(mainWindow)) {
+		mainWindow = createdHudWindow;
+		createdHudWindow.once("closed", () => {
+			if (mainWindow === createdHudWindow) {
+				mainWindow = null;
+			}
+		});
+	}
+
+	return createdHudWindow;
+}
+
 function createWindow() {
 	if (!app.isReady()) {
 		void app.whenReady().then(() => {
@@ -272,13 +299,7 @@ function createWindow() {
 	}
 
 	isCreatingMainWindow = true;
-	const createdHudWindow = createHudOverlayWindow();
-	mainWindow = createdHudWindow;
-	createdHudWindow.once("closed", () => {
-		if (mainWindow === createdHudWindow) {
-			mainWindow = null;
-		}
-	});
+	showOrCreateHudOverlayWindow();
 	isCreatingMainWindow = false;
 }
 
@@ -933,6 +954,12 @@ app.whenReady().then(async () => {
 			}
 		}, 100);
 	});
+
+	ipcMain.handle("open-recording-hud", () => {
+		const hud = showOrCreateHudOverlayWindow();
+		return { success: Boolean(hud && !hud.isDestroyed()) };
+	});
+
 	syncDockIcon();
 	createTray();
 	updateTrayMenu();

@@ -479,6 +479,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	switchToEditor: () => {
 		return ipcRenderer.invoke("switch-to-editor");
 	},
+	openRecordingHud: () => {
+		return ipcRenderer.invoke("open-recording-hud");
+	},
 	openSourceSelector: () => {
 		return ipcRenderer.invoke("open-source-selector");
 	},
@@ -673,6 +676,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	openVideoFilePicker: (options?: { includeProjects?: boolean }) => {
 		return ipcRenderer.invoke("open-video-file-picker", options);
+	},
+	stitchVideoSources: (options: { basePath: string; appendPath: string }) => {
+		return ipcRenderer.invoke("stitch-video-sources", options);
 	},
 	openAudioFilePicker: () => {
 		return ipcRenderer.invoke("open-audio-file-picker");
