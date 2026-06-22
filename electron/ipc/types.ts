@@ -145,6 +145,10 @@ export type HookKeyboardEvent = {
 	keycode?: number;
 	rawcode?: number;
 	type?: "keydown" | "keyup";
+	shiftKey?: boolean;
+	ctrlKey?: boolean;
+	altKey?: boolean;
+	metaKey?: boolean;
 };
 
 export type HookKeyboardEventName = "keydown" | "keyup";

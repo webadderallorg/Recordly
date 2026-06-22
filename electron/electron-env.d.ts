@@ -581,6 +581,11 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		getKeystrokeTelemetry: (videoPath?: string) => Promise<{
+			success: boolean;
+			events: Array<{ timeMs: number; key: string; modifiers: string[] }>;
+			error?: string;
+		}>;
 		getSystemCursorAssets: () => Promise<{
 			success: boolean;
 			cursors: Record<string, SystemCursorAsset>;

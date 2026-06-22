@@ -36,6 +36,10 @@
     {
       "from": "public/wallpapers",
       "to": "assets/wallpapers"
+    },
+    {
+      "from": "public/builtin-extensions",
+      "to": "builtin-extensions"
     }
   ],
   "publish": [
