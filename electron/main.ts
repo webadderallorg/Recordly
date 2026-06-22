@@ -26,6 +26,7 @@ import {
 	registerIpcHandlers,
 } from "./ipc/handlers";
 import { ensureMediaServer } from "./mediaServer";
+import { cleanupPhoneRemoteServer } from "./phoneRemote/server";
 import { ensurePackagedRendererServer } from "./rendererServer";
 import type { UpdateToastPayload } from "./updater";
 import {
@@ -853,6 +854,7 @@ function createSourceSelectorWindowWrapper() {
 app.on("before-quit", () => {
 	killWindowsCaptureProcess();
 	showCursor();
+	cleanupPhoneRemoteServer();
 	cleanupNativeVideoExportSessions();
 	void cleanupAllExportStreams();
 });

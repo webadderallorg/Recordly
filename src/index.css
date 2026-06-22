@@ -121,7 +121,6 @@
 		--slider-glow: 0 0% 100% / 0.5;
 	}
 }
-
 @layer base {
 	* {
 		@apply border-border;
@@ -268,6 +267,3 @@
 		transform: translateX(270%);
 	}
 }
-
-
-

@@ -1,13 +1,22 @@
-import { MicrophoneIcon, MicrophoneSlashIcon, MinusIcon, PauseIcon, PlayIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
+import {
+	MicrophoneIcon,
+	MicrophoneSlashIcon,
+	MinusIcon,
+	PauseIcon,
+	PlayIcon,
+	SquareIcon,
+	XIcon,
+} from "@phosphor-icons/react";
 import { useMemo } from "react";
-import { useScopedT } from "@/contexts/I18nContext";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { useScopedT } from "@/contexts/I18nContext";
 import styles from "./LaunchWindow.module.css";
 
 interface RecordingControlsProps {
 	paused: boolean;
 	microphoneEnabled: boolean;
+	microphoneTitle?: string;
 	elapsed: number;
 	onToggleMicrophone: () => void;
 	onPauseResume: () => void;
@@ -20,6 +29,7 @@ interface RecordingControlsProps {
 export const RecordingControls = ({
 	paused,
 	microphoneEnabled,
+	microphoneTitle,
 	elapsed,
 	onToggleMicrophone,
 	onPauseResume,
@@ -58,13 +68,13 @@ export const RecordingControls = ({
 
 				<Separator orientation="vertical" className="mx-[5px] h-6" />
 
-				<span title={t("recording.micToggleDisabledTip")}>
+				<span title={microphoneTitle ?? t("recording.micToggleDisabledTip")}>
 					<Button
 						variant="ghost"
 						size="icon"
 						iconSize="lg"
 						className={microphoneEnabled ? styles.ibActive : ""}
-						aria-label={t("recording.micToggleDisabledTip")}
+						aria-label={microphoneTitle ?? t("recording.micToggleDisabledTip")}
 						disabled
 						onClick={onToggleMicrophone}
 					>
@@ -132,6 +142,7 @@ export const RecordingControls = ({
 	}, [
 		paused,
 		microphoneEnabled,
+		microphoneTitle,
 		elapsed,
 		onToggleMicrophone,
 		onPauseResume,

@@ -13,7 +13,7 @@ export interface WinMonitorHandle {
 
 /**
  * Retrieves raw HMONITOR handles from the Windows OS using a PowerShell bridge.
- * This is necessary because Electron's display IDs are often internal hashes that 
+ * This is necessary because Electron's display IDs are often internal hashes that
  * cannot be used directly with native Windows APIs like Graphics Capture (WGC).
  */
 export function getMonitorHandles(): WinMonitorHandle[] {
@@ -53,10 +53,14 @@ public class MonitorHelper {
 [MonitorHelper]::GetMonitors()
 `.trim();
 
-	const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", psScript], {
-		encoding: "utf-8",
-		timeout: 5000,
-	});
+	const result = spawnSync(
+		"powershell.exe",
+		["-NoProfile", "-NonInteractive", "-Command", psScript],
+		{
+			encoding: "utf-8",
+			timeout: 5000,
+		},
+	);
 
 	if (result.error || result.status !== 0) {
 		// Silent failure is preferred; the caller will fall back to coordinate-based matching.

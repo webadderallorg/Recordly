@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
+import { type PointerEvent, useCallback, useEffect, useRef, useState } from "react";
 import { canShowFloatingWebcamPreview } from "../floatingWebcamPreview";
 
 const WEBCAM_PREVIEW_DRAG_THRESHOLD = 6;
@@ -6,13 +6,17 @@ const DEFAULT_WEBCAM_PREVIEW_OFFSET = { x: 0, y: 0 };
 
 export function useWebcamPreviewOverlay({
 	webcamEnabled,
+	webcamSource,
 	webcamDeviceId,
+	remotePreviewStream,
 	showWebcamControls,
 	webcamPopoverOpen,
 	hudOverlayMousePassthroughSupported,
 }: {
 	webcamEnabled: boolean;
+	webcamSource: "local" | "phone";
 	webcamDeviceId?: string;
+	remotePreviewStream?: MediaStream | null;
 	showWebcamControls: boolean;
 	webcamPopoverOpen: boolean;
 	hudOverlayMousePassthroughSupported: boolean | null;
@@ -24,6 +28,7 @@ export function useWebcamPreviewOverlay({
 	const recordingWebcamPreviewRef = useRef<HTMLVideoElement | null>(null);
 	const recordingWebcamPreviewContainerRef = useRef<HTMLDivElement | null>(null);
 	const previewStreamRef = useRef<MediaStream | null>(null);
+	const previewStreamOwnedByLaunchRef = useRef(true);
 	const previewDragMoveRafRef = useRef<number | null>(null);
 	const previewDragPendingPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
 	const webcamPreviewDragStartRef = useRef<{
@@ -61,32 +66,29 @@ export function useWebcamPreviewOverlay({
 		}
 	}, [webcamEnabled]);
 
-	const handleWebcamPreviewPointerDown = useCallback(
-		(event: PointerEvent<HTMLDivElement>) => {
-			if (event.button !== 0) {
-				return;
-			}
+	const handleWebcamPreviewPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
+		if (event.button !== 0) {
+			return;
+		}
 
-			const previewRect = event.currentTarget.getBoundingClientRect();
+		const previewRect = event.currentTarget.getBoundingClientRect();
 
-			event.preventDefault();
-			window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
-			webcamPreviewDragStartRef.current = {
-				pointerId: event.pointerId,
-				startX: event.clientX,
-				startY: event.clientY,
-				originX: webcamPreviewOffsetRef.current.x,
-				originY: webcamPreviewOffsetRef.current.y,
-				initialLeft: previewRect.left,
-				initialTop: previewRect.top,
-				previewWidth: previewRect.width,
-				previewHeight: previewRect.height,
-				dragging: false,
-			};
-			event.currentTarget.setPointerCapture(event.pointerId);
-		},
-		[],
-	);
+		event.preventDefault();
+		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+		webcamPreviewDragStartRef.current = {
+			pointerId: event.pointerId,
+			startX: event.clientX,
+			startY: event.clientY,
+			originX: webcamPreviewOffsetRef.current.x,
+			originY: webcamPreviewOffsetRef.current.y,
+			initialLeft: previewRect.left,
+			initialTop: previewRect.top,
+			previewWidth: previewRect.width,
+			previewHeight: previewRect.height,
+			dragging: false,
+		};
+		event.currentTarget.setPointerCapture(event.pointerId);
+	}, []);
 
 	const handleWebcamPreviewPointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
 		const dragState = webcamPreviewDragStartRef.current;
@@ -218,6 +220,18 @@ export function useWebcamPreviewOverlay({
 			}
 
 			try {
+				if (webcamSource === "phone") {
+					if (!remotePreviewStream) {
+						return;
+					}
+
+					previewStreamOwnedByLaunchRef.current = false;
+					previewStreamRef.current = remotePreviewStream;
+					attachPreviewStreamToNode(webcamPreviewRef.current);
+					attachPreviewStreamToNode(recordingWebcamPreviewRef.current);
+					return;
+				}
+
 				const previewStream = await navigator.mediaDevices.getUserMedia({
 					video: webcamDeviceId
 						? {
@@ -225,12 +239,12 @@ export function useWebcamPreviewOverlay({
 								width: { ideal: 320 },
 								height: { ideal: 320 },
 								frameRate: { ideal: 24, max: 30 },
-						  }
+							}
 						: {
 								width: { ideal: 320 },
 								height: { ideal: 320 },
 								frameRate: { ideal: 24, max: 30 },
-						  },
+							},
 					audio: false,
 				});
 
@@ -240,6 +254,7 @@ export function useWebcamPreviewOverlay({
 				}
 
 				previewStreamRef.current = previewStream;
+				previewStreamOwnedByLaunchRef.current = true;
 				attachPreviewStreamToNode(webcamPreviewRef.current);
 				attachPreviewStreamToNode(recordingWebcamPreviewRef.current);
 			} catch (error) {
@@ -261,12 +276,21 @@ export function useWebcamPreviewOverlay({
 					videoElement.pause();
 					videoElement.srcObject = null;
 				});
-			previewStream?.getTracks().forEach((track) => track.stop());
+			if (previewStreamOwnedByLaunchRef.current) {
+				previewStream?.getTracks().forEach((track) => track.stop());
+			}
 			if (previewStreamRef.current === previewStream) {
 				previewStreamRef.current = null;
 			}
+			previewStreamOwnedByLaunchRef.current = true;
 		};
-	}, [attachPreviewStreamToNode, shouldStreamWebcamPreview, webcamDeviceId]);
+	}, [
+		attachPreviewStreamToNode,
+		remotePreviewStream,
+		shouldStreamWebcamPreview,
+		webcamDeviceId,
+		webcamSource,
+	]);
 
 	return {
 		showFloatingWebcamPreview,

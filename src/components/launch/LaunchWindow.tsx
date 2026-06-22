@@ -12,13 +12,16 @@ import {
 	XIcon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { RxDragHandleDots2 } from "react-icons/rx";
+import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
+import { usePhoneRemoteMedia } from "../../hooks/usePhoneRemoteMedia";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { useVideoDevices } from "../../hooks/useVideoDevices";
+import { createQrSvgPath } from "../../lib/simpleQr";
 import { Button } from "../ui/button";
 import { HudInteractionContext } from "./contexts/HudInteractionContext";
 import { canToggleFloatingWebcamPreview } from "./floatingWebcamPreview";
@@ -55,6 +58,7 @@ export function LaunchWindow() {
 function LaunchWindowContent() {
 	const t = useScopedT("launch");
 	const { openId, requestClose, requestOpen } = useLaunchPopoverCoordinator();
+	const phoneRemote = usePhoneRemoteMedia();
 
 	const {
 		recording,
@@ -73,16 +77,40 @@ function LaunchWindowContent() {
 		setSystemAudioEnabled,
 		webcamEnabled,
 		setWebcamEnabled,
+		webcamSource,
+		setWebcamSource,
 		webcamDeviceId,
 		setWebcamDeviceId,
+		phoneMicrophoneEnabled,
+		setPhoneMicrophoneEnabled,
 		countdownDelay,
 		setCountdownDelay,
 		preparePermissions,
-	} = useScreenRecorder();
+	} = useScreenRecorder({
+		remoteWebcamStream: phoneRemote.videoActive ? phoneRemote.videoCaptureStream : null,
+		remoteMicrophoneStream: phoneRemote.micActive ? phoneRemote.audioStream : null,
+	});
 
 	const { elapsed, formatTime } = useRecordingTimer(recording, paused);
 	const hudContentRef = useRef<HTMLDivElement>(null);
 	const hudBarRef = useRef<HTMLDivElement>(null);
+	const micPopoverOpen = openId === "mic";
+	const webcamPopoverOpen = openId === "webcam";
+	const isPhoneWebcamSelected = webcamEnabled && webcamSource === "phone";
+	const isPhoneMicAvailable = phoneRemote.micActive && phoneMicrophoneEnabled;
+	const phoneJoinUrl = phoneRemote.session?.joinUrl ?? null;
+	const phoneJoinQr = useMemo(
+		() => (phoneJoinUrl ? createQrSvgPath(phoneJoinUrl) : null),
+		[phoneJoinUrl],
+	);
+	const narratorMicrophoneActive = microphoneEnabled || isPhoneMicAvailable;
+	const narratorMicrophoneTitle = isPhoneMicAvailable
+		? "Phone microphone active"
+		: phoneMicrophoneEnabled
+			? "Phone microphone waiting"
+			: microphoneEnabled
+				? t("recording.disableMicrophone")
+				: t("recording.enableMicrophone");
 
 	const {
 		selectedSource,
@@ -97,14 +125,14 @@ function LaunchWindowContent() {
 
 	const showWebcamControls = webcamEnabled && !recording;
 	const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(
-		microphoneEnabled || openId === "mic",
+		microphoneEnabled || micPopoverOpen,
 		microphoneDeviceId,
 	);
 	const {
 		devices: videoDevices,
 		selectedDeviceId: selectedVideoDeviceId,
 		setSelectedDeviceId: setSelectedVideoDeviceId,
-	} = useVideoDevices(webcamEnabled || openId === "webcam");
+	} = useVideoDevices(webcamSource === "local" && (webcamEnabled || webcamPopoverOpen));
 
 	const {
 		hudOverlayMousePassthroughSupported,
@@ -146,9 +174,11 @@ function LaunchWindowContent() {
 		setRecordingWebcamPreviewNode,
 	} = useWebcamPreviewOverlay({
 		webcamEnabled,
+		webcamSource,
 		webcamDeviceId,
+		remotePreviewStream: phoneRemote.previewStream,
 		showWebcamControls,
-		webcamPopoverOpen: openId === "webcam",
+		webcamPopoverOpen,
 		hudOverlayMousePassthroughSupported,
 	});
 
@@ -196,12 +226,118 @@ function LaunchWindowContent() {
 		ease: [0.22, 1, 0.36, 1] as const,
 	};
 
+	const phoneRemoteStatusLabel = (() => {
+		switch (phoneRemote.status) {
+			case "idle":
+				return "Not connected";
+			case "waiting":
+				return "Waiting for phone";
+			case "phone-connected":
+				return "Phone connected";
+			case "preview-live":
+				return "Camera live";
+			case "mic-active":
+				return "Mic active";
+			case "reconnecting":
+				return "Reconnecting";
+			case "disconnected":
+				return "Disconnected";
+			case "error":
+				return "Needs attention";
+		}
+	})();
+
+	const showRecordingMicrophoneStatus = () => {
+		if (isPhoneMicAvailable) {
+			toast.info("Phone microphone is recording.");
+			return;
+		}
+
+		if (phoneMicrophoneEnabled) {
+			toast.info(
+				"Phone microphone is waiting or disconnected. Screen recording is continuing.",
+			);
+			return;
+		}
+
+		if (microphoneEnabled) {
+			toast.info("Laptop microphone is recording.");
+			return;
+		}
+
+		toast.info("No narrator microphone is active.");
+	};
+
+	const togglePhoneMicrophone = () => {
+		if (!phoneMicrophoneEnabled && !phoneRemote.session) {
+			void selectPhoneAsCamera();
+			return;
+		}
+
+		const nextEnabled = !phoneMicrophoneEnabled;
+		setPhoneMicrophoneEnabled(nextEnabled);
+		if (nextEnabled) {
+			setMicrophoneEnabled(false);
+		}
+	};
+
+	const selectPhoneAsCamera = async () => {
+		if (recording) {
+			return;
+		}
+
+		setWebcamSource("phone");
+		setWebcamEnabled(true);
+		setPhoneMicrophoneEnabled(true);
+		setMicrophoneEnabled(false);
+		if (!phoneRemote.session) {
+			await phoneRemote.startSession();
+		}
+	};
+
+	const selectLaptopWebcam = () => {
+		if (recording) {
+			return;
+		}
+
+		setWebcamSource("local");
+		setPhoneMicrophoneEnabled(false);
+		phoneRemote.stopSession();
+	};
+
+	const handleRecordClick = () => {
+		if (!hasSelectedSource && platform !== "linux") {
+			beginInteractiveHudAction();
+			requestOpen("sources");
+			return;
+		}
+
+		if (
+			webcamSource === "phone" &&
+			webcamEnabled &&
+			!phoneRemote.videoActive &&
+			!phoneRemote.micActive
+		) {
+			const shouldContinue = window.confirm(
+				"Phone is not connected yet. Start recording the laptop screen without phone camera or phone mic?",
+			);
+			if (!shouldContinue) {
+				beginInteractiveHudAction();
+				requestOpen("webcam");
+				return;
+			}
+		}
+
+		toggleRecording();
+	};
+
 	const recordingControls = (
 		<RecordingControls
 			paused={paused}
-			microphoneEnabled={microphoneEnabled}
+			microphoneEnabled={narratorMicrophoneActive}
 			elapsed={elapsed}
-			onToggleMicrophone={() => setMicrophoneEnabled(!microphoneEnabled)}
+			microphoneTitle={narratorMicrophoneTitle}
+			onToggleMicrophone={showRecordingMicrophoneStatus}
 			onPauseResume={paused ? resumeRecording : pauseRecording}
 			onStopRecording={toggleRecording}
 			onHideHud={() => window.electronAPI?.hudOverlayHide?.()}
@@ -248,6 +384,10 @@ function LaunchWindowContent() {
 				systemAudioEnabled={systemAudioEnabled}
 				onToggleSystemAudio={() => setSystemAudioEnabled(!systemAudioEnabled)}
 				microphoneEnabled={microphoneEnabled}
+				phoneMicrophoneEnabled={phoneMicrophoneEnabled}
+				isPhoneMicAvailable={isPhoneMicAvailable}
+				phoneRemoteStatusLabel={phoneRemoteStatusLabel}
+				onTogglePhoneMicrophone={togglePhoneMicrophone}
 				onDisableMicrophone={() => setMicrophoneEnabled(false)}
 				devices={devices}
 				microphoneDeviceId={microphoneDeviceId}
@@ -262,14 +402,10 @@ function LaunchWindowContent() {
 						variant="ghost"
 						size="icon"
 						iconSize="lg"
-						title={
-							microphoneEnabled
-								? t("recording.disableMicrophone")
-								: t("recording.enableMicrophone")
-						}
-						className={microphoneEnabled ? styles.ibActive : ""}
+						title={narratorMicrophoneTitle}
+						className={narratorMicrophoneActive ? styles.ibActive : ""}
 					>
-						{microphoneEnabled ? (
+						{narratorMicrophoneActive ? (
 							<MicrophoneIcon size={18} />
 						) : (
 							<MicrophoneSlashIcon size={18} />
@@ -281,7 +417,14 @@ function LaunchWindowContent() {
 			<WebcamPopover
 				disabled={recording}
 				webcamEnabled={webcamEnabled}
-				onDisableWebcam={() => setWebcamEnabled(false)}
+				webcamSource={webcamSource}
+				onDisableWebcam={() => {
+					setWebcamEnabled(false);
+					if (webcamSource === "phone") {
+						setPhoneMicrophoneEnabled(false);
+						phoneRemote.stopSession();
+					}
+				}}
 				canToggleFloatingPreview={canToggleFloatingWebcamPreview(
 					hudOverlayMousePassthroughSupported,
 				)}
@@ -289,10 +432,22 @@ function LaunchWindowContent() {
 				onToggleFloatingPreview={() => setShowFloatingWebcamPreview((current) => !current)}
 				showWebcamControls={showWebcamControls}
 				setWebcamPreviewNode={setWebcamPreviewNode}
+				isPhoneWebcamSelected={isPhoneWebcamSelected}
+				phoneRemoteStatusLabel={phoneRemoteStatusLabel}
+				phoneRemoteSession={phoneRemote.session}
+				phoneJoinQr={phoneJoinQr}
+				phoneRemoteMicActive={phoneRemote.micActive}
+				phoneRemoteSecureJoinReady={phoneRemote.secureJoinReady}
+				phoneRemoteError={phoneRemote.error}
+				phoneRemoteStatusDetail={phoneRemote.statusDetail}
+				onSelectPhoneAsCamera={() => void selectPhoneAsCamera()}
+				onSelectLaptopWebcam={selectLaptopWebcam}
+				onCopyPhoneJoinLink={() => void phoneRemote.copyJoinLink()}
 				videoDevices={videoDevices}
 				webcamDeviceId={webcamDeviceId}
 				selectedVideoDeviceId={selectedVideoDeviceId}
 				onSelectVideoDevice={(deviceId) => {
+					selectLaptopWebcam();
 					setWebcamEnabled(true);
 					setSelectedVideoDeviceId(deviceId);
 					setWebcamDeviceId(deviceId);
@@ -337,14 +492,7 @@ function LaunchWindowContent() {
 			<button
 				type="button"
 				className={`${styles.recBtn} ${styles.electronNoDrag}`}
-				onClick={
-					hasSelectedSource || platform === "linux"
-						? toggleRecording
-						: () => {
-								beginInteractiveHudAction();
-								requestOpen("sources");
-							}
-				}
+				onClick={handleRecordClick}
 				disabled={countdownActive}
 				title={t("recording.record")}
 			>
@@ -530,7 +678,10 @@ function LaunchWindowContent() {
 									className={styles.recordingWebcamPreviewVideo}
 									muted
 									playsInline
-									style={{ transform: "scaleX(-1)" }}
+									style={{
+										transform:
+											webcamSource === "local" ? "scaleX(-1)" : undefined,
+									}}
 								/>
 							</div>
 						)}
