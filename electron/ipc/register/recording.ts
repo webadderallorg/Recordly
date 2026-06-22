@@ -29,6 +29,9 @@ import {
 	startCursorSampling,
 	stopCursorCapture,
 	writeCursorTelemetry,
+	loadKeystrokeTelemetry,
+	saveKeystrokeTelemetry,
+	resetKeystrokeTelemetry,
 } from "../cursor/telemetry";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import {
@@ -997,6 +1000,12 @@ export function registerRecordingHandlers(
 				} catch (error) {
 					console.warn("Failed to persist cursor telemetry during native stop:", error);
 				}
+				try {
+					await saveKeystrokeTelemetry(finalVideoPath);
+				} catch (error) {
+					console.warn("Failed to persist keystroke telemetry during native stop:", error);
+				}
+				resetKeystrokeTelemetry();
 
 				return { success: true, path: finalVideoPath };
 			} catch (error) {
@@ -1890,6 +1899,20 @@ export function registerRecordingHandlers(
 				error: String(error),
 				samples: [],
 			};
+		}
+	});
+
+	ipcMain.handle("get-keystroke-telemetry", async (_, videoPath?: string) => {
+		const targetVideoPath = normalizeVideoSourcePath(videoPath ?? currentVideoPath);
+		if (!targetVideoPath) {
+			return { success: true, events: [] };
+		}
+		try {
+			const events = await loadKeystrokeTelemetry(targetVideoPath);
+			return { success: true, events };
+		} catch (error) {
+			console.error("Failed to load keystroke telemetry:", error);
+			return { success: false, events: [], error: String(error) };
 		}
 	});
 

@@ -3338,6 +3338,19 @@ export default function VideoEditor() {
 		};
 	}, [videoPath, videoSourcePath]);
 
+	useEffect(() => {
+		if (!videoSourcePath) {
+			extensionHost.setKeystrokeEvents([]);
+			return;
+		}
+		window.electronAPI
+			.getKeystrokeTelemetry(videoSourcePath)
+			.then((result: { success: boolean; events: Array<{ timeMs: number; key: string; modifiers: string[] }> }) => {
+				extensionHost.setKeystrokeEvents(result.success ? result.events : []);
+			})
+			.catch(() => extensionHost.setKeystrokeEvents([]));
+	}, [videoSourcePath]);
+
 	const normalizedCursorTelemetry = useMemo(() => {
 		if (cursorTelemetry.length === 0) {
 			return [] as CursorTelemetryPoint[];

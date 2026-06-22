@@ -141,10 +141,26 @@ export type HookMouseEvent = {
 
 export type HookEventListener = (event: HookMouseEvent) => void;
 
+export type HookKeyboardEvent = {
+	keycode?: number;
+	rawcode?: number;
+	type?: "keydown" | "keyup";
+};
+
+export type HookKeyboardEventName = "keydown" | "keyup";
+
+export type HookKeyboardListener = (event: HookKeyboardEvent) => void;
+
+export type KeystrokeEvent = {
+	timeMs: number;
+	key: string;
+	modifiers: string[];
+};
+
 export type UiohookLike = {
-	on: (eventName: HookEventName, listener: HookEventListener) => void;
-	off?: (eventName: HookEventName, listener: HookEventListener) => void;
-	removeListener?: (eventName: HookEventName, listener: HookEventListener) => void;
+	on: (eventName: HookEventName | HookKeyboardEventName, listener: HookEventListener | HookKeyboardListener) => void;
+	off?: (eventName: HookEventName | HookKeyboardEventName, listener: HookEventListener | HookKeyboardListener) => void;
+	removeListener?: (eventName: HookEventName | HookKeyboardEventName, listener: HookEventListener | HookKeyboardListener) => void;
 	start: () => void;
 	stop?: () => void;
 };

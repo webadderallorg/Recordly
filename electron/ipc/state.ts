@@ -3,6 +3,7 @@ import type {
 	CursorInteractionType,
 	CursorTelemetryPoint,
 	CursorVisualType,
+	KeystrokeEvent,
 	NativeCaptureDiagnostics,
 	RecordingSessionData,
 	SelectedSource,
@@ -290,4 +291,11 @@ export function setCachedNativeVideoEncoder(
 
 export function setNativeHelperMigrationPromise(v: Promise<void> | null) {
 	nativeHelperMigrationPromise = v;
+}
+
+// ── Keystroke telemetry ───────────────────────────────────────────────────────
+export let activeKeystrokeEvents: KeystrokeEvent[] = [];
+
+export function setActiveKeystrokeEvents(v: KeystrokeEvent[]) {
+	activeKeystrokeEvents = v;
 }

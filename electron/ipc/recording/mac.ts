@@ -3,6 +3,8 @@ import fs from "node:fs/promises";
 import { BrowserWindow } from "electron";
 import {
 	persistPendingCursorTelemetry,
+	resetKeystrokeTelemetry,
+	saveKeystrokeTelemetry,
 	snapshotCursorTelemetryForPersistence,
 } from "../cursor/telemetry";
 import {
@@ -227,6 +229,12 @@ export async function finalizeStoredVideo(videoPath: string) {
 	} catch (error) {
 		console.warn("[mac-stop] Failed to persist cursor telemetry:", error);
 	}
+	try {
+		await saveKeystrokeTelemetry(videoPath);
+	} catch (error) {
+		console.warn("[mac-stop] Failed to persist keystroke telemetry:", error);
+	}
+	resetKeystrokeTelemetry();
 	if (isAutoRecordingPath(videoPath)) {
 		await pruneAutoRecordings([videoPath]);
 	}
