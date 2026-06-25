@@ -301,9 +301,13 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 	}
 
 	if (!isHudOverlayMousePassthroughSupported()) {
-		if (process.platform !== "linux") {
-			setHudOverlayFallbackExpanded(!ignore);
-		}
+		// Expand the fallback overlay while the HUD is interactive so that
+		// popovers/menus have room to render. Without this the window stays at
+		// the compact 860x160 fallback and upward popovers are clipped by the
+		// window edge (e.g. only the last items visible). This previously
+		// skipped Linux, where passthrough is unsupported, so the bug showed up
+		// exactly there.
+		setHudOverlayFallbackExpanded(!ignore);
 		hudOverlayWindow.setIgnoreMouseEvents(false);
 		return;
 	}
