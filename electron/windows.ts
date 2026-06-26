@@ -670,7 +670,15 @@ export function setHudOverlayRecordingActive(recording: boolean): void {
 	hudOverlayRecordingActive = Boolean(recording);
 	hudOverlayFallbackExpanded = false;
 	applyHudOverlayBounds();
-	setHudOverlayMousePassthrough(!hudOverlayRecordingActive);
+	// On Linux the recording HUD keeps the full work area and stays click-through, so it
+	// must start in pass-through (otherwise the full-screen window would capture every
+	// click and block the content being recorded). The renderer's hover logic re-asserts
+	// capture over the controls. Other platforms shrink to a compact, always-capturing bar.
+	const startIgnoringMouse =
+		process.platform === "linux" && isHudOverlayMousePassthroughSupported()
+			? true
+			: !hudOverlayRecordingActive;
+	setHudOverlayMousePassthrough(startIgnoringMouse);
 }
 
 export function createUpdateToastWindow(): BrowserWindow {
@@ -899,6 +907,12 @@ export function createEditorWindow(): BrowserWindow {
 	win.once("ready-to-show", () => {
 		console.log(`[PERF:MAIN] Editor Window: ready-to-show in ${Date.now() - perfStart}ms`);
 		win.show();
+		// On Linux/Wayland the compositor ignores the requested x/y, so the editor can
+		// land partly under reserved areas (panels/bars). Maximizing lets the compositor
+		// fit it to the available work area instead.
+		if (process.platform === "linux") {
+			win.maximize();
+		}
 	});
 
 	win.webContents.on("did-finish-load", () => {
@@ -908,6 +922,9 @@ export function createEditorWindow(): BrowserWindow {
 		if (!win.isDestroyed() && !win.isVisible()) {
 			console.log("[editor-window] forcing show after did-finish-load");
 			win.show();
+			if (process.platform === "linux") {
+				win.maximize();
+			}
 		}
 	});
 
