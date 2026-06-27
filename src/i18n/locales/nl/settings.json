@@ -45,6 +45,11 @@
 		},
 		"backgroundBlur": "Achtergrondvervaging",
 		"zoomMotionBlur": "Zoom-bewegingsonscherpte",
+		"temporalZoomMotionBlur": "Temporele zoom-bewegingsonscherpte",
+		"temporalZoomMotionBlurDescription": "Bepaalt het sluiterveld en de frame-steekproeven die worden gebruikt door de nieuwe zoom-vervagingsdoorgang.",
+		"zoomMotionBlurSamples": "Vervagingsmonsters",
+		"zoomMotionBlurShutter": "Sluiter",
+		"auto": "Auto",
 		"connectZooms": "Zooms verbinden",
 		"connectZoomsDescription": "Maak opeenvolgende zoomgebieden vloeiend tot een doorlopende camerabeweging.",
 		"autoApplyFreshRecordingZooms": "Zooms voor nieuwe opnames automatisch toepassen",
@@ -57,6 +62,20 @@
 		"zoomOutDescription": "Bepaal hoe de camera een zoomgebied verlaat.",
 		"connectedZoomTitle": "Tussen zooms",
 		"connectedZoomDescription": "Stel de overgang af tussen opeenvolgende zoomgebieden wanneer verbinding is ingeschakeld.",
+		"motionPresetsTitle": "Bewegingsvoorinstellingen",
+		"motionPresetsZoomHint": "Zoom-bewegingsvoorinstellingen zijn beschikbaar in Instellingen.",
+		"animationPresets": "Animatievoorinstellingen",
+		"cursorMotionPresets": "Cursorbeweging-voorinstellingen",
+		"motionPresets": {
+			"focused": {
+				"label": "Gericht",
+				"description": "Snellere beweging voor demo's, walkthroughs en alledaagse opnames."
+			},
+			"smooth": {
+				"label": "Vloeiend",
+				"description": "Rustigere beweging voor presentaties, keynote-stijl video's en verzorgde onthullingen."
+			}
+		},
 		"zoomInDuration": "Inzoomduur",
 		"zoomInOverlap": "Inzoomoverlap",
 		"zoomOutDuration": "Uitzoomduur",
@@ -74,7 +93,36 @@
 		},
 		"cursorSize": "Cursorgrootte",
 		"cursorSmoothing": "Cursorverzachting",
+		"cursorSpringStiffness": "Cursorveerstarheid",
+		"cursorSpringDamping": "Cursorveerdempering",
+		"cursorSpringMass": "Cursorveermassa",
 		"off": "Uit",
+		"cursorClickEffects": {
+			"title": "Klikeffecten",
+			"advanced": "Geavanceerd",
+			"advancedShow": "Geavanceerde klikeffectinstellingen tonen",
+			"advancedHide": "Geavanceerde klikeffectinstellingen verbergen",
+			"color": "Effectkleur",
+			"size": "Effectgrootte",
+			"opacity": "Effectdekking",
+			"duration": "Effectduur",
+			"none": {
+				"label": "Geen",
+				"description": "Geen klikgrafiek. Alleen de cursorbeweiging verandert bij klikken."
+			},
+			"ripple": {
+				"label": "Ripple",
+				"description": "Uitdijende ringen stralen van elk klik zodat tikken duidelijk zichtbaar zijn."
+			},
+			"spotlight": {
+				"label": "Spotlight",
+				"description": "Een zachte gloed flitst rond de aanwijzer om het aangeklikte gebied te accentueren."
+			},
+			"echo": {
+				"label": "Echo",
+				"description": "Een paar zachte ringen die naar buiten uitdijen met een schonere puls."
+			}
+		},
 		"cursorMotionBlur": "Cursor-bewegingsonscherpte",
 		"cursorClickBounce": "Cursorklikstuit",
 		"cursorClickBounceDuration": "Stuitsnelheid",
@@ -127,8 +175,6 @@
 		"generateFull": "Ondertiteling genereren",
 		"regenerateFull": "Ondertiteling opnieuw genereren",
 		"clearFull": "Ondertiteling wissen",
-		"editCurrent": "Huidige ondertiteling bewerken",
-		"editSaved": "Ondertiteling bijgewerkt",
 		"fontSettings": "Lettertype-instellingen",
 		"defaultFont": "Standaard",
 		"fontFamily": "Lettertype",

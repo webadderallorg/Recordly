@@ -45,6 +45,11 @@
 		},
 		"backgroundBlur": "背景模糊",
 		"zoomMotionBlur": "縮放動態模糊",
+		"temporalZoomMotionBlur": "時間軸縮放模糊",
+		"temporalZoomMotionBlurDescription": "控制新縮放模糊渲染通道使用的快門窗口與幀樣本數。",
+		"zoomMotionBlurSamples": "模糊樣本",
+		"zoomMotionBlurShutter": "快門",
+		"auto": "自動",
 		"connectZooms": "連接縮放",
 		"connectZoomsDescription": "將連續的縮放區域平滑串接成一段連續的鏡頭移動。",
 		"autoApplyFreshRecordingZooms": "自動套用新錄影的縮放",
@@ -57,6 +62,20 @@
 		"zoomOutDescription": "控制相機如何離開縮放區域。",
 		"connectedZoomTitle": "縮放之間",
 		"connectedZoomDescription": "啟用連接後，調整連續縮放區域之間的滑行效果。",
+		"motionPresetsTitle": "動作預設",
+		"motionPresetsZoomHint": "縮放動作預設可在設定中使用。",
+		"animationPresets": "動畫預設",
+		"cursorMotionPresets": "游標動作預設",
+		"motionPresets": {
+			"focused": {
+				"label": "專注",
+				"description": "較快的動效，適合示範、教學和日常錄影。"
+			},
+			"smooth": {
+				"label": "流暢",
+				"description": "較柔和的動效，適合簡報、Keynote 風格影片和精緻的片頭揭示。"
+			}
+		},
 		"zoomInDuration": "拉近時間",
 		"zoomInOverlap": "拉近重疊",
 		"zoomOutDuration": "拉遠時間",
@@ -74,7 +93,36 @@
 		},
 		"cursorSize": "游標大小",
 		"cursorSmoothing": "游標平滑",
+		"cursorSpringStiffness": "游標彈簧剛度",
+		"cursorSpringDamping": "游標彈簧阻尼",
+		"cursorSpringMass": "游標彈簧質量",
 		"off": "關閉",
+		"cursorClickEffects": {
+			"title": "點擊效果",
+			"advanced": "進階",
+			"advancedShow": "顯示進階點擊效果控制項目",
+			"advancedHide": "隱藏進階點擊效果控制項目",
+			"color": "效果顏色",
+			"size": "效果大小",
+			"opacity": "效果不透明度",
+			"duration": "效果持續時間",
+			"none": {
+				"label": "關閉",
+				"description": "無點擊圖形。點擊時僅游標動作會改變。"
+			},
+			"ripple": {
+				"label": "漣漪",
+				"description": "每次點擊從中心向外擴散的圓環，讓點擊在動畫中清晰可見。"
+			},
+			"spotlight": {
+				"label": "聚光燈",
+				"description": "游標周圍閃爍柔和光暈，突顯點擊區域。"
+			},
+			"echo": {
+				"label": "回聲",
+				"description": "兩個柔和圓環以更乾淨的脈衝向外擴散。"
+			}
+		},
 		"cursorMotionBlur": "游標動態模糊",
 		"cursorClickBounce": "點擊彈跳",
 		"cursorClickBounceDuration": "彈跳速度",
@@ -127,8 +175,6 @@
 		"generateFull": "產生字幕",
 		"regenerateFull": "重新產生字幕",
 		"clearFull": "清除字幕",
-		"editCurrent": "編輯目前字幕",
-		"editSaved": "字幕已更新",
 		"fontSettings": "字型設定",
 		"defaultFont": "預設",
 		"fontFamily": "字型",

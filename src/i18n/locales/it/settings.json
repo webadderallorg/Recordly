@@ -97,6 +97,32 @@
 		"cursorSpringDamping": "Smorzamento molla cursore",
 		"cursorSpringMass": "Massa molla cursore",
 		"off": "Off",
+		"cursorClickEffects": {
+			"title": "Effetti clic",
+			"advanced": "Avanzato",
+			"advancedShow": "Mostra i controlli avanzati degli effetti clic",
+			"advancedHide": "Nascondi i controlli avanzati degli effetti clic",
+			"color": "Colore effetto",
+			"size": "Dimensione effetto",
+			"opacity": "Opacità effetto",
+			"duration": "Durata effetto",
+			"none": {
+				"label": "Nessuno",
+				"description": "Nessun grafico al clic. Solo il movimento del cursore cambia quando si clicca."
+			},
+			"ripple": {
+				"label": "Ripple",
+				"description": "Anelli che si espandono da ogni clic per rendere i tocchi chiaramente visibili."
+			},
+			"spotlight": {
+				"label": "Spotlight",
+				"description": "Un alone morbido che lampeggia attorno al cursore per enfatizzare l'area cliccata."
+			},
+			"echo": {
+				"label": "Echo",
+				"description": "Una coppia di anelli morbidi che si espandono verso l'esterno con un impulso più netto."
+			}
+		},
 		"cursorMotionBlur": "Motion blur del cursore",
 		"cursorClickBounce": "Rimbalzo al clic del cursore",
 		"cursorClickBounceDuration": "Velocità rimbalzo",
