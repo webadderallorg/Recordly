@@ -832,10 +832,14 @@ interface SettingsPanelProps {
 	whisperModelPath?: string | null;
 	whisperModelDownloadStatus?: "idle" | "downloading" | "downloaded" | "error";
 	whisperModelDownloadProgress?: number;
+	captionGenerationError?: string | null;
+	captionFfmpegPath?: string | null;
+	captionFfmpegError?: string | null;
 	isGeneratingCaptions?: boolean;
 	onAutoCaptionSettingsChange?: (settings: AutoCaptionSettings) => void;
-	onPickWhisperExecutable?: () => void;
+	onPickWhisperExecutable?: (selectionMode?: "file" | "directory") => void;
 	onPickWhisperModel?: () => void;
+	onShowCaptionPathInFolder?: (path?: string | null) => void;
 	onGenerateAutoCaptions?: () => void;
 	onClearAutoCaptions?: () => void;
 	onDownloadWhisperSmallModel?: () => void;
@@ -850,6 +854,15 @@ interface SettingsPanelProps {
 	onCaptionDelete?: (id: string) => void;
 	nativeCaptureUnavailableSession?: boolean;
 	onOpenNativeCaptureUnavailableModal?: () => void;
+}
+
+function getPathDisplayName(filePath?: string | null) {
+	const trimmedPath = filePath?.trim();
+	if (!trimmedPath) {
+		return "";
+	}
+
+	return trimmedPath.split(/[\\/]/).filter(Boolean).pop() ?? trimmedPath;
 }
 
 const ZOOM_DEPTH_OPTIONS: Array<{ depth: ZoomDepth; label: string }> = [
@@ -1272,12 +1285,18 @@ export function SettingsPanel({
 	onAnnotationDelete,
 	autoCaptions = [],
 	autoCaptionSettings = DEFAULT_AUTO_CAPTION_SETTINGS,
+	whisperExecutablePath,
 	whisperModelPath,
 	whisperModelDownloadStatus = "idle",
 	whisperModelDownloadProgress = 0,
+	captionGenerationError = null,
+	captionFfmpegPath,
+	captionFfmpegError,
 	isGeneratingCaptions = false,
 	onAutoCaptionSettingsChange,
+	onPickWhisperExecutable,
 	onPickWhisperModel,
+	onShowCaptionPathInFolder,
 	onGenerateAutoCaptions,
 	onClearAutoCaptions,
 	onDownloadWhisperSmallModel,
@@ -1324,6 +1343,136 @@ export function SettingsPanel({
 		[extensionWallpapers],
 	);
 	const captionCueCount = autoCaptions.length;
+	const isWhisperModelReady = Boolean(whisperModelPath);
+	const isWhisperEngineReady = Boolean(whisperExecutablePath);
+	const isCaptionFfmpegChecking = !captionFfmpegPath && !captionFfmpegError;
+	const isCaptionFfmpegReady = Boolean(captionFfmpegPath) && !captionFfmpegError;
+	const isCaptionSetupReady =
+		isWhisperModelReady && isWhisperEngineReady && isCaptionFfmpegReady;
+	const whisperModelDisplayName = whisperModelPath
+		? getPathDisplayName(whisperModelPath)
+		: tSettings("captions.noModelSelected", "No model selected");
+	const whisperEngineDisplayName = whisperExecutablePath
+		? getPathDisplayName(whisperExecutablePath)
+		: tSettings("captions.noEngineSelected", "No engine selected");
+	const whisperModelHelpText = whisperModelPath
+		? whisperModelPath
+		: tSettings(
+				"captions.modelHelp",
+				"Download the small model or choose a .bin model file.",
+			);
+	const whisperEngineHelpText = whisperExecutablePath
+		? whisperExecutablePath
+		: tSettings(
+				"captions.engineHelp",
+				"Choose the folder that contains whisper-cli, such as C:\\Tools\\whisper on Windows or /opt/homebrew/bin on macOS.",
+			);
+	const captionFfmpegDisplayName = captionFfmpegPath
+		? getPathDisplayName(captionFfmpegPath)
+		: isCaptionFfmpegChecking
+			? tSettings("captions.ffmpegChecking", "Checking FFmpeg")
+			: tSettings("captions.ffmpegMissing", "FFmpeg not found");
+	const captionFfmpegHelpText = captionFfmpegPath
+		? captionFfmpegPath
+		: isCaptionFfmpegChecking
+			? tSettings(
+					"captions.ffmpegCheckingHelp",
+					"Looking for Recordly's bundled FFmpeg or an ffmpeg command on PATH.",
+				)
+			: captionFfmpegError ||
+				tSettings(
+					"captions.ffmpegHelp",
+					"Recordly needs FFmpeg to extract audio before Whisper can transcribe it.",
+				);
+	const captionErrorIsMissingEngine = Boolean(
+		captionGenerationError?.includes("Whisper engine"),
+	);
+	const captionErrorIsMissingAudio = Boolean(
+		captionGenerationError?.includes("No audio was found"),
+	);
+	const captionFfmpegIsBlocking =
+		!isCaptionFfmpegReady && isWhisperModelReady && isWhisperEngineReady;
+	const captionErrorIsMissingFfmpeg = Boolean(
+		captionGenerationError?.includes("FFmpeg") ||
+			(captionFfmpegIsBlocking && captionFfmpegError),
+	);
+	const captionStatusTitle = isGeneratingCaptions
+		? tSettings("captions.statusGenerating", "Generating captions")
+		: captionErrorIsMissingAudio
+			? tSettings("captions.noAudioTitle", "No audio to transcribe")
+			: !isWhisperModelReady
+				? tSettings("captions.modelNeedsSetup", "Choose a caption model")
+				: !isWhisperEngineReady
+					? tSettings("captions.engineNeedsSetup", "Choose Whisper engine")
+					: isCaptionFfmpegChecking
+						? tSettings("captions.ffmpegChecking", "Checking FFmpeg")
+						: !isCaptionFfmpegReady
+							? tSettings("captions.ffmpegNeedsSetup", "FFmpeg is unavailable")
+						: captionCueCount > 0
+							? tSettings("captions.statusReadyWithCaptions", "Captions are ready")
+							: tSettings("captions.statusReadyToGenerate", "Ready to generate");
+	const captionStatusText = isGeneratingCaptions
+		? tSettings("captions.generatingStatus", "Generating captions. This can take a moment.")
+		: captionErrorIsMissingAudio
+			? tSettings(
+					"captions.noAudioHelp",
+					"This video does not contain an audio track Recordly can transcribe. Open a video with audio, or record again with microphone or system audio enabled.",
+				)
+			: !isWhisperModelReady
+				? tSettings(
+						"captions.guideModelDescription",
+						"Download the small model, or choose an existing .bin model file.",
+					)
+				: !isWhisperEngineReady
+					? tSettings(
+							"captions.guideEngineDescription",
+							"Choose the folder that contains whisper-cli. On Windows, C:\\Tools\\whisper is a good place to keep it.",
+						)
+					: isCaptionFfmpegChecking
+						? captionFfmpegHelpText
+						: !isCaptionFfmpegReady
+						? captionFfmpegHelpText
+						: captionCueCount > 0
+							? tSettings(
+									"captions.guideReadyDescription",
+									"Generated captions are available. You can regenerate them after changing language, model, or engine.",
+								)
+							: tSettings(
+									"captions.guideGenerateDescription",
+									"Model, engine, and audio extraction are ready.",
+								);
+	const captionStatusToneClassName =
+		captionErrorIsMissingAudio || captionErrorIsMissingFfmpeg
+			? "border-red-500/20 bg-red-500/5"
+			: isCaptionSetupReady
+				? "border-[#2563EB]/15 bg-[#2563EB]/5"
+				: "border-amber-500/20 bg-amber-500/5";
+	const captionStatusDotClassName =
+		captionErrorIsMissingAudio || captionErrorIsMissingFfmpeg
+			? "bg-red-500"
+			: isCaptionSetupReady
+				? "bg-[#2563EB]"
+				: "bg-amber-500";
+	const captionGenerationHelpTitle = captionErrorIsMissingEngine
+		? tSettings("captions.engineNeedsSetup", "Whisper engine needs setup")
+		: captionErrorIsMissingAudio
+			? tSettings("captions.noAudioTitle", "No audio to transcribe")
+			: captionErrorIsMissingFfmpeg
+				? tSettings("captions.ffmpegNeedsSetup", "FFmpeg is unavailable")
+			: tSettings("captions.needsSetup", "Captions need setup");
+	const captionGenerationHelpText = captionErrorIsMissingEngine
+		? tSettings(
+				"captions.engineErrorHelp",
+				"Whisper engine was not found. Choose the folder that contains whisper-cli, such as C:\\Tools\\whisper on Windows or /opt/homebrew/bin on macOS.",
+			)
+		: captionErrorIsMissingAudio
+			? tSettings(
+					"captions.noAudioHelp",
+					"This video does not contain an audio track Recordly can transcribe. Open a video with audio, or record again with microphone or system audio enabled.",
+				)
+			: captionErrorIsMissingFfmpeg
+				? captionFfmpegHelpText
+		: captionGenerationError;
 	const updateAutoCaptionSettings = (partial: Partial<AutoCaptionSettings>) => {
 		onAutoCaptionSettingsChange?.({
 			...autoCaptionSettings,
@@ -2648,15 +2797,152 @@ export function SettingsPanel({
 			</div>
 
 			<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2 space-y-3">
-				<div>
-					<Button
-						type="button"
-						variant="outline"
-						onClick={onPickWhisperModel}
-						className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
-					>
-						{tSettings("captions.selectModel", "Select Model")}
-					</Button>
+				<div className={`rounded-lg border px-2.5 py-2 ${captionStatusToneClassName}`}>
+					<div className="flex items-center gap-2">
+						<span className={`h-2 w-2 rounded-full ${captionStatusDotClassName}`} />
+						<div className="min-w-0 text-xs font-medium text-foreground">
+							{captionStatusTitle}
+						</div>
+					</div>
+					<div className="mt-1 text-[11px] leading-4 text-muted-foreground">
+						{captionStatusText}
+					</div>
+				</div>
+
+				<div className="space-y-1.5">
+					<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+						<div className="flex items-center justify-between gap-2">
+							<div className="min-w-0">
+								<div className="text-[10px] text-muted-foreground">
+									{tSettings("captions.modelLabel", "Model")}
+								</div>
+								<div className="truncate text-xs font-medium text-foreground">
+									{whisperModelDisplayName}
+								</div>
+							</div>
+							<div className="flex shrink-0 items-center gap-1.5">
+								{whisperModelPath ? (
+									<Button
+										type="button"
+										variant="outline"
+										onClick={() => onShowCaptionPathInFolder?.(whisperModelPath)}
+										disabled={!onShowCaptionPathInFolder}
+										className="h-7 rounded-lg border-foreground/10 bg-foreground/5 px-2 text-[11px] text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+									>
+										{tSettings("captions.showInFolder", "Show")}
+									</Button>
+								) : (
+									<Button
+										type="button"
+										onClick={onDownloadWhisperSmallModel}
+										disabled={
+											!onDownloadWhisperSmallModel ||
+											whisperModelDownloadStatus === "downloading"
+										}
+										className="h-7 rounded-lg bg-[#2563EB] px-2 text-[11px] font-medium text-white hover:bg-[#2563EB]/90 disabled:opacity-60"
+									>
+										{whisperModelDownloadStatus === "downloading"
+											? `${Math.round(whisperModelDownloadProgress)}%`
+											: tSettings("captions.downloadModelShort", "Download")}
+									</Button>
+								)}
+								<Button
+									type="button"
+									variant="outline"
+									onClick={onPickWhisperModel}
+									disabled={!onPickWhisperModel}
+									className="h-7 rounded-lg border-foreground/10 bg-foreground/5 px-2 text-[11px] text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+								>
+									{whisperModelPath
+										? tSettings("captions.changeModel", "Change")
+										: tSettings("captions.chooseModel", "Choose")}
+								</Button>
+							</div>
+						</div>
+						<div className="mt-1 truncate text-[10px] text-muted-foreground" title={whisperModelHelpText}>
+							{whisperModelHelpText}
+						</div>
+					</div>
+
+					<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+						<div className="flex items-center justify-between gap-2">
+							<div className="min-w-0">
+								<div className="text-[10px] text-muted-foreground">
+									{tSettings("captions.engineLabel", "Whisper engine")}
+								</div>
+								<div className="truncate text-xs font-medium text-foreground">
+									{whisperEngineDisplayName}
+								</div>
+							</div>
+							<div className="flex shrink-0 items-center gap-1.5">
+								{whisperExecutablePath ? (
+									<Button
+										type="button"
+										variant="outline"
+										onClick={() => onShowCaptionPathInFolder?.(whisperExecutablePath)}
+										disabled={!onShowCaptionPathInFolder}
+										className="h-7 rounded-lg border-foreground/10 bg-foreground/5 px-2 text-[11px] text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+									>
+										{tSettings("captions.showInFolder", "Show")}
+									</Button>
+								) : null}
+								<Button
+									type="button"
+									variant={whisperExecutablePath ? "outline" : undefined}
+									onClick={() => onPickWhisperExecutable?.("directory")}
+									disabled={!onPickWhisperExecutable}
+									className={
+										whisperExecutablePath
+											? "h-7 rounded-lg border-foreground/10 bg-foreground/5 px-2 text-[11px] text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+											: "h-7 rounded-lg bg-[#2563EB] px-2 text-[11px] font-medium text-white hover:bg-[#2563EB]/90 disabled:opacity-60"
+									}
+								>
+									{whisperExecutablePath
+										? tSettings("captions.changeEngineFolder", "Folder")
+										: tSettings("captions.chooseEngineFolder", "Choose folder")}
+								</Button>
+								<Button
+									type="button"
+									variant="outline"
+									onClick={() => onPickWhisperExecutable?.("file")}
+									disabled={!onPickWhisperExecutable}
+									className="h-7 rounded-lg border-foreground/10 bg-foreground/5 px-2 text-[11px] text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+								>
+									{tSettings("captions.chooseEngineFile", "File")}
+								</Button>
+							</div>
+						</div>
+						<div className="mt-1 truncate text-[10px] text-muted-foreground" title={whisperEngineHelpText}>
+							{whisperEngineHelpText}
+						</div>
+					</div>
+
+					<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+						<div className="flex items-center justify-between gap-2">
+							<div className="min-w-0">
+								<div className="text-[10px] text-muted-foreground">
+									{tSettings("captions.audioExtractorLabel", "Audio extractor")}
+								</div>
+								<div className="truncate text-xs font-medium text-foreground">
+									{captionFfmpegDisplayName}
+								</div>
+							</div>
+							{captionFfmpegPath ? (
+								<Button
+									type="button"
+									variant="outline"
+									onClick={() => onShowCaptionPathInFolder?.(captionFfmpegPath)}
+									disabled={!onShowCaptionPathInFolder}
+									className="h-7 rounded-lg border-foreground/10 bg-foreground/5 px-2 text-[11px] text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+								>
+									{tSettings("captions.showInFolder", "Show")}
+								</Button>
+							) : null}
+						</div>
+						<div className="mt-1 truncate text-[10px] text-muted-foreground" title={captionFfmpegHelpText}>
+							{captionFfmpegHelpText}
+						</div>
+					</div>
 				</div>
 				<div className="flex items-center justify-between gap-3">
 					<div className="text-sm font-medium text-foreground">
@@ -2680,16 +2966,7 @@ export function SettingsPanel({
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					<div className="grid w-full grid-cols-2 gap-2">
-						{whisperModelDownloadStatus === "downloading" ? (
-							<Button
-								type="button"
-								disabled
-								className="h-10 w-full rounded-xl bg-foreground/10 px-4 text-sm font-medium text-foreground hover:bg-foreground/10"
-							>
-								{tSettings("captions.downloading", "Downloading...")}{" "}
-								{Math.round(whisperModelDownloadProgress)}%
-							</Button>
-						) : whisperModelPath ? (
+						{whisperModelPath ? (
 							<Button
 								type="button"
 								variant="outline"
@@ -2701,10 +2978,11 @@ export function SettingsPanel({
 						) : (
 							<Button
 								type="button"
-								onClick={onDownloadWhisperSmallModel}
-								className="h-10 w-full rounded-xl bg-[#2563EB] px-4 text-sm font-medium text-white hover:bg-[#2563EB]/90"
+								variant="outline"
+								disabled
+								className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-muted-foreground disabled:opacity-60"
 							>
-								{tSettings("captions.downloadModel", "Download Model")}
+								{tSettings("captions.modelNeeded", "Model needed")}
 							</Button>
 						)}
 						<Button
@@ -2718,11 +2996,50 @@ export function SettingsPanel({
 						</Button>
 					</div>
 				</div>
+				{captionGenerationHelpText ? (
+					<div className="border-l-2 border-red-500/70 pl-2.5">
+						<div className="text-xs font-medium text-foreground">
+							{captionGenerationHelpTitle}
+						</div>
+						<div className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+							{captionGenerationHelpText}
+						</div>
+						{captionErrorIsMissingEngine ||
+						(!whisperModelPath && !captionErrorIsMissingAudio) ? (
+							<div className="mt-2 flex flex-wrap gap-2">
+								{captionErrorIsMissingEngine ? (
+									<Button
+										type="button"
+										variant="outline"
+										onClick={() => onPickWhisperExecutable?.("directory")}
+										disabled={!onPickWhisperExecutable}
+										className="h-8 rounded-lg border-foreground/10 bg-foreground/5 px-3 text-xs text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+									>
+										{tSettings("captions.chooseEngine", "Choose engine")}
+									</Button>
+								) : null}
+								{!whisperModelPath && !captionErrorIsMissingAudio ? (
+									<Button
+										type="button"
+										onClick={onDownloadWhisperSmallModel}
+										disabled={whisperModelDownloadStatus === "downloading"}
+										className="h-8 rounded-lg bg-[#2563EB] px-3 text-xs font-medium text-white hover:bg-[#2563EB]/90 disabled:opacity-60"
+									>
+										{tSettings(
+											"captions.downloadSmallModel",
+											"Download small model",
+										)}
+									</Button>
+								) : null}
+							</div>
+						) : null}
+					</div>
+				) : null}
 				<div className="flex flex-col gap-2">
 					<Button
 						type="button"
 						onClick={onGenerateAutoCaptions}
-						disabled={isGeneratingCaptions || !whisperModelPath}
+						disabled={isGeneratingCaptions || !isCaptionSetupReady}
 						className="h-10 w-full rounded-xl bg-[#2563EB] px-4 text-sm font-medium text-white hover:bg-[#2563EB]/90 disabled:opacity-60"
 					>
 						{isGeneratingCaptions

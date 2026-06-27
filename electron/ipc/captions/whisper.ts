@@ -1,9 +1,12 @@
-import { createWriteStream } from "node:fs";
-import { constants as fsConstants } from "node:fs";
+import { createWriteStream, constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import { get as httpsGet } from "node:https";
 import type Electron from "electron";
-import { WHISPER_MODEL_DIR, WHISPER_MODEL_DOWNLOAD_URL, WHISPER_SMALL_MODEL_PATH } from "../constants";
+import {
+	WHISPER_MODEL_DIR,
+	WHISPER_MODEL_DOWNLOAD_URL,
+	WHISPER_SMALL_MODEL_PATH,
+} from "../constants";
 
 export function sendWhisperModelDownloadProgress(
 	webContents: Electron.WebContents,
@@ -24,12 +27,14 @@ export async function getWhisperSmallModelStatus() {
 			success: true,
 			exists: true,
 			path: WHISPER_SMALL_MODEL_PATH,
+			expectedPath: WHISPER_SMALL_MODEL_PATH,
 		};
 	} catch {
 		return {
 			success: true,
 			exists: false,
 			path: null,
+			expectedPath: WHISPER_SMALL_MODEL_PATH,
 		};
 	}
 }
@@ -106,7 +111,9 @@ export function downloadFileWithProgress(
 	return request(url);
 }
 
-export async function downloadWhisperSmallModel(webContents: Electron.WebContents): Promise<string> {
+export async function downloadWhisperSmallModel(
+	webContents: Electron.WebContents,
+): Promise<string> {
 	await fs.mkdir(WHISPER_MODEL_DIR, { recursive: true });
 	const tempPath = `${WHISPER_SMALL_MODEL_PATH}.download`;
 

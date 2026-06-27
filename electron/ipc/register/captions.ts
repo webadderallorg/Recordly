@@ -1,6 +1,7 @@
+import fs from "node:fs/promises";
 import path from "node:path";
-import { dialog, ipcMain } from "electron";
-import { generateAutoCaptionsFromVideo } from "../captions/generate";
+import { dialog, ipcMain, shell } from "electron";
+import { generateAutoCaptionsFromVideo, resolveWhisperExecutablePath } from "../captions/generate";
 import {
 	deleteWhisperSmallModel,
 	downloadWhisperSmallModel,
@@ -8,6 +9,7 @@ import {
 	sendWhisperModelDownloadProgress,
 } from "../captions/whisper";
 import { LEGACY_PROJECT_FILE_EXTENSIONS, PROJECT_FILE_EXTENSION } from "../constants";
+import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { hasProjectFileExtension, loadProjectFromPath } from "../project/manager";
 import { setCurrentProjectPath } from "../state";
 import { approveUserPath, getRecordingsDir } from "../utils";
@@ -15,9 +17,68 @@ import { approveUserPath, getRecordingsDir } from "../utils";
 const VIDEO_FILE_EXTENSIONS = ["webm", "mp4", "mov", "avi", "mkv"];
 const PROJECT_FILE_EXTENSIONS = [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS];
 
+function getErrorMessage(error: unknown) {
+	if (error instanceof Error) {
+		return error.message;
+	}
+
+	if (typeof error === "string") {
+		return error.replace(/^Error:\s*/i, "");
+	}
+
+	return "Something went wrong";
+}
+
 type OpenVideoFilePickerOptions = {
 	includeProjects?: boolean;
 };
+
+type WhisperFilePickerOptions = {
+	currentPath?: string | null;
+	selectionMode?: "file" | "directory";
+};
+
+async function resolveExistingDialogPath(candidatePath?: string | null) {
+	const trimmedPath = candidatePath?.trim();
+	if (!trimmedPath) {
+		return null;
+	}
+
+	try {
+		const stats = await fs.stat(trimmedPath);
+		return stats.isDirectory() ? trimmedPath : path.dirname(trimmedPath);
+	} catch {
+		const parentPath = path.dirname(trimmedPath);
+		try {
+			const stats = await fs.stat(parentPath);
+			return stats.isDirectory() ? parentPath : null;
+		} catch {
+			return null;
+		}
+	}
+}
+
+async function resolveDialogDefaultPath(candidates: Array<string | null | undefined>) {
+	for (const candidatePath of candidates) {
+		const dialogPath = await resolveExistingDialogPath(candidatePath);
+		if (dialogPath) {
+			return dialogPath;
+		}
+	}
+
+	return undefined;
+}
+
+function getWhisperRuntimeDefaultPathCandidates(currentPath?: string | null) {
+	return [
+		currentPath,
+		process.env["WHISPER_CPP_PATH"],
+		process.platform === "win32" ? "C:\\Tools\\whisper" : null,
+		process.platform === "win32" ? "C:\\whisper" : null,
+		process.platform === "darwin" ? "/opt/homebrew/bin" : null,
+		process.platform === "darwin" ? "/usr/local/bin" : null,
+	];
+}
 
 export function registerCaptionHandlers() {
 	ipcMain.handle("open-video-file-picker", async (_, options?: OpenVideoFilePickerOptions) => {
@@ -112,36 +173,63 @@ export function registerCaptionHandlers() {
 		}
 	});
 
-	ipcMain.handle("open-whisper-executable-picker", async () => {
-		try {
-			const result = await dialog.showOpenDialog({
-				title: "Select Whisper Executable",
-				filters: [
-					{
-						name: "Executables",
-						extensions: process.platform === "win32" ? ["exe", "cmd", "bat"] : ["*"],
-					},
-					{ name: "All Files", extensions: ["*"] },
-				],
-				properties: ["openFile"],
-			});
+	ipcMain.handle(
+		"open-whisper-executable-picker",
+		async (_, options?: WhisperFilePickerOptions) => {
+			try {
+				const selectionMode = options?.selectionMode ?? "directory";
+				const defaultPath = await resolveDialogDefaultPath(
+					getWhisperRuntimeDefaultPathCandidates(options?.currentPath),
+				);
+				const result = await dialog.showOpenDialog({
+					title:
+						selectionMode === "file"
+							? "Choose whisper-cli"
+							: "Choose Whisper Engine Folder",
+					defaultPath,
+					buttonLabel:
+						selectionMode === "file" ? "Use This Executable" : "Use This Folder",
+					filters:
+						selectionMode === "file"
+							? [
+									{
+										name: "Whisper Engine",
+										extensions:
+											process.platform === "win32"
+												? ["exe", "cmd", "bat"]
+												: ["*"],
+									},
+									{ name: "All Files", extensions: ["*"] },
+								]
+							: undefined,
+					properties: [selectionMode === "file" ? "openFile" : "openDirectory"],
+				});
 
-			if (result.canceled || result.filePaths.length === 0) {
-				return { success: false, canceled: true };
+				if (result.canceled || result.filePaths.length === 0) {
+					return { success: false, canceled: true };
+				}
+
+				approveUserPath(result.filePaths[0]);
+				return { success: true, path: result.filePaths[0] };
+			} catch (error) {
+				console.error("Failed to open Whisper executable picker:", error);
+				return { success: false, error: String(error) };
 			}
+		},
+	);
 
-			approveUserPath(result.filePaths[0]);
-			return { success: true, path: result.filePaths[0] };
-		} catch (error) {
-			console.error("Failed to open Whisper executable picker:", error);
-			return { success: false, error: String(error) };
-		}
-	});
-
-	ipcMain.handle("open-whisper-model-picker", async () => {
+	ipcMain.handle("open-whisper-model-picker", async (_, options?: WhisperFilePickerOptions) => {
 		try {
+			const modelStatus = await getWhisperSmallModelStatus();
+			const defaultPath = await resolveDialogDefaultPath([
+				options?.currentPath,
+				modelStatus.path,
+				modelStatus.expectedPath,
+			]);
 			const result = await dialog.showOpenDialog({
-				title: "Select Whisper Model",
+				title: "Choose Whisper Model",
+				defaultPath,
+				buttonLabel: "Use This Model",
 				filters: [
 					{ name: "Whisper Models", extensions: ["bin"] },
 					{ name: "All Files", extensions: ["*"] },
@@ -158,6 +246,58 @@ export function registerCaptionHandlers() {
 		} catch (error) {
 			console.error("Failed to open Whisper model picker:", error);
 			return { success: false, error: String(error) };
+		}
+	});
+
+	ipcMain.handle("get-whisper-runtime-status", async (_, options?: WhisperFilePickerOptions) => {
+		try {
+			const runtimePath = await resolveWhisperExecutablePath(options?.currentPath);
+			return { success: true, exists: true, path: runtimePath };
+		} catch (error) {
+			return {
+				success: true,
+				exists: false,
+				path: null,
+				error: getErrorMessage(error),
+			};
+		}
+	});
+
+	ipcMain.handle("get-caption-ffmpeg-status", async () => {
+		try {
+			const ffmpegPath = getFfmpegBinaryPath();
+			return { success: true, exists: true, path: ffmpegPath };
+		} catch (error) {
+			return {
+				success: true,
+				exists: false,
+				path: null,
+				error: getErrorMessage(error),
+			};
+		}
+	});
+
+	ipcMain.handle("show-caption-path-in-folder", async (_, targetPath?: string | null) => {
+		const trimmedPath = targetPath?.trim();
+		if (!trimmedPath) {
+			return { success: false, error: "No path is selected." };
+		}
+
+		try {
+			const stats = await fs.stat(trimmedPath);
+			if (stats.isFile()) {
+				shell.showItemInFolder(trimmedPath);
+				return { success: true };
+			}
+
+			const openError = await shell.openPath(trimmedPath);
+			if (openError) {
+				return { success: false, error: openError };
+			}
+
+			return { success: true };
+		} catch (error) {
+			return { success: false, error: getErrorMessage(error) };
 		}
 	});
 
@@ -244,10 +384,11 @@ export function registerCaptionHandlers() {
 				};
 			} catch (error) {
 				console.error("Failed to generate auto captions:", error);
+				const errorMessage = getErrorMessage(error);
 				return {
 					success: false,
-					error: String(error),
-					message: "Failed to generate auto captions",
+					error: errorMessage,
+					message: `Failed to generate auto captions: ${errorMessage}`,
 				};
 			}
 		},

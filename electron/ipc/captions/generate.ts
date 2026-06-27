@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { app } from "electron";
+import { COMPANION_AUDIO_LAYOUTS } from "../constants";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { getBundledWhisperExecutableCandidates } from "../paths/binaries";
 import { resolveRecordingSession } from "../project/session";
@@ -19,8 +20,68 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-export async function ensureReadableFile(filePath: string, options?: { executable?: boolean }) {
-	await fs.access(filePath, fsConstants.R_OK);
+function getWhisperBinaryNames() {
+	return process.platform === "win32"
+		? ["whisper-cli.exe", "whisper-cpp.exe", "whisper.exe", "main.exe"]
+		: ["whisper-cli", "whisper-cpp", "whisper", "main"];
+}
+
+export function getWhisperExecutableCandidatesFromPath(candidatePath?: string | null) {
+	const trimmedPath = candidatePath?.trim();
+	if (!trimmedPath) {
+		return [];
+	}
+
+	const resolvedPath = path.resolve(trimmedPath);
+	const directorySearchPaths = [
+		[],
+		["bin"],
+		["bin", "Release"],
+		["build", "bin"],
+		["build", "bin", "Release"],
+	];
+	const candidates = [
+		resolvedPath,
+		...directorySearchPaths.flatMap((segments) =>
+			getWhisperBinaryNames().map((binaryName) =>
+				path.join(resolvedPath, ...segments, binaryName),
+			),
+		),
+	];
+
+	return [...new Set(candidates)];
+}
+
+export async function ensureReadableFile(
+	filePath: string,
+	options?: { executable?: boolean; label?: string },
+) {
+	let stats: Awaited<ReturnType<typeof fs.stat>>;
+	try {
+		stats = await fs.stat(filePath);
+	} catch (error) {
+		if (!options?.label) {
+			throw error;
+		}
+		throw new Error(`${options.label} was not found at ${filePath}.`);
+	}
+
+	if (!stats.isFile()) {
+		throw new Error(
+			options?.executable
+				? "The selected Whisper executable is not a file."
+				: `${options?.label ?? "The selected file"} is not a file.`,
+		);
+	}
+
+	try {
+		await fs.access(filePath, fsConstants.R_OK);
+	} catch (error) {
+		if (!options?.label) {
+			throw error;
+		}
+		throw new Error(`${options.label} is not readable at ${filePath}.`);
+	}
 	if (options?.executable) {
 		try {
 			await fs.access(filePath, fsConstants.X_OK);
@@ -32,6 +93,10 @@ export async function ensureReadableFile(filePath: string, options?: { executabl
 
 export async function isExecutableFile(filePath: string) {
 	try {
+		const stats = await fs.stat(filePath);
+		if (!stats.isFile()) {
+			return false;
+		}
 		await fs.access(filePath, fsConstants.R_OK | fsConstants.X_OK);
 		return true;
 	} catch {
@@ -41,9 +106,15 @@ export async function isExecutableFile(filePath: string) {
 
 export async function resolveWhisperExecutablePath(preferredPath?: string | null) {
 	const candidatePaths = [
-		preferredPath?.trim() || null,
+		...getWhisperExecutableCandidatesFromPath(preferredPath),
+		...getWhisperExecutableCandidatesFromPath(process.env["WHISPER_CPP_PATH"]),
+		...getWhisperExecutableCandidatesFromPath(
+			process.platform === "win32" ? "C:\\Tools\\whisper" : null,
+		),
+		...getWhisperExecutableCandidatesFromPath(
+			process.platform === "win32" ? "C:\\whisper" : null,
+		),
 		...getBundledWhisperExecutableCandidates(),
-		process.env["WHISPER_CPP_PATH"]?.trim() || null,
 		process.platform === "darwin" ? "/opt/homebrew/bin/whisper-cli" : null,
 		process.platform === "darwin" ? "/usr/local/bin/whisper-cli" : null,
 		process.platform === "darwin" ? "/opt/homebrew/bin/whisper-cpp" : null,
@@ -58,12 +129,8 @@ export async function resolveWhisperExecutablePath(preferredPath?: string | null
 	}
 
 	const pathCommand = process.platform === "win32" ? "where" : "which";
-	const binaryNames =
-		process.platform === "win32"
-			? ["whisper-cli.exe", "whisper.exe", "main.exe"]
-			: ["whisper-cli", "whisper-cpp", "whisper", "main"];
 
-	for (const binaryName of binaryNames) {
+	for (const binaryName of getWhisperBinaryNames()) {
 		const result = spawnSync(pathCommand, [binaryName], { encoding: "utf-8" });
 		if (result.status === 0) {
 			const resolvedPath = result.stdout
@@ -78,7 +145,7 @@ export async function resolveWhisperExecutablePath(preferredPath?: string | null
 	}
 
 	throw new Error(
-		"No Whisper runtime was found. Recordly looked for a bundled binary first, then checked common system install locations.",
+		"Whisper engine was not found. In Captions, choose the folder that contains whisper-cli, choose the whisper-cli executable, or set WHISPER_CPP_PATH to that location.",
 	);
 }
 
@@ -100,6 +167,25 @@ export async function resolveCaptionAudioCandidates(videoPath: string) {
 
 	const requestedRecordingSession = await resolveRecordingSession(videoPath);
 	pushCandidate(requestedRecordingSession?.webcamPath, "linked webcam recording");
+
+	const basePath = videoPath.replace(/\.[^.]+$/u, "");
+	for (const layout of COMPANION_AUDIO_LAYOUTS) {
+		const companionPaths = [
+			{ path: `${basePath}${layout.systemSuffix}`, label: "source system audio" },
+			{ path: `${basePath}${layout.micSuffix}`, label: "source microphone audio" },
+		];
+
+		for (const companion of companionPaths) {
+			try {
+				const stats = await fs.stat(companion.path);
+				if (stats.isFile() && stats.size > 0) {
+					pushCandidate(companion.path, companion.label);
+				}
+			} catch {
+				// Companion audio is optional and only used as a fallback.
+			}
+		}
+	}
 
 	return candidates;
 }
@@ -200,8 +286,11 @@ export async function generateAutoCaptionsFromVideo(options: {
 
 	const whisperExecutablePath = await resolveWhisperExecutablePath(options.whisperExecutablePath);
 	const whisperModelPath = path.resolve(options.whisperModelPath);
-	await ensureReadableFile(whisperExecutablePath, { executable: true });
-	await ensureReadableFile(whisperModelPath);
+	await ensureReadableFile(whisperExecutablePath, {
+		executable: true,
+		label: "Whisper runtime",
+	});
+	await ensureReadableFile(whisperModelPath, { label: "Whisper model file" });
 
 	const tempBase = path.join(
 		app.getPath("temp"),

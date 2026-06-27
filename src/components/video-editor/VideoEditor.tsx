@@ -584,6 +584,9 @@ export default function VideoEditor() {
 	>(initialEditorPreferences.whisperModelPath ? "downloaded" : "idle");
 	const [whisperModelDownloadProgress, setWhisperModelDownloadProgress] = useState(0);
 	const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
+	const [autoCaptionError, setAutoCaptionError] = useState<string | null>(null);
+	const [captionFfmpegPath, setCaptionFfmpegPath] = useState<string | null>(null);
+	const [captionFfmpegError, setCaptionFfmpegError] = useState<string | null>(null);
 	const [isExporting, setIsExporting] = useState(false);
 	const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
 	const [exportError, setExportError] = useState<string | null>(null);
@@ -624,7 +627,7 @@ export default function VideoEditor() {
 	);
 	const enableModernExportPipeline = useCallback(() => {
 		setExportPipelineModel("modern");
-	}, []);
+	}, [whisperExecutablePath]);
 	const {
 		nvidiaCudaExportAvailable,
 		experimentalNvidiaCudaExport,
@@ -2751,6 +2754,27 @@ export default function VideoEditor() {
 		});
 
 		void (async () => {
+			const result = await window.electronAPI.getWhisperRuntimeStatus({
+				currentPath: whisperExecutablePath,
+			});
+			if (result.success && result.exists && result.path) {
+				setWhisperExecutablePath((currentPath) => currentPath ?? result.path ?? null);
+			}
+		})();
+
+		void (async () => {
+			const result = await window.electronAPI.getCaptionFfmpegStatus();
+			if (result.success && result.exists && result.path) {
+				setCaptionFfmpegPath(result.path);
+				setCaptionFfmpegError(null);
+				return;
+			}
+
+			setCaptionFfmpegPath(null);
+			setCaptionFfmpegError(result.error || "FFmpeg binary is unavailable");
+		})();
+
+		void (async () => {
 			const result = await window.electronAPI.getWhisperSmallModelStatus();
 			if (!result.success) {
 				return;
@@ -2765,6 +2789,9 @@ export default function VideoEditor() {
 			}
 
 			setDownloadedWhisperModelPath(null);
+			setWhisperModelPath((currentPath) =>
+				currentPath && currentPath === result.expectedPath ? null : currentPath,
+			);
 			setWhisperModelDownloadStatus("idle");
 			setWhisperModelDownloadProgress(0);
 		})();
@@ -2772,14 +2799,28 @@ export default function VideoEditor() {
 		return () => unsubscribe?.();
 	}, []);
 
-	const handlePickWhisperExecutable = useCallback(async () => {
-		const result = await window.electronAPI.openWhisperExecutablePicker();
-		if (!result.success || !result.path) {
-			return;
-		}
+	const handlePickWhisperExecutable = useCallback(
+		async (selectionMode: "file" | "directory" = "directory") => {
+			const result = await window.electronAPI.openWhisperExecutablePicker({
+				currentPath: whisperExecutablePath,
+				selectionMode,
+			});
+			if (!result.success || !result.path) {
+				return;
+			}
 
-		setWhisperExecutablePath(result.path);
-		toast.success("Whisper executable selected");
+			setAutoCaptionError(null);
+			setWhisperExecutablePath(result.path);
+			toast.success("Whisper runtime selected");
+		},
+		[whisperExecutablePath],
+	);
+
+	const handleShowCaptionPathInFolder = useCallback(async (path?: string | null) => {
+		const result = await window.electronAPI.showCaptionPathInFolder(path);
+		if (!result.success) {
+			toast.error(result.error || "Could not open this location");
+		}
 	}, []);
 
 	const handleDownloadWhisperSmallModel = useCallback(async () => {
@@ -2787,12 +2828,15 @@ export default function VideoEditor() {
 			return;
 		}
 
+		setAutoCaptionError(null);
 		setWhisperModelDownloadStatus("downloading");
 		setWhisperModelDownloadProgress(0);
 		const result = await window.electronAPI.downloadWhisperSmallModel();
 		if (!result.success) {
+			const message = result.error || "Failed to download Whisper small model";
+			setAutoCaptionError(message);
 			setWhisperModelDownloadStatus("error");
-			toast.error(result.error || "Failed to download Whisper small model");
+			toast.error(message);
 			return;
 		}
 
@@ -2803,14 +2847,17 @@ export default function VideoEditor() {
 	}, [whisperModelDownloadStatus]);
 
 	const handlePickWhisperModel = useCallback(async () => {
-		const result = await window.electronAPI.openWhisperModelPicker();
+		const result = await window.electronAPI.openWhisperModelPicker({
+			currentPath: whisperModelPath,
+		});
 		if (!result.success || !result.path) {
 			return;
 		}
 
+		setAutoCaptionError(null);
 		setWhisperModelPath(result.path);
 		toast.success("Whisper model selected");
-	}, []);
+	}, [whisperModelPath]);
 
 	const handleDeleteWhisperSmallModel = useCallback(async () => {
 		const result = await window.electronAPI.deleteWhisperSmallModel();
@@ -2828,6 +2875,7 @@ export default function VideoEditor() {
 		setDownloadedWhisperModelPath(null);
 		setWhisperModelDownloadStatus("idle");
 		setWhisperModelDownloadProgress(0);
+		setAutoCaptionError(null);
 		toast.success("Whisper small model deleted");
 	}, [downloadedWhisperModelPath]);
 
@@ -2856,7 +2904,9 @@ export default function VideoEditor() {
 		}
 
 		if (!sourcePath) {
-			toast.error("No source video is loaded");
+			const message = "No source video is loaded";
+			setAutoCaptionError(message);
+			toast.error(message);
 			return;
 		}
 
@@ -2867,11 +2917,23 @@ export default function VideoEditor() {
 
 		await syncActiveVideoSource(sourcePath, webcam.sourcePath ?? null);
 
-		if (!whisperModelPath) {
-			toast.error("Select a Whisper model or download the small model first");
+		if (!captionFfmpegPath) {
+			const message =
+				captionFfmpegError ||
+				"Recordly is still checking FFmpeg. Try generating captions again in a moment.";
+			setAutoCaptionError(message);
+			toast.error(message);
 			return;
 		}
 
+		if (!whisperModelPath) {
+			const message = "Select a Whisper model or download the small model first";
+			setAutoCaptionError(message);
+			toast.error(message);
+			return;
+		}
+
+		setAutoCaptionError(null);
 		setIsGeneratingCaptions(true);
 		try {
 			const result = await window.electronAPI.generateAutoCaptions({
@@ -2882,11 +2944,11 @@ export default function VideoEditor() {
 			});
 
 			if (!result.success || !result.cues) {
-				toast.error(
-					result.message ||
-						getErrorMessage(result.error) ||
-						"Failed to generate captions",
-				);
+				const message =
+					(result.error ? getErrorMessage(result.error) : result.message) ||
+					"Failed to generate captions";
+				setAutoCaptionError(message);
+				toast.error(message);
 				return;
 			}
 
@@ -2894,14 +2956,19 @@ export default function VideoEditor() {
 			if (result.cues.length > 0) {
 				setAutoCaptionSettings((prev) => ({ ...prev, enabled: true }));
 			}
+			setAutoCaptionError(null);
 			toast.success(result.message || `Generated ${result.cues.length} captions`);
 		} catch (error) {
-			toast.error(getErrorMessage(error));
+			const message = getErrorMessage(error);
+			setAutoCaptionError(message);
+			toast.error(message);
 		} finally {
 			setIsGeneratingCaptions(false);
 		}
 	}, [
 		autoCaptionSettings.language,
+		captionFfmpegError,
+		captionFfmpegPath,
 		isGeneratingCaptions,
 		webcam.sourcePath,
 		syncActiveVideoSource,
@@ -6536,10 +6603,14 @@ export default function VideoEditor() {
 								whisperModelPath={whisperModelPath}
 								whisperModelDownloadStatus={whisperModelDownloadStatus}
 								whisperModelDownloadProgress={whisperModelDownloadProgress}
+								captionGenerationError={autoCaptionError}
+								captionFfmpegPath={captionFfmpegPath}
+								captionFfmpegError={captionFfmpegError}
 								isGeneratingCaptions={isGeneratingCaptions}
 								onAutoCaptionSettingsChange={setAutoCaptionSettings}
 								onPickWhisperExecutable={handlePickWhisperExecutable}
 								onPickWhisperModel={handlePickWhisperModel}
+								onShowCaptionPathInFolder={handleShowCaptionPathInFolder}
 								onGenerateAutoCaptions={handleGenerateAutoCaptions}
 								onClearAutoCaptions={handleClearAutoCaptions}
 								captionCurrentTimeMs={Math.round(currentTime * 1000)}
