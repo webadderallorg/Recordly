@@ -45,6 +45,11 @@
 		},
 		"backgroundBlur": "Desfoque de fundo",
 		"zoomMotionBlur": "Desfoque de movimento do zoom",
+		"temporalZoomMotionBlur": "Desfoque de Zoom Temporal",
+		"temporalZoomMotionBlurDescription": "Controle a janela do obturador e as amostras de quadro usadas pela nova etapa de desfoque de zoom.",
+		"zoomMotionBlurSamples": "Amostras de Desfoque",
+		"zoomMotionBlurShutter": "Obturador",
+		"auto": "Automático",
 		"connectZooms": "Conectar zooms",
 		"connectZoomsDescription": "Suaviza regiões de zoom consecutivas em um movimento contínuo de câmera.",
 		"autoApplyFreshRecordingZooms": "Aplicar zooms automaticamente em gravações novas",
@@ -52,11 +57,25 @@
 		"zoomGeneralTitle": "Geral",
 		"zoomGeneralDescription": "Configurações globais de movimento para cada transição de zoom.",
 		"zoomInTitle": "Aproximar",
-		"zoomInDescription": "Controla como a câmera entra em uma região de zoom.",
+		"zoomInDescription": "Controle como a câmera entra em uma região de zoom.",
 		"zoomOutTitle": "Afastar",
-		"zoomOutDescription": "Controla como a câmera sai de uma região de zoom.",
+		"zoomOutDescription": "Controle como a câmera sai de uma região de zoom.",
 		"connectedZoomTitle": "Entre zooms",
 		"connectedZoomDescription": "Ajuste o deslizamento entre regiões de zoom consecutivas quando a conexão estiver ativada.",
+		"motionPresetsTitle": "Predefinições de Movimento",
+		"motionPresetsZoomHint": "Predefinições de movimento de zoom estão disponíveis em Configurações.",
+		"animationPresets": "Predefinições de Animação",
+		"cursorMotionPresets": "Predefinições de Movimento do Cursor",
+		"motionPresets": {
+			"focused": {
+			"label": "Focado",
+			"description": "Movimento mais ágil para demonstrações, walkthroughs e gravações do dia a dia."
+			},
+			"smooth": {
+			"label": "Suave",
+			"description": "Movimento mais suave para apresentações, vídeos estilo keynote e revelações polidas."
+			}
+		},
 		"zoomInDuration": "Duração do zoom in",
 		"zoomInOverlap": "Sobreposição do zoom in",
 		"zoomOutDuration": "Duração do zoom out",
@@ -74,7 +93,36 @@
 		},
 		"cursorSize": "Tamanho do cursor",
 		"cursorSmoothing": "Suavização do cursor",
+		"cursorSpringStiffness": "Rigidez da Mola do Cursor",
+		"cursorSpringDamping": "Amortecimento da Mola do Cursor",
+		"cursorSpringMass": "Massa da Mola do Cursor",
 		"off": "Desligado",
+		"cursorClickEffects": {
+			"title": "Efeitos de Clique",
+			"advanced": "Avançado",
+			"advancedShow": "Mostrar controles avançados de efeito de clique",
+			"advancedHide": "Ocultar controles avançados de efeito de clique",
+			"color": "Cor do Efeito",
+			"size": "Tamanho do Efeito",
+			"opacity": "Opacidade do Efeito",
+			"duration": "Duração do Efeito",
+			"none": {
+			"label": "Desligado",
+			"description": "Sem gráfico de clique. Apenas o movimento do cursor muda quando você clica."
+			},
+			"ripple": {
+			"label": "Onda",
+			"description": "Anéis em expansão irradiam de cada clique para que toques sejam claros em movimento."
+			},
+			"spotlight": {
+			"label": "Holofote",
+			"description": "Um halo suave pisca ao redor do ponteiro para enfatizar a área clicada."
+			},
+			"echo": {
+			"label": "Eco",
+			"description": "Um par de anéis suaves que se espalham para fora com um pulso mais limpo."
+			}
+		},
 		"cursorMotionBlur": "Desfoque de movimento do cursor",
 		"cursorClickBounce": "Salto de clique do cursor",
 		"cursorClickBounceDuration": "Velocidade do salto",
@@ -125,8 +173,6 @@
 		"generateFull": "Gerar legendas",
 		"regenerateFull": "Gerar legendas novamente",
 		"clearFull": "Limpar legendas",
-		"editCurrent": "Editar legenda atual",
-		"editSaved": "Legenda atualizada",
 		"fontSettings": "Configurações da fonte",
 		"defaultFont": "Padrão",
 		"fontFamily": "Fonte",
