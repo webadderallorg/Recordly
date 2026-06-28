@@ -47,6 +47,7 @@ import { SUPPORTED_LOCALES } from "../../i18n/config";
 import { AnnotationSettingsPanel } from "./AnnotationSettingsPanel";
 import CaptionListPanel from "./CaptionListPanel";
 import type { CaptionRetimeSpan } from "./captionOps";
+import { getCaptionSetupStatus } from "./captionSetupStatus";
 import {
 	CURSOR_MOTION_PRESETS,
 	type CursorMotionPresetId,
@@ -1343,12 +1344,22 @@ export function SettingsPanel({
 		[extensionWallpapers],
 	);
 	const captionCueCount = autoCaptions.length;
-	const isWhisperModelReady = Boolean(whisperModelPath);
-	const isWhisperEngineReady = Boolean(whisperExecutablePath);
-	const isCaptionFfmpegChecking = !captionFfmpegPath && !captionFfmpegError;
-	const isCaptionFfmpegReady = Boolean(captionFfmpegPath) && !captionFfmpegError;
-	const isCaptionSetupReady =
-		isWhisperModelReady && isWhisperEngineReady && isCaptionFfmpegReady;
+	const captionSetupStatus = getCaptionSetupStatus({
+		captionCueCount,
+		captionsEnabled: autoCaptionSettings.enabled,
+		whisperModelPath,
+		whisperExecutablePath,
+		captionFfmpegPath,
+		captionFfmpegError,
+		captionGenerationError,
+		isGeneratingCaptions,
+	});
+	const {
+		isCaptionFfmpegChecking,
+		isMissingAudioError: captionErrorIsMissingAudio,
+		isMissingEngineError: captionErrorIsMissingEngine,
+		isMissingFfmpegError: captionErrorIsMissingFfmpeg,
+	} = captionSetupStatus;
 	const whisperModelDisplayName = whisperModelPath
 		? getPathDisplayName(whisperModelPath)
 		: tSettings("captions.noModelSelected", "No model selected");
@@ -1357,10 +1368,7 @@ export function SettingsPanel({
 		: tSettings("captions.noEngineSelected", "No engine selected");
 	const whisperModelHelpText = whisperModelPath
 		? whisperModelPath
-		: tSettings(
-				"captions.modelHelp",
-				"Download the small model or choose a .bin model file.",
-			);
+		: tSettings("captions.modelHelp", "Download the small model or choose a .bin model file.");
 	const whisperEngineHelpText = whisperExecutablePath
 		? whisperExecutablePath
 		: tSettings(
@@ -1384,73 +1392,85 @@ export function SettingsPanel({
 					"captions.ffmpegHelp",
 					"Recordly needs FFmpeg to extract audio before Whisper can transcribe it.",
 				);
-	const captionErrorIsMissingEngine = Boolean(
-		captionGenerationError?.includes("Whisper engine"),
-	);
-	const captionErrorIsMissingAudio = Boolean(
-		captionGenerationError?.includes("No audio was found"),
-	);
-	const captionFfmpegIsBlocking =
-		!isCaptionFfmpegReady && isWhisperModelReady && isWhisperEngineReady;
-	const captionErrorIsMissingFfmpeg = Boolean(
-		captionGenerationError?.includes("FFmpeg") ||
-			(captionFfmpegIsBlocking && captionFfmpegError),
-	);
-	const captionStatusTitle = isGeneratingCaptions
-		? tSettings("captions.statusGenerating", "Generating captions")
-		: captionErrorIsMissingAudio
-			? tSettings("captions.noAudioTitle", "No audio to transcribe")
-			: !isWhisperModelReady
-				? tSettings("captions.modelNeedsSetup", "Choose a caption model")
-				: !isWhisperEngineReady
-					? tSettings("captions.engineNeedsSetup", "Choose Whisper engine")
-					: isCaptionFfmpegChecking
-						? tSettings("captions.ffmpegChecking", "Checking FFmpeg")
-						: !isCaptionFfmpegReady
-							? tSettings("captions.ffmpegNeedsSetup", "FFmpeg is unavailable")
-						: captionCueCount > 0
-							? tSettings("captions.statusReadyWithCaptions", "Captions are ready")
-							: tSettings("captions.statusReadyToGenerate", "Ready to generate");
-	const captionStatusText = isGeneratingCaptions
-		? tSettings("captions.generatingStatus", "Generating captions. This can take a moment.")
-		: captionErrorIsMissingAudio
-			? tSettings(
-					"captions.noAudioHelp",
-					"This video does not contain an audio track Recordly can transcribe. Open a video with audio, or record again with microphone or system audio enabled.",
-				)
-			: !isWhisperModelReady
+	const captionStatusTitle =
+		captionSetupStatus.id === "generating"
+			? tSettings("captions.statusGenerating", "Generating captions")
+			: captionSetupStatus.id === "missing-audio"
+				? tSettings("captions.noAudioTitle", "No audio to transcribe")
+				: captionSetupStatus.id === "missing-model"
+					? tSettings("captions.modelNeedsSetup", "Choose a caption model")
+					: captionSetupStatus.id === "missing-engine"
+						? tSettings("captions.engineNeedsSetup", "Choose Whisper engine")
+						: captionSetupStatus.id === "checking-ffmpeg"
+							? tSettings("captions.ffmpegChecking", "Checking FFmpeg")
+							: captionSetupStatus.id === "missing-ffmpeg"
+								? tSettings("captions.ffmpegNeedsSetup", "FFmpeg is unavailable")
+								: captionSetupStatus.id === "captions-hidden"
+									? tSettings(
+											"captions.statusHiddenWithCaptions",
+											"Captions are hidden",
+										)
+									: captionSetupStatus.id === "ready-with-captions"
+										? tSettings(
+												"captions.statusReadyWithCaptions",
+												"Captions are ready",
+											)
+										: captionSetupStatus.id === "error"
+											? tSettings(
+													"captions.needsSetup",
+													"Captions need setup",
+												)
+											: tSettings(
+													"captions.statusReadyToGenerate",
+													"Ready to generate",
+												);
+	const captionStatusText =
+		captionSetupStatus.id === "generating"
+			? tSettings("captions.generatingStatus", "Generating captions. This can take a moment.")
+			: captionSetupStatus.id === "missing-audio"
 				? tSettings(
-						"captions.guideModelDescription",
-						"Download the small model, or choose an existing .bin model file.",
+						"captions.noAudioHelp",
+						"This video does not contain an audio track Recordly can transcribe. Open a video with audio, or record again with microphone or system audio enabled.",
 					)
-				: !isWhisperEngineReady
+				: captionSetupStatus.id === "missing-model"
 					? tSettings(
-							"captions.guideEngineDescription",
-							"Choose the folder that contains whisper-cli. On Windows, C:\\Tools\\whisper is a good place to keep it.",
+							"captions.guideModelDescription",
+							"Download the small model, or choose an existing .bin model file.",
 						)
-					: isCaptionFfmpegChecking
-						? captionFfmpegHelpText
-						: !isCaptionFfmpegReady
-						? captionFfmpegHelpText
-						: captionCueCount > 0
-							? tSettings(
-									"captions.guideReadyDescription",
-									"Generated captions are available. You can regenerate them after changing language, model, or engine.",
-								)
-							: tSettings(
-									"captions.guideGenerateDescription",
-									"Model, engine, and audio extraction are ready.",
-								);
+					: captionSetupStatus.id === "missing-engine"
+						? tSettings(
+								"captions.guideEngineDescription",
+								"Choose the folder that contains whisper-cli. On Windows, C:\\Tools\\whisper is a good place to keep it.",
+							)
+						: captionSetupStatus.id === "checking-ffmpeg" ||
+								captionSetupStatus.id === "missing-ffmpeg"
+							? captionFfmpegHelpText
+							: captionSetupStatus.id === "captions-hidden"
+								? tSettings(
+										"captions.guideHiddenDescription",
+										"Generated captions are currently hidden. Turn on Show to display them in the preview and export.",
+									)
+								: captionSetupStatus.id === "ready-with-captions"
+									? tSettings(
+											"captions.guideReadyDescription",
+											"Generated captions are visible in the preview. Press Play to review timing before export.",
+										)
+									: captionSetupStatus.id === "error"
+										? (captionGenerationError ?? "")
+										: tSettings(
+												"captions.guideGenerateDescription",
+												"Model, engine, and audio extraction are ready.",
+											);
 	const captionStatusToneClassName =
-		captionErrorIsMissingAudio || captionErrorIsMissingFfmpeg
+		captionSetupStatus.tone === "error"
 			? "border-red-500/20 bg-red-500/5"
-			: isCaptionSetupReady
+			: captionSetupStatus.tone === "ready"
 				? "border-[#2563EB]/15 bg-[#2563EB]/5"
 				: "border-amber-500/20 bg-amber-500/5";
 	const captionStatusDotClassName =
-		captionErrorIsMissingAudio || captionErrorIsMissingFfmpeg
+		captionSetupStatus.tone === "error"
 			? "bg-red-500"
-			: isCaptionSetupReady
+			: captionSetupStatus.tone === "ready"
 				? "bg-[#2563EB]"
 				: "bg-amber-500";
 	const captionGenerationHelpTitle = captionErrorIsMissingEngine
@@ -1459,7 +1479,7 @@ export function SettingsPanel({
 			? tSettings("captions.noAudioTitle", "No audio to transcribe")
 			: captionErrorIsMissingFfmpeg
 				? tSettings("captions.ffmpegNeedsSetup", "FFmpeg is unavailable")
-			: tSettings("captions.needsSetup", "Captions need setup");
+				: tSettings("captions.needsSetup", "Captions need setup");
 	const captionGenerationHelpText = captionErrorIsMissingEngine
 		? tSettings(
 				"captions.engineErrorHelp",
@@ -1472,7 +1492,7 @@ export function SettingsPanel({
 				)
 			: captionErrorIsMissingFfmpeg
 				? captionFfmpegHelpText
-		: captionGenerationError;
+				: captionGenerationError;
 	const updateAutoCaptionSettings = (partial: Partial<AutoCaptionSettings>) => {
 		onAutoCaptionSettingsChange?.({
 			...autoCaptionSettings,
@@ -2825,7 +2845,9 @@ export function SettingsPanel({
 									<Button
 										type="button"
 										variant="outline"
-										onClick={() => onShowCaptionPathInFolder?.(whisperModelPath)}
+										onClick={() =>
+											onShowCaptionPathInFolder?.(whisperModelPath)
+										}
 										disabled={!onShowCaptionPathInFolder}
 										className="h-7 rounded-lg border-foreground/10 bg-foreground/5 px-2 text-[11px] text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
 									>
@@ -2859,7 +2881,10 @@ export function SettingsPanel({
 								</Button>
 							</div>
 						</div>
-						<div className="mt-1 truncate text-[10px] text-muted-foreground" title={whisperModelHelpText}>
+						<div
+							className="mt-1 truncate text-[10px] text-muted-foreground"
+							title={whisperModelHelpText}
+						>
 							{whisperModelHelpText}
 						</div>
 					</div>
@@ -2879,7 +2904,9 @@ export function SettingsPanel({
 									<Button
 										type="button"
 										variant="outline"
-										onClick={() => onShowCaptionPathInFolder?.(whisperExecutablePath)}
+										onClick={() =>
+											onShowCaptionPathInFolder?.(whisperExecutablePath)
+										}
 										disabled={!onShowCaptionPathInFolder}
 										className="h-7 rounded-lg border-foreground/10 bg-foreground/5 px-2 text-[11px] text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
 									>
@@ -2912,7 +2939,10 @@ export function SettingsPanel({
 								</Button>
 							</div>
 						</div>
-						<div className="mt-1 truncate text-[10px] text-muted-foreground" title={whisperEngineHelpText}>
+						<div
+							className="mt-1 truncate text-[10px] text-muted-foreground"
+							title={whisperEngineHelpText}
+						>
 							{whisperEngineHelpText}
 						</div>
 					</div>
@@ -2931,7 +2961,9 @@ export function SettingsPanel({
 								<Button
 									type="button"
 									variant="outline"
-									onClick={() => onShowCaptionPathInFolder?.(captionFfmpegPath)}
+									onClick={() =>
+										onShowCaptionPathInFolder?.(captionFfmpegPath)
+									}
 									disabled={!onShowCaptionPathInFolder}
 									className="h-7 rounded-lg border-foreground/10 bg-foreground/5 px-2 text-[11px] text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
 								>
@@ -2939,7 +2971,10 @@ export function SettingsPanel({
 								</Button>
 							) : null}
 						</div>
-						<div className="mt-1 truncate text-[10px] text-muted-foreground" title={captionFfmpegHelpText}>
+						<div
+							className="mt-1 truncate text-[10px] text-muted-foreground"
+							title={captionFfmpegHelpText}
+						>
 							{captionFfmpegHelpText}
 						</div>
 					</div>
@@ -3039,7 +3074,7 @@ export function SettingsPanel({
 					<Button
 						type="button"
 						onClick={onGenerateAutoCaptions}
-						disabled={isGeneratingCaptions || !isCaptionSetupReady}
+						disabled={isGeneratingCaptions || !captionSetupStatus.canGenerate}
 						className="h-10 w-full rounded-xl bg-[#2563EB] px-4 text-sm font-medium text-white hover:bg-[#2563EB]/90 disabled:opacity-60"
 					>
 						{isGeneratingCaptions

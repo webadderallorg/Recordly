@@ -36,6 +36,7 @@ describe("Whisper executable resolution", () => {
 	afterEach(async () => {
 		vi.resetModules();
 		vi.doUnmock("electron");
+		vi.doUnmock("node:child_process");
 		vi.unstubAllEnvs();
 		await fs.rm(tempRoot, { recursive: true, force: true });
 	});
@@ -66,6 +67,16 @@ describe("Whisper executable resolution", () => {
 		expect(await resolveWhisperExecutablePath()).toBe(executablePath);
 	});
 
+	it("resolves WHISPER_CPP_PATH when it points directly to an executable", async () => {
+		const executablePath = path.join(tempRoot, "direct", getWhisperCliName());
+		await writeExecutable(executablePath);
+		vi.stubEnv("WHISPER_CPP_PATH", executablePath);
+
+		const { resolveWhisperExecutablePath } = await import("./generate");
+
+		expect(await resolveWhisperExecutablePath()).toBe(executablePath);
+	});
+
 	it("resolves a selected runtime directory", async () => {
 		const runtimeDir = path.join(tempRoot, "selected-runtime");
 		const executablePath = path.join(runtimeDir, getWhisperCliName());
@@ -74,6 +85,15 @@ describe("Whisper executable resolution", () => {
 		const { resolveWhisperExecutablePath } = await import("./generate");
 
 		expect(await resolveWhisperExecutablePath(runtimeDir)).toBe(executablePath);
+	});
+
+	it("resolves a selected executable file", async () => {
+		const executablePath = path.join(tempRoot, "selected-file", getWhisperCliName());
+		await writeExecutable(executablePath);
+
+		const { resolveWhisperExecutablePath } = await import("./generate");
+
+		expect(await resolveWhisperExecutablePath(executablePath)).toBe(executablePath);
 	});
 
 	it("resolves WHISPER_CPP_PATH when it points to a whisper.cpp checkout", async () => {
@@ -107,5 +127,45 @@ describe("Whisper executable resolution", () => {
 			{ path: systemPath, label: "source system audio" },
 			{ path: micPath, label: "source microphone audio" },
 		]);
+	});
+
+	it("falls back to companion audio when the recording audio cannot be extracted", async () => {
+		const videoPath = path.join(tempRoot, "recording-2.mp4");
+		const systemPath = path.join(tempRoot, "recording-2.system.wav");
+		const wavPath = path.join(tempRoot, "captions.wav");
+		await fs.writeFile(videoPath, "video without extractable audio");
+		await fs.writeFile(systemPath, "system audio");
+
+		const execFileMock = vi.fn(
+			(
+				_: string,
+				args: string[],
+				__: unknown,
+				callback: (error: Error | null, stdout?: string, stderr?: string) => void,
+			) => {
+				const inputPath = args[args.indexOf("-i") + 1];
+				if (inputPath === videoPath) {
+					callback(new Error("Stream map '0:a:0' matches no streams."));
+					return;
+				}
+
+				callback(null, "", "");
+			},
+		);
+		vi.doMock("node:child_process", () => ({
+			execFile: execFileMock,
+			spawnSync: vi.fn(() => ({ status: 1, stdout: "" })),
+		}));
+
+		const { extractCaptionAudioSource } = await import("./generate");
+
+		await expect(
+			extractCaptionAudioSource({
+				videoPath,
+				ffmpegPath: "ffmpeg",
+				wavPath,
+			}),
+		).resolves.toEqual({ path: systemPath, label: "source system audio" });
+		expect(execFileMock).toHaveBeenCalledTimes(2);
 	});
 });
