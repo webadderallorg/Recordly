@@ -47,6 +47,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var microphoneOutputURL: URL?
 	private var trackedWindowId: UInt32?
 	private var trackedWindowFrame: CGRect?
+	private var trackedWindowDisplayId: CGDirectDisplayID?
 	private var updatesSourceRectForTrackedWindow = false
 	private var windowValidationTask: Task<Void, Never>?
 	private var streamConfig: SCStreamConfiguration?
@@ -73,6 +74,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		let streamConfig = SCStreamConfiguration()
 		self.streamConfig = streamConfig
 		trackedWindowFrame = nil
+		trackedWindowDisplayId = nil
 		updatesSourceRectForTrackedWindow = false
 		capturesSystemAudio = config.capturesSystemAudio ?? false
 		capturesMicrophone = config.capturesMicrophone ?? false
@@ -119,6 +121,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				filter = SCContentFilter(display: candidateDisplay, including: [owningApplication], exceptingWindows: [])
 				streamConfig.sourceRect = window.frame
 				trackedWindowFrame = window.frame
+				trackedWindowDisplayId = candidateDisplay.displayID
 				updatesSourceRectForTrackedWindow = true
 			} else {
 				filter = SCContentFilter(desktopIndependentWindow: window)
@@ -131,6 +134,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			streamConfig.height = outputHeight
 		} else {
 			trackedWindowId = nil
+			trackedWindowDisplayId = nil
 			let displayId = config.displayId ?? CGMainDisplayID()
 			guard let display = availableContent.displays.first(where: { $0.displayID == displayId }) else {
 				throw NSError(domain: "RecordlyCapture", code: 4, userInfo: [NSLocalizedDescriptionKey: "Display not found"])
@@ -372,6 +376,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		windowValidationTask = nil
 		trackedWindowId = nil
 		trackedWindowFrame = nil
+		trackedWindowDisplayId = nil
 		updatesSourceRectForTrackedWindow = false
 
 		if let activeStream = stream {
@@ -576,6 +581,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			windowValidationTask?.cancel()
 			windowValidationTask = nil
 			trackedWindowFrame = nil
+			trackedWindowDisplayId = nil
 			updatesSourceRectForTrackedWindow = false
 			return
 		}
@@ -599,7 +605,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 						exit(0)
 					}
 
-					await self.updateTrackedWindowSourceRectIfNeeded(to: window.frame)
+					await self.updateTrackedWindowSourceRectIfNeeded(to: window, displays: availableContent.displays)
 				} catch {
 					continue
 				}
@@ -607,17 +613,33 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 	}
 
-	private func updateTrackedWindowSourceRectIfNeeded(to windowFrame: CGRect) async {
+	private func updateTrackedWindowSourceRectIfNeeded(to window: SCWindow, displays: [SCDisplay]) async {
 		guard updatesSourceRectForTrackedWindow,
-			  trackedWindowFrame != windowFrame,
 			  let stream,
 			  let streamConfig else {
 			return
 		}
 
-		streamConfig.sourceRect = windowFrame
+		let windowFrame = window.frame
+		let currentDisplay = Self.displayForWindowFrame(windowFrame, displays: displays)
+		let displayChanged = currentDisplay.map { display in
+			guard let trackedWindowDisplayId else { return true }
+			return trackedWindowDisplayId != display.displayID
+		} ?? false
+
+		guard trackedWindowFrame != windowFrame || displayChanged else {
+			return
+		}
 
 		do {
+			if displayChanged {
+				guard let currentDisplay, let owningApplication = window.owningApplication else { return }
+				let filter = SCContentFilter(display: currentDisplay, including: [owningApplication], exceptingWindows: [])
+				try await stream.updateContentFilter(filter)
+				trackedWindowDisplayId = currentDisplay.displayID
+			}
+
+			streamConfig.sourceRect = windowFrame
 			try await stream.updateConfiguration(streamConfig)
 			trackedWindowFrame = windowFrame
 		} catch {
