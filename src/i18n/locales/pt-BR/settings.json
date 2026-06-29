@@ -45,7 +45,7 @@
 		},
 		"backgroundBlur": "Desfoque de fundo",
 		"zoomMotionBlur": "Desfoque de movimento do zoom",
-		"temporalZoomMotionBlur": "Desfoque de Zoom Temporal",
+		"temporalZoomMotionBlur": "Desfoque de zoom temporal",
 		"temporalZoomMotionBlurDescription": "Controle a janela do obturador e as amostras de quadro usadas pela nova etapa de desfoque de zoom.",
 		"zoomMotionBlurSamples": "Amostras de Desfoque",
 		"zoomMotionBlurShutter": "Obturador",
