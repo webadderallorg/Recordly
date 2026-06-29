@@ -46,7 +46,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var outputURL: URL?
 	private var microphoneOutputURL: URL?
 	private var trackedWindowId: UInt32?
+	private var trackedWindowFrame: CGRect?
+	private var updatesSourceRectForTrackedWindow = false
 	private var windowValidationTask: Task<Void, Never>?
+	private var streamConfig: SCStreamConfiguration?
 	private var inlineAudioInput: AVAssetWriterInput?
 	private var firstInlineAudioSampleTime: CMTime?
 	private var capturesSystemAudio = false
@@ -68,6 +71,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		let config = try JSONDecoder().decode(CaptureConfig.self, from: data)
 		let availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
 		let streamConfig = SCStreamConfiguration()
+		self.streamConfig = streamConfig
+		trackedWindowFrame = nil
+		updatesSourceRectForTrackedWindow = false
 		capturesSystemAudio = config.capturesSystemAudio ?? false
 		capturesMicrophone = config.capturesMicrophone ?? false
 		if capturesMicrophone && !supportsNativeMicrophoneCapture(streamConfig: streamConfig) {
@@ -112,6 +118,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			if let candidateDisplay, let owningApplication = window.owningApplication {
 				filter = SCContentFilter(display: candidateDisplay, including: [owningApplication], exceptingWindows: [])
 				streamConfig.sourceRect = window.frame
+				trackedWindowFrame = window.frame
+				updatesSourceRectForTrackedWindow = true
 			} else {
 				filter = SCContentFilter(desktopIndependentWindow: window)
 				enableChildWindowCaptureIfSupported(streamConfig: streamConfig)
@@ -363,6 +371,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		windowValidationTask?.cancel()
 		windowValidationTask = nil
 		trackedWindowId = nil
+		trackedWindowFrame = nil
+		updatesSourceRectForTrackedWindow = false
 
 		if let activeStream = stream {
 			do {
@@ -372,6 +382,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			}
 		}
 		stream = nil
+		streamConfig = nil
 		isRecording = false
 
 		if let originalBuffer = lastSampleBuffer, let videoInput = videoInput {
@@ -564,6 +575,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		guard let trackedWindowId else {
 			windowValidationTask?.cancel()
 			windowValidationTask = nil
+			trackedWindowFrame = nil
+			updatesSourceRectForTrackedWindow = false
 			return
 		}
 
@@ -577,8 +590,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 				do {
 					let availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-					let windowStillAvailable = availableContent.windows.contains(where: { $0.windowID == trackedWindowId })
-					if !windowStillAvailable {
+					guard let window = availableContent.windows.first(where: { $0.windowID == trackedWindowId }) else {
 						print("WINDOW_UNAVAILABLE")
 						fflush(stdout)
 						let outputPath = try await self.finishCapture()
@@ -586,10 +598,31 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 						fflush(stdout)
 						exit(0)
 					}
+
+					await self.updateTrackedWindowSourceRectIfNeeded(to: window.frame)
 				} catch {
 					continue
 				}
 			}
+		}
+	}
+
+	private func updateTrackedWindowSourceRectIfNeeded(to windowFrame: CGRect) async {
+		guard updatesSourceRectForTrackedWindow,
+			  trackedWindowFrame != windowFrame,
+			  let stream,
+			  let streamConfig else {
+			return
+		}
+
+		streamConfig.sourceRect = windowFrame
+
+		do {
+			try await stream.updateConfiguration(streamConfig)
+			trackedWindowFrame = windowFrame
+		} catch {
+			fputs("Error updating capture source rect: \(error.localizedDescription)\n", stderr)
+			fflush(stderr)
 		}
 	}
 
