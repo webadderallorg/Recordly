@@ -104,16 +104,22 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				throw NSError(domain: "RecordlyCapture", code: 3, userInfo: [NSLocalizedDescriptionKey: "Window not found"])
 			}
 
-			filter = SCContentFilter(desktopIndependentWindow: window)
-
 			let candidateDisplay = availableContent.displays.first(where: {
 				$0.frame.intersects(window.frame) || $0.frame.contains(CGPoint(x: window.frame.midX, y: window.frame.midY))
 			})
 			let scaleFactor = ScreenCaptureRecorder.scaleFactor(for: candidateDisplay?.displayID ?? CGMainDisplayID())
 			outputWidth = max(2, Int(window.frame.width) * scaleFactor)
 			outputHeight = max(2, Int(window.frame.height) * scaleFactor)
-			if #available(macOS 14.0, *) {
-				streamConfig.ignoreShadowsSingleWindow = true
+
+			if let candidateDisplay, let owningApplication = window.owningApplication {
+				filter = SCContentFilter(display: candidateDisplay, including: [owningApplication], exceptingWindows: [])
+				streamConfig.sourceRect = window.frame
+			} else {
+				filter = SCContentFilter(desktopIndependentWindow: window)
+				enableChildWindowCaptureIfSupported(streamConfig: streamConfig)
+				if #available(macOS 14.0, *) {
+					streamConfig.ignoreShadowsSingleWindow = true
+				}
 			}
 			streamConfig.width = outputWidth
 			streamConfig.height = outputHeight
@@ -550,6 +556,12 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		return supportsConfigSelector && supportsDeviceSelector && supportsOutputType
 	}
 
+	private func enableChildWindowCaptureIfSupported(streamConfig: SCStreamConfiguration) {
+		guard streamConfig.responds(to: Selector(("setIncludeChildWindows:"))) else { return }
+
+		streamConfig.setValue(true, forKey: "includeChildWindows")
+	}
+
 	private func startWindowValidationIfNeeded() {
 		guard let trackedWindowId else {
 			windowValidationTask?.cancel()
@@ -715,4 +727,3 @@ DispatchQueue.global(qos: .utility).async {
 }
 
 service.waitUntilFinished()
-
