@@ -104,9 +104,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				throw NSError(domain: "RecordlyCapture", code: 3, userInfo: [NSLocalizedDescriptionKey: "Window not found"])
 			}
 
-			let candidateDisplay = availableContent.displays.first(where: {
-				$0.frame.intersects(window.frame) || $0.frame.contains(CGPoint(x: window.frame.midX, y: window.frame.midY))
-			})
+			let candidateDisplay = Self.displayForWindowFrame(window.frame, displays: availableContent.displays)
 			let scaleFactor = ScreenCaptureRecorder.scaleFactor(for: candidateDisplay?.displayID ?? CGMainDisplayID())
 			outputWidth = max(2, Int(window.frame.width) * scaleFactor)
 			outputHeight = max(2, Int(window.frame.height) * scaleFactor)
@@ -593,6 +591,23 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				}
 			}
 		}
+	}
+
+	private static func displayForWindowFrame(_ windowFrame: CGRect, displays: [SCDisplay]) -> SCDisplay? {
+		let windowCenter = CGPoint(x: windowFrame.midX, y: windowFrame.midY)
+		if let centeredDisplay = displays.first(where: { $0.frame.contains(windowCenter) }) {
+			return centeredDisplay
+		}
+
+		return displays
+			.compactMap { display -> (display: SCDisplay, intersectionArea: CGFloat)? in
+				let intersection = display.frame.intersection(windowFrame)
+				let intersectionArea = intersection.width * intersection.height
+				guard intersectionArea > 0 else { return nil }
+				return (display, intersectionArea)
+			}
+			.max { $0.intersectionArea < $1.intersectionArea }?
+			.display
 	}
 
 	private static func scaleFactor(for displayId: CGDirectDisplayID) -> Int {
