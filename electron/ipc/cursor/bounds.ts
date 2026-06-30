@@ -86,6 +86,39 @@ export function getWindowBoundsFromNativeSource(
 	return { x, y, width, height };
 }
 
+export function getVisibleWindowBoundsFromNativeSource(
+	source?: NativeMacWindowSource | null,
+): WindowBounds | null {
+	if (!source || source.visible === false) {
+		return null;
+	}
+
+	const {
+		visibleX: x,
+		visibleY: y,
+		visibleWidth: width,
+		visibleHeight: height,
+	} = source;
+	if (
+		typeof x !== "number" ||
+		!Number.isFinite(x) ||
+		typeof y !== "number" ||
+		!Number.isFinite(y) ||
+		typeof width !== "number" ||
+		!Number.isFinite(width) ||
+		typeof height !== "number" ||
+		!Number.isFinite(height)
+	) {
+		return getWindowBoundsFromNativeSource(source);
+	}
+
+	if (width <= 0 || height <= 0) {
+		return null;
+	}
+
+	return { x, y, width, height };
+}
+
 export async function resolveMacWindowBounds(source: SelectedSource): Promise<WindowBounds | null> {
 	const windowId = parseWindowId(source.id);
 	if (!windowId) {
@@ -96,6 +129,23 @@ export async function resolveMacWindowBounds(source: SelectedSource): Promise<Wi
 		const nativeSources = await getNativeMacWindowSources({ maxAgeMs: 250 });
 		const matchedSource = nativeSources.find((entry) => parseWindowId(entry.id) === windowId);
 		return getWindowBoundsFromNativeSource(matchedSource);
+	} catch {
+		return null;
+	}
+}
+
+export async function resolveMacWindowVisibleBounds(
+	source: SelectedSource,
+): Promise<WindowBounds | null> {
+	const windowId = parseWindowId(source.id);
+	if (!windowId) {
+		return null;
+	}
+
+	try {
+		const nativeSources = await getNativeMacWindowSources({ maxAgeMs: 0 });
+		const matchedSource = nativeSources.find((entry) => parseWindowId(entry.id) === windowId);
+		return getVisibleWindowBoundsFromNativeSource(matchedSource);
 	} catch {
 		return null;
 	}

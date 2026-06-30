@@ -26,6 +26,10 @@ interface SourceSelectorProps {
 	loading?: boolean;
 	/** Callback when a source is selected */
 	onSourceSelect?: (source: DesktopSource) => void;
+	/** Callback when a source option is previewed */
+	onSourceHover?: (source: DesktopSource) => void;
+	/** Callback when source option preview ends */
+	onSourceHoverEnd?: () => void;
 	/** Callback to fetch sources */
 	onFetchSources?: () => Promise<void>;
 	/** Whether the popover is open */
@@ -81,7 +85,18 @@ export const SourceSelectorContent = ({
 	selectedSource = "Screen",
 	loading = false,
 	onSourceSelect = () => {},
-}: Pick<SourceSelectorProps, "screenSources" | "windowSources" | "selectedSource" | "loading" | "onSourceSelect">) => {
+	onSourceHover,
+	onSourceHoverEnd,
+}: Pick<
+	SourceSelectorProps,
+	| "screenSources"
+	| "windowSources"
+	| "selectedSource"
+	| "loading"
+	| "onSourceSelect"
+	| "onSourceHover"
+	| "onSourceHoverEnd"
+>) => {
 	const t = useScopedT("launch");
 	const renderSourceItem = (source: DesktopSource, index: number) => {
 		const isSelected = selectedSource === source.name;
@@ -94,6 +109,8 @@ export const SourceSelectorContent = ({
 					isSelected && "source-selector-item-selected",
 				)}
 				onClick={() => onSourceSelect(source)}
+				onFocus={() => onSourceHover?.(source)}
+				onPointerEnter={() => onSourceHover?.(source)}
 			>
 				<div className="relative flex-shrink-0">
 					{source.thumbnail ? (
@@ -139,7 +156,10 @@ export const SourceSelectorContent = ({
 	}
 
 	return (
-		<div className="max-h-[320px] overflow-y-auto overflow-x-hidden p-2 source-selector-scroll">
+		<div
+			className="max-h-[320px] overflow-y-auto overflow-x-hidden p-2 source-selector-scroll"
+			onPointerLeave={onSourceHoverEnd}
+		>
 			{hasAnySources ? (
 				<>
 					{screenSources.length > 0 ? (
@@ -190,6 +210,8 @@ export const SourceSelector = React.memo(function SourceSelector({
 	selectedSource: propsSelectedSource,
 	loading: propsLoading,
 	onSourceSelect: propsOnSourceSelect,
+	onSourceHover: propsOnSourceHover,
+	onSourceHoverEnd: propsOnSourceHoverEnd,
 	onFetchSources: propsOnFetchSources,
 	open: propsOpen,
 	onOpenChange: propsOnOpenChange,
@@ -365,6 +387,8 @@ export const SourceSelector = React.memo(function SourceSelector({
 					selectedSource={selectedSource}
 					loading={loading}
 					onSourceSelect={onSourceSelect}
+					onSourceHover={propsOnSourceHover}
+					onSourceHoverEnd={propsOnSourceHoverEnd}
 				/>
 			</PopoverContent>
 		</Popover>

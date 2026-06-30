@@ -27,6 +27,7 @@ import {
 } from "./ipc/handlers";
 import { ensureMediaServer } from "./mediaServer";
 import { ensurePackagedRendererServer } from "./rendererServer";
+import { clearSourceHighlightWindow } from "./sourceHighlight";
 import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
@@ -851,6 +852,7 @@ function createSourceSelectorWindowWrapper() {
 // On macOS, applications and their menu bar stay active until the user quits
 // explicitly with Cmd + Q.
 app.on("before-quit", () => {
+	clearSourceHighlightWindow();
 	killWindowsCaptureProcess();
 	showCursor();
 	cleanupNativeVideoExportSessions();
@@ -917,6 +919,7 @@ app.whenReady().then(async () => {
 	}
 
 	ipcMain.on("hud-overlay-close", () => {
+		clearSourceHighlightWindow();
 		const hud = getHudOverlayWindow();
 		if (hud) {
 			console.log("[main] Closing HUD window via hud-overlay-close");

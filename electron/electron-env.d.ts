@@ -222,7 +222,11 @@ interface Window {
 		switchToEditor: () => Promise<void>;
 		openSourceSelector: () => Promise<void>;
 		selectSource: (source: ProcessedDesktopSource) => Promise<ProcessedDesktopSource>;
-		showSourceHighlight: (source: ProcessedDesktopSource) => Promise<{ success: boolean }>;
+		showSourceHighlight: (
+			source: ProcessedDesktopSource,
+			options?: { activateWindow?: boolean },
+		) => Promise<{ success: boolean }>;
+		clearSourceHighlight: () => Promise<{ success: boolean }>;
 		getSelectedSource: () => Promise<ProcessedDesktopSource | null>;
 		onSelectedSourceChanged: (
 			callback: (source: ProcessedDesktopSource | null) => void,

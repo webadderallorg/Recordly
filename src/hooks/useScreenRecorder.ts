@@ -376,6 +376,24 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const requestedBrowserMicrophoneProfile = useRef<string | null>(null);
 	const hideEditorOverlayCursorByDefault = useRef(false);
 
+	const showRecordingSourceHighlight = useCallback(
+		(source: ProcessedDesktopSource, platform: string) => {
+			if (platform === "linux") {
+				return;
+			}
+
+			const highlightPromise = window.electronAPI?.showSourceHighlight?.(source, {
+				activateWindow: false,
+			});
+			if (highlightPromise) {
+				void highlightPromise.catch((error) => {
+					console.warn("Failed to show recording source highlight:", error);
+				});
+			}
+		},
+		[],
+	);
+
 	const notifyRecordingFinalizationFailure = useCallback(async (message: string) => {
 		setFinalizing(false);
 		toast.error(message, { duration: 10000 });
@@ -1501,6 +1519,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						webcamStartTime.current === null
 							? 0
 							: webcamStartTime.current - mainStartedAt;
+					showRecordingSourceHighlight(selectedSource, platform);
 
 					// When native mic capture is unavailable or explicitly bypassed,
 					// record mic via browser getUserMedia as a sidecar file.
@@ -1907,6 +1926,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			webcamTimeOffsetMs.current =
 				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
 			recorder.start(RECORDER_TIMESLICE_MS);
+			showRecordingSourceHighlight(selectedSource, platform);
 			setRecording(true);
 			try {
 				await window.electronAPI?.setRecordingState(true);
