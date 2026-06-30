@@ -713,6 +713,12 @@ interface Window {
 				error?: string;
 			}) => void,
 		) => () => void;
+		onCaptionGenerationProgress: (
+			callback: (state: {
+				stage: "preparing" | "extracting-audio" | "transcribing" | "finalizing";
+				progress: number;
+			}) => void,
+		) => () => void;
 		generateAutoCaptions: (options: {
 			videoPath: string;
 			whisperExecutablePath?: string;

@@ -585,6 +585,7 @@ export default function VideoEditor() {
 	>(initialEditorPreferences.whisperModelPath ? "downloaded" : "idle");
 	const [whisperModelDownloadProgress, setWhisperModelDownloadProgress] = useState(0);
 	const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
+	const [captionGenerationProgress, setCaptionGenerationProgress] = useState<number | null>(null);
 	const [autoCaptionError, setAutoCaptionError] = useState<string | null>(null);
 	const [captionFfmpegPath, setCaptionFfmpegPath] = useState<string | null>(null);
 	const [captionFfmpegError, setCaptionFfmpegError] = useState<string | null>(null);
@@ -2753,6 +2754,11 @@ export default function VideoEditor() {
 				toast.error(state.error);
 			}
 		});
+		const unsubscribeCaptionProgress = window.electronAPI.onCaptionGenerationProgress(
+			(state) => {
+				setCaptionGenerationProgress(state.progress);
+			},
+		);
 
 		void (async () => {
 			const result = await window.electronAPI.getWhisperRuntimeStatus({
@@ -2797,7 +2803,10 @@ export default function VideoEditor() {
 			setWhisperModelDownloadProgress(0);
 		})();
 
-		return () => unsubscribe?.();
+		return () => {
+			unsubscribe?.();
+			unsubscribeCaptionProgress?.();
+		};
 	}, [initialWhisperExecutablePath]);
 
 	const handlePickWhisperExecutable = useCallback(
@@ -2958,6 +2967,7 @@ export default function VideoEditor() {
 		}
 
 		setAutoCaptionError(null);
+		setCaptionGenerationProgress(0);
 		setIsGeneratingCaptions(true);
 		try {
 			const result = await window.electronAPI.generateAutoCaptions({
@@ -2994,6 +3004,7 @@ export default function VideoEditor() {
 			toast.error(message);
 		} finally {
 			setIsGeneratingCaptions(false);
+			setCaptionGenerationProgress(null);
 		}
 	}, [
 		autoCaptionSettings.language,
@@ -6637,6 +6648,7 @@ export default function VideoEditor() {
 								captionGenerationError={autoCaptionError}
 								captionFfmpegPath={captionFfmpegPath}
 								captionFfmpegError={captionFfmpegError}
+								captionGenerationProgress={captionGenerationProgress}
 								isGeneratingCaptions={isGeneratingCaptions}
 								onAutoCaptionSettingsChange={setAutoCaptionSettings}
 								onPickWhisperExecutable={handlePickWhisperExecutable}

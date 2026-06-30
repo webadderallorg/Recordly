@@ -1,4 +1,4 @@
-import { execFile, spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -19,6 +19,80 @@ import {
 } from "./silence";
 
 const execFileAsync = promisify(execFile);
+
+export type CaptionGenerationProgress = {
+	stage: "preparing" | "extracting-audio" | "transcribing" | "finalizing";
+	progress: number;
+};
+
+function clampProgress(progress: number) {
+	return Math.min(100, Math.max(0, Math.round(progress)));
+}
+
+function emitProgress(
+	onProgress: ((progress: CaptionGenerationProgress) => void) | undefined,
+	progress: CaptionGenerationProgress,
+) {
+	onProgress?.({ ...progress, progress: clampProgress(progress.progress) });
+}
+
+export function parseWhisperProgressPercent(output: string) {
+	const matches = [...output.matchAll(/progress\s*=\s*(\d{1,3}(?:\.\d+)?)%/gi)];
+	const match = matches[matches.length - 1];
+	if (!match) {
+		return null;
+	}
+
+	return clampProgress(Number(match[1]));
+}
+
+function runWhisperCommand(
+	whisperExecutablePath: string,
+	args: string[],
+	onProgress?: (progress: CaptionGenerationProgress) => void,
+) {
+	return new Promise<void>((resolve, reject) => {
+		const child = spawn(whisperExecutablePath, args, { windowsHide: true });
+		let recentOutput = "";
+		const timeout = setTimeout(
+			() => {
+				child.kill();
+				reject(new Error("Whisper timed out after 30 minutes."));
+			},
+			30 * 60 * 1000,
+		);
+
+		const clearWhisperTimeout = () => clearTimeout(timeout);
+
+		const handleOutput = (chunk: Buffer) => {
+			const output = chunk.toString("utf-8");
+			recentOutput = `${recentOutput}${output}`.slice(-20_000);
+			const whisperProgress = parseWhisperProgressPercent(recentOutput);
+			if (whisperProgress !== null) {
+				emitProgress(onProgress, {
+					stage: "transcribing",
+					progress: 15 + whisperProgress * 0.8,
+				});
+			}
+		};
+
+		child.stdout?.on("data", handleOutput);
+		child.stderr?.on("data", handleOutput);
+		child.on("error", (error) => {
+			clearWhisperTimeout();
+			reject(error);
+		});
+		child.on("close", (code) => {
+			clearWhisperTimeout();
+			if (code === 0) {
+				resolve();
+				return;
+			}
+
+			reject(new Error(`Whisper exited with code ${code}. ${recentOutput.trim()}`.trim()));
+		});
+	});
+}
 
 function getWhisperBinaryNames() {
 	return process.platform === "win32"
@@ -277,7 +351,9 @@ export async function generateAutoCaptionsFromVideo(options: {
 	whisperExecutablePath?: string;
 	whisperModelPath: string;
 	language?: string;
+	onProgress?: (progress: CaptionGenerationProgress) => void;
 }) {
+	emitProgress(options.onProgress, { stage: "preparing", progress: 0 });
 	const ffmpegPath = getFfmpegBinaryPath();
 	const normalizedVideoPath = normalizeVideoSourcePath(options.videoPath);
 	if (!normalizedVideoPath) {
@@ -302,11 +378,13 @@ export async function generateAutoCaptionsFromVideo(options: {
 	const jsonPath = `${outputBase}.json`;
 
 	try {
+		emitProgress(options.onProgress, { stage: "extracting-audio", progress: 5 });
 		const audioSource = await extractCaptionAudioSource({
 			videoPath: normalizedVideoPath,
 			ffmpegPath,
 			wavPath,
 		});
+		emitProgress(options.onProgress, { stage: "transcribing", progress: 15 });
 
 		const language =
 			options.language && options.language.trim() ? options.language.trim() : "auto";
@@ -320,15 +398,16 @@ export async function generateAutoCaptionsFromVideo(options: {
 			outputBase,
 			"-l",
 			language,
-			"-np",
+			"-pp",
 		];
 
 		let jsonEnabled = true;
 		try {
-			await execFileAsync(whisperExecutablePath, [...whisperBaseArgs, "-ojf"], {
-				timeout: 30 * 60 * 1000,
-				maxBuffer: 20 * 1024 * 1024,
-			});
+			await runWhisperCommand(
+				whisperExecutablePath,
+				[...whisperBaseArgs, "-ojf"],
+				options.onProgress,
+			);
 		} catch (error) {
 			if (!shouldRetryWhisperWithoutJson(error)) {
 				throw error;
@@ -339,12 +418,11 @@ export async function generateAutoCaptionsFromVideo(options: {
 				"[auto-captions] Whisper runtime does not support JSON full output, retrying with SRT only:",
 				error,
 			);
-			await execFileAsync(whisperExecutablePath, whisperBaseArgs, {
-				timeout: 30 * 60 * 1000,
-				maxBuffer: 20 * 1024 * 1024,
-			});
+			emitProgress(options.onProgress, { stage: "transcribing", progress: 15 });
+			await runWhisperCommand(whisperExecutablePath, whisperBaseArgs, options.onProgress);
 		}
 
+		emitProgress(options.onProgress, { stage: "finalizing", progress: 96 });
 		const timedCues = jsonEnabled
 			? parseWhisperJsonCues(await fs.readFile(jsonPath, "utf-8"))
 			: [];
@@ -380,6 +458,7 @@ export async function generateAutoCaptionsFromVideo(options: {
 			);
 		}
 
+		emitProgress(options.onProgress, { stage: "finalizing", progress: 100 });
 		return {
 			cues: cuesToReturn,
 			audioSourceLabel: audioSource.label,

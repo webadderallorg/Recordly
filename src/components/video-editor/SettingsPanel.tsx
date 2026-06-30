@@ -836,6 +836,7 @@ interface SettingsPanelProps {
 	captionGenerationError?: string | null;
 	captionFfmpegPath?: string | null;
 	captionFfmpegError?: string | null;
+	captionGenerationProgress?: number | null;
 	isGeneratingCaptions?: boolean;
 	onAutoCaptionSettingsChange?: (settings: AutoCaptionSettings) => void;
 	onPickWhisperExecutable?: (selectionMode?: "file" | "directory") => void;
@@ -1293,6 +1294,7 @@ export function SettingsPanel({
 	captionGenerationError = null,
 	captionFfmpegPath,
 	captionFfmpegError,
+	captionGenerationProgress = null,
 	isGeneratingCaptions = false,
 	onAutoCaptionSettingsChange,
 	onPickWhisperExecutable,
@@ -1344,6 +1346,10 @@ export function SettingsPanel({
 		[extensionWallpapers],
 	);
 	const captionCueCount = autoCaptions.length;
+	const roundedCaptionGenerationProgress =
+		typeof captionGenerationProgress === "number"
+			? Math.min(100, Math.max(0, Math.round(captionGenerationProgress)))
+			: null;
 	const captionSetupStatus = getCaptionSetupStatus({
 		captionCueCount,
 		captionsEnabled: autoCaptionSettings.enabled,
@@ -1426,7 +1432,15 @@ export function SettingsPanel({
 												);
 	const captionStatusText =
 		captionSetupStatus.id === "generating"
-			? tSettings("captions.generatingStatus", "Generating captions. This can take a moment.")
+			? roundedCaptionGenerationProgress !== null
+				? `${tSettings(
+						"captions.generatingStatus",
+						"Generating captions. This can take a moment.",
+					)} ${roundedCaptionGenerationProgress}%`
+				: tSettings(
+						"captions.generatingStatus",
+						"Generating captions. This can take a moment.",
+					)
 			: captionSetupStatus.id === "missing-audio"
 				? tSettings(
 						"captions.noAudioHelp",
@@ -2961,9 +2975,7 @@ export function SettingsPanel({
 								<Button
 									type="button"
 									variant="outline"
-									onClick={() =>
-										onShowCaptionPathInFolder?.(captionFfmpegPath)
-									}
+									onClick={() => onShowCaptionPathInFolder?.(captionFfmpegPath)}
 									disabled={!onShowCaptionPathInFolder}
 									className="h-7 rounded-lg border-foreground/10 bg-foreground/5 px-2 text-[11px] text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
 								>
@@ -3085,13 +3097,15 @@ export function SettingsPanel({
 					</Button>
 					{isGeneratingCaptions ? (
 						<div className="space-y-1">
-							<div className="text-xs text-muted-foreground">
-								{tSettings(
-									"captions.generatingStatus",
-									"Generating captions. This can take a moment.",
-								)}
+							<div className="text-xs text-muted-foreground">{captionStatusText}</div>
+							<div className="h-2 overflow-hidden rounded-full bg-foreground/5">
+								<div
+									className="h-full rounded-full bg-[#2196f3] transition-all"
+									style={{
+										width: `${roundedCaptionGenerationProgress ?? 0}%`,
+									}}
+								/>
 							</div>
-							<div className="indeterminate-progress h-2 rounded-full bg-foreground/5" />
 						</div>
 					) : null}
 				</div>

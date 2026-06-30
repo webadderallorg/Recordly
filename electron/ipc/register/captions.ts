@@ -1,7 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { dialog, ipcMain, shell } from "electron";
-import { generateAutoCaptionsFromVideo, resolveWhisperExecutablePath } from "../captions/generate";
+import {
+	type CaptionGenerationProgress,
+	generateAutoCaptionsFromVideo,
+	resolveWhisperExecutablePath,
+} from "../captions/generate";
 import {
 	deleteWhisperSmallModel,
 	downloadWhisperSmallModel,
@@ -78,6 +82,17 @@ function getWhisperRuntimeDefaultPathCandidates(currentPath?: string | null) {
 		process.platform === "darwin" ? "/opt/homebrew/bin" : null,
 		process.platform === "darwin" ? "/usr/local/bin" : null,
 	];
+}
+
+function sendCaptionGenerationProgress(
+	webContents: Electron.WebContents,
+	payload: CaptionGenerationProgress,
+) {
+	if (webContents.isDestroyed()) {
+		return;
+	}
+
+	webContents.send("caption-generation-progress", payload);
 }
 
 export function registerCaptionHandlers() {
@@ -364,7 +379,7 @@ export function registerCaptionHandlers() {
 	ipcMain.handle(
 		"generate-auto-captions",
 		async (
-			_,
+			event,
 			options: {
 				videoPath: string;
 				whisperExecutablePath: string;
@@ -373,7 +388,10 @@ export function registerCaptionHandlers() {
 			},
 		) => {
 			try {
-				const result = await generateAutoCaptionsFromVideo(options);
+				const result = await generateAutoCaptionsFromVideo({
+					...options,
+					onProgress: (progress) => sendCaptionGenerationProgress(event.sender, progress),
+				});
 				return {
 					success: true,
 					cues: result.cues,

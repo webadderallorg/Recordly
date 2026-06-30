@@ -56,6 +56,16 @@ describe("Whisper executable resolution", () => {
 		).rejects.toThrow(`Whisper model file was not found at ${missingModelPath}.`);
 	});
 
+	it("parses Whisper progress output", async () => {
+		const { parseWhisperProgressPercent } = await import("./generate");
+
+		expect(
+			parseWhisperProgressPercent("whisper_print_progress_callback: progress =  42%"),
+		).toBe(42);
+		expect(parseWhisperProgressPercent("progress = 5%\nprogress = 100%")).toBe(100);
+		expect(parseWhisperProgressPercent("no progress here")).toBeNull();
+	});
+
 	it("resolves WHISPER_CPP_PATH when it points to a runtime directory", async () => {
 		const runtimeDir = path.join(tempRoot, "whisper-runtime");
 		const executablePath = path.join(runtimeDir, getWhisperCliName());
@@ -154,6 +164,7 @@ describe("Whisper executable resolution", () => {
 		);
 		vi.doMock("node:child_process", () => ({
 			execFile: execFileMock,
+			spawn: vi.fn(),
 			spawnSync: vi.fn(() => ({ status: 1, stdout: "" })),
 		}));
 
