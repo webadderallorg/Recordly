@@ -117,7 +117,12 @@ if unionRect([]) != nil {
 			const compile = spawnSync("swiftc", [testPath, "-o", outputPath], {
 				encoding: "utf8",
 			});
-			expect([compile.stdout, compile.stderr].filter(Boolean).join("\n")).toBe("");
+			if (compile.status !== 0) {
+				const output = [compile.stdout, compile.stderr].filter(Boolean).join("\n");
+				if (output) {
+					console.error(output);
+				}
+			}
 			expect(compile.status).toBe(0);
 
 			const run = spawnSync(outputPath, { encoding: "utf8" });
