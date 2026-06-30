@@ -104,14 +104,17 @@ describe("createSourceHighlightController", () => {
 
 	it("clears the persistent recording outline explicitly", async () => {
 		const highlightWindow = createMockHighlightWindow();
+		const reassertHudOverlayMousePassthrough = vi.fn();
 		const controller = createSourceHighlightController({
 			createWindow: vi.fn(() => highlightWindow),
-			reassertHudOverlayMousePassthrough: vi.fn(),
+			reassertHudOverlayMousePassthrough,
 		});
 
 		await controller.show({ x: 0, y: 0, width: 200, height: 100 });
+		reassertHudOverlayMousePassthrough.mockClear();
 		controller.clear();
 
 		expect(highlightWindow.close).toHaveBeenCalledTimes(1);
+		expect(reassertHudOverlayMousePassthrough).toHaveBeenCalledTimes(1);
 	});
 });

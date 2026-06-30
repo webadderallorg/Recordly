@@ -76,11 +76,23 @@ export function SourcePopover({
 					clearSourceHighlight("for Linux preview");
 					return;
 				}
-				await window.electronAPI?.showSourceHighlight?.(getHighlightSource(source), {
-					activateWindow: false,
-				});
+				const result = await window.electronAPI?.showSourceHighlight?.(
+					getHighlightSource(source),
+					{
+						activateWindow: false,
+					},
+				);
+				if (!previewRequestGate.isCurrent(requestId)) {
+					return;
+				}
+				if (result && !result.success) {
+					clearSourceHighlight("after preview failed");
+				}
 			})().catch((error) => {
 				console.warn("Failed to preview source highlight:", error);
+				if (previewRequestGate.isCurrent(requestId)) {
+					clearSourceHighlight("after preview failed");
+				}
 			});
 		},
 		[clearSourceHighlight, previewRequestGate],
@@ -101,15 +113,23 @@ export function SourcePopover({
 				return;
 			}
 			if (selected) {
-				await window.electronAPI?.showSourceHighlight?.(selected, {
+				const result = await window.electronAPI?.showSourceHighlight?.(selected, {
 					activateWindow: false,
 				});
+				if (!previewRequestGate.isCurrent(requestId)) {
+					return;
+				}
+				if (result && !result.success) {
+					clearSourceHighlight("after restore failed");
+				}
 				return;
 			}
 			clearSourceHighlight("with no selected source");
 		})().catch((error) => {
 			console.error("Failed to restore source highlight:", error);
-			clearSourceHighlight("after restore failed");
+			if (previewRequestGate.isCurrent(requestId)) {
+				clearSourceHighlight("after restore failed");
+			}
 		});
 	}, [clearSourceHighlight, previewRequestGate]);
 

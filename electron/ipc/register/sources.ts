@@ -59,10 +59,25 @@ function getVisibleWindowHighlightBounds(bounds: {
 	const intersections = getScreen()
 		.getAllDisplays()
 		.map((display) => intersectBounds(bounds, display.bounds))
-		.filter((candidate): candidate is typeof bounds => candidate !== null)
-		.sort((left, right) => right.width * right.height - left.width * left.height);
+		.filter((candidate): candidate is typeof bounds => candidate !== null);
 
-	return intersections[0] ?? null;
+	if (intersections.length === 0) {
+		return null;
+	}
+
+	return intersections.reduce((combined, current) => {
+		const x = Math.min(combined.x, current.x);
+		const y = Math.min(combined.y, current.y);
+		const right = Math.max(combined.x + combined.width, current.x + current.width);
+		const bottom = Math.max(combined.y + combined.height, current.y + current.height);
+
+		return {
+			x,
+			y,
+			width: right - x,
+			height: bottom - y,
+		};
+	});
 }
 
 function broadcastSelectedSourceChange() {

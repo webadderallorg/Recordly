@@ -193,7 +193,7 @@ function LaunchWindowContent() {
 			syncSelectedSource(source);
 			if (source && canShowSourceHighlight) {
 				showSelectedSourceHighlight(source);
-			} else if (platform === "linux") {
+			} else {
 				void window.electronAPI.clearSourceHighlight?.();
 			}
 		});
