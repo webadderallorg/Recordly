@@ -62,10 +62,10 @@
 		"zoomOutDescription": "Controla como a câmera sai de uma região de zoom.",
 		"connectedZoomTitle": "Entre zooms",
 		"connectedZoomDescription": "Ajuste o deslizamento entre regiões de zoom consecutivas quando a conexão estiver ativada.",
-		"motionPresetsTitle": "Predefinicoes de Movimento",
-		"motionPresetsZoomHint": "As predefinicoes de movimento do zoom estao disponiveis em Configuracoes.",
-		"animationPresets": "Predefinicoes de Animacao",
-		"cursorMotionPresets": "Predefinicoes de Movimento do Cursor",
+		"motionPresetsTitle": "Predefinições de Movimento",
+		"motionPresetsZoomHint": "As predefinições de movimento do zoom estão disponíveis em Configurações.",
+		"animationPresets": "Predefinições de Animação",
+		"cursorMotionPresets": "Predefinições de Movimento do Cursor",
 		"motionPresets": {
 			"focused": {
 				"label": "Focado",

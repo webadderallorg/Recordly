@@ -108,7 +108,7 @@
 			"duration": "Effectduur",
 			"none": {
 				"label": "Geen",
-				"description": "Geen klikgrafiek. Alleen de cursorbeweiging verandert bij klikken."
+				"description": "Geen klikgrafiek. Alleen de cursorbeweging verandert bij klikken."
 			},
 			"ripple": {
 				"label": "Ripple",
