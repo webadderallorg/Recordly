@@ -43,11 +43,19 @@ interface TimelineAudioPeaksOptions {
 	enableSourceSidecarFallback?: boolean;
 	fallbackResources?: string[];
 	peakCount?: number;
+	cacheKeyVersion?: string | number | null;
 }
 
 export interface TimelineAudioPeaksResult {
 	peaks: AudioPeaksData | null;
 	loading: boolean;
+}
+
+export function getTimelineAudioPeaksCacheKey(
+	resource: string,
+	cacheKeyVersion?: string | number | null,
+) {
+	return `${resource}::${cacheKeyVersion ?? ""}`;
 }
 
 export function useTimelineAudioPeaks(
@@ -60,6 +68,7 @@ export function useTimelineAudioPeaks(
 	const enableSourceSidecarFallback = options.enableSourceSidecarFallback ?? false;
 	const fallbackResources = options.fallbackResources ?? EMPTY_FALLBACK_RESOURCES;
 	const peakCount = options.peakCount ?? WAVEFORM_DEFAULT_PEAK_COUNT;
+	const cacheKeyVersion = options.cacheKeyVersion ?? null;
 
 	useEffect(() => {
 		sourceRef.current = mediaResource;
@@ -75,7 +84,11 @@ export function useTimelineAudioPeaks(
 		const run = async () => {
 			const tryGenerate = async (resource: string): Promise<AudioPeaksData> => {
 				const resolvedUrl = await resolveMediaResourceUrl(resource);
-				return waveformGenerator.generate(resolvedUrl, peakCount);
+				return waveformGenerator.generate(
+					resolvedUrl,
+					peakCount,
+					getTimelineAudioPeaksCacheKey(resource, cacheKeyVersion),
+				);
 			};
 
 			try {
@@ -135,7 +148,7 @@ export function useTimelineAudioPeaks(
 		return () => {
 			cancelled = true;
 		};
-	}, [mediaResource, enableSourceSidecarFallback, fallbackResources, peakCount]);
+	}, [mediaResource, enableSourceSidecarFallback, fallbackResources, peakCount, cacheKeyVersion]);
 
 	return { peaks, loading };
 }

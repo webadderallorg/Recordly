@@ -409,9 +409,11 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 										onSelect={() => onSelectClip?.(item.id)}
 										variant="audio"
 										waveformPeaks={track.peaks}
+										waveformDurationMs={track.probedDurationMs}
 										waveformSegmentSpan={item.sourceSpan ?? item.span}
 										waveformGain={Math.max(0, Math.min(1, settings.volume))}
 										waveformNormalize={Boolean(settings.normalize)}
+										waveformCoverage={track.waveformCoverage}
 										muted={item.muted}
 									>
 										{track.label}

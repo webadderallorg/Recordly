@@ -390,6 +390,31 @@ async function resolveExistingPath(...candidates: Array<string | null | undefine
 	return null;
 }
 
+export async function resolveVideoAudioFallbackPathsForIpc(videoPath: string) {
+	if (!videoPath) {
+		return { success: true, paths: [], startDelayMsByPath: {}, mediaInfoByPath: {} };
+	}
+
+	try {
+		const { paths, startDelayMsByPath, mediaInfoByPath } =
+			await getCompanionAudioFallbackInfo(videoPath);
+		await Promise.all([
+			rememberApprovedLocalReadPath(videoPath),
+			...paths.map((fallbackPath) => rememberApprovedLocalReadPath(fallbackPath)),
+		]);
+		return { success: true, paths, startDelayMsByPath, mediaInfoByPath };
+	} catch (error) {
+		console.error("Failed to resolve companion audio fallback paths:", error);
+		return {
+			success: false,
+			paths: [],
+			startDelayMsByPath: {},
+			mediaInfoByPath: {},
+			error: String(error),
+		};
+	}
+}
+
 export function registerRecordingHandlers(
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
 ) {
@@ -1385,21 +1410,7 @@ export function registerRecordingHandlers(
 	});
 
 	ipcMain.handle("get-video-audio-fallback-paths", async (_event, videoPath: string) => {
-		if (!videoPath) {
-			return { success: true, paths: [], startDelayMsByPath: {} };
-		}
-
-		try {
-			const { paths, startDelayMsByPath } = await getCompanionAudioFallbackInfo(videoPath);
-			await Promise.all([
-				rememberApprovedLocalReadPath(videoPath),
-				...paths.map((fallbackPath) => rememberApprovedLocalReadPath(fallbackPath)),
-			]);
-			return { success: true, paths, startDelayMsByPath };
-		} catch (error) {
-			console.error("Failed to resolve companion audio fallback paths:", error);
-			return { success: false, paths: [], startDelayMsByPath: {}, error: String(error) };
-		}
+		return resolveVideoAudioFallbackPathsForIpc(videoPath);
 	});
 
 	ipcMain.handle("mux-native-windows-recording", async (_event, expectedDurationMs?: number) => {

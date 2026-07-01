@@ -190,6 +190,76 @@ describe("getCompanionAudioFallbackPaths", () => {
 			startDelayMsByPath: {
 				[micPath]: 2750,
 			},
+			mediaInfoByPath: {
+				[micPath]: {
+					durationMs: 0,
+					sampleRate: null,
+					channels: null,
+					hasAudioStream: false,
+				},
+			},
+		});
+	});
+
+	it("returns probed companion audio media info for pure mic sidecars", async () => {
+		const videoPath = path.join(tempRoot, "recording.mp4");
+		const micPath = path.join(tempRoot, "recording.mic.wav");
+
+		await Promise.all([
+			fs.writeFile(videoPath, "video"),
+			fs.writeFile(micPath, "mic"),
+			fs.writeFile(`${micPath}.json`, JSON.stringify({ startDelayMs: 143 })),
+		]);
+
+		execFileMock.mockImplementation(
+			(
+				file: string,
+				args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				if (
+					file === "ffprobe" &&
+					args.includes("-select_streams") &&
+					args.includes("a:0")
+				) {
+					callback(
+						null,
+						JSON.stringify({
+							streams: [
+								{
+									duration: "147.360000",
+									sample_rate: "48000",
+									channels: 1,
+								},
+							],
+						}),
+						"",
+					);
+					return;
+				}
+
+				const error = new Error("ffmpeg probe failed") as Error & { stderr?: string };
+				error.stderr = "Stream #0:0: Video: h264";
+				callback(error, "", error.stderr);
+			},
+		);
+
+		const { getCompanionAudioFallbackInfo } = await import("./diagnostics");
+
+		await expect(getCompanionAudioFallbackInfo(videoPath)).resolves.toEqual({
+			paths: [micPath],
+			startDelayMsByPath: {
+				[micPath]: 143,
+			},
+			mediaInfoByPath: {
+				[micPath]: {
+					durationMs: 147_360,
+					sampleRate: 48_000,
+					channels: 1,
+					hasAudioStream: true,
+				},
+			},
 		});
 	});
 

@@ -4,9 +4,11 @@ import {
 	clampMediaTimeToDuration,
 	enablePitchPreservingPlayback,
 	estimateCompanionAudioStartDelaySeconds,
+	getCompanionAudioEndToleranceSeconds,
 	getEffectiveRecordingDurationMs,
 	getEffectiveVideoStreamDurationSeconds,
 	getMediaSyncPlaybackRate,
+	resolveCompanionAudioPreviewTiming,
 } from "./mediaTiming";
 
 describe("clampMediaTimeToDuration", () => {
@@ -36,6 +38,72 @@ describe("estimateCompanionAudioStartDelaySeconds", () => {
 		expect(estimateCompanionAudioStartDelaySeconds(10, 9.99)).toBe(0);
 		expect(estimateCompanionAudioStartDelaySeconds(10, 10.5)).toBe(0);
 		expect(estimateCompanionAudioStartDelaySeconds(600, 565)).toBe(0);
+	});
+});
+
+describe("getCompanionAudioEndToleranceSeconds", () => {
+	it("uses a small default tail tolerance when durations already line up", () => {
+		expect(
+			getCompanionAudioEndToleranceSeconds({
+				timelineDuration: 96.4,
+				audioDuration: 96.24,
+				recordedStartDelayMs: 134,
+			}),
+		).toBeCloseTo(0.376, 2);
+	});
+
+	it("absorbs multi-second companion duration mismatches instead of ending immediately", () => {
+		expect(
+			getCompanionAudioEndToleranceSeconds({
+				timelineDuration: 96.4,
+				audioDuration: 93,
+				recordedStartDelayMs: 134,
+			}),
+		).toBeCloseTo(3.616, 2);
+	});
+});
+
+describe("resolveCompanionAudioPreviewTiming", () => {
+	it("uses recorded microphone start delay instead of forcing mic preview to zero", () => {
+		expect(
+			resolveCompanionAudioPreviewTiming({
+				currentTimeSeconds: 0.1,
+				timelineDurationSeconds: 96.4,
+				audioDurationSeconds: 96.24,
+				recordedStartDelayMs: 134,
+			}),
+		).toMatchObject({
+			startDelaySeconds: 0.134,
+			beforeAudioStart: true,
+			atEnd: false,
+		});
+	});
+
+	it("does not mark a shorter-than-expected companion track as ended until its tail tolerance is exhausted", () => {
+		const result = resolveCompanionAudioPreviewTiming({
+			currentTimeSeconds: 95.5,
+			timelineDurationSeconds: 96.4,
+			audioDurationSeconds: 93,
+			recordedStartDelayMs: 134,
+		});
+
+		expect(result.startDelaySeconds).toBeCloseTo(0.134, 2);
+		expect(result.targetTime).toBe(93);
+		expect(result.atEnd).toBe(false);
+		expect(result.endToleranceSeconds).toBeGreaterThan(3);
+	});
+
+	it("prefers a probed sidecar duration over a shorter browser media duration near the tail", () => {
+		const result = resolveCompanionAudioPreviewTiming({
+			currentTimeSeconds: 146.8,
+			timelineDurationSeconds: 147.539,
+			audioDurationSeconds: 72,
+			recordedStartDelayMs: 143,
+			probedAudioDurationSeconds: 147.36,
+		});
+
+		expect(result.targetTime).toBeCloseTo(146.657, 2);
+		expect(result.atEnd).toBe(false);
 	});
 });
 

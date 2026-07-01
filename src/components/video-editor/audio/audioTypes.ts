@@ -16,10 +16,21 @@ export interface SourceAudioTrackMetaItem {
 
 export type SourceAudioTrackMeta = SourceAudioTrackMetaItem[];
 
+export interface SourceAudioMediaInfo {
+	durationMs: number;
+	sampleRate: number | null;
+	channels: number | null;
+	hasAudioStream: boolean;
+}
+
 export interface SourceAudioTrackWithPeaks extends SourceAudioTrackMetaItem {
-	peaks: AudioPeaksData;
+	kind: "embedded" | "system" | "mic" | "mixed";
+	resourcePath: string | null;
+	peaks: AudioPeaksData | null;
+	probedDurationMs: number | null;
+	waveformAvailable: boolean;
+	waveformCoverage?: "full" | "partial" | "none";
 }
 
 export const SOURCE_AUDIO_FALLBACK_TOAST_ID = "source-audio-fallback-error";
 export const SOURCE_AUDIO_NORMALIZE_GAIN = 1.35;
-

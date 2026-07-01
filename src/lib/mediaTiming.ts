@@ -9,6 +9,8 @@ export function clampMediaTimeToDuration(targetTime: number, duration?: number |
 
 const MIN_COMPANION_AUDIO_DELAY_SECONDS = 0.025;
 const MAX_INFERRED_COMPANION_AUDIO_DELAY_SECONDS = 0.5;
+const DEFAULT_COMPANION_AUDIO_END_TOLERANCE_SECONDS = 0.35;
+const MAX_COMPANION_AUDIO_END_TOLERANCE_SECONDS = 5;
 
 export function estimateCompanionAudioStartDelaySeconds(
 	timelineDuration?: number | null,
@@ -35,6 +37,83 @@ export function estimateCompanionAudioStartDelaySeconds(
 	}
 
 	return estimatedDelaySeconds;
+}
+
+export function getCompanionAudioEndToleranceSeconds({
+	timelineDuration,
+	audioDuration,
+	recordedStartDelayMs,
+}: {
+	timelineDuration?: number | null;
+	audioDuration?: number | null;
+	recordedStartDelayMs?: number | null;
+}): number {
+	if (!Number.isFinite(timelineDuration) || !Number.isFinite(audioDuration)) {
+		return DEFAULT_COMPANION_AUDIO_END_TOLERANCE_SECONDS;
+	}
+
+	const startDelaySeconds = estimateCompanionAudioStartDelaySeconds(
+		timelineDuration,
+		audioDuration,
+		recordedStartDelayMs,
+	);
+	const expectedTailGapSeconds = Math.max(
+		0,
+		Math.max(0, timelineDuration ?? 0) - startDelaySeconds - Math.max(0, audioDuration ?? 0),
+	);
+
+	return Math.min(
+		MAX_COMPANION_AUDIO_END_TOLERANCE_SECONDS,
+		Math.max(
+			DEFAULT_COMPANION_AUDIO_END_TOLERANCE_SECONDS,
+			expectedTailGapSeconds + DEFAULT_COMPANION_AUDIO_END_TOLERANCE_SECONDS,
+		),
+	);
+}
+
+export function resolveCompanionAudioPreviewTiming({
+	currentTimeSeconds,
+	timelineDurationSeconds,
+	audioDurationSeconds,
+	probedAudioDurationSeconds,
+	recordedStartDelayMs,
+}: {
+	currentTimeSeconds: number;
+	timelineDurationSeconds?: number | null;
+	audioDurationSeconds?: number | null;
+	probedAudioDurationSeconds?: number | null;
+	recordedStartDelayMs?: number | null;
+}) {
+	const effectiveAudioDurationSeconds =
+		Number.isFinite(probedAudioDurationSeconds) && (probedAudioDurationSeconds ?? 0) > 0
+			? Math.max(0, probedAudioDurationSeconds ?? 0)
+			: audioDurationSeconds;
+	const startDelaySeconds = estimateCompanionAudioStartDelaySeconds(
+		timelineDurationSeconds,
+		effectiveAudioDurationSeconds,
+		recordedStartDelayMs,
+	);
+	const beforeAudioStart = currentTimeSeconds + 0.001 < startDelaySeconds;
+	const rawTargetTime = Math.max(0, currentTimeSeconds - startDelaySeconds);
+	const targetTime = clampMediaTimeToDuration(rawTargetTime, effectiveAudioDurationSeconds);
+	const endToleranceSeconds = getCompanionAudioEndToleranceSeconds({
+		timelineDuration: timelineDurationSeconds,
+		audioDuration: effectiveAudioDurationSeconds,
+		recordedStartDelayMs,
+	});
+	const atEnd =
+		Number.isFinite(effectiveAudioDurationSeconds) &&
+		effectiveAudioDurationSeconds !== null &&
+		rawTargetTime >= Math.max(0, effectiveAudioDurationSeconds ?? 0) + endToleranceSeconds;
+
+	return {
+		startDelaySeconds,
+		beforeAudioStart,
+		rawTargetTime,
+		targetTime,
+		endToleranceSeconds,
+		atEnd,
+	};
 }
 
 export function getMediaSyncPlaybackRate({

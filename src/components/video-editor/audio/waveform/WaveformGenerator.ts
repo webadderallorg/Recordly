@@ -1,6 +1,7 @@
 import WorkerConstructor from "./waveform.worker?worker";
 import type { AudioPeaksData } from "../../timeline/core/timelineTypes";
 import { WAVEFORM_DEFAULT_PEAK_COUNT } from "../../timeline/core/constants";
+import { decodeWavAudioData } from "./wavDecoder";
 
 const MAX_WAVEFORM_PEAKS = 200_000;
 
@@ -60,8 +61,12 @@ export class WaveformGenerator {
 		});
 	}
 
-	public async generate(url: string, peakCount = WAVEFORM_DEFAULT_PEAK_COUNT): Promise<AudioPeaksData> {
-		const cacheKey = `${url}::${peakCount}`;
+	public async generate(
+		url: string,
+		peakCount = WAVEFORM_DEFAULT_PEAK_COUNT,
+		cacheKeyVersion?: string | number | null,
+	): Promise<AudioPeaksData> {
+		const cacheKey = `${url}::${peakCount}::${cacheKeyVersion ?? ""}`;
 		const cached = this.peaksCache.get(cacheKey);
 		if (cached) return cached;
 
@@ -75,7 +80,14 @@ export class WaveformGenerator {
 			}
 
 			const arrayBuffer = await response.arrayBuffer();
-			const decoded = await this.audioContext.decodeAudioData(arrayBuffer);
+			const wavDecoded = decodeWavAudioData(arrayBuffer);
+			const decoded = wavDecoded
+				? {
+						duration: wavDecoded.durationSeconds,
+						numberOfChannels: wavDecoded.channels.length,
+						getChannelData: (index: number) => wavDecoded.channels[index],
+					}
+				: await this.audioContext.decodeAudioData(arrayBuffer);
 			const adaptivePeakCount = Math.max(
 				peakCount,
 				Math.floor(decoded.duration * 500)
