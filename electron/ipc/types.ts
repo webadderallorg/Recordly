@@ -118,6 +118,11 @@ export type NativeMacWindowSource = {
 	y?: number;
 	width?: number;
 	height?: number;
+	visible?: boolean;
+	visibleX?: number;
+	visibleY?: number;
+	visibleWidth?: number;
+	visibleHeight?: number;
 };
 
 export type HookEventName = "mousedown" | "mouseup" | "mousemove";

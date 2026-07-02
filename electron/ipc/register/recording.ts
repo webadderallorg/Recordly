@@ -13,6 +13,7 @@ import {
 	systemPreferences,
 } from "electron";
 import { showCursor } from "../../cursorHider";
+import { clearSourceHighlightWindow } from "../../sourceHighlight";
 import { getMonitorHandles } from "../monitorResolver";
 import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
 import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../cursor/bounds";
@@ -1827,6 +1828,7 @@ export function registerRecordingHandlers(
 			startCursorSampling();
 			void startInteractionCapture();
 		} else {
+			clearSourceHighlightWindow();
 			setIsCursorCaptureActive(false);
 			stopCursorCapture();
 			stopInteractionCapture();

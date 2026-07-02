@@ -11,11 +11,42 @@ export function useLaunchWindowActions() {
 		await window.electronAPI.selectSource(source);
 		setSelectedSource(source.name);
 		setHasSelectedSource(true);
-		window.electronAPI.showSourceHighlight?.({
+
+		try {
+			const platform = await window.electronAPI.getPlatform();
+			if (platform === "linux") {
+				const clearPromise = window.electronAPI.clearSourceHighlight?.();
+				if (clearPromise) {
+					void clearPromise.catch((error) => {
+						console.warn("Failed to clear Linux source highlight:", error);
+					});
+				}
+				return;
+			}
+		} catch (error) {
+			console.warn("Failed to check platform before source highlight:", error);
+			const clearPromise = window.electronAPI.clearSourceHighlight?.();
+			if (clearPromise) {
+				void clearPromise.catch((clearError) => {
+					console.warn(
+						"Failed to clear source highlight after platform check failed:",
+						clearError,
+					);
+				});
+			}
+			return;
+		}
+
+		const highlightPromise = window.electronAPI.showSourceHighlight?.({
 			...source,
 			name: source.appName ? `${source.appName} — ${source.name}` : source.name,
 			appName: source.appName,
 		});
+		if (highlightPromise) {
+			void highlightPromise.catch((error) => {
+				console.warn("Failed to show selected source highlight:", error);
+			});
+		}
 	}, []);
 
 	const openVideoFile = useCallback(async () => {

@@ -1,14 +1,23 @@
-import { useCallback, useMemo, type ReactNode, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SourceSelector } from "../SourceSelector";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import {
-	mapRawSource,
+	type DesktopSource,
 	isScreenSource,
 	isWindowSource,
-	type DesktopSource,
+	mapRawSource,
 } from "./launchPopoverTypes";
+import { createSourcePreviewRequestGate } from "./sourcePreviewRequestGate";
 
 const POPOVER_ID = "sources";
+
+function getHighlightSource(source: DesktopSource): DesktopSource {
+	return {
+		...source,
+		name: source.appName ? `${source.appName} — ${source.name}` : source.name,
+		appName: source.appName,
+	};
+}
 
 export function SourcePopover({
 	trigger,
@@ -25,6 +34,8 @@ export function SourcePopover({
 	const [sources, setSources] = useState<DesktopSource[]>([]);
 	const [loading, setLoading] = useState(false);
 	const open = isOpen(POPOVER_ID);
+	const wasOpenRef = useRef(open);
+	const previewRequestGate = useMemo(() => createSourcePreviewRequestGate(), []);
 
 	const fetchSources = useCallback(async () => {
 		if (!window.electronAPI) return;
@@ -45,6 +56,95 @@ export function SourcePopover({
 
 	const screenSources = useMemo(() => sources.filter(isScreenSource), [sources]);
 	const windowSources = useMemo(() => sources.filter(isWindowSource), [sources]);
+	const clearSourceHighlight = useCallback((context: string) => {
+		const clearPromise = window.electronAPI?.clearSourceHighlight?.();
+		if (clearPromise) {
+			void clearPromise.catch((error) => {
+				console.warn(`Failed to clear source highlight ${context}:`, error);
+			});
+		}
+	}, []);
+	const showSourcePreview = useCallback(
+		(source: DesktopSource) => {
+			const requestId = previewRequestGate.next();
+			void (async () => {
+				const platform = await window.electronAPI.getPlatform();
+				if (!previewRequestGate.isCurrent(requestId)) {
+					return;
+				}
+				if (platform === "linux") {
+					clearSourceHighlight("for Linux preview");
+					return;
+				}
+				const result = await window.electronAPI?.showSourceHighlight?.(
+					getHighlightSource(source),
+					{
+						activateWindow: false,
+					},
+				);
+				if (!previewRequestGate.isCurrent(requestId)) {
+					return;
+				}
+				if (result && !result.success) {
+					clearSourceHighlight("after preview failed");
+				}
+			})().catch((error) => {
+				console.warn("Failed to preview source highlight:", error);
+				if (previewRequestGate.isCurrent(requestId)) {
+					clearSourceHighlight("after preview failed");
+				}
+			});
+		},
+		[clearSourceHighlight, previewRequestGate],
+	);
+	const restoreSelectedSourcePreview = useCallback(() => {
+		const requestId = previewRequestGate.next();
+		void (async () => {
+			const platform = await window.electronAPI.getPlatform();
+			if (!previewRequestGate.isCurrent(requestId)) {
+				return;
+			}
+			if (platform === "linux") {
+				clearSourceHighlight("for Linux restore");
+				return;
+			}
+			const selected = await window.electronAPI?.getSelectedSource?.();
+			if (!previewRequestGate.isCurrent(requestId)) {
+				return;
+			}
+			if (selected) {
+				const result = await window.electronAPI?.showSourceHighlight?.(selected, {
+					activateWindow: false,
+				});
+				if (!previewRequestGate.isCurrent(requestId)) {
+					return;
+				}
+				if (result && !result.success) {
+					clearSourceHighlight("after restore failed");
+				}
+				return;
+			}
+			clearSourceHighlight("with no selected source");
+		})().catch((error) => {
+			console.error("Failed to restore source highlight:", error);
+			if (previewRequestGate.isCurrent(requestId)) {
+				clearSourceHighlight("after restore failed");
+			}
+		});
+	}, [clearSourceHighlight, previewRequestGate]);
+
+	useEffect(() => {
+		if (wasOpenRef.current && !open) {
+			restoreSelectedSourcePreview();
+		}
+		wasOpenRef.current = open;
+	}, [open, restoreSelectedSourcePreview]);
+
+	useEffect(() => {
+		return () => {
+			restoreSelectedSourcePreview();
+		};
+	}, [restoreSelectedSourcePreview]);
 
 	return (
 		<SourceSelector
@@ -52,6 +152,8 @@ export function SourcePopover({
 			windowSources={windowSources}
 			selectedSource={selectedSource}
 			loading={loading}
+			onSourceHover={showSourcePreview}
+			onSourceHoverEnd={restoreSelectedSourcePreview}
 			onSourceSelect={async (source) => {
 				try {
 					await onSourceSelect(source);

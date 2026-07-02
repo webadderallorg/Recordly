@@ -485,8 +485,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	selectSource: (source: ProcessedDesktopSource) => {
 		return ipcRenderer.invoke("select-source", source);
 	},
-	showSourceHighlight: (source: ProcessedDesktopSource) => {
-		return ipcRenderer.invoke("show-source-highlight", source);
+	showSourceHighlight: (
+		source: ProcessedDesktopSource,
+		options?: { activateWindow?: boolean },
+	) => {
+		return ipcRenderer.invoke("show-source-highlight", source, options);
+	},
+	clearSourceHighlight: () => {
+		return ipcRenderer.invoke("clear-source-highlight");
 	},
 	getSelectedSource: () => {
 		return ipcRenderer.invoke("get-selected-source");

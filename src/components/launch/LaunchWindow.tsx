@@ -176,24 +176,52 @@ function LaunchWindowContent() {
 
 	useEffect(() => {
 		let mounted = true;
+		const canShowSourceHighlight = platform !== null && platform !== "linux";
+		const showSelectedSourceHighlight = (source: ProcessedDesktopSource) => {
+			const highlightPromise = window.electronAPI.showSourceHighlight?.(source, {
+				activateWindow: false,
+			});
+			if (highlightPromise) {
+				void highlightPromise.catch((error) => {
+					console.warn("Failed to show selected source highlight:", error);
+				});
+			}
+		};
 
 		void window.electronAPI.getSelectedSource().then((source) => {
-			if (mounted) syncSelectedSource(source);
+			if (!mounted) return;
+			syncSelectedSource(source);
+			if (source && canShowSourceHighlight) {
+				showSelectedSourceHighlight(source);
+			} else {
+				void window.electronAPI.clearSourceHighlight?.();
+			}
 		});
 
 		const cleanup = window.electronAPI.onSelectedSourceChanged((source) => {
-			if (mounted) syncSelectedSource(source);
+			if (!mounted) return;
+			syncSelectedSource(source);
+			if (source && canShowSourceHighlight) {
+				showSelectedSourceHighlight(source);
+			} else {
+				void window.electronAPI.clearSourceHighlight?.();
+			}
 		});
 
 		return () => {
 			mounted = false;
 			cleanup?.();
 		};
-	}, [syncSelectedSource]);
+	}, [platform, syncSelectedSource]);
 
 	const hudStateTransition = {
 		duration: 0.24,
 		ease: [0.22, 1, 0.36, 1] as const,
+	};
+
+	const hideIdleHud = () => {
+		void window.electronAPI?.clearSourceHighlight?.();
+		window.electronAPI?.hudOverlayHide?.();
 	};
 
 	const recordingControls = (
@@ -397,7 +425,7 @@ function LaunchWindowContent() {
 				variant="ghost"
 				size="icon"
 				iconSize="lg"
-				onClick={() => window.electronAPI?.hudOverlayHide?.()}
+				onClick={hideIdleHud}
 				title={t("recording.hideHud")}
 			>
 				<MinusIcon size={16} />

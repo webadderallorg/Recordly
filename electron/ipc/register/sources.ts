@@ -4,17 +4,19 @@ import { app, BrowserWindow, desktopCapturer, ipcMain } from "electron";
 import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
 import { selectedSource, setSelectedSource } from "../state";
 import type { SelectedSource } from "../types";
-import { getScreen, parseWindowId } from "../utils";
+import { getScreen } from "../utils";
 import { getDisplayBoundsForSource, getDisplayWorkAreaForSource } from "../recording/ffmpeg";
 import { getScreenSourceIdForDisplay } from "./sourceMapping";
 import {
 	getNativeMacWindowSources,
-	resolveMacWindowBounds,
+	resolveMacWindowVisibleBounds,
 	resolveWindowsWindowBounds,
-	resolveLinuxWindowBounds,
 	stopWindowBoundsCapture,
 } from "../cursor/bounds";
-import { reassertHudOverlayMousePassthrough } from "../../windows";
+import {
+	clearSourceHighlightWindow,
+	showSourceHighlightWindow,
+} from "../../sourceHighlight";
 
 const execFileAsync = promisify(execFile);
 const SOURCE_LIST_CACHE_TTL_MS = 1200;
@@ -26,8 +28,56 @@ let sourceListCache:
 	  }
 	| null = null;
 
+type SourceHighlightIpcOptions = {
+	activateWindow?: boolean;
+};
+
 function normalizeDesktopSourceName(value: string) {
 	return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function intersectBounds(
+	first: { x: number; y: number; width: number; height: number },
+	second: { x: number; y: number; width: number; height: number },
+) {
+	const x = Math.max(first.x, second.x);
+	const y = Math.max(first.y, second.y);
+	const right = Math.min(first.x + first.width, second.x + second.width);
+	const bottom = Math.min(first.y + first.height, second.y + second.height);
+	const width = right - x;
+	const height = bottom - y;
+
+	return width > 0 && height > 0 ? { x, y, width, height } : null;
+}
+
+function getVisibleWindowHighlightBounds(bounds: {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}) {
+	const intersections = getScreen()
+		.getAllDisplays()
+		.map((display) => intersectBounds(bounds, display.bounds))
+		.filter((candidate): candidate is typeof bounds => candidate !== null);
+
+	if (intersections.length === 0) {
+		return null;
+	}
+
+	return intersections.reduce((combined, current) => {
+		const x = Math.min(combined.x, current.x);
+		const y = Math.min(combined.y, current.y);
+		const right = Math.max(combined.x + combined.width, current.x + current.width);
+		const bottom = Math.max(combined.y + combined.height, current.y + current.height);
+
+		return {
+			x,
+			y,
+			width: right - x,
+			height: bottom - y,
+		};
+	});
 }
 
 function broadcastSelectedSourceChange() {
@@ -316,227 +366,126 @@ export function registerSourceHandlers({
 		return selectedSource;
 	});
 
-	ipcMain.handle("show-source-highlight", async (_, source: SelectedSource) => {
-		try {
-			const isWindow = source.id?.startsWith("window:");
-			const windowId = isWindow ? parseWindowId(source.id) : null;
+	ipcMain.handle(
+		"show-source-highlight",
+		async (_, source: SelectedSource, options?: SourceHighlightIpcOptions) => {
+			try {
+				const isWindow = source.id?.startsWith("window:");
+				const shouldActivateWindow = options?.activateWindow !== false;
 
-			// ── 1. Bring window to front ──
-			if (isWindow && process.platform === "darwin") {
-				const rawAppName = source.appName || source.name?.split(" — ")[0]?.trim();
-				const appName =
-					rawAppName && /^[\w .&()+'-]{1,64}$/.test(rawAppName) ? rawAppName : null;
-				if (appName) {
-					try {
-						await execFileAsync(
-							"osascript",
-							[
-								"-e",
-								"on run argv",
-								"-e",
-								"tell application (item 1 of argv) to activate",
-								"-e",
-								"end run",
-								"--",
-								appName,
-							],
-							{ timeout: 2000 },
-						);
-						await new Promise((resolve) => setTimeout(resolve, 350));
-					} catch {
-						/* ignore */
-					}
-				}
-			} else if (windowId && process.platform === "linux") {
-				try {
-					await execFileAsync("wmctrl", ["-i", "-a", `0x${windowId.toString(16)}`], {
-						timeout: 1500,
-					});
-				} catch {
-					try {
-						await execFileAsync("xdotool", ["windowactivate", String(windowId)], {
-							timeout: 1500,
-						});
-					} catch {
-						/* not available */
-					}
-				}
-				await new Promise((resolve) => setTimeout(resolve, 250));
-			}
-
-			// ── 2. Resolve bounds ──
-			let bounds: { x: number; y: number; width: number; height: number } | null = null;
-
-			if (source.id?.startsWith("screen:")) {
-				bounds =
-					process.platform === "darwin"
-						? getDisplayWorkAreaForSource(source)
-						: getDisplayBoundsForSource(source);
-			} else if (isWindow) {
-				if (process.platform === "darwin") {
-					bounds = await resolveMacWindowBounds(source);
-				} else if (process.platform === "win32") {
-					bounds = await resolveWindowsWindowBounds(source);
-				} else if (process.platform === "linux") {
-					bounds = await resolveLinuxWindowBounds(source);
-				}
-			}
-
-			if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
-				bounds = getDisplayBoundsForSource(source);
-			}
-
-			if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
-				const primaryBounds = getScreen().getPrimaryDisplay().bounds;
-				if (primaryBounds.width <= 0 || primaryBounds.height <= 0) {
+				if (process.platform === "linux") {
+					clearSourceHighlightWindow();
 					return { success: false };
 				}
-				bounds = primaryBounds;
-			}
 
-			const resolvedBounds = bounds;
-
-			// ── 3. Show traveling wave highlight ──
-			// On macOS, screen highlights use workArea and no outward padding —
-			// macOS clamps window positions below the menu bar so outward
-			// padding only works on the left/top while right/bottom run off-screen.
-			const isScreen = source.id?.startsWith("screen:");
-			const isMacScreen = isScreen && process.platform === "darwin";
-			const pad = isMacScreen ? 0 : 6;
-			const highlightWin = new BrowserWindow({
-				x: resolvedBounds.x - pad,
-				y: resolvedBounds.y - pad,
-				width: resolvedBounds.width + pad * 2,
-				height: resolvedBounds.height + pad * 2,
-				frame: false,
-				transparent: true,
-				alwaysOnTop: true,
-				skipTaskbar: true,
-				hasShadow: false,
-				resizable: false,
-				focusable: false,
-				webPreferences: { nodeIntegration: false, contextIsolation: true },
-			});
-
-			highlightWin.setIgnoreMouseEvents(true);
-
-			const borderRadius = isMacScreen ? 0 : 10;
-			const glowInset = isMacScreen ? 0 : -4;
-			const glowRadius = isMacScreen ? 0 : 14;
-			const glowPad = isMacScreen ? 3 : 6;
-
-			const html = `<!DOCTYPE html>
-<html><head><style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{background:transparent;overflow:hidden;width:100vw;height:100vh}
-
-.border-wrap{
-  position:fixed;inset:0;border-radius:${borderRadius}px;padding:3px;
-  background:conic-gradient(from var(--angle,0deg),
-    transparent 0%,
-    transparent 60%,
-    rgba(99,96,245,.15) 70%,
-    rgba(99,96,245,.9) 80%,
-    rgba(123,120,255,1) 85%,
-    rgba(99,96,245,.9) 90%,
-    rgba(99,96,245,.15) 95%,
-    transparent 100%
-  );
-  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
-  -webkit-mask-composite:xor;
-  mask-composite:exclude;
-  animation:spin 1.2s linear forwards, fadeAll 1.6s ease-out forwards;
-}
-
-.glow-wrap{
-  position:fixed;inset:${glowInset}px;border-radius:${glowRadius}px;padding:${glowPad}px;
-  background:conic-gradient(from var(--angle,0deg),
-    transparent 0%,
-    transparent 65%,
-    rgba(99,96,245,.3) 78%,
-    rgba(123,120,255,.5) 85%,
-    rgba(99,96,245,.3) 92%,
-    transparent 100%
-  );
-  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
-  -webkit-mask-composite:xor;
-  mask-composite:exclude;
-  filter:blur(8px);
-  animation:spin 1.2s linear forwards, fadeAll 1.6s ease-out forwards;
-}
-
-@property --angle{
-  syntax:'<angle>';
-  initial-value:0deg;
-  inherits:false;
-}
-
-@keyframes spin{
-  0%{--angle:0deg}
-  100%{--angle:360deg}
-}
-
-@keyframes fadeAll{
-  0%,60%{opacity:1}
-  100%{opacity:0}
-}
-</style></head><body>
-<div class="glow-wrap"></div>
-<div class="border-wrap"></div>
-</body></html>`
-
-			try {
-				await highlightWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
-			} catch (loadError) {
-				if (!highlightWin.isDestroyed()) {
-					highlightWin.close()
+				// ── 1. Bring window to front ──
+				if (shouldActivateWindow && isWindow && process.platform === "darwin") {
+					const rawAppName = source.appName || source.name?.split(" — ")[0]?.trim();
+					const appName =
+						rawAppName && /^[\w .&()+'-]{1,64}$/.test(rawAppName)
+							? rawAppName
+							: null;
+					if (appName) {
+						try {
+							await execFileAsync(
+								"osascript",
+								[
+									"-e",
+									"on run argv",
+									"-e",
+									"tell application (item 1 of argv) to activate",
+									"-e",
+									"end run",
+									"--",
+									appName,
+								],
+								{ timeout: 2000 },
+							);
+							await new Promise((resolve) => setTimeout(resolve, 350));
+						} catch {
+							/* ignore */
+						}
+					}
 				}
-				throw loadError
+
+				// ── 2. Resolve bounds ──
+				let bounds: { x: number; y: number; width: number; height: number } | null =
+					null;
+
+				if (source.id?.startsWith("screen:")) {
+					bounds =
+						process.platform === "darwin"
+							? getDisplayWorkAreaForSource(source)
+							: getDisplayBoundsForSource(source);
+				} else if (isWindow) {
+					if (process.platform === "darwin") {
+						bounds = await resolveMacWindowVisibleBounds(source);
+					} else if (process.platform === "win32") {
+						bounds = await resolveWindowsWindowBounds(source);
+					}
+				}
+
+				if (isWindow) {
+					if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+						clearSourceHighlightWindow();
+						return { success: false };
+					}
+					const visibleBounds = getVisibleWindowHighlightBounds(bounds);
+					if (!visibleBounds) {
+						clearSourceHighlightWindow();
+						return { success: false };
+					}
+					bounds = visibleBounds;
+				}
+
+				if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+					bounds = getDisplayBoundsForSource(source);
+				}
+
+				if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+					const primaryBounds = getScreen().getPrimaryDisplay().bounds;
+					if (primaryBounds.width <= 0 || primaryBounds.height <= 0) {
+						return { success: false };
+					}
+					bounds = primaryBounds;
+				}
+
+				const isScreen = source.id?.startsWith("screen:");
+				const isMacScreen = isScreen && process.platform === "darwin";
+				const success = await showSourceHighlightWindow(bounds, { isMacScreen });
+
+				return { success };
+			} catch (error) {
+				console.error("Failed to show source highlight:", error);
+				return { success: false };
 			}
+		},
+	);
 
-			// The highlight window appearing (even with focusable:false) can corrupt
-			// the WS_EX_TRANSPARENT flag on the HUD on Windows 11+, breaking hover
-			// detection until the user moves their mouse over the bar again.
-			// Re-assert passthrough immediately so click-through is restored at once.
-			reassertHudOverlayMousePassthrough();
+	ipcMain.handle("clear-source-highlight", () => {
+		clearSourceHighlightWindow();
+		return { success: true };
+	});
 
-			const highlightCloseTimer = setTimeout(() => {
-				if (!highlightWin.isDestroyed()) highlightWin.close()
-			}, 1700)
+	ipcMain.handle("get-selected-source", () => {
+		return selectedSource;
+	});
 
-			highlightWin.on("closed", () => {
-				clearTimeout(highlightCloseTimer);
-				// Re-assert once more when the window is actually destroyed so the
-				// native flag is clean regardless of timing.
-				reassertHudOverlayMousePassthrough();
-			});
-
-			return { success: true }
-    } catch (error) {
-      console.error('Failed to show source highlight:', error)
-      return { success: false }
-    }
-  })
-
-  ipcMain.handle('get-selected-source', () => {
-    return selectedSource
-  })
-
-  ipcMain.handle('open-source-selector', () => {
-    const sourceSelectorWin = getSourceSelectorWindow()
-    if (sourceSelectorWin) {
-      sourceSelectorWin.focus()
-      return
-    }
-    createSourceSelectorWindow()
-  })
-  ipcMain.handle('switch-to-editor', () => {
-    console.log('[switch-to-editor] Opening editor window')
-    const sourceSelectorWin = getSourceSelectorWindow()
-    if (sourceSelectorWin && !sourceSelectorWin.isDestroyed()) {
-      sourceSelectorWin.close()
-    }
-    createEditorWindow()
-  })
+	ipcMain.handle("open-source-selector", () => {
+		const sourceSelectorWin = getSourceSelectorWindow();
+		if (sourceSelectorWin) {
+			sourceSelectorWin.focus();
+			return;
+		}
+		createSourceSelectorWindow();
+	});
+	ipcMain.handle("switch-to-editor", () => {
+		console.log("[switch-to-editor] Opening editor window");
+		const sourceSelectorWin = getSourceSelectorWindow();
+		if (sourceSelectorWin && !sourceSelectorWin.isDestroyed()) {
+			sourceSelectorWin.close();
+		}
+		createEditorWindow();
+	});
 
 }
