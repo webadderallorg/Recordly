@@ -137,8 +137,9 @@ export function undoEditorHistoryStack(
 	}
 
 	stack.future.push(cloneEditorHistorySnapshot(current));
-	stack.current = cloneEditorHistorySnapshot(previous);
-	return cloneEditorHistorySnapshot(previous);
+	const clonedPrevious = cloneEditorHistorySnapshot(previous);
+	stack.current = clonedPrevious;
+	return cloneEditorHistorySnapshot(clonedPrevious);
 }
 
 export function redoEditorHistoryStack(
@@ -156,6 +157,7 @@ export function redoEditorHistoryStack(
 	}
 
 	stack.past.push(cloneEditorHistorySnapshot(current));
-	stack.current = cloneEditorHistorySnapshot(next);
-	return cloneEditorHistorySnapshot(next);
+	const clonedNext = cloneEditorHistorySnapshot(next);
+	stack.current = clonedNext;
+	return cloneEditorHistorySnapshot(clonedNext);
 }
