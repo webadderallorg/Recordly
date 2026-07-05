@@ -192,7 +192,7 @@ function getHudOverlayBounds() {
 	const { workArea } = getHudOverlayDisplay();
 	return getHudOverlayWindowBounds(
 		workArea,
-		isHudOverlayMousePassthroughSupported() && !hudOverlayRecordingActive,
+		isHudOverlayMousePassthroughSupported(),
 		hudOverlayFallbackExpanded,
 	);
 }
@@ -278,11 +278,7 @@ function setHudOverlayFallbackExpanded(expanded: boolean) {
 
 function setHudOverlayMousePassthrough(ignore: boolean) {
 	hudOverlayIgnoringMouse =
-		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive
-			? true
-			: hudOverlayRecordingActive
-				? false
-				: ignore;
+		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive ? true : ignore;
 
 	if (hudOverlayMouseReassertTimer) {
 		clearTimeout(hudOverlayMouseReassertTimer);
@@ -293,9 +289,7 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 		return;
 	}
 
-	if (hudOverlayRecordingActive) {
-		hudOverlayFallbackExpanded = false;
-		applyHudOverlayBounds();
+	if (hudOverlayRecordingActive && !isHudOverlayMousePassthroughSupported()) {
 		hudOverlayWindow.setIgnoreMouseEvents(false);
 		return;
 	}
@@ -480,13 +474,8 @@ export function createHudOverlayWindow(): BrowserWindow {
 	}
 
 	if (isHudOverlayMousePassthroughSupported()) {
-		if (hudOverlayRecordingActive) {
-			hudOverlayIgnoringMouse = false;
-			win.setIgnoreMouseEvents(false);
-		} else {
-			hudOverlayIgnoringMouse = true;
-			win.setIgnoreMouseEvents(true, { forward: true });
-		}
+		hudOverlayIgnoringMouse = true;
+		win.setIgnoreMouseEvents(true, { forward: true });
 	}
 
 	// On Windows 11+, focus changes (e.g. showing a native notification) can break
@@ -616,7 +605,7 @@ export function reassertHudOverlayMousePassthrough(): void {
 	}
 
 	if (hudOverlayRecordingActive) {
-		hud.setIgnoreMouseEvents(false);
+		setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 		return;
 	}
 
@@ -638,7 +627,7 @@ export function setHudOverlayRecordingActive(recording: boolean): void {
 	hudOverlayRecordingActive = Boolean(recording);
 	hudOverlayFallbackExpanded = false;
 	applyHudOverlayBounds();
-	setHudOverlayMousePassthrough(!hudOverlayRecordingActive);
+	setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 }
 
 export function createUpdateToastWindow(): BrowserWindow {
