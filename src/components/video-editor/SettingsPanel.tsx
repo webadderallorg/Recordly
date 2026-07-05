@@ -2514,7 +2514,7 @@ export function SettingsPanel({
 				{availableFrames.length > 0 && (
 					<div className="flex flex-col gap-1.5 mt-1">
 						<div className="flex items-center justify-between">
-							<span className="text-[10px] text-muted-foreground">{tSettings("sections.frame", "Frame")</span>
+							<span className="text-[10px] text-muted-foreground">{tSettings("sections.frame", "Frame")}</span>
 							{frame && (
 								<button
 									type="button"
