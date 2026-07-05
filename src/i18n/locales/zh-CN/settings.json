@@ -122,7 +122,38 @@
 		"paddingBottom": "下",
 		"paddingLeft": "左",
 		"paddingRight": "右",
-		"removeBackground": "移除背景"
+		"removeBackground": "移除背景",
+		"auto": "自动",
+		"temporalZoomMotionBlur": "时序缩放模糊",
+		"temporalZoomMotionBlurDescription": "控制新版缩放模糊通道使用的快门窗口和帧采样。",
+		"zoomMotionBlurSamples": "模糊采样数",
+		"zoomMotionBlurShutter": "快门",
+		"cursorClickEffects": {
+			"title": "点击效果",
+			"advanced": "高级",
+			"advancedShow": "显示高级点击效果控制",
+			"advancedHide": "隐藏高级点击效果控制",
+			"color": "效果颜色",
+			"size": "效果大小",
+			"opacity": "效果不透明度",
+			"duration": "效果持续时间",
+			"none": {
+				"label": "关闭",
+				"description": "无点击图形。仅在点击时改变光标运动。"
+			},
+			"ripple": {
+				"label": "涟漪",
+				"description": "从每次点击处向外扩散的圆环，使点击在运动中清晰可见。"
+			},
+			"spotlight": {
+				"label": "聚光灯",
+				"description": "指针周围闪烁的柔和光晕，突出点击区域。"
+			},
+			"echo": {
+				"label": "回声",
+				"description": "一对柔和的圆环以更干净的脉冲向外扩散。"
+			}
+		}
 	},
 	"sections": {
 		"scene": "场景",
@@ -161,7 +192,15 @@
 		"maxWidth": "最大宽度",
 		"boxRadius": "字幕框圆角",
 		"backgroundOpacity": "背景透明度",
-		"textColor": "文字颜色"
+		"textColor": "文字颜色",
+		"editor": {
+			"text": "文本",
+			"start": "开始",
+			"end": "结束",
+			"split": "拆分",
+			"merge": "合并",
+			"delete": "删除"
+		}
 	},
 	"crop": {
 		"title": "裁剪视频",
