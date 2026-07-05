@@ -44,7 +44,6 @@
 		"solidColor": "Solid Color (Censorship)",
 		"borderRadius": "Border Radius"
 	},
-
 	"fontStyles": {
 		"classic": "Classic",
 		"editor": "Editor",
@@ -111,7 +110,13 @@
 		"showInFolder": "Show In Folder"
 	},
 	"project": {
-		"untitled": "Untitled"
+		"untitled": "Untitled",
+		"browserTitle": "Projects",
+		"import": "Import",
+		"noProjects": "No saved projects yet",
+		"saveTitle": "Save Project",
+		"saveDescription": "Name this project.",
+		"saveNameLabel": "Project name"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Nothing’s broken, but we won’t be able to render an animated cursor overlay.",
@@ -125,7 +130,9 @@
 		"completePercent": "{{percent}}% complete",
 		"issue": "Export issue",
 		"complete": "Export complete",
-		"savedSuccessfully": "Your file was saved successfully."
+		"savedSuccessfully": "Your file was saved successfully.",
+		"exportedSuccess": "Exported successfully to {{path}}",
+		"showInFolder": "Show in Folder"
 	},
 	"export": {
 		"processingAudioEdits": "Processing audio with speed/overlay edits"
@@ -136,7 +143,51 @@
 	},
 	"timeline": {
 		"expand": "Expand Timeline",
-		"collapse": "Collapse Timeline"
+		"collapse": "Collapse Timeline",
+		"noVideoLoaded": "No Video Loaded",
+		"custom": "Custom",
+		"set": "Set",
+		"sideScroll": "Side Scroll",
+		"pan": "Pan",
+		"zoom": "Zoom"
 	},
-	"openRecordingsFolder": "Open recordings folder"
+	"openRecordingsFolder": "Open recordings folder",
+	"presets": {
+		"label": "Presets",
+		"empty": "No presets yet.",
+		"open": "Open presets",
+		"saveCurrentAs": "Save current preset as",
+		"savedList": "Saved presets",
+		"namePlaceholder": "Preset name",
+		"errors": {
+			"nameRequired": "Enter a preset name.",
+			"duplicateName": "A preset with that name already exists.",
+			"saveFailed": "Could not save that preset.",
+			"deleteFailed": "Could not delete that preset."
+		},
+		"toasts": {
+			"applied": "Applied preset \"{{name}}\"",
+			"saved": "Saved preset \"{{name}}\"",
+			"deleted": "Deleted preset \"{{name}}\""
+		}
+	},
+	"theme": {
+		"appearance": "Appearance",
+		"light": "Light",
+		"dark": "Dark",
+		"system": "System"
+	},
+	"unsavedChanges": {
+		"title": "Unsaved changes",
+		"description": "Save your current project before you {{action}}?",
+		"discard": "Discard changes",
+		"save": "Save project",
+		"youHave": "You have unsaved changes.",
+		"beforeClosing": "Do you want to save your project before closing?",
+		"saveClose": "Save & Close",
+		"discardClose": "Discard & Close"
+	},
+	"common": {
+		"accountComingSoon": "Account coming soon"
+	}
 }

@@ -914,7 +914,7 @@ const APP_LANGUAGE_LABELS: Record<AppLocale, string> = {
 	nl: "Nederlands",
 	ko: "한국어",
 	"pt-BR": "Português",
-	"zh-CN": "簡體中文",
+	"zh-CN": "简体中文",
 	"zh-TW": "繁體中文",
 };
 
@@ -2514,7 +2514,7 @@ export function SettingsPanel({
 				{availableFrames.length > 0 && (
 					<div className="flex flex-col gap-1.5 mt-1">
 						<div className="flex items-center justify-between">
-							<span className="text-[10px] text-muted-foreground">Frame</span>
+							<span className="text-[10px] text-muted-foreground">{tSettings("sections.frame", "Frame")</span>
 							{frame && (
 								<button
 									type="button"

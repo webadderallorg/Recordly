@@ -12,5 +12,12 @@
 		"deleteSelectedAlt": "删除选中（替代）",
 		"panTimeline": "平移时间线",
 		"zoomTimeline": "缩放时间线"
+	},
+	"fixed": {
+		"Cycle Annotations Forward": "向前循环切换注释",
+		"Cycle Annotations Backward": "向后循环切换注释",
+		"Delete Selected (alt)": "删除选中（替代）",
+		"Pan Timeline": "平移时间线",
+		"Zoom Timeline": "缩放时间线"
 	}
 }

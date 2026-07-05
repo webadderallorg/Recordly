@@ -122,7 +122,46 @@
 		"paddingBottom": "下",
 		"paddingLeft": "左",
 		"paddingRight": "右",
-		"removeBackground": "移除背景"
+		"removeBackground": "移除背景",
+		"auto": "自动",
+		"temporalZoomMotionBlur": "时序缩放模糊",
+		"temporalZoomMotionBlurDescription": "控制新版缩放模糊通道使用的快门窗口和帧采样。",
+		"zoomMotionBlurSamples": "模糊采样数",
+		"zoomMotionBlurShutter": "快门",
+		"cursorClickEffects": {
+			"title": "点击效果",
+			"advanced": "高级",
+			"advancedShow": "显示高级点击效果控制",
+			"advancedHide": "隐藏高级点击效果控制",
+			"color": "效果颜色",
+			"size": "效果大小",
+			"opacity": "效果不透明度",
+			"duration": "效果持续时间",
+			"none": {
+				"label": "关闭",
+				"description": "无点击图形。仅在点击时改变光标运动。"
+			},
+			"ripple": {
+				"label": "涟漪",
+				"description": "从每次点击处向外扩散的圆环，使点击在运动中清晰可见。"
+			},
+			"spotlight": {
+				"label": "聚光灯",
+				"description": "指针周围闪烁的柔和光晕，突出点击区域。"
+			},
+			"echo": {
+				"label": "回声",
+				"description": "一对柔和的圆环以更干净的脉冲向外扩散。"
+			}
+		},
+		"webcamPosition": "位置",
+		"webcamCustomPosition": "自定义位置",
+		"webcamMargin": "外边距",
+		"webcamHorizontal": "水平",
+		"webcamVertical": "垂直",
+		"paddingAdvanced": "高级",
+		"paddingAdvancedHide": "隐藏高级内边距控制",
+		"paddingAdvancedShow": "显示高级内边距控制"
 	},
 	"sections": {
 		"scene": "场景",
@@ -161,7 +200,34 @@
 		"maxWidth": "最大宽度",
 		"boxRadius": "字幕框圆角",
 		"backgroundOpacity": "背景透明度",
-		"textColor": "文字颜色"
+		"textColor": "文字颜色",
+		"editor": {
+			"text": "文本",
+			"start": "开始",
+			"end": "结束",
+			"split": "拆分",
+			"merge": "合并",
+			"delete": "删除"
+		},
+		"selectModel": "选择模型",
+		"generatingStatus": "正在生成字幕，可能需要一些时间。",
+		"langOption": {
+			"auto": "自动检测",
+			"en": "英语",
+			"es": "西班牙语",
+			"fr": "法语",
+			"de": "德语",
+			"it": "意大利语",
+			"pt": "葡萄牙语",
+			"nl": "荷兰语",
+			"ja": "日语",
+			"ko": "韩语",
+			"zh": "中文",
+			"ru": "俄语",
+			"ar": "阿拉伯语",
+			"hi": "印地语",
+			"tr": "土耳其语"
+		}
 	},
 	"crop": {
 		"title": "裁剪视频",
@@ -181,7 +247,9 @@
 		"uploadCustom": "上传自定义",
 		"uploadSuccess": "自定义图片上传成功！",
 		"uploadError": "请上传 JPG 或 JPEG 图片文件。",
-		"uploadErrorDescription": "仅支持 JPG 和 JPEG 图片。"
+		"uploadErrorDescription": "仅支持 JPG 和 JPEG 图片。",
+		"uploadCustomVideo": "上传视频",
+		"video": "视频"
 	},
 	"export": {
 		"title": "导出",
@@ -215,5 +283,13 @@
 		"micLabel": "麦克风",
 		"mixedLabel": "来源",
 		"deleteRegion": "删除音频"
+	},
+	"settingsSections": {
+		"scene": "场景",
+		"captions": "字幕",
+		"cursor": "光标",
+		"webcam": "摄像头",
+		"extensions": "扩展",
+		"settings": "设置"
 	}
 }
