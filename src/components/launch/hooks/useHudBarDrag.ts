@@ -7,10 +7,12 @@ export function useHudBarDrag({
 	hudContentRef,
 	hudBarRef,
 	recordingWebcamPreviewContainerRef,
+	recording,
 }: {
 	hudContentRef: RefObject<HTMLDivElement>;
 	hudBarRef: RefObject<HTMLDivElement>;
 	recordingWebcamPreviewContainerRef: RefObject<HTMLDivElement>;
+	recording: boolean;
 }) {
 	const [recordingHudOffset, setRecordingHudOffset] = useState(DEFAULT_RECORDING_HUD_OFFSET);
 	const [isHudDragging, setIsHudDragging] = useState(false);
@@ -33,6 +35,19 @@ export function useHudBarDrag({
 	const isHudDraggingRef = useRef(false);
 	const hudDragMoveRafRef = useRef<number | null>(null);
 	const hudDragPendingPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+
+	// Reset the HUD bar offset whenever recording starts so any drag offset
+	// applied in the full-screen passthrough window does not carry over into
+	// the compact recording window, which would push the bar off-screen.
+	useEffect(() => {
+		if (recording) {
+			recordingHudOffsetRef.current = DEFAULT_RECORDING_HUD_OFFSET;
+			setRecordingHudOffset(DEFAULT_RECORDING_HUD_OFFSET);
+			if (hudBarTransformRef.current) {
+				hudBarTransformRef.current.style.transform = "translate3d(0px, 0px, 0)";
+			}
+		}
+	}, [recording]);
 
 	useEffect(() => {
 		recordingHudOffsetRef.current = recordingHudOffset;
