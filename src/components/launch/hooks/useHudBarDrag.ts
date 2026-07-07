@@ -36,9 +36,6 @@ export function useHudBarDrag({
 	const hudDragMoveRafRef = useRef<number | null>(null);
 	const hudDragPendingPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
 
-	// Reset the HUD bar offset whenever recording starts so any drag offset
-	// applied in the full-screen passthrough window does not carry over into
-	// the compact recording window, which would push the bar off-screen.
 	useEffect(() => {
 		if (recording) {
 			recordingHudOffsetRef.current = DEFAULT_RECORDING_HUD_OFFSET;

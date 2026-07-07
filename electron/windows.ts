@@ -638,7 +638,6 @@ export function setHudOverlayRecordingActive(recording: boolean): void {
 	applyHudOverlayBounds();
 	setHudOverlayMousePassthrough(!hudOverlayRecordingActive);
 
-	// Show HUD in dock/taskbar during recording so users can find it easily.
 	if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
 		hudOverlayWindow.setSkipTaskbar(!recording);
 	}
