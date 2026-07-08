@@ -106,6 +106,21 @@ export interface CursorTelemetryPoint {
 	cursorType?: CursorVisualType;
 }
 
+/**
+ * A single captured keystroke. `key` is a stable semantic token resolved from
+ * uiohook-napi's UiohookKey table (e.g. "A", "Enter", "Space", "Comma"), or the
+ * raw numeric keycode as a string when the token is unknown. Modifier booleans
+ * describe which modifiers were held at press time.
+ */
+export interface KeystrokeTelemetryPoint {
+	timeMs: number;
+	key: string;
+	ctrl?: boolean;
+	alt?: boolean;
+	shift?: boolean;
+	meta?: boolean;
+}
+
 export type NativeMacWindowSource = {
 	id: string;
 	name: string;
@@ -120,7 +135,7 @@ export type NativeMacWindowSource = {
 	height?: number;
 };
 
-export type HookEventName = "mousedown" | "mouseup" | "mousemove";
+export type HookEventName = "mousedown" | "mouseup" | "mousemove" | "keydown" | "keyup";
 
 export type HookMouseEvent = {
 	button?: number;
@@ -139,7 +154,26 @@ export type HookMouseEvent = {
 	};
 };
 
-export type HookEventListener = (event: HookMouseEvent) => void;
+export type HookKeyboardEvent = {
+	keycode?: number;
+	rawcode?: number;
+	altKey?: boolean;
+	ctrlKey?: boolean;
+	metaKey?: boolean;
+	shiftKey?: boolean;
+	data?: {
+		keycode?: number;
+		altKey?: boolean;
+		ctrlKey?: boolean;
+		metaKey?: boolean;
+		shiftKey?: boolean;
+	};
+};
+
+/** Union of the mouse and keyboard event shapes a single uiohook listener may receive. */
+export type HookInputEvent = HookMouseEvent & HookKeyboardEvent;
+
+export type HookEventListener = (event: HookInputEvent) => void;
 
 export type UiohookLike = {
 	on: (eventName: HookEventName, listener: HookEventListener) => void;

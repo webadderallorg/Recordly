@@ -3,9 +3,11 @@ import {
 	CURSOR_SAMPLE_INTERVAL_MS,
 	CURSOR_TELEMETRY_VERSION,
 	MAX_CURSOR_SAMPLES,
+	MAX_KEYSTROKE_SAMPLES,
 } from "../constants";
 import {
 	activeCursorSamples,
+	activeKeystrokeSamples,
 	currentCursorVisualType,
 	cursorCaptureAccumulatedPausedMs,
 	cursorCaptureInterval,
@@ -22,7 +24,12 @@ import {
 	setCursorCapturePauseStartedAtMs,
 	setPendingCursorSamples,
 } from "../state";
-import type { CursorInteractionType, CursorTelemetryPoint, CursorVisualType } from "../types";
+import type {
+	CursorInteractionType,
+	CursorTelemetryPoint,
+	CursorVisualType,
+	KeystrokeTelemetryPoint,
+} from "../types";
 import { getScreen, getTelemetryPathForVideo } from "../utils";
 
 export function clamp(value: number, min: number, max: number) {
@@ -91,11 +98,7 @@ export async function writeCursorTelemetry(videoPath: string, samples: unknown) 
 
 	await fs.writeFile(
 		telemetryPath,
-		JSON.stringify(
-			{ version: CURSOR_TELEMETRY_VERSION, samples: normalizedSamples },
-			null,
-			2,
-		),
+		JSON.stringify({ version: CURSOR_TELEMETRY_VERSION, samples: normalizedSamples }, null, 2),
 		"utf-8",
 	);
 
@@ -144,9 +147,7 @@ export function resumeCursorCapture(resumedAtMs: number) {
 	}
 
 	const pauseDurationMs = Math.max(0, resumedAtMs - cursorCapturePauseStartedAtMs);
-	setCursorCaptureAccumulatedPausedMs(
-		cursorCaptureAccumulatedPausedMs + pauseDurationMs,
-	);
+	setCursorCaptureAccumulatedPausedMs(cursorCaptureAccumulatedPausedMs + pauseDurationMs);
 	setCursorCapturePauseStartedAtMs(null);
 }
 
@@ -217,7 +218,16 @@ export function getNormalizedCursorPoint() {
 }
 
 export function getHookCursorScreenPoint(
-	event: { x?: number; y?: number; data?: { x?: number; y?: number; screenX?: number; screenY?: number }; screenX?: number; screenY?: number } | null | undefined,
+	event:
+		| {
+				x?: number;
+				y?: number;
+				data?: { x?: number; y?: number; screenX?: number; screenY?: number };
+				screenX?: number;
+				screenY?: number;
+		  }
+		| null
+		| undefined,
 ): { x: number; y: number } | null {
 	const rawX = event?.x ?? event?.data?.x ?? event?.screenX ?? event?.data?.screenX;
 	const rawY = event?.y ?? event?.data?.y ?? event?.screenY ?? event?.data?.screenY;
@@ -251,6 +261,21 @@ export function pushCursorSample(
 
 	if (activeCursorSamples.length > MAX_CURSOR_SAMPLES) {
 		activeCursorSamples.shift();
+	}
+}
+
+export function pushKeystrokeSample(sample: KeystrokeTelemetryPoint) {
+	activeKeystrokeSamples.push({
+		timeMs: Math.max(0, sample.timeMs),
+		key: sample.key,
+		ctrl: sample.ctrl,
+		alt: sample.alt,
+		shift: sample.shift,
+		meta: sample.meta,
+	});
+
+	if (activeKeystrokeSamples.length > MAX_KEYSTROKE_SAMPLES) {
+		activeKeystrokeSamples.shift();
 	}
 }
 
