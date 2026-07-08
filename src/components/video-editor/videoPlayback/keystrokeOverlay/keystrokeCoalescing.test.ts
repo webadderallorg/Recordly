@@ -83,6 +83,21 @@ describe("buildKeycapGroups", () => {
 		expect(groups).toHaveLength(0);
 	});
 
+	it("keeps a group's id stable across frames even as the window drops older groups", () => {
+		// X is >10s before A; at t=11500 X is still in the lookback window (A is
+		// the 2nd group), at t=12200 X has dropped (A is the 1st group). A must
+		// keep the same id despite its changing position — otherwise it remounts.
+		const events = [ev(0, "X", { meta: true }), ev(11000, "A")];
+		const idEarly = buildKeycapGroups(events, 11500, "mac").find(
+			(g) => g.labels[0] === "A",
+		)?.id;
+		const idLater = buildKeycapGroups(events, 12200, "mac").find(
+			(g) => g.labels[0] === "A",
+		)?.id;
+		expect(idEarly).toBeDefined();
+		expect(idLater).toBe(idEarly);
+	});
+
 	it("property: never reveals future keys and opacity stays in (0,1]", () => {
 		fc.assert(
 			fc.property(

@@ -20,6 +20,19 @@ import {
 	type ModifierGlyphStyle,
 } from "./keystrokeTypes";
 
+/**
+ * Stable id for a keycap group. Derived only from the group's first keystroke's
+ * intrinsic identity (time + key + modifiers), never from its position in the
+ * sliding lookback window — otherwise the same logical group would get a new id
+ * as the window shifts, remounting it every frame and flickering during scrub.
+ */
+function groupId(event: KeystrokeEvent): string {
+	const mods =
+		`${event.ctrl ? "c" : ""}${event.alt ? "a" : ""}` +
+		`${event.shift ? "s" : ""}${event.meta ? "m" : ""}`;
+	return `k${event.timeMs}:${event.key}:${mods}`;
+}
+
 export function computeOpacity(ageMs: number, policy: KeystrokeOverlayPolicy): number {
 	if (ageMs <= policy.holdMs) {
 		return 1;
@@ -60,7 +73,7 @@ export function buildKeycapGroups(
 
 		if (isChord) {
 			groups.push({
-				id: `k${event.timeMs}-${groups.length}`,
+				id: groupId(event),
 				labels: [...formatModifierLabels(event, style), keyLabel],
 				isChord: true,
 				startMs: event.timeMs,
@@ -82,7 +95,7 @@ export function buildKeycapGroups(
 			open.lastMs = event.timeMs;
 		} else {
 			groups.push({
-				id: `k${event.timeMs}-${groups.length}`,
+				id: groupId(event),
 				labels: [keyLabel],
 				isChord: false,
 				startMs: event.timeMs,

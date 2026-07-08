@@ -318,7 +318,10 @@ export async function startInteractionCapture() {
 			const timeMs = getCursorCaptureElapsedMs();
 
 			// Collapse auto-repeat: ignore the same physical key re-firing rapidly.
+			// Bump the timestamp on collapsed repeats too, so a held key stays
+			// suppressed for its whole duration instead of leaking every other repeat.
 			if (keycode === lastKeystrokeCode && timeMs - lastKeystrokeTimeMs < 45) {
+				lastKeystrokeTimeMs = timeMs;
 				return;
 			}
 			lastKeystrokeCode = keycode;
