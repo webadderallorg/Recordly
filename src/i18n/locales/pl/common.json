@@ -1,0 +1,26 @@
+{
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Edytor Recordly",
+		"subtitle": "Nagrywanie i edycja ekranu",
+		"language": "Język",
+		"manageRecordings": "Otwórz folder z nagraniami"
+	},
+	"actions": {
+		"cancel": "Anuluj",
+		"close": "Zamknij",
+		"export": "Eksportuj",
+		"load": "Wczytaj",
+		"redo": "Ponów",
+		"reset": "Resetuj",
+		"save": "Zapisz",
+		"undo": "Cofnij",
+		"delete": "Usuń",
+		"done": "Gotowe"
+	},
+	"errors": {
+		"invalidFileType": "Nieprawidłowy typ pliku",
+		"failedToUploadImage": "Nie udało się przesłać obrazu",
+		"fileReadError": "Wystąpił błąd podczas odczytu pliku."
+	}
+}

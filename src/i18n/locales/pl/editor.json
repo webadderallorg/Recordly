@@ -1,0 +1,141 @@
+{
+	"playback": {
+		"play": "Odtwórz",
+		"pause": "Wstrzymaj",
+		"skipBack": "Przewiń do tyłu",
+		"skipForward": "Przewiń do przodu",
+		"muteUnmute": "Wycisz/Włącz dźwięk"
+	},
+	"annotations": {
+		"settings": "Ustawienia adnotacji",
+		"active": "Aktywne",
+		"text": "Tekst",
+		"image": "Obraz",
+		"arrow": "Strzałka",
+		"blur": "Rozmycie",
+		"textContent": "Treść tekstu",
+		"textPlaceholder": "Wpisz tekst...",
+		"fontStyle": "Styl czcionki",
+		"selectStyle": "Wybierz styl",
+		"size": "Rozmiar",
+		"toggleBold": "Przełącz pogrubienie",
+		"toggleItalic": "Przełącz kursywę",
+		"toggleUnderline": "Przełącz podkreślenie",
+		"alignLeft": "Wyrównaj do lewej",
+		"alignCenter": "Wyśrodkuj",
+		"alignRight": "Wyrównaj do prawej",
+		"textColor": "Kolor tekstu",
+		"background": "Tło",
+		"none": "Brak",
+		"clearBackground": "Wyczyść tło",
+		"uploadImage": "Prześlij obraz",
+		"supportedFormats": "Obsługiwane formaty: JPG, PNG, GIF, WebP",
+		"arrowDirection": "Kierunek strzałki",
+		"strokeWidth": "Grubość linii: {{width}}px",
+		"arrowColor": "Kolor strzałki",
+		"deleteAnnotation": "Usuń adnotację",
+		"shortcutsAndTips": "Skróty i wskazówki",
+		"tipSelectAnnotation": "Przesuń głowicę odtwarzania do sekcji z nakładającą się adnotacją i wybierz element.",
+		"tipCycleForward": "Użyj Tab, aby przełączać się między nakładającymi się elementami.",
+		"tipCycleBackward": "Użyj Shift+Tab, aby przełączać się wstecz.",
+		"imageUploadSuccess": "Obraz został pomyślnie przesłany!",
+		"imageUploadError": "Prześlij plik obrazu JPG, PNG, GIF lub WebP.",
+		"blurStrength": "Siła rozmycia: {{strength}}",
+		"solidColor": "Jednolity kolor (cenzura)",
+		"borderRadius": "Promień narożników"
+	},
+	"fontStyles": {
+		"classic": "Klasyczny",
+		"editor": "Edytorski",
+		"strong": "Wyrazisty",
+		"typewriter": "Maszynowy",
+		"deco": "Dekoracyjny",
+		"simple": "Prosty",
+		"modern": "Nowoczesny",
+		"clean": "Czysty"
+	},
+	"format": {
+		"mp4Video": "Wideo MP4",
+		"mp4Description": "Plik wideo wysokiej jakości",
+		"gifAnimation": "Animacja GIF",
+		"gifDescription": "Animowany obraz do udostępniania"
+	},
+	"gifOptions": {
+		"frameRate": "Liczba klatek",
+		"outputSize": "Rozmiar wyjściowy",
+		"outputDimensions": "Wyjście: {{width}} × {{height}}px",
+		"loopAnimation": "Zapętl animację",
+		"loopDescription": "GIF będzie odtwarzany bez przerwy"
+	},
+	"tutorial": {
+		"howTrimmingWorks": "Jak działa przycinanie",
+		"title": "Jak działa przycinanie",
+		"understanding": "Dowiedz się, jak wycinać niechciane fragmenty filmu.",
+		"descriptionP1": "Narzędzie Przytnij działa przez zdefiniowanie segmentów, które chcesz",
+		"descriptionRemove": "usunąć",
+		"descriptionP2": "z filmu.",
+		"descriptionP3": "Każda część osi czasu pokryta czerwonym segmentem przycinania zostanie usunięta podczas eksportu.",
+		"visualExample": "Przykład wizualny",
+		"removed": "USUNIĘTE",
+		"kept": "Pozostawione",
+		"finalVideo": "Finalne wideo",
+		"part": "Część {{number}}",
+		"addTrimStep": "1. Dodaj przycięcie",
+		"addTrimDesc": "Naciśnij T lub kliknij ikonę nożyczek, aby oznaczyć sekcję do usunięcia.",
+		"adjustStep": "2. Dostosuj",
+		"adjustDesc": "Przeciągnij krawędzie czerwonego obszaru tak, aby objąć dokładnie to, co chcesz wyciąć."
+	},
+	"feedback": {
+		"trigger": "Opinie",
+		"title": "Opinie i kontakt",
+		"description": "Skontaktuj się bezpośrednio lub zgłoś issue, jeśli czegoś brakuje albo coś nie działa.",
+		"emailLabel": "Email",
+		"xLabel": "X",
+		"reportIssue": "Zgłoś problem / wyślij opinię",
+		"openFailed": "Nie udało się otworzyć linku."
+	},
+	"keyboardShortcuts": {
+		"trigger": "Skróty",
+		"title": "Skróty klawiszowe",
+		"description": "Szybka ściąga do osi czasu i kontrolek edytora.",
+		"customizeTooltip": "Dostosuj skróty",
+		"customize": "Dostosuj",
+		"panTimeline": "Przesuwanie osi czasu",
+		"zoomTimeline": "Powiększanie osi czasu",
+		"cycleAnnotations": "Przełączanie adnotacji",
+		"tab": "Tab"
+	},
+	"actions": {
+		"saveAgain": "Zapisz ponownie",
+		"showInFolder": "Pokaż w folderze"
+	},
+	"project": {
+		"untitled": "Bez tytułu"
+	},
+	"nativeCaptureUnavailable": {
+		"title": "Nic się nie zepsuło, ale nie będziemy mogli wyrenderować animowanej nakładki kursora.",
+		"description": "Twoje urządzenie nie obsługuje natywnego przechwytywania. Może to wynikać z różnych przyczyn, których jeszcze nie ustaliliśmy. Nie psuje to działania Recordly, ale uniemożliwia wygładzanie kursora.",
+		"confirm": "OK"
+	},
+	"exportStatus": {
+		"exporting": "Eksportowanie",
+		"renderingFile": "Renderowanie pliku.",
+		"preparing": "Przygotowywanie eksportu...",
+		"completePercent": "{{percent}}% ukończono",
+		"issue": "Problem z eksportem",
+		"complete": "Eksport zakończony",
+		"savedSuccessfully": "Plik został zapisany pomyślnie."
+	},
+	"export": {
+		"processingAudioEdits": "Przetwarzanie dźwięku z edycjami prędkości/nakładek"
+	},
+	"toolbar": {
+		"addLayer": "Dodaj warstwę",
+		"splitClip": "Podziel klip (C)"
+	},
+	"timeline": {
+		"expand": "Rozwiń oś czasu",
+		"collapse": "Zwiń oś czasu"
+	},
+	"openRecordingsFolder": "Otwórz folder z nagraniami"
+}
