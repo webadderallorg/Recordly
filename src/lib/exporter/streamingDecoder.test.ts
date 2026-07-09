@@ -67,7 +67,7 @@ describe("StreamingVideoDecoder local media loading", () => {
 		const decoder = new StreamingVideoDecoder();
 		await decoder.loadMetadata("http://127.0.0.1:43123/video?path=%2Ftmp%2Fcapture.mp4");
 
-		expect((window as any).electronAPI.readLocalFile).not.toHaveBeenCalled();
+		expect(window.electronAPI.readLocalFile).not.toHaveBeenCalled();
 		expect(mockDemuxerLoad).toHaveBeenCalledWith(
 			"http://127.0.0.1:43123/video?path=%2Ftmp%2Fcapture.mp4",
 		);
@@ -77,7 +77,7 @@ describe("StreamingVideoDecoder local media loading", () => {
 		const decoder = new StreamingVideoDecoder();
 		await decoder.loadMetadata("/tmp/capture.mp4");
 
-		expect((window as any).electronAPI.getLocalMediaUrl).toHaveBeenCalledWith(
+		expect(window.electronAPI.getLocalMediaUrl).toHaveBeenCalledWith(
 			"/tmp/capture.mp4",
 		);
 		expect(mockDemuxerLoad).toHaveBeenCalledWith(
@@ -90,7 +90,7 @@ describe("StreamingVideoDecoder local media loading", () => {
 		mockDemuxerLoad
 			.mockRejectedValueOnce(new Error("get_media_info failed: Failed after 3 attempts"))
 			.mockResolvedValueOnce(undefined);
-		(window as any).electronAPI.readLocalFile = vi.fn(async () => ({
+		window.electronAPI.readLocalFile = vi.fn(async () => ({
 			success: true,
 			data: new Uint8Array([1, 2, 3]),
 		}));
@@ -103,7 +103,7 @@ describe("StreamingVideoDecoder local media loading", () => {
 			"http://127.0.0.1:4321/video?path=%2Ftmp%2Ffallback.mp4",
 		);
 		expect(mockDemuxerLoad.mock.calls[1]?.[0]).toBeInstanceOf(File);
-		expect((window as any).electronAPI.readLocalFile).toHaveBeenCalledWith(
+		expect(window.electronAPI.readLocalFile).toHaveBeenCalledWith(
 			"/tmp/fallback.mp4",
 		);
 	});

@@ -62,7 +62,7 @@ export function registerAssetHandlers() {
         await fs.writeFile(thumbPath, jpegData)
       })
       // Keep the queue moving even if one fails
-      thumbGenerationQueue = generation.catch(() => {})
+      thumbGenerationQueue = generation.catch(() => undefined)
       await generation
 
       return { success: true, data: jpegData! }

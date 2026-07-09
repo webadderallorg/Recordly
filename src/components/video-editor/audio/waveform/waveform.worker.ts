@@ -6,7 +6,7 @@ type WaveformWorkerRequest = {
 
 interface WorkerContext {
 	onmessage: (e: MessageEvent<WaveformWorkerRequest>) => void;
-	postMessage: (message: any, transfer?: Transferable[]) => void;
+	postMessage: (message: unknown, transfer?: Transferable[]) => void;
 }
 
 const workerScope = self as unknown as WorkerContext;
