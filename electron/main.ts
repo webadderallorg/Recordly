@@ -11,6 +11,7 @@ import {
 	Notification,
 	nativeImage,
 	session,
+	shell,
 	systemPreferences,
 	Tray,
 } from "electron";
@@ -26,6 +27,10 @@ import {
 	registerIpcHandlers,
 } from "./ipc/handlers";
 import { ensureMediaServer } from "./mediaServer";
+import {
+	hardenWebContentsNavigation,
+	shouldHardenWebContentsType,
+} from "./navigationPolicy";
 import { ensurePackagedRendererServer } from "./rendererServer";
 import type { UpdateToastPayload } from "./updater";
 import {
@@ -72,6 +77,14 @@ ignoreBrokenConsolePipe(process.stderr);
 app.commandLine.appendSwitch("ignore-gpu-blocklist");
 app.commandLine.appendSwitch("enable-unsafe-webgpu");
 app.commandLine.appendSwitch("enable-gpu-rasterization");
+
+app.on("web-contents-created", (_event, contents) => {
+	if (!shouldHardenWebContentsType(contents.getType())) {
+		return;
+	}
+
+	hardenWebContentsNavigation(contents, (url) => shell.openExternal(url));
+});
 
 function configureGpuAccelerationSwitches() {
 	const { useAngle, useGl, disableFeatures } = getGpuSwitches(process.platform, process.env);
