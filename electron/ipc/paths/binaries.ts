@@ -53,6 +53,7 @@ export function resolvePreferredWindowsNativeHelperPath(
 	helperDirectory: string,
 	binaryName: string,
 ): string {
+	const windowsArchTag = process.arch === "arm64" ? "win32-arm64" : "win32-x64";
 	const buildOutputPath = resolveUnpackedAppPath(
 		"electron",
 		"native",
@@ -61,7 +62,13 @@ export function resolvePreferredWindowsNativeHelperPath(
 		"Release",
 		binaryName,
 	);
-	const prebundledPath = getPrebundledNativeHelperPath(binaryName);
+	const prebundledPath = resolveUnpackedAppPath(
+		"electron",
+		"native",
+		"bin",
+		windowsArchTag,
+		binaryName,
+	);
 
 	if (app.isPackaged && existsSync(prebundledPath)) {
 		return prebundledPath;
