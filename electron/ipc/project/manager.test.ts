@@ -82,6 +82,23 @@ describe("local media path policy", () => {
 		await expect(isAllowedLocalMediaPath(pendingExportPath)).resolves.toBe(true);
 	});
 
+	it("allows media files in the configured recordings directory", async () => {
+		const configuredRecordingsDir = path.join(tempRoot, "Configured recordings");
+		const recordingPath = path.join(configuredRecordingsDir, "recording-123.mic.wav");
+		await fs.mkdir(configuredRecordingsDir, { recursive: true });
+		await fs.writeFile(recordingPath, "audio");
+		await fs.writeFile(
+			path.join(userDataPath, "recordings-settings.json"),
+			JSON.stringify({ recordingsDir: configuredRecordingsDir }),
+		);
+
+		const { resolveApprovedLocalMediaPath } = await import("./manager");
+
+		await expect(resolveApprovedLocalMediaPath(recordingPath)).resolves.toBe(
+			await fs.realpath(recordingPath),
+		);
+	});
+
 	it("approves media-server access for approved external files resolved through the URL policy", async () => {
 		const downloadsPath = path.join(tempRoot, "Downloads");
 		const videoPath = path.join(downloadsPath, "external-video.mp4");

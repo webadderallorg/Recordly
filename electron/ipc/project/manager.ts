@@ -100,6 +100,18 @@ export function isAllowedLocalReadPath(candidatePath: string) {
 // become fetchable inside the app.
 export async function isAllowedLocalMediaPath(candidatePath: string) {
 	const normalizedCandidatePath = normalizePath(candidatePath);
+	// The recordings location can be changed in settings, so the compile-time
+	// default RECORDINGS_DIR alone is not sufficient for media created there.
+	// Canonicalize the configured root as well as the candidate to retain the
+	// symlink protection enforced by isAllowedLocalReadPath.
+	const recordingsDir = await getRecordingsDir();
+	const canonicalRecordingsDir = await fs
+		.realpath(recordingsDir)
+		.catch(() => normalizePath(recordingsDir));
+	if (isPathInsideDirectory(normalizedCandidatePath, canonicalRecordingsDir)) {
+		return true;
+	}
+
 	return isAllowedLocalReadPath(normalizedCandidatePath);
 }
 
