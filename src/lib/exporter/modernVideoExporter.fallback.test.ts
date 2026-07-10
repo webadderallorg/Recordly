@@ -238,7 +238,7 @@ describe("ModernVideoExporter native fallback routing", () => {
 		expect(mocks.streamingDecoderLoadMetadata).not.toHaveBeenCalled();
 	}, 15_000);
 
-	it("retries the main decode path once with a readable file-backed source", async () => {
+	it("retries the main decode path once with a fresh media source", async () => {
 		mocks.streamingDecoderGetEffectiveDuration.mockReturnValue(1);
 		mocks.streamingDecoderDecodeAll
 			.mockRejectedValueOnce(
@@ -277,13 +277,13 @@ describe("ModernVideoExporter native fallback routing", () => {
 		expect(mocks.streamingDecoderLoadMetadata.mock.calls[0]).toEqual([
 			"file:///recording.mp4",
 			{
-				forceReadableFileSource: false,
+				useFallbackMediaSource: false,
 			},
 		]);
 		expect(mocks.streamingDecoderLoadMetadata.mock.calls[1]).toEqual([
 			"file:///recording.mp4",
 			{
-				forceReadableFileSource: true,
+				useFallbackMediaSource: true,
 			},
 		]);
 		expect(mocks.streamingDecoderDecodeAll).toHaveBeenCalledTimes(2);

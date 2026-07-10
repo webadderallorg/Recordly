@@ -288,7 +288,7 @@ type NativeStaticLayoutZoomSample = {
 };
 
 const NATIVE_EXPORT_ENGINE_NAME = "Breeze";
-const READABLE_SOURCE_RETRY_ERROR_TOKENS = [
+const MEDIA_SOURCE_RETRY_ERROR_TOKENS = [
 	"readavpacket",
 	"get_media_info",
 	"avfoundation",
@@ -371,11 +371,11 @@ export class ModernVideoExporter {
 	}
 
 	async export(): Promise<ExportResult> {
-		let preferReadableFileSource = false;
-		let retriedWithReadableFileSource = false;
+		let useFallbackMediaSource = false;
+		let retriedWithFallbackMediaSource = false;
 
 		while (true) {
-			let shouldRetryWithReadableFileSource = false;
+			let shouldRetryWithFallbackMediaSource = false;
 			try {
 				this.cleanup();
 				this.cancelled = false;
@@ -522,7 +522,7 @@ export class ModernVideoExporter {
 				});
 				stageStartedAt = this.getNowMs();
 				const videoInfo = await this.streamingDecoder.loadMetadata(this.config.videoUrl, {
-					forceReadableFileSource: preferReadableFileSource,
+					useFallbackMediaSource,
 				});
 				this.metadataLoadTimeMs = this.getNowMs() - stageStartedAt;
 				const nativeAudioPlan = this.buildNativeAudioPlan(videoInfo);
@@ -892,15 +892,15 @@ export class ModernVideoExporter {
 				};
 			} catch (error) {
 				if (
-					!preferReadableFileSource &&
-					!retriedWithReadableFileSource &&
-					this.shouldRetryWithReadableFileSource(error)
+					!useFallbackMediaSource &&
+					!retriedWithFallbackMediaSource &&
+					this.shouldRetryWithFallbackMediaSource(error)
 				) {
-					retriedWithReadableFileSource = true;
-					preferReadableFileSource = true;
-					shouldRetryWithReadableFileSource = true;
+					retriedWithFallbackMediaSource = true;
+					useFallbackMediaSource = true;
+					shouldRetryWithFallbackMediaSource = true;
 					console.warn(
-						"[VideoExporter] Primary decode path failed; retrying export once with a readable file-backed media source.",
+						"[VideoExporter] Primary decode path failed; retrying export once with a fresh media source.",
 						error,
 					);
 				} else {
@@ -921,7 +921,7 @@ export class ModernVideoExporter {
 					};
 				}
 			} finally {
-				if (!shouldRetryWithReadableFileSource && this.totalExportStartTimeMs > 0) {
+				if (!shouldRetryWithFallbackMediaSource && this.totalExportStartTimeMs > 0) {
 					console.log(
 						`[VideoExporter] Final metrics ${JSON.stringify(this.buildExportMetrics())}`,
 					);
@@ -929,20 +929,18 @@ export class ModernVideoExporter {
 				this.cleanup();
 			}
 
-			if (shouldRetryWithReadableFileSource) {
+			if (shouldRetryWithFallbackMediaSource) {
 				continue;
 			}
 		}
 	}
 
-	private shouldRetryWithReadableFileSource(error: unknown): boolean {
+	private shouldRetryWithFallbackMediaSource(error: unknown): boolean {
 		const resolvedError = this.encoderError ?? error;
 		const message =
 			resolvedError instanceof Error ? resolvedError.message : String(resolvedError);
 		const normalizedMessage = message.toLowerCase();
-		return READABLE_SOURCE_RETRY_ERROR_TOKENS.some((token) =>
-			normalizedMessage.includes(token),
-		);
+		return MEDIA_SOURCE_RETRY_ERROR_TOKENS.some((token) => normalizedMessage.includes(token));
 	}
 
 	private getPlatformLabel(): string {
