@@ -81,6 +81,7 @@ export interface TimelineEditorProps {
 	videoSourcePath?: string | null;
 	cursorTelemetrySourcePath?: string | null;
 	showSourceAudioTrack?: boolean;
+	sourceAudioResourceVersion?: number;
 	onSourceAudioAvailabilityChange?: (available: boolean) => void;
 	sourceAudioTrackSettings?: SourceAudioTrackSettings;
 	getSourceAudioTrackSettingsForClip?: (clipId: string | null) => SourceAudioTrackSettings;
@@ -163,6 +164,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			videoSourcePath,
 			cursorTelemetrySourcePath,
 			showSourceAudioTrack = false,
+			sourceAudioResourceVersion = 0,
 			onSourceAudioAvailabilityChange,
 			sourceAudioTrackSettings = {},
 			getSourceAudioTrackSettingsForClip,
@@ -245,8 +247,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			return { previewSpans, hiddenZoomIds };
 		}, [clipRegions, liveSpanPreviewById, zoomRegions]);
 		const { shortcuts: keyShortcuts, isMac } = useShortcuts();
-		const { peaks: sourceAudioPeaks, loading: sourceAudioLoading } =
-			useTimelineAudioPeaks(videoPath);
+		const { peaks: sourceAudioPeaks, loading: sourceAudioLoading } = useTimelineAudioPeaks(
+			videoPath,
+			{ resourceVersion: sourceAudioResourceVersion },
+		);
 		const localSourcePath = useMemo(() => {
 			if (!videoPath) return null;
 			return (
@@ -270,12 +274,16 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		);
 		const { peaks: micSidecarPeaks, loading: micSidecarLoading } = useTimelineAudioPeaks(
 			micSidecarPaths[0] ?? null,
-			{ fallbackResources: micSidecarFallbackPaths },
+			{
+				fallbackResources: micSidecarFallbackPaths,
+				resourceVersion: sourceAudioResourceVersion,
+			},
 		);
 		const { peaks: systemSidecarPeaks, loading: systemSidecarLoading } = useTimelineAudioPeaks(
 			systemSidecarPaths[0] ?? null,
 			{
 				fallbackResources: systemSidecarFallbackPaths,
+				resourceVersion: sourceAudioResourceVersion,
 			},
 		);
 		const sourceAudioTracks = useMemo(

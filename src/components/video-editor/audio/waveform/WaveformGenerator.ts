@@ -1,4 +1,5 @@
 import WorkerConstructor from "./waveform.worker?worker";
+import { getAudioResourceVersionKey } from "../audioResourceVersion";
 import type { AudioPeaksData } from "../../timeline/core/timelineTypes";
 import { WAVEFORM_DEFAULT_PEAK_COUNT } from "../../timeline/core/constants";
 
@@ -60,8 +61,12 @@ export class WaveformGenerator {
 		});
 	}
 
-	public async generate(url: string, peakCount = WAVEFORM_DEFAULT_PEAK_COUNT): Promise<AudioPeaksData> {
-		const cacheKey = `${url}::${peakCount}`;
+	public async generate(
+		url: string,
+		peakCount = WAVEFORM_DEFAULT_PEAK_COUNT,
+		resourceVersion = 0,
+	): Promise<AudioPeaksData> {
+		const cacheKey = `${getAudioResourceVersionKey(url, resourceVersion)}::${peakCount}`;
 		const cached = this.peaksCache.get(cacheKey);
 		if (cached) return cached;
 

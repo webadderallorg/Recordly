@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { getVersionedAudioResourceUrl } from "@/components/video-editor/audio/audioResourceVersion";
 import { resolveMediaResourceUrl } from "@/lib/exporter/localMediaSource";
 import { waveformGenerator } from "../../audio/waveform/WaveformGenerator";
 import { fromFileUrl } from "../../projectPersistence";
@@ -43,6 +44,7 @@ interface TimelineAudioPeaksOptions {
 	enableSourceSidecarFallback?: boolean;
 	fallbackResources?: string[];
 	peakCount?: number;
+	resourceVersion?: number;
 }
 
 export interface TimelineAudioPeaksResult {
@@ -60,6 +62,7 @@ export function useTimelineAudioPeaks(
 	const enableSourceSidecarFallback = options.enableSourceSidecarFallback ?? false;
 	const fallbackResources = options.fallbackResources ?? EMPTY_FALLBACK_RESOURCES;
 	const peakCount = options.peakCount ?? WAVEFORM_DEFAULT_PEAK_COUNT;
+	const resourceVersion = options.resourceVersion ?? 0;
 
 	useEffect(() => {
 		sourceRef.current = mediaResource;
@@ -75,7 +78,8 @@ export function useTimelineAudioPeaks(
 		const run = async () => {
 			const tryGenerate = async (resource: string): Promise<AudioPeaksData> => {
 				const resolvedUrl = await resolveMediaResourceUrl(resource);
-				return waveformGenerator.generate(resolvedUrl, peakCount);
+				const versionedUrl = getVersionedAudioResourceUrl(resolvedUrl, resourceVersion);
+				return waveformGenerator.generate(versionedUrl, peakCount, resourceVersion);
 			};
 
 			try {
@@ -135,7 +139,7 @@ export function useTimelineAudioPeaks(
 		return () => {
 			cancelled = true;
 		};
-	}, [mediaResource, enableSourceSidecarFallback, fallbackResources, peakCount]);
+	}, [mediaResource, enableSourceSidecarFallback, fallbackResources, peakCount, resourceVersion]);
 
 	return { peaks, loading };
 }
