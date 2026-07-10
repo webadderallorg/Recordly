@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from "react";
-import { v4 as uuidv4 } from "uuid";
 import type { TimelineRegion } from "../core/timelineTypes";
 
 interface UseTimelineSelectionParams {
@@ -56,7 +55,10 @@ export function useTimelineSelection({
 		if (totalMs === 0) return;
 		const time = Math.max(0, Math.min(currentTimeMs, totalMs));
 		if (keyframes.some((kf) => Math.abs(kf.time - time) < 1)) return;
-		setKeyframes((prev) => [...prev, { id: uuidv4(), time }]);
+		setKeyframes((prev) => [
+			...prev,
+			{ id: globalThis.crypto.randomUUID(), time },
+		]);
 	}, [currentTimeMs, totalMs, keyframes]);
 
 	const deleteSelectedKeyframe = useCallback(() => {
