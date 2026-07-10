@@ -78,7 +78,7 @@
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"dnd-timeline": "^2.2.0",
-		"electron": "^39.2.7",
+		"electron": "^39.8.10",
 		"electron-builder": "^26.7.0",
 		"emoji-picker-react": "^4.16.1",
 		"fast-check": "^4.5.2",
@@ -103,7 +103,7 @@
 		"vite": "^5.1.6",
 		"vite-plugin-electron": "^0.28.6",
 		"vite-plugin-electron-renderer": "^0.14.5",
-		"vitest": "^4.0.16",
+		"vitest": "^4.1.10",
 		"web-demuxer": "^4.0.0"
 	},
 	"main": "dist-electron/main.cjs"
