@@ -17,6 +17,7 @@ import {
 	enablePitchPreservingPlayback,
 	getMediaSyncPlaybackRate,
 } from "@/lib/mediaTiming";
+import { destroyPixiApplication, initializePixiApplication } from "@/lib/pixiApplicationLifecycle";
 import {
 	DEFAULT_WALLPAPER_PATH,
 	DEFAULT_WALLPAPER_RELATIVE_PATH,
@@ -275,7 +276,7 @@ async function initApplicationWithTimeout(
 	});
 
 	try {
-		await Promise.race([app.init(options), timeoutPromise]);
+		await Promise.race([initializePixiApplication(app, options), timeoutPromise]);
 	} finally {
 		if (timeoutId !== undefined) {
 			clearTimeout(timeoutId);
@@ -722,7 +723,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 							`[VideoPlayback] Failed to init ${backend} renderer (${statusMessage}) after ${elapsed}ms; trying fallback.`,
 							error,
 						);
-						rendererApp.destroy(true);
+						destroyPixiApplication(
+							rendererApp,
+							`${backend} preview renderer initialization`,
+						);
 					}
 				}
 
@@ -2126,11 +2130,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				app.ticker.maxFPS = 60;
 
 				if (!mounted) {
-					app.destroy(true, {
-						children: true,
-						texture: false,
-						textureSource: false,
-					});
+					destroyPixiApplication(app, "unmounted preview renderer");
 					return;
 				}
 
@@ -2226,13 +2226,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				motionBlurFilterRef.current?.destroy();
 				zoomBlurFilterRef.current = null;
 				motionBlurFilterRef.current = null;
-				if (app && app.renderer) {
-					app.destroy(true, {
-						children: true,
-						texture: false,
-						textureSource: false,
-					});
-				}
+				destroyPixiApplication(app, "preview renderer");
 				appRef.current = null;
 				cameraContainerRef.current = null;
 				videoEffectsContainerRef.current = null;

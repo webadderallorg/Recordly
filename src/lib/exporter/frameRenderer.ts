@@ -72,6 +72,7 @@ import {
 	clampMediaTimeToDuration,
 	getEffectiveVideoStreamDurationSeconds,
 } from "@/lib/mediaTiming";
+import { destroyPixiApplication, initializePixiApplication } from "@/lib/pixiApplicationLifecycle";
 import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import { renderAnnotations } from "./annotationRenderer";
 import { renderCaptions } from "./captionRenderer";
@@ -189,7 +190,7 @@ async function initApplicationWithTimeout(
 	});
 
 	try {
-		await Promise.race([app.init(options), timeoutPromise]);
+		await Promise.race([initializePixiApplication(app, options), timeoutPromise]);
 	} finally {
 		if (timeoutId !== undefined) {
 			clearTimeout(timeoutId);
@@ -389,7 +390,7 @@ export class FrameRenderer {
 					`[FrameRenderer] ${backend} renderer unavailable after ${elapsed}ms; trying next backend.`,
 					error,
 				);
-				app.destroy(true);
+				destroyPixiApplication(app, `${backend} export renderer initialization`);
 			}
 		}
 
@@ -2587,11 +2588,7 @@ export class FrameRenderer {
 		}
 		this.backgroundSprite = null;
 		if (this.app) {
-			this.app.destroy(true, {
-				children: true,
-				texture: false,
-				textureSource: false,
-			});
+			destroyPixiApplication(this.app, "legacy export renderer");
 			this.app = null;
 		}
 		this.zoomBlurFilter?.destroy();

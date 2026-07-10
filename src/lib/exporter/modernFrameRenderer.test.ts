@@ -6,12 +6,21 @@ const {
 	destroyForwardFrameSourceMock,
 	getForwardFrameAtTimeMock,
 	initializeForwardFrameSourceMock,
+	pixiApplicationInstancesMock,
+	pixiInitializationErrorsMock,
 	resolveMediaElementSourceMock,
 } = vi.hoisted(() => ({
 	cancelForwardFrameSourceMock: vi.fn(),
 	destroyForwardFrameSourceMock: vi.fn(async () => undefined),
 	getForwardFrameAtTimeMock: vi.fn(async () => null),
 	initializeForwardFrameSourceMock: vi.fn(async () => undefined),
+	pixiApplicationInstancesMock: [] as Array<{
+		destroy: ReturnType<typeof vi.fn>;
+		init: ReturnType<typeof vi.fn>;
+		renderer: { destroy: ReturnType<typeof vi.fn> };
+		stage: { destroy: ReturnType<typeof vi.fn> };
+	}>,
+	pixiInitializationErrorsMock: [] as Array<Error | undefined>,
 	resolveMediaElementSourceMock: vi.fn(async () => ({
 		src: "blob:background",
 		revoke: vi.fn(),
@@ -19,7 +28,21 @@ const {
 }));
 
 vi.mock("pixi.js", () => ({
-	Application: class {},
+	Application: class {
+		destroy = vi.fn(() => {
+			throw new TypeError("this._cancelResize is not a function");
+		});
+		init = vi.fn(async () => {
+			const error = pixiInitializationErrorsMock.shift();
+			if (error) throw error;
+		});
+		renderer = { destroy: vi.fn() };
+		stage = { destroy: vi.fn() };
+
+		constructor() {
+			pixiApplicationInstancesMock.push(this);
+		}
+	},
 	BlurFilter: class {},
 	Container: class {
 		visible = true;
@@ -178,6 +201,36 @@ function createRenderer() {
 		],
 	});
 }
+
+describe("ModernFrameRenderer Pixi lifecycle", () => {
+	it("continues to the next backend when failed-init cleanup would throw", async () => {
+		pixiApplicationInstancesMock.length = 0;
+		pixiInitializationErrorsMock.length = 0;
+		pixiInitializationErrorsMock.push(new Error("WebGPU initialization failed"), undefined);
+		vi.stubGlobal("navigator", { gpu: {} });
+
+		try {
+			const renderer = createRenderer() as unknown as {
+				config: { preferredRenderBackend?: "webgl" | "webgpu" };
+				createPixiApplication: (
+					canvas: HTMLCanvasElement,
+				) => Promise<{ backend: "webgl" | "webgpu" }>;
+			};
+			renderer.config.preferredRenderBackend = "webgpu";
+
+			await expect(renderer.createPixiApplication({} as HTMLCanvasElement)).resolves.toMatchObject({
+				backend: "webgl",
+			});
+
+			expect(pixiApplicationInstancesMock).toHaveLength(2);
+			expect(pixiApplicationInstancesMock[0].destroy).not.toHaveBeenCalled();
+			expect(pixiApplicationInstancesMock[0].stage.destroy).toHaveBeenCalledTimes(1);
+			expect(pixiApplicationInstancesMock[0].renderer.destroy).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
 
 describe("ModernFrameRenderer blur export path", () => {
 	beforeEach(() => {

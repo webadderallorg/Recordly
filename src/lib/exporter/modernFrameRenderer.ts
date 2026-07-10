@@ -82,6 +82,7 @@ import {
 	clampMediaTimeToDuration,
 	getEffectiveVideoStreamDurationSeconds,
 } from "@/lib/mediaTiming";
+import { destroyPixiApplication, initializePixiApplication } from "@/lib/pixiApplicationLifecycle";
 import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import {
 	type AnnotationRenderAssets,
@@ -300,7 +301,7 @@ async function initApplicationWithTimeout(
 	});
 
 	try {
-		await Promise.race([app.init(options), timeoutPromise]);
+		await Promise.race([initializePixiApplication(app, options), timeoutPromise]);
 	} finally {
 		if (timeoutId !== undefined) {
 			clearTimeout(timeoutId);
@@ -754,7 +755,7 @@ export class FrameRenderer {
 					`[FrameRenderer] ${backend} export renderer unavailable (${rendererMessage}) after ${elapsed}ms; trying next backend:`,
 					error,
 				);
-				app.destroy(true);
+				destroyPixiApplication(app, `${backend} export renderer initialization`);
 			}
 		}
 
@@ -3921,11 +3922,7 @@ export class FrameRenderer {
 		this.motionBlurFilter?.destroy();
 		this.backgroundBlurFilter?.destroy();
 
-		this.app?.destroy(true, {
-			children: true,
-			texture: false,
-			textureSource: false,
-		});
+		destroyPixiApplication(this.app, "Lightning export renderer");
 
 		for (const texture of texturesToDestroy) {
 			try {
