@@ -1,7 +1,18 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.3.13/schema.json",
 	"vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
-	"files": { "ignoreUnknown": false },
+	"files": {
+		"ignoreUnknown": false,
+		"includes": [
+			"**",
+			"!!**/dist",
+			"!!**/dist-electron",
+			"!!**/dist-ssr",
+			"!!**/release",
+			"!!**/.tmp",
+			"!!**/electron/native/**/build"
+		]
+	},
 	"formatter": {
 		"enabled": true,
 		"indentStyle": "tab",
