@@ -712,39 +712,39 @@ function updateTrayMenu(recording: boolean = false) {
 	const trayToolTip = recording ? `Recording: ${selectedSourceName}` : "Recordly";
 	const menuTemplate = recording
 		? [
-				{
-					label: "Show Controls",
-					click: () => {
-						if (!showHudOverlayFromTray()) {
-							focusOrCreateMainWindow();
-						}
-					},
+			{
+				label: "Show Controls",
+				click: () => {
+					if (!showHudOverlayFromTray()) {
+						focusOrCreateMainWindow();
+					}
 				},
-				{
-					label: "Stop Recording",
-					click: () => {
-						if (mainWindow && !mainWindow.isDestroyed()) {
-							mainWindow.webContents.send("stop-recording-from-tray");
-						}
-					},
+			},
+			{
+				label: "Stop Recording",
+				click: () => {
+					if (mainWindow && !mainWindow.isDestroyed()) {
+						mainWindow.webContents.send("stop-recording-from-tray");
+					}
 				},
-			]
+			},
+		]
 		: [
-				{
-					label: "Open",
-					click: () => {
-						if (!showHudOverlayFromTray()) {
-							focusOrCreateMainWindow();
-						}
-					},
+			{
+				label: "Open",
+				click: () => {
+					if (!showHudOverlayFromTray()) {
+						focusOrCreateMainWindow();
+					}
 				},
-				{
-					label: "Quit",
-					click: () => {
-						app.quit();
-					},
+			},
+			{
+				label: "Quit",
+				click: () => {
+					app.quit();
 				},
-			];
+			},
+		];
 	const menu = Menu.buildFromTemplate(menuTemplate);
 	trayContextMenu = menu;
 	tray.setImage(trayIcon);
@@ -1005,7 +1005,7 @@ app.whenReady().then(async () => {
 	// ignored by the native capture pipeline.
 	session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
 		try {
-			const sourceId = getSelectedSourceId();
+			let sourceId = getSelectedSourceId();
 			// On Linux/Wayland, calling desktopCapturer.getSources() itself
 			// invokes the xdg-desktop-portal picker. If we then return one of
 			// those sources, Chromium triggers a SECOND portal because the
@@ -1014,27 +1014,37 @@ app.whenReady().then(async () => {
 			// is set we skip getSources entirely and hand back a synthetic
 			// source id; Chromium then opens the portal once to actually
 			// resolve the capture.
-			// Default to the sentinel on Linux when no source has been
-			// pre-selected (e.g. fresh session where the renderer skipped the
-			// source picker entirely). This avoids calling getSources() which
-			// would itself trigger an extra portal dialog.
+			const isWayland =
+				process.env.XDG_SESSION_TYPE === "wayland" || !!process.env.WAYLAND_DISPLAY;
+
 			const isLinuxPortalSentinel =
-				process.platform === "linux" && (sourceId === "screen:linux-portal" || !sourceId);
+				process.platform === "linux" && isWayland && (sourceId === "screen:linux-portal" || !sourceId);
 			if (isLinuxPortalSentinel) {
 				callback({ video: { id: "screen:0:0", name: "Entire screen" } });
 				return;
 			}
-			const sources = await desktopCapturer.getSources({ types: ["screen", "window"] });
-			const source = sourceId
-				? (sources.find((s) => s.id === sourceId) ?? sources[0])
-				: sources[0];
-			if (source) {
-				callback({
-					video: { id: source.id, name: source.name },
-				});
-			} else {
-				callback({});
+
+			// On Linux/X11, "screen:linux-portal" is not a real desktopCapturer
+			// source id. Resolve the actual X11 source instead, e.g. screen:428:0.
+			if (process.platform === "linux" && sourceId === "screen:linux-portal") {
+				sourceId = null;
 			}
+
+			const sources = await desktopCapturer.getSources({ types: ["screen", "window"] });
+
+			const source =
+				(sourceId ? sources.find((s) => s.id === sourceId) : undefined) ??
+				sources.find((s) => s.id.startsWith("screen:")) ??
+				sources[0];
+
+			if (!source) {
+				callback({});
+				return;
+			}
+
+			callback({
+				video: { id: source.id, name: source.name, },
+			});
 		} catch (error) {
 			console.error("setDisplayMediaRequestHandler error:", error);
 			callback({});
