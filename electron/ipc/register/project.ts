@@ -9,6 +9,7 @@ import {
 	LEGACY_PROJECT_FILE_EXTENSIONS,
 	PROJECT_FILE_EXTENSION,
 } from "../constants";
+import { writeProjectFileAtomically } from "../project/atomicSave";
 import {
 	getProjectsDir,
   getProjectThumbnailPath,
@@ -305,7 +306,10 @@ export function registerProjectHandlers() {
         : null
 
       if (trustedExistingProjectPath) {
-        await fs.writeFile(trustedExistingProjectPath, JSON.stringify(preparedProject.projectData, null, 2), 'utf-8')
+        await writeProjectFileAtomically(
+          trustedExistingProjectPath,
+          JSON.stringify(preparedProject.projectData, null, 2),
+        )
         setCurrentProjectPath(trustedExistingProjectPath)
         await saveProjectThumbnail(trustedExistingProjectPath, thumbnailDataUrl)
         await rememberRecentProject(trustedExistingProjectPath)
@@ -345,7 +349,10 @@ export function registerProjectHandlers() {
         }
       }
 
-      await fs.writeFile(result.filePath, JSON.stringify(preparedProject.projectData, null, 2), 'utf-8')
+      await writeProjectFileAtomically(
+        result.filePath,
+        JSON.stringify(preparedProject.projectData, null, 2),
+      )
       setCurrentProjectPath(result.filePath)
       await saveProjectThumbnail(result.filePath, thumbnailDataUrl)
       await rememberRecentProject(result.filePath)
@@ -411,7 +418,10 @@ export function registerProjectHandlers() {
           return overwriteCheck
         }
 
-        await fs.writeFile(targetProjectPath, JSON.stringify(preparedProject.projectData, null, 2), 'utf-8')
+        await writeProjectFileAtomically(
+          targetProjectPath,
+          JSON.stringify(preparedProject.projectData, null, 2),
+        )
         await saveProjectThumbnail(targetProjectPath, thumbnailDataUrl)
         await rememberRecentProject(targetProjectPath)
 
