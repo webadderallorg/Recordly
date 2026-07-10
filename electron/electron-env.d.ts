@@ -209,6 +209,7 @@ interface Window {
 		hudOverlayHide: () => void;
 		hudOverlayClose: () => void;
 		hudOverlayRendererReady: () => void;
+		hudOverlaySetWebcamPreviewVisible: (visible: boolean) => void;
 		getHudOverlayCaptureProtection: () => Promise<{ success: boolean; enabled: boolean }>;
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
