@@ -1485,15 +1485,15 @@ export default function VideoEditor() {
 		[gifSizePreset],
 	);
 
-	const desiredMp4SourceDimensions = useMemo(
-		() =>
-			calculateMp4SourceDimensions(
-				videoPlaybackRef.current?.video?.videoWidth || 1920,
-				videoPlaybackRef.current?.video?.videoHeight || 1080,
-				aspectRatio,
-			),
-		[aspectRatio],
-	);
+	const desiredMp4SourceDimensions = useMemo(() => {
+		const sourceVideo = isPreviewReady ? videoPlaybackRef.current?.video : null;
+		return calculateMp4SourceDimensions(
+			sourceVideo?.videoWidth || 1920,
+			sourceVideo?.videoHeight || 1080,
+			aspectRatio,
+			cropRegion,
+		);
+	}, [aspectRatio, cropRegion, isPreviewReady]);
 
 	const mp4OutputDimensions = useMemo(() => {
 		const baseWidth = supportedMp4SourceDimensions.encoderPath

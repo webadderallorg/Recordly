@@ -9,6 +9,18 @@ describe("calculateMp4SourceDimensions", () => {
 		});
 	});
 
+	it("uses the cropped source bounds for native exports", () => {
+		expect(
+			calculateMp4SourceDimensions(320, 180, "native", {
+				width: 1,
+				height: 0.8,
+			}),
+		).toEqual({
+			width: 320,
+			height: 144,
+		});
+	});
+
 	it("uses the rotated source bounds for 9:16 original exports", () => {
 		expect(calculateMp4SourceDimensions(1920, 1080, "9:16")).toEqual({
 			width: 1080,

@@ -30,9 +30,15 @@ export function calculateMp4SourceDimensions(
 	sourceWidth: number,
 	sourceHeight: number,
 	aspectRatio: AspectRatio,
+	cropRegion?: { width: number; height: number },
 ): { width: number; height: number } {
-	const safeSourceWidth = normalizeEvenDimension(sourceWidth);
-	const safeSourceHeight = normalizeEvenDimension(sourceHeight);
+	const useCroppedBounds = aspectRatio === "native";
+	const safeSourceWidth = normalizeEvenDimension(
+		sourceWidth * (useCroppedBounds ? (cropRegion?.width ?? 1) : 1),
+	);
+	const safeSourceHeight = normalizeEvenDimension(
+		sourceHeight * (useCroppedBounds ? (cropRegion?.height ?? 1) : 1),
+	);
 	const sourceAspectRatio = safeSourceHeight > 0 ? safeSourceWidth / safeSourceHeight : 16 / 9;
 	const aspectRatioValue = getAspectRatioValue(aspectRatio, sourceAspectRatio);
 
