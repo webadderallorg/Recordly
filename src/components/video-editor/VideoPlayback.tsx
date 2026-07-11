@@ -56,6 +56,11 @@ import {
 	PixiCursorOverlay,
 	preloadCursorAssets,
 } from "./videoPlayback/cursorRenderer";
+import type {
+	KeystrokeEvent,
+	KeystrokeOverlayPosition,
+} from "./videoPlayback/keystrokeOverlay/keystrokeTypes";
+import { PixiKeystrokeOverlay } from "./videoPlayback/keystrokeOverlay/PixiKeystrokeOverlay";
 import { clamp01 } from "./videoPlayback/mathUtils";
 import {
 	createSpringState,
@@ -167,10 +172,7 @@ import {
 	SNAP_TO_EDGES_RATIO_AUTO,
 } from "./videoPlayback/cursorFollowCamera";
 import { clampFocusToStage as clampFocusToStageUtil } from "./videoPlayback/focusUtils";
-import {
-	layoutVideoContent as layoutVideoContentUtil,
-	scalePreviewBorderRadius,
-} from "./videoPlayback/layoutUtils";
+import { layoutVideoContent as layoutVideoContentUtil } from "./videoPlayback/layoutUtils";
 import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
 import { createVideoEventHandlers } from "./videoPlayback/videoEventHandlers";
 import { getWebcamMediaTargetTimeSeconds, shouldSeekWebcamMedia } from "./videoPlayback/webcamSync";
@@ -386,6 +388,10 @@ interface VideoPlaybackProps {
 	onAnnotationPositionChange?: (id: string, position: { x: number; y: number }) => void;
 	onAnnotationSizeChange?: (id: string, size: { width: number; height: number }) => void;
 	cursorTelemetry?: CursorTelemetryPoint[];
+	keystrokeTelemetry?: KeystrokeEvent[];
+	showKeystrokes?: boolean;
+	keystrokePosition?: KeystrokeOverlayPosition;
+	keystrokeSize?: number;
 	showCursor?: boolean;
 	cursorStyle?: CursorStyle;
 	cursorSize?: number;
@@ -471,6 +477,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			onAnnotationPositionChange,
 			onAnnotationSizeChange,
 			cursorTelemetry = [],
+			keystrokeTelemetry = [],
+			showKeystrokes = false,
+			keystrokePosition = "bottom-center",
+			keystrokeSize = 1,
 			showCursor = false,
 			cursorStyle = DEFAULT_CURSOR_STYLE,
 			cursorSize = DEFAULT_CURSOR_SIZE,
@@ -623,6 +633,12 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const cursorTelemetryRef = useRef<CursorTelemetryPoint[]>([]);
 		const showCursorRef = useRef(showCursor);
 		const cursorSizeRef = useRef(cursorSize);
+		const keystrokeTelemetryRef = useRef<KeystrokeEvent[]>([]);
+		const showKeystrokesRef = useRef(showKeystrokes);
+		const keystrokePositionRef = useRef(keystrokePosition);
+		const keystrokeSizeRef = useRef(keystrokeSize);
+		const keystrokeContainerRef = useRef<Container | null>(null);
+		const keystrokeOverlayRef = useRef<PixiKeystrokeOverlay | null>(null);
 		const cursorStyleRef = useRef(cursorStyle);
 		const cursorSmoothingRef = useRef(cursorSmoothing);
 		const cursorSpringStiffnessMultiplierRef = useRef(cursorSpringStiffnessMultiplier);
@@ -1756,6 +1772,22 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		}, [cursorSize]);
 
 		useEffect(() => {
+			keystrokeTelemetryRef.current = keystrokeTelemetry;
+		}, [keystrokeTelemetry]);
+
+		useEffect(() => {
+			showKeystrokesRef.current = showKeystrokes;
+		}, [showKeystrokes]);
+
+		useEffect(() => {
+			keystrokePositionRef.current = keystrokePosition;
+		}, [keystrokePosition]);
+
+		useEffect(() => {
+			keystrokeSizeRef.current = keystrokeSize;
+		}, [keystrokeSize]);
+
+		useEffect(() => {
 			cursorSmoothingRef.current = cursorSmoothing;
 		}, [cursorSmoothing]);
 
@@ -2170,6 +2202,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				cursorContainerRef.current = cursorContainer;
 				cameraContainer.addChild(cursorContainer);
 
+				const keystrokeContainer = new Container();
+				keystrokeContainerRef.current = keystrokeContainer;
+				cameraContainer.addChild(keystrokeContainer);
+
 				// Cursor overlay - rendered above the masked video so it can sit in front
 				// of the content without getting clipped.
 				if (cursorOverlayEnabled) {
@@ -2199,6 +2235,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					cursorOverlayRef.current = null;
 				}
 
+				const keystrokeOverlay = new PixiKeystrokeOverlay({
+					position: keystrokePositionRef.current,
+					sizeScale: keystrokeSizeRef.current,
+				});
+				keystrokeOverlayRef.current = keystrokeOverlay;
+				keystrokeContainer.addChild(keystrokeOverlay.container);
+
 				setPixiReady(true);
 			})().catch((error) => {
 				const errorMessage =
@@ -2223,6 +2266,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					cursorOverlayRef.current.destroy();
 					cursorOverlayRef.current = null;
 				}
+				if (keystrokeOverlayRef.current) {
+					keystrokeOverlayRef.current.destroy();
+					keystrokeOverlayRef.current = null;
+				}
 				zoomBlurFilterRef.current?.destroy();
 				motionBlurFilterRef.current?.destroy();
 				zoomBlurFilterRef.current = null;
@@ -2241,6 +2288,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				frameContainerRef.current = null;
 				frameSpriteRef.current = null;
 				cursorContainerRef.current = null;
+				keystrokeContainerRef.current = null;
 				videoSpriteRef.current = null;
 			};
 		}, [initializePixiRenderer, onError]);
@@ -2295,6 +2343,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			maskGraphicsRef.current = maskGraphics;
 			if (cursorOverlayRef.current) {
 				cursorContainer.addChild(cursorOverlayRef.current.container);
+			}
+			if (keystrokeOverlayRef.current && keystrokeContainerRef.current) {
+				keystrokeContainerRef.current.addChild(keystrokeOverlayRef.current.container);
 			}
 
 			animationStateRef.current = createPlaybackAnimationState();
@@ -2541,6 +2592,21 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				} | null = null;
 
 				// Update cursor overlay + emit cursor events
+				const keystrokeOverlay = keystrokeOverlayRef.current;
+				if (keystrokeOverlay) {
+					keystrokeOverlay.setConfig({
+						position: keystrokePositionRef.current,
+						sizeScale: keystrokeSizeRef.current,
+					});
+					keystrokeOverlay.update(
+						keystrokeTelemetryRef.current,
+						timeMs,
+						baseMaskRef.current,
+						showKeystrokesRef.current,
+						!isPlayingRef.current || isSeekingRef.current,
+					);
+				}
+
 				const cursorOverlay = cursorOverlayRef.current;
 				if (cursorOverlay) {
 					const telemetry = cursorTelemetryRef.current;

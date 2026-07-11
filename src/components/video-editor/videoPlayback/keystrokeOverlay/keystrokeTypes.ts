@@ -20,6 +20,12 @@ export interface KeystrokeEvent {
 
 export type ModifierGlyphStyle = "mac" | "windows" | "linux";
 
+export type KeystrokeOverlayPosition =
+	| "bottom-center"
+	| "bottom-left"
+	| "bottom-right"
+	| "top-center";
+
 export interface KeystrokeOverlayPolicy {
 	/** Consecutive plain keystrokes within this gap merge into one keycap group. */
 	groupWindowMs: number;

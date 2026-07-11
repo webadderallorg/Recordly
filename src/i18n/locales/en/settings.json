@@ -30,6 +30,7 @@
 		"show": "Show",
 		"showCursor": "Show Cursor",
 		"loopCursor": "Loop cursor",
+		"showKeystrokes": "Show Keystrokes",
 		"cursorStyle": "Cursor Style",
 		"cursorStyleOptions": {
 			"macos": "macOS",
@@ -92,6 +93,7 @@
 			"linear": "Linear"
 		},
 		"cursorSize": "Cursor Size",
+		"keystrokesSize": "Keystrokes Size",
 		"cursorSmoothing": "Cursor Smoothing",
 		"cursorSpringStiffness": "Cursor Spring Stiffness",
 		"cursorSpringDamping": "Cursor Spring Damping",

@@ -106,6 +106,9 @@ export interface ProjectEditorState {
 	showCursor: boolean;
 	loopCursor: boolean;
 	cursorStyle: CursorStyle;
+	showKeystrokes: boolean;
+	keystrokePosition: "bottom-center" | "bottom-left" | "bottom-right" | "top-center";
+	keystrokeSize: number;
 	cursorClickEffect: CursorClickEffectStyle;
 	cursorClickEffectColor: string;
 	cursorClickEffectScale: number;
@@ -918,6 +921,14 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		),
 		showCursor: typeof editor.showCursor === "boolean" ? editor.showCursor : true,
 		loopCursor: typeof editor.loopCursor === "boolean" ? editor.loopCursor : false,
+		showKeystrokes: typeof editor.showKeystrokes === "boolean" ? editor.showKeystrokes : false,
+		keystrokePosition:
+			editor.keystrokePosition === "bottom-left" ||
+			editor.keystrokePosition === "bottom-right" ||
+			editor.keystrokePosition === "top-center"
+				? editor.keystrokePosition
+				: "bottom-center",
+		keystrokeSize: isFiniteNumber(editor.keystrokeSize) ? clamp(editor.keystrokeSize, 0.5, 2) : 1,
 		cursorStyle: normalizedCursorStyle,
 		cursorClickEffect: normalizeCursorClickEffectStyle(
 			(editor as Partial<ProjectEditorState>).cursorClickEffect,

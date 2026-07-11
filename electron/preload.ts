@@ -572,8 +572,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getRecordedVideoPath: () => {
 		return ipcRenderer.invoke("get-recorded-video-path");
 	},
-	setRecordingState: (recording: boolean) => {
-		return ipcRenderer.invoke("set-recording-state", recording);
+	setRecordingState: (recording: boolean, options?: { showKeystrokes?: boolean }) => {
+		return ipcRenderer.invoke("set-recording-state", recording, options);
 	},
 	setCursorScale: (scale: number) => {
 		return ipcRenderer.invoke("set-cursor-scale", scale);
@@ -583,6 +583,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	setCursorTelemetry: (videoPath: string | undefined, samples: CursorTelemetryPoint[]) => {
 		return ipcRenderer.invoke("set-cursor-telemetry", videoPath, samples);
+	},
+	getKeystrokeTelemetry: (videoPath?: string) => {
+		return ipcRenderer.invoke("get-keystroke-telemetry", videoPath);
 	},
 	getSystemCursorAssets: () => {
 		return ipcRenderer.invoke("get-system-cursor-assets");

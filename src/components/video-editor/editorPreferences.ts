@@ -30,6 +30,9 @@ type PersistedEditorControls = Pick<
 	| "showCursor"
 	| "loopCursor"
 	| "cursorStyle"
+	| "showKeystrokes"
+	| "keystrokePosition"
+	| "keystrokeSize"
 	| "cursorSize"
 	| "cursorSmoothing"
 	| "cursorSpringStiffnessMultiplier"
@@ -118,6 +121,9 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	showCursor: DEFAULT_EDITOR_CONTROLS.showCursor,
 	loopCursor: DEFAULT_EDITOR_CONTROLS.loopCursor,
 	cursorStyle: DEFAULT_EDITOR_CONTROLS.cursorStyle,
+	showKeystrokes: DEFAULT_EDITOR_CONTROLS.showKeystrokes,
+	keystrokePosition: DEFAULT_EDITOR_CONTROLS.keystrokePosition,
+	keystrokeSize: DEFAULT_EDITOR_CONTROLS.keystrokeSize,
 	cursorSize: DEFAULT_EDITOR_CONTROLS.cursorSize,
 	cursorSmoothing: DEFAULT_EDITOR_CONTROLS.cursorSmoothing,
 	cursorSpringStiffnessMultiplier: DEFAULT_EDITOR_CONTROLS.cursorSpringStiffnessMultiplier,
@@ -304,6 +310,9 @@ function normalizeEditorControls(
 		showCursor: sanitizedRaw.showCursor ?? fallback.showCursor,
 		loopCursor: sanitizedRaw.loopCursor ?? fallback.loopCursor,
 		cursorStyle: sanitizedRaw.cursorStyle ?? fallback.cursorStyle,
+		showKeystrokes: sanitizedRaw.showKeystrokes ?? fallback.showKeystrokes,
+		keystrokePosition: sanitizedRaw.keystrokePosition ?? fallback.keystrokePosition,
+		keystrokeSize: sanitizedRaw.keystrokeSize ?? fallback.keystrokeSize,
 		cursorSize: sanitizedRaw.cursorSize ?? fallback.cursorSize,
 		cursorSmoothing: sanitizedRaw.cursorSmoothing ?? fallback.cursorSmoothing,
 		cursorSpringStiffnessMultiplier:
@@ -382,6 +391,9 @@ function normalizeEditorControls(
 		showCursor: normalized.showCursor,
 		loopCursor: normalized.loopCursor,
 		cursorStyle: normalized.cursorStyle,
+		showKeystrokes: normalized.showKeystrokes,
+		keystrokePosition: normalized.keystrokePosition,
+		keystrokeSize: normalized.keystrokeSize,
 		cursorSize: normalized.cursorSize,
 		cursorSmoothing: normalized.cursorSmoothing,
 		cursorSpringStiffnessMultiplier: normalized.cursorSpringStiffnessMultiplier,
