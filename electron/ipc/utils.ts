@@ -67,6 +67,10 @@ export function getTelemetryPathForVideo(videoPath: string) {
 	return `${videoPath}.cursor.json`;
 }
 
+export function getKeystrokePathForVideo(videoPath: string) {
+	return `${videoPath}.keystrokes.json`;
+}
+
 export function isAutoRecordingPath(filePath: string) {
 	return path.basename(filePath).startsWith(AUTO_RECORDING_PREFIX);
 }
@@ -129,4 +133,3 @@ export function approveUserPath(filePath: string | null | undefined): void {
 		// Ignore invalid paths; later reads will surface the underlying error.
 	}
 }
-

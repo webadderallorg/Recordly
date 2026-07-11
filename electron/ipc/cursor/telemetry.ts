@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import {
 	CURSOR_SAMPLE_INTERVAL_MS,
 	CURSOR_TELEMETRY_VERSION,
+	KEYSTROKE_TELEMETRY_VERSION,
 	MAX_CURSOR_SAMPLES,
 	MAX_KEYSTROKE_SAMPLES,
 } from "../constants";
@@ -16,6 +17,7 @@ import {
 	isCursorCaptureActive,
 	linuxCursorScreenPoint,
 	pendingCursorSamples,
+	pendingKeystrokeSamples,
 	selectedSource,
 	selectedWindowBounds,
 	setActiveCursorSamples,
@@ -23,6 +25,7 @@ import {
 	setCursorCaptureInterval,
 	setCursorCapturePauseStartedAtMs,
 	setPendingCursorSamples,
+	setPendingKeystrokeSamples,
 } from "../state";
 import type {
 	CursorInteractionType,
@@ -30,7 +33,7 @@ import type {
 	CursorVisualType,
 	KeystrokeTelemetryPoint,
 } from "../types";
-import { getScreen, getTelemetryPathForVideo } from "../utils";
+import { getKeystrokePathForVideo, getScreen, getTelemetryPathForVideo } from "../utils";
 
 export function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
@@ -277,6 +280,92 @@ export function pushKeystrokeSample(sample: KeystrokeTelemetryPoint) {
 	if (activeKeystrokeSamples.length > MAX_KEYSTROKE_SAMPLES) {
 		activeKeystrokeSamples.shift();
 	}
+}
+
+export function normalizeKeystrokeTelemetrySamples(rawSamples: unknown): KeystrokeTelemetryPoint[] {
+	const samples = Array.isArray(rawSamples)
+		? rawSamples
+		: Array.isArray((rawSamples as { samples?: unknown[] } | null | undefined)?.samples)
+			? ((rawSamples as { samples: unknown[] }).samples ?? [])
+			: [];
+	const boundedSamples = samples.slice(0, MAX_KEYSTROKE_SAMPLES);
+
+	return boundedSamples
+		.filter((sample: unknown) => Boolean(sample && typeof sample === "object"))
+		.map((sample: unknown) => {
+			const point = sample as Partial<KeystrokeTelemetryPoint>;
+			return {
+				timeMs:
+					typeof point.timeMs === "number" && Number.isFinite(point.timeMs)
+						? Math.max(0, point.timeMs)
+						: 0,
+				key: typeof point.key === "string" ? point.key : "",
+				ctrl: point.ctrl === true ? true : undefined,
+				alt: point.alt === true ? true : undefined,
+				shift: point.shift === true ? true : undefined,
+				meta: point.meta === true ? true : undefined,
+			};
+		})
+		.filter((point) => point.key.length > 0)
+		.sort((a, b) => a.timeMs - b.timeMs);
+}
+
+export async function writeKeystrokeTelemetry(videoPath: string, samples: unknown) {
+	const keystrokePath = getKeystrokePathForVideo(videoPath);
+	const normalizedSamples = normalizeKeystrokeTelemetrySamples(samples);
+
+	if (normalizedSamples.length === 0) {
+		await fs.rm(keystrokePath, { force: true });
+		return normalizedSamples;
+	}
+
+	await fs.writeFile(
+		keystrokePath,
+		JSON.stringify(
+			{ version: KEYSTROKE_TELEMETRY_VERSION, samples: normalizedSamples },
+			null,
+			2,
+		),
+		"utf-8",
+	);
+
+	return normalizedSamples;
+}
+
+export async function persistPendingKeystrokeTelemetry(videoPath: string) {
+	const keystrokePath = getKeystrokePathForVideo(videoPath);
+	if (pendingKeystrokeSamples.length > 0) {
+		await fs.writeFile(
+			keystrokePath,
+			JSON.stringify(
+				{ version: KEYSTROKE_TELEMETRY_VERSION, samples: pendingKeystrokeSamples },
+				null,
+				2,
+			),
+			"utf-8",
+		);
+	} else {
+		await fs.rm(keystrokePath, { force: true });
+	}
+	setPendingKeystrokeSamples([]);
+}
+
+export function snapshotKeystrokeTelemetryForPersistence() {
+	if (activeKeystrokeSamples.length === 0) {
+		return;
+	}
+
+	if (pendingKeystrokeSamples.length === 0) {
+		setPendingKeystrokeSamples([...activeKeystrokeSamples]);
+		return;
+	}
+
+	const lastPendingTimeMs =
+		pendingKeystrokeSamples[pendingKeystrokeSamples.length - 1]?.timeMs ?? -1;
+	setPendingKeystrokeSamples([
+		...pendingKeystrokeSamples,
+		...activeKeystrokeSamples.filter((sample) => sample.timeMs > lastPendingTimeMs),
+	]);
 }
 
 export function sampleCursorPoint() {
