@@ -90,7 +90,7 @@ export function buildKeycapGroups(
 			event.timeMs - open.lastMs <= policy.groupWindowMs &&
 			open.labels.length < policy.maxKeysPerGroup;
 
-		if (open && canExtend) {
+		if (canExtend) {
 			open.labels.push(keyLabel);
 			open.lastMs = event.timeMs;
 		} else {
