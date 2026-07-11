@@ -6,6 +6,25 @@
 import type { KeystrokeEvent, ModifierGlyphStyle } from "./keystrokeTypes";
 
 /**
+ * Best-effort platform glyph style for modifier labels. Guards `navigator` so
+ * the pure label functions stay usable under Node (tests) — defaults to
+ * "windows" when there is no navigator.
+ */
+export function detectGlyphStyle(): ModifierGlyphStyle {
+	if (typeof navigator === "undefined") {
+		return "windows";
+	}
+	const probe = `${navigator.platform ?? ""} ${navigator.userAgent ?? ""}`.toLowerCase();
+	if (probe.includes("mac")) {
+		return "mac";
+	}
+	if (probe.includes("linux") && !probe.includes("android")) {
+		return "linux";
+	}
+	return "windows";
+}
+
+/**
  * Tokens that represent a modifier or lock key on their own. A lone press of
  * one of these should NOT produce a keycap — modifiers only appear as part of a
  * chord (see coalescing).
