@@ -22,8 +22,8 @@
 		"savedSuccess": "{{format}} успешно сохранён!"
 	},
 	"addFont": {
-		"title": "Google Fonts",
-		"heading": "Добавить Google Font",
+		"title": "Добавить шрифт из Google Fonts",
+		"heading": "Добавить шрифт из Google Fonts",
 		"description": "Добавьте шрифт из Google Fonts для использования в аннотациях.",
 		"urlLabel": "Ссылка на импорт из Google Fonts",
 		"urlPlaceholder": "https://fonts.googleapis.com/css2?family=Roboto&display=swap",
