@@ -62,6 +62,14 @@ import nlLaunch from "@/i18n/locales/nl/launch.json";
 import nlSettings from "@/i18n/locales/nl/settings.json";
 import nlShortcuts from "@/i18n/locales/nl/shortcuts.json";
 import nlTimeline from "@/i18n/locales/nl/timeline.json";
+import plCommon from "@/i18n/locales/pl/common.json";
+import plDialogs from "@/i18n/locales/pl/dialogs.json";
+import plEditor from "@/i18n/locales/pl/editor.json";
+import plExtensions from "@/i18n/locales/pl/extensions.json";
+import plLaunch from "@/i18n/locales/pl/launch.json";
+import plSettings from "@/i18n/locales/pl/settings.json";
+import plShortcuts from "@/i18n/locales/pl/shortcuts.json";
+import plTimeline from "@/i18n/locales/pl/timeline.json";
 import ptBRCommon from "@/i18n/locales/pt-BR/common.json";
 import ptBRDialogs from "@/i18n/locales/pt-BR/dialogs.json";
 import ptBREditor from "@/i18n/locales/pt-BR/editor.json";
@@ -141,6 +149,16 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		dialogs: nlDialogs,
 		shortcuts: nlShortcuts,
 		extensions: nlExtensions,
+	},
+	pl: {
+		common: plCommon,
+		launch: plLaunch,
+		editor: plEditor,
+		timeline: plTimeline,
+		settings: plSettings,
+		dialogs: plDialogs,
+		shortcuts: plShortcuts,
+		extensions: plExtensions,
 	},
 	ko: {
 		common: koCommon,

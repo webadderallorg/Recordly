@@ -1,0 +1,60 @@
+{
+	"title": "Rozszerzenia",
+	"tabs": {
+		"browse": "Przeglądaj",
+		"installed": "Zainstalowane"
+	},
+	"actions": {
+		"submit": "Prześlij rozszerzenie",
+		"docs": "Dokumentacja rozszerzeń",
+		"refresh": "Odśwież",
+		"openFolder": "Otwórz folder rozszerzeń",
+		"uninstall": "Odinstaluj",
+		"install": "Zainstaluj",
+		"installing": "Instalowanie",
+		"add": "Dodaj",
+		"retry": "Spróbuj ponownie",
+		"close": "Zamknij",
+		"folder": "Folder"
+	},
+	"status": {
+		"enabled": "Włączone",
+		"disabled": "Wyłączone",
+		"installed": "Zainstalowane"
+	},
+	"detail": {
+		"by": "Autor: {{author}}",
+		"unknownAuthor": "Nieznany autor",
+		"noDescription": "Brak opisu",
+		"downloads": "{{count}} pobrań",
+		"preview": "Podgląd",
+		"screenshotAlt": "Zrzut ekranu {{number}}",
+		"description": "Opis",
+		"tags": "Tagi",
+		"permissions": "Uprawnienia",
+		"location": "Lokalizacja",
+		"error": "Błąd: {{message}}"
+	},
+	"empty": {
+		"title": "Brak rozszerzeń",
+		"description": "Zainstaluj rozszerzenia, aby dodać ramki, efekty kursora i narzędzia edytora."
+	},
+	"search": {
+		"placeholder": "Szukaj rozszerzeń...",
+		"noResults": "Nie znaleziono rozszerzeń",
+		"noMarketplace": "Brak rozszerzeń marketplace",
+		"count": "{{count}} rozszerzenie",
+		"countPlural": "{{count}} rozszerzeń"
+	},
+	"toast": {
+		"installedAndEnabled": "Rozszerzenie zostało zainstalowane i włączone",
+		"uninstalled": "Odinstalowano {{name}}",
+		"uninstallFailed": "Nie udało się odinstalować {{name}}",
+		"searchFailed": "Nie udało się przeszukać marketplace",
+		"refreshed": "Rozszerzenia zostały odświeżone",
+		"refreshFailed": "Nie udało się odświeżyć rozszerzeń",
+		"marketplaceInstalled": "Zainstalowano i włączono {{name}}",
+		"marketplaceInstallFailed": "Nie udało się zainstalować {{name}}",
+		"enableFailed": "Nie udało się włączyć rozszerzenia"
+	}
+}
