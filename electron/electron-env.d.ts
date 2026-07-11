@@ -565,7 +565,10 @@ interface Window {
 			startDelayMsByPath?: Record<string, number>;
 			error?: string;
 		}>;
-		setRecordingState: (recording: boolean) => Promise<void>;
+		setRecordingState: (
+			recording: boolean,
+			options?: { showKeystrokes?: boolean },
+		) => Promise<void>;
 		getCursorTelemetry: (videoPath?: string) => Promise<{
 			success: boolean;
 			samples: CursorTelemetryPoint[];
@@ -578,6 +581,12 @@ interface Window {
 		) => Promise<{
 			success: boolean;
 			samples: CursorTelemetryPoint[];
+			message?: string;
+			error?: string;
+		}>;
+		getKeystrokeTelemetry: (videoPath?: string) => Promise<{
+			success: boolean;
+			samples: KeystrokeTelemetryPoint[];
 			message?: string;
 			error?: string;
 		}>;
@@ -950,6 +959,15 @@ interface ProcessedDesktopSource {
 	sourceType?: "screen" | "window";
 	appName?: string;
 	windowTitle?: string;
+}
+
+interface KeystrokeTelemetryPoint {
+	timeMs: number;
+	key: string;
+	ctrl?: boolean;
+	alt?: boolean;
+	shift?: boolean;
+	meta?: boolean;
 }
 
 interface CursorTelemetryPoint {
