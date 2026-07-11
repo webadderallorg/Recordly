@@ -762,6 +762,14 @@ interface SettingsPanelProps {
 	onShowCursorChange?: (enabled: boolean) => void;
 	loopCursor?: boolean;
 	onLoopCursorChange?: (enabled: boolean) => void;
+	showKeystrokes?: boolean;
+	onShowKeystrokesChange?: (enabled: boolean) => void;
+	keystrokesPosition?: "bottom-center" | "bottom-left" | "bottom-right" | "top-center";
+	onKeystrokesPositionChange?: (
+		position: "bottom-center" | "bottom-left" | "bottom-right" | "top-center",
+	) => void;
+	keystrokesSize?: number;
+	onKeystrokesSizeChange?: (size: number) => void;
 	cursorStyle?: CursorStyle;
 	onCursorStyleChange?: (style: CursorStyle) => void;
 	cursorSize?: number;
@@ -1206,6 +1214,10 @@ export function SettingsPanel({
 	onShowCursorChange,
 	loopCursor = false,
 	onLoopCursorChange,
+	showKeystrokes = false,
+	onShowKeystrokesChange,
+	keystrokesSize = 1,
+	onKeystrokesSizeChange,
 	cursorStyle = DEFAULT_CURSOR_STYLE,
 	onCursorStyleChange,
 	cursorSize = 5,
@@ -3686,6 +3698,14 @@ export function SettingsPanel({
 										className="data-[state=checked]:bg-[#2563EB] scale-75"
 									/>
 								</label>
+								<label className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+									<span>{tSettings("effects.showKeystrokes")}</span>
+									<Switch
+										checked={showKeystrokes}
+										onCheckedChange={onShowKeystrokesChange}
+										className="data-[state=checked]:bg-[#2563EB] scale-75"
+									/>
+								</label>
 							</div>
 						</div>
 						<div className="flex flex-col gap-1.5">
@@ -3735,6 +3755,19 @@ export function SettingsPanel({
 								formatValue={(v) => `${v.toFixed(2)}×`}
 								parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
 							/>
+							{showKeystrokes ? (
+								<SliderControl
+									label={tSettings("effects.keystrokesSize")}
+									value={keystrokesSize}
+									defaultValue={1}
+									min={0.5}
+									max={2}
+									step={0.05}
+									onChange={(v) => onKeystrokesSizeChange?.(v)}
+									formatValue={(v) => `${v.toFixed(2)}×`}
+									parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
+								/>
+							) : null}
 							<SliderControl
 								label={tSettings("effects.cursorMotionBlur")}
 								value={cursorMotionBlur}

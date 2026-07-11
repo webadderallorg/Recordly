@@ -236,6 +236,10 @@ import {
 	buildLoopedCursorTelemetry,
 	getDisplayedTimelineWindowMs,
 } from "./videoPlayback/cursorLoopTelemetry";
+import type {
+	KeystrokeEvent,
+	KeystrokeOverlayPosition,
+} from "./videoPlayback/keystrokeOverlay/keystrokeTypes";
 
 type PendingExportSave = {
 	fileName: string;
@@ -467,6 +471,11 @@ export default function VideoEditor() {
 		initialEditorPreferences.connectedZoomEasing ?? DEFAULT_CONNECTED_ZOOM_EASING,
 	);
 	const [showCursor, setShowCursor] = useState(initialEditorPreferences.showCursor);
+	const [showKeystrokes, setShowKeystrokes] = useState(initialEditorPreferences.showKeystrokes);
+	const [keystrokePosition, setKeystrokePosition] = useState<KeystrokeOverlayPosition>(
+		initialEditorPreferences.keystrokePosition,
+	);
+	const [keystrokeSize, setKeystrokeSize] = useState(initialEditorPreferences.keystrokeSize);
 	const [loopCursor, setLoopCursor] = useState(initialEditorPreferences.loopCursor);
 	const [cursorStyle, setCursorStyle] = useState<CursorStyle>(
 		initialEditorPreferences.cursorStyle ?? DEFAULT_CURSOR_STYLE,
@@ -536,6 +545,7 @@ export default function VideoEditor() {
 	const [resolvedWebcamVideoUrl, setResolvedWebcamVideoUrl] = useState<string | null>(null);
 	const [zoomRegions, setZoomRegions] = useState<ZoomRegion[]>([]);
 	const [cursorTelemetry, setCursorTelemetry] = useState<CursorTelemetryPoint[]>([]);
+	const [keystrokeTelemetry, setKeystrokeTelemetry] = useState<KeystrokeEvent[]>([]);
 	// Tracks the videoSourcePath for which the cursor telemetry IPC has already
 	// resolved. The smoke-export auto-trigger waits on this so long recordings
 	// still bake cursor/zoom animations into the output — without it, the
@@ -3431,6 +3441,37 @@ export default function VideoEditor() {
 		};
 	}, [videoPath, videoSourcePath]);
 
+	useEffect(() => {
+		let mounted = true;
+
+		async function loadKeystrokeTelemetry() {
+			if (!videoPath || !videoSourcePath) {
+				if (mounted) {
+					setKeystrokeTelemetry([]);
+				}
+				return;
+			}
+
+			try {
+				const result = await window.electronAPI.getKeystrokeTelemetry(videoSourcePath);
+				if (mounted) {
+					setKeystrokeTelemetry(result.success ? result.samples : []);
+				}
+			} catch (keystrokeError) {
+				console.warn("Unable to load keystroke telemetry:", keystrokeError);
+				if (mounted) {
+					setKeystrokeTelemetry([]);
+				}
+			}
+		}
+
+		loadKeystrokeTelemetry();
+
+		return () => {
+			mounted = false;
+		};
+	}, [videoPath, videoSourcePath]);
+
 	const normalizedCursorTelemetry = useMemo(() => {
 		if (cursorTelemetry.length === 0) {
 			return [] as CursorTelemetryPoint[];
@@ -5568,6 +5609,10 @@ export default function VideoEditor() {
 			onAnnotationPositionChange={handleAnnotationPositionChange}
 			onAnnotationSizeChange={handleAnnotationSizeChange}
 			cursorTelemetry={effectiveCursorTelemetry}
+			keystrokeTelemetry={keystrokeTelemetry}
+			showKeystrokes={showKeystrokes}
+			keystrokePosition={keystrokePosition}
+			keystrokeSize={keystrokeSize}
 			showCursor={effectiveShowCursor}
 			cursorStyle={cursorStyle}
 			cursorSize={cursorSize}
@@ -6441,6 +6486,12 @@ export default function VideoEditor() {
 								onConnectedZoomEasingChange={setConnectedZoomEasing}
 								showCursor={effectiveShowCursor}
 								onShowCursorChange={handleShowCursorChange}
+								showKeystrokes={showKeystrokes}
+								onShowKeystrokesChange={setShowKeystrokes}
+								keystrokesPosition={keystrokePosition}
+								onKeystrokesPositionChange={setKeystrokePosition}
+								keystrokesSize={keystrokeSize}
+								onKeystrokesSizeChange={setKeystrokeSize}
 								loopCursor={loopCursor}
 								onLoopCursorChange={setLoopCursor}
 								cursorStyle={cursorStyle}
