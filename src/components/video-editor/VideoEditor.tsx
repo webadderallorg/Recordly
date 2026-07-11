@@ -752,6 +752,11 @@ export default function VideoEditor() {
 	const captureEditorPresetSnapshot = useCallback(
 		(): EditorPresetSnapshot => ({
 			wallpaper,
+			// TODO(keystroke-overlay part 3): capture real keystroke overlay settings
+			// once VideoEditor manages them; placeholders keep presets type-complete.
+			showKeystrokes: false,
+			keystrokePosition: "bottom-center",
+			keystrokeSize: 1,
 			shadowIntensity,
 			backgroundBlur,
 			zoomMotionBlur,
