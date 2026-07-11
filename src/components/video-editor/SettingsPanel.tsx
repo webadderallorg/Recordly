@@ -3698,17 +3698,19 @@ export function SettingsPanel({
 										className="data-[state=checked]:bg-[#2563EB] scale-75"
 									/>
 								</label>
-								<label className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-									<span>{tSettings("effects.showKeystrokes")}</span>
-									<Switch
-										checked={showKeystrokes}
-										onCheckedChange={onShowKeystrokesChange}
-										className="data-[state=checked]:bg-[#2563EB] scale-75"
-									/>
-								</label>
 							</div>
 						</div>
 						<div className="flex flex-col gap-1.5">
+							<label className="flex items-center justify-between gap-3 py-1">
+								<span className="text-[11px] font-medium text-foreground">
+									{tSettings("effects.showKeystrokes")}
+								</span>
+								<Switch
+									checked={showKeystrokes}
+									onCheckedChange={onShowKeystrokesChange}
+									className="data-[state=checked]:bg-[#2563EB]"
+								/>
+							</label>
 							<div className="space-y-1.5">
 								<ToggleGroup
 									type="single"
