@@ -3,6 +3,7 @@ import type {
 	CursorInteractionType,
 	CursorTelemetryPoint,
 	CursorVisualType,
+	KeystrokeTelemetryPoint,
 	NativeCaptureDiagnostics,
 	RecordingSessionData,
 	SelectedSource,
@@ -82,6 +83,13 @@ export let activeCursorSamples: CursorTelemetryPoint[] = [];
 export let pendingCursorSamples: CursorTelemetryPoint[] = [];
 export let isCursorCaptureActive = false;
 export let interactionCaptureCleanup: (() => void) | null = null;
+
+// ── Keystroke telemetry (opt-in; privacy-gated) ──────────────────────────────
+// Disabled by default: a global key hook can observe secrets typed while
+// recording, so nothing is stored unless the keystroke overlay is enabled.
+export let isKeystrokeCaptureActive = false;
+export let activeKeystrokeSamples: KeystrokeTelemetryPoint[] = [];
+export let pendingKeystrokeSamples: KeystrokeTelemetryPoint[] = [];
 export let hasLoggedInteractionHookFailure = false;
 export let lastLeftClick: { timeMs: number; cx: number; cy: number } | null = null;
 export let linuxCursorScreenPoint: { x: number; y: number; updatedAt: number } | null = null;
@@ -253,6 +261,15 @@ export function setPendingCursorSamples(v: CursorTelemetryPoint[]) {
 }
 export function setIsCursorCaptureActive(v: boolean) {
 	isCursorCaptureActive = v;
+}
+export function setIsKeystrokeCaptureActive(v: boolean) {
+	isKeystrokeCaptureActive = v;
+}
+export function setActiveKeystrokeSamples(v: KeystrokeTelemetryPoint[]) {
+	activeKeystrokeSamples = v;
+}
+export function setPendingKeystrokeSamples(v: KeystrokeTelemetryPoint[]) {
+	pendingKeystrokeSamples = v;
 }
 export function setInteractionCaptureCleanup(v: (() => void) | null) {
 	interactionCaptureCleanup = v;

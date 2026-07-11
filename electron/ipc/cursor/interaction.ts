@@ -1,23 +1,31 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import type { HookMouseEvent, UiohookLike, UiohookModuleNamespace, CursorInteractionType } from "../types";
 import {
-	isCursorCaptureActive,
-	interactionCaptureCleanup,
-	setInteractionCaptureCleanup,
 	hasLoggedInteractionHookFailure,
-	setHasLoggedInteractionHookFailure,
+	interactionCaptureCleanup,
+	isCursorCaptureActive,
+	isKeystrokeCaptureActive,
 	lastLeftClick,
+	setHasLoggedInteractionHookFailure,
+	setInteractionCaptureCleanup,
 	setLastLeftClick,
 	setLinuxCursorScreenPoint,
 } from "../state";
+import type {
+	CursorInteractionType,
+	HookKeyboardEvent,
+	HookMouseEvent,
+	UiohookLike,
+	UiohookModuleNamespace,
+} from "../types";
 import {
-	getNormalizedCursorPoint,
 	getCursorCaptureElapsedMs,
 	getHookCursorScreenPoint,
+	getNormalizedCursorPoint,
 	isCursorCapturePaused,
 	pushCursorSample,
+	pushKeystrokeSample,
 } from "./telemetry";
 
 const nodeRequire = createRequire(import.meta.url);
@@ -172,6 +180,31 @@ function loadUiohookModule() {
 	}
 }
 
+/**
+ * Build a keycode → semantic-token map from uiohook-napi's UiohookKey table so
+ * the renderer never has to know raw platform keycodes. Tolerant of the table
+ * being absent — callers fall back to the numeric keycode string.
+ */
+function buildKeycodeTokenMap(): Map<number, string> {
+	const map = new Map<number, string>();
+	try {
+		const moduleExports = nodeRequire("uiohook-napi") as {
+			UiohookKey?: Record<string, number>;
+		};
+		const table = moduleExports?.UiohookKey;
+		if (table) {
+			for (const [name, code] of Object.entries(table)) {
+				if (typeof code === "number" && !map.has(code)) {
+					map.set(code, name);
+				}
+			}
+		}
+	} catch {
+		// Table unavailable — renderer falls back to the numeric keycode string.
+	}
+	return map;
+}
+
 export async function startInteractionCapture() {
 	if (!isCursorCaptureActive) {
 		return;
@@ -255,11 +288,7 @@ export async function startInteractionCapture() {
 		};
 
 		const onMouseMove = (event: HookMouseEvent) => {
-			if (
-				process.platform !== "linux" ||
-				!isCursorCaptureActive ||
-				isCursorCapturePaused()
-			) {
+			if (process.platform !== "linux" || !isCursorCaptureActive || isCursorCapturePaused()) {
 				return;
 			}
 
@@ -271,8 +300,46 @@ export async function startInteractionCapture() {
 			setLinuxCursorScreenPoint({ x: point.x, y: point.y, updatedAt: Date.now() });
 		};
 
+		const keycodeTokens = buildKeycodeTokenMap();
+		let lastKeystrokeCode = -1;
+		let lastKeystrokeTimeMs = Number.NEGATIVE_INFINITY;
+
+		const onKeyDown = (event: HookKeyboardEvent) => {
+			// Privacy gate: only record keystrokes when the overlay is enabled.
+			if (!isCursorCaptureActive || !isKeystrokeCaptureActive || isCursorCapturePaused()) {
+				return;
+			}
+
+			const keycode = typeof event.keycode === "number" ? event.keycode : event.data?.keycode;
+			if (typeof keycode !== "number") {
+				return;
+			}
+
+			const timeMs = getCursorCaptureElapsedMs();
+
+			// Collapse auto-repeat: ignore the same physical key re-firing rapidly.
+			// Bump the timestamp on collapsed repeats too, so a held key stays
+			// suppressed for its whole duration instead of leaking every other repeat.
+			if (keycode === lastKeystrokeCode && timeMs - lastKeystrokeTimeMs < 45) {
+				lastKeystrokeTimeMs = timeMs;
+				return;
+			}
+			lastKeystrokeCode = keycode;
+			lastKeystrokeTimeMs = timeMs;
+
+			pushKeystrokeSample({
+				timeMs,
+				key: keycodeTokens.get(keycode) ?? String(keycode),
+				ctrl: Boolean(event.ctrlKey ?? event.data?.ctrlKey),
+				alt: Boolean(event.altKey ?? event.data?.altKey),
+				shift: Boolean(event.shiftKey ?? event.data?.shiftKey),
+				meta: Boolean(event.metaKey ?? event.data?.metaKey),
+			});
+		};
+
 		hook.on("mousedown", onMouseDown);
 		hook.on("mouseup", onMouseUp);
+		hook.on("keydown", onKeyDown);
 		if (process.platform === "linux") {
 			hook.on("mousemove", onMouseMove);
 		}
@@ -282,12 +349,14 @@ export async function startInteractionCapture() {
 				if (typeof hook.off === "function") {
 					hook.off("mousedown", onMouseDown);
 					hook.off("mouseup", onMouseUp);
+					hook.off("keydown", onKeyDown);
 					if (process.platform === "linux") {
 						hook.off("mousemove", onMouseMove);
 					}
 				} else if (typeof hook.removeListener === "function") {
 					hook.removeListener("mousedown", onMouseDown);
 					hook.removeListener("mouseup", onMouseUp);
+					hook.removeListener("keydown", onKeyDown);
 					if (process.platform === "linux") {
 						hook.removeListener("mousemove", onMouseMove);
 					}
