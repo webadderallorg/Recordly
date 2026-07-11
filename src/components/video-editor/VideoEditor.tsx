@@ -2610,6 +2610,9 @@ export default function VideoEditor() {
 
 	useEffect(() => {
 		saveEditorPreferences({
+			showKeystrokes,
+			keystrokePosition,
+			keystrokeSize,
 			wallpaper,
 			shadowIntensity,
 			backgroundBlur,
@@ -2685,6 +2688,9 @@ export default function VideoEditor() {
 		zoomOutEasing,
 		connectedZoomEasing,
 		showCursor,
+		showKeystrokes,
+		keystrokePosition,
+		keystrokeSize,
 		loopCursor,
 		cursorStyle,
 		cursorSize,
