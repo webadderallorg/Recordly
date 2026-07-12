@@ -43,8 +43,13 @@
 			"amongus": "Among Us",
 			"turtle": "Tortue"
 		},
-		"backgroundBlur": "Flou d’arrière-plan",
+		"backgroundBlur": "Flou d'arrière-plan",
 		"zoomMotionBlur": "Flou de mouvement du zoom",
+		"temporalZoomMotionBlur": "Flou temporel du zoom",
+		"temporalZoomMotionBlurDescription": "Contrôle la fenêtre d'obturation et les échantillons de trames utilisés par le nouveau passage de flou de zoom.",
+		"zoomMotionBlurSamples": "Niveaux de flou",
+		"zoomMotionBlurShutter": "Obturateur",
+		"auto": "Auto",
 		"connectZooms": "Relier les zooms",
 		"connectZoomsDescription": "Lisse les zones de zoom consécutives pour créer un mouvement de caméra continu.",
 		"autoApplyFreshRecordingZooms": "Appliquer automatiquement les zooms des nouveaux enregistrements",
@@ -57,6 +62,20 @@
 		"zoomOutDescription": "Contrôle la manière dont la caméra sort d’une zone de zoom.",
 		"connectedZoomTitle": "Entre les zooms",
 		"connectedZoomDescription": "Ajuste la transition entre des zones de zoom consécutives lorsque la connexion est activée.",
+		"motionPresetsTitle": "Préréglages de mouvement",
+		"motionPresetsZoomHint": "Les préréglages de mouvement du zoom sont disponibles dans les Paramètres.",
+		"animationPresets": "Préréglages d'animation",
+		"cursorMotionPresets": "Préréglages de mouvement du curseur",
+		"motionPresets": {
+			"focused": {
+				"label": "Dynamique",
+				"description": "Mouvement plus vif pour les démos, tutoriels et enregistrements courants."
+			},
+			"smooth": {
+				"label": "Lisse",
+				"description": "Mouvement plus doux pour les présentations, vidéos style keynote et révélations soignées."
+			}
+		},
 		"zoomInDuration": "Durée du zoom avant",
 		"zoomInOverlap": "Chevauchement du zoom avant",
 		"zoomOutDuration": "Durée du zoom arrière",
@@ -74,7 +93,36 @@
 		},
 		"cursorSize": "Taille du curseur",
 		"cursorSmoothing": "Lissage du curseur",
+		"cursorSpringStiffness": "Rigidité du ressort du curseur",
+		"cursorSpringDamping": "Amortissement du ressort du curseur",
+		"cursorSpringMass": "Masse du ressort du curseur",
 		"off": "Désactivé",
+		"cursorClickEffects": {
+			"title": "Effets de clic",
+			"advanced": "Avancé",
+			"advancedShow": "Afficher les contrôles avancés des effets de clic",
+			"advancedHide": "Masquer les contrôles avancés des effets de clic",
+			"color": "Couleur de l'effet",
+			"size": "Taille de l'effet",
+			"opacity": "Opacité de l'effet",
+			"duration": "Durée de l'effet",
+			"none": {
+				"label": "Aucun",
+				"description": "Aucun graphique de clic. Seul le mouvement du curseur change lors du clic."
+			},
+			"ripple": {
+				"label": "Ripple",
+				"description": "Des anneaux se propagent depuis chaque clic pour que les appuis soient clairement visibles."
+			},
+			"spotlight": {
+				"label": "Spotlight",
+				"description": "Un halo doux clignotant autour du curseur pour mettre en évidence la zone cliquée."
+			},
+			"echo": {
+				"label": "Echo",
+				"description": "Deux anneaux doux qui s'élargissent vers l'extérieur avec une pulsation plus nette."
+			}
+		},
 		"cursorMotionBlur": "Flou de mouvement du curseur",
 		"cursorClickBounce": "Rebond au clic du curseur",
 		"cursorClickBounceDuration": "Vitesse du rebond",
@@ -130,8 +178,6 @@
 		"generateFull": "Générer les sous-titres",
 		"regenerateFull": "Régénérer les sous-titres",
 		"clearFull": "Effacer les sous-titres",
-		"editCurrent": "Modifier le sous-titre actuel",
-		"editSaved": "Sous-titre mis à jour",
 		"fontSettings": "Paramètres de police",
 		"defaultFont": "Par défaut",
 		"fontFamily": "Police",

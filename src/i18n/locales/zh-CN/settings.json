@@ -45,6 +45,11 @@
 		},
 		"backgroundBlur": "背景模糊",
 		"zoomMotionBlur": "缩放运动模糊",
+		"temporalZoomMotionBlur": "时间轴缩放模糊",
+		"temporalZoomMotionBlurDescription": "控制新缩放模糊渲染通道使用的快门窗口和帧样本数。",
+		"zoomMotionBlurSamples": "模糊样本",
+		"zoomMotionBlurShutter": "快门",
+		"auto": "自动",
 		"connectZooms": "连接缩放",
 		"connectZoomsDescription": "将连续的缩放区域平滑连接为一次连续的镜头移动。",
 		"autoApplyFreshRecordingZooms": "自动为新录制应用缩放",
@@ -92,6 +97,32 @@
 		"cursorSpringDamping": "光标弹簧阻尼",
 		"cursorSpringMass": "光标弹簧质量",
 		"off": "关",
+		"cursorClickEffects": {
+			"title": "点击效果",
+			"advanced": "高级",
+			"advancedShow": "显示高级点击效果控件",
+			"advancedHide": "隐藏高级点击效果控件",
+			"color": "效果颜色",
+			"size": "效果大小",
+			"opacity": "效果不透明度",
+			"duration": "效果持续时间",
+			"none": {
+				"label": "关闭",
+				"description": "无点击图形。点击时仅光标动作发生变化。"
+			},
+			"ripple": {
+				"label": "波纹",
+				"description": "每次点击向外扩散的圆环，使点击在动画中清晰可见。"
+			},
+			"spotlight": {
+				"label": "聚光灯",
+				"description": "指针周围闪烁柔和光晕，突出点击区域。"
+			},
+			"echo": {
+				"label": "回声",
+				"description": "两个柔和圆环以更干净的脉冲向外扩散。"
+			}
+		},
 		"cursorMotionBlur": "光标运动模糊",
 		"cursorClickBounce": "光标点击弹跳",
 		"cursorClickBounceDuration": "弹跳速度",

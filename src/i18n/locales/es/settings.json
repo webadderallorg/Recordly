@@ -45,6 +45,11 @@
 		},
 		"backgroundBlur": "Desenfoque de fondo",
 		"zoomMotionBlur": "Desenfoque de movimiento del zoom",
+		"temporalZoomMotionBlur": "Desenfoque temporal de zoom",
+		"temporalZoomMotionBlurDescription": "Controla la ventana de obturación y los fotogramas usados por el nuevo pase de desenfoque de zoom.",
+		"zoomMotionBlurSamples": "Muestras de desenfoque",
+		"zoomMotionBlurShutter": "Obturador",
+		"auto": "Auto",
 		"connectZooms": "Conectar zooms",
 		"connectZoomsDescription": "Suaviza regiones de zoom consecutivas convirtiéndolas en un movimiento continuo de cámara.",
 		"autoApplyFreshRecordingZooms": "Aplicar automáticamente zooms a nuevas grabaciones",
@@ -57,6 +62,20 @@
 		"zoomOutDescription": "Controla cómo sale la cámara de una región de zoom.",
 		"connectedZoomTitle": "Entre zooms",
 		"connectedZoomDescription": "Ajusta el deslizamiento entre regiones de zoom consecutivas cuando la conexión está activada.",
+		"motionPresetsTitle": "Ajustes de movimiento",
+		"motionPresetsZoomHint": "Los ajustes de movimiento del zoom están disponibles en Configuración.",
+		"animationPresets": "Ajustes de animación",
+		"cursorMotionPresets": "Ajustes de movimiento del cursor",
+		"motionPresets": {
+			"focused": {
+				"label": "Enfocado",
+				"description": "Movimiento más rápido para demos, tutoriales y grabaciones cotidianas."
+			},
+			"smooth": {
+				"label": "Suave",
+				"description": "Movimiento más suave para presentaciones, vídeos estilo keynote y revelaciones elaboradas."
+			}
+		},
 		"zoomInDuration": "Duración de entrada",
 		"zoomInOverlap": "Solapamiento de entrada",
 		"zoomOutDuration": "Duración de salida",
@@ -74,7 +93,36 @@
 		},
 		"cursorSize": "Tamaño del cursor",
 		"cursorSmoothing": "Suavizado del cursor",
+		"cursorSpringStiffness": "Rigidez del resorte del cursor",
+		"cursorSpringDamping": "Amortiguación del resorte del cursor",
+		"cursorSpringMass": "Masa del resorte del cursor",
 		"off": "Desactivado",
+		"cursorClickEffects": {
+			"title": "Efectos de clic",
+			"advanced": "Avanzado",
+			"advancedShow": "Mostrar controles avanzados de efectos de clic",
+			"advancedHide": "Ocultar controles avanzados de efectos de clic",
+			"color": "Color del efecto",
+			"size": "Tamaño del efecto",
+			"opacity": "Opacidad del efecto",
+			"duration": "Duración del efecto",
+			"none": {
+				"label": "Ninguno",
+				"description": "Sin gráfico de clic. Solo cambia el movimiento del cursor al hacer clic."
+			},
+			"ripple": {
+				"label": "Ripple",
+				"description": "Anillos que se expanden desde cada clic para que los toques sean claramente visibles."
+			},
+			"spotlight": {
+				"label": "Spotlight",
+				"description": "Un halo suave que ilumina el área presionada."
+			},
+			"echo": {
+				"label": "Echo",
+				"description": "Un par de anillos suaves que se expanden hacia afuera con un pulso limpio."
+			}
+		},
 		"cursorMotionBlur": "Desenfoque de movimiento del cursor",
 		"cursorClickBounce": "Rebote de clic del cursor",
 		"cursorClickBounceDuration": "Velocidad del rebote",
@@ -130,8 +178,6 @@
 		"generateFull": "Generar subtítulos",
 		"regenerateFull": "Regenerar subtítulos",
 		"clearFull": "Borrar subtítulos",
-		"editCurrent": "Editar subtítulo actual",
-		"editSaved": "Subtítulo actualizado",
 		"fontSettings": "Tipografía",
 		"defaultFont": "Predeterminado",
 		"fontFamily": "Fuente",
