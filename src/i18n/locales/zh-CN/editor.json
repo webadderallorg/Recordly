@@ -44,7 +44,6 @@
 		"solidColor": "纯色 (审查)",
 		"borderRadius": "边框半径"
 	},
-
 	"fontStyles": {
 		"classic": "经典",
 		"editor": "编辑器",
@@ -111,7 +110,13 @@
 		"showInFolder": "在文件夹中显示"
 	},
 	"project": {
-		"untitled": "未命名"
+		"untitled": "未命名",
+		"browserTitle": "项目",
+		"import": "导入",
+		"noProjects": "暂无已保存的项目",
+		"saveTitle": "保存项目",
+		"saveDescription": "为项目命名。",
+		"saveNameLabel": "项目名称"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "没有出错，但我们无法渲染动画光标叠加层。",
@@ -125,7 +130,9 @@
 		"completePercent": "已完成 {{percent}}%",
 		"issue": "导出问题",
 		"complete": "导出完成",
-		"savedSuccessfully": "文件已成功保存。"
+		"savedSuccessfully": "文件已成功保存。",
+		"exportedSuccess": "已成功导出到 {{path}}",
+		"showInFolder": "在文件夹中显示"
 	},
 	"export": {
 		"processingAudioEdits": "正在处理带有速度/叠加编辑的音频"
@@ -136,7 +143,51 @@
 	},
 	"timeline": {
 		"expand": "展开时间轴",
-		"collapse": "折叠时间轴"
+		"collapse": "折叠时间轴",
+		"noVideoLoaded": "未加载视频",
+		"custom": "自定义",
+		"set": "设置",
+		"sideScroll": "侧边滚动",
+		"pan": "平移",
+		"zoom": "缩放"
 	},
-	"openRecordingsFolder": "打开录制文件夹"
+	"openRecordingsFolder": "打开录制文件夹",
+	"presets": {
+		"label": "预设",
+		"empty": "暂无预设。",
+		"open": "打开预设",
+		"saveCurrentAs": "将当前预设保存为",
+		"savedList": "已保存的预设",
+		"namePlaceholder": "预设名称",
+		"errors": {
+			"nameRequired": "请输入预设名称。",
+			"duplicateName": "已存在同名预设。",
+			"saveFailed": "无法保存预设。",
+			"deleteFailed": "无法删除预设。"
+		},
+		"toasts": {
+			"applied": "已应用预设\"{{name}}\"",
+			"saved": "已保存预设\"{{name}}\"",
+			"deleted": "已删除预设\"{{name}}\""
+		}
+	},
+	"theme": {
+		"appearance": "外观",
+		"light": "浅色",
+		"dark": "深色",
+		"system": "系统"
+	},
+	"unsavedChanges": {
+		"title": "未保存的更改",
+		"description": "在打开另一个项目之前，是否保存当前项目？",
+		"discard": "放弃更改",
+		"save": "保存项目",
+		"youHave": "您有未保存的更改。",
+		"beforeClosing": "关闭前是否保存项目？",
+		"saveClose": "保存并关闭",
+		"discardClose": "放弃并关闭"
+	},
+	"common": {
+		"accountComingSoon": "账号功能即将推出"
+	}
 }
