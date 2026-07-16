@@ -1,0 +1,60 @@
+{
+	"title": "Ekstensi",
+	"tabs": {
+		"browse": "Jelajahi",
+		"installed": "Terinstal"
+	},
+	"actions": {
+		"submit": "Kirimkan ekstensi",
+		"docs": "Dokumentasi ekstensi",
+		"refresh": "Segarkan",
+		"openFolder": "Buka folder ekstensi",
+		"uninstall": "Copot pemasangan",
+		"install": "Instal",
+		"installing": "Menginstal",
+		"add": "Tambah",
+		"retry": "Coba lagi",
+		"close": "Tutup",
+		"folder": "Folder"
+	},
+	"status": {
+		"enabled": "Diaktifkan",
+		"disabled": "Dinonaktifkan",
+		"installed": "Terinstal"
+	},
+	"detail": {
+		"by": "Oleh {{author}}",
+		"unknownAuthor": "Penulis tidak diketahui",
+		"noDescription": "Tidak ada deskripsi",
+		"downloads": "{{count}} unduhan",
+		"preview": "Pratinjau",
+		"screenshotAlt": "Tangkapan layar {{number}}",
+		"description": "Deskripsi",
+		"tags": "Tag",
+		"permissions": "Izin",
+		"location": "Lokasi",
+		"error": "Kesalahan: {{message}}"
+	},
+	"empty": {
+		"title": "Tidak Ada Ekstensi",
+		"description": "Instal ekstensi untuk menambahkan bingkai, efek kursor, dan alat editor."
+	},
+	"search": {
+		"placeholder": "Cari ekstensi...",
+		"noResults": "Ekstensi tidak ditemukan",
+		"noMarketplace": "Belum ada ekstensi marketplace yang tersedia",
+		"count": "{{count}} ekstensi",
+		"countPlural": "{{count}} ekstensi"
+	},
+	"toast": {
+		"installedAndEnabled": "Ekstensi terinstal dan diaktifkan",
+		"uninstalled": "Copot pemasangan {{name}} berhasil",
+		"uninstallFailed": "Gagal mencopot pemasangan {{name}}",
+		"searchFailed": "Gagal mencari marketplace",
+		"refreshed": "Ekstensi disegarkan",
+		"refreshFailed": "Gagal menyegarkan ekstensi",
+		"marketplaceInstalled": "Terinstal dan diaktifkan {{name}}",
+		"marketplaceInstallFailed": "Gagal menginstal {{name}}",
+		"enableFailed": "Gagal mengaktifkan ekstensi"
+	}
+}

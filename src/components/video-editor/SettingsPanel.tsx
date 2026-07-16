@@ -904,12 +904,14 @@ const CAPTION_LANGUAGE_OPTIONS = [
 	{ value: "zh", label: "Chinese (Simplified)" },
 	{ value: "ja", label: "Japanese" },
 	{ value: "ko", label: "Korean" },
+	{ value: "id", label: "Indonesian" },
 ] as const;
 
 const APP_LANGUAGE_LABELS: Record<AppLocale, string> = {
 	en: "English",
 	es: "Español",
 	fr: "Français",
+	id: "Bahasa Indonesia",
 	it: "Italiano",
 	nl: "Nederlands",
 	ko: "한국어",
