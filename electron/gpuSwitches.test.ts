@@ -14,13 +14,13 @@ describe("getGpuSwitches", () => {
 		});
 	});
 
-	it("returns the X11 EGL workaround on Linux X11", () => {
+	it("does not force a GL implementation on Linux X11", () => {
 		expect(getGpuSwitches("linux", { XDG_SESSION_TYPE: "x11" })).toEqual({
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		});
 	});
 
-	it("does not force a GL implementation on Linux X11", () => {
+	it("does not force a GL implementation when the session type is unknown", () => {
 		expect(getGpuSwitches("linux", {})).toEqual({
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		});
