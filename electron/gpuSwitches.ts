@@ -1,6 +1,5 @@
 export interface GpuSwitches {
 	useAngle?: string;
-	useGl?: string;
 	disableFeatures?: string[];
 }
 

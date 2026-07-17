@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getGpuSwitches } from "./gpuSwitches";
 
 describe("getGpuSwitches", () => {
-	it("returns the Linux VAAPI workaround without forcing EGL on Wayland", () => {
+	it("returns the Linux VAAPI workaround without forcing a GL implementation on Wayland", () => {
 		expect(
 			getGpuSwitches("linux", {
 				XDG_SESSION_TYPE: "wayland",
@@ -20,7 +20,7 @@ describe("getGpuSwitches", () => {
 		});
 	});
 
-	it("does not force a GL implementation when the session type is unknown", () => {
+	it("does not force a GL implementation on Linux X11", () => {
 		expect(getGpuSwitches("linux", {})).toEqual({
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		});
