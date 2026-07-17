@@ -121,6 +121,34 @@ const LINUX_PORTAL_SOURCE: ProcessedDesktopSource = {
 	sourceType: "screen",
 };
 
+// The Linux HUD has no source picker, so recording starts with no selected
+// source. Main already resolves screens per session type: the portal sentinel
+// on Wayland, a real desktop-capturer id on X11. Prefer a real id when one
+// exists, because the X11 portal dialog never opens and capture then fails
+// with "Could not start video source".
+async function resolveDefaultLinuxSource(): Promise<ProcessedDesktopSource> {
+	try {
+		const sources = await window.electronAPI.getSources({
+			types: ["screen"],
+			thumbnailSize: { width: 1, height: 1 },
+			fetchWindowIcons: false,
+		});
+		const captureableScreen = sources.find(
+			(candidate) =>
+				candidate.id?.startsWith("screen:") &&
+				candidate.id !== LINUX_PORTAL_SOURCE.id &&
+				!candidate.id.startsWith("screen:fallback:"),
+		);
+		if (captureableScreen) {
+			return captureableScreen;
+		}
+	} catch (error) {
+		console.warn("Failed to resolve a default Linux screen source:", error);
+	}
+
+	return LINUX_PORTAL_SOURCE;
+}
+
 type DesktopCaptureMediaDevices = {
 	getUserMedia: (constraints: unknown) => Promise<MediaStream>;
 	getDisplayMedia: (constraints: unknown) => Promise<MediaStream>;
@@ -1379,7 +1407,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			hideEditorOverlayCursorByDefault.current = false;
 			const existingSource = await window.electronAPI.getSelectedSource();
 			const selectedSource =
-				existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
+				existingSource ?? (platform === "linux" ? await resolveDefaultLinuxSource() : null);
 			if (!selectedSource) {
 				alert("Please select a source to record");
 				return;
