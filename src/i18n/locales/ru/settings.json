@@ -147,6 +147,7 @@
 		"downloading": "Загрузка...",
 		"deleteModel": "Удалить модель",
 		"clearModel": "Очистить модель",
+		"clearModelSelection": "Сбросить выбор",
 		"downloadModel": "Загрузить модель",
 		"generating": "Создание...",
 		"generateFull": "Создать субтитры",

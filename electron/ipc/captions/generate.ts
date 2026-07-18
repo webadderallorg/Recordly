@@ -54,15 +54,28 @@ function runWhisperCommand(
 	return new Promise<void>((resolve, reject) => {
 		const child = spawn(whisperExecutablePath, args, { windowsHide: true });
 		let recentOutput = "";
+		let timedOut = false;
+		let processError: Error | null = null;
+		let forceKillTimeout: ReturnType<typeof setTimeout> | null = null;
 		const timeout = setTimeout(
 			() => {
+				timedOut = true;
 				child.kill();
-				reject(new Error("Whisper timed out after 30 minutes."));
+				forceKillTimeout = setTimeout(() => {
+					if (child.exitCode === null && child.signalCode === null) {
+						child.kill("SIGKILL");
+					}
+				}, 5_000);
 			},
 			30 * 60 * 1000,
 		);
 
-		const clearWhisperTimeout = () => clearTimeout(timeout);
+		const clearWhisperTimeouts = () => {
+			clearTimeout(timeout);
+			if (forceKillTimeout) {
+				clearTimeout(forceKillTimeout);
+			}
+		};
 
 		const handleOutput = (chunk: Buffer) => {
 			const output = chunk.toString("utf-8");
@@ -79,11 +92,18 @@ function runWhisperCommand(
 		child.stdout?.on("data", handleOutput);
 		child.stderr?.on("data", handleOutput);
 		child.on("error", (error) => {
-			clearWhisperTimeout();
-			reject(error);
+			processError = error;
 		});
 		child.on("close", (code) => {
-			clearWhisperTimeout();
+			clearWhisperTimeouts();
+			if (timedOut) {
+				reject(new Error("Whisper timed out after 30 minutes."));
+				return;
+			}
+			if (processError) {
+				reject(processError);
+				return;
+			}
 			if (code === 0) {
 				resolve();
 				return;

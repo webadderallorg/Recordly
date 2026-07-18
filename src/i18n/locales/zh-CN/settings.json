@@ -142,6 +142,7 @@
 		"downloading": "下载中...",
 		"deleteModel": "删除模型",
 		"clearModel": "清除模型",
+		"clearModelSelection": "清除选择",
 		"downloadModel": "下载模型",
 		"generating": "生成中...",
 		"generateFull": "生成字幕",

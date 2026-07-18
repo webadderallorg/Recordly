@@ -173,6 +173,7 @@
 		"downloading": "Downloading...",
 		"deleteModel": "Delete Model",
 		"clearModel": "Clear Model",
+		"clearModelSelection": "Clear selection",
 		"downloadModel": "Download Model",
 		"generating": "Generating...",
 		"generateFull": "Generate Captions",

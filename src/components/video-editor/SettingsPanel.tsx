@@ -831,6 +831,7 @@ interface SettingsPanelProps {
 	autoCaptionSettings?: AutoCaptionSettings;
 	whisperExecutablePath?: string | null;
 	whisperModelPath?: string | null;
+	isDownloadedWhisperModelSelected?: boolean;
 	whisperModelDownloadStatus?: "idle" | "downloading" | "downloaded" | "error";
 	whisperModelDownloadProgress?: number;
 	captionGenerationError?: string | null;
@@ -846,6 +847,7 @@ interface SettingsPanelProps {
 	onClearAutoCaptions?: () => void;
 	onDownloadWhisperSmallModel?: () => void;
 	onDeleteWhisperSmallModel?: () => void;
+	onClearWhisperModelSelection?: () => void;
 	captionCurrentTimeMs?: number;
 	selectedCaptionId?: string | null;
 	onBeginCaptionEdit?: (id: string) => void;
@@ -1289,6 +1291,7 @@ export function SettingsPanel({
 	autoCaptionSettings = DEFAULT_AUTO_CAPTION_SETTINGS,
 	whisperExecutablePath,
 	whisperModelPath,
+	isDownloadedWhisperModelSelected = false,
 	whisperModelDownloadStatus = "idle",
 	whisperModelDownloadProgress = 0,
 	captionGenerationError = null,
@@ -1304,6 +1307,7 @@ export function SettingsPanel({
 	onClearAutoCaptions,
 	onDownloadWhisperSmallModel,
 	onDeleteWhisperSmallModel,
+	onClearWhisperModelSelection,
 	captionCurrentTimeMs = 0,
 	selectedCaptionId = null,
 	onBeginCaptionEdit,
@@ -3013,14 +3017,25 @@ export function SettingsPanel({
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					<div className="grid w-full grid-cols-2 gap-2">
-						{whisperModelPath ? (
+						{whisperModelPath && isDownloadedWhisperModelSelected ? (
 							<Button
 								type="button"
 								variant="outline"
 								onClick={onDeleteWhisperSmallModel}
+								disabled={!onDeleteWhisperSmallModel}
 								className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
 							>
 								{tSettings("captions.deleteModel", "Delete Model")}
+							</Button>
+						) : whisperModelPath ? (
+							<Button
+								type="button"
+								variant="outline"
+								onClick={onClearWhisperModelSelection}
+								disabled={!onClearWhisperModelSelection}
+								className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+							>
+								{tSettings("captions.clearModelSelection", "Clear selection")}
 							</Button>
 						) : (
 							<Button

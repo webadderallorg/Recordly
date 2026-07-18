@@ -125,6 +125,7 @@
 		"downloading": "下載中...",
 		"deleteModel": "刪除模型",
 		"clearModel": "清除模型",
+		"clearModelSelection": "清除選擇",
 		"downloadModel": "下載模型",
 		"generating": "產生中...",
 		"generateFull": "產生字幕",

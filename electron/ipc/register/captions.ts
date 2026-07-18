@@ -206,16 +206,12 @@ export function registerCaptionHandlers() {
 						selectionMode === "file" ? "Use This Executable" : "Use This Folder",
 					filters:
 						selectionMode === "file"
-							? [
-									{
-										name: "Whisper Engine",
-										extensions:
-											process.platform === "win32"
-												? ["exe", "cmd", "bat"]
-												: ["*"],
-									},
-									{ name: "All Files", extensions: ["*"] },
-								]
+							? process.platform === "win32"
+								? [{ name: "Whisper Engine", extensions: ["exe"] }]
+								: [
+										{ name: "Whisper Engine", extensions: ["*"] },
+										{ name: "All Files", extensions: ["*"] },
+									]
 							: undefined,
 					properties: [selectionMode === "file" ? "openFile" : "openDirectory"],
 				});

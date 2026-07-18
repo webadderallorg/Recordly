@@ -125,6 +125,7 @@
 		"downloading": "다운로드 중...",
 		"deleteModel": "모델 삭제",
 		"clearModel": "모델 초기화",
+		"clearModelSelection": "선택 해제",
 		"downloadModel": "모델 다운로드",
 		"generating": "생성 중...",
 		"generateFull": "자막 생성",
