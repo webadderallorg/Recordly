@@ -661,22 +661,41 @@ interface Window {
 			error?: string;
 		}>;
 		openAudioFilePicker: () => Promise<{ success: boolean; path?: string; canceled?: boolean }>;
-		openWhisperExecutablePicker: () => Promise<{
+		openWhisperExecutablePicker: (options?: {
+			currentPath?: string | null;
+			selectionMode?: "file" | "directory";
+		}) => Promise<{
 			success: boolean;
 			path?: string;
 			canceled?: boolean;
 			error?: string;
 		}>;
-		openWhisperModelPicker: () => Promise<{
+		openWhisperModelPicker: (options?: { currentPath?: string | null }) => Promise<{
 			success: boolean;
 			path?: string;
 			canceled?: boolean;
 			error?: string;
 		}>;
+		getWhisperRuntimeStatus: (options?: { currentPath?: string | null }) => Promise<{
+			success: boolean;
+			exists: boolean;
+			path?: string | null;
+			error?: string;
+		}>;
+		getCaptionFfmpegStatus: () => Promise<{
+			success: boolean;
+			exists: boolean;
+			path?: string | null;
+			error?: string;
+		}>;
+		showCaptionPathInFolder: (
+			path?: string | null,
+		) => Promise<{ success: boolean; error?: string }>;
 		getWhisperSmallModelStatus: () => Promise<{
 			success: boolean;
 			exists: boolean;
 			path?: string | null;
+			expectedPath?: string;
 			error?: string;
 		}>;
 		downloadWhisperSmallModel: () => Promise<{
@@ -692,6 +711,12 @@ interface Window {
 				progress: number;
 				path?: string | null;
 				error?: string;
+			}) => void,
+		) => () => void;
+		onCaptionGenerationProgress: (
+			callback: (state: {
+				stage: "preparing" | "extracting-audio" | "transcribing" | "finalizing";
+				progress: number;
 			}) => void,
 		) => () => void;
 		generateAutoCaptions: (options: {

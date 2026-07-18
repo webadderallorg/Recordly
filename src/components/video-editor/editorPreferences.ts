@@ -442,8 +442,14 @@ export function normalizeEditorPreferences(
 			fallback.autoApplyFreshRecordingAutoZooms,
 		),
 		whisperExecutablePath:
-			normalizeNullablePath(raw.whisperExecutablePath) ?? fallback.whisperExecutablePath,
-		whisperModelPath: normalizeNullablePath(raw.whisperModelPath) ?? fallback.whisperModelPath,
+			raw.whisperExecutablePath === null
+				? null
+				: (normalizeNullablePath(raw.whisperExecutablePath) ??
+					fallback.whisperExecutablePath),
+		whisperModelPath:
+			raw.whisperModelPath === null
+				? null
+				: (normalizeNullablePath(raw.whisperModelPath) ?? fallback.whisperModelPath),
 	};
 }
 

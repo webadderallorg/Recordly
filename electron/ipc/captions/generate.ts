@@ -1,9 +1,10 @@
-import { execFile, spawnSync } from "node:child_process";
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { app } from "electron";
+import { COMPANION_AUDIO_LAYOUTS } from "../constants";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { getBundledWhisperExecutableCandidates } from "../paths/binaries";
 import { resolveRecordingSession } from "../project/session";
@@ -19,8 +20,162 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-export async function ensureReadableFile(filePath: string, options?: { executable?: boolean }) {
-	await fs.access(filePath, fsConstants.R_OK);
+export type CaptionGenerationProgress = {
+	stage: "preparing" | "extracting-audio" | "transcribing" | "finalizing";
+	progress: number;
+};
+
+function clampProgress(progress: number) {
+	return Math.min(100, Math.max(0, Math.round(progress)));
+}
+
+function emitProgress(
+	onProgress: ((progress: CaptionGenerationProgress) => void) | undefined,
+	progress: CaptionGenerationProgress,
+) {
+	onProgress?.({ ...progress, progress: clampProgress(progress.progress) });
+}
+
+export function parseWhisperProgressPercent(output: string) {
+	const matches = [...output.matchAll(/progress\s*=\s*(\d{1,3}(?:\.\d+)?)%/gi)];
+	const match = matches[matches.length - 1];
+	if (!match) {
+		return null;
+	}
+
+	return clampProgress(Number(match[1]));
+}
+
+function runWhisperCommand(
+	whisperExecutablePath: string,
+	args: string[],
+	onProgress?: (progress: CaptionGenerationProgress) => void,
+) {
+	return new Promise<void>((resolve, reject) => {
+		const child = spawn(whisperExecutablePath, args, { windowsHide: true });
+		let recentOutput = "";
+		let timedOut = false;
+		let processError: Error | null = null;
+		let forceKillTimeout: ReturnType<typeof setTimeout> | null = null;
+		const timeout = setTimeout(
+			() => {
+				timedOut = true;
+				child.kill();
+				forceKillTimeout = setTimeout(() => {
+					if (child.exitCode === null && child.signalCode === null) {
+						child.kill("SIGKILL");
+					}
+				}, 5_000);
+			},
+			30 * 60 * 1000,
+		);
+
+		const clearWhisperTimeouts = () => {
+			clearTimeout(timeout);
+			if (forceKillTimeout) {
+				clearTimeout(forceKillTimeout);
+			}
+		};
+
+		const handleOutput = (chunk: Buffer) => {
+			const output = chunk.toString("utf-8");
+			recentOutput = `${recentOutput}${output}`.slice(-20_000);
+			const whisperProgress = parseWhisperProgressPercent(recentOutput);
+			if (whisperProgress !== null) {
+				emitProgress(onProgress, {
+					stage: "transcribing",
+					progress: 15 + whisperProgress * 0.8,
+				});
+			}
+		};
+
+		child.stdout?.on("data", handleOutput);
+		child.stderr?.on("data", handleOutput);
+		child.on("error", (error) => {
+			processError = error;
+		});
+		child.on("close", (code) => {
+			clearWhisperTimeouts();
+			if (timedOut) {
+				reject(new Error("Whisper timed out after 30 minutes."));
+				return;
+			}
+			if (processError) {
+				reject(processError);
+				return;
+			}
+			if (code === 0) {
+				resolve();
+				return;
+			}
+
+			reject(new Error(`Whisper exited with code ${code}. ${recentOutput.trim()}`.trim()));
+		});
+	});
+}
+
+function getWhisperBinaryNames() {
+	return process.platform === "win32"
+		? ["whisper-cli.exe", "whisper-cpp.exe", "whisper.exe", "main.exe"]
+		: ["whisper-cli", "whisper-cpp", "whisper", "main"];
+}
+
+export function getWhisperExecutableCandidatesFromPath(candidatePath?: string | null) {
+	const trimmedPath = candidatePath?.trim();
+	if (!trimmedPath) {
+		return [];
+	}
+
+	const resolvedPath = path.resolve(trimmedPath);
+	const directorySearchPaths = [
+		[],
+		["bin"],
+		["bin", "Release"],
+		["build", "bin"],
+		["build", "bin", "Release"],
+	];
+	const candidates = [
+		resolvedPath,
+		...directorySearchPaths.flatMap((segments) =>
+			getWhisperBinaryNames().map((binaryName) =>
+				path.join(resolvedPath, ...segments, binaryName),
+			),
+		),
+	];
+
+	return [...new Set(candidates)];
+}
+
+export async function ensureReadableFile(
+	filePath: string,
+	options?: { executable?: boolean; label?: string },
+) {
+	let stats: Awaited<ReturnType<typeof fs.stat>>;
+	try {
+		stats = await fs.stat(filePath);
+	} catch (error) {
+		if (!options?.label) {
+			throw error;
+		}
+		throw new Error(`${options.label} was not found at ${filePath}.`);
+	}
+
+	if (!stats.isFile()) {
+		throw new Error(
+			options?.executable
+				? "The selected Whisper executable is not a file."
+				: `${options?.label ?? "The selected file"} is not a file.`,
+		);
+	}
+
+	try {
+		await fs.access(filePath, fsConstants.R_OK);
+	} catch (error) {
+		if (!options?.label) {
+			throw error;
+		}
+		throw new Error(`${options.label} is not readable at ${filePath}.`);
+	}
 	if (options?.executable) {
 		try {
 			await fs.access(filePath, fsConstants.X_OK);
@@ -32,6 +187,10 @@ export async function ensureReadableFile(filePath: string, options?: { executabl
 
 export async function isExecutableFile(filePath: string) {
 	try {
+		const stats = await fs.stat(filePath);
+		if (!stats.isFile()) {
+			return false;
+		}
 		await fs.access(filePath, fsConstants.R_OK | fsConstants.X_OK);
 		return true;
 	} catch {
@@ -41,9 +200,15 @@ export async function isExecutableFile(filePath: string) {
 
 export async function resolveWhisperExecutablePath(preferredPath?: string | null) {
 	const candidatePaths = [
-		preferredPath?.trim() || null,
+		...getWhisperExecutableCandidatesFromPath(preferredPath),
+		...getWhisperExecutableCandidatesFromPath(process.env["WHISPER_CPP_PATH"]),
+		...getWhisperExecutableCandidatesFromPath(
+			process.platform === "win32" ? "C:\\Tools\\whisper" : null,
+		),
+		...getWhisperExecutableCandidatesFromPath(
+			process.platform === "win32" ? "C:\\whisper" : null,
+		),
 		...getBundledWhisperExecutableCandidates(),
-		process.env["WHISPER_CPP_PATH"]?.trim() || null,
 		process.platform === "darwin" ? "/opt/homebrew/bin/whisper-cli" : null,
 		process.platform === "darwin" ? "/usr/local/bin/whisper-cli" : null,
 		process.platform === "darwin" ? "/opt/homebrew/bin/whisper-cpp" : null,
@@ -58,12 +223,8 @@ export async function resolveWhisperExecutablePath(preferredPath?: string | null
 	}
 
 	const pathCommand = process.platform === "win32" ? "where" : "which";
-	const binaryNames =
-		process.platform === "win32"
-			? ["whisper-cli.exe", "whisper.exe", "main.exe"]
-			: ["whisper-cli", "whisper-cpp", "whisper", "main"];
 
-	for (const binaryName of binaryNames) {
+	for (const binaryName of getWhisperBinaryNames()) {
 		const result = spawnSync(pathCommand, [binaryName], { encoding: "utf-8" });
 		if (result.status === 0) {
 			const resolvedPath = result.stdout
@@ -78,7 +239,7 @@ export async function resolveWhisperExecutablePath(preferredPath?: string | null
 	}
 
 	throw new Error(
-		"No Whisper runtime was found. Recordly looked for a bundled binary first, then checked common system install locations.",
+		"Whisper engine was not found. In Captions, choose the folder that contains whisper-cli, choose the whisper-cli executable, or set WHISPER_CPP_PATH to that location.",
 	);
 }
 
@@ -100,6 +261,25 @@ export async function resolveCaptionAudioCandidates(videoPath: string) {
 
 	const requestedRecordingSession = await resolveRecordingSession(videoPath);
 	pushCandidate(requestedRecordingSession?.webcamPath, "linked webcam recording");
+
+	const basePath = videoPath.replace(/\.[^.]+$/u, "");
+	for (const layout of COMPANION_AUDIO_LAYOUTS) {
+		const companionPaths = [
+			{ path: `${basePath}${layout.systemSuffix}`, label: "source system audio" },
+			{ path: `${basePath}${layout.micSuffix}`, label: "source microphone audio" },
+		];
+
+		for (const companion of companionPaths) {
+			try {
+				const stats = await fs.stat(companion.path);
+				if (stats.isFile() && stats.size > 0) {
+					pushCandidate(companion.path, companion.label);
+				}
+			} catch {
+				// Companion audio is optional and only used as a fallback.
+			}
+		}
+	}
 
 	return candidates;
 }
@@ -191,7 +371,9 @@ export async function generateAutoCaptionsFromVideo(options: {
 	whisperExecutablePath?: string;
 	whisperModelPath: string;
 	language?: string;
+	onProgress?: (progress: CaptionGenerationProgress) => void;
 }) {
+	emitProgress(options.onProgress, { stage: "preparing", progress: 0 });
 	const ffmpegPath = getFfmpegBinaryPath();
 	const normalizedVideoPath = normalizeVideoSourcePath(options.videoPath);
 	if (!normalizedVideoPath) {
@@ -200,8 +382,11 @@ export async function generateAutoCaptionsFromVideo(options: {
 
 	const whisperExecutablePath = await resolveWhisperExecutablePath(options.whisperExecutablePath);
 	const whisperModelPath = path.resolve(options.whisperModelPath);
-	await ensureReadableFile(whisperExecutablePath, { executable: true });
-	await ensureReadableFile(whisperModelPath);
+	await ensureReadableFile(whisperExecutablePath, {
+		executable: true,
+		label: "Whisper runtime",
+	});
+	await ensureReadableFile(whisperModelPath, { label: "Whisper model file" });
 
 	const tempBase = path.join(
 		app.getPath("temp"),
@@ -213,11 +398,13 @@ export async function generateAutoCaptionsFromVideo(options: {
 	const jsonPath = `${outputBase}.json`;
 
 	try {
+		emitProgress(options.onProgress, { stage: "extracting-audio", progress: 5 });
 		const audioSource = await extractCaptionAudioSource({
 			videoPath: normalizedVideoPath,
 			ffmpegPath,
 			wavPath,
 		});
+		emitProgress(options.onProgress, { stage: "transcribing", progress: 15 });
 
 		const language =
 			options.language && options.language.trim() ? options.language.trim() : "auto";
@@ -231,15 +418,16 @@ export async function generateAutoCaptionsFromVideo(options: {
 			outputBase,
 			"-l",
 			language,
-			"-np",
+			"-pp",
 		];
 
 		let jsonEnabled = true;
 		try {
-			await execFileAsync(whisperExecutablePath, [...whisperBaseArgs, "-ojf"], {
-				timeout: 30 * 60 * 1000,
-				maxBuffer: 20 * 1024 * 1024,
-			});
+			await runWhisperCommand(
+				whisperExecutablePath,
+				[...whisperBaseArgs, "-ojf"],
+				options.onProgress,
+			);
 		} catch (error) {
 			if (!shouldRetryWhisperWithoutJson(error)) {
 				throw error;
@@ -250,12 +438,11 @@ export async function generateAutoCaptionsFromVideo(options: {
 				"[auto-captions] Whisper runtime does not support JSON full output, retrying with SRT only:",
 				error,
 			);
-			await execFileAsync(whisperExecutablePath, whisperBaseArgs, {
-				timeout: 30 * 60 * 1000,
-				maxBuffer: 20 * 1024 * 1024,
-			});
+			emitProgress(options.onProgress, { stage: "transcribing", progress: 15 });
+			await runWhisperCommand(whisperExecutablePath, whisperBaseArgs, options.onProgress);
 		}
 
+		emitProgress(options.onProgress, { stage: "finalizing", progress: 96 });
 		const timedCues = jsonEnabled
 			? parseWhisperJsonCues(await fs.readFile(jsonPath, "utf-8"))
 			: [];
@@ -291,6 +478,7 @@ export async function generateAutoCaptionsFromVideo(options: {
 			);
 		}
 
+		emitProgress(options.onProgress, { stage: "finalizing", progress: 100 });
 		return {
 			cues: cuesToReturn,
 			audioSourceLabel: audioSource.label,

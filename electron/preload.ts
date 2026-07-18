@@ -680,11 +680,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	openAudioFilePicker: () => {
 		return ipcRenderer.invoke("open-audio-file-picker");
 	},
-	openWhisperExecutablePicker: () => {
-		return ipcRenderer.invoke("open-whisper-executable-picker");
+	openWhisperExecutablePicker: (options?: {
+		currentPath?: string | null;
+		selectionMode?: "file" | "directory";
+	}) => {
+		return ipcRenderer.invoke("open-whisper-executable-picker", options);
 	},
-	openWhisperModelPicker: () => {
-		return ipcRenderer.invoke("open-whisper-model-picker");
+	openWhisperModelPicker: (options?: { currentPath?: string | null }) => {
+		return ipcRenderer.invoke("open-whisper-model-picker", options);
+	},
+	getWhisperRuntimeStatus: (options?: { currentPath?: string | null }) => {
+		return ipcRenderer.invoke("get-whisper-runtime-status", options);
+	},
+	getCaptionFfmpegStatus: () => {
+		return ipcRenderer.invoke("get-caption-ffmpeg-status");
+	},
+	showCaptionPathInFolder: (path?: string | null) => {
+		return ipcRenderer.invoke("show-caption-path-in-folder", path);
 	},
 	getWhisperSmallModelStatus: () => {
 		return ipcRenderer.invoke("get-whisper-small-model-status");
@@ -714,6 +726,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		) => callback(payload);
 		ipcRenderer.on("whisper-small-model-download-progress", listener);
 		return () => ipcRenderer.removeListener("whisper-small-model-download-progress", listener);
+	},
+	onCaptionGenerationProgress: (
+		callback: (state: {
+			stage: "preparing" | "extracting-audio" | "transcribing" | "finalizing";
+			progress: number;
+		}) => void,
+	) => {
+		const listener = (
+			_event: Electron.IpcRendererEvent,
+			payload: {
+				stage: "preparing" | "extracting-audio" | "transcribing" | "finalizing";
+				progress: number;
+			},
+		) => callback(payload);
+		ipcRenderer.on("caption-generation-progress", listener);
+		return () => ipcRenderer.removeListener("caption-generation-progress", listener);
 	},
 	generateAutoCaptions: (options: {
 		videoPath: string;

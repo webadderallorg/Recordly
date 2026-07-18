@@ -150,6 +150,33 @@ describe("editorPreferences", () => {
 		expect(stored).not.toHaveProperty("zoomMotionBlurTuning");
 	});
 
+	it("persists cleared Whisper runtime and model selections", () => {
+		const storedPreferences = {
+			...DEFAULT_EDITOR_PREFERENCES,
+			whisperExecutablePath: "C:\\Tools\\whisper\\whisper-cli.exe",
+			whisperModelPath: "C:\\Models\\ggml-small.bin",
+		};
+		const settingsStore = stubElectronSettings({
+			[EDITOR_PREFERENCES_STORAGE_KEY]: storedPreferences,
+		});
+		vi.stubGlobal(
+			"localStorage",
+			createStorageMock({
+				[EDITOR_PREFERENCES_STORAGE_KEY]: JSON.stringify(storedPreferences),
+			}),
+		);
+
+		saveEditorPreferences({
+			whisperExecutablePath: null,
+			whisperModelPath: null,
+		});
+
+		expect(settingsStore.get(EDITOR_PREFERENCES_STORAGE_KEY)).toMatchObject({
+			whisperExecutablePath: null,
+			whisperModelPath: null,
+		});
+	});
+
 	it("loads stored editor control preferences", () => {
 		vi.stubGlobal(
 			"localStorage",
