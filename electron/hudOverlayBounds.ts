@@ -50,6 +50,13 @@ export function shouldExpandHudOverlayFallback({
 	return fallbackExpanded || (recordingActive && webcamPreviewVisible);
 }
 
+export function shouldResizeHudOverlayFallback(
+	mousePassthroughSupported: boolean,
+	recordingActive: boolean,
+): boolean {
+	return !mousePassthroughSupported && !recordingActive;
+}
+
 export function resizeHudOverlayFallbackBounds(
 	workArea: HudOverlayWorkArea,
 	currentBounds: HudOverlayWorkArea,

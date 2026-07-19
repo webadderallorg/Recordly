@@ -9,6 +9,7 @@ import {
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
+	shouldResizeHudOverlayFallback,
 } from "./hudOverlayBounds";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
@@ -310,8 +311,9 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 		return;
 	}
 
-	if (!isHudOverlayMousePassthroughSupported()) {
-		if (process.platform !== "linux") {
+	const mousePassthroughSupported = isHudOverlayMousePassthroughSupported();
+	if (!mousePassthroughSupported) {
+		if (shouldResizeHudOverlayFallback(mousePassthroughSupported, hudOverlayRecordingActive)) {
 			setHudOverlayFallbackExpanded(!ignore);
 		}
 		hudOverlayWindow.setIgnoreMouseEvents(false);
