@@ -1,10 +1,24 @@
+export type CaptureRegion = {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	displayBounds: WindowBounds;
+	scaleFactor: number;
+	pixelX: number;
+	pixelY: number;
+	pixelWidth: number;
+	pixelHeight: number;
+};
+
 export type SelectedSource = {
 	id?: string;
 	name: string;
 	display_id?: string;
-	sourceType?: "screen" | "window";
+	sourceType?: "screen" | "window" | "region";
 	appName?: string;
 	windowTitle?: string;
+	captureRegion?: CaptureRegion;
 	[key: string]: unknown;
 };
 

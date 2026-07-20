@@ -4,9 +4,10 @@ export interface DesktopSource {
 	thumbnail: string | null;
 	display_id: string;
 	appIcon: string | null;
-	sourceType?: "screen" | "window";
+	sourceType?: "screen" | "window" | "region";
 	appName?: string;
 	windowTitle?: string;
+	captureRegion?: ProcessedDesktopSource["captureRegion"];
 }
 
 /**
@@ -44,6 +45,7 @@ export function mapRawSource(s: DesktopSource): DesktopSource {
 		sourceType: type,
 		appName,
 		windowTitle: s.windowTitle ?? displayName,
+		captureRegion: s.captureRegion,
 	};
 }
 

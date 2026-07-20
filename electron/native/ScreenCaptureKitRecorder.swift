@@ -14,6 +14,10 @@ struct CaptureConfig: Codable {
 	let microphoneDeviceId: String?
 	let microphoneLabel: String?
 	let microphoneOutputPath: String?
+	let regionX: CGFloat?
+	let regionY: CGFloat?
+	let regionWidth: CGFloat?
+	let regionHeight: CGFloat?
 }
 
 let targetCaptureFPS = 60
@@ -127,8 +131,26 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
 			let displayBounds = CGDisplayBounds(display.displayID)
 			let scaleFactor = ScreenCaptureRecorder.scaleFactor(for: display.displayID)
-			outputWidth = max(2, Int(displayBounds.width) * scaleFactor)
-			outputHeight = max(2, Int(displayBounds.height) * scaleFactor)
+			if let requestedWidth = config.regionWidth,
+			   let requestedHeight = config.regionHeight,
+			   requestedWidth > 0,
+			   requestedHeight > 0 {
+				let regionX = max(0, min(config.regionX ?? 0, displayBounds.width - 2))
+				let regionY = max(0, min(config.regionY ?? 0, displayBounds.height - 2))
+				let regionWidth = max(2, min(requestedWidth, displayBounds.width - regionX))
+				let regionHeight = max(2, min(requestedHeight, displayBounds.height - regionY))
+				streamConfig.sourceRect = CGRect(
+					x: regionX,
+					y: regionY,
+					width: regionWidth,
+					height: regionHeight
+				)
+				outputWidth = max(2, (Int(regionWidth * CGFloat(scaleFactor)) / 2) * 2)
+				outputHeight = max(2, (Int(regionHeight * CGFloat(scaleFactor)) / 2) * 2)
+			} else {
+				outputWidth = max(2, Int(displayBounds.width) * scaleFactor)
+				outputHeight = max(2, Int(displayBounds.height) * scaleFactor)
+			}
 			streamConfig.width = outputWidth
 			streamConfig.height = outputHeight
 		}
@@ -715,4 +737,3 @@ DispatchQueue.global(qos: .utility).async {
 }
 
 service.waitUntilFinished()
-

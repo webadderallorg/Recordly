@@ -6,6 +6,7 @@
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.System.h>
 
+#include <algorithm>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -38,6 +39,10 @@ struct CaptureConfig {
     int displayY = 0;
     int displayW = 0;
     int displayH = 0;
+    int cropX = 0;
+    int cropY = 0;
+    int cropWidth = 0;
+    int cropHeight = 0;
     bool hasDisplayBounds = false;
     bool captureSystemAudio = false;
     bool captureMic = false;
@@ -116,6 +121,15 @@ static bool parseSimpleJson(const std::string& json, CaptureConfig& config) {
 
     int height = findInt("height");
     if (height > 0) config.height = height;
+
+    int cropX = findInt("cropX");
+    int cropY = findInt("cropY");
+    int cropWidth = findInt("cropWidth");
+    int cropHeight = findInt("cropHeight");
+    if (cropX >= 0) config.cropX = cropX;
+    if (cropY >= 0) config.cropY = cropY;
+    if (cropWidth > 0) config.cropWidth = cropWidth;
+    if (cropHeight > 0) config.cropHeight = cropHeight;
 
     config.audioOutputPath = findString("audioOutputPath");
     config.micOutputPath = findString("micOutputPath");
@@ -325,6 +339,16 @@ int main(int argc, char* argv[]) {
     captureWidth = (captureWidth / 2) * 2;
     captureHeight = (captureHeight / 2) * 2;
 
+    const bool cropsDisplay = config.windowHandle <= 0 && config.cropWidth > 0 && config.cropHeight > 0;
+    if (cropsDisplay) {
+        config.cropX = std::max(0, std::min(config.cropX, session.captureWidth() - 2));
+        config.cropY = std::max(0, std::min(config.cropY, session.captureHeight() - 2));
+        captureWidth = std::max(2, std::min(captureWidth, session.captureWidth() - config.cropX));
+        captureHeight = std::max(2, std::min(captureHeight, session.captureHeight() - config.cropY));
+        captureWidth = (captureWidth / 2) * 2;
+        captureHeight = (captureHeight / 2) * 2;
+    }
+
     // Initialize encoder
     MFEncoder encoder;
     std::wstring outputPathW = utf8ToWide(config.outputPath);
@@ -332,6 +356,23 @@ int main(int argc, char* argv[]) {
                            session.device(), session.context())) {
         std::cerr << "ERROR: Failed to initialize Media Foundation encoder" << std::endl;
         return 1;
+    }
+
+    ComPtr<ID3D11Texture2D> croppedTexture;
+    if (cropsDisplay) {
+        D3D11_TEXTURE2D_DESC description{};
+        description.Width = static_cast<UINT>(captureWidth);
+        description.Height = static_cast<UINT>(captureHeight);
+        description.MipLevels = 1;
+        description.ArraySize = 1;
+        description.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        description.SampleDesc.Count = 1;
+        description.Usage = D3D11_USAGE_DEFAULT;
+        description.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+        if (FAILED(session.device()->CreateTexture2D(&description, nullptr, &croppedTexture))) {
+            std::cerr << "ERROR: Failed to create display crop texture" << std::endl;
+            return 1;
+        }
     }
 
     // Set up frame callback
@@ -348,7 +389,22 @@ int main(int argc, char* argv[]) {
 
         const int64_t adjustedTimestampHns = adjustedVideoTimestampHns(timestampHns);
 
-        if (encoder.writeFrame(texture, adjustedTimestampHns)) {
+        ID3D11Texture2D* encoderTexture = texture;
+        if (croppedTexture) {
+            D3D11_BOX sourceBox{
+                static_cast<UINT>(config.cropX),
+                static_cast<UINT>(config.cropY),
+                0,
+                static_cast<UINT>(config.cropX + captureWidth),
+                static_cast<UINT>(config.cropY + captureHeight),
+                1,
+            };
+            session.context()->CopySubresourceRegion(
+                croppedTexture.Get(), 0, 0, 0, 0, texture, 0, &sourceBox);
+            encoderTexture = croppedTexture.Get();
+        }
+
+        if (encoder.writeFrame(encoderTexture, adjustedTimestampHns)) {
             const int64_t writtenFrames = frameCount.fetch_add(1) + 1;
             if (writtenFrames == 1 && !recordingStartedAnnounced.exchange(true)) {
                 std::cout << "Recording started" << std::endl;

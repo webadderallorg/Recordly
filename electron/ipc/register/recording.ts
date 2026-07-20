@@ -435,12 +435,12 @@ export function registerRecordingHandlers(
 					const timestamp = Date.now();
 					const outputPath = path.join(recordingsDir, `recording-${timestamp}.mp4`);
 					tempVideoPath = path.join(app.getPath("temp"), `recordly-native-${timestamp}.mp4`);
-					
+
 					let captureOutput = "";
 					let systemAudioPath: string | null = null;
 					let microphonePath: string | null = null;
 					let orphanedMicAudioPath: string | null = null;
-					
+
 					const browserMicFallbackRequested =
 						shouldStartWindowsBrowserMicrophoneFallback(options);
 					const captureTarget = resolveWindowsCaptureTarget(
@@ -483,11 +483,19 @@ export function registerRecordingHandlers(
 							// Fallback to coordinate-based matching if handle resolution fails
 							config.displayId = captureTarget.displayId;
 						}
-						
+
 						config.displayX = Math.round(captureTarget.bounds.x);
 						config.displayY = Math.round(captureTarget.bounds.y);
 						config.displayW = Math.round(captureTarget.bounds.width);
 						config.displayH = Math.round(captureTarget.bounds.height);
+						if (source.captureRegion) {
+							config.cropX = source.captureRegion.pixelX;
+							config.cropY = source.captureRegion.pixelY;
+							config.cropWidth = source.captureRegion.pixelWidth;
+							config.cropHeight = source.captureRegion.pixelHeight;
+							config.width = source.captureRegion.pixelWidth;
+							config.height = source.captureRegion.pixelHeight;
+						}
 					}
 
 					if (options?.capturesSystemAudio) {
@@ -744,6 +752,12 @@ export function registerRecordingHandlers(
 					config.displayId = screenId;
 				} else {
 					config.displayId = Number(getScreen().getPrimaryDisplay().id);
+				}
+				if (source.captureRegion) {
+					config.regionX = source.captureRegion.x;
+					config.regionY = source.captureRegion.y;
+					config.regionWidth = source.captureRegion.width;
+					config.regionHeight = source.captureRegion.height;
 				}
 
 				setNativeCaptureOutputBuffer("");
