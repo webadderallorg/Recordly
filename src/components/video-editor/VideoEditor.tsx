@@ -576,13 +576,26 @@ export default function VideoEditor() {
 	const [whisperModelPath, setWhisperModelPath] = useState<string | null>(
 		initialEditorPreferences.whisperModelPath,
 	);
-	const [downloadedWhisperModelPath, setDownloadedWhisperModelPath] = useState<string | null>(
-		null,
+	// ── Multi-model state ──────────────────────────────────────────────
+	const [selectedModelId, setSelectedModelId] = useState<string>(
+		initialEditorPreferences.selectedModelId ?? "sensevoice-small",
 	);
-	const [whisperModelDownloadStatus, setWhisperModelDownloadStatus] = useState<
-		"idle" | "downloading" | "downloaded" | "error"
-	>(initialEditorPreferences.whisperModelPath ? "downloaded" : "idle");
-	const [whisperModelDownloadProgress, setWhisperModelDownloadProgress] = useState(0);
+	const [availableModels, setAvailableModels] = useState<
+		Array<{
+			id: string;
+			name: string;
+			engine: string;
+			sizeLabel?: string;
+			languages: string[];
+			description: string;
+		}>
+	>([]);
+	const [modelStatuses, setModelStatuses] = useState<
+		Record<string, { exists: boolean; path?: string | null }>
+	>({});
+	const [modelDownloadProgress, setModelDownloadProgress] = useState<
+		Record<string, { status: string; progress: number }>
+	>({});
 	const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
 	const [isExporting, setIsExporting] = useState(false);
 	const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
@@ -813,6 +826,7 @@ export default function VideoEditor() {
 			autoCaptionSettings: { ...autoCaptionSettings },
 			whisperExecutablePath,
 			whisperModelPath,
+			selectedModelId,
 		}),
 		[
 			wallpaper,
@@ -870,6 +884,7 @@ export default function VideoEditor() {
 			autoCaptionSettings,
 			whisperExecutablePath,
 			whisperModelPath,
+			selectedModelId,
 		],
 	);
 
@@ -2734,16 +2749,28 @@ export default function VideoEditor() {
 		whisperModelPath,
 	]);
 
+	// ── Multi-model: load available models & statuses ───────────────────
 	useEffect(() => {
-		const unsubscribe = window.electronAPI.onWhisperSmallModelDownloadProgress((state) => {
-			setWhisperModelDownloadStatus(state.status);
-			setWhisperModelDownloadProgress(state.progress);
-			if (state.status === "downloaded") {
-				setDownloadedWhisperModelPath(state.path ?? null);
-				setWhisperModelPath((currentPath) => currentPath ?? state.path ?? null);
+		const unsubscribe = window.electronAPI.onModelDownloadProgress((state) => {
+			setModelDownloadProgress((prev) => ({
+				...prev,
+				[state.modelId]: { status: state.status, progress: state.progress },
+			}));
+			if (state.status === "downloaded" && state.path) {
+				setModelStatuses((prev) => ({
+					...prev,
+					[state.modelId]: { exists: true, path: state.path },
+				}));
+				// If this is the selected model, also update whisperModelPath
+				if (state.modelId === selectedModelId) {
+					setWhisperModelPath(state.path);
+				}
 			}
 			if (state.status === "idle") {
-				setDownloadedWhisperModelPath(null);
+				setModelStatuses((prev) => ({
+					...prev,
+					[state.modelId]: { exists: false, path: null },
+				}));
 			}
 			if (state.status === "error" && state.error) {
 				toast.error(state.error);
@@ -2751,22 +2778,32 @@ export default function VideoEditor() {
 		});
 
 		void (async () => {
-			const result = await window.electronAPI.getWhisperSmallModelStatus();
-			if (!result.success) {
-				return;
+			// Load available models
+			try {
+				const models = await window.electronAPI.getAvailableModels();
+				setAvailableModels(models);
+			} catch {
+				// fallback: models list stays empty
 			}
 
-			if (result.exists && result.path) {
-				setDownloadedWhisperModelPath(result.path);
-				setWhisperModelPath((currentPath) => currentPath ?? result.path ?? null);
-				setWhisperModelDownloadStatus("downloaded");
-				setWhisperModelDownloadProgress(100);
-				return;
+			// Load status for all models (check which are already downloaded)
+			try {
+				const models = await window.electronAPI.getAvailableModels();
+				for (const model of models) {
+					const result = await window.electronAPI.getModelStatus(model.id);
+					if (result.success) {
+						setModelStatuses((prev) => ({
+							...prev,
+							[model.id]: { exists: result.exists, path: result.path },
+						}));
+						if (result.exists && result.path && model.id === selectedModelId) {
+							setWhisperModelPath(result.path);
+						}
+					}
+				}
+			} catch {
+				// ignore
 			}
-
-			setDownloadedWhisperModelPath(null);
-			setWhisperModelDownloadStatus("idle");
-			setWhisperModelDownloadProgress(0);
 		})();
 
 		return () => unsubscribe?.();
@@ -2782,25 +2819,74 @@ export default function VideoEditor() {
 		toast.success("Whisper executable selected");
 	}, []);
 
-	const handleDownloadWhisperSmallModel = useCallback(async () => {
-		if (whisperModelDownloadStatus === "downloading") {
-			return;
-		}
+	const handleDownloadModel = useCallback(
+		async (modelId: string) => {
+			const current = modelDownloadProgress[modelId];
+			if (current?.status === "downloading") return;
 
-		setWhisperModelDownloadStatus("downloading");
-		setWhisperModelDownloadProgress(0);
-		const result = await window.electronAPI.downloadWhisperSmallModel();
-		if (!result.success) {
-			setWhisperModelDownloadStatus("error");
-			toast.error(result.error || "Failed to download Whisper model");
-			return;
-		}
+			setModelDownloadProgress((prev) => ({
+				...prev,
+				[modelId]: { status: "downloading", progress: 0 },
+			}));
+			const result = await window.electronAPI.downloadModel(modelId);
+			if (!result.success) {
+				setModelDownloadProgress((prev) => ({
+					...prev,
+					[modelId]: { status: "error", progress: 0 },
+				}));
+				toast.error(result.error || "Failed to download model");
+				return;
+			}
+			if (result.path) {
+				setModelStatuses((prev) => ({
+					...prev,
+					[modelId]: { exists: true, path: result.path },
+				}));
+				if (modelId === selectedModelId) {
+					setWhisperModelPath(result.path);
+				}
+			}
+		},
+		[modelDownloadProgress, selectedModelId],
+	);
 
-		if (result.path) {
-			setDownloadedWhisperModelPath(result.path);
-			setWhisperModelPath(result.path);
-		}
-	}, [whisperModelDownloadStatus]);
+	const handleDeleteModel = useCallback(
+		async (modelId: string) => {
+			const result = await window.electronAPI.deleteModel(modelId);
+			if (!result.success) {
+				toast.error(result.error || "Failed to delete model");
+				setModelDownloadProgress((prev) => ({
+					...prev,
+					[modelId]: { status: "idle", progress: 0 },
+				}));
+				return;
+			}
+			setModelStatuses((prev) => ({
+				...prev,
+				[modelId]: { exists: false, path: null },
+				}));
+			setModelDownloadProgress((prev) => ({
+				...prev,
+				[modelId]: { status: "idle", progress: 0 },
+				}));
+			// If deleted model was selected, clear whisperModelPath
+			if (modelId === selectedModelId) {
+				setWhisperModelPath(null);
+			}
+			toast.success("Model deleted");
+		},
+		[selectedModelId],
+	);
+
+	const handleSelectModel = useCallback(
+		(modelId: string) => {
+			setSelectedModelId(modelId);
+			// Update whisperModelPath to the selected model's path
+			const status = modelStatuses[modelId];
+			setWhisperModelPath(status?.exists ? (status.path ?? null) : null);
+		},
+		[modelStatuses],
+	);
 
 	const handlePickWhisperModel = useCallback(async () => {
 		const result = await window.electronAPI.openWhisperModelPicker();
@@ -2811,25 +2897,6 @@ export default function VideoEditor() {
 		setWhisperModelPath(result.path);
 		toast.success("Whisper model selected");
 	}, []);
-
-	const handleDeleteWhisperSmallModel = useCallback(async () => {
-		const result = await window.electronAPI.deleteWhisperSmallModel();
-		if (!result.success) {
-			toast.error(result.error || "Failed to delete Whisper model");
-			// Reset download state so re-download is not blocked
-			setWhisperModelDownloadStatus("idle");
-			setWhisperModelDownloadProgress(0);
-			return;
-		}
-
-		setWhisperModelPath((currentPath) =>
-			currentPath === downloadedWhisperModelPath ? null : currentPath,
-		);
-		setDownloadedWhisperModelPath(null);
-		setWhisperModelDownloadStatus("idle");
-		setWhisperModelDownloadProgress(0);
-		toast.success("Whisper model deleted");
-	}, [downloadedWhisperModelPath]);
 
 	const handleGenerateAutoCaptions = useCallback(async () => {
 		if (isGeneratingCaptions) {
@@ -2878,6 +2945,7 @@ export default function VideoEditor() {
 				videoPath: sourcePath,
 				whisperExecutablePath: whisperExecutablePath ?? undefined,
 				whisperModelPath,
+				modelId: selectedModelId,
 				language: autoCaptionSettings.language,
 			});
 
@@ -6534,12 +6602,17 @@ export default function VideoEditor() {
 								autoCaptionSettings={autoCaptionSettings}
 								whisperExecutablePath={whisperExecutablePath}
 								whisperModelPath={whisperModelPath}
-								whisperModelDownloadStatus={whisperModelDownloadStatus}
-								whisperModelDownloadProgress={whisperModelDownloadProgress}
 								isGeneratingCaptions={isGeneratingCaptions}
+								selectedModelId={selectedModelId}
+								availableModels={availableModels}
+								modelStatuses={modelStatuses}
+								modelDownloadProgress={modelDownloadProgress}
 								onAutoCaptionSettingsChange={setAutoCaptionSettings}
 								onPickWhisperExecutable={handlePickWhisperExecutable}
 								onPickWhisperModel={handlePickWhisperModel}
+								onSelectModel={handleSelectModel}
+								onDownloadModel={handleDownloadModel}
+								onDeleteModel={handleDeleteModel}
 								onGenerateAutoCaptions={handleGenerateAutoCaptions}
 								onClearAutoCaptions={handleClearAutoCaptions}
 								captionCurrentTimeMs={Math.round(currentTime * 1000)}
@@ -6550,8 +6623,6 @@ export default function VideoEditor() {
 								onCaptionSplit={handleCaptionSplit}
 								onCaptionMerge={handleCaptionMerge}
 								onCaptionDelete={handleCaptionDelete}
-								onDownloadWhisperSmallModel={handleDownloadWhisperSmallModel}
-								onDeleteWhisperSmallModel={handleDeleteWhisperSmallModel}
 								nativeCaptureUnavailableSession={sessionNativeCaptureUnavailable}
 								onOpenNativeCaptureUnavailableModal={() =>
 									setNativeCaptureUnavailableModalOpen(true)

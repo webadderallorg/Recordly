@@ -96,6 +96,13 @@ export async function resolveCaptionAudioCandidates(videoPath: string) {
 		candidates.push({ path: normalizedCandidatePath, label });
 	};
 
+	// Companion audio (mic/system) should be tried FIRST - they have the best audio quality
+	const videoDir = path.dirname(videoPath);
+	const videoExt = path.extname(videoPath);
+	const videoBase = path.basename(videoPath, videoExt);
+	pushCandidate(path.join(videoDir, `${videoBase}.mic.wav`), "microphone");
+	pushCandidate(path.join(videoDir, `${videoBase}.system.wav`), "system audio");
+
 	pushCandidate(videoPath, "recording");
 
 	const requestedRecordingSession = await resolveRecordingSession(videoPath);
@@ -190,8 +197,46 @@ export async function generateAutoCaptionsFromVideo(options: {
 	videoPath: string;
 	whisperExecutablePath?: string;
 	whisperModelPath: string;
+	modelId?: string;
 	language?: string;
 }) {
+	// ── Engine dispatch: SenseVoice ──────────────────────────────────────
+	if (options.modelId) {
+		const { getModelById } = await import("./models");
+		const model = getModelById(options.modelId);
+		if (model?.engine === "sensevoice") {
+			const { SenseVoiceEngine } = await import("./sensevoice");
+			const engine = new SenseVoiceEngine();
+			const ffmpegPath = getFfmpegBinaryPath();
+			const tempDir = app.getPath("temp");
+			const wavPath = path.join(tempDir, `sensevoice-${Date.now()}.wav`);
+
+			// Use the same audio extraction as whisper path
+			const audioSource = await extractCaptionAudioSource({
+				videoPath: options.videoPath,
+				ffmpegPath,
+				wavPath,
+			});
+
+			const result = await engine.generate({
+				audioPath: wavPath,
+				modelPath: options.whisperModelPath,
+				model,
+				language: options.language,
+				tempDir,
+			});
+
+			// Cleanup temp WAV
+			await fs.rm(wavPath, { force: true }).catch(() => undefined);
+
+			if (!result.success) {
+				throw new Error(result.error || "SenseVoice caption generation failed.");
+			}
+			return { success: true, cues: result.cues, audioSourceLabel: audioSource.label };
+		}
+	}
+
+	// ── Engine: whisper.cpp (default) ────────────────────────────────────
 	const ffmpegPath = getFfmpegBinaryPath();
 	const normalizedVideoPath = normalizeVideoSourcePath(options.videoPath);
 	if (!normalizedVideoPath) {
@@ -292,6 +337,7 @@ export async function generateAutoCaptionsFromVideo(options: {
 		}
 
 		return {
+			success: true,
 			cues: cuesToReturn,
 			audioSourceLabel: audioSource.label,
 		};

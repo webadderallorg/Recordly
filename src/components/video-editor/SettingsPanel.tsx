@@ -830,16 +830,26 @@ interface SettingsPanelProps {
 	autoCaptionSettings?: AutoCaptionSettings;
 	whisperExecutablePath?: string | null;
 	whisperModelPath?: string | null;
-	whisperModelDownloadStatus?: "idle" | "downloading" | "downloaded" | "error";
-	whisperModelDownloadProgress?: number;
 	isGeneratingCaptions?: boolean;
+	selectedModelId?: string;
+	availableModels?: Array<{
+		id: string;
+		name: string;
+		engine: string;
+		sizeLabel?: string;
+		languages: string[];
+		description: string;
+	}>;
+	modelStatuses?: Record<string, { exists: boolean; path?: string | null }>;
+	modelDownloadProgress?: Record<string, { status: string; progress: number }>;
 	onAutoCaptionSettingsChange?: (settings: AutoCaptionSettings) => void;
 	onPickWhisperExecutable?: () => void;
 	onPickWhisperModel?: () => void;
+	onSelectModel?: (modelId: string) => void;
+	onDownloadModel?: (modelId: string) => void;
+	onDeleteModel?: (modelId: string) => void;
 	onGenerateAutoCaptions?: () => void;
 	onClearAutoCaptions?: () => void;
-	onDownloadWhisperSmallModel?: () => void;
-	onDeleteWhisperSmallModel?: () => void;
 	captionCurrentTimeMs?: number;
 	selectedCaptionId?: string | null;
 	onBeginCaptionEdit?: (id: string) => void;
@@ -1273,15 +1283,17 @@ export function SettingsPanel({
 	autoCaptions = [],
 	autoCaptionSettings = DEFAULT_AUTO_CAPTION_SETTINGS,
 	whisperModelPath,
-	whisperModelDownloadStatus = "idle",
-	whisperModelDownloadProgress = 0,
 	isGeneratingCaptions = false,
+	selectedModelId = "sensevoice-small",
+	availableModels = [],
+	modelStatuses = {},
+	modelDownloadProgress = {},
 	onAutoCaptionSettingsChange,
-	onPickWhisperModel,
+	onSelectModel,
+	onDownloadModel,
+	onDeleteModel,
 	onGenerateAutoCaptions,
 	onClearAutoCaptions,
-	onDownloadWhisperSmallModel,
-	onDeleteWhisperSmallModel,
 	captionCurrentTimeMs = 0,
 	selectedCaptionId = null,
 	onBeginCaptionEdit,
@@ -2648,16 +2660,53 @@ export function SettingsPanel({
 			</div>
 
 			<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2 space-y-3">
+				{/* ── Model Selector ─────────────────────────────────────── */}
 				<div>
-					<Button
-						type="button"
-						variant="outline"
-						onClick={onPickWhisperModel}
-						className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
+					<div className="text-sm font-medium text-foreground mb-1">
+						{tSettings("captions.model", "Model")}
+					</div>
+					<Select
+						value={selectedModelId}
+						onValueChange={(value) => onSelectModel?.(value)}
 					>
-						{tSettings("captions.selectModel", "Select Model")}
-					</Button>
+						<SelectTrigger className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent className="border-foreground/10 bg-editor-surface-alt text-foreground">
+							{/* SenseVoice models */}
+							{availableModels
+								.filter((m) => m.engine === "sensevoice")
+								.map((model) => (
+									<SelectItem key={model.id} value={model.id}>
+										{model.name}
+										{model.sizeLabel ? ` (${model.sizeLabel})` : ""}
+									</SelectItem>
+								))}
+							{/* Whisper models */}
+							{availableModels
+								.filter((m) => m.engine === "whisper")
+								.map((model) => (
+									<SelectItem key={model.id} value={model.id}>
+										{model.name}
+										{model.sizeLabel ? ` (${model.sizeLabel})` : ""}
+									</SelectItem>
+								))}
+						</SelectContent>
+					</Select>
 				</div>
+
+				{/* ── Model description ────────────────────────────────── */}
+				{(() => {
+					const currentModel = availableModels.find((m) => m.id === selectedModelId);
+					if (!currentModel) return null;
+					return (
+						<div className="text-[10px] text-muted-foreground leading-tight">
+							{currentModel.description}
+						</div>
+					);
+				})()}
+
+				{/* ── Language ─────────────────────────────────────────── */}
 				<div className="flex items-center justify-between gap-3">
 					<div className="text-sm font-medium text-foreground">
 						{tSettings("captions.language", "Language")}
@@ -2678,46 +2727,75 @@ export function SettingsPanel({
 						</SelectContent>
 					</Select>
 				</div>
-				<div className="flex flex-wrap items-center gap-2">
-					<div className="grid w-full grid-cols-2 gap-2">
-						{whisperModelDownloadStatus === "downloading" ? (
+
+				{/* ── Download / Delete / Clear ─────────────────────────── */}
+				<div className="grid w-full grid-cols-2 gap-2">
+					{(() => {
+						const dlStatus = modelDownloadProgress[selectedModelId];
+						const status = modelStatuses[selectedModelId];
+						const isDownloaded = status?.exists;
+						const isDownloading = dlStatus?.status === "downloading";
+
+						if (isDownloading) {
+							return (
+								<Button
+									type="button"
+									disabled
+									className="h-10 w-full rounded-xl bg-foreground/10 px-4 text-sm font-medium text-foreground"
+								>
+									{tSettings("captions.downloading", "Downloading...")} {" "}
+									{Math.round(dlStatus?.progress ?? 0)}%
+								</Button>
+								);
+						}
+						if (isDownloaded) {
+							return (
+								<Button
+									type="button"
+									variant="outline"
+									onClick={() => onDeleteModel?.(selectedModelId)}
+									className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
+								>
+									{tSettings("captions.deleteModel", "Delete Model")}
+								</Button>
+								);
+						}
+						return (
 							<Button
 								type="button"
-								disabled
-								className="h-10 w-full rounded-xl bg-foreground/10 px-4 text-sm font-medium text-foreground hover:bg-foreground/10"
-							>
-								{tSettings("captions.downloading", "Downloading...")}{" "}
-								{Math.round(whisperModelDownloadProgress)}%
-							</Button>
-						) : whisperModelPath ? (
-							<Button
-								type="button"
-								variant="outline"
-								onClick={onDeleteWhisperSmallModel}
-								className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
-							>
-								{tSettings("captions.deleteModel", "Delete Model")}
-							</Button>
-						) : (
-							<Button
-								type="button"
-								onClick={onDownloadWhisperSmallModel}
+								onClick={() => onDownloadModel?.(selectedModelId)}
 								className="h-10 w-full rounded-xl bg-[#2563EB] px-4 text-sm font-medium text-white hover:bg-[#2563EB]/90"
 							>
 								{tSettings("captions.downloadModel", "Download Model")}
 							</Button>
-						)}
-						<Button
-							type="button"
-							variant="outline"
-							onClick={onClearAutoCaptions}
-							disabled={captionCueCount === 0}
-							className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
-						>
-							{tSettings("captions.clearFull", "Clear Captions")}
-						</Button>
-					</div>
+							);
+					})()}
+					<Button
+						type="button"
+						variant="outline"
+						onClick={onClearAutoCaptions}
+						disabled={captionCueCount === 0}
+						className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+					>
+						{tSettings("captions.clearFull", "Clear Captions")}
+					</Button>
 				</div>
+
+				{/* ── Download progress bar ────────────────────────────── */}
+				{(() => {
+					const dlStatus = modelDownloadProgress[selectedModelId];
+					if (dlStatus?.status !== "downloading") return null;
+					return (
+						<div className="h-2 overflow-hidden rounded-full bg-foreground/5">
+							<div
+								className="h-full rounded-full bg-[#2196f3] transition-all"
+								style={{ width: `${dlStatus?.progress ?? 0}%` }}
+							/>
+						</div>
+					);
+				})()}
+
+				{/* ── Generate button ──────────────────────────────────── */}
 				<div className="flex flex-col gap-2">
 					<Button
 						type="button"
@@ -2743,14 +2821,6 @@ export function SettingsPanel({
 						</div>
 					) : null}
 				</div>
-				{whisperModelDownloadStatus === "downloading" ? (
-					<div className="h-2 overflow-hidden rounded-full bg-foreground/5">
-						<div
-							className="h-full rounded-full bg-[#2196f3] transition-all"
-							style={{ width: `${whisperModelDownloadProgress}%` }}
-						/>
-					</div>
-				) : null}
 			</div>
 
 			<div className="flex flex-col gap-1.5">

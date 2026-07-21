@@ -73,6 +73,7 @@ export interface EditorPresetSnapshot extends PersistedEditorControls {
 	autoCaptionSettings: PresetAutoCaptionSettings;
 	whisperExecutablePath: string | null;
 	whisperModelPath: string | null;
+	selectedModelId: string;
 }
 
 export interface EditorPreset {
@@ -90,6 +91,7 @@ export interface EditorPreferences extends PersistedEditorControls {
 	autoApplyFreshRecordingAutoZooms: boolean;
 	whisperExecutablePath: string | null;
 	whisperModelPath: string | null;
+	selectedModelId: string;
 }
 
 export const EDITOR_PREFERENCES_STORAGE_KEY = "recordly.editor.preferences";
@@ -155,6 +157,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	autoApplyFreshRecordingAutoZooms: true,
 	whisperExecutablePath: null,
 	whisperModelPath: null,
+	selectedModelId: "sensevoice-small",
 };
 
 function normalizeBoolean(value: unknown, fallback: boolean): boolean {
@@ -221,6 +224,10 @@ function normalizeEditorPresetSnapshot(candidate: unknown): EditorPresetSnapshot
 			normalizedPreferences.whisperExecutablePath,
 		whisperModelPath:
 			normalizeNullablePath(raw.whisperModelPath) ?? normalizedPreferences.whisperModelPath,
+		selectedModelId:
+			typeof raw.selectedModelId === "string" && raw.selectedModelId
+				? raw.selectedModelId
+				: normalizedPreferences.selectedModelId,
 	};
 }
 
@@ -444,6 +451,10 @@ export function normalizeEditorPreferences(
 		whisperExecutablePath:
 			normalizeNullablePath(raw.whisperExecutablePath) ?? fallback.whisperExecutablePath,
 		whisperModelPath: normalizeNullablePath(raw.whisperModelPath) ?? fallback.whisperModelPath,
+		selectedModelId:
+			typeof raw.selectedModelId === "string" && raw.selectedModelId
+				? raw.selectedModelId
+				: fallback.selectedModelId,
 	};
 }
 

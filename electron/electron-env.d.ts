@@ -673,21 +673,32 @@ interface Window {
 			canceled?: boolean;
 			error?: string;
 		}>;
-		getWhisperSmallModelStatus: () => Promise<{
+		// ── Multi-model API ─────────────────────────────────────────────
+		getAvailableModels: () => Promise<
+			Array<{
+				id: string;
+				name: string;
+				engine: string;
+				sizeLabel?: string;
+				languages: string[];
+				description: string;
+			}>
+		>;
+		getModelStatus: (modelId: string) => Promise<{
 			success: boolean;
 			exists: boolean;
 			path?: string | null;
 			error?: string;
 		}>;
-		downloadWhisperSmallModel: () => Promise<{
+		downloadModel: (modelId: string) => Promise<{
 			success: boolean;
 			path?: string;
-			alreadyDownloaded?: boolean;
 			error?: string;
 		}>;
-		deleteWhisperSmallModel: () => Promise<{ success: boolean; error?: string }>;
-		onWhisperSmallModelDownloadProgress: (
+		deleteModel: (modelId: string) => Promise<{ success: boolean; error?: string }>;
+		onModelDownloadProgress: (
 			callback: (state: {
+				modelId: string;
 				status: "idle" | "downloading" | "downloaded" | "error";
 				progress: number;
 				path?: string | null;
@@ -698,6 +709,7 @@ interface Window {
 			videoPath: string;
 			whisperExecutablePath?: string;
 			whisperModelPath: string;
+			modelId?: string;
 			language?: string;
 		}) => Promise<{
 			success: boolean;
