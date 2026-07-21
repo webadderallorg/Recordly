@@ -226,12 +226,13 @@ export async function generateAutoCaptionsFromVideo(options: {
 				tempDir,
 			});
 
-			// Cleanup temp WAV
-			await fs.rm(wavPath, { force: true }).catch(() => undefined);
-
 			if (!result.success) {
+				await fs.rm(wavPath, { force: true }).catch(() => undefined);
 				throw new Error(result.error || "SenseVoice caption generation failed.");
 			}
+
+			await fs.rm(wavPath, { force: true }).catch(() => undefined);
+
 			return { success: true, cues: result.cues, audioSourceLabel: audioSource.label };
 		}
 	}

@@ -3,11 +3,6 @@ import path from "node:path";
 import * as sherpa from "sherpa-onnx";
 import type { CaptionEngine, CaptionCuePayload, GenerateCaptionOptions, GenerateCaptionResult } from "./engine";
 
-/**
- * Minimum gap in seconds between tokens to split into separate cues.
- */
-const CUE_SPLIT_GAP_S = 1.0;
-
 function mapLanguage(language: string): string {
 	switch (language) {
 		case "zh": case "yue": case "ja": case "ko": case "en":
@@ -18,57 +13,59 @@ function mapLanguage(language: string): string {
 }
 
 /**
- * Group tokens by timing gaps, merge subword pieces into readable text.
+ * Merge BPE subword tokens into readable words with timing spans.
+ * Returns [{text, startMs, endMs}, ...] for use by the existing phrase segmenter.
  */
-function buildCuesFromTimestamps(
-	tokens: string[],
-	timestamps: number[],
-): CaptionCuePayload[] {
+function tokensToWords(tokens: string[], timestamps: number[]): Array<{ text: string; startMs: number; endMs: number }> {
 	if (tokens.length === 0 || timestamps.length === 0) return [];
 
-	const cues: CaptionCuePayload[] = [];
-	let groupStartIdx = 0;
+	const words: Array<{ text: string; startMs: number; endMs: number }> = [];
+	let buffer = "";
+	let startMs = Math.round(timestamps[0] * 1000);
 
-	for (let i = 1; i <= timestamps.length; i++) {
-		// Split at large gaps OR at the end of tokens
-		const gapTooBig = i < timestamps.length && timestamps[i] - timestamps[i - 1] >= CUE_SPLIT_GAP_S;
-		if (gapTooBig || i === timestamps.length) {
-			// Merge tokens in this group into readable text
-			let text = "";
-			for (let j = groupStartIdx; j < i; j++) {
-				const tok = tokens[j];
-				// BPE tokens: "hel" "lo" " " "hell" "o" -> "hello hello"
-				if (tok.startsWith(" ")) {
-					text += " ";
-					text += tok.slice(1);
-				} else if (!text.endsWith(" ") && text.length > 0 && /[\u4e00-\u9fff]/.test(tok)) {
-					// Chinese chars: no space between them
-					text += tok;
-				} else if (/[\u4e00-\u9fff]/.test(tok) && /[a-zA-Z]/.test(text.slice(-1))) {
-					// English → Chinese transition
-					text += tok;
-				} else if (text.length > 0 && /[a-zA-Z]/.test(text.slice(-1)) && /[a-zA-Z]/.test(tok)) {
-					// BPE subword merge
-					text += tok;
-				} else {
-					text += tok;
-				}
-			}
+	for (let i = 0; i < tokens.length; i++) {
+		const tok = tokens[i];
+		const tsMs = Math.round(timestamps[i] * 1000);
 
-			const trimmed = text.trim();
-			if (trimmed) {
-				cues.push({
-					id: `cue-${cues.length}`,
-					text: trimmed,
-					startMs: Math.round(timestamps[groupStartIdx] * 1000),
-					endMs: Math.round(timestamps[i - 1] * 1000),
-				});
-			}
-			groupStartIdx = i;
+		// BPE subword: "hel" + "lo" → "hello"
+		const isSubword =
+			buffer.length > 0 &&
+			!tok.startsWith(" ") &&
+			!/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(tok) &&
+			!/[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(buffer.slice(-1));
+
+		if (isSubword) {
+			buffer += tok;
+			continue;
 		}
+
+		// Compute endMs as midpoint between this word's start and the next token's start.
+		// This creates real gaps the segmenter can use.
+		const nextTsMs =
+			i + 1 < tokens.length ? Math.round(timestamps[i + 1] * 1000) : tsMs + 200;
+		const endMs = Math.round((tsMs + nextTsMs) / 2);
+
+		// Finalize previous word
+		if (buffer) {
+			words.push({ text: buffer, startMs, endMs });
+		}
+
+		// Start new word
+		if (tok.startsWith(" ")) {
+			buffer = tok.slice(1);
+		} else {
+			buffer = tok;
+		}
+		startMs = endMs;
 	}
 
-	return cues;
+	// Finalize last word
+	if (buffer) {
+		const lastTs = Math.round(timestamps[tokens.length - 1] * 1000);
+		words.push({ text: buffer, startMs, endMs: lastTs + 200 });
+	}
+
+	return words;
 }
 
 export class SenseVoiceEngine implements CaptionEngine {
@@ -98,7 +95,7 @@ export class SenseVoiceEngine implements CaptionEngine {
 				senseVoice: {
 					model: modelPath,
 					language: svLanguage,
-					useInverseTextNormalization: 0,
+					useInverseTextNormalization: 1,
 				},
 				tokens: tokensPath,
 			},
@@ -116,8 +113,7 @@ export class SenseVoiceEngine implements CaptionEngine {
 		try {
 			stream.acceptWaveform(wave.sampleRate, wave.samples);
 			recognizer.decode(stream);
-			const result = recognizer.getResult(stream);
-			const raw = result as Record<string, unknown>;
+			const raw = recognizer.getResult(stream) as Record<string, unknown>;
 			resultText = (raw.text as string) ?? "";
 			resultTokens = (raw.tokens as string[]) ?? [];
 			resultTimestamps = (raw.timestamps as number[]) ?? [];
@@ -141,12 +137,59 @@ export class SenseVoiceEngine implements CaptionEngine {
 			};
 		}
 
-		const cues = buildCuesFromTimestamps(resultTokens, resultTimestamps);
+		// Build cues directly from word timestamps.
+		// Split at pauses (≥1s) or at ~12 char cap for standard subtitle length.
+		const words = tokensToWords(resultTokens, resultTimestamps);
+		const cues: CaptionCuePayload[] = [];
 
+		if (words.length > 0) {
+			let segStartMs = words[0].startMs;
+			let segText = "";
+
+			for (let i = 0; i < words.length; i++) {
+				const w = words[i];
+				const gapToPrev = i > 0 ? w.startMs - words[i - 1].endMs : 0;
+
+				if (segText.length > 0 && (gapToPrev >= 1000 || segText.length + w.text.length > 15)) {
+					let t = segText.trim();
+					cues.push({
+						id: `cue-${cues.length}`,
+						text: t,
+						startMs: segStartMs,
+						endMs: words[i - 1].endMs,
+					});
+					segStartMs = w.startMs;
+					segText = "";
+				}
+				segText += w.text;
+			}
+
+			// Last segment
+			if (segText.length > 0) {
+				let t = segText.trim();
+				cues.push({
+					id: `cue-${cues.length}`,
+					text: t,
+					startMs: segStartMs,
+					endMs: words[words.length - 1].endMs,
+				});
+			}
+			return { success: true, cues, message: "SenseVoice transcription complete." };
+		}
+
+		// Fallback: no word timings, single cue
 		return {
 			success: true,
-			cues,
-			message: `Generated ${cues.length} caption${cues.length === 1 ? "" : "s"}.`,
+			cues: [
+				{
+					id: "cue-0",
+					text,
+					startMs: 0,
+					endMs: text.length * 80,
+					words: [{ text, startMs: 0, endMs: text.length * 80 }],
+				},
+			],
+			message: "SenseVoice transcription complete (no timestamps).",
 		};
 	}
 }
