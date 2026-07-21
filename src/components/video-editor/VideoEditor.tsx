@@ -2792,7 +2792,7 @@ export default function VideoEditor() {
 		const result = await window.electronAPI.downloadWhisperSmallModel();
 		if (!result.success) {
 			setWhisperModelDownloadStatus("error");
-			toast.error(result.error || "Failed to download Whisper small model");
+			toast.error(result.error || "Failed to download Whisper model");
 			return;
 		}
 
@@ -2815,7 +2815,7 @@ export default function VideoEditor() {
 	const handleDeleteWhisperSmallModel = useCallback(async () => {
 		const result = await window.electronAPI.deleteWhisperSmallModel();
 		if (!result.success) {
-			toast.error(result.error || "Failed to delete Whisper small model");
+			toast.error(result.error || "Failed to delete Whisper model");
 			// Reset download state so re-download is not blocked
 			setWhisperModelDownloadStatus("idle");
 			setWhisperModelDownloadProgress(0);
@@ -2828,7 +2828,7 @@ export default function VideoEditor() {
 		setDownloadedWhisperModelPath(null);
 		setWhisperModelDownloadStatus("idle");
 		setWhisperModelDownloadProgress(0);
-		toast.success("Whisper small model deleted");
+		toast.success("Whisper model deleted");
 	}, [downloadedWhisperModelPath]);
 
 	const handleGenerateAutoCaptions = useCallback(async () => {
@@ -2868,7 +2868,7 @@ export default function VideoEditor() {
 		await syncActiveVideoSource(sourcePath, webcam.sourcePath ?? null);
 
 		if (!whisperModelPath) {
-			toast.error("Select a Whisper model or download the small model first");
+			toast.error("Select a Whisper model or download the model first");
 			return;
 		}
 
