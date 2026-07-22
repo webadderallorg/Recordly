@@ -1,10 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createNoiseSuppressorWithFallback,
 	DEFAULT_NOISE_SUPPRESSION_MODE,
-	normalizeNoiseSuppressionMode,
 	type NoiseSuppressor,
+	normalizeNoiseSuppressionMode,
+	RnnoiseNoiseSuppressor,
 } from "./noiseSuppression";
+
+const rnnoiseLoad = vi.hoisted(() => vi.fn());
+
+vi.mock("@shiguredo/rnnoise-wasm", () => ({
+	Rnnoise: {
+		load: rnnoiseLoad,
+	},
+}));
 
 function createMockSuppressor({
 	initialize = vi.fn().mockResolvedValue(undefined),
@@ -18,6 +27,10 @@ function createMockSuppressor({
 	};
 }
 
+beforeEach(() => {
+	rnnoiseLoad.mockReset();
+});
+
 describe("normalizeNoiseSuppressionMode", () => {
 	it("defaults new and invalid values to RNNoise", () => {
 		expect(normalizeNoiseSuppressionMode()).toBe(DEFAULT_NOISE_SUPPRESSION_MODE);
@@ -28,6 +41,46 @@ describe("normalizeNoiseSuppressionMode", () => {
 		expect(normalizeNoiseSuppressionMode(" RNNOISE ")).toBe("rnnoise");
 		expect(normalizeNoiseSuppressionMode("speex")).toBe("speex");
 		expect(normalizeNoiseSuppressionMode("disabled")).toBe("disabled");
+	});
+});
+
+describe("RnnoiseNoiseSuppressor", () => {
+	it("buffers incomplete RNNoise frames across calls without returning raw remainder samples", async () => {
+		const processFrame = vi.fn((frame: Float32Array) => {
+			for (let index = 0; index < frame.length; index += 1) {
+				frame[index] += 100;
+			}
+		});
+		const destroy = vi.fn();
+		rnnoiseLoad.mockResolvedValue({
+			frameSize: 4,
+			createDenoiseState: () => ({
+				processFrame,
+				destroy,
+			}),
+		});
+
+		const suppressor = new RnnoiseNoiseSuppressor();
+		await suppressor.initialize();
+
+		const firstOutput = suppressor.processAudioFrame(new Float32Array([1, 2, 3, 4, 5, 6]));
+		expect(Array.from(firstOutput)).toEqual([101, 102, 103, 104, 0, 0]);
+		expect(processFrame).toHaveBeenCalledTimes(1);
+
+		const secondOutput = suppressor.processAudioFrame(new Float32Array([7, 8, 9, 10, 11, 12]));
+		expect(Array.from(secondOutput)).toEqual([105, 106, 107, 108, 109, 110]);
+		expect(processFrame).toHaveBeenCalledTimes(3);
+
+		const thirdOutput = suppressor.processAudioFrame(new Float32Array([13, 14]));
+		expect(Array.from(thirdOutput)).toEqual([111, 112]);
+		expect(processFrame).toHaveBeenCalledTimes(3);
+
+		const fourthOutput = suppressor.processAudioFrame(new Float32Array([15, 16]));
+		expect(Array.from(fourthOutput)).toEqual([113, 114]);
+		expect(processFrame).toHaveBeenCalledTimes(4);
+
+		suppressor.destroy();
+		expect(destroy).toHaveBeenCalledTimes(1);
 	});
 });
 

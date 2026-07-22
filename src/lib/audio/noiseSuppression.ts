@@ -1,5 +1,5 @@
-import { Rnnoise } from "@shiguredo/rnnoise-wasm";
 import { loadSpeexModule, SpeexPreprocessor } from "@sapphi-red/speex-preprocess-wasm";
+import { Rnnoise } from "@shiguredo/rnnoise-wasm";
 
 export type NoiseSuppressionMode = "rnnoise" | "speex" | "disabled";
 
@@ -49,6 +49,8 @@ export class RnnoiseNoiseSuppressor implements NoiseSuppressor {
 	private state: ReturnType<
 		Awaited<ReturnType<typeof Rnnoise.load>>["createDenoiseState"]
 	> | null = null;
+	private remainder = new Float32Array(0);
+	private queuedOutput = new Float32Array(0);
 
 	async initialize() {
 		console.info("[NoiseSuppression] Initializing RNNoise.");
@@ -65,27 +67,52 @@ export class RnnoiseNoiseSuppressor implements NoiseSuppressor {
 		}
 
 		const frameSize = this.rnnoise.frameSize;
-		if (frame.length === frameSize) {
-			this.state.processFrame(frame);
-			return frame;
+		const pendingInput = new Float32Array(this.remainder.length + frame.length);
+		pendingInput.set(this.remainder);
+		pendingInput.set(frame, this.remainder.length);
+
+		const completeLength = pendingInput.length - (pendingInput.length % frameSize);
+		for (let offset = 0; offset < completeLength; offset += frameSize) {
+			this.state.processFrame(pendingInput.subarray(offset, offset + frameSize));
 		}
 
-		if (frame.length < frameSize) {
-			return frame;
-		}
+		this.remainder = pendingInput.slice(completeLength);
+		this.queuedOutput = appendFloat32Arrays(
+			this.queuedOutput,
+			pendingInput.subarray(0, completeLength),
+		);
 
-		for (let offset = 0; offset + frameSize <= frame.length; offset += frameSize) {
-			this.state.processFrame(frame.subarray(offset, offset + frameSize));
+		const output = new Float32Array(frame.length);
+		const outputLength = Math.min(output.length, this.queuedOutput.length);
+		if (outputLength > 0) {
+			output.set(this.queuedOutput.subarray(0, outputLength));
+			this.queuedOutput = this.queuedOutput.slice(outputLength);
 		}
-		return frame;
+		return output;
 	}
 
 	destroy() {
 		this.state?.destroy();
 		this.state = null;
 		this.rnnoise = null;
+		this.remainder = new Float32Array(0);
+		this.queuedOutput = new Float32Array(0);
 		console.info("[NoiseSuppression] RNNoise cleanup complete.");
 	}
+}
+
+function appendFloat32Arrays(left: Float32Array, right: Float32Array) {
+	if (left.length === 0) {
+		return right.slice();
+	}
+	if (right.length === 0) {
+		return left;
+	}
+
+	const combined = new Float32Array(left.length + right.length);
+	combined.set(left);
+	combined.set(right, left.length);
+	return combined;
 }
 
 export class SpeexNoiseSuppressor implements NoiseSuppressor {
