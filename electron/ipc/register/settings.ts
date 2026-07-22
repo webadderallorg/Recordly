@@ -153,6 +153,10 @@ export function registerSettingsHandlers() {
 					typeof parsed.microphoneDeviceId === "string"
 						? parsed.microphoneDeviceId
 						: undefined,
+				noiseSuppressionMode:
+					typeof parsed.noiseSuppressionMode === "string"
+						? parsed.noiseSuppressionMode
+						: "rnnoise",
 				systemAudioEnabled: parsed.systemAudioEnabled === true,
 			};
 		} catch {
@@ -160,6 +164,7 @@ export function registerSettingsHandlers() {
 				success: true,
 				microphoneEnabled: false,
 				microphoneDeviceId: undefined,
+				noiseSuppressionMode: "rnnoise",
 				systemAudioEnabled: false,
 			};
 		}
@@ -176,6 +181,7 @@ export function registerSettingsHandlers() {
 			prefs: {
 				microphoneEnabled?: boolean;
 				microphoneDeviceId?: string;
+				noiseSuppressionMode?: string;
 				systemAudioEnabled?: boolean;
 			},
 		) => {
