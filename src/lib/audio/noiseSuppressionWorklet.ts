@@ -26,9 +26,6 @@ type NoiseSuppressionWorkletMessage =
 	  }
 	| { type: "destroy" };
 
-/**
- * Runs microphone noise suppression off the main thread inside an AudioWorklet.
- */
 class NoiseSuppressionProcessor extends AudioWorkletProcessor {
 	private droppedFrames = 0;
 	private frameBudgetMs = 12;
@@ -53,9 +50,6 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
 		};
 	}
 
-	/**
-	 * Initializes the selected suppressor after receiving configuration from the main audio graph.
-	 */
 	private async initialize({
 		mode,
 		frameSize,
@@ -92,9 +86,6 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
 		}
 	}
 
-	/**
-	 * Streams audio through the suppressor while preserving AudioWorklet output timing.
-	 */
 	process(inputs: Float32Array[][], outputs: Float32Array[][]) {
 		const input = inputs[0]?.[0];
 		const output = outputs[0]?.[0];
@@ -138,9 +129,6 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
 		return true;
 	}
 
-	/**
-	 * Processes a complete internal frame and queues it for the next output callback.
-	 */
 	private processBufferedFrame() {
 		if (!this.selection) {
 			return;
@@ -181,9 +169,6 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
 		}
 	}
 
-	/**
-	 * Releases suppressor state and clears queued audio when the worklet is torn down.
-	 */
 	private destroy() {
 		this.selection?.suppressor.destroy();
 		this.selection = null;
@@ -192,9 +177,6 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
 	}
 }
 
-/**
- * Concatenates two Float32 buffers without mutating either source buffer.
- */
 function appendFloat32Arrays(
 	left: Float32Array<ArrayBufferLike>,
 	right: Float32Array<ArrayBufferLike>,

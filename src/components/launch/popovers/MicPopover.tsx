@@ -15,9 +15,6 @@ import { DropdownItem, HudPopover, MicDeviceRow } from "./PopoverScaffold";
 
 const POPOVER_ID = "mic";
 
-/**
- * Renders microphone, system audio, and noise suppression controls for the recording HUD.
- */
 export function MicPopover({
 	trigger,
 	disabled,
@@ -136,9 +133,6 @@ export function MicPopover({
 	);
 }
 
-/**
- * Renders one selectable noise suppression mode in the microphone popover.
- */
 function NoiseSuppressionOption({
 	mode,
 	selectedMode,

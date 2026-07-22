@@ -10,9 +10,6 @@ const DEFAULT_SAMPLE_RATE = 48000;
 const FRAME_BUDGET_MS = 12;
 const LONG_FRAME_LOG_INTERVAL_MS = 5000;
 
-/**
- * Processed microphone stream plus lifecycle metadata for the active suppressor.
- */
 export type NoiseSuppressedMicrophoneStream = {
 	stream: MediaStream;
 	activeMode: NoiseSuppressionMode;
@@ -21,9 +18,6 @@ export type NoiseSuppressedMicrophoneStream = {
 	destroy(): void;
 };
 
-/**
- * Localized warning payload emitted when suppression falls back or becomes unavailable.
- */
 export type NoiseSuppressionWarning =
 	| {
 			key: "recording.noiseSuppressionUnavailableWarning";
@@ -33,9 +27,6 @@ export type NoiseSuppressionWarning =
 			params: { mode: string };
 	  };
 
-/**
- * Wraps a microphone MediaStream with Web Audio noise suppression when enabled.
- */
 export async function createNoiseSuppressedMicrophoneStream({
 	sourceStream,
 	mode,
@@ -111,9 +102,6 @@ export async function createNoiseSuppressedMicrophoneStream({
 
 type NoiseSuppressionWorkletReadySelection = Omit<NoiseSuppressionSelection, "suppressor">;
 
-/**
- * Initializes the audio worklet processor and waits for its selected suppressor mode.
- */
 async function initializeNoiseSuppressionWorklet(
 	processor: AudioWorkletNode,
 	config: {
@@ -160,9 +148,6 @@ async function initializeNoiseSuppressionWorklet(
 	});
 }
 
-/**
- * Converts suppressor initialization warnings into the localized warning shape used by the UI.
- */
 function reportWarnings(
 	selection: Pick<NoiseSuppressionSelection, "activeMode" | "warnings">,
 	onWarning?: (warning: NoiseSuppressionWarning) => void,

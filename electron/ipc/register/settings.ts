@@ -31,9 +31,6 @@ const BROWSER_MICROPHONE_PROFILES = new Set([
 	"raw",
 ]);
 
-/**
- * Reads the browser microphone processing profile requested through the lab env flag.
- */
 function getBrowserMicrophoneProfileFromEnv() {
 	const requested = process.env[BROWSER_MICROPHONE_PROFILE_ENV]?.trim() || null;
 	const normalized = requested?.toLowerCase() ?? DEFAULT_BROWSER_MICROPHONE_PROFILE;
@@ -45,9 +42,6 @@ function getBrowserMicrophoneProfileFromEnv() {
 	};
 }
 
-/**
- * Loads persisted app settings, falling back to an empty store when the file is absent or invalid.
- */
 function readAppSettingsStore(): Record<string, unknown> {
 	try {
 		const content = readFileSync(APP_SETTINGS_FILE, "utf-8");
@@ -62,23 +56,14 @@ function readAppSettingsStore(): Record<string, unknown> {
 	}
 }
 
-/**
- * Persists the complete app settings store to disk.
- */
 function writeAppSettingsStore(store: Record<string, unknown>) {
 	writeFileSync(APP_SETTINGS_FILE, JSON.stringify(store, null, 2), "utf-8");
 }
 
-/**
- * Checks for an explicitly persisted app setting without treating falsy values as missing.
- */
 function hasAppSetting(store: Record<string, unknown>, key: string): boolean {
 	return Reflect.getOwnPropertyDescriptor(store, key) !== undefined;
 }
 
-/**
- * Registers settings, preferences, shortcuts, countdown, and update IPC handlers.
- */
 export function registerSettingsHandlers() {
 	ipcMain.handle("app:getVersion", () => {
 		return app.getVersion();
