@@ -4,8 +4,17 @@ import { Rnnoise } from "@shiguredo/rnnoise-wasm";
 export type NoiseSuppressionMode = "rnnoise" | "speex" | "disabled";
 
 export interface NoiseSuppressor {
+	/**
+	 * Allocates any native or WASM state needed before processing audio frames.
+	 */
 	initialize(): Promise<void>;
+	/**
+	 * Applies suppression to a single audio callback buffer.
+	 */
 	processAudioFrame(frame: Float32Array): Float32Array;
+	/**
+	 * Releases resources held by the suppressor.
+	 */
 	destroy(): void;
 }
 
@@ -23,6 +32,9 @@ export const NOISE_SUPPRESSION_MODES = new Set<NoiseSuppressionMode>([
 	"disabled",
 ]);
 
+/**
+ * Converts a persisted or user-provided value into a supported noise suppression mode.
+ */
 export function normalizeNoiseSuppressionMode(value?: string | null): NoiseSuppressionMode {
 	const normalized = value?.trim().toLowerCase();
 	return normalized && NOISE_SUPPRESSION_MODES.has(normalized as NoiseSuppressionMode)
@@ -30,20 +42,35 @@ export function normalizeNoiseSuppressionMode(value?: string | null): NoiseSuppr
 		: DEFAULT_NOISE_SUPPRESSION_MODE;
 }
 
+/**
+ * Pass-through suppressor used when microphone noise suppression is explicitly disabled.
+ */
 export class DisabledNoiseSuppressor implements NoiseSuppressor {
+	/**
+	 * Completes setup for the disabled suppressor.
+	 */
 	async initialize() {
 		console.info("[NoiseSuppression] Disabled.");
 	}
 
+	/**
+	 * Returns the input audio frame unchanged.
+	 */
 	processAudioFrame(frame: Float32Array) {
 		return frame;
 	}
 
+	/**
+	 * Releases the disabled suppressor lifecycle.
+	 */
 	destroy() {
 		console.info("[NoiseSuppression] Disabled cleanup complete.");
 	}
 }
 
+/**
+ * Applies RNNoise denoising to microphone frames while preserving output timing.
+ */
 export class RnnoiseNoiseSuppressor implements NoiseSuppressor {
 	private rnnoise: Awaited<ReturnType<typeof Rnnoise.load>> | null = null;
 	private state: ReturnType<
@@ -52,6 +79,9 @@ export class RnnoiseNoiseSuppressor implements NoiseSuppressor {
 	private remainder = new Float32Array(0);
 	private queuedOutput = new Float32Array(0);
 
+	/**
+	 * Loads the RNNoise WASM module and creates a denoise state.
+	 */
 	async initialize() {
 		console.info("[NoiseSuppression] Initializing RNNoise.");
 		this.rnnoise = await Rnnoise.load();
@@ -61,6 +91,9 @@ export class RnnoiseNoiseSuppressor implements NoiseSuppressor {
 		});
 	}
 
+	/**
+	 * Processes complete RNNoise frames and buffers partial input between callbacks.
+	 */
 	processAudioFrame(frame: Float32Array) {
 		if (!this.rnnoise || !this.state) {
 			throw new Error("RNNoise suppressor has not been initialized.");
@@ -91,6 +124,9 @@ export class RnnoiseNoiseSuppressor implements NoiseSuppressor {
 		return output;
 	}
 
+	/**
+	 * Destroys RNNoise state and clears buffered audio.
+	 */
 	destroy() {
 		this.state?.destroy();
 		this.state = null;
@@ -101,6 +137,9 @@ export class RnnoiseNoiseSuppressor implements NoiseSuppressor {
 	}
 }
 
+/**
+ * Concatenates two Float32 buffers without mutating either source buffer.
+ */
 function appendFloat32Arrays(left: Float32Array, right: Float32Array) {
 	if (left.length === 0) {
 		return right.slice();
@@ -115,6 +154,9 @@ function appendFloat32Arrays(left: Float32Array, right: Float32Array) {
 	return combined;
 }
 
+/**
+ * Applies Speex preprocessor denoising to microphone frames.
+ */
 export class SpeexNoiseSuppressor implements NoiseSuppressor {
 	private preprocessor: SpeexPreprocessor | null = null;
 
@@ -123,6 +165,9 @@ export class SpeexNoiseSuppressor implements NoiseSuppressor {
 		private readonly sampleRate: number,
 	) {}
 
+	/**
+	 * Loads the Speex WASM module and configures denoise-only preprocessing.
+	 */
 	async initialize() {
 		console.info("[NoiseSuppression] Initializing Speex.", {
 			frameSize: this.frameSize,
@@ -137,6 +182,9 @@ export class SpeexNoiseSuppressor implements NoiseSuppressor {
 		console.info("[NoiseSuppression] Speex initialized.");
 	}
 
+	/**
+	 * Processes full Speex-sized chunks and leaves any incomplete trailing samples untouched.
+	 */
 	processAudioFrame(frame: Float32Array) {
 		if (!this.preprocessor) {
 			throw new Error("Speex suppressor has not been initialized.");
@@ -153,6 +201,9 @@ export class SpeexNoiseSuppressor implements NoiseSuppressor {
 		return frame;
 	}
 
+	/**
+	 * Releases the Speex preprocessor instance.
+	 */
 	destroy() {
 		this.preprocessor?.destroy();
 		this.preprocessor = null;
@@ -166,6 +217,9 @@ export type NoiseSuppressorFactoryDeps = {
 	createDisabled?: () => NoiseSuppressor;
 };
 
+/**
+ * Initializes the requested suppressor and falls back to compatible alternatives when needed.
+ */
 export async function createNoiseSuppressorWithFallback({
 	mode,
 	frameSize,

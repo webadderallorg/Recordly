@@ -1,8 +1,8 @@
 import {
 	createNoiseSuppressorWithFallback,
-	normalizeNoiseSuppressionMode,
 	type NoiseSuppressionMode,
 	type NoiseSuppressionSelection,
+	normalizeNoiseSuppressionMode,
 } from "./noiseSuppression";
 
 const PROCESSOR_BUFFER_SIZE = 1024;
@@ -27,6 +27,9 @@ export type NoiseSuppressionWarning =
 			params: { mode: string };
 	  };
 
+/**
+ * Wraps a microphone MediaStream with Web Audio noise suppression when enabled.
+ */
 export async function createNoiseSuppressedMicrophoneStream({
 	sourceStream,
 	mode,
@@ -127,6 +130,9 @@ export async function createNoiseSuppressedMicrophoneStream({
 	};
 }
 
+/**
+ * Converts suppressor initialization warnings into the localized warning shape used by the UI.
+ */
 function reportWarnings(
 	selection: NoiseSuppressionSelection,
 	onWarning?: (warning: NoiseSuppressionWarning) => void,

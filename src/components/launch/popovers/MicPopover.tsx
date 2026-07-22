@@ -5,13 +5,13 @@ import {
 	SpeakerHighIcon,
 	SpeakerXIcon,
 } from "@phosphor-icons/react";
+import type { ReactElement } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import type { NoiseSuppressionMode } from "@/lib/audio/noiseSuppression";
-import { DropdownItem, HudPopover, MicDeviceRow } from "./PopoverScaffold";
+import styles from "../LaunchWindow.module.css";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import type { DeviceOption } from "./launchPopoverTypes";
-import type { ReactElement } from "react";
-import styles from "../LaunchWindow.module.css";
+import { DropdownItem, HudPopover, MicDeviceRow } from "./PopoverScaffold";
 
 const POPOVER_ID = "mic";
 
@@ -133,6 +133,9 @@ export function MicPopover({
 	);
 }
 
+/**
+ * Renders one selectable noise suppression mode in the microphone popover.
+ */
 function NoiseSuppressionOption({
 	mode,
 	selectedMode,
