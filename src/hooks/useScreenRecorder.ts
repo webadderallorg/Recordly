@@ -617,17 +617,22 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 	const prepareMicrophoneStream = useCallback(
 		async (rawStream: MediaStream) => {
-			const processed = await createNoiseSuppressedMicrophoneStream({
-				sourceStream: rawStream,
-				mode: noiseSuppressionMode,
-				onWarning: (message) => toast.warning(message, { duration: 7000 }),
-			});
-			noiseSuppressedMicrophoneStreams.current.push(processed);
-			console.info("[NoiseSuppression] Selected microphone mode.", {
-				requestedMode: processed.requestedMode,
-				activeMode: processed.activeMode,
-			});
-			return processed.stream;
+			try {
+				const processed = await createNoiseSuppressedMicrophoneStream({
+					sourceStream: rawStream,
+					mode: noiseSuppressionMode,
+					onWarning: (message) => toast.warning(message, { duration: 7000 }),
+				});
+				noiseSuppressedMicrophoneStreams.current.push(processed);
+				console.info("[NoiseSuppression] Selected microphone mode.", {
+					requestedMode: processed.requestedMode,
+					activeMode: processed.activeMode,
+				});
+				return processed.stream;
+			} catch (error) {
+				rawStream.getTracks().forEach((track) => track.stop());
+				throw error;
+			}
 		},
 		[noiseSuppressionMode],
 	);
