@@ -35,6 +35,8 @@
 		"noiseSuppressionSpeexDescription": "Lager CPU-gebruik, maar lagere stemkwaliteit.",
 		"noiseSuppressionDisabled": "Uitgeschakeld",
 		"noiseSuppressionDisabledDescription": "Neemt de originele microfoonaudio op.",
+		"noiseSuppressionUnavailableWarning": "Ruisonderdrukking is niet beschikbaar op dit apparaat. De opname gaat zonder ruisonderdrukking door.",
+		"noiseSuppressionFallbackWarning": "Ruisonderdrukking is teruggevallen op {{mode}}.",
 		"webcam": "Webcam",
 		"turnOffWebcam": "Webcam uitschakelen",
 		"hideFloatingWebcamPreview": "Zwevende voorbeeldweergave verbergen",

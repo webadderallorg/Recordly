@@ -35,6 +35,8 @@
 		"noiseSuppressionSpeexDescription": "Utilisation du processeur réduite, mais qualité vocale moindre.",
 		"noiseSuppressionDisabled": "Désactivé",
 		"noiseSuppressionDisabledDescription": "Enregistre l’audio original du microphone.",
+		"noiseSuppressionUnavailableWarning": "La réduction du bruit n’est pas disponible sur cet appareil. L’enregistrement continuera sans elle.",
+		"noiseSuppressionFallbackWarning": "La réduction du bruit est passée à {{mode}}.",
 		"webcam": "Webcam",
 		"turnOffWebcam": "Désactiver la webcam",
 		"hideFloatingWebcamPreview": "Masquer l’aperçu flottant",

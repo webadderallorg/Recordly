@@ -35,6 +35,8 @@
 		"noiseSuppressionSpeexDescription": "Меньше нагрузка на процессор, но ниже качество голоса.",
 		"noiseSuppressionDisabled": "Отключено",
 		"noiseSuppressionDisabledDescription": "Записывает исходный звук с микрофона.",
+		"noiseSuppressionUnavailableWarning": "Шумоподавление недоступно на этом устройстве. Запись продолжится без него.",
+		"noiseSuppressionFallbackWarning": "Шумоподавление переключилось на {{mode}}.",
 		"webcam": "Веб-камера",
 		"turnOffWebcam": "Выключить веб-камеру",
 		"hideFloatingWebcamPreview": "Скрыть предпросмотр",

@@ -35,6 +35,8 @@
 		"noiseSuppressionSpeexDescription": "Lower CPU usage, but reduced voice quality.",
 		"noiseSuppressionDisabled": "Disabled",
 		"noiseSuppressionDisabledDescription": "Records the original microphone audio.",
+		"noiseSuppressionUnavailableWarning": "Noise suppression is unavailable on this device. Recording will continue without it.",
+		"noiseSuppressionFallbackWarning": "Noise suppression fell back to {{mode}}.",
 		"webcam": "Webcam",
 		"turnOffWebcam": "Turn Off Webcam",
 		"hideFloatingWebcamPreview": "Hide Floating Preview",

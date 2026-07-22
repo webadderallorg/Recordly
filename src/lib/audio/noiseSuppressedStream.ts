@@ -18,6 +18,15 @@ export type NoiseSuppressedMicrophoneStream = {
 	destroy(): void;
 };
 
+export type NoiseSuppressionWarning =
+	| {
+			key: "recording.noiseSuppressionUnavailableWarning";
+	  }
+	| {
+			key: "recording.noiseSuppressionFallbackWarning";
+			params: { mode: string };
+	  };
+
 export async function createNoiseSuppressedMicrophoneStream({
 	sourceStream,
 	mode,
@@ -25,7 +34,7 @@ export async function createNoiseSuppressedMicrophoneStream({
 }: {
 	sourceStream: MediaStream;
 	mode: NoiseSuppressionMode;
-	onWarning?: (message: string) => void;
+	onWarning?: (warning: NoiseSuppressionWarning) => void;
 }): Promise<NoiseSuppressedMicrophoneStream> {
 	const requestedMode = normalizeNoiseSuppressionMode(mode);
 	if (requestedMode === "disabled") {
@@ -120,15 +129,19 @@ export async function createNoiseSuppressedMicrophoneStream({
 
 function reportWarnings(
 	selection: NoiseSuppressionSelection,
-	onWarning?: (message: string) => void,
-) {
+	onWarning?: (warning: NoiseSuppressionWarning) => void,
+): NoiseSuppressionWarning | null {
 	if (selection.warnings.length === 0) {
-		return;
+		return null;
 	}
 
-	const message =
+	const warning: NoiseSuppressionWarning =
 		selection.activeMode === "disabled"
-			? "Noise suppression is unavailable on this device. Recording will continue without it."
-			: `Noise suppression fell back to ${selection.activeMode.toUpperCase()}.`;
-	onWarning?.(message);
+			? { key: "recording.noiseSuppressionUnavailableWarning" }
+			: {
+					key: "recording.noiseSuppressionFallbackWarning",
+					params: { mode: selection.activeMode.toUpperCase() },
+				};
+	onWarning?.(warning);
+	return warning;
 }

@@ -35,6 +35,8 @@
 		"noiseSuppressionSpeexDescription": "CPU 使用率更低，但语音质量会降低。",
 		"noiseSuppressionDisabled": "已禁用",
 		"noiseSuppressionDisabledDescription": "录制原始麦克风音频。",
+		"noiseSuppressionUnavailableWarning": "此设备不支持噪声抑制。录制将继续，但不会使用噪声抑制。",
+		"noiseSuppressionFallbackWarning": "噪声抑制已回退到 {{mode}}。",
 		"webcam": "摄像头",
 		"turnOffWebcam": "关闭摄像头",
 		"hideFloatingWebcamPreview": "隐藏悬浮预览",

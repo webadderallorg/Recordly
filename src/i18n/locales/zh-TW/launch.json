@@ -35,6 +35,8 @@
 		"noiseSuppressionSpeexDescription": "CPU 使用率較低，但語音品質會下降。",
 		"noiseSuppressionDisabled": "已停用",
 		"noiseSuppressionDisabledDescription": "錄製原始麥克風音訊。",
+		"noiseSuppressionUnavailableWarning": "此裝置無法使用噪音抑制。錄製將繼續，但不會使用噪音抑制。",
+		"noiseSuppressionFallbackWarning": "噪音抑制已改用 {{mode}}。",
 		"webcam": "網路攝影機",
 		"turnOffWebcam": "關閉網路攝影機",
 		"hideFloatingWebcamPreview": "隱藏浮動預覽",

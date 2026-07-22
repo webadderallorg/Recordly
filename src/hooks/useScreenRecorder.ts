@@ -1,6 +1,7 @@
 import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/contexts/I18nContext";
 import {
 	DEFAULT_NOISE_SUPPRESSION_MODE,
 	normalizeNoiseSuppressionMode,
@@ -328,6 +329,7 @@ async function createAudioInputDeviceSnapshot(): Promise<
 }
 
 export function useScreenRecorder(): UseScreenRecorderReturn {
+	const { t } = useI18n();
 	const [recording, setRecording] = useState(false);
 	const [paused, setPaused] = useState(false);
 	const [starting, setStarting] = useState(false);
@@ -621,7 +623,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				const processed = await createNoiseSuppressedMicrophoneStream({
 					sourceStream: rawStream,
 					mode: noiseSuppressionMode,
-					onWarning: (message) => toast.warning(message, { duration: 7000 }),
+					onWarning: (warning) => {
+						const fallback =
+							warning.key === "recording.noiseSuppressionUnavailableWarning"
+								? "Noise suppression is unavailable on this device. Recording will continue without it."
+								: "Noise suppression fell back to {{mode}}.";
+						const params = "params" in warning ? warning.params : undefined;
+						toast.warning(t(warning.key, fallback, params), { duration: 7000 });
+					},
 				});
 				noiseSuppressedMicrophoneStreams.current.push(processed);
 				console.info("[NoiseSuppression] Selected microphone mode.", {
@@ -634,7 +643,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				throw error;
 			}
 		},
-		[noiseSuppressionMode],
+		[noiseSuppressionMode, t],
 	);
 
 	const appendMicFallbackChunk = useCallback(
