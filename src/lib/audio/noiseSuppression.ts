@@ -50,8 +50,8 @@ export class RnnoiseNoiseSuppressor implements NoiseSuppressor {
 	private state: ReturnType<
 		Awaited<ReturnType<typeof Rnnoise.load>>["createDenoiseState"]
 	> | null = null;
-	private remainder: Float32Array<ArrayBufferLike> = new Float32Array(0);
-	private queuedOutput: Float32Array<ArrayBufferLike> = new Float32Array(0);
+	private remainder: Float32Array = new Float32Array(0);
+	private queuedOutput: Float32Array = new Float32Array(0);
 
 	async initialize() {
 		console.info("[NoiseSuppression] Initializing RNNoise.");

@@ -34,7 +34,7 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
 	private inputBufferOffset = 0;
 	private lastLongFrameLogAt = 0;
 	private longFrameLogIntervalMs = 5000;
-	private outputBuffer: Float32Array<ArrayBufferLike> = new Float32Array(0);
+	private outputBuffer: Float32Array = new Float32Array(0);
 	private sampleRate = 48000;
 	private selection: NoiseSuppressionSelection | null = null;
 	private scratchFrame = new Float32Array(1024);
@@ -177,10 +177,7 @@ class NoiseSuppressionProcessor extends AudioWorkletProcessor {
 	}
 }
 
-function appendFloat32Arrays(
-	left: Float32Array<ArrayBufferLike>,
-	right: Float32Array<ArrayBufferLike>,
-) {
+function appendFloat32Arrays(left: Float32Array, right: Float32Array) {
 	if (left.length === 0) {
 		return right.slice();
 	}

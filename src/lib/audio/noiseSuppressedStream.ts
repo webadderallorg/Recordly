@@ -9,6 +9,7 @@ const PROCESSOR_BUFFER_SIZE = 1024;
 const DEFAULT_SAMPLE_RATE = 48000;
 const FRAME_BUDGET_MS = 12;
 const LONG_FRAME_LOG_INTERVAL_MS = 5000;
+const WORKLET_READY_TIMEOUT_MS = 5000;
 
 export type NoiseSuppressedMicrophoneStream = {
 	stream: MediaStream;
@@ -55,24 +56,43 @@ export async function createNoiseSuppressedMicrophoneStream({
 	const source = context.createMediaStreamSource(sourceStream);
 	const destination = context.createMediaStreamDestination();
 	const sampleRate = context.sampleRate || DEFAULT_SAMPLE_RATE;
-	await context.audioWorklet.addModule(noiseSuppressionWorkletUrl);
-	const processor = new AudioWorkletNode(context, "noise-suppression-processor", {
-		numberOfInputs: 1,
-		numberOfOutputs: 1,
-		outputChannelCount: [1],
-	});
-	const selection = await initializeNoiseSuppressionWorklet(processor, {
-		mode: requestedMode,
-		frameSize: PROCESSOR_BUFFER_SIZE,
-		sampleRate,
-		frameBudgetMs: FRAME_BUDGET_MS,
-		longFrameLogIntervalMs: LONG_FRAME_LOG_INTERVAL_MS,
-	});
+	let processor: AudioWorkletNode | null = null;
+	let selection: NoiseSuppressionWorkletReadySelection;
+
+	try {
+		await context.audioWorklet.addModule(noiseSuppressionWorkletUrl);
+		processor = new AudioWorkletNode(context, "noise-suppression-processor", {
+			numberOfInputs: 1,
+			numberOfOutputs: 1,
+			outputChannelCount: [1],
+		});
+		selection = await initializeNoiseSuppressionWorklet(processor, {
+			mode: requestedMode,
+			frameSize: PROCESSOR_BUFFER_SIZE,
+			sampleRate,
+			frameBudgetMs: FRAME_BUDGET_MS,
+			longFrameLogIntervalMs: LONG_FRAME_LOG_INTERVAL_MS,
+		});
+		source.connect(processor);
+		processor.connect(destination);
+	} catch (error) {
+		cleanupFailedNoiseSuppressionSetup({
+			context,
+			destinationStream: destination.stream,
+			processor,
+			source,
+			sourceStream,
+		});
+		throw error;
+	}
+
+	if (!processor) {
+		throw new Error("Noise suppression worklet processor was not created.");
+	}
+	const activeProcessor = processor;
 
 	reportWarnings(selection, onWarning);
 
-	source.connect(processor);
-	processor.connect(destination);
 	console.info("[NoiseSuppression] Microphone stream processing active.", {
 		requestedMode,
 		activeMode: selection.activeMode,
@@ -86,8 +106,8 @@ export async function createNoiseSuppressedMicrophoneStream({
 		requestedMode,
 		warnings: selection.warnings,
 		destroy: () => {
-			processor.port.postMessage({ type: "destroy" });
-			processor.disconnect();
+			activeProcessor.port.postMessage({ type: "destroy" });
+			activeProcessor.disconnect();
 			source.disconnect();
 			sourceStream.getTracks().forEach((track) => track.stop());
 			destination.stream.getTracks().forEach((track) => track.stop());
@@ -113,18 +133,43 @@ async function initializeNoiseSuppressionWorklet(
 	},
 ): Promise<NoiseSuppressionWorkletReadySelection> {
 	return new Promise((resolve, reject) => {
+		let settled = false;
+		const readyTimeout = setTimeout(() => {
+			settled = true;
+			reject(new Error("Noise suppression worklet initialization timed out."));
+		}, WORKLET_READY_TIMEOUT_MS);
+
+		const settle = (
+			callback: () => NoiseSuppressionWorkletReadySelection,
+			complete: (selection: NoiseSuppressionWorkletReadySelection) => void,
+		) => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			clearTimeout(readyTimeout);
+			complete(callback());
+		};
+
 		processor.port.onmessage = (event) => {
 			const message = event.data;
 			if (message.type === "ready") {
-				resolve({
-					requestedMode: message.requestedMode,
-					activeMode: message.activeMode,
-					warnings: message.warnings,
-				});
+				settle(
+					() => ({
+						requestedMode: message.requestedMode,
+						activeMode: message.activeMode,
+						warnings: message.warnings,
+					}),
+					resolve,
+				);
 				return;
 			}
 			if (message.type === "error") {
-				reject(new Error(message.error));
+				if (!settled) {
+					settled = true;
+					clearTimeout(readyTimeout);
+					reject(new Error(message.error));
+				}
 				return;
 			}
 			if (message.type === "processing-error") {
@@ -146,6 +191,39 @@ async function initializeNoiseSuppressionWorklet(
 		};
 		processor.port.postMessage({ type: "init", ...config });
 	});
+}
+
+function cleanupFailedNoiseSuppressionSetup({
+	context,
+	destinationStream,
+	processor,
+	source,
+	sourceStream,
+}: {
+	context: AudioContext;
+	destinationStream: MediaStream;
+	processor: AudioWorkletNode | null;
+	source: MediaStreamAudioSourceNode;
+	sourceStream: MediaStream;
+}) {
+	try {
+		processor?.port.postMessage({ type: "destroy" });
+	} catch {
+		// Best effort: preserve the original setup error.
+	}
+	try {
+		processor?.disconnect();
+	} catch {
+		// Best effort: preserve the original setup error.
+	}
+	try {
+		source.disconnect();
+	} catch {
+		// Best effort: preserve the original setup error.
+	}
+	sourceStream.getTracks().forEach((track) => track.stop());
+	destinationStream.getTracks().forEach((track) => track.stop());
+	context.close().catch(() => undefined);
 }
 
 function reportWarnings(
