@@ -44,6 +44,9 @@ import { MarqueeText } from "./SourceSelector";
 
 const SHOW_DEV_UPDATE_PREVIEW = import.meta.env.DEV;
 
+/**
+ * Mounts the launch HUD with shared popover coordination for recording controls.
+ */
 export function LaunchWindow() {
 	return (
 		<LaunchPopoverCoordinatorProvider>
@@ -52,6 +55,9 @@ export function LaunchWindow() {
 	);
 }
 
+/**
+ * Renders the interactive launch HUD content once popover coordination is available.
+ */
 function LaunchWindowContent() {
 	const t = useScopedT("launch");
 	const { openId, requestClose, requestOpen } = useLaunchPopoverCoordinator();

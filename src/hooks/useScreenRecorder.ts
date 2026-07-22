@@ -49,6 +49,10 @@ const WEBCAM_FRAME_RATE = 30;
 const WEBCAM_SUFFIX = "-webcam";
 const MICROPHONE_FALLBACK_ERROR_TOAST_ID = "recording-microphone-fallback-error";
 const MICROPHONE_SIDECAR_ERROR_TOAST_ID = "recording-microphone-sidecar-error";
+
+/**
+ * Browser microphone constraint presets used to tune capture processing before app-level effects.
+ */
 export type BrowserMicrophoneProfile =
 	| "processed"
 	| "no-agc"
@@ -56,6 +60,10 @@ export type BrowserMicrophoneProfile =
 	| "no-noise-suppression"
 	| "raw";
 type BrowserCaptureCursorMode = "always" | "never";
+
+/**
+ * Cursor capture behavior for browser fallback recordings and the editor overlay that follows them.
+ */
 export type BrowserCaptureCursorPolicy = {
 	streamCursor: BrowserCaptureCursorMode;
 	hideOsCursorBeforeRecording: boolean;
@@ -163,6 +171,9 @@ type UseScreenRecorderReturn = {
 	setCountdownDelay: (delay: number) => void;
 };
 
+/**
+ * Converts unknown thrown values into a user-facing error message.
+ */
 function getErrorMessage(error: unknown) {
 	if (error instanceof Error && error.message) {
 		return error.message;
@@ -193,6 +204,9 @@ function getErrorMessage(error: unknown) {
 	return "An unexpected error occurred";
 }
 
+/**
+ * Normalizes persisted microphone processing profile values to a supported browser preset.
+ */
 export function normalizeBrowserMicrophoneProfile(value?: string | null): BrowserMicrophoneProfile {
 	const normalized = value?.trim().toLowerCase();
 	return normalized && BROWSER_MICROPHONE_PROFILES.has(normalized as BrowserMicrophoneProfile)
@@ -200,6 +214,9 @@ export function normalizeBrowserMicrophoneProfile(value?: string | null): Browse
 		: DEFAULT_BROWSER_MICROPHONE_PROFILE;
 }
 
+/**
+ * Selects cursor capture behavior for browser recordings based on native capture availability.
+ */
 export function resolveBrowserCaptureCursorPolicy({
 	nativeWindowsCaptureStartFailed = false,
 }: {
@@ -222,12 +239,18 @@ export function resolveBrowserCaptureCursorPolicy({
 	};
 }
 
+/**
+ * Returns whether a desktop source can use Recordly's native Windows capture pipeline.
+ */
 export function shouldUseNativeWindowsCaptureForSource(
 	source: Pick<ProcessedDesktopSource, "id"> | null | undefined,
 ): boolean {
 	return source?.id?.startsWith("screen:") === true || source?.id?.startsWith("window:") === true;
 }
 
+/**
+ * Builds microphone getUserMedia constraints from the selected input device and processing preset.
+ */
 export function createProcessedMicrophoneConstraints(
 	microphoneDeviceId?: string,
 	profile: BrowserMicrophoneProfile = DEFAULT_BROWSER_MICROPHONE_PROFILE,
@@ -249,6 +272,9 @@ export function createProcessedMicrophoneConstraints(
 	return { audio, video: false };
 }
 
+/**
+ * Creates MediaRecorder options with explicit audio and video bitrates for browser recording.
+ */
 export function createBrowserRecordingOptions({
 	audioBitsPerSecond,
 	mimeType,
@@ -274,6 +300,9 @@ export function createBrowserRecordingOptions({
 	return options;
 }
 
+/**
+ * Captures stable microphone track settings for fallback sidecar diagnostics.
+ */
 function createMicrophoneTrackSettingsSnapshot(
 	stream: MediaStream,
 ): MicrophoneTrackSettingsSnapshot | null {
@@ -309,6 +338,9 @@ function createMicrophoneTrackSettingsSnapshot(
 	return Object.keys(snapshot).length > 0 ? snapshot : null;
 }
 
+/**
+ * Captures the visible audio input device list for microphone fallback diagnostics.
+ */
 async function createAudioInputDeviceSnapshot(): Promise<
 	MicrophoneAudioInputDeviceSnapshot[] | null
 > {
@@ -328,6 +360,9 @@ async function createAudioInputDeviceSnapshot(): Promise<
 	return audioInputs.length > 0 ? audioInputs : null;
 }
 
+/**
+ * Coordinates screen, microphone, webcam, countdown, and persistence state for recording.
+ */
 export function useScreenRecorder(): UseScreenRecorderReturn {
 	const { t } = useI18n();
 	const [recording, setRecording] = useState(false);
@@ -390,11 +425,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const requestedBrowserMicrophoneProfile = useRef<string | null>(null);
 	const hideEditorOverlayCursorByDefault = useRef(false);
 
+	/**
+	 * Clears finalizing state and reports a recording finalization failure.
+	 */
 	const notifyRecordingFinalizationFailure = useCallback(async (message: string) => {
 		setFinalizing(false);
 		toast.error(message, { duration: 10000 });
 	}, []);
 
+	/**
+	 * Logs native capture diagnostics for troubleshooting failed native capture paths.
+	 */
 	const logNativeCaptureDiagnostics = useCallback(async (context: string) => {
 		if (typeof window.electronAPI?.getLastNativeCaptureDiagnostics !== "function") {
 			return;
@@ -410,6 +451,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 	}, []);
 
+	/**
+	 * Builds a native capture failure message enriched with the latest diagnostics when available.
+	 */
 	const buildNativeCaptureFailureMessage = useCallback(
 		async (context: string, fallbackMessage: string) => {
 			if (typeof window.electronAPI?.getLastNativeCaptureDiagnostics !== "function") {
@@ -444,18 +488,27 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		[],
 	);
 
+	/**
+	 * Starts a fresh recording clock and clears accumulated pause time.
+	 */
 	const resetRecordingClock = useCallback((startedAt: number) => {
 		startTime.current = startedAt;
 		accumulatedPausedDurationMs.current = 0;
 		pauseStartedAtMs.current = null;
 	}, []);
 
+	/**
+	 * Marks the current recording as paused at the provided wall-clock boundary.
+	 */
 	const markRecordingPaused = useCallback((pausedAt: number) => {
 		if (pauseStartedAtMs.current === null) {
 			pauseStartedAtMs.current = pausedAt;
 		}
 	}, []);
 
+	/**
+	 * Adds the latest pause interval to the recording clock when recording resumes.
+	 */
 	const markRecordingResumed = useCallback((resumedAt: number) => {
 		if (pauseStartedAtMs.current === null) {
 			return;
@@ -467,6 +520,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		pauseStartedAtMs.current = null;
 	}, []);
 
+	/**
+	 * Calculates effective recording duration after subtracting paused intervals.
+	 */
 	const getRecordingDurationMs = useCallback((endedAt: number) => {
 		return getEffectiveRecordingDurationMs({
 			startTimeMs: startTime.current,
@@ -476,6 +532,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		});
 	}, []);
 
+	/**
+	 * Calculates elapsed audio duration recorded by the microphone fallback recorder.
+	 */
 	const getMicFallbackRecordedElapsedMs = useCallback((now = performance.now()) => {
 		const startedAt = micFallbackRecorderStartedAt.current;
 		if (startedAt === null) {
@@ -494,6 +553,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		);
 	}, []);
 
+	/**
+	 * Clears timing diagnostics captured for fallback microphone sidecars.
+	 */
 	const resetMicFallbackTimingDiagnostics = useCallback(() => {
 		micFallbackChunkEvents.current = [];
 		micFallbackRecorderStartedAt.current = null;
@@ -502,6 +564,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		micFallbackPauseIntervals.current = [];
 	}, []);
 
+	/**
+	 * Ensures required macOS recording permissions are granted before capture starts.
+	 */
 	const preparePermissions = useCallback(async (options: { startup?: boolean } = {}) => {
 		const platform = await window.electronAPI.getPlatform();
 		if (platform !== "darwin") {
@@ -543,14 +608,23 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		return false;
 	}, []);
 
+	/**
+	 * Chooses the browser MediaRecorder MIME type for the main screen capture.
+	 */
 	const selectMimeType = useCallback(() => {
 		return selectRecordingMimeType();
 	}, []);
 
+	/**
+	 * Chooses the browser MediaRecorder MIME type for webcam sidecar capture.
+	 */
 	const selectWebcamMimeType = useCallback(() => {
 		return selectWebcamRecordingMimeType();
 	}, []);
 
+	/**
+	 * Estimates video bitrate from capture dimensions and the target frame rate.
+	 */
 	const computeBitrate = (width: number, height: number) => {
 		const pixels = width * height;
 		const highFrameRateBoost =
@@ -567,6 +641,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		return Math.round(BITRATE_BASE * highFrameRateBoost);
 	};
 
+	/**
+	 * Stops all active media tracks and releases recording-side resources.
+	 */
 	const cleanupCapturedMedia = useCallback(() => {
 		for (const processedStream of noiseSuppressedMicrophoneStreams.current) {
 			processedStream.destroy();
@@ -617,6 +694,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 	}, [resetMicFallbackTimingDiagnostics]);
 
+	/**
+	 * Wraps a raw microphone stream with the selected app-level noise suppression mode.
+	 */
 	const prepareMicrophoneStream = useCallback(
 		async (rawStream: MediaStream) => {
 			try {
@@ -646,6 +726,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		[noiseSuppressionMode, t],
 	);
 
+	/**
+	 * Stores a microphone fallback recorder chunk and records its timing diagnostics.
+	 */
 	const appendMicFallbackChunk = useCallback(
 		(event: BlobEvent) => {
 			if (event.data.size <= 0) {
@@ -677,6 +760,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		[getMicFallbackRecordedElapsedMs],
 	);
 
+	/**
+	 * Refreshes stale browser screen source IDs before starting desktop capture.
+	 */
 	const resolveBrowserCaptureSource = useCallback(async (source: ProcessedDesktopSource) => {
 		if (!source?.id?.startsWith("screen:")) {
 			return source;
@@ -726,6 +812,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		return source;
 	}, []);
 
+	/**
+	 * Persists final recording session metadata and switches the UI to the editor.
+	 */
 	const finalizeRecordingSession = useCallback(
 		async (videoPath: string, webcamPath: string | null) => {
 			const start = performance.now();
@@ -765,6 +854,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		[],
 	);
 
+	/**
+	 * Closes the current fallback microphone pause interval and records its duration.
+	 */
 	const closeMicFallbackPauseInterval = useCallback((now = performance.now()) => {
 		const pauseStartedAt = micFallbackPauseStartedAt.current;
 		if (pauseStartedAt === null) {
@@ -786,6 +878,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		micFallbackPauseStartedAt.current = null;
 	}, []);
 
+	/**
+	 * Stops the microphone fallback recorder and resolves the accumulated audio blob.
+	 */
 	const stopMicFallbackRecorder = useCallback((): Promise<Blob | null> => {
 		return new Promise((resolve) => {
 			const recorder = micFallbackRecorder.current;
@@ -811,6 +906,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		});
 	}, [appendMicFallbackChunk, closeMicFallbackPauseInterval]);
 
+	/**
+	 * Pauses the microphone fallback recorder and starts pause timing diagnostics.
+	 */
 	const pauseMicFallbackRecorder = useCallback(() => {
 		const recorder = micFallbackRecorder.current;
 		if (recorder?.state !== "recording") {
@@ -832,6 +930,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		});
 	}, []);
 
+	/**
+	 * Resumes the microphone fallback recorder and closes the active pause interval.
+	 */
 	const resumeMicFallbackRecorder = useCallback(() => {
 		const recorder = micFallbackRecorder.current;
 		if (recorder?.state !== "paused") {
@@ -842,6 +943,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		recorder.resume();
 	}, [closeMicFallbackPauseInterval]);
 
+	/**
+	 * Writes the fallback microphone sidecar and its diagnostic metadata next to the recording.
+	 */
 	const storeMicrophoneSidecar = useCallback(
 		async (
 			micFallbackBlobPromise: Promise<Blob | null> | null | undefined,
@@ -931,6 +1035,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		[resetMicFallbackTimingDiagnostics],
 	);
 
+	/**
+	 * Stops webcam sidecar recording and resolves the saved webcam file path.
+	 */
 	const stopWebcamRecorder = useCallback(async () => {
 		const recorder = webcamRecorder.current;
 		const pending = webcamStopPromise.current;
@@ -957,6 +1064,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		return result ?? null;
 	}, []);
 
+	/**
+	 * Recovers a native capture output after an interrupted or failed stop request.
+	 */
 	const recoverNativeRecordingSession = useCallback(
 		async (
 			micFallbackBlobPromise?: Promise<Blob | null> | null,
@@ -1114,6 +1224,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 	}, []);
 
+	/**
+	 * Stops the active recording path and starts foreground or background finalization.
+	 */
 	const stopRecording = useRef(() => {
 		setPaused(false);
 		if (nativeScreenRecording.current) {
@@ -1298,6 +1411,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		})();
 	}, []);
 
+	/**
+	 * Persists countdown delay changes made from the launch HUD.
+	 */
 	const setCountdownDelay = useCallback((delay: number) => {
 		setCountdownDelayState(delay);
 		void window.electronAPI.setCountdownDelay(delay);
@@ -1322,16 +1438,25 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		})();
 	}, []);
 
+	/**
+	 * Persists whether microphone capture is enabled for future recordings.
+	 */
 	const persistMicrophoneEnabled = useCallback((enabled: boolean) => {
 		setMicrophoneEnabled(enabled);
 		void window.electronAPI.setRecordingPreferences({ microphoneEnabled: enabled });
 	}, []);
 
+	/**
+	 * Persists the selected microphone device for future recordings.
+	 */
 	const persistMicrophoneDeviceId = useCallback((deviceId: string | undefined) => {
 		setMicrophoneDeviceId(deviceId);
 		void window.electronAPI.setRecordingPreferences({ microphoneDeviceId: deviceId });
 	}, []);
 
+	/**
+	 * Persists the selected microphone noise suppression mode for future recordings.
+	 */
 	const persistNoiseSuppressionMode = useCallback((mode: NoiseSuppressionMode) => {
 		const normalizedMode = normalizeNoiseSuppressionMode(mode);
 		setNoiseSuppressionModeState(normalizedMode);
@@ -1340,6 +1465,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		});
 	}, []);
 
+	/**
+	 * Persists whether system audio capture is enabled for future recordings.
+	 */
 	const persistSystemAudioEnabled = useCallback((enabled: boolean) => {
 		setSystemAudioEnabled(enabled);
 		void window.electronAPI.setRecordingPreferences({ systemAudioEnabled: enabled });
@@ -1414,12 +1542,19 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		};
 	}, [cleanupCapturedMedia, recoverNativeRecordingSession]);
 
+	/**
+	 * Starts the selected native or browser recording pipeline.
+	 */
 	const startRecording = async () => {
 		if (startInFlight.current) {
 			return;
 		}
 
 		let hudSourceSelectionActive = false;
+
+		/**
+		 * Tells the HUD window whether a native source picker is currently active.
+		 */
 		const setHudSourceSelectionActive = (active: boolean) => {
 			if (hudSourceSelectionActive === active) {
 				return;
@@ -1698,6 +1833,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			if (wantsAudioCapture) {
 				let screenMediaStream: MediaStream;
+
+				/**
+				 * Acquires a Linux portal stream with optional system audio in a single chooser flow.
+				 */
 				const acquireLinuxPortalStream = (withAudio: boolean) =>
 					mediaDevices.getDisplayMedia({
 						audio: withAudio,
@@ -2005,6 +2144,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 	};
 
+	/**
+	 * Pauses the active native or browser recording and synchronized sidecar recorders.
+	 */
 	const pauseRecording = useCallback(() => {
 		if (!recording || paused) return;
 		if (nativeScreenRecording.current) {
@@ -2051,6 +2193,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 	}, [markRecordingPaused, pauseMicFallbackRecorder, paused, recording]);
 
+	/**
+	 * Resumes the active native or browser recording and synchronized sidecar recorders.
+	 */
 	const resumeRecording = useCallback(() => {
 		if (!recording || !paused) return;
 		if (nativeScreenRecording.current) {
@@ -2097,6 +2242,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 	}, [markRecordingResumed, paused, recording, resumeMicFallbackRecorder]);
 
+	/**
+	 * Cancels the active recording and discards any partial media outputs.
+	 */
 	const cancelRecording = useCallback(() => {
 		if (!recording) return;
 		setPaused(false);
@@ -2144,6 +2292,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 	}, [cleanupCapturedMedia, markRecordingResumed, recording]);
 
+	/**
+	 * Toggles between starting a new recording and stopping the active one.
+	 */
 	const toggleRecording = async () => {
 		if (starting || countdownActive || finalizing) {
 			return;

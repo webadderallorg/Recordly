@@ -1,15 +1,18 @@
 import {
-	createNoiseSuppressorWithFallback,
 	type NoiseSuppressionMode,
 	type NoiseSuppressionSelection,
 	normalizeNoiseSuppressionMode,
 } from "./noiseSuppression";
+import noiseSuppressionWorkletUrl from "./noiseSuppressionWorklet.ts?worker&url";
 
 const PROCESSOR_BUFFER_SIZE = 1024;
 const DEFAULT_SAMPLE_RATE = 48000;
 const FRAME_BUDGET_MS = 12;
 const LONG_FRAME_LOG_INTERVAL_MS = 5000;
 
+/**
+ * Processed microphone stream plus lifecycle metadata for the active suppressor.
+ */
 export type NoiseSuppressedMicrophoneStream = {
 	stream: MediaStream;
 	activeMode: NoiseSuppressionMode;
@@ -18,6 +21,9 @@ export type NoiseSuppressedMicrophoneStream = {
 	destroy(): void;
 };
 
+/**
+ * Localized warning payload emitted when suppression falls back or becomes unavailable.
+ */
 export type NoiseSuppressionWarning =
 	| {
 			key: "recording.noiseSuppressionUnavailableWarning";
@@ -57,48 +63,22 @@ export async function createNoiseSuppressedMicrophoneStream({
 	const context = new AudioContext({ sampleRate: DEFAULT_SAMPLE_RATE });
 	const source = context.createMediaStreamSource(sourceStream);
 	const destination = context.createMediaStreamDestination();
-	const processor = context.createScriptProcessor(PROCESSOR_BUFFER_SIZE, 1, 1);
 	const sampleRate = context.sampleRate || DEFAULT_SAMPLE_RATE;
-	const selection = await createNoiseSuppressorWithFallback({
+	await context.audioWorklet.addModule(noiseSuppressionWorkletUrl);
+	const processor = new AudioWorkletNode(context, "noise-suppression-processor", {
+		numberOfInputs: 1,
+		numberOfOutputs: 1,
+		outputChannelCount: [1],
+	});
+	const selection = await initializeNoiseSuppressionWorklet(processor, {
 		mode: requestedMode,
 		frameSize: PROCESSOR_BUFFER_SIZE,
 		sampleRate,
+		frameBudgetMs: FRAME_BUDGET_MS,
+		longFrameLogIntervalMs: LONG_FRAME_LOG_INTERVAL_MS,
 	});
 
 	reportWarnings(selection, onWarning);
-
-	let droppedFrames = 0;
-	let lastLongFrameLogAt = 0;
-	const scratchFrame = new Float32Array(PROCESSOR_BUFFER_SIZE);
-	processor.onaudioprocess = (event) => {
-		const input = event.inputBuffer.getChannelData(0);
-		const output = event.outputBuffer.getChannelData(0);
-		const startedAt = performance.now();
-		try {
-			scratchFrame.set(input);
-			output.set(selection.suppressor.processAudioFrame(scratchFrame));
-		} catch (error) {
-			droppedFrames += 1;
-			output.set(input);
-			console.warn("[NoiseSuppression] Processing error; passed through frame.", {
-				activeMode: selection.activeMode,
-				droppedFrames,
-				error: error instanceof Error ? error.message : String(error),
-			});
-		}
-
-		const elapsedMs = performance.now() - startedAt;
-		const now = performance.now();
-		if (elapsedMs > FRAME_BUDGET_MS && now - lastLongFrameLogAt > LONG_FRAME_LOG_INTERVAL_MS) {
-			lastLongFrameLogAt = now;
-			console.warn("[NoiseSuppression] Processing exceeded real-time budget.", {
-				activeMode: selection.activeMode,
-				elapsedMs: Number(elapsedMs.toFixed(2)),
-				frameSize: PROCESSOR_BUFFER_SIZE,
-				sampleRate,
-			});
-		}
-	};
 
 	source.connect(processor);
 	processor.connect(destination);
@@ -115,26 +95,76 @@ export async function createNoiseSuppressedMicrophoneStream({
 		requestedMode,
 		warnings: selection.warnings,
 		destroy: () => {
+			processor.port.postMessage({ type: "destroy" });
 			processor.disconnect();
 			source.disconnect();
 			sourceStream.getTracks().forEach((track) => track.stop());
 			destination.stream.getTracks().forEach((track) => track.stop());
-			selection.suppressor.destroy();
 			context.close().catch(() => undefined);
 			console.info("[NoiseSuppression] Microphone stream cleanup complete.", {
 				requestedMode,
 				activeMode: selection.activeMode,
-				droppedFrames,
 			});
 		},
 	};
+}
+
+type NoiseSuppressionWorkletReadySelection = Omit<NoiseSuppressionSelection, "suppressor">;
+
+/**
+ * Initializes the audio worklet processor and waits for its selected suppressor mode.
+ */
+async function initializeNoiseSuppressionWorklet(
+	processor: AudioWorkletNode,
+	config: {
+		mode: NoiseSuppressionMode;
+		frameSize: number;
+		frameBudgetMs: number;
+		longFrameLogIntervalMs: number;
+		sampleRate: number;
+	},
+): Promise<NoiseSuppressionWorkletReadySelection> {
+	return new Promise((resolve, reject) => {
+		processor.port.onmessage = (event) => {
+			const message = event.data;
+			if (message.type === "ready") {
+				resolve({
+					requestedMode: message.requestedMode,
+					activeMode: message.activeMode,
+					warnings: message.warnings,
+				});
+				return;
+			}
+			if (message.type === "error") {
+				reject(new Error(message.error));
+				return;
+			}
+			if (message.type === "processing-error") {
+				console.warn("[NoiseSuppression] Processing error; passed through frame.", {
+					activeMode: message.activeMode,
+					droppedFrames: message.droppedFrames,
+					error: message.error,
+				});
+				return;
+			}
+			if (message.type === "long-frame") {
+				console.warn("[NoiseSuppression] Processing exceeded real-time budget.", {
+					activeMode: message.activeMode,
+					elapsedMs: message.elapsedMs,
+					frameSize: message.frameSize,
+					sampleRate: message.sampleRate,
+				});
+			}
+		};
+		processor.port.postMessage({ type: "init", ...config });
+	});
 }
 
 /**
  * Converts suppressor initialization warnings into the localized warning shape used by the UI.
  */
 function reportWarnings(
-	selection: NoiseSuppressionSelection,
+	selection: Pick<NoiseSuppressionSelection, "activeMode" | "warnings">,
 	onWarning?: (warning: NoiseSuppressionWarning) => void,
 ): NoiseSuppressionWarning | null {
 	if (selection.warnings.length === 0) {

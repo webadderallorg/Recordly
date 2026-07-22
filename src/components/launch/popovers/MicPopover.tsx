@@ -15,6 +15,9 @@ import { DropdownItem, HudPopover, MicDeviceRow } from "./PopoverScaffold";
 
 const POPOVER_ID = "mic";
 
+/**
+ * Renders microphone, system audio, and noise suppression controls for the recording HUD.
+ */
 export function MicPopover({
 	trigger,
 	disabled,

@@ -1,8 +1,14 @@
 import { loadSpeexModule, SpeexPreprocessor } from "@sapphi-red/speex-preprocess-wasm";
 import { Rnnoise } from "@shiguredo/rnnoise-wasm";
 
+/**
+ * Available microphone noise suppression engines and the explicit passthrough mode.
+ */
 export type NoiseSuppressionMode = "rnnoise" | "speex" | "disabled";
 
+/**
+ * Common lifecycle and frame-processing contract for microphone denoisers.
+ */
 export interface NoiseSuppressor {
 	/**
 	 * Allocates any native or WASM state needed before processing audio frames.
@@ -18,6 +24,9 @@ export interface NoiseSuppressor {
 	destroy(): void;
 }
 
+/**
+ * Result of choosing and initializing a suppressor, including fallback diagnostics.
+ */
 export type NoiseSuppressionSelection = {
 	requestedMode: NoiseSuppressionMode;
 	activeMode: NoiseSuppressionMode;
@@ -25,7 +34,14 @@ export type NoiseSuppressionSelection = {
 	warnings: string[];
 };
 
+/**
+ * Default denoiser used for new and invalid persisted recording preferences.
+ */
 export const DEFAULT_NOISE_SUPPRESSION_MODE: NoiseSuppressionMode = "rnnoise";
+
+/**
+ * Supported persisted values for microphone noise suppression.
+ */
 export const NOISE_SUPPRESSION_MODES = new Set<NoiseSuppressionMode>([
 	"rnnoise",
 	"speex",
@@ -76,8 +92,8 @@ export class RnnoiseNoiseSuppressor implements NoiseSuppressor {
 	private state: ReturnType<
 		Awaited<ReturnType<typeof Rnnoise.load>>["createDenoiseState"]
 	> | null = null;
-	private remainder = new Float32Array(0);
-	private queuedOutput = new Float32Array(0);
+	private remainder: Float32Array<ArrayBufferLike> = new Float32Array(0);
+	private queuedOutput: Float32Array<ArrayBufferLike> = new Float32Array(0);
 
 	/**
 	 * Loads the RNNoise WASM module and creates a denoise state.
@@ -211,6 +227,9 @@ export class SpeexNoiseSuppressor implements NoiseSuppressor {
 	}
 }
 
+/**
+ * Optional factories used by tests and callers that need custom suppressor implementations.
+ */
 export type NoiseSuppressorFactoryDeps = {
 	createRnnoise?: () => NoiseSuppressor;
 	createSpeex?: () => NoiseSuppressor;
