@@ -1152,9 +1152,21 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							fallbackTrackSettings,
 						);
 
-						// Perform muxing/renaming if on Windows
+						// Perform muxing/renaming if on Windows. A failure here must not
+						// suppress the session broadcast below: the microphone sidecar is
+						// only published once the conversion above finishes, so the editor
+						// depends on that notification to pick the track up at all.
 						if (isNativeWindows) {
-							await window.electronAPI.muxNativeWindowsRecording(expectedDurationMs);
+							try {
+								await window.electronAPI.muxNativeWindowsRecording(
+									expectedDurationMs,
+								);
+							} catch (muxError) {
+								console.error(
+									"Failed to mux native Windows recording audio:",
+									muxError,
+								);
+							}
 						}
 
 						console.log(

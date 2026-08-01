@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app } from "electron";
 import { RECORDINGS_DIR } from "../appPaths";
-import { AUTO_RECORDING_PREFIX, RECORDINGS_SETTINGS_FILE } from "./constants";
+import { AUTO_RECORDING_PREFIX, INCOMPLETE_SIDECAR_SUFFIX, RECORDINGS_SETTINGS_FILE } from "./constants";
 import {
 	approvedLocalReadPaths,
 	customRecordingsDir,
@@ -83,7 +83,17 @@ export async function moveFileWithOverwrite(sourcePath: string, destinationPath:
 			throw error;
 		}
 
-		await fs.copyFile(sourcePath, destinationPath);
+		// Cross-volume moves cannot be renamed directly. Copy into a staging file
+		// next to the destination first, so readers never observe a partially
+		// copied recording at the final path, then publish it with a rename.
+		const stagingPath = `${destinationPath}${INCOMPLETE_SIDECAR_SUFFIX}`;
+		try {
+			await fs.copyFile(sourcePath, stagingPath);
+			await fs.rename(stagingPath, destinationPath);
+		} catch (copyError) {
+			await fs.rm(stagingPath, { force: true }).catch(() => undefined);
+			throw copyError;
+		}
 		await fs.unlink(sourcePath);
 	}
 }

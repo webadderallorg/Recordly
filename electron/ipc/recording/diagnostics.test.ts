@@ -5,6 +5,57 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type ExecFileCallback = (error: Error | null, stdout?: string, stderr?: string) => void;
 
+const WAV_STREAMING_SIZE = 0xffffffff;
+
+/**
+ * Builds a 48 kHz mono 16-bit WAV using the chunk layout FFmpeg emits
+ * (`fmt `, `LIST`, `data`). While FFmpeg is still encoding, the RIFF and data
+ * sizes hold the 0xFFFFFFFF "unknown length" sentinel and are only patched when
+ * the file is finalized.
+ */
+function buildWavFile(frameCount: number, { finalized }: { finalized: boolean }): Buffer {
+	const listPayload = Buffer.alloc(26);
+	listPayload.write("INFOISFT", 0, "ascii");
+	const pcm = Buffer.alloc(frameCount * 2);
+	const dataSize = finalized ? pcm.length : WAV_STREAMING_SIZE;
+
+	const header = Buffer.alloc(12 + 8 + 16 + 8 + listPayload.length + 8);
+	let offset = 0;
+	header.write("RIFF", offset, "ascii");
+	offset += 4;
+	header.writeUInt32LE(finalized ? header.length - 8 + pcm.length : WAV_STREAMING_SIZE, offset);
+	offset += 4;
+	header.write("WAVE", offset, "ascii");
+	offset += 4;
+	header.write("fmt ", offset, "ascii");
+	offset += 4;
+	header.writeUInt32LE(16, offset);
+	offset += 4;
+	header.writeUInt16LE(1, offset); // PCM
+	offset += 2;
+	header.writeUInt16LE(1, offset); // mono
+	offset += 2;
+	header.writeUInt32LE(48000, offset);
+	offset += 4;
+	header.writeUInt32LE(96000, offset); // byte rate
+	offset += 4;
+	header.writeUInt16LE(2, offset); // block align
+	offset += 2;
+	header.writeUInt16LE(16, offset); // bits per sample
+	offset += 2;
+	header.write("LIST", offset, "ascii");
+	offset += 4;
+	header.writeUInt32LE(listPayload.length, offset);
+	offset += 4;
+	listPayload.copy(header, offset);
+	offset += listPayload.length;
+	header.write("data", offset, "ascii");
+	offset += 4;
+	header.writeUInt32LE(dataSize, offset);
+
+	return Buffer.concat([header, pcm]);
+}
+
 describe("getCompanionAudioFallbackPaths", () => {
 	let tempRoot: string;
 	let appDataPath: string;
@@ -191,6 +242,65 @@ describe("getCompanionAudioFallbackPaths", () => {
 				[micPath]: 2750,
 			},
 		});
+	});
+
+	it("ignores a microphone sidecar whose WAV header is not finalized yet", async () => {
+		const videoPath = path.join(tempRoot, "recording.mp4");
+		const systemPath = path.join(tempRoot, "recording.system.wav");
+		const micPath = path.join(tempRoot, "recording.mic.wav");
+
+		await Promise.all([
+			fs.writeFile(videoPath, "video"),
+			fs.writeFile(systemPath, buildWavFile(4800, { finalized: true })),
+			// Mid-encode: FFmpeg still advertises an unknown data size, so this file
+			// parses as a valid but far too short recording.
+			fs.writeFile(micPath, buildWavFile(4800, { finalized: false })),
+		]);
+
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				const error = new Error("ffmpeg probe failed") as Error & { stderr?: string };
+				error.stderr = "Stream #0:0: Video: h264";
+				callback(error, "", error.stderr);
+			},
+		);
+
+		const { getCompanionAudioFallbackPaths } = await import("./diagnostics");
+
+		await expect(getCompanionAudioFallbackPaths(videoPath)).resolves.toEqual([systemPath]);
+
+		// Once the encoder finalizes the header the sidecar becomes usable.
+		await fs.writeFile(micPath, buildWavFile(4800, { finalized: true }));
+		await expect(getCompanionAudioFallbackPaths(videoPath)).resolves.toEqual([
+			systemPath,
+			micPath,
+		]);
+	});
+
+	it("classifies finalized, unfinalized and non-RIFF sidecars", async () => {
+		const { isFinalizedWavFile } = await import("./diagnostics");
+
+		const finalizedPath = path.join(tempRoot, "finalized.wav");
+		const streamingPath = path.join(tempRoot, "streaming.wav");
+		const notRiffPath = path.join(tempRoot, "not-riff.wav");
+		const missingPath = path.join(tempRoot, "missing.wav");
+
+		await Promise.all([
+			fs.writeFile(finalizedPath, buildWavFile(960, { finalized: true })),
+			fs.writeFile(streamingPath, buildWavFile(960, { finalized: false })),
+			fs.writeFile(notRiffPath, "mic"),
+		]);
+
+		await expect(isFinalizedWavFile(finalizedPath)).resolves.toBe(true);
+		await expect(isFinalizedWavFile(streamingPath)).resolves.toBe(false);
+		// Non-WAV companions (m4a/webm) and unreadable files are left to other checks.
+		await expect(isFinalizedWavFile(notRiffPath)).resolves.toBe(true);
+		await expect(isFinalizedWavFile(missingPath)).resolves.toBe(true);
 	});
 
 	it("scales audio mux timeout for long recordings", async () => {
