@@ -20,7 +20,7 @@ jobs:
       - uses: vedantmgoyal9/winget-releaser@v2
         with:
           identifier: Webadderall.Recordly
-          installers-regex: 'windows\-x64\.exe$'
+          installers-regex: 'windows\-setup\-x64\.exe$'
           version: ${{ steps.tag.outputs.tag }}
           release-tag: ${{ steps.tag.outputs.tag }}
           token: ${{ secrets.WINGET_ACC_TOKEN }}

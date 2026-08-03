@@ -112,6 +112,9 @@ function LaunchWindowContent() {
 		appVersion,
 		hideHudFromCapture,
 		chooseRecordingsDirectory,
+		chooseWorkspaceDirectory,
+		openWorkspaceDirectory,
+		cleanupTemporaryFiles,
 		toggleHudCaptureProtection,
 	} = useLaunchWindowSystemState(preparePermissions);
 
@@ -376,6 +379,15 @@ function LaunchWindowContent() {
 				hideHudFromCapture={hideHudFromCapture}
 				onToggleHudCaptureProtection={() => {
 					void toggleHudCaptureProtection();
+				}}
+				onChooseWorkspaceDirectory={() => {
+					void chooseWorkspaceDirectory();
+				}}
+				onOpenWorkspaceDirectory={() => {
+					void openWorkspaceDirectory();
+				}}
+				onCleanupTemporaryFiles={() => {
+					void cleanupTemporaryFiles();
 				}}
 				onChooseRecordingsDirectory={() => {
 					void chooseRecordingsDirectory();

@@ -103,12 +103,18 @@
   },
   "win": {
     "target": [
-      "nsis"
+      "nsis",
+      "portable"
     ],
-    "icon": "icons/icons/win/icon.ico"
-    ,
-    "executableName": "Recordly",
-    "artifactName": "${productName}-windows-${arch}.${ext}"
+    "icon": "icons/icons/win/icon.ico",
+    "executableName": "Recordly"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "artifactName": "${productName}-windows-setup-${arch}.${ext}"
+  },
+  "portable": {
+    "artifactName": "${productName}-windows-portable-${arch}.${ext}"
   }
 }
-

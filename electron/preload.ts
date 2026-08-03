@@ -925,6 +925,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	chooseRecordingsDirectory: () => {
 		return ipcRenderer.invoke("choose-recordings-directory");
 	},
+	getStorageStatus: () => {
+		return ipcRenderer.invoke("get-storage-status");
+	},
+	chooseWorkspaceDirectory: () => {
+		return ipcRenderer.invoke("choose-workspace-directory");
+	},
+	openWorkspaceDirectory: () => {
+		return ipcRenderer.invoke("open-workspace-directory");
+	},
+	cleanupRecordlyTemporaryFiles: () => {
+		return ipcRenderer.invoke("cleanup-recordly-temporary-files");
+	},
 	getShortcuts: () => {
 		return ipcRenderer.invoke("get-shortcuts");
 	},

@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
@@ -16,7 +15,6 @@ import {
 	Tray,
 	webContents as electronWebContents,
 } from "electron";
-import { RECORDINGS_DIR } from "./appPaths";
 import { showCursor } from "./cursorHider";
 import { registerExtensionIpcHandlers } from "./extensions/extensionIpc";
 import { getGpuSwitches } from "./gpuSwitches";
@@ -27,6 +25,7 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
+import { getProjectsStorageDir, getRecordingsDir } from "./ipc/utils";
 import { ensureMediaServer } from "./mediaServer";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
@@ -34,6 +33,7 @@ import {
 	hardenWebContentsNavigation,
 	shouldHardenWebContentsType,
 } from "./navigationPolicy";
+import { cleanupRecordlyTempArtifacts } from "./storageSettings";
 import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
@@ -116,13 +116,19 @@ async function logSmokeExportGpuDiagnostics() {
 
 configureGpuAccelerationSwitches();
 
-async function ensureRecordingsDir() {
+async function ensureStorageDirectories() {
 	try {
-		await fs.mkdir(RECORDINGS_DIR, { recursive: true });
-		console.log("RECORDINGS_DIR:", RECORDINGS_DIR);
+		const [recordingsDir, projectsDir] = await Promise.all([
+			getRecordingsDir(),
+			getProjectsStorageDir(),
+		]);
+		console.log("Recordings directory:", recordingsDir);
+		console.log("Projects directory:", projectsDir);
+		console.log("Temporary directory:", app.getPath("temp"));
+		console.log("Cache directory:", app.getPath("sessionData"));
 		console.log("User Data Path:", app.getPath("userData"));
 	} catch (error) {
-		console.error("Failed to create recordings directory:", error);
+		console.error("Failed to create storage directories:", error);
 	}
 }
 
@@ -1006,8 +1012,17 @@ app.whenReady().then(async () => {
 	createTray();
 	updateTrayMenu();
 	setupApplicationMenu();
-	// Ensure recordings directory exists
-	await ensureRecordingsDir();
+	await ensureStorageDirectories();
+	try {
+		const cleanup = await cleanupRecordlyTempArtifacts(app.getPath("temp"));
+		if (cleanup.removedCount > 0) {
+			console.log(
+				`Removed ${cleanup.removedCount} stale Recordly temporary files (${cleanup.removedBytes} bytes)`,
+			);
+		}
+	} catch (error) {
+		console.warn("Failed to clean stale Recordly temporary files:", error);
+	}
 
 	if (!VITE_DEV_SERVER_URL) {
 		try {

@@ -3,8 +3,12 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app } from "electron";
-import { RECORDINGS_DIR } from "../appPaths";
-import { AUTO_RECORDING_PREFIX, RECORDINGS_SETTINGS_FILE } from "./constants";
+import { getConfiguredWorkspaceLayout, RECORDINGS_DIR } from "../appPaths";
+import {
+	AUTO_RECORDING_PREFIX,
+	PROJECTS_DIRECTORY_NAME,
+	RECORDINGS_SETTINGS_FILE,
+} from "./constants";
 import {
 	approvedLocalReadPaths,
 	customRecordingsDir,
@@ -108,7 +112,16 @@ async function loadRecordingsDirectorySetting() {
 
 export async function getRecordingsDir() {
 	await loadRecordingsDirectorySetting();
-	const targetDir = customRecordingsDir ?? RECORDINGS_DIR;
+	const targetDir =
+		customRecordingsDir ?? getConfiguredWorkspaceLayout()?.recordings ?? RECORDINGS_DIR;
+	await fs.mkdir(targetDir, { recursive: true });
+	return targetDir;
+}
+
+export async function getProjectsStorageDir() {
+	const workspaceProjectsDir = getConfiguredWorkspaceLayout()?.projects;
+	const targetDir =
+		workspaceProjectsDir ?? path.join(await getRecordingsDir(), PROJECTS_DIRECTORY_NAME);
 	await fs.mkdir(targetDir, { recursive: true });
 	return targetDir;
 }
@@ -129,4 +142,3 @@ export function approveUserPath(filePath: string | null | undefined): void {
 		// Ignore invalid paths; later reads will surface the underlying error.
 	}
 }
-

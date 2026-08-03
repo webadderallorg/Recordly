@@ -6,11 +6,11 @@ import {
 	COMPANION_AUDIO_LAYOUTS,
 	LEGACY_PROJECT_FILE_EXTENSIONS,
 	PROJECT_FILE_EXTENSION,
-	PROJECTS_DIRECTORY_NAME,
 } from "../constants";
 import { currentVideoPath } from "../state";
 import {
 	getRecordingsDir,
+	getProjectsStorageDir,
 	getTelemetryPathForVideo,
 	isAutoRecordingPath,
 	normalizePath,
@@ -39,8 +39,7 @@ export async function hasSiblingProjectFile(videoPath: string) {
 export { isAutoRecordingPath };
 
 async function loadSavedProjectMediaPaths() {
-	const recordingsDir = await getRecordingsDir();
-	const projectsDir = path.join(recordingsDir, PROJECTS_DIRECTORY_NAME);
+	const projectsDir = await getProjectsStorageDir();
 	const protectedPaths = new Set<string>();
 	const candidateExtensions = new Set([
 		PROJECT_FILE_EXTENSION,

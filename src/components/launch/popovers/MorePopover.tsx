@@ -38,6 +38,9 @@ export function MorePopover({
 	supportsHudCaptureProtection,
 	hideHudFromCapture,
 	onToggleHudCaptureProtection,
+	onChooseWorkspaceDirectory,
+	onOpenWorkspaceDirectory,
+	onCleanupTemporaryFiles,
 	onChooseRecordingsDirectory,
 	onOpenVideoFile,
 	onOpenProjectBrowser,
@@ -49,6 +52,9 @@ export function MorePopover({
 	supportsHudCaptureProtection: boolean;
 	hideHudFromCapture: boolean;
 	onToggleHudCaptureProtection: () => void;
+	onChooseWorkspaceDirectory: () => void;
+	onOpenWorkspaceDirectory: () => void;
+	onCleanupTemporaryFiles: () => void;
 	onChooseRecordingsDirectory: () => void;
 	onOpenVideoFile: () => void;
 	onOpenProjectBrowser: () => void;
@@ -86,6 +92,33 @@ export function MorePopover({
 						: t("recording.showHudInVideo")}
 				</DropdownItem>
 			)}
+			<DropdownItem
+				icon={<FolderOpenIcon size={16} />}
+				onClick={() => {
+					requestClose(POPOVER_ID);
+					onChooseWorkspaceDirectory();
+				}}
+			>
+				{t("recording.workspaceFolder", "Set storage location")}
+			</DropdownItem>
+			<DropdownItem
+				icon={<FolderOpenIcon size={16} />}
+				onClick={() => {
+					requestClose(POPOVER_ID);
+					onOpenWorkspaceDirectory();
+				}}
+			>
+				{t("recording.openWorkspaceFolder", "Open RecordlyData")}
+			</DropdownItem>
+			<DropdownItem
+				icon={<ArrowClockwiseIcon size={16} />}
+				onClick={() => {
+					requestClose(POPOVER_ID);
+					onCleanupTemporaryFiles();
+				}}
+			>
+				{t("recording.cleanTemporaryFiles", "Clean temporary files")}
+			</DropdownItem>
 			<DropdownItem
 				icon={<FolderOpenIcon size={16} />}
 				onClick={() => {
