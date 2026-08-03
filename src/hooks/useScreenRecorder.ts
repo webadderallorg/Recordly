@@ -213,10 +213,7 @@ export function resolveBrowserCaptureCursorPolicy({
 export function shouldUseNativeWindowsCaptureForSource(
 	source: Pick<ProcessedDesktopSource, "id"> | null | undefined,
 ): boolean {
-	return (
-		source?.id?.startsWith("screen:") === true ||
-		source?.id?.startsWith("window:") === true
-	);
+	return source?.id?.startsWith("screen:") === true || source?.id?.startsWith("window:") === true;
 }
 
 export function createProcessedMicrophoneConstraints(
@@ -1472,8 +1469,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						void logNativeCaptureDiagnostics("start-native-screen-recording");
 						if (!hasShownNativeWindowsFallbackToast.current) {
 							hasShownNativeWindowsFallbackToast.current = true;
+							const failureDetail = nativeResult.error ?? nativeResult.message;
 							toast.warning(
-								"Native Windows capture failed to start. Falling back to browser capture.",
+								failureDetail
+									? `Native Windows capture failed to start. ${failureDetail} Falling back to browser capture.`
+									: "Native Windows capture failed to start. Falling back to browser capture.",
+								{ duration: 15000 },
 							);
 						}
 					} else if (!nativeResult.userNotified) {
