@@ -45,6 +45,11 @@
 		},
 		"backgroundBlur": "Desfoque de fundo",
 		"zoomMotionBlur": "Desfoque de movimento do zoom",
+		"temporalZoomMotionBlur": "Temporal Zoom Blur",
+		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
+		"zoomMotionBlurSamples": "Blur Samples",
+		"zoomMotionBlurShutter": "Shutter",
+		"auto": "Auto",
 		"connectZooms": "Conectar zooms",
 		"connectZoomsDescription": "Suaviza regiões de zoom consecutivas em um movimento contínuo de câmera.",
 		"autoApplyFreshRecordingZooms": "Aplicar zooms automaticamente em gravações novas",
@@ -57,6 +62,20 @@
 		"zoomOutDescription": "Controla como a câmera sai de uma região de zoom.",
 		"connectedZoomTitle": "Entre zooms",
 		"connectedZoomDescription": "Ajuste o deslizamento entre regiões de zoom consecutivas quando a conexão estiver ativada.",
+		"motionPresetsTitle": "Motion Presets",
+		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"animationPresets": "Animation Presets",
+		"cursorMotionPresets": "Cursor Motion Presets",
+		"motionPresets": {
+			"focused": {
+				"label": "Focused",
+				"description": "Snappier motion for demos, walkthroughs, and everyday recordings."
+			},
+			"smooth": {
+				"label": "Smooth",
+				"description": "Gentler motion for presentations, keynote-style videos, and polished reveals."
+			}
+		},
 		"zoomInDuration": "Duração do zoom in",
 		"zoomInOverlap": "Sobreposição do zoom in",
 		"zoomOutDuration": "Duração do zoom out",
@@ -74,7 +93,36 @@
 		},
 		"cursorSize": "Tamanho do cursor",
 		"cursorSmoothing": "Suavização do cursor",
+		"cursorSpringStiffness": "Cursor Spring Stiffness",
+		"cursorSpringDamping": "Cursor Spring Damping",
+		"cursorSpringMass": "Cursor Spring Mass",
 		"off": "Desligado",
+		"cursorClickEffects": {
+			"title": "Click Effects",
+			"advanced": "Advanced",
+			"advancedShow": "Show advanced click effect controls",
+			"advancedHide": "Hide advanced click effect controls",
+			"color": "Effect Color",
+			"size": "Effect Size",
+			"opacity": "Effect Opacity",
+			"duration": "Effect Duration",
+			"none": {
+				"label": "Off",
+				"description": "No click graphic. Only the cursor motion changes when you click."
+			},
+			"ripple": {
+				"label": "Ripple",
+				"description": "Expanding rings radiate from each click so taps read clearly in motion."
+			},
+			"spotlight": {
+				"label": "Spotlight",
+				"description": "A soft halo flashes around the pointer to emphasize the clicked area."
+			},
+			"echo": {
+				"label": "Echo",
+				"description": "A pair of soft rings that spread outward with a cleaner pulse."
+			}
+		},
 		"cursorMotionBlur": "Desfoque de movimento do cursor",
 		"cursorClickBounce": "Salto de clique do cursor",
 		"cursorClickBounceDuration": "Velocidade do salto",
@@ -130,8 +178,6 @@
 		"generateFull": "Gerar legendas",
 		"regenerateFull": "Gerar legendas novamente",
 		"clearFull": "Limpar legendas",
-		"editCurrent": "Editar legenda atual",
-		"editSaved": "Legenda atualizada",
 		"fontSettings": "Configurações da fonte",
 		"defaultFont": "Padrão",
 		"fontFamily": "Fonte",
@@ -146,7 +192,15 @@
 		"maxWidth": "Largura máxima",
 		"boxRadius": "Raio da caixa",
 		"backgroundOpacity": "Opacidade do fundo",
-		"textColor": "Cor do texto"
+		"textColor": "Cor do texto",
+		"editor": {
+			"text": "Text",
+			"start": "Start",
+			"end": "End",
+			"split": "Split",
+			"merge": "Merge",
+			"delete": "Delete"
+		}
 	},
 	"crop": {
 		"title": "Cortar vídeo",

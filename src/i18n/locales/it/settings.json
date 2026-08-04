@@ -97,6 +97,32 @@
 		"cursorSpringDamping": "Smorzamento molla cursore",
 		"cursorSpringMass": "Massa molla cursore",
 		"off": "Off",
+		"cursorClickEffects": {
+			"title": "Click Effects",
+			"advanced": "Advanced",
+			"advancedShow": "Show advanced click effect controls",
+			"advancedHide": "Hide advanced click effect controls",
+			"color": "Effect Color",
+			"size": "Effect Size",
+			"opacity": "Effect Opacity",
+			"duration": "Effect Duration",
+			"none": {
+				"label": "Off",
+				"description": "No click graphic. Only the cursor motion changes when you click."
+			},
+			"ripple": {
+				"label": "Ripple",
+				"description": "Expanding rings radiate from each click so taps read clearly in motion."
+			},
+			"spotlight": {
+				"label": "Spotlight",
+				"description": "A soft halo flashes around the pointer to emphasize the clicked area."
+			},
+			"echo": {
+				"label": "Echo",
+				"description": "A pair of soft rings that spread outward with a cleaner pulse."
+			}
+		},
 		"cursorMotionBlur": "Motion blur del cursore",
 		"cursorClickBounce": "Rimbalzo al clic del cursore",
 		"cursorClickBounceDuration": "Velocità rimbalzo",
@@ -166,7 +192,15 @@
 		"maxWidth": "Larghezza massima",
 		"boxRadius": "Raggio riquadro",
 		"backgroundOpacity": "Opacità sfondo",
-		"textColor": "Colore testo"
+		"textColor": "Colore testo",
+		"editor": {
+			"text": "Text",
+			"start": "Start",
+			"end": "End",
+			"split": "Split",
+			"merge": "Merge",
+			"delete": "Delete"
+		}
 	},
 	"crop": {
 		"title": "Ritaglia video",

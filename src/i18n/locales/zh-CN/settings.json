@@ -45,6 +45,11 @@
 		},
 		"backgroundBlur": "背景模糊",
 		"zoomMotionBlur": "缩放运动模糊",
+		"temporalZoomMotionBlur": "Temporal Zoom Blur",
+		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
+		"zoomMotionBlurSamples": "Blur Samples",
+		"zoomMotionBlurShutter": "Shutter",
+		"auto": "Auto",
 		"connectZooms": "连接缩放",
 		"connectZoomsDescription": "将连续的缩放区域平滑连接为一次连续的镜头移动。",
 		"autoApplyFreshRecordingZooms": "自动为新录制应用缩放",
@@ -92,6 +97,32 @@
 		"cursorSpringDamping": "光标弹簧阻尼",
 		"cursorSpringMass": "光标弹簧质量",
 		"off": "关",
+		"cursorClickEffects": {
+			"title": "Click Effects",
+			"advanced": "Advanced",
+			"advancedShow": "Show advanced click effect controls",
+			"advancedHide": "Hide advanced click effect controls",
+			"color": "Effect Color",
+			"size": "Effect Size",
+			"opacity": "Effect Opacity",
+			"duration": "Effect Duration",
+			"none": {
+				"label": "Off",
+				"description": "No click graphic. Only the cursor motion changes when you click."
+			},
+			"ripple": {
+				"label": "Ripple",
+				"description": "Expanding rings radiate from each click so taps read clearly in motion."
+			},
+			"spotlight": {
+				"label": "Spotlight",
+				"description": "A soft halo flashes around the pointer to emphasize the clicked area."
+			},
+			"echo": {
+				"label": "Echo",
+				"description": "A pair of soft rings that spread outward with a cleaner pulse."
+			}
+		},
 		"cursorMotionBlur": "光标运动模糊",
 		"cursorClickBounce": "光标点击弹跳",
 		"cursorClickBounceDuration": "弹跳速度",
@@ -161,7 +192,15 @@
 		"maxWidth": "最大宽度",
 		"boxRadius": "字幕框圆角",
 		"backgroundOpacity": "背景透明度",
-		"textColor": "文字颜色"
+		"textColor": "文字颜色",
+		"editor": {
+			"text": "Text",
+			"start": "Start",
+			"end": "End",
+			"split": "Split",
+			"merge": "Merge",
+			"delete": "Delete"
+		}
 	},
 	"crop": {
 		"title": "裁剪视频",

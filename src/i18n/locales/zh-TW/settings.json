@@ -45,6 +45,11 @@
 		},
 		"backgroundBlur": "背景模糊",
 		"zoomMotionBlur": "縮放動態模糊",
+		"temporalZoomMotionBlur": "Temporal Zoom Blur",
+		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
+		"zoomMotionBlurSamples": "Blur Samples",
+		"zoomMotionBlurShutter": "Shutter",
+		"auto": "Auto",
 		"connectZooms": "連接縮放",
 		"connectZoomsDescription": "將連續的縮放區域平滑串接成一段連續的鏡頭移動。",
 		"autoApplyFreshRecordingZooms": "自動套用新錄影的縮放",
@@ -57,6 +62,20 @@
 		"zoomOutDescription": "控制相機如何離開縮放區域。",
 		"connectedZoomTitle": "縮放之間",
 		"connectedZoomDescription": "啟用連接後，調整連續縮放區域之間的滑行效果。",
+		"motionPresetsTitle": "Motion Presets",
+		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"animationPresets": "Animation Presets",
+		"cursorMotionPresets": "Cursor Motion Presets",
+		"motionPresets": {
+			"focused": {
+				"label": "Focused",
+				"description": "Snappier motion for demos, walkthroughs, and everyday recordings."
+			},
+			"smooth": {
+				"label": "Smooth",
+				"description": "Gentler motion for presentations, keynote-style videos, and polished reveals."
+			}
+		},
 		"zoomInDuration": "拉近時間",
 		"zoomInOverlap": "拉近重疊",
 		"zoomOutDuration": "拉遠時間",
@@ -74,7 +93,36 @@
 		},
 		"cursorSize": "游標大小",
 		"cursorSmoothing": "游標平滑",
+		"cursorSpringStiffness": "Cursor Spring Stiffness",
+		"cursorSpringDamping": "Cursor Spring Damping",
+		"cursorSpringMass": "Cursor Spring Mass",
 		"off": "關閉",
+		"cursorClickEffects": {
+			"title": "Click Effects",
+			"advanced": "Advanced",
+			"advancedShow": "Show advanced click effect controls",
+			"advancedHide": "Hide advanced click effect controls",
+			"color": "Effect Color",
+			"size": "Effect Size",
+			"opacity": "Effect Opacity",
+			"duration": "Effect Duration",
+			"none": {
+				"label": "Off",
+				"description": "No click graphic. Only the cursor motion changes when you click."
+			},
+			"ripple": {
+				"label": "Ripple",
+				"description": "Expanding rings radiate from each click so taps read clearly in motion."
+			},
+			"spotlight": {
+				"label": "Spotlight",
+				"description": "A soft halo flashes around the pointer to emphasize the clicked area."
+			},
+			"echo": {
+				"label": "Echo",
+				"description": "A pair of soft rings that spread outward with a cleaner pulse."
+			}
+		},
 		"cursorMotionBlur": "游標動態模糊",
 		"cursorClickBounce": "點擊彈跳",
 		"cursorClickBounceDuration": "彈跳速度",
@@ -130,8 +178,6 @@
 		"generateFull": "產生字幕",
 		"regenerateFull": "重新產生字幕",
 		"clearFull": "清除字幕",
-		"editCurrent": "編輯目前字幕",
-		"editSaved": "字幕已更新",
 		"fontSettings": "字型設定",
 		"defaultFont": "預設",
 		"fontFamily": "字型",
@@ -146,7 +192,15 @@
 		"maxWidth": "最大寬度",
 		"boxRadius": "方框圓角",
 		"backgroundOpacity": "背景不透明度",
-		"textColor": "文字顏色"
+		"textColor": "文字顏色",
+		"editor": {
+			"text": "Text",
+			"start": "Start",
+			"end": "End",
+			"split": "Split",
+			"merge": "Merge",
+			"delete": "Delete"
+		}
 	},
 	"crop": {
 		"title": "裁切影片",

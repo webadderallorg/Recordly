@@ -1,0 +1,141 @@
+{
+	"playback": {
+        "play": "Wiedergabe",
+        "pause": "Pause",
+        "skipBack": "Zurück springen",
+        "skipForward": "Vorwärts springen",
+        "muteUnmute": "Stummschalten/Stummschaltung aufheben"
+    },
+	"annotations": {
+        "settings": "Einstellungen für Anmerkungen",
+        "active": "Aktiv",
+        "text": "Text",
+        "image": "Bild",
+        "arrow": "Pfeil",
+        "blur": "Weichzeichnen",
+		"textContent": "Textinhalt",
+        "textPlaceholder": "Geben Sie Ihren Text ein...",
+        "fontStyle": "Schriftart",
+        "selectStyle": "Auswahlstil",
+        "size": "Größe",
+        "toggleBold": "Fett umschalten",
+		"toggleItalic": "Kursiv umschalten",
+        "toggleUnderline": "Unterstreichung umschalten",
+        "alignLeft": "Linksbündig",
+        "alignCenter": "Zentriert",
+        "alignRight": "Rechtsbündig",
+        "textColor": "Textfarbe",
+		"background": "Hintergrund",
+        "none": "Keine",
+        "clearBackground": "Hintergrund löschen",
+        "uploadImage": "Bild hochladen",
+        "supportedFormats": "Unterstützte Formate: JPG, PNG, GIF, WebP",
+		"arrowDirection": "Pfeilrichtung",
+        "strokeWidth": "Strichbreite: {{width}}px",
+        "arrowColor": "Pfeilfarbe",
+        "deleteAnnotation": "Anmerkung löschen",
+        "shortcutsAndTips": "Tastenkombinationen & Tipps",
+		"tipSelectAnnotation": "Bewegen Sie den Abspielkopf auf den überlappenden Anmerkungsbereich und wählen Sie ein Element aus.",
+        "tipCycleForward": "Verwenden Sie die Tabulatortaste, um durch die überlappenden Elemente zu blättern.",
+        "tipCycleBackward": "Verwenden Sie Umschalt+Tab, um rückwärts zu blättern.",
+        "imageUploadSuccess": "Bild erfolgreich hochgeladen!",
+		"imageUploadError": "Bitte lade eine JPG-, PNG-, GIF- oder WebP-Bilddatei hoch.",
+        "blurStrength": "Unschärfestärke: {{strength}}",
+        "solidColor": "Einfarbig (Zensur)",
+        "borderRadius": "Randradius"
+    },
+	"fontStyles": {
+        "classic": "Klassisch",
+        "editor": "Editor",
+        "strong": "Fett",
+        "typewriter": "Schreibmaschine",
+        "deco": "Dekorativ",
+        "simple": "Einfach",
+		"modern": "Modern",
+        "clean": "Clean"
+    },
+    "format": {
+        "mp4Video": "MP4-Video",
+        "mp4Description": "Hochwertige Videodatei",
+        "gifAnimation": "GIF-Animation",
+        "gifDescription": "Animiertes Bild zum Teilen"
+    } ,
+    "gifOptions": {
+        "frameRate": "Bildfrequenz",
+        "outputSize": "Ausgabegröße",
+        "outputDimensions": "Ausgabe: {{width}} × {{height}}px",
+        "loopAnimation": "Animation wiederholen",
+		"loopDescription": "GIF wird kontinuierlich abgespielt"
+    },
+    "tutorial": {
+        "howTrimmingWorks": "So funktioniert das Zuschneiden",
+        "title": "So funktioniert das Zuschneiden",
+        "understanding": "So schneiden Sie unerwünschte Teile aus Ihrem Video heraus.",
+		"descriptionP1": "Das Trimm-Werkzeug funktioniert, indem Sie die Segmente definieren, die Sie",
+        "descriptionRemove": "entfernen",
+        "descriptionP2": "aus Ihrem Video",
+        "descriptionP3": "Jeder Teil der Zeitleiste, der von einem roten Trimm-Segment abgedeckt ist, wird beim Exportieren herausgeschnitten.",
+		"visualExample": "Visuelles Beispiel",
+        "removed": "ENTFERNT",
+        "kept": "Beibehalten",
+        "finalVideo": "Endgültiges Video",
+        "part": "Teil {{number}}",
+        "addTrimStep": "1. Trimmen hinzufügen",
+		"addTrimDesc": "Drücken Sie T oder klicken Sie auf das Scheren-Symbol, um einen Abschnitt zum Entfernen zu markieren.",
+        "adjustStep": "2. Anpassen",
+        "adjustDesc": "Ziehen Sie die Ränder des roten Bereichs, um genau den Bereich abzudecken, den Sie herausschneiden möchten."
+    },
+	"feedback": {
+        "trigger": "Feedback",
+        "title": "Feedback & Kontakt",
+        "description": "Wenden Sie sich direkt an uns oder erstellen Sie ein Ticket, wenn etwas nicht funktioniert oder fehlt.",
+        "emailLabel": "E-Mail",
+        "xLabel": "X",
+		"reportIssue": "Problem melden / Feedback senden",
+        "openFailed": "Link konnte nicht geöffnet werden."
+    },
+    "keyboardShortcuts": {
+        "trigger": "Tastenkombinationen",
+        "title": "Tastenkombinationen",
+        "description": "Kurzanleitung für die Steuerelemente der Zeitleiste und des Editors.",
+		"customizeTooltip": "Tastenkombinationen anpassen",
+        "customize": "Anpassen",
+        "panTimeline": "Zeitleiste verschieben",
+        "zoomTimeline": "Zeitleiste zoomen",
+        "cycleAnnotations": "Anmerkungen durchlaufen",
+        "tab": "Registerkarte"
+    },
+	"actions": {
+        "saveAgain": "Erneut speichern",
+        "showInFolder": "In Ordner anzeigen"
+    },
+    "project": {
+        "untitled": "Unbenannt"
+    },
+	"nativeCaptureUnavailable": {
+        "title": "Es ist nichts kaputt, aber wir können kein animiertes Cursor-Overlay rendern.",
+        "description": "Ihr Gerät unterstützt keine native Erfassung. Dies kann verschiedene Gründe haben, die wir noch nicht ermittelt haben. Recordly funktioniert weiterhin, aber eine Cursor-Glättung ist nicht möglich.",
+		"confirm": "Okay"
+    },
+    "exportStatus": {
+        "exporting": "Exportieren",
+        "renderingFile": "Datei wird gerendert.",
+        "preparing": "Export wird vorbereitet...",
+        "completePercent": "{{percent}} % abgeschlossen",
+		"issue": "Problem beim Export",
+        "complete": "Export abgeschlossen",
+        "savedSuccessfully": "Deine Datei wurde erfolgreich gespeichert."
+    },
+    "export": {
+        "processingAudioEdits": "Audio mit Geschwindigkeits-/Overlay-Bearbeitungen wird verarbeitet"
+    },
+    "toolbar": {
+		"addLayer": "Ebene hinzufügen",
+        "splitClip": "Clip teilen (C)"
+    },
+    "timeline": {
+        "expand": "Zeitleiste erweitern",
+        "collapse": "Zeitleiste reduzieren"
+    },
+    "openRecordingsFolder": "Aufnahmeordner öffnen"
+}

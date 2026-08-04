@@ -1,0 +1,16 @@
+{
+    "actions": {
+        "addZoom": "Zoom hinzufügen",
+        "addTrim": "Trimmen hinzufügen",
+        "addSpeed": "Geschwindigkeit hinzufügen",
+        "addAnnotation": "Anmerkung hinzufügen",
+		"addKeyframe": "Keyframe hinzufügen",
+        "deleteSelected": "Ausgewählte löschen",
+        "playPause": "Wiedergabe / Pause",
+		"cycleForward": "Anmerkungen vorwärts durchlaufen",
+        "cycleBackward": "Anmerkungen rückwärts durchlaufen",
+        "deleteSelectedAlt": "Ausgewählte löschen (Alt)",
+        "panTimeline": "Zeitleiste verschieben",
+        "zoomTimeline": "Zeitleiste zoomen"
+    }
+}

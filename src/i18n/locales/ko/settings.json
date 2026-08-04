@@ -45,6 +45,11 @@
 		},
 		"backgroundBlur": "배경 블러",
 		"zoomMotionBlur": "확대 모션 블러",
+		"temporalZoomMotionBlur": "Temporal Zoom Blur",
+		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
+		"zoomMotionBlurSamples": "Blur Samples",
+		"zoomMotionBlurShutter": "Shutter",
+		"auto": "Auto",
 		"connectZooms": "확대 구간 연결",
 		"connectZoomsDescription": "연속된 확대 구간을 하나의 부드러운 카메라 이동으로 연결합니다.",
 		"autoApplyFreshRecordingZooms": "새 녹화에 확대 자동 적용",
@@ -57,6 +62,20 @@
 		"zoomOutDescription": "카메라가 확대 구간에서 빠져나오는 방식을 제어합니다.",
 		"connectedZoomTitle": "확대 구간 사이",
 		"connectedZoomDescription": "연결이 활성화된 경우, 연속된 확대 구간 사이의 이동을 조정합니다.",
+		"motionPresetsTitle": "Motion Presets",
+		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"animationPresets": "Animation Presets",
+		"cursorMotionPresets": "Cursor Motion Presets",
+		"motionPresets": {
+			"focused": {
+				"label": "Focused",
+				"description": "Snappier motion for demos, walkthroughs, and everyday recordings."
+			},
+			"smooth": {
+				"label": "Smooth",
+				"description": "Gentler motion for presentations, keynote-style videos, and polished reveals."
+			}
+		},
 		"zoomInDuration": "확대 시작 시간",
 		"zoomInOverlap": "확대 시작 겹침",
 		"zoomOutDuration": "확대 종료 시간",
@@ -74,7 +93,36 @@
 		},
 		"cursorSize": "커서 크기",
 		"cursorSmoothing": "커서 보정",
+		"cursorSpringStiffness": "Cursor Spring Stiffness",
+		"cursorSpringDamping": "Cursor Spring Damping",
+		"cursorSpringMass": "Cursor Spring Mass",
 		"off": "끔",
+		"cursorClickEffects": {
+			"title": "Click Effects",
+			"advanced": "Advanced",
+			"advancedShow": "Show advanced click effect controls",
+			"advancedHide": "Hide advanced click effect controls",
+			"color": "Effect Color",
+			"size": "Effect Size",
+			"opacity": "Effect Opacity",
+			"duration": "Effect Duration",
+			"none": {
+				"label": "Off",
+				"description": "No click graphic. Only the cursor motion changes when you click."
+			},
+			"ripple": {
+				"label": "Ripple",
+				"description": "Expanding rings radiate from each click so taps read clearly in motion."
+			},
+			"spotlight": {
+				"label": "Spotlight",
+				"description": "A soft halo flashes around the pointer to emphasize the clicked area."
+			},
+			"echo": {
+				"label": "Echo",
+				"description": "A pair of soft rings that spread outward with a cleaner pulse."
+			}
+		},
 		"cursorMotionBlur": "커서 모션 블러",
 		"cursorClickBounce": "커서 클릭 바운스",
 		"cursorClickBounceDuration": "바운스 속도",
@@ -130,8 +178,6 @@
 		"generateFull": "자막 생성",
 		"regenerateFull": "자막 다시 생성",
 		"clearFull": "자막 지우기",
-		"editCurrent": "현재 자막 편집",
-		"editSaved": "자막이 업데이트되었습니다",
 		"fontSettings": "글꼴 설정",
 		"defaultFont": "기본값",
 		"fontFamily": "글꼴",
@@ -146,7 +192,15 @@
 		"maxWidth": "최대 너비",
 		"boxRadius": "박스 반경",
 		"backgroundOpacity": "배경 투명도",
-		"textColor": "텍스트 색상"
+		"textColor": "텍스트 색상",
+		"editor": {
+			"text": "Text",
+			"start": "Start",
+			"end": "End",
+			"split": "Split",
+			"merge": "Merge",
+			"delete": "Delete"
+		}
 	},
 	"crop": {
 		"title": "비디오 자르기",

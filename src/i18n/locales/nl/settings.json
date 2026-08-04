@@ -45,6 +45,11 @@
 		},
 		"backgroundBlur": "Achtergrondvervaging",
 		"zoomMotionBlur": "Zoom-bewegingsonscherpte",
+		"temporalZoomMotionBlur": "Temporal Zoom Blur",
+		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
+		"zoomMotionBlurSamples": "Blur Samples",
+		"zoomMotionBlurShutter": "Shutter",
+		"auto": "Auto",
 		"connectZooms": "Zooms verbinden",
 		"connectZoomsDescription": "Maak opeenvolgende zoomgebieden vloeiend tot een doorlopende camerabeweging.",
 		"autoApplyFreshRecordingZooms": "Zooms voor nieuwe opnames automatisch toepassen",
@@ -57,6 +62,20 @@
 		"zoomOutDescription": "Bepaal hoe de camera een zoomgebied verlaat.",
 		"connectedZoomTitle": "Tussen zooms",
 		"connectedZoomDescription": "Stel de overgang af tussen opeenvolgende zoomgebieden wanneer verbinding is ingeschakeld.",
+		"motionPresetsTitle": "Motion Presets",
+		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"animationPresets": "Animation Presets",
+		"cursorMotionPresets": "Cursor Motion Presets",
+		"motionPresets": {
+			"focused": {
+				"label": "Focused",
+				"description": "Snappier motion for demos, walkthroughs, and everyday recordings."
+			},
+			"smooth": {
+				"label": "Smooth",
+				"description": "Gentler motion for presentations, keynote-style videos, and polished reveals."
+			}
+		},
 		"zoomInDuration": "Inzoomduur",
 		"zoomInOverlap": "Inzoomoverlap",
 		"zoomOutDuration": "Uitzoomduur",
@@ -74,7 +93,36 @@
 		},
 		"cursorSize": "Cursorgrootte",
 		"cursorSmoothing": "Cursorverzachting",
+		"cursorSpringStiffness": "Cursor Spring Stiffness",
+		"cursorSpringDamping": "Cursor Spring Damping",
+		"cursorSpringMass": "Cursor Spring Mass",
 		"off": "Uit",
+		"cursorClickEffects": {
+			"title": "Click Effects",
+			"advanced": "Advanced",
+			"advancedShow": "Show advanced click effect controls",
+			"advancedHide": "Hide advanced click effect controls",
+			"color": "Effect Color",
+			"size": "Effect Size",
+			"opacity": "Effect Opacity",
+			"duration": "Effect Duration",
+			"none": {
+				"label": "Off",
+				"description": "No click graphic. Only the cursor motion changes when you click."
+			},
+			"ripple": {
+				"label": "Ripple",
+				"description": "Expanding rings radiate from each click so taps read clearly in motion."
+			},
+			"spotlight": {
+				"label": "Spotlight",
+				"description": "A soft halo flashes around the pointer to emphasize the clicked area."
+			},
+			"echo": {
+				"label": "Echo",
+				"description": "A pair of soft rings that spread outward with a cleaner pulse."
+			}
+		},
 		"cursorMotionBlur": "Cursor-bewegingsonscherpte",
 		"cursorClickBounce": "Cursorklikstuit",
 		"cursorClickBounceDuration": "Stuitsnelheid",
@@ -130,8 +178,6 @@
 		"generateFull": "Ondertiteling genereren",
 		"regenerateFull": "Ondertiteling opnieuw genereren",
 		"clearFull": "Ondertiteling wissen",
-		"editCurrent": "Huidige ondertiteling bewerken",
-		"editSaved": "Ondertiteling bijgewerkt",
 		"fontSettings": "Lettertype-instellingen",
 		"defaultFont": "Standaard",
 		"fontFamily": "Lettertype",
@@ -146,7 +192,15 @@
 		"maxWidth": "Maximale breedte",
 		"boxRadius": "Vakstraal",
 		"backgroundOpacity": "Achtergrond-dekking",
-		"textColor": "Tekstkleur"
+		"textColor": "Tekstkleur",
+		"editor": {
+			"text": "Text",
+			"start": "Start",
+			"end": "End",
+			"split": "Split",
+			"merge": "Merge",
+			"delete": "Delete"
+		}
 	},
 	"crop": {
 		"title": "Video bijsnijden",
