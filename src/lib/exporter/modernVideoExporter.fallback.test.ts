@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ModernVideoExporter as ModernVideoExporterClass } from "./modernVideoExporter";
+import type { ExportMetrics } from "./types";
 
 const mocks = vi.hoisted(() => {
 	const videoInfo = {
@@ -79,6 +80,140 @@ describe("ModernVideoExporter native fallback routing", () => {
 		vi.unstubAllGlobals();
 	});
 
+	it("preserves the H.264 Auto non-raw route", async () => {
+		const exporter = new ModernVideoExporter({
+			exportVideoCodec: "h264",
+			exportEncoderPreference: "auto",
+		} as never) as unknown as {
+			shouldForceNativeRawFrame: () => boolean;
+		};
+
+		expect(exporter.shouldForceNativeRawFrame()).toBe(false);
+	});
+
+	it("allows eligible HEVC Auto and Hardware exports to try the GPU compositor", () => {
+		const autoExporter = new ModernVideoExporter({
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "auto",
+			experimentalNativeExport: true,
+			experimentalNvidiaCudaExport: true,
+		} as never) as unknown as {
+			canUseNativeGpuStaticLayout: () => boolean;
+			shouldForceNativeRawFrame: () => boolean;
+		};
+		const hardwareExporter = new ModernVideoExporter({
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "hardware",
+			experimentalNativeExport: true,
+			experimentalNvidiaCudaExport: true,
+		} as never) as unknown as {
+			canUseNativeGpuStaticLayout: () => boolean;
+			shouldForceNativeRawFrame: () => boolean;
+		};
+
+		expect(autoExporter.canUseNativeGpuStaticLayout()).toBe(true);
+		expect(autoExporter.shouldForceNativeRawFrame()).toBe(false);
+		expect(hardwareExporter.canUseNativeGpuStaticLayout()).toBe(true);
+		expect(hardwareExporter.shouldForceNativeRawFrame()).toBe(false);
+	});
+
+	it("keeps HEVC CPU exports on rawvideo and out of the GPU compositor", () => {
+		const exporter = new ModernVideoExporter({
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "cpu",
+			experimentalNativeExport: true,
+			experimentalNvidiaCudaExport: true,
+		} as never) as unknown as {
+			canUseNativeGpuStaticLayout: () => boolean;
+			shouldForceNativeRawFrame: () => boolean;
+		};
+
+		expect(exporter.canUseNativeGpuStaticLayout()).toBe(false);
+		expect(exporter.shouldForceNativeRawFrame()).toBe(true);
+	});
+
+	it("passes high-level HEVC preference to rawvideo without deriving encoder names", async () => {
+		vi.stubGlobal("window", {
+			electronAPI: {
+				nativeVideoExportStart: vi.fn().mockResolvedValue({
+					success: true,
+					sessionId: "hevc-raw-session",
+					encoderName: "hevc_nvenc",
+				}),
+			},
+		});
+		const exporter = new ModernVideoExporter({
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "hardware",
+		} as never) as unknown as {
+			tryStartNativeVideoExportRawFrame: () => Promise<boolean>;
+			encoderName: string | null;
+		};
+
+		await expect(exporter.tryStartNativeVideoExportRawFrame()).resolves.toBe(true);
+		expect(window.electronAPI.nativeVideoExportStart).toHaveBeenCalledWith(
+			expect.objectContaining({
+				inputMode: "rawvideo",
+				videoCodec: "hevc",
+				encoderPreference: "hardware",
+			}),
+		);
+		expect(exporter.encoderName).toBe("hevc_nvenc");
+	});
+	it("records negotiated raw transport and ACK metrics", async () => {
+		const exporter = new ModernVideoExporter({} as never) as unknown as {
+			buildExportMetrics: () => ExportMetrics;
+			nativeTransportMode: "transferable-stream";
+			nativeRawBytesSubmitted: number;
+			nativeRawFramesSubmitted: number;
+			nativeWriteTimeMs: number;
+			nativeWriteAckTimeMs: number;
+			nativeFrameTransportTimeMs: number;
+			peakNativeWriteInFlightBytes: number;
+		};
+		exporter.nativeTransportMode = "transferable-stream";
+		exporter.nativeRawBytesSubmitted = 16;
+		exporter.nativeRawFramesSubmitted = 2;
+		exporter.nativeWriteTimeMs = 12;
+		exporter.nativeWriteAckTimeMs = 12;
+		exporter.nativeFrameTransportTimeMs = 12;
+		exporter.peakNativeWriteInFlightBytes = 8;
+
+		const metrics = exporter.buildExportMetrics();
+
+		expect(metrics.nativeTransportMode).toBe("transferable-stream");
+		expect(metrics.nativeRawBytesSubmitted).toBe(16);
+		expect(metrics.nativeWriteMs).toBe(12);
+		expect(metrics.nativeWriteAckMs).toBe(12);
+		expect(metrics.averageNativeFrameTransportMs).toBe(6);
+		expect(metrics.peakNativeWriteInFlightBytes).toBe(8);
+	});
+
+	it("falls back to cloned IPC when raw channel negotiation is unavailable", async () => {
+		vi.stubGlobal("window", {
+			electronAPI: {
+				nativeVideoExportOpenFrameChannel: vi
+					.fn()
+					.mockResolvedValue({ success: false, error: "probe failed" }),
+				nativeVideoExportWriteFrameViaChannel: vi.fn(),
+			},
+		});
+		const exporter = new ModernVideoExporter({} as never) as unknown as {
+			negotiateNativeRawFrameTransport: (sessionId: string) => Promise<void>;
+			nativeTransportMode: string | null;
+			nativeTransportFallbackReason: string | null;
+		};
+
+		await exporter.negotiateNativeRawFrameTransport("session");
+
+		expect(exporter.nativeTransportMode).toBe("cloned-ipc");
+		expect(exporter.nativeTransportFallbackReason).toBe("probe failed");
+	});
+
 	it("falls back to WebCodecs instead of surfacing a native error when Breeze is unavailable", async () => {
 		const exporter = new ModernVideoExporter({
 			videoUrl: "file:///recording.mp4",
@@ -123,6 +258,172 @@ describe("ModernVideoExporter native fallback routing", () => {
 		expect(initializeEncoder).toHaveBeenCalledTimes(1);
 		expect(mocks.muxerFinalize).toHaveBeenCalledTimes(1);
 	}, 15_000);
+
+	it("finishes eligible HEVC GPU exports before creating the canvas renderer", async () => {
+		const staticLayoutResult = {
+			success: true,
+			tempFilePath: "C:/Temp/hevc-gpu.mp4",
+		};
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#101010",
+			padding: 0,
+			borderRadius: 0,
+			backgroundBlur: 0,
+			shadowIntensity: 0,
+			showShadow: false,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			experimentalNativeExport: true,
+			experimentalNvidiaCudaExport: true,
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "auto",
+			backendPreference: "auto",
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean; tempFilePath?: string }>;
+			loadNativeStaticLayoutVideoInfo: () => Promise<unknown>;
+			tryExportNativeStaticLayout: () => Promise<unknown>;
+			tryStartNativeVideoExportRawFrame: () => Promise<boolean>;
+		};
+
+		const loadNativeStaticLayoutVideoInfo = vi
+			.spyOn(exporter, "loadNativeStaticLayoutVideoInfo")
+			.mockResolvedValue(mocks.videoInfo);
+		const tryExportNativeStaticLayout = vi
+			.spyOn(exporter, "tryExportNativeStaticLayout")
+			.mockResolvedValue(staticLayoutResult);
+		const tryStartNativeVideoExportRawFrame = vi
+			.spyOn(exporter, "tryStartNativeVideoExportRawFrame")
+			.mockResolvedValue(true);
+
+		const result = await exporter.export();
+
+		expect(result).toEqual(staticLayoutResult);
+		expect(loadNativeStaticLayoutVideoInfo).toHaveBeenCalledTimes(1);
+		expect(tryExportNativeStaticLayout).toHaveBeenCalledTimes(1);
+		expect(tryStartNativeVideoExportRawFrame).not.toHaveBeenCalled();
+		expect(mocks.frameRendererInitialize).not.toHaveBeenCalled();
+		expect(mocks.streamingDecoderLoadMetadata).not.toHaveBeenCalled();
+	});
+	it("tries native CUDA static layout first for HEVC Hardware", async () => {
+		const staticLayoutResult = {
+			success: true,
+			tempFilePath: "C:/Temp/hevc-hardware-gpu.mp4",
+		};
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#101010",
+			padding: 0,
+			borderRadius: 0,
+			backgroundBlur: 0,
+			shadowIntensity: 0,
+			showShadow: false,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			experimentalNativeExport: true,
+			experimentalNvidiaCudaExport: true,
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "hardware",
+			backendPreference: "auto",
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean; tempFilePath?: string }>;
+			loadNativeStaticLayoutVideoInfo: () => Promise<unknown>;
+			tryExportNativeStaticLayout: () => Promise<unknown>;
+			tryStartNativeVideoExportRawFrame: () => Promise<boolean>;
+		};
+
+		const loadNativeStaticLayoutVideoInfo = vi
+			.spyOn(exporter, "loadNativeStaticLayoutVideoInfo")
+			.mockResolvedValue(mocks.videoInfo);
+		const tryExportNativeStaticLayout = vi
+			.spyOn(exporter, "tryExportNativeStaticLayout")
+			.mockResolvedValue(staticLayoutResult);
+		const tryStartNativeVideoExportRawFrame = vi
+			.spyOn(exporter, "tryStartNativeVideoExportRawFrame")
+			.mockResolvedValue(true);
+
+		const result = await exporter.export();
+
+		expect(result).toEqual(staticLayoutResult);
+		expect(loadNativeStaticLayoutVideoInfo).toHaveBeenCalledTimes(1);
+		expect(tryExportNativeStaticLayout).toHaveBeenCalledTimes(1);
+		expect(tryStartNativeVideoExportRawFrame).not.toHaveBeenCalled();
+		expect(mocks.frameRendererInitialize).not.toHaveBeenCalled();
+	});
+
+	it("falls back to HEVC rawvideo for unsupported canvas-only features", async () => {
+		vi.stubGlobal("window", {
+			electronAPI: {
+				nativeStaticLayoutExport: vi.fn(),
+				nativeStaticLayoutExportCancel: vi.fn(),
+			},
+		});
+		mocks.streamingDecoderGetEffectiveDuration.mockReturnValue(1);
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#101010",
+			padding: 0,
+			borderRadius: 0,
+			backgroundBlur: 0,
+			shadowIntensity: 0,
+			showShadow: false,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			annotationRegions: [{ id: "annotation-1", startMs: 0, endMs: 500 }],
+			experimentalNativeExport: true,
+			experimentalNvidiaCudaExport: true,
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "auto",
+			backendPreference: "auto",
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean; tempFilePath?: string }>;
+			loadNativeStaticLayoutVideoInfo: () => Promise<unknown>;
+			tryStartNativeVideoExportRawFrame: () => Promise<boolean>;
+			finishNativeVideoExport: () => Promise<unknown>;
+			nativeStaticLayoutSkipReasons: string[];
+			nativeRawFrameMode: boolean;
+			configureNativeRawFrameBackpressure: () => void;
+		};
+
+		const loadNativeStaticLayoutVideoInfo = vi
+			.spyOn(exporter, "loadNativeStaticLayoutVideoInfo")
+			.mockResolvedValue(mocks.videoInfo);
+		const tryStartNativeVideoExportRawFrame = vi
+			.spyOn(exporter, "tryStartNativeVideoExportRawFrame")
+			.mockImplementation(async () => {
+				exporter.nativeRawFrameMode = true;
+				return true;
+			});
+		const configureNativeRawFrameBackpressure = vi.spyOn(
+			exporter,
+			"configureNativeRawFrameBackpressure",
+		);
+		vi.spyOn(exporter, "finishNativeVideoExport").mockResolvedValue({
+			success: true,
+			tempFilePath: "C:/Temp/hevc-raw.mp4",
+		});
+
+		const result = await exporter.export();
+
+		expect(result.success).toBe(true);
+		expect(loadNativeStaticLayoutVideoInfo).toHaveBeenCalledTimes(1);
+		expect(window.electronAPI.nativeStaticLayoutExport).not.toHaveBeenCalled();
+		expect(tryStartNativeVideoExportRawFrame).toHaveBeenCalledTimes(1);
+		expect(exporter.nativeStaticLayoutSkipReasons).toContain(
+			"native-overlay-preparation-failed",
+		);
+		expect(configureNativeRawFrameBackpressure).toHaveBeenCalledTimes(1);
+		expect(mocks.frameRendererInitialize).toHaveBeenCalledTimes(1);
+	});
 
 	it("keeps Windows auto exports on the streaming native route before static layout", async () => {
 		vi.stubGlobal("navigator", {

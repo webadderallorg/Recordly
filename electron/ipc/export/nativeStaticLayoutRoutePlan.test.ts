@@ -46,7 +46,7 @@ describe("planNativeStaticLayoutRoutes", () => {
 				d3d11: d3d11Probe,
 				source,
 			}),
-		).toEqual({
+		).toMatchObject({
 			selectedRoute: "nvidia-cuda-compositor",
 			decisions: [
 				{
@@ -124,7 +124,7 @@ describe("planNativeStaticLayoutRoutes", () => {
 				d3d11,
 				source,
 			}),
-		).toEqual({
+		).toMatchObject({
 			selectedRoute: "ffmpeg-static-layout",
 			decisions: [
 				{
@@ -147,6 +147,77 @@ describe("planNativeStaticLayoutRoutes", () => {
 			d3d11,
 			source,
 		});
+	});
+
+	it("routes HEVC only through NVIDIA CUDA", () => {
+		const plan = planNativeStaticLayoutRoutes({
+			videoCodec: "hevc",
+			encoderPreference: "auto",
+			cuda: cudaProbe,
+			d3d11: d3d11Probe,
+			source,
+		});
+
+		expect(plan.selectedRoute).toBe("nvidia-cuda-compositor");
+		expect(plan.videoCodec).toBe("hevc");
+		expect(plan.encoderPreference).toBe("auto");
+		expect(plan.decisions).toEqual(
+			expect.arrayContaining([
+				{
+					route: "windows-d3d11-compositor",
+					status: "rejected",
+					reasons: ["hevc-requires-nvidia-cuda-compositor"],
+				},
+				{
+					route: "ffmpeg-static-layout",
+					status: "rejected",
+					reasons: ["hevc-requires-nvidia-cuda-compositor"],
+				},
+			]),
+		);
+	});
+
+	it("falls back to rawvideo when HEVC CUDA is unavailable", () => {
+		const plan = planNativeStaticLayoutRoutes({
+			videoCodec: "hevc",
+			encoderPreference: "hardware",
+			cuda: { ...cudaProbe, skipReason: "nvidia-gpu-unavailable" },
+			d3d11: d3d11Probe,
+			source,
+		});
+
+		expect(plan.selectedRoute).toBeNull();
+		expect(plan.fallbackRoute).toBe("native-rawvideo");
+		expect(plan.fallbackReason).toBe("hevc-hardware-route-unavailable:nvidia-gpu-unavailable");
+		expect(plan.decisions).toEqual(
+			expect.arrayContaining([
+				{
+					route: "windows-d3d11-compositor",
+					status: "rejected",
+					reasons: ["hevc-requires-nvidia-cuda-compositor"],
+				},
+				{
+					route: "ffmpeg-static-layout",
+					status: "rejected",
+					reasons: ["hevc-requires-nvidia-cuda-compositor"],
+				},
+			]),
+		);
+	});
+
+	it("keeps CPU preference out of every GPU route", () => {
+		const plan = planNativeStaticLayoutRoutes({
+			videoCodec: "h264",
+			encoderPreference: "cpu",
+			cuda: cudaProbe,
+			d3d11: d3d11Probe,
+			source,
+		});
+
+		expect(plan.selectedRoute).toBeNull();
+		expect(plan.fallbackRoute).toBe("native-rawvideo");
+		expect(plan.fallbackReason).toBe("encoder-preference-cpu-requires-native-rawvideo");
+		expect(plan.decisions.every((decision) => decision.status === "rejected")).toBe(true);
 	});
 
 	it("preserves proxy source metadata for route diagnostics", () => {

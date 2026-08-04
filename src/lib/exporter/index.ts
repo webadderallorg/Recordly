@@ -1,3 +1,8 @@
+export {
+	clampCustomBitrateMbps,
+	customBitrateMbpsToBps,
+	resolveExportBitrate,
+} from "./exportBitrate";
 export { FrameRenderer } from "./frameRenderer";
 export { calculateOutputDimensions, GifExporter } from "./gifExporter";
 export { ModernVideoExporter } from "./modernVideoExporter";
@@ -12,11 +17,19 @@ export {
 	resolveSupportedMp4EncoderPath,
 } from "./mp4Support";
 export { VideoMuxer } from "./muxer";
+export type { NativeStaticLayoutOverlayLayer } from "./nativeStaticLayoutOverlays";
+export {
+	getNativeStaticLayoutOverlayFrameByteSize,
+	sortNativeStaticLayoutOverlayLayers,
+	validateNativeStaticLayoutOverlayLayer,
+} from "./nativeStaticLayoutOverlays";
 export { StreamingVideoDecoder } from "./streamingDecoder";
 export type {
 	ExportBackendPreference,
+	ExportBitrateMode,
 	ExportConfig,
 	ExportEncodeBackend,
+	ExportEncoderPreference,
 	ExportEncodingMode,
 	ExportFormat,
 	ExportMetrics,
@@ -27,12 +40,16 @@ export type {
 	ExportRenderBackend,
 	ExportResult,
 	ExportSettings,
+	ExportVideoCodec,
 	GifExportConfig,
 	GifFrameRate,
 	GifSizePreset,
 	VideoFrameData,
 } from "./types";
 export {
+	EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS,
+	EXPORT_BITRATE_MAX_MBPS,
+	EXPORT_BITRATE_MIN_MBPS,
 	GIF_FRAME_RATES,
 	GIF_SIZE_PRESETS,
 	isValidGifFrameRate,

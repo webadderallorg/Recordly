@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AudioRegion, SpeedRegion } from "@/components/video-editor/types";
-import { ModernVideoExporter } from "./modernVideoExporter";
+import {
+	ModernVideoExporter,
+	shouldRejectNativeStaticLayoutResultForEffectPreservation,
+	shouldSkipForMissingCursorAtlas,
+} from "./modernVideoExporter";
 import type { DecodedVideoInfo } from "./streamingDecoder";
 
 const videoInfo: DecodedVideoInfo = {
@@ -40,6 +44,12 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 		...overrides,
 	} as never) as unknown as {
 		buildNativeAudioPlan: (videoInfo: DecodedVideoInfo) => unknown;
+		tryExportNativeStaticLayout: (
+			videoInfo: DecodedVideoInfo,
+			audioPlan: unknown,
+			effectiveDurationSec: number,
+			totalFrames: number,
+		) => Promise<unknown>;
 		buildNativeStaticLayoutVideoTimelineSegments: (videoInfo: DecodedVideoInfo) => Array<{
 			sourceStartMs: number;
 			sourceEndMs: number;
@@ -58,6 +68,9 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 			videoInfo: DecodedVideoInfo,
 			effectiveDurationSec: number,
 		) => string[];
+		shouldForceNativeRawFrame: () => boolean;
+		requiresStrictNativeCudaRoute: () => boolean;
+		buildStrictNativeCudaHardwareError: (reason: string) => Error;
 		getNativeStaticLayoutSourceCrop: (videoInfo: DecodedVideoInfo) => {
 			x: number;
 			y: number;
@@ -70,6 +83,26 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 			wallpaper: string,
 		) => CanvasGradient | null;
 		getNativeStaticLayoutCursorSize: (contentWidth: number) => number;
+		getNativeStaticLayoutZoomTelemetry: (
+			layout: {
+				centerOffsetX: number;
+				centerOffsetY: number;
+				croppedDisplayWidth: number;
+				croppedDisplayHeight: number;
+			},
+			totalFrames: number,
+			cursorTelemetry?: unknown,
+		) =>
+			| Array<{
+					timeMs: number;
+					scale: number;
+					x: number;
+					y: number;
+					blurStrength: number;
+					blurCenterX: number;
+					blurCenterY: number;
+			  }>
+			| undefined;
 	};
 }
 
@@ -107,6 +140,91 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			audioMode: "copy-source",
 			audioSourceCodec: "opus",
 		});
+	});
+
+	it("passes HEVC codec and encoder preference to native static-layout", async () => {
+		const exporter = createExporter({
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "hardware",
+			experimentalNvidiaCudaExport: true,
+		});
+		const nativeStaticLayoutExport = window.electronAPI.nativeStaticLayoutExport;
+		vi.mocked(nativeStaticLayoutExport).mockResolvedValue({
+			success: true,
+			tempPath: "C:/Temp/hevc-static.mp4",
+			videoCodec: "hevc",
+			encoderPreference: "hardware",
+			route: "nvidia-cuda-compositor",
+		});
+
+		await expect(
+			exporter.tryExportNativeStaticLayout(videoInfo, { audioMode: "none" }, 60, 1_800),
+		).resolves.toMatchObject({ success: true, tempFilePath: "C:/Temp/hevc-static.mp4" });
+		expect(nativeStaticLayoutExport).toHaveBeenCalledWith(
+			expect.objectContaining({
+				videoCodec: "hevc",
+				encoderPreference: "hardware",
+			}),
+		);
+	});
+
+	it.each([
+		"cuda-overlay",
+		"cuda-scale-cpu-pad",
+		"cuda-static-composite",
+	] as const)("accepts the FFmpeg CUDA HEVC route %s", async (route) => {
+		const exporter = createExporter({
+			exportVideoCodec: "hevc",
+			experimentalNvidiaCudaExport: true,
+		});
+		vi.mocked(window.electronAPI.nativeStaticLayoutExport).mockResolvedValue({
+			success: true,
+			tempPath: "C:/Temp/hevc-cuda.mp4",
+			videoCodec: "hevc",
+			encoderPreference: "auto",
+			route,
+		});
+
+		await expect(
+			exporter.tryExportNativeStaticLayout(videoInfo, { audioMode: "none" }, 60, 1_800),
+		).resolves.toMatchObject({ success: true, tempFilePath: "C:/Temp/hevc-cuda.mp4" });
+	});
+
+	it("rejects FFmpeg CUDA routes for strict HEVC Hardware", async () => {
+		const exporter = createExporter({
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "hardware",
+			experimentalNvidiaCudaExport: true,
+		});
+		vi.mocked(window.electronAPI.nativeStaticLayoutExport).mockResolvedValue({
+			success: true,
+			tempPath: "C:/Temp/hevc-cuda.mp4",
+			videoCodec: "hevc",
+			encoderPreference: "hardware",
+			route: "cuda-overlay",
+		});
+
+		await expect(
+			exporter.tryExportNativeStaticLayout(videoInfo, { audioMode: "none" }, 60, 1_800),
+		).resolves.toBeNull();
+	});
+
+	it("rejects the H.264-only Windows GPU route for HEVC", async () => {
+		const exporter = createExporter({
+			exportVideoCodec: "hevc",
+			experimentalNvidiaCudaExport: true,
+		});
+		vi.mocked(window.electronAPI.nativeStaticLayoutExport).mockResolvedValue({
+			success: true,
+			tempPath: "C:/Temp/hevc-windows-gpu.mp4",
+			videoCodec: "hevc",
+			encoderPreference: "auto",
+			route: "windows-d3d11-compositor",
+		});
+
+		await expect(
+			exporter.tryExportNativeStaticLayout(videoInfo, { audioMode: "none" }, 60, 1_800),
+		).resolves.toBeNull();
 	});
 
 	it("allows native static-layout for H.264 source metadata", () => {
@@ -244,7 +362,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		expect(exporter.getNativeStaticLayoutCursorSize(480)).toBeCloseTo(46.2, 6);
 	});
 
-	it("skips native static-layout when cursor click effects are enabled", () => {
+	it("allows native static-layout when cursor click effects are enabled", () => {
 		const exporter = createExporter({
 			showCursor: true,
 			cursorClickEffect: "echo",
@@ -263,10 +381,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				60,
 			),
-		).toBe("unsupported-cursor-click-effect");
+		).toBeNull();
 	});
 
-	it("skips native static-layout when click effects are enabled and cursor is hidden", () => {
+	it("does not require a cursor overlay when click effects are enabled but cursor is hidden", () => {
 		const exporter = createExporter({
 			showCursor: false,
 			cursorClickEffect: "echo",
@@ -285,10 +403,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				60,
 			),
-		).toBe("unsupported-cursor-click-effect");
+		).toBeNull();
 	});
 
-	it("reports frame overlays as the remaining native overlay blocker", () => {
+	it("allows native static-layout with a frame overlay", () => {
 		const exporter = createExporter({ frame: "macbook" });
 
 		expect(
@@ -300,7 +418,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				60,
 			),
-		).toBe("unsupported-frame-overlay");
+		).toBeNull();
 	});
 
 	it("allows native static-layout with background blur", () => {
@@ -401,11 +519,191 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		).toEqual([
 			"odd-output-dimensions",
 			"unsupported-background-video",
-			"unsupported-annotation-overlay",
-			"unsupported-caption-overlay",
+			"overlay-layers-do-not-support-native-timeline",
 			"unsupported-webcam-source",
-			"unsupported-frame-overlay",
 		]);
+	});
+
+	it("routes spatial zoom motion blur to the native CUDA path instead of skipping", () => {
+		const exporter = createExporter({
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "hardware",
+			experimentalNvidiaCudaExport: true,
+			zoomMotionBlur: 0.35,
+		});
+
+		const reasons = exporter.getNativeStaticLayoutSkipReasons(
+			{ audioMode: "copy-source" },
+			videoInfo,
+			60,
+		);
+
+		expect(reasons).not.toContain("unsupported-motion-blur");
+	});
+
+	it("allows spatial zoom motion blur over overlay sidecars because the CUDA route composites both", () => {
+		const exporter = createExporter({
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "hardware",
+			experimentalNvidiaCudaExport: true,
+			zoomMotionBlur: 0.35,
+			annotationRegions: [{ id: "annotation-1", startMs: 0, endMs: 1_000 }],
+		});
+
+		const reasons = exporter.getNativeStaticLayoutSkipReasons(
+			{ audioMode: "copy-source" },
+			videoInfo,
+			60,
+		);
+
+		// The generalized CUDA compositor applies the spatial zoom blur and then
+		// alpha-composites the transparent overlay sidecar, so the renderer no
+		// longer skips the whole static-layout attempt. Non-CUDA result routes are
+		// rejected after the export instead of dropping the effect silently.
+		expect(reasons).not.toContain("unsupported-motion-blur");
+	});
+
+	it("routes temporal zoom motion blur to the CUDA compositor when enabled", () => {
+		const exporter = createExporter({
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "hardware",
+			experimentalNvidiaCudaExport: true,
+			zoomTemporalMotionBlur: 0.5,
+			zoomMotionBlurSampleCount: 5,
+			zoomMotionBlurShutterFraction: 0.5,
+		});
+
+		const reasons = exporter.getNativeStaticLayoutSkipReasons(
+			{ audioMode: "copy-source" },
+			videoInfo,
+			60,
+		);
+
+		// The generalized CUDA compositor implements the temporal sample plan
+		// natively, so the static-layout route is no longer skipped for it.
+		expect(reasons).not.toContain("unsupported-temporal-motion-blur");
+	});
+
+	it("keeps temporal zoom motion blur an explicit faithful fallback without the CUDA route", () => {
+		const exporter = createExporter({
+			zoomTemporalMotionBlur: 0.5,
+			zoomMotionBlurSampleCount: 5,
+			zoomMotionBlurShutterFraction: 0.5,
+		});
+
+		const reasons = exporter.getNativeStaticLayoutSkipReasons(
+			{ audioMode: "copy-source" },
+			videoInfo,
+			60,
+		);
+
+		expect(reasons).toContain("unsupported-temporal-motion-blur");
+		// The reason must not be duplicated by other checks and must not share the
+		// spatial-blur reason string.
+		expect(
+			reasons.filter((reason) => reason === "unsupported-temporal-motion-blur"),
+		).toHaveLength(1);
+		expect(reasons).not.toContain("unsupported-motion-blur");
+	});
+
+	it("rejects non-CUDA result routes when zoom blur and overlay sidecars must both be preserved", () => {
+		expect(
+			shouldRejectNativeStaticLayoutResultForEffectPreservation({
+				hasSpatialZoomMotionBlur: true,
+				hasTemporalMotionBlur: false,
+				hasOverlayContent: true,
+				route: "cuda-overlay",
+			}),
+		).toBe(true);
+		expect(
+			shouldRejectNativeStaticLayoutResultForEffectPreservation({
+				hasSpatialZoomMotionBlur: true,
+				hasTemporalMotionBlur: false,
+				hasOverlayContent: true,
+				route: "windows-d3d11-compositor",
+			}),
+		).toBe(true);
+	});
+
+	it("rejects non-CUDA routes when temporal zoom motion blur is configured", () => {
+		expect(
+			shouldRejectNativeStaticLayoutResultForEffectPreservation({
+				hasSpatialZoomMotionBlur: false,
+				hasTemporalMotionBlur: true,
+				hasOverlayContent: false,
+				route: "cuda-scale-cpu-pad",
+			}),
+		).toBe(true);
+		expect(
+			shouldRejectNativeStaticLayoutResultForEffectPreservation({
+				hasSpatialZoomMotionBlur: false,
+				hasTemporalMotionBlur: true,
+				hasOverlayContent: false,
+				route: "nvidia-cuda-compositor",
+			}),
+		).toBe(false);
+	});
+
+	it("accepts the generalized CUDA route for zoom blur over overlay sidecars", () => {
+		expect(
+			shouldRejectNativeStaticLayoutResultForEffectPreservation({
+				hasSpatialZoomMotionBlur: true,
+				hasTemporalMotionBlur: false,
+				hasOverlayContent: true,
+				route: "nvidia-cuda-compositor",
+			}),
+		).toBe(false);
+	});
+
+	it("does not reject overlay results without spatial zoom motion blur", () => {
+		expect(
+			shouldRejectNativeStaticLayoutResultForEffectPreservation({
+				hasSpatialZoomMotionBlur: false,
+				hasTemporalMotionBlur: false,
+				hasOverlayContent: true,
+				route: "cuda-overlay",
+			}),
+		).toBe(false);
+	});
+
+	it("emits renderer-equivalent zoom blur telemetry for the native compositor", () => {
+		const exporter = createExporter({
+			zoomRegions: [
+				{
+					id: "zoom-1",
+					startMs: 0,
+					endMs: 2_000,
+					depth: 2,
+					focus: { cx: 0.5, cy: 0.5 },
+					mode: "manual",
+				},
+			],
+			zoomMotionBlur: 0.35,
+		});
+
+		const telemetry = exporter.getNativeStaticLayoutZoomTelemetry(
+			{
+				centerOffsetX: 0,
+				centerOffsetY: 0,
+				croppedDisplayWidth: 1920,
+				croppedDisplayHeight: 1080,
+			},
+			60,
+			undefined,
+		);
+
+		expect(telemetry).toBeDefined();
+		expect(telemetry?.length).toBe(60);
+		expect(telemetry?.[0].blurStrength).toBe(0);
+		const activeBlurSamples = (telemetry ?? []).filter(
+			(sample) => sample.blurStrength > 0.0005,
+		);
+		expect(activeBlurSamples.length).toBeGreaterThan(0);
+		for (const sample of telemetry ?? []) {
+			expect(Number.isFinite(sample.blurCenterX)).toBe(true);
+			expect(Number.isFinite(sample.blurCenterY)).toBe(true);
+			expect(sample.blurStrength).toBeGreaterThanOrEqual(0);
+		}
 	});
 
 	it("reports invalid crop geometry instead of passing native export bad coordinates", () => {
@@ -416,6 +714,102 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		expect(exporter.getNativeStaticLayoutSkipReason({ audioMode: "none" }, videoInfo, 60)).toBe(
 			"invalid-crop-region",
 		);
+	});
+
+	it("does not require a native cursor atlas when the cursor is baked into the overlay sidecar", () => {
+		// Regression: the previous guard skipped the whole native static-layout
+		// route with "cursor-atlas-unavailable" for every cursor export (the atlas
+		// was intentionally null when overlay layers are used), forcing the slow
+		// renderer raw path. With overlay layers the cursor is baked into the
+		// sidecar so a missing atlas must not skip.
+		expect(
+			shouldSkipForMissingCursorAtlas({
+				needsOverlayLayers: true,
+				hasCursorTelemetry: true,
+				hasCursorAtlas: false,
+			}),
+		).toBe(false);
+		expect(
+			shouldSkipForMissingCursorAtlas({
+				needsOverlayLayers: false,
+				hasCursorTelemetry: true,
+				hasCursorAtlas: false,
+			}),
+		).toBe(true);
+		expect(
+			shouldSkipForMissingCursorAtlas({
+				needsOverlayLayers: false,
+				hasCursorTelemetry: true,
+				hasCursorAtlas: true,
+			}),
+		).toBe(false);
+	});
+
+	describe("strict HEVC Hardware CUDA policy", () => {
+		it("never forces the renderer raw frame path for HEVC Hardware", () => {
+			const exporter = createExporter({
+				exportVideoCodec: "hevc",
+				exportEncoderPreference: "hardware",
+			});
+
+			expect(exporter.requiresStrictNativeCudaRoute()).toBe(true);
+			// Even without the CUDA eligibility flags, the raw fallback must not be
+			// selected; the export hard-fails instead.
+			expect(exporter.shouldForceNativeRawFrame()).toBe(false);
+		});
+
+		it("keeps HEVC Auto and H.264 Auto free of the strict raw-frame ban", () => {
+			const hevcAuto = createExporter({
+				exportVideoCodec: "hevc",
+				exportEncoderPreference: "auto",
+			});
+			expect(hevcAuto.requiresStrictNativeCudaRoute()).toBe(false);
+
+			const h264Auto = createExporter({
+				exportVideoCodec: "h264",
+				exportEncoderPreference: "auto",
+			});
+			expect(h264Auto.requiresStrictNativeCudaRoute()).toBe(false);
+		});
+
+		it("builds a hard-fail error with the first skip reason and noCpuFallback", () => {
+			const exporter = createExporter({
+				exportVideoCodec: "hevc",
+				exportEncoderPreference: "hardware",
+			});
+
+			const error = exporter.buildStrictNativeCudaHardwareError("cursor-atlas-unavailable");
+			expect(error.message).toContain("cursor-atlas-unavailable");
+			expect(error.message).toContain("noCpuFallback:true");
+			expect(error.message).toContain("requires the NVIDIA CUDA compositor");
+			// The message must be actionable and must not point users at a hidden
+			// "experimental" toggle that no longer gates the mandatory route.
+			expect(error.message).toContain("switch the encoder preference to Auto");
+			expect(error.message).not.toContain("experimental");
+			expect((error as Error & { noCpuFallback?: boolean }).noCpuFallback).toBe(true);
+		});
+
+		it("surfaces the precise overlay preparation stage in the strict hard-fail error", () => {
+			const exporter = createExporter({
+				exportVideoCodec: "hevc",
+				exportEncoderPreference: "hardware",
+			}) as unknown as {
+				buildStrictNativeCudaHardwareError: (reason: string) => Error;
+				nativeStaticLayoutOverlayFailure: { stage: string; message: string } | null;
+			};
+			exporter.nativeStaticLayoutOverlayFailure = {
+				stage: "overlay-renderer-frame",
+				message: "overlay-renderer-frame: Overlay renderer is not initialized",
+			};
+
+			const error = exporter.buildStrictNativeCudaHardwareError(
+				"native-overlay-preparation-failed",
+			);
+			expect(error.message).toContain("native-overlay-preparation-failed");
+			expect(error.message).toContain("overlay-renderer-frame");
+			expect(error.message).toContain("Overlay renderer is not initialized");
+			expect(error.message).toContain("noCpuFallback:true");
+		});
 	});
 
 	it("materializes uploaded data-url image backgrounds for native static-layout", async () => {
@@ -693,7 +1087,7 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		).toBeNull();
 	});
 
-	it("allows slow-speed webcam timelines through native source-time mapping", () => {
+	it("falls back for slow-speed webcam timelines with overlay layers", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 0.5 },
 		];
@@ -714,10 +1108,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				63,
 			),
-		).toBeNull();
+		).toBe("overlay-layers-do-not-support-native-timeline");
 	});
 
-	it("skips native static layout for rectangular webcam overlays", () => {
+	it("allows native static layout for rectangular webcam overlays", () => {
 		const exporter = createExporter({
 			webcam: {
 				enabled: true,
@@ -736,10 +1130,10 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				60,
 			),
-		).toBe("unsupported-rectangular-webcam-overlay");
+		).toBeNull();
 	});
 
-	it("allows native speed timelines with a resolvable webcam source", () => {
+	it("falls back for native speed timelines with overlay layers", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },
 		];
@@ -767,6 +1161,6 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 				videoInfo,
 				59,
 			),
-		).toBeNull();
+		).toBe("overlay-layers-do-not-support-native-timeline");
 	});
 });

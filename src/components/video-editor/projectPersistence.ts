@@ -1,15 +1,19 @@
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
-import type {
-	ExportBackendPreference,
-	ExportEncodingMode,
-	ExportFormat,
-	ExportMp4FrameRate,
-	ExportPipelineModel,
-	ExportQuality,
-	GifFrameRate,
-	GifSizePreset,
+import {
+	clampCustomBitrateMbps,
+	type ExportBackendPreference,
+	type ExportBitrateMode,
+	type ExportEncoderPreference,
+	type ExportEncodingMode,
+	type ExportFormat,
+	type ExportMp4FrameRate,
+	type ExportPipelineModel,
+	type ExportQuality,
+	type ExportVideoCodec,
+	type GifFrameRate,
+	type GifSizePreset,
+	isValidMp4FrameRate,
 } from "@/lib/exporter";
-import { isValidMp4FrameRate } from "@/lib/exporter";
 import {
 	TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT,
 	TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION,
@@ -149,6 +153,10 @@ export interface ProjectEditorState {
 	exportPipelineModel: ExportPipelineModel;
 	exportQuality: ExportQuality;
 	mp4FrameRate: ExportMp4FrameRate;
+	exportVideoCodec: ExportVideoCodec;
+	exportEncoderPreference: ExportEncoderPreference;
+	exportBitrateMode: ExportBitrateMode;
+	exportBitrateMbps: number;
 	exportFormat: ExportFormat;
 	gifFrameRate: GifFrameRate;
 	gifLoop: boolean;
@@ -208,6 +216,34 @@ export function normalizeExportPipelineModel(value: unknown): ExportPipelineMode
 
 export function normalizeExportMp4FrameRate(value: unknown): ExportMp4FrameRate {
 	return typeof value === "number" && isValidMp4FrameRate(value) ? value : 30;
+}
+
+export function normalizeExportVideoCodec(value: unknown): ExportVideoCodec {
+	if (value === "h264" || value === "hevc") {
+		return value;
+	}
+
+	return "h264";
+}
+
+export function normalizeExportEncoderPreference(value: unknown): ExportEncoderPreference {
+	if (value === "auto" || value === "hardware" || value === "cpu") {
+		return value;
+	}
+
+	return "auto";
+}
+
+export function normalizeExportBitrateMode(value: unknown): ExportBitrateMode {
+	if (value === "auto" || value === "custom") {
+		return value;
+	}
+
+	return "auto";
+}
+
+export function normalizeExportBitrateMbps(value: unknown): number {
+	return clampCustomBitrateMbps(typeof value === "number" ? value : Number.NaN);
 }
 
 function normalizeZoomTransitionEasing(
@@ -1092,6 +1128,10 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				? editor.exportQuality
 				: "source",
 		mp4FrameRate: normalizeExportMp4FrameRate(editor.mp4FrameRate),
+		exportVideoCodec: normalizeExportVideoCodec(editor.exportVideoCodec),
+		exportEncoderPreference: normalizeExportEncoderPreference(editor.exportEncoderPreference),
+		exportBitrateMode: normalizeExportBitrateMode(editor.exportBitrateMode),
+		exportBitrateMbps: normalizeExportBitrateMbps(editor.exportBitrateMbps),
 		exportFormat: editor.exportFormat === "gif" ? "gif" : "mp4",
 		gifFrameRate:
 			editor.gifFrameRate === 15 ||

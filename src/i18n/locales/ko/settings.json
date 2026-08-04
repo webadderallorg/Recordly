@@ -232,6 +232,49 @@
 			"high": "높음",
 			"original": "원본"
 		},
+		"codecTitle": "비디오 코덱",
+		"codec": {
+			"h264": "H.264",
+			"hevc": "H.265"
+		},
+		"encoderTitle": "인코더",
+		"encoder": {
+			"auto": "자동",
+			"hardware": "하드웨어",
+			"cpu": "CPU"
+		},
+		"backend": {
+			"auto": "Auto"
+		},
+		"nvidiaCuda": {
+			"compositorTitle": "NVIDIA CUDA compositor",
+			"backendLabel": "Backend",
+			"backendSelected": "NVIDIA CUDA compositor",
+			"availableBadge": "Available",
+			"selectedBadge": "Selected",
+			"requiredBadge": "Required",
+			"unavailableBadge": "Unavailable",
+			"toggle": "Use the NVIDIA CUDA compositor for GPU-accelerated exports",
+			"requiredToggle": "NVIDIA CUDA compositor is required for H.265 Hardware exports",
+			"hint": "Compose and encode on the NVIDIA GPU for fast exports.",
+			"hintSelected": "Exports will use the NVIDIA CUDA compositor on this device.",
+			"hintRequired": "H.265 Hardware exports use the NVIDIA CUDA compositor and never fall back to renderer frames.",
+			"unavailableReason": "CUDA compositor is unavailable ({{reason}}).",
+			"unavailableGeneric": "CUDA compositor is unavailable on this device.",
+			"unavailableRequired": "H.265 + Hardware exports will fail until the CUDA compositor is available. Install or update NVIDIA drivers, or switch Encoder to Auto."
+		},
+		"bitrateTitle": "비트레이트",
+		"bitrate": {
+			"auto": "자동",
+			"custom": "사용자 지정",
+			"mbpsInput": "Mbps 단위 사용자 지정 비트레이트",
+			"range": "1–200 Mbps"
+		},
+		"hevcHint": "HEVC(H.265)는 파일을 더 작게 만들지만 이전 또는 웹 플레이어에서 재생되지 않을 수 있습니다. Recordly 미리보기 재생은 변경되지 않습니다.",
+		"hardwareUnavailable": "사용 가능한 하드웨어 인코더를 찾을 수 없습니다. CPU 또는 자동을 선택하거나 GPU 드라이버를 업데이트하세요.",
+		"errors": {
+			"hardwareUnavailable": "사용 가능한 하드웨어 인코더를 찾을 수 없습니다. CPU 또는 자동을 선택하거나 GPU 드라이버를 업데이트하세요."
+		},
 		"fpsTitle": "FPS",
 		"loop": "반복",
 		"outputDimensions": "출력: {{dimensions}}px",

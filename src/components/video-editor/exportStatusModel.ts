@@ -18,6 +18,43 @@ export type ExportStatusModel = {
 	nativeSkipLabel: string | null;
 };
 
+const NATIVE_SKIP_REASON_LABELS: Record<string, string> = {
+	"native-static-api-unavailable": "native export API unavailable",
+	"odd-output-dimensions": "output dimensions are not even",
+	"unsupported-background-video": "video background",
+	"unsupported-cursor-click-effect": "cursor click effect",
+	"unsupported-cursor-motion-blur": "cursor motion blur",
+	"unsupported-extension-hook": "extension render hook",
+	"unsupported-annotation-overlay": "annotation overlay",
+	"unsupported-blur-annotation-overlay": "blur annotation overlay",
+	"unsupported-caption-overlay": "caption overlay",
+	"unsupported-frame-overlay": "frame overlay",
+	"unsupported-webcam-source": "webcam source",
+	"unsupported-rectangular-webcam-overlay": "rectangular webcam overlay",
+	"unsupported-motion-blur": "zoom motion blur",
+	"unsupported-temporal-motion-blur": "temporal zoom motion blur",
+	"unsupported-motion-blur-on-overlay-route": "zoom motion blur over overlay layers",
+	"unsupported-native-speed-timeline": "speed timeline",
+	"unsupported-native-trim-timeline": "trim timeline",
+	"native-timeline-requires-windows-gpu": "timeline requires Windows GPU export",
+	"native-zoom-requires-windows-gpu": "zoom requires Windows GPU export",
+	"overlay-layers-do-not-support-native-timeline": "overlay timeline mapping",
+	"native-overlay-preparation-failed": "native overlay preparation",
+	"invalid-crop-region": "invalid crop region",
+	"missing-source-path": "source path unavailable",
+	"missing-audio-options": "audio options unavailable",
+	"unsupported-background": "background",
+	"cursor-atlas-unavailable": "cursor atlas unavailable",
+	"invalid-native-speed-timeline": "invalid speed timeline",
+	"invalid-native-trim-timeline": "invalid trim timeline",
+	"invalid-layout-or-duration": "invalid layout or duration",
+};
+
+export function formatNativeSkipReason(reason: string): string {
+	const baseReason = reason.split(":", 1)[0];
+	return NATIVE_SKIP_REASON_LABELS[baseReason] ?? reason;
+}
+
 export function resolveExportStatusModel({
 	isExporting,
 	exportProgress,
@@ -84,9 +121,7 @@ export function resolveExportStatusModel({
 				: [];
 	const nativeSkipLabel =
 		nativeSkipReasons.length > 0
-			? `Native skipped: ${nativeSkipReasons[0]}${
-					nativeSkipReasons.length > 1 ? ` (+${nativeSkipReasons.length - 1} more)` : ""
-				}`
+			? `Native skipped: ${nativeSkipReasons.map(formatNativeSkipReason).join("; ")}`
 			: null;
 
 	return {
@@ -115,6 +150,15 @@ function resolveRuntimeLabel(exportProgress: ExportProgress | null): string | nu
 
 	if (!renderBackend && !encodeBackend && !encoderName) {
 		return null;
+	}
+
+	// The NVIDIA CUDA compositor is a distinct native backend; it must never be
+	// mislabeled as Breeze (the FFmpeg CLI encoder) in export status.
+	if (encoderName === "nvidia-cuda-compositor") {
+		return "NVIDIA CUDA compositor";
+	}
+	if (encoderName === "windows-d3d11-compositor") {
+		return "Windows D3D11 compositor";
 	}
 
 	const rendererLabel =

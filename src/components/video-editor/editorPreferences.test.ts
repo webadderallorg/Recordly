@@ -472,4 +472,91 @@ describe("editorPreferences", () => {
 
 		expect(saveEditorPresets([])).toBe(false);
 	});
+
+	it("hydrates missing H.265/bitrate preferences to defaults", () => {
+		vi.stubGlobal(
+			"localStorage",
+			createStorageMock({
+				[EDITOR_PREFERENCES_STORAGE_KEY]: JSON.stringify({
+					wallpaper: "#123456",
+				}),
+			}),
+		);
+
+		const loaded = loadEditorPreferences();
+		expect(loaded.exportVideoCodec).toBe("h264");
+		expect(loaded.exportEncoderPreference).toBe("auto");
+		expect(loaded.exportBitrateMode).toBe("auto");
+		expect(loaded.exportBitrateMbps).toBe(20);
+	});
+
+	it("normalizes invalid persisted H.265/bitrate preferences", () => {
+		const normalized = normalizeEditorPreferences({
+			exportVideoCodec: "vp9",
+			exportEncoderPreference: "turbo",
+			exportBitrateMode: "ultra",
+			exportBitrateMbps: 5000,
+		});
+
+		expect(normalized.exportVideoCodec).toBe("h264");
+		expect(normalized.exportEncoderPreference).toBe("auto");
+		expect(normalized.exportBitrateMode).toBe("auto");
+		expect(normalized.exportBitrateMbps).toBe(200);
+
+		expect(normalizeEditorPreferences({ exportBitrateMbps: -3 }).exportBitrateMbps).toBe(1);
+		expect(
+			normalizeEditorPreferences({ exportBitrateMbps: Number.NaN }).exportBitrateMbps,
+		).toBe(20);
+	});
+
+	it("survives an editor preferences round trip for H.265/bitrate values", () => {
+		const localStorage = createStorageMock();
+		vi.stubGlobal("localStorage", localStorage);
+
+		saveEditorPreferences({
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "hardware",
+			exportBitrateMode: "custom",
+			exportBitrateMbps: 64,
+		});
+
+		expect(loadEditorPreferences()).toMatchObject({
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "hardware",
+			exportBitrateMode: "custom",
+			exportBitrateMbps: 64,
+		});
+	});
+
+	it("survives an editor preset snapshot round trip for H.265/bitrate values", () => {
+		const localStorage = createStorageMock();
+		vi.stubGlobal("localStorage", localStorage);
+
+		expect(
+			saveEditorPresets([
+				{
+					id: "preset-bitrate",
+					name: "HEVC Bitrate",
+					createdAt: "2026-05-01T00:00:00.000Z",
+					updatedAt: "2026-05-01T00:00:00.000Z",
+					snapshot: {
+						...DEFAULT_EDITOR_PREFERENCES,
+						exportVideoCodec: "hevc",
+						exportEncoderPreference: "cpu",
+						exportBitrateMode: "custom",
+						exportBitrateMbps: 80,
+						cropRegion: DEFAULT_CROP_REGION,
+						autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+					},
+				},
+			]),
+		).toBe(true);
+
+		expect(loadEditorPresets()[0]?.snapshot).toMatchObject({
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "cpu",
+			exportBitrateMode: "custom",
+			exportBitrateMbps: 80,
+		});
+	});
 });

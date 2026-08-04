@@ -48,18 +48,9 @@ function resolveToolCommand(envNames, moduleName, fallbackName) {
 const ffmpegCommand = resolveToolCommand(["RECORDLY_FFMPEG_EXE"], "ffmpeg-static", "ffmpeg");
 const ffprobeCommand = resolveToolCommand(["RECORDLY_FFPROBE_EXE"], "ffprobe-static", "ffprobe");
 
-const cursorTypes = [
-	"arrow",
-	"text",
-	"pointer",
-	"crosshair",
-	"open-hand",
-	"closed-hand",
-	"resize-ew",
-	"resize-ns",
-	"not-allowed",
-];
-const cursorTypeIndexes = new Map(cursorTypes.map((type, index) => [type, index]));
+import { parseCursorTelemetrySamples, writeCursorSamplesFile } from "./cursorTelemetry.mjs";
+import { readOverlayManifest } from "./overlayManifest.mjs";
+import { shouldProbeSourcePts } from "./sourcePtsPlan.mjs";
 
 function fail(message) {
 	throw new Error(message);
@@ -284,6 +275,7 @@ function emitPreparationProgress(totalFrames, percentage, stage) {
 	const progressStage = stage ?? "preparing";
 	const finalizing = progressStage === "finalizing";
 	const payload = {
+		outputCodec,
 		currentFrame: finalizing ? Math.max(1, Math.floor(totalFrames)) : 0,
 		totalFrames: Math.max(1, Math.floor(totalFrames)),
 		percentage: Number(Math.min(99, Math.max(0, percentage)).toFixed(2)),
@@ -449,69 +441,6 @@ function summarizeGpuSamples(samples) {
 		summary.clockThrottleReasonCounts = throttleReasonCounts;
 	}
 	return summary;
-}
-
-function cursorBounceScale(interactionType, ageMs, durationMs = 180) {
-	if (!["click", "double-click", "right-click", "middle-click"].includes(interactionType)) {
-		return 1;
-	}
-	if (ageMs < 0 || ageMs > durationMs) {
-		return 1;
-	}
-	const progress = 1 - ageMs / durationMs;
-	return Math.max(0.72, 1 - Math.sin(progress * Math.PI) * 0.08);
-}
-
-function latestClickSample(samples, sampleIndex) {
-	for (let index = sampleIndex; index >= 0; index -= 1) {
-		const sample = samples[index];
-		if (
-			["click", "double-click", "right-click", "middle-click"].includes(
-				sample?.interactionType,
-			)
-		) {
-			return sample;
-		}
-	}
-	return null;
-}
-
-function writeCursorSamples(cursorPayload, outputPath) {
-	const samples = Array.isArray(cursorPayload.samples) ? cursorPayload.samples : [];
-	const cursorLines = samples
-		.map((sample, index) => {
-			if (
-				!Number.isFinite(sample?.timeMs) ||
-				!Number.isFinite(sample?.cx) ||
-				!Number.isFinite(sample?.cy)
-			) {
-				return null;
-			}
-			const clickSample = latestClickSample(samples, index);
-			const bounceScale = Number.isFinite(sample.bounceScale)
-				? sample.bounceScale
-				: clickSample
-					? cursorBounceScale(
-							clickSample.interactionType,
-							sample.timeMs - clickSample.timeMs,
-						)
-					: 1;
-			return [
-				sample.timeMs,
-				sample.cx,
-				sample.cy,
-				cursorTypeIndexes.get(sample.cursorType) ??
-					(Number.isFinite(sample.cursorTypeIndex)
-						? Math.max(0, Math.min(8, Math.round(sample.cursorTypeIndex)))
-						: 0),
-				Number(bounceScale.toFixed(4)),
-				sample.visible === false ? 0 : 1,
-			].join("\t");
-		})
-		.filter(Boolean)
-		.join("\n");
-	writeFileSync(outputPath, cursorLines ? `${cursorLines}\n` : "");
-	return samples.length;
 }
 
 function renderTahoeCursorAtlas(workDir) {
@@ -698,7 +627,11 @@ function getVideoInfo(inputPath) {
 		fail(`No video stream found in ${inputPath}`);
 	}
 	if (stream.codec_name !== "h264") {
-		fail(`The NVIDIA CUDA compositor currently expects H.264 input, got ${stream.codec_name}`);
+		fail(
+			`The NVIDIA CUDA compositor only supports H.264 input video; got ${
+				stream.codec_name ?? "unknown"
+			}`,
+		);
 	}
 	const durationSec = Number(stream.duration);
 	if (!Number.isFinite(durationSec) || durationSec <= 0) {
@@ -930,6 +863,11 @@ const inputPath = resolve(getArg("--input"));
 const outputPath = resolve(
 	getArg("--output", join(scriptDir, "recordly-nvdec-nvenc-mp4-output.mp4")),
 );
+const outputCodec = getArg("--output-codec", "h264");
+if (!["h264", "hevc"].includes(outputCodec)) {
+	throw new Error(`Unsupported --output-codec: ${outputCodec}; expected h264 or hevc`);
+}
+const elementaryStreamFormat = outputCodec;
 const requestedOutputWidth = Math.round(getNumberArg("--width", 0));
 const requestedOutputHeight = Math.round(getNumberArg("--height", 0));
 const fps = Math.round(getNumberArg("--fps", 30));
@@ -982,6 +920,10 @@ const cursorAtlasPng = getArg("--cursor-atlas-png", "");
 const cursorAtlasMetadata = getArg("--cursor-atlas-metadata", "");
 const zoomTelemetry = getArg("--zoom-telemetry", "");
 const timelineMap = getArg("--timeline-map", "");
+const overlayManifest = getArg("--overlay-manifest", "");
+const temporalBlurSampleCount = getNumberArg("--temporal-blur-sample-count", 0);
+const temporalBlurShutterFraction = getNumberArg("--temporal-blur-shutter-fraction", 0);
+const temporalBlurWeightPower = getNumberArg("--temporal-blur-weight-power", 1);
 
 if (!existsSync(inputPath)) {
 	fail(`Input does not exist: ${inputPath}`);
@@ -1028,7 +970,7 @@ const webcamBaseName = webcamInput
 const annexBPath = join(workDir, `${baseName}.annexb.h264`);
 const webcamAnnexBPath = join(workDir, `${webcamBaseName}.annexb.h264`);
 const cursorSamplesPath = join(workDir, `${baseName}.cursor.tsv`);
-const encodedPath = join(workDir, `${baseName}.mapped-callback.h264`);
+const encodedPath = join(workDir, `${baseName}.mapped-callback.${outputCodec}`);
 const shouldBakeStaticShadow =
 	Boolean(backgroundImage) &&
 	contentWidth > 0 &&
@@ -1235,11 +1177,26 @@ const demuxPromise =
 					endPercentage: 2,
 				},
 			);
-const sourcePtsPromise = writeFramePtsSidecarAsync(inputPath, sourceDurationSec, sourcePtsPath);
+// Source frame PTS is only required for timeline-map exports and for inline
+// audio mux validation (the wrapper checks the native summary reports a
+// timestamp-aligned mode before trusting the muxed audio). For plain video-only
+// exports the per-packet ffprobe scan is pure overhead (it dominates the wall
+// time of short 4K exports), so skip it unless it is actually consumed.
+const needsSourcePts = shouldProbeSourcePts({
+	hasTimelineSegments: timelineSegments.length > 0,
+	videoOnly,
+	forceSourcePts: process.env.RECORDLY_NVIDIA_CUDA_FORCE_SOURCE_PTS,
+});
+const sourcePtsPromise = needsSourcePts
+	? writeFramePtsSidecarAsync(inputPath, sourceDurationSec, sourcePtsPath)
+	: Promise.resolve(zeroElapsed());
 
 if (cursorJson) {
-	const cursorPayload = JSON.parse(readFileSync(resolve(cursorJson), "utf8"));
-	writeCursorSamples(cursorPayload, cursorSamplesPath);
+	const cursorPayload = parseCursorTelemetrySamples(
+		readFileSync(resolve(cursorJson), "utf8"),
+		resolve(cursorJson),
+	);
+	writeCursorSamplesFile(cursorPayload, cursorSamplesPath);
 }
 const cursorAtlas =
 	cursorJson && cursorHeight > 0 && cursorAtlasPng && cursorAtlasMetadata
@@ -1274,6 +1231,8 @@ const encodeArgs = [
 	annexBPath,
 	"--output",
 	encodedPath,
+	"--output-codec",
+	outputCodec,
 	"--fps",
 	String(fps),
 	"--input-frames",
@@ -1402,6 +1361,34 @@ if (contentWidth > 0 && contentHeight > 0) {
 if (zoomTelemetry) {
 	encodeArgs.push("--zoom-samples", resolve(zoomTelemetry));
 }
+if (temporalBlurSampleCount >= 3) {
+	encodeArgs.push(
+		"--temporal-blur-sample-count",
+		String(temporalBlurSampleCount),
+		"--temporal-blur-shutter-fraction",
+		String(temporalBlurShutterFraction),
+		"--temporal-blur-weight-power",
+		String(temporalBlurWeightPower),
+	);
+}
+const overlayLayers = readOverlayManifest(overlayManifest, { outputWidth, outputHeight });
+if (overlayLayers.length) {
+	for (const layer of overlayLayers) {
+		encodeArgs.push(
+			"--overlay",
+			layer.path,
+			String(layer.x),
+			String(layer.y),
+			String(layer.width),
+			String(layer.height),
+			// The native OverlayFrameSource clamps/repeats the final physical frame
+			// for output indices beyond the physical count, so the descriptor must
+			// carry the physical sidecar count (effectiveFrameCount when renderer
+			// dedup truncated an identical suffix, otherwise the logical count).
+			String(layer.effectiveFrameCount ?? layer.frameCount),
+		);
+	}
+}
 const encode =
 	reuseIntermediates && existsSync(encodedPath)
 		? { elapsedMs: 0, stdout: "", gpuSummary: null }
@@ -1411,7 +1398,18 @@ const encode =
 				sampleGpuDuringEncode ? gpuSampleIntervalMs : 0,
 			);
 const nativeSummary = encode.stdout ? parseProbeSummary(encode.stdout) : null;
+if (nativeSummary?.outputCodec && nativeSummary.outputCodec !== outputCodec) {
+	fail(`Native output codec mismatch: expected ${outputCodec}, got ${nativeSummary.outputCodec}`);
+}
 
+const elementaryStreamInputArgs = [
+	"-f",
+	elementaryStreamFormat,
+	"-framerate",
+	String(fps),
+	"-i",
+	encodedPath,
+];
 const mux = skipMux
 	? { elapsedMs: 0 }
 	: videoOnly
@@ -1423,10 +1421,7 @@ const mux = skipMux
 					"-loglevel",
 					"error",
 					"-stats",
-					"-framerate",
-					String(fps),
-					"-i",
-					encodedPath,
+					...elementaryStreamInputArgs,
 					"-map",
 					"0:v:0",
 					"-c:v",
@@ -1449,10 +1444,7 @@ const mux = skipMux
 					"-loglevel",
 					"error",
 					"-stats",
-					"-framerate",
-					String(fps),
-					"-i",
-					encodedPath,
+					...elementaryStreamInputArgs,
 					"-i",
 					inputPath,
 					"-map",
@@ -1487,6 +1479,13 @@ const outputInfo = skipMux
 const outputStreams = outputInfo.streams ?? [];
 const outputVideo = outputStreams.find((stream) => stream.codec_type === "video") ?? null;
 const outputAudio = outputStreams.find((stream) => stream.codec_type === "audio") ?? null;
+if (!skipMux && outputVideo?.codec_name !== outputCodec) {
+	fail(
+		`Muxed output codec mismatch: expected ${outputCodec}, got ${
+			outputVideo?.codec_name ?? "none"
+		}`,
+	);
+}
 
 console.log(
 	JSON.stringify(
@@ -1497,6 +1496,8 @@ console.log(
 			requestedOutputPath: outputPath,
 			encodedPath,
 			fps,
+			outputCodec,
+			elementaryStreamFormat,
 			bitrateMbps,
 			encodingMode,
 			streamSync,
@@ -1564,6 +1565,24 @@ console.log(
 							zoom: zoomTelemetry
 								? {
 										inputPath: resolve(zoomTelemetry),
+									}
+								: null,
+							overlay: overlayLayers.length
+								? {
+										layers: overlayLayers.map((layer) => ({
+											id: layer.id,
+											path: layer.path,
+											x: layer.x,
+											y: layer.y,
+											width: layer.width,
+											height: layer.height,
+											frameCount: layer.frameCount,
+											...(layer.effectiveFrameCount !== undefined
+												? { effectiveFrameCount: layer.effectiveFrameCount }
+												: {}),
+											physicalFrameCount:
+												layer.effectiveFrameCount ?? layer.frameCount,
+										})),
 									}
 								: null,
 						}

@@ -232,6 +232,49 @@
 			"high": "Hoog",
 			"original": "Origineel"
 		},
+		"codecTitle": "Videocodec",
+		"codec": {
+			"h264": "H.264",
+			"hevc": "H.265"
+		},
+		"encoderTitle": "Encoder",
+		"encoder": {
+			"auto": "Automatisch",
+			"hardware": "Hardware",
+			"cpu": "CPU"
+		},
+		"backend": {
+			"auto": "Auto"
+		},
+		"nvidiaCuda": {
+			"compositorTitle": "NVIDIA CUDA compositor",
+			"backendLabel": "Backend",
+			"backendSelected": "NVIDIA CUDA compositor",
+			"availableBadge": "Available",
+			"selectedBadge": "Selected",
+			"requiredBadge": "Required",
+			"unavailableBadge": "Unavailable",
+			"toggle": "Use the NVIDIA CUDA compositor for GPU-accelerated exports",
+			"requiredToggle": "NVIDIA CUDA compositor is required for H.265 Hardware exports",
+			"hint": "Compose and encode on the NVIDIA GPU for fast exports.",
+			"hintSelected": "Exports will use the NVIDIA CUDA compositor on this device.",
+			"hintRequired": "H.265 Hardware exports use the NVIDIA CUDA compositor and never fall back to renderer frames.",
+			"unavailableReason": "CUDA compositor is unavailable ({{reason}}).",
+			"unavailableGeneric": "CUDA compositor is unavailable on this device.",
+			"unavailableRequired": "H.265 + Hardware exports will fail until the CUDA compositor is available. Install or update NVIDIA drivers, or switch Encoder to Auto."
+		},
+		"bitrateTitle": "Bitrate",
+		"bitrate": {
+			"auto": "Automatisch",
+			"custom": "Aangepast",
+			"mbpsInput": "Aangepaste bitrate in Mbps",
+			"range": "1–200 Mbps"
+		},
+		"hevcHint": "HEVC (H.265) maakt kleinere bestanden, maar werkt mogelijk niet op oudere of webspelers. De preview-weergave van Recordly blijft ongewijzigd.",
+		"hardwareUnavailable": "Geen bruikbare hardware-encoder gevonden. Kies CPU of Automatisch, of werk je GPU-stuurprogramma bij.",
+		"errors": {
+			"hardwareUnavailable": "Geen bruikbare hardware-encoder gevonden. Kies CPU of Automatisch, of werk je GPU-stuurprogramma bij."
+		},
 		"fpsTitle": "FPS",
 		"loop": "Herhalen",
 		"outputDimensions": "Uitvoer: {{dimensions}}px",

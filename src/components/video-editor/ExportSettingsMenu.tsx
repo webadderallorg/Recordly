@@ -1,18 +1,30 @@
 import { DownloadSimple as Download, FilmSlate as Film, Image } from "@phosphor-icons/react";
 import { LayoutGroup, motion } from "motion/react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useScopedT } from "@/contexts/I18nContext";
 import type {
+	ExportBitrateMode,
+	ExportEncoderPreference,
 	ExportEncodingMode,
 	ExportFormat,
 	ExportMp4FrameRate,
 	ExportPipelineModel,
 	ExportQuality,
+	ExportVideoCodec,
 	GifFrameRate,
 	GifSizePreset,
 } from "@/lib/exporter";
-import { GIF_FRAME_RATES, GIF_SIZE_PRESETS, MP4_FRAME_RATES } from "@/lib/exporter";
+import {
+	EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS,
+	EXPORT_BITRATE_MAX_MBPS,
+	EXPORT_BITRATE_MIN_MBPS,
+	GIF_FRAME_RATES,
+	GIF_SIZE_PRESETS,
+	MP4_FRAME_RATES,
+} from "@/lib/exporter";
 import { cn } from "@/lib/utils";
 
 interface ExportSettingsMenuProps {
@@ -22,6 +34,14 @@ interface ExportSettingsMenuProps {
 	onExportQualityChange?: (quality: ExportQuality) => void;
 	exportEncodingMode: ExportEncodingMode;
 	onExportEncodingModeChange?: (encodingMode: ExportEncodingMode) => void;
+	exportVideoCodec: ExportVideoCodec;
+	onExportVideoCodecChange?: (codec: ExportVideoCodec) => void;
+	exportEncoderPreference: ExportEncoderPreference;
+	onExportEncoderPreferenceChange?: (preference: ExportEncoderPreference) => void;
+	exportBitrateMode: ExportBitrateMode;
+	onExportBitrateModeChange?: (mode: ExportBitrateMode) => void;
+	exportBitrateMbps?: number;
+	onExportBitrateMbpsChange?: (mbps: number) => void;
 	mp4FrameRate: ExportMp4FrameRate;
 	onMp4FrameRateChange?: (frameRate: ExportMp4FrameRate) => void;
 	exportPipelineModel?: ExportPipelineModel;
@@ -29,6 +49,11 @@ interface ExportSettingsMenuProps {
 	experimentalNvidiaCudaExport?: boolean;
 	onExperimentalNvidiaCudaExportChange?: (enabled: boolean) => void;
 	nvidiaCudaExportAvailable?: boolean;
+	nvidiaCudaExportSkipReason?: string | null;
+	/** True when HEVC + Hardware makes the NVIDIA CUDA compositor mandatory. The
+	 *  option is shown as selected and cannot be disabled; the export hard-fails
+	 *  instead of falling back when the compositor cannot run. */
+	nvidiaCudaCompositorRequired?: boolean;
 	showCaptionSidecarOption?: boolean;
 	includeCaptionSidecar?: boolean;
 	onIncludeCaptionSidecarChange?: (enabled: boolean) => void;
@@ -51,6 +76,14 @@ export function ExportSettingsMenu({
 	onExportQualityChange,
 	exportEncodingMode,
 	onExportEncodingModeChange,
+	exportVideoCodec,
+	onExportVideoCodecChange,
+	exportEncoderPreference,
+	onExportEncoderPreferenceChange,
+	exportBitrateMode,
+	onExportBitrateModeChange,
+	exportBitrateMbps = EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS,
+	onExportBitrateMbpsChange,
 	mp4FrameRate,
 	onMp4FrameRateChange,
 	exportPipelineModel = "modern",
@@ -58,6 +91,8 @@ export function ExportSettingsMenu({
 	experimentalNvidiaCudaExport = false,
 	onExperimentalNvidiaCudaExportChange,
 	nvidiaCudaExportAvailable = false,
+	nvidiaCudaExportSkipReason = null,
+	nvidiaCudaCompositorRequired = false,
 	showCaptionSidecarOption = false,
 	includeCaptionSidecar = false,
 	onIncludeCaptionSidecarChange,
@@ -74,6 +109,20 @@ export function ExportSettingsMenu({
 }: ExportSettingsMenuProps) {
 	const tSettings = useScopedT("settings");
 	const isLegacyModel = exportPipelineModel === "legacy";
+	const [bitrateDraft, setBitrateDraft] = useState<string>(String(exportBitrateMbps));
+
+	useEffect(() => {
+		setBitrateDraft(String(exportBitrateMbps));
+	}, [exportBitrateMbps]);
+
+	const commitBitrateDraft = () => {
+		const parsed = Number(bitrateDraft);
+		const clamped = Number.isFinite(parsed)
+			? Math.min(EXPORT_BITRATE_MAX_MBPS, Math.max(EXPORT_BITRATE_MIN_MBPS, parsed))
+			: EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS;
+		setBitrateDraft(String(clamped));
+		onExportBitrateMbpsChange?.(clamped);
+	};
 
 	return (
 		<div
@@ -151,7 +200,7 @@ export function ExportSettingsMenu({
 									{isActive ? (
 										<motion.span
 											layoutId="header-export-quality-pill"
-										className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
 											transition={{
 												type: "spring",
 												stiffness: 420,
@@ -163,17 +212,19 @@ export function ExportSettingsMenu({
 										<span
 											className={cn(
 												isActive
-												? "text-white dark:text-black"
-												: "text-muted-foreground hover:text-foreground",
-										)}
-									>
-										{option.label}
-									</span>
-									{mp4OutputDimensions ? (
-										<span
-											className={cn(
-												"mt-0.5 text-[9px]",
-												isActive ? "text-white/75 dark:text-black/75" : "text-muted-foreground/70",
+													? "text-white dark:text-black"
+													: "text-muted-foreground hover:text-foreground",
+											)}
+										>
+											{option.label}
+										</span>
+										{mp4OutputDimensions ? (
+											<span
+												className={cn(
+													"mt-0.5 text-[9px]",
+													isActive
+														? "text-white/75 dark:text-black/75"
+														: "text-muted-foreground/70",
 												)}
 											>
 												{mp4OutputDimensions[option.value].width} x{" "}
@@ -216,7 +267,7 @@ export function ExportSettingsMenu({
 									{isActive ? (
 										<motion.span
 											layoutId="header-export-encoding-pill"
-										className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
 											transition={{
 												type: "spring",
 												stiffness: 420,
@@ -240,6 +291,190 @@ export function ExportSettingsMenu({
 					</div>
 					<div className="mb-1 flex items-center justify-between px-1">
 						<span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+							{tSettings("export.codecTitle", "Video codec")}
+						</span>
+					</div>
+					<div className="mb-3 grid min-h-10 w-full grid-cols-2 rounded-xl border border-foreground/5 bg-foreground/5 p-0.5">
+						{(
+							[
+								{ value: "h264", label: tSettings("export.codec.h264", "H.264") },
+								{ value: "hevc", label: tSettings("export.codec.hevc", "H.265") },
+							] as const
+						).map((option) => {
+							const isActive = exportVideoCodec === option.value;
+							return (
+								<button
+									key={option.value}
+									type="button"
+									onClick={() => onExportVideoCodecChange?.(option.value)}
+									aria-pressed={isActive}
+									className="relative rounded-lg px-1 py-1 text-[11px] font-medium transition-colors"
+								>
+									{isActive ? (
+										<motion.span
+											layoutId="header-export-codec-pill"
+											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+											transition={{
+												type: "spring",
+												stiffness: 420,
+												damping: 34,
+											}}
+										/>
+									) : null}
+									<span
+										className={cn(
+											"relative z-10",
+											isActive
+												? "text-white dark:text-black"
+												: "text-muted-foreground hover:text-foreground",
+										)}
+									>
+										{option.label}
+									</span>
+								</button>
+							);
+						})}
+					</div>
+					<div className="mb-1 flex items-center justify-between px-1">
+						<span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+							{tSettings("export.encoderTitle", "Encoder")}
+						</span>
+					</div>
+					<div className="mb-3 grid min-h-10 w-full grid-cols-3 rounded-xl border border-foreground/5 bg-foreground/5 p-0.5">
+						{(
+							[
+								{ value: "auto", label: tSettings("export.encoder.auto", "Auto") },
+								{
+									value: "hardware",
+									label: tSettings("export.encoder.hardware", "Hardware"),
+								},
+								{ value: "cpu", label: tSettings("export.encoder.cpu", "CPU") },
+							] as const
+						).map((option) => {
+							const isActive = exportEncoderPreference === option.value;
+							return (
+								<button
+									key={option.value}
+									type="button"
+									onClick={() => onExportEncoderPreferenceChange?.(option.value)}
+									aria-pressed={isActive}
+									className="relative rounded-lg px-1 py-1 text-[11px] font-medium transition-colors"
+								>
+									{isActive ? (
+										<motion.span
+											layoutId="header-export-encoder-pill"
+											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+											transition={{
+												type: "spring",
+												stiffness: 420,
+												damping: 34,
+											}}
+										/>
+									) : null}
+									<span
+										className={cn(
+											"relative z-10",
+											isActive
+												? "text-white dark:text-black"
+												: "text-muted-foreground hover:text-foreground",
+										)}
+									>
+										{option.label}
+									</span>
+								</button>
+							);
+						})}
+					</div>
+					<div className="mb-1 flex items-center justify-between px-1">
+						<span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+							{tSettings("export.bitrateTitle", "Bitrate")}
+						</span>
+					</div>
+					<div className="mb-2 grid min-h-10 w-full grid-cols-2 rounded-xl border border-foreground/5 bg-foreground/5 p-0.5">
+						{(
+							[
+								{
+									value: "auto",
+									label: tSettings("export.bitrate.auto", "Auto"),
+								},
+								{
+									value: "custom",
+									label: tSettings("export.bitrate.custom", "Custom"),
+								},
+							] as const
+						).map((option) => {
+							const isActive = exportBitrateMode === option.value;
+							return (
+								<button
+									key={option.value}
+									type="button"
+									onClick={() => onExportBitrateModeChange?.(option.value)}
+									aria-pressed={isActive}
+									className="relative rounded-lg px-1 py-1 text-[11px] font-medium transition-colors"
+								>
+									{isActive ? (
+										<motion.span
+											layoutId="header-export-bitrate-pill"
+											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+											transition={{
+												type: "spring",
+												stiffness: 420,
+												damping: 34,
+											}}
+										/>
+									) : null}
+									<span
+										className={cn(
+											"relative z-10",
+											isActive
+												? "text-white dark:text-black"
+												: "text-muted-foreground hover:text-foreground",
+										)}
+									>
+										{option.label}
+									</span>
+								</button>
+							);
+						})}
+					</div>
+					{exportBitrateMode === "custom" ? (
+						<div className="mb-2 flex items-center gap-2 px-1">
+							<Input
+								type="number"
+								min={EXPORT_BITRATE_MIN_MBPS}
+								max={EXPORT_BITRATE_MAX_MBPS}
+								step="0.5"
+								value={bitrateDraft}
+								onChange={(event) => {
+									setBitrateDraft(event.target.value);
+									const parsed = Number(event.target.value);
+									if (Number.isFinite(parsed)) {
+										onExportBitrateMbpsChange?.(parsed);
+									}
+								}}
+								onBlur={commitBitrateDraft}
+								className="h-8 w-24"
+								aria-label={tSettings(
+									"export.bitrate.mbpsInput",
+									"Custom bitrate in Mbps",
+								)}
+							/>
+							<span className="text-[10px] text-muted-foreground/70">Mbps</span>
+							<span className="text-[9px] text-muted-foreground/50">
+								{tSettings("export.bitrate.range", "1\u2013200 Mbps")}
+							</span>
+						</div>
+					) : null}
+					{exportVideoCodec === "hevc" ? (
+						<p className="mb-3 px-1 text-[10px] text-muted-foreground/70">
+							{tSettings(
+								"export.hevcHint",
+								"HEVC (H.265) makes smaller files but may not play on older or web players. Recordly preview playback is unchanged.",
+							)}
+						</p>
+					) : null}
+					<div className="mb-1 flex items-center justify-between px-1">
+						<span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
 							{tSettings("export.fpsTitle", "FPS")}
 						</span>
 					</div>
@@ -257,7 +492,7 @@ export function ExportSettingsMenu({
 									{isActive ? (
 										<motion.span
 											layoutId="header-export-fps-pill"
-										className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
 											transition={{
 												type: "spring",
 												stiffness: 420,
@@ -309,7 +544,7 @@ export function ExportSettingsMenu({
 									{isActive ? (
 										<motion.span
 											layoutId="header-export-pipeline-pill"
-										className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
 											transition={{
 												type: "spring",
 												stiffness: 420,
@@ -342,40 +577,128 @@ export function ExportSettingsMenu({
 									"Lightning (Beta) automatically uses the fastest compatible backend and falls back when needed.",
 								)}
 					</p>
-					{!isLegacyModel && nvidiaCudaExportAvailable ? (
-						<div className="mb-3 flex min-h-12 items-center justify-between gap-3 rounded-lg border border-[#2563EB]/20 bg-[#2563EB]/5 px-3 py-2">
-							<div className="min-w-0">
-								<div className="flex items-center gap-1.5">
-									<span className="text-[11px] font-semibold text-foreground">
-										{tSettings("export.nvidiaCuda.title", "NVIDIA CUDA")}
-									</span>
-									<span className="rounded bg-[#2563EB]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[#2563EB]">
-										{tSettings("export.nvidiaCuda.badge", "Experimental")}
-									</span>
+					{!isLegacyModel ? (
+						<div className="mb-3 overflow-hidden rounded-lg border border-[#2563EB]/20 bg-[#2563EB]/5">
+							<div className="flex items-center justify-between gap-3 px-3 py-2">
+								<div className="min-w-0">
+									<div className="flex items-center gap-1.5">
+										<span className="text-[11px] font-semibold text-foreground">
+											{tSettings(
+												"export.nvidiaCuda.compositorTitle",
+												"NVIDIA CUDA compositor",
+											)}
+										</span>
+										{nvidiaCudaCompositorRequired ? (
+											<span className="rounded bg-[#2563EB]/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[#2563EB]">
+												{tSettings(
+													"export.nvidiaCuda.requiredBadge",
+													"Required",
+												)}
+											</span>
+										) : experimentalNvidiaCudaExport ? (
+											<span className="rounded bg-[#2563EB]/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[#2563EB]">
+												{tSettings(
+													"export.nvidiaCuda.selectedBadge",
+													"Selected",
+												)}
+											</span>
+										) : nvidiaCudaExportAvailable ? (
+											<span className="rounded bg-[#2563EB]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[#2563EB]">
+												{tSettings(
+													"export.nvidiaCuda.availableBadge",
+													"Available",
+												)}
+											</span>
+										) : (
+											<span className="rounded bg-foreground/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground">
+												{tSettings(
+													"export.nvidiaCuda.unavailableBadge",
+													"Unavailable",
+												)}
+											</span>
+										)}
+									</div>
+									<p className="mt-0.5 truncate text-[10px] text-muted-foreground/75">
+										{tSettings("export.nvidiaCuda.backendLabel", "Backend")}
+										{": "}
+										{nvidiaCudaCompositorRequired ||
+										experimentalNvidiaCudaExport
+											? tSettings(
+													"export.nvidiaCuda.backendSelected",
+													"NVIDIA CUDA compositor",
+												)
+											: tSettings("export.backend.auto", "Auto")}
+									</p>
+									<p className="mt-0.5 text-[10px] text-muted-foreground/75">
+										{nvidiaCudaCompositorRequired
+											? tSettings(
+													"export.nvidiaCuda.hintRequired",
+													"H.265 Hardware exports use the NVIDIA CUDA compositor and never fall back to renderer frames.",
+												)
+											: experimentalNvidiaCudaExport
+												? tSettings(
+														"export.nvidiaCuda.hintSelected",
+														"Exports will use the NVIDIA CUDA compositor on this device.",
+													)
+												: nvidiaCudaExportAvailable
+													? tSettings(
+															"export.nvidiaCuda.hint",
+															"Compose and encode on the NVIDIA GPU for fast exports.",
+														)
+													: nvidiaCudaExportSkipReason
+														? tSettings(
+																"export.nvidiaCuda.unavailableReason",
+																`CUDA compositor is unavailable (${nvidiaCudaExportSkipReason}).`,
+																{
+																	reason: nvidiaCudaExportSkipReason,
+																},
+															)
+														: tSettings(
+																"export.nvidiaCuda.unavailableGeneric",
+																"CUDA compositor is unavailable on this device.",
+															)}
+									</p>
+									{nvidiaCudaCompositorRequired && !nvidiaCudaExportAvailable ? (
+										<p className="mt-1 text-[10px] font-medium text-red-400">
+											{tSettings(
+												"export.nvidiaCuda.unavailableRequired",
+												"H.265 + Hardware exports will fail until the CUDA compositor is available. Install or update NVIDIA drivers, or switch Encoder to Auto.",
+											)}
+										</p>
+									) : null}
 								</div>
-								<p className="mt-0.5 truncate text-[10px] text-muted-foreground/75">
-									{tSettings(
-										"export.nvidiaCuda.hint",
-										"Try GPU export on this Windows device.",
-									)}
-								</p>
+								{nvidiaCudaCompositorRequired ? (
+									<Switch
+										checked
+										disabled
+										aria-label={tSettings(
+											"export.nvidiaCuda.requiredToggle",
+											"NVIDIA CUDA compositor is required for H.265 Hardware exports",
+										)}
+										className="shrink-0 scale-75 data-[state=checked]:bg-[#2563EB]"
+									/>
+								) : nvidiaCudaExportAvailable ? (
+									<Switch
+										checked={experimentalNvidiaCudaExport}
+										onCheckedChange={onExperimentalNvidiaCudaExportChange}
+										aria-label={tSettings(
+											"export.nvidiaCuda.toggle",
+											"Use the NVIDIA CUDA compositor for GPU-accelerated exports",
+										)}
+										className="shrink-0 scale-75 data-[state=checked]:bg-[#2563EB]"
+									/>
+								) : null}
 							</div>
-							<Switch
-								checked={experimentalNvidiaCudaExport}
-								onCheckedChange={onExperimentalNvidiaCudaExportChange}
-								aria-label={tSettings(
-									"export.nvidiaCuda.toggle",
-									"Enable experimental NVIDIA CUDA export",
-								)}
-								className="shrink-0 scale-75 data-[state=checked]:bg-[#2563EB]"
-							/>
 						</div>
 					) : null}
 					{showCaptionSidecarOption ? (
 						<div className="mb-3 flex min-h-12 items-center justify-between gap-3 rounded-lg border border-foreground/10 bg-foreground/5 px-3 py-2">
 							<div className="min-w-0">
 								<p className="text-[11px] font-semibold text-foreground">
-									{tSettings("export.captionSidecar.title", "Export captions file")}
+									{tSettings(
+										"export.captionSidecar.title",
+										"Export captions file",
+									)}
 								</p>
 								<p className="mt-0.5 truncate text-[10px] text-muted-foreground/75">
 									{tSettings(
@@ -414,7 +737,7 @@ export function ExportSettingsMenu({
 											{isActive ? (
 												<motion.span
 													layoutId="header-gif-frame-rate-pill"
-											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+													className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
 													transition={{
 														type: "spring",
 														stiffness: 420,
@@ -454,7 +777,7 @@ export function ExportSettingsMenu({
 											{isActive ? (
 												<motion.span
 													layoutId="header-gif-size-pill"
-											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+													className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
 													transition={{
 														type: "spring",
 														stiffness: 420,

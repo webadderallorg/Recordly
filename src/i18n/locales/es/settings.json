@@ -232,6 +232,49 @@
 			"high": "Alta",
 			"original": "Original"
 		},
+		"codecTitle": "Códec de vídeo",
+		"codec": {
+			"h264": "H.264",
+			"hevc": "H.265"
+		},
+		"encoderTitle": "Codificador",
+		"encoder": {
+			"auto": "Automático",
+			"hardware": "Hardware",
+			"cpu": "CPU"
+		},
+		"bitrateTitle": "Tasa de bits",
+		"bitrate": {
+			"auto": "Automática",
+			"custom": "Personalizada",
+			"mbpsInput": "Tasa de bits personalizada en Mbps",
+			"range": "1–200 Mbps"
+		},
+		"hevcHint": "HEVC (H.265) crea archivos más pequeños pero puede no reproducirse en reproductores antiguos o web. La vista previa de Recordly no cambia.",
+		"hardwareUnavailable": "No se encontró ningún codificador de hardware utilizable. Elige CPU o Auto, o actualiza el controlador de tu GPU.",
+		"errors": {
+			"hardwareUnavailable": "No se encontró ningún codificador de hardware utilizable. Elige CPU o Auto, o actualiza el controlador de tu GPU."
+		},
+		"backend": {
+			"auto": "Automático"
+		},
+		"nvidiaCuda": {
+			"compositorTitle": "Compositor NVIDIA CUDA",
+			"backendLabel": "Backend",
+			"backendSelected": "Compositor NVIDIA CUDA",
+			"availableBadge": "Disponible",
+			"selectedBadge": "Seleccionado",
+			"requiredBadge": "Requerido",
+			"unavailableBadge": "No disponible",
+			"toggle": "Usar el compositor NVIDIA CUDA para exportaciones aceleradas por GPU",
+			"requiredToggle": "El compositor NVIDIA CUDA es obligatorio para exportaciones H.265 con hardware",
+			"hint": "Componer y codificar en la GPU NVIDIA para exportaciones rápidas.",
+			"hintSelected": "Las exportaciones usarán el compositor NVIDIA CUDA en este dispositivo.",
+			"hintRequired": "Las exportaciones H.265 con hardware usan el compositor NVIDIA CUDA y nunca recurren a fotogramas del renderizador.",
+			"unavailableReason": "El compositor CUDA no está disponible ({{reason}}).",
+			"unavailableGeneric": "El compositor CUDA no está disponible en este dispositivo.",
+			"unavailableRequired": "Las exportaciones H.265 + Hardware fallarán hasta que el compositor CUDA esté disponible. Instala o actualiza los controladores NVIDIA, o cambia el codificador a Auto."
+		},
 		"fpsTitle": "FPS",
 		"loop": "Bucle",
 		"outputDimensions": "Salida: {{dimensions}}px",

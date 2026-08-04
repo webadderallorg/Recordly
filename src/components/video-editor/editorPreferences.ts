@@ -1,67 +1,83 @@
 import { loadAppSetting, saveAppSetting } from "../../lib/appSettings";
 import {
 	normalizeExportBackendPreference,
+	normalizeExportBitrateMbps,
+	normalizeExportBitrateMode,
+	normalizeExportEncoderPreference,
 	normalizeExportMp4FrameRate,
 	normalizeExportPipelineModel,
+	normalizeExportVideoCodec,
 	normalizeProjectEditor,
 	type ProjectEditorState,
 	stripPersistedDevMotionBlurSettings,
 } from "./projectPersistence";
 
-type PersistedEditorControls = Pick<
-	ProjectEditorState,
-	| "wallpaper"
-	| "shadowIntensity"
-	| "backgroundBlur"
-	| "zoomMotionBlur"
-	| "zoomMotionBlurTuning"
-	| "zoomTemporalMotionBlur"
-	| "zoomMotionBlurSampleCount"
-	| "zoomMotionBlurShutterFraction"
-	| "connectZooms"
-	| "zoomInDurationMs"
-	| "zoomInOverlapMs"
-	| "zoomOutDurationMs"
-	| "connectedZoomGapMs"
-	| "connectedZoomDurationMs"
-	| "zoomInEasing"
-	| "zoomOutEasing"
-	| "connectedZoomEasing"
-	| "showCursor"
-	| "loopCursor"
-	| "cursorStyle"
-	| "cursorSize"
-	| "cursorSmoothing"
-	| "cursorSpringStiffnessMultiplier"
-	| "cursorSpringDampingMultiplier"
-	| "cursorSpringMassMultiplier"
-	| "cameraSpringStiffnessMultiplier"
-	| "cameraSpringDampingMultiplier"
-	| "cameraSpringMassMultiplier"
-	| "cursorMotionBlur"
-	| "cursorClickEffect"
-	| "cursorClickEffectColor"
-	| "cursorClickEffectScale"
-	| "cursorClickEffectOpacity"
-	| "cursorClickEffectDurationMs"
-	| "cursorClickBounce"
-	| "cursorClickBounceDuration"
-	| "cursorSway"
-	| "borderRadius"
-	| "padding"
-	| "frame"
-	| "webcam"
-	| "aspectRatio"
-	| "exportEncodingMode"
-	| "exportBackendPreference"
-	| "exportPipelineModel"
-	| "exportQuality"
-	| "mp4FrameRate"
-	| "exportFormat"
-	| "gifFrameRate"
-	| "gifLoop"
-	| "gifSizePreset"
->;
+type PersistedEditorControls = Omit<
+	Pick<
+		ProjectEditorState,
+		| "wallpaper"
+		| "shadowIntensity"
+		| "backgroundBlur"
+		| "zoomMotionBlur"
+		| "zoomMotionBlurTuning"
+		| "zoomTemporalMotionBlur"
+		| "zoomMotionBlurSampleCount"
+		| "zoomMotionBlurShutterFraction"
+		| "connectZooms"
+		| "zoomInDurationMs"
+		| "zoomInOverlapMs"
+		| "zoomOutDurationMs"
+		| "connectedZoomGapMs"
+		| "connectedZoomDurationMs"
+		| "zoomInEasing"
+		| "zoomOutEasing"
+		| "connectedZoomEasing"
+		| "showCursor"
+		| "loopCursor"
+		| "cursorStyle"
+		| "cursorSize"
+		| "cursorSmoothing"
+		| "cursorSpringStiffnessMultiplier"
+		| "cursorSpringDampingMultiplier"
+		| "cursorSpringMassMultiplier"
+		| "cameraSpringStiffnessMultiplier"
+		| "cameraSpringDampingMultiplier"
+		| "cameraSpringMassMultiplier"
+		| "cursorMotionBlur"
+		| "cursorClickEffect"
+		| "cursorClickEffectColor"
+		| "cursorClickEffectScale"
+		| "cursorClickEffectOpacity"
+		| "cursorClickEffectDurationMs"
+		| "cursorClickBounce"
+		| "cursorClickBounceDuration"
+		| "cursorSway"
+		| "borderRadius"
+		| "padding"
+		| "frame"
+		| "webcam"
+		| "aspectRatio"
+		| "exportEncodingMode"
+		| "exportBackendPreference"
+		| "exportPipelineModel"
+		| "exportQuality"
+		| "mp4FrameRate"
+		| "exportVideoCodec"
+		| "exportEncoderPreference"
+		| "exportBitrateMode"
+		| "exportBitrateMbps"
+		| "exportFormat"
+		| "gifFrameRate"
+		| "gifLoop"
+		| "gifSizePreset"
+	>,
+	"exportVideoCodec" | "exportEncoderPreference" | "exportBitrateMode" | "exportBitrateMbps"
+> & {
+	exportVideoCodec?: ProjectEditorState["exportVideoCodec"];
+	exportEncoderPreference?: ProjectEditorState["exportEncoderPreference"];
+	exportBitrateMode?: ProjectEditorState["exportBitrateMode"];
+	exportBitrateMbps?: ProjectEditorState["exportBitrateMbps"];
+};
 
 type PartialEditorControls = Partial<PersistedEditorControls>;
 
@@ -145,6 +161,10 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	exportPipelineModel: DEFAULT_EDITOR_CONTROLS.exportPipelineModel,
 	exportQuality: DEFAULT_EDITOR_CONTROLS.exportQuality,
 	mp4FrameRate: DEFAULT_EDITOR_CONTROLS.mp4FrameRate,
+	exportVideoCodec: DEFAULT_EDITOR_CONTROLS.exportVideoCodec,
+	exportEncoderPreference: DEFAULT_EDITOR_CONTROLS.exportEncoderPreference,
+	exportBitrateMode: DEFAULT_EDITOR_CONTROLS.exportBitrateMode,
+	exportBitrateMbps: DEFAULT_EDITOR_CONTROLS.exportBitrateMbps,
 	exportFormat: DEFAULT_EDITOR_CONTROLS.exportFormat,
 	gifFrameRate: DEFAULT_EDITOR_CONTROLS.gifFrameRate,
 	gifLoop: DEFAULT_EDITOR_CONTROLS.gifLoop,
@@ -353,6 +373,22 @@ function normalizeEditorControls(
 			sanitizedRaw.mp4FrameRate === undefined
 				? fallback.mp4FrameRate
 				: normalizeExportMp4FrameRate(sanitizedRaw.mp4FrameRate),
+		exportVideoCodec:
+			sanitizedRaw.exportVideoCodec === undefined
+				? fallback.exportVideoCodec
+				: normalizeExportVideoCodec(sanitizedRaw.exportVideoCodec),
+		exportEncoderPreference:
+			sanitizedRaw.exportEncoderPreference === undefined
+				? fallback.exportEncoderPreference
+				: normalizeExportEncoderPreference(sanitizedRaw.exportEncoderPreference),
+		exportBitrateMode:
+			sanitizedRaw.exportBitrateMode === undefined
+				? fallback.exportBitrateMode
+				: normalizeExportBitrateMode(sanitizedRaw.exportBitrateMode),
+		exportBitrateMbps:
+			sanitizedRaw.exportBitrateMbps === undefined
+				? fallback.exportBitrateMbps
+				: normalizeExportBitrateMbps(sanitizedRaw.exportBitrateMbps),
 		exportFormat: sanitizedRaw.exportFormat ?? fallback.exportFormat,
 		gifFrameRate: sanitizedRaw.gifFrameRate ?? fallback.gifFrameRate,
 		gifLoop: sanitizedRaw.gifLoop ?? fallback.gifLoop,
@@ -409,6 +445,10 @@ function normalizeEditorControls(
 		exportPipelineModel: normalized.exportPipelineModel,
 		exportQuality: normalized.exportQuality,
 		mp4FrameRate: normalized.mp4FrameRate,
+		exportVideoCodec: normalized.exportVideoCodec,
+		exportEncoderPreference: normalized.exportEncoderPreference,
+		exportBitrateMode: normalized.exportBitrateMode,
+		exportBitrateMbps: normalized.exportBitrateMbps,
 		exportFormat: normalized.exportFormat,
 		gifFrameRate: normalized.gifFrameRate,
 		gifLoop: normalized.gifLoop,

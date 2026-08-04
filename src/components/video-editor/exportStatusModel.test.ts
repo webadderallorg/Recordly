@@ -156,6 +156,28 @@ describe("resolveExportStatusModel", () => {
 		expect(status.runtimeLabel).toBe("VideoEncoder");
 	});
 
+	it("labels the NVIDIA CUDA compositor backend instead of Breeze", () => {
+		const status = resolveExportStatusModel({
+			isExporting: true,
+			exportProgress: progress({ encoderName: "nvidia-cuda-compositor" }),
+			exportFormat: "mp4",
+			exportPipelineModel: "modern",
+		});
+
+		expect(status.runtimeLabel).toBe("NVIDIA CUDA compositor");
+	});
+
+	it("labels the Windows D3D11 compositor backend distinctly", () => {
+		const status = resolveExportStatusModel({
+			isExporting: true,
+			exportProgress: progress({ encoderName: "windows-d3d11-compositor" }),
+			exportFormat: "mp4",
+			exportPipelineModel: "modern",
+		});
+
+		expect(status.runtimeLabel).toBe("Windows D3D11 compositor");
+	});
+
 	it("prefers multiple native skip reasons over the single legacy reason", () => {
 		const status = resolveExportStatusModel({
 			isExporting: true,
@@ -171,6 +193,43 @@ describe("resolveExportStatusModel", () => {
 			"timeline-edits-present",
 			"unsupported-background",
 		]);
-		expect(status.nativeSkipLabel).toBe("Native skipped: timeline-edits-present (+1 more)");
+		expect(status.nativeSkipLabel).toBe("Native skipped: timeline-edits-present; background");
+	});
+
+	it("formats known native skip reasons without hiding additional blockers", () => {
+		const status = resolveExportStatusModel({
+			isExporting: true,
+			exportProgress: progress({
+				nativeStaticLayoutSkipReasons: [
+					"unsupported-cursor-click-effect",
+					"unsupported-annotation-overlay",
+					"unsupported-audio-mode:edited-track",
+				],
+			}),
+			exportFormat: "mp4",
+			exportPipelineModel: "modern",
+		});
+
+		expect(status.nativeSkipLabel).toBe(
+			"Native skipped: cursor click effect; annotation overlay; unsupported-audio-mode:edited-track",
+		);
+	});
+
+	it("labels temporal zoom motion blur distinctly from the overlay-route rejection", () => {
+		const status = resolveExportStatusModel({
+			isExporting: true,
+			exportProgress: progress({
+				nativeStaticLayoutSkipReasons: [
+					"unsupported-temporal-motion-blur",
+					"unsupported-motion-blur-on-overlay-route",
+				],
+			}),
+			exportFormat: "mp4",
+			exportPipelineModel: "modern",
+		});
+
+		expect(status.nativeSkipLabel).toBe(
+			"Native skipped: temporal zoom motion blur; zoom motion blur over overlay layers",
+		);
 	});
 });

@@ -6,12 +6,6 @@ import type { Readable, Writable } from "node:stream";
 import type { SaveDialogOptions } from "electron";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import {
-	parseCaptionSidecarPayload,
-	type CaptionSidecarPayload,
-	withCaptionSidecarMessage,
-	writeCaptionSidecarsBestEffort,
-} from "./exportCaptionSidecars";
-import {
 	closeExportStream,
 	isOwnedExportPath,
 	openExportStream,
@@ -20,9 +14,12 @@ import {
 	writeToExportStream,
 } from "../export/exportStream";
 import {
+	attachNativeVideoExportFramePort,
+	closeNativeVideoExportFramePort,
 	enqueueNativeVideoExportFrameWrite,
 	enqueueNativeVideoExportFrameWrites,
 	exportNativeStaticLayoutVideo,
+	flushNativeVideoExportFramePortPendingRequests,
 	flushNativeVideoExportPendingWriteRequests,
 	getNativeExportCapabilities,
 	getNativeVideoExportMaxQueuedWriteBytes,
@@ -38,6 +35,7 @@ import {
 	probeNativeVideoMetadata,
 	removeTemporaryExportFile,
 	resolveNativeVideoEncoder,
+	sendNativeVideoExportFramePortError,
 	sendNativeVideoExportWriteFrameResult,
 	settleNativeVideoExportWriteFrameRequest,
 } from "../export/native-video";
@@ -45,12 +43,20 @@ import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import {
 	buildNativeH264StreamExportArgs,
 	buildNativeVideoExportArgs,
+	type ExportEncoderPreference,
+	type ExportVideoCodec,
 	getNativeVideoInputByteSize,
 	type NativeExportEncodingMode,
 	type NativeVideoExportFinishOptions,
 } from "../nativeVideoExport";
 import { isAllowedLocalReadPath, resolveApprovedLocalMediaPath } from "../project/manager";
 import { approveUserPath } from "../utils";
+import {
+	type CaptionSidecarPayload,
+	parseCaptionSidecarPayload,
+	withCaptionSidecarMessage,
+	writeCaptionSidecarsBestEffort,
+} from "./exportCaptionSidecars";
 
 function getPartialExportDestinationPath(destinationPath: string) {
 	const parsed = path.parse(destinationPath);
@@ -75,12 +81,7 @@ export async function moveExportedTempFile(tempPath: string, destinationPath: st
 		return;
 	} catch (error) {
 		const code = (error as NodeJS.ErrnoException).code;
-		if (
-			code !== "EXDEV" &&
-			code !== "EPERM" &&
-			code !== "ENOTEMPTY" &&
-			code !== "EEXIST"
-		) {
+		if (code !== "EXDEV" && code !== "EPERM" && code !== "ENOTEMPTY" && code !== "EEXIST") {
 			throw error;
 		}
 		// Cross-device or Windows permission quirks — fall back to copy + unlink so
@@ -113,9 +114,7 @@ export async function moveExportedTempFile(tempPath: string, destinationPath: st
 				await fs.rename(partialDestinationPath, destinationPath);
 			} catch (replaceError) {
 				if (movedExistingDestination) {
-					await fs
-						.rename(backupDestinationPath, destinationPath)
-						.catch(() => undefined);
+					await fs.rename(backupDestinationPath, destinationPath).catch(() => undefined);
 				}
 				throw replaceError;
 			}
@@ -194,6 +193,20 @@ async function sanitizeNativeStaticLayoutExportOptions(
 		inputPath: await resolveAllowedReadableFilePath(options.inputPath, "Native input"),
 	};
 	const mutableOptions = sanitized as unknown as Record<string, unknown>;
+	if (sanitized.overlayLayers) {
+		for (const layer of sanitized.overlayLayers) {
+			if (typeof layer.path !== "string" || layer.path.trim().length === 0) {
+				throw new Error(`Native overlay layer ${layer.id} requires a file path`);
+			}
+			layer.path = await resolveAllowedReadableFilePath(
+				layer.path,
+				`Native overlay ${layer.id}`,
+				{
+					mediaOnly: false,
+				},
+			);
+		}
+	}
 
 	for (const [field, label] of [
 		["backgroundImagePath", "Native background image"],
@@ -264,6 +277,8 @@ export function registerExportHandlers() {
 				bitrate: number;
 				encodingMode: NativeExportEncodingMode;
 				inputMode?: "rawvideo" | "h264-stream";
+				videoCodec?: ExportVideoCodec;
+				encoderPreference?: ExportEncoderPreference;
 			},
 		) => {
 			try {
@@ -273,13 +288,23 @@ export function registerExportHandlers() {
 
 				const ffmpegPath = getFfmpegBinaryPath();
 				const inputMode = options.inputMode ?? "rawvideo";
+				const videoCodec = options.videoCodec ?? "h264";
+				const encoderPreference = options.encoderPreference ?? "auto";
 				const sessionId = `recordly-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 				const outputPath = path.join(app.getPath("temp"), `${sessionId}.mp4`);
 
 				let encoderName: string;
 				let ffmpegArgs: string[];
 
-				if (inputMode === "h264-stream") {
+				// Preserve the existing zero-copy H.264 stream-copy path for the default
+				// H.264 + Auto selection. Explicit hardware/CPU H.264, and any HEVC
+				// selection, go through the native raw-frame route.
+				const useH264StreamCopy =
+					inputMode === "h264-stream" &&
+					videoCodec === "h264" &&
+					encoderPreference === "auto";
+
+				if (useH264StreamCopy) {
 					// Pre-encoded H.264 Annex B from browser VideoEncoder — just stream-copy into MP4
 					encoderName = "h264-stream-copy";
 					ffmpegArgs = buildNativeH264StreamExportArgs({
@@ -287,7 +312,12 @@ export function registerExportHandlers() {
 						outputPath,
 					});
 				} else {
-					encoderName = await resolveNativeVideoEncoder(ffmpegPath, options.encodingMode);
+					encoderName = await resolveNativeVideoEncoder(
+						ffmpegPath,
+						options.encodingMode,
+						videoCodec,
+						encoderPreference,
+					);
 					ffmpegArgs = buildNativeVideoExportArgs(encoderName, options, outputPath);
 				}
 
@@ -317,6 +347,11 @@ export function registerExportHandlers() {
 					writeSequence: Promise.resolve(),
 					sender: event.sender,
 					pendingWriteRequestIds: new Set<number>(),
+					framePort: null,
+					framePortReady: false,
+					nextFrameSequence: 0,
+					pendingFrameRequests: new Map(),
+					completedFrameRequestIds: new Set<number>(),
 					completionPromise: new Promise<void>((resolve, reject) => {
 						ffmpegProcess.once("error", (error) => {
 							const processError =
@@ -340,6 +375,11 @@ export function registerExportHandlers() {
 							}
 
 							session.stdinError = stdinError;
+							flushNativeVideoExportFramePortPendingRequests(
+								sessionId,
+								session,
+								getNativeVideoExportSessionError(session, stdinError.message),
+							);
 						});
 						ffmpegProcess.once("close", (code, signal) => {
 							if (session.terminating) {
@@ -363,7 +403,17 @@ export function registerExportHandlers() {
 						});
 					}),
 				};
-				void session.completionPromise.catch(() => undefined);
+				void session.completionPromise.catch((error: unknown) => {
+					const processError = error instanceof Error ? error : new Error(String(error));
+					if (!session.processError) {
+						session.processError = processError;
+					}
+					flushNativeVideoExportFramePortPendingRequests(
+						sessionId,
+						session,
+						getNativeVideoExportSessionError(session, processError.message),
+					);
+				});
 
 				ffmpegProcess.stderr.on("data", (chunk: Buffer) => {
 					session.stderrOutput += chunk.toString();
@@ -460,14 +510,15 @@ export function registerExportHandlers() {
 				return {
 					success: true,
 					tempPath: result.outputPath,
+					videoCodec: result.videoCodec,
+					encoderPreference: result.encoderPreference,
+					route: result.route,
 					encoderName:
 						primaryBackend === "nvidia-cuda-compositor"
 							? "nvidia-cuda-compositor"
 							: primaryBackend === "windows-d3d11-compositor"
 								? "windows-d3d11-compositor"
-								: result.metrics.chunkCount > 1
-									? "chunked-h264-nvenc"
-									: "static-layout-h264-nvenc",
+								: result.encoderName,
 					metrics: result.metrics,
 				};
 			} catch (error) {
@@ -494,6 +545,25 @@ export function registerExportHandlers() {
 		}
 
 		return { success: true };
+	});
+
+	ipcMain.on("native-video-export-frame-channel", (event, payload: { sessionId?: string }) => {
+		const port = event.ports[0];
+		const sessionId = typeof payload?.sessionId === "string" ? payload.sessionId : "";
+		if (!port) {
+			return;
+		}
+
+		const session = nativeVideoExportSessions.get(sessionId);
+		if (!session) {
+			sendNativeVideoExportFramePortError(port, sessionId, "Invalid native export session", {
+				fallbackAvailable: true,
+			});
+			port.close();
+			return;
+		}
+
+		attachNativeVideoExportFramePort(sessionId, session, port, event.sender);
 	});
 
 	ipcMain.on(
@@ -659,6 +729,11 @@ export function registerExportHandlers() {
 					session.outputPath,
 					options ?? {},
 				);
+				closeNativeVideoExportFramePort(
+					sessionId,
+					session,
+					"Native video export session finished",
+				);
 				nativeVideoExportSessions.delete(sessionId);
 				// Register the finalized path so only app-produced paths can flow back
 				// through finalize-exported-video / discard-exported-temp.
@@ -680,6 +755,7 @@ export function registerExportHandlers() {
 					metrics: finalized.metrics,
 				};
 			} catch (error) {
+				closeNativeVideoExportFramePort(sessionId, session, String(error));
 				flushNativeVideoExportPendingWriteRequests(sessionId, session, String(error));
 				nativeVideoExportSessions.delete(sessionId);
 				await removeTemporaryExportFile(session.outputPath);
@@ -805,6 +881,11 @@ export function registerExportHandlers() {
 
 		session.terminating = true;
 		nativeVideoExportSessions.delete(sessionId);
+		closeNativeVideoExportFramePort(
+			sessionId,
+			session,
+			"Native video export session was cancelled",
+		);
 		flushNativeVideoExportPendingWriteRequests(
 			sessionId,
 			session,

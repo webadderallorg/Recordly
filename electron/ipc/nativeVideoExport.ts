@@ -1,8 +1,12 @@
+import type { NativeStaticLayoutOverlayLayer } from "../../src/lib/exporter/nativeStaticLayoutOverlays";
 import {
 	getShadowFilterPadding,
 	VIDEO_SHADOW_LAYER_PROFILES,
 } from "../../src/lib/exporter/shadowProfile";
+import type { ExportEncoderPreference, ExportVideoCodec } from "../../src/lib/exporter/types";
 import { getSquirclePathPoints } from "../../src/lib/geometry/squircle";
+export type { ExportEncoderPreference, ExportVideoCodec };
+
 import { ATEMPO_FILTER_EPSILON, buildAtempoFilters } from "./ffmpeg/filters";
 
 const NATIVE_EXPORT_INPUT_BYTES_PER_PIXEL = 4;
@@ -23,6 +27,8 @@ export interface NativeVideoExportStartOptions {
 	bitrate: number;
 	encodingMode: NativeExportEncodingMode;
 	inputMode?: "rawvideo" | "h264-stream";
+	videoCodec?: ExportVideoCodec;
+	encoderPreference?: ExportEncoderPreference;
 }
 
 export interface NativeVideoExportAudioSegment {
@@ -67,6 +73,7 @@ export type NativeStaticLayoutBackend =
 export interface NativeStaticLayoutExportArgsConfig {
 	inputPath: string;
 	outputPath: string;
+	videoCodec?: ExportVideoCodec;
 	width: number;
 	height: number;
 	frameRate: number;
@@ -89,6 +96,12 @@ export interface NativeStaticLayoutExportArgsConfig {
 	shadowIntensity?: number;
 	startSec?: number;
 	durationSec?: number;
+	overlayLayers?: NativeStaticLayoutOverlayLayer[];
+	videoEncoder?: string;
+}
+
+function getNativeStaticLayoutVideoEncoder(codec: ExportVideoCodec = "h264") {
+	return codec === "hevc" ? "hevc_nvenc" : "h264_nvenc";
 }
 
 export interface NativeStaticLayoutChunk {
@@ -114,23 +127,76 @@ export function parseAvailableFfmpegEncoders(stdout: string): Set<string> {
 	return encoders;
 }
 
-export function getPreferredNativeVideoEncoders(platform: NodeJS.Platform): string[] {
+function getHardwareEncoderCandidates(
+	codec: ExportVideoCodec,
+	platform: NodeJS.Platform,
+): string[] {
+	if (codec === "hevc") {
+		switch (platform) {
+			case "darwin":
+				return ["hevc_videotoolbox"];
+			case "win32":
+				return ["hevc_nvenc", "hevc_qsv", "hevc_amf", "hevc_mf"];
+			case "linux":
+				return ["hevc_nvenc", "hevc_qsv"];
+			default:
+				return [];
+		}
+	}
+
 	switch (platform) {
 		case "darwin":
-			return ["h264_videotoolbox", "libx264"];
+			return ["h264_videotoolbox"];
 		case "win32":
-			return ["h264_nvenc", "h264_qsv", "h264_amf", "h264_mf", "libx264"];
+			return ["h264_nvenc", "h264_qsv", "h264_amf", "h264_mf"];
 		case "linux":
-			return ["h264_nvenc", "h264_qsv", "libx264"];
+			return ["h264_nvenc", "h264_qsv"];
 		default:
-			return ["libx264"];
+			return [];
 	}
+}
+
+export function getCpuEncoderForCodec(codec: ExportVideoCodec): string {
+	return codec === "hevc" ? "libx265" : "libx264";
+}
+
+export function getNativeEncoderCandidates(
+	codec: ExportVideoCodec,
+	preference: ExportEncoderPreference,
+	platform: NodeJS.Platform,
+): string[] {
+	const hardware = getHardwareEncoderCandidates(codec, platform);
+	const cpu = [getCpuEncoderForCodec(codec)];
+
+	if (preference === "cpu") {
+		return cpu;
+	}
+	if (preference === "hardware") {
+		return hardware;
+	}
+	return [...hardware, ...cpu];
+}
+
+export function getPreferredNativeVideoEncoders(platform: NodeJS.Platform): string[] {
+	return getNativeEncoderCandidates("h264", "auto", platform);
 }
 
 function getLibx264ModeArgs(encodingMode: NativeExportEncodingMode): string[] {
 	switch (encodingMode) {
 		case "fast":
 			return ["-preset", "ultrafast", "-tune", "zerolatency"];
+		case "quality":
+			return ["-preset", "slow"];
+		case "balanced":
+		default:
+			return ["-preset", "medium"];
+	}
+}
+
+function getLibx265ModeArgs(encodingMode: NativeExportEncodingMode): string[] {
+	switch (encodingMode) {
+		case "fast":
+			return ["-preset", "ultrafast"];
 		case "quality":
 			return ["-preset", "slow"];
 		case "balanced":
@@ -295,8 +361,6 @@ export function buildNativeVideoExportArgs(
 		String(options.frameRate),
 		"-i",
 		"pipe:0",
-		"-vf",
-		"vflip",
 		"-an",
 		"-c:v",
 		encoder,
@@ -307,6 +371,10 @@ export function buildNativeVideoExportArgs(
 
 	if (encoder === "libx264") {
 		args.push(...getLibx264ModeArgs(options.encodingMode));
+	} else if (encoder === "libx265") {
+		args.push(...getLibx265ModeArgs(options.encodingMode));
+	} else if (encoder === "hevc_nvenc") {
+		args.push(...getNvencStaticLayoutModeArgs(options.encodingMode));
 	}
 
 	args.push("-pix_fmt", "yuv420p", "-movflags", "+faststart", outputPath);
@@ -319,23 +387,63 @@ export function buildNativeCudaOverlayStaticLayoutArgs(
 	const backgroundColor = formatFfmpegColor(config.backgroundColor);
 	const durationSec = formatFfmpegSeconds(Math.max(0.001, config.durationSec ?? 1) * 1000);
 	const args = ["-y", "-hide_banner", "-loglevel", "error"];
+	const overlayLayers = [...(config.overlayLayers ?? [])].sort(
+		(left, right) => left.order - right.order || left.id.localeCompare(right.id),
+	);
 	pushFfmpegTimeSliceArgs(args, config.startSec, config.durationSec);
+	args.push("-hwaccel", "cuda", "-hwaccel_output_format", "cuda", "-i", config.inputPath);
+	for (const layer of overlayLayers) {
+		args.push(
+			"-f",
+			"rawvideo",
+			"-pix_fmt",
+			"rgba",
+			"-s:v",
+			`${layer.width}x${layer.height}`,
+			"-framerate",
+			String(layer.frameRate),
+			"-i",
+			layer.path,
+		);
+	}
+
+	let filterComplex =
+		`color=c=${backgroundColor}:s=${config.width}x${config.height}:r=${config.frameRate}:d=${durationSec},format=nv12,hwupload_cuda[bg];` +
+		`[0:v]scale_cuda=w=${config.contentWidth}:h=${config.contentHeight}:format=nv12,fps=${config.frameRate}[fg];` +
+		`[bg][fg]overlay_cuda=${config.offsetX}:${config.offsetY}:shortest=0:repeatlast=1:eof_action=repeat,trim=duration=${durationSec},setpts=PTS-STARTPTS[out]`;
+	if (overlayLayers.length > 0) {
+		const filterParts = [
+			`color=c=${backgroundColor}:s=${config.width}x${config.height}:r=${config.frameRate}:d=${durationSec},format=rgba[bg]`,
+			`[0:v]scale_cuda=w=${config.contentWidth}:h=${config.contentHeight}:format=nv12,hwdownload,format=nv12,fps=${config.frameRate},format=rgba[fg]`,
+			`[bg][fg]overlay=${config.offsetX}:${config.offsetY}:shortest=0:repeatlast=1:eof_action=repeat[layout]`,
+		];
+		let currentLabel = "layout";
+		for (const [index, layer] of overlayLayers.entries()) {
+			const inputIndex = index + 1;
+			const overlayLabel = `overlay_${index}`;
+			const nextLabel = index === overlayLayers.length - 1 ? "out" : `layout_${index}`;
+			filterParts.push(
+				`[${inputIndex}:v]format=rgba[${overlayLabel}]`,
+				`[${currentLabel}][${overlayLabel}]overlay=${layer.x}:${layer.y}:shortest=0:repeatlast=1:eof_action=repeat[${nextLabel}]`,
+			);
+			currentLabel = nextLabel;
+		}
+		filterParts.push(
+			`[${currentLabel}]trim=duration=${durationSec},setpts=PTS-STARTPTS,format=yuv420p[out]`,
+		);
+		filterComplex = filterParts.join(";");
+	}
+
 	args.push(
-		"-hwaccel",
-		"cuda",
-		"-hwaccel_output_format",
-		"cuda",
-		"-i",
-		config.inputPath,
 		"-filter_complex",
-		`color=c=${backgroundColor}:s=${config.width}x${config.height}:r=${config.frameRate}:d=${durationSec},format=nv12,hwupload_cuda[bg];[0:v]scale_cuda=w=${config.contentWidth}:h=${config.contentHeight}:format=nv12,fps=${config.frameRate}[fg];[bg][fg]overlay_cuda=${config.offsetX}:${config.offsetY}:shortest=0:repeatlast=1:eof_action=repeat,trim=duration=${durationSec},setpts=PTS-STARTPTS[out]`,
+		filterComplex,
 		"-map",
 		"[out]",
 		"-an",
 		"-r",
 		String(config.frameRate),
 		"-c:v",
-		"h264_nvenc",
+		config.videoEncoder ?? getNativeStaticLayoutVideoEncoder(config.videoCodec),
 		...getNvencStaticLayoutModeArgs(config.encodingMode),
 		...getBitrateArgs(config.bitrate),
 		"-movflags",
@@ -348,6 +456,9 @@ export function buildNativeCudaOverlayStaticLayoutArgs(
 export function buildNativeCudaScaleCpuPadStaticLayoutArgs(
 	config: NativeStaticLayoutExportArgsConfig,
 ): string[] {
+	if (config.overlayLayers?.length) {
+		throw new Error("CUDA scale/pad fallback cannot preserve native overlay layers");
+	}
 	const backgroundColor = formatFfmpegColor(config.backgroundColor);
 	const args = ["-y", "-hide_banner", "-loglevel", "error"];
 	pushFfmpegTimeSliceArgs(args, config.startSec, config.durationSec);
@@ -366,7 +477,7 @@ export function buildNativeCudaScaleCpuPadStaticLayoutArgs(
 		"-r",
 		String(config.frameRate),
 		"-c:v",
-		"h264_nvenc",
+		config.videoEncoder ?? getNativeStaticLayoutVideoEncoder(config.videoCodec),
 		...getNvencStaticLayoutModeArgs(config.encodingMode),
 		...getBitrateArgs(config.bitrate),
 		"-pix_fmt",
@@ -513,11 +624,43 @@ export function buildNativePrecompositedStaticLayoutArgs(
 			config.maskPath,
 		);
 	}
+	for (const layer of config.overlayLayers ?? []) {
+		args.push(
+			"-f",
+			"rawvideo",
+			"-pix_fmt",
+			"rgba",
+			"-s:v",
+			`${layer.width}x${layer.height}`,
+			"-framerate",
+			String(layer.frameRate),
+			"-i",
+			layer.path,
+		);
+	}
 
 	const foregroundFilter = `[0:v]scale_cuda=w=${config.contentWidth}:h=${config.contentHeight}:format=nv12:passthrough=0,hwdownload,format=nv12,fps=${config.frameRate},format=rgba[fgbase]`;
 	const maskFilter = useMask ? ";[2:v]format=gray[mask];[fgbase][mask]alphamerge[fg]" : "";
 	const foregroundLabel = useMask ? "fg" : "fgbase";
-	const filterComplex = `${foregroundFilter}${maskFilter};[1:v]format=rgba[bg];[bg][${foregroundLabel}]overlay=x=${config.offsetX}:y=${config.offsetY}:format=auto,trim=duration=${durationSec},setpts=PTS-STARTPTS,format=yuv420p[out]`;
+	const filterParts = [
+		`${foregroundFilter}${maskFilter}`,
+		`[1:v]format=rgba[bg]`,
+		`[bg][${foregroundLabel}]overlay=x=${config.offsetX}:y=${config.offsetY}:format=auto[layout]`,
+	];
+	let currentLabel = "layout";
+	const firstOverlayInputIndex = useMask ? 3 : 2;
+	for (const [index, layer] of (config.overlayLayers ?? []).entries()) {
+		const nextLabel = `layout_overlay_${index}`;
+		filterParts.push(
+			`[${firstOverlayInputIndex + index}:v]format=rgba[overlay_${index}]`,
+			`[${currentLabel}][overlay_${index}]overlay=x=${layer.x}:y=${layer.y}:format=auto[${nextLabel}]`,
+		);
+		currentLabel = nextLabel;
+	}
+	filterParts.push(
+		`[${currentLabel}]trim=duration=${durationSec},setpts=PTS-STARTPTS,format=yuv420p[out]`,
+	);
+	const filterComplex = filterParts.join(";");
 
 	args.push(
 		"-filter_complex",
@@ -528,7 +671,7 @@ export function buildNativePrecompositedStaticLayoutArgs(
 		"-r",
 		String(config.frameRate),
 		"-c:v",
-		"h264_nvenc",
+		config.videoEncoder ?? getNativeStaticLayoutVideoEncoder(config.videoCodec),
 		...getNvencStaticLayoutModeArgs(config.encodingMode),
 		...getBitrateArgs(config.bitrate),
 		"-pix_fmt",

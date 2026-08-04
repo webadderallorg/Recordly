@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
 	app: {
@@ -50,13 +50,18 @@ import { app } from "electron";
 import {
 	buildExperimentalNvidiaCudaStaticLayoutArgs,
 	buildExperimentalWindowsGpuStaticLayoutArgs,
+	buildNativeStaticLayoutOverlayManifest,
 	buildNativeStaticLayoutSourceProxyArgs,
 	buildNativeStaticLayoutTimelineSegments,
 	buildNativeVideoAudioMuxArgs,
 	canCopyAudioCodecIntoMp4,
+	exportNativeStaticLayoutVideo,
+	formatNativeStaticLayoutZoomTelemetryLines,
 	getExperimentalNvidiaCudaExportSkipReason,
 	getNativeExportCapabilities,
 	getNativeGpuCompositorStallTimeoutMs,
+	getNativeStaticLayoutOverlayExpectedSidecarBytes,
+	getNativeStaticLayoutRawFrameFallbackReason,
 	getNativeStaticLayoutSourceProxyBitrate,
 	getNvidiaCudaAudioExportSkipReason,
 	getNvidiaCudaAutoStallTimeoutMs,
@@ -65,6 +70,7 @@ import {
 	mapNvidiaCudaWrapperProgressPercentage,
 	muxExportedVideoAudioBuffer,
 	type NativeStaticLayoutExportOptions,
+	type NativeStaticLayoutOverlayLayer,
 	normalizeNativeStaticLayoutBackground,
 	parseFfmpegDurationSeconds,
 	parseFfmpegFrameRate,
@@ -75,10 +81,16 @@ import {
 	parseWindowsGpuExportProgressLine,
 	parseWindowsGpuExportSummary,
 	resolveExperimentalNvidiaCudaExportScriptPath,
+	resolveNativeStaticLayoutFpsFields,
+	resolveNvidiaCudaCursorAssets,
+	resolveNvidiaCudaNativeFps,
+	resolveNvidiaCudaNativeSummaryMetrics,
+	resolveNvidiaCudaOverlaySidecarSummaryMetrics,
 	shouldCreateNativeStaticLayoutSourceProxy,
 	validateNativeStaticLayoutSourceProxyMetadata,
 	validateNativeVideoStreamStats,
 	validateNvidiaCudaExportSummary,
+	validateNvidiaCudaStageMetricInvariants,
 	validateWindowsGpuExportSummary,
 } from "./native-video";
 
@@ -410,6 +422,38 @@ describe("getNativeExportCapabilities", () => {
 			process.platform === "win32" ? true : null,
 		);
 	});
+
+	it("keeps CUDA available when the GPU probe is inconclusive so the live helper decides", async () => {
+		const envName = "RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
+		const originalEnv = process.env[envName];
+		const originalIsPackaged = electronAppMock.isPackaged;
+		electronAppMock.isPackaged = true;
+		electronAppMock.getGPUInfo.mockRejectedValue(new Error("GPU info unavailable"));
+		fsMocks.access.mockResolvedValue(undefined);
+		delete process.env[envName];
+
+		try {
+			const capabilities = await getNativeExportCapabilities();
+			if (process.platform === "win32") {
+				expect(capabilities.nvidiaCuda.available).toBe(true);
+				expect(capabilities.nvidiaCuda.hasNvidiaGpu).toBeNull();
+				expect(capabilities.nvidiaCuda.skipReason).toBeNull();
+			} else {
+				expect(capabilities.nvidiaCuda.available).toBe(false);
+				expect(capabilities.nvidiaCuda.skipReason).toBe("not-windows");
+			}
+		} finally {
+			if (originalEnv === undefined) {
+				delete process.env[envName];
+			} else {
+				process.env[envName] = originalEnv;
+			}
+			electronAppMock.isPackaged = originalIsPackaged;
+			electronAppMock.getGPUInfo.mockReset();
+			electronAppMock.getGPUInfo.mockResolvedValue({ gpuDevice: [] });
+			resetFsAccessMock();
+		}
+	});
 });
 
 describe("getExperimentalNvidiaCudaExportSkipReason", () => {
@@ -601,6 +645,261 @@ describe("resolveExperimentalNvidiaCudaExportScriptPath", () => {
 	});
 });
 
+describe("buildNativeStaticLayoutOverlayManifest", () => {
+	it("serializes sorted overlay layers into the CUDA manifest contract", () => {
+		expect(
+			buildNativeStaticLayoutOverlayManifest([
+				{
+					id: "captions",
+					order: 2,
+					path: "captions.rgba",
+					x: 0,
+					y: 900,
+					width: 1920,
+					height: 180,
+					frameRate: 30,
+					durationSec: 2,
+					frameCount: 60,
+					pixelFormat: "rgba",
+				},
+				{
+					id: "effects",
+					order: 0,
+					path: "effects.rgba",
+					x: 0,
+					y: 0,
+					width: 1920,
+					height: 1080,
+					frameRate: 30,
+					durationSec: 2,
+					frameCount: 60,
+					pixelFormat: "rgba",
+				},
+			]),
+		).toEqual({
+			layers: [
+				{
+					id: "effects",
+					path: "effects.rgba",
+					x: 0,
+					y: 0,
+					width: 1920,
+					height: 1080,
+					frameCount: 60,
+				},
+				{
+					id: "captions",
+					path: "captions.rgba",
+					x: 0,
+					y: 900,
+					width: 1920,
+					height: 180,
+					frameCount: 60,
+				},
+			],
+		});
+	});
+
+	it("passes effectiveFrameCount through while preserving the logical frameCount", () => {
+		expect(
+			buildNativeStaticLayoutOverlayManifest([
+				{
+					id: "effects",
+					order: 0,
+					path: "effects.rgba",
+					x: 0,
+					y: 0,
+					width: 1920,
+					height: 1080,
+					frameRate: 30,
+					durationSec: 2,
+					frameCount: 60,
+					effectiveFrameCount: 41,
+					pixelFormat: "rgba",
+				},
+				{
+					id: "captions",
+					order: 2,
+					path: "captions.rgba",
+					x: 0,
+					y: 900,
+					width: 1920,
+					height: 180,
+					frameRate: 30,
+					durationSec: 2,
+					frameCount: 60,
+					pixelFormat: "rgba",
+				},
+			]),
+		).toEqual({
+			layers: [
+				{
+					id: "effects",
+					path: "effects.rgba",
+					x: 0,
+					y: 0,
+					width: 1920,
+					height: 1080,
+					frameCount: 60,
+					effectiveFrameCount: 41,
+				},
+				{
+					id: "captions",
+					path: "captions.rgba",
+					x: 0,
+					y: 900,
+					width: 1920,
+					height: 180,
+					frameCount: 60,
+				},
+			],
+		});
+	});
+
+	it("omits effectiveFrameCount for fully dynamic layers", () => {
+		const manifest = buildNativeStaticLayoutOverlayManifest([
+			{
+				id: "effects",
+				order: 0,
+				path: "effects.rgba",
+				x: 0,
+				y: 0,
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				durationSec: 2,
+				frameCount: 60,
+				pixelFormat: "rgba",
+			},
+		]);
+
+		expect(manifest.layers[0]).toEqual({
+			id: "effects",
+			path: "effects.rgba",
+			x: 0,
+			y: 0,
+			width: 1920,
+			height: 1080,
+			frameCount: 60,
+		});
+		expect("effectiveFrameCount" in manifest.layers[0]).toBe(false);
+	});
+});
+
+describe("getNativeStaticLayoutOverlayExpectedSidecarBytes", () => {
+	const frameByteSize = 1920 * 1080 * 4;
+
+	it("sizes deduped sidecars from effectiveFrameCount, not the logical frameCount", () => {
+		expect(
+			getNativeStaticLayoutOverlayExpectedSidecarBytes({
+				id: "effects",
+				order: 0,
+				path: "effects.rgba",
+				x: 0,
+				y: 0,
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				durationSec: 2,
+				frameCount: 60,
+				effectiveFrameCount: 41,
+				pixelFormat: "rgba",
+			}),
+		).toBe(frameByteSize * 41);
+	});
+
+	it("falls back to the logical frameCount for fully dynamic layers", () => {
+		expect(
+			getNativeStaticLayoutOverlayExpectedSidecarBytes({
+				id: "effects",
+				order: 0,
+				path: "effects.rgba",
+				x: 0,
+				y: 0,
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				durationSec: 2,
+				frameCount: 60,
+				pixelFormat: "rgba",
+			}),
+		).toBe(frameByteSize * 60);
+	});
+});
+
+describe("native static-layout overlay sidecar validation", () => {
+	const frameByteSize = 1920 * 1080 * 4;
+
+	function createOverlayLayer(
+		overrides: Partial<NativeStaticLayoutOverlayLayer> = {},
+	): NativeStaticLayoutOverlayLayer {
+		return {
+			id: "effects",
+			order: 0,
+			path: "effects.rgba",
+			x: 0,
+			y: 0,
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			durationSec: 10,
+			frameCount: 300,
+			pixelFormat: "rgba",
+			...overrides,
+		};
+	}
+
+	afterEach(() => {
+		fsMocks.stat.mockResolvedValue({ size: 5_000_000_000 });
+	});
+
+	it("rejects deduped sidecars truncated below effectiveFrameCount", async () => {
+		fsMocks.stat.mockResolvedValue({ size: frameByteSize * 204 });
+
+		await expect(
+			exportNativeStaticLayoutVideo(
+				"ffmpeg",
+				createNvidiaCudaSkipOptions({
+					overlayLayers: [
+						createOverlayLayer({ frameCount: 300, effectiveFrameCount: 205 }),
+					],
+				}),
+			),
+		).rejects.toThrow(
+			`Native overlay layer effects is truncated: expected ${frameByteSize * 205} bytes, received ${frameByteSize * 204}`,
+		);
+	});
+
+	it("accepts deduped sidecars whose physical bytes match effectiveFrameCount", async () => {
+		fsMocks.stat.mockResolvedValue({ size: frameByteSize * 205 });
+
+		const error = await exportNativeStaticLayoutVideo(
+			"ffmpeg",
+			createNvidiaCudaSkipOptions({
+				overlayLayers: [createOverlayLayer({ frameCount: 300, effectiveFrameCount: 205 })],
+			}),
+		).catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).not.toMatch(/truncated/i);
+	});
+
+	it("keeps validating fully dynamic layers against the logical frameCount", async () => {
+		fsMocks.stat.mockResolvedValue({ size: frameByteSize * 299 });
+
+		await expect(
+			exportNativeStaticLayoutVideo(
+				"ffmpeg",
+				createNvidiaCudaSkipOptions({
+					overlayLayers: [createOverlayLayer({ frameCount: 300 })],
+				}),
+			),
+		).rejects.toThrow(
+			`Native overlay layer effects is truncated: expected ${frameByteSize * 300} bytes, received ${frameByteSize * 299}`,
+		);
+	});
+});
+
 describe("buildExperimentalNvidiaCudaStaticLayoutArgs", () => {
 	it("passes output canvas dimensions to the CUDA wrapper", () => {
 		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
@@ -610,6 +909,22 @@ describe("buildExperimentalNvidiaCudaStaticLayoutArgs", () => {
 		);
 
 		expect(args).toEqual(expect.arrayContaining(["--width", "1020", "--height", "572"]));
+	});
+
+	it("passes the high-level HEVC codec to the generalized CUDA compositor", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				videoCodec: "hevc",
+				encoderPreference: "hardware",
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).toEqual(
+			expect.arrayContaining(["--output-codec", "hevc", "--encoding-mode", "quality"]),
+		);
+		expect(args).not.toContain("h264");
 	});
 
 	it("keeps explicit copy-source CUDA audio inline by default", () => {
@@ -761,9 +1076,181 @@ describe("buildExperimentalNvidiaCudaStaticLayoutArgs", () => {
 			]),
 		);
 	});
+
+	it("passes the overlay sidecar manifest to the CUDA wrapper", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				overlayManifestPath: "overlay-manifest.json",
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).toEqual(
+			expect.arrayContaining(["--overlay-manifest", "overlay-manifest.json"]),
+		);
+	});
+
+	it("passes the resolved temporal zoom blur plan to the CUDA wrapper", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				temporalBlur: {
+					sampleCount: 13,
+					shutterFraction: 0.62,
+					weightCurvePower: 1.5,
+				},
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).toEqual(
+			expect.arrayContaining([
+				"--temporal-blur-sample-count",
+				"13",
+				"--temporal-blur-shutter-fraction",
+				"0.62",
+				"--temporal-blur-weight-power",
+				"1.5",
+			]),
+		);
+	});
+
+	it("omits temporal blur args when no plan is configured", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).not.toContain("--temporal-blur-sample-count");
+	});
+
+	it("keeps the D3D11 builder free of overlay manifest args", () => {
+		const args = buildExperimentalWindowsGpuStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				overlayManifestPath: "overlay-manifest.json",
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).not.toContain("--overlay-manifest");
+	});
+});
+
+describe("resolveNvidiaCudaCursorAssets", () => {
+	it("strips cursor asset paths when the CUDA route must not draw the cursor", () => {
+		const options = createNvidiaCudaSkipOptions({
+			cursorTelemetryPath: "cursor-telemetry.csv",
+			cursorAtlasPath: "cursor-atlas.png",
+			cursorAtlasMetadataPath: "cursor-atlas.csv",
+		});
+
+		expect(resolveNvidiaCudaCursorAssets(options, true)).toEqual({
+			cursorTelemetryPath: null,
+			cursorAtlasPath: null,
+			cursorAtlasMetadataPath: null,
+		});
+	});
+
+	it("preserves cursor asset paths when native cursor drawing is allowed", () => {
+		const options = createNvidiaCudaSkipOptions({
+			cursorTelemetryPath: "cursor-telemetry.json",
+			cursorAtlasPath: "cursor-atlas.png",
+			cursorAtlasMetadataPath: "cursor-atlas.tsv",
+		});
+
+		expect(resolveNvidiaCudaCursorAssets(options, false)).toEqual({
+			cursorTelemetryPath: "cursor-telemetry.json",
+			cursorAtlasPath: "cursor-atlas.png",
+			cursorAtlasMetadataPath: "cursor-atlas.tsv",
+		});
+	});
+
+	it("normalizes missing cursor asset paths to null", () => {
+		const options = createNvidiaCudaSkipOptions({});
+		expect(resolveNvidiaCudaCursorAssets(options, false)).toEqual({
+			cursorTelemetryPath: null,
+			cursorAtlasPath: null,
+			cursorAtlasMetadataPath: null,
+		});
+	});
+});
+
+describe("CUDA cursor telemetry contract", () => {
+	it("never emits --cursor-json for overlay exports after cursor assets are stripped", () => {
+		// Mirrors the reported failure: the Windows GPU prep leaves CSV telemetry
+		// paths on the options, overlay layers are present, and the CUDA wrapper
+		// must not receive the CSV file as --cursor-json (it JSON.parses the path).
+		const csvOptions = createNvidiaCudaSkipOptions({
+			cursorTelemetryPath: "cursor-telemetry.csv",
+			cursorAtlasPath: "cursor-atlas.png",
+			cursorAtlasMetadataPath: "cursor-atlas.csv",
+			overlayManifestPath: "overlay-manifest.json",
+		});
+		const cudaOptions = {
+			...csvOptions,
+			...resolveNvidiaCudaCursorAssets(csvOptions, true),
+		};
+
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(cudaOptions, "output.mp4", "work");
+
+		expect(args).not.toContain("--cursor-json");
+		expect(args).not.toContain("cursor-telemetry.csv");
+		expect(args).not.toContain("--cursor-atlas-png");
+		expect(args).not.toContain("--cursor-atlas-metadata");
+		expect(args).toEqual(
+			expect.arrayContaining(["--overlay-manifest", "overlay-manifest.json"]),
+		);
+	});
+
+	it("emits --cursor-json only for non-overlay CUDA exports with prepared JSON telemetry", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				cursorTelemetryPath: "cursor-telemetry.json",
+				cursorSize: 96,
+				cursorAtlasPath: "cursor-atlas.png",
+				cursorAtlasMetadataPath: "cursor-atlas.tsv",
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		expect(args).toEqual(expect.arrayContaining(["--cursor-json", "cursor-telemetry.json"]));
+		expect(args).not.toContain("cursor-telemetry.csv");
+	});
+});
+
+describe("native static-layout encoder preference", () => {
+	it("requires rawvideo for CPU preference", () => {
+		expect(
+			getNativeStaticLayoutRawFrameFallbackReason({
+				videoCodec: "hevc",
+				encoderPreference: "cpu",
+			}),
+		).toBe("encoder-preference-cpu-requires-native-rawvideo");
+	});
+
+	it("keeps HEVC hardware eligible for the CUDA route", () => {
+		expect(
+			getNativeStaticLayoutRawFrameFallbackReason({
+				videoCodec: "hevc",
+				encoderPreference: "hardware",
+			}),
+		).toBeNull();
+	});
 });
 
 describe("buildExperimentalWindowsGpuStaticLayoutArgs", () => {
+	it("rejects HEVC instead of constructing an H.264 GPU command", () => {
+		expect(() =>
+			buildExperimentalWindowsGpuStaticLayoutArgs(
+				createNvidiaCudaSkipOptions({ videoCodec: "hevc" }),
+				"output.mp4",
+			),
+		).toThrow(/generalized NVIDIA CUDA compositor/i);
+	});
 	it("passes background blur to the D3D11 compositor", () => {
 		const args = buildExperimentalWindowsGpuStaticLayoutArgs(
 			createNvidiaCudaSkipOptions({
@@ -1101,8 +1588,187 @@ describe("parseNvidiaCudaExportSummary", () => {
 		expect(summary?.nativeSummary?.fps).toBe(326.1);
 	});
 
+	it("passes through the extended additive compositor counters", () => {
+		const summary = parseNvidiaCudaExportSummary(
+			JSON.stringify({
+				success: true,
+				fps: 30,
+				nativeSummary: {
+					success: true,
+					frames: 300,
+					totalMs: 920.5,
+					measuredFps: 326.1,
+					temporalBlurSampleCount: 13,
+					temporalBlurFrames: 40,
+					temporalBlurSamplesTotal: 520,
+					temporalBlurBgPrecomposedFrames: 38,
+					overlayFileLoads: 4,
+					overlayCacheHits: 596,
+					compositeGpuMs: 240.25,
+					zoomBlurGpuMs: 12.5,
+					overlayBlendGpuMs: 60.75,
+					overlayUploadMs: 18.1,
+					overlayBlendFrames: 300,
+					nvencMs: 512.4,
+					packetWriteMs: 8.2,
+					encodeMs: 700.1,
+					decodeWallMs: 80.3,
+					compositeMs: 262.9,
+					flushMs: 2.4,
+					realtimeMultiplier: 32.6,
+					outputBytes: 1843200,
+				},
+			}),
+		);
+
+		expect(summary?.nativeSummary).toMatchObject({
+			totalMs: 920.5,
+			measuredFps: 326.1,
+			temporalBlurSampleCount: 13,
+			temporalBlurFrames: 40,
+			temporalBlurSamplesTotal: 520,
+			temporalBlurBgPrecomposedFrames: 38,
+			overlayFileLoads: 4,
+			overlayCacheHits: 596,
+			compositeGpuMs: 240.25,
+			zoomBlurGpuMs: 12.5,
+			overlayBlendGpuMs: 60.75,
+			overlayUploadMs: 18.1,
+			overlayBlendFrames: 300,
+			nvencMs: 512.4,
+			packetWriteMs: 8.2,
+			encodeMs: 700.1,
+			decodeWallMs: 80.3,
+			compositeMs: 262.9,
+			flushMs: 2.4,
+			realtimeMultiplier: 32.6,
+			outputBytes: 1843200,
+		});
+	});
+
 	it("returns null when the wrapper output has no JSON object", () => {
 		expect(parseNvidiaCudaExportSummary("native helper failed before summary")).toBeNull();
+	});
+});
+
+describe("resolveNvidiaCudaNativeSummaryMetrics", () => {
+	it("maps only finite additive counters the helper actually reported", () => {
+		expect(
+			resolveNvidiaCudaNativeSummaryMetrics({
+				success: true,
+				totalMs: 920.5,
+				nvencMs: 512.4,
+				compositeGpuMs: 240.25,
+				overlayBlendGpuMs: 60.75,
+				overlayUploadMs: 18.1,
+				overlayFileLoads: 4,
+				overlayCacheHits: 596,
+				temporalBlurSamplesTotal: 520,
+				temporalBlurBgPrecomposedFrames: 38,
+				// Legacy counters stay out of the metric mapping; the completion
+				// log surfaces them through explicit keys.
+				roiCompositeFrames: 300,
+			}),
+		).toEqual({
+			totalMs: 920.5,
+			nvencMs: 512.4,
+			compositeGpuMs: 240.25,
+			overlayBlendGpuMs: 60.75,
+			overlayUploadMs: 18.1,
+			overlayFileLoads: 4,
+			overlayCacheHits: 596,
+			temporalBlurSamplesTotal: 520,
+			temporalBlurBgPrecomposedFrames: 38,
+		});
+	});
+
+	it("omits absent, non-finite, and non-numeric counters", () => {
+		expect(
+			resolveNvidiaCudaNativeSummaryMetrics({
+				temporalBlurSampleCount: Number.NaN,
+				temporalBlurFrames: Number.POSITIVE_INFINITY,
+				nvencMs: "512" as unknown as number,
+				overlayFileLoads: 0,
+			}),
+		).toEqual({ overlayFileLoads: 0 });
+	});
+
+	it("returns an empty object for missing native summaries", () => {
+		expect(resolveNvidiaCudaNativeSummaryMetrics(undefined)).toEqual({});
+	});
+});
+
+describe("resolveNvidiaCudaNativeFps", () => {
+	it("prefers the helper measured flush-span FPS over the encode-loop fps", () => {
+		expect(
+			resolveNvidiaCudaNativeFps({
+				fps: 30,
+				nativeSummary: { fps: 320.5, measuredFps: 326.1 },
+			}),
+		).toBe(326.1);
+	});
+
+	it("falls back to the encode-loop fps and preserves the legacy nativeFps contract", () => {
+		expect(resolveNvidiaCudaNativeFps({ nativeSummary: { fps: 320.5 } })).toBe(320.5);
+		expect(resolveNvidiaCudaNativeFps({ nativeSummary: { fps: 0 } })).toBeUndefined();
+		expect(resolveNvidiaCudaNativeFps(undefined)).toBeUndefined();
+	});
+});
+
+describe("validateNvidiaCudaStageMetricInvariants", () => {
+	it("accepts coherent additive stage metrics", () => {
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					totalMs: 920.5,
+					compositeGpuMs: 240.25,
+					overlayBlendGpuMs: 60.75,
+					overlayUploadMs: 18.1,
+					nvencMs: 512.4,
+					packetWriteMs: 8.2,
+					encodeMs: 700.1,
+					decodeWallMs: 80.3,
+					temporalBlurFrames: 40,
+					temporalBlurSamplesTotal: 520,
+					temporalBlurBgPrecomposedFrames: 38,
+				},
+			}),
+		).toEqual([]);
+	});
+
+	it("rejects additive counters that exceed the helper wall time", () => {
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					totalMs: 100,
+					nvencMs: 512.4,
+					overlayUploadMs: 18.1,
+				},
+			}),
+		).toEqual(["nvencMs 512.4ms exceeds helper wall time 100ms"]);
+	});
+
+	it("rejects temporal blur counters that contradict the frame count", () => {
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					temporalBlurFrames: 40,
+					temporalBlurSamplesTotal: 20,
+				},
+			}),
+		).toEqual(["temporalBlurSamplesTotal 20 below temporalBlurFrames 40"]);
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					temporalBlurFrames: 40,
+					temporalBlurBgPrecomposedFrames: 41,
+				},
+			}),
+		).toEqual(["temporalBlurBgPrecomposedFrames 41 exceeds temporalBlurFrames 40"]);
+	});
+
+	it("reports no issues when the native summary is absent", () => {
+		expect(validateNvidiaCudaStageMetricInvariants({})).toEqual([]);
 	});
 });
 
@@ -1270,7 +1936,7 @@ describe("parseWindowsGpuExportProgressLine", () => {
 	it("parses bounded helper progress lines", () => {
 		expect(
 			parseWindowsGpuExportProgressLine(
-				'PROGRESS {"currentFrame":30,"totalFrames":60,"percentage":50,"averageFps":240.5,"instantFps":180.25,"intervalMs":166.4,"intervalFrames":30,"intervalEncodeMs":120.2,"intervalPipelineWaitMs":46.2,"intervalMonolithicCompositeFrames":0,"stage":"finalizing"}',
+				'PROGRESS {"currentFrame":30,"totalFrames":60,"percentage":50,"averageFps":240.5,"instantFps":180.25,"intervalMs":166.4,"intervalFrames":30,"intervalEncodeMs":120.2,"intervalPipelineWaitMs":46.2,"intervalMonolithicCompositeFrames":0,"intervalZoomBlurFrames":13,"stage":"finalizing"}',
 			),
 		).toEqual({
 			currentFrame: 30,
@@ -1284,6 +1950,7 @@ describe("parseWindowsGpuExportProgressLine", () => {
 			intervalEncodeMs: 120.2,
 			intervalPipelineWaitMs: 46.2,
 			intervalMonolithicCompositeFrames: 0,
+			intervalZoomBlurFrames: 13,
 		});
 	});
 
@@ -1308,6 +1975,102 @@ describe("parseWindowsGpuExportProgressLine", () => {
 				'PROGRESS {"currentFrame":1,"totalFrames":0,"percentage":999}',
 			),
 		).toBeNull();
+	});
+	describe("resolveNativeStaticLayoutFpsFields", () => {
+		it("prefers native measured FPS over the preparation-inclusive estimate", () => {
+			const progress = {
+				currentFrame: 300,
+				totalFrames: 600,
+				percentage: 50,
+				averageFps: 17.2,
+				instantFps: 19.1,
+			};
+
+			expect(resolveNativeStaticLayoutFpsFields(progress, 45_000)).toEqual({
+				averageFps: 17.2,
+				estimatedFps: undefined,
+				fpsSource: "native",
+			});
+		});
+
+		it("never labels the preparation-inclusive estimate as measured encode speed", () => {
+			const progress = {
+				currentFrame: 120,
+				totalFrames: 600,
+				percentage: 20,
+			};
+
+			expect(resolveNativeStaticLayoutFpsFields(progress, 30_000)).toEqual({
+				averageFps: undefined,
+				estimatedFps: 4,
+				fpsSource: "estimated",
+			});
+		});
+
+		it("reports no FPS fields before any frame has been encoded", () => {
+			expect(
+				resolveNativeStaticLayoutFpsFields(
+					{ currentFrame: 0, totalFrames: 600, percentage: 0 },
+					12_000,
+				),
+			).toEqual({
+				averageFps: undefined,
+				estimatedFps: undefined,
+				fpsSource: undefined,
+			});
+		});
+
+		it("keeps the estimate when only interval FPS is present but no helper average", () => {
+			const progress = {
+				currentFrame: 60,
+				totalFrames: 600,
+				percentage: 10,
+				instantFps: 240.5,
+			};
+
+			expect(resolveNativeStaticLayoutFpsFields(progress, 10_000)).toEqual({
+				averageFps: undefined,
+				estimatedFps: undefined,
+				fpsSource: "native",
+			});
+		});
+	});
+	describe("formatNativeStaticLayoutZoomTelemetryLines", () => {
+		it("writes renderer zoom-blur columns for the CUDA compositor", () => {
+			const lines = formatNativeStaticLayoutZoomTelemetryLines([
+				{
+					timeMs: 0,
+					scale: 1,
+					x: 0,
+					y: 0,
+					blurStrength: 0,
+					blurCenterX: 960,
+					blurCenterY: 540,
+				},
+				{
+					timeMs: 33.333,
+					scale: 1.0123,
+					x: -11.8,
+					y: -6.6,
+					blurStrength: 0.00345,
+					blurCenterX: 960,
+					blurCenterY: 540,
+				},
+			]);
+
+			expect(lines).toEqual([
+				"0,1,0,0,0,960,540",
+				"33.333,1.0123,-11.8,-6.6,0.00345,960,540",
+			]);
+		});
+
+		it("keeps 4-column telemetry backward compatible with blur defaults", () => {
+			const lines = formatNativeStaticLayoutZoomTelemetryLines([
+				{ timeMs: 0, scale: 1, x: 0, y: 0 },
+			]);
+
+			expect(lines).toEqual(["0,1,0,0,0,0,0"]);
+		});
 	});
 });
 
@@ -1449,5 +2212,321 @@ describe("parseFfmpegFrameRate", () => {
 		expect(parseFfmpegFrameRate("Video: h264, 1920x1080, 59.94 fps, 60 tbr")).toBe(59.94);
 		expect(parseFfmpegFrameRate("Video: h264, 1920x1080, 30 tbr")).toBe(30);
 		expect(parseFfmpegFrameRate("Video: h264")).toBeNull();
+	});
+});
+
+describe("native cursor atlas ownership", () => {
+	function createCursorOverlayLayer(
+		overrides: Partial<NativeStaticLayoutOverlayLayer> = {},
+	): NativeStaticLayoutOverlayLayer {
+		return {
+			id: "effects",
+			order: 0,
+			path: "effects.rgba",
+			x: 0,
+			y: 0,
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			durationSec: 10,
+			frameCount: 300,
+			pixelFormat: "rgba",
+			...overrides,
+		};
+	}
+
+	it("passes cursor assets and the overlay manifest through when the atlas owns the cursor", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				cursorTelemetryPath: "cursor-telemetry.json",
+				cursorSize: 96,
+				cursorAtlasPath: "cursor-atlas.png",
+				cursorAtlasMetadataPath: "cursor-atlas.tsv",
+				overlayManifestPath: "overlay-manifest.json",
+				cursorAtlasOwned: true,
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		// The sidecar excluded cursor pixels, so the CUDA wrapper must receive both
+		// the overlay manifest and the cursor atlas: dropping either would lose the
+		// cursor and baking it again would double-render.
+		expect(args).toEqual(
+			expect.arrayContaining(["--overlay-manifest", "overlay-manifest.json"]),
+		);
+		expect(args).toEqual(
+			expect.arrayContaining([
+				"--cursor-json",
+				"cursor-telemetry.json",
+				"--cursor-atlas-png",
+				"cursor-atlas.png",
+				"--cursor-atlas-metadata",
+				"cursor-atlas.tsv",
+			]),
+		);
+	});
+
+	it("keeps stripping baked-cursor assets even when a manifest path is present", () => {
+		const csvOptions = createNvidiaCudaSkipOptions({
+			cursorTelemetryPath: "cursor-telemetry.csv",
+			cursorAtlasPath: "cursor-atlas.png",
+			cursorAtlasMetadataPath: "cursor-atlas.csv",
+			overlayManifestPath: "overlay-manifest.json",
+		});
+		const cudaOptions = {
+			...csvOptions,
+			...resolveNvidiaCudaCursorAssets(csvOptions, true),
+		};
+
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(cudaOptions, "output.mp4", "work");
+
+		expect(args).not.toContain("--cursor-json");
+		expect(args).not.toContain("--cursor-atlas-png");
+		expect(args).toEqual(
+			expect.arrayContaining(["--overlay-manifest", "overlay-manifest.json"]),
+		);
+	});
+
+	it("refuses a native-owned cursor when the CUDA route cannot run", async () => {
+		const error = await exportNativeStaticLayoutVideo(
+			"ffmpeg",
+			createNvidiaCudaSkipOptions({
+				overlayLayers: [createCursorOverlayLayer()],
+				cursorAtlasOwned: true,
+				experimentalWindowsGpuCompositor: false,
+			}),
+		).catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toMatch(
+			/Cursor ownership by the native atlas requires the generalized NVIDIA CUDA compositor/i,
+		);
+	});
+
+	it("allows a native-owned cursor when the CUDA route is explicitly opted in on Windows", async () => {
+		if (process.platform !== "win32") {
+			return;
+		}
+
+		const error = await exportNativeStaticLayoutVideo(
+			"ffmpeg",
+			createNvidiaCudaSkipOptions({
+				overlayLayers: [createCursorOverlayLayer()],
+				cursorAtlasOwned: true,
+				experimentalWindowsGpuCompositor: true,
+				experimentalNvidiaCudaExport: true,
+			}),
+		).catch((caught: unknown) => caught);
+
+		// The preflight guard must not reject the CUDA-opt-in route; any later
+		// failure is a runtime/skip error, not a cursor-ownership refusal.
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).not.toMatch(
+			/Cursor ownership by the native atlas requires the generalized NVIDIA CUDA compositor/i,
+		);
+	});
+});
+
+describe("resolveNvidiaCudaOverlaySidecarSummaryMetrics", () => {
+	it("surfaces dimensions and physical/effective frame counts for deduped sidecars", () => {
+		expect(
+			resolveNvidiaCudaOverlaySidecarSummaryMetrics(
+				createNvidiaCudaSkipOptions({
+					overlayLayers: [
+						{
+							id: "effects",
+							order: 0,
+							path: "effects.rgba",
+							x: 0,
+							y: 0,
+							width: 1920,
+							height: 1080,
+							frameRate: 30,
+							durationSec: 10,
+							frameCount: 300,
+							effectiveFrameCount: 41,
+							pixelFormat: "rgba",
+						},
+					],
+				}),
+			),
+		).toEqual({
+			overlayWidth: 1920,
+			overlayHeight: 1080,
+			overlayFrameCount: 300,
+			overlayPhysicalFrames: 41,
+			overlayEffectiveFrames: 41,
+		});
+	});
+
+	it("falls back to the logical frame count for fully dynamic sidecars", () => {
+		const metrics = resolveNvidiaCudaOverlaySidecarSummaryMetrics(
+			createNvidiaCudaSkipOptions({
+				overlayLayers: [
+					{
+						id: "effects",
+						order: 0,
+						path: "effects.rgba",
+						x: 0,
+						y: 0,
+						width: 1920,
+						height: 1080,
+						frameRate: 30,
+						durationSec: 10,
+						frameCount: 300,
+						pixelFormat: "rgba",
+					},
+				],
+			}),
+		);
+
+		expect(metrics).toEqual({
+			overlayWidth: 1920,
+			overlayHeight: 1080,
+			overlayFrameCount: 300,
+			overlayPhysicalFrames: 300,
+		});
+		expect("overlayEffectiveFrames" in metrics).toBe(false);
+	});
+
+	it("returns no metrics when overlay layers are absent", () => {
+		expect(
+			resolveNvidiaCudaOverlaySidecarSummaryMetrics(createNvidiaCudaSkipOptions({})),
+		).toEqual({});
+	});
+});
+
+describe("native summary metric mapping (module 3 surface)", () => {
+	it("maps the additive temporal/overlay counters the helper emitted", () => {
+		expect(
+			resolveNvidiaCudaNativeSummaryMetrics({
+				temporalBlurStationaryFrames: 12,
+				temporalBgCacheBuilds: 14,
+				temporalBgCacheHits: 26,
+				overlayStaticRegionBlends: 598,
+				overlayWidth: 1920,
+				overlayHeight: 1080,
+				overlayFrameCount: 300,
+				overlayPhysicalFrames: 41,
+				overlayEffectiveFrames: 41,
+				overlayBlendFrames: 300,
+			}),
+		).toEqual({
+			temporalBlurStationaryFrames: 12,
+			temporalBgCacheBuilds: 14,
+			temporalBgCacheHits: 26,
+			overlayStaticRegionBlends: 598,
+			overlayWidth: 1920,
+			overlayHeight: 1080,
+			overlayFrameCount: 300,
+			overlayPhysicalFrames: 41,
+			overlayEffectiveFrames: 41,
+			overlayBlendFrames: 300,
+		});
+	});
+
+	it("keeps absent host-read/H2D fields out of the mapping until the helper emits them", () => {
+		expect(
+			resolveNvidiaCudaNativeSummaryMetrics({
+				overlayHostReadMs: Number.NaN,
+				overlayH2DEnqueueMs: 4.5,
+			}),
+		).toEqual({ overlayH2DEnqueueMs: 4.5 });
+	});
+});
+
+describe("native summary metric invariants (module 3)", () => {
+	it("accepts coherent temporal cache and stationary counters", () => {
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					temporalBlurFrames: 40,
+					temporalBlurStationaryFrames: 10,
+					temporalBlurBgPrecomposedFrames: 30,
+					temporalBgCacheBuilds: 8,
+					temporalBgCacheHits: 22,
+					overlayBlendFrames: 300,
+					overlayStaticRegionBlends: 297,
+					overlayFrameCount: 300,
+					overlayPhysicalFrames: 41,
+					overlayEffectiveFrames: 41,
+				},
+			}),
+		).toEqual([]);
+	});
+
+	it("rejects stationary frames beyond the temporal frame count", () => {
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					temporalBlurFrames: 40,
+					temporalBlurStationaryFrames: 41,
+				},
+			}),
+		).toEqual(["temporalBlurStationaryFrames 41 exceeds temporalBlurFrames 40"]);
+	});
+
+	it("rejects temporal cache counters that exceed the precomposed frame budget", () => {
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					temporalBlurFrames: 40,
+					temporalBlurBgPrecomposedFrames: 30,
+					temporalBgCacheBuilds: 20,
+					temporalBgCacheHits: 15,
+				},
+			}),
+		).toEqual([
+			"temporalBgCacheBuilds 20 + temporalBgCacheHits 15 exceed temporalBlurBgPrecomposedFrames 30",
+		]);
+	});
+
+	it("rejects overlay static-region blends beyond overlay blend frames", () => {
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					overlayBlendFrames: 300,
+					overlayStaticRegionBlends: 301,
+				},
+			}),
+		).toEqual(["overlayStaticRegionBlends 301 exceeds overlayBlendFrames 300"]);
+	});
+
+	it("rejects overlay sidecar frame counts that contradict the logical count", () => {
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					overlayFrameCount: 300,
+					overlayPhysicalFrames: 301,
+				},
+			}),
+		).toEqual(["overlayPhysicalFrames 301 exceeds overlayFrameCount 300"]);
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					overlayFrameCount: 300,
+					overlayEffectiveFrames: 0,
+				},
+			}),
+		).toEqual(["overlayEffectiveFrames 0 out of range for overlayFrameCount 300"]);
+	});
+});
+
+describe("CUDA progress interval fields (module 3 surface)", () => {
+	it("parses the additive temporal/overlay interval counters from PROGRESS lines", () => {
+		expect(
+			parseWindowsGpuExportProgressLine(
+				'PROGRESS {"currentFrame":120,"totalFrames":300,"percentage":40,"intervalTemporalBlurStationaryFrames":3,"intervalTemporalBgCacheBuilds":4,"intervalTemporalBgCacheHits":9,"intervalOverlayStaticRegionBlends":11}',
+			),
+		).toMatchObject({
+			currentFrame: 120,
+			totalFrames: 300,
+			percentage: 40,
+			intervalTemporalBlurStationaryFrames: 3,
+			intervalTemporalBgCacheBuilds: 4,
+			intervalTemporalBgCacheHits: 9,
+			intervalOverlayStaticRegionBlends: 11,
+		});
 	});
 });

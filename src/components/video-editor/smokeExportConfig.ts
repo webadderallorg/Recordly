@@ -1,11 +1,14 @@
 import {
-	isValidMp4FrameRate,
 	type ExportBackendPreference,
+	type ExportBitrateMode,
+	type ExportEncoderPreference,
 	type ExportEncodingMode,
 	type ExportMp4FrameRate,
 	type ExportPipelineModel,
 	type ExportQuality,
 	type ExportRenderBackend,
+	type ExportVideoCodec,
+	isValidMp4FrameRate,
 } from "@/lib/exporter/types";
 
 export type SmokeExportConfig = {
@@ -27,6 +30,10 @@ export type SmokeExportConfig = {
 	projectPath?: string | null;
 	quality?: ExportQuality;
 	fps?: ExportMp4FrameRate;
+	videoCodec?: ExportVideoCodec;
+	encoderPreference?: ExportEncoderPreference;
+	bitrateMode?: ExportBitrateMode;
+	bitrateMbps?: number;
 };
 
 export type DevOpenRecordingConfig = {
@@ -110,15 +117,44 @@ export function getSmokeExportConfig(search: string): SmokeExportConfig {
 					: enabled && params.get("smokeBackendPreference") === "breeze"
 						? "breeze"
 						: undefined,
-		renderBackend: enabled ? parseSmokeRenderBackend(params.get("smokeRenderBackend")) : undefined,
-		maxEncodeQueue: enabled ? parseSmokeExportNumber(params.get("smokeMaxEncodeQueue")) : undefined,
-		maxDecodeQueue: enabled ? parseSmokeExportNumber(params.get("smokeMaxDecodeQueue")) : undefined,
+		renderBackend: enabled
+			? parseSmokeRenderBackend(params.get("smokeRenderBackend"))
+			: undefined,
+		maxEncodeQueue: enabled
+			? parseSmokeExportNumber(params.get("smokeMaxEncodeQueue"))
+			: undefined,
+		maxDecodeQueue: enabled
+			? parseSmokeExportNumber(params.get("smokeMaxDecodeQueue"))
+			: undefined,
 		maxPendingFrames: enabled
 			? parseSmokeExportNumber(params.get("smokeMaxPendingFrames"))
 			: undefined,
 		projectPath: enabled ? params.get("smokeProject") : null,
 		quality: enabled ? parseSmokeExportQuality(params.get("smokeQuality")) : undefined,
 		fps: enabled ? parseSmokeExportFps(params.get("smokeFps")) : undefined,
+		videoCodec:
+			enabled && params.get("smokeVideoCodec") === "hevc"
+				? "hevc"
+				: enabled && params.get("smokeVideoCodec") === "h264"
+					? "h264"
+					: undefined,
+		encoderPreference:
+			enabled && params.get("smokeEncoderPreference") === "hardware"
+				? "hardware"
+				: enabled && params.get("smokeEncoderPreference") === "cpu"
+					? "cpu"
+					: enabled && params.get("smokeEncoderPreference") === "auto"
+						? "auto"
+						: undefined,
+		bitrateMode:
+			enabled && params.get("smokeBitrateMode") === "custom"
+				? "custom"
+				: enabled && params.get("smokeBitrateMode") === "auto"
+					? "auto"
+					: undefined,
+		bitrateMbps: enabled
+			? parseSmokeExportNonNegativeNumber(params.get("smokeBitrateMbps"))
+			: undefined,
 	};
 }
 
