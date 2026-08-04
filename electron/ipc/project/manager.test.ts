@@ -169,6 +169,41 @@ describe("local media path policy", () => {
 		}
 	});
 
+	it("folds Windows case and extended-length prefixes in policy comparisons", async () => {
+		const recordingsPath = path.join(userDataPath, "recordings");
+		const audioPath = path.join(recordingsPath, "recording-2026-08-03.system.wav");
+		await fs.mkdir(recordingsPath, { recursive: true });
+
+		const { isPathInsideDirectory, resolveLocalMediaUrlPath } = await import("./manager");
+		const { foldPathComparisonKey } = await import("../state");
+
+		if (process.platform !== "win32") {
+			expect(isPathInsideDirectory(audioPath, recordingsPath)).toBe(true);
+			return;
+		}
+
+		const caseVariantPath = audioPath.replace(/^([a-zA-Z]):/, (drive) =>
+			drive.toLowerCase() === drive ? drive.toUpperCase() : drive.toLowerCase(),
+		);
+		const extendedPath = `\\\\?\\${audioPath}`;
+
+		// All three forms fold to one comparison key.
+		expect(foldPathComparisonKey(caseVariantPath)).toBe(foldPathComparisonKey(audioPath));
+		expect(foldPathComparisonKey(extendedPath)).toBe(foldPathComparisonKey(audioPath));
+
+		// Containment accepts the extended-prefix form inside the plain root.
+		expect(isPathInsideDirectory(extendedPath, recordingsPath)).toBe(true);
+		expect(isPathInsideDirectory(caseVariantPath, recordingsPath)).toBe(true);
+
+		// A pending grant made through the extended-prefix form authorizes the
+		// plain real path once the file appears (serve-time re-validation).
+		const resolution = await resolveLocalMediaUrlPath(extendedPath);
+		expect(resolution.status).toBe("pending");
+		await fs.writeFile(audioPath, "test-audio");
+		const { isAllowedMediaPath } = await import("../../mediaServer");
+		await expect(isAllowedMediaPath(await fs.realpath(audioPath))).resolves.toBe(true);
+	});
+
 	it("normalizes file:/// URLs in media path approval", async () => {
 		const recordingsPath = path.join(userDataPath, "recordings");
 		const audioPath = path.join(recordingsPath, "recording-2026-08-03.system.m4a");
