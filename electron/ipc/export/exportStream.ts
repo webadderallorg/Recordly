@@ -17,7 +17,11 @@ type ExportStreamSession = {
 
 const exportStreamSessions = new Map<string, ExportStreamSession>();
 
-const EXTENSION_ALLOWLIST = /^[a-z0-9]{1,8}$/;
+// Strict lowercase-alphanumeric allowlist. The charset (no dots, slashes,
+// path separators, or uppercase) is the security control: it defeats path
+// traversal and arbitrary extension injection. The length cap is generous
+// enough for descriptive lossless payload extensions (e.g. "tiledrgba").
+const EXTENSION_ALLOWLIST = /^[a-z0-9]{1,16}$/;
 const SESSION_DIR_PREFIX = "recordly-export-";
 
 // Paths that the export pipeline itself produced (stream temp files plus any
