@@ -9,14 +9,11 @@ vi.mock("electron", () => ({
 		getPath: () => process.env.TEMP ?? process.cwd(),
 		isPackaged: false,
 	},
-	BrowserWindow: {
-		fromWebContents: () => null,
-	},
-	dialog: {
-		showSaveDialog: vi.fn(),
-	},
+	BrowserWindow: { fromWebContents: () => null },
+	dialog: { showSaveDialog: vi.fn() },
 	ipcMain: {
 		handle: vi.fn(),
+		on: vi.fn(),
 	},
 	powerSaveBlocker: {
 		isStarted: () => true,
@@ -25,9 +22,7 @@ vi.mock("electron", () => ({
 	},
 }));
 
-vi.mock("../ffmpeg/binary", () => ({
-	getFfmpegBinaryPath: () => "ffmpeg",
-}));
+vi.mock("../ffmpeg/binary", () => ({ getFfmpegBinaryPath: () => "ffmpeg" }));
 
 import { moveExportedTempFile } from "./export";
 
@@ -55,9 +50,7 @@ describe("moveExportedTempFile", () => {
 
 		await moveExportedTempFile(tempPath, destinationPath);
 
-		await expect(fs.readFile(destinationPath, "utf8")).resolves.toBe(
-			"recordly-export",
-		);
+		await expect(fs.readFile(destinationPath, "utf8")).resolves.toBe("recordly-export");
 		await expect(fs.access(tempPath)).rejects.toThrow();
 	});
 

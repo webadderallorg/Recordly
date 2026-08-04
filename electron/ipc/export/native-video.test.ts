@@ -47,11 +47,13 @@ vi.mock("node:child_process", () => ({
 }));
 
 import { app } from "electron";
+import type { NativeTiledOverlayLayerDescriptor } from "../../../src/lib/exporter/nativeStaticLayoutOverlays";
 import {
 	buildExperimentalNvidiaCudaStaticLayoutArgs,
 	buildExperimentalWindowsGpuStaticLayoutArgs,
 	buildNativeStaticLayoutOverlayManifest,
 	buildNativeStaticLayoutSourceProxyArgs,
+	buildNativeStaticLayoutTiledOverlayManifest,
 	buildNativeStaticLayoutTimelineSegments,
 	buildNativeVideoAudioMuxArgs,
 	canCopyAudioCodecIntoMp4,
@@ -86,6 +88,7 @@ import {
 	resolveNvidiaCudaNativeFps,
 	resolveNvidiaCudaNativeSummaryMetrics,
 	resolveNvidiaCudaOverlaySidecarSummaryMetrics,
+	resolveNvidiaCudaTiledOverlaySidecarSummaryMetrics,
 	shouldCreateNativeStaticLayoutSourceProxy,
 	validateNativeStaticLayoutSourceProxyMetadata,
 	validateNativeVideoStreamStats,
@@ -2528,5 +2531,362 @@ describe("CUDA progress interval fields (module 3 surface)", () => {
 			intervalTemporalBgCacheHits: 9,
 			intervalOverlayStaticRegionBlends: 11,
 		});
+	});
+});
+
+const TILED_TILE_BYTE_SIZE = 128 * 128 * 4;
+const TILED_LAYER_WIDTH = 384;
+const TILED_LAYER_HEIGHT = 256;
+const TILED_LAYER_TILE_COUNT = 3 * 2;
+
+function tiledTileRecord(
+	tileIndex: number,
+	byteOffset: number,
+	overrides: Partial<{ byteLength: number; byteOffset: number }> = {},
+) {
+	return { tileIndex, byteOffset, byteLength: TILED_TILE_BYTE_SIZE, ...overrides };
+}
+
+function staticTilesFor(tileCount = TILED_LAYER_TILE_COUNT) {
+	return Array.from({ length: tileCount }, (_, tileIndex) =>
+		tiledTileRecord(tileIndex, tileIndex * TILED_TILE_BYTE_SIZE),
+	);
+}
+
+function tiledLayer(
+	overrides: Partial<NativeTiledOverlayLayerDescriptor> = {},
+): NativeTiledOverlayLayerDescriptor {
+	return {
+		id: "tiled-effects",
+		order: 0,
+		x: 0,
+		y: 0,
+		width: TILED_LAYER_WIDTH,
+		height: TILED_LAYER_HEIGHT,
+		frameRate: 30,
+		durationSec: 2,
+		frameCount: 60,
+		tileSize: 128,
+		pixelFormat: "rgba",
+		payloadPath: "C:/Temp/tiled-overlay.bin",
+		payloadByteLength: TILED_LAYER_TILE_COUNT * TILED_TILE_BYTE_SIZE,
+		staticTiles: staticTilesFor(),
+		frameDeltas: [],
+		...overrides,
+	};
+}
+
+describe("tiled overlay integration (native-video module)", () => {
+	it("passes the tiled overlay manifest only when tiled layers are present", () => {
+		const noTiled = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				overlayManifestPath: "overlay-manifest.json",
+			}),
+			"output.mp4",
+			"work",
+		);
+		expect(noTiled).toEqual(
+			expect.arrayContaining(["--overlay-manifest", "overlay-manifest.json"]),
+		);
+		expect(noTiled).not.toContain("--tiled-overlay-manifest");
+
+		const withTiled = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				overlayManifestPath: "overlay-manifest.json",
+				tiledOverlayManifestPath: "tiled-overlay-manifest.json",
+			}),
+			"output.mp4",
+			"work",
+		);
+		expect(withTiled).toEqual(
+			expect.arrayContaining(["--overlay-manifest", "overlay-manifest.json"]),
+		);
+		expect(withTiled).toEqual(
+			expect.arrayContaining(["--tiled-overlay-manifest", "tiled-overlay-manifest.json"]),
+		);
+	});
+
+	it("keeps the D3D11 builder free of tiled overlay args", () => {
+		const args = buildExperimentalWindowsGpuStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				tiledOverlayManifestPath: "tiled-overlay-manifest.json",
+			}),
+			"output.mp4",
+		);
+		expect(args).not.toContain("--tiled-overlay-manifest");
+		expect(args).not.toContain("--overlay-manifest");
+	});
+
+	it("builds the versioned tiled storage descriptor sorted by order then id", () => {
+		const manifest = buildNativeStaticLayoutTiledOverlayManifest(
+			{
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				durationSec: 2,
+			},
+			[
+				tiledLayer({ id: "captions", order: 2 }),
+				tiledLayer({ id: "effects", order: 0 }),
+				tiledLayer({ id: "annotations", order: 0 }),
+			],
+		);
+
+		expect(manifest.version).toBe(1);
+		expect(manifest.outputWidth).toBe(1920);
+		expect(manifest.outputHeight).toBe(1080);
+		expect(manifest.layers.map((layer) => layer.id)).toEqual([
+			"annotations",
+			"effects",
+			"captions",
+		]);
+	});
+
+	it("rejects a malformed tiled descriptor through the export preflight", async () => {
+		fsMocks.stat.mockResolvedValue({ size: 1_000_000 });
+
+		const error = await exportNativeStaticLayoutVideo(
+			"ffmpeg",
+			createNvidiaCudaSkipOptions({
+				durationSec: 2,
+				experimentalWindowsGpuCompositor: false,
+				tiledOverlayLayers: [
+					tiledLayer({
+						id: "",
+						payloadPath: "",
+					}),
+				],
+			}),
+		).catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toMatch(/Invalid tiled overlay descriptor/i);
+	});
+
+	it("rejects a truncated tiled payload through the export preflight", async () => {
+		fsMocks.stat.mockResolvedValue({ size: 1 });
+
+		const error = await exportNativeStaticLayoutVideo(
+			"ffmpeg",
+			createNvidiaCudaSkipOptions({
+				durationSec: 2,
+				experimentalWindowsGpuCompositor: false,
+				tiledOverlayLayers: [tiledLayer()],
+			}),
+		).catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toMatch(/Tiled overlay layer .* payload is truncated/i);
+	});
+
+	it("resolves additive tiled overlay summary metrics without touching helper output", () => {
+		const nextOffset = TILED_LAYER_TILE_COUNT * TILED_TILE_BYTE_SIZE;
+		const firstLayer = tiledLayer({
+			payloadByteLength: nextOffset + 4 * TILED_TILE_BYTE_SIZE,
+			frameDeltas: [
+				{ frameIndex: 10, changedTiles: [tiledTileRecord(1, nextOffset)] },
+				{
+					frameIndex: 20,
+					changedTiles: [
+						tiledTileRecord(4, nextOffset + TILED_TILE_BYTE_SIZE),
+						tiledTileRecord(5, nextOffset + 2 * TILED_TILE_BYTE_SIZE),
+					],
+				},
+				{
+					frameIndex: 30,
+					changedTiles: [tiledTileRecord(2, nextOffset + 3 * TILED_TILE_BYTE_SIZE)],
+				},
+			],
+		});
+
+		expect(
+			resolveNvidiaCudaTiledOverlaySidecarSummaryMetrics(
+				createNvidiaCudaSkipOptions({
+					tiledOverlayLayers: [firstLayer, tiledLayer({ id: "captions", order: 1 })],
+				}),
+			),
+		).toEqual({
+			tiledOverlayLayers: 2,
+			changedTileCount: 4,
+			uploadedTileBytes:
+				(TILED_LAYER_TILE_COUNT + 4 + TILED_LAYER_TILE_COUNT) * TILED_TILE_BYTE_SIZE,
+			cachedTileCount:
+				TILED_LAYER_TILE_COUNT * 60 -
+				(TILED_LAYER_TILE_COUNT + 4) +
+				(TILED_LAYER_TILE_COUNT * 60 - TILED_LAYER_TILE_COUNT),
+		});
+	});
+
+	it("preserves raw overlay sidecar metrics and does not mix them with tiled metrics", () => {
+		const rawLayer: NativeStaticLayoutOverlayLayer = {
+			id: "effects",
+			order: 0,
+			path: "effects.rgba",
+			x: 0,
+			y: 0,
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			durationSec: 10,
+			frameCount: 300,
+			pixelFormat: "rgba",
+		};
+		const tiled = tiledLayer();
+
+		const bothMetrics = resolveNvidiaCudaOverlaySidecarSummaryMetrics(
+			createNvidiaCudaSkipOptions({
+				overlayLayers: [rawLayer],
+				tiledOverlayLayers: [tiled],
+			}),
+		);
+		const tiledMetrics = resolveNvidiaCudaTiledOverlaySidecarSummaryMetrics(
+			createNvidiaCudaSkipOptions({
+				overlayLayers: [rawLayer],
+				tiledOverlayLayers: [tiled],
+			}),
+		);
+
+		expect(bothMetrics).toEqual({
+			overlayWidth: 1920,
+			overlayHeight: 1080,
+			overlayFrameCount: 300,
+			overlayPhysicalFrames: 300,
+		});
+		expect(tiledMetrics).toEqual({
+			tiledOverlayLayers: 1,
+			changedTileCount: 0,
+			uploadedTileBytes: TILED_LAYER_TILE_COUNT * TILED_TILE_BYTE_SIZE,
+			cachedTileCount: TILED_LAYER_TILE_COUNT * 60 - TILED_LAYER_TILE_COUNT,
+		});
+	});
+
+	it("reports the conservative raw fallback reason for ineligible tiled layers", () => {
+		const denseLayer = tiledLayer({
+			frameCount: 2,
+			payloadByteLength: (TILED_LAYER_TILE_COUNT + 3) * TILED_TILE_BYTE_SIZE,
+			frameDeltas: [
+				{
+					frameIndex: 0,
+					changedTiles: [0, 1, 2].map((tileIndex, index) =>
+						tiledTileRecord(
+							tileIndex,
+							(TILED_LAYER_TILE_COUNT + index) * TILED_TILE_BYTE_SIZE,
+						),
+					),
+				},
+			],
+		});
+
+		expect(
+			resolveNvidiaCudaTiledOverlaySidecarSummaryMetrics(
+				createNvidiaCudaSkipOptions({
+					tiledOverlayLayers: [denseLayer],
+				}),
+			),
+		).toMatchObject({
+			rawFallbackReason: "payload-bytes-exceed-raw",
+		});
+	});
+
+	it("adds the additive tiled counters into the native summary mapping", () => {
+		expect(
+			resolveNvidiaCudaNativeSummaryMetrics({
+				success: true,
+				changedTileCount: 8,
+				uploadedTileBytes: 1024,
+				cachedTileCount: 200,
+				rawFallbackReason: "small-layer",
+				overlayHostReadMs: 12.5,
+				overlayH2DEnqueueMs: 4.5,
+				overlayCacheHits: 96,
+				totalMs: 920.5,
+				nativeFps: 240.5,
+			}),
+		).toEqual({
+			changedTileCount: 8,
+			uploadedTileBytes: 1024,
+			cachedTileCount: 200,
+			rawFallbackReason: "small-layer",
+			overlayHostReadMs: 12.5,
+			overlayH2DEnqueueMs: 4.5,
+			overlayCacheHits: 96,
+			totalMs: 920.5,
+		});
+		expect(
+			resolveNvidiaCudaNativeSummaryMetrics({
+				nativeFps: 240.5,
+			}),
+		).toEqual({});
+	});
+
+	it("validates tiled overlay metric invariants for additive counters", () => {
+		const tileCount = TILED_LAYER_TILE_COUNT;
+		const frameCount = 60;
+		const uploadedBytes = (tileCount + 1) * TILED_TILE_BYTE_SIZE;
+		const cached = tileCount * frameCount - (tileCount + 1);
+		const issues = validateNvidiaCudaStageMetricInvariants({
+			nativeSummary: {
+				totalMs: 100,
+				changedTileCount: -1,
+				uploadedTileBytes: uploadedBytes,
+				cachedTileCount: cached,
+				overlayCacheHits: cached + 1,
+				overlayHostReadMs: 20,
+				overlayH2DEnqueueMs: 40,
+			},
+		});
+
+		expect(issues).toEqual([]);
+	});
+
+	it("keeps uploaded tile bytes bounded by the payload size and consistent with tile counts", () => {
+		const layer = tiledLayer();
+		const metrics = resolveNvidiaCudaTiledOverlaySidecarSummaryMetrics(
+			createNvidiaCudaSkipOptions({
+				tiledOverlayLayers: [layer],
+			}),
+		);
+
+		expect(metrics.uploadedTileBytes).toBe(TILED_LAYER_TILE_COUNT * TILED_TILE_BYTE_SIZE);
+		expect(metrics.uploadedTileBytes).toBeLessThanOrEqual(layer.payloadByteLength);
+		expect(metrics.cachedTileCount).toBeGreaterThanOrEqual(0);
+		expect(metrics.cachedTileCount).toBeLessThanOrEqual(TILED_LAYER_TILE_COUNT * 60);
+		expect(metrics.changedTileCount).toBe(0);
+	});
+
+	it("does not confuse logical frame count with effective state versions", () => {
+		const layer = tiledLayer({
+			frameCount: 60,
+			frameDeltas: [
+				{
+					frameIndex: 10,
+					changedTiles: [
+						tiledTileRecord(1, TILED_LAYER_TILE_COUNT * TILED_TILE_BYTE_SIZE),
+					],
+				},
+			],
+		});
+
+		expect(layer.frameCount).toBe(60);
+		expect(layer.frameDeltas.length + 1).toBe(2);
+		expect(
+			resolveNvidiaCudaTiledOverlaySidecarSummaryMetrics(
+				createNvidiaCudaSkipOptions({
+					tiledOverlayLayers: [layer],
+				}),
+			),
+		).toMatchObject({
+			changedTileCount: 1,
+			cachedTileCount: TILED_LAYER_TILE_COUNT * 60 - (TILED_LAYER_TILE_COUNT + 1),
+		});
+	});
+
+	it("keeps HEVC Hardware eligible for the CUDA route despite tiled overlay layers", () => {
+		expect(
+			getNativeStaticLayoutRawFrameFallbackReason({
+				videoCodec: "hevc",
+				encoderPreference: "hardware",
+			}),
+		).toBeNull();
 	});
 });

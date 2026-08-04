@@ -16,10 +16,12 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "NvDecoder/NvDecoder.h"
@@ -43,14 +45,99 @@ struct TimelineSegment {
 // the export frame rate. Layers are composited in the order they appear in
 // options.overlayLayers (z-order) after the video layout and zoom blur, which
 // matches the renderer contract (overlays are drawn above the blurred video).
+// The `order` field is the renderer-side global z-order; mixed raw and tiled
+// overlays are merged and blended by this ascending value.
 struct OverlayLayerDescriptor {
+    std::string id;
+    int order = 0;
     std::string path;
     int x = 0;
     int y = 0;
     int width = 0;
     int height = 0;
-    int frameCount = 0;
+    int frameCount = 0;          // logical frame count (renderer-side)
+    int effectiveFrameCount = 0; // physical sidecar frames (clamped for reads)
+    double frameRate = 0.0;
+    double durationSec = 0.0;
 };
+
+// ---------------------------------------------------------------------------
+// Renderer-prepared tiled/delta transparent RGBA overlay stream (storage
+// version 1). Mirrors the TS contract in nativeStaticLayoutOverlays.ts: fixed
+// 128x128 lossless raw RGBA tiles, staticTiles define the full initial layer
+// state emitted once, frameDeltas carry per-frame changed tile payloads
+// (ascending, unique frame indices in [0, frameCount)). Every payload region
+// is written exactly once into the bounded payload stream
+// (payloadPath/payloadByteLength), so sparse 4K overlays never duplicate
+// unchanged pixels. The helper validates the descriptor independently before
+// encoding (it never trusts the renderer blob) and rejects malformed or
+// truncated input with an actionable JSON failure; there is no silent raw
+// fallback inside the helper.
+// ---------------------------------------------------------------------------
+struct TiledOverlayTileRecord {
+    int tileIndex = 0;
+    int64_t byteOffset = 0;
+    int64_t byteLength = 0;
+};
+
+struct TiledOverlayFrameDelta {
+    int frameIndex = 0;
+    std::vector<TiledOverlayTileRecord> changedTiles;
+};
+
+struct TiledOverlayLayerDescriptor {
+    std::string id;
+    int order = 0;
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
+    double frameRate = 0.0;
+    double durationSec = 0.0;
+    int frameCount = 0;
+    int tileSize = 0;
+    std::string pixelFormat;
+    std::string payloadPath;
+    int64_t payloadByteLength = 0;
+    std::vector<TiledOverlayTileRecord> staticTiles;
+    std::vector<TiledOverlayFrameDelta> frameDeltas;
+    // Derived at load time (never part of the wire descriptor).
+    int tileColumns = 0;
+    int tileRows = 0;
+    int tileCount = 0;
+    int64_t tileByteSize = 0;
+    int64_t maxDeltaBytes = 0;
+    std::string rawFallbackReason;
+};
+
+constexpr int kTiledOverlayStorageVersion = 1;
+constexpr int kTiledOverlayTileSize = 128;
+constexpr int64_t kTiledOverlayTileByteSize = 128LL * 128LL * 4LL;
+
+// Unified z-order entry for the native composition loop. The renderer emits
+// both raw RGBA sidecar layers and tiled/delta layers with a single global
+// `order` value; the compositor must blend them in that exact order rather
+// than grouping all raw layers below all tiled layers.
+struct CompositeLayer {
+    enum class Kind { Raw, Tiled };
+    Kind kind = Kind::Raw;
+    int sourceIndex = 0;  // index into the matching source (raw or tiled)
+    int order = 0;
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
+};
+
+// Conservative tiled-vs-raw density/size heuristics mirrored from the TS side
+// (NATIVE_TILED_OVERLAY_MIN_TILE_COUNT / _MAX_CHANGED_TILE_FRACTION /
+// _MAX_PAYLOAD_BYTES_FRACTION). Layers that trip a heuristic are still valid
+// tiled streams the helper composites losslessly; the reason is only reported
+// as an observable diagnostic so a raw full-frame fallback (which the renderer
+// may keep for dense layers) is never indistinguishable from a tiled export.
+constexpr int kTiledOverlayMinTileCount = 4;
+constexpr double kTiledOverlayMaxChangedTileFraction = 0.5;
+constexpr double kTiledOverlayMaxPayloadBytesFraction = 0.7;
 
 enum class OutputCodec {
     H264,
@@ -120,6 +207,13 @@ struct Options {
     double temporalBlurShutterFraction = 0.0;
     double temporalBlurWeightPower = 1.0;
     std::vector<OverlayLayerDescriptor> overlayLayers;
+    std::string overlayManifestPath;
+    std::vector<CompositeLayer> compositeLayers;
+    std::string tiledOverlayManifestPath;
+    // Validated tiled/delta overlay stream (version 1 descriptor). Loaded in
+    // parseOptions before encoding so malformed/truncated/unsupported
+    // descriptors fail with an actionable JSON failure before any decode work.
+    std::vector<TiledOverlayLayerDescriptor> tiledOverlayLayers;
 };
 
 constexpr int kMaxCursorAtlasEntries = 16;
@@ -204,6 +298,911 @@ double parseFiniteDouble(const char* value, const char* name) {
         fail(stream.str());
     }
     return parsed;
+}
+
+// ---------------------------------------------------------------------------
+// Minimal standards-compliant JSON parser for the tiled overlay descriptor.
+// The descriptor is session data from the renderer (never persisted); the
+// parser rejects malformed input with an actionable message that includes the
+// offending byte position. Depth and element caps keep corrupted or
+// adversarial input from exhausting memory.
+// ---------------------------------------------------------------------------
+struct JsonValue {
+    enum class Type {
+        Null,
+        Bool,
+        Number,
+        String,
+        Array,
+        Object,
+    };
+    Type type = Type::Null;
+    bool boolean = false;
+    double number = 0.0;
+    std::string string;
+    std::vector<JsonValue> array;
+    std::vector<std::pair<std::string, JsonValue>> object;
+};
+
+class JsonParser {
+public:
+    explicit JsonParser(const std::string& text) : text_(text) {}
+
+    JsonValue parse() {
+        skipWhitespace();
+        JsonValue root = parseValue(0);
+        skipWhitespace();
+        if (position_ < text_.size()) {
+            failAt("Unexpected trailing characters");
+        }
+        return root;
+    }
+
+private:
+    static constexpr int kMaxDepth = 64;
+    static constexpr size_t kMaxElements = 1u << 20u;
+
+    [[noreturn]] void failAt(const std::string& message) const {
+        std::ostringstream stream;
+        stream << message << " at byte " << position_;
+        throw std::runtime_error(stream.str());
+    }
+
+    static bool isDigit(char c) {
+        return c >= '0' && c <= '9';
+    }
+
+    static bool isHexDigit(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    }
+
+    static int hexValue(char c) {
+        if (c >= '0' && c <= '9') {
+            return c - '0';
+        }
+        if (c >= 'a' && c <= 'f') {
+            return c - 'a' + 10;
+        }
+        return c - 'A' + 10;
+    }
+
+    void skipWhitespace() {
+        while (position_ < text_.size()) {
+            const char c = text_[position_];
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                ++position_;
+            } else {
+                break;
+            }
+        }
+    }
+
+    bool consume(char expected) {
+        if (position_ < text_.size() && text_[position_] == expected) {
+            ++position_;
+            return true;
+        }
+        return false;
+    }
+
+    JsonValue parseValue(int depth) {
+        if (depth > kMaxDepth) {
+            failAt("JSON nesting too deep");
+        }
+        if (position_ >= text_.size()) {
+            failAt("Unexpected end of JSON input");
+        }
+        const char c = text_[position_];
+        if (c == '{') {
+            return parseObject(depth);
+        }
+        if (c == '[') {
+            return parseArray(depth);
+        }
+        if (c == '"') {
+            return parseString();
+        }
+        if (c == 't') {
+            return parseKeyword("true", JsonValue::Type::Bool, true);
+        }
+        if (c == 'f') {
+            return parseKeyword("false", JsonValue::Type::Bool, false);
+        }
+        if (c == 'n') {
+            return parseKeyword("null", JsonValue::Type::Null, false);
+        }
+        if (c == '-' || isDigit(c)) {
+            return parseNumber();
+        }
+        failAt("Unexpected token");
+    }
+
+    JsonValue parseKeyword(const char* keyword, JsonValue::Type type, bool boolean) {
+        const size_t length = std::strlen(keyword);
+        if (text_.compare(position_, length, keyword) != 0) {
+            failAt("Invalid JSON token");
+        }
+        position_ += length;
+        JsonValue result;
+        result.type = type;
+        result.boolean = boolean;
+        return result;
+    }
+
+    JsonValue parseObject(int depth) {
+        consume('{');
+        JsonValue result;
+        result.type = JsonValue::Type::Object;
+        skipWhitespace();
+        if (consume('}')) {
+            return result;
+        }
+        while (true) {
+            if (result.object.size() >= kMaxElements) {
+                failAt("JSON object too large");
+            }
+            skipWhitespace();
+            if (position_ >= text_.size() || text_[position_] != '"') {
+                failAt("Expected a string object key");
+            }
+            JsonValue keyValue = parseString();
+            skipWhitespace();
+            if (!consume(':')) {
+                failAt("Expected ':' after object key");
+            }
+            skipWhitespace();
+            result.object.emplace_back(std::move(keyValue.string), parseValue(depth + 1));
+            skipWhitespace();
+            if (consume('}')) {
+                break;
+            }
+            if (!consume(',')) {
+                failAt("Expected ',' or '}' in object");
+            }
+            skipWhitespace();
+        }
+        return result;
+    }
+
+    JsonValue parseArray(int depth) {
+        consume('[');
+        JsonValue result;
+        result.type = JsonValue::Type::Array;
+        skipWhitespace();
+        if (consume(']')) {
+            return result;
+        }
+        while (true) {
+            if (result.array.size() >= kMaxElements) {
+                failAt("JSON array too large");
+            }
+            skipWhitespace();
+            result.array.push_back(parseValue(depth + 1));
+            skipWhitespace();
+            if (consume(']')) {
+                break;
+            }
+            if (!consume(',')) {
+                failAt("Expected ',' or ']' in array");
+            }
+            skipWhitespace();
+        }
+        return result;
+    }
+
+    // Appends the UTF-8 encoding of codepoint to out.
+    static void appendUtf8(std::string& out, unsigned int codepoint) {
+        if (codepoint < 0x80) {
+            out.push_back(static_cast<char>(codepoint));
+        } else if (codepoint < 0x800) {
+            out.push_back(static_cast<char>(0xC0 | (codepoint >> 6)));
+            out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+        } else if (codepoint < 0x10000) {
+            out.push_back(static_cast<char>(0xE0 | (codepoint >> 12)));
+            out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+        } else {
+            out.push_back(static_cast<char>(0xF0 | (codepoint >> 18)));
+            out.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+        }
+    }
+
+    unsigned int parseHexQuad() {
+        if (position_ + 4 > text_.size()) {
+            failAt("Incomplete unicode escape");
+        }
+        unsigned int value = 0;
+        for (int index = 0; index < 4; ++index) {
+            const char c = text_[position_++];
+            if (!isHexDigit(c)) {
+                failAt("Invalid unicode escape");
+            }
+            value = (value << 4) | static_cast<unsigned int>(hexValue(c));
+        }
+        return value;
+    }
+
+    JsonValue parseString() {
+        consume('"');
+        std::string value;
+        while (true) {
+            if (position_ >= text_.size()) {
+                failAt("Unterminated string");
+            }
+            const unsigned char c = static_cast<unsigned char>(text_[position_]);
+            if (c == '"') {
+                ++position_;
+                break;
+            }
+            if (c == '\\') {
+                ++position_;
+                if (position_ >= text_.size()) {
+                    failAt("Unterminated escape sequence");
+                }
+                const char escape = text_[position_++];
+                switch (escape) {
+                    case '"': value.push_back('"'); break;
+                    case '\\': value.push_back('\\'); break;
+                    case '/': value.push_back('/'); break;
+                    case 'b': value.push_back('\b'); break;
+                    case 'f': value.push_back('\f'); break;
+                    case 'n': value.push_back('\n'); break;
+                    case 'r': value.push_back('\r'); break;
+                    case 't': value.push_back('\t'); break;
+                    case 'u': {
+                        const unsigned int first = parseHexQuad();
+                        unsigned int codepoint = first;
+                        if (first >= 0xD800 && first <= 0xDBFF) {
+                            // High surrogate: expect a low surrogate escape.
+                            if (position_ + 1 < text_.size() && text_[position_] == '\\' &&
+                                text_[position_ + 1] == 'u') {
+                                position_ += 2;
+                                const unsigned int second = parseHexQuad();
+                                if (second >= 0xDC00 && second <= 0xDFFF) {
+                                    codepoint =
+                                        0x10000 + ((first - 0xD800) << 10) + (second - 0xDC00);
+                                } else {
+                                    codepoint = 0xFFFD;
+                                }
+                            } else {
+                                codepoint = 0xFFFD;
+                            }
+                        } else if (first >= 0xDC00 && first <= 0xDFFF) {
+                            // Lone low surrogate.
+                            codepoint = 0xFFFD;
+                        }
+                        appendUtf8(value, codepoint);
+                        break;
+                    }
+                    default: failAt("Invalid escape sequence");
+                }
+                continue;
+            }
+            if (c < 0x20) {
+                failAt("Unescaped control character in string");
+            }
+            value.push_back(static_cast<char>(c));
+            ++position_;
+        }
+        JsonValue result;
+        result.type = JsonValue::Type::String;
+        result.string = std::move(value);
+        return result;
+    }
+
+    JsonValue parseNumber() {
+        const size_t start = position_;
+        if (consume('-') && position_ >= text_.size()) {
+            failAt("Invalid JSON number");
+        }
+        if (text_[position_] == '0') {
+            ++position_;
+        } else if (isDigit(text_[position_])) {
+            while (position_ < text_.size() && isDigit(text_[position_])) {
+                ++position_;
+            }
+        } else {
+            failAt("Invalid JSON number");
+        }
+        if (position_ < text_.size() && text_[position_] == '.') {
+            ++position_;
+            if (position_ >= text_.size() || !isDigit(text_[position_])) {
+                failAt("Invalid JSON number fraction");
+            }
+            while (position_ < text_.size() && isDigit(text_[position_])) {
+                ++position_;
+            }
+        }
+        if (position_ < text_.size() && (text_[position_] == 'e' || text_[position_] == 'E')) {
+            ++position_;
+            if (position_ < text_.size() && (text_[position_] == '+' || text_[position_] == '-')) {
+                ++position_;
+            }
+            if (position_ >= text_.size() || !isDigit(text_[position_])) {
+                failAt("Invalid JSON number exponent");
+            }
+            while (position_ < text_.size() && isDigit(text_[position_])) {
+                ++position_;
+            }
+        }
+        const std::string token = text_.substr(start, position_ - start);
+        char* end = nullptr;
+        const double number = std::strtod(token.c_str(), &end);
+        if (!end || *end != '\0' || !std::isfinite(number)) {
+            failAt("Invalid JSON number");
+        }
+        JsonValue result;
+        result.type = JsonValue::Type::Number;
+        result.number = number;
+        return result;
+    }
+
+    const std::string& text_;
+    size_t position_ = 0;
+};
+
+const JsonValue* jsonObjectFind(const JsonValue& value, const std::string& key) {
+    if (value.type != JsonValue::Type::Object) {
+        return nullptr;
+    }
+    for (const auto& entry : value.object) {
+        if (entry.first == key) {
+            return &entry.second;
+        }
+    }
+    return nullptr;
+}
+
+bool jsonHasString(const JsonValue& value, const std::string& key, std::string* out) {
+    const JsonValue* field = jsonObjectFind(value, key);
+    if (!field || field->type != JsonValue::Type::String) {
+        return false;
+    }
+    if (out) {
+        *out = field->string;
+    }
+    return true;
+}
+
+bool jsonNumberField(const JsonValue& value, const std::string& key, double* out) {
+    const JsonValue* field = jsonObjectFind(value, key);
+    if (!field || field->type != JsonValue::Type::Number) {
+        return false;
+    }
+    *out = field->number;
+    return true;
+}
+
+bool jsonIsSafeInteger(double value) {
+    return std::isfinite(value) && std::floor(value) == value &&
+        std::fabs(value) <= 9007199254740991.0;  // 2^53 - 1, mirrors Number.isSafeInteger.
+}
+
+bool jsonSafeIntField(
+    const JsonValue& value,
+    const std::string& key,
+    int64_t* out,
+    int64_t minimum,
+    int64_t maximum) {
+    double number = 0.0;
+    if (!jsonNumberField(value, key, &number) || !jsonIsSafeInteger(number)) {
+        return false;
+    }
+    if (number < static_cast<double>(minimum) || number > static_cast<double>(maximum)) {
+        return false;
+    }
+    *out = static_cast<int64_t>(number);
+    return true;
+}
+
+int64_t tiledOverlayTileCountForSize(int width, int height) {
+    const int columns = std::max(1, (width + kTiledOverlayTileSize - 1) / kTiledOverlayTileSize);
+    const int rows = std::max(1, (height + kTiledOverlayTileSize - 1) / kTiledOverlayTileSize);
+    return static_cast<int64_t>(columns) * static_cast<int64_t>(rows);
+}
+
+// Conservative tiled-vs-raw eligibility heuristic mirrored from the TS side
+// (resolveNativeTiledOverlayRawFallbackReason). Returns "" when eligible.
+std::string resolveTiledOverlayRawFallbackReason(const TiledOverlayLayerDescriptor& layer) {
+    if (layer.tileCount < kTiledOverlayMinTileCount) {
+        return "small-layer";
+    }
+    for (const auto& delta : layer.frameDeltas) {
+        if (static_cast<double>(delta.changedTiles.size()) >
+            static_cast<double>(layer.tileCount) * kTiledOverlayMaxChangedTileFraction) {
+            return "dense-frame-delta";
+        }
+    }
+    int64_t changedCount = 0;
+    for (const auto& delta : layer.frameDeltas) {
+        changedCount += static_cast<int64_t>(delta.changedTiles.size());
+    }
+    const int64_t uploadedTileBytes = (layer.tileCount + changedCount) * layer.tileByteSize;
+    const int64_t rawPhysicalBytes =
+        static_cast<int64_t>(layer.width) * static_cast<int64_t>(layer.height) * 4LL *
+        static_cast<int64_t>(layer.frameCount);
+    if (rawPhysicalBytes > 0 &&
+        static_cast<double>(uploadedTileBytes) /
+                static_cast<double>(rawPhysicalBytes) >=
+            kTiledOverlayMaxPayloadBytesFraction) {
+        return "payload-bytes-exceed-raw";
+    }
+    return "";
+}
+
+// Validates one tile record against the layer contract and fills out the
+// record. Mirrors validateTiledOverlayTileRecord on the TS side: tileIndex in
+// [0, tileCount), byteLength must be exactly tileSize^2*4, and the range must
+// stay inside the bounded payload stream.
+bool parseTiledOverlayTileRecord(
+    const JsonValue& record,
+    const std::string& layerId,
+    int64_t tileCount,
+    int64_t payloadByteLength,
+    TiledOverlayTileRecord* out) {
+    if (record.type != JsonValue::Type::Object) {
+        return false;
+    }
+    int64_t tileIndex = 0;
+    int64_t byteOffset = 0;
+    int64_t byteLength = 0;
+    if (!jsonSafeIntField(record, "tileIndex", &tileIndex, 0, 1LL << 40) ||
+        !jsonSafeIntField(record, "byteOffset", &byteOffset, 0, 1LL << 50) ||
+        !jsonSafeIntField(record, "byteLength", &byteLength, 0, 1LL << 50)) {
+        return false;
+    }
+    if (tileIndex >= tileCount || byteLength != kTiledOverlayTileByteSize ||
+        byteOffset + byteLength > payloadByteLength) {
+        return false;
+    }
+    out->tileIndex = static_cast<int>(tileIndex);
+    out->byteOffset = byteOffset;
+    out->byteLength = byteLength;
+    return true;
+}
+
+// Loads and validates the version-1 tiled overlay storage descriptor from
+// manifestPath. Mirrors readTiledOverlayManifest/validateNativeTiledOverlay
+// (Storage|Layer)Descriptor on the TS side so the CUDA helper never trusts an
+// opaque blob: every layer, tile record, and payload range is checked and
+// malformed/truncated/unsupported descriptors fail with an actionable message
+// (surfaced as a JSON failure by main). outputWidth/outputHeight/fps/duration
+// are the helper's resolved values (0 = not yet known); the manifest's own
+// top-level fields are always authoritative for layer-bounds validation.
+std::vector<TiledOverlayLayerDescriptor> loadTiledOverlayManifest(
+    const std::string& manifestPath,
+    int outputWidth,
+    int outputHeight,
+    int fps,
+    double durationSec) {
+    if (manifestPath.empty()) {
+        return {};
+    }
+
+    std::ifstream manifestFile(manifestPath, std::ios::binary);
+    if (!manifestFile) {
+        fail("Tiled overlay manifest does not exist: " + manifestPath);
+    }
+    std::ostringstream buffer;
+    buffer << manifestFile.rdbuf();
+    if (manifestFile.bad()) {
+        fail("Failed to read tiled overlay manifest: " + manifestPath);
+    }
+    const std::string text = buffer.str();
+
+    JsonValue root;
+    try {
+        root = JsonParser(text).parse();
+    } catch (const std::exception& error) {
+        fail("Invalid tiled overlay manifest " + manifestPath + ": " + error.what());
+    }
+
+    int64_t version = 0;
+    if (!jsonSafeIntField(root, "version", &version, 0, 1 << 30)) {
+        fail("Tiled overlay manifest requires a version: " + manifestPath);
+    }
+    if (version != kTiledOverlayStorageVersion) {
+        fail(
+            "Unsupported tiled overlay storage version " + std::to_string(version) + ": " +
+            manifestPath);
+    }
+
+    int64_t manifestWidth = 0;
+    int64_t manifestHeight = 0;
+    double manifestFrameRate = 0.0;
+    double manifestDurationSec = 0.0;
+    if (!jsonSafeIntField(root, "outputWidth", &manifestWidth, 1, 1 << 20) ||
+        !jsonSafeIntField(root, "outputHeight", &manifestHeight, 1, 1 << 20)) {
+        fail("Tiled overlay manifest requires positive output dimensions: " + manifestPath);
+    }
+    if (outputWidth > 0 && (manifestWidth != outputWidth || manifestHeight != outputHeight)) {
+        fail("Tiled overlay storage dimensions do not match the output: " + manifestPath);
+    }
+    if (!jsonNumberField(root, "frameRate", &manifestFrameRate) ||
+        !std::isfinite(manifestFrameRate) || manifestFrameRate <= 0.0) {
+        fail("Tiled overlay manifest requires a positive frame rate: " + manifestPath);
+    }
+    if (fps > 0 && std::fabs(manifestFrameRate - static_cast<double>(fps)) > 0.01) {
+        fail("Tiled overlay storage frame rate does not match the output: " + manifestPath);
+    }
+    if (!jsonNumberField(root, "durationSec", &manifestDurationSec) ||
+        !std::isfinite(manifestDurationSec) || manifestDurationSec <= 0.0) {
+        fail("Tiled overlay manifest requires a positive duration: " + manifestPath);
+    }
+    if (durationSec > 0.0 &&
+        std::fabs(manifestDurationSec - durationSec) > 1.0 / manifestFrameRate) {
+        fail("Tiled overlay storage duration does not match the output: " + manifestPath);
+    }
+
+    const JsonValue* rawLayers = jsonObjectFind(root, "layers");
+    if (!rawLayers || rawLayers->type != JsonValue::Type::Array) {
+        fail("Tiled overlay manifest requires a layers array: " + manifestPath);
+    }
+
+    std::vector<TiledOverlayLayerDescriptor> layers;
+    layers.reserve(rawLayers->array.size());
+    int previousOrder = -1;
+    std::string previousId;
+    for (const JsonValue& rawLayer : rawLayers->array) {
+        TiledOverlayLayerDescriptor layer;
+        if (!jsonHasString(rawLayer, "id", &layer.id) || layer.id.empty() ||
+            !jsonHasString(rawLayer, "payloadPath", &layer.payloadPath) ||
+            layer.payloadPath.empty()) {
+            fail("Tiled overlay layer requires an id and payload path: " + manifestPath);
+        }
+        int64_t order = 0;
+        int64_t x = 0;
+        int64_t y = 0;
+        int64_t width = 0;
+        int64_t height = 0;
+        int64_t frameCount = 0;
+        int64_t tileSize = 0;
+        int64_t payloadByteLength = 0;
+        if (!jsonSafeIntField(rawLayer, "order", &order, 0, 1 << 30) ||
+            !jsonSafeIntField(rawLayer, "x", &x, 0, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "y", &y, 0, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "width", &width, 1, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "height", &height, 1, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "frameCount", &frameCount, 1, 1 << 30)) {
+            fail("Invalid tiled overlay layer " + layer.id + ": " + manifestPath);
+        }
+        if (x + width > manifestWidth || y + height > manifestHeight) {
+            fail("Tiled overlay layer " + layer.id + " exceeds the output canvas: " + manifestPath);
+        }
+        if (!jsonNumberField(rawLayer, "frameRate", &layer.frameRate) ||
+            !std::isfinite(layer.frameRate) || layer.frameRate <= 0.0 ||
+            std::fabs(layer.frameRate - manifestFrameRate) > 0.01) {
+            fail("Tiled overlay layer " + layer.id + " has an incompatible frame rate: " + manifestPath);
+        }
+        if (!jsonNumberField(rawLayer, "durationSec", &layer.durationSec) ||
+            !std::isfinite(layer.durationSec) || layer.durationSec <= 0.0 ||
+            std::fabs(layer.durationSec - manifestDurationSec) > 1.0 / manifestFrameRate) {
+            fail("Tiled overlay layer " + layer.id + " has an incompatible duration: " + manifestPath);
+        }
+        const int64_t expectedFrameCount =
+            static_cast<int64_t>(std::ceil(layer.durationSec * layer.frameRate));
+        if (frameCount < expectedFrameCount) {
+            fail("Tiled overlay layer " + layer.id + " does not contain enough frames: " + manifestPath);
+        }
+        if (!jsonSafeIntField(rawLayer, "tileSize", &tileSize, 1, 1 << 20) ||
+            tileSize != kTiledOverlayTileSize) {
+            fail(
+                "Tiled overlay layer " + layer.id + " must use " +
+                std::to_string(kTiledOverlayTileSize) + "px tiles: " + manifestPath);
+        }
+        std::string pixelFormat;
+        if (!jsonHasString(rawLayer, "pixelFormat", &pixelFormat) || pixelFormat != "rgba") {
+            fail("Tiled overlay layer " + layer.id + " must use RGBA tiles: " + manifestPath);
+        }
+        if (!jsonSafeIntField(rawLayer, "payloadByteLength", &payloadByteLength, 0, 1LL << 50)) {
+            fail("Tiled overlay layer " + layer.id + " has an invalid payload byte length: " + manifestPath);
+        }
+        const JsonValue* staticTiles = jsonObjectFind(rawLayer, "staticTiles");
+        const JsonValue* frameDeltas = jsonObjectFind(rawLayer, "frameDeltas");
+        if (!staticTiles || staticTiles->type != JsonValue::Type::Array ||
+            !frameDeltas || frameDeltas->type != JsonValue::Type::Array) {
+            fail("Tiled overlay layer " + layer.id + " requires static tiles and frame deltas: " + manifestPath);
+        }
+        if (order < previousOrder || (order == previousOrder && layer.id <= previousId)) {
+            fail("Tiled overlay layers must be sorted by order then id: " + manifestPath);
+        }
+        previousOrder = static_cast<int>(order);
+        previousId = layer.id;
+
+        layer.order = static_cast<int>(order);
+        layer.x = static_cast<int>(x);
+        layer.y = static_cast<int>(y);
+        layer.width = static_cast<int>(width);
+        layer.height = static_cast<int>(height);
+        layer.frameCount = static_cast<int>(frameCount);
+        layer.tileSize = static_cast<int>(tileSize);
+        layer.payloadByteLength = payloadByteLength;
+        layer.tileColumns = std::max(1, (layer.width + kTiledOverlayTileSize - 1) / kTiledOverlayTileSize);
+        layer.tileRows = std::max(1, (layer.height + kTiledOverlayTileSize - 1) / kTiledOverlayTileSize);
+        layer.tileCount = static_cast<int>(tiledOverlayTileCountForSize(layer.width, layer.height));
+        layer.tileByteSize = static_cast<int64_t>(layer.tileSize) * layer.tileSize * 4LL;
+        layer.staticTiles.reserve(staticTiles->array.size());
+
+        std::set<int> seenStaticTiles;
+        std::set<std::pair<int64_t, int64_t>> payloadRanges;
+        for (const JsonValue& record : staticTiles->array) {
+            TiledOverlayTileRecord parsed;
+            if (!parseTiledOverlayTileRecord(
+                    record,
+                    layer.id,
+                    layer.tileCount,
+                    layer.payloadByteLength,
+                    &parsed)) {
+                fail("Tiled overlay layer " + layer.id + " has an invalid static tile record: " + manifestPath);
+            }
+            if (!seenStaticTiles.insert(parsed.tileIndex).second) {
+                fail("Tiled overlay layer " + layer.id + " emits duplicate static tile: " + manifestPath);
+            }
+            if (!payloadRanges.insert({parsed.byteOffset, parsed.byteLength}).second) {
+                fail("Tiled overlay layer " + layer.id + " duplicates tile payload bytes: " + manifestPath);
+            }
+            layer.staticTiles.push_back(parsed);
+        }
+        if (seenStaticTiles.size() != static_cast<size_t>(layer.tileCount)) {
+            fail("Tiled overlay layer " + layer.id + " does not fully define the static tile base: " + manifestPath);
+        }
+
+        layer.frameDeltas.reserve(frameDeltas->array.size());
+        int64_t maxDeltaBytes = layer.tileByteSize;
+        int previousFrameIndex = -1;
+        for (const JsonValue& rawDelta : frameDeltas->array) {
+            TiledOverlayFrameDelta delta;
+            int64_t deltaFrameIndex = 0;
+            if (!jsonSafeIntField(rawDelta, "frameIndex", &deltaFrameIndex, 0, 1 << 30) ||
+                deltaFrameIndex >= frameCount) {
+                fail("Tiled overlay layer " + layer.id + " has an invalid delta frame index: " + manifestPath);
+            }
+            if (deltaFrameIndex <= previousFrameIndex) {
+                fail("Tiled overlay layer " + layer.id + " has unsorted or duplicate delta frame indices: " + manifestPath);
+            }
+            previousFrameIndex = static_cast<int>(deltaFrameIndex);
+            delta.frameIndex = static_cast<int>(deltaFrameIndex);
+            const JsonValue* changedTiles = jsonObjectFind(rawDelta, "changedTiles");
+            if (!changedTiles || changedTiles->type != JsonValue::Type::Array) {
+                fail("Tiled overlay layer " + layer.id + " requires a changedTiles array: " + manifestPath);
+            }
+            std::set<int> seenDeltaTiles;
+            delta.changedTiles.reserve(changedTiles->array.size());
+            for (const JsonValue& record : changedTiles->array) {
+                TiledOverlayTileRecord parsed;
+                if (!parseTiledOverlayTileRecord(
+                        record,
+                        layer.id,
+                        layer.tileCount,
+                        layer.payloadByteLength,
+                        &parsed)) {
+                    fail("Tiled overlay layer " + layer.id + " has an invalid changed tile record: " + manifestPath);
+                }
+                if (!seenDeltaTiles.insert(parsed.tileIndex).second) {
+                    fail("Tiled overlay layer " + layer.id + " repeats a tile within a frame delta: " + manifestPath);
+                }
+                if (!payloadRanges.insert({parsed.byteOffset, parsed.byteLength}).second) {
+                    fail("Tiled overlay layer " + layer.id + " duplicates tile payload bytes: " + manifestPath);
+                }
+                delta.changedTiles.push_back(parsed);
+            }
+            maxDeltaBytes = std::max(
+                maxDeltaBytes,
+                static_cast<int64_t>(delta.changedTiles.size()) * layer.tileByteSize);
+            layer.frameDeltas.push_back(std::move(delta));
+        }
+        if (1 + static_cast<int64_t>(layer.frameDeltas.size()) > layer.frameCount) {
+            fail("Tiled overlay layer " + layer.id + " has more state versions than frames: " + manifestPath);
+        }
+        layer.maxDeltaBytes = maxDeltaBytes;
+        layer.rawFallbackReason = resolveTiledOverlayRawFallbackReason(layer);
+
+        const std::string resolvedPayloadPath = layer.payloadPath;
+        std::ifstream payload(resolvedPayloadPath, std::ios::binary);
+        if (!payload) {
+            fail("Tiled overlay layer " + layer.id + " does not exist: " + resolvedPayloadPath);
+        }
+        payload.seekg(0, std::ios::end);
+        const std::streampos end = payload.tellg();
+        if (end < 0 || static_cast<int64_t>(end) < layer.payloadByteLength) {
+            fail(
+                "Tiled overlay layer " + layer.id + " payload is truncated: expected at least " +
+                std::to_string(layer.payloadByteLength) + " bytes, received " +
+                std::to_string(end < 0 ? 0 : static_cast<int64_t>(end)));
+        }
+        layers.push_back(std::move(layer));
+    }
+    return layers;
+}
+
+// Loads and validates the version-1 raw RGBA overlay sidecar manifest. Mirrors
+// overlayManifest.mjs / validateNativeStaticLayoutOverlayLayer: layers carry a
+// global `order`, bounds, frameRate, duration, frameCount and optional
+// effectiveFrameCount. The helper never trusts the blob and rejects malformed
+// or truncated manifests with an actionable JSON failure.
+std::vector<OverlayLayerDescriptor> loadOverlayManifest(
+    const std::string& manifestPath,
+    int outputWidth,
+    int outputHeight,
+    int fps,
+    double durationSec) {
+    if (manifestPath.empty()) {
+        return {};
+    }
+
+    std::ifstream manifestFile(manifestPath, std::ios::binary);
+    if (!manifestFile) {
+        fail("Overlay manifest does not exist: " + manifestPath);
+    }
+    std::ostringstream buffer;
+    buffer << manifestFile.rdbuf();
+    if (manifestFile.bad()) {
+        fail("Failed to read overlay manifest: " + manifestPath);
+    }
+    const std::string rawText = buffer.str();
+
+    JsonValue root;
+    try {
+        root = JsonParser(rawText).parse();
+    } catch (const std::exception& error) {
+        fail("Invalid overlay manifest " + manifestPath + ": " + error.what());
+    }
+
+    int64_t version = 0;
+    if (!jsonSafeIntField(root, "version", &version, 0, 1 << 30)) {
+        fail("Overlay manifest requires a version: " + manifestPath);
+    }
+    if (version != 1) {
+        fail("Unsupported overlay manifest version " + std::to_string(version) + ": " + manifestPath);
+    }
+
+    int64_t manifestWidth = 0;
+    int64_t manifestHeight = 0;
+    double manifestFrameRate = 0.0;
+    double manifestDurationSec = 0.0;
+    if (!jsonSafeIntField(root, "outputWidth", &manifestWidth, 1, 1 << 20) ||
+        !jsonSafeIntField(root, "outputHeight", &manifestHeight, 1, 1 << 20)) {
+        fail("Overlay manifest requires positive output dimensions: " + manifestPath);
+    }
+    if (outputWidth > 0 && (manifestWidth != outputWidth || manifestHeight != outputHeight)) {
+        fail("Overlay manifest dimensions do not match the output: " + manifestPath);
+    }
+    if (!jsonNumberField(root, "frameRate", &manifestFrameRate) ||
+        !std::isfinite(manifestFrameRate) || manifestFrameRate <= 0.0) {
+        fail("Overlay manifest requires a positive frame rate: " + manifestPath);
+    }
+    if (fps > 0 && std::fabs(manifestFrameRate - static_cast<double>(fps)) > 0.01) {
+        fail("Overlay manifest frame rate does not match the output: " + manifestPath);
+    }
+    if (!jsonNumberField(root, "durationSec", &manifestDurationSec) ||
+        !std::isfinite(manifestDurationSec) || manifestDurationSec <= 0.0) {
+        fail("Overlay manifest requires a positive duration: " + manifestPath);
+    }
+    if (durationSec > 0.0 &&
+        std::fabs(manifestDurationSec - durationSec) > 1.0 / manifestFrameRate) {
+        fail("Overlay manifest duration does not match the output: " + manifestPath);
+    }
+
+    const JsonValue* rawLayers = jsonObjectFind(root, "layers");
+    if (!rawLayers || rawLayers->type != JsonValue::Type::Array) {
+        fail("Overlay manifest requires a layers array: " + manifestPath);
+    }
+
+    std::vector<OverlayLayerDescriptor> layers;
+    layers.reserve(rawLayers->array.size());
+    int previousOrder = -1;
+    std::string previousId;
+    for (const JsonValue& rawLayer : rawLayers->array) {
+        OverlayLayerDescriptor layer;
+        if (!jsonHasString(rawLayer, "id", &layer.id) || layer.id.empty() ||
+            !jsonHasString(rawLayer, "path", &layer.path) || layer.path.empty()) {
+            fail("Overlay layer requires an id and path: " + manifestPath);
+        }
+        int64_t order = 0;
+        int64_t x = 0;
+        int64_t y = 0;
+        int64_t width = 0;
+        int64_t height = 0;
+        int64_t frameCount = 0;
+        if (!jsonSafeIntField(rawLayer, "order", &order, 0, 1 << 30) ||
+            !jsonSafeIntField(rawLayer, "x", &x, 0, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "y", &y, 0, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "width", &width, 1, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "height", &height, 1, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "frameCount", &frameCount, 1, 1 << 30)) {
+            fail("Invalid overlay layer " + layer.id + ": " + manifestPath);
+        }
+        if (x + width > manifestWidth || y + height > manifestHeight) {
+            fail("Overlay layer " + layer.id + " exceeds the output canvas: " + manifestPath);
+        }
+        if (!jsonNumberField(rawLayer, "frameRate", &layer.frameRate) ||
+            !std::isfinite(layer.frameRate) || layer.frameRate <= 0.0 ||
+            std::fabs(layer.frameRate - manifestFrameRate) > 0.01) {
+            fail("Overlay layer " + layer.id + " has an incompatible frame rate: " + manifestPath);
+        }
+        if (!jsonNumberField(rawLayer, "durationSec", &layer.durationSec) ||
+            !std::isfinite(layer.durationSec) || layer.durationSec <= 0.0 ||
+            std::fabs(layer.durationSec - manifestDurationSec) > 1.0 / manifestFrameRate) {
+            fail("Overlay layer " + layer.id + " has an incompatible duration: " + manifestPath);
+        }
+        const int64_t expectedFrameCount =
+            static_cast<int64_t>(std::ceil(layer.durationSec * layer.frameRate));
+        if (frameCount < expectedFrameCount) {
+            fail("Overlay layer " + layer.id + " does not contain enough frames: " + manifestPath);
+        }
+        int64_t effectiveFrameCount = 0;
+        const JsonValue* effectiveField = jsonObjectFind(rawLayer, "effectiveFrameCount");
+        if (effectiveField && effectiveField->type != JsonValue::Type::Null) {
+            if (!jsonSafeIntField(rawLayer, "effectiveFrameCount", &effectiveFrameCount, 1, frameCount)) {
+                fail("Overlay layer " + layer.id + " has an invalid effective frame count: " + manifestPath);
+            }
+        } else {
+            effectiveFrameCount = frameCount;
+        }
+        if (order < previousOrder || (order == previousOrder && layer.id <= previousId)) {
+            fail("Overlay layers must be sorted by order then id: " + manifestPath);
+        }
+        previousOrder = static_cast<int>(order);
+        previousId = layer.id;
+
+        layer.order = static_cast<int>(order);
+        layer.x = static_cast<int>(x);
+        layer.y = static_cast<int>(y);
+        layer.width = static_cast<int>(width);
+        layer.height = static_cast<int>(height);
+        layer.frameCount = static_cast<int>(frameCount);
+        layer.effectiveFrameCount = static_cast<int>(effectiveFrameCount);
+        layers.push_back(std::move(layer));
+    }
+    return layers;
+}
+
+// Cross-checks the loaded tiled layers against the resolved output canvas. The
+// descriptor's own outputWidth/outputHeight were validated at load; without
+// explicit --width/--height the canvas is only known after decode, so this is
+// called (like validateOverlayBounds) before the first encoded frame.
+void validateTiledOverlayBounds(const Options& options, int outputWidth, int outputHeight) {
+    for (const auto& layer : options.tiledOverlayLayers) {
+        if (layer.x < 0 || layer.y < 0 ||
+            layer.x + layer.width > outputWidth ||
+            layer.y + layer.height > outputHeight) {
+            fail("Tiled overlay layer exceeds the output canvas: " + layer.id);
+        }
+    }
+}
+
+// Descriptor-derived tiled throughput bookkeeping (same formulas as the TS
+// resolveNativeTiledOverlayMetrics). Used for the failure summary, where the
+// runtime-measured counters may not exist yet; diagnostics only.
+struct TiledOverlayDerivedMetrics {
+    int64_t changedTileCount = 0;
+    int64_t uploadedTileBytes = 0;
+    int64_t cachedTileCount = 0;
+    std::string rawFallbackReason;
+};
+
+TiledOverlayDerivedMetrics computeTiledOverlayDerivedMetrics(
+    const std::vector<TiledOverlayLayerDescriptor>& layers) {
+    TiledOverlayDerivedMetrics metrics;
+    for (const auto& layer : layers) {
+        int64_t changedCount = 0;
+        for (const auto& delta : layer.frameDeltas) {
+            changedCount += static_cast<int64_t>(delta.changedTiles.size());
+        }
+        const int64_t uploadedCount =
+            static_cast<int64_t>(layer.staticTiles.size()) + changedCount;
+        metrics.changedTileCount += changedCount;
+        metrics.uploadedTileBytes += uploadedCount * layer.tileByteSize;
+        metrics.cachedTileCount += std::max<int64_t>(
+            0,
+            static_cast<int64_t>(layer.tileCount) * layer.frameCount - uploadedCount);
+        if (metrics.rawFallbackReason.empty() && !layer.rawFallbackReason.empty()) {
+            metrics.rawFallbackReason = layer.rawFallbackReason;
+        }
+    }
+    return metrics;
 }
 
 Options parseOptions(int argc, char** argv) {
@@ -354,9 +1353,22 @@ Options parseOptions(int argc, char** argv) {
             layer.y = parseNonNegativeInt(requireValue("--overlay"), "--overlay y");
             layer.width = parsePositiveInt(requireValue("--overlay"), "--overlay width");
             layer.height = parsePositiveInt(requireValue("--overlay"), "--overlay height");
-            layer.frameCount =
+            layer.effectiveFrameCount =
                 parsePositiveInt(requireValue("--overlay"), "--overlay frameCount");
+            layer.frameCount = layer.effectiveFrameCount;
+            // Optional 7th argument is the renderer-side global z-order.
+            // Default to the current index so legacy callers still blend raw
+            // layers in the order they were supplied.
+            if (index + 1 < argc && argv[index + 1][0] != '-') {
+                layer.order = parseNonNegativeInt(argv[++index], "--overlay order");
+            } else {
+                layer.order = static_cast<int>(options.overlayLayers.size());
+            }
             options.overlayLayers.push_back(layer);
+        } else if (arg == "--overlay-manifest") {
+            options.overlayManifestPath = requireValue("--overlay-manifest");
+        } else if (arg == "--tiled-overlay-manifest") {
+            options.tiledOverlayManifestPath = requireValue("--tiled-overlay-manifest");
         } else if (arg == "--help") {
             std::cout << "Usage: recordly-nvidia-cuda-compositor --input input.annexb.h264 "
                          "[--output out.h264] [--output-codec h264|hevc] "
@@ -374,7 +1386,9 @@ Options parseOptions(int argc, char** argv) {
                          "[--zoom-samples zoom.csv] "
                          "[--temporal-blur-sample-count N --temporal-blur-shutter-fraction F "
                          "--temporal-blur-weight-power P] "
-                         "[--overlay overlay.rgba x y width height frameCount]...\n";
+                         "[--overlay overlay.rgba x y width height frameCount [order]]... "
+                         "[--overlay-manifest overlay-manifest.json] "
+                         "[--tiled-overlay-manifest tiled-overlay-manifest.json]\n";
             std::exit(0);
         } else {
             std::ostringstream stream;
@@ -407,6 +1421,70 @@ Options parseOptions(int argc, char** argv) {
             fail("Invalid --temporal-blur-shutter-fraction");
         }
     }
+    if (!options.tiledOverlayManifestPath.empty()) {
+        // Load + validate the tiled overlay descriptor before encoding starts:
+        // malformed/truncated/unsupported descriptors fail fast here instead of
+        // after decode work, and there is no silent raw fallback inside the
+        // helper. Duration cross-check uses the requested output timeline when
+        // targetFrames is known (the wrapper always passes it); layer bounds
+        // are validated against the descriptor's own output dimensions and
+        // re-cross-checked against the resolved canvas at sink creation.
+        const double expectedDurationSec = options.targetFrames > 0
+            ? static_cast<double>(options.targetFrames) / static_cast<double>(options.fps)
+            : 0.0;
+        options.tiledOverlayLayers = loadTiledOverlayManifest(
+            options.tiledOverlayManifestPath,
+            options.width,
+            options.height,
+            options.fps,
+            expectedDurationSec);
+    }
+    if (!options.overlayManifestPath.empty()) {
+        const double expectedDurationSec = options.targetFrames > 0
+            ? static_cast<double>(options.targetFrames) / static_cast<double>(options.fps)
+            : 0.0;
+        options.overlayLayers = loadOverlayManifest(
+            options.overlayManifestPath,
+            options.width,
+            options.height,
+            options.fps,
+            expectedDurationSec);
+    }
+
+    // Build one global z-order list from raw and tiled overlay layers. The
+    // renderer already sorted each manifest by (order, id), so a stable sort
+    // on order produces the exact cross-kind ordering the renderer expects.
+    options.compositeLayers.reserve(
+        options.overlayLayers.size() + options.tiledOverlayLayers.size());
+    for (size_t i = 0; i < options.overlayLayers.size(); ++i) {
+        const auto& layer = options.overlayLayers[i];
+        CompositeLayer entry;
+        entry.kind = CompositeLayer::Kind::Raw;
+        entry.sourceIndex = static_cast<int>(i);
+        entry.order = layer.order;
+        entry.x = layer.x;
+        entry.y = layer.y;
+        entry.width = layer.width;
+        entry.height = layer.height;
+        options.compositeLayers.push_back(entry);
+    }
+    for (size_t i = 0; i < options.tiledOverlayLayers.size(); ++i) {
+        const auto& layer = options.tiledOverlayLayers[i];
+        CompositeLayer entry;
+        entry.kind = CompositeLayer::Kind::Tiled;
+        entry.sourceIndex = static_cast<int>(i);
+        entry.order = layer.order;
+        entry.x = layer.x;
+        entry.y = layer.y;
+        entry.width = layer.width;
+        entry.height = layer.height;
+        options.compositeLayers.push_back(entry);
+    }
+    std::stable_sort(
+        options.compositeLayers.begin(),
+        options.compositeLayers.end(),
+        [](const CompositeLayer& a, const CompositeLayer& b) { return a.order < b.order; });
+
     return options;
 }
 
@@ -419,7 +1497,7 @@ void validateOverlayBounds(const Options& options, int outputWidth, int outputHe
         if (layer.x < 0 || layer.y < 0 ||
             layer.x + layer.width > outputWidth ||
             layer.y + layer.height > outputHeight) {
-            fail("Overlay layer exceeds the output canvas: " + layer.path);
+            fail("Overlay layer exceeds the output canvas: " + layer.id + ": " + layer.path);
         }
     }
 }
@@ -718,6 +1796,12 @@ struct ProgressCounters {
     int64_t overlayPendingReadsPeak = 0;
     double overlayHostReadMs = 0.0;
     double overlayH2DEnqueueMs = 0.0;
+    // Tiled/delta overlay stream (additive, measured). cumulative over the
+    // whole run; the interval fields below are deltas between reports.
+    int tiledOverlayLayers = 0;
+    int64_t changedTileCount = 0;
+    int64_t uploadedTileBytes = 0;
+    int64_t cachedTileCount = 0;
 };
 
 struct ProgressReportState {
@@ -1356,7 +2440,7 @@ private:
     };
 
     static int clampedFrameIndex(const LoadedLayer& layer, int outputFrameIndex) {
-        return std::min(outputFrameIndex, std::max(0, layer.descriptor.frameCount - 1));
+        return std::min(outputFrameIndex, std::max(0, layer.descriptor.effectiveFrameCount - 1));
     }
 
     static int slotFor(int frameIndex) {
@@ -1381,8 +2465,8 @@ private:
         const std::streampos end = layer->input.tellg();
         layer->input.seekg(0, std::ios::beg);
         if (end < 0 ||
-            static_cast<uint64_t>(end) < layer->frameBytes * static_cast<uint64_t>(descriptor.frameCount)) {
-            fail("Overlay layer is truncated: " + descriptor.path);
+            static_cast<uint64_t>(end) < layer->frameBytes * static_cast<uint64_t>(descriptor.effectiveFrameCount)) {
+            fail("Overlay layer is truncated: " + descriptor.id + ": " + descriptor.path);
         }
 
         for (int slot = 0; slot < kOverlayPrefetchSlots; ++slot) {
@@ -1394,8 +2478,8 @@ private:
         // the single frame once, compute the alpha bounds once, and stage the
         // device copy now so beginFrame serves it from slot 0 without a second
         // file read. The ring is keyed by the clamped frame index, which is
-        // always 0 for a frameCount == 1 layer, so slot 0 stays valid forever.
-        layer->staticLayer = descriptor.frameCount == 1;
+        // always 0 for an effectiveFrameCount == 1 layer, so slot 0 stays valid forever.
+        layer->staticLayer = descriptor.effectiveFrameCount == 1;
         layer->blendRegion = fullOverlayBlendRegion(descriptor);
         if (layer->staticLayer) {
             layer->input.seekg(0, std::ios::beg);
@@ -1616,6 +2700,270 @@ private:
     int64_t cacheHits_ = 0;
     int64_t pinnedHits_ = 0;
     int64_t readWaits_ = 0;
+};
+
+// Device tile cache for the renderer-prepared tiled/delta RGBA overlay stream.
+// Each layer owns one contiguous device canvas (tileCount x 128x128x4 bytes,
+// i.e. exactly one full layer frame) plus a bounded pinned staging buffer sized
+// to the largest frame delta. The static tile base is read and uploaded once
+// synchronously before encoding (like the raw static-layer staging, and
+// excluded from the streaming-path timing metrics). At each logical frame only
+// the changed tile payloads are read from the payload stream (bounded byte
+// ranges into the pinned staging) and enqueued as ordered H2D copies on the
+// compositor stream, ahead of the blend kernels on the same stream, so the
+// single per-frame cudaStreamSynchronize stays sufficient and memory stays
+// bounded (device canvas == one layer frame, staging == largest delta). The
+// cached tile state is blended in z-order by the tiled blend kernel.
+class TiledOverlayFrameSource {
+public:
+    explicit TiledOverlayFrameSource(const std::vector<TiledOverlayLayerDescriptor>& layers) {
+        layers_.reserve(layers.size());
+        for (const auto& descriptor : layers) {
+            layers_.push_back(loadLayer(descriptor));
+            // Static base bytes are uploaded once (at load); they count toward
+            // uploadedTileBytes so the measured invariant matches the renderer
+            // bookkeeping (uploaded = static base + all changed tiles).
+            uploadedTileBytes_ +=
+                static_cast<int64_t>(descriptor.tileCount) * descriptor.tileByteSize;
+            if (rawFallbackReason_.empty() && !descriptor.rawFallbackReason.empty()) {
+                rawFallbackReason_ = descriptor.rawFallbackReason;
+            }
+        }
+    }
+
+    ~TiledOverlayFrameSource() {
+        for (auto& layer : layers_) {
+            if (layer->tileCanvas) {
+                cudaFree(layer->tileCanvas);
+                layer->tileCanvas = nullptr;
+            }
+            if (layer->pinnedStaging) {
+                cudaFreeHost(layer->pinnedStaging);
+                layer->pinnedStaging = nullptr;
+            }
+        }
+    }
+
+    bool empty() const {
+        return layers_.empty();
+    }
+
+    size_t layerCount() const {
+        return layers_.size();
+    }
+
+    const TiledOverlayLayerDescriptor& descriptor(size_t index) const {
+        return layers_[index]->descriptor;
+    }
+
+    // Contiguous per-layer device tile canvas: tile t occupies
+    // [t * tileByteSize, (t + 1) * tileByteSize) in row-major tile order.
+    const unsigned char* tileCanvasDevicePtr(size_t index) const {
+        return layers_[index]->tileCanvas;
+    }
+
+    // Applies every frame delta with frameIndex <= the clamped logical frame of
+    // the output index: bounded payload reads into the pinned staging buffer,
+    // then one ordered H2D copy per changed tile on the compositor stream. A
+    // delta with empty changedTiles (or no delta at this frame) reuses the
+    // current cache with no payload read. This never syncs the compositor
+    // stream; the encode loop keeps its single per-frame cudaStreamSynchronize.
+    void beginFrame(int outputFrameIndex, cudaStream_t copyStream) {
+        for (auto& layer : layers_) {
+            const int frameIndex =
+                std::min(outputFrameIndex, layer->descriptor.frameCount - 1);
+            if (frameIndex < 0) {
+                continue;
+            }
+            int changedThisFrame = 0;
+            while (layer->nextDeltaIndex < layer->descriptor.frameDeltas.size()) {
+                const TiledOverlayFrameDelta& delta =
+                    layer->descriptor.frameDeltas[layer->nextDeltaIndex];
+                if (delta.frameIndex > frameIndex) {
+                    break;
+                }
+                changedThisFrame += static_cast<int>(delta.changedTiles.size());
+                uploadDelta(*layer, delta, copyStream);
+                ++layer->nextDeltaIndex;
+            }
+            changedTileCount_ += changedThisFrame;
+            // Frame 0 is fully defined by the static base (uploaded once at
+            // load), so it contributes no cache hits; every later frame serves
+            // every tile that did not change this frame from the device cache.
+            if (frameIndex > 0) {
+                cachedTileCount_ +=
+                    static_cast<int64_t>(layer->descriptor.tileCount) - changedThisFrame;
+            }
+        }
+    }
+
+    // Tile payloads uploaded from frame deltas (excludes the static base; the
+    // renderer derives the same value from the descriptor). int64, no overflow:
+    // bounded by the validated payload stream length.
+    int64_t changedTileCount() const {
+        return changedTileCount_;
+    }
+
+    // Tile payload bytes uploaded once (static base + all changed tiles).
+    int64_t uploadedTileBytes() const {
+        return uploadedTileBytes_;
+    }
+
+    // Tile-state lookups served from previously uploaded payloads across the
+    // output timeline (diagnostic only; never claims zero-copy).
+    int64_t cachedTileCount() const {
+        return cachedTileCount_;
+    }
+
+    // Wall time the encode thread spent reading changed tile payloads from
+    // disk (not H2D transfer time; static base reads are excluded, matching the
+    // raw streaming-path hostReadMs semantics).
+    double hostReadMs() const {
+        return static_cast<double>(hostReadUs_.load()) / 1000.0;
+    }
+
+    // Wall time the encode thread spent enqueuing per-tile H2D copies on the
+    // compositor stream.
+    double h2dEnqueueMs() const {
+        return h2dEnqueueMs_;
+    }
+
+    int64_t cacheHits() const {
+        return cachedTileCount_;
+    }
+
+    // First conservative tiled-vs-raw eligibility decision ("" when every layer
+    // is eligible). Diagnostic only; the helper still composites every layer as
+    // a lossless tiled stream (there is no silent raw fallback in the helper).
+    const std::string& rawFallbackReason() const {
+        return rawFallbackReason_;
+    }
+
+private:
+    struct LoadedLayer {
+        TiledOverlayLayerDescriptor descriptor;
+        std::ifstream input;
+        unsigned char* tileCanvas = nullptr;
+        unsigned char* pinnedStaging = nullptr;
+        size_t nextDeltaIndex = 0;
+    };
+
+    static std::unique_ptr<LoadedLayer> loadLayer(
+        const TiledOverlayLayerDescriptor& descriptor) {
+        std::unique_ptr<LoadedLayer> layer = std::make_unique<LoadedLayer>();
+        layer->descriptor = descriptor;
+        const int64_t tileByteSize = descriptor.tileByteSize;
+        const int64_t canvasBytes = static_cast<int64_t>(descriptor.tileCount) * tileByteSize;
+        if (canvasBytes <= 0 || descriptor.maxDeltaBytes < tileByteSize) {
+            fail("Invalid tiled overlay layer: " + descriptor.id);
+        }
+
+        layer->input.open(descriptor.payloadPath, std::ios::binary);
+        if (!layer->input) {
+            fail("Failed to open tiled overlay payload: " + descriptor.payloadPath);
+        }
+        layer->input.seekg(0, std::ios::end);
+        const std::streampos end = layer->input.tellg();
+        layer->input.seekg(0, std::ios::beg);
+        if (end < 0 || static_cast<int64_t>(end) < descriptor.payloadByteLength) {
+            fail("Tiled overlay payload is truncated: " + descriptor.payloadPath);
+        }
+
+        checkCuda(
+            cudaMalloc(&layer->tileCanvas, static_cast<size_t>(canvasBytes)),
+            "cudaMalloc tiled overlay canvas");
+        checkCuda(
+            cudaMallocHost(
+                &layer->pinnedStaging,
+                static_cast<size_t>(descriptor.maxDeltaBytes)),
+            "cudaMallocHost tiled overlay staging");
+
+        // Static base: read every tile's initial payload once and upload it
+        // synchronously before encoding. One-time cost, not timed (matching the
+        // raw static-layer staging semantics); the tiles stay device-resident.
+        for (const auto& record : descriptor.staticTiles) {
+            layer->input.seekg(static_cast<std::streamoff>(record.byteOffset), std::ios::beg);
+            layer->input.read(
+                reinterpret_cast<char*>(layer->pinnedStaging),
+                static_cast<std::streamsize>(kTiledOverlayTileByteSize));
+            if (static_cast<int64_t>(layer->input.gcount()) != kTiledOverlayTileByteSize) {
+                fail("Failed to read static tile of tiled overlay layer: " + descriptor.id);
+            }
+            checkCuda(
+                cudaMemcpy(
+                    layer->tileCanvas +
+                        static_cast<size_t>(record.tileIndex) *
+                            static_cast<size_t>(kTiledOverlayTileByteSize),
+                    layer->pinnedStaging,
+                    static_cast<size_t>(kTiledOverlayTileByteSize),
+                    cudaMemcpyHostToDevice),
+                "cudaMemcpy tiled overlay static tile");
+        }
+        return layer;
+    }
+
+    // Reads the delta's changed tile payloads into the pinned staging buffer
+    // and enqueues one H2D copy per tile on the compositor stream. The staging
+    // buffer is bounded to the largest delta in the descriptor (validated at
+    // load), and each H2D copy reads a distinct staging region, so reusing the
+    // buffer across frames is safe: the enqueued copies complete by the single
+    // per-frame cudaStreamSynchronize before the buffer is rewritten.
+    void uploadDelta(
+        LoadedLayer& layer,
+        const TiledOverlayFrameDelta& delta,
+        cudaStream_t copyStream) {
+        if (delta.changedTiles.empty()) {
+            return;
+        }
+        const size_t deltaBytes = static_cast<size_t>(delta.changedTiles.size()) *
+            static_cast<size_t>(kTiledOverlayTileByteSize);
+        if (deltaBytes > static_cast<size_t>(layer.descriptor.maxDeltaBytes)) {
+            fail("Tiled overlay delta exceeds the bounded staging buffer: " + layer.descriptor.id);
+        }
+
+        const auto readStart = std::chrono::steady_clock::now();
+        size_t stagingOffset = 0;
+        for (const auto& record : delta.changedTiles) {
+            layer.input.seekg(static_cast<std::streamoff>(record.byteOffset), std::ios::beg);
+            layer.input.read(
+                reinterpret_cast<char*>(layer.pinnedStaging + stagingOffset),
+                static_cast<std::streamsize>(kTiledOverlayTileByteSize));
+            if (static_cast<int64_t>(layer.input.gcount()) != kTiledOverlayTileByteSize) {
+                fail(
+                    "Failed to read changed tile payload of tiled overlay layer: " +
+                    layer.descriptor.id);
+            }
+            stagingOffset += static_cast<size_t>(kTiledOverlayTileByteSize);
+        }
+        hostReadUs_ += static_cast<int64_t>(
+            elapsedMs(readStart, std::chrono::steady_clock::now()) * 1000.0);
+
+        const auto enqueueStart = std::chrono::steady_clock::now();
+        stagingOffset = 0;
+        for (const auto& record : delta.changedTiles) {
+            checkCuda(
+                cudaMemcpyAsync(
+                    layer.tileCanvas +
+                        static_cast<size_t>(record.tileIndex) *
+                            static_cast<size_t>(kTiledOverlayTileByteSize),
+                    layer.pinnedStaging + stagingOffset,
+                    static_cast<size_t>(kTiledOverlayTileByteSize),
+                    cudaMemcpyHostToDevice,
+                    copyStream),
+                "cudaMemcpyAsync tiled overlay changed tile");
+            stagingOffset += static_cast<size_t>(kTiledOverlayTileByteSize);
+        }
+        h2dEnqueueMs_ += elapsedMs(enqueueStart, std::chrono::steady_clock::now());
+        uploadedTileBytes_ += static_cast<int64_t>(deltaBytes);
+    }
+
+    std::vector<std::unique_ptr<LoadedLayer>> layers_;
+    std::atomic<int64_t> hostReadUs_{0};
+    int64_t changedTileCount_ = 0;
+    int64_t uploadedTileBytes_ = 0;
+    int64_t cachedTileCount_ = 0;
+    double h2dEnqueueMs_ = 0.0;
+    std::string rawFallbackReason_;
 };
 
 struct CursorAtlasEntry {
@@ -3187,6 +4535,128 @@ __global__ void blendOverlayRgbaNv12Kernel(
     }
 }
 
+// Layer-local pixel offset into the contiguous per-tile device canvas: tile
+// (tileX, tileY) in row-major tile order, pixel (withinX, withinY) inside the
+// tile. Each output pixel maps to exactly one tile, so tile edges are exact and
+// never sampled twice (no seams); edge tiles of partial layers are masked by
+// the caller's layer-bounds checks exactly like the raw full-frame blend.
+__device__ size_t tiledOverlayPixelOffset(
+    int localX,
+    int localY,
+    int tileSize,
+    int tileColumns,
+    int tileByteSize) {
+    const int tileX = localX / tileSize;
+    const int tileY = localY / tileSize;
+    const int withinX = localX - tileX * tileSize;
+    const int withinY = localY - tileY * tileSize;
+    return static_cast<size_t>(tileY * tileColumns + tileX) *
+            static_cast<size_t>(tileByteSize) +
+        static_cast<size_t>((withinY * tileSize + withinX) * 4);
+}
+
+// Blends one tiled/delta overlay layer (device tile canvas) over the composed
+// NV12 frame in z-order. Pixel-for-pixel identical to the raw RGBA blend: each
+// layer-local coordinate samples the same RGBA byte the raw sidecar would hold
+// (the tiles tile the layer exactly), the luma blend and the per-2x2-block
+// alpha-weighted chroma blend reuse the same math (blendByte, rgbaToNv12Yuv,
+// clampByteDevice), and the layer-bounds checks mask partial edge tiles.
+__global__ void blendTiledOverlayRgbaNv12Kernel(
+    const unsigned char* tiles,
+    int tileSize,
+    int tileColumns,
+    int tileByteSize,
+    int layerWidth,
+    int layerHeight,
+    unsigned char* dst,
+    int dstPitch,
+    int dstChromaOffset,
+    int dstWidth,
+    int dstHeight,
+    int layerX,
+    int layerY) {
+    const int localX = blockIdx.x * blockDim.x + threadIdx.x;
+    const int localY = blockIdx.y * blockDim.y + threadIdx.y;
+    if (localX >= layerWidth || localY >= layerHeight) {
+        return;
+    }
+
+    const int x = layerX + localX;
+    const int y = layerY + localY;
+    if (x < 0 || y < 0 || x >= dstWidth || y >= dstHeight) {
+        return;
+    }
+
+    const size_t pixelOffset =
+        tiledOverlayPixelOffset(localX, localY, tileSize, tileColumns, tileByteSize);
+    const int alpha = tiles[pixelOffset + 3];
+    if (alpha > 0) {
+        const int r = tiles[pixelOffset];
+        const int g = tiles[pixelOffset + 1];
+        const int b = tiles[pixelOffset + 2];
+        unsigned char overlayY = 0;
+        unsigned char overlayU = 0;
+        unsigned char overlayV = 0;
+        rgbaToNv12Yuv(r, g, b, overlayY, overlayU, overlayV);
+        unsigned char* yPtr = dst + y * dstPitch + x;
+        *yPtr = blendByte(*yPtr, overlayY, alpha);
+    }
+
+    if ((x % 2) == 0 && (y % 2) == 0 && x + 1 < dstWidth && y + 1 < dstHeight) {
+        int alphaSum = 0;
+        int uSum = 0;
+        int vSum = 0;
+        int samples = 0;
+        for (int dy = 0; dy < 2; ++dy) {
+            for (int dx = 0; dx < 2; ++dx) {
+                const int sampleX = x + dx;
+                const int sampleY = y + dy;
+                const int layerLocalX = sampleX - layerX;
+                const int layerLocalY = sampleY - layerY;
+                if (layerLocalX < 0 || layerLocalY < 0 ||
+                    layerLocalX >= layerWidth || layerLocalY >= layerHeight) {
+                    continue;
+                }
+                const size_t sampleOffset = tiledOverlayPixelOffset(
+                    layerLocalX,
+                    layerLocalY,
+                    tileSize,
+                    tileColumns,
+                    tileByteSize);
+                const int sampleAlpha = tiles[sampleOffset + 3];
+                if (sampleAlpha <= 0) {
+                    continue;
+                }
+                const int r = tiles[sampleOffset];
+                const int g = tiles[sampleOffset + 1];
+                const int b = tiles[sampleOffset + 2];
+                unsigned char sampleYValue = 0;
+                unsigned char sampleU = 0;
+                unsigned char sampleV = 0;
+                rgbaToNv12Yuv(r, g, b, sampleYValue, sampleU, sampleV);
+                alphaSum += sampleAlpha;
+                uSum += static_cast<int>(sampleU) * sampleAlpha;
+                vSum += static_cast<int>(sampleV) * sampleAlpha;
+                ++samples;
+            }
+        }
+        if (samples > 0) {
+            const int avgAlpha = alphaSum / samples;
+            const int avgU = uSum / alphaSum;
+            const int avgV = vSum / alphaSum;
+            unsigned char* uvPtr = dst + dstChromaOffset + (y / 2) * dstPitch + x;
+            uvPtr[0] = blendByte(
+                uvPtr[0],
+                static_cast<unsigned char>(clampByteDevice(avgU)),
+                avgAlpha);
+            uvPtr[1] = blendByte(
+                uvPtr[1],
+                static_cast<unsigned char>(clampByteDevice(avgV)),
+                avgAlpha);
+        }
+    }
+}
+
 // Accumulates one weighted temporal sample into the composed frame using the
 // renderer's cos-tapered shutter plan: dst = clamp(dst + (weightFixed*src)>>8).
 // Weights are normalized to sum to 1, so the accumulation is a weighted average;
@@ -3429,6 +4899,7 @@ public:
         const CursorTrack* cursorTrack,
         const ZoomTrack* zoomTrack,
         OverlayFrameSource* overlaySource,
+        TiledOverlayFrameSource* tiledOverlaySource,
         const NvencCapabilityProbe& capabilityProbe)
         : encoder_(context, width, height, NV_ENC_BUFFER_FORMAT_NV12),
           width_(width),
@@ -3438,7 +4909,10 @@ public:
           webcamCache_(webcamCache),
           cursorTrack_(cursorTrack),
           zoomTrack_(zoomTrack),
-          overlaySource_(overlaySource) {
+          overlaySource_(overlaySource),
+          tiledOverlaySource_(tiledOverlaySource),
+          compositeLayers_(layoutOptions.compositeLayers),
+          hasOverlayLayers_(!compositeLayers_.empty()) {
         loadBackgroundFrame();
         loadWebcamFrame();
         loadCursorAtlas();
@@ -3729,7 +5203,9 @@ public:
                 }
             }
 
-            if (cursorPosition.visible && cursorWidth > 0 && cursorHeight > 0) {
+            const bool drawCursor = cursorPosition.visible && cursorWidth > 0 && cursorHeight > 0 &&
+                !hasOverlayLayers_;
+            if (drawCursor) {
                 const int cursorPadding = useCursorAtlas ? 4 : 2;
                 const int regionX = std::max(0, cursorX - cursorPadding);
                 const int regionY = std::max(0, cursorY - cursorPadding);
@@ -3958,7 +5434,9 @@ public:
                 }
             }
 
-            if (cursorPosition.visible && cursorWidth > 0 && cursorHeight > 0) {
+            const bool drawCursor = cursorPosition.visible && cursorWidth > 0 && cursorHeight > 0 &&
+                !hasOverlayLayers_;
+            if (drawCursor) {
                 const int cursorPadding = useCursorAtlas ? 4 : 2;
                 const int regionX = std::max(0, cursorX - cursorPadding);
                 const int regionY = std::max(0, cursorY - cursorPadding);
@@ -4087,41 +5565,73 @@ public:
             checkCuda(cudaEventRecord(blurEndEvent_, copyStream_), "cudaEventRecord blurEnd");
             zoomBlurRecorded_ = true;
         }
-        if (overlaySource_ && !overlaySource_->empty()) {
+        if (hasOverlayLayers_) {
             checkCuda(cudaEventRecord(overlayStartEvent_, copyStream_), "cudaEventRecord overlayStart");
-            overlaySource_->beginFrame(outputFrameIndex, copyStream_);
-            for (size_t layerIndex = 0; layerIndex < overlaySource_->layerCount(); ++layerIndex) {
-                const auto& layer = overlaySource_->descriptor(layerIndex);
-                const OverlayBlendRegion overlayRegion = overlaySource_->blendRegion(layerIndex);
-                if (overlayRegion.width <= 0 || overlayRegion.height <= 0) {
-                    // Fully transparent static layer: the bounded region is empty
-                    // and the full-frame blend would write nothing either.
-                    continue;
+            if (overlaySource_ && !overlaySource_->empty()) {
+                overlaySource_->beginFrame(outputFrameIndex, copyStream_);
+            }
+            if (tiledOverlaySource_ && !tiledOverlaySource_->empty()) {
+                tiledOverlaySource_->beginFrame(outputFrameIndex, copyStream_);
+            }
+            for (const auto& entry : compositeLayers_) {
+                if (entry.kind == CompositeLayer::Kind::Raw) {
+                    const size_t layerIndex = static_cast<size_t>(entry.sourceIndex);
+                    const auto& layer = overlaySource_->descriptor(layerIndex);
+                    const OverlayBlendRegion overlayRegion = overlaySource_->blendRegion(layerIndex);
+                    if (overlayRegion.width <= 0 || overlayRegion.height <= 0) {
+                        // Fully transparent static layer: the bounded region is empty
+                        // and the full-frame blend would write nothing either.
+                        continue;
+                    }
+                    const dim3 overlayGrid(
+                        (overlayRegion.width + block.x - 1) / block.x,
+                        (overlayRegion.height + block.y - 1) / block.y);
+                    blendOverlayRgbaNv12Kernel<<<overlayGrid, block, 0, copyStream_>>>(
+                        overlaySource_->frameDevicePtr(layerIndex, outputFrameIndex),
+                        layer.width,
+                        layer.height,
+                        static_cast<unsigned char*>(inputFrame->inputPtr),
+                        static_cast<int>(inputFrame->pitch),
+                        static_cast<int>(inputFrame->chromaOffsets[0]),
+                        width_,
+                        height_,
+                        layer.x,
+                        layer.y,
+                        layer.width,
+                        layer.height,
+                        overlayRegion.x,
+                        overlayRegion.y,
+                        overlayRegion.width,
+                        overlayRegion.height);
+                    checkCuda(cudaGetLastError(), "blendOverlayRgbaNv12Kernel");
+                    if (overlayRegion.bounded) {
+                        ++overlayStaticRegionBlends_;
+                    }
+                } else {
+                    const size_t layerIndex = static_cast<size_t>(entry.sourceIndex);
+                    const auto& layer = tiledOverlaySource_->descriptor(layerIndex);
+                    const dim3 tiledGrid(
+                        (layer.width + block.x - 1) / block.x,
+                        (layer.height + block.y - 1) / block.y);
+                    blendTiledOverlayRgbaNv12Kernel<<<tiledGrid, block, 0, copyStream_>>>(
+                        tiledOverlaySource_->tileCanvasDevicePtr(layerIndex),
+                        layer.tileSize,
+                        layer.tileColumns,
+                        static_cast<int>(layer.tileByteSize),
+                        layer.width,
+                        layer.height,
+                        static_cast<unsigned char*>(inputFrame->inputPtr),
+                        static_cast<int>(inputFrame->pitch),
+                        static_cast<int>(inputFrame->chromaOffsets[0]),
+                        width_,
+                        height_,
+                        layer.x,
+                        layer.y);
+                    checkCuda(cudaGetLastError(), "blendTiledOverlayRgbaNv12Kernel");
                 }
-                const dim3 overlayGrid(
-                    (overlayRegion.width + block.x - 1) / block.x,
-                    (overlayRegion.height + block.y - 1) / block.y);
-                blendOverlayRgbaNv12Kernel<<<overlayGrid, block, 0, copyStream_>>>(
-                    overlaySource_->frameDevicePtr(layerIndex, outputFrameIndex),
-                    layer.width,
-                    layer.height,
-                    static_cast<unsigned char*>(inputFrame->inputPtr),
-                    static_cast<int>(inputFrame->pitch),
-                    static_cast<int>(inputFrame->chromaOffsets[0]),
-                    width_,
-                    height_,
-                    layer.x,
-                    layer.y,
-                    layer.width,
-                    layer.height,
-                    overlayRegion.x,
-                    overlayRegion.y,
-                    overlayRegion.width,
-                    overlayRegion.height);
-                checkCuda(cudaGetLastError(), "blendOverlayRgbaNv12Kernel");
-                if (overlayRegion.bounded) {
-                    ++overlayStaticRegionBlends_;
-                }
+            }
+            if (tiledOverlaySource_ && !tiledOverlaySource_->empty()) {
+                ++tiledOverlayBlendFrames_;
             }
             ++overlayBlendFrames_;
             checkCuda(cudaEventRecord(overlayEndEvent_, copyStream_), "cudaEventRecord overlayEnd");
@@ -4285,7 +5795,8 @@ public:
     }
 
     int64_t overlayCacheHits() const {
-        return overlaySource_ ? overlaySource_->cacheHits() : 0;
+        return (overlaySource_ ? overlaySource_->cacheHits() : 0) +
+            (tiledOverlaySource_ ? tiledOverlaySource_->cacheHits() : 0);
     }
 
     int64_t overlayPinnedHits() const {
@@ -4298,6 +5809,39 @@ public:
 
     int64_t overlayPendingReadsPeak() const {
         return overlaySource_ ? overlaySource_->pendingReadsPeak() : 0;
+    }
+
+    int tiledOverlayLayerCount() const {
+        return tiledOverlaySource_ ? static_cast<int>(tiledOverlaySource_->layerCount()) : 0;
+    }
+
+    int tiledOverlayBlendFrames() const {
+        return tiledOverlayBlendFrames_;
+    }
+
+    // Tile payloads uploaded from frame deltas (measured; excludes the static
+    // base, matching the renderer-derived changedTileCount).
+    int64_t tiledChangedTileCount() const {
+        return tiledOverlaySource_ ? tiledOverlaySource_->changedTileCount() : 0;
+    }
+
+    // Tile payload bytes uploaded once (static base + changed tiles; measured).
+    int64_t tiledUploadedTileBytes() const {
+        return tiledOverlaySource_ ? tiledOverlaySource_->uploadedTileBytes() : 0;
+    }
+
+    // Tile-state lookups served from previously uploaded payloads (measured;
+    // diagnostic only, never a zero-copy claim).
+    int64_t tiledCachedTileCount() const {
+        return tiledOverlaySource_ ? tiledOverlaySource_->cachedTileCount() : 0;
+    }
+
+    // First conservative tiled-vs-raw eligibility decision, "" when every tiled
+    // layer is eligible. Observable diagnostic; the helper never silently
+    // falls back to a raw/CPU path for a requested tiled stream.
+    const std::string& tiledRawFallbackReason() const {
+        static const std::string kEmpty;
+        return tiledOverlaySource_ ? tiledOverlaySource_->rawFallbackReason() : kEmpty;
     }
 
     int64_t temporalBlurSamplesTotal() const {
@@ -4325,15 +5869,20 @@ public:
     }
 
     double overlayUploadMs() const {
-        return overlaySource_ ? overlaySource_->uploadMs() : 0.0;
+        return (overlaySource_ ? overlaySource_->uploadMs() : 0.0) +
+            (tiledOverlaySource_ ? tiledOverlaySource_->hostReadMs() +
+                                      tiledOverlaySource_->h2dEnqueueMs()
+                                 : 0.0);
     }
 
     double overlayHostReadMs() const {
-        return overlaySource_ ? overlaySource_->hostReadMs() : 0.0;
+        return (overlaySource_ ? overlaySource_->hostReadMs() : 0.0) +
+            (tiledOverlaySource_ ? tiledOverlaySource_->hostReadMs() : 0.0);
     }
 
     double overlayH2DEnqueueMs() const {
-        return overlaySource_ ? overlaySource_->h2dEnqueueMs() : 0.0;
+        return (overlaySource_ ? overlaySource_->h2dEnqueueMs() : 0.0) +
+            (tiledOverlaySource_ ? tiledOverlaySource_->h2dEnqueueMs() : 0.0);
     }
 
 private:
@@ -4936,7 +6485,7 @@ private:
                     regionY,
                     regionWidth,
                     regionHeight,
-                    cursorPosition.visible,
+                    (cursorPosition.visible && !hasOverlayLayers_),
                     cursorX,
                     cursorY,
                     cursorWidth,
@@ -5191,6 +6740,7 @@ private:
     int copyCompositeFrames_ = 0;
     int zoomBlurFrames_ = 0;
     int overlayBlendFrames_ = 0;
+    int tiledOverlayBlendFrames_ = 0;
     int temporalBlurFrames_ = 0;
     int temporalBlurBgPrecomposedFrames_ = 0;
     int temporalBlurStationaryFrames_ = 0;
@@ -5223,6 +6773,9 @@ private:
     const CursorTrack* cursorTrack_ = nullptr;
     const ZoomTrack* zoomTrack_ = nullptr;
     OverlayFrameSource* overlaySource_ = nullptr;
+    TiledOverlayFrameSource* tiledOverlaySource_ = nullptr;
+    std::vector<CompositeLayer> compositeLayers_;
+    bool hasOverlayLayers_ = false;
     cudaStream_t copyStream_ = nullptr;
     cudaEvent_t compositeStartEvent_ = nullptr;
     cudaEvent_t compositeEndEvent_ = nullptr;
@@ -5247,6 +6800,7 @@ struct CallbackEncodeState {
     const CursorTrack* cursorTrack = nullptr;
     const ZoomTrack* zoomTrack = nullptr;
     OverlayFrameSource* overlaySource = nullptr;
+    TiledOverlayFrameSource* tiledOverlaySource = nullptr;
     const NvencCapabilityProbe* capabilityProbe = nullptr;
     ProgressReportState* progress = nullptr;
     bool oneFramePerMappedDisplayFrame = false;
@@ -5290,6 +6844,10 @@ ProgressCounters collectProgressCounters(
         counters.overlayPendingReadsPeak = sink->overlayPendingReadsPeak();
         counters.overlayHostReadMs = sink->overlayHostReadMs();
         counters.overlayH2DEnqueueMs = sink->overlayH2DEnqueueMs();
+        counters.tiledOverlayLayers = sink->tiledOverlayLayerCount();
+        counters.changedTileCount = sink->tiledChangedTileCount();
+        counters.uploadedTileBytes = sink->tiledUploadedTileBytes();
+        counters.cachedTileCount = sink->tiledCachedTileCount();
     }
     if (webcamCache) {
         counters.webcamDecodeMs = webcamCache->decodeMs;
@@ -5358,6 +6916,10 @@ void encodeMappedDisplayFrame(
             *state->options,
             outputWidthForSource(*state->options, width),
             outputHeightForSource(*state->options, height));
+        validateTiledOverlayBounds(
+            *state->options,
+            outputWidthForSource(*state->options, width),
+            outputHeightForSource(*state->options, height));
         *state->sink = std::make_unique<NvencSink>(
             state->context,
             outputWidthForSource(*state->options, width),
@@ -5370,6 +6932,7 @@ void encodeMappedDisplayFrame(
             state->cursorTrack,
             state->zoomTrack,
             state->overlaySource,
+            state->tiledOverlaySource,
             state->capabilityProbe ? *state->capabilityProbe : NvencCapabilityProbe{});
     }
 
@@ -5481,6 +7044,13 @@ void reportEncodingProgress(
         std::max<int64_t>(0, counters.overlayPinnedHits - state.lastCounters.overlayPinnedHits);
     const int64_t intervalOverlayReadWaits =
         std::max<int64_t>(0, counters.overlayReadWaits - state.lastCounters.overlayReadWaits);
+    const int64_t intervalChangedTileCount =
+        std::max<int64_t>(0, counters.changedTileCount - state.lastCounters.changedTileCount);
+    const int64_t intervalUploadedTileBytes = std::max<int64_t>(
+        0,
+        counters.uploadedTileBytes - state.lastCounters.uploadedTileBytes);
+    const int64_t intervalCachedTileCount =
+        std::max<int64_t>(0, counters.cachedTileCount - state.lastCounters.cachedTileCount);
     std::cerr << std::fixed << std::setprecision(2)
               << "PROGRESS {\"outputCodec\":\"" << state.outputCodec
               << "\",\"currentFrame\":" << encodedFrames
@@ -5520,6 +7090,10 @@ void reportEncodingProgress(
               << ",\"intervalOverlayCacheHits\":" << intervalOverlayCacheHits
               << ",\"intervalOverlayPinnedHits\":" << intervalOverlayPinnedHits
               << ",\"intervalOverlayReadWaits\":" << intervalOverlayReadWaits
+              << ",\"intervalChangedTileCount\":" << intervalChangedTileCount
+              << ",\"intervalUploadedTileBytes\":" << intervalUploadedTileBytes
+              << ",\"intervalCachedTileCount\":" << intervalCachedTileCount
+              << ",\"tiledOverlayLayers\":" << counters.tiledOverlayLayers
               << ",\"overlayPendingReadsPeak\":" << counters.overlayPendingReadsPeak
               << "}" << std::endl;
     state.lastReportAt = now;
@@ -5532,8 +7106,12 @@ void reportEncodingProgress(
 int main(int argc, char** argv) {
     const char* requestedOutputCodec = "h264";
     NvencCapabilityProbe capabilityProbe;
+    // Declared outside the try so the failure summary can report the validated
+    // tiled overlay descriptor facts (layer count + derived bookkeeping) when
+    // an encode-stage error aborts before the runtime counters exist.
+    Options options;
     try {
-        Options options = parseOptions(argc, argv);
+        options = parseOptions(argc, argv);
         requestedOutputCodec = outputCodecName(options.outputCodec);
         options.timelineSegments = loadTimelineMap(options.timelineMapPath);
         if (!options.timelineSegments.empty() && !options.callbackEncode) {
@@ -5586,6 +7164,16 @@ int main(int argc, char** argv) {
                 ? nullptr
                 : std::make_unique<OverlayFrameSource>(options.overlayLayers);
         OverlayFrameSource* overlaySourcePtr = overlaySource.get();
+        // Tiled/delta overlay stream: the descriptor was validated at parse time
+        // and the device tile cache is staged here (before decoding), so a
+        // truncated payload or CUDA allocation failure surfaces before any
+        // encode work. Raw and tiled sources coexist in a single global z-order
+        // (ascending `order`) rather than being grouped raw-first-then-tiled.
+        std::unique_ptr<TiledOverlayFrameSource> tiledOverlaySource =
+            options.tiledOverlayLayers.empty()
+                ? nullptr
+                : std::make_unique<TiledOverlayFrameSource>(options.tiledOverlayLayers);
+        TiledOverlayFrameSource* tiledOverlaySourcePtr = tiledOverlaySource.get();
         const std::vector<double> sourcePts = loadFramePts(options.sourcePtsPath);
         const bool useSourcePts =
             options.inputFrames > 0 &&
@@ -5642,6 +7230,7 @@ int main(int argc, char** argv) {
             cursorTrackPtr,
             zoomTrackPtr,
             overlaySourcePtr,
+            tiledOverlaySourcePtr,
             &capabilityProbe,
             &progressState,
             useDecoderFramePolicy,
@@ -5696,6 +7285,10 @@ int main(int argc, char** argv) {
                         options,
                         outputWidthForSource(options, decoder->GetWidth()),
                         outputHeightForSource(options, decoder->GetHeight()));
+                    validateTiledOverlayBounds(
+                        options,
+                        outputWidthForSource(options, decoder->GetWidth()),
+                        outputHeightForSource(options, decoder->GetHeight()));
                     sink = std::make_unique<NvencSink>(
                         context,
                         outputWidthForSource(options, decoder->GetWidth()),
@@ -5708,6 +7301,7 @@ int main(int argc, char** argv) {
                         cursorTrackPtr,
                         zoomTrackPtr,
                         overlaySourcePtr,
+                        tiledOverlaySourcePtr,
                         capabilityProbe);
                 }
                 const auto encodeStart = std::chrono::steady_clock::now();
@@ -5747,6 +7341,10 @@ int main(int argc, char** argv) {
                         options,
                         outputWidthForSource(options, decoder->GetWidth()),
                         outputHeightForSource(options, decoder->GetHeight()));
+                    validateTiledOverlayBounds(
+                        options,
+                        outputWidthForSource(options, decoder->GetWidth()),
+                        outputHeightForSource(options, decoder->GetHeight()));
                     sink = std::make_unique<NvencSink>(
                         context,
                         outputWidthForSource(options, decoder->GetWidth()),
@@ -5759,6 +7357,7 @@ int main(int argc, char** argv) {
                         cursorTrackPtr,
                         zoomTrackPtr,
                         overlaySourcePtr,
+                        tiledOverlaySourcePtr,
                         capabilityProbe);
                 }
                 const auto encodeStart = std::chrono::steady_clock::now();
@@ -5863,6 +7462,13 @@ int main(int argc, char** argv) {
                   << "\"zoomBlurFrames\":" << (sink ? sink->zoomBlurFrames() : 0) << ","
                   << "\"overlayLayers\":" << options.overlayLayers.size() << ","
                   << "\"overlayBlendFrames\":" << (sink ? sink->overlayBlendFrames() : 0) << ","
+                  << "\"tiledOverlayLayers\":" << (sink ? sink->tiledOverlayLayerCount() : 0) << ","
+                  << "\"tiledOverlayBlendFrames\":" << (sink ? sink->tiledOverlayBlendFrames() : 0) << ","
+                  << "\"changedTileCount\":" << (sink ? sink->tiledChangedTileCount() : 0) << ","
+                  << "\"uploadedTileBytes\":" << (sink ? sink->tiledUploadedTileBytes() : 0) << ","
+                  << "\"cachedTileCount\":" << (sink ? sink->tiledCachedTileCount() : 0) << ","
+                  << "\"rawFallbackReason\":\""
+                  << (sink ? sink->tiledRawFallbackReason() : "") << "\","
                   << "\"temporalBlurFrames\":" << (sink ? sink->temporalBlurFrames() : 0) << ","
                   << "\"temporalBlurSamplesTotal\":" << (sink ? sink->temporalBlurSamplesTotal() : 0) << ","
                   << "\"temporalBlurBgPrecomposedFrames\":" << (sink ? sink->temporalBlurBgPrecomposedFrames() : 0) << ","
@@ -5926,18 +7532,27 @@ int main(int argc, char** argv) {
         sink.reset();
         decoder.reset();
         webcamStream.reset();
-        // OverlayFrameSource owns device/pinned buffers (cudaFree/cudaFreeHost in
-        // its destructor); it must be destroyed while the primary context is still
-        // current, before the context is released.
+        // OverlayFrameSource and TiledOverlayFrameSource own device/pinned
+        // buffers (cudaFree/cudaFreeHost in their destructors); they must be
+        // destroyed while the primary context is still current, before the
+        // context is released.
         overlaySource.reset();
+        tiledOverlaySource.reset();
         // The primary context is released, not destroyed.
         checkCu(cuDevicePrimaryCtxRelease(device), "cuDevicePrimaryCtxRelease");
         return 0;
     } catch (const std::exception& error) {
+        const TiledOverlayDerivedMetrics tiledMetrics =
+            computeTiledOverlayDerivedMetrics(options.tiledOverlayLayers);
         std::cerr << "{\"success\":false,\"outputCodec\":\""
                   << requestedOutputCodec
                   << "\",\"backend\":\"nvidia-nvenc\",\"error\":\""
                   << error.what()
+                  << "\",\"tiledOverlayLayers\":" << options.tiledOverlayLayers.size()
+                  << ",\"changedTileCount\":" << tiledMetrics.changedTileCount
+                  << ",\"uploadedTileBytes\":" << tiledMetrics.uploadedTileBytes
+                  << ",\"cachedTileCount\":" << tiledMetrics.cachedTileCount
+                  << ",\"rawFallbackReason\":\"" << tiledMetrics.rawFallbackReason
                   << "\",\"nvencDiagnostics\":{"
                   << "\"deviceName\":\"" << capabilityProbe.deviceName << "\","
                   << "\"cudaDriverVersion\":" << capabilityProbe.cudaDriverVersion << ","

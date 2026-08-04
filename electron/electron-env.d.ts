@@ -142,6 +142,33 @@ interface RendererNativeStaticLayoutChunkMetric {
 	};
 }
 
+interface RendererNativeTiledOverlayTileRecord {
+	tileIndex: number;
+	byteOffset: number;
+	byteLength: number;
+}
+
+interface RendererNativeTiledOverlayLayerDescriptor {
+	id: string;
+	order: number;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	frameRate: number;
+	durationSec: number;
+	frameCount: number;
+	tileSize: 128;
+	pixelFormat: "rgba";
+	payloadPath: string;
+	payloadByteLength: number;
+	staticTiles: readonly RendererNativeTiledOverlayTileRecord[];
+	frameDeltas: readonly {
+		frameIndex: number;
+		changedTiles: readonly RendererNativeTiledOverlayTileRecord[];
+	}[];
+}
+
 interface RendererNativeStaticLayoutMetrics extends RendererFfmpegAudioMuxMetrics {
 	chunkCount: number;
 	chunkDurationSec: number;
@@ -151,6 +178,15 @@ interface RendererNativeStaticLayoutMetrics extends RendererFfmpegAudioMuxMetric
 	fallbackChunkCount: number;
 	videoOnlyBytes?: number;
 	chunks: RendererNativeStaticLayoutChunkMetric[];
+	tiledOverlayLayers?: number;
+	tiledOverlayBlendFrames?: number;
+	changedTileCount?: number;
+	uploadedTileBytes?: number;
+	cachedTileCount?: number;
+	rawFallbackReason?: string;
+	overlayHostReadMs?: number;
+	overlayH2DEnqueueMs?: number;
+	overlayCacheHits?: number;
 }
 
 interface RendererNativeStaticLayoutProgress {
@@ -379,6 +415,7 @@ interface Window {
 				frameCount: number;
 				pixelFormat: "rgba";
 			}>;
+			tiledOverlayLayers?: RendererNativeTiledOverlayLayerDescriptor[];
 			contentWidth: number;
 			contentHeight: number;
 			offsetX: number;

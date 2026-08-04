@@ -85,10 +85,29 @@ import {
 import { VideoMuxer } from "./muxer";
 import { captureCanvasFrameForNativeExport } from "./nativeFrameCapture";
 import { roundNativeStaticLayoutContentSize } from "./nativeStaticLayoutGeometry";
-import type { NativeStaticLayoutOverlayLayer } from "./nativeStaticLayoutOverlays";
+import type {
+	NativeStaticLayoutOverlayLayer,
+	NativeTiledOverlayFrameDelta,
+	NativeTiledOverlayLayerDescriptor,
+	NativeTiledOverlayRawFallbackReason,
+	NativeTiledOverlayStaticTileRecord,
+	NativeTiledOverlayTileRecord,
+} from "./nativeStaticLayoutOverlays";
 import {
 	areNativeStaticLayoutOverlayFramesEqual,
 	getNativeStaticLayoutOverlayFrameByteSize,
+	getNativeTiledOverlayTileColumns,
+	getNativeTiledOverlayTileCount,
+	getNativeTiledOverlayTileIndex,
+	getNativeTiledOverlayTileRows,
+	NATIVE_TILED_OVERLAY_MAX_CHANGED_TILE_FRACTION,
+	NATIVE_TILED_OVERLAY_MAX_PAYLOAD_BYTES_FRACTION,
+	NATIVE_TILED_OVERLAY_PIXEL_FORMAT,
+	NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE,
+	NATIVE_TILED_OVERLAY_TILE_SIZE,
+	resolveNativeTiledOverlayRawFallbackReason,
+	sortNativeStaticLayoutOverlayLayers,
+	sortNativeTiledOverlayLayers,
 } from "./nativeStaticLayoutOverlays";
 import { buildNativeStaticLayoutCursorTelemetry } from "./nativeStaticLayoutTelemetry";
 import { resolveSourceAudioFallbackPaths } from "./sourceAudioFallback";
@@ -171,6 +190,24 @@ interface VideoExporterConfig extends ExportConfig {
 	onProgress?: (progress: ExportProgress) => void;
 	preferredEncoderPath?: SupportedMp4EncoderPath | null;
 }
+
+/**
+ * Result shape for the native static-layout overlay sidecar. The renderer
+ * currently composites every overlay element (cursor, captions, annotations,
+ * webcam, frame) into a single transparent RGBA canvas in
+ * `ModernFrameRenderer.renderOverlayFrame`, so this result usually contains a
+ * single logical "native-effects" layer that is either tiled (sparse) or raw
+ * (dense/unsupported fallback). Both arrays are returned, sorted by order then
+ * id, and forwarded to `nativeStaticLayoutExport` so a future split renderer
+ * can emit mixed raw + tiled layers with preserved z-order; the native consumer
+ * in `electron/ipc/export/native-video.ts` already validates, sorts, and
+ * composites both lists.
+ */
+type NativeStaticLayoutOverlayPreparationResult = {
+	overlayLayers: NativeStaticLayoutOverlayLayer[];
+	tiledOverlayLayers: NativeTiledOverlayLayerDescriptor[];
+	rawFallbackReason: NativeTiledOverlayRawFallbackReason | null;
+};
 
 type NativeAudioPlan =
 	| {
@@ -2619,15 +2656,45 @@ export class ModernVideoExporter {
 		});
 	}
 
+	private extractNativeTiledOverlayTileInto(
+		target: Uint8Array,
+		source: Uint8Array,
+		sourceWidth: number,
+		sourceHeight: number,
+		tileX: number,
+		tileY: number,
+	): void {
+		target.fill(0);
+		const startY = tileY * NATIVE_TILED_OVERLAY_TILE_SIZE;
+		const startX = tileX * NATIVE_TILED_OVERLAY_TILE_SIZE;
+		const endY = Math.min(sourceHeight, startY + NATIVE_TILED_OVERLAY_TILE_SIZE);
+		const endX = Math.min(sourceWidth, startX + NATIVE_TILED_OVERLAY_TILE_SIZE);
+		const copyRows = Math.max(0, endY - startY);
+		const copyCols = Math.max(0, endX - startX);
+		for (let row = 0; row < copyRows; row += 1) {
+			const sourceRowOffset = ((startY + row) * sourceWidth + startX) * 4;
+			const targetRowOffset = row * NATIVE_TILED_OVERLAY_TILE_SIZE * 4;
+			const rowBytes = copyCols * 4;
+			target.set(
+				source.subarray(sourceRowOffset, sourceRowOffset + rowBytes),
+				targetRowOffset,
+			);
+		}
+	}
+
 	private async prepareNativeStaticLayoutOverlay(
 		videoInfo: DecodedVideoInfo,
 		durationSec: number,
 		totalFrames: number,
 		cursorExcluded = false,
-	): Promise<NativeStaticLayoutOverlayLayer[] | null> {
+	): Promise<NativeStaticLayoutOverlayPreparationResult | null> {
 		this.nativeStaticLayoutOverlayFailure = null;
 		if (!this.hasNativeStaticLayoutOverlayContent()) {
-			return [];
+			return {
+				overlayLayers: sortNativeStaticLayoutOverlayLayers([]),
+				tiledOverlayLayers: sortNativeTiledOverlayLayers([]),
+				rawFallbackReason: null,
+			};
 		}
 		if (this.hasUnsupportedNativeStaticLayoutOverlayContent()) {
 			this.recordNativeStaticLayoutOverlayFailure(
@@ -2651,18 +2718,18 @@ export class ModernVideoExporter {
 			return null;
 		}
 
-		let stream: Awaited<ReturnType<typeof api.openExportStream>> | null = null;
-		let streamId: string | null = null;
+		let rawStream: Awaited<ReturnType<typeof api.openExportStream>> | null = null;
+		let rawStreamId: string | null = null;
 		try {
-			stream = await api.openExportStream({ extension: "rgba" });
-			if (!stream.success || !stream.streamId || !stream.tempPath) {
+			rawStream = await api.openExportStream({ extension: "rgba" });
+			if (!rawStream.success || !rawStream.streamId || !rawStream.tempPath) {
 				this.recordNativeStaticLayoutOverlayFailure(
 					"open-export-stream",
-					stream.error ?? "Native overlay export stream could not be opened",
+					rawStream.error ?? "Native overlay export stream could not be opened",
 				);
 				return null;
 			}
-			streamId = stream.streamId;
+			rawStreamId = rawStream.streamId;
 		} catch (error) {
 			this.recordNativeStaticLayoutOverlayFailure(
 				"open-export-stream",
@@ -2676,30 +2743,40 @@ export class ModernVideoExporter {
 			this.config.width,
 			this.config.height,
 		);
-		// Renderer-side sidecar deduplication: every frame is still rendered and
-		// captured (so dynamic overlays such as a resuming cursor are detected),
-		// but writes stop at the last frame that differs from its successor. The
-		// identical trailing suffix is trimmed and native readers clamp/repeat the
-		// final written frame, so a static overlay (captions, annotations, frame,
-		// idle cursor) collapses to a single sidecar frame.
-		let writtenFrameCount = 0;
+		const tileColumns = getNativeTiledOverlayTileColumns(this.config.width);
+		const tileRows = getNativeTiledOverlayTileRows(this.config.height);
+		const tileCount = getNativeTiledOverlayTileCount(this.config.width, this.config.height);
+
+		const scratchTile = new Uint8Array(NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE);
+		const previousTiles: (Uint8Array | null)[] = new Array(tileCount).fill(null);
+		const staticTiles: NativeTiledOverlayStaticTileRecord[] = [];
+		const frameDeltas: NativeTiledOverlayFrameDelta[] = [];
+		const tiledPayloadBuffers: Uint8Array[] = [];
+		let tiledPayloadOffset = 0;
+		let tiledAbandoned = false;
+		let rawFallbackReason: NativeTiledOverlayRawFallbackReason | null = null;
+		const rawPhysicalBytes = this.config.width * this.config.height * 4 * totalFrames;
+		const maxTiledPayloadBytes =
+			rawPhysicalBytes * NATIVE_TILED_OVERLAY_MAX_PAYLOAD_BYTES_FRACTION;
+
+		let rawWrittenFrameCount = 0;
 		let runStartFrameIndex = 0;
 		let runFrame: Uint8Array | null = null;
-		if (streamId === null) {
+		if (rawStreamId === null) {
 			this.recordNativeStaticLayoutOverlayFailure(
 				"open-export-stream",
 				"Native overlay export stream id was not set",
 			);
 			return null;
 		}
-		const activeStreamId: string = streamId;
-		const writeNativeStaticLayoutOverlayFrame = async (
+		const activeRawStreamId: string = rawStreamId;
+		const writeRawOverlayFrame = async (
 			frameIndex: number,
 			frame: Uint8Array,
 		): Promise<void> => {
 			try {
 				const result = await api.writeExportStreamChunk(
-					activeStreamId,
+					activeRawStreamId,
 					frameIndex * frameByteSize,
 					frame,
 				);
@@ -2711,23 +2788,22 @@ export class ModernVideoExporter {
 					`overlay-stream-write: ${error instanceof Error ? error.message : String(error)}`,
 				);
 			}
-			writtenFrameCount += 1;
+			rawWrittenFrameCount += 1;
 		};
-		const flushIdenticalRun = async (untilFrameIndex: number): Promise<void> => {
+		const flushRawIdenticalRun = async (untilFrameIndex: number): Promise<void> => {
 			if (runFrame === null) {
 				return;
 			}
-			// The run holds one byte-identical frame; write it at every index of the
-			// run so the sidecar keeps the exact prefix up to the last changed frame.
 			for (
 				let frameIndex = runStartFrameIndex;
 				frameIndex < untilFrameIndex;
 				frameIndex += 1
 			) {
-				await writeNativeStaticLayoutOverlayFrame(frameIndex, runFrame);
+				await writeRawOverlayFrame(frameIndex, runFrame);
 			}
 		};
-		let finalizedTempPath: string | null = null;
+
+		let rawTempPath: string | null = null;
 		try {
 			await renderer.initialize();
 			for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
@@ -2758,54 +2834,119 @@ export class ModernVideoExporter {
 						`overlay-invalid-frame-size: expected ${frameByteSize} bytes, received ${frame.byteLength}`,
 					);
 				}
+
 				if (runFrame === null) {
 					runFrame = frame;
 					runStartFrameIndex = frameIndex;
+				} else if (!areNativeStaticLayoutOverlayFramesEqual(frame, runFrame)) {
+					await flushRawIdenticalRun(frameIndex);
+					runFrame = frame;
+					runStartFrameIndex = frameIndex;
+				}
+
+				if (tiledAbandoned) {
 					continue;
 				}
-				if (areNativeStaticLayoutOverlayFramesEqual(frame, runFrame)) {
-					// The identical run extends; defer writing until a later change (or
-					// the timeline end) proves whether this run is a real prefix.
+
+				const changedTiles: NativeTiledOverlayTileRecord[] = [];
+				for (let tileY = 0; tileY < tileRows; tileY += 1) {
+					for (let tileX = 0; tileX < tileColumns; tileX += 1) {
+						const tileIndex = getNativeTiledOverlayTileIndex(tileX, tileY, tileColumns);
+						this.extractNativeTiledOverlayTileInto(
+							scratchTile,
+							frame,
+							this.config.width,
+							this.config.height,
+							tileX,
+							tileY,
+						);
+						const previous = previousTiles[tileIndex];
+						if (
+							previous !== null &&
+							areNativeStaticLayoutOverlayFramesEqual(previous, scratchTile)
+						) {
+							continue;
+						}
+						if (
+							tiledPayloadOffset + NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE >=
+							maxTiledPayloadBytes
+						) {
+							tiledAbandoned = true;
+							rawFallbackReason = "payload-bytes-exceed-raw";
+							tiledPayloadBuffers.length = 0;
+							staticTiles.length = 0;
+							frameDeltas.length = 0;
+							previousTiles.length = 0;
+							break;
+						}
+						const tileCopy = scratchTile.slice();
+						const record: NativeTiledOverlayTileRecord = {
+							tileIndex,
+							byteOffset: tiledPayloadOffset,
+							byteLength: NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE,
+						};
+						tiledPayloadBuffers.push(tileCopy);
+						tiledPayloadOffset += NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE;
+						previousTiles[tileIndex] = tileCopy;
+						if (frameIndex === 0) {
+							staticTiles.push(record);
+						} else {
+							changedTiles.push(record);
+						}
+					}
+					if (tiledAbandoned) {
+						break;
+					}
+				}
+				if (tiledAbandoned) {
 					continue;
 				}
-				await flushIdenticalRun(frameIndex);
-				runFrame = frame;
-				runStartFrameIndex = frameIndex;
+				if (frameIndex > 0 && changedTiles.length > 0) {
+					if (
+						changedTiles.length >
+						tileCount * NATIVE_TILED_OVERLAY_MAX_CHANGED_TILE_FRACTION
+					) {
+						tiledAbandoned = true;
+						rawFallbackReason = "dense-frame-delta";
+						tiledPayloadBuffers.length = 0;
+						staticTiles.length = 0;
+						frameDeltas.length = 0;
+						previousTiles.length = 0;
+						continue;
+					}
+					frameDeltas.push({ frameIndex, changedTiles });
+				}
 			}
-			// The final run is the identical suffix: write only the last changed frame
-			// (runStartFrameIndex) once; native readers clamp/repeat it to frameCount.
+
 			if (runFrame !== null) {
-				await writeNativeStaticLayoutOverlayFrame(runStartFrameIndex, runFrame);
+				await writeRawOverlayFrame(runStartFrameIndex, runFrame);
 			}
-			const effectiveFrameCount = writtenFrameCount;
-			const expectedBytes = frameByteSize * effectiveFrameCount;
-			let closed: Awaited<ReturnType<typeof api.closeExportStream>>;
+
+			let rawClosed: Awaited<ReturnType<typeof api.closeExportStream>>;
 			try {
-				closed = await api.closeExportStream(activeStreamId);
+				rawClosed = await api.closeExportStream(activeRawStreamId);
 			} catch (error) {
 				throw new Error(
 					`overlay-stream-close: ${error instanceof Error ? error.message : String(error)}`,
 				);
 			}
-			if (!closed.success || !closed.tempPath) {
+			if (!rawClosed.success || !rawClosed.tempPath) {
 				throw new Error(
-					`overlay-stream-close: ${closed.error ?? "Native overlay export stream did not finalize"}`,
+					`overlay-stream-close: ${rawClosed.error ?? "Native overlay export stream did not finalize"}`,
 				);
 			}
-			finalizedTempPath = closed.tempPath;
-			if (closed.bytesWritten !== expectedBytes) {
-				// Belt-and-suspenders validation on the main-process sidecar: a truncated
-				// sidecar would later fail native-side validation with a confusing
-				// "truncated" error, so fail here with the precise byte count instead.
+			rawTempPath = rawClosed.tempPath;
+			const rawExpectedBytes = frameByteSize * rawWrittenFrameCount;
+			if (rawClosed.bytesWritten !== rawExpectedBytes) {
 				throw new Error(
-					`overlay-stream-truncated: expected ${expectedBytes} bytes, stream wrote ${closed.bytesWritten}`,
+					`overlay-stream-truncated: expected ${rawExpectedBytes} bytes, stream wrote ${rawClosed.bytesWritten}`,
 				);
 			}
-			return [
-				{
+
+			if (!tiledAbandoned) {
+				const tileLayer: NativeTiledOverlayLayerDescriptor = {
 					id: "native-effects",
 					order: 0,
-					path: closed.tempPath,
 					x: 0,
 					y: 0,
 					width: this.config.width,
@@ -2813,31 +2954,126 @@ export class ModernVideoExporter {
 					frameRate: this.config.frameRate,
 					durationSec,
 					frameCount: totalFrames,
-					...(effectiveFrameCount < totalFrames ? { effectiveFrameCount } : {}),
-					pixelFormat: "rgba",
-				},
-			];
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			const stage = message.startsWith("overlay-")
-				? message.split(":", 1)[0]
-				: "overlay-preparation";
-			this.recordNativeStaticLayoutOverlayFailure(stage, message);
-			if (streamId) {
-				try {
-					await api.closeExportStream(streamId, { abort: true });
-				} catch {
-					// The stream may already be closed; abort is best-effort cleanup.
+					tileSize: NATIVE_TILED_OVERLAY_TILE_SIZE,
+					pixelFormat: NATIVE_TILED_OVERLAY_PIXEL_FORMAT,
+					payloadPath: "",
+					payloadByteLength: tiledPayloadOffset,
+					staticTiles,
+					frameDeltas,
+				};
+				const finalFallbackReason = resolveNativeTiledOverlayRawFallbackReason(tileLayer);
+				if (finalFallbackReason) {
+					tiledAbandoned = true;
+					rawFallbackReason = finalFallbackReason;
+					tiledPayloadBuffers.length = 0;
+					staticTiles.length = 0;
+					frameDeltas.length = 0;
+					previousTiles.length = 0;
+				} else {
+					let tiledStream: Awaited<ReturnType<typeof api.openExportStream>> | null = null;
+					try {
+						tiledStream = await api.openExportStream({ extension: "tiledrgba" });
+						if (
+							!tiledStream.success ||
+							!tiledStream.streamId ||
+							!tiledStream.tempPath
+						) {
+							throw new Error(
+								tiledStream.error ??
+									"Tiled overlay export stream could not be opened",
+							);
+						}
+						const activeTiledStreamId = tiledStream.streamId;
+						for (
+							let bufferIndex = 0;
+							bufferIndex < tiledPayloadBuffers.length;
+							bufferIndex += 1
+						) {
+							const offset = bufferIndex * NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE;
+							const result = await api.writeExportStreamChunk(
+								activeTiledStreamId,
+								offset,
+								tiledPayloadBuffers[bufferIndex]!,
+							);
+							if (!result.success) {
+								throw new Error(
+									result.error ?? "Failed to write tiled overlay tile",
+								);
+							}
+						}
+						const tiledClosed = await api.closeExportStream(activeTiledStreamId);
+						if (!tiledClosed.success || !tiledClosed.tempPath) {
+							throw new Error(
+								tiledClosed.error ?? "Tiled overlay export stream did not finalize",
+							);
+						}
+						const tiledExpectedBytes =
+							tiledPayloadBuffers.length * NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE;
+						if (tiledClosed.bytesWritten !== tiledExpectedBytes) {
+							throw new Error(
+								`tiled-overlay-stream-truncated: expected ${tiledExpectedBytes} bytes, stream wrote ${tiledClosed.bytesWritten}`,
+							);
+						}
+						tileLayer.payloadPath = tiledClosed.tempPath;
+						if (rawTempPath) {
+							await api.discardExportedTemp(rawTempPath).catch(() => undefined);
+						}
+						return {
+							overlayLayers: sortNativeStaticLayoutOverlayLayers([]),
+							tiledOverlayLayers: sortNativeTiledOverlayLayers([tileLayer]),
+							rawFallbackReason: null,
+						};
+					} catch (error) {
+						if (tiledStream?.streamId) {
+							await api
+								.closeExportStream(tiledStream.streamId, { abort: true })
+								.catch(() => undefined);
+						}
+						throw error;
+					}
 				}
 			}
-			// The stream may have closed successfully before a post-close validation
-			// failure (e.g. a truncated sidecar); remove that file so a bad sidecar
-			// never survives to confuse a later native export attempt.
-			if (finalizedTempPath) {
+
+			const rawLayer: NativeStaticLayoutOverlayLayer = {
+				id: "native-effects",
+				order: 0,
+				path: rawTempPath,
+				x: 0,
+				y: 0,
+				width: this.config.width,
+				height: this.config.height,
+				frameRate: this.config.frameRate,
+				durationSec,
+				frameCount: totalFrames,
+				...(rawWrittenFrameCount < totalFrames
+					? { effectiveFrameCount: rawWrittenFrameCount }
+					: {}),
+				pixelFormat: "rgba",
+			};
+			return {
+				overlayLayers: sortNativeStaticLayoutOverlayLayers([rawLayer]),
+				tiledOverlayLayers: sortNativeTiledOverlayLayers([]),
+				rawFallbackReason,
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			const stage =
+				message.startsWith("overlay-") || message.startsWith("tiled-overlay-")
+					? message.split(":", 1)[0]
+					: "overlay-preparation";
+			this.recordNativeStaticLayoutOverlayFailure(stage, message);
+			if (rawStreamId) {
 				try {
-					await api.discardExportedTemp(finalizedTempPath);
+					await api.closeExportStream(rawStreamId, { abort: true });
 				} catch {
-					// Best-effort cleanup; the owned-path registry ignores unknown paths.
+					// best-effort cleanup
+				}
+			}
+			if (rawTempPath) {
+				try {
+					await api.discardExportedTemp(rawTempPath);
+				} catch {
+					// best-effort cleanup
 				}
 			}
 			console.warn("[VideoExporter] Native overlay preparation failed", {
@@ -2846,7 +3082,8 @@ export class ModernVideoExporter {
 				durationSec,
 				totalFrames,
 				frameByteSize,
-				writtenFrameCount,
+				rawWrittenFrameCount,
+				tiledPayloadOffset,
 				cancelled: this.cancelled,
 			});
 			return null;
@@ -3025,13 +3262,15 @@ export class ModernVideoExporter {
 			await this.cleanupNativeStaticLayoutBackground(background);
 			return null;
 		}
-		const overlayLayers = await this.prepareNativeStaticLayoutOverlay(
+		const overlayPreparation = await this.prepareNativeStaticLayoutOverlay(
 			videoInfo,
 			effectiveDuration,
 			totalFrames,
 			cursorAtlasOwnedByNative,
 		);
-		if (needsOverlayLayers && !overlayLayers) {
+		const overlayLayers = overlayPreparation?.overlayLayers ?? [];
+		const tiledOverlayLayers = overlayPreparation?.tiledOverlayLayers ?? [];
+		if (needsOverlayLayers && !overlayPreparation) {
 			this.nativeStaticLayoutSkipReason = "native-overlay-preparation-failed";
 			const overlayFailure = this.nativeStaticLayoutOverlayFailure;
 			this.nativeStaticLayoutSkipReasons = overlayFailure
@@ -3054,7 +3293,8 @@ export class ModernVideoExporter {
 			await this.cleanupNativeStaticLayoutBackground(background);
 			return null;
 		}
-		const overlayTempPath = overlayLayers?.[0]?.path ?? null;
+		const overlayTempPath =
+			tiledOverlayLayers[0]?.payloadPath ?? overlayLayers[0]?.path ?? null;
 		const startedAt = this.getNowMs();
 		const sessionId = `recordly-static-layout-${Date.now()}-${Math.random()
 			.toString(36)
@@ -3216,7 +3456,10 @@ export class ModernVideoExporter {
 				backgroundBlurPx: Math.max(0, (this.config.backgroundBlur ?? 0) * 3),
 				borderRadius,
 				shadowIntensity,
-				webcamInputPath: overlayLayers?.length ? null : (webcamOverlay?.inputPath ?? null),
+				webcamInputPath:
+					overlayLayers.length || tiledOverlayLayers.length
+						? null
+						: (webcamOverlay?.inputPath ?? null),
 				webcamLeft: webcamOverlay?.left,
 				webcamTop: webcamOverlay?.top,
 				webcamSize: webcamOverlay?.size,
@@ -3231,7 +3474,8 @@ export class ModernVideoExporter {
 				// True only when the CUDA compositor owns the cursor: the overlay
 				// sidecar excluded cursor pixels and the native atlas must draw them.
 				cursorAtlasOwned: cursorAtlasOwnedByNative || undefined,
-				overlayLayers: overlayLayers?.length ? overlayLayers : undefined,
+				overlayLayers: overlayLayers.length ? overlayLayers : undefined,
+				tiledOverlayLayers: tiledOverlayLayers.length ? tiledOverlayLayers : undefined,
 				zoomTelemetry,
 				temporalBlur: getTemporalMotionBlurConfig(this.config.zoomTemporalMotionBlur, {
 					sampleCount: this.config.zoomMotionBlurSampleCount,

@@ -1,18 +1,25 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ModernVideoExporter as ModernVideoExporterClass } from "./modernVideoExporter";
+import { NATIVE_TILED_OVERLAY_TILE_SIZE } from "./nativeStaticLayoutOverlays";
 import type { DecodedVideoInfo } from "./streamingDecoder";
 
 const FRAME_BYTE_SIZE = 1920 * 1080 * 4;
 const DEFAULT_FRAME_VALUE = 0xaa;
+const TILE_BYTE_SIZE = NATIVE_TILED_OVERLAY_TILE_SIZE * NATIVE_TILED_OVERLAY_TILE_SIZE * 4;
+const TILE_COLUMNS = Math.ceil(1920 / NATIVE_TILED_OVERLAY_TILE_SIZE);
+const TILE_ROWS = Math.ceil(1080 / NATIVE_TILED_OVERLAY_TILE_SIZE);
+const TILE_COUNT = TILE_COLUMNS * TILE_ROWS;
+const STATIC_TILED_PAYLOAD_BYTES = TILE_COUNT * TILE_BYTE_SIZE;
 
 const frameSource = vi.hoisted(() => {
 	return {
-		// Per-capture fill values; consecutive captured RGBA frames are byte-compared
-		// by the exporter, so tests control dedup by choosing constant vs varying
-		// values. Works for both capture paths (VideoFrame copyTo and readback).
 		values: [] as number[],
 		videoFrameCall: 0,
 		readbackCall: 0,
+		fill: (frameIndex: number, buffer: Uint8Array | Uint8ClampedArray) => {
+			const value = frameSource.values[frameIndex] ?? DEFAULT_FRAME_VALUE;
+			buffer.fill(value);
+		},
 	};
 });
 
@@ -56,9 +63,8 @@ class FakeVideoFrame {
 		buffer: Uint8Array,
 		options: { format?: string; layout?: Array<{ offset: number; stride: number }> },
 	): Promise<void> {
-		const value = frameSource.values[frameSource.videoFrameCall] ?? DEFAULT_FRAME_VALUE;
+		frameSource.fill(frameSource.videoFrameCall, buffer);
 		frameSource.videoFrameCall += 1;
-		buffer.fill(value);
 		void options;
 	}
 
@@ -80,41 +86,71 @@ class FakeOffscreenCanvas {
 			clearRect: () => undefined,
 			drawImage: () => undefined,
 			getImageData: () => {
-				const value = frameSource.values[frameSource.readbackCall] ?? DEFAULT_FRAME_VALUE;
-				frameSource.readbackCall += 1;
 				const data = new Uint8ClampedArray(FRAME_BYTE_SIZE);
-				data.fill(value);
+				frameSource.fill(frameSource.readbackCall, data);
+				frameSource.readbackCall += 1;
 				return { data };
 			},
 		};
 	}
 }
 
-function createWindowStub(overrides: Record<string, unknown> = {}) {
+function fillRect(
+	buffer: Uint8Array | Uint8ClampedArray,
+	x: number,
+	y: number,
+	width: number,
+	height: number,
+	color: number,
+): void {
+	const endX = Math.min(1920, x + width);
+	const endY = Math.min(1080, y + height);
+	for (let rowY = y; rowY < endY; rowY += 1) {
+		const rowOffset = rowY * 1920 * 4;
+		for (let colX = x; colX < endX; colX += 1) {
+			const pixelOffset = rowOffset + colX * 4;
+			buffer[pixelOffset] = color;
+			buffer[pixelOffset + 1] = color;
+			buffer[pixelOffset + 2] = color;
+			buffer[pixelOffset + 3] = 0xff;
+		}
+	}
+}
+
+function createWindowStub() {
+	const streamBytes: Record<string, number> = {};
 	const electronAPI = {
-		openExportStream: vi.fn(async () => ({
-			success: true,
-			streamId: "overlay-stream",
-			tempPath: "C:/Temp/overlay.rgba",
-		})),
-		writeExportStreamChunk: vi.fn(async () => ({ success: true })),
-		closeExportStream: vi.fn(async () => ({
-			success: true,
-			tempPath: "C:/Temp/overlay.rgba",
-			bytesWritten: 0,
-		})),
+		openExportStream: vi.fn(async ({ extension }: { extension: string }) => {
+			const streamId = `overlay-${extension}`;
+			const tempPath = `C:/Temp/overlay.${extension}`;
+			streamBytes[streamId] = 0;
+			return { success: true, streamId, tempPath };
+		}),
+		writeExportStreamChunk: vi.fn(
+			async (streamId: string, offset: number, chunk: Uint8Array) => {
+				streamBytes[streamId] = Math.max(
+					streamBytes[streamId] ?? 0,
+					offset + chunk.byteLength,
+				);
+				return { success: true };
+			},
+		),
+		closeExportStream: vi.fn(async (streamId: string, options?: { abort?: boolean }) => {
+			const tempPath = `C:/Temp/overlay.${String(streamId).replace("overlay-", "")}`;
+			if (options?.abort) {
+				return { success: true, tempPath, bytesWritten: 0 };
+			}
+			return { success: true, tempPath, bytesWritten: streamBytes[streamId] ?? 0 };
+		}),
 		discardExportedTemp: vi.fn(async () => ({ success: true })),
 		nativeStaticLayoutExport: vi.fn(),
 		nativeStaticLayoutExportCancel: vi.fn(),
 	};
-	vi.stubGlobal("window", {
-		electronAPI,
-		...overrides,
-	});
+	vi.stubGlobal("window", { electronAPI });
 	return electronAPI;
 }
 
-function createExporter() {
+function createExporter(overrides: Record<string, unknown> = {}) {
 	return new ModernVideoExporter({
 		videoUrl: "file:///recording.mp4",
 		width: 1920,
@@ -135,12 +171,17 @@ function createExporter() {
 		exportVideoCodec: "hevc",
 		exportEncoderPreference: "hardware",
 		backendPreference: "auto",
+		...overrides,
 	} as never) as unknown as {
 		prepareNativeStaticLayoutOverlay: (
 			videoInfo: DecodedVideoInfo,
 			durationSec: number,
 			totalFrames: number,
-		) => Promise<Array<Record<string, unknown>> | null>;
+		) => Promise<{
+			overlayLayers: Array<Record<string, unknown>>;
+			tiledOverlayLayers: Array<Record<string, unknown>>;
+			rawFallbackReason: string | null;
+		} | null>;
 		nativeStaticLayoutOverlayFailure: { stage: string; message: string } | null;
 		hasNativeStaticLayoutOverlayContent: () => boolean;
 		tryExportNativeStaticLayout: (
@@ -175,31 +216,28 @@ describe("ModernVideoExporter native overlay preparation", () => {
 		frameSource.values = [];
 		frameSource.videoFrameCall = 0;
 		frameSource.readbackCall = 0;
+		frameSource.fill = (frameIndex, buffer) => {
+			const value = frameSource.values[frameIndex] ?? DEFAULT_FRAME_VALUE;
+			buffer.fill(value);
+		};
 		vi.clearAllMocks();
 		vi.unstubAllGlobals();
 	});
 
-	it("prepares a minimal overlay sidecar end-to-end through the export stream API", async () => {
+	it("prepares a tiled overlay sidecar for a fully static overlay", async () => {
 		vi.stubGlobal("VideoFrame", FakeVideoFrame);
 		vi.stubGlobal("OffscreenCanvas", FakeOffscreenCanvas);
 		const api = createWindowStub();
-		// All captured frames are byte-identical (constant fill), so the sidecar
-		// deduplicates to the single changed frame.
-		api.closeExportStream.mockResolvedValue({
-			success: true,
-			tempPath: "C:/Temp/overlay.rgba",
-			bytesWritten: FRAME_BYTE_SIZE,
-		});
 
 		const exporter = createExporter();
-		const layers = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 30);
+		const result = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 30);
 
-		expect(layers).not.toBeNull();
-		expect(layers).toHaveLength(1);
-		expect(layers?.[0]).toMatchObject({
+		expect(result).not.toBeNull();
+		expect(result?.overlayLayers).toHaveLength(0);
+		expect(result?.tiledOverlayLayers).toHaveLength(1);
+		expect(result?.tiledOverlayLayers[0]).toMatchObject({
 			id: "native-effects",
 			order: 0,
-			path: "C:/Temp/overlay.rgba",
 			x: 0,
 			y: 0,
 			width: 1920,
@@ -207,72 +245,79 @@ describe("ModernVideoExporter native overlay preparation", () => {
 			frameRate: 30,
 			durationSec: 1,
 			frameCount: 30,
-			effectiveFrameCount: 1,
+			tileSize: NATIVE_TILED_OVERLAY_TILE_SIZE,
 			pixelFormat: "rgba",
+			payloadPath: "C:/Temp/overlay.tiledrgba",
+			payloadByteLength: STATIC_TILED_PAYLOAD_BYTES,
+			staticTiles: expect.any(Array),
+			frameDeltas: [],
 		});
+		expect(result?.rawFallbackReason).toBeNull();
+		expect(result?.tiledOverlayLayers[0]?.staticTiles).toHaveLength(TILE_COUNT);
 		expect(mocks.frameRendererInitialize).toHaveBeenCalledTimes(1);
-		// Every timeline frame is still rendered so dynamic content is detected.
 		expect(mocks.frameRendererRenderOverlayFrame).toHaveBeenCalledTimes(30);
 		expect(api.openExportStream).toHaveBeenCalledWith({ extension: "rgba" });
-		expect(api.writeExportStreamChunk).toHaveBeenCalledTimes(1);
-		const onlyWrite = api.writeExportStreamChunk.mock.calls[0] as [string, number, Uint8Array];
-		expect(onlyWrite[0]).toBe("overlay-stream");
-		expect(onlyWrite[1]).toBe(0);
-		expect(onlyWrite[2]).toHaveLength(FRAME_BYTE_SIZE);
-		expect(api.closeExportStream).toHaveBeenCalledWith("overlay-stream");
+		expect(api.openExportStream).toHaveBeenCalledWith({ extension: "tiledrgba" });
+		expect(api.writeExportStreamChunk).toHaveBeenCalledTimes(TILE_COUNT + 1);
+		const lastTiledWrite = api.writeExportStreamChunk.mock.calls[
+			api.writeExportStreamChunk.mock.calls.length - 1
+		] as [string, number, Uint8Array];
+		expect(lastTiledWrite[0]).toBe("overlay-tiledrgba");
+		expect(lastTiledWrite[1]).toBe((TILE_COUNT - 1) * TILE_BYTE_SIZE);
+		expect(lastTiledWrite[2]).toHaveLength(TILE_BYTE_SIZE);
+		expect(api.discardExportedTemp).toHaveBeenCalledWith("C:/Temp/overlay.rgba");
 		expect(mocks.frameRendererDestroy).toHaveBeenCalledTimes(1);
 		expect(exporter.nativeStaticLayoutOverlayFailure).toBeNull();
 	});
 
-	it("writes every frame for a fully dynamic overlay and omits the effective frame count", async () => {
+	it("falls back to a raw sidecar for a fully dynamic overlay", async () => {
 		vi.stubGlobal("VideoFrame", FakeVideoFrame);
 		vi.stubGlobal("OffscreenCanvas", FakeOffscreenCanvas);
 		frameSource.values = Array.from({ length: 30 }, (_, index) => index);
 		const api = createWindowStub();
-		api.closeExportStream.mockResolvedValue({
-			success: true,
-			tempPath: "C:/Temp/overlay.rgba",
-			bytesWritten: FRAME_BYTE_SIZE * 30,
-		});
 
 		const exporter = createExporter();
-		const layers = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 30);
+		const result = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 30);
 
-		expect(layers).not.toBeNull();
-		expect(layers?.[0]).toMatchObject({
+		expect(result).not.toBeNull();
+		expect(result?.overlayLayers).toHaveLength(1);
+		expect(result?.tiledOverlayLayers).toHaveLength(0);
+		expect(result?.overlayLayers[0]).toMatchObject({
+			id: "native-effects",
+			path: "C:/Temp/overlay.rgba",
 			frameCount: 30,
+			pixelFormat: "rgba",
 		});
-		expect("effectiveFrameCount" in (layers?.[0] ?? {})).toBe(false);
+		expect("effectiveFrameCount" in (result?.overlayLayers[0] ?? {})).toBe(false);
+		expect(result?.rawFallbackReason).toBe("dense-frame-delta");
+		expect(api.openExportStream).toHaveBeenCalledTimes(1);
+		expect(api.openExportStream).toHaveBeenCalledWith({ extension: "rgba" });
 		expect(api.writeExportStreamChunk).toHaveBeenCalledTimes(30);
 		const lastWrite = api.writeExportStreamChunk.mock.calls[29] as [string, number, Uint8Array];
+		expect(lastWrite[0]).toBe("overlay-rgba");
 		expect(lastWrite[1]).toBe(29 * FRAME_BYTE_SIZE);
 		expect(lastWrite[2][0]).toBe(29);
+		expect(api.closeExportStream).toHaveBeenCalledWith("overlay-rgba");
 	});
 
-	it("writes the exact prefix when a dynamic overlay freezes into an identical suffix", async () => {
+	it("trims the identical raw suffix and preserves the raw fallback reason", async () => {
 		vi.stubGlobal("VideoFrame", FakeVideoFrame);
 		vi.stubGlobal("OffscreenCanvas", FakeOffscreenCanvas);
-		// Frames 0..4 change; frames 5..29 are identical to frame 4.
 		frameSource.values = [
 			0, 1, 2, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
 			4,
 		];
 		const api = createWindowStub();
-		api.closeExportStream.mockResolvedValue({
-			success: true,
-			tempPath: "C:/Temp/overlay.rgba",
-			bytesWritten: FRAME_BYTE_SIZE * 5,
-		});
 
 		const exporter = createExporter();
-		const layers = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 30);
+		const result = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 30);
 
-		expect(layers).not.toBeNull();
-		expect(layers?.[0]).toMatchObject({
+		expect(result).not.toBeNull();
+		expect(result?.overlayLayers[0]).toMatchObject({
 			frameCount: 30,
 			effectiveFrameCount: 5,
 		});
-		// Every frame is still rendered; only the identical suffix is trimmed.
+		expect(result?.rawFallbackReason).toBe("dense-frame-delta");
 		expect(mocks.frameRendererRenderOverlayFrame).toHaveBeenCalledTimes(30);
 		expect(api.writeExportStreamChunk).toHaveBeenCalledTimes(5);
 		for (let index = 0; index < 5; index += 1) {
@@ -281,6 +326,7 @@ describe("ModernVideoExporter native overlay preparation", () => {
 				number,
 				Uint8Array,
 			];
+			expect(write[0]).toBe("overlay-rgba");
 			expect(write[1]).toBe(index * FRAME_BYTE_SIZE);
 			expect(write[2][0]).toBe(index);
 			expect(write[2]).toHaveLength(FRAME_BYTE_SIZE);
@@ -296,16 +342,14 @@ describe("ModernVideoExporter native overlay preparation", () => {
 		);
 
 		const exporter = createExporter();
-		const layers = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 1);
+		const result = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 1);
 
-		expect(layers).toBeNull();
+		expect(result).toBeNull();
 		expect(exporter.nativeStaticLayoutOverlayFailure).toMatchObject({
 			stage: "overlay-renderer-frame",
 			message: expect.stringContaining("Overlay renderer is not initialized"),
 		});
-		// The failed stream must be aborted so a half-written sidecar never reaches
-		// the native CUDA compositor.
-		expect(api.closeExportStream).toHaveBeenCalledWith("overlay-stream", { abort: true });
+		expect(api.closeExportStream).toHaveBeenCalledWith("overlay-rgba", { abort: true });
 		expect(mocks.frameRendererDestroy).toHaveBeenCalledTimes(1);
 	});
 
@@ -313,22 +357,20 @@ describe("ModernVideoExporter native overlay preparation", () => {
 		vi.stubGlobal("VideoFrame", FakeVideoFrame);
 		vi.stubGlobal("OffscreenCanvas", FakeOffscreenCanvas);
 		const api = createWindowStub();
-		api.closeExportStream.mockResolvedValue({
+		api.closeExportStream.mockResolvedValueOnce({
 			success: true,
 			tempPath: "C:/Temp/overlay.rgba",
 			bytesWritten: FRAME_BYTE_SIZE - 1,
 		});
 
 		const exporter = createExporter();
-		const layers = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 30);
+		const result = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 30);
 
-		expect(layers).toBeNull();
+		expect(result).toBeNull();
 		expect(exporter.nativeStaticLayoutOverlayFailure).toMatchObject({
 			stage: "overlay-stream-truncated",
 			message: expect.stringContaining(`expected ${FRAME_BYTE_SIZE} bytes`),
 		});
-		// The stream closed successfully, so the sidecar must be discarded rather
-		// than aborted (abort-close on a finalized stream is a no-op).
 		expect(api.discardExportedTemp).toHaveBeenCalledWith("C:/Temp/overlay.rgba");
 	});
 
@@ -338,24 +380,129 @@ describe("ModernVideoExporter native overlay preparation", () => {
 		const api = createWindowStub();
 
 		const exporter = createExporter();
-		const layers = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 1);
+		const result = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 1);
 
-		expect(layers).toBeNull();
+		expect(result).toBeNull();
 		expect(exporter.nativeStaticLayoutOverlayFailure).toMatchObject({
 			stage: "overlay-canvas-capture",
 		});
-		expect(api.closeExportStream).toHaveBeenCalledWith("overlay-stream", { abort: true });
+		expect(api.closeExportStream).toHaveBeenCalledWith("overlay-rgba", { abort: true });
 	});
 
-	it("routes HEVC Hardware with overlay content to the native CUDA compositor with the sidecar", async () => {
+	it("prepares a sparse tiled sidecar for a small moving-region overlay", async () => {
+		vi.stubGlobal("VideoFrame", FakeVideoFrame);
+		vi.stubGlobal("OffscreenCanvas", FakeOffscreenCanvas);
+		frameSource.fill = (frameIndex, buffer) => {
+			buffer.fill(0);
+			fillRect(
+				buffer,
+				256,
+				256,
+				NATIVE_TILED_OVERLAY_TILE_SIZE,
+				NATIVE_TILED_OVERLAY_TILE_SIZE,
+				frameIndex + 1,
+			);
+		};
+		const api = createWindowStub();
+
+		const exporter = createExporter();
+		const result = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 30);
+
+		expect(result).not.toBeNull();
+		expect(result?.overlayLayers).toHaveLength(0);
+		expect(result?.tiledOverlayLayers).toHaveLength(1);
+		expect(result?.rawFallbackReason).toBeNull();
+		const tileLayer = result?.tiledOverlayLayers[0] as Record<string, unknown>;
+		expect(tileLayer.payloadByteLength).toBe(STATIC_TILED_PAYLOAD_BYTES + 29 * TILE_BYTE_SIZE);
+		expect(tileLayer.frameDeltas).toHaveLength(29);
+		for (let index = 0; index < 29; index += 1) {
+			const delta = (
+				tileLayer.frameDeltas as Array<{
+					frameIndex: number;
+					changedTiles: Array<{ tileIndex: number }>;
+				}>
+			)[index];
+			expect(delta.frameIndex).toBe(index + 1);
+			expect(delta.changedTiles).toHaveLength(1);
+			expect(delta.changedTiles[0]?.tileIndex).toBe(2 * TILE_COLUMNS + 2);
+		}
+		expect(api.openExportStream).toHaveBeenCalledWith({ extension: "tiledrgba" });
+		expect(api.discardExportedTemp).toHaveBeenCalledWith("C:/Temp/overlay.rgba");
+	});
+
+	it("prepares a static tiled base when the overlay is fully transparent", async () => {
+		vi.stubGlobal("VideoFrame", FakeVideoFrame);
+		vi.stubGlobal("OffscreenCanvas", FakeOffscreenCanvas);
+		frameSource.values = Array.from({ length: 30 }, () => 0);
+		createWindowStub();
+
+		const exporter = createExporter();
+		const result = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 30);
+
+		expect(result).not.toBeNull();
+		expect(result?.overlayLayers).toHaveLength(0);
+		expect(result?.tiledOverlayLayers).toHaveLength(1);
+		const tileLayer = result?.tiledOverlayLayers[0] as Record<string, unknown>;
+		expect(tileLayer.frameDeltas).toHaveLength(0);
+		expect(tileLayer.payloadByteLength).toBe(STATIC_TILED_PAYLOAD_BYTES);
+		expect(result?.rawFallbackReason).toBeNull();
+	});
+
+	it("falls back to raw when a sparse overlay becomes dense mid-timeline", async () => {
+		vi.stubGlobal("VideoFrame", FakeVideoFrame);
+		vi.stubGlobal("OffscreenCanvas", FakeOffscreenCanvas);
+		frameSource.fill = (frameIndex, buffer) => {
+			buffer.fill(0);
+			if (frameIndex <= 4) {
+				fillRect(
+					buffer,
+					256,
+					256,
+					NATIVE_TILED_OVERLAY_TILE_SIZE,
+					NATIVE_TILED_OVERLAY_TILE_SIZE,
+					frameIndex + 1,
+				);
+			} else {
+				buffer.fill(frameIndex + 1);
+			}
+		};
+		createWindowStub();
+
+		const exporter = createExporter();
+		const result = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 30);
+
+		expect(result).not.toBeNull();
+		expect(result?.overlayLayers).toHaveLength(1);
+		expect(result?.tiledOverlayLayers).toHaveLength(0);
+		expect(result?.rawFallbackReason).toBe("dense-frame-delta");
+		expect(result?.overlayLayers[0]).toMatchObject({
+			path: "C:/Temp/overlay.rgba",
+			frameCount: 30,
+		});
+		expect("effectiveFrameCount" in (result?.overlayLayers[0] ?? {})).toBe(false);
+	});
+
+	it("discards the raw sidecar and closes streams when the tiled sidecar is chosen", async () => {
 		vi.stubGlobal("VideoFrame", FakeVideoFrame);
 		vi.stubGlobal("OffscreenCanvas", FakeOffscreenCanvas);
 		const api = createWindowStub();
-		api.closeExportStream.mockResolvedValue({
-			success: true,
-			tempPath: "C:/Temp/overlay.rgba",
-			bytesWritten: FRAME_BYTE_SIZE,
-		});
+
+		const exporter = createExporter();
+		const result = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 30);
+
+		expect(result).not.toBeNull();
+		expect(api.openExportStream).toHaveBeenCalledWith({ extension: "rgba" });
+		expect(api.openExportStream).toHaveBeenCalledWith({ extension: "tiledrgba" });
+		expect(api.closeExportStream).toHaveBeenCalledWith("overlay-rgba");
+		expect(api.closeExportStream).toHaveBeenCalledWith("overlay-tiledrgba");
+		expect(api.discardExportedTemp).toHaveBeenCalledWith("C:/Temp/overlay.rgba");
+		expect(mocks.frameRendererDestroy).toHaveBeenCalledTimes(1);
+	});
+
+	it("routes HEVC Hardware with overlay content to the native CUDA compositor with the tiled sidecar", async () => {
+		vi.stubGlobal("VideoFrame", FakeVideoFrame);
+		vi.stubGlobal("OffscreenCanvas", FakeOffscreenCanvas);
+		const api = createWindowStub();
 		api.nativeStaticLayoutExport.mockResolvedValue({
 			success: true,
 			tempPath: "C:/Temp/hevc-static.mp4",
@@ -382,22 +529,24 @@ describe("ModernVideoExporter native overlay preparation", () => {
 		expect(result).toMatchObject({ success: true, tempFilePath: "C:/Temp/hevc-static.mp4" });
 		const exportCall = api.nativeStaticLayoutExport.mock.calls[0] as [Record<string, unknown>];
 		const overlayLayers = exportCall[0].overlayLayers as Array<Record<string, unknown>>;
-		expect(overlayLayers).toHaveLength(1);
-		expect(overlayLayers[0]).toMatchObject({
+		const tiledOverlayLayers = exportCall[0].tiledOverlayLayers as Array<
+			Record<string, unknown>
+		>;
+		expect(overlayLayers ?? []).toHaveLength(0);
+		expect(tiledOverlayLayers).toHaveLength(1);
+		expect(tiledOverlayLayers[0]).toMatchObject({
 			id: "native-effects",
-			path: "C:/Temp/overlay.rgba",
 			width: 1920,
 			height: 1080,
 			frameRate: 30,
 			durationSec: 1,
 			frameCount: 30,
-			effectiveFrameCount: 1,
+			tileSize: NATIVE_TILED_OVERLAY_TILE_SIZE,
 			pixelFormat: "rgba",
 		});
 		expect(exportCall[0]).toMatchObject({
 			videoCodec: "hevc",
 			encoderPreference: "hardware",
 		});
-		expect(api.writeExportStreamChunk).toHaveBeenCalledTimes(1);
 	});
 });

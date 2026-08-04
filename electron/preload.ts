@@ -107,6 +107,31 @@ type NativeStaticLayoutChunkMetric = {
 		outputCodec?: "h264" | "hevc";
 	};
 };
+type NativeTiledOverlayTileRecord = {
+	tileIndex: number;
+	byteOffset: number;
+	byteLength: number;
+};
+type NativeTiledOverlayLayerDescriptor = {
+	id: string;
+	order: number;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	frameRate: number;
+	durationSec: number;
+	frameCount: number;
+	tileSize: 128;
+	pixelFormat: "rgba";
+	payloadPath: string;
+	payloadByteLength: number;
+	staticTiles: readonly NativeTiledOverlayTileRecord[];
+	frameDeltas: readonly {
+		frameIndex: number;
+		changedTiles: readonly NativeTiledOverlayTileRecord[];
+	}[];
+};
 type NativeStaticLayoutMetrics = NativeVideoAudioMuxMetrics & {
 	chunkCount: number;
 	chunkDurationSec: number;
@@ -116,6 +141,15 @@ type NativeStaticLayoutMetrics = NativeVideoAudioMuxMetrics & {
 	fallbackChunkCount: number;
 	videoOnlyBytes?: number;
 	chunks: NativeStaticLayoutChunkMetric[];
+	tiledOverlayLayers?: number;
+	tiledOverlayBlendFrames?: number;
+	changedTileCount?: number;
+	uploadedTileBytes?: number;
+	cachedTileCount?: number;
+	rawFallbackReason?: string;
+	overlayHostReadMs?: number;
+	overlayH2DEnqueueMs?: number;
+	overlayCacheHits?: number;
 };
 type NativeStaticLayoutProgress = {
 	sessionId?: string;
@@ -600,6 +634,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			frameCount: number;
 			pixelFormat: "rgba";
 		}>;
+		tiledOverlayLayers?: NativeTiledOverlayLayerDescriptor[];
 		contentWidth: number;
 		contentHeight: number;
 		offsetX: number;

@@ -208,6 +208,21 @@ async function sanitizeNativeStaticLayoutExportOptions(
 		}
 	}
 
+	if (sanitized.tiledOverlayLayers) {
+		for (const layer of sanitized.tiledOverlayLayers) {
+			if (typeof layer.payloadPath !== "string" || layer.payloadPath.trim().length === 0) {
+				throw new Error(`Native tiled overlay layer ${layer.id} requires a payload path`);
+			}
+			layer.payloadPath = await resolveAllowedReadableFilePath(
+				layer.payloadPath,
+				`Native tiled overlay payload ${layer.id}`,
+				{
+					mediaOnly: false,
+				},
+			);
+		}
+	}
+
 	for (const [field, label] of [
 		["backgroundImagePath", "Native background image"],
 		["webcamInputPath", "Native webcam input"],

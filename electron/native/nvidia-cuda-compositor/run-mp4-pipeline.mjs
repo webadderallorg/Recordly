@@ -51,6 +51,11 @@ const ffprobeCommand = resolveToolCommand(["RECORDLY_FFPROBE_EXE"], "ffprobe-sta
 import { parseCursorTelemetrySamples, writeCursorSamplesFile } from "./cursorTelemetry.mjs";
 import { readOverlayManifest } from "./overlayManifest.mjs";
 import { shouldProbeSourcePts } from "./sourcePtsPlan.mjs";
+import {
+	readTiledOverlayManifest,
+	resolveTiledOverlayLayerMetrics,
+	resolveTiledOverlayRawFallbackReason,
+} from "./tiledOverlayManifest.mjs";
 
 function fail(message) {
 	throw new Error(message);
@@ -921,6 +926,7 @@ const cursorAtlasMetadata = getArg("--cursor-atlas-metadata", "");
 const zoomTelemetry = getArg("--zoom-telemetry", "");
 const timelineMap = getArg("--timeline-map", "");
 const overlayManifest = getArg("--overlay-manifest", "");
+const tiledOverlayManifest = getArg("--tiled-overlay-manifest", "");
 const temporalBlurSampleCount = getNumberArg("--temporal-blur-sample-count", 0);
 const temporalBlurShutterFraction = getNumberArg("--temporal-blur-shutter-fraction", 0);
 const temporalBlurWeightPower = getNumberArg("--temporal-blur-weight-power", 1);
@@ -1389,6 +1395,53 @@ if (overlayLayers.length) {
 		);
 	}
 }
+// Tiled/delta sparse overlay stream: the versioned descriptor was validated by
+// readTiledOverlayManifest (independently of the TS side). The native CUDA
+// compositor consumes the descriptor itself; it must advertise
+// --tiled-overlay-manifest in its --help usage before the wrapper forwards it.
+// Until then a tiled stream cannot be composited and the export fails fast
+// instead of silently dropping overlay pixels.
+const tiledOverlayLayers = readTiledOverlayManifest(tiledOverlayManifest, {
+	outputWidth,
+	outputHeight,
+	frameRate: fps,
+	durationSec,
+});
+const tiledOverlayMetrics = tiledOverlayLayers.map((layer) => {
+	const layerMetrics = resolveTiledOverlayLayerMetrics(layer);
+	return {
+		layer: {
+			id: layer.id,
+			order: layer.order,
+			x: layer.x,
+			y: layer.y,
+			width: layer.width,
+			height: layer.height,
+			frameCount: layer.frameCount,
+			frameRate: layer.frameRate,
+			durationSec: layer.durationSec,
+			tileSize: layer.tileSize,
+			pixelFormat: layer.pixelFormat,
+			payloadPath: layer.payloadPath,
+			payloadByteLength: layer.payloadByteLength,
+			staticTileCount: layer.staticTiles.length,
+			frameDeltaCount: layer.frameDeltas.length,
+		},
+		metrics: layerMetrics,
+		rawFallbackReason: resolveTiledOverlayRawFallbackReason(layer, layerMetrics),
+	};
+});
+if (tiledOverlayLayers.length) {
+	const nativeHelp = run(nativeProbe, ["--help"]).stdout;
+	if (!nativeHelp.includes("--tiled-overlay-manifest")) {
+		fail(
+			"The native NVIDIA CUDA compositor does not support tiled overlay manifests yet; " +
+				"main.cu must consume --tiled-overlay-manifest (follow-up) or the renderer must " +
+				"keep the raw RGBA overlay sidecar fallback.",
+		);
+	}
+	encodeArgs.push("--tiled-overlay-manifest", resolve(tiledOverlayManifest));
+}
 const encode =
 	reuseIntermediates && existsSync(encodedPath)
 		? { elapsedMs: 0, stdout: "", gpuSummary: null }
@@ -1398,6 +1451,32 @@ const encode =
 				sampleGpuDuringEncode ? gpuSampleIntervalMs : 0,
 			);
 const nativeSummary = encode.stdout ? parseProbeSummary(encode.stdout) : null;
+if (nativeSummary && tiledOverlayLayers.length) {
+	// Additive renderer-derived tiled throughput bookkeeping rides on the native
+	// summary so the main-process normalization surfaces it unchanged. Values are
+	// aggregated across layers; rawFallbackReason is the first conservative
+	// eligibility decision that forced the raw full-frame fallback. These are
+	// diagnostic only and never claim zero-copy.
+	nativeSummary.tiledOverlayLayers = tiledOverlayLayers.length;
+	nativeSummary.changedTileCount = tiledOverlayMetrics.reduce(
+		(total, entry) => total + entry.metrics.changedTileCount,
+		0,
+	);
+	nativeSummary.uploadedTileBytes = tiledOverlayMetrics.reduce(
+		(total, entry) => total + entry.metrics.uploadedTileBytes,
+		0,
+	);
+	nativeSummary.cachedTileCount = tiledOverlayMetrics.reduce(
+		(total, entry) => total + entry.metrics.cachedTileCount,
+		0,
+	);
+	const firstFallbackReason = tiledOverlayMetrics.find(
+		(entry) => entry.rawFallbackReason !== null,
+	)?.rawFallbackReason;
+	if (firstFallbackReason) {
+		nativeSummary.rawFallbackReason = firstFallbackReason;
+	}
+}
 if (nativeSummary?.outputCodec && nativeSummary.outputCodec !== outputCodec) {
 	fail(`Native output codec mismatch: expected ${outputCodec}, got ${nativeSummary.outputCodec}`);
 }
@@ -1567,24 +1646,31 @@ console.log(
 										inputPath: resolve(zoomTelemetry),
 									}
 								: null,
-							overlay: overlayLayers.length
-								? {
-										layers: overlayLayers.map((layer) => ({
-											id: layer.id,
-											path: layer.path,
-											x: layer.x,
-											y: layer.y,
-											width: layer.width,
-											height: layer.height,
-											frameCount: layer.frameCount,
-											...(layer.effectiveFrameCount !== undefined
-												? { effectiveFrameCount: layer.effectiveFrameCount }
-												: {}),
-											physicalFrameCount:
-												layer.effectiveFrameCount ?? layer.frameCount,
-										})),
-									}
-								: null,
+							overlay:
+								overlayLayers.length || tiledOverlayLayers.length
+									? {
+											layers: overlayLayers.map((layer) => ({
+												id: layer.id,
+												path: layer.path,
+												x: layer.x,
+												y: layer.y,
+												width: layer.width,
+												height: layer.height,
+												frameCount: layer.frameCount,
+												...(layer.effectiveFrameCount !== undefined
+													? {
+															effectiveFrameCount:
+																layer.effectiveFrameCount,
+														}
+													: {}),
+												physicalFrameCount:
+													layer.effectiveFrameCount ?? layer.frameCount,
+											})),
+											tiled: tiledOverlayLayers.length
+												? { layers: tiledOverlayMetrics }
+												: null,
+										}
+									: null,
 						}
 					: null,
 			gpuSampleIntervalMs: sampleGpuDuringEncode ? gpuSampleIntervalMs : null,

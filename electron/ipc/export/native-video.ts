@@ -8,11 +8,20 @@ import type { Readable, Writable } from "node:stream";
 import { promisify } from "node:util";
 import type { MessagePortMain, WebContents } from "electron";
 import { app, powerSaveBlocker } from "electron";
-import type { NativeStaticLayoutOverlayLayer } from "../../../src/lib/exporter/nativeStaticLayoutOverlays";
+import type {
+	NativeStaticLayoutOverlayLayer,
+	NativeTiledOverlayLayerDescriptor,
+	NativeTiledOverlayStorageDescriptor,
+} from "../../../src/lib/exporter/nativeStaticLayoutOverlays";
 import {
 	getNativeStaticLayoutOverlayFrameByteSize,
+	NATIVE_TILED_OVERLAY_STORAGE_VERSION,
+	resolveNativeTiledOverlayMetrics,
+	resolveNativeTiledOverlayRawFallbackReason,
 	sortNativeStaticLayoutOverlayLayers,
+	sortNativeTiledOverlayLayers,
 	validateNativeStaticLayoutOverlayLayer,
+	validateNativeTiledOverlayStorageDescriptor,
 } from "../../../src/lib/exporter/nativeStaticLayoutOverlays";
 import { getFfmpegBinaryPath, getFfprobeBinaryPath } from "../ffmpeg/binary";
 import type {
@@ -535,6 +544,13 @@ export interface NativeStaticLayoutExportOptions {
 	encodingMode: NativeExportEncodingMode;
 	durationSec: number;
 	overlayLayers?: NativeStaticLayoutOverlayLayer[];
+	/**
+	 * Optional tiled/delta overlay layers (sparse overlay optimization). The
+	 * renderer emits this instead of raw overlayLayers for sparse content; the
+	 * descriptor is versioned, bounded, and independently validated by
+	 * validateNativeTiledOverlayLayerDescriptor. Additive and never persisted.
+	 */
+	tiledOverlayLayers?: NativeTiledOverlayLayerDescriptor[];
 	contentWidth: number;
 	contentHeight: number;
 	offsetX: number;
@@ -597,6 +613,8 @@ export interface NativeStaticLayoutExportOptions {
 	} | null;
 	/** JSON manifest describing renderer-prepared RGBA overlay sidecars. */
 	overlayManifestPath?: string | null;
+	/** JSON manifest describing the versioned tiled/delta overlay descriptor. */
+	tiledOverlayManifestPath?: string | null;
 	/**
 	 * True when the renderer excluded cursor pixels from the overlay sidecars
 	 * and the native cursor atlas owns them. The CUDA compositor must draw the
@@ -723,6 +741,19 @@ export interface NvidiaCudaNativeSummary {
 	zoomSamples?: number;
 	overlayLayers?: number;
 	overlayBlendFrames?: number;
+	/** Tiled overlay layers in the export (renderer-derived, additive). */
+	tiledOverlayLayers?: number;
+	/** Tiles whose payload changed across all frame deltas (additive). */
+	changedTileCount?: number;
+	/** Tile payload bytes uploaded once across the stream (additive). */
+	uploadedTileBytes?: number;
+	/** Tile-state references served from previously uploaded payloads (additive). */
+	cachedTileCount?: number;
+	/**
+	 * Observable reason the layer used the raw full-frame fallback instead of a
+	 * tiled stream (small-layer | dense-frame-delta | payload-bytes-exceed-raw).
+	 */
+	rawFallbackReason?: string;
 	/** Renderer-resolved temporal zoom motion blur sample count (config, not
 	 * measured: the helper does not yet echo it in its summary). */
 	temporalBlurSampleCount?: number;
@@ -962,6 +993,9 @@ const NVIDIA_CUDA_NATIVE_SUMMARY_METRIC_FIELDS = [
 	"overlayEffectiveFrames",
 	"overlayHostReadMs",
 	"overlayH2DEnqueueMs",
+	"changedTileCount",
+	"uploadedTileBytes",
+	"cachedTileCount",
 	"nvencMs",
 	"packetWriteMs",
 	"totalMs",
@@ -983,12 +1017,15 @@ export type NvidiaCudaNativeSummaryMetricField =
  * numbers are included, so absent counters never appear as undefined noise and
  * non-finite payloads are never surfaced as measured values. The values are
  * cumulative over the whole helper run (decode/compose/overlay/NVENC stages),
- * never interval deltas.
+ * never interval deltas. The tiled rawFallbackReason rides along as a string
+ * when the helper or wrapper reported it.
  */
 export function resolveNvidiaCudaNativeSummaryMetrics(
 	nativeSummary: NvidiaCudaNativeSummary | undefined,
-): Partial<Record<NvidiaCudaNativeSummaryMetricField, number>> {
-	const metrics: Partial<Record<NvidiaCudaNativeSummaryMetricField, number>> = {};
+): Partial<Record<NvidiaCudaNativeSummaryMetricField | "rawFallbackReason", number | string>> {
+	const metrics: Partial<
+		Record<NvidiaCudaNativeSummaryMetricField | "rawFallbackReason", number | string>
+	> = {};
 	if (!nativeSummary) {
 		return metrics;
 	}
@@ -998,6 +1035,9 @@ export function resolveNvidiaCudaNativeSummaryMetrics(
 		if (typeof value === "number" && Number.isFinite(value)) {
 			metrics[field] = value;
 		}
+	}
+	if (typeof nativeSummary.rawFallbackReason === "string" && nativeSummary.rawFallbackReason) {
+		metrics.rawFallbackReason = nativeSummary.rawFallbackReason;
 	}
 	return metrics;
 }
@@ -1042,6 +1082,57 @@ export function resolveNvidiaCudaOverlaySidecarSummaryMetrics(
 	};
 	if (layer.effectiveFrameCount !== undefined) {
 		metrics.overlayEffectiveFrames = Math.max(1, Math.round(layer.effectiveFrameCount));
+	}
+	return metrics;
+}
+
+export type NvidiaCudaTiledOverlaySummaryMetric = Pick<
+	NvidiaCudaNativeSummary,
+	| "tiledOverlayLayers"
+	| "changedTileCount"
+	| "uploadedTileBytes"
+	| "cachedTileCount"
+	| "rawFallbackReason"
+	| "overlayHostReadMs"
+	| "overlayH2DEnqueueMs"
+	| "overlayCacheHits"
+>;
+
+/**
+ * Derives the additive tiled/delta overlay metrics from the renderer-prepared
+ * tiled overlay layers for CUDA summary surfacing. The values are diagnostic
+ * only (changedTileCount, uploadedTileBytes, cachedTileCount are renderer
+ * bookkeeping, never a zero-copy claim) and only present when tiled layers
+ * exist. rawFallbackReason is the conservative eligibility decision of the
+ * first layer that needed the raw full-frame fallback.
+ */
+export function resolveNvidiaCudaTiledOverlaySidecarSummaryMetrics(
+	options: NativeStaticLayoutExportOptions,
+): Partial<NvidiaCudaTiledOverlaySummaryMetric> {
+	const layers = options.tiledOverlayLayers;
+	if (!layers?.length) {
+		return {};
+	}
+
+	const metrics: Partial<NvidiaCudaTiledOverlaySummaryMetric> = {
+		tiledOverlayLayers: layers.length,
+	};
+	let changedTileCount = 0;
+	let uploadedTileBytes = 0;
+	let cachedTileCount = 0;
+	let fallbackReason: string | null = null;
+	for (const layer of layers) {
+		const layerMetrics = resolveNativeTiledOverlayMetrics(layer);
+		changedTileCount += layerMetrics.changedTileCount;
+		uploadedTileBytes += layerMetrics.uploadedTileBytes;
+		cachedTileCount += layerMetrics.cachedTileCount;
+		fallbackReason ??= resolveNativeTiledOverlayRawFallbackReason(layer);
+	}
+	metrics.changedTileCount = changedTileCount;
+	metrics.uploadedTileBytes = uploadedTileBytes;
+	metrics.cachedTileCount = cachedTileCount;
+	if (fallbackReason !== null) {
+		metrics.rawFallbackReason = fallbackReason;
 	}
 	return metrics;
 }
@@ -3641,6 +3732,30 @@ export function getNativeStaticLayoutOverlayExpectedSidecarBytes(
 	);
 }
 
+/**
+ * Builds the versioned tiled/delta overlay storage descriptor from the
+ * renderer-prepared tiled layers. Layers are sorted by order then id so the
+ * native consumer blends them in deterministic z-order. The descriptor is
+ * session data only (never persisted) and is validated independently by
+ * validateNativeTiledOverlayStorageDescriptor before it reaches the wrapper.
+ */
+export function buildNativeStaticLayoutTiledOverlayManifest(
+	options: Pick<
+		NativeStaticLayoutExportOptions,
+		"width" | "height" | "frameRate" | "durationSec"
+	>,
+	layers: readonly NativeTiledOverlayLayerDescriptor[],
+): NativeTiledOverlayStorageDescriptor {
+	return {
+		version: NATIVE_TILED_OVERLAY_STORAGE_VERSION,
+		outputWidth: options.width,
+		outputHeight: options.height,
+		frameRate: options.frameRate,
+		durationSec: options.durationSec,
+		layers: sortNativeTiledOverlayLayers(layers),
+	};
+}
+
 export function buildExperimentalNvidiaCudaStaticLayoutArgs(
 	options: NativeStaticLayoutExportOptions,
 	outputPath: string,
@@ -3783,6 +3898,9 @@ export function buildExperimentalNvidiaCudaStaticLayoutArgs(
 	if (options.overlayManifestPath) {
 		args.push("--overlay-manifest", options.overlayManifestPath);
 	}
+	if (options.tiledOverlayManifestPath) {
+		args.push("--tiled-overlay-manifest", options.tiledOverlayManifestPath);
+	}
 	if (options.timelineMapPath) {
 		args.push("--timeline-map", options.timelineMapPath);
 	}
@@ -3847,6 +3965,23 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 				...resolveNvidiaCudaCursorAssets(effectiveOptions, true),
 			};
 		}
+	}
+	if (options.tiledOverlayLayers?.length) {
+		// The versioned tiled/delta overlay storage descriptor is written next to
+		// the raw overlay manifest; the CUDA wrapper validates it independently
+		// and the native compositor consumes it (session data, never persisted).
+		const tiledOverlayManifestPath = path.join(chunkDirectory, "tiled-overlay-manifest.json");
+		await fs.writeFile(
+			tiledOverlayManifestPath,
+			JSON.stringify(
+				buildNativeStaticLayoutTiledOverlayManifest(options, options.tiledOverlayLayers),
+			),
+			"utf8",
+		);
+		effectiveOptions = {
+			...effectiveOptions,
+			tiledOverlayManifestPath,
+		};
 	}
 	const args = [
 		scriptPath,
@@ -4279,6 +4414,29 @@ export async function exportNativeStaticLayoutVideo(
 			}
 		}
 	}
+	if (options.tiledOverlayLayers?.length) {
+		const tiledDescriptor = buildNativeStaticLayoutTiledOverlayManifest(
+			options,
+			options.tiledOverlayLayers,
+		);
+		const tiledValidationError = validateNativeTiledOverlayStorageDescriptor(tiledDescriptor, {
+			outputWidth: options.width,
+			outputHeight: options.height,
+			durationSec: options.durationSec,
+			frameRate: options.frameRate,
+		});
+		if (tiledValidationError) {
+			throw new Error(`Invalid tiled overlay descriptor: ${tiledValidationError}`);
+		}
+		for (const layer of tiledDescriptor.layers) {
+			const stat = await fs.stat(layer.payloadPath);
+			if (stat.size < layer.payloadByteLength) {
+				throw new Error(
+					`Tiled overlay layer ${layer.id} payload is truncated: expected ${layer.payloadByteLength} bytes, received ${stat.size}`,
+				);
+			}
+		}
+	}
 	if (
 		options.cursorAtlasOwned === true &&
 		!(
@@ -4422,7 +4580,7 @@ export async function exportNativeStaticLayoutVideo(
 			// The generalized NVIDIA CUDA compositor composites renderer-prepared
 			// overlay sidecars natively; the Windows D3D11 helper cannot, so it is
 			// skipped below when overlay layers are present.
-			(options.overlayLayers?.length === 0 ||
+			((options.overlayLayers?.length === 0 && !options.tiledOverlayLayers?.length) ||
 				options.experimentalNvidiaCudaExport === true ||
 				isExplicitNvidiaCudaExportEnabled())
 		) {
@@ -4537,7 +4695,7 @@ export async function exportNativeStaticLayoutVideo(
 				}
 				if (
 					!shouldTryNvidiaCuda &&
-					((options.overlayLayers?.length &&
+					(((options.overlayLayers?.length || options.tiledOverlayLayers?.length) &&
 						(options.zoomTelemetry?.length || options.cursorAtlasOwned === true)) ||
 						options.temporalBlur)
 				) {
@@ -4551,7 +4709,10 @@ export async function exportNativeStaticLayoutVideo(
 					);
 				}
 				if (shouldTryNvidiaCuda && options.cursorTelemetry?.length) {
-					if (options.overlayLayers?.length && options.cursorAtlasOwned !== true) {
+					if (
+						(options.overlayLayers?.length || options.tiledOverlayLayers?.length) &&
+						options.cursorAtlasOwned !== true
+					) {
 						// When overlay layers are present and the cursor is baked into the
 						// transparent sidecar, drawing it again natively would double-render
 						// and the atlas is intentionally absent. The Windows-GPU prep above
@@ -4638,13 +4799,19 @@ export async function exportNativeStaticLayoutVideo(
 						await validateRenderedVideoOutput();
 						const overlaySidecarMetrics =
 							resolveNvidiaCudaOverlaySidecarSummaryMetrics(options);
-						if (overlaySidecarMetrics && cudaResult.summary.nativeSummary) {
+						const tiledOverlayMetrics =
+							resolveNvidiaCudaTiledOverlaySidecarSummaryMetrics(options);
+						if (
+							(overlaySidecarMetrics || tiledOverlayMetrics) &&
+							cudaResult.summary.nativeSummary
+						) {
 							// Additive renderer-derived overlay sidecar metrics ride on the
 							// parsed native summary so the completion log and chunk metrics
 							// surface them without changing the helper contract.
 							cudaResult.summary.nativeSummary = {
 								...cudaResult.summary.nativeSummary,
 								...overlaySidecarMetrics,
+								...tiledOverlayMetrics,
 							};
 						}
 						const nativeSummaryMetrics = resolveNvidiaCudaNativeSummaryMetrics(
@@ -4724,26 +4891,47 @@ export async function exportNativeStaticLayoutVideo(
 							error,
 						);
 						await removeTemporaryExportFile(videoOnlyPath);
+						const overlayCount =
+							(options.overlayLayers?.length ?? 0) +
+							(options.tiledOverlayLayers?.length ?? 0);
+						if (overlayCount > 0 && !options.overlayLayers?.length) {
+							// Tiled overlay layers cannot be consumed by any remaining fallback
+							// (Windows D3D11 or FFmpeg static layout). Fail fast so H.264 Auto /
+							// HEVC Auto never silently drop the sparse overlay sidecar.
+							throw new Error(
+								`CUDA composition failed with ${overlayCount} overlay sidecar(s) including ${options.tiledOverlayLayers?.length ?? 0} tiled overlay layer(s); the remaining static-layout fallback cannot consume the tiled descriptor (tiled-overlays-unsupported-in-static-layout-fallback): ${
+									error instanceof Error ? error.message : String(error)
+								}`,
+							);
+						}
 						if (
-							(options.overlayLayers?.length &&
-								(options.zoomTelemetry?.length ||
-									options.cursorAtlasOwned === true)) ||
-							options.temporalBlur
+							(options.overlayLayers?.length || options.tiledOverlayLayers?.length) &&
+							(options.zoomTelemetry?.length || options.cursorAtlasOwned === true)
 						) {
 							// Neither the D3D11 helper nor the FFmpeg overlay route can
 							// preserve spatial zoom blur over the transparent overlay
-							// sidecars, temporal zoom motion blur, or a native-owned cursor
-							// whose pixels the sidecar excluded; surface the failure so the
-							// renderer falls back to raw frames instead of silently dropping
-							// the effect.
+							// sidecars, or a native-owned cursor whose pixels the sidecar
+							// excluded; surface the failure so the renderer falls back to raw
+							// frames instead of silently dropping the effect.
 							throw new Error(
-								`CUDA composition failed while zoom motion blur${options.temporalBlur ? ` (temporal ${options.temporalBlur.sampleCount} samples)` : ""}${options.cursorAtlasOwned === true ? ", a native-owned cursor" : ""} and ${options.overlayLayers?.length ?? 0} overlay layer(s) are requested: ${error instanceof Error ? error.message : String(error)}`,
+								`CUDA composition failed while zoom motion blur${options.cursorAtlasOwned === true ? ", a native-owned cursor" : ""} and ${overlayCount} overlay layer(s) are requested; the fallback route cannot preserve these effects${options.cursorAtlasOwned === true ? " and cannot draw the cursor the sidecar excluded" : ""}: ${error instanceof Error ? error.message : String(error)}`,
+							);
+						}
+						if (options.temporalBlur) {
+							// Temporal zoom motion blur is only supported by the generalized
+							// NVIDIA CUDA compositor; fall back would silently drop it.
+							throw new Error(
+								`CUDA composition failed while temporal zoom motion blur is requested (${options.temporalBlur.sampleCount} samples); the fallback route cannot preserve temporal blur: ${error instanceof Error ? error.message : String(error)}`,
 							);
 						}
 					}
 				}
 
-				if (!didRenderVideo && videoCodec !== "hevc" && !options.overlayLayers?.length) {
+				if (
+					!didRenderVideo &&
+					videoCodec !== "hevc" &&
+					!(options.overlayLayers?.length || options.tiledOverlayLayers?.length)
+				) {
 					const gpuResult = await runExperimentalWindowsGpuStaticLayoutExport(
 						experimentalGpuOptions,
 						videoOnlyPath,
@@ -4821,6 +5009,14 @@ export async function exportNativeStaticLayoutVideo(
 		if (!didRenderVideo && hasNativeStaticLayoutSourceCrop(options)) {
 			throw new Error("Native crop export requires a GPU compositor backend");
 		}
+		if (!didRenderVideo && options.tiledOverlayLayers?.length) {
+			// The remaining static-layout paths cannot consume the versioned
+			// tiled/delta overlay descriptor; fail fast instead of silently dropping
+			// the overlay pixels on a fallback that did not render.
+			throw new Error(
+				`No GPU compositor produced output; the static-layout fallback cannot consume ${options.tiledOverlayLayers.length} tiled overlay layer(s) (tiled-overlays-unsupported-in-static-layout-fallback)`,
+			);
+		}
 
 		if (!didRenderVideo && usePrecompositedLayout) {
 			const maskPath = path.join(chunkDirectory, "layout-mask.pgm");
@@ -4887,9 +5083,12 @@ export async function exportNativeStaticLayoutVideo(
 			let fullBackend: NativeStaticLayoutBackend = "cuda-overlay";
 			let fallbackReason: string | undefined;
 			if (!primaryResult.success) {
-				if (options.overlayLayers?.length) {
+				const overlayCount =
+					(options.overlayLayers?.length ?? 0) +
+					(options.tiledOverlayLayers?.length ?? 0);
+				if (overlayCount > 0) {
 					throw new Error(
-						`CUDA overlay-layer composition failed; refusing to drop ${options.overlayLayers.length} visual overlay layer(s): ${getFfmpegFailureMessage(primaryResult)}`,
+						`CUDA overlay-layer composition failed; refusing to drop ${overlayCount} visual overlay layer(s): ${getFfmpegFailureMessage(primaryResult)}`,
 					);
 				}
 				fullBackend = "cuda-scale-cpu-pad";
