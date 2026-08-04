@@ -56,18 +56,18 @@ describe("media server path policy", () => {
 		const { isAllowedMediaPath } = await import("./mediaServer");
 		const { rememberApprovedLocalReadPath } = await import("./ipc/project/manager");
 
-		expect(isAllowedMediaPath(videoPath)).toBe(false);
+		await expect(isAllowedMediaPath(videoPath)).resolves.toBe(false);
 
 		await rememberApprovedLocalReadPath(videoPath);
 
-		expect(isAllowedMediaPath(videoPath)).toBe(true);
+		await expect(isAllowedMediaPath(videoPath)).resolves.toBe(true);
 	});
 
 	it("rejects missing media files outside the allowed directories", async () => {
 		const missingPath = path.join(tempRoot, "Downloads", "missing.mp4");
 		const { isAllowedMediaPath } = await import("./mediaServer");
 
-		expect(isAllowedMediaPath(missingPath)).toBe(false);
+		await expect(isAllowedMediaPath(missingPath)).resolves.toBe(false);
 	});
 });
 

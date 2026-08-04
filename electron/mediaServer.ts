@@ -2,7 +2,7 @@ import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
-import { approvedLocalReadPaths } from "./ipc/state";
+import { approvedLocalReadPaths, foldPathComparisonKey } from "./ipc/state";
 import { getMediaContentType } from "./mediaTypes";
 
 let mediaServerBaseUrl: string | null = null;
@@ -58,8 +58,23 @@ async function resolveRealPath(filePath: string): Promise<string | null> {
 	}
 }
 
-export function isAllowedMediaPath(realPath: string): boolean {
-	return approvedLocalReadPaths.has(realPath);
+export async function isAllowedMediaPath(realPath: string): Promise<boolean> {
+	const resolvedRealPath = path.resolve(realPath);
+	// Accept any real file contained inside an allowed root (this covers pending
+	// sidecar URLs granted for a lexical in-root path that only appeared after
+	// the mux rename) OR an explicitly approved path. realpath has already been
+	// resolved by the caller, so a symlink/reparse-point escape from inside a
+	// root lands outside the roots here and is rejected. The manager module is
+	// imported lazily so importing this module does not pull the app-paths chain
+	// (pure helpers like resolveHttpByteRange stay importable in tests without an
+	// Electron mock).
+	const { getAllowedLocalReadRootsSync, isPathInsideDirectory } = await import(
+		"./ipc/project/manager"
+	);
+	const rootContained = getAllowedLocalReadRootsSync().some((root) =>
+		isPathInsideDirectory(resolvedRealPath, root),
+	);
+	return rootContained || approvedLocalReadPaths.has(foldPathComparisonKey(resolvedRealPath));
 }
 
 async function handleMediaRequest(
@@ -83,7 +98,7 @@ async function handleMediaRequest(
 		}
 
 		const resolvedPath = await resolveRealPath(rawPath);
-		if (!resolvedPath || !isAllowedMediaPath(resolvedPath)) {
+		if (!resolvedPath || !(await isAllowedMediaPath(resolvedPath))) {
 			console.warn(`[media-server] Blocked access to unapproved path: ${rawPath}`);
 			response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
 			response.end("Forbidden");
