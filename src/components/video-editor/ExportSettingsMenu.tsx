@@ -1,8 +1,9 @@
-import { DownloadSimple as Download, FilmSlate as Film, Image } from "@phosphor-icons/react";
+import { DownloadSimple as Download, FilmSlate as Film, Image, Info } from "@phosphor-icons/react";
 import { LayoutGroup, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { useScopedT } from "@/contexts/I18nContext";
 import type {
@@ -19,7 +20,6 @@ import type {
 } from "@/lib/exporter";
 import {
 	EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS,
-	EXPORT_BITRATE_MAX_MBPS,
 	EXPORT_BITRATE_MIN_MBPS,
 	GIF_FRAME_RATES,
 	GIF_SIZE_PRESETS,
@@ -86,8 +86,8 @@ export function ExportSettingsMenu({
 	onExportBitrateMbpsChange,
 	mp4FrameRate,
 	onMp4FrameRateChange,
-	exportPipelineModel = "modern",
-	onExportPipelineModelChange,
+	exportPipelineModel: _exportPipelineModel,
+	onExportPipelineModelChange: _onExportPipelineModelChange,
 	experimentalNvidiaCudaExport = false,
 	onExperimentalNvidiaCudaExportChange,
 	nvidiaCudaExportAvailable = false,
@@ -108,18 +108,19 @@ export function ExportSettingsMenu({
 	className,
 }: ExportSettingsMenuProps) {
 	const tSettings = useScopedT("settings");
-	const isLegacyModel = exportPipelineModel === "legacy";
 	const [bitrateDraft, setBitrateDraft] = useState<string>(String(exportBitrateMbps));
 
 	useEffect(() => {
 		setBitrateDraft(String(exportBitrateMbps));
 	}, [exportBitrateMbps]);
 
+	const effectiveMaxMbps = exportVideoCodec === "hevc" ? 70 : 105;
+
 	const commitBitrateDraft = () => {
 		const parsed = Number(bitrateDraft);
 		const clamped = Number.isFinite(parsed)
-			? Math.min(EXPORT_BITRATE_MAX_MBPS, Math.max(EXPORT_BITRATE_MIN_MBPS, parsed))
-			: EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS;
+			? Math.min(effectiveMaxMbps, Math.max(EXPORT_BITRATE_MIN_MBPS, parsed))
+			: Math.min(EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS, effectiveMaxMbps);
 		setBitrateDraft(String(clamped));
 		onExportBitrateMbpsChange?.(clamped);
 	};
@@ -290,8 +291,17 @@ export function ExportSettingsMenu({
 						})}
 					</div>
 					<div className="mb-1 flex items-center justify-between px-1">
-						<span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+						<span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
 							{tSettings("export.codecTitle", "Video codec")}
+							<span
+								title={tSettings(
+									"export.codecHint",
+									"H.264 plays everywhere. H.265 makes smaller files at the same quality.",
+								)}
+								className="inline-flex cursor-help"
+							>
+								<Info className="h-3.5 w-3.5 text-muted-foreground/60" />
+							</span>
 						</span>
 					</div>
 					<div className="mb-3 grid min-h-10 w-full grid-cols-2 rounded-xl border border-foreground/5 bg-foreground/5 p-0.5">
@@ -439,11 +449,27 @@ export function ExportSettingsMenu({
 					</div>
 					{exportBitrateMode === "custom" ? (
 						<div className="mb-2 flex items-center gap-2 px-1">
+							<div className="flex-1">
+								<Slider
+									min={EXPORT_BITRATE_MIN_MBPS}
+									max={effectiveMaxMbps}
+									step={0.5}
+									value={[Number(bitrateDraft) || exportBitrateMbps]}
+									onValueChange={([value]) => {
+										setBitrateDraft(String(value));
+										onExportBitrateMbpsChange?.(value);
+									}}
+									aria-label={tSettings(
+										"export.bitrate.mbpsInput",
+										"Custom bitrate in Mbps",
+									)}
+								/>
+							</div>
 							<Input
 								type="number"
 								min={EXPORT_BITRATE_MIN_MBPS}
-								max={EXPORT_BITRATE_MAX_MBPS}
-								step="0.5"
+								max={effectiveMaxMbps}
+								step={0.5}
 								value={bitrateDraft}
 								onChange={(event) => {
 									setBitrateDraft(event.target.value);
@@ -453,25 +479,14 @@ export function ExportSettingsMenu({
 									}
 								}}
 								onBlur={commitBitrateDraft}
-								className="h-8 w-24"
+								className="h-8 w-14 text-center text-[11px] border-foreground/10 bg-foreground/[0.03] text-foreground"
 								aria-label={tSettings(
 									"export.bitrate.mbpsInput",
 									"Custom bitrate in Mbps",
 								)}
 							/>
 							<span className="text-[10px] text-muted-foreground/70">Mbps</span>
-							<span className="text-[9px] text-muted-foreground/50">
-								{tSettings("export.bitrate.range", "1\u2013200 Mbps")}
-							</span>
 						</div>
-					) : null}
-					{exportVideoCodec === "hevc" ? (
-						<p className="mb-3 px-1 text-[10px] text-muted-foreground/70">
-							{tSettings(
-								"export.hevcHint",
-								"HEVC (H.265) makes smaller files but may not play on older or web players. Recordly preview playback is unchanged.",
-							)}
-						</p>
 					) : null}
 					<div className="mb-1 flex items-center justify-between px-1">
 						<span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
@@ -514,183 +529,117 @@ export function ExportSettingsMenu({
 							);
 						})}
 					</div>
-					<div className="mb-1 flex items-center justify-between px-1">
-						<span className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
-							{tSettings("export.pipelineTitle", "Pipeline")}
-						</span>
-					</div>
-					<div className="mb-3 grid min-h-10 w-full grid-cols-2 rounded-xl border border-foreground/5 bg-foreground/5 p-0.5">
-						{(
-							[
-								{
-									value: "legacy",
-									label: tSettings("export.pipeline.legacy", "Legacy"),
-								},
-								{
-									value: "modern",
-									label: tSettings("export.pipeline.modern", "Lightning (Beta)"),
-								},
-							] as const
-						).map((option) => {
-							const isActive = exportPipelineModel === option.value;
-							return (
-								<button
-									key={option.value}
-									type="button"
-									onClick={() => onExportPipelineModelChange?.(option.value)}
-									aria-pressed={isActive}
-									className="relative rounded-lg px-1 py-1 text-[11px] font-medium transition-colors"
-								>
-									{isActive ? (
-										<motion.span
-											layoutId="header-export-pipeline-pill"
-											className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
-											transition={{
-												type: "spring",
-												stiffness: 420,
-												damping: 34,
-											}}
-										/>
-									) : null}
-									<span
-										className={cn(
-											"relative z-10",
-											isActive
-												? "text-white dark:text-black"
-												: "text-muted-foreground hover:text-foreground",
+					<div className="mb-3 overflow-hidden rounded-lg border border-[#2563EB]/20 bg-[#2563EB]/5">
+						<div className="flex items-center justify-between gap-3 px-3 py-2">
+							<div className="min-w-0">
+								<div className="flex items-center gap-1.5">
+									<span className="text-[11px] font-semibold text-foreground">
+										{tSettings(
+											"export.nvidiaCuda.compositorTitle",
+											"NVIDIA CUDA compositor",
 										)}
-									>
-										{option.label}
 									</span>
-								</button>
-							);
-						})}
-					</div>
-					<p className="mb-3 px-1 text-[10px] text-muted-foreground/70">
-						{isLegacyModel
-							? tSettings(
-									"export.pipeline.legacyHint",
-									"Legacy uses the current stable WebCodecs export path.",
-								)
-							: tSettings(
-									"export.pipeline.lightningHint",
-									"Lightning (Beta) automatically uses the fastest compatible backend and falls back when needed.",
-								)}
-					</p>
-					{!isLegacyModel ? (
-						<div className="mb-3 overflow-hidden rounded-lg border border-[#2563EB]/20 bg-[#2563EB]/5">
-							<div className="flex items-center justify-between gap-3 px-3 py-2">
-								<div className="min-w-0">
-									<div className="flex items-center gap-1.5">
-										<span className="text-[11px] font-semibold text-foreground">
+									{nvidiaCudaCompositorRequired ? (
+										<span className="rounded bg-[#2563EB]/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[#2563EB]">
 											{tSettings(
-												"export.nvidiaCuda.compositorTitle",
-												"NVIDIA CUDA compositor",
+												"export.nvidiaCuda.requiredBadge",
+												"Required",
 											)}
 										</span>
-										{nvidiaCudaCompositorRequired ? (
-											<span className="rounded bg-[#2563EB]/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[#2563EB]">
-												{tSettings(
-													"export.nvidiaCuda.requiredBadge",
-													"Required",
-												)}
-											</span>
-										) : experimentalNvidiaCudaExport ? (
-											<span className="rounded bg-[#2563EB]/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[#2563EB]">
-												{tSettings(
-													"export.nvidiaCuda.selectedBadge",
-													"Selected",
-												)}
-											</span>
-										) : nvidiaCudaExportAvailable ? (
-											<span className="rounded bg-[#2563EB]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[#2563EB]">
-												{tSettings(
-													"export.nvidiaCuda.availableBadge",
-													"Available",
-												)}
-											</span>
-										) : (
-											<span className="rounded bg-foreground/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground">
-												{tSettings(
-													"export.nvidiaCuda.unavailableBadge",
-													"Unavailable",
-												)}
-											</span>
-										)}
-									</div>
-									<p className="mt-0.5 truncate text-[10px] text-muted-foreground/75">
-										{tSettings("export.nvidiaCuda.backendLabel", "Backend")}
-										{": "}
-										{nvidiaCudaCompositorRequired ||
-										experimentalNvidiaCudaExport
-											? tSettings(
-													"export.nvidiaCuda.backendSelected",
-													"NVIDIA CUDA compositor",
-												)
-											: tSettings("export.backend.auto", "Auto")}
-									</p>
-									<p className="mt-0.5 text-[10px] text-muted-foreground/75">
-										{nvidiaCudaCompositorRequired
-											? tSettings(
-													"export.nvidiaCuda.hintRequired",
-													"H.265 Hardware exports use the NVIDIA CUDA compositor and never fall back to renderer frames.",
-												)
-											: experimentalNvidiaCudaExport
-												? tSettings(
-														"export.nvidiaCuda.hintSelected",
-														"Exports will use the NVIDIA CUDA compositor on this device.",
-													)
-												: nvidiaCudaExportAvailable
-													? tSettings(
-															"export.nvidiaCuda.hint",
-															"Compose and encode on the NVIDIA GPU for fast exports.",
-														)
-													: nvidiaCudaExportSkipReason
-														? tSettings(
-																"export.nvidiaCuda.unavailableReason",
-																`CUDA compositor is unavailable (${nvidiaCudaExportSkipReason}).`,
-																{
-																	reason: nvidiaCudaExportSkipReason,
-																},
-															)
-														: tSettings(
-																"export.nvidiaCuda.unavailableGeneric",
-																"CUDA compositor is unavailable on this device.",
-															)}
-									</p>
-									{nvidiaCudaCompositorRequired && !nvidiaCudaExportAvailable ? (
-										<p className="mt-1 text-[10px] font-medium text-red-400">
+									) : experimentalNvidiaCudaExport ? (
+										<span className="rounded bg-[#2563EB]/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[#2563EB]">
 											{tSettings(
-												"export.nvidiaCuda.unavailableRequired",
-												"H.265 + Hardware exports will fail until the CUDA compositor is available. Install or update NVIDIA drivers, or switch Encoder to Auto.",
+												"export.nvidiaCuda.selectedBadge",
+												"Selected",
 											)}
-										</p>
-									) : null}
+										</span>
+									) : nvidiaCudaExportAvailable ? (
+										<span className="rounded bg-[#2563EB]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[#2563EB]">
+											{tSettings(
+												"export.nvidiaCuda.availableBadge",
+												"Available",
+											)}
+										</span>
+									) : (
+										<span className="rounded bg-foreground/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground">
+											{tSettings(
+												"export.nvidiaCuda.unavailableBadge",
+												"Unavailable",
+											)}
+										</span>
+									)}
 								</div>
-								{nvidiaCudaCompositorRequired ? (
-									<Switch
-										checked
-										disabled
-										aria-label={tSettings(
-											"export.nvidiaCuda.requiredToggle",
-											"NVIDIA CUDA compositor is required for H.265 Hardware exports",
+								<p className="mt-0.5 truncate text-[10px] text-muted-foreground/75">
+									{tSettings("export.nvidiaCuda.backendLabel", "Backend")}
+									{": "}
+									{nvidiaCudaCompositorRequired || experimentalNvidiaCudaExport
+										? tSettings(
+												"export.nvidiaCuda.backendSelected",
+												"NVIDIA CUDA compositor",
+											)
+										: tSettings("export.backend.auto", "Auto")}
+								</p>
+								<p className="mt-0.5 text-[10px] text-muted-foreground/75">
+									{nvidiaCudaCompositorRequired
+										? tSettings(
+												"export.nvidiaCuda.hintRequired",
+												"H.265 Hardware exports use the NVIDIA CUDA compositor and never fall back to renderer frames.",
+											)
+										: experimentalNvidiaCudaExport
+											? tSettings(
+													"export.nvidiaCuda.hintSelected",
+													"Exports will use the NVIDIA CUDA compositor on this device.",
+												)
+											: nvidiaCudaExportAvailable
+												? tSettings(
+														"export.nvidiaCuda.hint",
+														"Compose and encode on the NVIDIA GPU for fast exports.",
+													)
+												: nvidiaCudaExportSkipReason
+													? tSettings(
+															"export.nvidiaCuda.unavailableReason",
+															`CUDA compositor is unavailable (${nvidiaCudaExportSkipReason}).`,
+															{
+																reason: nvidiaCudaExportSkipReason,
+															},
+														)
+													: tSettings(
+															"export.nvidiaCuda.unavailableGeneric",
+															"CUDA compositor is unavailable on this device.",
+														)}
+								</p>
+								{nvidiaCudaCompositorRequired && !nvidiaCudaExportAvailable ? (
+									<p className="mt-1 text-[10px] font-medium text-red-400">
+										{tSettings(
+											"export.nvidiaCuda.unavailableRequired",
+											"H.265 + Hardware exports will fail until the CUDA compositor is available. Install or update NVIDIA drivers, or switch Encoder to Auto.",
 										)}
-										className="shrink-0 scale-75 data-[state=checked]:bg-[#2563EB]"
-									/>
-								) : nvidiaCudaExportAvailable ? (
-									<Switch
-										checked={experimentalNvidiaCudaExport}
-										onCheckedChange={onExperimentalNvidiaCudaExportChange}
-										aria-label={tSettings(
-											"export.nvidiaCuda.toggle",
-											"Use the NVIDIA CUDA compositor for GPU-accelerated exports",
-										)}
-										className="shrink-0 scale-75 data-[state=checked]:bg-[#2563EB]"
-									/>
+									</p>
 								) : null}
 							</div>
+							{nvidiaCudaCompositorRequired ? (
+								<Switch
+									checked
+									disabled
+									aria-label={tSettings(
+										"export.nvidiaCuda.requiredToggle",
+										"NVIDIA CUDA compositor is required for H.265 Hardware exports",
+									)}
+									className="shrink-0 scale-75 data-[state=checked]:bg-[#2563EB]"
+								/>
+							) : nvidiaCudaExportAvailable ? (
+								<Switch
+									checked={experimentalNvidiaCudaExport}
+									onCheckedChange={onExperimentalNvidiaCudaExportChange}
+									aria-label={tSettings(
+										"export.nvidiaCuda.toggle",
+										"Use the NVIDIA CUDA compositor for GPU-accelerated exports",
+									)}
+									className="shrink-0 scale-75 data-[state=checked]:bg-[#2563EB]"
+								/>
+							) : null}
 						</div>
-					) : null}
+					</div>
 					{showCaptionSidecarOption ? (
 						<div className="mb-3 flex min-h-12 items-center justify-between gap-3 rounded-lg border border-foreground/10 bg-foreground/5 px-3 py-2">
 							<div className="min-w-0">

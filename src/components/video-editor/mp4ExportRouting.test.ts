@@ -199,6 +199,19 @@ describe("resolveMp4ExportRouting", () => {
 		expect(result.backendPreference).toBe("auto");
 	});
 
+	it("routes H.264 Hardware to the native GPU compositor when RTX Rendering is on", () => {
+		const result = resolveMp4ExportRouting({
+			...baseOptions,
+			exportVideoCodec: "h264",
+			exportEncoderPreference: "hardware",
+			experimentalNvidiaCudaExport: true,
+			nvidiaCudaExportAvailable: true,
+		});
+		expect(result.useExperimentalNvidiaCudaExport).toBe(true);
+		expect(result.needsNativeRawFrame).toBe(false);
+		expect(result.pipelineModel).toBe("modern");
+	});
+
 	it("keeps the existing legacy/auto route for H.264 with auto encoder preference", () => {
 		const legacy = resolveMp4ExportRouting({
 			...baseOptions,

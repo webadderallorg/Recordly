@@ -53,9 +53,11 @@ export function resolveMp4ExportRouting({
 	const useExperimentalNativeExport =
 		pipelineModel === "modern" &&
 		(smokeExportConfig.enabled ? smokeExportConfig.useNativeExport : true);
+	// Auto and explicit GPU/Hardware preferences may use the native NVIDIA
+	// compositor for BOTH codecs (H.264 and HEVC). CPU stays on the software
+	// encoder; the H.264 compatibility default (Auto) is unchanged.
 	const mayUseNativeGpuCompositor =
-		exportEncoderPreference === "auto" ||
-		(exportVideoCodec === "hevc" && exportEncoderPreference === "hardware");
+		exportEncoderPreference === "auto" || exportEncoderPreference === "hardware";
 	// HEVC + Hardware makes the NVIDIA CUDA compositor mandatory: the user's codec
 	// and encoder choice IS the opt-in, so the CUDA route no longer depends on a
 	// hidden experimental toggle. If the compositor cannot run (no helper, no
@@ -78,10 +80,15 @@ export function resolveMp4ExportRouting({
 		exportVideoCodec === "hevc" &&
 		exportEncoderPreference !== "cpu" &&
 		useExperimentalNvidiaCudaExport;
+	// H.264 Auto stays on the compatibility path (native layout with the
+	// automatic bitrate heuristic, WebCodecs/native/Breeze routing unchanged).
+	// H.264 Hardware uses the native GPU compositor when eligible, exactly like
+	// HEVC Hardware; only H.264 CPU forces the raw software frame path.
 	const needsNativeRawFrame =
 		exportVideoCodec === "hevc"
 			? !canUseHevcNativeGpuCompositor
-			: exportEncoderPreference !== "auto";
+			: exportEncoderPreference === "cpu" ||
+				(exportEncoderPreference === "hardware" && !useExperimentalNvidiaCudaExport);
 	const backendPreference =
 		pipelineModel === "legacy"
 			? "webcodecs"
