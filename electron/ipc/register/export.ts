@@ -328,6 +328,19 @@ export function registerExportHandlers() {
 			const videoCodec = options.videoCodec ?? "h264";
 			const encoderPreference = options.encoderPreference ?? "auto";
 			let sessionId = "";
+			// Build the request summary once, before the try, so the same string is
+			// reused for the start and failure logs (formatNativeExportRequestSettings
+			// is a pure string formatter over already-normalized locals; it has no
+			// side effects that must stay inside the try).
+			const requestSettings = formatNativeExportRequestSettings({
+				videoCodec,
+				encoderPreference,
+				inputMode,
+				encodingMode: options.encodingMode,
+				width: options.width,
+				height: options.height,
+				frameRate: options.frameRate,
+			});
 			try {
 				if (options.width % 2 !== 0 || options.height % 2 !== 0) {
 					throw new Error("Native export requires even output dimensions");
@@ -341,15 +354,6 @@ export function registerExportHandlers() {
 				// request line below is emitted before encoder resolution so a mismatch
 				// between the requested prewarm (e.g. hevc/hardware) and the encoder the
 				// export actually started with is immediately visible in one place.
-				const requestSettings = formatNativeExportRequestSettings({
-					videoCodec,
-					encoderPreference,
-					inputMode,
-					encodingMode: options.encodingMode,
-					width: options.width,
-					height: options.height,
-					frameRate: options.frameRate,
-				});
 				console.log(
 					formatLogTs(),
 					`[native-export] Start request session=${sessionId} ${requestSettings}`,
@@ -500,18 +504,9 @@ export function registerExportHandlers() {
 					encoderName,
 				};
 			} catch (error) {
-				const failedRequestSettings = formatNativeExportRequestSettings({
-					videoCodec,
-					encoderPreference,
-					inputMode,
-					encodingMode: options.encodingMode,
-					width: options.width,
-					height: options.height,
-					frameRate: options.frameRate,
-				});
 				console.error(
 					formatLogTs(),
-					`[native-export] Failed to start native video export session session=${sessionId || "unknown"} ${failedRequestSettings}:`,
+					`[native-export] Failed to start native video export session session=${sessionId || "unknown"} ${requestSettings}:`,
 					error,
 				);
 				return {

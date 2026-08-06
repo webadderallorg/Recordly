@@ -1,3 +1,21 @@
+export type {
+	CursorRect,
+	CursorSpriteCaptureResult,
+	CursorSpriteCapturerOptions,
+	CursorSpriteExpansion,
+	CursorSpriteRenderer,
+	CursorSpriteRoiResult,
+	CursorSpriteStripData,
+} from "./cursorSpriteOverlay";
+export {
+	buildCursorSpriteRenderTransform,
+	CursorSpriteCapturer,
+	clampCursorRoiToCanvas,
+	DEFAULT_CURSOR_SPRITE_EXPANSION,
+	expandCursorBounds,
+	isValidCursorBounds,
+	resolveCursorRoi,
+} from "./cursorSpriteOverlay";
 export {
 	clampCustomBitrateMbps,
 	customBitrateMbpsToBps,
@@ -17,10 +35,17 @@ export {
 	resolveSupportedMp4EncoderPath,
 } from "./mp4Support";
 export { VideoMuxer } from "./muxer";
-export type { NativeStaticLayoutOverlayLayer } from "./nativeStaticLayoutOverlays";
+export type {
+	NativeCursorSpriteOverlayLayer,
+	NativeCursorSpritePosition,
+	NativeStaticLayoutOverlayLayer,
+} from "./nativeStaticLayoutOverlays";
 export {
+	clampNativeCursorSpritePosition,
 	getNativeStaticLayoutOverlayFrameByteSize,
+	isNativeCursorSpriteOverlayLayer,
 	sortNativeStaticLayoutOverlayLayers,
+	validateNativeCursorSpriteOverlayLayer,
 	validateNativeStaticLayoutOverlayLayer,
 } from "./nativeStaticLayoutOverlays";
 export { StreamingVideoDecoder } from "./streamingDecoder";
@@ -48,6 +73,8 @@ export type {
 } from "./types";
 export {
 	EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS,
+	EXPORT_BITRATE_H264_MAX_MBPS,
+	EXPORT_BITRATE_HEVC_MAX_MBPS,
 	EXPORT_BITRATE_MAX_MBPS,
 	EXPORT_BITRATE_MIN_MBPS,
 	GIF_FRAME_RATES,

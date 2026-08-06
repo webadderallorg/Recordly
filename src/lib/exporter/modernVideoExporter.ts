@@ -4346,6 +4346,13 @@ export class ModernVideoExporter {
 				);
 				this.nativeStaticLayoutSkipReason = routeSkipReason;
 				this.nativeStaticLayoutSkipReasons = [routeSkipReason];
+				// The native export already produced a temp video (potentially GBs);
+				// discard it before falling back so it is not left on disk for the
+				// whole session. Best-effort: cleanup must never override the intended
+				// skip reason or the null return.
+				await window.electronAPI
+					?.discardExportedTemp?.(result.tempPath)
+					.catch(() => undefined);
 				restoreEncoderState();
 				return null;
 			}
@@ -4363,6 +4370,13 @@ export class ModernVideoExporter {
 				);
 				this.nativeStaticLayoutSkipReason = routeSkipReason;
 				this.nativeStaticLayoutSkipReasons = [routeSkipReason];
+				// The native export already produced a temp video (potentially GBs);
+				// discard it before falling back so it is not left on disk for the
+				// whole session. Best-effort: cleanup must never override the intended
+				// skip reason or the null return.
+				await window.electronAPI
+					?.discardExportedTemp?.(result.tempPath)
+					.catch(() => undefined);
 				restoreEncoderState();
 				return null;
 			}
@@ -5287,6 +5301,13 @@ export class ModernVideoExporter {
 		}
 		if (isIdenticalPreparingSignal) {
 			this.lastPreparingTotalFrames = totalFrames;
+		}
+		if (phase !== "preparing") {
+			// A non-preparing progress event ends the current preparing phase; reset
+			// the watermark so a later preparing phase that reuses the same total
+			// frame count still delivers its first signal instead of being suppressed
+			// against a stale total.
+			this.lastPreparingTotalFrames = null;
 		}
 
 		const nowMs = this.getNowMs();

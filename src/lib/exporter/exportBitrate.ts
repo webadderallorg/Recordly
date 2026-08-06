@@ -148,6 +148,14 @@ function getCodecCustomBitrateCapMbps(codec: ExportVideoCodec | undefined): numb
 	}
 }
 
+function getCodecAutoBitrateCapBps(codec: ExportVideoCodec | undefined): number {
+	if (codec === "hevc") {
+		return EXPORT_BITRATE_HEVC_MAX_MBPS * 1_000_000;
+	}
+	// h264 and unknown codecs keep the existing auto heuristic unchanged.
+	return Number.POSITIVE_INFINITY;
+}
+
 export function clampCustomBitrateMbps(mbps: number, codec?: ExportVideoCodec): number {
 	if (!Number.isFinite(mbps) || Number.isNaN(mbps)) {
 		return EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS;
@@ -179,5 +187,5 @@ export function resolveExportBitrate(options: {
 	if (options.mode === "custom") {
 		return customBitrateMbpsToBps(options.customMbps, options.codec);
 	}
-	return getMp4ExportBitrate(options);
+	return Math.min(getMp4ExportBitrate(options), getCodecAutoBitrateCapBps(options.codec));
 }

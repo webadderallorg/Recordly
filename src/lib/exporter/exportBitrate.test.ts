@@ -159,6 +159,36 @@ describe("export bitrate resolver", () => {
 		).toBe(getMp4ExportBitrate(second));
 	});
 
+	it("caps auto-mode HEVC bitrates at the HEVC maximum", () => {
+		const autoOptions = {
+			width: 3840,
+			height: 2160,
+			frameRate: 30,
+			quality: "source" as const,
+			encodingMode: "quality" as const,
+			useModernNativeStaticLayout: true,
+		};
+		// The uncapped auto heuristic exceeds 70 Mbps for 4K source exports.
+		expect(getMp4ExportBitrate(autoOptions)).toBe(72_000_000);
+		expect(
+			resolveExportBitrate({
+				mode: "auto",
+				customMbps: 20,
+				codec: "hevc",
+				...autoOptions,
+			}),
+		).toBe(70_000_000);
+		// h264 auto keeps the existing heuristic (no codec cap applied).
+		expect(
+			resolveExportBitrate({
+				mode: "auto",
+				customMbps: 20,
+				codec: "h264",
+				...autoOptions,
+			}),
+		).toBe(72_000_000);
+	});
+
 	it("custom mode converts Mbps to whole-number bps", () => {
 		expect(customBitrateMbpsToBps(20)).toBe(20_000_000);
 		expect(customBitrateMbpsToBps(12.5)).toBe(12_500_000);

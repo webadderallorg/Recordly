@@ -86,6 +86,8 @@ describe("readOverlayManifest", () => {
 			expect(layers).toEqual([
 				{
 					id: "overlay-a",
+					kind: "rgba",
+					order: 0,
 					path: sidecar,
 					x: 0,
 					y: 0,
@@ -110,6 +112,8 @@ describe("readOverlayManifest", () => {
 			expect(layers).toEqual([
 				{
 					id: "overlay-a",
+					kind: "rgba",
+					order: 0,
 					path: sidecar,
 					x: 0,
 					y: 0,
@@ -287,6 +291,313 @@ describe("readOverlayManifest", () => {
 			expect(layers[0]).toMatchObject({ id: "a", frameCount: 10 });
 			expect(layers[0]).not.toHaveProperty("effectiveFrameCount");
 			expect(layers[1]).toMatchObject({ id: "b", frameCount: 10, effectiveFrameCount: 3 });
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+// Cursor-sprite overlay kind. A cursor-sprite layer is a tightly packed raw
+// RGBA frame strip (one width*height*4 frame per output frame) whose per-frame
+// top-left {x,y} comes from a JSON positions sidecar (exactly frameCount
+// entries, top-down output pixels). Base x/y are always 0; positions are
+// clamped to keep the visible part of a partially off-canvas cursor on screen,
+// and malformed/missing/truncated input fails closed (never silently omits).
+
+function cursorSpriteLayer(overrides = {}) {
+	return {
+		id: "cursor-sprite",
+		kind: "cursor-sprite",
+		path: "",
+		positionsPath: "",
+		x: 0,
+		y: 0,
+		width: 4,
+		height: 4,
+		frameCount: 10,
+		...overrides,
+	};
+}
+
+function writePositions(dir, positions, name = "cursor.positions.json") {
+	const positionsPath = join(dir, name);
+	writeFileSync(positionsPath, JSON.stringify(positions));
+	return positionsPath;
+}
+
+describe("cursor-sprite overlay layers", () => {
+	it("accepts a cursor-sprite layer with a per-frame positions sidecar", () => {
+		const dir = makeTempDir();
+		try {
+			const sprite = writeSidecar(dir, FRAME_BYTES * 10, "cursor.rgba");
+			const positionsPath = writePositions(
+				dir,
+				Array.from({ length: 10 }, (_, index) => ({ x: index, y: 10 - index })),
+			);
+			const manifestPath = writeManifest(dir, [
+				cursorSpriteLayer({ path: sprite, positionsPath }),
+			]);
+			const layers = readOverlayManifest(manifestPath, OUTPUT_SIZE);
+			expect(layers).toHaveLength(1);
+			expect(layers[0]).toMatchObject({
+				id: "cursor-sprite",
+				kind: "cursor-sprite",
+				path: sprite,
+				positionsPath,
+				x: 0,
+				y: 0,
+				width: 4,
+				height: 4,
+				frameCount: 10,
+			});
+			expect(layers[0].positions).toEqual(
+				Array.from({ length: 10 }, (_, index) => ({ x: index, y: 10 - index })),
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("accepts a positions file wrapped in a { positions } object", () => {
+		const dir = makeTempDir();
+		try {
+			const sprite = writeSidecar(dir, FRAME_BYTES * 10, "cursor.rgba");
+			const positionsPath = writePositions(dir, {
+				positions: Array.from({ length: 10 }, (_, index) => ({ x: index, y: 0 })),
+			});
+			const manifestPath = writeManifest(dir, [
+				cursorSpriteLayer({ path: sprite, positionsPath }),
+			]);
+			const layers = readOverlayManifest(manifestPath, OUTPUT_SIZE);
+			expect(layers[0].positions).toHaveLength(10);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("clamps a partially off-canvas cursor position instead of dropping it", () => {
+		const dir = makeTempDir();
+		try {
+			const sprite = writeSidecar(dir, FRAME_BYTES * 10, "cursor.rgba");
+			const positionsPath = writePositions(
+				dir,
+				Array.from({ length: 10 }, (_, index) => ({
+					x: index === 0 ? -5 : 1919,
+					y: index === 0 ? 5 : 1080,
+				})),
+			);
+			const manifestPath = writeManifest(dir, [
+				cursorSpriteLayer({ path: sprite, positionsPath }),
+			]);
+			const layers = readOverlayManifest(manifestPath, OUTPUT_SIZE);
+			expect(layers[0].positions[0]).toEqual({ x: 0, y: 5 });
+			expect(layers[0].positions[9]).toEqual({ x: 1919 - 3, y: 1080 - 4 });
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects a missing or malformed positions sidecar", () => {
+		const dir = makeTempDir();
+		try {
+			const sprite = writeSidecar(dir, FRAME_BYTES * 10, "cursor.rgba");
+			const missing = writeManifest(dir, [
+				cursorSpriteLayer({ path: sprite, positionsPath: join(dir, "nope.json") }),
+			]);
+			expect(() => readOverlayManifest(missing, OUTPUT_SIZE)).toThrow(
+				"Cursor-sprite layer cursor-sprite positions do not exist:",
+			);
+
+			const badJsonPath = join(dir, "bad.json");
+			writeFileSync(badJsonPath, "{not json");
+			const badJson = writeManifest(dir, [
+				cursorSpriteLayer({ path: sprite, positionsPath: badJsonPath }),
+			]);
+			expect(() => readOverlayManifest(badJson, OUTPUT_SIZE)).toThrow(
+				"Invalid cursor-sprite positions",
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects a positions count that does not match the frame count", () => {
+		const dir = makeTempDir();
+		try {
+			const sprite = writeSidecar(dir, FRAME_BYTES * 10, "cursor.rgba");
+			const positionsPath = writePositions(
+				dir,
+				Array.from({ length: 9 }, () => ({ x: 0, y: 0 })),
+			);
+			const manifestPath = writeManifest(dir, [
+				cursorSpriteLayer({ path: sprite, positionsPath }),
+			]);
+			expect(() => readOverlayManifest(manifestPath, OUTPUT_SIZE)).toThrow(
+				"Cursor-sprite layer cursor-sprite positions must contain exactly one {x,y} per output frame: expected 10, received 9",
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects a malformed (non-integer or negative) position", () => {
+		const dir = makeTempDir();
+		try {
+			const sprite = writeSidecar(dir, FRAME_BYTES * 10, "cursor.rgba");
+			const positions = Array.from({ length: 10 }, () => ({ x: 0, y: 0 }));
+			positions[3] = { x: 0.5, y: 0 };
+			const positionsPath = writePositions(dir, positions);
+			const manifestPath = writeManifest(dir, [
+				cursorSpriteLayer({ path: sprite, positionsPath }),
+			]);
+			expect(() => readOverlayManifest(manifestPath, OUTPUT_SIZE)).toThrow(
+				"Cursor-sprite layer cursor-sprite has a malformed position at frame 3",
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects a truncated cursor-sprite frame strip", () => {
+		const dir = makeTempDir();
+		try {
+			const sprite = writeSidecar(dir, FRAME_BYTES * 9, "cursor.rgba");
+			const positionsPath = writePositions(
+				dir,
+				Array.from({ length: 10 }, () => ({ x: 0, y: 0 })),
+			);
+			const manifestPath = writeManifest(dir, [
+				cursorSpriteLayer({ path: sprite, positionsPath }),
+			]);
+			expect(() => readOverlayManifest(manifestPath, OUTPUT_SIZE)).toThrow(
+				`Cursor-sprite layer cursor-sprite is truncated: expected at least ${
+					FRAME_BYTES * 10
+				} bytes, received ${FRAME_BYTES * 9}`,
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects a cursor-sprite layer whose sprite exceeds the output canvas", () => {
+		const dir = makeTempDir();
+		try {
+			const sprite = writeSidecar(dir, FRAME_BYTES * 10, "cursor.rgba");
+			const positionsPath = writePositions(
+				dir,
+				Array.from({ length: 10 }, () => ({ x: 0, y: 0 })),
+			);
+			const manifestPath = writeManifest(dir, [
+				cursorSpriteLayer({ path: sprite, positionsPath, width: 1921 }),
+			]);
+			expect(() => readOverlayManifest(manifestPath, OUTPUT_SIZE)).toThrow(
+				"Cursor-sprite layer cursor-sprite exceeds the output canvas:",
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects unexpected layer kinds rather than dropping them", () => {
+		const dir = makeTempDir();
+		try {
+			const sidecar = writeSidecar(dir, FRAME_BYTES * 10);
+			const manifestPath = writeManifest(dir, [layer({ path: sidecar, kind: "unknown" })]);
+			expect(() => readOverlayManifest(manifestPath, OUTPUT_SIZE)).toThrow(
+				'Overlay manifest layer overlay-a has an unexpected kind "unknown":',
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects effectiveFrameCount on a cursor-sprite layer", () => {
+		const dir = makeTempDir();
+		try {
+			const sprite = writeSidecar(dir, FRAME_BYTES * 10, "cursor.rgba");
+			const positionsPath = writePositions(
+				dir,
+				Array.from({ length: 10 }, () => ({ x: 0, y: 0 })),
+			);
+			const manifestPath = writeManifest(dir, [
+				cursorSpriteLayer({
+					path: sprite,
+					positionsPath,
+					effectiveFrameCount: 3,
+				}),
+			]);
+			expect(() => readOverlayManifest(manifestPath, OUTPUT_SIZE)).toThrow(
+				"Cursor-sprite layer cursor-sprite does not support effectiveFrameCount:",
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("mixes rgba and cursor-sprite layers in one manifest", () => {
+		const dir = makeTempDir();
+		try {
+			const rgbaSidecar = writeSidecar(dir, FRAME_BYTES * 10, "rgba.rgba");
+			const sprite = writeSidecar(dir, FRAME_BYTES * 10, "cursor.rgba");
+			const positionsPath = writePositions(
+				dir,
+				Array.from({ length: 10 }, () => ({ x: 1, y: 2 })),
+			);
+			const manifestPath = writeManifest(dir, [
+				layer({ id: "a", path: rgbaSidecar }),
+				cursorSpriteLayer({ id: "cursor", path: sprite, positionsPath }),
+			]);
+			const layers = readOverlayManifest(manifestPath, OUTPUT_SIZE);
+			expect(layers).toHaveLength(2);
+			expect(layers[0]).toMatchObject({ id: "a", kind: "rgba" });
+			expect(layers[1]).toMatchObject({ id: "cursor", kind: "cursor-sprite" });
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+// Layer classification and z-order regression: the reader must attach the
+// manifest `kind`/`order` fields to every returned layer so the wrapper's
+// kind filters never drop a layer and the native descriptor keeps the
+// renderer-side global z-order (rgba layers included).
+
+describe("layer classification and z-order", () => {
+	it("attaches the manifest kind and order to every layer so classification and z-order survive", () => {
+		const dir = makeTempDir();
+		try {
+			const rgbaSidecar = writeSidecar(dir, FRAME_BYTES * 10, "rgba.rgba");
+			const sprite = writeSidecar(dir, FRAME_BYTES * 10, "cursor.rgba");
+			const positionsPath = writePositions(
+				dir,
+				Array.from({ length: 10 }, () => ({ x: 1, y: 2 })),
+			);
+			const manifestPath = writeManifest(dir, [
+				layer({ id: "bottom", path: rgbaSidecar, order: 5 }),
+				cursorSpriteLayer({ id: "cursor", path: sprite, positionsPath, order: 7 }),
+			]);
+			const layers = readOverlayManifest(manifestPath, OUTPUT_SIZE);
+			expect(layers).toHaveLength(2);
+			expect(layers[0]).toMatchObject({ id: "bottom", kind: "rgba", order: 5 });
+			expect(layers[1]).toMatchObject({ id: "cursor", kind: "cursor-sprite", order: 7 });
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("defaults rgba layers to a deterministic order when the manifest omits it", () => {
+		const dir = makeTempDir();
+		try {
+			const firstSidecar = writeSidecar(dir, FRAME_BYTES * 10, "first.rgba");
+			const secondSidecar = writeSidecar(dir, FRAME_BYTES * 10, "second.rgba");
+			const manifestPath = writeManifest(dir, [
+				layer({ id: "first", path: firstSidecar }),
+				layer({ id: "second", path: secondSidecar }),
+			]);
+			const layers = readOverlayManifest(manifestPath, OUTPUT_SIZE);
+			expect(layers).toHaveLength(2);
+			expect(layers[0]).toMatchObject({ id: "first", kind: "rgba", order: 0 });
+			expect(layers[1]).toMatchObject({ id: "second", kind: "rgba", order: 1 });
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

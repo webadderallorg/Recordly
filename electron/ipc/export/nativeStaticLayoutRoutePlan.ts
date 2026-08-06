@@ -153,13 +153,18 @@ export function planNativeStaticLayoutRoutes(options: {
 				status: "rejected",
 				reasons: ["hevc-requires-nvidia-cuda-compositor"],
 			});
+			// Strict HEVC Hardware policy survives route selection: if the selected
+			// CUDA compositor fails after planning, the export must still hard-fail
+			// instead of falling back to renderer raw frames, Breeze, or CPU. HEVC
+			// Auto keeps the non-strict contract (rawvideo fallback is allowed).
+			const strictHevcHardware = encoderPreference === "hardware";
 			return {
 				videoCodec,
 				encoderPreference,
 				selectedRoute: "nvidia-cuda-compositor",
-				fallbackRoute: null,
-				fallbackReason: null,
-				noCpuFallback: false,
+				fallbackRoute: strictHevcHardware ? "hard-fail" : null,
+				fallbackReason: strictHevcHardware ? "hevc-hardware-route-failed" : null,
+				noCpuFallback: strictHevcHardware,
 				decisions,
 				cuda,
 				d3d11,

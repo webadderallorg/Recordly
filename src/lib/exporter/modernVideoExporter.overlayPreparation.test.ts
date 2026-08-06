@@ -29,6 +29,20 @@ const mocks = vi.hoisted(() => {
 		height: 1080,
 	};
 	const framesRendered: number[] = [];
+	// Cursor-sprite capture defaults to unavailable so the baked-cursor
+	// full-canvas sidecar fallback is the default behavior. Dedicated
+	// cursor-sprite tests override these to exercise the sprite success path.
+	// The defaults are re-applied in afterEach because mockReset() clears the
+	// implementations installed here by the hoisted factory.
+	const cursorSpriteDefaults = {
+		start: () => false,
+		capture: () => ({
+			captured: false,
+			unavailableReason: "cursor sprite unavailable (mock)",
+		}),
+		finish: () => null,
+		cancel: () => {},
+	};
 
 	return {
 		framesRendered,
@@ -39,16 +53,11 @@ const mocks = vi.hoisted(() => {
 		frameRendererRenderOverlayFrame: vi.fn(async (timestampUs: number) => {
 			framesRendered.push(timestampUs);
 		}),
-		// Cursor-sprite capture defaults to unavailable so the baked-cursor
-		// full-canvas sidecar fallback is the default behavior. Dedicated
-		// cursor-sprite tests override these to exercise the sprite success path.
-		frameRendererStartCursorSpriteCapture: vi.fn(() => false),
-		frameRendererCaptureCursorSpriteFrame: vi.fn(() => ({
-			captured: false,
-			unavailableReason: "cursor sprite unavailable (mock)",
-		})),
-		frameRendererFinishCursorSpriteCapture: vi.fn(() => null),
-		frameRendererCancelCursorSpriteCapture: vi.fn(() => {}),
+		frameRendererStartCursorSpriteCapture: vi.fn(cursorSpriteDefaults.start),
+		frameRendererCaptureCursorSpriteFrame: vi.fn(cursorSpriteDefaults.capture),
+		frameRendererFinishCursorSpriteCapture: vi.fn(cursorSpriteDefaults.finish),
+		frameRendererCancelCursorSpriteCapture: vi.fn(cursorSpriteDefaults.cancel),
+		cursorSpriteDefaults,
 	};
 });
 
@@ -241,10 +250,24 @@ describe("ModernVideoExporter native overlay preparation", () => {
 		vi.clearAllMocks();
 		// Reset cursor-sprite mock implementations so the default (unavailable)
 		// fallback applies unless a test explicitly opts into the sprite path.
+		// mockReset() clears the defaults installed by the hoisted factory, so
+		// re-apply them here for tests that rely on the unavailable fallback.
 		mocks.frameRendererStartCursorSpriteCapture.mockReset();
 		mocks.frameRendererCaptureCursorSpriteFrame.mockReset();
 		mocks.frameRendererFinishCursorSpriteCapture.mockReset();
 		mocks.frameRendererCancelCursorSpriteCapture.mockReset();
+		mocks.frameRendererStartCursorSpriteCapture.mockImplementation(
+			mocks.cursorSpriteDefaults.start,
+		);
+		mocks.frameRendererCaptureCursorSpriteFrame.mockImplementation(
+			mocks.cursorSpriteDefaults.capture,
+		);
+		mocks.frameRendererFinishCursorSpriteCapture.mockImplementation(
+			mocks.cursorSpriteDefaults.finish,
+		);
+		mocks.frameRendererCancelCursorSpriteCapture.mockImplementation(
+			mocks.cursorSpriteDefaults.cancel,
+		);
 		vi.unstubAllGlobals();
 	});
 

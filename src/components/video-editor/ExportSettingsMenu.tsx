@@ -1,6 +1,6 @@
 import { DownloadSimple as Download, FilmSlate as Film, Image, Info } from "@phosphor-icons/react";
 import { LayoutGroup, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -19,7 +19,10 @@ import type {
 	GifSizePreset,
 } from "@/lib/exporter";
 import {
+	clampCustomBitrateMbps,
 	EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS,
+	EXPORT_BITRATE_H264_MAX_MBPS,
+	EXPORT_BITRATE_HEVC_MAX_MBPS,
 	EXPORT_BITRATE_MIN_MBPS,
 	GIF_FRAME_RATES,
 	GIF_SIZE_PRESETS,
@@ -109,21 +112,41 @@ export function ExportSettingsMenu({
 }: ExportSettingsMenuProps) {
 	const tSettings = useScopedT("settings");
 	const [bitrateDraft, setBitrateDraft] = useState<string>(String(exportBitrateMbps));
+	// Latest draft snapshot so the codec-switch clamp can re-clamp the draft
+	// without depending on (and re-running on) every keystroke.
+	const bitrateDraftRef = useRef(bitrateDraft);
+	const onExportBitrateMbpsChangeRef = useRef(onExportBitrateMbpsChange);
+
+	useEffect(() => {
+		bitrateDraftRef.current = bitrateDraft;
+	}, [bitrateDraft]);
+
+	useEffect(() => {
+		onExportBitrateMbpsChangeRef.current = onExportBitrateMbpsChange;
+	}, [onExportBitrateMbpsChange]);
 
 	useEffect(() => {
 		setBitrateDraft(String(exportBitrateMbps));
 	}, [exportBitrateMbps]);
 
-	const effectiveMaxMbps = exportVideoCodec === "hevc" ? 70 : 105;
+	const effectiveMaxMbps =
+		exportVideoCodec === "hevc" ? EXPORT_BITRATE_HEVC_MAX_MBPS : EXPORT_BITRATE_H264_MAX_MBPS;
 
 	const commitBitrateDraft = () => {
-		const parsed = Number(bitrateDraft);
-		const clamped = Number.isFinite(parsed)
-			? Math.min(effectiveMaxMbps, Math.max(EXPORT_BITRATE_MIN_MBPS, parsed))
-			: Math.min(EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS, effectiveMaxMbps);
+		const clamped = clampCustomBitrateMbps(Number(bitrateDraft), exportVideoCodec);
 		setBitrateDraft(String(clamped));
 		onExportBitrateMbpsChange?.(clamped);
 	};
+
+	useEffect(() => {
+		// Re-clamp the draft and the emitted bitrate when the codec changes so an
+		// out-of-range draft (e.g. 105 Mbps H.264 value after switching to HEVC)
+		// does not survive the switch. Refs keep this effect keyed to codec
+		// switches only; it must not re-clamp the draft on every keystroke.
+		const clamped = clampCustomBitrateMbps(Number(bitrateDraftRef.current), exportVideoCodec);
+		setBitrateDraft(String(clamped));
+		onExportBitrateMbpsChangeRef.current?.(clamped);
+	}, [exportVideoCodec]);
 
 	return (
 		<div

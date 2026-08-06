@@ -177,6 +177,38 @@ describe("planNativeStaticLayoutRoutes", () => {
 		);
 	});
 
+	it("keeps the strict no-CPU-fallback flag on HEVC Hardware post-route failures", () => {
+		const plan = planNativeStaticLayoutRoutes({
+			videoCodec: "hevc",
+			encoderPreference: "hardware",
+			cuda: cudaProbe,
+			d3d11: d3d11Probe,
+			source,
+		});
+
+		// Route is selected (CUDA available), but if it fails after planning the
+		// plan must still forbid CPU/rawvideo/Breeze fallback.
+		expect(plan.selectedRoute).toBe("nvidia-cuda-compositor");
+		expect(plan.noCpuFallback).toBe(true);
+		expect(plan.fallbackRoute).toBe("hard-fail");
+		expect(plan.fallbackReason).toBe("hevc-hardware-route-failed");
+	});
+
+	it("keeps the HEVC Auto selected plan non-strict for post-route failures", () => {
+		const plan = planNativeStaticLayoutRoutes({
+			videoCodec: "hevc",
+			encoderPreference: "auto",
+			cuda: cudaProbe,
+			d3d11: d3d11Probe,
+			source,
+		});
+
+		expect(plan.selectedRoute).toBe("nvidia-cuda-compositor");
+		expect(plan.noCpuFallback).toBe(false);
+		expect(plan.fallbackRoute).toBeNull();
+		expect(plan.fallbackReason).toBeNull();
+	});
+
 	it("hard-fails when HEVC CUDA is unavailable and Hardware is strict", () => {
 		const plan = planNativeStaticLayoutRoutes({
 			videoCodec: "hevc",

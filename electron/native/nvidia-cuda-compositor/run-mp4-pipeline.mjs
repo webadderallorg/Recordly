@@ -969,6 +969,17 @@ function resolveNativeProbePath() {
 }
 const nativeProbe = resolveNativeProbePath();
 
+// The --help capability probe output is stable for a given helper build;
+// compute it once and reuse it for every feature check in this export instead
+// of re-invoking the native binary once per overlay/temporal feature.
+let nativeHelpCache = null;
+function readNativeHelp() {
+	if (nativeHelpCache === null) {
+		nativeHelpCache = run(nativeProbe, ["--help"]).stdout;
+	}
+	return nativeHelpCache;
+}
+
 const baseName = basename(inputPath).replace(/\.[^.]+$/, "");
 const webcamBaseName = webcamInput
 	? basename(webcamInput).replace(/\.[^.]+$/, "")
@@ -1373,7 +1384,7 @@ if (temporalBlurSampleCount > 0) {
 	// motion blur plan (mirror of the tiled-overlay probe below). Until then
 	// temporal blur cannot be composited and the export fails fast instead of
 	// silently dropping the effect.
-	const nativeHelp = run(nativeProbe, ["--help"]).stdout;
+	const nativeHelp = readNativeHelp();
 	if (!nativeHelp.includes("--temporal-blur-sample-count")) {
 		fail(
 			"unsupported-temporal-motion-blur: the native NVIDIA CUDA compositor does not support temporal zoom motion blur yet; " +
@@ -1393,10 +1404,13 @@ if (temporalBlurSampleCount >= 3) {
 	);
 } else if (temporalBlurSampleCount > 0) {
 	// The TS-side invariant rejects resolved plans below the minimum (3), but a
-	// direct wrapper invocation could still request 1-2 samples; never silently
-	// omit the effect without a diagnostic.
-	console.warn(
-		`[nvidia-cuda-export] Temporal zoom motion blur requested with ${temporalBlurSampleCount} sample(s), below the minimum of 3; omitting the effect (unsupported-temporal-motion-blur)`,
+	// direct wrapper invocation could still request 1-2 samples. The native
+	// compositor accepts 3..61 samples only, so fail fast with the established
+	// unsupported-result contract instead of a warning and a silently dropped
+	// effect (mirroring the unsupported-temporal-motion-blur fail above).
+	fail(
+		`unsupported-temporal-motion-blur: temporal zoom motion blur requested with ${temporalBlurSampleCount} sample(s), below the minimum of 3; ` +
+			"main.cu only consumes --temporal-blur-sample-count values in the supported 3..61 range.",
 	);
 }
 // The manifest may mix fixed-position rgba layers and cursor-sprite layers.
@@ -1423,11 +1437,15 @@ if (rgbaOverlayLayers.length) {
 			// carry the physical sidecar count (effectiveFrameCount when renderer
 			// dedup truncated an identical suffix, otherwise the logical count).
 			String(layer.effectiveFrameCount ?? layer.frameCount),
+			// Optional 7th argument is the renderer-side global z-order; the native
+			// compositor merges raw/tiled/cursor-sprite layers by this ascending
+			// value so a manifest order survives classification and filtering.
+			String(layer.order),
 		);
 	}
 }
 if (cursorSpriteLayers.length) {
-	const nativeHelp = run(nativeProbe, ["--help"]).stdout;
+	const nativeHelp = readNativeHelp();
 	if (!nativeHelp.includes("--cursor-sprite")) {
 		fail(
 			"The native NVIDIA CUDA compositor does not support cursor-sprite overlays yet; " +
@@ -1488,7 +1506,7 @@ const tiledOverlayMetrics = tiledOverlayLayers.map((layer) => {
 	};
 });
 if (tiledOverlayLayers.length) {
-	const nativeHelp = run(nativeProbe, ["--help"]).stdout;
+	const nativeHelp = readNativeHelp();
 	if (!nativeHelp.includes("--tiled-overlay-manifest")) {
 		fail(
 			"The native NVIDIA CUDA compositor does not support tiled overlay manifests yet; " +

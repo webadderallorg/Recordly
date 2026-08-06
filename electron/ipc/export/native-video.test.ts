@@ -429,10 +429,18 @@ describe("native static-layout source probe cache", () => {
 				encodingMode: "speed",
 			}),
 		).toBe(false);
-		const current = baseCurrent();
-		current.requestedCodec = "hevc";
-		current.encoderPreference = "hardware";
-		expect(canReuseNativeStaticLayoutSourceProbe(baseEntry(), current)).toBe(true);
+		expect(
+			canReuseNativeStaticLayoutSourceProbe(entry, {
+				...baseCurrent(),
+				requestedCodec: "h264",
+			}),
+		).toBe(false);
+		expect(
+			canReuseNativeStaticLayoutSourceProbe(entry, {
+				...baseCurrent(),
+				encoderPreference: "cpu",
+			}),
+		).toBe(false);
 	});
 });
 
