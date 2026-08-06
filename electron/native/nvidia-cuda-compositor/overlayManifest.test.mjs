@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { readOverlayManifest } from "./overlayManifest.mjs";
+import { readOverlayManifest, sortOverlayLayersByOrder } from "./overlayManifest.mjs";
 
 // Contract for renderer-prepared transparent RGBA overlay sidecars:
 // - frameCount is the logical frame count (durationSec * frameRate).
@@ -598,6 +598,81 @@ describe("layer classification and z-order", () => {
 			expect(layers).toHaveLength(2);
 			expect(layers[0]).toMatchObject({ id: "first", kind: "rgba", order: 0 });
 			expect(layers[1]).toMatchObject({ id: "second", kind: "rgba", order: 1 });
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("sorts a mixed manifest by (order, id) so the cursor-sprite stays above the rgba layers", () => {
+		// Regression for the CodeRabbit round-3 finding: readOverlayManifest
+		// preserves manifest order, so the consumer must sort by (order, id)
+		// before its kind filters. A deliberately non-sorted mixed manifest
+		// must still produce an ordering with the cursor-sprite layer above
+		// the lower-order rgba layer (and the id tie-break must be stable for
+		// equal orders).
+		const dir = makeTempDir();
+		try {
+			const bottomSidecar = writeSidecar(dir, FRAME_BYTES * 10, "bottom.rgba");
+			const topSidecar = writeSidecar(dir, FRAME_BYTES * 10, "top.rgba");
+			const sprite = writeSidecar(dir, FRAME_BYTES * 10, "cursor.rgba");
+			const positionsPath = writePositions(
+				dir,
+				Array.from({ length: 10 }, () => ({ x: 1, y: 2 })),
+			);
+			const manifestPath = writeManifest(dir, [
+				// Non-sorted on purpose: cursor-sprite first, then the rgba
+				// layers in reverse order with equal orders to exercise the id
+				// tie-break.
+				cursorSpriteLayer({ id: "cursor-sprite", path: sprite, positionsPath, order: 3 }),
+				layer({ id: "z-rgba-top", path: topSidecar, order: 2 }),
+				layer({ id: "a-rgba-bottom", path: bottomSidecar, order: 2 }),
+			]);
+			const layers = sortOverlayLayersByOrder(readOverlayManifest(manifestPath, OUTPUT_SIZE));
+			expect(layers.map(({ id, kind, order }) => ({ id, kind, order }))).toEqual([
+				{ id: "a-rgba-bottom", kind: "rgba", order: 2 },
+				{ id: "z-rgba-top", kind: "rgba", order: 2 },
+				{ id: "cursor-sprite", kind: "cursor-sprite", order: 3 },
+			]);
+			// The consumer filters the sorted list into kind groups, so the
+			// cursor-sprite layer (order 3) ends up above every rgba layer
+			// (order 2) regardless of the manifest's physical order.
+			const rgba = layers.filter((layer) => layer.kind === "rgba");
+			const cursor = layers.filter((layer) => layer.kind === "cursor-sprite");
+			expect(rgba.map((layer) => layer.order)).toEqual([2, 2]);
+			expect(cursor.map((layer) => layer.order)).toEqual([3]);
+			expect(cursor[0].order).toBeGreaterThan(Math.max(...rgba.map((layer) => layer.order)));
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it("keeps a default-order cursor-sprite above rgba layers when the manifest lists the cursor first", () => {
+		// With omitted orders the reader defaults rgba layers to their manifest
+		// position (shifted by the cursor-sprite layer listed before them) and
+		// cursor-sprite layers to 10000; sorting must keep the cursor on top
+		// even though the manifest lists it before the rgba layers.
+		const dir = makeTempDir();
+		try {
+			const rgbaSidecar = writeSidecar(dir, FRAME_BYTES * 10, "rgba.rgba");
+			const sprite = writeSidecar(dir, FRAME_BYTES * 10, "cursor.rgba");
+			const positionsPath = writePositions(
+				dir,
+				Array.from({ length: 10 }, () => ({ x: 1, y: 2 })),
+			);
+			const manifestPath = writeManifest(dir, [
+				cursorSpriteLayer({ id: "cursor", path: sprite, positionsPath }),
+				layer({ id: "first", path: rgbaSidecar }),
+				layer({ id: "second", path: rgbaSidecar }),
+			]);
+			const layers = sortOverlayLayersByOrder(readOverlayManifest(manifestPath, OUTPUT_SIZE));
+			expect(layers.map(({ id, kind, order }) => ({ id, kind, order }))).toEqual([
+				{ id: "first", kind: "rgba", order: 1 },
+				{ id: "second", kind: "rgba", order: 2 },
+				{ id: "cursor", kind: "cursor-sprite", order: 10000 },
+			]);
+			const rgba = layers.filter((layer) => layer.kind === "rgba");
+			const cursor = layers.filter((layer) => layer.kind === "cursor-sprite");
+			expect(cursor[0].order).toBeGreaterThan(Math.max(...rgba.map((layer) => layer.order)));
 		} finally {
 			rmSync(dir, { recursive: true, force: true });
 		}

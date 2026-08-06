@@ -49,7 +49,7 @@ const ffmpegCommand = resolveToolCommand(["RECORDLY_FFMPEG_EXE"], "ffmpeg-static
 const ffprobeCommand = resolveToolCommand(["RECORDLY_FFPROBE_EXE"], "ffprobe-static", "ffprobe");
 
 import { parseCursorTelemetrySamples, writeCursorSamplesFile } from "./cursorTelemetry.mjs";
-import { readOverlayManifest } from "./overlayManifest.mjs";
+import { readOverlayManifest, sortOverlayLayersByOrder } from "./overlayManifest.mjs";
 import { shouldProbeSourcePts } from "./sourcePtsPlan.mjs";
 import {
 	readTiledOverlayManifest,
@@ -1416,11 +1416,16 @@ if (temporalBlurSampleCount >= 3) {
 // The manifest may mix fixed-position rgba layers and cursor-sprite layers.
 // rgba layers keep the proven per-layer --overlay descriptor; cursor-sprite
 // layers are forwarded to the native cursor-sprite compositor route that owns
-// the packed frame strip + per-frame positions validation.
-const overlayLayers = readOverlayManifest(overlayManifest, {
-	outputWidth,
-	outputHeight,
-});
+// the packed frame strip + per-frame positions validation. Layers are sorted
+// by ascending (order, id) before the kind filters so mixed manifests keep the
+// renderer's global z-order regardless of manifest order and cursor-sprite
+// layers stay above the fixed rgba layers.
+const overlayLayers = sortOverlayLayersByOrder(
+	readOverlayManifest(overlayManifest, {
+		outputWidth,
+		outputHeight,
+	}),
+);
 const rgbaOverlayLayers = overlayLayers.filter((layer) => layer.kind === "rgba");
 const cursorSpriteLayers = overlayLayers.filter((layer) => layer.kind === "cursor-sprite");
 if (rgbaOverlayLayers.length) {

@@ -245,3 +245,16 @@ export function readOverlayManifest(manifestPath, outputSize) {
 	}
 	return layers;
 }
+
+// Sorts overlay layers by ascending manifest z-order (order, then id) so the
+// consumer's kind filters and the native descriptor always see the renderer's
+// global z-order regardless of the manifest's physical order. Mirrors the sort
+// used by the renderer-side native arg builders (order asc, then id
+// localeCompare). Cursor-sprite layers keep their high default order (10000)
+// when the producer omits the field, so they stay above fixed rgba layers even
+// when the manifest lists them first.
+export function sortOverlayLayersByOrder(layers) {
+	return [...layers].sort(
+		(left, right) => left.order - right.order || left.id.localeCompare(right.id),
+	);
+}

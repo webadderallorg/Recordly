@@ -69,6 +69,16 @@ function getPartialExportDestinationPath(destinationPath: string) {
 const MAX_IN_MEMORY_EXPORT_BYTES = 0x7fffffff;
 
 /**
+ * Native video export sessions that entered the finalization ("finish") phase.
+ * Marked before the finish handler awaits the write sequence so no further
+ * frame-write requests are accepted while already-accepted writes drain; the
+ * frame port is closed after the sequence settles. A WeakSet keeps the session
+ * contract in native-video.ts untouched and lets entries be collected once the
+ * session is removed from nativeVideoExportSessions.
+ */
+const finishingNativeVideoExportSessions = new WeakSet<NativeVideoExportSession>();
+
+/**
  * Structured, timestamped route/settings summary logged at the `native-video-
  * export-start` IPC boundary. Captures only high-level request settings (codec,
  * encoder preference, input/mode, dimensions, frame rate) so operators can see
@@ -389,9 +399,28 @@ export function registerExportHandlers() {
 
 				// A capability-only prewarm child may still hold a brief NVENC probe
 				// session; cancel it before this real export opens its real encoder
-				// session so they never contend for the GPU/hardware encoder. The
-				// prewarm is fire-and-forget (never awaited) so this never blocks IPC.
-				cancelInFlightCapabilityOnlyPrewarms();
+				// session so they never contend for the GPU/hardware encoder. Await
+				// the teardown so no in-flight capability probe is still running when
+				// the FFmpeg process spawns below.
+				try {
+					await cancelInFlightCapabilityOnlyPrewarms();
+				} catch (error) {
+					// Strict HEVC Hardware forbids every fallback: a prewarm that cannot
+					// be torn down must stop the export rather than let a stale NVENC
+					// probe contend with the real encoder session.
+					if (videoCodec === "hevc" && encoderPreference === "hardware") {
+						throw new Error(
+							`HEVC Hardware export requires tearing down the in-flight capability-only prewarm before opening its encoder session; prewarm teardown failed (noCpuFallback:true): ${error instanceof Error ? error.message : String(error)}`,
+						);
+					}
+					// Non-strict routes keep the prewarm best-effort: a stale capability
+					// probe must never block a compatible export.
+					console.warn(
+						formatLogTs(),
+						`[native-export] Capability-only prewarm teardown failed session=${sessionId || "unknown"} ${requestSettings}:`,
+						error,
+					);
+				}
 
 				const ffmpegProcess = spawn(ffmpegPath, ffmpegArgs, {
 					stdio: ["pipe", "ignore", "pipe"],
@@ -637,6 +666,17 @@ export function registerExportHandlers() {
 			return;
 		}
 
+		if (finishingNativeVideoExportSessions.has(session)) {
+			sendNativeVideoExportFramePortError(
+				port,
+				sessionId,
+				"Native video export session is finishing; no more frames are accepted",
+				{ fallbackAvailable: false },
+			);
+			port.close();
+			return;
+		}
+
 		attachNativeVideoExportFramePort(sessionId, session, port, event.sender);
 	});
 
@@ -679,6 +719,14 @@ export function registerExportHandlers() {
 				settleNativeVideoExportWriteFrameRequest(sessionId, session, requestId, {
 					success: false,
 					error: "Native video export session was cancelled",
+				});
+				return;
+			}
+
+			if (finishingNativeVideoExportSessions.has(session)) {
+				settleNativeVideoExportWriteFrameRequest(sessionId, session, requestId, {
+					success: false,
+					error: "Native video export session is finishing; no more frames are accepted",
 				});
 				return;
 			}
@@ -751,6 +799,14 @@ export function registerExportHandlers() {
 				return;
 			}
 
+			if (finishingNativeVideoExportSessions.has(session)) {
+				settleNativeVideoExportWriteFrameRequest(sessionId, session, requestId, {
+					success: false,
+					error: "Native video export session is finishing; no more frames are accepted",
+				});
+				return;
+			}
+
 			if (
 				session.inputMode !== "h264-stream" &&
 				frameData.byteLength !== session.inputByteSize
@@ -789,6 +845,10 @@ export function registerExportHandlers() {
 				return { success: false, error: "Invalid native export session" };
 			}
 
+			// Enter the finalization phase before settling the write sequence so
+			// subsequent frame-write requests are rejected while already-accepted
+			// writes drain; the frame port is closed after the sequence settles.
+			finishingNativeVideoExportSessions.add(session);
 			try {
 				await session.writeSequence;
 				if (
