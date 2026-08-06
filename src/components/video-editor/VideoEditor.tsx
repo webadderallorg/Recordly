@@ -4112,35 +4112,39 @@ export default function VideoEditor() {
 							: []),
 					];
 
-			const updateRegions = <T extends { startMs: number; endMs: number }>(regions: T[]) => {
-				if (isMove && Math.abs(startDelta) > 0) {
-					return regions.map((region) => {
-						const contained =
-							region.startMs >= oldClip.startMs && region.endMs <= oldClip.endMs;
-						return contained
+			if (isMove && Math.abs(startDelta) > 0) {
+				setZoomRegions((prev) =>
+					prev.map((zoom) => {
+						const overlaps =
+							zoom.startMs < oldClip.endMs && zoom.endMs > oldClip.startMs;
+						return overlaps
 							? {
-									...region,
-									startMs: region.startMs + startDelta,
-									endMs: region.endMs + startDelta,
+									...zoom,
+									startMs: zoom.startMs + startDelta,
+									endMs: zoom.endMs + startDelta,
 								}
-							: region;
-					});
-				}
-
-				if (removedSegments.length === 0) return regions;
-				return regions.filter(
-					(region) =>
-						!removedSegments.some(
-							(segment) =>
-								region.startMs < segment.endMs && region.endMs > segment.startMs,
-						),
+							: zoom;
+					}),
 				);
-			};
+			}
 
-			setZoomRegions(updateRegions);
-			setAnnotationRegions(updateRegions);
-			setSpeedRegions(updateRegions);
-			setAudioRegions(updateRegions);
+			if (removedSegments.length > 0) {
+				const removeTrimmedRegions = <T extends { startMs: number; endMs: number }>(
+					regions: T[],
+				): T[] =>
+					regions.filter(
+						(region) =>
+							!removedSegments.some(
+								(segment) =>
+									region.startMs < segment.endMs &&
+									region.endMs > segment.startMs,
+							),
+					);
+				setZoomRegions((prev) => removeTrimmedRegions(prev));
+				setAnnotationRegions((prev) => removeTrimmedRegions(prev));
+				setSpeedRegions((prev) => removeTrimmedRegions(prev));
+				setAudioRegions((prev) => removeTrimmedRegions(prev));
+			}
 			setClipRegions((prev) =>
 				prev.map((clip) => (clip.id === id ? updateClipTimelineSpan(clip, span) : clip)),
 			);
