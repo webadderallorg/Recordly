@@ -519,10 +519,14 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						: rawStart + 1000;
 					const startMs = Math.max(0, Math.min(rawStart, rawEnd));
 					const endMs = Math.max(startMs + 1, rawEnd);
+					const sourceStartMs = isFiniteNumber(region.sourceStartMs)
+						? Math.max(0, Math.round(region.sourceStartMs))
+						: startMs;
 					return {
 						id: region.id,
 						startMs,
 						endMs,
+						sourceStartMs,
 						speed: isFiniteNumber(region.speed) ? region.speed : 1,
 						muted: typeof region.muted === "boolean" ? region.muted : false,
 						showSourceAudio:

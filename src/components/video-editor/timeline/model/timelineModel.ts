@@ -6,6 +6,7 @@ import type {
 	ClipRegion,
 	ZoomRegion,
 } from "../../types";
+import { getClipSourceEndMs, getClipSourceStartMs } from "../../types";
 import { CAPTION_ROW_ID, CLIP_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
 import {
 	getAnnotationTrackIndex,
@@ -61,16 +62,16 @@ export function buildTimelineItems(params: {
 	}));
 
 	const clips: TimelineRenderItem[] = clipRegions.map((region, index) => {
-		const displayDurationMs = Math.max(0, region.endMs - region.startMs);
 		const speed = Number.isFinite(region.speed) && region.speed > 0 ? region.speed : 1;
-		const sourceEndMs = region.startMs + displayDurationMs * speed;
+		const sourceStartMs = getClipSourceStartMs(region);
+		const sourceEndMs = getClipSourceEndMs(region);
 		const speedLabel = formatClipSpeedLabel(speed);
 
 		return {
 			id: region.id,
 			rowId: CLIP_ROW_ID,
 			span: { start: region.startMs, end: region.endMs },
-			sourceSpan: { start: region.startMs, end: sourceEndMs },
+			sourceSpan: { start: sourceStartMs, end: sourceEndMs },
 			label: speedLabel ? `Clip ${index + 1} ${speedLabel}` : `Clip ${index + 1}`,
 			speedValue: speedLabel ? speed : undefined,
 			showSourceAudio: region.showSourceAudio,

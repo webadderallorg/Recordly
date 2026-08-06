@@ -209,16 +209,21 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 
 				const newStart = Math.round(previewSpan.start);
 				const newEnd = Math.round(previewSpan.end);
-				const removedSegments = [
-					...(newStart > oldClip.startMs
-						? [{ startMs: oldClip.startMs, endMs: newStart }]
-						: []),
-					...(newEnd < oldClip.endMs ? [{ startMs: newEnd, endMs: oldClip.endMs }] : []),
-				];
-
 				const startDelta = newStart - oldClip.startMs;
 				const endDelta = newEnd - oldClip.endMs;
-				const isMove = Math.abs(startDelta - endDelta) < 1 && Math.abs(startDelta) > 0;
+				const isMove = Math.abs(startDelta - endDelta) < 1;
+				const removedSegments = [
+					...(isMove
+						? []
+						: newStart > oldClip.startMs
+							? [{ startMs: oldClip.startMs, endMs: newStart }]
+							: []),
+					...(isMove
+						? []
+						: newEnd < oldClip.endMs
+							? [{ startMs: newEnd, endMs: oldClip.endMs }]
+							: []),
+				];
 
 				if (isMove) {
 					const delta = startDelta;

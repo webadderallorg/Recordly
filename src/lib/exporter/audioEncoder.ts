@@ -7,6 +7,7 @@ import type {
 	SpeedRegion,
 	TrimRegion,
 } from "@/components/video-editor/types";
+import { getClipSourceEndMs, getClipSourceStartMs } from "@/components/video-editor/types";
 import { buildResolvedAudioPlan, SourceTrackId } from "@/lib/exporter/audioRoutingEngine";
 import { estimateCompanionAudioStartDelaySeconds } from "@/lib/mediaTiming";
 import { resolveMediaElementSource } from "./localMediaSource";
@@ -811,14 +812,11 @@ export class AudioProcessor {
 		const mutedSourceOutputRangesSec = (clipRegions ?? [])
 			.filter(
 				(clip) =>
-					Boolean(clip.muted) &&
-					Number.isFinite(clip.startMs) &&
-					Number.isFinite(clip.endMs) &&
-					clip.endMs > clip.startMs,
+					Boolean(clip.muted) && getClipSourceEndMs(clip) > getClipSourceStartMs(clip),
 			)
 			.map((clip) => ({
-				startSec: Math.max(0, clip.startMs / 1000),
-				endSec: Math.max(0, clip.endMs / 1000),
+				startSec: Math.max(0, getClipSourceStartMs(clip) / 1000),
+				endSec: Math.max(0, getClipSourceEndMs(clip) / 1000),
 			}));
 
 		return {
