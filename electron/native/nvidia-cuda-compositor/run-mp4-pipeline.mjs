@@ -1367,6 +1367,21 @@ if (contentWidth > 0 && contentHeight > 0) {
 if (zoomTelemetry) {
 	encodeArgs.push("--zoom-samples", resolve(zoomTelemetry));
 }
+if (temporalBlurSampleCount > 0) {
+	// The native compositor must advertise --temporal-blur-sample-count in its
+	// --help usage before the wrapper forwards the resolved temporal zoom
+	// motion blur plan (mirror of the tiled-overlay probe below). Until then
+	// temporal blur cannot be composited and the export fails fast instead of
+	// silently dropping the effect.
+	const nativeHelp = run(nativeProbe, ["--help"]).stdout;
+	if (!nativeHelp.includes("--temporal-blur-sample-count")) {
+		fail(
+			"unsupported-temporal-motion-blur: the native NVIDIA CUDA compositor does not support temporal zoom motion blur yet; " +
+				"main.cu must consume --temporal-blur-sample-count (this build) or the renderer must " +
+				"keep the effect on a CUDA-capable helper.",
+		);
+	}
+}
 if (temporalBlurSampleCount >= 3) {
 	encodeArgs.push(
 		"--temporal-blur-sample-count",
@@ -1376,10 +1391,26 @@ if (temporalBlurSampleCount >= 3) {
 		"--temporal-blur-weight-power",
 		String(temporalBlurWeightPower),
 	);
+} else if (temporalBlurSampleCount > 0) {
+	// The TS-side invariant rejects resolved plans below the minimum (3), but a
+	// direct wrapper invocation could still request 1-2 samples; never silently
+	// omit the effect without a diagnostic.
+	console.warn(
+		`[nvidia-cuda-export] Temporal zoom motion blur requested with ${temporalBlurSampleCount} sample(s), below the minimum of 3; omitting the effect (unsupported-temporal-motion-blur)`,
+	);
 }
-const overlayLayers = readOverlayManifest(overlayManifest, { outputWidth, outputHeight });
-if (overlayLayers.length) {
-	for (const layer of overlayLayers) {
+// The manifest may mix fixed-position rgba layers and cursor-sprite layers.
+// rgba layers keep the proven per-layer --overlay descriptor; cursor-sprite
+// layers are forwarded to the native cursor-sprite compositor route that owns
+// the packed frame strip + per-frame positions validation.
+const overlayLayers = readOverlayManifest(overlayManifest, {
+	outputWidth,
+	outputHeight,
+});
+const rgbaOverlayLayers = overlayLayers.filter((layer) => layer.kind === "rgba");
+const cursorSpriteLayers = overlayLayers.filter((layer) => layer.kind === "cursor-sprite");
+if (rgbaOverlayLayers.length) {
+	for (const layer of rgbaOverlayLayers) {
 		encodeArgs.push(
 			"--overlay",
 			layer.path,
@@ -1392,6 +1423,31 @@ if (overlayLayers.length) {
 			// carry the physical sidecar count (effectiveFrameCount when renderer
 			// dedup truncated an identical suffix, otherwise the logical count).
 			String(layer.effectiveFrameCount ?? layer.frameCount),
+		);
+	}
+}
+if (cursorSpriteLayers.length) {
+	const nativeHelp = run(nativeProbe, ["--help"]).stdout;
+	if (!nativeHelp.includes("--cursor-sprite")) {
+		fail(
+			"The native NVIDIA CUDA compositor does not support cursor-sprite overlays yet; " +
+				"main.cu must consume --cursor-sprite (this build) or the renderer must keep " +
+				"the baked cursor overlay sidecar fallback.",
+		);
+	}
+	for (const layer of cursorSpriteLayers) {
+		// positions are validated/clamped on the JS side above; the native
+		// compositor re-validates the positions file and hard-fails (noCpuFallback)
+		// so the cursor is never silently omitted on a strict native route.
+		encodeArgs.push(
+			"--cursor-sprite",
+			layer.id,
+			String(layer.order),
+			layer.path,
+			resolve(layer.positionsPath),
+			String(layer.width),
+			String(layer.height),
+			String(layer.frameCount),
 		);
 	}
 }
@@ -1649,7 +1705,7 @@ console.log(
 							overlay:
 								overlayLayers.length || tiledOverlayLayers.length
 									? {
-											layers: overlayLayers.map((layer) => ({
+											layers: rgbaOverlayLayers.map((layer) => ({
 												id: layer.id,
 												path: layer.path,
 												x: layer.x,
@@ -1666,6 +1722,20 @@ console.log(
 												physicalFrameCount:
 													layer.effectiveFrameCount ?? layer.frameCount,
 											})),
+											cursorSprite: cursorSpriteLayers.length
+												? {
+														layers: cursorSpriteLayers.map((layer) => ({
+															id: layer.id,
+															order: layer.order,
+															path: layer.path,
+															positionsPath: layer.positionsPath,
+															width: layer.width,
+															height: layer.height,
+															frameCount: layer.frameCount,
+															positionsCount: layer.positions.length,
+														})),
+													}
+												: null,
 											tiled: tiledOverlayLayers.length
 												? { layers: tiledOverlayMetrics }
 												: null,

@@ -68,7 +68,14 @@ describe("normalizeProjectEditor", () => {
 		expect(editor.exportVideoCodec).toBe("h264");
 		expect(editor.exportEncoderPreference).toBe("auto");
 		expect(editor.exportBitrateMode).toBe("auto");
-		expect(editor.exportBitrateMbps).toBe(200);
+		expect(editor.exportBitrateMbps).toBe(105);
+
+		const hevcClamp = normalizeProjectEditor({
+			exportVideoCodec: "hevc",
+			exportBitrateMbps: 5000,
+		});
+		expect(hevcClamp.exportVideoCodec).toBe("hevc");
+		expect(hevcClamp.exportBitrateMbps).toBe(70);
 
 		const lowClamp = normalizeProjectEditor({ exportBitrateMbps: -3 });
 		expect(lowClamp.exportBitrateMbps).toBe(1);

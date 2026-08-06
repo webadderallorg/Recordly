@@ -248,7 +248,7 @@
 			"auto": "Automatisch",
 			"custom": "Benutzerdefiniert",
 			"mbpsInput": "Benutzerdefinierte Bitrate in Mbit/s",
-			"range": "1–200 Mbit/s"
+			"range": "1–105 Mbit/s (H.264) · 1–70 Mbit/s (HEVC)"
 		},
 		"hevcHint": "HEVC (H.265) erzeugt kleinere Dateien, wird aber möglicherweise nicht von älteren oder Web-Playern unterstützt. Die Vorschauwiedergabe in Recordly bleibt unverändert.",
 		"hardwareUnavailable": "Kein nutzbarer Hardware-Encoder gefunden. Wählen Sie CPU oder Auto, oder aktualisieren Sie den GPU-Treiber.",

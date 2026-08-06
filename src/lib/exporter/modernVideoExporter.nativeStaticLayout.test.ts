@@ -24,6 +24,7 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 		electronAPI: {
 			nativeStaticLayoutExport: vi.fn(),
 			nativeStaticLayoutExportCancel: vi.fn(),
+			discardExportedTemp: vi.fn(async () => ({ success: true })),
 		},
 	});
 
@@ -207,6 +208,11 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		await expect(
 			exporter.tryExportNativeStaticLayout(videoInfo, { audioMode: "none" }, 60, 1_800),
 		).resolves.toBeNull();
+		// The produced temp video must not stay on disk for the session when the
+		// native result is rejected because it cannot satisfy the strict route.
+		expect(window.electronAPI.discardExportedTemp).toHaveBeenCalledWith(
+			"C:/Temp/hevc-cuda.mp4",
+		);
 	});
 
 	it("rejects the H.264-only Windows GPU route for HEVC", async () => {
@@ -225,6 +231,11 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		await expect(
 			exporter.tryExportNativeStaticLayout(videoInfo, { audioMode: "none" }, 60, 1_800),
 		).resolves.toBeNull();
+		// The produced temp video must not stay on disk for the session when the
+		// native result is rejected because it cannot satisfy the requested codec.
+		expect(window.electronAPI.discardExportedTemp).toHaveBeenCalledWith(
+			"C:/Temp/hevc-windows-gpu.mp4",
+		);
 	});
 
 	it("allows native static-layout for H.264 source metadata", () => {

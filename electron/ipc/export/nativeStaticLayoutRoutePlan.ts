@@ -8,7 +8,7 @@ export type NativeStaticLayoutRoute =
 	| "nvidia-cuda-compositor"
 	| "windows-d3d11-compositor"
 	| "ffmpeg-static-layout";
-export type NativeStaticLayoutFallbackRoute = "native-rawvideo";
+export type NativeStaticLayoutFallbackRoute = "native-rawvideo" | "hard-fail";
 
 export interface NativeStaticLayoutRouteDecision {
 	route: NativeStaticLayoutRoute;
@@ -54,6 +54,12 @@ export interface NativeStaticLayoutRoutePlan {
 	selectedRoute: NativeStaticLayoutRoute | null;
 	fallbackRoute: NativeStaticLayoutFallbackRoute | null;
 	fallbackReason: string | null;
+	/**
+	 * Strict HEVC Hardware policy: when true the export MUST hard-fail with an
+	 * actionable error instead of falling back to renderer raw frames, Breeze,
+	 * or CPU. No consumer may convert this plan into a rawvideo fallback.
+	 */
+	noCpuFallback: boolean;
 	decisions: NativeStaticLayoutRouteDecision[];
 	cuda: NvidiaCudaExportCapabilityProbe;
 	d3d11: WindowsD3D11ExportCapabilityProbe;
@@ -68,14 +74,17 @@ function createRawVideoFallbackPlan(options: {
 	source: NativeStaticLayoutRouteSource;
 	reason: string;
 	cudaReason: string;
+	noCpuFallback?: boolean;
 }) {
 	const { videoCodec, encoderPreference, cuda, d3d11, source } = options;
+	const noCpuFallback = options.noCpuFallback === true;
 	return {
 		videoCodec,
 		encoderPreference,
 		selectedRoute: null,
-		fallbackRoute: "native-rawvideo" as const,
+		fallbackRoute: noCpuFallback ? "hard-fail" : "native-rawvideo",
 		fallbackReason: options.reason,
+		noCpuFallback,
 		decisions: [
 			{
 				route: "nvidia-cuda-compositor" as const,
@@ -150,6 +159,7 @@ export function planNativeStaticLayoutRoutes(options: {
 				selectedRoute: "nvidia-cuda-compositor",
 				fallbackRoute: null,
 				fallbackReason: null,
+				noCpuFallback: false,
 				decisions,
 				cuda,
 				d3d11,
@@ -168,6 +178,9 @@ export function planNativeStaticLayoutRoutes(options: {
 					? `hevc-hardware-route-unavailable:${cuda.skipReason}`
 					: `hevc-cuda-unavailable:${cuda.skipReason}`,
 			cudaReason: cuda.skipReason,
+			// Strict HEVC Hardware policy: the NVIDIA CUDA compositor is the ONLY
+			// acceptable route. Never fall back to renderer rawvideo, Breeze, or CPU.
+			noCpuFallback: encoderPreference === "hardware",
 		});
 	}
 
@@ -207,6 +220,7 @@ export function planNativeStaticLayoutRoutes(options: {
 			selectedRoute: "nvidia-cuda-compositor",
 			fallbackRoute: null,
 			fallbackReason: null,
+			noCpuFallback: false,
 			decisions,
 			cuda,
 			d3d11,
@@ -237,6 +251,7 @@ export function planNativeStaticLayoutRoutes(options: {
 			selectedRoute: "windows-d3d11-compositor",
 			fallbackRoute: null,
 			fallbackReason: null,
+			noCpuFallback: false,
 			decisions,
 			cuda,
 			d3d11,
@@ -260,6 +275,7 @@ export function planNativeStaticLayoutRoutes(options: {
 		selectedRoute: "ffmpeg-static-layout",
 		fallbackRoute: null,
 		fallbackReason: null,
+		noCpuFallback: false,
 		decisions,
 		cuda,
 		d3d11,

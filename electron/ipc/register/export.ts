@@ -15,6 +15,7 @@ import {
 } from "../export/exportStream";
 import {
 	attachNativeVideoExportFramePort,
+	cancelInFlightCapabilityOnlyPrewarms,
 	closeNativeVideoExportFramePort,
 	enqueueNativeVideoExportFrameWrite,
 	enqueueNativeVideoExportFrameWrites,
@@ -40,6 +41,7 @@ import {
 	settleNativeVideoExportWriteFrameRequest,
 } from "../export/native-video";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
+import { formatLogTs } from "../log";
 import {
 	buildNativeH264StreamExportArgs,
 	buildNativeVideoExportArgs,
@@ -65,6 +67,32 @@ function getPartialExportDestinationPath(destinationPath: string) {
 }
 
 const MAX_IN_MEMORY_EXPORT_BYTES = 0x7fffffff;
+
+/**
+ * Structured, timestamped route/settings summary logged at the `native-video-
+ * export-start` IPC boundary. Captures only high-level request settings (codec,
+ * encoder preference, input/mode, dimensions, frame rate) so operators can see
+ * the exact route requested before encoder resolution. Never includes media
+ * bytes, source paths, or runtime encoder names.
+ */
+function formatNativeExportRequestSettings(settings: {
+	videoCodec: ExportVideoCodec;
+	encoderPreference: ExportEncoderPreference;
+	inputMode: "rawvideo" | "h264-stream";
+	encodingMode: NativeExportEncodingMode;
+	width: number;
+	height: number;
+	frameRate: number;
+}) {
+	return (
+		`codec=${settings.videoCodec} ` +
+		`preference=${settings.encoderPreference} ` +
+		`input=${settings.inputMode} ` +
+		`mode=${settings.encodingMode} ` +
+		`${settings.width}x${settings.height} ` +
+		`fps=${settings.frameRate}`
+	);
+}
 
 function getInMemoryExportTooLargeMessage(byteLength: number) {
 	if (byteLength <= MAX_IN_MEMORY_EXPORT_BYTES) {
@@ -296,17 +324,36 @@ export function registerExportHandlers() {
 				encoderPreference?: ExportEncoderPreference;
 			},
 		) => {
+			const inputMode = options.inputMode ?? "rawvideo";
+			const videoCodec = options.videoCodec ?? "h264";
+			const encoderPreference = options.encoderPreference ?? "auto";
+			let sessionId = "";
 			try {
 				if (options.width % 2 !== 0 || options.height % 2 !== 0) {
 					throw new Error("Native export requires even output dimensions");
 				}
 
 				const ffmpegPath = getFfmpegBinaryPath();
-				const inputMode = options.inputMode ?? "rawvideo";
-				const videoCodec = options.videoCodec ?? "h264";
-				const encoderPreference = options.encoderPreference ?? "auto";
-				const sessionId = `recordly-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+				sessionId = `recordly-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 				const outputPath = path.join(app.getPath("temp"), `${sessionId}.mp4`);
+
+				// Recommend the real route once an encoder has been resolved; the raw
+				// request line below is emitted before encoder resolution so a mismatch
+				// between the requested prewarm (e.g. hevc/hardware) and the encoder the
+				// export actually started with is immediately visible in one place.
+				const requestSettings = formatNativeExportRequestSettings({
+					videoCodec,
+					encoderPreference,
+					inputMode,
+					encodingMode: options.encodingMode,
+					width: options.width,
+					height: options.height,
+					frameRate: options.frameRate,
+				});
+				console.log(
+					formatLogTs(),
+					`[native-export] Start request session=${sessionId} ${requestSettings}`,
+				);
 
 				let encoderName: string;
 				let ffmpegArgs: string[];
@@ -335,6 +382,12 @@ export function registerExportHandlers() {
 					);
 					ffmpegArgs = buildNativeVideoExportArgs(encoderName, options, outputPath);
 				}
+
+				// A capability-only prewarm child may still hold a brief NVENC probe
+				// session; cancel it before this real export opens its real encoder
+				// session so they never contend for the GPU/hardware encoder. The
+				// prewarm is fire-and-forget (never awaited) so this never blocks IPC.
+				cancelInFlightCapabilityOnlyPrewarms();
 
 				const ffmpegProcess = spawn(ffmpegPath, ffmpegArgs, {
 					stdio: ["pipe", "ignore", "pipe"],
@@ -366,7 +419,7 @@ export function registerExportHandlers() {
 					framePortReady: false,
 					nextFrameSequence: 0,
 					pendingFrameRequests: new Map(),
-					completedFrameRequestIds: new Set<number>(),
+					highestAcceptedFrameRequestId: -1,
 					completionPromise: new Promise<void>((resolve, reject) => {
 						ffmpegProcess.once("error", (error) => {
 							const processError =
@@ -437,7 +490,8 @@ export function registerExportHandlers() {
 				nativeVideoExportSessions.set(sessionId, session);
 
 				console.log(
-					`[native-export] Started ${isHardwareAcceleratedVideoEncoder(encoderName) ? "hardware" : "software"} session ${sessionId} with ${encoderName}`,
+					formatLogTs(),
+					`[native-export] Started ${isHardwareAcceleratedVideoEncoder(encoderName) ? "hardware" : "software"} session=${sessionId} encoder=${encoderName} route=${useH264StreamCopy ? "h264-stream-copy" : "native-raw"} ${requestSettings}`,
 				);
 
 				return {
@@ -446,8 +500,18 @@ export function registerExportHandlers() {
 					encoderName,
 				};
 			} catch (error) {
+				const failedRequestSettings = formatNativeExportRequestSettings({
+					videoCodec,
+					encoderPreference,
+					inputMode,
+					encodingMode: options.encodingMode,
+					width: options.width,
+					height: options.height,
+					frameRate: options.frameRate,
+				});
 				console.error(
-					"[native-export] Failed to start native video export session:",
+					formatLogTs(),
+					`[native-export] Failed to start native video export session session=${sessionId || "unknown"} ${failedRequestSettings}:`,
 					error,
 				);
 				return {
@@ -477,7 +541,7 @@ export function registerExportHandlers() {
 				metadata,
 			};
 		} catch (error) {
-			console.warn("[probe-native-video-metadata] Failed:", error);
+			console.warn(formatLogTs(), "[probe-native-video-metadata] Failed:", error);
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : String(error),
@@ -492,7 +556,7 @@ export function registerExportHandlers() {
 				capabilities: await getNativeExportCapabilities(),
 			};
 		} catch (error) {
-			console.warn("[native-export-capabilities] Failed:", error);
+			console.warn(formatLogTs(), "[native-export-capabilities] Failed:", error);
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : String(error),
@@ -537,7 +601,7 @@ export function registerExportHandlers() {
 					metrics: result.metrics,
 				};
 			} catch (error) {
-				console.warn("[native-static-layout-export] Failed:", error);
+				console.warn(formatLogTs(), "[native-static-layout-export] Failed:", error);
 				return {
 					success: false,
 					error: error instanceof Error ? error.message : String(error),

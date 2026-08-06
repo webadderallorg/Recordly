@@ -248,7 +248,7 @@
 			"auto": "Auto",
 			"custom": "Personalizzato",
 			"mbpsInput": "Bitrate personalizzato in Mbps",
-			"range": "1–200 Mbps"
+			"range": "1–105 Mbps (H.264) · 1–70 Mbps (HEVC)"
 		},
 		"hevcHint": "HEVC (H.265) produce file più piccoli ma potrebbe non essere riprodotto su lettori vecchi o web. L'anteprima di Recordly rimane invariata.",
 		"hardwareUnavailable": "Nessun encoder hardware utilizzabile trovato. Scegli CPU o Auto, oppure aggiorna il driver della GPU.",

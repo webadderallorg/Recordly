@@ -242,8 +242,8 @@ export function normalizeExportBitrateMode(value: unknown): ExportBitrateMode {
 	return "auto";
 }
 
-export function normalizeExportBitrateMbps(value: unknown): number {
-	return clampCustomBitrateMbps(typeof value === "number" ? value : Number.NaN);
+export function normalizeExportBitrateMbps(value: unknown, codec?: ExportVideoCodec): number {
+	return clampCustomBitrateMbps(typeof value === "number" ? value : Number.NaN, codec);
 }
 
 function normalizeZoomTransitionEasing(
@@ -930,6 +930,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 	);
 	const normalizedMotionPreset =
 		CURSOR_MOTION_PRESETS[resolveCursorMotionPresetId(normalizedMotionValues)];
+	const normalizedExportVideoCodec = normalizeExportVideoCodec(editor.exportVideoCodec);
 
 	return {
 		wallpaper: typeof editor.wallpaper === "string" ? editor.wallpaper : DEFAULT_WALLPAPER_PATH,
@@ -1128,10 +1129,13 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				? editor.exportQuality
 				: "source",
 		mp4FrameRate: normalizeExportMp4FrameRate(editor.mp4FrameRate),
-		exportVideoCodec: normalizeExportVideoCodec(editor.exportVideoCodec),
+		exportVideoCodec: normalizedExportVideoCodec,
 		exportEncoderPreference: normalizeExportEncoderPreference(editor.exportEncoderPreference),
 		exportBitrateMode: normalizeExportBitrateMode(editor.exportBitrateMode),
-		exportBitrateMbps: normalizeExportBitrateMbps(editor.exportBitrateMbps),
+		exportBitrateMbps: normalizeExportBitrateMbps(
+			editor.exportBitrateMbps,
+			normalizedExportVideoCodec,
+		),
 		exportFormat: editor.exportFormat === "gif" ? "gif" : "mp4",
 		gifFrameRate:
 			editor.gifFrameRate === 15 ||

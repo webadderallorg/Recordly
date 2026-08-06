@@ -475,7 +475,12 @@ export function ExportSettingsMenu({
 									setBitrateDraft(event.target.value);
 									const parsed = Number(event.target.value);
 									if (Number.isFinite(parsed)) {
-										onExportBitrateMbpsChange?.(parsed);
+										onExportBitrateMbpsChange?.(
+											Math.min(
+												effectiveMaxMbps,
+												Math.max(EXPORT_BITRATE_MIN_MBPS, parsed),
+											),
+										);
 									}
 								}}
 								onBlur={commitBitrateDraft}

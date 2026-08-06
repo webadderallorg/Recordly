@@ -406,6 +406,75 @@ describe("native static layout command builders", () => {
 		expect(filterComplex).toContain("[layout][overlay_0]overlay=x=0:y=0:format=auto");
 	});
 
+	it("sorts shuffled overlay layers by order then id in the precomposited branch", () => {
+		const args = buildNativePrecompositedStaticLayoutArgs({
+			...baseConfig,
+			staticBackgroundPath: "background.png",
+			overlayLayers: [
+				{
+					id: "caption",
+					order: 3,
+					path: "caption.rgba",
+					x: 0,
+					y: 800,
+					width: 1920,
+					height: 280,
+					frameRate: 60,
+					durationSec: 60,
+					frameCount: 3600,
+					pixelFormat: "rgba",
+				},
+				{
+					id: "cursor",
+					order: 1,
+					path: "cursor.rgba",
+					x: 0,
+					y: 0,
+					width: 1920,
+					height: 1080,
+					frameRate: 60,
+					durationSec: 60,
+					frameCount: 3600,
+					pixelFormat: "rgba",
+				},
+				{
+					id: "annotation",
+					order: 2,
+					path: "annotation.rgba",
+					x: 0,
+					y: 540,
+					width: 1920,
+					height: 540,
+					frameRate: 60,
+					durationSec: 60,
+					frameCount: 3600,
+					pixelFormat: "rgba",
+				},
+			],
+		});
+		const filterComplex = args[args.indexOf("-filter_complex") + 1];
+
+		expect(args).toEqual(
+			expect.arrayContaining([
+				"-f",
+				"rawvideo",
+				"cursor.rgba",
+				"annotation.rgba",
+				"caption.rgba",
+			]),
+		);
+		expect(filterComplex).toContain("[2:v]format=rgba[overlay_0]");
+		expect(filterComplex).toContain("[layout][overlay_0]overlay=x=0:y=0:format=auto");
+		expect(filterComplex).toContain("[3:v]format=rgba[overlay_1]");
+		expect(filterComplex).toContain(
+			"[layout_overlay_0][overlay_1]overlay=x=0:y=540:format=auto",
+		);
+		expect(filterComplex).toContain("[4:v]format=rgba[overlay_2]");
+		expect(filterComplex).toContain(
+			"[layout_overlay_1][overlay_2]overlay=x=0:y=800:format=auto",
+		);
+	});
+
 	it("splits long exports into bounded chunks", () => {
 		expect(buildNativeStaticLayoutChunks(367.5, 120)).toEqual([
 			{ index: 0, startSec: 0, durationSec: 120 },

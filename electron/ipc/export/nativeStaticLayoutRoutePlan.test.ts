@@ -177,7 +177,7 @@ describe("planNativeStaticLayoutRoutes", () => {
 		);
 	});
 
-	it("falls back to rawvideo when HEVC CUDA is unavailable", () => {
+	it("hard-fails when HEVC CUDA is unavailable and Hardware is strict", () => {
 		const plan = planNativeStaticLayoutRoutes({
 			videoCodec: "hevc",
 			encoderPreference: "hardware",
@@ -187,10 +187,16 @@ describe("planNativeStaticLayoutRoutes", () => {
 		});
 
 		expect(plan.selectedRoute).toBeNull();
-		expect(plan.fallbackRoute).toBe("native-rawvideo");
+		expect(plan.fallbackRoute).toBe("hard-fail");
+		expect(plan.noCpuFallback).toBe(true);
 		expect(plan.fallbackReason).toBe("hevc-hardware-route-unavailable:nvidia-gpu-unavailable");
 		expect(plan.decisions).toEqual(
 			expect.arrayContaining([
+				{
+					route: "nvidia-cuda-compositor",
+					status: "rejected",
+					reasons: ["nvidia-gpu-unavailable"],
+				},
 				{
 					route: "windows-d3d11-compositor",
 					status: "rejected",
@@ -203,6 +209,21 @@ describe("planNativeStaticLayoutRoutes", () => {
 				},
 			]),
 		);
+	});
+
+	it("keeps HEVC Auto rawvideo fallback non-strict", () => {
+		const plan = planNativeStaticLayoutRoutes({
+			videoCodec: "hevc",
+			encoderPreference: "auto",
+			cuda: { ...cudaProbe, skipReason: "nvidia-gpu-unavailable" },
+			d3d11: d3d11Probe,
+			source,
+		});
+
+		expect(plan.selectedRoute).toBeNull();
+		expect(plan.fallbackRoute).toBe("native-rawvideo");
+		expect(plan.noCpuFallback).toBe(false);
+		expect(plan.fallbackReason).toBe("hevc-cuda-unavailable:nvidia-gpu-unavailable");
 	});
 
 	it("keeps CPU preference out of every GPU route", () => {

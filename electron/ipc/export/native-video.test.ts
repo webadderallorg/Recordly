@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({
 	app: {
@@ -26,7 +26,11 @@ const fsMocks = vi.hoisted(() => ({
 	writeFile: vi.fn(async () => undefined),
 	readFile: vi.fn(),
 	stat: vi.fn(async () => ({ size: 5_000_000_000 })),
+	realpath: vi.fn(async (pathValue: string) => pathValue),
 	unlink: vi.fn(async () => undefined),
+	mkdir: vi.fn(async () => undefined),
+	rm: vi.fn(async () => undefined),
+	copyFile: vi.fn(async () => undefined),
 }));
 
 vi.mock("node:fs/promises", () => ({
@@ -46,6 +50,8 @@ vi.mock("node:child_process", () => ({
 	spawn: vi.fn(),
 }));
 
+import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { app } from "electron";
 import type { NativeTiledOverlayLayerDescriptor } from "../../../src/lib/exporter/nativeStaticLayoutOverlays";
 import {
@@ -56,7 +62,10 @@ import {
 	buildNativeStaticLayoutTiledOverlayManifest,
 	buildNativeStaticLayoutTimelineSegments,
 	buildNativeVideoAudioMuxArgs,
+	buildNvidiaCudaPrepareProgress,
 	canCopyAudioCodecIntoMp4,
+	cancelInFlightCapabilityOnlyPrewarms,
+	canReuseNativeStaticLayoutSourceProbe,
 	exportNativeStaticLayoutVideo,
 	formatNativeStaticLayoutZoomTelemetryLines,
 	getExperimentalNvidiaCudaExportSkipReason,
@@ -71,6 +80,7 @@ import {
 	hasNvidiaGpuDeviceInGpuInfo,
 	mapNvidiaCudaWrapperProgressPercentage,
 	muxExportedVideoAudioBuffer,
+	muxNativeVideoExportAudio,
 	type NativeStaticLayoutExportOptions,
 	type NativeStaticLayoutOverlayLayer,
 	normalizeNativeStaticLayoutBackground,
@@ -82,12 +92,17 @@ import {
 	parseNvidiaCudaExportSummary,
 	parseWindowsGpuExportProgressLine,
 	parseWindowsGpuExportSummary,
+	prewarmNativeExportCaches,
+	registerCapabilityOnlyPrewarmChild,
+	resetNativeStaticLayoutSourceProbeCache,
+	resetNvidiaCudaAvailabilityCache,
 	resolveExperimentalNvidiaCudaExportScriptPath,
 	resolveNativeStaticLayoutFpsFields,
 	resolveNvidiaCudaCursorAssets,
 	resolveNvidiaCudaNativeFps,
 	resolveNvidiaCudaNativeSummaryMetrics,
 	resolveNvidiaCudaOverlaySidecarSummaryMetrics,
+	resolveNvidiaCudaStrictHevcHardFail,
 	resolveNvidiaCudaTiledOverlaySidecarSummaryMetrics,
 	shouldCreateNativeStaticLayoutSourceProxy,
 	validateNativeStaticLayoutSourceProxyMetadata,
@@ -128,6 +143,13 @@ function resetFsAccessMock() {
 		throw new Error("missing");
 	});
 }
+
+// The NVIDIA CUDA availability cache is session-scoped; reset it after every
+// test so the mocked wrapper/GPU probes from one test never leak into another.
+afterEach(() => {
+	resetNvidiaCudaAvailabilityCache();
+	resetNativeStaticLayoutSourceProbeCache();
+});
 
 function createNvidiaCudaSkipOptions(
 	overrides: Partial<NativeStaticLayoutExportOptions> = {},
@@ -280,6 +302,137 @@ describe("native static-layout source proxy", () => {
 				{ sourceDurationSec: 45 },
 			),
 		).toEqual(["proxy duration 10.000s shorter than expected 45.000s"]);
+	});
+});
+
+describe("native static-layout source probe cache", () => {
+	const baseMetadata = {
+		width: 1920,
+		height: 1080,
+		duration: 45,
+		frameRate: 30,
+		codec: "h264 (High)",
+		hasAudio: true,
+		audioCodec: "aac",
+	};
+
+	function baseEntry() {
+		return {
+			identity: {
+				canonicalPath: "C:\\recordings\\session.mp4",
+				device: 1,
+				inode: 987654,
+				size: 5_000_000_000,
+				mtimeMs: 1_700_000_000_000,
+				ctimeMs: 1_700_000_000_000,
+			},
+			requestedCodec: "hevc",
+			encodingMode: "quality",
+			encoderPreference: "hardware",
+			metadata: { ...baseMetadata },
+		};
+	}
+
+	function baseCurrent() {
+		return {
+			canonicalPath: "C:\\recordings\\session.mp4",
+			device: 1,
+			inode: 987654,
+			size: 5_000_000_000,
+			mtimeMs: 1_700_000_000_000,
+			ctimeMs: 1_700_000_000_000,
+			requestedCodec: "hevc",
+			encodingMode: "quality",
+			encoderPreference: "hardware",
+		};
+	}
+
+	it("reuses a probe only on an exact identity and route match", () => {
+		expect(canReuseNativeStaticLayoutSourceProbe(baseEntry(), baseCurrent())).toBe(true);
+	});
+
+	it("never reuses when there is no cached entry", () => {
+		expect(canReuseNativeStaticLayoutSourceProbe(undefined, baseCurrent())).toBe(false);
+	});
+
+	it("invalidates on canonical path mismatch (never path-only reuse from another file)", () => {
+		const entry = baseEntry();
+		entry.identity.canonicalPath = "C:\\recordings\\other.mp4";
+		expect(canReuseNativeStaticLayoutSourceProbe(entry, baseCurrent())).toBe(false);
+	});
+
+	it("invalidates on device mismatch", () => {
+		const entry = baseEntry();
+		entry.identity.device = 2;
+		expect(canReuseNativeStaticLayoutSourceProbe(entry, baseCurrent())).toBe(false);
+	});
+
+	it("invalidates on inode mismatch", () => {
+		const entry = baseEntry();
+		entry.identity.inode = 111;
+		expect(canReuseNativeStaticLayoutSourceProbe(entry, baseCurrent())).toBe(false);
+	});
+
+	it("invalidates on size change (mutation)", () => {
+		const entry = baseEntry();
+		entry.identity.size = 5_000_000_001;
+		expect(canReuseNativeStaticLayoutSourceProbe(entry, baseCurrent())).toBe(false);
+	});
+
+	it("invalidates on mtime change (mutation)", () => {
+		const entry = baseEntry();
+		entry.identity.mtimeMs = 1_700_000_100_000;
+		expect(canReuseNativeStaticLayoutSourceProbe(entry, baseCurrent())).toBe(false);
+	});
+
+	it("invalidates on ctime change (mutation)", () => {
+		const entry = baseEntry();
+		entry.identity.ctimeMs = 1_700_000_100_000;
+		expect(canReuseNativeStaticLayoutSourceProbe(entry, baseCurrent())).toBe(false);
+	});
+
+	it("invalidates when the requested output codec changes (changed settings)", () => {
+		const entry = baseEntry();
+		entry.requestedCodec = "h264";
+		expect(canReuseNativeStaticLayoutSourceProbe(entry, baseCurrent())).toBe(false);
+	});
+
+	it("invalidates when the encoding mode changes (changed settings)", () => {
+		const entry = baseEntry();
+		entry.encodingMode = "balanced";
+		expect(canReuseNativeStaticLayoutSourceProbe(entry, baseCurrent())).toBe(false);
+	});
+
+	it("invalidates when the encoder preference changes (changed settings)", () => {
+		const entry = baseEntry();
+		entry.encoderPreference = "cpu";
+		expect(canReuseNativeStaticLayoutSourceProbe(entry, baseCurrent())).toBe(false);
+	});
+
+	it("never reuses a probe with an unknown source codec (re-probe or fail closed)", () => {
+		const entry = baseEntry();
+		entry.metadata = { ...baseMetadata, codec: "unknown" };
+		expect(canReuseNativeStaticLayoutSourceProbe(entry, baseCurrent())).toBe(false);
+	});
+
+	it("never reuses a probe with an empty source codec", () => {
+		const entry = baseEntry();
+		entry.metadata = { ...baseMetadata, codec: "" };
+		expect(canReuseNativeStaticLayoutSourceProbe(entry, baseCurrent())).toBe(false);
+	});
+
+	it("invalidates on any current route mismatch even when identity matches", () => {
+		const entry = baseEntry();
+		expect(
+			canReuseNativeStaticLayoutSourceProbe(entry, {
+				...baseCurrent(),
+				encodingMode: "speed",
+			}),
+		).toBe(false);
+		const current = baseCurrent();
+		current.requestedCodec = "hevc";
+		current.encoderPreference = "hardware";
+		expect(canReuseNativeStaticLayoutSourceProbe(baseEntry(), current)).toBe(true);
 	});
 });
 
@@ -599,6 +752,119 @@ describe("getExperimentalNvidiaCudaExportSkipReason", () => {
 	});
 });
 
+describe("NVIDIA CUDA availability cache", () => {
+	afterEach(() => {
+		resetNvidiaCudaAvailabilityCache();
+	});
+
+	it("reuses the wrapper-path and GPU probes across capability and route queries", async () => {
+		await withPackagedCudaCandidate(
+			{ gpuDevice: [{ vendorId: 0x10de, deviceString: "NVIDIA GeForce GTX 1650" }] },
+			async () => {
+				const first = await getNativeExportCapabilities();
+				const second = await getNativeExportCapabilities();
+				const route = await getExperimentalNvidiaCudaExportSkipReason(
+					createNvidiaCudaSkipOptions({ experimentalNvidiaCudaExport: true }),
+				);
+
+				if (process.platform === "win32") {
+					// Two capabilities + a route decision share a single GPU probe.
+					expect(electronAppMock.getGPUInfo.mock.calls.length).toBe(1);
+					expect(route).toBeNull();
+				} else {
+					expect(route).toBe("not-windows");
+				}
+				expect(second.nvidiaCuda).toEqual(first.nvidiaCuda);
+			},
+		);
+	});
+
+	it("invalidates the cache when a relevant environment override changes the helper path", async () => {
+		const scriptEnv = "RECORDLY_NVIDIA_CUDA_EXPORT_SCRIPT";
+		const exportEnv = "RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
+		const originalScript = process.env[scriptEnv];
+		const originalExport = process.env[exportEnv];
+		const originalIsPackaged = electronAppMock.isPackaged;
+		const customScript = "C:\\custom\\nvidia\\run-mp4-pipeline.mjs";
+		electronAppMock.isPackaged = true;
+		electronAppMock.getGPUInfo.mockResolvedValue({
+			gpuDevice: [{ vendorId: 0x10de, deviceString: "NVIDIA GeForce GTX 1650" }],
+		});
+		delete process.env[scriptEnv];
+		delete process.env[exportEnv];
+
+		try {
+			fsMocks.access.mockResolvedValue(undefined);
+			const first = await getNativeExportCapabilities();
+			expect(electronAppMock.getGPUInfo.mock.calls.length).toBe(1);
+
+			process.env[scriptEnv] = customScript;
+			fsMocks.access.mockImplementation(async (candidate: string) => {
+				if (candidate === customScript) {
+					return;
+				}
+				throw new Error(`missing ${candidate}`);
+			});
+
+			const second = await getNativeExportCapabilities();
+			expect(electronAppMock.getGPUInfo.mock.calls.length).toBe(2);
+			if (process.platform === "win32") {
+				expect(second.nvidiaCuda.hasWrapper).toBe(true);
+			} else {
+				expect(second.nvidiaCuda).toBe(first.nvidiaCuda);
+			}
+		} finally {
+			if (originalScript === undefined) {
+				delete process.env[scriptEnv];
+			} else {
+				process.env[scriptEnv] = originalScript;
+			}
+			if (originalExport === undefined) {
+				delete process.env[exportEnv];
+			} else {
+				process.env[exportEnv] = originalExport;
+			}
+			electronAppMock.isPackaged = originalIsPackaged;
+			electronAppMock.getGPUInfo.mockReset();
+			electronAppMock.getGPUInfo.mockResolvedValue({ gpuDevice: [] });
+			resetFsAccessMock();
+			resetNvidiaCudaAvailabilityCache();
+		}
+	});
+
+	it("reports an unavailable GPU consistently for capability and route queries", async () => {
+		await withPackagedCudaCandidate(
+			{ gpuDevice: [{ vendorId: 0x8086, deviceString: "Intel UHD Graphics" }] },
+			async () => {
+				const capabilities = await getNativeExportCapabilities();
+				const route = await getExperimentalNvidiaCudaExportSkipReason(
+					createNvidiaCudaSkipOptions({ experimentalNvidiaCudaExport: true }),
+				);
+				if (process.platform === "win32") {
+					expect(capabilities.nvidiaCuda.available).toBe(false);
+					expect(capabilities.nvidiaCuda.skipReason).toBe("nvidia-gpu-unavailable");
+					expect(capabilities.nvidiaCuda.hasNvidiaGpu).toBe(false);
+					expect(route).toBe("nvidia-gpu-unavailable");
+				} else {
+					expect(capabilities.nvidiaCuda.skipReason).toBe("not-windows");
+					expect(route).toBe("not-windows");
+				}
+			},
+		);
+	});
+
+	it("keeps strict HEVC Hardware CUDA-only hard-fail behavior unchanged", () => {
+		expect(resolveNvidiaCudaStrictHevcHardFail(true, false, "nvidia-gpu-unavailable")).toBe(
+			"HEVC Hardware export requires the NVIDIA CUDA compositor; refusing fallback (nvidia-gpu-unavailable) (noCpuFallback:true)",
+		);
+		expect(resolveNvidiaCudaStrictHevcHardFail(true, false, null)).toBe(
+			"HEVC Hardware export requires the NVIDIA CUDA compositor; refusing fallback (cursor-atlas-unavailable) (noCpuFallback:true)",
+		);
+		expect(resolveNvidiaCudaStrictHevcHardFail(true, true, "env-disabled")).toBeNull();
+		expect(resolveNvidiaCudaStrictHevcHardFail(false, false, "env-disabled")).toBeNull();
+	});
+});
+
 describe("resolveExperimentalNvidiaCudaExportScriptPath", () => {
 	it("prefers the packaged app.asar.unpacked CUDA wrapper over the virtual app.asar copy", async () => {
 		const envName = "RECORDLY_NVIDIA_CUDA_EXPORT_SCRIPT";
@@ -783,6 +1049,41 @@ describe("buildNativeStaticLayoutOverlayManifest", () => {
 			y: 0,
 			width: 1920,
 			height: 1080,
+			frameCount: 60,
+		});
+		expect("effectiveFrameCount" in manifest.layers[0]).toBe(false);
+	});
+
+	it("serializes a cursor-sprite layer with its additive positions sidecar fields", () => {
+		const manifest = buildNativeStaticLayoutOverlayManifest([
+			{
+				id: "cursor-sprite",
+				order: 1,
+				kind: "cursor-sprite",
+				path: "cursor.sprite",
+				positionsPath: "cursor.positions.json",
+				x: 0,
+				y: 0,
+				width: 32,
+				height: 32,
+				frameRate: 30,
+				durationSec: 2,
+				frameCount: 60,
+				positions: Array.from({ length: 60 }, () => ({ x: 0, y: 0 })),
+				pixelFormat: "rgba",
+			},
+		]);
+
+		expect(manifest.layers[0]).toEqual({
+			id: "cursor-sprite",
+			kind: "cursor-sprite",
+			order: 1,
+			path: "cursor.sprite",
+			positionsPath: "cursor.positions.json",
+			x: 0,
+			y: 0,
+			width: 32,
+			height: 32,
 			frameCount: 60,
 		});
 		expect("effectiveFrameCount" in manifest.layers[0]).toBe(false);
@@ -1129,6 +1430,22 @@ describe("buildExperimentalNvidiaCudaStaticLayoutArgs", () => {
 		expect(args).not.toContain("--temporal-blur-sample-count");
 	});
 
+	it("rejects temporal blur plans below the minimum sample count instead of silently dropping the effect", () => {
+		expect(() =>
+			buildExperimentalNvidiaCudaStaticLayoutArgs(
+				createNvidiaCudaSkipOptions({
+					temporalBlur: {
+						sampleCount: 2,
+						shutterFraction: 0.62,
+						weightCurvePower: 1.5,
+					},
+				}),
+				"output.mp4",
+				"work",
+			),
+		).toThrow(/unsupported-temporal-motion-blur/);
+	});
+
 	it("keeps the D3D11 builder free of overlay manifest args", () => {
 		const args = buildExperimentalWindowsGpuStaticLayoutArgs(
 			createNvidiaCudaSkipOptions({
@@ -1343,6 +1660,58 @@ describe("muxExportedVideoAudioBuffer", () => {
 		const result = await muxExportedVideoAudioBuffer(videoData, { audioMode: "none" });
 
 		expect(result.outputPath).toMatch(/recordly-export-video-/);
+	});
+
+	it("swallows the child-process error from a terminating kill of an already-exited child", async () => {
+		const spawnMock = vi.mocked(spawn);
+		spawnMock.mockClear();
+		const child = new EventEmitter() as unknown as {
+			stdout: { on: (event: string, cb: (chunk: Buffer) => void) => void };
+			stderr: { on: (event: string, cb: (chunk: Buffer) => void) => void };
+			pid: number;
+			killed: boolean;
+			kill: (signal?: string) => boolean;
+		} & ReturnType<typeof EventEmitter>;
+		(child as unknown as { stdout: unknown }).stdout = { on: vi.fn() };
+		(child as unknown as { stderr: unknown }).stderr = { on: vi.fn() };
+		(child as unknown as { pid: number }).pid = 4242;
+		let killedWith: string[] = [];
+		(child as unknown as { killed: boolean }).killed = false;
+		(child as unknown as { kill: unknown }).kill = (signal?: string) => {
+			if (signal) {
+				killedWith.push(signal);
+			}
+			// Killing an already-exited child on Windows emits an 'error' event
+			// asynchronously. With the immediate no-op listener attached (Module 3
+			// fix) this is handled, not an uncaught exception; the dedicated
+			// once-handler (attached right after) then settles the promise.
+			queueMicrotask(() => {
+				child.emit("error", new Error('The process "4242" not found.'));
+			});
+			return false;
+		};
+		spawnMock.mockReturnValue(child);
+
+		const session = {
+			terminating: true,
+			currentProcess: null as unknown,
+		};
+		const error = await muxNativeVideoExportAudio(
+			"video.mp4",
+			{
+				audioMode: "copy-source",
+				audioSourceCodec: "aac",
+				audioSourcePath: "source-audio.mp4",
+			} as never,
+			undefined,
+			session as never,
+		).catch((caught: unknown) => caught);
+
+		// The child was terminated (SIGKILL) and its error event was handled
+		// rather than surfacing as an uncaught "process not found" noise line.
+		expect(killedWith).toContain("SIGKILL");
+		expect(error).toBeInstanceOf(Error);
+		spawnMock.mockReset();
 	});
 });
 
@@ -1699,6 +2068,20 @@ describe("resolveNvidiaCudaNativeSummaryMetrics", () => {
 	it("returns an empty object for missing native summaries", () => {
 		expect(resolveNvidiaCudaNativeSummaryMetrics(undefined)).toEqual({});
 	});
+
+	it("surfaces the separated overlay host-read and H2D enqueue stage fields", () => {
+		expect(
+			resolveNvidiaCudaNativeSummaryMetrics({
+				overlayHostReadMs: 6.2,
+				overlayH2DEnqueueMs: 9.4,
+				overlayUploadMs: 18.1,
+			}),
+		).toEqual({
+			overlayHostReadMs: 6.2,
+			overlayH2DEnqueueMs: 9.4,
+			overlayUploadMs: 18.1,
+		});
+	});
 });
 
 describe("resolveNvidiaCudaNativeFps", () => {
@@ -1715,6 +2098,16 @@ describe("resolveNvidiaCudaNativeFps", () => {
 		expect(resolveNvidiaCudaNativeFps({ nativeSummary: { fps: 320.5 } })).toBe(320.5);
 		expect(resolveNvidiaCudaNativeFps({ nativeSummary: { fps: 0 } })).toBeUndefined();
 		expect(resolveNvidiaCudaNativeFps(undefined)).toBeUndefined();
+	});
+
+	it("never falls back to the configured output fps and labels it measured speed", () => {
+		// summary.fps is the configured stream FPS (30), not a measured encode
+		// rate. When the helper reports no measured FPS the resolver must return
+		// undefined rather than surfacing 30 as nativeFps.
+		expect(resolveNvidiaCudaNativeFps({ fps: 30, nativeSummary: {} })).toBeUndefined();
+		expect(
+			resolveNvidiaCudaNativeFps({ fps: 30, nativeSummary: { measuredFps: 0 } }),
+		).toBeUndefined();
 	});
 });
 
@@ -2037,6 +2430,41 @@ describe("parseWindowsGpuExportProgressLine", () => {
 				fpsSource: "native",
 			});
 		});
+
+		it("never emits a preparation-inclusive estimate for finalizing progress", () => {
+			// During finalizing the helper has already reported measured encode
+			// FPS; a frames/since-spawn estimate at this stage would include source
+			// preparation and misrepresent the display as measured speed.
+			expect(
+				resolveNativeStaticLayoutFpsFields(
+					{ currentFrame: 300, totalFrames: 300, percentage: 100, stage: "finalizing" },
+					3_900,
+				),
+			).toEqual({
+				averageFps: undefined,
+				estimatedFps: undefined,
+				fpsSource: undefined,
+			});
+		});
+
+		it("still reports the helper measured encode FPS on finalizing progress", () => {
+			expect(
+				resolveNativeStaticLayoutFpsFields(
+					{
+						currentFrame: 300,
+						totalFrames: 300,
+						percentage: 100,
+						stage: "finalizing",
+						averageFps: 135.4,
+					},
+					3_900,
+				),
+			).toEqual({
+				averageFps: 135.4,
+				estimatedFps: undefined,
+				fpsSource: "native",
+			});
+		});
 	});
 	describe("formatNativeStaticLayoutZoomTelemetryLines", () => {
 		it("writes renderer zoom-blur columns for the CUDA compositor", () => {
@@ -2115,6 +2543,63 @@ describe("mapNvidiaCudaWrapperProgressPercentage", () => {
 				stage: "finalizing",
 			}),
 		).toBe(97.25);
+	});
+});
+
+describe("buildNvidiaCudaPrepareProgress", () => {
+	it.each([
+		["encoder-probe"] as const,
+		["source-validation"] as const,
+		["wrapper-launch"] as const,
+		["cuda-nvenc-init"] as const,
+		["first-frame"] as const,
+	])("labels every preparation substate (%s) as NVIDIA CUDA compositor", (substate) => {
+		const progress = buildNvidiaCudaPrepareProgress("sess-1", substate, 600, 1_234);
+		expect(progress).toMatchObject({
+			sessionId: "sess-1",
+			stage: "preparing",
+			substate,
+			backend: "nvidia-cuda-compositor",
+			currentFrame: 0,
+			totalFrames: 600,
+			elapsedMs: 1_234,
+		});
+		// Preparation substates must never fabricate FPS or claim encode speed.
+		expect(progress.averageFps).toBeUndefined();
+		expect(progress.instantFps).toBeUndefined();
+		expect(progress.estimatedFps).toBeUndefined();
+		expect(progress.fpsSource).toBeUndefined();
+	});
+
+	it("stays within the preparing window and never claims a rendered frame", () => {
+		const orderedSubstates = [
+			"encoder-probe",
+			"source-validation",
+			"wrapper-launch",
+			"cuda-nvenc-init",
+			"first-frame",
+		] as const;
+		const percentages = orderedSubstates.map(
+			(substate) => buildNvidiaCudaPrepareProgress(undefined, substate, 600, 100).percentage,
+		);
+		// Additive progression, all display-only within the preparing window.
+		for (let index = 0; index < percentages.length; index += 1) {
+			expect(percentages[index]).toBeGreaterThan(0);
+			expect(percentages[index]).toBeLessThanOrEqual(3);
+			if (index > 0) {
+				expect(percentages[index]).toBeGreaterThan(percentages[index - 1]);
+			}
+		}
+		expect(buildNvidiaCudaPrepareProgress(undefined, "encoder-probe", 600, 100)).toHaveProperty(
+			"currentFrame",
+			0,
+		);
+	});
+
+	it("clamps the total frames to a positive integer", () => {
+		expect(buildNvidiaCudaPrepareProgress("s", "first-frame", 0, 10).totalFrames).toBe(1);
+		expect(buildNvidiaCudaPrepareProgress("s", "first-frame", 2.9, 10).totalFrames).toBe(2);
+		expect(buildNvidiaCudaPrepareProgress("s", "first-frame", 600, -5).elapsedMs).toBe(0);
 	});
 });
 
@@ -2331,6 +2816,130 @@ describe("native cursor atlas ownership", () => {
 	});
 });
 
+describe("native webcam ownership", () => {
+	function createWebcamOverlayLayer(): NativeStaticLayoutOverlayLayer {
+		return {
+			id: "cursor-sprite",
+			kind: "cursor-sprite",
+			order: 1,
+			path: "cursor-sprite.rgba",
+			positionsPath: "cursor-sprite.positions.json",
+			x: 0,
+			y: 0,
+			width: 32,
+			height: 32,
+			frameRate: 30,
+			durationSec: 10,
+			frameCount: 300,
+			pixelFormat: "rgba",
+			positions: Array.from({ length: 300 }, () => ({ x: 1, y: 1 })),
+		};
+	}
+
+	it("passes webcam args and the overlay manifest through when the CUDA compositor owns the webcam", () => {
+		const args = buildExperimentalNvidiaCudaStaticLayoutArgs(
+			createNvidiaCudaSkipOptions({
+				webcamInputPath: "webcam.mp4",
+				webcamLeft: 32,
+				webcamTop: 48,
+				webcamSize: 240,
+				webcamRadius: 18,
+				webcamMirror: false,
+				webcamNativeOwned: true,
+				overlayManifestPath: "overlay-manifest.json",
+				overlayLayers: [createWebcamOverlayLayer()],
+			}),
+			"output.mp4",
+			"work",
+		);
+
+		// The sidecar excluded webcam pixels, so the CUDA wrapper must receive
+		// BOTH the webcam input and the overlay manifest (cursor sprite);
+		// dropping either would lose the webcam or cursor and baking the webcam
+		// again would double-render.
+		expect(args).toEqual(expect.arrayContaining(["--webcam-input", "webcam.mp4"]));
+		expect(args).toEqual(expect.arrayContaining(["--webcam-x", "32"]));
+		expect(args).toEqual(expect.arrayContaining(["--webcam-size", "240"]));
+		expect(args).toEqual(
+			expect.arrayContaining(["--overlay-manifest", "overlay-manifest.json"]),
+		);
+	});
+
+	it("refuses a native-owned webcam when the CUDA route cannot run", async () => {
+		const error = await exportNativeStaticLayoutVideo(
+			"ffmpeg",
+			createNvidiaCudaSkipOptions({
+				webcamInputPath: "webcam.mp4",
+				webcamSize: 240,
+				webcamNativeOwned: true,
+				experimentalWindowsGpuCompositor: false,
+			}),
+		).catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toMatch(
+			/Webcam ownership by the native CUDA compositor requires the generalized NVIDIA CUDA compositor/i,
+		);
+	});
+
+	it("refuses a native-owned webcam without an input path", async () => {
+		const error = await exportNativeStaticLayoutVideo(
+			"ffmpeg",
+			createNvidiaCudaSkipOptions({
+				webcamNativeOwned: true,
+				experimentalWindowsGpuCompositor: true,
+				experimentalNvidiaCudaExport: true,
+			}),
+		).catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toMatch(
+			/Native webcam ownership requires a webcam input path/i,
+		);
+	});
+
+	it("refuses a native-owned webcam without a positive size", async () => {
+		const error = await exportNativeStaticLayoutVideo(
+			"ffmpeg",
+			createNvidiaCudaSkipOptions({
+				webcamInputPath: "webcam.mp4",
+				webcamNativeOwned: true,
+				experimentalWindowsGpuCompositor: true,
+				experimentalNvidiaCudaExport: true,
+			}),
+		).catch((caught: unknown) => caught);
+
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).toMatch(
+			/Native webcam ownership requires a positive webcam size/i,
+		);
+	});
+
+	it("allows a native-owned webcam when the CUDA route is explicitly opted in on Windows", async () => {
+		if (process.platform !== "win32") {
+			return;
+		}
+
+		const error = await exportNativeStaticLayoutVideo(
+			"ffmpeg",
+			createNvidiaCudaSkipOptions({
+				webcamInputPath: "webcam.mp4",
+				webcamSize: 240,
+				webcamNativeOwned: true,
+				experimentalWindowsGpuCompositor: true,
+				experimentalNvidiaCudaExport: true,
+			}),
+		).catch((caught: unknown) => caught);
+
+		// The preflight guard must not reject the CUDA-opt-in route; any later
+		// failure is a runtime/skip error, not a webcam-ownership refusal.
+		expect(error).toBeInstanceOf(Error);
+		expect((error as Error).message).not.toMatch(
+			/Webcam ownership by the native CUDA compositor requires the generalized NVIDIA CUDA compositor/i,
+		);
+	});
+});
+
 describe("resolveNvidiaCudaOverlaySidecarSummaryMetrics", () => {
 	it("surfaces dimensions and physical/effective frame counts for deduped sidecars", () => {
 		expect(
@@ -2470,19 +3079,74 @@ describe("native summary metric invariants (module 3)", () => {
 		).toEqual(["temporalBlurStationaryFrames 41 exceeds temporalBlurFrames 40"]);
 	});
 
-	it("rejects temporal cache counters that exceed the precomposed frame budget", () => {
+	it("does not count cache builds against the precomposed frame budget", () => {
+		// Mirrors the reported false positive: builds count cache allocations/
+		// segments, hits and precomposedFrames count per-frame reuse. builds must
+		// NOT be added to the frame budget.
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					temporalBlurFrames: 40,
+					temporalBlurBgPrecomposedFrames: 4,
+					temporalBgCacheBuilds: 1,
+					temporalBgCacheHits: 4,
+				},
+			}),
+		).toEqual([]);
+	});
+
+	it("rejects temporal cache hits that exceed the precomposed frame budget", () => {
 		expect(
 			validateNvidiaCudaStageMetricInvariants({
 				nativeSummary: {
 					temporalBlurFrames: 40,
 					temporalBlurBgPrecomposedFrames: 30,
 					temporalBgCacheBuilds: 20,
-					temporalBgCacheHits: 15,
+					temporalBgCacheHits: 31,
 				},
 			}),
-		).toEqual([
-			"temporalBgCacheBuilds 20 + temporalBgCacheHits 15 exceed temporalBlurBgPrecomposedFrames 30",
-		]);
+		).toEqual(["temporalBgCacheHits 31 exceeds temporalBlurBgPrecomposedFrames 30"]);
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					temporalBlurFrames: 40,
+					temporalBlurBgPrecomposedFrames: 30,
+					temporalBgCacheBuilds: 40,
+					temporalBgCacheHits: 30,
+				},
+			}),
+		).toEqual([]);
+	});
+
+	it("binds temporal cache hits to the temporal frame budget when precomposed is absent", () => {
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					temporalBlurFrames: 40,
+					temporalBgCacheHits: 41,
+					temporalBgCacheBuilds: 10,
+				},
+			}),
+		).toEqual(["temporalBgCacheHits 41 exceeds temporalBlurFrames 40"]);
+	});
+
+	it("rejects negative temporal cache counters", () => {
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					temporalBgCacheBuilds: -1,
+					temporalBgCacheHits: 4,
+				},
+			}),
+		).toEqual(["temporalBgCacheBuilds -1 must be non-negative"]);
+		expect(
+			validateNvidiaCudaStageMetricInvariants({
+				nativeSummary: {
+					temporalBgCacheBuilds: 1,
+					temporalBgCacheHits: -4,
+				},
+			}),
+		).toEqual(["temporalBgCacheHits -4 must be non-negative"]);
 	});
 
 	it("rejects overlay static-region blends beyond overlay blend frames", () => {
@@ -2888,5 +3552,470 @@ describe("tiled overlay integration (native-video module)", () => {
 				encoderPreference: "hardware",
 			}),
 		).toBeNull();
+	});
+});
+
+describe("prewarmNativeExportCaches", () => {
+	const nvidiaIdentityStat = {
+		dev: 123,
+		ino: 456,
+		size: 1_000_000,
+		mtimeMs: 1_000,
+		ctimeMs: 2_000,
+	};
+	const cacheableMetadataProbe =
+		"Duration: 00:00:02.00, start: 0.000000\n  Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 30 fps";
+
+	function countMetadataProbeCalls(): number {
+		return execFileMock.mock.calls.filter(
+			(call) => Array.isArray(call[1]) && call[1].includes("-i"),
+		).length;
+	}
+
+	function restoreExecFileMock(): void {
+		execFileMock.mockImplementation(((
+			_cmd: string,
+			_args: string[],
+			_opts: unknown,
+			cb: (err: Error | null) => void,
+		) => {
+			cb(null);
+			return { stdout: "", stderr: "" } as unknown;
+		}) as never);
+	}
+
+	beforeEach(() => {
+		resetNativeStaticLayoutSourceProbeCache();
+		resetNvidiaCudaAvailabilityCache();
+		fsMocks.realpath.mockResolvedValue("canonical.mp4");
+		fsMocks.stat.mockResolvedValue(nvidiaIdentityStat as never);
+		execFileMock.mockClear();
+		execFileMock.mockImplementation(((
+			_cmd: string,
+			_args: string[],
+			_opts: unknown,
+			cb: (err: Error | null) => void,
+		) => {
+			cb(null);
+			return { stdout: "", stderr: "" } as unknown;
+		}) as never);
+	});
+
+	afterEach(() => {
+		restoreExecFileMock();
+		fsMocks.stat.mockResolvedValue({ size: 5_000_000_000 });
+	});
+
+	it("warms source metadata and reuses exact cache keys (codec + encoder preference)", async () => {
+		execFileMock.mockImplementation(((
+			_cmd: string,
+			_args: string[],
+			_opts: unknown,
+			cb: (err: Error | null) => void,
+		) => {
+			cb(null as never, { stdout: cacheableMetadataProbe, stderr: "" });
+			return { stdout: cacheableMetadataProbe, stderr: "" } as unknown;
+		}) as never);
+
+		const first = await prewarmNativeExportCaches({
+			inputPath: "input.mp4",
+			videoCodec: "h264",
+			encoderPreference: "auto",
+			encodingMode: "balanced",
+		});
+		expect(countMetadataProbeCalls()).toBe(1);
+		expect(parseNativeVideoMetadataProbeOutput(cacheableMetadataProbe)).not.toBeNull();
+		expect(
+			parseNativeVideoMetadataProbeOutput("\n" + cacheableMetadataProbe)?.codec,
+			"probe-result-codec",
+		).toBe("h264 (High)");
+		expect(first.sourceMetadataCached, `skip=${JSON.stringify(first.skipReasons)}`).toBe(true);
+
+		// Exact same route reuses the cache: no second probe.
+		const second = await prewarmNativeExportCaches({
+			inputPath: "input.mp4",
+			videoCodec: "h264",
+			encoderPreference: "auto",
+			encodingMode: "balanced",
+		});
+		expect(second.sourceMetadataCached).toBe(true);
+		expect(countMetadataProbeCalls()).toBe(1);
+
+		// A different encoder preference is a distinct exact key: it re-probes.
+		const changedPref = await prewarmNativeExportCaches({
+			inputPath: "input.mp4",
+			videoCodec: "h264",
+			encoderPreference: "hardware",
+			encodingMode: "balanced",
+		});
+		expect(changedPref.sourceMetadataCached).toBe(true);
+		expect(countMetadataProbeCalls()).toBe(2);
+	});
+
+	it("treats encoding mode as part of the exact cache key (prewarm/export alignment)", async () => {
+		execFileMock.mockImplementation(((
+			_cmd: string,
+			_args: string[],
+			_opts: unknown,
+			cb: (err: Error | null) => void,
+		) => {
+			cb(null as never, { stdout: cacheableMetadataProbe, stderr: "" });
+			return { stdout: cacheableMetadataProbe, stderr: "" } as unknown;
+		}) as never);
+
+		// Warm with the persisted/export default (balanced) once.
+		const first = await prewarmNativeExportCaches({
+			inputPath: "input.mp4",
+			videoCodec: "h264",
+			encoderPreference: "auto",
+			encodingMode: "balanced",
+		});
+		expect(first.sourceMetadataCached).toBe(true);
+		expect(countMetadataProbeCalls()).toBe(1);
+
+		// A real export resolving the same route with balanced hits the cache.
+		const hit = await prewarmNativeExportCaches({
+			inputPath: "input.mp4",
+			videoCodec: "h264",
+			encoderPreference: "auto",
+			encodingMode: "balanced",
+		});
+		expect(hit.sourceMetadataCached).toBe(true);
+		expect(countMetadataProbeCalls()).toBe(1);
+
+		// A different encoding mode is a distinct exact key and re-probes.
+		const otherMode = await prewarmNativeExportCaches({
+			inputPath: "input.mp4",
+			videoCodec: "h264",
+			encoderPreference: "auto",
+			encodingMode: "quality",
+		});
+		expect(otherMode.sourceMetadataCached).toBe(true);
+		expect(countMetadataProbeCalls()).toBe(2);
+	});
+
+	it("reports source metadata as uncached when the probe fails without throwing", async () => {
+		execFileMock.mockImplementation(((
+			_cmd: string,
+			_args: string[],
+			_opts: unknown,
+			cb: (err: Error | null) => void,
+		) => {
+			try {
+				cb(new Error("probe failed") as never);
+			} catch {
+				// swallow
+			}
+			return { stdout: "", stderr: "" } as unknown;
+		}) as never);
+
+		const outcome = await prewarmNativeExportCaches({
+			inputPath: "input.mp4",
+			videoCodec: "h264",
+			encoderPreference: "auto",
+			encodingMode: "balanced",
+		});
+		expect(outcome.sourceMetadataCached).toBe(false);
+		expect(outcome.skipReasons).toContain("source-metadata-unavailable");
+		expect(outcome.resolvedEncoders).toContain("h264_nvenc");
+	});
+
+	it("reports CUDA availability when the runtime probe succeeds", async () => {
+		await withPackagedCudaCandidate(
+			{
+				gpuDevice: [{ vendorId: 0x10de, deviceString: "RTX 4090" }],
+			},
+			async () => {
+				execFileMock.mockImplementation(((
+					_cmd: string,
+					_args: string[],
+					_opts: unknown,
+					cb: (err: Error | null) => void,
+				) => {
+					cb(null as never, { stdout: cacheableMetadataProbe, stderr: "" });
+					return { stdout: cacheableMetadataProbe, stderr: "" } as unknown;
+				}) as never);
+				const outcome = await prewarmNativeExportCaches({
+					inputPath: "input.mp4",
+					videoCodec: "h264",
+					encoderPreference: "auto",
+					encodingMode: "balanced",
+				});
+				expect(outcome.cudaAvailabilityResolved).toBe(true);
+			},
+		);
+	});
+
+	it("does not fabricate CUDA readiness from an unavailable runtime probe", async () => {
+		const outcome = await prewarmNativeExportCaches({
+			inputPath: "input.mp4",
+			videoCodec: "hevc",
+			encoderPreference: "hardware",
+			encodingMode: "balanced",
+		});
+		expect(outcome.cudaAvailabilityResolved).toBe(false);
+		expect(outcome.skipReasons.some((reason) => reason.startsWith("cuda-unavailable"))).toBe(
+			true,
+		);
+	});
+});
+
+describe("capability-only prewarm cancellation (native-video)", () => {
+	function fakeCapabilityChild() {
+		const child = new EventEmitter() as {
+			stdout: unknown;
+			stderr: unknown;
+			killedWith: string[];
+			kill: (signal?: string) => void;
+		};
+		child.stdout = {};
+		child.stderr = {};
+		child.killedWith = [];
+		child.kill = (signal?: string) => {
+			if (signal) {
+				child.killedWith.push(signal);
+			}
+		};
+		return child;
+	}
+
+	it("cancels every in-flight capability-only prewarm child before a real NVENC session opens", () => {
+		const childA = fakeCapabilityChild();
+		const childB = fakeCapabilityChild();
+		const unregisterA = registerCapabilityOnlyPrewarmChild(childA);
+		const unregisterB = registerCapabilityOnlyPrewarmChild(childB);
+
+		const cancelled = cancelInFlightCapabilityOnlyPrewarms();
+
+		expect(cancelled).toBe(2);
+		expect(childA.killedWith).toContain("SIGKILL");
+		expect(childB.killedWith).toContain("SIGKILL");
+
+		// Unregister after settle is a no-op (set already cleared).
+		unregisterA();
+		unregisterB();
+	});
+
+	it("is harmless when no capability-only prewarm child is running", () => {
+		expect(cancelInFlightCapabilityOnlyPrewarms()).toBe(0);
+	});
+
+	it("does not cancel a child that already finished (unregistered)", () => {
+		const child = fakeCapabilityChild();
+		const unregister = registerCapabilityOnlyPrewarmChild(child);
+		unregister();
+		expect(cancelInFlightCapabilityOnlyPrewarms()).toBe(0);
+		expect(child.killedWith).toHaveLength(0);
+	});
+});
+
+describe("native static-layout lazy FFmpeg encoder resolution", () => {
+	const METADATA_H264 =
+		"Duration: 00:00:02.00, start: 0.000000\n  Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 30 fps";
+	const FFPROBE_STATS = JSON.stringify({
+		streams: [
+			{
+				duration: "1.9999",
+				nb_read_frames: "10",
+				avg_frame_rate: "5/1",
+				r_frame_rate: "5/1",
+			},
+		],
+	});
+	const CUDA_SUMMARY = JSON.stringify({
+		success: true,
+		outputCodec: "h264",
+		targetFrames: 10,
+		durationSec: 2,
+		nativeSummary: { success: true, frames: 10 },
+		outputVideo: { duration: "1.999900", nb_frames: "10" },
+	});
+
+	function makeOptions(
+		overrides: Partial<NativeStaticLayoutExportOptions> = {},
+	): NativeStaticLayoutExportOptions {
+		return {
+			inputPath: "input.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 5,
+			bitrate: 8_000_000,
+			encodingMode: "balanced",
+			durationSec: 2,
+			contentWidth: 1920,
+			contentHeight: 1080,
+			offsetX: 0,
+			offsetY: 0,
+			backgroundColor: "#101010",
+			audioOptions: { audioMode: "none" },
+			...overrides,
+		};
+	}
+
+	function routeExecFileTo(encodersStdout: string) {
+		execFileMock.mockImplementation(((
+			_cmd: string,
+			args: string[],
+			_opts: unknown,
+			cb: (err: Error | null, res?: { stdout: string; stderr: string }) => void,
+		) => {
+			if (Array.isArray(args) && args.includes("-encoders")) {
+				cb(null, { stdout: encodersStdout, stderr: "" });
+				return { stdout: encodersStdout, stderr: "" } as unknown;
+			}
+			if (Array.isArray(args) && args.includes("-select_streams")) {
+				cb(null, { stdout: FFPROBE_STATS, stderr: "" });
+				return { stdout: FFPROBE_STATS, stderr: "" } as unknown;
+			}
+			// FFmpeg metadata probe (-i source) -> valid H.264 source (no proxy).
+			cb(null, { stdout: "", stderr: METADATA_H264 });
+			return { stdout: "", stderr: METADATA_H264 } as unknown;
+		}) as never);
+	}
+
+	function fakeSpawnChild() {
+		const stdout = new EventEmitter();
+		const stderr = new EventEmitter();
+		const child = new EventEmitter() as EventEmitter & {
+			stdout: EventEmitter;
+			stderr: EventEmitter;
+			stdin: { end: () => void };
+			kill: (signal?: string) => boolean;
+		};
+		child.stdout = stdout;
+		child.stderr = stderr;
+		child.stdin = { end: () => undefined };
+		child.kill = () => true;
+		return child;
+	}
+
+	function countEncodersProbes(): number {
+		return execFileMock.mock.calls.filter(
+			(call) => Array.isArray(call[1]) && call[1].includes("-encoders"),
+		).length;
+	}
+
+	beforeEach(() => {
+		resetNativeStaticLayoutSourceProbeCache();
+		resetNvidiaCudaAvailabilityCache();
+		vi.mocked(spawn).mockClear();
+		fsMocks.access.mockResolvedValue(undefined);
+		fsMocks.stat.mockResolvedValue({ size: 5_000_000_000 } as never);
+	});
+
+	afterEach(() => {
+		fsMocks.access.mockImplementation(async () => {
+			throw new Error("missing");
+		});
+		fsMocks.stat.mockResolvedValue({ size: 5_000_000_000 });
+		delete process.env.RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT;
+		delete process.env.RECORDLY_NVIDIA_CUDA_EXPORT_SCRIPT;
+	});
+
+	it("does not invoke the FFmpeg encoder probe when the NVIDIA CUDA route is selected", async () => {
+		routeExecFileTo("");
+		const cudaEnv = "RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
+		process.env[cudaEnv] = "1";
+		process.env.RECORDLY_NVIDIA_CUDA_EXPORT_SCRIPT = "run-mp4-pipeline.mjs";
+
+		const spawnMock = vi.mocked(spawn);
+		const child = fakeSpawnChild();
+		spawnMock.mockImplementation((cmd: string) => {
+			// Only the CUDA compositor wrapper (node -- run-mp4-pipeline.mjs) may be
+			// spawned; no ffmpeg encoder probe may happen before/on the CUDA route.
+			expect(cmd).toBe(process.execPath);
+			return child;
+		});
+
+		const pending = exportNativeStaticLayoutVideo(
+			"ffmpeg",
+			makeOptions({ experimentalWindowsGpuCompositor: true }),
+		);
+		await vi.waitFor(() => {
+			expect(spawnMock).toHaveBeenCalled();
+		});
+		// CUDA path reached the wrapper spawn without every probing the encoder.
+		expect(countEncodersProbes()).toBe(0);
+		child.stdout.emit("data", Buffer.from(CUDA_SUMMARY));
+		child.emit("close", 0, null);
+
+		const result = await pending;
+		expect(result.route).toBe("nvidia-cuda-compositor");
+		expect(result.encoderName).toBe("nvidia-cuda-compositor");
+		// The CUDA route succeeded with zero FFmpeg encoder listing probes.
+		expect(countEncodersProbes()).toBe(0);
+	});
+
+	it("still probes/resolves the FFmpeg encoder on the raw/FFmpeg fallback branch", async () => {
+		// Only libx264 is available, so exactly one probe spawn happens for it.
+		routeExecFileTo(" V....D libx264");
+		const spawnMock = vi.mocked(spawn);
+		spawnMock.mockImplementation((_cmd: string, args: string[]) => {
+			const probeChild = fakeSpawnChild();
+			if (Array.isArray(args) && args.includes("pipe:0")) {
+				// Encoder probe succeeds -> resolveNativeVideoEncoder returns libx264.
+				queueMicrotask(() => probeChild.emit("close", 0, null));
+			} else {
+				// FFmpeg render spawns fail, so the export rejects after resolution.
+				queueMicrotask(() => probeChild.emit("close", 1, null));
+			}
+			return probeChild;
+		});
+
+		await expect(
+			exportNativeStaticLayoutVideo(
+				"ffmpeg",
+				makeOptions({ experimentalWindowsGpuCompositor: false }),
+			),
+		).rejects.toThrow();
+
+		// The FFmpeg/raw fallback probed and resolved the encoder (-encoders),
+		// unlike the CUDA route above.
+		expect(countEncodersProbes()).toBeGreaterThan(0);
+	});
+
+	it("strict HEVC Hardware hard-fails on CUDA runtime failure without webcam/zoom/timeline (no FFmpeg fallback/probe)", async () => {
+		// Strict HEVC Hardware: the generalized NVIDIA CUDA compositor is the ONLY
+		// acceptable route. A CUDA runtime failure with no webcam, zoom telemetry,
+		// or native timeline must NOT be swallowed by the outer GPU-block catch and
+		// turned into a full FFmpeg hevc_nvenc fallback; the original actionable
+		// CUDA/noCpuFallback error must reach the caller and no FFmpeg encoder probe
+		// or fallback spawn may happen.
+		routeExecFileTo("");
+		process.env.RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT = "1";
+		process.env.RECORDLY_NVIDIA_CUDA_EXPORT_SCRIPT = "run-mp4-pipeline.mjs";
+		const probesBefore = countEncodersProbes();
+
+		const spawnMock = vi.mocked(spawn);
+		const child = fakeSpawnChild();
+		spawnMock.mockImplementation((cmd: string) => {
+			// Only the CUDA compositor wrapper may spawn; no Windows-GPU or FFmpeg
+			// fallback child may ever be launched on the strict route.
+			expect(cmd).toBe(process.execPath);
+			return child;
+		});
+
+		const pending = exportNativeStaticLayoutVideo(
+			"ffmpeg",
+			makeOptions({
+				experimentalWindowsGpuCompositor: true,
+				videoCodec: "hevc",
+				encoderPreference: "hardware",
+			}),
+		);
+		await vi.waitFor(() => {
+			expect(spawnMock).toHaveBeenCalled();
+		});
+		// CUDA runtime failure: the helper exits nonzero without a success summary.
+		child.emit("close", 1, null);
+
+		await expect(pending).rejects.toThrow(/noCpuFallback:true/);
+		// The strict route reached only the single CUDA wrapper spawn; no FFmpeg
+		// encoder probe (-encoders) and no FFmpeg/GPU fallback spawn occurred.
+		expect(spawnMock).toHaveBeenCalledTimes(1);
+		// No FFmpeg encoder probe (-encoders) may have occurred for this export.
+		// countEncodersProbes() accumulates across the describe, so compare against
+		// the count captured before this export ran.
+		expect(countEncodersProbes()).toBe(probesBefore);
 	});
 });

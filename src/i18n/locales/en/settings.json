@@ -268,7 +268,7 @@
 			"auto": "Auto",
 			"custom": "Custom",
 			"mbpsInput": "Custom bitrate in Mbps",
-			"range": "1–200 Mbps"
+			"range": "1–105 Mbps (H.264) · 1–70 Mbps (HEVC)"
 		},
 		"hardwareUnavailable": "No usable hardware encoder was found. Pick CPU or Auto, or update your GPU driver.",
 		"errors": {

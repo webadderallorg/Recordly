@@ -236,6 +236,8 @@ export interface ExportSettings {
 
 export const EXPORT_BITRATE_MIN_MBPS = 1;
 export const EXPORT_BITRATE_MAX_MBPS = 200;
+export const EXPORT_BITRATE_H264_MAX_MBPS = 105;
+export const EXPORT_BITRATE_HEVC_MAX_MBPS = 70;
 export const EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS = 20;
 
 export const MP4_FRAME_RATES: readonly ExportMp4FrameRate[] = [24, 30, 60] as const;

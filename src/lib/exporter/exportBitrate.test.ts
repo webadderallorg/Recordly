@@ -162,6 +162,8 @@ describe("export bitrate resolver", () => {
 	it("custom mode converts Mbps to whole-number bps", () => {
 		expect(customBitrateMbpsToBps(20)).toBe(20_000_000);
 		expect(customBitrateMbpsToBps(12.5)).toBe(12_500_000);
+		expect(customBitrateMbpsToBps(200, "h264")).toBe(105_000_000);
+		expect(customBitrateMbpsToBps(200, "hevc")).toBe(70_000_000);
 	});
 
 	it("custom mode clamps to the supported range and defaults non-finite input", () => {
@@ -180,13 +182,26 @@ describe("export bitrate resolver", () => {
 			resolveExportBitrate({
 				mode: "custom",
 				customMbps: 500,
+				codec: "h264",
 				width: 1920,
 				height: 1080,
 				frameRate: 30,
 				quality: "source",
 				encodingMode: "quality",
 			}),
-		).toBe(200_000_000);
+		).toBe(105_000_000);
+		expect(
+			resolveExportBitrate({
+				mode: "custom",
+				customMbps: 500,
+				codec: "hevc",
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				quality: "source",
+				encodingMode: "quality",
+			}),
+		).toBe(70_000_000);
 		expect(
 			resolveExportBitrate({
 				mode: "custom",
@@ -231,6 +246,10 @@ describe("export bitrate resolver", () => {
 		expect(clampCustomBitrateMbps(12.5)).toBe(12.5);
 		expect(clampCustomBitrateMbps(0.5)).toBe(1);
 		expect(clampCustomBitrateMbps(500)).toBe(200);
+		expect(clampCustomBitrateMbps(500, "h264")).toBe(105);
+		expect(clampCustomBitrateMbps(500, "hevc")).toBe(70);
+		expect(clampCustomBitrateMbps(12.5, "h264")).toBe(12.5);
+		expect(clampCustomBitrateMbps(70, "hevc")).toBe(70);
 		expect(clampCustomBitrateMbps(NaN)).toBe(20);
 	});
 });

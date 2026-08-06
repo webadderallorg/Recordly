@@ -501,7 +501,7 @@ describe("editorPreferences", () => {
 		expect(normalized.exportVideoCodec).toBe("h264");
 		expect(normalized.exportEncoderPreference).toBe("auto");
 		expect(normalized.exportBitrateMode).toBe("auto");
-		expect(normalized.exportBitrateMbps).toBe(200);
+		expect(normalized.exportBitrateMbps).toBe(105);
 
 		expect(normalizeEditorPreferences({ exportBitrateMbps: -3 }).exportBitrateMbps).toBe(1);
 		expect(
@@ -544,7 +544,7 @@ describe("editorPreferences", () => {
 						exportVideoCodec: "hevc",
 						exportEncoderPreference: "cpu",
 						exportBitrateMode: "custom",
-						exportBitrateMbps: 80,
+						exportBitrateMbps: 70,
 						cropRegion: DEFAULT_CROP_REGION,
 						autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
 					},
@@ -556,7 +556,7 @@ describe("editorPreferences", () => {
 			exportVideoCodec: "hevc",
 			exportEncoderPreference: "cpu",
 			exportBitrateMode: "custom",
-			exportBitrateMbps: 80,
+			exportBitrateMbps: 70,
 		});
 	});
 });

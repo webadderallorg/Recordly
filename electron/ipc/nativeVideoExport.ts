@@ -593,6 +593,9 @@ export function buildNativePrecompositedStaticLayoutArgs(
 
 	const durationSec = formatFfmpegSeconds(Math.max(0.001, config.durationSec ?? 1) * 1000);
 	const useMask = Boolean(config.maskPath && (config.borderRadius ?? 0) > 0.5);
+	const overlayLayers = [...(config.overlayLayers ?? [])].sort(
+		(left, right) => left.order - right.order || left.id.localeCompare(right.id),
+	);
 	const args = ["-y", "-hide_banner", "-loglevel", "error"];
 	pushFfmpegTimeSliceArgs(args, config.startSec, config.durationSec);
 	args.push(
@@ -624,7 +627,7 @@ export function buildNativePrecompositedStaticLayoutArgs(
 			config.maskPath,
 		);
 	}
-	for (const layer of config.overlayLayers ?? []) {
+	for (const layer of overlayLayers) {
 		args.push(
 			"-f",
 			"rawvideo",
@@ -649,7 +652,7 @@ export function buildNativePrecompositedStaticLayoutArgs(
 	];
 	let currentLabel = "layout";
 	const firstOverlayInputIndex = useMask ? 3 : 2;
-	for (const [index, layer] of (config.overlayLayers ?? []).entries()) {
+	for (const [index, layer] of overlayLayers.entries()) {
 		const nextLabel = `layout_overlay_${index}`;
 		filterParts.push(
 			`[${firstOverlayInputIndex + index}:v]format=rgba[overlay_${index}]`,

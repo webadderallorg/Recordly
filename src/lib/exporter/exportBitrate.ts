@@ -1,11 +1,14 @@
 import {
 	EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS,
+	EXPORT_BITRATE_H264_MAX_MBPS,
+	EXPORT_BITRATE_HEVC_MAX_MBPS,
 	EXPORT_BITRATE_MAX_MBPS,
 	EXPORT_BITRATE_MIN_MBPS,
 	type ExportBitrateMode,
 	type ExportEncodingMode,
 	type ExportMp4FrameRate,
 	type ExportQuality,
+	type ExportVideoCodec,
 } from "./types";
 
 const MIN_MP4_BITRATE = 2_000_000;
@@ -134,21 +137,32 @@ export function getMp4ExportBitrate(options: {
 	return Math.max(MIN_MP4_BITRATE, cappedBitrate);
 }
 
-export function clampCustomBitrateMbps(mbps: number): number {
+function getCodecCustomBitrateCapMbps(codec: ExportVideoCodec | undefined): number {
+	switch (codec) {
+		case "h264":
+			return Math.min(EXPORT_BITRATE_H264_MAX_MBPS, EXPORT_BITRATE_MAX_MBPS);
+		case "hevc":
+			return Math.min(EXPORT_BITRATE_HEVC_MAX_MBPS, EXPORT_BITRATE_MAX_MBPS);
+		default:
+			return EXPORT_BITRATE_MAX_MBPS;
+	}
+}
+
+export function clampCustomBitrateMbps(mbps: number, codec?: ExportVideoCodec): number {
 	if (!Number.isFinite(mbps) || Number.isNaN(mbps)) {
 		return EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS;
 	}
 	if (mbps < EXPORT_BITRATE_MIN_MBPS) {
 		return EXPORT_BITRATE_MIN_MBPS;
 	}
-	if (mbps > EXPORT_BITRATE_MAX_MBPS) {
-		return EXPORT_BITRATE_MAX_MBPS;
+	if (mbps > getCodecCustomBitrateCapMbps(codec)) {
+		return getCodecCustomBitrateCapMbps(codec);
 	}
 	return mbps;
 }
 
-export function customBitrateMbpsToBps(mbps: number): number {
-	return Math.floor(clampCustomBitrateMbps(mbps) * 1_000_000);
+export function customBitrateMbpsToBps(mbps: number, codec?: ExportVideoCodec): number {
+	return Math.floor(clampCustomBitrateMbps(mbps, codec) * 1_000_000);
 }
 
 export function resolveExportBitrate(options: {
@@ -160,9 +174,10 @@ export function resolveExportBitrate(options: {
 	quality: ExportQuality;
 	encodingMode: ExportEncodingMode;
 	useModernNativeStaticLayout?: boolean;
+	codec?: ExportVideoCodec;
 }): number {
 	if (options.mode === "custom") {
-		return customBitrateMbpsToBps(options.customMbps);
+		return customBitrateMbpsToBps(options.customMbps, options.codec);
 	}
 	return getMp4ExportBitrate(options);
 }
