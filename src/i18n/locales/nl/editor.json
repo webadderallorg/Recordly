@@ -109,10 +109,18 @@
 	},
 	"actions": {
 		"saveAgain": "Opnieuw opslaan",
-		"showInFolder": "Tonen in map"
+		"showInFolder": "Tonen in map",
+		"returnToRecording": "Terug naar opnemen",
+		"returnToRecordingBlockedByExport": "Wacht tot het exporteren klaar is voordat je teruggaat naar opnemen"
 	},
 	"project": {
-		"untitled": "Naamloos"
+		"untitled": "Naamloos",
+		"menu": "Project",
+		"newRecording": "Nieuwe opname",
+		"newFromFile": "Nieuw project uit bestand…",
+		"open": "Projecten openen…",
+		"save": "Project opslaan",
+		"saveAs": "Project opslaan als…"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Er is niets kapot, maar we kunnen geen geanimeerde cursor-overlay renderen.",

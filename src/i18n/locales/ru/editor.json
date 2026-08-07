@@ -108,10 +108,18 @@
 	},
 	"actions": {
 		"saveAgain": "Сохранить ещё раз",
-		"showInFolder": "Показать в папке"
+		"showInFolder": "Показать в папке",
+		"returnToRecording": "Вернуться к записи",
+		"returnToRecordingBlockedByExport": "Дождитесь завершения экспорта, прежде чем вернуться к записи"
 	},
 	"project": {
-		"untitled": "Без названия"
+		"untitled": "Без названия",
+		"menu": "Проект",
+		"newRecording": "Новая запись",
+		"newFromFile": "Новый проект из файла…",
+		"open": "Открыть проекты…",
+		"save": "Сохранить проект",
+		"saveAs": "Сохранить проект как…"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Всё в порядке, но мы не можем отобразить анимированное наложение курсора.",

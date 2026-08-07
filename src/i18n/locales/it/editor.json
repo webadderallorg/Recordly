@@ -108,10 +108,18 @@
 	},
 	"actions": {
 		"saveAgain": "Salva di nuovo",
-		"showInFolder": "Mostra nella cartella"
+		"showInFolder": "Mostra nella cartella",
+		"returnToRecording": "Torna alla registrazione",
+		"returnToRecordingBlockedByExport": "Attendi il termine dell'esportazione prima di tornare alla registrazione"
 	},
 	"project": {
-		"untitled": "Senza titolo"
+		"untitled": "Senza titolo",
+		"menu": "Progetto",
+		"newRecording": "Nuova registrazione",
+		"newFromFile": "Nuovo progetto da file…",
+		"open": "Apri progetti…",
+		"save": "Salva progetto",
+		"saveAs": "Salva progetto con nome…"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Niente è rotto, ma non sarà possibile renderizzare un overlay del cursore animato.",

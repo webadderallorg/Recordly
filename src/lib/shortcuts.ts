@@ -39,6 +39,14 @@ export const FIXED_SHORTCUTS: FixedShortcut[] = [
 	},
 	{ label: "Pan Timeline", display: "Shift + Scroll", bindings: [] },
 	{ label: "Zoom Timeline", display: "Ctrl + Scroll", bindings: [] },
+	{ label: "New Recording", display: "Ctrl + N", bindings: [{ key: "n", ctrl: true }] },
+	{ label: "Save Project", display: "Ctrl + S", bindings: [{ key: "s", ctrl: true }] },
+	{
+		label: "Save Project As",
+		display: "Ctrl + Shift + S",
+		bindings: [{ key: "s", ctrl: true, shift: true }],
+	},
+	{ label: "Open Projects", display: "Ctrl + O", bindings: [{ key: "o", ctrl: true }] },
 ];
 
 export type ShortcutConflict =

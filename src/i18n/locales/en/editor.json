@@ -108,10 +108,18 @@
 	},
 	"actions": {
 		"saveAgain": "Save Again",
-		"showInFolder": "Show In Folder"
+		"showInFolder": "Show In Folder",
+		"returnToRecording": "Return to recording",
+		"returnToRecordingBlockedByExport": "Wait for the export to finish before returning to recording"
 	},
 	"project": {
-		"untitled": "Untitled"
+		"untitled": "Untitled",
+		"menu": "Project",
+		"newRecording": "New recording",
+		"newFromFile": "New project from file…",
+		"open": "Open projects…",
+		"save": "Save project",
+		"saveAs": "Save project as…"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Nothing’s broken, but we won’t be able to render an animated cursor overlay.",
