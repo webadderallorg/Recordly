@@ -7,6 +7,7 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { USER_DATA_PATH } from "./appPaths";
 import {
 	getHudOverlayWindowBounds,
+	recordingForcesHudOverlayFallback,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
@@ -193,6 +194,13 @@ function getHudOverlayDisplay() {
 	return getScreen().getPrimaryDisplay();
 }
 
+function recordingForcesHudFallback(): boolean {
+	return recordingForcesHudOverlayFallback({
+		platform: process.platform,
+		recordingActive: hudOverlayRecordingActive,
+	});
+}
+
 function getHudOverlayBounds() {
 	const { workArea } = getHudOverlayDisplay();
 	const fallbackExpanded = shouldExpandHudOverlayFallback({
@@ -202,7 +210,7 @@ function getHudOverlayBounds() {
 	});
 	return getHudOverlayWindowBounds(
 		workArea,
-		isHudOverlayMousePassthroughSupported() && !hudOverlayRecordingActive,
+		isHudOverlayMousePassthroughSupported() && !recordingForcesHudFallback(),
 		fallbackExpanded,
 	);
 }
@@ -259,7 +267,7 @@ function positionUpdateToastWindow() {
 }
 
 function setHudOverlayFallbackExpanded(expanded: boolean) {
-	if (hudOverlayRecordingActive) {
+	if (recordingForcesHudFallback()) {
 		hudOverlayFallbackExpanded = false;
 		return;
 	}
@@ -290,7 +298,7 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 	hudOverlayIgnoringMouse =
 		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive
 			? true
-			: hudOverlayRecordingActive
+			: recordingForcesHudFallback()
 				? false
 				: ignore;
 
@@ -303,7 +311,7 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 		return;
 	}
 
-	if (hudOverlayRecordingActive) {
+	if (recordingForcesHudFallback()) {
 		hudOverlayFallbackExpanded = false;
 		applyHudOverlayBounds();
 		hudOverlayWindow.setIgnoreMouseEvents(false);
@@ -503,7 +511,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 	}
 
 	if (isHudOverlayMousePassthroughSupported()) {
-		if (hudOverlayRecordingActive) {
+		if (recordingForcesHudFallback()) {
 			hudOverlayIgnoringMouse = false;
 			win.setIgnoreMouseEvents(false);
 		} else {
@@ -638,7 +646,7 @@ export function reassertHudOverlayMousePassthrough(): void {
 		return;
 	}
 
-	if (hudOverlayRecordingActive) {
+	if (recordingForcesHudFallback()) {
 		hud.setIgnoreMouseEvents(false);
 		return;
 	}
@@ -658,10 +666,31 @@ export function reassertHudOverlayMousePassthrough(): void {
 }
 
 export function setHudOverlayRecordingActive(recording: boolean): void {
+	const wasFallbackForced = recordingForcesHudFallback();
 	hudOverlayRecordingActive = Boolean(recording);
 	hudOverlayFallbackExpanded = false;
 	applyHudOverlayBounds();
-	setHudOverlayMousePassthrough(!hudOverlayRecordingActive);
+
+	if (recordingForcesHudFallback()) {
+		// Compact, always-interactive HUD window: the whole window is the bar.
+		setHudOverlayMousePassthrough(false);
+		return;
+	}
+
+	if (wasFallbackForced) {
+		// Leaving the compact fallback re-expands the overlay to the whole work
+		// area, so it has to become click-through again before it swallows every
+		// click on the desktop.
+		setHudOverlayMousePassthrough(true);
+		return;
+	}
+
+	// The overlay already spans the work area and stays click-through while
+	// recording; the renderer's hover tracking owns the interactive state, so
+	// preserve it instead of forcing the window interactive (which would block
+	// clicks everywhere) or click-through (which would drop a click already
+	// aimed at the bar).
+	setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 }
 
 export function createUpdateToastWindow(): BrowserWindow {

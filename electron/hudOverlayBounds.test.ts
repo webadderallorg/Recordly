@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	getHudOverlayWindowBounds,
+	recordingForcesHudOverlayFallback,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
@@ -142,6 +143,32 @@ describe("resizeHudOverlayFallbackBounds", () => {
 			width: 860,
 			height: 540,
 		});
+	});
+});
+
+describe("recordingForcesHudOverlayFallback", () => {
+	it("pins the HUD to the compact fallback while recording on Windows", () => {
+		expect(
+			recordingForcesHudOverlayFallback({ platform: "win32", recordingActive: true }),
+		).toBe(true);
+	});
+
+	it("keeps the full-work-area click-through overlay while recording on macOS", () => {
+		expect(
+			recordingForcesHudOverlayFallback({ platform: "darwin", recordingActive: true }),
+		).toBe(false);
+	});
+
+	it("keeps the full-work-area click-through overlay while recording on Linux", () => {
+		expect(
+			recordingForcesHudOverlayFallback({ platform: "linux", recordingActive: true }),
+		).toBe(false);
+	});
+
+	it("never forces the fallback outside recording", () => {
+		expect(
+			recordingForcesHudOverlayFallback({ platform: "win32", recordingActive: false }),
+		).toBe(false);
 	});
 });
 
