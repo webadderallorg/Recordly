@@ -68,6 +68,7 @@ import {
 	waitForNativeCaptureStart,
 	waitForNativeCaptureStop,
 } from "../recording/mac";
+import { isUnfinalizedMp4 } from "../recording/mp4Integrity";
 import { resolveRecordedVideoStoragePath } from "../recording/storagePath";
 import {
 	attachWindowsCaptureLifecycle,
@@ -1201,7 +1202,25 @@ export function registerRecordingHandlers(
 				error: String(error),
 			});
 
-			// Try to recover: if the target file exists on disk, finalize with it
+			// Try to recover: if the target file exists on disk, finalize with it.
+			// Existence alone is not enough — a helper that died mid-capture leaves
+			// an unfinalized MP4 (open `mdat`, no `moov` index) that no decoder can
+			// open, and passing it on shows the user a garbled editor preview
+			// instead of telling them the recording failed.
+			if (fallbackPath && (await isUnfinalizedMp4(fallbackPath))) {
+				console.error(
+					"[stop-native-screen-recording] Capture file was never finalized:",
+					fallbackPath,
+				);
+				return {
+					success: false,
+					message:
+						"The recording was interrupted before it could be finalized. The raw capture data is still on disk.",
+					error: String(error),
+					unfinalizedPath: fallbackPath,
+				};
+			}
+
 			if (fallbackPath) {
 				try {
 					await fs.access(fallbackPath);
