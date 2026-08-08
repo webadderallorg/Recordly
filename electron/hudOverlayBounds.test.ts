@@ -18,61 +18,21 @@ describe("getHudOverlayWindowBounds", () => {
 		expect(getHudOverlayWindowBounds(workArea, true)).toEqual(workArea);
 	});
 
-	it("uses a bottom-centered compact fallback when mouse passthrough is unavailable", () => {
-		expect(getHudOverlayWindowBounds(workArea, false)).toEqual({
-			x: 650,
-			y: 920,
-			width: 860,
-			height: 160,
-		});
+	it("uses the full work area when mouse passthrough is supported", () => {
+		expect(getHudOverlayWindowBounds(workArea, true)).toEqual(workArea);
 	});
 
-	it("expands the non-passthrough fallback for HUD menus and hover interaction", () => {
-		expect(getHudOverlayWindowBounds(workArea, false, true)).toEqual({
-			x: 650,
-			y: 540,
-			width: 860,
-			height: 540,
-		});
+	it("uses full display work area bounds for the overlay window", () => {
+		expect(getHudOverlayWindowBounds(workArea, false)).toEqual(workArea);
 	});
 
-	it("keeps the compact fallback inside small displays", () => {
-		expect(
-			getHudOverlayWindowBounds(
-				{
-					x: -100,
-					y: 20,
-					width: 640,
-					height: 420,
-				},
-				false,
-			),
-		).toEqual({
-			x: -100,
-			y: 280,
-			width: 640,
-			height: 160,
-		});
+	it("expands to full work area bounds", () => {
+		expect(getHudOverlayWindowBounds(workArea, false, true)).toEqual(workArea);
 	});
 
-	it("fits the expanded fallback inside small displays", () => {
-		expect(
-			getHudOverlayWindowBounds(
-				{
-					x: -100,
-					y: 20,
-					width: 640,
-					height: 420,
-				},
-				false,
-				true,
-			),
-		).toEqual({
-			x: -100,
-			y: 20,
-			width: 640,
-			height: 420,
-		});
+	it("preserves full work area bounds inside small displays", () => {
+		const small = { x: -100, y: 20, width: 640, height: 420 };
+		expect(getHudOverlayWindowBounds(small, false)).toEqual(small);
 	});
 });
 
@@ -84,64 +44,49 @@ describe("resizeHudOverlayFallbackBounds", () => {
 		height: 1080,
 	};
 
-	it("preserves the dragged bottom edge when expanding", () => {
+	it("returns full work area when expanding", () => {
 		expect(
 			resizeHudOverlayFallbackBounds(
 				workArea,
 				{
 					x: 420,
 					y: 700,
-					width: 860,
+					width: 1200,
 					height: 160,
 				},
 				true,
 			),
-		).toEqual({
-			x: 420,
-			y: 320,
-			width: 860,
-			height: 540,
-		});
+		).toEqual(workArea);
 	});
 
-	it("preserves the dragged bottom edge when compacting", () => {
+	it("returns full work area when compacting", () => {
 		expect(
 			resizeHudOverlayFallbackBounds(
 				workArea,
 				{
 					x: 420,
-					y: 320,
-					width: 860,
-					height: 540,
+					y: 260,
+					width: 1200,
+					height: 600,
 				},
 				false,
 			),
-		).toEqual({
-			x: 420,
-			y: 700,
-			width: 860,
-			height: 160,
-		});
+		).toEqual(workArea);
 	});
 
-	it("keeps resized fallback bounds inside the display work area", () => {
+	it("returns full work area inside the display work area", () => {
 		expect(
 			resizeHudOverlayFallbackBounds(
 				workArea,
 				{
 					x: 1500,
 					y: 900,
-					width: 860,
+					width: 1200,
 					height: 160,
 				},
 				true,
 			),
-		).toEqual({
-			x: 1060,
-			y: 520,
-			width: 860,
-			height: 540,
-		});
+		).toEqual(workArea);
 	});
 });
 
