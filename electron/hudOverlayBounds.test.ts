@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	getHudOverlayWindowBounds,
@@ -14,25 +14,78 @@ describe("getHudOverlayWindowBounds", () => {
 		height: 1040,
 	};
 
-	it("uses the full work area when mouse passthrough is supported", () => {
-		expect(getHudOverlayWindowBounds(workArea, true)).toEqual(workArea);
+	afterEach(() => {
+		vi.restoreAllMocks();
 	});
 
 	it("uses the full work area when mouse passthrough is supported", () => {
 		expect(getHudOverlayWindowBounds(workArea, true)).toEqual(workArea);
 	});
 
-	it("uses full display work area bounds for the overlay window", () => {
+	it("uses full display work area bounds on Linux when mouse passthrough is false", () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("linux");
 		expect(getHudOverlayWindowBounds(workArea, false)).toEqual(workArea);
 	});
 
-	it("expands to full work area bounds", () => {
-		expect(getHudOverlayWindowBounds(workArea, false, true)).toEqual(workArea);
+	it("uses a bottom-centered compact fallback on non-Linux when mouse passthrough is unavailable", () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+		expect(getHudOverlayWindowBounds(workArea, false)).toEqual({
+			x: 480,
+			y: 920,
+			width: 1200,
+			height: 160,
+		});
 	});
 
-	it("preserves full work area bounds inside small displays", () => {
-		const small = { x: -100, y: 20, width: 640, height: 420 };
-		expect(getHudOverlayWindowBounds(small, false)).toEqual(small);
+	it("expands the non-Linux fallback for HUD menus and hover interaction", () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+		expect(getHudOverlayWindowBounds(workArea, false, true)).toEqual({
+			x: 480,
+			y: 480,
+			width: 1200,
+			height: 600,
+		});
+	});
+
+	it("keeps the non-Linux compact fallback inside small displays", () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+		expect(
+			getHudOverlayWindowBounds(
+				{
+					x: -100,
+					y: 20,
+					width: 640,
+					height: 420,
+				},
+				false,
+			),
+		).toEqual({
+			x: -100,
+			y: 280,
+			width: 640,
+			height: 160,
+		});
+	});
+
+	it("fits the non-Linux expanded fallback inside small displays", () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+		expect(
+			getHudOverlayWindowBounds(
+				{
+					x: -100,
+					y: 20,
+					width: 640,
+					height: 420,
+				},
+				false,
+				true,
+			),
+		).toEqual({
+			x: -100,
+			y: 20,
+			width: 640,
+			height: 420,
+		});
 	});
 });
 
@@ -44,7 +97,12 @@ describe("resizeHudOverlayFallbackBounds", () => {
 		height: 1080,
 	};
 
-	it("returns full work area when expanding", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("returns full work area on Linux", () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("linux");
 		expect(
 			resizeHudOverlayFallbackBounds(
 				workArea,
@@ -59,7 +117,29 @@ describe("resizeHudOverlayFallbackBounds", () => {
 		).toEqual(workArea);
 	});
 
-	it("returns full work area when compacting", () => {
+	it("preserves the dragged bottom edge on non-Linux when expanding", () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+		expect(
+			resizeHudOverlayFallbackBounds(
+				workArea,
+				{
+					x: 420,
+					y: 700,
+					width: 1200,
+					height: 160,
+				},
+				true,
+			),
+		).toEqual({
+			x: 420,
+			y: 260,
+			width: 1200,
+			height: 600,
+		});
+	});
+
+	it("preserves the dragged bottom edge on non-Linux when compacting", () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("win32");
 		expect(
 			resizeHudOverlayFallbackBounds(
 				workArea,
@@ -71,10 +151,16 @@ describe("resizeHudOverlayFallbackBounds", () => {
 				},
 				false,
 			),
-		).toEqual(workArea);
+		).toEqual({
+			x: 420,
+			y: 700,
+			width: 1200,
+			height: 160,
+		});
 	});
 
-	it("returns full work area inside the display work area", () => {
+	it("keeps resized fallback bounds inside display work area on non-Linux", () => {
+		vi.spyOn(process, "platform", "get").mockReturnValue("win32");
 		expect(
 			resizeHudOverlayFallbackBounds(
 				workArea,
@@ -86,7 +172,12 @@ describe("resizeHudOverlayFallbackBounds", () => {
 				},
 				true,
 			),
-		).toEqual(workArea);
+		).toEqual({
+			x: 720,
+			y: 460,
+			width: 1200,
+			height: 600,
+		});
 	});
 });
 
