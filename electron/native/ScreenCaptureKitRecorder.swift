@@ -46,7 +46,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var outputURL: URL?
 	private var microphoneOutputURL: URL?
 	private var trackedWindowId: UInt32?
+	private var trackedWindowFrame: CGRect?
+	private var trackedWindowDisplayId: CGDirectDisplayID?
+	private var updatesSourceRectForTrackedWindow = false
 	private var windowValidationTask: Task<Void, Never>?
+	private var streamConfig: SCStreamConfiguration?
 	private var inlineAudioInput: AVAssetWriterInput?
 	private var firstInlineAudioSampleTime: CMTime?
 	private var capturesSystemAudio = false
@@ -68,6 +72,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		let config = try JSONDecoder().decode(CaptureConfig.self, from: data)
 		let availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
 		let streamConfig = SCStreamConfiguration()
+		self.streamConfig = streamConfig
+		trackedWindowFrame = nil
+		trackedWindowDisplayId = nil
+		updatesSourceRectForTrackedWindow = false
 		capturesSystemAudio = config.capturesSystemAudio ?? false
 		capturesMicrophone = config.capturesMicrophone ?? false
 		if capturesMicrophone && !supportsNativeMicrophoneCapture(streamConfig: streamConfig) {
@@ -104,21 +112,29 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				throw NSError(domain: "RecordlyCapture", code: 3, userInfo: [NSLocalizedDescriptionKey: "Window not found"])
 			}
 
-			filter = SCContentFilter(desktopIndependentWindow: window)
-
-			let candidateDisplay = availableContent.displays.first(where: {
-				$0.frame.intersects(window.frame) || $0.frame.contains(CGPoint(x: window.frame.midX, y: window.frame.midY))
-			})
+			let candidateDisplay = Self.displayForWindowFrame(window.frame, displays: availableContent.displays)
 			let scaleFactor = ScreenCaptureRecorder.scaleFactor(for: candidateDisplay?.displayID ?? CGMainDisplayID())
 			outputWidth = max(2, Int(window.frame.width) * scaleFactor)
 			outputHeight = max(2, Int(window.frame.height) * scaleFactor)
-			if #available(macOS 14.0, *) {
-				streamConfig.ignoreShadowsSingleWindow = true
+
+			if let candidateDisplay, let owningApplication = window.owningApplication {
+				filter = SCContentFilter(display: candidateDisplay, including: [owningApplication], exceptingWindows: [])
+				streamConfig.sourceRect = window.frame
+				trackedWindowFrame = window.frame
+				trackedWindowDisplayId = candidateDisplay.displayID
+				updatesSourceRectForTrackedWindow = true
+			} else {
+				filter = SCContentFilter(desktopIndependentWindow: window)
+				enableChildWindowCaptureIfSupported(streamConfig: streamConfig)
+				if #available(macOS 14.0, *) {
+					streamConfig.ignoreShadowsSingleWindow = true
+				}
 			}
 			streamConfig.width = outputWidth
 			streamConfig.height = outputHeight
 		} else {
 			trackedWindowId = nil
+			trackedWindowDisplayId = nil
 			let displayId = config.displayId ?? CGMainDisplayID()
 			guard let display = availableContent.displays.first(where: { $0.displayID == displayId }) else {
 				throw NSError(domain: "RecordlyCapture", code: 4, userInfo: [NSLocalizedDescriptionKey: "Display not found"])
@@ -359,6 +375,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		windowValidationTask?.cancel()
 		windowValidationTask = nil
 		trackedWindowId = nil
+		trackedWindowFrame = nil
+		trackedWindowDisplayId = nil
+		updatesSourceRectForTrackedWindow = false
 
 		if let activeStream = stream {
 			do {
@@ -368,6 +387,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			}
 		}
 		stream = nil
+		streamConfig = nil
 		isRecording = false
 
 		if let originalBuffer = lastSampleBuffer, let videoInput = videoInput {
@@ -550,10 +570,19 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		return supportsConfigSelector && supportsDeviceSelector && supportsOutputType
 	}
 
+	private func enableChildWindowCaptureIfSupported(streamConfig: SCStreamConfiguration) {
+		guard streamConfig.responds(to: Selector(("setIncludeChildWindows:"))) else { return }
+
+		streamConfig.setValue(true, forKey: "includeChildWindows")
+	}
+
 	private func startWindowValidationIfNeeded() {
 		guard let trackedWindowId else {
 			windowValidationTask?.cancel()
 			windowValidationTask = nil
+			trackedWindowFrame = nil
+			trackedWindowDisplayId = nil
+			updatesSourceRectForTrackedWindow = false
 			return
 		}
 
@@ -567,8 +596,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 				do {
 					let availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-					let windowStillAvailable = availableContent.windows.contains(where: { $0.windowID == trackedWindowId })
-					if !windowStillAvailable {
+					guard let window = availableContent.windows.first(where: { $0.windowID == trackedWindowId }) else {
 						print("WINDOW_UNAVAILABLE")
 						fflush(stdout)
 						let outputPath = try await self.finishCapture()
@@ -576,11 +604,65 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 						fflush(stdout)
 						exit(0)
 					}
+
+					await self.updateTrackedWindowSourceRectIfNeeded(to: window, displays: availableContent.displays)
 				} catch {
 					continue
 				}
 			}
 		}
+	}
+
+	private func updateTrackedWindowSourceRectIfNeeded(to window: SCWindow, displays: [SCDisplay]) async {
+		guard updatesSourceRectForTrackedWindow,
+			  let stream,
+			  let streamConfig else {
+			return
+		}
+
+		let windowFrame = window.frame
+		let currentDisplay = Self.displayForWindowFrame(windowFrame, displays: displays)
+		let displayChanged = currentDisplay.map { display in
+			guard let trackedWindowDisplayId else { return true }
+			return trackedWindowDisplayId != display.displayID
+		} ?? false
+
+		guard trackedWindowFrame != windowFrame || displayChanged else {
+			return
+		}
+
+		do {
+			if displayChanged {
+				guard let currentDisplay, let owningApplication = window.owningApplication else { return }
+				let filter = SCContentFilter(display: currentDisplay, including: [owningApplication], exceptingWindows: [])
+				try await stream.updateContentFilter(filter)
+				trackedWindowDisplayId = currentDisplay.displayID
+			}
+
+			streamConfig.sourceRect = windowFrame
+			try await stream.updateConfiguration(streamConfig)
+			trackedWindowFrame = windowFrame
+		} catch {
+			fputs("Error updating capture source rect: \(error.localizedDescription)\n", stderr)
+			fflush(stderr)
+		}
+	}
+
+	private static func displayForWindowFrame(_ windowFrame: CGRect, displays: [SCDisplay]) -> SCDisplay? {
+		let windowCenter = CGPoint(x: windowFrame.midX, y: windowFrame.midY)
+		if let centeredDisplay = displays.first(where: { $0.frame.contains(windowCenter) }) {
+			return centeredDisplay
+		}
+
+		return displays
+			.compactMap { display -> (display: SCDisplay, intersectionArea: CGFloat)? in
+				let intersection = display.frame.intersection(windowFrame)
+				let intersectionArea = intersection.width * intersection.height
+				guard intersectionArea > 0 else { return nil }
+				return (display, intersectionArea)
+			}
+			.max { $0.intersectionArea < $1.intersectionArea }?
+			.display
 	}
 
 	private static func scaleFactor(for displayId: CGDirectDisplayID) -> Int {
@@ -715,4 +797,3 @@ DispatchQueue.global(qos: .utility).async {
 }
 
 service.waitUntilFinished()
-
