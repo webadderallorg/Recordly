@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { type AspectRatio } from "@/utils/aspectRatioUtils";
 
 interface CropRegion {
-	x: number; // 0-1 normalized
-	y: number; // 0-1 normalized
-	width: number; // 0-1 normalized
-	height: number; // 0-1 normalized
+	x: number;
+	y: number;
+	width: number;
+	height: number;
 }
 
 interface CropControlProps {
@@ -16,14 +16,37 @@ interface CropControlProps {
 	aspectRatio: AspectRatio;
 }
 
-type DragHandle = "top" | "right" | "bottom" | "left" | null;
+type DragHandle = "top" | "right" | "bottom" | "left" | "move" | null;
+
+type CropRatioPreset = "free" | "16:9" | "9:16" | "1:1" | "4:3" | "4:5" | "21:9";
+
+const CROP_RATIO_PRESETS: Array<{ value: CropRatioPreset; label: string }> = [
+	{ value: "free", label: "Free" },
+	{ value: "16:9", label: "16:9" },
+	{ value: "9:16", label: "9:16" },
+	{ value: "1:1", label: "1:1" },
+	{ value: "4:3", label: "4:3" },
+	{ value: "4:5", label: "4:5" },
+	{ value: "21:9", label: "21:9" },
+];
+
+function getRatioNumeric(preset: CropRatioPreset): number | null {
+	if (preset === "free") return null;
+	const [w, h] = preset.split(":").map(Number);
+	return w / h;
+}
 
 export function CropControl({ videoElement, cropRegion, onCropChange }: CropControlProps) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const containerRef = useRef<HTMLDivElement>(null);
-	const [isDragging, setIsDragging] = useState<DragHandle>(null);
-	const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-	const [initialCrop, setInitialCrop] = useState<CropRegion>(cropRegion);
+	const isDraggingRef = useRef<DragHandle>(null);
+	const dragStartRef = useRef({ x: 0, y: 0 });
+	const initialCropRef = useRef<CropRegion>(cropRegion);
+	const [cropRatioPreset, setCropRatioPreset] = useState<CropRatioPreset>("free");
+
+	const videoAspectRatio = videoElement?.videoWidth && videoElement?.videoHeight
+		? videoElement.videoWidth / videoElement.videoHeight
+		: 16 / 9;
 
 	useEffect(() => {
 		if (!videoElement || !canvasRef.current) return;
@@ -39,10 +62,7 @@ export function CropControl({ videoElement, cropRegion, onCropChange }: CropCont
 		let isCancelled = false;
 
 		const draw = () => {
-			if (isCancelled) {
-				return;
-			}
-
+			if (isCancelled) return;
 			if (videoElement.readyState >= 2) {
 				ctx.clearRect(0, 0, canvas.width, canvas.height);
 				ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
@@ -57,106 +77,160 @@ export function CropControl({ videoElement, cropRegion, onCropChange }: CropCont
 		};
 	}, [videoElement]);
 
-	const getContainerRect = () => {
-		return (
-			containerRef.current?.getBoundingClientRect() || {
-				width: 0,
-				height: 0,
-				left: 0,
-				top: 0,
+	const targetNormalizedRatio = useMemo(() => {
+		if (cropRatioPreset === "free") return null;
+		const ratio = getRatioNumeric(cropRatioPreset);
+		return ratio !== null ? ratio / videoAspectRatio : null;
+	}, [cropRatioPreset, videoAspectRatio]);
+
+	const constrainToRatio = useCallback(
+		(crop: CropRegion, handle: Exclude<DragHandle, null>): CropRegion => {
+			if (targetNormalizedRatio === null) return crop;
+
+			const { x, y, width, height } = crop;
+			const MIN_SIZE = 0.1;
+
+			switch (handle) {
+				case "bottom": {
+					let h = Math.max(MIN_SIZE, Math.min(height, 1 - y));
+					let w = h * targetNormalizedRatio;
+					if (x + w > 1) {
+						w = Math.max(MIN_SIZE, 1 - x);
+						h = w / targetNormalizedRatio;
+					}
+					if (y + h > 1) {
+						h = Math.max(MIN_SIZE, 1 - y);
+						w = h * targetNormalizedRatio;
+					}
+					return { x, y, width: w, height: h };
+				}
+				case "right": {
+					let w = Math.max(MIN_SIZE, Math.min(width, 1 - x));
+					let h = w / targetNormalizedRatio;
+					if (y + h > 1) {
+						h = Math.max(MIN_SIZE, 1 - y);
+						w = h * targetNormalizedRatio;
+					}
+					if (x + w > 1) {
+						w = Math.max(MIN_SIZE, 1 - x);
+						h = w / targetNormalizedRatio;
+					}
+					return { x, y, width: w, height: h };
+				}
+				case "top": {
+					const bottomEdge = y + height;
+					let h = Math.max(MIN_SIZE, bottomEdge - y);
+					let w = h * targetNormalizedRatio;
+					if (x + w > 1) {
+						w = Math.max(MIN_SIZE, 1 - x);
+						h = w / targetNormalizedRatio;
+					}
+					const ny = Math.max(0, bottomEdge - h);
+					return { x, y: ny, width: w, height: bottomEdge - ny };
+				}
+				case "left": {
+					const rightEdge = x + width;
+					let w = Math.max(MIN_SIZE, rightEdge - x);
+					let h = w / targetNormalizedRatio;
+					if (y + h > 1) {
+						h = Math.max(MIN_SIZE, 1 - y);
+						w = h * targetNormalizedRatio;
+					}
+					const nx = Math.max(0, rightEdge - w);
+					return { x: nx, y, width: rightEdge - nx, height: h };
+				}
+				default:
+					return crop;
 			}
-		);
-	};
+		},
+		[targetNormalizedRatio],
+	);
 
 	const handlePointerDown = (e: React.PointerEvent, handle: DragHandle) => {
 		e.stopPropagation();
 		e.preventDefault();
-		const rect = getContainerRect();
-		if (rect.width <= 0 || rect.height <= 0) {
-			return;
-		}
+		const rect = containerRef.current?.getBoundingClientRect();
+		if (!rect || rect.width <= 0 || rect.height <= 0) return;
 
-		setIsDragging(handle);
-		setDragStart({
+		isDraggingRef.current = handle;
+		dragStartRef.current = {
 			x: (e.clientX - rect.left) / rect.width,
 			y: (e.clientY - rect.top) / rect.height,
-		});
-		setInitialCrop(cropRegion);
-
-		e.currentTarget.setPointerCapture(e.pointerId);
+		};
+		initialCropRef.current = cropRegion;
+		document.body.style.cursor = "grabbing";
 	};
 
 	const handlePointerMove = (e: React.PointerEvent) => {
-		if (!isDragging) return;
+		const handle = isDraggingRef.current;
+		if (!handle) return;
 
-		const rect = getContainerRect();
-		if (rect.width <= 0 || rect.height <= 0) {
-			return;
-		}
+		const rect = containerRef.current?.getBoundingClientRect();
+		if (!rect || rect.width <= 0 || rect.height <= 0) return;
 
 		const currentX = (e.clientX - rect.left) / rect.width;
 		const currentY = (e.clientY - rect.top) / rect.height;
-		const deltaX = currentX - dragStart.x;
-		const deltaY = currentY - dragStart.y;
+		const deltaX = currentX - dragStartRef.current.x;
+		const deltaY = currentY - dragStartRef.current.y;
+		const init = initialCropRef.current;
 
-		let newCrop = { ...initialCrop };
+		let newCrop = { ...init };
 
-		switch (isDragging) {
+		switch (handle) {
+			case "move": {
+				let newX = init.x + deltaX;
+				let newY = init.y + deltaY;
+				newX = Math.max(0, Math.min(newX, 1 - init.width));
+				newY = Math.max(0, Math.min(newY, 1 - init.height));
+				newCrop.x = newX;
+				newCrop.y = newY;
+				break;
+			}
 			case "top": {
-				const newY = Math.max(0, initialCrop.y + deltaY);
-				const bottom = initialCrop.y + initialCrop.height;
+				const newY = Math.max(0, init.y + deltaY);
+				const bottom = init.y + init.height;
 				newCrop.y = Math.min(newY, bottom - 0.1);
 				newCrop.height = bottom - newCrop.y;
 				break;
 			}
 			case "bottom":
-				newCrop.height = Math.max(
-					0.1,
-					Math.min(initialCrop.height + deltaY, 1 - initialCrop.y),
-				);
+				newCrop.height = Math.max(0.1, Math.min(init.height + deltaY, 1 - init.y));
 				break;
 			case "left": {
-				const newX = Math.max(0, initialCrop.x + deltaX);
-				const right = initialCrop.x + initialCrop.width;
+				const newX = Math.max(0, init.x + deltaX);
+				const right = init.x + init.width;
 				newCrop.x = Math.min(newX, right - 0.1);
 				newCrop.width = right - newCrop.x;
 				break;
 			}
 			case "right":
-				newCrop.width = Math.max(
-					0.1,
-					Math.min(initialCrop.width + deltaX, 1 - initialCrop.x),
-				);
+				newCrop.width = Math.max(0.1, Math.min(init.width + deltaX, 1 - init.x));
 				break;
+		}
+
+		if (targetNormalizedRatio !== null) {
+			newCrop = constrainToRatio(newCrop, handle);
 		}
 
 		onCropChange(newCrop);
 	};
 
-	const handlePointerUp = (e: React.PointerEvent) => {
-		if (isDragging) {
-			try {
-				e.currentTarget.releasePointerCapture(e.pointerId);
-			} catch {
-				/* Pointer capture may already be released while ending the drag. */
-			}
-		}
-		setIsDragging(null);
+	const handlePointerUp = () => {
+		if (!isDraggingRef.current) return;
+		document.body.style.cursor = "";
+		isDraggingRef.current = null;
 	};
 
 	const cropPixelX = cropRegion.x * 100;
 	const cropPixelY = cropRegion.y * 100;
 	const cropPixelWidth = cropRegion.width * 100;
 	const cropPixelHeight = cropRegion.height * 100;
-	const videoAspectRatio = videoElement
-		? videoElement.videoWidth / videoElement.videoHeight
-		: 16 / 9;
 	const isVideoPortrait = videoAspectRatio < 1;
 	const maxContainerWidth = isVideoPortrait ? "40vw" : "75vw";
 	const maxContainerHeight = "75vh";
 
 	return (
-		<div className="w-full p-8">
+		<div className="w-full p-8 font-sans">
 			<div
 				ref={containerRef}
 				className="relative w-full bg-black rounded-lg overflow-visible cursor-default select-none shadow-2xl"
@@ -165,6 +239,7 @@ export function CropControl({ videoElement, cropRegion, onCropChange }: CropCont
 					maxWidth: maxContainerWidth,
 					maxHeight: maxContainerHeight,
 					margin: "0 auto",
+					touchAction: "none",
 				}}
 				onPointerMove={handlePointerMove}
 				onPointerUp={handlePointerUp}
@@ -176,10 +251,7 @@ export function CropControl({ videoElement, cropRegion, onCropChange }: CropCont
 					style={{ imageRendering: "auto" }}
 				/>
 
-				<div
-					className="absolute inset-0 pointer-events-none"
-					style={{ transition: "none" }}
-				>
+				<div className="absolute inset-0 pointer-events-none" style={{ transition: "none" }}>
 					<svg
 						width="100%"
 						height="100%"
@@ -209,66 +281,121 @@ export function CropControl({ videoElement, cropRegion, onCropChange }: CropCont
 						/>
 					</svg>
 				</div>
-
 				<div
-					className={cn(
-						"absolute h-[3px] cursor-ns-resize z-20 pointer-events-auto bg-[#2563EB]",
-					)}
+					className="absolute z-10 pointer-events-auto cursor-grab active:cursor-grabbing"
 					style={{
 						left: `${cropPixelX}%`,
 						top: `${cropPixelY}%`,
 						width: `${cropPixelWidth}%`,
+						height: `${cropPixelHeight}%`,
+					}}
+					onPointerDown={(e) => handlePointerDown(e, "move")}
+				/>
+
+				<div
+					className="absolute cursor-ns-resize z-20 pointer-events-auto bg-[#2563EB]"
+					style={{
+						left: `${cropPixelX}%`,
+						top: `${cropPixelY}%`,
+						width: `${cropPixelWidth}%`,
+						height: "3px",
 						transform: "translateY(-50%)",
-						willChange: "transform",
-						transition: "none",
 					}}
 					onPointerDown={(e) => handlePointerDown(e, "top")}
 				/>
 
 				<div
-					className={cn(
-						"absolute h-[3px] cursor-ns-resize z-20 pointer-events-auto bg-[#2563EB]",
-					)}
+					className="absolute cursor-ns-resize z-20 pointer-events-auto bg-[#2563EB]"
 					style={{
 						left: `${cropPixelX}%`,
 						top: `${cropPixelY + cropPixelHeight}%`,
 						width: `${cropPixelWidth}%`,
+						height: "3px",
 						transform: "translateY(-50%)",
-						willChange: "transform",
-						transition: "none",
 					}}
 					onPointerDown={(e) => handlePointerDown(e, "bottom")}
 				/>
 
 				<div
-					className={cn(
-						"absolute w-[3px] cursor-ew-resize z-20 pointer-events-auto bg-[#2563EB]",
-					)}
+					className="absolute cursor-ew-resize z-20 pointer-events-auto bg-[#2563EB]"
 					style={{
 						left: `${cropPixelX}%`,
 						top: `${cropPixelY}%`,
 						height: `${cropPixelHeight}%`,
+						width: "3px",
 						transform: "translateX(-50%)",
-						willChange: "transform",
-						transition: "none",
 					}}
 					onPointerDown={(e) => handlePointerDown(e, "left")}
 				/>
 
 				<div
-					className={cn(
-						"absolute w-[3px] cursor-ew-resize z-20 pointer-events-auto bg-[#2563EB]",
-					)}
+					className="absolute cursor-ew-resize z-20 pointer-events-auto bg-[#2563EB]"
 					style={{
 						left: `${cropPixelX + cropPixelWidth}%`,
 						top: `${cropPixelY}%`,
 						height: `${cropPixelHeight}%`,
+						width: "3px",
 						transform: "translateX(-50%)",
-						willChange: "transform",
-						transition: "none",
 					}}
 					onPointerDown={(e) => handlePointerDown(e, "right")}
 				/>
+			</div>
+
+			<div className="mt-12 flex items-center justify-center gap-2">
+				{CROP_RATIO_PRESETS.map((preset) => {
+					const isActive = cropRatioPreset === preset.value;
+					return (
+						<button
+							key={preset.value}
+							type="button"
+							onClick={() => {
+								setCropRatioPreset(preset.value);
+								if (preset.value !== "free") {
+									const ratio = getRatioNumeric(preset.value);
+									if (ratio !== null) {
+										const currentRatio = (cropRegion.width / cropRegion.height) * videoAspectRatio;
+										if (Math.abs(currentRatio - ratio) > 0.001) {
+											const normRatio = ratio / videoAspectRatio;
+											let newW: number;
+											let newH: number;
+											if (currentRatio > ratio) {
+												newH = cropRegion.height;
+												newW = newH * normRatio;
+												if (cropRegion.x + newW > 1) {
+													newW = Math.max(0.1, 1 - cropRegion.x);
+													newH = newW / normRatio;
+												}
+											} else {
+												newW = cropRegion.width;
+												newH = newW / normRatio;
+												if (cropRegion.y + newH > 1) {
+													newH = Math.max(0.1, 1 - cropRegion.y);
+													newW = newH * normRatio;
+												}
+											}
+											const newX = Math.max(0, cropRegion.x + (cropRegion.width - newW) / 2);
+											const newY = Math.max(0, cropRegion.y + (cropRegion.height - newH) / 2);
+											onCropChange({
+												x: newX,
+												y: newY,
+												width: Math.min(newW, 1 - newX),
+												height: Math.min(newH, 1 - newY),
+											});
+										}
+									}
+								}
+							}}
+							className={cn(
+								"relative flex items-center gap-1 rounded-lg px-4 py-2.5 text-xs font-semibold shadow-sm transition-all",
+								isActive
+									? "bg-[#2563EB] text-white"
+									: "bg-foreground/[0.06] text-muted-foreground hover:bg-foreground/[0.10] hover:text-foreground",
+							)}
+						>
+							{preset.label}
+						</button>
+					);
+				})}
 			</div>
 		</div>
 	);

@@ -15,10 +15,12 @@ export function useHudBarDrag({
 	hudContentRef,
 	hudBarRef,
 	recordingWebcamPreviewContainerRef,
+	recording,
 }: {
 	hudContentRef: RefObject<HTMLDivElement>;
 	hudBarRef: RefObject<HTMLDivElement>;
 	recordingWebcamPreviewContainerRef: RefObject<HTMLDivElement>;
+	recording: boolean;
 }) {
 	const [recordingHudOffset, setRecordingHudOffset] = useState(DEFAULT_RECORDING_HUD_OFFSET);
 	const [isHudDragging, setIsHudDragging] = useState(false);
@@ -41,6 +43,16 @@ export function useHudBarDrag({
 	const isHudDraggingRef = useRef(false);
 	const hudDragMoveRafRef = useRef<number | null>(null);
 	const hudDragPendingPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+
+	useEffect(() => {
+		if (recording) {
+			recordingHudOffsetRef.current = DEFAULT_RECORDING_HUD_OFFSET;
+			setRecordingHudOffset(DEFAULT_RECORDING_HUD_OFFSET);
+			if (hudBarTransformRef.current) {
+				hudBarTransformRef.current.style.transform = "translate3d(0px, 0px, 0)";
+			}
+		}
+	}, [recording]);
 
 	useEffect(() => {
 		recordingHudOffsetRef.current = recordingHudOffset;

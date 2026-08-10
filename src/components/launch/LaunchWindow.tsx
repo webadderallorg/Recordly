@@ -174,6 +174,7 @@ function LaunchWindowContent() {
 		hudContentRef,
 		hudBarRef,
 		recordingWebcamPreviewContainerRef,
+		recording,
 	});
 
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =
@@ -437,7 +438,7 @@ function LaunchWindowContent() {
 
 	const hudMode = finalizing ? "finalizing" : recording ? "recording" : "idle";
 	const useNativeHudBarDrag =
-		platform === "linux" || hudOverlayMousePassthroughSupported === false;
+		platform === "linux" || hudOverlayMousePassthroughSupported === false || recording;
 
 	return (
 		<HudInteractionContext.Provider
