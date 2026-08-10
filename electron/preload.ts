@@ -482,6 +482,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	switchToEditor: () => {
 		return ipcRenderer.invoke("switch-to-editor");
 	},
+	openRecordingHud: () => {
+		return ipcRenderer.invoke("open-recording-hud");
+	},
 	openSourceSelector: () => {
 		return ipcRenderer.invoke("open-source-selector");
 	},
@@ -677,6 +680,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	openVideoFilePicker: (options?: { includeProjects?: boolean }) => {
 		return ipcRenderer.invoke("open-video-file-picker", options);
 	},
+	stitchVideoSources: (options: { basePath: string; appendPath: string }) => {
+		return ipcRenderer.invoke("stitch-video-sources", options);
+	},
 	openAudioFilePicker: () => {
 		return ipcRenderer.invoke("open-audio-file-picker");
 	},
@@ -750,6 +756,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		) => callback(payload);
 		ipcRenderer.on("recording-session-changed", listener);
 		return () => ipcRenderer.removeListener("recording-session-changed", listener);
+	},
+	onRecordingHudClosed: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("recording-hud-closed", listener);
+		return () => ipcRenderer.removeListener("recording-hud-closed", listener);
 	},
 	getCurrentRecordingSession: () => {
 		return ipcRenderer.invoke("get-current-recording-session");

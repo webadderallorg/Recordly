@@ -221,6 +221,7 @@ interface Window {
 		getAssetBasePath: () => Promise<string | null>;
 		getSources: (opts: Electron.SourcesOptions) => Promise<ProcessedDesktopSource[]>;
 		switchToEditor: () => Promise<void>;
+		openRecordingHud: () => Promise<{ success: boolean }>;
 		openSourceSelector: () => Promise<void>;
 		selectSource: (source: ProcessedDesktopSource) => Promise<ProcessedDesktopSource>;
 		showSourceHighlight: (source: ProcessedDesktopSource) => Promise<{ success: boolean }>;
@@ -594,6 +595,7 @@ interface Window {
 		onRecordingSessionChanged: (
 			callback: (session: RendererRecordingSessionData | null) => void,
 		) => () => void;
+		onRecordingHudClosed: (callback: () => void) => () => void;
 		onRecordingInterrupted: (
 			callback: (state: { reason: string; message: string }) => void,
 		) => () => void;
@@ -658,6 +660,12 @@ interface Window {
 			extension?: string;
 			message?: string;
 			canceled?: boolean;
+			error?: string;
+		}>;
+		stitchVideoSources: (options: { basePath: string; appendPath: string }) => Promise<{
+			success: boolean;
+			path?: string;
+			message?: string;
 			error?: string;
 		}>;
 		openAudioFilePicker: () => Promise<{ success: boolean; path?: string; canceled?: boolean }>;
