@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	getHudOverlayMouseReassertCommands,
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
 	resolveHudOverlayMousePolicy,
@@ -116,6 +117,35 @@ describe("resolveHudOverlayMousePolicy", () => {
 				recordingActive: true,
 			}),
 		).toEqual({ usePassthroughWindow: false, ignoreMouseEvents: false });
+	});
+});
+
+describe("getHudOverlayMouseReassertCommands", () => {
+	it("restores passthrough immediately after resetting the Windows native flag", () => {
+		expect(
+			getHudOverlayMouseReassertCommands({
+				usePassthroughWindow: true,
+				ignoreMouseEvents: true,
+			}),
+		).toEqual([{ ignoreMouseEvents: false }, { ignoreMouseEvents: true, forward: true }]);
+	});
+
+	it("leaves an intentionally interactive HUD interactive after the reset", () => {
+		expect(
+			getHudOverlayMouseReassertCommands({
+				usePassthroughWindow: true,
+				ignoreMouseEvents: false,
+			}),
+		).toEqual([{ ignoreMouseEvents: false }]);
+	});
+
+	it("does not issue passthrough commands for compact fallback windows", () => {
+		expect(
+			getHudOverlayMouseReassertCommands({
+				usePassthroughWindow: false,
+				ignoreMouseEvents: false,
+			}),
+		).toEqual([]);
 	});
 });
 

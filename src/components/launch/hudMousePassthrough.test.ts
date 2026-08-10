@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	mergeHudInteractiveBounds,
+	shouldRestoreHudMousePassthrough,
 	shouldRestoreHudMousePassthroughAfterDrag,
 } from "./hudMousePassthrough";
 
@@ -42,5 +43,39 @@ describe("shouldRestoreHudMousePassthroughAfterDrag", () => {
 
 	it("restores passthrough when no HUD bounds are available", () => {
 		expect(shouldRestoreHudMousePassthroughAfterDrag(null, 180, 230)).toBe(true);
+	});
+});
+
+describe("shouldRestoreHudMousePassthrough", () => {
+	it("restores passthrough as soon as the pointer leaves idle HUD content", () => {
+		expect(
+			shouldRestoreHudMousePassthrough({
+				isMouseOverHud: false,
+				popoverOpen: false,
+				isHudDragging: false,
+				isWebcamPreviewDragging: false,
+				webcamPreviewPointerDown: false,
+			}),
+		).toBe(true);
+	});
+
+	it("keeps the HUD interactive while the pointer or another HUD interaction is active", () => {
+		const idleState = {
+			isMouseOverHud: false,
+			popoverOpen: false,
+			isHudDragging: false,
+			isWebcamPreviewDragging: false,
+			webcamPreviewPointerDown: false,
+		};
+
+		for (const activeState of [
+			{ isMouseOverHud: true },
+			{ popoverOpen: true },
+			{ isHudDragging: true },
+			{ isWebcamPreviewDragging: true },
+			{ webcamPreviewPointerDown: true },
+		]) {
+			expect(shouldRestoreHudMousePassthrough({ ...idleState, ...activeState })).toBe(false);
+		}
 	});
 });

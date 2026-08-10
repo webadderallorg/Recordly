@@ -37,3 +37,25 @@ export function shouldRestoreHudMousePassthroughAfterDrag(
 		clientY > bounds.bottom
 	);
 }
+
+export function shouldRestoreHudMousePassthrough({
+	isMouseOverHud,
+	popoverOpen,
+	isHudDragging,
+	isWebcamPreviewDragging,
+	webcamPreviewPointerDown,
+}: {
+	isMouseOverHud: boolean;
+	popoverOpen: boolean;
+	isHudDragging: boolean;
+	isWebcamPreviewDragging: boolean;
+	webcamPreviewPointerDown: boolean;
+}): boolean {
+	return (
+		!isMouseOverHud &&
+		!popoverOpen &&
+		!isHudDragging &&
+		!isWebcamPreviewDragging &&
+		!webcamPreviewPointerDown
+	);
+}
