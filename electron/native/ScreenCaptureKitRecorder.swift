@@ -370,16 +370,13 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		stream = nil
 		isRecording = false
 
-		if let originalBuffer = lastSampleBuffer, let videoInput = videoInput {
-			let additionalTime = lastVideoPresentationTime + frameDuration(for: originalBuffer)
-			let timing = CMSampleTimingInfo(duration: originalBuffer.duration, presentationTimeStamp: additionalTime, decodeTimeStamp: originalBuffer.decodeTimeStamp)
-			if let additionalSampleBuffer = try? CMSampleBuffer(copying: originalBuffer, withNewTiming: [timing]) {
-				videoInput.append(additionalSampleBuffer)
-			}
-		}
-
 		let videoEndTime = lastVideoPresentationTime + (lastSampleBuffer.map { frameDuration(for: $0) } ?? .zero)
-		let endTime = resolvedCaptureEndTime(videoEndTime: videoEndTime)
+		let captureEndTime = currentAdjustedCaptureTime()
+		let paddedVideoEndTime = appendFinalVideoFrameIfNeeded(
+			videoEndTime: videoEndTime,
+			captureEndTime: captureEndTime
+		)
+		let endTime = resolvedCaptureEndTime(videoEndTime: paddedVideoEndTime)
 		assetWriter?.endSession(atSourceTime: endTime)
 		videoInput?.markAsFinished()
 		inlineAudioInput?.markAsFinished()
@@ -467,6 +464,48 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 
 		return CMTime(value: 1, timescale: CMTimeScale(targetCaptureFPS))
+	}
+
+	private func currentAdjustedCaptureTime() -> CMTime {
+		guard firstSampleTime != .zero else {
+			return .zero
+		}
+
+		let now = CMClockGetTime(CMClockGetHostTimeClock())
+		let pauseDurationInProgress: CMTime
+		if isPaused, let pauseStartedHostTime {
+			pauseDurationInProgress = max(.zero, now - pauseStartedHostTime)
+		} else {
+			pauseDurationInProgress = .zero
+		}
+
+		return max(.zero, now - firstSampleTime - accumulatedPausedDuration - pauseDurationInProgress)
+	}
+
+	private func appendFinalVideoFrameIfNeeded(videoEndTime: CMTime, captureEndTime: CMTime) -> CMTime {
+		guard let originalBuffer = lastSampleBuffer, let videoInput else {
+			return videoEndTime
+		}
+
+		let duration = frameDuration(for: originalBuffer)
+		let minimumAdditionalTime = videoEndTime
+		let targetPresentationTime = max(
+			minimumAdditionalTime,
+			captureEndTime - duration
+		)
+		let timing = CMSampleTimingInfo(
+			duration: duration,
+			presentationTimeStamp: targetPresentationTime,
+			decodeTimeStamp: originalBuffer.decodeTimeStamp
+		)
+		if let finalSampleBuffer = try? CMSampleBuffer(copying: originalBuffer, withNewTiming: [timing]),
+		   videoInput.append(finalSampleBuffer) {
+			lastVideoPresentationTime = targetPresentationTime
+			lastVideoDuration = duration
+			return targetPresentationTime + duration
+		}
+
+		return videoEndTime
 	}
 
 	private func latestInlineAudioEndTime() -> CMTime {
@@ -715,4 +754,3 @@ DispatchQueue.global(qos: .utility).async {
 }
 
 service.waitUntilFinished()
-
