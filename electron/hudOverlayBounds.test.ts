@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
+	resolveHudOverlayMousePolicy,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
 
@@ -73,6 +74,48 @@ describe("getHudOverlayWindowBounds", () => {
 			width: 640,
 			height: 420,
 		});
+	});
+});
+
+describe("resolveHudOverlayMousePolicy", () => {
+	it("keeps transparent HUD pixels click-through while recording", () => {
+		expect(
+			resolveHudOverlayMousePolicy({
+				mousePassthroughSupported: true,
+				requestedIgnore: true,
+				recordingActive: true,
+			}),
+		).toEqual({ usePassthroughWindow: true, ignoreMouseEvents: true });
+	});
+
+	it("preserves the renderer's requested mouse policy outside recording", () => {
+		expect(
+			resolveHudOverlayMousePolicy({
+				mousePassthroughSupported: true,
+				requestedIgnore: true,
+				recordingActive: false,
+			}),
+		).toEqual({ usePassthroughWindow: true, ignoreMouseEvents: true });
+	});
+
+	it("keeps visible HUD controls interactive while recording", () => {
+		expect(
+			resolveHudOverlayMousePolicy({
+				mousePassthroughSupported: true,
+				requestedIgnore: false,
+				recordingActive: true,
+			}),
+		).toEqual({ usePassthroughWindow: true, ignoreMouseEvents: false });
+	});
+
+	it("retains the interactive compact fallback when passthrough is unsupported", () => {
+		expect(
+			resolveHudOverlayMousePolicy({
+				mousePassthroughSupported: false,
+				requestedIgnore: true,
+				recordingActive: true,
+			}),
+		).toEqual({ usePassthroughWindow: false, ignoreMouseEvents: false });
 	});
 });
 

@@ -13,6 +13,20 @@ function clamp(value: number, min: number, max: number): number {
 	return Math.min(Math.max(value, min), max);
 }
 
+export function resolveHudOverlayMousePolicy({
+	mousePassthroughSupported,
+	requestedIgnore,
+}: {
+	mousePassthroughSupported: boolean;
+	requestedIgnore: boolean;
+	recordingActive: boolean;
+}) {
+	return {
+		usePassthroughWindow: mousePassthroughSupported,
+		ignoreMouseEvents: mousePassthroughSupported && requestedIgnore,
+	};
+}
+
 export function getHudOverlayWindowBounds(
 	workArea: HudOverlayWorkArea,
 	mousePassthroughSupported: boolean,

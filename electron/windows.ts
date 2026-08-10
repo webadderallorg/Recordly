@@ -8,6 +8,7 @@ import { USER_DATA_PATH } from "./appPaths";
 import {
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
+	resolveHudOverlayMousePolicy,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
@@ -195,16 +196,17 @@ function getHudOverlayDisplay() {
 
 function getHudOverlayBounds() {
 	const { workArea } = getHudOverlayDisplay();
+	const mousePolicy = resolveHudOverlayMousePolicy({
+		mousePassthroughSupported: isHudOverlayMousePassthroughSupported(),
+		requestedIgnore: hudOverlayIgnoringMouse,
+		recordingActive: hudOverlayRecordingActive,
+	});
 	const fallbackExpanded = shouldExpandHudOverlayFallback({
 		fallbackExpanded: hudOverlayFallbackExpanded,
 		recordingActive: hudOverlayRecordingActive,
 		webcamPreviewVisible: hudOverlayWebcamPreviewVisible,
 	});
-	return getHudOverlayWindowBounds(
-		workArea,
-		isHudOverlayMousePassthroughSupported() && !hudOverlayRecordingActive,
-		fallbackExpanded,
-	);
+	return getHudOverlayWindowBounds(workArea, mousePolicy.usePassthroughWindow, fallbackExpanded);
 }
 
 function applyHudOverlayBounds() {
@@ -288,11 +290,7 @@ function setHudOverlayFallbackExpanded(expanded: boolean) {
 
 function setHudOverlayMousePassthrough(ignore: boolean) {
 	hudOverlayIgnoringMouse =
-		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive
-			? true
-			: hudOverlayRecordingActive
-				? false
-				: ignore;
+		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive ? true : ignore;
 
 	if (hudOverlayMouseReassertTimer) {
 		clearTimeout(hudOverlayMouseReassertTimer);
@@ -303,14 +301,13 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 		return;
 	}
 
-	if (hudOverlayRecordingActive) {
-		hudOverlayFallbackExpanded = false;
-		applyHudOverlayBounds();
-		hudOverlayWindow.setIgnoreMouseEvents(false);
-		return;
-	}
+	const mousePolicy = resolveHudOverlayMousePolicy({
+		mousePassthroughSupported: isHudOverlayMousePassthroughSupported(),
+		requestedIgnore: hudOverlayIgnoringMouse,
+		recordingActive: hudOverlayRecordingActive,
+	});
 
-	if (!isHudOverlayMousePassthroughSupported()) {
+	if (!mousePolicy.usePassthroughWindow) {
 		if (process.platform !== "linux") {
 			setHudOverlayFallbackExpanded(!ignore);
 		}
@@ -318,7 +315,7 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 		return;
 	}
 
-	if (ignore) {
+	if (mousePolicy.ignoreMouseEvents) {
 		hudOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
 		return;
 	}
@@ -502,13 +499,16 @@ export function createHudOverlayWindow(): BrowserWindow {
 		win.setContentProtection(hudOverlayHiddenFromCapture);
 	}
 
-	if (isHudOverlayMousePassthroughSupported()) {
-		if (hudOverlayRecordingActive) {
-			hudOverlayIgnoringMouse = false;
-			win.setIgnoreMouseEvents(false);
-		} else {
-			hudOverlayIgnoringMouse = true;
+	const initialMousePolicy = resolveHudOverlayMousePolicy({
+		mousePassthroughSupported: isHudOverlayMousePassthroughSupported(),
+		requestedIgnore: hudOverlayIgnoringMouse,
+		recordingActive: hudOverlayRecordingActive,
+	});
+	if (initialMousePolicy.usePassthroughWindow) {
+		if (initialMousePolicy.ignoreMouseEvents) {
 			win.setIgnoreMouseEvents(true, { forward: true });
+		} else {
+			win.setIgnoreMouseEvents(false);
 		}
 	}
 
@@ -638,11 +638,6 @@ export function reassertHudOverlayMousePassthrough(): void {
 		return;
 	}
 
-	if (hudOverlayRecordingActive) {
-		hud.setIgnoreMouseEvents(false);
-		return;
-	}
-
 	// Toggle off then back on so the native WS_EX_TRANSPARENT flag is fully
 	// re-initialised rather than merely re-asserted in a potentially broken state.
 	hud.setIgnoreMouseEvents(false);
@@ -661,7 +656,7 @@ export function setHudOverlayRecordingActive(recording: boolean): void {
 	hudOverlayRecordingActive = Boolean(recording);
 	hudOverlayFallbackExpanded = false;
 	applyHudOverlayBounds();
-	setHudOverlayMousePassthrough(!hudOverlayRecordingActive);
+	setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 }
 
 export function createUpdateToastWindow(): BrowserWindow {
