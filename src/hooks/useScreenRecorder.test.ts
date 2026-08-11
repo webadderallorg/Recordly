@@ -6,6 +6,7 @@ import {
 	normalizeBrowserMicrophoneProfile,
 	resolveBrowserCaptureCursorPolicy,
 	shouldUseNativeWindowsCaptureForSource,
+	startMediaRecorderAtTimelineBoundary,
 } from "./useScreenRecorder";
 
 type RecordingState = "inactive" | "recording" | "paused";
@@ -156,6 +157,61 @@ describe("resolveBrowserCaptureCursorPolicy", () => {
 			hideOsCursorBeforeRecording: false,
 			hideEditorOverlayCursorByDefault: true,
 		});
+	});
+});
+
+describe("startMediaRecorderAtTimelineBoundary", () => {
+	it("uses the recorder start event as the media timeline origin", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(1_000);
+		const recorder = Object.assign(new EventTarget(), {
+			start: vi.fn(),
+		}) as unknown as MediaRecorder;
+		const startedAt = startMediaRecorderAtTimelineBoundary(recorder, 250);
+
+		vi.setSystemTime(2_400);
+		recorder.dispatchEvent(new Event("start"));
+
+		await expect(startedAt).resolves.toBe(2_400);
+		expect(recorder.start).toHaveBeenCalledWith(250);
+		vi.useRealTimers();
+	});
+
+	it("rejects if no media timeline starts before the timeout", async () => {
+		vi.useFakeTimers();
+		const recorder = Object.assign(new EventTarget(), {
+			start: vi.fn(),
+		}) as unknown as MediaRecorder;
+		const startedAt = startMediaRecorderAtTimelineBoundary(recorder, 250, 100);
+		const expectation = expect(startedAt).rejects.toThrow(
+			"did not start within the expected time",
+		);
+
+		await vi.advanceTimersByTimeAsync(100);
+		await expectation;
+		vi.useRealTimers();
+	});
+
+	it("rejects if the recorder fails before its media timeline starts", async () => {
+		const recorder = Object.assign(new EventTarget(), {
+			start: vi.fn(),
+		}) as unknown as MediaRecorder;
+		const startedAt = startMediaRecorderAtTimelineBoundary(recorder, 250);
+
+		recorder.dispatchEvent(new Event("error"));
+
+		await expect(startedAt).rejects.toThrow("failed before its media timeline started");
+	});
+
+	it("rejects and cleans up when MediaRecorder.start throws", async () => {
+		const startError = new Error("unsupported recording configuration");
+		const recorder = Object.assign(new EventTarget(), {
+			start: vi.fn(() => {
+				throw startError;
+			}),
+		}) as unknown as MediaRecorder;
+
+		await expect(startMediaRecorderAtTimelineBoundary(recorder, 250)).rejects.toBe(startError);
 	});
 });
 

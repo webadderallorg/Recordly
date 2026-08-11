@@ -575,8 +575,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getRecordedVideoPath: () => {
 		return ipcRenderer.invoke("get-recorded-video-path");
 	},
-	setRecordingState: (recording: boolean) => {
-		return ipcRenderer.invoke("set-recording-state", recording);
+	setRecordingState: (
+		recording: boolean,
+		options?: { mediaTimelineStartedAtEpochMs?: number },
+	) => {
+		return ipcRenderer.invoke("set-recording-state", recording, options);
 	},
 	setCursorScale: (scale: number) => {
 		return ipcRenderer.invoke("set-cursor-scale", scale);
@@ -909,9 +912,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	getPlatform: () => {
 		return ipcRenderer.invoke("get-platform");
-	},
-	getLinuxWindowSystem: () => {
-		return ipcRenderer.invoke("get-linux-window-system");
 	},
 	revealInFolder: (filePath: string) => {
 		return ipcRenderer.invoke("reveal-in-folder", filePath);

@@ -202,12 +202,59 @@ export function resolveBrowserCaptureCursorPolicy({
 			hideEditorOverlayCursorByDefault: true,
 		};
 	}
-
 	return {
 		streamCursor: "never",
 		hideOsCursorBeforeRecording: true,
 		hideEditorOverlayCursorByDefault: true,
 	};
+}
+
+export function startMediaRecorderAtTimelineBoundary(
+	recorder: Pick<MediaRecorder, "addEventListener" | "removeEventListener" | "start">,
+	timesliceMs: number,
+	timeoutMs = 5_000,
+) {
+	return new Promise<number>((resolve, reject) => {
+		let settled = false;
+		const cleanup = () => {
+			clearTimeout(timeoutId);
+			recorder.removeEventListener("start", handleStart);
+			recorder.removeEventListener("error", handleFailure);
+			recorder.removeEventListener("stop", handleFailure);
+		};
+		const finish = () => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			resolve(Date.now());
+		};
+		const fail = (error: unknown) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			reject(
+				error instanceof Error
+					? error
+					: new Error("MediaRecorder failed before its media timeline started."),
+			);
+		};
+		const handleStart = () => finish();
+		const handleFailure = () =>
+			fail(new Error("MediaRecorder failed before its media timeline started."));
+		const timeoutId = setTimeout(
+			() => fail(new Error("MediaRecorder did not start within the expected time.")),
+			timeoutMs,
+		);
+		recorder.addEventListener("start", handleStart, { once: true });
+		recorder.addEventListener("error", handleFailure, { once: true });
+		recorder.addEventListener("stop", handleFailure, { once: true });
+
+		try {
+			recorder.start(timesliceMs);
+		} catch (error) {
+			fail(error);
+		}
+	});
 }
 
 export function shouldUseNativeWindowsCaptureForSource(
@@ -1768,7 +1815,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			if (!stream.current || !videoTrack) {
 				throw new Error("Media stream is not available.");
 			}
-
 			try {
 				await videoTrack.applyConstraints({
 					frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
@@ -1901,15 +1947,22 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			recorder.onerror = () => {
 				setRecording(false);
 			};
-			const mainStartedAt = Date.now();
+			const mainStartedAt = await startMediaRecorderAtTimelineBoundary(
+				recorder,
+				RECORDER_TIMESLICE_MS,
+			);
 			beginWebcamCapture();
 			resetRecordingClock(mainStartedAt);
 			webcamTimeOffsetMs.current =
 				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
-			recorder.start(RECORDER_TIMESLICE_MS);
 			setRecording(true);
 			try {
-				await window.electronAPI?.setRecordingState(true);
+				const cursorCaptureState = await window.electronAPI?.setRecordingState(true, {
+					mediaTimelineStartedAtEpochMs: mainStartedAt,
+				});
+				if (cursorCaptureState?.cursorOverlayAvailable) {
+					hideEditorOverlayCursorByDefault.current = false;
+				}
 			} catch (stateError) {
 				console.warn("Failed to notify main process that recording started:", stateError);
 			}
