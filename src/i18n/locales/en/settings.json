@@ -136,6 +136,8 @@
 		"webcamFootageAdded": "Webcam footage linked",
 		"webcamFootageRemoved": "Webcam footage removed",
 		"webcamSize": "Webcam Size",
+		"webcamWidth": "Webcam Width",
+		"webcamHeight": "Webcam Height",
 		"webcamCrop": "Webcam Crop",
 		"webcamReactToZoom": "Webcam Reacts To Zoom",
 		"webcamMirror": "Mirror webcam",
@@ -156,6 +158,7 @@
 	"sections": {
 		"scene": "Scene",
 		"captions": "Captions",
+		"caption": "Caption",
 		"zoom": "Zoom",
 		"cursor": "Cursor",
 		"webcam": "Webcam",
@@ -163,7 +166,9 @@
 		"crop": "Crop"
 	},
 	"captions": {
+		"selectOnTimeline": "Select a caption on the timeline to edit it.",
 		"enabled": "Show",
+		"timelineQuickAdd": "Hover to add on timeline",
 		"language": "Language",
 		"downloading": "Downloading...",
 		"deleteModel": "Delete Model",
@@ -187,7 +192,15 @@
 		"maxWidth": "Max Width",
 		"boxRadius": "Box Radius",
 		"backgroundOpacity": "Background Opacity",
-		"textColor": "Text Color"
+		"textColor": "Text Color",
+		"editor": {
+			"text": "Text",
+			"start": "Start",
+			"end": "End",
+			"split": "Split",
+			"merge": "Merge",
+			"delete": "Delete"
+		}
 	},
 	"crop": {
 		"title": "Crop Video",

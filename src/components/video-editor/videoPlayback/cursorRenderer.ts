@@ -76,6 +76,8 @@ export type NativeCursorAtlas = {
 export interface CursorRenderConfig {
 	/** Base cursor height in pixels (at reference width of 1920px) */
 	dotRadius: number;
+	/** Minimum viewport scale applied to cursor sizing. */
+	minViewportScale: number;
 	/** Cursor fill color (hex number for PixiJS) */
 	dotColor: number;
 	/** Cursor opacity (0–1) */
@@ -108,8 +110,25 @@ export interface CursorRenderConfig {
 	style: CursorStyle;
 }
 
+const REFERENCE_WIDTH = 1920;
+const MIN_CURSOR_VIEWPORT_SCALE = 0.55;
+const CURSOR_MOTION_BLUR_BASE_MULTIPLIER = 0.08;
+const CURSOR_TIME_DISCONTINUITY_MS = 100;
+const CURSOR_SWAY_SMOOTHING_MULTIPLIER = 0.7;
+const CURSOR_SWAY_SMOOTHING_OFFSET = 0.18;
+const CURSOR_SVG_DROP_SHADOW_FILTER = "drop-shadow(0px 2px 3px rgba(0, 0, 0, 0.35))";
+const CURSOR_SHADOW_COLOR = 0x000000;
+const CURSOR_SHADOW_ALPHA = 0.35;
+const CURSOR_SHADOW_OFFSET_X = 0;
+const CURSOR_SHADOW_OFFSET_Y = 2;
+const CURSOR_SHADOW_BLUR = 3;
+const CURSOR_SHADOW_PADDING = 12;
+const NATIVE_CURSOR_ATLAS_DRAW_HEIGHT = 256;
+const NATIVE_CURSOR_ATLAS_PADDING = 2;
+
 export const DEFAULT_CURSOR_CONFIG: CursorRenderConfig = {
 	dotRadius: 28,
+	minViewportScale: MIN_CURSOR_VIEWPORT_SCALE,
 	dotColor: 0xffffff,
 	dotAlpha: 0.95,
 	trailLength: 0,
@@ -130,22 +149,6 @@ export const DEFAULT_CURSOR_CONFIG: CursorRenderConfig = {
 	sway: 0,
 	style: DEFAULT_CURSOR_STYLE,
 };
-
-const REFERENCE_WIDTH = 1920;
-const MIN_CURSOR_VIEWPORT_SCALE = 0.55;
-const CURSOR_MOTION_BLUR_BASE_MULTIPLIER = 0.08;
-const CURSOR_TIME_DISCONTINUITY_MS = 100;
-const CURSOR_SWAY_SMOOTHING_MULTIPLIER = 0.7;
-const CURSOR_SWAY_SMOOTHING_OFFSET = 0.18;
-const CURSOR_SVG_DROP_SHADOW_FILTER = "drop-shadow(0px 2px 3px rgba(0, 0, 0, 0.35))";
-const CURSOR_SHADOW_COLOR = 0x000000;
-const CURSOR_SHADOW_ALPHA = 0.35;
-const CURSOR_SHADOW_OFFSET_X = 0;
-const CURSOR_SHADOW_OFFSET_Y = 2;
-const CURSOR_SHADOW_BLUR = 3;
-const CURSOR_SHADOW_PADDING = 12;
-const NATIVE_CURSOR_ATLAS_DRAW_HEIGHT = 256;
-const NATIVE_CURSOR_ATLAS_PADDING = 2;
 let cursorAssetsPromise: Promise<void> | null = null;
 let cursorPackAssetsPromise: Promise<void> | null = null;
 let loadedCursorPackSourcesSignature = "";
@@ -342,7 +345,7 @@ function clamp(value: number, min: number, max: number) {
 
 function configureCursorTexture(texture: Texture) {
 	texture.source.scaleMode = "linear";
-	texture.source.autoGenerateMipmaps = false;
+	texture.source.autoGenerateMipmaps = true;
 	return texture;
 }
 
@@ -556,10 +559,7 @@ export async function preloadCursorAssets() {
 								sourceAsset.fallbackAnchor,
 							);
 
-							return [
-								key,
-								asset,
-							] as const;
+							return [key, asset] as const;
 						} catch (error) {
 							console.warn(
 								`[CursorRenderer] Failed to load cursor image for: ${style}/${key}`,
@@ -807,8 +807,11 @@ function findLatestStableCursorType(samples: CursorTelemetryPoint[], timeMs: num
 	return findLatestSample(samples, timeMs)?.cursorType ?? "arrow";
 }
 
-function getCursorViewportScale(viewport: CursorViewportRect) {
-	return Math.max(MIN_CURSOR_VIEWPORT_SCALE, viewport.width / REFERENCE_WIDTH);
+function getCursorViewportScale(
+	viewport: CursorViewportRect,
+	minViewportScale = MIN_CURSOR_VIEWPORT_SCALE,
+) {
+	return Math.max(minViewportScale, viewport.width / REFERENCE_WIDTH);
 }
 
 function getCursorSwaySpringConfig(smoothingFactor: number, springTuning: CursorSpringTuning) {
@@ -1341,7 +1344,9 @@ export class PixiCursorOverlay {
 
 		const projectedTarget = projectCursorPositionToViewport(target, viewport.sourceCrop);
 
-		const h = this.config.dotRadius * getCursorViewportScale(viewport);
+		const h =
+			this.config.dotRadius *
+			getCursorViewportScale(viewport, this.config.minViewportScale);
 		const { cursorType, clickSample, clickBounceProgress, clickProgress } =
 			getCursorVisualState(
 				samples,
@@ -1395,7 +1400,8 @@ export class PixiCursorOverlay {
 
 		if (shouldShowCursorSprite) {
 			const sameFrameTime =
-				this.lastRenderedTimeMs !== null && Math.abs(this.lastRenderedTimeMs - timeMs) < 0.0001;
+				this.lastRenderedTimeMs !== null &&
+				Math.abs(this.lastRenderedTimeMs - timeMs) < 0.0001;
 			const hasTimeDiscontinuity =
 				this.lastRenderedTimeMs !== null &&
 				Math.abs(timeMs - this.lastRenderedTimeMs) > CURSOR_TIME_DISCONTINUITY_MS;
@@ -1636,14 +1642,13 @@ export function drawCursorOnCanvas(
 
 	const px = viewport.x + smoothedState.x * viewport.width;
 	const py = viewport.y + smoothedState.y * viewport.height;
-	const h = config.dotRadius * getCursorViewportScale(viewport);
-	const { cursorType, clickSample, clickBounceProgress, clickProgress } =
-		getCursorVisualState(
-			samples,
-			timeMs,
-			config.clickBounceDuration,
-			config.clickEffectDurationMs,
-		);
+	const h = config.dotRadius * getCursorViewportScale(viewport, config.minViewportScale);
+	const { cursorType, clickSample, clickBounceProgress, clickProgress } = getCursorVisualState(
+		samples,
+		timeMs,
+		config.clickBounceDuration,
+		config.clickEffectDurationMs,
+	);
 	const projectedClickSample = clickSample
 		? projectCursorPositionToViewport(clickSample, viewport.sourceCrop)
 		: null;

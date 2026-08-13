@@ -1,5 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
+import {
+	type PointerEvent,
+	type RefObject,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import { mergeHudInteractiveBounds, shouldRestoreHudMousePassthroughAfterDrag } from "../hudMousePassthrough";
+import { clampHudOffsetToViewport } from "../hudViewportBounds";
 
 const DEFAULT_RECORDING_HUD_OFFSET = { x: 0, y: 0 };
 
@@ -40,6 +48,47 @@ export function useHudBarDrag({
 			hudBarTransformRef.current.style.transform = `translate3d(${recordingHudOffset.x}px, ${recordingHudOffset.y}px, 0)`;
 		}
 	}, [recordingHudOffset]);
+
+	const keepHudBarInsideViewport = useCallback(() => {
+		if (isHudDraggingRef.current || !hudBarRef.current) {
+			return;
+		}
+
+		const bounds = hudBarRef.current.getBoundingClientRect();
+		const nextOffset = clampHudOffsetToViewport(
+			recordingHudOffsetRef.current,
+			bounds,
+			{ width: window.innerWidth, height: window.innerHeight },
+		);
+		if (
+			nextOffset.x === recordingHudOffsetRef.current.x &&
+			nextOffset.y === recordingHudOffsetRef.current.y
+		) {
+			return;
+		}
+
+		recordingHudOffsetRef.current = nextOffset;
+		if (hudBarTransformRef.current) {
+			hudBarTransformRef.current.style.transform = `translate3d(${nextOffset.x}px, ${nextOffset.y}px, 0)`;
+		}
+		setRecordingHudOffset(nextOffset);
+	}, [hudBarRef]);
+
+	useEffect(() => {
+		const resizeObserver =
+			typeof ResizeObserver === "undefined"
+				? null
+				: new ResizeObserver(keepHudBarInsideViewport);
+		if (hudBarRef.current) {
+			resizeObserver?.observe(hudBarRef.current);
+		}
+		window.addEventListener("resize", keepHudBarInsideViewport);
+
+		return () => {
+			window.removeEventListener("resize", keepHudBarInsideViewport);
+			resizeObserver?.disconnect();
+		};
+	}, [hudBarRef, keepHudBarInsideViewport]);
 
 	const handleHudBarPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
 		if (event.button !== 0) {

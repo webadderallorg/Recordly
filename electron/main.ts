@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
 	app,
 	BrowserWindow,
@@ -11,8 +11,10 @@ import {
 	Notification,
 	nativeImage,
 	session,
+	shell,
 	systemPreferences,
 	Tray,
+	webContents as electronWebContents,
 } from "electron";
 import { RECORDINGS_DIR } from "./appPaths";
 import { showCursor } from "./cursorHider";
@@ -26,7 +28,12 @@ import {
 	registerIpcHandlers,
 } from "./ipc/handlers";
 import { ensureMediaServer } from "./mediaServer";
-import { ensurePackagedRendererServer } from "./rendererServer";
+import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
+import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
+import {
+	hardenWebContentsNavigation,
+	shouldHardenWebContentsType,
+} from "./navigationPolicy";
 import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
@@ -72,6 +79,14 @@ ignoreBrokenConsolePipe(process.stderr);
 app.commandLine.appendSwitch("ignore-gpu-blocklist");
 app.commandLine.appendSwitch("enable-unsafe-webgpu");
 app.commandLine.appendSwitch("enable-gpu-rasterization");
+
+app.on("web-contents-created", (_event, contents) => {
+	if (!shouldHardenWebContentsType(contents.getType())) {
+		return;
+	}
+
+	hardenWebContentsNavigation(contents, (url) => shell.openExternal(url));
+});
 
 function configureGpuAccelerationSwitches() {
 	const { useAngle, useGl, disableFeatures } = getGpuSwitches(process.platform, process.env);
@@ -131,6 +146,30 @@ const IS_DEV = Boolean(VITE_DEV_SERVER_URL);
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 	? path.join(process.env.APP_ROOT, "public")
 	: RENDERER_DIST;
+
+function getTrustedCaptureDocumentBaseUrls(): string[] {
+	const trustedUrls = [pathToFileURL(path.join(RENDERER_DIST, "index.html")).href];
+
+	if (VITE_DEV_SERVER_URL) {
+		trustedUrls.push(VITE_DEV_SERVER_URL);
+	}
+
+	const packagedRendererBaseUrl = getPackagedRendererBaseUrl();
+	if (packagedRendererBaseUrl) {
+		trustedUrls.push(new URL("/", packagedRendererBaseUrl).href);
+	}
+
+	return trustedUrls;
+}
+
+function isHudWebContents(webContents: Electron.WebContents | null): boolean {
+	if (!webContents || webContents.isDestroyed()) {
+		return false;
+	}
+
+	const hudWindow = getHudOverlayWindow();
+	return Boolean(hudWindow && hudWindow.webContents === webContents);
+}
 
 // Window references
 let mainWindow: BrowserWindow | null = null;
@@ -879,17 +918,47 @@ app.whenReady().then(async () => {
 		app.setAppUserModelId("dev.recordly.app");
 	}
 
-	session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
-		const allowed = ["media", "audioCapture", "microphone", "camera", "videoCapture"];
-		return allowed.includes(permission);
-	});
+	session.defaultSession.setPermissionCheckHandler(
+		(webContents, permission, requestingOrigin, details) => {
+			return shouldGrantMediaPermission(
+				{
+					permission,
+					isTrustedCaptureWindow: isHudWebContents(webContents),
+					isMainFrame: details.isMainFrame,
+					currentDocumentUrl: webContents?.getURL() ?? "",
+					// Electron 39 may supply the last committed document URL, including its
+					// query, in the requestingOrigin argument for media checks.
+					requestingUrl: details.requestingUrl ?? requestingOrigin,
+					securityOrigins:
+						details.securityOrigin === undefined ? [] : [details.securityOrigin],
+				},
+				getTrustedCaptureDocumentBaseUrls(),
+			);
+		},
+	);
 
-	session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
-		const allowed = ["media", "audioCapture", "microphone", "camera", "videoCapture"];
-		callback(allowed.includes(permission));
-	});
+	session.defaultSession.setPermissionRequestHandler(
+		(webContents, permission, callback, details) => {
+			const securityOrigin = "securityOrigin" in details ? details.securityOrigin : undefined;
 
-	session.defaultSession.setDevicePermissionHandler((_details) => true);
+			callback(
+				shouldGrantMediaPermission(
+					{
+						permission,
+						isTrustedCaptureWindow: isHudWebContents(webContents),
+						isMainFrame: details.isMainFrame,
+						currentDocumentUrl: webContents.getURL(),
+						requestingUrl: details.requestingUrl,
+						securityOrigins: securityOrigin === undefined ? [] : [securityOrigin],
+					},
+					getTrustedCaptureDocumentBaseUrls(),
+				),
+			);
+		},
+	);
+
+	// Recordly does not use WebHID, Web Serial, or WebUSB. Do not grant devices by default.
+	session.defaultSession.setDevicePermissionHandler(() => false);
 
 	if (process.platform === "darwin") {
 		const cameraStatus = systemPreferences.getMediaAccessStatus("camera");
@@ -1003,8 +1072,35 @@ app.whenReady().then(async () => {
 	// via an unsafe cast breaks Electron's internal cursor-constraint
 	// propagation and causes cursor: 'never' from the renderer to be silently
 	// ignored by the native capture pipeline.
-	session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+	session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
 		try {
+			const frame = request.frame;
+			const isLiveFrame = Boolean(frame && !frame.isDestroyed());
+			const requestingWebContents =
+				isLiveFrame && frame ? electronWebContents.fromFrame(frame) : undefined;
+			const isHudMainFrame = Boolean(
+				isLiveFrame &&
+					requestingWebContents &&
+					isHudWebContents(requestingWebContents) &&
+					frame === requestingWebContents.mainFrame,
+			);
+
+			if (
+				!shouldGrantDisplayCapture(
+					{
+						isTrustedCaptureWindow: isHudMainFrame,
+						isMainFrame: Boolean(isLiveFrame && frame?.parent === null),
+						currentDocumentUrl: isLiveFrame ? (frame?.url ?? "") : "",
+						securityOrigin: request.securityOrigin,
+						videoRequested: request.videoRequested,
+					},
+					getTrustedCaptureDocumentBaseUrls(),
+				)
+			) {
+				callback({});
+				return;
+			}
+
 			const sourceId = getSelectedSourceId();
 			// On Linux/Wayland, calling desktopCapturer.getSources() itself
 			// invokes the xdg-desktop-portal picker. If we then return one of

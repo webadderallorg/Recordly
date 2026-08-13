@@ -53,7 +53,9 @@ describe("local media path policy", () => {
 		await fs.mkdir(downloadsPath, { recursive: true });
 		await fs.writeFile(exportPath, "test-video");
 
-		const { isAllowedLocalMediaPath, rememberApprovedLocalReadPath } = await import("./manager");
+		const { isAllowedLocalMediaPath, rememberApprovedLocalReadPath } = await import(
+			"./manager"
+		);
 
 		await expect(isAllowedLocalMediaPath(exportPath)).resolves.toBe(false);
 
@@ -71,7 +73,9 @@ describe("local media path policy", () => {
 
 	it("allows approved media paths before the file exists", async () => {
 		const pendingExportPath = path.join(tempRoot, "Downloads", "pending-export.mp4");
-		const { isAllowedLocalMediaPath, rememberApprovedLocalReadPath } = await import("./manager");
+		const { isAllowedLocalMediaPath, rememberApprovedLocalReadPath } = await import(
+			"./manager"
+		);
 
 		await rememberApprovedLocalReadPath(pendingExportPath);
 
@@ -131,7 +135,9 @@ describe("local media path policy", () => {
 			throw error;
 		}
 
-		const { isAllowedLocalMediaPath, resolveApprovedLocalMediaPath } = await import("./manager");
+		const { isAllowedLocalMediaPath, resolveApprovedLocalMediaPath } = await import(
+			"./manager"
+		);
 
 		await expect(isAllowedLocalMediaPath(symlinkInsideUserData)).resolves.toBe(false);
 		await expect(resolveApprovedLocalMediaPath(symlinkInsideUserData)).resolves.toBeNull();
@@ -173,6 +179,29 @@ describe("local media path policy", () => {
 		expect(result.project).toMatchObject({ videoPath });
 	});
 
+	it("rejects invalid project payloads before approving media paths", async () => {
+		const downloadsPath = path.join(tempRoot, "Downloads");
+		const videoPath = path.join(downloadsPath, "recording.mp4");
+		const projectPath = path.join(tempPath, "invalid.recordly");
+		await fs.mkdir(downloadsPath, { recursive: true });
+		await fs.writeFile(videoPath, "test-video");
+		await fs.writeFile(
+			projectPath,
+			JSON.stringify({
+				videoPath,
+				editor: {},
+			}),
+			"utf-8",
+		);
+
+		const { loadProjectFromPath, resolveApprovedLocalMediaPath } = await import("./manager");
+
+		const result = await loadProjectFromPath(projectPath);
+		expect(result.success).toBe(false);
+		expect(result.message).toBe("Invalid project file format");
+		await expect(resolveApprovedLocalMediaPath(videoPath)).resolves.toBeNull();
+	});
+
 	it("approves editor audioRegions audioPath entries when loading a project", async () => {
 		const downloadsPath = path.join(tempRoot, "Downloads");
 		const videoPath = path.join(tempPath, "recording.mp4");
@@ -187,9 +216,7 @@ describe("local media path policy", () => {
 				version: 1,
 				videoPath,
 				editor: {
-					audioRegions: [
-						{ id: "a1", startMs: 0, endMs: 1000, audioPath, volume: 1 },
-					],
+					audioRegions: [{ id: "a1", startMs: 0, endMs: 1000, audioPath, volume: 1 }],
 				},
 			}),
 			"utf-8",

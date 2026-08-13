@@ -7,6 +7,47 @@ export function clampMediaTimeToDuration(targetTime: number, duration?: number |
 	return Math.max(0, Math.min(safeTargetTime, Math.max(0, duration)));
 }
 
+const MIN_PREVIEW_MEDIA_DURATION_SHORTFALL_TOLERANCE_SECONDS = 0.5;
+const MAX_PREVIEW_MEDIA_DURATION_SHORTFALL_TOLERANCE_SECONDS = 1;
+const PREVIEW_MEDIA_DURATION_SHORTFALL_TOLERANCE_RATIO = 0.01;
+
+export function resolvePreviewMediaDuration(
+	reportedDuration?: number | null,
+	timelineDuration?: number | null,
+): number | null {
+	if (!Number.isFinite(reportedDuration)) {
+		return null;
+	}
+
+	const safeReportedDuration = Math.max(0, reportedDuration ?? 0);
+	if (
+		!Number.isFinite(timelineDuration) ||
+		timelineDuration === null ||
+		timelineDuration === undefined
+	) {
+		return safeReportedDuration;
+	}
+
+	const safeTimelineDuration = Math.max(0, timelineDuration);
+	if (safeTimelineDuration === 0) {
+		return safeReportedDuration;
+	}
+
+	const shortfallToleranceSeconds = Math.min(
+		MAX_PREVIEW_MEDIA_DURATION_SHORTFALL_TOLERANCE_SECONDS,
+		Math.max(
+			MIN_PREVIEW_MEDIA_DURATION_SHORTFALL_TOLERANCE_SECONDS,
+			safeTimelineDuration * PREVIEW_MEDIA_DURATION_SHORTFALL_TOLERANCE_RATIO,
+		),
+	);
+
+	if (safeTimelineDuration - safeReportedDuration > shortfallToleranceSeconds) {
+		return null;
+	}
+
+	return safeReportedDuration;
+}
+
 const MIN_COMPANION_AUDIO_DELAY_SECONDS = 0.025;
 const MAX_INFERRED_COMPANION_AUDIO_DELAY_SECONDS = 0.5;
 

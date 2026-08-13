@@ -1,14 +1,21 @@
+import { execFile, spawnSync } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { execFile, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import { app } from "electron";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { getBundledWhisperExecutableCandidates } from "../paths/binaries";
-import { parseWhisperJsonCues, parseSrtCues, shouldRetryWhisperWithoutJson } from "./parser";
-import { normalizeVideoSourcePath } from "../utils";
 import { resolveRecordingSession } from "../project/session";
+import { normalizeVideoSourcePath } from "../utils";
+import { parseSrtCues, parseWhisperJsonCues, shouldRetryWhisperWithoutJson } from "./parser";
+import { segmentCuesIntoPhrases } from "./segment";
+import {
+	parseSilenceIntervals,
+	SILENCE_DETECT_MIN_S,
+	SILENCE_NOISE_DB,
+	type SilenceInterval,
+} from "./silence";
 
 const execFileAsync = promisify(execFile);
 
@@ -155,6 +162,30 @@ export async function extractCaptionAudioSource(options: {
 	);
 }
 
+export async function detectSilenceIntervals(options: {
+	ffmpegPath: string;
+	wavPath: string;
+}): Promise<SilenceInterval[]> {
+	// ffmpeg writes silencedetect results to stderr; the null muxer just runs the filter.
+	const { stderr } = await execFileAsync(
+		options.ffmpegPath,
+		[
+			"-hide_banner",
+			"-nostats",
+			"-i",
+			options.wavPath,
+			"-af",
+			`silencedetect=noise=${SILENCE_NOISE_DB}dB:d=${SILENCE_DETECT_MIN_S}`,
+			"-f",
+			"null",
+			"-",
+		],
+		{ timeout: 5 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 },
+	);
+
+	return parseSilenceIntervals(stderr ?? "");
+}
+
 export async function generateAutoCaptionsFromVideo(options: {
 	videoPath: string;
 	whisperExecutablePath?: string;
@@ -228,14 +259,40 @@ export async function generateAutoCaptionsFromVideo(options: {
 		const timedCues = jsonEnabled
 			? parseWhisperJsonCues(await fs.readFile(jsonPath, "utf-8"))
 			: [];
+		if (jsonEnabled && timedCues.length === 0) {
+			// JSON ran but yielded no word-timed cues (empty/malformed output). We fall back
+			// to SRT, which has no word timings — captions are then split by sentence text and
+			// silence rather than precise word timing. Surface it for diagnosis.
+			console.warn(
+				"[auto-captions] Whisper JSON produced no word-timed cues; falling back to SRT (no word timings).",
+			);
+		}
 		const cues =
 			timedCues.length > 0 ? timedCues : parseSrtCues(await fs.readFile(srtPath, "utf-8"));
 		if (cues.length === 0) {
 			throw new Error("Whisper completed, but no caption cues were produced.");
 		}
 
+		// Whisper cues run sentences together and don't break on pauses. Re-segment them
+		// into one caption per sentence/phrase using Whisper's own word stream (punctuation
+		// + pauses), backed by ground-truth acoustic silence (ffmpeg `silencedetect`).
+		// Failure here must not block caption generation — fall back to raw.
+		let cuesToReturn = cues;
+		try {
+			const silences = await detectSilenceIntervals({ ffmpegPath, wavPath });
+			// An empty result is a valid resegmentation (e.g. every transcribed word fell
+			// inside a long detected silence and was dropped as a hallucination), so take it
+			// as-is. Only a thrown exception should fall back to the raw cues.
+			cuesToReturn = segmentCuesIntoPhrases(cues, silences);
+		} catch (error) {
+			console.warn(
+				"[auto-captions] Silence-aware re-segmentation failed, using raw cues:",
+				error,
+			);
+		}
+
 		return {
-			cues,
+			cues: cuesToReturn,
 			audioSourceLabel: audioSource.label,
 		};
 	} finally {

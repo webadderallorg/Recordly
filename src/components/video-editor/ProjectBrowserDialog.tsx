@@ -15,6 +15,7 @@ type ProjectBrowserDialogProps = {
 	onOpenChange: (open: boolean) => void;
 	entries: ProjectLibraryEntry[];
 	onOpenProject: (projectPath: string) => void;
+	onImportFile?: () => void;
 	anchorRef?: React.RefObject<HTMLElement | null>;
 	preferredDirection?: "up" | "down" | "auto";
 	onPanelHeightChange?: (height: number) => void;
@@ -25,6 +26,7 @@ export default function ProjectBrowserDialog({
 	onOpenChange,
 	entries,
 	onOpenProject,
+	onImportFile,
 	anchorRef,
 	preferredDirection = "auto",
 	onPanelHeightChange,
@@ -172,10 +174,21 @@ export default function ProjectBrowserDialog({
 				ref={panelRef}
 				role="dialog"
 				aria-label="Projects"
-					className="pointer-events-auto mb-1.5 w-[300px] max-h-[400px] overflow-hidden rounded-[14px] border border-foreground/[0.07] bg-editor-panel/[0.96] text-foreground shadow-[0_12px_32px_rgba(0,0,0,0.22),0_2px_10px_rgba(0,0,0,0.1)] animate-in fade-in-0 duration-150"
+				className="pointer-events-auto mb-1.5 w-[300px] max-h-[400px] overflow-hidden rounded-[14px] border border-foreground/[0.07] bg-editor-panel/[0.96] text-foreground shadow-[0_12px_32px_rgba(0,0,0,0.22),0_2px_10px_rgba(0,0,0,0.1)] animate-in fade-in-0 duration-150"
 			>
-				<div className="border-b border-foreground/10 px-3 py-2.5">
-					<div className="text-sm font-medium tracking-tight text-foreground">Projects</div>
+				<div className="flex items-center justify-between gap-2 border-b border-foreground/10 px-3 py-2.5">
+					<div className="text-sm font-medium tracking-tight text-foreground">
+						Projects
+					</div>
+					{onImportFile ? (
+						<button
+							type="button"
+							onClick={onImportFile}
+							className="rounded-md px-2 py-1 text-xs font-medium text-foreground/70 transition hover:bg-foreground/10 hover:text-foreground"
+						>
+							Import
+						</button>
+					) : null}
 				</div>
 				<div className="max-h-[360px] overflow-y-auto px-2.5 py-2.5">
 					{visibleEntries.length > 0 ? (
@@ -242,8 +255,19 @@ export default function ProjectBrowserDialog({
 				style={{ top: `${position.top}px`, left: `${position.left}px` }}
 				className="pointer-events-auto fixed w-[min(280px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-foreground/10 bg-editor-surface text-foreground shadow-2xl animate-in fade-in-0 duration-150"
 			>
-				<div className="border-b border-foreground/10 px-3 py-2.5">
-					<div className="text-sm font-medium tracking-tight text-foreground">Projects</div>
+				<div className="flex items-center justify-between gap-2 border-b border-foreground/10 px-3 py-2.5">
+					<div className="text-sm font-medium tracking-tight text-foreground">
+						Projects
+					</div>
+					{onImportFile ? (
+						<button
+							type="button"
+							onClick={onImportFile}
+							className="rounded-md px-2 py-1 text-xs font-medium text-foreground/70 transition hover:bg-foreground/10 hover:text-foreground"
+						>
+							Import
+						</button>
+					) : null}
 				</div>
 				<div
 					className="overflow-y-auto px-2.5 py-2.5"

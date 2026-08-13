@@ -114,4 +114,31 @@ describe("captionEditing", () => {
 
 		expect(updateCaptionCuesForEditedTarget(cues, visibleTarget, " \n\t ")).toBe(cues);
 	});
+
+	it("keeps sound-effect style captions editable when word entries are blank", () => {
+		const cues: CaptionCue[] = [
+			{
+				id: "sound-effect",
+				startMs: 1_000,
+				endMs: 2_000,
+				text: "clears throat",
+				words: [{ text: "", startMs: 1_000, endMs: 2_000 }],
+			},
+		];
+
+		const layout = buildActiveCaptionLayout({
+			cues,
+			timeMs: 1_500,
+			settings: DEFAULT_AUTO_CAPTION_SETTINGS,
+			maxWidthPx: 500,
+			measureText: (text) => text.length * 10,
+		});
+
+		expect(layout?.editTarget.text).toBe("clears throat");
+
+		const updated = updateCaptionCuesForEditedTarget(cues, layout!.editTarget, "coughs");
+
+		expect(updated[0].text).toBe("coughs");
+		expect(updated[0].words).toEqual([{ text: "coughs", startMs: 1_000, endMs: 2_000 }]);
+	});
 });

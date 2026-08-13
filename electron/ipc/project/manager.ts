@@ -403,6 +403,29 @@ export async function listProjectLibraryEntries() {
 	};
 }
 
+function isLoadableProjectData(projectData: unknown) {
+	if (!projectData || typeof projectData !== "object" || Array.isArray(projectData)) {
+		return false;
+	}
+
+	const candidate = projectData as {
+		version?: unknown;
+		projectId?: unknown;
+		videoPath?: unknown;
+		editor?: unknown;
+	};
+
+	return (
+		typeof candidate.version === "number" &&
+		(candidate.projectId === undefined || typeof candidate.projectId === "string") &&
+		typeof candidate.videoPath === "string" &&
+		candidate.videoPath.trim().length > 0 &&
+		candidate.editor != null &&
+		typeof candidate.editor === "object" &&
+		!Array.isArray(candidate.editor)
+	);
+}
+
 export async function loadProjectFromPath(projectPath: string) {
 	const normalizedPath = normalizePath(projectPath);
 	let project: unknown;
@@ -414,6 +437,13 @@ export async function loadProjectFromPath(projectPath: string) {
 			success: false,
 			canceled: false,
 			message: `Failed to read project file: ${error instanceof Error ? error.message : String(error)}`,
+		};
+	}
+	if (!isLoadableProjectData(project)) {
+		return {
+			success: false,
+			canceled: false,
+			message: "Invalid project file format",
 		};
 	}
 	const mediaSources = await resolveProjectMediaSources(project);

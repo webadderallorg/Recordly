@@ -78,10 +78,49 @@ export function getWebcamOverlaySizePx({
 	return Math.min(maxSize, Math.max(MIN_WEBCAM_OVERLAY_SIZE_PX, scaledSize));
 }
 
+export function getWebcamOverlayDimensionsPx({
+	containerWidth,
+	containerHeight,
+	widthPercent,
+	heightPercent,
+	margin,
+	zoomScale,
+	reactToZoom,
+}: {
+	containerWidth: number;
+	containerHeight: number;
+	widthPercent: number;
+	heightPercent: number;
+	margin: number;
+	zoomScale: number;
+	reactToZoom: boolean;
+}): { width: number; height: number } {
+	return {
+		width: getWebcamOverlaySizePx({
+			containerWidth,
+			containerHeight,
+			sizePercent: widthPercent,
+			margin,
+			zoomScale,
+			reactToZoom,
+		}),
+		height: getWebcamOverlaySizePx({
+			containerWidth,
+			containerHeight,
+			sizePercent: heightPercent,
+			margin,
+			zoomScale,
+			reactToZoom,
+		}),
+	};
+}
+
 export function getWebcamOverlayPosition({
 	containerWidth,
 	containerHeight,
 	size,
+	width,
+	height,
 	margin,
 	positionPreset,
 	positionX,
@@ -90,7 +129,9 @@ export function getWebcamOverlayPosition({
 }: {
 	containerWidth: number;
 	containerHeight: number;
-	size: number;
+	size?: number;
+	width?: number;
+	height?: number;
 	margin: number;
 	positionPreset: WebcamPositionPreset;
 	positionX: number;
@@ -98,8 +139,10 @@ export function getWebcamOverlayPosition({
 	legacyCorner: WebcamCorner;
 }): { x: number; y: number } {
 	const safeMargin = Math.max(0, margin);
-	const availableWidth = Math.max(0, containerWidth - size - safeMargin * 2);
-	const availableHeight = Math.max(0, containerHeight - size - safeMargin * 2);
+	const overlayWidth = Math.max(0, width ?? size ?? 0);
+	const overlayHeight = Math.max(0, height ?? size ?? overlayWidth);
+	const availableWidth = Math.max(0, containerWidth - overlayWidth - safeMargin * 2);
+	const availableHeight = Math.max(0, containerHeight - overlayHeight - safeMargin * 2);
 	const presetPosition =
 		positionPreset === "custom"
 			? { x: clamp(positionX, 0, 1), y: clamp(positionY, 0, 1) }
@@ -150,4 +193,39 @@ export function getWebcamCropSourceRect(
 	const sh = clamp(crop.height * safeHeight, 1, safeHeight - sy);
 
 	return { sx, sy, sw, sh };
+}
+
+export function getCropMatchedWebcamHeightPercent(
+	widthPercent: number,
+	heightPercent: number,
+	sourceWidth: number | null | undefined,
+	sourceHeight: number | null | undefined,
+	cropRegion: Partial<CropRegion> | null | undefined,
+): number {
+	const safeWidthPercent = Number.isFinite(widthPercent) ? widthPercent : 40;
+	const safeHeightPercent = Number.isFinite(heightPercent) ? heightPercent : safeWidthPercent;
+	if (Math.abs(safeWidthPercent - safeHeightPercent) > 0.001) {
+		return clamp(safeHeightPercent, 10, 100);
+	}
+
+	const crop = normalizeWebcamCropRegion(cropRegion);
+	if (crop.x <= 0 && crop.y <= 0 && crop.width >= 1 && crop.height >= 1) {
+		return clamp(safeHeightPercent, 10, 100);
+	}
+
+	const sourceAspect =
+		Number.isFinite(sourceWidth) &&
+		Number.isFinite(sourceHeight) &&
+		sourceWidth != null &&
+		sourceHeight != null &&
+		sourceWidth > 0 &&
+		sourceHeight > 0
+			? sourceWidth / sourceHeight
+			: 1;
+	const cropAspect = (crop.width * sourceAspect) / Math.max(0.001, crop.height);
+	if (!Number.isFinite(cropAspect) || cropAspect <= 0) {
+		return clamp(safeHeightPercent, 10, 100);
+	}
+
+	return clamp(safeWidthPercent / cropAspect, 10, 100);
 }

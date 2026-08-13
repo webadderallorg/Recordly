@@ -26,6 +26,7 @@ interface TimelineWrapperProps {
 	resolveTargetRowId?: (id: string, proposedRowId: string) => string;
 	allRegionSpans?: TimelineRegionSpan[];
 	onLiveSpanPreviewChange?: (id: string, span: Span | null) => void;
+	onDraggingChange?: (dragging: boolean) => void;
 }
 
 export default function TimelineWrapper({
@@ -41,6 +42,7 @@ export default function TimelineWrapper({
 	resolveTargetRowId,
 	allRegionSpans = [],
 	onLiveSpanPreviewChange,
+	onDraggingChange,
 }: TimelineWrapperProps) {
 	const totalMs = Math.max(0, Math.round(videoDuration * 1000));
 
@@ -152,10 +154,11 @@ export default function TimelineWrapper({
 
 	const onDragStart = useCallback(
 		(event: DragStartEvent) => {
+			onDraggingChange?.(true);
 			const span = event.active.data.current.getSpanFromDragEvent?.(event);
 			if (span) showTooltip(span);
 		},
-		[showTooltip],
+		[onDraggingChange, showTooltip],
 	);
 
 	const onDragMove = useCallback(
@@ -181,6 +184,7 @@ export default function TimelineWrapper({
 
 	const onResizeMove = useCallback(
 		(event: ResizeMoveEvent) => {
+			onDraggingChange?.(true);
 			const span = event.active.data.current.getSpanFromResizeEvent?.(event);
 			const screenX =
 				event.activatorEvent && "clientX" in event.activatorEvent
@@ -190,7 +194,7 @@ export default function TimelineWrapper({
 			// dnd-timeline mutates the active item's DOM during resize; React preview
 			// renders here can reset that inline width/edge position and make trims stutter.
 		},
-		[showTooltip],
+		[onDraggingChange, showTooltip],
 	);
 
 	const hideTooltip = useCallback(() => showTooltip(null), [showTooltip]);
@@ -200,8 +204,9 @@ export default function TimelineWrapper({
 			hideTooltip();
 			onResizeEnd(event);
 			onLiveSpanPreviewChange?.(event.active.id as string, null);
+			onDraggingChange?.(false);
 		},
-		[hideTooltip, onLiveSpanPreviewChange, onResizeEnd],
+		[hideTooltip, onDraggingChange, onLiveSpanPreviewChange, onResizeEnd],
 	);
 
 	const onDragEndWithTooltip = useCallback(
@@ -209,8 +214,20 @@ export default function TimelineWrapper({
 			hideTooltip();
 			onDragEnd(event);
 			onLiveSpanPreviewChange?.(event.active.id as string, null);
+			onDraggingChange?.(false);
 		},
-		[hideTooltip, onDragEnd, onLiveSpanPreviewChange],
+		[hideTooltip, onDraggingChange, onDragEnd, onLiveSpanPreviewChange],
+	);
+
+	// dnd-kit fires onDragCancel (not onDragEnd) when a drag is aborted, e.g. via
+	// Escape. Without this the drag-active state and live preview would stick.
+	const onDragCancel = useCallback(
+		(event: { active: { id: string | number } }) => {
+			hideTooltip();
+			onLiveSpanPreviewChange?.(String(event.active.id), null);
+			onDraggingChange?.(false);
+		},
+		[hideTooltip, onDraggingChange, onLiveSpanPreviewChange],
 	);
 
 	const handleRangeChange = useCallback(
@@ -239,6 +256,7 @@ export default function TimelineWrapper({
 			onDragStart={onDragStart}
 			onDragMove={onDragMove}
 			onDragEnd={onDragEndWithTooltip}
+			onDragCancel={onDragCancel}
 			autoScroll={{
 				enabled: true,
 				threshold: { x: 0.08, y: 0.08 },

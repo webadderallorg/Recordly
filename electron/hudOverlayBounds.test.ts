@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
+	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
 
 describe("getHudOverlayWindowBounds", () => {
@@ -141,5 +142,47 @@ describe("resizeHudOverlayFallbackBounds", () => {
 			width: 860,
 			height: 540,
 		});
+	});
+});
+
+describe("shouldExpandHudOverlayFallback", () => {
+	it("expands while recording only when the floating webcam preview is visible", () => {
+		expect(
+			shouldExpandHudOverlayFallback({
+				fallbackExpanded: false,
+				recordingActive: true,
+				webcamPreviewVisible: true,
+			}),
+		).toBe(true);
+	});
+
+	it("keeps the compact recording fallback when there is no webcam preview", () => {
+		expect(
+			shouldExpandHudOverlayFallback({
+				fallbackExpanded: false,
+				recordingActive: true,
+				webcamPreviewVisible: false,
+			}),
+		).toBe(false);
+	});
+
+	it("preserves manual fallback expansion outside recording", () => {
+		expect(
+			shouldExpandHudOverlayFallback({
+				fallbackExpanded: true,
+				recordingActive: false,
+				webcamPreviewVisible: false,
+			}),
+		).toBe(true);
+	});
+
+	it("does not expand for webcam visibility outside recording", () => {
+		expect(
+			shouldExpandHudOverlayFallback({
+				fallbackExpanded: false,
+				recordingActive: false,
+				webcamPreviewVisible: true,
+			}),
+		).toBe(false);
 	});
 });

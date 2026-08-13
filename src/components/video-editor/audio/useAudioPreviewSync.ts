@@ -6,8 +6,14 @@ import {
   enablePitchPreservingPlayback,
   estimateCompanionAudioStartDelaySeconds,
   getMediaSyncPlaybackRate,
+  resolvePreviewMediaDuration,
 } from "@/lib/mediaTiming";
 import type { AudioRegion, SpeedRegion } from "../types";
+import {
+  getAudioResourceVersionKey,
+  getVersionedAudioResourceUrl,
+  isAudioResourceLoadCurrent,
+} from "./audioResourceVersion";
 
 const SOURCE_AUDIO_PREVIEW_PLAYING_SEEK_DRIFT_SECONDS = 0.18;
 const SOURCE_AUDIO_PREVIEW_PAUSED_SEEK_DRIFT_SECONDS = 0.01;
@@ -22,6 +28,7 @@ interface UseAudioPreviewSyncParams {
   effectiveSpeedRegions: SpeedRegion[];
   previewSourceAudioFallbackPaths: string[];
   sourceAudioFallbackStartDelayMsByPath: Record<string, number>;
+  sourceAudioResourceVersion: number;
   isCurrentClipMuted: boolean;
   getSourceTrackPreviewGain: (audioPath: string) => number;
   onSourceFallbackLoadError: (error: unknown) => void;
@@ -37,6 +44,7 @@ export function useAudioPreviewSync({
   effectiveSpeedRegions,
   previewSourceAudioFallbackPaths,
   sourceAudioFallbackStartDelayMsByPath,
+  sourceAudioResourceVersion,
   isCurrentClipMuted,
   getSourceTrackPreviewGain,
   onSourceFallbackLoadError,
@@ -166,7 +174,6 @@ export function useAudioPreviewSync({
   }, [previewVolume, resolvedUserTracks]);
 
   useEffect(() => {
-    let cancelled = false;
     const existing = sourceAudioElementsRef.current;
     const currentIds = new Set(resolvedSourceTracks.map((track) => track.sourceRef.path));
 
@@ -187,6 +194,7 @@ export function useAudioPreviewSync({
 
     for (const track of resolvedSourceTracks) {
       const audioPath = track.sourceRef.path;
+      const resourceKey = getAudioResourceVersionKey(audioPath, sourceAudioResourceVersion);
       let audio = existing.get(audioPath);
       if (!audio) {
         audio = new Audio();
@@ -201,42 +209,57 @@ export function useAudioPreviewSync({
       // We route directly through the HTMLAudioElement to ensure pitch preservation works
       // during speed changes. Note: this limits maximum preview volume to 1.0 (100%).
 
-      if (sourceAudioElementResourcesRef.current.get(audioPath) !== audioPath) {
+      if (sourceAudioElementResourcesRef.current.get(audioPath) !== resourceKey) {
         audio.pause();
         audio.src = "";
         sourceAudioElementRevokersRef.current.get(audioPath)?.();
         sourceAudioElementRevokersRef.current.delete(audioPath);
-        sourceAudioElementResourcesRef.current.set(audioPath, audioPath);
+        sourceAudioElementResourcesRef.current.set(audioPath, resourceKey);
 
+        // Resource identity, not effect lifetime, decides staleness. Playback and fallback
+        // rerenders must not cancel the only load for the current finalized sidecar version.
         void (async () => {
           try {
             const resolved = await resolveMediaElementSource(audioPath);
             const latestAudio = existing.get(audioPath);
 
             if (
-              cancelled ||
               latestAudio !== audio ||
-              sourceAudioElementResourcesRef.current.get(audioPath) !== audioPath
+              !isAudioResourceLoadCurrent(
+                sourceAudioElementResourcesRef.current,
+                audioPath,
+                resourceKey,
+              )
             ) {
               resolved.revoke();
               return;
             }
 
             sourceAudioElementRevokersRef.current.set(audioPath, resolved.revoke);
-            latestAudio.src = resolved.src;
+            latestAudio.src = getVersionedAudioResourceUrl(
+              resolved.src,
+              sourceAudioResourceVersion,
+            );
             latestAudio.load();
             if (isPlaying) {
               playSourceAudioPreview();
             }
           } catch (error) {
-            if (cancelled) {
+            const latestAudio = existing.get(audioPath);
+            if (
+              latestAudio !== audio ||
+              !isAudioResourceLoadCurrent(
+                sourceAudioElementResourcesRef.current,
+                audioPath,
+                resourceKey,
+              )
+            ) {
               return;
             }
 
             sourceAudioElementRevokersRef.current.get(audioPath)?.();
             sourceAudioElementRevokersRef.current.delete(audioPath);
             sourceAudioElementResourcesRef.current.delete(audioPath);
-            const latestAudio = existing.get(audioPath);
             if (latestAudio === audio) {
               latestAudio.pause();
               latestAudio.src = "";
@@ -258,16 +281,13 @@ export function useAudioPreviewSync({
     if (resolvedSourceTracks.length === 0) {
       lastSourceAudioSyncTimeRef.current = null;
     }
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     getSourceTrackPreviewGain,
     isPlaying,
     isCurrentClipMuted,
     onSourceFallbackLoadError,
     resolvedSourceTracks,
+    sourceAudioResourceVersion,
     previewVolume,
     playSourceAudioPreview,
   ]);
@@ -381,7 +401,7 @@ export function useAudioPreviewSync({
       audio.volume = Math.max(0, Math.min(1, getSourceTrackPreviewGain(sourceAudioPath) * (isCurrentClipMuted ? 0 : previewVolume)));
 
       enablePitchPreservingPlayback(audio);
-      const audioDuration = Number.isFinite(audio.duration) ? audio.duration : null;
+      const audioDuration = resolvePreviewMediaDuration(audio.duration, duration);
       const isMicCompanionTrack = /\.mic\./i.test(sourceAudioPath);
       const rawStartDelaySeconds = estimateCompanionAudioStartDelaySeconds(
         duration,

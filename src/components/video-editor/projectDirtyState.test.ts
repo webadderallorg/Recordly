@@ -64,4 +64,58 @@ describe("hasUnsavedProjectChanges", () => {
 
 		expect(hasUnsavedProjectChanges(current, createProjectData())).toBe(true);
 	});
+
+	it("ignores transient webcam media attachment changes", () => {
+		const saved = createProjectData({
+			editor: {
+				...createProjectData().editor,
+				webcam: {
+					enabled: false,
+					sourcePath: null,
+					timeOffsetMs: 0,
+					size: 28,
+				},
+			},
+		});
+		const current = createProjectData({
+			editor: {
+				...createProjectData().editor,
+				webcam: {
+					enabled: true,
+					sourcePath: "/Users/test/webcam.mp4",
+					timeOffsetMs: 125,
+					size: 28,
+				},
+			},
+		});
+
+		expect(hasUnsavedProjectChanges(current, saved)).toBe(false);
+	});
+
+	it("detects persistent webcam presentation changes", () => {
+		const saved = createProjectData({
+			editor: {
+				...createProjectData().editor,
+				webcam: {
+					enabled: true,
+					sourcePath: "/Users/test/webcam.mp4",
+					timeOffsetMs: 0,
+					size: 28,
+				},
+			},
+		});
+		const current = createProjectData({
+			editor: {
+				...createProjectData().editor,
+				webcam: {
+					enabled: true,
+					sourcePath: "/Users/test/webcam.mp4",
+					timeOffsetMs: 0,
+					size: 36,
+				},
+			},
+		});
+
+		expect(hasUnsavedProjectChanges(current, saved)).toBe(true);
+	});
 });

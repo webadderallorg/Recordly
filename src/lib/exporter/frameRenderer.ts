@@ -5,8 +5,8 @@ import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
 	CaptionCue,
-	CursorClickEffectStyle,
 	CropRegion,
+	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
@@ -45,15 +45,15 @@ import { getWebcamMediaTargetTimeSeconds } from "@/components/video-editor/video
 import { findDominantRegion } from "@/components/video-editor/videoPlayback/zoomRegionUtils";
 import {
 	applyZoomTransform,
-	computeFocusFromTransform,
 	computeZoomTransform,
 	createMotionBlurState,
 	type MotionBlurState,
 } from "@/components/video-editor/videoPlayback/zoomTransform";
 import {
+	getCropMatchedWebcamHeightPercent,
 	getWebcamCropSourceRect,
+	getWebcamOverlayDimensionsPx,
 	getWebcamOverlayPosition,
-	getWebcamOverlaySizePx,
 } from "@/components/video-editor/webcamOverlay";
 import { getAssetPath, getExportableVideoUrl, getRenderableAssetUrl } from "@/lib/assetPath";
 import { extensionHost } from "@/lib/extensions";
@@ -72,6 +72,10 @@ import {
 	clampMediaTimeToDuration,
 	getEffectiveVideoStreamDurationSeconds,
 } from "@/lib/mediaTiming";
+import {
+	destroyPixiApplication,
+	initializePixiApplicationWithTimeout,
+} from "@/lib/pixiApplicationLifecycle";
 import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import { renderAnnotations } from "./annotationRenderer";
 import { renderCaptions } from "./captionRenderer";
@@ -171,30 +175,6 @@ function isCanvasRenderer(renderer: Application): boolean {
 
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error ?? "Unknown renderer init error");
-}
-
-type PixiInitOptions = Parameters<Application["init"]>[0];
-
-async function initApplicationWithTimeout(
-	app: Application,
-	options: PixiInitOptions,
-	backend: ExportRenderBackend,
-): Promise<void> {
-	const timeoutErrorMessage = `Initialization timed out after ${PIXI_RENDERER_INIT_TIMEOUT_MS}ms for ${backend} renderer`;
-	let timeoutId: ReturnType<typeof setTimeout> | undefined;
-	const timeoutPromise = new Promise<never>((_, reject) => {
-		timeoutId = setTimeout(() => {
-			reject(new Error(timeoutErrorMessage));
-		}, PIXI_RENDERER_INIT_TIMEOUT_MS);
-	});
-
-	try {
-		await Promise.race([app.init(options), timeoutPromise]);
-	} finally {
-		if (timeoutId !== undefined) {
-			clearTimeout(timeoutId);
-		}
-	}
 }
 
 function summarizeRendererAttempts(attempts: readonly PixiRendererAttempt[]): string {
@@ -358,12 +338,13 @@ export class FrameRenderer {
 			const app = new Application();
 			const initStarted = typeof performance === "undefined" ? Date.now() : performance.now();
 			try {
-				await initApplicationWithTimeout(
+				await initializePixiApplicationWithTimeout(
 					app,
 					{
 						...baseOptions,
 						preference: backend,
 					},
+					PIXI_RENDERER_INIT_TIMEOUT_MS,
 					backend,
 				);
 				const elapsed = Math.round(
@@ -389,7 +370,7 @@ export class FrameRenderer {
 					`[FrameRenderer] ${backend} renderer unavailable after ${elapsed}ms; trying next backend.`,
 					error,
 				);
-				app.destroy(true);
+				destroyPixiApplication(app, `${backend} export renderer initialization`);
 			}
 		}
 
@@ -448,14 +429,14 @@ export class FrameRenderer {
 					massMultiplier: this.config.cursorSpringMassMultiplier,
 				},
 				motionBlur: this.config.cursorMotionBlur ?? 0,
-				clickEffect:
-					this.config.cursorClickEffect ?? DEFAULT_CURSOR_CONFIG.clickEffect,
+				clickEffect: this.config.cursorClickEffect ?? DEFAULT_CURSOR_CONFIG.clickEffect,
 				clickEffectColor:
 					this.config.cursorClickEffectColor ?? DEFAULT_CURSOR_CONFIG.clickEffectColor,
 				clickEffectScale:
 					this.config.cursorClickEffectScale ?? DEFAULT_CURSOR_CONFIG.clickEffectScale,
 				clickEffectOpacity:
-					this.config.cursorClickEffectOpacity ?? DEFAULT_CURSOR_CONFIG.clickEffectOpacity,
+					this.config.cursorClickEffectOpacity ??
+					DEFAULT_CURSOR_CONFIG.clickEffectOpacity,
 				clickEffectDurationMs:
 					this.config.cursorClickEffectDurationMs ??
 					DEFAULT_CURSOR_CONFIG.clickEffectDurationMs,
@@ -1547,6 +1528,9 @@ export class FrameRenderer {
 					this.config.height,
 					temporalSnapshot.timeMs,
 					scaleFactor,
+					undefined,
+					temporalSnapshot.sceneTransform,
+					this.layoutCache?.maskRect,
 				);
 			}
 
@@ -1731,6 +1715,13 @@ export class FrameRenderer {
 				this.config.height,
 				timeMs,
 				scaleFactor,
+				undefined,
+				{
+					scale: this.animationState.appliedScale,
+					x: this.animationState.x,
+					y: this.animationState.y,
+				},
+				this.layoutCache?.maskRect,
 			);
 		}
 
@@ -1961,7 +1952,7 @@ export class FrameRenderer {
 	private updateAnimationState(timeMs: number): number {
 		if (!this.cameraContainer || !this.layoutCache) return 0;
 
-		const { region, strength, blendedScale, transition } = findDominantRegion(
+		const { region, strength, blendedScale } = findDominantRegion(
 			this.config.zoomRegions,
 			timeMs,
 			{
@@ -2001,43 +1992,6 @@ export class FrameRenderer {
 			targetScaleFactor = zoomScale;
 			targetFocus = regionFocus;
 			targetProgress = strength;
-
-			if (transition) {
-				const startTransform = computeZoomTransform({
-					stageSize: this.layoutCache.stageSize,
-					baseMask: this.layoutCache.maskRect,
-					zoomScale: transition.startScale,
-					zoomProgress: 1,
-					focusX: transition.startFocus.cx,
-					focusY: transition.startFocus.cy,
-				});
-				const endTransform = computeZoomTransform({
-					stageSize: this.layoutCache.stageSize,
-					baseMask: this.layoutCache.maskRect,
-					zoomScale: transition.endScale,
-					zoomProgress: 1,
-					focusX: transition.endFocus.cx,
-					focusY: transition.endFocus.cy,
-				});
-
-				const interpolatedTransform = {
-					scale:
-						startTransform.scale +
-						(endTransform.scale - startTransform.scale) * transition.progress,
-					x: startTransform.x + (endTransform.x - startTransform.x) * transition.progress,
-					y: startTransform.y + (endTransform.y - startTransform.y) * transition.progress,
-				};
-
-				targetScaleFactor = interpolatedTransform.scale;
-				targetFocus = computeFocusFromTransform({
-					stageSize: this.layoutCache.stageSize,
-					baseMask: this.layoutCache.maskRect,
-					zoomScale: interpolatedTransform.scale,
-					x: interpolatedTransform.x,
-					y: interpolatedTransform.y,
-				});
-				targetProgress = 1;
-			}
 		}
 
 		const state = this.animationState;
@@ -2405,33 +2359,7 @@ export class FrameRenderer {
 			return;
 		}
 
-		const margin = webcam.margin ?? 24;
-		const size = getWebcamOverlaySizePx({
-			containerWidth: width,
-			containerHeight: height,
-			sizePercent: webcam.size ?? 50,
-			margin,
-			zoomScale: this.animationState.appliedScale || 1,
-			reactToZoom: webcam.reactToZoom ?? true,
-		});
-		const { x, y } = getWebcamOverlayPosition({
-			containerWidth: width,
-			containerHeight: height,
-			size,
-			margin,
-			positionPreset: webcam.positionPreset ?? webcam.corner,
-			positionX: webcam.positionX ?? 1,
-			positionY: webcam.positionY ?? 1,
-			legacyCorner: webcam.corner,
-		});
-		const radius = Math.max(0, webcam.cornerRadius ?? 18);
-
 		const bubbleCanvas = this.webcamBubbleCanvas ?? document.createElement("canvas");
-		const bubbleSize = Math.max(1, Math.ceil(size));
-		if (bubbleCanvas.width !== bubbleSize || bubbleCanvas.height !== bubbleSize) {
-			bubbleCanvas.width = bubbleSize;
-			bubbleCanvas.height = bubbleSize;
-		}
 		this.webcamBubbleCanvas = bubbleCanvas;
 		const bubbleCtx =
 			this.webcamBubbleCtx ?? configureHighQuality2DContext(bubbleCanvas.getContext("2d"));
@@ -2439,9 +2367,6 @@ export class FrameRenderer {
 			return;
 		}
 		this.webcamBubbleCtx = bubbleCtx;
-		bubbleCtx.clearRect(0, 0, bubbleCanvas.width, bubbleCanvas.height);
-		bubbleCtx.imageSmoothingEnabled = true;
-		bubbleCtx.imageSmoothingQuality = "high";
 
 		const expectedWebcamTargetTime = getWebcamMediaTargetTimeSeconds({
 			currentTime: this.currentVideoTime,
@@ -2507,30 +2432,75 @@ export class FrameRenderer {
 				? webcamFrameSource.displayWidth
 				: "videoWidth" in webcamFrameSource
 					? webcamFrameSource.videoWidth
-					: webcamFrameSource.width) || size;
+					: webcamFrameSource.width) || 1;
 		const sourceHeight =
 			("displayHeight" in webcamFrameSource
 				? webcamFrameSource.displayHeight
 				: "videoHeight" in webcamFrameSource
 					? webcamFrameSource.videoHeight
-					: webcamFrameSource.height) || size;
+					: webcamFrameSource.height) || sourceWidth;
+		const margin = webcam.margin ?? 24;
+		const widthPercent = webcam.width ?? webcam.size ?? 50;
+		const heightPercent = getCropMatchedWebcamHeightPercent(
+			widthPercent,
+			webcam.height ?? webcam.size ?? 50,
+			sourceWidth,
+			sourceHeight,
+			webcam.cropRegion,
+		);
+		const dimensions = getWebcamOverlayDimensionsPx({
+			containerWidth: width,
+			containerHeight: height,
+			widthPercent,
+			heightPercent,
+			margin,
+			zoomScale: this.animationState.appliedScale || 1,
+			reactToZoom: webcam.reactToZoom ?? true,
+		});
+		const { x, y } = getWebcamOverlayPosition({
+			containerWidth: width,
+			containerHeight: height,
+			width: dimensions.width,
+			height: dimensions.height,
+			margin,
+			positionPreset: webcam.positionPreset ?? webcam.corner,
+			positionX: webcam.positionX ?? 1,
+			positionY: webcam.positionY ?? 1,
+			legacyCorner: webcam.corner,
+		});
+		const radius = Math.max(0, webcam.cornerRadius ?? 18);
+		const bubbleWidth = Math.max(1, Math.ceil(dimensions.width));
+		const bubbleHeight = Math.max(1, Math.ceil(dimensions.height));
+		if (bubbleCanvas.width !== bubbleWidth || bubbleCanvas.height !== bubbleHeight) {
+			bubbleCanvas.width = bubbleWidth;
+			bubbleCanvas.height = bubbleHeight;
+		}
+		bubbleCtx.clearRect(0, 0, bubbleCanvas.width, bubbleCanvas.height);
+		bubbleCtx.imageSmoothingEnabled = true;
+		bubbleCtx.imageSmoothingQuality = "high";
 		const { sx, sy, sw, sh } = getWebcamCropSourceRect(
 			webcam.cropRegion,
 			sourceWidth,
 			sourceHeight,
 		);
-		const coverScale = Math.max(size / sw, size / sh);
+		const coverScale = Math.max(dimensions.width / sw, dimensions.height / sh);
 		const drawWidth = sw * coverScale;
 		const drawHeight = sh * coverScale;
-		const drawX = (size - drawWidth) / 2;
-		const drawY = (size - drawHeight) / 2;
+		const drawX = (dimensions.width - drawWidth) / 2;
+		const drawY = (dimensions.height - drawHeight) / 2;
 
 		bubbleCtx.save();
-		drawSquircleOnCanvas(bubbleCtx, { x: 0, y: 0, width: size, height: size, radius });
+		drawSquircleOnCanvas(bubbleCtx, {
+			x: 0,
+			y: 0,
+			width: dimensions.width,
+			height: dimensions.height,
+			radius,
+		});
 		bubbleCtx.clip();
 		if (webcam.mirror) {
 			bubbleCtx.save();
-			bubbleCtx.translate(size, 0);
+			bubbleCtx.translate(dimensions.width, 0);
 			bubbleCtx.scale(-1, 1);
 			bubbleCtx.drawImage(
 				webcamFrameSource,
@@ -2561,14 +2531,15 @@ export class FrameRenderer {
 
 		if ((webcam.shadow ?? 0) > 0) {
 			const shadow = Math.max(0, Math.min(1, webcam.shadow));
+			const shadowSize = Math.min(dimensions.width, dimensions.height);
 			ctx.save();
-			ctx.filter = `drop-shadow(0 ${Math.round(size * 0.06)}px ${Math.round(size * 0.22)}px rgba(0,0,0,${shadow}))`;
-			ctx.drawImage(bubbleCanvas, x, y, size, size);
+			ctx.filter = `drop-shadow(0 ${Math.round(shadowSize * 0.06)}px ${Math.round(shadowSize * 0.22)}px rgba(0,0,0,${shadow}))`;
+			ctx.drawImage(bubbleCanvas, x, y, dimensions.width, dimensions.height);
 			ctx.restore();
 			return;
 		}
 
-		ctx.drawImage(bubbleCanvas, x, y, size, size);
+		ctx.drawImage(bubbleCanvas, x, y, dimensions.width, dimensions.height);
 	}
 
 	private closeWebcamDecodedFrame(): void {
@@ -2597,11 +2568,7 @@ export class FrameRenderer {
 		}
 		this.backgroundSprite = null;
 		if (this.app) {
-			this.app.destroy(true, {
-				children: true,
-				texture: false,
-				textureSource: false,
-			});
+			destroyPixiApplication(this.app, "legacy export renderer");
 			this.app = null;
 		}
 		this.zoomBlurFilter?.destroy();

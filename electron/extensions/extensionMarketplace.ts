@@ -12,7 +12,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { app } from "electron";
-import { getErrorMessage } from "./errorUtils";
+import { formatMarketplaceHttpError, getErrorMessage } from "./errorUtils";
 import { getRegisteredExtensions, installExtensionFromPath } from "./extensionLoader";
 import type {
 	ExtensionReview,
@@ -97,7 +97,13 @@ async function marketplaceFetch<T>(
 
 		if (!response.ok) {
 			const text = await response.text().catch(() => "");
-			throw new Error(`Marketplace API error ${response.status}: ${text}`);
+			throw new Error(
+				formatMarketplaceHttpError({
+					status: response.status,
+					contentType: response.headers.get("content-type"),
+					body: text,
+				}),
+			);
 		}
 
 		return (await response.json()) as T;

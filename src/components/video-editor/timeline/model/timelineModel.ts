@@ -2,10 +2,11 @@ import { formatClipSpeedLabel } from "../../clipSpeedChange";
 import type {
 	AnnotationRegion,
 	AudioRegion,
+	CaptionCue,
 	ClipRegion,
 	ZoomRegion,
 } from "../../types";
-import { CLIP_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
+import { CAPTION_ROW_ID, CLIP_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
 import {
 	getAnnotationTrackIndex,
 	getAnnotationTrackRowId,
@@ -28,7 +29,17 @@ export function getAnnotationLabel(region: AnnotationRegion): string {
 }
 
 export function getAudioLabel(region: AudioRegion): string {
-	return region.audioPath.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "Audio";
+	return (
+		region.audioPath
+			.split(/[\\/]/)
+			.pop()
+			?.replace(/\.[^.]+$/, "") || "Audio"
+	);
+}
+
+function getCaptionLabel(cue: CaptionCue): string {
+	const preview = cue.text.trim() || "Caption";
+	return preview.length > 24 ? `${preview.substring(0, 24)}...` : preview;
 }
 
 export function buildTimelineItems(params: {
@@ -36,8 +47,9 @@ export function buildTimelineItems(params: {
 	clipRegions: ClipRegion[];
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];
+	captionCues?: CaptionCue[];
 }): TimelineRenderItem[] {
-	const { zoomRegions, clipRegions, annotationRegions, audioRegions } = params;
+	const { zoomRegions, clipRegions, annotationRegions, audioRegions, captionCues = [] } = params;
 	const zooms: TimelineRenderItem[] = zoomRegions.map((region, index) => ({
 		id: region.id,
 		rowId: ZOOM_ROW_ID,
@@ -86,7 +98,15 @@ export function buildTimelineItems(params: {
 		variant: "audio",
 	}));
 
-	return [...zooms, ...clips, ...annotations, ...audios];
+	const captions: TimelineRenderItem[] = captionCues.map((cue) => ({
+		id: cue.id,
+		rowId: CAPTION_ROW_ID,
+		span: { start: cue.startMs, end: cue.endMs },
+		label: getCaptionLabel(cue),
+		variant: "caption",
+	}));
+
+	return [...zooms, ...clips, ...annotations, ...audios, ...captions];
 }
 
 export function buildAllRegionSpans(params: {

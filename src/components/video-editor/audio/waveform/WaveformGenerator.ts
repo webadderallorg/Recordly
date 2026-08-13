@@ -1,13 +1,21 @@
-import WorkerConstructor from "./waveform.worker?worker";
-import type { AudioPeaksData } from "../../timeline/core/timelineTypes";
 import { WAVEFORM_DEFAULT_PEAK_COUNT } from "../../timeline/core/constants";
+import type { AudioPeaksData } from "../../timeline/core/timelineTypes";
+import {
+	getAudioResourceCacheScope,
+	getAudioResourceVersionKey,
+} from "../audioResourceVersion";
+import WorkerConstructor from "./waveform.worker?worker";
+import { VersionedWaveformCache } from "./waveformCache";
 
 const MAX_WAVEFORM_PEAKS = 200_000;
+const MAX_WAVEFORM_CACHE_ENTRIES = 24;
 
 export class WaveformGenerator {
 	private audioContext: AudioContext;
 	private worker: Worker;
-	private peaksCache = new Map<string, AudioPeaksData>();
+	private peaksCache = new VersionedWaveformCache<AudioPeaksData>(
+		MAX_WAVEFORM_CACHE_ENTRIES,
+	);
 	private pending = new Map<string, Promise<AudioPeaksData>>();
 	private workerRequestSeq = 0;
 	private workerResolvers = new Map<number, { resolve: (peaks: Float32Array) => void; reject: (err: Error) => void }>();
@@ -60,8 +68,14 @@ export class WaveformGenerator {
 		});
 	}
 
-	public async generate(url: string, peakCount = WAVEFORM_DEFAULT_PEAK_COUNT): Promise<AudioPeaksData> {
-		const cacheKey = `${url}::${peakCount}`;
+	public async generate(
+		url: string,
+		peakCount = WAVEFORM_DEFAULT_PEAK_COUNT,
+		resourceVersion = 0,
+	): Promise<AudioPeaksData> {
+		const cacheScope = `${getAudioResourceCacheScope(url)}::${peakCount}`;
+		const cacheKey = getAudioResourceVersionKey(cacheScope, resourceVersion);
+		this.peaksCache.activate(cacheScope, cacheKey);
 		const cached = this.peaksCache.get(cacheKey);
 		if (cached) return cached;
 
@@ -114,11 +128,12 @@ export class WaveformGenerator {
 				peaks,
 				durationMs: decoded.duration * 1000,
 			};
-			this.peaksCache.set(cacheKey, result);
+			this.peaksCache.setIfCurrent(cacheScope, cacheKey, result);
 			this.pending.delete(cacheKey);
 			return result;
 		})().catch((error) => {
 			this.pending.delete(cacheKey);
+			this.peaksCache.deactivateIfCurrent(cacheScope, cacheKey);
 			throw error;
 		});
 

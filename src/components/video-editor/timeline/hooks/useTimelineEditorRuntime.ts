@@ -4,6 +4,7 @@ import { useCallback, useImperativeHandle } from "react";
 import type {
 	AnnotationRegion,
 	AudioRegion,
+	CaptionCue,
 	ClipRegion,
 	CursorTelemetryPoint,
 	SpeedRegion,
@@ -14,6 +15,7 @@ import type {
 import type { TimelineShortcutBindings } from "../core/timelineTypes";
 import type { TimelineEditorHandle } from "../TimelineEditor";
 import { useTimelineAudioActions } from "./actions/useTimelineAudioActions";
+import { useTimelineCaptionActions } from "./actions/useTimelineCaptionActions";
 import { useTimelineZoomActions } from "./actions/useTimelineZoomActions";
 import { useTimelineDndBindings } from "./useTimelineDndBindings";
 import { useTimelineKeyboardShortcuts } from "./useTimelineKeyboardShortcuts";
@@ -59,6 +61,12 @@ interface UseTimelineEditorRuntimeParams {
 	onAudioDelete?: (id: string) => void;
 	selectedAudioId?: string | null;
 	onSelectAudio?: (id: string | null) => void;
+	captionCues: CaptionCue[];
+	onCaptionSpanChange?: (id: string, span: Span) => void;
+	onCaptionDelete?: (id: string) => void;
+	onCaptionAdded?: (span: Span) => void;
+	selectedCaptionId?: string | null;
+	onSelectCaption?: (id: string | null) => void;
 	isMac: boolean;
 	keyShortcuts: TimelineShortcutBindings;
 	isTimelineFocusedRef: RefObject<boolean>;
@@ -103,6 +111,12 @@ export function useTimelineEditorRuntime({
 	onAudioDelete,
 	selectedAudioId,
 	onSelectAudio,
+	captionCues,
+	onCaptionSpanChange,
+	onCaptionDelete,
+	onCaptionAdded,
+	selectedCaptionId,
+	onSelectCaption,
 	isMac,
 	keyShortcuts,
 	isTimelineFocusedRef,
@@ -122,11 +136,13 @@ export function useTimelineEditorRuntime({
 		deleteSelectedClip,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
+		deleteSelectedCaption,
 		clearSelectedBlocks,
 		handleSelectZoom,
 		handleSelectClip,
 		handleSelectAnnotation,
 		handleSelectAudio,
+		handleSelectCaption,
 		cycleAnnotationsAtCurrentTime,
 	} = useTimelineSelection({
 		totalMs,
@@ -139,14 +155,17 @@ export function useTimelineEditorRuntime({
 		selectedClipId,
 		selectedAnnotationId,
 		selectedAudioId,
+		selectedCaptionId,
 		onZoomDelete,
 		onClipDelete,
 		onAnnotationDelete,
 		onAudioDelete,
+		onCaptionDelete,
 		onSelectZoom,
 		onSelectClip,
 		onSelectAnnotation,
 		onSelectAudio,
+		onSelectCaption,
 	});
 
 	useTimelineNormalization({
@@ -175,12 +194,14 @@ export function useTimelineEditorRuntime({
 		annotationRegions,
 		speedRegions,
 		audioRegions,
+		captionCues,
 		onZoomSpanChange,
 		onTrimSpanChange,
 		onClipSpanChange,
 		onAnnotationSpanChange,
 		onSpeedSpanChange,
 		onAudioSpanChange,
+		onCaptionSpanChange,
 	});
 
 	const {
@@ -199,6 +220,13 @@ export function useTimelineEditorRuntime({
 		onZoomAdded,
 		onZoomSuggested,
 	});
+
+	const { canPlaceCaptionAtMs, addCaptionAtMs, resolveCaptionSpanAtMs } =
+		useTimelineCaptionActions({
+			totalMs,
+			captionRegions: captionCues,
+			onCaptionAdded,
+		});
 
 	const handleSplitClip = useCallback(() => {
 		if (!videoDuration || videoDuration === 0 || totalMs === 0 || !onClipSplit) {
@@ -244,6 +272,7 @@ export function useTimelineEditorRuntime({
 		selectedClipId,
 		selectedAnnotationId,
 		selectedAudioId,
+		selectedCaptionId,
 		selectAllBlocksActive,
 		addKeyframe,
 		handleAddZoom,
@@ -254,6 +283,7 @@ export function useTimelineEditorRuntime({
 		deleteSelectedClip,
 		deleteSelectedAnnotation,
 		deleteSelectedAudio,
+		deleteSelectedCaption,
 		cycleAnnotationsAtCurrentTime,
 	});
 
@@ -289,6 +319,7 @@ export function useTimelineEditorRuntime({
 		handleSelectClip,
 		handleSelectAnnotation,
 		handleSelectAudio,
+		handleSelectCaption,
 		hasOverlap,
 		timelineItems,
 		allRegionSpans,
@@ -296,6 +327,9 @@ export function useTimelineEditorRuntime({
 		handleItemSpanChange,
 		canPlaceZoomAtMs,
 		addZoomAtMs,
+		canPlaceCaptionAtMs,
+		addCaptionAtMs,
+		resolveCaptionSpanAtMs,
 		handleAddZoom,
 		handleSuggestZooms,
 		handleSplitClip,

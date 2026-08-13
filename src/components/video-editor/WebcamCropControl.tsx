@@ -21,7 +21,7 @@ interface WebcamCropControlProps {
 	previewCurrentTime?: number;
 	previewPlaying?: boolean;
 	previewTimeOffsetMs?: number | null;
-	onCropChange: (cropRegion: CropRegion) => void;
+	onCropChange: (cropRegion: CropRegion, previewFrame?: PreviewFrame | null) => void;
 }
 
 interface DragState {
@@ -72,51 +72,23 @@ function clamp(value: number, min: number, max: number): number {
 	return Math.min(max, Math.max(min, value));
 }
 
-function normalizeAspectCropRegion(cropRegion: CropRegion, displayAspectRatio: number): CropRegion {
+function flipCropHorizontally(cropRegion: CropRegion): CropRegion {
 	const crop = normalizeWebcamCropRegion(cropRegion);
-	const aspectRatio =
-		Number.isFinite(displayAspectRatio) && displayAspectRatio > 0 ? displayAspectRatio : 1;
-	const maxWidth = Math.min(1, 1 / aspectRatio);
-	const minWidth = Math.min(MIN_CROP_SIZE, maxWidth);
-	const width = clamp(Math.min(crop.width, crop.height / aspectRatio), minWidth, maxWidth);
-	const height = width * aspectRatio;
-	const centerX = crop.x + crop.width / 2;
-	const centerY = crop.y + crop.height / 2;
-	const x = clamp(centerX - width / 2, 0, 1 - width);
-	const y = clamp(centerY - height / 2, 0, 1 - height);
-
-	return { x, y, width, height };
-}
-
-function flipCropHorizontally(cropRegion: CropRegion, displayAspectRatio: number): CropRegion {
-	const crop = normalizeAspectCropRegion(cropRegion, displayAspectRatio);
 	return {
 		...crop,
 		x: clamp(1 - crop.x - crop.width, 0, 1 - crop.width),
 	};
 }
 
-function resizeCrop(
-	cropRegion: CropRegion,
-	handle: CropHandle,
-	deltaX: number,
-	deltaY: number,
-	displayAspectRatio: number,
-) {
-	const aspectRatio =
-		Number.isFinite(displayAspectRatio) && displayAspectRatio > 0 ? displayAspectRatio : 1;
-	const crop = normalizeAspectCropRegion(cropRegion, aspectRatio);
-	const minWidth = Math.min(MIN_CROP_SIZE, Math.min(1, 1 / aspectRatio));
+function resizeCrop(cropRegion: CropRegion, handle: CropHandle, deltaX: number, deltaY: number) {
+	const crop = normalizeWebcamCropRegion(cropRegion);
 
 	if (handle === "move") {
-		return normalizeAspectCropRegion(
-			{
-				...crop,
-				x: clamp(crop.x + deltaX, 0, 1 - crop.width),
-				y: clamp(crop.y + deltaY, 0, 1 - crop.height),
-			},
-			aspectRatio,
-		);
+		return normalizeWebcamCropRegion({
+			...crop,
+			x: clamp(crop.x + deltaX, 0, 1 - crop.width),
+			y: clamp(crop.y + deltaY, 0, 1 - crop.height),
+		});
 	}
 
 	let left = crop.x;
@@ -124,59 +96,25 @@ function resizeCrop(
 	let right = crop.x + crop.width;
 	let bottom = crop.y + crop.height;
 
-	if (handle === "nw") {
-		const delta = Math.max(deltaX, deltaY / aspectRatio);
-		const nextWidth = clamp(
-			crop.width - delta,
-			minWidth,
-			Math.min(right, bottom / aspectRatio),
-		);
-		left = right - nextWidth;
-		top = bottom - nextWidth * aspectRatio;
+	if (handle === "nw" || handle === "sw") {
+		left = clamp(left + deltaX, 0, right - MIN_CROP_SIZE);
+	}
+	if (handle === "ne" || handle === "se") {
+		right = clamp(right + deltaX, left + MIN_CROP_SIZE, 1);
+	}
+	if (handle === "nw" || handle === "ne") {
+		top = clamp(top + deltaY, 0, bottom - MIN_CROP_SIZE);
+	}
+	if (handle === "sw" || handle === "se") {
+		bottom = clamp(bottom + deltaY, top + MIN_CROP_SIZE, 1);
 	}
 
-	if (handle === "ne") {
-		const delta = Math.max(deltaX, -deltaY / aspectRatio);
-		const nextWidth = clamp(
-			crop.width + delta,
-			minWidth,
-			Math.min(1 - left, bottom / aspectRatio),
-		);
-		right = left + nextWidth;
-		top = bottom - nextWidth * aspectRatio;
-	}
-
-	if (handle === "sw") {
-		const delta = Math.max(-deltaX, deltaY / aspectRatio);
-		const nextWidth = clamp(
-			crop.width + delta,
-			minWidth,
-			Math.min(right, (1 - top) / aspectRatio),
-		);
-		left = right - nextWidth;
-		bottom = top + nextWidth * aspectRatio;
-	}
-
-	if (handle === "se") {
-		const delta = Math.max(deltaX, deltaY / aspectRatio);
-		const nextWidth = clamp(
-			crop.width + delta,
-			minWidth,
-			Math.min(1 - left, (1 - top) / aspectRatio),
-		);
-		right = left + nextWidth;
-		bottom = top + nextWidth * aspectRatio;
-	}
-
-	return normalizeAspectCropRegion(
-		{
-			x: left,
-			y: top,
-			width: right - left,
-			height: bottom - top,
-		},
-		aspectRatio,
-	);
+	return normalizeWebcamCropRegion({
+		x: left,
+		y: top,
+		width: right - left,
+		height: bottom - top,
+	});
 }
 
 export function WebcamCropControl({
@@ -202,10 +140,8 @@ export function WebcamCropControl({
 		hasPreviewFrame && previewFrame && previewFrame.width > 0 && previewFrame.height > 0
 			? previewFrame.width / previewFrame.height
 			: 1;
-	const sourceCrop = normalizeAspectCropRegion(cropRegion, previewAspectRatio);
-	const propVisualCrop = mirrored
-		? flipCropHorizontally(sourceCrop, previewAspectRatio)
-		: sourceCrop;
+	const sourceCrop = normalizeWebcamCropRegion(cropRegion);
+	const propVisualCrop = mirrored ? flipCropHorizontally(sourceCrop) : sourceCrop;
 	const crop = draftVisualCrop ?? propVisualCrop;
 	const cropLeft = crop.x * 100;
 	const cropTop = crop.y * 100;
@@ -224,7 +160,7 @@ export function WebcamCropControl({
 		}
 		cancelPendingCommit();
 		pendingCropRef.current = null;
-		onCropChange(nextCrop);
+		onCropChange(nextCrop, previewFrame);
 	};
 	const syncPreviewMedia = useCallback(() => {
 		const video = previewVideoRef.current;
@@ -280,12 +216,12 @@ export function WebcamCropControl({
 
 	const commitVisualCrop = (nextVisualCrop: CropRegion, immediate = false) => {
 		const nextCrop = mirrored
-			? flipCropHorizontally(nextVisualCrop, previewAspectRatio)
-			: nextVisualCrop;
+			? flipCropHorizontally(nextVisualCrop)
+			: normalizeWebcamCropRegion(nextVisualCrop);
 		if (immediate) {
 			cancelPendingCommit();
 			pendingCropRef.current = null;
-			onCropChange(nextCrop);
+			onCropChange(nextCrop, previewFrame);
 			return;
 		}
 
@@ -358,7 +294,6 @@ export function WebcamCropControl({
 			dragState.handle,
 			pointer.x - dragState.startX,
 			pointer.y - dragState.startY,
-			previewAspectRatio,
 		);
 		setDraftVisualCrop(nextVisualCrop);
 		commitVisualCrop(nextVisualCrop);
@@ -402,7 +337,7 @@ export function WebcamCropControl({
 		}
 		event.preventDefault();
 		event.stopPropagation();
-		commitVisualCrop(resizeCrop(crop, handle, delta.x, delta.y, previewAspectRatio), true);
+		commitVisualCrop(resizeCrop(crop, handle, delta.x, delta.y), true);
 	};
 
 	return (

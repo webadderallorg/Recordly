@@ -15,8 +15,8 @@ import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
 	CaptionCue,
-	CursorClickEffectStyle,
 	CropRegion,
+	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
@@ -39,7 +39,10 @@ import {
 	PixiCursorOverlay,
 	preloadCursorAssets,
 } from "@/components/video-editor/videoPlayback/cursorRenderer";
-import { computePaddedLayout } from "@/components/video-editor/videoPlayback/layoutUtils";
+import {
+	computePaddedLayout,
+	scalePreviewBorderRadius,
+} from "@/components/video-editor/videoPlayback/layoutUtils";
 import {
 	createSpringState,
 	getZoomSpringConfig,
@@ -51,15 +54,15 @@ import { getWebcamMediaTargetTimeSeconds } from "@/components/video-editor/video
 import { findDominantRegion } from "@/components/video-editor/videoPlayback/zoomRegionUtils";
 import {
 	applyZoomTransform,
-	computeFocusFromTransform,
 	computeZoomTransform,
 	createMotionBlurState,
 	type MotionBlurState,
 } from "@/components/video-editor/videoPlayback/zoomTransform";
 import {
+	getCropMatchedWebcamHeightPercent,
 	getWebcamCropSourceRect,
+	getWebcamOverlayDimensionsPx,
 	getWebcamOverlayPosition,
-	getWebcamOverlaySizePx,
 	isWebcamCropRegionDefault,
 } from "@/components/video-editor/webcamOverlay";
 import { getAssetPath, getExportableVideoUrl, getRenderableAssetUrl } from "@/lib/assetPath";
@@ -79,6 +82,10 @@ import {
 	clampMediaTimeToDuration,
 	getEffectiveVideoStreamDurationSeconds,
 } from "@/lib/mediaTiming";
+import {
+	destroyPixiApplication,
+	initializePixiApplicationWithTimeout,
+} from "@/lib/pixiApplicationLifecycle";
 import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import {
 	type AnnotationRenderAssets,
@@ -211,7 +218,8 @@ interface WebcamRenderSource {
 interface WebcamLayoutCache {
 	sourceWidth: number;
 	sourceHeight: number;
-	size: number;
+	width: number;
+	height: number;
 	positionX: number;
 	positionY: number;
 	radius: number;
@@ -278,30 +286,6 @@ function isKnownRendererUnavailableError(error: unknown): boolean {
 		message.includes(CANVAS_RENDERER_NOT_IMPLEMENTED_HINT.toLowerCase()) ||
 		message.includes(NO_RENDERER_HINT)
 	);
-}
-
-type PixiInitOptions = Parameters<Application["init"]>[0];
-
-async function initApplicationWithTimeout(
-	app: Application,
-	options: PixiInitOptions,
-	backend: ExportRenderBackend,
-): Promise<void> {
-	const timeoutErrorMessage = `Initialization timed out after ${PIXI_RENDERER_INIT_TIMEOUT_MS}ms for ${backend} renderer`;
-	let timeoutId: ReturnType<typeof setTimeout> | undefined;
-	const timeoutPromise = new Promise<never>((_, reject) => {
-		timeoutId = setTimeout(() => {
-			reject(new Error(timeoutErrorMessage));
-		}, PIXI_RENDERER_INIT_TIMEOUT_MS);
-	});
-
-	try {
-		await Promise.race([app.init(options), timeoutPromise]);
-	} finally {
-		if (timeoutId !== undefined) {
-			clearTimeout(timeoutId);
-		}
-	}
 }
 
 interface RenderSnapshot {
@@ -599,7 +583,7 @@ export class FrameRenderer {
 		this.webcamRootContainer.visible = false;
 
 		this.overlayContainer.addChild(this.webcamRootContainer);
-		this.overlayContainer.addChild(this.annotationContainer);
+		this.cameraContainer.addChild(this.annotationContainer);
 		this.overlayContainer.addChild(this.captionContainer);
 
 		this.videoMaskGraphics = new Graphics();
@@ -622,14 +606,14 @@ export class FrameRenderer {
 					massMultiplier: this.config.cursorSpringMassMultiplier,
 				},
 				motionBlur: this.config.cursorMotionBlur ?? 0,
-				clickEffect:
-					this.config.cursorClickEffect ?? DEFAULT_CURSOR_CONFIG.clickEffect,
+				clickEffect: this.config.cursorClickEffect ?? DEFAULT_CURSOR_CONFIG.clickEffect,
 				clickEffectColor:
 					this.config.cursorClickEffectColor ?? DEFAULT_CURSOR_CONFIG.clickEffectColor,
 				clickEffectScale:
 					this.config.cursorClickEffectScale ?? DEFAULT_CURSOR_CONFIG.clickEffectScale,
 				clickEffectOpacity:
-					this.config.cursorClickEffectOpacity ?? DEFAULT_CURSOR_CONFIG.clickEffectOpacity,
+					this.config.cursorClickEffectOpacity ??
+					DEFAULT_CURSOR_CONFIG.clickEffectOpacity,
 				clickEffectDurationMs:
 					this.config.cursorClickEffectDurationMs ??
 					DEFAULT_CURSOR_CONFIG.clickEffectDurationMs,
@@ -716,12 +700,13 @@ export class FrameRenderer {
 			const app = new Application();
 			const initStarted = typeof performance === "undefined" ? Date.now() : performance.now();
 			try {
-				await initApplicationWithTimeout(
+				await initializePixiApplicationWithTimeout(
 					app,
 					{
 						...baseOptions,
 						preference: backend,
 					},
+					PIXI_RENDERER_INIT_TIMEOUT_MS,
 					backend,
 				);
 				const elapsed = Math.round(
@@ -750,7 +735,7 @@ export class FrameRenderer {
 					`[FrameRenderer] ${backend} export renderer unavailable (${rendererMessage}) after ${elapsed}ms; trying next backend:`,
 					error,
 				);
-				app.destroy(true);
+				destroyPixiApplication(app, `${backend} export renderer initialization`);
 			}
 		}
 
@@ -1467,9 +1452,7 @@ export class FrameRenderer {
 	private calculateAnnotationScaleFactor(): number {
 		const previewWidth = this.config.previewWidth || 1920;
 		const previewHeight = this.config.previewHeight || 1080;
-		const scaleX = this.config.width / previewWidth;
-		const scaleY = this.config.height / previewHeight;
-		return (scaleX + scaleY) / 2;
+		return (this.config.width / previewWidth + this.config.height / previewHeight) / 2;
 	}
 
 	private hasActiveBlurAnnotations(timeMs: number): boolean {
@@ -1561,6 +1544,7 @@ export class FrameRenderer {
 
 	private async composeBlurAnnotationFrame(
 		timeMs: number,
+		sceneTransform?: { scale: number; x: number; y: number },
 		sourceCanvas?: CanvasImageSource,
 	): Promise<void> {
 		if (!this.app) {
@@ -1586,6 +1570,12 @@ export class FrameRenderer {
 			timeMs,
 			this.annotationScaleFactor,
 			this.annotationAssets ?? undefined,
+			sceneTransform ?? {
+				scale: this.animationState.appliedScale,
+				x: this.animationState.x,
+				y: this.animationState.y,
+			},
+			this.layoutCache?.maskRect,
 		);
 
 		this.drawCaptionOverlay(context);
@@ -1609,10 +1599,16 @@ export class FrameRenderer {
 		);
 
 		for (const annotation of annotations) {
-			const x = (annotation.position.x / 100) * this.config.width;
-			const y = (annotation.position.y / 100) * this.config.height;
-			const width = (annotation.size.width / 100) * this.config.width;
-			const height = (annotation.size.height / 100) * this.config.height;
+			const annotationRect = this.layoutCache?.maskRect ?? {
+				x: 0,
+				y: 0,
+				width: this.config.width,
+				height: this.config.height,
+			};
+			const x = annotationRect.x + (annotation.position.x / 100) * annotationRect.width;
+			const y = annotationRect.y + (annotation.position.y / 100) * annotationRect.height;
+			const width = (annotation.size.width / 100) * annotationRect.width;
+			const height = (annotation.size.height / 100) * annotationRect.height;
 
 			if (width <= 0 || height <= 0) {
 				continue;
@@ -2549,15 +2545,10 @@ export class FrameRenderer {
 			const usesDefaultCropRegion = isWebcamCropRegionDefault(this.config.webcam?.cropRegion);
 			const needsCacheBackedSource =
 				!usesDefaultCropRegion ||
-				(typeof HTMLVideoElement !== "undefined" &&
-					liveSource instanceof HTMLVideoElement);
+				(typeof HTMLVideoElement !== "undefined" && liveSource instanceof HTMLVideoElement);
 
 			if (needsCacheBackedSource) {
-				this.refreshWebcamFrameCache(
-					liveSource,
-					liveSourceWidth,
-					liveSourceHeight,
-				);
+				this.refreshWebcamFrameCache(liveSource, liveSourceWidth, liveSourceHeight);
 				const cachedSource = this.getCachedWebcamRenderSource();
 				if (cachedSource) {
 					this.setWebcamRenderMode("live");
@@ -2604,7 +2595,8 @@ export class FrameRenderer {
 			previousLayout.mirror === nextLayout.mirror &&
 			areNearlyEqual(previousLayout.sourceWidth, nextLayout.sourceWidth) &&
 			areNearlyEqual(previousLayout.sourceHeight, nextLayout.sourceHeight) &&
-			areNearlyEqual(previousLayout.size, nextLayout.size) &&
+			areNearlyEqual(previousLayout.width, nextLayout.width) &&
+			areNearlyEqual(previousLayout.height, nextLayout.height) &&
 			areNearlyEqual(previousLayout.positionX, nextLayout.positionX) &&
 			areNearlyEqual(previousLayout.positionY, nextLayout.positionY) &&
 			areNearlyEqual(previousLayout.radius, nextLayout.radius) &&
@@ -2623,10 +2615,10 @@ export class FrameRenderer {
 			this.webcamSprite,
 			nextLayout.sourceWidth,
 			nextLayout.sourceHeight,
-			nextLayout.size,
-			nextLayout.size,
-			nextLayout.size / 2,
-			nextLayout.size / 2,
+			nextLayout.width,
+			nextLayout.height,
+			nextLayout.width / 2,
+			nextLayout.height / 2,
 			nextLayout.mirror,
 		);
 
@@ -2634,8 +2626,8 @@ export class FrameRenderer {
 		drawSquircleOnGraphics(this.webcamMaskGraphics, {
 			x: 0,
 			y: 0,
-			width: nextLayout.size,
-			height: nextLayout.size,
+			width: nextLayout.width,
+			height: nextLayout.height,
 			radius: nextLayout.radius,
 		});
 		this.webcamMaskGraphics.fill({ color: 0xffffff });
@@ -2646,16 +2638,17 @@ export class FrameRenderer {
 				continue;
 			}
 
-			const offsetY = nextLayout.size * layer.offsetScale * nextLayout.shadowStrength;
+			const shadowSize = Math.min(nextLayout.width, nextLayout.height);
+			const offsetY = shadowSize * layer.offsetScale * nextLayout.shadowStrength;
 			this.rasterizeShadowLayer(layer, {
 				x: 0,
 				y: 0,
-				width: nextLayout.size,
-				height: nextLayout.size,
+				width: nextLayout.width,
+				height: nextLayout.height,
 				radius: nextLayout.radius,
 				offsetY,
 				alpha: layer.alphaScale * nextLayout.shadowStrength,
-				blur: Math.max(0, nextLayout.size * layer.blurScale * nextLayout.shadowStrength),
+				blur: Math.max(0, shadowSize * layer.blurScale * nextLayout.shadowStrength),
 			});
 		}
 
@@ -2904,10 +2897,27 @@ export class FrameRenderer {
 		}
 
 		const margin = webcam.margin ?? 24;
-		const size = getWebcamOverlaySizePx({
+		const widthPercent = webcam.width ?? webcam.size ?? 50;
+		const aspectSourceWidth =
+			liveSourceDimensions.width > 0
+				? liveSourceDimensions.width
+				: renderableWebcamSource.width;
+		const aspectSourceHeight =
+			liveSourceDimensions.height > 0
+				? liveSourceDimensions.height
+				: renderableWebcamSource.height;
+		const heightPercent = getCropMatchedWebcamHeightPercent(
+			widthPercent,
+			webcam.height ?? webcam.size ?? 50,
+			aspectSourceWidth,
+			aspectSourceHeight,
+			webcam.cropRegion,
+		);
+		const dimensions = getWebcamOverlayDimensionsPx({
 			containerWidth: this.config.width,
 			containerHeight: this.config.height,
-			sizePercent: webcam.size ?? 50,
+			widthPercent,
+			heightPercent,
 			margin,
 			zoomScale: this.animationState.appliedScale || 1,
 			reactToZoom: webcam.reactToZoom ?? true,
@@ -2915,7 +2925,8 @@ export class FrameRenderer {
 		const position = getWebcamOverlayPosition({
 			containerWidth: this.config.width,
 			containerHeight: this.config.height,
-			size,
+			width: dimensions.width,
+			height: dimensions.height,
 			margin,
 			positionPreset: webcam.positionPreset ?? webcam.corner,
 			positionX: webcam.positionX ?? 1,
@@ -2930,7 +2941,8 @@ export class FrameRenderer {
 		const nextLayout: WebcamLayoutCache = {
 			sourceWidth: renderableWebcamSource.width,
 			sourceHeight: renderableWebcamSource.height,
-			size,
+			width: dimensions.width,
+			height: dimensions.height,
 			positionX: position.x,
 			positionY: position.y,
 			radius,
@@ -3129,7 +3141,11 @@ export class FrameRenderer {
 			(this.config.annotationRegions?.length ?? 0) > 0 ||
 			Boolean(this.captionCanvas && this.captionSprite?.visible);
 		if (hasOverlayCanvasWork) {
-			await this.composeBlurAnnotationFrame(resolvedSnapshot.timeMs, compositeState.canvas);
+			await this.composeBlurAnnotationFrame(
+				resolvedSnapshot.timeMs,
+				resolvedSnapshot.sceneTransform,
+				compositeState.canvas,
+			);
 		} else {
 			this.outputCanvasOverride = compositeState.canvas;
 		}
@@ -3536,10 +3552,7 @@ export class FrameRenderer {
 		this.videoSprite.scale.set(layout.scale);
 		this.videoSprite.position.set(layout.spriteX, layout.spriteY);
 
-		const previewWidth = this.config.previewWidth || 1920;
-		const previewHeight = this.config.previewHeight || 1080;
-		const canvasScaleFactor = Math.min(width / previewWidth, height / previewHeight);
-		const scaledBorderRadius = borderRadius * canvasScaleFactor;
+		const scaledBorderRadius = scalePreviewBorderRadius(width, height, borderRadius);
 
 		this.videoMaskGraphics.clear();
 		drawSquircleOnGraphics(this.videoMaskGraphics, {
@@ -3689,7 +3702,7 @@ export class FrameRenderer {
 			return 0;
 		}
 
-		const { region, strength, blendedScale, transition } = findDominantRegion(
+		const { region, strength, blendedScale } = findDominantRegion(
 			this.config.zoomRegions,
 			timeMs,
 			{
@@ -3728,43 +3741,6 @@ export class FrameRenderer {
 			targetScaleFactor = zoomScale;
 			targetFocus = regionFocus;
 			targetProgress = strength;
-
-			if (transition) {
-				const startTransform = computeZoomTransform({
-					stageSize: this.layoutCache.stageSize,
-					baseMask: this.layoutCache.maskRect,
-					zoomScale: transition.startScale,
-					zoomProgress: 1,
-					focusX: transition.startFocus.cx,
-					focusY: transition.startFocus.cy,
-				});
-				const endTransform = computeZoomTransform({
-					stageSize: this.layoutCache.stageSize,
-					baseMask: this.layoutCache.maskRect,
-					zoomScale: transition.endScale,
-					zoomProgress: 1,
-					focusX: transition.endFocus.cx,
-					focusY: transition.endFocus.cy,
-				});
-
-				const interpolatedTransform = {
-					scale:
-						startTransform.scale +
-						(endTransform.scale - startTransform.scale) * transition.progress,
-					x: startTransform.x + (endTransform.x - startTransform.x) * transition.progress,
-					y: startTransform.y + (endTransform.y - startTransform.y) * transition.progress,
-				};
-
-				targetScaleFactor = interpolatedTransform.scale;
-				targetFocus = computeFocusFromTransform({
-					stageSize: this.layoutCache.stageSize,
-					baseMask: this.layoutCache.maskRect,
-					zoomScale: interpolatedTransform.scale,
-					x: interpolatedTransform.x,
-					y: interpolatedTransform.y,
-				});
-				targetProgress = 1;
-			}
 		}
 
 		const state = this.animationState;
@@ -3926,11 +3902,7 @@ export class FrameRenderer {
 		this.motionBlurFilter?.destroy();
 		this.backgroundBlurFilter?.destroy();
 
-		this.app?.destroy(true, {
-			children: true,
-			texture: false,
-			textureSource: false,
-		});
+		destroyPixiApplication(this.app, "Lightning export renderer");
 
 		for (const texture of texturesToDestroy) {
 			try {

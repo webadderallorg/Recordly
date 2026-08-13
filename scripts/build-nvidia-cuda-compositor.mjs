@@ -7,6 +7,10 @@ import {
 	updateNativeHelperManifest,
 	verifyNativeHelperManifest,
 } from "./native-helper-manifest.mjs";
+import {
+	configureWithWindowsCmakeGenerator,
+	WINDOWS_VISUAL_STUDIO_INSTALL_DIRS,
+} from "./windows-cmake-generators.mjs";
 
 const projectRoot = process.cwd();
 const sourceDir = path.join(projectRoot, "electron", "native", "nvidia-cuda-compositor");
@@ -84,7 +88,7 @@ function findCmake() {
 		path.join("C:", "Program Files (x86)", "Microsoft Visual Studio"),
 	];
 	const vsEditions = ["Preview", "Community", "Professional", "Enterprise", "BuildTools"];
-	const vsVersions = ["2022", "2019"];
+	const vsVersions = WINDOWS_VISUAL_STUDIO_INSTALL_DIRS;
 	for (const root of vsRoots) {
 		for (const version of vsVersions) {
 			for (const edition of vsEditions) {
@@ -237,32 +241,23 @@ function clearCmakeCache() {
 
 console.log("[build-nvidia-cuda-compositor] Configuring CMake...");
 try {
-	clearCmakeCache();
-	execSync(
-		`${cmake} .. -G "Visual Studio 17 2022" -A ${generatorArch} -DRECORDLY_NVIDIA_VIDEO_CODEC_SDK_ROOT="${videoCodecSdkRoot}"`,
-		{
-			cwd: buildDir,
-			stdio: "inherit",
-			timeout: 120000,
-		},
+	configureWithWindowsCmakeGenerator({
+		prefix: "build-nvidia-cuda-compositor",
+		clearCache: clearCmakeCache,
+		configure: (generator, toolset) =>
+			execSync(
+				`${cmake} .. -G "${generator}" -A ${generatorArch}${toolset ? ` -T ${toolset}` : ""} -DRECORDLY_NVIDIA_VIDEO_CODEC_SDK_ROOT="${videoCodecSdkRoot}"`,
+				{
+					cwd: buildDir,
+					stdio: "inherit",
+					timeout: 120000,
+				},
+			),
+	});
+} catch (error) {
+	fallbackToBundledHelperOrExit(
+		`CMake configure failed: ${error instanceof Error ? error.message : String(error)}`,
 	);
-} catch {
-	console.log("[build-nvidia-cuda-compositor] VS 2022 generator not found, trying VS 2019...");
-	try {
-		clearCmakeCache();
-		execSync(
-			`${cmake} .. -G "Visual Studio 16 2019" -A ${generatorArch} -DRECORDLY_NVIDIA_VIDEO_CODEC_SDK_ROOT="${videoCodecSdkRoot}"`,
-			{
-				cwd: buildDir,
-				stdio: "inherit",
-				timeout: 120000,
-			},
-		);
-	} catch (error) {
-		fallbackToBundledHelperOrExit(
-			`CMake configure failed: ${error instanceof Error ? error.message : String(error)}`,
-		);
-	}
 }
 
 console.log("[build-nvidia-cuda-compositor] Building NVIDIA CUDA compositor...");

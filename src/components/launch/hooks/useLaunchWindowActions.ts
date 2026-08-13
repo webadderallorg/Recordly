@@ -19,8 +19,12 @@ export function useLaunchWindowActions() {
 	}, []);
 
 	const openVideoFile = useCallback(async () => {
-		const result = await window.electronAPI.openVideoFilePicker();
+		const result = await window.electronAPI.openVideoFilePicker({ includeProjects: true });
 		if (result.canceled) return;
+		if (result.success && result.kind === "project") {
+			await window.electronAPI.switchToEditor();
+			return;
+		}
 		if (result.success && result.path) {
 			await window.electronAPI.setCurrentVideoPath(result.path);
 			await window.electronAPI.switchToEditor();

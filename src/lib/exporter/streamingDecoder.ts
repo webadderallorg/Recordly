@@ -1,7 +1,7 @@
 import { WebDemuxer } from "web-demuxer";
 import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
-import { createReadableMediaResourceFile, resolveMediaResourceUrl } from "./localMediaSource";
+import { createFallbackDemuxerSource, resolveMediaResourceUrl } from "./localMediaSource";
 
 const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
@@ -24,7 +24,7 @@ export interface DecodedVideoInfo {
 }
 
 interface StreamingVideoDecoderLoadOptions {
-	forceReadableFileSource?: boolean;
+	useFallbackMediaSource?: boolean;
 }
 
 /** Decoder retains ownership of the VideoFrame and closes it after use. */
@@ -126,14 +126,14 @@ export class StreamingVideoDecoder {
 		};
 
 		let mediaInfo;
-		if (options.forceReadableFileSource) {
-			mediaInfo = await loadMediaInfo(await createReadableMediaResourceFile(videoUrl));
+		if (options.useFallbackMediaSource) {
+			mediaInfo = await loadMediaInfo(await createFallbackDemuxerSource(videoUrl));
 		} else {
 			try {
 				mediaInfo = await loadMediaInfo(resourceUrl);
 			} catch (error) {
 				console.warn(
-					"[StreamingVideoDecoder] Direct source load failed, retrying with file fallback:",
+					"[StreamingVideoDecoder] Direct source load failed, retrying with a fresh media source:",
 					error,
 				);
 				const currentDemuxer = this.demuxer;
@@ -144,7 +144,7 @@ export class StreamingVideoDecoder {
 						// Ignore cleanup errors before fallback re-init.
 					}
 				}
-				mediaInfo = await loadMediaInfo(await createReadableMediaResourceFile(videoUrl));
+				mediaInfo = await loadMediaInfo(await createFallbackDemuxerSource(videoUrl));
 			}
 		}
 

@@ -59,7 +59,9 @@ type CaptionSourceWord = {
 };
 
 const CAPTION_ENTER_MS = 180;
-const CAPTION_EXIT_MS = 140;
+// Keep the exit symmetric with the entrance so captions fade out with the
+// same opacity/translateY/scale curve and duration they faded in with.
+const CAPTION_EXIT_MS = CAPTION_ENTER_MS;
 const CAPTION_BLOCK_GAP_BREAK_MS = 500;
 
 function clamp(value: number, min: number, max: number) {
@@ -95,7 +97,7 @@ function splitCaptionWordsFromText(text: string) {
 
 function splitCaptionWords(cue: CaptionCue) {
 	if (Array.isArray(cue.words) && cue.words.length > 0) {
-		return cue.words
+		const words = cue.words
 			.filter((word): word is CaptionCueWord =>
 				Boolean(word && typeof word.text === "string"),
 			)
@@ -109,6 +111,10 @@ function splitCaptionWords(cue: CaptionCue) {
 				endMs: word.endMs,
 			}))
 			.filter((word) => word.text.length > 0);
+
+		if (words.length > 0) {
+			return words;
+		}
 	}
 
 	return splitCaptionWordsFromText(cue.text).map((word) => ({
@@ -127,7 +133,26 @@ function getActiveCaptionCue(cues: CaptionCue[], timeMs: number) {
 	return null;
 }
 
-function flattenCaptionWords(cues: CaptionCue[]) {
+function isWithinCaptionCoverage(cues: CaptionCue[], timeMs: number) {
+	const sorted = [...cues].sort((left, right) => left.startMs - right.startMs);
+	for (let index = 0; index < sorted.length; index += 1) {
+		const cue = sorted[index];
+		if (timeMs < cue.startMs) {
+			return false;
+		}
+		const next = sorted[index + 1];
+		const bridgesGap =
+			next !== undefined && next.startMs - cue.endMs < CAPTION_BLOCK_GAP_BREAK_MS;
+		const effectiveEndMs = bridgesGap ? Math.max(cue.endMs, next.startMs) : cue.endMs;
+		if (timeMs <= effectiveEndMs) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+export function flattenCaptionWords(cues: CaptionCue[]) {
 	const flattened: Array<{
 		cueId: string;
 		cueWordIndex: number;
@@ -154,8 +179,10 @@ function flattenCaptionWords(cues: CaptionCue[]) {
 		const cueDuration = Math.max(1, cue.endMs - cue.startMs);
 		const fallbackWordDuration = cueDuration / sourceWords.length;
 		const previousCue = cueIndex > 0 ? cues[cueIndex - 1] : null;
-		const shouldForceCueBreak =
-			previousCue !== null && cue.startMs - previousCue.endMs >= CAPTION_BLOCK_GAP_BREAK_MS;
+		// Each cue is its own phrase, so always start a new line/page at a cue boundary.
+		// Otherwise back-to-back phrases (a small gap) get re-packed together by width and
+		// their boundary disappears on screen — we want one phrase shown at a time.
+		const shouldForceCueBreak = previousCue !== null;
 
 		sourceWords.forEach((word, wordIndex) => {
 			const fallbackStartMs = cue.startMs + fallbackWordDuration * wordIndex;
@@ -417,6 +444,10 @@ export function buildActiveCaptionLayout(options: {
 		return null;
 	}
 
+	if (!isWithinCaptionCoverage(options.cues, options.timeMs)) {
+		return null;
+	}
+
 	let activeWordIndex = -1;
 	activeWordIndex = sourceWords.findIndex(
 		(word) => options.timeMs >= word.startMs && options.timeMs < word.endMs,
@@ -491,13 +522,34 @@ export function buildActiveCaptionLayout(options: {
 		getActiveCaptionCue(options.cues, options.timeMs) ??
 		options.cues.find((candidate) => candidate.id === pageCueId) ??
 		options.cues[0];
+	// `animationEndMs` is stretched to the next page's start (see buildCaptionPages)
+	// so consecutive pages stay on screen with no gap. That's right for continuous
+	// speech, but pages are built from every cue flattened together — so when a
+	// caption component (cue) is the last before a pause, its stitched end points
+	// across the silence into the next cue. exitProgress would then stay pinned at
+	// 1 and the caption would vanish with no fade. Anchor the exit to the real end
+	// of the visible words instead, and only when nothing follows within the
+	// gap-break window (otherwise keep the stitched end so continuous page swaps
+	// don't flicker).
+	const visibleContentEndMs = visibleWords.reduce(
+		(latest, word) => Math.max(latest, word.endMs),
+		animationStartMs,
+	);
+	const willDisappear =
+		options.settings.animationStyle !== "none" &&
+		!isWithinCaptionCoverage(options.cues, visibleContentEndMs + 1);
+	const exitAnchorMs = willDisappear ? visibleContentEndMs : animationEndMs;
 	const enterProgress = clamp01((options.timeMs - animationStartMs) / CAPTION_ENTER_MS);
-	const exitProgress = clamp01((animationEndMs - options.timeMs) / CAPTION_EXIT_MS);
+	const exitProgress = clamp01((exitAnchorMs - options.timeMs) / CAPTION_EXIT_MS);
 	const animation = getCaptionAnimationState(
 		options.settings.animationStyle,
 		enterProgress,
 		exitProgress,
 	);
+	// On a real disappearance the per-style opacity only eases to its readability
+	// floor (~0.3) before the element unmounts, which reads as a snap. Fade fully
+	// to 0 across the exit window so the caption leaves smoothly.
+	const opacity = willDisappear ? animation.opacity * exitProgress : animation.opacity;
 
 	return {
 		cue: activeCue,
@@ -523,7 +575,7 @@ export function buildActiveCaptionLayout(options: {
 			})),
 		},
 		visiblePageIndex,
-		opacity: animation.opacity,
+		opacity,
 		translateY: animation.translateY,
 		scale: animation.scale,
 	} satisfies ActiveCaptionLayout;

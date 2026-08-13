@@ -136,6 +136,8 @@
 		"webcamFootageAdded": "Filmagem da webcam vinculada",
 		"webcamFootageRemoved": "Filmagem da webcam removida",
 		"webcamSize": "Tamanho da webcam",
+		"webcamWidth": "Largura da webcam",
+		"webcamHeight": "Altura da webcam",
 		"webcamCrop": "Corte da webcam",
 		"webcamReactToZoom": "Webcam reage ao zoom",
 		"webcamMirror": "Espelhar webcam",
@@ -156,6 +158,7 @@
 	"sections": {
 		"scene": "Cena",
 		"captions": "Legendas",
+		"caption": "Legenda",
 		"zoom": "Zoom",
 		"cursor": "Cursor",
 		"webcam": "Webcam",
@@ -163,7 +166,9 @@
 		"crop": "Corte"
 	},
 	"captions": {
+		"selectOnTimeline": "Selecione uma legenda na linha do tempo para editá-la.",
 		"enabled": "Mostrar",
+		"timelineQuickAdd": "Passe o cursor para adicionar na linha do tempo",
 		"language": "Idioma",
 		"downloading": "Baixando...",
 		"deleteModel": "Excluir modelo",
@@ -187,7 +192,15 @@
 		"maxWidth": "Largura máxima",
 		"boxRadius": "Raio da caixa",
 		"backgroundOpacity": "Opacidade do fundo",
-		"textColor": "Cor do texto"
+		"textColor": "Cor do texto",
+		"editor": {
+			"text": "Text",
+			"start": "Start",
+			"end": "End",
+			"split": "Split",
+			"merge": "Merge",
+			"delete": "Delete"
+		}
 	},
 	"crop": {
 		"title": "Cortar vídeo",

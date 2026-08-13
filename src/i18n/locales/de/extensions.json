@@ -1,0 +1,60 @@
+{
+    "title": "Erweiterungen",
+    "tabs": {
+        "browse": "Durchsuchen",
+        "installed": "Installiert"
+    },
+    "actions": {
+        "submit": "Erweiterung einreichen",
+        "docs": "Dokumentation zu Erweiterungen",
+		"refresh": "Aktualisieren",
+        "openFolder": "Erweiterungsordner öffnen",
+        "uninstall": "Deinstallieren",
+        "install": "Installieren",
+        "installing": "Wird installiert",
+        "add": "Hinzufügen",
+        "retry": "Wiederholen",
+		"close": "Schließen",
+        "folder": "Ordner"
+    },
+    "status": {
+        "enabled": "Aktiviert",
+        "disabled": "Deaktiviert",
+        "installed": "Installiert"
+    },
+    "detail": {
+		"by": "Von {{author}}",
+        "unknownAuthor": "Unbekannter Autor",
+        "noDescription": "Keine Beschreibung",
+        "downloads": "{{count}} Downloads",
+        "preview": "Vorschau",
+		"screenshotAlt": "Screenshot {{number}}",
+        "description": "Beschreibung",
+        "tags": "Tags",
+        "permissions": "Berechtigungen",
+        "location": "Speicherort",
+        "error": "Fehler: {{message}}"
+    },
+	"empty": {
+        "title": "Keine Erweiterungen",
+        "description": "Installiere Erweiterungen, um Rahmen, Cursor-Effekte und Editor-Werkzeuge hinzuzufügen."
+    },
+    "search": {
+        "placeholder": "Erweiterungen suchen...",
+		"noResults": "Keine Erweiterungen gefunden",
+        "noMarketplace": "Noch keine Erweiterungen im Marktplatz verfügbar",
+        "count": "{{count}} Erweiterung",
+        "countPlural": "{{count}} Erweiterungen"
+    },
+    "toast": {
+		"installedAndEnabled": "Erweiterung installiert und aktiviert",
+        "uninstalled": "{{name}} deinstalliert",
+        "uninstallFailed": "Deinstallation von {{name}} fehlgeschlagen",
+        "searchFailed": "Suche im Marktplatz fehlgeschlagen",
+        "refreshed": "Erweiterungen aktualisiert",
+		"refreshFailed": "Erweiterungen konnten nicht aktualisiert werden",
+        "marketplaceInstalled": "{{name}} wurde installiert und aktiviert",
+        "marketplaceInstallFailed": "Die Installation von {{name}} ist fehlgeschlagen",
+        "enableFailed": "Die Aktivierung der Erweiterung ist fehlgeschlagen"
+    }
+}

@@ -27,6 +27,14 @@ describe("Windows native helper path resolution", () => {
 		await fs.rm(tempRoot, { recursive: true, force: true });
 	});
 
+	it("resolves a requested platform tag independently of the host platform", async () => {
+		const { getNativeArchTag } = await import("./binaries");
+
+		expect(getNativeArchTag("win32")).toBe(
+			process.arch === "arm64" ? "win32-arm64" : "win32-x64",
+		);
+	});
+
 	it("prefers the branch-staged helper over a stale local CMake build in dev", async () => {
 		const buildOutputPath = path.join(
 			appPath,

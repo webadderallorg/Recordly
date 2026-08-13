@@ -39,8 +39,11 @@ jobs:
         shell: pwsh
         run: |
           npm run build:platform-native-helpers
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx tsc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx vite build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx electron-builder --win dir nsis --x64 --publish never
 
       - name: Smoke test packaged Windows paths

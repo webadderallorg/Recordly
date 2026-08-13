@@ -9,6 +9,14 @@ on:
         description: Existing release tag to rebuild and publish
         required: true
         type: string
+      release_scope:
+        description: Platforms to publish
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - windows-linux
 
 permissions:
   contents: write
@@ -30,6 +38,7 @@ jobs:
       package_version: ${{ steps.prepare.outputs.package_version }}
       source_sha: ${{ steps.prepare.outputs.source_sha }}
       prerelease: ${{ steps.prepare.outputs.prerelease }}
+      release_scope: ${{ steps.prepare.outputs.release_scope }}
     steps:
       - name: Checkout release source
         uses: actions/checkout@v4
@@ -42,14 +51,23 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          REQUESTED_SCOPE: ${{ github.event.inputs.release_scope }}
+          RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          DISPATCH_TAG_NAME: ${{ github.event.inputs.tag_name }}
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" = "release" ]; then
-            TAG_NAME="${{ github.event.release.tag_name }}"
+            TAG_NAME="$RELEASE_TAG_NAME"
             IS_PRERELEASE="${{ github.event.release.prerelease }}"
+            RELEASE_SCOPE="all"
+            if [ "$IS_PRERELEASE" = "true" ] && grep -Fq '<!-- release-scope: windows-linux -->' <<< "$RELEASE_BODY"; then
+              RELEASE_SCOPE="windows-linux"
+            fi
           else
-            TAG_NAME="${{ github.event.inputs.tag_name }}"
+            TAG_NAME="$DISPATCH_TAG_NAME"
             IS_PRERELEASE="$(gh release view "$TAG_NAME" --repo "${{ github.repository }}" --json isPrerelease --jq '.isPrerelease' 2>/dev/null || echo false)"
+            RELEASE_SCOPE="${REQUESTED_SCOPE:-all}"
           fi
 
           if [ -z "$TAG_NAME" ]; then
@@ -65,6 +83,19 @@ jobs:
             exit 1
           fi
 
+          case "$RELEASE_SCOPE" in
+            all|windows-linux) ;;
+            *)
+              echo "Unsupported release scope: $RELEASE_SCOPE"
+              exit 1
+              ;;
+          esac
+
+          if [ "$IS_PRERELEASE" != "true" ] && [ "$RELEASE_SCOPE" != "all" ]; then
+            echo "Partial platform scope is allowed only for prereleases."
+            exit 1
+          fi
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
               gh release create "$TAG_NAME" --repo "${{ github.repository }}" --verify-tag --draft --title "$TAG_NAME"
@@ -74,9 +105,11 @@ jobs:
           echo "package_version=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "release_scope=$RELEASE_SCOPE" >> "$GITHUB_OUTPUT"
   build-macos-x64:
     name: Build macOS x64
     needs: prepare-release
+    if: needs.prepare-release.outputs.release_scope == 'all'
     runs-on: macos-15-intel
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -178,6 +211,7 @@ jobs:
   build-macos-arm64:
     name: Build macOS arm64
     needs: prepare-release
+    if: needs.prepare-release.outputs.release_scope == 'all'
     runs-on: macos-14
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -282,6 +316,7 @@ jobs:
       - prepare-release
       - build-macos-x64
       - build-macos-arm64
+    if: needs.prepare-release.outputs.release_scope == 'all'
     runs-on: ubuntu-latest
     steps:
       - name: Download macOS x64 artifacts
@@ -521,21 +556,37 @@ jobs:
       - merge-macos-update-metadata
       - build-windows-x64
       - build-linux-x64
+    if: |
+      always() &&
+      needs.prepare-release.result == 'success' &&
+      needs.build-windows-x64.result == 'success' &&
+      needs.build-linux-x64.result == 'success' &&
+      (
+        needs.prepare-release.outputs.release_scope == 'windows-linux' ||
+        (
+          needs.build-macos-x64.result == 'success' &&
+          needs.build-macos-arm64.result == 'success' &&
+          needs.merge-macos-update-metadata.result == 'success'
+        )
+      )
     runs-on: ubuntu-latest
     steps:
       - name: Download macOS x64 artifacts
+        if: needs.prepare-release.outputs.release_scope == 'all'
         uses: actions/download-artifact@v4
         with:
           name: macos-x64-release
           path: release-assets/macos-x64
 
       - name: Download macOS arm64 artifacts
+        if: needs.prepare-release.outputs.release_scope == 'all'
         uses: actions/download-artifact@v4
         with:
           name: macos-arm64-release
           path: release-assets/macos-arm64
 
       - name: Download merged macOS metadata
+        if: needs.prepare-release.outputs.release_scope == 'all'
         uses: actions/download-artifact@v4
         with:
           name: macos-merged-metadata
@@ -557,23 +608,29 @@ jobs:
         shell: bash
         env:
           IS_PRERELEASE: ${{ needs.prepare-release.outputs.prerelease }}
+          RELEASE_SCOPE: ${{ needs.prepare-release.outputs.release_scope }}
         run: |
           set -euo pipefail
           shopt -s nullglob
 
           mkdir -p release-assets/upload
           assets=(
-            release-assets/macos-x64/*.dmg
-            release-assets/macos-x64/*.zip
-            release-assets/macos-x64/*.blockmap
-            release-assets/macos-arm64/*.dmg
-            release-assets/macos-arm64/*.zip
-            release-assets/macos-arm64/*.blockmap
             release-assets/windows-x64/*.exe
             release-assets/windows-x64/*.blockmap
             release-assets/linux-x64/*.AppImage
             release-assets/linux-x64/*.blockmap
           )
+
+          if [ "$RELEASE_SCOPE" = "all" ]; then
+            assets+=(
+              release-assets/macos-x64/*.dmg
+              release-assets/macos-x64/*.zip
+              release-assets/macos-x64/*.blockmap
+              release-assets/macos-arm64/*.dmg
+              release-assets/macos-arm64/*.zip
+              release-assets/macos-arm64/*.blockmap
+            )
+          fi
 
           if [ "$IS_PRERELEASE" != "true" ]; then
             assets+=(
@@ -638,7 +695,7 @@ jobs:
       - prepare-release
       - publish-release-assets
     runs-on: ubuntu-latest
-    if: needs.prepare-release.outputs.prerelease != 'true'
+    if: needs.prepare-release.outputs.prerelease != 'true' && needs.prepare-release.outputs.release_scope == 'all'
     steps:
       - name: Dispatch Homebrew tap workflow
         shell: bash

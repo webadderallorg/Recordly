@@ -68,6 +68,7 @@ import {
 	waitForNativeCaptureStart,
 	waitForNativeCaptureStop,
 } from "../recording/mac";
+import { resolveRecordedVideoStoragePath } from "../recording/storagePath";
 import {
 	attachWindowsCaptureLifecycle,
 	isNativeWindowsCaptureAvailable,
@@ -1747,10 +1748,10 @@ export function registerRecordingHandlers(
 		},
 	);
 
-	ipcMain.handle("store-recorded-video", async (_, videoData: ArrayBuffer, fileName: string) => {
+	ipcMain.handle("store-recorded-video", async (_, videoData: ArrayBuffer, fileName: unknown) => {
 		try {
 			const recordingsDir = await getRecordingsDir();
-			const videoPath = path.join(recordingsDir, fileName);
+			const videoPath = resolveRecordedVideoStoragePath(recordingsDir, fileName);
 			await fs.writeFile(videoPath, Buffer.from(videoData));
 			return await finalizeStoredVideo(videoPath);
 		} catch (error) {

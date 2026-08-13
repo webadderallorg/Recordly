@@ -29,24 +29,27 @@ export function getNativeCaptureHelperSourcePath(): string {
 	return resolveUnpackedAppPath("electron", "native", "ScreenCaptureKitRecorder.swift");
 }
 
-export function getNativeArchTag(): string {
-	if (process.platform === "darwin") {
+export function getNativeArchTag(platform: NodeJS.Platform = process.platform): string {
+	if (platform === "darwin") {
 		return process.arch === "arm64" ? "darwin-arm64" : "darwin-x64";
 	}
 
-	if (process.platform === "win32") {
+	if (platform === "win32") {
 		return process.arch === "arm64" ? "win32-arm64" : "win32-x64";
 	}
 
-	if (process.platform === "linux") {
+	if (platform === "linux") {
 		return process.arch === "arm64" ? "linux-arm64" : "linux-x64";
 	}
 
-	return `${process.platform}-${process.arch}`;
+	return `${platform}-${process.arch}`;
 }
 
-export function getPrebundledNativeHelperPath(binaryName: string): string {
-	return resolveUnpackedAppPath("electron", "native", "bin", getNativeArchTag(), binaryName);
+export function getPrebundledNativeHelperPath(
+	binaryName: string,
+	archTag = getNativeArchTag(),
+): string {
+	return resolveUnpackedAppPath("electron", "native", "bin", archTag, binaryName);
 }
 
 export function resolvePreferredWindowsNativeHelperPath(
@@ -61,7 +64,7 @@ export function resolvePreferredWindowsNativeHelperPath(
 		"Release",
 		binaryName,
 	);
-	const prebundledPath = getPrebundledNativeHelperPath(binaryName);
+	const prebundledPath = getPrebundledNativeHelperPath(binaryName, getNativeArchTag("win32"));
 
 	if (app.isPackaged && existsSync(prebundledPath)) {
 		return prebundledPath;

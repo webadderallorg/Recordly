@@ -87,7 +87,12 @@ import {
 } from "@/utils/aspectRatioUtils";
 import { planClipSpeedChange } from "./clipSpeedChange";
 import { ExtensionIcon } from "./ExtensionIcon";
-import { calculateMp4ExportDimensions, calculateMp4SourceDimensions } from "./exportDimensions";
+import {
+	calculateMp4ExportDimensions,
+	calculateMp4SourceDimensions,
+	type Mp4SupportProbeSnapshot,
+	shouldDebounceMp4SupportProbe,
+} from "./exportDimensions";
 import { resolveSavingExportProgress } from "./exportProgressState";
 import { resolveExportStartSettings } from "./exportStartSettings";
 import { resolveExportStatusModel } from "./exportStatusModel";
@@ -119,6 +124,21 @@ import { extensionHost } from "@/lib/extensions";
 import { useVideoEditorAudio } from "./audio/useVideoEditorAudio";
 import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
 import { CropControl } from "./CropControl";
+import {
+	type CaptionEditTarget,
+	normalizeCaptionEditText,
+	normalizeCaptionWords,
+	updateCaptionCuesForEditedTarget,
+} from "./captionEditing";
+import {
+	addCue,
+	type CaptionRetimeSpan,
+	createCaptionCue,
+	deleteCue,
+	mergeCues,
+	retimeCue,
+	splitCue,
+} from "./captionOps";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
 import ExtensionManager from "./ExtensionManager";
 import {
@@ -241,6 +261,7 @@ type CancelableExporter = {
 };
 
 const EXPORT_BLOB_STREAM_CHUNK_BYTES = 16 * 1024 * 1024;
+const MP4_CROP_PROBE_DEBOUNCE_MS = 200;
 
 async function streamExportBlobToTempFile(blob: Blob, extension: string): Promise<string | null> {
 	if (
@@ -296,6 +317,18 @@ type SaveProjectOptions = {
 	remountPreviewAfterSave?: boolean;
 	refreshLibraryAfterSave?: boolean;
 	captureThumbnail?: boolean;
+};
+
+type NamedProjectSaveMode = "rename" | "copy";
+
+type PendingProjectSaveDialog = {
+	resolve: (saved: boolean) => void;
+};
+
+type PendingUnsavedChangesDialogDecision = "cancel" | "discard" | "save";
+
+type PendingUnsavedChangesDialog = {
+	resolve: (decision: PendingUnsavedChangesDialogDecision) => void;
 };
 
 async function writeSmokeExportReport(
@@ -382,6 +415,12 @@ export default function VideoEditor() {
 	const [isEditingProjectName, setIsEditingProjectName] = useState(false);
 	const [projectNameDraft, setProjectNameDraft] = useState("");
 	const [isSavingProjectName, setIsSavingProjectName] = useState(false);
+	const [projectSaveDialogOpen, setProjectSaveDialogOpen] = useState(false);
+	const [projectSaveDialogDraft, setProjectSaveDialogDraft] = useState("");
+	const [isSavingProjectDialog, setIsSavingProjectDialog] = useState(false);
+	const [unsavedChangesDialogOpen, setUnsavedChangesDialogOpen] = useState(false);
+	const [unsavedChangesDialogActionLabel, setUnsavedChangesDialogActionLabel] =
+		useState("continue");
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [isPlaying, setIsPlaying] = useState(false);
@@ -518,6 +557,7 @@ export default function VideoEditor() {
 	const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
 	const [audioRegions, setAudioRegions] = useState<AudioRegion[]>([]);
 	const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
+	const [selectedCaptionId, setSelectedCaptionId] = useState<string | null>(null);
 	const [sourceAudioTrackSettingsByClip, setSourceAudioTrackSettingsByClip] = useState<
 		Record<string, SourceAudioTrackSettings>
 	>({});
@@ -529,7 +569,7 @@ export default function VideoEditor() {
 	const [autoCaptionSettings, setAutoCaptionSettings] = useState<AutoCaptionSettings>(
 		DEFAULT_AUTO_CAPTION_SETTINGS,
 	);
-	const [includeCaptionSidecar, setIncludeCaptionSidecar] = useState(true);
+	const [includeCaptionSidecar, setIncludeCaptionSidecar] = useState(false);
 	const [whisperExecutablePath, setWhisperExecutablePath] = useState<string | null>(
 		initialEditorPreferences.whisperExecutablePath,
 	);
@@ -648,6 +688,7 @@ export default function VideoEditor() {
 	const projectBrowserTriggerRef = useRef<HTMLButtonElement | null>(null);
 	const projectBrowserFallbackTriggerRef = useRef<HTMLButtonElement | null>(null);
 	const projectNameInputRef = useRef<HTMLInputElement | null>(null);
+	const projectSaveDialogInputRef = useRef<HTMLInputElement | null>(null);
 	const nextZoomIdRef = useRef(1);
 	const nextClipIdRef = useRef(1);
 	const nextAudioIdRef = useRef(1);
@@ -666,8 +707,11 @@ export default function VideoEditor() {
 	const pendingFreshRecordingAutoSuggestTelemetryCountRef = useRef(0);
 	const cropSnapshotRef = useRef<CropRegion | null>(null);
 	const mp4SupportRequestRef = useRef(0);
+	const previousMp4SupportProbeRef = useRef<Mp4SupportProbeSnapshot | null>(null);
 	const smokeExportStartedRef = useRef(false);
 	const projectAutosaveTimeoutRef = useRef<number | null>(null);
+	const pendingProjectSaveDialogRef = useRef<PendingProjectSaveDialog | null>(null);
+	const pendingUnsavedChangesDialogRef = useRef<PendingUnsavedChangesDialog | null>(null);
 	const projectSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 	const smokeExportReadyStateRef = useRef<Record<string, unknown>>({});
 	const [historyVersion, setHistoryVersion] = useState(0);
@@ -1448,15 +1492,22 @@ export default function VideoEditor() {
 		[gifSizePreset],
 	);
 
-	const desiredMp4SourceDimensions = useMemo(
-		() =>
-			calculateMp4SourceDimensions(
-				videoPlaybackRef.current?.video?.videoWidth || 1920,
-				videoPlaybackRef.current?.video?.videoHeight || 1080,
-				aspectRatio,
-			),
-		[aspectRatio],
-	);
+	const mp4SourceDimensions = useMemo(() => {
+		const sourceVideo = isPreviewReady ? videoPlaybackRef.current?.video : null;
+		return {
+			width: sourceVideo?.videoWidth || 1920,
+			height: sourceVideo?.videoHeight || 1080,
+		};
+	}, [isPreviewReady]);
+
+	const desiredMp4SourceDimensions = useMemo(() => {
+		return calculateMp4SourceDimensions(
+			mp4SourceDimensions.width,
+			mp4SourceDimensions.height,
+			aspectRatio,
+			cropRegion,
+		);
+	}, [aspectRatio, cropRegion, mp4SourceDimensions.height, mp4SourceDimensions.width]);
 
 	const mp4OutputDimensions = useMemo(() => {
 		const baseWidth = supportedMp4SourceDimensions.encoderPath
@@ -1496,21 +1547,6 @@ export default function VideoEditor() {
 				);
 			}
 
-			setSupportedMp4SourceDimensions((current) => {
-				if (
-					current.width === result.width &&
-					current.height === result.height &&
-					current.capped === result.capped &&
-					current.encoderPath?.codec === result.encoderPath?.codec &&
-					current.encoderPath?.hardwareAcceleration ===
-						result.encoderPath?.hardwareAcceleration
-				) {
-					return current;
-				}
-
-				return result;
-			});
-
 			return result;
 		},
 		[desiredMp4SourceDimensions.height, desiredMp4SourceDimensions.width],
@@ -1520,6 +1556,19 @@ export default function VideoEditor() {
 		let cancelled = false;
 		const requestId = mp4SupportRequestRef.current + 1;
 		mp4SupportRequestRef.current = requestId;
+		const probeSnapshot: Mp4SupportProbeSnapshot = {
+			sourceWidth: mp4SourceDimensions.width,
+			sourceHeight: mp4SourceDimensions.height,
+			targetWidth: desiredMp4SourceDimensions.width,
+			targetHeight: desiredMp4SourceDimensions.height,
+			aspectRatio,
+			frameRate: mp4FrameRate,
+		};
+		const shouldDebounce = shouldDebounceMp4SupportProbe(
+			previousMp4SupportProbeRef.current,
+			probeSnapshot,
+		);
+		previousMp4SupportProbeRef.current = probeSnapshot;
 		setSupportedMp4SourceDimensions({
 			width: desiredMp4SourceDimensions.width,
 			height: desiredMp4SourceDimensions.height,
@@ -1527,33 +1576,48 @@ export default function VideoEditor() {
 			encoderPath: null,
 		});
 
-		void ensureSupportedMp4SourceDimensions(mp4FrameRate)
-			.then((result) => {
-				if (cancelled || requestId !== mp4SupportRequestRef.current) {
-					return;
-				}
-				setSupportedMp4SourceDimensions(result);
-			})
-			.catch(() => {
-				if (cancelled || requestId !== mp4SupportRequestRef.current) {
-					return;
-				}
-				setSupportedMp4SourceDimensions({
-					width: desiredMp4SourceDimensions.width,
-					height: desiredMp4SourceDimensions.height,
-					capped: false,
-					encoderPath: null,
+		const runProbe = () => {
+			void ensureSupportedMp4SourceDimensions(mp4FrameRate)
+				.then((result) => {
+					if (cancelled || requestId !== mp4SupportRequestRef.current) {
+						return;
+					}
+					setSupportedMp4SourceDimensions(result);
+				})
+				.catch(() => {
+					if (cancelled || requestId !== mp4SupportRequestRef.current) {
+						return;
+					}
+					setSupportedMp4SourceDimensions({
+						width: desiredMp4SourceDimensions.width,
+						height: desiredMp4SourceDimensions.height,
+						capped: false,
+						encoderPath: null,
+					});
 				});
-			});
+		};
+
+		const timeoutId = shouldDebounce
+			? window.setTimeout(runProbe, MP4_CROP_PROBE_DEBOUNCE_MS)
+			: null;
+		if (timeoutId === null) {
+			runProbe();
+		}
 
 		return () => {
 			cancelled = true;
+			if (timeoutId !== null) {
+				window.clearTimeout(timeoutId);
+			}
 		};
 	}, [
+		aspectRatio,
 		desiredMp4SourceDimensions.height,
 		desiredMp4SourceDimensions.width,
 		ensureSupportedMp4SourceDimensions,
 		mp4FrameRate,
+		mp4SourceDimensions.height,
+		mp4SourceDimensions.width,
 	]);
 
 	// Extension-contributed standalone section pages (no parentSection)
@@ -1733,6 +1797,21 @@ export default function VideoEditor() {
 			window.cancelAnimationFrame(frameId);
 		};
 	}, [isEditingProjectName]);
+
+	useEffect(() => {
+		if (!projectSaveDialogOpen) {
+			return;
+		}
+
+		const frameId = window.requestAnimationFrame(() => {
+			projectSaveDialogInputRef.current?.focus();
+			projectSaveDialogInputRef.current?.select();
+		});
+
+		return () => {
+			window.cancelAnimationFrame(frameId);
+		};
+	}, [projectSaveDialogOpen]);
 
 	const currentPersistedEditorState = useMemo(
 		() =>
@@ -2127,6 +2206,45 @@ export default function VideoEditor() {
 		);
 	}, [currentPersistedEditorState, currentSourcePath, lastSavedSnapshot?.projectId]);
 
+	const resolveProjectSaveDialog = useCallback((saved: boolean) => {
+		const pendingDialog = pendingProjectSaveDialogRef.current;
+		pendingProjectSaveDialogRef.current = null;
+		setProjectSaveDialogOpen(false);
+		setIsSavingProjectDialog(false);
+		pendingDialog?.resolve(saved);
+	}, []);
+
+	const openProjectSaveDialog = useCallback((initialName: string) => {
+		pendingProjectSaveDialogRef.current?.resolve(false);
+		setProjectSaveDialogDraft(initialName);
+		setProjectSaveDialogOpen(true);
+		setIsSavingProjectDialog(false);
+
+		return new Promise<boolean>((resolve) => {
+			pendingProjectSaveDialogRef.current = { resolve };
+		});
+	}, []);
+
+	const resolveUnsavedChangesDialog = useCallback(
+		(decision: PendingUnsavedChangesDialogDecision) => {
+			const pendingDialog = pendingUnsavedChangesDialogRef.current;
+			pendingUnsavedChangesDialogRef.current = null;
+			setUnsavedChangesDialogOpen(false);
+			pendingDialog?.resolve(decision);
+		},
+		[],
+	);
+
+	const openUnsavedChangesDialog = useCallback((actionLabel: string) => {
+		pendingUnsavedChangesDialogRef.current?.resolve("cancel");
+		setUnsavedChangesDialogActionLabel(actionLabel);
+		setUnsavedChangesDialogOpen(true);
+
+		return new Promise<PendingUnsavedChangesDialogDecision>((resolve) => {
+			pendingUnsavedChangesDialogRef.current = { resolve };
+		});
+	}, []);
+
 	const syncRecordingSessionWebcam = useCallback(
 		async (webcamPath: string | null, timeOffsetMs?: number) => {
 			if (!currentSourcePath || !window.electronAPI.setCurrentRecordingSession) {
@@ -2339,6 +2457,14 @@ export default function VideoEditor() {
 						size:
 							smokeExportConfig.webcamSize === undefined
 								? prev.size
+								: smokeExportConfig.webcamSize,
+						width:
+							smokeExportConfig.webcamSize === undefined
+								? (prev.width ?? prev.size)
+								: smokeExportConfig.webcamSize,
+						height:
+							smokeExportConfig.webcamSize === undefined
+								? (prev.height ?? prev.size)
 								: smokeExportConfig.webcamSize,
 					}));
 					setError(null);
@@ -2765,7 +2891,9 @@ export default function VideoEditor() {
 			}
 
 			setAutoCaptions(result.cues);
-			setAutoCaptionSettings((prev) => ({ ...prev, enabled: true }));
+			if (result.cues.length > 0) {
+				setAutoCaptionSettings((prev) => ({ ...prev, enabled: true }));
+			}
 			toast.success(result.message || `Generated ${result.cues.length} captions`);
 		} catch (error) {
 			toast.error(getErrorMessage(error));
@@ -2787,6 +2915,14 @@ export default function VideoEditor() {
 		setAutoCaptions([]);
 		setAutoCaptionSettings((prev) => ({ ...prev, enabled: false }));
 	}, []);
+
+	const handleSaveAutoCaptionEdit = useCallback(
+		(target: CaptionEditTarget, text: string) => {
+			setAutoCaptions((captions) => updateCaptionCuesForEditedTarget(captions, target, text));
+			toast.success(t("settings.captions.editSaved", "Caption updated"));
+		},
+		[t],
+	);
 
 	const saveProject = useCallback(
 		async (forceSaveAs: boolean, options?: SaveProjectOptions) => {
@@ -2829,6 +2965,14 @@ export default function VideoEditor() {
 							targetProjectPath = activeProjectResult.path;
 							setCurrentProjectPath(activeProjectResult.path);
 						}
+					}
+
+					if (forceSaveAs || !targetProjectPath) {
+						if (options?.silent) {
+							return false;
+						}
+
+						return openProjectSaveDialog(projectDisplayName || fileNameBase);
 					}
 
 					const thumbnailDataUrl = shouldCaptureThumbnail
@@ -2891,6 +3035,8 @@ export default function VideoEditor() {
 			currentProjectSnapshot,
 			currentPersistedEditorState,
 			lastSavedSnapshot?.projectId,
+			openProjectSaveDialog,
+			projectDisplayName,
 			queueProjectSave,
 			refreshProjectLibrary,
 			remountPreview,
@@ -2945,7 +3091,7 @@ export default function VideoEditor() {
 	 * Saves the current project directly into the projects library under a chosen name.
 	 */
 	const saveProjectWithName = useCallback(
-		async (projectName: string) => {
+		async (projectName: string, mode: NamedProjectSaveMode = "rename") => {
 			const trimmedProjectName = projectName.trim();
 			if (!trimmedProjectName) {
 				toast.error("Project name is required");
@@ -2971,6 +3117,7 @@ export default function VideoEditor() {
 					projectData,
 					trimmedProjectName,
 					thumbnailDataUrl,
+					mode,
 				);
 
 				if (result.canceled) {
@@ -3013,6 +3160,38 @@ export default function VideoEditor() {
 		],
 	);
 
+	const handleProjectSaveDialogSubmit = useCallback(
+		async (event?: React.FormEvent<HTMLFormElement>) => {
+			event?.preventDefault();
+			const trimmedProjectName = projectSaveDialogDraft.trim();
+
+			if (!trimmedProjectName) {
+				toast.error("Project name is required");
+				projectSaveDialogInputRef.current?.focus();
+				return;
+			}
+
+			setIsSavingProjectDialog(true);
+			let saved = false;
+			try {
+				saved = await saveProjectWithName(trimmedProjectName, "copy");
+			} catch (error) {
+				toast.error(getErrorMessage(error));
+			} finally {
+				setIsSavingProjectDialog(false);
+			}
+
+			if (saved) {
+				resolveProjectSaveDialog(true);
+				return;
+			}
+
+			projectSaveDialogInputRef.current?.focus();
+			projectSaveDialogInputRef.current?.select();
+		},
+		[projectSaveDialogDraft, resolveProjectSaveDialog, saveProjectWithName],
+	);
+
 	/**
 	 * Resets the inline project-name editor back to the current saved display name.
 	 */
@@ -3036,7 +3215,7 @@ export default function VideoEditor() {
 			setIsSavingProjectName(true);
 			let saved = false;
 			try {
-				saved = await saveProjectWithName(trimmedProjectName);
+				saved = await saveProjectWithName(trimmedProjectName, "rename");
 			} catch (error) {
 				toast.error(getErrorMessage(error));
 			} finally {
@@ -3054,8 +3233,32 @@ export default function VideoEditor() {
 		[closeProjectNameEditor, projectNameDraft, saveProjectWithName],
 	);
 
+	const confirmReplaceSourceWithUnsavedChanges = useCallback(
+		async (actionLabel: string) => {
+			if (!hasUnsavedChanges) {
+				return true;
+			}
+
+			const decision = await openUnsavedChangesDialog(actionLabel);
+			if (decision === "discard") {
+				return true;
+			}
+
+			if (decision === "save") {
+				return saveProject(false);
+			}
+
+			return false;
+		},
+		[hasUnsavedChanges, openUnsavedChangesDialog, saveProject],
+	);
+
 	const handleOpenProjectFromLibrary = useCallback(
 		async (projectPath: string) => {
+			if (!(await confirmReplaceSourceWithUnsavedChanges("open another project"))) {
+				return;
+			}
+
 			const result = await window.electronAPI.openProjectFileAtPath(projectPath);
 
 			if (result.canceled) {
@@ -3077,8 +3280,81 @@ export default function VideoEditor() {
 			await refreshProjectLibrary();
 			toast.success(`Project loaded from ${result.path}`);
 		},
-		[applyLoadedProject, refreshProjectLibrary],
+		[applyLoadedProject, confirmReplaceSourceWithUnsavedChanges, refreshProjectLibrary],
 	);
+
+	const handleImportMediaOrProject = useCallback(async () => {
+		if (!(await confirmReplaceSourceWithUnsavedChanges("import a file"))) {
+			return;
+		}
+
+		const result = await window.electronAPI.openVideoFilePicker({ includeProjects: true });
+
+		if (result.canceled) {
+			return;
+		}
+
+		if (!result.success) {
+			toast.error(result.message || "Failed to import file");
+			return;
+		}
+
+		if (result.kind === "project" || result.project) {
+			const restored = await applyLoadedProject(result.project, result.path ?? null);
+			if (!restored) {
+				toast.error("Invalid project file format");
+				return;
+			}
+
+			setProjectBrowserOpen(false);
+			await refreshProjectLibrary();
+			toast.success(result.path ? `Project loaded from ${result.path}` : "Project loaded");
+			return;
+		}
+
+		if (!result.path) {
+			toast.error("No media file selected");
+			return;
+		}
+
+		const sourcePath = fromFileUrl(result.path);
+		const sourceVideoUrl = await resolveVideoUrl(sourcePath);
+		try {
+			videoPlaybackRef.current?.pause();
+		} catch {
+			// no-op
+		}
+
+		setIsPlaying(false);
+		setCurrentTime(0);
+		setDuration(0);
+		setVideoSourcePath(sourcePath);
+		setVideoPath(sourceVideoUrl);
+		setCurrentProjectPath(null);
+		setLastSavedSnapshot(null);
+		resetSourceScopedEditorState();
+		pendingFreshRecordingAutoZoomPathRef.current = autoApplyFreshRecordingAutoZooms
+			? sourceVideoUrl
+			: null;
+		setWebcam((prev) => ({
+			...prev,
+			enabled: false,
+			sourcePath: null,
+			timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
+		}));
+		applySessionPresentation(null);
+		await window.electronAPI.setCurrentVideoPath(sourcePath, { preserveProjectPath: false });
+		setProjectBrowserOpen(false);
+		await refreshProjectLibrary();
+		toast.success("Media imported");
+	}, [
+		applyLoadedProject,
+		applySessionPresentation,
+		autoApplyFreshRecordingAutoZooms,
+		confirmReplaceSourceWithUnsavedChanges,
+		refreshProjectLibrary,
+		resetSourceScopedEditorState,
+	]);
 
 	const handleOpenProjectBrowser = useCallback(async () => {
 		if (projectBrowserOpen) {
@@ -3290,6 +3566,16 @@ export default function VideoEditor() {
 		[zoomRegions, mapTimelineTimeToSourceTime],
 	);
 
+	const effectiveCaptionRegions = useMemo<CaptionCue[]>(
+		() =>
+			autoCaptions.map((cue) => ({
+				...cue,
+				startMs: mapSourceTimeToTimelineTime(cue.startMs),
+				endMs: mapSourceTimeToTimelineTime(cue.endMs),
+			})),
+		[autoCaptions, mapSourceTimeToTimelineTime],
+	);
+
 	const timelinePlayheadTime = useMemo(
 		() => mapSourceTimeToTimelineTime(currentTime * 1000) / 1000,
 		[currentTime, mapSourceTimeToTimelineTime],
@@ -3395,10 +3681,114 @@ export default function VideoEditor() {
 		[handleSeek],
 	);
 
+	const handleSelectCaption = useCallback(
+		(id: string | null) => {
+			setSelectedCaptionId(id);
+			if (!id) {
+				setActiveEffectSection((section) => (section === "caption" ? "scene" : section));
+				return;
+			}
+			setActiveEffectSection("caption");
+			setSelectedZoomId(null);
+			setSelectedClipId(null);
+			setSelectedAnnotationId(null);
+			setSelectedAudioId(null);
+			const cue = autoCaptions.find((value) => value.id === id);
+			if (cue) {
+				handleSeek(mapSourceTimeToTimelineTime(cue.startMs) / 1000, { pause: true });
+			}
+		},
+		[autoCaptions, handleSeek, mapSourceTimeToTimelineTime],
+	);
+
+	const handleBeginCaptionEdit = useCallback((id: string) => {
+		videoPlaybackRef.current?.cancelCaptionEdit();
+		setSelectedCaptionId(id);
+	}, []);
+
+	const handleCaptionTextEdit = useCallback((id: string, text: string) => {
+		setAutoCaptions((captions) => {
+			const cue = captions.find((value) => value.id === id);
+			if (!cue) {
+				return captions;
+			}
+			const words = normalizeCaptionWords(cue);
+			if (words.length === 0) {
+				// Text-only cue (e.g. a caption added manually from the timeline,
+				// which starts empty with no words). updateCaptionCuesForEditedTarget
+				// can't seed a cue that has no words, so set the text directly — the
+				// renderer derives placeholder word timings from the cue text.
+				const normalized = normalizeCaptionEditText(text);
+				return captions.map((value) =>
+					value.id === id ? { ...value, text: normalized } : value,
+				);
+			}
+			const target: CaptionEditTarget = {
+				id: cue.id,
+				startMs: cue.startMs,
+				endMs: cue.endMs,
+				text: cue.text,
+				words: words.map((word, index) => ({
+					cueId: cue.id,
+					cueWordIndex: index,
+					startMs: word.startMs,
+					endMs: word.endMs,
+					text: word.text,
+					leadingSpace: Boolean(word.leadingSpace),
+				})),
+			};
+			return updateCaptionCuesForEditedTarget(captions, target, text);
+		});
+	}, []);
+
+	const handleCaptionRetime = useCallback((id: string, span: CaptionRetimeSpan) => {
+		videoPlaybackRef.current?.cancelCaptionEdit();
+		setAutoCaptions((captions) => retimeCue(captions, id, span));
+	}, []);
+
+	const handleCaptionSplit = useCallback((id: string, atMs: number) => {
+		videoPlaybackRef.current?.cancelCaptionEdit();
+		setAutoCaptions((captions) => splitCue(captions, id, atMs));
+	}, []);
+
+	const handleCaptionMerge = useCallback((idA: string, idB: string) => {
+		videoPlaybackRef.current?.cancelCaptionEdit();
+		setAutoCaptions((captions) => mergeCues(captions, idA, idB));
+	}, []);
+
+	const handleCaptionDelete = useCallback((id: string) => {
+		videoPlaybackRef.current?.cancelCaptionEdit();
+		setSelectedCaptionId((prev) => (prev === id ? null : prev));
+		setAutoCaptions((captions) => deleteCue(captions, id));
+	}, []);
+
+	const handleCaptionAdded = useCallback(
+		(span: Span) => {
+			videoPlaybackRef.current?.cancelCaptionEdit();
+			// span is in timeline-ms; caption cues are stored in source-ms.
+			const newCue = createCaptionCue({
+				startMs: mapTimelineTimeToSourceTime(span.start),
+				endMs: mapTimelineTimeToSourceTime(span.end),
+			});
+			setAutoCaptions((captions) => addCue(captions, newCue));
+			// Select the new caption and open its side-panel editor.
+			setSelectedCaptionId(newCue.id);
+			setActiveEffectSection("caption");
+			setSelectedZoomId(null);
+			setSelectedClipId(null);
+			setSelectedAnnotationId(null);
+			setSelectedAudioId(null);
+			handleSeek(span.start / 1000, { pause: true });
+		},
+		[handleSeek, mapTimelineTimeToSourceTime],
+	);
+
 	const handlePreviewSkipBack = useCallback(() => {
 		const currentMs = timelinePlayheadTime * 1000;
 		const keyframes = timelineRef.current?.keyframes ?? [];
-		const previous = [...keyframes].reverse().find((keyframe) => keyframe.time < currentMs - 50);
+		const previous = [...keyframes]
+			.reverse()
+			.find((keyframe) => keyframe.time < currentMs - 50);
 		handleSeek(previous ? previous.time / 1000 : Math.max(0, timelinePlayheadTime - 5));
 	}, [handleSeek, timelinePlayheadTime]);
 
@@ -3406,9 +3796,7 @@ export default function VideoEditor() {
 		const currentMs = timelinePlayheadTime * 1000;
 		const keyframes = timelineRef.current?.keyframes ?? [];
 		const next = keyframes.find((keyframe) => keyframe.time > currentMs + 50);
-		handleSeek(
-			next ? next.time / 1000 : Math.min(timelineDuration, timelinePlayheadTime + 5),
-		);
+		handleSeek(next ? next.time / 1000 : Math.min(timelineDuration, timelinePlayheadTime + 5));
 	}, [handleSeek, timelineDuration, timelinePlayheadTime]);
 
 	const handleSelectZoom = useCallback((id: string | null) => {
@@ -3417,6 +3805,7 @@ export default function VideoEditor() {
 			setActiveEffectSection("zoom");
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
+			setSelectedCaptionId(null);
 		} else {
 			setActiveEffectSection((s) => (s === "zoom" ? "scene" : s));
 		}
@@ -3427,6 +3816,7 @@ export default function VideoEditor() {
 		if (id) {
 			setSelectedZoomId(null);
 			setSelectedAudioId(null);
+			setSelectedCaptionId(null);
 		}
 	}, []);
 
@@ -3449,6 +3839,7 @@ export default function VideoEditor() {
 			setZoomRegions((prev) => [...prev, newRegion]);
 			setSelectedZoomId(id);
 			setSelectedAnnotationId(null);
+			setSelectedCaptionId(null);
 			extensionHost.emitEvent({
 				type: "timeline:region-added",
 				data: { id, startMs: newRegion.startMs, endMs: newRegion.endMs },
@@ -3652,6 +4043,7 @@ export default function VideoEditor() {
 			setSelectedZoomId(null);
 			setSelectedAnnotationId(null);
 			setSelectedAudioId(null);
+			setSelectedCaptionId(null);
 		} else {
 			setActiveEffectSection((s) => (s === "clip" ? "scene" : s));
 		}
@@ -3842,6 +4234,7 @@ export default function VideoEditor() {
 		if (id) {
 			setSelectedZoomId(null);
 			setSelectedAnnotationId(null);
+			setSelectedCaptionId(null);
 			setActiveEffectSection("audio");
 		}
 	}, []);
@@ -3861,6 +4254,7 @@ export default function VideoEditor() {
 		setSelectedAudioId(id);
 		setSelectedZoomId(null);
 		setSelectedAnnotationId(null);
+		setSelectedCaptionId(null);
 		setActiveEffectSection("audio");
 	}, []);
 
@@ -4162,6 +4556,12 @@ export default function VideoEditor() {
 			setSelectedAudioId(null);
 		}
 	}, [selectedAudioId, audioRegions]);
+
+	useEffect(() => {
+		if (selectedCaptionId && !autoCaptions.some((cue) => cue.id === selectedCaptionId)) {
+			setSelectedCaptionId(null);
+		}
+	}, [selectedCaptionId, autoCaptions]);
 
 	const showExportSuccessToast = useCallback((filePath: string) => {
 		toast.success(`Exported successfully to ${filePath}`, {
@@ -5184,6 +5584,7 @@ export default function VideoEditor() {
 			annotationRegions={annotationRegions}
 			autoCaptions={autoCaptions}
 			autoCaptionSettings={autoCaptionSettings}
+			onEditAutoCaption={handleSaveAutoCaptionEdit}
 			selectedAnnotationId={selectedAnnotationId}
 			onSelectAnnotation={handleSelectAnnotation}
 			onAnnotationPositionChange={handleAnnotationPositionChange}
@@ -5215,13 +5616,115 @@ export default function VideoEditor() {
 			volume={
 				audio.shouldMutePreviewVideo || audio.isCurrentClipMuted
 					? 0
-					: Math.max(
-							0,
-							Math.min(1, previewVolume * audio.embeddedSourcePreviewGain),
-						)
+					: Math.max(0, Math.min(1, previewVolume * audio.embeddedSourcePreviewGain))
 			}
 			suspendRendering={suspendRendering}
 		/>
+	);
+
+	const projectSaveDialog = (
+		<Dialog
+			open={projectSaveDialogOpen}
+			onOpenChange={(open) => {
+				if (open) {
+					setProjectSaveDialogOpen(true);
+					return;
+				}
+
+				if (!isSavingProjectDialog) {
+					resolveProjectSaveDialog(false);
+				}
+			}}
+		>
+			<DialogContent className="max-w-sm border-foreground/10 bg-editor-dialog text-foreground">
+				<form onSubmit={(event) => void handleProjectSaveDialogSubmit(event)}>
+					<DialogHeader>
+						<DialogTitle>{t("editor.project.saveTitle", "Save Project")}</DialogTitle>
+						<DialogDescription className="text-muted-foreground">
+							{t(
+								"editor.project.saveDescription",
+								"Name this project. It will be saved in your Recordly Projects folder.",
+							)}
+						</DialogDescription>
+					</DialogHeader>
+					<div className="py-4">
+						<label className="mb-2 block text-xs font-medium text-muted-foreground">
+							{t("editor.project.saveNameLabel", "Project name")}
+						</label>
+						<div className="flex items-center overflow-hidden rounded-md border border-foreground/10 bg-editor-panel">
+							<Input
+								ref={projectSaveDialogInputRef}
+								value={projectSaveDialogDraft}
+								onChange={(event) => setProjectSaveDialogDraft(event.target.value)}
+								disabled={isSavingProjectDialog}
+								className="h-10 flex-1 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+								aria-label={t("editor.project.saveNameLabel", "Project name")}
+							/>
+							<span className="shrink-0 px-3 text-xs font-medium text-muted-foreground/70">
+								.recordly
+							</span>
+						</div>
+					</div>
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="ghost"
+							onClick={() => resolveProjectSaveDialog(false)}
+							disabled={isSavingProjectDialog}
+						>
+							{t("common.actions.cancel", "Cancel")}
+						</Button>
+						<Button type="submit" disabled={isSavingProjectDialog}>
+							{isSavingProjectDialog
+								? t("editor.project.saving", "Saving...")
+								: t("common.actions.save", "Save")}
+						</Button>
+					</DialogFooter>
+				</form>
+			</DialogContent>
+		</Dialog>
+	);
+
+	const unsavedChangesDialog = (
+		<Dialog
+			open={unsavedChangesDialogOpen}
+			onOpenChange={(open) => {
+				if (open) {
+					setUnsavedChangesDialogOpen(true);
+					return;
+				}
+
+				resolveUnsavedChangesDialog("cancel");
+			}}
+		>
+			<DialogContent className="max-w-sm border-foreground/10 bg-editor-dialog text-foreground">
+				<DialogHeader>
+					<DialogTitle>Unsaved changes</DialogTitle>
+					<DialogDescription className="text-muted-foreground">
+						{`Save your current project before you ${unsavedChangesDialogActionLabel}?`}
+					</DialogDescription>
+				</DialogHeader>
+				<DialogFooter>
+					<Button
+						type="button"
+						variant="ghost"
+						onClick={() => resolveUnsavedChangesDialog("cancel")}
+					>
+						{t("common.actions.cancel", "Cancel")}
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						onClick={() => resolveUnsavedChangesDialog("discard")}
+					>
+						Discard changes
+					</Button>
+					<Button type="button" onClick={() => resolveUnsavedChangesDialog("save")}>
+						Save project
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 
 	const projectBrowser = (
@@ -5230,6 +5733,9 @@ export default function VideoEditor() {
 			onOpenChange={setProjectBrowserOpen}
 			entries={projectLibraryEntries}
 			anchorRef={error ? projectBrowserFallbackTriggerRef : projectBrowserTriggerRef}
+			onImportFile={() => {
+				void handleImportMediaOrProject();
+			}}
 			onOpenProject={(projectPath) => {
 				void handleOpenProjectFromLibrary(projectPath);
 			}}
@@ -5269,6 +5775,8 @@ export default function VideoEditor() {
 			<div className="flex h-screen items-center justify-center bg-background">
 				<div className="text-foreground">Loading video...</div>
 				{projectBrowser}
+				{projectSaveDialog}
+				{unsavedChangesDialog}
 				{nativeCaptureUnavailableDialog}
 				<Toaster className="pointer-events-auto" />
 			</div>
@@ -5289,6 +5797,8 @@ export default function VideoEditor() {
 					</button>
 				</div>
 				{projectBrowser}
+				{projectSaveDialog}
+				{unsavedChangesDialog}
 				{nativeCaptureUnavailableDialog}
 				<Toaster className="pointer-events-auto" />
 			</div>
@@ -5736,7 +6246,9 @@ export default function VideoEditor() {
 									onGifLoopChange={setGifLoop}
 									gifSizePreset={gifSizePreset}
 									onGifSizePresetChange={setGifSizePreset}
-									showCaptionSidecarOption={hasCaptionsForSidecar && exportFormat === "mp4"}
+									showCaptionSidecarOption={
+										hasCaptionsForSidecar && exportFormat === "mp4"
+									}
 									includeCaptionSidecar={includeCaptionSidecar}
 									onIncludeCaptionSidecarChange={setIncludeCaptionSidecar}
 									mp4OutputDimensions={mp4OutputDimensions}
@@ -6030,6 +6542,14 @@ export default function VideoEditor() {
 								onPickWhisperModel={handlePickWhisperModel}
 								onGenerateAutoCaptions={handleGenerateAutoCaptions}
 								onClearAutoCaptions={handleClearAutoCaptions}
+								captionCurrentTimeMs={Math.round(currentTime * 1000)}
+								selectedCaptionId={selectedCaptionId}
+								onBeginCaptionEdit={handleBeginCaptionEdit}
+								onCaptionTextEdit={handleCaptionTextEdit}
+								onCaptionRetime={handleCaptionRetime}
+								onCaptionSplit={handleCaptionSplit}
+								onCaptionMerge={handleCaptionMerge}
+								onCaptionDelete={handleCaptionDelete}
 								onDownloadWhisperSmallModel={handleDownloadWhisperSmallModel}
 								onDeleteWhisperSmallModel={handleDeleteWhisperSmallModel}
 								nativeCaptureUnavailableSession={sessionNativeCaptureUnavailable}
@@ -6349,6 +6869,19 @@ export default function VideoEditor() {
 						onAudioDelete={handleAudioDelete}
 						selectedAudioId={selectedAudioId}
 						onSelectAudio={handleSelectAudio}
+						captionRegions={effectiveCaptionRegions}
+						onCaptionSpanChange={(id, span) =>
+							handleCaptionRetime(id, {
+								startMs: mapTimelineTimeToSourceTime(span.start),
+								endMs: mapTimelineTimeToSourceTime(span.end),
+							})
+						}
+						selectedCaptionId={selectedCaptionId}
+						onSelectCaption={handleSelectCaption}
+						onCaptionDelete={handleCaptionDelete}
+						onCaptionAdded={handleCaptionAdded}
+						captionsEnabled={autoCaptionSettings.enabled}
+						captionQuickAddEnabled={autoCaptionSettings.timelineQuickAdd}
 						annotationRegions={annotationRegions}
 						onAnnotationAdded={handleAnnotationAdded}
 						onAnnotationSpanChange={handleAnnotationSpanChange}
@@ -6356,6 +6889,7 @@ export default function VideoEditor() {
 						selectedAnnotationId={selectedAnnotationId}
 						onSelectAnnotation={handleSelectAnnotation}
 						showSourceAudioTrack={clipRegions.some((c) => c.showSourceAudio)}
+						sourceAudioResourceVersion={sourceAudioFallbackRefreshKey}
 						sourceAudioTrackSettings={audio.activeSourceAudioTrackSettings}
 						getSourceAudioTrackSettingsForClip={
 							audio.getSourceAudioTrackSettingsForClip
@@ -6415,6 +6949,8 @@ export default function VideoEditor() {
 			) : null}
 
 			{projectBrowser}
+			{projectSaveDialog}
+			{unsavedChangesDialog}
 			{nativeCaptureUnavailableDialog}
 
 			<Toaster className="pointer-events-auto" />

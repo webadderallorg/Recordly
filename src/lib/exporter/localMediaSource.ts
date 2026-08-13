@@ -116,34 +116,27 @@ export async function resolveMediaResourceUrl(resource: string): Promise<string>
 	return /^file:\/\//i.test(resource) ? resource : toFileUrl(localFilePath);
 }
 
-export async function createReadableMediaResourceFile(resource: string): Promise<File> {
-	const localFilePath = getLocalFilePath(resource);
-	const filename = (localFilePath ?? resource).split(/[\\/]/).pop()?.split("?")[0] || "media";
-
-	if (localFilePath && typeof window !== "undefined" && window.electronAPI?.readLocalFile) {
-		const result = await window.electronAPI.readLocalFile(localFilePath);
-		if (!result.success || !result.data) {
-			throw new Error(result.error || "Failed to read local media file");
-		}
-
-		const bytes = result.data instanceof Uint8Array ? result.data : new Uint8Array(result.data);
-		const arrayBuffer = bytes.buffer.slice(
-			bytes.byteOffset,
-			bytes.byteOffset + bytes.byteLength,
-		) as ArrayBuffer;
-		return new File([arrayBuffer], filename, { type: inferMimeType(filename) });
-	}
-
+async function createReadableMediaResourceFile(resource: string): Promise<File> {
+	const filename = resource.split(/[\\/]/).pop()?.split("?")[0] || "media";
 	const resourceUrl = await resolveMediaResourceUrl(resource);
 	const response = await fetch(resourceUrl);
 	if (!response.ok) {
-		throw new Error(
-			`Failed to load media resource: ${response.status} ${response.statusText}`,
-		);
+		throw new Error(`Failed to load media resource: ${response.status} ${response.statusText}`);
 	}
 
 	const blob = await response.blob();
 	return new File([blob], filename, { type: blob.type || inferMimeType(filename) });
+}
+
+export async function createFallbackDemuxerSource(resource: string): Promise<string | File> {
+	// Local media already has a random-access transport: WebDemuxer issues bounded
+	// byte-range requests against this URL. Converting it to a File would copy the
+	// complete recording through Electron IPC and make memory use scale with file size.
+	if (getLocalFilePath(resource)) {
+		return resolveMediaResourceUrl(resource);
+	}
+
+	return createReadableMediaResourceFile(resource);
 }
 
 export async function resolveMediaElementSource(resource: string): Promise<{

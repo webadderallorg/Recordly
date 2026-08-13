@@ -527,6 +527,8 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 
 		if (!hasUsableMacSystemCompanion && usableMacMicOnlyCompanions.length > 0) {
 			paths = usableMacMicOnlyCompanions;
+		} else if (hasUsableMacSystemCompanion) {
+			paths = [videoPath];
 		} else {
 			const companionPaths = Array.from(
 				new Set(

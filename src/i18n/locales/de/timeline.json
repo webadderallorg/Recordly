@@ -1,0 +1,41 @@
+{
+    "zoom": {
+        "cannotPlace": "Zoom kann hier nicht platziert werden",
+        "existsOrNoSpace": "Zoom existiert bereits an dieser Stelle oder es ist nicht genügend Platz verfügbar.",
+        "suggestHandlerUnavailable": "Zoom-Vorschlags-Handler nicht verfügbar",
+		"noTelemetry": "Keine Cursor-Telemetrie verfügbar",
+        "recordFirst": "Nehmen Sie zuerst einen Screencast auf, um cursorbasierte Vorschläge zu generieren.",
+        "noUsableTelemetry": "Keine verwertbare Cursor-Telemetrie",
+        "notEnoughMovement": "Die Aufnahme enthält nicht genügend Daten zur Cursorbewegung.",
+		"noInteractionMoments": "Keine eindeutigen Interaktionsmomente gefunden",
+        "tryRecording": "Versuchen Sie eine Aufnahme mit Pausen oder Klicks an wichtigen Stellen.",
+        "noAutoZoomSlots": "Keine Auto-Zoom-Slots verfügbar",
+        "dwellPointsOverlap": "Erkannte Verweildauerpunkte überschneiden sich mit bestehenden Zoom-Bereichen.",
+		"addedSuggestions": "{{count}} interaktionsbasierte Zoomvorschläge hinzugefügt",
+        "label": "Zoom {{index}}",
+        "addZoom": "Zoom hinzufügen (Z)",
+        "suggestZooms": "Zooms vom Cursor vorschlagen"
+    },
+    "trim": {
+		"cannotPlace": "Trim kann hier nicht platziert werden",
+        "existsOrNoSpace": "Trim existiert bereits an dieser Stelle oder es ist nicht genügend Platz verfügbar.",
+        "label": "Trim {{index}}",
+        "addTrim": "Trim hinzufügen (T)"
+    },
+    "speed": {
+		"cannotPlace": "Geschwindigkeit kann hier nicht platziert werden",
+        "existsOrNoSpace": "Geschwindigkeitsbereich existiert bereits an dieser Stelle oder es ist nicht genügend Platz verfügbar.",
+        "label": "Geschwindigkeit"
+    },
+    "annotation": {
+        "label": "Anmerkung",
+        "image": "Bild",
+		"addAnnotation": "Anmerkung hinzufügen (A)"
+    },
+    "audio": {
+        "label": "Audio"
+    },
+    "addSpeed": "Geschwindigkeit hinzufügen (S)",
+    "resizeLeft": "Größe links anpassen",
+    "resizeRight": "Größe rechts anpassen"
+}

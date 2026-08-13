@@ -1,0 +1,297 @@
+name: macOS Release Candidate
+
+run-name: macOS RC validation for ${{ inputs.source_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact 40-character SHA at the current head of main
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release-candidate-${{ inputs.source_sha }}
+  cancel-in-progress: false
+
+jobs:
+  authorize-source:
+    name: Authorize source commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      source_sha: ${{ steps.authorize.outputs.source_sha }}
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: main
+
+      - name: Require the canonical repository and current main
+        id: authorize
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ inputs.source_sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_REPOSITORY,,}" != "webadderallorg/recordly" ]]; then
+            echo "This workflow may run only in webadderallorg/Recordly."
+            exit 1
+          fi
+
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "This workflow must itself be dispatched from main."
+            exit 1
+          fi
+
+          requested_sha="${REQUESTED_SHA,,}"
+          if [[ ! "$requested_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_sha must be an exact 40-character commit SHA."
+            exit 1
+          fi
+
+          main_sha="$(git rev-parse HEAD)"
+          if [[ "$requested_sha" != "$main_sha" ]]; then
+            echo "Refusing to sign a stale or non-main commit."
+            echo "Requested: $requested_sha"
+            echo "Current main: $main_sha"
+            exit 1
+          fi
+
+          echo "source_sha=$main_sha" >> "$GITHUB_OUTPUT"
+          echo "Authorized current main commit: $main_sha"
+
+  build-and-verify:
+    name: Sign, notarize, and verify macOS ${{ matrix.arch }}
+    needs: authorize-source
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            arch_tag: darwin-x64
+            runner: macos-15-intel
+          - arch: arm64
+            arch_tag: darwin-arm64
+            runner: macos-14
+    env:
+      CI: true
+    steps:
+      - name: Checkout authorized source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.authorize-source.outputs.source_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          cache-dependency-path: package-lock.json
+          node-version: '22'
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install and verify bundled FFmpeg
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/install-ffmpeg-static.mjs
+          node -e "const fs=require('node:fs'); const ffmpeg=require('ffmpeg-static'); if (typeof ffmpeg !== 'string' || !fs.existsSync(ffmpeg)) throw new Error('Bundled FFmpeg is missing'); console.log(ffmpeg);"
+
+      - name: Install app dependencies
+        run: npx electron-builder install-app-deps
+
+      - name: Validate source entitlement plists
+        run: |
+          plutil -lint build/entitlements.mac.plist
+          plutil -lint build/entitlements.mac.inherit.plist
+
+      - name: Build macOS application inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build:platform-native-helpers
+          npx tsc
+          npx vite build --config vite.config.ts
+          npm run normalize:electron-main-cjs
+          npm run smoke:electron-main-cjs
+
+      - name: Validate Apple signing certificate
+        shell: bash
+        env:
+          APPLE_SIGNING_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_SIGNING_CERTIFICATE_P12_BASE64 }}
+          APPLE_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_SIGNING_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+
+          for name in APPLE_SIGNING_CERTIFICATE_P12_BASE64 APPLE_SIGNING_CERTIFICATE_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required macOS candidate secret: $name"
+              exit 1
+            fi
+          done
+
+          if [[ ! "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "APPLE_TEAM_ID must be exactly 10 uppercase letters or digits."
+            exit 1
+          fi
+
+          cert_path="$RUNNER_TEMP/recordly-developer-id.p12"
+          cert_pem_path="$RUNNER_TEMP/recordly-developer-id.pem"
+          printf '%s' "$APPLE_SIGNING_CERTIFICATE_P12_BASE64" | base64 --decode > "$cert_path"
+          if ! openssl pkcs12 \
+            -in "$cert_path" \
+            -clcerts \
+            -nokeys \
+            -passin env:APPLE_SIGNING_CERTIFICATE_PASSWORD \
+            -out "$cert_pem_path"; then
+            rm -f "$cert_pem_path"
+            pkcs12_help="$(openssl pkcs12 -help 2>&1 || true)"
+            if [[ "$pkcs12_help" != *"-legacy"* ]]; then
+              echo "PKCS#12 extraction failed and this OpenSSL has no legacy-provider fallback."
+              exit 1
+            fi
+            echo "Standard PKCS#12 extraction failed; retrying legacy Keychain compatibility."
+            openssl pkcs12 \
+              -legacy \
+              -in "$cert_path" \
+              -clcerts \
+              -nokeys \
+              -passin env:APPLE_SIGNING_CERTIFICATE_PASSWORD \
+              -out "$cert_pem_path"
+          fi
+
+          openssl x509 -in "$cert_pem_path" -noout -checkend 86400
+          cert_subject="$(openssl x509 -in "$cert_pem_path" -noout -subject -nameopt RFC2253 | sed 's/^subject=//')"
+          if [[ "$cert_subject" != *"CN=Developer ID Application:"* ]]; then
+            echo "The P12 leaf certificate is not a Developer ID Application certificate."
+            exit 1
+          fi
+          if [[ ! "$cert_subject" =~ (^|,)OU=${APPLE_TEAM_ID}(,|$) ]]; then
+            echo "The P12 certificate team does not match APPLE_TEAM_ID."
+            exit 1
+          fi
+
+          echo "Developer ID certificate preflight passed and remains valid for at least 24 hours."
+
+      - name: Authenticate Apple notarization credentials
+        timeout-minutes: 5
+        shell: bash
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+
+          for name in APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required macOS candidate secret: $name"
+              exit 1
+            fi
+          done
+
+          xcrun notarytool history \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            >/dev/null
+
+          echo "Apple notarization credential preflight passed."
+
+      - name: Package, sign, and notarize macOS ${{ matrix.arch }}
+        shell: bash
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_SIGNING_CERTIFICATE_PASSWORD }}
+          CSC_LINK: ${{ runner.temp }}/recordly-developer-id.p12
+        run: |
+          set -euo pipefail
+          npx electron-builder \
+            --mac dir dmg zip \
+            --${{ matrix.arch }} \
+            --publish never \
+            -c.mac.forceCodeSigning=true \
+            -c.mac.notarize=true
+
+      - name: Remove local signing material
+        if: always()
+        shell: bash
+        run: |
+          rm -f \
+            "$RUNNER_TEMP/recordly-developer-id.p12" \
+            "$RUNNER_TEMP/recordly-developer-id.pem"
+
+      - name: Smoke test packaged binary paths
+        env:
+          PACKAGED_SMOKE_ARCH_TAGS: ${{ matrix.arch_tag }}
+        run: npm run smoke:packaged-binaries
+
+      - name: Verify signed and notarized distribution artifacts
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: >-
+          npm run verify:macos-distribution --
+          --release-dir release
+          --arch ${{ matrix.arch }}
+          --team-id "$APPLE_TEAM_ID"
+          --report "release/macos-distribution-report-${{ matrix.arch }}.json"
+          --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Generate candidate checksums
+        run: npm run checksums:release -- SHA256SUMS-macos-${{ matrix.arch }}.txt
+
+      - name: Upload temporary candidate evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: macos-${{ matrix.arch }}-release-candidate
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
+            release/SHA256SUMS-macos-${{ matrix.arch }}.txt
+            release/macos-distribution-report-${{ matrix.arch }}.json
+          if-no-files-found: error
+          retention-days: 3
+
+  candidate-verdict:
+    name: macOS candidate verdict
+    if: always()
+    needs:
+      - authorize-source
+      - build-and-verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require both architectures to pass
+        shell: bash
+        env:
+          AUTHORIZE_RESULT: ${{ needs.authorize-source.result }}
+          BUILD_RESULT: ${{ needs.build-and-verify.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$AUTHORIZE_RESULT" != "success" || "$BUILD_RESULT" != "success" ]]; then
+            echo "macOS candidate rejected: authorize=$AUTHORIZE_RESULT build=$BUILD_RESULT"
+            exit 1
+          fi
+          echo "Both signed and notarized macOS architectures passed the distribution gate."

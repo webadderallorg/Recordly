@@ -1,8 +1,13 @@
 import { execFileSync, execSync } from "node:child_process";
-import { createWriteStream, existsSync } from "node:fs";
+import { createWriteStream, existsSync, rmSync } from "node:fs";
 import { chmod, cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { get as httpsGet } from "node:https";
 import path from "node:path";
+
+import {
+	configureWithWindowsCmakeGenerator,
+	WINDOWS_VISUAL_STUDIO_INSTALL_DIRS,
+} from "./windows-cmake-generators.mjs";
 
 const projectRoot = process.cwd();
 const whisperVersion = "v1.8.4";
@@ -101,12 +106,7 @@ function getTargetConfigs() {
 				archTag,
 				buildRoot: path.join(cacheRoot, `build-${archTag}`),
 				outputDir: path.join(nativeRoot, "bin", archTag),
-				configureArgs: [
-					"-G",
-					"Visual Studio 17 2022",
-					"-A",
-					arch === "arm64" ? "ARM64" : "x64",
-				],
+				configureArgs: ["-A", arch === "arm64" ? "ARM64" : "x64"],
 			},
 		];
 	}
@@ -143,24 +143,26 @@ function findCmake() {
 
 	if (process.platform === "win32") {
 		const vsEditions = ["Community", "Professional", "Enterprise", "BuildTools"];
-		for (const edition of vsEditions) {
-			const cmakePath = path.join(
-				"C:",
-				"Program Files",
-				"Microsoft Visual Studio",
-				"2022",
-				edition,
-				"Common7",
-				"IDE",
-				"CommonExtensions",
-				"Microsoft",
-				"CMake",
-				"CMake",
-				"bin",
-				"cmake.exe",
-			);
-			if (existsSync(cmakePath)) {
-				return cmakePath;
+		for (const version of WINDOWS_VISUAL_STUDIO_INSTALL_DIRS) {
+			for (const edition of vsEditions) {
+				const cmakePath = path.join(
+					"C:",
+					"Program Files",
+					"Microsoft Visual Studio",
+					version,
+					edition,
+					"Common7",
+					"IDE",
+					"CommonExtensions",
+					"Microsoft",
+					"CMake",
+					"CMake",
+					"bin",
+					"cmake.exe",
+				);
+				if (existsSync(cmakePath)) {
+					return cmakePath;
+				}
 			}
 		}
 	}
@@ -272,7 +274,7 @@ async function shouldSkipBuild(target) {
 	}
 }
 
-function getConfigureArgs(sourceDir, target) {
+function getConfigureArgs(sourceDir, target, generator, toolset) {
 	const args = [
 		"-S",
 		sourceDir,
@@ -281,6 +283,8 @@ function getConfigureArgs(sourceDir, target) {
 		"-DWHISPER_BUILD_TESTS=OFF",
 		"-DWHISPER_BUILD_SERVER=OFF",
 		"-DBUILD_SHARED_LIBS=OFF",
+		...(generator ? ["-G", generator] : []),
+		...(toolset ? ["-T", toolset] : []),
 		...target.configureArgs,
 	];
 
@@ -424,36 +428,27 @@ async function main() {
 		console.log(
 			`[build-whisper-runtime] Configuring whisper.cpp ${whisperVersion} for ${target.archTag}...`,
 		);
-		try {
+		if (target.platform === "win32") {
+			configureWithWindowsCmakeGenerator({
+				prefix: "build-whisper-runtime",
+				clearCache: () => {
+					rmSync(path.join(target.buildRoot, "CMakeCache.txt"), { force: true });
+					rmSync(path.join(target.buildRoot, "CMakeFiles"), {
+						recursive: true,
+						force: true,
+					});
+				},
+				configure: (generator, toolset) =>
+					execFileSync(cmake, getConfigureArgs(sourceDir, target, generator, toolset), {
+						stdio: "inherit",
+						timeout: 300000,
+					}),
+			});
+		} else {
 			execFileSync(cmake, getConfigureArgs(sourceDir, target), {
 				stdio: "inherit",
 				timeout: 300000,
 			});
-		} catch (error) {
-			if (target.platform === "win32" && target.arch !== "arm64") {
-				console.log(
-					"[build-whisper-runtime] VS 2022 generator unavailable, retrying with VS 2019...",
-				);
-				execFileSync(
-					cmake,
-					[
-						"-S",
-						sourceDir,
-						"-B",
-						target.buildRoot,
-						"-G",
-						"Visual Studio 16 2019",
-						"-A",
-						"x64",
-						"-DWHISPER_BUILD_TESTS=OFF",
-						"-DWHISPER_BUILD_SERVER=OFF",
-						"-DBUILD_SHARED_LIBS=OFF",
-					],
-					{ stdio: "inherit", timeout: 300000 },
-				);
-			} else {
-				throw error;
-			}
 		}
 
 		console.log(

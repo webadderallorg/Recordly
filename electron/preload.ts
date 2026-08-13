@@ -182,6 +182,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	hudOverlayRendererReady: () => {
 		ipcRenderer.send("hud-overlay-renderer-ready");
 	},
+	hudOverlaySetWebcamPreviewVisible: (visible: boolean) => {
+		ipcRenderer.send("hud-overlay-set-webcam-preview-visible", visible);
+	},
 	getHudOverlayCaptureProtection: () => {
 		return ipcRenderer.invoke("get-hud-overlay-capture-protection");
 	},
@@ -671,8 +674,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			captionSidecar,
 		);
 	},
-	openVideoFilePicker: () => {
-		return ipcRenderer.invoke("open-video-file-picker");
+	openVideoFilePicker: (options?: { includeProjects?: boolean }) => {
+		return ipcRenderer.invoke("open-video-file-picker", options);
 	},
 	openAudioFilePicker: () => {
 		return ipcRenderer.invoke("open-audio-file-picker");
@@ -783,12 +786,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		projectData: unknown,
 		projectName: string,
 		thumbnailDataUrl?: string | null,
+		mode?: "rename" | "copy",
 	) => {
 		return ipcRenderer.invoke(
 			"save-project-file-named",
 			projectData,
 			projectName,
 			thumbnailDataUrl,
+			mode,
 		);
 	},
 	loadProjectFile: () => {

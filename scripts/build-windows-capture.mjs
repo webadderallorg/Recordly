@@ -7,6 +7,10 @@ import {
 	updateNativeHelperManifest,
 	verifyNativeHelperManifest,
 } from "./native-helper-manifest.mjs";
+import {
+	configureWithWindowsCmakeGenerator,
+	WINDOWS_VISUAL_STUDIO_INSTALL_DIRS,
+} from "./windows-cmake-generators.mjs";
 
 const projectRoot = process.cwd();
 const sourceDir = path.join(projectRoot, "electron", "native", "wgc-capture");
@@ -59,7 +63,7 @@ function findCmake() {
 		path.join("C:", "Program Files (x86)", "Microsoft Visual Studio"),
 	];
 	const vsEditions = ["Community", "Professional", "Enterprise", "BuildTools"];
-	const vsVersions = ["2022", "2019"];
+	const vsVersions = WINDOWS_VISUAL_STUDIO_INSTALL_DIRS;
 	for (const root of vsRoots) {
 		for (const version of vsVersions) {
 			for (const edition of vsEditions) {
@@ -120,25 +124,19 @@ function clearCmakeCache() {
 
 console.log("[build-windows-capture] Configuring CMake...");
 try {
-	clearCmakeCache();
-	execSync(`${cmake} .. -G "Visual Studio 17 2022" -A ${generatorArch}`, {
-		cwd: buildDir,
-		stdio: "inherit",
-		timeout: 120000,
+	configureWithWindowsCmakeGenerator({
+		prefix: "build-windows-capture",
+		clearCache: clearCmakeCache,
+		configure: (generator, toolset) =>
+			execSync(`${cmake} .. -G "${generator}" -A ${generatorArch}${toolset ? ` -T ${toolset}` : ""}`, {
+				cwd: buildDir,
+				stdio: "inherit",
+				timeout: 120000,
+			}),
 	});
-} catch {
-	console.log("[build-windows-capture] VS 2022 generator not found, trying VS 2019...");
-	try {
-		clearCmakeCache();
-		execSync(`${cmake} .. -G "Visual Studio 16 2019" -A ${generatorArch}`, {
-			cwd: buildDir,
-			stdio: "inherit",
-			timeout: 120000,
-		});
-	} catch (innerError) {
-		console.error("[build-windows-capture] CMake configure failed:", innerError.message);
-		process.exit(1);
-	}
+} catch (error) {
+	console.error("[build-windows-capture] CMake configure failed:", error.message);
+	process.exit(1);
 }
 
 console.log("[build-windows-capture] Building native Windows capture helper...");
