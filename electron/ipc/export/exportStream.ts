@@ -17,7 +17,18 @@ type ExportStreamSession = {
 
 const exportStreamSessions = new Map<string, ExportStreamSession>();
 
-const EXTENSION_ALLOWLIST = /^[a-z0-9]{1,8}$/;
+// Streams that closed successfully keep their finalized temp path so the native
+// export mux can wait for (and then consume) a renderer-streamed audio payload
+// without a second renderer IPC. Aborted streams are not recorded (their file
+// is deleted), so a waiter that finds no closed path treats the stream as
+// failed rather than reading a stale path.
+const closedExportStreamPaths = new Map<string, string>();
+
+// Strict lowercase-alphanumeric allowlist. The charset (no dots, slashes,
+// path separators, or uppercase) is the security control: it defeats path
+// traversal and arbitrary extension injection. The length cap is generous
+// enough for descriptive lossless payload extensions (e.g. "tiledrgba").
+const EXTENSION_ALLOWLIST = /^[a-z0-9]{1,16}$/;
 const SESSION_DIR_PREFIX = "recordly-export-";
 
 // Paths that the export pipeline itself produced (stream temp files plus any
@@ -151,6 +162,7 @@ export async function closeExportStream(
 	exportStreamSessions.delete(streamId);
 
 	if (abort) {
+		closedExportStreamPaths.delete(streamId);
 		releaseOwnedExportPath(session.tempPath);
 		try {
 			await fsp.rm(session.tempPath, { force: true });
@@ -168,10 +180,41 @@ export async function closeExportStream(
 		return { tempPath: null, bytesWritten: 0 };
 	}
 
+	closedExportStreamPaths.set(streamId, session.tempPath);
 	return {
 		tempPath: session.tempPath,
 		bytesWritten: session.highestWatermark,
 	};
+}
+
+/**
+ * Resolves to the finalized temp path once the export stream has been closed
+ * by its writer, or rejects when the stream was never opened / was aborted.
+ * Used by the native static-layout mux to wait for a renderer-streamed edited
+ * audio payload (the renderer's stream closure is the deterministic
+ * handshake) with a bounded timeout so a missing/late audio payload hard-fails
+ * with an actionable error instead of hanging.
+ */
+export async function waitForExportStreamClosed(
+	streamId: string,
+	timeoutMs: number,
+): Promise<string> {
+	const startedAt = Date.now();
+	while (Date.now() - startedAt < timeoutMs) {
+		const closedPath = closedExportStreamPaths.get(streamId);
+		if (closedPath !== undefined) {
+			return closedPath;
+		}
+		if (!exportStreamSessions.has(streamId)) {
+			throw new Error(
+				`Export stream was not opened or was aborted before finalizing: ${streamId}`,
+			);
+		}
+		await new Promise((resolve) => setTimeout(resolve, 50));
+	}
+	throw new Error(
+		`Timed out after ${timeoutMs}ms waiting for export stream to close: ${streamId}`,
+	);
 }
 
 export function hasExportStream(streamId: string): boolean {
@@ -181,6 +224,7 @@ export function hasExportStream(streamId: string): boolean {
 export async function cleanupAllExportStreams(): Promise<void> {
 	const sessions = Array.from(exportStreamSessions.values());
 	exportStreamSessions.clear();
+	closedExportStreamPaths.clear();
 	ownedExportPaths.clear();
 	await Promise.allSettled(
 		sessions.map(async (session) => {

@@ -21,6 +21,19 @@ export let currentRecordingSession: RecordingSessionData | null = null;
 // ── Security: approved read paths ─────────────────────────────────────────────
 export const approvedLocalReadPaths = new Set<string>();
 
+// Windows paths are case-insensitive and may surface as extended-length
+// (`\\?\`) paths from realpath. Fold both forms so policy comparisons do not
+// reject a path just because its drive letter or directory casing differs from
+// the approved root. Non-Windows paths are compared verbatim.
+export function foldPathComparisonKey(filePath: string) {
+	if (process.platform !== "win32") {
+		return filePath;
+	}
+
+	const withoutExtendedPrefix = filePath.replace(/^\\\\\?\\/, "").replace(/^\\.\\/, "");
+	return withoutExtendedPrefix.toLowerCase();
+}
+
 // ── Native macOS capture ──────────────────────────────────────────────────────
 export let nativeScreenRecordingActive = false;
 export let nativeCaptureProcess: ChildProcessWithoutNullStreams | null = null;
@@ -96,6 +109,8 @@ export let cachedNativeMacWindowSourcesAtMs = 0;
 export let cachedNativeVideoEncoder: {
 	ffmpegPath: string;
 	encodingMode: string;
+	codec: string;
+	preference: string;
 	encoderName: string;
 } | null = null;
 
@@ -283,7 +298,13 @@ export function setCachedNativeMacWindowSourcesAtMs(v: number) {
 }
 
 export function setCachedNativeVideoEncoder(
-	v: { ffmpegPath: string; encodingMode: string; encoderName: string } | null,
+	v: {
+		ffmpegPath: string;
+		encodingMode: string;
+		codec: string;
+		preference: string;
+		encoderName: string;
+	} | null,
 ) {
 	cachedNativeVideoEncoder = v;
 }

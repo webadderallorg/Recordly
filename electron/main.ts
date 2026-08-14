@@ -6,6 +6,7 @@ import {
 	BrowserWindow,
 	desktopCapturer,
 	dialog,
+	webContents as electronWebContents,
 	ipcMain,
 	Menu,
 	Notification,
@@ -14,7 +15,6 @@ import {
 	shell,
 	systemPreferences,
 	Tray,
-	webContents as electronWebContents,
 } from "electron";
 import { RECORDINGS_DIR } from "./appPaths";
 import { showCursor } from "./cursorHider";
@@ -27,13 +27,11 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
+import { formatLogTs } from "./ipc/log";
 import { ensureMediaServer } from "./mediaServer";
+import { hardenWebContentsNavigation, shouldHardenWebContentsType } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
-import {
-	hardenWebContentsNavigation,
-	shouldHardenWebContentsType,
-} from "./navigationPolicy";
 import type { UpdateToastPayload } from "./updater";
 import {
 	checkForAppUpdates,
@@ -223,7 +221,9 @@ function restoreWindowSafely(window: BrowserWindow | null) {
 	}
 
 	window.moveTop();
-	window.focus();
+	if (!window.isFocused()) {
+		window.focus();
+	}
 }
 
 function getExistingEditorWindow(): BrowserWindow | null {
@@ -374,7 +374,9 @@ function focusOrCreateMainWindow() {
 		mainWindow.show();
 		if (mainWindow.isMinimized()) mainWindow.restore();
 		mainWindow.moveTop();
-		mainWindow.focus();
+		if (!mainWindow.isFocused()) {
+			mainWindow.focus();
+		}
 	}
 }
 
@@ -988,7 +990,7 @@ app.whenReady().then(async () => {
 	ipcMain.on("hud-overlay-close", () => {
 		const hud = getHudOverlayWindow();
 		if (hud) {
-			console.log("[main] Closing HUD window via hud-overlay-close");
+			console.log(formatLogTs(), "[main] Closing HUD window via hud-overlay-close");
 			hud.close();
 		}
 
@@ -997,7 +999,7 @@ app.whenReady().then(async () => {
 		setTimeout(() => {
 			const windows = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
 			if (windows.length === 0) {
-				console.log("[main] No windows left, quitting app");
+				console.log(formatLogTs(), "[main] No windows left, quitting app");
 				app.quit();
 			}
 		}, 100);
@@ -1020,7 +1022,7 @@ app.whenReady().then(async () => {
 	try {
 		await ensureMediaServer();
 	} catch (error) {
-		console.warn("[media-server] Failed to start media server:", error);
+		console.warn(formatLogTs(), "[media-server] Failed to start media server:", error);
 	}
 
 	registerIpcHandlers(

@@ -10,6 +10,7 @@ import {
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
+import { formatLogTs } from "./ipc/log";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
 const electronWindowsDir = path.dirname(fileURLToPath(import.meta.url));
@@ -108,6 +109,18 @@ function getEditorWindowQuery(): Record<string, string> {
 		}
 		if (process.env.RECORDLY_SMOKE_EXPORT_FPS) {
 			query.smokeFps = process.env.RECORDLY_SMOKE_EXPORT_FPS;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_VIDEO_CODEC) {
+			query.smokeVideoCodec = process.env.RECORDLY_SMOKE_EXPORT_VIDEO_CODEC;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_ENCODER_PREFERENCE) {
+			query.smokeEncoderPreference = process.env.RECORDLY_SMOKE_EXPORT_ENCODER_PREFERENCE;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_BITRATE_MODE) {
+			query.smokeBitrateMode = process.env.RECORDLY_SMOKE_EXPORT_BITRATE_MODE;
+		}
+		if (process.env.RECORDLY_SMOKE_EXPORT_BITRATE_MBPS) {
+			query.smokeBitrateMbps = process.env.RECORDLY_SMOKE_EXPORT_BITRATE_MBPS;
 		}
 	}
 
@@ -760,7 +773,7 @@ function loadPackagedEditorWindow(win: BrowserWindow) {
 			return;
 		}
 
-		console.log("[editor-window] load-file", indexHtmlPath);
+		console.log(formatLogTs(), "[editor-window] load-file", indexHtmlPath);
 		void win.loadFile(indexHtmlPath, { query });
 	};
 
@@ -799,11 +812,15 @@ function loadPackagedEditorWindow(win: BrowserWindow) {
 
 		settled = true;
 		detachLoadListeners();
-		console.warn("[editor-window] packaged renderer URL failed, falling back to file", {
-			reason,
-			targetUrl,
-			...details,
-		});
+		console.warn(
+			formatLogTs(),
+			"[editor-window] packaged renderer URL failed, falling back to file",
+			{
+				reason,
+				targetUrl,
+				...details,
+			},
+		);
 		loadFromFile();
 	};
 
@@ -838,7 +855,7 @@ function loadPackagedEditorWindow(win: BrowserWindow) {
 	webContents.on("did-finish-load", handleDidFinishLoad);
 	win.once("closed", clearTimeoutIfNeeded);
 
-	console.log("[editor-window] load-url", targetUrl);
+	console.log(formatLogTs(), "[editor-window] load-url", targetUrl);
 	void win.loadURL(targetUrl).catch((error) => {
 		fallbackToFile("load-url-rejected", {
 			error: error instanceof Error ? error.message : String(error),
@@ -848,7 +865,7 @@ function loadPackagedEditorWindow(win: BrowserWindow) {
 
 export function createEditorWindow(): BrowserWindow {
 	const perfStart = Date.now();
-	console.log("[PERF:MAIN] createEditorWindow: STARTED");
+	console.log(formatLogTs(), "[PERF:MAIN] createEditorWindow: STARTED");
 	const isMac = process.platform === "darwin";
 	const { workArea, workAreaSize } = getScreen().getPrimaryDisplay();
 	const initialWidth = isMac ? Math.round(workAreaSize.width * 0.85) : workArea.width;
@@ -888,22 +905,28 @@ export function createEditorWindow(): BrowserWindow {
 	});
 
 	win.once("ready-to-show", () => {
-		console.log(`[PERF:MAIN] Editor Window: ready-to-show in ${Date.now() - perfStart}ms`);
+		console.log(
+			formatLogTs(),
+			`[PERF:MAIN] Editor Window: ready-to-show in ${Date.now() - perfStart}ms`,
+		);
 		win.show();
 	});
 
 	win.webContents.on("did-finish-load", () => {
-		console.log(`[PERF:MAIN] Editor Window: did-finish-load in ${Date.now() - perfStart}ms`);
+		console.log(
+			formatLogTs(),
+			`[PERF:MAIN] Editor Window: did-finish-load in ${Date.now() - perfStart}ms`,
+		);
 		win?.webContents.send("main-process-message", new Date().toLocaleString());
 		// Fallback for Linux/Wayland where `ready-to-show` may not fire reliably.
 		if (!win.isDestroyed() && !win.isVisible()) {
-			console.log("[editor-window] forcing show after did-finish-load");
+			console.log(formatLogTs(), "[editor-window] forcing show after did-finish-load");
 			win.show();
 		}
 	});
 
 	win.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
-		console.error("[editor-window] did-fail-load", {
+		console.error(formatLogTs(), "[editor-window] did-fail-load", {
 			errorCode,
 			errorDescription,
 			validatedURL,
@@ -911,15 +934,15 @@ export function createEditorWindow(): BrowserWindow {
 	});
 
 	win.webContents.on("render-process-gone", (_event, details) => {
-		console.error("[editor-window] render-process-gone", details);
+		console.error(formatLogTs(), "[editor-window] render-process-gone", details);
 	});
 
 	win.on("show", () => {
-		console.log("[editor-window] show");
+		console.log(formatLogTs(), "[editor-window] show");
 	});
 
 	win.on("focus", () => {
-		console.log("[editor-window] focus");
+		console.log(formatLogTs(), "[editor-window] focus");
 	});
 
 	if (VITE_DEV_SERVER_URL) {

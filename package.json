@@ -36,6 +36,7 @@
 		"build:linux": "npm run build:platform-native-helpers && tsc && vite build --config vite.config.ts && npm run normalize:electron-main-cjs && npm run smoke:electron-main-cjs && electron-builder --linux",
 		"i18n:check": "node scripts/i18n-check.mjs",
 		"benchmark:export-queues": "node scripts/benchmark-export-queues.mjs",
+		"benchmark:lightning-cuda4k": "node scripts/benchmark-lightning-cuda4k.mjs",
 		"normalize:electron-main-cjs": "node scripts/normalize-electron-main-cjs.mjs",
 		"smoke:electron-main-cjs": "node scripts/smoke-electron-main-cjs.mjs",
 		"smoke:packaged-binaries": "node scripts/smoke-packaged-binaries.mjs",

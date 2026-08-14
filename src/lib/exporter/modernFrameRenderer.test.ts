@@ -101,6 +101,7 @@ vi.mock("@/components/video-editor/videoPlayback/cursorRenderer", () => ({
 		container = {};
 		update = vi.fn();
 		destroy = vi.fn();
+		getSpriteStateSignature = vi.fn(() => "test-signature");
 	},
 	DEFAULT_CURSOR_CONFIG: {
 		dotRadius: 28,
@@ -218,7 +219,9 @@ describe("ModernFrameRenderer Pixi lifecycle", () => {
 			};
 			renderer.config.preferredRenderBackend = "webgpu";
 
-			await expect(renderer.createPixiApplication({} as HTMLCanvasElement)).resolves.toMatchObject({
+			await expect(
+				renderer.createPixiApplication({} as HTMLCanvasElement),
+			).resolves.toMatchObject({
 				backend: "webgl",
 			});
 
@@ -287,6 +290,66 @@ describe("ModernFrameRenderer blur export path", () => {
 		expect(renderAnnotations).toHaveBeenCalledTimes(1);
 		expect(renderer.getCanvas()).not.toBe(sourceCanvas);
 		expect(renderer.capturePixelsForNativeExport()).not.toBeNull();
+	});
+
+	it("builds the overlay layout cache lazily so a fresh overlay renderer can render frames", async () => {
+		vi.clearAllMocks();
+		const renderer = createRenderer() as any;
+		const canvas = createMockCanvas();
+		renderer.app = { canvas, render: vi.fn() };
+		renderer.cameraContainer = { visible: true };
+		renderer.videoEffectsContainer = { visible: true };
+		renderer.frameContainer = { visible: true };
+		renderer.cursorContainer = { visible: true };
+		renderer.annotationContainer = { visible: true };
+		renderer.overlayContainer = { visible: true };
+		renderer.captionContainer = { visible: true };
+		renderer.backgroundContainer = { visible: true };
+		renderer.webcamRootContainer = { visible: true };
+		renderer.webcamMaskGraphics = {};
+		renderer.annotationSprites = [];
+		renderer.layoutCache = null;
+
+		// A freshly created overlay renderer never stages source-video frames, so
+		// its layout cache must be built from the export config instead of from the
+		// video-sprite layout path. Before the fix, renderOverlayFrame threw
+		// "Overlay renderer is not initialized" here and the native overlay sidecar
+		// preparation failed (native-overlay-preparation-failed).
+		await expect(renderer.renderOverlayFrame(0)).resolves.toBeUndefined();
+		expect(renderer.layoutCache).not.toBeNull();
+		expect(renderer.layoutCache.maskRect).toMatchObject({
+			x: 0,
+			y: 0,
+			width: 1920,
+			height: 1080,
+		});
+		expect(renderer.app.render).toHaveBeenCalledTimes(1);
+	});
+
+	it("skips the full-canvas render when requested (cursor-sprite path)", async () => {
+		vi.clearAllMocks();
+		const renderer = createRenderer() as any;
+		const canvas = createMockCanvas();
+		renderer.app = { canvas, render: vi.fn() };
+		renderer.cameraContainer = { visible: true };
+		renderer.videoEffectsContainer = { visible: true };
+		renderer.frameContainer = { visible: true };
+		renderer.cursorContainer = { visible: true };
+		renderer.annotationContainer = { visible: true };
+		renderer.overlayContainer = { visible: true };
+		renderer.captionContainer = { visible: true };
+		renderer.backgroundContainer = { visible: true };
+		renderer.webcamRootContainer = { visible: true };
+		renderer.webcamMaskGraphics = {};
+		renderer.annotationSprites = [];
+		renderer.layoutCache = null;
+
+		// The cursor-sprite path passes skipFullCanvasRender=true so the full 4K
+		// app.render() is never issued; only the bounded ROI render happens in the
+		// capturer. All state updates must still run without errors.
+		await expect(renderer.renderOverlayFrame(0, 0, 0, true)).resolves.toBeUndefined();
+		expect(renderer.app.render).not.toHaveBeenCalled();
+		expect(renderer.layoutCache).not.toBeNull();
 	});
 
 	it("uses the sampled scene transform for blur annotations during temporal blur", async () => {
@@ -639,14 +702,14 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 			};
 			renderer.config.webcamUrl = "file:///tmp/webcam.webm";
 
-				await renderer.setupWebcamSource();
-				const syncPromise = renderer.syncWebcamFrame(1);
+			await renderer.setupWebcamSource();
+			const syncPromise = renderer.syncWebcamFrame(1);
 
 			await vi.advanceTimersByTimeAsync(5_001);
-				await expect(syncPromise).resolves.toBeUndefined();
+			await expect(syncPromise).resolves.toBeUndefined();
 
-				expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
-				expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
+			expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
+			expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
 			expect(revoke).toHaveBeenCalled();
 			expect(renderer.webcamForwardFrameSource).toBeNull();
 			expect(renderer.webcamVideoElement).toBeNull();
@@ -863,5 +926,35 @@ describe("ModernFrameRenderer temporal webcam sync", () => {
 		expect(
 			new Set(renderer.renderSceneSample.mock.calls.map((call: unknown[]) => call[0])).size,
 		).toBeGreaterThan(1);
+	});
+});
+
+describe("ModernFrameRenderer cursor sprite capture gating", () => {
+	it("refuses to start a cursor sprite session before initialization", () => {
+		const renderer = createRenderer();
+		expect(renderer.startCursorSpriteCapture()).toBe(false);
+	});
+
+	it("finish returns null when no session is active", () => {
+		const renderer = createRenderer();
+		expect(renderer.finishCursorSpriteCapture()).toBeNull();
+	});
+
+	it("capture reports not-initialized when no session is active", () => {
+		const renderer = createRenderer();
+		const result = renderer.captureCursorSpriteFrame();
+		expect(result.captured).toBe(false);
+		expect(result.unavailableReason).toBeTruthy();
+	});
+
+	it("cancel is a safe no-op when no session is active", () => {
+		const renderer = createRenderer();
+		expect(() => renderer.cancelCursorSpriteCapture()).not.toThrow();
+	});
+
+	it("destroy cleans up even when a cursor sprite session was cancelled", () => {
+		const renderer = createRenderer();
+		renderer.cancelCursorSpriteCapture();
+		expect(() => renderer.destroy()).not.toThrow();
 	});
 });

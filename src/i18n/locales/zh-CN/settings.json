@@ -232,6 +232,49 @@
 			"high": "高",
 			"original": "原始"
 		},
+		"codecTitle": "视频编解码器",
+		"codec": {
+			"h264": "H.264",
+			"hevc": "H.265"
+		},
+		"encoderTitle": "编码器",
+		"encoder": {
+			"auto": "自动",
+			"hardware": "硬件",
+			"cpu": "CPU"
+		},
+		"backend": {
+			"auto": "Auto"
+		},
+		"nvidiaCuda": {
+			"compositorTitle": "NVIDIA CUDA compositor",
+			"backendLabel": "Backend",
+			"backendSelected": "NVIDIA CUDA compositor",
+			"availableBadge": "Available",
+			"selectedBadge": "Selected",
+			"requiredBadge": "Required",
+			"unavailableBadge": "Unavailable",
+			"toggle": "Use the NVIDIA CUDA compositor for GPU-accelerated exports",
+			"requiredToggle": "NVIDIA CUDA compositor is required for H.265 Hardware exports",
+			"hint": "Compose and encode on the NVIDIA GPU for fast exports.",
+			"hintSelected": "Exports will use the NVIDIA CUDA compositor on this device.",
+			"hintRequired": "H.265 Hardware exports use the NVIDIA CUDA compositor and never fall back to renderer frames.",
+			"unavailableReason": "CUDA compositor is unavailable ({{reason}}).",
+			"unavailableGeneric": "CUDA compositor is unavailable on this device.",
+			"unavailableRequired": "H.265 + Hardware exports will fail until the CUDA compositor is available. Install or update NVIDIA drivers, or switch Encoder to Auto."
+		},
+		"bitrateTitle": "比特率",
+		"bitrate": {
+			"auto": "自动",
+			"custom": "自定义",
+			"mbpsInput": "自定义比特率（Mbps）",
+			"range": "1–200 Mbps"
+		},
+		"hevcHint": "HEVC（H.265）生成的文件更小，但可能无法在较旧的或网页播放器中播放。Recordly 预览播放不受影响。",
+		"hardwareUnavailable": "未找到可用的硬件编码器。请选择 CPU 或自动，或更新你的 GPU 驱动程序。",
+		"errors": {
+			"hardwareUnavailable": "未找到可用的硬件编码器。请选择 CPU 或自动，或更新你的 GPU 驱动程序。"
+		},
 		"fpsTitle": "帧率",
 		"loop": "循环",
 		"outputDimensions": "输出：{{dimensions}}px",

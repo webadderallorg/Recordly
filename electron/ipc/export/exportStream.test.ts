@@ -22,6 +22,7 @@ import {
 	hasExportStream,
 	isOwnedExportPath,
 	openExportStream,
+	waitForExportStreamClosed,
 	writeToExportStream,
 } from "./exportStream";
 
@@ -125,6 +126,69 @@ describe("exportStream", () => {
 		);
 	});
 
+	it("allows the lossless tiled payload extension and persists its stream", async () => {
+		const { streamId, tempPath } = await openExportStream({ extension: "tiledrgba" });
+		openedTempPaths.push(tempPath);
+
+		expect(tempPath.endsWith(".tiledrgba")).toBe(true);
+		expect(hasExportStream(streamId)).toBe(true);
+
+		const tileBytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+		await writeToExportStream(streamId, 0, tileBytes);
+		const result = await closeExportStream(streamId);
+		expect(result.tempPath).toBe(tempPath);
+		expect(result.bytesWritten).toBe(tileBytes.byteLength);
+		expect(Array.from(await readBytes(tempPath))).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+	});
+
+	it("resolves waitForExportStreamClosed with the finalized path once the writer closes the stream", async () => {
+		const { streamId, tempPath } = await openExportStream({ extension: "wav" });
+		openedTempPaths.push(tempPath);
+
+		const waitPromise = waitForExportStreamClosed(streamId, 5_000);
+		// The writer closes the stream after the payload is complete; the waiter
+		// must resolve with the finalized temp path (the deterministic handshake
+		// the native mux uses for a renderer-streamed edited-audio payload).
+		await writeToExportStream(streamId, 0, new Uint8Array([9, 9, 9]));
+		const closed = await closeExportStream(streamId);
+
+		await expect(waitPromise).resolves.toBe(closed.tempPath);
+		await expect(waitPromise).resolves.toBe(tempPath);
+	});
+
+	it("waitForExportStreamClosed resolves immediately when the stream already closed", async () => {
+		const { streamId, tempPath } = await openExportStream();
+		openedTempPaths.push(tempPath);
+		await closeExportStream(streamId);
+
+		await expect(waitForExportStreamClosed(streamId, 5_000)).resolves.toBe(tempPath);
+	});
+
+	it("waitForExportStreamClosed rejects for a stream that was aborted", async () => {
+		const { streamId, tempPath } = await openExportStream();
+		openedTempPaths.push(tempPath);
+		await closeExportStream(streamId, { abort: true });
+
+		await expect(waitForExportStreamClosed(streamId, 5_000)).rejects.toThrow(
+			/not opened or was aborted/,
+		);
+	});
+
+	it("waitForExportStreamClosed rejects for an unknown stream id", async () => {
+		await expect(
+			waitForExportStreamClosed("recordly-export-stream-unknown", 500),
+		).rejects.toThrow(/not opened or was aborted/);
+	});
+
+	it("waitForExportStreamClosed rejects with a timeout when the stream never closes", async () => {
+		const { streamId, tempPath } = await openExportStream();
+		openedTempPaths.push(tempPath);
+
+		await expect(waitForExportStreamClosed(streamId, 150)).rejects.toThrow(
+			/Timed out after 150ms/,
+		);
+	});
+
 	it("rejects an extension that would escape the temp directory", async () => {
 		await expect(openExportStream({ extension: "mp4/../etc/passwd" })).rejects.toThrow(
 			/Invalid export stream extension/,
@@ -133,6 +197,14 @@ describe("exportStream", () => {
 			/Invalid export stream extension/,
 		);
 		await expect(openExportStream({ extension: "MP4" })).rejects.toThrow(
+			/Invalid export stream extension/,
+		);
+		// Arbitrary/long non-alphanumeric extensions must stay rejected even though
+		// the length cap was raised to accommodate descriptive payload names.
+		await expect(openExportStream({ extension: "tiled.rgba" })).rejects.toThrow(
+			/Invalid export stream extension/,
+		);
+		await expect(openExportStream({ extension: "tiledrgba.exe" })).rejects.toThrow(
 			/Invalid export stream extension/,
 		);
 	});

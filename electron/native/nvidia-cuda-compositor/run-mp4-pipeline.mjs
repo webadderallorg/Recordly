@@ -48,18 +48,19 @@ function resolveToolCommand(envNames, moduleName, fallbackName) {
 const ffmpegCommand = resolveToolCommand(["RECORDLY_FFMPEG_EXE"], "ffmpeg-static", "ffmpeg");
 const ffprobeCommand = resolveToolCommand(["RECORDLY_FFPROBE_EXE"], "ffprobe-static", "ffprobe");
 
-const cursorTypes = [
-	"arrow",
-	"text",
-	"pointer",
-	"crosshair",
-	"open-hand",
-	"closed-hand",
-	"resize-ew",
-	"resize-ns",
-	"not-allowed",
-];
-const cursorTypeIndexes = new Map(cursorTypes.map((type, index) => [type, index]));
+import { parseCursorTelemetrySamples, writeCursorSamplesFile } from "./cursorTelemetry.mjs";
+import { readOverlayManifest, sortOverlayLayersByOrder } from "./overlayManifest.mjs";
+import { resolvePipeInputFlag } from "./pipeInputFlag.mjs";
+import {
+	isConstantFrameRateSource,
+	parseRationalFps,
+	resolveSourcePtsPlan,
+} from "./sourcePtsPlan.mjs";
+import {
+	readTiledOverlayManifest,
+	resolveTiledOverlayLayerMetrics,
+	resolveTiledOverlayRawFallbackReason,
+} from "./tiledOverlayManifest.mjs";
 
 function fail(message) {
 	throw new Error(message);
@@ -284,6 +285,7 @@ function emitPreparationProgress(totalFrames, percentage, stage) {
 	const progressStage = stage ?? "preparing";
 	const finalizing = progressStage === "finalizing";
 	const payload = {
+		outputCodec,
 		currentFrame: finalizing ? Math.max(1, Math.floor(totalFrames)) : 0,
 		totalFrames: Math.max(1, Math.floor(totalFrames)),
 		percentage: Number(Math.min(99, Math.max(0, percentage)).toFixed(2)),
@@ -451,69 +453,6 @@ function summarizeGpuSamples(samples) {
 	return summary;
 }
 
-function cursorBounceScale(interactionType, ageMs, durationMs = 180) {
-	if (!["click", "double-click", "right-click", "middle-click"].includes(interactionType)) {
-		return 1;
-	}
-	if (ageMs < 0 || ageMs > durationMs) {
-		return 1;
-	}
-	const progress = 1 - ageMs / durationMs;
-	return Math.max(0.72, 1 - Math.sin(progress * Math.PI) * 0.08);
-}
-
-function latestClickSample(samples, sampleIndex) {
-	for (let index = sampleIndex; index >= 0; index -= 1) {
-		const sample = samples[index];
-		if (
-			["click", "double-click", "right-click", "middle-click"].includes(
-				sample?.interactionType,
-			)
-		) {
-			return sample;
-		}
-	}
-	return null;
-}
-
-function writeCursorSamples(cursorPayload, outputPath) {
-	const samples = Array.isArray(cursorPayload.samples) ? cursorPayload.samples : [];
-	const cursorLines = samples
-		.map((sample, index) => {
-			if (
-				!Number.isFinite(sample?.timeMs) ||
-				!Number.isFinite(sample?.cx) ||
-				!Number.isFinite(sample?.cy)
-			) {
-				return null;
-			}
-			const clickSample = latestClickSample(samples, index);
-			const bounceScale = Number.isFinite(sample.bounceScale)
-				? sample.bounceScale
-				: clickSample
-					? cursorBounceScale(
-							clickSample.interactionType,
-							sample.timeMs - clickSample.timeMs,
-						)
-					: 1;
-			return [
-				sample.timeMs,
-				sample.cx,
-				sample.cy,
-				cursorTypeIndexes.get(sample.cursorType) ??
-					(Number.isFinite(sample.cursorTypeIndex)
-						? Math.max(0, Math.min(8, Math.round(sample.cursorTypeIndex)))
-						: 0),
-				Number(bounceScale.toFixed(4)),
-				sample.visible === false ? 0 : 1,
-			].join("\t");
-		})
-		.filter(Boolean)
-		.join("\n");
-	writeFileSync(outputPath, cursorLines ? `${cursorLines}\n` : "");
-	return samples.length;
-}
-
 function renderTahoeCursorAtlas(workDir) {
 	const rgbaPath = join(workDir, "tahoe-cursor-atlas.rgba");
 	const metadataPath = join(workDir, "tahoe-cursor-atlas.tsv");
@@ -675,14 +614,262 @@ async function runWithGpuMonitor(command, args, sampleIntervalMs) {
 	};
 }
 
+// Kills a child and, on Windows, its whole process tree. Used by pipe-input
+// mode so a failed demux/encode never leaves a half-written output or an
+// orphaned helper spinning on a closed pipe.
+function killProcessTree(child, label) {
+	if (!child || child.pid === undefined) {
+		return;
+	}
+	if (child.exitCode !== null || child.signalCode !== null) {
+		return;
+	}
+	if (process.platform === "win32") {
+		try {
+			spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+				windowsHide: true,
+			});
+			return;
+		} catch {
+			// Fall through to the portable kill below.
+		}
+	}
+	try {
+		child.kill();
+	} catch {
+		// The child already exited between the exitCode check and kill.
+	}
+}
+
+// Pipe-input encode: spawns the compositor FIRST with stdin/stdout/stderr
+// pipes, then spawns the ffmpeg source demux that writes Annex-B H.264 into
+// the compositor's stdin. Encoding starts as soon as the first demuxed packets
+// arrive instead of after the whole source has been written to an Annex-B
+// file. GPU sampling and stderr forwarding mirror runWithGpuMonitor. Both
+// process trees are killed when either side fails.
+async function runPipeInputEncode(command, args, ffmpegArgs, sampleIntervalMs) {
+	const samples = [];
+	const startedAt = performance.now();
+	const shouldSampleGpu = Number.isFinite(sampleIntervalMs) && sampleIntervalMs > 0;
+	let stdout = "";
+	let stderr = "";
+	let demuxStderr = "";
+
+	const compositor = spawn(command, args, {
+		windowsHide: true,
+		stdio: ["pipe", "pipe", "pipe"],
+	});
+	const priorityBoosted = raiseChildPriority(compositor, "native CUDA encoder");
+
+	const demux = spawn(ffmpegCommand, ffmpegArgs, {
+		windowsHide: true,
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+
+	// The compositor owns decode/encode; it exits before the demux when
+	// --max-frames (or an early selection stop) is reached, which EPIPEs the
+	// demux writer. Swallow pipe errors so the failure is attributed to the
+	// actual exit codes below instead of an unhandled stream error.
+	demux.stdout.on("error", () => {
+		// Swallow EPIPE so the failure is attributed to exit codes below.
+	});
+	compositor.stdin.on("error", () => {
+		// Swallow EPIPE so the failure is attributed to exit codes below.
+	});
+	demux.stdout.pipe(compositor.stdin);
+
+	const collectSample = () => {
+		if (!shouldSampleGpu) {
+			return;
+		}
+		const sample = sampleGpu();
+		if (sample) {
+			samples.push({
+				elapsedMs: Number((performance.now() - startedAt).toFixed(2)),
+				...sample,
+			});
+		}
+	};
+	collectSample();
+	const interval = shouldSampleGpu ? setInterval(collectSample, sampleIntervalMs) : null;
+
+	compositor.stdout.on("data", (chunk) => {
+		stdout += chunk.toString();
+	});
+	compositor.stderr.on("data", (chunk) => {
+		const text = chunk.toString();
+		stderr += text;
+		process.stderr.write(text);
+	});
+	demux.stderr.on("data", (chunk) => {
+		demuxStderr += chunk.toString();
+		process.stderr.write(chunk.toString());
+	});
+
+	const { compositorStatus, demuxStatus, compositorExitedFirst } = await new Promise(
+		(resolve, reject) => {
+			let compositorResult = null;
+			let demuxResult = null;
+			let compositorClosed = false;
+			let demuxClosed = false;
+			let settled = false;
+			const settle = () => {
+				if (settled || compositorResult === null || demuxResult === null) {
+					return;
+				}
+				settled = true;
+				if (interval) {
+					clearInterval(interval);
+				}
+				collectSample();
+				resolve({
+					compositorStatus: compositorResult,
+					demuxStatus: demuxResult,
+					compositorExitedFirst: compositorClosed && !demuxClosed,
+				});
+			};
+			compositor.on("error", (error) => {
+				killProcessTree(demux, "ffmpeg source demux");
+				reject(new Error(`${command} failed to start: ${error.message}`));
+			});
+			demux.on("error", (error) => {
+				killProcessTree(compositor, "native CUDA compositor");
+				reject(new Error(`${ffmpegCommand} failed to start: ${error.message}`));
+			});
+			compositor.on("close", (status, signal) => {
+				compositorResult = { status, signal };
+				compositorClosed = true;
+				// The compositor is the encode authority; once it is gone the
+				// demux must not be left writing into a full pipe (that would
+				// hang the wrapper forever). A clean early stop (--max-frames)
+				// closes stdin, which makes the demux EPIPE on its own, but kill
+				// the tree here so no ordering leaves the producer blocked.
+				if (!demuxClosed) {
+					killProcessTree(demux, "ffmpeg source demux");
+				}
+				settle();
+			});
+			demux.on("close", (status, signal) => {
+				demuxResult = { status, signal };
+				demuxClosed = true;
+				// EOF on the pipe is delivered by the kernel when the demux
+				// finishes, so only kill the compositor when the demux FAILED.
+				if (status !== 0 && !compositorClosed) {
+					killProcessTree(compositor, "native CUDA compositor");
+				}
+				settle();
+			});
+		},
+	);
+	if (interval) {
+		clearInterval(interval);
+	}
+
+	const elapsedMs = performance.now() - startedAt;
+	// Success = clean compositor encode, and either the demux finished cleanly
+	// (normal path: demux EOF then compositor EOF) or the compositor exited
+	// first (--max-frames early stop, or the demux was killed once the
+	// compositor no longer needed input). A demux failure that forced the
+	// compositor down is the one ordering that always fails the export.
+	const demuxExitedCleanly =
+		demuxStatus.status === 0 || (compositorStatus.status === 0 && compositorExitedFirst);
+	if (compositorStatus.status !== 0 || !demuxExitedCleanly) {
+		killProcessTree(compositor, "native CUDA compositor");
+		killProcessTree(demux, "ffmpeg source demux");
+		const compositorDetail =
+			compositorStatus.status !== 0
+				? `${command} exited with ${compositorStatus.status}${compositorStatus.signal ? ` (signal ${compositorStatus.signal})` : ""}` +
+					(stderr.trim() ? `\nSTDERR:\n${stderr.trim()}` : "")
+				: "";
+		const demuxDetail = !demuxExitedCleanly
+			? `${ffmpegCommand} exited with ${demuxStatus.status}${demuxStatus.signal ? ` (signal ${demuxStatus.signal})` : ""}` +
+				(demuxStderr.trim() ? `\nDEMUX STDERR:\n${demuxStderr.trim()}` : "")
+			: "";
+		fail(
+			[compositorDetail, demuxDetail].filter(Boolean).join("\n") ||
+				"pipe input encode failed",
+		);
+	}
+	return {
+		elapsedMs,
+		stdout,
+		stderr,
+		gpuSamples: samples,
+		gpuSummary: summarizeGpuSamples(samples),
+		priorityBoosted,
+	};
+}
+
 function ffprobeJson(args) {
 	const result = run(ffprobeCommand, ["-v", "error", ...args, "-of", "json"]);
 	return JSON.parse(result.stdout);
 }
 
-async function ffprobeCsvAsync(args) {
-	const result = await runAsync(ffprobeCommand, ["-v", "error", ...args, "-of", "csv=p=0"]);
-	return result.stdout;
+async function ffprobeCsvAsync(args, progressOptions = null) {
+	// The PTS scan reads the whole file and the bundled ffprobe cannot report
+	// its own progress, so stream the CSV output and count packets (one CSV
+	// line per packet) as a real scan-progress signal. A wedged scan stops
+	// producing lines and therefore stops re-arming the main-process stall
+	// guard, while a healthy scan advances the preparing percentage from
+	// startPercentage to endPercentage.
+	const { expectedLines, startPercentage, endPercentage, stage } = progressOptions ?? {};
+	const trackProgress =
+		Number.isFinite(expectedLines) &&
+		expectedLines > 0 &&
+		Number.isFinite(startPercentage) &&
+		Number.isFinite(endPercentage);
+	if (!trackProgress) {
+		const result = await runAsync(ffprobeCommand, ["-v", "error", ...args, "-of", "csv=p=0"]);
+		return result.stdout;
+	}
+
+	const startedAt = performance.now();
+	return new Promise((resolvePromise, rejectPromise) => {
+		const child = spawn(ffprobeCommand, ["-v", "error", ...args, "-of", "csv=p=0"], {
+			windowsHide: true,
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		let stdout = "";
+		let stderr = "";
+		let lines = 0;
+		let lastEmittedPercentage = startPercentage;
+		const emit = (lineCount) => {
+			const ratio = Math.max(0, Math.min(1, lineCount / expectedLines));
+			const percentage = startPercentage + (endPercentage - startPercentage) * ratio;
+			if (percentage >= lastEmittedPercentage + 0.1 || percentage >= endPercentage) {
+				lastEmittedPercentage = Math.min(endPercentage, percentage);
+				emitPreparationProgress(0, lastEmittedPercentage, stage);
+			}
+		};
+
+		child.stdout.on("data", (chunk) => {
+			const text = chunk.toString();
+			stdout += text;
+			lines += (text.match(/\n/g) ?? []).length;
+			emit(lines);
+		});
+		child.stderr.on("data", (chunk) => {
+			stderr += chunk.toString();
+		});
+		child.once("error", (error) => {
+			rejectPromise(new Error(`${ffprobeCommand} failed to start: ${error.message}`));
+		});
+		child.once("close", (status, signal) => {
+			const elapsedMs = performance.now() - startedAt;
+			if (status !== 0) {
+				const suffix = signal ? ` (signal ${signal})` : "";
+				rejectPromise(
+					new Error(
+						`${ffprobeCommand} exited with ${status}${suffix}` +
+							(stderr.trim() ? `\nSTDERR:\n${stderr.trim()}` : ""),
+					),
+				);
+				return;
+			}
+			emitPreparationProgress(0, endPercentage, stage);
+			resolvePromise(stdout);
+		});
+	});
 }
 
 function getVideoInfo(inputPath) {
@@ -690,7 +877,7 @@ function getVideoInfo(inputPath) {
 		"-select_streams",
 		"v:0",
 		"-show_entries",
-		"stream=codec_name,width,height,duration,avg_frame_rate,nb_frames",
+		"stream=codec_name,width,height,duration,avg_frame_rate,r_frame_rate,nb_frames,color_primaries,color_transfer,color_space,color_range",
 		inputPath,
 	]);
 	let stream = json.streams?.[0];
@@ -698,24 +885,40 @@ function getVideoInfo(inputPath) {
 		fail(`No video stream found in ${inputPath}`);
 	}
 	if (stream.codec_name !== "h264") {
-		fail(`The NVIDIA CUDA compositor currently expects H.264 input, got ${stream.codec_name}`);
+		fail(
+			`The NVIDIA CUDA compositor only supports H.264 input video; got ${
+				stream.codec_name ?? "unknown"
+			}`,
+		);
 	}
 	const durationSec = Number(stream.duration);
 	if (!Number.isFinite(durationSec) || durationSec <= 0) {
 		fail("ffprobe did not return a valid video duration");
 	}
+	// Prefer the container's own frame count, then instant math from
+	// duration x avg_frame_rate. The full-decode -count_frames fallback only
+	// runs when neither nb_frames nor a usable avg_frame_rate exists.
 	let sourceFrames = Number(stream.nb_frames);
+	let sourceFramesSource = "nb_frames";
+	if (!Number.isFinite(sourceFrames) || sourceFrames <= 0) {
+		const avgFps = parseRationalFps(stream.avg_frame_rate);
+		if (avgFps > 0) {
+			sourceFrames = Math.max(1, Math.round(durationSec * avgFps));
+			sourceFramesSource = "duration-x-avg-fps";
+		}
+	}
 	if (!Number.isFinite(sourceFrames) || sourceFrames <= 0) {
 		const countedJson = ffprobeJson([
 			"-count_frames",
 			"-select_streams",
 			"v:0",
 			"-show_entries",
-			"stream=codec_name,width,height,duration,avg_frame_rate,nb_frames,nb_read_frames",
+			"stream=codec_name,width,height,duration,avg_frame_rate,r_frame_rate,nb_frames,nb_read_frames",
 			inputPath,
 		]);
 		stream = countedJson.streams?.[0] ?? stream;
 		sourceFrames = Number(stream.nb_read_frames || stream.nb_frames);
+		sourceFramesSource = "count-frames";
 	}
 	if (!Number.isFinite(sourceFrames) || sourceFrames <= 0) {
 		fail("ffprobe did not return a valid source frame count");
@@ -726,8 +929,61 @@ function getVideoInfo(inputPath) {
 		height: Number(stream.height),
 		durationSec,
 		sourceFrames,
+		sourceFramesSource,
 		avgFrameRate: stream.avg_frame_rate,
+		rFrameRate: stream.r_frame_rate,
+		colorPrimaries:
+			typeof stream.color_primaries === "string" ? stream.color_primaries : "unknown",
+		colorTransfer:
+			typeof stream.color_transfer === "string" ? stream.color_transfer : "unknown",
+		colorSpace: typeof stream.color_space === "string" ? stream.color_space : "unknown",
+		colorRange: typeof stream.color_range === "string" ? stream.color_range : "unknown",
 	};
+}
+
+// Maps a source stream's ffprobe color fields to ffmpeg's muxer tag vocabulary
+// for the MP4 finalize step. The CUDA compositor passes source NV12 through
+// unchanged, so the muxed output must carry the same color description the
+// source is interpreted with, otherwise external players guess a 4K color
+// space for the untagged HEVC stream (commonly BT.2020/PQ) and render the
+// identical bytes with a purple/magenta cast. Sources without any VUI/container
+// color metadata (the Recordly MediaRecorder recordings) fall back to the
+// app-wide convention: BT.709 primaries/transfer/matrix, limited range.
+function resolveOutputColorTags(videoInfo) {
+	const fallback = { primaries: "bt709", transfer: "bt709", matrix: "bt709", range: "tv" };
+	const ffmpegColorPrimaries = new Set(["bt709", "bt470bg", "smpte170m", "bt2020", "smpte428"]);
+	const ffmpegColorTransfer = new Set([
+		"bt709",
+		"smpte170m",
+		"bt470bg",
+		"iec61966-2-1",
+		"bt2020-10",
+		"bt2020-12",
+		"smpte2084",
+		"arib-std-b67",
+	]);
+	const ffmpegColorSpace = new Set([
+		"bt709",
+		"bt470bg",
+		"smpte170m",
+		"smpte240m",
+		"bt2020nc",
+		"bt2020cl",
+	]);
+	const primaries = ffmpegColorPrimaries.has(videoInfo.colorPrimaries)
+		? videoInfo.colorPrimaries
+		: fallback.primaries;
+	const transfer = ffmpegColorTransfer.has(videoInfo.colorTransfer)
+		? videoInfo.colorTransfer
+		: fallback.transfer;
+	const matrix = ffmpegColorSpace.has(videoInfo.colorSpace)
+		? videoInfo.colorSpace
+		: fallback.matrix;
+	const range =
+		videoInfo.colorRange === "pc" || videoInfo.colorRange === "tv"
+			? videoInfo.colorRange
+			: fallback.range;
+	return { primaries, transfer, matrix, range };
 }
 
 function normalizeMonotonicTimestamps(timestamps) {
@@ -800,41 +1056,52 @@ function readTimelineSegments(timelineMapPath) {
 	return segments;
 }
 
-async function getVideoPacketPtsAsync(inputPath, durationSec) {
-	const csv = await ffprobeCsvAsync([
-		"-select_streams",
-		"v:0",
-		"-read_intervals",
-		`%+${durationSec}`,
-		"-show_packets",
-		"-show_entries",
-		"packet=pts_time,dts_time",
-		inputPath,
-	]);
+async function getVideoPacketPtsAsync(inputPath, durationSec, progressOptions = null) {
+	const csv = await ffprobeCsvAsync(
+		[
+			"-select_streams",
+			"v:0",
+			"-read_intervals",
+			`%+${durationSec}`,
+			"-show_packets",
+			"-show_entries",
+			"packet=pts_time,dts_time",
+			inputPath,
+		],
+		progressOptions,
+	);
 	return normalizeMonotonicTimestamps(parseTimestampCsv(csv));
 }
 
-async function getVideoFramePtsAsync(inputPath, durationSec) {
-	const csv = await ffprobeCsvAsync([
-		"-select_streams",
-		"v:0",
-		"-read_intervals",
-		`%+${durationSec}`,
-		"-show_frames",
-		"-show_entries",
-		"frame=best_effort_timestamp_time",
-		inputPath,
-	]);
+async function getVideoFramePtsAsync(inputPath, durationSec, progressOptions = null) {
+	const csv = await ffprobeCsvAsync(
+		[
+			"-select_streams",
+			"v:0",
+			"-read_intervals",
+			`%+${durationSec}`,
+			"-show_frames",
+			"-show_entries",
+			"frame=best_effort_timestamp_time",
+			inputPath,
+		],
+		progressOptions,
+	);
 	return normalizeMonotonicTimestamps(parseTimestampCsv(csv));
 }
 
-async function writeFramePtsSidecarAsync(inputPath, durationSec, outputPath) {
+async function writeFramePtsSidecarAsync(
+	inputPath,
+	durationSec,
+	outputPath,
+	progressOptions = null,
+) {
 	const startedAt = performance.now();
 	let source = "packet-pts";
-	let timestamps = await getVideoPacketPtsAsync(inputPath, durationSec);
+	let timestamps = await getVideoPacketPtsAsync(inputPath, durationSec, progressOptions);
 	if (timestamps.length === 0) {
 		source = "frame-pts";
-		timestamps = await getVideoFramePtsAsync(inputPath, durationSec);
+		timestamps = await getVideoFramePtsAsync(inputPath, durationSec, progressOptions);
 	}
 	const elapsedMs = performance.now() - startedAt;
 	if (timestamps.length === 0) {
@@ -843,6 +1110,31 @@ async function writeFramePtsSidecarAsync(inputPath, durationSec, outputPath) {
 
 	writeFileSync(outputPath, timestamps.map((value) => value.toFixed(9)).join("\n"));
 	return { path: outputPath, frames: timestamps.length, elapsedMs, source };
+}
+
+// Writes the source-PTS sidecar analytically for a constant-frame-rate source.
+// For CFR content the computed timestamps (frameIndex / sourceFps) are exactly
+// the real packet PTS, so the native compositor's PTS-based frame selection
+// produces the same output as the full-file scan at zero I/O cost. The caller
+// guarantees frameCount matches the final demux-verified source window.
+function writeSyntheticCfrPtsSidecar(sourceFps, frameCount, outputPath) {
+	const startedAt = performance.now();
+	if (!(sourceFps > 0) || !(frameCount > 0)) {
+		fail(
+			"Cannot synthesize CFR source PTS without a positive source frame rate and frame count",
+		);
+	}
+	const lines = new Array(frameCount);
+	for (let index = 0; index < frameCount; index += 1) {
+		lines[index] = (index / sourceFps).toFixed(9);
+	}
+	writeFileSync(outputPath, lines.join("\n"));
+	return {
+		path: outputPath,
+		frames: frameCount,
+		elapsedMs: performance.now() - startedAt,
+		source: "synthetic-cfr",
+	};
 }
 
 function roundedRectMaskExpression({ x, y, width, height, radius }) {
@@ -930,6 +1222,11 @@ const inputPath = resolve(getArg("--input"));
 const outputPath = resolve(
 	getArg("--output", join(scriptDir, "recordly-nvdec-nvenc-mp4-output.mp4")),
 );
+const outputCodec = getArg("--output-codec", "h264");
+if (!["h264", "hevc"].includes(outputCodec)) {
+	throw new Error(`Unsupported --output-codec: ${outputCodec}; expected h264 or hevc`);
+}
+const elementaryStreamFormat = outputCodec;
 const requestedOutputWidth = Math.round(getNumberArg("--width", 0));
 const requestedOutputHeight = Math.round(getNumberArg("--height", 0));
 const fps = Math.round(getNumberArg("--fps", 30));
@@ -941,10 +1238,15 @@ if (!["fast", "balanced", "quality"].includes(encodingMode)) {
 const workDir = resolve(getArg("--work-dir", join(scriptDir, "mp4-work")));
 const reuseIntermediates = hasArg("--reuse-intermediates");
 const reuseDemux = hasArg("--reuse-demux") || reuseIntermediates;
+// Pipe mode streams the source ffmpeg demux straight into the compositor's
+// stdin (--input-stdin) so encoding starts before the whole source Annex-B
+// file is written. Opt-in via --pipe-input or RECORDLY_NVIDIA_CUDA_PIPE_INPUT=1;
+// file mode stays the default and is byte-for-byte the previous path.
+const pipeInput = resolvePipeInputFlag(process.argv, process.env);
 const sampleGpuDuringEncode = hasArg("--sample-gpu");
 const gpuSampleIntervalMs = Math.round(getNumberArg("--gpu-sample-interval-ms", 1000));
 const streamSync = hasArg("--stream-sync");
-const prewarmMs = Math.round(getNumberArg("--prewarm-ms", 0));
+const prewarmMs = Math.round(getNonNegativeNumberArg("--prewarm-ms", 0));
 const maxOutputFrames = Math.round(getNumberArg("--max-output-frames", 0));
 const requestedDurationSec = getNumberArg("--duration-sec", 0);
 const chunkMb = Math.round(getNumberArg("--chunk-mb", 4));
@@ -982,6 +1284,13 @@ const cursorAtlasPng = getArg("--cursor-atlas-png", "");
 const cursorAtlasMetadata = getArg("--cursor-atlas-metadata", "");
 const zoomTelemetry = getArg("--zoom-telemetry", "");
 const timelineMap = getArg("--timeline-map", "");
+const overlayManifest = getArg("--overlay-manifest", "");
+const tiledOverlayManifest = getArg("--tiled-overlay-manifest", "");
+const temporalBlurSampleCount = getNumberArg("--temporal-blur-sample-count", 0);
+const temporalBlurShutterFraction = getNumberArg("--temporal-blur-shutter-fraction", 0);
+const temporalBlurWeightPower = getNumberArg("--temporal-blur-weight-power", 1);
+const streamingRawOverlay = hasArg("--streaming-raw-overlay");
+const streamingCursorSprite = hasArg("--streaming-cursor-sprite");
 
 if (!existsSync(inputPath)) {
 	fail(`Input does not exist: ${inputPath}`);
@@ -1021,6 +1330,17 @@ function resolveNativeProbePath() {
 }
 const nativeProbe = resolveNativeProbePath();
 
+// The --help capability probe output is stable for a given helper build;
+// compute it once and reuse it for every feature check in this export instead
+// of re-invoking the native binary once per overlay/temporal feature.
+let nativeHelpCache = null;
+function readNativeHelp() {
+	if (nativeHelpCache === null) {
+		nativeHelpCache = run(nativeProbe, ["--help"]).stdout;
+	}
+	return nativeHelpCache;
+}
+
 const baseName = basename(inputPath).replace(/\.[^.]+$/, "");
 const webcamBaseName = webcamInput
 	? basename(webcamInput).replace(/\.[^.]+$/, "")
@@ -1028,7 +1348,7 @@ const webcamBaseName = webcamInput
 const annexBPath = join(workDir, `${baseName}.annexb.h264`);
 const webcamAnnexBPath = join(workDir, `${webcamBaseName}.annexb.h264`);
 const cursorSamplesPath = join(workDir, `${baseName}.cursor.tsv`);
-const encodedPath = join(workDir, `${baseName}.mapped-callback.h264`);
+const encodedPath = join(workDir, `${baseName}.mapped-callback.${outputCodec}`);
 const shouldBakeStaticShadow =
 	Boolean(backgroundImage) &&
 	contentWidth > 0 &&
@@ -1051,6 +1371,7 @@ const generatedWebcamNv12Path = join(
 const sourcePtsPath = join(workDir, `${baseName}.source-pts.csv`);
 
 const videoInfo = getVideoInfo(inputPath);
+const outputColorTags = resolveOutputColorTags(videoInfo);
 const webcamInfo = webcamInput ? getVideoInfo(webcamInput) : null;
 if (requestedOutputWidth > 0 !== requestedOutputHeight > 0) {
 	fail("--width and --height must be specified together");
@@ -1107,6 +1428,12 @@ let sourceWindowFrames = Math.max(
 		Math.ceil((videoInfo.sourceFrames * sourceDurationSec) / videoInfo.durationSec),
 	),
 );
+if (pipeInput && (!Number.isFinite(videoInfo.sourceFrames) || videoInfo.sourceFrames <= 0)) {
+	// getVideoInfo fails fast before this, but keep the over-estimate contract
+	// for pipe mode: ceil(duration*fps) + a few frames is safer than an
+	// under-count for the compositor selection plan.
+	sourceWindowFrames = Math.ceil(sourceDurationSec * fps) + 8;
+}
 let webcamSourceWindowFrames = webcamInfo
 	? Math.max(
 			1,
@@ -1204,8 +1531,9 @@ const webcamDemuxPromise =
 			)
 		: Promise.resolve(zeroElapsed());
 
-const demuxPromise =
-	reuseDemux && existsSync(annexBPath)
+const demuxPromise = pipeInput
+	? Promise.resolve(zeroElapsed())
+	: reuseDemux && existsSync(annexBPath)
 		? Promise.resolve(zeroElapsed())
 		: runWithProgress(
 				ffmpegCommand,
@@ -1235,11 +1563,44 @@ const demuxPromise =
 					endPercentage: 2,
 				},
 			);
-const sourcePtsPromise = writeFramePtsSidecarAsync(inputPath, sourceDurationSec, sourcePtsPath);
+// Source frame PTS is consumed when a timeline map is present or when the
+// wrapper inline-muxes audio and the native summary must report a
+// timestamp-aligned mode. The full-file per-packet ffprobe scan that writes
+// the sidecar dominates wall time (minutes on long recordings), so it only
+// runs when it is actually required: an explicit
+// RECORDLY_NVIDIA_CUDA_FORCE_SOURCE_PTS=1 diagnostics flag, VFR or
+// unknown-rate sources with a timeline map, or inline audio mux on a source
+// that is not provably constant-frame-rate. Constant-frame-rate sources
+// (including Recordly's own H.264 captures with a timeline map) use the
+// analytically computed sidecar instead (identical selection, zero scan);
+// video-only exports without a timeline map skip the sidecar entirely.
+const sourcePtsPlan = resolveSourcePtsPlan({
+	hasTimelineSegments: timelineSegments.length > 0,
+	videoOnly,
+	forceSourcePts: process.env.RECORDLY_NVIDIA_CUDA_FORCE_SOURCE_PTS,
+	muxAudioInline: !videoOnly,
+	isConstantFrameRateSource: isConstantFrameRateSource({
+		avgFrameRate: videoInfo.avgFrameRate,
+		rFrameRate: videoInfo.rFrameRate,
+	}),
+	hasSourceFrameRate: parseRationalFps(videoInfo.avgFrameRate) > 0,
+});
+const probeSourcePts = sourcePtsPlan.mode === "probe";
+const synthesizeSourcePts = sourcePtsPlan.mode === "synthesize-cfr";
+const sourcePtsPromise = probeSourcePts
+	? writeFramePtsSidecarAsync(inputPath, sourceDurationSec, sourcePtsPath, {
+			expectedLines: Math.max(1, sourceWindowFrames),
+			startPercentage: 2,
+			endPercentage: 3,
+		})
+	: Promise.resolve(zeroElapsed());
 
 if (cursorJson) {
-	const cursorPayload = JSON.parse(readFileSync(resolve(cursorJson), "utf8"));
-	writeCursorSamples(cursorPayload, cursorSamplesPath);
+	const cursorPayload = parseCursorTelemetrySamples(
+		readFileSync(resolve(cursorJson), "utf8"),
+		resolve(cursorJson),
+	);
+	writeCursorSamplesFile(cursorPayload, cursorSamplesPath);
 }
 const cursorAtlas =
 	cursorJson && cursorHeight > 0 && cursorAtlasPng && cursorAtlasMetadata
@@ -1248,7 +1609,7 @@ const cursorAtlas =
 			? renderTahoeCursorAtlas(workDir)
 			: null;
 
-const [backgroundConvert, webcamConvert, webcamDemux, demux, sourcePts] = await Promise.all([
+const [backgroundConvert, webcamConvert, webcamDemux, demux, sourcePtsProbe] = await Promise.all([
 	backgroundConvertPromise,
 	webcamConvertPromise,
 	webcamDemuxPromise,
@@ -1264,35 +1625,78 @@ const webcamDemuxFrameCount = parseFfmpegStatsFrameCount(webcamDemux.stderr);
 if (webcamDemuxFrameCount > 0) {
 	webcamSourceWindowFrames = webcamDemuxFrameCount;
 }
-if (timelineSegments.length && (!sourcePts.path || sourcePts.frames < sourceWindowFrames)) {
+// CFR exports (plain copy-source or timeline-mapped) write the sidecar
+// analytically after the demux-verified frame count is final; no ffprobe
+// scan runs for them.
+let resolvedSourcePts = sourcePtsProbe;
+if (synthesizeSourcePts) {
+	resolvedSourcePts = writeSyntheticCfrPtsSidecar(
+		parseRationalFps(videoInfo.avgFrameRate),
+		sourceWindowFrames,
+		sourcePtsPath,
+	);
+} else if (resolvedSourcePts.path && resolvedSourcePts.frames > 0) {
+	// The per-packet sidecar is the authoritative source-window frame count:
+	// prefer it over the metadata/derived estimate so the native compositor
+	// can index the sidecar for every decoded frame (timeline exports fail
+	// otherwise, and probe-based exports get a more accurate --input-frames).
+	sourceWindowFrames = resolvedSourcePts.frames;
+}
+if (
+	timelineSegments.length &&
+	(!resolvedSourcePts.path || resolvedSourcePts.frames < sourceWindowFrames)
+) {
 	fail("Timeline-map CUDA export requires source frame PTS for the full source window");
 }
 emitPreparationProgress(targetFrames, 3);
 
-const encodeArgs = [
-	"--input",
-	annexBPath,
-	"--output",
-	encodedPath,
-	"--fps",
-	String(fps),
-	"--input-frames",
-	String(sourceWindowFrames),
-	"--target-frames",
-	String(targetFrames),
-	"--bitrate-mbps",
-	String(bitrateMbps),
-	"--encoding-mode",
-	encodingMode,
-	"--callback-encode",
-	"--chunk-mb",
-	String(chunkMb),
-];
+const encodeArgs = pipeInput
+	? [
+			"--input-stdin",
+			"--output",
+			encodedPath,
+			"--output-codec",
+			outputCodec,
+			"--fps",
+			String(fps),
+			"--input-frames",
+			String(sourceWindowFrames),
+			"--target-frames",
+			String(targetFrames),
+			"--bitrate-mbps",
+			String(bitrateMbps),
+			"--encoding-mode",
+			encodingMode,
+			"--callback-encode",
+			"--chunk-mb",
+			String(chunkMb),
+		]
+	: [
+			"--input",
+			annexBPath,
+			"--output",
+			encodedPath,
+			"--output-codec",
+			outputCodec,
+			"--fps",
+			String(fps),
+			"--input-frames",
+			String(sourceWindowFrames),
+			"--target-frames",
+			String(targetFrames),
+			"--bitrate-mbps",
+			String(bitrateMbps),
+			"--encoding-mode",
+			encodingMode,
+			"--callback-encode",
+			"--chunk-mb",
+			String(chunkMb),
+		];
 if (requestedOutputWidth > 0 && requestedOutputHeight > 0) {
 	encodeArgs.push("--width", String(outputWidth), "--height", String(outputHeight));
 }
-if (sourcePts.path && sourcePts.frames >= sourceWindowFrames) {
-	encodeArgs.push("--source-pts", sourcePts.path);
+if (resolvedSourcePts.path && resolvedSourcePts.frames >= sourceWindowFrames) {
+	encodeArgs.push("--source-pts", resolvedSourcePts.path);
 }
 if (timelineMap) {
 	encodeArgs.push("--timeline-map", resolve(timelineMap));
@@ -1402,8 +1806,199 @@ if (contentWidth > 0 && contentHeight > 0) {
 if (zoomTelemetry) {
 	encodeArgs.push("--zoom-samples", resolve(zoomTelemetry));
 }
-const encode =
-	reuseIntermediates && existsSync(encodedPath)
+if (temporalBlurSampleCount > 0) {
+	// The native compositor must advertise --temporal-blur-sample-count in its
+	// --help usage before the wrapper forwards the resolved temporal zoom
+	// motion blur plan (mirror of the tiled-overlay probe below). Until then
+	// temporal blur cannot be composited and the export fails fast instead of
+	// silently dropping the effect.
+	const nativeHelp = readNativeHelp();
+	if (!nativeHelp.includes("--temporal-blur-sample-count")) {
+		fail(
+			"unsupported-temporal-motion-blur: the native NVIDIA CUDA compositor does not support temporal zoom motion blur yet; " +
+				"main.cu must consume --temporal-blur-sample-count (this build) or the renderer must " +
+				"keep the effect on a CUDA-capable helper.",
+		);
+	}
+}
+if (temporalBlurSampleCount >= 3) {
+	encodeArgs.push(
+		"--temporal-blur-sample-count",
+		String(temporalBlurSampleCount),
+		"--temporal-blur-shutter-fraction",
+		String(temporalBlurShutterFraction),
+		"--temporal-blur-weight-power",
+		String(temporalBlurWeightPower),
+	);
+} else if (temporalBlurSampleCount > 0) {
+	// The TS-side invariant rejects resolved plans below the minimum (3), but a
+	// direct wrapper invocation could still request 1-2 samples. The native
+	// compositor accepts 3..61 samples only, so fail fast with the established
+	// unsupported-result contract instead of a warning and a silently dropped
+	// effect (mirroring the unsupported-temporal-motion-blur fail above).
+	fail(
+		`unsupported-temporal-motion-blur: temporal zoom motion blur requested with ${temporalBlurSampleCount} sample(s), below the minimum of 3; ` +
+			"main.cu only consumes --temporal-blur-sample-count values in the supported 3..61 range.",
+	);
+}
+// The manifest may mix fixed-position rgba layers and cursor-sprite layers.
+// rgba layers keep the proven per-layer --overlay descriptor; cursor-sprite
+// layers are forwarded to the native cursor-sprite compositor route that owns
+// the packed frame strip + per-frame positions validation. Layers are sorted
+// by ascending (order, id) before the kind filters so mixed manifests keep the
+// renderer's global z-order regardless of manifest order and cursor-sprite
+// layers stay above the fixed rgba layers.
+const overlayLayers = sortOverlayLayersByOrder(
+	readOverlayManifest(
+		overlayManifest,
+		{
+			outputWidth,
+			outputHeight,
+		},
+		{ streamingRawOverlay, streamingCursorSprite },
+	),
+);
+const rgbaOverlayLayers = overlayLayers.filter((layer) => layer.kind === "rgba");
+const cursorSpriteLayers = overlayLayers.filter((layer) => layer.kind === "cursor-sprite");
+if (rgbaOverlayLayers.length) {
+	for (const layer of rgbaOverlayLayers) {
+		encodeArgs.push(
+			"--overlay",
+			layer.path,
+			String(layer.x),
+			String(layer.y),
+			String(layer.width),
+			String(layer.height),
+			// The native OverlayFrameSource clamps/repeats the final physical frame
+			// for output indices beyond the physical count, so the descriptor must
+			// carry the physical sidecar count (effectiveFrameCount when renderer
+			// dedup truncated an identical suffix, otherwise the logical count).
+			String(layer.effectiveFrameCount ?? layer.frameCount),
+			// Optional 7th argument is the renderer-side global z-order; the native
+			// compositor merges raw/tiled/cursor-sprite layers by this ascending
+			// value so a manifest order survives classification and filtering.
+			String(layer.order),
+		);
+	}
+}
+if (cursorSpriteLayers.length) {
+	const nativeHelp = readNativeHelp();
+	if (!nativeHelp.includes("--cursor-sprite")) {
+		fail(
+			"The native NVIDIA CUDA compositor does not support cursor-sprite overlays yet; " +
+				"main.cu must consume --cursor-sprite (this build) or the renderer must keep " +
+				"the baked cursor overlay sidecar fallback.",
+		);
+	}
+	if (streamingCursorSprite && !nativeHelp.includes("--streaming-cursor-sprite")) {
+		fail(
+			"The native NVIDIA CUDA compositor does not support --streaming-cursor-sprite; " +
+				"rebuild the helper with the growing-file cursor-sprite reader or the renderer " +
+				"must keep the sequential cursor-sprite bake.",
+		);
+	}
+	for (const layer of cursorSpriteLayers) {
+		// positions are validated/clamped on the JS side above; the native
+		// compositor re-validates the positions file and hard-fails (noCpuFallback)
+		// so the cursor is never silently omitted on a strict native route.
+		encodeArgs.push(
+			"--cursor-sprite",
+			layer.id,
+			String(layer.order),
+			layer.path,
+			resolve(layer.positionsPath),
+			String(layer.width),
+			String(layer.height),
+			String(layer.frameCount),
+		);
+	}
+}
+// Tiled/delta sparse overlay stream: the versioned descriptor was validated by
+// readTiledOverlayManifest (independently of the TS side). The native CUDA
+// compositor consumes the descriptor itself; it must advertise
+// --tiled-overlay-manifest in its --help usage before the wrapper forwards it.
+// Until then a tiled stream cannot be composited and the export fails fast
+// instead of silently dropping overlay pixels.
+const tiledOverlayLayers = readTiledOverlayManifest(tiledOverlayManifest, {
+	outputWidth,
+	outputHeight,
+	frameRate: fps,
+	durationSec,
+});
+const tiledOverlayMetrics = tiledOverlayLayers.map((layer) => {
+	const layerMetrics = resolveTiledOverlayLayerMetrics(layer);
+	return {
+		layer: {
+			id: layer.id,
+			order: layer.order,
+			x: layer.x,
+			y: layer.y,
+			width: layer.width,
+			height: layer.height,
+			frameCount: layer.frameCount,
+			frameRate: layer.frameRate,
+			durationSec: layer.durationSec,
+			tileSize: layer.tileSize,
+			pixelFormat: layer.pixelFormat,
+			payloadPath: layer.payloadPath,
+			payloadByteLength: layer.payloadByteLength,
+			staticTileCount: layer.staticTiles.length,
+			frameDeltaCount: layer.frameDeltas.length,
+		},
+		metrics: layerMetrics,
+		rawFallbackReason: resolveTiledOverlayRawFallbackReason(layer, layerMetrics),
+	};
+});
+if (tiledOverlayLayers.length) {
+	const nativeHelp = readNativeHelp();
+	if (!nativeHelp.includes("--tiled-overlay-manifest")) {
+		fail(
+			"The native NVIDIA CUDA compositor does not support tiled overlay manifests yet; " +
+				"main.cu must consume --tiled-overlay-manifest (follow-up) or the renderer must " +
+				"keep the raw RGBA overlay sidecar fallback.",
+		);
+	}
+	encodeArgs.push("--tiled-overlay-manifest", resolve(tiledOverlayManifest));
+}
+if (streamingRawOverlay) {
+	encodeArgs.push("--streaming-raw-overlay");
+}
+if (streamingCursorSprite) {
+	encodeArgs.push("--streaming-cursor-sprite");
+}
+const pipeDemuxArgs = [
+	"-y",
+	"-hide_banner",
+	"-loglevel",
+	"error",
+	"-stats",
+	"-i",
+	inputPath,
+	"-t",
+	String(sourceDurationSec),
+	"-map",
+	"0:v:0",
+	"-c:v",
+	"copy",
+	"-bsf:v",
+	"h264_mp4toannexb",
+	"-an",
+	"-f",
+	"h264",
+	"pipe:1",
+	"-flush_packets",
+	"1",
+];
+const encode = pipeInput
+	? reuseIntermediates && existsSync(encodedPath)
+		? { elapsedMs: 0, stdout: "", gpuSummary: null }
+		: await runPipeInputEncode(
+				nativeProbe,
+				encodeArgs,
+				pipeDemuxArgs,
+				sampleGpuDuringEncode ? gpuSampleIntervalMs : 0,
+			)
+	: reuseIntermediates && existsSync(encodedPath)
 		? { elapsedMs: 0, stdout: "", gpuSummary: null }
 		: await runWithGpuMonitor(
 				nativeProbe,
@@ -1411,7 +2006,54 @@ const encode =
 				sampleGpuDuringEncode ? gpuSampleIntervalMs : 0,
 			);
 const nativeSummary = encode.stdout ? parseProbeSummary(encode.stdout) : null;
+if (nativeSummary && tiledOverlayLayers.length) {
+	// Additive renderer-derived tiled throughput bookkeeping rides on the native
+	// summary so the main-process normalization surfaces it unchanged. Values are
+	// aggregated across layers; rawFallbackReason is the first conservative
+	// eligibility decision that forced the raw full-frame fallback. These are
+	// diagnostic only and never claim zero-copy.
+	nativeSummary.tiledOverlayLayers = tiledOverlayLayers.length;
+	nativeSummary.changedTileCount = tiledOverlayMetrics.reduce(
+		(total, entry) => total + entry.metrics.changedTileCount,
+		0,
+	);
+	nativeSummary.uploadedTileBytes = tiledOverlayMetrics.reduce(
+		(total, entry) => total + entry.metrics.uploadedTileBytes,
+		0,
+	);
+	nativeSummary.cachedTileCount = tiledOverlayMetrics.reduce(
+		(total, entry) => total + entry.metrics.cachedTileCount,
+		0,
+	);
+	const firstFallbackReason = tiledOverlayMetrics.find(
+		(entry) => entry.rawFallbackReason !== null,
+	)?.rawFallbackReason;
+	if (firstFallbackReason) {
+		nativeSummary.rawFallbackReason = firstFallbackReason;
+	}
+}
+if (nativeSummary?.outputCodec && nativeSummary.outputCodec !== outputCodec) {
+	fail(`Native output codec mismatch: expected ${outputCodec}, got ${nativeSummary.outputCodec}`);
+}
 
+const elementaryStreamInputArgs = [
+	"-f",
+	elementaryStreamFormat,
+	"-framerate",
+	String(fps),
+	"-i",
+	encodedPath,
+];
+const colorTagArgs = [
+	"-color_primaries",
+	outputColorTags.primaries,
+	"-colorspace",
+	outputColorTags.matrix,
+	"-color_trc",
+	outputColorTags.transfer,
+	"-color_range",
+	outputColorTags.range,
+];
 const mux = skipMux
 	? { elapsedMs: 0 }
 	: videoOnly
@@ -1423,14 +2065,12 @@ const mux = skipMux
 					"-loglevel",
 					"error",
 					"-stats",
-					"-framerate",
-					String(fps),
-					"-i",
-					encodedPath,
+					...elementaryStreamInputArgs,
 					"-map",
 					"0:v:0",
 					"-c:v",
 					"copy",
+					...colorTagArgs,
 					outputPath,
 				],
 				{
@@ -1449,10 +2089,7 @@ const mux = skipMux
 					"-loglevel",
 					"error",
 					"-stats",
-					"-framerate",
-					String(fps),
-					"-i",
-					encodedPath,
+					...elementaryStreamInputArgs,
 					"-i",
 					inputPath,
 					"-map",
@@ -1463,6 +2100,7 @@ const mux = skipMux
 					"copy",
 					"-c:a",
 					"copy",
+					...colorTagArgs,
 					"-t",
 					String(durationSec),
 					outputPath,
@@ -1487,6 +2125,13 @@ const outputInfo = skipMux
 const outputStreams = outputInfo.streams ?? [];
 const outputVideo = outputStreams.find((stream) => stream.codec_type === "video") ?? null;
 const outputAudio = outputStreams.find((stream) => stream.codec_type === "audio") ?? null;
+if (!skipMux && outputVideo?.codec_name !== outputCodec) {
+	fail(
+		`Muxed output codec mismatch: expected ${outputCodec}, got ${
+			outputVideo?.codec_name ?? "none"
+		}`,
+	);
+}
 
 console.log(
 	JSON.stringify(
@@ -1497,6 +2142,8 @@ console.log(
 			requestedOutputPath: outputPath,
 			encodedPath,
 			fps,
+			outputCodec,
+			elementaryStreamFormat,
 			bitrateMbps,
 			encodingMode,
 			streamSync,
@@ -1566,13 +2213,58 @@ console.log(
 										inputPath: resolve(zoomTelemetry),
 									}
 								: null,
+							overlay:
+								overlayLayers.length || tiledOverlayLayers.length
+									? {
+											layers: rgbaOverlayLayers.map((layer) => ({
+												id: layer.id,
+												path: layer.path,
+												x: layer.x,
+												y: layer.y,
+												width: layer.width,
+												height: layer.height,
+												frameCount: layer.frameCount,
+												...(layer.effectiveFrameCount !== undefined
+													? {
+															effectiveFrameCount:
+																layer.effectiveFrameCount,
+														}
+													: {}),
+												physicalFrameCount:
+													layer.effectiveFrameCount ?? layer.frameCount,
+											})),
+											cursorSprite: cursorSpriteLayers.length
+												? {
+														layers: cursorSpriteLayers.map((layer) => ({
+															id: layer.id,
+															order: layer.order,
+															path: layer.path,
+															positionsPath: layer.positionsPath,
+															width: layer.width,
+															height: layer.height,
+															frameCount: layer.frameCount,
+															positionsCount: layer.positions.length,
+														})),
+													}
+												: null,
+											tiled: tiledOverlayLayers.length
+												? { layers: tiledOverlayMetrics }
+												: null,
+										}
+									: null,
 						}
 					: null,
 			gpuSampleIntervalMs: sampleGpuDuringEncode ? gpuSampleIntervalMs : null,
+			pipeInput,
+			streamingRawOverlay,
 			videoInfo,
 			sourceWindowFrames,
-			sourcePtsFrames: sourcePts.frames,
-			sourcePtsSource: sourcePts.source,
+			sourcePtsFrames: resolvedSourcePts.frames,
+			sourcePtsSource: resolvedSourcePts.source,
+			sourcePtsPlan: {
+				mode: sourcePtsPlan.mode,
+				reason: sourcePtsPlan.reason,
+			},
 			targetFrames,
 			timingsMs: {
 				preparationWall: Number(preparationWallMs.toFixed(2)),
@@ -1581,7 +2273,7 @@ console.log(
 				cursorAtlas: Number((cursorAtlas?.elapsedMs ?? 0).toFixed(2)),
 				webcamConvert: Number(webcamConvert.elapsedMs.toFixed(2)),
 				webcamDemux: Number(webcamDemux.elapsedMs.toFixed(2)),
-				sourcePtsProbe: Number(sourcePts.elapsedMs.toFixed(2)),
+				sourcePtsProbe: Number(resolvedSourcePts.elapsedMs.toFixed(2)),
 				nativeEncode: Number(encode.elapsedMs.toFixed(2)),
 				mux: Number(mux.elapsedMs.toFixed(2)),
 				endToEnd: Number((performance.now() - pipelineStartedAt).toFixed(2)),

@@ -29,7 +29,12 @@ import { useTimelineRange } from "./hooks/useTimelineRange";
 import {
 	buildSourceSidecarPathCandidates,
 	buildTimelineSourceAudioTracks,
+	classifyAuthoritativeSourceSidecars,
+	getRendererNavigatorPlatform,
+	isWindowsNavigatorPlatform,
 } from "./sourceAudioTracks";
+
+const EMPTY_SOURCE_SIDECAR_PATHS: readonly string[] = [];
 
 export interface TimelineEditorProps {
 	videoDuration: number;
@@ -80,6 +85,14 @@ export interface TimelineEditorProps {
 	videoPath?: string | null;
 	videoSourcePath?: string | null;
 	cursorTelemetrySourcePath?: string | null;
+	// Authoritative companion sidecar paths reported by the main process for the
+	// finalized recording (system/mic sidecars that actually exist). On Windows
+	// these replace the speculative candidate probing so the renderer never asks
+	// the media server for paths the recording cannot produce.
+	sourceSidecarPaths?: readonly string[];
+	// Deterministic sidecar paths the recording metadata expects but which have
+	// not materialized yet; the waveform keeps retrying these on refresh.
+	sourceSidecarPendingPaths?: readonly string[];
 	showSourceAudioTrack?: boolean;
 	sourceAudioResourceVersion?: number;
 	onSourceAudioAvailabilityChange?: (available: boolean) => void;
@@ -163,6 +176,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			videoPath,
 			videoSourcePath,
 			cursorTelemetrySourcePath,
+			sourceSidecarPaths = EMPTY_SOURCE_SIDECAR_PATHS,
+			sourceSidecarPendingPaths = EMPTY_SOURCE_SIDECAR_PATHS,
 			showSourceAudioTrack = false,
 			sourceAudioResourceVersion = 0,
 			onSourceAudioAvailabilityChange,
@@ -258,24 +273,61 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 				(/^file:\/\//i.test(videoPath) ? fromFileUrl(videoPath) : videoPath)
 			);
 		}, [videoPath]);
-		const micSidecarPaths = useMemo(
-			() => (localSourcePath ? buildSourceSidecarPathCandidates(localSourcePath, "mic") : []),
-			[localSourcePath],
-		);
-		const micSidecarFallbackPaths = useMemo(() => micSidecarPaths.slice(1), [micSidecarPaths]);
-		const systemSidecarPaths = useMemo(
-			() =>
-				localSourcePath ? buildSourceSidecarPathCandidates(localSourcePath, "system") : [],
-			[localSourcePath],
-		);
-		const systemSidecarFallbackPaths = useMemo(
-			() => systemSidecarPaths.slice(1),
-			[systemSidecarPaths],
-		);
+		// Windows recordings derive their companion sidecars from the finalized
+		// recording metadata (get-video-audio-fallback-paths), which reports the
+		// exact sidecars that exist. Using those authoritative paths instead of
+		// probing speculative variants avoids asking the media server for paths the
+		// recording cannot produce. macOS/Linux keep the platform candidate probing
+		// (including real .m4a/.webm variants) when no authoritative set is provided.
+		const useAuthoritativeSidecars =
+			isWindowsNavigatorPlatform(getRendererNavigatorPlatform()) &&
+			sourceSidecarPaths.length > 0;
+		const {
+			micSidecarPaths,
+			micSidecarFallbackPaths,
+			systemSidecarPaths,
+			systemSidecarFallbackPaths,
+			sourceSidecarDelayedPaths,
+		} = useMemo(() => {
+			if (useAuthoritativeSidecars) {
+				const classified = classifyAuthoritativeSourceSidecars(
+					sourceSidecarPaths,
+					sourceSidecarPendingPaths,
+				);
+				const mic = [...classified.micPaths];
+				const system = [...classified.systemPaths];
+				return {
+					micSidecarPaths: mic,
+					micSidecarFallbackPaths: mic.slice(1),
+					systemSidecarPaths: system,
+					systemSidecarFallbackPaths: system.slice(1),
+					sourceSidecarDelayedPaths: [...classified.pendingPaths],
+				};
+			}
+			const mic = localSourcePath
+				? buildSourceSidecarPathCandidates(localSourcePath, "mic")
+				: [];
+			const system = localSourcePath
+				? buildSourceSidecarPathCandidates(localSourcePath, "system")
+				: [];
+			return {
+				micSidecarPaths: mic,
+				micSidecarFallbackPaths: mic.slice(1),
+				systemSidecarPaths: system,
+				systemSidecarFallbackPaths: system.slice(1),
+				sourceSidecarDelayedPaths: [],
+			};
+		}, [
+			localSourcePath,
+			sourceSidecarPaths,
+			sourceSidecarPendingPaths,
+			useAuthoritativeSidecars,
+		]);
 		const { peaks: micSidecarPeaks, loading: micSidecarLoading } = useTimelineAudioPeaks(
 			micSidecarPaths[0] ?? null,
 			{
 				fallbackResources: micSidecarFallbackPaths,
+				delayedSidecarPaths: sourceSidecarDelayedPaths,
 				resourceVersion: sourceAudioResourceVersion,
 			},
 		);
@@ -283,6 +335,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			systemSidecarPaths[0] ?? null,
 			{
 				fallbackResources: systemSidecarFallbackPaths,
+				delayedSidecarPaths: sourceSidecarDelayedPaths,
 				resourceVersion: sourceAudioResourceVersion,
 			},
 		);

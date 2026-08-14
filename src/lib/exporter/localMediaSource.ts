@@ -1,4 +1,5 @@
 import { fromFileUrl, toFileUrl } from "@/components/video-editor/projectPersistence";
+import { formatLogTs } from "@/lib/log";
 
 const NOOP = () => undefined;
 const REMOTE_MEDIA_URL_PATTERN = /^(https?:|blob:|data:)/i;
@@ -111,6 +112,11 @@ export async function resolveMediaResourceUrl(resource: string): Promise<string>
 		} catch {
 			// Fall through to a file URL when the local media server is unavailable.
 		}
+		console.warn(
+			formatLogTs(),
+			"[localMediaSource] Local media server unavailable, falling back to file URL",
+			{ localFilePath },
+		);
 	}
 
 	return /^file:\/\//i.test(resource) ? resource : toFileUrl(localFilePath);

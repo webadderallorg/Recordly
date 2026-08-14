@@ -1,8 +1,10 @@
-import type { ExportEncodeBackend, ExportEncodingMode } from "./types";
+import type { ExportEncodeBackend, ExportEncodingMode, ExportNativeTransportMode } from "./types";
 
 const DEFAULT_ENCODING_MODE: ExportEncodingMode = "balanced";
 type WebCodecsLatencyMode = "quality" | "realtime";
 const BASELINE_PIXELS_PER_SECOND = 1280 * 720 * 60;
+const RAW_FRAME_BYTES_PER_PIXEL = 4;
+const CONSERVATIVE_RAW_FRAME_LIMIT = 2;
 
 const LATENCY_MODE_PREFERENCES: Record<ExportEncodingMode, readonly WebCodecsLatencyMode[]> = {
 	fast: ["realtime", "quality"],
@@ -71,6 +73,8 @@ export interface ExportBackpressureProfile {
 	maxDecodeQueue: number;
 	maxPendingFrames: number;
 	maxInFlightNativeWrites: number;
+	maxInFlightNativeRawFrames: number;
+	maxInFlightNativeRawBytes: number;
 }
 
 interface ExportBackpressureProfileOptions {
@@ -80,6 +84,158 @@ interface ExportBackpressureProfileOptions {
 	frameRate: number;
 	encodingMode?: ExportEncodingMode;
 	hardwareConcurrency?: number;
+}
+
+export interface NativeRawFrameBackpressureLimits {
+	maxInFlightFrames: number;
+	maxInFlightBytes: number;
+}
+
+export function getNativeRawFrameByteSize(width: number, height: number): number {
+	return (
+		Math.max(1, Math.floor(width)) * Math.max(1, Math.floor(height)) * RAW_FRAME_BYTES_PER_PIXEL
+	);
+}
+
+export function getNativeRawFrameBackpressureLimits(options: {
+	width: number;
+	height: number;
+	profile: ExportBackpressureProfile;
+	transportMode: ExportNativeTransportMode;
+	maxInFlightFrames?: number;
+	maxInFlightBytes?: number;
+}): NativeRawFrameBackpressureLimits {
+	const frameByteSize = getNativeRawFrameByteSize(options.width, options.height);
+	const requestedFrames =
+		typeof options.maxInFlightFrames === "number" && Number.isFinite(options.maxInFlightFrames)
+			? Math.floor(options.maxInFlightFrames)
+			: options.profile.maxInFlightNativeRawFrames;
+	const requestedBytes =
+		typeof options.maxInFlightBytes === "number" && Number.isFinite(options.maxInFlightBytes)
+			? Math.floor(options.maxInFlightBytes)
+			: options.profile.maxInFlightNativeRawBytes;
+	const transportFrameLimit =
+		options.transportMode === "cloned-ipc"
+			? Math.min(requestedFrames, CONSERVATIVE_RAW_FRAME_LIMIT)
+			: requestedFrames;
+	const maxInFlightFrames = Math.max(1, transportFrameLimit);
+	const transportByteLimit =
+		options.transportMode === "cloned-ipc"
+			? Math.min(requestedBytes, frameByteSize * CONSERVATIVE_RAW_FRAME_LIMIT)
+			: requestedBytes;
+
+	return {
+		maxInFlightFrames,
+		maxInFlightBytes: Math.max(
+			frameByteSize,
+			Math.min(
+				Math.max(frameByteSize, transportByteLimit),
+				frameByteSize * maxInFlightFrames,
+			),
+		),
+	};
+}
+
+type NativeRawFrameWaiter = {
+	frameByteSize: number;
+	resolve: () => void;
+	reject: (error: Error) => void;
+};
+
+export class NativeRawFrameBackpressureQueue {
+	private inFlightBytes = 0;
+	private inFlightFrames = 0;
+	private closedError: Error | null = null;
+	private waiters = new Set<NativeRawFrameWaiter>();
+
+	constructor(
+		private readonly maxInFlightBytes: number,
+		private readonly maxInFlightFrames: number,
+	) {}
+
+	get currentInFlightBytes(): number {
+		return this.inFlightBytes;
+	}
+
+	get currentInFlightFrames(): number {
+		return this.inFlightFrames;
+	}
+
+	canAccept(frameByteSize: number): boolean {
+		return (
+			frameByteSize > 0 &&
+			this.inFlightFrames < this.maxInFlightFrames &&
+			this.inFlightBytes + frameByteSize <= this.maxInFlightBytes
+		);
+	}
+
+	async waitForCapacity(frameByteSize: number): Promise<void> {
+		this.validateFrameByteSize(frameByteSize);
+		if (this.closedError) {
+			throw this.closedError;
+		}
+		if (this.canAccept(frameByteSize)) {
+			return;
+		}
+
+		await new Promise<void>((resolve, reject) => {
+			this.waiters.add({
+				frameByteSize,
+				resolve,
+				reject,
+			});
+		});
+	}
+
+	reserve(frameByteSize: number): void {
+		this.validateFrameByteSize(frameByteSize);
+		if (this.closedError) {
+			throw this.closedError;
+		}
+		if (!this.canAccept(frameByteSize)) {
+			throw new Error("Native raw-frame backpressure capacity was not available");
+		}
+
+		this.inFlightBytes += frameByteSize;
+		this.inFlightFrames += 1;
+	}
+
+	release(frameByteSize: number): void {
+		this.inFlightBytes = Math.max(0, this.inFlightBytes - frameByteSize);
+		this.inFlightFrames = Math.max(0, this.inFlightFrames - 1);
+		this.notifyWaiters();
+	}
+
+	fail(error: Error): void {
+		if (this.closedError) {
+			return;
+		}
+		this.closedError = error;
+		const waiters = [...this.waiters];
+		this.waiters.clear();
+		for (const waiter of waiters) {
+			waiter.reject(error);
+		}
+	}
+
+	private validateFrameByteSize(frameByteSize: number): void {
+		if (!Number.isFinite(frameByteSize) || frameByteSize <= 0) {
+			throw new Error("Native raw-frame byte size must be positive");
+		}
+		if (frameByteSize > this.maxInFlightBytes) {
+			throw new Error("Native raw-frame byte size exceeds the configured byte cap");
+		}
+	}
+
+	private notifyWaiters(): void {
+		for (const waiter of [...this.waiters]) {
+			if (!this.canAccept(waiter.frameByteSize)) {
+				continue;
+			}
+			this.waiters.delete(waiter);
+			waiter.resolve();
+		}
+	}
 }
 
 export function getPreferredWebCodecsLatencyModes(
@@ -110,6 +266,29 @@ export function getWebCodecsKeyFrameInterval(
 	return Math.max(1, Math.round(frameRate * KEYFRAME_INTERVAL_SECONDS[resolvedEncodingMode]));
 }
 
+function createExportBackpressureProfile(options: {
+	name: string;
+	maxEncodeQueue: number;
+	maxDecodeQueue: number;
+	maxPendingFrames: number;
+	maxInFlightNativeWrites: number;
+	maxInFlightNativeRawFrames: number;
+	width: number;
+	height: number;
+}): ExportBackpressureProfile {
+	return {
+		name: options.name,
+		maxEncodeQueue: options.maxEncodeQueue,
+		maxDecodeQueue: options.maxDecodeQueue,
+		maxPendingFrames: options.maxPendingFrames,
+		maxInFlightNativeWrites: options.maxInFlightNativeWrites,
+		maxInFlightNativeRawFrames: options.maxInFlightNativeRawFrames,
+		maxInFlightNativeRawBytes:
+			getNativeRawFrameByteSize(options.width, options.height) *
+			options.maxInFlightNativeRawFrames,
+	};
+}
+
 export function getExportBackpressureProfile(
 	options: ExportBackpressureProfileOptions,
 ): ExportBackpressureProfile {
@@ -127,59 +306,77 @@ export function getExportBackpressureProfile(
 
 	if (options.encodeBackend === "ffmpeg") {
 		if (isLowCoreSystem || isExtremeWorkload) {
-			return {
+			return createExportBackpressureProfile({
 				name: "breeze-conservative",
 				maxEncodeQueue,
 				maxDecodeQueue: 8,
 				maxPendingFrames: 16,
 				maxInFlightNativeWrites: 2,
-			};
+				maxInFlightNativeRawFrames: 2,
+				width: options.width,
+				height: options.height,
+			});
 		}
 
 		if (isHighCoreSystem && !isHeavyWorkload) {
-			return {
+			return createExportBackpressureProfile({
 				name: "breeze-balanced-plus",
 				maxEncodeQueue,
 				maxDecodeQueue: 14,
 				maxPendingFrames: 40,
 				maxInFlightNativeWrites: 8,
-			};
+				maxInFlightNativeRawFrames: 4,
+				width: options.width,
+				height: options.height,
+			});
 		}
 
-		return {
+		return createExportBackpressureProfile({
 			name: "breeze-balanced",
 			maxEncodeQueue,
 			maxDecodeQueue: 12,
 			maxPendingFrames: 28,
 			maxInFlightNativeWrites: 4,
-		};
+			maxInFlightNativeRawFrames: 4,
+			width: options.width,
+			height: options.height,
+		});
 	}
 
 	if (isLowCoreSystem || isExtremeWorkload) {
-		return {
+		return createExportBackpressureProfile({
 			name: "webcodecs-conservative",
 			maxEncodeQueue,
 			maxDecodeQueue: 8,
 			maxPendingFrames: 20,
 			maxInFlightNativeWrites: 1,
-		};
+			maxInFlightNativeRawFrames: 1,
+			width: options.width,
+			height: options.height,
+		});
 	}
 
 	if (isHighCoreSystem && !isHeavyWorkload) {
-		return {
+		return createExportBackpressureProfile({
 			name: "webcodecs-balanced-plus",
 			maxEncodeQueue,
 			maxDecodeQueue: 12,
 			maxPendingFrames: 32,
 			maxInFlightNativeWrites: 1,
-		};
+			maxInFlightNativeRawFrames: 1,
+			width: options.width,
+			height: options.height,
+		});
 	}
 
-	return {
+	return createExportBackpressureProfile({
 		name: "webcodecs-balanced",
 		maxEncodeQueue,
 		maxDecodeQueue: 10,
 		maxPendingFrames: 24,
 		maxInFlightNativeWrites: 1,
-	};
+		maxInFlightNativeRawFrames: 1,
+		width: options.width,
+		height: options.height,
+	});
 }

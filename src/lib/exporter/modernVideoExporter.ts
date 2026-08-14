@@ -24,7 +24,13 @@ import {
 	createCursorFollowCameraState,
 	SNAP_TO_EDGES_RATIO_AUTO,
 } from "@/components/video-editor/videoPlayback/cursorFollowCamera";
-import { buildNativeCursorAtlas } from "@/components/video-editor/videoPlayback/cursorRenderer";
+import {
+	buildNativeCursorAtlas,
+	DEFAULT_CURSOR_CONFIG,
+	interpolateCursorPosition,
+	type NativeCursorAtlas,
+} from "@/components/video-editor/videoPlayback/cursorRenderer";
+import { projectCursorPositionToViewport } from "@/components/video-editor/videoPlayback/cursorViewport";
 import {
 	computePaddedLayout,
 	scalePreviewBorderRadius,
@@ -37,11 +43,13 @@ import {
 } from "@/components/video-editor/videoPlayback/motionSmoothing";
 import { getCursorStyleSizeMultiplier } from "@/components/video-editor/videoPlayback/uploadedCursorAssets";
 import { findDominantRegion } from "@/components/video-editor/videoPlayback/zoomRegionUtils";
-import { computeZoomTransform } from "@/components/video-editor/videoPlayback/zoomTransform";
+import {
+	analyzeZoomMotionBlurStep,
+	computeZoomTransform,
+} from "@/components/video-editor/videoPlayback/zoomTransform";
 import {
 	getWebcamOverlayPosition,
 	getWebcamOverlaySizePx,
-	isWebcamCropRegionDefault,
 } from "@/components/video-editor/webcamOverlay";
 import { extensionHost } from "@/lib/extensions";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
@@ -50,19 +58,24 @@ import {
 	DEFAULT_WALLPAPER_RELATIVE_PATH,
 	isVideoWallpaperSource,
 } from "@/lib/wallpapers";
+import { formatLogTs } from "../log";
 import { AudioProcessor, isAacAudioEncodingSupported } from "./audioEncoder";
 import {
 	normalizeLightningRuntimePlatform,
 	shouldPreferNativeAutoBackend,
 	shouldPreferNativeStaticLayoutBeforeBreeze,
 } from "./backendPolicy";
+import { type CursorRect, computeCursorSpriteStripSize } from "./cursorSpriteOverlay";
 import { buildEditedTrackSourceSegments, classifyEditedTrackStrategy } from "./editedTrackStrategy";
 import {
 	type ExportBackpressureProfile,
 	getExportBackpressureProfile,
+	getNativeRawFrameBackpressureLimits,
+	getNativeRawFrameByteSize,
 	getPreferredWebCodecsLatencyModes,
 	getWebCodecsEncodeQueueLimit,
 	getWebCodecsKeyFrameInterval,
+	NativeRawFrameBackpressureQueue,
 } from "./exportTuning";
 import {
 	advanceFinalizationProgress,
@@ -78,16 +91,48 @@ import {
 	type SupportedMp4EncoderPath,
 } from "./mp4Support";
 import { VideoMuxer } from "./muxer";
+import { captureCanvasFrameForNativeExport } from "./nativeFrameCapture";
 import { roundNativeStaticLayoutContentSize } from "./nativeStaticLayoutGeometry";
+import type {
+	NativeCursorSpriteOverlayLayer,
+	NativeCursorSpritePosition,
+	NativeStaticLayoutOverlayLayer,
+	NativeTiledOverlayFrameDelta,
+	NativeTiledOverlayLayerDescriptor,
+	NativeTiledOverlayRawFallbackReason,
+	NativeTiledOverlayStaticTileRecord,
+	NativeTiledOverlayTileRecord,
+} from "./nativeStaticLayoutOverlays";
+import {
+	areNativeStaticLayoutOverlayFramesEqual,
+	clampNativeCursorSpritePosition,
+	getNativeStaticLayoutOverlayFrameByteSize,
+	getNativeTiledOverlayTileColumns,
+	getNativeTiledOverlayTileCount,
+	getNativeTiledOverlayTileIndex,
+	getNativeTiledOverlayTileRows,
+	NATIVE_CURSOR_SPRITE_LAYER_KIND,
+	NATIVE_TILED_OVERLAY_MAX_CHANGED_TILE_FRACTION,
+	NATIVE_TILED_OVERLAY_MAX_PAYLOAD_BYTES_FRACTION,
+	NATIVE_TILED_OVERLAY_PIXEL_FORMAT,
+	NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE,
+	NATIVE_TILED_OVERLAY_TILE_SIZE,
+	resolveNativeTiledOverlayRawFallbackReason,
+	sortNativeStaticLayoutOverlayLayers,
+	sortNativeTiledOverlayLayers,
+	validateNativeCursorSpriteOverlayLayer,
+} from "./nativeStaticLayoutOverlays";
 import { buildNativeStaticLayoutCursorTelemetry } from "./nativeStaticLayoutTelemetry";
 import { resolveSourceAudioFallbackPaths } from "./sourceAudioFallback";
 import { type DecodedVideoInfo, StreamingVideoDecoder } from "./streamingDecoder";
+import { getTemporalMotionBlurConfig } from "./temporalMotionBlur";
 import type {
 	ExportConfig,
 	ExportEncodeBackend,
 	ExportFfmpegAudioMuxBreakdown,
 	ExportFinalizationStageMetrics,
 	ExportMetrics,
+	ExportNativeTransportMode,
 	ExportProgress,
 	ExportRenderBackend,
 	ExportResult,
@@ -157,6 +202,95 @@ interface VideoExporterConfig extends ExportConfig {
 	previewHeight?: number;
 	onProgress?: (progress: ExportProgress) => void;
 	preferredEncoderPath?: SupportedMp4EncoderPath | null;
+}
+
+/**
+ * Result shape for the native static-layout overlay sidecar. The renderer
+ * currently composites every overlay element (cursor, captions, annotations,
+ * webcam, frame) into a single transparent RGBA canvas in
+ * `ModernFrameRenderer.renderOverlayFrame`, so this result usually contains a
+ * single logical "native-effects" layer that is either tiled (sparse) or raw
+ * (dense/unsupported fallback). Both arrays are returned, sorted by order then
+ * id, and forwarded to `nativeStaticLayoutExport` so a future split renderer
+ * can emit mixed raw + tiled layers with preserved z-order; the native consumer
+ * in `electron/ipc/export/native-video.ts` already validates, sorts, and
+ * composites both lists.
+ */
+
+type NativeStaticLayoutOverlayLayerUnion =
+	| NativeStaticLayoutOverlayLayer
+	| NativeCursorSpriteOverlayLayer;
+
+type NativeStaticLayoutOverlayPreparationResult = {
+	overlayLayers: NativeStaticLayoutOverlayLayerUnion[];
+	tiledOverlayLayers: NativeTiledOverlayLayerDescriptor[];
+	rawFallbackReason: NativeTiledOverlayRawFallbackReason | null;
+	/**
+	 * Number of frames the renderer actually rendered and captured (canvas
+	 * readback). When a proven static optimization is available this is 1 even
+	 * though the sidecar represents totalFrames logical frames; when the bake
+	 * visits every frame this equals totalFrames. 0 for the fast-lane empty
+	 * sidecar (no renderer work at all).
+	 */
+	renderedFrames: number;
+};
+
+/**
+ * Result type returned by `window.electronAPI.nativeStaticLayoutExport`.
+ * Mirrors the IPC return shape so the streaming path can type its concurrent
+ * native promise without importing electron types.
+ */
+type NativeStaticLayoutExportIpcResult =
+	| Awaited<ReturnType<typeof window.electronAPI.nativeStaticLayoutExport>>
+	| {
+			success: false;
+			error: string;
+			route?: undefined;
+			tempPath?: undefined;
+			encoderName?: undefined;
+			metrics?: undefined;
+	  };
+
+/**
+ * Combined result from the streaming raw-overlay path: the overlay
+ * preparation (raw layer + rendered frame count) and the native IPC result,
+ * settled concurrently.
+ */
+type StreamingRawOverlayResult = {
+	overlayPreparation: NativeStaticLayoutOverlayPreparationResult | null;
+	nativeResult: NativeStaticLayoutExportIpcResult | null;
+	streamingRawOverlay: true;
+};
+
+/**
+ * Combined result from the streaming cursor-sprite path: the overlay
+ * preparation (cursor-sprite layer) and the native IPC result, settled
+ * concurrently with the ROI bake.
+ */
+type StreamingCursorSpriteResult = {
+	overlayPreparation: NativeStaticLayoutOverlayPreparationResult | null;
+	nativeResult: NativeStaticLayoutExportIpcResult | null;
+	streamingCursorSprite: true;
+};
+
+/**
+ * Precomputed cursor-sprite streaming plan: fixed strip dimensions plus the
+ * per-frame clamped ROIs and positions, derived from cursor telemetry BEFORE
+ * the bake so the native IPC can launch concurrently while the strip is still
+ * being rendered and written.
+ */
+type NativeCursorSpriteStreamPlan = {
+	stripWidth: number;
+	stripHeight: number;
+	positions: NativeCursorSpritePosition[];
+	rois: CursorRect[];
+};
+
+/** Discriminates a cursor-sprite layer from a fixed-position rgba layer. */
+function isCursorSpriteOverlayLayer(
+	layer: NativeStaticLayoutOverlayLayerUnion,
+): layer is NativeCursorSpriteOverlayLayer {
+	return (layer as { kind?: string }).kind === NATIVE_CURSOR_SPRITE_LAYER_KIND;
 }
 
 type NativeAudioPlan =
@@ -269,6 +403,19 @@ type NativeStaticLayoutBackground =
 			temporaryPath?: string;
 	  };
 
+/**
+ * Config-only native static-layout preparation started before the metadata
+ * probe because neither task depends on videoInfo/audioPlan. The promises are
+ * consumed by tryExportNativeStaticLayout (reused instead of re-run); when an
+ * attempt is skipped before consumption, settleNativeStaticLayoutConfigPrep()
+ * releases any materialized background temp file. The cursor atlas is purely
+ * in-memory (a PNG data URL) so it needs no cleanup.
+ */
+type NativeStaticLayoutConfigPrep = {
+	background: Promise<NativeStaticLayoutBackground | null>;
+	cursorAtlas: Promise<NativeCursorAtlas | null> | null;
+};
+
 type NativeStaticLayoutWebcamOverlay = {
 	inputPath: string;
 	left: number;
@@ -285,6 +432,16 @@ type NativeStaticLayoutZoomSample = {
 	scale: number;
 	x: number;
 	y: number;
+	/**
+	 * Renderer-equivalent radial zoom-blur strength for the step that ends at
+	 * this sample (0 when the step is not zoom motion). Computed once per frame
+	 * from the applied zoom telemetry so the CUDA compositor can reproduce the
+	 * spatial ZoomBlurFilter without re-deriving camera-step analysis.
+	 */
+	blurStrength?: number;
+	/** Output-space zoom-blur center (pixels), matching the renderer's filter. */
+	blurCenterX?: number;
+	blurCenterY?: number;
 };
 
 const NATIVE_EXPORT_ENGINE_NAME = "Breeze";
@@ -300,6 +457,111 @@ const STATIC_LAYOUT_CHUNK_DURATION_SEC = 120;
 const MISSING_NATIVE_WALLPAPER_FALLBACK_COLOR = "#ffffff";
 const NATIVE_STATIC_LAYOUT_MAX_EXTRACTING_PROGRESS = 95;
 const NATIVE_STATIC_LAYOUT_FRAME_COMPLETE_PROGRESS = 96;
+const NATIVE_OVERLAY_PREPARATION_PROGRESS_INTERVAL_MS = 300;
+
+// Upper bound in bytes for a single coalesced overlay sidecar IPC chunk.
+// Pixel-identical consecutive frames in the raw sidecar are coalesced into one
+// contiguous chunk (instead of one writeExportStreamChunk call per frame) to
+// remove per-frame IPC round-trips for static overlay stretches, while capping
+// the chunk so a long identical run never buffers the whole 4K sidecar at once.
+const NATIVE_RAW_OVERLAY_RUN_BATCH_MAX_BYTES = 48 * 1024 * 1024;
+const HEVC_NATIVE_STATIC_LAYOUT_ROUTES = new Set([
+	"cuda-overlay",
+	"cuda-scale-cpu-pad",
+	"cuda-static-composite",
+	"nvidia-cuda-compositor",
+]);
+
+/**
+ * The native cursor atlas is only required when the cursor is NOT baked into the
+ * transparent overlay sidecar. When overlay layers are prepared, the cursor is
+ * rendered into the sidecar, so a missing atlas must never skip the native
+ * static-layout route (previously this fell back to the slow renderer raw path
+ * for every cursor export).
+ */
+export function shouldSkipForMissingCursorAtlas(options: {
+	needsOverlayLayers: boolean;
+	hasCursorTelemetry: boolean;
+	hasCursorAtlas: boolean;
+}): boolean {
+	return !options.needsOverlayLayers && options.hasCursorTelemetry && !options.hasCursorAtlas;
+}
+
+/**
+ * A native static-layout result can only preserve zoom motion blur over
+ * transparent overlay sidecars, and temporal zoom motion blur in general, on
+ * the generalized CUDA compositor. Other routes (FFmpeg effectful overlay,
+ * D3D11 helper) would silently drop the effect, so the renderer rejects them
+ * and falls back to raw frames.
+ */
+export function shouldRejectNativeStaticLayoutResultForEffectPreservation(options: {
+	hasSpatialZoomMotionBlur: boolean;
+	hasTemporalMotionBlur: boolean;
+	hasOverlayContent: boolean;
+	route: string | null | undefined;
+}): boolean {
+	const requiresCudaCompositor =
+		(options.hasSpatialZoomMotionBlur && options.hasOverlayContent) ||
+		options.hasTemporalMotionBlur;
+	return requiresCudaCompositor && options.route !== "nvidia-cuda-compositor";
+}
+
+/**
+ * Detailed skip reason for the deterministic no-browser-overlay fast lane.
+ */
+export type NativeStaticLayoutFastLaneSkipReason =
+	| "not-native-cuda-route"
+	| "browser-overlay-pixels-present"
+	| "cursor-sidecar-required"
+	| "edited-audio-render-required"
+	| "native-source-not-authoritative";
+
+export type NativeStaticLayoutFastLaneEligibility = {
+	eligible: boolean;
+	skipReasons: NativeStaticLayoutFastLaneSkipReason[];
+};
+
+/**
+ * Deterministic no-browser-overlay fast lane for native CUDA static-layout
+ * export. When every visual input the browser would otherwise render is already
+ * authoritative natively (source video is a local file, no captions/annotations/
+ * webcam/frame pixels, the cursor is either disabled or owned by the native CUDA
+ * compositor, and there is no edited-audio render), the export can skip renderer
+ * initialization, per-frame canvas capture, overlay sidecar creation, and cursor
+ * atlas generation and start the native export as early as safely allowed.
+ *
+ * The predicate is explicit and returns detailed skip reasons so callers can
+ * prove (and log) exactly why the fast lane was or was not selected. It never
+ * bypasses source validation/security, required audio muxing, timeline/zoom/
+ * temporal native plans, cancellation/cleanup/progress settlement, or strict HEVC
+ * Hardware CUDA-only failure behavior.
+ */
+export function getNativeStaticLayoutFastLaneEligibility(options: {
+	canUseNativeGpuStaticLayout: boolean;
+	hasBrowserOverlayPixels: boolean;
+	cursorDisabled: boolean;
+	cursorNativeOwnershipActive: boolean;
+	requiresEditedAudioRender: boolean;
+	hasAuthoritativeNativeSource: boolean;
+}): NativeStaticLayoutFastLaneEligibility {
+	const skipReasons: NativeStaticLayoutFastLaneSkipReason[] = [];
+	if (!options.canUseNativeGpuStaticLayout) {
+		skipReasons.push("not-native-cuda-route");
+	}
+	if (options.hasBrowserOverlayPixels) {
+		skipReasons.push("browser-overlay-pixels-present");
+	}
+	if (!options.cursorDisabled && !options.cursorNativeOwnershipActive) {
+		skipReasons.push("cursor-sidecar-required");
+	}
+	if (options.requiresEditedAudioRender) {
+		skipReasons.push("edited-audio-render-required");
+	}
+	if (!options.hasAuthoritativeNativeSource) {
+		skipReasons.push("native-source-not-authoritative");
+	}
+	return { eligible: skipReasons.length === 0, skipReasons };
+}
 
 export class ModernVideoExporter {
 	private static readonly NATIVE_ENCODER_QUEUE_LIMIT = 64;
@@ -329,17 +591,29 @@ export class ModernVideoExporter {
 	private nativeExportSessionId: string | null = null;
 	private nativeStaticLayoutSessionId: string | null = null;
 	private nativeStaticLayoutAverageFps: number | null = null;
+	private nativeStaticLayoutFpsSource: "native" | "estimated" | null = null;
 	private nativeWritePromises = new Set<Promise<void>>();
+	private nativeRawWritePromises = new Set<Promise<void>>();
 	private nativeWriteError: Error | null = null;
 	private pendingNativeWriteChunks: Uint8Array[] = [];
 	private pendingNativeWriteBytes = 0;
 	private maxNativeWriteInFlight = 1;
+	private nativeRawBackpressure: NativeRawFrameBackpressureQueue | null = null;
+	private maxNativeRawWriteFrames = 1;
+	private maxNativeRawWriteBytes = 0;
+	private nativeTransportMode: ExportNativeTransportMode | null = null;
+	private nativeTransportFallbackReason: string | null = null;
 	private lastNativeExportError: string | null = null;
 	private nativeStaticLayoutSkipReason: string | null = null;
 	private nativeStaticLayoutSkipReasons: string[] = [];
 	private nativeStaticLayoutBackgroundSkipReason: string | null = null;
+	private nativeStaticLayoutOverlayFailure: {
+		stage: string;
+		message: string;
+	} | null = null;
 	private nativeH264Encoder: VideoEncoder | null = null;
 	private nativeEncoderError: Error | null = null;
+	private nativeRawFrameMode = false;
 	private effectiveDurationSec = 0;
 	private totalExportStartTimeMs = 0;
 	private metadataLoadTimeMs = 0;
@@ -355,6 +629,11 @@ export class ModernVideoExporter {
 	private peakNativeWriteInFlight = 0;
 	private nativeCaptureTimeMs = 0;
 	private nativeWriteTimeMs = 0;
+	private nativeWriteAckTimeMs = 0;
+	private nativeFrameTransportTimeMs = 0;
+	private nativeRawBytesSubmitted = 0;
+	private nativeRawFramesSubmitted = 0;
+	private peakNativeWriteInFlightBytes = 0;
 	private finalizationTimeMs = 0;
 	private finalizationStageMs: ExportFinalizationStageMetrics = {};
 	private processedFrameCount = 0;
@@ -365,6 +644,15 @@ export class ModernVideoExporter {
 	private lastProgressSampleTimeMs = 0;
 	private lastProgressSampleFrame = 0;
 	private displayedRenderFps = 0;
+	private lastPreparingTotalFrames: number | null = null;
+	private lastPreparingSubstate: string | null = null;
+	private lastPreparingSubstateLabel: string | null = null;
+	private nativeStaticLayoutOverlayRenderedFrames = 0;
+	private nativeStaticLayoutOverlayPreparationMs = 0;
+	// Renderer-streamed edited-audio export stream id. Set while the deferred
+	// edited-track audio render writes its WAV payload; cancel()/cleanup() abort
+	// the stream so main's bounded mux wait can never hang on a cancelled export.
+	private deferredEditedAudioStreamId: string | null = null;
 
 	constructor(config: VideoExporterConfig) {
 		this.config = config;
@@ -387,22 +675,66 @@ export class ModernVideoExporter {
 				this.totalExportStartTimeMs = this.getNowMs();
 				const backendPreference = this.config.backendPreference ?? "auto";
 				const runtimePlatform = this.getRuntimePlatform();
+				// HEVC Auto/Hardware may use the NVIDIA CUDA compositor first. Rawvideo
+				// remains the strict fallback for unsupported effects and unavailable GPU
+				// routes; H.264 + Auto keeps its existing route selection unchanged.
+				const forceNativeRawFrame = this.shouldForceNativeRawFrame();
 				let useNativeEncoder = false;
 				let triedNativeStaticLayoutWithProbe = false;
 				const prefersNativeStaticLayoutBeforeBreeze =
+					!forceNativeRawFrame &&
 					shouldPreferNativeStaticLayoutBeforeBreeze(runtimePlatform, backendPreference);
 				const shouldTryNativeStaticLayout =
-					backendPreference === "breeze" ||
-					this.config.experimentalNvidiaCudaExport === true ||
-					prefersNativeStaticLayoutBeforeBreeze;
+					!forceNativeRawFrame &&
+					(this.canUseNativeGpuStaticLayout() ||
+						backendPreference === "breeze" ||
+						this.config.experimentalNvidiaCudaExport === true ||
+						prefersNativeStaticLayoutBeforeBreeze);
 				let shouldDeferNativeEncoderStart =
-					backendPreference === "breeze" ||
-					this.config.experimentalNvidiaCudaExport === true ||
-					prefersNativeStaticLayoutBeforeBreeze;
+					!forceNativeRawFrame &&
+					(this.canUseNativeGpuStaticLayout() ||
+						backendPreference === "breeze" ||
+						this.config.experimentalNvidiaCudaExport === true ||
+						prefersNativeStaticLayoutBeforeBreeze);
 				this.lastNativeExportError = null;
 
+				// Strict HEVC Hardware: the CUDA static-layout route is mandatory. If it
+				// cannot even be selected (CUDA opt-in off / helper absent), fail now
+				// instead of falling through to the renderer raw/WebCodecs path.
+				if (this.requiresStrictNativeCudaRoute() && !this.canUseNativeGpuStaticLayout()) {
+					console.error(
+						formatLogTs(),
+						"[VideoExporter] Strict HEVC Hardware policy: CUDA compositor not eligible; refusing renderer raw fallback",
+						{
+							exportVideoCodec: this.config.exportVideoCodec,
+							exportEncoderPreference: this.config.exportEncoderPreference,
+							experimentalNativeExport: this.config.experimentalNativeExport === true,
+							experimentalNvidiaCudaExport:
+								this.config.experimentalNvidiaCudaExport === true,
+							skipReason: this.nativeStaticLayoutSkipReason,
+							skipReasons: this.nativeStaticLayoutSkipReasons,
+						},
+					);
+					throw this.buildStrictNativeCudaHardwareError(
+						this.nativeStaticLayoutSkipReason ?? "native-cuda-not-enabled",
+					);
+				}
+
 				let stageStartedAt = this.getNowMs();
-				if (shouldDeferNativeEncoderStart) {
+				if (forceNativeRawFrame) {
+					// Explicit per-request codec/encoder: start the native raw-frame encoder
+					// directly with no WebCodecs/static-layout fallback. If it cannot start
+					// (e.g. Hardware HEVC with no usable encoder), surface the error instead of
+					// silently switching codecs.
+					useNativeEncoder = await this.tryStartNativeVideoExportRawFrame();
+					this.nativeSessionStartTimeMs = this.getNowMs() - stageStartedAt;
+					if (!useNativeEncoder) {
+						throw new Error(
+							this.lastNativeExportError ??
+								`${NATIVE_EXPORT_ENGINE_NAME} export could not start native ${this.config.exportVideoCodec?.toUpperCase() ?? "video"} encoding on this system.`,
+						);
+					}
+				} else if (shouldDeferNativeEncoderStart) {
 					// Defer the streaming native encoder until after metadata is known so
 					// static-layout exports can use the fastest compatible compositor first.
 				} else if (
@@ -469,6 +801,29 @@ export class ModernVideoExporter {
 					frameRate: this.config.frameRate,
 					encodingMode: this.config.encodingMode,
 				});
+				console.log(formatLogTs(), "[VideoExporter] Native static-layout decision", {
+					exportVideoCodec: this.config.exportVideoCodec ?? "h264",
+					exportEncoderPreference: this.config.exportEncoderPreference ?? "auto",
+					experimentalNativeExport: this.config.experimentalNativeExport === true,
+					experimentalNvidiaCudaExport: this.config.experimentalNvidiaCudaExport === true,
+					backendPreference: this.config.backendPreference ?? "auto",
+					canUseNativeGpuStaticLayout: this.canUseNativeGpuStaticLayout(),
+					shouldForceNativeRawFrame: forceNativeRawFrame,
+					shouldTryNativeStaticLayout,
+					shouldDeferNativeEncoderStart,
+					useNativeEncoder,
+					zoomMotionBlur: this.config.zoomMotionBlur ?? 0,
+					zoomTemporalMotionBlur: this.config.zoomTemporalMotionBlur ?? 0,
+					hasOverlayContent: this.hasNativeStaticLayoutOverlayContent(),
+					hasBrowserOverlayPixels: this.hasNativeStaticLayoutBrowserOverlayPixels(),
+					showCursor: this.config.showCursor === true,
+					cursorTelemetrySamples: this.config.cursorTelemetry?.length ?? 0,
+					cursorMotionBlur: this.config.cursorMotionBlur ?? 0,
+					cursorSway: this.config.cursorSway ?? 0,
+					cursorAtlasOwnershipEligible: this.canUseNativeCursorAtlasOwnership(),
+					webcamOnlyBrowserPixels: this.hasNativeStaticLayoutWebcamOnlyBrowserPixels(),
+					webcamNativeOwnershipEligible: this.canUseNativeWebcamOwnership(),
+				});
 				this.maxNativeWriteInFlight = useNativeEncoder
 					? Math.max(
 							1,
@@ -478,6 +833,9 @@ export class ModernVideoExporter {
 							),
 						)
 					: 1;
+				if (useNativeEncoder && this.nativeRawFrameMode) {
+					this.configureNativeRawFrameBackpressure();
+				}
 
 				console.log("[VideoExporter] Backpressure profile", {
 					profile: this.backpressureProfile.name,
@@ -490,9 +848,32 @@ export class ModernVideoExporter {
 					maxPendingFrames:
 						this.config.maxPendingFrames ?? this.backpressureProfile.maxPendingFrames,
 					maxInFlightNativeWrites: this.maxNativeWriteInFlight,
+					maxInFlightNativeRawFrames: this.nativeRawFrameMode
+						? this.maxNativeRawWriteFrames
+						: undefined,
+					maxInFlightNativeRawBytes: this.nativeRawFrameMode
+						? this.maxNativeRawWriteBytes
+						: undefined,
 				});
 
 				if (shouldTryNativeStaticLayout && !useNativeEncoder) {
+					// Start the config-only native static-layout preparation (background
+					// materialization + cursor atlas asset preload) before the metadata
+					// probe: neither depends on videoInfo/audioPlan, so their wall time
+					// overlaps the probe instead of serializing after it. Audio options
+					// are still prepared in parallel inside tryExportNativeStaticLayout
+					// once the audioPlan is known.
+					const nativePrep = this.startNativeStaticLayoutConfigPrep();
+					this.exportStartTimeMs = this.getNowMs();
+					this.reportProgress(
+						0,
+						0,
+						"preparing",
+						undefined,
+						undefined,
+						"native-preparation",
+						"Preparing export",
+					);
 					const nativeVideoInfo = await this.loadNativeStaticLayoutVideoInfo();
 					if (nativeVideoInfo) {
 						triedNativeStaticLayoutWithProbe = true;
@@ -506,10 +887,22 @@ export class ModernVideoExporter {
 							nativeAudioPlan,
 							effectiveDuration,
 							totalFrames,
+							nativePrep,
 						);
 						if (staticLayoutResult) {
 							this.disposeEncoder();
 							return staticLayoutResult;
+						}
+					} else {
+						// The probe produced no videoInfo, so tryExportNativeStaticLayout
+						// never consumed the prep; release any materialized background
+						// temp file so the early-start work cannot leak.
+						await this.settleNativeStaticLayoutConfigPrep(nativePrep);
+						if (this.requiresStrictNativeCudaRoute()) {
+							this.nativeStaticLayoutSkipReason = "native-metadata-probe-unavailable";
+							this.nativeStaticLayoutSkipReasons = [
+								this.nativeStaticLayoutSkipReason,
+							];
 						}
 					}
 				}
@@ -558,13 +951,65 @@ export class ModernVideoExporter {
 				}
 
 				if (shouldDeferNativeEncoderStart && !useNativeEncoder) {
+					if (this.requiresStrictNativeCudaRoute()) {
+						// Strict HEVC Hardware: the CUDA static-layout route did not produce
+						// video (skip, IPC failure, route mismatch, or post-validation
+						// failure). Never fall back to the renderer raw frame path, Breeze,
+						// WebGPU, or CPU; hard-fail with the first skip reason.
+						console.error(
+							formatLogTs(),
+							"[VideoExporter] Strict HEVC Hardware policy: CUDA static-layout route did not render; refusing raw renderer fallback",
+							{
+								skipReason: this.nativeStaticLayoutSkipReason,
+								skipReasons: this.nativeStaticLayoutSkipReasons,
+								lastNativeExportError: this.lastNativeExportError,
+								canUseNativeGpuStaticLayout: this.canUseNativeGpuStaticLayout(),
+								experimentalNvidiaCudaExport:
+									this.config.experimentalNvidiaCudaExport === true,
+							},
+						);
+						throw this.buildStrictNativeCudaHardwareError(
+							this.nativeStaticLayoutSkipReason ??
+								this.lastNativeExportError ??
+								"native-cuda-route-unavailable",
+						);
+					}
+					if (this.requiresNativeRawFrame()) {
+						// Guaranteed observable reason when the native static-layout route
+						// did not produce video and HEVC/explicit-Hardware forces the raw
+						// renderer frame path. The skip reasons and last native error are
+						// surfaced here so a raw hevc_nvenc session can always be traced
+						// back to its cause.
+						console.warn(
+							formatLogTs(),
+							"[VideoExporter] Native static-layout route did not render; starting raw renderer frame path",
+							{
+								exportVideoCodec: this.config.exportVideoCodec ?? "h264",
+								exportEncoderPreference:
+									this.config.exportEncoderPreference ?? "auto",
+								experimentalNativeExport:
+									this.config.experimentalNativeExport === true,
+								experimentalNvidiaCudaExport:
+									this.config.experimentalNvidiaCudaExport === true,
+								canUseNativeGpuStaticLayout: this.canUseNativeGpuStaticLayout(),
+								skipReason: this.nativeStaticLayoutSkipReason,
+								skipReasons: this.nativeStaticLayoutSkipReasons,
+								lastNativeExportError: this.lastNativeExportError,
+							},
+						);
+					}
 					stageStartedAt = this.getNowMs();
-					useNativeEncoder = await this.tryStartNativeVideoExport();
+					useNativeEncoder = this.requiresNativeRawFrame()
+						? await this.tryStartNativeVideoExportRawFrame()
+						: await this.tryStartNativeVideoExport();
 					this.nativeSessionStartTimeMs = this.getNowMs() - stageStartedAt;
 					if (!useNativeEncoder) {
 						const nativeFailure =
 							this.lastNativeExportError ??
 							`${NATIVE_EXPORT_ENGINE_NAME} export is unavailable for this output profile on this system.`;
+						if (this.requiresNativeRawFrame()) {
+							throw new Error(nativeFailure);
+						}
 						console.warn(
 							`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} native export unavailable after static-layout fallback; falling back to WebCodecs.`,
 							nativeFailure,
@@ -579,6 +1024,9 @@ export class ModernVideoExporter {
 						});
 						this.maxNativeWriteInFlight = 1;
 						await this.initializeEncoder();
+					}
+					if (useNativeEncoder && this.nativeRawFrameMode) {
+						this.configureNativeRawFrameBackpressure();
 					}
 				}
 
@@ -747,7 +1195,7 @@ export class ModernVideoExporter {
 				if (useNativeEncoder) {
 					stageStartedAt = this.getNowMs();
 					this.reportFinalizingProgress(totalFrames, 99);
-					if (this.nativeH264Encoder) {
+					if (this.nativeH264Encoder && !this.nativeRawFrameMode) {
 						await this.measureFinalizationStage("nativeEncoderFlushMs", async () => {
 							await this.nativeH264Encoder!.flush();
 						});
@@ -1016,6 +1464,24 @@ export class ModernVideoExporter {
 		return [...guidance];
 	}
 
+	private resolveRequestedBackendLabel(): string {
+		// The CUDA compositor is the active requested backend whenever the native
+		// CUDA route is selected (user opt-in for Auto, or mandatory for HEVC +
+		// Hardware). This is what the export will actually use for eligible jobs.
+		if (this.config.experimentalNvidiaCudaExport === true) {
+			return "NVIDIA CUDA compositor";
+		}
+
+		switch (this.config.backendPreference) {
+			case "webcodecs":
+				return "WebCodecs";
+			case "breeze":
+				return "Breeze";
+			default:
+				return "auto";
+		}
+	}
+
 	private buildLightningExportError(error: unknown): string {
 		const message = error instanceof Error ? error.message : String(error);
 		const resolvedEncodePath =
@@ -1028,7 +1494,7 @@ export class ModernVideoExporter {
 			`${LIGHTNING_PIPELINE_NAME} export failed.`,
 			`Reason: ${message}`,
 			`Platform: ${this.getPlatformLabel()}`,
-			`Requested backend mode: ${this.config.backendPreference ?? "auto"}`,
+			`Requested backend mode: ${this.resolveRequestedBackendLabel()}`,
 			`Output: ${this.config.width}x${this.config.height} @ ${this.config.frameRate} FPS`,
 		];
 
@@ -1494,23 +1960,53 @@ export class ModernVideoExporter {
 		}
 	}
 
-	private hasUnsupportedNativeStaticLayoutWebcamShape(): boolean {
-		const webcam = this.config.webcam;
-		if (!webcam?.enabled) {
-			return false;
+	private getHevcNativeGpuFeatureSkipReasons(): string[] {
+		if (!this.canUseNativeGpuStaticLayout()) {
+			return [];
 		}
 
-		const width = webcam.width ?? webcam.size ?? 40;
-		const height = webcam.height ?? webcam.size ?? 40;
-		return Math.abs(width - height) > 0.001 || !isWebcamCropRegionDefault(webcam.cropRegion);
-	}
+		const reasons: string[] = [];
 
+		// Cursor motion blur is rendered into the transparent native overlay layer.
+
+		const extensionHookPhases = [
+			"background",
+			"post-video",
+			"post-zoom",
+			"post-cursor",
+			"post-webcam",
+			"post-annotations",
+			"final",
+		] as const;
+		if (
+			extensionHost.hasCursorEffects() ||
+			extensionHookPhases.some((phase) => extensionHost.hasRenderHooks(phase))
+		) {
+			reasons.push("unsupported-extension-hook");
+		}
+
+		return reasons;
+	}
 	private getNativeStaticLayoutSkipReasons(
 		audioPlan: NativeAudioPlan,
 		videoInfo: DecodedVideoInfo,
 		effectiveDurationSec: number,
 	): string[] {
 		const reasons: string[] = [];
+		if ((this.config.zoomTemporalMotionBlur ?? 0) > 0.0005) {
+			const canUseNativeTemporalBlur =
+				this.config.experimentalNativeExport === true &&
+				this.config.experimentalNvidiaCudaExport === true;
+			if (!canUseNativeTemporalBlur) {
+				// Temporal zoom motion blur needs multi-frame shutter sampling. The
+				// generalized CUDA compositor implements it natively from the resolved
+				// temporal sample plan; without the CUDA route neither the FFmpeg
+				// effectful route nor the D3D11 helper can reproduce it, so keep an
+				// explicit, non-duplicated skip that surfaces in diagnostics instead of
+				// silently dropping the effect.
+				reasons.push("unsupported-temporal-motion-blur");
+			}
+		}
 		if (
 			typeof window === "undefined" ||
 			!window.electronAPI?.nativeStaticLayoutExport ||
@@ -1528,15 +2024,13 @@ export class ModernVideoExporter {
 		}
 
 		const speedRegions = this.config.speedRegions ?? [];
-		const hasCursorClickEffect =
-			(this.config.cursorTelemetry?.length ?? 0) > 0 &&
-			(this.config.cursorClickEffect ?? "none") !== "none";
 		const configuredWallpaper = this.config.wallpaper?.trim() ?? "";
 		if (isVideoWallpaperSource(configuredWallpaper)) {
 			reasons.push("unsupported-background-video");
 		}
-		if (hasCursorClickEffect) {
-			reasons.push("unsupported-cursor-click-effect");
+		const unsupportedOverlayContent = this.hasUnsupportedNativeStaticLayoutOverlayContent();
+		if (unsupportedOverlayContent) {
+			reasons.push(unsupportedOverlayContent);
 		}
 
 		const hasZoomRegions = (this.config.zoomRegions ?? []).length > 0;
@@ -1546,6 +2040,18 @@ export class ModernVideoExporter {
 		);
 		if (needsTimelineMap && this.config.experimentalNativeExport !== true) {
 			reasons.push("native-timeline-requires-windows-gpu");
+		}
+		if (
+			needsTimelineMap &&
+			this.hasNativeStaticLayoutOverlayContent() &&
+			!this.canUseNativeGpuStaticLayout()
+		) {
+			// The generalized CUDA compositor maps output frames through the
+			// timeline AND alpha-composites the overlay sidecar (overlay frames are
+			// indexed by output frame), so timeline + overlay sidecars are supported
+			// on the CUDA route. Only the D3D11/FFmpeg fallback routes cannot
+			// preserve both, so keep the skip for those routes only.
+			reasons.push("overlay-layers-do-not-support-native-timeline");
 		}
 		if (
 			needsTimelineMap &&
@@ -1560,22 +2066,8 @@ export class ModernVideoExporter {
 		if (hasZoomRegions && this.config.experimentalNativeExport !== true) {
 			reasons.push("native-zoom-requires-windows-gpu");
 		}
-		if ((this.config.annotationRegions ?? []).length > 0) {
-			reasons.push("unsupported-annotation-overlay");
-		}
-		if ((this.config.autoCaptions ?? []).length > 0) {
-			reasons.push("unsupported-caption-overlay");
-		}
-
 		if (this.config.webcam?.enabled && !this.getNativeWebcamSourcePath()) {
 			reasons.push("unsupported-webcam-source");
-		}
-		if (this.hasUnsupportedNativeStaticLayoutWebcamShape()) {
-			reasons.push("unsupported-rectangular-webcam-overlay");
-		}
-
-		if (this.config.frame) {
-			reasons.push("unsupported-frame-overlay");
 		}
 
 		const crop = this.config.cropRegion;
@@ -1590,6 +2082,7 @@ export class ModernVideoExporter {
 			reasons.push("invalid-crop-region");
 		}
 
+		reasons.push(...this.getHevcNativeGpuFeatureSkipReasons());
 		return reasons;
 	}
 
@@ -1976,9 +2469,139 @@ export class ModernVideoExporter {
 		};
 	}
 
+	/**
+	 * Whether the edited-track offline audio render can be deferred behind the
+	 * CUDA compositor launch. The deferral requires the export-stream IPC: the
+	 * renderer streams the WAV payload into a temp file while the compositor
+	 * runs, and main waits for the stream closure at mux time. The filtergraph
+	 * fast path never needs a render, so it is never deferred.
+	 */
+	private canDeferEditedAudioRender(audioPlan: NativeAudioPlan): boolean {
+		if (
+			audioPlan.audioMode !== "edited-track" ||
+			audioPlan.strategy === "filtergraph-fast-path"
+		) {
+			return false;
+		}
+		const api = typeof window === "undefined" ? null : window.electronAPI;
+		if (
+			!api ||
+			!api.openExportStream ||
+			!api.writeExportStreamChunk ||
+			!api.closeExportStream ||
+			!api.discardExportedTemp
+		) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Starts the deferred edited-track audio render against an export-stream
+	 * temp file so the CUDA compositor launches immediately (video-only) while
+	 * the render proceeds concurrently. `opened` resolves with the stream id as
+	 * soon as the stream exists (the IPC launch needs the id); `promise` settles
+	 * when the WAV payload is fully written and the stream closed. The stream
+	 * closure is the deterministic handshake main waits on at mux time, so the
+	 * payload always reaches main before the final mux. On failure the stream is
+	 * aborted (never left open for main's bounded wait to hang) and the rejection
+	 * surfaces as a hard, actionable error.
+	 */
+	private startDeferredEditedAudioRender(
+		audioPlan: NativeAudioPlan,
+		totalFrames: number,
+	): { opened: Promise<string>; promise: Promise<void> } | null {
+		if (
+			audioPlan.audioMode !== "edited-track" ||
+			audioPlan.strategy !== "offline-render-fallback"
+		) {
+			return null;
+		}
+		const api = typeof window === "undefined" ? null : window.electronAPI;
+		if (
+			!api ||
+			!api.openExportStream ||
+			!api.writeExportStreamChunk ||
+			!api.closeExportStream
+		) {
+			return null;
+		}
+		let streamId: string | null = null;
+		let resolveOpened: (streamId: string) => void = () => undefined;
+		const opened = new Promise<string>((resolve) => {
+			resolveOpened = resolve;
+		});
+		const promise = (async () => {
+			const openedStream = await api.openExportStream({ extension: "wav" });
+			if (!openedStream.success || !openedStream.streamId) {
+				throw new Error(
+					`open-deferred-audio-stream: ${openedStream.error ?? "Edited audio export stream could not be opened"}`,
+				);
+			}
+			streamId = openedStream.streamId;
+			this.deferredEditedAudioStreamId = openedStream.streamId;
+			resolveOpened(openedStream.streamId);
+
+			const rendered = await this.renderEditedAudioForNativeMux(
+				"Native static-layout edited audio rendering",
+				(progress) => this.reportProgress(0, totalFrames, "preparing", undefined, progress),
+				audioPlan.sourceAudioFallbackPaths,
+			);
+			const writeResult = await api.writeExportStreamChunk(
+				openedStream.streamId,
+				0,
+				new Uint8Array(rendered.editedAudioData),
+			);
+			if (!writeResult.success) {
+				throw new Error(writeResult.error ?? "Deferred edited audio stream write failed");
+			}
+			const closed = await api.closeExportStream(openedStream.streamId);
+			streamId = null;
+			this.deferredEditedAudioStreamId = null;
+			if (!closed.success || !closed.tempPath || (closed.bytesWritten ?? 0) === 0) {
+				throw new Error(closed.error ?? "Deferred edited audio stream did not finalize");
+			}
+		})().catch(async (error: unknown) => {
+			// Abort the stream so main's bounded mux wait fails fast instead of
+			// waiting the full timeout; the native export then hard-fails with an
+			// actionable missing-audio error.
+			if (streamId) {
+				await api.closeExportStream(streamId, { abort: true }).catch(() => undefined);
+			}
+			this.deferredEditedAudioStreamId = null;
+			throw error instanceof Error ? error : new Error(String(error));
+		});
+		return { opened, promise };
+	}
+
+	/**
+	 * Settles the deferred edited-audio render. On success (or when the payload
+	 * already reached main) this just awaits the render; on failure paths it
+	 * aborts the still-open stream so the renderer never leaves a dangling temp
+	 * file or a waiter behind.
+	 */
+	private async settleDeferredEditedAudio(
+		deferredAudio: { opened: Promise<string>; promise: Promise<void> } | null,
+		options: { abort: boolean },
+	): Promise<void> {
+		if (!deferredAudio) {
+			return;
+		}
+		const api = typeof window === "undefined" ? null : window.electronAPI;
+		if (options.abort && this.deferredEditedAudioStreamId && api?.closeExportStream) {
+			const streamId = this.deferredEditedAudioStreamId;
+			this.deferredEditedAudioStreamId = null;
+			await api.closeExportStream(streamId, { abort: true }).catch(() => undefined);
+		}
+		await deferredAudio.promise.catch((error) => {
+			console.warn("[VideoExporter] Deferred edited audio render failed", error);
+		});
+	}
+
 	private async getNativeStaticLayoutAudioOptions(
 		audioPlan: NativeAudioPlan,
 		totalFrames: number,
+		deferEditedAudio = false,
 	) {
 		switch (audioPlan.audioMode) {
 			case "none":
@@ -2000,6 +2623,18 @@ export class ModernVideoExporter {
 						audioSourceSampleRate: audioPlan.audioSourceSampleRate,
 						editedTrackStrategy: audioPlan.strategy,
 						editedTrackSegments: audioPlan.editedTrackSegments,
+					};
+				}
+
+				if (deferEditedAudio) {
+					// Deferred descriptor: the WAV payload is rendered concurrently
+					// with the compositor and streamed through an export stream; the
+					// stream id rides in the IPC options and main waits for the stream
+					// closure at mux time. Never blocks the compositor launch.
+					return {
+						audioMode: audioPlan.audioMode,
+						editedTrackStrategy: audioPlan.strategy,
+						editedAudioDeferred: true as const,
 					};
 				}
 
@@ -2131,11 +2766,14 @@ export class ModernVideoExporter {
 		const springY = createSpringState(0);
 		const zoomSpringConfig = getZoomSpringConfig(this.config.zoomSmoothness);
 		const frameDurationMs = 1000 / Math.max(1, this.config.frameRate);
+		const zoomBlurAmount = this.config.zoomMotionBlur ?? 0;
+		const zoomBlurTuning = this.config.zoomMotionBlurTuning;
 		const samples: NativeStaticLayoutZoomSample[] = [];
 		let lastContentTimeMs: number | null = null;
 		let appliedScale = 1;
 		let appliedX = 0;
 		let appliedY = 0;
+		let previousAppliedTransform: { scale: number; x: number; y: number } | null = null;
 
 		for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
 			const timeMs = frameIndex * frameDurationMs;
@@ -2211,15 +2849,2037 @@ export class ModernVideoExporter {
 				);
 			}
 
+			const currentAppliedTransform = { scale: appliedScale, x: appliedX, y: appliedY };
+			const blurStep =
+				zoomBlurAmount > 0 && previousAppliedTransform
+					? analyzeZoomMotionBlurStep({
+							previousTransform: previousAppliedTransform,
+							currentTransform: currentAppliedTransform,
+							baseMask,
+							stageSize,
+							motionBlurAmount: zoomBlurAmount,
+							motionBlurTuning: zoomBlurTuning,
+							deltaSeconds: Math.min(80, Math.max(1, deltaMs)) / 1000,
+						})
+					: null;
+			previousAppliedTransform = currentAppliedTransform;
+
 			samples.push({
 				timeMs,
 				scale: appliedScale,
 				x: appliedX,
 				y: appliedY,
+				blurStrength: blurStep?.strength ?? 0,
+				blurCenterX: blurStep?.centerX ?? stageSize.width / 2,
+				blurCenterY: blurStep?.centerY ?? stageSize.height / 2,
 			});
 		}
 
 		return samples;
+	}
+
+	/**
+	 * The generalized NVIDIA CUDA compositor can reproduce the cursor from the
+	 * native atlas (sprite, position, type, click bounce, visibility) on top of
+	 * the composed video. When eligible, cursor pixels are excluded from the
+	 * transparent overlay sidecar and rendered natively instead, which keeps the
+	 * cursor sharp and avoids baking it into the RGBA stream. Browser-only
+	 * cursor effects (motion blur, sway, click effect rings), extension cursor
+	 * visuals, or an unavailable atlas keep the baked-sidecar fallback.
+	 */
+	private canUseNativeCursorAtlasOwnership(): boolean {
+		if (this.config.showCursor !== true || (this.config.cursorTelemetry?.length ?? 0) === 0) {
+			return false;
+		}
+		if ((this.config.cursorMotionBlur ?? 0) > 0.0005) {
+			return false;
+		}
+		if ((this.config.cursorSway ?? 0) > 0.0005) {
+			return false;
+		}
+		const clickEffect = this.config.cursorClickEffect;
+		if (clickEffect !== undefined && clickEffect !== "none") {
+			return false;
+		}
+		if (this.hasNativeStaticLayoutExtensionCursorVisuals()) {
+			return false;
+		}
+		// Only the generalized NVIDIA CUDA compositor draws the atlas on top of
+		// the overlay sidecars; the FFmpeg overlay route and the D3D11 helper
+		// cannot, so native ownership requires the CUDA-opt-in Windows route.
+		return (
+			this.getRuntimePlatform() === "win32" &&
+			this.config.experimentalNativeExport === true &&
+			this.config.experimentalNvidiaCudaExport === true
+		);
+	}
+
+	/**
+	 * Whether the generalized NVIDIA CUDA compositor is an eligible consumer of
+	 * the native `cursor-sprite` overlay contract.
+	 *
+	 * The cursor-sprite contract captures only the small cursor ROI strip
+	 * instead of baking the cursor into a full transparent 4K canvas per frame.
+	 * It is consumed solely by the generalized NVIDIA CUDA compositor, which is
+	 * independent of the output codec: native-video.ts runs the same CUDA
+	 * compositor for H.264 and HEVC overlay exports whenever the user opts into
+	 * the CUDA route. This predicate therefore gates on the CUDA route, not on
+	 * the (HEVC-only) canUseNativeGpuStaticLayout(). Gating the cheap ROI path
+	 * on the codec wrongly forced H.264 CUDA exports with a cursor-only overlay
+	 * to bake the full-canvas sidecar frame-by-frame (~1 min for 192 frames)
+	 * instead of capturing the tiny cursor ROI.
+	 *
+	 * CPU encoder preference never reaches the CUDA compositor (it is the
+	 * software-encoder route), so it must never attempt a sprite here.
+	 */
+	private canUseNativeCursorSpriteContract(): boolean {
+		if (this.config.exportEncoderPreference === "cpu") {
+			return false;
+		}
+		return (
+			this.config.experimentalNativeExport === true &&
+			this.config.experimentalNvidiaCudaExport === true
+		);
+	}
+
+	/**
+	 * Whether extension cursor visuals / render hooks are active. Extension
+	 * hooks draw into the full composite canvas outside the cursor container, so
+	 * any path that captures only the cursor container (cursor-sprite ROI) would
+	 * silently drop them. The baked full-canvas sidecar is required instead.
+	 */
+	private hasNativeStaticLayoutExtensionCursorVisuals(): boolean {
+		const extensionHookPhases = [
+			"background",
+			"post-video",
+			"post-zoom",
+			"post-cursor",
+			"post-webcam",
+			"post-annotations",
+			"final",
+		] as const;
+		return (
+			extensionHost.hasCursorEffects() ||
+			extensionHookPhases.some((phase) => extensionHost.hasRenderHooks(phase))
+		);
+	}
+
+	private hasNativeStaticLayoutOverlayContent(): boolean {
+		return Boolean(
+			((this.config.cursorTelemetry?.length ?? 0) > 0 && this.config.showCursor !== false) ||
+				(this.config.annotationRegions?.length ?? 0) > 0 ||
+				(this.config.autoCaptions?.length ?? 0) > 0 ||
+				this.config.frame ||
+				this.config.webcam?.enabled,
+		);
+	}
+
+	// Browser-rendered overlay pixels (everything the renderer draws into the
+	// transparent sidecar). When the native CUDA compositor owns the cursor atlas
+	// and none of these are present, the sidecar would be entirely transparent,
+	// so it can be skipped entirely without rendering/capturing a canvas per frame.
+	// When the webcam is owned natively by the CUDA compositor (webcamNativeOwned)
+	// the renderer must NOT bake it into the sidecar, so it is excluded from the
+	// browser-pixel check exactly like an atlas-owned cursor.
+	private hasNativeStaticLayoutBrowserOverlayPixels(webcamNativeOwned = false): boolean {
+		return Boolean(
+			(this.config.annotationRegions?.length ?? 0) > 0 ||
+				(this.config.autoCaptions?.length ?? 0) > 0 ||
+				Boolean(this.config.frame) ||
+				(Boolean(this.config.webcam?.enabled) && !webcamNativeOwned),
+		);
+	}
+
+	/**
+	 * Whether the webcam is the ONLY browser-rendered overlay pixel source and is
+	 * fully representable by the generalized NVIDIA CUDA compositor's native
+	 * webcam overlay contract.
+	 *
+	 * The CUDA compositor consumes the same resolved webcam geometry the renderer
+	 * would bake (left/top/size/radius/mirror/time-offset via the native-video.ts
+	 * webcam args), so a webcam-only export needs no renderer sidecar at all.
+	 * Mixed browser content (captions, annotations, frame visuals) or extension
+	 * render hooks keep the existing baked sidecar path, and a configured webcam
+	 * shadow is not representable in the CUDA wrapper today, so a shadowed webcam
+	 * must stay baked to preserve the golden visual.
+	 */
+	private hasNativeStaticLayoutWebcamOnlyBrowserPixels(): boolean {
+		const webcamOverlay = this.getNativeStaticLayoutWebcamOverlay();
+		return (
+			this.config.webcam?.enabled === true &&
+			webcamOverlay !== null &&
+			(webcamOverlay.shadowIntensity ?? 0) <= 0 &&
+			(this.config.annotationRegions?.length ?? 0) === 0 &&
+			(this.config.autoCaptions?.length ?? 0) === 0 &&
+			!this.config.frame &&
+			!this.hasNativeStaticLayoutExtensionCursorVisuals()
+		);
+	}
+
+	/**
+	 * Whether the generalized NVIDIA CUDA compositor owns the webcam overlay
+	 * natively for this export.
+	 *
+	 * Safe only on the strict HEVC Hardware CUDA route: that route guarantees the
+	 * CUDA compositor runs (any fallback hard-fails with noCpuFallback:true), so
+	 * excluding the webcam from the renderer sidecar can never silently drop it on
+	 * an FFmpeg/D3D11 fallback that cannot draw a native webcam. HEVC Auto and
+	 * H.264 keep the existing baked-webcam sidecar path unchanged.
+	 */
+	private canUseNativeWebcamOwnership(): boolean {
+		if (!this.requiresStrictNativeCudaRoute() || !this.canUseNativeGpuStaticLayout()) {
+			return false;
+		}
+		return this.hasNativeStaticLayoutWebcamOnlyBrowserPixels();
+	}
+
+	private hasUnsupportedNativeStaticLayoutOverlayContent(): string | null {
+		if (this.config.annotationRegions?.some((annotation) => annotation.type === "blur")) {
+			return "unsupported-blur-annotation-overlay";
+		}
+		return null;
+	}
+
+	private getNativeStaticLayoutFastLaneEligibility(
+		audioPlan: NativeAudioPlan,
+		cursorAtlasOwnedByNative: boolean,
+		webcamNativeOwned: boolean,
+	): NativeStaticLayoutFastLaneEligibility {
+		const cursorDisabled =
+			this.config.showCursor !== true || (this.config.cursorTelemetry?.length ?? 0) === 0;
+		// Actual ownership, not eligibility: the empty sidecar fast lane is only
+		// safe when the cursor is disabled or the CUDA compositor will genuinely
+		// draw it from a successfully built atlas. An eligible-but-unbuilt atlas
+		// must not silently drop the cursor, so it keeps the sidecar preparation
+		// (cursor-sprite ROI or baked full-canvas) and never selects the fast lane.
+		const cursorNativeOwnershipActive = cursorAtlasOwnedByNative;
+		return getNativeStaticLayoutFastLaneEligibility({
+			canUseNativeGpuStaticLayout: this.canUseNativeGpuStaticLayout(),
+			hasBrowserOverlayPixels:
+				this.hasNativeStaticLayoutBrowserOverlayPixels(webcamNativeOwned),
+			cursorDisabled,
+			cursorNativeOwnershipActive,
+			// The edited-audio blocker only applies when the render cannot be
+			// deferred behind the compositor (export-stream IPC unavailable); a
+			// deferred render is genuinely non-blocking, so the fast lane stays
+			// eligible.
+			requiresEditedAudioRender:
+				audioPlan.audioMode === "edited-track" &&
+				!this.canDeferEditedAudioRender(audioPlan),
+			hasAuthoritativeNativeSource: Boolean(this.getNativeVideoSourcePath()),
+		});
+	}
+
+	private createNativeStaticLayoutOverlayRenderer(
+		videoInfo: DecodedVideoInfo,
+		excludeCursorOverlay = false,
+		excludeWebcamOverlay = false,
+	) {
+		return new ModernFrameRenderer({
+			width: this.config.width,
+			height: this.config.height,
+			preferredRenderBackend: undefined,
+			wallpaper: DEFAULT_WALLPAPER_PATH,
+			zoomRegions: this.config.zoomRegions,
+			showShadow: this.config.showShadow,
+			shadowIntensity: this.config.shadowIntensity,
+			backgroundBlur: 0,
+			zoomMotionBlur: 0,
+			connectZooms: this.config.connectZooms,
+			zoomInDurationMs: this.config.zoomInDurationMs,
+			zoomInOverlapMs: this.config.zoomInOverlapMs,
+			zoomOutDurationMs: this.config.zoomOutDurationMs,
+			connectedZoomGapMs: this.config.connectedZoomGapMs,
+			connectedZoomDurationMs: this.config.connectedZoomDurationMs,
+			zoomInEasing: this.config.zoomInEasing,
+			zoomOutEasing: this.config.zoomOutEasing,
+			connectedZoomEasing: this.config.connectedZoomEasing,
+			borderRadius: this.config.borderRadius,
+			padding: this.config.padding,
+			cropRegion: this.config.cropRegion,
+			webcam: excludeWebcamOverlay ? undefined : this.config.webcam,
+			webcamUrl: excludeWebcamOverlay ? null : this.config.webcamUrl,
+			videoWidth: videoInfo.width,
+			videoHeight: videoInfo.height,
+			annotationRegions: this.config.annotationRegions,
+			autoCaptions: this.config.autoCaptions,
+			autoCaptionSettings: this.config.autoCaptionSettings,
+			speedRegions: this.config.speedRegions,
+			previewWidth: this.config.previewWidth,
+			previewHeight: this.config.previewHeight,
+			cursorTelemetry: this.config.cursorTelemetry,
+			showCursor: this.config.showCursor,
+			cursorStyle: this.config.cursorStyle,
+			cursorSize: this.config.cursorSize,
+			cursorSmoothing: this.config.cursorSmoothing,
+			cursorSpringStiffnessMultiplier: this.config.cursorSpringStiffnessMultiplier,
+			cursorSpringDampingMultiplier: this.config.cursorSpringDampingMultiplier,
+			cursorSpringMassMultiplier: this.config.cursorSpringMassMultiplier,
+			cameraSpringStiffnessMultiplier: this.config.cameraSpringStiffnessMultiplier,
+			cameraSpringDampingMultiplier: this.config.cameraSpringDampingMultiplier,
+			cameraSpringMassMultiplier: this.config.cameraSpringMassMultiplier,
+			cursorMotionBlur: this.config.cursorMotionBlur,
+			cursorClickEffect: this.config.cursorClickEffect,
+			cursorClickEffectColor: this.config.cursorClickEffectColor,
+			cursorClickEffectScale: this.config.cursorClickEffectScale,
+			cursorClickEffectOpacity: this.config.cursorClickEffectOpacity,
+			cursorClickEffectDurationMs: this.config.cursorClickEffectDurationMs,
+			cursorClickBounce: this.config.cursorClickBounce,
+			cursorClickBounceDuration: this.config.cursorClickBounceDuration,
+			cursorSway: this.config.cursorSway,
+			zoomSmoothness: this.config.zoomSmoothness,
+			zoomClassicMode: this.config.zoomClassicMode,
+			frame: this.config.frame,
+			excludeCursorOverlay,
+		});
+	}
+
+	private extractNativeTiledOverlayTileInto(
+		target: Uint8Array,
+		source: Uint8Array,
+		sourceWidth: number,
+		sourceHeight: number,
+		tileX: number,
+		tileY: number,
+	): void {
+		target.fill(0);
+		const startY = tileY * NATIVE_TILED_OVERLAY_TILE_SIZE;
+		const startX = tileX * NATIVE_TILED_OVERLAY_TILE_SIZE;
+		const endY = Math.min(sourceHeight, startY + NATIVE_TILED_OVERLAY_TILE_SIZE);
+		const endX = Math.min(sourceWidth, startX + NATIVE_TILED_OVERLAY_TILE_SIZE);
+		const copyRows = Math.max(0, endY - startY);
+		const copyCols = Math.max(0, endX - startX);
+		for (let row = 0; row < copyRows; row += 1) {
+			const sourceRowOffset = ((startY + row) * sourceWidth + startX) * 4;
+			const targetRowOffset = row * NATIVE_TILED_OVERLAY_TILE_SIZE * 4;
+			const rowBytes = copyCols * 4;
+			target.set(
+				source.subarray(sourceRowOffset, sourceRowOffset + rowBytes),
+				targetRowOffset,
+			);
+		}
+	}
+
+	/**
+	 * Whether the cursor should be captured as a cursor-sprite ROI strip instead
+	 * of being baked into a full transparent RGBA canvas sidecar.
+	 *
+	 * A cursor-sprite is only usable on the generalized NVIDIA CUDA compositor
+	 * (the sole consumer of the native `cursor-sprite` contract) and only when
+	 * the cursor is the entire overlay (no browser pixels) and is NOT actually
+	 * owned by the native atlas (cursorExcluded === cursorAtlasOwnedByNative).
+	 * When the atlas is eligible but was not successfully built, the sprite path
+	 * is the pixel-preserving fallback: it renders the same Pixi cursor into the
+	 * ROI instead of the expensive full-canvas tiled sidecar. Browser-only
+	 * cursor effects (motion blur/sway/click) also use the sprite. Extension
+	 * cursor visuals keep the baked full-canvas sidecar because extension hooks
+	 * draw outside the cursor container (the sprite would drop them). When the
+	 * sprite cannot be used the baked-cursor full-canvas sidecar path runs
+	 * unchanged (the preserved golden path).
+	 */
+	private shouldUseNativeStaticLayoutCursorSprite(
+		cursorExcluded: boolean,
+		webcamExcluded = false,
+	): boolean {
+		return (
+			!cursorExcluded &&
+			this.canUseNativeCursorSpriteContract() &&
+			this.config.showCursor === true &&
+			(this.config.cursorTelemetry?.length ?? 0) > 0 &&
+			!this.hasNativeStaticLayoutExtensionCursorVisuals() &&
+			!this.hasNativeStaticLayoutBrowserOverlayPixels(webcamExcluded)
+		);
+	}
+
+	/**
+	 * Conservative predicate for the streaming raw-overlay path. Streaming is
+	 * only safe when the final sidecar is provably a raw RGBA full-frame layer
+	 * with frameCount === effectiveFrameCount === totalFrames, so the native
+	 * compositor can begin source prep/helper startup while the renderer is
+	 * still baking.
+	 *
+	 * Conditions (all required):
+	 * - The CUDA compositor route is eligible (same gate as cursor-sprite).
+	 * - There are browser-rendered overlay pixels (the bake would run).
+	 * - The cursor is NOT the only overlay (cursor-sprite path handles that).
+	 * - No extension hooks/cursor visuals (those need the full baked path).
+	 * - No unsupported overlay content (blur annotations, etc.).
+	 * - CPU encoder preference never reaches the CUDA compositor.
+	 *
+	 * The predicate is checked after the fast-lane and cursor-sprite decisions,
+	 * so it only applies to the remaining baked full-canvas sidecar path.
+	 */
+	private canUseStreamingRawOverlay(cursorExcluded: boolean, webcamExcluded: boolean): boolean {
+		if (this.config.exportEncoderPreference === "cpu") {
+			return false;
+		}
+		if (
+			this.config.experimentalNativeExport !== true ||
+			this.config.experimentalNvidiaCudaExport !== true
+		) {
+			return false;
+		}
+		if (!this.hasNativeStaticLayoutBrowserOverlayPixels(webcamExcluded)) {
+			return false;
+		}
+		if (this.shouldUseNativeStaticLayoutCursorSprite(cursorExcluded, webcamExcluded)) {
+			return false;
+		}
+		if (this.hasNativeStaticLayoutExtensionCursorVisuals()) {
+			return false;
+		}
+		if (this.hasUnsupportedNativeStaticLayoutOverlayContent()) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Captures the cursor ROI as a fixed packed RGBA sprite strip plus per-frame
+	 * top-left positions and returns a validated native `cursor-sprite` overlay
+	 * layer. Returns null (recording an overlay failure) when the cursor-sprite
+	 * contract cannot be prepared, in which case the caller falls back to the
+	 * existing baked-cursor full-canvas sidecar path.
+	 */
+	private async prepareNativeStaticLayoutCursorSprite(
+		videoInfo: DecodedVideoInfo,
+		durationSec: number,
+		totalFrames: number,
+		webcamExcluded = false,
+		onPreparationProgress?: (renderProgress: number) => void,
+	): Promise<NativeCursorSpriteOverlayLayer | null> {
+		const api = typeof window === "undefined" ? null : window.electronAPI;
+		if (
+			!api?.openExportStream ||
+			!api.writeExportStreamChunk ||
+			!api.closeExportStream ||
+			!api.discardExportedTemp
+		) {
+			this.recordNativeStaticLayoutOverlayFailure(
+				"cursor-sprite-api-unavailable",
+				"Cursor-sprite export stream IPC is not available",
+			);
+			return null;
+		}
+		const renderer = this.createNativeStaticLayoutOverlayRenderer(
+			videoInfo,
+			false,
+			webcamExcluded,
+		);
+		let spriteStreamId: string | null = null;
+		let positionsStreamId: string | null = null;
+		try {
+			const spriteStream = await api.openExportStream({ extension: "sprite" });
+			if (!spriteStream.success || !spriteStream.streamId || !spriteStream.tempPath) {
+				this.recordNativeStaticLayoutOverlayFailure(
+					"open-cursor-sprite-stream",
+					spriteStream.error ?? "Cursor-sprite export stream could not be opened",
+				);
+				return null;
+			}
+			spriteStreamId = spriteStream.streamId;
+
+			const positionsStream = await api.openExportStream({ extension: "json" });
+			if (
+				!positionsStream.success ||
+				!positionsStream.streamId ||
+				!positionsStream.tempPath
+			) {
+				this.recordNativeStaticLayoutOverlayFailure(
+					"open-cursor-positions-stream",
+					positionsStream.error ??
+						"Cursor-sprite positions export stream could not be opened",
+				);
+				return null;
+			}
+			positionsStreamId = positionsStream.streamId;
+
+			await renderer.initialize();
+			const started = renderer.startCursorSpriteCapture();
+			if (!started) {
+				this.recordNativeStaticLayoutOverlayFailure(
+					"cursor-sprite-init",
+					"Cursor-sprite capture could not be initialized (no overlay renderer)",
+				);
+				return null;
+			}
+
+			let lastPreparationProgressMs = 0;
+			for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
+				if (this.cancelled) {
+					throw new Error("Export cancelled");
+				}
+				if (onPreparationProgress) {
+					const nowMs = this.getNowMs();
+					if (
+						nowMs - lastPreparationProgressMs >=
+							NATIVE_OVERLAY_PREPARATION_PROGRESS_INTERVAL_MS ||
+						frameIndex === totalFrames - 1
+					) {
+						lastPreparationProgressMs = nowMs;
+						onPreparationProgress(
+							totalFrames > 0 ? (frameIndex / totalFrames) * 100 : 0,
+						);
+					}
+				}
+				const timestampUs = Math.round((frameIndex * 1_000_000) / this.config.frameRate);
+				try {
+					// The cursor-sprite path captures only the cursor ROI, so skip the
+					// full 4K canvas render that the baked full-canvas sidecar needs.
+					// All cursor state updates (sway spring, motion-blur velocity,
+					// click rings, zoom transform) still run; only the expensive
+					// full-canvas rasterization is skipped.
+					await renderer.renderOverlayFrame(timestampUs, timestampUs, timestampUs, true);
+				} catch (error) {
+					throw new Error(
+						`overlay-renderer-frame: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+				const capture = renderer.captureCursorSpriteFrame();
+				if (!capture.captured) {
+					this.recordNativeStaticLayoutOverlayFailure(
+						"cursor-sprite-frame",
+						capture.unavailableReason ?? "Cursor-sprite frame could not be captured",
+					);
+					return null;
+				}
+			}
+
+			const strip = renderer.finishCursorSpriteCapture();
+			if (!strip || strip.frameCount === 0) {
+				this.recordNativeStaticLayoutOverlayFailure(
+					"cursor-sprite-finish",
+					"Cursor-sprite capture produced no frames",
+				);
+				return null;
+			}
+
+			const spriteWrite = await api.writeExportStreamChunk(spriteStreamId, 0, strip.frames);
+			if (!spriteWrite.success) {
+				throw new Error(
+					`cursor-sprite-stream-write: ${spriteWrite.error ?? "Failed to write cursor-sprite strip"}`,
+				);
+			}
+			const clampedPositions: NativeCursorSpritePosition[] = strip.positions.map((position) =>
+				clampNativeCursorSpritePosition(
+					position,
+					strip.width,
+					strip.height,
+					this.config.width,
+					this.config.height,
+				),
+			);
+			const positionsBytes = new TextEncoder().encode(JSON.stringify(clampedPositions));
+			const positionsWrite = await api.writeExportStreamChunk(
+				positionsStreamId,
+				0,
+				positionsBytes,
+			);
+			if (!positionsWrite.success) {
+				throw new Error(
+					`cursor-positions-stream-write: ${positionsWrite.error ?? "Failed to write cursor-sprite positions"}`,
+				);
+			}
+
+			const spriteClosed = await api.closeExportStream(spriteStreamId);
+			spriteStreamId = null;
+			if (!spriteClosed.success || !spriteClosed.tempPath) {
+				throw new Error(
+					`cursor-sprite-stream-close: ${spriteClosed.error ?? "Cursor-sprite stream did not finalize"}`,
+				);
+			}
+			const positionsClosed = await api.closeExportStream(positionsStreamId);
+			positionsStreamId = null;
+			if (!positionsClosed.success || !positionsClosed.tempPath) {
+				throw new Error(
+					`cursor-positions-stream-close: ${positionsClosed.error ?? "Cursor-sprite positions stream did not finalize"}`,
+				);
+			}
+
+			const layer: NativeCursorSpriteOverlayLayer = {
+				id: "cursor-sprite",
+				order: 1,
+				kind: NATIVE_CURSOR_SPRITE_LAYER_KIND,
+				path: spriteClosed.tempPath,
+				positionsPath: positionsClosed.tempPath,
+				x: 0,
+				y: 0,
+				width: strip.width,
+				height: strip.height,
+				frameRate: this.config.frameRate,
+				durationSec,
+				frameCount: strip.frameCount,
+				positions: clampedPositions,
+				pixelFormat: "rgba",
+			};
+			const validationError = validateNativeCursorSpriteOverlayLayer(layer, {
+				outputWidth: this.config.width,
+				outputHeight: this.config.height,
+				durationSec,
+				frameRate: this.config.frameRate,
+			});
+			if (validationError) {
+				throw new Error(`cursor-sprite-layer-invalid: ${validationError}`);
+			}
+			console.info("[VideoExporter] Native static layout cursor-sprite selected", {
+				route: "nvidia-cuda-compositor",
+				cursorStyle: this.config.cursorStyle ?? "tahoe",
+				spriteWidth: strip.width,
+				spriteHeight: strip.height,
+				frameCount: strip.frameCount,
+			});
+			return layer;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			const stage = message.startsWith("cursor-")
+				? message.split(":", 1)[0]
+				: "cursor-sprite-preparation";
+			this.recordNativeStaticLayoutOverlayFailure(stage, message);
+			console.warn(
+				"[VideoExporter] Cursor-sprite preparation failed; falling back to baked cursor overlay sidecar",
+				{ stage, message, totalFrames, cancelled: this.cancelled },
+			);
+			return null;
+		} finally {
+			// Abort any export streams still open on both the thrown-error path and
+			// the early-return-null paths (a finalized stream already nulls its id).
+			if (spriteStreamId) {
+				try {
+					await api.closeExportStream(spriteStreamId, { abort: true });
+				} catch {
+					// Best-effort cleanup.
+				}
+			}
+			if (positionsStreamId) {
+				try {
+					await api.closeExportStream(positionsStreamId, { abort: true });
+				} catch {
+					// Best-effort cleanup.
+				}
+			}
+			try {
+				renderer.cancelCursorSpriteCapture();
+			} catch {
+				// Best-effort cleanup.
+			}
+			try {
+				renderer.destroy();
+			} catch {
+				// Cleanup is best-effort after a failed cursor-sprite attempt.
+			}
+		}
+	}
+
+	/**
+	 * Whether the concurrent cursor-sprite streaming path is available. It
+	 * requires the export-stream IPC plus the concurrent native IPC. The actual
+	 * telemetry-derived precompute happens inside streamCursorSpriteAndExport,
+	 * so an empty/malformed telemetry plan falls back to the sequential sprite
+	 * bake instead of hard-failing here.
+	 */
+	private canStreamCursorSprite(): boolean {
+		const api = typeof window === "undefined" ? null : window.electronAPI;
+		if (
+			!api ||
+			!api.openExportStream ||
+			!api.writeExportStreamChunk ||
+			!api.closeExportStream ||
+			!api.discardExportedTemp ||
+			!api.nativeStaticLayoutExport ||
+			!api.nativeStaticLayoutExportCancel
+		) {
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Precomputes the fixed cursor-sprite strip geometry from cursor telemetry
+	 * BEFORE the bake so the native IPC can launch concurrently with the ROI
+	 * render/write loop. The strip is a fixed square sized to the renderer's
+	 * cursor sprite extent (dotRadius 28 * cursorSize * viewportScale *
+	 * styleMultiplier, doubled to cover aspect ratios up to 2:1 and anchor
+	 * extremes) plus the full effect/filter expansion padding, clamped to the
+	 * output canvas. Every frame's ROI is that same fixed rect placed at the
+	 * telemetry-interpolated (viewport-projected) position and clamped so the
+	 * strip stays in-canvas; the recorded position equals that clamped origin.
+	 * The smoothed renderer cursor lags the raw interpolation by only a few
+	 * pixels, far inside the padding, so the rendered content always lands
+	 * inside the strip while the compositor draws the strip exactly at the
+	 * recorded position (self-consistent even when the smoothed position
+	 * differs).
+	 */
+	private precomputeNativeCursorSpritePlan(ctx: {
+		contentWidth: number;
+		contentHeight: number;
+		offsetX: number;
+		offsetY: number;
+		totalFrames: number;
+	}): NativeCursorSpriteStreamPlan | null {
+		const telemetry = this.config.cursorTelemetry ?? [];
+		if (
+			telemetry.length === 0 ||
+			!Number.isFinite(this.config.frameRate) ||
+			this.config.frameRate <= 0
+		) {
+			return null;
+		}
+		const outputWidth = this.config.width;
+		const outputHeight = this.config.height;
+		const viewportScale = Math.max(0.55, ctx.contentWidth / 1920);
+		const stripSize = computeCursorSpriteStripSize({
+			dotRadius: DEFAULT_CURSOR_CONFIG.dotRadius,
+			cursorSize: this.config.cursorSize,
+			viewportScale,
+			styleSizeMultiplier: getCursorStyleSizeMultiplier(this.config.cursorStyle ?? "tahoe"),
+			outputWidth: outputWidth,
+			outputHeight: outputHeight,
+			cursorMotionBlur: this.config.cursorMotionBlur,
+			cursorSway: this.config.cursorSway,
+			cursorClickEffect: this.config.cursorClickEffect,
+		});
+		const stripWidth = stripSize.width;
+		const stripHeight = stripSize.height;
+		const maxX = Math.max(0, outputWidth - stripWidth);
+		const maxY = Math.max(0, outputHeight - stripHeight);
+		const positions: NativeCursorSpritePosition[] = [];
+		const rois: CursorRect[] = [];
+		for (let frameIndex = 0; frameIndex < ctx.totalFrames; frameIndex += 1) {
+			const timeMs = (frameIndex * 1000) / this.config.frameRate;
+			const target = interpolateCursorPosition(telemetry, timeMs);
+			if (!target) {
+				return null;
+			}
+			const projected = projectCursorPositionToViewport(target, this.config.cropRegion);
+			const centerX = ctx.offsetX + projected.cx * ctx.contentWidth;
+			const centerY = ctx.offsetY + projected.cy * ctx.contentHeight;
+			const positionX = Math.max(0, Math.min(maxX, Math.round(centerX - stripWidth / 2)));
+			const positionY = Math.max(0, Math.min(maxY, Math.round(centerY - stripHeight / 2)));
+			positions.push({ x: positionX, y: positionY });
+			rois.push({
+				x: positionX,
+				y: positionY,
+				width: stripWidth,
+				height: stripHeight,
+			});
+		}
+		return { stripWidth, stripHeight, positions, rois };
+	}
+
+	/**
+	 * Concurrent streaming cursor-sprite bake + native IPC. Precomputes the
+	 * fixed strip geometry and per-frame positions from telemetry, writes and
+	 * closes the positions sidecar FIRST (the compositor parses it at startup),
+	 * launches `nativeStaticLayoutExport` with `streamingCursorSprite: true` so
+	 * CUDA source prep/helper startup overlaps the ROI bake, then renders each
+	 * frame's cursor ROI into the precomputed strip rect and writes the RGBA
+	 * frame at its fixed offset (frameIndex * stripW * stripH * 4). The strip
+	 * stream stays open while the compositor's bounded growing-file reader
+	 * polls for it. Both the bake and the native result are settled before
+	 * returning.
+	 *
+	 * On bake error/cancellation: aborts both streams, cancels the native
+	 * session, and returns a null overlay preparation. On early native failure
+	 * the bake loop checks a shared flag and stops.
+	 */
+	private async streamCursorSpriteAndExport(ctx: {
+		videoInfo: DecodedVideoInfo;
+		durationSec: number;
+		totalFrames: number;
+		webcamExcluded: boolean;
+		sessionId: string;
+		contentWidth: number;
+		contentHeight: number;
+		offsetX: number;
+		offsetY: number;
+		nativeStaticLayoutOptions: Record<string, unknown>;
+		onPreparationProgress?: (renderProgress: number) => void;
+	}): Promise<StreamingCursorSpriteResult | null> {
+		const api = typeof window === "undefined" ? null : window.electronAPI;
+		if (
+			!api?.openExportStream ||
+			!api.writeExportStreamChunk ||
+			!api.closeExportStream ||
+			!api.discardExportedTemp ||
+			!api.nativeStaticLayoutExport ||
+			!api.nativeStaticLayoutExportCancel
+		) {
+			this.recordNativeStaticLayoutOverlayFailure(
+				"cursor-sprite-stream-api-unavailable",
+				"Cursor-sprite streaming IPC is not available",
+			);
+			return null;
+		}
+
+		const plan = this.precomputeNativeCursorSpritePlan({
+			contentWidth: ctx.contentWidth,
+			contentHeight: ctx.contentHeight,
+			offsetX: ctx.offsetX,
+			offsetY: ctx.offsetY,
+			totalFrames: ctx.totalFrames,
+		});
+		if (!plan) {
+			this.recordNativeStaticLayoutOverlayFailure(
+				"cursor-sprite-plan",
+				"Cursor-sprite streaming plan could not be derived from cursor telemetry",
+			);
+			return null;
+		}
+
+		let spriteStreamId: string | null = null;
+		let positionsStreamId: string | null = null;
+		try {
+			const spriteStream = await api.openExportStream({ extension: "sprite" });
+			if (!spriteStream.success || !spriteStream.streamId || !spriteStream.tempPath) {
+				this.recordNativeStaticLayoutOverlayFailure(
+					"open-cursor-sprite-stream",
+					spriteStream.error ?? "Cursor-sprite export stream could not be opened",
+				);
+				return null;
+			}
+			spriteStreamId = spriteStream.streamId;
+
+			const positionsStream = await api.openExportStream({ extension: "json" });
+			if (
+				!positionsStream.success ||
+				!positionsStream.streamId ||
+				!positionsStream.tempPath
+			) {
+				this.recordNativeStaticLayoutOverlayFailure(
+					"open-cursor-positions-stream",
+					positionsStream.error ??
+						"Cursor-sprite positions export stream could not be opened",
+				);
+				return null;
+			}
+			positionsStreamId = positionsStream.streamId;
+
+			// The compositor parses the positions sidecar at startup (exactly
+			// frameCount entries), so write + close it BEFORE launching the IPC.
+			// The strip stays open and grows as the bake proceeds.
+			const positionsBytes = new TextEncoder().encode(JSON.stringify(plan.positions));
+			const positionsWrite = await api.writeExportStreamChunk(
+				positionsStreamId,
+				0,
+				positionsBytes,
+			);
+			if (!positionsWrite.success) {
+				throw new Error(
+					`cursor-positions-stream-write: ${positionsWrite.error ?? "Failed to write cursor-sprite positions"}`,
+				);
+			}
+			const finalizedPositionsStreamId = positionsStreamId;
+			const positionsClosed = await api.closeExportStream(positionsStreamId);
+			positionsStreamId = null;
+			if (!positionsClosed.success || !positionsClosed.tempPath) {
+				throw new Error(
+					`cursor-positions-stream-close: ${positionsClosed.error ?? "Cursor-sprite positions stream did not finalize"}`,
+				);
+			}
+
+			const layer: NativeCursorSpriteOverlayLayer = {
+				id: "cursor-sprite",
+				order: 1,
+				kind: NATIVE_CURSOR_SPRITE_LAYER_KIND,
+				path: spriteStream.tempPath,
+				positionsPath: positionsClosed.tempPath,
+				x: 0,
+				y: 0,
+				width: plan.stripWidth,
+				height: plan.stripHeight,
+				frameRate: this.config.frameRate,
+				durationSec: ctx.durationSec,
+				frameCount: ctx.totalFrames,
+				positions: plan.positions,
+				pixelFormat: "rgba",
+			};
+			const validationError = validateNativeCursorSpriteOverlayLayer(layer, {
+				outputWidth: this.config.width,
+				outputHeight: this.config.height,
+				durationSec: ctx.durationSec,
+				frameRate: this.config.frameRate,
+			});
+			if (validationError) {
+				throw new Error(`cursor-sprite-layer-invalid: ${validationError}`);
+			}
+
+			const streamingOptions = {
+				...ctx.nativeStaticLayoutOptions,
+				streamingCursorSprite: true,
+				spriteStreamId: spriteStream.streamId,
+				spritePositionsStreamId: finalizedPositionsStreamId,
+				overlayLayers: [layer],
+				tiledOverlayLayers: undefined,
+			} as unknown as Parameters<typeof window.electronAPI.nativeStaticLayoutExport>[0];
+
+			console.info(
+				formatLogTs(),
+				"[VideoExporter] Native static layout streaming cursor-sprite selected",
+				{
+					route: "nvidia-cuda-compositor",
+					streamingCursorSprite: true,
+					cursorStyle: this.config.cursorStyle ?? "tahoe",
+					stripWidth: plan.stripWidth,
+					stripHeight: plan.stripHeight,
+					frameCount: ctx.totalFrames,
+					frameByteSize: plan.stripWidth * plan.stripHeight * 4,
+					spritePath: spriteStream.tempPath,
+					positionsPath: positionsClosed.tempPath,
+				},
+			);
+
+			const nativePromise = api.nativeStaticLayoutExport(streamingOptions).catch(
+				(error: unknown): NativeStaticLayoutExportIpcResult => ({
+					success: false as const,
+					error: error instanceof Error ? error.message : String(error),
+				}),
+			);
+
+			// Shared flag: if the native export fails early, stop the bake loop.
+			let nativeFailed = false;
+			void nativePromise.then((result) => {
+				if (!result.success) {
+					nativeFailed = true;
+				}
+			});
+
+			const renderer = this.createNativeStaticLayoutOverlayRenderer(
+				ctx.videoInfo,
+				false,
+				ctx.webcamExcluded,
+			);
+			let renderedFrameCount = 0;
+			let bakeError: Error | null = null;
+			let lastPreparationProgressMs = 0;
+			const frameByteSize = plan.stripWidth * plan.stripHeight * 4;
+			try {
+				await renderer.initialize();
+				const started = renderer.startCursorSpriteCapture(
+					plan.stripWidth,
+					plan.stripHeight,
+				);
+				if (!started) {
+					throw new Error(
+						"cursor-sprite-init: Cursor-sprite capture could not be initialized",
+					);
+				}
+				for (let frameIndex = 0; frameIndex < ctx.totalFrames; frameIndex += 1) {
+					if (this.cancelled) {
+						throw new Error("Export cancelled");
+					}
+					if (nativeFailed) {
+						throw new Error(
+							"cursor-sprite-streaming-native-failed: native export failed during sprite bake",
+						);
+					}
+					if (ctx.onPreparationProgress) {
+						const nowMs = this.getNowMs();
+						if (
+							nowMs - lastPreparationProgressMs >=
+								NATIVE_OVERLAY_PREPARATION_PROGRESS_INTERVAL_MS ||
+							frameIndex === ctx.totalFrames - 1
+						) {
+							lastPreparationProgressMs = nowMs;
+							ctx.onPreparationProgress(
+								ctx.totalFrames > 0 ? (frameIndex / ctx.totalFrames) * 100 : 0,
+							);
+						}
+					}
+					const timestampUs = Math.round(
+						(frameIndex * 1_000_000) / this.config.frameRate,
+					);
+					try {
+						await renderer.renderOverlayFrame(
+							timestampUs,
+							timestampUs,
+							timestampUs,
+							true,
+						);
+					} catch (error) {
+						throw new Error(
+							`overlay-renderer-frame: ${error instanceof Error ? error.message : String(error)}`,
+						);
+					}
+					const roi = plan.rois[frameIndex]!;
+					const capture = renderer.captureCursorSpriteFrame(roi);
+					if (!capture.captured) {
+						throw new Error(
+							`cursor-sprite-frame: ${capture.unavailableReason ?? "Cursor-sprite frame could not be captured"}`,
+						);
+					}
+					const frame = renderer.getLastCursorSpriteFrameBuffer();
+					if (!frame || frame.byteLength !== frameByteSize) {
+						throw new Error(
+							`cursor-sprite-frame-size: expected ${frameByteSize} bytes, received ${frame?.byteLength ?? 0}`,
+						);
+					}
+					try {
+						const writeResult = await api.writeExportStreamChunk(
+							spriteStreamId!,
+							frameIndex * frameByteSize,
+							frame,
+						);
+						if (!writeResult.success) {
+							throw new Error(
+								writeResult.error ??
+									"Failed to write streaming cursor-sprite frame",
+							);
+						}
+					} catch (error) {
+						throw new Error(
+							`cursor-sprite-stream-write: ${error instanceof Error ? error.message : String(error)}`,
+						);
+					}
+					renderedFrameCount += 1;
+				}
+
+				const spriteClosed = await api.closeExportStream(spriteStreamId!);
+				spriteStreamId = null;
+				if (!spriteClosed.success || !spriteClosed.tempPath) {
+					throw new Error(
+						`cursor-sprite-stream-close: ${spriteClosed.error ?? "Cursor-sprite stream did not finalize"}`,
+					);
+				}
+				const expectedBytes = frameByteSize * renderedFrameCount;
+				if (spriteClosed.bytesWritten !== expectedBytes) {
+					throw new Error(
+						`cursor-sprite-stream-truncated: expected ${expectedBytes} bytes, stream wrote ${spriteClosed.bytesWritten}`,
+					);
+				}
+			} catch (error) {
+				bakeError = error instanceof Error ? error : new Error(String(error));
+			} finally {
+				try {
+					renderer.destroy();
+				} catch {
+					// Cleanup is best-effort.
+				}
+			}
+
+			if (bakeError) {
+				if (spriteStreamId) {
+					await api
+						.closeExportStream(spriteStreamId, { abort: true })
+						.catch(() => undefined);
+					spriteStreamId = null;
+				}
+				await Promise.resolve(api.nativeStaticLayoutExportCancel?.(ctx.sessionId)).catch(
+					() => undefined,
+				);
+				await nativePromise.catch(() => undefined);
+				if (positionsClosed.tempPath) {
+					await api.discardExportedTemp(positionsClosed.tempPath).catch(() => undefined);
+				}
+				const message = bakeError.message;
+				const stage = message.startsWith("cursor-")
+					? message.split(":", 1)[0]
+					: "cursor-sprite-streaming-preparation";
+				this.recordNativeStaticLayoutOverlayFailure(stage, message);
+				console.warn("[VideoExporter] Native streaming cursor-sprite bake failed", {
+					stage,
+					message,
+					totalFrames: ctx.totalFrames,
+					renderedFrameCount,
+					cancelled: this.cancelled,
+				});
+				return null;
+			}
+
+			const nativeResult = await nativePromise;
+
+			const overlayPreparation: NativeStaticLayoutOverlayPreparationResult = {
+				overlayLayers: sortNativeStaticLayoutOverlayLayers([layer]),
+				tiledOverlayLayers: sortNativeTiledOverlayLayers([]),
+				rawFallbackReason: null,
+				renderedFrames: renderedFrameCount,
+			};
+			return {
+				overlayPreparation,
+				nativeResult,
+				streamingCursorSprite: true,
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.recordNativeStaticLayoutOverlayFailure("cursor-sprite-streaming-setup", message);
+			if (spriteStreamId) {
+				await api.closeExportStream(spriteStreamId, { abort: true }).catch(() => undefined);
+			}
+			if (positionsStreamId) {
+				await api
+					.closeExportStream(positionsStreamId, { abort: true })
+					.catch(() => undefined);
+			}
+			return null;
+		}
+	}
+
+	/**
+	 * Concurrent streaming raw-overlay bake + native IPC. Opens the raw RGBA
+	 * export stream, builds the raw layer descriptor with
+	 * frameCount === effectiveFrameCount === totalFrames (no RLE coalescing,
+	 * no tiled deltas), launches `nativeStaticLayoutExport` with
+	 * `streamingRawOverlay: true` so CUDA source prep/helper startup overlaps
+	 * the per-frame bake, then writes each full RGBA frame sequentially to the
+	 * raw file. Both the bake and the native result are settled before
+	 * returning.
+	 *
+	 * On bake error/cancellation: aborts the raw stream, cancels the native
+	 * session, and returns a null overlay preparation so the caller falls
+	 * through to the existing skip/fallback logic. On early native failure:
+	 * the bake loop checks a shared flag and stops further rendering.
+	 */
+	private async streamRawOverlayAndExport(ctx: {
+		videoInfo: DecodedVideoInfo;
+		durationSec: number;
+		totalFrames: number;
+		cursorExcluded: boolean;
+		webcamExcluded: boolean;
+		sessionId: string;
+		nativeStaticLayoutOptions: Record<string, unknown>;
+		onPreparationProgress?: (renderProgress: number) => void;
+	}): Promise<StreamingRawOverlayResult | null> {
+		const api = typeof window === "undefined" ? null : window.electronAPI;
+		if (
+			!api?.openExportStream ||
+			!api.writeExportStreamChunk ||
+			!api.closeExportStream ||
+			!api.discardExportedTemp ||
+			!api.nativeStaticLayoutExport ||
+			!api.nativeStaticLayoutExportCancel
+		) {
+			this.recordNativeStaticLayoutOverlayFailure(
+				"export-stream-api-unavailable",
+				"Export stream IPC is not available for the streaming overlay sidecar",
+			);
+			return null;
+		}
+
+		const frameByteSize = getNativeStaticLayoutOverlayFrameByteSize(
+			this.config.width,
+			this.config.height,
+		);
+
+		let rawStreamId: string | null = null;
+		let rawTempPath: string | null = null;
+		try {
+			const rawStream = await api.openExportStream({ extension: "rgba" });
+			if (!rawStream.success || !rawStream.streamId || !rawStream.tempPath) {
+				this.recordNativeStaticLayoutOverlayFailure(
+					"open-export-stream",
+					rawStream.error ?? "Native overlay export stream could not be opened",
+				);
+				return null;
+			}
+			rawStreamId = rawStream.streamId;
+			rawTempPath = rawStream.tempPath;
+		} catch (error) {
+			this.recordNativeStaticLayoutOverlayFailure(
+				"open-export-stream",
+				error instanceof Error ? error.message : String(error),
+			);
+			return null;
+		}
+
+		try {
+			const activeRawStreamId: string = rawStreamId;
+
+			// Build the raw layer descriptor with exact frame counts so the native
+			// streaming validation passes. No effectiveFrameCount dedup: every
+			// frame is written sequentially to the raw file.
+			const rawLayer: NativeStaticLayoutOverlayLayer = {
+				id: "native-effects",
+				order: 0,
+				path: rawTempPath,
+				x: 0,
+				y: 0,
+				width: this.config.width,
+				height: this.config.height,
+				frameRate: this.config.frameRate,
+				durationSec: ctx.durationSec,
+				frameCount: ctx.totalFrames,
+				// The pinned native streaming validator requires
+				// frameCount === effectiveFrameCount === total output frame
+				// count. Every frame is written sequentially (no RLE dedup),
+				// so the physical frame count equals the logical one.
+				effectiveFrameCount: ctx.totalFrames,
+				pixelFormat: "rgba",
+			};
+
+			const streamingOptions = {
+				...ctx.nativeStaticLayoutOptions,
+				streamingRawOverlay: true,
+				overlayLayers: [rawLayer],
+				tiledOverlayLayers: undefined,
+			} as Parameters<typeof window.electronAPI.nativeStaticLayoutExport>[0];
+
+			console.info(
+				formatLogTs(),
+				"[VideoExporter] Native static layout streaming raw overlay selected",
+				{
+					route: "nvidia-cuda-compositor",
+					streamingRawOverlay: true,
+					totalFrames: ctx.totalFrames,
+					frameByteSize,
+					rawOverlayPath: rawTempPath,
+				},
+			);
+
+			// Launch the native export concurrently. The native compositor begins
+			// source prep/helper startup while the renderer bakes overlay frames.
+			// It waits boundedly for frames to appear in the raw file.
+			const nativePromise = api.nativeStaticLayoutExport(streamingOptions).catch(
+				(error: unknown): NativeStaticLayoutExportIpcResult => ({
+					success: false as const,
+					error: error instanceof Error ? error.message : String(error),
+				}),
+			);
+
+			// Shared flag: if the native export fails early, stop the bake loop.
+			let nativeFailed = false;
+			void nativePromise.then((result) => {
+				if (!result.success) {
+					nativeFailed = true;
+				}
+			});
+
+			const renderer = this.createNativeStaticLayoutOverlayRenderer(
+				ctx.videoInfo,
+				ctx.cursorExcluded,
+				ctx.webcamExcluded,
+			);
+			let renderedFrameCount = 0;
+			let bakeError: Error | null = null;
+			let lastPreparationProgressMs = 0;
+			try {
+				await renderer.initialize();
+				for (let frameIndex = 0; frameIndex < ctx.totalFrames; frameIndex += 1) {
+					if (this.cancelled) {
+						throw new Error("Export cancelled");
+					}
+					if (nativeFailed) {
+						throw new Error(
+							"overlay-streaming-native-failed: native export failed during bake",
+						);
+					}
+					if (ctx.onPreparationProgress) {
+						const nowMs = this.getNowMs();
+						if (
+							nowMs - lastPreparationProgressMs >=
+								NATIVE_OVERLAY_PREPARATION_PROGRESS_INTERVAL_MS ||
+							frameIndex === ctx.totalFrames - 1
+						) {
+							lastPreparationProgressMs = nowMs;
+							ctx.onPreparationProgress(
+								ctx.totalFrames > 0 ? (frameIndex / ctx.totalFrames) * 100 : 0,
+							);
+						}
+					}
+					const timestampUs = Math.round(
+						(frameIndex * 1_000_000) / this.config.frameRate,
+					);
+					try {
+						await renderer.renderOverlayFrame(timestampUs);
+					} catch (error) {
+						throw new Error(
+							`overlay-renderer-frame: ${error instanceof Error ? error.message : String(error)}`,
+						);
+					}
+					let frame: Uint8Array;
+					try {
+						frame = await captureCanvasFrameForNativeExport(
+							renderer.getCanvas(),
+							timestampUs,
+						);
+					} catch (error) {
+						throw new Error(
+							`overlay-canvas-capture: ${error instanceof Error ? error.message : String(error)}`,
+						);
+					}
+					if (frame.byteLength !== frameByteSize) {
+						throw new Error(
+							`overlay-invalid-frame-size: expected ${frameByteSize} bytes, received ${frame.byteLength}`,
+						);
+					}
+					renderedFrameCount += 1;
+					// Write each full RGBA frame sequentially — no RLE coalescing,
+					// no tiled deltas. The native compositor reads frames from the
+					// growing raw file in order.
+					try {
+						const writeResult = await api.writeExportStreamChunk(
+							activeRawStreamId,
+							frameIndex * frameByteSize,
+							frame,
+						);
+						if (!writeResult.success) {
+							throw new Error(
+								writeResult.error ?? "Failed to write streaming overlay frame",
+							);
+						}
+					} catch (error) {
+						throw new Error(
+							`overlay-stream-write: ${error instanceof Error ? error.message : String(error)}`,
+						);
+					}
+				}
+
+				// Close the raw stream after all frames are written.
+				let rawClosed: Awaited<ReturnType<typeof api.closeExportStream>>;
+				try {
+					rawClosed = await api.closeExportStream(activeRawStreamId);
+				} catch (error) {
+					throw new Error(
+						`overlay-stream-close: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+				rawStreamId = null;
+				if (!rawClosed.success || !rawClosed.tempPath) {
+					throw new Error(
+						`overlay-stream-close: ${rawClosed.error ?? "Native overlay export stream did not finalize"}`,
+					);
+				}
+				const rawExpectedBytes = frameByteSize * renderedFrameCount;
+				if (rawClosed.bytesWritten !== rawExpectedBytes) {
+					throw new Error(
+						`overlay-stream-truncated: expected ${rawExpectedBytes} bytes, stream wrote ${rawClosed.bytesWritten}`,
+					);
+				}
+			} catch (error) {
+				bakeError = error instanceof Error ? error : new Error(String(error));
+			} finally {
+				try {
+					renderer.destroy();
+				} catch {
+					// Cleanup is best-effort.
+				}
+			}
+
+			// If the bake failed, abort the raw stream and cancel the native session.
+			if (bakeError) {
+				if (rawStreamId) {
+					await api
+						.closeExportStream(rawStreamId, { abort: true })
+						.catch(() => undefined);
+					rawStreamId = null;
+				}
+				await api.nativeStaticLayoutExportCancel(ctx.sessionId).catch(() => undefined);
+				// Wait for the native promise to settle after cancellation.
+				await nativePromise.catch(() => undefined);
+				if (rawTempPath) {
+					await api.discardExportedTemp(rawTempPath).catch(() => undefined);
+				}
+				const message = bakeError.message;
+				const stage = message.startsWith("overlay-")
+					? message.split(":", 1)[0]
+					: "overlay-preparation";
+				this.recordNativeStaticLayoutOverlayFailure(stage, message);
+				console.warn("[VideoExporter] Native streaming overlay bake failed", {
+					stage,
+					message,
+					totalFrames: ctx.totalFrames,
+					renderedFrameCount,
+					cancelled: this.cancelled,
+				});
+				return null;
+			}
+
+			// Both the bake and the native export are in flight. Await the native
+			// result now (the bake already completed and the stream is closed).
+			const nativeResult = await nativePromise;
+
+			const overlayPreparation: NativeStaticLayoutOverlayPreparationResult = {
+				overlayLayers: sortNativeStaticLayoutOverlayLayers([rawLayer]),
+				tiledOverlayLayers: sortNativeTiledOverlayLayers([]),
+				rawFallbackReason: null,
+				renderedFrames: renderedFrameCount,
+			};
+			return {
+				overlayPreparation,
+				nativeResult,
+				streamingRawOverlay: true,
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			this.recordNativeStaticLayoutOverlayFailure("streaming-overlay-setup", message);
+			if (rawStreamId) {
+				await api.closeExportStream(rawStreamId, { abort: true }).catch(() => undefined);
+			}
+			if (rawTempPath) {
+				await api.discardExportedTemp(rawTempPath).catch(() => undefined);
+			}
+			return null;
+		}
+	}
+
+	private async prepareNativeStaticLayoutOverlay(
+		videoInfo: DecodedVideoInfo,
+		durationSec: number,
+		totalFrames: number,
+		cursorExcluded = false,
+		webcamExcluded = false,
+		onPreparationProgress?: (renderProgress: number) => void,
+	): Promise<NativeStaticLayoutOverlayPreparationResult | null> {
+		this.nativeStaticLayoutOverlayFailure = null;
+		if (!this.hasNativeStaticLayoutOverlayContent()) {
+			return {
+				overlayLayers: sortNativeStaticLayoutOverlayLayers([]),
+				tiledOverlayLayers: sortNativeTiledOverlayLayers([]),
+				rawFallbackReason: null,
+				renderedFrames: 0,
+			};
+		}
+		if (this.hasUnsupportedNativeStaticLayoutOverlayContent()) {
+			this.recordNativeStaticLayoutOverlayFailure(
+				"unsupported-overlay-content",
+				this.hasUnsupportedNativeStaticLayoutOverlayContent() ??
+					"unsupported overlay content",
+			);
+			return null;
+		}
+		// Safe empty-work fast path: the native CUDA compositor owns the cursor
+		// atlas and there are no browser-rendered overlay pixels (captions,
+		// annotations, webcam, frame, or other). Rendering/capturing a full
+		// transparent canvas for every output frame would be pure waste, so return
+		// the validated empty overlay representation instead of a sidecar. Zoom and
+		// temporal motion-blur effects are preserved natively on the GPU and are
+		// unaffected by omitting an empty sidecar.
+		if (cursorExcluded && !this.hasNativeStaticLayoutBrowserOverlayPixels(webcamExcluded)) {
+			console.info("[VideoExporter] Native overlay route decision", {
+				route: "nvidia-cuda-compositor",
+				cursorOnly: true,
+				cursorAtlasOwned: true,
+				spriteEligible: false,
+				spritePrepared: false,
+				bakeFrames: 0,
+				reason: "native-atlas-owns-cursor",
+			});
+			return {
+				overlayLayers: sortNativeStaticLayoutOverlayLayers([]),
+				tiledOverlayLayers: sortNativeTiledOverlayLayers([]),
+				rawFallbackReason: null,
+				renderedFrames: 0,
+			};
+		}
+		// Cursor-sprite path: when the cursor is the only overlay content (no
+		// browser pixels) and it cannot be owned by the native atlas, capture the
+		// cursor ROI as a packed RGBA strip + per-frame positions instead of
+		// writing a full transparent canvas sidecar for every output frame. Only
+		// the generalized NVIDIA CUDA compositor consumes the cursor-sprite
+		// contract. When the sprite cannot be prepared the existing baked-cursor
+		// full-canvas sidecar path below runs unchanged (the preserved golden
+		// path) and carries a clear diagnostic note.
+		const cursorSpriteEligible = this.shouldUseNativeStaticLayoutCursorSprite(
+			cursorExcluded,
+			webcamExcluded,
+		);
+		const cursorSpriteLayer = cursorSpriteEligible
+			? await this.prepareNativeStaticLayoutCursorSprite(
+					videoInfo,
+					durationSec,
+					totalFrames,
+					webcamExcluded,
+					onPreparationProgress,
+				)
+			: null;
+		if (cursorSpriteLayer) {
+			return {
+				overlayLayers: sortNativeStaticLayoutOverlayLayers([cursorSpriteLayer]),
+				tiledOverlayLayers: sortNativeTiledOverlayLayers([]),
+				rawFallbackReason: null,
+				renderedFrames: totalFrames,
+			};
+		}
+		// Surface why the cursor-sprite path was not taken. When the path was
+		// eligible but preparation failed, prepareNativeStaticLayoutCursorSprite
+		// already logged the stage/message; only the eligibility miss needs an
+		// explicit note here (the baked sidecar is the preserved golden path).
+		if (!cursorSpriteEligible) {
+			const hasBrowserPixels = this.hasNativeStaticLayoutBrowserOverlayPixels(webcamExcluded);
+			const browserPixelSources: string[] = [];
+			if ((this.config.annotationRegions?.length ?? 0) > 0) {
+				browserPixelSources.push("annotations");
+			}
+			if ((this.config.autoCaptions?.length ?? 0) > 0) {
+				browserPixelSources.push("captions");
+			}
+			if (this.config.frame) {
+				browserPixelSources.push("frame");
+			}
+			if (this.config.webcam?.enabled === true && !webcamExcluded) {
+				browserPixelSources.push("webcam");
+			}
+			const spriteAvailable =
+				this.canUseNativeCursorSpriteContract() &&
+				this.config.showCursor === true &&
+				(this.config.cursorTelemetry?.length ?? 0) > 0;
+			const reason = hasBrowserPixels
+				? "browser-overlay-pixels"
+				: this.hasNativeStaticLayoutExtensionCursorVisuals()
+					? "extension-cursor-visuals"
+					: !spriteAvailable
+						? "cursor-sprite-contract-unavailable"
+						: "cursor-excluded-by-native-atlas";
+			console.info("[VideoExporter] Cursor-sprite overlay path skipped", {
+				route: "nvidia-cuda-compositor",
+				reason,
+				bakedSidecarRequired: reason !== "cursor-excluded-by-native-atlas",
+				browserPixelSources,
+				hasExtensionCursorVisuals: this.hasNativeStaticLayoutExtensionCursorVisuals(),
+				cursorExcluded,
+				showCursor: this.config.showCursor === true,
+				cursorTelemetrySamples: this.config.cursorTelemetry?.length ?? 0,
+				cursorAtlasOwnershipEligible: this.canUseNativeCursorAtlasOwnership(),
+				hasBrowserOverlayPixels: hasBrowserPixels,
+				annotationRegions: this.config.annotationRegions?.length ?? 0,
+				autoCaptions: this.config.autoCaptions?.length ?? 0,
+				frame: Boolean(this.config.frame),
+				webcamEnabled: this.config.webcam?.enabled === true,
+			});
+		}
+		// Deterministic cursor-only guard: when the cursor is the ONLY overlay
+		// content (no browser pixels, no extension hooks), the baked full-canvas
+		// sidecar can only ever capture the same cursor pixels the ROI sprite
+		// captures, at ~40-90ms/frame instead of a few ms. A cursor-only export
+		// therefore NEVER runs the full-canvas bake: the native atlas owns the
+		// cursor when eligible (early return above), the cursor-sprite ROI path
+		// owns it otherwise, and a failed sprite preparation is a visible,
+		// deterministic failure that skips the native attempt (the renderer
+		// raw-frame route or the strict HEVC Hardware hard error take over
+		// downstream). The baked sidecar remains the golden path only for
+		// browser-pixel content (captions/annotations/frame/webcam) and
+		// extension hooks, where the sprite ROI cannot represent the pixels.
+		const hasBrowserOverlayPixels =
+			this.hasNativeStaticLayoutBrowserOverlayPixels(webcamExcluded);
+		const hasCursorOverlayContent =
+			this.config.showCursor === true && (this.config.cursorTelemetry?.length ?? 0) > 0;
+		const cursorOnlyOverlay =
+			hasCursorOverlayContent &&
+			!hasBrowserOverlayPixels &&
+			!this.hasNativeStaticLayoutExtensionCursorVisuals();
+		if (cursorOnlyOverlay) {
+			console.info("[VideoExporter] Native overlay route decision", {
+				route: "nvidia-cuda-compositor",
+				cursorOnly: true,
+				cursorAtlasOwned: cursorExcluded,
+				spriteEligible: cursorSpriteEligible,
+				spritePrepared: Boolean(cursorSpriteLayer),
+				bakeFrames: 0,
+				overlayFailure: this.nativeStaticLayoutOverlayFailure,
+			});
+			if (!cursorSpriteLayer) {
+				return null;
+			}
+		}
+		// Falling back to the baked-cursor full-canvas sidecar; clear any
+		// cursor-sprite preparation failure so a successful sidecar is not
+		// misreported as an overlay failure.
+		this.nativeStaticLayoutOverlayFailure = null;
+		const api = typeof window === "undefined" ? null : window.electronAPI;
+		if (
+			!api?.openExportStream ||
+			!api.writeExportStreamChunk ||
+			!api.closeExportStream ||
+			!api.discardExportedTemp
+		) {
+			this.recordNativeStaticLayoutOverlayFailure(
+				"export-stream-api-unavailable",
+				"Export stream IPC is not available for the native overlay sidecar",
+			);
+			return null;
+		}
+
+		let rawStream: Awaited<ReturnType<typeof api.openExportStream>> | null = null;
+		let rawStreamId: string | null = null;
+		try {
+			rawStream = await api.openExportStream({ extension: "rgba" });
+			if (!rawStream.success || !rawStream.streamId || !rawStream.tempPath) {
+				this.recordNativeStaticLayoutOverlayFailure(
+					"open-export-stream",
+					rawStream.error ?? "Native overlay export stream could not be opened",
+				);
+				return null;
+			}
+			rawStreamId = rawStream.streamId;
+		} catch (error) {
+			this.recordNativeStaticLayoutOverlayFailure(
+				"open-export-stream",
+				error instanceof Error ? error.message : String(error),
+			);
+			return null;
+		}
+
+		const renderer = this.createNativeStaticLayoutOverlayRenderer(
+			videoInfo,
+			cursorExcluded,
+			webcamExcluded,
+		);
+		const frameByteSize = getNativeStaticLayoutOverlayFrameByteSize(
+			this.config.width,
+			this.config.height,
+		);
+		const tileColumns = getNativeTiledOverlayTileColumns(this.config.width);
+		const tileRows = getNativeTiledOverlayTileRows(this.config.height);
+		const tileCount = getNativeTiledOverlayTileCount(this.config.width, this.config.height);
+
+		const scratchTile = new Uint8Array(NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE);
+		const previousTiles: (Uint8Array | null)[] = new Array(tileCount).fill(null);
+		const staticTiles: NativeTiledOverlayStaticTileRecord[] = [];
+		const frameDeltas: NativeTiledOverlayFrameDelta[] = [];
+		const tiledPayloadBuffers: Uint8Array[] = [];
+		let tiledPayloadOffset = 0;
+		let tiledAbandoned = false;
+		let rawFallbackReason: NativeTiledOverlayRawFallbackReason | null = null;
+		const rawPhysicalBytes = this.config.width * this.config.height * 4 * totalFrames;
+		const maxTiledPayloadBytes =
+			rawPhysicalBytes * NATIVE_TILED_OVERLAY_MAX_PAYLOAD_BYTES_FRACTION;
+
+		let rawWrittenFrameCount = 0;
+		let runStartFrameIndex = 0;
+		let runFrame: Uint8Array | null = null;
+		if (rawStreamId === null) {
+			this.recordNativeStaticLayoutOverlayFailure(
+				"open-export-stream",
+				"Native overlay export stream id was not set",
+			);
+			return null;
+		}
+		const activeRawStreamId: string = rawStreamId;
+		const writeRawOverlayChunk = async (
+			frameIndex: number,
+			frameCount: number,
+			chunk: Uint8Array,
+		): Promise<void> => {
+			try {
+				const result = await api.writeExportStreamChunk(
+					activeRawStreamId,
+					frameIndex * frameByteSize,
+					chunk,
+				);
+				if (!result.success) {
+					throw new Error(result.error ?? "Failed to write native overlay frame");
+				}
+			} catch (error) {
+				throw new Error(
+					`overlay-stream-write: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+			rawWrittenFrameCount += frameCount;
+		};
+		const flushRawIdenticalRun = async (untilFrameIndex: number): Promise<void> => {
+			if (runFrame === null || untilFrameIndex <= runStartFrameIndex) {
+				return;
+			}
+			const runLength = untilFrameIndex - runStartFrameIndex;
+			const framesPerBatch = Math.max(
+				1,
+				Math.floor(NATIVE_RAW_OVERLAY_RUN_BATCH_MAX_BYTES / frameByteSize),
+			);
+			let batchStartFrameIndex = runStartFrameIndex;
+			while (batchStartFrameIndex < untilFrameIndex) {
+				const batchFrameCount = Math.min(
+					runLength - (batchStartFrameIndex - runStartFrameIndex),
+					framesPerBatch,
+				);
+				if (batchFrameCount === 1) {
+					await writeRawOverlayChunk(batchStartFrameIndex, 1, runFrame);
+				} else {
+					const batchBytes = batchFrameCount * frameByteSize;
+					const batch = new Uint8Array(batchBytes);
+					for (let i = 0; i < batchFrameCount; i += 1) {
+						batch.set(runFrame, i * frameByteSize);
+					}
+					await writeRawOverlayChunk(batchStartFrameIndex, batchFrameCount, batch);
+				}
+				batchStartFrameIndex += batchFrameCount;
+			}
+		};
+
+		let rawTempPath: string | null = null;
+		let lastPreparationProgressMs = 0;
+		let renderedFrameCount = 0;
+		try {
+			await renderer.initialize();
+			for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
+				if (this.cancelled) {
+					throw new Error("Export cancelled");
+				}
+				// Coalesced preparation heartbeat: report at most once per throttle
+				// interval (plus a final report on the last frame) so the UI stays
+				// responsive during long sidecar generation without one React update
+				// per frame. This is preparation progress only; render FPS is never
+				// faked here (currentFrame stays 0 in the preparing phase).
+				if (onPreparationProgress) {
+					const nowMs = this.getNowMs();
+					if (
+						nowMs - lastPreparationProgressMs >=
+							NATIVE_OVERLAY_PREPARATION_PROGRESS_INTERVAL_MS ||
+						frameIndex === totalFrames - 1
+					) {
+						lastPreparationProgressMs = nowMs;
+						onPreparationProgress(
+							totalFrames > 0 ? (frameIndex / totalFrames) * 100 : 0,
+						);
+					}
+				}
+				const timestampUs = Math.round((frameIndex * 1_000_000) / this.config.frameRate);
+				try {
+					await renderer.renderOverlayFrame(timestampUs);
+				} catch (error) {
+					throw new Error(
+						`overlay-renderer-frame: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+				let frame: Uint8Array;
+				try {
+					frame = await captureCanvasFrameForNativeExport(
+						renderer.getCanvas(),
+						timestampUs,
+					);
+				} catch (error) {
+					throw new Error(
+						`overlay-canvas-capture: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+				if (frame.byteLength !== frameByteSize) {
+					throw new Error(
+						`overlay-invalid-frame-size: expected ${frameByteSize} bytes, received ${frame.byteLength}`,
+					);
+				}
+				renderedFrameCount += 1;
+
+				if (runFrame === null) {
+					runFrame = frame;
+					runStartFrameIndex = frameIndex;
+				} else if (!areNativeStaticLayoutOverlayFramesEqual(frame, runFrame)) {
+					await flushRawIdenticalRun(frameIndex);
+					runFrame = frame;
+					runStartFrameIndex = frameIndex;
+				}
+
+				if (tiledAbandoned) {
+					continue;
+				}
+
+				const changedTiles: NativeTiledOverlayTileRecord[] = [];
+				for (let tileY = 0; tileY < tileRows; tileY += 1) {
+					for (let tileX = 0; tileX < tileColumns; tileX += 1) {
+						const tileIndex = getNativeTiledOverlayTileIndex(tileX, tileY, tileColumns);
+						this.extractNativeTiledOverlayTileInto(
+							scratchTile,
+							frame,
+							this.config.width,
+							this.config.height,
+							tileX,
+							tileY,
+						);
+						const previous = previousTiles[tileIndex];
+						if (
+							previous !== null &&
+							areNativeStaticLayoutOverlayFramesEqual(previous, scratchTile)
+						) {
+							continue;
+						}
+						if (
+							tiledPayloadOffset + NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE >=
+							maxTiledPayloadBytes
+						) {
+							tiledAbandoned = true;
+							rawFallbackReason = "payload-bytes-exceed-raw";
+							tiledPayloadBuffers.length = 0;
+							staticTiles.length = 0;
+							frameDeltas.length = 0;
+							previousTiles.length = 0;
+							break;
+						}
+						const tileCopy = scratchTile.slice();
+						const record: NativeTiledOverlayTileRecord = {
+							tileIndex,
+							byteOffset: tiledPayloadOffset,
+							byteLength: NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE,
+						};
+						tiledPayloadBuffers.push(tileCopy);
+						tiledPayloadOffset += NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE;
+						previousTiles[tileIndex] = tileCopy;
+						if (frameIndex === 0) {
+							staticTiles.push(record);
+						} else {
+							changedTiles.push(record);
+						}
+					}
+					if (tiledAbandoned) {
+						break;
+					}
+				}
+				if (tiledAbandoned) {
+					continue;
+				}
+				if (frameIndex > 0 && changedTiles.length > 0) {
+					if (
+						changedTiles.length >
+						tileCount * NATIVE_TILED_OVERLAY_MAX_CHANGED_TILE_FRACTION
+					) {
+						tiledAbandoned = true;
+						rawFallbackReason = "dense-frame-delta";
+						tiledPayloadBuffers.length = 0;
+						staticTiles.length = 0;
+						frameDeltas.length = 0;
+						previousTiles.length = 0;
+						continue;
+					}
+					frameDeltas.push({ frameIndex, changedTiles });
+				}
+			}
+
+			if (runFrame !== null) {
+				await writeRawOverlayChunk(runStartFrameIndex, 1, runFrame);
+			}
+
+			let rawClosed: Awaited<ReturnType<typeof api.closeExportStream>>;
+			try {
+				rawClosed = await api.closeExportStream(activeRawStreamId);
+			} catch (error) {
+				throw new Error(
+					`overlay-stream-close: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+			if (!rawClosed.success || !rawClosed.tempPath) {
+				throw new Error(
+					`overlay-stream-close: ${rawClosed.error ?? "Native overlay export stream did not finalize"}`,
+				);
+			}
+			rawTempPath = rawClosed.tempPath;
+			const rawExpectedBytes = frameByteSize * rawWrittenFrameCount;
+			if (rawClosed.bytesWritten !== rawExpectedBytes) {
+				throw new Error(
+					`overlay-stream-truncated: expected ${rawExpectedBytes} bytes, stream wrote ${rawClosed.bytesWritten}`,
+				);
+			}
+
+			if (!tiledAbandoned) {
+				const tileLayer: NativeTiledOverlayLayerDescriptor = {
+					id: "native-effects",
+					order: 0,
+					x: 0,
+					y: 0,
+					width: this.config.width,
+					height: this.config.height,
+					frameRate: this.config.frameRate,
+					durationSec,
+					frameCount: totalFrames,
+					tileSize: NATIVE_TILED_OVERLAY_TILE_SIZE,
+					pixelFormat: NATIVE_TILED_OVERLAY_PIXEL_FORMAT,
+					payloadPath: "",
+					payloadByteLength: tiledPayloadOffset,
+					staticTiles,
+					frameDeltas,
+				};
+				const finalFallbackReason = resolveNativeTiledOverlayRawFallbackReason(tileLayer);
+				if (finalFallbackReason) {
+					tiledAbandoned = true;
+					rawFallbackReason = finalFallbackReason;
+					tiledPayloadBuffers.length = 0;
+					staticTiles.length = 0;
+					frameDeltas.length = 0;
+					previousTiles.length = 0;
+				} else {
+					let tiledStream: Awaited<ReturnType<typeof api.openExportStream>> | null = null;
+					try {
+						tiledStream = await api.openExportStream({ extension: "tiledrgba" });
+						if (
+							!tiledStream.success ||
+							!tiledStream.streamId ||
+							!tiledStream.tempPath
+						) {
+							throw new Error(
+								tiledStream.error ??
+									"Tiled overlay export stream could not be opened",
+							);
+						}
+						const activeTiledStreamId = tiledStream.streamId;
+						for (
+							let bufferIndex = 0;
+							bufferIndex < tiledPayloadBuffers.length;
+							bufferIndex += 1
+						) {
+							const offset = bufferIndex * NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE;
+							const result = await api.writeExportStreamChunk(
+								activeTiledStreamId,
+								offset,
+								tiledPayloadBuffers[bufferIndex]!,
+							);
+							if (!result.success) {
+								throw new Error(
+									result.error ?? "Failed to write tiled overlay tile",
+								);
+							}
+						}
+						const tiledClosed = await api.closeExportStream(activeTiledStreamId);
+						if (!tiledClosed.success || !tiledClosed.tempPath) {
+							throw new Error(
+								tiledClosed.error ?? "Tiled overlay export stream did not finalize",
+							);
+						}
+						const tiledExpectedBytes =
+							tiledPayloadBuffers.length * NATIVE_TILED_OVERLAY_TILE_BYTE_SIZE;
+						if (tiledClosed.bytesWritten !== tiledExpectedBytes) {
+							throw new Error(
+								`tiled-overlay-stream-truncated: expected ${tiledExpectedBytes} bytes, stream wrote ${tiledClosed.bytesWritten}`,
+							);
+						}
+						tileLayer.payloadPath = tiledClosed.tempPath;
+						if (rawTempPath) {
+							await api.discardExportedTemp(rawTempPath).catch(() => undefined);
+						}
+						return {
+							overlayLayers: sortNativeStaticLayoutOverlayLayers([]),
+							tiledOverlayLayers: sortNativeTiledOverlayLayers([tileLayer]),
+							rawFallbackReason: null,
+							renderedFrames: renderedFrameCount,
+						};
+					} catch (error) {
+						if (tiledStream?.streamId) {
+							await api
+								.closeExportStream(tiledStream.streamId, { abort: true })
+								.catch(() => undefined);
+						}
+						throw error;
+					}
+				}
+			}
+
+			const rawLayer: NativeStaticLayoutOverlayLayer = {
+				id: "native-effects",
+				order: 0,
+				path: rawTempPath,
+				x: 0,
+				y: 0,
+				width: this.config.width,
+				height: this.config.height,
+				frameRate: this.config.frameRate,
+				durationSec,
+				frameCount: totalFrames,
+				...(rawWrittenFrameCount < totalFrames
+					? { effectiveFrameCount: rawWrittenFrameCount }
+					: {}),
+				pixelFormat: "rgba",
+			};
+			return {
+				overlayLayers: sortNativeStaticLayoutOverlayLayers([rawLayer]),
+				tiledOverlayLayers: sortNativeTiledOverlayLayers([]),
+				rawFallbackReason,
+				renderedFrames: renderedFrameCount,
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			const stage =
+				message.startsWith("overlay-") || message.startsWith("tiled-overlay-")
+					? message.split(":", 1)[0]
+					: "overlay-preparation";
+			this.recordNativeStaticLayoutOverlayFailure(stage, message);
+			if (rawStreamId) {
+				try {
+					await api.closeExportStream(rawStreamId, { abort: true });
+				} catch {
+					// best-effort cleanup
+				}
+			}
+			if (rawTempPath) {
+				try {
+					await api.discardExportedTemp(rawTempPath);
+				} catch {
+					// best-effort cleanup
+				}
+			}
+			console.warn("[VideoExporter] Native overlay preparation failed", {
+				stage,
+				message,
+				durationSec,
+				totalFrames,
+				frameByteSize,
+				rawWrittenFrameCount,
+				tiledPayloadOffset,
+				cancelled: this.cancelled,
+			});
+			return null;
+		} finally {
+			try {
+				renderer.destroy();
+			} catch {
+				// Cleanup is best-effort after the native overlay stream closes.
+			}
+		}
+	}
+
+	private logNativeStaticLayoutPreparationStage(
+		stage: string,
+		startedAtMs: number,
+		extra: Record<string, unknown> = {},
+	): void {
+		const elapsedMs = Math.round(this.getNowMs() - startedAtMs);
+		console.info(formatLogTs(), "[VideoExporter] Native static layout preparation stage", {
+			stage,
+			elapsedMs,
+			exportVideoCodec: this.config.exportVideoCodec ?? "h264",
+			exportEncoderPreference: this.config.exportEncoderPreference ?? "auto",
+			route: this.canUseNativeGpuStaticLayout() ? "nvidia-cuda-compositor" : "static-layout",
+			...extra,
+		});
+	}
+
+	private recordNativeStaticLayoutOverlayFailure(stage: string, message: string): void {
+		this.nativeStaticLayoutOverlayFailure = { stage, message };
+	}
+
+	/**
+	 * Config-only predicate for whether the native cursor atlas may be needed:
+	 * the cursor is enabled, has telemetry, and is either the only overlay
+	 * content or is eligible for native CUDA ownership. Mirrors the derived-
+	 * telemetry gate used in tryExportNativeStaticLayout; because it never needs
+	 * videoInfo/audioPlan it can start the atlas build before the metadata probe.
+	 */
+	private getNativeStaticLayoutCursorAtlasNeeded(): boolean {
+		if (this.config.showCursor !== true || (this.config.cursorTelemetry?.length ?? 0) === 0) {
+			return false;
+		}
+		const needsOverlayLayers = this.hasNativeStaticLayoutOverlayContent();
+		const wantsNativeCursorOwnership =
+			needsOverlayLayers && this.canUseNativeCursorAtlasOwnership();
+		return !needsOverlayLayers || wantsNativeCursorOwnership;
+	}
+
+	/**
+	 * Starts the config-only native static-layout preparation (background
+	 * materialization + cursor atlas asset preload) as early as possible, before
+	 * loadNativeStaticLayoutVideoInfo() probes the source. Neither task needs
+	 * videoInfo/audioPlan, so their wall time overlaps the probe instead of
+	 * serializing after it; audio options still start in parallel later once the
+	 * audioPlan is known.
+	 */
+	private startNativeStaticLayoutConfigPrep(): NativeStaticLayoutConfigPrep {
+		return {
+			background: this.resolveNativeStaticLayoutBackground(),
+			cursorAtlas: this.getNativeStaticLayoutCursorAtlasNeeded()
+				? buildNativeCursorAtlas(this.config.cursorStyle ?? "tahoe").catch((error) => {
+						console.warn("[VideoExporter] Native cursor atlas unavailable", error);
+						return null;
+					})
+				: null,
+		};
+	}
+
+	/**
+	 * Releases any temporary assets produced by a config-only prep that was never
+	 * consumed by tryExportNativeStaticLayout (skip before resolution, or the
+	 * metadata probe failed so the attempt never ran). Idempotent: tryExport's
+	 * own finally already cleans the background when it was consumed.
+	 */
+	private async settleNativeStaticLayoutConfigPrep(
+		configPrep: NativeStaticLayoutConfigPrep | null | undefined,
+	): Promise<void> {
+		if (!configPrep) {
+			return;
+		}
+		const background = await configPrep.background.catch(() => null);
+		await this.cleanupNativeStaticLayoutBackground(background);
 	}
 
 	private async tryExportNativeStaticLayout(
@@ -2227,6 +4887,7 @@ export class ModernVideoExporter {
 		audioPlan: NativeAudioPlan,
 		effectiveDuration: number,
 		totalFrames: number,
+		configPrep?: NativeStaticLayoutConfigPrep,
 	): Promise<ExportResult | null> {
 		const skipReason = this.getNativeStaticLayoutSkipReason(
 			audioPlan,
@@ -2239,9 +4900,16 @@ export class ModernVideoExporter {
 		if (skipReason) {
 			this.nativeStaticLayoutSkipReason = skipReason;
 			this.nativeStaticLayoutSkipReasons = skipReasons;
-			console.info("[VideoExporter] Native static layout skipped", {
+			console.info(formatLogTs(), "[VideoExporter] Native static layout skipped", {
+				route: "native-static-layout",
+				fallbackRoute: "breeze-stream-or-raw-frame",
 				reason: skipReason,
 				reasons: skipReasons,
+				exportVideoCodec: this.config.exportVideoCodec ?? "h264",
+				exportEncoderPreference: this.config.exportEncoderPreference ?? "auto",
+				canUseNativeGpuStaticLayout: this.canUseNativeGpuStaticLayout(),
+				experimentalNativeExport: this.config.experimentalNativeExport === true,
+				experimentalNvidiaCudaExport: this.config.experimentalNvidiaCudaExport === true,
 				audioMode: audioPlan.audioMode,
 				zoomRegions: this.config.zoomRegions?.length ?? 0,
 				speedRegions: this.config.speedRegions?.length ?? 0,
@@ -2252,28 +4920,76 @@ export class ModernVideoExporter {
 				hasCursorOverlay:
 					this.config.showCursor === true &&
 					(this.config.cursorTelemetry?.length ?? 0) > 0,
-				experimentalNativeExport: this.config.experimentalNativeExport === true,
 			});
+			// Any config-only prep started before the metadata probe (background
+			// materialization, cursor atlas) is not consumed on the skip path;
+			// release its temporary assets so a rejected attempt never leaks them.
+			await this.settleNativeStaticLayoutConfigPrep(configPrep);
 			return null;
 		}
 
+		// Emit the initial "preparing" signal before the potentially long
+		// audio/background/cursor/overlay preparation begins, and identify the
+		// NVIDIA CUDA compositor as the selected route when it is eligible so the
+		// first progress never shows a stale WebGPU/Breeze/libx264 backend during
+		// CUDA preparation.
+		this.encodeBackend = "ffmpeg";
+		this.encoderName = this.canUseNativeGpuStaticLayout()
+			? "nvidia-cuda-compositor"
+			: this.config.experimentalNativeExport === true && this.getRuntimePlatform() === "win32"
+				? "windows-native-compositor"
+				: "static-layout-h264-nvenc";
+		this.exportStartTimeMs = this.getNowMs();
+		this.lastProgressSampleTimeMs = this.exportStartTimeMs;
+		this.lastProgressSampleFrame = 0;
+		this.reportProgress(0, totalFrames, "preparing");
+
+		let preparationStageStartedAt = this.getNowMs();
 		const sourcePath = this.getNativeVideoSourcePath();
-		const audioOptions = await this.getNativeStaticLayoutAudioOptions(audioPlan, totalFrames);
-		if (!sourcePath || !audioOptions) {
-			this.nativeStaticLayoutSkipReason = !sourcePath
-				? "missing-source-path"
-				: "missing-audio-options";
-			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
-			return null;
-		}
-		const background = await this.resolveNativeStaticLayoutBackground();
-		if (!background) {
-			this.nativeStaticLayoutSkipReason =
-				this.nativeStaticLayoutBackgroundSkipReason ?? "unsupported-background";
-			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
-			return null;
-		}
+		// Decide whether the cursor atlas is needed before starting the parallel
+		// prep: the decision depends only on sync-derived cursor telemetry, overlay
+		// content, and native cursor-ownership eligibility (no IPC needed).
+		const cursorTelemetry = this.getNativeStaticLayoutCursorTelemetry();
+		const needsOverlayLayers = this.hasNativeStaticLayoutOverlayContent();
+		const wantsNativeCursorOwnership =
+			needsOverlayLayers && this.canUseNativeCursorAtlasOwnership();
+		const wantsCursorAtlas =
+			Boolean(cursorTelemetry && cursorTelemetry.length > 0) &&
+			(!needsOverlayLayers || wantsNativeCursorOwnership);
 
+		// Run the independent preparation stages (audio options / offline audio
+		// render, background resolution, cursor atlas build) in parallel. The
+		// background and cursor atlas are config-only and never need videoInfo, so
+		// a prep started before the metadata probe is reused here instead of being
+		// re-run. The edited-track audio render is deferred to an export stream
+		// when possible so the compositor launches immediately (video-only) while
+		// the WAV render proceeds concurrently; the stream id reaches main with
+		// the IPC options and main waits for the stream closure at mux time.
+		const audioOptionsStartedAt = this.getNowMs();
+		const deferEditedAudio = this.canDeferEditedAudioRender(audioPlan);
+		const deferredEditedAudio = deferEditedAudio
+			? this.startDeferredEditedAudioRender(audioPlan, totalFrames)
+			: null;
+		const audioOptionsPromise = this.getNativeStaticLayoutAudioOptions(
+			audioPlan,
+			totalFrames,
+			deferEditedAudio,
+		);
+		const backgroundStartedAt = this.getNowMs();
+		const backgroundPromise =
+			configPrep?.background ?? this.resolveNativeStaticLayoutBackground();
+		const cursorAtlasStartedAt = this.getNowMs();
+		const cursorAtlasPromise = wantsCursorAtlas
+			? (configPrep?.cursorAtlas ??
+				buildNativeCursorAtlas(this.config.cursorStyle ?? "tahoe").catch((error) => {
+					console.warn("[VideoExporter] Native cursor atlas unavailable", error);
+					return null;
+				}))
+			: Promise.resolve(null);
+
+		// Compute the synchronous layout/crop/timeline/webcam/zoom plans while the
+		// parallel prep is in flight: the sync loop overlaps with the async
+		// IPC/blob work instead of delaying it.
 		const layout = computePaddedLayout({
 			width: this.config.width,
 			height: this.config.height,
@@ -2288,18 +5004,6 @@ export class ModernVideoExporter {
 		});
 		const contentWidth = contentSize.width;
 		const contentHeight = contentSize.height;
-		if (
-			contentWidth > this.config.width ||
-			contentHeight > this.config.height ||
-			!Number.isFinite(effectiveDuration) ||
-			effectiveDuration <= 0
-		) {
-			this.nativeStaticLayoutSkipReason = "invalid-layout-or-duration";
-			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
-			await this.cleanupNativeStaticLayoutBackground(background);
-			return null;
-		}
-
 		const offsetX = Math.round(layout.centerOffsetX);
 		const offsetY = Math.round(layout.centerOffsetY);
 		const sourceCrop = this.isDefaultCropRegion()
@@ -2314,7 +5018,7 @@ export class ModernVideoExporter {
 			? Math.min(1, Math.max(0, this.config.shadowIntensity))
 			: 0;
 		const webcamOverlay = this.getNativeStaticLayoutWebcamOverlay();
-		const cursorTelemetry = this.getNativeStaticLayoutCursorTelemetry();
+		const webcamNativeOwned = this.canUseNativeWebcamOwnership();
 		const zoomTelemetry = this.getNativeStaticLayoutZoomTelemetry(
 			layout,
 			totalFrames,
@@ -2327,34 +5031,355 @@ export class ModernVideoExporter {
 		const timelineSegments = needsTimelineMap
 			? this.buildNativeStaticLayoutVideoTimelineSegments(videoInfo)
 			: undefined;
+
+		let audioOptions: Awaited<ReturnType<typeof this.getNativeStaticLayoutAudioOptions>>;
+		let background: NativeStaticLayoutBackground | null;
+		let cursorAtlas: NativeCursorAtlas | null;
+		// The deferred audio stream id must be known before the native IPC launch;
+		// the stream open is a single fast IPC roundtrip that overlaps the parallel
+		// prep, so awaiting it here is near-free. A failure to open the stream
+		// falls back to the inline render contract (no stream id passed).
+		const deferredEditedAudioStreamId = deferredEditedAudio
+			? await deferredEditedAudio.opened.catch(() => null)
+			: null;
+		try {
+			[audioOptions, background, cursorAtlas] = await Promise.all([
+				audioOptionsPromise,
+				backgroundPromise,
+				cursorAtlasPromise,
+			]);
+		} catch (error) {
+			// One parallel stage rejected (e.g. the inline audio render failed), so
+			// the whole attempt aborts before the normal cleanup paths run. Release
+			// any background temp file the early-start already materialized and
+			// abort the deferred audio stream; the in-memory atlas needs no cleanup.
+			const resolvedBackground = await backgroundPromise.catch(() => null);
+			await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
+			await this.cleanupNativeStaticLayoutBackground(resolvedBackground);
+			throw error;
+		}
+		this.logNativeStaticLayoutPreparationStage("audio", audioOptionsStartedAt, {
+			audioMode: audioPlan.audioMode,
+			editedTrackStrategy:
+				audioPlan.audioMode === "edited-track" ? audioPlan.strategy : undefined,
+			editedAudioDeferred: deferEditedAudio || undefined,
+			editedAudioStreamId: deferredEditedAudioStreamId ?? undefined,
+		});
+		this.logNativeStaticLayoutPreparationStage("background", backgroundStartedAt, {
+			backgroundColor: background?.backgroundColor ?? null,
+			hasBackgroundImage: Boolean(background?.backgroundImagePath),
+			backgroundSkipReason: this.nativeStaticLayoutBackgroundSkipReason ?? null,
+		});
+		this.logNativeStaticLayoutPreparationStage("cursor-atlas", cursorAtlasStartedAt, {
+			wantsNativeCursorOwnership,
+			cursorAtlasBuilt: Boolean(cursorAtlas),
+			atlasEntries: cursorAtlas?.entries.length ?? 0,
+		});
+		if (!sourcePath || !audioOptions) {
+			this.nativeStaticLayoutSkipReason = !sourcePath
+				? "missing-source-path"
+				: "missing-audio-options";
+			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
+			await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
+			await this.cleanupNativeStaticLayoutBackground(background);
+			return null;
+		}
+		if (!background) {
+			this.nativeStaticLayoutSkipReason =
+				this.nativeStaticLayoutBackgroundSkipReason ?? "unsupported-background";
+			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
+			await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
+			return null;
+		}
+		if (
+			contentWidth > this.config.width ||
+			contentHeight > this.config.height ||
+			!Number.isFinite(effectiveDuration) ||
+			effectiveDuration <= 0
+		) {
+			this.nativeStaticLayoutSkipReason = "invalid-layout-or-duration";
+			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
+			await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
+			await this.cleanupNativeStaticLayoutBackground(background);
+			return null;
+		}
 		if (needsTimelineMap && !timelineSegments?.length) {
 			this.nativeStaticLayoutSkipReason =
 				(this.config.speedRegions ?? []).length > 0
 					? "invalid-native-speed-timeline"
 					: "invalid-native-trim-timeline";
 			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
+			await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
 			await this.cleanupNativeStaticLayoutBackground(background);
 			return null;
 		}
-		const cursorAtlas =
-			cursorTelemetry && cursorTelemetry.length > 0
-				? await buildNativeCursorAtlas(this.config.cursorStyle ?? "tahoe").catch(
-						(error) => {
-							console.warn("[VideoExporter] Native cursor atlas unavailable", error);
-							return null;
-						},
-					)
-				: null;
-		if (cursorTelemetry && cursorTelemetry.length > 0 && !cursorAtlas) {
+		preparationStageStartedAt = this.getNowMs();
+		const cursorAtlasOwnedByNative = wantsNativeCursorOwnership && Boolean(cursorAtlas);
+		if (cursorAtlasOwnedByNative) {
+			console.info("[VideoExporter] Native cursor atlas owns the overlay cursor", {
+				cursorStyle: this.config.cursorStyle ?? "tahoe",
+				atlasWidth: cursorAtlas?.width,
+				atlasHeight: cursorAtlas?.height,
+				atlasEntries: cursorAtlas?.entries.length,
+				cursorTelemetrySamples: cursorTelemetry?.length,
+			});
+		}
+		// The native cursor atlas is required when the cursor is NOT baked into
+		// the transparent overlay sidecar. Without overlay layers the cursor is
+		// always native-owned, so a missing atlas skips the route. With overlay
+		// layers the cursor is baked into the sidecar unless the CUDA compositor
+		// owns it (cursorAtlasOwnedByNative), so a missing atlas only falls back
+		// to the baked sidecar and never skips the route.
+		if (
+			shouldSkipForMissingCursorAtlas({
+				needsOverlayLayers,
+				hasCursorTelemetry: Boolean(cursorTelemetry && cursorTelemetry.length > 0),
+				hasCursorAtlas: Boolean(cursorAtlas),
+			})
+		) {
 			this.nativeStaticLayoutSkipReason = "cursor-atlas-unavailable";
 			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
+			await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
 			await this.cleanupNativeStaticLayoutBackground(background);
 			return null;
 		}
-		const startedAt = this.getNowMs();
+		// Assign the native static-layout session id before the (potentially long)
+		// overlay sidecar bake and fast-lane branch. cancel() can then hand the id
+		// to nativeStaticLayoutExportCancel as soon as a native session might
+		// exist: during the bake there is no main-process session yet, so that IPC
+		// cancel is a no-op, and the local `cancelled` flag keeps aborting the bake
+		// loops. The try/finally below clears the id when the attempt settles.
 		const sessionId = `recordly-static-layout-${Date.now()}-${Math.random()
 			.toString(36)
 			.slice(2, 8)}`;
+		this.nativeStaticLayoutSessionId = sessionId;
+		const fastLaneEligibility = this.getNativeStaticLayoutFastLaneEligibility(
+			audioPlan,
+			cursorAtlasOwnedByNative,
+			webcamNativeOwned,
+		);
+		const useFastLane = fastLaneEligibility.eligible;
+		// Log the fast-lane eligibility decision as its own preparation stage so
+		// the gap between parallel-prep completion and the overlay bake start is
+		// observable: no blocking work should be inserted here. The elapsed time
+		// proves the eligibility check is synchronous and does not delay the bake.
+		this.logNativeStaticLayoutPreparationStage(
+			"fast-lane-eligibility",
+			preparationStageStartedAt,
+			{
+				eligible: useFastLane,
+				skipReasons: fastLaneEligibility.skipReasons,
+				cursorAtlasOwnedByNative: Boolean(cursorAtlasOwnedByNative),
+				webcamNativeOwned: Boolean(webcamNativeOwned),
+				needsOverlayLayers,
+			},
+		);
+		const overlayBakeStartedAt = this.getNowMs();
+		let overlayPreparation: NativeStaticLayoutOverlayPreparationResult | null = null;
+		let streamingResult: StreamingRawOverlayResult | null = null;
+		let streamingCursorSpriteResult: StreamingCursorSpriteResult | null = null;
+		if (useFastLane) {
+			// Deterministic no-browser-overlay fast lane: with no captions,
+			// annotations, or frame pixels (and the webcam owned natively by the CUDA
+			// compositor when enabled) and the cursor either disabled or owned
+			// natively by the CUDA compositor, the sidecar is provably empty, so
+			// skip renderer init, per-frame canvas capture, and overlay sidecar
+			// creation and start the native export as early as safely allowed.
+			overlayPreparation = {
+				overlayLayers: sortNativeStaticLayoutOverlayLayers([]),
+				tiledOverlayLayers: sortNativeTiledOverlayLayers([]),
+				rawFallbackReason: null,
+				renderedFrames: 0,
+			};
+			console.info(formatLogTs(), "[VideoExporter] Native static layout fast lane selected", {
+				route: "nvidia-cuda-compositor",
+				skipReasons: fastLaneEligibility.skipReasons,
+				cursorDisabled:
+					this.config.showCursor !== true ||
+					(this.config.cursorTelemetry?.length ?? 0) === 0,
+				cursorNativeOwnershipActive: Boolean(cursorAtlasOwnedByNative),
+				webcamNativeOwned: Boolean(webcamNativeOwned),
+				audioMode: audioPlan.audioMode,
+				preparedOverlayLayers: overlayPreparation.overlayLayers.length,
+				preparedTiledOverlayLayers: overlayPreparation.tiledOverlayLayers.length,
+			});
+		} else {
+			const canStream = this.canUseStreamingRawOverlay(
+				cursorAtlasOwnedByNative,
+				webcamNativeOwned,
+			);
+			const canStreamCursorSprite =
+				this.canStreamCursorSprite() &&
+				this.shouldUseNativeStaticLayoutCursorSprite(
+					cursorAtlasOwnedByNative,
+					webcamNativeOwned,
+				);
+			if (canStream || canStreamCursorSprite) {
+				// Build the common export options before the bake so the native IPC
+				// can launch concurrently with the per-frame overlay render.
+				const requestedVideoCodec = this.config.exportVideoCodec ?? "h264";
+				const requestedEncoderPreference = this.config.exportEncoderPreference ?? "auto";
+				const preBakeNativeOptions = {
+					sessionId,
+					inputPath: sourcePath,
+					width: this.config.width,
+					height: this.config.height,
+					frameRate: this.config.frameRate,
+					bitrate: this.config.bitrate,
+					encodingMode: this.config.encodingMode ?? "balanced",
+					videoCodec: requestedVideoCodec,
+					encoderPreference: requestedEncoderPreference,
+					durationSec: effectiveDuration,
+					contentWidth,
+					contentHeight,
+					offsetX,
+					offsetY,
+					sourceCropX: sourceCrop?.x,
+					sourceCropY: sourceCrop?.y,
+					sourceCropWidth: sourceCrop?.width,
+					sourceCropHeight: sourceCrop?.height,
+					backgroundColor: background.backgroundColor,
+					backgroundImagePath: background.backgroundImagePath ?? null,
+					backgroundBlurPx: Math.max(0, (this.config.backgroundBlur ?? 0) * 3),
+					borderRadius,
+					shadowIntensity,
+					webcamInputPath: webcamNativeOwned ? (webcamOverlay?.inputPath ?? null) : null,
+					webcamLeft: webcamOverlay?.left,
+					webcamTop: webcamOverlay?.top,
+					webcamSize: webcamOverlay?.size,
+					webcamRadius: webcamOverlay?.radius,
+					webcamShadowIntensity: webcamOverlay?.shadowIntensity,
+					webcamMirror: webcamOverlay?.mirror,
+					webcamTimeOffsetMs: webcamOverlay?.timeOffsetMs,
+					webcamNativeOwned: webcamNativeOwned || undefined,
+					cursorTelemetry,
+					cursorSize: this.getNativeStaticLayoutCursorSize(contentWidth),
+					cursorAtlasPngDataUrl: cursorAtlas?.dataUrl ?? null,
+					cursorAtlasEntries: cursorAtlas?.entries,
+					cursorAtlasOwned: cursorAtlasOwnedByNative || undefined,
+					zoomTelemetry,
+					temporalBlur: getTemporalMotionBlurConfig(this.config.zoomTemporalMotionBlur, {
+						sampleCount: this.config.zoomMotionBlurSampleCount,
+						shutterFraction: this.config.zoomMotionBlurShutterFraction,
+					}),
+					timelineSegments,
+					chunkDurationSec: STATIC_LAYOUT_CHUNK_DURATION_SEC,
+					experimentalWindowsGpuCompositor: this.config.experimentalNativeExport === true,
+					experimentalNvidiaCudaExport: this.config.experimentalNvidiaCudaExport === true,
+					audioOptions: {
+						...audioOptions,
+						...(deferredEditedAudioStreamId
+							? { editedAudioStreamId: deferredEditedAudioStreamId }
+							: {}),
+						outputDurationSec: effectiveDuration,
+					},
+				};
+				if (canStreamCursorSprite) {
+					streamingCursorSpriteResult = await this.streamCursorSpriteAndExport({
+						videoInfo,
+						durationSec: effectiveDuration,
+						totalFrames,
+						webcamExcluded: webcamNativeOwned,
+						sessionId,
+						contentWidth,
+						contentHeight,
+						offsetX,
+						offsetY,
+						nativeStaticLayoutOptions: preBakeNativeOptions,
+						onPreparationProgress: (renderProgress) =>
+							this.reportProgress(0, totalFrames, "preparing", renderProgress),
+					});
+					overlayPreparation = streamingCursorSpriteResult?.overlayPreparation ?? null;
+				} else {
+					streamingResult = await this.streamRawOverlayAndExport({
+						videoInfo,
+						durationSec: effectiveDuration,
+						totalFrames,
+						cursorExcluded: cursorAtlasOwnedByNative,
+						webcamExcluded: webcamNativeOwned,
+						sessionId,
+						nativeStaticLayoutOptions: preBakeNativeOptions,
+						onPreparationProgress: (renderProgress) =>
+							this.reportProgress(0, totalFrames, "preparing", renderProgress),
+					});
+					overlayPreparation = streamingResult?.overlayPreparation ?? null;
+				}
+			} else {
+				overlayPreparation = await this.prepareNativeStaticLayoutOverlay(
+					videoInfo,
+					effectiveDuration,
+					totalFrames,
+					cursorAtlasOwnedByNative,
+					webcamNativeOwned,
+					(renderProgress) =>
+						this.reportProgress(0, totalFrames, "preparing", renderProgress),
+				);
+			}
+		}
+		const overlayLayers = overlayPreparation?.overlayLayers ?? [];
+		const tiledOverlayLayers = overlayPreparation?.tiledOverlayLayers ?? [];
+		this.logNativeStaticLayoutPreparationStage("overlay", preparationStageStartedAt, {
+			mode: useFastLane
+				? "fast-lane"
+				: streamingCursorSpriteResult
+					? "streaming-cursor-sprite"
+					: streamingResult
+						? "streaming-raw-overlay"
+						: !overlayPreparation
+							? "failed"
+							: tiledOverlayLayers.length > 0
+								? "tiled-sidecar"
+								: overlayLayers.some(isCursorSpriteOverlayLayer)
+									? "cursor-sprite"
+									: overlayLayers.length > 0
+										? "raw-sidecar"
+										: "empty",
+			overlayLayerCount: overlayLayers.length,
+			tiledOverlayLayerCount: tiledOverlayLayers.length,
+			rawFallbackReason: overlayPreparation?.rawFallbackReason ?? null,
+			overlayFailure: this.nativeStaticLayoutOverlayFailure,
+			webcamNativeOwned: Boolean(webcamNativeOwned),
+			renderedFrames: overlayPreparation?.renderedFrames ?? 0,
+			totalFrames,
+			streamingRawOverlay: streamingResult?.streamingRawOverlay ?? false,
+			streamingCursorSprite: streamingCursorSpriteResult?.streamingCursorSprite ?? false,
+		});
+		this.nativeStaticLayoutOverlayRenderedFrames = overlayPreparation?.renderedFrames ?? 0;
+		this.nativeStaticLayoutOverlayPreparationMs = Math.round(
+			this.getNowMs() - overlayBakeStartedAt,
+		);
+		preparationStageStartedAt = this.getNowMs();
+		if (needsOverlayLayers && !overlayPreparation) {
+			this.nativeStaticLayoutSkipReason = "native-overlay-preparation-failed";
+			const overlayFailure = this.nativeStaticLayoutOverlayFailure;
+			this.nativeStaticLayoutSkipReasons = overlayFailure
+				? [
+						this.nativeStaticLayoutSkipReason,
+						`overlay-stage:${overlayFailure.stage}`,
+						`overlay-error:${overlayFailure.message}`,
+					]
+				: [this.nativeStaticLayoutSkipReason];
+			console.warn(
+				formatLogTs(),
+				"[VideoExporter] Native static layout skipped: overlay preparation failed",
+				{
+					reason: this.nativeStaticLayoutSkipReason,
+					reasons: this.nativeStaticLayoutSkipReasons,
+					failure: overlayFailure,
+					exportVideoCodec: this.config.exportVideoCodec ?? "h264",
+					exportEncoderPreference: this.config.exportEncoderPreference ?? "auto",
+				},
+			);
+			// No native session ever started (the bake failed before the IPC handoff),
+			// so cancel() must not hold a stale session id for a no-op IPC cancel.
+			this.nativeStaticLayoutSessionId = null;
+			await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
+			await this.cleanupNativeStaticLayoutBackground(background);
+			return null;
+		}
+		const overlayTempPath =
+			tiledOverlayLayers[0]?.payloadPath ?? overlayLayers[0]?.path ?? null;
+		const startedAt = this.getNowMs();
 		const previousEncodeBackend = this.encodeBackend;
 		const previousEncoderName = this.encoderName;
 		const restoreEncoderState = () => {
@@ -2366,17 +5391,18 @@ export class ModernVideoExporter {
 		this.lastThroughputLogTimeMs = startedAt;
 		this.lastProgressSampleTimeMs = startedAt;
 		this.lastProgressSampleFrame = 0;
-		this.nativeStaticLayoutSessionId = sessionId;
 		this.nativeStaticLayoutSkipReason = null;
 		this.nativeStaticLayoutSkipReasons = [];
 		this.nativeStaticLayoutAverageFps = null;
+		this.nativeStaticLayoutFpsSource = null;
 		this.encodeBackend = "ffmpeg";
 		const runtimePlatform =
 			typeof navigator !== "undefined"
 				? normalizeLightningRuntimePlatform(navigator.userAgent)
 				: "unknown";
-		this.encoderName =
-			this.config.experimentalNativeExport === true && runtimePlatform === "win32"
+		this.encoderName = this.canUseNativeGpuStaticLayout()
+			? "nvidia-cuda-compositor"
+			: this.config.experimentalNativeExport === true && runtimePlatform === "win32"
 				? "windows-native-compositor"
 				: "static-layout-h264-nvenc";
 		this.reportProgress(0, totalFrames, "preparing");
@@ -2411,8 +5437,21 @@ export class ModernVideoExporter {
 						rawNativePercentage <= 3)
 				) {
 					this.nativeStaticLayoutAverageFps = null;
+					this.nativeStaticLayoutFpsSource = null;
 					this.processedFrameCount = 0;
-					this.reportProgress(0, totalFrames, "preparing");
+					// Forward the additive CUDA preparation sub-stage (encoder probe,
+					// source validation, wrapper launch, CUDA/NVENC init, first frame) so
+					// the UI can show what the native side is doing during "preparing".
+					// The label is display-only and never fabricates encode FPS.
+					this.reportProgress(
+						0,
+						totalFrames,
+						"preparing",
+						undefined,
+						undefined,
+						progress.substate,
+						progress.substateLabel,
+					);
 					return;
 				}
 				const progressPercentFrame = Number.isFinite(progress.percentage)
@@ -2440,7 +5479,7 @@ export class ModernVideoExporter {
 					maxExtractingFrame,
 					Math.max(this.processedFrameCount, nativeCurrentFrame),
 				);
-				this.nativeStaticLayoutAverageFps =
+				const nativeMeasuredFps =
 					progress.stage === "finalizing"
 						? null
 						: typeof progress.instantFps === "number" &&
@@ -2452,6 +5491,26 @@ export class ModernVideoExporter {
 									progress.averageFps > 0
 								? progress.averageFps
 								: null;
+				const estimatedFps =
+					progress.stage === "finalizing" || nativeMeasuredFps !== null
+						? null
+						: typeof progress.estimatedFps === "number" &&
+								Number.isFinite(progress.estimatedFps) &&
+								progress.estimatedFps > 0
+							? progress.estimatedFps
+							: null;
+				if (estimatedFps !== null) {
+					// Preparation-inclusive estimate; never presented as measured encode speed.
+					this.nativeStaticLayoutFpsSource = "estimated";
+					console.warn(
+						formatLogTs(),
+						"[VideoExporter] Native encode FPS not reported yet; using preparation-inclusive estimate",
+						{ backend: progress.backend, estimatedFps },
+					);
+				} else if (nativeMeasuredFps !== null) {
+					this.nativeStaticLayoutFpsSource = "native";
+				}
+				this.nativeStaticLayoutAverageFps = nativeMeasuredFps;
 				this.processedFrameCount = currentFrame;
 				if (progress.stage === "finalizing" || nativeFramesComplete) {
 					this.reportFinalizingProgress(totalFrames, nativeFinalizingProgress);
@@ -2461,8 +5520,13 @@ export class ModernVideoExporter {
 			},
 		);
 
+		const requestedVideoCodec = this.config.exportVideoCodec ?? "h264";
+		const requestedEncoderPreference = this.config.exportEncoderPreference ?? "auto";
 		try {
-			const result = await window.electronAPI.nativeStaticLayoutExport({
+			// The IPC surface type predates native cursor ownership; the extra
+			// cursorAtlasOwned field rides through the structured clone into the
+			// main-process NativeStaticLayoutExportOptions where it is consumed.
+			const nativeStaticLayoutOptions = {
 				sessionId,
 				inputPath: sourcePath,
 				width: this.config.width,
@@ -2470,6 +5534,8 @@ export class ModernVideoExporter {
 				frameRate: this.config.frameRate,
 				bitrate: this.config.bitrate,
 				encodingMode: this.config.encodingMode ?? "balanced",
+				videoCodec: requestedVideoCodec,
+				encoderPreference: requestedEncoderPreference,
 				durationSec: effectiveDuration,
 				contentWidth,
 				contentHeight,
@@ -2484,7 +5550,17 @@ export class ModernVideoExporter {
 				backgroundBlurPx: Math.max(0, (this.config.backgroundBlur ?? 0) * 3),
 				borderRadius,
 				shadowIntensity,
-				webcamInputPath: webcamOverlay?.inputPath ?? null,
+				// When the webcam is native-owned the renderer excluded it from the
+				// overlay sidecar, so webcamInputPath must reach the CUDA compositor
+				// even when a cursor-sprite (or baked-cursor) overlay layer is present.
+				// Mixed baked content (captions/annotations/frame) never sets
+				// webcamNativeOwned, so the existing baked-webcam contract (no
+				// webcamInputPath alongside sidecar pixels) is preserved.
+				webcamInputPath: webcamNativeOwned
+					? (webcamOverlay?.inputPath ?? null)
+					: overlayLayers.length || tiledOverlayLayers.length
+						? null
+						: (webcamOverlay?.inputPath ?? null),
 				webcamLeft: webcamOverlay?.left,
 				webcamTop: webcamOverlay?.top,
 				webcamSize: webcamOverlay?.size,
@@ -2492,22 +5568,62 @@ export class ModernVideoExporter {
 				webcamShadowIntensity: webcamOverlay?.shadowIntensity,
 				webcamMirror: webcamOverlay?.mirror,
 				webcamTimeOffsetMs: webcamOverlay?.timeOffsetMs,
+				// True only when the CUDA compositor owns the webcam: the overlay
+				// sidecar excluded webcam pixels and the native webcam overlay must
+				// draw them (never double-render a baked webcam).
+				webcamNativeOwned: webcamNativeOwned || undefined,
 				cursorTelemetry,
 				cursorSize: this.getNativeStaticLayoutCursorSize(contentWidth),
 				cursorAtlasPngDataUrl: cursorAtlas?.dataUrl ?? null,
 				cursorAtlasEntries: cursorAtlas?.entries,
+				// True only when the CUDA compositor owns the cursor: the overlay
+				// sidecar excluded cursor pixels and the native atlas must draw them.
+				cursorAtlasOwned: cursorAtlasOwnedByNative || undefined,
+				overlayLayers: overlayLayers.length ? overlayLayers : undefined,
+				tiledOverlayLayers: tiledOverlayLayers.length ? tiledOverlayLayers : undefined,
 				zoomTelemetry,
+				temporalBlur: getTemporalMotionBlurConfig(this.config.zoomTemporalMotionBlur, {
+					sampleCount: this.config.zoomMotionBlurSampleCount,
+					shutterFraction: this.config.zoomMotionBlurShutterFraction,
+				}),
 				timelineSegments,
 				chunkDurationSec: STATIC_LAYOUT_CHUNK_DURATION_SEC,
 				experimentalWindowsGpuCompositor: this.config.experimentalNativeExport === true,
 				experimentalNvidiaCudaExport: this.config.experimentalNvidiaCudaExport === true,
 				audioOptions: {
 					...audioOptions,
+					...(deferredEditedAudioStreamId
+						? { editedAudioStreamId: deferredEditedAudioStreamId }
+						: {}),
 					outputDurationSec: effectiveDuration,
 				},
+			};
+			const ipcHandoffStartedAt = this.getNowMs();
+			// When the streaming raw-overlay path was used, the native IPC was
+			// launched concurrently with the bake and its result is already
+			// available. Do not call nativeStaticLayoutExport again.
+			const result: NativeStaticLayoutExportIpcResult = streamingResult
+				? (streamingResult.nativeResult ?? {
+						success: false,
+						error: "streaming overlay produced no native result",
+					})
+				: streamingCursorSpriteResult
+					? (streamingCursorSpriteResult.nativeResult ?? {
+							success: false,
+							error: "streaming cursor-sprite produced no native result",
+						})
+					: await window.electronAPI.nativeStaticLayoutExport(nativeStaticLayoutOptions);
+			this.logNativeStaticLayoutPreparationStage("ipc-handoff", ipcHandoffStartedAt, {
+				route: result.route ?? null,
+				success: result.success,
+				requestedVideoCodec,
+				requestedEncoderPreference,
+				requestedRoute: this.canUseNativeGpuStaticLayout()
+					? "nvidia-cuda-compositor"
+					: "static-layout",
 			});
-
 			if (this.cancelled) {
+				await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
 				return {
 					success: false,
 					error: "Export cancelled",
@@ -2516,16 +5632,185 @@ export class ModernVideoExporter {
 			}
 
 			if (!result.success || !result.tempPath) {
-				console.warn("[VideoExporter] Native static layout export unavailable", {
-					error: result.error,
-				});
+				const exportError =
+					typeof result.error === "string" && result.error.trim()
+						? result.error.trim()
+						: "unknown-native-static-layout-export-error";
+				console.warn(
+					formatLogTs(),
+					"[VideoExporter] Native static layout export unavailable",
+					{
+						error: exportError,
+					},
+				);
+				// Surface the real IPC/helper failure instead of a generic
+				// "route unavailable" when strict HEVC Hardware later refuses the
+				// renderer raw fallback. The strict error carries this detail so CUDA
+				// export failures stay diagnosable end-to-end.
+				this.lastNativeExportError = exportError;
+				this.nativeStaticLayoutSkipReasons = [
+					"native-ipc-export-failed",
+					`native-error:${exportError}`,
+				];
+				await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
 				restoreEncoderState();
 				return null;
 			}
 
+			const isStrictHevcHardware = this.requiresStrictNativeCudaRoute();
+			const acceptedHevcNativeRoute = isStrictHevcHardware
+				? result.route === "nvidia-cuda-compositor"
+				: HEVC_NATIVE_STATIC_LAYOUT_ROUTES.has(result.route ?? "");
+			if (requestedVideoCodec === "hevc" && !acceptedHevcNativeRoute) {
+				const routeSkipReason = "unsupported-native-hevc-route";
+				console.warn(
+					"[VideoExporter] Rejecting HEVC native static-layout result from a non-CUDA route",
+					{ route: result.route, isStrictHevcHardware },
+				);
+				this.nativeStaticLayoutSkipReason = routeSkipReason;
+				this.nativeStaticLayoutSkipReasons = [routeSkipReason];
+				// The native export already produced a temp video (potentially GBs for
+				// HEVC); discard it before falling back so it is not left on disk for
+				// the whole session. Best-effort: cleanup must never override the
+				// intended skip reason or the null return.
+				await window.electronAPI
+					?.discardExportedTemp?.(result.tempPath)
+					.catch(() => undefined);
+				await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
+				restoreEncoderState();
+				return null;
+			}
+
+			const hasSpatialZoomMotionBlur = (this.config.zoomMotionBlur ?? 0) > 0.0005;
+			const hasTemporalZoomMotionBlur = (this.config.zoomTemporalMotionBlur ?? 0) > 0.0005;
+			if (
+				shouldRejectNativeStaticLayoutResultForEffectPreservation({
+					hasSpatialZoomMotionBlur,
+					hasTemporalMotionBlur: hasTemporalZoomMotionBlur,
+					hasOverlayContent: this.hasNativeStaticLayoutOverlayContent(),
+					route: result.route,
+				})
+			) {
+				// The generalized CUDA compositor applies spatial zoom blur before
+				// alpha-compositing the transparent overlay sidecars and implements
+				// temporal zoom motion blur from the resolved sample plan. The FFmpeg
+				// effectful overlay route and the D3D11 helper cannot preserve these
+				// effects; reject so the renderer raw-frame fallback keeps them instead
+				// of silently dropping them.
+				const routeSkipReason = "unsupported-motion-blur-on-overlay-route";
+				console.warn(
+					"[VideoExporter] Rejecting native static-layout result that cannot preserve zoom motion blur",
+					{ route: result.route },
+				);
+				this.nativeStaticLayoutSkipReason = routeSkipReason;
+				this.nativeStaticLayoutSkipReasons = [routeSkipReason];
+				// The native export already produced a temp video (potentially GBs for
+				// HEVC); discard it before falling back so it is not left on disk for
+				// the whole session. Best-effort: cleanup must never override the
+				// intended skip reason or the null return.
+				await window.electronAPI
+					?.discardExportedTemp?.(result.tempPath)
+					.catch(() => undefined);
+				await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
+				restoreEncoderState();
+				return null;
+			}
+			// A cursor-sprite layer is only composited by the generalized NVIDIA
+			// CUDA compositor. If the actual route is anything else (FFmpeg effectful
+			// overlay or D3D11 helper) it would silently drop the cursor, so reject
+			// and let the renderer raw-frame fallback keep it.
+			const hasCursorSpriteLayer = overlayLayers.some((layer) =>
+				isCursorSpriteOverlayLayer(layer),
+			);
+			if (hasCursorSpriteLayer && result.route !== "nvidia-cuda-compositor") {
+				const routeSkipReason = "unsupported-cursor-sprite-route";
+				console.warn(
+					"[VideoExporter] Rejecting native static-layout result that cannot compose the cursor sprite",
+					{ route: result.route, layerCount: overlayLayers.length },
+				);
+				this.nativeStaticLayoutSkipReason = routeSkipReason;
+				this.nativeStaticLayoutSkipReasons = [routeSkipReason];
+				// The native export already produced a temp video (potentially GBs);
+				// discard it before falling back so it is not left on disk for the
+				// whole session. Best-effort: cleanup must never override the intended
+				// skip reason or the null return.
+				await window.electronAPI
+					?.discardExportedTemp?.(result.tempPath)
+					.catch(() => undefined);
+				await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
+				restoreEncoderState();
+				return null;
+			}
+			// A native-owned webcam is only drawn by the generalized NVIDIA CUDA
+			// compositor (the sidecar excluded webcam pixels). Any other route would
+			// silently drop the webcam, so reject and let the renderer raw-frame
+			// fallback keep it instead. Strict HEVC Hardware already refuses non-CUDA
+			// routes; this guard is the explicit observable invariant for webcam
+			// ownership on every codec/preference combination.
+			if (webcamNativeOwned && result.route !== "nvidia-cuda-compositor") {
+				const routeSkipReason = "unsupported-native-webcam-route";
+				console.warn(
+					"[VideoExporter] Rejecting native static-layout result that cannot draw the native-owned webcam",
+					{ route: result.route, webcamNativeOwned },
+				);
+				this.nativeStaticLayoutSkipReason = routeSkipReason;
+				this.nativeStaticLayoutSkipReasons = [routeSkipReason];
+				// The native export already produced a temp video (potentially GBs);
+				// discard it before falling back so it is not left on disk for the
+				// whole session. Best-effort: cleanup must never override the intended
+				// skip reason or the null return.
+				await window.electronAPI
+					?.discardExportedTemp?.(result.tempPath)
+					.catch(() => undefined);
+				await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
+				restoreEncoderState();
+				return null;
+			}
+			console.info(formatLogTs(), "[VideoExporter] Native static layout selected", {
+				route: result.route,
+				encoderName: result.encoderName,
+				exportVideoCodec: requestedVideoCodec,
+				exportEncoderPreference: requestedEncoderPreference,
+				canUseNativeGpuStaticLayout: this.canUseNativeGpuStaticLayout(),
+				experimentalNativeExport: this.config.experimentalNativeExport === true,
+				experimentalNvidiaCudaExport: this.config.experimentalNvidiaCudaExport === true,
+				hasOverlayLayers: this.hasNativeStaticLayoutOverlayContent(),
+				webcamNativeOwned: Boolean(webcamNativeOwned),
+				temporalBlurSamples:
+					getTemporalMotionBlurConfig(this.config.zoomTemporalMotionBlur, {
+						sampleCount: this.config.zoomMotionBlurSampleCount,
+						shutterFraction: this.config.zoomMotionBlurShutterFraction,
+					})?.sampleCount ?? null,
+				overlayRenderedFrames: this.nativeStaticLayoutOverlayRenderedFrames,
+				overlayPreparationMs: this.nativeStaticLayoutOverlayPreparationMs,
+				streamingRawOverlay: streamingResult?.streamingRawOverlay ?? false,
+				streamingCursorSprite: streamingCursorSpriteResult?.streamingCursorSprite ?? false,
+			});
+			if (result.route === "cuda-overlay" && this.hasNativeStaticLayoutOverlayContent()) {
+				// Effectful overlay composition runs after a CUDA hwdownload and is
+				// performed by FFmpeg's CPU alpha overlay filters. This is required to
+				// alpha-compose RGBA sidecars, but it is the expected throughput
+				// bottleneck on this route and should not be misreported as GPU encode
+				// speed in the FPS diagnostics.
+				console.info(
+					"[VideoExporter] Native overlay route uses CPU alpha overlay composition",
+					{
+						route: result.route,
+						note: "encode FPS reflects CPU-overlay-limited throughput, not raw NVENC speed",
+					},
+				);
+			}
+
 			const elapsedMs = this.getNowMs() - startedAt;
-			this.encoderName = result.encoderName ?? "static-layout-h264-nvenc";
+			this.encoderName =
+				result.encoderName ??
+				(result.route && requestedVideoCodec === "hevc"
+					? result.route
+					: requestedVideoCodec === "hevc"
+						? "static-layout-hevc"
+						: "static-layout-h264-nvenc");
 			this.nativeStaticLayoutAverageFps = null;
+			this.nativeStaticLayoutFpsSource = null;
 			this.processedFrameCount = totalFrames;
 			this.decodeLoopTimeMs = result.metrics?.chunkExecMs ?? elapsedMs;
 			this.finalizationTimeMs = Math.max(0, elapsedMs - this.decodeLoopTimeMs);
@@ -2552,6 +5837,11 @@ export class ModernVideoExporter {
 			}
 			this.reportFinalizingProgress(totalFrames, 99);
 
+			// The native IPC resolved, which means main's mux already waited for the
+			// deferred edited-audio stream closure (or there was no deferred audio);
+			// await the render so its rejection still surfaces as a failure.
+			await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: false });
+
 			return {
 				success: true,
 				tempFilePath: result.tempPath,
@@ -2566,13 +5856,28 @@ export class ModernVideoExporter {
 				};
 			}
 
-			console.warn("[VideoExporter] Native static layout export failed; falling back", error);
+			console.warn(
+				formatLogTs(),
+				"[VideoExporter] Native static layout export failed; falling back",
+				error,
+			);
+			const failureMessage = error instanceof Error ? error.message : String(error);
+			this.lastNativeExportError = failureMessage;
 			this.nativeStaticLayoutSkipReason = "native-static-runtime-failed";
 			this.nativeStaticLayoutSkipReasons = [this.nativeStaticLayoutSkipReason];
+			await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: true });
 			restoreEncoderState();
 			return null;
 		} finally {
 			unsubscribeNativeProgress?.();
+			// The static-layout attempt is over (success, skip, or runtime failure).
+			// Clear native-measured FPS so a raw renderer fallback can never present
+			// stale native encode speed as its own throughput.
+			this.nativeStaticLayoutAverageFps = null;
+			this.nativeStaticLayoutFpsSource = null;
+			if (overlayTempPath && typeof window !== "undefined") {
+				await window.electronAPI?.discardExportedTemp?.(overlayTempPath);
+			}
 			await this.cleanupNativeStaticLayoutBackground(background);
 			if (this.nativeStaticLayoutSessionId === sessionId) {
 				this.nativeStaticLayoutSessionId = null;
@@ -2650,6 +5955,7 @@ export class ModernVideoExporter {
 		}
 
 		this.nativeExportSessionId = result.sessionId;
+		this.nativeRawFrameMode = false;
 		this.lastNativeExportError = null;
 		this.encodeBackend = "ffmpeg";
 		this.encoderName = "h264-stream-copy";
@@ -2702,11 +6008,199 @@ export class ModernVideoExporter {
 		return true;
 	}
 
+	private canUseNativeGpuStaticLayout(): boolean {
+		return (
+			this.config.exportVideoCodec === "hevc" &&
+			this.config.exportEncoderPreference !== "cpu" &&
+			this.config.experimentalNativeExport === true &&
+			this.config.experimentalNvidiaCudaExport === true
+		);
+	}
+
+	// Strict HEVC Hardware policy: the generalized NVIDIA CUDA compositor is the
+	// ONLY acceptable route. The export must never silently fall back to the
+	// renderer raw frame path (WebGPU/WebGL -> FFmpeg hevc_nvenc), Breeze, or CPU
+	// when the CUDA route cannot run; it hard-fails with an actionable error.
+	private requiresStrictNativeCudaRoute(): boolean {
+		return (
+			this.config.exportVideoCodec === "hevc" &&
+			this.config.exportEncoderPreference === "hardware"
+		);
+	}
+
+	private buildStrictNativeCudaHardwareError(reason: string): Error {
+		const overlayDetail = this.nativeStaticLayoutOverlayFailure
+			? ` (${this.nativeStaticLayoutOverlayFailure.stage}: ${this.nativeStaticLayoutOverlayFailure.message})`
+			: "";
+		const message = [
+			"HEVC Hardware export requires the NVIDIA CUDA compositor.",
+			`Native CUDA route did not run: ${reason}${overlayDetail}.`,
+			"The export was stopped instead of falling back to renderer raw frames (WebGPU/Breeze) or CPU.",
+			"The NVIDIA CUDA compositor backend is mandatory for H.265 + Hardware. Make sure the CUDA compositor is available (NVIDIA GPU with current drivers and the bundled compositor helper), or switch the encoder preference to Auto.",
+			"noCpuFallback:true",
+		].join(" ");
+		const error = new Error(message);
+		(error as Error & { noCpuFallback?: boolean }).noCpuFallback = true;
+		return error;
+	}
+
+	private requiresNativeRawFrame(): boolean {
+		return (
+			this.config.exportVideoCodec === "hevc" ||
+			(this.config.exportEncoderPreference !== undefined &&
+				this.config.exportEncoderPreference !== "auto")
+		);
+	}
+
+	private shouldForceNativeRawFrame(): boolean {
+		// Strict HEVC Hardware forbids the renderer raw frame path entirely; the
+		// native static-layout CUDA compositor is mandatory and any failure must
+		// hard-fail instead of falling back.
+		if (this.requiresStrictNativeCudaRoute()) {
+			return false;
+		}
+		// HEVC Auto/Hardware gets one native CUDA static-layout attempt when the
+		// renderer was given an eligible GPU route. CPU and explicit H.264 encoder
+		// preferences remain direct rawvideo paths; H.264 + Auto is unchanged.
+		return this.requiresNativeRawFrame() && !this.canUseNativeGpuStaticLayout();
+	}
+
+	private async tryStartNativeVideoExportRawFrame(): Promise<boolean> {
+		this.lastNativeExportError = null;
+
+		if (typeof window === "undefined" || !window.electronAPI?.nativeVideoExportStart) {
+			this.lastNativeExportError = `${NATIVE_EXPORT_ENGINE_NAME} export is not available in this build.`;
+			return false;
+		}
+
+		if (this.config.width % 2 !== 0 || this.config.height % 2 !== 0) {
+			this.lastNativeExportError = `${NATIVE_EXPORT_ENGINE_NAME} export requires even output dimensions (${this.config.width}x${this.config.height}).`;
+			return false;
+		}
+
+		const videoCodec = this.config.exportVideoCodec ?? "h264";
+		const encoderPreference = this.config.exportEncoderPreference ?? "auto";
+		const result = await window.electronAPI.nativeVideoExportStart({
+			width: this.config.width,
+			height: this.config.height,
+			frameRate: this.config.frameRate,
+			bitrate: this.config.bitrate,
+			encodingMode: this.config.encodingMode ?? "balanced",
+			inputMode: "rawvideo",
+			videoCodec,
+			encoderPreference,
+		});
+
+		if (!result.success || !result.sessionId) {
+			this.lastNativeExportError =
+				result.error ??
+				`${NATIVE_EXPORT_ENGINE_NAME} ${videoCodec.toUpperCase()} raw-frame export could not be started on this system.`;
+			console.warn(
+				`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} raw-frame export unavailable`,
+				result.error,
+			);
+			return false;
+		}
+
+		this.nativeExportSessionId = result.sessionId;
+		this.nativeRawFrameMode = true;
+		this.lastNativeExportError = null;
+		await this.negotiateNativeRawFrameTransport(result.sessionId);
+		this.encodeBackend = "ffmpeg";
+		this.encoderName =
+			result.encoderName ??
+			(encoderPreference === "hardware"
+				? `${videoCodec.toUpperCase()} hardware`
+				: encoderPreference === "cpu"
+					? videoCodec === "hevc"
+						? "libx265"
+						: "libx264"
+					: videoCodec === "hevc"
+						? "hevc-auto"
+						: "h264-auto");
+		this.pendingNativeWriteChunks = [];
+		this.pendingNativeWriteBytes = 0;
+
+		console.log(`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} raw-frame session ready`, {
+			sessionId: result.sessionId,
+			videoCodec,
+			encoderPreference,
+			encoderName: this.encoderName,
+		});
+		return true;
+	}
+
+	private async negotiateNativeRawFrameTransport(sessionId: string): Promise<void> {
+		this.nativeTransportMode = "cloned-ipc";
+		this.nativeTransportFallbackReason = null;
+		if (
+			typeof window === "undefined" ||
+			typeof window.electronAPI?.nativeVideoExportOpenFrameChannel !== "function" ||
+			typeof window.electronAPI?.nativeVideoExportWriteFrameViaChannel !== "function"
+		) {
+			this.nativeTransportFallbackReason =
+				"Transferable native frame channel API is unavailable";
+			return;
+		}
+
+		try {
+			const result = await window.electronAPI.nativeVideoExportOpenFrameChannel(sessionId);
+			if (result.success) {
+				this.nativeTransportMode = "transferable-stream";
+				return;
+			}
+			this.nativeTransportFallbackReason =
+				result.error ?? "Transferable native frame channel negotiation failed";
+		} catch (error) {
+			this.nativeTransportFallbackReason =
+				error instanceof Error ? error.message : String(error);
+		}
+		console.warn(
+			`[VideoExporter] Falling back to cloned native raw-frame IPC transport: ${this.nativeTransportFallbackReason}`,
+		);
+	}
+
+	private configureNativeRawFrameBackpressure(): void {
+		if (!this.nativeRawFrameMode || !this.backpressureProfile) {
+			return;
+		}
+
+		const rawLimits = getNativeRawFrameBackpressureLimits({
+			width: this.config.width,
+			height: this.config.height,
+			profile: this.backpressureProfile,
+			transportMode: this.nativeTransportMode ?? "cloned-ipc",
+			maxInFlightFrames: this.config.maxInFlightNativeRawFrames,
+			maxInFlightBytes: this.config.maxInFlightNativeRawBytes,
+		});
+		this.maxNativeRawWriteFrames = rawLimits.maxInFlightFrames;
+		this.maxNativeRawWriteBytes = rawLimits.maxInFlightBytes;
+		this.nativeRawBackpressure = new NativeRawFrameBackpressureQueue(
+			rawLimits.maxInFlightBytes,
+			rawLimits.maxInFlightFrames,
+		);
+	}
+
+	private recordNativeWriteError(error: Error): void {
+		if (!this.nativeWriteError) {
+			this.nativeWriteError = error;
+		}
+		if (!this.cancelled && !this.nativeEncoderError) {
+			this.nativeEncoderError = error;
+		}
+		this.nativeRawBackpressure?.fail(error);
+		this.notifyEncodeCapacityAvailable();
+	}
+
 	private async encodeRenderedFrameNative(
 		timestamp: number,
 		frameDuration: number,
 		frameIndex: number,
 	): Promise<void> {
+		if (this.nativeRawFrameMode) {
+			await this.encodeRenderedFrameNativeRaw(timestamp);
+			return;
+		}
 		if (!this.nativeH264Encoder || !this.nativeExportSessionId) {
 			if (this.cancelled) return;
 			throw new Error(`${NATIVE_EXPORT_ENGINE_NAME} export session is not active`);
@@ -2731,6 +6225,87 @@ export class ModernVideoExporter {
 		});
 		this.nativeH264Encoder.encode(frame, { keyFrame: frameIndex % 300 === 0 });
 		frame.close();
+	}
+
+	private async encodeRenderedFrameNativeRaw(timestamp: number): Promise<void> {
+		const sessionId = this.nativeExportSessionId;
+		if (!sessionId) {
+			if (this.cancelled) return;
+			throw new Error(`${NATIVE_EXPORT_ENGINE_NAME} export session is not active`);
+		}
+		if (this.nativeEncoderError) throw this.nativeEncoderError;
+		const frameByteSize = getNativeRawFrameByteSize(this.config.width, this.config.height);
+		const rawBackpressure = this.nativeRawBackpressure;
+		if (!rawBackpressure) {
+			throw new Error(
+				`${NATIVE_EXPORT_ENGINE_NAME} raw-frame backpressure is not configured`,
+			);
+		}
+		try {
+			await rawBackpressure.waitForCapacity(frameByteSize);
+		} catch (error) {
+			if (this.cancelled) return;
+			throw error;
+		}
+		if (this.cancelled) return;
+
+		const canvas = this.renderer!.getCanvas();
+		const captureStartedAt = this.getNowMs();
+		// Flip rows vertically: buildNativeVideoExportArgs applies an FFmpeg vflip for
+		// rawvideo input, so we counter-rotate before writing the RGBA frame.
+		const rawFrame = await captureCanvasFrameForNativeExport(canvas, timestamp, true);
+		this.nativeCaptureTimeMs += this.getNowMs() - captureStartedAt;
+		if (this.cancelled) return;
+
+		rawBackpressure.reserve(rawFrame.byteLength);
+		this.peakNativeWriteInFlightBytes = Math.max(
+			this.peakNativeWriteInFlightBytes,
+			rawBackpressure.currentInFlightBytes,
+		);
+		const writeStartedAt = this.getNowMs();
+		let latencyRecorded = false;
+		const recordAckLatency = () => {
+			if (latencyRecorded) {
+				return;
+			}
+			latencyRecorded = true;
+			const latencyMs = Math.max(0, this.getNowMs() - writeStartedAt);
+			this.nativeWriteTimeMs += latencyMs;
+			this.nativeWriteAckTimeMs += latencyMs;
+			this.nativeFrameTransportTimeMs += latencyMs;
+		};
+		let writeRequest: Promise<{ success: boolean; error?: string }>;
+		try {
+			writeRequest =
+				this.nativeTransportMode === "transferable-stream"
+					? window.electronAPI.nativeVideoExportWriteFrameViaChannel(sessionId, rawFrame)
+					: window.electronAPI.nativeVideoExportWriteFrame(sessionId, rawFrame);
+		} catch (error) {
+			recordAckLatency();
+			rawBackpressure.release(rawFrame.byteLength);
+			const resolvedError = error instanceof Error ? error : new Error(String(error));
+			this.recordNativeWriteError(resolvedError);
+			throw resolvedError;
+		}
+		this.nativeRawBytesSubmitted += rawFrame.byteLength;
+		this.nativeRawFramesSubmitted += 1;
+
+		const writePromise = writeRequest
+			.then((writeResult) => {
+				recordAckLatency();
+				if (!writeResult.success) {
+					throw new Error(
+						writeResult.error ||
+							"Failed to write a raw video frame to the native encoder",
+					);
+				}
+			})
+			.catch((error: unknown) => {
+				recordAckLatency();
+				const resolvedError = error instanceof Error ? error : new Error(String(error));
+				this.recordNativeWriteError(resolvedError);
+			});
+		this.trackNativeRawWritePromise(writePromise, rawFrame.byteLength);
 	}
 
 	private async finishNativeVideoExport(audioPlan: NativeAudioPlan): Promise<ExportResult> {
@@ -3051,9 +6626,21 @@ export class ModernVideoExporter {
 		const chunks = this.pendingNativeWriteChunks;
 		this.pendingNativeWriteChunks = [];
 		this.pendingNativeWriteBytes = 0;
+		const writeStartedAt = this.getNowMs();
+		let latencyRecorded = false;
+		const recordAckLatency = () => {
+			if (latencyRecorded) {
+				return;
+			}
+			latencyRecorded = true;
+			const latencyMs = Math.max(0, this.getNowMs() - writeStartedAt);
+			this.nativeWriteTimeMs += latencyMs;
+			this.nativeWriteAckTimeMs += latencyMs;
+		};
 		const writePromise = window.electronAPI
 			.nativeVideoExportWriteFrames(sessionId, chunks)
 			.then((writeResult) => {
+				recordAckLatency();
 				if (!writeResult.success && !this.cancelled) {
 					throw new Error(
 						writeResult.error || "Failed to write H.264 chunks to native encoder",
@@ -3061,15 +6648,9 @@ export class ModernVideoExporter {
 				}
 			})
 			.catch((error) => {
-				if (!this.cancelled) {
-					const resolvedError = error instanceof Error ? error : new Error(String(error));
-					if (!this.nativeEncoderError) {
-						this.nativeEncoderError = resolvedError;
-					}
-					if (!this.nativeWriteError) {
-						this.nativeWriteError = resolvedError;
-					}
-				}
+				recordAckLatency();
+				const resolvedError = error instanceof Error ? error : new Error(String(error));
+				this.recordNativeWriteError(resolvedError);
 				throw error;
 			});
 
@@ -3101,7 +6682,42 @@ export class ModernVideoExporter {
 		phase: ExportProgress["phase"] = "extracting",
 		renderProgress?: number,
 		audioProgress?: number,
+		preparingSubstate?: string,
+		preparingSubstateLabel?: string,
 	) {
+		// Suppress repeated identical "preparing" start signals (0 frames, no render
+		// or audio progress, same prepare substage) during a single export so the
+		// renderer/UI is not spammed with identical progress resets. The first
+		// signal per total frame count and every distinct prepare substage are still
+		// delivered; progress semantics are unchanged.
+		const isPlainPreparingSignal =
+			phase === "preparing" &&
+			currentFrame === 0 &&
+			renderProgress === undefined &&
+			audioProgress === undefined;
+		const isIdenticalPreparingSignal =
+			isPlainPreparingSignal &&
+			this.lastPreparingTotalFrames === totalFrames &&
+			this.lastPreparingSubstate === (preparingSubstate ?? null) &&
+			this.lastPreparingSubstateLabel === (preparingSubstateLabel ?? null);
+		if (isIdenticalPreparingSignal) {
+			return;
+		}
+		if (isPlainPreparingSignal) {
+			this.lastPreparingTotalFrames = totalFrames;
+			this.lastPreparingSubstate = preparingSubstate ?? null;
+			this.lastPreparingSubstateLabel = preparingSubstateLabel ?? null;
+		}
+		if (phase !== "preparing") {
+			// A non-preparing progress event ends the current preparing phase; reset
+			// the watermarks so a later preparing phase that reuses the same total
+			// frame count or substage still delivers its first signal instead of
+			// being suppressed against a stale watermark.
+			this.lastPreparingTotalFrames = null;
+			this.lastPreparingSubstate = null;
+			this.lastPreparingSubstateLabel = null;
+		}
+
 		const nowMs = this.getNowMs();
 		const elapsedSeconds = Math.max((nowMs - this.exportStartTimeMs) / 1000, 0.001);
 		const averageRenderFps = currentFrame / elapsedSeconds;
@@ -3149,6 +6765,7 @@ export class ModernVideoExporter {
 					averageRenderFps: Number(averageRenderFps.toFixed(1)),
 					sampleRenderFps: Number(sampleRenderFps.toFixed(1)),
 					displayedRenderFps: Number(displayedRenderFps.toFixed(1)),
+					fpsSource: this.nativeStaticLayoutFpsSource ?? undefined,
 					renderBackend: this.renderBackend ?? undefined,
 					encodeBackend: this.encodeBackend ?? undefined,
 					encoderName: this.encoderName ?? undefined,
@@ -3156,7 +6773,8 @@ export class ModernVideoExporter {
 					pendingEncodeQueue: this.encodeQueue,
 					encodeBacklog: this.getCurrentEncodeBacklog(),
 					peakEncodeQueueSize: this.peakEncodeQueueSize,
-					nativeWriteInFlight: this.nativeWritePromises.size,
+					nativeWriteInFlight:
+						this.nativeWritePromises.size + this.nativeRawWritePromises.size,
 					peakNativeWriteInFlight: this.peakNativeWriteInFlight,
 					averageFrameCallbackMs: Number(
 						(this.frameCallbackTimeMs / safeFrameCount).toFixed(3),
@@ -3189,6 +6807,7 @@ export class ModernVideoExporter {
 				percentage,
 				estimatedTimeRemaining,
 				renderFps: displayedRenderFps,
+				fpsSource: this.nativeStaticLayoutFpsSource ?? undefined,
 				renderBackend: this.renderBackend ?? undefined,
 				encodeBackend: this.encodeBackend ?? undefined,
 				encoderName: this.encoderName ?? undefined,
@@ -3200,6 +6819,8 @@ export class ModernVideoExporter {
 				phase,
 				renderProgress: safeRenderProgress,
 				audioProgress,
+				preparingSubstate,
+				preparingSubstateLabel,
 			});
 		}
 	}
@@ -3224,6 +6845,21 @@ export class ModernVideoExporter {
 			peakNativeWriteInFlight: this.peakNativeWriteInFlight,
 			nativeCaptureMs: this.nativeCaptureTimeMs,
 			nativeWriteMs: this.nativeWriteTimeMs,
+			nativeWriteAckMs: this.nativeWriteAckTimeMs,
+			nativeRawBytesSubmitted:
+				this.nativeRawFramesSubmitted > 0 ? this.nativeRawBytesSubmitted : undefined,
+			nativeTransportMode: this.nativeTransportMode ?? undefined,
+			nativeTransportFallbackReason: this.nativeTransportFallbackReason ?? undefined,
+			averageNativeFrameTransportMs:
+				this.nativeRawFramesSubmitted > 0
+					? this.nativeFrameTransportTimeMs / this.nativeRawFramesSubmitted
+					: undefined,
+			averageNativeWriteAckMs:
+				this.nativeRawFramesSubmitted > 0
+					? this.nativeWriteAckTimeMs / this.nativeRawFramesSubmitted
+					: undefined,
+			peakNativeWriteInFlightBytes:
+				this.nativeRawFramesSubmitted > 0 ? this.peakNativeWriteInFlightBytes : undefined,
 			finalizationMs: this.finalizationTimeMs,
 			frameCount: this.processedFrameCount,
 			renderBackend: this.renderBackend ?? undefined,
@@ -3262,12 +6898,36 @@ export class ModernVideoExporter {
 		this.nativeWritePromises.add(writePromise);
 		this.peakNativeWriteInFlight = Math.max(
 			this.peakNativeWriteInFlight,
-			this.nativeWritePromises.size,
+			this.nativeWritePromises.size + this.nativeRawWritePromises.size,
 		);
 
-		void writePromise.finally(() => {
-			this.nativeWritePromises.delete(writePromise);
-		});
+		void writePromise.then(
+			() => this.nativeWritePromises.delete(writePromise),
+			() => this.nativeWritePromises.delete(writePromise),
+		);
+	}
+
+	private trackNativeRawWritePromise(writePromise: Promise<void>, frameByteSize: number): void {
+		const rawBackpressure = this.nativeRawBackpressure;
+		if (!rawBackpressure) {
+			return;
+		}
+		this.nativeRawWritePromises.add(writePromise);
+		this.peakNativeWriteInFlight = Math.max(
+			this.peakNativeWriteInFlight,
+			this.nativeWritePromises.size + this.nativeRawWritePromises.size,
+		);
+		this.peakNativeWriteInFlightBytes = Math.max(
+			this.peakNativeWriteInFlightBytes,
+			rawBackpressure.currentInFlightBytes,
+		);
+
+		const settle = () => {
+			this.nativeRawWritePromises.delete(writePromise);
+			rawBackpressure.release(frameByteSize);
+			this.notifyEncodeCapacityAvailable();
+		};
+		void writePromise.then(settle, settle);
 	}
 
 	private async awaitOldestNativeWrite(): Promise<void> {
@@ -3283,9 +6943,25 @@ export class ModernVideoExporter {
 		}
 	}
 
+	private async awaitOldestNativeRawWrite(): Promise<void> {
+		const oldestWritePromise = this.nativeRawWritePromises.values().next().value;
+		if (!oldestWritePromise) {
+			return;
+		}
+
+		await oldestWritePromise;
+		if (this.nativeWriteError) {
+			throw this.nativeWriteError;
+		}
+	}
+
 	private async awaitPendingNativeWrites(): Promise<void> {
-		while (this.nativeWritePromises.size > 0) {
-			await this.awaitOldestNativeWrite();
+		while (this.nativeWritePromises.size > 0 || this.nativeRawWritePromises.size > 0) {
+			if (this.nativeWritePromises.size > 0) {
+				await this.awaitOldestNativeWrite();
+			} else {
+				await this.awaitOldestNativeRawWrite();
+			}
 		}
 
 		if (this.nativeWriteError) {
@@ -3502,6 +7178,8 @@ export class ModernVideoExporter {
 
 	cancel(): void {
 		this.cancelled = true;
+		this.nativeRawBackpressure?.fail(new Error("Native raw-frame export was cancelled"));
+		this.notifyEncodeCapacityAvailable();
 		if (this.streamingDecoder) {
 			this.streamingDecoder.cancel();
 		}
@@ -3520,6 +7198,17 @@ export class ModernVideoExporter {
 		this.nativeStaticLayoutSessionId = null;
 		if (nativeStaticLayoutSessionId && typeof window !== "undefined") {
 			void window.electronAPI?.nativeStaticLayoutExportCancel?.(nativeStaticLayoutSessionId);
+		}
+
+		const deferredEditedAudioStreamId = this.deferredEditedAudioStreamId;
+		this.deferredEditedAudioStreamId = null;
+		if (deferredEditedAudioStreamId && typeof window !== "undefined") {
+			// Abort the renderer-streamed audio payload so main's bounded mux wait
+			// cannot hang on a cancelled export; the audio render itself is stopped
+			// via audioProcessor.cancel() above.
+			void window.electronAPI?.closeExportStream?.(deferredEditedAudioStreamId, {
+				abort: true,
+			});
 		}
 	}
 
@@ -3561,6 +7250,13 @@ export class ModernVideoExporter {
 		if (nativeExportSessionId && typeof window !== "undefined") {
 			void window.electronAPI?.nativeVideoExportCancel?.(nativeExportSessionId);
 		}
+		const deferredEditedAudioStreamId = this.deferredEditedAudioStreamId;
+		this.deferredEditedAudioStreamId = null;
+		if (deferredEditedAudioStreamId && typeof window !== "undefined") {
+			void window.electronAPI?.closeExportStream?.(deferredEditedAudioStreamId, {
+				abort: true,
+			});
+		}
 		this.encodeQueue = 0;
 		this.pendingMuxing = Promise.resolve();
 		this.chunkCount = 0;
@@ -3580,6 +7276,11 @@ export class ModernVideoExporter {
 		this.peakNativeWriteInFlight = 0;
 		this.nativeCaptureTimeMs = 0;
 		this.nativeWriteTimeMs = 0;
+		this.nativeWriteAckTimeMs = 0;
+		this.nativeFrameTransportTimeMs = 0;
+		this.nativeRawBytesSubmitted = 0;
+		this.nativeRawFramesSubmitted = 0;
+		this.peakNativeWriteInFlightBytes = 0;
 		this.finalizationTimeMs = 0;
 		this.finalizationStageMs = {};
 		this.effectiveDurationSec = 0;
@@ -3591,7 +7292,14 @@ export class ModernVideoExporter {
 		this.lastProgressSampleTimeMs = 0;
 		this.lastProgressSampleFrame = 0;
 		this.displayedRenderFps = 0;
+		this.lastPreparingTotalFrames = null;
 		this.nativeWritePromises = new Set();
+		this.nativeRawWritePromises = new Set();
+		this.nativeRawBackpressure = null;
+		this.maxNativeRawWriteFrames = 1;
+		this.maxNativeRawWriteBytes = 0;
+		this.nativeTransportMode = null;
+		this.nativeTransportFallbackReason = null;
 		this.nativeWriteError = null;
 		this.pendingNativeWriteChunks = [];
 		this.pendingNativeWriteBytes = 0;
@@ -3604,7 +7312,9 @@ export class ModernVideoExporter {
 		this.encodeBackend = null;
 		this.encoderName = null;
 		this.nativeStaticLayoutAverageFps = null;
+		this.nativeStaticLayoutFpsSource = null;
 		this.backpressureProfile = null;
+		this.nativeRawFrameMode = false;
 		this.lastNativeExportError = null;
 	}
 }

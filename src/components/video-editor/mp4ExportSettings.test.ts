@@ -10,6 +10,10 @@ const baseOptions = {
 	exportQuality: "high" as const,
 	exportEncodingMode: "balanced" as const,
 	mp4FrameRate: 30 as const,
+	exportVideoCodec: "h264" as const,
+	exportEncoderPreference: "auto" as const,
+	exportBitrateMode: "auto" as const,
+	exportBitrateMbps: 20,
 };
 
 describe("resolveMp4ExportSettings", () => {
@@ -18,6 +22,10 @@ describe("resolveMp4ExportSettings", () => {
 			quality: "high",
 			encodingMode: "balanced",
 			selectedMp4FrameRate: 30,
+			exportVideoCodec: "h264",
+			exportEncoderPreference: "auto",
+			exportBitrateMode: "auto",
+			exportBitrateMbps: 20,
 		});
 	});
 
@@ -29,12 +37,20 @@ describe("resolveMp4ExportSettings", () => {
 					quality: "source",
 					encodingMode: "quality",
 					mp4FrameRate: 60,
+					exportVideoCodec: "hevc",
+					exportEncoderPreference: "cpu",
+					exportBitrateMode: "custom",
+					exportBitrateMbps: 35,
 				},
 			}),
 		).toEqual({
 			quality: "source",
 			encodingMode: "quality",
 			selectedMp4FrameRate: 60,
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "cpu",
+			exportBitrateMode: "custom",
+			exportBitrateMbps: 35,
 		});
 	});
 
@@ -47,18 +63,40 @@ describe("resolveMp4ExportSettings", () => {
 					quality: "medium",
 					encodingMode: "fast",
 					fps: 24,
+					videoCodec: "hevc",
+					encoderPreference: "hardware",
+					bitrateMode: "custom",
+					bitrateMbps: 25,
 				},
 				settings: {
 					quality: "source",
-					encodingMode: "quality",
-					mp4FrameRate: 60,
 				},
 			}),
 		).toEqual({
 			quality: "medium",
 			encodingMode: "fast",
 			selectedMp4FrameRate: 24,
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "hardware",
+			exportBitrateMode: "custom",
+			exportBitrateMbps: 25,
 		});
+	});
+
+	it("clamps custom bitrate to the 1-200 Mbps safety range", () => {
+		expect(
+			resolveMp4ExportSettings({
+				...baseOptions,
+				settings: { exportBitrateMode: "custom" },
+				exportBitrateMbps: 500,
+			}).exportBitrateMbps,
+		).toBe(200);
+		expect(
+			resolveMp4ExportSettings({
+				...baseOptions,
+				exportBitrateMbps: -3,
+			}).exportBitrateMbps,
+		).toBe(1);
 	});
 
 	it("falls back from incomplete smoke settings to menu settings and editor defaults", () => {
@@ -77,6 +115,10 @@ describe("resolveMp4ExportSettings", () => {
 			quality: "good",
 			encodingMode: "quality",
 			selectedMp4FrameRate: 30,
+			exportVideoCodec: "h264",
+			exportEncoderPreference: "auto",
+			exportBitrateMode: "auto",
+			exportBitrateMbps: 20,
 		});
 	});
 });

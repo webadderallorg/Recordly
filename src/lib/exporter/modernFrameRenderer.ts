@@ -93,6 +93,16 @@ import {
 	renderAnnotations,
 	renderAnnotationToCanvas,
 } from "./annotationRenderer";
+import {
+	buildCursorSpriteExpansionForConfig,
+	type CursorRect,
+	type CursorSpriteCaptureResult,
+	CursorSpriteCapturer,
+	type CursorSpriteExpansion,
+	type CursorSpriteRenderer,
+	type CursorSpriteStripData,
+	isValidCursorBounds,
+} from "./cursorSpriteOverlay";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import { resolveMediaElementSource } from "./localMediaSource";
 import {
@@ -166,6 +176,13 @@ interface FrameRenderConfig {
 	zoomClassicMode?: boolean;
 	frame?: string | null;
 	nativeReadbackMode?: "pixels" | "canvas";
+	/**
+	 * When true the cursor is owned by the native CUDA cursor atlas path and
+	 * must not be baked into the transparent overlay sidecar. Set only for the
+	 * native static-layout overlay renderer; the full render path never sets it,
+	 * so cursor rendering there is unchanged.
+	 */
+	excludeCursorOverlay?: boolean;
 }
 
 interface AnimationState {
@@ -466,6 +483,13 @@ export class FrameRenderer {
 	private layoutCache: LayoutCache | null = null;
 	private currentVideoTime = 0;
 	private cursorOverlay: PixiCursorOverlay | null = null;
+	private cursorSpriteCapturer: CursorSpriteCapturer | null = null;
+	private lastCursorSpriteBounds: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	} | null = null;
 	private lastSyncedWebcamTime: number | null = null;
 	private webcamRenderMode: "hidden" | "live" | "cached" = "hidden";
 	private webcamLayoutCache: WebcamLayoutCache | null = null;
@@ -594,7 +618,7 @@ export class FrameRenderer {
 		this.webcamContainer.addChild(this.webcamMaskGraphics);
 		this.webcamContainer.mask = this.webcamMaskGraphics;
 
-		if (cursorOverlayEnabled) {
+		if (cursorOverlayEnabled && this.config.excludeCursorOverlay !== true) {
 			this.cursorOverlay = new PixiCursorOverlay({
 				dotRadius: DEFAULT_CURSOR_CONFIG.dotRadius * (this.config.cursorSize ?? 1.4),
 				style: this.config.cursorStyle ?? "tahoe",
@@ -3315,6 +3339,102 @@ export class FrameRenderer {
 		);
 	}
 
+	/** Render only transparent UI/effect layers for native CUDA composition. */
+	async renderOverlayFrame(
+		timestamp: number,
+		cursorTimestamp = timestamp,
+		backgroundTimelineTimestamp = timestamp,
+		skipFullCanvasRender = false,
+	): Promise<void> {
+		if (
+			!this.app ||
+			!this.cameraContainer ||
+			!this.videoEffectsContainer ||
+			!this.frameContainer ||
+			!this.cursorContainer ||
+			!this.annotationContainer ||
+			!this.overlayContainer ||
+			!this.captionContainer
+		) {
+			throw new Error("Overlay renderer is not initialized");
+		}
+		// The overlay renderer never stages source-video frames, so its layout
+		// cache is not populated by the video-sprite layout path. Build the stage
+		// mask/layout from the export config so cursor/caption/annotation/webcam
+		// positioning matches the native CUDA compositor's padded layout.
+		this.ensureOverlayLayoutCache();
+		if (!this.layoutCache) {
+			throw new Error("Overlay renderer layout is unavailable");
+		}
+
+		this.currentVideoTime = timestamp / 1_000_000;
+		const webcamTimeSeconds = Math.max(0, backgroundTimelineTimestamp / 1_000_000);
+		if (this.webcamForwardFrameSource || this.webcamVideoElement) {
+			await this.syncWebcamFrame(webcamTimeSeconds);
+		}
+
+		const timeMs = this.currentVideoTime * 1000;
+		const cursorTimeMs = cursorTimestamp / 1000;
+		if (this.cursorOverlay) {
+			this.cursorOverlay.update(
+				this.config.cursorTelemetry ?? [],
+				cursorTimeMs,
+				this.layoutCache.maskRect,
+				this.config.showCursor ?? true,
+				false,
+			);
+		}
+
+		this.updateAnimationState(timeMs);
+		applyZoomTransform({
+			cameraContainer: this.cameraContainer,
+			zoomBlurFilter: this.zoomBlurFilter,
+			motionBlurFilter: this.motionBlurFilter,
+			stageSize: this.layoutCache.stageSize,
+			baseMask: this.layoutCache.maskRect,
+			zoomScale: this.animationState.scale,
+			zoomProgress: this.animationState.progress,
+			focusX: this.animationState.focusX,
+			focusY: this.animationState.focusY,
+			isPlaying: true,
+			motionBlurAmount: 0,
+			motionBlurTuning: this.config.zoomMotionBlurTuning,
+			transformOverride: {
+				scale: this.animationState.appliedScale,
+				x: this.animationState.x,
+				y: this.animationState.y,
+			},
+			motionBlurState: this.motionBlurState,
+			frameTimeMs: timeMs,
+		});
+
+		this.updateAnnotationLayer(timeMs);
+		this.updateCaptionLayer(timeMs);
+		this.updateWebcamOverlay(webcamTimeSeconds);
+
+		if (this.backgroundContainer) {
+			this.backgroundContainer.visible = false;
+		}
+		this.videoEffectsContainer.visible = false;
+		this.frameContainer.visible = true;
+		this.cursorContainer.visible = true;
+		this.annotationContainer.visible = true;
+		this.overlayContainer.visible = true;
+		this.captionContainer.visible = true;
+		// The full-canvas render is the dominant per-frame cost in the overlay
+		// preparation loop (4K GPU render plus filters). The cursor-sprite path
+		// only needs the cursor container rendered into its bounded ROI target
+		// (see captureCursorSpriteFrame), so callers can skip the full-canvas
+		// render while keeping every state update (zoom transform, sway spring,
+		// motion-blur velocity, click rings) identical. getBounds()/the ROI render
+		// recalculate transforms, so skipping the full render is pixel-exact for
+		// the sprite capture.
+		if (!skipFullCanvasRender) {
+			this.app.render();
+			this.outputCanvasOverride = null;
+		}
+	}
+
 	private compositeExtensions(
 		timeMs: number,
 		cursorTimeMs: number,
@@ -3526,18 +3646,19 @@ export class FrameRenderer {
 		}
 	}
 
-	private updateLayout(): void {
-		if (!this.app || !this.videoSprite || !this.videoMaskGraphics) return;
-
-		const {
-			width,
-			height,
-			cropRegion,
-			borderRadius = 0,
-			padding = 0,
-			videoWidth,
-			videoHeight,
-		} = this.config;
+	private buildLayoutCacheFromConfig(): LayoutCache | null {
+		const { width, height, cropRegion, padding = 0, videoWidth, videoHeight } = this.config;
+		if (
+			!Number.isFinite(width) ||
+			!Number.isFinite(height) ||
+			!cropRegion ||
+			!Number.isFinite(videoWidth) ||
+			!Number.isFinite(videoHeight) ||
+			videoWidth <= 0 ||
+			videoHeight <= 0
+		) {
+			return null;
+		}
 
 		const layout = computePaddedLayout({
 			width,
@@ -3547,6 +3668,47 @@ export class FrameRenderer {
 			cropRegion,
 			videoWidth,
 			videoHeight,
+		});
+
+		return {
+			stageSize: { width, height },
+			videoSize: {
+				width: videoWidth * cropRegion.width,
+				height: videoHeight * cropRegion.height,
+			},
+			baseScale: layout.scale,
+			baseOffset: { x: layout.spriteX, y: layout.spriteY },
+			maskRect: {
+				x: layout.centerOffsetX,
+				y: layout.centerOffsetY,
+				width: layout.croppedDisplayWidth,
+				height: layout.croppedDisplayHeight,
+				sourceCrop: cropRegion,
+			},
+		};
+	}
+
+	private ensureOverlayLayoutCache(): void {
+		if (this.layoutCache) {
+			return;
+		}
+		this.layoutCache = this.buildLayoutCacheFromConfig();
+		this.updateFrameLayout();
+	}
+
+	private updateLayout(): void {
+		if (!this.app || !this.videoSprite || !this.videoMaskGraphics) return;
+
+		const { width, height, cropRegion, borderRadius = 0, padding = 0 } = this.config;
+
+		const layout = computePaddedLayout({
+			width,
+			height,
+			padding,
+			frameInsets: this.frameInsets,
+			cropRegion,
+			videoWidth: this.config.videoWidth,
+			videoHeight: this.config.videoHeight,
 		});
 
 		this.videoSprite.scale.set(layout.scale);
@@ -3572,22 +3734,7 @@ export class FrameRenderer {
 			maskRadius: scaledBorderRadius,
 		});
 
-		this.layoutCache = {
-			stageSize: { width, height },
-			videoSize: {
-				width: videoWidth * cropRegion.width,
-				height: videoHeight * cropRegion.height,
-			},
-			baseScale: layout.scale,
-			baseOffset: { x: layout.spriteX, y: layout.spriteY },
-			maskRect: {
-				x: layout.centerOffsetX,
-				y: layout.centerOffsetY,
-				width: layout.croppedDisplayWidth,
-				height: layout.croppedDisplayHeight,
-				sourceCrop: cropRegion,
-			},
-		};
+		this.layoutCache = this.buildLayoutCacheFromConfig();
 
 		this.updateFrameLayout();
 	}
@@ -3856,6 +4003,149 @@ export class FrameRenderer {
 		return this.rendererBackend;
 	}
 
+	private buildCursorSpriteExpansion(): CursorSpriteExpansion {
+		return buildCursorSpriteExpansionForConfig({
+			cursorSize: this.config.cursorSize,
+			cursorMotionBlur: this.config.cursorMotionBlur,
+			cursorSway: this.config.cursorSway,
+			cursorClickEffect: this.config.cursorClickEffect,
+		});
+	}
+
+	/**
+	 * Starts a cursor-sprite capture session. Returns false when the capture
+	 * cannot be initialized (no overlay renderer / cursor container), in which
+	 * case the caller must keep the existing full-canvas path. The existing
+	 * full-canvas capture path is untouched.
+	 */
+	startCursorSpriteCapture(maxSpriteWidth?: number, maxSpriteHeight?: number): boolean {
+		if (this.cursorSpriteCapturer) {
+			this.cursorSpriteCapturer.destroy();
+			this.cursorSpriteCapturer = null;
+		}
+		this.lastCursorSpriteBounds = null;
+		if (!this.app || !this.cursorContainer) {
+			return false;
+		}
+		const renderer = this.app.renderer as unknown as CursorSpriteRenderer;
+		this.cursorSpriteCapturer = new CursorSpriteCapturer({
+			renderer,
+			cursorContainer: this.cursorContainer,
+			outputWidth: this.config.width,
+			outputHeight: this.config.height,
+			expansion: this.buildCursorSpriteExpansion(),
+			...(Number.isFinite(maxSpriteWidth) && maxSpriteWidth! > 0 ? { maxSpriteWidth } : {}),
+			...(Number.isFinite(maxSpriteHeight) && maxSpriteHeight! > 0
+				? { maxSpriteHeight }
+				: {}),
+		});
+		return true;
+	}
+
+	/**
+	 * Captures one cursor-sprite frame. Must be called after the cursor overlay
+	 * has been updated (e.g. after `renderOverlayFrame`) so the ROI reflects the
+	 * cursor container's actual bounds. Only the cursor container is rendered
+	 * into a bounded target and read back. `roiOverride` supplies a precomputed
+	 * clamped ROI (streaming sprite path) that is used verbatim instead of the
+	 * measured bounds; the caller must render with `renderOverlayFrame` so the
+	 * cursor state is current, but the ROI itself no longer depends on
+	 * `getBounds()`.
+	 */
+	captureCursorSpriteFrame(roiOverride?: CursorRect): CursorSpriteCaptureResult {
+		if (!this.cursorSpriteCapturer || !this.cursorContainer) {
+			return {
+				captured: false,
+				unavailableReason: "cursor sprite capture is not initialized",
+			};
+		}
+
+		if (roiOverride) {
+			const contentSignature =
+				this.cursorOverlay &&
+				typeof this.cursorOverlay.getSpriteStateSignature === "function"
+					? this.cursorOverlay.getSpriteStateSignature()
+					: null;
+			return this.cursorSpriteCapturer.capture(roiOverride, contentSignature, roiOverride);
+		}
+
+		const overlayVisible = this.cursorOverlay
+			? this.cursorOverlay.container.visible
+			: this.cursorContainer.visible;
+		const contentSignature =
+			this.cursorOverlay && typeof this.cursorOverlay.getSpriteStateSignature === "function"
+				? this.cursorOverlay.getSpriteStateSignature()
+				: null;
+
+		let bounds: { x: number; y: number; width: number; height: number };
+		if (overlayVisible) {
+			const measured = this.cursorContainer.getBounds();
+			const candidate = {
+				x: measured.x,
+				y: measured.y,
+				width: measured.width,
+				height: measured.height,
+			};
+			if (isValidCursorBounds(candidate)) {
+				bounds = candidate;
+				this.lastCursorSpriteBounds = candidate;
+			} else if (this.lastCursorSpriteBounds) {
+				bounds = this.lastCursorSpriteBounds;
+			} else {
+				bounds = this.defaultCursorSpriteBounds();
+			}
+		} else if (this.lastCursorSpriteBounds) {
+			bounds = this.lastCursorSpriteBounds;
+		} else {
+			bounds = this.defaultCursorSpriteBounds();
+		}
+
+		return this.cursorSpriteCapturer.capture(bounds, contentSignature);
+	}
+
+	private defaultCursorSpriteBounds(): {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	} {
+		return {
+			x: Math.round(this.config.width / 2),
+			y: Math.round(this.config.height / 2),
+			width: 1,
+			height: 1,
+		};
+	}
+
+	/** Finalizes and releases the cursor-sprite session, returning the strip. */
+	finishCursorSpriteCapture(): CursorSpriteStripData | null {
+		if (!this.cursorSpriteCapturer) {
+			return null;
+		}
+		const data = this.cursorSpriteCapturer.finish();
+		this.cursorSpriteCapturer.destroy();
+		this.cursorSpriteCapturer = null;
+		this.lastCursorSpriteBounds = null;
+		return data;
+	}
+
+	/**
+	 * The most recently captured sprite frame's raw RGBA buffer (fixed strip
+	 * size in the streaming path), or null before the first capture.
+	 */
+	getLastCursorSpriteFrameBuffer(): Uint8Array | null {
+		return this.cursorSpriteCapturer?.lastCapturedFrameData ?? null;
+	}
+
+	/** Cancels and releases the cursor-sprite session without emitting a strip. */
+	cancelCursorSpriteCapture(): void {
+		if (this.cursorSpriteCapturer) {
+			this.cursorSpriteCapturer.cancel();
+			this.cursorSpriteCapturer = null;
+		}
+		this.lastCursorSpriteBounds = null;
+	}
+
 	destroy(): void {
 		const texturesToDestroy = new Set<Texture>();
 		if (this.videoSprite?.texture) {
@@ -3891,6 +4181,7 @@ export class FrameRenderer {
 			this.cursorOverlay.destroy();
 			this.cursorOverlay = null;
 		}
+		this.cancelCursorSpriteCapture();
 
 		if (this.videoEffectsContainer) {
 			this.videoEffectsContainer.filters = null;

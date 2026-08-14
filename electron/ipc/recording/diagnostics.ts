@@ -8,7 +8,75 @@ import type { CompanionAudioCandidate, NativeCaptureDiagnostics } from "../types
 import { parseJsonWithByteOrderMark } from "../utils";
 
 const execFileAsync = promisify(execFile);
+const PROBE_CACHE_MAX_ENTRIES = 64;
 export const MIN_VALID_RECORDED_VIDEO_BYTES = 1024;
+
+/** Immutable metadata probe result cached against an unchanged file identity. */
+type MetadataCacheEntry<T> = {
+	realPath: string;
+	size: number;
+	mtimeMs: number;
+	value: T;
+};
+
+/** Identifies a file by realpath plus byte size and mtime so cached metadata
+ * is invalidated naturally the moment the underlying file changes. */
+type FileIdentity = {
+	realPath: string;
+	size: number;
+	mtimeMs: number;
+};
+
+async function getFileIdentity(filePath: string): Promise<FileIdentity | null> {
+	try {
+		const [realPath, stat] = await Promise.all([fs.realpath(filePath), fs.stat(filePath)]);
+		if (!stat.isFile()) {
+			return null;
+		}
+		return { realPath, size: stat.size, mtimeMs: stat.mtimeMs };
+	} catch {
+		// Missing or unreadable files are never cached so a later appearance is
+		// probed fresh.
+		return null;
+	}
+}
+
+async function withMetadataProbeCache<T>(
+	cache: Map<string, MetadataCacheEntry<T>>,
+	filePath: string,
+	compute: () => Promise<T>,
+): Promise<T> {
+	const identity = await getFileIdentity(filePath);
+	if (identity === null) {
+		return compute();
+	}
+
+	const existing = cache.get(identity.realPath);
+	if (existing && existing.size === identity.size && existing.mtimeMs === identity.mtimeMs) {
+		return existing.value;
+	}
+
+	const value = await compute();
+	if (cache.size >= PROBE_CACHE_MAX_ENTRIES) {
+		const oldestKey = cache.keys().next().value;
+		if (typeof oldestKey === "string") {
+			cache.delete(oldestKey);
+		}
+	}
+	cache.set(identity.realPath, {
+		realPath: identity.realPath,
+		size: identity.size,
+		mtimeMs: identity.mtimeMs,
+		value,
+	});
+	return value;
+}
+
+const mediaDurationProbeCache = new Map<string, MetadataCacheEntry<number>>();
+const videoStreamDurationProbeCache = new Map<
+	string,
+	MetadataCacheEntry<VideoStreamDurationProbe | null>
+>();
 export const RECORDING_AUDIO_MUX_MIN_TIMEOUT_MS = 5 * 60 * 1000;
 export const RECORDING_AUDIO_MUX_MAX_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
@@ -188,24 +256,30 @@ export function summarizeMicrophoneChunkTiming(
 	};
 }
 
-/** Probe the duration of a media file (in seconds) using the container header. */
+/** Probe the duration of a media file (in seconds) using the container header.
+ * Results for an unchanged file are cached in-process so repeated stop/mux/
+ * diagnostics call sites reuse the same spawn. */
 export async function probeMediaDurationSeconds(filePath: string): Promise<number> {
-	const start = Date.now();
-	const ffmpegPath = getFfmpegBinaryPath();
-	try {
-		await execFileAsync(ffmpegPath, ["-i", filePath, "-hide_banner"], { timeout: 5000 });
-	} catch (error) {
-		const stderr = (error as NodeJS.ErrnoException & { stderr?: string })?.stderr ?? "";
-		const duration = parseFfmpegDurationSeconds(stderr);
-		if (duration !== null) {
-			return duration;
+	return withMetadataProbeCache(mediaDurationProbeCache, filePath, async () => {
+		const start = Date.now();
+		const ffmpegPath = getFfmpegBinaryPath();
+		try {
+			await execFileAsync(ffmpegPath, ["-i", filePath, "-hide_banner"], {
+				timeout: 5000,
+			});
+		} catch (error) {
+			const stderr = (error as NodeJS.ErrnoException & { stderr?: string })?.stderr ?? "";
+			const duration = parseFfmpegDurationSeconds(stderr);
+			if (duration !== null) {
+				return duration;
+			}
+		} finally {
+			console.log(
+				`[PERF:MAIN] probeMediaDurationSeconds: COMPLETED in ${Date.now() - start}ms`,
+			);
 		}
-	} finally {
-		console.log(
-			`[PERF:MAIN] probeMediaDurationSeconds: COMPLETED in ${Date.now() - start}ms`,
-		);
-	}
-	return 0;
+		return 0;
+	});
 }
 
 function parsePositiveNumber(value: unknown) {
@@ -270,32 +344,34 @@ export function parseFfprobeVideoStreamDuration(output: string): VideoStreamDura
 export async function probeVideoStreamDuration(
 	filePath: string,
 ): Promise<VideoStreamDurationProbe | null> {
-	const start = Date.now();
-	try {
-		const result = await execFileAsync(
-			getFfprobeBinaryPath(),
-			[
-				"-v",
-				"error",
-				"-select_streams",
-				"v:0",
-				"-show_entries",
-				"stream=duration,nb_frames,nb_read_frames,avg_frame_rate,r_frame_rate",
-				"-of",
-				"json",
-				filePath,
-			],
-			{ timeout: 30000, maxBuffer: 2 * 1024 * 1024 },
-		);
-		const stdout = typeof result === "string" ? result : result.stdout;
-		return parseFfprobeVideoStreamDuration(stdout);
-	} catch {
-		return null;
-	} finally {
-		console.log(
-			`[PERF:MAIN] probeVideoStreamDuration: COMPLETED in ${Date.now() - start}ms`,
-		);
-	}
+	return withMetadataProbeCache(videoStreamDurationProbeCache, filePath, async () => {
+		const start = Date.now();
+		try {
+			const result = await execFileAsync(
+				getFfprobeBinaryPath(),
+				[
+					"-v",
+					"error",
+					"-select_streams",
+					"v:0",
+					"-show_entries",
+					"stream=duration,nb_frames,nb_read_frames,avg_frame_rate,r_frame_rate",
+					"-of",
+					"json",
+					filePath,
+				],
+				{ timeout: 30000, maxBuffer: 2 * 1024 * 1024 },
+			);
+			const stdout = typeof result === "string" ? result : result.stdout;
+			return parseFfprobeVideoStreamDuration(stdout);
+		} catch {
+			return null;
+		} finally {
+			console.log(
+				`[PERF:MAIN] probeVideoStreamDuration: COMPLETED in ${Date.now() - start}ms`,
+			);
+		}
+	});
 }
 
 export async function probeVideoStreamDurationSeconds(filePath: string): Promise<number> {
@@ -570,6 +646,128 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 	};
 }
 
+// ---- Recent successful video-validation identity (skip-authorization) ----
+// Distinct from the metadata/probe caches above. A narrow handoff token: a
+// successful validateRecordedVideo records a bounded, short-lived identity so
+// finalizeStoredVideo can skip a redundant revalidation ONLY when the file is
+// provably unchanged since that immediately preceding success. The fast path
+// is impossible to take after any mutation because the identity is keyed by
+// canonical realpath plus device/inode/size/mtime/ctime, is TTL-bound, and is
+// only written when a validation actually succeeds.
+export const VIDEO_VALIDATION_CACHE_MAX_ENTRIES = 16;
+export const VIDEO_VALIDATION_CACHE_MAX_AGE_MS = 60_000;
+
+type VideoValidationIdentity = {
+	realPath: string;
+	dev: number;
+	ino: number;
+	size: number;
+	mtimeMs: number;
+	ctimeMs: number;
+};
+
+type VideoValidationResult = {
+	fileSizeBytes: number;
+	durationSeconds: number | null;
+};
+
+type VideoValidationEntry = VideoValidationIdentity & {
+	validatedAtMs: number;
+	fileSizeBytes: number;
+	durationSeconds: number | null;
+};
+
+const successfulVideoValidationCache = new Map<string, VideoValidationEntry>();
+
+async function getVideoValidationIdentity(
+	filePath: string,
+): Promise<VideoValidationIdentity | null> {
+	try {
+		const [realPath, stat] = await Promise.all([fs.realpath(filePath), fs.stat(filePath)]);
+		if (!stat.isFile()) {
+			return null;
+		}
+		return {
+			realPath,
+			dev: stat.dev,
+			ino: stat.ino,
+			size: stat.size,
+			mtimeMs: stat.mtimeMs,
+			ctimeMs: stat.ctimeMs,
+		};
+	} catch {
+		// Missing or unreadable files never enter the cache, so the full
+		// validation always runs for them.
+		return null;
+	}
+}
+
+function pruneStaleVideoValidations(nowMs: number) {
+	for (const [realPath, entry] of successfulVideoValidationCache) {
+		if (nowMs - entry.validatedAtMs > VIDEO_VALIDATION_CACHE_MAX_AGE_MS) {
+			successfulVideoValidationCache.delete(realPath);
+		}
+	}
+	while (successfulVideoValidationCache.size > VIDEO_VALIDATION_CACHE_MAX_ENTRIES) {
+		const oldestKey = successfulVideoValidationCache.keys().next().value;
+		if (typeof oldestKey !== "string") {
+			break;
+		}
+		successfulVideoValidationCache.delete(oldestKey);
+	}
+}
+
+/** Record that a video was fully validated at this exact file identity. */
+export async function recordSuccessfulVideoValidation(
+	videoPath: string,
+	result: VideoValidationResult,
+) {
+	const identity = await getVideoValidationIdentity(videoPath);
+	if (identity === null) {
+		return;
+	}
+	const nowMs = Date.now();
+	pruneStaleVideoValidations(nowMs);
+	successfulVideoValidationCache.set(identity.realPath, {
+		...identity,
+		validatedAtMs: nowMs,
+		fileSizeBytes: result.fileSizeBytes,
+		durationSeconds: result.durationSeconds,
+	});
+}
+
+/** Return a recent successful validation result if the file is provably
+ * unchanged since it was recorded, otherwise null (forcing a full re-run). */
+export async function getRecentSuccessfulVideoValidation(
+	videoPath: string,
+): Promise<VideoValidationResult | null> {
+	const identity = await getVideoValidationIdentity(videoPath);
+	if (identity === null) {
+		return null;
+	}
+	const nowMs = Date.now();
+	pruneStaleVideoValidations(nowMs);
+	const entry = successfulVideoValidationCache.get(identity.realPath);
+	if (entry === undefined) {
+		return null;
+	}
+	if (
+		nowMs - entry.validatedAtMs <= VIDEO_VALIDATION_CACHE_MAX_AGE_MS &&
+		entry.realPath === identity.realPath &&
+		entry.dev === identity.dev &&
+		entry.ino === identity.ino &&
+		entry.size === identity.size &&
+		entry.mtimeMs === identity.mtimeMs &&
+		entry.ctimeMs === identity.ctimeMs
+	) {
+		return {
+			fileSizeBytes: entry.fileSizeBytes,
+			durationSeconds: entry.durationSeconds,
+		};
+	}
+	return null;
+}
+
 export async function validateRecordedVideo(videoPath: string) {
 	const stat = await fs.stat(videoPath);
 	if (!stat.isFile()) {
@@ -611,8 +809,12 @@ export async function validateRecordedVideo(videoPath: string) {
 		throw new Error(`Recorded output has an invalid duration: ${videoPath}`);
 	}
 
-	return {
+	const result = {
 		fileSizeBytes: stat.size,
 		durationSeconds,
 	};
+	// Record the narrow handoff token only on success; a failed validation
+	// throws above and never authorizes a later skip.
+	await recordSuccessfulVideoValidation(videoPath, result);
+	return result;
 }

@@ -26,6 +26,7 @@ import {
 import { isAutoRecordingPath, moveFileWithOverwrite } from "../utils";
 import {
 	getFileSizeIfPresent,
+	getRecentSuccessfulVideoValidation,
 	recordNativeCaptureDiagnostics,
 	validateRecordedVideo,
 } from "./diagnostics";
@@ -189,34 +190,45 @@ export async function finalizeStoredVideo(videoPath: string) {
 	console.log("[finalize] Optimization active: skipping safety-net muxing.");
 
 	let validation: { fileSizeBytes: number; durationSeconds: number | null };
-	try {
-		validation = await validateRecordedVideo(videoPath);
-	} catch (error) {
-		if (
-			lastNativeCaptureDiagnostics?.backend === "mac-screencapturekit" ||
-			lastNativeCaptureDiagnostics?.backend === "windows-wgc"
-		) {
-			recordNativeCaptureDiagnostics({
-				backend: lastNativeCaptureDiagnostics.backend,
-				phase: lastNativeCaptureDiagnostics.phase === "mux" ? "mux" : "stop",
-				sourceId: lastNativeCaptureDiagnostics.sourceId ?? null,
-				sourceType: lastNativeCaptureDiagnostics.sourceType ?? "unknown",
-				displayId: lastNativeCaptureDiagnostics.displayId ?? null,
-				displayBounds: lastNativeCaptureDiagnostics.displayBounds ?? null,
-				windowHandle: lastNativeCaptureDiagnostics.windowHandle ?? null,
-				helperPath: lastNativeCaptureDiagnostics.helperPath ?? null,
-				outputPath: videoPath,
-				systemAudioPath: lastNativeCaptureDiagnostics.systemAudioPath ?? null,
-				microphonePath: lastNativeCaptureDiagnostics.microphonePath ?? null,
-				osRelease: lastNativeCaptureDiagnostics.osRelease,
-				supported: lastNativeCaptureDiagnostics.supported,
-				helperExists: lastNativeCaptureDiagnostics.helperExists,
-				processOutput: lastNativeCaptureDiagnostics.processOutput,
-				fileSizeBytes: await getFileSizeIfPresent(videoPath),
-				error: error instanceof Error ? error.message : String(error),
-			});
+	const recentValidation = await getRecentSuccessfulVideoValidation(videoPath);
+	if (recentValidation !== null) {
+		// The file is provably unchanged since the immediately preceding
+		// successful validation, so the redundant safety-net revalidation is
+		// skipped.
+		console.log(
+			`[finalize] Skipping redundant revalidation (unchanged since last success): ${videoPath}`,
+		);
+		validation = recentValidation;
+	} else {
+		try {
+			validation = await validateRecordedVideo(videoPath);
+		} catch (error) {
+			if (
+				lastNativeCaptureDiagnostics?.backend === "mac-screencapturekit" ||
+				lastNativeCaptureDiagnostics?.backend === "windows-wgc"
+			) {
+				recordNativeCaptureDiagnostics({
+					backend: lastNativeCaptureDiagnostics.backend,
+					phase: lastNativeCaptureDiagnostics.phase === "mux" ? "mux" : "stop",
+					sourceId: lastNativeCaptureDiagnostics.sourceId ?? null,
+					sourceType: lastNativeCaptureDiagnostics.sourceType ?? "unknown",
+					displayId: lastNativeCaptureDiagnostics.displayId ?? null,
+					displayBounds: lastNativeCaptureDiagnostics.displayBounds ?? null,
+					windowHandle: lastNativeCaptureDiagnostics.windowHandle ?? null,
+					helperPath: lastNativeCaptureDiagnostics.helperPath ?? null,
+					outputPath: videoPath,
+					systemAudioPath: lastNativeCaptureDiagnostics.systemAudioPath ?? null,
+					microphonePath: lastNativeCaptureDiagnostics.microphonePath ?? null,
+					osRelease: lastNativeCaptureDiagnostics.osRelease,
+					supported: lastNativeCaptureDiagnostics.supported,
+					helperExists: lastNativeCaptureDiagnostics.helperExists,
+					processOutput: lastNativeCaptureDiagnostics.processOutput,
+					fileSizeBytes: await getFileSizeIfPresent(videoPath),
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+			throw error;
 		}
-		throw error;
 	}
 
 	snapshotCursorTelemetryForPersistence();

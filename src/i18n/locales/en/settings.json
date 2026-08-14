@@ -232,6 +232,48 @@
 			"high": "High",
 			"original": "Original"
 		},
+		"codecTitle": "Video codec",
+		"codec": {
+			"h264": "H.264",
+			"hevc": "H.265"
+		},
+		"encoderTitle": "Encoder",
+		"encoder": {
+			"auto": "Auto",
+			"hardware": "GPU",
+			"cpu": "CPU"
+		},
+		"backend": {
+			"auto": "Auto"
+		},
+		"nvidiaCuda": {
+			"compositorTitle": "NVIDIA RTX Rendering",
+			"backendLabel": "Backend",
+			"backendSelected": "NVIDIA RTX Rendering",
+			"availableBadge": "Available",
+			"selectedBadge": "Selected",
+			"requiredBadge": "Required",
+			"unavailableBadge": "Unavailable",
+			"toggle": "Use NVIDIA RTX Rendering for GPU-accelerated exports",
+			"requiredToggle": "NVIDIA RTX Rendering is required for H.265 GPU exports",
+			"hint": "Compose and encode on the NVIDIA GPU for fast exports.",
+			"hintSelected": "Exports will use NVIDIA RTX Rendering on this device.",
+			"hintRequired": "H.265 GPU exports use NVIDIA RTX Rendering and never fall back to renderer frames.",
+			"unavailableReason": "RTX Rendering is unavailable ({{reason}}).",
+			"unavailableGeneric": "RTX Rendering is unavailable on this device.",
+			"unavailableRequired": "H.265 + GPU exports will fail until RTX Rendering is available. Install or update NVIDIA drivers, or switch Encoder to Auto."
+		},
+		"bitrateTitle": "Bitrate",
+		"bitrate": {
+			"auto": "Auto",
+			"custom": "Custom",
+			"mbpsInput": "Custom bitrate in Mbps",
+			"range": "1–105 Mbps (H.264) · 1–70 Mbps (HEVC)"
+		},
+		"hardwareUnavailable": "No usable hardware encoder was found. Pick CPU or Auto, or update your GPU driver.",
+		"errors": {
+			"hardwareUnavailable": "No usable hardware encoder was found. Pick CPU or Auto, or update your GPU driver."
+		},
 		"fpsTitle": "FPS",
 		"loop": "Loop",
 		"outputDimensions": "Output: {{dimensions}}px",

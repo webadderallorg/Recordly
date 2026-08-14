@@ -1611,6 +1611,62 @@ export class PixiCursorOverlay {
 		this.cursorMotionBlurFilter.offset = 0;
 	}
 
+	/**
+	 * Deterministic signature of every input that affects how the cursor renders
+	 * into a sprite target. Used by the cursor-sprite export path to skip
+	 * re-rendering/re-reading frames whose visual content is provably unchanged
+	 * (cursor at rest, no clicks, stable sway/blur). Every render input is
+	 * captured: config, smoothed position, sway rotation, motion-blur filter
+	 * state, click-ring bounds/alpha, and each child's visual properties. Two
+	 * frames with an identical signature and identical ROI render identical
+	 * pixels, so reusing the previous captured frame is pixel-exact.
+	 */
+	getSpriteStateSignature(): string {
+		const c = this.config;
+		const ring = this.clickRingGraphics.getBounds();
+		const blur = this.cursorMotionBlurFilter;
+		const parts: string[] = [
+			c.style,
+			c.dotAlpha.toFixed(3),
+			c.motionBlur.toFixed(3),
+			c.clickEffect,
+			c.clickEffectScale.toFixed(3),
+			c.clickEffectOpacity.toFixed(3),
+			c.clickEffectColor,
+			c.clickBounce.toFixed(3),
+			c.dotRadius.toFixed(3),
+			this.state.x.toFixed(4),
+			this.state.y.toFixed(4),
+			this.swayRotation.toFixed(4),
+			String(this.container.visible),
+			this.container.alpha.toFixed(3),
+			String(this.clickRingGraphics.visible),
+			this.clickRingGraphics.alpha.toFixed(3),
+			ring.x.toFixed(2),
+			ring.y.toFixed(2),
+			ring.width.toFixed(2),
+			ring.height.toFixed(2),
+			blur.velocity.x.toFixed(2),
+			blur.velocity.y.toFixed(2),
+			String(blur.kernelSize),
+			blur.offset.toFixed(3),
+		];
+		for (const child of this.container.children) {
+			parts.push(
+				String(child.visible),
+				child.alpha.toFixed(3),
+				child.position.x.toFixed(2),
+				child.position.y.toFixed(2),
+				child.rotation.toFixed(4),
+				child.scale.x.toFixed(4),
+				child.scale.y.toFixed(4),
+				child.width.toFixed(2),
+				child.height.toFixed(2),
+			);
+		}
+		return parts.join("|");
+	}
+
 	destroy(): void {
 		this.clickRingGraphics.destroy();
 		this.customCursorShadowFilter.destroy();

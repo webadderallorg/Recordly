@@ -1,6 +1,7 @@
 import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { formatLogTs } from "@/lib/log";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
 import {
 	getVideoExtensionForMimeType,
@@ -213,10 +214,7 @@ export function resolveBrowserCaptureCursorPolicy({
 export function shouldUseNativeWindowsCaptureForSource(
 	source: Pick<ProcessedDesktopSource, "id"> | null | undefined,
 ): boolean {
-	return (
-		source?.id?.startsWith("screen:") === true ||
-		source?.id?.startsWith("window:") === true
-	);
+	return source?.id?.startsWith("screen:") === true || source?.id?.startsWith("window:") === true;
 }
 
 export function createProcessedMicrophoneConstraints(
@@ -681,7 +679,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const finalizeRecordingSession = useCallback(
 		async (videoPath: string, webcamPath: string | null) => {
 			const start = performance.now();
-			console.log("[PERF:RENDERER] Finalize Session & Switch to Editor: STARTED");
+			console.log(
+				formatLogTs(),
+				"[PERF:RENDERER] Finalize Session & Switch to Editor: STARTED",
+			);
 			const shouldHideOverlayCursor = hideEditorOverlayCursorByDefault.current;
 			try {
 				if (webcamPath) {
@@ -711,6 +712,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			setFinalizing(false);
 			await window.electronAPI.switchToEditor();
 			console.log(
+				formatLogTs(),
 				`[PERF:RENDERER] Finalize Session & Switch to Editor: COMPLETED in ${(performance.now() - start).toFixed(2)}ms`,
 			);
 		},
@@ -1075,7 +1077,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			void (async () => {
 				const stopStart = performance.now();
-				console.log("[PERF:RENDERER] Total Stop Sequence: STARTED");
+				console.log(formatLogTs(), "[PERF:RENDERER] Total Stop Sequence: STARTED");
 
 				const fallbackStartDelayMs = micFallbackStartDelayMs.current;
 				const fallbackTrackSettings = micFallbackTrackSettings.current;
@@ -1088,9 +1090,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				nativeWindowsRecording.current = false;
 
 				const ipcStopStart = performance.now();
-				console.log("[PERF:RENDERER] IPC: stopNativeScreenRecording: STARTED");
+				console.log(
+					formatLogTs(),
+					"[PERF:RENDERER] IPC: stopNativeScreenRecording: STARTED",
+				);
 				const result = await window.electronAPI.stopNativeScreenRecording();
 				console.log(
+					formatLogTs(),
 					`[PERF:RENDERER] IPC: stopNativeScreenRecording: COMPLETED in ${(performance.now() - ipcStopStart).toFixed(2)}ms`,
 				);
 
@@ -1109,6 +1115,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						);
 						if (recoveredPath) {
 							console.log(
+								formatLogTs(),
 								`[PERF:RENDERER] Total Stop Sequence (RECOVERED) in ${(performance.now() - stopStart).toFixed(2)}ms`,
 							);
 							return;
@@ -1140,6 +1147,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						// Await the webcam path in the background
 						const webcamPath = await webcamPathPromise;
 						console.log(
+							formatLogTs(),
 							"[useScreenRecorder] Background native processing: webcamPath is",
 							webcamPath,
 						);
@@ -1158,6 +1166,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						}
 
 						console.log(
+							formatLogTs(),
 							"[useScreenRecorder] Emitting setCurrentRecordingSession with:",
 							{ finalPath, webcamPath },
 						);
@@ -1172,6 +1181,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						});
 
 						console.log(
+							formatLogTs(),
 							`[PERF:RENDERER] Background Stop Sequence: COMPLETED in ${(performance.now() - stopStart).toFixed(2)}ms`,
 						);
 					} catch (bgError) {
@@ -1181,6 +1191,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						// we can safely close the HUD window to release hardware and resources.
 						if (typeof window.electronAPI?.hudOverlayClose === "function") {
 							console.log(
+								formatLogTs(),
 								"[useScreenRecorder] All background tasks finished, closing HUD",
 							);
 							window.electronAPI.hudOverlayClose();

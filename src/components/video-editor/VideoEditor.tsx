@@ -54,7 +54,10 @@ import { useShortcuts } from "@/contexts/ShortcutsContext";
 import {
 	calculateOutputDimensions,
 	DEFAULT_MP4_CODEC,
+	EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS,
 	type ExportBackendPreference,
+	type ExportBitrateMode,
+	type ExportEncoderPreference,
 	type ExportEncodingMode,
 	type ExportFormat,
 	type ExportMp4FrameRate,
@@ -62,6 +65,7 @@ import {
 	type ExportProgress,
 	type ExportQuality,
 	type ExportSettings,
+	type ExportVideoCodec,
 	FrameRenderer,
 	GIF_SIZE_PRESETS,
 	GifExporter,
@@ -70,13 +74,15 @@ import {
 	ModernVideoExporter,
 	probeSupportedMp4Dimensions,
 	type SupportedMp4Dimensions,
+	type SupportedMp4EncoderPath,
 	VideoExporter,
 } from "@/lib/exporter";
-import { getMp4ExportBitrate, getSourceQualityBitrate } from "@/lib/exporter/exportBitrate";
+import { getSourceQualityBitrate, resolveExportBitrate } from "@/lib/exporter/exportBitrate";
 import {
 	canUseInMemoryExportSaveFallback,
 	describeBlockedInMemoryExportSave,
 } from "@/lib/exporter/exportSavePolicy";
+import { formatLogTs } from "@/lib/log";
 import { matchesShortcut } from "@/lib/shortcuts";
 import { cn } from "@/lib/utils";
 import {
@@ -93,6 +99,11 @@ import {
 	type Mp4SupportProbeSnapshot,
 	shouldDebounceMp4SupportProbe,
 } from "./exportDimensions";
+import {
+	createExportSlotGuard,
+	type ExportSlotGuard,
+	resolveRestoredExportCodecEncoder,
+} from "./exportDispatchGuard";
 import { resolveSavingExportProgress } from "./exportProgressState";
 import { resolveExportStartSettings } from "./exportStartSettings";
 import { resolveExportStatusModel } from "./exportStatusModel";
@@ -622,11 +633,24 @@ export default function VideoEditor() {
 	const [exportPipelineModel, setExportPipelineModel] = useState<ExportPipelineModel>(
 		initialEditorPreferences.exportPipelineModel,
 	);
+	const [exportVideoCodec, setExportVideoCodec] = useState<ExportVideoCodec>(
+		initialEditorPreferences.exportVideoCodec ?? "h264",
+	);
+	const [exportEncoderPreference, setExportEncoderPreference] = useState<ExportEncoderPreference>(
+		initialEditorPreferences.exportEncoderPreference ?? "auto",
+	);
+	const [exportBitrateMode, setExportBitrateMode] = useState<ExportBitrateMode>(
+		initialEditorPreferences.exportBitrateMode ?? "auto",
+	);
+	const [exportBitrateMbps, setExportBitrateMbps] = useState<number>(
+		initialEditorPreferences.exportBitrateMbps ?? EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS,
+	);
 	const enableModernExportPipeline = useCallback(() => {
 		setExportPipelineModel("modern");
 	}, []);
 	const {
 		nvidiaCudaExportAvailable,
+		nvidiaCudaExportSkipReason,
 		experimentalNvidiaCudaExport,
 		setExperimentalNvidiaCudaExport,
 	} = useNvidiaCudaExportOptIn({
@@ -697,6 +721,8 @@ export default function VideoEditor() {
 	const nextAnnotationIdRef = useRef(1);
 	const nextAnnotationZIndexRef = useRef(1); // Track z-index for stacking order
 	const exporterRef = useRef<CancelableExporter | null>(null);
+	const exportSlotGuardRef = useRef<ExportSlotGuard>(createExportSlotGuard());
+	const exportCancelRequestedRef = useRef(false);
 	const autoSuggestedVideoPathRef = useRef<string | null>(null);
 	const pendingFreshRecordingAutoZoomPathRef = useRef<string | null>(null);
 	const editorHistoryRef = useRef(createEditorHistoryStack());
@@ -810,6 +836,10 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			exportVideoCodec,
+			exportEncoderPreference,
+			exportBitrateMode,
+			exportBitrateMbps,
 			autoCaptionSettings: { ...autoCaptionSettings },
 			whisperExecutablePath,
 			whisperModelPath,
@@ -867,6 +897,10 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			exportVideoCodec,
+			exportEncoderPreference,
+			exportBitrateMode,
+			exportBitrateMbps,
 			autoCaptionSettings,
 			whisperExecutablePath,
 			whisperModelPath,
@@ -962,6 +996,10 @@ export default function VideoEditor() {
 		setExportQuality(snapshot.exportQuality);
 		setMp4FrameRate(snapshot.mp4FrameRate);
 		setExportFormat(snapshot.exportFormat);
+		setExportVideoCodec(snapshot.exportVideoCodec ?? "h264");
+		setExportEncoderPreference(snapshot.exportEncoderPreference ?? "auto");
+		setExportBitrateMode(snapshot.exportBitrateMode ?? "auto");
+		setExportBitrateMbps(snapshot.exportBitrateMbps ?? EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS);
 		setGifFrameRate(snapshot.gifFrameRate);
 		setGifLoop(snapshot.gifLoop);
 		setGifSizePreset(snapshot.gifSizePreset);
@@ -1755,6 +1793,10 @@ export default function VideoEditor() {
 				gifFrameRate: GifFrameRate;
 				gifLoop: boolean;
 				gifSizePreset: GifSizePreset;
+				exportVideoCodec: ExportVideoCodec;
+				exportEncoderPreference: ExportEncoderPreference;
+				exportBitrateMode: ExportBitrateMode;
+				exportBitrateMbps: number;
 				sourceAudioTrackSettingsByClip: Record<string, SourceAudioTrackSettings>;
 				defaultSourceAudioTrackSettings: SourceAudioTrackSettings;
 			}>,
@@ -1878,6 +1920,10 @@ export default function VideoEditor() {
 				gifFrameRate,
 				gifLoop,
 				gifSizePreset,
+				exportVideoCodec,
+				exportEncoderPreference,
+				exportBitrateMode,
+				exportBitrateMbps,
 				sourceAudioTrackSettingsByClip,
 				defaultSourceAudioTrackSettings,
 			}),
@@ -1944,6 +1990,10 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			exportVideoCodec,
+			exportEncoderPreference,
+			exportBitrateMode,
+			exportBitrateMbps,
 			frame,
 			sourceAudioTrackSettingsByClip,
 			defaultSourceAudioTrackSettings,
@@ -2143,6 +2193,17 @@ export default function VideoEditor() {
 			setGifFrameRate(normalizedEditor.gifFrameRate);
 			setGifLoop(normalizedEditor.gifLoop);
 			setGifSizePreset(normalizedEditor.gifSizePreset);
+			const restoredExportCodecEncoder = resolveRestoredExportCodecEncoder(
+				project.editor,
+				exportVideoCodec,
+				exportEncoderPreference,
+			);
+			setExportVideoCodec(restoredExportCodecEncoder.exportVideoCodec);
+			setExportEncoderPreference(restoredExportCodecEncoder.exportEncoderPreference);
+			setExportBitrateMode(normalizedEditor.exportBitrateMode ?? "auto");
+			setExportBitrateMbps(
+				normalizedEditor.exportBitrateMbps ?? EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS,
+			);
 
 			setSelectedZoomId(null);
 			setSelectedClipId(null);
@@ -2190,6 +2251,8 @@ export default function VideoEditor() {
 		[
 			applySessionPresentation,
 			buildPersistedEditorState,
+			exportEncoderPreference,
+			exportVideoCodec,
 			refreshProjectLibrary,
 			syncHistoryButtons,
 		],
@@ -2576,7 +2639,7 @@ export default function VideoEditor() {
 		return window.electronAPI.onRecordingSessionChanged((session) => {
 			const sessionSourcePath = session?.videoPath ? fromFileUrl(session.videoPath) : null;
 			const sessionWebcamPath = session?.webcamPath ? fromFileUrl(session.webcamPath) : null;
-			console.log("[VideoEditor] onRecordingSessionChanged received!", {
+			console.log(formatLogTs(), "[VideoEditor] onRecordingSessionChanged received!", {
 				hasSession: Boolean(session),
 				hasSessionVideoPath: Boolean(session?.videoPath),
 				hasVideoSourcePath: Boolean(videoSourcePath),
@@ -2674,6 +2737,10 @@ export default function VideoEditor() {
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
+			exportVideoCodec,
+			exportEncoderPreference,
+			exportBitrateMode,
+			exportBitrateMbps,
 			whisperExecutablePath,
 			whisperModelPath,
 		});
@@ -2730,6 +2797,10 @@ export default function VideoEditor() {
 		gifFrameRate,
 		gifLoop,
 		gifSizePreset,
+		exportVideoCodec,
+		exportEncoderPreference,
+		exportBitrateMode,
+		exportBitrateMbps,
 		whisperExecutablePath,
 		whisperModelPath,
 	]);
@@ -4598,6 +4669,28 @@ export default function VideoEditor() {
 				return;
 			}
 
+			// Re-entrancy guard: never let a second export dispatch while one is
+			// preparing/running. A concurrent dispatch would overwrite `exporterRef`
+			// and shadow the intended codec/encoder with a later export (e.g. the
+			// HEVC Hardware CUDA job stuck in Preparing being replaced by an H.264
+			// CPU libx264 session). The guard is released in `finally`, so a retry
+			// after a failure settles is never blocked.
+			if (!exportSlotGuardRef.current.tryAcquire()) {
+				const blockMessage = exportCancelRequestedRef.current
+					? t("editor.exportStatus.cancelingPrevious", "Canceling previous export…")
+					: t(
+							"editor.exportStatus.alreadyInProgress",
+							"An export is already in progress. Wait for it to finish or cancel it first.",
+						);
+				toast.info(blockMessage);
+				console.warn(
+					formatLogTs(),
+					"[export] Ignoring duplicate dispatch while an export is already preparing/running",
+				);
+				return;
+			}
+			exportCancelRequestedRef.current = false;
+
 			setIsExporting(true);
 			setExportProgress(null);
 			setExportError(null);
@@ -4756,24 +4849,40 @@ export default function VideoEditor() {
 					}
 				} else {
 					// MP4 Export
-					const { quality, encodingMode, selectedMp4FrameRate } =
-						resolveMp4ExportSettings({
-							smokeExportConfig: {
-								enabled: smokeExportConfig.enabled,
-								quality: smokeExportConfig.quality,
-								encodingMode: smokeExportConfig.encodingMode,
-								fps: smokeExportConfig.fps,
-							},
-							settings,
-							exportQuality,
-							exportEncodingMode,
-							mp4FrameRate,
-						});
+					const {
+						quality,
+						encodingMode,
+						selectedMp4FrameRate,
+						exportVideoCodec: effectiveExportVideoCodec,
+						exportEncoderPreference: effectiveExportEncoderPreference,
+						exportBitrateMode: effectiveExportBitrateMode,
+						exportBitrateMbps: effectiveExportBitrateMbps,
+					} = resolveMp4ExportSettings({
+						smokeExportConfig: {
+							enabled: smokeExportConfig.enabled,
+							quality: smokeExportConfig.quality,
+							encodingMode: smokeExportConfig.encodingMode,
+							fps: smokeExportConfig.fps,
+							videoCodec: smokeExportConfig.videoCodec,
+							encoderPreference: smokeExportConfig.encoderPreference,
+							bitrateMode: smokeExportConfig.bitrateMode,
+							bitrateMbps: smokeExportConfig.bitrateMbps,
+						},
+						settings,
+						exportQuality,
+						exportEncodingMode,
+						mp4FrameRate,
+						exportVideoCodec,
+						exportEncoderPreference,
+						exportBitrateMode,
+						exportBitrateMbps,
+					});
 					const {
 						pipelineModel,
 						useExperimentalNativeExport,
 						useExperimentalNvidiaCudaExport,
 						backendPreference,
+						needsNativeRawFrame,
 					} = resolveMp4ExportRouting({
 						smokeExportConfig: {
 							enabled: smokeExportConfig.enabled,
@@ -4784,25 +4893,68 @@ export default function VideoEditor() {
 						settings,
 						exportPipelineModel,
 						exportBackendPreference,
+						exportVideoCodec: effectiveExportVideoCodec,
+						exportEncoderPreference: effectiveExportEncoderPreference,
 						experimentalNvidiaCudaExport,
 						nvidiaCudaExportAvailable,
 					});
-					const supportedSourceDimensions =
-						await ensureSupportedMp4SourceDimensions(selectedMp4FrameRate);
-					const { width: exportWidth, height: exportHeight } =
-						calculateMp4ExportDimensions(
+					// HEVC and any explicit Hardware/CPU encoder choice bypass the
+					// WebCodecs dimension probe and always route through the H.264-
+					// independent native FFmpeg raw-frame encoder.
+					const normalizeEvenDimension = (value: number) =>
+						Math.max(2, Math.floor(value / 2) * 2);
+					const desiredRawOutput = calculateMp4ExportDimensions(
+						desiredMp4SourceDimensions.width,
+						desiredMp4SourceDimensions.height,
+						quality,
+					);
+					let exportWidth: number;
+					let exportHeight: number;
+					let preferredEncoderPath: SupportedMp4EncoderPath | null | undefined;
+					if (needsNativeRawFrame) {
+						exportWidth = normalizeEvenDimension(desiredRawOutput.width);
+						exportHeight = normalizeEvenDimension(desiredRawOutput.height);
+						preferredEncoderPath = undefined;
+					} else {
+						const supportedSourceDimensions =
+							await ensureSupportedMp4SourceDimensions(selectedMp4FrameRate);
+						const output = calculateMp4ExportDimensions(
 							supportedSourceDimensions.width,
 							supportedSourceDimensions.height,
 							quality,
 						);
-					const bitrate = getMp4ExportBitrate({
+						exportWidth = output.width;
+						exportHeight = output.height;
+						preferredEncoderPath = supportedSourceDimensions.encoderPath;
+					}
+					// Auto bitrate keeps the existing heuristic (with static-layout
+					// floors/caps); Custom bitrate bypasses those floors/caps entirely and
+					// uses the user's explicit 1-200 Mbps value.
+					const bitrate = resolveExportBitrate({
+						mode: effectiveExportBitrateMode,
+						customMbps: effectiveExportBitrateMbps,
 						width: exportWidth,
 						height: exportHeight,
 						frameRate: selectedMp4FrameRate,
 						quality,
 						encodingMode,
-						useModernNativeStaticLayout: useExperimentalNativeExport,
+						useModernNativeStaticLayout:
+							useExperimentalNativeExport && !needsNativeRawFrame,
 					});
+					// Snapshot of the fully resolved export settings (post-defaulting) so a
+					// smoke benchmark can assert the run actually used the requested codec/
+					// encoder/bitrate/Lightning route rather than trusting env names.
+					const smokeResolvedSettings = {
+						codec: effectiveExportVideoCodec,
+						encoderPreference: effectiveExportEncoderPreference,
+						bitrateMode: effectiveExportBitrateMode,
+						bitrateMbps: effectiveExportBitrateMbps,
+						bitrateBps: bitrate,
+						encodingMode,
+						frameRate: selectedMp4FrameRate,
+						pipelineModel,
+						backendPreference,
+					};
 					const sourceAudioTrackSettingsForExport =
 						selectedClipId !== null
 							? audio.selectedClipSourceAudioTrackSettings
@@ -4815,8 +4967,12 @@ export default function VideoEditor() {
 						frameRate: selectedMp4FrameRate,
 						bitrate,
 						codec: DEFAULT_MP4_CODEC,
+						exportVideoCodec: effectiveExportVideoCodec,
+						exportEncoderPreference: effectiveExportEncoderPreference,
+						exportBitrateMode: effectiveExportBitrateMode,
+						exportBitrateMbps: effectiveExportBitrateMbps,
 						encodingMode,
-						preferredEncoderPath: supportedSourceDimensions.encoderPath,
+						preferredEncoderPath,
 						preferredRenderBackend: smokeExportConfig.renderBackend,
 						experimentalNativeExport: useExperimentalNativeExport,
 						experimentalNvidiaCudaExport: useExperimentalNvidiaCudaExport,
@@ -4890,6 +5046,26 @@ export default function VideoEditor() {
 							setExportProgress(progress);
 						},
 					};
+
+					// Timestamped, structured pre-dispatch diagnostic so future logs prove
+					// exactly which codec/encoder/route/trigger the renderer dispatched.
+					// It reflects the ACTUAL current UI state (never the prewarm route) so
+					// a mismatch vs. the main-process encoder log is unambiguous.
+					console.log(formatLogTs(), "[export] Dispatch", {
+						trigger: smokeExportConfig.enabled ? "smoke-auto" : "manual",
+						format: settings.format,
+						codec: effectiveExportVideoCodec,
+						encoderPreference: effectiveExportEncoderPreference,
+						bitrateMode: effectiveExportBitrateMode,
+						bitrateMbps: effectiveExportBitrateMbps,
+						route: {
+							pipelineModel,
+							backendPreference,
+							needsNativeRawFrame,
+							useExperimentalNativeExport,
+							useExperimentalNvidiaCudaExport,
+						},
+					});
 
 					const exporter =
 						pipelineModel === "modern"
@@ -4971,6 +5147,7 @@ export default function VideoEditor() {
 									elapsedMs: smokeExportElapsedMs,
 									error: "Save canceled",
 									progressSamples: smokeProgressSamples,
+									resolvedSettings: smokeResolvedSettings,
 									metrics: result.metrics,
 								});
 							}
@@ -4994,6 +5171,7 @@ export default function VideoEditor() {
 									elapsedMs: smokeExportElapsedMs,
 									outputPath: saveResult.path,
 									progressSamples: smokeProgressSamples,
+									resolvedSettings: smokeResolvedSettings,
 									metrics: result.metrics,
 								});
 							}
@@ -5021,6 +5199,7 @@ export default function VideoEditor() {
 									elapsedMs: smokeExportElapsedMs,
 									error: saveResult.message || "Failed to save video",
 									progressSamples: smokeProgressSamples,
+									resolvedSettings: smokeResolvedSettings,
 									metrics: result.metrics,
 								});
 							}
@@ -5053,6 +5232,7 @@ export default function VideoEditor() {
 								elapsedMs: smokeExportElapsedMs,
 								error: result.error || "Export failed",
 								progressSamples: smokeProgressSamples,
+								resolvedSettings: smokeResolvedSettings,
 								metrics: result.metrics,
 							});
 						}
@@ -5096,12 +5276,14 @@ export default function VideoEditor() {
 				extensionHost.emitEvent({ type: "export:complete" });
 				setIsExporting(false);
 				exporterRef.current = null;
+				exportSlotGuardRef.current.release();
 				setShowExportDropdown(keepExportDialogOpen);
 				remountPreview();
 			}
 		},
 		[
 			clearPendingExportSave,
+			t,
 			videoPath,
 			wallpaper,
 			trimRegions,
@@ -5152,6 +5334,11 @@ export default function VideoEditor() {
 			exportEncodingMode,
 			exportBackendPreference,
 			exportPipelineModel,
+			desiredMp4SourceDimensions,
+			exportVideoCodec,
+			exportEncoderPreference,
+			exportBitrateMode,
+			exportBitrateMbps,
 			experimentalNvidiaCudaExport,
 			nvidiaCudaExportAvailable,
 			borderRadius,
@@ -5187,6 +5374,10 @@ export default function VideoEditor() {
 			smokeExportConfig.encodingMode,
 			smokeExportConfig.fps,
 			smokeExportConfig.quality,
+			smokeExportConfig.videoCodec,
+			smokeExportConfig.encoderPreference,
+			smokeExportConfig.bitrateMode,
+			smokeExportConfig.bitrateMbps,
 			saveBlobExport,
 		],
 	);
@@ -5326,6 +5517,10 @@ export default function VideoEditor() {
 			mp4FrameRate,
 			exportBackendPreference,
 			exportPipelineModel,
+			exportVideoCodec,
+			exportEncoderPreference,
+			exportBitrateMode,
+			exportBitrateMbps,
 			gifFrameRate,
 			gifLoop,
 			gifSizePreset,
@@ -5348,11 +5543,16 @@ export default function VideoEditor() {
 		includeCaptionSidecar,
 		exportBackendPreference,
 		exportPipelineModel,
+		exportVideoCodec,
+		exportEncoderPreference,
+		exportBitrateMode,
+		exportBitrateMbps,
 		handleExport,
 	]);
 
 	const handleCancelExport = useCallback(() => {
 		if (exporterRef.current) {
+			exportCancelRequestedRef.current = true;
 			exporterRef.current.cancel();
 			toast.info("Export canceled");
 			clearPendingExportSave();
@@ -5475,6 +5675,7 @@ export default function VideoEditor() {
 		isExportPreparing,
 		isExportFinalizing,
 		isRenderingAudio,
+		preparingSubstageLabel,
 		exportFinalizingProgress,
 		exportFinalizingPercent,
 		isExportFinalSaveIndeterminate,
@@ -6128,7 +6329,15 @@ export default function VideoEditor() {
 									<p className="mt-2 text-xs text-muted-foreground">
 										{exportPercentLabel}
 									</p>
-									{isRenderingAudio ? (
+									{isExportPreparing && preparingSubstageLabel ? (
+										<p className="mt-1 text-[11px] text-muted-foreground/70">
+											{t(
+												"editor.exportStatus.preparingSubstage",
+												"Preparing: {{substage}}",
+												{ substage: preparingSubstageLabel },
+											)}
+										</p>
+									) : isRenderingAudio ? (
 										<p className="mt-1 text-[11px] text-muted-foreground/70">
 											{t(
 												"editor.export.processingAudioEdits",
@@ -6231,15 +6440,26 @@ export default function VideoEditor() {
 									onMp4FrameRateChange={setMp4FrameRate}
 									exportPipelineModel={exportPipelineModel}
 									onExportPipelineModelChange={setExportPipelineModel}
-									experimentalNvidiaCudaExport={
-										experimentalNvidiaCudaExport && nvidiaCudaExportAvailable
-									}
+									experimentalNvidiaCudaExport={experimentalNvidiaCudaExport}
 									onExperimentalNvidiaCudaExportChange={
 										setExperimentalNvidiaCudaExport
 									}
 									nvidiaCudaExportAvailable={nvidiaCudaExportAvailable}
+									nvidiaCudaExportSkipReason={nvidiaCudaExportSkipReason}
+									nvidiaCudaCompositorRequired={
+										exportVideoCodec === "hevc" &&
+										exportEncoderPreference === "hardware"
+									}
 									exportQuality={exportQuality}
 									onExportQualityChange={setExportQuality}
+									exportVideoCodec={exportVideoCodec}
+									onExportVideoCodecChange={setExportVideoCodec}
+									exportEncoderPreference={exportEncoderPreference}
+									onExportEncoderPreferenceChange={setExportEncoderPreference}
+									exportBitrateMode={exportBitrateMode}
+									onExportBitrateModeChange={setExportBitrateMode}
+									exportBitrateMbps={exportBitrateMbps}
+									onExportBitrateMbpsChange={setExportBitrateMbps}
 									gifFrameRate={gifFrameRate}
 									onGifFrameRateChange={setGifFrameRate}
 									gifLoop={gifLoop}
@@ -6846,6 +7066,8 @@ export default function VideoEditor() {
 						videoPath={videoPath}
 						videoSourcePath={videoSourcePath}
 						cursorTelemetrySourcePath={cursorTelemetrySourcePath}
+						sourceSidecarPaths={audio.sourceAudioFallbackPaths}
+						sourceSidecarPendingPaths={audio.pendingSidecarPaths}
 						cursorTelemetry={normalizedCursorTelemetry}
 						autoSuggestZoomsTrigger={autoSuggestZoomsTrigger}
 						onAutoSuggestZoomsConsumed={handleAutoSuggestZoomsConsumed}

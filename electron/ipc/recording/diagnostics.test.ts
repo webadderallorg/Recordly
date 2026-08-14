@@ -407,4 +407,285 @@ describe("getCompanionAudioFallbackPaths", () => {
 			"Recorded output is too small to contain playable video",
 		);
 	});
+
+	it("caches probe results so repeated probes of an unchanged file spawn once", async () => {
+		const videoPath = path.join(tempRoot, "recording-cache.mp4");
+		await fs.writeFile(videoPath, "video-content");
+
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				const error = new Error("ffmpeg probe") as Error & { stderr?: string };
+				error.stderr = "Duration: 00:00:18.00, start: 0.000000";
+				callback(error, "", error.stderr);
+			},
+		);
+
+		const { probeMediaDurationSeconds } = await import("./diagnostics");
+
+		await expect(probeMediaDurationSeconds(videoPath)).resolves.toBe(18);
+		await expect(probeMediaDurationSeconds(videoPath)).resolves.toBe(18);
+
+		const ffmpegCalls = execFileMock.mock.calls.filter(([file]) => file === "ffmpeg");
+		expect(ffmpegCalls).toHaveLength(1);
+	});
+
+	it("invalidates the cache when the file changes", async () => {
+		const videoPath = path.join(tempRoot, "recording-invalidate.mp4");
+		await fs.writeFile(videoPath, "video-content");
+
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				const error = new Error("ffmpeg probe") as Error & { stderr?: string };
+				error.stderr = "Duration: 00:00:18.00, start: 0.000000";
+				callback(error, "", error.stderr);
+			},
+		);
+
+		const { probeMediaDurationSeconds } = await import("./diagnostics");
+
+		await expect(probeMediaDurationSeconds(videoPath)).resolves.toBe(18);
+		expect(execFileMock.mock.calls.filter(([file]) => file === "ffmpeg")).toHaveLength(1);
+
+		// Rewriting the file changes size and mtime, forcing a fresh probe.
+		await fs.writeFile(videoPath, "longer-video-content-here-for-a-different-file");
+		await expect(probeMediaDurationSeconds(videoPath)).resolves.toBe(18);
+
+		expect(execFileMock.mock.calls.filter(([file]) => file === "ffmpeg")).toHaveLength(2);
+	});
+
+	it("never caches missing files or failed probes", async () => {
+		const missingPath = path.join(tempRoot, "missing.mp4");
+
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				callback(new Error("file not found"), "", "");
+			},
+		);
+
+		const { probeMediaDurationSeconds, probeVideoStreamDuration } = await import(
+			"./diagnostics"
+		);
+
+		await expect(probeMediaDurationSeconds(missingPath)).resolves.toBe(0);
+		await expect(probeMediaDurationSeconds(missingPath)).resolves.toBe(0);
+		await expect(probeVideoStreamDuration(missingPath)).resolves.toBeNull();
+		await expect(probeVideoStreamDuration(missingPath)).resolves.toBeNull();
+
+		// Missing files are never cached, so each call still spawns a binary.
+		expect(execFileMock.mock.calls.filter(([file]) => file === "ffmpeg")).toHaveLength(2);
+		expect(execFileMock.mock.calls.filter(([file]) => file === "ffprobe")).toHaveLength(2);
+	});
+
+	it("does not leak cached metadata across different files", async () => {
+		const firstPath = path.join(tempRoot, "recording-first.mp4");
+		const secondPath = path.join(tempRoot, "recording-second.mp4");
+		await Promise.all([
+			fs.writeFile(firstPath, "first-content"),
+			fs.writeFile(secondPath, "second-content"),
+		]);
+
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				const error = new Error("ffmpeg probe") as Error & { stderr?: string };
+				error.stderr = args.includes(firstPath)
+					? "Duration: 00:00:10.00, start: 0.000000"
+					: "Duration: 00:00:20.00, start: 0.000000";
+				callback(error, "", error.stderr);
+			},
+		);
+
+		const { probeMediaDurationSeconds } = await import("./diagnostics");
+
+		await expect(probeMediaDurationSeconds(firstPath)).resolves.toBe(10);
+		await expect(probeMediaDurationSeconds(secondPath)).resolves.toBe(20);
+		expect(execFileMock.mock.calls.filter(([file]) => file === "ffmpeg")).toHaveLength(2);
+
+		// Both files are cached by distinct identities; hitting the first again
+		// reuses its own value without spawning or touching the second entry.
+		await expect(probeMediaDurationSeconds(firstPath)).resolves.toBe(10);
+		expect(execFileMock.mock.calls.filter(([file]) => file === "ffmpeg")).toHaveLength(2);
+	});
+
+	function mockValidVideoProbe() {
+		const stderr = "Stream #0:0: Video: h264, yuv420p\nDuration: 00:00:05.00, start: 0.000000";
+		// Mirror the real child_process.execFile promisify contract so the
+		// successful validation path sees a resolved { stdout, stderr }.
+		Object.defineProperty(execFileMock, Symbol.for("nodejs.util.promisify.custom"), {
+			value: async () => ({ stdout: "", stderr }),
+			configurable: true,
+		});
+	}
+
+	it("reuses a successful validation for an unchanged file (skips revalidation)", async () => {
+		const videoPath = path.join(tempRoot, "recording-skip.mp4");
+		await fs.writeFile(videoPath, Buffer.alloc(4096));
+		mockValidVideoProbe();
+
+		const { validateRecordedVideo, getRecentSuccessfulVideoValidation } = await import(
+			"./diagnostics"
+		);
+
+		const result = await validateRecordedVideo(videoPath);
+		expect(result.durationSeconds).toBe(5);
+
+		// The unchanged file is recognized as provably validated, so a second
+		// full revalidation (e.g. finalizeStoredVideo) is not needed.
+		await expect(getRecentSuccessfulVideoValidation(videoPath)).resolves.toEqual({
+			fileSizeBytes: 4096,
+			durationSeconds: 5,
+		});
+	});
+
+	it("revalidates when the file size changes", async () => {
+		const videoPath = path.join(tempRoot, "recording-size.mp4");
+		await fs.writeFile(videoPath, Buffer.alloc(4096));
+		mockValidVideoProbe();
+
+		const { validateRecordedVideo, getRecentSuccessfulVideoValidation } = await import(
+			"./diagnostics"
+		);
+
+		await validateRecordedVideo(videoPath);
+		await fs.writeFile(videoPath, Buffer.alloc(8192));
+
+		await expect(getRecentSuccessfulVideoValidation(videoPath)).resolves.toBeNull();
+	});
+
+	it("revalidates when the mtime changes without a size change", async () => {
+		const videoPath = path.join(tempRoot, "recording-mtime.mp4");
+		await fs.writeFile(videoPath, Buffer.alloc(4096));
+		mockValidVideoProbe();
+
+		const { validateRecordedVideo, getRecentSuccessfulVideoValidation } = await import(
+			"./diagnostics"
+		);
+
+		await validateRecordedVideo(videoPath);
+		const later = new Date(Date.now() + 5000);
+		await fs.utimes(videoPath, later, later);
+
+		await expect(getRecentSuccessfulVideoValidation(videoPath)).resolves.toBeNull();
+	});
+
+	it("never authorizes a skip on a path mismatch or missing cache entry", async () => {
+		const videoPath = path.join(tempRoot, "recording-mismatch.mp4");
+		const otherPath = path.join(tempRoot, "recording-other.mp4");
+		await Promise.all([
+			fs.writeFile(videoPath, Buffer.alloc(4096)),
+			fs.writeFile(otherPath, Buffer.alloc(4096)),
+		]);
+		mockValidVideoProbe();
+
+		const { validateRecordedVideo, getRecentSuccessfulVideoValidation } = await import(
+			"./diagnostics"
+		);
+
+		// Missing cache for an untouched file.
+		await expect(getRecentSuccessfulVideoValidation(otherPath)).resolves.toBeNull();
+
+		// Validating one path must not authorize a skip for a different file.
+		await validateRecordedVideo(videoPath);
+		await expect(getRecentSuccessfulVideoValidation(otherPath)).resolves.toBeNull();
+	});
+
+	it("never authorizes a skip after a failed validation", async () => {
+		const videoPath = path.join(tempRoot, "recording-fail.mp4");
+		await fs.writeFile(videoPath, Buffer.alloc(4096));
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				callback(new Error("decode failed"), "", "");
+			},
+		);
+
+		const { validateRecordedVideo, getRecentSuccessfulVideoValidation } = await import(
+			"./diagnostics"
+		);
+
+		await expect(validateRecordedVideo(videoPath)).rejects.toThrow();
+		await expect(getRecentSuccessfulVideoValidation(videoPath)).resolves.toBeNull();
+	});
+
+	it("bounds the validation cache and evicts the oldest entry", async () => {
+		mockValidVideoProbe();
+		const { validateRecordedVideo, getRecentSuccessfulVideoValidation } = await import(
+			"./diagnostics"
+		);
+
+		const count = 17;
+		const paths: string[] = [];
+		for (let index = 0; index < count; index += 1) {
+			const videoPath = path.join(tempRoot, `recording-bound-${index}.mp4`);
+			await fs.writeFile(videoPath, Buffer.alloc(4096));
+			paths.push(videoPath);
+			await validateRecordedVideo(videoPath);
+		}
+
+		// The newest entry is still authorized to skip.
+		await expect(getRecentSuccessfulVideoValidation(paths[count - 1])).resolves.not.toBeNull();
+		// The oldest entry was evicted to keep the cache bounded.
+		await expect(getRecentSuccessfulVideoValidation(paths[0])).resolves.toBeNull();
+	});
+
+	it("clears a validation token once it ages past the TTL", async () => {
+		const videoPath = path.join(tempRoot, "recording-ttl.mp4");
+		await fs.writeFile(videoPath, Buffer.alloc(4096));
+		mockValidVideoProbe();
+
+		const { validateRecordedVideo, getRecentSuccessfulVideoValidation } = await import(
+			"./diagnostics"
+		);
+
+		vi.useFakeTimers();
+		try {
+			await validateRecordedVideo(videoPath);
+			await expect(getRecentSuccessfulVideoValidation(videoPath)).resolves.not.toBeNull();
+
+			vi.setSystemTime(Date.now() + 61_000);
+			await expect(getRecentSuccessfulVideoValidation(videoPath)).resolves.toBeNull();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("fresh files with no prior token still validate (no false skip)", async () => {
+		const videoPath = path.join(tempRoot, "recording-fresh.mp4");
+		await fs.writeFile(videoPath, Buffer.alloc(4096));
+		mockValidVideoProbe();
+
+		const { validateRecordedVideo, getRecentSuccessfulVideoValidation } = await import(
+			"./diagnostics"
+		);
+
+		// Validate once, then rewrite as a brand-new file at the same path (the
+		// freshly stored / rewritten-video case). The new identity must not be
+		// authorized to skip.
+		await validateRecordedVideo(videoPath);
+		await fs.writeFile(videoPath, Buffer.alloc(8192));
+		await expect(getRecentSuccessfulVideoValidation(videoPath)).resolves.toBeNull();
+	});
 });

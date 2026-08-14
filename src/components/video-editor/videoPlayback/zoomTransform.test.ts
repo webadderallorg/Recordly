@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { applyZoomTransform, computeZoomTransform, createMotionBlurState } from "./zoomTransform";
+import {
+	analyzeZoomMotionBlurStep,
+	applyZoomTransform,
+	computeZoomTransform,
+	createMotionBlurState,
+} from "./zoomTransform";
 
 function createStubContainer() {
 	return {
@@ -120,5 +125,76 @@ describe("applyZoomTransform motion blur routing", () => {
 		expect(zoomBlurFilter.center.x).toBeCloseTo(stageSize.width / 2, 0);
 		expect(zoomBlurFilter.center.y).toBeCloseTo(stageSize.height / 2, 0);
 		expect(zoomBlurFilter.radius).toBe(-1);
+	});
+});
+
+describe("analyzeZoomMotionBlurStep", () => {
+	const baseMask = { x: 80, y: 60, width: 1120, height: 600 };
+	const stageSize = { width: 1280, height: 720 };
+
+	it("reports zero strength when the camera step is static", () => {
+		const result = analyzeZoomMotionBlurStep({
+			previousTransform: { scale: 1, x: 0, y: 0 },
+			currentTransform: { scale: 1, x: 0, y: 0 },
+			baseMask,
+			stageSize,
+			motionBlurAmount: 1,
+			deltaSeconds: 1 / 30,
+		});
+
+		expect(result.strength).toBe(0);
+		expect(result.centerX).toBeCloseTo(640, 0);
+		expect(result.centerY).toBeCloseTo(360, 0);
+	});
+
+	it("derives the same radial strength the renderer applies during zoom steps", () => {
+		const previous = { scale: 1, x: 0, y: 0 };
+		const current = computeZoomTransform({
+			stageSize,
+			baseMask,
+			zoomScale: 1.4,
+			zoomProgress: 1,
+			focusX: 0.5,
+			focusY: 0.5,
+		});
+
+		const result = analyzeZoomMotionBlurStep({
+			previousTransform: previous,
+			currentTransform: current,
+			baseMask,
+			stageSize,
+			motionBlurAmount: 0.35,
+			deltaSeconds: 1 / 30,
+		});
+
+		expect(result.strength).toBeGreaterThan(0);
+		// A zoom about the stage center keeps the blur center at the stage center.
+		expect(result.centerX).toBeCloseTo(stageSize.width / 2, 0);
+		expect(result.centerY).toBeCloseTo(stageSize.height / 2, 0);
+	});
+
+	it("places the blur center at the zoom pivot for off-center zooms", () => {
+		const previous = { scale: 1, x: 0, y: 0 };
+		const current = computeZoomTransform({
+			stageSize,
+			baseMask,
+			zoomScale: 1.6,
+			zoomProgress: 1,
+			focusX: 0.25,
+			focusY: 0.75,
+		});
+
+		const result = analyzeZoomMotionBlurStep({
+			previousTransform: previous,
+			currentTransform: current,
+			baseMask,
+			stageSize,
+			motionBlurAmount: 0.35,
+			deltaSeconds: 1 / 30,
+		});
+
+		expect(result.strength).toBeGreaterThan(0);
+		expect(result.centerX).toBeLessThan(stageSize.width / 2);
+		expect(result.centerY).toBeGreaterThan(stageSize.height / 2);
 	});
 });

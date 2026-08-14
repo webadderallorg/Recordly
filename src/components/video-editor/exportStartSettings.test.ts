@@ -11,6 +11,10 @@ const baseOptions = {
 	mp4FrameRate: 30 as const,
 	exportBackendPreference: "auto" as const,
 	exportPipelineModel: "modern" as const,
+	exportVideoCodec: "h264" as const,
+	exportEncoderPreference: "auto" as const,
+	exportBitrateMode: "auto" as const,
+	exportBitrateMbps: 20,
 	gifFrameRate: 20 as const,
 	gifLoop: true,
 	gifSizePreset: "medium" as const,
@@ -25,8 +29,30 @@ describe("resolveExportStartSettings", () => {
 			mp4FrameRate: 30,
 			backendPreference: "auto",
 			pipelineModel: "modern",
+			exportVideoCodec: "h264",
+			exportEncoderPreference: "auto",
+			exportBitrateMode: "auto",
+			exportBitrateMbps: 20,
 			quality: "good",
 			gifConfig: undefined,
+		});
+	});
+
+	it("carries MP4-only codec/encoder/bitrate fields for MP4", () => {
+		expect(
+			resolveExportStartSettings({
+				...baseOptions,
+				exportVideoCodec: "hevc",
+				exportEncoderPreference: "cpu",
+				exportBitrateMode: "custom",
+				exportBitrateMbps: 12.5,
+			}),
+		).toMatchObject({
+			format: "mp4",
+			exportVideoCodec: "hevc",
+			exportEncoderPreference: "cpu",
+			exportBitrateMode: "custom",
+			exportBitrateMbps: 12.5,
 		});
 	});
 
@@ -37,6 +63,10 @@ describe("resolveExportStartSettings", () => {
 				sourceWidth: 2560,
 				sourceHeight: 1440,
 				exportFormat: "gif",
+				exportVideoCodec: "hevc",
+				exportEncoderPreference: "cpu",
+				exportBitrateMode: "custom",
+				exportBitrateMbps: 40,
 				gifFrameRate: 15,
 				gifLoop: false,
 				gifSizePreset: "medium",
@@ -48,6 +78,10 @@ describe("resolveExportStartSettings", () => {
 			mp4FrameRate: undefined,
 			backendPreference: undefined,
 			pipelineModel: undefined,
+			exportVideoCodec: undefined,
+			exportEncoderPreference: undefined,
+			exportBitrateMode: undefined,
+			exportBitrateMbps: undefined,
 			quality: undefined,
 			gifConfig: {
 				frameRate: 15,

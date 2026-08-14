@@ -9,10 +9,16 @@ export interface ExportConfig {
 	preferredRenderBackend?: ExportRenderBackend;
 	experimentalNativeExport?: boolean;
 	experimentalNvidiaCudaExport?: boolean;
+	exportVideoCodec?: ExportVideoCodec;
+	exportEncoderPreference?: ExportEncoderPreference;
+	exportBitrateMode?: ExportBitrateMode;
+	exportBitrateMbps?: number;
 	maxEncodeQueue?: number;
 	maxDecodeQueue?: number;
 	maxPendingFrames?: number;
 	maxInFlightNativeWrites?: number;
+	maxInFlightNativeRawFrames?: number;
+	maxInFlightNativeRawBytes?: number;
 	sourceAudioFallbackStartDelayMsByPath?: Record<string, number>;
 }
 
@@ -27,12 +33,23 @@ export interface ExportProgress {
 	percentage: number;
 	estimatedTimeRemaining: number; // in seconds
 	renderFps?: number;
+	/** "native" = measured encode FPS from the native helper; "estimated" =
+	 *  preparation-inclusive wall-clock estimate that must not be read as encode
+	 *  speed. */
+	fpsSource?: "native" | "estimated";
 	renderBackend?: ExportRenderBackend;
 	encodeBackend?: ExportEncodeBackend;
 	encoderName?: string;
 	nativeStaticLayoutSkipReason?: string;
 	nativeStaticLayoutSkipReasons?: string[];
 	phase?: "preparing" | "extracting" | "finalizing" | "saving"; // Phase of export
+	/** Internal prepare substage key emitted by the native/CUDA export pipeline
+	 *  (e.g. "launching-cuda-pipeline", "initializing-cuda-nvenc",
+	 *  "waiting-for-first-frame"). Diagnostic only; never persisted. */
+	preparingSubstate?: string;
+	/** User-facing label for the current prepare substage (e.g. "Launching CUDA
+	 *  pipeline", "Initializing CUDA/NVENC"). Shown while phase is preparing. */
+	preparingSubstateLabel?: string;
 	renderProgress?: number; // 0-100, progress of GIF rendering phase
 	audioProgress?: number; // 0-1, progress of real-time audio rendering (speed/audio regions)
 }
@@ -113,6 +130,8 @@ export interface ExportFfmpegAudioMuxBreakdown {
 	}>;
 }
 
+export type ExportNativeTransportMode = "transferable-stream" | "cloned-ipc";
+
 export interface ExportMetrics {
 	totalElapsedMs: number;
 	metadataLoadMs?: number;
@@ -126,7 +145,15 @@ export interface ExportMetrics {
 	peakEncodeQueueSize?: number;
 	peakNativeWriteInFlight?: number;
 	nativeCaptureMs?: number;
+	/** Total renderer-side native write promise/ACK completion time. */
 	nativeWriteMs?: number;
+	nativeWriteAckMs?: number;
+	nativeRawBytesSubmitted?: number;
+	nativeTransportMode?: ExportNativeTransportMode;
+	nativeTransportFallbackReason?: string;
+	averageNativeFrameTransportMs?: number;
+	averageNativeWriteAckMs?: number;
+	peakNativeWriteInFlightBytes?: number;
 	finalizationMs?: number;
 	frameCount?: number;
 	renderBackend?: ExportRenderBackend;
@@ -170,6 +197,12 @@ export interface VideoFrameData {
 	duration: number; // in microseconds
 }
 
+export type ExportVideoCodec = "h264" | "hevc";
+
+export type ExportEncoderPreference = "auto" | "hardware" | "cpu";
+
+export type ExportBitrateMode = "auto" | "custom";
+
 export type ExportEncodingMode = "fast" | "balanced" | "quality";
 
 export type ExportQuality = "medium" | "good" | "high" | "source";
@@ -200,9 +233,19 @@ export interface ExportSettings {
 	mp4FrameRate?: ExportMp4FrameRate;
 	backendPreference?: ExportBackendPreference;
 	pipelineModel?: ExportPipelineModel;
+	exportVideoCodec?: ExportVideoCodec;
+	exportEncoderPreference?: ExportEncoderPreference;
+	exportBitrateMode?: ExportBitrateMode;
+	exportBitrateMbps?: number;
 	// GIF settings
 	gifConfig?: GifExportConfig;
 }
+
+export const EXPORT_BITRATE_MIN_MBPS = 1;
+export const EXPORT_BITRATE_MAX_MBPS = 200;
+export const EXPORT_BITRATE_H264_MAX_MBPS = 105;
+export const EXPORT_BITRATE_HEVC_MAX_MBPS = 70;
+export const EXPORT_BITRATE_DEFAULT_CUSTOM_MBPS = 20;
 
 export const MP4_FRAME_RATES: readonly ExportMp4FrameRate[] = [24, 30, 60] as const;
 

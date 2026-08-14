@@ -13,7 +13,6 @@ import {
 	systemPreferences,
 } from "electron";
 import { showCursor } from "../../cursorHider";
-import { getMonitorHandles } from "../monitorResolver";
 import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
 import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../cursor/bounds";
 import { startInteractionCapture, stopInteractionCapture } from "../cursor/interaction";
@@ -30,7 +29,10 @@ import {
 	stopCursorCapture,
 	writeCursorTelemetry,
 } from "../cursor/telemetry";
+import { beginNewRecordingGeneration, triggerNativeExportPrewarm } from "../export/native-prewarm";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
+import { formatLogTs } from "../log";
+import { getMonitorHandles } from "../monitorResolver";
 import {
 	ensureNativeCaptureHelperBinary,
 	ensureSwiftHelperBinary,
@@ -151,6 +153,47 @@ import {
 import { resolveWindowsCaptureTarget } from "../windowsCaptureSelection";
 
 const execFileAsync = promisify(execFile);
+
+// Deterministic companion sidecar paths the current finalizing native recording
+// is expected to materialize (recording-<id>.system.wav / recording-<id>.mic.wav).
+// The main process knows these authoritative paths; when a sidecar is expected
+// but not yet present on disk it is surfaced as a pending path so the renderer
+// can retry it (waveform) instead of probing speculative candidates. Keys are
+// removed once the file exists or the finalization completes.
+const EXPECTED_COMPANION_SIDECAR_PATHS = new Set<string>();
+
+function noteExpectedCompanionSidecarPaths(paths: Iterable<string | null | undefined>): void {
+	for (const candidatePath of paths) {
+		if (candidatePath) {
+			EXPECTED_COMPANION_SIDECAR_PATHS.add(candidatePath);
+		}
+	}
+}
+
+function finishExpectedCompanionSidecarPaths(paths?: Iterable<string | null | undefined>): void {
+	for (const candidatePath of paths ?? EXPECTED_COMPANION_SIDECAR_PATHS) {
+		if (candidatePath) {
+			EXPECTED_COMPANION_SIDECAR_PATHS.delete(candidatePath);
+		}
+	}
+}
+
+/**
+ * Finalizes the stored recording and fires the asynchronous export prewarm for
+ * the now-authoritative source path. Prewarm is intentionally fire-and-forget
+ * (`void`), never awaited, so it cannot delay the stop/mux IPC response, editor
+ * creation, or user cancellation.
+ */
+async function finalizeStoredVideoWithPrewarm(videoPath: string) {
+	const result = await finalizeStoredVideo(videoPath);
+	if (result.success && result.path) {
+		console.log(formatLogTs(), "[recording] finalize-stored-video with prewarm", {
+			path: result.path,
+		});
+		void triggerNativeExportPrewarm(result.path);
+	}
+	return result;
+}
 
 async function writeWindowsRecordingDiagnostics(
 	videoPath: string | null | undefined,
@@ -397,6 +440,10 @@ export function registerRecordingHandlers(
 	ipcMain.handle(
 		"start-native-screen-recording",
 		async (_, source: SelectedSource, options?: NativeMacRecordingOptions) => {
+			// A fresh recording supersedes any previous recording's expected sidecars.
+			finishExpectedCompanionSidecarPaths();
+			// A fresh recording supersedes any in-flight/stale export prewarm.
+			beginNewRecordingGeneration();
 			// Windows native capture path
 			if (process.platform === "win32") {
 				const windowsCaptureAvailable = await isNativeWindowsCaptureAvailable();
@@ -434,13 +481,16 @@ export function registerRecordingHandlers(
 					const recordingsDir = await getRecordingsDir();
 					const timestamp = Date.now();
 					const outputPath = path.join(recordingsDir, `recording-${timestamp}.mp4`);
-					tempVideoPath = path.join(app.getPath("temp"), `recordly-native-${timestamp}.mp4`);
-					
+					tempVideoPath = path.join(
+						app.getPath("temp"),
+						`recordly-native-${timestamp}.mp4`,
+					);
+
 					let captureOutput = "";
 					let systemAudioPath: string | null = null;
 					let microphonePath: string | null = null;
 					let orphanedMicAudioPath: string | null = null;
-					
+
 					const browserMicFallbackRequested =
 						shouldStartWindowsBrowserMicrophoneFallback(options);
 					const captureTarget = resolveWindowsCaptureTarget(
@@ -483,7 +533,7 @@ export function registerRecordingHandlers(
 							// Fallback to coordinate-based matching if handle resolution fails
 							config.displayId = captureTarget.displayId;
 						}
-						
+
 						config.displayX = Math.round(captureTarget.bounds.x);
 						config.displayY = Math.round(captureTarget.bounds.y);
 						config.displayW = Math.round(captureTarget.bounds.width);
@@ -508,7 +558,10 @@ export function registerRecordingHandlers(
 
 					if (options?.capturesMicrophone && !browserMicFallbackRequested) {
 						microphonePath = path.join(recordingsDir, `recording-${timestamp}.mic.wav`);
-						tempMicPath = path.join(app.getPath("temp"), `recordly-native-${timestamp}.mic.wav`);
+						tempMicPath = path.join(
+							app.getPath("temp"),
+							`recordly-native-${timestamp}.mic.wav`,
+						);
 						config.captureMic = true;
 						config.micOutputPath = tempMicPath;
 						if (options.microphoneLabel) {
@@ -904,335 +957,367 @@ export function registerRecordingHandlers(
 
 	ipcMain.handle("stop-native-screen-recording", async () => {
 		const start = Date.now();
-		console.log("[PERF:MAIN] Handler: stop-native-screen-recording: STARTED");
+		console.log(formatLogTs(), "[PERF:MAIN] Handler: stop-native-screen-recording: STARTED");
 		try {
-		// Windows native capture stop path
-		if (process.platform === "win32" && windowsNativeCaptureActive) {
-			let stagedTempVideoPath: string | null = null;
-			let stagedTempSystemAudioPath: string | null = null;
-			let stagedTempMicAudioPath: string | null = null;
-			try {
-				if (!windowsCaptureProcess) {
-					throw new Error("Native Windows capture process is not running");
+			// Windows native capture stop path
+			if (process.platform === "win32" && windowsNativeCaptureActive) {
+				let stagedTempVideoPath: string | null = null;
+				let stagedTempSystemAudioPath: string | null = null;
+				let stagedTempMicAudioPath: string | null = null;
+				try {
+					if (!windowsCaptureProcess) {
+						throw new Error("Native Windows capture process is not running");
+					}
+
+					const proc = windowsCaptureProcess;
+					const preferredVideoPath = windowsCaptureTargetPath;
+					const preferredOrphanedMicAudioPath = windowsOrphanedMicAudioPath;
+					const diagnosticsSystemAudioPath = windowsSystemAudioPath;
+					const diagnosticsMicAudioPath = windowsMicAudioPath;
+					setWindowsCaptureStopRequested(true);
+					proc.stdin.write("stop\n");
+					const tempVideoPath = await waitForWindowsCaptureStop(proc);
+					stagedTempVideoPath = tempVideoPath;
+					const finalVideoPath = preferredVideoPath ?? tempVideoPath;
+
+					// Native Windows capture results are initially written to a safe temporary path
+					// (to avoid encoding failures with non-ASCII characters). We move them to the final
+					// destination now using Node.js, which handles Unicode paths correctly.
+					if (tempVideoPath !== finalVideoPath) {
+						await moveFileWithOverwrite(tempVideoPath, finalVideoPath);
+					}
+
+					if (windowsSystemAudioPath && tempVideoPath.endsWith(".mp4")) {
+						const tempAudioPath = tempVideoPath.replace(".mp4", ".system.wav");
+						stagedTempSystemAudioPath = tempAudioPath;
+						const finalAudioPath = windowsSystemAudioPath;
+						if (await pathExists(tempAudioPath)) {
+							await moveFileWithOverwrite(tempAudioPath, finalAudioPath);
+							const tempJson = tempAudioPath + ".json";
+							if (await pathExists(tempJson)) {
+								await moveFileWithOverwrite(tempJson, finalAudioPath + ".json");
+							}
+						}
+					}
+
+					if (windowsMicAudioPath && tempVideoPath.endsWith(".mp4")) {
+						const tempMicPath = tempVideoPath.replace(".mp4", ".mic.wav");
+						stagedTempMicAudioPath = tempMicPath;
+						const finalMicPath = windowsMicAudioPath;
+						if (await pathExists(tempMicPath)) {
+							await moveFileWithOverwrite(tempMicPath, finalMicPath);
+							const tempJson = tempMicPath + ".json";
+							if (await pathExists(tempJson)) {
+								await moveFileWithOverwrite(tempJson, finalMicPath + ".json");
+							}
+						}
+					}
+					const validation = await validateRecordedVideo(finalVideoPath);
+
+					setWindowsCaptureProcess(null);
+					setWindowsNativeCaptureActive(false);
+					setNativeScreenRecordingActive(false);
+					setWindowsCaptureTargetPath(null);
+					setWindowsCaptureStopRequested(false);
+					setWindowsCapturePaused(false);
+					setWindowsOrphanedMicAudioPath(null);
+					await cleanupWindowsOrphanedMicAudioPath(preferredOrphanedMicAudioPath);
+					setWindowsPendingVideoPath(finalVideoPath);
+					recordNativeCaptureDiagnostics({
+						backend: "windows-wgc",
+						phase: "stop",
+						outputPath: finalVideoPath,
+						systemAudioPath: diagnosticsSystemAudioPath,
+						microphonePath: diagnosticsMicAudioPath,
+						processOutput: windowsCaptureOutputBuffer.trim() || undefined,
+						fileSizeBytes: validation.fileSizeBytes,
+					});
+					await writeWindowsRecordingDiagnostics(finalVideoPath, {
+						phase: "stop",
+						outputPath: finalVideoPath,
+						systemAudioPath: diagnosticsSystemAudioPath,
+						microphonePath: diagnosticsMicAudioPath,
+						processOutput: windowsCaptureOutputBuffer.trim() || undefined,
+						details: {
+							fileSizeBytes: validation.fileSizeBytes,
+							durationSeconds: validation.durationSeconds,
+						},
+					});
+
+					// Persist cursor telemetry before returning so the editor can find it immediately
+					snapshotCursorTelemetryForPersistence();
+					try {
+						await persistPendingCursorTelemetry(finalVideoPath);
+					} catch (error) {
+						console.warn(
+							"Failed to persist cursor telemetry during native stop:",
+							error,
+						);
+					}
+
+					// The main process knows the deterministic companion sidecar paths for this
+					// finalized Windows recording. Note the expected sidecars so the renderer
+					// can resolve the authoritative system/mic paths (and retry a delayed
+					// sidecar) without speculative candidate probing.
+					const expectedSystemAudioPath =
+						windowsSystemAudioPath || diagnosticsSystemAudioPath;
+					const expectedMicAudioPath = windowsMicAudioPath || diagnosticsMicAudioPath;
+					noteExpectedCompanionSidecarPaths([
+						expectedSystemAudioPath,
+						expectedMicAudioPath,
+					]);
+
+					return {
+						success: true as const,
+						path: finalVideoPath,
+						systemAudioPath: expectedSystemAudioPath,
+						micAudioPath: expectedMicAudioPath,
+					};
+				} catch (error) {
+					console.error("Failed to stop native Windows capture:", error);
+					const fallbackPath = await resolveExistingPath(
+						windowsCaptureTargetPath,
+						stagedTempVideoPath,
+					);
+					const recoveredSystemAudioPath = await resolveExistingPath(
+						windowsSystemAudioPath,
+						stagedTempSystemAudioPath,
+					);
+					const recoveredMicAudioPath = await resolveExistingPath(
+						windowsMicAudioPath,
+						stagedTempMicAudioPath,
+					);
+					const fallbackOrphanedMicAudioPath = windowsOrphanedMicAudioPath;
+					const diagnosticsSystemAudioPath =
+						recoveredSystemAudioPath ?? windowsSystemAudioPath;
+					const diagnosticsMicAudioPath = recoveredMicAudioPath ?? windowsMicAudioPath;
+					setWindowsNativeCaptureActive(false);
+					setNativeScreenRecordingActive(false);
+					setWindowsCaptureProcess(null);
+					setWindowsCaptureTargetPath(null);
+					setWindowsCaptureStopRequested(false);
+					setWindowsCapturePaused(false);
+					setWindowsOrphanedMicAudioPath(null);
+
+					if (fallbackPath) {
+						try {
+							const validation = await validateRecordedVideo(fallbackPath);
+							setWindowsPendingVideoPath(fallbackPath);
+							setWindowsSystemAudioPath(recoveredSystemAudioPath);
+							setWindowsMicAudioPath(recoveredMicAudioPath);
+							await cleanupWindowsOrphanedMicAudioPath(fallbackOrphanedMicAudioPath);
+							recordNativeCaptureDiagnostics({
+								backend: "windows-wgc",
+								phase: "stop",
+								outputPath: fallbackPath,
+								systemAudioPath: diagnosticsSystemAudioPath,
+								microphonePath: diagnosticsMicAudioPath,
+								processOutput: windowsCaptureOutputBuffer.trim() || undefined,
+								fileSizeBytes: validation.fileSizeBytes,
+								error: String(error),
+							});
+							await writeWindowsRecordingDiagnostics(fallbackPath, {
+								phase: "stop",
+								outputPath: fallbackPath,
+								systemAudioPath: diagnosticsSystemAudioPath,
+								microphonePath: diagnosticsMicAudioPath,
+								processOutput: windowsCaptureOutputBuffer.trim() || undefined,
+								error: String(error),
+								details: {
+									fileSizeBytes: validation.fileSizeBytes,
+									durationSeconds: validation.durationSeconds,
+									recoveredAfterStopFailure: true,
+								},
+							});
+							return { success: true, path: fallbackPath };
+						} catch {
+							// File is absent or failed validation.
+						}
+					}
+
+					setWindowsSystemAudioPath(null);
+					setWindowsMicAudioPath(null);
+					setWindowsPendingVideoPath(null);
+					await cleanupWindowsOrphanedMicAudioPath(fallbackOrphanedMicAudioPath);
+
+					recordNativeCaptureDiagnostics({
+						backend: "windows-wgc",
+						phase: "stop",
+						outputPath: fallbackPath,
+						systemAudioPath: diagnosticsSystemAudioPath,
+						microphonePath: diagnosticsMicAudioPath,
+						processOutput: windowsCaptureOutputBuffer.trim() || undefined,
+						fileSizeBytes: await getFileSizeIfPresent(fallbackPath),
+						error: String(error),
+					});
+					await writeWindowsRecordingDiagnostics(fallbackPath, {
+						phase: "stop",
+						outputPath: fallbackPath,
+						systemAudioPath: diagnosticsSystemAudioPath,
+						microphonePath: diagnosticsMicAudioPath,
+						processOutput: windowsCaptureOutputBuffer.trim() || undefined,
+						error: String(error),
+						details: {
+							fileSizeBytes: await getFileSizeIfPresent(fallbackPath),
+						},
+					});
+
+					return {
+						success: false,
+						message: "Failed to stop native Windows capture",
+						error: String(error),
+					};
+				}
+			}
+
+			if (process.platform !== "darwin") {
+				return {
+					success: false,
+					message: "Native screen recording is only available on macOS.",
+				};
+			}
+
+			if (!nativeScreenRecordingActive) {
+				const recovered = await recoverNativeMacCaptureOutput();
+				if (recovered) {
+					return recovered;
 				}
 
-				const proc = windowsCaptureProcess;
-				const preferredVideoPath = windowsCaptureTargetPath;
-				const preferredOrphanedMicAudioPath = windowsOrphanedMicAudioPath;
-				const diagnosticsSystemAudioPath = windowsSystemAudioPath;
-				const diagnosticsMicAudioPath = windowsMicAudioPath;
-				setWindowsCaptureStopRequested(true);
-				proc.stdin.write("stop\n");
-				const tempVideoPath = await waitForWindowsCaptureStop(proc);
-				stagedTempVideoPath = tempVideoPath;
-				const finalVideoPath = preferredVideoPath ?? tempVideoPath;
+				return { success: false, message: "No native screen recording is active." };
+			}
 
-				// Native Windows capture results are initially written to a safe temporary path
-				// (to avoid encoding failures with non-ASCII characters). We move them to the final
-				// destination now using Node.js, which handles Unicode paths correctly.
+			try {
+				if (!nativeCaptureProcess) {
+					throw new Error("Native capture helper process is not running");
+				}
+
+				const process = nativeCaptureProcess;
+				const preferredVideoPath = nativeCaptureTargetPath;
+				const preferredSystemAudioPath = nativeCaptureSystemAudioPath;
+				const preferredMicrophonePath = nativeCaptureMicrophonePath;
+				console.log(
+					formatLogTs(),
+					"[stop-native] Audio paths — system:",
+					preferredSystemAudioPath,
+					"mic:",
+					preferredMicrophonePath,
+				);
+				setNativeCaptureStopRequested(true);
+				process.stdin.write("stop\n");
+				const tempVideoPath = await waitForNativeCaptureStop(process);
+				console.log(
+					formatLogTs(),
+					"[stop-native] Helper stopped, tempVideoPath:",
+					tempVideoPath,
+				);
+				setNativeCaptureProcess(null);
+				setNativeScreenRecordingActive(false);
+				setNativeCaptureTargetPath(null);
+				setNativeCaptureSystemAudioPath(null);
+				setNativeCaptureMicrophonePath(null);
+				setNativeCaptureStopRequested(false);
+				setNativeCapturePaused(false);
+
+				const finalVideoPath = preferredVideoPath ?? tempVideoPath;
 				if (tempVideoPath !== finalVideoPath) {
 					await moveFileWithOverwrite(tempVideoPath, finalVideoPath);
 				}
 
-				if (windowsSystemAudioPath && tempVideoPath.endsWith(".mp4")) {
-					const tempAudioPath = tempVideoPath.replace(".mp4", ".system.wav");
-					stagedTempSystemAudioPath = tempAudioPath;
-					const finalAudioPath = windowsSystemAudioPath;
-					if (await pathExists(tempAudioPath)) {
-						await moveFileWithOverwrite(tempAudioPath, finalAudioPath);
-						const tempJson = tempAudioPath + ".json";
-						if (await pathExists(tempJson)) {
-							await moveFileWithOverwrite(tempJson, finalAudioPath + ".json");
-						}
+				if (preferredSystemAudioPath || preferredMicrophonePath) {
+					console.log(
+						formatLogTs(),
+						"[stop-native] Attempting audio mux (merging separate tracks) into:",
+						finalVideoPath,
+					);
+					try {
+						await muxNativeMacRecordingWithAudio(
+							finalVideoPath,
+							preferredSystemAudioPath,
+							preferredMicrophonePath,
+						);
+						console.log(
+							formatLogTs(),
+							"[stop-native] Audio mux completed successfully",
+						);
+					} catch (error) {
+						console.warn(
+							formatLogTs(),
+							"[stop-native] Audio mux failed (video still has inline audio):",
+							error,
+						);
 					}
+				} else {
+					console.log(formatLogTs(), "[stop-native] No separate audio tracks to mux");
 				}
 
-				if (windowsMicAudioPath && tempVideoPath.endsWith(".mp4")) {
-					const tempMicPath = tempVideoPath.replace(".mp4", ".mic.wav");
-					stagedTempMicAudioPath = tempMicPath;
-					const finalMicPath = windowsMicAudioPath;
-					if (await pathExists(tempMicPath)) {
-						await moveFileWithOverwrite(tempMicPath, finalMicPath);
-						const tempJson = tempMicPath + ".json";
-						if (await pathExists(tempJson)) {
-							await moveFileWithOverwrite(tempJson, finalMicPath + ".json");
-						}
-					}
-				}
-				const validation = await validateRecordedVideo(finalVideoPath);
-
-				setWindowsCaptureProcess(null);
-				setWindowsNativeCaptureActive(false);
-				setNativeScreenRecordingActive(false);
-				setWindowsCaptureTargetPath(null);
-				setWindowsCaptureStopRequested(false);
-				setWindowsCapturePaused(false);
-				setWindowsOrphanedMicAudioPath(null);
-				await cleanupWindowsOrphanedMicAudioPath(preferredOrphanedMicAudioPath);
-				setWindowsPendingVideoPath(finalVideoPath);
-				recordNativeCaptureDiagnostics({
-					backend: "windows-wgc",
-					phase: "stop",
-					outputPath: finalVideoPath,
-					systemAudioPath: diagnosticsSystemAudioPath,
-					microphonePath: diagnosticsMicAudioPath,
-					processOutput: windowsCaptureOutputBuffer.trim() || undefined,
-					fileSizeBytes: validation.fileSizeBytes,
-				});
-				await writeWindowsRecordingDiagnostics(finalVideoPath, {
-					phase: "stop",
-					outputPath: finalVideoPath,
-					systemAudioPath: diagnosticsSystemAudioPath,
-					microphonePath: diagnosticsMicAudioPath,
-					processOutput: windowsCaptureOutputBuffer.trim() || undefined,
-					details: {
-						fileSizeBytes: validation.fileSizeBytes,
-						durationSeconds: validation.durationSeconds,
-					},
-				});
-
-				// Persist cursor telemetry before returning so the editor can find it immediately
-				snapshotCursorTelemetryForPersistence();
-				try {
-					await persistPendingCursorTelemetry(finalVideoPath);
-				} catch (error) {
-					console.warn("Failed to persist cursor telemetry during native stop:", error);
-				}
-
-				return { success: true, path: finalVideoPath };
+				return await finalizeStoredVideoWithPrewarm(finalVideoPath);
 			} catch (error) {
-				console.error("Failed to stop native Windows capture:", error);
-				const fallbackPath = await resolveExistingPath(
-					windowsCaptureTargetPath,
-					stagedTempVideoPath,
-				);
-				const recoveredSystemAudioPath = await resolveExistingPath(
-					windowsSystemAudioPath,
-					stagedTempSystemAudioPath,
-				);
-				const recoveredMicAudioPath = await resolveExistingPath(
-					windowsMicAudioPath,
-					stagedTempMicAudioPath,
-				);
-				const fallbackOrphanedMicAudioPath = windowsOrphanedMicAudioPath;
-				const diagnosticsSystemAudioPath = recoveredSystemAudioPath ?? windowsSystemAudioPath;
-				const diagnosticsMicAudioPath = recoveredMicAudioPath ?? windowsMicAudioPath;
-				setWindowsNativeCaptureActive(false);
+				console.error("Failed to stop native ScreenCaptureKit recording:", error);
+				const fallbackPath = nativeCaptureTargetPath;
+				const fallbackSystemAudioPath = nativeCaptureSystemAudioPath;
+				const fallbackMicrophonePath = nativeCaptureMicrophonePath;
+				const fallbackFileSizeBytes = await getFileSizeIfPresent(fallbackPath);
 				setNativeScreenRecordingActive(false);
-				setWindowsCaptureProcess(null);
-				setWindowsCaptureTargetPath(null);
-				setWindowsCaptureStopRequested(false);
-				setWindowsCapturePaused(false);
-				setWindowsOrphanedMicAudioPath(null);
+				setNativeCaptureProcess(null);
+				setNativeCaptureTargetPath(null);
+				setNativeCaptureSystemAudioPath(null);
+				setNativeCaptureMicrophonePath(null);
+				setNativeCaptureStopRequested(false);
+				setNativeCapturePaused(false);
 
+				recordNativeCaptureDiagnostics({
+					backend: "mac-screencapturekit",
+					phase: "stop",
+					sourceId: lastNativeCaptureDiagnostics?.sourceId ?? null,
+					sourceType: lastNativeCaptureDiagnostics?.sourceType ?? "unknown",
+					displayId: lastNativeCaptureDiagnostics?.displayId ?? null,
+					displayBounds: lastNativeCaptureDiagnostics?.displayBounds ?? null,
+					windowHandle: lastNativeCaptureDiagnostics?.windowHandle ?? null,
+					helperPath: lastNativeCaptureDiagnostics?.helperPath ?? null,
+					outputPath: fallbackPath,
+					systemAudioPath: fallbackSystemAudioPath,
+					microphonePath: fallbackMicrophonePath,
+					osRelease: lastNativeCaptureDiagnostics?.osRelease,
+					supported: lastNativeCaptureDiagnostics?.supported,
+					helperExists: lastNativeCaptureDiagnostics?.helperExists,
+					processOutput: nativeCaptureOutputBuffer.trim() || undefined,
+					fileSizeBytes: fallbackFileSizeBytes,
+					error: String(error),
+				});
+
+				// Try to recover: if the target file exists on disk, finalize with it
 				if (fallbackPath) {
 					try {
-						const validation = await validateRecordedVideo(fallbackPath);
-						setWindowsPendingVideoPath(fallbackPath);
-						setWindowsSystemAudioPath(recoveredSystemAudioPath);
-						setWindowsMicAudioPath(recoveredMicAudioPath);
-						await cleanupWindowsOrphanedMicAudioPath(fallbackOrphanedMicAudioPath);
-						recordNativeCaptureDiagnostics({
-							backend: "windows-wgc",
-							phase: "stop",
-							outputPath: fallbackPath,
-							systemAudioPath: diagnosticsSystemAudioPath,
-							microphonePath: diagnosticsMicAudioPath,
-							processOutput: windowsCaptureOutputBuffer.trim() || undefined,
-							fileSizeBytes: validation.fileSizeBytes,
-							error: String(error),
-						});
-						await writeWindowsRecordingDiagnostics(fallbackPath, {
-							phase: "stop",
-							outputPath: fallbackPath,
-							systemAudioPath: diagnosticsSystemAudioPath,
-							microphonePath: diagnosticsMicAudioPath,
-							processOutput: windowsCaptureOutputBuffer.trim() || undefined,
-							error: String(error),
-							details: {
-								fileSizeBytes: validation.fileSizeBytes,
-								durationSeconds: validation.durationSeconds,
-								recoveredAfterStopFailure: true,
-							},
-						});
-						return { success: true, path: fallbackPath };
-					} catch {
-						// File is absent or failed validation.
-					}
-				}
-
-				setWindowsSystemAudioPath(null);
-				setWindowsMicAudioPath(null);
-				setWindowsPendingVideoPath(null);
-				await cleanupWindowsOrphanedMicAudioPath(fallbackOrphanedMicAudioPath);
-
-				recordNativeCaptureDiagnostics({
-					backend: "windows-wgc",
-					phase: "stop",
-					outputPath: fallbackPath,
-					systemAudioPath: diagnosticsSystemAudioPath,
-					microphonePath: diagnosticsMicAudioPath,
-					processOutput: windowsCaptureOutputBuffer.trim() || undefined,
-					fileSizeBytes: await getFileSizeIfPresent(fallbackPath),
-					error: String(error),
-				});
-				await writeWindowsRecordingDiagnostics(fallbackPath, {
-					phase: "stop",
-					outputPath: fallbackPath,
-					systemAudioPath: diagnosticsSystemAudioPath,
-					microphonePath: diagnosticsMicAudioPath,
-					processOutput: windowsCaptureOutputBuffer.trim() || undefined,
-					error: String(error),
-					details: {
-						fileSizeBytes: await getFileSizeIfPresent(fallbackPath),
-					},
-				});
-
-				return {
-					success: false,
-					message: "Failed to stop native Windows capture",
-					error: String(error),
-				};
-			}
-		}
-
-		if (process.platform !== "darwin") {
-			return {
-				success: false,
-				message: "Native screen recording is only available on macOS.",
-			};
-		}
-
-		if (!nativeScreenRecordingActive) {
-			const recovered = await recoverNativeMacCaptureOutput();
-			if (recovered) {
-				return recovered;
-			}
-
-			return { success: false, message: "No native screen recording is active." };
-		}
-
-		try {
-			if (!nativeCaptureProcess) {
-				throw new Error("Native capture helper process is not running");
-			}
-
-			const process = nativeCaptureProcess;
-			const preferredVideoPath = nativeCaptureTargetPath;
-			const preferredSystemAudioPath = nativeCaptureSystemAudioPath;
-			const preferredMicrophonePath = nativeCaptureMicrophonePath;
-			console.log(
-				"[stop-native] Audio paths — system:",
-				preferredSystemAudioPath,
-				"mic:",
-				preferredMicrophonePath,
-			);
-			setNativeCaptureStopRequested(true);
-			process.stdin.write("stop\n");
-			const tempVideoPath = await waitForNativeCaptureStop(process);
-			console.log("[stop-native] Helper stopped, tempVideoPath:", tempVideoPath);
-			setNativeCaptureProcess(null);
-			setNativeScreenRecordingActive(false);
-			setNativeCaptureTargetPath(null);
-			setNativeCaptureSystemAudioPath(null);
-			setNativeCaptureMicrophonePath(null);
-			setNativeCaptureStopRequested(false);
-			setNativeCapturePaused(false);
-
-			const finalVideoPath = preferredVideoPath ?? tempVideoPath;
-			if (tempVideoPath !== finalVideoPath) {
-				await moveFileWithOverwrite(tempVideoPath, finalVideoPath);
-			}
-
-			if (preferredSystemAudioPath || preferredMicrophonePath) {
-				console.log(
-					"[stop-native] Attempting audio mux (merging separate tracks) into:",
-					finalVideoPath,
-				);
-				try {
-					await muxNativeMacRecordingWithAudio(
-						finalVideoPath,
-						preferredSystemAudioPath,
-						preferredMicrophonePath,
-					);
-					console.log("[stop-native] Audio mux completed successfully");
-				} catch (error) {
-					console.warn(
-						"[stop-native] Audio mux failed (video still has inline audio):",
-						error,
-					);
-				}
-			} else {
-				console.log("[stop-native] No separate audio tracks to mux");
-			}
-
-			return await finalizeStoredVideo(finalVideoPath);
-		} catch (error) {
-			console.error("Failed to stop native ScreenCaptureKit recording:", error);
-			const fallbackPath = nativeCaptureTargetPath;
-			const fallbackSystemAudioPath = nativeCaptureSystemAudioPath;
-			const fallbackMicrophonePath = nativeCaptureMicrophonePath;
-			const fallbackFileSizeBytes = await getFileSizeIfPresent(fallbackPath);
-			setNativeScreenRecordingActive(false);
-			setNativeCaptureProcess(null);
-			setNativeCaptureTargetPath(null);
-			setNativeCaptureSystemAudioPath(null);
-			setNativeCaptureMicrophonePath(null);
-			setNativeCaptureStopRequested(false);
-			setNativeCapturePaused(false);
-
-			recordNativeCaptureDiagnostics({
-				backend: "mac-screencapturekit",
-				phase: "stop",
-				sourceId: lastNativeCaptureDiagnostics?.sourceId ?? null,
-				sourceType: lastNativeCaptureDiagnostics?.sourceType ?? "unknown",
-				displayId: lastNativeCaptureDiagnostics?.displayId ?? null,
-				displayBounds: lastNativeCaptureDiagnostics?.displayBounds ?? null,
-				windowHandle: lastNativeCaptureDiagnostics?.windowHandle ?? null,
-				helperPath: lastNativeCaptureDiagnostics?.helperPath ?? null,
-				outputPath: fallbackPath,
-				systemAudioPath: fallbackSystemAudioPath,
-				microphonePath: fallbackMicrophonePath,
-				osRelease: lastNativeCaptureDiagnostics?.osRelease,
-				supported: lastNativeCaptureDiagnostics?.supported,
-				helperExists: lastNativeCaptureDiagnostics?.helperExists,
-				processOutput: nativeCaptureOutputBuffer.trim() || undefined,
-				fileSizeBytes: fallbackFileSizeBytes,
-				error: String(error),
-			});
-
-			// Try to recover: if the target file exists on disk, finalize with it
-			if (fallbackPath) {
-				try {
-					await fs.access(fallbackPath);
-					console.log(
-						"[stop-native-screen-recording] Recovering with fallback path:",
-						fallbackPath,
-					);
-					if (fallbackSystemAudioPath || fallbackMicrophonePath) {
-						try {
-							await muxNativeMacRecordingWithAudio(
-								fallbackPath,
-								fallbackSystemAudioPath,
-								fallbackMicrophonePath,
-							);
-						} catch (muxError) {
-							console.warn(
-								"Failed to mux recovered native macOS audio into capture:",
-								muxError,
-							);
+						await fs.access(fallbackPath);
+						console.log(
+							formatLogTs(),
+							"[stop-native-screen-recording] Recovering with fallback path:",
+							fallbackPath,
+						);
+						if (fallbackSystemAudioPath || fallbackMicrophonePath) {
+							try {
+								await muxNativeMacRecordingWithAudio(
+									fallbackPath,
+									fallbackSystemAudioPath,
+									fallbackMicrophonePath,
+								);
+							} catch (muxError) {
+								console.warn(
+									"Failed to mux recovered native macOS audio into capture:",
+									muxError,
+								);
+							}
 						}
+						return await finalizeStoredVideoWithPrewarm(fallbackPath);
+					} catch {
+						// File doesn't exist or isn't accessible
 					}
-					return await finalizeStoredVideo(fallbackPath);
-				} catch {
-					// File doesn't exist or isn't accessible
 				}
-			}
 
-			const recovered = await recoverNativeMacCaptureOutput();
-			if (recovered) {
-				return recovered;
-			}
+				const recovered = await recoverNativeMacCaptureOutput();
+				if (recovered) {
+					return recovered;
+				}
 
 				return {
 					success: false,
@@ -1242,6 +1327,7 @@ export function registerRecordingHandlers(
 			}
 		} finally {
 			console.log(
+				formatLogTs(),
 				`[PERF:MAIN] Handler: stop-native-screen-recording: COMPLETED in ${Date.now() - start}ms`,
 			);
 		}
@@ -1387,7 +1473,7 @@ export function registerRecordingHandlers(
 
 	ipcMain.handle("get-video-audio-fallback-paths", async (_event, videoPath: string) => {
 		if (!videoPath) {
-			return { success: true, paths: [], startDelayMsByPath: {} };
+			return { success: true, paths: [], startDelayMsByPath: {}, pendingPaths: [] };
 		}
 
 		try {
@@ -1396,16 +1482,30 @@ export function registerRecordingHandlers(
 				rememberApprovedLocalReadPath(videoPath),
 				...paths.map((fallbackPath) => rememberApprovedLocalReadPath(fallbackPath)),
 			]);
-			return { success: true, paths, startDelayMsByPath };
+			// Expected-but-not-yet-materialized companion sidecars for the finalized
+			// recording. These are authoritative deterministic paths (not speculative
+			// candidates); the renderer retries them so a delayed sidecar is picked up
+			// once it lands without ever probing impossible variants.
+			const usablePaths = new Set(paths);
+			const pendingPaths = Array.from(EXPECTED_COMPANION_SIDECAR_PATHS).filter(
+				(expectedPath) => !usablePaths.has(expectedPath),
+			);
+			return { success: true, paths, startDelayMsByPath, pendingPaths };
 		} catch (error) {
 			console.error("Failed to resolve companion audio fallback paths:", error);
-			return { success: false, paths: [], startDelayMsByPath: {}, error: String(error) };
+			return {
+				success: false,
+				paths: [],
+				startDelayMsByPath: {},
+				pendingPaths: [],
+				error: String(error),
+			};
 		}
 	});
 
 	ipcMain.handle("mux-native-windows-recording", async (_event, expectedDurationMs?: number) => {
 		const start = Date.now();
-		console.log("[PERF:MAIN] Handler: mux-native-windows-recording: STARTED");
+		console.log(formatLogTs(), "[PERF:MAIN] Handler: mux-native-windows-recording: STARTED");
 		try {
 			const videoPath = windowsPendingVideoPath;
 			const orphanedMicAudioPath = windowsOrphanedMicAudioPath;
@@ -1431,7 +1531,10 @@ export function registerRecordingHandlers(
 						hasOrphanedMicrophone: Boolean(orphanedMicAudioPath),
 					},
 				});
-				console.log("[mux-win] Optimization active: skipping video padding.");
+				console.log(
+					formatLogTs(),
+					"[mux-win] Optimization active: skipping video padding.",
+				);
 
 				let muxDetails: unknown = null;
 				if (diagnosticsSystemAudioPath || diagnosticsMicAudioPath) {
@@ -1462,7 +1565,8 @@ export function registerRecordingHandlers(
 					},
 				});
 				await cleanupWindowsOrphanedMicAudioPath(orphanedMicAudioPath);
-				return await finalizeStoredVideo(videoPath);
+				finishExpectedCompanionSidecarPaths();
+				return await finalizeStoredVideoWithPrewarm(videoPath);
 			} catch (error) {
 				console.error("Failed to mux native Windows recording:", error);
 				recordNativeCaptureDiagnostics({
@@ -1489,7 +1593,7 @@ export function registerRecordingHandlers(
 				setWindowsMicAudioPath(null);
 				await cleanupWindowsOrphanedMicAudioPath(orphanedMicAudioPath);
 				try {
-					return await finalizeStoredVideo(videoPath);
+					return await finalizeStoredVideoWithPrewarm(videoPath);
 				} catch {
 					try {
 						await validateRecordedVideo(videoPath);
@@ -1512,12 +1616,15 @@ export function registerRecordingHandlers(
 			}
 		} finally {
 			console.log(
+				formatLogTs(),
 				`[PERF:MAIN] Handler: mux-native-windows-recording: COMPLETED in ${Date.now() - start}ms`,
 			);
 		}
 	});
 
 	ipcMain.handle("start-ffmpeg-recording", async (_, source: SelectedSource) => {
+		// A fresh recording supersedes any in-flight/stale export prewarm.
+		beginNewRecordingGeneration();
 		if (ffmpegCaptureProcess) {
 			return { success: false, message: "An FFmpeg recording is already active." };
 		}
@@ -1578,7 +1685,7 @@ export function registerRecordingHandlers(
 			setFfmpegCaptureTargetPath(null);
 			setFfmpegScreenRecordingActive(false);
 
-			return await finalizeStoredVideo(finalVideoPath);
+			return await finalizeStoredVideoWithPrewarm(finalVideoPath);
 		} catch (error) {
 			console.error("Failed to stop FFmpeg recording:", error);
 			try {
@@ -1619,6 +1726,15 @@ export function registerRecordingHandlers(
 			const sidecarPath = `${baseName}.mic.wav`;
 			const sourceWebmPath = `${baseName}.mic.source.webm`;
 			const tempWebmPath = `${sourceWebmPath}.tmp`;
+
+			// The main process knows this mic sidecar is deterministically expected for
+			// the finalized Windows recording (`.mic.wav` is the Windows companion
+			// layout), even though it is written asynchronously after the editor opens.
+			// Expose it as a pending path so the renderer retries it. macOS/Linux do not
+			// consume this browser fallback `.mic.wav`, so it is not registered there.
+			if (process.platform === "win32") {
+				noteExpectedCompanionSidecarPaths([sidecarPath]);
+			}
 
 			try {
 				await fs.writeFile(tempWebmPath, Buffer.from(audioData));
@@ -1753,7 +1869,7 @@ export function registerRecordingHandlers(
 			const recordingsDir = await getRecordingsDir();
 			const videoPath = resolveRecordedVideoStoragePath(recordingsDir, fileName);
 			await fs.writeFile(videoPath, Buffer.from(videoData));
-			return await finalizeStoredVideo(videoPath);
+			return await finalizeStoredVideoWithPrewarm(videoPath);
 		} catch (error) {
 			console.error("Failed to store video:", error);
 			return {
@@ -1813,6 +1929,8 @@ export function registerRecordingHandlers(
 
 	ipcMain.handle("set-recording-state", (_, recording: boolean) => {
 		if (recording) {
+			// A fresh recording supersedes any in-flight/stale export prewarm.
+			beginNewRecordingGeneration();
 			stopCursorCapture();
 			stopInteractionCapture();
 			startWindowBoundsCapture();

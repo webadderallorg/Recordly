@@ -136,6 +136,37 @@ interface RendererNativeStaticLayoutChunkMetric {
 	outputBytes: number;
 	fallbackReason?: string;
 	windowsGpuSummary?: RendererWindowsGpuExportSummary;
+	nvidiaCudaSummary?: {
+		success?: boolean;
+		outputCodec?: "h264" | "hevc";
+	};
+}
+
+interface RendererNativeTiledOverlayTileRecord {
+	tileIndex: number;
+	byteOffset: number;
+	byteLength: number;
+}
+
+interface RendererNativeTiledOverlayLayerDescriptor {
+	id: string;
+	order: number;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	frameRate: number;
+	durationSec: number;
+	frameCount: number;
+	tileSize: 128;
+	pixelFormat: "rgba";
+	payloadPath: string;
+	payloadByteLength: number;
+	staticTiles: readonly RendererNativeTiledOverlayTileRecord[];
+	frameDeltas: readonly {
+		frameIndex: number;
+		changedTiles: readonly RendererNativeTiledOverlayTileRecord[];
+	}[];
 }
 
 interface RendererNativeStaticLayoutMetrics extends RendererFfmpegAudioMuxMetrics {
@@ -147,15 +178,33 @@ interface RendererNativeStaticLayoutMetrics extends RendererFfmpegAudioMuxMetric
 	fallbackChunkCount: number;
 	videoOnlyBytes?: number;
 	chunks: RendererNativeStaticLayoutChunkMetric[];
+	tiledOverlayLayers?: number;
+	tiledOverlayBlendFrames?: number;
+	changedTileCount?: number;
+	uploadedTileBytes?: number;
+	cachedTileCount?: number;
+	rawFallbackReason?: string;
+	overlayHostReadMs?: number;
+	overlayH2DEnqueueMs?: number;
+	overlayCacheHits?: number;
 }
 
 interface RendererNativeStaticLayoutProgress {
 	sessionId?: string;
 	backend?: RendererNativeStaticLayoutChunkMetric["backend"];
 	stage?: "preparing" | "finalizing";
+	/** Additive preparation sub-stage id emitted by the main-process CUDA
+	 *  pipeline (e.g. "wrapper-launch", "cuda-nvenc-init"). Display-only;
+	 *  never derived from encode throughput. */
+	substate?: string;
+	/** Human-readable label for the active preparation sub-stage (additive;
+	 *  renderers may localize the `substate` id instead). */
+	substateLabel?: string;
 	elapsedMs?: number;
 	averageFps?: number;
 	instantFps?: number;
+	estimatedFps?: number;
+	fpsSource?: "native" | "estimated";
 	intervalMs?: number;
 	intervalFrames?: number;
 	intervalDecodeWallMs?: number;
@@ -247,6 +296,10 @@ interface Window {
 		stopNativeScreenRecording: () => Promise<{
 			success: boolean;
 			path?: string;
+			// Authoritative deterministic companion sidecar paths for the finalized
+			// Windows recording (recording-<id>.system.wav / recording-<id>.mic.wav).
+			systemAudioPath?: string | null;
+			micAudioPath?: string | null;
 			message?: string;
 			error?: string;
 		}>;
@@ -352,12 +405,30 @@ interface Window {
 		nativeStaticLayoutExport: (options: {
 			sessionId?: string;
 			inputPath: string;
+			videoCodec?: "h264" | "hevc";
+			encoderPreference?: "auto" | "hardware" | "cpu";
 			width: number;
 			height: number;
 			frameRate: number;
 			bitrate: number;
 			encodingMode: "fast" | "balanced" | "quality";
 			durationSec: number;
+			overlayLayers?: Array<{
+				id: string;
+				order: number;
+				path: string;
+				kind?: "cursor-sprite";
+				positionsPath?: string;
+				x: number;
+				y: number;
+				width: number;
+				height: number;
+				frameRate: number;
+				durationSec: number;
+				frameCount: number;
+				pixelFormat: "rgba";
+			}>;
+			tiledOverlayLayers?: RendererNativeTiledOverlayLayerDescriptor[];
 			contentWidth: number;
 			contentHeight: number;
 			offsetX: number;
@@ -379,6 +450,9 @@ interface Window {
 			webcamShadowIntensity?: number;
 			webcamMirror?: boolean;
 			webcamTimeOffsetMs?: number;
+			// True when the renderer excluded webcam pixels from the overlay sidecar
+			// and the CUDA compositor owns the webcam natively.
+			webcamNativeOwned?: boolean;
 			cursorTelemetry?: Array<{
 				timeMs: number;
 				cx: number;
@@ -399,7 +473,20 @@ interface Window {
 				anchorY: number;
 				aspectRatio: number;
 			}>;
-			zoomTelemetry?: Array<{ timeMs: number; scale: number; x: number; y: number }>;
+			zoomTelemetry?: Array<{
+				timeMs: number;
+				scale: number;
+				x: number;
+				y: number;
+				blurStrength?: number;
+				blurCenterX?: number;
+				blurCenterY?: number;
+			}>;
+			temporalBlur?: {
+				sampleCount: number;
+				shutterFraction: number;
+				weightCurvePower: number;
+			} | null;
 			timelineSegments?: Array<{
 				sourceStartMs: number;
 				sourceEndMs: number;
@@ -422,9 +509,21 @@ interface Window {
 				editedAudioData?: ArrayBuffer;
 				editedAudioMimeType?: string | null;
 			};
+			streamingRawOverlay?: boolean;
+			streamingCursorSprite?: boolean;
+			spriteStreamId?: string;
+			spritePositionsStreamId?: string;
 		}) => Promise<{
 			success: boolean;
 			tempPath?: string;
+			videoCodec?: "h264" | "hevc";
+			encoderPreference?: "auto" | "hardware" | "cpu";
+			route?:
+				| "cuda-overlay"
+				| "cuda-scale-cpu-pad"
+				| "cuda-static-composite"
+				| "nvidia-cuda-compositor"
+				| "windows-d3d11-compositor";
 			encoderName?: string;
 			error?: string;
 			metrics?: RendererNativeStaticLayoutMetrics;
@@ -442,20 +541,35 @@ interface Window {
 			bitrate: number;
 			encodingMode: "fast" | "balanced" | "quality";
 			inputMode?: "rawvideo" | "h264-stream";
+			videoCodec?: "h264" | "hevc";
+			encoderPreference?: "auto" | "hardware" | "cpu";
 		}) => Promise<{
 			success: boolean;
 			sessionId?: string;
 			encoderName?: string;
 			error?: string;
 		}>;
+		nativeVideoExportOpenFrameChannel: (sessionId: string) => Promise<{
+			success: boolean;
+			error?: string;
+			fallbackAvailable?: boolean;
+		}>;
+		nativeVideoExportWriteFrameViaChannel: (
+			sessionId: string,
+			frameData: Uint8Array,
+		) => Promise<{ success: boolean; error?: string; fallbackAvailable?: boolean }>;
+		nativeVideoExportWriteFramesViaChannel: (
+			sessionId: string,
+			frameDataList: Uint8Array[],
+		) => Promise<{ success: boolean; error?: string; fallbackAvailable?: boolean }>;
 		nativeVideoExportWriteFrame: (
 			sessionId: string,
 			frameData: Uint8Array,
-		) => Promise<{ success: boolean; error?: string }>;
+		) => Promise<{ success: boolean; error?: string; fallbackAvailable?: boolean }>;
 		nativeVideoExportWriteFrames: (
 			sessionId: string,
 			frameDataList: Uint8Array[],
-		) => Promise<{ success: boolean; error?: string }>;
+		) => Promise<{ success: boolean; error?: string; fallbackAvailable?: boolean }>;
 		nativeVideoExportFinish: (
 			sessionId: string,
 			options?: {
@@ -564,6 +678,9 @@ interface Window {
 			success: boolean;
 			paths: string[];
 			startDelayMsByPath?: Record<string, number>;
+			// Deterministic companion sidecars the finalized recording reports as
+			// expected but not yet materialized; the timeline retries these.
+			pendingPaths?: string[];
 			error?: string;
 		}>;
 		setRecordingState: (recording: boolean) => Promise<void>;
@@ -735,7 +852,7 @@ interface Window {
 		deleteRecordingFile: (filePath: string) => Promise<{ success: boolean; error?: string }>;
 		getLocalMediaUrl: (
 			filePath: string,
-		) => Promise<{ success: true; url: string } | { success: false }>;
+		) => Promise<{ success: true; url: string; pending?: boolean } | { success: false }>;
 		saveProjectFile: (
 			projectData: unknown,
 			suggestedName?: string,

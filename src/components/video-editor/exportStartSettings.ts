@@ -1,12 +1,15 @@
 import {
 	calculateOutputDimensions,
 	type ExportBackendPreference,
+	type ExportBitrateMode,
+	type ExportEncoderPreference,
 	type ExportEncodingMode,
 	type ExportFormat,
 	type ExportMp4FrameRate,
 	type ExportPipelineModel,
 	type ExportQuality,
 	type ExportSettings,
+	type ExportVideoCodec,
 	GIF_SIZE_PRESETS,
 	type GifFrameRate,
 	type GifSizePreset,
@@ -22,6 +25,10 @@ export function resolveExportStartSettings({
 	mp4FrameRate,
 	exportBackendPreference,
 	exportPipelineModel,
+	exportVideoCodec,
+	exportEncoderPreference,
+	exportBitrateMode,
+	exportBitrateMbps,
 	gifFrameRate,
 	gifLoop,
 	gifSizePreset,
@@ -35,6 +42,10 @@ export function resolveExportStartSettings({
 	mp4FrameRate: ExportMp4FrameRate;
 	exportBackendPreference: ExportBackendPreference;
 	exportPipelineModel: ExportPipelineModel;
+	exportVideoCodec: ExportVideoCodec;
+	exportEncoderPreference: ExportEncoderPreference;
+	exportBitrateMode: ExportBitrateMode;
+	exportBitrateMbps: number;
 	gifFrameRate: GifFrameRate;
 	gifLoop: boolean;
 	gifSizePreset: GifSizePreset;
@@ -51,6 +62,10 @@ export function resolveExportStartSettings({
 		mp4FrameRate: exportFormat === "mp4" ? mp4FrameRate : undefined,
 		backendPreference: exportFormat === "mp4" ? exportBackendPreference : undefined,
 		pipelineModel: exportFormat === "mp4" ? exportPipelineModel : undefined,
+		exportVideoCodec: exportFormat === "mp4" ? exportVideoCodec : undefined,
+		exportEncoderPreference: exportFormat === "mp4" ? exportEncoderPreference : undefined,
+		exportBitrateMode: exportFormat === "mp4" ? exportBitrateMode : undefined,
+		exportBitrateMbps: exportFormat === "mp4" ? exportBitrateMbps : undefined,
 		quality: exportFormat === "mp4" ? exportQuality : undefined,
 		gifConfig:
 			exportFormat === "gif" && gifDimensions

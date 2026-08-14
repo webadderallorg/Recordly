@@ -8,6 +8,7 @@ import {
 	Output,
 	StreamTarget,
 } from "mediabunny";
+import { formatLogTs } from "@/lib/log";
 import type { ExportConfig } from "./types";
 
 /**
@@ -98,6 +99,7 @@ export class VideoMuxer {
 	}
 
 	async initialize(): Promise<void> {
+		const startedAt = Date.now();
 		if (this.mode === "stream") {
 			const sink = await openIpcExportStream();
 			this.streamSink = sink;
@@ -140,6 +142,10 @@ export class VideoMuxer {
 		}
 
 		await this.output.start();
+		console.log(formatLogTs(), "[video-muxer] initialize", {
+			elapsedMs: Date.now() - startedAt,
+			mode: this.mode,
+		});
 	}
 
 	async addVideoChunk(chunk: EncodedVideoChunk, meta?: EncodedVideoChunkMetadata): Promise<void> {
@@ -165,6 +171,8 @@ export class VideoMuxer {
 			throw new Error("Muxer not initialized");
 		}
 
+		const startedAt = Date.now();
+
 		await this.output.finalize();
 
 		if (this.mode === "stream") {
@@ -177,17 +185,26 @@ export class VideoMuxer {
 			// us for the same streamId.
 			this.streamSink = null;
 			const closeResult = await closeIpcExportStream(sink.streamId);
-			return {
+			const result: MuxerFinalizeResult = {
 				mode: "stream",
 				tempFilePath: closeResult.tempPath,
 				bytesWritten: closeResult.bytesWritten,
 			};
+			console.log(formatLogTs(), "[video-muxer] finalize", {
+				elapsedMs: Date.now() - startedAt,
+				bytesWritten: closeResult.bytesWritten,
+			});
+			return result;
 		}
 
 		const buffer = (this.target as BufferTarget).buffer;
 		if (!buffer) {
 			throw new Error("Failed to finalize output");
 		}
+		console.log(formatLogTs(), "[video-muxer] finalize", {
+			elapsedMs: Date.now() - startedAt,
+			bytesWritten: buffer.byteLength,
+		});
 		return { mode: "buffer", blob: new Blob([buffer], { type: "video/mp4" }) };
 	}
 

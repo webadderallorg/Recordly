@@ -2,6 +2,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import { BrowserWindow } from "electron";
+import { formatLogTs } from "../log";
 import { getWindowsCaptureExePath } from "../paths/binaries";
 import {
 	selectedSource,
@@ -13,9 +14,7 @@ import {
 	windowsCaptureTargetPath,
 	windowsNativeCaptureActive,
 } from "../state";
-import {
-	AudioSyncAdjustment,
-} from "../types";
+import { AudioSyncAdjustment } from "../types";
 import { moveFileWithOverwrite } from "../utils";
 import { emitRecordingInterrupted } from "./events";
 
@@ -135,7 +134,9 @@ export function waitForWindowsCaptureStop(
 
 		const onClose = (code: number | null) => {
 			finish(() => {
-				const match = windowsCaptureOutputBuffer.match(/Recording stopped\. Output path: (.+)/);
+				const match = windowsCaptureOutputBuffer.match(
+					/Recording stopped\. Output path: (.+)/,
+				);
 				if (match?.[1]) {
 					resolve(match[1].trim());
 					return;
@@ -202,7 +203,7 @@ export async function muxNativeWindowsVideoWithAudio(
 	micAudioPath: string | null,
 ): Promise<NativeWindowsAudioMuxResult> {
 	const start = Date.now();
-	console.log("[PERF:MAIN] muxNativeWindowsVideoWithAudio: STARTED");
+	console.log(formatLogTs(), "[PERF:MAIN] muxNativeWindowsVideoWithAudio: STARTED");
 	const audio: NativeWindowsAudioMuxResult["audio"] = {};
 	const audioInputs: string[] = [];
 
@@ -228,7 +229,7 @@ export async function muxNativeWindowsVideoWithAudio(
 				};
 			}
 		} catch (err) {
-			console.error(`[mux-win] Failed to handle system audio:`, err);
+			console.error(formatLogTs(), `[mux-win] Failed to handle system audio:`, err);
 		}
 	}
 
@@ -250,11 +251,12 @@ export async function muxNativeWindowsVideoWithAudio(
 				};
 			}
 		} catch (err) {
-			console.error(`[mux-win] Failed to handle mic audio:`, err);
+			console.error(formatLogTs(), `[mux-win] Failed to handle mic audio:`, err);
 		}
 	}
 
 	console.log(
+		formatLogTs(),
 		`[PERF:MAIN] muxNativeWindowsVideoWithAudio: COMPLETED in ${Date.now() - start}ms`,
 	);
 

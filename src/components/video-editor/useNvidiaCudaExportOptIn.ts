@@ -8,6 +8,7 @@ type NativeExportCapabilitiesResult = {
 	capabilities?: {
 		nvidiaCuda?: {
 			available?: boolean;
+			skipReason?: string | null;
 		};
 	};
 } | null;
@@ -16,6 +17,12 @@ export function isNvidiaCudaExportAvailable(
 	result: NativeExportCapabilitiesResult | undefined,
 ) {
 	return result?.capabilities?.nvidiaCuda?.available === true;
+}
+
+export function getNvidiaCudaExportSkipReason(
+	result: NativeExportCapabilitiesResult | undefined,
+): string | null {
+	return result?.capabilities?.nvidiaCuda?.skipReason ?? null;
 }
 
 export function resolveNvidiaCudaExportOptIn(
@@ -39,6 +46,9 @@ export function useNvidiaCudaExportOptIn({
 	onEnabled?: () => void;
 } = {}) {
 	const [nvidiaCudaExportAvailable, setNvidiaCudaExportAvailable] = useState(false);
+	const [nvidiaCudaExportSkipReason, setNvidiaCudaExportSkipReason] = useState<string | null>(
+		null,
+	);
 	const [experimentalNvidiaCudaExport, setExperimentalNvidiaCudaExportState] = useState(
 		loadInitialNvidiaCudaExportOptIn,
 	);
@@ -55,6 +65,13 @@ export function useNvidiaCudaExportOptIn({
 
 				const available = isNvidiaCudaExportAvailable(result);
 				setNvidiaCudaExportAvailable(available);
+				setNvidiaCudaExportSkipReason(getNvidiaCudaExportSkipReason(result));
+				console.info("[export] NVIDIA CUDA export capability probe", {
+					available,
+					skipReason: getNvidiaCudaExportSkipReason(result),
+					nvidiaCuda: result?.capabilities?.nvidiaCuda,
+					storedOptIn: loadInitialNvidiaCudaExportOptIn(),
+				});
 				if (!available) {
 					setExperimentalNvidiaCudaExportState(false);
 				}
@@ -90,6 +107,7 @@ export function useNvidiaCudaExportOptIn({
 
 	return {
 		nvidiaCudaExportAvailable,
+		nvidiaCudaExportSkipReason,
 		experimentalNvidiaCudaExport,
 		setExperimentalNvidiaCudaExport,
 	};

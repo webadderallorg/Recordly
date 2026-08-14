@@ -232,6 +232,49 @@
 			"high": "Высокое",
 			"original": "Исходное"
 		},
+		"codecTitle": "Видеокодек",
+		"codec": {
+			"h264": "H.264",
+			"hevc": "H.265"
+		},
+		"encoderTitle": "Кодировщик",
+		"encoder": {
+			"auto": "Авто",
+			"hardware": "Аппаратный",
+			"cpu": "CPU"
+		},
+		"backend": {
+			"auto": "Auto"
+		},
+		"nvidiaCuda": {
+			"compositorTitle": "NVIDIA CUDA compositor",
+			"backendLabel": "Backend",
+			"backendSelected": "NVIDIA CUDA compositor",
+			"availableBadge": "Available",
+			"selectedBadge": "Selected",
+			"requiredBadge": "Required",
+			"unavailableBadge": "Unavailable",
+			"toggle": "Use the NVIDIA CUDA compositor for GPU-accelerated exports",
+			"requiredToggle": "NVIDIA CUDA compositor is required for H.265 Hardware exports",
+			"hint": "Compose and encode on the NVIDIA GPU for fast exports.",
+			"hintSelected": "Exports will use the NVIDIA CUDA compositor on this device.",
+			"hintRequired": "H.265 Hardware exports use the NVIDIA CUDA compositor and never fall back to renderer frames.",
+			"unavailableReason": "CUDA compositor is unavailable ({{reason}}).",
+			"unavailableGeneric": "CUDA compositor is unavailable on this device.",
+			"unavailableRequired": "H.265 + Hardware exports will fail until the CUDA compositor is available. Install or update NVIDIA drivers, or switch Encoder to Auto."
+		},
+		"bitrateTitle": "Битрейт",
+		"bitrate": {
+			"auto": "Авто",
+			"custom": "Пользовательский",
+			"mbpsInput": "Пользовательский битрейт в Мбит/с",
+			"range": "1–200 Мбит/с"
+		},
+		"hevcHint": "HEVC (H.265) создает файлы меньшего размера, но может не воспроизводиться на старых или веб-плеерах. Воспроизведение предпросмотра Recordly не меняется.",
+		"hardwareUnavailable": "Не найден подходящий аппаратный кодировщик. Выберите CPU или Авто либо обновите драйвер GPU.",
+		"errors": {
+			"hardwareUnavailable": "Не найден подходящий аппаратный кодировщик. Выберите CPU или Авто либо обновите драйвер GPU."
+		},
 		"fpsTitle": "FPS",
 		"loop": "Зациклить",
 		"outputDimensions": "Размер: {{dimensions}}px",

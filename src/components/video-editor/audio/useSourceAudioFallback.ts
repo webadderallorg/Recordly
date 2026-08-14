@@ -16,6 +16,10 @@ export function useSourceAudioFallback({
   const [sourceAudioFallbackPaths, setSourceAudioFallbackPaths] = useState<string[]>([]);
   const [sourceAudioFallbackStartDelayMsByPath, setSourceAudioFallbackStartDelayMsByPath] =
     useState<Record<string, number>>({});
+  // Deterministic companion sidecars the finalized recording metadata reports as
+  // expected but not yet materialized. Kept out of the export/source-audio path
+  // (which only uses existing files) and surfaced for the timeline to retry.
+  const [pendingSidecarPaths, setPendingSidecarPaths] = useState<string[]>([]);
   const previousSourcePathRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -27,6 +31,7 @@ export function useSourceAudioFallback({
     if (sourceChanged) {
       setSourceAudioFallbackPaths([]);
       setSourceAudioFallbackStartDelayMsByPath({});
+      setPendingSidecarPaths([]);
     }
 
     if (!currentSourcePath) {
@@ -45,6 +50,7 @@ export function useSourceAudioFallback({
           if (sourceChanged) {
             setSourceAudioFallbackPaths([]);
             setSourceAudioFallbackStartDelayMsByPath({});
+            setPendingSidecarPaths([]);
           }
           toast.warning(
             result.error
@@ -58,11 +64,13 @@ export function useSourceAudioFallback({
         toast.dismiss(SOURCE_AUDIO_FALLBACK_TOAST_ID);
         setSourceAudioFallbackPaths(result.paths ?? []);
         setSourceAudioFallbackStartDelayMsByPath(result.startDelayMsByPath ?? {});
+        setPendingSidecarPaths(result.pendingPaths ?? []);
       } catch (error) {
         if (!cancelled) {
           if (sourceChanged) {
             setSourceAudioFallbackPaths([]);
             setSourceAudioFallbackStartDelayMsByPath({});
+            setPendingSidecarPaths([]);
           }
           toast.warning(
             `Could not load companion audio sources: ${summarizeErrorMessage(String(error))}`,
@@ -77,5 +85,9 @@ export function useSourceAudioFallback({
     };
   }, [currentSourcePath, refreshKey, summarizeErrorMessage]);
 
-  return { sourceAudioFallbackPaths, sourceAudioFallbackStartDelayMsByPath };
+  return {
+    sourceAudioFallbackPaths,
+    sourceAudioFallbackStartDelayMsByPath,
+    pendingSidecarPaths,
+  };
 }

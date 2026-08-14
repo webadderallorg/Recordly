@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
 	getExportBackpressureProfile,
+	getNativeRawFrameBackpressureLimits,
+	getNativeRawFrameByteSize,
 	getPreferredWebCodecsLatencyModes,
 	getWebCodecsEncodeQueueLimit,
 	getWebCodecsKeyFrameInterval,
+	NativeRawFrameBackpressureQueue,
 } from "./exportTuning";
 
 describe("exportTuning", () => {
@@ -53,6 +56,8 @@ describe("exportTuning", () => {
 		expect(breezeProfile.maxDecodeQueue).toBe(14);
 		expect(breezeProfile.maxPendingFrames).toBe(40);
 		expect(breezeProfile.maxInFlightNativeWrites).toBe(8);
+		expect(breezeProfile.maxInFlightNativeRawFrames).toBe(4);
+		expect(breezeProfile.maxInFlightNativeRawBytes).toBe(1280 * 720 * 4 * 4);
 	});
 
 	it("falls back to conservative native settings on low-core or very heavy workloads", () => {
@@ -79,5 +84,59 @@ describe("exportTuning", () => {
 		expect(breezeHeavyProfile.name).toBe("breeze-conservative");
 		expect(breezeHeavyProfile.maxDecodeQueue).toBe(8);
 		expect(breezeHeavyProfile.maxPendingFrames).toBe(16);
+	});
+});
+
+describe("native raw-frame backpressure", () => {
+	it("keeps the transferable queue bounded by both frames and bytes", async () => {
+		const frameSize = getNativeRawFrameByteSize(2, 2);
+		const queue = new NativeRawFrameBackpressureQueue(frameSize * 2, 2);
+
+		await queue.waitForCapacity(frameSize);
+		queue.reserve(frameSize);
+		queue.reserve(frameSize);
+		const waiter = queue.waitForCapacity(frameSize);
+		let waiterSettled = false;
+		void waiter.then(() => {
+			waiterSettled = true;
+		});
+
+		await Promise.resolve();
+		expect(waiterSettled).toBe(false);
+		expect(queue.currentInFlightBytes).toBe(frameSize * 2);
+		queue.release(frameSize);
+		await waiter;
+		expect(queue.currentInFlightBytes).toBe(frameSize);
+	});
+
+	it("uses conservative frame and byte caps for cloned IPC", () => {
+		const profile = getExportBackpressureProfile({
+			encodeBackend: "ffmpeg",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			hardwareConcurrency: 8,
+		});
+		const limits = getNativeRawFrameBackpressureLimits({
+			width: 1920,
+			height: 1080,
+			profile,
+			transportMode: "cloned-ipc",
+		});
+
+		expect(limits.maxInFlightFrames).toBe(2);
+		expect(limits.maxInFlightBytes).toBe(getNativeRawFrameByteSize(1920, 1080) * 2);
+	});
+
+	it("settles blocked waiters when the transport closes", async () => {
+		const queue = new NativeRawFrameBackpressureQueue(8, 1);
+		queue.reserve(8);
+		const waiter = queue.waitForCapacity(8);
+		const error = new Error("port closed");
+
+		queue.fail(error);
+
+		await expect(waiter).rejects.toBe(error);
+		await expect(queue.waitForCapacity(8)).rejects.toBe(error);
 	});
 });
