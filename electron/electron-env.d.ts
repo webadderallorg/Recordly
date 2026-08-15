@@ -27,7 +27,7 @@ interface NativeCaptureDiagnostics {
 	phase: "availability" | "start" | "stop" | "mux";
 	timestamp: string;
 	sourceId?: string | null;
-	sourceType?: "screen" | "window" | "unknown";
+	sourceType?: "screen" | "window" | "region" | "unknown";
 	displayId?: number | null;
 	displayBounds?: { x: number; y: number; width: number; height: number } | null;
 	windowHandle?: number | null;
@@ -223,6 +223,7 @@ interface Window {
 		switchToEditor: () => Promise<void>;
 		openSourceSelector: () => Promise<void>;
 		selectSource: (source: ProcessedDesktopSource) => Promise<ProcessedDesktopSource>;
+		selectCaptureRegion: () => Promise<ProcessedDesktopSource | null>;
 		showSourceHighlight: (source: ProcessedDesktopSource) => Promise<{ success: boolean }>;
 		getSelectedSource: () => Promise<ProcessedDesktopSource | null>;
 		onSelectedSourceChanged: (
@@ -948,9 +949,21 @@ interface ProcessedDesktopSource {
 	thumbnail: string | null;
 	appIcon: string | null;
 	originalName?: string;
-	sourceType?: "screen" | "window";
+	sourceType?: "screen" | "window" | "region";
 	appName?: string;
 	windowTitle?: string;
+	captureRegion?: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+		displayBounds: { x: number; y: number; width: number; height: number };
+		scaleFactor: number;
+		pixelX: number;
+		pixelY: number;
+		pixelWidth: number;
+		pixelHeight: number;
+	};
 }
 
 interface CursorTelemetryPoint {

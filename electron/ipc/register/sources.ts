@@ -14,6 +14,7 @@ import {
 	resolveLinuxWindowBounds,
 	stopWindowBoundsCapture,
 } from "../cursor/bounds";
+import { selectCaptureRegion } from "../regionSelection";
 import { reassertHudOverlayMousePassthrough } from "../../windows";
 
 const execFileAsync = promisify(execFile);
@@ -316,6 +317,15 @@ export function registerSourceHandlers({
 		return selectedSource;
 	});
 
+	ipcMain.handle("select-capture-region", async () => {
+		const source = await selectCaptureRegion();
+		if (!source) return null;
+		setSelectedSource(source);
+		broadcastSelectedSourceChange();
+		stopWindowBoundsCapture();
+		return source;
+	});
+
 	ipcMain.handle("show-source-highlight", async (_, source: SelectedSource) => {
 		try {
 			const isWindow = source.id?.startsWith("window:");
@@ -367,7 +377,14 @@ export function registerSourceHandlers({
 			// ── 2. Resolve bounds ──
 			let bounds: { x: number; y: number; width: number; height: number } | null = null;
 
-			if (source.id?.startsWith("screen:")) {
+			if (source.captureRegion) {
+				bounds = {
+					x: source.captureRegion.displayBounds.x + source.captureRegion.x,
+					y: source.captureRegion.displayBounds.y + source.captureRegion.y,
+					width: source.captureRegion.width,
+					height: source.captureRegion.height,
+				};
+			} else if (source.id?.startsWith("screen:")) {
 				bounds =
 					process.platform === "darwin"
 						? getDisplayWorkAreaForSource(source)
@@ -400,7 +417,7 @@ export function registerSourceHandlers({
 			// On macOS, screen highlights use workArea and no outward padding —
 			// macOS clamps window positions below the menu bar so outward
 			// padding only works on the left/top while right/bottom run off-screen.
-			const isScreen = source.id?.startsWith("screen:");
+			const isScreen = source.id?.startsWith("screen:") && !source.captureRegion;
 			const isMacScreen = isScreen && process.platform === "darwin";
 			const pad = isMacScreen ? 0 : 6;
 			const highlightWin = new BrowserWindow({

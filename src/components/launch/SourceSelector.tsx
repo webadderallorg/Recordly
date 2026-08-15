@@ -1,5 +1,5 @@
 import * as React from "react";
-import { MonitorIcon, AppWindowIcon, CaretUpIcon } from "@phosphor-icons/react";
+import { MonitorIcon, AppWindowIcon, CaretUpIcon, SelectionIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -26,6 +26,8 @@ interface SourceSelectorProps {
 	loading?: boolean;
 	/** Callback when a source is selected */
 	onSourceSelect?: (source: DesktopSource) => void;
+	/** Open the Screen Studio-style area selector */
+	onRegionSelect?: () => Promise<void> | void;
 	/** Callback to fetch sources */
 	onFetchSources?: () => Promise<void>;
 	/** Whether the popover is open */
@@ -81,7 +83,16 @@ export const SourceSelectorContent = ({
 	selectedSource = "Screen",
 	loading = false,
 	onSourceSelect = () => undefined,
-}: Pick<SourceSelectorProps, "screenSources" | "windowSources" | "selectedSource" | "loading" | "onSourceSelect">) => {
+	onRegionSelect,
+}: Pick<
+	SourceSelectorProps,
+	| "screenSources"
+	| "windowSources"
+	| "selectedSource"
+	| "loading"
+	| "onSourceSelect"
+	| "onRegionSelect"
+>) => {
 	const t = useScopedT("launch");
 	const renderSourceItem = (source: DesktopSource, index: number) => {
 		const isSelected = selectedSource === source.name;
@@ -156,6 +167,32 @@ export const SourceSelectorContent = ({
 								</span>
 							</div>
 							<div className="space-y-0.5">
+								{onRegionSelect ? (
+									<button
+										type="button"
+										className={cn(
+											"source-selector-item group min-h-[46px] w-full rounded-[11px] px-3 py-2.5 text-left font-medium flex items-center justify-start gap-3",
+											selectedSource.startsWith("Area ") &&
+												"source-selector-item-selected",
+										)}
+										onClick={() => void onRegionSelect()}
+									>
+										<div className="source-selector-thumb-fallback w-12 h-8 rounded-[8px] flex items-center justify-center border border-dashed border-white/30">
+											<SelectionIcon className="w-5 h-5 source-selector-muted" />
+										</div>
+										<div className="flex-1 min-w-0 flex flex-col items-start text-left">
+											<div className="text-sm font-medium source-selector-text">
+												{t("recording.area", "Area")}
+											</div>
+											<div className="text-xs source-selector-subtle truncate w-full text-left">
+												{t(
+													"recording.selectArea",
+													"Drag or enter dimensions",
+												)}
+											</div>
+										</div>
+									</button>
+								) : null}
 								{screenSources.map((source, index) => renderSourceItem(source, index))}
 							</div>
 						</div>
@@ -190,6 +227,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 	selectedSource: propsSelectedSource,
 	loading: propsLoading,
 	onSourceSelect: propsOnSourceSelect,
+	onRegionSelect: propsOnRegionSelect,
 	onFetchSources: propsOnFetchSources,
 	open: propsOpen,
 	onOpenChange: propsOnOpenChange,
@@ -247,6 +285,14 @@ export const SourceSelector = React.memo(function SourceSelector({
 		},
 		[propsOnSourceSelect],
 	);
+	const onRegionSelect = useCallback(async () => {
+		if (propsOnRegionSelect) {
+			await propsOnRegionSelect();
+			return;
+		}
+		const source = await window.electronAPI?.selectCaptureRegion?.();
+		if (source) setInternalSelectedSource(source.name);
+	}, [propsOnRegionSelect]);
 
 	// Split sources for internal use
 	const internalScreenSources = useMemo(
@@ -365,6 +411,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 					selectedSource={selectedSource}
 					loading={loading}
 					onSourceSelect={onSourceSelect}
+					onRegionSelect={onRegionSelect}
 				/>
 			</PopoverContent>
 		</Popover>

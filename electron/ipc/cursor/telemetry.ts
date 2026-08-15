@@ -4,6 +4,7 @@ import {
 	CURSOR_TELEMETRY_VERSION,
 	MAX_CURSOR_SAMPLES,
 } from "../constants";
+import { normalizePointWithinRegion } from "../regionSelectionGeometry";
 import {
 	activeCursorSamples,
 	currentCursorVisualType,
@@ -181,6 +182,16 @@ export function getNormalizedCursorPoint() {
 	const cursor = isLinuxCacheFresh
 		? { x: linuxCursorCache.x / primarySf, y: linuxCursorCache.y / primarySf }
 		: fallbackCursor;
+
+	const captureRegion = selectedSource?.captureRegion;
+	if (captureRegion) {
+		return normalizePointWithinRegion(cursor, {
+			x: captureRegion.displayBounds.x + captureRegion.x,
+			y: captureRegion.displayBounds.y + captureRegion.y,
+			width: captureRegion.width,
+			height: captureRegion.height,
+		});
+	}
 
 	const windowBounds = selectedSource?.id?.startsWith("window:") ? selectedWindowBounds : null;
 	if (windowBounds) {

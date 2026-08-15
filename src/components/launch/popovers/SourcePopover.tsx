@@ -52,6 +52,11 @@ export function SourcePopover({
 			windowSources={windowSources}
 			selectedSource={selectedSource}
 			loading={loading}
+			onRegionSelect={async () => {
+				requestClose(POPOVER_ID);
+				const source = await window.electronAPI.selectCaptureRegion();
+				if (source) await onSourceSelect(source);
+			}}
 			onSourceSelect={async (source) => {
 				try {
 					await onSourceSelect(source);
