@@ -326,3 +326,60 @@ export function startCursorSampling() {
 export { CURSOR_SAMPLE_INTERVAL_MS } from "../constants";
 // Re-export for consumers that use it from this module
 export { getTelemetryPathForVideo } from "../utils";
+
+// ── Keystroke telemetry ───────────────────────────────────────────────────────
+
+import { KEYSTROKE_TELEMETRY_VERSION } from "../constants";
+import { activeKeystrokeEvents, setActiveKeystrokeEvents } from "../state";
+import type { KeystrokeEvent } from "../types";
+import { getKeystrokePathForVideo } from "../utils";
+
+export function pushKeystroke(event: KeystrokeEvent): void {
+	setActiveKeystrokeEvents([...activeKeystrokeEvents, event]);
+}
+
+export function getActiveKeystrokes(): KeystrokeEvent[] {
+	return activeKeystrokeEvents;
+}
+
+export async function saveKeystrokeTelemetry(videoPath: string): Promise<void> {
+	const events = activeKeystrokeEvents;
+	const sidecarPath = getKeystrokePathForVideo(videoPath);
+
+	if (events.length === 0) {
+		await fs.rm(sidecarPath, { force: true });
+		return;
+	}
+
+	await fs.writeFile(
+		sidecarPath,
+		JSON.stringify({ version: KEYSTROKE_TELEMETRY_VERSION, events }, null, 2),
+		"utf-8",
+	);
+}
+
+export async function loadKeystrokeTelemetry(videoPath: string): Promise<KeystrokeEvent[]> {
+	const sidecarPath = getKeystrokePathForVideo(videoPath);
+
+	try {
+		const raw = await fs.readFile(sidecarPath, "utf-8");
+		const parsed = JSON.parse(raw);
+		if (!parsed || parsed.version !== KEYSTROKE_TELEMETRY_VERSION || !Array.isArray(parsed.events)) {
+			return [];
+		}
+		return parsed.events.filter(
+			(e: unknown): e is KeystrokeEvent =>
+				e !== null &&
+				typeof e === "object" &&
+				typeof (e as KeystrokeEvent).timeMs === "number" &&
+				typeof (e as KeystrokeEvent).key === "string" &&
+				Array.isArray((e as KeystrokeEvent).modifiers),
+		);
+	} catch {
+		return [];
+	}
+}
+
+export function resetKeystrokeTelemetry(): void {
+	setActiveKeystrokeEvents([]);
+}

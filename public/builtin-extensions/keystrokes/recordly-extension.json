@@ -1,0 +1,10 @@
+{
+  "id": "recordly.keystrokes",
+  "name": "Keystrokes",
+  "version": "1.0.0",
+  "description": "Show pressed keys as on-screen badges during playback and export",
+  "author": "Recordly",
+  "license": "MIT",
+  "main": "index.js",
+  "permissions": ["render", "ui"]
+}

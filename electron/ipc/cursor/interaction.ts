@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import type { HookMouseEvent, UiohookLike, UiohookModuleNamespace, CursorInteractionType } from "../types";
+import type { HookKeyboardEvent, HookMouseEvent, UiohookLike, UiohookModuleNamespace, CursorInteractionType } from "../types";
 import {
 	isCursorCaptureActive,
 	interactionCaptureCleanup,
@@ -18,7 +18,34 @@ import {
 	getHookCursorScreenPoint,
 	isCursorCapturePaused,
 	pushCursorSample,
+	pushKeystroke,
 } from "./telemetry";
+
+// Maps uiohook-napi keycodes to Web KeyboardEvent.key values. Values match
+// uiohook-napi's UiohookKey constants. Modifier keys are intentionally absent —
+// modifiers come from the event's shiftKey/ctrlKey/altKey/metaKey booleans, and
+// bare modifier presses map to null here so they aren't emitted on their own.
+const KEYCODE_MAP: Record<number, string> = {
+	1: "Escape", 2: "1", 3: "2", 4: "3", 5: "4", 6: "5", 7: "6", 8: "7", 9: "8", 10: "9",
+	11: "0", 12: "-", 13: "=", 14: "Backspace", 15: "Tab",
+	16: "q", 17: "w", 18: "e", 19: "r", 20: "t", 21: "y", 22: "u", 23: "i", 24: "o", 25: "p",
+	26: "[", 27: "]", 28: "Enter",
+	30: "a", 31: "s", 32: "d", 33: "f", 34: "g", 35: "h", 36: "j", 37: "k", 38: "l",
+	39: ";", 40: "'", 41: "`", 43: "\\",
+	44: "z", 45: "x", 46: "c", 47: "v", 48: "b", 49: "n", 50: "m",
+	51: ",", 52: ".", 53: "/", 57: " ",
+	58: "CapsLock",
+	59: "F1", 60: "F2", 61: "F3", 62: "F4", 63: "F5", 64: "F6",
+	65: "F7", 66: "F8", 67: "F9", 68: "F10", 87: "F11", 88: "F12",
+	71: "7", 72: "8", 73: "9", 75: "4", 76: "5", 77: "6", 79: "1", 80: "2", 81: "3", 82: "0",
+	3655: "Home", 3657: "PageUp", 3663: "End", 3665: "PageDown", 3666: "Insert", 3667: "Delete",
+	57416: "ArrowUp", 57419: "ArrowLeft", 57421: "ArrowRight", 57424: "ArrowDown",
+};
+
+function keycodeToKey(keycode: number | undefined): string | null {
+	if (keycode === undefined) return null;
+	return KEYCODE_MAP[keycode] ?? null;
+}
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -271,8 +298,22 @@ export async function startInteractionCapture() {
 			setLinuxCursorScreenPoint({ x: point.x, y: point.y, updatedAt: Date.now() });
 		};
 
+		const onKeyDown = (event: HookKeyboardEvent) => {
+			if (!isCursorCaptureActive || isCursorCapturePaused()) return;
+			const key = keycodeToKey(event.keycode);
+			if (!key) return; // bare modifiers map to null and are skipped
+			const modifiers: string[] = [];
+			if (event.ctrlKey) modifiers.push("Control");
+			if (event.altKey) modifiers.push("Alt");
+			if (event.shiftKey) modifiers.push("Shift");
+			if (event.metaKey) modifiers.push("Meta");
+			const timeMs = getCursorCaptureElapsedMs();
+			pushKeystroke({ timeMs, key, modifiers });
+		};
+
 		hook.on("mousedown", onMouseDown);
 		hook.on("mouseup", onMouseUp);
+		hook.on("keydown", onKeyDown);
 		if (process.platform === "linux") {
 			hook.on("mousemove", onMouseMove);
 		}
@@ -282,12 +323,14 @@ export async function startInteractionCapture() {
 				if (typeof hook.off === "function") {
 					hook.off("mousedown", onMouseDown);
 					hook.off("mouseup", onMouseUp);
+					hook.off("keydown", onKeyDown);
 					if (process.platform === "linux") {
 						hook.off("mousemove", onMouseMove);
 					}
 				} else if (typeof hook.removeListener === "function") {
 					hook.removeListener("mousedown", onMouseDown);
 					hook.removeListener("mouseup", onMouseUp);
+					hook.removeListener("keydown", onKeyDown);
 					if (process.platform === "linux") {
 						hook.removeListener("mousemove", onMouseMove);
 					}

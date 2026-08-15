@@ -29,3 +29,4 @@ export const COMPANION_AUDIO_LAYOUTS = [
 export const CURSOR_TELEMETRY_VERSION = 2;
 export const CURSOR_SAMPLE_INTERVAL_MS = 33;
 export const MAX_CURSOR_SAMPLES = 60 * 60 * 30; // 1 hour @ 30Hz
+export const KEYSTROKE_TELEMETRY_VERSION = 1;
