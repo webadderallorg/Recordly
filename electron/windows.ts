@@ -6,8 +6,10 @@ import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, ipcMain } from "electron";
 import { USER_DATA_PATH } from "./appPaths";
 import {
+	getHudOverlayMouseReassertCommands,
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
+	resolveHudOverlayMousePolicy,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
@@ -32,7 +34,6 @@ let hudOverlayCaptureProtectionLoaded = false;
 let hudOverlayFallbackExpanded = false;
 let hudOverlayIgnoringMouse = true;
 let hudOverlaySourceSelectionActive = false;
-let hudOverlayMouseReassertTimer: NodeJS.Timeout | null = null;
 let hudOverlayRecordingActive = false;
 let hudOverlayWebcamPreviewVisible = false;
 let countdownWindow: BrowserWindow | null = null;
@@ -195,16 +196,17 @@ function getHudOverlayDisplay() {
 
 function getHudOverlayBounds() {
 	const { workArea } = getHudOverlayDisplay();
+	const mousePolicy = resolveHudOverlayMousePolicy({
+		mousePassthroughSupported: isHudOverlayMousePassthroughSupported(),
+		requestedIgnore: hudOverlayIgnoringMouse,
+		recordingActive: hudOverlayRecordingActive,
+	});
 	const fallbackExpanded = shouldExpandHudOverlayFallback({
 		fallbackExpanded: hudOverlayFallbackExpanded,
 		recordingActive: hudOverlayRecordingActive,
 		webcamPreviewVisible: hudOverlayWebcamPreviewVisible,
 	});
-	return getHudOverlayWindowBounds(
-		workArea,
-		isHudOverlayMousePassthroughSupported() && !hudOverlayRecordingActive,
-		fallbackExpanded,
-	);
+	return getHudOverlayWindowBounds(workArea, mousePolicy.usePassthroughWindow, fallbackExpanded);
 }
 
 function applyHudOverlayBounds() {
@@ -288,29 +290,19 @@ function setHudOverlayFallbackExpanded(expanded: boolean) {
 
 function setHudOverlayMousePassthrough(ignore: boolean) {
 	hudOverlayIgnoringMouse =
-		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive
-			? true
-			: hudOverlayRecordingActive
-				? false
-				: ignore;
-
-	if (hudOverlayMouseReassertTimer) {
-		clearTimeout(hudOverlayMouseReassertTimer);
-		hudOverlayMouseReassertTimer = null;
-	}
+		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive ? true : ignore;
 
 	if (!hudOverlayWindow || hudOverlayWindow.isDestroyed()) {
 		return;
 	}
 
-	if (hudOverlayRecordingActive) {
-		hudOverlayFallbackExpanded = false;
-		applyHudOverlayBounds();
-		hudOverlayWindow.setIgnoreMouseEvents(false);
-		return;
-	}
+	const mousePolicy = resolveHudOverlayMousePolicy({
+		mousePassthroughSupported: isHudOverlayMousePassthroughSupported(),
+		requestedIgnore: hudOverlayIgnoringMouse,
+		recordingActive: hudOverlayRecordingActive,
+	});
 
-	if (!isHudOverlayMousePassthroughSupported()) {
+	if (!mousePolicy.usePassthroughWindow) {
 		if (process.platform !== "linux") {
 			setHudOverlayFallbackExpanded(!ignore);
 		}
@@ -318,12 +310,28 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 		return;
 	}
 
-	if (ignore) {
+	if (mousePolicy.ignoreMouseEvents) {
 		hudOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
 		return;
 	}
 
 	hudOverlayWindow.setIgnoreMouseEvents(false);
+}
+
+function reassertHudOverlayMousePassthroughForWindow(hud: BrowserWindow): void {
+	const mousePolicy = resolveHudOverlayMousePolicy({
+		mousePassthroughSupported: isHudOverlayMousePassthroughSupported(),
+		requestedIgnore: hudOverlayIgnoringMouse,
+		recordingActive: hudOverlayRecordingActive,
+	});
+
+	for (const command of getHudOverlayMouseReassertCommands(mousePolicy)) {
+		if (command.forward) {
+			hud.setIgnoreMouseEvents(command.ignoreMouseEvents, { forward: true });
+		} else {
+			hud.setIgnoreMouseEvents(command.ignoreMouseEvents);
+		}
+	}
 }
 
 ipcMain.on("hud-overlay-set-ignore-mouse", (_event, ignore: boolean) => {
@@ -489,12 +497,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 		win.show();
 		win.moveTop();
 		if (process.platform === "win32" && isHudOverlayMousePassthroughSupported()) {
-			win.setIgnoreMouseEvents(false);
-			setTimeout(() => {
-				if (!win.isDestroyed()) {
-					setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
-				}
-			}, 50);
+			reassertHudOverlayMousePassthroughForWindow(win);
 		}
 	};
 
@@ -502,13 +505,16 @@ export function createHudOverlayWindow(): BrowserWindow {
 		win.setContentProtection(hudOverlayHiddenFromCapture);
 	}
 
-	if (isHudOverlayMousePassthroughSupported()) {
-		if (hudOverlayRecordingActive) {
-			hudOverlayIgnoringMouse = false;
-			win.setIgnoreMouseEvents(false);
-		} else {
-			hudOverlayIgnoringMouse = true;
+	const initialMousePolicy = resolveHudOverlayMousePolicy({
+		mousePassthroughSupported: isHudOverlayMousePassthroughSupported(),
+		requestedIgnore: hudOverlayIgnoringMouse,
+		recordingActive: hudOverlayRecordingActive,
+	});
+	if (initialMousePolicy.usePassthroughWindow) {
+		if (initialMousePolicy.ignoreMouseEvents) {
 			win.setIgnoreMouseEvents(true, { forward: true });
+		} else {
+			win.setIgnoreMouseEvents(false);
 		}
 	}
 
@@ -521,12 +527,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 	if (process.platform === "win32" && isHudOverlayMousePassthroughSupported()) {
 		win.on("focus", () => {
 			if (!win.isDestroyed()) {
-				win.setIgnoreMouseEvents(false);
-				setTimeout(() => {
-					if (!win.isDestroyed()) {
-						setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
-					}
-				}, 50);
+				reassertHudOverlayMousePassthroughForWindow(win);
 			}
 		});
 	}
@@ -638,30 +639,17 @@ export function reassertHudOverlayMousePassthrough(): void {
 		return;
 	}
 
-	if (hudOverlayRecordingActive) {
-		hud.setIgnoreMouseEvents(false);
-		return;
-	}
-
-	// Toggle off then back on so the native WS_EX_TRANSPARENT flag is fully
-	// re-initialised rather than merely re-asserted in a potentially broken state.
-	hud.setIgnoreMouseEvents(false);
-	if (hudOverlayMouseReassertTimer) {
-		clearTimeout(hudOverlayMouseReassertTimer);
-	}
-	hudOverlayMouseReassertTimer = setTimeout(() => {
-		hudOverlayMouseReassertTimer = null;
-		if (!hud.isDestroyed()) {
-			setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
-		}
-	}, 50);
+	// Toggle off then restore the renderer-requested policy synchronously. This
+	// resets WS_EX_TRANSPARENT without exposing a full-screen interactive HUD
+	// during an arbitrary timer window.
+	reassertHudOverlayMousePassthroughForWindow(hud);
 }
 
 export function setHudOverlayRecordingActive(recording: boolean): void {
 	hudOverlayRecordingActive = Boolean(recording);
 	hudOverlayFallbackExpanded = false;
 	applyHudOverlayBounds();
-	setHudOverlayMousePassthrough(!hudOverlayRecordingActive);
+	setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 }
 
 export function createUpdateToastWindow(): BrowserWindow {

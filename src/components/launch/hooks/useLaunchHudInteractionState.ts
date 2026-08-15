@@ -1,4 +1,5 @@
 import { type MouseEvent, type RefObject, useCallback, useEffect, useRef } from "react";
+import { shouldRestoreHudMousePassthrough } from "../hudMousePassthrough";
 
 export function useLaunchHudInteractionState({
 	openId,
@@ -12,21 +13,27 @@ export function useLaunchHudInteractionState({
 	webcamPreviewDragStartRef: RefObject<unknown>;
 }) {
 	const isMouseOverHudRef = useRef(false);
-	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+	const restoreMousePassthroughIfIdle = useCallback(() => {
+		if (
+			shouldRestoreHudMousePassthrough({
+				isMouseOverHud: isMouseOverHudRef.current,
+				popoverOpen: openId !== null,
+				isHudDragging: Boolean(isHudDraggingRef.current),
+				isWebcamPreviewDragging: Boolean(isWebcamPreviewDraggingRef.current),
+				webcamPreviewPointerDown: Boolean(webcamPreviewDragStartRef.current),
+			})
+		) {
+			window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
+		}
+	}, [openId, isHudDraggingRef, isWebcamPreviewDraggingRef, webcamPreviewDragStartRef]);
 
 	useEffect(() => {
 		if (openId !== null) {
-			if (timeoutRef.current) clearTimeout(timeoutRef.current);
 			window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
 		} else {
-			// Proactively check if we should ignore mouse when popover closes
-			setTimeout(() => {
-				if (!isMouseOverHudRef.current) {
-					window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
-				}
-			}, 150);
+			restoreMousePassthroughIfIdle();
 		}
-	}, [openId]);
+	}, [openId, restoreMousePassthroughIfIdle]);
 
 	useEffect(() => {
 		const handleMouseOver = (e: globalThis.MouseEvent) => {
@@ -38,28 +45,16 @@ export function useLaunchHudInteractionState({
 
 			if (isInteractive) {
 				isMouseOverHudRef.current = true;
-				if (timeoutRef.current) clearTimeout(timeoutRef.current);
 				window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
 			} else if (openId === null) {
 				isMouseOverHudRef.current = false;
-				if (timeoutRef.current) clearTimeout(timeoutRef.current);
-				timeoutRef.current = setTimeout(() => {
-					if (
-						openId === null &&
-						!isHudDraggingRef.current &&
-						!isWebcamPreviewDraggingRef.current &&
-						!webcamPreviewDragStartRef.current &&
-						!isMouseOverHudRef.current
-					) {
-						window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
-					}
-				}, 300);
+				restoreMousePassthroughIfIdle();
 			}
 		};
 
 		window.addEventListener("mouseover", handleMouseOver);
 		return () => window.removeEventListener("mouseover", handleMouseOver);
-	}, [openId, isHudDraggingRef, isWebcamPreviewDraggingRef, webcamPreviewDragStartRef]);
+	}, [openId, restoreMousePassthroughIfIdle]);
 
 	const beginInteractiveHudAction = useCallback(() => {
 		isMouseOverHudRef.current = true;
@@ -68,7 +63,6 @@ export function useLaunchHudInteractionState({
 
 	const handleHudMouseEnter = useCallback(() => {
 		isMouseOverHudRef.current = true;
-		if (timeoutRef.current) clearTimeout(timeoutRef.current);
 		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
 	}, []);
 
@@ -80,22 +74,9 @@ export function useLaunchHudInteractionState({
 			}
 
 			isMouseOverHudRef.current = false;
-
-			if (timeoutRef.current) clearTimeout(timeoutRef.current);
-
-			timeoutRef.current = setTimeout(() => {
-				if (
-					openId === null &&
-					!isHudDraggingRef.current &&
-					!isWebcamPreviewDraggingRef.current &&
-					!webcamPreviewDragStartRef.current &&
-					!isMouseOverHudRef.current
-				) {
-					window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
-				}
-			}, 300);
+			restoreMousePassthroughIfIdle();
 		},
-		[openId, isHudDraggingRef, isWebcamPreviewDraggingRef, webcamPreviewDragStartRef],
+		[restoreMousePassthroughIfIdle],
 	);
 
 	return {

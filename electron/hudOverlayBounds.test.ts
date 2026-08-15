@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	getHudOverlayMouseReassertCommands,
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
+	resolveHudOverlayMousePolicy,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
 
@@ -73,6 +75,77 @@ describe("getHudOverlayWindowBounds", () => {
 			width: 640,
 			height: 420,
 		});
+	});
+});
+
+describe("resolveHudOverlayMousePolicy", () => {
+	it("keeps transparent HUD pixels click-through while recording", () => {
+		expect(
+			resolveHudOverlayMousePolicy({
+				mousePassthroughSupported: true,
+				requestedIgnore: true,
+				recordingActive: true,
+			}),
+		).toEqual({ usePassthroughWindow: true, ignoreMouseEvents: true });
+	});
+
+	it("preserves the renderer's requested mouse policy outside recording", () => {
+		expect(
+			resolveHudOverlayMousePolicy({
+				mousePassthroughSupported: true,
+				requestedIgnore: true,
+				recordingActive: false,
+			}),
+		).toEqual({ usePassthroughWindow: true, ignoreMouseEvents: true });
+	});
+
+	it("keeps visible HUD controls interactive while recording", () => {
+		expect(
+			resolveHudOverlayMousePolicy({
+				mousePassthroughSupported: true,
+				requestedIgnore: false,
+				recordingActive: true,
+			}),
+		).toEqual({ usePassthroughWindow: true, ignoreMouseEvents: false });
+	});
+
+	it("retains the interactive compact fallback when passthrough is unsupported", () => {
+		expect(
+			resolveHudOverlayMousePolicy({
+				mousePassthroughSupported: false,
+				requestedIgnore: true,
+				recordingActive: true,
+			}),
+		).toEqual({ usePassthroughWindow: false, ignoreMouseEvents: false });
+	});
+});
+
+describe("getHudOverlayMouseReassertCommands", () => {
+	it("restores passthrough immediately after resetting the Windows native flag", () => {
+		expect(
+			getHudOverlayMouseReassertCommands({
+				usePassthroughWindow: true,
+				ignoreMouseEvents: true,
+			}),
+		).toEqual([{ ignoreMouseEvents: false }, { ignoreMouseEvents: true, forward: true }]);
+	});
+
+	it("leaves an intentionally interactive HUD interactive after the reset", () => {
+		expect(
+			getHudOverlayMouseReassertCommands({
+				usePassthroughWindow: true,
+				ignoreMouseEvents: false,
+			}),
+		).toEqual([{ ignoreMouseEvents: false }]);
+	});
+
+	it("does not issue passthrough commands for compact fallback windows", () => {
+		expect(
+			getHudOverlayMouseReassertCommands({
+				usePassthroughWindow: false,
+				ignoreMouseEvents: false,
+			}),
+		).toEqual([]);
 	});
 });
 
