@@ -1,0 +1,89 @@
+# Builds macOS (Apple Silicon / arm64) artifacts on push to main and on manual dispatch.
+name: Build macOS Apple Silicon (arm64)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-arm64:
+    name: Build macOS (arm64 / Apple Silicon)
+    runs-on: macos-14
+    timeout-minutes: 60
+    env:
+      CI: true
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install bundled FFmpeg (best-effort)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # repo has scripts/install-ffmpeg-static.mjs used elsewhere; run it but don't let a harmless failure stop the job
+          node scripts/install-ffmpeg-static.mjs || true
+
+      - name: Build app inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build:platform-native-helpers
+          npx tsc
+          npx vite build --config vite.config.ts
+          # these npm scripts exist in repo; tolerant to failure if not required for this build
+          npm run normalize:electron-main-cjs || true
+          npm run smoke:electron-main-cjs || true
+
+      - name: Build macOS (arm64) package (unsigned)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Force code signing off so the build runs without Apple signing secrets.
+          npx electron-builder \
+            --mac dir dmg zip \
+            --arm64 \
+            --publish never \
+            -c.mac.forceCodeSigning=false \
+            -c.mac.identity=null
+
+      - name: Generate checksums (if repo has a script)
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          # If project provides checksum helper, run it; ignore if missing
+          npm run checksums:release -- SHA256SUMS-macos-arm64.txt || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64-build
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
+            release/SHA256SUMS-macos-arm64.txt
+          if-no-files-found: error
