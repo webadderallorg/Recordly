@@ -25,6 +25,47 @@ export function createMotionBlurState(): MotionBlurState {
 	};
 }
 
+// Shared camera-step zoom-blur analysis used by both the interactive renderer
+// (applyZoomTransform) and native CUDA export telemetry. Returns the radial
+// zoom-blur strength (0 when the step is not classified as zoom motion) and the
+// output-space blur center, matching what the renderer feeds into
+// ZoomBlurFilter. Keeping this here means native export derives the exact same
+// values the on-screen renderer would use, instead of re-implementing a
+// divergent approximation.
+export function analyzeZoomMotionBlurStep({
+	previousTransform,
+	currentTransform,
+	baseMask,
+	stageSize,
+	motionBlurAmount,
+	motionBlurTuning,
+	deltaSeconds,
+}: {
+	previousTransform: { scale: number; x: number; y: number };
+	currentTransform: { scale: number; x: number; y: number };
+	baseMask: { x: number; y: number; width: number; height: number };
+	stageSize: { width: number; height: number };
+	motionBlurAmount: number;
+	motionBlurTuning?: ZoomMotionBlurTuning;
+	deltaSeconds: number;
+}): { strength: number; centerX: number; centerY: number } {
+	const previousQuad = computeTransformQuad(baseMask, previousTransform);
+	const currentQuad = computeTransformQuad(baseMask, currentTransform);
+	const analysis = analyzeCameraStep({
+		previousQuad,
+		currentQuad,
+		stageSize,
+		motionBlurAmount,
+		motionBlurTuning: resolveMotionBlurTuning(motionBlurTuning),
+		deltaSeconds,
+	});
+	return {
+		strength: analysis.mode === "zoom" ? analysis.zoomStrength : 0,
+		centerX: analysis.zoomCenter.x,
+		centerY: analysis.zoomCenter.y,
+	};
+}
+
 interface TransformParams {
 	cameraContainer: Container;
 	zoomBlurFilter?: ZoomBlurFilter | null;
@@ -340,18 +381,9 @@ function analyzeCameraStep({
 	motionBlurTuning: ZoomMotionBlurTuning;
 	deltaSeconds: number;
 }): CameraStepAnalysis {
-	const mode = classifyMotionMode(
-		previousQuad,
-		currentQuad,
-		motionBlurTuning,
-		deltaSeconds,
-	);
+	const mode = classifyMotionMode(previousQuad, currentQuad, motionBlurTuning, deltaSeconds);
 	const moveDelta = computeMoveDelta(previousQuad, currentQuad);
-	const blurChannels = resolveBlurChannels(
-		motionBlurAmount,
-		motionBlurTuning,
-		deltaSeconds,
-	);
+	const blurChannels = resolveBlurChannels(motionBlurAmount, motionBlurTuning, deltaSeconds);
 	const moveBlurVelocity = {
 		x: moveDelta.x * blurChannels.motion,
 		y: moveDelta.y * blurChannels.motion,

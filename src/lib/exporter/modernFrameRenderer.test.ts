@@ -218,7 +218,9 @@ describe("ModernFrameRenderer Pixi lifecycle", () => {
 			};
 			renderer.config.preferredRenderBackend = "webgpu";
 
-			await expect(renderer.createPixiApplication({} as HTMLCanvasElement)).resolves.toMatchObject({
+			await expect(
+				renderer.createPixiApplication({} as HTMLCanvasElement),
+			).resolves.toMatchObject({
 				backend: "webgl",
 			});
 
@@ -287,6 +289,40 @@ describe("ModernFrameRenderer blur export path", () => {
 		expect(renderAnnotations).toHaveBeenCalledTimes(1);
 		expect(renderer.getCanvas()).not.toBe(sourceCanvas);
 		expect(renderer.capturePixelsForNativeExport()).not.toBeNull();
+	});
+
+	it("builds the overlay layout cache lazily so a fresh overlay renderer can render frames", async () => {
+		vi.clearAllMocks();
+		const renderer = createRenderer() as any;
+		const canvas = createMockCanvas();
+		renderer.app = { canvas, render: vi.fn() };
+		renderer.cameraContainer = { visible: true };
+		renderer.videoEffectsContainer = { visible: true };
+		renderer.frameContainer = { visible: true };
+		renderer.cursorContainer = { visible: true };
+		renderer.annotationContainer = { visible: true };
+		renderer.overlayContainer = { visible: true };
+		renderer.captionContainer = { visible: true };
+		renderer.backgroundContainer = { visible: true };
+		renderer.webcamRootContainer = { visible: true };
+		renderer.webcamMaskGraphics = {};
+		renderer.annotationSprites = [];
+		renderer.layoutCache = null;
+
+		// A freshly created overlay renderer never stages source-video frames, so
+		// its layout cache must be built from the export config instead of from the
+		// video-sprite layout path. Before the fix, renderOverlayFrame threw
+		// "Overlay renderer is not initialized" here and the native overlay sidecar
+		// preparation failed (native-overlay-preparation-failed).
+		await expect(renderer.renderOverlayFrame(0)).resolves.toBeUndefined();
+		expect(renderer.layoutCache).not.toBeNull();
+		expect(renderer.layoutCache.maskRect).toMatchObject({
+			x: 0,
+			y: 0,
+			width: 1920,
+			height: 1080,
+		});
+		expect(renderer.app.render).toHaveBeenCalledTimes(1);
 	});
 
 	it("uses the sampled scene transform for blur annotations during temporal blur", async () => {
@@ -639,14 +675,14 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 			};
 			renderer.config.webcamUrl = "file:///tmp/webcam.webm";
 
-				await renderer.setupWebcamSource();
-				const syncPromise = renderer.syncWebcamFrame(1);
+			await renderer.setupWebcamSource();
+			const syncPromise = renderer.syncWebcamFrame(1);
 
 			await vi.advanceTimersByTimeAsync(5_001);
-				await expect(syncPromise).resolves.toBeUndefined();
+			await expect(syncPromise).resolves.toBeUndefined();
 
-				expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
-				expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
+			expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
+			expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
 			expect(revoke).toHaveBeenCalled();
 			expect(renderer.webcamForwardFrameSource).toBeNull();
 			expect(renderer.webcamVideoElement).toBeNull();

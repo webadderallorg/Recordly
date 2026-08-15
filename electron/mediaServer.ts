@@ -2,11 +2,30 @@ import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
-import { approvedLocalReadPaths } from "./ipc/state";
+import { approvedLocalReadPaths, foldPathComparisonKey } from "./ipc/state";
 import { getMediaContentType } from "./mediaTypes";
 
 let mediaServerBaseUrl: string | null = null;
 let mediaServerStartPromise: Promise<string> | null = null;
+
+// A pending URL is minted for a supported in-root sidecar candidate before the
+// Windows mux rename completes, so the media server may receive a request for a
+// file that does not exist yet. When the lexical path was granted a pending URL
+// (inside an allowed root AND present in the approved set), wait a short bounded
+// time for the file to appear before falling back to a rejection. The wait only
+// applies to already-approved in-root paths; after the file appears the standard
+// realpath + containment authorization still runs, so symlink escapes and
+// outside roots are rejected exactly as before.
+export const PENDING_MEDIA_APPEAR_POLL_INTERVAL_MS = 100;
+
+export const PENDING_MEDIA_APPEAR_TIMEOUT_MS = 3000;
+
+let pendingMediaAppearTimeoutMs = PENDING_MEDIA_APPEAR_TIMEOUT_MS;
+
+// Test-only override so regression tests do not stall for the full window.
+export function setPendingMediaAppearTimeoutMsForTests(timeoutMs: number) {
+	pendingMediaAppearTimeoutMs = timeoutMs;
+}
 
 export function resolveHttpByteRange(
 	rangeHeader: string,
@@ -58,8 +77,45 @@ async function resolveRealPath(filePath: string): Promise<string | null> {
 	}
 }
 
-export function isAllowedMediaPath(realPath: string): boolean {
-	return approvedLocalReadPaths.has(realPath);
+async function isPendingApprovedMediaPath(lexicalPath: string): Promise<boolean> {
+	const { getAllowedLocalReadRootsSync, isPathInsideDirectory } = await import(
+		"./ipc/project/manager"
+	);
+	const rootContained = getAllowedLocalReadRootsSync().some((root) =>
+		isPathInsideDirectory(lexicalPath, root),
+	);
+	return rootContained && approvedLocalReadPaths.has(foldPathComparisonKey(lexicalPath));
+}
+
+async function waitForPendingMediaFile(lexicalPath: string): Promise<string | null> {
+	const deadline = Date.now() + pendingMediaAppearTimeoutMs;
+	while (Date.now() < deadline) {
+		const resolvedPath = await resolveRealPath(lexicalPath);
+		if (resolvedPath) {
+			return resolvedPath;
+		}
+		await new Promise((resolve) => setTimeout(resolve, PENDING_MEDIA_APPEAR_POLL_INTERVAL_MS));
+	}
+	return null;
+}
+
+export async function isAllowedMediaPath(realPath: string): Promise<boolean> {
+	const resolvedRealPath = path.resolve(realPath);
+	// Accept any real file contained inside an allowed root (this covers pending
+	// sidecar URLs granted for a lexical in-root path that only appeared after
+	// the mux rename) OR an explicitly approved path. realpath has already been
+	// resolved by the caller, so a symlink/reparse-point escape from inside a
+	// root lands outside the roots here and is rejected. The manager module is
+	// imported lazily so importing this module does not pull the app-paths chain
+	// (pure helpers like resolveHttpByteRange stay importable in tests without an
+	// Electron mock).
+	const { getAllowedLocalReadRootsSync, isPathInsideDirectory } = await import(
+		"./ipc/project/manager"
+	);
+	const rootContained = getAllowedLocalReadRootsSync().some((root) =>
+		isPathInsideDirectory(resolvedRealPath, root),
+	);
+	return rootContained || approvedLocalReadPaths.has(foldPathComparisonKey(resolvedRealPath));
 }
 
 async function handleMediaRequest(
@@ -82,8 +138,26 @@ async function handleMediaRequest(
 			return;
 		}
 
-		const resolvedPath = await resolveRealPath(rawPath);
-		if (!resolvedPath || !isAllowedMediaPath(resolvedPath)) {
+		const lexicalPath = path.resolve(rawPath);
+		let resolvedPath = await resolveRealPath(lexicalPath);
+		let pendingApproved = false;
+		if (!resolvedPath) {
+			pendingApproved = await isPendingApprovedMediaPath(lexicalPath);
+			if (pendingApproved) {
+				// The file was still inside the mux rename window when the request
+				// arrived. Wait briefly for it to appear; the authorization below
+				// re-runs against the real path once it does.
+				resolvedPath = await waitForPendingMediaFile(lexicalPath);
+			}
+		}
+		if (!resolvedPath || !(await isAllowedMediaPath(resolvedPath))) {
+			if (pendingApproved && !resolvedPath) {
+				// Pending-approved path that never appeared: not found (kept distinct
+				// from the forbidden response used for unapproved paths).
+				response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+				response.end("Not Found");
+				return;
+			}
 			console.warn(`[media-server] Blocked access to unapproved path: ${rawPath}`);
 			response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
 			response.end("Forbidden");

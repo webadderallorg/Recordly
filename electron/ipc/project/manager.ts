@@ -16,6 +16,8 @@ import {
 import {
 	approvedLocalReadPaths,
 	currentProjectPath,
+	customRecordingsDir,
+	foldPathComparisonKey,
 	setCurrentProjectPath,
 	setCurrentRecordingSession,
 	setCurrentVideoPath,
@@ -43,20 +45,36 @@ export function getAssetRootPath() {
 export function isPathInsideDirectory(candidatePath: string, directoryPath: string) {
 	const normalizedCandidatePath = normalizePath(candidatePath);
 	const normalizedDirectoryPath = normalizePath(directoryPath);
+	const foldedCandidatePath = foldPathComparisonKey(normalizedCandidatePath);
+	const foldedDirectoryPath = foldPathComparisonKey(normalizedDirectoryPath);
 	return (
-		normalizedCandidatePath === normalizedDirectoryPath ||
-		normalizedCandidatePath.startsWith(`${normalizedDirectoryPath}${path.sep}`)
+		foldedCandidatePath === foldedDirectoryPath ||
+		foldedCandidatePath.startsWith(`${foldedDirectoryPath}${path.sep}`)
 	);
 }
 
-export function isAllowedLocalReadPath(candidatePath: string) {
-	const allowedPrefixes = [
-		RECORDINGS_DIR,
+// Approved roots are derived from the live app paths plus the configured
+// recordings directory (state keeps the value loaded from the recordings
+// settings file; the async media path re-reads it through getRecordingsDir).
+// Hard-coding a literal recordings path here would silently reject users who
+// configured a custom recordings directory outside the default userData path.
+export function getAllowedLocalReadRootsSync() {
+	return [
+		customRecordingsDir ?? RECORDINGS_DIR,
 		USER_DATA_PATH,
 		getAssetRootPath(),
 		app.getPath("temp"),
 	];
+}
+
+export async function getAllowedLocalReadRoots() {
+	return [await getRecordingsDir(), USER_DATA_PATH, getAssetRootPath(), app.getPath("temp")];
+}
+
+export function isAllowedLocalReadPath(candidatePath: string) {
+	const allowedPrefixes = getAllowedLocalReadRootsSync();
 	const normalizedCandidatePath = normalizePath(candidatePath);
+	const foldedCandidatePath = foldPathComparisonKey(normalizedCandidatePath);
 
 	// Canonicalize so a symlink placed under an allowed prefix can't smuggle in a
 	// target that lives outside it. realpathSync throws when the path doesn't
@@ -79,7 +97,7 @@ export function isAllowedLocalReadPath(candidatePath: string) {
 	// for read-local-file and the local media URL handler.
 	const lexicalAllowed =
 		allowedPrefixes.some((prefix) => isPathInsideDirectory(normalizedCandidatePath, prefix)) ||
-		approvedLocalReadPaths.has(normalizedCandidatePath);
+		approvedLocalReadPaths.has(foldedCandidatePath);
 	if (!lexicalAllowed) {
 		return false;
 	}
@@ -90,7 +108,7 @@ export function isAllowedLocalReadPath(candidatePath: string) {
 
 	return (
 		allowedPrefixes.some((prefix) => isPathInsideDirectory(canonicalCandidatePath, prefix)) ||
-		approvedLocalReadPaths.has(canonicalCandidatePath)
+		approvedLocalReadPaths.has(foldPathComparisonKey(canonicalCandidatePath))
 	);
 }
 
@@ -100,7 +118,38 @@ export function isAllowedLocalReadPath(candidatePath: string) {
 // become fetchable inside the app.
 export async function isAllowedLocalMediaPath(candidatePath: string) {
 	const normalizedCandidatePath = normalizePath(candidatePath);
-	return isAllowedLocalReadPath(normalizedCandidatePath);
+	return isAllowedLocalReadPathWithRoots(
+		normalizedCandidatePath,
+		await getAllowedLocalReadRoots(),
+	);
+}
+
+async function isAllowedLocalReadPathWithRoots(candidatePath: string, allowedPrefixes: string[]) {
+	const normalizedCandidatePath = normalizePath(candidatePath);
+	const foldedCandidatePath = foldPathComparisonKey(normalizedCandidatePath);
+
+	let canonicalCandidatePath = normalizedCandidatePath;
+	try {
+		canonicalCandidatePath = normalizePath(realpathSync(normalizedCandidatePath));
+	} catch {
+		// File may not exist yet; keep the lexical path.
+	}
+
+	const lexicalAllowed =
+		allowedPrefixes.some((prefix) => isPathInsideDirectory(normalizedCandidatePath, prefix)) ||
+		approvedLocalReadPaths.has(foldedCandidatePath);
+	if (!lexicalAllowed) {
+		return false;
+	}
+
+	if (canonicalCandidatePath === normalizedCandidatePath) {
+		return true;
+	}
+
+	return (
+		allowedPrefixes.some((prefix) => isPathInsideDirectory(canonicalCandidatePath, prefix)) ||
+		approvedLocalReadPaths.has(foldPathComparisonKey(canonicalCandidatePath))
+	);
 }
 
 async function collectApprovedLocalReadPaths(filePath?: string | null): Promise<string[]> {
@@ -109,13 +158,13 @@ async function collectApprovedLocalReadPaths(filePath?: string | null): Promise<
 		return [];
 	}
 
-	const approvedPaths = [normalizePath(normalizedPath)];
+	const approvedPaths = [foldPathComparisonKey(normalizePath(normalizedPath))];
 
 	try {
-		const realPath = await fs.realpath(approvedPaths[0]);
-		const normalizedRealPath = normalizePath(realPath);
-		if (!approvedPaths.includes(normalizedRealPath)) {
-			approvedPaths.push(normalizedRealPath);
+		const realPath = await fs.realpath(normalizePath(normalizedPath));
+		const foldedRealPath = foldPathComparisonKey(normalizePath(realPath));
+		if (!approvedPaths.includes(foldedRealPath)) {
+			approvedPaths.push(foldedRealPath);
 		}
 	} catch {
 		// Ignore missing files; the eventual read will surface the real error.
@@ -136,9 +185,84 @@ export async function rememberApprovedLocalReadPath(filePath?: string | null) {
 	}
 }
 
+export type LocalMediaUrlResolution =
+	| { status: "approved"; path: string }
+	| { status: "pending"; path: string }
+	| {
+			status: "rejected";
+			reason:
+				| "missing"
+				| "unsupported-type"
+				| "outside-allowed-roots"
+				| "not-file"
+				| "symlink-escape";
+	  };
+
+// Resolve a candidate for the local media server URL. Existing files go
+// through the strict realpath + allowlist path. Files that do not exist yet
+// (speculative audio sidecar candidates requested before the mux rename
+// completes on Windows) may still receive a PENDING url when they are a
+// supported media type on a lexical path inside an allowed recordings root;
+// the media server re-validates realpath and symlink containment at serve time
+// when the file actually appears, so no canonical security is weakened.
+export async function resolveLocalMediaUrlPath(
+	candidatePath: string,
+): Promise<LocalMediaUrlResolution> {
+	const normalizedCandidatePath = normalizeVideoSourcePath(candidatePath) ?? candidatePath;
+	const resolvedCandidatePath = normalizePath(normalizedCandidatePath);
+
+	const realPath = await fs.realpath(resolvedCandidatePath).catch((error: unknown) => {
+		return (error as NodeJS.ErrnoException)?.code === "ENOENT" ? null : undefined;
+	});
+
+	if (realPath === undefined) {
+		return { status: "rejected", reason: "missing" };
+	}
+
+	if (realPath === null) {
+		// The file does not exist yet. Grant a pending URL only for a supported
+		// media type under an allowed root; never for arbitrary missing paths.
+		if (!isSupportedLocalMediaPath(resolvedCandidatePath)) {
+			return { status: "rejected", reason: "unsupported-type" };
+		}
+		const allowedRoots = await getAllowedLocalReadRoots();
+		if (!(await isAllowedLocalReadPathWithRoots(resolvedCandidatePath, allowedRoots))) {
+			return { status: "rejected", reason: "outside-allowed-roots" };
+		}
+		await rememberApprovedLocalReadPath(normalizedCandidatePath);
+		return { status: "pending", path: resolvedCandidatePath };
+	}
+
+	const stat = await fs.stat(realPath).catch(() => null);
+	if (!stat?.isFile()) {
+		return { status: "rejected", reason: "not-file" };
+	}
+	if (!isSupportedLocalMediaPath(realPath)) {
+		return { status: "rejected", reason: "unsupported-type" };
+	}
+	const allowedRoots = await getAllowedLocalReadRoots();
+	const lexicalAllowed = await isAllowedLocalReadPathWithRoots(
+		resolvedCandidatePath,
+		allowedRoots,
+	);
+	if (!(await isAllowedLocalMediaPath(realPath))) {
+		// The real path is not accepted by the roots or the approved set; if the
+		// lexical path looked allowed, this is a symlink/reparse-point escape.
+		return {
+			status: "rejected",
+			reason: lexicalAllowed ? "symlink-escape" : "outside-allowed-roots",
+		};
+	}
+	await rememberApprovedLocalReadPath(normalizedCandidatePath);
+	return { status: "approved", path: realPath };
+}
+
 export async function resolveApprovedLocalMediaPath(candidatePath: string): Promise<string | null> {
-	const normalizedCandidatePath = normalizePath(candidatePath);
-	const realPath = await fs.realpath(normalizedCandidatePath).catch(() => null);
+	// Accept file:/// URLs and bare paths; persisted project sources can carry
+	// either form and both must resolve through the local media server.
+	const normalizedCandidatePath = normalizeVideoSourcePath(candidatePath) ?? candidatePath;
+	const resolvedCandidatePath = normalizePath(normalizedCandidatePath);
+	const realPath = await fs.realpath(resolvedCandidatePath).catch(() => null);
 
 	if (!realPath) {
 		return null;
@@ -153,7 +277,7 @@ export async function resolveApprovedLocalMediaPath(candidatePath: string): Prom
 		return null;
 	}
 
-	await rememberApprovedLocalReadPath(candidatePath);
+	await rememberApprovedLocalReadPath(normalizedCandidatePath);
 	return realPath;
 }
 

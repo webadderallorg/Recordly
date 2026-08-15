@@ -232,6 +232,49 @@
 			"high": "Alta",
 			"original": "Original"
 		},
+		"codecTitle": "Codec de vídeo",
+		"codec": {
+			"h264": "H.264",
+			"hevc": "H.265"
+		},
+		"encoderTitle": "Codificador",
+		"encoder": {
+			"auto": "Automático",
+			"hardware": "Hardware",
+			"cpu": "CPU"
+		},
+		"backend": {
+			"auto": "Auto"
+		},
+		"nvidiaCuda": {
+			"compositorTitle": "NVIDIA CUDA compositor",
+			"backendLabel": "Backend",
+			"backendSelected": "NVIDIA CUDA compositor",
+			"availableBadge": "Available",
+			"selectedBadge": "Selected",
+			"requiredBadge": "Required",
+			"unavailableBadge": "Unavailable",
+			"toggle": "Use the NVIDIA CUDA compositor for GPU-accelerated exports",
+			"requiredToggle": "NVIDIA CUDA compositor is required for H.265 Hardware exports",
+			"hint": "Compose and encode on the NVIDIA GPU for fast exports.",
+			"hintSelected": "Exports will use the NVIDIA CUDA compositor on this device.",
+			"hintRequired": "H.265 Hardware exports use the NVIDIA CUDA compositor and never fall back to renderer frames.",
+			"unavailableReason": "CUDA compositor is unavailable ({{reason}}).",
+			"unavailableGeneric": "CUDA compositor is unavailable on this device.",
+			"unavailableRequired": "H.265 + Hardware exports will fail until the CUDA compositor is available. Install or update NVIDIA drivers, or switch Encoder to Auto."
+		},
+		"bitrateTitle": "Taxa de bits",
+		"bitrate": {
+			"auto": "Automático",
+			"custom": "Personalizado",
+			"mbpsInput": "Taxa de bits personalizada em Mbps",
+			"range": "1–200 Mbps"
+		},
+		"hevcHint": "HEVC (H.265) gera arquivos menores, mas pode não funcionar em players antigos ou da web. A reprodução da pré-visualização do Recordly permanece inalterada.",
+		"hardwareUnavailable": "Nenhum codificador de hardware utilizável foi encontrado. Escolha CPU ou Automático, ou atualize o driver da sua GPU.",
+		"errors": {
+			"hardwareUnavailable": "Nenhum codificador de hardware utilizável foi encontrado. Escolha CPU ou Automático, ou atualize o driver da sua GPU."
+		},
 		"fpsTitle": "FPS",
 		"loop": "Repetir",
 		"outputDimensions": "Saída: {{dimensions}}px",

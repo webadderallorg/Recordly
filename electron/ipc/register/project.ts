@@ -22,7 +22,7 @@ import {
 	rememberRecentProject,
 	replaceApprovedSessionLocalReadPaths,
 	rememberApprovedLocalReadPath,
-	resolveApprovedLocalMediaPath,
+	resolveLocalMediaUrlPath,
 	saveProjectThumbnail,
   saveRecentProjectPaths,
 } from "../project/manager";
@@ -687,13 +687,35 @@ export function registerProjectHandlers() {
     if (!baseUrl || !filePath) {
       return { success: false as const };
     }
-    const resolved = await resolveApprovedLocalMediaPath(filePath);
-    if (!resolved) {
-      const normalized = path.resolve(filePath);
-      console.warn(`[get-local-media-url] Blocked disallowed path: ${normalized}`);
-      return { success: false as const };
+    // Normalize file:/// URLs (and bare paths) before the path policy check so
+    // persisted project sources round-trip through the local media server.
+    const normalizedFilePath = normalizeVideoSourcePath(filePath) ?? filePath;
+    const resolution = await resolveLocalMediaUrlPath(normalizedFilePath);
+    if (resolution.status === 'approved') {
+      return { success: true as const, url: buildMediaUrl(baseUrl, resolution.path) };
     }
-    return { success: true as const, url: buildMediaUrl(baseUrl, resolved) };
+    if (resolution.status === 'pending') {
+      // Expected speculative audio sidecar candidate (e.g. .m4a/.webm variants
+      // requested before the Windows mux rename completes). The media server
+      // re-validates realpath + symlink containment when the file appears, so
+      // this is not a security grant for an arbitrary missing path.
+      console.info(
+        `[get-local-media-url] Pending approved media path (may appear after mux): ${resolution.path}`,
+      );
+      return {
+        success: true as const,
+        url: buildMediaUrl(baseUrl, resolution.path),
+        pending: true as const,
+      };
+    }
+    // True policy violation / unsupported candidate: log distinctly from the
+    // expected pending sidecar case above.
+    console.warn(
+      `[get-local-media-url] Rejected media path (${resolution.reason}): ${path.resolve(
+        normalizedFilePath,
+      )}`,
+    );
+    return { success: false as const };
   });
 
 }

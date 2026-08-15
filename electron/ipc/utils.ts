@@ -8,6 +8,7 @@ import { AUTO_RECORDING_PREFIX, RECORDINGS_SETTINGS_FILE } from "./constants";
 import {
 	approvedLocalReadPaths,
 	customRecordingsDir,
+	foldPathComparisonKey,
 	recordingsDirLoaded,
 	setCustomRecordingsDir,
 	setRecordingsDirLoaded,
@@ -124,9 +125,8 @@ export function getMacPrivacySettingsUrl(pane: "screen" | "accessibility" | "mic
 export function approveUserPath(filePath: string | null | undefined): void {
 	if (!filePath) return;
 	try {
-		approvedLocalReadPaths.add(path.resolve(filePath));
+		approvedLocalReadPaths.add(foldPathComparisonKey(path.resolve(filePath)));
 	} catch {
 		// Ignore invalid paths; later reads will surface the underlying error.
 	}
 }
-

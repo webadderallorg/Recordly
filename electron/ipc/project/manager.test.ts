@@ -95,14 +95,14 @@ describe("local media path policy", () => {
 		const { isAllowedMediaPath } = await import("../../mediaServer");
 
 		// Unapproved external paths are rejected before they ever reach the media server.
-		expect(isAllowedMediaPath(videoPath)).toBe(false);
+		await expect(isAllowedMediaPath(videoPath)).resolves.toBe(false);
 		await expect(resolveApprovedLocalMediaPath(videoPath)).resolves.toBeNull();
 
 		// Once the user opts in (via dialog/export/etc.) the path is approved.
 		await rememberApprovedLocalReadPath(videoPath);
 
 		await expect(resolveApprovedLocalMediaPath(videoPath)).resolves.toBe(resolvedVideoPath);
-		expect(isAllowedMediaPath(videoPath)).toBe(true);
+		await expect(isAllowedMediaPath(videoPath)).resolves.toBe(true);
 	});
 
 	it("rejects existing non-media files when resolving local media URLs", async () => {
@@ -115,7 +115,109 @@ describe("local media path policy", () => {
 		const { isAllowedMediaPath } = await import("../../mediaServer");
 
 		await expect(resolveApprovedLocalMediaPath(textPath)).resolves.toBeNull();
-		expect(isAllowedMediaPath(textPath)).toBe(false);
+		await expect(isAllowedMediaPath(textPath)).resolves.toBe(false);
+	});
+
+	it("allows m4a audio assets inside the recordings directory", async () => {
+		const recordingsPath = path.join(userDataPath, "recordings");
+		const audioPath = path.join(recordingsPath, "recording-2026-08-03.system.m4a");
+		await fs.mkdir(recordingsPath, { recursive: true });
+		await fs.writeFile(audioPath, "test-audio");
+
+		const { resolveApprovedLocalMediaPath } = await import("./manager");
+		const resolvedAudioPath = await fs.realpath(audioPath);
+
+		await expect(resolveApprovedLocalMediaPath(audioPath)).resolves.toBe(resolvedAudioPath);
+	});
+
+	it("allows m4a assets inside a configured custom recordings directory", async () => {
+		const customRecordingsPath = path.join(tempRoot, "Custom Recordings");
+		const audioPath = path.join(customRecordingsPath, "recording-2026-08-03.mic.m4a");
+		await fs.mkdir(customRecordingsPath, { recursive: true });
+		await fs.writeFile(audioPath, "test-audio");
+		await fs.writeFile(
+			path.join(userDataPath, "recordings-settings.json"),
+			JSON.stringify({ recordingsDir: customRecordingsPath }),
+			"utf-8",
+		);
+
+		const { resolveApprovedLocalMediaPath } = await import("./manager");
+		const resolvedAudioPath = await fs.realpath(audioPath);
+
+		await expect(resolveApprovedLocalMediaPath(audioPath)).resolves.toBe(resolvedAudioPath);
+	});
+
+	it("matches policy roots case-insensitively on Windows", async () => {
+		const recordingsPath = path.join(userDataPath, "recordings");
+		const audioPath = path.join(recordingsPath, "recording-2026-08-03.system.m4a");
+		await fs.mkdir(recordingsPath, { recursive: true });
+		await fs.writeFile(audioPath, "test-audio");
+
+		const { resolveApprovedLocalMediaPath } = await import("./manager");
+		const resolvedAudioPath = await fs.realpath(audioPath);
+
+		if (process.platform === "win32") {
+			const caseVariantRoot = recordingsPath.replace(/^([a-zA-Z]):/, (drive) =>
+				drive.toLowerCase() === drive ? drive.toUpperCase() : drive.toLowerCase(),
+			);
+			const caseVariantPath = audioPath.replace(recordingsPath, caseVariantRoot);
+			if (caseVariantPath !== audioPath) {
+				await expect(resolveApprovedLocalMediaPath(caseVariantPath)).resolves.toBe(
+					resolvedAudioPath,
+				);
+			}
+		}
+	});
+
+	it("folds Windows case and extended-length prefixes in policy comparisons", async () => {
+		const recordingsPath = path.join(userDataPath, "recordings");
+		const audioPath = path.join(recordingsPath, "recording-2026-08-03.system.wav");
+		await fs.mkdir(recordingsPath, { recursive: true });
+
+		const { isPathInsideDirectory, resolveLocalMediaUrlPath } = await import("./manager");
+		const { foldPathComparisonKey } = await import("../state");
+
+		if (process.platform !== "win32") {
+			expect(isPathInsideDirectory(audioPath, recordingsPath)).toBe(true);
+			return;
+		}
+
+		const caseVariantPath = audioPath.replace(/^([a-zA-Z]):/, (drive) =>
+			drive.toLowerCase() === drive ? drive.toUpperCase() : drive.toLowerCase(),
+		);
+		const extendedPath = `\\\\?\\${audioPath}`;
+
+		// All three forms fold to one comparison key.
+		expect(foldPathComparisonKey(caseVariantPath)).toBe(foldPathComparisonKey(audioPath));
+		expect(foldPathComparisonKey(extendedPath)).toBe(foldPathComparisonKey(audioPath));
+
+		// Containment accepts the extended-prefix form inside the plain root.
+		expect(isPathInsideDirectory(extendedPath, recordingsPath)).toBe(true);
+		expect(isPathInsideDirectory(caseVariantPath, recordingsPath)).toBe(true);
+
+		// A pending grant made through the extended-prefix form authorizes the
+		// plain real path once the file appears (serve-time re-validation).
+		const resolution = await resolveLocalMediaUrlPath(extendedPath);
+		expect(resolution.status).toBe("pending");
+		await fs.writeFile(audioPath, "test-audio");
+		const { isAllowedMediaPath } = await import("../../mediaServer");
+		await expect(isAllowedMediaPath(await fs.realpath(audioPath))).resolves.toBe(true);
+	});
+
+	it("normalizes file:/// URLs in media path approval", async () => {
+		const recordingsPath = path.join(userDataPath, "recordings");
+		const audioPath = path.join(recordingsPath, "recording-2026-08-03.system.m4a");
+		await fs.mkdir(recordingsPath, { recursive: true });
+		await fs.writeFile(audioPath, "test-audio");
+
+		const { resolveApprovedLocalMediaPath } = await import("./manager");
+		const resolvedAudioPath = await fs.realpath(audioPath);
+		const fileUrl =
+			process.platform === "win32"
+				? `file:///${audioPath.replace(/\\/g, "/")}`
+				: `file://${audioPath}`;
+
+		await expect(resolveApprovedLocalMediaPath(fileUrl)).resolves.toBe(resolvedAudioPath);
 	});
 
 	it("rejects symlinks under allowed prefixes that point outside the allowlist", async () => {
@@ -141,6 +243,145 @@ describe("local media path policy", () => {
 
 		await expect(isAllowedLocalMediaPath(symlinkInsideUserData)).resolves.toBe(false);
 		await expect(resolveApprovedLocalMediaPath(symlinkInsideUserData)).resolves.toBeNull();
+	});
+
+	describe("resolveLocalMediaUrlPath pending sidecar candidates", () => {
+		it("grants a pending URL for a missing supported sidecar under the recordings root", async () => {
+			const recordingsPath = path.join(userDataPath, "recordings");
+			const m4aPath = path.join(recordingsPath, "recording-2026-08-03.system.m4a");
+			await fs.mkdir(recordingsPath, { recursive: true });
+
+			const { resolveLocalMediaUrlPath } = await import("./manager");
+
+			await expect(resolveLocalMediaUrlPath(m4aPath)).resolves.toEqual({
+				status: "pending",
+				path: m4aPath,
+			});
+		});
+
+		it("grants a pending URL for a missing webm sidecar under a custom recordings root", async () => {
+			const customRecordingsPath = path.join(tempRoot, "Custom Recordings");
+			const webmPath = path.join(customRecordingsPath, "recording-2026-08-03.mic.webm");
+			await fs.mkdir(customRecordingsPath, { recursive: true });
+			await fs.writeFile(
+				path.join(userDataPath, "recordings-settings.json"),
+				JSON.stringify({ recordingsDir: customRecordingsPath }),
+				"utf-8",
+			);
+
+			const { resolveLocalMediaUrlPath } = await import("./manager");
+
+			await expect(resolveLocalMediaUrlPath(webmPath)).resolves.toEqual({
+				status: "pending",
+				path: webmPath,
+			});
+		});
+
+		it("rejects a missing candidate outside the allowed roots", async () => {
+			const downloadsPath = path.join(tempRoot, "Downloads");
+			const missingPath = path.join(downloadsPath, "recording.system.m4a");
+			await fs.mkdir(downloadsPath, { recursive: true });
+
+			const { resolveLocalMediaUrlPath } = await import("./manager");
+
+			await expect(resolveLocalMediaUrlPath(missingPath)).resolves.toEqual({
+				status: "rejected",
+				reason: "outside-allowed-roots",
+			});
+		});
+
+		it("rejects a missing candidate with an unsupported extension under a root", async () => {
+			const recordingsPath = path.join(userDataPath, "recordings");
+			const notesPath = path.join(recordingsPath, "recording-2026-08-03.notes.txt");
+			await fs.mkdir(recordingsPath, { recursive: true });
+
+			const { resolveLocalMediaUrlPath } = await import("./manager");
+
+			await expect(resolveLocalMediaUrlPath(notesPath)).resolves.toEqual({
+				status: "rejected",
+				reason: "unsupported-type",
+			});
+		});
+
+		it("approves an existing media file through the URL resolver", async () => {
+			const recordingsPath = path.join(userDataPath, "recordings");
+			const audioPath = path.join(recordingsPath, "recording-2026-08-03.system.wav");
+			await fs.mkdir(recordingsPath, { recursive: true });
+			await fs.writeFile(audioPath, "test-audio");
+
+			const { resolveLocalMediaUrlPath } = await import("./manager");
+			const resolvedAudioPath = await fs.realpath(audioPath);
+
+			await expect(resolveLocalMediaUrlPath(audioPath)).resolves.toEqual({
+				status: "approved",
+				path: resolvedAudioPath,
+			});
+		});
+
+		it("approves an existing file:/// media URL through the URL resolver", async () => {
+			const recordingsPath = path.join(userDataPath, "recordings");
+			const audioPath = path.join(recordingsPath, "recording-2026-08-03.mic.wav");
+			await fs.mkdir(recordingsPath, { recursive: true });
+			await fs.writeFile(audioPath, "test-audio");
+
+			const { resolveLocalMediaUrlPath } = await import("./manager");
+			const resolvedAudioPath = await fs.realpath(audioPath);
+			const fileUrl =
+				process.platform === "win32"
+					? `file:///${audioPath.replace(/\\/g, "/")}`
+					: `file://${audioPath}`;
+
+			await expect(resolveLocalMediaUrlPath(fileUrl)).resolves.toEqual({
+				status: "approved",
+				path: resolvedAudioPath,
+			});
+		});
+
+		it("rejects a symlink under a root that points outside as a pending/approved URL", async () => {
+			const outsideTarget = path.join(tempRoot, "outside-secret.mp4");
+			const symlinkInsideUserData = path.join(userDataPath, "shortcut-to-secret.mp4");
+			await fs.writeFile(outsideTarget, "secret-bytes");
+
+			try {
+				await fs.symlink(outsideTarget, symlinkInsideUserData);
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code === "EPERM") {
+					return;
+				}
+				throw error;
+			}
+
+			const { resolveLocalMediaUrlPath } = await import("./manager");
+
+			await expect(resolveLocalMediaUrlPath(symlinkInsideUserData)).resolves.toEqual({
+				status: "rejected",
+				reason: "symlink-escape",
+			});
+		});
+
+		it("serves a pending in-root sidecar through mediaServer once the file appears", async () => {
+			const recordingsPath = path.join(userDataPath, "recordings");
+			const m4aPath = path.join(recordingsPath, "recording-2026-08-03.system.m4a");
+			await fs.mkdir(recordingsPath, { recursive: true });
+
+			const { resolveLocalMediaUrlPath } = await import("./manager");
+			const { isAllowedMediaPath } = await import("../../mediaServer");
+
+			const resolution = await resolveLocalMediaUrlPath(m4aPath);
+			expect(resolution.status).toBe("pending");
+
+			// Simulate the mux rename completing after the pending grant: the
+			// media-server serve-time realpath check must now accept the file.
+			await fs.writeFile(m4aPath, "test-audio");
+			const realPath = await fs.realpath(m4aPath);
+			await expect(isAllowedMediaPath(realPath)).resolves.toBe(true);
+
+			// A symlink escape still resolves outside the roots and must stay blocked.
+			const outsideTarget = path.join(tempRoot, "outside-secret.m4a");
+			await fs.writeFile(outsideTarget, "secret-bytes");
+			const escaped = await fs.realpath(outsideTarget);
+			await expect(isAllowedMediaPath(escaped)).resolves.toBe(false);
+		});
 	});
 
 	it("preserves an existing project thumbnail when no replacement is provided", async () => {

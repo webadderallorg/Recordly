@@ -2,19 +2,26 @@
 #include <cuda_runtime.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <utility>
 #include <vector>
 
 #include "NvDecoder/NvDecoder.h"
@@ -33,9 +40,114 @@ struct TimelineSegment {
     double speed = 1.0;
 };
 
+// Renderer-prepared transparent RGBA overlay sidecar layer. The sidecar is a
+// raw top-down RGBA stream with frameCount frames of width*height*4 bytes at
+// the export frame rate. Layers are composited in the order they appear in
+// options.overlayLayers (z-order) after the video layout and zoom blur, which
+// matches the renderer contract (overlays are drawn above the blurred video).
+// The `order` field is the renderer-side global z-order; mixed raw and tiled
+// overlays are merged and blended by this ascending value.
+struct OverlayLayerDescriptor {
+    std::string id;
+    int order = 0;
+    std::string path;
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
+    int frameCount = 0;          // logical frame count (renderer-side)
+    int effectiveFrameCount = 0; // physical sidecar frames (clamped for reads)
+    double frameRate = 0.0;
+    double durationSec = 0.0;
+};
+
+// ---------------------------------------------------------------------------
+// Renderer-prepared tiled/delta transparent RGBA overlay stream (storage
+// version 1). Mirrors the TS contract in nativeStaticLayoutOverlays.ts: fixed
+// 128x128 lossless raw RGBA tiles, staticTiles define the full initial layer
+// state emitted once, frameDeltas carry per-frame changed tile payloads
+// (ascending, unique frame indices in [0, frameCount)). Every payload region
+// is written exactly once into the bounded payload stream
+// (payloadPath/payloadByteLength), so sparse 4K overlays never duplicate
+// unchanged pixels. The helper validates the descriptor independently before
+// encoding (it never trusts the renderer blob) and rejects malformed or
+// truncated input with an actionable JSON failure; there is no silent raw
+// fallback inside the helper.
+// ---------------------------------------------------------------------------
+struct TiledOverlayTileRecord {
+    int tileIndex = 0;
+    int64_t byteOffset = 0;
+    int64_t byteLength = 0;
+};
+
+struct TiledOverlayFrameDelta {
+    int frameIndex = 0;
+    std::vector<TiledOverlayTileRecord> changedTiles;
+};
+
+struct TiledOverlayLayerDescriptor {
+    std::string id;
+    int order = 0;
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
+    double frameRate = 0.0;
+    double durationSec = 0.0;
+    int frameCount = 0;
+    int tileSize = 0;
+    std::string pixelFormat;
+    std::string payloadPath;
+    int64_t payloadByteLength = 0;
+    std::vector<TiledOverlayTileRecord> staticTiles;
+    std::vector<TiledOverlayFrameDelta> frameDeltas;
+    // Derived at load time (never part of the wire descriptor).
+    int tileColumns = 0;
+    int tileRows = 0;
+    int tileCount = 0;
+    int64_t tileByteSize = 0;
+    int64_t maxDeltaBytes = 0;
+    std::string rawFallbackReason;
+};
+
+constexpr int kTiledOverlayStorageVersion = 1;
+constexpr int kTiledOverlayTileSize = 128;
+constexpr int64_t kTiledOverlayTileByteSize = 128LL * 128LL * 4LL;
+
+// Unified z-order entry for the native composition loop. The renderer emits
+// both raw RGBA sidecar layers and tiled/delta layers with a single global
+// `order` value; the compositor must blend them in that exact order rather
+// than grouping all raw layers below all tiled layers.
+struct CompositeLayer {
+    enum class Kind { Raw, Tiled };
+    Kind kind = Kind::Raw;
+    int sourceIndex = 0;  // index into the matching source (raw or tiled)
+    int order = 0;
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
+};
+
+// Conservative tiled-vs-raw density/size heuristics mirrored from the TS side
+// (NATIVE_TILED_OVERLAY_MIN_TILE_COUNT / _MAX_CHANGED_TILE_FRACTION /
+// _MAX_PAYLOAD_BYTES_FRACTION). Layers that trip a heuristic are still valid
+// tiled streams the helper composites losslessly; the reason is only reported
+// as an observable diagnostic so a raw full-frame fallback (which the renderer
+// may keep for dense layers) is never indistinguishable from a tiled export.
+constexpr int kTiledOverlayMinTileCount = 4;
+constexpr double kTiledOverlayMaxChangedTileFraction = 0.5;
+constexpr double kTiledOverlayMaxPayloadBytesFraction = 0.7;
+
+enum class OutputCodec {
+    H264,
+    HEVC,
+};
+
 struct Options {
     std::string inputPath;
     std::string outputPath = "recordly-nvidia-cuda-compositor.h264";
+    OutputCodec outputCodec = OutputCodec::H264;
     std::string sourcePtsPath;
     std::string timelineMapPath;
     std::vector<TimelineSegment> timelineSegments;
@@ -87,13 +199,51 @@ struct Options {
     int cursorAtlasWidth = 0;
     int cursorAtlasHeight = 0;
     std::string zoomSamplesPath;
+    // Renderer-resolved temporal zoom motion blur plan (see temporalMotionBlur.ts):
+    // the compositor derives per-frame sample offsets/weights from these three
+    // values plus the output frame duration. 0 sample count disables temporal
+    // blur so the existing spatial blur telemetry path is used.
+    int temporalBlurSampleCount = 0;
+    double temporalBlurShutterFraction = 0.0;
+    double temporalBlurWeightPower = 1.0;
+    std::vector<OverlayLayerDescriptor> overlayLayers;
+    std::string overlayManifestPath;
+    std::vector<CompositeLayer> compositeLayers;
+    std::string tiledOverlayManifestPath;
+    // Validated tiled/delta overlay stream (version 1 descriptor). Loaded in
+    // parseOptions before encoding so malformed/truncated/unsupported
+    // descriptors fail with an actionable JSON failure before any decode work.
+    std::vector<TiledOverlayLayerDescriptor> tiledOverlayLayers;
 };
 
 constexpr int kMaxCursorAtlasEntries = 16;
 constexpr int kWebcamPrefetchOutputFrames = 900;
+// Bounded overlay frame ring: slots are keyed by the clamped frame index so
+// single-frame layers and tail-repeated frames are read from disk once and
+// served from the device slot for every following output frame. Two slots of
+// head room give a two-frame read-ahead without unbounded memory; the depth is
+// always prefetchSlots - 2 so the ring never overwrites the slot the current
+// blend is reading.
+constexpr int kOverlayPrefetchSlots = 4;
+constexpr int kOverlayPrefetchDepth = kOverlayPrefetchSlots - 2;
 
 [[noreturn]] void fail(const std::string& message) {
     throw std::runtime_error(message);
+}
+
+const char* outputCodecName(OutputCodec codec) {
+    return codec == OutputCodec::HEVC ? "hevc" : "h264";
+}
+
+OutputCodec parseOutputCodec(const char* value) {
+    const std::string codec = value;
+    if (codec == "h264") {
+        return OutputCodec::H264;
+    }
+    if (codec == "hevc") {
+        return OutputCodec::HEVC;
+    }
+    fail("Unsupported --output-codec: " + codec + "; expected h264 or hevc");
 }
 
 void checkCuda(cudaError_t status, const char* expression) {
@@ -150,6 +300,911 @@ double parseFiniteDouble(const char* value, const char* name) {
     return parsed;
 }
 
+// ---------------------------------------------------------------------------
+// Minimal standards-compliant JSON parser for the tiled overlay descriptor.
+// The descriptor is session data from the renderer (never persisted); the
+// parser rejects malformed input with an actionable message that includes the
+// offending byte position. Depth and element caps keep corrupted or
+// adversarial input from exhausting memory.
+// ---------------------------------------------------------------------------
+struct JsonValue {
+    enum class Type {
+        Null,
+        Bool,
+        Number,
+        String,
+        Array,
+        Object,
+    };
+    Type type = Type::Null;
+    bool boolean = false;
+    double number = 0.0;
+    std::string string;
+    std::vector<JsonValue> array;
+    std::vector<std::pair<std::string, JsonValue>> object;
+};
+
+class JsonParser {
+public:
+    explicit JsonParser(const std::string& text) : text_(text) {}
+
+    JsonValue parse() {
+        skipWhitespace();
+        JsonValue root = parseValue(0);
+        skipWhitespace();
+        if (position_ < text_.size()) {
+            failAt("Unexpected trailing characters");
+        }
+        return root;
+    }
+
+private:
+    static constexpr int kMaxDepth = 64;
+    static constexpr size_t kMaxElements = 1u << 20u;
+
+    [[noreturn]] void failAt(const std::string& message) const {
+        std::ostringstream stream;
+        stream << message << " at byte " << position_;
+        throw std::runtime_error(stream.str());
+    }
+
+    static bool isDigit(char c) {
+        return c >= '0' && c <= '9';
+    }
+
+    static bool isHexDigit(char c) {
+        return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    }
+
+    static int hexValue(char c) {
+        if (c >= '0' && c <= '9') {
+            return c - '0';
+        }
+        if (c >= 'a' && c <= 'f') {
+            return c - 'a' + 10;
+        }
+        return c - 'A' + 10;
+    }
+
+    void skipWhitespace() {
+        while (position_ < text_.size()) {
+            const char c = text_[position_];
+            if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+                ++position_;
+            } else {
+                break;
+            }
+        }
+    }
+
+    bool consume(char expected) {
+        if (position_ < text_.size() && text_[position_] == expected) {
+            ++position_;
+            return true;
+        }
+        return false;
+    }
+
+    JsonValue parseValue(int depth) {
+        if (depth > kMaxDepth) {
+            failAt("JSON nesting too deep");
+        }
+        if (position_ >= text_.size()) {
+            failAt("Unexpected end of JSON input");
+        }
+        const char c = text_[position_];
+        if (c == '{') {
+            return parseObject(depth);
+        }
+        if (c == '[') {
+            return parseArray(depth);
+        }
+        if (c == '"') {
+            return parseString();
+        }
+        if (c == 't') {
+            return parseKeyword("true", JsonValue::Type::Bool, true);
+        }
+        if (c == 'f') {
+            return parseKeyword("false", JsonValue::Type::Bool, false);
+        }
+        if (c == 'n') {
+            return parseKeyword("null", JsonValue::Type::Null, false);
+        }
+        if (c == '-' || isDigit(c)) {
+            return parseNumber();
+        }
+        failAt("Unexpected token");
+    }
+
+    JsonValue parseKeyword(const char* keyword, JsonValue::Type type, bool boolean) {
+        const size_t length = std::strlen(keyword);
+        if (text_.compare(position_, length, keyword) != 0) {
+            failAt("Invalid JSON token");
+        }
+        position_ += length;
+        JsonValue result;
+        result.type = type;
+        result.boolean = boolean;
+        return result;
+    }
+
+    JsonValue parseObject(int depth) {
+        consume('{');
+        JsonValue result;
+        result.type = JsonValue::Type::Object;
+        skipWhitespace();
+        if (consume('}')) {
+            return result;
+        }
+        while (true) {
+            if (result.object.size() >= kMaxElements) {
+                failAt("JSON object too large");
+            }
+            skipWhitespace();
+            if (position_ >= text_.size() || text_[position_] != '"') {
+                failAt("Expected a string object key");
+            }
+            JsonValue keyValue = parseString();
+            skipWhitespace();
+            if (!consume(':')) {
+                failAt("Expected ':' after object key");
+            }
+            skipWhitespace();
+            result.object.emplace_back(std::move(keyValue.string), parseValue(depth + 1));
+            skipWhitespace();
+            if (consume('}')) {
+                break;
+            }
+            if (!consume(',')) {
+                failAt("Expected ',' or '}' in object");
+            }
+            skipWhitespace();
+        }
+        return result;
+    }
+
+    JsonValue parseArray(int depth) {
+        consume('[');
+        JsonValue result;
+        result.type = JsonValue::Type::Array;
+        skipWhitespace();
+        if (consume(']')) {
+            return result;
+        }
+        while (true) {
+            if (result.array.size() >= kMaxElements) {
+                failAt("JSON array too large");
+            }
+            skipWhitespace();
+            result.array.push_back(parseValue(depth + 1));
+            skipWhitespace();
+            if (consume(']')) {
+                break;
+            }
+            if (!consume(',')) {
+                failAt("Expected ',' or ']' in array");
+            }
+            skipWhitespace();
+        }
+        return result;
+    }
+
+    // Appends the UTF-8 encoding of codepoint to out.
+    static void appendUtf8(std::string& out, unsigned int codepoint) {
+        if (codepoint < 0x80) {
+            out.push_back(static_cast<char>(codepoint));
+        } else if (codepoint < 0x800) {
+            out.push_back(static_cast<char>(0xC0 | (codepoint >> 6)));
+            out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+        } else if (codepoint < 0x10000) {
+            out.push_back(static_cast<char>(0xE0 | (codepoint >> 12)));
+            out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+        } else {
+            out.push_back(static_cast<char>(0xF0 | (codepoint >> 18)));
+            out.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
+            out.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
+        }
+    }
+
+    unsigned int parseHexQuad() {
+        if (position_ + 4 > text_.size()) {
+            failAt("Incomplete unicode escape");
+        }
+        unsigned int value = 0;
+        for (int index = 0; index < 4; ++index) {
+            const char c = text_[position_++];
+            if (!isHexDigit(c)) {
+                failAt("Invalid unicode escape");
+            }
+            value = (value << 4) | static_cast<unsigned int>(hexValue(c));
+        }
+        return value;
+    }
+
+    JsonValue parseString() {
+        consume('"');
+        std::string value;
+        while (true) {
+            if (position_ >= text_.size()) {
+                failAt("Unterminated string");
+            }
+            const unsigned char c = static_cast<unsigned char>(text_[position_]);
+            if (c == '"') {
+                ++position_;
+                break;
+            }
+            if (c == '\\') {
+                ++position_;
+                if (position_ >= text_.size()) {
+                    failAt("Unterminated escape sequence");
+                }
+                const char escape = text_[position_++];
+                switch (escape) {
+                    case '"': value.push_back('"'); break;
+                    case '\\': value.push_back('\\'); break;
+                    case '/': value.push_back('/'); break;
+                    case 'b': value.push_back('\b'); break;
+                    case 'f': value.push_back('\f'); break;
+                    case 'n': value.push_back('\n'); break;
+                    case 'r': value.push_back('\r'); break;
+                    case 't': value.push_back('\t'); break;
+                    case 'u': {
+                        const unsigned int first = parseHexQuad();
+                        unsigned int codepoint = first;
+                        if (first >= 0xD800 && first <= 0xDBFF) {
+                            // High surrogate: expect a low surrogate escape.
+                            if (position_ + 1 < text_.size() && text_[position_] == '\\' &&
+                                text_[position_ + 1] == 'u') {
+                                position_ += 2;
+                                const unsigned int second = parseHexQuad();
+                                if (second >= 0xDC00 && second <= 0xDFFF) {
+                                    codepoint =
+                                        0x10000 + ((first - 0xD800) << 10) + (second - 0xDC00);
+                                } else {
+                                    codepoint = 0xFFFD;
+                                }
+                            } else {
+                                codepoint = 0xFFFD;
+                            }
+                        } else if (first >= 0xDC00 && first <= 0xDFFF) {
+                            // Lone low surrogate.
+                            codepoint = 0xFFFD;
+                        }
+                        appendUtf8(value, codepoint);
+                        break;
+                    }
+                    default: failAt("Invalid escape sequence");
+                }
+                continue;
+            }
+            if (c < 0x20) {
+                failAt("Unescaped control character in string");
+            }
+            value.push_back(static_cast<char>(c));
+            ++position_;
+        }
+        JsonValue result;
+        result.type = JsonValue::Type::String;
+        result.string = std::move(value);
+        return result;
+    }
+
+    JsonValue parseNumber() {
+        const size_t start = position_;
+        if (consume('-') && position_ >= text_.size()) {
+            failAt("Invalid JSON number");
+        }
+        if (text_[position_] == '0') {
+            ++position_;
+        } else if (isDigit(text_[position_])) {
+            while (position_ < text_.size() && isDigit(text_[position_])) {
+                ++position_;
+            }
+        } else {
+            failAt("Invalid JSON number");
+        }
+        if (position_ < text_.size() && text_[position_] == '.') {
+            ++position_;
+            if (position_ >= text_.size() || !isDigit(text_[position_])) {
+                failAt("Invalid JSON number fraction");
+            }
+            while (position_ < text_.size() && isDigit(text_[position_])) {
+                ++position_;
+            }
+        }
+        if (position_ < text_.size() && (text_[position_] == 'e' || text_[position_] == 'E')) {
+            ++position_;
+            if (position_ < text_.size() && (text_[position_] == '+' || text_[position_] == '-')) {
+                ++position_;
+            }
+            if (position_ >= text_.size() || !isDigit(text_[position_])) {
+                failAt("Invalid JSON number exponent");
+            }
+            while (position_ < text_.size() && isDigit(text_[position_])) {
+                ++position_;
+            }
+        }
+        const std::string token = text_.substr(start, position_ - start);
+        char* end = nullptr;
+        const double number = std::strtod(token.c_str(), &end);
+        if (!end || *end != '\0' || !std::isfinite(number)) {
+            failAt("Invalid JSON number");
+        }
+        JsonValue result;
+        result.type = JsonValue::Type::Number;
+        result.number = number;
+        return result;
+    }
+
+    const std::string& text_;
+    size_t position_ = 0;
+};
+
+const JsonValue* jsonObjectFind(const JsonValue& value, const std::string& key) {
+    if (value.type != JsonValue::Type::Object) {
+        return nullptr;
+    }
+    for (const auto& entry : value.object) {
+        if (entry.first == key) {
+            return &entry.second;
+        }
+    }
+    return nullptr;
+}
+
+bool jsonHasString(const JsonValue& value, const std::string& key, std::string* out) {
+    const JsonValue* field = jsonObjectFind(value, key);
+    if (!field || field->type != JsonValue::Type::String) {
+        return false;
+    }
+    if (out) {
+        *out = field->string;
+    }
+    return true;
+}
+
+bool jsonNumberField(const JsonValue& value, const std::string& key, double* out) {
+    const JsonValue* field = jsonObjectFind(value, key);
+    if (!field || field->type != JsonValue::Type::Number) {
+        return false;
+    }
+    *out = field->number;
+    return true;
+}
+
+bool jsonIsSafeInteger(double value) {
+    return std::isfinite(value) && std::floor(value) == value &&
+        std::fabs(value) <= 9007199254740991.0;  // 2^53 - 1, mirrors Number.isSafeInteger.
+}
+
+bool jsonSafeIntField(
+    const JsonValue& value,
+    const std::string& key,
+    int64_t* out,
+    int64_t minimum,
+    int64_t maximum) {
+    double number = 0.0;
+    if (!jsonNumberField(value, key, &number) || !jsonIsSafeInteger(number)) {
+        return false;
+    }
+    if (number < static_cast<double>(minimum) || number > static_cast<double>(maximum)) {
+        return false;
+    }
+    *out = static_cast<int64_t>(number);
+    return true;
+}
+
+int64_t tiledOverlayTileCountForSize(int width, int height) {
+    const int columns = std::max(1, (width + kTiledOverlayTileSize - 1) / kTiledOverlayTileSize);
+    const int rows = std::max(1, (height + kTiledOverlayTileSize - 1) / kTiledOverlayTileSize);
+    return static_cast<int64_t>(columns) * static_cast<int64_t>(rows);
+}
+
+// Conservative tiled-vs-raw eligibility heuristic mirrored from the TS side
+// (resolveNativeTiledOverlayRawFallbackReason). Returns "" when eligible.
+std::string resolveTiledOverlayRawFallbackReason(const TiledOverlayLayerDescriptor& layer) {
+    if (layer.tileCount < kTiledOverlayMinTileCount) {
+        return "small-layer";
+    }
+    for (const auto& delta : layer.frameDeltas) {
+        if (static_cast<double>(delta.changedTiles.size()) >
+            static_cast<double>(layer.tileCount) * kTiledOverlayMaxChangedTileFraction) {
+            return "dense-frame-delta";
+        }
+    }
+    int64_t changedCount = 0;
+    for (const auto& delta : layer.frameDeltas) {
+        changedCount += static_cast<int64_t>(delta.changedTiles.size());
+    }
+    const int64_t uploadedTileBytes = (layer.tileCount + changedCount) * layer.tileByteSize;
+    const int64_t rawPhysicalBytes =
+        static_cast<int64_t>(layer.width) * static_cast<int64_t>(layer.height) * 4LL *
+        static_cast<int64_t>(layer.frameCount);
+    if (rawPhysicalBytes > 0 &&
+        static_cast<double>(uploadedTileBytes) /
+                static_cast<double>(rawPhysicalBytes) >=
+            kTiledOverlayMaxPayloadBytesFraction) {
+        return "payload-bytes-exceed-raw";
+    }
+    return "";
+}
+
+// Validates one tile record against the layer contract and fills out the
+// record. Mirrors validateTiledOverlayTileRecord on the TS side: tileIndex in
+// [0, tileCount), byteLength must be exactly tileSize^2*4, and the range must
+// stay inside the bounded payload stream.
+bool parseTiledOverlayTileRecord(
+    const JsonValue& record,
+    const std::string& layerId,
+    int64_t tileCount,
+    int64_t payloadByteLength,
+    TiledOverlayTileRecord* out) {
+    if (record.type != JsonValue::Type::Object) {
+        return false;
+    }
+    int64_t tileIndex = 0;
+    int64_t byteOffset = 0;
+    int64_t byteLength = 0;
+    if (!jsonSafeIntField(record, "tileIndex", &tileIndex, 0, 1LL << 40) ||
+        !jsonSafeIntField(record, "byteOffset", &byteOffset, 0, 1LL << 50) ||
+        !jsonSafeIntField(record, "byteLength", &byteLength, 0, 1LL << 50)) {
+        return false;
+    }
+    if (tileIndex >= tileCount || byteLength != kTiledOverlayTileByteSize ||
+        byteOffset + byteLength > payloadByteLength) {
+        return false;
+    }
+    out->tileIndex = static_cast<int>(tileIndex);
+    out->byteOffset = byteOffset;
+    out->byteLength = byteLength;
+    return true;
+}
+
+// Loads and validates the version-1 tiled overlay storage descriptor from
+// manifestPath. Mirrors readTiledOverlayManifest/validateNativeTiledOverlay
+// (Storage|Layer)Descriptor on the TS side so the CUDA helper never trusts an
+// opaque blob: every layer, tile record, and payload range is checked and
+// malformed/truncated/unsupported descriptors fail with an actionable message
+// (surfaced as a JSON failure by main). outputWidth/outputHeight/fps/duration
+// are the helper's resolved values (0 = not yet known); the manifest's own
+// top-level fields are always authoritative for layer-bounds validation.
+std::vector<TiledOverlayLayerDescriptor> loadTiledOverlayManifest(
+    const std::string& manifestPath,
+    int outputWidth,
+    int outputHeight,
+    int fps,
+    double durationSec) {
+    if (manifestPath.empty()) {
+        return {};
+    }
+
+    std::ifstream manifestFile(manifestPath, std::ios::binary);
+    if (!manifestFile) {
+        fail("Tiled overlay manifest does not exist: " + manifestPath);
+    }
+    std::ostringstream buffer;
+    buffer << manifestFile.rdbuf();
+    if (manifestFile.bad()) {
+        fail("Failed to read tiled overlay manifest: " + manifestPath);
+    }
+    const std::string text = buffer.str();
+
+    JsonValue root;
+    try {
+        root = JsonParser(text).parse();
+    } catch (const std::exception& error) {
+        fail("Invalid tiled overlay manifest " + manifestPath + ": " + error.what());
+    }
+
+    int64_t version = 0;
+    if (!jsonSafeIntField(root, "version", &version, 0, 1 << 30)) {
+        fail("Tiled overlay manifest requires a version: " + manifestPath);
+    }
+    if (version != kTiledOverlayStorageVersion) {
+        fail(
+            "Unsupported tiled overlay storage version " + std::to_string(version) + ": " +
+            manifestPath);
+    }
+
+    int64_t manifestWidth = 0;
+    int64_t manifestHeight = 0;
+    double manifestFrameRate = 0.0;
+    double manifestDurationSec = 0.0;
+    if (!jsonSafeIntField(root, "outputWidth", &manifestWidth, 1, 1 << 20) ||
+        !jsonSafeIntField(root, "outputHeight", &manifestHeight, 1, 1 << 20)) {
+        fail("Tiled overlay manifest requires positive output dimensions: " + manifestPath);
+    }
+    if (outputWidth > 0 && (manifestWidth != outputWidth || manifestHeight != outputHeight)) {
+        fail("Tiled overlay storage dimensions do not match the output: " + manifestPath);
+    }
+    if (!jsonNumberField(root, "frameRate", &manifestFrameRate) ||
+        !std::isfinite(manifestFrameRate) || manifestFrameRate <= 0.0) {
+        fail("Tiled overlay manifest requires a positive frame rate: " + manifestPath);
+    }
+    if (fps > 0 && std::fabs(manifestFrameRate - static_cast<double>(fps)) > 0.01) {
+        fail("Tiled overlay storage frame rate does not match the output: " + manifestPath);
+    }
+    if (!jsonNumberField(root, "durationSec", &manifestDurationSec) ||
+        !std::isfinite(manifestDurationSec) || manifestDurationSec <= 0.0) {
+        fail("Tiled overlay manifest requires a positive duration: " + manifestPath);
+    }
+    if (durationSec > 0.0 &&
+        std::fabs(manifestDurationSec - durationSec) > 1.0 / manifestFrameRate) {
+        fail("Tiled overlay storage duration does not match the output: " + manifestPath);
+    }
+
+    const JsonValue* rawLayers = jsonObjectFind(root, "layers");
+    if (!rawLayers || rawLayers->type != JsonValue::Type::Array) {
+        fail("Tiled overlay manifest requires a layers array: " + manifestPath);
+    }
+
+    std::vector<TiledOverlayLayerDescriptor> layers;
+    layers.reserve(rawLayers->array.size());
+    int previousOrder = -1;
+    std::string previousId;
+    for (const JsonValue& rawLayer : rawLayers->array) {
+        TiledOverlayLayerDescriptor layer;
+        if (!jsonHasString(rawLayer, "id", &layer.id) || layer.id.empty() ||
+            !jsonHasString(rawLayer, "payloadPath", &layer.payloadPath) ||
+            layer.payloadPath.empty()) {
+            fail("Tiled overlay layer requires an id and payload path: " + manifestPath);
+        }
+        int64_t order = 0;
+        int64_t x = 0;
+        int64_t y = 0;
+        int64_t width = 0;
+        int64_t height = 0;
+        int64_t frameCount = 0;
+        int64_t tileSize = 0;
+        int64_t payloadByteLength = 0;
+        if (!jsonSafeIntField(rawLayer, "order", &order, 0, 1 << 30) ||
+            !jsonSafeIntField(rawLayer, "x", &x, 0, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "y", &y, 0, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "width", &width, 1, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "height", &height, 1, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "frameCount", &frameCount, 1, 1 << 30)) {
+            fail("Invalid tiled overlay layer " + layer.id + ": " + manifestPath);
+        }
+        if (x + width > manifestWidth || y + height > manifestHeight) {
+            fail("Tiled overlay layer " + layer.id + " exceeds the output canvas: " + manifestPath);
+        }
+        if (!jsonNumberField(rawLayer, "frameRate", &layer.frameRate) ||
+            !std::isfinite(layer.frameRate) || layer.frameRate <= 0.0 ||
+            std::fabs(layer.frameRate - manifestFrameRate) > 0.01) {
+            fail("Tiled overlay layer " + layer.id + " has an incompatible frame rate: " + manifestPath);
+        }
+        if (!jsonNumberField(rawLayer, "durationSec", &layer.durationSec) ||
+            !std::isfinite(layer.durationSec) || layer.durationSec <= 0.0 ||
+            std::fabs(layer.durationSec - manifestDurationSec) > 1.0 / manifestFrameRate) {
+            fail("Tiled overlay layer " + layer.id + " has an incompatible duration: " + manifestPath);
+        }
+        const int64_t expectedFrameCount =
+            static_cast<int64_t>(std::ceil(layer.durationSec * layer.frameRate));
+        if (frameCount < expectedFrameCount) {
+            fail("Tiled overlay layer " + layer.id + " does not contain enough frames: " + manifestPath);
+        }
+        if (!jsonSafeIntField(rawLayer, "tileSize", &tileSize, 1, 1 << 20) ||
+            tileSize != kTiledOverlayTileSize) {
+            fail(
+                "Tiled overlay layer " + layer.id + " must use " +
+                std::to_string(kTiledOverlayTileSize) + "px tiles: " + manifestPath);
+        }
+        std::string pixelFormat;
+        if (!jsonHasString(rawLayer, "pixelFormat", &pixelFormat) || pixelFormat != "rgba") {
+            fail("Tiled overlay layer " + layer.id + " must use RGBA tiles: " + manifestPath);
+        }
+        if (!jsonSafeIntField(rawLayer, "payloadByteLength", &payloadByteLength, 0, 1LL << 50)) {
+            fail("Tiled overlay layer " + layer.id + " has an invalid payload byte length: " + manifestPath);
+        }
+        const JsonValue* staticTiles = jsonObjectFind(rawLayer, "staticTiles");
+        const JsonValue* frameDeltas = jsonObjectFind(rawLayer, "frameDeltas");
+        if (!staticTiles || staticTiles->type != JsonValue::Type::Array ||
+            !frameDeltas || frameDeltas->type != JsonValue::Type::Array) {
+            fail("Tiled overlay layer " + layer.id + " requires static tiles and frame deltas: " + manifestPath);
+        }
+        if (order < previousOrder || (order == previousOrder && layer.id <= previousId)) {
+            fail("Tiled overlay layers must be sorted by order then id: " + manifestPath);
+        }
+        previousOrder = static_cast<int>(order);
+        previousId = layer.id;
+
+        layer.order = static_cast<int>(order);
+        layer.x = static_cast<int>(x);
+        layer.y = static_cast<int>(y);
+        layer.width = static_cast<int>(width);
+        layer.height = static_cast<int>(height);
+        layer.frameCount = static_cast<int>(frameCount);
+        layer.tileSize = static_cast<int>(tileSize);
+        layer.payloadByteLength = payloadByteLength;
+        layer.tileColumns = std::max(1, (layer.width + kTiledOverlayTileSize - 1) / kTiledOverlayTileSize);
+        layer.tileRows = std::max(1, (layer.height + kTiledOverlayTileSize - 1) / kTiledOverlayTileSize);
+        layer.tileCount = static_cast<int>(tiledOverlayTileCountForSize(layer.width, layer.height));
+        layer.tileByteSize = static_cast<int64_t>(layer.tileSize) * layer.tileSize * 4LL;
+        layer.staticTiles.reserve(staticTiles->array.size());
+
+        std::set<int> seenStaticTiles;
+        std::set<std::pair<int64_t, int64_t>> payloadRanges;
+        for (const JsonValue& record : staticTiles->array) {
+            TiledOverlayTileRecord parsed;
+            if (!parseTiledOverlayTileRecord(
+                    record,
+                    layer.id,
+                    layer.tileCount,
+                    layer.payloadByteLength,
+                    &parsed)) {
+                fail("Tiled overlay layer " + layer.id + " has an invalid static tile record: " + manifestPath);
+            }
+            if (!seenStaticTiles.insert(parsed.tileIndex).second) {
+                fail("Tiled overlay layer " + layer.id + " emits duplicate static tile: " + manifestPath);
+            }
+            if (!payloadRanges.insert({parsed.byteOffset, parsed.byteLength}).second) {
+                fail("Tiled overlay layer " + layer.id + " duplicates tile payload bytes: " + manifestPath);
+            }
+            layer.staticTiles.push_back(parsed);
+        }
+        if (seenStaticTiles.size() != static_cast<size_t>(layer.tileCount)) {
+            fail("Tiled overlay layer " + layer.id + " does not fully define the static tile base: " + manifestPath);
+        }
+
+        layer.frameDeltas.reserve(frameDeltas->array.size());
+        int64_t maxDeltaBytes = layer.tileByteSize;
+        int previousFrameIndex = -1;
+        for (const JsonValue& rawDelta : frameDeltas->array) {
+            TiledOverlayFrameDelta delta;
+            int64_t deltaFrameIndex = 0;
+            if (!jsonSafeIntField(rawDelta, "frameIndex", &deltaFrameIndex, 0, 1 << 30) ||
+                deltaFrameIndex >= frameCount) {
+                fail("Tiled overlay layer " + layer.id + " has an invalid delta frame index: " + manifestPath);
+            }
+            if (deltaFrameIndex <= previousFrameIndex) {
+                fail("Tiled overlay layer " + layer.id + " has unsorted or duplicate delta frame indices: " + manifestPath);
+            }
+            previousFrameIndex = static_cast<int>(deltaFrameIndex);
+            delta.frameIndex = static_cast<int>(deltaFrameIndex);
+            const JsonValue* changedTiles = jsonObjectFind(rawDelta, "changedTiles");
+            if (!changedTiles || changedTiles->type != JsonValue::Type::Array) {
+                fail("Tiled overlay layer " + layer.id + " requires a changedTiles array: " + manifestPath);
+            }
+            std::set<int> seenDeltaTiles;
+            delta.changedTiles.reserve(changedTiles->array.size());
+            for (const JsonValue& record : changedTiles->array) {
+                TiledOverlayTileRecord parsed;
+                if (!parseTiledOverlayTileRecord(
+                        record,
+                        layer.id,
+                        layer.tileCount,
+                        layer.payloadByteLength,
+                        &parsed)) {
+                    fail("Tiled overlay layer " + layer.id + " has an invalid changed tile record: " + manifestPath);
+                }
+                if (!seenDeltaTiles.insert(parsed.tileIndex).second) {
+                    fail("Tiled overlay layer " + layer.id + " repeats a tile within a frame delta: " + manifestPath);
+                }
+                if (!payloadRanges.insert({parsed.byteOffset, parsed.byteLength}).second) {
+                    fail("Tiled overlay layer " + layer.id + " duplicates tile payload bytes: " + manifestPath);
+                }
+                delta.changedTiles.push_back(parsed);
+            }
+            maxDeltaBytes = std::max(
+                maxDeltaBytes,
+                static_cast<int64_t>(delta.changedTiles.size()) * layer.tileByteSize);
+            layer.frameDeltas.push_back(std::move(delta));
+        }
+        if (1 + static_cast<int64_t>(layer.frameDeltas.size()) > layer.frameCount) {
+            fail("Tiled overlay layer " + layer.id + " has more state versions than frames: " + manifestPath);
+        }
+        layer.maxDeltaBytes = maxDeltaBytes;
+        layer.rawFallbackReason = resolveTiledOverlayRawFallbackReason(layer);
+
+        const std::string resolvedPayloadPath = layer.payloadPath;
+        std::ifstream payload(resolvedPayloadPath, std::ios::binary);
+        if (!payload) {
+            fail("Tiled overlay layer " + layer.id + " does not exist: " + resolvedPayloadPath);
+        }
+        payload.seekg(0, std::ios::end);
+        const std::streampos end = payload.tellg();
+        if (end < 0 || static_cast<int64_t>(end) < layer.payloadByteLength) {
+            fail(
+                "Tiled overlay layer " + layer.id + " payload is truncated: expected at least " +
+                std::to_string(layer.payloadByteLength) + " bytes, received " +
+                std::to_string(end < 0 ? 0 : static_cast<int64_t>(end)));
+        }
+        layers.push_back(std::move(layer));
+    }
+    return layers;
+}
+
+// Loads and validates the version-1 raw RGBA overlay sidecar manifest. Mirrors
+// overlayManifest.mjs / validateNativeStaticLayoutOverlayLayer: layers carry a
+// global `order`, bounds, frameRate, duration, frameCount and optional
+// effectiveFrameCount. The helper never trusts the blob and rejects malformed
+// or truncated manifests with an actionable JSON failure.
+std::vector<OverlayLayerDescriptor> loadOverlayManifest(
+    const std::string& manifestPath,
+    int outputWidth,
+    int outputHeight,
+    int fps,
+    double durationSec) {
+    if (manifestPath.empty()) {
+        return {};
+    }
+
+    std::ifstream manifestFile(manifestPath, std::ios::binary);
+    if (!manifestFile) {
+        fail("Overlay manifest does not exist: " + manifestPath);
+    }
+    std::ostringstream buffer;
+    buffer << manifestFile.rdbuf();
+    if (manifestFile.bad()) {
+        fail("Failed to read overlay manifest: " + manifestPath);
+    }
+    const std::string rawText = buffer.str();
+
+    JsonValue root;
+    try {
+        root = JsonParser(rawText).parse();
+    } catch (const std::exception& error) {
+        fail("Invalid overlay manifest " + manifestPath + ": " + error.what());
+    }
+
+    int64_t version = 0;
+    if (!jsonSafeIntField(root, "version", &version, 0, 1 << 30)) {
+        fail("Overlay manifest requires a version: " + manifestPath);
+    }
+    if (version != 1) {
+        fail("Unsupported overlay manifest version " + std::to_string(version) + ": " + manifestPath);
+    }
+
+    int64_t manifestWidth = 0;
+    int64_t manifestHeight = 0;
+    double manifestFrameRate = 0.0;
+    double manifestDurationSec = 0.0;
+    if (!jsonSafeIntField(root, "outputWidth", &manifestWidth, 1, 1 << 20) ||
+        !jsonSafeIntField(root, "outputHeight", &manifestHeight, 1, 1 << 20)) {
+        fail("Overlay manifest requires positive output dimensions: " + manifestPath);
+    }
+    if (outputWidth > 0 && (manifestWidth != outputWidth || manifestHeight != outputHeight)) {
+        fail("Overlay manifest dimensions do not match the output: " + manifestPath);
+    }
+    if (!jsonNumberField(root, "frameRate", &manifestFrameRate) ||
+        !std::isfinite(manifestFrameRate) || manifestFrameRate <= 0.0) {
+        fail("Overlay manifest requires a positive frame rate: " + manifestPath);
+    }
+    if (fps > 0 && std::fabs(manifestFrameRate - static_cast<double>(fps)) > 0.01) {
+        fail("Overlay manifest frame rate does not match the output: " + manifestPath);
+    }
+    if (!jsonNumberField(root, "durationSec", &manifestDurationSec) ||
+        !std::isfinite(manifestDurationSec) || manifestDurationSec <= 0.0) {
+        fail("Overlay manifest requires a positive duration: " + manifestPath);
+    }
+    if (durationSec > 0.0 &&
+        std::fabs(manifestDurationSec - durationSec) > 1.0 / manifestFrameRate) {
+        fail("Overlay manifest duration does not match the output: " + manifestPath);
+    }
+
+    const JsonValue* rawLayers = jsonObjectFind(root, "layers");
+    if (!rawLayers || rawLayers->type != JsonValue::Type::Array) {
+        fail("Overlay manifest requires a layers array: " + manifestPath);
+    }
+
+    std::vector<OverlayLayerDescriptor> layers;
+    layers.reserve(rawLayers->array.size());
+    int previousOrder = -1;
+    std::string previousId;
+    for (const JsonValue& rawLayer : rawLayers->array) {
+        OverlayLayerDescriptor layer;
+        if (!jsonHasString(rawLayer, "id", &layer.id) || layer.id.empty() ||
+            !jsonHasString(rawLayer, "path", &layer.path) || layer.path.empty()) {
+            fail("Overlay layer requires an id and path: " + manifestPath);
+        }
+        int64_t order = 0;
+        int64_t x = 0;
+        int64_t y = 0;
+        int64_t width = 0;
+        int64_t height = 0;
+        int64_t frameCount = 0;
+        if (!jsonSafeIntField(rawLayer, "order", &order, 0, 1 << 30) ||
+            !jsonSafeIntField(rawLayer, "x", &x, 0, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "y", &y, 0, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "width", &width, 1, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "height", &height, 1, 1 << 20) ||
+            !jsonSafeIntField(rawLayer, "frameCount", &frameCount, 1, 1 << 30)) {
+            fail("Invalid overlay layer " + layer.id + ": " + manifestPath);
+        }
+        if (x + width > manifestWidth || y + height > manifestHeight) {
+            fail("Overlay layer " + layer.id + " exceeds the output canvas: " + manifestPath);
+        }
+        if (!jsonNumberField(rawLayer, "frameRate", &layer.frameRate) ||
+            !std::isfinite(layer.frameRate) || layer.frameRate <= 0.0 ||
+            std::fabs(layer.frameRate - manifestFrameRate) > 0.01) {
+            fail("Overlay layer " + layer.id + " has an incompatible frame rate: " + manifestPath);
+        }
+        if (!jsonNumberField(rawLayer, "durationSec", &layer.durationSec) ||
+            !std::isfinite(layer.durationSec) || layer.durationSec <= 0.0 ||
+            std::fabs(layer.durationSec - manifestDurationSec) > 1.0 / manifestFrameRate) {
+            fail("Overlay layer " + layer.id + " has an incompatible duration: " + manifestPath);
+        }
+        const int64_t expectedFrameCount =
+            static_cast<int64_t>(std::ceil(layer.durationSec * layer.frameRate));
+        if (frameCount < expectedFrameCount) {
+            fail("Overlay layer " + layer.id + " does not contain enough frames: " + manifestPath);
+        }
+        int64_t effectiveFrameCount = 0;
+        const JsonValue* effectiveField = jsonObjectFind(rawLayer, "effectiveFrameCount");
+        if (effectiveField && effectiveField->type != JsonValue::Type::Null) {
+            if (!jsonSafeIntField(rawLayer, "effectiveFrameCount", &effectiveFrameCount, 1, frameCount)) {
+                fail("Overlay layer " + layer.id + " has an invalid effective frame count: " + manifestPath);
+            }
+        } else {
+            effectiveFrameCount = frameCount;
+        }
+        if (order < previousOrder || (order == previousOrder && layer.id <= previousId)) {
+            fail("Overlay layers must be sorted by order then id: " + manifestPath);
+        }
+        previousOrder = static_cast<int>(order);
+        previousId = layer.id;
+
+        layer.order = static_cast<int>(order);
+        layer.x = static_cast<int>(x);
+        layer.y = static_cast<int>(y);
+        layer.width = static_cast<int>(width);
+        layer.height = static_cast<int>(height);
+        layer.frameCount = static_cast<int>(frameCount);
+        layer.effectiveFrameCount = static_cast<int>(effectiveFrameCount);
+        layers.push_back(std::move(layer));
+    }
+    return layers;
+}
+
+// Cross-checks the loaded tiled layers against the resolved output canvas. The
+// descriptor's own outputWidth/outputHeight were validated at load; without
+// explicit --width/--height the canvas is only known after decode, so this is
+// called (like validateOverlayBounds) before the first encoded frame.
+void validateTiledOverlayBounds(const Options& options, int outputWidth, int outputHeight) {
+    for (const auto& layer : options.tiledOverlayLayers) {
+        if (layer.x < 0 || layer.y < 0 ||
+            layer.x + layer.width > outputWidth ||
+            layer.y + layer.height > outputHeight) {
+            fail("Tiled overlay layer exceeds the output canvas: " + layer.id);
+        }
+    }
+}
+
+// Descriptor-derived tiled throughput bookkeeping (same formulas as the TS
+// resolveNativeTiledOverlayMetrics). Used for the failure summary, where the
+// runtime-measured counters may not exist yet; diagnostics only.
+struct TiledOverlayDerivedMetrics {
+    int64_t changedTileCount = 0;
+    int64_t uploadedTileBytes = 0;
+    int64_t cachedTileCount = 0;
+    std::string rawFallbackReason;
+};
+
+TiledOverlayDerivedMetrics computeTiledOverlayDerivedMetrics(
+    const std::vector<TiledOverlayLayerDescriptor>& layers) {
+    TiledOverlayDerivedMetrics metrics;
+    for (const auto& layer : layers) {
+        int64_t changedCount = 0;
+        for (const auto& delta : layer.frameDeltas) {
+            changedCount += static_cast<int64_t>(delta.changedTiles.size());
+        }
+        const int64_t uploadedCount =
+            static_cast<int64_t>(layer.staticTiles.size()) + changedCount;
+        metrics.changedTileCount += changedCount;
+        metrics.uploadedTileBytes += uploadedCount * layer.tileByteSize;
+        metrics.cachedTileCount += std::max<int64_t>(
+            0,
+            static_cast<int64_t>(layer.tileCount) * layer.frameCount - uploadedCount);
+        if (metrics.rawFallbackReason.empty() && !layer.rawFallbackReason.empty()) {
+            metrics.rawFallbackReason = layer.rawFallbackReason;
+        }
+    }
+    return metrics;
+}
+
 Options parseOptions(int argc, char** argv) {
     Options options;
     for (int index = 1; index < argc; ++index) {
@@ -167,6 +1222,8 @@ Options parseOptions(int argc, char** argv) {
             options.inputPath = requireValue("--input");
         } else if (arg == "--output") {
             options.outputPath = requireValue("--output");
+        } else if (arg == "--output-codec") {
+            options.outputCodec = parseOutputCodec(requireValue("--output-codec"));
         } else if (arg == "--source-pts") {
             options.sourcePtsPath = requireValue("--source-pts");
         } else if (arg == "--width") {
@@ -278,9 +1335,44 @@ Options parseOptions(int argc, char** argv) {
                 parsePositiveInt(requireValue("--cursor-atlas-height"), "--cursor-atlas-height");
         } else if (arg == "--zoom-samples") {
             options.zoomSamplesPath = requireValue("--zoom-samples");
+        } else if (arg == "--temporal-blur-sample-count") {
+            options.temporalBlurSampleCount =
+                parsePositiveInt(requireValue("--temporal-blur-sample-count"), "--temporal-blur-sample-count");
+        } else if (arg == "--temporal-blur-shutter-fraction") {
+            options.temporalBlurShutterFraction = parseFiniteDouble(
+                requireValue("--temporal-blur-shutter-fraction"),
+                "--temporal-blur-shutter-fraction");
+        } else if (arg == "--temporal-blur-weight-power") {
+            options.temporalBlurWeightPower = parseFiniteDouble(
+                requireValue("--temporal-blur-weight-power"),
+                "--temporal-blur-weight-power");
+        } else if (arg == "--overlay") {
+            OverlayLayerDescriptor layer;
+            layer.path = requireValue("--overlay");
+            layer.x = parseNonNegativeInt(requireValue("--overlay"), "--overlay x");
+            layer.y = parseNonNegativeInt(requireValue("--overlay"), "--overlay y");
+            layer.width = parsePositiveInt(requireValue("--overlay"), "--overlay width");
+            layer.height = parsePositiveInt(requireValue("--overlay"), "--overlay height");
+            layer.effectiveFrameCount =
+                parsePositiveInt(requireValue("--overlay"), "--overlay frameCount");
+            layer.frameCount = layer.effectiveFrameCount;
+            // Optional 7th argument is the renderer-side global z-order.
+            // Default to the current index so legacy callers still blend raw
+            // layers in the order they were supplied.
+            if (index + 1 < argc && argv[index + 1][0] != '-') {
+                layer.order = parseNonNegativeInt(argv[++index], "--overlay order");
+            } else {
+                layer.order = static_cast<int>(options.overlayLayers.size());
+            }
+            options.overlayLayers.push_back(layer);
+        } else if (arg == "--overlay-manifest") {
+            options.overlayManifestPath = requireValue("--overlay-manifest");
+        } else if (arg == "--tiled-overlay-manifest") {
+            options.tiledOverlayManifestPath = requireValue("--tiled-overlay-manifest");
         } else if (arg == "--help") {
             std::cout << "Usage: recordly-nvidia-cuda-compositor --input input.annexb.h264 "
-                         "[--output out.h264] [--source-pts source-pts.csv] [--width N --height N] [--fps 30] "
+                         "[--output out.h264] [--output-codec h264|hevc] "
+                         "[--source-pts source-pts.csv] [--width N --height N] [--fps 30] "
                          "[--max-frames N] [--bitrate-mbps N] [--encoding-mode fast|balanced|quality] "
                          "[--post-select] [--callback-encode] [--stream-sync] [--prewarm-ms N] [--chunk-mb N] "
                          "[--content-x N --content-y N --content-width N --content-height N --radius N] "
@@ -291,7 +1383,12 @@ Options parseOptions(int argc, char** argv) {
                          "[--cursor-samples cursor.tsv --cursor-height N] "
                          "[--cursor-atlas-rgba cursor.rgba --cursor-atlas-metadata cursor.tsv "
                          "--cursor-atlas-width N --cursor-atlas-height N] "
-                         "[--zoom-samples zoom.csv]\n";
+                         "[--zoom-samples zoom.csv] "
+                         "[--temporal-blur-sample-count N --temporal-blur-shutter-fraction F "
+                         "--temporal-blur-weight-power P] "
+                         "[--overlay overlay.rgba x y width height frameCount [order]]... "
+                         "[--overlay-manifest overlay-manifest.json] "
+                         "[--tiled-overlay-manifest tiled-overlay-manifest.json]\n";
             std::exit(0);
         } else {
             std::ostringstream stream;
@@ -308,7 +1405,101 @@ Options parseOptions(int argc, char** argv) {
     if (options.width > 0 && (options.width % 2 != 0 || options.height % 2 != 0)) {
         fail("--width and --height must be even numbers for NV12 encoding");
     }
+    for (const auto& layer : options.overlayLayers) {
+        if (layer.width <= 0 || layer.height <= 0 || layer.frameCount <= 0) {
+            fail("Invalid --overlay layer dimensions: " + layer.path);
+        }
+    }
+    if (options.temporalBlurSampleCount > 0) {
+        if (options.temporalBlurSampleCount < 3 || options.temporalBlurSampleCount > 61) {
+            fail("Invalid --temporal-blur-sample-count: " +
+                std::to_string(options.temporalBlurSampleCount));
+        }
+        if (!std::isfinite(options.temporalBlurShutterFraction) ||
+            options.temporalBlurShutterFraction < 0.18 ||
+            options.temporalBlurShutterFraction > 3.0) {
+            fail("Invalid --temporal-blur-shutter-fraction");
+        }
+    }
+    if (!options.tiledOverlayManifestPath.empty()) {
+        // Load + validate the tiled overlay descriptor before encoding starts:
+        // malformed/truncated/unsupported descriptors fail fast here instead of
+        // after decode work, and there is no silent raw fallback inside the
+        // helper. Duration cross-check uses the requested output timeline when
+        // targetFrames is known (the wrapper always passes it); layer bounds
+        // are validated against the descriptor's own output dimensions and
+        // re-cross-checked against the resolved canvas at sink creation.
+        const double expectedDurationSec = options.targetFrames > 0
+            ? static_cast<double>(options.targetFrames) / static_cast<double>(options.fps)
+            : 0.0;
+        options.tiledOverlayLayers = loadTiledOverlayManifest(
+            options.tiledOverlayManifestPath,
+            options.width,
+            options.height,
+            options.fps,
+            expectedDurationSec);
+    }
+    if (!options.overlayManifestPath.empty()) {
+        const double expectedDurationSec = options.targetFrames > 0
+            ? static_cast<double>(options.targetFrames) / static_cast<double>(options.fps)
+            : 0.0;
+        options.overlayLayers = loadOverlayManifest(
+            options.overlayManifestPath,
+            options.width,
+            options.height,
+            options.fps,
+            expectedDurationSec);
+    }
+
+    // Build one global z-order list from raw and tiled overlay layers. The
+    // renderer already sorted each manifest by (order, id), so a stable sort
+    // on order produces the exact cross-kind ordering the renderer expects.
+    options.compositeLayers.reserve(
+        options.overlayLayers.size() + options.tiledOverlayLayers.size());
+    for (size_t i = 0; i < options.overlayLayers.size(); ++i) {
+        const auto& layer = options.overlayLayers[i];
+        CompositeLayer entry;
+        entry.kind = CompositeLayer::Kind::Raw;
+        entry.sourceIndex = static_cast<int>(i);
+        entry.order = layer.order;
+        entry.x = layer.x;
+        entry.y = layer.y;
+        entry.width = layer.width;
+        entry.height = layer.height;
+        options.compositeLayers.push_back(entry);
+    }
+    for (size_t i = 0; i < options.tiledOverlayLayers.size(); ++i) {
+        const auto& layer = options.tiledOverlayLayers[i];
+        CompositeLayer entry;
+        entry.kind = CompositeLayer::Kind::Tiled;
+        entry.sourceIndex = static_cast<int>(i);
+        entry.order = layer.order;
+        entry.x = layer.x;
+        entry.y = layer.y;
+        entry.width = layer.width;
+        entry.height = layer.height;
+        options.compositeLayers.push_back(entry);
+    }
+    std::stable_sort(
+        options.compositeLayers.begin(),
+        options.compositeLayers.end(),
+        [](const CompositeLayer& a, const CompositeLayer& b) { return a.order < b.order; });
+
     return options;
+}
+
+// The overlay canvas bounds depend on the output dimensions. With explicit
+// --width/--height they are known at parse time; without them the canvas is
+// resolved from the decoded source, so the caller validates with the resolved
+// dimensions before the first frame is encoded.
+void validateOverlayBounds(const Options& options, int outputWidth, int outputHeight) {
+    for (const auto& layer : options.overlayLayers) {
+        if (layer.x < 0 || layer.y < 0 ||
+            layer.x + layer.width > outputWidth ||
+            layer.y + layer.height > outputHeight) {
+            fail("Overlay layer exceeds the output canvas: " + layer.id + ": " + layer.path);
+        }
+    }
 }
 
 bool shouldEncodeFrame(int sourceFrameIndex, int encodedFrames, const Options& options) {
@@ -578,6 +1769,10 @@ struct ProgressCounters {
     double decodeWallMs = 0.0;
     double encodeMs = 0.0;
     double compositeMs = 0.0;
+    double compositeGpuMs = 0.0;
+    double zoomBlurGpuMs = 0.0;
+    double overlayBlendGpuMs = 0.0;
+    double overlayUploadMs = 0.0;
     double nvencMs = 0.0;
     double packetWriteMs = 0.0;
     double webcamDecodeMs = 0.0;
@@ -585,11 +1780,34 @@ struct ProgressCounters {
     int roiCompositeFrames = 0;
     int monolithicCompositeFrames = 0;
     int copyCompositeFrames = 0;
+    int zoomBlurFrames = 0;
+    int overlayBlendFrames = 0;
+    int temporalBlurFrames = 0;
+    int64_t temporalBlurSamplesTotal = 0;
+    int temporalBlurBgPrecomposedFrames = 0;
+    int temporalBlurStationaryFrames = 0;
+    int temporalBgCacheBuilds = 0;
+    int64_t temporalBgCacheHits = 0;
+    int64_t overlayStaticRegionBlends = 0;
+    int64_t overlayFileLoads = 0;
+    int64_t overlayCacheHits = 0;
+    int64_t overlayPinnedHits = 0;
+    int64_t overlayReadWaits = 0;
+    int64_t overlayPendingReadsPeak = 0;
+    double overlayHostReadMs = 0.0;
+    double overlayH2DEnqueueMs = 0.0;
+    // Tiled/delta overlay stream (additive, measured). cumulative over the
+    // whole run; the interval fields below are deltas between reports.
+    int tiledOverlayLayers = 0;
+    int64_t changedTileCount = 0;
+    int64_t uploadedTileBytes = 0;
+    int64_t cachedTileCount = 0;
 };
 
 struct ProgressReportState {
     std::chrono::steady_clock::time_point startedAt;
     std::chrono::steady_clock::time_point lastReportAt;
+    const char* outputCodec = "h264";
     int lastReportedFrame = 0;
     ProgressCounters lastCounters;
 };
@@ -773,6 +1991,14 @@ struct ZoomSample {
     double scale = 1.0;
     double x = 0.0;
     double y = 0.0;
+    // Renderer-equivalent radial zoom-blur parameters for the step that ends at
+    // this sample. blurStrength is the ZoomBlurFilter strength (0 = no blur);
+    // the center is in output pixels. The JS side computes these from the same
+    // camera-step analysis the interactive renderer uses, so the native
+    // compositor reproduces the spatial zoom blur without re-deriving it.
+    double blurStrength = 0.0;
+    double blurCenterX = 0.0;
+    double blurCenterY = 0.0;
 };
 
 struct ZoomTrack {
@@ -813,9 +2039,70 @@ struct ZoomTrack {
             left.scale + (right.scale - left.scale) * t,
             left.x + (right.x - left.x) * t,
             left.y + (right.y - left.y) * t,
+            left.blurStrength + (right.blurStrength - left.blurStrength) * t,
+            left.blurCenterX + (right.blurCenterX - left.blurCenterX) * t,
+            left.blurCenterY + (right.blurCenterY - left.blurCenterY) * t,
         };
     }
 };
+
+struct TemporalBlurSample {
+    double offsetUs = 0.0;
+    double weight = 0.0;
+};
+
+// Mirrors buildTemporalSamplePlanUs from src/lib/exporter/temporalMotionBlur.ts:
+// symmetric shutter window centered on the frame, cos-tapered weights normalized
+// to sum to 1. The weight floor (0.22) and taper are part of the renderer's
+// contract; the compositor must reproduce them so native output matches the
+// configured high-level temporal sample plan.
+std::vector<TemporalBlurSample> buildTemporalSamplePlan(
+    int sampleCount,
+    double shutterFraction,
+    double weightCurvePower,
+    double frameDurationUs) {
+    const int safeSampleCount = std::max(1, sampleCount);
+    if (safeSampleCount <= 1) {
+        return {{0.0, 1.0}};
+    }
+
+    const double shutterWindowUs =
+        std::max(1.0, frameDurationUs) * std::max(0.0, std::min(3.0, shutterFraction));
+    const double startOffsetUs = -shutterWindowUs / 2.0;
+    const double stepUs = shutterWindowUs / static_cast<double>(safeSampleCount - 1);
+    std::vector<double> offsetsUs;
+    offsetsUs.reserve(safeSampleCount);
+    for (int index = 0; index < safeSampleCount; ++index) {
+        offsetsUs.push_back(startOffsetUs + stepUs * static_cast<double>(index));
+    }
+
+    constexpr double kWeightFloor = 0.22;
+    const double centerIndex = static_cast<double>(safeSampleCount - 1) / 2.0;
+    std::vector<double> rawWeights;
+    rawWeights.reserve(safeSampleCount);
+    double totalWeight = 0.0;
+    for (int index = 0; index < safeSampleCount; ++index) {
+        const double normalizedDistance =
+            std::abs(static_cast<double>(index) - centerIndex) / std::max(1.0, centerIndex);
+        const double taperedWeight = std::cos(normalizedDistance * (3.14159265358979323846 / 2.0));
+        const double rawWeight =
+            kWeightFloor +
+            (1.0 - kWeightFloor) *
+                std::pow(std::max(0.0, taperedWeight), weightCurvePower);
+        rawWeights.push_back(rawWeight);
+        totalWeight += rawWeight;
+    }
+
+    std::vector<TemporalBlurSample> samples;
+    samples.reserve(safeSampleCount);
+    for (int index = 0; index < safeSampleCount; ++index) {
+        samples.push_back({
+            offsetsUs[index],
+            totalWeight > 0.0 ? rawWeights[index] / totalWeight : 1.0 / safeSampleCount,
+        });
+    }
+    return samples;
+}
 
 std::unique_ptr<ZoomTrack> loadZoomTrack(const Options& options) {
     if (options.zoomSamplesPath.empty()) {
@@ -843,8 +2130,26 @@ std::unique_ptr<ZoomTrack> loadZoomTrack(const Options& options) {
             !std::isfinite(sample.x) || !std::isfinite(sample.y)) {
             continue;
         }
+        // Optional renderer-computed zoom-blur fields (columns 5-7). Older
+        // telemetry files with only timeMs/scale/x/y keep blurStrength = 0.
+        if (!(row >> sample.blurStrength)) {
+            sample.blurStrength = 0.0;
+        } else if (!std::isfinite(sample.blurStrength)) {
+            sample.blurStrength = 0.0;
+        }
+        if (!(row >> sample.blurCenterX)) {
+            sample.blurCenterX = 0.0;
+        } else if (!std::isfinite(sample.blurCenterX)) {
+            sample.blurCenterX = 0.0;
+        }
+        if (!(row >> sample.blurCenterY)) {
+            sample.blurCenterY = 0.0;
+        } else if (!std::isfinite(sample.blurCenterY)) {
+            sample.blurCenterY = 0.0;
+        }
         sample.timeMs = std::max(0.0, sample.timeMs);
         sample.scale = std::max(0.01, sample.scale);
+        sample.blurStrength = std::max(0.0, sample.blurStrength);
         track->samples.push_back(sample);
     }
     if (track->samples.empty()) {
@@ -855,6 +2160,811 @@ std::unique_ptr<ZoomTrack> loadZoomTrack(const Options& options) {
     });
     return track;
 }
+
+// Blend launch rectangle for a renderer-prepared RGBA overlay layer. Dynamic
+// (multi-frame) layers always use the full layer rect; physical single-frame
+// layers get a one-time alpha bound (see computeStaticAlphaBounds) so the blend
+// kernel only visits pixels that can write, with the full rect as the fallback.
+struct OverlayBlendRegion {
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
+    bool bounded = false;
+};
+
+OverlayBlendRegion fullOverlayBlendRegion(const OverlayLayerDescriptor& descriptor) {
+    OverlayBlendRegion region;
+    region.x = 0;
+    region.y = 0;
+    region.width = descriptor.width;
+    region.height = descriptor.height;
+    region.bounded = false;
+    return region;
+}
+
+// Scans the first frame of a physical single-frame overlay layer for the
+// bounding box of pixels with nonzero alpha, expanded by one pixel so every 2x2
+// chroma block that touches an alpha pixel is inside the launch region. The
+// bound is computed once per layer; pixels outside it have alpha == 0 for the
+// whole layer, so the blend kernel writes nothing there and the bounded launch
+// is bit-identical to the full-frame blend. A fully transparent layer gets an
+// empty region (the blend launch is skipped entirely, which is also exact).
+void computeStaticAlphaBounds(
+    const unsigned char* rgba,
+    int width,
+    int height,
+    OverlayBlendRegion& region) {
+    int minX = width;
+    int minY = height;
+    int maxX = -1;
+    int maxY = -1;
+    for (int y = 0; y < height; ++y) {
+        const unsigned char* row =
+            rgba + static_cast<size_t>(y) * static_cast<size_t>(width) * 4;
+        for (int x = 0; x < width; ++x) {
+            if (row[x * 4 + 3] > 0) {
+                minX = std::min(minX, x);
+                minY = std::min(minY, y);
+                maxX = std::max(maxX, x);
+                maxY = std::max(maxY, y);
+            }
+        }
+    }
+    if (maxX < minX) {
+        region = {0, 0, 0, 0, true};
+        return;
+    }
+    region.x = std::max(0, minX - 1);
+    region.y = std::max(0, minY - 1);
+    region.width = std::min(width, maxX + 2) - region.x;
+    region.height = std::min(height, maxY + 2) - region.y;
+    region.bounded = true;
+}
+
+// Streaming source for renderer-prepared transparent RGBA overlay sidecars.
+// Frames are raw top-down RGBA and are consumed sequentially by the output
+// frame index. Each dynamic layer owns a bounded background reader thread that
+// reads sidecar frames from disk into persistent pinned ring buffers while the
+// encode thread keeps running, so the encode loop never blocks on file I/O.
+// The encode thread only enqueues H2D copies (pinned -> device) on the
+// compositor stream, ordered ahead of the blend kernels on the same stream, so
+// the single per-frame cudaStreamSynchronize stays sufficient. The 4-slot ring
+// semantics are unchanged: frame ordering, tail-repeat clamping, the read-once
+// static cache, and bounded memory are all preserved.
+class OverlayFrameSource {
+public:
+    explicit OverlayFrameSource(const std::vector<OverlayLayerDescriptor>& layers) {
+        layers_.reserve(layers.size());
+        for (const auto& descriptor : layers) {
+            std::unique_ptr<LoadedLayer> layer = loadLayer(descriptor);
+            if (layer->staticLayer) {
+                // The constructor read of the static layer's single frame is a
+                // disk read with an upload (synchronous), so it counts as a
+                // file load like the streaming path counts its reads.
+                ++fileLoads_;
+            }
+            layers_.push_back(std::move(layer));
+        }
+        // Start one reader thread per dynamic layer only after every layer is
+        // fully built (vector is stable and static frames are staged), so a
+        // reader can never observe a partially initialized layer.
+        for (auto& layer : layers_) {
+            if (!layer->staticLayer) {
+                startReader(*layer);
+            }
+        }
+    }
+
+    ~OverlayFrameSource() {
+        // Stop and join every reader before freeing the pinned buffers the
+        // readers write into. Reader threads never touch CUDA, so joining is
+        // safe while the primary context is current.
+        for (auto& layer : layers_) {
+            stopReader(*layer);
+        }
+        for (auto& layer : layers_) {
+            for (int slot = 0; slot < kOverlayPrefetchSlots; ++slot) {
+                if (layer->deviceFrames[slot]) {
+                    cudaFree(layer->deviceFrames[slot]);
+                }
+                if (layer->pinnedFrames[slot]) {
+                    cudaFreeHost(layer->pinnedFrames[slot]);
+                }
+            }
+        }
+    }
+
+    bool empty() const {
+        return layers_.empty();
+    }
+
+    size_t layerCount() const {
+        return layers_.size();
+    }
+
+    // Total streaming-path overlay time (background host reads + H2D
+    // enqueues). Static constructor staging is intentionally excluded, matching
+    // the pre-background-reader semantics of uploadMs.
+    double uploadMs() const {
+        return hostReadMs() + h2dEnqueueMs();
+    }
+
+    // Wall time the background reader threads spent reading sidecar bytes from
+    // disk (not the H2D transfer time).
+    double hostReadMs() const {
+        return static_cast<double>(hostReadUs_.load()) / 1000.0;
+    }
+
+    // Wall time the encode thread spent enqueuing H2D copies (cudaMemcpyAsync
+    // API calls) on the compositor stream.
+    double h2dEnqueueMs() const {
+        return h2dEnqueueMs_;
+    }
+
+    // Number of overlay frames read from disk (one per unique requested frame;
+    // static single-frame layers count their one constructor read).
+    int64_t fileLoads() const {
+        return fileLoads_.load();
+    }
+
+    // Number of times a requested overlay frame was already device-resident in
+    // its ring slot, so neither a file read nor an H2D copy was needed. Static
+    // single-frame layers, tail-repeated frames, and read-ahead frames all
+    // count here.
+    int64_t cacheHits() const {
+        return cacheHits_;
+    }
+
+    // Number of times a requested overlay frame was already in pinned memory
+    // (the background reader had finished the file read) and only the H2D
+    // enqueue was needed.
+    int64_t pinnedHits() const {
+        return pinnedHits_;
+    }
+
+    // Number of times the encode thread had to wait for the background reader
+    // to finish a file read before it could enqueue the H2D copy.
+    int64_t readWaits() const {
+        return readWaits_;
+    }
+
+    // Peak depth of the bounded background-reader queue across all layers.
+    int64_t pendingReadsPeak() const {
+        return pendingReadsPeak_.load();
+    }
+
+    const OverlayLayerDescriptor& descriptor(size_t index) const {
+        return layers_[index]->descriptor;
+    }
+
+    // Blend launch rectangle for the layer. Dynamic (multi-frame) layers return
+    // the full layer rect; physical single-frame layers return the one-time
+    // alpha bound (or an empty rect for a fully transparent layer).
+    OverlayBlendRegion blendRegion(size_t index) const {
+        return layers_[index]->blendRegion;
+    }
+
+    // Prepares the overlay frame for the given output frame index for every
+    // layer. Call this before launching the blend kernels: it waits (host-side)
+    // only when the background reader has not finished the requested frame,
+    // then enqueues the H2D copy on the compositor stream so blends stay
+    // ordered. Slots are keyed by the clamped frame index inside a small
+    // bounded ring, so a single-frame layer or a tail-repeated last frame is
+    // read from disk once and served from its device slot for every following
+    // output frame. This never syncs the compositor stream; the encode loop
+    // keeps its single per-frame cudaStreamSynchronize.
+    void beginFrame(int outputFrameIndex, cudaStream_t copyStream) {
+        if (layers_.empty()) {
+            return;
+        }
+
+        for (size_t index = 0; index < layers_.size(); ++index) {
+            auto& layer = *layers_[index];
+            const int frameIndex = clampedFrameIndex(layer, outputFrameIndex);
+            const int slot = slotFor(frameIndex);
+            if (layer.staticLayer) {
+                // Static layers are fully staged in the constructor; slot 0 is
+                // always device-resident for frame 0.
+                ++cacheHits_;
+                continue;
+            }
+            waitForFrame(layer, frameIndex, slot, copyStream);
+        }
+    }
+
+    const unsigned char* frameDevicePtr(size_t layerIndex, int outputFrameIndex) const {
+        const auto& layer = *layers_[layerIndex];
+        return layer.deviceFrames[slotFor(clampedFrameIndex(layer, outputFrameIndex))];
+    }
+
+    // Must be called after beginFrame + the blend kernels are queued (after the
+    // per-frame stream sync). Dispatches bounded background reads for the next
+    // overlay frames so the following output frames do not stall on file I/O;
+    // when a read-ahead frame's pinned data is already available it also
+    // enqueues the H2D copy immediately so the transfer overlaps NVENC.
+    // Read-ahead depth is bounded by the ring size minus one and never targets
+    // the slot the current blend is reading, so the pipeline stays ordered with
+    // bounded memory.
+    void prefetchNextFrame(int outputFrameIndex, cudaStream_t copyStream) {
+        if (layers_.empty()) {
+            return;
+        }
+
+        for (size_t index = 0; index < layers_.size(); ++index) {
+            auto& layer = *layers_[index];
+            if (layer.staticLayer) {
+                continue;
+            }
+            const int currentFrameIndex = clampedFrameIndex(layer, outputFrameIndex);
+            const int currentSlot = slotFor(currentFrameIndex);
+            for (int depth = 1; depth <= kOverlayPrefetchDepth; ++depth) {
+                const int frameIndex = clampedFrameIndex(layer, outputFrameIndex + depth);
+                if (frameIndex == currentFrameIndex || slotFor(frameIndex) == currentSlot) {
+                    continue;
+                }
+                requestRead(layer, frameIndex, slotFor(frameIndex), copyStream);
+            }
+        }
+    }
+
+private:
+    enum class SlotState {
+        Empty,
+        Reading,
+        PinnedReady,
+        DeviceReady,
+    };
+
+    struct LoadedLayer {
+        OverlayLayerDescriptor descriptor;
+        size_t frameBytes = 0;
+        std::ifstream input;
+        unsigned char* deviceFrames[kOverlayPrefetchSlots] = {};
+        unsigned char* pinnedFrames[kOverlayPrefetchSlots] = {};
+        int loadedSlots[kOverlayPrefetchSlots] = {};
+        SlotState slotStates[kOverlayPrefetchSlots] = {};
+        OverlayBlendRegion blendRegion;
+        bool staticLayer = false;
+        // Bounded background reader state (dynamic layers only). The pending
+        // queue never holds more than one entry per ring slot, so it is bounded
+        // by kOverlayPrefetchSlots; the reader thread is the only accessor of
+        // input and pinnedFrames outside the constructor.
+        std::mutex mutex;
+        std::condition_variable cv;
+        std::deque<std::pair<int, int>> pendingReads;
+        bool stop = false;
+        bool readerStarted = false;
+        std::thread readerThread;
+        std::string readError;
+    };
+
+    static int clampedFrameIndex(const LoadedLayer& layer, int outputFrameIndex) {
+        return std::min(outputFrameIndex, std::max(0, layer.descriptor.effectiveFrameCount - 1));
+    }
+
+    static int slotFor(int frameIndex) {
+        return frameIndex % kOverlayPrefetchSlots;
+    }
+
+    static std::unique_ptr<LoadedLayer> loadLayer(const OverlayLayerDescriptor& descriptor) {
+        std::unique_ptr<LoadedLayer> layer = std::make_unique<LoadedLayer>();
+        layer->descriptor = descriptor;
+        layer->frameBytes = static_cast<size_t>(descriptor.width) *
+            static_cast<size_t>(descriptor.height) * 4;
+        for (int slot = 0; slot < kOverlayPrefetchSlots; ++slot) {
+            layer->loadedSlots[slot] = -1;
+            layer->slotStates[slot] = SlotState::Empty;
+        }
+
+        layer->input.open(descriptor.path, std::ios::binary);
+        if (!layer->input) {
+            fail("Failed to open overlay layer: " + descriptor.path);
+        }
+        layer->input.seekg(0, std::ios::end);
+        const std::streampos end = layer->input.tellg();
+        layer->input.seekg(0, std::ios::beg);
+        if (end < 0 ||
+            static_cast<uint64_t>(end) < layer->frameBytes * static_cast<uint64_t>(descriptor.effectiveFrameCount)) {
+            fail("Overlay layer is truncated: " + descriptor.id + ": " + descriptor.path);
+        }
+
+        for (int slot = 0; slot < kOverlayPrefetchSlots; ++slot) {
+            checkCuda(cudaMalloc(&layer->deviceFrames[slot], layer->frameBytes), "cudaMalloc overlay frame");
+            checkCuda(cudaMallocHost(&layer->pinnedFrames[slot], layer->frameBytes), "cudaMallocHost overlay frame");
+        }
+
+        // Physical single-frame layers are invariant for the whole export: read
+        // the single frame once, compute the alpha bounds once, and stage the
+        // device copy now so beginFrame serves it from slot 0 without a second
+        // file read. The ring is keyed by the clamped frame index, which is
+        // always 0 for an effectiveFrameCount == 1 layer, so slot 0 stays valid forever.
+        layer->staticLayer = descriptor.effectiveFrameCount == 1;
+        layer->blendRegion = fullOverlayBlendRegion(descriptor);
+        if (layer->staticLayer) {
+            layer->input.seekg(0, std::ios::beg);
+            layer->input.read(
+                reinterpret_cast<char*>(layer->pinnedFrames[0]),
+                static_cast<std::streamsize>(layer->frameBytes));
+            if (static_cast<size_t>(layer->input.gcount()) != layer->frameBytes) {
+                fail("Failed to read overlay frame 0: " + descriptor.path);
+            }
+            computeStaticAlphaBounds(
+                layer->pinnedFrames[0],
+                descriptor.width,
+                descriptor.height,
+                layer->blendRegion);
+            // Static staging (read + upload) is intentionally not timed: it is
+            // a one-time constructor cost and the streaming-path timing metrics
+            // (hostReadMs/h2dEnqueueMs) exclude it, matching the historical
+            // uploadMs semantics.
+            checkCuda(
+                cudaMemcpy(
+                    layer->deviceFrames[0],
+                    layer->pinnedFrames[0],
+                    layer->frameBytes,
+                    cudaMemcpyHostToDevice),
+                "cudaMemcpy overlay static frame 0");
+            layer->loadedSlots[0] = 0;
+            layer->slotStates[0] = SlotState::DeviceReady;
+        }
+        return layer;
+    }
+
+    void startReader(LoadedLayer& layer) {
+        std::unique_lock<std::mutex> lock(layer.mutex);
+        layer.readerStarted = true;
+        layer.readerThread = std::thread(&OverlayFrameSource::readerLoop, this, &layer);
+    }
+
+    void stopReader(LoadedLayer& layer) {
+        {
+            std::unique_lock<std::mutex> lock(layer.mutex);
+            layer.stop = true;
+        }
+        layer.cv.notify_all();
+        if (layer.readerStarted && layer.readerThread.joinable()) {
+            layer.readerThread.join();
+        }
+    }
+
+    // Background reader main loop: pops the oldest queued (slot, frameIndex)
+    // read, performs the file read into the persistent pinned buffer, and
+    // publishes the PinnedReady state. The queue is bounded (one entry per ring
+    // slot) and the loop never touches CUDA, so cancellation is a simple stop
+    // flag + join; a read failure is captured and re-thrown on the encode
+    // thread at the next beginFrame.
+    void readerLoop(LoadedLayer* layer) {
+        while (true) {
+            std::pair<int, int> request;
+            {
+                std::unique_lock<std::mutex> lock(layer->mutex);
+                layer->cv.wait(lock, [&] {
+                    return layer->stop || !layer->pendingReads.empty();
+                });
+                if (layer->stop) {
+                    return;
+                }
+                request = layer->pendingReads.front();
+                layer->pendingReads.pop_front();
+            }
+            readFrameIntoPinned(*layer, request.first, request.second);
+        }
+    }
+
+    void readFrameIntoPinned(LoadedLayer& layer, int slot, int frameIndex) {
+        const auto readStart = std::chrono::steady_clock::now();
+        try {
+            layer.input.seekg(
+                static_cast<std::streamoff>(layer.frameBytes * static_cast<uint64_t>(frameIndex)),
+                std::ios::beg);
+            layer.input.read(
+                reinterpret_cast<char*>(layer.pinnedFrames[slot]),
+                static_cast<std::streamsize>(layer.frameBytes));
+            if (static_cast<size_t>(layer.input.gcount()) != layer.frameBytes) {
+                throw std::runtime_error(
+                    "Failed to read overlay frame " + std::to_string(frameIndex) + ": " +
+                    layer.descriptor.path);
+            }
+        } catch (const std::exception& error) {
+            std::unique_lock<std::mutex> lock(layer.mutex);
+            layer.readError = error.what();
+            layer.stop = true;
+            layer.cv.notify_all();
+            return;
+        }
+        hostReadUs_ += static_cast<int64_t>(elapsedMs(readStart, std::chrono::steady_clock::now()) * 1000.0);
+        ++fileLoads_;
+        {
+            std::unique_lock<std::mutex> lock(layer.mutex);
+            layer.loadedSlots[slot] = frameIndex;
+            layer.slotStates[slot] = SlotState::PinnedReady;
+            layer.cv.notify_all();
+        }
+    }
+
+    // Queues a background read for (slot, frameIndex) unless one is already in
+    // flight/queued for that slot. A newer request supersedes a stale queued
+    // target for the same slot (the older frame's blend already consumed its
+    // device data, so overwriting the pinned buffer is safe). The queue is
+    // bounded to one entry per ring slot; if it is full the request is dropped
+    // and the caller's wait loop retries once the reader drains an entry.
+    // Must be called with layer.mutex held.
+    void requestReadLocked(LoadedLayer& layer, int frameIndex, int slot) {
+        if (layer.slotStates[slot] == SlotState::Reading &&
+            layer.loadedSlots[slot] == frameIndex) {
+            return;
+        }
+        for (auto& entry : layer.pendingReads) {
+            if (entry.first == slot) {
+                if (entry.second != frameIndex) {
+                    entry.second = frameIndex;
+                }
+                layer.cv.notify_one();
+                return;
+            }
+        }
+        if (layer.pendingReads.size() >= static_cast<size_t>(kOverlayPrefetchSlots)) {
+            return;
+        }
+        layer.pendingReads.push_back({slot, frameIndex});
+        pendingReadsPeak_.store(
+            std::max(pendingReadsPeak_.load(), static_cast<int64_t>(layer.pendingReads.size())));
+        layer.slotStates[slot] = SlotState::Reading;
+        layer.loadedSlots[slot] = frameIndex;
+        layer.cv.notify_one();
+    }
+
+    // Non-blocking read-ahead request (prefetch path): queues the background
+    // read and, when the pinned data is already available, enqueues the H2D
+    // copy immediately so it overlaps NVENC instead of the next beginFrame.
+    void requestRead(LoadedLayer& layer, int frameIndex, int slot, cudaStream_t copyStream) {
+        std::unique_lock<std::mutex> lock(layer.mutex);
+        if (layer.slotStates[slot] == SlotState::DeviceReady &&
+            layer.loadedSlots[slot] == frameIndex) {
+            ++cacheHits_;
+            return;
+        }
+        if (layer.slotStates[slot] == SlotState::PinnedReady &&
+            layer.loadedSlots[slot] == frameIndex) {
+            ++pinnedHits_;
+            lock.unlock();
+            enqueueH2D(layer, slot, copyStream);
+            lock.lock();
+            layer.slotStates[slot] = SlotState::DeviceReady;
+            return;
+        }
+        requestReadLocked(layer, frameIndex, slot);
+    }
+
+    // Ensures the requested overlay frame's pinned data is available and its
+    // H2D copy is enqueued on the compositor stream. Waits on the background
+    // reader are host-side (condition variable) and never sync the stream; the
+    // encode loop keeps its single per-frame cudaStreamSynchronize.
+    void waitForFrame(LoadedLayer& layer, int frameIndex, int slot, cudaStream_t copyStream) {
+        std::unique_lock<std::mutex> lock(layer.mutex);
+        while (true) {
+            if (layer.slotStates[slot] == SlotState::DeviceReady &&
+                layer.loadedSlots[slot] == frameIndex) {
+                ++cacheHits_;
+                return;
+            }
+            if (layer.slotStates[slot] == SlotState::PinnedReady &&
+                layer.loadedSlots[slot] == frameIndex) {
+                ++pinnedHits_;
+                lock.unlock();
+                enqueueH2D(layer, slot, copyStream);
+                lock.lock();
+                layer.slotStates[slot] = SlotState::DeviceReady;
+                return;
+            }
+            if (!layer.readError.empty()) {
+                fail(layer.readError);
+            }
+            if (layer.stop) {
+                fail("Overlay reader stopped before frame " + std::to_string(frameIndex));
+            }
+            requestReadLocked(layer, frameIndex, slot);
+            ++readWaits_;
+            layer.cv.wait(lock, [&] {
+                return layer.stop || !layer.readError.empty() ||
+                       (layer.slotStates[slot] == SlotState::PinnedReady &&
+                        layer.loadedSlots[slot] == frameIndex) ||
+                       (layer.slotStates[slot] == SlotState::DeviceReady &&
+                        layer.loadedSlots[slot] == frameIndex);
+            });
+        }
+    }
+
+    // Enqueues the H2D copy for a PinnedReady slot on the compositor stream.
+    // Main thread only; the transfer is ordered ahead of the blend kernels on
+    // the same stream.
+    void enqueueH2D(LoadedLayer& layer, int slot, cudaStream_t copyStream) {
+        const auto enqueueStart = std::chrono::steady_clock::now();
+        checkCuda(
+            cudaMemcpyAsync(
+                layer.deviceFrames[slot],
+                layer.pinnedFrames[slot],
+                layer.frameBytes,
+                cudaMemcpyHostToDevice,
+                copyStream),
+            "cudaMemcpyAsync overlay frame");
+        h2dEnqueueMs_ += elapsedMs(enqueueStart, std::chrono::steady_clock::now());
+    }
+
+    std::vector<std::unique_ptr<LoadedLayer>> layers_;
+    std::atomic<int64_t> fileLoads_{0};
+    std::atomic<int64_t> hostReadUs_{0};
+    std::atomic<int64_t> pendingReadsPeak_{0};
+    double h2dEnqueueMs_ = 0.0;
+    int64_t cacheHits_ = 0;
+    int64_t pinnedHits_ = 0;
+    int64_t readWaits_ = 0;
+};
+
+// Device tile cache for the renderer-prepared tiled/delta RGBA overlay stream.
+// Each layer owns one contiguous device canvas (tileCount x 128x128x4 bytes,
+// i.e. exactly one full layer frame) plus a bounded pinned staging buffer sized
+// to the largest frame delta. The static tile base is read and uploaded once
+// synchronously before encoding (like the raw static-layer staging, and
+// excluded from the streaming-path timing metrics). At each logical frame only
+// the changed tile payloads are read from the payload stream (bounded byte
+// ranges into the pinned staging) and enqueued as ordered H2D copies on the
+// compositor stream, ahead of the blend kernels on the same stream, so the
+// single per-frame cudaStreamSynchronize stays sufficient and memory stays
+// bounded (device canvas == one layer frame, staging == largest delta). The
+// cached tile state is blended in z-order by the tiled blend kernel.
+class TiledOverlayFrameSource {
+public:
+    explicit TiledOverlayFrameSource(const std::vector<TiledOverlayLayerDescriptor>& layers) {
+        layers_.reserve(layers.size());
+        for (const auto& descriptor : layers) {
+            layers_.push_back(loadLayer(descriptor));
+            // Static base bytes are uploaded once (at load); they count toward
+            // uploadedTileBytes so the measured invariant matches the renderer
+            // bookkeeping (uploaded = static base + all changed tiles).
+            uploadedTileBytes_ +=
+                static_cast<int64_t>(descriptor.tileCount) * descriptor.tileByteSize;
+            if (rawFallbackReason_.empty() && !descriptor.rawFallbackReason.empty()) {
+                rawFallbackReason_ = descriptor.rawFallbackReason;
+            }
+        }
+    }
+
+    ~TiledOverlayFrameSource() {
+        for (auto& layer : layers_) {
+            if (layer->tileCanvas) {
+                cudaFree(layer->tileCanvas);
+                layer->tileCanvas = nullptr;
+            }
+            if (layer->pinnedStaging) {
+                cudaFreeHost(layer->pinnedStaging);
+                layer->pinnedStaging = nullptr;
+            }
+        }
+    }
+
+    bool empty() const {
+        return layers_.empty();
+    }
+
+    size_t layerCount() const {
+        return layers_.size();
+    }
+
+    const TiledOverlayLayerDescriptor& descriptor(size_t index) const {
+        return layers_[index]->descriptor;
+    }
+
+    // Contiguous per-layer device tile canvas: tile t occupies
+    // [t * tileByteSize, (t + 1) * tileByteSize) in row-major tile order.
+    const unsigned char* tileCanvasDevicePtr(size_t index) const {
+        return layers_[index]->tileCanvas;
+    }
+
+    // Applies every frame delta with frameIndex <= the clamped logical frame of
+    // the output index: bounded payload reads into the pinned staging buffer,
+    // then one ordered H2D copy per changed tile on the compositor stream. A
+    // delta with empty changedTiles (or no delta at this frame) reuses the
+    // current cache with no payload read. This never syncs the compositor
+    // stream; the encode loop keeps its single per-frame cudaStreamSynchronize.
+    void beginFrame(int outputFrameIndex, cudaStream_t copyStream) {
+        for (auto& layer : layers_) {
+            const int frameIndex =
+                std::min(outputFrameIndex, layer->descriptor.frameCount - 1);
+            if (frameIndex < 0) {
+                continue;
+            }
+            int changedThisFrame = 0;
+            while (layer->nextDeltaIndex < layer->descriptor.frameDeltas.size()) {
+                const TiledOverlayFrameDelta& delta =
+                    layer->descriptor.frameDeltas[layer->nextDeltaIndex];
+                if (delta.frameIndex > frameIndex) {
+                    break;
+                }
+                changedThisFrame += static_cast<int>(delta.changedTiles.size());
+                uploadDelta(*layer, delta, copyStream);
+                ++layer->nextDeltaIndex;
+            }
+            changedTileCount_ += changedThisFrame;
+            // Frame 0 is fully defined by the static base (uploaded once at
+            // load), so it contributes no cache hits; every later frame serves
+            // every tile that did not change this frame from the device cache.
+            if (frameIndex > 0) {
+                cachedTileCount_ +=
+                    static_cast<int64_t>(layer->descriptor.tileCount) - changedThisFrame;
+            }
+        }
+    }
+
+    // Tile payloads uploaded from frame deltas (excludes the static base; the
+    // renderer derives the same value from the descriptor). int64, no overflow:
+    // bounded by the validated payload stream length.
+    int64_t changedTileCount() const {
+        return changedTileCount_;
+    }
+
+    // Tile payload bytes uploaded once (static base + all changed tiles).
+    int64_t uploadedTileBytes() const {
+        return uploadedTileBytes_;
+    }
+
+    // Tile-state lookups served from previously uploaded payloads across the
+    // output timeline (diagnostic only; never claims zero-copy).
+    int64_t cachedTileCount() const {
+        return cachedTileCount_;
+    }
+
+    // Wall time the encode thread spent reading changed tile payloads from
+    // disk (not H2D transfer time; static base reads are excluded, matching the
+    // raw streaming-path hostReadMs semantics).
+    double hostReadMs() const {
+        return static_cast<double>(hostReadUs_.load()) / 1000.0;
+    }
+
+    // Wall time the encode thread spent enqueuing per-tile H2D copies on the
+    // compositor stream.
+    double h2dEnqueueMs() const {
+        return h2dEnqueueMs_;
+    }
+
+    int64_t cacheHits() const {
+        return cachedTileCount_;
+    }
+
+    // First conservative tiled-vs-raw eligibility decision ("" when every layer
+    // is eligible). Diagnostic only; the helper still composites every layer as
+    // a lossless tiled stream (there is no silent raw fallback in the helper).
+    const std::string& rawFallbackReason() const {
+        return rawFallbackReason_;
+    }
+
+private:
+    struct LoadedLayer {
+        TiledOverlayLayerDescriptor descriptor;
+        std::ifstream input;
+        unsigned char* tileCanvas = nullptr;
+        unsigned char* pinnedStaging = nullptr;
+        size_t nextDeltaIndex = 0;
+    };
+
+    static std::unique_ptr<LoadedLayer> loadLayer(
+        const TiledOverlayLayerDescriptor& descriptor) {
+        std::unique_ptr<LoadedLayer> layer = std::make_unique<LoadedLayer>();
+        layer->descriptor = descriptor;
+        const int64_t tileByteSize = descriptor.tileByteSize;
+        const int64_t canvasBytes = static_cast<int64_t>(descriptor.tileCount) * tileByteSize;
+        if (canvasBytes <= 0 || descriptor.maxDeltaBytes < tileByteSize) {
+            fail("Invalid tiled overlay layer: " + descriptor.id);
+        }
+
+        layer->input.open(descriptor.payloadPath, std::ios::binary);
+        if (!layer->input) {
+            fail("Failed to open tiled overlay payload: " + descriptor.payloadPath);
+        }
+        layer->input.seekg(0, std::ios::end);
+        const std::streampos end = layer->input.tellg();
+        layer->input.seekg(0, std::ios::beg);
+        if (end < 0 || static_cast<int64_t>(end) < descriptor.payloadByteLength) {
+            fail("Tiled overlay payload is truncated: " + descriptor.payloadPath);
+        }
+
+        checkCuda(
+            cudaMalloc(&layer->tileCanvas, static_cast<size_t>(canvasBytes)),
+            "cudaMalloc tiled overlay canvas");
+        checkCuda(
+            cudaMallocHost(
+                &layer->pinnedStaging,
+                static_cast<size_t>(descriptor.maxDeltaBytes)),
+            "cudaMallocHost tiled overlay staging");
+
+        // Static base: read every tile's initial payload once and upload it
+        // synchronously before encoding. One-time cost, not timed (matching the
+        // raw static-layer staging semantics); the tiles stay device-resident.
+        for (const auto& record : descriptor.staticTiles) {
+            layer->input.seekg(static_cast<std::streamoff>(record.byteOffset), std::ios::beg);
+            layer->input.read(
+                reinterpret_cast<char*>(layer->pinnedStaging),
+                static_cast<std::streamsize>(kTiledOverlayTileByteSize));
+            if (static_cast<int64_t>(layer->input.gcount()) != kTiledOverlayTileByteSize) {
+                fail("Failed to read static tile of tiled overlay layer: " + descriptor.id);
+            }
+            checkCuda(
+                cudaMemcpy(
+                    layer->tileCanvas +
+                        static_cast<size_t>(record.tileIndex) *
+                            static_cast<size_t>(kTiledOverlayTileByteSize),
+                    layer->pinnedStaging,
+                    static_cast<size_t>(kTiledOverlayTileByteSize),
+                    cudaMemcpyHostToDevice),
+                "cudaMemcpy tiled overlay static tile");
+        }
+        return layer;
+    }
+
+    // Reads the delta's changed tile payloads into the pinned staging buffer
+    // and enqueues one H2D copy per tile on the compositor stream. The staging
+    // buffer is bounded to the largest delta in the descriptor (validated at
+    // load), and each H2D copy reads a distinct staging region, so reusing the
+    // buffer across frames is safe: the enqueued copies complete by the single
+    // per-frame cudaStreamSynchronize before the buffer is rewritten.
+    void uploadDelta(
+        LoadedLayer& layer,
+        const TiledOverlayFrameDelta& delta,
+        cudaStream_t copyStream) {
+        if (delta.changedTiles.empty()) {
+            return;
+        }
+        const size_t deltaBytes = static_cast<size_t>(delta.changedTiles.size()) *
+            static_cast<size_t>(kTiledOverlayTileByteSize);
+        if (deltaBytes > static_cast<size_t>(layer.descriptor.maxDeltaBytes)) {
+            fail("Tiled overlay delta exceeds the bounded staging buffer: " + layer.descriptor.id);
+        }
+
+        const auto readStart = std::chrono::steady_clock::now();
+        size_t stagingOffset = 0;
+        for (const auto& record : delta.changedTiles) {
+            layer.input.seekg(static_cast<std::streamoff>(record.byteOffset), std::ios::beg);
+            layer.input.read(
+                reinterpret_cast<char*>(layer.pinnedStaging + stagingOffset),
+                static_cast<std::streamsize>(kTiledOverlayTileByteSize));
+            if (static_cast<int64_t>(layer.input.gcount()) != kTiledOverlayTileByteSize) {
+                fail(
+                    "Failed to read changed tile payload of tiled overlay layer: " +
+                    layer.descriptor.id);
+            }
+            stagingOffset += static_cast<size_t>(kTiledOverlayTileByteSize);
+        }
+        hostReadUs_ += static_cast<int64_t>(
+            elapsedMs(readStart, std::chrono::steady_clock::now()) * 1000.0);
+
+        const auto enqueueStart = std::chrono::steady_clock::now();
+        stagingOffset = 0;
+        for (const auto& record : delta.changedTiles) {
+            checkCuda(
+                cudaMemcpyAsync(
+                    layer.tileCanvas +
+                        static_cast<size_t>(record.tileIndex) *
+                            static_cast<size_t>(kTiledOverlayTileByteSize),
+                    layer.pinnedStaging + stagingOffset,
+                    static_cast<size_t>(kTiledOverlayTileByteSize),
+                    cudaMemcpyHostToDevice,
+                    copyStream),
+                "cudaMemcpyAsync tiled overlay changed tile");
+            stagingOffset += static_cast<size_t>(kTiledOverlayTileByteSize);
+        }
+        h2dEnqueueMs_ += elapsedMs(enqueueStart, std::chrono::steady_clock::now());
+        uploadedTileBytes_ += static_cast<int64_t>(deltaBytes);
+    }
+
+    std::vector<std::unique_ptr<LoadedLayer>> layers_;
+    std::atomic<int64_t> hostReadUs_{0};
+    int64_t changedTileCount_ = 0;
+    int64_t uploadedTileBytes_ = 0;
+    int64_t cachedTileCount_ = 0;
+    double h2dEnqueueMs_ = 0.0;
+    std::string rawFallbackReason_;
+};
 
 struct CursorAtlasEntry {
     int x = 0;
@@ -1484,6 +3594,84 @@ __device__ int sampleCursorAtlasShadowAlpha(
     return min(255, weightedAlpha / 100);
 }
 
+__device__ __forceinline__ unsigned char temporalAccumulateByte(
+    unsigned char current,
+    unsigned char value,
+    unsigned int weightFixed,
+    int accumulateMode) {
+    if (accumulateMode == 0) {
+        // Legacy direct write (non-temporal composites).
+        return value;
+    }
+    const int weighted = (static_cast<int>(weightFixed) * static_cast<int>(value) + 128) >> 8;
+    if (accumulateMode == 1) {
+        // First temporal sample: replace (the target is not pre-zeroed, so this
+        // must not read stale buffer contents). Matches the previous
+        // zero-fill + (weight * value + 128) >> 8 accumulate exactly.
+        return static_cast<unsigned char>(min(255, weighted));
+    }
+    // Subsequent temporal samples: saturating accumulate into the target.
+    return static_cast<unsigned char>(min(255, static_cast<int>(current) + weighted));
+}
+
+// Accumulates the temporal sample weights applied to the invariant background
+// into one full-frame pass. Every pixel outside the transformed content
+// bounding box maps outside the content rect for every temporal sample, so its
+// per-sample composite value is always the background; the saturating weighted
+// sum of the background is therefore identical for all samples and can be
+// computed once per output frame. The term-for-term math reproduces the
+// replace-then-saturate-accumulate chain of compositeStaticNv12Kernel exactly
+// (same (weight * value + 128) >> 8 per sample, same saturation), including
+// per-sample rounding, so pixels served by this pass are bit-identical to the
+// previous per-sample full-frame composites.
+__global__ void accumulateBackgroundNv12Kernel(
+    unsigned char* dst,
+    int dstPitch,
+    int dstChromaOffset,
+    int dstWidth,
+    int dstHeight,
+    unsigned char backgroundY,
+    unsigned char backgroundU,
+    unsigned char backgroundV,
+    const unsigned char* background,
+    const unsigned int* sampleWeights,
+    int sampleCount) {
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x >= dstWidth || y >= dstHeight || sampleCount <= 0) {
+        return;
+    }
+
+    const unsigned int bgY = background ? background[y * dstWidth + x] : backgroundY;
+    unsigned int yAcc = (sampleWeights[0] * bgY + 128u) >> 8;
+    for (int index = 1; index < sampleCount; ++index) {
+        const unsigned int term = (sampleWeights[index] * bgY + 128u) >> 8;
+        yAcc = min(255u, yAcc + term);
+    }
+    dst[y * dstPitch + x] = static_cast<unsigned char>(yAcc);
+
+    if ((x % 2) == 0 && (y % 2) == 0) {
+        unsigned int bgU = backgroundU;
+        unsigned int bgV = backgroundV;
+        if (background) {
+            const unsigned char* bgUv = background + dstWidth * dstHeight + (y / 2) * dstWidth + x;
+            bgU = bgUv[0];
+            bgV = bgUv[1];
+        }
+        unsigned int uAcc = (sampleWeights[0] * bgU + 128u) >> 8;
+        unsigned int vAcc = (sampleWeights[0] * bgV + 128u) >> 8;
+        for (int index = 1; index < sampleCount; ++index) {
+            const unsigned int uTerm = (sampleWeights[index] * bgU + 128u) >> 8;
+            const unsigned int vTerm = (sampleWeights[index] * bgV + 128u) >> 8;
+            uAcc = min(255u, uAcc + uTerm);
+            vAcc = min(255u, vAcc + vTerm);
+        }
+        unsigned char* dstUv = dst + dstChromaOffset + (y / 2) * dstPitch + x;
+        dstUv[0] = static_cast<unsigned char>(uAcc);
+        dstUv[1] = static_cast<unsigned char>(vAcc);
+    }
+}
+
 __global__ void compositeStaticNv12Kernel(
     const unsigned char* src,
     int srcPitch,
@@ -1495,6 +3683,10 @@ __global__ void compositeStaticNv12Kernel(
     int dstChromaOffset,
     int dstWidth,
     int dstHeight,
+    int regionX,
+    int regionY,
+    int regionWidth,
+    int regionHeight,
     int contentX,
     int contentY,
     int contentWidth,
@@ -1533,10 +3725,17 @@ __global__ void compositeStaticNv12Kernel(
     bool zoomEnabled,
     float zoomScale,
     float zoomX,
-    float zoomY) {
-    const int x = blockIdx.x * blockDim.x + threadIdx.x;
-    const int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= dstWidth || y >= dstHeight) {
+    float zoomY,
+    unsigned int temporalWeightFixed,
+    int temporalAccumulateMode) {
+    const int localX = blockIdx.x * blockDim.x + threadIdx.x;
+    const int localY = blockIdx.y * blockDim.y + threadIdx.y;
+    if (localX >= regionWidth || localY >= regionHeight) {
+        return;
+    }
+    const int x = regionX + localX;
+    const int y = regionY + localY;
+    if (x < 0 || y < 0 || x >= dstWidth || y >= dstHeight) {
         return;
     }
 
@@ -1638,10 +3837,16 @@ __global__ void compositeStaticNv12Kernel(
             outY = 16;
         }
     }
-    dst[y * dstPitch + x] = outY;
+    dst[y * dstPitch + x] = temporalAccumulateByte(
+        dst[y * dstPitch + x],
+        outY,
+        temporalWeightFixed,
+        temporalAccumulateMode);
 
     if ((x % 2) == 0 && (y % 2) == 0) {
         unsigned char* dstUv = dst + dstChromaOffset + (y / 2) * dstPitch + x;
+        unsigned char outU = backgroundU;
+        unsigned char outV = backgroundV;
         const float uvLayoutXf =
             zoomActive ? (static_cast<float>(x + 1) - zoomX) / safeZoomScale : static_cast<float>(x + 1);
         const float uvLayoutYf =
@@ -1664,16 +3869,16 @@ __global__ void compositeStaticNv12Kernel(
             const int suvY =
                 min((srcHeight / 2) - 1, (cropY + static_cast<int>(localY * cropHeight / contentHeight)) / 2);
             const unsigned char* srcUv = src + srcPitch * srcSurfaceHeight + suvY * srcPitch + suvX;
-            dstUv[0] = srcUv[0];
-            dstUv[1] = srcUv[1];
+            outU = srcUv[0];
+            outV = srcUv[1];
         } else {
             if (background) {
                 const unsigned char* bgUv = background + dstWidth * dstHeight + (y / 2) * dstWidth + x;
-                dstUv[0] = bgUv[0];
-                dstUv[1] = bgUv[1];
+                outU = bgUv[0];
+                outV = bgUv[1];
             } else {
-                dstUv[0] = backgroundU;
-                dstUv[1] = backgroundV;
+                outU = backgroundU;
+                outV = backgroundV;
             }
         }
         if (webcam &&
@@ -1694,8 +3899,8 @@ __global__ void compositeStaticNv12Kernel(
             const int webcamUvY = min((webcamFrameHeight / 2) - 1, sampleY / 2);
             const unsigned char* webcamUv =
                 webcam + webcamFrameWidth * webcamFrameHeight + webcamUvY * webcamFrameWidth + webcamUvX;
-            dstUv[0] = webcamUv[0];
-            dstUv[1] = webcamUv[1];
+            outU = webcamUv[0];
+            outV = webcamUv[1];
         }
         unsigned char cursorUvY = 0;
         unsigned char cursorUvU = 128;
@@ -1718,8 +3923,8 @@ __global__ void compositeStaticNv12Kernel(
                 y + 1)
             : 0;
         if (cursorUvShadowAlpha > 0) {
-            dstUv[0] = blendByte(dstUv[0], 128, cursorUvShadowAlpha);
-            dstUv[1] = blendByte(dstUv[1], 128, cursorUvShadowAlpha);
+            outU = blendByte(outU, 128, cursorUvShadowAlpha);
+            outV = blendByte(outV, 128, cursorUvShadowAlpha);
         }
         const bool cursorAtlasUvHit =
             cursorVisible &&
@@ -1742,18 +3947,181 @@ __global__ void compositeStaticNv12Kernel(
                 &cursorUvV,
                 &cursorUvAlpha);
         if (cursorAtlasUvHit) {
-            dstUv[0] = blendByte(dstUv[0], cursorUvU, cursorUvAlpha);
-            dstUv[1] = blendByte(dstUv[1], cursorUvV, cursorUvAlpha);
+            outU = blendByte(outU, cursorUvU, cursorUvAlpha);
+            outV = blendByte(outV, cursorUvV, cursorUvAlpha);
         } else {
             const int cursorUvMask =
                 cursorVisible && !cursorAtlasRgba
                     ? cursorMaskAt(x + 1, y + 1, cursorX, cursorY, cursorWidth, cursorHeight)
                     : 0;
             if (cursorUvMask > 0) {
-                dstUv[0] = 128;
-                dstUv[1] = 128;
+                outU = 128;
+                outV = 128;
             }
         }
+        dstUv[0] = temporalAccumulateByte(
+            dstUv[0],
+            outU,
+            temporalWeightFixed,
+            temporalAccumulateMode);
+        dstUv[1] = temporalAccumulateByte(
+            dstUv[1],
+            outV,
+            temporalWeightFixed,
+            temporalAccumulateMode);
+    }
+}
+
+// Fused constant-transform temporal composition: evaluates the source + layout
+// composite value exactly once per pixel (the same content/bg/shadow selection
+// compositeStaticNv12Kernel makes for the temporal path, where webcam/cursor
+// are applied afterward) and then applies the existing fixed-point weights in
+// order: sample 0 replaces with (w0 * v + 128) >> 8 and later samples
+// saturate-accumulate (w * v + 128) >> 8. This is only launched when the
+// stationary shutter-window check proved every sample resolves to the same
+// camera transform (bit-identical scale/x/y), so the per-sample composite value
+// is identical for every sample and the term-for-term math reproduces the
+// per-sample replace-then-accumulate chain exactly, including per-sample
+// rounding and progressive saturation.
+__global__ void compositeStaticStationaryNv12Kernel(
+    const unsigned char* src,
+    int srcPitch,
+    int srcWidth,
+    int srcHeight,
+    int srcSurfaceHeight,
+    unsigned char* dst,
+    int dstPitch,
+    int dstChromaOffset,
+    int dstWidth,
+    int dstHeight,
+    int regionX,
+    int regionY,
+    int regionWidth,
+    int regionHeight,
+    int contentX,
+    int contentY,
+    int contentWidth,
+    int contentHeight,
+    int sourceCropX,
+    int sourceCropY,
+    int sourceCropWidth,
+    int sourceCropHeight,
+    int radius,
+    unsigned char backgroundY,
+    unsigned char backgroundU,
+    unsigned char backgroundV,
+    const unsigned char* background,
+    int shadowOffsetY,
+    int shadowIntensityPct,
+    bool zoomEnabled,
+    float zoomScale,
+    float zoomX,
+    float zoomY,
+    const unsigned int* sampleWeights,
+    int sampleCount) {
+    const int localX = blockIdx.x * blockDim.x + threadIdx.x;
+    const int localY = blockIdx.y * blockDim.y + threadIdx.y;
+    if (localX >= regionWidth || localY >= regionHeight || sampleCount <= 0) {
+        return;
+    }
+    const int x = regionX + localX;
+    const int y = regionY + localY;
+    if (x < 0 || y < 0 || x >= dstWidth || y >= dstHeight) {
+        return;
+    }
+
+    const bool zoomActive = zoomEnabled && zoomScale > 0.01f;
+    const float safeZoomScale = fmaxf(zoomScale, 0.01f);
+    const float layoutXf =
+        zoomActive ? (static_cast<float>(x) - zoomX) / safeZoomScale : static_cast<float>(x);
+    const float layoutYf =
+        zoomActive ? (static_cast<float>(y) - zoomY) / safeZoomScale : static_cast<float>(y);
+    const int layoutX = static_cast<int>(floorf(layoutXf));
+    const int layoutY = static_cast<int>(floorf(layoutYf));
+
+    const int cropX = max(0, min(sourceCropX, srcWidth - 1));
+    const int cropY = max(0, min(sourceCropY, srcHeight - 1));
+    const int cropWidth = max(1, min(sourceCropWidth > 0 ? sourceCropWidth : srcWidth, srcWidth - cropX));
+    const int cropHeight = max(1, min(sourceCropHeight > 0 ? sourceCropHeight : srcHeight, srcHeight - cropY));
+    const bool inside =
+        isInsideRoundedRect(layoutX, layoutY, contentX, contentY, contentWidth, contentHeight, radius);
+    unsigned char outY = background ? background[y * dstWidth + x] : backgroundY;
+    if (inside) {
+        const float localX =
+            fminf(static_cast<float>(contentWidth - 1), fmaxf(0.0f, layoutXf - contentX));
+        const float localY =
+            fminf(static_cast<float>(contentHeight - 1), fmaxf(0.0f, layoutYf - contentY));
+        const int sx = min(srcWidth - 1, cropX + static_cast<int>((localX * cropWidth) / contentWidth));
+        const int sy = min(srcHeight - 1, cropY + static_cast<int>((localY * cropHeight) / contentHeight));
+        outY = src[sy * srcPitch + sx];
+    } else {
+        const bool shadowInside =
+            shadowIntensityPct > 0 &&
+            isInsideRoundedRect(
+                layoutX,
+                layoutY,
+                contentX,
+                contentY + shadowOffsetY,
+                contentWidth,
+                contentHeight,
+                radius + 8);
+        if (shadowInside) {
+            const int darkenPct = min(75, max(0, shadowIntensityPct / 2));
+            outY = static_cast<unsigned char>((static_cast<int>(outY) * (100 - darkenPct)) / 100);
+        }
+    }
+    unsigned int yAcc = (sampleWeights[0] * outY + 128u) >> 8;
+    for (int index = 1; index < sampleCount; ++index) {
+        const unsigned int term = (sampleWeights[index] * outY + 128u) >> 8;
+        yAcc = min(255u, yAcc + term);
+    }
+    dst[y * dstPitch + x] = static_cast<unsigned char>(yAcc);
+
+    if ((x % 2) == 0 && (y % 2) == 0) {
+        unsigned char* dstUv = dst + dstChromaOffset + (y / 2) * dstPitch + x;
+        unsigned char outU = backgroundU;
+        unsigned char outV = backgroundV;
+        const float uvLayoutXf =
+            zoomActive ? (static_cast<float>(x + 1) - zoomX) / safeZoomScale : static_cast<float>(x + 1);
+        const float uvLayoutYf =
+            zoomActive ? (static_cast<float>(y + 1) - zoomY) / safeZoomScale : static_cast<float>(y + 1);
+        const int uvLayoutX = static_cast<int>(floorf(uvLayoutXf));
+        const int uvLayoutY = static_cast<int>(floorf(uvLayoutYf));
+        const bool uvInside = isInsideRoundedRect(
+            uvLayoutX,
+            uvLayoutY,
+            contentX,
+            contentY,
+            contentWidth,
+            contentHeight,
+            radius);
+        if (uvInside) {
+            const float localX =
+                fminf(static_cast<float>(contentWidth - 1), fmaxf(0.0f, uvLayoutXf - contentX));
+            const float localY =
+                fminf(static_cast<float>(contentHeight - 1), fmaxf(0.0f, uvLayoutYf - contentY));
+            const int suvX =
+                min(srcWidth - 2, (cropX + static_cast<int>((localX * cropWidth) / contentWidth)) & ~1);
+            const int suvY =
+                min((srcHeight / 2) - 1, (cropY + static_cast<int>(localY * cropHeight / contentHeight)) / 2);
+            const unsigned char* srcUv = src + srcPitch * srcSurfaceHeight + suvY * srcPitch + suvX;
+            outU = srcUv[0];
+            outV = srcUv[1];
+        } else if (background) {
+            const unsigned char* bgUv = background + dstWidth * dstHeight + (y / 2) * dstWidth + x;
+            outU = bgUv[0];
+            outV = bgUv[1];
+        }
+        unsigned int uAcc = (sampleWeights[0] * outU + 128u) >> 8;
+        unsigned int vAcc = (sampleWeights[0] * outV + 128u) >> 8;
+        for (int index = 1; index < sampleCount; ++index) {
+            const unsigned int uTerm = (sampleWeights[index] * outU + 128u) >> 8;
+            const unsigned int vTerm = (sampleWeights[index] * outV + 128u) >> 8;
+            uAcc = min(255u, uAcc + uTerm);
+            vAcc = min(255u, vAcc + vTerm);
+        }
+        dstUv[0] = static_cast<unsigned char>(uAcc);
+        dstUv[1] = static_cast<unsigned char>(vAcc);
     }
 }
 
@@ -1963,6 +4331,338 @@ __global__ void overlayCursorNv12Kernel(
     }
 }
 
+__device__ float zoomBlurHash01(int x, int y) {
+    unsigned int value = static_cast<unsigned int>(x) * 747796405u +
+        static_cast<unsigned int>(y) * 2891336453u + 0x9e3779b9u;
+    value = value * 1664525u + 1013904223u;
+    value ^= value >> 13;
+    return static_cast<float>(value & 0x00ffffffu) / 16777216.0f;
+}
+
+// Spatial radial zoom blur equivalent to the renderer's ZoomBlurFilter applied
+// to the transformed content. For each pixel the ray toward the blur center is
+// sampled with a tent weight profile (4*(p-p^2)) over a fixed sample count,
+// matching the pixi-filters zoom-blur shader with innerRadius=0/radius=-1 that
+// the interactive renderer configures. Blur is restricted to the content region
+// so webcam/cursor/background stay sharp, like the renderer's camera container.
+// NV12 chroma is blurred at half resolution with the same radial ray.
+__global__ void zoomBlurNv12Kernel(
+    const unsigned char* src,
+    int srcPitch,
+    int srcChromaOffset,
+    int dstWidth,
+    int dstHeight,
+    unsigned char* dst,
+    int dstPitch,
+    int dstChromaOffset,
+    int regionLeft,
+    int regionTop,
+    int regionRight,
+    int regionBottom,
+    float centerX,
+    float centerY,
+    float strength) {
+    constexpr int kZoomBlurSamples = 13;
+    const int x = blockIdx.x * blockDim.x + threadIdx.x;
+    const int y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (x < regionLeft || x >= regionRight || y < regionTop || y >= regionBottom ||
+        x >= dstWidth || y >= dstHeight) {
+        return;
+    }
+
+    const float dirX = centerX - static_cast<float>(x);
+    const float dirY = centerY - static_cast<float>(y);
+    const float offset = zoomBlurHash01(x, y);
+    float total = 0.0f;
+    float acc = 0.0f;
+    for (int t = 0; t < kZoomBlurSamples; ++t) {
+        const float percent = (static_cast<float>(t) + offset) / static_cast<float>(kZoomBlurSamples);
+        const float weight = 4.0f * (percent - percent * percent);
+        const int sx = static_cast<int>(static_cast<float>(x) + dirX * strength * percent);
+        const int sy = static_cast<int>(static_cast<float>(y) + dirY * strength * percent);
+        const int clampedX = min(regionRight - 1, max(regionLeft, sx));
+        const int clampedY = min(regionBottom - 1, max(regionTop, sy));
+        acc += weight * static_cast<float>(src[clampedY * srcPitch + clampedX]);
+        total += weight;
+    }
+    dst[y * dstPitch + x] = static_cast<unsigned char>(acc / total + 0.5f);
+
+    if ((x % 2) == 0 && (y % 2) == 0) {
+        const int ux = x / 2;
+        const int uy = y / 2;
+        const int uLeft = regionLeft / 2;
+        const int uTop = regionTop / 2;
+        const int uRight = min(dstWidth / 2, (regionRight + 1) / 2);
+        const int uBottom = min(dstHeight / 2, (regionBottom + 1) / 2);
+        if (ux >= uLeft && ux < uRight && uy >= uTop && uy < uBottom) {
+            const float uCenterX = centerX * 0.5f;
+            const float uCenterY = centerY * 0.5f;
+            const float uDirX = uCenterX - static_cast<float>(ux);
+            const float uDirY = uCenterY - static_cast<float>(uy);
+            const float uOffset = zoomBlurHash01(ux, uy);
+            float uTotal = 0.0f;
+            float uAcc = 0.0f;
+            float vAcc = 0.0f;
+            for (int t = 0; t < kZoomBlurSamples; ++t) {
+                const float percent = (static_cast<float>(t) + uOffset) / static_cast<float>(kZoomBlurSamples);
+                const float weight = 4.0f * (percent - percent * percent);
+                const int sux = min(uRight - 1, max(uLeft, static_cast<int>(static_cast<float>(ux) + uDirX * strength * percent)));
+                const int suy = min(uBottom - 1, max(uTop, static_cast<int>(static_cast<float>(uy) + uDirY * strength * percent)));
+                const unsigned char* uv = src + srcChromaOffset + suy * srcPitch + sux * 2;
+                uAcc += weight * static_cast<float>(uv[0]);
+                vAcc += weight * static_cast<float>(uv[1]);
+                uTotal += weight;
+            }
+            unsigned char* dstUv = dst + dstChromaOffset + uy * dstPitch + ux * 2;
+            dstUv[0] = static_cast<unsigned char>(uAcc / uTotal + 0.5f);
+            dstUv[1] = static_cast<unsigned char>(vAcc / uTotal + 0.5f);
+        }
+    }
+}
+
+__device__ void rgbaToNv12Yuv(int r, int g, int b, unsigned char& y, unsigned char& u, unsigned char& v) {
+    y = clampByteDevice(((66 * r + 129 * g + 25 * b + 128) >> 8) + 16);
+    u = clampByteDevice(((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128);
+    v = clampByteDevice(((112 * r - 94 * g - 18 * b + 128) >> 8) + 128);
+}
+
+// Blends a transparent top-down RGBA overlay layer over the composed NV12
+// frame. Luma is blended per pixel; chroma is averaged over the 2x2 block using
+// only the pixels covered by the layer, then blended with the same average
+// alpha. This reproduces the renderer contract: the overlay sidecar is drawn
+// above the zoom-blurred video layout. The launch rectangle may be the full
+// layer (dynamic layers) or a one-time alpha bound (static single-frame
+// layers); threads are indexed by region-local coordinates and mapped back to
+// layer-local coordinates, so a bounded launch visits exactly the pixels the
+// full-frame launch could write.
+__global__ void blendOverlayRgbaNv12Kernel(
+    const unsigned char* overlay,
+    int overlayWidth,
+    int overlayHeight,
+    unsigned char* dst,
+    int dstPitch,
+    int dstChromaOffset,
+    int dstWidth,
+    int dstHeight,
+    int layerX,
+    int layerY,
+    int layerWidth,
+    int layerHeight,
+    int regionX,
+    int regionY,
+    int regionWidth,
+    int regionHeight) {
+    const int localX = blockIdx.x * blockDim.x + threadIdx.x;
+    const int localY = blockIdx.y * blockDim.y + threadIdx.y;
+    if (localX >= regionWidth || localY >= regionHeight) {
+        return;
+    }
+
+    const int layerLocalX = regionX + localX;
+    const int layerLocalY = regionY + localY;
+    if (layerLocalX < 0 || layerLocalY < 0 ||
+        layerLocalX >= layerWidth || layerLocalY >= layerHeight) {
+        return;
+    }
+
+    const int x = layerX + layerLocalX;
+    const int y = layerY + layerLocalY;
+    if (x < 0 || y < 0 || x >= dstWidth || y >= dstHeight) {
+        return;
+    }
+
+    const int pixelOffset = (layerLocalY * layerWidth + layerLocalX) * 4;
+    const int alpha = overlay[pixelOffset + 3];
+    if (alpha > 0) {
+        const int r = overlay[pixelOffset];
+        const int g = overlay[pixelOffset + 1];
+        const int b = overlay[pixelOffset + 2];
+        unsigned char overlayY = 0;
+        unsigned char overlayU = 0;
+        unsigned char overlayV = 0;
+        rgbaToNv12Yuv(r, g, b, overlayY, overlayU, overlayV);
+        unsigned char* yPtr = dst + y * dstPitch + x;
+        *yPtr = blendByte(*yPtr, overlayY, alpha);
+    }
+
+    if ((x % 2) == 0 && (y % 2) == 0 && x + 1 < dstWidth && y + 1 < dstHeight) {
+        int alphaSum = 0;
+        int uSum = 0;
+        int vSum = 0;
+        int samples = 0;
+        for (int dy = 0; dy < 2; ++dy) {
+            for (int dx = 0; dx < 2; ++dx) {
+                const int sampleX = x + dx;
+                const int sampleY = y + dy;
+                const int layerLocalX = sampleX - layerX;
+                const int layerLocalY = sampleY - layerY;
+                if (layerLocalX < 0 || layerLocalY < 0 ||
+                    layerLocalX >= layerWidth || layerLocalY >= layerHeight) {
+                    continue;
+                }
+                const int sampleOffset = (layerLocalY * layerWidth + layerLocalX) * 4;
+                const int sampleAlpha = overlay[sampleOffset + 3];
+                if (sampleAlpha <= 0) {
+                    continue;
+                }
+                const int r = overlay[sampleOffset];
+                const int g = overlay[sampleOffset + 1];
+                const int b = overlay[sampleOffset + 2];
+                unsigned char sampleYValue = 0;
+                unsigned char sampleU = 0;
+                unsigned char sampleV = 0;
+                rgbaToNv12Yuv(r, g, b, sampleYValue, sampleU, sampleV);
+                alphaSum += sampleAlpha;
+                uSum += static_cast<int>(sampleU) * sampleAlpha;
+                vSum += static_cast<int>(sampleV) * sampleAlpha;
+                ++samples;
+            }
+        }
+        if (samples > 0) {
+            const int avgAlpha = alphaSum / samples;
+            const int avgU = uSum / alphaSum;
+            const int avgV = vSum / alphaSum;
+            unsigned char* uvPtr = dst + dstChromaOffset + (y / 2) * dstPitch + x;
+            uvPtr[0] = blendByte(
+                uvPtr[0],
+                static_cast<unsigned char>(clampByteDevice(avgU)),
+                avgAlpha);
+            uvPtr[1] = blendByte(
+                uvPtr[1],
+                static_cast<unsigned char>(clampByteDevice(avgV)),
+                avgAlpha);
+        }
+    }
+}
+
+// Layer-local pixel offset into the contiguous per-tile device canvas: tile
+// (tileX, tileY) in row-major tile order, pixel (withinX, withinY) inside the
+// tile. Each output pixel maps to exactly one tile, so tile edges are exact and
+// never sampled twice (no seams); edge tiles of partial layers are masked by
+// the caller's layer-bounds checks exactly like the raw full-frame blend.
+__device__ size_t tiledOverlayPixelOffset(
+    int localX,
+    int localY,
+    int tileSize,
+    int tileColumns,
+    int tileByteSize) {
+    const int tileX = localX / tileSize;
+    const int tileY = localY / tileSize;
+    const int withinX = localX - tileX * tileSize;
+    const int withinY = localY - tileY * tileSize;
+    return static_cast<size_t>(tileY * tileColumns + tileX) *
+            static_cast<size_t>(tileByteSize) +
+        static_cast<size_t>((withinY * tileSize + withinX) * 4);
+}
+
+// Blends one tiled/delta overlay layer (device tile canvas) over the composed
+// NV12 frame in z-order. Pixel-for-pixel identical to the raw RGBA blend: each
+// layer-local coordinate samples the same RGBA byte the raw sidecar would hold
+// (the tiles tile the layer exactly), the luma blend and the per-2x2-block
+// alpha-weighted chroma blend reuse the same math (blendByte, rgbaToNv12Yuv,
+// clampByteDevice), and the layer-bounds checks mask partial edge tiles.
+__global__ void blendTiledOverlayRgbaNv12Kernel(
+    const unsigned char* tiles,
+    int tileSize,
+    int tileColumns,
+    int tileByteSize,
+    int layerWidth,
+    int layerHeight,
+    unsigned char* dst,
+    int dstPitch,
+    int dstChromaOffset,
+    int dstWidth,
+    int dstHeight,
+    int layerX,
+    int layerY) {
+    const int localX = blockIdx.x * blockDim.x + threadIdx.x;
+    const int localY = blockIdx.y * blockDim.y + threadIdx.y;
+    if (localX >= layerWidth || localY >= layerHeight) {
+        return;
+    }
+
+    const int x = layerX + localX;
+    const int y = layerY + localY;
+    if (x < 0 || y < 0 || x >= dstWidth || y >= dstHeight) {
+        return;
+    }
+
+    const size_t pixelOffset =
+        tiledOverlayPixelOffset(localX, localY, tileSize, tileColumns, tileByteSize);
+    const int alpha = tiles[pixelOffset + 3];
+    if (alpha > 0) {
+        const int r = tiles[pixelOffset];
+        const int g = tiles[pixelOffset + 1];
+        const int b = tiles[pixelOffset + 2];
+        unsigned char overlayY = 0;
+        unsigned char overlayU = 0;
+        unsigned char overlayV = 0;
+        rgbaToNv12Yuv(r, g, b, overlayY, overlayU, overlayV);
+        unsigned char* yPtr = dst + y * dstPitch + x;
+        *yPtr = blendByte(*yPtr, overlayY, alpha);
+    }
+
+    if ((x % 2) == 0 && (y % 2) == 0 && x + 1 < dstWidth && y + 1 < dstHeight) {
+        int alphaSum = 0;
+        int uSum = 0;
+        int vSum = 0;
+        int samples = 0;
+        for (int dy = 0; dy < 2; ++dy) {
+            for (int dx = 0; dx < 2; ++dx) {
+                const int sampleX = x + dx;
+                const int sampleY = y + dy;
+                const int layerLocalX = sampleX - layerX;
+                const int layerLocalY = sampleY - layerY;
+                if (layerLocalX < 0 || layerLocalY < 0 ||
+                    layerLocalX >= layerWidth || layerLocalY >= layerHeight) {
+                    continue;
+                }
+                const size_t sampleOffset = tiledOverlayPixelOffset(
+                    layerLocalX,
+                    layerLocalY,
+                    tileSize,
+                    tileColumns,
+                    tileByteSize);
+                const int sampleAlpha = tiles[sampleOffset + 3];
+                if (sampleAlpha <= 0) {
+                    continue;
+                }
+                const int r = tiles[sampleOffset];
+                const int g = tiles[sampleOffset + 1];
+                const int b = tiles[sampleOffset + 2];
+                unsigned char sampleYValue = 0;
+                unsigned char sampleU = 0;
+                unsigned char sampleV = 0;
+                rgbaToNv12Yuv(r, g, b, sampleYValue, sampleU, sampleV);
+                alphaSum += sampleAlpha;
+                uSum += static_cast<int>(sampleU) * sampleAlpha;
+                vSum += static_cast<int>(sampleV) * sampleAlpha;
+                ++samples;
+            }
+        }
+        if (samples > 0) {
+            const int avgAlpha = alphaSum / samples;
+            const int avgU = uSum / alphaSum;
+            const int avgV = vSum / alphaSum;
+            unsigned char* uvPtr = dst + dstChromaOffset + (y / 2) * dstPitch + x;
+            uvPtr[0] = blendByte(
+                uvPtr[0],
+                static_cast<unsigned char>(clampByteDevice(avgU)),
+                avgAlpha);
+            uvPtr[1] = blendByte(
+                uvPtr[1],
+                static_cast<unsigned char>(clampByteDevice(avgV)),
+                avgAlpha);
+        }
+    }
+}
+
+// Accumulates one weighted temporal sample into the composed frame using the
+// renderer's cos-tapered shutter plan: dst = clamp(dst + (weightFixed*src)>>8).
+// Weights are normalized to sum to 1, so the accumulation is a weighted average;
+// NV12 chroma is accumulated per 2x2 block the same way the other blend kernels
+// handle it. The target must start at zero (luma 0 / chroma 0) before the first
+// sample.
 __global__ void prewarmKernel(unsigned int* state, unsigned int seed) {
     const unsigned int index = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int value = seed ^ (index * 747796405u + 2891336453u);
@@ -1994,8 +4694,23 @@ void prewarmCuda(int durationMs) {
     checkCuda(cudaFree(state), "cudaFree prewarm");
 }
 
+// Map the high-level encoding mode to the current NVENC preset family. The
+// legacy HP/HQ preset GUIDs cannot initialize on Blackwell-era drivers; the
+// P1/P4/P6 presets must be paired with a valid tuningInfo (see the nvEncodeAPI
+// note: "Presets P1-P7 are only supported with valid
+// NV_ENC_INITIALIZE_PARAMS::tuningInfo").
 GUID getNvencPresetGuid(const std::string& encodingMode) {
-    return encodingMode == "fast" ? NV_ENC_PRESET_HP_GUID : NV_ENC_PRESET_HQ_GUID;
+    if (encodingMode == "fast") {
+        return NV_ENC_PRESET_P1_GUID;
+    }
+    if (encodingMode == "quality") {
+        return NV_ENC_PRESET_P6_GUID;
+    }
+    return NV_ENC_PRESET_P4_GUID;
+}
+
+NV_ENC_TUNING_INFO getNvencTuningInfo() {
+    return NV_ENC_TUNING_INFO_HIGH_QUALITY;
 }
 
 uint32_t getNvencMaxBitrate(uint32_t bitrate, const std::string& encodingMode) {
@@ -2011,6 +4726,165 @@ uint32_t getNvencBufferSize(uint32_t bitrate, const std::string& encodingMode) {
         std::min<uint64_t>(0xffffffffu, static_cast<uint64_t>(bitrate) * multiplier));
 }
 
+// NVENC capability/version diagnostics captured before encoder creation. The
+// compositor never claims codec or rate-control support the device does not
+// list; the probe result feeds a minimal-first NV_ENC_CONFIG so optional fields
+// (custom VBV, AQ) are only enabled when the hardware reports them.
+struct NvencCapabilityProbe {
+    bool apiLoaded = false;
+    bool sessionOpened = false;
+    uint32_t driverMaxApiVersion = 0;
+    uint32_t sdkApiVersion = NVENCAPI_VERSION;
+    bool h264Supported = false;
+    bool hevcSupported = false;
+    int supportedRateControlModes = 0;
+    bool customVbvBufferSizeSupported = false;
+    bool asyncEncodeSupported = false;
+    bool temporalAqSupported = false;
+    int widthMax = 0;
+    int heightMax = 0;
+    int mbPerSecMax = 0;
+    std::string deviceName;
+    int cudaDriverVersion = 0;
+    int cudaComputeMajor = 0;
+    int cudaComputeMinor = 0;
+    std::string error;
+};
+
+// Which optional NVENC fields were actually applied after the capability probe.
+// Reported so diagnostics never claim a feature (AQ, custom VBV) the hardware
+// did not accept.
+struct NvencConfigUsed {
+    bool customVbv = false;
+    bool aq = false;
+    std::string rcMode = "vbr";
+};
+
+#if defined(_WIN32)
+NvencCapabilityProbe probeNvencCapabilities(CUcontext context, GUID requestedCodecGuid) {
+    NvencCapabilityProbe probe;
+    probe.apiLoaded = false;
+    probe.sessionOpened = false;
+
+    HMODULE module = LoadLibraryW(L"nvEncodeAPI64.dll");
+    if (!module) {
+        probe.error = "nvEncodeAPI64.dll could not be loaded";
+        return probe;
+    }
+
+    typedef NVENCSTATUS(NVENCAPI* NvEncodeAPIGetMaxSupportedVersion_Type)(uint32_t*);
+    typedef NVENCSTATUS(NVENCAPI* NvEncodeAPICreateInstance_Type)(NV_ENCODE_API_FUNCTION_LIST*);
+    auto getMaxSupportedVersion = reinterpret_cast<NvEncodeAPIGetMaxSupportedVersion_Type>(
+        GetProcAddress(module, "NvEncodeAPIGetMaxSupportedVersion"));
+    auto createInstance = reinterpret_cast<NvEncodeAPICreateInstance_Type>(
+        GetProcAddress(module, "NvEncodeAPICreateInstance"));
+    if (!getMaxSupportedVersion || !createInstance) {
+        probe.error = "NVENC API entry points not found";
+        FreeLibrary(module);
+        return probe;
+    }
+
+    NVENCSTATUS status = getMaxSupportedVersion(&probe.driverMaxApiVersion);
+    if (status != NV_ENC_SUCCESS) {
+        probe.error = "NvEncodeAPIGetMaxSupportedVersion failed: " + std::to_string(status);
+        FreeLibrary(module);
+        return probe;
+    }
+    probe.apiLoaded = true;
+
+    NV_ENCODE_API_FUNCTION_LIST functionList = {NV_ENCODE_API_FUNCTION_LIST_VER};
+    status = createInstance(&functionList);
+    if (status != NV_ENC_SUCCESS) {
+        probe.error = "NvEncodeAPICreateInstance failed: " + std::to_string(status);
+        FreeLibrary(module);
+        return probe;
+    }
+
+    // Open a real NVENC session so the capability reads reflect the actual
+    // device. nvEncGetEncodeCaps requires a valid encoder handle; a null handle
+    // makes every caps query fail, which would silently degrade the encoder
+    // config to CBR without custom VBV or AQ. The session is opened against the
+    // same CUDA primary context the runtime allocations and the export encoder
+    // use and is destroyed before the real encoder session is created.
+    NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS openParams = {NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER};
+    openParams.deviceType = NV_ENC_DEVICE_TYPE_CUDA;
+    openParams.device = context;
+    openParams.apiVersion = NVENCAPI_VERSION;
+    void* encoder = nullptr;
+    status = functionList.nvEncOpenEncodeSessionEx(&openParams, &encoder);
+    if (status != NV_ENC_SUCCESS) {
+        probe.error = "nvEncOpenEncodeSessionEx failed: " + std::to_string(status);
+        FreeLibrary(module);
+        return probe;
+    }
+    probe.sessionOpened = true;
+
+    auto queryCaps = [&](GUID codecGuid, NV_ENC_CAPS cap, int* value) -> bool {
+        NV_ENC_CAPS_PARAM capsParam = {NV_ENC_CAPS_PARAM_VER};
+        capsParam.capsToQuery = cap;
+        return functionList.nvEncGetEncodeCaps(encoder, codecGuid, &capsParam, value) ==
+            NV_ENC_SUCCESS;
+    };
+    // Codec support is reported per codec: each query uses its own GUID so a
+    // device that only lists H.264 never reports HEVC support and vice versa.
+    int h264Value = 0;
+    int hevcValue = 0;
+    const bool h264CapsStatus = queryCaps(NV_ENC_CODEC_H264_GUID, NV_ENC_CAPS_NUM_MAX_BFRAMES, &h264Value);
+    const bool hevcCapsStatus = queryCaps(NV_ENC_CODEC_HEVC_GUID, NV_ENC_CAPS_NUM_MAX_BFRAMES, &hevcValue);
+    probe.h264Supported = h264CapsStatus;
+    probe.hevcSupported = hevcCapsStatus;
+    // Rate control / VBV / AQ / dimension caps are consumed by the encoder
+    // config for the requested output codec, so query them against that codec
+    // rather than always H.264.
+    queryCaps(requestedCodecGuid, NV_ENC_CAPS_SUPPORTED_RATECONTROL_MODES, &probe.supportedRateControlModes);
+    int customVbv = 0;
+    int asyncEncode = 0;
+    int temporalAq = 0;
+    int widthMax = 0;
+    int heightMax = 0;
+    int mbPerSecMax = 0;
+    queryCaps(requestedCodecGuid, NV_ENC_CAPS_SUPPORT_CUSTOM_VBV_BUF_SIZE, &customVbv);
+    queryCaps(requestedCodecGuid, NV_ENC_CAPS_ASYNC_ENCODE_SUPPORT, &asyncEncode);
+    queryCaps(requestedCodecGuid, NV_ENC_CAPS_SUPPORT_TEMPORAL_AQ, &temporalAq);
+    queryCaps(requestedCodecGuid, NV_ENC_CAPS_WIDTH_MAX, &widthMax);
+    queryCaps(requestedCodecGuid, NV_ENC_CAPS_HEIGHT_MAX, &heightMax);
+    queryCaps(requestedCodecGuid, NV_ENC_CAPS_MB_PER_SEC_MAX, &mbPerSecMax);
+    probe.customVbvBufferSizeSupported = customVbv != 0;
+    probe.asyncEncodeSupported = asyncEncode != 0;
+    probe.temporalAqSupported = temporalAq != 0;
+    probe.widthMax = widthMax;
+    probe.heightMax = heightMax;
+    probe.mbPerSecMax = mbPerSecMax;
+
+    char deviceName[256] = {};
+    const CUresult deviceNameResult = cuDeviceGetName(deviceName, sizeof(deviceName), 0);
+    if (deviceNameResult == CUDA_SUCCESS) {
+        probe.deviceName = deviceName;
+    }
+    int computeMajor = 0;
+    int computeMinor = 0;
+    const CUresult computeResult =
+        cuDeviceComputeCapability(&computeMajor, &computeMinor, 0);
+    if (computeResult == CUDA_SUCCESS) {
+        probe.cudaComputeMajor = computeMajor;
+        probe.cudaComputeMinor = computeMinor;
+    }
+    cuDriverGetVersion(&probe.cudaDriverVersion);
+
+    if (functionList.nvEncDestroyEncoder) {
+        functionList.nvEncDestroyEncoder(encoder);
+    }
+    FreeLibrary(module);
+    return probe;
+}
+#else
+NvencCapabilityProbe probeNvencCapabilities(CUcontext, GUID) {
+    NvencCapabilityProbe probe;
+    probe.error = "NVENC probe is only implemented on Windows";
+    return probe;
+}
+#endif
+
 class NvencSink {
 public:
     NvencSink(
@@ -2020,52 +4894,125 @@ public:
         int fps,
         uint32_t bitrate,
         const std::string& outputPath,
-        bool streamSync,
         Options layoutOptions,
         const WebcamFrameCache* webcamCache,
         const CursorTrack* cursorTrack,
-        const ZoomTrack* zoomTrack)
+        const ZoomTrack* zoomTrack,
+        OverlayFrameSource* overlaySource,
+        TiledOverlayFrameSource* tiledOverlaySource,
+        const NvencCapabilityProbe& capabilityProbe)
         : encoder_(context, width, height, NV_ENC_BUFFER_FORMAT_NV12),
           width_(width),
           height_(height),
           fps_(fps),
-          streamSync_(streamSync),
           layoutOptions_(layoutOptions),
           webcamCache_(webcamCache),
           cursorTrack_(cursorTrack),
-          zoomTrack_(zoomTrack) {
+          zoomTrack_(zoomTrack),
+          overlaySource_(overlaySource),
+          tiledOverlaySource_(tiledOverlaySource),
+          compositeLayers_(layoutOptions.compositeLayers),
+          hasOverlayLayers_(!compositeLayers_.empty()) {
         loadBackgroundFrame();
         loadWebcamFrame();
         loadCursorAtlas();
-        if (streamSync_) {
-            checkCuda(cudaStreamCreateWithFlags(&copyStream_, cudaStreamNonBlocking), "cudaStreamCreateWithFlags");
+        temporalBlurSampleCount_ = layoutOptions_.temporalBlurSampleCount;
+        temporalBlurShutterFraction_ = layoutOptions_.temporalBlurShutterFraction;
+        temporalBlurWeightPower_ = layoutOptions_.temporalBlurWeightPower;
+        // The temporal sample plan depends only on the sample count, shutter
+        // fraction, weight curve power, and frame duration; cache it once instead
+        // of rebuilding the cos-tapered weights for every output frame.
+        if (temporalBlurSampleCount_ >= 3) {
+            temporalSamplePlan_ = buildTemporalSamplePlan(
+                temporalBlurSampleCount_,
+                temporalBlurShutterFraction_,
+                temporalBlurWeightPower_,
+                1000000.0 / static_cast<double>(fps_));
         }
+        // Always use a non-blocking compositor stream: it keeps composite/zoom
+        // blur/overlay kernels ordered without implicitly serializing against the
+        // legacy default stream, and a single cudaStreamSynchronize before
+        // NVENC's synchronous input copy is the only per-frame sync needed.
+        checkCuda(cudaStreamCreateWithFlags(&copyStream_, cudaStreamNonBlocking), "cudaStreamCreateWithFlags");
+        checkCuda(cudaEventCreate(&compositeStartEvent_), "cudaEventCreate compositeStart");
+        checkCuda(cudaEventCreate(&compositeEndEvent_), "cudaEventCreate compositeEnd");
+        checkCuda(cudaEventCreate(&blurStartEvent_), "cudaEventCreate blurStart");
+        checkCuda(cudaEventCreate(&blurEndEvent_), "cudaEventCreate blurEnd");
+        checkCuda(cudaEventCreate(&overlayStartEvent_), "cudaEventCreate overlayStart");
+        checkCuda(cudaEventCreate(&overlayEndEvent_), "cudaEventCreate overlayEnd");
+
+        // Query NVENC capability/version diagnostics before building the config.
+        // Optional fields (custom VBV, AQ) are only enabled when the device
+        // reports them, which avoids NV_ENC_ERR_INVALID_CALL (8) style failures on
+        // hardware/driver combinations that do not support the requested fields.
+        capabilityProbe_ = capabilityProbe;
+        const bool vbrSupported =
+            (capabilityProbe_.supportedRateControlModes & (1 << NV_ENC_PARAMS_RC_VBR)) != 0;
+        const bool customVbvSupported = capabilityProbe_.customVbvBufferSizeSupported;
+        const bool aqSupported = capabilityProbe_.temporalAqSupported;
 
         NV_ENC_INITIALIZE_PARAMS initializeParams = {NV_ENC_INITIALIZE_PARAMS_VER};
         NV_ENC_CONFIG encodeConfig = {NV_ENC_CONFIG_VER};
         initializeParams.encodeConfig = &encodeConfig;
-        encoder_.CreateDefaultEncoderParams(
-            &initializeParams,
-            NV_ENC_CODEC_H264_GUID,
-            getNvencPresetGuid(layoutOptions_.encodingMode));
-
+        const GUID codecGuid = layoutOptions_.outputCodec == OutputCodec::HEVC
+            ? NV_ENC_CODEC_HEVC_GUID
+            : NV_ENC_CODEC_H264_GUID;
+        // Build the encoder config explicitly instead of relying on
+        // nvEncGetEncodePresetConfig: on current SDK/driver combos the preset
+        // query can return an empty NV_ENC_CONFIG (rc=CONSTQP, no bitrate,
+        // chromaFormatIDC=0), which makes nvEncInitializeEncoder fail with
+        // NV_ENC_ERR_INVALID_PARAM (error 8) even for a valid NV12 export. The
+        // explicit minimal config below is valid on every supported NVENC device.
+        initializeParams.encodeGUID = codecGuid;
+        initializeParams.presetGUID = getNvencPresetGuid(layoutOptions_.encodingMode);
+        initializeParams.tuningInfo = getNvencTuningInfo();
+        initializeParams.encodeWidth = static_cast<uint32_t>(width);
+        initializeParams.encodeHeight = static_cast<uint32_t>(height);
+        initializeParams.darWidth = static_cast<uint32_t>(width);
+        initializeParams.darHeight = static_cast<uint32_t>(height);
+        initializeParams.maxEncodeWidth = static_cast<uint32_t>(width);
+        initializeParams.maxEncodeHeight = static_cast<uint32_t>(height);
+        initializeParams.enablePTD = 1;
         initializeParams.frameRateNum = static_cast<uint32_t>(fps);
         initializeParams.frameRateDen = 1;
+        // Async NVENC is the default on every supported device and is required for
+        // the compositor's stream-ordered pipeline; the capability probe reports it
+        // where available, but the sync fallback is never selected on failure.
         initializeParams.enableEncodeAsync = 1;
-        encodeConfig.profileGUID = NV_ENC_H264_PROFILE_HIGH_GUID;
+        encodeConfig.profileGUID = layoutOptions_.outputCodec == OutputCodec::HEVC
+            ? NV_ENC_HEVC_PROFILE_MAIN_GUID
+            : NV_ENC_H264_PROFILE_HIGH_GUID;
         encodeConfig.gopLength = static_cast<uint32_t>(fps * 2);
         encodeConfig.frameIntervalP = 1;
-        encodeConfig.rcParams.rateControlMode = NV_ENC_PARAMS_RC_VBR;
+        // Minimal-first rate control: VBR when the device lists it, otherwise CBR.
+        encodeConfig.rcParams.rateControlMode =
+            vbrSupported ? NV_ENC_PARAMS_RC_VBR : NV_ENC_PARAMS_RC_CBR;
         encodeConfig.rcParams.averageBitRate = bitrate;
-        encodeConfig.rcParams.maxBitRate = getNvencMaxBitrate(bitrate, layoutOptions_.encodingMode);
-        encodeConfig.rcParams.vbvBufferSize = getNvencBufferSize(bitrate, layoutOptions_.encodingMode);
-        encodeConfig.rcParams.vbvInitialDelay = bitrate;
-        if (layoutOptions_.encodingMode != "fast") {
-            encodeConfig.rcParams.enableAQ = 1;
-            encodeConfig.rcParams.aqStrength = layoutOptions_.encodingMode == "quality" ? 10 : 8;
+        nvencConfigUsed_.customVbv = customVbvSupported;
+        if (customVbvSupported) {
+            encodeConfig.rcParams.maxBitRate =
+                getNvencMaxBitrate(bitrate, layoutOptions_.encodingMode);
+            encodeConfig.rcParams.vbvBufferSize =
+                getNvencBufferSize(bitrate, layoutOptions_.encodingMode);
+            encodeConfig.rcParams.vbvInitialDelay = bitrate;
         }
-        encodeConfig.encodeCodecConfig.h264Config.idrPeriod = encodeConfig.gopLength;
+        nvencConfigUsed_.aq = aqSupported && layoutOptions_.encodingMode != "fast";
+        if (nvencConfigUsed_.aq) {
+            encodeConfig.rcParams.enableAQ = 1;
+            encodeConfig.rcParams.aqStrength =
+                layoutOptions_.encodingMode == "quality" ? 10 : 8;
+        }
+        if (layoutOptions_.outputCodec == OutputCodec::HEVC) {
+            encodeConfig.encodeCodecConfig.hevcConfig.idrPeriod = encodeConfig.gopLength;
+            encodeConfig.encodeCodecConfig.hevcConfig.chromaFormatIDC = 1;
+        } else {
+            encodeConfig.encodeCodecConfig.h264Config.idrPeriod = encodeConfig.gopLength;
+            encodeConfig.encodeCodecConfig.h264Config.chromaFormatIDC = 1;
+        }
         encoder_.CreateEncoder(&initializeParams);
+        nvencConfigUsed_.rcMode =
+            encodeConfig.rcParams.rateControlMode == NV_ENC_PARAMS_RC_VBR ? "vbr" : "cbr";
+        refreshCapabilityProbeFromEncoder();
 
         output_.open(outputPath, std::ios::binary);
         if (!output_) {
@@ -2141,12 +5088,71 @@ public:
             (std::abs(zoomSample.scale - 1.0) > 0.001 ||
              std::abs(zoomSample.x) > 0.5 ||
              std::abs(zoomSample.y) > 0.5);
+        const float safeZoomScale = std::max(0.01f, static_cast<float>(zoomSample.scale));
+        int blurRegionLeft = layoutOptions_.contentX;
+        int blurRegionTop = layoutOptions_.contentY;
+        int blurRegionRight = layoutOptions_.contentX + layoutOptions_.contentWidth;
+        int blurRegionBottom = layoutOptions_.contentY + layoutOptions_.contentHeight;
+        if (zoomChangesLayout) {
+            blurRegionLeft = std::max(
+                0,
+                static_cast<int>(std::floor(layoutOptions_.contentX * safeZoomScale + zoomSample.x)));
+            blurRegionTop = std::max(
+                0,
+                static_cast<int>(std::floor(layoutOptions_.contentY * safeZoomScale + zoomSample.y)));
+            blurRegionRight = std::min(
+                width_,
+                static_cast<int>(std::ceil(
+                    (layoutOptions_.contentX + layoutOptions_.contentWidth) * safeZoomScale +
+                    zoomSample.x)));
+            blurRegionBottom = std::min(
+                height_,
+                static_cast<int>(std::ceil(
+                    (layoutOptions_.contentY + layoutOptions_.contentHeight) * safeZoomScale +
+                    zoomSample.y)));
+        }
+        blurRegionRight = std::max(blurRegionLeft + 2, blurRegionRight);
+        blurRegionBottom = std::max(blurRegionTop + 2, blurRegionBottom);
         const bool useFastRoiComposite =
             canUseFastRoiComposite(zoomChangesLayout);
         const bool useLayeredStaticRoiComposite =
             !useFastRoiComposite && canUseLayeredStaticRoiComposite(zoomChangesLayout);
+        const bool useTemporalBlur = temporalBlurActive();
         const auto compositeStart = std::chrono::steady_clock::now();
-        if (useFastRoiComposite) {
+        checkCuda(cudaEventRecord(compositeStartEvent_, copyStream_), "cudaEventRecord compositeStart");
+        if (useTemporalBlur) {
+            // Temporal zoom motion blur: re-composite the same decoded content at
+            // the renderer's symmetric shutter sample offsets (cos-tapered weights)
+            // with the camera transform interpolated from the zoom telemetry, then
+            // accumulate the weighted samples. This reproduces the configured
+            // high-level temporal sample plan natively instead of substituting the
+            // spatial blur. Webcam/cursor are applied once afterward (sharp) and
+            // the RGBA sidecar is blended last, so overlays stay crisp.
+            compositeTemporalBlurSamples(
+                static_cast<unsigned char*>(inputFrame->inputPtr),
+                static_cast<int>(inputFrame->pitch),
+                static_cast<int>(inputFrame->chromaOffsets[0]),
+                srcFrame,
+                srcPitch,
+                srcWidth,
+                srcHeight,
+                srcSurfaceHeight,
+                outputFrameTimeMs);
+            applySharpOverlays(
+                static_cast<unsigned char*>(inputFrame->inputPtr),
+                static_cast<int>(inputFrame->pitch),
+                static_cast<int>(inputFrame->chromaOffsets[0]),
+                webcamFrame,
+                cursorPosition,
+                cursorX,
+                cursorY,
+                cursorWidth,
+                cursorHeight,
+                useCursorAtlas,
+                cursorEntry,
+                block);
+            ++roiCompositeFrames_;
+        } else if (useFastRoiComposite) {
             copyNv12Kernel<<<grid, block, 0, copyStream_>>>(
                 srcFrame,
                 srcPitch,
@@ -2197,7 +5203,9 @@ public:
                 }
             }
 
-            if (cursorPosition.visible && cursorWidth > 0 && cursorHeight > 0) {
+            const bool drawCursor = cursorPosition.visible && cursorWidth > 0 && cursorHeight > 0 &&
+                !hasOverlayLayers_;
+            if (drawCursor) {
                 const int cursorPadding = useCursorAtlas ? 4 : 2;
                 const int regionX = std::max(0, cursorX - cursorPadding);
                 const int regionY = std::max(0, cursorY - cursorPadding);
@@ -2426,7 +5434,9 @@ public:
                 }
             }
 
-            if (cursorPosition.visible && cursorWidth > 0 && cursorHeight > 0) {
+            const bool drawCursor = cursorPosition.visible && cursorWidth > 0 && cursorHeight > 0 &&
+                !hasOverlayLayers_;
+            if (drawCursor) {
                 const int cursorPadding = useCursorAtlas ? 4 : 2;
                 const int regionX = std::max(0, cursorX - cursorPadding);
                 const int regionY = std::max(0, cursorY - cursorPadding);
@@ -2476,6 +5486,10 @@ public:
                 static_cast<int>(inputFrame->chromaOffsets[0]),
                 width_,
                 height_,
+                0,
+                0,
+                width_,
+                height_,
                 layoutOptions_.contentX,
                 layoutOptions_.contentY,
                 layoutOptions_.contentWidth,
@@ -2514,7 +5528,9 @@ public:
                 zoomEnabled,
                 static_cast<float>(zoomSample.scale),
                 static_cast<float>(zoomSample.x),
-                static_cast<float>(zoomSample.y));
+                static_cast<float>(zoomSample.y),
+                0,
+                0);
             checkCuda(cudaGetLastError(), "compositeStaticNv12Kernel");
             ++monolithicCompositeFrames_;
         } else {
@@ -2532,10 +5548,121 @@ public:
             checkCuda(cudaGetLastError(), "copyNv12Kernel");
             ++copyCompositeFrames_;
         }
-        if (streamSync_) {
-            checkCuda(cudaStreamSynchronize(copyStream_), "cudaStreamSynchronize copy");
-        } else {
-            checkCuda(cudaDeviceSynchronize(), "cudaDeviceSynchronize");
+        checkCuda(cudaEventRecord(compositeEndEvent_, copyStream_), "cudaEventRecord compositeEnd");
+        if (!useTemporalBlur && zoomTrack_ && zoomSample.blurStrength > 0.001) {
+            checkCuda(cudaEventRecord(blurStartEvent_, copyStream_), "cudaEventRecord blurStart");
+            applyZoomBlurFrame(
+                static_cast<unsigned char*>(inputFrame->inputPtr),
+                static_cast<int>(inputFrame->pitch),
+                static_cast<int>(inputFrame->chromaOffsets[0]),
+                blurRegionLeft,
+                blurRegionTop,
+                blurRegionRight,
+                blurRegionBottom,
+                static_cast<float>(zoomSample.blurCenterX),
+                static_cast<float>(zoomSample.blurCenterY),
+                static_cast<float>(zoomSample.blurStrength));
+            checkCuda(cudaEventRecord(blurEndEvent_, copyStream_), "cudaEventRecord blurEnd");
+            zoomBlurRecorded_ = true;
+        }
+        if (hasOverlayLayers_) {
+            checkCuda(cudaEventRecord(overlayStartEvent_, copyStream_), "cudaEventRecord overlayStart");
+            if (overlaySource_ && !overlaySource_->empty()) {
+                overlaySource_->beginFrame(outputFrameIndex, copyStream_);
+            }
+            if (tiledOverlaySource_ && !tiledOverlaySource_->empty()) {
+                tiledOverlaySource_->beginFrame(outputFrameIndex, copyStream_);
+            }
+            for (const auto& entry : compositeLayers_) {
+                if (entry.kind == CompositeLayer::Kind::Raw) {
+                    const size_t layerIndex = static_cast<size_t>(entry.sourceIndex);
+                    const auto& layer = overlaySource_->descriptor(layerIndex);
+                    const OverlayBlendRegion overlayRegion = overlaySource_->blendRegion(layerIndex);
+                    if (overlayRegion.width <= 0 || overlayRegion.height <= 0) {
+                        // Fully transparent static layer: the bounded region is empty
+                        // and the full-frame blend would write nothing either.
+                        continue;
+                    }
+                    const dim3 overlayGrid(
+                        (overlayRegion.width + block.x - 1) / block.x,
+                        (overlayRegion.height + block.y - 1) / block.y);
+                    blendOverlayRgbaNv12Kernel<<<overlayGrid, block, 0, copyStream_>>>(
+                        overlaySource_->frameDevicePtr(layerIndex, outputFrameIndex),
+                        layer.width,
+                        layer.height,
+                        static_cast<unsigned char*>(inputFrame->inputPtr),
+                        static_cast<int>(inputFrame->pitch),
+                        static_cast<int>(inputFrame->chromaOffsets[0]),
+                        width_,
+                        height_,
+                        layer.x,
+                        layer.y,
+                        layer.width,
+                        layer.height,
+                        overlayRegion.x,
+                        overlayRegion.y,
+                        overlayRegion.width,
+                        overlayRegion.height);
+                    checkCuda(cudaGetLastError(), "blendOverlayRgbaNv12Kernel");
+                    if (overlayRegion.bounded) {
+                        ++overlayStaticRegionBlends_;
+                    }
+                } else {
+                    const size_t layerIndex = static_cast<size_t>(entry.sourceIndex);
+                    const auto& layer = tiledOverlaySource_->descriptor(layerIndex);
+                    const dim3 tiledGrid(
+                        (layer.width + block.x - 1) / block.x,
+                        (layer.height + block.y - 1) / block.y);
+                    blendTiledOverlayRgbaNv12Kernel<<<tiledGrid, block, 0, copyStream_>>>(
+                        tiledOverlaySource_->tileCanvasDevicePtr(layerIndex),
+                        layer.tileSize,
+                        layer.tileColumns,
+                        static_cast<int>(layer.tileByteSize),
+                        layer.width,
+                        layer.height,
+                        static_cast<unsigned char*>(inputFrame->inputPtr),
+                        static_cast<int>(inputFrame->pitch),
+                        static_cast<int>(inputFrame->chromaOffsets[0]),
+                        width_,
+                        height_,
+                        layer.x,
+                        layer.y);
+                    checkCuda(cudaGetLastError(), "blendTiledOverlayRgbaNv12Kernel");
+                }
+            }
+            if (tiledOverlaySource_ && !tiledOverlaySource_->empty()) {
+                ++tiledOverlayBlendFrames_;
+            }
+            ++overlayBlendFrames_;
+            checkCuda(cudaEventRecord(overlayEndEvent_, copyStream_), "cudaEventRecord overlayEnd");
+            overlayRecorded_ = true;
+        }
+        // Single per-frame synchronization on the compositor stream. Composite,
+        // zoom blur, and overlay blends are all queued on the copy stream, and
+        // NVENC's synchronous input copy needs them complete, so one
+        // cudaStreamSynchronize is both necessary and sufficient; the previous
+        // double sync (and any global device sync) added a full round trip per
+        // frame without improving correctness.
+        checkCuda(cudaStreamSynchronize(copyStream_), "cudaStreamSynchronize frame");
+        // The overlay read-ahead prefetch is dispatched after the required frame
+        // sync. File reads run on the bounded background reader threads, so the
+        // encode thread does not block on disk I/O; ready pinned frames get
+        // their H2D copy enqueued here so the transfer overlaps NVENC. The
+        // uploads stay ordered before the next frame's beginFrame/blend because
+        // they are queued on the same non-blocking compositor stream, and the
+        // bounded ring never targets the slot the current blend read, so the
+        // next blend starts only after its frame is resident.
+        if (overlaySource_ && !overlaySource_->empty()) {
+            overlaySource_->prefetchNextFrame(outputFrameIndex, copyStream_);
+        }
+        accumulateStageGpuTime(compositeStartEvent_, compositeEndEvent_, compositeGpuMs_);
+        if (zoomBlurRecorded_) {
+            accumulateStageGpuTime(blurStartEvent_, blurEndEvent_, zoomBlurGpuMs_);
+            zoomBlurRecorded_ = false;
+        }
+        if (overlayRecorded_) {
+            accumulateStageGpuTime(overlayStartEvent_, overlayEndEvent_, overlayBlendGpuMs_);
+            overlayRecorded_ = false;
         }
         const auto compositeEnd = std::chrono::steady_clock::now();
         compositeMs_ += elapsedMs(compositeStart, compositeEnd);
@@ -2562,6 +5689,20 @@ public:
             checkCuda(cudaStreamDestroy(copyStream_), "cudaStreamDestroy");
             copyStream_ = nullptr;
         }
+        cudaEvent_t stageEvents[] = {
+            compositeStartEvent_,
+            compositeEndEvent_,
+            blurStartEvent_,
+            blurEndEvent_,
+            overlayStartEvent_,
+            overlayEndEvent_,
+        };
+        for (cudaEvent_t& event : stageEvents) {
+            if (event) {
+                checkCuda(cudaEventDestroy(event), "cudaEventDestroy stage");
+                event = nullptr;
+            }
+        }
         if (backgroundDevice_) {
             checkCuda(cudaFree(backgroundDevice_), "cudaFree backgroundDevice");
             backgroundDevice_ = nullptr;
@@ -2573,6 +5714,19 @@ public:
         if (cursorAtlasDevice_) {
             checkCuda(cudaFree(cursorAtlasDevice_), "cudaFree cursorAtlasDevice");
             cursorAtlasDevice_ = nullptr;
+        }
+        if (zoomBlurScratch_) {
+            checkCuda(cudaFree(zoomBlurScratch_), "cudaFree zoomBlurScratch");
+            zoomBlurScratch_ = nullptr;
+        }
+        if (temporalWeightsDevice_) {
+            checkCuda(cudaFree(temporalWeightsDevice_), "cudaFree temporalWeightsDevice");
+            temporalWeightsDevice_ = nullptr;
+            temporalWeightsDeviceCount_ = 0;
+        }
+        if (temporalBgCacheDevice_) {
+            checkCuda(cudaFree(temporalBgCacheDevice_), "cudaFree temporalBgCacheDevice");
+            temporalBgCacheDevice_ = nullptr;
         }
     }
 
@@ -2604,7 +5758,819 @@ public:
         return copyCompositeFrames_;
     }
 
+    int zoomBlurFrames() const {
+        return zoomBlurFrames_;
+    }
+
+    int overlayBlendFrames() const {
+        return overlayBlendFrames_;
+    }
+
+    int temporalBlurFrames() const {
+        return temporalBlurFrames_;
+    }
+
+    int temporalBlurBgPrecomposedFrames() const {
+        return temporalBlurBgPrecomposedFrames_;
+    }
+
+    int temporalBlurStationaryFrames() const {
+        return temporalBlurStationaryFrames_;
+    }
+
+    int temporalBgCacheBuilds() const {
+        return temporalBgCacheBuilds_;
+    }
+
+    int64_t temporalBgCacheHits() const {
+        return temporalBgCacheHits_;
+    }
+
+    int64_t overlayStaticRegionBlends() const {
+        return overlayStaticRegionBlends_;
+    }
+
+    int64_t overlayFileLoads() const {
+        return overlaySource_ ? overlaySource_->fileLoads() : 0;
+    }
+
+    int64_t overlayCacheHits() const {
+        return (overlaySource_ ? overlaySource_->cacheHits() : 0) +
+            (tiledOverlaySource_ ? tiledOverlaySource_->cacheHits() : 0);
+    }
+
+    int64_t overlayPinnedHits() const {
+        return overlaySource_ ? overlaySource_->pinnedHits() : 0;
+    }
+
+    int64_t overlayReadWaits() const {
+        return overlaySource_ ? overlaySource_->readWaits() : 0;
+    }
+
+    int64_t overlayPendingReadsPeak() const {
+        return overlaySource_ ? overlaySource_->pendingReadsPeak() : 0;
+    }
+
+    int tiledOverlayLayerCount() const {
+        return tiledOverlaySource_ ? static_cast<int>(tiledOverlaySource_->layerCount()) : 0;
+    }
+
+    int tiledOverlayBlendFrames() const {
+        return tiledOverlayBlendFrames_;
+    }
+
+    // Tile payloads uploaded from frame deltas (measured; excludes the static
+    // base, matching the renderer-derived changedTileCount).
+    int64_t tiledChangedTileCount() const {
+        return tiledOverlaySource_ ? tiledOverlaySource_->changedTileCount() : 0;
+    }
+
+    // Tile payload bytes uploaded once (static base + changed tiles; measured).
+    int64_t tiledUploadedTileBytes() const {
+        return tiledOverlaySource_ ? tiledOverlaySource_->uploadedTileBytes() : 0;
+    }
+
+    // Tile-state lookups served from previously uploaded payloads (measured;
+    // diagnostic only, never a zero-copy claim).
+    int64_t tiledCachedTileCount() const {
+        return tiledOverlaySource_ ? tiledOverlaySource_->cachedTileCount() : 0;
+    }
+
+    // First conservative tiled-vs-raw eligibility decision, "" when every tiled
+    // layer is eligible. Observable diagnostic; the helper never silently
+    // falls back to a raw/CPU path for a requested tiled stream.
+    const std::string& tiledRawFallbackReason() const {
+        static const std::string kEmpty;
+        return tiledOverlaySource_ ? tiledOverlaySource_->rawFallbackReason() : kEmpty;
+    }
+
+    int64_t temporalBlurSamplesTotal() const {
+        return temporalBlurSamplesTotal_;
+    }
+
+    const NvencCapabilityProbe& capabilityProbe() const {
+        return capabilityProbe_;
+    }
+
+    const NvencConfigUsed& nvencConfigUsed() const {
+        return nvencConfigUsed_;
+    }
+
+    double compositeGpuMs() const {
+        return compositeGpuMs_;
+    }
+
+    double zoomBlurGpuMs() const {
+        return zoomBlurGpuMs_;
+    }
+
+    double overlayBlendGpuMs() const {
+        return overlayBlendGpuMs_;
+    }
+
+    double overlayUploadMs() const {
+        return (overlaySource_ ? overlaySource_->uploadMs() : 0.0) +
+            (tiledOverlaySource_ ? tiledOverlaySource_->hostReadMs() +
+                                      tiledOverlaySource_->h2dEnqueueMs()
+                                 : 0.0);
+    }
+
+    double overlayHostReadMs() const {
+        return (overlaySource_ ? overlaySource_->hostReadMs() : 0.0) +
+            (tiledOverlaySource_ ? tiledOverlaySource_->hostReadMs() : 0.0);
+    }
+
+    double overlayH2DEnqueueMs() const {
+        return (overlaySource_ ? overlaySource_->h2dEnqueueMs() : 0.0) +
+            (tiledOverlaySource_ ? tiledOverlaySource_->h2dEnqueueMs() : 0.0);
+    }
+
 private:
+    void refreshCapabilityProbeFromEncoder() {
+        // The probe session can fail caps queries on some driver/GPU combos
+        // (NV_ENC_ERR_ENCODER_NOT_INITIALIZED on the probe session even though
+        // the real encoder session works). Re-query the caps through the live
+        // encoder session so diagnostics report what the device truly supports
+        // instead of conservative fallbacks. Codec support is re-queried per
+        // codec (H.264 caps for h264Supported, HEVC caps for hevcSupported);
+        // the rate-control/VBV/AQ/dimension caps are re-queried for the codec
+        // the live encoder was created with.
+        const GUID codecGuid = codecGuidForEncoder();
+        auto queryCap = [&](GUID queryCodecGuid, NV_ENC_CAPS cap) -> int {
+            return encoder_.GetCapabilityValue(queryCodecGuid, cap);
+        };
+        capabilityProbe_.h264Supported =
+            queryCap(NV_ENC_CODEC_H264_GUID, NV_ENC_CAPS_NUM_MAX_BFRAMES) >= 0;
+        capabilityProbe_.hevcSupported =
+            queryCap(NV_ENC_CODEC_HEVC_GUID, NV_ENC_CAPS_NUM_MAX_BFRAMES) >= 0;
+        const int rcModes = queryCap(codecGuid, NV_ENC_CAPS_SUPPORTED_RATECONTROL_MODES);
+        if (rcModes >= 0) {
+            capabilityProbe_.supportedRateControlModes = rcModes;
+        }
+        capabilityProbe_.customVbvBufferSizeSupported =
+            queryCap(codecGuid, NV_ENC_CAPS_SUPPORT_CUSTOM_VBV_BUF_SIZE) > 0;
+        capabilityProbe_.asyncEncodeSupported =
+            queryCap(codecGuid, NV_ENC_CAPS_ASYNC_ENCODE_SUPPORT) > 0;
+        capabilityProbe_.temporalAqSupported =
+            queryCap(codecGuid, NV_ENC_CAPS_SUPPORT_TEMPORAL_AQ) > 0;
+        capabilityProbe_.widthMax = queryCap(codecGuid, NV_ENC_CAPS_WIDTH_MAX);
+        capabilityProbe_.heightMax = queryCap(codecGuid, NV_ENC_CAPS_HEIGHT_MAX);
+        capabilityProbe_.mbPerSecMax = queryCap(codecGuid, NV_ENC_CAPS_MB_PER_SEC_MAX);
+    }
+
+    GUID codecGuidForEncoder() const {
+        return layoutOptions_.outputCodec == OutputCodec::HEVC
+            ? NV_ENC_CODEC_HEVC_GUID
+            : NV_ENC_CODEC_H264_GUID;
+    }
+
+    void accumulateStageGpuTime(
+        cudaEvent_t startEvent,
+        cudaEvent_t endEvent,
+        double& accumulator) {
+        if (!startEvent || !endEvent) {
+            return;
+        }
+        float elapsed = 0.0f;
+        checkCuda(
+            cudaEventElapsedTime(&elapsed, startEvent, endEvent),
+            "cudaEventElapsedTime stage");
+        accumulator += elapsed;
+    }
+
+    bool temporalBlurActive() const {
+        return temporalBlurSampleCount_ > 0 &&
+            zoomTrack_ != nullptr &&
+            hasStaticLayout(layoutOptions_);
+    }
+
+    void compositeTemporalBlurSamples(
+        unsigned char* target,
+        int targetPitch,
+        int targetChromaOffset,
+        const unsigned char* srcFrame,
+        int srcPitch,
+        int srcWidth,
+        int srcHeight,
+        int srcSurfaceHeight,
+        double outputFrameTimeMs) {
+        const std::vector<TemporalBlurSample>& samples = temporalSamplePlan_;
+
+        const dim3 block(16, 16);
+        const dim3 grid((width_ + block.x - 1) / block.x, (height_ + block.y - 1) / block.y);
+
+        const bool hasSourceCrop =
+            layoutOptions_.sourceCropWidth >= 2 &&
+            layoutOptions_.sourceCropHeight >= 2;
+        const int sourceCropX = hasSourceCrop
+            ? std::max(0, std::min(layoutOptions_.sourceCropX, srcWidth - 2)) & ~1
+            : 0;
+        const int sourceCropY = hasSourceCrop
+            ? std::max(0, std::min(layoutOptions_.sourceCropY, srcHeight - 2)) & ~1
+            : 0;
+        const int sourceCropWidth = hasSourceCrop
+            ? std::max(2, std::min(layoutOptions_.sourceCropWidth, srcWidth - sourceCropX)) & ~1
+            : srcWidth;
+        const int sourceCropHeight = hasSourceCrop
+            ? std::max(2, std::min(layoutOptions_.sourceCropHeight, srcHeight - sourceCropY)) & ~1
+            : srcHeight;
+
+        // Fused composite + accumulate: the first sample replaces the target (the
+        // NVENC input buffer is not pre-zeroed), later samples saturate-accumulate
+        // the same (weight * value + 128) >> 8 math the previous two-pass
+        // fill/composite/accumulate pipeline produced. One pass per sample and no
+        // scratch buffer. The legacy path composites the full frame per sample;
+        // the background-precompose path below restricts per-sample work to the
+        // changing content region once the invariant background is accumulated.
+        int bboxLeft = width_;
+        int bboxTop = height_;
+        int bboxRight = 0;
+        int bboxBottom = 0;
+        bool anyContentVisible = false;
+        // Exact stationary shutter-window detection: when every sample resolves
+        // to a bit-identical camera transform (scale/x/y), every pixel selects
+        // the same source/layout value for every sample, so the weighted
+        // temporal accumulation can evaluate source + layout once per pixel and
+        // apply the existing fixed-point weights in order (see
+        // compositeStaticStationaryNv12Kernel). Any double inequality is
+        // enough to fall back to the per-sample paths; the comparison is exact
+        // so the fused path can never be chosen when per-sample transforms
+        // differ (even by one ULP).
+        bool stationaryWindow = !samples.empty();
+        double stationaryScale = 0.0;
+        double stationaryX = 0.0;
+        double stationaryY = 0.0;
+        for (size_t index = 0; index < samples.size(); ++index) {
+            const double sampleTimeMs = outputFrameTimeMs + samples[index].offsetUs / 1000.0;
+            const ZoomSample sample = zoomTrack_ ? zoomTrack_->sampleAt(sampleTimeMs) : ZoomSample{};
+            if (index == 0) {
+                stationaryScale = sample.scale;
+                stationaryX = sample.x;
+                stationaryY = sample.y;
+            } else if (
+                sample.scale != stationaryScale ||
+                sample.x != stationaryX ||
+                sample.y != stationaryY) {
+                stationaryWindow = false;
+            }
+            const float safeZoomScale = std::max(0.01f, static_cast<float>(sample.scale));
+            const int transformedLeft = std::max(
+                0,
+                static_cast<int>(std::floor(layoutOptions_.contentX * safeZoomScale + sample.x)));
+            const int transformedTop = std::max(
+                0,
+                static_cast<int>(std::floor(layoutOptions_.contentY * safeZoomScale + sample.y)));
+            const int transformedRight = std::min(
+                width_,
+                static_cast<int>(std::ceil(
+                    (layoutOptions_.contentX + layoutOptions_.contentWidth) * safeZoomScale +
+                    sample.x)));
+            const int transformedBottom = std::min(
+                height_,
+                static_cast<int>(std::ceil(
+                    (layoutOptions_.contentY + layoutOptions_.contentHeight) * safeZoomScale +
+                    sample.y)));
+            if (transformedRight > transformedLeft && transformedBottom > transformedTop) {
+                anyContentVisible = true;
+                bboxLeft = std::min(bboxLeft, transformedLeft);
+                bboxTop = std::min(bboxTop, transformedTop);
+                bboxRight = std::max(bboxRight, transformedRight);
+                bboxBottom = std::max(bboxBottom, transformedBottom);
+            }
+        }
+        if (stationaryWindow) {
+            // Every sample applies the identical transform, so sample 0's
+            // transform (captured by the detection loop) is the per-sample
+            // transform the original loop used for every sample. The fused
+            // kernel reproduces the replace-then-accumulate chain exactly while
+            // evaluating source + layout once.
+            ensureTemporalWeightsDevice();
+            const bool sampleZoomEnabled = zoomTrack_ && stationaryScale > 0.01;
+            compositeStaticStationaryNv12Kernel<<<grid, block, 0, copyStream_>>>(
+                srcFrame,
+                srcPitch,
+                srcWidth,
+                srcHeight,
+                srcSurfaceHeight,
+                target,
+                targetPitch,
+                targetChromaOffset,
+                width_,
+                height_,
+                0,
+                0,
+                width_,
+                height_,
+                layoutOptions_.contentX,
+                layoutOptions_.contentY,
+                layoutOptions_.contentWidth,
+                layoutOptions_.contentHeight,
+                sourceCropX,
+                sourceCropY,
+                sourceCropWidth,
+                sourceCropHeight,
+                layoutOptions_.radius,
+                clampByte(layoutOptions_.backgroundY),
+                clampByte(layoutOptions_.backgroundU),
+                clampByte(layoutOptions_.backgroundV),
+                backgroundDevice_,
+                layoutOptions_.shadowOffsetY,
+                layoutOptions_.shadowIntensityPct,
+                sampleZoomEnabled,
+                static_cast<float>(stationaryScale),
+                static_cast<float>(stationaryX),
+                static_cast<float>(stationaryY),
+                temporalWeightsDevice_,
+                static_cast<int>(samples.size()));
+            checkCuda(cudaGetLastError(), "compositeStaticStationaryNv12Kernel");
+            temporalBlurSamplesTotal_ += static_cast<int64_t>(samples.size());
+            ++temporalBlurFrames_;
+            ++temporalBlurStationaryFrames_;
+            return;
+        }
+
+        // The region passed to the per-sample composite must cover the UV corner
+        // pixels: a UV block at even x is decided by the corner (x + 1, y + 1),
+        // which can map inside the content rect one pixel beyond the luma bbox
+        // (e.g. at an odd bbox edge). Expand the bounding box by one pixel on
+        // every side (clamped to the frame) so corner-driven chroma blocks get
+        // the same per-sample content/bg selection the full-frame kernel makes.
+        // Pixels inside the expansion that are background for every sample are
+        // recomputed identically by the region kernel, so the expansion is
+        // exact and only adds one boundary row/column of work.
+        const int regionLeft = std::max(0, bboxLeft - 1);
+        const int regionTop = std::max(0, bboxTop - 1);
+        const int regionRight = std::min(width_, bboxRight + 1);
+        const int regionBottom = std::min(height_, bboxBottom + 1);
+        const int regionWidth = regionRight - regionLeft;
+        const int regionHeight = regionBottom - regionTop;
+        const bool useBackgroundPrecompose =
+            !samples.empty() &&
+            layoutOptions_.shadowIntensityPct == 0 &&
+            (!anyContentVisible ||
+             (regionWidth > 0 && regionHeight > 0 &&
+              // Sample-count-aware break-even gate: the precompose path costs one
+              // full-frame background pass plus sampleCount region passes, while
+              // the per-sample path costs sampleCount full-frame passes, so
+              // precompose wins when 1 + N*r < N with r the region/frame area
+              // ratio, i.e. regionArea * N < frameArea * (N - 1). Both paths are
+              // bit-identical; the gate only trades GPU work.
+              static_cast<int64_t>(regionWidth) * regionHeight *
+                      static_cast<int64_t>(samples.size()) <
+                  static_cast<int64_t>(width_) * height_ *
+                      static_cast<int64_t>(samples.size() - 1)));
+        if (useBackgroundPrecompose) {
+            compositeTemporalBlurSamplesWithBackgroundPrecompose(
+                target,
+                targetPitch,
+                targetChromaOffset,
+                srcFrame,
+                srcPitch,
+                srcWidth,
+                srcHeight,
+                srcSurfaceHeight,
+                samples,
+                block,
+                sourceCropX,
+                sourceCropY,
+                sourceCropWidth,
+                sourceCropHeight,
+                regionLeft,
+                regionTop,
+                regionWidth,
+                regionHeight,
+                anyContentVisible,
+                outputFrameTimeMs);
+            ++temporalBlurFrames_;
+            ++temporalBlurBgPrecomposedFrames_;
+            return;
+        }
+
+        for (size_t index = 0; index < samples.size(); ++index) {
+            const double sampleTimeMs = outputFrameTimeMs + samples[index].offsetUs / 1000.0;
+            const ZoomSample sample = zoomTrack_ ? zoomTrack_->sampleAt(sampleTimeMs) : ZoomSample{};
+            const bool sampleZoomEnabled = zoomTrack_ && sample.scale > 0.01;
+            const unsigned int weightFixed = static_cast<unsigned int>(
+                std::lround(samples[index].weight * 256.0));
+            compositeStaticNv12Kernel<<<grid, block, 0, copyStream_>>>(
+                srcFrame,
+                srcPitch,
+                srcWidth,
+                srcHeight,
+                srcSurfaceHeight,
+                target,
+                targetPitch,
+                targetChromaOffset,
+                width_,
+                height_,
+                0,
+                0,
+                width_,
+                height_,
+                layoutOptions_.contentX,
+                layoutOptions_.contentY,
+                layoutOptions_.contentWidth,
+                layoutOptions_.contentHeight,
+                sourceCropX,
+                sourceCropY,
+                sourceCropWidth,
+                sourceCropHeight,
+                layoutOptions_.radius,
+                clampByte(layoutOptions_.backgroundY),
+                clampByte(layoutOptions_.backgroundU),
+                clampByte(layoutOptions_.backgroundV),
+                backgroundDevice_,
+                layoutOptions_.shadowOffsetY,
+                layoutOptions_.shadowIntensityPct,
+                nullptr,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                false,
+                false,
+                0,
+                0,
+                0,
+                0,
+                nullptr,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                sampleZoomEnabled,
+                static_cast<float>(sample.scale),
+                static_cast<float>(sample.x),
+                static_cast<float>(sample.y),
+                weightFixed,
+                index == 0 ? 1 : 2);
+            checkCuda(cudaGetLastError(), "compositeStaticNv12Kernel temporal sample");
+            temporalBlurSamplesTotal_ += 1;
+        }
+        ++temporalBlurFrames_;
+    }
+
+    // Fast temporal-blur path: the invariant weighted background is accumulated
+    // once per export into a persistent NV12 cache (see
+    // ensureTemporalBackgroundCache); each output frame copies that cache into
+    // the target and then composites only the changing content bounding box per
+    // temporal sample. Pixels outside the bbox are outside the content rect for
+    // every sample, so their per-sample value is always the background and the
+    // cached accumulation is exact. Inside the bbox, sample 0 replaces the
+    // cached background (the target is not pre-zeroed) and later samples
+    // saturate-accumulate, preserving the exact replace-then-accumulate
+    // contract of the per-sample full-frame composites term-for-term. The
+    // cache copy is bit-identical to the previous per-frame accumulate because
+    // accumulateBackgroundNv12Kernel replaces (never accumulates into) each
+    // destination pixel.
+    void compositeTemporalBlurSamplesWithBackgroundPrecompose(
+        unsigned char* target,
+        int targetPitch,
+        int targetChromaOffset,
+        const unsigned char* srcFrame,
+        int srcPitch,
+        int srcWidth,
+        int srcHeight,
+        int srcSurfaceHeight,
+        const std::vector<TemporalBlurSample>& samples,
+        const dim3& block,
+        int sourceCropX,
+        int sourceCropY,
+        int sourceCropWidth,
+        int sourceCropHeight,
+        int regionLeft,
+        int regionTop,
+        int regionWidth,
+        int regionHeight,
+        bool anyContentVisible,
+        double outputFrameTimeMs) {
+        ensureTemporalWeightsDevice();
+        ensureTemporalBackgroundCache();
+        checkCuda(
+            cudaMemcpy2DAsync(
+                target,
+                static_cast<size_t>(targetPitch),
+                temporalBgCacheDevice_,
+                static_cast<size_t>(width_),
+                static_cast<size_t>(width_),
+                static_cast<size_t>(height_),
+                cudaMemcpyDeviceToDevice,
+                copyStream_),
+            "cudaMemcpy2DAsync temporal background cache Y");
+        checkCuda(
+            cudaMemcpy2DAsync(
+                target + targetChromaOffset,
+                static_cast<size_t>(targetPitch),
+                temporalBgCacheDevice_ + static_cast<size_t>(width_) * static_cast<size_t>(height_),
+                static_cast<size_t>(width_),
+                static_cast<size_t>(width_),
+                static_cast<size_t>(height_ / 2),
+                cudaMemcpyDeviceToDevice,
+                copyStream_),
+            "cudaMemcpy2DAsync temporal background cache UV");
+        ++temporalBgCacheHits_;
+
+        if (!anyContentVisible || regionWidth <= 0 || regionHeight <= 0) {
+            return;
+        }
+        const dim3 contentGrid(
+            (regionWidth + block.x - 1) / block.x,
+            (regionHeight + block.y - 1) / block.y);
+        for (size_t index = 0; index < samples.size(); ++index) {
+            const double sampleTimeMs = outputFrameTimeMs + samples[index].offsetUs / 1000.0;
+            const ZoomSample sample = zoomTrack_ ? zoomTrack_->sampleAt(sampleTimeMs) : ZoomSample{};
+            const bool sampleZoomEnabled = zoomTrack_ && sample.scale > 0.01;
+            const unsigned int weightFixed = static_cast<unsigned int>(
+                std::lround(samples[index].weight * 256.0));
+            compositeStaticNv12Kernel<<<contentGrid, block, 0, copyStream_>>>(
+                srcFrame,
+                srcPitch,
+                srcWidth,
+                srcHeight,
+                srcSurfaceHeight,
+                target,
+                targetPitch,
+                targetChromaOffset,
+                width_,
+                height_,
+                regionLeft,
+                regionTop,
+                regionWidth,
+                regionHeight,
+                layoutOptions_.contentX,
+                layoutOptions_.contentY,
+                layoutOptions_.contentWidth,
+                layoutOptions_.contentHeight,
+                sourceCropX,
+                sourceCropY,
+                sourceCropWidth,
+                sourceCropHeight,
+                layoutOptions_.radius,
+                clampByte(layoutOptions_.backgroundY),
+                clampByte(layoutOptions_.backgroundU),
+                clampByte(layoutOptions_.backgroundV),
+                backgroundDevice_,
+                layoutOptions_.shadowOffsetY,
+                layoutOptions_.shadowIntensityPct,
+                nullptr,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                false,
+                false,
+                0,
+                0,
+                0,
+                0,
+                nullptr,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                sampleZoomEnabled,
+                static_cast<float>(sample.scale),
+                static_cast<float>(sample.x),
+                static_cast<float>(sample.y),
+                weightFixed,
+                index == 0 ? 1 : 2);
+            checkCuda(cudaGetLastError(), "compositeStaticNv12Kernel temporal sample region");
+            temporalBlurSamplesTotal_ += 1;
+        }
+    }
+
+    // Builds the persistent NV12 cache of the invariant weighted background
+    // accumulation once per export. The accumulated background depends only on
+    // the fixed sample weight plan and the fixed background (color or NV12
+    // sidecar), so it is identical for every temporal-blur output frame; the
+    // first precomposed frame fills the cache with the same
+    // accumulateBackgroundNv12Kernel pass the previous code ran per frame, and
+    // later frames copy the cache into the target instead of re-accumulating.
+    // The cache is tightly packed (pitch == width), so the per-frame copy is
+    // two ordered cudaMemcpy2DAsync calls on the compositor stream. The copy is
+    // term-for-term identical to the per-frame accumulate because
+    // accumulateBackgroundNv12Kernel replaces (never accumulates into) each
+    // destination pixel.
+    void ensureTemporalBackgroundCache() {
+        if (temporalBgCacheDevice_) {
+            return;
+        }
+        const size_t requiredBytes =
+            static_cast<size_t>(width_) * static_cast<size_t>(height_) * 3 / 2;
+        checkCuda(cudaMalloc(&temporalBgCacheDevice_, requiredBytes), "cudaMalloc temporalBgCacheDevice");
+        const dim3 block(16, 16);
+        const dim3 fullGrid((width_ + block.x - 1) / block.x, (height_ + block.y - 1) / block.y);
+        accumulateBackgroundNv12Kernel<<<fullGrid, block, 0, copyStream_>>>(
+            temporalBgCacheDevice_,
+            width_,
+            static_cast<int>(static_cast<size_t>(width_) * static_cast<size_t>(height_)),
+            width_,
+            height_,
+            clampByte(layoutOptions_.backgroundY),
+            clampByte(layoutOptions_.backgroundU),
+            clampByte(layoutOptions_.backgroundV),
+            backgroundDevice_,
+            temporalWeightsDevice_,
+            static_cast<int>(temporalSamplePlan_.size()));
+        checkCuda(cudaGetLastError(), "accumulateBackgroundNv12Kernel cache build");
+        ++temporalBgCacheBuilds_;
+    }
+
+    // Uploads the cos-tapered temporal sample weights to a device buffer once;
+    // accumulateBackgroundNv12Kernel needs the whole plan resident for the
+    // invariant-background pass and the stationary fused kernel needs it for
+    // the in-order fixed-point accumulation.
+    void ensureTemporalWeightsDevice() {
+        const size_t count = temporalSamplePlan_.size();
+        if (count == 0 || (temporalWeightsDevice_ && temporalWeightsDeviceCount_ == count)) {
+            return;
+        }
+        if (temporalWeightsDevice_) {
+            checkCuda(cudaFree(temporalWeightsDevice_), "cudaFree temporalWeightsDevice");
+            temporalWeightsDevice_ = nullptr;
+        }
+        std::vector<unsigned int> weights(count);
+        for (size_t index = 0; index < count; ++index) {
+            weights[index] = static_cast<unsigned int>(
+                std::lround(temporalSamplePlan_[index].weight * 256.0));
+        }
+        checkCuda(
+            cudaMalloc(&temporalWeightsDevice_, count * sizeof(unsigned int)),
+            "cudaMalloc temporalWeightsDevice");
+        checkCuda(
+            cudaMemcpy(
+                temporalWeightsDevice_,
+                weights.data(),
+                count * sizeof(unsigned int),
+                cudaMemcpyHostToDevice),
+            "cudaMemcpy temporalWeightsDevice");
+        temporalWeightsDeviceCount_ = count;
+    }
+
+    void applySharpOverlays(
+        unsigned char* frame,
+        int framePitch,
+        int frameChromaOffset,
+        const unsigned char* webcamFrame,
+        const CursorPosition& cursorPosition,
+        int cursorX,
+        int cursorY,
+        int cursorWidth,
+        int cursorHeight,
+        bool useCursorAtlas,
+        const CursorAtlasEntry* cursorEntry,
+        const dim3& block) {
+        if (webcamFrame && layoutOptions_.webcamSize > 0) {
+            const int webcamRegionX = std::max(0, layoutOptions_.webcamX - 1);
+            const int webcamRegionY = std::max(0, layoutOptions_.webcamY - 1);
+            const int webcamRegionRight =
+                std::min(width_, layoutOptions_.webcamX + layoutOptions_.webcamSize);
+            const int webcamRegionBottom =
+                std::min(height_, layoutOptions_.webcamY + layoutOptions_.webcamSize);
+            const int webcamRegionWidth = webcamRegionRight - webcamRegionX;
+            const int webcamRegionHeight = webcamRegionBottom - webcamRegionY;
+            if (webcamRegionWidth > 0 && webcamRegionHeight > 0) {
+                const dim3 webcamGrid(
+                    (webcamRegionWidth + block.x - 1) / block.x,
+                    (webcamRegionHeight + block.y - 1) / block.y);
+                overlayWebcamNv12Kernel<<<webcamGrid, block, 0, copyStream_>>>(
+                    frame,
+                    framePitch,
+                    frameChromaOffset,
+                    width_,
+                    height_,
+                    webcamFrame,
+                    webcamRegionX,
+                    webcamRegionY,
+                    webcamRegionWidth,
+                    webcamRegionHeight,
+                    layoutOptions_.webcamX,
+                    layoutOptions_.webcamY,
+                    layoutOptions_.webcamSize,
+                    webcamFrameWidth(),
+                    webcamFrameHeight(),
+                    layoutOptions_.webcamRadius,
+                    layoutOptions_.webcamMirror);
+                checkCuda(cudaGetLastError(), "overlayWebcamNv12Kernel sharp");
+            }
+        }
+
+        if (cursorPosition.visible && cursorWidth > 0 && cursorHeight > 0) {
+            const int cursorPadding = useCursorAtlas ? 4 : 2;
+            const int regionX = std::max(0, cursorX - cursorPadding);
+            const int regionY = std::max(0, cursorY - cursorPadding);
+            const int regionRight = std::min(width_, cursorX + cursorWidth + cursorPadding);
+            const int regionBottom = std::min(height_, cursorY + cursorHeight + cursorPadding);
+            const int regionWidth = regionRight - regionX;
+            const int regionHeight = regionBottom - regionY;
+            if (regionWidth > 0 && regionHeight > 0) {
+                const dim3 cursorGrid(
+                    (regionWidth + block.x - 1) / block.x,
+                    (regionHeight + block.y - 1) / block.y);
+                overlayCursorNv12Kernel<<<cursorGrid, block, 0, copyStream_>>>(
+                    frame,
+                    framePitch,
+                    frameChromaOffset,
+                    width_,
+                    height_,
+                    regionX,
+                    regionY,
+                    regionWidth,
+                    regionHeight,
+                    (cursorPosition.visible && !hasOverlayLayers_),
+                    cursorX,
+                    cursorY,
+                    cursorWidth,
+                    cursorHeight,
+                    useCursorAtlas ? cursorAtlasDevice_ : nullptr,
+                    cursorAtlasWidth_,
+                    cursorAtlasHeight_,
+                    useCursorAtlas ? cursorEntry->x : 0,
+                    useCursorAtlas ? cursorEntry->y : 0,
+                    useCursorAtlas ? cursorEntry->width : 0,
+                    useCursorAtlas ? cursorEntry->height : 0);
+                checkCuda(cudaGetLastError(), "overlayCursorNv12Kernel sharp");
+            }
+        }
+    }
+
+    void applyZoomBlurFrame(
+        unsigned char* frame,
+        int framePitch,
+        int frameChromaOffset,
+        int regionLeft,
+        int regionTop,
+        int regionRight,
+        int regionBottom,
+        float centerX,
+        float centerY,
+        float strength) {
+        const size_t requiredBytes =
+            static_cast<size_t>(framePitch) * static_cast<size_t>(height_) +
+            static_cast<size_t>(framePitch) * static_cast<size_t>(height_ / 2);
+        if (!zoomBlurScratch_ || zoomBlurScratchBytes_ < requiredBytes) {
+            if (zoomBlurScratch_) {
+                checkCuda(cudaFree(zoomBlurScratch_), "cudaFree zoomBlurScratch");
+                zoomBlurScratch_ = nullptr;
+                zoomBlurScratchBytes_ = 0;
+            }
+            checkCuda(cudaMalloc(&zoomBlurScratch_, requiredBytes), "cudaMalloc zoomBlurScratch");
+            zoomBlurScratchBytes_ = requiredBytes;
+        }
+
+        const dim3 block(16, 16);
+        const dim3 grid((width_ + block.x - 1) / block.x, (height_ + block.y - 1) / block.y);
+        zoomBlurNv12Kernel<<<grid, block, 0, copyStream_>>>(
+            frame,
+            framePitch,
+            frameChromaOffset,
+            width_,
+            height_,
+            zoomBlurScratch_,
+            framePitch,
+            frameChromaOffset,
+            regionLeft,
+            regionTop,
+            regionRight,
+            regionBottom,
+            centerX,
+            centerY,
+            strength);
+        checkCuda(cudaGetLastError(), "zoomBlurNv12Kernel");
+
+        checkCuda(
+            cudaMemcpy2DAsync(
+                frame,
+                static_cast<size_t>(framePitch),
+                zoomBlurScratch_,
+                static_cast<size_t>(framePitch),
+                static_cast<size_t>(width_),
+                static_cast<size_t>(height_),
+                cudaMemcpyDeviceToDevice,
+                copyStream_),
+            "cudaMemcpy2DAsync zoom blur Y");
+        checkCuda(
+            cudaMemcpy2DAsync(
+                frame + frameChromaOffset,
+                static_cast<size_t>(framePitch),
+                zoomBlurScratch_ + static_cast<size_t>(framePitch) * static_cast<size_t>(height_),
+                static_cast<size_t>(framePitch),
+                static_cast<size_t>(width_),
+                static_cast<size_t>(height_ / 2),
+                cudaMemcpyDeviceToDevice,
+                copyStream_),
+            "cudaMemcpy2DAsync zoom blur UV");
+        ++zoomBlurFrames_;
+    }
+
     bool canUseFastRoiComposite(bool zoomChangesLayout) const {
         return hasStaticLayout(layoutOptions_) &&
             layoutOptions_.contentX == 0 &&
@@ -2772,7 +6738,30 @@ private:
     int roiCompositeFrames_ = 0;
     int monolithicCompositeFrames_ = 0;
     int copyCompositeFrames_ = 0;
-    bool streamSync_ = false;
+    int zoomBlurFrames_ = 0;
+    int overlayBlendFrames_ = 0;
+    int tiledOverlayBlendFrames_ = 0;
+    int temporalBlurFrames_ = 0;
+    int temporalBlurBgPrecomposedFrames_ = 0;
+    int temporalBlurStationaryFrames_ = 0;
+    int temporalBgCacheBuilds_ = 0;
+    int64_t temporalBgCacheHits_ = 0;
+    int64_t overlayStaticRegionBlends_ = 0;
+    int64_t temporalBlurSamplesTotal_ = 0;
+    bool zoomBlurRecorded_ = false;
+    bool overlayRecorded_ = false;
+    double compositeGpuMs_ = 0.0;
+    double zoomBlurGpuMs_ = 0.0;
+    double overlayBlendGpuMs_ = 0.0;
+    NvencCapabilityProbe capabilityProbe_;
+    NvencConfigUsed nvencConfigUsed_;
+    int temporalBlurSampleCount_ = 0;
+    double temporalBlurShutterFraction_ = 0.0;
+    double temporalBlurWeightPower_ = 1.0;
+    std::vector<TemporalBlurSample> temporalSamplePlan_;
+    unsigned int* temporalWeightsDevice_ = nullptr;
+    size_t temporalWeightsDeviceCount_ = 0;
+    unsigned char* temporalBgCacheDevice_ = nullptr;
     Options layoutOptions_;
     unsigned char* backgroundDevice_ = nullptr;
     unsigned char* webcamDevice_ = nullptr;
@@ -2783,7 +6772,19 @@ private:
     const WebcamFrameCache* webcamCache_ = nullptr;
     const CursorTrack* cursorTrack_ = nullptr;
     const ZoomTrack* zoomTrack_ = nullptr;
+    OverlayFrameSource* overlaySource_ = nullptr;
+    TiledOverlayFrameSource* tiledOverlaySource_ = nullptr;
+    std::vector<CompositeLayer> compositeLayers_;
+    bool hasOverlayLayers_ = false;
     cudaStream_t copyStream_ = nullptr;
+    cudaEvent_t compositeStartEvent_ = nullptr;
+    cudaEvent_t compositeEndEvent_ = nullptr;
+    cudaEvent_t blurStartEvent_ = nullptr;
+    cudaEvent_t blurEndEvent_ = nullptr;
+    cudaEvent_t overlayStartEvent_ = nullptr;
+    cudaEvent_t overlayEndEvent_ = nullptr;
+    unsigned char* zoomBlurScratch_ = nullptr;
+    size_t zoomBlurScratchBytes_ = 0;
 };
 
 struct CallbackEncodeState {
@@ -2798,6 +6799,9 @@ struct CallbackEncodeState {
     const WebcamFrameCache* webcamCache = nullptr;
     const CursorTrack* cursorTrack = nullptr;
     const ZoomTrack* zoomTrack = nullptr;
+    OverlayFrameSource* overlaySource = nullptr;
+    TiledOverlayFrameSource* tiledOverlaySource = nullptr;
+    const NvencCapabilityProbe* capabilityProbe = nullptr;
     ProgressReportState* progress = nullptr;
     bool oneFramePerMappedDisplayFrame = false;
     int mappedFrames = 0;
@@ -2815,11 +6819,35 @@ ProgressCounters collectProgressCounters(
     counters.encodeMs = encodeMs;
     if (sink) {
         counters.compositeMs = sink->compositeMs();
+        counters.compositeGpuMs = sink->compositeGpuMs();
+        counters.zoomBlurGpuMs = sink->zoomBlurGpuMs();
+        counters.overlayBlendGpuMs = sink->overlayBlendGpuMs();
+        counters.overlayUploadMs = sink->overlayUploadMs();
         counters.nvencMs = sink->nvencMs();
         counters.packetWriteMs = sink->packetWriteMs();
         counters.roiCompositeFrames = sink->roiCompositeFrames();
         counters.monolithicCompositeFrames = sink->monolithicCompositeFrames();
         counters.copyCompositeFrames = sink->copyCompositeFrames();
+        counters.zoomBlurFrames = sink->zoomBlurFrames();
+        counters.overlayBlendFrames = sink->overlayBlendFrames();
+        counters.temporalBlurFrames = sink->temporalBlurFrames();
+        counters.temporalBlurSamplesTotal = sink->temporalBlurSamplesTotal();
+        counters.temporalBlurBgPrecomposedFrames = sink->temporalBlurBgPrecomposedFrames();
+        counters.temporalBlurStationaryFrames = sink->temporalBlurStationaryFrames();
+        counters.temporalBgCacheBuilds = sink->temporalBgCacheBuilds();
+        counters.temporalBgCacheHits = sink->temporalBgCacheHits();
+        counters.overlayStaticRegionBlends = sink->overlayStaticRegionBlends();
+        counters.overlayFileLoads = sink->overlayFileLoads();
+        counters.overlayCacheHits = sink->overlayCacheHits();
+        counters.overlayPinnedHits = sink->overlayPinnedHits();
+        counters.overlayReadWaits = sink->overlayReadWaits();
+        counters.overlayPendingReadsPeak = sink->overlayPendingReadsPeak();
+        counters.overlayHostReadMs = sink->overlayHostReadMs();
+        counters.overlayH2DEnqueueMs = sink->overlayH2DEnqueueMs();
+        counters.tiledOverlayLayers = sink->tiledOverlayLayerCount();
+        counters.changedTileCount = sink->tiledChangedTileCount();
+        counters.uploadedTileBytes = sink->tiledUploadedTileBytes();
+        counters.cachedTileCount = sink->tiledCachedTileCount();
     }
     if (webcamCache) {
         counters.webcamDecodeMs = webcamCache->decodeMs;
@@ -2884,6 +6912,14 @@ void encodeMappedDisplayFrame(
     }
 
     if (!*state->sink) {
+        validateOverlayBounds(
+            *state->options,
+            outputWidthForSource(*state->options, width),
+            outputHeightForSource(*state->options, height));
+        validateTiledOverlayBounds(
+            *state->options,
+            outputWidthForSource(*state->options, width),
+            outputHeightForSource(*state->options, height));
         *state->sink = std::make_unique<NvencSink>(
             state->context,
             outputWidthForSource(*state->options, width),
@@ -2891,11 +6927,13 @@ void encodeMappedDisplayFrame(
             state->options->fps,
             state->bitrate,
             state->options->outputPath,
-            state->options->streamSync,
             *state->options,
             state->webcamCache,
             state->cursorTrack,
-            state->zoomTrack);
+            state->zoomTrack,
+            state->overlaySource,
+            state->tiledOverlaySource,
+            state->capabilityProbe ? *state->capabilityProbe : NvencCapabilityProbe{});
     }
 
     while (*state->encodedFrames < expectedOutputFrames && *state->encodedFrames < maxOutputFrames) {
@@ -2953,6 +6991,16 @@ void reportEncodingProgress(
         intervalMs > 0.0 && intervalFrames > 0 ? static_cast<double>(intervalFrames) * 1000.0 / intervalMs : 0.0;
     const double intervalEncodeMs = std::max(0.0, counters.encodeMs - state.lastCounters.encodeMs);
     const double intervalCompositeMs = std::max(0.0, counters.compositeMs - state.lastCounters.compositeMs);
+    const double intervalCompositeGpuMs = std::max(0.0, counters.compositeGpuMs - state.lastCounters.compositeGpuMs);
+    const double intervalZoomBlurGpuMs = std::max(0.0, counters.zoomBlurGpuMs - state.lastCounters.zoomBlurGpuMs);
+    const double intervalOverlayBlendGpuMs = std::max(0.0, counters.overlayBlendGpuMs - state.lastCounters.overlayBlendGpuMs);
+    const double intervalOverlayUploadMs = std::max(0.0, counters.overlayUploadMs - state.lastCounters.overlayUploadMs);
+    const double intervalOverlayHostReadMs = std::max(
+        0.0,
+        counters.overlayHostReadMs - state.lastCounters.overlayHostReadMs);
+    const double intervalOverlayH2DEnqueueMs = std::max(
+        0.0,
+        counters.overlayH2DEnqueueMs - state.lastCounters.overlayH2DEnqueueMs);
     const double intervalNvencMs = std::max(0.0, counters.nvencMs - state.lastCounters.nvencMs);
     const double intervalPacketWriteMs = std::max(0.0, counters.packetWriteMs - state.lastCounters.packetWriteMs);
     const double intervalWebcamDecodeMs = std::max(0.0, counters.webcamDecodeMs - state.lastCounters.webcamDecodeMs);
@@ -2965,8 +7013,47 @@ void reportEncodingProgress(
         std::max(0, counters.monolithicCompositeFrames - state.lastCounters.monolithicCompositeFrames);
     const int intervalCopyCompositeFrames =
         std::max(0, counters.copyCompositeFrames - state.lastCounters.copyCompositeFrames);
+    const int intervalZoomBlurFrames =
+        std::max(0, counters.zoomBlurFrames - state.lastCounters.zoomBlurFrames);
+    const int intervalOverlayBlendFrames =
+        std::max(0, counters.overlayBlendFrames - state.lastCounters.overlayBlendFrames);
+    const int intervalTemporalBlurFrames =
+        std::max(0, counters.temporalBlurFrames - state.lastCounters.temporalBlurFrames);
+    const int64_t intervalTemporalBlurSamples =
+        std::max<int64_t>(0, counters.temporalBlurSamplesTotal - state.lastCounters.temporalBlurSamplesTotal);
+    const int intervalTemporalBlurBgPrecomposedFrames = std::max(
+        0,
+        counters.temporalBlurBgPrecomposedFrames - state.lastCounters.temporalBlurBgPrecomposedFrames);
+    const int intervalTemporalBlurStationaryFrames = std::max(
+        0,
+        counters.temporalBlurStationaryFrames - state.lastCounters.temporalBlurStationaryFrames);
+    const int intervalTemporalBgCacheBuilds = std::max(
+        0,
+        counters.temporalBgCacheBuilds - state.lastCounters.temporalBgCacheBuilds);
+    const int64_t intervalTemporalBgCacheHits = std::max<int64_t>(
+        0,
+        counters.temporalBgCacheHits - state.lastCounters.temporalBgCacheHits);
+    const int64_t intervalOverlayStaticRegionBlends = std::max<int64_t>(
+        0,
+        counters.overlayStaticRegionBlends - state.lastCounters.overlayStaticRegionBlends);
+    const int64_t intervalOverlayFileLoads =
+        std::max<int64_t>(0, counters.overlayFileLoads - state.lastCounters.overlayFileLoads);
+    const int64_t intervalOverlayCacheHits =
+        std::max<int64_t>(0, counters.overlayCacheHits - state.lastCounters.overlayCacheHits);
+    const int64_t intervalOverlayPinnedHits =
+        std::max<int64_t>(0, counters.overlayPinnedHits - state.lastCounters.overlayPinnedHits);
+    const int64_t intervalOverlayReadWaits =
+        std::max<int64_t>(0, counters.overlayReadWaits - state.lastCounters.overlayReadWaits);
+    const int64_t intervalChangedTileCount =
+        std::max<int64_t>(0, counters.changedTileCount - state.lastCounters.changedTileCount);
+    const int64_t intervalUploadedTileBytes = std::max<int64_t>(
+        0,
+        counters.uploadedTileBytes - state.lastCounters.uploadedTileBytes);
+    const int64_t intervalCachedTileCount =
+        std::max<int64_t>(0, counters.cachedTileCount - state.lastCounters.cachedTileCount);
     std::cerr << std::fixed << std::setprecision(2)
-              << "PROGRESS {\"currentFrame\":" << encodedFrames
+              << "PROGRESS {\"outputCodec\":\"" << state.outputCodec
+              << "\",\"currentFrame\":" << encodedFrames
               << ",\"totalFrames\":" << totalFrames
               << ",\"percentage\":" << percentage
               << ",\"averageFps\":" << averageFps
@@ -2977,6 +7064,12 @@ void reportEncodingProgress(
               << ",\"intervalEncodeMs\":" << intervalEncodeMs
               << ",\"intervalPipelineWaitMs\":" << intervalPipelineWaitMs
               << ",\"intervalCompositeMs\":" << intervalCompositeMs
+              << ",\"intervalCompositeGpuMs\":" << intervalCompositeGpuMs
+              << ",\"intervalZoomBlurGpuMs\":" << intervalZoomBlurGpuMs
+              << ",\"intervalOverlayBlendGpuMs\":" << intervalOverlayBlendGpuMs
+              << ",\"intervalOverlayUploadMs\":" << intervalOverlayUploadMs
+              << ",\"intervalOverlayHostReadMs\":" << intervalOverlayHostReadMs
+              << ",\"intervalOverlayH2DEnqueueMs\":" << intervalOverlayH2DEnqueueMs
               << ",\"intervalNvencMs\":" << intervalNvencMs
               << ",\"intervalPacketWriteMs\":" << intervalPacketWriteMs
               << ",\"intervalWebcamDecodeMs\":" << intervalWebcamDecodeMs
@@ -2984,6 +7077,24 @@ void reportEncodingProgress(
               << ",\"intervalRoiCompositeFrames\":" << intervalRoiCompositeFrames
               << ",\"intervalMonolithicCompositeFrames\":" << intervalMonolithicCompositeFrames
               << ",\"intervalCopyCompositeFrames\":" << intervalCopyCompositeFrames
+              << ",\"intervalZoomBlurFrames\":" << intervalZoomBlurFrames
+              << ",\"intervalOverlayBlendFrames\":" << intervalOverlayBlendFrames
+              << ",\"intervalTemporalBlurFrames\":" << intervalTemporalBlurFrames
+              << ",\"intervalTemporalBlurSamples\":" << intervalTemporalBlurSamples
+              << ",\"intervalTemporalBlurBgPrecomposedFrames\":" << intervalTemporalBlurBgPrecomposedFrames
+              << ",\"intervalTemporalBlurStationaryFrames\":" << intervalTemporalBlurStationaryFrames
+              << ",\"intervalTemporalBgCacheBuilds\":" << intervalTemporalBgCacheBuilds
+              << ",\"intervalTemporalBgCacheHits\":" << intervalTemporalBgCacheHits
+              << ",\"intervalOverlayStaticRegionBlends\":" << intervalOverlayStaticRegionBlends
+              << ",\"intervalOverlayFileLoads\":" << intervalOverlayFileLoads
+              << ",\"intervalOverlayCacheHits\":" << intervalOverlayCacheHits
+              << ",\"intervalOverlayPinnedHits\":" << intervalOverlayPinnedHits
+              << ",\"intervalOverlayReadWaits\":" << intervalOverlayReadWaits
+              << ",\"intervalChangedTileCount\":" << intervalChangedTileCount
+              << ",\"intervalUploadedTileBytes\":" << intervalUploadedTileBytes
+              << ",\"intervalCachedTileCount\":" << intervalCachedTileCount
+              << ",\"tiledOverlayLayers\":" << counters.tiledOverlayLayers
+              << ",\"overlayPendingReadsPeak\":" << counters.overlayPendingReadsPeak
               << "}" << std::endl;
     state.lastReportAt = now;
     state.lastReportedFrame = encodedFrames;
@@ -2993,8 +7104,15 @@ void reportEncodingProgress(
 } // namespace
 
 int main(int argc, char** argv) {
+    const char* requestedOutputCodec = "h264";
+    NvencCapabilityProbe capabilityProbe;
+    // Declared outside the try so the failure summary can report the validated
+    // tiled overlay descriptor facts (layer count + derived bookkeeping) when
+    // an encode-stage error aborts before the runtime counters exist.
+    Options options;
     try {
-        Options options = parseOptions(argc, argv);
+        options = parseOptions(argc, argv);
+        requestedOutputCodec = outputCodecName(options.outputCodec);
         options.timelineSegments = loadTimelineMap(options.timelineMapPath);
         if (!options.timelineSegments.empty() && !options.callbackEncode) {
             fail("Timeline-map CUDA export requires --callback-encode");
@@ -3005,10 +7123,30 @@ int main(int argc, char** argv) {
         checkCu(cuInit(0), "cuInit");
         CUdevice device = 0;
         checkCu(cuDeviceGet(&device, 0), "cuDeviceGet");
+        // Use the primary context (shared with the CUDA runtime API used for
+        // buffer allocation) rather than a separate cuCtxCreate context. NVENC
+        // capability queries and the runtime allocations must see the same
+        // primary context; a detached context causes caps queries to fail with
+        // NV_ENC_ERR_ENCODER_NOT_INITIALIZED style errors on current drivers.
         CUcontext context = nullptr;
-        checkCu(cuCtxCreate(&context, 0, device), "cuCtxCreate");
+        checkCu(cuDevicePrimaryCtxRetain(&context, device), "cuDevicePrimaryCtxRetain");
         checkCu(cuCtxSetCurrent(context), "cuCtxSetCurrent");
+        // Run the NVENC capability probe before any runtime-API prewarm work so
+        // the caps query happens on a freshly current primary context. The probe
+        // opens a real session and queries the caps for the requested output
+        // codec, so the config decisions below consume real capability reads.
+        capabilityProbe = probeNvencCapabilities(
+            context,
+            options.outputCodec == OutputCodec::HEVC ? NV_ENC_CODEC_HEVC_GUID : NV_ENC_CODEC_H264_GUID);
         prewarmCuda(options.prewarmMs);
+        if (!capabilityProbe.apiLoaded || !capabilityProbe.sessionOpened) {
+            std::cerr << "{\"success\":false,\"outputCodec\":\""
+                      << requestedOutputCodec
+                      << "\",\"backend\":\"nvidia-nvenc\",\"error\":\"NVENC capability probe failed: "
+                      << capabilityProbe.error
+                      << "\",\"noCpuFallback\":true}" << std::endl;
+            return 1;
+        }
 
         std::ifstream input(options.inputPath, std::ios::binary);
         if (!input) {
@@ -3021,6 +7159,21 @@ int main(int argc, char** argv) {
         const CursorTrack* cursorTrackPtr = cursorTrack.get();
         std::unique_ptr<ZoomTrack> zoomTrack = loadZoomTrack(options);
         const ZoomTrack* zoomTrackPtr = zoomTrack.get();
+        std::unique_ptr<OverlayFrameSource> overlaySource =
+            options.overlayLayers.empty()
+                ? nullptr
+                : std::make_unique<OverlayFrameSource>(options.overlayLayers);
+        OverlayFrameSource* overlaySourcePtr = overlaySource.get();
+        // Tiled/delta overlay stream: the descriptor was validated at parse time
+        // and the device tile cache is staged here (before decoding), so a
+        // truncated payload or CUDA allocation failure surfaces before any
+        // encode work. Raw and tiled sources coexist in a single global z-order
+        // (ascending `order`) rather than being grouped raw-first-then-tiled.
+        std::unique_ptr<TiledOverlayFrameSource> tiledOverlaySource =
+            options.tiledOverlayLayers.empty()
+                ? nullptr
+                : std::make_unique<TiledOverlayFrameSource>(options.tiledOverlayLayers);
+        TiledOverlayFrameSource* tiledOverlaySourcePtr = tiledOverlaySource.get();
         const std::vector<double> sourcePts = loadFramePts(options.sourcePtsPath);
         const bool useSourcePts =
             options.inputFrames > 0 &&
@@ -3060,6 +7213,7 @@ int main(int argc, char** argv) {
         double encodeMs = 0.0;
         ProgressReportState progressState;
         progressState.startedAt = std::chrono::steady_clock::now();
+        progressState.outputCodec = outputCodecName(options.outputCodec);
         progressState.lastReportAt = progressState.startedAt;
         const int progressTotalFrames = maxCallbackOutputFrames(options);
         reportEncodingProgress(0, progressTotalFrames, progressState, ProgressCounters{}, true);
@@ -3075,6 +7229,9 @@ int main(int argc, char** argv) {
             webcamCachePtr,
             cursorTrackPtr,
             zoomTrackPtr,
+            overlaySourcePtr,
+            tiledOverlaySourcePtr,
+            &capabilityProbe,
             &progressState,
             useDecoderFramePolicy,
             0,
@@ -3124,6 +7281,14 @@ int main(int argc, char** argv) {
                     continue;
                 }
                 if (!sink) {
+                    validateOverlayBounds(
+                        options,
+                        outputWidthForSource(options, decoder->GetWidth()),
+                        outputHeightForSource(options, decoder->GetHeight()));
+                    validateTiledOverlayBounds(
+                        options,
+                        outputWidthForSource(options, decoder->GetWidth()),
+                        outputHeightForSource(options, decoder->GetHeight()));
                     sink = std::make_unique<NvencSink>(
                         context,
                         outputWidthForSource(options, decoder->GetWidth()),
@@ -3131,11 +7296,13 @@ int main(int argc, char** argv) {
                         options.fps,
                         bitrate,
                         options.outputPath,
-                        options.streamSync,
                         options,
                         webcamCachePtr,
                         cursorTrackPtr,
-                        zoomTrackPtr);
+                        zoomTrackPtr,
+                        overlaySourcePtr,
+                        tiledOverlaySourcePtr,
+                        capabilityProbe);
                 }
                 const auto encodeStart = std::chrono::steady_clock::now();
                 sink->encodeFrame(
@@ -3170,6 +7337,14 @@ int main(int argc, char** argv) {
                     continue;
                 }
                 if (!sink) {
+                    validateOverlayBounds(
+                        options,
+                        outputWidthForSource(options, decoder->GetWidth()),
+                        outputHeightForSource(options, decoder->GetHeight()));
+                    validateTiledOverlayBounds(
+                        options,
+                        outputWidthForSource(options, decoder->GetWidth()),
+                        outputHeightForSource(options, decoder->GetHeight()));
                     sink = std::make_unique<NvencSink>(
                         context,
                         outputWidthForSource(options, decoder->GetWidth()),
@@ -3177,11 +7352,13 @@ int main(int argc, char** argv) {
                         options.fps,
                         bitrate,
                         options.outputPath,
-                        options.streamSync,
                         options,
                         webcamCachePtr,
                         cursorTrackPtr,
-                        zoomTrackPtr);
+                        zoomTrackPtr,
+                        overlaySourcePtr,
+                        tiledOverlaySourcePtr,
+                        capabilityProbe);
                 }
                 const auto encodeStart = std::chrono::steady_clock::now();
                 sink->encodeFrame(
@@ -3234,6 +7411,9 @@ int main(int argc, char** argv) {
                   << "{"
                   << "\"success\":true,"
                   << "\"mode\":\"nvdec-cuda-nvenc-annexb\","
+                  << "\"outputCodec\":\"" << outputCodecName(options.outputCodec) << "\","
+                  << "\"elementaryStreamFormat\":\""
+                  << outputCodecName(options.outputCodec) << "\","
                   << "\"selectionStage\":\""
                   << (options.callbackEncode
                           ? (useDecoderFramePolicy ? "decoder-policy-mapped-callback" : "mapped-callback")
@@ -3242,7 +7422,7 @@ int main(int argc, char** argv) {
                   << "\"sourceTimestampMode\":\"" << (useSourcePts ? "pts" : "ordinal") << "\","
                   << "\"timelineMap\":" << (!options.timelineSegments.empty() ? "true" : "false") << ","
                   << "\"timelineSegments\":" << options.timelineSegments.size() << ","
-                  << "\"syncMode\":\"" << (options.streamSync ? "stream" : "device") << "\","
+                  << "\"syncMode\":\"stream\","
                   << "\"prewarmMs\":" << options.prewarmMs << ","
                   << "\"chunkMb\":" << options.chunkMb << ","
                   << "\"width\":" << outputWidthForSource(options, decoder->GetWidth()) << ","
@@ -3279,6 +7459,48 @@ int main(int argc, char** argv) {
                   << "\"cursorAtlas\":" << (!options.cursorAtlasRgbaPath.empty() ? "true" : "false") << ","
                   << "\"zoomOverlay\":" << (zoomTrackPtr ? "true" : "false") << ","
                   << "\"zoomSamples\":" << (zoomTrackPtr ? zoomTrackPtr->samples.size() : 0) << ","
+                  << "\"zoomBlurFrames\":" << (sink ? sink->zoomBlurFrames() : 0) << ","
+                  << "\"overlayLayers\":" << options.overlayLayers.size() << ","
+                  << "\"overlayBlendFrames\":" << (sink ? sink->overlayBlendFrames() : 0) << ","
+                  << "\"tiledOverlayLayers\":" << (sink ? sink->tiledOverlayLayerCount() : 0) << ","
+                  << "\"tiledOverlayBlendFrames\":" << (sink ? sink->tiledOverlayBlendFrames() : 0) << ","
+                  << "\"changedTileCount\":" << (sink ? sink->tiledChangedTileCount() : 0) << ","
+                  << "\"uploadedTileBytes\":" << (sink ? sink->tiledUploadedTileBytes() : 0) << ","
+                  << "\"cachedTileCount\":" << (sink ? sink->tiledCachedTileCount() : 0) << ","
+                  << "\"rawFallbackReason\":\""
+                  << (sink ? sink->tiledRawFallbackReason() : "") << "\","
+                  << "\"temporalBlurFrames\":" << (sink ? sink->temporalBlurFrames() : 0) << ","
+                  << "\"temporalBlurSamplesTotal\":" << (sink ? sink->temporalBlurSamplesTotal() : 0) << ","
+                  << "\"temporalBlurBgPrecomposedFrames\":" << (sink ? sink->temporalBlurBgPrecomposedFrames() : 0) << ","
+                  << "\"temporalBlurStationaryFrames\":" << (sink ? sink->temporalBlurStationaryFrames() : 0) << ","
+                  << "\"temporalBgCacheBuilds\":" << (sink ? sink->temporalBgCacheBuilds() : 0) << ","
+                  << "\"temporalBgCacheHits\":" << (sink ? sink->temporalBgCacheHits() : 0) << ","
+                  << "\"overlayStaticRegionBlends\":" << (sink ? sink->overlayStaticRegionBlends() : 0) << ","
+                  << "\"overlayFileLoads\":" << (sink ? sink->overlayFileLoads() : 0) << ","
+                  << "\"overlayCacheHits\":" << (sink ? sink->overlayCacheHits() : 0) << ","
+                  << "\"overlayPinnedHits\":" << (sink ? sink->overlayPinnedHits() : 0) << ","
+                  << "\"overlayReadWaits\":" << (sink ? sink->overlayReadWaits() : 0) << ","
+                  << "\"overlayPendingReadsPeak\":" << (sink ? sink->overlayPendingReadsPeak() : 0) << ","
+                  << "\"nvencDiagnostics\":{"
+                  << "\"deviceName\":\"" << (sink ? sink->capabilityProbe().deviceName : "") << "\","
+                  << "\"cudaDriverVersion\":" << (sink ? sink->capabilityProbe().cudaDriverVersion : 0) << ","
+                  << "\"cudaComputeMajor\":" << (sink ? sink->capabilityProbe().cudaComputeMajor : 0) << ","
+                  << "\"cudaComputeMinor\":" << (sink ? sink->capabilityProbe().cudaComputeMinor : 0) << ","
+                  << "\"sdkApiVersion\":" << (sink ? sink->capabilityProbe().sdkApiVersion : 0) << ","
+                  << "\"driverMaxApiVersion\":" << (sink ? sink->capabilityProbe().driverMaxApiVersion : 0) << ","
+                  << "\"h264Supported\":" << (sink && sink->capabilityProbe().h264Supported ? "true" : "false") << ","
+                  << "\"hevcSupported\":" << (sink && sink->capabilityProbe().hevcSupported ? "true" : "false") << ","
+                  << "\"supportedRateControlModes\":" << (sink ? sink->capabilityProbe().supportedRateControlModes : 0) << ","
+                  << "\"customVbvSupported\":" << (sink && sink->capabilityProbe().customVbvBufferSizeSupported ? "true" : "false") << ","
+                  << "\"asyncEncodeSupported\":" << (sink && sink->capabilityProbe().asyncEncodeSupported ? "true" : "false") << ","
+                  << "\"temporalAqSupported\":" << (sink && sink->capabilityProbe().temporalAqSupported ? "true" : "false") << ","
+                  << "\"widthMax\":" << (sink ? sink->capabilityProbe().widthMax : 0) << ","
+                  << "\"heightMax\":" << (sink ? sink->capabilityProbe().heightMax : 0) << ","
+                  << "\"mbPerSecMax\":" << (sink ? sink->capabilityProbe().mbPerSecMax : 0) << ","
+                  << "\"probeError\":\"" << (sink ? sink->capabilityProbe().error : "") << "\","
+                  << "\"rcModeUsed\":\"" << (sink ? sink->nvencConfigUsed().rcMode : "") << "\","
+                  << "\"customVbvUsed\":" << (sink && sink->nvencConfigUsed().customVbv ? "true" : "false") << ","
+                  << "\"aqUsed\":" << (sink && sink->nvencConfigUsed().aq ? "true" : "false") << "},"
                   << "\"sourceFrames\":" << reportedSourceFrames << ","
                   << "\"mappedDisplayFrames\":" << mappedDisplayFrames << ","
                   << "\"selectedDisplayFrames\":" << selectedDisplayFrames << ","
@@ -3289,6 +7511,12 @@ int main(int argc, char** argv) {
                   << "\"decodeWallMs\":" << decodeMs << ","
                   << "\"encodeMs\":" << encodeMs << ","
                   << "\"compositeMs\":" << sink->compositeMs() << ","
+                  << "\"compositeGpuMs\":" << sink->compositeGpuMs() << ","
+                  << "\"zoomBlurGpuMs\":" << sink->zoomBlurGpuMs() << ","
+                  << "\"overlayBlendGpuMs\":" << sink->overlayBlendGpuMs() << ","
+                  << "\"overlayUploadMs\":" << sink->overlayUploadMs() << ","
+                  << "\"overlayHostReadMs\":" << sink->overlayHostReadMs() << ","
+                  << "\"overlayH2DEnqueueMs\":" << sink->overlayH2DEnqueueMs() << ","
                   << "\"roiCompositeFrames\":" << sink->roiCompositeFrames() << ","
                   << "\"monolithicCompositeFrames\":" << sink->monolithicCompositeFrames() << ","
                   << "\"copyCompositeFrames\":" << sink->copyCompositeFrames() << ","
@@ -3304,10 +7532,42 @@ int main(int argc, char** argv) {
         sink.reset();
         decoder.reset();
         webcamStream.reset();
-        checkCu(cuCtxDestroy(context), "cuCtxDestroy");
+        // OverlayFrameSource and TiledOverlayFrameSource own device/pinned
+        // buffers (cudaFree/cudaFreeHost in their destructors); they must be
+        // destroyed while the primary context is still current, before the
+        // context is released.
+        overlaySource.reset();
+        tiledOverlaySource.reset();
+        // The primary context is released, not destroyed.
+        checkCu(cuDevicePrimaryCtxRelease(device), "cuDevicePrimaryCtxRelease");
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "{\"success\":false,\"error\":\"" << error.what() << "\"}" << std::endl;
+        const TiledOverlayDerivedMetrics tiledMetrics =
+            computeTiledOverlayDerivedMetrics(options.tiledOverlayLayers);
+        std::cerr << "{\"success\":false,\"outputCodec\":\""
+                  << requestedOutputCodec
+                  << "\",\"backend\":\"nvidia-nvenc\",\"error\":\""
+                  << error.what()
+                  << "\",\"tiledOverlayLayers\":" << options.tiledOverlayLayers.size()
+                  << ",\"changedTileCount\":" << tiledMetrics.changedTileCount
+                  << ",\"uploadedTileBytes\":" << tiledMetrics.uploadedTileBytes
+                  << ",\"cachedTileCount\":" << tiledMetrics.cachedTileCount
+                  << ",\"rawFallbackReason\":\"" << tiledMetrics.rawFallbackReason
+                  << "\",\"nvencDiagnostics\":{"
+                  << "\"deviceName\":\"" << capabilityProbe.deviceName << "\","
+                  << "\"cudaDriverVersion\":" << capabilityProbe.cudaDriverVersion << ","
+                  << "\"cudaComputeMajor\":" << capabilityProbe.cudaComputeMajor << ","
+                  << "\"cudaComputeMinor\":" << capabilityProbe.cudaComputeMinor << ","
+                  << "\"sdkApiVersion\":" << capabilityProbe.sdkApiVersion << ","
+                  << "\"driverMaxApiVersion\":" << capabilityProbe.driverMaxApiVersion << ","
+                  << "\"h264Supported\":" << (capabilityProbe.h264Supported ? "true" : "false") << ","
+                  << "\"hevcSupported\":" << (capabilityProbe.hevcSupported ? "true" : "false") << ","
+                  << "\"supportedRateControlModes\":" << capabilityProbe.supportedRateControlModes << ","
+                  << "\"customVbvSupported\":" << (capabilityProbe.customVbvBufferSizeSupported ? "true" : "false") << ","
+                  << "\"asyncEncodeSupported\":" << (capabilityProbe.asyncEncodeSupported ? "true" : "false") << ","
+                  << "\"temporalAqSupported\":" << (capabilityProbe.temporalAqSupported ? "true" : "false") << ","
+                  << "\"probeError\":\"" << capabilityProbe.error << "\"},"
+                  << "\"noCpuFallback\":true}" << std::endl;
         return 1;
     }
 }

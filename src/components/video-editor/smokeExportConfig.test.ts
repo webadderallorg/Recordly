@@ -23,6 +23,10 @@ describe("getSmokeExportConfig", () => {
 			projectPath: null,
 			quality: undefined,
 			fps: undefined,
+			videoCodec: undefined,
+			encoderPreference: undefined,
+			bitrateMode: undefined,
+			bitrateMbps: undefined,
 		});
 	});
 
@@ -45,7 +49,11 @@ describe("getSmokeExportConfig", () => {
 				"&smokeMaxPendingFrames=10" +
 				"&smokeProject=/tmp/project.recordly" +
 				"&smokeQuality=source" +
-				"&smokeFps=60",
+				"&smokeFps=60" +
+				"&smokeVideoCodec=hevc" +
+				"&smokeEncoderPreference=cpu" +
+				"&smokeBitrateMode=custom" +
+				"&smokeBitrateMbps=30",
 		);
 
 		expect(config).toEqual({
@@ -67,6 +75,10 @@ describe("getSmokeExportConfig", () => {
 			projectPath: "/tmp/project.recordly",
 			quality: "source",
 			fps: 60,
+			videoCodec: "hevc",
+			encoderPreference: "cpu",
+			bitrateMode: "custom",
+			bitrateMbps: 30,
 		});
 	});
 
@@ -84,7 +96,11 @@ describe("getSmokeExportConfig", () => {
 				"&smokeMaxDecodeQueue=-4" +
 				"&smokeMaxPendingFrames=abc" +
 				"&smokeQuality=ultra" +
-				"&smokeFps=25",
+				"&smokeFps=25" +
+				"&smokeVideoCodec=vp9" +
+				"&smokeEncoderPreference=quantum" +
+				"&smokeBitrateMode=smart" +
+				"&smokeBitrateMbps=-4",
 		);
 
 		expect(config).toMatchObject({
@@ -102,6 +118,10 @@ describe("getSmokeExportConfig", () => {
 			maxPendingFrames: undefined,
 			quality: undefined,
 			fps: undefined,
+			videoCodec: undefined,
+			encoderPreference: undefined,
+			bitrateMode: undefined,
+			bitrateMbps: undefined,
 		});
 	});
 });
@@ -109,9 +129,7 @@ describe("getSmokeExportConfig", () => {
 describe("getDevOpenRecordingConfig", () => {
 	it("reads dev-open paths independently from smoke export", () => {
 		expect(
-			getDevOpenRecordingConfig(
-				"?devOpenInput=/tmp/input.mp4&devOpenWebcam=/tmp/webcam.mp4",
-			),
+			getDevOpenRecordingConfig("?devOpenInput=/tmp/input.mp4&devOpenWebcam=/tmp/webcam.mp4"),
 		).toEqual({
 			inputPath: "/tmp/input.mp4",
 			webcamInputPath: "/tmp/webcam.mp4",

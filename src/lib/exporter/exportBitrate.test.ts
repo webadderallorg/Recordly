@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { getMp4ExportBitrate, getSourceQualityBitrate } from "./exportBitrate";
+import {
+	clampCustomBitrateMbps,
+	customBitrateMbpsToBps,
+	getMp4ExportBitrate,
+	getSourceQualityBitrate,
+	resolveExportBitrate,
+} from "./exportBitrate";
 
 describe("export bitrate policy", () => {
 	it("keeps source-quality exports at a fuller screen-recording bitrate", () => {
@@ -116,5 +122,164 @@ describe("export bitrate policy", () => {
 				useModernNativeStaticLayout: true,
 			}),
 		).toBe(72_000_000);
+	});
+});
+
+describe("export bitrate resolver", () => {
+	it("auto mode delegates identically to getMp4ExportBitrate", () => {
+		const first = {
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			quality: "source" as const,
+			encodingMode: "quality" as const,
+		};
+		expect(
+			resolveExportBitrate({
+				mode: "auto",
+				customMbps: 20,
+				...first,
+			}),
+		).toBe(getMp4ExportBitrate(first));
+
+		const second = {
+			width: 1280,
+			height: 720,
+			frameRate: 24,
+			quality: "good" as const,
+			encodingMode: "fast" as const,
+			useModernNativeStaticLayout: true,
+		};
+		expect(
+			resolveExportBitrate({
+				mode: "auto",
+				customMbps: 20,
+				...second,
+			}),
+		).toBe(getMp4ExportBitrate(second));
+	});
+
+	it("caps auto-mode HEVC bitrates at the HEVC maximum", () => {
+		const autoOptions = {
+			width: 3840,
+			height: 2160,
+			frameRate: 30,
+			quality: "source" as const,
+			encodingMode: "quality" as const,
+			useModernNativeStaticLayout: true,
+		};
+		// The uncapped auto heuristic exceeds 70 Mbps for 4K source exports.
+		expect(getMp4ExportBitrate(autoOptions)).toBe(72_000_000);
+		expect(
+			resolveExportBitrate({
+				mode: "auto",
+				customMbps: 20,
+				codec: "hevc",
+				...autoOptions,
+			}),
+		).toBe(70_000_000);
+		// h264 auto keeps the existing heuristic (no codec cap applied).
+		expect(
+			resolveExportBitrate({
+				mode: "auto",
+				customMbps: 20,
+				codec: "h264",
+				...autoOptions,
+			}),
+		).toBe(72_000_000);
+	});
+
+	it("custom mode converts Mbps to whole-number bps", () => {
+		expect(customBitrateMbpsToBps(20)).toBe(20_000_000);
+		expect(customBitrateMbpsToBps(12.5)).toBe(12_500_000);
+		expect(customBitrateMbpsToBps(200, "h264")).toBe(105_000_000);
+		expect(customBitrateMbpsToBps(200, "hevc")).toBe(70_000_000);
+	});
+
+	it("custom mode clamps to the supported range and defaults non-finite input", () => {
+		expect(
+			resolveExportBitrate({
+				mode: "custom",
+				customMbps: 0.5,
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				quality: "source",
+				encodingMode: "quality",
+			}),
+		).toBe(1_000_000);
+		expect(
+			resolveExportBitrate({
+				mode: "custom",
+				customMbps: 500,
+				codec: "h264",
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				quality: "source",
+				encodingMode: "quality",
+			}),
+		).toBe(105_000_000);
+		expect(
+			resolveExportBitrate({
+				mode: "custom",
+				customMbps: 500,
+				codec: "hevc",
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				quality: "source",
+				encodingMode: "quality",
+			}),
+		).toBe(70_000_000);
+		expect(
+			resolveExportBitrate({
+				mode: "custom",
+				customMbps: NaN,
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				quality: "source",
+				encodingMode: "quality",
+			}),
+		).toBe(20_000_000);
+		expect(
+			resolveExportBitrate({
+				mode: "custom",
+				customMbps: -5,
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				quality: "source",
+				encodingMode: "quality",
+			}),
+		).toBe(1_000_000);
+	});
+
+	it("custom mode bypasses the native static-layout floor entirely", () => {
+		expect(
+			resolveExportBitrate({
+				mode: "custom",
+				customMbps: 2,
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				quality: "source",
+				encodingMode: "quality",
+				useModernNativeStaticLayout: true,
+			}),
+		).toBe(2_000_000);
+		expect(customBitrateMbpsToBps(2)).toBe(2_000_000);
+	});
+
+	it("clampCustomBitrateMbps preserves fractional values within range", () => {
+		expect(clampCustomBitrateMbps(12.5)).toBe(12.5);
+		expect(clampCustomBitrateMbps(0.5)).toBe(1);
+		expect(clampCustomBitrateMbps(500)).toBe(200);
+		expect(clampCustomBitrateMbps(500, "h264")).toBe(105);
+		expect(clampCustomBitrateMbps(500, "hevc")).toBe(70);
+		expect(clampCustomBitrateMbps(12.5, "h264")).toBe(12.5);
+		expect(clampCustomBitrateMbps(70, "hevc")).toBe(70);
+		expect(clampCustomBitrateMbps(NaN)).toBe(20);
 	});
 });

@@ -6,12 +6,6 @@ import type { Readable, Writable } from "node:stream";
 import type { SaveDialogOptions } from "electron";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import {
-	parseCaptionSidecarPayload,
-	type CaptionSidecarPayload,
-	withCaptionSidecarMessage,
-	writeCaptionSidecarsBestEffort,
-} from "./exportCaptionSidecars";
-import {
 	closeExportStream,
 	isOwnedExportPath,
 	openExportStream,
@@ -20,9 +14,13 @@ import {
 	writeToExportStream,
 } from "../export/exportStream";
 import {
+	attachNativeVideoExportFramePort,
+	cancelInFlightCapabilityOnlyPrewarms,
+	closeNativeVideoExportFramePort,
 	enqueueNativeVideoExportFrameWrite,
 	enqueueNativeVideoExportFrameWrites,
 	exportNativeStaticLayoutVideo,
+	flushNativeVideoExportFramePortPendingRequests,
 	flushNativeVideoExportPendingWriteRequests,
 	getNativeExportCapabilities,
 	getNativeVideoExportMaxQueuedWriteBytes,
@@ -38,19 +36,29 @@ import {
 	probeNativeVideoMetadata,
 	removeTemporaryExportFile,
 	resolveNativeVideoEncoder,
+	sendNativeVideoExportFramePortError,
 	sendNativeVideoExportWriteFrameResult,
 	settleNativeVideoExportWriteFrameRequest,
 } from "../export/native-video";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
+import { formatLogTs } from "../log";
 import {
 	buildNativeH264StreamExportArgs,
 	buildNativeVideoExportArgs,
+	type ExportEncoderPreference,
+	type ExportVideoCodec,
 	getNativeVideoInputByteSize,
 	type NativeExportEncodingMode,
 	type NativeVideoExportFinishOptions,
 } from "../nativeVideoExport";
 import { isAllowedLocalReadPath, resolveApprovedLocalMediaPath } from "../project/manager";
 import { approveUserPath } from "../utils";
+import {
+	type CaptionSidecarPayload,
+	parseCaptionSidecarPayload,
+	withCaptionSidecarMessage,
+	writeCaptionSidecarsBestEffort,
+} from "./exportCaptionSidecars";
 
 function getPartialExportDestinationPath(destinationPath: string) {
 	const parsed = path.parse(destinationPath);
@@ -59,6 +67,42 @@ function getPartialExportDestinationPath(destinationPath: string) {
 }
 
 const MAX_IN_MEMORY_EXPORT_BYTES = 0x7fffffff;
+
+/**
+ * Native video export sessions that entered the finalization ("finish") phase.
+ * Marked before the finish handler awaits the write sequence so no further
+ * frame-write requests are accepted while already-accepted writes drain; the
+ * frame port is closed after the sequence settles. A WeakSet keeps the session
+ * contract in native-video.ts untouched and lets entries be collected once the
+ * session is removed from nativeVideoExportSessions.
+ */
+const finishingNativeVideoExportSessions = new WeakSet<NativeVideoExportSession>();
+
+/**
+ * Structured, timestamped route/settings summary logged at the `native-video-
+ * export-start` IPC boundary. Captures only high-level request settings (codec,
+ * encoder preference, input/mode, dimensions, frame rate) so operators can see
+ * the exact route requested before encoder resolution. Never includes media
+ * bytes, source paths, or runtime encoder names.
+ */
+function formatNativeExportRequestSettings(settings: {
+	videoCodec: ExportVideoCodec;
+	encoderPreference: ExportEncoderPreference;
+	inputMode: "rawvideo" | "h264-stream";
+	encodingMode: NativeExportEncodingMode;
+	width: number;
+	height: number;
+	frameRate: number;
+}) {
+	return (
+		`codec=${settings.videoCodec} ` +
+		`preference=${settings.encoderPreference} ` +
+		`input=${settings.inputMode} ` +
+		`mode=${settings.encodingMode} ` +
+		`${settings.width}x${settings.height} ` +
+		`fps=${settings.frameRate}`
+	);
+}
 
 function getInMemoryExportTooLargeMessage(byteLength: number) {
 	if (byteLength <= MAX_IN_MEMORY_EXPORT_BYTES) {
@@ -75,12 +119,7 @@ export async function moveExportedTempFile(tempPath: string, destinationPath: st
 		return;
 	} catch (error) {
 		const code = (error as NodeJS.ErrnoException).code;
-		if (
-			code !== "EXDEV" &&
-			code !== "EPERM" &&
-			code !== "ENOTEMPTY" &&
-			code !== "EEXIST"
-		) {
+		if (code !== "EXDEV" && code !== "EPERM" && code !== "ENOTEMPTY" && code !== "EEXIST") {
 			throw error;
 		}
 		// Cross-device or Windows permission quirks — fall back to copy + unlink so
@@ -113,9 +152,7 @@ export async function moveExportedTempFile(tempPath: string, destinationPath: st
 				await fs.rename(partialDestinationPath, destinationPath);
 			} catch (replaceError) {
 				if (movedExistingDestination) {
-					await fs
-						.rename(backupDestinationPath, destinationPath)
-						.catch(() => undefined);
+					await fs.rename(backupDestinationPath, destinationPath).catch(() => undefined);
 				}
 				throw replaceError;
 			}
@@ -194,6 +231,35 @@ async function sanitizeNativeStaticLayoutExportOptions(
 		inputPath: await resolveAllowedReadableFilePath(options.inputPath, "Native input"),
 	};
 	const mutableOptions = sanitized as unknown as Record<string, unknown>;
+	if (sanitized.overlayLayers) {
+		for (const layer of sanitized.overlayLayers) {
+			if (typeof layer.path !== "string" || layer.path.trim().length === 0) {
+				throw new Error(`Native overlay layer ${layer.id} requires a file path`);
+			}
+			layer.path = await resolveAllowedReadableFilePath(
+				layer.path,
+				`Native overlay ${layer.id}`,
+				{
+					mediaOnly: false,
+				},
+			);
+		}
+	}
+
+	if (sanitized.tiledOverlayLayers) {
+		for (const layer of sanitized.tiledOverlayLayers) {
+			if (typeof layer.payloadPath !== "string" || layer.payloadPath.trim().length === 0) {
+				throw new Error(`Native tiled overlay layer ${layer.id} requires a payload path`);
+			}
+			layer.payloadPath = await resolveAllowedReadableFilePath(
+				layer.payloadPath,
+				`Native tiled overlay payload ${layer.id}`,
+				{
+					mediaOnly: false,
+				},
+			);
+		}
+	}
 
 	for (const [field, label] of [
 		["backgroundImagePath", "Native background image"],
@@ -264,22 +330,57 @@ export function registerExportHandlers() {
 				bitrate: number;
 				encodingMode: NativeExportEncodingMode;
 				inputMode?: "rawvideo" | "h264-stream";
+				videoCodec?: ExportVideoCodec;
+				encoderPreference?: ExportEncoderPreference;
 			},
 		) => {
+			const inputMode = options.inputMode ?? "rawvideo";
+			const videoCodec = options.videoCodec ?? "h264";
+			const encoderPreference = options.encoderPreference ?? "auto";
+			let sessionId = "";
+			// Build the request summary once, before the try, so the same string is
+			// reused for the start and failure logs (formatNativeExportRequestSettings
+			// is a pure string formatter over already-normalized locals; it has no
+			// side effects that must stay inside the try).
+			const requestSettings = formatNativeExportRequestSettings({
+				videoCodec,
+				encoderPreference,
+				inputMode,
+				encodingMode: options.encodingMode,
+				width: options.width,
+				height: options.height,
+				frameRate: options.frameRate,
+			});
 			try {
 				if (options.width % 2 !== 0 || options.height % 2 !== 0) {
 					throw new Error("Native export requires even output dimensions");
 				}
 
 				const ffmpegPath = getFfmpegBinaryPath();
-				const inputMode = options.inputMode ?? "rawvideo";
-				const sessionId = `recordly-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+				sessionId = `recordly-export-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 				const outputPath = path.join(app.getPath("temp"), `${sessionId}.mp4`);
+
+				// Recommend the real route once an encoder has been resolved; the raw
+				// request line below is emitted before encoder resolution so a mismatch
+				// between the requested prewarm (e.g. hevc/hardware) and the encoder the
+				// export actually started with is immediately visible in one place.
+				console.log(
+					formatLogTs(),
+					`[native-export] Start request session=${sessionId} ${requestSettings}`,
+				);
 
 				let encoderName: string;
 				let ffmpegArgs: string[];
 
-				if (inputMode === "h264-stream") {
+				// Preserve the existing zero-copy H.264 stream-copy path for the default
+				// H.264 + Auto selection. Explicit hardware/CPU H.264, and any HEVC
+				// selection, go through the native raw-frame route.
+				const useH264StreamCopy =
+					inputMode === "h264-stream" &&
+					videoCodec === "h264" &&
+					encoderPreference === "auto";
+
+				if (useH264StreamCopy) {
 					// Pre-encoded H.264 Annex B from browser VideoEncoder — just stream-copy into MP4
 					encoderName = "h264-stream-copy";
 					ffmpegArgs = buildNativeH264StreamExportArgs({
@@ -287,8 +388,38 @@ export function registerExportHandlers() {
 						outputPath,
 					});
 				} else {
-					encoderName = await resolveNativeVideoEncoder(ffmpegPath, options.encodingMode);
+					encoderName = await resolveNativeVideoEncoder(
+						ffmpegPath,
+						options.encodingMode,
+						videoCodec,
+						encoderPreference,
+					);
 					ffmpegArgs = buildNativeVideoExportArgs(encoderName, options, outputPath);
+				}
+
+				// A capability-only prewarm child may still hold a brief NVENC probe
+				// session; cancel it before this real export opens its real encoder
+				// session so they never contend for the GPU/hardware encoder. Await
+				// the teardown so no in-flight capability probe is still running when
+				// the FFmpeg process spawns below.
+				try {
+					await cancelInFlightCapabilityOnlyPrewarms();
+				} catch (error) {
+					// Strict HEVC Hardware forbids every fallback: a prewarm that cannot
+					// be torn down must stop the export rather than let a stale NVENC
+					// probe contend with the real encoder session.
+					if (videoCodec === "hevc" && encoderPreference === "hardware") {
+						throw new Error(
+							`HEVC Hardware export requires tearing down the in-flight capability-only prewarm before opening its encoder session; prewarm teardown failed (noCpuFallback:true): ${error instanceof Error ? error.message : String(error)}`,
+						);
+					}
+					// Non-strict routes keep the prewarm best-effort: a stale capability
+					// probe must never block a compatible export.
+					console.warn(
+						formatLogTs(),
+						`[native-export] Capability-only prewarm teardown failed session=${sessionId || "unknown"} ${requestSettings}:`,
+						error,
+					);
 				}
 
 				const ffmpegProcess = spawn(ffmpegPath, ffmpegArgs, {
@@ -317,6 +448,11 @@ export function registerExportHandlers() {
 					writeSequence: Promise.resolve(),
 					sender: event.sender,
 					pendingWriteRequestIds: new Set<number>(),
+					framePort: null,
+					framePortReady: false,
+					nextFrameSequence: 0,
+					pendingFrameRequests: new Map(),
+					highestAcceptedFrameRequestId: -1,
 					completionPromise: new Promise<void>((resolve, reject) => {
 						ffmpegProcess.once("error", (error) => {
 							const processError =
@@ -340,6 +476,11 @@ export function registerExportHandlers() {
 							}
 
 							session.stdinError = stdinError;
+							flushNativeVideoExportFramePortPendingRequests(
+								sessionId,
+								session,
+								getNativeVideoExportSessionError(session, stdinError.message),
+							);
 						});
 						ffmpegProcess.once("close", (code, signal) => {
 							if (session.terminating) {
@@ -363,7 +504,17 @@ export function registerExportHandlers() {
 						});
 					}),
 				};
-				void session.completionPromise.catch(() => undefined);
+				void session.completionPromise.catch((error: unknown) => {
+					const processError = error instanceof Error ? error : new Error(String(error));
+					if (!session.processError) {
+						session.processError = processError;
+					}
+					flushNativeVideoExportFramePortPendingRequests(
+						sessionId,
+						session,
+						getNativeVideoExportSessionError(session, processError.message),
+					);
+				});
 
 				ffmpegProcess.stderr.on("data", (chunk: Buffer) => {
 					session.stderrOutput += chunk.toString();
@@ -372,7 +523,8 @@ export function registerExportHandlers() {
 				nativeVideoExportSessions.set(sessionId, session);
 
 				console.log(
-					`[native-export] Started ${isHardwareAcceleratedVideoEncoder(encoderName) ? "hardware" : "software"} session ${sessionId} with ${encoderName}`,
+					formatLogTs(),
+					`[native-export] Started ${isHardwareAcceleratedVideoEncoder(encoderName) ? "hardware" : "software"} session=${sessionId} encoder=${encoderName} route=${useH264StreamCopy ? "h264-stream-copy" : "native-raw"} ${requestSettings}`,
 				);
 
 				return {
@@ -382,7 +534,8 @@ export function registerExportHandlers() {
 				};
 			} catch (error) {
 				console.error(
-					"[native-export] Failed to start native video export session:",
+					formatLogTs(),
+					`[native-export] Failed to start native video export session session=${sessionId || "unknown"} ${requestSettings}:`,
 					error,
 				);
 				return {
@@ -412,7 +565,7 @@ export function registerExportHandlers() {
 				metadata,
 			};
 		} catch (error) {
-			console.warn("[probe-native-video-metadata] Failed:", error);
+			console.warn(formatLogTs(), "[probe-native-video-metadata] Failed:", error);
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : String(error),
@@ -427,7 +580,7 @@ export function registerExportHandlers() {
 				capabilities: await getNativeExportCapabilities(),
 			};
 		} catch (error) {
-			console.warn("[native-export-capabilities] Failed:", error);
+			console.warn(formatLogTs(), "[native-export-capabilities] Failed:", error);
 			return {
 				success: false,
 				error: error instanceof Error ? error.message : String(error),
@@ -460,18 +613,19 @@ export function registerExportHandlers() {
 				return {
 					success: true,
 					tempPath: result.outputPath,
+					videoCodec: result.videoCodec,
+					encoderPreference: result.encoderPreference,
+					route: result.route,
 					encoderName:
 						primaryBackend === "nvidia-cuda-compositor"
 							? "nvidia-cuda-compositor"
 							: primaryBackend === "windows-d3d11-compositor"
 								? "windows-d3d11-compositor"
-								: result.metrics.chunkCount > 1
-									? "chunked-h264-nvenc"
-									: "static-layout-h264-nvenc",
+								: result.encoderName,
 					metrics: result.metrics,
 				};
 			} catch (error) {
-				console.warn("[native-static-layout-export] Failed:", error);
+				console.warn(formatLogTs(), "[native-static-layout-export] Failed:", error);
 				return {
 					success: false,
 					error: error instanceof Error ? error.message : String(error),
@@ -494,6 +648,36 @@ export function registerExportHandlers() {
 		}
 
 		return { success: true };
+	});
+
+	ipcMain.on("native-video-export-frame-channel", (event, payload: { sessionId?: string }) => {
+		const port = event.ports[0];
+		const sessionId = typeof payload?.sessionId === "string" ? payload.sessionId : "";
+		if (!port) {
+			return;
+		}
+
+		const session = nativeVideoExportSessions.get(sessionId);
+		if (!session) {
+			sendNativeVideoExportFramePortError(port, sessionId, "Invalid native export session", {
+				fallbackAvailable: true,
+			});
+			port.close();
+			return;
+		}
+
+		if (finishingNativeVideoExportSessions.has(session)) {
+			sendNativeVideoExportFramePortError(
+				port,
+				sessionId,
+				"Native video export session is finishing; no more frames are accepted",
+				{ fallbackAvailable: false },
+			);
+			port.close();
+			return;
+		}
+
+		attachNativeVideoExportFramePort(sessionId, session, port, event.sender);
 	});
 
 	ipcMain.on(
@@ -535,6 +719,14 @@ export function registerExportHandlers() {
 				settleNativeVideoExportWriteFrameRequest(sessionId, session, requestId, {
 					success: false,
 					error: "Native video export session was cancelled",
+				});
+				return;
+			}
+
+			if (finishingNativeVideoExportSessions.has(session)) {
+				settleNativeVideoExportWriteFrameRequest(sessionId, session, requestId, {
+					success: false,
+					error: "Native video export session is finishing; no more frames are accepted",
 				});
 				return;
 			}
@@ -607,6 +799,14 @@ export function registerExportHandlers() {
 				return;
 			}
 
+			if (finishingNativeVideoExportSessions.has(session)) {
+				settleNativeVideoExportWriteFrameRequest(sessionId, session, requestId, {
+					success: false,
+					error: "Native video export session is finishing; no more frames are accepted",
+				});
+				return;
+			}
+
 			if (
 				session.inputMode !== "h264-stream" &&
 				frameData.byteLength !== session.inputByteSize
@@ -645,6 +845,10 @@ export function registerExportHandlers() {
 				return { success: false, error: "Invalid native export session" };
 			}
 
+			// Enter the finalization phase before settling the write sequence so
+			// subsequent frame-write requests are rejected while already-accepted
+			// writes drain; the frame port is closed after the sequence settles.
+			finishingNativeVideoExportSessions.add(session);
 			try {
 				await session.writeSequence;
 				if (
@@ -658,6 +862,11 @@ export function registerExportHandlers() {
 				const finalized = await muxNativeVideoExportAudio(
 					session.outputPath,
 					options ?? {},
+				);
+				closeNativeVideoExportFramePort(
+					sessionId,
+					session,
+					"Native video export session finished",
 				);
 				nativeVideoExportSessions.delete(sessionId);
 				// Register the finalized path so only app-produced paths can flow back
@@ -680,6 +889,7 @@ export function registerExportHandlers() {
 					metrics: finalized.metrics,
 				};
 			} catch (error) {
+				closeNativeVideoExportFramePort(sessionId, session, String(error));
 				flushNativeVideoExportPendingWriteRequests(sessionId, session, String(error));
 				nativeVideoExportSessions.delete(sessionId);
 				await removeTemporaryExportFile(session.outputPath);
@@ -805,6 +1015,11 @@ export function registerExportHandlers() {
 
 		session.terminating = true;
 		nativeVideoExportSessions.delete(sessionId);
+		closeNativeVideoExportFramePort(
+			sessionId,
+			session,
+			"Native video export session was cancelled",
+		);
 		flushNativeVideoExportPendingWriteRequests(
 			sessionId,
 			session,

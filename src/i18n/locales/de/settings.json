@@ -232,6 +232,49 @@
 			"high": "Hoch",
             "original": "Original"
         },
+		"codecTitle": "Videocodec",
+		"codec": {
+			"h264": "H.264",
+			"hevc": "H.265"
+		},
+		"encoderTitle": "Encoder",
+		"encoder": {
+			"auto": "Automatisch",
+			"hardware": "Hardware",
+			"cpu": "CPU"
+		},
+		"bitrateTitle": "Bitrate",
+		"bitrate": {
+			"auto": "Automatisch",
+			"custom": "Benutzerdefiniert",
+			"mbpsInput": "Benutzerdefinierte Bitrate in Mbit/s",
+			"range": "1–105 Mbit/s (H.264) · 1–70 Mbit/s (HEVC)"
+		},
+		"hevcHint": "HEVC (H.265) erzeugt kleinere Dateien, wird aber möglicherweise nicht von älteren oder Web-Playern unterstützt. Die Vorschauwiedergabe in Recordly bleibt unverändert.",
+		"hardwareUnavailable": "Kein nutzbarer Hardware-Encoder gefunden. Wählen Sie CPU oder Auto, oder aktualisieren Sie den GPU-Treiber.",
+		"errors": {
+			"hardwareUnavailable": "Kein nutzbarer Hardware-Encoder gefunden. Wählen Sie CPU oder Auto, oder aktualisieren Sie den GPU-Treiber."
+		},
+		"backend": {
+			"auto": "Automatisch"
+		},
+		"nvidiaCuda": {
+			"compositorTitle": "NVIDIA-CUDA-Compositor",
+			"backendLabel": "Backend",
+			"backendSelected": "NVIDIA-CUDA-Compositor",
+			"availableBadge": "Verfügbar",
+			"selectedBadge": "Ausgewählt",
+			"requiredBadge": "Erforderlich",
+			"unavailableBadge": "Nicht verfügbar",
+			"toggle": "NVIDIA-CUDA-Compositor für GPU-beschleunigte Exporte verwenden",
+			"requiredToggle": "Der NVIDIA-CUDA-Compositor ist für H.265-Hardware-Exporte erforderlich",
+			"hint": "Komposition und Encoding auf der NVIDIA-GPU für schnelle Exporte.",
+			"hintSelected": "Exporte verwenden auf diesem Gerät den NVIDIA-CUDA-Compositor.",
+			"hintRequired": "H.265-Hardware-Exporte verwenden den NVIDIA-CUDA-Compositor und fallen nie auf Renderer-Frames zurück.",
+			"unavailableReason": "CUDA-Compositor nicht verfügbar ({{reason}}).",
+			"unavailableGeneric": "CUDA-Compositor auf diesem Gerät nicht verfügbar.",
+			"unavailableRequired": "H.265- und Hardware-Exporte schlagen fehl, bis der CUDA-Compositor verfügbar ist. NVIDIA-Treiber installieren oder aktualisieren oder Encoder auf Auto umstellen."
+		},
         "fpsTitle": "FPS",
         "loop": "Wiederholen",
         "outputDimensions": "Ausgabe: {{dimensions}}px",

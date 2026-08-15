@@ -1,7 +1,53 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { RecordingSessionData } from "./ipc/types";
 
-type NativeVideoExportWriteResult = { success: boolean; error?: string };
+type NativeVideoExportWriteResult = {
+	success: boolean;
+	error?: string;
+	fallbackAvailable?: boolean;
+};
+type NativeVideoExportFrameChannelResult = NativeVideoExportWriteResult;
+type NativeVideoExportFramePortResponse =
+	| {
+			type: "ready";
+			protocol: 1;
+			sessionId: string;
+			transferable: true;
+			transferProbe: ArrayBuffer;
+	  }
+	| {
+			type: "ack";
+			protocol: 1;
+			sessionId: string;
+			requestId: number;
+			sequence: number;
+			success: true;
+	  }
+	| {
+			type: "error";
+			protocol: 1;
+			sessionId: string;
+			requestId?: number;
+			sequence?: number;
+			success: false;
+			error: string;
+			fallbackAvailable: boolean;
+	  };
+type NativeVideoExportFrameChannelState = {
+	sessionId: string;
+	port: MessagePort;
+	nextSequence: number;
+	pending: Map<
+		number,
+		{ sequence: number; resolve: (result: NativeVideoExportWriteResult) => void }
+	>;
+	ready: Promise<void>;
+	resolveReady: () => void;
+	rejectReady: (error: Error) => void;
+	readySettled: boolean;
+	closed: boolean;
+	handshakeTimeout: ReturnType<typeof setTimeout>;
+};
 type NativeVideoAudioMuxMetrics = {
 	tempVideoWriteMs?: number;
 	tempEditedAudioWriteMs?: number;
@@ -56,6 +102,35 @@ type NativeStaticLayoutChunkMetric = {
 	outputBytes: number;
 	fallbackReason?: string;
 	windowsGpuSummary?: WindowsGpuExportSummary;
+	nvidiaCudaSummary?: {
+		success?: boolean;
+		outputCodec?: "h264" | "hevc";
+	};
+};
+type NativeTiledOverlayTileRecord = {
+	tileIndex: number;
+	byteOffset: number;
+	byteLength: number;
+};
+type NativeTiledOverlayLayerDescriptor = {
+	id: string;
+	order: number;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	frameRate: number;
+	durationSec: number;
+	frameCount: number;
+	tileSize: 128;
+	pixelFormat: "rgba";
+	payloadPath: string;
+	payloadByteLength: number;
+	staticTiles: readonly NativeTiledOverlayTileRecord[];
+	frameDeltas: readonly {
+		frameIndex: number;
+		changedTiles: readonly NativeTiledOverlayTileRecord[];
+	}[];
 };
 type NativeStaticLayoutMetrics = NativeVideoAudioMuxMetrics & {
 	chunkCount: number;
@@ -66,6 +141,15 @@ type NativeStaticLayoutMetrics = NativeVideoAudioMuxMetrics & {
 	fallbackChunkCount: number;
 	videoOnlyBytes?: number;
 	chunks: NativeStaticLayoutChunkMetric[];
+	tiledOverlayLayers?: number;
+	tiledOverlayBlendFrames?: number;
+	changedTileCount?: number;
+	uploadedTileBytes?: number;
+	cachedTileCount?: number;
+	rawFallbackReason?: string;
+	overlayHostReadMs?: number;
+	overlayH2DEnqueueMs?: number;
+	overlayCacheHits?: number;
 };
 type NativeStaticLayoutProgress = {
 	sessionId?: string;
@@ -73,6 +157,8 @@ type NativeStaticLayoutProgress = {
 	stage?: "preparing" | "finalizing";
 	elapsedMs?: number;
 	averageFps?: number;
+	estimatedFps?: number;
+	fpsSource?: "native" | "estimated";
 	currentFrame: number;
 	totalFrames: number;
 	percentage: number;
@@ -113,6 +199,7 @@ const nativeVideoExportWriteRequests = new Map<
 
 let nextNativeVideoExportWriteRequestId = 1;
 let nativeVideoExportWriteResultListenerAttached = false;
+const nativeVideoExportFrameChannels = new Map<string, NativeVideoExportFrameChannelState>();
 
 function ensureNativeVideoExportWriteResultListener() {
 	if (nativeVideoExportWriteResultListenerAttached) {
@@ -160,6 +247,309 @@ function settleNativeVideoExportPendingRequests(
 
 		nativeVideoExportWriteRequests.delete(requestId);
 		pendingRequest.resolve(result);
+	}
+}
+
+function writeNativeVideoExportFramesLegacy(
+	sessionId: string,
+	frameDataList: Uint8Array[],
+): Promise<NativeVideoExportWriteResult> {
+	ensureNativeVideoExportWriteResultListener();
+
+	return new Promise<NativeVideoExportWriteResult>((resolve) => {
+		const requestId = nextNativeVideoExportWriteRequestId++;
+		nativeVideoExportWriteRequests.set(requestId, {
+			sessionId,
+			resolve,
+		});
+
+		ipcRenderer.send("native-video-export-write-frames-async", {
+			sessionId,
+			requestId,
+			frameDataList,
+		});
+	});
+}
+
+function isArrayBuffer(value: unknown): value is ArrayBuffer {
+	return value instanceof ArrayBuffer;
+}
+
+function isNativeVideoExportFramePortResponse(
+	value: unknown,
+): value is NativeVideoExportFramePortResponse {
+	if (!value || typeof value !== "object") {
+		return false;
+	}
+
+	const payload = value as Record<string, unknown>;
+	return payload.protocol === 1 && typeof payload.type === "string";
+}
+
+function settleNativeVideoExportFrameChannelState(
+	state: NativeVideoExportFrameChannelState,
+	error: string,
+) {
+	if (state.closed) {
+		return;
+	}
+
+	state.closed = true;
+	clearTimeout(state.handshakeTimeout);
+	if (!state.readySettled) {
+		state.readySettled = true;
+		state.rejectReady(new Error(error));
+	}
+	for (const pendingRequest of state.pending.values()) {
+		pendingRequest.resolve({ success: false, error });
+	}
+	state.pending.clear();
+	if (nativeVideoExportFrameChannels.get(state.sessionId) === state) {
+		nativeVideoExportFrameChannels.delete(state.sessionId);
+	}
+	try {
+		state.port.close();
+	} catch {
+		// The main process may already have closed the port.
+	}
+}
+
+function handleNativeVideoExportFramePortResponse(
+	state: NativeVideoExportFrameChannelState,
+	value: unknown,
+) {
+	if (!isNativeVideoExportFramePortResponse(value) || value.sessionId !== state.sessionId) {
+		return;
+	}
+
+	if (value.type === "ready") {
+		if (
+			value.transferable !== true ||
+			!isArrayBuffer(value.transferProbe) ||
+			value.transferProbe.byteLength !== 1 ||
+			state.readySettled
+		) {
+			settleNativeVideoExportFrameChannelState(
+				state,
+				"Native export frame channel returned an invalid handshake",
+			);
+			return;
+		}
+		state.readySettled = true;
+		state.resolveReady();
+		return;
+	}
+
+	if (value.type === "ack") {
+		const pendingRequest = state.pending.get(value.requestId);
+		if (!pendingRequest) {
+			return;
+		}
+		state.pending.delete(value.requestId);
+		pendingRequest.resolve(
+			value.sequence === pendingRequest.sequence
+				? { success: true }
+				: {
+						success: false,
+						error: "Native export frame acknowledgement sequence mismatch",
+					},
+		);
+		return;
+	}
+
+	if (value.type === "error") {
+		if (typeof value.requestId === "number") {
+			const pendingRequest = state.pending.get(value.requestId);
+			if (!pendingRequest) {
+				return;
+			}
+			state.pending.delete(value.requestId);
+			pendingRequest.resolve({
+				success: false,
+				error: value.error,
+				fallbackAvailable: value.fallbackAvailable,
+			});
+			return;
+		}
+		settleNativeVideoExportFrameChannelState(state, value.error);
+	}
+}
+
+function openNativeVideoExportFrameChannel(
+	sessionId: string,
+): Promise<NativeVideoExportFrameChannelResult> {
+	const existing = nativeVideoExportFrameChannels.get(sessionId);
+	if (existing) {
+		return existing.ready
+			.then(() => ({ success: true }))
+			.catch((error: unknown) => ({
+				success: false,
+				error: error instanceof Error ? error.message : String(error),
+				fallbackAvailable: true,
+			}));
+	}
+
+	if (typeof MessageChannel === "undefined" || typeof ipcRenderer.postMessage !== "function") {
+		return Promise.resolve({
+			success: false,
+			error: "Native export transferable frame channels are unavailable",
+			fallbackAvailable: true,
+		});
+	}
+
+	let channel: MessageChannel;
+	try {
+		channel = new MessageChannel();
+	} catch (error) {
+		return Promise.resolve({
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+			fallbackAvailable: true,
+		});
+	}
+
+	let resolveReady!: () => void;
+	let rejectReady!: (error: Error) => void;
+	const ready = new Promise<void>((resolve, reject) => {
+		resolveReady = resolve;
+		rejectReady = reject;
+	});
+	const state: NativeVideoExportFrameChannelState = {
+		sessionId,
+		port: channel.port1,
+		nextSequence: 0,
+		pending: new Map(),
+		ready,
+		resolveReady,
+		rejectReady,
+		readySettled: false,
+		closed: false,
+		handshakeTimeout: setTimeout(() => {
+			settleNativeVideoExportFrameChannelState(
+				state,
+				"Native export frame channel handshake timed out",
+			);
+		}, 2_000),
+	};
+	nativeVideoExportFrameChannels.set(sessionId, state);
+	channel.port1.onmessage = (event: MessageEvent<unknown>) => {
+		handleNativeVideoExportFramePortResponse(state, event.data);
+	};
+	channel.port1.onmessageerror = () => {
+		settleNativeVideoExportFrameChannelState(
+			state,
+			"Native export frame channel delivery failed",
+		);
+	};
+	channel.port1.start();
+
+	try {
+		ipcRenderer.postMessage("native-video-export-frame-channel", { sessionId }, [
+			channel.port2,
+		]);
+		const capabilityProbe = new ArrayBuffer(1);
+		channel.port1.postMessage(
+			{
+				type: "hello",
+				protocol: 1,
+				sessionId,
+				capabilityProbe,
+			},
+			[capabilityProbe],
+		);
+		if (capabilityProbe.byteLength !== 0) {
+			settleNativeVideoExportFrameChannelState(
+				state,
+				"Native export transferable ArrayBuffer delivery is unavailable",
+			);
+		}
+	} catch (error) {
+		settleNativeVideoExportFrameChannelState(
+			state,
+			error instanceof Error ? error.message : String(error),
+		);
+	}
+
+	return ready
+		.then(() => ({ success: true }))
+		.catch((error: unknown) => ({
+			success: false,
+			error: error instanceof Error ? error.message : String(error),
+			fallbackAvailable: true,
+		}));
+}
+
+function getNativeVideoExportTransferBuffer(frameData: Uint8Array): ArrayBuffer {
+	if (
+		frameData.buffer instanceof ArrayBuffer &&
+		frameData.byteOffset === 0 &&
+		frameData.byteLength === frameData.buffer.byteLength
+	) {
+		return frameData.buffer;
+	}
+	return frameData.slice().buffer as ArrayBuffer;
+}
+
+async function writeNativeVideoExportFramesViaChannel(
+	sessionId: string,
+	frameDataList: Uint8Array[],
+): Promise<NativeVideoExportWriteResult> {
+	const state = nativeVideoExportFrameChannels.get(sessionId);
+	if (!state) {
+		return writeNativeVideoExportFramesLegacy(sessionId, frameDataList);
+	}
+
+	try {
+		await state.ready;
+	} catch {
+		return writeNativeVideoExportFramesLegacy(sessionId, frameDataList);
+	}
+
+	const acknowledgements: Array<Promise<NativeVideoExportWriteResult>> = [];
+	let postedFrameCount = 0;
+	for (const frameData of frameDataList) {
+		const requestId = nextNativeVideoExportWriteRequestId++;
+		const sequence = state.nextSequence++;
+		const frame = getNativeVideoExportTransferBuffer(frameData);
+		const acknowledgement = new Promise<NativeVideoExportWriteResult>((resolve) => {
+			state.pending.set(requestId, { sequence, resolve });
+		});
+		acknowledgements.push(acknowledgement);
+		try {
+			state.port.postMessage(
+				{
+					type: "frame",
+					protocol: 1,
+					sessionId,
+					requestId,
+					sequence,
+					frame,
+				},
+				[frame],
+			);
+			postedFrameCount += 1;
+			if (frame.byteLength !== 0) {
+				throw new Error("Native export transferable ArrayBuffer delivery is unavailable");
+			}
+		} catch (error) {
+			state.pending.delete(requestId);
+			const message = error instanceof Error ? error.message : String(error);
+			settleNativeVideoExportFrameChannelState(state, message);
+			if (postedFrameCount === 0) {
+				return writeNativeVideoExportFramesLegacy(sessionId, frameDataList);
+			}
+			return { success: false, error: message, fallbackAvailable: false };
+		}
+	}
+
+	const results = await Promise.all(acknowledgements);
+	return results.find((result) => !result.success) ?? { success: true };
+}
+
+function closeNativeVideoExportFrameChannel(sessionId: string, error: string) {
+	const state = nativeVideoExportFrameChannels.get(sessionId);
+	if (state) {
+		settleNativeVideoExportFrameChannelState(state, error);
 	}
 }
 
@@ -223,12 +613,28 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	nativeStaticLayoutExport: (options: {
 		sessionId?: string;
 		inputPath: string;
+		videoCodec?: "h264" | "hevc";
+		encoderPreference?: "auto" | "hardware" | "cpu";
 		width: number;
 		height: number;
 		frameRate: number;
 		bitrate: number;
 		encodingMode: "fast" | "balanced" | "quality";
 		durationSec: number;
+		overlayLayers?: Array<{
+			id: string;
+			order: number;
+			path: string;
+			x: number;
+			y: number;
+			width: number;
+			height: number;
+			frameRate: number;
+			durationSec: number;
+			frameCount: number;
+			pixelFormat: "rgba";
+		}>;
+		tiledOverlayLayers?: NativeTiledOverlayLayerDescriptor[];
 		contentWidth: number;
 		contentHeight: number;
 		offsetX: number;
@@ -270,7 +676,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			anchorY: number;
 			aspectRatio: number;
 		}>;
-		zoomTelemetry?: Array<{ timeMs: number; scale: number; x: number; y: number }>;
+		zoomTelemetry?: Array<{
+			timeMs: number;
+			scale: number;
+			x: number;
+			y: number;
+			blurStrength?: number;
+			blurCenterX?: number;
+			blurCenterY?: number;
+		}>;
 		timelineSegments?: Array<{
 			sourceStartMs: number;
 			sourceEndMs: number;
@@ -297,6 +711,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		return ipcRenderer.invoke("native-static-layout-export", options) as Promise<{
 			success: boolean;
 			tempPath?: string;
+			videoCodec?: "h264" | "hevc";
+			encoderPreference?: "auto" | "hardware" | "cpu";
+			route?:
+				| "cuda-overlay"
+				| "cuda-scale-cpu-pad"
+				| "cuda-static-composite"
+				| "nvidia-cuda-compositor"
+				| "windows-d3d11-compositor";
 			encoderName?: string;
 			error?: string;
 			metrics?: NativeStaticLayoutMetrics;
@@ -322,10 +744,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		bitrate: number;
 		encodingMode: "fast" | "balanced" | "quality";
 		inputMode?: "rawvideo" | "h264-stream";
+		videoCodec?: "h264" | "hevc";
+		encoderPreference?: "auto" | "hardware" | "cpu";
 	}) => {
 		return ipcRenderer.invoke("native-video-export-start", options);
 	},
+	nativeVideoExportOpenFrameChannel: (sessionId: string) =>
+		openNativeVideoExportFrameChannel(sessionId),
+	nativeVideoExportWriteFrameViaChannel: (sessionId: string, frameData: Uint8Array) =>
+		writeNativeVideoExportFramesViaChannel(sessionId, [frameData]),
+	nativeVideoExportWriteFramesViaChannel: (sessionId: string, frameDataList: Uint8Array[]) =>
+		writeNativeVideoExportFramesViaChannel(sessionId, frameDataList),
 	nativeVideoExportWriteFrame: (sessionId: string, frameData: Uint8Array) => {
+		if (nativeVideoExportFrameChannels.has(sessionId)) {
+			return writeNativeVideoExportFramesViaChannel(sessionId, [frameData]);
+		}
 		ensureNativeVideoExportWriteResultListener();
 
 		return new Promise<NativeVideoExportWriteResult>((resolve) => {
@@ -343,6 +776,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		});
 	},
 	nativeVideoExportWriteFrames: (sessionId: string, frameDataList: Uint8Array[]) => {
+		if (nativeVideoExportFrameChannels.has(sessionId)) {
+			return writeNativeVideoExportFramesViaChannel(sessionId, frameDataList);
+		}
 		ensureNativeVideoExportWriteResultListener();
 
 		return new Promise<NativeVideoExportWriteResult>((resolve) => {
@@ -390,7 +826,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
 							},
 				);
 
+				closeNativeVideoExportFrameChannel(
+					sessionId,
+					result?.success
+						? "Native video export session finished"
+						: "Native video export session failed",
+				);
 				return result;
+			})
+			.catch((error: unknown) => {
+				closeNativeVideoExportFrameChannel(
+					sessionId,
+					"Native video export finish request failed",
+				);
+				throw error;
 			}) as Promise<{
 			success: boolean;
 			data?: Uint8Array;
@@ -401,6 +850,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	nativeVideoExportCancel: (sessionId: string) => {
 		return ipcRenderer.invoke("native-video-export-cancel", sessionId).finally(() => {
+			closeNativeVideoExportFrameChannel(
+				sessionId,
+				"Native video export session was cancelled",
+			);
 			settleNativeVideoExportPendingRequests(sessionId, {
 				success: false,
 				error: "Native video export session was cancelled",
@@ -765,7 +1218,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	getLocalMediaUrl: (filePath: string) => {
 		return ipcRenderer.invoke("get-local-media-url", filePath) as Promise<
-			{ success: true; url: string } | { success: false }
+			{ success: true; url: string; pending?: boolean } | { success: false }
 		>;
 	},
 	saveProjectFile: (

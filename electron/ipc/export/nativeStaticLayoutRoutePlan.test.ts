@@ -46,7 +46,7 @@ describe("planNativeStaticLayoutRoutes", () => {
 				d3d11: d3d11Probe,
 				source,
 			}),
-		).toEqual({
+		).toMatchObject({
 			selectedRoute: "nvidia-cuda-compositor",
 			decisions: [
 				{
@@ -124,7 +124,7 @@ describe("planNativeStaticLayoutRoutes", () => {
 				d3d11,
 				source,
 			}),
-		).toEqual({
+		).toMatchObject({
 			selectedRoute: "ffmpeg-static-layout",
 			decisions: [
 				{
@@ -147,6 +147,130 @@ describe("planNativeStaticLayoutRoutes", () => {
 			d3d11,
 			source,
 		});
+	});
+
+	it("routes HEVC only through NVIDIA CUDA", () => {
+		const plan = planNativeStaticLayoutRoutes({
+			videoCodec: "hevc",
+			encoderPreference: "auto",
+			cuda: cudaProbe,
+			d3d11: d3d11Probe,
+			source,
+		});
+
+		expect(plan.selectedRoute).toBe("nvidia-cuda-compositor");
+		expect(plan.videoCodec).toBe("hevc");
+		expect(plan.encoderPreference).toBe("auto");
+		expect(plan.decisions).toEqual(
+			expect.arrayContaining([
+				{
+					route: "windows-d3d11-compositor",
+					status: "rejected",
+					reasons: ["hevc-requires-nvidia-cuda-compositor"],
+				},
+				{
+					route: "ffmpeg-static-layout",
+					status: "rejected",
+					reasons: ["hevc-requires-nvidia-cuda-compositor"],
+				},
+			]),
+		);
+	});
+
+	it("keeps the strict no-CPU-fallback flag on HEVC Hardware post-route failures", () => {
+		const plan = planNativeStaticLayoutRoutes({
+			videoCodec: "hevc",
+			encoderPreference: "hardware",
+			cuda: cudaProbe,
+			d3d11: d3d11Probe,
+			source,
+		});
+
+		// Route is selected (CUDA available), but if it fails after planning the
+		// plan must still forbid CPU/rawvideo/Breeze fallback.
+		expect(plan.selectedRoute).toBe("nvidia-cuda-compositor");
+		expect(plan.noCpuFallback).toBe(true);
+		expect(plan.fallbackRoute).toBe("hard-fail");
+		expect(plan.fallbackReason).toBe("hevc-hardware-route-failed");
+	});
+
+	it("keeps the HEVC Auto selected plan non-strict for post-route failures", () => {
+		const plan = planNativeStaticLayoutRoutes({
+			videoCodec: "hevc",
+			encoderPreference: "auto",
+			cuda: cudaProbe,
+			d3d11: d3d11Probe,
+			source,
+		});
+
+		expect(plan.selectedRoute).toBe("nvidia-cuda-compositor");
+		expect(plan.noCpuFallback).toBe(false);
+		expect(plan.fallbackRoute).toBeNull();
+		expect(plan.fallbackReason).toBeNull();
+	});
+
+	it("hard-fails when HEVC CUDA is unavailable and Hardware is strict", () => {
+		const plan = planNativeStaticLayoutRoutes({
+			videoCodec: "hevc",
+			encoderPreference: "hardware",
+			cuda: { ...cudaProbe, skipReason: "nvidia-gpu-unavailable" },
+			d3d11: d3d11Probe,
+			source,
+		});
+
+		expect(plan.selectedRoute).toBeNull();
+		expect(plan.fallbackRoute).toBe("hard-fail");
+		expect(plan.noCpuFallback).toBe(true);
+		expect(plan.fallbackReason).toBe("hevc-hardware-route-unavailable:nvidia-gpu-unavailable");
+		expect(plan.decisions).toEqual(
+			expect.arrayContaining([
+				{
+					route: "nvidia-cuda-compositor",
+					status: "rejected",
+					reasons: ["nvidia-gpu-unavailable"],
+				},
+				{
+					route: "windows-d3d11-compositor",
+					status: "rejected",
+					reasons: ["hevc-requires-nvidia-cuda-compositor"],
+				},
+				{
+					route: "ffmpeg-static-layout",
+					status: "rejected",
+					reasons: ["hevc-requires-nvidia-cuda-compositor"],
+				},
+			]),
+		);
+	});
+
+	it("keeps HEVC Auto rawvideo fallback non-strict", () => {
+		const plan = planNativeStaticLayoutRoutes({
+			videoCodec: "hevc",
+			encoderPreference: "auto",
+			cuda: { ...cudaProbe, skipReason: "nvidia-gpu-unavailable" },
+			d3d11: d3d11Probe,
+			source,
+		});
+
+		expect(plan.selectedRoute).toBeNull();
+		expect(plan.fallbackRoute).toBe("native-rawvideo");
+		expect(plan.noCpuFallback).toBe(false);
+		expect(plan.fallbackReason).toBe("hevc-cuda-unavailable:nvidia-gpu-unavailable");
+	});
+
+	it("keeps CPU preference out of every GPU route", () => {
+		const plan = planNativeStaticLayoutRoutes({
+			videoCodec: "h264",
+			encoderPreference: "cpu",
+			cuda: cudaProbe,
+			d3d11: d3d11Probe,
+			source,
+		});
+
+		expect(plan.selectedRoute).toBeNull();
+		expect(plan.fallbackRoute).toBe("native-rawvideo");
+		expect(plan.fallbackReason).toBe("encoder-preference-cpu-requires-native-rawvideo");
+		expect(plan.decisions.every((decision) => decision.status === "rejected")).toBe(true);
 	});
 
 	it("preserves proxy source metadata for route diagnostics", () => {

@@ -48,18 +48,14 @@ function resolveToolCommand(envNames, moduleName, fallbackName) {
 const ffmpegCommand = resolveToolCommand(["RECORDLY_FFMPEG_EXE"], "ffmpeg-static", "ffmpeg");
 const ffprobeCommand = resolveToolCommand(["RECORDLY_FFPROBE_EXE"], "ffprobe-static", "ffprobe");
 
-const cursorTypes = [
-	"arrow",
-	"text",
-	"pointer",
-	"crosshair",
-	"open-hand",
-	"closed-hand",
-	"resize-ew",
-	"resize-ns",
-	"not-allowed",
-];
-const cursorTypeIndexes = new Map(cursorTypes.map((type, index) => [type, index]));
+import { parseCursorTelemetrySamples, writeCursorSamplesFile } from "./cursorTelemetry.mjs";
+import { readOverlayManifest, sortOverlayLayersByOrder } from "./overlayManifest.mjs";
+import { shouldProbeSourcePts } from "./sourcePtsPlan.mjs";
+import {
+	readTiledOverlayManifest,
+	resolveTiledOverlayLayerMetrics,
+	resolveTiledOverlayRawFallbackReason,
+} from "./tiledOverlayManifest.mjs";
 
 function fail(message) {
 	throw new Error(message);
@@ -284,6 +280,7 @@ function emitPreparationProgress(totalFrames, percentage, stage) {
 	const progressStage = stage ?? "preparing";
 	const finalizing = progressStage === "finalizing";
 	const payload = {
+		outputCodec,
 		currentFrame: finalizing ? Math.max(1, Math.floor(totalFrames)) : 0,
 		totalFrames: Math.max(1, Math.floor(totalFrames)),
 		percentage: Number(Math.min(99, Math.max(0, percentage)).toFixed(2)),
@@ -449,69 +446,6 @@ function summarizeGpuSamples(samples) {
 		summary.clockThrottleReasonCounts = throttleReasonCounts;
 	}
 	return summary;
-}
-
-function cursorBounceScale(interactionType, ageMs, durationMs = 180) {
-	if (!["click", "double-click", "right-click", "middle-click"].includes(interactionType)) {
-		return 1;
-	}
-	if (ageMs < 0 || ageMs > durationMs) {
-		return 1;
-	}
-	const progress = 1 - ageMs / durationMs;
-	return Math.max(0.72, 1 - Math.sin(progress * Math.PI) * 0.08);
-}
-
-function latestClickSample(samples, sampleIndex) {
-	for (let index = sampleIndex; index >= 0; index -= 1) {
-		const sample = samples[index];
-		if (
-			["click", "double-click", "right-click", "middle-click"].includes(
-				sample?.interactionType,
-			)
-		) {
-			return sample;
-		}
-	}
-	return null;
-}
-
-function writeCursorSamples(cursorPayload, outputPath) {
-	const samples = Array.isArray(cursorPayload.samples) ? cursorPayload.samples : [];
-	const cursorLines = samples
-		.map((sample, index) => {
-			if (
-				!Number.isFinite(sample?.timeMs) ||
-				!Number.isFinite(sample?.cx) ||
-				!Number.isFinite(sample?.cy)
-			) {
-				return null;
-			}
-			const clickSample = latestClickSample(samples, index);
-			const bounceScale = Number.isFinite(sample.bounceScale)
-				? sample.bounceScale
-				: clickSample
-					? cursorBounceScale(
-							clickSample.interactionType,
-							sample.timeMs - clickSample.timeMs,
-						)
-					: 1;
-			return [
-				sample.timeMs,
-				sample.cx,
-				sample.cy,
-				cursorTypeIndexes.get(sample.cursorType) ??
-					(Number.isFinite(sample.cursorTypeIndex)
-						? Math.max(0, Math.min(8, Math.round(sample.cursorTypeIndex)))
-						: 0),
-				Number(bounceScale.toFixed(4)),
-				sample.visible === false ? 0 : 1,
-			].join("\t");
-		})
-		.filter(Boolean)
-		.join("\n");
-	writeFileSync(outputPath, cursorLines ? `${cursorLines}\n` : "");
-	return samples.length;
 }
 
 function renderTahoeCursorAtlas(workDir) {
@@ -698,7 +632,11 @@ function getVideoInfo(inputPath) {
 		fail(`No video stream found in ${inputPath}`);
 	}
 	if (stream.codec_name !== "h264") {
-		fail(`The NVIDIA CUDA compositor currently expects H.264 input, got ${stream.codec_name}`);
+		fail(
+			`The NVIDIA CUDA compositor only supports H.264 input video; got ${
+				stream.codec_name ?? "unknown"
+			}`,
+		);
 	}
 	const durationSec = Number(stream.duration);
 	if (!Number.isFinite(durationSec) || durationSec <= 0) {
@@ -930,6 +868,11 @@ const inputPath = resolve(getArg("--input"));
 const outputPath = resolve(
 	getArg("--output", join(scriptDir, "recordly-nvdec-nvenc-mp4-output.mp4")),
 );
+const outputCodec = getArg("--output-codec", "h264");
+if (!["h264", "hevc"].includes(outputCodec)) {
+	throw new Error(`Unsupported --output-codec: ${outputCodec}; expected h264 or hevc`);
+}
+const elementaryStreamFormat = outputCodec;
 const requestedOutputWidth = Math.round(getNumberArg("--width", 0));
 const requestedOutputHeight = Math.round(getNumberArg("--height", 0));
 const fps = Math.round(getNumberArg("--fps", 30));
@@ -982,6 +925,11 @@ const cursorAtlasPng = getArg("--cursor-atlas-png", "");
 const cursorAtlasMetadata = getArg("--cursor-atlas-metadata", "");
 const zoomTelemetry = getArg("--zoom-telemetry", "");
 const timelineMap = getArg("--timeline-map", "");
+const overlayManifest = getArg("--overlay-manifest", "");
+const tiledOverlayManifest = getArg("--tiled-overlay-manifest", "");
+const temporalBlurSampleCount = getNumberArg("--temporal-blur-sample-count", 0);
+const temporalBlurShutterFraction = getNumberArg("--temporal-blur-shutter-fraction", 0);
+const temporalBlurWeightPower = getNumberArg("--temporal-blur-weight-power", 1);
 
 if (!existsSync(inputPath)) {
 	fail(`Input does not exist: ${inputPath}`);
@@ -1021,6 +969,17 @@ function resolveNativeProbePath() {
 }
 const nativeProbe = resolveNativeProbePath();
 
+// The --help capability probe output is stable for a given helper build;
+// compute it once and reuse it for every feature check in this export instead
+// of re-invoking the native binary once per overlay/temporal feature.
+let nativeHelpCache = null;
+function readNativeHelp() {
+	if (nativeHelpCache === null) {
+		nativeHelpCache = run(nativeProbe, ["--help"]).stdout;
+	}
+	return nativeHelpCache;
+}
+
 const baseName = basename(inputPath).replace(/\.[^.]+$/, "");
 const webcamBaseName = webcamInput
 	? basename(webcamInput).replace(/\.[^.]+$/, "")
@@ -1028,7 +987,7 @@ const webcamBaseName = webcamInput
 const annexBPath = join(workDir, `${baseName}.annexb.h264`);
 const webcamAnnexBPath = join(workDir, `${webcamBaseName}.annexb.h264`);
 const cursorSamplesPath = join(workDir, `${baseName}.cursor.tsv`);
-const encodedPath = join(workDir, `${baseName}.mapped-callback.h264`);
+const encodedPath = join(workDir, `${baseName}.mapped-callback.${outputCodec}`);
 const shouldBakeStaticShadow =
 	Boolean(backgroundImage) &&
 	contentWidth > 0 &&
@@ -1235,11 +1194,26 @@ const demuxPromise =
 					endPercentage: 2,
 				},
 			);
-const sourcePtsPromise = writeFramePtsSidecarAsync(inputPath, sourceDurationSec, sourcePtsPath);
+// Source frame PTS is only required for timeline-map exports and for inline
+// audio mux validation (the wrapper checks the native summary reports a
+// timestamp-aligned mode before trusting the muxed audio). For plain video-only
+// exports the per-packet ffprobe scan is pure overhead (it dominates the wall
+// time of short 4K exports), so skip it unless it is actually consumed.
+const needsSourcePts = shouldProbeSourcePts({
+	hasTimelineSegments: timelineSegments.length > 0,
+	videoOnly,
+	forceSourcePts: process.env.RECORDLY_NVIDIA_CUDA_FORCE_SOURCE_PTS,
+});
+const sourcePtsPromise = needsSourcePts
+	? writeFramePtsSidecarAsync(inputPath, sourceDurationSec, sourcePtsPath)
+	: Promise.resolve(zeroElapsed());
 
 if (cursorJson) {
-	const cursorPayload = JSON.parse(readFileSync(resolve(cursorJson), "utf8"));
-	writeCursorSamples(cursorPayload, cursorSamplesPath);
+	const cursorPayload = parseCursorTelemetrySamples(
+		readFileSync(resolve(cursorJson), "utf8"),
+		resolve(cursorJson),
+	);
+	writeCursorSamplesFile(cursorPayload, cursorSamplesPath);
 }
 const cursorAtlas =
 	cursorJson && cursorHeight > 0 && cursorAtlasPng && cursorAtlasMetadata
@@ -1274,6 +1248,8 @@ const encodeArgs = [
 	annexBPath,
 	"--output",
 	encodedPath,
+	"--output-codec",
+	outputCodec,
 	"--fps",
 	String(fps),
 	"--input-frames",
@@ -1402,6 +1378,149 @@ if (contentWidth > 0 && contentHeight > 0) {
 if (zoomTelemetry) {
 	encodeArgs.push("--zoom-samples", resolve(zoomTelemetry));
 }
+if (temporalBlurSampleCount > 0) {
+	// The native compositor must advertise --temporal-blur-sample-count in its
+	// --help usage before the wrapper forwards the resolved temporal zoom
+	// motion blur plan (mirror of the tiled-overlay probe below). Until then
+	// temporal blur cannot be composited and the export fails fast instead of
+	// silently dropping the effect.
+	const nativeHelp = readNativeHelp();
+	if (!nativeHelp.includes("--temporal-blur-sample-count")) {
+		fail(
+			"unsupported-temporal-motion-blur: the native NVIDIA CUDA compositor does not support temporal zoom motion blur yet; " +
+				"main.cu must consume --temporal-blur-sample-count (this build) or the renderer must " +
+				"keep the effect on a CUDA-capable helper.",
+		);
+	}
+}
+if (temporalBlurSampleCount >= 3) {
+	encodeArgs.push(
+		"--temporal-blur-sample-count",
+		String(temporalBlurSampleCount),
+		"--temporal-blur-shutter-fraction",
+		String(temporalBlurShutterFraction),
+		"--temporal-blur-weight-power",
+		String(temporalBlurWeightPower),
+	);
+} else if (temporalBlurSampleCount > 0) {
+	// The TS-side invariant rejects resolved plans below the minimum (3), but a
+	// direct wrapper invocation could still request 1-2 samples. The native
+	// compositor accepts 3..61 samples only, so fail fast with the established
+	// unsupported-result contract instead of a warning and a silently dropped
+	// effect (mirroring the unsupported-temporal-motion-blur fail above).
+	fail(
+		`unsupported-temporal-motion-blur: temporal zoom motion blur requested with ${temporalBlurSampleCount} sample(s), below the minimum of 3; ` +
+			"main.cu only consumes --temporal-blur-sample-count values in the supported 3..61 range.",
+	);
+}
+// The manifest may mix fixed-position rgba layers and cursor-sprite layers.
+// rgba layers keep the proven per-layer --overlay descriptor; cursor-sprite
+// layers are forwarded to the native cursor-sprite compositor route that owns
+// the packed frame strip + per-frame positions validation. Layers are sorted
+// by ascending (order, id) before the kind filters so mixed manifests keep the
+// renderer's global z-order regardless of manifest order and cursor-sprite
+// layers stay above the fixed rgba layers.
+const overlayLayers = sortOverlayLayersByOrder(
+	readOverlayManifest(overlayManifest, {
+		outputWidth,
+		outputHeight,
+	}),
+);
+const rgbaOverlayLayers = overlayLayers.filter((layer) => layer.kind === "rgba");
+const cursorSpriteLayers = overlayLayers.filter((layer) => layer.kind === "cursor-sprite");
+if (rgbaOverlayLayers.length) {
+	for (const layer of rgbaOverlayLayers) {
+		encodeArgs.push(
+			"--overlay",
+			layer.path,
+			String(layer.x),
+			String(layer.y),
+			String(layer.width),
+			String(layer.height),
+			// The native OverlayFrameSource clamps/repeats the final physical frame
+			// for output indices beyond the physical count, so the descriptor must
+			// carry the physical sidecar count (effectiveFrameCount when renderer
+			// dedup truncated an identical suffix, otherwise the logical count).
+			String(layer.effectiveFrameCount ?? layer.frameCount),
+			// Optional 7th argument is the renderer-side global z-order; the native
+			// compositor merges raw/tiled/cursor-sprite layers by this ascending
+			// value so a manifest order survives classification and filtering.
+			String(layer.order),
+		);
+	}
+}
+if (cursorSpriteLayers.length) {
+	const nativeHelp = readNativeHelp();
+	if (!nativeHelp.includes("--cursor-sprite")) {
+		fail(
+			"The native NVIDIA CUDA compositor does not support cursor-sprite overlays yet; " +
+				"main.cu must consume --cursor-sprite (this build) or the renderer must keep " +
+				"the baked cursor overlay sidecar fallback.",
+		);
+	}
+	for (const layer of cursorSpriteLayers) {
+		// positions are validated/clamped on the JS side above; the native
+		// compositor re-validates the positions file and hard-fails (noCpuFallback)
+		// so the cursor is never silently omitted on a strict native route.
+		encodeArgs.push(
+			"--cursor-sprite",
+			layer.id,
+			String(layer.order),
+			layer.path,
+			resolve(layer.positionsPath),
+			String(layer.width),
+			String(layer.height),
+			String(layer.frameCount),
+		);
+	}
+}
+// Tiled/delta sparse overlay stream: the versioned descriptor was validated by
+// readTiledOverlayManifest (independently of the TS side). The native CUDA
+// compositor consumes the descriptor itself; it must advertise
+// --tiled-overlay-manifest in its --help usage before the wrapper forwards it.
+// Until then a tiled stream cannot be composited and the export fails fast
+// instead of silently dropping overlay pixels.
+const tiledOverlayLayers = readTiledOverlayManifest(tiledOverlayManifest, {
+	outputWidth,
+	outputHeight,
+	frameRate: fps,
+	durationSec,
+});
+const tiledOverlayMetrics = tiledOverlayLayers.map((layer) => {
+	const layerMetrics = resolveTiledOverlayLayerMetrics(layer);
+	return {
+		layer: {
+			id: layer.id,
+			order: layer.order,
+			x: layer.x,
+			y: layer.y,
+			width: layer.width,
+			height: layer.height,
+			frameCount: layer.frameCount,
+			frameRate: layer.frameRate,
+			durationSec: layer.durationSec,
+			tileSize: layer.tileSize,
+			pixelFormat: layer.pixelFormat,
+			payloadPath: layer.payloadPath,
+			payloadByteLength: layer.payloadByteLength,
+			staticTileCount: layer.staticTiles.length,
+			frameDeltaCount: layer.frameDeltas.length,
+		},
+		metrics: layerMetrics,
+		rawFallbackReason: resolveTiledOverlayRawFallbackReason(layer, layerMetrics),
+	};
+});
+if (tiledOverlayLayers.length) {
+	const nativeHelp = readNativeHelp();
+	if (!nativeHelp.includes("--tiled-overlay-manifest")) {
+		fail(
+			"The native NVIDIA CUDA compositor does not support tiled overlay manifests yet; " +
+				"main.cu must consume --tiled-overlay-manifest (follow-up) or the renderer must " +
+				"keep the raw RGBA overlay sidecar fallback.",
+		);
+	}
+	encodeArgs.push("--tiled-overlay-manifest", resolve(tiledOverlayManifest));
+}
 const encode =
 	reuseIntermediates && existsSync(encodedPath)
 		? { elapsedMs: 0, stdout: "", gpuSummary: null }
@@ -1411,7 +1530,44 @@ const encode =
 				sampleGpuDuringEncode ? gpuSampleIntervalMs : 0,
 			);
 const nativeSummary = encode.stdout ? parseProbeSummary(encode.stdout) : null;
+if (nativeSummary && tiledOverlayLayers.length) {
+	// Additive renderer-derived tiled throughput bookkeeping rides on the native
+	// summary so the main-process normalization surfaces it unchanged. Values are
+	// aggregated across layers; rawFallbackReason is the first conservative
+	// eligibility decision that forced the raw full-frame fallback. These are
+	// diagnostic only and never claim zero-copy.
+	nativeSummary.tiledOverlayLayers = tiledOverlayLayers.length;
+	nativeSummary.changedTileCount = tiledOverlayMetrics.reduce(
+		(total, entry) => total + entry.metrics.changedTileCount,
+		0,
+	);
+	nativeSummary.uploadedTileBytes = tiledOverlayMetrics.reduce(
+		(total, entry) => total + entry.metrics.uploadedTileBytes,
+		0,
+	);
+	nativeSummary.cachedTileCount = tiledOverlayMetrics.reduce(
+		(total, entry) => total + entry.metrics.cachedTileCount,
+		0,
+	);
+	const firstFallbackReason = tiledOverlayMetrics.find(
+		(entry) => entry.rawFallbackReason !== null,
+	)?.rawFallbackReason;
+	if (firstFallbackReason) {
+		nativeSummary.rawFallbackReason = firstFallbackReason;
+	}
+}
+if (nativeSummary?.outputCodec && nativeSummary.outputCodec !== outputCodec) {
+	fail(`Native output codec mismatch: expected ${outputCodec}, got ${nativeSummary.outputCodec}`);
+}
 
+const elementaryStreamInputArgs = [
+	"-f",
+	elementaryStreamFormat,
+	"-framerate",
+	String(fps),
+	"-i",
+	encodedPath,
+];
 const mux = skipMux
 	? { elapsedMs: 0 }
 	: videoOnly
@@ -1423,10 +1579,7 @@ const mux = skipMux
 					"-loglevel",
 					"error",
 					"-stats",
-					"-framerate",
-					String(fps),
-					"-i",
-					encodedPath,
+					...elementaryStreamInputArgs,
 					"-map",
 					"0:v:0",
 					"-c:v",
@@ -1449,10 +1602,7 @@ const mux = skipMux
 					"-loglevel",
 					"error",
 					"-stats",
-					"-framerate",
-					String(fps),
-					"-i",
-					encodedPath,
+					...elementaryStreamInputArgs,
 					"-i",
 					inputPath,
 					"-map",
@@ -1487,6 +1637,13 @@ const outputInfo = skipMux
 const outputStreams = outputInfo.streams ?? [];
 const outputVideo = outputStreams.find((stream) => stream.codec_type === "video") ?? null;
 const outputAudio = outputStreams.find((stream) => stream.codec_type === "audio") ?? null;
+if (!skipMux && outputVideo?.codec_name !== outputCodec) {
+	fail(
+		`Muxed output codec mismatch: expected ${outputCodec}, got ${
+			outputVideo?.codec_name ?? "none"
+		}`,
+	);
+}
 
 console.log(
 	JSON.stringify(
@@ -1497,6 +1654,8 @@ console.log(
 			requestedOutputPath: outputPath,
 			encodedPath,
 			fps,
+			outputCodec,
+			elementaryStreamFormat,
 			bitrateMbps,
 			encodingMode,
 			streamSync,
@@ -1566,6 +1725,45 @@ console.log(
 										inputPath: resolve(zoomTelemetry),
 									}
 								: null,
+							overlay:
+								overlayLayers.length || tiledOverlayLayers.length
+									? {
+											layers: rgbaOverlayLayers.map((layer) => ({
+												id: layer.id,
+												path: layer.path,
+												x: layer.x,
+												y: layer.y,
+												width: layer.width,
+												height: layer.height,
+												frameCount: layer.frameCount,
+												...(layer.effectiveFrameCount !== undefined
+													? {
+															effectiveFrameCount:
+																layer.effectiveFrameCount,
+														}
+													: {}),
+												physicalFrameCount:
+													layer.effectiveFrameCount ?? layer.frameCount,
+											})),
+											cursorSprite: cursorSpriteLayers.length
+												? {
+														layers: cursorSpriteLayers.map((layer) => ({
+															id: layer.id,
+															order: layer.order,
+															path: layer.path,
+															positionsPath: layer.positionsPath,
+															width: layer.width,
+															height: layer.height,
+															frameCount: layer.frameCount,
+															positionsCount: layer.positions.length,
+														})),
+													}
+												: null,
+											tiled: tiledOverlayLayers.length
+												? { layers: tiledOverlayMetrics }
+												: null,
+										}
+									: null,
 						}
 					: null,
 			gpuSampleIntervalMs: sampleGpuDuringEncode ? gpuSampleIntervalMs : null,

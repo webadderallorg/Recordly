@@ -6,10 +6,32 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import type { Readable, Writable } from "node:stream";
 import { promisify } from "node:util";
-import type { WebContents } from "electron";
+import type { MessagePortMain, WebContents } from "electron";
 import { app, powerSaveBlocker } from "electron";
-import { getFfmpegBinaryPath, getFfprobeBinaryPath } from "../ffmpeg/binary";
 import type {
+	NativeCursorSpriteOverlayLayer,
+	NativeStaticLayoutOverlayLayer,
+	NativeTiledOverlayLayerDescriptor,
+	NativeTiledOverlayStorageDescriptor,
+} from "../../../src/lib/exporter/nativeStaticLayoutOverlays";
+import {
+	getNativeStaticLayoutOverlayFrameByteSize,
+	NATIVE_CURSOR_SPRITE_LAYER_KIND,
+	NATIVE_TILED_OVERLAY_STORAGE_VERSION,
+	resolveNativeTiledOverlayMetrics,
+	resolveNativeTiledOverlayRawFallbackReason,
+	sortNativeStaticLayoutOverlayLayers,
+	sortNativeTiledOverlayLayers,
+	validateNativeCursorSpriteOverlayLayer,
+	validateNativeStaticLayoutOverlayLayer,
+	validateNativeTiledOverlayStorageDescriptor,
+} from "../../../src/lib/exporter/nativeStaticLayoutOverlays";
+import { TEMPORAL_MOTION_BLUR_MIN_SAMPLE_COUNT } from "../../../src/lib/exporter/temporalMotionBlur";
+import { getFfmpegBinaryPath, getFfprobeBinaryPath } from "../ffmpeg/binary";
+import { formatLogTs } from "../log";
+import type {
+	ExportEncoderPreference,
+	ExportVideoCodec,
 	NativeExportEncodingMode,
 	NativeStaticLayoutBackend,
 	NativeStaticLayoutExportArgsConfig,
@@ -30,8 +52,8 @@ import {
 	buildTrimmedSourceAudioFilter,
 	createNativeSquircleMaskPgmBuffer,
 	getEditedAudioExtension,
+	getNativeEncoderCandidates,
 	getNativeVideoInputByteSize,
-	getPreferredNativeVideoEncoders,
 	isNativeCudaOutOfMemory,
 	parseAvailableFfmpegEncoders,
 } from "../nativeVideoExport";
@@ -42,6 +64,10 @@ const getNowMs = () => performance.now();
 const formatFfmpegSeconds = (milliseconds: number) => (milliseconds / 1000).toFixed(3);
 const MISSING_NATIVE_STATIC_BACKGROUND_COLOR = "#ffffff";
 const NATIVE_EXPORT_HIGH_PRIORITY = os.constants.priority.PRIORITY_HIGH;
+// Dummy frame size used to probe whether an encoder can initialize. Must be
+// large enough to satisfy hardware encoder minimums (NVENC rejects frames
+// smaller than ~192x192 on recent NVIDIA drivers), while staying cheap.
+const NATIVE_ENCODER_PROBE_DIMENSION = 256;
 const NVIDIA_PCI_VENDOR_ID = 0x10de;
 const NVIDIA_CUDA_EXPORT_ENV = "RECORDLY_EXPERIMENTAL_NVIDIA_CUDA_EXPORT";
 const NVIDIA_CUDA_ALLOW_AUDIO_EXPORT_ENV = "RECORDLY_NVIDIA_CUDA_ALLOW_AUDIO_EXPORT";
@@ -65,6 +91,51 @@ type ElectronGpuInfoLike = {
 	gpuDevice?: ElectronGpuDeviceLike[];
 };
 
+export const NATIVE_VIDEO_EXPORT_FRAME_PROTOCOL_VERSION = 1;
+
+export type NativeVideoExportFramePortMessage =
+	| {
+			type: "hello";
+			protocol: typeof NATIVE_VIDEO_EXPORT_FRAME_PROTOCOL_VERSION;
+			sessionId: string;
+			capabilityProbe: ArrayBuffer;
+	  }
+	| {
+			type: "frame";
+			protocol: typeof NATIVE_VIDEO_EXPORT_FRAME_PROTOCOL_VERSION;
+			sessionId: string;
+			requestId: number;
+			sequence: number;
+			frame: ArrayBuffer;
+	  };
+
+export type NativeVideoExportFramePortResponse =
+	| {
+			type: "ready";
+			protocol: typeof NATIVE_VIDEO_EXPORT_FRAME_PROTOCOL_VERSION;
+			sessionId: string;
+			transferable: true;
+			transferProbe: ArrayBuffer;
+	  }
+	| {
+			type: "ack";
+			protocol: typeof NATIVE_VIDEO_EXPORT_FRAME_PROTOCOL_VERSION;
+			sessionId: string;
+			requestId: number;
+			sequence: number;
+			success: true;
+	  }
+	| {
+			type: "error";
+			protocol: typeof NATIVE_VIDEO_EXPORT_FRAME_PROTOCOL_VERSION;
+			sessionId: string;
+			requestId?: number;
+			sequence?: number;
+			success: false;
+			error: string;
+			fallbackAvailable: boolean;
+	  };
+
 export type NativeVideoExportSession = {
 	ffmpegProcess: ChildProcessByStdio<Writable, null, Readable>;
 	outputPath: string;
@@ -80,9 +151,440 @@ export type NativeVideoExportSession = {
 	completionPromise: Promise<void>;
 	sender: WebContents | null;
 	pendingWriteRequestIds: Set<number>;
+	framePort: MessagePortMain | null;
+	framePortReady: boolean;
+	nextFrameSequence: number;
+	pendingFrameRequests: Map<number, { sequence: number }>;
+	/**
+	 * Monotonic watermark of the highest accepted frame request id. Request ids
+	 * are allocated strictly monotonically by the renderer
+	 * (nextNativeVideoExportWriteRequestId++), and the strict sequence check
+	 * below already rejects replays, so a bounded O(1) watermark replaces the
+	 * per-session completed-id Set (which grew to ~1 entry per exported frame
+	 * for the whole session). Reset together with nextFrameSequence whenever a
+	 * new frame port is attached.
+	 */
+	highestAcceptedFrameRequestId: number;
 };
 
 export const nativeVideoExportSessions = new Map<string, NativeVideoExportSession>();
+
+// In-flight NVIDIA CUDA/NVENC capability-only prewarm children, tracked here
+// (not in native-prewarm) so a real native export can cancel them without the
+// coordinator importing back into this module (avoiding a circular dependency).
+// Each child opens a brief NVENC capability probe; cancelling them before a
+// real export opens its own NVENC session prevents concurrent NVENC session
+// contention on the GPU. Fire-and-forget: the coordinator never awaits these.
+const activeCapabilityOnlyPrewarmChildren = new Set<ReturnType<typeof spawn>>();
+
+/**
+ * Registers an in-flight capability-only prewarm child process. Returns a
+ * cleanup that removes it from the tracked set when it settles. Diagnostic/data
+ * only; never awaited by the coordinator (fire-and-forget).
+ */
+export function registerCapabilityOnlyPrewarmChild(child: ReturnType<typeof spawn>): () => void {
+	activeCapabilityOnlyPrewarmChildren.add(child);
+	return () => {
+		activeCapabilityOnlyPrewarmChildren.delete(child);
+	};
+}
+
+/**
+ * Terminates every in-flight capability-only prewarm child. Called when a real
+ * native export opens its NVENC session so the brief capability probe never
+ * contends with the real encode. Harmless if none are running. Returns how many
+ * children were killed (diagnostic only; never used for control flow).
+ */
+export function cancelInFlightCapabilityOnlyPrewarms(): number {
+	let cancelled = 0;
+	for (const child of activeCapabilityOnlyPrewarmChildren) {
+		try {
+			child.kill("SIGKILL");
+			cancelled += 1;
+		} catch {
+			/* process may already be exited */
+		}
+	}
+	activeCapabilityOnlyPrewarmChildren.clear();
+	if (cancelled > 0) {
+		console.info(
+			formatLogTs(),
+			"[native-export] Cancelled in-flight CUDA capability-only prewarm children",
+			{
+				cancelled,
+			},
+		);
+	}
+	return cancelled;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function isArrayBuffer(value: unknown): value is ArrayBuffer {
+	return value instanceof ArrayBuffer;
+}
+
+function isValidRequestNumber(value: unknown): value is number {
+	return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function sendNativeVideoExportFramePortMessage(
+	port: MessagePortMain,
+	message: NativeVideoExportFramePortResponse,
+	transfer?: ArrayBuffer,
+) {
+	try {
+		if (transfer) {
+			// Electron 43 types MessagePortMain's transfer list as MessagePortMain[],
+			// although Chromium's structured clone implementation also accepts
+			// ArrayBuffers. Verify detachment at runtime instead of assuming zero-copy.
+			port.postMessage(message, [transfer as unknown as MessagePortMain]);
+			return transfer.byteLength === 0;
+		}
+		port.postMessage(message);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+export function sendNativeVideoExportFramePortError(
+	port: MessagePortMain,
+	sessionId: string,
+	error: string,
+	options: {
+		requestId?: number;
+		sequence?: number;
+		fallbackAvailable: boolean;
+	},
+) {
+	return sendNativeVideoExportFramePortMessage(port, {
+		type: "error",
+		protocol: NATIVE_VIDEO_EXPORT_FRAME_PROTOCOL_VERSION,
+		sessionId,
+		success: false,
+		error,
+		...options,
+	});
+}
+
+function clearNativeVideoExportFramePort(session: NativeVideoExportSession) {
+	const port = session.framePort;
+	session.framePort = null;
+	session.framePortReady = false;
+	session.pendingFrameRequests.clear();
+	if (port) {
+		try {
+			port.close();
+		} catch {
+			// The renderer may already have closed the port.
+		}
+	}
+}
+
+export function flushNativeVideoExportFramePortPendingRequests(
+	sessionId: string,
+	session: NativeVideoExportSession,
+	error: string,
+) {
+	const port = session.framePort;
+	if (port && session.framePortReady) {
+		for (const [requestId, pendingRequest] of session.pendingFrameRequests) {
+			sendNativeVideoExportFramePortError(port, sessionId, error, {
+				requestId,
+				sequence: pendingRequest.sequence,
+				fallbackAvailable: false,
+			});
+		}
+	}
+	session.pendingFrameRequests.clear();
+}
+
+function handleNativeVideoExportFramePortMessage(
+	sessionId: string,
+	session: NativeVideoExportSession,
+	port: MessagePortMain,
+	value: unknown,
+) {
+	if (!isRecord(value)) {
+		sendNativeVideoExportFramePortError(
+			port,
+			sessionId,
+			"Invalid native export frame message",
+			{
+				fallbackAvailable: false,
+			},
+		);
+		return;
+	}
+
+	if (value.protocol !== NATIVE_VIDEO_EXPORT_FRAME_PROTOCOL_VERSION) {
+		sendNativeVideoExportFramePortError(
+			port,
+			sessionId,
+			"Unsupported native export frame protocol",
+			{
+				fallbackAvailable: true,
+			},
+		);
+		return;
+	}
+	if (value.sessionId !== sessionId) {
+		sendNativeVideoExportFramePortError(
+			port,
+			sessionId,
+			"Native export frame session mismatch",
+			{
+				fallbackAvailable: false,
+			},
+		);
+		return;
+	}
+
+	if (value.type === "hello") {
+		if (session.framePortReady) {
+			sendNativeVideoExportFramePortError(
+				port,
+				sessionId,
+				"Native export frame channel handshake was already completed",
+				{ fallbackAvailable: false },
+			);
+			return;
+		}
+		if (!isArrayBuffer(value.capabilityProbe) || value.capabilityProbe.byteLength !== 1) {
+			sendNativeVideoExportFramePortError(
+				port,
+				sessionId,
+				"Native export frame channel transferable probe was invalid",
+				{ fallbackAvailable: true },
+			);
+			clearNativeVideoExportFramePort(session);
+			return;
+		}
+
+		if (
+			!sendNativeVideoExportFramePortMessage(
+				port,
+				{
+					type: "ready",
+					protocol: NATIVE_VIDEO_EXPORT_FRAME_PROTOCOL_VERSION,
+					sessionId,
+					transferable: true,
+					transferProbe: value.capabilityProbe,
+				},
+				value.capabilityProbe,
+			)
+		) {
+			clearNativeVideoExportFramePort(session);
+			return;
+		}
+		session.framePortReady = true;
+		return;
+	}
+
+	if (value.type !== "frame") {
+		sendNativeVideoExportFramePortError(
+			port,
+			sessionId,
+			"Unknown native export frame message",
+			{
+				fallbackAvailable: false,
+			},
+		);
+		return;
+	}
+	if (!session.framePortReady) {
+		sendNativeVideoExportFramePortError(
+			port,
+			sessionId,
+			"Native export frame channel handshake is incomplete",
+			{ fallbackAvailable: true },
+		);
+		return;
+	}
+
+	const requestId = value.requestId;
+	const sequence = value.sequence;
+	if (!isValidRequestNumber(requestId) || !isValidRequestNumber(sequence)) {
+		sendNativeVideoExportFramePortError(
+			port,
+			sessionId,
+			"Native export frame request and sequence must be non-negative safe integers",
+			{ fallbackAvailable: false },
+		);
+		return;
+	}
+	if (
+		requestId <= session.highestAcceptedFrameRequestId ||
+		session.pendingFrameRequests.has(requestId)
+	) {
+		sendNativeVideoExportFramePortError(
+			port,
+			sessionId,
+			"Duplicate native export frame request",
+			{
+				requestId,
+				sequence,
+				fallbackAvailable: false,
+			},
+		);
+		return;
+	}
+	if (sequence !== session.nextFrameSequence) {
+		sendNativeVideoExportFramePortError(
+			port,
+			sessionId,
+			sequence < session.nextFrameSequence
+				? "Duplicate native export frame sequence"
+				: `Out-of-order native export frame sequence; expected ${session.nextFrameSequence}`,
+			{ requestId, sequence, fallbackAvailable: false },
+		);
+		return;
+	}
+	if (!isArrayBuffer(value.frame) || value.frame.byteLength === 0) {
+		sendNativeVideoExportFramePortError(
+			port,
+			sessionId,
+			"Native export frame payload must be a non-empty ArrayBuffer",
+			{ requestId, sequence, fallbackAvailable: false },
+		);
+		return;
+	}
+	if (session.inputMode !== "h264-stream" && value.frame.byteLength !== session.inputByteSize) {
+		sendNativeVideoExportFramePortError(
+			port,
+			sessionId,
+			`Native video export expected ${session.inputByteSize} bytes per frame but received ${value.frame.byteLength}`,
+			{ requestId, sequence, fallbackAvailable: false },
+		);
+		return;
+	}
+	if (session.terminating) {
+		sendNativeVideoExportFramePortError(
+			port,
+			sessionId,
+			"Native video export session was cancelled",
+			{ requestId, sequence, fallbackAvailable: false },
+		);
+		return;
+	}
+
+	session.pendingFrameRequests.set(requestId, { sequence });
+	session.highestAcceptedFrameRequestId = requestId;
+	session.nextFrameSequence += 1;
+	void enqueueNativeVideoExportFrameWrite(session, value.frame)
+		.then(() => {
+			const pendingRequest = session.pendingFrameRequests.get(requestId);
+			if (!pendingRequest) {
+				return;
+			}
+			session.pendingFrameRequests.delete(requestId);
+			if (
+				!sendNativeVideoExportFramePortMessage(port, {
+					type: "ack",
+					protocol: NATIVE_VIDEO_EXPORT_FRAME_PROTOCOL_VERSION,
+					sessionId,
+					requestId,
+					sequence: pendingRequest.sequence,
+					success: true,
+				})
+			) {
+				clearNativeVideoExportFramePort(session);
+			}
+		})
+		.catch((error: unknown) => {
+			const nativeError = error instanceof Error ? error : new Error(String(error));
+			session.stdinError = nativeError;
+			const pendingRequest = session.pendingFrameRequests.get(requestId);
+			if (!pendingRequest) {
+				return;
+			}
+			session.pendingFrameRequests.delete(requestId);
+			if (
+				!sendNativeVideoExportFramePortError(port, sessionId, nativeError.message, {
+					requestId,
+					sequence: pendingRequest.sequence,
+					fallbackAvailable: false,
+				})
+			) {
+				clearNativeVideoExportFramePort(session);
+			}
+		});
+}
+
+export function attachNativeVideoExportFramePort(
+	sessionId: string,
+	session: NativeVideoExportSession,
+	port: MessagePortMain,
+	sender: WebContents,
+) {
+	if (session.terminating) {
+		sendNativeVideoExportFramePortError(
+			port,
+			sessionId,
+			"Native video export session was cancelled",
+			{
+				fallbackAvailable: false,
+			},
+		);
+		port.close();
+		return false;
+	}
+
+	if (session.framePort) {
+		flushNativeVideoExportFramePortPendingRequests(
+			sessionId,
+			session,
+			"Native export frame channel was replaced",
+		);
+		clearNativeVideoExportFramePort(session);
+	}
+
+	session.sender = sender;
+	session.framePort = port;
+	session.framePortReady = false;
+	session.nextFrameSequence = 0;
+	session.pendingFrameRequests.clear();
+	session.highestAcceptedFrameRequestId = -1;
+	port.on("message", (event) => {
+		if (session.framePort !== port) {
+			return;
+		}
+		handleNativeVideoExportFramePortMessage(sessionId, session, port, event.data);
+	});
+	port.on("close", () => {
+		if (session.framePort !== port) {
+			return;
+		}
+		session.framePort = null;
+		session.framePortReady = false;
+		session.pendingFrameRequests.clear();
+	});
+	sender.once("destroyed", () => {
+		if (session.framePort !== port) {
+			return;
+		}
+		flushNativeVideoExportFramePortPendingRequests(
+			sessionId,
+			session,
+			"Native export renderer was reloaded before frame acknowledgements settled",
+		);
+		clearNativeVideoExportFramePort(session);
+	});
+	port.start();
+	return true;
+}
+
+export function closeNativeVideoExportFramePort(
+	sessionId: string,
+	session: NativeVideoExportSession,
+	error: string,
+) {
+	flushNativeVideoExportFramePortPendingRequests(sessionId, session, error);
+	clearNativeVideoExportFramePort(session);
+}
 
 export interface NativeStaticLayoutTimelineSegment {
 	sourceStartMs: number;
@@ -92,15 +594,38 @@ export interface NativeStaticLayoutTimelineSegment {
 	speed: number;
 }
 
+/** Fixed-position rgba raw overlay layer or packed cursor-sprite layer. */
+export type NativeStaticLayoutOverlayLayerUnion =
+	| NativeStaticLayoutOverlayLayer
+	| NativeCursorSpriteOverlayLayer;
+
+/** Discriminates a cursor-sprite layer from a fixed-position rgba layer. */
+export function isCursorSpriteOverlayLayer(
+	layer: NativeStaticLayoutOverlayLayerUnion,
+): layer is NativeCursorSpriteOverlayLayer {
+	return (layer as { kind?: string }).kind === NATIVE_CURSOR_SPRITE_LAYER_KIND;
+}
+
 export interface NativeStaticLayoutExportOptions {
 	sessionId?: string;
 	inputPath: string;
+	/** High-level output contract; encoder names never cross this boundary. */
+	videoCodec?: ExportVideoCodec;
+	encoderPreference?: ExportEncoderPreference;
 	width: number;
 	height: number;
 	frameRate: number;
 	bitrate: number;
 	encodingMode: NativeExportEncodingMode;
 	durationSec: number;
+	overlayLayers?: NativeStaticLayoutOverlayLayerUnion[];
+	/**
+	 * Optional tiled/delta overlay layers (sparse overlay optimization). The
+	 * renderer emits this instead of raw overlayLayers for sparse content; the
+	 * descriptor is versioned, bounded, and independently validated by
+	 * validateNativeTiledOverlayLayerDescriptor. Additive and never persisted.
+	 */
+	tiledOverlayLayers?: NativeTiledOverlayLayerDescriptor[];
 	contentWidth: number;
 	contentHeight: number;
 	offsetX: number;
@@ -122,6 +647,18 @@ export interface NativeStaticLayoutExportOptions {
 	webcamShadowIntensity?: number;
 	webcamMirror?: boolean;
 	webcamTimeOffsetMs?: number;
+	/**
+	 * True when the renderer excluded webcam pixels from the overlay sidecars
+	 * and the generalized NVIDIA CUDA compositor owns the webcam overlay natively
+	 * (--webcam-input contract). The CUDA compositor must draw the webcam on top
+	 * of the composed video; stripping the webcam args while the sidecar already
+	 * baked them would double-render, and passing them while the sidecar still
+	 * contained the webcam would double-render too. Absent/false keeps the
+	 * baked-webcam contract. Only the strict HEVC Hardware CUDA route sets this
+	 * (that route hard-fails instead of falling back), so a fallback that cannot
+	 * draw a native webcam can never silently drop it.
+	 */
+	webcamNativeOwned?: boolean;
 	cursorTelemetry?: Array<{
 		timeMs: number;
 		cx: number;
@@ -145,8 +682,34 @@ export interface NativeStaticLayoutExportOptions {
 		aspectRatio: number;
 	}>;
 	cursorAtlasMetadataPath?: string | null;
-	zoomTelemetry?: Array<{ timeMs: number; scale: number; x: number; y: number }>;
+	zoomTelemetry?: Array<{
+		timeMs: number;
+		scale: number;
+		x: number;
+		y: number;
+		blurStrength?: number;
+		blurCenterX?: number;
+		blurCenterY?: number;
+	}>;
 	zoomTelemetryPath?: string | null;
+	/** Resolved temporal zoom motion blur plan (temporalMotionBlur.ts config). */
+	temporalBlur?: {
+		sampleCount: number;
+		shutterFraction: number;
+		weightCurvePower: number;
+	} | null;
+	/** JSON manifest describing renderer-prepared RGBA overlay sidecars. */
+	overlayManifestPath?: string | null;
+	/** JSON manifest describing the versioned tiled/delta overlay descriptor. */
+	tiledOverlayManifestPath?: string | null;
+	/**
+	 * True when the renderer excluded cursor pixels from the overlay sidecars
+	 * and the native cursor atlas owns them. The CUDA compositor must draw the
+	 * atlas on top of the sidecars; stripping the cursor assets would drop the
+	 * cursor, and passing them while the sidecar still baked them would
+	 * double-render. Absent/false keeps the baked-sidecar contract.
+	 */
+	cursorAtlasOwned?: boolean;
 	timelineSegments?: NativeStaticLayoutTimelineSegment[];
 	timelineMapPath?: string | null;
 	chunkDurationSec?: number;
@@ -156,13 +719,37 @@ export interface NativeStaticLayoutExportOptions {
 	nvidiaCudaForceVideoOnly?: boolean;
 }
 
+/**
+ * Additive CUDA-preparation sub-stage. Emitted as display-only progress during
+ * the native NVIDIA CUDA compositor startup so the renderer can show what the
+ * main/native side is doing (encoder probe -> source validation -> wrapper
+ * launch -> CUDA/NVENC initialization -> first-frame readiness). These are
+ * preparation substates, never encode throughput: they must not fabricate FPS.
+ */
+export type NativeStaticLayoutPrepareSubstate =
+	| "encoder-probe"
+	| "source-validation"
+	| "wrapper-launch"
+	| "cuda-nvenc-init"
+	| "first-frame";
+
 export interface NativeStaticLayoutExportProgress {
 	sessionId?: string;
 	backend?: NativeStaticLayoutBackend;
 	stage?: "preparing" | "finalizing";
+	/** Additive preparation sub-stage (see NativeStaticLayoutPrepareSubstate). */
+	substate?: NativeStaticLayoutPrepareSubstate;
 	elapsedMs?: number;
 	averageFps?: number;
 	instantFps?: number;
+	/**
+	 * End-to-end estimate (frames / wall-clock since process spawn). This
+	 * includes preparation time, so it is NOT a native encode speed; it must
+	 * never be presented as measured encode FPS.
+	 */
+	estimatedFps?: number;
+	/** Where the reported FPS values came from. */
+	fpsSource?: "native" | "estimated";
 	intervalMs?: number;
 	intervalFrames?: number;
 	intervalDecodeWallMs?: number;
@@ -176,6 +763,11 @@ export interface NativeStaticLayoutExportProgress {
 	intervalRoiCompositeFrames?: number;
 	intervalMonolithicCompositeFrames?: number;
 	intervalCopyCompositeFrames?: number;
+	intervalZoomBlurFrames?: number;
+	intervalTemporalBlurStationaryFrames?: number;
+	intervalTemporalBgCacheBuilds?: number;
+	intervalTemporalBgCacheHits?: number;
+	intervalOverlayStaticRegionBlends?: number;
 	currentFrame: number;
 	totalFrames: number;
 	percentage: number;
@@ -231,9 +823,98 @@ export interface WindowsGpuExportSummary {
 	realtimeMultiplier?: number;
 }
 
+export interface NvidiaCudaNativeSummary {
+	success?: boolean;
+	selectionStage?: string;
+	sourceTimestampMode?: string;
+	timelineMode?: string;
+	frames?: number;
+	totalMs?: number;
+	fps?: number;
+	measuredFps?: number;
+	mappedDisplayFrames?: number;
+	selectedDisplayFrames?: number;
+	skippedDisplayFrames?: number;
+	roiCompositeFrames?: number;
+	monolithicCompositeFrames?: number;
+	copyCompositeFrames?: number;
+	cursorAtlas?: boolean;
+	webcamOverlay?: boolean;
+	zoomOverlay?: boolean;
+	zoomSamples?: number;
+	overlayLayers?: number;
+	overlayBlendFrames?: number;
+	/** Tiled overlay layers in the export (renderer-derived, additive). */
+	tiledOverlayLayers?: number;
+	/** Tiles whose payload changed across all frame deltas (additive). */
+	changedTileCount?: number;
+	/** Tile payload bytes uploaded once across the stream (additive). */
+	uploadedTileBytes?: number;
+	/** Tile-state references served from previously uploaded payloads (additive). */
+	cachedTileCount?: number;
+	/**
+	 * Observable reason the layer used the raw full-frame fallback instead of a
+	 * tiled stream (small-layer | dense-frame-delta | payload-bytes-exceed-raw).
+	 */
+	rawFallbackReason?: string;
+	/** Renderer-resolved temporal zoom motion blur sample count (config, not
+	 * measured: the helper does not yet echo it in its summary). */
+	temporalBlurSampleCount?: number;
+	/** Temporal blur output frames (additive compositor counter). */
+	temporalBlurFrames?: number;
+	/** Total temporal blur sample composites across all output frames. */
+	temporalBlurSamplesTotal?: number;
+	/** Temporal blur frames that reused the precomposed invariant background. */
+	temporalBlurBgPrecomposedFrames?: number;
+	/** Overlay sidecar frames read from disk (additive). */
+	overlayFileLoads?: number;
+	/** Overlay sidecar frames served from the resident ring slot (additive). */
+	overlayCacheHits?: number;
+	/** Overlay blends confined to static alpha bounds (additive). */
+	overlayStaticRegionBlends?: number;
+	/** Overlay sidecar width in pixels (renderer-derived, additive). */
+	overlayWidth?: number;
+	/** Overlay sidecar height in pixels (renderer-derived, additive). */
+	overlayHeight?: number;
+	/** Overlay sidecar logical frame count (output duration frames). */
+	overlayFrameCount?: number;
+	/** Overlay sidecar physical frame count (effectiveFrameCount when deduped). */
+	overlayPhysicalFrames?: number;
+	/** Overlay sidecar stored frame count after identical-suffix dedup. */
+	overlayEffectiveFrames?: number;
+	/** Temporal blur frames composited by the stationary fused kernel. */
+	temporalBlurStationaryFrames?: number;
+	/** Temporal blur invariant-background cache builds (additive). */
+	temporalBgCacheBuilds?: number;
+	/** Temporal blur invariant-background cache hits (additive). */
+	temporalBgCacheHits?: number;
+	/**
+	 * Overlay host-read wall time in ms. main.cu reports the separated
+	 * host-read and H2D enqueue spans; these fields are emitted when the helper
+	 * measured them (additive over the encode run).
+	 */
+	overlayHostReadMs?: number;
+	overlayH2DEnqueueMs?: number;
+	/** Stage wall/GPU timings in ms, additive over the encode run. */
+	compositeMs?: number;
+	compositeGpuMs?: number;
+	zoomBlurGpuMs?: number;
+	overlayBlendGpuMs?: number;
+	overlayUploadMs?: number;
+	nvencMs?: number;
+	packetWriteMs?: number;
+	decodeMs?: number;
+	decodeWallMs?: number;
+	encodeMs?: number;
+	flushMs?: number;
+	realtimeMultiplier?: number;
+	outputBytes?: number;
+}
+
 export interface NvidiaCudaExportSummary {
 	success?: boolean;
 	inputPath?: string;
+	outputCodec?: ExportVideoCodec;
 	outputPath?: string;
 	fps?: number;
 	bitrateMbps?: number;
@@ -252,26 +933,7 @@ export interface NvidiaCudaExportSummary {
 		mux?: number;
 		endToEnd?: number;
 	};
-	nativeSummary?: {
-		success?: boolean;
-		selectionStage?: string;
-		sourceTimestampMode?: string;
-		timelineMode?: string;
-		frames?: number;
-		totalMs?: number;
-		fps?: number;
-		measuredFps?: number;
-		mappedDisplayFrames?: number;
-		selectedDisplayFrames?: number;
-		skippedDisplayFrames?: number;
-		roiCompositeFrames?: number;
-		monolithicCompositeFrames?: number;
-		copyCompositeFrames?: number;
-		cursorAtlas?: boolean;
-		webcamOverlay?: boolean;
-		zoomOverlay?: boolean;
-		zoomSamples?: number;
-	};
+	nativeSummary?: NvidiaCudaNativeSummary;
 	nativeProcessPriorityBoosted?: boolean;
 	appRuntimeGuard?: {
 		powerGuardStarted?: boolean;
@@ -327,6 +989,15 @@ export interface NativeStaticLayoutExportMetrics extends NativeVideoAudioMuxMetr
 	chunks: NativeStaticLayoutChunkMetric[];
 }
 
+export interface NativeStaticLayoutExportResult {
+	outputPath: string;
+	metrics: NativeStaticLayoutExportMetrics;
+	videoCodec: ExportVideoCodec;
+	encoderPreference: ExportEncoderPreference;
+	encoderName: string;
+	route: NativeStaticLayoutBackend;
+}
+
 export interface NativeStaticLayoutExportSession {
 	terminating: boolean;
 	currentProcess: ReturnType<typeof spawn> | null;
@@ -335,6 +1006,11 @@ export interface NativeStaticLayoutExportSession {
 export function cleanupNativeVideoExportSessions() {
 	for (const [sessionId, session] of nativeVideoExportSessions) {
 		session.terminating = true;
+		closeNativeVideoExportFramePort(
+			sessionId,
+			session,
+			"Native video export sessions were cleaned up",
+		);
 		try {
 			if (!session.ffmpegProcess.stdin.destroyed) {
 				session.ffmpegProcess.stdin.destroy();
@@ -397,6 +1073,347 @@ export function parseNvidiaCudaExportSummary(stdout: string): NvidiaCudaExportSu
 	}
 }
 
+const NVIDIA_CUDA_NATIVE_SUMMARY_METRIC_FIELDS = [
+	"temporalBlurSampleCount",
+	"temporalBlurSamplesTotal",
+	"temporalBlurBgPrecomposedFrames",
+	"temporalBlurFrames",
+	"temporalBlurStationaryFrames",
+	"temporalBgCacheBuilds",
+	"temporalBgCacheHits",
+	"compositeGpuMs",
+	"zoomBlurGpuMs",
+	"overlayBlendGpuMs",
+	"overlayUploadMs",
+	"overlayFileLoads",
+	"overlayCacheHits",
+	"overlayStaticRegionBlends",
+	"overlayBlendFrames",
+	"overlayWidth",
+	"overlayHeight",
+	"overlayFrameCount",
+	"overlayPhysicalFrames",
+	"overlayEffectiveFrames",
+	"overlayHostReadMs",
+	"overlayH2DEnqueueMs",
+	"changedTileCount",
+	"uploadedTileBytes",
+	"cachedTileCount",
+	"nvencMs",
+	"packetWriteMs",
+	"totalMs",
+	"encodeMs",
+	"decodeMs",
+	"decodeWallMs",
+	"compositeMs",
+	"flushMs",
+	"realtimeMultiplier",
+	"outputBytes",
+] as const satisfies ReadonlyArray<keyof NvidiaCudaNativeSummary>;
+
+export type NvidiaCudaNativeSummaryMetricField =
+	(typeof NVIDIA_CUDA_NATIVE_SUMMARY_METRIC_FIELDS)[number];
+
+/**
+ * Maps the additive native compositor counters into a flat metric object for
+ * the completion log. Only fields the helper actually reported as finite
+ * numbers are included, so absent counters never appear as undefined noise and
+ * non-finite payloads are never surfaced as measured values. The values are
+ * cumulative over the whole helper run (decode/compose/overlay/NVENC stages),
+ * never interval deltas. The tiled rawFallbackReason rides along as a string
+ * when the helper or wrapper reported it.
+ */
+export function resolveNvidiaCudaNativeSummaryMetrics(
+	nativeSummary: NvidiaCudaNativeSummary | undefined,
+): Partial<Record<NvidiaCudaNativeSummaryMetricField | "rawFallbackReason", number | string>> {
+	const metrics: Partial<
+		Record<NvidiaCudaNativeSummaryMetricField | "rawFallbackReason", number | string>
+	> = {};
+	if (!nativeSummary) {
+		return metrics;
+	}
+
+	for (const field of NVIDIA_CUDA_NATIVE_SUMMARY_METRIC_FIELDS) {
+		const value = nativeSummary[field];
+		if (typeof value === "number" && Number.isFinite(value)) {
+			metrics[field] = value;
+		}
+	}
+	if (typeof nativeSummary.rawFallbackReason === "string" && nativeSummary.rawFallbackReason) {
+		metrics.rawFallbackReason = nativeSummary.rawFallbackReason;
+	}
+	return metrics;
+}
+
+export type NvidiaCudaOverlaySidecarSummaryMetric = Pick<
+	NvidiaCudaNativeSummary,
+	| "overlayWidth"
+	| "overlayHeight"
+	| "overlayFrameCount"
+	| "overlayPhysicalFrames"
+	| "overlayEffectiveFrames"
+>;
+
+/**
+ * Derives the overlay sidecar dimensions and physical/effective frame counts
+ * from the renderer-prepared overlay layers for CUDA summary surfacing. All
+ * fields are additive and only present when overlay layers exist. The physical
+ * count is the sidecar's stored frame count (effectiveFrameCount after
+ * identical-suffix dedup); the logical count is the output duration.
+ */
+export function resolveNvidiaCudaOverlaySidecarSummaryMetrics(
+	options: NativeStaticLayoutExportOptions,
+): Partial<NvidiaCudaOverlaySidecarSummaryMetric> {
+	const layer = options.overlayLayers?.[0];
+	if (
+		!layer ||
+		!Number.isFinite(layer.width) ||
+		!Number.isFinite(layer.height) ||
+		!Number.isFinite(layer.frameCount)
+	) {
+		return {};
+	}
+
+	// A cursor-sprite layer is a packed strip (no effectiveFrameCount dedup); its
+	// physical frame count equals the logical output duration.
+	const effectiveFrameCount = (layer as { effectiveFrameCount?: number }).effectiveFrameCount;
+	const metrics: Partial<NvidiaCudaOverlaySidecarSummaryMetric> = {
+		overlayWidth: Math.max(1, Math.round(layer.width)),
+		overlayHeight: Math.max(1, Math.round(layer.height)),
+		overlayFrameCount: Math.max(1, Math.round(layer.frameCount)),
+		overlayPhysicalFrames: Math.max(1, Math.round(effectiveFrameCount ?? layer.frameCount)),
+	};
+	if (effectiveFrameCount !== undefined) {
+		metrics.overlayEffectiveFrames = Math.max(1, Math.round(effectiveFrameCount));
+	}
+	return metrics;
+}
+
+export type NvidiaCudaTiledOverlaySummaryMetric = Pick<
+	NvidiaCudaNativeSummary,
+	| "tiledOverlayLayers"
+	| "changedTileCount"
+	| "uploadedTileBytes"
+	| "cachedTileCount"
+	| "rawFallbackReason"
+	| "overlayHostReadMs"
+	| "overlayH2DEnqueueMs"
+	| "overlayCacheHits"
+>;
+
+/**
+ * Derives the additive tiled/delta overlay metrics from the renderer-prepared
+ * tiled overlay layers for CUDA summary surfacing. The values are diagnostic
+ * only (changedTileCount, uploadedTileBytes, cachedTileCount are renderer
+ * bookkeeping, never a zero-copy claim) and only present when tiled layers
+ * exist. rawFallbackReason is the conservative eligibility decision of the
+ * first layer that needed the raw full-frame fallback.
+ */
+export function resolveNvidiaCudaTiledOverlaySidecarSummaryMetrics(
+	options: NativeStaticLayoutExportOptions,
+): Partial<NvidiaCudaTiledOverlaySummaryMetric> {
+	const layers = options.tiledOverlayLayers;
+	if (!layers?.length) {
+		return {};
+	}
+
+	const metrics: Partial<NvidiaCudaTiledOverlaySummaryMetric> = {
+		tiledOverlayLayers: layers.length,
+	};
+	let changedTileCount = 0;
+	let uploadedTileBytes = 0;
+	let cachedTileCount = 0;
+	let fallbackReason: string | null = null;
+	for (const layer of layers) {
+		const layerMetrics = resolveNativeTiledOverlayMetrics(layer);
+		changedTileCount += layerMetrics.changedTileCount;
+		uploadedTileBytes += layerMetrics.uploadedTileBytes;
+		cachedTileCount += layerMetrics.cachedTileCount;
+		fallbackReason ??= resolveNativeTiledOverlayRawFallbackReason(layer);
+	}
+	metrics.changedTileCount = changedTileCount;
+	metrics.uploadedTileBytes = uploadedTileBytes;
+	metrics.cachedTileCount = cachedTileCount;
+	if (fallbackReason !== null) {
+		metrics.rawFallbackReason = fallbackReason;
+	}
+	return metrics;
+}
+
+/**
+ * Resolves the measured native encode FPS reported by the helper: the flush
+ * span measuredFps is authoritative, with the helper's encode-loop fps as the
+ * backward-compatible fallback. Never derives FPS from wall-clock estimates
+ * and never falls back to the configured output stream fps (summary.fps) and
+ * labels it as measured encode speed; if the helper reported no measured FPS
+ * this returns undefined.
+ */
+export function resolveNvidiaCudaNativeFps(
+	summary: NvidiaCudaExportSummary | undefined,
+): number | undefined {
+	const nativeSummary = summary?.nativeSummary;
+	const measuredFps = nativeSummary?.measuredFps;
+	if (typeof measuredFps === "number" && Number.isFinite(measuredFps) && measuredFps > 0) {
+		return measuredFps;
+	}
+	const fallbackFps = nativeSummary?.fps;
+	if (typeof fallbackFps === "number" && Number.isFinite(fallbackFps) && fallbackFps > 0) {
+		return fallbackFps;
+	}
+	return undefined;
+}
+
+/**
+ * Verifies the additive compositor counters against each other so the
+ * completion diagnostics can prove (rather than assume) that the reported
+ * stage timings are sane. Returns human-readable issue strings; an empty array
+ * means the metrics are internally consistent. These are diagnostics only and
+ * never gate the export result.
+ */
+export function validateNvidiaCudaStageMetricInvariants(
+	summary: NvidiaCudaExportSummary,
+): string[] {
+	const issues: string[] = [];
+	const native = summary.nativeSummary;
+	if (!native) {
+		return issues;
+	}
+
+	const totalMs = native.totalMs;
+	if (typeof totalMs === "number" && Number.isFinite(totalMs) && totalMs >= 0) {
+		const stageFields: ReadonlyArray<
+			readonly [NvidiaCudaNativeSummaryMetricField, number | undefined]
+		> = [
+			["compositeGpuMs", native.compositeGpuMs],
+			["overlayBlendGpuMs", native.overlayBlendGpuMs],
+			["overlayUploadMs", native.overlayUploadMs],
+			["nvencMs", native.nvencMs],
+			["packetWriteMs", native.packetWriteMs],
+			["compositeMs", native.compositeMs],
+			["zoomBlurGpuMs", native.zoomBlurGpuMs],
+			["encodeMs", native.encodeMs],
+			["decodeWallMs", native.decodeWallMs],
+		];
+		for (const [field, value] of stageFields) {
+			if (typeof value === "number" && Number.isFinite(value) && value > totalMs + 0.5) {
+				issues.push(`${field} ${value}ms exceeds helper wall time ${totalMs}ms`);
+			}
+		}
+	}
+
+	const temporalBlurFrames = native.temporalBlurFrames;
+	if (typeof temporalBlurFrames === "number" && Number.isFinite(temporalBlurFrames)) {
+		const samplesTotal = native.temporalBlurSamplesTotal;
+		if (
+			typeof samplesTotal === "number" &&
+			Number.isFinite(samplesTotal) &&
+			samplesTotal < temporalBlurFrames
+		) {
+			issues.push(
+				`temporalBlurSamplesTotal ${samplesTotal} below temporalBlurFrames ${temporalBlurFrames}`,
+			);
+		}
+		const bgPrecomposedFrames = native.temporalBlurBgPrecomposedFrames;
+		if (
+			typeof bgPrecomposedFrames === "number" &&
+			Number.isFinite(bgPrecomposedFrames) &&
+			bgPrecomposedFrames > temporalBlurFrames
+		) {
+			issues.push(
+				`temporalBlurBgPrecomposedFrames ${bgPrecomposedFrames} exceeds temporalBlurFrames ${temporalBlurFrames}`,
+			);
+		}
+	}
+
+	const stationaryFrames = native.temporalBlurStationaryFrames;
+	if (
+		typeof stationaryFrames === "number" &&
+		Number.isFinite(stationaryFrames) &&
+		typeof temporalBlurFrames === "number" &&
+		Number.isFinite(temporalBlurFrames) &&
+		stationaryFrames > temporalBlurFrames
+	) {
+		issues.push(
+			`temporalBlurStationaryFrames ${stationaryFrames} exceeds temporalBlurFrames ${temporalBlurFrames}`,
+		);
+	}
+	// temporalBlurBgCacheBuilds count cache allocations/segments, while hits and
+	// temporalBlurBgPrecomposedFrames count per-frame background reuse. Builds are
+	// therefore NOT part of the frame budget and must never be summed into it;
+	// adding them produced a false positive (e.g. builds 1 + hits 4 vs. 4
+	// precomposed frames). Each counter must stay finite/non-negative, and hits
+	// must not exceed the precomposed (or total temporal) frame budget.
+	const bgCacheBuilds = native.temporalBgCacheBuilds;
+	if (typeof bgCacheBuilds === "number" && Number.isFinite(bgCacheBuilds) && bgCacheBuilds < 0) {
+		issues.push(`temporalBgCacheBuilds ${bgCacheBuilds} must be non-negative`);
+	}
+
+	const bgCacheHits = native.temporalBgCacheHits;
+	if (typeof bgCacheHits === "number" && Number.isFinite(bgCacheHits)) {
+		if (bgCacheHits < 0) {
+			issues.push(`temporalBgCacheHits ${bgCacheHits} must be non-negative`);
+		} else {
+			const bgPrecomposedFrames = native.temporalBlurBgPrecomposedFrames;
+			const hasBgPrecomposedFrames =
+				typeof bgPrecomposedFrames === "number" && Number.isFinite(bgPrecomposedFrames);
+			const cacheBudget: number | null = hasBgPrecomposedFrames
+				? bgPrecomposedFrames
+				: typeof temporalBlurFrames === "number" && Number.isFinite(temporalBlurFrames)
+					? temporalBlurFrames
+					: null;
+			if (cacheBudget !== null && bgCacheHits > cacheBudget) {
+				issues.push(
+					`temporalBgCacheHits ${bgCacheHits} exceeds ${
+						hasBgPrecomposedFrames
+							? "temporalBlurBgPrecomposedFrames"
+							: "temporalBlurFrames"
+					} ${cacheBudget}`,
+				);
+			}
+		}
+	}
+
+	const overlayBlendFrames = native.overlayBlendFrames;
+	const overlayStaticRegionBlends = native.overlayStaticRegionBlends;
+	if (
+		typeof overlayStaticRegionBlends === "number" &&
+		Number.isFinite(overlayStaticRegionBlends) &&
+		typeof overlayBlendFrames === "number" &&
+		Number.isFinite(overlayBlendFrames) &&
+		overlayStaticRegionBlends > overlayBlendFrames
+	) {
+		issues.push(
+			`overlayStaticRegionBlends ${overlayStaticRegionBlends} exceeds overlayBlendFrames ${overlayBlendFrames}`,
+		);
+	}
+
+	const overlayFrameCount = native.overlayFrameCount;
+	if (typeof overlayFrameCount === "number" && Number.isFinite(overlayFrameCount)) {
+		const overlayPhysicalFrames = native.overlayPhysicalFrames;
+		if (
+			typeof overlayPhysicalFrames === "number" &&
+			Number.isFinite(overlayPhysicalFrames) &&
+			overlayPhysicalFrames > overlayFrameCount
+		) {
+			issues.push(
+				`overlayPhysicalFrames ${overlayPhysicalFrames} exceeds overlayFrameCount ${overlayFrameCount}`,
+			);
+		}
+		const overlayEffectiveFrames = native.overlayEffectiveFrames;
+		if (
+			typeof overlayEffectiveFrames === "number" &&
+			Number.isFinite(overlayEffectiveFrames) &&
+			(overlayEffectiveFrames < 1 || overlayEffectiveFrames > overlayFrameCount)
+		) {
+			issues.push(
+				`overlayEffectiveFrames ${overlayEffectiveFrames} out of range for overlayFrameCount ${overlayFrameCount}`,
+			);
+		}
+	}
+
+	return issues;
+}
+
 function getFiniteNumber(value: unknown) {
 	const numberValue = typeof value === "string" ? Number(value) : value;
 	return typeof numberValue === "number" && Number.isFinite(numberValue) ? numberValue : null;
@@ -416,6 +1433,7 @@ export function validateNvidiaCudaExportSummary(
 		durationSec: number;
 		targetFrames: number;
 		requiresTimelineSync?: boolean;
+		videoCodec?: ExportVideoCodec;
 	},
 ) {
 	const issues: string[] = [];
@@ -428,6 +1446,11 @@ export function validateNvidiaCudaExportSummary(
 	const outputVideoDurationSec = getNvidiaCudaOutputStreamNumber(summary.outputVideo, "duration");
 	const outputAudioDurationSec = getNvidiaCudaOutputStreamNumber(summary.outputAudio, "duration");
 
+	if (expected.videoCodec && summary.outputCodec !== expected.videoCodec) {
+		issues.push(
+			`CUDA output codec ${summary.outputCodec ?? "unknown"} does not match expected ${expected.videoCodec}`,
+		);
+	}
 	if (!summary.outputVideo) {
 		issues.push("missing output video probe");
 	}
@@ -807,6 +1830,11 @@ export function parseWindowsGpuExportProgressLine(
 			intervalRoiCompositeFrames?: unknown;
 			intervalMonolithicCompositeFrames?: unknown;
 			intervalCopyCompositeFrames?: unknown;
+			intervalZoomBlurFrames?: unknown;
+			intervalTemporalBlurStationaryFrames?: unknown;
+			intervalTemporalBgCacheBuilds?: unknown;
+			intervalTemporalBgCacheHits?: unknown;
+			intervalOverlayStaticRegionBlends?: unknown;
 			stage?: unknown;
 		};
 		const currentFrame = Number(parsed.currentFrame);
@@ -845,6 +1873,11 @@ export function parseWindowsGpuExportProgressLine(
 			"intervalRoiCompositeFrames",
 			"intervalMonolithicCompositeFrames",
 			"intervalCopyCompositeFrames",
+			"intervalZoomBlurFrames",
+			"intervalTemporalBlurStationaryFrames",
+			"intervalTemporalBgCacheBuilds",
+			"intervalTemporalBgCacheHits",
+			"intervalOverlayStaticRegionBlends",
 		] as const;
 		for (const field of optionalNumberFields) {
 			const value = Number(parsed[field]);
@@ -870,6 +1903,51 @@ export function mapNvidiaCudaWrapperProgressPercentage(progress: NativeStaticLay
 	return progress.percentage;
 }
 
+// Distinguish native measured encode FPS from the end-to-end (preparation-
+// inclusive) estimate. Only averageFps/instantFps reported by the native helper
+// count as measured encode speed; the frames/wall-clock estimate since process
+// spawn must be surfaced separately so callers never mistake it for encode
+// throughput. Finalizing-stage progress must never emit the preparation-
+// inclusive estimate: by then the helper has already measured encode speed on
+// earlier progress lines, and the flush/mux span has no frame rate of its own,
+// so an estimate there would only misrepresent the display.
+export function resolveNativeStaticLayoutFpsFields(
+	progress: NativeStaticLayoutExportProgress,
+	elapsedMs: number,
+): {
+	averageFps?: number;
+	estimatedFps?: number;
+	fpsSource?: "native" | "estimated";
+} {
+	const nativeAverageFps =
+		typeof progress.averageFps === "number" &&
+		Number.isFinite(progress.averageFps) &&
+		progress.averageFps > 0
+			? progress.averageFps
+			: undefined;
+	const nativeInstantFps =
+		typeof progress.instantFps === "number" &&
+		Number.isFinite(progress.instantFps) &&
+		progress.instantFps > 0
+			? progress.instantFps
+			: undefined;
+	const hasNativeMeasured = nativeInstantFps !== undefined || nativeAverageFps !== undefined;
+	const finalizing = progress.stage === "finalizing";
+	const estimatedFps =
+		!hasNativeMeasured && !finalizing && elapsedMs > 0 && progress.currentFrame > 0
+			? (progress.currentFrame * 1000) / elapsedMs
+			: undefined;
+	return {
+		averageFps: nativeAverageFps,
+		estimatedFps,
+		fpsSource: hasNativeMeasured
+			? "native"
+			: estimatedFps !== undefined
+				? "estimated"
+				: undefined,
+	};
+}
+
 export function hasNativeStaticLayoutProgressAdvanced(
 	progress: { currentFrame: number; percentage: number; stage?: string },
 	previous: { currentFrame: number; percentage: number; stage?: string },
@@ -888,6 +1966,57 @@ export function hasNativeStaticLayoutProgressAdvanced(
 	return progress.stage === "finalizing" && previous.stage !== "finalizing";
 }
 
+// Display-only preparation percentages for the NVIDIA CUDA startup substates.
+// All stay inside the preparing window (<=3) so the renderer treats every
+// event as non-rendering preparation and never derives an encode FPS from it.
+// They are additive progression markers only; encode speed is reported later
+// by the measured helper PROGRESS lines (nativeFps) and never here.
+const NATIVE_STATIC_LAYOUT_PREPARE_SUBSTATE_PERCENTAGE: Readonly<
+	Record<NativeStaticLayoutPrepareSubstate, number>
+> = {
+	"encoder-probe": 0.4,
+	"source-validation": 1.0,
+	"wrapper-launch": 1.6,
+	"cuda-nvenc-init": 2.2,
+	"first-frame": 2.8,
+};
+
+/**
+ * Builds an additive CUDA-preparation progress payload for a selected NVIDIA
+ * CUDA compositor route. The backend is labelled "nvidia-cuda-compositor"
+ * from the very first preparation event so the UI names the correct encoder
+ * before any renderer frame is produced. currentFrame stays 0 and percentage
+ * stays within the preparing window: this payload carries no FPS fields and
+ * must never be mistaken for measured encode speed (it is display-only).
+ */
+export function buildNvidiaCudaPrepareProgress(
+	sessionId: string | undefined,
+	substate: NativeStaticLayoutPrepareSubstate,
+	totalFrames: number,
+	elapsedMs: number,
+): NativeStaticLayoutExportProgress {
+	return {
+		sessionId,
+		stage: "preparing",
+		substate,
+		backend: "nvidia-cuda-compositor",
+		currentFrame: 0,
+		totalFrames: Math.max(1, Math.floor(totalFrames)),
+		percentage: NATIVE_STATIC_LAYOUT_PREPARE_SUBSTATE_PERCENTAGE[substate],
+		elapsedMs: Math.max(0, Math.round(elapsedMs)),
+	};
+}
+
+function emitNvidiaCudaPrepareProgress(
+	onProgress: ((progress: NativeStaticLayoutExportProgress) => void) | undefined,
+	sessionId: string | undefined,
+	substate: NativeStaticLayoutPrepareSubstate,
+	totalFrames: number,
+	elapsedMs: number,
+) {
+	onProgress?.(buildNvidiaCudaPrepareProgress(sessionId, substate, totalFrames, elapsedMs));
+}
+
 function startNativeStaticLayoutExportPowerGuard() {
 	try {
 		const blockerId = powerSaveBlocker.start("prevent-app-suspension");
@@ -900,7 +2029,11 @@ function startNativeStaticLayoutExportPowerGuard() {
 			},
 		};
 	} catch (error) {
-		console.warn("[native-static-layout-export] Failed to start power guard", error);
+		console.warn(
+			formatLogTs(),
+			"[native-static-layout-export] Failed to start power guard",
+			error,
+		);
 		return {
 			started: false,
 			release: () => undefined,
@@ -917,7 +2050,11 @@ function setNativeStaticLayoutExportProcessPriority(pid: number | undefined, lab
 		os.setPriority(pid, NATIVE_EXPORT_HIGH_PRIORITY);
 		return true;
 	} catch (error) {
-		console.warn(`[native-static-layout-export] Failed to raise ${label} priority`, error);
+		console.warn(
+			formatLogTs(),
+			`[native-static-layout-export] Failed to raise ${label} priority`,
+			error,
+		);
 		return false;
 	}
 }
@@ -1223,6 +2360,12 @@ async function runFfmpegWithMetrics(
 		});
 		if (session) {
 			session.currentProcess = child;
+			// Swallow child-process errors that surface from the terminating kill
+			// below (killing an already-exited child on Windows emits an unhandled
+			// 'error' event when no listener is attached yet).
+			child.on("error", () => {
+				/* handled by the dedicated handlers below */
+			});
 			if (session.terminating) {
 				child.kill("SIGKILL");
 			}
@@ -1368,6 +2511,11 @@ async function runFfmpegAudioMux(
 		});
 		if (session) {
 			session.currentProcess = child;
+			// Swallow child-process errors that surface from the terminating kill
+			// below; see the CUDA wrapper spawn for the rationale.
+			child.on("error", () => {
+				/* handled by the dedicated handlers below */
+			});
 			if (session.terminating) {
 				child.kill("SIGKILL");
 			}
@@ -1491,6 +2639,7 @@ export function flushNativeVideoExportPendingWriteRequests(
 	session: NativeVideoExportSession,
 	error: string,
 ) {
+	flushNativeVideoExportFramePortPendingRequests(sessionId, session, error);
 	for (const requestId of session.pendingWriteRequestIds) {
 		sendNativeVideoExportWriteFrameResult(session.sender, sessionId, requestId, {
 			success: false,
@@ -1869,11 +3018,6 @@ export function hasNvidiaGpuDeviceInGpuInfo(gpuInfo: unknown) {
 	return Array.isArray(devices) && devices.some(isNvidiaGpuDevice);
 }
 
-async function hasNvidiaGpuForCudaExportCandidate() {
-	const hasNvidiaGpu = await probeNvidiaGpuForCudaExportCandidate();
-	return hasNvidiaGpu ?? true;
-}
-
 async function probeNvidiaGpuForCudaExportCandidate(): Promise<boolean | null> {
 	const getGPUInfo = (
 		app as typeof app & {
@@ -2022,6 +3166,143 @@ export function getNativeGpuCompositorStallTimeoutMs() {
 	return DEFAULT_NATIVE_GPU_STALL_TIMEOUT_MS;
 }
 
+/**
+ * Session-scoped cache for the expensive NVIDIA CUDA availability probes
+ * (enumerating the helper wrapper candidates via fs.access and inspecting GPU
+ * info via Electron's getGPUInfo). Both the capabilities query
+ * (getNativeExportCapabilities) and the export route decision
+ * (getExperimentalNvidiaCudaExportSkipReason) share these values so the probes
+ * run once per session instead of once per call. The cache is keyed on a
+ * signature of the environment overrides and resolved app paths; whenever a
+ * relevant override or the resolved helper path changes the entry is rebuilt.
+ * A runtime helper failure is never promoted into availability: this cache only
+ * records the pre-flight probe results and is bypassed by the actual runtime
+ * wrapper invocation (runExperimentalNvidiaCudaStaticLayoutExport), so strict
+ * HEVC Hardware CUDA-only hard-fail behavior is unchanged.
+ */
+type NvidiaCudaAvailabilityCache = {
+	signature: string;
+	wrapperPath: string | null;
+	gpuAvailability: boolean | null;
+	capability: NativeExportCapabilities["nvidiaCuda"];
+};
+
+let nvidiaCudaAvailabilityCache: NvidiaCudaAvailabilityCache | null = null;
+
+/**
+ * Resets the NVIDIA CUDA availability cache. Exposed for tests; the cache is
+ * session-scoped so resetting it forces the next capability/route query to
+ * re-probe the wrapper and GPU.
+ */
+export function resetNvidiaCudaAvailabilityCache() {
+	nvidiaCudaAvailabilityCache = null;
+}
+
+/**
+ * Strict HEVC Hardware policy: when HEVC Hardware is requested the generalized
+ * NVIDIA CUDA compositor is the ONLY acceptable route. A non-zero
+ * shouldTryNvidiaCuda here hard-fails rather than falling back to the renderer
+ * raw path, Breeze, or CPU. Returns the error message to throw, or null when
+ * the strict guard does not apply.
+ */
+export function resolveNvidiaCudaStrictHevcHardFail(
+	requiresStrictHevcCuda: boolean,
+	shouldTryNvidiaCuda: boolean,
+	nvidiaCudaSkipReason: string | null,
+): string | null {
+	if (!requiresStrictHevcCuda || shouldTryNvidiaCuda) {
+		return null;
+	}
+	return `HEVC Hardware export requires the NVIDIA CUDA compositor; refusing fallback (${nvidiaCudaSkipReason ?? "cursor-atlas-unavailable"}) (noCpuFallback:true)`;
+}
+
+function getNvidiaCudaAvailabilityEnvSignature() {
+	const resourcesPath = (
+		process as NodeJS.Process & {
+			resourcesPath?: string;
+		}
+	).resourcesPath;
+	return JSON.stringify([
+		process.platform,
+		process.env[NVIDIA_CUDA_EXPORT_ENV] ?? null,
+		process.env[NVIDIA_CUDA_ALLOW_AUDIO_EXPORT_ENV] ?? null,
+		process.env[NVIDIA_CUDA_FORCE_VIDEO_ONLY_ENV] ?? null,
+		process.env.RECORDLY_NVIDIA_CUDA_EXPORT_SCRIPT ?? null,
+		process.env.RECORDLY_NVIDIA_CUDA_NODE_EXE ?? null,
+		resourcesPath ?? null,
+		process.cwd(),
+		app.getAppPath(),
+	]);
+}
+
+function resolveNvidiaCudaCapability(
+	wrapperPath: string | null,
+	gpuAvailability: boolean | null,
+): NativeExportCapabilities["nvidiaCuda"] {
+	const explicitEnabled = isExplicitNvidiaCudaExportEnabled();
+	const explicitDisabled = isExplicitNvidiaCudaExportDisabled();
+	// An inconclusive GPU probe (null) must NOT report the CUDA route
+	// unavailable: Electron's getGPUInfo can fail in dev/packaged runs while the
+	// live CUDA helper builds and initializes fine. The runtime attempt is the
+	// authoritative check (the helper fails with noCpuFallback on non-NVIDIA
+	// hardware), matching getExperimentalNvidiaCudaExportSkipReason which also
+	// treats an inconclusive probe as "let the helper decide".
+	const skipReason = explicitDisabled
+		? "env-disabled"
+		: !wrapperPath
+			? "cuda-wrapper-unavailable"
+			: gpuAvailability === false
+				? "nvidia-gpu-unavailable"
+				: null;
+	if (gpuAvailability === null && !explicitDisabled && wrapperPath) {
+		console.info(
+			formatLogTs(),
+			"[native-export] NVIDIA CUDA GPU probe was inconclusive; letting the live helper decide at runtime",
+			{ wrapperPath, reason: skipReason },
+		);
+	} else if (skipReason) {
+		console.info(formatLogTs(), "[native-export] NVIDIA CUDA availability", {
+			available: false,
+			skipReason,
+			hasNvidiaGpu: gpuAvailability,
+			hasWrapper: Boolean(wrapperPath),
+		});
+	} else {
+		console.info(formatLogTs(), "[native-export] NVIDIA CUDA availability", {
+			available: true,
+			hasNvidiaGpu: gpuAvailability,
+			hasWrapper: Boolean(wrapperPath),
+		});
+	}
+
+	return {
+		available: skipReason === null,
+		skipReason,
+		hasNvidiaGpu: gpuAvailability,
+		hasWrapper: Boolean(wrapperPath),
+		explicitEnabled,
+		explicitDisabled,
+		userOptInRequired: !explicitEnabled,
+	};
+}
+
+async function ensureNvidiaCudaAvailabilityResolved(): Promise<NvidiaCudaAvailabilityCache> {
+	const signature = getNvidiaCudaAvailabilityEnvSignature();
+	if (nvidiaCudaAvailabilityCache?.signature === signature) {
+		return nvidiaCudaAvailabilityCache;
+	}
+
+	const wrapperPath = await resolveExperimentalNvidiaCudaExportScriptPath();
+	const gpuAvailability = await probeNvidiaGpuForCudaExportCandidate();
+	nvidiaCudaAvailabilityCache = {
+		signature,
+		wrapperPath,
+		gpuAvailability,
+		capability: resolveNvidiaCudaCapability(wrapperPath, gpuAvailability),
+	};
+	return nvidiaCudaAvailabilityCache;
+}
+
 export async function getExperimentalNvidiaCudaExportSkipReason(
 	options: NativeStaticLayoutExportOptions,
 ) {
@@ -2041,10 +3322,11 @@ export async function getExperimentalNvidiaCudaExportSkipReason(
 	}
 
 	if (userOptIn) {
-		if (!(await resolveExperimentalNvidiaCudaExportScriptPath())) {
+		const cache = await ensureNvidiaCudaAvailabilityResolved();
+		if (!cache.wrapperPath) {
 			return "cuda-wrapper-unavailable";
 		}
-		if (!(await hasNvidiaGpuForCudaExportCandidate())) {
+		if ((cache.gpuAvailability ?? true) === false) {
 			return "nvidia-gpu-unavailable";
 		}
 	}
@@ -2071,32 +3353,118 @@ export async function getNativeExportCapabilities(): Promise<NativeExportCapabil
 		};
 	}
 
-	const explicitEnabled = isExplicitNvidiaCudaExportEnabled();
-	const explicitDisabled = isExplicitNvidiaCudaExportDisabled();
-	const wrapperPath = await resolveExperimentalNvidiaCudaExportScriptPath();
-	const hasNvidiaGpu = await probeNvidiaGpuForCudaExportCandidate();
-	const skipReason = explicitDisabled
-		? "env-disabled"
-		: !wrapperPath
-			? "cuda-wrapper-unavailable"
-			: hasNvidiaGpu === false
-				? "nvidia-gpu-unavailable"
-				: hasNvidiaGpu === null
-					? "nvidia-gpu-probe-unavailable"
-					: null;
-
+	const cache = await ensureNvidiaCudaAvailabilityResolved();
 	return {
 		platform: process.platform,
-		nvidiaCuda: {
-			available: skipReason === null,
-			skipReason,
-			hasNvidiaGpu,
-			hasWrapper: Boolean(wrapperPath),
-			explicitEnabled,
-			explicitDisabled,
-			userOptInRequired: !explicitEnabled,
-		},
+		nvidiaCuda: { ...cache.capability },
 	};
+}
+
+export interface NativeExportPrewarmContext {
+	inputPath: string;
+	videoCodec: ExportVideoCodec;
+	encoderPreference: ExportEncoderPreference;
+	encodingMode: NativeExportEncodingMode;
+	/**
+	 * True when a newer recording superseded this prewarm before cache commit;
+	 * the caller abandons the work instead of committing stale results.
+	 */
+	isSuperseded?: () => boolean;
+}
+
+export interface NativeExportPrewarmOutcome {
+	sourceMetadataCached: boolean;
+	cudaAvailabilityResolved: boolean;
+	resolvedEncoders: string[];
+	skipReasons: string[];
+}
+
+/**
+ * Deterministic, side-effect-free prewarming of the session-scoped caches used
+ * by native static-layout export: the validated source metadata probe cache and
+ * the NVIDIA CUDA availability cache. Encoder capability resolution is derived
+ * purely from the requested high-level codec/preference via
+ * getNativeEncoderCandidates. This never creates source proxies, output files,
+ * helper exports, or persists derived encoder names/settings. Any failure is
+ * diagnostics-only and must never poison availability: normal export probing and
+ * fallback stay unchanged. Strict HEVC Hardware CUDA-only hard-fail behavior is
+ * untouched because the availability cache only records pre-flight probe results
+ * and the live runtime export still validates its own route.
+ */
+export async function prewarmNativeExportCaches(
+	context: NativeExportPrewarmContext,
+): Promise<NativeExportPrewarmOutcome> {
+	const skipReasons: string[] = [];
+	const outcome: NativeExportPrewarmOutcome = {
+		sourceMetadataCached: false,
+		cudaAvailabilityResolved: false,
+		resolvedEncoders: [],
+		skipReasons,
+	};
+
+	if (context.isSuperseded?.()) {
+		skipReasons.push("superseded");
+		return outcome;
+	}
+
+	// Canonical source stat/identity + validated source metadata probe, reusing
+	// the existing exact-keyed bounded probe cache (identity + codec + encoding
+	// mode + encoder preference). Best-effort warm with the persisted export
+	// encoding mode (the same key a real export resolves for its source
+	// metadata), so a later export with the matching route hits the cache
+	// instead of re-probing. A later export with a different mode still re-probes
+	// because the exact cache key will not match.
+	try {
+		const ffmpegPath = getFfmpegBinaryPath();
+		const metadata = await resolveNativeStaticLayoutSourceMetadata(
+			ffmpegPath,
+			{ inputPath: context.inputPath, encodingMode: context.encodingMode },
+			context.videoCodec,
+			context.encoderPreference,
+		);
+		if (context.isSuperseded?.()) {
+			skipReasons.push("superseded");
+			return outcome;
+		}
+		outcome.sourceMetadataCached = isNativeStaticLayoutSourceProbeCacheable(metadata);
+		skipReasons.push(
+			outcome.sourceMetadataCached
+				? `source-metadata-cached:${metadata.codec}`
+				: "source-metadata-uncacheable",
+		);
+	} catch {
+		// Diagnostics-only: a failed metadata probe never poisons availability and
+		// never blocks the response. Normal export probing is unchanged.
+		skipReasons.push("source-metadata-unavailable");
+	}
+
+	// Encoder capability resolution for the persisted/high-level codec and
+	// preference. Pure deterministic derivation (no I/O), so this is cheap.
+	outcome.resolvedEncoders = getNativeEncoderCandidates(
+		context.videoCodec,
+		context.encoderPreference,
+		process.platform,
+	);
+
+	// NVIDIA CUDA availability cache (only resolvable on platforms that ship the
+	// helper). The availability cache records pre-flight probe results only; a
+	// prewarm failure is never promoted into availability.
+	try {
+		const capabilities = await getNativeExportCapabilities();
+		if (context.isSuperseded?.()) {
+			skipReasons.push("superseded");
+			return outcome;
+		}
+		if (capabilities.nvidiaCuda.available) {
+			outcome.cudaAvailabilityResolved = true;
+		} else {
+			skipReasons.push(`cuda-unavailable:${capabilities.nvidiaCuda.skipReason ?? "unknown"}`);
+		}
+	} catch {
+		skipReasons.push("cuda-probe-failed");
+	}
+
+	return outcome;
 }
 
 export async function resolveExperimentalNvidiaCudaExportScriptPath() {
@@ -2188,6 +3556,20 @@ function convertHexColorToNv12(color: string) {
 	};
 }
 
+export function getNativeStaticLayoutRawFrameFallbackReason(
+	options: Pick<NativeStaticLayoutExportOptions, "videoCodec" | "encoderPreference">,
+) {
+	const videoCodec = options.videoCodec ?? "h264";
+	const encoderPreference = options.encoderPreference ?? "auto";
+	if (encoderPreference === "cpu") {
+		return "encoder-preference-cpu-requires-native-rawvideo";
+	}
+	if (encoderPreference === "hardware" && videoCodec === "h264") {
+		return "encoder-preference-hardware-requires-native-rawvideo";
+	}
+	return null;
+}
+
 function getNvidiaCudaBitrateMbps(options: NativeStaticLayoutExportOptions) {
 	return Math.max(1, Math.round(options.bitrate / 1_000_000));
 }
@@ -2196,6 +3578,11 @@ export function buildExperimentalWindowsGpuStaticLayoutArgs(
 	options: NativeStaticLayoutExportOptions,
 	outputPath: string,
 ) {
+	if (options.videoCodec === "hevc") {
+		throw new Error(
+			"HEVC native static layout requires the generalized NVIDIA CUDA compositor",
+		);
+	}
 	const shadowPixels = Math.round(clampUnit(options.shadowIntensity ?? 0) * 64);
 	const backgroundBlurPx = Math.max(0, options.backgroundBlurPx ?? 0);
 	const pixelCount = options.width * options.height;
@@ -2404,6 +3791,39 @@ async function prepareWindowsGpuCursorAtlas(
 	return { atlasPath, metadataPath };
 }
 
+/**
+ * Resolves the native cursor asset paths that may be handed to a GPU compositor
+ * wrapper. The Windows GPU compositor prep writes CSV telemetry/atlas artifacts
+ * onto the options; the NVIDIA CUDA wrapper's `--cursor-json` contract is a JSON
+ * {"samples":[...]} payload (the pipeline rejects raw CSV/TSV rows), so a CSV
+ * path must never reach it. When overlay sidecars are present AND the cursor is
+ * baked into the transparent RGBA layer (cursorAtlasOwned is not true), the CUDA
+ * route must not draw the cursor again: stripping the assets is mandatory, never
+ * a silent degradation (the wrapper is never given a malformed cursor file and
+ * never double-renders the baked cursor). When cursorAtlasOwned is true the
+ * sidecar excluded cursor pixels, so the assets must pass through untouched.
+ */
+export function resolveNvidiaCudaCursorAssets(
+	options: NativeStaticLayoutExportOptions,
+	strip: boolean,
+): Pick<
+	NativeStaticLayoutExportOptions,
+	"cursorTelemetryPath" | "cursorAtlasPath" | "cursorAtlasMetadataPath"
+> {
+	if (!strip) {
+		return {
+			cursorTelemetryPath: options.cursorTelemetryPath ?? null,
+			cursorAtlasPath: options.cursorAtlasPath ?? null,
+			cursorAtlasMetadataPath: options.cursorAtlasMetadataPath ?? null,
+		};
+	}
+	return {
+		cursorTelemetryPath: null,
+		cursorAtlasPath: null,
+		cursorAtlasMetadataPath: null,
+	};
+}
+
 async function prepareNvidiaCudaCursorTelemetry(
 	options: NativeStaticLayoutExportOptions,
 	outputPath: string,
@@ -2489,16 +3909,10 @@ async function prepareNvidiaCudaCursorAtlas(
 	return { atlasPath, metadataPath };
 }
 
-async function prepareWindowsGpuZoomTelemetry(
-	options: NativeStaticLayoutExportOptions,
-	outputPath: string,
-) {
-	const telemetry = options.zoomTelemetry;
-	if (!telemetry || telemetry.length === 0) {
-		return null;
-	}
-
-	const lines = telemetry
+export function formatNativeStaticLayoutZoomTelemetryLines(
+	telemetry: NonNullable<NativeStaticLayoutExportOptions["zoomTelemetry"]>,
+): string[] {
+	return telemetry
 		.filter((sample) => {
 			return (
 				Number.isFinite(sample.timeMs) &&
@@ -2510,13 +3924,33 @@ async function prepareWindowsGpuZoomTelemetry(
 		.map((sample) => {
 			const timeMs = Math.max(0, sample.timeMs);
 			const scale = Math.max(0.01, sample.scale);
+			const blurStrength = Number.isFinite(sample.blurStrength)
+				? Math.max(0, sample.blurStrength ?? 0)
+				: 0;
+			const blurCenterX = Number.isFinite(sample.blurCenterX) ? (sample.blurCenterX ?? 0) : 0;
+			const blurCenterY = Number.isFinite(sample.blurCenterY) ? (sample.blurCenterY ?? 0) : 0;
 			return [
 				formatCliNumber(timeMs),
 				formatCliNumber(scale),
 				formatCliNumber(sample.x),
 				formatCliNumber(sample.y),
+				formatCliNumber(blurStrength),
+				formatCliNumber(blurCenterX),
+				formatCliNumber(blurCenterY),
 			].join(",");
 		});
+}
+
+async function prepareWindowsGpuZoomTelemetry(
+	options: NativeStaticLayoutExportOptions,
+	outputPath: string,
+) {
+	const telemetry = options.zoomTelemetry;
+	if (!telemetry || telemetry.length === 0) {
+		return null;
+	}
+
+	const lines = formatNativeStaticLayoutZoomTelemetryLines(telemetry);
 
 	if (lines.length === 0) {
 		return null;
@@ -2598,13 +4032,197 @@ async function prepareWindowsGpuWebcamInput(
 	return { inputPath: outputPath, elapsedMs: result.elapsedMs };
 }
 
+type NativeStaticLayoutSourceIdentity = {
+	canonicalPath: string;
+	device: number;
+	inode: number;
+	size: number;
+	mtimeMs: number;
+	ctimeMs: number;
+};
+
+/**
+ * A validated native source probe recorded after a successful FFmpeg metadata
+ * probe. The entry is only reusable when the file identity (canonical path,
+ * device/inode, size, mtime/ctime) AND the route requirements (requested
+ * output codec, encoding mode, encoder preference) match exactly. It is never
+ * keyed by path alone and never reused across a changed/mutated source.
+ */
+export interface NativeStaticLayoutSourceProbeCacheEntry {
+	identity: NativeStaticLayoutSourceIdentity;
+	requestedCodec: ExportVideoCodec;
+	encodingMode: NativeExportEncodingMode;
+	encoderPreference: ExportEncoderPreference;
+	metadata: NativeVideoMetadataProbe;
+}
+
+const NATIVE_STATIC_LAYOUT_SOURCE_PROBE_CACHE_MAX = 8;
+let nativeStaticLayoutSourceProbeCache = new Map<string, NativeStaticLayoutSourceProbeCacheEntry>();
+
+/**
+ * Resets the bounded native source probe cache. Exposed for tests; the cache is
+ * session-scoped so resetting it forces the next source preparation to re-probe
+ * the source with FFmpeg.
+ */
+export function resetNativeStaticLayoutSourceProbeCache() {
+	nativeStaticLayoutSourceProbeCache.clear();
+}
+
+function buildNativeStaticLayoutSourceIdentity(stat: {
+	dev: number | bigint;
+	ino: number | bigint;
+	size: number | bigint;
+	mtimeMs: number;
+	ctimeMs: number;
+}): NativeStaticLayoutSourceIdentity | null {
+	const device = Number(stat.dev);
+	const inode = Number(stat.ino);
+	// A missing/unreliable identity (e.g. zeroed device/inode) must bypass the
+	// cache entirely and re-probe rather than risk a false reuse.
+	if (
+		!Number.isSafeInteger(device) ||
+		!Number.isSafeInteger(inode) ||
+		device === 0 ||
+		inode === 0
+	) {
+		return null;
+	}
+	return {
+		canonicalPath: "",
+		device,
+		inode,
+		size: Number(stat.size),
+		mtimeMs: stat.mtimeMs,
+		ctimeMs: stat.ctimeMs,
+	};
+}
+
+function isNativeStaticLayoutSourceProbeCacheable(metadata: NativeVideoMetadataProbe) {
+	const codec = (metadata.codec ?? "").trim().toLowerCase();
+	return codec !== "" && codec !== "unknown";
+}
+
+/**
+ * Deterministic exact-match predicate for reusing a previous successful source
+ * probe. Returns true only when canonical path, device/inode, size, mtime/ctime,
+ * requested output codec, encoding mode, and encoder preference all match. Any
+ * mismatch forces a re-probe (or fail closed when identity is missing).
+ */
+export function canReuseNativeStaticLayoutSourceProbe(
+	entry: NativeStaticLayoutSourceProbeCacheEntry | undefined,
+	current: NativeStaticLayoutSourceIdentity & {
+		requestedCodec: ExportVideoCodec;
+		encodingMode: NativeExportEncodingMode;
+		encoderPreference: ExportEncoderPreference;
+	},
+): boolean {
+	if (!entry) {
+		return false;
+	}
+	if (!isNativeStaticLayoutSourceProbeCacheable(entry.metadata)) {
+		return false;
+	}
+	return (
+		entry.identity.canonicalPath === current.canonicalPath &&
+		entry.identity.device === current.device &&
+		entry.identity.inode === current.inode &&
+		entry.identity.size === current.size &&
+		entry.identity.mtimeMs === current.mtimeMs &&
+		entry.identity.ctimeMs === current.ctimeMs &&
+		entry.requestedCodec === current.requestedCodec &&
+		entry.encodingMode === current.encodingMode &&
+		entry.encoderPreference === current.encoderPreference
+	);
+}
+
+function rememberNativeStaticLayoutSourceProbe(
+	canonicalPath: string,
+	entry: NativeStaticLayoutSourceProbeCacheEntry,
+) {
+	nativeStaticLayoutSourceProbeCache.set(canonicalPath, entry);
+	// Bound the cache; evict the oldest entry (Map preserves insertion order).
+	if (nativeStaticLayoutSourceProbeCache.size > NATIVE_STATIC_LAYOUT_SOURCE_PROBE_CACHE_MAX) {
+		const oldestKey = nativeStaticLayoutSourceProbeCache.keys().next().value;
+		if (oldestKey !== undefined) {
+			nativeStaticLayoutSourceProbeCache.delete(oldestKey);
+		}
+	}
+}
+
+/**
+ * Resolves the source metadata for native static-layout source preparation,
+ * reusing a recent validated probe only when the file identity and the route
+ * requirements match exactly. Misses, mutations, changed settings, missing
+ * identity, uncacheable/unknown codecs, and probe failures all re-probe with
+ * FFmpeg (or propagate the failure); nothing is ever trusted by path alone.
+ */
+async function resolveNativeStaticLayoutSourceMetadata(
+	ffmpegPath: string,
+	options: Pick<NativeStaticLayoutExportOptions, "inputPath" | "encodingMode">,
+	requestedCodec: ExportVideoCodec,
+	encoderPreference: ExportEncoderPreference,
+): Promise<NativeVideoMetadataProbe> {
+	const inputPath = options.inputPath;
+	let canonicalPath: string | null = null;
+	let identity: NativeStaticLayoutSourceIdentity | null = null;
+	try {
+		const stat = await fs.stat(inputPath);
+		const identityBase = buildNativeStaticLayoutSourceIdentity(stat);
+		if (identityBase) {
+			// Stat and realpath race minimally, but both derive from the same file;
+			// any mutation between them is caught on the size/mtime/ctime match.
+			canonicalPath = await fs.realpath(inputPath).catch(() => inputPath);
+			identity = { ...identityBase, canonicalPath };
+		}
+	} catch {
+		// Unreadable source or missing identity: never reuse a stale entry; fall
+		// through to a fresh probe which will surface the real error.
+		identity = null;
+		canonicalPath = null;
+	}
+
+	if (identity && canonicalPath) {
+		const candidate = nativeStaticLayoutSourceProbeCache.get(canonicalPath);
+		if (
+			candidate &&
+			canReuseNativeStaticLayoutSourceProbe(candidate, {
+				...identity,
+				requestedCodec,
+				encodingMode: options.encodingMode,
+				encoderPreference,
+			})
+		) {
+			return candidate.metadata;
+		}
+	}
+
+	const metadata = await probeNativeVideoMetadata(ffmpegPath, options.inputPath);
+	if (identity && canonicalPath && isNativeStaticLayoutSourceProbeCacheable(metadata)) {
+		rememberNativeStaticLayoutSourceProbe(canonicalPath, {
+			identity,
+			requestedCodec,
+			encodingMode: options.encodingMode,
+			encoderPreference,
+			metadata,
+		});
+	}
+	return metadata;
+}
+
 async function prepareNativeStaticLayoutSourceInput(
 	ffmpegPath: string,
 	options: NativeStaticLayoutExportOptions,
 	outputPath: string,
 	session: NativeStaticLayoutExportSession,
+	requestedCodec: ExportVideoCodec,
+	encoderPreference: ExportEncoderPreference,
 ) {
-	const metadata = await probeNativeVideoMetadata(ffmpegPath, options.inputPath);
+	const metadata = await resolveNativeStaticLayoutSourceMetadata(
+		ffmpegPath,
+		options,
+		requestedCodec,
+		encoderPreference,
+	);
 	if (!shouldCreateNativeStaticLayoutSourceProxy(metadata, options.inputPath)) {
 		return {
 			inputPath: options.inputPath,
@@ -2645,6 +4263,84 @@ async function prepareNativeStaticLayoutSourceInput(
 	};
 }
 
+export function buildNativeStaticLayoutOverlayManifest(
+	layers: readonly (NativeStaticLayoutOverlayLayer | NativeCursorSpriteOverlayLayer)[],
+) {
+	return {
+		layers: [...layers]
+			.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
+			.map((layer) =>
+				isCursorSpriteOverlayLayer(layer)
+					? {
+							// A cursor-sprite layer is a packed RGBA frame strip whose
+							// per-frame top-left position comes from a JSON positions
+							// sidecar. Base x/y are always 0; order keeps it topmost.
+							id: layer.id,
+							kind: layer.kind,
+							order: layer.order,
+							path: layer.path,
+							positionsPath: layer.positionsPath,
+							x: layer.x,
+							y: layer.y,
+							width: layer.width,
+							height: layer.height,
+							frameCount: layer.frameCount,
+						}
+					: {
+							id: layer.id,
+							path: layer.path,
+							x: layer.x,
+							y: layer.y,
+							width: layer.width,
+							height: layer.height,
+							// frameCount stays the logical output duration; effectiveFrameCount
+							// is the physical frame count the renderer wrote when identical-
+							// suffix dedup truncated the sidecar. Absent when every frame differs.
+							frameCount: layer.frameCount,
+							...(layer.effectiveFrameCount !== undefined
+								? { effectiveFrameCount: layer.effectiveFrameCount }
+								: {}),
+						},
+			),
+	};
+}
+
+export function getNativeStaticLayoutOverlayExpectedSidecarBytes(
+	layer: NativeStaticLayoutOverlayLayer,
+) {
+	// Physical sidecar byte-size validation must use the physical frame count
+	// (effectiveFrameCount when present), never the logical output duration
+	// (frameCount), so deduped overlays are not rejected as truncated.
+	const physicalFrameCount = layer.effectiveFrameCount ?? layer.frameCount;
+	return (
+		getNativeStaticLayoutOverlayFrameByteSize(layer.width, layer.height) * physicalFrameCount
+	);
+}
+
+/**
+ * Builds the versioned tiled/delta overlay storage descriptor from the
+ * renderer-prepared tiled layers. Layers are sorted by order then id so the
+ * native consumer blends them in deterministic z-order. The descriptor is
+ * session data only (never persisted) and is validated independently by
+ * validateNativeTiledOverlayStorageDescriptor before it reaches the wrapper.
+ */
+export function buildNativeStaticLayoutTiledOverlayManifest(
+	options: Pick<
+		NativeStaticLayoutExportOptions,
+		"width" | "height" | "frameRate" | "durationSec"
+	>,
+	layers: readonly NativeTiledOverlayLayerDescriptor[],
+): NativeTiledOverlayStorageDescriptor {
+	return {
+		version: NATIVE_TILED_OVERLAY_STORAGE_VERSION,
+		outputWidth: options.width,
+		outputHeight: options.height,
+		frameRate: options.frameRate,
+		durationSec: options.durationSec,
+		layers: sortNativeTiledOverlayLayers(layers),
+	};
+}
+
 export function buildExperimentalNvidiaCudaStaticLayoutArgs(
 	options: NativeStaticLayoutExportOptions,
 	outputPath: string,
@@ -2670,6 +4366,8 @@ export function buildExperimentalNvidiaCudaStaticLayoutArgs(
 		String(Math.max(1, Math.round(options.frameRate))),
 		"--bitrate-mbps",
 		String(getNvidiaCudaBitrateMbps(options)),
+		"--output-codec",
+		options.videoCodec ?? "h264",
 		"--encoding-mode",
 		options.encodingMode,
 		"--duration-sec",
@@ -2772,6 +4470,32 @@ export function buildExperimentalNvidiaCudaStaticLayoutArgs(
 	if (options.zoomTelemetryPath) {
 		args.push("--zoom-telemetry", options.zoomTelemetryPath);
 	}
+	if (options.temporalBlur) {
+		// The renderer resolves temporal blur plans through
+		// getTemporalMotionBlurConfig, which clamps to at least
+		// TEMPORAL_MOTION_BLUR_MIN_SAMPLE_COUNT, so a plan below the minimum is
+		// an invariant violation. Reject it explicitly instead of silently
+		// dropping the effect through the sampleCount >= 3 gate below.
+		if (options.temporalBlur.sampleCount < TEMPORAL_MOTION_BLUR_MIN_SAMPLE_COUNT) {
+			throw new Error(
+				`unsupported-temporal-motion-blur: resolved temporal zoom motion blur plan uses ${options.temporalBlur.sampleCount} sample(s); the CUDA compositor minimum is ${TEMPORAL_MOTION_BLUR_MIN_SAMPLE_COUNT}. Refusing to silently drop the effect.`,
+			);
+		}
+		args.push(
+			"--temporal-blur-sample-count",
+			String(Math.round(options.temporalBlur.sampleCount)),
+			"--temporal-blur-shutter-fraction",
+			formatCliNumber(options.temporalBlur.shutterFraction),
+			"--temporal-blur-weight-power",
+			formatCliNumber(options.temporalBlur.weightCurvePower),
+		);
+	}
+	if (options.overlayManifestPath) {
+		args.push("--overlay-manifest", options.overlayManifestPath);
+	}
+	if (options.tiledOverlayManifestPath) {
+		args.push("--tiled-overlay-manifest", options.tiledOverlayManifestPath);
+	}
 	if (options.timelineMapPath) {
 		args.push("--timeline-map", options.timelineMapPath);
 	}
@@ -2810,9 +4534,67 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 
 	const nodeCommand = resolveExperimentalNvidiaCudaNodeCommand();
 	const workDir = path.join(chunkDirectory, "nvidia-cuda-work");
+	let effectiveOptions = options;
+	if (options.overlayLayers?.length) {
+		// GPU-preparation audit: safe GPU-side composition (native cursor atlas,
+		// zoom/background composition, temporal zoom blur) already runs entirely
+		// in the generalized NVIDIA CUDA compositor with no renderer readback of
+		// video pixels. Browser raster overlays (captions, annotations, webcam,
+		// frame visuals) intentionally remain renderer-prepared transparent RGBA
+		// sidecar work: the compositor would need a live DOM/canvas rasterizer to
+		// draw arbitrary per-frame browser content natively, which is not
+		// supported, and direct canvas-to-NV12 transfer is not assumed until
+		// runtime support is proven (AGENTS.md native raw-frame transport). The
+		// renderer therefore bakes those layers into a bounded RGBA sidecar that
+		// the CUDA compositor uploads and alpha-blends on top of the composed,
+		// blurred video. These layers are export-session data only, never
+		// persisted, and a failed/incomplete sidecar preparation returns to the
+		// renderer raw-frame route rather than silently dropping a layer.
+		const overlayManifestPath = path.join(chunkDirectory, "overlay-manifest.json");
+		await fs.writeFile(
+			overlayManifestPath,
+			JSON.stringify(buildNativeStaticLayoutOverlayManifest(options.overlayLayers)),
+			"utf8",
+		);
+		effectiveOptions = {
+			...options,
+			overlayManifestPath,
+		};
+		if (options.cursorAtlasOwned !== true) {
+			// Overlay sidecars already contain the renderer-baked cursor; the
+			// Windows GPU prep may have left CSV telemetry/atlas paths on the
+			// options and the CUDA wrapper JSON.parses --cursor-json (a CSV file
+			// crashes it). Strip the cursor assets so the wrapper is never handed
+			// a malformed cursor file and never double-renders the baked cursor.
+			// When cursorAtlasOwned is true the sidecar excluded cursor pixels, so
+			// the prepared JSON telemetry/atlas assets pass through untouched and
+			// the wrapper draws the cursor natively.
+			effectiveOptions = {
+				...effectiveOptions,
+				...resolveNvidiaCudaCursorAssets(effectiveOptions, true),
+			};
+		}
+	}
+	if (options.tiledOverlayLayers?.length) {
+		// The versioned tiled/delta overlay storage descriptor is written next to
+		// the raw overlay manifest; the CUDA wrapper validates it independently
+		// and the native compositor consumes it (session data, never persisted).
+		const tiledOverlayManifestPath = path.join(chunkDirectory, "tiled-overlay-manifest.json");
+		await fs.writeFile(
+			tiledOverlayManifestPath,
+			JSON.stringify(
+				buildNativeStaticLayoutTiledOverlayManifest(options, options.tiledOverlayLayers),
+			),
+			"utf8",
+		);
+		effectiveOptions = {
+			...effectiveOptions,
+			tiledOverlayManifestPath,
+		};
+	}
 	const args = [
 		scriptPath,
-		...buildExperimentalNvidiaCudaStaticLayoutArgs(options, outputPath, workDir),
+		...buildExperimentalNvidiaCudaStaticLayoutArgs(effectiveOptions, outputPath, workDir),
 	];
 	const startedAt = getNowMs();
 	const startedAtIso = new Date().toISOString();
@@ -2832,6 +4614,20 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 		[pathKey]: `${ffmpegDirectory}${path.delimiter}${process.env[pathKey] ?? ""}`,
 	};
 	const powerGuard = startNativeStaticLayoutExportPowerGuard();
+	// A capability-only prewarm child may still hold a brief NVENC probe session;
+	// cancel it before this real export opens its own NVENC session so the two
+	// never contend for the GPU. Fire-and-forget: the prewarm was never awaited.
+	cancelInFlightCapabilityOnlyPrewarms();
+	// Expected output frames; used to frame the display-only preparation
+	// substates (currentFrame is always 0 during preparation).
+	const prepareTotalFrames = Math.max(1, Math.ceil(options.durationSec * options.frameRate));
+	emitNvidiaCudaPrepareProgress(
+		onProgress,
+		options.sessionId,
+		"wrapper-launch",
+		prepareTotalFrames,
+		getNowMs() - startedAt,
+	);
 
 	return await new Promise<{
 		elapsedMs: number;
@@ -2844,15 +4640,51 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 			stdio: ["ignore", "pipe", "pipe"],
 			windowsHide: true,
 		});
+		emitNvidiaCudaPrepareProgress(
+			onProgress,
+			options.sessionId,
+			"cuda-nvenc-init",
+			prepareTotalFrames,
+			getNowMs() - startedAt,
+		);
 		const childPriorityApplied = setNativeStaticLayoutExportProcessPriority(
 			child.pid,
 			"NVIDIA CUDA export wrapper",
 		);
-		console.info("[native-static-layout-export] NVIDIA CUDA runtime guard started", {
-			childPriorityApplied,
-			powerGuardStarted: powerGuard.started,
-		});
+		// Renderer-side overlay decision visibility: what the renderer actually
+		// prepared for this export (rgba full-canvas layers, tiled layers, or
+		// cursor-sprite ROI layers). This is the ground truth for diagnosing why a
+		// cursor-only export may have used the baked sidecar instead of the
+		// cursor-sprite fast path.
+		const overlayKinds = (options.overlayLayers ?? []).reduce<Record<string, number>>(
+			(acc, layer) => {
+				const kind =
+					"kind" in layer && layer.kind === NATIVE_CURSOR_SPRITE_LAYER_KIND
+						? NATIVE_CURSOR_SPRITE_LAYER_KIND
+						: "rgba";
+				acc[kind] = (acc[kind] ?? 0) + 1;
+				return acc;
+			},
+			{},
+		);
+		console.info(
+			formatLogTs(),
+			"[native-static-layout-export] NVIDIA CUDA runtime guard started",
+			{
+				childPriorityApplied,
+				powerGuardStarted: powerGuard.started,
+				overlayLayerKinds: overlayKinds,
+				tiledOverlayLayers: options.tiledOverlayLayers?.length ?? 0,
+			},
+		);
 		session.currentProcess = child;
+		// Swallow child-process errors that surface from the terminating kill
+		// below (killing an already-exited child on Windows emits an unhandled
+		// 'error' event when no listener is attached yet). Real failures settle
+		// through the dedicated error/close handlers attached below.
+		child.on("error", () => {
+			/* handled by the dedicated handlers below */
+		});
 		if (session.terminating) {
 			child.kill("SIGKILL");
 		}
@@ -2861,6 +4693,7 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 		let stderr = "";
 		let stderrLineBuffer = "";
 		let lastProgressPercentage = 0;
+		let firstFramePrepared = false;
 		let lastProgressForStallGuard: {
 			currentFrame: number;
 			percentage: number;
@@ -2906,15 +4739,34 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 				if (!progress) {
 					continue;
 				}
+				if (!firstFramePrepared) {
+					// The first helper PROGRESS line confirms the CUDA wrapper reached
+					// first-frame readiness (CUDA/NVENC initialized, encode producing
+					// frames). Emitted as a display-only preparing substate; it carries no
+					// FPS and does not overwrite the helper's measured encode rate.
+					firstFramePrepared = true;
+					emitNvidiaCudaPrepareProgress(
+						onProgress,
+						options.sessionId,
+						"first-frame",
+						prepareTotalFrames,
+						getNowMs() - startedAt,
+					);
+				}
 				const elapsedMs = Math.max(0, getNowMs() - startedAt);
-				const averageFps =
-					typeof progress.averageFps === "number" &&
-					Number.isFinite(progress.averageFps) &&
-					progress.averageFps > 0
-						? progress.averageFps
-						: elapsedMs > 0 && progress.currentFrame > 0
-							? (progress.currentFrame * 1000) / elapsedMs
-							: undefined;
+				const fpsFields = resolveNativeStaticLayoutFpsFields(progress, elapsedMs);
+				if (fpsFields.fpsSource === "estimated") {
+					console.warn(
+						formatLogTs(),
+						"[native-static-layout-export] Native helper has not reported measured encode FPS; using preparation-inclusive estimate",
+						{
+							backend: "nvidia-cuda-compositor",
+							estimatedFps: fpsFields.estimatedFps,
+							currentFrame: progress.currentFrame,
+							elapsedMs,
+						},
+					);
+				}
 				const mappedPercentage = mapNvidiaCudaWrapperProgressPercentage(progress);
 				lastProgressPercentage = Math.max(lastProgressPercentage, mappedPercentage);
 				const progressForStallGuard = {
@@ -2937,7 +4789,7 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 					sessionId: options.sessionId,
 					backend: "nvidia-cuda-compositor",
 					elapsedMs,
-					averageFps,
+					...fpsFields,
 				});
 			}
 		});
@@ -3050,6 +4902,11 @@ async function runExperimentalWindowsGpuStaticLayoutExport(
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 		session.currentProcess = child;
+		// Swallow child-process errors that surface from the terminating kill
+		// below; see the CUDA wrapper spawn for the rationale.
+		child.on("error", () => {
+			/* handled by the dedicated handlers below */
+		});
 		if (session.terminating) {
 			child.kill("SIGKILL");
 		}
@@ -3111,15 +4968,13 @@ async function runExperimentalWindowsGpuStaticLayoutExport(
 					armStallTimeout();
 				}
 				const elapsedMs = Math.max(0, getNowMs() - startedAt);
+				const fpsFields = resolveNativeStaticLayoutFpsFields(progress, elapsedMs);
 				onProgress?.({
 					...progress,
 					sessionId: options.sessionId,
 					backend: "windows-d3d11-compositor",
 					elapsedMs,
-					averageFps:
-						elapsedMs > 0 && progress.currentFrame > 0
-							? (progress.currentFrame * 1000) / elapsedMs
-							: undefined,
+					...fpsFields,
 				});
 			}
 		});
@@ -3190,14 +5045,167 @@ export async function exportNativeStaticLayoutVideo(
 	ffmpegPath: string,
 	options: NativeStaticLayoutExportOptions,
 	onProgress?: (progress: NativeStaticLayoutExportProgress) => void,
-) {
+): Promise<NativeStaticLayoutExportResult> {
+	const videoCodec = options.videoCodec ?? "h264";
+	const encoderPreference = options.encoderPreference ?? "auto";
+	if (videoCodec !== "h264" && videoCodec !== "hevc") {
+		throw new Error(`Unsupported native static-layout video codec: ${String(videoCodec)}`);
+	}
+	if (
+		encoderPreference !== "auto" &&
+		encoderPreference !== "hardware" &&
+		encoderPreference !== "cpu"
+	) {
+		throw new Error(
+			`Unsupported native static-layout encoder preference: ${String(encoderPreference)}`,
+		);
+	}
+	options = { ...options, videoCodec, encoderPreference };
+	const rawFrameFallbackReason = getNativeStaticLayoutRawFrameFallbackReason(options);
+	if (rawFrameFallbackReason) {
+		throw new Error(
+			`Native static-layout export requires the native rawvideo route: ${rawFrameFallbackReason}`,
+		);
+	}
+
 	if (options.width % 2 !== 0 || options.height % 2 !== 0) {
 		throw new Error("Native static layout export requires even output dimensions");
 	}
 	if (!Number.isFinite(options.durationSec) || options.durationSec <= 0) {
 		throw new Error("Native static layout export requires a positive duration");
 	}
+	if (options.overlayLayers?.length) {
+		for (const layer of sortNativeStaticLayoutOverlayLayers(options.overlayLayers)) {
+			const validationError = isCursorSpriteOverlayLayer(layer)
+				? validateNativeCursorSpriteOverlayLayer(layer, {
+						outputWidth: options.width,
+						outputHeight: options.height,
+						durationSec: options.durationSec,
+						frameRate: options.frameRate,
+					})
+				: validateNativeStaticLayoutOverlayLayer(layer, {
+						outputWidth: options.width,
+						outputHeight: options.height,
+						durationSec: options.durationSec,
+						frameRate: options.frameRate,
+					});
+			if (validationError) {
+				throw new Error(`Invalid native overlay layer: ${validationError}`);
+			}
+			const stat = await fs.stat(layer.path);
+			const expectedBytes = getNativeStaticLayoutOverlayExpectedSidecarBytes(layer);
+			if (stat.size < expectedBytes) {
+				throw new Error(
+					`Native overlay layer ${layer.id} is truncated: expected ${expectedBytes} bytes, received ${stat.size}`,
+				);
+			}
+			if (isCursorSpriteOverlayLayer(layer)) {
+				// The cursor-sprite positions sidecar must exist so the native route
+				// never silently drops the cursor because the per-frame positions are
+				// missing (full JSON contents are validated by the native reader).
+				const positionsStat = await fs.stat(layer.positionsPath);
+				if (positionsStat.size <= 0) {
+					throw new Error(
+						`Native overlay layer ${layer.id} has an empty cursor-sprite positions file`,
+					);
+				}
+			}
+		}
+	}
+	if (options.tiledOverlayLayers?.length) {
+		const tiledDescriptor = buildNativeStaticLayoutTiledOverlayManifest(
+			options,
+			options.tiledOverlayLayers,
+		);
+		const tiledValidationError = validateNativeTiledOverlayStorageDescriptor(tiledDescriptor, {
+			outputWidth: options.width,
+			outputHeight: options.height,
+			durationSec: options.durationSec,
+			frameRate: options.frameRate,
+		});
+		if (tiledValidationError) {
+			throw new Error(`Invalid tiled overlay descriptor: ${tiledValidationError}`);
+		}
+		for (const layer of tiledDescriptor.layers) {
+			const stat = await fs.stat(layer.payloadPath);
+			if (stat.size < layer.payloadByteLength) {
+				throw new Error(
+					`Tiled overlay layer ${layer.id} payload is truncated: expected ${layer.payloadByteLength} bytes, received ${stat.size}`,
+				);
+			}
+		}
+	}
+	if (
+		options.cursorAtlasOwned === true &&
+		!(
+			options.experimentalWindowsGpuCompositor &&
+			process.platform === "win32" &&
+			(options.experimentalNvidiaCudaExport === true || isExplicitNvidiaCudaExportEnabled())
+		)
+	) {
+		// The renderer excluded cursor pixels from the overlay sidecar because
+		// the native atlas owns them. Only the generalized NVIDIA CUDA compositor
+		// can draw that atlas on top of the sidecars; the FFmpeg overlay route
+		// and the D3D11 helper cannot, so refusing the fallback is the only way
+		// to avoid silently dropping the cursor.
+		throw new Error(
+			"Cursor ownership by the native atlas requires the generalized NVIDIA CUDA compositor on Windows; the FFmpeg overlay route cannot draw the cursor and the overlay sidecar excluded it.",
+		);
+	}
+	if (
+		options.webcamNativeOwned === true &&
+		!(
+			options.experimentalWindowsGpuCompositor &&
+			process.platform === "win32" &&
+			(options.experimentalNvidiaCudaExport === true || isExplicitNvidiaCudaExportEnabled())
+		)
+	) {
+		// The renderer excluded webcam pixels from the overlay sidecar because
+		// the CUDA compositor owns the webcam natively. Only the generalized
+		// NVIDIA CUDA compositor can draw that webcam; the FFmpeg overlay route
+		// and the D3D11 helper cannot, so refusing the fallback is the only way
+		// to avoid silently dropping the webcam the sidecar excluded.
+		throw new Error(
+			"Webcam ownership by the native CUDA compositor requires the generalized NVIDIA CUDA compositor on Windows; the FFmpeg overlay route cannot draw the webcam and the overlay sidecar excluded it.",
+		);
+	}
+	if (options.webcamNativeOwned === true && !options.webcamInputPath) {
+		throw new Error(
+			"Native webcam ownership requires a webcam input path; refusing to drop the webcam the overlay sidecar excluded.",
+		);
+	}
+	if (options.webcamNativeOwned === true && (options.webcamSize ?? 0) <= 0) {
+		throw new Error(
+			"Native webcam ownership requires a positive webcam size; refusing to drop the webcam the overlay sidecar excluded.",
+		);
+	}
 	options = await normalizeNativeStaticLayoutBackground(options);
+	// The FFmpeg/rawvideo fallback needs a probed encoder; the NVIDIA CUDA and
+	// Windows-GPU compositor routes do not use it. Resolve it lazily, only on the
+	// first actual FFmpeg/raw fallback branch, so a CUDA-eligible native-layout
+	// job never spends time on the up-to-4x15s cold encoder probe BEFORE the CUDA
+	// route is selected/validated. The probe result is memoized for the session
+	// run (and internally cached by resolveNativeVideoEncoder), so the fallback
+	// branches only ever pay for it once.
+	let resolvedNativeVideoEncoder: string | null = null;
+	const ensureNativeVideoEncoder = async (): Promise<string> => {
+		if (resolvedNativeVideoEncoder === null) {
+			resolvedNativeVideoEncoder = await resolveNativeVideoEncoder(
+				ffmpegPath,
+				options.encodingMode,
+				videoCodec,
+				encoderPreference,
+			);
+		}
+		return resolvedNativeVideoEncoder;
+	};
+	// Copies the given FFmpeg-args config with the probed encoder attached. Only
+	// the FFmpeg/raw fallback branches call this; CUDA/GPU routes never touch it.
+	const withNativeVideoEncoder = async (
+		config: NativeStaticLayoutExportArgsConfig,
+	): Promise<NativeStaticLayoutExportArgsConfig> => {
+		return { ...config, videoEncoder: await ensureNativeVideoEncoder() };
+	};
 	if (
 		options.webcamInputPath &&
 		!(options.experimentalWindowsGpuCompositor && process.platform === "win32")
@@ -3247,22 +5255,29 @@ export async function exportNativeStaticLayoutVideo(
 
 	try {
 		nativeStaticLayoutExportSessions.set(sessionId, session);
+		const exportRunStartedAt = getNowMs();
 		await fs.mkdir(chunkDirectory, { recursive: true });
 		const sourceInput = await prepareNativeStaticLayoutSourceInput(
 			ffmpegPath,
 			options,
 			path.join(chunkDirectory, "source-proxy.mp4"),
 			session,
+			videoCodec,
+			encoderPreference,
 		);
 		if (sourceInput.elapsedMs > 0) {
 			metrics.staticAssetExecMs = (metrics.staticAssetExecMs ?? 0) + sourceInput.elapsedMs;
 		}
 		if (sourceInput.inputPath !== options.inputPath) {
-			console.info("[native-static-layout-export] Prepared H.264 source proxy", {
-				sourceCodec: sourceInput.sourceCodec,
-				proxyCodec: sourceInput.proxyCodec,
-				elapsedMs: sourceInput.elapsedMs,
-			});
+			console.info(
+				formatLogTs(),
+				"[native-static-layout-export] Prepared H.264 source proxy",
+				{
+					sourceCodec: sourceInput.sourceCodec,
+					proxyCodec: sourceInput.proxyCodec,
+					elapsedMs: sourceInput.elapsedMs,
+				},
+			);
 			options = {
 				...options,
 				inputPath: sourceInput.inputPath,
@@ -3284,6 +5299,7 @@ export async function exportNativeStaticLayoutVideo(
 		const fullConfig: NativeStaticLayoutExportArgsConfig = {
 			inputPath: options.inputPath,
 			outputPath: videoOnlyPath,
+			videoCodec,
 			width: options.width,
 			height: options.height,
 			frameRate: options.frameRate,
@@ -3303,12 +5319,22 @@ export async function exportNativeStaticLayoutVideo(
 			borderRadius: options.borderRadius,
 			shadowIntensity: options.shadowIntensity,
 			durationSec: options.durationSec,
+			overlayLayers: options.overlayLayers,
 		};
 		const usePrecompositedLayout = shouldUsePrecompositedStaticLayout(options);
 		let didRenderVideo = false;
 		let didMuxAudioInline = false;
 
-		if (options.experimentalWindowsGpuCompositor && process.platform === "win32") {
+		if (
+			options.experimentalWindowsGpuCompositor &&
+			process.platform === "win32" &&
+			// The generalized NVIDIA CUDA compositor composites renderer-prepared
+			// overlay sidecars natively; the Windows D3D11 helper cannot, so it is
+			// skipped below when overlay layers are present.
+			((options.overlayLayers?.length === 0 && !options.tiledOverlayLayers?.length) ||
+				options.experimentalNvidiaCudaExport === true ||
+				isExplicitNvidiaCudaExportEnabled())
+		) {
 			try {
 				if (session.terminating) {
 					throw new Error("Native static layout export was cancelled");
@@ -3376,6 +5402,8 @@ export async function exportNativeStaticLayoutVideo(
 				const nvidiaCudaSkipReason =
 					await getExperimentalNvidiaCudaExportSkipReason(options);
 				let shouldTryNvidiaCuda = nvidiaCudaSkipReason === null;
+				const requiresStrictHevcCuda =
+					options.videoCodec === "hevc" && options.encoderPreference === "hardware";
 				const validatedCudaFallbackCandidate =
 					isValidatedNvidiaCudaFallbackCandidate(options);
 				if (
@@ -3388,6 +5416,7 @@ export async function exportNativeStaticLayoutVideo(
 						nvidiaCudaForceVideoOnly: true,
 					};
 					console.info(
+						formatLogTs(),
 						"[native-static-layout-export] NVIDIA CUDA candidate will use shared audio mux validation",
 						{
 							audioMode:
@@ -3407,6 +5436,7 @@ export async function exportNativeStaticLayoutVideo(
 					nvidiaCudaSkipReason !== "env-disabled"
 				) {
 					console.warn(
+						formatLogTs(),
 						"[native-static-layout-export] Skipping NVIDIA CUDA compositor; falling back to Windows GPU compositor",
 						{
 							reason: nvidiaCudaSkipReason,
@@ -3416,31 +5446,108 @@ export async function exportNativeStaticLayoutVideo(
 						},
 					);
 				}
+				if (
+					!shouldTryNvidiaCuda &&
+					(((options.overlayLayers?.length || options.tiledOverlayLayers?.length) &&
+						(options.zoomTelemetry?.length || options.cursorAtlasOwned === true)) ||
+						options.temporalBlur)
+				) {
+					throw new Error(
+						`CUDA composition is unavailable (${nvidiaCudaSkipReason ?? "unknown"}) while zoom motion blur${options.cursorAtlasOwned === true ? ", a native-owned cursor," : ""} and/or temporal zoom motion blur (${options.temporalBlur?.sampleCount ?? "n/a"} samples) are requested; the FFmpeg overlay route cannot preserve these effects${options.cursorAtlasOwned === true ? " and cannot draw the cursor the sidecar excluded" : ""}.`,
+					);
+				}
+				if (options.cursorAtlasOwned === true && !options.cursorTelemetry?.length) {
+					throw new Error(
+						"Native cursor atlas ownership requires cursor telemetry; refusing to drop the cursor on a fallback route.",
+					);
+				}
 				if (shouldTryNvidiaCuda && options.cursorTelemetry?.length) {
-					const cursorTelemetryPath = await prepareNvidiaCudaCursorTelemetry(
-						options,
-						path.join(chunkDirectory, "cursor-telemetry.json"),
-					);
-					const cursorAtlas = await prepareNvidiaCudaCursorAtlas(
-						options,
-						path.join(chunkDirectory, "cursor-atlas-nvidia.png"),
-						path.join(chunkDirectory, "cursor-atlas-nvidia.tsv"),
-					);
-					shouldTryNvidiaCuda = Boolean(cursorTelemetryPath && cursorAtlas);
-					if (cursorTelemetryPath && cursorAtlas) {
+					if (
+						(options.overlayLayers?.length || options.tiledOverlayLayers?.length) &&
+						options.cursorAtlasOwned !== true
+					) {
+						// When overlay layers are present and the cursor is baked into the
+						// transparent sidecar, drawing it again natively would double-render
+						// and the atlas is intentionally absent. The Windows-GPU prep above
+						// left CSV telemetry/atlas paths on the options; strip them so the
+						// CUDA wrapper is never handed a CSV "cursor JSON" file (it
+						// JSON.parses the path and crashes) and never double-renders the
+						// baked cursor.
 						experimentalNvidiaCudaOptions = {
 							...experimentalNvidiaCudaOptions,
-							cursorTelemetryPath,
-							cursorAtlasPath: cursorAtlas.atlasPath,
-							cursorAtlasMetadataPath: cursorAtlas.metadataPath,
+							...resolveNvidiaCudaCursorAssets(experimentalNvidiaCudaOptions, true),
 						};
+						shouldTryNvidiaCuda = true;
+					} else {
+						// No overlay layers, or the renderer excluded cursor pixels from
+						// the overlay sidecar (cursorAtlasOwned): the CUDA compositor
+						// draws the native atlas cursor on top of the composed video.
+						const cursorTelemetryPath = await prepareNvidiaCudaCursorTelemetry(
+							options,
+							path.join(chunkDirectory, "cursor-telemetry.json"),
+						);
+						const cursorAtlas = await prepareNvidiaCudaCursorAtlas(
+							options,
+							path.join(chunkDirectory, "cursor-atlas-nvidia.png"),
+							path.join(chunkDirectory, "cursor-atlas-nvidia.tsv"),
+						);
+						if (
+							options.cursorAtlasOwned === true &&
+							(!cursorTelemetryPath || !cursorAtlas)
+						) {
+							throw new Error(
+								"Native cursor atlas ownership could not prepare cursor telemetry/atlas assets; refusing to drop the cursor on the FFmpeg overlay route.",
+							);
+						}
+						shouldTryNvidiaCuda = Boolean(cursorTelemetryPath && cursorAtlas);
+						if (cursorTelemetryPath && cursorAtlas) {
+							experimentalNvidiaCudaOptions = {
+								...experimentalNvidiaCudaOptions,
+								cursorTelemetryPath,
+								cursorAtlasPath: cursorAtlas.atlasPath,
+								cursorAtlasMetadataPath: cursorAtlas.metadataPath,
+							};
+						}
 					}
+				}
+				const strictHevcHardFail = resolveNvidiaCudaStrictHevcHardFail(
+					requiresStrictHevcCuda,
+					shouldTryNvidiaCuda,
+					nvidiaCudaSkipReason,
+				);
+				if (strictHevcHardFail) {
+					throw new Error(strictHevcHardFail);
 				}
 
 				if (shouldTryNvidiaCuda) {
 					try {
 						const shouldMuxAudioInline = canMuxNvidiaCudaSourceAudioInline(
 							experimentalNvidiaCudaOptions,
+						);
+						// The CUDA route is selected. Emit the two preparation substates that
+						// already completed before the wrapper launch (encoder capability
+						// probe and source validation). They are additive display-only
+						// progress with the NVIDIA CUDA compositor backend label from the
+						// very start; the wrapper-launch / cuda-nvenc-init / first-frame
+						// substates are emitted by the wrapper runner itself.
+						const prepareElapsed = () => Math.max(0, getNowMs() - exportRunStartedAt);
+						const prepareTotal = Math.max(
+							1,
+							Math.ceil(options.durationSec * options.frameRate),
+						);
+						emitNvidiaCudaPrepareProgress(
+							onProgress,
+							options.sessionId,
+							"encoder-probe",
+							prepareTotal,
+							prepareElapsed(),
+						);
+						emitNvidiaCudaPrepareProgress(
+							onProgress,
+							options.sessionId,
+							"source-validation",
+							prepareTotal,
+							prepareElapsed(),
 						);
 						const cudaResult = await runExperimentalNvidiaCudaStaticLayoutExport(
 							ffmpegPath,
@@ -3456,6 +5563,7 @@ export async function exportNativeStaticLayoutVideo(
 								durationSec: options.durationSec,
 								targetFrames: Math.ceil(options.durationSec * options.frameRate),
 								requiresTimelineSync: shouldMuxAudioInline,
+								videoCodec,
 							},
 						);
 						if (cudaValidationIssues.length > 0) {
@@ -3470,19 +5578,49 @@ export async function exportNativeStaticLayoutVideo(
 							);
 						}
 						await validateRenderedVideoOutput();
+						const overlaySidecarMetrics =
+							resolveNvidiaCudaOverlaySidecarSummaryMetrics(options);
+						const tiledOverlayMetrics =
+							resolveNvidiaCudaTiledOverlaySidecarSummaryMetrics(options);
+						if (
+							(overlaySidecarMetrics || tiledOverlayMetrics) &&
+							cudaResult.summary.nativeSummary
+						) {
+							// Additive renderer-derived overlay sidecar metrics ride on the
+							// parsed native summary so the completion log and chunk metrics
+							// surface them without changing the helper contract.
+							cudaResult.summary.nativeSummary = {
+								...cudaResult.summary.nativeSummary,
+								...overlaySidecarMetrics,
+								...tiledOverlayMetrics,
+							};
+						}
+						const nativeSummaryMetrics = resolveNvidiaCudaNativeSummaryMetrics(
+							cudaResult.summary.nativeSummary,
+						);
 						console.info(
+							formatLogTs(),
 							"[native-static-layout-export] NVIDIA CUDA compositor completed",
 							{
 								elapsedMs: cudaResult.elapsedMs,
-								fps: cudaResult.summary.fps,
+								// summary.fps is the configured output frame rate (stream fps,
+								// never a measured encode throughput). It is labeled outputFps
+								// so it cannot be mistaken for measured encode speed, which is
+								// reported separately as nativeFps from the helper summary
+								// (resolveNvidiaCudaNativeFps).
+								outputFps: cudaResult.summary.fps,
 								targetFrames: cudaResult.summary.targetFrames,
 								durationSec: cudaResult.summary.durationSec,
-								nativeEncodeMs: cudaResult.summary.timingsMs?.nativeEncode,
+								// timingsMs.nativeEncode is the full native helper-process wall
+								// time (spawn to exit: source decode, layout composition, NVENC,
+								// flush). It is NOT the NVENC-API encode time. The single explicit
+								// field is nativeEncodeWallMs; the low-level NVENC-API time is
+								// reported separately as nativeSummary.nvencMs (spread below via
+								// nativeSummaryMetrics), so no ambiguous duplicate is emitted.
+								nativeEncodeWallMs: cudaResult.summary.timingsMs?.nativeEncode,
 								muxMs: cudaResult.summary.timingsMs?.mux,
 								endToEndMs: cudaResult.summary.timingsMs?.endToEnd,
-								nativeFps:
-									cudaResult.summary.nativeSummary?.measuredFps ??
-									cudaResult.summary.nativeSummary?.fps,
+								nativeFps: resolveNvidiaCudaNativeFps(cudaResult.summary),
 								mappedDisplayFrames:
 									cudaResult.summary.nativeSummary?.mappedDisplayFrames,
 								selectedDisplayFrames:
@@ -3499,6 +5637,17 @@ export async function exportNativeStaticLayoutVideo(
 								cursorAtlas: cudaResult.summary.nativeSummary?.cursorAtlas,
 								zoomOverlay: cudaResult.summary.nativeSummary?.zoomOverlay,
 								zoomSamples: cudaResult.summary.nativeSummary?.zoomSamples,
+								overlayLayers: cudaResult.summary.nativeSummary?.overlayLayers,
+								...nativeSummaryMetrics,
+								// The helper does not echo the configured temporal blur sample
+								// count in its summary yet; fall back to the renderer-resolved
+								// export plan so the log still exposes the requested count.
+								temporalBlurSampleCount:
+									nativeSummaryMetrics.temporalBlurSampleCount ??
+									options.temporalBlur?.sampleCount,
+								metricInvariants: validateNvidiaCudaStageMetricInvariants(
+									cudaResult.summary,
+								),
 							},
 						);
 						metrics.chunkCount = 1;
@@ -3519,16 +5668,67 @@ export async function exportNativeStaticLayoutVideo(
 						if (session.terminating) {
 							throw error;
 						}
+						if (requiresStrictHevcCuda) {
+							throw new Error(
+								`HEVC Hardware NVIDIA CUDA compositor failed; refusing CPU, rawvideo, Breeze, or FFmpeg CUDA fallback (noCpuFallback:true): ${error instanceof Error ? error.message : String(error)}`,
+							);
+						}
 						metrics.fallbackChunkCount++;
 						console.warn(
 							"[native-static-layout-export] Experimental NVIDIA CUDA compositor failed or produced invalid output; falling back to Windows GPU compositor:",
 							error,
 						);
 						await removeTemporaryExportFile(videoOnlyPath);
+						const overlayCount =
+							(options.overlayLayers?.length ?? 0) +
+							(options.tiledOverlayLayers?.length ?? 0);
+						if (overlayCount > 0 && !options.overlayLayers?.length) {
+							// Tiled overlay layers cannot be consumed by any remaining fallback
+							// (Windows D3D11 or FFmpeg static layout). Fail fast so H.264 Auto /
+							// HEVC Auto never silently drop the sparse overlay sidecar.
+							throw new Error(
+								`CUDA composition failed with ${overlayCount} overlay sidecar(s) including ${options.tiledOverlayLayers?.length ?? 0} tiled overlay layer(s); the remaining static-layout fallback cannot consume the tiled descriptor (tiled-overlays-unsupported-in-static-layout-fallback): ${
+									error instanceof Error ? error.message : String(error)
+								}`,
+							);
+						}
+						if (
+							(options.overlayLayers?.length || options.tiledOverlayLayers?.length) &&
+							(options.zoomTelemetry?.length || options.cursorAtlasOwned === true)
+						) {
+							// Neither the D3D11 helper nor the FFmpeg overlay route can
+							// preserve spatial zoom blur over the transparent overlay
+							// sidecars, or a native-owned cursor whose pixels the sidecar
+							// excluded; surface the failure so the renderer falls back to raw
+							// frames instead of silently dropping the effect.
+							throw new Error(
+								`CUDA composition failed while zoom motion blur${options.cursorAtlasOwned === true ? ", a native-owned cursor" : ""} and ${overlayCount} overlay layer(s) are requested; the fallback route cannot preserve these effects${options.cursorAtlasOwned === true ? " and cannot draw the cursor the sidecar excluded" : ""}: ${error instanceof Error ? error.message : String(error)}`,
+							);
+						}
+						if (options.temporalBlur) {
+							// Temporal zoom motion blur is only supported by the generalized
+							// NVIDIA CUDA compositor; fall back would silently drop it.
+							throw new Error(
+								`CUDA composition failed while temporal zoom motion blur is requested (${options.temporalBlur.sampleCount} samples); the fallback route cannot preserve temporal blur: ${error instanceof Error ? error.message : String(error)}`,
+							);
+						}
+						if (options.webcamNativeOwned) {
+							// The renderer excluded webcam pixels from the overlay sidecar
+							// because the CUDA compositor owns the webcam natively; the
+							// remaining D3D11/FFmpeg fallback cannot draw it, so continuing
+							// would silently drop the webcam.
+							throw new Error(
+								`CUDA composition failed while the CUDA compositor owns the webcam (webcamNativeOwned); the fallback route cannot draw the webcam the overlay sidecar excluded: ${error instanceof Error ? error.message : String(error)}`,
+							);
+						}
 					}
 				}
 
-				if (!didRenderVideo) {
+				if (
+					!didRenderVideo &&
+					videoCodec !== "hevc" &&
+					!(options.overlayLayers?.length || options.tiledOverlayLayers?.length)
+				) {
 					const gpuResult = await runExperimentalWindowsGpuStaticLayoutExport(
 						experimentalGpuOptions,
 						videoOnlyPath,
@@ -3545,27 +5745,31 @@ export async function exportNativeStaticLayoutVideo(
 						);
 					}
 					await validateRenderedVideoOutput();
-					console.info("[native-static-layout-export] Windows GPU compositor completed", {
-						elapsedMs: gpuResult.elapsedMs,
-						width: gpuResult.summary.width,
-						height: gpuResult.summary.height,
-						fps: gpuResult.summary.fps,
-						frames: gpuResult.summary.frames,
-						realtimeMultiplier: gpuResult.summary.realtimeMultiplier,
-						surfacePoolSize: gpuResult.summary.surfacePoolSize,
-						gpuDecodeSurface: gpuResult.summary.gpuDecodeSurface,
-						adapterIndex: gpuResult.summary.adapterIndex,
-						encoderBackend: gpuResult.summary.encoderBackend,
-						encoderTuningApplied: gpuResult.summary.encoderTuningApplied,
-						readMs: gpuResult.summary.readMs,
-						videoProcessMs: gpuResult.summary.videoProcessMs,
-						writeSampleMs: gpuResult.summary.writeSampleMs,
-						finalizeMs: gpuResult.summary.finalizeMs,
-						webcamOverlay: gpuResult.summary.webcamOverlay,
-						cursorOverlay: gpuResult.summary.cursorOverlay,
-						cursorAtlas: gpuResult.summary.cursorAtlas,
-						zoomOverlay: gpuResult.summary.zoomOverlay,
-					});
+					console.info(
+						formatLogTs(),
+						"[native-static-layout-export] Windows GPU compositor completed",
+						{
+							elapsedMs: gpuResult.elapsedMs,
+							width: gpuResult.summary.width,
+							height: gpuResult.summary.height,
+							fps: gpuResult.summary.fps,
+							frames: gpuResult.summary.frames,
+							realtimeMultiplier: gpuResult.summary.realtimeMultiplier,
+							surfacePoolSize: gpuResult.summary.surfacePoolSize,
+							gpuDecodeSurface: gpuResult.summary.gpuDecodeSurface,
+							adapterIndex: gpuResult.summary.adapterIndex,
+							encoderBackend: gpuResult.summary.encoderBackend,
+							encoderTuningApplied: gpuResult.summary.encoderTuningApplied,
+							readMs: gpuResult.summary.readMs,
+							videoProcessMs: gpuResult.summary.videoProcessMs,
+							writeSampleMs: gpuResult.summary.writeSampleMs,
+							finalizeMs: gpuResult.summary.finalizeMs,
+							webcamOverlay: gpuResult.summary.webcamOverlay,
+							cursorOverlay: gpuResult.summary.cursorOverlay,
+							cursorAtlas: gpuResult.summary.cursorAtlas,
+							zoomOverlay: gpuResult.summary.zoomOverlay,
+						},
+					);
 					const outputStat = await fs.stat(videoOnlyPath);
 					metrics.chunkCount = 1;
 					metrics.chunkDurationSec = options.durationSec;
@@ -3585,11 +5789,29 @@ export async function exportNativeStaticLayoutVideo(
 				if (session.terminating) {
 					throw error;
 				}
+				if (options.videoCodec === "hevc" && options.encoderPreference === "hardware") {
+					// Strict HEVC Hardware: the generalized NVIDIA CUDA compositor is the
+					// ONLY acceptable route. This outer GPU-block catch must never
+					// swallow the CUDA helper/noCpuFallback error (e.g. when there is no
+					// webcam, zoom telemetry, or native timeline) and attempt a full
+					// FFmpeg hevc_nvenc fallback before the renderer rejects it. Rethrow
+					// the original actionable error (which the inner CUDA catch already
+					// annotates with noCpuFallback:true and CUDA context) so no CPU,
+					// rawvideo, Breeze, or FFmpeg CUDA fallback path is reached.
+					const strictMessage = error instanceof Error ? error.message : String(error);
+					if (strictMessage.includes("noCpuFallback:true")) {
+						throw error;
+					}
+					throw new Error(
+						`HEVC Hardware NVIDIA CUDA compositor failed; refusing CPU, rawvideo, Breeze, or FFmpeg CUDA fallback (noCpuFallback:true): ${strictMessage}`,
+					);
+				}
 				if (hasNativeStaticLayoutTimeline(options)) {
 					throw error;
 				}
 				metrics.fallbackChunkCount++;
 				console.warn(
+					formatLogTs(),
 					"[native-static-layout-export] Experimental Windows GPU compositor unavailable; falling back to FFmpeg static layout:",
 					error,
 				);
@@ -3606,6 +5828,23 @@ export async function exportNativeStaticLayoutVideo(
 		if (!didRenderVideo && hasNativeStaticLayoutSourceCrop(options)) {
 			throw new Error("Native crop export requires a GPU compositor backend");
 		}
+		if (!didRenderVideo && options.tiledOverlayLayers?.length) {
+			// The remaining static-layout paths cannot consume the versioned
+			// tiled/delta overlay descriptor; fail fast instead of silently dropping
+			// the overlay pixels on a fallback that did not render.
+			throw new Error(
+				`No GPU compositor produced output; the static-layout fallback cannot consume ${options.tiledOverlayLayers.length} tiled overlay layer(s) (tiled-overlays-unsupported-in-static-layout-fallback)`,
+			);
+		}
+		if (!didRenderVideo && options.webcamNativeOwned) {
+			// The renderer excluded webcam pixels from the overlay sidecar because
+			// the CUDA compositor owns them. No fallback below (precomposited,
+			// FFmpeg CUDA overlay, or CPU pad) can draw that webcam, so continuing
+			// would silently drop it; fail fast instead.
+			throw new Error(
+				"No GPU compositor produced output while the CUDA compositor owns the webcam (webcamNativeOwned); the static-layout fallback cannot draw the webcam the overlay sidecar excluded.",
+			);
+		}
 
 		if (!didRenderVideo && usePrecompositedLayout) {
 			const maskPath = path.join(chunkDirectory, "layout-mask.pgm");
@@ -3619,10 +5858,12 @@ export async function exportNativeStaticLayoutVideo(
 				),
 			);
 
+			const encoderConfig = await withNativeVideoEncoder(fullConfig);
+
 			const backgroundResult = await runFfmpegWithMetrics(
 				ffmpegPath,
 				buildNativeStaticBackgroundRenderArgs({
-					...fullConfig,
+					...encoderConfig,
 					inputPath: options.inputPath,
 					outputPath: staticBackgroundPath,
 					maskPath,
@@ -3638,7 +5879,7 @@ export async function exportNativeStaticLayoutVideo(
 			const fullResult = await runFfmpegWithMetrics(
 				ffmpegPath,
 				buildNativePrecompositedStaticLayoutArgs({
-					...fullConfig,
+					...encoderConfig,
 					staticBackgroundPath,
 					maskPath,
 				}),
@@ -3662,9 +5903,10 @@ export async function exportNativeStaticLayoutVideo(
 				outputBytes: outputStat.size,
 			});
 		} else if (!didRenderVideo) {
+			const encoderConfig = await withNativeVideoEncoder(fullConfig);
 			const primaryResult = await runFfmpegWithMetrics(
 				ffmpegPath,
-				buildNativeCudaOverlayStaticLayoutArgs(fullConfig),
+				buildNativeCudaOverlayStaticLayoutArgs(encoderConfig),
 				15 * 60 * 1000,
 				session,
 			);
@@ -3672,6 +5914,14 @@ export async function exportNativeStaticLayoutVideo(
 			let fullBackend: NativeStaticLayoutBackend = "cuda-overlay";
 			let fallbackReason: string | undefined;
 			if (!primaryResult.success) {
+				const overlayCount =
+					(options.overlayLayers?.length ?? 0) +
+					(options.tiledOverlayLayers?.length ?? 0);
+				if (overlayCount > 0) {
+					throw new Error(
+						`CUDA overlay-layer composition failed; refusing to drop ${overlayCount} visual overlay layer(s): ${getFfmpegFailureMessage(primaryResult)}`,
+					);
+				}
 				fullBackend = "cuda-scale-cpu-pad";
 				fallbackReason = isNativeCudaOutOfMemory(primaryResult.stderr)
 					? "cuda-oom"
@@ -3679,7 +5929,7 @@ export async function exportNativeStaticLayoutVideo(
 				metrics.fallbackChunkCount++;
 				fullResult = await runFfmpegWithMetrics(
 					ffmpegPath,
-					buildNativeCudaScaleCpuPadStaticLayoutArgs(fullConfig),
+					buildNativeCudaScaleCpuPadStaticLayoutArgs(encoderConfig),
 					15 * 60 * 1000,
 					session,
 				);
@@ -3714,6 +5964,7 @@ export async function exportNativeStaticLayoutVideo(
 					const baseConfig: NativeStaticLayoutExportArgsConfig = {
 						inputPath: options.inputPath,
 						outputPath,
+						videoCodec,
 						width: options.width,
 						height: options.height,
 						frameRate: options.frameRate,
@@ -3724,6 +5975,7 @@ export async function exportNativeStaticLayoutVideo(
 						offsetX: options.offsetX,
 						offsetY: options.offsetY,
 						backgroundColor: options.backgroundColor,
+						videoEncoder: await ensureNativeVideoEncoder(),
 						startSec: chunk.startSec,
 						durationSec: chunk.durationSec,
 					};
@@ -3798,6 +6050,10 @@ export async function exportNativeStaticLayoutVideo(
 			return {
 				outputPath: videoOnlyPath,
 				metrics,
+				videoCodec,
+				encoderPreference,
+				encoderName: "nvidia-cuda-compositor",
+				route: "nvidia-cuda-compositor",
 			};
 		}
 		const audioMuxProgressStart = 97.25;
@@ -3827,9 +6083,26 @@ export async function exportNativeStaticLayoutVideo(
 		);
 		Object.assign(metrics, finalized.metrics);
 		outputPathToKeep = finalized.outputPath;
+		const route = metrics.chunks[0]?.backend;
+		if (!route) {
+			throw new Error("Native static-layout export did not report a route");
+		}
+		// CUDA and D3D11 GPU-compositor routes do not use the FFmpeg encoder (it
+		// is resolved lazily, only on FFmpeg/raw fallback), so report the actual
+		// backend as the encoder name for those routes rather than a probed name.
+		const encoderName =
+			route === "nvidia-cuda-compositor"
+				? "nvidia-cuda-compositor"
+				: route === "windows-d3d11-compositor"
+					? "windows-d3d11-compositor"
+					: (resolvedNativeVideoEncoder ?? "cuda-static-composite");
 		return {
 			outputPath: finalized.outputPath,
 			metrics,
+			videoCodec,
+			encoderPreference,
+			encoderName,
+			route,
 		};
 	} catch (error) {
 		await removeTemporaryExportFile(videoOnlyPath);
@@ -3899,8 +6172,8 @@ export async function probeNativeVideoEncoder(
 	const args = buildNativeVideoExportArgs(
 		encoderName,
 		{
-			width: 64,
-			height: 64,
+			width: NATIVE_ENCODER_PROBE_DIMENSION,
+			height: NATIVE_ENCODER_PROBE_DIMENSION,
 			frameRate: 1,
 			bitrate: 1_500_000,
 			encodingMode,
@@ -3926,11 +6199,20 @@ export async function probeNativeVideoEncoder(
 			stderrOutput += chunk.toString();
 		});
 
+		// Swallow child errors (e.g. EPIPE on stdin, or a SIGKILL on an already
+		// exited probe process). Without a listener these surface as uncaught
+		// "The process <pid> not found" noise on Windows. The close handler below
+		// settles the probe result.
+		process.on("error", () => {
+			/* probe failure settles via close; nothing to do here */
+		});
+
 		process.on("close", (code) => {
 			clearTimeout(timeout);
 			void removeTemporaryExportFile(outputPath);
 			if (code !== 0 && stderrOutput.trim().length > 0) {
 				console.warn(
+					formatLogTs(),
 					`[native-export] Encoder probe failed for ${encoderName}:`,
 					stderrOutput.trim(),
 				);
@@ -3938,38 +6220,66 @@ export async function probeNativeVideoEncoder(
 			resolve(code === 0);
 		});
 
-		process.stdin.end(Buffer.alloc(getNativeVideoInputByteSize(64, 64), 0));
+		process.stdin.end(
+			Buffer.alloc(
+				getNativeVideoInputByteSize(
+					NATIVE_ENCODER_PROBE_DIMENSION,
+					NATIVE_ENCODER_PROBE_DIMENSION,
+				),
+				0,
+			),
+		);
 	});
 }
 
 export async function resolveNativeVideoEncoder(
 	ffmpegPath: string,
 	encodingMode: NativeExportEncodingMode,
+	codec: "h264" | "hevc" = "h264",
+	preference: "auto" | "hardware" | "cpu" = "auto",
 ) {
 	if (
 		cachedNativeVideoEncoder?.ffmpegPath === ffmpegPath &&
-		cachedNativeVideoEncoder?.encodingMode === encodingMode
+		cachedNativeVideoEncoder?.encodingMode === encodingMode &&
+		cachedNativeVideoEncoder?.codec === codec &&
+		cachedNativeVideoEncoder?.preference === preference
 	) {
 		return cachedNativeVideoEncoder.encoderName;
 	}
 
 	const availableEncoders = await getAvailableNativeVideoEncoders(ffmpegPath);
-	const candidates = [
-		...new Set([...getPreferredNativeVideoEncoders(process.platform), "libx264"]),
-	];
+	const candidates = getNativeEncoderCandidates(codec, preference, process.platform);
+	const usableCandidates = candidates.filter((encoderName) => availableEncoders.has(encoderName));
 
-	for (const encoderName of candidates) {
-		if (!availableEncoders.has(encoderName)) {
-			continue;
-		}
+	if (usableCandidates.length === 0) {
+		throw new Error(
+			`No usable FFmpeg ${codec.toUpperCase()} encoder was available for native export (preference: ${preference})`,
+		);
+	}
 
+	for (const encoderName of usableCandidates) {
 		if (await probeNativeVideoEncoder(ffmpegPath, encoderName, encodingMode)) {
-			setCachedNativeVideoEncoder({ ffmpegPath, encodingMode, encoderName });
+			setCachedNativeVideoEncoder({
+				ffmpegPath,
+				encodingMode,
+				codec,
+				preference,
+				encoderName,
+			});
 			return encoderName;
 		}
 	}
 
-	throw new Error("No usable FFmpeg encoder was available for native export");
+	if (preference === "hardware") {
+		throw new Error(
+			`No usable hardware FFmpeg ${codec.toUpperCase()} encoder was available for native export. ` +
+				`Tried: ${usableCandidates.join(", ")}. Install a supported hardware encoder or choose CPU/auto.`,
+		);
+	}
+
+	throw new Error(
+		`No usable FFmpeg ${codec.toUpperCase()} encoder was available for native export (preference: ${preference})`,
+	);
 }
 
 export function canCopyAudioCodecIntoMp4(codec?: string | null) {
@@ -4127,7 +6437,7 @@ export async function muxNativeVideoExportAudio(
 		const ffmpegExecStartedAt = getNowMs();
 		await runFfmpegAudioMux(ffmpegPath, args, 15 * 60 * 1000, options, onProgress, session);
 		metrics.ffmpegExecMs = getNowMs() - ffmpegExecStartedAt;
-		console.info("[native-video-export] Audio mux completed", {
+		console.info(formatLogTs(), "[native-video-export] Audio mux completed", {
 			ffmpegExecMs: metrics.ffmpegExecMs,
 			audioMode: options.audioMode,
 			tempVideoBytes: metrics.tempVideoBytes,

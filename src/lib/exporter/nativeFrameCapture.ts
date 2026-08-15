@@ -57,25 +57,10 @@ function captureCanvasFrameWithReadback(
 	return new Uint8Array(imageData.data);
 }
 
-function flipRgbaRowsInPlace(buffer: Uint8Array, width: number, height: number): void {
-	const rowByteLength = width * RGBA_BYTES_PER_PIXEL;
-	const scratchRow = new Uint8Array(rowByteLength);
-	const halfRows = Math.floor(height / 2);
-
-	for (let rowIndex = 0; rowIndex < halfRows; rowIndex += 1) {
-		const topOffset = rowIndex * rowByteLength;
-		const bottomOffset = (height - rowIndex - 1) * rowByteLength;
-
-		scratchRow.set(buffer.subarray(topOffset, topOffset + rowByteLength));
-		buffer.copyWithin(topOffset, bottomOffset, bottomOffset + rowByteLength);
-		buffer.set(scratchRow, bottomOffset);
-	}
-}
-
 export async function captureCanvasFrameForNativeExport(
 	canvas: HTMLCanvasElement,
 	timestamp: number,
-	flipVertical = false,
+	_flipVertical = false,
 	targetWidth?: number,
 	targetHeight?: number,
 ): Promise<Uint8Array> {
@@ -91,9 +76,6 @@ export async function captureCanvasFrameForNativeExport(
 				format: "RGBA",
 				layout: getRgbaLayout(outWidth),
 			});
-			if (flipVertical) {
-				flipRgbaRowsInPlace(buffer, outWidth, outHeight);
-			}
 			nativeFrameCaptureMode = "video-frame-rgba";
 			return buffer;
 		} catch (error) {
@@ -110,9 +92,5 @@ export async function captureCanvasFrameForNativeExport(
 		}
 	}
 
-	const buffer = captureCanvasFrameWithReadback(canvas, outWidth, outHeight);
-	if (flipVertical) {
-		flipRgbaRowsInPlace(buffer, outWidth, outHeight);
-	}
-	return buffer;
+	return captureCanvasFrameWithReadback(canvas, outWidth, outHeight);
 }

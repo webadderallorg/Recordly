@@ -166,6 +166,13 @@ interface FrameRenderConfig {
 	zoomClassicMode?: boolean;
 	frame?: string | null;
 	nativeReadbackMode?: "pixels" | "canvas";
+	/**
+	 * When true the cursor is owned by the native CUDA cursor atlas path and
+	 * must not be baked into the transparent overlay sidecar. Set only for the
+	 * native static-layout overlay renderer; the full render path never sets it,
+	 * so cursor rendering there is unchanged.
+	 */
+	excludeCursorOverlay?: boolean;
 }
 
 interface AnimationState {
@@ -594,7 +601,7 @@ export class FrameRenderer {
 		this.webcamContainer.addChild(this.webcamMaskGraphics);
 		this.webcamContainer.mask = this.webcamMaskGraphics;
 
-		if (cursorOverlayEnabled) {
+		if (cursorOverlayEnabled && this.config.excludeCursorOverlay !== true) {
 			this.cursorOverlay = new PixiCursorOverlay({
 				dotRadius: DEFAULT_CURSOR_CONFIG.dotRadius * (this.config.cursorSize ?? 1.4),
 				style: this.config.cursorStyle ?? "tahoe",
@@ -3315,6 +3322,91 @@ export class FrameRenderer {
 		);
 	}
 
+	/** Render only transparent UI/effect layers for native CUDA composition. */
+	async renderOverlayFrame(
+		timestamp: number,
+		cursorTimestamp = timestamp,
+		backgroundTimelineTimestamp = timestamp,
+	): Promise<void> {
+		if (
+			!this.app ||
+			!this.cameraContainer ||
+			!this.videoEffectsContainer ||
+			!this.frameContainer ||
+			!this.cursorContainer ||
+			!this.annotationContainer ||
+			!this.overlayContainer ||
+			!this.captionContainer
+		) {
+			throw new Error("Overlay renderer is not initialized");
+		}
+		// The overlay renderer never stages source-video frames, so its layout
+		// cache is not populated by the video-sprite layout path. Build the stage
+		// mask/layout from the export config so cursor/caption/annotation/webcam
+		// positioning matches the native CUDA compositor's padded layout.
+		this.ensureOverlayLayoutCache();
+		if (!this.layoutCache) {
+			throw new Error("Overlay renderer layout is unavailable");
+		}
+
+		this.currentVideoTime = timestamp / 1_000_000;
+		const webcamTimeSeconds = Math.max(0, backgroundTimelineTimestamp / 1_000_000);
+		if (this.webcamForwardFrameSource || this.webcamVideoElement) {
+			await this.syncWebcamFrame(webcamTimeSeconds);
+		}
+
+		const timeMs = this.currentVideoTime * 1000;
+		const cursorTimeMs = cursorTimestamp / 1000;
+		if (this.cursorOverlay) {
+			this.cursorOverlay.update(
+				this.config.cursorTelemetry ?? [],
+				cursorTimeMs,
+				this.layoutCache.maskRect,
+				this.config.showCursor ?? true,
+				false,
+			);
+		}
+
+		this.updateAnimationState(timeMs);
+		applyZoomTransform({
+			cameraContainer: this.cameraContainer,
+			zoomBlurFilter: this.zoomBlurFilter,
+			motionBlurFilter: this.motionBlurFilter,
+			stageSize: this.layoutCache.stageSize,
+			baseMask: this.layoutCache.maskRect,
+			zoomScale: this.animationState.scale,
+			zoomProgress: this.animationState.progress,
+			focusX: this.animationState.focusX,
+			focusY: this.animationState.focusY,
+			isPlaying: true,
+			motionBlurAmount: 0,
+			motionBlurTuning: this.config.zoomMotionBlurTuning,
+			transformOverride: {
+				scale: this.animationState.appliedScale,
+				x: this.animationState.x,
+				y: this.animationState.y,
+			},
+			motionBlurState: this.motionBlurState,
+			frameTimeMs: timeMs,
+		});
+
+		this.updateAnnotationLayer(timeMs);
+		this.updateCaptionLayer(timeMs);
+		this.updateWebcamOverlay(webcamTimeSeconds);
+
+		if (this.backgroundContainer) {
+			this.backgroundContainer.visible = false;
+		}
+		this.videoEffectsContainer.visible = false;
+		this.frameContainer.visible = true;
+		this.cursorContainer.visible = true;
+		this.annotationContainer.visible = true;
+		this.overlayContainer.visible = true;
+		this.captionContainer.visible = true;
+		this.app.render();
+		this.outputCanvasOverride = null;
+	}
+
 	private compositeExtensions(
 		timeMs: number,
 		cursorTimeMs: number,
@@ -3526,18 +3618,19 @@ export class FrameRenderer {
 		}
 	}
 
-	private updateLayout(): void {
-		if (!this.app || !this.videoSprite || !this.videoMaskGraphics) return;
-
-		const {
-			width,
-			height,
-			cropRegion,
-			borderRadius = 0,
-			padding = 0,
-			videoWidth,
-			videoHeight,
-		} = this.config;
+	private buildLayoutCacheFromConfig(): LayoutCache | null {
+		const { width, height, cropRegion, padding = 0, videoWidth, videoHeight } = this.config;
+		if (
+			!Number.isFinite(width) ||
+			!Number.isFinite(height) ||
+			!cropRegion ||
+			!Number.isFinite(videoWidth) ||
+			!Number.isFinite(videoHeight) ||
+			videoWidth <= 0 ||
+			videoHeight <= 0
+		) {
+			return null;
+		}
 
 		const layout = computePaddedLayout({
 			width,
@@ -3547,6 +3640,47 @@ export class FrameRenderer {
 			cropRegion,
 			videoWidth,
 			videoHeight,
+		});
+
+		return {
+			stageSize: { width, height },
+			videoSize: {
+				width: videoWidth * cropRegion.width,
+				height: videoHeight * cropRegion.height,
+			},
+			baseScale: layout.scale,
+			baseOffset: { x: layout.spriteX, y: layout.spriteY },
+			maskRect: {
+				x: layout.centerOffsetX,
+				y: layout.centerOffsetY,
+				width: layout.croppedDisplayWidth,
+				height: layout.croppedDisplayHeight,
+				sourceCrop: cropRegion,
+			},
+		};
+	}
+
+	private ensureOverlayLayoutCache(): void {
+		if (this.layoutCache) {
+			return;
+		}
+		this.layoutCache = this.buildLayoutCacheFromConfig();
+		this.updateFrameLayout();
+	}
+
+	private updateLayout(): void {
+		if (!this.app || !this.videoSprite || !this.videoMaskGraphics) return;
+
+		const { width, height, cropRegion, borderRadius = 0, padding = 0 } = this.config;
+
+		const layout = computePaddedLayout({
+			width,
+			height,
+			padding,
+			frameInsets: this.frameInsets,
+			cropRegion,
+			videoWidth: this.config.videoWidth,
+			videoHeight: this.config.videoHeight,
 		});
 
 		this.videoSprite.scale.set(layout.scale);
@@ -3572,22 +3706,7 @@ export class FrameRenderer {
 			maskRadius: scaledBorderRadius,
 		});
 
-		this.layoutCache = {
-			stageSize: { width, height },
-			videoSize: {
-				width: videoWidth * cropRegion.width,
-				height: videoHeight * cropRegion.height,
-			},
-			baseScale: layout.scale,
-			baseOffset: { x: layout.spriteX, y: layout.spriteY },
-			maskRect: {
-				x: layout.centerOffsetX,
-				y: layout.centerOffsetY,
-				width: layout.croppedDisplayWidth,
-				height: layout.croppedDisplayHeight,
-				sourceCrop: cropRegion,
-			},
-		};
+		this.layoutCache = this.buildLayoutCacheFromConfig();
 
 		this.updateFrameLayout();
 	}

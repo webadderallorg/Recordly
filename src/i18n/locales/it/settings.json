@@ -232,6 +232,49 @@
 			"high": "Alta",
 			"original": "Originale"
 		},
+		"codecTitle": "Codec video",
+		"codec": {
+			"h264": "H.264",
+			"hevc": "H.265"
+		},
+		"encoderTitle": "Encoder",
+		"encoder": {
+			"auto": "Auto",
+			"hardware": "Hardware",
+			"cpu": "CPU"
+		},
+		"bitrateTitle": "Bitrate",
+		"bitrate": {
+			"auto": "Auto",
+			"custom": "Personalizzato",
+			"mbpsInput": "Bitrate personalizzato in Mbps",
+			"range": "1–105 Mbps (H.264) · 1–70 Mbps (HEVC)"
+		},
+		"hevcHint": "HEVC (H.265) produce file più piccoli ma potrebbe non essere riprodotto su lettori vecchi o web. L'anteprima di Recordly rimane invariata.",
+		"hardwareUnavailable": "Nessun encoder hardware utilizzabile trovato. Scegli CPU o Auto, oppure aggiorna il driver della GPU.",
+		"errors": {
+			"hardwareUnavailable": "Nessun encoder hardware utilizzabile trovato. Scegli CPU o Auto, oppure aggiorna il driver della GPU."
+		},
+		"backend": {
+			"auto": "Auto"
+		},
+		"nvidiaCuda": {
+			"compositorTitle": "Compositor NVIDIA CUDA",
+			"backendLabel": "Backend",
+			"backendSelected": "Compositor NVIDIA CUDA",
+			"availableBadge": "Disponibile",
+			"selectedBadge": "Selezionato",
+			"requiredBadge": "Richiesto",
+			"unavailableBadge": "Non disponibile",
+			"toggle": "Usa il compositor NVIDIA CUDA per esportazioni accelerate via GPU",
+			"requiredToggle": "Il compositor NVIDIA CUDA è obbligatorio per le esportazioni H.265 con hardware",
+			"hint": "Componi e codifica sulla GPU NVIDIA per esportazioni veloci.",
+			"hintSelected": "Le esportazioni useranno il compositor NVIDIA CUDA su questo dispositivo.",
+			"hintRequired": "Le esportazioni H.265 con hardware usano il compositor NVIDIA CUDA e non ricadono mai sui fotogrammi del renderer.",
+			"unavailableReason": "Compositor CUDA non disponibile ({{reason}}).",
+			"unavailableGeneric": "Compositor CUDA non disponibile su questo dispositivo.",
+			"unavailableRequired": "Le esportazioni H.265 + Hardware falliranno finché il compositor CUDA non sarà disponibile. Installa o aggiorna i driver NVIDIA oppure imposta Encoder su Auto."
+		},
 		"fpsTitle": "FPS",
 		"loop": "Loop",
 		"outputDimensions": "Output: {{dimensions}}px",
