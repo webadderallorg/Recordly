@@ -452,12 +452,13 @@ function LaunchWindowContent() {
 					className="flex items-center overflow-visible flex-col-reverse pointer-events-none"
 				>
 					<div
-						className="flex flex-col items-center pointer-events-auto p-2"
-						onMouseEnter={handleHudMouseEnter}
-						onMouseLeave={handleHudMouseLeave}
+						className="flex flex-col items-center pointer-events-none p-2"
 					>
 						<div
 							ref={hudBarTransformRef}
+							className="pointer-events-auto"
+							onMouseEnter={handleHudMouseEnter}
+							onMouseLeave={handleHudMouseLeave}
 							style={{
 								transform: `translate3d(${recordingHudOffset.x}px, ${recordingHudOffset.y}px, 0)`,
 							}}
