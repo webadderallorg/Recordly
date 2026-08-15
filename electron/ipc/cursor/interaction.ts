@@ -12,6 +12,7 @@ import {
 	setLastLeftClick,
 	setLinuxCursorScreenPoint,
 } from "../state";
+import { isHyprlandCursorProviderActive } from "./hyprland";
 import {
 	getNormalizedCursorPoint,
 	getCursorCaptureElapsedMs,
@@ -257,6 +258,7 @@ export async function startInteractionCapture() {
 		const onMouseMove = (event: HookMouseEvent) => {
 			if (
 				process.platform !== "linux" ||
+				isHyprlandCursorProviderActive() ||
 				!isCursorCaptureActive ||
 				isCursorCapturePaused()
 			) {
@@ -268,7 +270,13 @@ export async function startInteractionCapture() {
 				return;
 			}
 
-			setLinuxCursorScreenPoint({ x: point.x, y: point.y, updatedAt: Date.now() });
+			setLinuxCursorScreenPoint({
+				x: point.x,
+				y: point.y,
+				updatedAt: Date.now(),
+				coordinateSpace: "physical",
+				source: "uiohook",
+			});
 		};
 
 		hook.on("mousedown", onMouseDown);

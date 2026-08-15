@@ -566,7 +566,10 @@ interface Window {
 			startDelayMsByPath?: Record<string, number>;
 			error?: string;
 		}>;
-		setRecordingState: (recording: boolean) => Promise<void>;
+		setRecordingState: (
+			recording: boolean,
+			options?: { mediaTimelineStartedAtEpochMs?: number },
+		) => Promise<{ cursorOverlayAvailable: boolean }>;
 		getCursorTelemetry: (videoPath?: string) => Promise<{
 			success: boolean;
 			samples: CursorTelemetryPoint[];
@@ -839,7 +842,6 @@ interface Window {
 		onMenuSaveProject: (callback: () => void) => () => void;
 		onMenuSaveProjectAs: (callback: () => void) => () => void;
 		getPlatform: () => Promise<string>;
-		getLinuxWindowSystem: () => Promise<"wayland" | "x11" | null>;
 		revealInFolder: (
 			filePath: string,
 		) => Promise<{ success: boolean; error?: string; message?: string }>;

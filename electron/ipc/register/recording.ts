@@ -16,6 +16,11 @@ import { showCursor } from "../../cursorHider";
 import { getMonitorHandles } from "../monitorResolver";
 import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
 import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../cursor/bounds";
+import {
+	resolveHyprlandCursorCaptureEpochMs,
+	startHyprlandCursorProvider,
+	stopHyprlandCursorProvider,
+} from "../cursor/hyprland";
 import { startInteractionCapture, stopInteractionCapture } from "../cursor/interaction";
 import { startNativeCursorMonitor, stopNativeCursorMonitor } from "../cursor/monitor";
 import {
@@ -394,6 +399,8 @@ async function resolveExistingPath(...candidates: Array<string | null | undefine
 export function registerRecordingHandlers(
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
 ) {
+	let cursorCaptureGeneration = 0;
+
 	ipcMain.handle(
 		"start-native-screen-recording",
 		async (_, source: SelectedSource, options?: NativeMacRecordingOptions) => {
@@ -1811,7 +1818,9 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("set-recording-state", (_, recording: boolean) => {
+	ipcMain.handle("set-recording-state", async (_, recording: boolean, options?: unknown) => {
+		const captureGeneration = ++cursorCaptureGeneration;
+		let cursorOverlayAvailable = false;
 		if (recording) {
 			stopCursorCapture();
 			stopInteractionCapture();
@@ -1820,10 +1829,28 @@ export function registerRecordingHandlers(
 			setIsCursorCaptureActive(true);
 			setActiveCursorSamples([]);
 			setPendingCursorSamples([]);
-			setCursorCaptureStartTimeMs(Date.now());
 			resetCursorCaptureClock();
 			setLinuxCursorScreenPoint(null);
 			setLastLeftClick(null);
+			const hyprlandCursorProviderStarted = await startHyprlandCursorProvider();
+			if (captureGeneration !== cursorCaptureGeneration) {
+				return { cursorOverlayAvailable: false };
+			}
+
+			cursorOverlayAvailable = hyprlandCursorProviderStarted;
+			const mediaTimelineStartedAtEpochMs = isRecord(options)
+				? options.mediaTimelineStartedAtEpochMs
+				: undefined;
+			const captureStartedAtMs = normalizeRendererTimestampMs(
+				mediaTimelineStartedAtEpochMs,
+			);
+			setCursorCaptureStartTimeMs(
+				hyprlandCursorProviderStarted &&
+					typeof mediaTimelineStartedAtEpochMs === "number" &&
+					Number.isFinite(mediaTimelineStartedAtEpochMs)
+					? resolveHyprlandCursorCaptureEpochMs(captureStartedAtMs)
+					: captureStartedAtMs,
+			);
 			sampleCursorPoint();
 			startCursorSampling();
 			void startInteractionCapture();
@@ -1831,6 +1858,7 @@ export function registerRecordingHandlers(
 			setIsCursorCaptureActive(false);
 			stopCursorCapture();
 			stopInteractionCapture();
+			stopHyprlandCursorProvider();
 			stopWindowBoundsCapture();
 			stopNativeCursorMonitor();
 			showCursor();
@@ -1853,6 +1881,8 @@ export function registerRecordingHandlers(
 		if (onRecordingStateChange) {
 			onRecordingStateChange(recording, source.name);
 		}
+
+		return { cursorOverlayAvailable };
 	});
 
 	ipcMain.handle("pause-cursor-capture", (_, pausedAtMs?: unknown) => {
