@@ -472,6 +472,9 @@ export function createHudOverlayWindow(): BrowserWindow {
 		hasShadow: false,
 		show: false,
 		focusable: false,
+		// On macOS, `type: 'panel'` lets a transparent, always-on-top window
+		// float over apps that enter native fullscreen on their own Space.
+		...(process.platform === "darwin" ? ({ type: "panel" } as const) : {}),
 		webPreferences: {
 			preload: path.join(electronWindowsDir, "preload.mjs"),
 			nodeIntegration: false,
