@@ -31,6 +31,7 @@ import {
 } from "./diagnostics";
 import { emitRecordingInterrupted } from "./events";
 import { getFinalMacCompanionAudioPath } from "./macCompanionAudio";
+import { isUnfinalizedMp4 } from "./mp4Integrity";
 import { pruneAutoRecordings } from "./prune";
 
 export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStreams) {
@@ -276,6 +277,15 @@ export async function recoverNativeMacCaptureOutput() {
 	const microphonePath = nativeCaptureMicrophonePath ?? macDiagnostics?.microphonePath ?? null;
 
 	if (!candidatePath) {
+		return null;
+	}
+
+	// The capture helper writes through AVAssetWriter, so a helper that died
+	// mid-recording leaves bytes on disk that no decoder can open.  Recovering
+	// with such a file hands the editor an undecodable stream instead of telling
+	// the user the recording failed.
+	if (await isUnfinalizedMp4(candidatePath)) {
+		console.error("[mac-recover] Capture file was never finalized:", candidatePath);
 		return null;
 	}
 
