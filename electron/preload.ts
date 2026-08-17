@@ -476,6 +476,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getVideoAudioFallbackPaths: (videoPath: string) => {
 		return ipcRenderer.invoke("get-video-audio-fallback-paths", videoPath);
 	},
+	listNativeMicrophones: () => {
+		return ipcRenderer.invoke("list-native-microphones");
+	},
 	getSources: async (opts: Electron.SourcesOptions) => {
 		return await ipcRenderer.invoke("get-sources", opts);
 	},

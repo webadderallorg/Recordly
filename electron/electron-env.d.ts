@@ -566,6 +566,11 @@ interface Window {
 			startDelayMsByPath?: Record<string, number>;
 			error?: string;
 		}>;
+		listNativeMicrophones: () => Promise<{
+			success: boolean;
+			devices: Array<{ id: string; name: string }>;
+			error?: string;
+		}>;
 		setRecordingState: (recording: boolean) => Promise<void>;
 		getCursorTelemetry: (videoPath?: string) => Promise<{
 			success: boolean;
