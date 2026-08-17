@@ -36,6 +36,10 @@
     {
       "from": "public/wallpapers",
       "to": "assets/wallpapers"
+    },
+    {
+      "from": "models",
+      "to": "assets/models"
     }
   ],
   "publish": [
@@ -53,15 +57,23 @@
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.inherit.plist",
     "target": [
-      {
-        "target": "dmg",
-        "arch": ["x64", "arm64"]
-      },
-      {
-        "target": "zip",
-        "arch": ["x64", "arm64"]
-      }
+        {
+            "target": "dmg",
+            "arch": ["x64", "arm64"]
+        },
+        {
+            "target": "zip",
+            "arch": ["x64", "arm64"]
+        }
     ],
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+	"target": [
+		{
+			"target": "dir",
+			"arch": ["arm64"]
+		}
+	],
     "icon": "icons/icons/mac/icon.icns",
     "artifactName": "${productName}-${arch}.${ext}",
     "extendInfo": {

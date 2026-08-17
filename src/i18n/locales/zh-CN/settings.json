@@ -168,6 +168,7 @@
 	"captions": {
 		"selectOnTimeline": "在时间轴上选择字幕进行编辑。",
 		"enabled": "显示",
+		"model": "模型",
 		"timelineQuickAdd": "悬停以在时间轴上添加",
 		"language": "语言",
 		"downloading": "下载中...",

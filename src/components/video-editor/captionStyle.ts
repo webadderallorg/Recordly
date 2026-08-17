@@ -25,8 +25,8 @@ export function getCaptionScaledFontSize(
 
 export function getCaptionPadding(fontSize: number) {
 	return {
-		x: fontSize * 1.1,
-		y: fontSize * 0.78,
+		x: Math.max(fontSize * 1.2, 20),
+		y: Math.max(fontSize * 0.6, 10),
 	};
 }
 

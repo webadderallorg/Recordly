@@ -16,7 +16,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite --config vite.config.ts",
-		"postinstall": "node scripts/postinstall.mjs",
+		"postinstall": "node scripts/postinstall.mjs && node scripts/download-bundled-models.mjs",
 		"build": "npm run build:platform-native-helpers && tsc && vite build --config vite.config.ts && npm run normalize:electron-main-cjs && npm run smoke:electron-main-cjs && electron-builder",
 		"lint": "biome lint .",
 		"lint:fix": "biome lint --write .",
@@ -34,6 +34,7 @@
 		"build:mac": "npm run build:platform-native-helpers && tsc && vite build --config vite.config.ts && npm run normalize:electron-main-cjs && npm run smoke:electron-main-cjs && electron-builder --mac",
 		"build:win": "npm run build:platform-native-helpers && tsc && vite build --config vite.config.ts && npm run normalize:electron-main-cjs && npm run smoke:electron-main-cjs && electron-builder --win",
 		"build:linux": "npm run build:platform-native-helpers && tsc && vite build --config vite.config.ts && npm run normalize:electron-main-cjs && npm run smoke:electron-main-cjs && electron-builder --linux",
+		"download:models": "node scripts/download-bundled-models.mjs",
 		"i18n:check": "node scripts/i18n-check.mjs",
 		"benchmark:export-queues": "node scripts/benchmark-export-queues.mjs",
 		"normalize:electron-main-cjs": "node scripts/normalize-electron-main-cjs.mjs",
@@ -51,6 +52,8 @@
 		"electron-updater": "^6.8.3",
 		"ffmpeg-static": "^5.3.0",
 		"ffprobe-static": "^3.1.0",
+		"sherpa-onnx": "^1.13.4",
+		"sherpa-onnx-darwin-arm64": "^1.13.4",
 		"uiohook-napi": "^1.5.4"
 	},
 	"devDependencies": {

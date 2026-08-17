@@ -120,11 +120,22 @@ export function getFfmpegBinaryPath(): string {
 	const ffmpegStatic = loadFfmpegStatic();
 	if (ffmpegStatic && typeof ffmpegStatic === "string") {
 		const bundledPath = app.isPackaged
-			? ffmpegStatic.replace(/\.asar([/\\])/, ".asar.unpacked$1")
+			? ffmpegStatic.replace(/\.asar([\/\\])/, ".asar.unpacked$1")
 			: ffmpegStatic;
 
 		if (existsSync(bundledPath)) {
-			return bundledPath;
+			// Verify the binary is actually executable (macOS 16+ blocks unsigned binaries)
+			const result = spawnSync(bundledPath, ["-version"], {
+				timeout: 3000,
+				encoding: "utf-8",
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+			if (result.status === 0) {
+				return bundledPath;
+			}
+			console.warn(
+				`[ffmpeg] Static binary at ${bundledPath} is present but not executable (status=${result.status}, error=${result.error?.message ?? "none"}), falling back to system ffmpeg.`,
+			);
 		}
 	}
 
@@ -146,7 +157,18 @@ export function getFfprobeBinaryPath(): string {
 			: ffprobeStatic;
 
 		if (existsSync(bundledPath)) {
-			return bundledPath;
+			// Verify the binary is actually executable (macOS 16+ blocks unsigned binaries)
+			const result = spawnSync(bundledPath, ["-version"], {
+				timeout: 3000,
+				encoding: "utf-8",
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+			if (result.status === 0) {
+				return bundledPath;
+			}
+			console.warn(
+				`[ffprobe] Static binary at ${bundledPath} is present but not executable (status=${result.status}), falling back to system ffprobe.`,
+			);
 		}
 	}
 

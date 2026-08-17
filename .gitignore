@@ -41,7 +41,14 @@ electron/native/nvidia-cuda-compositor/build/
 electron/native/bin/*/whisper-*
 electron/native/bin/*/whisper-runtime.json
 
+# Bundled caption models (downloaded at postinstall)
+/models/
+
 # Local debug helpers
 tmp-*.ps1
 .tmp-*.ps1
 gpu-export-probe.mp4
+
+# 开发日志内部版（不公开）
+dev_docs/articles/internal/
+dev_docs/.drafts/

@@ -168,6 +168,7 @@
 	"captions": {
 		"selectOnTimeline": "Select a caption on the timeline to edit it.",
 		"enabled": "Show",
+		"model": "Model",
 		"timelineQuickAdd": "Hover to add on timeline",
 		"language": "Language",
 		"downloading": "Downloading...",
