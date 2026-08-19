@@ -41,7 +41,7 @@
   "publish": [
     {
       "provider": "github",
-      "owner": "webadderall",
+      "owner": "webadderallorg",
       "repo": "Recordly",
       "tagNamePrefix": "v",
       "publishAutoUpdate": true
