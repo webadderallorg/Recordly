@@ -1,6 +1,16 @@
 import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/contexts/I18nContext";
+import {
+	DEFAULT_NOISE_SUPPRESSION_MODE,
+	normalizeNoiseSuppressionMode,
+	type NoiseSuppressionMode,
+} from "@/lib/audio/noiseSuppression";
+import {
+	createNoiseSuppressedMicrophoneStream,
+	type NoiseSuppressedMicrophoneStream,
+} from "@/lib/audio/noiseSuppressedStream";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
 import {
 	getVideoExtensionForMimeType,
@@ -39,6 +49,7 @@ const WEBCAM_FRAME_RATE = 30;
 const WEBCAM_SUFFIX = "-webcam";
 const MICROPHONE_FALLBACK_ERROR_TOAST_ID = "recording-microphone-fallback-error";
 const MICROPHONE_SIDECAR_ERROR_TOAST_ID = "recording-microphone-sidecar-error";
+
 export type BrowserMicrophoneProfile =
 	| "processed"
 	| "no-agc"
@@ -46,6 +57,7 @@ export type BrowserMicrophoneProfile =
 	| "no-noise-suppression"
 	| "raw";
 type BrowserCaptureCursorMode = "always" | "never";
+
 export type BrowserCaptureCursorPolicy = {
 	streamCursor: BrowserCaptureCursorMode;
 	hideOsCursorBeforeRecording: boolean;
@@ -141,6 +153,8 @@ type UseScreenRecorderReturn = {
 	setMicrophoneEnabled: (enabled: boolean) => void;
 	microphoneDeviceId: string | undefined;
 	setMicrophoneDeviceId: (deviceId: string | undefined) => void;
+	noiseSuppressionMode: NoiseSuppressionMode;
+	setNoiseSuppressionMode: (mode: NoiseSuppressionMode) => void;
 	systemAudioEnabled: boolean;
 	setSystemAudioEnabled: (enabled: boolean) => void;
 	webcamEnabled: boolean;
@@ -213,10 +227,7 @@ export function resolveBrowserCaptureCursorPolicy({
 export function shouldUseNativeWindowsCaptureForSource(
 	source: Pick<ProcessedDesktopSource, "id"> | null | undefined,
 ): boolean {
-	return (
-		source?.id?.startsWith("screen:") === true ||
-		source?.id?.startsWith("window:") === true
-	);
+	return source?.id?.startsWith("screen:") === true || source?.id?.startsWith("window:") === true;
 }
 
 export function createProcessedMicrophoneConstraints(
@@ -320,6 +331,7 @@ async function createAudioInputDeviceSnapshot(): Promise<
 }
 
 export function useScreenRecorder(): UseScreenRecorderReturn {
+	const { t } = useI18n();
 	const [recording, setRecording] = useState(false);
 	const [paused, setPaused] = useState(false);
 	const [starting, setStarting] = useState(false);
@@ -328,6 +340,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const [isMacOS, setIsMacOS] = useState(false);
 	const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
 	const [microphoneDeviceId, setMicrophoneDeviceId] = useState<string | undefined>(undefined);
+	const [noiseSuppressionMode, setNoiseSuppressionModeState] = useState<NoiseSuppressionMode>(
+		DEFAULT_NOISE_SUPPRESSION_MODE,
+	);
 	const [systemAudioEnabled, setSystemAudioEnabled] = useState(false);
 	const [webcamEnabled, setWebcamEnabled] = useState(false);
 	const [webcamDeviceId, setWebcamDeviceId] = useState<string | undefined>(undefined);
@@ -337,6 +352,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const stream = useRef<MediaStream | null>(null);
 	const screenStream = useRef<MediaStream | null>(null);
 	const microphoneStream = useRef<MediaStream | null>(null);
+	const noiseSuppressedMicrophoneStreams = useRef<NoiseSuppressedMicrophoneStream[]>([]);
 	const webcamStream = useRef<MediaStream | null>(null);
 	const mixingContext = useRef<AudioContext | null>(null);
 	const chunks = useRef<Blob[]>([]);
@@ -554,6 +570,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	};
 
 	const cleanupCapturedMedia = useCallback(() => {
+		for (const processedStream of noiseSuppressedMicrophoneStreams.current) {
+			processedStream.destroy();
+		}
+		noiseSuppressedMicrophoneStreams.current = [];
+
 		if (stream.current) {
 			stream.current.getTracks().forEach((track) => track.stop());
 			stream.current = null;
@@ -597,6 +618,35 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			resetMicFallbackTimingDiagnostics();
 		}
 	}, [resetMicFallbackTimingDiagnostics]);
+
+	const prepareMicrophoneStream = useCallback(
+		async (rawStream: MediaStream) => {
+			try {
+				const processed = await createNoiseSuppressedMicrophoneStream({
+					sourceStream: rawStream,
+					mode: noiseSuppressionMode,
+					onWarning: (warning) => {
+						const fallback =
+							warning.key === "recording.noiseSuppressionUnavailableWarning"
+								? "Noise suppression is unavailable on this device. Recording will continue without it."
+								: "Noise suppression fell back to {{mode}}.";
+						const params = "params" in warning ? warning.params : undefined;
+						toast.warning(t(warning.key, fallback, params), { duration: 7000 });
+					},
+				});
+				noiseSuppressedMicrophoneStreams.current.push(processed);
+				console.info("[NoiseSuppression] Selected microphone mode.", {
+					requestedMode: processed.requestedMode,
+					activeMode: processed.activeMode,
+				});
+				return processed.stream;
+			} catch (error) {
+				rawStream.getTracks().forEach((track) => track.stop());
+				throw error;
+			}
+		},
+		[noiseSuppressionMode, t],
+	);
 
 	const appendMicFallbackChunk = useCallback(
 		(event: BlobEvent) => {
@@ -1266,6 +1316,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (result.microphoneDeviceId) {
 					setMicrophoneDeviceId(result.microphoneDeviceId);
 				}
+				setNoiseSuppressionModeState(
+					normalizeNoiseSuppressionMode(result.noiseSuppressionMode),
+				);
 				setSystemAudioEnabled(result.systemAudioEnabled);
 			}
 		})();
@@ -1279,6 +1332,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const persistMicrophoneDeviceId = useCallback((deviceId: string | undefined) => {
 		setMicrophoneDeviceId(deviceId);
 		void window.electronAPI.setRecordingPreferences({ microphoneDeviceId: deviceId });
+	}, []);
+
+	const persistNoiseSuppressionMode = useCallback((mode: NoiseSuppressionMode) => {
+		const normalizedMode = normalizeNoiseSuppressionMode(mode);
+		setNoiseSuppressionModeState(normalizedMode);
+		void window.electronAPI.setRecordingPreferences({
+			noiseSuppressionMode: normalizedMode,
+		});
 	}, []);
 
 	const persistSystemAudioEnabled = useCallback((enabled: boolean) => {
@@ -1361,6 +1422,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 
 		let hudSourceSelectionActive = false;
+
 		const setHudSourceSelectionActive = (active: boolean) => {
 			if (hudSourceSelectionActive === active) {
 				return;
@@ -1457,7 +1519,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					selectedSource,
 					{
 						capturesSystemAudio: systemAudioEnabled,
-						capturesMicrophone: microphoneEnabled,
+						capturesMicrophone:
+							microphoneEnabled && noiseSuppressionMode === "disabled",
 						microphoneDeviceId,
 						microphoneLabel: micLabel,
 					},
@@ -1504,7 +1567,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 					// When native mic capture is unavailable or explicitly bypassed,
 					// record mic via browser getUserMedia as a sidecar file.
-					if (nativeResult.microphoneFallbackRequired && microphoneEnabled) {
+					if (
+						(nativeResult.microphoneFallbackRequired ||
+							noiseSuppressionMode !== "disabled") &&
+						microphoneEnabled
+					) {
 						void logNativeCaptureDiagnostics("start-browser-microphone-fallback");
 						console.info("Using browser microphone processing for this recording.");
 						try {
@@ -1513,10 +1580,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 								browserMicrophoneProfile.current,
 							);
 							micFallbackRequestedConstraints.current = microphoneConstraints;
-							const micStream =
+							const rawMicStream =
 								await navigator.mediaDevices.getUserMedia(microphoneConstraints);
+							microphoneStream.current = rawMicStream;
+							const micStream = await prepareMicrophoneStream(rawMicStream);
 							micFallbackTrackSettings.current =
-								createMicrophoneTrackSettingsSnapshot(micStream);
+								createMicrophoneTrackSettingsSnapshot(rawMicStream);
 							micFallbackAudioInputDevices.current =
 								await createAudioInputDeviceSnapshot().catch(() => null);
 							console.info(
@@ -1632,6 +1701,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			if (wantsAudioCapture) {
 				let screenMediaStream: MediaStream;
+
 				const acquireLinuxPortalStream = (withAudio: boolean) =>
 					mediaDevices.getDisplayMedia({
 						audio: withAudio,
@@ -1695,12 +1765,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 				if (microphoneEnabled) {
 					try {
-						microphoneStream.current = await navigator.mediaDevices.getUserMedia(
+						const rawMicrophoneStream = await navigator.mediaDevices.getUserMedia(
 							createProcessedMicrophoneConstraints(
 								microphoneDeviceId,
 								browserMicrophoneProfile.current,
 							),
 						);
+						microphoneStream.current = rawMicrophoneStream;
+						microphoneStream.current =
+							await prepareMicrophoneStream(rawMicrophoneStream);
 					} catch (audioError) {
 						console.warn("Failed to get microphone access:", audioError);
 						alert(
@@ -2116,6 +2189,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		setMicrophoneEnabled: persistMicrophoneEnabled,
 		microphoneDeviceId,
 		setMicrophoneDeviceId: persistMicrophoneDeviceId,
+		noiseSuppressionMode,
+		setNoiseSuppressionMode: persistNoiseSuppressionMode,
 		systemAudioEnabled,
 		setSystemAudioEnabled: persistSystemAudioEnabled,
 		webcamEnabled,
