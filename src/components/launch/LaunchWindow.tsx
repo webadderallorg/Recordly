@@ -451,13 +451,17 @@ function LaunchWindowContent() {
 					ref={hudContentRef}
 					className="flex items-center overflow-visible flex-col-reverse pointer-events-none"
 				>
-					<div
-						className="flex flex-col items-center pointer-events-auto p-2"
-						onMouseEnter={handleHudMouseEnter}
-						onMouseLeave={handleHudMouseLeave}
-					>
+					<div className="flex flex-col items-center pointer-events-none p-2">
+						{/* The interactive area has to sit on the transformed wrapper, not on
+						    the static column above it: transforms do not move layout boxes, so
+						    a pointer-events-auto parent would keep swallowing clicks at the
+						    bar's original bottom-centre position after the bar is dragged
+						    away. */}
 						<div
 							ref={hudBarTransformRef}
+							className="pointer-events-auto"
+							onMouseEnter={handleHudMouseEnter}
+							onMouseLeave={handleHudMouseLeave}
 							style={{
 								transform: `translate3d(${recordingHudOffset.x}px, ${recordingHudOffset.y}px, 0)`,
 							}}

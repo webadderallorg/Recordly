@@ -13,6 +13,26 @@ function clamp(value: number, min: number, max: number): number {
 	return Math.min(Math.max(value, min), max);
 }
 
+/**
+ * While recording, Windows pins the HUD to a small, always-interactive window
+ * because focus changes there silently corrupt the WS_EX_TRANSPARENT flag that
+ * backs setIgnoreMouseEvents forwarding, which would leave the stop button
+ * unclickable.  Every other platform keeps the full-work-area click-through
+ * overlay: shrinking it to a fixed rectangle turns the transparent margins
+ * around the bar into a dead zone that swallows clicks aimed at the app being
+ * recorded, and the bar can only be dragged inside that rectangle so moving it
+ * never frees the blocked area.
+ */
+export function recordingForcesHudOverlayFallback({
+	platform,
+	recordingActive,
+}: {
+	platform: string;
+	recordingActive: boolean;
+}): boolean {
+	return recordingActive && platform === "win32";
+}
+
 export function getHudOverlayWindowBounds(
 	workArea: HudOverlayWorkArea,
 	mousePassthroughSupported: boolean,
