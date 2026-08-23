@@ -34,7 +34,7 @@ import { getFinalMacCompanionAudioPath } from "./macCompanionAudio";
 import { pruneAutoRecordings } from "./prune";
 
 export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStreams) {
-	return new Promise<void>((resolve, reject) => {
+	return new Promise<number>((resolve, reject) => {
 		const timer = setTimeout(() => {
 			cleanup();
 			reject(new Error("Timed out waiting for ScreenCaptureKit recorder to start"));
@@ -45,7 +45,7 @@ export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStream
 			stdoutBuffer += chunk.toString();
 			if (stdoutBuffer.includes("Recording started")) {
 				cleanup();
-				resolve();
+				resolve(Date.now());
 			}
 		};
 

@@ -23,6 +23,9 @@ export const WHISPER_SMALL_MODEL_PATH = path.join(WHISPER_MODEL_DIR, "ggml-small
 export const COMPANION_AUDIO_LAYOUTS = [
 	{ platform: "mac" as const, systemSuffix: ".system.m4a", micSuffix: ".mic.m4a" },
 	{ platform: "win" as const, systemSuffix: ".system.wav", micSuffix: ".mic.wav" },
+	// Browser microphone capture on macOS is finalized as PCM WAV while
+	// ScreenCaptureKit system audio remains M4A.
+	{ platform: "mac" as const, systemSuffix: ".system.m4a", micSuffix: ".mic.wav" },
 	{ platform: "mac" as const, systemSuffix: ".system.webm", micSuffix: ".mic.webm" },
 ];
 

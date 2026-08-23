@@ -25,6 +25,10 @@ export const BROWSER_MIC_SIDECAR_FILTERS = [
 ];
 
 export function getBrowserMicSidecarFilters(profile?: string | null) {
+	if (profile === "raw") {
+		return [];
+	}
+
 	if (profile === "no-agc") {
 		return [...BROWSER_MIC_SIDECAR_BASE_FILTERS, ...BROWSER_MIC_SIDECAR_NO_AGC_GAIN_FILTERS];
 	}

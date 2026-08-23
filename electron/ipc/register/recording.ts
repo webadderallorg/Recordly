@@ -677,8 +677,7 @@ export function registerRecordingHandlers(
 					// non-fatal – the helper will report its own TCC status
 				}
 
-				// Ensure microphone TCC is granted for this process tree when mic capture
-				// is requested, so the child helper inherits the grant.
+				// Warm up microphone permission before renderer-side capture starts.
 				if (options?.capturesMicrophone) {
 					const micStatus = systemPreferences.getMediaAccessStatus("microphone");
 					if (micStatus !== "granted") {
@@ -705,12 +704,12 @@ export function registerRecordingHandlers(
 				const timestamp = Date.now();
 				const outputPath = path.join(recordingsDir, `recording-${timestamp}.mp4`);
 				const capturesSystemAudio = Boolean(options?.capturesSystemAudio);
-				const capturesMicrophone = Boolean(options?.capturesMicrophone);
+				// Capture the selected mic in the renderer, where getUserMedia provides
+				// reliable device selection and permission attribution on macOS.
+				const capturesMicrophone = false;
+				const browserMicrophoneFallbackRequired = Boolean(options?.capturesMicrophone);
 				const systemAudioOutputPath = capturesSystemAudio
 					? path.join(recordingsDir, `recording-${timestamp}.system.m4a`)
-					: null;
-				const microphoneOutputPath = capturesMicrophone
-					? path.join(recordingsDir, `recording-${timestamp}.mic.m4a`)
 					: null;
 				const config: Record<string, unknown> = {
 					fps: 60,
@@ -719,20 +718,8 @@ export function registerRecordingHandlers(
 					capturesMicrophone,
 				};
 
-				if (options?.microphoneDeviceId) {
-					config.microphoneDeviceId = options.microphoneDeviceId;
-				}
-
-				if (options?.microphoneLabel) {
-					config.microphoneLabel = options.microphoneLabel;
-				}
-
 				if (systemAudioOutputPath) {
 					config.systemAudioOutputPath = systemAudioOutputPath;
-				}
-
-				if (microphoneOutputPath) {
-					config.microphoneOutputPath = microphoneOutputPath;
 				}
 
 				const windowId = parseWindowId(source?.id);
@@ -749,7 +736,7 @@ export function registerRecordingHandlers(
 				setNativeCaptureOutputBuffer("");
 				setNativeCaptureTargetPath(outputPath);
 				setNativeCaptureSystemAudioPath(systemAudioOutputPath);
-				setNativeCaptureMicrophonePath(microphoneOutputPath);
+				setNativeCaptureMicrophonePath(null);
 				setNativeCaptureStopRequested(false);
 				setNativeCapturePaused(false);
 				captProc = spawn(helperPath, [JSON.stringify(config)], {
@@ -766,18 +753,8 @@ export function registerRecordingHandlers(
 					setNativeCaptureOutputBuffer(nativeCaptureOutputBuffer + chunk.toString());
 				});
 
-				await waitForNativeCaptureStart(captProc);
+				const captureStartedAtMs = await waitForNativeCaptureStart(captProc);
 				setNativeScreenRecordingActive(true);
-
-				// If the native helper reported MICROPHONE_CAPTURE_UNAVAILABLE, it started
-				// capture without microphone.  Clear the mic path so the renderer can fall
-				// back to a browser-side sidecar recording for the microphone track.
-				const micUnavailableNatively = nativeCaptureOutputBuffer.includes(
-					"MICROPHONE_CAPTURE_UNAVAILABLE",
-				);
-				if (micUnavailableNatively) {
-					setNativeCaptureMicrophonePath(null);
-				}
 
 				recordNativeCaptureDiagnostics({
 					backend: "mac-screencapturekit",
@@ -791,7 +768,11 @@ export function registerRecordingHandlers(
 					microphonePath: nativeCaptureMicrophonePath,
 					processOutput: nativeCaptureOutputBuffer.trim() || undefined,
 				});
-				return { success: true, microphoneFallbackRequired: micUnavailableNatively };
+				return {
+					success: true,
+					captureStartedAtMs,
+					microphoneFallbackRequired: browserMicrophoneFallbackRequired,
+				};
 			} catch (error) {
 				console.error("Failed to start native ScreenCaptureKit recording:", error);
 				const errorStr = String(error);
@@ -1622,6 +1603,10 @@ export function registerRecordingHandlers(
 
 			try {
 				await fs.writeFile(tempWebmPath, Buffer.from(audioData));
+				const preRollMs =
+					typeof options?.startDelayMs === "number" && options.startDelayMs < 0
+						? Math.abs(options.startDelayMs)
+						: 0;
 				await execFileAsync(
 					getFfmpegBinaryPath(),
 					[
@@ -1638,6 +1623,12 @@ export function registerRecordingHandlers(
 						"48000",
 						"-af",
 						[
+							...(preRollMs > 0
+								? [
+										`atrim=start=${(preRollMs / 1000).toFixed(3)}`,
+										"asetpts=PTS-STARTPTS",
+									]
+								: []),
 							...getBrowserMicSidecarFilters(options?.browserMicrophoneProfile),
 							"aresample=async=1:first_pts=0",
 						].join(","),
@@ -1655,7 +1646,10 @@ export function registerRecordingHandlers(
 				} else {
 					await fs.rm(tempWebmPath, { force: true });
 				}
-				const startDelayMs = options?.startDelayMs;
+				const startDelayMs =
+					typeof options?.startDelayMs === "number" && options.startDelayMs < 0
+						? 0
+						: options?.startDelayMs;
 				const mediaTrackSettings = pickPrimitiveRecord(options?.mediaTrackSettings);
 				const audioInputDevices = pickAudioInputDevices(options?.audioInputDevices);
 				const mediaRecorder = isRecord(options?.mediaRecorder)
