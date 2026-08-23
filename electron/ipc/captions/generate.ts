@@ -7,6 +7,7 @@ import { app } from "electron";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { getBundledWhisperExecutableCandidates } from "../paths/binaries";
 import { resolveRecordingSession } from "../project/session";
+import { getCompanionAudioFallbackInfo } from "../recording/diagnostics";
 import { normalizeVideoSourcePath } from "../utils";
 import { parseSrtCues, parseWhisperJsonCues, shouldRetryWhisperWithoutJson } from "./parser";
 import { segmentCuesIntoPhrases } from "./segment";
@@ -83,25 +84,112 @@ export async function resolveWhisperExecutablePath(preferredPath?: string | null
 }
 
 export async function resolveCaptionAudioCandidates(videoPath: string) {
-	const candidates: Array<{ path: string; label: string }> = [];
+	const candidates: Array<{
+		path: string;
+		label: string;
+		startDelayMs?: number;
+		secondaryPath?: string;
+		secondaryStartDelayMs?: number;
+	}> = [];
 	const seenPaths = new Set<string>();
 
-	const pushCandidate = (candidatePath: string | null | undefined, label: string) => {
+	const pushCandidate = (
+		candidatePath: string | null | undefined,
+		label: string,
+		startDelayMs?: number,
+		secondaryPath?: string,
+		secondaryStartDelayMs?: number,
+	) => {
 		const normalizedCandidatePath = normalizeVideoSourcePath(candidatePath);
-		if (!normalizedCandidatePath || seenPaths.has(normalizedCandidatePath)) {
+		const normalizedSecondaryPath = normalizeVideoSourcePath(secondaryPath);
+		if (!normalizedCandidatePath) {
+			return;
+		}
+		const candidateKey = normalizedSecondaryPath
+			? `${normalizedCandidatePath}\0${normalizedSecondaryPath}`
+			: normalizedCandidatePath;
+		if (seenPaths.has(candidateKey)) {
 			return;
 		}
 
-		seenPaths.add(normalizedCandidatePath);
-		candidates.push({ path: normalizedCandidatePath, label });
+		seenPaths.add(candidateKey);
+		candidates.push({
+			path: normalizedCandidatePath,
+			label,
+			...(Number.isFinite(startDelayMs) && (startDelayMs ?? 0) > 0 ? { startDelayMs } : {}),
+			...(normalizedSecondaryPath ? { secondaryPath: normalizedSecondaryPath } : {}),
+			...(Number.isFinite(secondaryStartDelayMs) && (secondaryStartDelayMs ?? 0) > 0
+				? { secondaryStartDelayMs }
+				: {}),
+		});
 	};
 
+	const companionAudio = await getCompanionAudioFallbackInfo(videoPath);
+	const companionPaths = companionAudio.candidatePaths ?? companionAudio.paths;
+	const systemPath = companionPaths.find((path) => path.toLowerCase().includes(".system."));
+	const microphonePath = companionPaths.find((path) => path.toLowerCase().includes(".mic."));
+	if (systemPath && microphonePath) {
+		pushCandidate(
+			systemPath,
+			"system and microphone recording",
+			companionAudio.startDelayMsByPath[systemPath],
+			microphonePath,
+			companionAudio.startDelayMsByPath[microphonePath],
+		);
+	} else if (microphonePath) {
+		pushCandidate(
+			microphonePath,
+			"microphone recording",
+			companionAudio.startDelayMsByPath[microphonePath],
+		);
+	}
+
 	pushCandidate(videoPath, "recording");
+
+	for (const companionPath of companionPaths) {
+		if (companionPath.toLowerCase().includes(".system.")) {
+			pushCandidate(
+				companionPath,
+				"system audio recording",
+				companionAudio.startDelayMsByPath[companionPath],
+			);
+		}
+	}
+
+	for (const companionPath of companionPaths) {
+		if (companionPath.toLowerCase().includes(".mic.")) {
+			pushCandidate(
+				companionPath,
+				"microphone recording",
+				companionAudio.startDelayMsByPath[companionPath],
+			);
+		}
+	}
 
 	const requestedRecordingSession = await resolveRecordingSession(videoPath);
 	pushCandidate(requestedRecordingSession?.webcamPath, "linked webcam recording");
 
 	return candidates;
+}
+
+export function parseMaxVolumeDb(output: string) {
+	const match = output.match(/max_volume:\s*(-inf|[-+]?\d+(?:\.\d+)?)\s*dB/i);
+	if (!match || match[1].toLowerCase() === "-inf") {
+		return match ? Number.NEGATIVE_INFINITY : null;
+	}
+
+	const value = Number(match[1]);
+	return Number.isFinite(value) ? value : null;
+}
+
+async function hasAudibleCaptionAudio(ffmpegPath: string, wavPath: string) {
+	const { stderr } = await execFileAsync(
+		ffmpegPath,
+		["-hide_banner", "-i", wavPath, "-af", "volumedetect", "-f", "null", "-"],
+		{ timeout: 5 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 },
+	);
+	const maxVolumeDb = parseMaxVolumeDb(stderr);
+	return maxVolumeDb === null || maxVolumeDb > -60;
 }
 
 export async function extractCaptionAudioSource(options: {
@@ -121,25 +209,43 @@ export async function extractCaptionAudioSource(options: {
 	for (const candidate of candidates) {
 		try {
 			await ensureReadableFile(candidate.path);
+			if (candidate.secondaryPath) {
+				await ensureReadableFile(candidate.secondaryPath);
+			}
+			const mixedAudioFilter = candidate.secondaryPath
+				? [
+						`[0:a]adelay=${Math.round(candidate.startDelayMs ?? 0)}:all=1[primary]`,
+						`[1:a]adelay=${Math.round(candidate.secondaryStartDelayMs ?? 0)}:all=1[secondary]`,
+						"[primary][secondary]amix=inputs=2:duration=longest:normalize=0[mixed]",
+					].join(";")
+				: null;
 			await execFileAsync(
 				options.ffmpegPath,
 				[
 					"-y",
 					"-i",
 					candidate.path,
-					"-map",
-					"0:a:0",
+					...(candidate.secondaryPath ? ["-i", candidate.secondaryPath] : []),
+					...(mixedAudioFilter
+						? ["-filter_complex", mixedAudioFilter, "-map", "[mixed]"]
+						: ["-map", "0:a:0"]),
 					"-vn",
 					"-ac",
 					"1",
 					"-ar",
 					"16000",
+					...(!mixedAudioFilter && candidate.startDelayMs
+						? ["-af", `adelay=${Math.round(candidate.startDelayMs)}:all=1`]
+						: []),
 					"-c:a",
 					"pcm_s16le",
 					options.wavPath,
 				],
 				{ timeout: 5 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 },
 			);
+			if (!(await hasAudibleCaptionAudio(options.ffmpegPath, options.wavPath))) {
+				throw new Error("Extracted audio is silent");
+			}
 			attemptedCandidates.push({ ...candidate, readable: true, extractedAudio: true });
 			return candidate;
 		} catch (error) {

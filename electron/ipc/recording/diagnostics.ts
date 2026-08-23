@@ -503,32 +503,39 @@ export async function getCompanionAudioFallbackPaths(videoPath: string) {
 export async function getCompanionAudioFallbackInfo(videoPath: string) {
 	const companionCandidates = await getUsableCompanionAudioCandidates(videoPath);
 	if (companionCandidates.length === 0) {
-		return { paths: [], startDelayMsByPath: {} };
+		return { paths: [], candidatePaths: [], startDelayMsByPath: {} };
 	}
+	const candidatePaths = Array.from(
+		new Set(companionCandidates.flatMap((candidate) => candidate.usablePaths)),
+	);
 
 	let paths: string[];
 	if (await hasEmbeddedAudioStream(videoPath)) {
-		const hasUsableMacSystemCompanion = companionCandidates.some(
-			(candidate) =>
-				candidate.platform === "mac" &&
-				candidate.usablePaths.includes(candidate.systemPath),
-		);
-		const usableMacMicOnlyCompanions = Array.from(
+		const usableMacMicPaths = Array.from(
 			new Set(
 				companionCandidates.flatMap((candidate) =>
 					candidate.platform === "mac" &&
-					!candidate.usablePaths.includes(candidate.systemPath) &&
 					candidate.usablePaths.includes(candidate.micPath)
 						? [candidate.micPath]
 						: [],
 				),
 			),
 		);
+		const hasUsableMacSystemCompanion = companionCandidates.some(
+			(candidate) =>
+				candidate.platform === "mac" &&
+				candidate.usablePaths.includes(candidate.systemPath),
+		);
 
-		if (!hasUsableMacSystemCompanion && usableMacMicOnlyCompanions.length > 0) {
-			paths = usableMacMicOnlyCompanions;
-		} else if (hasUsableMacSystemCompanion) {
-			paths = [videoPath];
+		// Always surface the microphone sidecar when it exists: the embedded
+		// track (inline system audio) can be pure silence while the mic sidecar
+		// holds the only audible content.
+		if (hasUsableMacSystemCompanion) {
+			paths = [videoPath, ...usableMacMicPaths];
+		} else if (usableMacMicPaths.length > 0) {
+			paths = usableMacMicPaths.some((micPath) => micPath.endsWith(".mic.wav"))
+				? [videoPath, ...usableMacMicPaths]
+				: usableMacMicPaths;
 		} else {
 			const companionPaths = Array.from(
 				new Set(
@@ -540,7 +547,7 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 				),
 			);
 			if (companionPaths.length === 0) {
-				return { paths: [], startDelayMsByPath: {} };
+				return { paths: [], candidatePaths, startDelayMsByPath: {} };
 			}
 
 			paths = [videoPath, ...companionPaths];
@@ -552,7 +559,7 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 	}
 
 	const metadataEntries = await Promise.all(
-		paths.map(async (audioPath) => {
+		candidatePaths.map(async (audioPath) => {
 			const startDelayMs = await getCompanionAudioStartDelayMs(audioPath);
 			if (!Number.isFinite(startDelayMs)) {
 				return null;
@@ -564,6 +571,7 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 
 	return {
 		paths,
+		candidatePaths,
 		startDelayMsByPath: Object.fromEntries(
 			metadataEntries.filter((entry): entry is readonly [string, number] => entry !== null),
 		),

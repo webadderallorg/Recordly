@@ -57,6 +57,7 @@ describe("browser microphone sidecar post-processing", () => {
 	});
 
 	it("adds bounded speech gain only for the no-AGC browser mic profile", () => {
+		expect(getBrowserMicSidecarFilters("raw")).toEqual([]);
 		expect(getBrowserMicSidecarFilters("processed")).toEqual(BROWSER_MIC_SIDECAR_FILTERS);
 		expect(getBrowserMicSidecarFilters("no-agc")).toEqual([
 			"adeclip=threshold=1",

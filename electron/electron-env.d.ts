@@ -243,6 +243,7 @@ interface Window {
 			error?: string;
 			userNotified?: boolean;
 			microphoneFallbackRequired?: boolean;
+			captureStartedAtMs?: number;
 		}>;
 		stopNativeScreenRecording: () => Promise<{
 			success: boolean;

@@ -2765,6 +2765,9 @@ export default function VideoEditor() {
 			}
 
 			setDownloadedWhisperModelPath(null);
+			setWhisperModelPath((currentPath) => {
+				return currentPath === result.path ? null : currentPath;
+			});
 			setWhisperModelDownloadStatus("idle");
 			setWhisperModelDownloadProgress(0);
 		})();

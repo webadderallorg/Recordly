@@ -29,7 +29,7 @@ export async function getWhisperSmallModelStatus() {
 		return {
 			success: true,
 			exists: false,
-			path: null,
+			path: WHISPER_SMALL_MODEL_PATH,
 		};
 	}
 }
