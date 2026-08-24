@@ -304,8 +304,6 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 	}
 
 	if (hudOverlayRecordingActive) {
-		hudOverlayFallbackExpanded = false;
-		applyHudOverlayBounds();
 		hudOverlayWindow.setIgnoreMouseEvents(false);
 		return;
 	}
@@ -662,6 +660,10 @@ export function setHudOverlayRecordingActive(recording: boolean): void {
 	hudOverlayFallbackExpanded = false;
 	applyHudOverlayBounds();
 	setHudOverlayMousePassthrough(!hudOverlayRecordingActive);
+
+	if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
+		hudOverlayWindow.setSkipTaskbar(!recording);
+	}
 }
 
 export function createUpdateToastWindow(): BrowserWindow {
