@@ -17,6 +17,7 @@ import {
 	webContents as electronWebContents,
 } from "electron";
 import { RECORDINGS_DIR } from "./appPaths";
+import { startAutomationServer } from "./automationServer";
 import { showCursor } from "./cursorHider";
 import { registerExtensionIpcHandlers } from "./extensions/extensionIpc";
 import { getGpuSwitches } from "./gpuSwitches";
@@ -1043,6 +1044,8 @@ app.whenReady().then(async () => {
 	);
 
 	registerExtensionIpcHandlers();
+
+	startAutomationServer();
 
 	if (IS_SMOKE_EXPORT || process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {
 		await logSmokeExportGpuDiagnostics();
