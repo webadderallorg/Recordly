@@ -739,6 +739,35 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		).toBe("unsupported-rectangular-webcam-overlay");
 	});
 
+	it("skips native static layout only when webcam background blur is active", () => {
+		const exporter = createExporter({
+			webcam: {
+				enabled: true,
+				sourcePath: "C:\\recordly\\webcam.mp4",
+				backgroundBlur: { enabled: true, amount: 12 },
+			},
+		});
+
+		expect(exporter.getNativeStaticLayoutSkipReason({ audioMode: "none" }, videoInfo, 60)).toBe(
+			"unsupported-webcam-background-blur",
+		);
+
+		const disabledWebcamExporter = createExporter({
+			webcam: {
+				enabled: false,
+				sourcePath: "C:\\recordly\\webcam.mp4",
+				backgroundBlur: { enabled: true, amount: 12 },
+			},
+		});
+		expect(
+			disabledWebcamExporter.getNativeStaticLayoutSkipReason(
+				{ audioMode: "none" },
+				videoInfo,
+				60,
+			),
+		).toBeNull();
+	});
+
 	it("allows native speed timelines with a resolvable webcam source", () => {
 		const speedRegions: SpeedRegion[] = [
 			{ id: "speed-1", startMs: 1_000, endMs: 4_000, speed: 1.5 },

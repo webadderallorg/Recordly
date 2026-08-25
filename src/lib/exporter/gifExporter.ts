@@ -94,6 +94,7 @@ interface GifExporterConfig {
 	maxDecodeQueue?: number;
 	maxPendingFrames?: number;
 	onProgress?: (progress: ExportProgress) => void;
+	onWebcamBackgroundBlurWarning?: (message: string) => void;
 }
 
 /**
@@ -196,6 +197,7 @@ export function buildGifFrameRendererConfig(
 		cursorClickBounceDuration: config.cursorClickBounceDuration,
 		cursorSway: config.cursorSway,
 		frame: config.frame,
+		onWebcamBackgroundBlurWarning: config.onWebcamBackgroundBlurWarning,
 	};
 }
 
@@ -233,6 +235,7 @@ export class GifExporter {
 			// Initialize frame renderer
 			this.renderer = new FrameRenderer(buildGifFrameRendererConfig(this.config, videoInfo));
 			await this.renderer.initialize();
+			await this.renderer.preflightWebcamBackgroundBlur();
 
 			// Initialize GIF encoder
 			// Loop: 0 = infinite loop, 1 = play once (no loop)

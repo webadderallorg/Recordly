@@ -218,7 +218,9 @@ describe("ModernFrameRenderer Pixi lifecycle", () => {
 			};
 			renderer.config.preferredRenderBackend = "webgpu";
 
-			await expect(renderer.createPixiApplication({} as HTMLCanvasElement)).resolves.toMatchObject({
+			await expect(
+				renderer.createPixiApplication({} as HTMLCanvasElement),
+			).resolves.toMatchObject({
 				backend: "webgl",
 			});
 
@@ -639,14 +641,14 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 			};
 			renderer.config.webcamUrl = "file:///tmp/webcam.webm";
 
-				await renderer.setupWebcamSource();
-				const syncPromise = renderer.syncWebcamFrame(1);
+			await renderer.setupWebcamSource();
+			const syncPromise = renderer.syncWebcamFrame(1);
 
 			await vi.advanceTimersByTimeAsync(5_001);
-				await expect(syncPromise).resolves.toBeUndefined();
+			await expect(syncPromise).resolves.toBeUndefined();
 
-				expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
-				expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
+			expect(cancelForwardFrameSourceMock).toHaveBeenCalled();
+			expect(destroyForwardFrameSourceMock).toHaveBeenCalled();
 			expect(revoke).toHaveBeenCalled();
 			expect(renderer.webcamForwardFrameSource).toBeNull();
 			expect(renderer.webcamVideoElement).toBeNull();
@@ -656,7 +658,7 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 		}
 	});
 
-	it("keeps the webcam live when sync uses an offset timeline", () => {
+	it("keeps the webcam live when sync uses an offset timeline", async () => {
 		const renderer = createRenderer() as any;
 		renderer.config.webcam = {
 			...DEFAULT_WEBCAM_OVERLAY,
@@ -691,13 +693,13 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 			appliedScale: 1,
 		};
 
-		renderer.updateWebcamOverlay();
+		await renderer.updateWebcamOverlay();
 
 		expect(renderer.webcamRootContainer.visible).toBe(true);
 		expect(renderer.webcamSprite).toBeTruthy();
 	});
 
-	it("keeps the webcam live when the media element time is current but lastSyncedWebcamTime is stale", () => {
+	it("keeps the webcam live when the media element time is current but lastSyncedWebcamTime is stale", async () => {
 		const renderer = createRenderer() as any;
 		renderer.config.webcam = {
 			...DEFAULT_WEBCAM_OVERLAY,
@@ -733,10 +735,79 @@ describe("ModernFrameRenderer webcam export fallback", () => {
 			appliedScale: 1,
 		};
 
-		renderer.updateWebcamOverlay();
+		await renderer.updateWebcamOverlay();
 
 		expect(renderer.webcamRootContainer.visible).toBe(true);
 		expect(renderer.webcamSprite).toBeTruthy();
+	});
+
+	it("uploads the processed webcam frame before applying Pixi crop, mirror, and shadow layout", async () => {
+		const renderer = createRenderer() as any;
+		const rawFrame = {
+			currentTime: 2,
+			readyState: 2,
+			seeking: false,
+			videoWidth: 640,
+			videoHeight: 360,
+			duration: Number.NaN,
+		};
+		const processedFrame = createMockCanvas();
+		processedFrame.width = 640;
+		processedFrame.height = 360;
+		const processFrame = vi.fn(async () => processedFrame);
+		const ensureWebcamSprite = vi.fn((source: unknown) => {
+			renderer.webcamSprite = {};
+			return source;
+		});
+		const applyWebcamLayout = vi.fn();
+
+		renderer.config.webcam = {
+			...DEFAULT_WEBCAM_OVERLAY,
+			enabled: true,
+			mirror: true,
+			shadow: 0.6,
+			cropRegion: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
+			backgroundBlur: { enabled: true, amount: 14 },
+		};
+		renderer.webcamBackgroundBlurEngine = { processFrame };
+		renderer.currentVideoTime = 2;
+		renderer.lastSyncedWebcamTime = 2;
+		renderer.webcamVideoElement = rawFrame;
+		renderer.webcamRootContainer = {
+			visible: false,
+			position: { set: vi.fn() },
+		};
+		renderer.webcamContainer = { addChildAt: vi.fn() };
+		renderer.webcamMaskGraphics = {};
+		renderer.webcamShadowLayers = [];
+		renderer.animationState = { appliedScale: 1 };
+		renderer.ensureWebcamSprite = ensureWebcamSprite;
+		renderer.hasMatchingWebcamLayout = vi.fn(() => false);
+		renderer.applyWebcamLayout = applyWebcamLayout;
+
+		await renderer.updateWebcamOverlay();
+
+		expect(processFrame).toHaveBeenCalledWith(rawFrame, {
+			amount: 14,
+			frameKey: "export:2.000000",
+		});
+		const uploadedFrame = ensureWebcamSprite.mock.calls[0][0];
+		expect(uploadedFrame).not.toBe(rawFrame);
+		expect((uploadedFrame.context as CanvasRenderingContext2D).drawImage).toHaveBeenCalledWith(
+			processedFrame,
+			64,
+			36,
+			512,
+			288,
+			0,
+			0,
+			512,
+			288,
+		);
+		expect(ensureWebcamSprite).toHaveBeenCalledWith(uploadedFrame, 512, 288);
+		expect(applyWebcamLayout).toHaveBeenCalledWith(
+			expect.objectContaining({ mirror: true, shadowStrength: 0.6 }),
+		);
 	});
 
 	it("snapshots media-element webcam frames into the cache before rendering", () => {
