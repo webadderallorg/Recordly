@@ -78,6 +78,10 @@ import {
 	describeBlockedInMemoryExportSave,
 } from "@/lib/exporter/exportSavePolicy";
 import { matchesShortcut } from "@/lib/shortcuts";
+import {
+	DEFAULT_WEBCAM_BACKGROUND_BLUR,
+	normalizeWebcamBackgroundBlurSettings,
+} from "@/lib/webcamBackgroundBlur";
 import { cn } from "@/lib/utils";
 import {
 	ASPECT_RATIOS,
@@ -2423,6 +2427,7 @@ export default function VideoEditor() {
 						enabled: Boolean(webcamSourcePath),
 						sourcePath: webcamSourcePath,
 						timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
+						backgroundBlur: { ...DEFAULT_WEBCAM_BACKGROUND_BLUR },
 					}));
 					setError(null);
 					return;
@@ -2450,6 +2455,7 @@ export default function VideoEditor() {
 						enabled: !!smokeWebcamSourcePath,
 						sourcePath: smokeWebcamSourcePath,
 						timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
+						backgroundBlur: { ...DEFAULT_WEBCAM_BACKGROUND_BLUR },
 						shadow:
 							smokeExportConfig.webcamShadow === undefined
 								? prev.shadow
@@ -2520,6 +2526,9 @@ export default function VideoEditor() {
 						sourcePath: sessionResult.session?.webcamPath ?? null,
 						timeOffsetMs:
 							sessionResult.session?.timeOffsetMs ?? DEFAULT_WEBCAM_TIME_OFFSET_MS,
+						backgroundBlur: normalizeWebcamBackgroundBlurSettings(
+							sessionResult.session?.webcamBackgroundBlur,
+						),
 					}));
 					return;
 				}
@@ -2540,6 +2549,7 @@ export default function VideoEditor() {
 						enabled: false,
 						sourcePath: null,
 						timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
+						backgroundBlur: { ...DEFAULT_WEBCAM_BACKGROUND_BLUR },
 					}));
 				} else {
 					setError("No video to load. Please record or select a video.");
@@ -2595,6 +2605,7 @@ export default function VideoEditor() {
 				timeOffsetMs: sessionWebcamPath
 					? (session.timeOffsetMs ?? prev.timeOffsetMs)
 					: DEFAULT_WEBCAM_TIME_OFFSET_MS,
+				backgroundBlur: normalizeWebcamBackgroundBlurSettings(session.webcamBackgroundBlur),
 			}));
 			setSourceAudioFallbackRefreshKey((key) => key + 1);
 		});
@@ -3341,6 +3352,7 @@ export default function VideoEditor() {
 			enabled: false,
 			sourcePath: null,
 			timeOffsetMs: DEFAULT_WEBCAM_TIME_OFFSET_MS,
+			backgroundBlur: { ...DEFAULT_WEBCAM_BACKGROUND_BLUR },
 		}));
 		applySessionPresentation(null);
 		await window.electronAPI.setCurrentVideoPath(sourcePath, { preserveProjectPath: false });
@@ -4702,6 +4714,9 @@ export default function VideoEditor() {
 							recordSmokeProgress(progress);
 							setExportProgress(progress);
 						},
+						onWebcamBackgroundBlurWarning: () => {
+							toast.warning(t("settings.effects.webcamBackgroundBlurExportFallback"));
+						},
 					});
 
 					exporterRef.current = gifExporter as unknown as VideoExporter;
@@ -4888,6 +4903,9 @@ export default function VideoEditor() {
 						onProgress: (progress: ExportProgress) => {
 							recordSmokeProgress(progress);
 							setExportProgress(progress);
+						},
+						onWebcamBackgroundBlurWarning: () => {
+							toast.warning(t("settings.effects.webcamBackgroundBlurExportFallback"));
 						},
 					};
 

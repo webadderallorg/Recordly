@@ -21,6 +21,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useWebcamBackgroundBlurStatus } from "@/hooks/useWebcamBackgroundBlurStatus";
+import { DEFAULT_WEBCAM_BACKGROUND_BLUR } from "@/lib/webcamBackgroundBlur";
 import {
 	getAssetPath,
 	getRenderableAssetUrl,
@@ -1297,6 +1299,7 @@ export function SettingsPanel({
 	const tSettings = useScopedT("settings");
 	const { locale, setLocale, t } = useI18n();
 	const { preference: themePreference, setPreference: setThemePreference } = useTheme();
+	const webcamBlurStatus = useWebcamBackgroundBlurStatus();
 	const isBackgroundPanel = panelMode === "background";
 	const initialEditorPreferences = useMemo(() => loadEditorPreferences(), []);
 	const [builtInWallpapers, setBuiltInWallpapers] =
@@ -1931,6 +1934,9 @@ export function SettingsPanel({
 	const resetWebcamSection = () => {
 		if (!onWebcamChange) return;
 		onWebcamChange({ ...defaultWebcam });
+		void window.electronAPI.setRecordingPreferences({
+			webcamBackgroundBlur: defaultWebcam.backgroundBlur,
+		});
 	};
 
 	const resetCropSection = () => {
@@ -1940,6 +1946,11 @@ export function SettingsPanel({
 	const updateWebcam = (patch: Partial<WebcamOverlaySettings>) => {
 		if (!webcam || !onWebcamChange) return;
 		onWebcamChange({ ...webcam, ...patch });
+		if (patch.backgroundBlur) {
+			void window.electronAPI.setRecordingPreferences({
+				webcamBackgroundBlur: patch.backgroundBlur,
+			});
+		}
 	};
 
 	const applyWebcamPositionPreset = (preset: WebcamPositionPreset) => {
@@ -3966,6 +3977,74 @@ export function SettingsPanel({
 									onCheckedChange={(mirror) => updateWebcam({ mirror })}
 									className="data-[state=checked]:bg-[#2563EB] scale-75"
 								/>
+							</div>
+							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+								<div className="flex items-center justify-between gap-3">
+									<span className="text-[10px] text-muted-foreground">
+										{tSettings("effects.webcamBackgroundBlur")}
+									</span>
+									<Switch
+										checked={
+											webcam?.backgroundBlur.enabled ??
+											DEFAULT_WEBCAM_BACKGROUND_BLUR.enabled
+										}
+										onCheckedChange={(enabled) =>
+											updateWebcam({
+												backgroundBlur: {
+													...(webcam?.backgroundBlur ??
+														DEFAULT_WEBCAM_BACKGROUND_BLUR),
+													enabled,
+												},
+											})
+										}
+										className="data-[state=checked]:bg-[#2563EB] scale-75"
+									/>
+								</div>
+								{webcam?.backgroundBlur.enabled ? (
+									<div className="mt-2 flex flex-col gap-1.5">
+										<SliderControl
+											label={tSettings(
+												"effects.webcamBackgroundBlurStrength",
+											)}
+											value={webcam.backgroundBlur.amount}
+											defaultValue={DEFAULT_WEBCAM_BACKGROUND_BLUR.amount}
+											min={1}
+											max={20}
+											step={1}
+											onChange={(amount) =>
+												updateWebcam({
+													backgroundBlur: {
+														...webcam.backgroundBlur,
+														amount,
+													},
+												})
+											}
+											formatValue={(amount) => `${Math.round(amount)}`}
+											parseInput={(text) => Number.parseFloat(text)}
+										/>
+										{webcamBlurStatus.status === "loading" ? (
+											<p className="px-1 text-[10px] text-muted-foreground">
+												{tSettings("effects.webcamBackgroundBlurLoading")}
+											</p>
+										) : null}
+										{webcamBlurStatus.status === "error" ? (
+											<div className="flex items-center justify-between gap-2 px-1 text-[10px] text-amber-500">
+												<span>
+													{tSettings(
+														"effects.webcamBackgroundBlurUnavailable",
+													)}
+												</span>
+												<button
+													type="button"
+													className="underline"
+													onClick={webcamBlurStatus.retry}
+												>
+													{tSettings("effects.webcamBackgroundBlurRetry")}
+												</button>
+											</div>
+										) : null}
+									</div>
+								) : null}
 							</div>
 							<SliderControl
 								label={tSettings("effects.webcamWidth", "Webcam Width")}
