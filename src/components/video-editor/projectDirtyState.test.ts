@@ -118,4 +118,31 @@ describe("hasUnsavedProjectChanges", () => {
 
 		expect(hasUnsavedProjectChanges(current, saved)).toBe(true);
 	});
+
+	it("detects webcam background blur changes", () => {
+		const saved = createProjectData({
+			editor: {
+				...createProjectData().editor,
+				webcam: {
+					enabled: true,
+					sourcePath: "/Users/test/webcam.mp4",
+					timeOffsetMs: 0,
+					backgroundBlur: { enabled: false, amount: 12 },
+				},
+			},
+		});
+		const current = createProjectData({
+			editor: {
+				...createProjectData().editor,
+				webcam: {
+					enabled: true,
+					sourcePath: "/Users/test/webcam.mp4",
+					timeOffsetMs: 0,
+					backgroundBlur: { enabled: true, amount: 12 },
+				},
+			},
+		});
+
+		expect(hasUnsavedProjectChanges(current, saved)).toBe(true);
+	});
 });

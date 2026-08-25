@@ -87,6 +87,32 @@ describe("editorPreferences", () => {
 		expect(DEFAULT_EDITOR_PREFERENCES.exportQuality).toBe("source");
 	});
 
+	it("normalizes and persists webcam background blur preferences", () => {
+		const localStorage = createStorageMock();
+		vi.stubGlobal("localStorage", localStorage);
+
+		expect(
+			normalizeEditorPreferences({
+				webcam: {
+					...DEFAULT_EDITOR_PREFERENCES.webcam,
+					backgroundBlur: { enabled: true, amount: 99 },
+				},
+			}).webcam.backgroundBlur,
+		).toEqual({ enabled: true, amount: 20 });
+
+		saveEditorPreferences({
+			webcam: {
+				...DEFAULT_EDITOR_PREFERENCES.webcam,
+				backgroundBlur: { enabled: true, amount: 7 },
+			},
+		});
+
+		expect(loadEditorPreferences().webcam.backgroundBlur).toEqual({
+			enabled: true,
+			amount: 7,
+		});
+	});
+
 	it("defaults cursor preferences to Tahoe at 2.5x with gentler sway", () => {
 		expect(DEFAULT_EDITOR_PREFERENCES.cursorStyle).toBe("tahoe");
 		expect(DEFAULT_EDITOR_PREFERENCES.cursorSize).toBe(2.5);

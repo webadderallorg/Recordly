@@ -3,6 +3,7 @@ import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 import electron from "vite-plugin-electron/simple";
+import { webcamSegmentationAssetsPlugin } from "./webcamSegmentationAssets";
 
 function electronMainCjsOutputPlugin(): Plugin {
 	return {
@@ -58,6 +59,7 @@ function electronMainCjsGuardPlugin(): Plugin {
 export default defineConfig({
 	plugins: [
 		react(),
+		webcamSegmentationAssetsPlugin(),
 		electron({
 			main: {
 				// Shortcut of `build.lib.entry`.
@@ -129,6 +131,12 @@ export default defineConfig({
 					pixi: ["pixi.js"],
 					"react-vendor": ["react", "react-dom"],
 					"video-processing": ["mediabunny", "mp4box", "@fix-webm-duration/fix"],
+					"webcam-segmentation": [
+						"@tensorflow-models/body-segmentation",
+						"@tensorflow/tfjs-core",
+						"@tensorflow/tfjs-converter",
+						"@tensorflow/tfjs-backend-webgl",
+					],
 				},
 			},
 		},

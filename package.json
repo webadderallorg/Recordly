@@ -39,6 +39,7 @@
 		"normalize:electron-main-cjs": "node scripts/normalize-electron-main-cjs.mjs",
 		"smoke:electron-main-cjs": "node scripts/smoke-electron-main-cjs.mjs",
 		"smoke:packaged-binaries": "node scripts/smoke-packaged-binaries.mjs",
+		"smoke:webcam-segmentation-assets": "node scripts/smoke-webcam-segmentation-assets.mjs",
 		"verify:macos-distribution": "node scripts/verify-macos-distribution.mjs",
 		"checksums:release": "node scripts/write-release-checksums.mjs",
 		"release:create": "node scripts/create-release.mjs",
@@ -46,7 +47,12 @@
 		"test:watch": "vitest"
 	},
 	"dependencies": {
+		"@mediapipe/selfie_segmentation": "0.1.1675465747",
 		"@phosphor-icons/react": "^2.1.10",
+		"@tensorflow-models/body-segmentation": "1.0.2",
+		"@tensorflow/tfjs-backend-webgl": "4.22.0",
+		"@tensorflow/tfjs-converter": "4.22.0",
+		"@tensorflow/tfjs-core": "4.22.0",
 		"capturekit": "^1.0.13",
 		"electron-updater": "^6.8.3",
 		"ffmpeg-static": "^5.3.0",
