@@ -564,6 +564,11 @@ interface Window {
 			success: boolean;
 			paths: string[];
 			startDelayMsByPath?: Record<string, number>;
+			/**
+			 * True while a companion audio sidecar for this recording is still being
+			 * written, meaning `paths` may not list it yet.
+			 */
+			pending?: boolean;
 			error?: string;
 		}>;
 		setRecordingState: (recording: boolean) => Promise<void>;

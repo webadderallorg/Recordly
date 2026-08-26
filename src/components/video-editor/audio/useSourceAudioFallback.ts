@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { SOURCE_AUDIO_FALLBACK_TOAST_ID } from "@/components/video-editor/audio/audioTypes";
 
+// A microphone sidecar is converted after capture stops, so the editor can open
+// before it exists. Re-check on a short interval while the main process reports
+// the conversion as still running.
+const PENDING_SIDECAR_RECHECK_DELAY_MS = 750;
+const PENDING_SIDECAR_MAX_RECHECKS = 240;
+
 interface UseSourceAudioFallbackParams {
   currentSourcePath: string | null;
   refreshKey?: number;
@@ -16,17 +22,21 @@ export function useSourceAudioFallback({
   const [sourceAudioFallbackPaths, setSourceAudioFallbackPaths] = useState<string[]>([]);
   const [sourceAudioFallbackStartDelayMsByPath, setSourceAudioFallbackStartDelayMsByPath] =
     useState<Record<string, number>>({});
+  const [pendingRecheckCount, setPendingRecheckCount] = useState(0);
   const previousSourcePathRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    let recheckTimeout: ReturnType<typeof setTimeout> | null = null;
     // Refetch when late recording sidecars are finalized after the editor opens.
     void refreshKey;
+    void pendingRecheckCount;
     const sourceChanged = previousSourcePathRef.current !== currentSourcePath;
     previousSourcePathRef.current = currentSourcePath;
     if (sourceChanged) {
       setSourceAudioFallbackPaths([]);
       setSourceAudioFallbackStartDelayMsByPath({});
+      setPendingRecheckCount(0);
     }
 
     if (!currentSourcePath) {
@@ -58,6 +68,12 @@ export function useSourceAudioFallback({
         toast.dismiss(SOURCE_AUDIO_FALLBACK_TOAST_ID);
         setSourceAudioFallbackPaths(result.paths ?? []);
         setSourceAudioFallbackStartDelayMsByPath(result.startDelayMsByPath ?? {});
+
+        if (result.pending && pendingRecheckCount < PENDING_SIDECAR_MAX_RECHECKS) {
+          recheckTimeout = setTimeout(() => {
+            setPendingRecheckCount((count) => count + 1);
+          }, PENDING_SIDECAR_RECHECK_DELAY_MS);
+        }
       } catch (error) {
         if (!cancelled) {
           if (sourceChanged) {
@@ -74,8 +90,11 @@ export function useSourceAudioFallback({
 
     return () => {
       cancelled = true;
+      if (recheckTimeout) {
+        clearTimeout(recheckTimeout);
+      }
     };
-  }, [currentSourcePath, refreshKey, summarizeErrorMessage]);
+  }, [currentSourcePath, pendingRecheckCount, refreshKey, summarizeErrorMessage]);
 
   return { sourceAudioFallbackPaths, sourceAudioFallbackStartDelayMsByPath };
 }

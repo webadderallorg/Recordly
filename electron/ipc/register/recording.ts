@@ -14,7 +14,7 @@ import {
 } from "electron";
 import { showCursor } from "../../cursorHider";
 import { getMonitorHandles } from "../monitorResolver";
-import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
+import { ALLOW_RECORDLY_WINDOW_CAPTURE, INCOMPLETE_SIDECAR_SUFFIX } from "../constants";
 import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../cursor/bounds";
 import { startInteractionCapture, stopInteractionCapture } from "../cursor/interaction";
 import { startNativeCursorMonitor, stopNativeCursorMonitor } from "../cursor/monitor";
@@ -170,6 +170,33 @@ async function writeWindowsRecordingDiagnostics(
 		console.warn("Failed to write Windows recording diagnostics:", error);
 		return null;
 	}
+}
+
+/**
+ * Recordings whose companion audio sidecar is still being written.
+ *
+ * The editor opens as soon as capture stops, while converting the microphone
+ * sidecar takes a few more seconds. Sidecars are only published once complete,
+ * so a lookup during that window legitimately reports no microphone track. This
+ * set lets the editor learn that a track is still on its way and re-check,
+ * instead of depending solely on the session-changed broadcast.
+ */
+const pendingCompanionAudioSidecars = new Set<string>();
+
+function getCompanionAudioSidecarKey(videoPath: string) {
+	return path.resolve(videoPath).toLowerCase();
+}
+
+function markCompanionAudioSidecarPending(videoPath: string) {
+	pendingCompanionAudioSidecars.add(getCompanionAudioSidecarKey(videoPath));
+}
+
+function clearCompanionAudioSidecarPending(videoPath: string) {
+	pendingCompanionAudioSidecars.delete(getCompanionAudioSidecarKey(videoPath));
+}
+
+function isCompanionAudioSidecarPending(videoPath: string) {
+	return pendingCompanionAudioSidecars.has(getCompanionAudioSidecarKey(videoPath));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1407,7 +1434,12 @@ export function registerRecordingHandlers(
 				rememberApprovedLocalReadPath(videoPath),
 				...paths.map((fallbackPath) => rememberApprovedLocalReadPath(fallbackPath)),
 			]);
-			return { success: true, paths, startDelayMsByPath };
+			return {
+				success: true,
+				paths,
+				startDelayMsByPath,
+				pending: isCompanionAudioSidecarPending(videoPath),
+			};
 		} catch (error) {
 			console.error("Failed to resolve companion audio fallback paths:", error);
 			return { success: false, paths: [], startDelayMsByPath: {}, error: String(error) };
@@ -1628,9 +1660,19 @@ export function registerRecordingHandlers(
 		) => {
 			const baseName = videoPath.replace(/\.[^.]+$/, "");
 			const sidecarPath = `${baseName}.mic.wav`;
+			// FFmpeg writes WAV data progressively and only patches the RIFF/data sizes
+			// when it finalizes the file. A reader that opens the output while the encode
+			// is still running therefore sees a valid-looking WAV that ends early, because
+			// the unfinalized `data` chunk advertises 0xFFFFFFFF ("read until EOF").
+			// The editor opens right after capture stops, several seconds before this
+			// conversion finishes, so encoding straight to `sidecarPath` made it load a
+			// truncated microphone track. Encode to a staging path that no consumer scans
+			// for, then publish it with a single atomic rename.
+			const stagingSidecarPath = `${sidecarPath}${INCOMPLETE_SIDECAR_SUFFIX}`;
 			const sourceWebmPath = `${baseName}.mic.source.webm`;
 			const tempWebmPath = `${sourceWebmPath}.tmp`;
 
+			markCompanionAudioSidecarPending(videoPath);
 			try {
 				await fs.writeFile(tempWebmPath, Buffer.from(audioData));
 				await execFileAsync(
@@ -1654,7 +1696,11 @@ export function registerRecordingHandlers(
 						].join(","),
 						"-c:a",
 						"pcm_s16le",
-						sidecarPath,
+						// The staging filename intentionally does not end in .wav, so the
+						// container has to be stated explicitly instead of inferred.
+						"-f",
+						"wav",
+						stagingSidecarPath,
 					],
 					{ timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
 				);
@@ -1723,6 +1769,8 @@ export function registerRecordingHandlers(
 				};
 				if (Object.keys(metadata).length > 0) {
 					try {
+						// Written before the sidecar is published so a consumer that
+						// discovers the microphone track always finds its timing metadata.
 						await fs.writeFile(`${sidecarPath}.json`, JSON.stringify(metadata));
 					} catch (metadataError) {
 						console.warn(
@@ -1731,6 +1779,8 @@ export function registerRecordingHandlers(
 						);
 					}
 				}
+				// Publish atomically: consumers only ever observe the finalized file.
+				await moveFileWithOverwrite(stagingSidecarPath, sidecarPath);
 				await writeRecordingDiagnosticsSnapshot(videoPath, {
 					backend: "browser-store",
 					phase: "mic-sidecar",
@@ -1751,10 +1801,13 @@ export function registerRecordingHandlers(
 			} catch (error) {
 				await Promise.all([
 					fs.rm(tempWebmPath, { force: true }).catch(() => undefined),
+					fs.rm(stagingSidecarPath, { force: true }).catch(() => undefined),
 					fs.rm(sidecarPath, { force: true }).catch(() => undefined),
 				]);
 				console.error("Failed to store microphone sidecar:", error);
 				return { success: false, error: String(error) };
+			} finally {
+				clearCompanionAudioSidecarPending(videoPath);
 			}
 		},
 	);

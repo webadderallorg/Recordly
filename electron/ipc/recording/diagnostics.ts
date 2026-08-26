@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import type { FileHandle } from "node:fs/promises";
 import fs from "node:fs/promises";
 import { promisify } from "node:util";
 import { COMPANION_AUDIO_LAYOUTS } from "../constants";
@@ -416,6 +417,62 @@ export async function writeRecordingDiagnosticsSnapshot(
 	return diagnosticsPath;
 }
 
+/**
+ * WAV writers that stream their output advertise an unknown `data` chunk size of
+ * 0xFFFFFFFF and only patch it in once the file is finalized. Such a file parses
+ * as a valid WAV that ends wherever the writer happens to have flushed, which is
+ * why a mid-write microphone sidecar used to surface in the editor as a recording
+ * that stops after a few seconds. Treat those files as not yet usable.
+ */
+const WAV_STREAMING_DATA_SIZE = 0xffffffff;
+const WAV_HEADER_SCAN_BYTES = 4096;
+
+export async function isFinalizedWavFile(filePath: string): Promise<boolean> {
+	let handle: FileHandle | null = null;
+	try {
+		handle = await fs.open(filePath, "r");
+		const buffer = Buffer.alloc(WAV_HEADER_SCAN_BYTES);
+		const { bytesRead } = await handle.read(buffer, 0, WAV_HEADER_SCAN_BYTES, 0);
+		if (bytesRead < 12 || buffer.toString("ascii", 0, 4) !== "RIFF") {
+			// Not a RIFF/WAV container, so this check does not apply.
+			return true;
+		}
+
+		if (buffer.readUInt32LE(4) === WAV_STREAMING_DATA_SIZE) {
+			return false;
+		}
+
+		let offset = 12;
+		while (offset + 8 <= bytesRead) {
+			const chunkId = buffer.toString("ascii", offset, offset + 4);
+			const chunkSize = buffer.readUInt32LE(offset + 4);
+			if (chunkId === "data") {
+				return chunkSize !== WAV_STREAMING_DATA_SIZE;
+			}
+			if (chunkSize === 0) {
+				break;
+			}
+			offset += 8 + chunkSize + (chunkSize % 2);
+		}
+
+		// Header is larger than the scanned window; assume the file is usable.
+		return true;
+	} catch {
+		return true;
+	} finally {
+		await handle?.close().catch(() => undefined);
+	}
+}
+
+async function isUsableCompanionAudioFile(companionPath: string): Promise<boolean> {
+	const stat = await fs.stat(companionPath);
+	if (stat.size <= 0) {
+		return false;
+	}
+
+	return companionPath.toLowerCase().endsWith(".wav") ? isFinalizedWavFile(companionPath) : true;
+}
+
 export async function getUsableCompanionAudioCandidates(
 	videoPath: string,
 ): Promise<CompanionAudioCandidate[]> {
@@ -429,8 +486,7 @@ export async function getUsableCompanionAudioCandidates(
 
 		for (const companionPath of [systemPath, micPath]) {
 			try {
-				const stat = await fs.stat(companionPath);
-				if (stat.size > 0) {
+				if (await isUsableCompanionAudioFile(companionPath)) {
 					usablePaths.push(companionPath);
 				}
 			} catch {

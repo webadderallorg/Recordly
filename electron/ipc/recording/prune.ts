@@ -4,6 +4,7 @@ import {
 	AUTO_RECORDING_MAX_AGE_MS,
 	AUTO_RECORDING_RETENTION_COUNT,
 	COMPANION_AUDIO_LAYOUTS,
+	INCOMPLETE_SIDECAR_SUFFIX,
 	LEGACY_PROJECT_FILE_EXTENSIONS,
 	PROJECT_FILE_EXTENSION,
 	PROJECTS_DIRECTORY_NAME,
@@ -174,6 +175,9 @@ export async function pruneAutoRecordings(exemptPaths: string[] = []) {
 					COMPANION_AUDIO_LAYOUTS.flatMap((layout) => [
 						layout.systemSuffix,
 						layout.micSuffix,
+						// Staging files left behind if the app exited mid-conversion.
+						`${layout.systemSuffix}${INCOMPLETE_SIDECAR_SUFFIX}`,
+						`${layout.micSuffix}${INCOMPLETE_SIDECAR_SUFFIX}`,
 					]),
 				),
 			);
