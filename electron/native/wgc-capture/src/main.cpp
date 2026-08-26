@@ -150,10 +150,52 @@ static bool parseSimpleJson(const std::string& json, CaptureConfig& config) {
 
 static std::wstring utf8ToWide(const std::string& str) {
     if (str.empty()) return L"";
-    int len = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), static_cast<int>(str.size()), nullptr, 0);
+    int len = MultiByteToWideChar(
+        CP_UTF8,
+        MB_ERR_INVALID_CHARS,
+        str.c_str(),
+        static_cast<int>(str.size()),
+        nullptr,
+        0);
+    if (len <= 0) return L"";
     std::wstring wstr(len, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), static_cast<int>(str.size()), &wstr[0], len);
+    if (MultiByteToWideChar(
+            CP_UTF8,
+            MB_ERR_INVALID_CHARS,
+            str.c_str(),
+            static_cast<int>(str.size()),
+            &wstr[0],
+            len) <= 0) {
+        return L"";
+    }
     return wstr;
+}
+
+static std::string wideToUtf8(const std::wstring& str) {
+    if (str.empty()) return "";
+    int len = WideCharToMultiByte(
+        CP_UTF8,
+        WC_ERR_INVALID_CHARS,
+        str.c_str(),
+        static_cast<int>(str.size()),
+        nullptr,
+        0,
+        nullptr,
+        nullptr);
+    if (len <= 0) return "";
+    std::string utf8(len, '\0');
+    if (WideCharToMultiByte(
+            CP_UTF8,
+            WC_ERR_INVALID_CHARS,
+            str.c_str(),
+            static_cast<int>(str.size()),
+            &utf8[0],
+            len,
+            nullptr,
+            nullptr) <= 0) {
+        return "";
+    }
+    return utf8;
 }
 
 static int64_t queryPerformanceCounterHns() {
@@ -274,7 +316,7 @@ static void stdinListenerThread() {
     g_stopCv.notify_all();
 }
 
-int main(int argc, char* argv[]) {
+int wmain(int argc, wchar_t* argv[]) {
     if (argc < 2) {
         std::cerr << "ERROR: Missing JSON config argument" << std::endl;
         return 1;
@@ -283,7 +325,8 @@ int main(int argc, char* argv[]) {
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
 
     CaptureConfig config;
-    if (!parseSimpleJson(argv[1], config)) {
+    const std::string configJson = wideToUtf8(argv[1]);
+    if (configJson.empty() || !parseSimpleJson(configJson, config)) {
         std::cerr << "ERROR: Failed to parse config JSON" << std::endl;
         return 1;
     }

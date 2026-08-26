@@ -72,8 +72,10 @@ import {
 import { resolveRecordedVideoStoragePath } from "../recording/storagePath";
 import {
 	attachWindowsCaptureLifecycle,
+	describeWindowsCaptureStartFailure,
 	isNativeWindowsCaptureAvailable,
 	muxNativeWindowsVideoWithAudio,
+	prepareWindowsCaptureTempDirectory,
 	waitForWindowsCaptureStart,
 	waitForWindowsCaptureStop,
 } from "../recording/windows";
@@ -430,14 +432,16 @@ export function registerRecordingHandlers(
 				let tempVideoPath: string | null = null;
 				let tempSystemAudioPath: string | null = null;
 				let tempMicPath: string | null = null;
+				let captureOutput = "";
+				const tempDirectory = app.getPath("temp");
 				try {
 					const exePath = getWindowsCaptureExePath();
 					const recordingsDir = await getRecordingsDir();
+					await prepareWindowsCaptureTempDirectory(tempDirectory);
 					const timestamp = Date.now();
 					const outputPath = path.join(recordingsDir, `recording-${timestamp}.mp4`);
-					tempVideoPath = path.join(app.getPath("temp"), `recordly-native-${timestamp}.mp4`);
+					tempVideoPath = path.join(tempDirectory, `recordly-native-${timestamp}.mp4`);
 					
-					let captureOutput = "";
 					let systemAudioPath: string | null = null;
 					let microphonePath: string | null = null;
 					let orphanedMicAudioPath: string | null = null;
@@ -497,7 +501,7 @@ export function registerRecordingHandlers(
 							`recording-${timestamp}.system.wav`,
 						);
 						tempSystemAudioPath = path.join(
-							app.getPath("temp"),
+							tempDirectory,
 							`recordly-native-${timestamp}.system.wav`,
 						);
 						config.captureSystemAudio = true;
@@ -509,7 +513,7 @@ export function registerRecordingHandlers(
 
 					if (options?.capturesMicrophone && !browserMicFallbackRequested) {
 						microphonePath = path.join(recordingsDir, `recording-${timestamp}.mic.wav`);
-						tempMicPath = path.join(app.getPath("temp"), `recordly-native-${timestamp}.mic.wav`);
+						tempMicPath = path.join(tempDirectory, `recordly-native-${timestamp}.mic.wav`);
 						config.captureMic = true;
 						config.micOutputPath = tempMicPath;
 						if (options.microphoneLabel) {
@@ -594,6 +598,11 @@ export function registerRecordingHandlers(
 					});
 					return { success: true, microphoneFallbackRequired };
 				} catch (error) {
+					const failureDetail = describeWindowsCaptureStartFailure(
+						error,
+						captureOutput || windowsCaptureOutputBuffer,
+						tempDirectory,
+					);
 					recordNativeCaptureDiagnostics({
 						backend: "windows-wgc",
 						phase: "start",
@@ -603,10 +612,10 @@ export function registerRecordingHandlers(
 						outputPath: windowsCaptureTargetPath,
 						systemAudioPath: windowsSystemAudioPath,
 						microphonePath: windowsMicAudioPath,
-						processOutput: windowsCaptureOutputBuffer.trim() || undefined,
-						error: String(error),
+						processOutput: (captureOutput || windowsCaptureOutputBuffer).trim() || undefined,
+						error: failureDetail,
 					});
-					console.error("Failed to start native Windows capture:", error);
+					console.error("Failed to start native Windows capture:", failureDetail, error);
 					try {
 						if (wcProc) wcProc.kill();
 					} catch {
@@ -635,7 +644,7 @@ export function registerRecordingHandlers(
 					return {
 						success: false,
 						message: "Failed to start native Windows capture",
-						error: String(error),
+						error: failureDetail,
 					};
 				}
 			}

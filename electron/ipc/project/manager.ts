@@ -9,7 +9,6 @@ import {
 	MAX_RECENT_PROJECTS,
 	PROJECT_FILE_EXTENSION,
 	PROJECT_THUMBNAIL_SUFFIX,
-	PROJECTS_DIRECTORY_NAME,
 	RECENT_PROJECTS_FILE,
 	RECORDINGS_SETTINGS_FILE,
 } from "../constants";
@@ -24,7 +23,7 @@ import {
 } from "../state";
 import type { ProjectLibraryEntry, RecordingSessionData } from "../types";
 import {
-	getRecordingsDir,
+	getProjectsStorageDir,
 	normalizePath,
 	normalizeVideoSourcePath,
 	parseJsonWithByteOrderMark,
@@ -239,9 +238,7 @@ export async function resolveProjectMediaSources(
 }
 
 export async function getProjectsDir() {
-	const projectsDir = path.join(await getRecordingsDir(), PROJECTS_DIRECTORY_NAME);
-	await fs.mkdir(projectsDir, { recursive: true });
-	return projectsDir;
+	return getProjectsStorageDir();
 }
 
 export async function persistRecordingsDirectorySetting(nextDir: string) {

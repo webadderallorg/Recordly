@@ -858,6 +858,44 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		getStorageStatus: () => Promise<{
+			success: boolean;
+			workspaceRoot?: string | null;
+			recordingsDir?: string;
+			projectsDir?: string;
+			tempDir?: string;
+			cacheDir?: string;
+			configuredTempDir?: string;
+			configuredCacheDir?: string;
+			restartRequired?: boolean;
+			initializationError?: string | null;
+			usage?: {
+				recordingsBytes: number;
+				projectsBytes: number;
+				tempBytes: number;
+				cacheBytes: number;
+				totalBytes: number;
+			} | null;
+			error?: string;
+		}>;
+		chooseWorkspaceDirectory: () => Promise<{
+			success: boolean;
+			canceled?: boolean;
+			workspaceRoot?: string;
+			recordingsDir?: string;
+			projectsDir?: string;
+			tempDir?: string;
+			cacheDir?: string;
+			restartRequired?: boolean;
+			error?: string;
+		}>;
+		openWorkspaceDirectory: () => Promise<{ success: boolean; error?: string }>;
+		cleanupRecordlyTemporaryFiles: () => Promise<{
+			success: boolean;
+			removedCount?: number;
+			removedBytes?: number;
+			error?: string;
+		}>;
 		getShortcuts: () => Promise<Record<string, unknown> | null>;
 		saveShortcuts: (shortcuts: unknown) => Promise<{ success: boolean; error?: string }>;
 		getAppSetting: (key: string) => unknown;

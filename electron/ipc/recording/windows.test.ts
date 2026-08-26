@@ -1,8 +1,15 @@
 import { EventEmitter } from "node:events";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { PassThrough } from "node:stream";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setWindowsCaptureOutputBuffer, setWindowsCaptureTargetPath } from "../state";
-import { waitForWindowsCaptureStop } from "./windows";
+import {
+	describeWindowsCaptureStartFailure,
+	prepareWindowsCaptureTempDirectory,
+	waitForWindowsCaptureStop,
+} from "./windows";
 
 vi.mock("electron", () => ({
 	app: {
@@ -24,6 +31,48 @@ class FakeCaptureProcess extends EventEmitter {
 		return true;
 	});
 }
+
+const temporaryRoots: string[] = [];
+
+afterEach(async () => {
+	await Promise.all(
+		temporaryRoots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })),
+	);
+});
+
+describe("Windows capture temporary storage", () => {
+	it("accepts a writable Unicode temporary directory and removes its probe file", async () => {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-windows-temp-"));
+		temporaryRoots.push(root);
+		const unicodeDirectory = path.join(root, "录屏 临时目录");
+
+		const status = await prepareWindowsCaptureTempDirectory(unicodeDirectory, 0);
+
+		expect(status.directory).toBe(path.resolve(unicodeDirectory));
+		expect(await fs.readdir(unicodeDirectory)).toEqual([]);
+	});
+
+	it("rejects a temporary directory that does not have the required free space", async () => {
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-windows-space-"));
+		temporaryRoots.push(root);
+
+		await expect(
+			prepareWindowsCaptureTempDirectory(root, Number.MAX_SAFE_INTEGER),
+		).rejects.toThrow("Recordly needs at least");
+	});
+
+	it("prefers the native helper error and includes an actionable temporary path", () => {
+		const detail = describeWindowsCaptureStartFailure(
+			new Error("Native helper exited"),
+			"INFO: Initializing\nERROR: Failed to initialize Media Foundation encoder\n",
+			"D:\\RecordlyTemp",
+		);
+
+		expect(detail).toContain("ERROR: Failed to initialize Media Foundation encoder");
+		expect(detail).toContain("D:\\RecordlyTemp");
+		expect(detail).toContain("choose another Recordly storage location");
+	});
+});
 
 describe("waitForWindowsCaptureStop", () => {
 	beforeEach(() => {

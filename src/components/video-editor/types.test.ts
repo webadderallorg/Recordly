@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 import { deriveNextId } from "./projectPersistence";
 
 import {
+	clipsToTrims,
 	extendAutoFullTrackClip,
 	findClipAtTimelineTime,
+	getClipSourceEndMs,
+	getClipSourceStartMs,
 	getTimelineDurationMs,
 	mapSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime,
 	trimsToClips,
+	updateClipTimelineSpan,
 } from "./types";
 
 describe("extendAutoFullTrackClip", () => {
@@ -145,6 +149,42 @@ describe("clip timeline mapping", () => {
 		expect(findClipAtTimelineTime(5_000, clips)).toBeNull();
 	});
 
+	it("keeps source content stable when a later clip is moved into a timeline gap", () => {
+		const clips = [
+			{ id: "clip-1", startMs: 0, endMs: 5_000, sourceStartMs: 0, speed: 1 },
+			{ id: "clip-2", startMs: 5_000, endMs: 10_000, sourceStartMs: 8_000, speed: 1 },
+		];
+
+		expect(mapTimelineTimeToSourceTime(5_500, clips)).toBe(8_500);
+		expect(mapSourceTimeToTimelineTime(8_500, clips)).toBe(5_500);
+		expect(clipsToTrims(clips, 13_000)).toEqual([
+			{ id: "trim-gap-1", startMs: 5_000, endMs: 8_000 },
+		]);
+	});
+
+	it("preserves source bounds for moves and adjusts them only for edge resizes", () => {
+		const clip = {
+			id: "clip-2",
+			startMs: 8_000,
+			endMs: 13_000,
+			sourceStartMs: 8_000,
+			speed: 1,
+		};
+
+		const moved = updateClipTimelineSpan(clip, { start: 5_000, end: 10_000 });
+		expect(moved).toMatchObject({ startMs: 5_000, endMs: 10_000, sourceStartMs: 8_000 });
+		expect(getClipSourceStartMs(moved)).toBe(8_000);
+		expect(getClipSourceEndMs(moved)).toBe(13_000);
+
+		const resizedLeft = updateClipTimelineSpan(clip, { start: 9_000, end: 13_000 });
+		expect(resizedLeft).toMatchObject({ sourceStartMs: 9_000 });
+		expect(getClipSourceEndMs(resizedLeft)).toBe(13_000);
+
+		const resizedRight = updateClipTimelineSpan(clip, { start: 8_000, end: 14_000 });
+		expect(resizedRight).toMatchObject({ sourceStartMs: 8_000 });
+		expect(getClipSourceEndMs(resizedRight)).toBe(14_000);
+	});
+
 	it("derives the next clip id after converting trim gaps into clip ids", () => {
 		const clipsFromTrims = trimsToClips(
 			[
@@ -155,11 +195,28 @@ describe("clip timeline mapping", () => {
 		);
 
 		expect(clipsFromTrims.map((clip) => clip.id)).toEqual(["clip-1", "clip-2", "clip-3"]);
-		expect(deriveNextId("clip", clipsFromTrims.map((clip) => clip.id))).toBe(4);
+		expect(
+			deriveNextId(
+				"clip",
+				clipsFromTrims.map((clip) => clip.id),
+			),
+		).toBe(4);
 	});
 });
 
 describe("getTimelineDurationMs", () => {
+	it("uses the reflowed timeline end after a clip is moved", () => {
+		expect(
+			getTimelineDurationMs(
+				[
+					{ id: "clip-1", startMs: 0, endMs: 5_000, sourceStartMs: 0, speed: 1 },
+					{ id: "clip-2", startMs: 5_000, endMs: 10_000, sourceStartMs: 8_000, speed: 1 },
+				],
+				13_000,
+			),
+		).toBe(10_000);
+	});
+
 	it("extends the timeline when a slow clip becomes longer than the source duration", () => {
 		expect(
 			getTimelineDurationMs(
@@ -171,10 +228,7 @@ describe("getTimelineDurationMs", () => {
 
 	it("keeps the source duration when speed edits make clips shorter", () => {
 		expect(
-			getTimelineDurationMs(
-				[{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }],
-				10_000,
-			),
+			getTimelineDurationMs([{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }], 10_000),
 		).toBe(10_000);
 	});
 });

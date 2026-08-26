@@ -2,9 +2,20 @@ import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { BrowserWindow, dialog, ipcMain, shell } from "electron";
-import { RECORDINGS_DIR } from "../../appPaths";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { getConfiguredWorkspaceLayout, RECORDINGS_DIR, USER_DATA_PATH } from "../../appPaths";
 import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
+import {
+	cleanupRecordlyTempArtifacts,
+	deleteMigratedSourceFiles,
+	getStorageMigrationUsage,
+	getWorkspaceInitializationError,
+	getWorkspaceRootFromSelectedDirectory,
+	getWorkspaceUsage,
+	migrateStorageData,
+	persistWorkspaceRoot,
+	resolveWorkspaceLayout,
+} from "../../storageSettings";
 import {
 	LEGACY_PROJECT_FILE_EXTENSIONS,
 	PROJECT_FILE_EXTENSION,
@@ -294,6 +305,180 @@ export function registerProjectHandlers() {
       return { success: false, error: String(error), message: 'Failed to set recordings folder' }
     }
   })
+
+	ipcMain.handle("get-storage-status", async () => {
+		try {
+			const workspace = getConfiguredWorkspaceLayout();
+			const recordingsDir = await getRecordingsDir();
+			const projectsDir = await getProjectsDir();
+			return {
+				success: true,
+				workspaceRoot: workspace?.root ?? null,
+				recordingsDir,
+				projectsDir,
+				tempDir: app.getPath("temp"),
+				cacheDir: app.getPath("sessionData"),
+				configuredTempDir: workspace?.temp ?? app.getPath("temp"),
+				configuredCacheDir: workspace?.cache ?? app.getPath("sessionData"),
+				restartRequired: Boolean(
+					workspace &&
+						(path.resolve(app.getPath("temp")) !== path.resolve(workspace.temp) ||
+							path.resolve(app.getPath("sessionData")) !== path.resolve(workspace.cache)),
+				),
+				initializationError: getWorkspaceInitializationError(),
+				usage: workspace ? await getWorkspaceUsage(workspace) : null,
+			};
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
+
+	ipcMain.handle("choose-workspace-directory", async () => {
+		try {
+			const currentWorkspace = getConfiguredWorkspaceLayout();
+			const sourceRecordings = await getRecordingsDir();
+			const sourceProjects = await getProjectsDir();
+			const result = await dialog.showOpenDialog({
+				title: "Choose a parent folder for RecordlyData",
+				defaultPath: currentWorkspace?.root ?? app.getPath("documents"),
+				properties: ["openDirectory", "createDirectory", "promptToCreate"],
+			});
+
+			if (result.canceled || result.filePaths.length === 0) {
+				return { success: false, canceled: true };
+			}
+
+			const workspaceRoot = getWorkspaceRootFromSelectedDirectory(result.filePaths[0]);
+			const proposedLayout = resolveWorkspaceLayout(workspaceRoot);
+			let migrationResult: Awaited<ReturnType<typeof migrateStorageData>> | null = null;
+			const storageChanged =
+				path.resolve(sourceRecordings) !== path.resolve(proposedLayout.recordings) ||
+				path.resolve(sourceProjects) !== path.resolve(proposedLayout.projects);
+
+			if (storageChanged) {
+				const existingBytes = await getStorageMigrationUsage({
+					recordings: sourceRecordings,
+					projects: sourceProjects,
+				});
+				if (existingBytes > 0) {
+					const existingMegabytes = (existingBytes / (1024 * 1024)).toFixed(1);
+					const migrationPrompt = await dialog.showMessageBox({
+						type: "question",
+						title: "Move Recordly storage",
+						message: `Copy ${existingMegabytes} MB of existing recordings and projects?`,
+						detail: "Recordly copies first and never overwrites files already present in the new location. You can choose whether to remove the copied originals after the copy succeeds.",
+						buttons: ["Copy existing files", "Use new location only", "Cancel"],
+						defaultId: 0,
+						cancelId: 2,
+					});
+					if (migrationPrompt.response === 2) {
+						return { success: false, canceled: true };
+					}
+					if (migrationPrompt.response === 0) {
+						migrationResult = await migrateStorageData(
+							{ recordings: sourceRecordings, projects: sourceProjects },
+							proposedLayout,
+						);
+					}
+				}
+			}
+
+			const layout = await persistWorkspaceRoot(USER_DATA_PATH, workspaceRoot);
+			// Keep the existing recordings setting compatible with older Recordly
+			// versions while making new captures use the workspace immediately.
+			await persistRecordingsDirectorySetting(layout.recordings);
+
+			let deletedOriginalBytes = 0;
+			if (migrationResult && migrationResult.copiedCount > 0) {
+				const copiedMegabytes = (migrationResult.copiedBytes / (1024 * 1024)).toFixed(1);
+				const deletePrompt = await dialog.showMessageBox({
+					type: "question",
+					title: "Existing files copied",
+					message: `${migrationResult.copiedCount} files (${copiedMegabytes} MB) were copied successfully`,
+					detail:
+						migrationResult.skippedConflicts > 0
+							? `${migrationResult.skippedConflicts} conflicting files were kept only in the old location. Delete the originals that were copied successfully?`
+							: "Delete the originals that were copied successfully to free space on the old drive?",
+					buttons: ["Delete copied originals", "Keep originals"],
+					defaultId: 1,
+					cancelId: 1,
+				});
+				if (deletePrompt.response === 0) {
+					const deleted = await deleteMigratedSourceFiles(migrationResult.copiedFiles, [
+						sourceRecordings,
+						sourceProjects,
+					]);
+					deletedOriginalBytes = deleted.deletedBytes;
+				}
+			}
+
+			const prompt = await dialog.showMessageBox({
+				type: "info",
+				title: "Storage location updated",
+				message: "RecordlyData is ready",
+				detail: `New recordings and projects will use:\n${layout.root}\n\nRestart Recordly now to move recording temporary files and cache to this drive too.${
+					deletedOriginalBytes > 0
+						? `\n\n${(deletedOriginalBytes / (1024 * 1024)).toFixed(1)} MB was removed from the old location.`
+						: ""
+				}`,
+				buttons: ["Restart now", "Later"],
+				defaultId: 0,
+				cancelId: 1,
+			});
+
+			if (prompt.response === 0) {
+				setTimeout(() => {
+					app.relaunch();
+					app.exit(0);
+				}, 100);
+			}
+
+			return {
+				success: true,
+				workspaceRoot: layout.root,
+				recordingsDir: layout.recordings,
+				projectsDir: layout.projects,
+				tempDir: layout.temp,
+				cacheDir: layout.cache,
+				restartRequired: prompt.response !== 0,
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: String(error),
+				message: "Failed to configure RecordlyData",
+			};
+		}
+	});
+
+	ipcMain.handle("open-workspace-directory", async () => {
+		try {
+			const workspace = getConfiguredWorkspaceLayout();
+			const targetPath = workspace?.root ?? path.dirname(await getRecordingsDir());
+			const openPathResult = await shell.openPath(targetPath);
+			return openPathResult
+				? { success: false, error: openPathResult }
+				: { success: true, path: targetPath };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
+
+	ipcMain.handle("cleanup-recordly-temporary-files", async () => {
+		try {
+			const result = await cleanupRecordlyTempArtifacts(app.getPath("temp"));
+			const megabytes = (result.removedBytes / (1024 * 1024)).toFixed(1);
+			await dialog.showMessageBox({
+				type: "info",
+				title: "Temporary files cleaned",
+				message: `Removed ${result.removedCount} stale item${result.removedCount === 1 ? "" : "s"}`,
+				detail: `${megabytes} MB was released. Files modified within the last hour were kept to avoid interrupting active work.`,
+			});
+			return { success: true, ...result };
+		} catch (error) {
+			return { success: false, error: String(error) };
+		}
+	});
 
   ipcMain.handle('save-project-file', async (_, projectData: unknown, suggestedName?: string, existingProjectPath?: string, thumbnailDataUrl?: string | null) => {
     try {

@@ -217,23 +217,79 @@ export interface TrimRegion {
 
 export interface ClipRegion {
 	id: string;
+	/** Position of the clip on the edited timeline. */
 	startMs: number;
 	endMs: number;
+	/**
+	 * Start position in the original media. Older projects omit this field;
+	 * in that case the timeline start is also the source start.
+	 */
+	sourceStartMs?: number;
 	speed: number;
 	muted?: boolean;
 	showSourceAudio?: boolean;
 }
 
+export function getClipSourceStartMs(clip: ClipRegion): number {
+	const sourceStartMs = Number.isFinite(clip.sourceStartMs)
+		? Math.round(clip.sourceStartMs as number)
+		: Math.round(clip.startMs);
+	return Math.max(0, sourceStartMs);
+}
+
+export function getClipDisplayDurationMs(clip: ClipRegion): number {
+	return Math.max(0, Math.round(clip.endMs) - Math.round(clip.startMs));
+}
+
 export function getClipSourceEndMs(clip: ClipRegion): number {
-	const displayDurationMs = Math.max(0, clip.endMs - clip.startMs);
+	const displayDurationMs = getClipDisplayDurationMs(clip);
 	const speed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
-	return Math.round(clip.startMs + displayDurationMs * speed);
+	return Math.round(getClipSourceStartMs(clip) + displayDurationMs * speed);
+}
+
+/**
+ * Apply a timeline move/resize without changing the source material on a move.
+ * Resizing the left edge trims from (or restores) the source start, while a
+ * pure drag only changes the edited-timeline coordinates.
+ */
+export function updateClipTimelineSpan(
+	clip: ClipRegion,
+	span: { start: number; end: number },
+): ClipRegion {
+	const startMs = Math.round(Number.isFinite(span.start) ? span.start : clip.startMs);
+	const endMs = Math.max(
+		startMs + 1,
+		Math.round(Number.isFinite(span.end) ? span.end : clip.endMs),
+	);
+	const startDelta = startMs - clip.startMs;
+	const endDelta = endMs - clip.endMs;
+	const isMove = Math.abs(startDelta - endDelta) < 1;
+	const speed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
+	const sourceStartMs = getClipSourceStartMs(clip);
+	const nextSourceStartMs = isMove ? sourceStartMs : sourceStartMs + startDelta * speed;
+
+	return {
+		...clip,
+		startMs,
+		endMs,
+		sourceStartMs: Math.max(0, Math.round(nextSourceStartMs)),
+	};
 }
 
 export function getTimelineDurationMs(clips: ClipRegion[], sourceDurationMs: number): number {
 	const baseDurationMs = Math.max(0, Math.round(sourceDurationMs));
 	if (clips.length === 0) {
 		return baseDurationMs;
+	}
+
+	// Once a clip has been reflowed, its timeline position is no longer its
+	// source position. In that mode the visible timeline ends at the last
+	// edited clip instead of retaining the original source tail.
+	if (clips.some((clip) => getClipSourceStartMs(clip) !== Math.round(clip.startMs))) {
+		return clips.reduce(
+			(durationMs, clip) => Math.max(durationMs, Math.max(0, Math.round(clip.endMs))),
+			0,
+		);
 	}
 
 	return clips.reduce(
@@ -244,6 +300,13 @@ export function getTimelineDurationMs(clips: ClipRegion[], sourceDurationMs: num
 
 export function sortClipRegions(clips: ClipRegion[]): ClipRegion[] {
 	return [...clips].sort((left, right) => left.startMs - right.startMs);
+}
+
+export function sortClipRegionsBySource(clips: ClipRegion[]): ClipRegion[] {
+	return [...clips].sort((left, right) => {
+		const sourceStartDelta = getClipSourceStartMs(left) - getClipSourceStartMs(right);
+		return sourceStartDelta !== 0 ? sourceStartDelta : left.startMs - right.startMs;
+	});
 }
 
 function getSafeClipSpeed(clip: ClipRegion) {
@@ -259,16 +322,24 @@ function clampToNearestClipBoundary(
 	let nearestDistance = Number.POSITIVE_INFINITY;
 
 	for (const clip of clips) {
+		const sourceStartMs = getClipSourceStartMs(clip);
+		const sourceEndMs = getClipSourceEndMs(clip);
 		const boundaries =
 			kind === "timeline"
-				? [clip.startMs, clip.endMs]
-				: [clip.startMs, getClipSourceEndMs(clip)];
+				? [
+						{ timeMs: clip.startMs, mappedMs: sourceStartMs },
+						{ timeMs: clip.endMs, mappedMs: sourceEndMs },
+					]
+				: [
+						{ timeMs: sourceStartMs, mappedMs: clip.startMs },
+						{ timeMs: sourceEndMs, mappedMs: clip.endMs },
+					];
 
 		for (const boundary of boundaries) {
-			const distance = Math.abs(timeMs - boundary);
+			const distance = Math.abs(timeMs - boundary.timeMs);
 			if (distance < nearestDistance) {
 				nearestDistance = distance;
-				nearestTimeMs = Math.round(boundary);
+				nearestTimeMs = Math.round(boundary.mappedMs);
 			}
 		}
 	}
@@ -285,7 +356,9 @@ export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[])
 			continue;
 		}
 
-		return Math.round(clip.startMs + (roundedTimeMs - clip.startMs) * getSafeClipSpeed(clip));
+		return Math.round(
+			getClipSourceStartMs(clip) + (roundedTimeMs - clip.startMs) * getSafeClipSpeed(clip),
+		);
 	}
 
 	if (sortedClips.length === 0) {
@@ -297,15 +370,16 @@ export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[])
 
 export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[]): number {
 	const roundedTimeMs = Math.round(timeMs);
-	const sortedClips = sortClipRegions(clips);
+	const sortedClips = sortClipRegionsBySource(clips);
 
 	for (const clip of sortedClips) {
+		const sourceStartMs = getClipSourceStartMs(clip);
 		const sourceEndMs = getClipSourceEndMs(clip);
-		if (roundedTimeMs < clip.startMs || roundedTimeMs > sourceEndMs) {
+		if (roundedTimeMs < sourceStartMs || roundedTimeMs > sourceEndMs) {
 			continue;
 		}
 
-		return Math.round(clip.startMs + (roundedTimeMs - clip.startMs) / getSafeClipSpeed(clip));
+		return Math.round(clip.startMs + (roundedTimeMs - sourceStartMs) / getSafeClipSpeed(clip));
 	}
 
 	if (sortedClips.length === 0) {
@@ -344,6 +418,7 @@ export function extendAutoFullTrackClip(
 	if (
 		clip.id !== autoClipId ||
 		clip.startMs !== 0 ||
+		getClipSourceStartMs(clip) !== 0 ||
 		clip.speed !== 1 ||
 		clip.endMs !== previousAutoEndMs
 	) {
@@ -356,15 +431,17 @@ export function extendAutoFullTrackClip(
 /** Convert clip regions (kept segments) to trim regions (gaps to remove). */
 export function clipsToTrims(clips: ClipRegion[], totalDurationMs: number): TrimRegion[] {
 	if (clips.length === 0) return [];
-	const sorted = [...clips].sort((a, b) => a.startMs - b.startMs);
+	const sorted = sortClipRegionsBySource(clips);
 	const trims: TrimRegion[] = [];
 	let cursor = 0;
 	let trimId = 1;
 	for (const clip of sorted) {
-		if (clip.startMs > cursor) {
-			trims.push({ id: `trim-gap-${trimId++}`, startMs: cursor, endMs: clip.startMs });
+		const sourceStartMs = getClipSourceStartMs(clip);
+		const sourceEndMs = getClipSourceEndMs(clip);
+		if (sourceStartMs > cursor) {
+			trims.push({ id: `trim-gap-${trimId++}`, startMs: cursor, endMs: sourceStartMs });
 		}
-		cursor = getClipSourceEndMs(clip);
+		cursor = Math.max(cursor, sourceEndMs);
 	}
 	if (cursor < totalDurationMs) {
 		trims.push({ id: `trim-gap-${trimId++}`, startMs: cursor, endMs: totalDurationMs });

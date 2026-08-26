@@ -113,6 +113,33 @@ export function useLaunchWindowSystemState(
 		}
 	}, []);
 
+	const chooseWorkspaceDirectory = useCallback(async () => {
+		try {
+			const result = await window.electronAPI.chooseWorkspaceDirectory();
+			if (result.success && result.recordingsDir) {
+				setRecordingsDirectory(result.recordingsDir);
+			}
+		} catch (error) {
+			console.error("Failed to choose workspace directory:", error);
+		}
+	}, []);
+
+	const openWorkspaceDirectory = useCallback(async () => {
+		try {
+			await window.electronAPI.openWorkspaceDirectory();
+		} catch (error) {
+			console.error("Failed to open workspace directory:", error);
+		}
+	}, []);
+
+	const cleanupTemporaryFiles = useCallback(async () => {
+		try {
+			await window.electronAPI.cleanupRecordlyTemporaryFiles();
+		} catch (error) {
+			console.error("Failed to clean temporary files:", error);
+		}
+	}, []);
+
 	const toggleHudCaptureProtection = useCallback(async () => {
 		const nextValue = !hideHudFromCapture;
 		setHideHudFromCapture(nextValue);
@@ -137,6 +164,9 @@ export function useLaunchWindowSystemState(
 		hideHudFromCapture,
 		setHideHudFromCapture,
 		chooseRecordingsDirectory,
+		chooseWorkspaceDirectory,
+		openWorkspaceDirectory,
+		cleanupTemporaryFiles,
 		toggleHudCaptureProtection,
 	};
 }

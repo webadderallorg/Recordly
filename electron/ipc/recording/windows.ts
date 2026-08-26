@@ -1,6 +1,8 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
+import path from "node:path";
 import { BrowserWindow } from "electron";
 import { getWindowsCaptureExePath } from "../paths/binaries";
 import {
@@ -13,13 +15,91 @@ import {
 	windowsCaptureTargetPath,
 	windowsNativeCaptureActive,
 } from "../state";
-import {
-	AudioSyncAdjustment,
-} from "../types";
+import { AudioSyncAdjustment } from "../types";
 import { moveFileWithOverwrite } from "../utils";
 import { emitRecordingInterrupted } from "./events";
 
 const WINDOWS_CAPTURE_STOP_TIMEOUT_MS = 45_000;
+export const MIN_WINDOWS_CAPTURE_TEMP_FREE_BYTES = 512 * 1024 * 1024;
+
+export type WindowsCaptureTempStatus = {
+	directory: string;
+	freeBytes: number | null;
+};
+
+function formatStorageSize(bytes: number) {
+	if (!Number.isFinite(bytes) || bytes < 0) {
+		return "an unknown amount of space";
+	}
+
+	if (bytes >= 1024 * 1024 * 1024) {
+		return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+	}
+
+	return `${Math.max(0, Math.round(bytes / (1024 * 1024)))} MB`;
+}
+
+export async function prepareWindowsCaptureTempDirectory(
+	tempDirectory: string,
+	minimumFreeBytes = MIN_WINDOWS_CAPTURE_TEMP_FREE_BYTES,
+): Promise<WindowsCaptureTempStatus> {
+	const directory = path.resolve(tempDirectory);
+	let probePath: string | null = null;
+
+	try {
+		await fs.mkdir(directory, { recursive: true });
+		probePath = path.join(directory, `.recordly-write-test-${process.pid}-${randomUUID()}.tmp`);
+		await fs.writeFile(probePath, "Recordly temporary storage probe", { flag: "wx" });
+	} catch (error) {
+		throw new Error(
+			`Recordly cannot write to its temporary folder (${directory}). Choose another storage location or check the folder permissions. ${String(error)}`,
+		);
+	} finally {
+		if (probePath) {
+			await fs.rm(probePath, { force: true }).catch(() => undefined);
+		}
+	}
+
+	let freeBytes: number | null = null;
+	try {
+		const stats = await fs.statfs(directory);
+		const reportedFreeBytes = Number(stats.bavail) * Number(stats.bsize);
+		freeBytes = Number.isFinite(reportedFreeBytes) ? reportedFreeBytes : null;
+	} catch {
+		// Older Windows filesystems may not report capacity through statfs. The
+		// successful write probe is still enough to safely attempt capture.
+	}
+
+	if (freeBytes !== null && freeBytes < minimumFreeBytes) {
+		throw new Error(
+			`Recordly needs at least ${formatStorageSize(minimumFreeBytes)} free in its temporary folder (${directory}), but only ${formatStorageSize(freeBytes)} is available. Free disk space or choose another storage location.`,
+		);
+	}
+
+	return { directory, freeBytes };
+}
+
+export function describeWindowsCaptureStartFailure(
+	error: unknown,
+	processOutput: string,
+	tempDirectory: string,
+) {
+	const outputLines = processOutput
+		.split(/\r?\n/u)
+		.map((line) => line.trim())
+		.filter(Boolean);
+	const helperError = [...outputLines]
+		.reverse()
+		.find((line) => line.startsWith("ERROR:") || line.startsWith("WARNING:"));
+	const errorMessage = error instanceof Error ? error.message : String(error);
+	const detail = helperError ?? errorMessage;
+
+	if (/temporary folder|free disk space|folder permissions/iu.test(detail)) {
+		return detail;
+	}
+
+	return `${detail} Temporary folder: ${path.resolve(tempDirectory)}. If this folder is on a full or restricted drive, choose another Recordly storage location.`;
+}
 
 export type NativeWindowsVideoPaddingResult = {
 	padded: boolean;
@@ -135,7 +215,9 @@ export function waitForWindowsCaptureStop(
 
 		const onClose = (code: number | null) => {
 			finish(() => {
-				const match = windowsCaptureOutputBuffer.match(/Recording stopped\. Output path: (.+)/);
+				const match = windowsCaptureOutputBuffer.match(
+					/Recording stopped\. Output path: (.+)/,
+				);
 				if (match?.[1]) {
 					resolve(match[1].trim());
 					return;
@@ -254,9 +336,7 @@ export async function muxNativeWindowsVideoWithAudio(
 		}
 	}
 
-	console.log(
-		`[PERF:MAIN] muxNativeWindowsVideoWithAudio: COMPLETED in ${Date.now() - start}ms`,
-	);
+	console.log(`[PERF:MAIN] muxNativeWindowsVideoWithAudio: COMPLETED in ${Date.now() - start}ms`);
 
 	return {
 		muxed: false,

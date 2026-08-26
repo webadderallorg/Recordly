@@ -449,7 +449,7 @@ jobs:
           npm run build:platform-native-helpers
           npx tsc
           npx vite build
-          npx electron-builder --win dir nsis --x64 --publish never
+          npx electron-builder --win dir nsis portable --x64 --publish never
 
       - name: Smoke test packaged Windows x64 paths
         run: npm run smoke:packaged-binaries
