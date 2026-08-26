@@ -42,7 +42,7 @@ export function shouldForceLinuxEgl(env: NodeJS.ProcessEnv): boolean {
 
 export function getGpuSwitches(
 	platform: NodeJS.Platform,
-	env: NodeJS.ProcessEnv = process.env,
+	_env: NodeJS.ProcessEnv = process.env,
 ): GpuSwitches {
 	if (platform === "darwin") {
 		return {
@@ -56,8 +56,13 @@ export function getGpuSwitches(
 	}
 
 	if (platform === "linux") {
+		// Do NOT force --use-gl=egl: native EGL (gl=egl-gles2,angle=none) is not
+		// an allowed GL implementation on Electron's Linux builds, which only
+		// ship ANGLE (gl=egl-angle). Requesting it makes the GPU process
+		// crash-loop on init, which in turn breaks screen capture and forces the
+		// renderer into software compositing. Let Chromium use its default ANGLE
+		// backend instead.
 		return {
-			useGl: shouldForceLinuxEgl(env) ? "egl" : undefined,
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		};
 	}

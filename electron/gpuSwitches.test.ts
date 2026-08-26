@@ -58,9 +58,8 @@ describe("getGpuSwitches", () => {
 		});
 	});
 
-	it("returns the X11 EGL workaround on Linux X11", () => {
+	it("does not force EGL on Linux X11 (default ANGLE backend)", () => {
 		expect(getGpuSwitches("linux", { XDG_SESSION_TYPE: "x11" })).toEqual({
-			useGl: "egl",
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		});
 	});
