@@ -482,6 +482,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	switchToEditor: () => {
 		return ipcRenderer.invoke("switch-to-editor");
 	},
+	switchToRecording: () => {
+		return ipcRenderer.invoke("switch-to-recording");
+	},
 	openSourceSelector: () => {
 		return ipcRenderer.invoke("open-source-selector");
 	},

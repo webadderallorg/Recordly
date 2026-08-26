@@ -107,10 +107,18 @@
     },
 	"actions": {
         "saveAgain": "Erneut speichern",
-        "showInFolder": "In Ordner anzeigen"
+        "showInFolder": "In Ordner anzeigen",
+        "returnToRecording": "Zurück zur Aufnahme",
+        "returnToRecordingBlockedByExport": "Warte, bis der Export abgeschlossen ist, bevor du zur Aufnahme zurückkehrst"
     },
     "project": {
-        "untitled": "Unbenannt"
+        "untitled": "Unbenannt",
+        "menu": "Projekt",
+        "newRecording": "Neue Aufnahme",
+        "newFromFile": "Neues Projekt aus Datei…",
+        "open": "Projekte öffnen…",
+        "save": "Projekt speichern",
+        "saveAs": "Projekt speichern unter…"
     },
 	"nativeCaptureUnavailable": {
         "title": "Es ist nichts kaputt, aber wir können kein animiertes Cursor-Overlay rendern.",

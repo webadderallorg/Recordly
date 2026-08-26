@@ -6,6 +6,7 @@ import {
 	Crop,
 	Cursor,
 	DownloadSimple as Download,
+	FileText,
 	FolderOpen,
 	Gear,
 	Pause,
@@ -20,6 +21,7 @@ import {
 	Sparkle,
 	ArrowCounterClockwise as Undo2,
 	UserCircle as User,
+	VideoCamera,
 	SpeakerLow as Volume1,
 	SpeakerHigh as Volume2,
 	SpeakerX as VolumeX,
@@ -44,6 +46,8 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuSeparator,
+	DropdownMenuShortcut,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -694,6 +698,7 @@ export default function VideoEditor() {
 	const nextAudioIdRef = useRef(1);
 
 	const { shortcuts, isMac } = useShortcuts();
+	const primaryModifierLabel = isMac ? "⌘" : "Ctrl+";
 	const nextAnnotationIdRef = useRef(1);
 	const nextAnnotationZIndexRef = useRef(1); // Track z-index for stacking order
 	const exporterRef = useRef<CancelableExporter | null>(null);
@@ -3253,6 +3258,40 @@ export default function VideoEditor() {
 		[hasUnsavedChanges, openUnsavedChangesDialog, saveProject],
 	);
 
+	/**
+	 * Leaves the editor and brings the recording UI back, discarding the current
+	 * project unless the user chooses to save it first.
+	 */
+	const handleReturnToRecording = useCallback(async () => {
+		// Leaving closes the editor window, which would silently kill a running export.
+		if (isExporting) {
+			toast.error(
+				t(
+					"editor.actions.returnToRecordingBlockedByExport",
+					"Wait for the export to finish before returning to recording",
+				),
+			);
+			return;
+		}
+
+		if (!(await confirmReplaceSourceWithUnsavedChanges("return to recording"))) {
+			return;
+		}
+
+		try {
+			videoPlaybackRef.current?.pause();
+		} catch {
+			// no-op
+		}
+		setIsPlaying(false);
+
+		try {
+			await window.electronAPI.switchToRecording();
+		} catch (error) {
+			toast.error(getErrorMessage(error));
+		}
+	}, [confirmReplaceSourceWithUnsavedChanges, isExporting, t]);
+
 	const handleOpenProjectFromLibrary = useCallback(
 		async (projectPath: string) => {
 			if (!(await confirmReplaceSourceWithUnsavedChanges("open another project"))) {
@@ -4536,6 +4575,64 @@ export default function VideoEditor() {
 		return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
 	}, [shortcuts, isMac, handleUndo, handleRedo, startPlayback]);
 
+	// Project shortcuts. On macOS the native File menu owns Cmd+S / Cmd+Shift+S / Cmd+O and
+	// swallows those keystrokes before they reach the renderer; every other platform runs
+	// without an application menu, so the editor has to bind them itself.
+	useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			const target = e.target as HTMLElement | null;
+			const isEditableTarget =
+				target instanceof HTMLInputElement ||
+				target instanceof HTMLTextAreaElement ||
+				target?.isContentEditable;
+
+			if (isEditableTarget) {
+				return;
+			}
+
+			const usesPrimaryModifier = isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+			if (!usesPrimaryModifier || e.altKey) {
+				return;
+			}
+
+			const key = e.key.toLowerCase();
+
+			if (key === "n") {
+				e.preventDefault();
+				void handleReturnToRecording();
+				return;
+			}
+
+			if (isMac) {
+				return;
+			}
+
+			if (key === "s") {
+				e.preventDefault();
+				if (e.shiftKey) {
+					void handleSaveProjectAs();
+				} else {
+					void handleSaveProject();
+				}
+				return;
+			}
+
+			if (key === "o" && !e.shiftKey) {
+				e.preventDefault();
+				void handleOpenProjectBrowser();
+			}
+		};
+
+		window.addEventListener("keydown", handleKeyDown, { capture: true });
+		return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+	}, [
+		isMac,
+		handleOpenProjectBrowser,
+		handleReturnToRecording,
+		handleSaveProject,
+		handleSaveProjectAs,
+	]);
+
 	useEffect(() => {
 		if (selectedZoomId && !zoomRegions.some((region) => region.id === selectedZoomId)) {
 			setSelectedZoomId(null);
@@ -5787,14 +5884,23 @@ export default function VideoEditor() {
 			<div className="flex h-screen items-center justify-center bg-background">
 				<div className="flex flex-col items-center gap-3">
 					<div className="text-destructive">{error}</div>
-					<button
-						ref={projectBrowserFallbackTriggerRef}
-						type="button"
-						onClick={handleOpenProjectBrowser}
-						className="rounded-[5px] bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(0,0,0,0.18)] transition-colors hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"
-					>
-						Open Projects
-					</button>
+					<div className="flex items-center gap-2">
+						<button
+							ref={projectBrowserFallbackTriggerRef}
+							type="button"
+							onClick={handleOpenProjectBrowser}
+							className="rounded-[5px] bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(0,0,0,0.18)] transition-colors hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"
+						>
+							Open Projects
+						</button>
+						<button
+							type="button"
+							onClick={() => void handleReturnToRecording()}
+							className="rounded-[5px] border border-foreground/15 px-3 py-1.5 text-sm font-semibold text-foreground transition-colors hover:bg-foreground/10"
+						>
+							{t("editor.actions.returnToRecording", "Return to recording")}
+						</button>
+					</div>
 				</div>
 				{projectBrowser}
 				{projectSaveDialog}
@@ -5816,6 +5922,17 @@ export default function VideoEditor() {
 					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
 				>
 					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						onClick={() => void handleReturnToRecording()}
+						className={APP_HEADER_ICON_BUTTON_CLASS}
+						title={t("editor.actions.returnToRecording", "Return to recording")}
+						aria-label={t("editor.actions.returnToRecording", "Return to recording")}
+					>
+						<VideoCamera className="h-4 w-4" />
+					</Button>
+					<Button
 						ref={projectBrowserTriggerRef}
 						type="button"
 						variant="ghost"
@@ -5827,6 +5944,45 @@ export default function VideoEditor() {
 					>
 						<FolderOpen className="h-4 w-4" />
 					</Button>
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								className={APP_HEADER_ICON_BUTTON_CLASS}
+								title={t("editor.project.menu", "Project")}
+								aria-label={t("editor.project.menu", "Project")}
+							>
+								<FileText className="h-4 w-4" />
+							</Button>
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="start" sideOffset={8} className="w-60">
+							<DropdownMenuItem onSelect={() => void handleReturnToRecording()}>
+								{t("editor.project.newRecording", "New recording")}
+								<DropdownMenuShortcut>{primaryModifierLabel}N</DropdownMenuShortcut>
+							</DropdownMenuItem>
+							<DropdownMenuItem onSelect={() => void handleImportMediaOrProject()}>
+								{t("editor.project.newFromFile", "New project from file…")}
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem onSelect={() => void handleOpenProjectBrowser()}>
+								{t("editor.project.open", "Open projects…")}
+								<DropdownMenuShortcut>{primaryModifierLabel}O</DropdownMenuShortcut>
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
+							<DropdownMenuItem onSelect={() => void handleSaveProject()}>
+								{t("editor.project.save", "Save project")}
+								<DropdownMenuShortcut>{primaryModifierLabel}S</DropdownMenuShortcut>
+							</DropdownMenuItem>
+							<DropdownMenuItem onSelect={() => void handleSaveProjectAs()}>
+								{t("editor.project.saveAs", "Save project as…")}
+								<DropdownMenuShortcut>
+									{isMac ? "⇧⌘S" : "Ctrl+Shift+S"}
+								</DropdownMenuShortcut>
+							</DropdownMenuItem>
+						</DropdownMenuContent>
+					</DropdownMenu>
 					<DiscordLinkButton />
 					<FeedbackDialog />
 					<div className="ml-1 h-5 w-px bg-foreground/10" />

@@ -108,10 +108,18 @@
 	},
 	"actions": {
 		"saveAgain": "再次保存",
-		"showInFolder": "在文件夹中显示"
+		"showInFolder": "在文件夹中显示",
+		"returnToRecording": "返回录制",
+		"returnToRecordingBlockedByExport": "请等待导出完成后再返回录制"
 	},
 	"project": {
-		"untitled": "未命名"
+		"untitled": "未命名",
+		"menu": "项目",
+		"newRecording": "新建录制",
+		"newFromFile": "从文件新建项目…",
+		"open": "打开项目…",
+		"save": "保存项目",
+		"saveAs": "项目另存为…"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "没有出错，但我们无法渲染动画光标叠加层。",

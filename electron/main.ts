@@ -885,6 +885,39 @@ function createEditorWindowWrapper() {
 	return editorWindow;
 }
 
+/**
+ * Leaves the editor and brings the recording UI (HUD overlay) back.
+ *
+ * The HUD is shown *before* the editor is closed so that a window always exists:
+ * on non-macOS platforms `window-all-closed` quits the app, and reassigning
+ * `mainWindow` first keeps the editor's own `closed` handler from clearing it.
+ *
+ * The renderer is responsible for confirming unsaved changes, so the editor is
+ * closed through `closeEditorWindowBypassingUnsavedPrompt` to avoid showing the
+ * native "Unsaved Changes" prompt a second time.
+ */
+function returnToRecording() {
+	const editorWindow = getExistingEditorWindow();
+	const hudWindow = getHudOverlayWindow();
+
+	if (hudWindow && !hudWindow.isDestroyed()) {
+		mainWindow = hudWindow;
+		showHudOverlayFromTray();
+	} else {
+		mainWindow = null;
+		createWindow();
+	}
+
+	if (editorWindow) {
+		closeEditorWindowBypassingUnsavedPrompt(editorWindow);
+	}
+}
+
+ipcMain.handle("switch-to-recording", () => {
+	console.log("[switch-to-recording] Returning to the recording UI");
+	returnToRecording();
+});
+
 function createSourceSelectorWindowWrapper() {
 	sourceSelectorWindow = createSourceSelectorWindow();
 	sourceSelectorWindow.on("closed", () => {

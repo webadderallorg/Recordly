@@ -108,10 +108,18 @@
 	},
 	"actions": {
 		"saveAgain": "Guardar de nuevo",
-		"showInFolder": "Mostrar en carpeta"
+		"showInFolder": "Mostrar en carpeta",
+		"returnToRecording": "Volver a grabar",
+		"returnToRecordingBlockedByExport": "Espera a que termine la exportación antes de volver a grabar"
 	},
 	"project": {
-		"untitled": "Sin título"
+		"untitled": "Sin título",
+		"menu": "Proyecto",
+		"newRecording": "Nueva grabación",
+		"newFromFile": "Nuevo proyecto desde archivo…",
+		"open": "Abrir proyectos…",
+		"save": "Guardar proyecto",
+		"saveAs": "Guardar proyecto como…"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "Nada está roto, pero no podremos renderizar una superposición de cursor animada.",

@@ -221,6 +221,7 @@ interface Window {
 		getAssetBasePath: () => Promise<string | null>;
 		getSources: (opts: Electron.SourcesOptions) => Promise<ProcessedDesktopSource[]>;
 		switchToEditor: () => Promise<void>;
+		switchToRecording: () => Promise<void>;
 		openSourceSelector: () => Promise<void>;
 		selectSource: (source: ProcessedDesktopSource) => Promise<ProcessedDesktopSource>;
 		showSourceHighlight: (source: ProcessedDesktopSource) => Promise<{ success: boolean }>;

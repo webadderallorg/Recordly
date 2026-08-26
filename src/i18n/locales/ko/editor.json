@@ -109,10 +109,18 @@
 	},
 	"actions": {
 		"saveAgain": "다시 저장",
-		"showInFolder": "폴더에서 보기"
+		"showInFolder": "폴더에서 보기",
+		"returnToRecording": "녹화로 돌아가기",
+		"returnToRecordingBlockedByExport": "내보내기가 끝난 후에 녹화로 돌아갈 수 있습니다"
 	},
 	"project": {
-		"untitled": "제목 없음"
+		"untitled": "제목 없음",
+		"menu": "프로젝트",
+		"newRecording": "새 녹화",
+		"newFromFile": "파일에서 새 프로젝트…",
+		"open": "프로젝트 열기…",
+		"save": "프로젝트 저장",
+		"saveAs": "다른 이름으로 프로젝트 저장…"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "문제가 생긴 것은 아니지만, 애니메이션 커서 오버레이를 렌더링할 수 없습니다.",

@@ -108,10 +108,18 @@
 	},
 	"actions": {
 		"saveAgain": "再次保存",
-		"showInFolder": "在資料夾中顯示"
+		"showInFolder": "在資料夾中顯示",
+		"returnToRecording": "返回錄製",
+		"returnToRecordingBlockedByExport": "請等待匯出完成後再返回錄製"
 	},
 	"project": {
-		"untitled": "未命名"
+		"untitled": "未命名",
+		"menu": "專案",
+		"newRecording": "新增錄製",
+		"newFromFile": "從檔案新增專案…",
+		"open": "開啟專案…",
+		"save": "儲存專案",
+		"saveAs": "另存專案…"
 	},
 	"nativeCaptureUnavailable": {
 		"title": "沒有出錯，但我們無法轉譯動畫游標覆蓋層。",
