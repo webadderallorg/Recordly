@@ -215,6 +215,10 @@ api.playSound("sounds/click.mp3", { volume: 0.8 });
 api.log("hello", payload);
 ```
 
+Sounds played by export-time cursor interaction handlers, such as `cursor:click`, are
+included in MP4 exports. Sounds played outside that capture window are not added
+automatically.
+
 ### Read-only Queries
 
 ```js

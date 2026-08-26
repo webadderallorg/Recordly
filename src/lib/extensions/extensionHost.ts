@@ -122,6 +122,14 @@ interface ActiveExtension {
 	disposables: (() => void)[];
 }
 
+export interface ExtensionExportAudioCue {
+	id: string;
+	extensionId: string;
+	timeMs: number;
+	audioPath: string;
+	volume: number;
+}
+
 /**
  * The Extension Host manages all loaded extensions and provides
  * access to their registered hooks, effects, and settings.
@@ -147,6 +155,10 @@ export class ExtensionHost {
 	private fullSettingsStore: Record<string, Record<string, unknown>> | null = null;
 	private persistTimeout: ReturnType<typeof setTimeout> | null = null;
 	private iconPathCache = new Map<string, Path2D>();
+	private exportAudioCues: ExtensionExportAudioCue[] | null = null;
+	private exportAudioCanceledCueIds: Set<string> | null = null;
+	private exportAudioCaptureTimeMs: number | null = null;
+	private exportAudioCueCounter = 0;
 
 	// Shared playback/project state — set by the app, queried by extensions
 	private _videoInfo: { width: number; height: number; durationMs: number; fps: number } | null =
@@ -355,6 +367,51 @@ export class ExtensionHost {
 				console.warn(`[extensions] Event handler error (${event.type}):`, err);
 			}
 		}
+	}
+
+	/**
+	 * Start collecting extension-triggered audio cues for an MP4 export pass.
+	 */
+	beginExportAudioCapture(): void {
+		this.exportAudioCues = [];
+		this.exportAudioCanceledCueIds = new Set();
+		this.exportAudioCaptureTimeMs = null;
+		this.exportAudioCueCounter = 0;
+	}
+
+	/**
+	 * Set the source-timeline timestamp assigned to subsequently captured sounds.
+	 */
+	setExportAudioCaptureTime(timeMs: number | null): void {
+		if (!this.exportAudioCues) return;
+		this.exportAudioCaptureTimeMs =
+			typeof timeMs === "number" && Number.isFinite(timeMs)
+				? Math.max(0, Math.round(timeMs))
+				: null;
+	}
+
+	/**
+	 * Stop capture and return uncanceled extension audio cues.
+	 */
+	finishExportAudioCapture(): ExtensionExportAudioCue[] {
+		const canceledCueIds = this.exportAudioCanceledCueIds;
+		const cues =
+			canceledCueIds && canceledCueIds.size > 0
+				? (this.exportAudioCues ?? []).filter((cue) => !canceledCueIds.has(cue.id))
+				: (this.exportAudioCues ?? []);
+		this.exportAudioCues = null;
+		this.exportAudioCanceledCueIds = null;
+		this.exportAudioCaptureTimeMs = null;
+		return cues;
+	}
+
+	/**
+	 * Abort export audio capture and discard all pending cues.
+	 */
+	cancelExportAudioCapture(): void {
+		this.exportAudioCues = null;
+		this.exportAudioCanceledCueIds = null;
+		this.exportAudioCaptureTimeMs = null;
 	}
 
 	// ---------------------------------------------------------------------------
@@ -874,10 +931,33 @@ export class ExtensionHost {
 
 			playSound(relativePath: string, options?: { volume?: number }): () => void {
 				requirePermission("audio", "playSound");
-				const audio = new Audio(
-					resolveExtensionRelativeFileUrl(extensionPath, relativePath),
-				);
-				audio.volume = Math.max(0, Math.min(1, options?.volume ?? 1));
+				const audioPath = resolveExtensionRelativeFileUrl(extensionPath, relativePath);
+				const requestedVolume = options?.volume;
+				const volume =
+					typeof requestedVolume === "number" && Number.isFinite(requestedVolume)
+						? Math.max(0, Math.min(1, requestedVolume))
+						: 1;
+
+				if (host.exportAudioCues) {
+					let cue: ExtensionExportAudioCue | null = null;
+					if (host.exportAudioCaptureTimeMs !== null) {
+						cue = {
+							id: `${extensionId}-sound-${host.exportAudioCueCounter++}`,
+							extensionId,
+							timeMs: host.exportAudioCaptureTimeMs,
+							audioPath,
+							volume,
+						};
+						host.exportAudioCues.push(cue);
+					}
+					return () => {
+						if (!cue || !host.exportAudioCanceledCueIds) return;
+						host.exportAudioCanceledCueIds.add(cue.id);
+					};
+				}
+
+				const audio = new Audio(audioPath);
+				audio.volume = volume;
 				audio.play().catch((err) => {
 					console.warn(`[ext:${extensionId}] Failed to play sound:`, err);
 				});

@@ -158,6 +158,7 @@ import {
 	saveEditorPresets,
 	serializeEditorPresetSnapshot,
 } from "./editorPreferences";
+import { collectExtensionAudioRegionsForExport } from "./extensionExportAudio";
 import ProjectBrowserDialog, { type ProjectLibraryEntry } from "./ProjectBrowserDialog";
 import { hasUnsavedProjectChanges } from "./projectDirtyState";
 import {
@@ -4807,6 +4808,16 @@ export default function VideoEditor() {
 						selectedClipId !== null
 							? audio.selectedClipSourceAudioTrackSettings
 							: audio.activeSourceAudioTrackSettings;
+					const extensionAudioRegions = collectExtensionAudioRegionsForExport(
+						extensionHost,
+						effectiveCursorTelemetry,
+					);
+					const audioRegionsForExport =
+						extensionAudioRegions.length > 0
+							? [...audioRegions, ...extensionAudioRegions].sort(
+									(a, b) => a.startMs - b.startMs || a.id.localeCompare(b.id),
+								)
+							: audioRegions;
 
 					const exporterConfig = {
 						videoUrl: videoPath,
@@ -4877,7 +4888,7 @@ export default function VideoEditor() {
 						cursorClickBounceDuration,
 						cursorSway,
 						frame,
-						audioRegions,
+						audioRegions: audioRegionsForExport,
 						clipRegions,
 						sourceAudioFallbackPaths: audio.sourceAudioFallbackPaths,
 						sourceAudioFallbackStartDelayMsByPath:
