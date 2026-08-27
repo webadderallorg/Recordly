@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import { app, ipcMain } from "electron";
 import { hideCursor } from "../../cursorHider";
+import { getLinuxWindowSystem } from "./sourceMapping";
 import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from "../../windows";
 import {
 	APP_SETTINGS_FILE,
@@ -71,6 +72,10 @@ export function registerSettingsHandlers() {
 
 	ipcMain.handle("get-platform", () => {
 		return process.platform;
+	});
+
+	ipcMain.handle("get-linux-window-system", () => {
+		return getLinuxWindowSystem();
 	});
 
 	ipcMain.on("app-settings:get", (event, key: unknown) => {

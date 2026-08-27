@@ -42,7 +42,7 @@ export function shouldForceLinuxEgl(env: NodeJS.ProcessEnv): boolean {
 
 export function getGpuSwitches(
 	platform: NodeJS.Platform,
-	env: NodeJS.ProcessEnv = process.env,
+	_env: NodeJS.ProcessEnv = process.env,
 ): GpuSwitches {
 	if (platform === "darwin") {
 		return {
@@ -56,8 +56,13 @@ export function getGpuSwitches(
 	}
 
 	if (platform === "linux") {
+		// Electron 43 (Chromium 14x) only allows the ANGLE GL implementation on
+		// Linux; forcing `--use-gl=egl` makes the GPU process exit during
+		// initialization ("Requested GL implementation (gl=egl-gles2,angle=none)
+		// not found in allowed implementations"), which leaves the editor without
+		// WebGL. Let Chromium pick its default (egl-angle) on both X11 and Wayland.
 		return {
-			useGl: shouldForceLinuxEgl(env) ? "egl" : undefined,
+			useGl: undefined,
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		};
 	}

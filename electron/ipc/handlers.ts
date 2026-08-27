@@ -24,6 +24,7 @@ import {
 
 export { cleanupAllExportStreams } from "./export/exportStream";
 export { cleanupNativeVideoExportSessions } from "./export/native-video";
+export { discardLinuxNativeRecording as killLinuxCaptureProcess } from "./recording/linux";
 
 /** Returns the currently selected source ID for setDisplayMediaRequestHandler */
 export function getSelectedSourceId(): string | null {

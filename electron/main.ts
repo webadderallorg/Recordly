@@ -24,9 +24,11 @@ import {
 	cleanupAllExportStreams,
 	cleanupNativeVideoExportSessions,
 	getSelectedSourceId,
+	killLinuxCaptureProcess,
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
+import { shouldUseLinuxPortalSentinel } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
@@ -897,6 +899,7 @@ function createSourceSelectorWindowWrapper() {
 // explicitly with Cmd + Q.
 app.on("before-quit", () => {
 	killWindowsCaptureProcess();
+	void killLinuxCaptureProcess();
 	showCursor();
 	cleanupNativeVideoExportSessions();
 	void cleanupAllExportStreams();
@@ -1127,9 +1130,10 @@ app.whenReady().then(async () => {
 			// pre-selected (e.g. fresh session where the renderer skipped the
 			// source picker entirely). This avoids calling getSources() which
 			// would itself trigger an extra portal dialog.
-			const isLinuxPortalSentinel =
-				process.platform === "linux" && (sourceId === "screen:linux-portal" || !sourceId);
-			if (isLinuxPortalSentinel) {
+			// On X11 the sentinel is never used: desktopCapturer ids are stable
+			// there and Chromium cannot resolve the synthetic id, so we fall
+			// through to getSources() like on other platforms.
+			if (shouldUseLinuxPortalSentinel({ sourceId })) {
 				callback({ video: { id: "screen:0:0", name: "Entire screen" } });
 				return;
 			}

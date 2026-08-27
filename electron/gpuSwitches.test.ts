@@ -58,9 +58,9 @@ describe("getGpuSwitches", () => {
 		});
 	});
 
-	it("returns the X11 EGL workaround on Linux X11", () => {
+	it("no longer forces EGL on Linux X11 (Electron 43 only allows ANGLE)", () => {
 		expect(getGpuSwitches("linux", { XDG_SESSION_TYPE: "x11" })).toEqual({
-			useGl: "egl",
+			useGl: undefined,
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		});
 	});
