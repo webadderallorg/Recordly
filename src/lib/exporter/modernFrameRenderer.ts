@@ -86,6 +86,7 @@ import {
 	destroyPixiApplication,
 	initializePixiApplicationWithTimeout,
 } from "@/lib/pixiApplicationLifecycle";
+import { WebcamBackgroundBlurEngine } from "@/lib/webcamBackgroundBlurEngine";
 import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import {
 	type AnnotationRenderAssets,
@@ -166,6 +167,7 @@ interface FrameRenderConfig {
 	zoomClassicMode?: boolean;
 	frame?: string | null;
 	nativeReadbackMode?: "pixels" | "canvas";
+	onWebcamBackgroundBlurWarning?: (message: string) => void;
 }
 
 interface AnimationState {
@@ -431,6 +433,9 @@ export class FrameRenderer {
 	private backgroundVideoFrameStagingCtx: CanvasRenderingContext2D | null = null;
 	private webcamVideoFrameStagingCanvas: HTMLCanvasElement | null = null;
 	private webcamVideoFrameStagingCtx: CanvasRenderingContext2D | null = null;
+	private readonly webcamBackgroundBlurEngine = new WebcamBackgroundBlurEngine();
+	private webcamBackgroundBlurDisabledForExport = false;
+	private webcamBackgroundBlurWarningEmitted = false;
 	private captionMeasureCanvas: HTMLCanvasElement | null = null;
 	private captionMeasureCtx: CanvasRenderingContext2D | null = null;
 	private captionCanvas: HTMLCanvasElement | null = null;
@@ -2847,7 +2852,71 @@ export class FrameRenderer {
 		}
 	}
 
-	private updateWebcamOverlay(referenceTimeSeconds = this.currentVideoTime): void {
+	private reportWebcamBackgroundBlurFailure(): void {
+		this.webcamBackgroundBlurDisabledForExport = true;
+		if (this.webcamBackgroundBlurWarningEmitted) {
+			return;
+		}
+		this.webcamBackgroundBlurWarningEmitted = true;
+		const message =
+			"Background blur could not be applied. This export will continue with the unblurred webcam.";
+		console.warn(`[FrameRenderer] ${message}`);
+		this.config.onWebcamBackgroundBlurWarning?.(message);
+	}
+
+	private async processWebcamBackgroundBlurFrame(
+		source: HTMLVideoElement | VideoFrame,
+		sourceWidth: number,
+		sourceHeight: number,
+		frameKey: string,
+	): Promise<CanvasImageSource | VideoFrame> {
+		const blur = this.config.webcam?.backgroundBlur;
+		if (!blur?.enabled || this.webcamBackgroundBlurDisabledForExport) {
+			return source;
+		}
+
+		const input =
+			typeof VideoFrame !== "undefined" && source instanceof VideoFrame
+				? this.stageVideoFrameForTexture(source, "webcam", sourceWidth, sourceHeight)
+				: source;
+		const processed = await this.webcamBackgroundBlurEngine.processFrame(input as never, {
+			amount: blur.amount,
+			frameKey,
+		});
+		if (processed) {
+			return processed;
+		}
+		this.reportWebcamBackgroundBlurFailure();
+		return source;
+	}
+
+	async preflightWebcamBackgroundBlur(): Promise<boolean> {
+		const blur = this.config.webcam?.backgroundBlur;
+		if (!this.config.webcam?.enabled || !blur?.enabled) {
+			return true;
+		}
+
+		await this.syncWebcamFrame(0);
+		const source = this.webcamDecodedFrame ?? this.webcamVideoElement;
+		if (!source) {
+			this.reportWebcamBackgroundBlurFailure();
+			return false;
+		}
+		const dimensions = this.getWebcamSourceDimensions(source);
+		if (dimensions.width <= 0 || dimensions.height <= 0) {
+			this.reportWebcamBackgroundBlurFailure();
+			return false;
+		}
+		await this.processWebcamBackgroundBlurFrame(
+			source,
+			dimensions.width,
+			dimensions.height,
+			"export:0.000000",
+		);
+		return !this.webcamBackgroundBlurDisabledForExport;
+	}
+
+	private async updateWebcamOverlay(referenceTimeSeconds = this.currentVideoTime): Promise<void> {
 		const webcam = this.config.webcam;
 		if (!webcam?.enabled || !this.webcamRootContainer || !this.webcamMaskGraphics) {
 			if (this.webcamRootContainer) {
@@ -2882,8 +2951,16 @@ export class FrameRenderer {
 			(!activeWebcamVideoElement ||
 				(activeWebcamVideoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
 					!activeWebcamVideoElement.seeking));
+		const processedWebcamSource = webcamSource
+			? await this.processWebcamBackgroundBlurFrame(
+					webcamSource,
+					liveSourceDimensions.width,
+					liveSourceDimensions.height,
+					`export:${expectedWebcamTargetTime.toFixed(6)}`,
+				)
+			: null;
 		const renderableWebcamSource = this.resolveRenderableWebcamSource(
-			webcamSource,
+			processedWebcamSource,
 			liveSourceDimensions.width,
 			liveSourceDimensions.height,
 			canUseLiveSource,
@@ -3032,7 +3109,7 @@ export class FrameRenderer {
 			this.updateAnnotationLayer(timeMs);
 			this.updateCaptionLayer(timeMs);
 		}
-		this.updateWebcamOverlay(webcamRenderTimeSeconds);
+		await this.updateWebcamOverlay(webcamRenderTimeSeconds);
 
 		const annotationContainerVisible = this.annotationContainer?.visible ?? true;
 		const captionContainerVisible = this.captionContainer?.visible ?? true;
@@ -3283,7 +3360,7 @@ export class FrameRenderer {
 
 		this.updateAnnotationLayer(timeMs);
 		this.updateCaptionLayer(timeMs);
-		this.updateWebcamOverlay();
+		await this.updateWebcamOverlay();
 
 		if (this.hasActiveBlurAnnotations(timeMs)) {
 			const annotationContainerVisible = this.annotationContainer?.visible ?? true;
@@ -3866,6 +3943,7 @@ export class FrameRenderer {
 	}
 
 	destroy(): void {
+		this.webcamBackgroundBlurEngine.dispose();
 		const texturesToDestroy = new Set<Texture>();
 		if (this.videoSprite?.texture) {
 			texturesToDestroy.add(this.videoSprite.texture);

@@ -104,6 +104,7 @@ interface VideoExporterConfig extends ExportConfig {
 	showShadow: boolean;
 	shadowIntensity: number;
 	backgroundBlur: number;
+	onWebcamBackgroundBlurWarning?: (message: string) => void;
 	zoomMotionBlur?: number;
 	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
 	zoomTemporalMotionBlur?: number;
@@ -644,8 +645,10 @@ export class ModernVideoExporter {
 					zoomSmoothness: this.config.zoomSmoothness,
 					zoomClassicMode: this.config.zoomClassicMode,
 					frame: this.config.frame,
+					onWebcamBackgroundBlurWarning: this.config.onWebcamBackgroundBlurWarning,
 				});
 				await this.renderer.initialize();
+				await this.renderer.preflightWebcamBackgroundBlur();
 				this.rendererInitTimeMs = this.getNowMs() - stageStartedAt;
 				this.renderBackend = this.renderer.getRendererBackend();
 				console.log(`[VideoExporter] Using ${this.renderBackend} render backend`);
@@ -1571,6 +1574,9 @@ export class ModernVideoExporter {
 
 		if (this.config.webcam?.enabled && !this.getNativeWebcamSourcePath()) {
 			reasons.push("unsupported-webcam-source");
+		}
+		if (this.config.webcam?.enabled && this.config.webcam.backgroundBlur?.enabled) {
+			reasons.push("unsupported-webcam-background-blur");
 		}
 		if (this.hasUnsupportedNativeStaticLayoutWebcamShape()) {
 			reasons.push("unsupported-rectangular-webcam-overlay");

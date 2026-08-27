@@ -12,6 +12,7 @@ import {
 	useState,
 } from "react";
 import { getAssetPath, getRenderableAssetUrl, getRenderableVideoUrl } from "@/lib/assetPath";
+import { WebcamBackgroundBlurPreview } from "@/components/webcam/WebcamBackgroundBlurPreview";
 import {
 	clampMediaTimeToDuration,
 	enablePitchPreservingPlayback,
@@ -3036,8 +3037,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 											className="pointer-events-none absolute"
 											style={webcamCropPreviewContentStyle}
 										>
-											<video
-												ref={webcamVideoRef}
+											<WebcamBackgroundBlurPreview
+												videoRef={webcamVideoRef}
+												backgroundBlur={webcam.backgroundBlur}
+												sourceKey={`editor:${webcamVideoPath}`}
+												containerClassName="relative h-full w-full overflow-hidden"
 												src={webcamVideoPath}
 												className="pointer-events-none absolute inset-0 block h-full w-full object-fill"
 												muted

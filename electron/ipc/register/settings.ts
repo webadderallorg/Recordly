@@ -19,6 +19,7 @@ import {
 	setCountdownRemaining,
 	setCountdownTimer,
 } from "../state";
+import { normalizeRecordingPreferences } from "../recordingPreferences";
 import { parseJsonWithByteOrderMark } from "../utils";
 
 const BROWSER_MICROPHONE_PROFILE_ENV = "RECORDLY_BROWSER_MIC_PROFILE";
@@ -146,22 +147,9 @@ export function registerSettingsHandlers() {
 		try {
 			const content = await fs.readFile(RECORDINGS_SETTINGS_FILE, "utf-8");
 			const parsed = parseJsonWithByteOrderMark<Record<string, unknown>>(content);
-			return {
-				success: true,
-				microphoneEnabled: parsed.microphoneEnabled === true,
-				microphoneDeviceId:
-					typeof parsed.microphoneDeviceId === "string"
-						? parsed.microphoneDeviceId
-						: undefined,
-				systemAudioEnabled: parsed.systemAudioEnabled === true,
-			};
+			return { success: true, ...normalizeRecordingPreferences(parsed) };
 		} catch {
-			return {
-				success: true,
-				microphoneEnabled: false,
-				microphoneDeviceId: undefined,
-				systemAudioEnabled: false,
-			};
+			return { success: true, ...normalizeRecordingPreferences(undefined) };
 		}
 	});
 
@@ -177,6 +165,7 @@ export function registerSettingsHandlers() {
 				microphoneEnabled?: boolean;
 				microphoneDeviceId?: string;
 				systemAudioEnabled?: boolean;
+				webcamBackgroundBlur?: unknown;
 			},
 		) => {
 			try {

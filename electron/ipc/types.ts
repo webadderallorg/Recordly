@@ -1,3 +1,5 @@
+import type { WebcamBackgroundBlurSettings } from "../../src/lib/webcamBackgroundBlur";
+
 export type SelectedSource = {
 	id?: string;
 	name: string;
@@ -48,6 +50,7 @@ export type RecordingSessionData = {
 	webcamPath?: string | null;
 	timeOffsetMs?: number;
 	hideOverlayCursorByDefault?: boolean;
+	webcamBackgroundBlur?: WebcamBackgroundBlurSettings;
 };
 
 export type PauseSegment = {
@@ -60,6 +63,7 @@ export type RecordingSessionManifest = {
 	videoFileName: string;
 	webcamFileName?: string | null;
 	timeOffsetMs?: number;
+	webcamBackgroundBlur?: WebcamBackgroundBlurSettings;
 };
 
 export type ProjectLibraryEntry = {

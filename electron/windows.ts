@@ -588,9 +588,14 @@ export function createHudOverlayWindow(): BrowserWindow {
 	if (VITE_DEV_SERVER_URL) {
 		win.loadURL(VITE_DEV_SERVER_URL + "?windowType=hud-overlay");
 	} else {
-		win.loadFile(path.join(RENDERER_DIST, "index.html"), {
-			query: { windowType: "hud-overlay" },
-		});
+		const packagedRendererBaseUrl = getPackagedRendererBaseUrl();
+		if (packagedRendererBaseUrl) {
+			win.loadURL(`${packagedRendererBaseUrl}/?windowType=hud-overlay`);
+		} else {
+			win.loadFile(path.join(RENDERER_DIST, "index.html"), {
+				query: { windowType: "hud-overlay" },
+			});
+		}
 	}
 
 	return win;

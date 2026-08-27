@@ -1,6 +1,7 @@
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { normalizeWebcamBackgroundBlurSettings } from "../../../src/lib/webcamBackgroundBlur";
 import { RECORDING_SESSION_MANIFEST_SUFFIX } from "../constants";
 import type { RecordingSessionData, RecordingSessionManifest } from "../types";
 import { normalizeVideoSourcePath, parseJsonWithByteOrderMark } from "../utils";
@@ -15,7 +16,9 @@ export function getRecordingSessionManifestPath(videoPath: string) {
 	return path.join(path.dirname(videoPath), `${baseName}${RECORDING_SESSION_MANIFEST_SUFFIX}`);
 }
 
-export async function persistRecordingSessionManifest(session: RecordingSessionData): Promise<void> {
+export async function persistRecordingSessionManifest(
+	session: RecordingSessionData,
+): Promise<void> {
 	const normalizedVideoPath = normalizeVideoSourcePath(session.videoPath);
 	if (!normalizedVideoPath) {
 		return;
@@ -34,6 +37,7 @@ export async function persistRecordingSessionManifest(session: RecordingSessionD
 		videoFileName: path.basename(normalizedVideoPath),
 		webcamFileName: path.basename(normalizedWebcamPath),
 		timeOffsetMs: normalizeRecordingTimeOffsetMs(session.timeOffsetMs),
+		webcamBackgroundBlur: normalizeWebcamBackgroundBlurSettings(session.webcamBackgroundBlur),
 	};
 
 	await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
@@ -51,8 +55,7 @@ export async function resolveRecordingSessionManifest(
 
 	try {
 		const content = await fs.readFile(manifestPath, "utf-8");
-		const parsed =
-			parseJsonWithByteOrderMark<Partial<RecordingSessionManifest>>(content);
+		const parsed = parseJsonWithByteOrderMark<Partial<RecordingSessionManifest>>(content);
 		if (parsed.version !== 1 && parsed.version !== 2) {
 			return null;
 		}
@@ -67,6 +70,9 @@ export async function resolveRecordingSessionManifest(
 				videoPath: normalizedVideoPath,
 				webcamPath: null,
 				timeOffsetMs: normalizeRecordingTimeOffsetMs(parsed.timeOffsetMs),
+				webcamBackgroundBlur: normalizeWebcamBackgroundBlurSettings(
+					parsed.webcamBackgroundBlur,
+				),
 			};
 		}
 
@@ -80,6 +86,9 @@ export async function resolveRecordingSessionManifest(
 			videoPath: normalizedVideoPath,
 			webcamPath: webcamExists ? webcamPath : null,
 			timeOffsetMs: normalizeRecordingTimeOffsetMs(parsed.timeOffsetMs),
+			webcamBackgroundBlur: normalizeWebcamBackgroundBlurSettings(
+				parsed.webcamBackgroundBlur,
+			),
 		};
 	} catch {
 		return null;
@@ -136,7 +145,6 @@ export async function resolveRecordingSession(
 	return {
 		videoPath: normalizedVideoPath,
 		webcamPath: linkedWebcamPath,
+		webcamBackgroundBlur: normalizeWebcamBackgroundBlurSettings(undefined),
 	};
 }
-
-

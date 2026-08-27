@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => {
 		frameRendererDestroy: vi.fn(),
 		frameRendererGetBackend: vi.fn(() => "webgl"),
 		frameRendererInitialize: vi.fn(async () => {}),
+		frameRendererPreflightWebcamBackgroundBlur: vi.fn(async () => true),
 		muxerDestroy: vi.fn(),
 		muxerFinalize: vi.fn(async () => ({
 			mode: "buffer" as const,
@@ -53,6 +54,7 @@ vi.mock("./modernFrameRenderer", () => ({
 			destroy: mocks.frameRendererDestroy,
 			getRendererBackend: mocks.frameRendererGetBackend,
 			initialize: mocks.frameRendererInitialize,
+			preflightWebcamBackgroundBlur: mocks.frameRendererPreflightWebcamBackgroundBlur,
 		};
 	}),
 }));
