@@ -111,6 +111,24 @@ describe("buildInteractionZoomSuggestions (click-cluster logic)", () => {
 		expect(s.end).toBe(lastClickMs + CLICK_CLUSTER_PAD_MS);
 	});
 
+	it("weights every click coordinate equally when choosing a cluster focus", () => {
+		const telemetry = withMoves(
+			[makeClick(4_000, 0.2, 0.3), makeClick(5_000, 0.8, 0.7)],
+			TOTAL_MS,
+		);
+
+		const result = buildInteractionZoomSuggestions({
+			cursorTelemetry: telemetry,
+			totalMs: TOTAL_MS,
+			defaultDurationMs: 3_000,
+		});
+
+		expect(result.status).toBe("ok");
+		expect(result.suggestions).toHaveLength(1);
+		expect(result.suggestions[0].focus.cx).toBeCloseTo(0.5);
+		expect(result.suggestions[0].focus.cy).toBeCloseTo(0.5);
+	});
+
 	it("splits two clicks more than 2500ms apart into separate zoom tracks", () => {
 		const click1 = 3_000;
 		const click2 = 3_000 + CLICK_CLUSTER_MERGE_GAP_MS + 1; // just outside the merge gap
@@ -170,7 +188,7 @@ describe("buildInteractionZoomSuggestions (click-cluster logic)", () => {
 		expect(result.suggestions).toHaveLength(0);
 	});
 
-	it("ignores dwell-derived click-like heuristics when there are no explicit clicks", () => {
+	it("does not infer clicks from cursor dwell time", () => {
 		const telemetry: CursorTelemetryPoint[] = [
 			makeMove(0, 0.5, 0.5),
 			makeMove(200, 0.5005, 0.5005),
