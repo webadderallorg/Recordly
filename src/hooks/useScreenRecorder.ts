@@ -121,6 +121,58 @@ const LINUX_PORTAL_SOURCE: ProcessedDesktopSource = {
 	sourceType: "screen",
 };
 
+/**
+ * Picks the source to record on Linux when the user has not selected one.
+ *
+ * Wayland keeps the portal sentinel so xdg-desktop-portal is invoked exactly
+ * once. On X11 desktopCapturer ids are stable and Chromium cannot resolve the
+ * sentinel's synthetic id, so the primary display (or the first live screen)
+ * is used instead. That also routes X11 through getUserMedia with
+ * `googCaptureCursor: false`, keeping the OS cursor out of the recording so the
+ * editor's cursor overlay does not render a second cursor.
+ */
+export function resolveDefaultLinuxRecordingSource({
+	windowSystem,
+	sources,
+}: {
+	windowSystem: "wayland" | "x11" | null | undefined;
+	sources: ReadonlyArray<Pick<ProcessedDesktopSource, "id" | "name">>;
+}): Pick<ProcessedDesktopSource, "id" | "name"> {
+	if (windowSystem !== "x11") {
+		return LINUX_PORTAL_SOURCE;
+	}
+
+	const liveScreens = sources.filter(
+		(source) =>
+			source.id.startsWith("screen:") &&
+			!source.id.startsWith("screen:fallback:") &&
+			source.id !== LINUX_PORTAL_SOURCE.id,
+	);
+	const primary = liveScreens.find((source) => /\(primary\)/i.test(source.name ?? ""));
+	return primary ?? liveScreens[0] ?? LINUX_PORTAL_SOURCE;
+}
+
+async function getLinuxWindowSystemSafe(): Promise<"wayland" | "x11" | null> {
+	try {
+		return (await window.electronAPI.getLinuxWindowSystem?.()) ?? null;
+	} catch {
+		return null;
+	}
+}
+
+async function getLinuxScreenSourcesSafe(): Promise<ProcessedDesktopSource[]> {
+	try {
+		return await window.electronAPI.getSources({
+			types: ["screen"],
+			thumbnailSize: { width: 1, height: 1 },
+			fetchWindowIcons: false,
+		});
+	} catch (error) {
+		console.warn("Failed to enumerate Linux screen sources:", error);
+		return [];
+	}
+}
+
 type DesktopCaptureMediaDevices = {
 	getUserMedia: (constraints: unknown) => Promise<MediaStream>;
 	getDisplayMedia: (constraints: unknown) => Promise<MediaStream>;
@@ -208,6 +260,30 @@ export function resolveBrowserCaptureCursorPolicy({
 		hideOsCursorBeforeRecording: true,
 		hideEditorOverlayCursorByDefault: true,
 	};
+}
+
+/**
+ * Native Linux capture (FFmpeg x11grab) is used on X11 for live screen/window
+ * sources. It cannot capture system audio yet, so recordings that need system
+ * audio stay on the browser capture path.
+ */
+export function shouldUseNativeLinuxCaptureForSource({
+	windowSystem,
+	source,
+	systemAudioEnabled,
+}: {
+	windowSystem: "wayland" | "x11" | null | undefined;
+	source: Pick<ProcessedDesktopSource, "id"> | null | undefined;
+	systemAudioEnabled: boolean;
+}): boolean {
+	if (windowSystem !== "x11" || systemAudioEnabled) {
+		return false;
+	}
+	const id = source?.id ?? "";
+	if (id === LINUX_PORTAL_SOURCE.id || id.includes(":fallback:")) {
+		return false;
+	}
+	return id.startsWith("screen:") || id.startsWith("window:");
 }
 
 export function shouldUseNativeWindowsCaptureForSource(
@@ -697,7 +773,20 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		// The sentinel is handled later by routing through getDisplayMedia,
 		// which lets the portal pick the source in a single dialog.
 		if (source.id === "screen:linux-portal") {
-			return source;
+			const windowSystem = await getLinuxWindowSystemSafe();
+			if (windowSystem !== "x11") {
+				return source;
+			}
+			// A sentinel persisted on X11 (e.g. from an older session) cannot be
+			// captured; swap it for a live screen source instead.
+			const liveSources = await getLinuxScreenSourcesSafe();
+			const resolved = resolveDefaultLinuxRecordingSource({
+				windowSystem,
+				sources: liveSources,
+			});
+			return resolved.id === source.id
+				? source
+				: ({ ...source, ...resolved } as ProcessedDesktopSource);
 		}
 
 		try {
@@ -1129,18 +1218,25 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		const platform = await window.electronAPI.getPlatform();
 		hideEditorOverlayCursorByDefault.current = false;
 		const existingSource = await window.electronAPI.getSelectedSource();
-		const selectedSource =
-			existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
+		let selectedSource: ProcessedDesktopSource | null = existingSource;
+		if (!selectedSource && platform === "linux") {
+			const windowSystem = await getLinuxWindowSystemSafe();
+			const sources = windowSystem === "x11" ? await getLinuxScreenSourcesSafe() : [];
+			selectedSource = {
+				...LINUX_PORTAL_SOURCE,
+				...resolveDefaultLinuxRecordingSource({ windowSystem, sources }),
+			};
+		}
 		if (!selectedSource) {
 			alert("Please select a source to record");
 			return null;
 		}
 
-		if (!existingSource && selectedSource.id === "screen:linux-portal") {
+		if (!existingSource) {
 			try {
 				await window.electronAPI.selectSource(selectedSource);
 			} catch (err) {
-				console.warn("Failed to persist Linux portal sentinel source:", err);
+				console.warn("Failed to persist default Linux recording source:", err);
 			}
 		}
 
@@ -1187,8 +1283,33 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			}
 		}
 
+		let useNativeLinuxCapture = false;
+		if (
+			platform === "linux" &&
+			typeof window.electronAPI.isNativeLinuxCaptureAvailable === "function"
+		) {
+			try {
+				const windowSystem = await getLinuxWindowSystemSafe();
+				if (
+					shouldUseNativeLinuxCaptureForSource({
+						windowSystem,
+						source: selectedSource,
+						systemAudioEnabled,
+					})
+				) {
+					const nativeLinuxResult = await window.electronAPI.isNativeLinuxCaptureAvailable();
+					useNativeLinuxCapture = nativeLinuxResult.available;
+				}
+			} catch {
+				useNativeLinuxCapture = false;
+			}
+		}
+
 		let micLabel: string | undefined;
-		if ((useNativeMacScreenCapture || useNativeWindowsCapture) && microphoneEnabled) {
+		if (
+			(useNativeMacScreenCapture || useNativeWindowsCapture || useNativeLinuxCapture) &&
+			microphoneEnabled
+		) {
 			try {
 				const devices = await navigator.mediaDevices.enumerateDevices();
 				const mic = devices.find(
@@ -1205,6 +1326,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			selectedSource,
 			useNativeMacScreenCapture,
 			useNativeWindowsCapture,
+			useNativeLinuxCapture,
 			micLabel,
 		};
 	}, [
@@ -1636,9 +1758,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				return;
 			}
 
-			const { selectedSource, useNativeMacScreenCapture, useNativeWindowsCapture, micLabel } =
-				preparedStart;
-			const useNativeCapture = useNativeMacScreenCapture || useNativeWindowsCapture;
+			const {
+				selectedSource,
+				useNativeMacScreenCapture,
+				useNativeWindowsCapture,
+				useNativeLinuxCapture,
+				micLabel,
+			} = preparedStart;
+			const useNativeCapture =
+				useNativeMacScreenCapture || useNativeWindowsCapture || useNativeLinuxCapture;
 			const shouldWarmStartNativeCapture = useNativeCapture && countdownDelay > 0;
 			if (countdownDelay > 0 && !shouldWarmStartNativeCapture) {
 				setCountdownActive(true);
@@ -1666,6 +1794,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						capturesMicrophone: microphoneEnabled,
 						microphoneDeviceId,
 						microphoneLabel: micLabel,
+						warmStart: shouldWarmStartNativeCapture,
 					},
 				);
 				if (nativeResult.success && startWasCancelled()) {
@@ -1678,17 +1807,20 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					return;
 				}
 				if (!nativeResult.success) {
-					if (useNativeWindowsCapture) {
+					if (useNativeWindowsCapture || useNativeLinuxCapture) {
+						// Linux shares the Windows fallback semantics: keep the
+						// browser-captured cursor instead of the telemetry overlay.
 						nativeWindowsCaptureStartFailed = true;
+						const nativeLabel = useNativeLinuxCapture ? "Linux" : "Windows";
 						console.warn(
-							"Native Windows capture failed, falling back to browser capture:",
+							`Native ${nativeLabel} capture failed, falling back to browser capture:`,
 							nativeResult.error ?? nativeResult.message,
 						);
 						void logNativeCaptureDiagnostics("start-native-screen-recording");
 						if (!hasShownNativeWindowsFallbackToast.current) {
 							hasShownNativeWindowsFallbackToast.current = true;
 							toast.warning(
-								"Native Windows capture failed to start. Falling back to browser capture.",
+								`Native ${nativeLabel} capture failed to start. Falling back to browser capture.`,
 							);
 						}
 					} else if (!nativeResult.userNotified) {

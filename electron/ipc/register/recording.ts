@@ -61,6 +61,14 @@ import {
 	waitForFfmpegCaptureStop,
 } from "../recording/ffmpeg";
 import {
+	isLinuxNativeCaptureActive,
+	isNativeLinuxCaptureAvailable,
+	pauseLinuxNativeRecording,
+	resumeLinuxNativeRecording,
+	startLinuxNativeRecording,
+	stopLinuxNativeRecording,
+} from "../recording/linux";
+import {
 	attachNativeCaptureLifecycle,
 	finalizeStoredVideo,
 	muxNativeMacRecordingWithAudio,
@@ -640,6 +648,11 @@ export function registerRecordingHandlers(
 				}
 			}
 
+			// Linux (X11) native capture path: FFmpeg x11grab without the OS cursor.
+			if (process.platform === "linux") {
+				return await startLinuxNativeRecording(source, options);
+			}
+
 			if (process.platform !== "darwin") {
 				return {
 					success: false,
@@ -907,6 +920,10 @@ export function registerRecordingHandlers(
 		const start = Date.now();
 		console.log("[PERF:MAIN] Handler: stop-native-screen-recording: STARTED");
 		try {
+		if (process.platform === "linux" && isLinuxNativeCaptureActive()) {
+			return await stopLinuxNativeRecording();
+		}
+
 		// Windows native capture stop path
 		if (process.platform === "win32" && windowsNativeCaptureActive) {
 			let stagedTempVideoPath: string | null = null;
@@ -1268,6 +1285,10 @@ export function registerRecordingHandlers(
 	});
 
 	ipcMain.handle("pause-native-screen-recording", async () => {
+		if (process.platform === "linux") {
+			return await pauseLinuxNativeRecording();
+		}
+
 		if (process.platform === "win32") {
 			if (!windowsNativeCaptureActive || !windowsCaptureProcess) {
 				return { success: false, message: "No native Windows screen recording is active." };
@@ -1324,6 +1345,10 @@ export function registerRecordingHandlers(
 	});
 
 	ipcMain.handle("resume-native-screen-recording", async () => {
+		if (process.platform === "linux") {
+			return await resumeLinuxNativeRecording();
+		}
+
 		if (process.platform === "win32") {
 			if (!windowsNativeCaptureActive || !windowsCaptureProcess) {
 				return { success: false, message: "No native Windows screen recording is active." };
@@ -1390,6 +1415,10 @@ export function registerRecordingHandlers(
 
 	ipcMain.handle("is-native-windows-capture-available", async () => {
 		return { available: await isNativeWindowsCaptureAvailable() };
+	});
+
+	ipcMain.handle("is-native-linux-capture-available", async () => {
+		return { available: await isNativeLinuxCaptureAvailable() };
 	});
 
 	ipcMain.handle("get-last-native-capture-diagnostics", async () => {

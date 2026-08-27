@@ -5,6 +5,8 @@ import {
 	createProcessedMicrophoneConstraints,
 	normalizeBrowserMicrophoneProfile,
 	resolveBrowserCaptureCursorPolicy,
+	resolveDefaultLinuxRecordingSource,
+	shouldUseNativeLinuxCaptureForSource,
 	shouldUseNativeWindowsCaptureForSource,
 	stopAndDiscardNativeCapture,
 } from "./useScreenRecorder";
@@ -157,6 +159,106 @@ describe("resolveBrowserCaptureCursorPolicy", () => {
 			hideOsCursorBeforeRecording: false,
 			hideEditorOverlayCursorByDefault: true,
 		});
+	});
+});
+
+describe("resolveDefaultLinuxRecordingSource", () => {
+	const sources = [
+		{ id: "screen:fallback:1", name: "Screen 1" },
+		{ id: "screen:796:0", name: "Screen 2" },
+		{ id: "screen:408:0", name: "Screen 3 (Primary)" },
+	];
+
+	it("keeps the portal sentinel on Wayland", () => {
+		expect(resolveDefaultLinuxRecordingSource({ windowSystem: "wayland", sources }).id).toBe(
+			"screen:linux-portal",
+		);
+	});
+
+	it("keeps the portal sentinel when the window system is unknown", () => {
+		expect(resolveDefaultLinuxRecordingSource({ windowSystem: null, sources }).id).toBe(
+			"screen:linux-portal",
+		);
+	});
+
+	it("prefers the primary live screen on X11", () => {
+		expect(resolveDefaultLinuxRecordingSource({ windowSystem: "x11", sources }).id).toBe(
+			"screen:408:0",
+		);
+	});
+
+	it("falls back to the first live screen on X11 without a primary marker", () => {
+		expect(
+			resolveDefaultLinuxRecordingSource({
+				windowSystem: "x11",
+				sources: sources.filter((source) => !source.name.includes("Primary")),
+			}).id,
+		).toBe("screen:796:0");
+	});
+
+	it("skips fallback ids and sentinels on X11", () => {
+		expect(
+			resolveDefaultLinuxRecordingSource({
+				windowSystem: "x11",
+				sources: [
+					{ id: "screen:fallback:1", name: "Screen 1" },
+					{ id: "screen:linux-portal", name: "Linux Portal" },
+				],
+			}).id,
+		).toBe("screen:linux-portal");
+	});
+});
+
+describe("shouldUseNativeLinuxCaptureForSource", () => {
+	it("uses native capture for live X11 screen and window sources", () => {
+		expect(
+			shouldUseNativeLinuxCaptureForSource({
+				windowSystem: "x11",
+				source: { id: "screen:408:0" },
+				systemAudioEnabled: false,
+			}),
+		).toBe(true);
+		expect(
+			shouldUseNativeLinuxCaptureForSource({
+				windowSystem: "x11",
+				source: { id: "window:42:0" },
+				systemAudioEnabled: false,
+			}),
+		).toBe(true);
+	});
+
+	it("stays on browser capture on Wayland or when system audio is requested", () => {
+		expect(
+			shouldUseNativeLinuxCaptureForSource({
+				windowSystem: "wayland",
+				source: { id: "screen:408:0" },
+				systemAudioEnabled: false,
+			}),
+		).toBe(false);
+		expect(
+			shouldUseNativeLinuxCaptureForSource({
+				windowSystem: "x11",
+				source: { id: "screen:408:0" },
+				systemAudioEnabled: true,
+			}),
+		).toBe(false);
+	});
+
+	it("rejects the portal sentinel and fallback ids", () => {
+		expect(
+			shouldUseNativeLinuxCaptureForSource({
+				windowSystem: "x11",
+				source: { id: "screen:linux-portal" },
+				systemAudioEnabled: false,
+			}),
+		).toBe(false);
+		expect(
+			shouldUseNativeLinuxCaptureForSource({
+				windowSystem: "x11",
+				source: { id: "screen:fallback:1" },
+				systemAudioEnabled: false,
+			}),
+		).toBe(false);
 	});
 });
 

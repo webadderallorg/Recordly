@@ -36,7 +36,7 @@ Platform notes:
 
 - **macOS** uses native ScreenCaptureKit-based capture helpers.
 - **Windows** uses a native Windows Graphics Capture (WGC) helper on supported builds, with native WASAPI audio support.
-- **Linux** records through Electron capture APIs. Cursor hiding is not supported on Linux today.
+- **Linux** on X11 records natively through FFmpeg (`x11grab`) with the OS cursor excluded, so the editor's cursor overlay (smoothing, click effects, etc.) works. That path does not capture system audio yet; recordings with system audio enabled, and all Wayland sessions, use Electron's portal capture, where the OS cursor is embedded in the video and cursor hiding is not supported.
 
 ---
 
