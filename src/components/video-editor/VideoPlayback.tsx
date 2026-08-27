@@ -1318,20 +1318,24 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				if (!frameData) return false;
 
 				if (frameData.draw) {
-					// Resolution-independent: draw at a reasonable size, Pixi handles the rest
-					const drawW = 1920;
-					const drawH = 1080;
-					const canvas = document.createElement("canvas");
-					canvas.width = drawW;
-					canvas.height = drawH;
-					const ctx = canvas.getContext("2d");
-					if (ctx) frameData.draw(ctx, drawW, drawH);
-					if (cancelled || frameIdRef.current !== frame) return true;
-					const texture = Texture.from(canvas);
-					const sprite = new Sprite(texture);
-					frameSpriteRef.current = sprite;
-					container.addChild(sprite);
-					layoutVideoContentRef.current?.();
+					try {
+						// Resolution-independent: draw at a reasonable size, Pixi handles the rest
+						const drawW = 1920;
+						const drawH = 1080;
+						const canvas = document.createElement("canvas");
+						canvas.width = drawW;
+						canvas.height = drawH;
+						const ctx = canvas.getContext("2d");
+						if (ctx) frameData.draw(ctx, drawW, drawH);
+						if (cancelled || frameIdRef.current !== frame) return true;
+						const texture = Texture.from(canvas);
+						const sprite = new Sprite(texture);
+						frameSpriteRef.current = sprite;
+						container.addChild(sprite);
+						layoutVideoContentRef.current?.();
+					} catch (err) {
+						console.error(`[VideoPlayback] Failed to draw frame '${frameData.id}':`, err);
+					}
 				} else {
 					const img = new Image();
 					img.onload = () => {
@@ -1341,6 +1345,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						frameSpriteRef.current = sprite;
 						container.addChild(sprite);
 						layoutVideoContentRef.current?.();
+					};
+					img.onerror = (err) => {
+						console.error(`[VideoPlayback] Failed to load frame image from '${frameData.filePath}':`, err);
 					};
 					img.src = frameData.filePath;
 				}
