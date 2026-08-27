@@ -21,6 +21,7 @@ const MP4_AUDIO_CODEC = "mp4a.40.2";
 const OFFLINE_AUDIO_SAMPLE_RATE = 48_000;
 const OFFLINE_ENCODE_CHUNK_FRAMES = 1024;
 const OFFLINE_CHUNK_DURATION_SEC = 30;
+const MAX_CACHED_AUDIO_REGION_PATHS = 100;
 const OFFLINE_MIX_SOFT_LIMITER_THRESHOLD = 0.9;
 const OFFLINE_MIX_SOFT_LIMITER_CEILING = 0.985;
 
@@ -769,9 +770,16 @@ export class AudioProcessor {
 
 		// Decode audio region overlay files
 		const regionEntries: Array<{ buffer: AudioBuffer; region: AudioRegion }> = [];
+		const regionBufferCache = new Map<string, AudioBuffer>();
 		for (const region of audioRegions) {
 			if (this.cancelled) throw new Error("Export cancelled");
-			const buffer = await this.decodeAudioFromUrl(region.audioPath);
+			let buffer: AudioBuffer | null | undefined = regionBufferCache.get(region.audioPath);
+			if (!buffer) {
+				buffer = await this.decodeAudioFromUrl(region.audioPath);
+				if (buffer && regionBufferCache.size < MAX_CACHED_AUDIO_REGION_PATHS) {
+					regionBufferCache.set(region.audioPath, buffer);
+				}
+			}
 			if (buffer) regionEntries.push({ buffer, region });
 		}
 

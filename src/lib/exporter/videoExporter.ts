@@ -17,6 +17,7 @@ import type {
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
+import { extensionHost } from "@/lib/extensions";
 import { AudioProcessor, isAacAudioEncodingSupported } from "./audioEncoder";
 import { buildEditedTrackSourceSegments, classifyEditedTrackStrategy } from "./editedTrackStrategy";
 import {
@@ -167,6 +168,8 @@ export class VideoExporter {
 	private finalizationTimeMs = 0;
 	private finalizationStageMs: ExportFinalizationStageMetrics = {};
 	private processedFrameCount = 0;
+	private extensionAudioCaptureEnabled = false;
+	private capturedExtensionAudioRegions: AudioRegion[] = [];
 
 	constructor(config: VideoExporterConfig) {
 		this.config = config;
@@ -176,6 +179,8 @@ export class VideoExporter {
 		try {
 			this.cleanup();
 			this.cancelled = false;
+			this.capturedExtensionAudioRegions = [];
+			this.extensionAudioCaptureEnabled = extensionHost.hasEventListeners("cursor:click");
 			this.encoderError = null;
 			this.nativeEncoderError = null;
 			this.nativePendingWrite = Promise.resolve();
@@ -195,7 +200,8 @@ export class VideoExporter {
 				maxPendingFrames: this.config.maxPendingFrames,
 			});
 			const videoInfo = await this.streamingDecoder.loadMetadata(this.config.videoUrl);
-			const shouldUseExperimentalNativeExport = this.shouldUseExperimentalNativeExport();
+			const shouldUseExperimentalNativeExport =
+				!this.extensionAudioCaptureEnabled && this.shouldUseExperimentalNativeExport();
 			const audioPlan = this.buildNativeAudioPlan(videoInfo);
 			const nativeAudioPlan = shouldUseExperimentalNativeExport ? audioPlan : null;
 			let useNativeEncoder = shouldUseExperimentalNativeExport
@@ -270,7 +276,8 @@ export class VideoExporter {
 			});
 			await this.renderer.initialize();
 
-			const hasAudioRegions = (this.config.audioRegions ?? []).length > 0;
+			const hasAudioRegions =
+				(this.config.audioRegions ?? []).length > 0 || this.extensionAudioCaptureEnabled;
 			const hasSourceAudioFallback = (this.config.sourceAudioFallbackPaths ?? []).length > 0;
 			const hasAudio = videoInfo.hasAudio || hasAudioRegions || hasSourceAudioFallback;
 
@@ -299,36 +306,48 @@ export class VideoExporter {
 			let frameIndex = 0;
 
 			// Stream decode and process frames — no seeking!
-			await this.streamingDecoder.decodeAll(
-				this.config.frameRate,
-				this.config.trimRegions,
-				this.config.speedRegions,
-				async (videoFrame, _exportTimestampUs, sourceTimestampMs, cursorTimestampMs) => {
-					if (this.cancelled) {
-						return;
-					}
+			if (this.extensionAudioCaptureEnabled) {
+				extensionHost.beginExportAudioCapture();
+			}
+			try {
+				await this.streamingDecoder.decodeAll(
+					this.config.frameRate,
+					this.config.trimRegions,
+					this.config.speedRegions,
+					async (videoFrame, _exportTimestampUs, sourceTimestampMs, cursorTimestampMs) => {
+						if (this.cancelled) {
+							return;
+						}
 
-					const timestamp = frameIndex * frameDuration;
-					const sourceTimestampUs = sourceTimestampMs * 1000;
-					const cursorTimestampUs = cursorTimestampMs * 1000;
-					await this.renderer!.renderFrame(
-						videoFrame,
-						sourceTimestampUs,
-						cursorTimestampUs,
-						frameDuration,
-						timestamp,
+						const timestamp = frameIndex * frameDuration;
+						const sourceTimestampUs = sourceTimestampMs * 1000;
+						const cursorTimestampUs = cursorTimestampMs * 1000;
+						await this.renderer!.renderFrame(
+							videoFrame,
+							sourceTimestampUs,
+							cursorTimestampUs,
+							frameDuration,
+							timestamp,
+						);
+
+						if (useNativeEncoder) {
+							await this.encodeRenderedFrameNative(timestamp, frameDuration, frameIndex);
+						} else {
+							await this.encodeRenderedFrame(timestamp, frameDuration, frameIndex);
+						}
+						frameIndex++;
+						this.processedFrameCount = frameIndex;
+						this.reportProgress(frameIndex, totalFrames);
+					},
+				);
+			} finally {
+				if (this.extensionAudioCaptureEnabled) {
+					this.capturedExtensionAudioRegions = extensionHost.drainExportAudioRegions(
+						Math.round(this.effectiveDurationSec * 1000),
 					);
-
-					if (useNativeEncoder) {
-						await this.encodeRenderedFrameNative(timestamp, frameDuration, frameIndex);
-					} else {
-						await this.encodeRenderedFrame(timestamp, frameDuration, frameIndex);
-					}
-					frameIndex++;
-					this.processedFrameCount = frameIndex;
-					this.reportProgress(frameIndex, totalFrames);
-				},
-			);
+					extensionHost.endExportAudioCapture();
+				}
+			}
 
 			if (this.cancelled) {
 				const encoderError = this.encoderError as Error | null;
@@ -393,9 +412,10 @@ export class VideoExporter {
 				throw this.encoderError;
 			}
 
+			const exportAudioRegions = this.getAudioRegionsForExport();
 			if (hasAudio && !shouldUseFfmpegAudioFallback && !this.cancelled) {
 				const demuxer = this.streamingDecoder.getDemuxer();
-				if (demuxer || hasAudioRegions || hasSourceAudioFallback) {
+				if (demuxer || exportAudioRegions.length > 0 || hasSourceAudioFallback) {
 					this.audioProcessor = new AudioProcessor();
 					this.audioProcessor.setOnProgress((progress) => {
 						this.reportFinalizingProgress(totalFrames, 99, progress);
@@ -403,15 +423,15 @@ export class VideoExporter {
 					this.reportFinalizingProgress(totalFrames, 99, 0);
 					await this.measureFinalizationStage("audioProcessingMs", async () => {
 						await this.awaitWithFinalizationTimeout(
-							this.audioProcessor!.process(
-								demuxer,
-								this.muxer!,
-								this.config.videoUrl,
+								this.audioProcessor!.process(
+									demuxer,
+									this.muxer!,
+									this.config.videoUrl,
 								this.config.trimRegions,
 								this.config.speedRegions,
 								undefined,
-								this.config.audioRegions,
-								this.config.sourceAudioFallbackPaths,
+									exportAudioRegions,
+									this.config.sourceAudioFallbackPaths,
 								this.config.sourceAudioFallbackStartDelayMsByPath,
 								this.config.sourceAudioTrackSettings,
 							),
@@ -545,7 +565,7 @@ export class VideoExporter {
 
 	private buildNativeAudioPlan(videoInfo: DecodedVideoInfo): NativeAudioPlan {
 		const speedRegions = this.config.speedRegions ?? [];
-		const audioRegions = this.config.audioRegions ?? [];
+		const audioRegions = this.getAudioRegionsForExport();
 		const sourceAudioFallbackPaths = (this.config.sourceAudioFallbackPaths ?? []).filter(
 			(audioPath) => typeof audioPath === "string" && audioPath.trim().length > 0,
 		);
@@ -575,6 +595,7 @@ export class VideoExporter {
 		if (
 			speedRegions.length > 0 ||
 			audioRegions.length > 0 ||
+			this.extensionAudioCaptureEnabled ||
 			sourceAudioFallbackPaths.length > 1 ||
 			hasTimedSourceAudioFallback ||
 			hasNonDefaultSourceTrackSettings(this.config.sourceAudioTrackSettings) ||
@@ -857,7 +878,7 @@ export class VideoExporter {
 						this.config.videoUrl,
 						this.config.trimRegions,
 						this.config.speedRegions,
-						this.config.audioRegions,
+						this.getAudioRegionsForExport(),
 						this.config.sourceAudioFallbackPaths,
 						this.config.sourceAudioFallbackStartDelayMsByPath,
 						this.config.sourceAudioTrackSettings,
@@ -951,12 +972,12 @@ export class VideoExporter {
 			});
 			const audioBlob = await this.measureFinalizationStage("editedAudioRenderMs", async () =>
 				this.awaitWithFinalizationTimeout(
-					this.audioProcessor!.renderEditedAudioTrack(
-						this.config.videoUrl,
-						this.config.trimRegions,
-						this.config.speedRegions,
-						this.config.audioRegions,
-						this.config.sourceAudioFallbackPaths,
+				this.audioProcessor!.renderEditedAudioTrack(
+					this.config.videoUrl,
+					this.config.trimRegions,
+					this.config.speedRegions,
+					this.getAudioRegionsForExport(),
+					this.config.sourceAudioFallbackPaths,
 						this.config.sourceAudioFallbackStartDelayMsByPath,
 						this.config.sourceAudioTrackSettings,
 						this.config.clipRegions,
@@ -1060,6 +1081,13 @@ export class VideoExporter {
 			tempFilePath: result.tempPath,
 			metrics: this.buildExportMetrics(),
 		};
+	}
+
+	private getAudioRegionsForExport(): AudioRegion[] {
+		if (this.capturedExtensionAudioRegions.length === 0) {
+			return this.config.audioRegions ?? [];
+		}
+		return [...(this.config.audioRegions ?? []), ...this.capturedExtensionAudioRegions];
 	}
 
 	private async encodeRenderedFrame(

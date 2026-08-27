@@ -71,6 +71,7 @@ import {
 	mapCursorToCanvasNormalized,
 	mapSmoothedCursorToCanvasNormalized,
 } from "@/lib/extensions/cursorCoordinates";
+import { selectCursorClickForEmission } from "@/lib/extensions/cursorClickSelection";
 import {
 	executeExtensionCursorEffects,
 	executeExtensionRenderHooks,
@@ -3317,10 +3318,13 @@ export class FrameRenderer {
 	private shouldCompositeExtensionFrame(): boolean {
 		return (
 			extensionHost.hasCursorEffects() ||
+			extensionHost.hasRenderHooks("post-video") ||
 			extensionHost.hasRenderHooks("post-zoom") ||
 			extensionHost.hasRenderHooks("post-cursor") ||
+			extensionHost.hasRenderHooks("post-webcam") ||
 			extensionHost.hasRenderHooks("post-annotations") ||
-			extensionHost.hasRenderHooks("final")
+			extensionHost.hasRenderHooks("final") ||
+			extensionHost.hasEventListeners("cursor:click")
 		);
 	}
 
@@ -3408,10 +3412,10 @@ export class FrameRenderer {
 			x: this.animationState.x,
 			y: this.animationState.y,
 		});
+		this.emitCursorInteractions(cursorTimeMs);
 		executeExtensionRenderHooks("post-video", this.compositeCtx, hookParams);
 		executeExtensionRenderHooks("post-zoom", this.compositeCtx, hookParams);
 		executeExtensionRenderHooks("post-cursor", this.compositeCtx, hookParams);
-		this.emitCursorInteractions(cursorTimeMs);
 		executeExtensionCursorEffects(
 			this.compositeCtx,
 			timeMs,
@@ -3499,40 +3503,40 @@ export class FrameRenderer {
 			return;
 		}
 
-		for (const point of telemetry) {
-			if (point.timeMs > timeMs) {
-				break;
-			}
-			if (point.timeMs < timeMs - 100) {
-				continue;
-			}
-			if (!point.interactionType || point.interactionType === "move") {
-				continue;
-			}
-			if (point.timeMs === this.lastEmittedClickTimeMs) {
-				continue;
-			}
-
-			const mappedCursor = mapCursorToCanvasNormalized(
-				{ cx: point.cx, cy: point.cy, interactionType: point.interactionType },
-				{
-					maskRect: this.layoutCache?.maskRect,
-					canvasWidth: this.config.width,
-					canvasHeight: this.config.height,
-				},
-			);
-			if (!mappedCursor) {
-				continue;
-			}
-
-			this.lastEmittedClickTimeMs = point.timeMs;
-			notifyCursorInteraction(
-				point.timeMs,
-				mappedCursor.cx,
-				mappedCursor.cy,
-				point.interactionType,
-			);
+		const point = selectCursorClickForEmission(
+			telemetry,
+			timeMs,
+			this.lastEmittedClickTimeMs,
+		);
+		if (!point) {
+			return;
 		}
+
+		const mappedCursor = mapCursorToCanvasNormalized(
+			{ cx: point.cx, cy: point.cy, interactionType: point.interactionType },
+			{
+				maskRect: this.layoutCache?.maskRect,
+				canvasWidth: this.config.width,
+				canvasHeight: this.config.height,
+			},
+		);
+
+		if (!mappedCursor) {
+			return;
+		}
+		this.lastEmittedClickTimeMs = point.timeMs;
+		extensionHost.emitEvent({
+			type: "cursor:click",
+			timeMs: point.timeMs,
+			data: mappedCursor,
+		});
+
+		notifyCursorInteraction(
+			point.timeMs,
+			mappedCursor.cx,
+			mappedCursor.cy,
+			point.interactionType,
+		);
 	}
 
 	private updateLayout(): void {

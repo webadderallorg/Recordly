@@ -367,6 +367,8 @@ export class ModernVideoExporter {
 	private lastProgressSampleTimeMs = 0;
 	private lastProgressSampleFrame = 0;
 	private displayedRenderFps = 0;
+	private extensionAudioCaptureEnabled = false;
+	private capturedExtensionAudioRegions: AudioRegion[] = [];
 
 	constructor(config: VideoExporterConfig) {
 		this.config = config;
@@ -381,6 +383,8 @@ export class ModernVideoExporter {
 			try {
 				this.cleanup();
 				this.cancelled = false;
+				this.capturedExtensionAudioRegions = [];
+				this.extensionAudioCaptureEnabled = extensionHost.hasEventListeners("cursor:click");
 				this.encoderError = null;
 				this.nativeEncoderError = null;
 				this.nativeStaticLayoutSkipReason = null;
@@ -675,57 +679,69 @@ export class ModernVideoExporter {
 				this.displayedRenderFps = 0;
 				const decodeLoopStartedAt = this.getNowMs();
 
-				await this.streamingDecoder.decodeAll(
-					this.config.frameRate,
-					this.config.trimRegions,
-					this.config.speedRegions,
-					async (
-						videoFrame,
-						_exportTimestampUs,
-						sourceTimestampMs,
-						cursorTimestampMs,
-					) => {
-						const callbackStartedAt = this.getNowMs();
-						if (this.cancelled) {
-							return;
-						}
-
-						const timestamp = frameIndex * frameDuration;
-						const sourceTimestampUs = sourceTimestampMs * 1000;
-						const cursorTimestampUs = cursorTimestampMs * 1000;
-						const renderStartedAt = this.getNowMs();
-						await this.renderer!.renderFrame(
+				if (this.extensionAudioCaptureEnabled) {
+					extensionHost.beginExportAudioCapture();
+				}
+				try {
+					await this.streamingDecoder.decodeAll(
+						this.config.frameRate,
+						this.config.trimRegions,
+						this.config.speedRegions,
+						async (
 							videoFrame,
-							sourceTimestampUs,
-							cursorTimestampUs,
-							frameDuration,
-							timestamp,
-						);
-						this.renderFrameTimeMs += this.getNowMs() - renderStartedAt;
+							_exportTimestampUs,
+							sourceTimestampMs,
+							cursorTimestampMs,
+						) => {
+							const callbackStartedAt = this.getNowMs();
+							if (this.cancelled) {
+								return;
+							}
 
-						if (this.cancelled) {
-							return;
-						}
-
-						if (useNativeEncoder) {
-							await this.encodeRenderedFrameNative(
-								timestamp,
+							const timestamp = frameIndex * frameDuration;
+							const sourceTimestampUs = sourceTimestampMs * 1000;
+							const cursorTimestampUs = cursorTimestampMs * 1000;
+							const renderStartedAt = this.getNowMs();
+							await this.renderer!.renderFrame(
+								videoFrame,
+								sourceTimestampUs,
+								cursorTimestampUs,
 								frameDuration,
-								frameIndex,
+								timestamp,
 							);
-						} else {
-							await this.encodeRenderedFrame(timestamp, frameDuration, frameIndex);
-						}
-						this.frameCallbackTimeMs += this.getNowMs() - callbackStartedAt;
-						frameIndex++;
-						this.processedFrameCount = frameIndex;
-						this.reportProgress(frameIndex, totalFrames, "extracting");
-						extensionHost.emitEvent({
-							type: "export:frame",
-							data: { frameIndex, totalFrames },
-						});
-					},
-				);
+							this.renderFrameTimeMs += this.getNowMs() - renderStartedAt;
+
+							if (this.cancelled) {
+								return;
+							}
+
+							if (useNativeEncoder) {
+								await this.encodeRenderedFrameNative(
+									timestamp,
+									frameDuration,
+									frameIndex,
+								);
+							} else {
+								await this.encodeRenderedFrame(timestamp, frameDuration, frameIndex);
+							}
+							this.frameCallbackTimeMs += this.getNowMs() - callbackStartedAt;
+							frameIndex++;
+							this.processedFrameCount = frameIndex;
+							this.reportProgress(frameIndex, totalFrames, "extracting");
+							extensionHost.emitEvent({
+								type: "export:frame",
+								data: { frameIndex, totalFrames },
+							});
+						},
+					);
+				} finally {
+					if (this.extensionAudioCaptureEnabled) {
+						this.capturedExtensionAudioRegions = extensionHost.drainExportAudioRegions(
+							Math.round(this.effectiveDurationSec * 1000),
+						);
+						extensionHost.endExportAudioCapture();
+					}
+				}
 				this.decodeLoopTimeMs = this.getNowMs() - decodeLoopStartedAt;
 
 				if (this.cancelled) {
@@ -800,6 +816,7 @@ export class ModernVideoExporter {
 					throw this.encoderError;
 				}
 
+				const exportAudioRegions = this.getAudioRegionsForExport();
 				if (
 					nativeAudioPlan.audioMode !== "none" &&
 					!shouldUseFfmpegAudioFallback &&
@@ -808,7 +825,7 @@ export class ModernVideoExporter {
 					const demuxer = this.streamingDecoder.getDemuxer();
 					if (
 						demuxer ||
-						(this.config.audioRegions ?? []).length > 0 ||
+						exportAudioRegions.length > 0 ||
 						(this.config.sourceAudioFallbackPaths ?? []).length > 0
 					) {
 						this.audioProcessor = new AudioProcessor();
@@ -825,7 +842,7 @@ export class ModernVideoExporter {
 									this.config.trimRegions,
 									this.config.speedRegions,
 									undefined,
-									this.config.audioRegions,
+									exportAudioRegions,
 									this.config.sourceAudioFallbackPaths,
 									this.config.sourceAudioFallbackStartDelayMsByPath,
 									this.config.sourceAudioTrackSettings,
@@ -1280,7 +1297,7 @@ export class ModernVideoExporter {
 
 	private buildNativeAudioPlan(videoInfo: DecodedVideoInfo): NativeAudioPlan {
 		const speedRegions = this.config.speedRegions ?? [];
-		const audioRegions = this.config.audioRegions ?? [];
+		const audioRegions = this.getAudioRegionsForExport();
 		const sourceAudioFallbackPaths = this.getNativeAudioFallbackPaths(videoInfo);
 		const hasTimedSourceAudioFallback = sourceAudioFallbackPaths.some(
 			(audioPath) =>
@@ -1301,7 +1318,8 @@ export class ModernVideoExporter {
 		if (
 			!videoInfo.hasAudio &&
 			sourceAudioFallbackPaths.length === 0 &&
-			audioRegions.length === 0
+			audioRegions.length === 0 &&
+			!this.extensionAudioCaptureEnabled
 		) {
 			return { audioMode: "none" };
 		}
@@ -1309,6 +1327,7 @@ export class ModernVideoExporter {
 		if (
 			speedRegions.length > 0 ||
 			audioRegions.length > 0 ||
+			this.extensionAudioCaptureEnabled ||
 			sourceAudioFallbackPaths.length > 1 ||
 			hasTimedSourceAudioFallback ||
 			hasNonDefaultSourceTrackSettings(this.config.sourceAudioTrackSettings) ||
@@ -1333,6 +1352,7 @@ export class ModernVideoExporter {
 				Number.isFinite(primaryAudioSourceSampleRate) &&
 				primaryAudioSourceSampleRate > 0;
 			const requiresRenderedEditedTrack =
+				this.extensionAudioCaptureEnabled ||
 				hasNonDefaultSourceTrackSettings(this.config.sourceAudioTrackSettings) ||
 				(this.config.clipRegions ?? []).some((clip) => Boolean(clip.muted));
 			const strategy =
@@ -1527,6 +1547,9 @@ export class ModernVideoExporter {
 
 		if (!this.canUseNativeStaticLayoutAudioPlan(audioPlan)) {
 			reasons.push(`unsupported-audio-mode:${audioPlan.audioMode}`);
+		}
+		if (this.extensionAudioCaptureEnabled) {
+			reasons.push("extension-click-audio-capture-enabled");
 		}
 
 		const speedRegions = this.config.speedRegions ?? [];
@@ -1960,7 +1983,7 @@ export class ModernVideoExporter {
 					this.config.videoUrl,
 					this.config.trimRegions,
 					this.config.speedRegions,
-					this.config.audioRegions,
+					this.getAudioRegionsForExport(),
 					sourceAudioFallbackPaths,
 					this.config.sourceAudioFallbackStartDelayMsByPath,
 					this.config.sourceAudioTrackSettings,
@@ -2019,6 +2042,13 @@ export class ModernVideoExporter {
 				};
 			}
 		}
+	}
+
+	private getAudioRegionsForExport(): AudioRegion[] {
+		if (this.capturedExtensionAudioRegions.length === 0) {
+			return this.config.audioRegions ?? [];
+		}
+		return [...(this.config.audioRegions ?? []), ...this.capturedExtensionAudioRegions];
 	}
 
 	private getNativeStaticLayoutWebcamOverlay(): NativeStaticLayoutWebcamOverlay | null {
@@ -2247,7 +2277,7 @@ export class ModernVideoExporter {
 				audioMode: audioPlan.audioMode,
 				zoomRegions: this.config.zoomRegions?.length ?? 0,
 				speedRegions: this.config.speedRegions?.length ?? 0,
-				audioRegions: this.config.audioRegions?.length ?? 0,
+				audioRegions: this.getAudioRegionsForExport().length,
 				annotationRegions: this.config.annotationRegions?.length ?? 0,
 				hasFrame: Boolean(this.config.frame),
 				backgroundBlur: this.config.backgroundBlur,
@@ -2584,6 +2614,11 @@ export class ModernVideoExporter {
 
 	private async tryStartNativeVideoExport(): Promise<boolean> {
 		this.lastNativeExportError = null;
+		if (this.extensionAudioCaptureEnabled) {
+			this.lastNativeExportError =
+				"Native export is disabled while extension click-sound capture is active.";
+			return false;
+		}
 
 		if (typeof window === "undefined" || !window.electronAPI?.nativeVideoExportStart) {
 			this.lastNativeExportError = `${NATIVE_EXPORT_ENGINE_NAME} export is not available in this build.`;

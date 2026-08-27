@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_WEBCAM_OVERLAY } from "../../components/video-editor/types";
+import { extensionHost } from "@/lib/extensions";
 
 const {
 	cancelForwardFrameSourceMock,
@@ -863,5 +864,98 @@ describe("ModernFrameRenderer temporal webcam sync", () => {
 		expect(
 			new Set(renderer.renderSceneSample.mock.calls.map((call: unknown[]) => call[0])).size,
 		).toBeGreaterThan(1);
+	});
+});
+
+describe("ModernFrameRenderer cursor click emission parity", () => {
+	it("enables extension compositing for post-video render hooks", () => {
+		const renderer = createRenderer() as any;
+		const hasCursorEffectsSpy = vi.spyOn(extensionHost, "hasCursorEffects").mockReturnValue(false);
+		const hasRenderHooksSpy = vi
+			.spyOn(extensionHost, "hasRenderHooks")
+			.mockImplementation((phase: string) => phase === "post-video");
+		const hasEventListenersSpy = vi.spyOn(extensionHost, "hasEventListeners").mockReturnValue(false);
+
+		try {
+			expect(renderer.shouldCompositeExtensionFrame()).toBe(true);
+		} finally {
+			hasCursorEffectsSpy.mockRestore();
+			hasRenderHooksSpy.mockRestore();
+			hasEventListenersSpy.mockRestore();
+		}
+	});
+
+	it("enables extension compositing for post-webcam render hooks", () => {
+		const renderer = createRenderer() as any;
+		const hasCursorEffectsSpy = vi.spyOn(extensionHost, "hasCursorEffects").mockReturnValue(false);
+		const hasRenderHooksSpy = vi
+			.spyOn(extensionHost, "hasRenderHooks")
+			.mockImplementation((phase: string) => phase === "post-webcam");
+		const hasEventListenersSpy = vi.spyOn(extensionHost, "hasEventListeners").mockReturnValue(false);
+
+		try {
+			expect(renderer.shouldCompositeExtensionFrame()).toBe(true);
+		} finally {
+			hasCursorEffectsSpy.mockRestore();
+			hasRenderHooksSpy.mockRestore();
+			hasEventListenersSpy.mockRestore();
+		}
+	});
+
+	it("enables extension compositing for cursor-click event listeners", () => {
+		const renderer = createRenderer() as any;
+		const hasCursorEffectsSpy = vi.spyOn(extensionHost, "hasCursorEffects").mockReturnValue(false);
+		const hasRenderHooksSpy = vi.spyOn(extensionHost, "hasRenderHooks").mockReturnValue(false);
+		const hasEventListenersSpy = vi
+			.spyOn(extensionHost, "hasEventListeners")
+			.mockImplementation((eventType: string) => eventType === "cursor:click");
+
+		try {
+			expect(renderer.shouldCompositeExtensionFrame()).toBe(true);
+		} finally {
+			hasCursorEffectsSpy.mockRestore();
+			hasRenderHooksSpy.mockRestore();
+			hasEventListenersSpy.mockRestore();
+		}
+	});
+
+	it("emits a click behind a newer move in the frame window", () => {
+		const renderer = Object.create(FrameRenderer.prototype) as FrameRenderer & {
+			config: {
+				cursorTelemetry: Array<{
+					timeMs: number;
+					cx: number;
+					cy: number;
+					interactionType?: string;
+				}>;
+				width: number;
+				height: number;
+			};
+			layoutCache: { maskRect: { x: number; y: number; width: number; height: number } };
+			lastEmittedClickTimeMs: number;
+			emitCursorInteractions(timeMs: number): void;
+		};
+		renderer.config = {
+			cursorTelemetry: [
+				{ timeMs: 2_000, cx: 200, cy: 100, interactionType: "click" },
+				{ timeMs: 2_030, cx: 220, cy: 120, interactionType: "move" },
+			],
+			width: 1920,
+			height: 1080,
+		};
+		renderer.layoutCache = {
+			maskRect: { x: 0, y: 0, width: 1920, height: 1080 },
+		};
+		renderer.lastEmittedClickTimeMs = -1;
+
+		const emitSpy = vi.spyOn(extensionHost, "emitEvent");
+		renderer.emitCursorInteractions(2_030);
+		expect(emitSpy).toHaveBeenCalledTimes(1);
+		expect(emitSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "cursor:click",
+				timeMs: 2_000,
+			}),
+		);
 	});
 });
