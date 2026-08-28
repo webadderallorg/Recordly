@@ -7,9 +7,10 @@ import type {
 	ExportPipelineModel,
 	ExportQuality,
 	GifFrameRate,
+	GifQualityPreset,
 	GifSizePreset,
 } from "@/lib/exporter";
-import { isValidMp4FrameRate } from "@/lib/exporter";
+import { isValidGifQualityPreset, isValidMp4FrameRate } from "@/lib/exporter";
 import {
 	TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT,
 	TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION,
@@ -153,6 +154,7 @@ export interface ProjectEditorState {
 	gifFrameRate: GifFrameRate;
 	gifLoop: boolean;
 	gifSizePreset: GifSizePreset;
+	gifQualityPreset: GifQualityPreset;
 }
 
 export interface EditorProjectData {
@@ -1107,6 +1109,9 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			editor.gifSizePreset === "original"
 				? editor.gifSizePreset
 				: "medium",
+		gifQualityPreset: isValidGifQualityPreset(editor.gifQualityPreset)
+			? editor.gifQualityPreset
+			: "balanced",
 	};
 }
 

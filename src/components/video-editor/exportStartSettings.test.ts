@@ -14,6 +14,7 @@ const baseOptions = {
 	gifFrameRate: 20 as const,
 	gifLoop: true,
 	gifSizePreset: "medium" as const,
+	gifQualityPreset: "balanced" as const,
 };
 
 describe("resolveExportStartSettings", () => {
@@ -53,6 +54,7 @@ describe("resolveExportStartSettings", () => {
 				frameRate: 15,
 				loop: false,
 				sizePreset: "medium",
+				qualityPreset: "balanced",
 				width: 1280,
 				height: 720,
 			},
@@ -70,6 +72,7 @@ describe("resolveExportStartSettings", () => {
 			}).gifConfig,
 		).toMatchObject({
 			sizePreset: "original",
+			qualityPreset: "balanced",
 			width: 1234,
 			height: 678,
 		});

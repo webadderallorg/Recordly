@@ -22,8 +22,10 @@ import type {
 	ExportResult,
 	GIF_SIZE_PRESETS,
 	GifFrameRate,
+	GifQualityPreset,
 	GifSizePreset,
 } from "./types";
+import { GIF_QUALITY_PRESETS, isValidGifQualityPreset } from "./types";
 
 const GIF_WORKER_URL = new URL("gif.js/dist/gif.worker.js", import.meta.url).toString();
 
@@ -36,6 +38,7 @@ interface GifExporterConfig {
 	frameRate: GifFrameRate;
 	loop: boolean;
 	sizePreset: GifSizePreset;
+	qualityPreset?: GifQualityPreset;
 	wallpaper: string;
 	zoomRegions: ZoomRegion[];
 	trimRegions?: TrimRegion[];
@@ -199,6 +202,11 @@ export function buildGifFrameRendererConfig(
 	};
 }
 
+export function getGifQuality(qualityPreset: unknown): number {
+	const preset = isValidGifQualityPreset(qualityPreset) ? qualityPreset : "balanced";
+	return GIF_QUALITY_PRESETS[preset].quality;
+}
+
 export class GifExporter {
 	private config: GifExporterConfig;
 	private streamingDecoder: StreamingVideoDecoder | null = null;
@@ -242,7 +250,7 @@ export class GifExporter {
 
 			this.gif = new GIF({
 				workers: WORKER_COUNT,
-				quality: 10,
+				quality: getGifQuality(this.config.qualityPreset),
 				width: this.config.width,
 				height: this.config.height,
 				workerScript: GIF_WORKER_URL,

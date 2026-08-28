@@ -9,6 +9,7 @@ import {
 	type ExportSettings,
 	GIF_SIZE_PRESETS,
 	type GifFrameRate,
+	type GifQualityPreset,
 	type GifSizePreset,
 } from "@/lib/exporter";
 
@@ -25,6 +26,7 @@ export function resolveExportStartSettings({
 	gifFrameRate,
 	gifLoop,
 	gifSizePreset,
+	gifQualityPreset,
 }: {
 	sourceWidth: number;
 	sourceHeight: number;
@@ -38,6 +40,7 @@ export function resolveExportStartSettings({
 	gifFrameRate: GifFrameRate;
 	gifLoop: boolean;
 	gifSizePreset: GifSizePreset;
+	gifQualityPreset: GifQualityPreset;
 }): ExportSettings {
 	const gifDimensions =
 		exportFormat === "gif"
@@ -58,6 +61,7 @@ export function resolveExportStartSettings({
 						frameRate: gifFrameRate,
 						loop: gifLoop,
 						sizePreset: gifSizePreset,
+						qualityPreset: gifQualityPreset,
 						width: gifDimensions.width,
 						height: gifDimensions.height,
 					}

@@ -10,9 +10,15 @@ import type {
 	ExportPipelineModel,
 	ExportQuality,
 	GifFrameRate,
+	GifQualityPreset,
 	GifSizePreset,
 } from "@/lib/exporter";
-import { GIF_FRAME_RATES, GIF_SIZE_PRESETS, MP4_FRAME_RATES } from "@/lib/exporter";
+import {
+	GIF_FRAME_RATES,
+	GIF_QUALITY_PRESETS,
+	GIF_SIZE_PRESETS,
+	MP4_FRAME_RATES,
+} from "@/lib/exporter";
 import { cn } from "@/lib/utils";
 
 interface ExportSettingsMenuProps {
@@ -39,6 +45,8 @@ interface ExportSettingsMenuProps {
 	onGifLoopChange?: (loop: boolean) => void;
 	gifSizePreset: GifSizePreset;
 	onGifSizePresetChange?: (preset: GifSizePreset) => void;
+	gifQualityPreset: GifQualityPreset;
+	onGifQualityPresetChange?: (preset: GifQualityPreset) => void;
 	gifOutputDimensions: { width: number; height: number };
 	onExport?: () => void;
 	className?: string;
@@ -68,6 +76,8 @@ export function ExportSettingsMenu({
 	onGifLoopChange,
 	gifSizePreset,
 	onGifSizePresetChange,
+	gifQualityPreset,
+	onGifQualityPresetChange,
 	gifOutputDimensions,
 	onExport,
 	className,
@@ -491,6 +501,55 @@ export function ExportSettingsMenu({
 							</div>
 						</LayoutGroup>
 					</div>
+					<LayoutGroup id="header-gif-quality-toggle">
+						<div className="grid h-8 grid-cols-3 rounded-xl border border-foreground/5 bg-foreground/5 p-0.5">
+							{Object.entries(GIF_QUALITY_PRESETS).map(([key, preset]) => {
+								const typedKey = key as GifQualityPreset;
+								const isActive = gifQualityPreset === typedKey;
+								return (
+									<button
+										key={key}
+										type="button"
+										onClick={() => onGifQualityPresetChange?.(typedKey)}
+										aria-pressed={isActive}
+										className="relative rounded-lg text-[11px] font-medium transition-colors"
+									>
+										{isActive ? (
+											<motion.span
+												layoutId="header-gif-quality-pill"
+												className="absolute inset-0 rounded-lg bg-neutral-800 dark:bg-white"
+												transition={{
+													type: "spring",
+													stiffness: 420,
+													damping: 34,
+												}}
+											/>
+										) : null}
+										<span
+											className={cn(
+												"relative z-10",
+												isActive
+													? "text-white dark:text-black"
+													: "text-muted-foreground hover:text-foreground",
+											)}
+										>
+											{typedKey === "high"
+												? tSettings("export.gifQualityHigh", preset.label)
+												: typedKey === "balanced"
+													? tSettings(
+															"export.gifQualityBalanced",
+															preset.label,
+														)
+													: tSettings(
+															"export.gifQualitySmall",
+															preset.label,
+														)}
+										</span>
+									</button>
+								);
+							})}
+						</div>
+					</LayoutGroup>
 					<div className="flex items-center justify-between px-1">
 						<span className="text-[10px] text-muted-foreground/70">
 							{gifOutputDimensions.width} × {gifOutputDimensions.height}px
