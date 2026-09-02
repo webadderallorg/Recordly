@@ -1,12 +1,18 @@
 # Recordly Extension API
 
+> [!NOTE]
+> **Status: Extension System Inactive**
+> Following the core architecture cleanup in PR #844, runtime extension loading, custom render hooks, and marketplace access are currently disabled in Recordly 1.3.5+. The in-app Extensions panel currently acts as an informational placeholder.
+>
+> This document is preserved as an architectural reference and design specification for future extension/plugin system rework. Example extension bundles (`extension-examples/`) are not currently packaged in the repository. If you are looking to contribute custom wallpapers or cursors, please submit them directly as built-in assets in `src/lib/wallpapers.ts` or `src/assets/cursors/`.
+
 Go to https://www.marketplace.recordly.dev/extensions for full, regularly updated documentation
 
 Recordly extensions run in the editor renderer and use a permission-gated host API. They can draw into the render pipeline, react to playback and export events, register cursor effects, add settings panels, and contribute packaged assets such as frames, wallpapers, and cursor styles.
 
-## Quick Start
+## Architectural Overview
 
-For local user-installed extensions, use `Extensions -> Open Directory` in the app. Recordly stores them in the app `userData/extensions` directory. This repo also includes installable example bundles under `extension-examples/`.
+Historically, user-installed extensions were stored in the app's `userData/extensions` directory (`Extensions -> Open Directory`). The specification below outlines the manifest format and permissions model intended for extensions when the subsystem is active.
 
 ### Minimum Extension
 
@@ -305,6 +311,8 @@ Use `parentSection` to nest your panel inside an existing area such as `cursor` 
 3. Runtime: Registered callbacks execute in preview and export according to their phase.
 4. Deactivation: `deactivate()` runs and all registrations are automatically disposed.
 
-## Examples
+## Built-in Assets vs Extensions
 
-- `extension-examples/webadderall.more-wallpapers` shows a user-installable wallpaper bundle that registers 180 packaged wallpapers through `registerWallpaper()`.
+While runtime extension bundles are disabled, custom wallpapers and cursor styles can be contributed directly to the core application:
+- Built-in wallpapers: [src/lib/wallpapers.ts](./src/lib/wallpapers.ts)
+- Built-in cursors: [src/assets/cursors/](./src/assets/cursors/)
