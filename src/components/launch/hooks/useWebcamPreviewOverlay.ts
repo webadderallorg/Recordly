@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
-import { canShowFloatingWebcamPreview } from "../floatingWebcamPreview";
+import {
+	canShowFloatingWebcamPreview,
+	clampPreviewPosition,
+	resolvePreviewViewport,
+} from "../floatingWebcamPreview";
 
 const WEBCAM_PREVIEW_DRAG_THRESHOLD = 6;
 const DEFAULT_WEBCAM_PREVIEW_OFFSET = { x: 0, y: 0 };
@@ -118,17 +122,17 @@ export function useWebcamPreviewOverlay({
 
 			const latestDeltaX = pointer.clientX - latestDragState.startX;
 			const latestDeltaY = pointer.clientY - latestDragState.startY;
-			const viewportWidth = Math.max(window.innerWidth, window.screen?.width ?? 0);
-			const viewportHeight = Math.max(window.innerHeight, window.screen?.height ?? 0);
-			const unclampedLeft = latestDragState.initialLeft + latestDeltaX;
-			const unclampedTop = latestDragState.initialTop + latestDeltaY;
-			const clampedLeft = Math.min(
-				Math.max(0, unclampedLeft),
-				Math.max(0, viewportWidth - latestDragState.previewWidth),
+			const viewport = resolvePreviewViewport(
+				{ width: window.innerWidth, height: window.innerHeight },
+				window.screen ? { width: window.screen.width, height: window.screen.height } : null,
 			);
-			const clampedTop = Math.min(
-				Math.max(0, unclampedTop),
-				Math.max(0, viewportHeight - latestDragState.previewHeight),
+			const { left: clampedLeft, top: clampedTop } = clampPreviewPosition(
+				{
+					left: latestDragState.initialLeft + latestDeltaX,
+					top: latestDragState.initialTop + latestDeltaY,
+				},
+				{ width: latestDragState.previewWidth, height: latestDragState.previewHeight },
+				viewport,
 			);
 
 			const nextOffset = {
