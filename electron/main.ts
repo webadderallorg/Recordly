@@ -16,6 +16,7 @@ import {
 	Tray,
 } from "electron";
 import { RECORDINGS_DIR } from "./appPaths";
+import { parseCliRenderArgs, runCliRender } from "./cli-render";
 import { showCursor } from "./cursorHider";
 import { getGpuSwitches } from "./gpuSwitches";
 import {
@@ -878,6 +879,15 @@ app.on("second-instance", () => {
 
 // Register all IPC handlers when app is ready
 app.whenReady().then(async () => {
+	// Headless render CLI: `--render <project.recordly>` bridges to the app's own
+	// RECORDLY_SMOKE_EXPORT_* boot contract (same path CI uses) and watches the
+	// output file. Boot continues normally below — the IS_SMOKE_EXPORT branch
+	// creates the editor window and auto-exports.
+	const cliArgs = parseCliRenderArgs(process.argv);
+	if (cliArgs) {
+		await runCliRender(cliArgs);
+	}
+
 	if (process.platform === "win32") {
 		app.setAppUserModelId("dev.recordly.app");
 	}
