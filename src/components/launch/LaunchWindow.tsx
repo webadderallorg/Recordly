@@ -108,6 +108,7 @@ function LaunchWindowContent() {
 
 	const {
 		hudOverlayMousePassthroughSupported,
+		hudOverlayResizeAnchor,
 		platform,
 		appVersion,
 		hideHudFromCapture,
@@ -445,8 +446,12 @@ function LaunchWindowContent() {
 			value={{ onMouseEnter: handleHudMouseEnter, onMouseLeave: handleHudMouseLeave }}
 		>
 			<div
-				className="w-full flex justify-center bg-transparent overflow-visible items-end pb-5 pointer-events-none"
-				style={{ height: "100vh" }}
+				className="w-full flex justify-center bg-transparent overflow-visible items-end pointer-events-none"
+				style={{
+					height: "100vh",
+					paddingBottom:
+						hudOverlayResizeAnchor === "center" ? "calc(50vh - 60px)" : "1.25rem",
+				}}
 			>
 				<div
 					ref={hudContentRef}

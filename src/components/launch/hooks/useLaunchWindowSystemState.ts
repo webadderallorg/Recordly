@@ -7,6 +7,9 @@ export function useLaunchWindowSystemState(
 	const [hudOverlayMousePassthroughSupported, setHudOverlayMousePassthroughSupported] = useState<
 		boolean | null
 	>(null);
+	const [hudOverlayResizeAnchor, setHudOverlayResizeAnchor] = useState<"bottom" | "center">(
+		"bottom",
+	);
 	const [platform, setPlatform] = useState<string | null>(null);
 	const [appVersion, setAppVersion] = useState<string | null>(null);
 	const [hideHudFromCapture, setHideHudFromCapture] = useState(true);
@@ -54,6 +57,7 @@ export function useLaunchWindowSystemState(
 				const result = await window.electronAPI.getHudOverlayMousePassthroughSupported();
 				if (!cancelled && result.success) {
 					setHudOverlayMousePassthroughSupported(result.supported);
+					setHudOverlayResizeAnchor(result.resizeAnchor ?? "bottom");
 				}
 			} catch (error) {
 				console.error("Failed to load HUD overlay mouse passthrough support:", error);
@@ -132,6 +136,7 @@ export function useLaunchWindowSystemState(
 	return {
 		recordingsDirectory,
 		hudOverlayMousePassthroughSupported,
+		hudOverlayResizeAnchor,
 		platform,
 		appVersion,
 		hideHudFromCapture,
