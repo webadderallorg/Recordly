@@ -2,17 +2,6 @@ import type React from "react";
 import { enablePitchPreservingPlayback } from "@/lib/mediaTiming";
 import type { SpeedRegion, TrimRegion } from "../types";
 
-interface PresentedFrameMetadata {
-	mediaTime?: number;
-}
-
-type PresentedFrameVideoElement = HTMLVideoElement & {
-	requestVideoFrameCallback?: (
-		callback: (now: DOMHighResTimeStamp, metadata: PresentedFrameMetadata) => void,
-	) => number;
-	cancelVideoFrameCallback?: (handle: number) => void;
-};
-
 interface VideoEventHandlersParams {
 	video: HTMLVideoElement;
 	isSeekingRef: React.MutableRefObject<boolean>;
@@ -39,8 +28,6 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		trimRegionsRef,
 		speedRegionsRef,
 	} = params;
-	const presentedFrameVideo = video as PresentedFrameVideoElement;
-	let videoFrameRequestId: number | null = null;
 	enablePitchPreservingPlayback(video);
 
 	const emitTime = (timeValue: number) => {
@@ -84,14 +71,6 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 			cancelAnimationFrame(timeUpdateAnimationRef.current);
 			timeUpdateAnimationRef.current = null;
 		}
-
-		if (
-			videoFrameRequestId !== null &&
-			typeof presentedFrameVideo.cancelVideoFrameCallback === "function"
-		) {
-			presentedFrameVideo.cancelVideoFrameCallback(videoFrameRequestId);
-			videoFrameRequestId = null;
-		}
 	};
 
 	const scheduleNextUpdate = () => {
@@ -99,33 +78,17 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 			return;
 		}
 
-		// Align editor state with the frame Chromium actually presented instead of
-		// polling `currentTime` on a generic animation frame.
-		if (typeof presentedFrameVideo.requestVideoFrameCallback === "function") {
-			videoFrameRequestId = presentedFrameVideo.requestVideoFrameCallback(
-				(_now, metadata) => {
-					videoFrameRequestId = null;
-					updateTime(metadata);
-				},
-			);
-			return;
-		}
-
+		// Effects follow the continuous media clock even when a VFR source holds a frame.
 		timeUpdateAnimationRef.current = requestAnimationFrame(() => {
 			timeUpdateAnimationRef.current = null;
 			updateTime();
 		});
 	};
 
-	function getPresentedTime(metadata?: PresentedFrameMetadata): number {
-		const mediaTime = metadata?.mediaTime;
-		return Number.isFinite(mediaTime) ? (mediaTime ?? 0) : video.currentTime;
-	}
-
-	function updateTime(metadata?: PresentedFrameMetadata) {
+	function updateTime() {
 		if (!video) return;
 
-		const presentedTime = getPresentedTime(metadata);
+		const presentedTime = video.currentTime;
 		const currentTimeMs = presentedTime * 1000;
 		const activeTrimRegion = findActiveTrimRegion(currentTimeMs);
 
