@@ -4,11 +4,7 @@
 > **Status: Extension System Inactive**
 > Following the core architecture cleanup in PR #844, runtime extension loading, custom render hooks, and marketplace access are currently disabled in Recordly 1.3.5+. The in-app Extensions panel currently acts as an informational placeholder.
 >
-> This document is preserved as an architectural reference and design specification for future extension/plugin system rework. Example extension bundles (`extension-examples/`) are not currently packaged in the repository. If you are looking to contribute custom wallpapers or cursors, please submit them directly as built-in assets in `src/lib/wallpapers.ts` or `src/assets/cursors/`.
-
-Go to https://www.marketplace.recordly.dev/extensions for full, regularly updated documentation
-
-Recordly extensions run in the editor renderer and use a permission-gated host API. They can draw into the render pipeline, react to playback and export events, register cursor effects, add settings panels, and contribute packaged assets such as frames, wallpapers, and cursor styles.
+> This document is preserved as an architectural reference and design specification for future extension/plugin system rework. If you are looking to contribute custom wallpapers or cursors, please submit them directly as built-in assets in `src/lib/wallpapers.ts` or `src/assets/cursors/`.
 
 ## Architectural Overview
 
