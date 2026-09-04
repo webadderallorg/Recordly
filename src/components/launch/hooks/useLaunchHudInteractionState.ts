@@ -13,20 +13,35 @@ export function useLaunchHudInteractionState({
 }) {
 	const isMouseOverHudRef = useRef(false);
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+	const popoverCloseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+	const openIdRef = useRef(openId);
+	openIdRef.current = openId;
 
 	useEffect(() => {
+		if (popoverCloseTimeoutRef.current) {
+			clearTimeout(popoverCloseTimeoutRef.current);
+			popoverCloseTimeoutRef.current = null;
+		}
+
 		window.electronAPI?.hudOverlaySetMenuOpen?.(openId !== null);
 		if (openId !== null) {
 			if (timeoutRef.current) clearTimeout(timeoutRef.current);
 			window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
 		} else {
 			// Proactively check if we should ignore mouse when popover closes
-			setTimeout(() => {
-				if (!isMouseOverHudRef.current) {
+			popoverCloseTimeoutRef.current = setTimeout(() => {
+				if (openIdRef.current === null && !isMouseOverHudRef.current) {
 					window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
 				}
 			}, 150);
 		}
+
+		return () => {
+			if (popoverCloseTimeoutRef.current) {
+				clearTimeout(popoverCloseTimeoutRef.current);
+				popoverCloseTimeoutRef.current = null;
+			}
+		};
 	}, [openId]);
 
 	useEffect(() => {

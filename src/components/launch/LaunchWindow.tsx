@@ -45,6 +45,19 @@ import { MarqueeText } from "./SourceSelector";
 
 const SHOW_DEV_UPDATE_PREVIEW = import.meta.env.DEV;
 
+// Wayland compositors (e.g. Hyprland) re-center resizing floating windows around their
+// midpoint rather than honoring bottom bounds.
+// In compact mode, the window is 160px tall with 20px (1.25rem / pb-5) bottom padding.
+// The distance from the window center (50vh = 80px) to the HUD bottom edge is:
+// 80px - 20px = 60px.
+// Setting paddingBottom to calc(50vh - 60px) maintains this constant 60px offset from
+// the window center, ensuring the HUD bar remains visually stationary on screen when
+// the window expands vertically to accommodate popover menus.
+const COMPACT_HUD_HEIGHT_DIP = 160;
+const STANDARD_HUD_BOTTOM_PADDING_PX = 20; // 1.25rem (pb-5)
+const WAYLAND_CENTER_OFFSET_PX =
+	COMPACT_HUD_HEIGHT_DIP / 2 - STANDARD_HUD_BOTTOM_PADDING_PX;
+
 export function LaunchWindow() {
 	return (
 		<LaunchPopoverCoordinatorProvider>
@@ -451,7 +464,9 @@ function LaunchWindowContent() {
 				style={{
 					height: "100vh",
 					paddingBottom:
-						hudOverlayResizeAnchor === "center" ? "calc(50vh - 60px)" : "1.25rem",
+						hudOverlayResizeAnchor === "center"
+							? `calc(50vh - ${WAYLAND_CENTER_OFFSET_PX}px)`
+							: "1.25rem",
 				}}
 			>
 				<div
