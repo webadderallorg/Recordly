@@ -245,15 +245,28 @@ o.window({ class = "^[Rr]ecordly$", float = true }, {
 })
 ```
 
-Plain `hyprland.conf` equivalent:
+Plain `hyprland.conf` equivalents:
+
+**Hyprland 0.53.0+ (new windowrule syntax):**
 
 ```ini
-windowrule = opacity 1 1, class:^[Rr]ecordly$
-windowrule = pin, class:^[Rr]ecordly$, floating:1
-windowrule = noblur, class:^[Rr]ecordly$, floating:1
-windowrule = noshadow, class:^[Rr]ecordly$, floating:1
-windowrule = nodim, class:^[Rr]ecordly$, floating:1
-windowrule = bordersize 0, class:^[Rr]ecordly$, floating:1
+windowrule = opacity 1 1, match:class ^[Rr]ecordly$
+windowrule = pin, match:class ^[Rr]ecordly$, match:float 1
+windowrule = noblur, match:class ^[Rr]ecordly$, match:float 1
+windowrule = noshadow, match:class ^[Rr]ecordly$, match:float 1
+windowrule = nodim, match:class ^[Rr]ecordly$, match:float 1
+windowrule = bordersize 0, match:class ^[Rr]ecordly$, match:float 1
+```
+
+**Hyprland < 0.53.0 (legacy windowrulev2 syntax):**
+
+```ini
+windowrulev2 = opacity 1 1, class:^[Rr]ecordly$
+windowrulev2 = pin, class:^[Rr]ecordly$, floating:1
+windowrulev2 = noblur, class:^[Rr]ecordly$, floating:1
+windowrulev2 = noshadow, class:^[Rr]ecordly$, floating:1
+windowrulev2 = nodim, class:^[Rr]ecordly$, floating:1
+windowrulev2 = bordersize 0, class:^[Rr]ecordly$, floating:1
 ```
 
 ## macOS: "App cannot be opened"

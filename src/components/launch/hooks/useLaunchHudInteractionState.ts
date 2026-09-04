@@ -1,4 +1,4 @@
-import { type MouseEvent, type RefObject, useCallback, useEffect, useRef } from "react";
+import { type MouseEvent, type RefObject, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 export function useLaunchHudInteractionState({
 	openId,
@@ -15,7 +15,10 @@ export function useLaunchHudInteractionState({
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 	const popoverCloseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 	const openIdRef = useRef(openId);
-	openIdRef.current = openId;
+
+	useLayoutEffect(() => {
+		openIdRef.current = openId;
+	}, [openId]);
 
 	useEffect(() => {
 		if (popoverCloseTimeoutRef.current) {
