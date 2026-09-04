@@ -119,10 +119,11 @@ describe("recording overlays do not steal focus", () => {
 		expect(show).not.toHaveBeenCalled();
 	});
 
-	it("leaves the Linux show() path alone", async () => {
-		// showInactive() and moveTop() are unsupported on Wayland, so Linux keeps
-		// the pre-existing show() behaviour rather than gaining calls that would
-		// silently do nothing there.
+	// showInactive() and moveTop() are unsupported on Wayland, so Linux keeps the
+	// pre-existing show() behaviour rather than gaining calls that would silently
+	// do nothing there. Both windows are covered: a regression in either one
+	// alone would otherwise go unnoticed.
+	it("leaves the Linux countdown show() path alone", async () => {
 		Object.defineProperty(process, "platform", { value: "linux", configurable: true });
 
 		const windows = await import("./windows");
@@ -133,6 +134,21 @@ describe("recording overlays do not steal focus", () => {
 		}
 
 		expect(show).toHaveBeenCalled();
+		expect(showInactive).not.toHaveBeenCalled();
+	});
+
+	it("leaves the Linux HUD overlay show() path alone", async () => {
+		Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+
+		const windows = await import("./windows");
+		windows.createHudOverlayWindow();
+
+		for (const handler of loadFinishedHandlers) {
+			handler();
+		}
+		// The HUD defers its first show until the renderer signals readiness.
+		await vi.waitFor(() => expect(show).toHaveBeenCalled(), { timeout: 3000 });
+
 		expect(showInactive).not.toHaveBeenCalled();
 	});
 
