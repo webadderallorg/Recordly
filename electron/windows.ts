@@ -501,13 +501,12 @@ export function createHudOverlayWindow(): BrowserWindow {
 		// Showing or changing native window state can recreate platform window
 		// flags. Reassert capture protection on both sides of the transition.
 		applyHudOverlayCaptureProtectionToWindow(win, hudOverlayHiddenFromCapture);
-		if (process.platform === "win32") {
-			// A focusable window is required for a Windows taskbar entry, but the
-			// always-on-top HUD must not steal focus when Recordly starts.
-			win.showInactive();
-		} else {
-			win.show();
-		}
+		// A focusable window is required for a Windows taskbar entry, but the
+		// always-on-top HUD must not steal focus when Recordly starts. show()
+		// activates the app, which on macOS pulls focus away from the window the
+		// user selected for capture, so present the HUD without activating it on
+		// every platform.
+		win.showInactive();
 		win.moveTop();
 		applyHudOverlayCaptureProtectionToWindow(win, hudOverlayHiddenFromCapture);
 		if (process.platform === "win32" && isHudOverlayMousePassthroughSupported()) {
@@ -1063,12 +1062,10 @@ export function createCountdownWindow(): BrowserWindow {
 
 	win.webContents.on("did-finish-load", () => {
 		if (!win.isDestroyed()) {
-			if (process.platform === "win32") {
-				win.showInactive();
-				win.moveTop();
-			} else {
-				win.show();
-			}
+			// The countdown sits above the capture target, so activating it would
+			// pull focus off that window right as recording starts.
+			win.showInactive();
+			win.moveTop();
 		}
 	});
 
