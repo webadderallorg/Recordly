@@ -504,9 +504,14 @@ export function createHudOverlayWindow(): BrowserWindow {
 		// A focusable window is required for a Windows taskbar entry, but the
 		// always-on-top HUD must not steal focus when Recordly starts. show()
 		// activates the app, which on macOS pulls focus away from the window the
-		// user selected for capture, so present the HUD without activating it on
-		// every platform.
-		win.showInactive();
+		// user selected for capture, so present the HUD without activating it
+		// there too. Linux keeps show(): showInactive() is a no-op under Wayland,
+		// and the X11 overlay relies on the activation to appear reliably.
+		if (process.platform === "linux") {
+			win.show();
+		} else {
+			win.showInactive();
+		}
 		win.moveTop();
 		applyHudOverlayCaptureProtectionToWindow(win, hudOverlayHiddenFromCapture);
 		if (process.platform === "win32" && isHudOverlayMousePassthroughSupported()) {
@@ -1063,9 +1068,15 @@ export function createCountdownWindow(): BrowserWindow {
 	win.webContents.on("did-finish-load", () => {
 		if (!win.isDestroyed()) {
 			// The countdown sits above the capture target, so activating it would
-			// pull focus off that window right as recording starts.
-			win.showInactive();
-			win.moveTop();
+			// pull focus off that window right as recording starts. Linux keeps
+			// the previous show() path: showInactive()/moveTop() are unsupported
+			// under Wayland, so switching would change nothing there.
+			if (process.platform === "linux") {
+				win.show();
+			} else {
+				win.showInactive();
+				win.moveTop();
+			}
 		}
 	});
 

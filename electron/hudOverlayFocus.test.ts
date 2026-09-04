@@ -119,6 +119,23 @@ describe("recording overlays do not steal focus", () => {
 		expect(show).not.toHaveBeenCalled();
 	});
 
+	it("leaves the Linux show() path alone", async () => {
+		// showInactive() and moveTop() are unsupported on Wayland, so Linux keeps
+		// the pre-existing show() behaviour rather than gaining calls that would
+		// silently do nothing there.
+		Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+
+		const windows = await import("./windows");
+		windows.createCountdownWindow();
+
+		for (const handler of loadFinishedHandlers) {
+			handler();
+		}
+
+		expect(show).toHaveBeenCalled();
+		expect(showInactive).not.toHaveBeenCalled();
+	});
+
 	it("shows the countdown window without activating it", async () => {
 		const windows = await import("./windows");
 		windows.createCountdownWindow();
