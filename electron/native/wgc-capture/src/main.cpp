@@ -280,6 +280,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Keep Win32 monitor/window rectangles in physical pixels. Without
+    // per-monitor awareness, mixed-DPI desktops can report virtualized bounds
+    // that do not line up with the WGC monitor texture.
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
 
     CaptureConfig config;

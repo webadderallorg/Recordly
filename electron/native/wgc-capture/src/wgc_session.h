@@ -64,7 +64,7 @@ private:
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem createCaptureItemForMonitor(HMONITOR monitor);
     bool initializeWithItem(int fps);
     bool initializeWindowCrop(HWND hwnd);
-    bool updateWindowCropRect();
+    bool updateWindowCropRect(bool initializeSize = false);
     bool recreateFramePoolIfNeeded(
         winrt::Windows::Graphics::SizeInt32 const& contentSize);
     void onFrameArrived(

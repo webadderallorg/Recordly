@@ -11,6 +11,7 @@
 #include <iostream>
 #include <chrono>
 #include <algorithm>
+#include <cmath>
 
 // IDirect3DDxgiInterfaceAccess is a COM interface for getting the DXGI interface
 // from a WinRT IDirect3DSurface
@@ -201,30 +202,55 @@ bool WgcSession::initializeWindowCrop(HWND hwnd) {
     if (!GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &monitorInfo)) return false;
     monitorBounds_ = monitorInfo.rcMonitor;
 
-    RECT windowBounds{};
-    if (FAILED(DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &windowBounds, sizeof(windowBounds))) &&
-        !GetWindowRect(hwnd, &windowBounds)) return false;
-    RECT clipped{};
-    if (!IntersectRect(&clipped, &windowBounds, &monitorBounds_)) return false;
-    return updateWindowCropRect();
+    return updateWindowCropRect(true);
 }
 
-bool WgcSession::updateWindowCropRect() {
+bool WgcSession::updateWindowCropRect(bool initializeSize) {
     RECT windowBounds{};
     if (FAILED(DwmGetWindowAttribute(windowHandle_, DWMWA_EXTENDED_FRAME_BOUNDS, &windowBounds, sizeof(windowBounds))) &&
         !GetWindowRect(windowHandle_, &windowBounds)) return false;
     RECT clipped{};
     if (!IntersectRect(&clipped, &windowBounds, &monitorBounds_)) return false;
-    const LONG width = (clipped.right - clipped.left) & ~1L;
-    const LONG height = (clipped.bottom - clipped.top) & ~1L;
-    if (width < 2 || height < 2) return false;
 
-    const int nextWidth = static_cast<int>(width);
-    const int nextHeight = static_cast<int>(height);
-    if (!cropTexture_ || nextWidth != captureWidth_ || nextHeight != captureHeight_) {
+    const LONG monitorWidth = monitorBounds_.right - monitorBounds_.left;
+    const LONG monitorHeight = monitorBounds_.bottom - monitorBounds_.top;
+    if (monitorWidth <= 0 || monitorHeight <= 0 || framePoolWidth_ < 2 || framePoolHeight_ < 2) return false;
+
+    // WGC textures are in capture-surface pixels, while Win32 monitor/window
+    // rectangles can be DPI-virtualized. Map both edges into texture space
+    // instead of assuming those coordinate systems are identical.
+    const auto mapX = [this, monitorWidth](LONG desktopX) {
+        const double normalized = static_cast<double>(desktopX - monitorBounds_.left) /
+            static_cast<double>(monitorWidth);
+        return std::clamp(
+            static_cast<LONG>(std::llround(normalized * framePoolWidth_)),
+            0L,
+            static_cast<LONG>(framePoolWidth_));
+    };
+    const auto mapY = [this, monitorHeight](LONG desktopY) {
+        const double normalized = static_cast<double>(desktopY - monitorBounds_.top) /
+            static_cast<double>(monitorHeight);
+        return std::clamp(
+            static_cast<LONG>(std::llround(normalized * framePoolHeight_)),
+            0L,
+            static_cast<LONG>(framePoolHeight_));
+    };
+
+    LONG left = mapX(clipped.left);
+    LONG top = mapY(clipped.top);
+    LONG right = mapX(clipped.right);
+    LONG bottom = mapY(clipped.bottom);
+    const LONG mappedWidth = (right - left) & ~1L;
+    const LONG mappedHeight = (bottom - top) & ~1L;
+    if (mappedWidth < 2 || mappedHeight < 2) return false;
+
+    if (initializeSize) {
+        captureWidth_ = static_cast<int>(mappedWidth);
+        captureHeight_ = static_cast<int>(mappedHeight);
+
         D3D11_TEXTURE2D_DESC desc{};
-        desc.Width = static_cast<UINT>(nextWidth);
-        desc.Height = static_cast<UINT>(nextHeight);
+        desc.Width = static_cast<UINT>(captureWidth_);
+        desc.Height = static_cast<UINT>(captureHeight_);
         desc.MipLevels = 1;
         desc.ArraySize = 1;
         desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
@@ -234,13 +260,16 @@ bool WgcSession::updateWindowCropRect() {
         ComPtr<ID3D11Texture2D> resizedTexture;
         if (FAILED(d3dDevice_->CreateTexture2D(&desc, nullptr, &resizedTexture))) return false;
         cropTexture_ = resizedTexture;
-        captureWidth_ = nextWidth;
-        captureHeight_ = nextHeight;
     }
 
-    const LONG left = clipped.left - monitorBounds_.left;
-    const LONG top = clipped.top - monitorBounds_.top;
-    cropRect_ = {left, top, left + width, top + height};
+    if (!cropTexture_) return false;
+
+    // The encoder's dimensions are fixed for the lifetime of the MP4. Keep the
+    // crop texture fixed too: reallocating it after a resize made the encoder
+    // pad the changed frame with black bars.
+    left = std::clamp(left, 0L, static_cast<LONG>(framePoolWidth_ - captureWidth_));
+    top = std::clamp(top, 0L, static_cast<LONG>(framePoolHeight_ - captureHeight_));
+    cropRect_ = {left, top, left + captureWidth_, top + captureHeight_};
     return true;
 }
 

@@ -115,12 +115,11 @@ describe("native Windows window capture", () => {
 		expect(windowsCaptureSource).toContain("CopySubresourceRegion(cropTexture_");
 	});
 
-	it("resizes the crop texture when the selected window size changes", () => {
-		expect(windowsCaptureSource).toContain(
-			"nextWidth != captureWidth_ || nextHeight != captureHeight_",
-		);
+	it("maps desktop bounds into WGC texture coordinates and keeps the encoder size fixed", () => {
+		expect(windowsCaptureSource).toContain("normalized * framePoolWidth_");
 		expect(windowsCaptureSource).toContain(
 			"d3dDevice_->CreateTexture2D(&desc, nullptr, &resizedTexture)",
 		);
+		expect(windowsCaptureSource).not.toContain("nextWidth != captureWidth_");
 	});
 });

@@ -562,13 +562,10 @@ export function registerRecordingHandlers(
 					setWindowsCaptureStopRequested(false);
 					setWindowsCapturePaused(false);
 
-					// The native helper currently does not declare DPI awareness in its own
-					// manifest or process setup, so we keep the compatibility flag here until
-					// scaled-display capture is verified without it on Windows.
 					wcProc = spawn(exePath, [JSON.stringify(config)], {
 						cwd: recordingsDir,
 						stdio: ["pipe", "pipe", "pipe"],
-						env: { ...process.env, __COMPAT_LAYER: "HighDpiAware" },
+						env: process.env,
 					});
 					setWindowsCaptureProcess(wcProc);
 					attachWindowsCaptureLifecycle(wcProc);
