@@ -5,9 +5,9 @@ export interface HudOverlayWorkArea {
 	height: number;
 }
 
-const NON_PASSTHROUGH_HUD_WIDTH_DIP = 860;
+const NON_PASSTHROUGH_HUD_WIDTH_DIP = 1200;
 const NON_PASSTHROUGH_HUD_COMPACT_HEIGHT_DIP = 160;
-const NON_PASSTHROUGH_HUD_EXPANDED_HEIGHT_DIP = 540;
+const NON_PASSTHROUGH_HUD_EXPANDED_HEIGHT_DIP = 600;
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(Math.max(value, min), max);
@@ -18,7 +18,7 @@ export function getHudOverlayWindowBounds(
 	mousePassthroughSupported: boolean,
 	fallbackExpanded = false,
 ): HudOverlayWorkArea {
-	if (mousePassthroughSupported) {
+	if (mousePassthroughSupported || process.platform === "linux") {
 		return { ...workArea };
 	}
 
@@ -55,6 +55,10 @@ export function resizeHudOverlayFallbackBounds(
 	currentBounds: HudOverlayWorkArea,
 	fallbackExpanded: boolean,
 ): HudOverlayWorkArea {
+	if (process.platform === "linux") {
+		return { ...workArea };
+	}
+
 	const nextBounds = getHudOverlayWindowBounds(workArea, false, fallbackExpanded);
 	const maxX = workArea.x + workArea.width - nextBounds.width;
 	const maxY = workArea.y + workArea.height - nextBounds.height;

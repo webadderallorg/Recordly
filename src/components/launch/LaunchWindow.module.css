@@ -11,7 +11,7 @@
 	align-items: center;
 	gap: 10px;
 	width: max-content;
-	max-width: 1200px;
+	max-width: 100%;
 	background: var(--launch-bar-bg);
 	border: 1px solid var(--launch-bar-border);
 	border-radius: 20px;

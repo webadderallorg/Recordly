@@ -1,10 +1,20 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
+
+const ORIGINAL_PLATFORM = process.platform;
+
+function setPlatform(platform: NodeJS.Platform) {
+	Object.defineProperty(process, "platform", {
+		value: platform,
+		configurable: true,
+		writable: true,
+	});
+}
 
 describe("getHudOverlayWindowBounds", () => {
 	const workArea = {
@@ -14,29 +24,41 @@ describe("getHudOverlayWindowBounds", () => {
 		height: 1040,
 	};
 
+	afterEach(() => {
+		setPlatform(ORIGINAL_PLATFORM);
+	});
+
 	it("uses the full work area when mouse passthrough is supported", () => {
 		expect(getHudOverlayWindowBounds(workArea, true)).toEqual(workArea);
 	});
 
-	it("uses a bottom-centered compact fallback when mouse passthrough is unavailable", () => {
+	it("uses full display work area bounds on Linux when mouse passthrough is false", () => {
+		setPlatform("linux");
+		expect(getHudOverlayWindowBounds(workArea, false)).toEqual(workArea);
+	});
+
+	it("uses a bottom-centered compact fallback on non-Linux when mouse passthrough is unavailable", () => {
+		setPlatform("win32");
 		expect(getHudOverlayWindowBounds(workArea, false)).toEqual({
-			x: 650,
+			x: 480,
 			y: 920,
-			width: 860,
+			width: 1200,
 			height: 160,
 		});
 	});
 
-	it("expands the non-passthrough fallback for HUD menus and hover interaction", () => {
+	it("expands the non-Linux fallback for HUD menus and hover interaction", () => {
+		setPlatform("win32");
 		expect(getHudOverlayWindowBounds(workArea, false, true)).toEqual({
-			x: 650,
-			y: 540,
-			width: 860,
-			height: 540,
+			x: 480,
+			y: 480,
+			width: 1200,
+			height: 600,
 		});
 	});
 
-	it("keeps the compact fallback inside small displays", () => {
+	it("keeps the non-Linux compact fallback inside small displays", () => {
+		setPlatform("win32");
 		expect(
 			getHudOverlayWindowBounds(
 				{
@@ -55,7 +77,8 @@ describe("getHudOverlayWindowBounds", () => {
 		});
 	});
 
-	it("fits the expanded fallback inside small displays", () => {
+	it("fits the non-Linux expanded fallback inside small displays", () => {
+		setPlatform("win32");
 		expect(
 			getHudOverlayWindowBounds(
 				{
@@ -84,63 +107,86 @@ describe("resizeHudOverlayFallbackBounds", () => {
 		height: 1080,
 	};
 
-	it("preserves the dragged bottom edge when expanding", () => {
+	afterEach(() => {
+		setPlatform(ORIGINAL_PLATFORM);
+	});
+
+	it("returns full work area on Linux", () => {
+		setPlatform("linux");
 		expect(
 			resizeHudOverlayFallbackBounds(
 				workArea,
 				{
 					x: 420,
 					y: 700,
-					width: 860,
+					width: 1200,
+					height: 160,
+				},
+				true,
+			),
+		).toEqual(workArea);
+	});
+
+	it("preserves the dragged bottom edge on non-Linux when expanding", () => {
+		setPlatform("win32");
+		expect(
+			resizeHudOverlayFallbackBounds(
+				workArea,
+				{
+					x: 420,
+					y: 700,
+					width: 1200,
 					height: 160,
 				},
 				true,
 			),
 		).toEqual({
 			x: 420,
-			y: 320,
-			width: 860,
-			height: 540,
+			y: 260,
+			width: 1200,
+			height: 600,
 		});
 	});
 
-	it("preserves the dragged bottom edge when compacting", () => {
+	it("preserves the dragged bottom edge on non-Linux when compacting", () => {
+		setPlatform("win32");
 		expect(
 			resizeHudOverlayFallbackBounds(
 				workArea,
 				{
 					x: 420,
-					y: 320,
-					width: 860,
-					height: 540,
+					y: 260,
+					width: 1200,
+					height: 600,
 				},
 				false,
 			),
 		).toEqual({
 			x: 420,
 			y: 700,
-			width: 860,
+			width: 1200,
 			height: 160,
 		});
 	});
 
-	it("keeps resized fallback bounds inside the display work area", () => {
+	it("keeps resized fallback bounds inside display work area on non-Linux", () => {
+		setPlatform("win32");
 		expect(
 			resizeHudOverlayFallbackBounds(
 				workArea,
 				{
 					x: 1500,
 					y: 900,
-					width: 860,
+					width: 1200,
 					height: 160,
 				},
 				true,
 			),
 		).toEqual({
-			x: 1060,
-			y: 520,
-			width: 860,
-			height: 540,
+			x: 720,
+			y: 460,
+			width: 1200,
+			height: 600,
 		});
 	});
 });
