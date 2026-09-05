@@ -7,13 +7,13 @@ import {
 	getNativeMacWindowSources,
 	resolveLinuxWindowBounds,
 	resolveMacWindowBounds,
-	resolveWindowsWindowBounds,
 	stopWindowBoundsCapture,
 } from "../cursor/bounds";
 import { getDisplayBoundsForSource, getDisplayWorkAreaForSource } from "../recording/ffmpeg";
 import { selectedSource, setSelectedSource } from "../state";
 import type { SelectedSource, WindowBounds } from "../types";
 import { getScreen, parseWindowId } from "../utils";
+import { bringWindowsWindowForward, resolveWindowsWindowBounds } from "../windowsWindowControl";
 import { getScreenSourceIdForDisplay } from "./sourceMapping";
 
 const execFileAsync = promisify(execFile);
@@ -97,23 +97,7 @@ export async function bringSelectedWindowForward(
 				// App activation still works without macOS Accessibility permission.
 			}
 		} else if (process.platform === "win32") {
-			const script = [
-				'Add-Type -TypeDefinition @"',
-				"using System; using System.Runtime.InteropServices;",
-				"public static class RecordlyForegroundWindow {",
-				'  [DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);',
-				'  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);',
-				"}",
-				'"@',
-				"$handle = [IntPtr][Int64]$args[0]",
-				"[RecordlyForegroundWindow]::ShowWindowAsync($handle, 9) | Out-Null",
-				"[RecordlyForegroundWindow]::SetForegroundWindow($handle) | Out-Null",
-			].join("\n");
-			await execFileAsync(
-				"powershell.exe",
-				["-NoProfile", "-Command", script, String(windowId)],
-				{ timeout: 2000 },
-			);
+			await bringWindowsWindowForward(windowId);
 		} else if (process.platform === "linux") {
 			await execFileAsync("wmctrl", ["-i", "-a", `0x${windowId.toString(16)}`], {
 				timeout: 1500,
@@ -434,6 +418,17 @@ export function registerSourceHandlers({
 				}
 			}
 
+			// A window highlight must never silently become a fullscreen highlight.
+			// If HWND bounds cannot be resolved, skip the animation and report the
+			// failure so the next selection can retry with the same window source.
+			if (isWindow && (!bounds || bounds.width <= 0 || bounds.height <= 0)) {
+				console.warn("Unable to resolve selected window bounds for highlight", {
+					sourceId: source.id,
+					platform: process.platform,
+				});
+				return { success: false };
+			}
+
 			if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
 				bounds = getDisplayBoundsForSource(source);
 			}
@@ -456,10 +451,10 @@ export function registerSourceHandlers({
 			const isMacScreen = isScreen && process.platform === "darwin";
 			const pad = isMacScreen ? 0 : 6;
 			const highlightWin = new BrowserWindow({
-				x: resolvedBounds.x - pad,
-				y: resolvedBounds.y - pad,
-				width: resolvedBounds.width + pad * 2,
-				height: resolvedBounds.height + pad * 2,
+				x: Math.round(resolvedBounds.x - pad),
+				y: Math.round(resolvedBounds.y - pad),
+				width: Math.max(1, Math.round(resolvedBounds.width + pad * 2)),
+				height: Math.max(1, Math.round(resolvedBounds.height + pad * 2)),
 				frame: false,
 				transparent: true,
 				alwaysOnTop: true,
