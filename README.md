@@ -200,6 +200,15 @@ PKGBUILD, desktop entry, release sync, and optional **local-from-source** packag
 sudo apt install build-essential cmake libx11-dev libxtst-dev libxrandr-dev libxt-dev
 ```
 
+**Linux (Arch / Omarchy):**
+
+```bash
+sudo pacman -S --needed base-devel cmake libx11 libxtst libxrandr libxt
+```
+
+CMake is only needed for the bundled whisper caption runtime. Without it, install with
+`WHISPER_RUNTIME_ALLOW_MISSING=1 npm install`; everything except auto-captions still works.
+
 **Windows:** Visual Studio 2022 (or Build Tools) with the C++ workload and CMake.
 
 ### Steps
@@ -222,6 +231,43 @@ Target-specific build commands are also available:
 - `npm run build:mac`
 - `npm run build:win`
 - `npm run build:linux`
+
+---
+
+## Linux: Hyprland / Omarchy
+
+Recordly's recording HUD, countdown, and source picker are transparent floating windows.
+Hyprland decorates them like any other window, so the compositor's blur, shadow, dim, and
+opacity rules show up as a grey box around the HUD. Wayland also ignores `alwaysOnTop`, so
+the HUD can end up behind other windows or stuck on one workspace.
+
+Add these rules to `~/.config/hypr/hyprland.lua` (Omarchy) and run `hyprctl reload`:
+
+```lua
+o.window("^[Rr]ecordly$", { tag = "-default-opacity", opacity = "1 1" })
+o.window({ class = "^[Rr]ecordly$", float = true }, {
+  pin = true,
+  no_blur = true,
+  no_shadow = true,
+  border_size = 0,
+  no_dim = true,
+})
+```
+
+Plain `hyprland.conf` equivalent:
+
+```
+windowrule = opacity 1 1, class:^[Rr]ecordly$
+windowrule = pin, class:^[Rr]ecordly$, floating:1
+windowrule = noblur, class:^[Rr]ecordly$, floating:1
+windowrule = noshadow, class:^[Rr]ecordly$, floating:1
+windowrule = nodim, class:^[Rr]ecordly$, floating:1
+windowrule = bordersize 0, class:^[Rr]ecordly$, floating:1
+```
+
+Cursor telemetry (auto-zoom, click effects) on Wayland reads the pointer position from
+Hyprland's IPC socket and mouse buttons from `/dev/input`, which requires your user to be in
+the `input` group (Omarchy does this by default).
 
 ---
 

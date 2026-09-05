@@ -198,6 +198,7 @@ interface RendererNativeExportCapabilities {
 interface Window {
 	electronAPI: {
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
+		hudOverlaySetMenuOpen: (open: boolean) => void;
 		hudOverlaySetSourceSelectionActive: (active: boolean) => void;
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;
 		hudOverlayHide: () => void;
@@ -208,6 +209,7 @@ interface Window {
 		getHudOverlayMousePassthroughSupported: () => Promise<{
 			success: boolean;
 			supported: boolean;
+			resizeAnchor?: "bottom" | "center";
 		}>;
 		setHudOverlayCaptureProtection: (
 			enabled: boolean,
