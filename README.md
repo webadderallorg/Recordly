@@ -225,6 +225,50 @@ Target-specific build commands are also available:
 
 ---
 
+## Linux: Hyprland / Omarchy
+
+Recordly's recording HUD, countdown, and source picker are transparent floating windows.
+Hyprland decorates them like any other window, so the compositor's blur, shadow, dim, and
+opacity rules show up as a grey box around the HUD. Wayland also ignores `alwaysOnTop`, so
+the HUD can end up behind other windows or stuck on one workspace.
+
+Add these rules to `~/.config/hypr/hyprland.lua` (Omarchy) and run `hyprctl reload`:
+
+```lua
+o.window("^[Rr]ecordly$", { tag = "-default-opacity", opacity = "1 1" })
+o.window({ class = "^[Rr]ecordly$", float = true }, {
+  pin = true,
+  no_blur = true,
+  no_shadow = true,
+  border_size = 0,
+  no_dim = true,
+})
+```
+
+Plain `hyprland.conf` equivalents:
+
+**Hyprland 0.53.0+ (new windowrule syntax):**
+
+```ini
+windowrule = opacity 1 1, match:class ^[Rr]ecordly$
+windowrule = pin, match:class ^[Rr]ecordly$, match:float 1
+windowrule = noblur, match:class ^[Rr]ecordly$, match:float 1
+windowrule = noshadow, match:class ^[Rr]ecordly$, match:float 1
+windowrule = nodim, match:class ^[Rr]ecordly$, match:float 1
+windowrule = bordersize 0, match:class ^[Rr]ecordly$, match:float 1
+```
+
+**Hyprland < 0.53.0 (legacy windowrulev2 syntax):**
+
+```ini
+windowrulev2 = opacity 1 1, class:^[Rr]ecordly$
+windowrulev2 = pin, class:^[Rr]ecordly$, floating:1
+windowrulev2 = noblur, class:^[Rr]ecordly$, floating:1
+windowrulev2 = noshadow, class:^[Rr]ecordly$, floating:1
+windowrulev2 = nodim, class:^[Rr]ecordly$, floating:1
+windowrulev2 = bordersize 0, class:^[Rr]ecordly$, floating:1
+```
+
 ## macOS: "App cannot be opened"
 
 Locally built apps may be quarantined by macOS.
