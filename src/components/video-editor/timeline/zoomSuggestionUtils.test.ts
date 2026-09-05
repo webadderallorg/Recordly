@@ -38,6 +38,10 @@ describe("shouldAutoApplyFreshRecordingZoomsForSource", () => {
 		expect(shouldAutoApplyFreshRecordingZoomsForSource(1080, 1080)).toBe(false);
 	});
 
+	it("allows narrow Windows window captures when click telemetry is available", () => {
+		expect(shouldAutoApplyFreshRecordingZoomsForSource(936, 1028, "win32")).toBe(true);
+	});
+
 	it("does not block when source dimensions are not available yet", () => {
 		expect(shouldAutoApplyFreshRecordingZoomsForSource()).toBe(true);
 	});

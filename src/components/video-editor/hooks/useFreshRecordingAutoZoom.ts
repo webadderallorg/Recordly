@@ -11,6 +11,7 @@ import type { CursorTelemetryPoint, ZoomRegion } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 
 interface UseFreshRecordingAutoZoomParams {
+	appPlatform: string;
 	videoPath: string | null;
 	loading: boolean;
 	isPreviewReady: boolean;
@@ -28,6 +29,7 @@ interface UseFreshRecordingAutoZoomParams {
 }
 
 export function useFreshRecordingAutoZoom({
+	appPlatform,
 	videoPath,
 	loading,
 	isPreviewReady,
@@ -48,6 +50,8 @@ export function useFreshRecordingAutoZoom({
 	}, [setAutoSuggestZoomsTrigger]);
 
 	useEffect(() => {
+		if (!appPlatform) return;
+
 		if (
 			videoPath &&
 			pendingFreshRecordingAutoZoomPathRef.current === videoPath &&
@@ -55,6 +59,7 @@ export function useFreshRecordingAutoZoom({
 			!shouldAutoApplyFreshRecordingZoomsForSource(
 				videoPlaybackRef.current?.video?.videoWidth,
 				videoPlaybackRef.current?.video?.videoHeight,
+				appPlatform,
 			)
 		) {
 			pendingFreshRecordingAutoZoomPathRef.current = null;
@@ -107,6 +112,7 @@ export function useFreshRecordingAutoZoom({
 		}, 500);
 	}, [
 		videoPath,
+		appPlatform,
 		loading,
 		isPreviewReady,
 		duration,
@@ -122,6 +128,8 @@ export function useFreshRecordingAutoZoom({
 	]);
 
 	useEffect(() => {
+		if (!appPlatform) return;
+
 		if (
 			!videoPath ||
 			!isPreviewReady ||
@@ -130,6 +138,7 @@ export function useFreshRecordingAutoZoom({
 			shouldAutoApplyFreshRecordingZoomsForSource(
 				videoPlaybackRef.current?.video?.videoWidth,
 				videoPlaybackRef.current?.video?.videoHeight,
+				appPlatform,
 			)
 		) {
 			return;
@@ -142,6 +151,7 @@ export function useFreshRecordingAutoZoom({
 		});
 	}, [
 		autoSuggestedVideoPathRef,
+		appPlatform,
 		isPreviewReady,
 		setZoomRegions,
 		videoPath,

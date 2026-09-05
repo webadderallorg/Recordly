@@ -252,6 +252,7 @@ export default function VideoEditor() {
 		t,
 		shortcuts,
 		isMac,
+		appPlatform,
 		timeline,
 		appearance,
 		videoPath,

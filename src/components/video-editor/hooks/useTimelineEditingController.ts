@@ -25,6 +25,7 @@ type Input = {
 	t: ReturnType<typeof useI18n>["t"];
 	shortcuts: ReturnType<typeof useShortcuts>["shortcuts"];
 	isMac: boolean;
+	appPlatform: string;
 	timeline: ReturnType<typeof useTimelineState>;
 	appearance: ReturnType<typeof useAppearanceState>;
 	videoPath: string | null;
@@ -154,6 +155,7 @@ export function useTimelineEditingController(input: Input) {
 		],
 	);
 	const freshZoom = useFreshRecordingAutoZoom({
+		appPlatform: input.appPlatform,
 		videoPath: input.videoPath,
 		loading: input.loading,
 		isPreviewReady: input.isPreviewReady,
