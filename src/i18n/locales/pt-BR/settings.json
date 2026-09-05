@@ -46,11 +46,11 @@
 		},
 		"backgroundBlur": "Desfoque",
 		"zoomMotionBlur": "Desfoque de movimento do zoom",
-		"temporalZoomMotionBlur": "Temporal Zoom Blur",
-		"temporalZoomMotionBlurDescription": "Control the shutter window and frame samples used by the newer zoom blur pass.",
-		"zoomMotionBlurSamples": "Blur Samples",
-		"zoomMotionBlurShutter": "Shutter",
-		"auto": "Auto",
+		"temporalZoomMotionBlur": "Desfoque de zoom temporal",
+		"temporalZoomMotionBlurDescription": "Controle a janela do obturador e as amostras de quadro usadas pela nova etapa de desfoque de zoom.",
+		"zoomMotionBlurSamples": "Amostras de Desfoque",
+		"zoomMotionBlurShutter": "Obturador",
+		"auto": "Automático",
 		"connectZooms": "Conectar zooms",
 		"connectZoomsDescription": "Suaviza regiões de zoom consecutivas em um movimento contínuo de câmera.",
 		"autoApplyFreshRecordingZooms": "Aplicar zooms automaticamente em gravações novas",
@@ -58,23 +58,23 @@
 		"zoomGeneralTitle": "Geral",
 		"zoomGeneralDescription": "Configurações globais de movimento para cada transição de zoom.",
 		"zoomInTitle": "Aproximar",
-		"zoomInDescription": "Controla como a câmera entra em uma região de zoom.",
+		"zoomInDescription": "Controle como a câmera entra em uma região de zoom.",
 		"zoomOutTitle": "Afastar",
-		"zoomOutDescription": "Controla como a câmera sai de uma região de zoom.",
+		"zoomOutDescription": "Controle como a câmera sai de uma região de zoom.",
 		"connectedZoomTitle": "Entre zooms",
 		"connectedZoomDescription": "Ajuste o deslizamento entre regiões de zoom consecutivas quando a conexão estiver ativada.",
-		"motionPresetsTitle": "Motion Presets",
-		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
-		"animationPresets": "Animation Presets",
-		"cursorMotionPresets": "Cursor Motion Presets",
+		"motionPresetsTitle": "Predefinições de Movimento",
+		"motionPresetsZoomHint": "Predefinições de movimento de zoom estão disponíveis em Configurações.",
+		"animationPresets": "Predefinições de Animação",
+		"cursorMotionPresets": "Predefinições de Movimento do Cursor",
 		"motionPresets": {
 			"focused": {
-				"label": "Focused",
-				"description": "Snappier motion for demos, walkthroughs, and everyday recordings."
+			"label": "Focado",
+			"description": "Movimento mais ágil para demonstrações, walkthroughs e gravações do dia a dia."
 			},
 			"smooth": {
-				"label": "Smooth",
-				"description": "Gentler motion for presentations, keynote-style videos, and polished reveals."
+			"label": "Suave",
+			"description": "Movimento mais suave para apresentações, vídeos estilo keynote e revelações polidas."
 			}
 		},
 		"zoomInDuration": "Duração do zoom in",
@@ -94,34 +94,34 @@
 		},
 		"cursorSize": "Tamanho do cursor",
 		"cursorSmoothing": "Suavização do cursor",
-		"cursorSpringStiffness": "Cursor Spring Stiffness",
-		"cursorSpringDamping": "Cursor Spring Damping",
-		"cursorSpringMass": "Cursor Spring Mass",
+		"cursorSpringStiffness": "Rigidez da Mola do Cursor",
+		"cursorSpringDamping": "Amortecimento da Mola do Cursor",
+		"cursorSpringMass": "Massa da Mola do Cursor",
 		"off": "Desligado",
 		"cursorClickEffects": {
-			"title": "Click Effects",
-			"advanced": "Advanced",
-			"advancedShow": "Show advanced click effect controls",
-			"advancedHide": "Hide advanced click effect controls",
-			"color": "Effect Color",
-			"size": "Effect Size",
-			"opacity": "Effect Opacity",
-			"duration": "Effect Duration",
+			"title": "Efeitos de Clique",
+			"advanced": "Avançado",
+			"advancedShow": "Mostrar controles avançados de efeito de clique",
+			"advancedHide": "Ocultar controles avançados de efeito de clique",
+			"color": "Cor do Efeito",
+			"size": "Tamanho do Efeito",
+			"opacity": "Opacidade do Efeito",
+			"duration": "Duração do Efeito",
 			"none": {
-				"label": "Off",
-				"description": "No click graphic. Only the cursor motion changes when you click."
+			"label": "Desligado",
+			"description": "Sem gráfico de clique. Apenas o movimento do cursor muda quando você clica."
 			},
 			"ripple": {
-				"label": "Ripple",
-				"description": "Expanding rings radiate from each click so taps read clearly in motion."
+			"label": "Onda",
+			"description": "Anéis em expansão irradiam de cada clique para que toques sejam claros em movimento."
 			},
 			"spotlight": {
-				"label": "Spotlight",
-				"description": "A soft halo flashes around the pointer to emphasize the clicked area."
+			"label": "Holofote",
+			"description": "Um halo suave pisca ao redor do ponteiro para enfatizar a área clicada."
 			},
 			"echo": {
-				"label": "Echo",
-				"description": "A pair of soft rings that spread outward with a cleaner pulse."
+			"label": "Eco",
+			"description": "Um par de anéis suaves que se espalham para fora com um pulso mais limpo."
 			}
 		},
 		"cursorMotionBlur": "Desfoque de movimento do cursor",
