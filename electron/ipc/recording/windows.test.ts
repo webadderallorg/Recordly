@@ -122,4 +122,9 @@ describe("native Windows window capture", () => {
 		);
 		expect(windowsCaptureSource).not.toContain("nextWidth != captureWidth_");
 	});
+
+	it("does not expose desktop pixels when the selected window shrinks", () => {
+		expect(windowsCaptureSource).toContain("(std::min)(mappedWidth");
+		expect(windowsCaptureSource).toContain("ClearRenderTargetView");
+	});
 });

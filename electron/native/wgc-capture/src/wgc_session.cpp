@@ -256,20 +256,27 @@ bool WgcSession::updateWindowCropRect(bool initializeSize) {
         desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
         desc.SampleDesc.Count = 1;
         desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_RENDER_TARGET;
 
         ComPtr<ID3D11Texture2D> resizedTexture;
         if (FAILED(d3dDevice_->CreateTexture2D(&desc, nullptr, &resizedTexture))) return false;
+        ComPtr<ID3D11RenderTargetView> renderTargetView;
+        if (FAILED(d3dDevice_->CreateRenderTargetView(resizedTexture.Get(), nullptr, &renderTargetView))) return false;
         cropTexture_ = resizedTexture;
+        cropRenderTargetView_ = renderTargetView;
     }
 
-    if (!cropTexture_) return false;
+    if (!cropTexture_ || !cropRenderTargetView_) return false;
 
     // The encoder's dimensions are fixed for the lifetime of the MP4. Keep the
     // crop texture fixed too: reallocating it after a resize made the encoder
-    // pad the changed frame with black bars.
-    left = std::clamp(left, 0L, static_cast<LONG>(framePoolWidth_ - captureWidth_));
-    top = std::clamp(top, 0L, static_cast<LONG>(framePoolHeight_ - captureHeight_));
-    cropRect_ = {left, top, left + captureWidth_, top + captureHeight_};
+    // pad the changed frame with black bars. If the selected window shrinks,
+    // copy only its current area so the crop never exposes nearby desktop pixels.
+    const LONG copyWidth = (std::min)(mappedWidth, static_cast<LONG>(captureWidth_));
+    const LONG copyHeight = (std::min)(mappedHeight, static_cast<LONG>(captureHeight_));
+    left = std::clamp(left, 0L, static_cast<LONG>(framePoolWidth_) - copyWidth);
+    top = std::clamp(top, 0L, static_cast<LONG>(framePoolHeight_) - copyHeight);
+    cropRect_ = {left, top, left + copyWidth, top + copyHeight};
     return true;
 }
 
@@ -308,6 +315,7 @@ void WgcSession::stopCapture() {
         framePool_ = nullptr;
     }
     cropTexture_.Reset();
+    cropRenderTargetView_.Reset();
 }
 
 void WgcSession::onFrameArrived(
@@ -349,6 +357,8 @@ void WgcSession::onFrameArrived(
 
     if (SUCCEEDED(hr) && texture && frameCallback_) {
         if (windowHandle_ && cropTexture_ && updateWindowCropRect()) {
+            constexpr float clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
+            d3dContext_->ClearRenderTargetView(cropRenderTargetView_.Get(), clearColor);
             D3D11_BOX sourceBox{
                 static_cast<UINT>(cropRect_.left), static_cast<UINT>(cropRect_.top), 0,
                 static_cast<UINT>(cropRect_.right), static_cast<UINT>(cropRect_.bottom), 1,

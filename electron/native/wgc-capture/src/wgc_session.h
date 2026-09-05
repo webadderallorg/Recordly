@@ -39,6 +39,7 @@ private:
     ComPtr<ID3D11Device> d3dDevice_;
     ComPtr<ID3D11DeviceContext> d3dContext_;
     ComPtr<ID3D11Texture2D> cropTexture_;
+    ComPtr<ID3D11RenderTargetView> cropRenderTargetView_;
     winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice winrtDevice_{nullptr};
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem captureItem_{nullptr};
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool framePool_{nullptr};
