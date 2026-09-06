@@ -89,6 +89,7 @@ import {
 	renderAnnotationToCanvas,
 } from "./annotationRenderer";
 import { ForwardFrameSource } from "./forwardFrameSource";
+import { parseGradientBackground } from "./gradientBackground";
 import { resolveMediaElementSource } from "./localMediaSource";
 import {
 	getShadowFilterPadding,
@@ -1201,15 +1202,13 @@ export class FrameRenderer {
 				wallpaper.startsWith("linear-gradient") ||
 				wallpaper.startsWith("radial-gradient")
 			) {
-				const gradientMatch = wallpaper.match(/(linear|radial)-gradient\((.+)\)/);
-				if (!gradientMatch) {
+				const parsedGradient = parseGradientBackground(wallpaper);
+				if (!parsedGradient || parsedGradient.stops.length === 0) {
 					bgCtx.fillStyle = "#000000";
 					bgCtx.fillRect(0, 0, this.config.width, this.config.height);
 				} else {
-					const [, type, params] = gradientMatch;
-					const parts = params.split(",").map((value) => value.trim());
 					const gradient =
-						type === "linear"
+						parsedGradient.type === "linear"
 							? bgCtx.createLinearGradient(0, 0, 0, this.config.height)
 							: bgCtx.createRadialGradient(
 									this.config.width / 2,
@@ -1220,19 +1219,9 @@ export class FrameRenderer {
 									Math.max(this.config.width, this.config.height) / 2,
 								);
 
-					parts.forEach((part, index) => {
-						if (type === "linear" && (part.startsWith("to ") || part.includes("deg"))) {
-							return;
-						}
-
-						const colorMatch = part.match(/^(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|[a-z]+)/);
-						if (!colorMatch) {
-							return;
-						}
-
-						const position = index / Math.max(parts.length - 1, 1);
-						gradient.addColorStop(position, colorMatch[1]);
-					});
+					for (const stop of parsedGradient.stops) {
+						gradient.addColorStop(stop.position, stop.color);
+					}
 
 					bgCtx.fillStyle = gradient;
 					bgCtx.fillRect(0, 0, this.config.width, this.config.height);
