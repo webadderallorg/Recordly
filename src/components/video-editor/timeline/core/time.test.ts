@@ -38,6 +38,15 @@ describe("timeline core/time", () => {
 		expect(formatPlayheadTime(61_400)).toBe("1:01.4");
 	});
 
+	it("rolls seconds into the next minute when rounding reaches 60", () => {
+		// 59.95s–59.99s round up to 60.0s and must carry into the minute
+		// instead of rendering "60.0s" or "1:60.0".
+		expect(formatPlayheadTime(59_950)).toBe("1:00.0");
+		expect(formatPlayheadTime(59_970)).toBe("1:00.0");
+		expect(formatPlayheadTime(119_970)).toBe("2:00.0");
+		expect(formatPlayheadTime(0)).toBe("0.0s");
+	});
+
 	it("normalizes wheel delta by deltaMode", () => {
 		expect(normalizeWheelDeltaToPixels(2, 0)).toBe(2);
 		expect(normalizeWheelDeltaToPixels(2, 1)).toBe(32);
