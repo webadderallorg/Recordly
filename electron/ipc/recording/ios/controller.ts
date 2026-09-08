@@ -86,6 +86,7 @@ export class IOSCaptureController {
 	private lease?: RecordingLease;
 	private storage?: IOSSessionStorage;
 	private inventoryWait?: Deferred<IOSCaptureSnapshot>;
+	private inventoryTimer?: ReturnType<typeof setTimeout>;
 	private prepareWait?: Deferred<IOSCaptureSnapshot>;
 	private startWait?: Deferred<IOSCaptureSnapshot>;
 	private terminal?: Deferred<CommittedIOSRecording>;
@@ -135,6 +136,22 @@ export class IOSCaptureController {
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = undefined;
 	}
+	private settleInventory(error?: Error) {
+		if (this.inventoryTimer) clearTimeout(this.inventoryTimer);
+		this.inventoryTimer = undefined;
+		const waiting = this.inventoryWait;
+		this.inventoryWait = undefined;
+		if (error) waiting?.reject(error);
+		else waiting?.resolve(this.getSnapshot());
+	}
+	private assertCanDiscover() {
+		if (
+			["preparing", "starting", "recording", "stopping", "finalising"].includes(
+				this.state.phase,
+			)
+		)
+			throw new Error("RECORDING_BUSY");
+	}
 	private releaseLease() {
 		if (!this.lease) return;
 		releaseRecordingLease(this.lease);
@@ -155,8 +172,7 @@ export class IOSCaptureController {
 		this.prepareWait = undefined;
 		this.startWait?.reject(error);
 		this.startWait = undefined;
-		this.inventoryWait?.reject(error);
-		this.inventoryWait = undefined;
+		this.settleInventory(error);
 		this.terminal?.reject(error);
 		const code =
 			IOS_CAPTURE_ERROR_CODES.find((candidate) => candidate === error.message) ??
@@ -210,6 +226,7 @@ export class IOSCaptureController {
 		return this.helperPromise;
 	}
 	private async closeHelper() {
+		this.settleInventory(new Error("HELPER_UNAVAILABLE"));
 		if (this.closingHelper) return this.closingHelper;
 		this.helperEpoch++;
 		const helper = this.helper;
@@ -217,7 +234,11 @@ export class IOSCaptureController {
 		this.helper = undefined;
 		this.helperPromise = undefined;
 		for (const cleanup of this.cleanupHelper.splice(0)) cleanup();
-		this.update({ devices: [], microphones: [] });
+		this.update({
+			devices: [],
+			microphones: [],
+			phase: this.state.phase === "discovering" ? "idle" : this.state.phase,
+		});
 		this.closingHelper = helper
 			? helper.shutdown()
 			: pending
@@ -234,33 +255,35 @@ export class IOSCaptureController {
 	}
 	async discover(): Promise<IOSCaptureSnapshot> {
 		this.assertEnabled();
+		this.assertCanDiscover();
 		if (this.inventoryWait) return this.inventoryWait.promise;
 		this.inventoryWait = deferred();
 		const waiting = this.inventoryWait;
 		if (["idle", "failed", "unavailable", "completed", "cancelled"].includes(this.state.phase))
 			this.update({ phase: "discovering", error: null });
-		try {
-			const helper = await this.ensureHelper();
-			await helper.request({ command: "discover" });
-			// Discovery may settle asynchronously; the native reconciliation keeps emitting later changes.
-			const timeout = setTimeout(() => {
-				if (this.inventoryWait === waiting) {
-					this.inventoryWait = undefined;
-					this.update({
-						phase: this.state.phase === "discovering" ? "idle" : this.state.phase,
-					});
-					waiting.resolve(this.getSnapshot());
-				}
-			}, 10_000);
+		// Bound the observation window without stopping native discovery or its later updates.
+		this.inventoryTimer = setTimeout(() => {
+			if (this.inventoryWait !== waiting) return;
+			this.update({ phase: this.state.phase === "discovering" ? "idle" : this.state.phase });
+			this.settleInventory();
+		}, 5_000);
+		const helperEpoch = this.helperEpoch;
+		void (async () => {
 			try {
-				return await waiting.promise;
-			} finally {
-				clearTimeout(timeout);
+				const helper = await this.ensureHelper();
+				if (helper !== this.helper) return;
+				// A recording may have started while helper startup or its hello was pending.
+				this.assertCanDiscover();
+				await helper.request({ command: "discover" });
+			} catch (error) {
+				// Observation may have timed out while this same helper was still starting.
+				if (helperEpoch !== this.helperEpoch) return;
+				if ((error as Error).message === "RECORDING_BUSY") {
+					if (this.inventoryWait === waiting) this.settleInventory(error as Error);
+				} else this.fail(error as Error);
 			}
-		} catch (error) {
-			this.fail(error as Error);
-			throw error;
-		}
+		})();
+		return waiting.promise;
 	}
 	async prepare(input: {
 		deviceToken: string;
@@ -459,13 +482,13 @@ export class IOSCaptureController {
 		if (event.sequence <= this.lastEvent) return;
 		this.lastEvent = event.sequence;
 		if (event.event === "inventoryChanged") {
+			const hasDevices = event.payload.devices.length > 0;
 			this.update({
 				devices: event.payload.devices,
 				microphones: event.payload.microphones,
-				phase: this.state.phase === "discovering" ? "idle" : this.state.phase,
+				phase: this.state.phase === "discovering" && hasDevices ? "idle" : this.state.phase,
 			});
-			this.inventoryWait?.resolve(this.getSnapshot());
-			this.inventoryWait = undefined;
+			if (hasDevices) this.settleInventory();
 			return;
 		}
 		if (event.event === "accepted" || (event.event === "error" && event.requestId)) return;

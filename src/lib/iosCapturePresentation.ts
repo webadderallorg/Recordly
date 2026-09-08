@@ -37,6 +37,6 @@ export function getIOSCapturePresentation(snapshot: IOSCaptureSnapshot) {
 		canStop: phase === "starting" || phase === "recording",
 		canCancel: ["preparing", "ready", "starting", "recording"].includes(phase),
 		canRelease: ["ready", "failed", "interrupted", "cancelled"].includes(phase),
-		busy: ["preparing", "starting", "stopping", "finalising"].includes(phase),
+		busy: ["preparing", "starting", "recording", "stopping", "finalising"].includes(phase),
 	};
 }

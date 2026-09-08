@@ -5,7 +5,6 @@ import {
 } from "@/shared/iosCapture";
 import { useIOSDeviceRecorder, useIOSPreview } from "@/hooks/useIOSDeviceRecorder";
 import { IOSDevicePanel } from "./ios/IOSDevicePanel";
-import { IOSRecoveryPanel } from "./ios/IOSRecoveryPanel";
 import { AppWindowIcon, CaretUpIcon, DeviceMobileIcon, MonitorIcon } from "@phosphor-icons/react";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -182,6 +181,8 @@ export const SourceSelector = React.memo(function SourceSelector({
 	const [capabilitiesLoaded, setCapabilitiesLoaded] = useState(false);
 	const [category, setCategory] = useState<"desktop" | "ios">("ios");
 	const [deviceError, setDeviceError] = useState(false);
+	const [discoveryError, setDiscoveryError] = useState(false);
+	const [refreshingDevices, setRefreshingDevices] = useState(false);
 	const [deviceOptions, setDeviceOptions] = useState<IOSRecordingOptions>(() => {
 		try {
 			return {
@@ -235,15 +236,57 @@ export const SourceSelector = React.memo(function SourceSelector({
 	const previewUrl = useIOSPreview(ios.snapshot, deviceVisible && !!ios.snapshot.source);
 	useEffect(() => {
 		const api = window.electronAPI?.iosCapture;
-		if (!api || !deviceVisible) return;
+		if (!api || !ios.enabled) return;
+		let live = true;
+		// Discovery is permission-free. Keep it warm while the launcher is mounted,
+		// so closing the popover does not restart USB discovery on every open.
 		void api
 			.setDiscoveryActive(true)
-			.then(() => api.discover())
-			.catch(() => setDeviceError(true));
+			.then(async () => {
+				if (!live) return;
+				const state = await api.getSnapshot();
+				if (
+					live &&
+					!["preparing", "starting", "recording", "stopping", "finalising"].includes(
+						state.phase,
+					)
+				)
+					await api.discover();
+			})
+			.catch(() => {
+				if (live) setDiscoveryError(true);
+			});
 		return () => {
+			live = false;
 			void api.setDiscoveryActive(false).catch(() => undefined);
 		};
-	}, [deviceVisible]);
+	}, [ios.enabled]);
+	useEffect(() => {
+		if (
+			!ios.snapshot.error &&
+			(ios.snapshot.phase === "idle" || ios.snapshot.devices.length > 0)
+		)
+			setDiscoveryError(false);
+	}, [ios.snapshot.phase, ios.snapshot.error, ios.snapshot.devices]);
+	const refreshDevices = useCallback(async () => {
+		setDeviceError(false);
+		setDiscoveryError(false);
+		setRefreshingDevices(true);
+		try {
+			await window.electronAPI.iosCapture.discover();
+		} catch {
+			setDiscoveryError(true);
+		} finally {
+			setRefreshingDevices(false);
+		}
+	}, []);
+	const previousSessionId = useRef(ios.snapshot.sessionId);
+	useEffect(() => {
+		const released = previousSessionId.current && !ios.snapshot.sessionId;
+		previousSessionId.current = ios.snapshot.sessionId;
+		if (ios.enabled && released && ["idle", "cancelled"].includes(ios.snapshot.phase))
+			void refreshDevices();
+	}, [ios.enabled, ios.snapshot.sessionId, ios.snapshot.phase, refreshDevices]);
 	const loading = propsLoading ?? internalLoading;
 	const selectedSource = propsSelectedSource ?? internalSelectedSource;
 
@@ -437,6 +480,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 						<IOSDevicePanel
 							snapshot={ios.snapshot}
 							previewUrl={previewUrl}
+							refreshing={refreshingDevices || ios.snapshot.phase === "discovering"}
 							onSelectDevice={(source) => {
 								setDeviceError(false);
 								void (async () => {
@@ -473,15 +517,10 @@ export const SourceSelector = React.memo(function SourceSelector({
 										)
 										.catch(() => setDeviceError(true));
 							}}
-							onRetry={() => {
-								setDeviceError(false);
-								void window.electronAPI.iosCapture
-									.discover()
-									.catch(() => setDeviceError(true));
-							}}
+							onRetry={() => void refreshDevices()}
 							onRelease={() => void ios.release().catch(() => setDeviceError(true))}
 						/>
-						{deviceError && (
+						{(deviceError || discoveryError) && (
 							<p role="alert" className="p-3 text-sm">
 								{t("ios.actionFailed")}
 							</p>
@@ -496,7 +535,6 @@ export const SourceSelector = React.memo(function SourceSelector({
 						onSourceSelect={onSourceSelect}
 					/>
 				)}
-				{open && <IOSRecoveryPanel />}
 			</PopoverContent>
 		</Popover>
 	);

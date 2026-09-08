@@ -13,13 +13,19 @@ RECORDLY_ENABLE_IOS_CAPTURE=1 npm run dev
 
 `RECORDLY_ENABLE_IOS_CAPTURE` is read by the Electron main process and is honored only in an unpackaged development run. Setting it does not enable the feature in a packaged application.
 
-Connect one iPhone or iPad using a data-capable USB cable, unlock it and approve the system Trust prompt if one appears. Open the source picker and choose **iPhone / iPad**, then select the device. Close QuickTime or another application if it already owns the device. An empty list does not prove that the device is locked or untrusted; use Refresh after checking the cable and system prompts.
+Connect one iPhone or iPad using a data-capable USB cable, unlock it and approve the system Trust prompt if one appears. Open the source picker and choose **iPhone / iPad**, then select the device. Discovery stays active while the launcher is open, including when the picker is closed. **Refresh** rebuilds idle discovery and shows progress while waiting for devices. Close QuickTime or another application if it already owns the device. An empty list does not prove that the device is locked or untrusted; use Refresh after checking the cable and system prompts.
 
 Recordly prepares one device at a time and waits for real video samples before showing Ready. The preview is an aspect-fit, low-bandwidth framing preview. Its longest edge is limited to 480 pixels and it updates at no more than five frames per second; recording uses the native device stream rather than the preview image. Hiding the picker stops preview work without stopping a prepared or active recording.
 
 If Camera or Microphone permission was denied, review Recordly's access in macOS **System Settings → Privacy & Security**, grant the permission needed for the selected inputs, and relaunch before preparing again. Device-screen capture does not require granting desktop Screen Recording permission. Installed-app prompt identity still requires the physical release checks below.
 
 Keep the phone in one orientation during a take. A detected format or transform change stops before incompatible samples are appended and preserves the preceding valid media as an interrupted take. Some physical rotations may change only the displayed content and cannot be detected reliably.
+
+### Status bar for showcases
+
+The familiar showcase status bar uses **9:41** with full signal and battery indicators. On a physical iPhone, this is controlled by iOS during USB screen capture; Recordly has no documented public API for forcing those values. Check the phone's status bar after preparation. Its behavior with Recordly has not yet been verified on a connected device.
+
+QuickTime's **File → New Movie Recording** preview is a known way to trigger this appearance: choose your iPhone in the capture-device selection menu, without pressing Record. The override lasts while that preview is open; close it before selecting the phone in Recordly if the device is busy. See [Apple's USB capture instructions](https://support.apple.com/en-gb/guide/quicktime-player/qtp356b55534/mac) and the [physical-device status bar walkthrough](https://shareshot.app/blog/Clean-9-41-Status-Bar-In-Screenshots.html). Simulator status-bar overrides apply only to simulators.
 
 ## Video and audio behavior
 
@@ -41,7 +47,7 @@ Interrupted recordings show the recorded outcome in the capture UI and editor. R
 
 ## Recovery and privacy
 
-The main process owns session directories and validates every media path. Native media, timing checkpoints and an atomic journal are retained when finalization fails or the helper, renderer or parent process exits unexpectedly. On the next launch, **Device recording recovery** can inspect eligible Recordly-created sessions and offer recovery with audio, explicit video-only recovery, Open folder, or confirmed Discard. Recovery remains available while new device capture is disabled. A damaged final fragment, power loss or filesystem failure may still be unrecoverable.
+The main process owns session directories and validates every media path. Native media, timing checkpoints and an atomic journal are retained when finalization fails or the helper, renderer or parent process exits unexpectedly. The launcher no longer displays a device recovery section. Existing saved or interrupted media is retained; a damaged final fragment, power loss or filesystem failure may still be unrecoverable.
 
 Capture, preview, audio and diagnostics remain local. Diagnostics are opt-in and omit device names, raw device identifiers, home-directory paths and media content. Notifications and sensitive screen content can appear in a recording. Recordly does not automatically suppress or redact them, and it does not bypass protected content.
 

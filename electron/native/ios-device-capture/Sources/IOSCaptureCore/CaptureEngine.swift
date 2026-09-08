@@ -43,10 +43,15 @@ public final class CaptureEngine: NSObject, @unchecked Sendable, AVCaptureVideoD
     private var dropped = 0
     private var assertion: IOPMAssertionID = 0
     private var armHostTime: CMTime?
-    private var renegotiatedRaw = false
+    private var rawVideoNegotiation = RawVideoNegotiation()
     private var acceptedRequests = Set<String>()
     private var acceptedOrder = [String]()
     public override init() { super.init() }
+    static func recommendedVideoSettings(mode: String, output: AVCaptureVideoDataOutput?) -> [String: Any]? {
+        guard mode == "h264-encode", let output,
+              output.availableVideoCodecTypesForAssetWriter(writingTo: .mov).contains(.h264) else { return nil }
+        return output.recommendedVideoSettings(forVideoCodecType: .h264, assetWriterOutputFileType: .mov)
+    }
     private func event(_ name: String, _ payload: [String: Any] = [:], request: String? = nil) {
         if name == "accepted", let request {
             if acceptedRequests.insert(request).inserted { acceptedOrder.append(request) }
@@ -67,7 +72,8 @@ public final class CaptureEngine: NSObject, @unchecked Sendable, AVCaptureVideoD
                     guard let self else { return }; self.event("inventoryChanged", snapshot)
                     if let token = self.token, !self.discovery.contains(token: token) { self.interrupt("DEVICE_DISCONNECTED") }
                 }
-                try discovery.start(); event("accepted", request: command.requestId); event("inventoryChanged", discovery.snapshot(), request: command.requestId)
+                let refreshDiscovery = ["idle", "failed", "completed"].contains(phase)
+                try discovery.start(refresh: refreshDiscovery); event("accepted", request: command.requestId); event("inventoryChanged", discovery.snapshot(), request: command.requestId)
             case "prepare": try prepare(command)
             case "setPreviewEnabled":
                 guard command.generation == generation, let enabled = command.payload["enabled"] as? Bool else { throw CaptureFailure("INVALID_REQUEST") }
@@ -106,7 +112,7 @@ public final class CaptureEngine: NSObject, @unchecked Sendable, AVCaptureVideoD
         guard try destination.availableBytes() >= 1024 * 1024 * 1024 else { throw CaptureFailure("DISK_SPACE_LOW") }
         releaseInputs()
         sessionId = command.sessionId; generation = command.generation ?? (generation &+ 1); source = discovery.source(token: selectedToken); token = selectedToken; options = settings; storage = destination
-        renegotiatedRaw = false; format = nil; mode = nil; video = nil; deviceAudio = nil; microphone = nil; finalResult = nil; delivered = 0; dropped = 0
+        rawVideoNegotiation = RawVideoNegotiation(); format = nil; mode = nil; video = nil; deviceAudio = nil; microphone = nil; finalResult = nil; delivered = 0; dropped = 0
         let capture = AVCaptureSession(); capture.beginConfiguration()
         let input = try AVCaptureDeviceInput(device: selected)
         guard capture.canAddInput(input) else { throw CaptureFailure("DEVICE_BUSY") }; capture.addInput(input)
@@ -151,7 +157,7 @@ public final class CaptureEngine: NSObject, @unchecked Sendable, AVCaptureVideoD
         guard phase == "ready", let storage, let format, let mode, let descriptionHint, let session, session.isRunning else { throw CaptureFailure("INVALID_REQUEST") }
         guard try storage.availableBytes() >= 1024 * 1024 * 1024 else { throw CaptureFailure("DISK_SPACE_LOW") }
         let boundary = CaptureClock.now
-        video = try VideoWriter(url: storage.file("source-video.mov", creating: true), format: format, mode: mode, description: descriptionHint, boundary: boundary, recommended: videoOutput?.recommendedVideoSettings(forVideoCodecType: .h264, assetWriterOutputFileType: .mov))
+        video = try VideoWriter(url: storage.file("source-video.mov", creating: true), format: format, mode: mode, description: descriptionHint, boundary: boundary, recommended: Self.recommendedVideoSettings(mode: mode, output: videoOutput))
         timing = try NativeTimingStore(storage: storage); armHostTime = boundary
         phase = "starting"; startRequest = command.requestId
         try checkpoint(reason: nil)
@@ -169,18 +175,25 @@ public final class CaptureEngine: NSObject, @unchecked Sendable, AVCaptureVideoD
                 if output === videoOutput {
                     delivered += 1
                     if phase == "preparing" {
-                        if CMSampleBufferGetImageBuffer(sample) == nil, let description = CMSampleBufferGetFormatDescription(sample), !VideoFormatPolicy.supportsPassthrough(description) {
-                            guard !renegotiatedRaw, let videoOutput, videoOutput.availableVideoPixelFormatTypes.contains(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange) else { throw CaptureFailure("UNSUPPORTED_FORMAT") }
-                            renegotiatedRaw = true
-                            videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange]
+                        let rawPixelFormat = CMSampleBufferGetImageBuffer(sample).map(CVPixelBufferGetPixelFormatType)
+                        let supportsPassthrough = CMSampleBufferGetFormatDescription(sample).map(VideoFormatPolicy.supportsPassthrough) ?? false
+                        switch try rawVideoNegotiation.observe(rawPixelFormat: rawPixelFormat, supportsPassthrough: supportsPassthrough, availablePixelFormats: videoOutput?.availableVideoPixelFormatTypes ?? []) {
+                        case .requestRaw(let pixelFormat):
+                            guard let videoOutput else { throw CaptureFailure("UNSUPPORTED_FORMAT") }
+                            videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: pixelFormat]
                             return
+                        case .waitForRaw:
+                            // Keep the original preparation deadline; queued packets cannot extend it.
+                            return
+                        case .inspectSample:
+                            break
                         }
 
                         let (observed, selectedMode) = try VideoFormatPolicy.inspect(sample)
                         if selectedMode == "passthrough", !VideoFormatPolicy.isSync(sample) { return }
                         try MediaInspector.validateFirstSample(sample)
                         let preflightURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
-                        _ = try VideoWriter(url: preflightURL, format: observed, mode: selectedMode, description: CMSampleBufferGetFormatDescription(sample)!, boundary: .zero, recommended: videoOutput?.recommendedVideoSettings(forVideoCodecType: .h264, assetWriterOutputFileType: .mov))
+                        _ = try VideoWriter(url: preflightURL, format: observed, mode: selectedMode, description: CMSampleBufferGetFormatDescription(sample)!, boundary: .zero, recommended: Self.recommendedVideoSettings(mode: selectedMode, output: videoOutput))
                         try? FileManager.default.removeItem(at: preflightURL)
                         format = observed; mode = selectedMode; descriptionHint = CMSampleBufferGetFormatDescription(sample)
                         deadline?.cancel(); phase = "ready"

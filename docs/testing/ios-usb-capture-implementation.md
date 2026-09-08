@@ -31,10 +31,10 @@ This record separates implemented software behavior from physical and release pr
 
 | Check | Result | Scope and limit |
 | --- | --- | --- |
-| Native XCTest | Pass: 31 tests, zero failures | Synthetic AVFoundation/CoreMedia media and discovery metadata fixtures; no device or TCC prompt in the suite. |
+| Native XCTest | Pass: 44 tests, zero failures | Synthetic AVFoundation/CoreMedia media, discovery lifecycle and format-transition fixtures; no device or TCC prompt in the suite. |
 | Native helper build | Pass: arm64 and x86_64 staged, macOS 14 target, embedded plist | Cross-build is not Intel runtime or signing evidence. |
 | Helper CLI smoke | Pass | Self-test, duplicate request replay, synthetic inspection and EOF finalization. |
-| Full JavaScript/TypeScript tests | Pass: 145 files, 1,208 tests; one explicit opt-in native suite skipped | The skipped native integration test was run separately and passed. |
+| Full JavaScript/TypeScript tests | Pass: 145 files, 1,221 tests; one explicit opt-in native suite skipped | The skipped native integration test was run separately and passed before this discovery/UI update. |
 | Opt-in native finalization integration | Pass: one test | Synthetic raw video/PCM → native inspector → production finalizer/FFmpeg → manifest reopen → verifier. |
 | TypeScript, localization, full lint and formatting checks | Pass on the reviewed source | No hardware or interactive UI claim. |
 | Synthetic media matrix | Pass: 7 positive variants; expected rejection: 5 negative variants | Physical-device evidence is explicitly false in reports. |
@@ -61,6 +61,18 @@ Subsequent fresh helper launches exposed a second startup issue. Retaining the d
 After this correction, two consecutive fresh launches of the exact development-signed test-app helper returned one iPhone, unknown audio availability, and no errors, without preparation or recording. Reports are `/private/tmp/recordly-discovery-context-packaged-1.json` and `/private/tmp/recordly-discovery-context-packaged-2.json`. All 31 native tests passed again, both architectures rebuilt, and the updated test bundle passed deep signature verification. The native tests and the physical discovery probes are separate evidence; neither establishes first-frame, audio or installed-release permission behavior.
 
 The rebuilt `Recordly iOS Test` app (1.4.0-ios-test.2, arm64, isolated test identity) was reopened and its iPhone/iPad picker visibly listed the connected phone with the ready-to-select discovery message. The phone was not selected and no capture permission or recording was started. A separate delayed-hello process check confirmed the helper stays alive before commands arrive and shuts down cleanly on stdin EOF, without discovery.
+
+## Picker, refresh and preparation follow-up — 8 September 2026
+
+The launcher now keeps permission-free discovery active while mounted, so closing the source picker does not shut down the helper and repeat USB startup. Releasing a prepared source, including through another window or desktop selection, restarts discovery. The recovery section was removed from the picker and More menu; saved media and the internal recovery/storage validation remain intact.
+
+Idle Refresh rebuilds the main-thread CMIO discovery observation. Prepared sources reuse their existing observation. Device-list KVO schedules reconciliation without waiting for the two-second fallback poll, and generation checks ignore callbacks from replaced or stopped observations. The controller waits through immediate empty inventory for up to five seconds, accepts later device arrivals, coalesces repeated requests, and rejects refresh during capture transitions. Refresh shows progress, and successful shared inventory clears obsolete discovery errors.
+
+Preparation had a separate format-transition defect: after requesting raw output, queued compressed samples were immediately rejected. It now requests advertised `420v` or `420f` once and waits within the existing ten-second deadline. Geometry, color and first-sample validation remain required. Encoder recommendations are queried only for advertised H.264 encoding, avoiding an unsupported AVFoundation codec query during passthrough.
+
+Thirteen added controller tests, six native discovery-lifecycle tests and seven native format-negotiation/capability tests cover the update. Regression runs reproduced stale discovery, late helper failures and premature compressed-frame rejection before their fixes. The complete updated suites pass: 1,221 JavaScript/TypeScript tests and 44 native tests. Type, lint, formatting and locale checks also pass. A browser fixture mounting the actual picker verified warm discovery across opening/closing, busy refresh feedback, automatic rediscovery after another window releases a prepared source, clearing obsolete errors after shared recovery, and no recovery-list requests.
+
+The physical format rejection is not yet diagnosed. A temporary metadata-only test helper configured video successfully and reported H.264/JPEG writer codecs plus `420v`/`420f` and other raw outputs, but delivered no video frame before timing out. A first USB check used an obsolete system-profiler report type; a follow-up hardware-registry check confirmed one connected iPhone. The timeout therefore does not establish disconnection. No screen or audio media was saved by this probe, and its instrumentation was removed from the updated test build. Reconnected-device preparation, repeated discovery, recording and the iOS 9:41 status-bar behavior still require physical verification; this follow-up does not pass a release gate.
 
 ## Review findings resolved
 

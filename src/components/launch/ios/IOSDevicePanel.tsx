@@ -1,4 +1,4 @@
-import { DeviceMobileIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, DeviceMobileIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { useScopedT } from "@/contexts/I18nContext";
 import { getIOSCapturePresentation } from "@/lib/iosCapturePresentation";
@@ -9,6 +9,7 @@ import { MarqueeText } from "../MarqueeText";
 export function IOSDevicePanel({
 	snapshot,
 	previewUrl,
+	refreshing = false,
 	onSelectDevice,
 	onOptionsChange,
 	onRetry,
@@ -16,6 +17,7 @@ export function IOSDevicePanel({
 }: {
 	snapshot: IOSCaptureSnapshot;
 	previewUrl: string | null;
+	refreshing?: boolean;
 	onSelectDevice: (source: IOSDeviceSource) => void;
 	onOptionsChange: (options: IOSRecordingOptions) => void;
 	onRetry: () => void;
@@ -47,7 +49,7 @@ export function IOSDevicePanel({
 					))}
 				</div>
 			)}
-			{snapshot.devices.length === 0 && <p>{t("ios.empty")}</p>}
+			{snapshot.devices.length === 0 && !refreshing && <p>{t("ios.empty")}</p>}
 			<div className="-mx-1 space-y-0.5">
 				{snapshot.devices.map((device, index) => {
 					const selected = snapshot.source?.id === device.id;
@@ -151,7 +153,19 @@ export function IOSDevicePanel({
 				<p className="mt-2">{t("ios.help")}</p>
 			</details>
 			<div className="flex gap-2">
-				<Button variant="outline" onClick={onRetry} disabled={presentation.busy}>
+				<Button
+					variant="outline"
+					onClick={onRetry}
+					disabled={presentation.busy || refreshing}
+					aria-busy={refreshing}
+				>
+					<ArrowClockwiseIcon
+						className={cn(
+							"size-4",
+							refreshing && "animate-spin motion-reduce:animate-none",
+						)}
+						aria-hidden="true"
+					/>
 					{t("ios.refresh")}
 				</Button>
 				{presentation.canRelease && (
