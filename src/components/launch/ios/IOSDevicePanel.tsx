@@ -30,9 +30,15 @@ export function IOSDevicePanel({
 			className="p-3 space-y-3 text-sm source-selector-text"
 			aria-label={t("ios.category")}
 		>
-			<p role="status" aria-live="polite">
-				{t(presentation.statusKey)}
-			</p>
+			{presentation.statusKey === "ios.status.connected" ? (
+				<h3 className="px-2 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label">
+					{t(presentation.statusKey)}
+				</h3>
+			) : (
+				<p role="status" aria-live="polite">
+					{t(presentation.statusKey)}
+				</p>
+			)}
 			{presentation.errorKey && <p role="alert">{t(presentation.errorKey)}</p>}
 			{presentation.warningKeys.length > 0 && (
 				<div role="status" aria-live="polite">

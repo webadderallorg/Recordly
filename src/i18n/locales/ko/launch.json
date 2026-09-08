@@ -136,7 +136,7 @@
 			"failed": "Device capture failed",
 			"interrupted": "Recording interrupted. Check recovery for saved media.",
 			"recoveryAvailable": "Recording recovery available",
-			"connected": "Device discovered. Select it to prepare recording."
+			"connected": "기기"
 		},
 		"errors": {
 			"UNSUPPORTED_PLATFORM": "Device capture is unavailable on this platform.",
