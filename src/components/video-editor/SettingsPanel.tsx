@@ -32,7 +32,7 @@ import {
 import { type AspectRatio } from "@/utils/aspectRatioUtils";
 import { useI18n, useScopedT } from "../../contexts/I18nContext";
 import type { AppLocale } from "../../i18n/config";
-import { SUPPORTED_LOCALES } from "../../i18n/config";
+import { LOCALE_LABELS, SUPPORTED_LOCALES } from "../../i18n/config";
 import { AnnotationSettingsPanel } from "./AnnotationSettingsPanel";
 import CaptionListPanel from "./CaptionListPanel";
 import type { CaptionRetimeSpan } from "./captionOps";
@@ -706,19 +706,6 @@ const CAPTION_LANGUAGE_OPTIONS = [
 	{ value: "ja", label: "Japanese" },
 	{ value: "ko", label: "Korean" },
 ] as const;
-
-const APP_LANGUAGE_LABELS: Record<AppLocale, string> = {
-	en: "English",
-	es: "Español",
-	fr: "Français",
-	de: "Deutsch",
-	it: "Italiano",
-	nl: "Nederlands",
-	ko: "한국어",
-	"pt-BR": "Português",
-	"zh-CN": "簡體中文",
-	"zh-TW": "繁體中文",
-};
 
 function loadPreviewImage(url: string) {
 	return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -2575,7 +2562,7 @@ export function SettingsPanel({
 						<SelectContent className="border-foreground/10 bg-editor-surface-alt text-foreground">
 							{SUPPORTED_LOCALES.map((candidateLocale) => (
 								<SelectItem key={candidateLocale} value={candidateLocale}>
-									{APP_LANGUAGE_LABELS[candidateLocale]}
+									{LOCALE_LABELS[candidateLocale]}
 								</SelectItem>
 							))}
 						</SelectContent>
