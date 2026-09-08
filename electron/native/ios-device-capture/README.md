@@ -19,6 +19,7 @@ accepted recording media.
 
 * The sole candidate screen-device signature is muxed + model `iOS Device`. USB screen sources can advertise muxed media without a standalone video media type; preparation validates actual video samples before readiness.
   A USB iPhone discovery probe confirmed this metadata; first-frame and permission behavior remain unverified. See [discovery evidence](../../../docs/testing/ios-usb-capture-implementation.md).
+* CMIO and AVFoundation discovery initialize on the running main run loop. The screen discovery session stays alive across inventory polls and is released when discovery stops.
 * Passthrough is limited to positively identified H.264 Baseline profile with
   explicit Rec.709 metadata. Baseline excludes B slices, allowing a bounded final
   sample to preserve a sparse timeline without rebuilding a reordered GOP.

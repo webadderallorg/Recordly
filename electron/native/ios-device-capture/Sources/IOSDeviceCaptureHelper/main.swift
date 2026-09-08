@@ -88,4 +88,5 @@ DispatchQueue.global(qos: .userInitiated).async {
     let incomplete = (try? parser.finish()) == nil
     engine.queue.async { if incomplete { engine.emit?("error", ["code": "INVALID_REQUEST", "recoverable": false], nil, nil, 0) }; engine.shutdown() }
 }
-dispatchMain()
+// USB discovery needs CMIO's main-thread run-loop sources as well as dispatch work.
+CFRunLoopRun()

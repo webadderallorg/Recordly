@@ -9,6 +9,7 @@ public final class DeviceDiscovery {
     private var microphones = TokenInventory()
     private var videoDevices: [String: AVCaptureDevice] = [:]
     private var audioDevices: [String: AVCaptureDevice] = [:]
+    private var screenDiscovery: AVCaptureDevice.DiscoverySession?
     private var observers: [NSObjectProtocol] = []
     private var poll: DispatchSourceTimer?
     private var coalesced: DispatchWorkItem?
@@ -18,9 +19,17 @@ public final class DeviceDiscovery {
     public init(queue: DispatchQueue) { self.queue = queue }
     public func start() throws {
         if poll != nil { reconcile(); return }
-        var address = CMIOObjectPropertyAddress(mSelector: CMIOObjectPropertySelector(kCMIOHardwarePropertyAllowScreenCaptureDevices), mScope: UInt32(kCMIOObjectPropertyScopeGlobal), mElement: UInt32(kCMIOObjectPropertyElementMain))
-        var enabled: UInt32 = 1
-        guard CMIOObjectSetPropertyData(CMIOObjectID(kCMIOObjectSystemObject), &address, 0, nil, UInt32(MemoryLayout<UInt32>.size), &enabled) == noErr else { throw CaptureFailure("HELPER_UNAVAILABLE") }
+        // CMIO installs run-loop sources on its initialization thread. The helper keeps
+        // the main run loop alive while this queue owns inventory and capture state.
+        screenDiscovery = try DispatchQueue.main.sync {
+            var address = CMIOObjectPropertyAddress(mSelector: CMIOObjectPropertySelector(kCMIOHardwarePropertyAllowScreenCaptureDevices), mScope: UInt32(kCMIOObjectPropertyScopeGlobal), mElement: UInt32(kCMIOObjectPropertyElementMain))
+            var enabled: UInt32 = 1
+            guard CMIOObjectSetPropertyData(CMIOObjectID(kCMIOObjectSystemObject), &address, 0, nil, UInt32(MemoryLayout<UInt32>.size), &enabled) == noErr else { throw CaptureFailure("HELPER_UNAVAILABLE") }
+            var categories: [AVCaptureDevice.DeviceType] = [.external]
+            if #available(macOS 14, *) { categories.append(.continuityCamera) }
+            // Device arrival is asynchronous. Keep the session alive across inventory polls.
+            return AVCaptureDevice.DiscoverySession(deviceTypes: categories, mediaType: .muxed, position: .unspecified)
+        }
         for name in [AVCaptureDevice.wasConnectedNotification, AVCaptureDevice.wasDisconnectedNotification] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in
                 guard let self else { return }
@@ -34,9 +43,8 @@ public final class DeviceDiscovery {
         reconcile()
     }
     private func reconcile() {
-        var categories: [AVCaptureDevice.DeviceType] = [.external]
-        if #available(macOS 14, *) { categories.append(.continuityCamera) }
-        let candidates = AVCaptureDevice.DiscoverySession(deviceTypes: categories, mediaType: .muxed, position: .unspecified).devices
+        guard let screenDiscovery else { return }
+        let candidates = screenDiscovery.devices
             .filter { DeviceClassifier.isEligible(.init(modelID: $0.modelID, hasMuxed: $0.hasMediaType(.muxed), hasVideo: $0.hasMediaType(.video))) }.prefix(32)
         let mapping = identities.reconcile(Set(candidates.map(\.uniqueID)))
         videoDevices = Dictionary(uniqueKeysWithValues: candidates.compactMap { device in mapping[device.uniqueID].map { ($0, device) } })
@@ -56,5 +64,5 @@ public final class DeviceDiscovery {
     public func device(token: String, generation: Int) throws -> AVCaptureDevice { guard generation == revision, let device = videoDevices[token] else { throw CaptureFailure("DEVICE_NOT_FOUND") }; return device }
     public func microphone(token: String) throws -> AVCaptureDevice { guard let device = audioDevices[token] else { throw CaptureFailure("DEVICE_NOT_FOUND") }; return device }
     public func contains(token: String) -> Bool { videoDevices[token] != nil }
-    public func stop() { poll?.cancel(); poll = nil; coalesced?.cancel(); observers.forEach(NotificationCenter.default.removeObserver); observers.removeAll(); videoDevices.removeAll(); audioDevices.removeAll(); _ = identities.reconcile([]); _ = microphones.reconcile([]) }
+    public func stop() { poll?.cancel(); poll = nil; coalesced?.cancel(); observers.forEach(NotificationCenter.default.removeObserver); observers.removeAll(); screenDiscovery = nil; videoDevices.removeAll(); audioDevices.removeAll(); _ = identities.reconcile([]); _ = microphones.reconcile([]) }
 }
