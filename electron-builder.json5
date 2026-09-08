@@ -100,15 +100,21 @@
   },
   "linux": {
     "target": [
-      "AppImage"
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      }
     ],
     "icon": "icons/icons/png",
-    "artifactName": "${productName}-linux-x64.${ext}",
+    "artifactName": "${productName}-linux-${arch}.${ext}",
     "category": "AudioVideo"
   },
   "win": {
     "target": [
-      "nsis"
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
     ],
     "icon": "icons/icons/win/icon.ico",
     "executableName": "Recordly",
