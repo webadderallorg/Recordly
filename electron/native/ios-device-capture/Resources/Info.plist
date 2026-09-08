@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>com.recordly.ios-device-capture-helper</string>
+<key>CFBundleName</key><string>Recordly Device Capture</string>
+<key>RecordlyCaptureProtocolVersion</key><integer>1</integer>
+<key>CFBundleVersion</key><string>1</string>
+<key>NSCameraUsageDescription</key><string>Recordly receives your connected iPhone or iPad screen using macOS camera access.</string>
+<key>NSMicrophoneUsageDescription</key><string>Recordly records enabled device audio and your selected narration microphone.</string>
+<key>NSCameraUseContinuityCameraDeviceType</key><true/>
+</dict></plist>
