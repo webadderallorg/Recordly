@@ -6,7 +6,7 @@ import {
 import { useIOSDeviceRecorder, useIOSPreview } from "@/hooks/useIOSDeviceRecorder";
 import { IOSDevicePanel } from "./ios/IOSDevicePanel";
 import { IOSRecoveryPanel } from "./ios/IOSRecoveryPanel";
-import { AppWindowIcon, CaretUpIcon, MonitorIcon } from "@phosphor-icons/react";
+import { AppWindowIcon, CaretUpIcon, DeviceMobileIcon, MonitorIcon } from "@phosphor-icons/react";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -223,6 +223,9 @@ export const SourceSelector = React.memo(function SourceSelector({
 	const [internalSources, setInternalSources] = useState<DesktopSource[]>([]);
 	const [internalLoading, setInternalLoading] = useState(false);
 	const [internalSelectedSource, setInternalSelectedSource] = useState("Screen");
+	const [internalSelectedSourceType, setInternalSelectedSourceType] = useState<
+		DesktopSource["sourceType"] | "ios-device"
+	>("screen");
 
 	// Determine if we should use internal or external state/logic
 	const isAutonomous = propsOpen === undefined;
@@ -275,6 +278,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 			try {
 				const result = await window.electronAPI.selectSource(source);
 				if (result) {
+					setInternalSelectedSourceType(source.sourceType);
 					setInternalSelectedSource(
 						isIOSDeviceSource(source) ? source.displayName : source.name,
 					);
@@ -369,7 +373,11 @@ export const SourceSelector = React.memo(function SourceSelector({
 			)}
 			title={selectedSource}
 		>
-			<MonitorIcon size={16} className="shrink-0" />
+			{internalSelectedSourceType === "ios-device" ? (
+				<DeviceMobileIcon size={16} className="shrink-0" aria-hidden="true" />
+			) : (
+				<MonitorIcon size={16} className="shrink-0" aria-hidden="true" />
+			)}
 			<div className="flex-1 min-w-0">
 				<MarqueeText text={selectedSource} />
 			</div>

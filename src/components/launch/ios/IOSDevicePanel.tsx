@@ -1,7 +1,10 @@
-import type { IOSCaptureSnapshot, IOSDeviceSource, IOSRecordingOptions } from "@/shared/iosCapture";
-import { useScopedT } from "@/contexts/I18nContext";
+import { DeviceMobileIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
+import { useScopedT } from "@/contexts/I18nContext";
 import { getIOSCapturePresentation } from "@/lib/iosCapturePresentation";
+import { cn } from "@/lib/utils";
+import type { IOSCaptureSnapshot, IOSDeviceSource, IOSRecordingOptions } from "@/shared/iosCapture";
+import { MarqueeText } from "../MarqueeText";
 
 export function IOSDevicePanel({
 	snapshot,
@@ -39,23 +42,45 @@ export function IOSDevicePanel({
 				</div>
 			)}
 			{snapshot.devices.length === 0 && <p>{t("ios.empty")}</p>}
-			<div className="space-y-1">
-				{snapshot.devices.map((device, index) => (
-					<Button
-						key={device.id}
-						variant="ghost"
-						className="w-full justify-start"
-						aria-pressed={snapshot.source?.id === device.id}
-						disabled={presentation.busy}
-						onClick={() => onSelectDevice(device)}
-					>
-						{device.displayName}
-						{snapshot.devices.filter((item) => item.displayName === device.displayName)
+			<div className="-mx-1 space-y-0.5">
+				{snapshot.devices.map((device, index) => {
+					const selected = snapshot.source?.id === device.id;
+					const displayName = `${device.displayName}${
+						snapshot.devices.filter((item) => item.displayName === device.displayName)
 							.length > 1
 							? ` (${index + 1})`
-							: ""}
-					</Button>
-				))}
+							: ""
+					}`;
+					return (
+						<button
+							key={device.id}
+							type="button"
+							className={cn(
+								"source-selector-item group min-h-[46px] w-full rounded-[11px] px-3 py-2.5 text-left font-medium flex items-center justify-start gap-3 disabled:pointer-events-none disabled:opacity-50",
+								selected && "source-selector-item-selected",
+							)}
+							aria-label={displayName}
+							aria-pressed={selected}
+							disabled={presentation.busy}
+							onClick={() => onSelectDevice(device)}
+						>
+							<div className="source-selector-thumb-fallback w-12 h-8 rounded-[8px] flex shrink-0 items-center justify-center">
+								<DeviceMobileIcon
+									className="w-5 h-5 source-selector-muted"
+									aria-hidden="true"
+								/>
+							</div>
+							<div className="flex-1 min-w-0 flex flex-col items-start text-left">
+								<div className="text-sm font-medium source-selector-text w-full">
+									<MarqueeText text={displayName} />
+								</div>
+								<div className="text-xs source-selector-subtle truncate w-full text-left">
+									{t("ios.category")}
+								</div>
+							</div>
+						</button>
+					);
+				})}
 			</div>
 			{snapshot.source && (
 				<>
