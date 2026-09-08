@@ -21,7 +21,7 @@ location when running it. Exclude serials, raw device IDs and personal device na
 | A13 | Performance and preview isolation | Not tested | 30-minute memory/counter record |
 | A14 | Repeated sessions | Not tested | 20 cycles, duplicate stop/stale event checks |
 | A15 | Installed distribution | Not tested | Signed notarised app, clean account, each advertised architecture |
-| A16 | Desktop regression | Partial | Baseline 1,083 software tests pass; platform hardware tests not run |
+| A16 | Desktop regression | Partial | Baseline 1,083 tests and latest reported integrated software suite pass; platform hardware tests not run |
 
 ## Physical combinations
 
@@ -36,5 +36,19 @@ location when running it. Exclude serials, raw device IDs and personal device na
 
 ## Software evidence
 
-See [feasibility and baseline](ios-usb-capture-feasibility.md). Implementation and
-synthetic test results are recorded separately from the physical acceptance rows.
+Software-only evidence does not change any physical row above:
+
+| Evidence set | Status | Result |
+| --- | --- | --- |
+| Native XCTest | Pass | 30 synthetic tests, zero failures |
+| Native helper cross-build | Pass | arm64 and x86_64 staged for macOS 14; no Intel runtime claim |
+| Integrated JS/TS checks | Pass | 145 files, 1,208 tests; one opt-in native suite skipped and passed separately |
+| Native finalization integration | Pass | One synthetic native-inspector → finalizer → manifest → verifier test |
+| Positive synthetic media variants | Pass | 7: portrait, landscape, odd dimension, delayed microphone, negative offset, internal gap, silent/static |
+| Negative synthetic media cases | Pass by rejection | 5: wrong rotation, displaced audio, missing audio, duration truncation, byte-truncated MOV |
+| Development macOS packaging | Partial | Both architecture artifacts built and Apple Development signed; final-source arm64 bundle refreshed with ad-hoc signing. Release build and notarization remain pending. |
+| Packaged smoke | Pass | Final-source host bundle and both helper slices checked; x64 `otool` byte parsing fixed with a regression test |
+
+See [feasibility and baseline](ios-usb-capture-feasibility.md) and
+[implementation evidence](ios-usb-capture-implementation.md). All G1–G4 physical and
+installed-release gates remain **Not tested**. No software fixture is a substitute.

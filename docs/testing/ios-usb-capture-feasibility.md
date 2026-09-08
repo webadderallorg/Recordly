@@ -35,3 +35,34 @@ Software fixtures do not certify these gates. The feature must remain default-of
 No physical device, signing team or installed release has been certified by this
 record. The initial `iOS Device` signature is the supplied compatibility policy,
 not a new observed hardware result.
+
+## Implemented software evidence — 8 September 2026
+
+The native helper and disabled-by-default application integration are now present.
+The latest native run passed 30 XCTest tests and built both arm64 and x86_64 helper
+artifacts with a macOS 14 deployment target and embedded privacy metadata. Cross-build
+results do not establish Intel runtime or installed permission behavior.
+
+The final full JavaScript/TypeScript integration run passed 145 files
+and 1,208 tests, with one explicitly opt-in native-media suite skipped in that run.
+That suite was run separately and passed using synthetic media through the staged
+native inspector, production finalizer, bundled FFmpeg, manifest reopen and verifier.
+TypeScript, full lint, formatting and localization checks also passed.
+
+A development `build:mac` produced arm64/x64 DMG and ZIP artifacts signed with an
+Apple Development identity. Notarization was skipped because release credentials
+were unavailable. That build preceded final review edits. Packaged smoke then found
+an x64 `otool` output-unit parsing defect; the parser and regression test were fixed.
+A final-source arm64 preview bundle was rebuilt with an ad-hoc signature, and packaged
+smoke passed for that bundle and both helper slices. None of this changes G1–G4 from
+**Not tested**.
+
+Synthetic media evidence includes seven passing positive variants and five expected
+negative cases. Packet preservation is checked after demuxing rather than by hashing
+whole MOV containers. A synthetic 300-second static timeline and rational clock/audio
+tests pass. These results establish deterministic software behavior only; they do not
+establish physical capture, color, frame rate, 30-minute sync or interruption recovery.
+
+See [implementation evidence](ios-usb-capture-implementation.md) for task status and
+commands, and [the acceptance matrix](ios-usb-capture-matrix.md) for the still-open
+physical evidence.
