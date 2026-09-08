@@ -26,26 +26,27 @@ packaged application builds are separate checks.
 
 | Gate | Status | Required evidence |
 | --- | --- | --- |
-| G1 API and permissions | Partial | One USB iPhone's muxed-only discovery signature observed; first samples and signed installed-app permission identity remain untested. |
-| G2 media fidelity | Not tested | Physical formats, colour, sparse timing and editor/export comparison. |
+| G1 API and permissions | Partial | One USB iPhone's discovery signature, actual samples and Ready/live preview observed; one recording/editor handoff user-confirmed. Permission allow/deny/relaunch and signed installed-app identity remain untested. |
+| G2 media fidelity | Partial | Physical 1206 × 2622 H.264 High → `420v`, Rec.709/sRGB/Rec.709 metadata observed; physical color, sparse timing and editor/export comparison remain untested. |
 | G3 audio | Not tested | Real clock mapping and 30-minute device/narration sync within 80 ms. |
 | G4 reliability and distribution | Not tested | Physical interruption tests and clean signed installed-app matrix. |
 
 Software fixtures do not certify these gates. The feature must remain default-off.
-No physical device, signing team or installed release has been certified by this
-record. The USB discovery probe recorded in [implementation evidence](ios-usb-capture-implementation.md)
-observed the `iOS Device` signature without a standalone video media type. This
-corrects the initial classifier policy but does not certify capture or permissions.
+No device family, signing team or installed release has been certified by this
+record. The probes recorded in [implementation evidence](ios-usb-capture-implementation.md)
+observed the `iOS Device` signature without a standalone video media type, followed
+by actual frame metadata. One successful development session does not certify the
+remaining devices, permissions, media-fidelity or release matrix.
 
 ## Implemented software evidence — 8 September 2026
 
 The native helper and disabled-by-default application integration are now present.
-The latest native run passed 31 XCTest tests and built both arm64 and x86_64 helper
+The latest capture-fix native run passed 46 XCTest tests and built both arm64 and x86_64 helper
 artifacts with a macOS 14 deployment target and embedded privacy metadata. Cross-build
 results do not establish Intel runtime or installed permission behavior.
 
 The final full JavaScript/TypeScript integration run passed 145 files
-and 1,208 tests, with one explicitly opt-in native-media suite skipped in that run.
+and 1,221 tests, with one explicitly opt-in native-media suite skipped in that run.
 That suite was run separately and passed using synthetic media through the staged
 native inspector, production finalizer, bundled FFmpeg, manifest reopen and verifier.
 TypeScript, full lint, formatting and localization checks also passed.
@@ -56,13 +57,36 @@ were unavailable. That build preceded final review edits. Packaged smoke then fo
 an x64 `otool` output-unit parsing defect; the parser and regression test were fixed.
 A final-source arm64 preview bundle was rebuilt with an ad-hoc signature, and packaged
 smoke passed for that bundle and both helper slices. Packaging does not satisfy any
-release gate; G1 has partial discovery evidence and G2–G4 remain **Not tested**.
+release gate; G1 and G2 have partial physical evidence and G3–G4 remain **Not tested**.
 
 Synthetic media evidence includes seven passing positive variants and five expected
 negative cases. Packet preservation is checked after demuxing rather than by hashing
 whole MOV containers. A synthetic 300-second static timeline and rational clock/audio
-tests pass. These results establish deterministic software behavior only; they do not
-establish physical capture, color, frame rate, 30-minute sync or interruption recovery.
+tests pass. The latest native suite also round-trips 1206 × 2622 `420v` media with
+exact geometry and Rec.709 / `IEC_sRGB` / Rec.709 tags, then checks decoded flat-patch
+values. The policy preserves sRGB transfer on macOS 15+; it does not relabel the
+source or enable unverified macOS 14 sRGB encoding. These synthetic results do not
+establish physical color/export fidelity, frame rate, 30-minute sync or interruption recovery.
+
+## Physical capture follow-up — 8 September 2026
+
+A metadata-only probe observed a 1206 × 2622 H.264 High-profile stream, full range,
+with Rec.709 primaries/matrix and `IEC_sRGB` transfer. Negotiating `420v` yielded
+video-range raw samples with the same geometry and color triplet. The original
+transfer restriction caused the observed rejection. The probe saved no screen or
+audio media. Earlier no-frame timeouts did not show that the phone was disconnected:
+this macOS 26 host uses `SPUSBHostDataType`, and the USB registry confirmed the phone.
+
+After the transfer-policy fix, Ready and a live preview were directly observed in
+the isolated development test app. The user subsequently confirmed that recording
+completed and the editor opened, and that 9:41 with full status icons appeared on
+the phone. A later direct accessibility inspection of the editor showed **Device
+recording saved**, **Device audio track recorded**, and approximately **20.2 seconds**
+of clip duration. This verifies the displayed outcome and metadata; audible playback,
+audio sync, decoded-media quality and export were not checked. No long-run result
+was recorded. The phone OS, cable/hub topology and exact running artifact checksum
+remain unspecified. These results advance G1/G2 to partial evidence without passing
+either gate; G3/G4 remain untested.
 
 See [implementation evidence](ios-usb-capture-implementation.md) for task status and
 commands, and [the acceptance matrix](ios-usb-capture-matrix.md) for the still-open

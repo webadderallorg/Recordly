@@ -1,6 +1,6 @@
 # iPhone and iPad USB capture
 
-Recordly contains a development-preview capture path for recording the screen stream that macOS receives from a connected iPhone or iPad. The feature is currently disabled in packaged builds while physical-device, installed-permission, long-duration audio, recovery and distribution gates remain untested.
+Recordly contains a development-preview capture path for recording the screen stream that macOS receives from a connected iPhone or iPad. The feature remains disabled by default in release packaged builds while physical-device and release gates are incomplete. An isolated local test build enables it for development validation.
 
 ## Development preview
 
@@ -23,13 +23,13 @@ Keep the phone in one orientation during a take. A detected format or transform 
 
 ### Status bar for showcases
 
-The familiar showcase status bar uses **9:41** with full signal and battery indicators. On a physical iPhone, this is controlled by iOS during USB screen capture; Recordly has no documented public API for forcing those values. Check the phone's status bar after preparation. Its behavior with Recordly has not yet been verified on a connected device.
+The familiar showcase status bar uses **9:41** with full signal and battery indicators. On a physical iPhone, this is controlled by iOS during USB screen capture; Recordly has no documented public API for forcing those values. The user confirmed this appearance on the connected iPhone during the 8 September 2026 Recordly test. Check the phone's status bar after preparation; this single-device result is not a guarantee for other devices or OS versions.
 
 QuickTime's **File → New Movie Recording** preview is a known way to trigger this appearance: choose your iPhone in the capture-device selection menu, without pressing Record. The override lasts while that preview is open; close it before selecting the phone in Recordly if the device is busy. See [Apple's USB capture instructions](https://support.apple.com/en-gb/guide/quicktime-player/qtp356b55534/mac) and the [physical-device status bar walkthrough](https://shareshot.app/blog/Clean-9-41-Status-Bar-In-Screenshots.html). Simulator status-bar overrides apply only to simulators.
 
 ## Video and audio behavior
 
-The helper accepts a compatible baseline H.264 stream for passthrough, or a supported Rec.709 8-bit 4:2:0 uncompressed input for H.264 encoding. Unsupported codecs, color formats and clock mappings fail before or during capture with a specific status. Recordly does not promise lossless framebuffer capture, a particular frame rate, HDR, Display P3, 4K, or 60/120 fps. The displayed geometry and format come from samples actually received; observed frame rate is omitted when it has not been measured.
+The helper accepts a compatible baseline H.264 stream for passthrough, or supported 8-bit 4:2:0 SDR input for H.264 encoding. Rec.709 primaries and matrix are required; the transfer function can be Rec.709, or sRGB on macOS 15 and later. The source's transfer metadata is preserved. Unsupported codecs, color formats and clock mappings fail before or during capture with a specific status. Recordly does not promise lossless framebuffer capture, a particular frame rate, HDR, Display P3, 4K, or 60/120 fps. The displayed geometry and format come from samples actually received; observed frame rate is omitted when it has not been measured.
 
 **Device audio** and **Mac narration** are separate controls. Device audio defaults on when available; narration is optional and uses a microphone identity supplied by the native helper. These settings do not reuse desktop system-audio or browser microphone IDs. If requested audio cannot be opened before recording, Recordly asks for a settings change instead of silently substituting a source. If audio disappears after video begins, the valid video is retained and the result reports the interruption.
 
@@ -55,4 +55,6 @@ Capture, preview, audio and diagnostics remain local. Diagnostics are opt-in and
 
 Software tests cover protocol validation, native writers and inspection, preview bounds, controller lifecycle, IPC authorization, storage/finalization, persistence, recovery and renderer routing. Synthetic media verifies geometry, timing failures, audio offsets, final video packet preservation and manifest reopen. These checks do not prove physical iPhone/iPad behavior.
 
-G1 has **Partial** evidence from a USB iPhone discovery probe; G2–G4 remain **Not tested**. First frames and permissions, five- and thirty-minute tests, physical unplug/rotation/audio behavior, Intel runtime, signed/notarized clean-account installation, manual keyboard/screen-reader/reduced-motion review and the full macOS/Windows/Linux regression matrix remain unverified. No release gate has passed. See [implementation evidence](testing/ios-usb-capture-implementation.md), [feasibility evidence](testing/ios-usb-capture-feasibility.md), and the [acceptance matrix](testing/ios-usb-capture-matrix.md).
+G1 and G2 have **Partial** evidence from one USB iPhone on the Apple Silicon development host. Its 1206 × 2622 H.264 High-profile stream negotiates to `420v` with Rec.709 primaries/matrix and sRGB transfer. After the transfer-policy fix, Ready and a live preview were directly observed; the user confirmed that recording completed and opened in the editor. Direct editor inspection then showed a saved recording, recorded device-audio metadata and approximately 20.2 seconds of clip duration. A synthetic native round trip separately verifies the same geometry, color tags and decoded flat patches.
+
+G3 and G4 remain **Not tested**. Audible device-audio playback, narration, audio sync, export fidelity, five- and thirty-minute runs, physical unplug/rotation behavior, Intel runtime, signed/notarized clean-account permission and installation checks, manual keyboard/screen-reader/reduced-motion review and the full platform matrix remain unverified. No release gate has passed. See [implementation evidence](testing/ios-usb-capture-implementation.md), [feasibility evidence](testing/ios-usb-capture-feasibility.md), and the [acceptance matrix](testing/ios-usb-capture-matrix.md).

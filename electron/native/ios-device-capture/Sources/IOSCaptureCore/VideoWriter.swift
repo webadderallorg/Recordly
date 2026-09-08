@@ -45,8 +45,13 @@ public enum VideoFormatPolicy {
         let primaries = extensions[kCMFormatDescriptionExtension_ColorPrimaries] as? String
         let transfer = extensions[kCMFormatDescriptionExtension_TransferFunction] as? String
         let matrix = extensions[kCMFormatDescriptionExtension_YCbCrMatrix] as? String
+        let supportsSRGB: Bool
+        // USB screen capture can use sRGB transfer with Rec.709 primaries/matrix.
+        // Asset-writer sRGB tagging is supported from macOS 15; preserve its actual tag.
+        if #available(macOS 15, *) { supportsSRGB = transfer == kCMFormatDescriptionTransferFunction_sRGB as String }
+        else { supportsSRGB = false }
         guard primaries == kCMFormatDescriptionColorPrimaries_ITU_R_709_2 as String,
-              transfer == kCMFormatDescriptionTransferFunction_ITU_R_709_2 as String,
+              transfer == kCMFormatDescriptionTransferFunction_ITU_R_709_2 as String || supportsSRGB,
               matrix == kCMFormatDescriptionYCbCrMatrix_ITU_R_709_2 as String else { throw CaptureFailure("UNSUPPORTED_FORMAT") }
         let subtype = CMFormatDescriptionGetMediaSubType(description)
         let raw = CMSampleBufferGetImageBuffer(sample) != nil
