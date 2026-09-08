@@ -6,8 +6,9 @@ public struct DeviceFacts {
     public init(modelID: String, hasMuxed: Bool, hasVideo: Bool) { self.modelID = modelID; self.hasMuxed = hasMuxed; self.hasVideo = hasVideo }
 }
 public enum DeviceClassifier {
-    // Candidate signature from the specification. Hardware validation remains a release gate.
-    public static func isEligible(_ facts: DeviceFacts) -> Bool { facts.modelID == "iOS Device" && facts.hasMuxed && facts.hasVideo }
+    // USB screen sources advertise muxed media without necessarily advertising standalone video.
+    // Preparation validates actual video samples before the device can become ready.
+    public static func isEligible(_ facts: DeviceFacts) -> Bool { facts.modelID == "iOS Device" && facts.hasMuxed }
 }
 public struct TokenInventory {
     private var tokens: [String: String] = [:]

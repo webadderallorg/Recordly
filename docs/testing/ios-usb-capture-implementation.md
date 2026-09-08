@@ -9,10 +9,10 @@ This record separates implemented software behavior from physical and release pr
 | Task | Implemented software | Remaining evidence |
 | --- | --- | --- |
 | 01 | Baseline results and evidence templates recorded; final broad software gates passed. | None for the software baseline. |
-| 02 | Public-API probe foundations were incorporated into the tested helper policies. | Entire physical probe: real source identity, formats, TCC behavior, color, rotation, unplug, sparse delivery and signed installed app. |
+| 02 | Public-API probe foundations were incorporated into the tested helper policies; a USB iPhone discovery probe confirmed the muxed-only screen signature below. | First samples, formats, TCC behavior, color, rotation, unplug, sparse delivery and signed installed app. |
 | 03 | Versioned shared source, snapshot, protocol, native-time, metadata and error-code validators. Mobile and desktop types narrow at dispatch boundaries. | Hardware-derived support policy remains unverified. |
 | 04 | macOS 14 Swift package, bounded NDJSON loop, permission-free self-test, embedded privacy metadata, development/packaged resolution and dual-architecture staging. | Runtime/signing proof for each advertised architecture. |
-| 05 | Checked CMIO opt-in, positive fixture-based classifier, opaque tokens, coalesced discovery/reconciliation, native microphones and permission policy. | Real device classification, signed TCC and repeated physical selection. |
+| 05 | Checked CMIO opt-in, classifier with a physical muxed-only discovery regression, opaque tokens, coalesced discovery/reconciliation, native microphones and permission policy. | Broader physical device classification, signed TCC and repeated physical selection. |
 | 06 | Baseline H.264 passthrough, supported Rec.709 8-bit 4:2:0 encode, odd-size padding, fragmented MOV, format/boundary checks and AVURLAsset inspection. | Physical sample formats, color, overload and sparse/static capture. |
 | 07 | Host-clock rational timing, signed PCM sidecars, represented gaps and atomic native timing checkpoints. | Physical clock mapping and 30-minute device/narration sync. |
 | 08 | Bounded JPEG/RLIP preview parser and nonblocking latest-frame delivery, with orientation/aperture handling. | Sustained physical preview-stall and resource measurements. |
@@ -31,7 +31,7 @@ This record separates implemented software behavior from physical and release pr
 
 | Check | Result | Scope and limit |
 | --- | --- | --- |
-| Native XCTest | Pass: 30 tests, zero failures | Synthetic AVFoundation/CoreMedia media; no device or TCC prompt. |
+| Native XCTest | Pass: 31 tests, zero failures | Synthetic AVFoundation/CoreMedia media and discovery metadata fixtures; no device or TCC prompt in the suite. |
 | Native helper build | Pass: arm64 and x86_64 staged, macOS 14 target, embedded plist | Cross-build is not Intel runtime or signing evidence. |
 | Helper CLI smoke | Pass | Self-test, duplicate request replay, synthetic inspection and EOF finalization. |
 | Full JavaScript/TypeScript tests | Pass: 145 files, 1,208 tests; one explicit opt-in native suite skipped | The skipped native integration test was run separately and passed. |
@@ -45,6 +45,16 @@ This record separates implemented software behavior from physical and release pr
 The positive synthetic variants are portrait, landscape, odd dimension, delayed microphone, negative offset, internal gap represented as encoded silence, and silent/static. Negative cases verify rejection of wrong rotation, 250 ms displaced audio, missing audio, a two-second truncation and a byte-truncated MOV. Video preservation is compared by hashing demuxed compressed packet payloads rather than whole MOV containers.
 
 The native suite also proves a synthetic 300-second static baseline passthrough and raw single-frame timeline. This is container timing evidence, not a physical five-minute phone test. `observedFrameRate` remains `null`; no estimator or frame-rate guarantee is claimed.
+
+## USB discovery correction — 8 September 2026
+
+On macOS 26.2 (25C5048a), arm64, an unlocked and trusted iPhone connected by USB was missing from the development test app built from `3dd5bd26215860ab781b6ff814adf1b8635bebbb`. The user confirmed the cable, unlock and trust state; the USB registry independently confirmed an iPhone was present. Cable/hub topology and the phone OS version were not recorded.
+
+A noncapturing AVFoundation probe enabled the public CMIO screen-device discovery property successfully. Both modern and legacy muxed discovery returned a connected external source with `modelID: "iOS Device"`, `hasMuxed: true`, `hasVideo: false`, and `hasAudio: false` after approximately two seconds. A separate iPhone camera source advertised `modelID: "iPhone18,1"`, video and no muxed media. No device names, serials or native identifiers were retained in this evidence.
+
+The original classifier rejected the screen source because it required a standalone video media type. The corrected rule requires the exact `iOS Device` model plus muxed media. Preparation still requires actual video samples before readiness; audio availability remains unknown until samples establish it. The observed camera source and generic muxed webcams remain excluded.
+
+The new regression failed against the original classifier, then passed with all 31 native tests after the fix. Both helper architectures were rebuilt. The corrected arm64 helper's real `discover` command returned one device with unknown audio availability and no errors, without preparation or recording. Development logs are `/private/tmp/recordly-discovery-red.log`, `/private/tmp/recordly-discovery-native-tests.log`, and `/private/tmp/recordly-discovery-helper-build.log`; the sanitized discovery result is `/private/tmp/recordly-discovery-fixed-check.json`, and the noncapturing probe source is `/private/tmp/recordly-discovery-probe.swift`. This is partial G1/A01 discovery evidence only: no recording, first frame, audio, duplicate-label/removal test or permission prompt was exercised.
 
 ## Review findings resolved
 
@@ -103,4 +113,4 @@ Release distribution verification additionally requires the repository's signing
 
 ## Release boundary
 
-G1 API/permissions, G2 physical media fidelity, G3 physical long-duration audio and G4 reliability/distribution are all **Not tested**. Do not enable the packaged feature, advertise iPhone/iPad or Intel support, or add a README product claim from the software results above. Physical results belong in [the acceptance matrix](ios-usb-capture-matrix.md), with exact build, OS, generic device family, cable/setup and artifact location.
+G1 API/permissions has **Partial** discovery evidence only; G2 physical media fidelity, G3 physical long-duration audio and G4 reliability/distribution remain **Not tested**. No release gate has passed. Keep the release feature disabled; the user-requested isolated development test build is not a release. Do not advertise iPhone/iPad or Intel support or add a README product claim from these results. Physical results belong in [the acceptance matrix](ios-usb-capture-matrix.md), with exact build, OS, generic device family, cable/setup and artifact location.

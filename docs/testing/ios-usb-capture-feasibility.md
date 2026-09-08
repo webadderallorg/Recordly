@@ -26,20 +26,21 @@ packaged application builds are separate checks.
 
 | Gate | Status | Required evidence |
 | --- | --- | --- |
-| G1 API and permissions | Not tested | Physical screen-source identity, first samples, and signed installed-app permission identity. |
+| G1 API and permissions | Partial | One USB iPhone's muxed-only discovery signature observed; first samples and signed installed-app permission identity remain untested. |
 | G2 media fidelity | Not tested | Physical formats, colour, sparse timing and editor/export comparison. |
 | G3 audio | Not tested | Real clock mapping and 30-minute device/narration sync within 80 ms. |
 | G4 reliability and distribution | Not tested | Physical interruption tests and clean signed installed-app matrix. |
 
 Software fixtures do not certify these gates. The feature must remain default-off.
 No physical device, signing team or installed release has been certified by this
-record. The initial `iOS Device` signature is the supplied compatibility policy,
-not a new observed hardware result.
+record. The USB discovery probe recorded in [implementation evidence](ios-usb-capture-implementation.md)
+observed the `iOS Device` signature without a standalone video media type. This
+corrects the initial classifier policy but does not certify capture or permissions.
 
 ## Implemented software evidence — 8 September 2026
 
 The native helper and disabled-by-default application integration are now present.
-The latest native run passed 30 XCTest tests and built both arm64 and x86_64 helper
+The latest native run passed 31 XCTest tests and built both arm64 and x86_64 helper
 artifacts with a macOS 14 deployment target and embedded privacy metadata. Cross-build
 results do not establish Intel runtime or installed permission behavior.
 
@@ -54,8 +55,8 @@ Apple Development identity. Notarization was skipped because release credentials
 were unavailable. That build preceded final review edits. Packaged smoke then found
 an x64 `otool` output-unit parsing defect; the parser and regression test were fixed.
 A final-source arm64 preview bundle was rebuilt with an ad-hoc signature, and packaged
-smoke passed for that bundle and both helper slices. None of this changes G1–G4 from
-**Not tested**.
+smoke passed for that bundle and both helper slices. Packaging does not satisfy any
+release gate; G1 has partial discovery evidence and G2–G4 remain **Not tested**.
 
 Synthetic media evidence includes seven passing positive variants and five expected
 negative cases. Packet preservation is checked after demuxing rather than by hashing

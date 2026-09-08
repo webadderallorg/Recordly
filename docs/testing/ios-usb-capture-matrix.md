@@ -6,7 +6,7 @@ location when running it. Exclude serials, raw device IDs and personal device na
 
 | ID | Acceptance case | Status | Evidence |
 | --- | --- | --- | --- |
-| A01 | Positive discovery, duplicate labels, removal | Not tested | Physical devices required |
+| A01 | Positive discovery, duplicate labels, removal | Partial | One trusted USB iPhone's muxed-only screen signature observed on the development host; duplicates and removal untested. See implementation evidence. |
 | A02 | Installed permission allow/deny/relaunch, no desktop permission prerequisite | Not tested | Signed installation required |
 | A03 | Readiness and start cancellation | Not tested | Physical no-sample/start test required |
 | A04 | Delivered geometry/aperture/orientation | Not tested | Physical source required |
@@ -40,7 +40,7 @@ Software-only evidence does not change any physical row above:
 
 | Evidence set | Status | Result |
 | --- | --- | --- |
-| Native XCTest | Pass | 30 synthetic tests, zero failures |
+| Native XCTest | Pass | 31 native tests, zero failures; includes the observed muxed-only discovery metadata regression |
 | Native helper cross-build | Pass | arm64 and x86_64 staged for macOS 14; no Intel runtime claim |
 | Integrated JS/TS checks | Pass | 145 files, 1,208 tests; one opt-in native suite skipped and passed separately |
 | Native finalization integration | Pass | One synthetic native-inspector → finalizer → manifest → verifier test |
@@ -50,5 +50,6 @@ Software-only evidence does not change any physical row above:
 | Packaged smoke | Pass | Final-source host bundle and both helper slices checked; x64 `otool` byte parsing fixed with a regression test |
 
 See [feasibility and baseline](ios-usb-capture-feasibility.md) and
-[implementation evidence](ios-usb-capture-implementation.md). All G1–G4 physical and
-installed-release gates remain **Not tested**. No software fixture is a substitute.
+[implementation evidence](ios-usb-capture-implementation.md). G1 has **Partial**
+discovery evidence; G2–G4 remain **Not tested**. No release gate has passed, and no
+software fixture is a substitute for the remaining physical and installed-app tests.
