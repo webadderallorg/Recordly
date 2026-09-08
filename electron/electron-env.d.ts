@@ -197,6 +197,7 @@ interface RendererNativeExportCapabilities {
 
 interface Window {
 	electronAPI: {
+		iosCapture: import("../src/shared/iosCaptureAPI").IOSCaptureAPI;
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
 		hudOverlaySetSourceSelectionActive: (active: boolean) => void;
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;
@@ -216,11 +217,11 @@ interface Window {
 		getSources: (opts: Electron.SourcesOptions) => Promise<ProcessedDesktopSource[]>;
 		switchToEditor: () => Promise<void>;
 		openSourceSelector: () => Promise<void>;
-		selectSource: (source: ProcessedDesktopSource) => Promise<ProcessedDesktopSource>;
+		selectSource: (source: SelectedCaptureSource) => Promise<SelectedCaptureSource>;
 		showSourceHighlight: (source: ProcessedDesktopSource) => Promise<{ success: boolean }>;
-		getSelectedSource: () => Promise<ProcessedDesktopSource | null>;
+		getSelectedSource: () => Promise<SelectedCaptureSource | null>;
 		onSelectedSourceChanged: (
-			callback: (source: ProcessedDesktopSource | null) => void,
+			callback: (source: SelectedCaptureSource | null) => void,
 		) => () => void;
 		startNativeScreenRecording: (
 			source: ProcessedDesktopSource,
@@ -708,6 +709,7 @@ interface Window {
 		) => Promise<{ success: boolean; webcamPath: string | null }>;
 		setCurrentRecordingSession: (
 			session: {
+				captureMetadata?: import("../src/shared/iosCapture").CaptureMetadata;
 				videoPath: string;
 				webcamPath?: string | null;
 				timeOffsetMs?: number;
@@ -718,6 +720,7 @@ interface Window {
 		getCurrentRecordingSession: () => Promise<{
 			success: boolean;
 			session?: {
+				captureMetadata?: import("../src/shared/iosCapture").CaptureMetadata;
 				videoPath: string;
 				webcamPath?: string | null;
 				timeOffsetMs?: number;
@@ -906,6 +909,9 @@ interface Window {
 		onCountdownTick: (callback: (seconds: number) => void) => () => void;
 	};
 }
+
+type SelectedCaptureSource =
+	import("../src/shared/iosCapture").CaptureSource<ProcessedDesktopSource>;
 
 interface ProcessedDesktopSource {
 	id: string;

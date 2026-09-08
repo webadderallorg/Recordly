@@ -12,6 +12,7 @@
 		"url": "https://github.com/webadderallorg/Recordly/issues"
 	},
 	"private": true,
+	"recordlyNativeIOSHelper": true,
 	"version": "1.4.0",
 	"type": "module",
 	"scripts": {
@@ -25,6 +26,9 @@
 		"preview": "vite preview --config vite.config.ts",
 		"rebuild:native": "node ./node_modules/@electron/rebuild/lib/cli.js --force --only uiohook-napi",
 		"build:native-helpers": "node scripts/build-native-helpers.mjs",
+		"build:ios-helper": "node scripts/build-ios-device-helper.mjs",
+		"test:ios-native": "node scripts/test-ios-device-helper.mjs",
+		"verify:ios-capture-fixture": "node scripts/verify-ios-capture-fixture.mjs",
 		"build:whisper-runtime": "node scripts/build-whisper-runtime.mjs",
 		"build:platform-native-helpers": "npm run build:whisper-runtime && npm run build:native-helpers && npm run build:windows-capture && npm run build:windows-gpu-export && npm run build:nvidia-cuda-compositor && npm run build:cursor-monitor",
 		"build:windows-gpu-export": "node scripts/build-windows-gpu-export.mjs",

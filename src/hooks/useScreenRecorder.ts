@@ -9,6 +9,27 @@ import {
 	selectWebcamRecordingMimeType,
 } from "./recordingMimeType";
 
+import { isIOSDeviceSource } from "@/shared/iosCapture";
+import { useIOSDeviceRecorder, startIOSRecordingAfterCountdown } from "./useIOSDeviceRecorder";
+
+export async function routeRecorderStart(
+	source: unknown,
+	ios: () => Promise<void>,
+	desktop: () => Promise<void>,
+) {
+	if (
+		isIOSDeviceSource(source) ||
+		(source &&
+			typeof source === "object" &&
+			"sourceType" in source &&
+			source.sourceType === "ios-device")
+	) {
+		await ios();
+		return;
+	}
+	await desktop();
+}
+
 const TARGET_FRAME_RATE = 60;
 const TARGET_WIDTH = 3840;
 const TARGET_HEIGHT = 2160;
@@ -124,31 +145,6 @@ const LINUX_PORTAL_SOURCE: ProcessedDesktopSource = {
 type DesktopCaptureMediaDevices = {
 	getUserMedia: (constraints: unknown) => Promise<MediaStream>;
 	getDisplayMedia: (constraints: unknown) => Promise<MediaStream>;
-};
-
-type UseScreenRecorderReturn = {
-	recording: boolean;
-	paused: boolean;
-	finalizing: boolean;
-	countdownActive: boolean;
-	toggleRecording: () => void;
-	pauseRecording: () => void;
-	resumeRecording: () => void;
-	cancelRecording: () => void;
-	preparePermissions: (options?: { startup?: boolean }) => Promise<boolean>;
-	isMacOS: boolean;
-	microphoneEnabled: boolean;
-	setMicrophoneEnabled: (enabled: boolean) => void;
-	microphoneDeviceId: string | undefined;
-	setMicrophoneDeviceId: (deviceId: string | undefined) => void;
-	systemAudioEnabled: boolean;
-	setSystemAudioEnabled: (enabled: boolean) => void;
-	webcamEnabled: boolean;
-	setWebcamEnabled: (enabled: boolean) => void;
-	webcamDeviceId: string | undefined;
-	setWebcamDeviceId: (deviceId: string | undefined) => void;
-	countdownDelay: number;
-	setCountdownDelay: (delay: number) => void;
 };
 
 function getErrorMessage(error: unknown) {
@@ -373,7 +369,29 @@ async function createAudioInputDeviceSnapshot(): Promise<
 	return audioInputs.length > 0 ? audioInputs : null;
 }
 
-export function useScreenRecorder(): UseScreenRecorderReturn {
+export function useScreenRecorder() {
+	const ios = useIOSDeviceRecorder();
+	const iosRef = useRef(ios);
+	iosRef.current = ios;
+	const [iosSelected, setIOSSelected] = useState(false);
+	const [sourceSelectionLoaded, setSourceSelectionLoaded] = useState(false);
+	useEffect(() => {
+		let live = true;
+		const sync = (source: unknown) => {
+			if (live) {
+				setIOSSelected(isIOSDeviceSource(source));
+				setSourceSelectionLoaded(true);
+				recordingStartGeneration.current += 1;
+			}
+		};
+		void window.electronAPI.getSelectedSource().then(sync);
+		const off = window.electronAPI.onSelectedSourceChanged?.(sync);
+		return () => {
+			live = false;
+			off?.();
+		};
+	}, []);
+	const mobile = iosSelected || !!ios.snapshot.source;
 	const [recording, setRecording] = useState(false);
 	const [paused, setPaused] = useState(false);
 	const [starting, setStarting] = useState(false);
@@ -547,6 +565,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, []);
 
 	const preparePermissions = useCallback(async (options: { startup?: boolean } = {}) => {
+		if (options.startup) return true;
+		if (isIOSDeviceSource(await window.electronAPI.getSelectedSource())) return true;
 		const platform = await window.electronAPI.getPlatform();
 		if (platform !== "darwin") {
 			return true;
@@ -1131,6 +1151,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		const existingSource = await window.electronAPI.getSelectedSource();
 		const selectedSource =
 			existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
+		if (isIOSDeviceSource(selectedSource)) throw new Error("INVALID_REQUEST");
 		if (!selectedSource) {
 			alert("Please select a source to record");
 			return null;
@@ -1264,6 +1285,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, []);
 
 	const stopRecording = useRef(() => {
+		if (iosRef.current.snapshot.source) {
+			void iosRef.current.stop().catch(() => undefined);
+			return;
+		}
 		recordingStartGeneration.current += 1;
 		setPaused(false);
 		if (nativeScreenRecording.current && nativeWarmStartActive.current) {
@@ -1583,6 +1608,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		const removeRecordingInterruptedListener = window.electronAPI?.onRecordingInterrupted?.(
 			(state) => {
+				if (iosRef.current.snapshot.source) return;
 				void (async () => {
 					recordingStartGeneration.current += 1;
 					setRecording(false);
@@ -1658,7 +1684,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		};
 	}, [cleanupCapturedMedia, discardActiveNativeCapture, recoverNativeRecordingSession]);
 
-	const startRecording = async () => {
+	const startDesktopRecording = async () => {
 		if (startInFlight.current) {
 			return;
 		}
@@ -2280,6 +2306,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	};
 
 	const pauseRecording = useCallback(() => {
+		if (iosRef.current.snapshot.source) throw new Error("UNSUPPORTED_OPERATION");
 		if (!recording || paused) return;
 		if (nativeScreenRecording.current) {
 			void (async () => {
@@ -2326,6 +2353,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, [markRecordingPaused, pauseMicFallbackRecorder, paused, recording]);
 
 	const resumeRecording = useCallback(() => {
+		if (iosRef.current.snapshot.source) throw new Error("UNSUPPORTED_OPERATION");
 		if (!recording || !paused) return;
 		if (nativeScreenRecording.current) {
 			void (async () => {
@@ -2372,6 +2400,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, [markRecordingResumed, paused, recording, resumeMicFallbackRecorder]);
 
 	const cancelRecording = useCallback(() => {
+		if (iosRef.current.snapshot.source) {
+			recordingStartGeneration.current += 1;
+			if (iosRef.current.snapshot.phase !== "ready")
+				void iosRef.current
+					.cancel(iosRef.current.snapshot.acceptedVideoSamples > 0)
+					.catch(() => undefined);
+			return;
+		}
 		recordingStartGeneration.current += 1;
 		if (!recording) return;
 		setPaused(false);
@@ -2411,6 +2447,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, [cleanupCapturedMedia, discardActiveNativeCapture, markRecordingResumed, recording]);
 
 	const toggleRecording = async () => {
+		if (
+			iosRef.current.snapshot.phase === "starting" ||
+			iosRef.current.snapshot.phase === "recording"
+		) {
+			await iosRef.current.stop();
+			return;
+		}
+
 		if (starting || countdownActive || finalizing) {
 			return;
 		}
@@ -2420,13 +2464,41 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			return;
 		}
 
-		startRecording();
+		const source = await window.electronAPI.getSelectedSource();
+		await routeRecorderStart(
+			source,
+			async () => {
+				if (startInFlight.current) return;
+				startInFlight.current = true;
+				const generation = ++recordingStartGeneration.current;
+				try {
+					if (iosRef.current.snapshot.phase !== "ready") return;
+					const expectedSessionId = iosRef.current.snapshot.sessionId;
+					await startIOSRecordingAfterCountdown({
+						delay: countdownDelay,
+						countdown: (seconds) => window.electronAPI.startCountdown(seconds),
+						start: () => iosRef.current.startPrepared(expectedSessionId),
+						isCancelled: () => generation !== recordingStartGeneration.current,
+						setActive: setCountdownActive,
+					});
+				} finally {
+					startInFlight.current = false;
+					setCountdownActive(false);
+				}
+			},
+			startDesktopRecording,
+		).catch((error) => {
+			toast.error(getErrorMessage(error));
+		});
 	};
 
 	return {
-		recording,
-		paused,
-		finalizing,
+		ios,
+		mobile,
+		sourceSelectionLoaded,
+		recording: mobile ? ios.snapshot.phase === "recording" : recording,
+		paused: mobile ? false : paused,
+		finalizing: mobile ? ["stopping", "finalising"].includes(ios.snapshot.phase) : finalizing,
 		countdownActive,
 		toggleRecording,
 		pauseRecording,

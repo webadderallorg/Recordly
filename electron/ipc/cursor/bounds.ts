@@ -172,7 +172,7 @@ export function stopWindowBoundsCapture() {
 }
 
 async function refreshSelectedWindowBounds() {
-	if (!selectedSource?.id?.startsWith("window:")) {
+	if (!selectedSource?.id?.startsWith("window:") || selectedSource.sourceType === "ios-device") {
 		setSelectedWindowBounds(null);
 		return;
 	}

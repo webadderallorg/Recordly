@@ -1,3 +1,4 @@
+import { isIOSDeviceSource, type IOSDeviceSource } from "@/shared/iosCapture";
 export interface DesktopSource {
 	id: string;
 	name: string;
@@ -24,6 +25,8 @@ export function isWindowSource(s: DesktopSource): boolean {
 }
 
 export function mapRawSource(s: DesktopSource): DesktopSource {
+	if ((s as { sourceType?: string }).sourceType === "ios-device")
+		throw new Error("INVALID_REQUEST");
 	const isWindow = isWindowSource(s);
 	const type = s.sourceType ?? (isWindow ? "window" : "screen");
 	let displayName = s.name;
@@ -50,4 +53,8 @@ export function mapRawSource(s: DesktopSource): DesktopSource {
 export interface DeviceOption {
 	deviceId: string;
 	label: string;
+}
+
+export function mapCaptureSource(source: DesktopSource | IOSDeviceSource) {
+	return isIOSDeviceSource(source) ? source : mapRawSource(source);
 }

@@ -907,3 +907,40 @@ describe("useScreenRecorder state machine", () => {
 		});
 	});
 });
+
+// The same router used by the production hook owns the entire desktop start boundary.
+import { routeRecorderStart } from "./useScreenRecorder";
+function createRecorderRoutingHarness(sourceKind: "ios-device" | "screen") {
+	const source =
+		sourceKind === "ios-device"
+			? {
+					sourceType: sourceKind,
+					id: "ios-device:p",
+					deviceToken: "p",
+					displayName: "Phone",
+					generation: 1,
+					deviceAudio: "unknown",
+				}
+			: { sourceType: sourceKind, id: "screen:1" };
+	const ios = { start: vi.fn().mockResolvedValue(undefined) };
+	const desktop = { start: vi.fn().mockResolvedValue(undefined) };
+	return {
+		ios,
+		desktop,
+		pressRecord: () => routeRecorderStart(source, ios.start, desktop.start),
+	};
+}
+describe("production recorder source routing", () => {
+	it("has no desktop fallback for a failed device source", async () => {
+		const h = createRecorderRoutingHarness("ios-device");
+		h.ios.start.mockRejectedValue(new Error("DEVICE_NOT_FOUND"));
+		await expect(h.pressRecord()).rejects.toThrow("DEVICE_NOT_FOUND");
+		expect(h.desktop.start).not.toHaveBeenCalled();
+	});
+	it("keeps desktop recording on its existing start and permission path", async () => {
+		const h = createRecorderRoutingHarness("screen");
+		await h.pressRecord();
+		expect(h.desktop.start).toHaveBeenCalledTimes(1);
+		expect(h.ios.start).not.toHaveBeenCalled();
+	});
+});

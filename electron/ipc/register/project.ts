@@ -1,3 +1,4 @@
+import { parseCaptureMetadata, type CaptureMetadata } from "../../../src/shared/iosCapture";
 import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
@@ -650,7 +651,11 @@ export function registerProjectHandlers() {
 				resolvedSession.webcamPath,
 			]);
 
-			if (nextSession.webcamPath) {
+			if (
+				nextSession.webcamPath ||
+				nextSession.captureMetadata ||
+				nextSession.hideOverlayCursorByDefault
+			) {
 				await persistRecordingSessionManifest(nextSession);
 			}
 
@@ -673,6 +678,7 @@ export function registerProjectHandlers() {
 		async (
 			_,
 			session: {
+				captureMetadata?: CaptureMetadata;
 				videoPath: string;
 				webcamPath?: string | null;
 				timeOffsetMs?: number;
@@ -688,6 +694,13 @@ export function registerProjectHandlers() {
 				webcamPath: normalizeVideoSourcePath(session.webcamPath ?? null),
 				timeOffsetMs: normalizeRecordingTimeOffsetMs(session.timeOffsetMs),
 				hideOverlayCursorByDefault: normalizeBoolean(session.hideOverlayCursorByDefault),
+				captureMetadata: (() => {
+					try {
+						return parseCaptureMetadata(session.captureMetadata);
+					} catch {
+						return undefined;
+					}
+				})(),
 			});
 			await rememberApprovedLocalReadPath(currentRecordingSession!.videoPath);
 			await rememberApprovedLocalReadPath(currentRecordingSession!.webcamPath);

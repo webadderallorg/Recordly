@@ -1,3 +1,4 @@
+import { IOSRecoveryPanel } from "../ios/IOSRecoveryPanel";
 import {
 	EyeIcon,
 	EyeSlashIcon,
@@ -75,6 +76,12 @@ export function MorePopover({
 			trigger={trigger}
 			align="end"
 		>
+			<details className="px-3 py-2 text-sm">
+				<summary className="cursor-pointer focus-visible:outline">
+					{t("ios.recovery.title")}
+				</summary>
+				{open && <IOSRecoveryPanel showEmpty />}
+			</details>
 			{supportsHudCaptureProtection && (
 				<DropdownItem
 					icon={hideHudFromCapture ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}

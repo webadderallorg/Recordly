@@ -4,6 +4,10 @@ import os from "node:os";
 import path from "node:path";
 
 const projectRoot = process.cwd();
+const iosBuild = spawnSync(process.execPath, ["scripts/build-ios-device-helper.mjs"], {
+	stdio: "inherit",
+});
+if (iosBuild.status !== 0) throw new Error("iOS device helper build failed");
 const nativeRoot = path.join(projectRoot, "electron", "native");
 const moduleCacheRoot = path.join(os.tmpdir(), "recordly-swift-module-cache");
 

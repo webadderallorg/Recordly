@@ -1,3 +1,4 @@
+import { parseCaptureMetadata, type CaptureMetadata } from "@/shared/iosCapture";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OPEN_EDITOR_SECTION_EVENT } from "@/lib/announcementActions";
 import { type AnnouncementEditorSection, isAnnouncementEditorSection } from "@/lib/announcements";
@@ -8,6 +9,7 @@ import type { CropRegion, EditorEffectSection } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 
 type SessionPresentation = {
+	captureMetadata?: CaptureMetadata;
 	hideOverlayCursorByDefault?: boolean;
 	nativeCaptureUnavailable?: boolean;
 };
@@ -89,7 +91,16 @@ export function useEditorUiState(
 
 	const applySessionPresentation = useCallback(
 		(session: SessionPresentation | null | undefined) => {
-			setSessionShowCursorOverride(session?.hideOverlayCursorByDefault ? false : null);
+			let mobile = false;
+			try {
+				mobile = Boolean(parseCaptureMetadata(session?.captureMetadata));
+			} catch {
+				/* Missing optional evidence must not acquire inferred values. */
+			}
+			if (mobile) setAspectRatio("native");
+			setSessionShowCursorOverride(
+				!mobile && session?.hideOverlayCursorByDefault ? false : null,
+			);
 			setSessionNativeCaptureUnavailable(Boolean(session?.nativeCaptureUnavailable));
 			setNativeCaptureUnavailableModalOpen(Boolean(session?.nativeCaptureUnavailable));
 		},

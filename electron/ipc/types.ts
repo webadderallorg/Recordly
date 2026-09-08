@@ -1,3 +1,4 @@
+import type { CaptureMetadata } from "../../src/shared/iosCapture";
 export type SelectedSource = {
 	id?: string;
 	name: string;
@@ -7,6 +8,9 @@ export type SelectedSource = {
 	windowTitle?: string;
 	[key: string]: unknown;
 };
+
+export type SelectedCaptureSource =
+	import("../../src/shared/iosCapture").CaptureSource<SelectedSource>;
 
 export type NativeMacRecordingOptions = {
 	capturesSystemAudio?: boolean;
@@ -44,6 +48,7 @@ export type NativeCaptureDiagnostics = {
 };
 
 export type RecordingSessionData = {
+	captureMetadata?: CaptureMetadata;
 	videoPath: string;
 	webcamPath?: string | null;
 	timeOffsetMs?: number;
@@ -56,7 +61,9 @@ export type PauseSegment = {
 };
 
 export type RecordingSessionManifest = {
-	version: 1 | 2;
+	version: 1 | 2 | 3;
+	captureMetadata?: CaptureMetadata;
+	hideOverlayCursorByDefault?: boolean;
 	videoFileName: string;
 	webcamFileName?: string | null;
 	timeOffsetMs?: number;

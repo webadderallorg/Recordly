@@ -1,3 +1,5 @@
+import { IOSCaptureStatus } from "./ios/IOSCaptureStatus";
+import { getIOSCapturePresentation } from "@/lib/iosCapturePresentation";
 import {
 	ArrowClockwiseIcon,
 	CaretUpIcon,
@@ -58,6 +60,9 @@ function LaunchWindowContent() {
 	const { openId, requestClose, requestOpen } = useLaunchPopoverCoordinator();
 
 	const {
+		ios,
+		mobile,
+		sourceSelectionLoaded,
 		recording,
 		paused,
 		finalizing,
@@ -81,7 +86,7 @@ function LaunchWindowContent() {
 		preparePermissions,
 	} = useScreenRecorder();
 
-	const { elapsed, formatTime } = useRecordingTimer(recording, paused);
+	const { elapsed, formatTime } = useRecordingTimer(!mobile && recording, paused);
 	const hudContentRef = useRef<HTMLDivElement>(null);
 	const hudBarRef = useRef<HTMLDivElement>(null);
 
@@ -96,16 +101,17 @@ function LaunchWindowContent() {
 		refreshProjectLibrary,
 	} = useLaunchWindowActions();
 
-	const showWebcamControls = webcamEnabled && !recording;
+	const desktopControlsEnabled = sourceSelectionLoaded && !mobile;
+	const showWebcamControls = desktopControlsEnabled && webcamEnabled && !recording;
 	const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(
-		microphoneEnabled || openId === "mic",
+		desktopControlsEnabled && (microphoneEnabled || openId === "mic"),
 		microphoneDeviceId,
 	);
 	const {
 		devices: videoDevices,
 		selectedDeviceId: selectedVideoDeviceId,
 		setSelectedDeviceId: setSelectedVideoDeviceId,
-	} = useVideoDevices(webcamEnabled || openId === "webcam");
+	} = useVideoDevices(desktopControlsEnabled && (webcamEnabled || openId === "webcam"));
 
 	const {
 		hudOverlayMousePassthroughSupported,
@@ -146,7 +152,7 @@ function LaunchWindowContent() {
 		setWebcamPreviewNode,
 		setRecordingWebcamPreviewNode,
 	} = useWebcamPreviewOverlay({
-		webcamEnabled,
+		webcamEnabled: desktopControlsEnabled && webcamEnabled,
 		webcamDeviceId,
 		showWebcamControls,
 		webcamPopoverOpen: openId === "webcam",
@@ -207,7 +213,13 @@ function LaunchWindowContent() {
 		ease: [0.22, 1, 0.36, 1] as const,
 	};
 
-	const recordingControls = (
+	const recordingControls = mobile ? (
+		<IOSCaptureStatus
+			snapshot={ios.snapshot}
+			onStop={() => void ios.stop().catch(() => undefined)}
+			onCancel={cancelRecording}
+		/>
+	) : (
 		<RecordingControls
 			paused={paused}
 			microphoneEnabled={microphoneEnabled}
@@ -254,81 +266,86 @@ function LaunchWindowContent() {
 				</>
 			)}
 
-			<MicPopover
-				disabled={recording}
-				systemAudioEnabled={systemAudioEnabled}
-				onToggleSystemAudio={() => setSystemAudioEnabled(!systemAudioEnabled)}
-				microphoneEnabled={microphoneEnabled}
-				onDisableMicrophone={() => setMicrophoneEnabled(false)}
-				devices={devices}
-				microphoneDeviceId={microphoneDeviceId}
-				selectedDeviceId={selectedDeviceId}
-				onSelectDevice={(deviceId) => {
-					setMicrophoneEnabled(true);
-					setSelectedDeviceId(deviceId);
-					setMicrophoneDeviceId(deviceId === "default" ? undefined : deviceId);
-				}}
-				trigger={
-					<Button
-						variant="ghost"
-						size="icon"
-						iconSize="lg"
-						title={
-							microphoneEnabled
-								? t("recording.disableMicrophone")
-								: t("recording.enableMicrophone")
+			{!mobile && (
+				<>
+					<MicPopover
+						disabled={recording}
+						systemAudioEnabled={systemAudioEnabled}
+						onToggleSystemAudio={() => setSystemAudioEnabled(!systemAudioEnabled)}
+						microphoneEnabled={microphoneEnabled}
+						onDisableMicrophone={() => setMicrophoneEnabled(false)}
+						devices={devices}
+						microphoneDeviceId={microphoneDeviceId}
+						selectedDeviceId={selectedDeviceId}
+						onSelectDevice={(deviceId) => {
+							setMicrophoneEnabled(true);
+							setSelectedDeviceId(deviceId);
+							setMicrophoneDeviceId(deviceId === "default" ? undefined : deviceId);
+						}}
+						trigger={
+							<Button
+								variant="ghost"
+								size="icon"
+								iconSize="lg"
+								title={
+									microphoneEnabled
+										? t("recording.disableMicrophone")
+										: t("recording.enableMicrophone")
+								}
+								className={microphoneEnabled ? styles.ibActive : ""}
+							>
+								{microphoneEnabled ? (
+									<MicrophoneIcon size={18} />
+								) : (
+									<MicrophoneSlashIcon size={18} />
+								)}
+							</Button>
 						}
-						className={microphoneEnabled ? styles.ibActive : ""}
-					>
-						{microphoneEnabled ? (
-							<MicrophoneIcon size={18} />
-						) : (
-							<MicrophoneSlashIcon size={18} />
-						)}
-					</Button>
-				}
-			/>
+					/>
 
-			<WebcamPopover
-				disabled={recording}
-				webcamEnabled={webcamEnabled}
-				onDisableWebcam={() => setWebcamEnabled(false)}
-				canToggleFloatingPreview={canToggleFloatingWebcamPreview(
-					hudOverlayMousePassthroughSupported,
-				)}
-				showFloatingWebcamPreview={showFloatingWebcamPreview}
-				onToggleFloatingPreview={() => setShowFloatingWebcamPreview((current) => !current)}
-				showWebcamControls={showWebcamControls}
-				setWebcamPreviewNode={setWebcamPreviewNode}
-				videoDevices={videoDevices}
-				webcamDeviceId={webcamDeviceId}
-				selectedVideoDeviceId={selectedVideoDeviceId}
-				onSelectVideoDevice={(deviceId) => {
-					setWebcamEnabled(true);
-					setSelectedVideoDeviceId(deviceId);
-					setWebcamDeviceId(deviceId);
-				}}
-				trigger={
-					<Button
-						variant="ghost"
-						size="icon"
-						iconSize="lg"
-						title={
-							webcamEnabled
-								? t("recording.disableWebcam")
-								: t("recording.enableWebcam")
+					<WebcamPopover
+						disabled={recording}
+						webcamEnabled={webcamEnabled}
+						onDisableWebcam={() => setWebcamEnabled(false)}
+						canToggleFloatingPreview={canToggleFloatingWebcamPreview(
+							hudOverlayMousePassthroughSupported,
+						)}
+						showFloatingWebcamPreview={showFloatingWebcamPreview}
+						onToggleFloatingPreview={() =>
+							setShowFloatingWebcamPreview((current) => !current)
 						}
-						className={webcamEnabled ? styles.ibActive : ""}
-					>
-						{webcamEnabled ? (
-							<VideoCameraIcon size={18} />
-						) : (
-							<VideoCameraSlashIcon size={18} />
-						)}
-					</Button>
-				}
-			/>
-
+						showWebcamControls={showWebcamControls}
+						setWebcamPreviewNode={setWebcamPreviewNode}
+						videoDevices={videoDevices}
+						webcamDeviceId={webcamDeviceId}
+						selectedVideoDeviceId={selectedVideoDeviceId}
+						onSelectVideoDevice={(deviceId) => {
+							setWebcamEnabled(true);
+							setSelectedVideoDeviceId(deviceId);
+							setWebcamDeviceId(deviceId);
+						}}
+						trigger={
+							<Button
+								variant="ghost"
+								size="icon"
+								iconSize="lg"
+								title={
+									webcamEnabled
+										? t("recording.disableWebcam")
+										: t("recording.enableWebcam")
+								}
+								className={webcamEnabled ? styles.ibActive : ""}
+							>
+								{webcamEnabled ? (
+									<VideoCameraIcon size={18} />
+								) : (
+									<VideoCameraSlashIcon size={18} />
+								)}
+							</Button>
+						}
+					/>
+				</>
+			)}
 			<CountdownPopover
 				countdownDelay={countdownDelay}
 				onSelectDelay={setCountdownDelay}
@@ -356,12 +373,22 @@ function LaunchWindowContent() {
 								requestOpen("sources");
 							}
 				}
-				disabled={countdownActive}
+				disabled={
+					countdownActive ||
+					(mobile && !getIOSCapturePresentation(ios.snapshot).canRecord)
+				}
 				title={t("recording.record")}
 			>
 				<div className={styles.recDot} />
 			</button>
 
+			{mobile && (
+				<IOSCaptureStatus
+					snapshot={ios.snapshot}
+					onStop={() => void ios.stop().catch(() => undefined)}
+					onCancel={cancelRecording}
+				/>
+			)}
 			<Separator orientation="vertical" className="mx-[5px] h-6" />
 
 			<div className="relative w-0 h-0">
@@ -426,7 +453,13 @@ function LaunchWindowContent() {
 		</>
 	);
 
-	const finalizingControls = (
+	const finalizingControls = mobile ? (
+		<IOSCaptureStatus
+			snapshot={ios.snapshot}
+			onStop={() => void ios.stop().catch(() => undefined)}
+			onCancel={cancelRecording}
+		/>
+	) : (
 		<div className={styles.finalizingState}>
 			<ArrowClockwiseIcon size={15} className={styles.finalizingSpin} />
 			<div className={styles.finalizingCopy}>

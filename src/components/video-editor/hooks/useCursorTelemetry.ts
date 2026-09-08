@@ -8,6 +8,7 @@ import {
 } from "../videoPlayback/cursorLoopTelemetry";
 
 type UseCursorTelemetryInput = {
+	suppressCursorTelemetry?: boolean;
 	videoPath: string | null;
 	videoSourcePath: string | null;
 	duration: number;
@@ -18,6 +19,7 @@ type UseCursorTelemetryInput = {
 };
 
 export function useCursorTelemetry({
+	suppressCursorTelemetry = false,
 	videoPath,
 	videoSourcePath,
 	duration,
@@ -47,7 +49,7 @@ export function useCursorTelemetry({
 			}, 350);
 		};
 		async function load() {
-			if (!videoPath || !videoSourcePath) {
+			if (suppressCursorTelemetry || !videoPath || !videoSourcePath) {
 				if (mounted) {
 					setCursorTelemetry([]);
 					setCursorTelemetrySourcePath(null);
@@ -82,6 +84,7 @@ export function useCursorTelemetry({
 			}
 		};
 	}, [
+		suppressCursorTelemetry,
 		videoPath,
 		videoSourcePath,
 		setCursorTelemetry,

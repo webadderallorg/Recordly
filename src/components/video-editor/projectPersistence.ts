@@ -1,3 +1,4 @@
+import { parseCaptureMetadata, type CaptureMetadata } from "@/shared/iosCapture";
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import type {
 	ExportBackendPreference,
@@ -167,6 +168,7 @@ export interface ProjectEditorState {
 }
 
 export interface EditorProjectData {
+	captureMetadata?: CaptureMetadata;
 	version: number;
 	projectId?: string;
 	videoPath: string;
@@ -1140,11 +1142,23 @@ export function createProjectData(
 	videoPath: string,
 	editor: Partial<ProjectEditorState>,
 	projectId?: string | null,
+	captureMetadata?: unknown,
 ): EditorProjectData {
 	return {
 		version: PROJECT_VERSION,
+		...(normalizeProjectCaptureMetadata(captureMetadata)
+			? { captureMetadata: normalizeProjectCaptureMetadata(captureMetadata) }
+			: {}),
 		...(typeof projectId === "string" && projectId.trim().length > 0 ? { projectId } : {}),
 		videoPath,
 		editor,
 	};
+}
+
+export function normalizeProjectCaptureMetadata(value: unknown): CaptureMetadata | undefined {
+	try {
+		return parseCaptureMetadata(value);
+	} catch {
+		return undefined;
+	}
 }

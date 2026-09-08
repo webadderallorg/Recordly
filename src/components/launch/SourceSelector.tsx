@@ -1,3 +1,11 @@
+import {
+	isIOSDeviceSource,
+	type IOSDeviceSource,
+	type IOSRecordingOptions,
+} from "@/shared/iosCapture";
+import { useIOSDeviceRecorder, useIOSPreview } from "@/hooks/useIOSDeviceRecorder";
+import { IOSDevicePanel } from "./ios/IOSDevicePanel";
+import { IOSRecoveryPanel } from "./ios/IOSRecoveryPanel";
 import { AppWindowIcon, CaretUpIcon, MonitorIcon } from "@phosphor-icons/react";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,7 +34,7 @@ interface SourceSelectorProps {
 	/** Loading state */
 	loading?: boolean;
 	/** Callback when a source is selected */
-	onSourceSelect?: (source: DesktopSource) => void;
+	onSourceSelect?: (source: DesktopSource | IOSDeviceSource) => void;
 	/** Callback to fetch sources */
 	onFetchSources?: () => Promise<void>;
 	/** Whether the popover is open */
@@ -169,6 +177,47 @@ export const SourceSelector = React.memo(function SourceSelector({
 	onOpenChange: propsOnOpenChange,
 	children,
 }: SourceSelectorProps) {
+	const t = useScopedT("launch");
+	const ios = useIOSDeviceRecorder();
+	const [capabilitiesLoaded, setCapabilitiesLoaded] = useState(false);
+	const [category, setCategory] = useState<"desktop" | "ios">("ios");
+	const [deviceError, setDeviceError] = useState(false);
+	const [deviceOptions, setDeviceOptions] = useState<IOSRecordingOptions>(() => {
+		try {
+			return {
+				deviceAudio: localStorage.getItem("recordly.iosCapture.deviceAudio") !== "false",
+				microphoneToken: null,
+			};
+		} catch {
+			return { deviceAudio: true, microphoneToken: null };
+		}
+	});
+	useEffect(() => {
+		let live = true;
+		const api = window.electronAPI?.iosCapture;
+		if (!api) {
+			setCapabilitiesLoaded(true);
+			setCategory("desktop");
+			return;
+		}
+		void api
+			.getCapabilities()
+			.then((result) => {
+				if (live) {
+					if (!result.enabled) setCategory("desktop");
+					setCapabilitiesLoaded(true);
+				}
+			})
+			.catch(() => {
+				if (live) {
+					setCategory("desktop");
+					setCapabilitiesLoaded(true);
+				}
+			});
+		return () => {
+			live = false;
+		};
+	}, []);
 	// Internal state for standalone/uncontrolled use
 	const [internalOpen, setInternalOpen] = useState(false);
 	const [internalSources, setInternalSources] = useState<DesktopSource[]>([]);
@@ -179,6 +228,19 @@ export const SourceSelector = React.memo(function SourceSelector({
 	const isAutonomous = propsOpen === undefined;
 	const open = propsOpen ?? internalOpen;
 	const onOpenChange = propsOnOpenChange ?? setInternalOpen;
+	const deviceVisible = open && ios.enabled && category === "ios";
+	const previewUrl = useIOSPreview(ios.snapshot, deviceVisible && !!ios.snapshot.source);
+	useEffect(() => {
+		const api = window.electronAPI?.iosCapture;
+		if (!api || !deviceVisible) return;
+		void api
+			.setDiscoveryActive(true)
+			.then(() => api.discover())
+			.catch(() => setDeviceError(true));
+		return () => {
+			void api.setDiscoveryActive(false).catch(() => undefined);
+		};
+	}, [deviceVisible]);
 	const loading = propsLoading ?? internalLoading;
 	const selectedSource = propsSelectedSource ?? internalSelectedSource;
 
@@ -204,20 +266,24 @@ export const SourceSelector = React.memo(function SourceSelector({
 
 	// Default selection logic
 	const onSourceSelect = useCallback(
-		async (source: DesktopSource) => {
+		async (source: DesktopSource | IOSDeviceSource) => {
 			if (propsOnSourceSelect) {
-				propsOnSourceSelect(source);
+				await propsOnSourceSelect(source);
 				return;
 			}
 			if (!window.electronAPI) return;
 			try {
 				const result = await window.electronAPI.selectSource(source);
 				if (result) {
-					setInternalSelectedSource(source.name);
-					await window.electronAPI.showSourceHighlight?.(source);
+					setInternalSelectedSource(
+						isIOSDeviceSource(source) ? source.displayName : source.name,
+					);
+					if (!isIOSDeviceSource(source))
+						await window.electronAPI.showSourceHighlight?.(source);
 				}
 			} catch (error) {
 				console.error("Failed to select source:", error);
+				throw error;
 			}
 		},
 		[propsOnSourceSelect],
@@ -260,19 +326,19 @@ export const SourceSelector = React.memo(function SourceSelector({
 	);
 
 	const prefetchSources = React.useCallback(() => {
-		if (hasPrefetchedRef.current) {
+		if (!capabilitiesLoaded || ios.enabled || hasPrefetchedRef.current) {
 			return;
 		}
 		hasPrefetchedRef.current = true;
 		void fetchSourcesOnce(false);
-	}, [fetchSourcesOnce]);
+	}, [fetchSourcesOnce, capabilitiesLoaded, ios.enabled]);
 
 	// Fetch sources when popover opens
 	useEffect(() => {
-		if (open) {
+		if (open && capabilitiesLoaded && category === "desktop") {
 			void fetchSourcesOnce(true);
 		}
-	}, [open, fetchSourcesOnce]);
+	}, [open, fetchSourcesOnce, capabilitiesLoaded, category]);
 
 	// In autonomous mode, we might want to start open
 	useEffect(() => {
@@ -323,7 +389,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 		<Popover open={open} onOpenChange={onOpenChange} modal={false}>
 			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
 			<PopoverContent
-				className="launch-theme w-80 p-0 source-selector-popover"
+				className="launch-theme w-80 max-h-[70vh] overflow-y-auto p-0 source-selector-popover"
 				unstyled
 				align="start"
 				sideOffset={8}
@@ -334,13 +400,95 @@ export const SourceSelector = React.memo(function SourceSelector({
 				usePortal={false}
 				onMouseEnter={onMouseEnter}
 			>
-				<SourceSelectorContent
-					screenSources={screenSources}
-					windowSources={windowSources}
-					selectedSource={selectedSource}
-					loading={loading}
-					onSourceSelect={onSourceSelect}
-				/>
+				{ios.enabled && (
+					<div
+						className="flex gap-1 p-2 border-b border-[var(--launch-border)]"
+						role="group"
+						aria-label={t("ios.sourceCategory")}
+					>
+						<Button
+							size="sm"
+							variant={category === "desktop" ? "secondary" : "ghost"}
+							aria-pressed={category === "desktop"}
+							onClick={() => setCategory("desktop")}
+						>
+							{t("ios.desktop")}
+						</Button>
+						<Button
+							size="sm"
+							variant={category === "ios" ? "secondary" : "ghost"}
+							aria-pressed={category === "ios"}
+							onClick={() => setCategory("ios")}
+						>
+							{t("ios.category")}
+						</Button>
+					</div>
+				)}
+				{deviceVisible ? (
+					<>
+						<IOSDevicePanel
+							snapshot={ios.snapshot}
+							previewUrl={previewUrl}
+							onSelectDevice={(source) => {
+								setDeviceError(false);
+								void (async () => {
+									await onSourceSelect(source);
+									await ios.prepare(source, {
+										deviceAudio:
+											deviceOptions.deviceAudio &&
+											source.deviceAudio !== "unavailable",
+										microphoneToken: ios.snapshot.microphones.some(
+											(mic) => mic.token === deviceOptions.microphoneToken,
+										)
+											? deviceOptions.microphoneToken
+											: null,
+									});
+								})().catch(() => setDeviceError(true));
+							}}
+							onOptionsChange={(options) => {
+								setDeviceOptions(options);
+								try {
+									localStorage.setItem(
+										"recordly.iosCapture.deviceAudio",
+										String(options.deviceAudio),
+									);
+								} catch {
+									/* Keep session preference if storage is unavailable. */
+								}
+								if (ios.snapshot.source)
+									void ios
+										.prepare(
+											ios.snapshot.devices.find(
+												(device) => device.id === ios.snapshot.source?.id,
+											) ?? ios.snapshot.source,
+											options,
+										)
+										.catch(() => setDeviceError(true));
+							}}
+							onRetry={() => {
+								setDeviceError(false);
+								void window.electronAPI.iosCapture
+									.discover()
+									.catch(() => setDeviceError(true));
+							}}
+							onRelease={() => void ios.release().catch(() => setDeviceError(true))}
+						/>
+						{deviceError && (
+							<p role="alert" className="p-3 text-sm">
+								{t("ios.actionFailed")}
+							</p>
+						)}
+					</>
+				) : (
+					<SourceSelectorContent
+						screenSources={screenSources}
+						windowSources={windowSources}
+						selectedSource={selectedSource}
+						loading={loading}
+						onSourceSelect={onSourceSelect}
+					/>
+				)}
+				{open && <IOSRecoveryPanel />}
 			</PopoverContent>
 		</Popover>
 	);

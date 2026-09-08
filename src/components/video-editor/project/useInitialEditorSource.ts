@@ -1,4 +1,6 @@
 /* biome-ignore-all lint/correctness/useExhaustiveDependencies: editor state setters are stable and initial source loading intentionally runs once per launch configuration. */
+import { normalizeProjectCaptureMetadata } from "../projectPersistence";
+import { DEFAULT_CROP_REGION } from "../types";
 import { type MutableRefObject, useEffect, useRef } from "react";
 import { fromFileUrl, resolveVideoUrl } from "../projectPersistence";
 import type { getDevOpenRecordingConfig, getSmokeExportConfig } from "../smokeExportConfig";
@@ -94,6 +96,7 @@ export function useInitialEditorSource({
 					project.setCurrentProjectPath(null);
 					project.setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
+					project.setCaptureMetadata(undefined);
 					pendingFreshRecordingAutoZoomPathRef.current =
 						appearance.autoApplyFreshRecordingAutoZooms ? sourceUrl : null;
 					appearance.setWebcam((previous) => ({
@@ -130,6 +133,7 @@ export function useInitialEditorSource({
 					project.setCurrentProjectPath(null);
 					project.setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
+					project.setCaptureMetadata(undefined);
 					pendingFreshRecordingAutoZoomPathRef.current = null;
 					appearance.setWebcam((previous) => ({
 						...previous,
@@ -163,8 +167,21 @@ export function useInitialEditorSource({
 					project.setCurrentProjectPath(null);
 					project.setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
+					project.setCaptureMetadata(undefined);
 					pendingFreshRecordingAutoZoomPathRef.current =
 						appearance.autoApplyFreshRecordingAutoZooms ? sourceUrl : null;
+					const captureMetadata = normalizeProjectCaptureMetadata(
+						sessionResult.session.captureMetadata,
+					);
+					project.setCaptureMetadata(captureMetadata);
+					if (captureMetadata) {
+						pendingFreshRecordingAutoZoomPathRef.current = null;
+						appearance.setShowCursor(false);
+						appearance.setBorderRadius(0);
+						appearance.setCropRegion({ ...DEFAULT_CROP_REGION });
+						timeline.setCursorTelemetry([]);
+						timeline.setCursorTelemetrySourcePath(null);
+					}
 					applySessionPresentation(sessionResult.session);
 					appearance.setWebcam((previous) => ({
 						...previous,
@@ -187,6 +204,7 @@ export function useInitialEditorSource({
 				project.setCurrentProjectPath(null);
 				project.setLastSavedSnapshot(null);
 				resetSourceScopedEditorState();
+				project.setCaptureMetadata(undefined);
 				pendingFreshRecordingAutoZoomPathRef.current = null;
 				applySessionPresentation(null);
 				appearance.setWebcam((previous) => ({

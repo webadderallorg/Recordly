@@ -1,4 +1,5 @@
 /* biome-ignore-all lint/correctness/useExhaustiveDependencies: editor domain setters and refs are stable. */
+import { normalizeProjectCaptureMetadata } from "../projectPersistence";
 import {
 	type Dispatch,
 	type MutableRefObject,
@@ -84,6 +85,8 @@ export function useProjectLifecycle(input: Input) {
 		const { project, appearance, timeline, exportSettings, refs } = current;
 		if (!validateProjectData(candidate)) return false;
 		const loadedProject = candidate;
+		const captureMetadata = normalizeProjectCaptureMetadata(loadedProject.captureMetadata);
+		project.setCaptureMetadata(captureMetadata);
 		const sourcePath = fromFileUrl(loadedProject.videoPath);
 		const persistedEditor = stripPersistedDevMotionBlurSettings(loadedProject.editor ?? {});
 		const editor = normalizeProjectEditor({
@@ -113,6 +116,7 @@ export function useProjectLifecycle(input: Input) {
 					videoPath: sourcePath,
 					webcamPath: editor.webcam.sourcePath,
 					timeOffsetMs: editor.webcam.timeOffsetMs,
+					captureMetadata,
 				},
 				{ preserveProjectPath: Boolean(path) },
 			);
@@ -221,6 +225,7 @@ export function useProjectLifecycle(input: Input) {
 					sourcePath,
 					current.buildPersistedEditorState(editor),
 					loadedProject.projectId ?? null,
+					captureMetadata,
 				),
 			),
 		);
@@ -235,12 +240,14 @@ export function useProjectLifecycle(input: Input) {
 						input.currentSourcePath,
 						input.currentPersistedEditorState,
 						project.lastSavedSnapshot?.projectId ?? null,
+						project.captureMetadata,
 					)
 				: null,
 		[
 			input.currentSourcePath,
 			input.currentPersistedEditorState,
 			project.lastSavedSnapshot?.projectId,
+			project.captureMetadata,
 		],
 	);
 	const resolveProjectSaveDialog = useCallback(
@@ -296,6 +303,7 @@ export function useProjectLifecycle(input: Input) {
 			await window.electronAPI.setCurrentRecordingSession(
 				{
 					videoPath: input.currentSourcePath,
+					captureMetadata: project.captureMetadata,
 					webcamPath,
 					timeOffsetMs:
 						webcamPath && Number.isFinite(offset)
@@ -307,7 +315,12 @@ export function useProjectLifecycle(input: Input) {
 				{ preserveProjectPath: Boolean(project.currentProjectPath) },
 			);
 		},
-		[input.currentSourcePath, project.currentProjectPath, appearance.webcam.timeOffsetMs],
+		[
+			input.currentSourcePath,
+			project.currentProjectPath,
+			project.captureMetadata,
+			appearance.webcam.timeOffsetMs,
+		],
 	);
 	const syncActiveVideoSource = useCallback(
 		async (sourcePath: string, webcamPath?: string | null) => {
@@ -317,6 +330,7 @@ export function useProjectLifecycle(input: Input) {
 						videoPath: sourcePath,
 						webcamPath,
 						timeOffsetMs: appearance.webcam.timeOffsetMs,
+						captureMetadata: project.captureMetadata,
 					},
 					{ preserveProjectPath: Boolean(project.currentProjectPath) },
 				);
@@ -325,11 +339,12 @@ export function useProjectLifecycle(input: Input) {
 					preserveProjectPath: Boolean(project.currentProjectPath),
 				});
 		},
-		[appearance.webcam.timeOffsetMs, project.currentProjectPath],
+		[appearance.webcam.timeOffsetMs, project.currentProjectPath, project.captureMetadata],
 	);
 	const resetSourceScopedEditorState = useCallback(() => {
 		const current = inputRef.current;
 		const { timeline, refs } = current;
+		current.project.setCaptureMetadata(undefined);
 		timeline.setZoomRegions([]);
 		timeline.setTrimRegions([]);
 		timeline.setClipRegions([]);

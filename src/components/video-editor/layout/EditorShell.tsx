@@ -1,3 +1,4 @@
+import { IOSRecordingNotice } from "./IOSRecordingNotice";
 import type { ComponentProps } from "react";
 import { EditorAnnouncementBanner } from "@/components/announcements/EditorAnnouncementBanner";
 import { Toaster } from "@/components/ui/sonner";
@@ -178,6 +179,7 @@ export function EditorShell(props: Props) {
 				revealExportedFile={dialogActions.revealExportedFile}
 				exportMessage={exportMessage}
 			/>
+			<IOSRecordingNotice metadata={project.captureMetadata} />
 			<EditorAnnouncementBanner />
 			<div className="relative flex min-h-0 flex-1 flex-col gap-3 p-4">
 				<div className="relative z-10 flex min-h-0 flex-1 gap-3">

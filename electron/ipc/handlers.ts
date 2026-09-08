@@ -6,6 +6,7 @@ import { registerExportHandlers } from "./register/export";
 import { registerPermissionHandlers } from "./register/permissions";
 import { registerProjectHandlers } from "./register/project";
 import { registerRecordingHandlers } from "./register/recording";
+import { registerIOSCaptureHandlers } from "./register/iosCapture";
 import { registerSettingsHandlers } from "./register/settings";
 import { registerSourceHandlers } from "./register/sources";
 import {
@@ -54,10 +55,16 @@ export function killWindowsCaptureProcess() {
 export function registerIpcHandlers(
 	createEditorWindow: () => void,
 	createSourceSelectorWindow: () => BrowserWindow,
-	_getMainWindow: () => BrowserWindow | null,
+	getMainWindow: () => BrowserWindow | null,
 	getSourceSelectorWindow: () => BrowserWindow | null,
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
 ) {
+	registerIOSCaptureHandlers({
+		getMainWindow,
+		getSourceSelectorWindow,
+		createEditorWindow,
+		onRecordingStateChange,
+	});
 	registerSourceHandlers({
 		createEditorWindow,
 		createSourceSelectorWindow,
