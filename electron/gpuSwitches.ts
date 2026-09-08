@@ -42,7 +42,7 @@ export function shouldForceLinuxEgl(env: NodeJS.ProcessEnv): boolean {
 
 export function getGpuSwitches(
 	platform: NodeJS.Platform,
-	env: NodeJS.ProcessEnv = process.env,
+	_env: NodeJS.ProcessEnv = process.env,
 ): GpuSwitches {
 	if (platform === "darwin") {
 		return {
@@ -57,7 +57,7 @@ export function getGpuSwitches(
 
 	if (platform === "linux") {
 		return {
-			useGl: shouldForceLinuxEgl(env) ? "egl" : undefined,
+			useGl: undefined,
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		};
 	}

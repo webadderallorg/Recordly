@@ -1,6 +1,40 @@
 import { describe, expect, it } from "vitest";
 
-import { getScreenSourceIdForDisplay, LINUX_PORTAL_SCREEN_SOURCE_ID } from "./sourceMapping";
+import {
+	getLinuxWindowSystem,
+	getScreenSourceIdForDisplay,
+	LINUX_PORTAL_SCREEN_SOURCE_ID,
+	shouldUseLinuxPortalSentinel,
+} from "./sourceMapping";
+
+describe("Linux window-system source routing", () => {
+	it("keeps the portal sentinel on Wayland", () => {
+		const env = { XDG_SESSION_TYPE: "wayland", WAYLAND_DISPLAY: "wayland-0" };
+		expect(getLinuxWindowSystem(env, "linux")).toBe("wayland");
+		expect(
+			shouldUseLinuxPortalSentinel({
+				env,
+				platform: "linux",
+				sourceId: LINUX_PORTAL_SCREEN_SOURCE_ID,
+			}),
+		).toBe(true);
+	});
+
+	it("never routes X11 through the portal sentinel", () => {
+		const env = { XDG_SESSION_TYPE: "x11", DISPLAY: ":0" };
+		expect(getLinuxWindowSystem(env, "linux")).toBe("x11");
+		expect(
+			shouldUseLinuxPortalSentinel({
+				env,
+				platform: "linux",
+				sourceId: LINUX_PORTAL_SCREEN_SOURCE_ID,
+			}),
+		).toBe(false);
+		expect(shouldUseLinuxPortalSentinel({ env, platform: "linux", sourceId: null })).toBe(
+			false,
+		);
+	});
+});
 
 describe("getScreenSourceIdForDisplay", () => {
 	it("keeps the live Electron screen source when one is available", () => {

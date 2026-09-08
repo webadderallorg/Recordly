@@ -8,11 +8,28 @@ export function useLaunchWindowSystemState(
 		boolean | null
 	>(null);
 	const [platform, setPlatform] = useState<string | null>(null);
+	const [linuxWindowSystem, setLinuxWindowSystem] = useState<"wayland" | "x11" | null>(null);
 	const [appVersion, setAppVersion] = useState<string | null>(null);
 	const [hideHudFromCapture, setHideHudFromCapture] = useState(true);
 
 	useEffect(() => {
 		window.electronAPI?.hudOverlayRendererReady?.();
+	}, []);
+
+	useEffect(() => {
+		let cancelled = false;
+		const loadLinuxWindowSystem = async () => {
+			try {
+				const nextWindowSystem = await window.electronAPI.getLinuxWindowSystem();
+				if (!cancelled) setLinuxWindowSystem(nextWindowSystem);
+			} catch (error) {
+				console.error("Failed to detect Linux window system:", error);
+			}
+		};
+		void loadLinuxWindowSystem();
+		return () => {
+			cancelled = true;
+		};
 	}, []);
 
 	useEffect(() => {
@@ -133,6 +150,7 @@ export function useLaunchWindowSystemState(
 		recordingsDirectory,
 		hudOverlayMousePassthroughSupported,
 		platform,
+		linuxWindowSystem,
 		appVersion,
 		hideHudFromCapture,
 		setHideHudFromCapture,
