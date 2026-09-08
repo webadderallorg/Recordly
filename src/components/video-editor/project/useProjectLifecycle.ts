@@ -169,6 +169,7 @@ export function useProjectLifecycle(input: Input) {
 		appearance.setCursorClickBounce(editor.cursorClickBounce);
 		appearance.setCursorClickBounceDuration(editor.cursorClickBounceDuration);
 		appearance.setCursorSway(editor.cursorSway);
+		appearance.setDeviceFrame(editor.deviceFrame);
 		appearance.setBorderRadius(editor.borderRadius);
 		appearance.setPadding(editor.padding);
 		appearance.setCropRegion(editor.cropRegion);

@@ -45,6 +45,20 @@ A fresh mobile take opens with its transformed native aspect, no crop, zero corn
 
 Interrupted recordings show the recorded outcome in the capture UI and editor. Requested audio is not described as recorded unless committed metadata confirms it.
 
+### iPhone mockup frames
+
+In the editor, open **Scene → Frame → Device frame** and choose **Black** or
+**White**. The iPhone 16 Pro artwork includes the bezel, metallic edges, side
+buttons and Dynamic Island. **None** restores the unframed recording. Use
+**Padding** for space around the phone and **Shadow** to adjust its depth on the
+background.
+
+The frame follows the original recording orientation and keeps the phone and
+video proportions intact. A cropped recording with a different aspect fits inside
+the phone with black letterboxing. Frame selection is stored in projects,
+preferences and presets, and is included in thumbnails, MP4 and GIF output.
+The artwork is bundled locally with its [MIT license](../public/third-party/Maya-LICENSE.txt).
+
 ## Recovery and privacy
 
 The main process owns session directories and validates every media path. Native media, timing checkpoints and an atomic journal are retained when finalization fails or the helper, renderer or parent process exits unexpectedly. The launcher no longer displays a device recovery section. Existing saved or interrupted media is retained; a damaged final fragment, power loss or filesystem failure may still be unrecoverable.

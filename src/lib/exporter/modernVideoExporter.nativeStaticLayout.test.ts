@@ -109,6 +109,16 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		});
 	});
 
+	it.each([
+		"iphone-black",
+		"iphone-silver",
+	])("routes %s through the frame compositor instead of losing its bezel", (deviceFrame) => {
+		const exporter = createExporter({ deviceFrame });
+		expect(
+			exporter.getNativeStaticLayoutSkipReasons({ audioMode: "none" }, videoInfo, 60),
+		).toContain("unsupported-device-frame");
+	});
+
 	it("allows native static-layout for H.264 source metadata", () => {
 		const exporter = createExporter();
 

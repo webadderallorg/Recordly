@@ -156,6 +156,22 @@
 		"paddingRight": "Rechts",
 		"removeBackground": "Achtergrond verwijderen"
 	},
+	"deviceFrame": {
+		"loadError": "Het iPhone-frame kon niet worden geladen. Kies ‘Geen’ of probeer het opnieuw.",
+		"title": "Apparaatframe",
+		"none": {
+			"name": "Geen",
+			"label": "Geen apparaatframe"
+		},
+		"iphone-black": {
+			"name": "Zwart",
+			"label": "Zwart iPhone-frame"
+		},
+		"iphone-silver": {
+			"name": "Wit",
+			"label": "Wit iPhone-frame"
+		}
+	},
 	"sections": {
 		"scene": "Scène",
 		"captions": "Ondertiteling",

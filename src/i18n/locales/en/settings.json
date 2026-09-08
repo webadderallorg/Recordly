@@ -162,6 +162,22 @@
 		"paddingRight": "Right",
 		"removeBackground": "Remove background"
 	},
+	"deviceFrame": {
+		"loadError": "The iPhone frame couldn't be loaded. Choose None or try again.",
+		"title": "Device frame",
+		"none": {
+			"name": "None",
+			"label": "No device frame"
+		},
+		"iphone-black": {
+			"name": "Black",
+			"label": "Black iPhone frame"
+		},
+		"iphone-silver": {
+			"name": "White",
+			"label": "White iPhone frame"
+		}
+	},
 	"sections": {
 		"scene": "Scene",
 		"captions": "Captions",

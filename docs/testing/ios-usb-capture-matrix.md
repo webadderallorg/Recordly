@@ -62,7 +62,7 @@ Software-only evidence does not change any physical row above:
 | --- | --- | --- |
 | Native XCTest | Pass | 46 native tests, zero failures; includes discovery, raw negotiation and the observed geometry/color-triplet regression |
 | Native helper cross-build | Pass | arm64 and x86_64 staged for macOS 14; no Intel runtime claim |
-| Integrated JS/TS checks | Pass | 145 files, 1,221 tests; one opt-in native suite skipped and passed separately |
+| Integrated JS/TS checks | Pass | 147 files, 1,235 tests; one opt-in native suite skipped and passed separately |
 | Native finalization integration | Pass | One synthetic native-inspector → finalizer → manifest → verifier test |
 | Positive synthetic media variants | Pass | 7: portrait, landscape, odd dimension, delayed microphone, negative offset, internal gap, silent/static |
 | Negative synthetic media cases | Pass by rejection | 5: wrong rotation, displaced audio, missing audio, duration truncation, byte-truncated MOV |

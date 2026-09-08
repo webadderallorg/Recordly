@@ -1,5 +1,5 @@
 import { Application, Graphics, Sprite } from "pixi.js";
-import { drawSquircleOnGraphics } from "@/lib/geometry/squircle";
+import { type DeviceFrame, drawVideoScreenMask, getDeviceFrameInsets } from "../deviceFrame";
 import { ADVANCED_VERTICAL_PADDING_MAX, type CropRegion, type Padding } from "../types";
 
 export const PADDING_SCALE_FACTOR = 0.2;
@@ -46,6 +46,7 @@ export function computePaddedLayout(params: {
 	height: number;
 	padding: Padding | number;
 	frameInsets?: { top: number; right: number; bottom: number; left: number } | null;
+	deviceFrame?: DeviceFrame;
 	cropRegion: CropRegion;
 	videoWidth: number;
 	videoHeight: number;
@@ -84,7 +85,14 @@ export function computePaddedLayout(params: {
 	const croppedVideoWidth = videoWidth * crop.width;
 	const croppedVideoHeight = videoHeight * crop.height;
 
-	const insets = frameInsets;
+	const insets =
+		frameInsets ??
+		getDeviceFrameInsets(
+			params.deviceFrame,
+			croppedVideoWidth,
+			croppedVideoHeight,
+			videoWidth <= videoHeight ? "portrait" : "landscape",
+		);
 	const screenFracW = insets ? 1 - insets.left - insets.right : 1;
 	const screenFracH = insets ? 1 - insets.top - insets.bottom : 1;
 
@@ -156,6 +164,7 @@ interface LayoutParams {
 	padding?: Padding | number;
 	/** Screen insets from the active device frame, used to scale/center the full frame */
 	frameInsets?: { top: number; right: number; bottom: number; left: number } | null;
+	deviceFrame?: DeviceFrame;
 }
 
 interface LayoutResult {
@@ -185,6 +194,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		borderRadius = 0,
 		padding = 0,
 		frameInsets,
+		deviceFrame,
 	} = params;
 
 	const videoWidth = lockedVideoDimensions?.width || videoElement.videoWidth;
@@ -211,6 +221,7 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 		height,
 		padding,
 		frameInsets,
+		deviceFrame,
 		cropRegion: crop,
 		videoWidth,
 		videoHeight,
@@ -219,19 +230,22 @@ export function layoutVideoContent(params: LayoutParams): LayoutResult | null {
 	videoSprite.scale.set(layout.scale);
 	videoSprite.position.set(layout.spriteX, layout.spriteY);
 
-	maskGraphics.clear();
-	drawSquircleOnGraphics(maskGraphics, {
-		x: layout.centerOffsetX,
-		y: layout.centerOffsetY,
-		width: layout.croppedDisplayWidth,
-		height: layout.croppedDisplayHeight,
-		radius: scalePreviewBorderRadius(
+	drawVideoScreenMask(
+		maskGraphics,
+		deviceFrame,
+		{
+			x: layout.centerOffsetX,
+			y: layout.centerOffsetY,
+			width: layout.croppedDisplayWidth,
+			height: layout.croppedDisplayHeight,
+		},
+		scalePreviewBorderRadius(
 			layout.croppedDisplayWidth,
 			layout.croppedDisplayHeight,
 			borderRadius,
 		),
-	});
-	maskGraphics.fill({ color: 0xffffff });
+		videoWidth <= videoHeight ? "portrait" : "landscape",
+	);
 
 	return {
 		stageSize: { width, height },

@@ -156,6 +156,22 @@
 		"paddingRight": "Direito",
 		"removeBackground": "Remover fundo"
 	},
+	"deviceFrame": {
+		"loadError": "Não foi possível carregar a moldura de iPhone. Escolha “Nenhuma” ou tente novamente.",
+		"title": "Moldura do dispositivo",
+		"none": {
+			"name": "Nenhuma",
+			"label": "Sem moldura de dispositivo"
+		},
+		"iphone-black": {
+			"name": "Preto",
+			"label": "Moldura preta de iPhone"
+		},
+		"iphone-silver": {
+			"name": "Branco",
+			"label": "Moldura branca de iPhone"
+		}
+	},
 	"sections": {
 		"scene": "Cena",
 		"captions": "Legendas",

@@ -45,8 +45,8 @@ The latest capture-fix native run passed 46 XCTest tests and built both arm64 an
 artifacts with a macOS 14 deployment target and embedded privacy metadata. Cross-build
 results do not establish Intel runtime or installed permission behavior.
 
-The final full JavaScript/TypeScript integration run passed 145 files
-and 1,221 tests, with one explicitly opt-in native-media suite skipped in that run.
+The final full JavaScript/TypeScript integration run passed 147 files
+and 1,235 tests, with one explicitly opt-in native-media suite skipped in that run.
 That suite was run separately and passed using synthetic media through the staged
 native inspector, production finalizer, bundled FFmpeg, manifest reopen and verifier.
 TypeScript, full lint, formatting and localization checks also passed.

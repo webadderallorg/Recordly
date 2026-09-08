@@ -156,6 +156,22 @@
 		"paddingRight": "Rechts",
 		"removeBackground": "Hintergrund entfernen"
 	},
+	"deviceFrame": {
+		"loadError": "Der iPhone-Rahmen konnte nicht geladen werden. Wähle „Ohne“ oder versuche es erneut.",
+		"title": "Geräterahmen",
+		"none": {
+			"name": "Ohne",
+			"label": "Ohne Geräterahmen"
+		},
+		"iphone-black": {
+			"name": "Schwarz",
+			"label": "Schwarzer iPhone-Rahmen"
+		},
+		"iphone-silver": {
+			"name": "Weiß",
+			"label": "Weißer iPhone-Rahmen"
+		}
+	},
 	"sections": {
 		"scene": "Szene",
 		"captions": "Untertitel",

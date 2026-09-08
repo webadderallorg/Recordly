@@ -34,6 +34,17 @@ describe("resolveVideoUrl", () => {
 });
 
 describe("normalizeProjectEditor", () => {
+	it("preserves saved iPhone frames and keeps older projects unframed", () => {
+		for (const deviceFrame of ["none", "iphone-black", "iphone-silver"] as const) {
+			const saved = JSON.parse(JSON.stringify(normalizeProjectEditor({ deviceFrame })));
+			expect(normalizeProjectEditor(saved).deviceFrame).toBe(deviceFrame);
+		}
+		expect(normalizeProjectEditor({}).deviceFrame).toBe("none");
+		expect(normalizeProjectEditor({ deviceFrame: "unknown" } as never).deviceFrame).toBe(
+			"none",
+		);
+	});
+
 	it("defaults to 8% on macOS and square corners elsewhere", () => {
 		expect(getDefaultBorderRadiusPercent("MacIntel")).toBe(8);
 		expect(getDefaultBorderRadiusPercent("Win32")).toBe(0);

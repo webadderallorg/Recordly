@@ -78,6 +78,29 @@ function stubElectronSettings(initialValues: Record<string, unknown> = {}) {
 }
 
 describe("editorPreferences", () => {
+	it("retains device frame choices in preferences and presets", () => {
+		vi.stubGlobal("localStorage", createStorageMock());
+		stubElectronSettings();
+		const preferences = normalizeEditorPreferences({ deviceFrame: "iphone-silver" });
+		saveEditorPreferences(preferences);
+		expect(loadEditorPreferences().deviceFrame).toBe("iphone-silver");
+		saveEditorPresets([
+			{
+				id: "phone",
+				name: "Phone",
+				createdAt: "2026-09-08T00:00:00.000Z",
+				updatedAt: "2026-09-08T00:00:00.000Z",
+				snapshot: {
+					...preferences,
+					cropRegion: DEFAULT_CROP_REGION,
+					autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+				},
+			},
+		]);
+		expect(loadEditorPresets()[0]?.snapshot.deviceFrame).toBe("iphone-silver");
+		expect(normalizeEditorPreferences({ deviceFrame: "invalid" }).deviceFrame).toBe("none");
+	});
+
 	afterEach(() => {
 		vi.unstubAllGlobals();
 		Reflect.deleteProperty(globalThis, "electronAPI");

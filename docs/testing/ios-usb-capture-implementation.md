@@ -34,7 +34,7 @@ This record separates implemented software behavior from physical and release pr
 | Native XCTest | Pass: 46 tests, zero failures | Synthetic AVFoundation/CoreMedia media, discovery lifecycle, format transition and exact-size sRGB round trip; no device or TCC prompt in the suite. |
 | Native helper build | Pass: arm64 and x86_64 staged, macOS 14 target, embedded plist | Cross-build is not Intel runtime or signing evidence. |
 | Helper CLI smoke | Pass | Self-test, duplicate request replay, synthetic inspection and EOF finalization. |
-| Full JavaScript/TypeScript tests | Pass: 145 files, 1,221 tests; one explicit opt-in native suite skipped | The skipped native integration test was run separately and passed before this discovery/UI update. |
+| Full JavaScript/TypeScript tests | Pass: 147 files, 1,235 tests; one explicit opt-in native suite skipped | The skipped native integration test was run separately and passed before this discovery/UI update. |
 | Opt-in native finalization integration | Pass: one test | Synthetic raw video/PCM → native inspector → production finalizer/FFmpeg → manifest reopen → verifier. |
 | TypeScript, localization, full lint and formatting checks | Pass on the reviewed source | No hardware or interactive UI claim. |
 | Synthetic media matrix | Pass: 7 positive variants; expected rejection: 5 negative variants | Physical-device evidence is explicitly false in reports. |
@@ -83,6 +83,20 @@ After rebuilding the isolated `Recordly iOS Test` app with this fix, **Ready and
 The disposable test build was then cleaned without replacing the running app. Its 12 `electron/native/ios-device-capture/Sources` files were synchronized exactly with the root sources, removing `FormatProbe.swift` and its temporary instrumentation. Resources and all 13 test files, including fixtures, were hashed unchanged. A clean helper build exited successfully and staged arm64 and x86_64 binaries; `lipo` and `vtool` confirmed both architectures and macOS 14.0 deployment targets. Probe identifiers were absent from the sources and both binaries' strings/symbols. The staged helper SHA-256 values are `d12e7f3ada6a4241b46b6f87beefa7eba64dc2aea0df92e3294f0bfb521dc665` for `.tmp/ios-test-build/electron/native/bin/darwin-arm64/recordly-ios-device-helper` and `bf7b73988c132e7ed022af9fb64bd665c8691ab7efcf3b1d3d66d00d9360c7e8` for the corresponding `darwin-x64` path. This cleanup did not install, sign, restart or repackage the app, or create a ZIP.
 
 ## Review findings resolved
+
+The editor's Scene → Frame section now offers None, Black and White iPhone 16 Pro
+frames using bundled licensed PNG artwork. Preview, modern MP4, legacy MP4/GIF
+and project thumbnails use the same physical aperture. Source aspect and original
+orientation are preserved, including letterboxing for other crops. Frame images
+load before export; missing images fail export explicitly. A preview image failure
+keeps the editor and its frame controls available. Texture tests cover stale loads,
+style changes, teardown and failure, and persistence tests cover saved projects,
+preferences and presets. The final frame suite passes 1,235 JavaScript/TypeScript
+tests across 147 files, with the one opt-in native integration suite skipped in
+this ordinary run; native capture remains 46 tests. Browser checks used the actual
+preview and both export renderers with synthetic screen content to verify the
+photo frame in portrait and landscape, including zero padding. This is renderer
+evidence, not physical recording/export color comparison.
 
 Independent integration and media reviews found defects at real ownership boundaries. Corrections include:
 

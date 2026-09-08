@@ -156,6 +156,22 @@
 		"paddingRight": "右",
 		"removeBackground": "移除背景"
 	},
+	"deviceFrame": {
+		"loadError": "无法加载 iPhone 边框。请选择“无”或重试。",
+		"title": "设备边框",
+		"none": {
+			"name": "无",
+			"label": "无设备边框"
+		},
+		"iphone-black": {
+			"name": "黑色",
+			"label": "黑色 iPhone 边框"
+		},
+		"iphone-silver": {
+			"name": "白色",
+			"label": "白色 iPhone 边框"
+		}
+	},
 	"sections": {
 		"scene": "场景",
 		"captions": "字幕",

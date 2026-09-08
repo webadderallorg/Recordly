@@ -156,6 +156,22 @@
 		"paddingRight": "Destra",
 		"removeBackground": "Rimuovi sfondo"
 	},
+	"deviceFrame": {
+		"loadError": "Impossibile caricare la cornice per iPhone. Scegli «Nessuna» o riprova.",
+		"title": "Cornice del dispositivo",
+		"none": {
+			"name": "Nessuna",
+			"label": "Nessuna cornice del dispositivo"
+		},
+		"iphone-black": {
+			"name": "Nero",
+			"label": "Cornice nera per iPhone"
+		},
+		"iphone-silver": {
+			"name": "Bianco",
+			"label": "Cornice bianca per iPhone"
+		}
+	},
 	"sections": {
 		"scene": "Scena",
 		"captions": "Sottotitoli",

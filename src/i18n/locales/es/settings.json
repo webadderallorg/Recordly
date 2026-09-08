@@ -156,6 +156,22 @@
 		"paddingRight": "Derecho",
 		"removeBackground": "Quitar fondo"
 	},
+	"deviceFrame": {
+		"loadError": "No se pudo cargar el marco de iPhone. Elige «Ninguno» o inténtalo de nuevo.",
+		"title": "Marco del dispositivo",
+		"none": {
+			"name": "Ninguno",
+			"label": "Sin marco de dispositivo"
+		},
+		"iphone-black": {
+			"name": "Negro",
+			"label": "Marco de iPhone negro"
+		},
+		"iphone-silver": {
+			"name": "Blanco",
+			"label": "Marco de iPhone blanco"
+		}
+	},
 	"sections": {
 		"scene": "Escena",
 		"captions": "Subtítulos",
