@@ -1,3 +1,4 @@
+import { isIOSDeviceSource, type IOSDeviceSource } from "@/shared/iosCapture";
 import { useCallback, useMemo, type ReactNode, useState } from "react";
 import { SourceSelector } from "../SourceSelector";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
@@ -18,7 +19,7 @@ export function SourcePopover({
 }: {
 	trigger: ReactNode;
 	selectedSource: string;
-	onSourceSelect: (source: DesktopSource) => Promise<void> | void;
+	onSourceSelect: (source: DesktopSource | IOSDeviceSource) => Promise<void> | void;
 	onOpen?: () => void;
 }) {
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
@@ -55,9 +56,10 @@ export function SourcePopover({
 			onSourceSelect={async (source) => {
 				try {
 					await onSourceSelect(source);
-					requestClose(POPOVER_ID);
+					if (!isIOSDeviceSource(source)) requestClose(POPOVER_ID);
 				} catch (error) {
 					console.error("Failed to select source:", error);
+					throw error;
 				}
 			}}
 			onFetchSources={fetchSources}

@@ -1,3 +1,4 @@
+import { DeviceFrameOverlay } from "@/components/video-editor/deviceFrameOverlay";
 import { Application, Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
 import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
@@ -63,7 +64,8 @@ import {
 } from "@/components/video-editor/webcamOverlay";
 import { getAssetPath, getExportableVideoUrl, getRenderableAssetUrl } from "@/lib/assetPath";
 import { getWebcamShadowFilter } from "@/lib/exporter/shadowProfile";
-import { drawSquircleOnCanvas, drawSquircleOnGraphics } from "@/lib/geometry/squircle";
+import { drawSquircleOnCanvas } from "@/lib/geometry/squircle";
+import { type DeviceFrame, drawVideoScreenMask } from "@/components/video-editor/deviceFrame";
 import {
 	clampMediaTimeToDuration,
 	getEffectiveVideoStreamDurationSeconds,
@@ -105,6 +107,7 @@ interface FrameRenderConfig {
 	zoomOutEasing?: ZoomTransitionEasing;
 	connectedZoomEasing?: ZoomTransitionEasing;
 	borderRadius?: number;
+	deviceFrame?: DeviceFrame;
 	padding?: Padding | number;
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
@@ -233,6 +236,7 @@ function configureHighQuality2DContext(
 export class FrameRenderer {
 	private app: Application | null = null;
 	private cameraContainer: Container | null = null;
+	private deviceFrameGraphics: DeviceFrameOverlay | null = null;
 	private videoEffectsContainer: Container | null = null;
 	private videoContainer: Container | null = null;
 	private cursorContainer: Container | null = null;
@@ -405,6 +409,9 @@ export class FrameRenderer {
 		this.cursorContainer = new Container();
 		this.app.stage.addChild(this.cameraContainer);
 		this.cameraContainer.addChild(this.videoEffectsContainer);
+		this.deviceFrameGraphics = new DeviceFrameOverlay();
+		this.cameraContainer.addChild(this.deviceFrameGraphics);
+		await this.deviceFrameGraphics.load(this.config.deviceFrame);
 		this.cameraContainer.addChild(this.cursorContainer);
 		this.videoEffectsContainer.addChild(this.videoContainer);
 
@@ -1617,7 +1624,7 @@ export class FrameRenderer {
 			width,
 			height,
 			padding,
-			frameInsets: null,
+			deviceFrame: this.config.deviceFrame,
 			cropRegion,
 			videoWidth,
 			videoHeight,
@@ -1634,15 +1641,25 @@ export class FrameRenderer {
 			borderRadius,
 		);
 
-		this.maskGraphics.clear();
-		drawSquircleOnGraphics(this.maskGraphics, {
+		const screen = {
 			x: layout.centerOffsetX,
 			y: layout.centerOffsetY,
 			width: layout.croppedDisplayWidth,
 			height: layout.croppedDisplayHeight,
-			radius: scaledBorderRadius,
-		});
-		this.maskGraphics.fill({ color: 0xffffff });
+		};
+		drawVideoScreenMask(
+			this.maskGraphics,
+			this.config.deviceFrame,
+			screen,
+			scaledBorderRadius,
+			this.config.videoWidth <= this.config.videoHeight ? "portrait" : "landscape",
+		);
+		if (this.deviceFrameGraphics)
+			this.deviceFrameGraphics.layout(
+				this.config.deviceFrame,
+				screen,
+				this.config.videoWidth <= this.config.videoHeight ? "portrait" : "landscape",
+			);
 
 		// Cache layout info
 		this.layoutCache = {
@@ -2211,6 +2228,7 @@ export class FrameRenderer {
 		this.zoomBlurFilter?.destroy();
 		this.motionBlurFilter?.destroy();
 		this.cameraContainer = null;
+		this.deviceFrameGraphics = null;
 		this.videoEffectsContainer = null;
 		this.videoContainer = null;
 		this.maskGraphics = null;

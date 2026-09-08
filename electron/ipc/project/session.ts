@@ -1,3 +1,5 @@
+import { parseCaptureMetadata } from "../../../src/shared/iosCapture";
+import { randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -26,19 +28,37 @@ export async function persistRecordingSessionManifest(
 	const normalizedWebcamPath = normalizeVideoSourcePath(session.webcamPath ?? null);
 	const manifestPath = getRecordingSessionManifestPath(normalizedVideoPath);
 
-	if (!normalizedWebcamPath) {
+	const captureMetadata = normalizeCaptureMetadata(session.captureMetadata);
+	if (!normalizedWebcamPath && !captureMetadata && !session.hideOverlayCursorByDefault) {
 		await fs.rm(manifestPath, { force: true });
 		return;
 	}
 
 	const manifest: RecordingSessionManifest = {
-		version: 2,
+		version: captureMetadata || session.hideOverlayCursorByDefault ? 3 : 2,
+		...(captureMetadata ? { captureMetadata } : {}),
+		hideOverlayCursorByDefault: session.hideOverlayCursorByDefault,
 		videoFileName: path.basename(normalizedVideoPath),
-		webcamFileName: path.basename(normalizedWebcamPath),
+		webcamFileName:
+			normalizedWebcamPath &&
+			path.resolve(path.dirname(normalizedWebcamPath)) ===
+				path.resolve(path.dirname(normalizedVideoPath))
+				? path.basename(normalizedWebcamPath)
+				: null,
 		timeOffsetMs: normalizeRecordingTimeOffsetMs(session.timeOffsetMs),
 	};
 
-	await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf-8");
+	const temporaryPath = `${manifestPath}.${randomUUID()}.tmp`;
+	try {
+		await fs.writeFile(temporaryPath, JSON.stringify(manifest, null, 2), {
+			encoding: "utf-8",
+			flag: "wx",
+			mode: 0o600,
+		});
+		await fs.rename(temporaryPath, manifestPath);
+	} finally {
+		await fs.rm(temporaryPath, { force: true });
+	}
 }
 
 export async function resolveRecordingSessionManifest(
@@ -52,12 +72,19 @@ export async function resolveRecordingSessionManifest(
 	const manifestPath = getRecordingSessionManifestPath(normalizedVideoPath);
 
 	try {
+		const manifestStat = await fs.lstat(manifestPath);
+		if (!manifestStat.isFile() || manifestStat.isSymbolicLink()) return null;
 		const content = await fs.readFile(manifestPath, "utf-8");
 		const parsed = parseJsonWithByteOrderMark<Partial<RecordingSessionManifest>>(content);
-		if (parsed.version !== 1 && parsed.version !== 2) {
+		if (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== 3) {
 			return null;
 		}
 
+		if (parsed.videoFileName !== path.basename(normalizedVideoPath)) return null;
+		const provenance = {
+			captureMetadata: normalizeCaptureMetadata(parsed.captureMetadata),
+			hideOverlayCursorByDefault: parsed.hideOverlayCursorByDefault === true,
+		};
 		const webcamFileName =
 			typeof parsed.webcamFileName === "string" && parsed.webcamFileName.trim()
 				? parsed.webcamFileName.trim()
@@ -65,20 +92,18 @@ export async function resolveRecordingSessionManifest(
 		if (!webcamFileName) {
 			return {
 				videoPath: normalizedVideoPath,
+				...provenance,
 				webcamPath: null,
 				timeOffsetMs: normalizeRecordingTimeOffsetMs(parsed.timeOffsetMs),
 			};
 		}
 
-		const webcamPath = path.join(path.dirname(normalizedVideoPath), webcamFileName);
-		const webcamExists = await fs
-			.access(webcamPath, fsConstants.F_OK)
-			.then(() => true)
-			.catch(() => false);
+		const webcamPath = await resolveSessionLinkedFile(normalizedVideoPath, webcamFileName);
 
 		return {
 			videoPath: normalizedVideoPath,
-			webcamPath: webcamExists ? webcamPath : null,
+			webcamPath,
+			...provenance,
 			timeOffsetMs: normalizeRecordingTimeOffsetMs(parsed.timeOffsetMs),
 		};
 	} catch {
@@ -137,4 +162,33 @@ export async function resolveRecordingSession(
 		videoPath: normalizedVideoPath,
 		webcamPath: linkedWebcamPath,
 	};
+}
+
+async function resolveSessionLinkedFile(videoPath: string, name: string): Promise<string | null> {
+	if (
+		!name ||
+		name !== path.basename(name) ||
+		name.includes("\\") ||
+		name === "." ||
+		name === ".."
+	)
+		return null;
+	try {
+		const directory = await fs.realpath(path.dirname(videoPath));
+		const linked = path.join(directory, name);
+		const stat = await fs.lstat(linked);
+		return stat.isFile() && !stat.isSymbolicLink() && (await fs.realpath(linked)) === linked
+			? linked
+			: null;
+	} catch {
+		return null;
+	}
+}
+
+function normalizeCaptureMetadata(value: unknown) {
+	try {
+		return parseCaptureMetadata(value);
+	} catch {
+		return undefined;
+	}
 }

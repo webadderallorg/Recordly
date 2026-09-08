@@ -17,6 +17,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { inspectIOSHelper } from "./ios-helper-policy.mjs";
 import {
 	assertValidAppleTeamId,
 	collectArchitectureErrors,
@@ -333,6 +334,27 @@ function verifyAppBundle(appPath, label, { arch, check, full, teamId, tempRoot }
 
 	if (full) {
 		verifyMachOBinaries(appPath, arch, check);
+		if (packageJson.recordlyNativeIOSHelper)
+			check("iOS capture helper privacy, protocol and signed entitlements", () => {
+				const binary = path.join(
+					appPath,
+					"Contents",
+					"Resources",
+					"app.asar.unpacked",
+					"electron",
+					"native",
+					"bin",
+					`darwin-${arch}`,
+					"recordly-ios-device-helper",
+				);
+				return JSON.stringify(
+					inspectIOSHelper(binary, {
+						architecture: arch === "arm64" ? "arm64" : "x86_64",
+						signed: true,
+						teamId,
+					}),
+				);
+			});
 	}
 
 	check(`${label}: stapled notarization ticket`, () => {

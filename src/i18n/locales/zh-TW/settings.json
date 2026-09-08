@@ -156,6 +156,22 @@
 		"paddingRight": "右",
 		"removeBackground": "移除背景"
 	},
+	"deviceFrame": {
+		"loadError": "無法載入 iPhone 外框。請選擇「無」或再試一次。",
+		"title": "裝置外框",
+		"none": {
+			"name": "無",
+			"label": "無裝置外框"
+		},
+		"iphone-black": {
+			"name": "黑色",
+			"label": "黑色 iPhone 外框"
+		},
+		"iphone-silver": {
+			"name": "白色",
+			"label": "白色 iPhone 外框"
+		}
+	},
 	"sections": {
 		"scene": "場景",
 		"captions": "字幕",

@@ -41,6 +41,8 @@ import {
 	type CursorMotionPresetId,
 	getMatchingCursorMotionPresetId,
 } from "./cursorMotionPresets";
+import type { DeviceFrame } from "./deviceFrame";
+import { DeviceFramePicker } from "./DeviceFramePicker";
 import { loadEditorPreferences, saveEditorPreferences } from "./editorPreferences";
 import { getDefaultBorderRadiusPercent } from "./projectPersistence";
 import { SliderControl } from "./SliderControl";
@@ -602,6 +604,8 @@ interface SettingsPanelProps {
 	onCursorClickBounceDurationChange?: (duration: number) => void;
 	cursorSway?: number;
 	onCursorSwayChange?: (amount: number) => void;
+	deviceFrame?: DeviceFrame;
+	onDeviceFrameChange?: (frame: DeviceFrame) => void;
 	borderRadius?: number;
 	onBorderRadiusChange?: (radius: number) => void;
 	webcam?: WebcamOverlaySettings;
@@ -1050,6 +1054,8 @@ export function SettingsPanel({
 	onCursorClickBounceDurationChange,
 	cursorSway = DEFAULT_CURSOR_SWAY,
 	onCursorSwayChange,
+	deviceFrame = "none",
+	onDeviceFrameChange,
 	borderRadius = getDefaultBorderRadiusPercent(),
 	onBorderRadiusChange,
 	webcam,
@@ -1626,6 +1632,7 @@ export function SettingsPanel({
 	};
 
 	const resetFrameSection = () => {
+		onDeviceFrameChange?.("none");
 		onShadowChange?.(initialEditorPreferences.shadowIntensity);
 		onBorderRadiusChange?.(initialEditorPreferences.borderRadius);
 		onAspectRatioChange?.(initialEditorPreferences.aspectRatio);
@@ -2093,6 +2100,10 @@ export function SettingsPanel({
 					{t("common.actions.reset", "Reset")}
 				</button>
 			</div>
+			<DeviceFramePicker
+				value={deviceFrame}
+				onChange={(frame) => onDeviceFrameChange?.(frame)}
+			/>
 			<div className="flex flex-col gap-1.5">
 				<SliderControl
 					label={tSettings("effects.shadow")}
@@ -2105,17 +2116,19 @@ export function SettingsPanel({
 					formatValue={(v) => `${Math.round(v * 100)}%`}
 					parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
 				/>
-				<SliderControl
-					label={tSettings("effects.radius", "Radius")}
-					value={borderRadius}
-					defaultValue={initialEditorPreferences.borderRadius}
-					min={0}
-					max={50}
-					step={0.1}
-					onChange={(v) => onBorderRadiusChange?.(v)}
-					formatValue={(v) => `${v}%`}
-					parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
-				/>
+				{deviceFrame === "none" && (
+					<SliderControl
+						label={tSettings("effects.radius", "Radius")}
+						value={borderRadius}
+						defaultValue={initialEditorPreferences.borderRadius}
+						min={0}
+						max={50}
+						step={0.1}
+						onChange={(v) => onBorderRadiusChange?.(v)}
+						formatValue={(v) => `${v}%`}
+						parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
+					/>
+				)}
 				<div className="flex flex-col gap-1.5 pt-0.5">
 					<div className="flex items-center justify-between">
 						<SectionLabel>{tSettings("effects.padding")}</SectionLabel>

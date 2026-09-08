@@ -1,6 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs/promises";
 import { BrowserWindow } from "electron";
+import { endDesktopRecording, getRecordingLease } from "./recordingLease";
 import {
 	persistPendingCursorTelemetry,
 	snapshotCursorTelemetryForPersistence,
@@ -191,6 +192,7 @@ export async function muxNativeMacRecordingWithAudio(
 }
 
 export function attachNativeCaptureLifecycle(process: ChildProcessWithoutNullStreams) {
+	const lease = getRecordingLease();
 	process.once("close", () => {
 		const wasActive = nativeScreenRecordingActive;
 		setNativeCaptureProcess(null);
@@ -200,13 +202,17 @@ export function attachNativeCaptureLifecycle(process: ChildProcessWithoutNullStr
 		}
 
 		setNativeScreenRecordingActive(false);
+		endDesktopRecording(lease);
 		console.log("[mac-finalize] Optimization active: skipping safety-net muxing.");
 		setNativeCaptureTargetPath(null);
 		setNativeCaptureStopRequested(false);
 		setNativeCaptureSystemAudioPath(null);
 		setNativeCaptureMicrophonePath(null);
 
-		const sourceName = selectedSource?.name ?? "Screen";
+		const sourceName =
+			selectedSource?.sourceType === "ios-device"
+				? selectedSource.displayName
+				: (selectedSource?.name ?? "Screen");
 		BrowserWindow.getAllWindows().forEach((window) => {
 			if (!window.isDestroyed()) {
 				window.webContents.send("recording-state-changed", {

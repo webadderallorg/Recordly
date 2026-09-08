@@ -2,6 +2,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import { BrowserWindow } from "electron";
+import { endDesktopRecording, getRecordingLease } from "./recordingLease";
 import { getWindowsCaptureExePath } from "../paths/binaries";
 import {
 	selectedSource,
@@ -171,6 +172,7 @@ export function waitForWindowsCaptureStop(
 }
 
 export function attachWindowsCaptureLifecycle(proc: ChildProcessWithoutNullStreams) {
+	const lease = getRecordingLease();
 	proc.once("close", () => {
 		const wasActive = windowsNativeCaptureActive;
 		setWindowsCaptureProcess(null);
@@ -180,9 +182,13 @@ export function attachWindowsCaptureLifecycle(proc: ChildProcessWithoutNullStrea
 		}
 
 		setWindowsNativeCaptureActive(false);
+		endDesktopRecording(lease);
 		setWindowsCaptureStopRequested(false);
 
-		const sourceName = selectedSource?.name ?? "Screen";
+		const sourceName =
+			selectedSource?.sourceType === "ios-device"
+				? selectedSource.displayName
+				: (selectedSource?.name ?? "Screen");
 		BrowserWindow.getAllWindows().forEach((window) => {
 			if (!window.isDestroyed()) {
 				window.webContents.send("recording-state-changed", {

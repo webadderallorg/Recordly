@@ -16,6 +16,7 @@ import type {
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
 import { FrameRenderer } from "./frameRenderer";
+import type { DeviceFrame } from "@/components/video-editor/deviceFrame";
 import { StreamingVideoDecoder } from "./streamingDecoder";
 import type {
 	ExportProgress,
@@ -58,6 +59,7 @@ interface GifExporterConfig {
 	zoomOutEasing?: ZoomTransitionEasing;
 	connectedZoomEasing?: ZoomTransitionEasing;
 	borderRadius?: number;
+	deviceFrame?: DeviceFrame;
 	padding?: Padding | number;
 	videoPadding?: Padding | number;
 	cropRegion: CropRegion;
@@ -160,6 +162,7 @@ export function buildGifFrameRendererConfig(
 		zoomOutEasing: config.zoomOutEasing,
 		connectedZoomEasing: config.connectedZoomEasing,
 		borderRadius: config.borderRadius,
+		deviceFrame: config.deviceFrame,
 		padding: config.padding,
 		cropRegion: config.cropRegion,
 		webcam: config.webcam,

@@ -156,6 +156,11 @@ import {
 } from "../utils";
 import { resolveWindowsCaptureTarget } from "../windowsCaptureSelection";
 import { bringSelectedWindowForward } from "./sources";
+import {
+	beginDesktopRecording,
+	endDesktopRecording,
+	getRecordingLease,
+} from "../recording/recordingLease";
 
 const execFileAsync = promisify(execFile);
 
@@ -401,7 +406,39 @@ async function resolveExistingPath(...candidates: Array<string | null | undefine
 export function registerRecordingHandlers(
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
 ) {
-	ipcMain.handle(
+	let desktopStop: Promise<unknown> | undefined;
+	const handleDesktopStart = (channel: string, listener: Parameters<typeof ipcMain.handle>[1]) =>
+		ipcMain.handle(channel, async (event, ...args) => {
+			if (
+				selectedSource?.sourceType === "ios-device" ||
+				(args[0] as { sourceType?: string } | undefined)?.sourceType === "ios-device"
+			)
+				throw new Error("UNSUPPORTED_OPERATION");
+			const lease = beginDesktopRecording();
+			try {
+				const result = await listener(event, ...args);
+				if (!result?.success) endDesktopRecording(lease);
+				return result;
+			} catch (error) {
+				endDesktopRecording(lease);
+				throw error;
+			}
+		});
+	const handleDesktopStop = (channel: string, listener: Parameters<typeof ipcMain.handle>[1]) =>
+		ipcMain.handle(channel, async (event, ...args) => {
+			if (getRecordingLease()?.owner === "ios-device")
+				throw new Error("UNSUPPORTED_OPERATION");
+			if (desktopStop) return desktopStop;
+			const lease = getRecordingLease();
+			desktopStop = Promise.resolve().then(() => listener(event, ...args));
+			try {
+				return await desktopStop;
+			} finally {
+				endDesktopRecording(lease);
+				desktopStop = undefined;
+			}
+		});
+	handleDesktopStart(
 		"start-native-screen-recording",
 		async (_, source: SelectedSource, options?: NativeMacRecordingOptions) => {
 			// Capture starts before the renderer publishes its recording-state
@@ -937,7 +974,7 @@ export function registerRecordingHandlers(
 		},
 	);
 
-	ipcMain.handle("stop-native-screen-recording", async () => {
+	handleDesktopStop("stop-native-screen-recording", async () => {
 		const start = Date.now();
 		console.log("[PERF:MAIN] Handler: stop-native-screen-recording: STARTED");
 		try {
@@ -1306,6 +1343,7 @@ export function registerRecordingHandlers(
 	});
 
 	ipcMain.handle("pause-native-screen-recording", async () => {
+		if (getRecordingLease()?.owner === "ios-device") throw new Error("UNSUPPORTED_OPERATION");
 		if (process.platform === "win32") {
 			if (!windowsNativeCaptureActive || !windowsCaptureProcess) {
 				return { success: false, message: "No native Windows screen recording is active." };
@@ -1362,6 +1400,7 @@ export function registerRecordingHandlers(
 	});
 
 	ipcMain.handle("resume-native-screen-recording", async () => {
+		if (getRecordingLease()?.owner === "ios-device") throw new Error("UNSUPPORTED_OPERATION");
 		if (process.platform === "win32") {
 			if (!windowsNativeCaptureActive || !windowsCaptureProcess) {
 				return { success: false, message: "No native Windows screen recording is active." };
@@ -1566,7 +1605,7 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("start-ffmpeg-recording", async (_, source: SelectedSource) => {
+	handleDesktopStart("start-ffmpeg-recording", async (_, source: SelectedSource) => {
 		if (ffmpegCaptureProcess) {
 			return { success: false, message: "An FFmpeg recording is already active." };
 		}
@@ -1608,7 +1647,7 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("stop-ffmpeg-recording", async () => {
+	handleDesktopStop("stop-ffmpeg-recording", async () => {
 		if (!ffmpegScreenRecordingActive) {
 			return { success: false, message: "No FFmpeg recording is active." };
 		}
@@ -1861,6 +1900,20 @@ export function registerRecordingHandlers(
 	});
 
 	ipcMain.handle("set-recording-state", (_, recording: boolean) => {
+		if (
+			getRecordingLease()?.owner === "ios-device" ||
+			selectedSource?.sourceType === "ios-device"
+		)
+			throw new Error("UNSUPPORTED_OPERATION");
+		if (recording && !getRecordingLease()) beginDesktopRecording();
+		if (
+			!recording &&
+			!desktopStop &&
+			!nativeCaptureProcess &&
+			!windowsCaptureProcess &&
+			!ffmpegCaptureProcess
+		)
+			endDesktopRecording();
 		if (recording) {
 			stopCursorCapture();
 			stopInteractionCapture();

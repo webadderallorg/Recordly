@@ -74,6 +74,7 @@ import {
 } from "./finalizationTimeout";
 import { getLocalFilePath } from "./localMediaSource";
 import { FrameRenderer as ModernFrameRenderer } from "./modernFrameRenderer";
+import { type DeviceFrame, hasDeviceFrame } from "@/components/video-editor/deviceFrame";
 import {
 	getOrderedSupportedMp4EncoderCandidates,
 	type SupportedMp4EncoderPath,
@@ -120,6 +121,7 @@ interface VideoExporterConfig extends ExportConfig {
 	zoomOutEasing?: ZoomTransitionEasing;
 	connectedZoomEasing?: ZoomTransitionEasing;
 	borderRadius?: number;
+	deviceFrame?: DeviceFrame;
 	padding?: Padding | number;
 	videoPadding?: Padding | number;
 	cropRegion: CropRegion;
@@ -609,6 +611,7 @@ export class ModernVideoExporter {
 					zoomOutEasing: this.config.zoomOutEasing,
 					connectedZoomEasing: this.config.connectedZoomEasing,
 					borderRadius: this.config.borderRadius,
+					deviceFrame: this.config.deviceFrame,
 					padding: this.config.padding,
 					cropRegion: this.config.cropRegion,
 					webcam: this.config.webcam,
@@ -1508,6 +1511,7 @@ export class ModernVideoExporter {
 		effectiveDurationSec: number,
 	): string[] {
 		const reasons: string[] = [];
+		if (hasDeviceFrame(this.config.deviceFrame)) reasons.push("unsupported-device-frame");
 		if (
 			typeof window === "undefined" ||
 			!window.electronAPI?.nativeStaticLayoutExport ||

@@ -5,13 +5,13 @@ import type {
 	CursorVisualType,
 	NativeCaptureDiagnostics,
 	RecordingSessionData,
-	SelectedSource,
+	SelectedCaptureSource,
 	SystemCursorAsset,
 	WindowBounds,
 } from "./types";
 
 // ── Source selection ──────────────────────────────────────────────────────────
-export let selectedSource: SelectedSource | null = null;
+export let selectedSource: SelectedCaptureSource | null = null;
 
 // ── Project / video state ─────────────────────────────────────────────────────
 export let currentProjectPath: string | null = null;
@@ -109,7 +109,7 @@ export type { CursorInteractionType, CursorTelemetryPoint };
 // TypeScript exported `let` can be reassigned by the owning module but importers
 // cannot assign to them directly. Provide simple setters for cross-module writes.
 
-export function setSelectedSource(v: SelectedSource | null) {
+export function setSelectedSource(v: SelectedCaptureSource | null) {
 	selectedSource = v;
 }
 export function setCurrentProjectPath(v: string | null) {

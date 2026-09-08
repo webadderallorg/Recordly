@@ -91,6 +91,7 @@ export function useProjectSaveActions({
 									currentSourcePath,
 									currentPersistedEditorState,
 									lastSavedSnapshot?.projectId ?? null,
+									project.captureMetadata,
 								);
 					const fileNameBase =
 						currentSourcePath
@@ -137,6 +138,7 @@ export function useProjectSaveActions({
 								projectData.videoPath,
 								projectData.editor,
 								result.projectId ?? projectData.projectId ?? null,
+								projectData.captureMetadata,
 							),
 						),
 					);
@@ -156,6 +158,7 @@ export function useProjectSaveActions({
 			currentPersistedEditorState,
 			currentProjectPath,
 			lastSavedSnapshot,
+			project.captureMetadata,
 			setCurrentProjectPath,
 			setLastSavedSnapshot,
 			openProjectSaveDialog,
@@ -210,6 +213,7 @@ export function useProjectSaveActions({
 								currentSourcePath,
 								currentPersistedEditorState,
 								lastSavedSnapshot?.projectId ?? null,
+								project.captureMetadata,
 							);
 				const result = await window.electronAPI.saveProjectFileNamed(
 					projectData,
@@ -232,6 +236,7 @@ export function useProjectSaveActions({
 							projectData.videoPath,
 							projectData.editor,
 							result.projectId ?? projectData.projectId ?? null,
+							projectData.captureMetadata,
 						),
 					),
 				);
@@ -247,6 +252,7 @@ export function useProjectSaveActions({
 			currentProjectSnapshot,
 			currentPersistedEditorState,
 			lastSavedSnapshot,
+			project.captureMetadata,
 			setCurrentProjectPath,
 			setLastSavedSnapshot,
 			captureProjectThumbnail,

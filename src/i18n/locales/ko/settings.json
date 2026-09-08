@@ -156,6 +156,22 @@
 		"paddingRight": "오른쪽",
 		"removeBackground": "배경 제거"
 	},
+	"deviceFrame": {
+		"loadError": "iPhone 프레임을 불러올 수 없습니다. ‘없음’을 선택하거나 다시 시도해 주세요.",
+		"title": "기기 프레임",
+		"none": {
+			"name": "없음",
+			"label": "기기 프레임 없음"
+		},
+		"iphone-black": {
+			"name": "블랙",
+			"label": "블랙 iPhone 프레임"
+		},
+		"iphone-silver": {
+			"name": "화이트",
+			"label": "화이트 iPhone 프레임"
+		}
+	},
 	"sections": {
 		"scene": "장면",
 		"captions": "자막",

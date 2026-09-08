@@ -53,6 +53,7 @@ export function buildExportRenderOptions({
 		zoomInEasing: appearance.zoomInEasing,
 		zoomOutEasing: appearance.zoomOutEasing,
 		connectedZoomEasing: appearance.connectedZoomEasing,
+		deviceFrame: appearance.deviceFrame,
 		borderRadius: appearance.borderRadius,
 		padding: appearance.padding,
 		cropRegion: appearance.cropRegion,

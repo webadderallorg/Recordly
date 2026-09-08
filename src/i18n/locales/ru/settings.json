@@ -156,6 +156,22 @@
 		"paddingRight": "Справа",
 		"removeBackground": "Удалить фон"
 	},
+	"deviceFrame": {
+		"loadError": "Не удалось загрузить рамку iPhone. Выберите «Нет» или попробуйте ещё раз.",
+		"title": "Рамка устройства",
+		"none": {
+			"name": "Нет",
+			"label": "Без рамки устройства"
+		},
+		"iphone-black": {
+			"name": "Чёрная",
+			"label": "Чёрная рамка iPhone"
+		},
+		"iphone-silver": {
+			"name": "Белая",
+			"label": "Белая рамка iPhone"
+		}
+	},
 	"sections": {
 		"scene": "Сцена",
 		"captions": "Субтитры",

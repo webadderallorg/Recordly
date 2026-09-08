@@ -34,6 +34,17 @@ describe("resolveVideoUrl", () => {
 });
 
 describe("normalizeProjectEditor", () => {
+	it("preserves saved iPhone frames and keeps older projects unframed", () => {
+		for (const deviceFrame of ["none", "iphone-black", "iphone-silver"] as const) {
+			const saved = JSON.parse(JSON.stringify(normalizeProjectEditor({ deviceFrame })));
+			expect(normalizeProjectEditor(saved).deviceFrame).toBe(deviceFrame);
+		}
+		expect(normalizeProjectEditor({}).deviceFrame).toBe("none");
+		expect(normalizeProjectEditor({ deviceFrame: "unknown" } as never).deviceFrame).toBe(
+			"none",
+		);
+	});
+
 	it("defaults to 8% on macOS and square corners elsewhere", () => {
 		expect(getDefaultBorderRadiusPercent("MacIntel")).toBe(8);
 		expect(getDefaultBorderRadiusPercent("Win32")).toBe(0);
@@ -112,5 +123,54 @@ describe("normalizeProjectEditor", () => {
 		expect(editor.webcam.width).toBe(80);
 		expect(editor.webcam.height).toBe(80);
 		expect(editor.webcam.roundness).toBeCloseTo(4.34, 1);
+	});
+});
+
+describe("mobile project provenance", () => {
+	it("preserves validated metadata through snapshots and Save As without overriding user choices", async () => {
+		const { createProjectData } = await import("./projectPersistence");
+		const metadata = {
+			version: 1,
+			sourceKind: "ios-device",
+			mode: "passthrough",
+			format: {
+				codedWidth: 100,
+				codedHeight: 200,
+				displayWidth: 100,
+				displayHeight: 200,
+				codec: "h264",
+				colorPrimaries: null,
+				transferFunction: null,
+				ycbcrMatrix: null,
+				fullRange: null,
+				transform: [1, 0, 0, 1, 0, 0],
+				observedFrameRate: 30,
+				fingerprint: "f",
+			},
+			deviceAudioRecorded: false,
+			narrationRecorded: false,
+			stopReason: "user-stop",
+			interrupted: false,
+		};
+		const saved = createProjectData(
+			"/source.mov",
+			{ showCursor: true, aspectRatio: "16:9", borderRadius: 12 },
+			"first",
+			metadata,
+		);
+		const copy = createProjectData(
+			saved.videoPath,
+			saved.editor,
+			"second",
+			saved.captureMetadata,
+		);
+		expect(copy.version).toBe(2);
+		expect(copy.captureMetadata).toEqual(metadata);
+		expect(copy.editor.showCursor).toBe(true);
+		expect(copy.editor.aspectRatio).toBe("16:9");
+		expect(
+			createProjectData("/source.mov", {}, null, { ...metadata, recoveryPath: "/secret" })
+				.captureMetadata,
+		).toBeUndefined();
 	});
 });

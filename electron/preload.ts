@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { RecordingSessionData } from "./ipc/types";
+import type { IOSCaptureAPI } from "../src/shared/iosCaptureAPI";
 
 type NativeVideoExportWriteResult = { success: boolean; error?: string };
 type NativeVideoAudioMuxMetrics = {
@@ -164,6 +165,60 @@ function settleNativeVideoExportPendingRequests(
 }
 
 contextBridge.exposeInMainWorld("electronAPI", {
+	iosCapture: {
+		getCapabilities: () => ipcRenderer.invoke("ios-capture:capabilities"),
+		getSnapshot: () => ipcRenderer.invoke("ios-capture:snapshot"),
+		discover: () => ipcRenderer.invoke("ios-capture:discover"),
+		prepare: (input) => ipcRenderer.invoke("ios-capture:prepare", input),
+		start: (sessionId) => ipcRenderer.invoke("ios-capture:start", sessionId),
+		stop: (sessionId) => ipcRenderer.invoke("ios-capture:stop", sessionId),
+		cancel: (sessionId, discardAcceptedMedia) =>
+			ipcRenderer.invoke("ios-capture:cancel", { sessionId, discardAcceptedMedia }),
+		release: (sessionId) => ipcRenderer.invoke("ios-capture:release", sessionId),
+		setPreviewEnabled: (enabled) => ipcRenderer.invoke("ios-capture:preview-enabled", enabled),
+		setDiscoveryActive: (active) => ipcRenderer.invoke("ios-capture:discovery-active", active),
+		onState: (callback) => {
+			const listener = (
+				_event: Electron.IpcRendererEvent,
+				state: Parameters<typeof callback>[0],
+			) => callback(state);
+			ipcRenderer.on("ios-capture:state", listener);
+			void ipcRenderer.invoke("ios-capture:subscribe").catch(() => {
+				/* Failure is retained by the authoritative controller. */
+			});
+			return () => {
+				ipcRenderer.removeListener("ios-capture:state", listener);
+				void ipcRenderer.invoke("ios-capture:unsubscribe").catch(() => {
+					/* Failure is retained by the authoritative controller. */
+				});
+			};
+		},
+		onPreview: (callback) => {
+			const listener = (
+				_event: Electron.IpcRendererEvent,
+				frame: Parameters<typeof callback>[0],
+			) => {
+				try {
+					callback(frame);
+				} finally {
+					ipcRenderer.send("ios-capture:preview-ack", {
+						generation: frame.generation,
+						sequence: frame.sequence,
+					});
+				}
+			};
+			ipcRenderer.on("ios-capture:preview", listener);
+			return () => ipcRenderer.removeListener("ios-capture:preview", listener);
+		},
+		getRecoveryCandidates: () => ipcRenderer.invoke("ios-capture:recovery-list"),
+		recover: (sessionId, mode) =>
+			ipcRenderer.invoke("ios-capture:recover", { sessionId, mode }),
+		openRecoveryFolder: (sessionId) =>
+			ipcRenderer.invoke("ios-capture:recovery-folder", sessionId),
+		discardRecovery: (sessionId) =>
+			ipcRenderer.invoke("ios-capture:recovery-discard", sessionId),
+		exportDiagnostics: (sessionId) => ipcRenderer.invoke("ios-capture:diagnostics", sessionId),
+	} satisfies IOSCaptureAPI,
 	hudOverlaySetIgnoreMouse: (ignore: boolean) => {
 		ipcRenderer.send("hud-overlay-set-ignore-mouse", ignore);
 	},
@@ -485,7 +540,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	openSourceSelector: () => {
 		return ipcRenderer.invoke("open-source-selector");
 	},
-	selectSource: (source: ProcessedDesktopSource) => {
+	selectSource: (source: SelectedCaptureSource) => {
 		return ipcRenderer.invoke("select-source", source);
 	},
 	showSourceHighlight: (source: ProcessedDesktopSource) => {
@@ -494,10 +549,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getSelectedSource: () => {
 		return ipcRenderer.invoke("get-selected-source");
 	},
-	onSelectedSourceChanged: (callback: (source: ProcessedDesktopSource | null) => void) => {
+	onSelectedSourceChanged: (callback: (source: SelectedCaptureSource | null) => void) => {
 		const listener = (
 			_event: Electron.IpcRendererEvent,
-			payload: ProcessedDesktopSource | null,
+			payload: SelectedCaptureSource | null,
 		) => callback(payload);
 		ipcRenderer.on("selected-source-changed", listener);
 		return () => ipcRenderer.removeListener("selected-source-changed", listener);

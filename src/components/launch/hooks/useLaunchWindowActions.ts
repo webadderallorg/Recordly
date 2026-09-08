@@ -1,3 +1,4 @@
+import { isIOSDeviceSource, type IOSDeviceSource } from "@/shared/iosCapture";
 import { useCallback, useState } from "react";
 import type { ProjectLibraryEntry } from "@/components/video-editor/ProjectBrowserDialog";
 import type { DesktopSource } from "../popovers/launchPopoverTypes";
@@ -7,10 +8,11 @@ export function useLaunchWindowActions() {
 	const [hasSelectedSource, setHasSelectedSource] = useState(false);
 	const [projectLibraryEntries, setProjectLibraryEntries] = useState<ProjectLibraryEntry[]>([]);
 
-	const handleSourceSelect = useCallback(async (source: DesktopSource) => {
+	const handleSourceSelect = useCallback(async (source: DesktopSource | IOSDeviceSource) => {
 		await window.electronAPI.selectSource(source);
-		setSelectedSource(source.name);
+		setSelectedSource(isIOSDeviceSource(source) ? source.displayName : source.name);
 		setHasSelectedSource(true);
+		if (isIOSDeviceSource(source)) return;
 		window.electronAPI.showSourceHighlight?.({
 			...source,
 			name: source.appName ? `${source.appName} — ${source.name}` : source.name,
@@ -52,15 +54,23 @@ export function useLaunchWindowActions() {
 		}
 	}, []);
 
-	const syncSelectedSource = useCallback((source: { name?: string } | null | undefined) => {
-		if (source?.name) {
-			setSelectedSource(source.name);
-			setHasSelectedSource(true);
-			return;
-		}
-		setSelectedSource("Screen");
-		setHasSelectedSource(false);
-	}, []);
+	const syncSelectedSource = useCallback(
+		(source: { name?: string } | IOSDeviceSource | null | undefined) => {
+			if (isIOSDeviceSource(source)) {
+				setSelectedSource(source.displayName);
+				setHasSelectedSource(true);
+				return;
+			}
+			if (source && "name" in source && source.name) {
+				setSelectedSource(isIOSDeviceSource(source) ? source.displayName : source.name);
+				setHasSelectedSource(true);
+				return;
+			}
+			setSelectedSource("Screen");
+			setHasSelectedSource(false);
+		},
+		[],
+	);
 
 	return {
 		selectedSource,

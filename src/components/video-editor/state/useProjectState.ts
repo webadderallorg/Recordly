@@ -1,8 +1,10 @@
+import type { CaptureMetadata } from "@/shared/iosCapture";
 import { useState } from "react";
 import type { ProjectLibraryEntry } from "../ProjectBrowserDialog";
 import type { EditorProjectData } from "../projectPersistence";
 
 export function useProjectState() {
+	const [captureMetadata, setCaptureMetadata] = useState<CaptureMetadata | undefined>();
 	const [videoPath, setVideoPath] = useState<string | null>(null);
 	const [videoSourcePath, setVideoSourcePath] = useState<string | null>(null);
 	const [currentProjectPath, setCurrentProjectPath] = useState<string | null>(null);
@@ -22,6 +24,8 @@ export function useProjectState() {
 	const [error, setError] = useState<string | null>(null);
 
 	return {
+		captureMetadata,
+		setCaptureMetadata,
 		videoPath,
 		setVideoPath,
 		videoSourcePath,

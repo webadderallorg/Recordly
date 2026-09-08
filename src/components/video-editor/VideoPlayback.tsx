@@ -11,6 +11,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { useScopedT } from "@/contexts/I18nContext";
 import { getAssetPath, getRenderableAssetUrl, getRenderableVideoUrl } from "@/lib/assetPath";
 import { getWebcamShadowFilter } from "@/lib/exporter/shadowProfile";
 import { getSquircleSvgPath } from "@/lib/geometry/squircle";
@@ -31,6 +32,8 @@ import {
 } from "@/lib/wallpapers";
 import { type AspectRatio, formatAspectRatioForCSS } from "@/utils/aspectRatioUtils";
 import { AnnotationOverlay } from "./AnnotationOverlay";
+import type { DeviceFrame } from "./deviceFrame";
+import { DeviceFrameOverlay } from "./deviceFrameOverlay";
 import { type CaptionEditTarget, normalizeCaptionEditText } from "./captionEditing";
 import { buildActiveCaptionLayout } from "./captionLayout";
 import {
@@ -252,6 +255,7 @@ interface VideoPlaybackProps {
 	zoomOutEasing?: ZoomTransitionEasing;
 	connectedZoomEasing?: ZoomTransitionEasing;
 	borderRadius?: number;
+	deviceFrame?: DeviceFrame;
 	padding?: Padding | number;
 	cropRegion?: import("./types").CropRegion;
 	webcam?: WebcamOverlaySettings;
@@ -336,6 +340,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			zoomOutEasing = DEFAULT_ZOOM_OUT_EASING,
 			connectedZoomEasing = DEFAULT_CONNECTED_ZOOM_EASING,
 			borderRadius = 0,
+			deviceFrame = "none",
 			padding = DEFAULT_PADDING,
 			cropRegion,
 			webcam,
@@ -385,6 +390,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const containerRef = useRef<HTMLDivElement | null>(null);
 		const appRef = useRef<Application | null>(null);
 		const videoSpriteRef = useRef<Sprite | null>(null);
+		const tFrame = useScopedT("settings");
+		const [deviceFrameLoadFailed, setDeviceFrameLoadFailed] = useState(false);
+		const deviceFrameGraphicsRef = useRef<DeviceFrameOverlay | null>(null);
 		const videoEffectsContainerRef = useRef<Container | null>(null);
 		const videoContainerRef = useRef<Container | null>(null);
 		const cursorContainerRef = useRef<Container | null>(null);
@@ -1014,10 +1022,18 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				lockedVideoDimensions: lockedVideoDimensionsRef.current,
 				borderRadius,
 				padding,
-				frameInsets: null,
+				deviceFrame,
 			});
 
 			if (result) {
+				if (deviceFrameGraphicsRef.current)
+					deviceFrameGraphicsRef.current.layout(
+						deviceFrame,
+						result.maskRect,
+						videoElement.videoWidth <= videoElement.videoHeight
+							? "portrait"
+							: "landscape",
+					);
 				stageSizeRef.current = result.stageSize;
 				syncPreviewMotionBlurQuality();
 				videoSizeRef.current = result.videoSize;
@@ -1064,6 +1080,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			updateOverlayForRegion,
 			cropRegion,
 			borderRadius,
+			deviceFrame,
 			padding,
 			applyWebcamBubbleLayout,
 			syncPreviewMotionBlurQuality,
@@ -1959,6 +1976,24 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const maskGraphics = new Graphics();
 			videoContainer.addChild(videoSprite);
 			cameraContainer.addChild(maskGraphics);
+			const deviceFrameGraphics = new DeviceFrameOverlay();
+			cameraContainer.addChildAt(
+				deviceFrameGraphics,
+				cameraContainer.getChildIndex(cursorContainer),
+			);
+			deviceFrameGraphicsRef.current = deviceFrameGraphics;
+			setDeviceFrameLoadFailed(false);
+			void deviceFrameGraphics
+				.load(deviceFrame)
+				.then(() => {
+					if (deviceFrameGraphics.destroyed) return;
+					layoutVideoContent();
+					app.render();
+				})
+				.catch(() => {
+					if (deviceFrameGraphics.destroyed) return;
+					setDeviceFrameLoadFailed(true);
+				});
 			videoEffectsContainer.mask = maskGraphics;
 			maskGraphicsRef.current = maskGraphics;
 			if (cursorOverlayRef.current) {
@@ -2002,12 +2037,22 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				videoContainer.mask = null;
 				destroyPixiContainer(videoSprite);
 				destroyPixiContainer(maskGraphics);
+				destroyPixiContainer(deviceFrameGraphics);
+				deviceFrameGraphicsRef.current = null;
 				maskGraphicsRef.current = null;
 				if (!videoTexture.destroyed) videoTexture.destroy(false);
 
 				videoSpriteRef.current = null;
 			};
-		}, [layoutVideoContent, onPlayStateChange, onTimeUpdate, pixiReady, videoReady]);
+		}, [
+			deviceFrame,
+			layoutVideoContent,
+			onError,
+			onPlayStateChange,
+			onTimeUpdate,
+			pixiReady,
+			videoReady,
+		]);
 
 		useEffect(() => {
 			if (!pixiReady || !videoReady) return;
@@ -2478,6 +2523,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								: "none",
 					}}
 				/>
+				{deviceFrameLoadFailed && (
+					<div
+						role="status"
+						className="absolute inset-x-3 top-3 z-20 rounded-lg bg-editor-panel/95 px-3 py-2 text-xs text-foreground shadow-sm"
+					>
+						{tFrame("deviceFrame.loadError")}
+					</div>
+				)}
 				{hasRendererFallback && (
 					<div className="absolute inset-0 z-10 flex items-center justify-center bg-black/60 p-2 text-center">
 						<div className="rounded-md bg-black/70 px-3 py-1.5 text-xs text-white">

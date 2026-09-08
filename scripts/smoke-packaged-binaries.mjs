@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { accessSync, constants, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { inspectIOSHelper } from "./ios-helper-policy.mjs";
 
 const projectRoot = process.cwd();
 const releaseRoot = path.join(projectRoot, "release");
@@ -187,6 +188,15 @@ function getExpectedNativeHelperFiles(archTag) {
 
 	if (archTag.startsWith("darwin-")) {
 		return [
+			...(packageJson.recordlyNativeIOSHelper
+				? [
+						{
+							name: "recordly-ios-device-helper",
+							label: "iOS device helper",
+							executable: true,
+						},
+					]
+				: []),
 			{
 				name: "recordly-screencapturekit-helper",
 				label: "ScreenCaptureKit helper",
@@ -258,6 +268,11 @@ function verifyNativeHelpers(unpackedRoot) {
 					executable: expectedFile.executable,
 				},
 			);
+		}
+		if (archTag.startsWith("darwin-") && packageJson.recordlyNativeIOSHelper) {
+			inspectIOSHelper(path.join(archDir, "recordly-ios-device-helper"), {
+				architecture: archTag === "darwin-arm64" ? "arm64" : "x86_64",
+			});
 		}
 	}
 }

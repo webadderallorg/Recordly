@@ -71,7 +71,7 @@
     "artifactName": "${productName}-${arch}.${ext}",
     "extendInfo": {
       "NSAudioCaptureUsageDescription": "Recordly needs audio capture permission to record system audio.",
-      "NSCameraUsageDescription": "Recordly needs camera access to record webcam video.",
+      "NSCameraUsageDescription": "Recordly needs camera access to record webcam video or receive a connected iPhone or iPad screen.",
       "NSMicrophoneUsageDescription": "Recordly needs microphone access to record voice audio.",
       "NSCameraUseContinuityCameraDeviceType": true,
       "com.apple.security.device.audio-input": true,

@@ -22,6 +22,7 @@ import { useTimelineProjection } from "./useTimelineProjection";
 import { useZoomRegionCommands } from "./useZoomRegionCommands";
 
 type Input = {
+	suppressCursorTelemetry?: boolean;
 	t: ReturnType<typeof useI18n>["t"];
 	shortcuts: ReturnType<typeof useShortcuts>["shortcuts"];
 	isMac: boolean;
@@ -66,6 +67,7 @@ export function useTimelineEditingController(input: Input) {
 		);
 	}, []);
 	const cursor = useCursorTelemetry({
+		suppressCursorTelemetry: input.suppressCursorTelemetry,
 		videoPath: input.videoPath,
 		videoSourcePath: input.videoSourcePath,
 		duration: input.duration,

@@ -8,6 +8,7 @@ import {
 	dialog,
 	webContents as electronWebContents,
 	ipcMain,
+	powerMonitor,
 	Menu,
 	nativeImage,
 	session,
@@ -25,6 +26,16 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
+import {
+	getIOSCaptureController,
+	interruptIOSCapture,
+	shutdownIOSCapture,
+} from "./ipc/register/iosCapture";
+import {
+	beginDesktopRecording,
+	endDesktopRecording,
+	getRecordingLease,
+} from "./ipc/recording/recordingLease";
 import { ensureMediaServer } from "./mediaServer";
 import { hardenWebContentsNavigation, shouldHardenWebContentsType } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
@@ -863,7 +874,16 @@ function createSourceSelectorWindowWrapper() {
 
 // On macOS, applications and their menu bar stay active until the user quits
 // explicitly with Cmd + Q.
-app.on("before-quit", () => {
+let iosQuitReady = false;
+app.on("before-quit", (event) => {
+	if (!iosQuitReady && getIOSCaptureController()) {
+		event.preventDefault();
+		void shutdownIOSCapture().finally(() => {
+			iosQuitReady = true;
+			app.quit();
+		});
+		return;
+	}
 	isAppQuitting = true;
 	killWindowsCaptureProcess();
 	showCursor();
@@ -889,6 +909,9 @@ app.on("second-instance", () => {
 
 // Register all IPC handlers when app is ready
 app.whenReady().then(async () => {
+	powerMonitor.on("suspend", () => {
+		void interruptIOSCapture();
+	});
 	if (process.platform === "win32") {
 		app.setAppUserModelId("dev.recordly.app");
 	}
@@ -1055,7 +1078,15 @@ app.whenReady().then(async () => {
 	// propagation and causes cursor: 'never' from the renderer to be silently
 	// ignored by the native capture pipeline.
 	session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+		let acquiredLease = false;
 		try {
+			if (
+				getSelectedSourceId()?.startsWith("ios-device:") ||
+				getRecordingLease()?.owner === "ios-device"
+			) {
+				callback({});
+				return;
+			}
 			const frame = request.frame;
 			const isLiveFrame = Boolean(frame && !frame.isDestroyed());
 			const requestingWebContents =
@@ -1085,6 +1116,8 @@ app.whenReady().then(async () => {
 
 			// Browser and Linux portal capture starts as soon as this callback
 			// resolves, before recording-state-changed is emitted.
+			beginDesktopRecording();
+			acquiredLease = true;
 			reassertHudOverlayCaptureProtection();
 
 			const sourceId = getSelectedSourceId();
@@ -1115,9 +1148,11 @@ app.whenReady().then(async () => {
 					video: { id: source.id, name: source.name },
 				});
 			} else {
+				endDesktopRecording();
 				callback({});
 			}
 		} catch (error) {
+			if (acquiredLease) endDesktopRecording();
 			console.error("setDisplayMediaRequestHandler error:", error);
 			callback({});
 		}

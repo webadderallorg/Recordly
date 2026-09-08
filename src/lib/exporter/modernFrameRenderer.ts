@@ -1,4 +1,11 @@
+import { DeviceFrameOverlay } from "@/components/video-editor/deviceFrameOverlay";
 import { Application, BlurFilter, Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
+import {
+	type DeviceFrame,
+	type DeviceFrameGeometry,
+	drawVideoScreenMask,
+	getDeviceFrameGeometry,
+} from "@/components/video-editor/deviceFrame";
 import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
@@ -126,6 +133,7 @@ interface FrameRenderConfig {
 	zoomOutEasing?: ZoomTransitionEasing;
 	connectedZoomEasing?: ZoomTransitionEasing;
 	borderRadius?: number;
+	deviceFrame?: DeviceFrame;
 	padding?: Padding | number;
 	cropRegion: CropRegion;
 	webcam?: WebcamOverlaySettings;
@@ -381,6 +389,7 @@ export class FrameRenderer {
 	private rendererBackend: ExportRenderBackend = "webgl";
 	private backgroundContainer: Container | null = null;
 	private cameraContainer: Container | null = null;
+	private deviceFrameGraphics: DeviceFrameOverlay | null = null;
 	private videoEffectsContainer: Container | null = null;
 	private videoContainer: Container | null = null;
 	private cursorContainer: Container | null = null;
@@ -541,6 +550,9 @@ export class FrameRenderer {
 		);
 
 		this.cameraContainer.addChild(this.videoEffectsContainer);
+		this.deviceFrameGraphics = new DeviceFrameOverlay();
+		this.cameraContainer.addChild(this.deviceFrameGraphics);
+		await this.deviceFrameGraphics.load(this.config.deviceFrame);
 		this.cameraContainer.addChild(this.cursorContainer);
 		this.videoEffectsContainer.addChild(this.videoContainer);
 		this.videoEffectsContainer.filterArea = new Rectangle(
@@ -772,6 +784,7 @@ export class FrameRenderer {
 			width: number;
 			height: number;
 			radius: number;
+			deviceFrameGeometry?: DeviceFrameGeometry | null;
 			offsetY: number;
 			alpha: number;
 			blur: number;
@@ -798,13 +811,32 @@ export class FrameRenderer {
 		layer.context.save();
 		layer.context.filter = options.blur > 0 ? `blur(${options.blur}px)` : "none";
 		layer.context.fillStyle = `rgba(0, 0, 0, ${options.alpha})`;
-		drawSquircleOnCanvas(layer.context, {
-			x: padding,
-			y: padding + options.offsetY,
-			width: options.width,
-			height: options.height,
-			radius: options.radius,
-		});
+		if (options.deviceFrameGeometry) {
+			layer.context.beginPath();
+			for (const rect of [
+				options.deviceFrameGeometry.body,
+				...options.deviceFrameGeometry.buttons,
+			]) {
+				const radius =
+					rect === options.deviceFrameGeometry.body
+						? options.deviceFrameGeometry.radius
+						: Math.min(rect.width, rect.height) / 2;
+				layer.context.roundRect(
+					padding + rect.x - options.x,
+					padding + options.offsetY + rect.y - options.y,
+					rect.width,
+					rect.height,
+					radius,
+				);
+			}
+		} else
+			drawSquircleOnCanvas(layer.context, {
+				x: padding,
+				y: padding + options.offsetY,
+				width: options.width,
+				height: options.height,
+				radius: options.radius,
+			});
 		layer.context.fill();
 		layer.context.restore();
 
@@ -3251,7 +3283,7 @@ export class FrameRenderer {
 			width,
 			height,
 			padding,
-			frameInsets: null,
+			deviceFrame: this.config.deviceFrame,
 			cropRegion,
 			videoWidth,
 			videoHeight,
@@ -3266,22 +3298,38 @@ export class FrameRenderer {
 			borderRadius,
 		);
 
-		this.videoMaskGraphics.clear();
-		drawSquircleOnGraphics(this.videoMaskGraphics, {
+		const screen = {
 			x: layout.centerOffsetX,
 			y: layout.centerOffsetY,
 			width: layout.croppedDisplayWidth,
 			height: layout.croppedDisplayHeight,
-			radius: scaledBorderRadius,
-		});
-		this.videoMaskGraphics.fill({ color: 0xffffff });
+		};
+		drawVideoScreenMask(
+			this.videoMaskGraphics,
+			this.config.deviceFrame,
+			screen,
+			scaledBorderRadius,
+			this.config.videoWidth <= this.config.videoHeight ? "portrait" : "landscape",
+		);
+		if (this.deviceFrameGraphics)
+			this.deviceFrameGraphics.layout(
+				this.config.deviceFrame,
+				screen,
+				this.config.videoWidth <= this.config.videoHeight ? "portrait" : "landscape",
+			);
+		const frameGeometry = getDeviceFrameGeometry(
+			this.config.deviceFrame,
+			screen,
+			this.config.videoWidth <= this.config.videoHeight ? "portrait" : "landscape",
+		);
 
 		this.updateVideoShadowLayout({
-			maskX: layout.centerOffsetX,
-			maskY: layout.centerOffsetY,
-			maskWidth: layout.croppedDisplayWidth,
-			maskHeight: layout.croppedDisplayHeight,
-			maskRadius: scaledBorderRadius,
+			maskX: frameGeometry?.bounds.x ?? screen.x,
+			maskY: frameGeometry?.bounds.y ?? screen.y,
+			maskWidth: frameGeometry?.bounds.width ?? screen.width,
+			maskHeight: frameGeometry?.bounds.height ?? screen.height,
+			maskRadius: frameGeometry?.radius ?? scaledBorderRadius,
+			deviceFrameGeometry: frameGeometry,
 		});
 
 		this.layoutCache = {
@@ -3308,6 +3356,7 @@ export class FrameRenderer {
 		maskWidth: number;
 		maskHeight: number;
 		maskRadius: number;
+		deviceFrameGeometry?: DeviceFrameGeometry | null;
 	}): void {
 		const shadowStrength = clampUnitInterval(this.config.shadowIntensity);
 		for (const layer of this.videoShadowLayers) {
@@ -3326,6 +3375,7 @@ export class FrameRenderer {
 				offsetY,
 				alpha: layer.alphaScale * shadowStrength,
 				blur: Math.max(0, layer.blurScale * shadowStrength),
+				deviceFrameGeometry: layout.deviceFrameGeometry,
 			});
 		}
 	}
@@ -3539,6 +3589,7 @@ export class FrameRenderer {
 		this.app = null;
 		this.backgroundContainer = null;
 		this.cameraContainer = null;
+		this.deviceFrameGraphics = null;
 		this.videoEffectsContainer = null;
 		this.videoContainer = null;
 		this.cursorContainer = null;

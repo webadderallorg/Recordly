@@ -1,3 +1,4 @@
+import { parseCaptureMetadata, type CaptureMetadata } from "@/shared/iosCapture";
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import type {
 	ExportBackendPreference,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/exporter/temporalMotionBlur";
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
+import type { DeviceFrame } from "./deviceFrame";
 import { CURSOR_MOTION_PRESETS, resolveCursorMotionPresetId } from "./cursorMotionPresets";
 import {
 	ADVANCED_VERTICAL_PADDING_MAX,
@@ -138,6 +140,7 @@ export interface ProjectEditorState {
 	cursorClickBounce: number;
 	cursorClickBounceDuration: number;
 	cursorSway: number;
+	deviceFrame: DeviceFrame;
 	borderRadius: number;
 	padding: Padding;
 	cropRegion: CropRegion;
@@ -167,6 +170,7 @@ export interface ProjectEditorState {
 }
 
 export interface EditorProjectData {
+	captureMetadata?: CaptureMetadata;
 	version: number;
 	projectId?: string;
 	videoPath: string;
@@ -961,6 +965,10 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		cursorSway: isFiniteNumber((editor as Partial<ProjectEditorState>).cursorSway)
 			? clamp((editor as Partial<ProjectEditorState>).cursorSway as number, 0, 2)
 			: DEFAULT_CURSOR_SWAY,
+		deviceFrame:
+			editor.deviceFrame === "iphone-black" || editor.deviceFrame === "iphone-silver"
+				? editor.deviceFrame
+				: "none",
 		borderRadius: isFiniteNumber(editor.borderRadius)
 			? clamp(editor.borderRadius, 0, 50)
 			: getDefaultBorderRadiusPercent(),
@@ -1140,11 +1148,23 @@ export function createProjectData(
 	videoPath: string,
 	editor: Partial<ProjectEditorState>,
 	projectId?: string | null,
+	captureMetadata?: unknown,
 ): EditorProjectData {
 	return {
 		version: PROJECT_VERSION,
+		...(normalizeProjectCaptureMetadata(captureMetadata)
+			? { captureMetadata: normalizeProjectCaptureMetadata(captureMetadata) }
+			: {}),
 		...(typeof projectId === "string" && projectId.trim().length > 0 ? { projectId } : {}),
 		videoPath,
 		editor,
 	};
+}
+
+export function normalizeProjectCaptureMetadata(value: unknown): CaptureMetadata | undefined {
+	try {
+		return parseCaptureMetadata(value);
+	} catch {
+		return undefined;
+	}
 }

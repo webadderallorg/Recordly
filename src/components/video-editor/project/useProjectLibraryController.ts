@@ -32,6 +32,7 @@ export function useProjectLibraryController({
 	const { setProjectLibraryEntries } = project;
 	const {
 		backgroundBlur,
+		deviceFrame,
 		borderRadius,
 		connectZooms,
 		connectedZoomDurationMs,
@@ -163,6 +164,7 @@ export function useProjectLibraryController({
 					zoomInEasing,
 					zoomOutEasing,
 					connectedZoomEasing,
+					deviceFrame,
 					borderRadius,
 					padding,
 					cropRegion,
@@ -277,6 +279,7 @@ export function useProjectLibraryController({
 		autoCaptionSettings,
 		autoCaptions,
 		backgroundBlur,
+		deviceFrame,
 		borderRadius,
 		connectZooms,
 		connectedZoomDurationMs,

@@ -93,6 +93,32 @@ export function getNativeCaptureHelperBinaryPath(): string {
 	return path.join(app.getPath("userData"), "native-tools", "recordly-screencapturekit-helper");
 }
 
+export function getIOSDeviceCaptureHelperBinaryPath(): string {
+	return getPrebundledNativeHelperPath("recordly-ios-device-helper");
+}
+
+export async function ensureIOSDeviceCaptureHelperBinary(): Promise<string> {
+	if (process.platform !== "darwin") throw new Error("UNSUPPORTED_PLATFORM");
+	const binary = getIOSDeviceCaptureHelperBinaryPath();
+	if (!existsSync(binary)) {
+		if (app.isPackaged) throw new Error("HELPER_UNAVAILABLE");
+		await execFileAsync(
+			process.execPath,
+			[path.join(app.getAppPath(), "scripts", "build-ios-device-helper.mjs")],
+			{
+				env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+				maxBuffer: 1024 * 1024,
+			},
+		);
+	}
+	try {
+		await fs.access(binary, fsConstants.X_OK);
+	} catch {
+		throw new Error("HELPER_UNAVAILABLE");
+	}
+	return binary;
+}
+
 export function getSystemCursorHelperSourcePath(): string {
 	return resolveUnpackedAppPath("electron", "native", "SystemCursorAssets.swift");
 }

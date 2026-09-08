@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { DeviceFrame } from "../deviceFrame";
 import type { EditorPreferences } from "../editorPreferences";
 import type {
 	CropRegion,
@@ -116,6 +117,7 @@ export function useAppearanceState(preferences: EditorPreferences) {
 		preferences.cursorClickBounceDuration,
 	);
 	const [cursorSway, setCursorSway] = useState(preferences.cursorSway);
+	const [deviceFrame, setDeviceFrame] = useState<DeviceFrame>(preferences.deviceFrame);
 	const [borderRadius, setBorderRadius] = useState(preferences.borderRadius);
 	const [padding, setPadding] = useState(preferences.padding);
 	const [cropRegion, setCropRegion] = useState<CropRegion>(DEFAULT_CROP_REGION);
@@ -205,6 +207,8 @@ export function useAppearanceState(preferences: EditorPreferences) {
 		setCursorClickBounceDuration,
 		cursorSway,
 		setCursorSway,
+		deviceFrame,
+		setDeviceFrame,
 		borderRadius,
 		setBorderRadius,
 		padding,

@@ -27,6 +27,7 @@ import {
 	withFinalizationTimeout,
 } from "./finalizationTimeout";
 import { FrameRenderer } from "./frameRenderer";
+import type { DeviceFrame } from "@/components/video-editor/deviceFrame";
 import { getLocalFilePath } from "./localMediaSource";
 import type { SupportedMp4EncoderPath } from "./mp4Support";
 import { VideoMuxer } from "./muxer";
@@ -67,6 +68,7 @@ interface VideoExporterConfig extends ExportConfig {
 	zoomOutEasing?: ZoomTransitionEasing;
 	connectedZoomEasing?: ZoomTransitionEasing;
 	borderRadius?: number;
+	deviceFrame?: DeviceFrame;
 	padding?: Padding | number;
 	videoPadding?: number;
 	cropRegion: CropRegion;
@@ -237,6 +239,7 @@ export class VideoExporter {
 				zoomOutEasing: this.config.zoomOutEasing,
 				connectedZoomEasing: this.config.connectedZoomEasing,
 				borderRadius: this.config.borderRadius,
+				deviceFrame: this.config.deviceFrame,
 				padding: this.config.padding,
 				cropRegion: this.config.cropRegion,
 				webcam: this.config.webcam,

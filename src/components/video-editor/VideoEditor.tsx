@@ -250,6 +250,7 @@ export default function VideoEditor() {
 	} = projectController;
 
 	const editing = useTimelineEditingController({
+		suppressCursorTelemetry: project.captureMetadata?.sourceKind === "ios-device",
 		t,
 		shortcuts,
 		isMac,

@@ -11,7 +11,12 @@ import {
 } from "../cursor/bounds";
 import { getDisplayBoundsForSource, getDisplayWorkAreaForSource } from "../recording/ffmpeg";
 import { selectedSource, setSelectedSource } from "../state";
-import type { SelectedSource, WindowBounds } from "../types";
+import type { SelectedSource, SelectedCaptureSource, WindowBounds } from "../types";
+import {
+	assertIOSCaptureClient,
+	getIOSCaptureController,
+	validateIOSSourceSelection,
+} from "./iosCapture";
 import { getScreen, parseWindowId } from "../utils";
 import { bringWindowsWindowForward, resolveWindowsWindowBounds } from "../windowsWindowControl";
 import { getScreenSourceIdForDisplay } from "./sourceMapping";
@@ -381,7 +386,22 @@ export function registerSourceHandlers({
 		}
 	});
 
-	ipcMain.handle("select-source", async (_, source: SelectedSource) => {
+	ipcMain.handle("select-source", async (event, source: SelectedCaptureSource) => {
+		const controller = getIOSCaptureController();
+		const state = controller?.getSnapshot();
+		if (state && ["starting", "recording", "stopping", "finalising"].includes(state.phase))
+			throw new Error("RECORDING_BUSY");
+		if (source.sourceType === "ios-device") {
+			source = validateIOSSourceSelection(event, source);
+			setSelectedSource(source);
+			broadcastSelectedSourceChange();
+			stopWindowBoundsCapture();
+			return source;
+		}
+		if (state?.sessionId) {
+			assertIOSCaptureClient(event);
+			await controller?.release(state.sessionId);
+		}
 		if (source.id?.startsWith("window:")) {
 			await bringSelectedWindowForward(source);
 		}
@@ -397,6 +417,8 @@ export function registerSourceHandlers({
 	});
 
 	ipcMain.handle("show-source-highlight", async (_, source: SelectedSource) => {
+		if ((source as { sourceType?: string }).sourceType === "ios-device")
+			return { success: false };
 		try {
 			const isWindow = source.id?.startsWith("window:");
 

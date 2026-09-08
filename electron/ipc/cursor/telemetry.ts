@@ -194,7 +194,9 @@ export function getNormalizedCursorPoint() {
 		};
 	}
 
-	const sourceDisplayId = Number(selectedSource?.display_id);
+	const sourceDisplayId = Number(
+		selectedSource?.sourceType === "ios-device" ? undefined : selectedSource?.display_id,
+	);
 	const sourceDisplay = Number.isFinite(sourceDisplayId)
 		? (getScreen()
 				.getAllDisplays()

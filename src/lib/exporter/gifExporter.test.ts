@@ -254,7 +254,7 @@ describe("Property 3: Size Preset Resolution Mapping", () => {
 });
 
 describe("GIF renderer config", () => {
-	it("forwards cursor click-effect settings into the frame renderer config", () => {
+	it("forwards frame and cursor click-effect settings into the frame renderer config", () => {
 		const config = buildGifFrameRendererConfig(
 			{
 				videoUrl: "file:///recording.mp4",
@@ -270,6 +270,7 @@ describe("GIF renderer config", () => {
 				backgroundBlur: 0,
 				cropRegion: { x: 0, y: 0, width: 1, height: 1 },
 				cursorClickEffect: "echo",
+				deviceFrame: "iphone-silver",
 				cursorClickEffectColor: "#22C55E",
 				cursorClickEffectScale: 1.4,
 				cursorClickEffectOpacity: 0.65,
@@ -279,6 +280,7 @@ describe("GIF renderer config", () => {
 		);
 
 		expect(config).toMatchObject({
+			deviceFrame: "iphone-silver",
 			cursorClickEffect: "echo",
 			cursorClickEffectColor: "#22C55E",
 			cursorClickEffectScale: 1.4,

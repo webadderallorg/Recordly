@@ -1,0 +1,39 @@
+name: iOS capture software checks
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-capture-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Assert macOS and install locked test dependencies
+        run: |
+          test "$(uname -s)" = Darwin
+          npm ci --ignore-scripts
+          node node_modules/ffmpeg-static/install.js
+      - run: npm run build:ios-helper
+      - run: npm run test:ios-native
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run lint
+      - run: npm run i18n:check
+      - name: Helper self-test without capture or TCC
+        run: |
+          if [ "$(uname -m)" = arm64 ]; then
+            electron/native/bin/darwin-arm64/recordly-ios-device-helper --self-test
+          else
+            electron/native/bin/darwin-x64/recordly-ios-device-helper --self-test
+          fi

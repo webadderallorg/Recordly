@@ -156,6 +156,22 @@
 		"paddingRight": "Droite",
 		"removeBackground": "Supprimer l’arrière-plan"
 	},
+	"deviceFrame": {
+		"loadError": "Le cadre d’iPhone n’a pas pu être chargé. Choisissez « Aucun » ou réessayez.",
+		"title": "Cadre de l’appareil",
+		"none": {
+			"name": "Aucun",
+			"label": "Aucun cadre d’appareil"
+		},
+		"iphone-black": {
+			"name": "Noir",
+			"label": "Cadre d’iPhone noir"
+		},
+		"iphone-silver": {
+			"name": "Blanc",
+			"label": "Cadre d’iPhone blanc"
+		}
+	},
 	"sections": {
 		"scene": "Scène",
 		"captions": "Sous-titres",
