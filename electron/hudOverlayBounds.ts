@@ -6,8 +6,18 @@ export interface HudOverlayWorkArea {
 }
 
 const NON_PASSTHROUGH_HUD_WIDTH_DIP = 860;
-const NON_PASSTHROUGH_HUD_COMPACT_HEIGHT_DIP = 160;
-const NON_PASSTHROUGH_HUD_EXPANDED_HEIGHT_DIP = 540;
+// Without mouse passthrough the HUD is an ordinary window, so anything the
+// renderer draws outside it is clipped: a menu taller than the window loses its
+// top rows. Resizing on demand is not an option either, because Wayland
+// compositors ignore client-side moves, so a window that grows keeps its
+// top-left pinned and drags the bar down with it.
+//
+// So reserve the menu headroom once, at creation. The bar renders at the bottom
+// edge of the window, which leaves the space above it transparent and free for
+// menus to open into without the window ever changing size.
+// 400px menu card + 16px offsets + ~96px of bar and padding, rounded up.
+const NON_PASSTHROUGH_HUD_COMPACT_HEIGHT_DIP = 560;
+const NON_PASSTHROUGH_HUD_EXPANDED_HEIGHT_DIP = 680;
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(Math.max(value, min), max);
