@@ -524,7 +524,10 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 		if (!hasUsableMacSystemCompanion && usableMacMicOnlyCompanions.length > 0) {
 			paths = usableMacMicOnlyCompanions;
 		} else if (hasUsableMacSystemCompanion) {
-			paths = [videoPath];
+			// macOS keeps system and mic separate; an embedded stream is not a full mix.
+			paths = Array.from(
+				new Set(companionCandidates.flatMap((candidate) => candidate.usablePaths)),
+			);
 		} else {
 			const companionPaths = Array.from(
 				new Set(

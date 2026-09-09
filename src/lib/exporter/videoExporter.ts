@@ -1,3 +1,4 @@
+import { resolveSourceAudioFallbackPaths } from "./sourceAudioFallback";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -552,6 +553,15 @@ export class VideoExporter {
 				(this.config.sourceAudioFallbackStartDelayMsByPath?.[audioPath] ?? 0) > 0,
 		);
 		const localVideoSourcePath = this.getNativeVideoSourcePath();
+		const { externalAudioPaths } = resolveSourceAudioFallbackPaths(
+			localVideoSourcePath,
+			sourceAudioFallbackPaths,
+		);
+		if (videoInfo.hasAudio && externalAudioPaths.length > 0) {
+			// Use the shared routing policy even for one sidecar, rather than copying
+			// an embedded stream that may be silent or missing the microphone.
+			return { audioMode: "edited-track", strategy: "offline-render-fallback" };
+		}
 		const primaryAudioSourcePath =
 			(videoInfo.hasAudio ? localVideoSourcePath : null) ??
 			sourceAudioFallbackPaths[0] ??
