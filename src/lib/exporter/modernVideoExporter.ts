@@ -1237,26 +1237,6 @@ export class ModernVideoExporter {
 		return buildNativeStaticLayoutTimelineSegments(sourceSegments);
 	}
 
-	private getNativeAudioFallbackPaths(videoInfo: DecodedVideoInfo): string[] {
-		const sourceAudioFallbackPaths = (this.config.sourceAudioFallbackPaths ?? []).filter(
-			(audioPath) => typeof audioPath === "string" && audioPath.trim().length > 0,
-		);
-		const localVideoSourcePath = this.getNativeVideoSourcePath();
-		if (!videoInfo.hasAudio || !localVideoSourcePath) {
-			return sourceAudioFallbackPaths;
-		}
-
-		const { externalAudioPaths } = resolveSourceAudioFallbackPaths(
-			localVideoSourcePath,
-			sourceAudioFallbackPaths,
-		);
-		if (externalAudioPaths.length === 0) {
-			return sourceAudioFallbackPaths;
-		}
-
-		return [localVideoSourcePath, ...externalAudioPaths];
-	}
-
 	private shouldUseNativeStaticLayoutTimelineMap(
 		videoInfo: DecodedVideoInfo,
 		effectiveDurationSec: number,
@@ -1276,12 +1256,26 @@ export class ModernVideoExporter {
 	private buildNativeAudioPlan(videoInfo: DecodedVideoInfo): NativeAudioPlan {
 		const speedRegions = this.config.speedRegions ?? [];
 		const audioRegions = this.config.audioRegions ?? [];
-		const sourceAudioFallbackPaths = this.getNativeAudioFallbackPaths(videoInfo);
+		const sourceAudioFallbackPaths = (this.config.sourceAudioFallbackPaths ?? []).filter(
+			(audioPath) => typeof audioPath === "string" && audioPath.trim().length > 0,
+		);
 		const hasTimedSourceAudioFallback = sourceAudioFallbackPaths.some(
 			(audioPath) =>
 				(this.config.sourceAudioFallbackStartDelayMsByPath?.[audioPath] ?? 0) > 0,
 		);
 		const localVideoSourcePath = this.getNativeVideoSourcePath();
+		const { externalAudioPaths } = resolveSourceAudioFallbackPaths(
+			localVideoSourcePath,
+			sourceAudioFallbackPaths,
+		);
+		if (videoInfo.hasAudio && externalAudioPaths.length > 0) {
+			// Preserve the selector's replacement/supplemental audio decision.
+			return {
+				audioMode: "edited-track",
+				strategy: "offline-render-fallback",
+				sourceAudioFallbackPaths,
+			};
+		}
 		const primaryAudioSourcePath =
 			(videoInfo.hasAudio ? localVideoSourcePath : null) ??
 			sourceAudioFallbackPaths[0] ??

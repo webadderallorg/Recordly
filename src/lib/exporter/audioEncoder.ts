@@ -263,18 +263,18 @@ export class AudioProcessor {
 			videoUrl,
 			sortedSourceAudioFallbackPaths,
 		);
-		const requiresLegacyMacMicSidecarMix =
-			routingPolicy.includeEmbeddedInExport &&
-			!routingPolicy.hasEmbeddedSourceAudio &&
-			routingPolicy.playbackPaths.length === 1 &&
-			routingPolicy.playbackPaths[0]?.toLowerCase().endsWith(".mic.m4a") === true;
+		// Native macOS M4A companions need offline rendering; the single-sidecar
+		// demux fast path can yield no AAC samples for these recordings.
+		const requiresNativeMacCompanionRender = routingPolicy.playbackPaths.some((audioPath) =>
+			/\.(mic|system)\.m4a$/i.test(audioPath),
+		);
 		const hasTimedCompanionAudio = routingPolicy.playbackPaths.some(
 			(audioPath) => (sourceAudioFallbackStartDelayMsByPath?.[audioPath] ?? 0) > 0,
 		);
 		const needsSourceAudioMixing =
 			routingPolicy.playbackPaths.length > 1 ||
 			(routingPolicy.hasEmbeddedSourceAudio && routingPolicy.playbackPaths.length > 0) ||
-			requiresLegacyMacMicSidecarMix ||
+			requiresNativeMacCompanionRender ||
 			hasTimedCompanionAudio;
 
 		// When speed edits, audio regions, or multiple audio sources need mixing, use offline AudioContext pipeline.
