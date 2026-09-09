@@ -38,7 +38,7 @@ class PreviewAudio {
 const elements: PreviewAudio[] = [];
 const audioPath = "/recording.mic.m4a";
 type Params = Parameters<typeof useAudioPreviewSync>[0];
-function render(overrides: Partial<Params> = {}) {
+function render(overrides: Partial<Params> = {}, commit = true) {
 	hooks.index = 0;
 	hooks.effects = [];
 	const result = useAudioPreviewSync({
@@ -57,7 +57,9 @@ function render(overrides: Partial<Params> = {}) {
 		onSourceFallbackLoadError: vi.fn(),
 		...overrides,
 	});
-	for (const effect of hooks.effects) effect();
+	if (commit) {
+		for (const effect of hooks.effects) effect();
+	}
 	return result;
 }
 async function flushLoads() {
@@ -155,6 +157,32 @@ describe("companion preview timing", () => {
 		await flushLoads();
 		expect(elements[0].paused).toBe(true);
 		expect(elements[0].play).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		false,
+		true,
+	])("ignores uncommitted playback state when a resource resolves (committed playing: %s)", async (isPlaying) => {
+		let resolve!: (value: { src: string; revoke: () => void }) => void;
+		vi.mocked(resolveMediaElementSource).mockReturnValue(
+			new Promise((done) => {
+				resolve = done;
+			}),
+		);
+		render({ isPlaying, currentTime: 1 });
+
+		// React may discard this render without running any of its effects.
+		render({ isPlaying: !isPlaying, currentTime: 5 }, false);
+		resolve({ src: audioPath, revoke: () => {} });
+		await flushLoads();
+		expect(elements[0].currentTime).toBe(1);
+		expect(elements[0].paused).toBe(!isPlaying);
+
+		// A subsequent committed update must still publish the new callback.
+		render({ isPlaying: !isPlaying, currentTime: 5 });
+		await flushLoads();
+		expect(elements[0].currentTime).toBe(5);
+		expect(elements[0].paused).toBe(isPlaying);
 	});
 
 	it("does not restart audio when a pending context resume finishes after pausing", async () => {

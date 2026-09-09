@@ -479,9 +479,11 @@ export function useAudioPreviewSync({
 		ensureSourceAudioRunning,
 	]);
 
-	// Async resource loads must use the latest play/pause state and playhead.
-	syncSourceAudioRef.current = syncSourceAudio;
-	useEffect(syncSourceAudio, [syncSourceAudio]);
+	// Async resource loads must only observe committed playback state.
+	useEffect(() => {
+		syncSourceAudioRef.current = syncSourceAudio;
+		syncSourceAudio();
+	}, [syncSourceAudio]);
 
 	return { playSourceAudioPreview };
 }
