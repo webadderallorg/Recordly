@@ -1,4 +1,4 @@
-import { Application, Container, Graphics, Rectangle, Sprite, Texture, VideoSource } from "pixi.js";
+import { Application, Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
 import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 import type React from "react";
@@ -111,6 +111,7 @@ import {
 	stepSpringValue,
 } from "./videoPlayback/motionSmoothing";
 import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
+import { PreviewVideoSource } from "./videoPlayback/previewVideoSource";
 import { createVideoEventHandlers } from "./videoPlayback/videoEventHandlers";
 import {
 	getWebcamMediaTargetTimeSeconds,
@@ -381,6 +382,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		ref,
 	) => {
 		const videoRef = useRef<HTMLVideoElement | null>(null);
+		const previewVideoSourceRef = useRef(new PreviewVideoSource());
+		const attachVideo = useCallback((video: HTMLVideoElement | null) => {
+			// VideoSource.destroy() clears the media URL, so only destroy it when
+			// React detaches the element, never during a layout effect cleanup.
+			previewVideoSourceRef.current.setVideo(video);
+			videoRef.current = video;
+		}, []);
 		const previewFrameRef = useRef<HTMLDivElement | null>(null);
 		const containerRef = useRef<HTMLDivElement | null>(null);
 		const appRef = useRef<Application | null>(null);
@@ -1944,13 +1952,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				return;
 			if (video.videoWidth === 0 || video.videoHeight === 0) return;
 
-			const source = VideoSource.from(video);
-			if ("autoPlay" in source) {
-				(source as { autoPlay?: boolean }).autoPlay = false;
-			}
-			if ("autoUpdate" in source) {
-				(source as { autoUpdate?: boolean }).autoUpdate = true;
-			}
+			const source = previewVideoSourceRef.current.getSource();
 			const videoTexture = Texture.from(source);
 
 			const videoSprite = new Sprite(videoTexture);
@@ -1967,7 +1969,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 			animationStateRef.current = createPlaybackAnimationState();
 
-			layoutVideoContent();
+			layoutVideoContentRef.current?.();
 			video.pause();
 
 			const { handlePlay, handlePause, handleSeeked, handleSeeking, dispose } =
@@ -2004,10 +2006,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				destroyPixiContainer(maskGraphics);
 				maskGraphicsRef.current = null;
 				if (!videoTexture.destroyed) videoTexture.destroy(false);
+				previewVideoSourceRef.current.suspend();
 
 				videoSpriteRef.current = null;
 			};
-		}, [layoutVideoContent, onPlayStateChange, onTimeUpdate, pixiReady, videoReady]);
+		}, [onPlayStateChange, onTimeUpdate, pixiReady, videoReady]);
 
 		useEffect(() => {
 			if (!pixiReady || !videoReady) return;
@@ -2885,7 +2888,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				{/* Keep the source video off-screen instead of display:none so the
 					browser continues producing presented frames for Pixi and preview sync. */}
 				<video
-					ref={videoRef}
+					ref={attachVideo}
 					src={videoPath}
 					className={fallbackVideoClassName}
 					preload="metadata"
