@@ -32,6 +32,12 @@ export interface BlockedClipFreezeFrameChange {
 	blockedReason: ClipFreezeFrameBlockReason;
 }
 
+/**
+ * A freeze requested on a clip's last frame holds a frame this far before the clip's source end,
+ * so that both preview playback and export reach the held frame before the clip ends.
+ */
+const LAST_HOLDABLE_FRAME_MARGIN_MS = 100;
+
 interface TimeSpan {
 	startMs: number;
 	endMs: number;
@@ -196,7 +202,7 @@ export function planAddClipFreezeFrame(params: {
 	const offsetMs = Math.max(
 		0,
 		Math.min(
-			sourceDurationMs - 1,
+			sourceDurationMs - LAST_HOLDABLE_FRAME_MARGIN_MS,
 			mapTimelineTimeToSourceTime(timelineMs, [clip]) - clip.startMs,
 		),
 	);

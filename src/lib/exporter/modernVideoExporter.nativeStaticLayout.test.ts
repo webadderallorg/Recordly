@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AudioRegion, SpeedRegion } from "@/components/video-editor/types";
+import type { AudioRegion, FreezeRegion, SpeedRegion } from "@/components/video-editor/types";
 import { ModernVideoExporter } from "./modernVideoExporter";
 import type { DecodedVideoInfo } from "./streamingDecoder";
 
@@ -188,6 +188,38 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 			strategy: "offline-render-fallback",
 			sourceAudioFallbackPaths: [audioPath],
 		});
+	});
+
+	it("renders the edited audio track offline when freeze frames insert silence", () => {
+		const freezeRegions: FreezeRegion[] = [
+			{ id: "freeze-1", sourceMs: 2_000, durationMs: 1_500 },
+		];
+		const exporter = createExporter({
+			freezeRegions,
+			sourceAudioFallbackPaths: ["C:\\recordly\\recording.system.wav"],
+		});
+
+		expect(
+			exporter.buildNativeAudioPlan({
+				...videoInfo,
+				hasAudio: false,
+				audioCodec: undefined,
+				audioSampleRate: undefined,
+			}),
+		).toMatchObject({
+			audioMode: "edited-track",
+			strategy: "offline-render-fallback",
+		});
+	});
+
+	it("keeps freeze frame timelines off the native static layout route", () => {
+		const exporter = createExporter({
+			freezeRegions: [{ id: "freeze-1", sourceMs: 2_000, durationMs: 1_500 }],
+		});
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReasons({ audioMode: "none" }, videoInfo, 61.5),
+		).toContain("unsupported-freeze-frame-timeline");
 	});
 
 	it("allows native video when only the audio track needs offline editing", () => {

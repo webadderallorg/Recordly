@@ -8,6 +8,7 @@ import type {
 	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
+	FreezeRegion,
 	Padding,
 	SourceAudioTrackSettings,
 	SpeedRegion,
@@ -102,6 +103,7 @@ interface VideoExporterConfig extends ExportConfig {
 	zoomRegions: ZoomRegion[];
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
+	freezeRegions?: FreezeRegion[];
 	showShadow: boolean;
 	shadowIntensity: number;
 	backgroundBlur: number;
@@ -538,6 +540,7 @@ export class ModernVideoExporter {
 				const effectiveDuration = this.streamingDecoder.getEffectiveDuration(
 					this.config.trimRegions,
 					this.config.speedRegions,
+					this.config.freezeRegions,
 				);
 				this.effectiveDurationSec = effectiveDuration;
 				const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
@@ -720,6 +723,7 @@ export class ModernVideoExporter {
 						this.processedFrameCount = frameIndex;
 						this.reportProgress(frameIndex, totalFrames, "extracting");
 					},
+					this.config.freezeRegions,
 				);
 				this.decodeLoopTimeMs = this.getNowMs() - decodeLoopStartedAt;
 
@@ -1301,8 +1305,11 @@ export class ModernVideoExporter {
 			return { audioMode: "none" };
 		}
 
+		// Freeze frames insert silence, which only the rendered edited track can produce.
+		const hasFreezeFrames = (this.config.freezeRegions ?? []).length > 0;
 		if (
 			speedRegions.length > 0 ||
+			hasFreezeFrames ||
 			audioRegions.length > 0 ||
 			sourceAudioFallbackPaths.length > 1 ||
 			hasTimedSourceAudioFallback ||
@@ -1328,6 +1335,7 @@ export class ModernVideoExporter {
 				Number.isFinite(primaryAudioSourceSampleRate) &&
 				primaryAudioSourceSampleRate > 0;
 			const requiresRenderedEditedTrack =
+				hasFreezeFrames ||
 				hasNonDefaultSourceTrackSettings(this.config.sourceAudioTrackSettings) ||
 				(this.config.clipRegions ?? []).some((clip) => Boolean(clip.muted));
 			const strategy =
@@ -1534,6 +1542,10 @@ export class ModernVideoExporter {
 		}
 		if (hasCursorClickEffect) {
 			reasons.push("unsupported-cursor-click-effect");
+		}
+		if ((this.config.freezeRegions ?? []).length > 0) {
+			// The native timeline map only models trims and speed changes, not held frames.
+			reasons.push("unsupported-freeze-frame-timeline");
 		}
 
 		const hasZoomRegions = (this.config.zoomRegions ?? []).length > 0;

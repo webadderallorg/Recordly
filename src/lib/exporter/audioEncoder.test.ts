@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AudioProcessor, softLimitOfflineMixPeaksInPlace } from "./audioEncoder";
 
+interface TimelineSliceForTest {
+	sourceStartMs: number;
+	sourceEndMs: number;
+	speed: number;
+	holdBeforeMs: number;
+}
+
 type OfflineRenderTestHarness = AudioProcessor & {
 	decodeAudioFromUrl(url: string): Promise<AudioBuffer | null>;
 	getMediaDurationSec(url: string): Promise<number>;
@@ -26,6 +33,27 @@ type OfflineRenderTestHarness = AudioProcessor & {
 		sourceAudioFallbackStartDelayMsByPath: Record<string, number> | undefined,
 		muxer: unknown,
 	): Promise<void>;
+	buildTimelineSlices(
+		sourceDurationMs: number,
+		trimRegions: Array<{ id: string; startMs: number; endMs: number }>,
+		speedRegions: never[],
+		freezeRegions: Array<{ id: string; sourceMs: number; durationMs: number }>,
+	): TimelineSliceForTest[];
+	sourceTimeToOutputTime(sourceMs: number, slices: TimelineSliceForTest[]): number;
+	scheduleBufferThroughTimeline(
+		ctx: OfflineAudioContext,
+		buffer: AudioBuffer,
+		slices: TimelineSliceForTest[],
+		sourceStartDelaySec: number,
+	): void;
+	stretchAudioBuffer(
+		originalBuffer: AudioBuffer,
+		speed: number,
+		sourceOffsetSec: number,
+		sourceDurationSec: number,
+		outputDurationSec: number,
+		ctx: OfflineAudioContext,
+	): AudioBuffer;
 	renderChunked(
 		prepared: {
 			mainBufferEntry: null;
@@ -248,5 +276,87 @@ describe("AudioProcessor offline render preparation", () => {
 				globalThis as unknown as { OfflineAudioContext: typeof OfflineAudioContext }
 			).OfflineAudioContext = originalOfflineAudioContext;
 		}
+	});
+});
+
+describe("AudioProcessor freeze frame timeline", () => {
+	const freezeRegion = { id: "freeze-1", sourceMs: 2_000, durationMs: 1_500 };
+
+	it("holds silence before the slice that starts on the held frame", () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+
+		expect(processor.buildTimelineSlices(6_000, [], [], [freezeRegion])).toEqual([
+			{ sourceStartMs: 0, sourceEndMs: 2_000, speed: 1, holdBeforeMs: 0 },
+			{ sourceStartMs: 2_000, sourceEndMs: 6_000, speed: 1, holdBeforeMs: 1_500 },
+		]);
+	});
+
+	it("drops freeze frames inside trimmed footage", () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+
+		expect(
+			processor.buildTimelineSlices(
+				6_000,
+				[{ id: "trim-1", startMs: 1_000, endMs: 3_000 }],
+				[],
+				[freezeRegion],
+			),
+		).toEqual([
+			{ sourceStartMs: 0, sourceEndMs: 1_000, speed: 1, holdBeforeMs: 0 },
+			{ sourceStartMs: 3_000, sourceEndMs: 6_000, speed: 1, holdBeforeMs: 0 },
+		]);
+	});
+
+	it("maps source time after a hold later by the hold duration", () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const slices = processor.buildTimelineSlices(6_000, [], [], [freezeRegion]);
+
+		expect(processor.sourceTimeToOutputTime(1_000, slices)).toBe(1_000);
+		expect(processor.sourceTimeToOutputTime(2_000, slices)).toBe(2_000);
+		expect(processor.sourceTimeToOutputTime(2_500, slices)).toBe(4_000);
+	});
+
+	it("schedules no source audio during a hold", () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const slices = processor.buildTimelineSlices(6_000, [], [], [freezeRegion]);
+		vi.spyOn(processor, "stretchAudioBuffer").mockImplementation(
+			(_buffer, _speed, _sourceOffsetSec, _sourceDurationSec, outputDurationSec) =>
+				({ duration: outputDurationSec }) as AudioBuffer,
+		);
+		const scheduledSources: Array<{
+			buffer: AudioBuffer | null;
+			start: ReturnType<typeof vi.fn>;
+		}> = [];
+		const ctx = {
+			destination: {},
+			createBufferSource: () => {
+				const source = {
+					buffer: null,
+					playbackRate: { value: 1 },
+					connect: vi.fn(),
+					start: vi.fn(),
+				};
+				scheduledSources.push(source);
+				return source;
+			},
+			createGain: () => ({ gain: { value: 1 }, connect: vi.fn() }),
+		} as unknown as OfflineAudioContext;
+
+		processor.scheduleBufferThroughTimeline(
+			ctx,
+			{ duration: 6, numberOfChannels: 1 } as AudioBuffer,
+			slices,
+			0,
+		);
+
+		expect(
+			scheduledSources.map((source) => ({
+				startSec: source.start.mock.calls[0]?.[0],
+				durationSec: source.buffer?.duration,
+			})),
+		).toEqual([
+			{ startSec: 0, durationSec: 2 },
+			{ startSec: 3.5, durationSec: 4 },
+		]);
 	});
 });

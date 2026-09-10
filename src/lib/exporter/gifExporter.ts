@@ -7,6 +7,7 @@ import type {
 	CropRegion,
 	CursorStyle,
 	CursorTelemetryPoint,
+	FreezeRegion,
 	Padding,
 	SpeedRegion,
 	TrimRegion,
@@ -40,6 +41,7 @@ interface GifExporterConfig {
 	zoomRegions: ZoomRegion[];
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
+	freezeRegions?: FreezeRegion[];
 	showShadow: boolean;
 	shadowIntensity: number;
 	backgroundBlur: number;
@@ -254,6 +256,7 @@ export class GifExporter {
 			const effectiveDuration = this.streamingDecoder.getEffectiveDuration(
 				this.config.trimRegions,
 				this.config.speedRegions,
+				this.config.freezeRegions,
 			);
 			const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
 
@@ -295,6 +298,7 @@ export class GifExporter {
 					frameIndex++;
 					this.reportProgress(frameIndex, totalFrames);
 				},
+				this.config.freezeRegions,
 			);
 
 			if (this.cancelled) {

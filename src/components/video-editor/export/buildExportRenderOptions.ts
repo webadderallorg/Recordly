@@ -2,7 +2,12 @@ import type { ExportProgress } from "@/lib/exporter";
 import { toFileUrl } from "../projectPersistence";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
-import type { CursorTelemetryPoint, SpeedRegion, ZoomRegion } from "../types";
+import {
+	type CursorTelemetryPoint,
+	getClipFreezeRegions,
+	type SpeedRegion,
+	type ZoomRegion,
+} from "../types";
 
 type AppearanceState = ReturnType<typeof useAppearanceState>;
 type TimelineState = ReturnType<typeof useTimelineState>;
@@ -36,6 +41,7 @@ export function buildExportRenderOptions({
 		wallpaper: appearance.wallpaper,
 		trimRegions: timeline.trimRegions,
 		speedRegions: effectiveSpeedRegions,
+		freezeRegions: getClipFreezeRegions(timeline.clipRegions),
 		showShadow: shadowIntensity > 0,
 		shadowIntensity,
 		backgroundBlur: appearance.backgroundBlur,

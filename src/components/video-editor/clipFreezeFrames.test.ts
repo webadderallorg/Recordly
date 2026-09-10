@@ -162,7 +162,7 @@ describe("planAddClipFreezeFrame", () => {
 		});
 	});
 
-	it("holds the last frame when the playhead sits on the clip end", () => {
+	it("holds a frame just before the clip end when the playhead sits on the clip end", () => {
 		expect(
 			planAddClipFreezeFrame({
 				clipRegions: [fullClip],
@@ -172,7 +172,7 @@ describe("planAddClipFreezeFrame", () => {
 				freezeFrameId: "freeze-1",
 			}),
 		).toMatchObject({
-			clipRegions: [{ endMs: 11_000, freezeFrames: [{ offsetMs: 9_999 }] }],
+			clipRegions: [{ endMs: 11_000, freezeFrames: [{ offsetMs: 9_900 }] }],
 			created: true,
 		});
 	});
