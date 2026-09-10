@@ -70,7 +70,7 @@ export default defineConfig({
 							fileName: (_format, entryName) => `${entryName}.cjs`,
 						},
 						rollupOptions: {
-							external: ["ffmpeg-static", "uiohook-napi"],
+							external: ["ffmpeg-static", "uiohook-napi", "bufferutil", "utf-8-validate"],
 							output: {
 								format: "cjs",
 								inlineDynamicImports: true,
