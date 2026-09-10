@@ -20,6 +20,7 @@ import {
 } from "@/lib/exporter/temporalMotionBlur";
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
+import { clampFreezeFrameDurationMs, fitClipFreezeFrames } from "./clipFreezeFrames";
 import { CURSOR_MOTION_PRESETS, resolveCursorMotionPresetId } from "./cursorMotionPresets";
 import {
 	ADVANCED_VERTICAL_PADDING_MAX,
@@ -29,6 +30,7 @@ import {
 	type AutoCaptionSettings,
 	type CaptionCue,
 	type CaptionCueWord,
+	type ClipFreezeFrame,
 	type ClipRegion,
 	type CropRegion,
 	type CursorClickEffectStyle,
@@ -171,6 +173,48 @@ export interface EditorProjectData {
 	projectId?: string;
 	videoPath: string;
 	editor: Partial<ProjectEditorState>;
+}
+
+function normalizeClipFreezeFrames(value: unknown): ClipFreezeFrame[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+
+	const seenIds = new Set<string>();
+	const seenOffsetsMs = new Set<number>();
+	const freezeFrames: ClipFreezeFrame[] = [];
+	for (const candidate of value) {
+		if (!candidate || typeof candidate !== "object") {
+			continue;
+		}
+
+		const { id, offsetMs, durationMs } = candidate as Record<string, unknown>;
+		if (
+			typeof id !== "string" ||
+			seenIds.has(id) ||
+			!isFiniteNumber(offsetMs) ||
+			offsetMs < 0
+		) {
+			continue;
+		}
+
+		const roundedOffsetMs = Math.round(offsetMs);
+		if (seenOffsetsMs.has(roundedOffsetMs)) {
+			continue;
+		}
+
+		seenIds.add(id);
+		seenOffsetsMs.add(roundedOffsetMs);
+		freezeFrames.push({
+			id,
+			offsetMs: roundedOffsetMs,
+			durationMs: clampFreezeFrameDurationMs(
+				isFiniteNumber(durationMs) ? durationMs : Number.NaN,
+			),
+		});
+	}
+
+	return freezeFrames.sort((left, right) => left.offsetMs - right.offsetMs);
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -533,7 +577,8 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						: rawStart + 1000;
 					const startMs = Math.max(0, Math.min(rawStart, rawEnd));
 					const endMs = Math.max(startMs + 1, rawEnd);
-					return {
+					const freezeFrames = normalizeClipFreezeFrames(region.freezeFrames);
+					return fitClipFreezeFrames({
 						id: region.id,
 						startMs,
 						endMs,
@@ -543,7 +588,8 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 							typeof region.showSourceAudio === "boolean"
 								? region.showSourceAudio
 								: false,
-					};
+						...(freezeFrames.length > 0 ? { freezeFrames } : {}),
+					});
 				})
 		: [];
 

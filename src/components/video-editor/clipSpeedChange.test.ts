@@ -198,4 +198,35 @@ describe("planClipSpeedChange", () => {
 
 		expect(result.blockedReason).toBe("zoom-overlap");
 	});
+
+	it("keeps freeze frames and later zooms on the same footage when the clip speed changes", () => {
+		const freezeFrames = [{ id: "freeze-1", offsetMs: 4_000, durationMs: 2_000 }];
+		const result = planClipSpeedChange({
+			clipRegions: [{ id: "clip-1", startMs: 0, endMs: 12_000, speed: 1, freezeFrames }],
+			zoomRegions: [
+				{
+					id: "zoom-after",
+					startMs: 8_000,
+					endMs: 9_000,
+					depth: 2,
+					focus: { cx: 0.5, cy: 0.5 },
+				},
+			],
+			selectedClipId: "clip-1",
+			speed: 2,
+		});
+
+		expect(result).toEqual({
+			clipRegions: [{ id: "clip-1", startMs: 0, endMs: 7_000, speed: 2, freezeFrames }],
+			zoomRegions: [
+				{
+					id: "zoom-after",
+					startMs: 5_000,
+					endMs: 5_500,
+					depth: 2,
+					focus: { cx: 0.5, cy: 0.5 },
+				},
+			],
+		});
+	});
 });

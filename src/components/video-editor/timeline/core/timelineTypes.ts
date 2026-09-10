@@ -41,6 +41,8 @@ export interface TimelineRenderItem {
 	speedValue?: number;
 	showSourceAudio?: boolean;
 	muted?: boolean;
+	/** Freeze frame holds inside a clip, in ms relative to the clip's timeline start. */
+	freezeSpans?: Span[];
 	variant: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio" | "caption";
 }
 

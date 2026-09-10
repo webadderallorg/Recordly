@@ -59,6 +59,29 @@ describe("timeline model", () => {
 		expect(items.find((i) => i.id === "au1")?.label).toBe("foo");
 	});
 
+	it("exposes clip freeze frame holds relative to the clip start", () => {
+		const items = buildTimelineItems({
+			zoomRegions: [],
+			clipRegions: [
+				{
+					id: "c1",
+					startMs: 1_000,
+					endMs: 13_000,
+					speed: 1,
+					freezeFrames: [{ id: "freeze-1", offsetMs: 4_000, durationMs: 2_000 }],
+				},
+			],
+			annotationRegions: [],
+			audioRegions: [],
+		});
+
+		expect(items[0]).toMatchObject({
+			span: { start: 1_000, end: 13_000 },
+			sourceSpan: { start: 1_000, end: 11_000 },
+			freezeSpans: [{ start: 4_000, end: 6_000 }],
+		});
+	});
+
 	it("exposes clip speed for non-default speed labels", () => {
 		const items = buildTimelineItems({
 			zoomRegions: [],

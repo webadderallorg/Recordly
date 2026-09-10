@@ -113,4 +113,53 @@ describe("normalizeProjectEditor", () => {
 		expect(editor.webcam.height).toBe(80);
 		expect(editor.webcam.roundness).toBeCloseTo(4.34, 1);
 	});
+
+	it("keeps valid clip freeze frames and drops malformed or duplicate ones", () => {
+		const editor = normalizeProjectEditor({
+			clipRegions: [
+				{
+					id: "clip-1",
+					startMs: 0,
+					endMs: 50_000,
+					speed: 1,
+					freezeFrames: [
+						{ id: "freeze-2", offsetMs: 8_000.4, durationMs: 60_000 },
+						{ id: "freeze-1", offsetMs: 4_000, durationMs: 2_000 },
+						{ id: "freeze-1", offsetMs: 5_000, durationMs: 1_000 },
+						{ id: "freeze-3", offsetMs: -5, durationMs: 1_000 },
+						{ id: "freeze-4", offsetMs: 4_000, durationMs: 1_000 },
+						{ id: 7, offsetMs: 1_000, durationMs: 1_000 },
+					],
+				},
+			] as never,
+		});
+
+		expect(editor.clipRegions[0].freezeFrames).toEqual([
+			{ id: "freeze-1", offsetMs: 4_000, durationMs: 2_000 },
+			{ id: "freeze-2", offsetMs: 8_000, durationMs: 30_000 },
+		]);
+	});
+
+	it("drops freeze frames that no longer fit inside their clip", () => {
+		const editor = normalizeProjectEditor({
+			clipRegions: [
+				{
+					id: "clip-1",
+					startMs: 0,
+					endMs: 3_000,
+					speed: 1,
+					freezeFrames: [{ id: "freeze-1", offsetMs: 2_500, durationMs: 2_000 }],
+				},
+			],
+		});
+
+		expect(editor.clipRegions[0]).toEqual({
+			id: "clip-1",
+			startMs: 0,
+			endMs: 3_000,
+			speed: 1,
+			muted: false,
+			showSourceAudio: false,
+		});
+	});
 });

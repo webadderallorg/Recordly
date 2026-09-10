@@ -1,4 +1,5 @@
-import type { ClipRegion, ZoomRegion } from "./types";
+import { remapZoomRegionsForClipChange } from "./clipFreezeFrames";
+import { type ClipRegion, getClipFreezeTotalMs, type ZoomRegion } from "./types";
 
 export type ClipSpeedChangeBlockReason = "clip-overlap" | "zoom-overlap";
 
@@ -43,14 +44,31 @@ export function planClipSpeedChange(params: {
 	}
 
 	const oldSpeed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
-	const sourceDurationMs = Math.max(0, clip.endMs - clip.startMs) * oldSpeed;
-	const newEndMs = Math.round(clip.startMs + sourceDurationMs / speed);
+	// Held freeze frames keep their duration at any speed, so only footage is rescaled.
+	const heldMs = getClipFreezeTotalMs(clip);
+	const sourceDurationMs = Math.max(0, clip.endMs - clip.startMs - heldMs) * oldSpeed;
+	const newEndMs = Math.round(clip.startMs + sourceDurationMs / speed + heldMs);
 	const nextClip = clipRegions
 		.filter((candidate) => candidate.id !== selectedClipId && candidate.startMs >= clip.endMs)
 		.sort((left, right) => left.startMs - right.startMs)[0];
 
 	if (nextClip && newEndMs > nextClip.startMs) {
 		return { blockedReason: "clip-overlap" };
+	}
+
+	if (heldMs > 0) {
+		const updatedClip: ClipRegion = { ...clip, speed, endMs: newEndMs };
+		const zoomPlan = remapZoomRegionsForClipChange(zoomRegions, clip, updatedClip);
+		if (zoomPlan.hasOverlap) {
+			return { blockedReason: "zoom-overlap" };
+		}
+
+		return {
+			clipRegions: clipRegions.map((candidate) =>
+				candidate.id === selectedClipId ? updatedClip : candidate,
+			),
+			zoomRegions: zoomPlan.zoomRegions,
+		};
 	}
 
 	const scaleFactor = oldSpeed / speed;
