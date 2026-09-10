@@ -2,7 +2,7 @@ import { closeSync, existsSync, openSync, readSync, statSync } from "node:fs";
 import path from "node:path";
 
 const projectRoot = process.cwd();
-const ffmpegPath = path.join(projectRoot, "node_modules", "ffmpeg-static", "ffmpeg");
+const ffmpegDir = path.join(projectRoot, "node_modules", "ffmpeg-static");
 
 function relativePath(filePath) {
 	return path.relative(projectRoot, filePath).replaceAll("\\", "/");
@@ -116,11 +116,32 @@ function identifyBinary(header) {
 const installHint = (arch) =>
 	`npm_config_platform=${targetPlatform} npm_config_arch=${arch} node scripts/install-ffmpeg-static.mjs`;
 
+// ffmpeg-static names the binary "ffmpeg.exe" for win32 targets and "ffmpeg"
+// everywhere else, so the file to check depends on the platform we package for.
+const ffmpegPath = path.join(ffmpegDir, targetPlatform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+
 if (!existsSync(ffmpegPath) || !statSync(ffmpegPath).isFile()) {
 	fail(
 		`Bundled ffmpeg binary is missing at ${relativePath(ffmpegPath)}.\n` +
 			`  Install it with:\n` +
 			`    ${installHint(targetArches[0])}`,
+	);
+}
+
+// asarUnpack globs node_modules/ffmpeg-static/**, so a binary left over from a
+// previous target's install is packaged alongside the right one. Switching
+// platforms writes a differently named file rather than replacing it.
+const strayName = targetPlatform === "win32" ? "ffmpeg" : "ffmpeg.exe";
+const strayPath = path.join(ffmpegDir, strayName);
+if (existsSync(strayPath) && statSync(strayPath).isFile()) {
+	fail(
+		`A leftover ffmpeg binary from another target is still present.\n` +
+			`  Packaging for: ${targetPlatform}\n` +
+			`  Stray file:    ${relativePath(strayPath)}\n` +
+			`\n` +
+			`  node_modules/ffmpeg-static/** is unpacked wholesale, so this would ship\n` +
+			`  inside the app alongside the correct binary. Remove it first:\n` +
+			`    rm -f ${relativePath(strayPath)}`,
 	);
 }
 

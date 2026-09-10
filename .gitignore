@@ -40,6 +40,8 @@ electron/native/gpu-export-probe/build/
 electron/native/nvidia-cuda-compositor/build/
 electron/native/bin/*/whisper-*
 electron/native/bin/*/whisper-runtime.json
+# The Windows whisper runtime ships companion DLLs alongside whisper-cli.exe
+electron/native/bin/*/*.dll
 
 # Local debug helpers
 tmp-*.ps1
