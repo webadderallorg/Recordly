@@ -909,7 +909,7 @@ interface Window {
 		obsSetMode: (enabled: boolean) => Promise<boolean>;
 		obsGetMode: () => Promise<boolean>;
 		obsStartRecording: () => Promise<{ success: boolean; error?: string }>;
-		obsStopRecording: () => Promise<{ success: boolean; videoPath?: string; error?: string }>;
+		obsStopRecording: () => Promise<{ success: boolean; path?: string; error?: string }>;
 	};
 }
 
