@@ -1285,12 +1285,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					console.warn("Failed to reset main-process recording state:", stateError);
 				}
 				
-				if (!result.success || !result.path) {
+				if (!result.success || !result.videoPath) {
 					await notifyRecordingFinalizationFailure("Failed to stop OBS recording");
 					return;
 				}
 				
-				const finalPath = result.path;
+				const finalPath = result.videoPath;
 				await finalizeRecordingSession(finalPath, null);
 				
 				void (async () => {
