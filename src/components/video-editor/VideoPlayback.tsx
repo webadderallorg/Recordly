@@ -75,6 +75,7 @@ import {
 	DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 	DEFAULT_ZOOM_OUT_DURATION_MS,
 	DEFAULT_ZOOM_OUT_EASING,
+	type FreezeRegion,
 	getDefaultCaptionFontFamily,
 	type Padding,
 	type SpeedRegion,
@@ -259,6 +260,10 @@ interface VideoPlaybackProps {
 	webcamVideoPath?: string | null;
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
+	/** Clip freeze frames in source time. */
+	freezeRegions?: FreezeRegion[];
+	/** Receives the held time while a freeze frame is on screen, and null once it ends. */
+	onFreezeHoldChange?: (elapsedMs: number | null) => void;
 	aspectRatio: AspectRatio;
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
@@ -304,9 +309,13 @@ export interface VideoPlaybackRef {
 	containerRef: React.RefObject<HTMLDivElement>;
 	play: () => Promise<void>;
 	pause: () => void;
+	/** True while playback is running, including while a freeze frame holds the video. */
+	isPlaybackActive: () => boolean;
 	refreshFrame: () => Promise<void>;
 	cancelCaptionEdit: () => void;
 }
+
+const NO_FREEZE_REGIONS: FreezeRegion[] = [];
 
 const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 	(
@@ -343,6 +352,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			webcamVideoPath,
 			trimRegions = [],
 			speedRegions = [],
+			freezeRegions = NO_FREEZE_REGIONS,
+			onFreezeHoldChange,
 			aspectRatio,
 			annotationRegions = [],
 			autoCaptions = [],
@@ -475,6 +486,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const layoutVideoContentRef = useRef<(() => void) | null>(null);
 		const trimRegionsRef = useRef<TrimRegion[]>([]);
 		const speedRegionsRef = useRef<SpeedRegion[]>([]);
+		const freezeRegionsRef = useRef<FreezeRegion[]>(freezeRegions);
+		const onFreezeHoldChangeRef = useRef(onFreezeHoldChange);
+		const isFreezeHoldActiveRef = useRef(false);
+		const [isFreezeHoldActive, setIsFreezeHoldActive] = useState(false);
+		const videoEventHandlersRef = useRef<ReturnType<typeof createVideoEventHandlers> | null>(
+			null,
+		);
 		const lastWebcamSyncTimeRef = useRef<number | null>(null);
 		const lastBackgroundSyncTimeRef = useRef<number | null>(null);
 		const bgVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -1112,6 +1130,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				if (!vid) return;
 				try {
 					allowPlaybackRef.current = true;
+					if (videoEventHandlersRef.current?.resumeFreezeHold()) return;
 					await vid.play();
 				} catch (error) {
 					allowPlaybackRef.current = false;
@@ -1121,11 +1140,15 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			pause: () => {
 				const video = videoRef.current;
 				allowPlaybackRef.current = false;
+				if (videoEventHandlersRef.current?.pauseFreezeHold()) {
+					return;
+				}
 				if (!video) {
 					return;
 				}
 				video.pause();
 			},
+			isPlaybackActive: () => isPlayingRef.current,
 			cancelCaptionEdit,
 			refreshFrame: async () => {
 				const video = videoRef.current;
@@ -1704,11 +1727,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				webcamVideo.playbackRate = targetPlaybackRate;
 			}
 
+			// The webcam holds with the main video while a freeze frame is on screen.
+			const isWebcamAdvancing = isPlaying && !isFreezeHoldActive;
 			const previousTimelineTime = lastWebcamSyncTimeRef.current;
 			if (
 				shouldSeekWebcamMedia({
 					desiredTime: mediaTargetTime,
-					isPlaying,
+					isPlaying: isWebcamAdvancing,
 					isSeeking: webcamVideo.seeking,
 					previousTimelineTime,
 					timelineTime: targetTime,
@@ -1722,7 +1747,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				}
 			}
 
-			if (isPlaying) {
+			if (isWebcamAdvancing) {
 				const playPromise = webcamVideo.play();
 				if (playPromise) {
 					playPromise.catch(() => undefined);
@@ -1732,7 +1757,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			}
 
 			lastWebcamSyncTimeRef.current = targetTime;
-		}, [currentTime, isPlaying, webcamEnabled, webcamTimeOffsetMs, webcamVideoPath]);
+		}, [
+			currentTime,
+			isFreezeHoldActive,
+			isPlaying,
+			webcamEnabled,
+			webcamTimeOffsetMs,
+			webcamVideoPath,
+		]);
 
 		const handleWebcamMediaReady = useCallback(
 			(event: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -1912,6 +1944,23 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			};
 		}, [initializePixiRenderer, onError, syncPreviewMotionBlurQuality]);
 
+		useEffect(() => {
+			freezeRegionsRef.current = freezeRegions;
+		}, [freezeRegions]);
+
+		useEffect(() => {
+			onFreezeHoldChangeRef.current = onFreezeHoldChange;
+		}, [onFreezeHoldChange]);
+
+		const handleFreezeHoldChange = useCallback((elapsedMs: number | null) => {
+			const isActive = elapsedMs !== null;
+			if (isFreezeHoldActiveRef.current !== isActive) {
+				isFreezeHoldActiveRef.current = isActive;
+				setIsFreezeHoldActive(isActive);
+			}
+			onFreezeHoldChangeRef.current?.(elapsedMs);
+		}, []);
+
 		// biome-ignore lint/correctness/useExhaustiveDependencies: A new media path must reset the persistent video element.
 		useEffect(() => {
 			const video = videoRef.current;
@@ -1972,19 +2021,23 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			layoutVideoContentRef.current?.();
 			video.pause();
 
+			const videoEventHandlers = createVideoEventHandlers({
+				video,
+				isSeekingRef,
+				isPlayingRef,
+				allowPlaybackRef,
+				currentTimeRef,
+				timeUpdateAnimationRef,
+				onPlayStateChange,
+				onTimeUpdate,
+				trimRegionsRef,
+				speedRegionsRef,
+				freezeRegionsRef,
+				onFreezeHoldChange: handleFreezeHoldChange,
+			});
 			const { handlePlay, handlePause, handleSeeked, handleSeeking, dispose } =
-				createVideoEventHandlers({
-					video,
-					isSeekingRef,
-					isPlayingRef,
-					allowPlaybackRef,
-					currentTimeRef,
-					timeUpdateAnimationRef,
-					onPlayStateChange,
-					onTimeUpdate,
-					trimRegionsRef,
-					speedRegionsRef,
-				});
+				videoEventHandlers;
+			videoEventHandlersRef.current = videoEventHandlers;
 
 			video.addEventListener("play", handlePlay);
 			video.addEventListener("pause", handlePause);
@@ -1999,6 +2052,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				video.removeEventListener("seeked", handleSeeked);
 				video.removeEventListener("seeking", handleSeeking);
 				dispose();
+				videoEventHandlersRef.current = null;
 
 				videoEffectsContainer.mask = null;
 				videoContainer.mask = null;
@@ -2010,7 +2064,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 				videoSpriteRef.current = null;
 			};
-		}, [onPlayStateChange, onTimeUpdate, pixiReady, videoReady]);
+		}, [handleFreezeHoldChange, onPlayStateChange, onTimeUpdate, pixiReady, videoReady]);
 
 		useEffect(() => {
 			if (!pixiReady || !videoReady) return;
@@ -2195,7 +2249,9 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						timeMs,
 						baseMaskRef.current,
 						showCursorRef.current,
-						!isPlayingRef.current || isSeekingRef.current,
+						!isPlayingRef.current ||
+							isSeekingRef.current ||
+							isFreezeHoldActiveRef.current,
 					);
 				}
 			};

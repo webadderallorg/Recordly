@@ -22,6 +22,8 @@ interface UseAudioPreviewSyncParams {
 	audioRegions: AudioRegion[];
 	previewVolume: number;
 	isPlaying: boolean;
+	/** True while a freeze frame holds the video, which keeps source audio silent. */
+	isSourcePlaybackHeld: boolean;
 	currentTime: number;
 	timelineTime: number;
 	duration: number;
@@ -38,6 +40,7 @@ export function useAudioPreviewSync({
 	audioRegions,
 	previewVolume,
 	isPlaying,
+	isSourcePlaybackHeld,
 	currentTime,
 	timelineTime,
 	duration,
@@ -456,7 +459,7 @@ export function useAudioPreviewSync({
 			}
 
 			const atEnd = audioDuration !== null && targetTime >= audioDuration;
-			if (isPlaying && !beforeAudioStart && !atEnd) {
+			if (isPlaying && !isSourcePlaybackHeld && !beforeAudioStart && !atEnd) {
 				void ensureSourceAudioRunning().then(() => {
 					audio.play().catch(() => undefined);
 				});
@@ -473,6 +476,7 @@ export function useAudioPreviewSync({
 		getSourceTrackPreviewGain,
 		isCurrentClipMuted,
 		isPlaying,
+		isSourcePlaybackHeld,
 		previewVolume,
 		resolvedSourceTracks,
 		sourceAudioFallbackStartDelayMsByPath,
@@ -480,7 +484,7 @@ export function useAudioPreviewSync({
 	]);
 
 	useEffect(() => {
-		if (!isPlaying || resolvedSourceTracks.length === 0) {
+		if (!isPlaying || isSourcePlaybackHeld || resolvedSourceTracks.length === 0) {
 			return;
 		}
 		void ensureSourceAudioRunning().then(() => {
@@ -490,7 +494,7 @@ export function useAudioPreviewSync({
 				}
 			}
 		});
-	}, [isPlaying, resolvedSourceTracks.length, ensureSourceAudioRunning]);
+	}, [isPlaying, isSourcePlaybackHeld, resolvedSourceTracks.length, ensureSourceAudioRunning]);
 
 	return { playSourceAudioPreview };
 }

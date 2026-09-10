@@ -1,6 +1,12 @@
 import type React from "react";
 import { enablePitchPreservingPlayback } from "@/lib/mediaTiming";
-import type { SpeedRegion, TrimRegion } from "../types";
+import type { FreezeRegion, SpeedRegion, TrimRegion } from "../types";
+import {
+	createFreezeHoldClock,
+	findFreezeRegionAtTime,
+	findFreezeRegionToHold,
+	rearmCompletedFreezeIds,
+} from "./freezeHold";
 
 interface PresentedFrameMetadata {
 	mediaTime?: number;
@@ -24,6 +30,9 @@ interface VideoEventHandlersParams {
 	onTimeUpdate: (time: number) => void;
 	trimRegionsRef: React.MutableRefObject<TrimRegion[]>;
 	speedRegionsRef: React.MutableRefObject<SpeedRegion[]>;
+	freezeRegionsRef: React.MutableRefObject<FreezeRegion[]>;
+	/** Receives the held time while a freeze frame is on screen, and null once it ends. */
+	onFreezeHoldChange: (elapsedMs: number | null) => void;
 }
 
 export function createVideoEventHandlers(params: VideoEventHandlersParams) {
@@ -38,15 +47,42 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		onTimeUpdate,
 		trimRegionsRef,
 		speedRegionsRef,
+		freezeRegionsRef,
+		onFreezeHoldChange,
 	} = params;
 	const presentedFrameVideo = video as PresentedFrameVideoElement;
 	let videoFrameRequestId: number | null = null;
+	let lastPresentedTimeMs: number | null = null;
+	let completedFreezeIds = new Set<string>();
+	// A hold pauses and seeks the video element itself. Those events must not look like the
+	// user pausing or scrubbing, which would stop playback or cancel the hold.
+	let ignoreNextPauseEvent = false;
+	let holdSnapSeekPending = false;
 	enablePitchPreservingPlayback(video);
 
 	const emitTime = (timeValue: number) => {
 		currentTimeRef.current = timeValue * 1000;
 		onTimeUpdate(timeValue);
 	};
+
+	const markPlaybackStopped = () => {
+		isPlayingRef.current = false;
+		onPlayStateChange(false);
+	};
+
+	const freezeHoldClock = createFreezeHoldClock({
+		now: () => performance.now(),
+		requestFrame: (callback) => requestAnimationFrame(callback),
+		cancelFrame: (handle) => cancelAnimationFrame(handle),
+		onTick: (_freezeRegion, elapsedMs) => onFreezeHoldChange(elapsedMs),
+		onComplete: (freezeRegion) => {
+			completedFreezeIds.add(freezeRegion.id);
+			onFreezeHoldChange(null);
+			if (allowPlaybackRef.current && isPlayingRef.current) {
+				video.play().catch(markPlaybackStopped);
+			}
+		},
+	});
 
 	// Helper function to check if current time is within a trim region
 	const findActiveTrimRegion = (currentTimeMs: number): TrimRegion | null => {
@@ -94,6 +130,35 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		}
 	};
 
+	const beginFreezeHold = (freezeRegion: FreezeRegion) => {
+		cancelScheduledUpdate();
+		if (!video.paused) {
+			ignoreNextPauseEvent = true;
+			video.pause();
+		}
+
+		const heldTimeSeconds = freezeRegion.sourceMs / 1000;
+		if (Math.abs(video.currentTime - heldTimeSeconds) > 0.001) {
+			holdSnapSeekPending = true;
+			video.currentTime = heldTimeSeconds;
+		}
+		emitTime(heldTimeSeconds);
+		lastPresentedTimeMs = freezeRegion.sourceMs;
+		freezeHoldClock.start(freezeRegion);
+		onFreezeHoldChange(0);
+	};
+
+	const cancelFreezeHold = () => {
+		if (!freezeHoldClock.getActiveFreeze()) {
+			return false;
+		}
+
+		const wasRunning = freezeHoldClock.isRunning();
+		freezeHoldClock.cancel();
+		onFreezeHoldChange(null);
+		return wasRunning;
+	};
+
 	const scheduleNextUpdate = () => {
 		if (video.paused || video.ended) {
 			return;
@@ -133,11 +198,31 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		if (activeTrimRegion && !video.paused && !video.ended) {
 			skipPastTrimRegion(activeTrimRegion);
 		} else {
+			completedFreezeIds = rearmCompletedFreezeIds(
+				freezeRegionsRef.current,
+				completedFreezeIds,
+				currentTimeMs,
+			);
+			const freezeRegion =
+				!video.paused && !video.ended
+					? findFreezeRegionToHold({
+							freezeRegions: freezeRegionsRef.current,
+							previousTimeMs: lastPresentedTimeMs,
+							currentTimeMs,
+							completedFreezeIds,
+						})
+					: null;
+			if (freezeRegion) {
+				beginFreezeHold(freezeRegion);
+				return;
+			}
+
 			// Apply playback speed from active speed region
 			const activeSpeedRegion = findActiveSpeedRegion(currentTimeMs);
 			enablePitchPreservingPlayback(video);
 			video.playbackRate = activeSpeedRegion ? activeSpeedRegion.speed : 1;
 			emitTime(presentedTime);
+			lastPresentedTimeMs = currentTimeMs;
 		}
 
 		scheduleNextUpdate();
@@ -152,18 +237,40 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 		isPlayingRef.current = true;
 		onPlayStateChange(true);
 		cancelScheduledUpdate();
+
+		const startTimeMs = video.currentTime * 1000;
+		const freezeAtStart = findFreezeRegionAtTime(
+			freezeRegionsRef.current,
+			startTimeMs,
+			completedFreezeIds,
+		);
+		if (freezeAtStart) {
+			beginFreezeHold(freezeAtStart);
+			return;
+		}
+
+		lastPresentedTimeMs = startTimeMs;
 		scheduleNextUpdate();
 	};
 
 	const handlePause = () => {
-		isPlayingRef.current = false;
-		onPlayStateChange(false);
+		if (ignoreNextPauseEvent) {
+			ignoreNextPauseEvent = false;
+			return;
+		}
+
+		markPlaybackStopped();
 		cancelScheduledUpdate();
 		emitTime(video.currentTime);
 	};
 
 	const handleSeeked = () => {
 		isSeekingRef.current = false;
+		if (holdSnapSeekPending) {
+			holdSnapSeekPending = false;
+			emitTime(video.currentTime);
+			return;
+		}
 
 		const currentTimeMs = video.currentTime * 1000;
 		const activeTrimRegion = findActiveTrimRegion(currentTimeMs);
@@ -178,14 +285,51 @@ export function createVideoEventHandlers(params: VideoEventHandlersParams) {
 
 	const handleSeeking = () => {
 		isSeekingRef.current = true;
+		if (!holdSnapSeekPending) {
+			// Any other seek starts playback over from a new position: holds can play again,
+			// and a hold that was running gives way to normal playback at the new position.
+			lastPresentedTimeMs = null;
+			completedFreezeIds = new Set();
+			if (cancelFreezeHold() && allowPlaybackRef.current) {
+				video.play().catch(markPlaybackStopped);
+			}
+		}
 		emitTime(video.currentTime);
 	};
 
+	const pauseFreezeHold = () => {
+		if (!freezeHoldClock.pause()) {
+			return false;
+		}
+
+		markPlaybackStopped();
+		return true;
+	};
+
+	const resumeFreezeHold = () => {
+		if (!freezeHoldClock.resume()) {
+			return false;
+		}
+
+		isPlayingRef.current = true;
+		onPlayStateChange(true);
+		return true;
+	};
+
+	const dispose = () => {
+		cancelScheduledUpdate();
+		cancelFreezeHold();
+	};
+
 	return {
-		dispose: cancelScheduledUpdate,
+		dispose,
 		handlePlay,
 		handlePause,
 		handleSeeked,
 		handleSeeking,
+		/** Pauses a running freeze frame hold. Returns false when no hold is running. */
+		pauseFreezeHold,
+		/** Resumes a paused freeze frame hold. Returns false when no hold is paused. */
+		resumeFreezeHold,
 	};
 }

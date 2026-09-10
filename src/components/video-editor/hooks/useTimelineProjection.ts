@@ -6,6 +6,8 @@ import {
 	type CaptionCue,
 	clipsToTrims,
 	extendAutoFullTrackClip,
+	type FreezeRegion,
+	getClipFreezeRegions,
 	getClipSourceEndMs,
 	getTimelineDurationMs,
 	mapSourceTimeToTimelineTime,
@@ -19,6 +21,7 @@ type Input = {
 	timeline: ReturnType<typeof useTimelineState>;
 	duration: number;
 	currentTime: number;
+	freezeHoldElapsedMs: number | null;
 	nextClipIdRef: MutableRefObject<number>;
 	initializedRef: MutableRefObject<boolean>;
 	autoFullTrackIdRef: MutableRefObject<string | null>;
@@ -29,6 +32,7 @@ export function useTimelineProjection({
 	timeline,
 	duration,
 	currentTime,
+	freezeHoldElapsedMs,
 	nextClipIdRef,
 	initializedRef,
 	autoFullTrackIdRef,
@@ -106,9 +110,15 @@ export function useTimelineProjection({
 			})),
 		[autoCaptions, toTimelineTime],
 	);
+	// While a freeze frame holds, source time stays on the held frame and the playhead keeps
+	// moving through the hold.
 	const timelinePlayheadTime = useMemo(
-		() => toTimelineTime(currentTime * 1000) / 1000,
-		[currentTime, toTimelineTime],
+		() => (toTimelineTime(currentTime * 1000) + (freezeHoldElapsedMs ?? 0)) / 1000,
+		[currentTime, freezeHoldElapsedMs, toTimelineTime],
+	);
+	const effectiveFreezeRegions = useMemo<FreezeRegion[]>(
+		() => getClipFreezeRegions(clipRegions),
+		[clipRegions],
 	);
 	const timelineDuration = useMemo(
 		() => getTimelineDurationMs(clipRegions, duration * 1000) / 1000,
@@ -144,5 +154,6 @@ export function useTimelineProjection({
 		timelinePlayheadTime,
 		timelineDuration,
 		effectiveSpeedRegions,
+		effectiveFreezeRegions,
 	};
 }

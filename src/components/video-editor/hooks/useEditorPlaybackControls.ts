@@ -34,7 +34,8 @@ export function useEditorPlaybackControls({
 		const video = playback?.video;
 		if (!playback || !video) return;
 
-		if (!video.paused && !video.ended) playback.pause();
+		// A freeze frame hold pauses the video element while playback is still running.
+		if (playback.isPlaybackActive()) playback.pause();
 		else startPlayback();
 	}, [getActivePlayback, startPlayback]);
 

@@ -223,6 +223,7 @@ export function EditorShell(props: Props) {
 						setIsPreviewReady={ui.setIsPreviewReady}
 						setCurrentTime={ui.setCurrentTime}
 						setIsPlaying={ui.setIsPlaying}
+						setFreezeHoldElapsedMs={ui.setFreezeHoldElapsedMs}
 						setError={project.setError}
 					/>
 				</div>

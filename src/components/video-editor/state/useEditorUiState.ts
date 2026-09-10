@@ -22,6 +22,8 @@ export function useEditorUiState(
 	);
 	const [isPlaying, setIsPlaying] = useState(false);
 	const [currentTime, setCurrentTime] = useState(0);
+	/** How long the current freeze frame has been held in the preview, or null when none is. */
+	const [freezeHoldElapsedMs, setFreezeHoldElapsedMs] = useState<number | null>(null);
 	const [duration, setDuration] = useState(0);
 	const [sessionShowCursorOverride, setSessionShowCursorOverride] = useState<boolean | null>(
 		null,
@@ -118,6 +120,8 @@ export function useEditorUiState(
 		setIsPlaying,
 		currentTime,
 		setCurrentTime,
+		freezeHoldElapsedMs,
+		setFreezeHoldElapsedMs,
 		duration,
 		setDuration,
 		sessionShowCursorOverride,

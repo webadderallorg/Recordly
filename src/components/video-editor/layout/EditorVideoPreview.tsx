@@ -3,7 +3,7 @@ import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
-import type { CursorTelemetryPoint, SpeedRegion, ZoomRegion } from "../types";
+import type { CursorTelemetryPoint, FreezeRegion, SpeedRegion, ZoomRegion } from "../types";
 import VideoPlayback, { type VideoPlaybackRef } from "../VideoPlayback";
 
 type PlaybackProps = ComponentProps<typeof VideoPlayback>;
@@ -31,12 +31,14 @@ type Props = {
 	audio: ReturnType<typeof useVideoEditorAudio>;
 	effectiveZoomRegions: ZoomRegion[];
 	effectiveSpeedRegions: SpeedRegion[];
+	effectiveFreezeRegions: FreezeRegion[];
 	effectiveCursorTelemetry: CursorTelemetryPoint[];
 	effectiveShowCursor: boolean;
 	setDuration: Dispatch<SetStateAction<number>>;
 	setIsPreviewReady: Dispatch<SetStateAction<boolean>>;
 	setCurrentTime: Dispatch<SetStateAction<number>>;
 	setIsPlaying: Dispatch<SetStateAction<boolean>>;
+	setFreezeHoldElapsedMs: Dispatch<SetStateAction<number | null>>;
 	setError: Dispatch<SetStateAction<string | null>>;
 	handlers: Handlers;
 };
@@ -55,12 +57,14 @@ export function EditorVideoPreview({
 	audio,
 	effectiveZoomRegions,
 	effectiveSpeedRegions,
+	effectiveFreezeRegions,
 	effectiveCursorTelemetry,
 	effectiveShowCursor,
 	setDuration,
 	setIsPreviewReady,
 	setCurrentTime,
 	setIsPlaying,
+	setFreezeHoldElapsedMs,
 	setError,
 	handlers,
 }: Props) {
@@ -101,6 +105,8 @@ export function EditorVideoPreview({
 			}
 			trimRegions={timeline.trimRegions}
 			speedRegions={effectiveSpeedRegions}
+			freezeRegions={effectiveFreezeRegions}
+			onFreezeHoldChange={setFreezeHoldElapsedMs}
 			annotationRegions={timeline.annotationRegions}
 			autoCaptions={timeline.autoCaptions}
 			autoCaptionSettings={timeline.autoCaptionSettings}

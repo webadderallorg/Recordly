@@ -69,6 +69,7 @@ type Props = {
 	setIsPreviewReady: Dispatch<SetStateAction<boolean>>;
 	setCurrentTime: Dispatch<SetStateAction<number>>;
 	setIsPlaying: Dispatch<SetStateAction<boolean>>;
+	setFreezeHoldElapsedMs: Dispatch<SetStateAction<number | null>>;
 	setError: Dispatch<SetStateAction<string | null>>;
 };
 
@@ -112,6 +113,7 @@ export function EditorPreviewPanel(props: Props) {
 		setIsPreviewReady,
 		setCurrentTime,
 		setIsPlaying,
+		setFreezeHoldElapsedMs,
 		setError,
 	} = props;
 
@@ -195,12 +197,14 @@ export function EditorPreviewPanel(props: Props) {
 									audio={audio}
 									effectiveZoomRegions={projection.effectiveZoomRegions}
 									effectiveSpeedRegions={projection.effectiveSpeedRegions}
+									effectiveFreezeRegions={projection.effectiveFreezeRegions}
 									effectiveCursorTelemetry={effectiveCursorTelemetry}
 									effectiveShowCursor={effectiveShowCursor}
 									setDuration={setDuration}
 									setIsPreviewReady={setIsPreviewReady}
 									setCurrentTime={setCurrentTime}
 									setIsPlaying={setIsPlaying}
+									setFreezeHoldElapsedMs={setFreezeHoldElapsedMs}
 									setError={setError}
 									handlers={{
 										onSelectZoom: zoomCommands.handleSelectZoom,
