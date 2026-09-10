@@ -82,6 +82,13 @@ export function useAudioPreviewSync({
 	const sourceAudioMasterGainRef = useRef<GainNode | null>(null);
 	const sourceAudioResumePromiseRef = useRef<Promise<void> | null>(null);
 	const lastSourceAudioSyncTimeRef = useRef<number | null>(null);
+	// Source audio can finish loading in the middle of a freeze frame hold; the load callback
+	// reads the live hold state so it never starts audio that should stay silent.
+	const isSourcePlaybackHeldRef = useRef(isSourcePlaybackHeld);
+
+	useEffect(() => {
+		isSourcePlaybackHeldRef.current = isSourcePlaybackHeld;
+	}, [isSourcePlaybackHeld]);
 
 	const ensureSourceAudioContext = useCallback(() => {
 		if (!sourceAudioContextRef.current) {
@@ -244,7 +251,7 @@ export function useAudioPreviewSync({
 							sourceAudioResourceVersion,
 						);
 						latestAudio.load();
-						if (isPlaying) {
+						if (isPlaying && !isSourcePlaybackHeldRef.current) {
 							playSourceAudioPreview();
 						}
 					} catch (error) {

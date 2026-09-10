@@ -1,13 +1,12 @@
 import { WebDemuxer } from "web-demuxer";
 import { SOURCE_AUDIO_NORMALIZE_GAIN } from "@/components/video-editor/audio/audioTypes";
-import {
-	type AudioRegion,
-	type ClipRegion,
-	type FreezeRegion,
-	getClipFreezeRegions,
-	type SourceAudioTrackSettings,
-	type SpeedRegion,
-	type TrimRegion,
+import type {
+	AudioRegion,
+	ClipRegion,
+	FreezeRegion,
+	SourceAudioTrackSettings,
+	SpeedRegion,
+	TrimRegion,
 } from "@/components/video-editor/types";
 import { buildResolvedAudioPlan, SourceTrackId } from "@/lib/exporter/audioRoutingEngine";
 import { estimateCompanionAudioStartDelaySeconds } from "@/lib/mediaTiming";
@@ -246,6 +245,7 @@ export class AudioProcessor {
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 		sourceAudioTrackSettings?: SourceAudioTrackSettings,
 		clipRegions?: ClipRegion[],
+		freezeRegions?: FreezeRegion[],
 	): Promise<void> {
 		const sortedTrims = trimRegions
 			? [...trimRegions].sort((a, b) => a.startMs - b.startMs)
@@ -284,7 +284,7 @@ export class AudioProcessor {
 		// When speed edits, freeze frames, audio regions, or multiple audio sources need mixing, use offline AudioContext pipeline.
 		if (
 			sortedSpeedRegions.length > 0 ||
-			getClipFreezeRegions(clipRegions ?? []).length > 0 ||
+			(freezeRegions ?? []).length > 0 ||
 			sortedAudioRegions.length > 0 ||
 			needsSourceAudioMixing ||
 			hasNonDefaultSourceTrackSettings(sourceAudioTrackSettings) ||
@@ -299,6 +299,7 @@ export class AudioProcessor {
 				sourceAudioFallbackStartDelayMsByPath,
 				sourceAudioTrackSettings,
 				clipRegions,
+				freezeRegions,
 				muxer,
 			);
 			return;
@@ -332,6 +333,7 @@ export class AudioProcessor {
 				sourceAudioFallbackStartDelayMsByPath,
 				sourceAudioTrackSettings,
 				clipRegions,
+				freezeRegions,
 				muxer,
 			);
 			return;
@@ -380,6 +382,7 @@ export class AudioProcessor {
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 		sourceAudioTrackSettings?: SourceAudioTrackSettings,
 		clipRegions?: ClipRegion[],
+		freezeRegions?: FreezeRegion[],
 	): Promise<Blob> {
 		const sortedTrims = trimRegions
 			? [...trimRegions].sort((a, b) => a.startMs - b.startMs)
@@ -407,6 +410,7 @@ export class AudioProcessor {
 			sourceAudioFallbackStartDelayMsByPath,
 			sourceAudioTrackSettings,
 			clipRegions,
+			freezeRegions,
 		);
 		return this.renderToWavBlobChunked(prepared);
 	}
@@ -684,6 +688,7 @@ export class AudioProcessor {
 		sourceAudioFallbackStartDelayMsByPath: Record<string, number> | undefined,
 		sourceAudioTrackSettings: SourceAudioTrackSettings | undefined,
 		clipRegions: ClipRegion[] | undefined,
+		freezeRegions: FreezeRegion[] | undefined,
 		muxer: VideoMuxer,
 	): Promise<void> {
 		const prepared = await this.prepareOfflineRender(
@@ -695,6 +700,7 @@ export class AudioProcessor {
 			sourceAudioFallbackStartDelayMsByPath,
 			sourceAudioTrackSettings,
 			clipRegions,
+			freezeRegions,
 		);
 		if (this.cancelled) return;
 		await this.renderAndEncodeChunked(prepared, muxer);
@@ -709,6 +715,7 @@ export class AudioProcessor {
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 		sourceAudioTrackSettings?: SourceAudioTrackSettings,
 		clipRegions?: ClipRegion[],
+		freezeRegions?: FreezeRegion[],
 	): Promise<PreparedOfflineRender> {
 		if (this.cancelled) throw new Error("Export cancelled");
 		this.onProgress?.(0);
@@ -803,7 +810,7 @@ export class AudioProcessor {
 			sourceDurationMs,
 			trimRegions,
 			speedRegions,
-			getClipFreezeRegions(clipRegions ?? []),
+			freezeRegions ?? [],
 		);
 
 		let outputDurationMs = 0;

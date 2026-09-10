@@ -89,11 +89,12 @@ export function useClipRegionCommands({
 
 	const handleClipSplit = useCallback(
 		(splitMs: number) => {
+			// Check the rounded position so a split can never leave a zero-length clip.
+			const splitAt = Math.round(splitMs);
 			const target = clipRegions.find(
-				(clip) => splitMs > clip.startMs && splitMs < clip.endMs,
+				(clip) => splitAt > clip.startMs && splitAt < clip.endMs,
 			);
 			if (!target) return;
-			const splitAt = Math.round(splitMs);
 			const rightFreezeFrames = getRightClipFreezeFramesAfterSplit(target, splitAt);
 			if (!rightFreezeFrames) {
 				toast.warning(

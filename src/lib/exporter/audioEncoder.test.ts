@@ -33,6 +33,7 @@ type OfflineRenderTestHarness = AudioProcessor & {
 		sourceAudioFallbackStartDelayMsByPath: Record<string, number> | undefined,
 		muxer: unknown,
 	): Promise<void>;
+	processTrimOnlyAudio(...args: unknown[]): Promise<void>;
 	buildTimelineSlices(
 		sourceDurationMs: number,
 		trimRegions: Array<{ id: string; startMs: number; endMs: number }>,
@@ -276,6 +277,38 @@ describe("AudioProcessor offline render preparation", () => {
 				globalThis as unknown as { OfflineAudioContext: typeof OfflineAudioContext }
 			).OfflineAudioContext = originalOfflineAudioContext;
 		}
+	});
+});
+
+describe("AudioProcessor freeze frame routing", () => {
+	it("renders audio offline when freeze frames need silence, even without speed edits", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const freezeRegions = [{ id: "freeze-1", sourceMs: 2_000, durationMs: 1_500 }];
+		const renderAndMuxOfflineAudio = vi
+			.spyOn(processor, "renderAndMuxOfflineAudio")
+			.mockResolvedValue(undefined);
+		const processTrimOnlyAudio = vi
+			.spyOn(processor, "processTrimOnlyAudio")
+			.mockResolvedValue(undefined);
+
+		await processor.process(
+			null,
+			{} as never,
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			[],
+			undefined,
+			undefined,
+			[],
+			freezeRegions,
+		);
+
+		expect(processTrimOnlyAudio).not.toHaveBeenCalled();
+		expect(renderAndMuxOfflineAudio).toHaveBeenCalledTimes(1);
+		expect(renderAndMuxOfflineAudio.mock.calls[0]?.[8]).toEqual(freezeRegions);
 	});
 });
 
