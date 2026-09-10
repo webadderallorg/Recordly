@@ -144,11 +144,16 @@
 	},
 	"toolbar": {
 		"addLayer": "Laag toevoegen",
-		"splitClip": "Clip splitsen (C)"
+		"splitClip": "Clip splitsen (C)",
+		"freezeFrame": "Stilstaand beeld bij afspeelkop"
 	},
 	"timeline": {
 		"expand": "Tijdlijn uitvouwen",
-		"collapse": "Tijdlijn samenvouwen"
+		"collapse": "Tijdlijn samenvouwen",
+		"freezeNoClip": "Zet de afspeelkop op een clip om een beeld te bevriezen.",
+		"freezeClipOverlap": "Het stilstaande beeld zou de volgende clip overlappen. Verplaats of splits clips om ruimte te maken.",
+		"freezeZoomOverlap": "Het stilstaande beeld zou een zoom in een andere zoom duwen. Verplaats of verwijder eerst de overlappende zoom.",
+		"freezeSplitBlocked": "Verwijder het stilstaande beeld voordat je erna splitst. Daar splitsen zou het vastgehouden beeldmateriaal overslaan."
 	},
 	"openRecordingsFolder": "Opnamemap openen"
 }

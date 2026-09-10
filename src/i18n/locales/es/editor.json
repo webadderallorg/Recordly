@@ -143,11 +143,16 @@
 	},
 	"toolbar": {
 		"addLayer": "Agregar capa",
-		"splitClip": "Dividir clip (C)"
+		"splitClip": "Dividir clip (C)",
+		"freezeFrame": "Congelar fotograma en el cabezal"
 	},
 	"timeline": {
 		"expand": "Expandir línea de tiempo",
-		"collapse": "Contraer línea de tiempo"
+		"collapse": "Contraer línea de tiempo",
+		"freezeNoClip": "Coloca el cabezal sobre un clip para congelar un fotograma.",
+		"freezeClipOverlap": "El fotograma congelado se superpondría con el siguiente clip. Mueve o divide clips para hacer espacio.",
+		"freezeZoomOverlap": "El fotograma congelado empujaría un zoom sobre otro. Mueve o elimina primero el zoom superpuesto.",
+		"freezeSplitBlocked": "Quita el fotograma congelado antes de dividir después de él. Dividir ahí saltaría el metraje congelado."
 	},
 	"openRecordingsFolder": "Abrir carpeta de grabaciones"
 }

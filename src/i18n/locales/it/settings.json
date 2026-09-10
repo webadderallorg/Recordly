@@ -23,7 +23,14 @@
 		"mutedState": "Audio disattivato",
 		"unmutedState": "Audio in riproduzione",
 		"separateClipFromAudio": "Separa clip dall'audio",
-		"delete": "Elimina clip"
+		"delete": "Elimina clip",
+		"freeze": {
+			"title": "Fermo immagine",
+			"add": "Fermo immagine sulla testina",
+			"empty": "Blocca il fotogramma sotto la testina. Il video si ferma mentre l'output continua.",
+			"at": "A {{time}}",
+			"remove": "Rimuovi fermo immagine"
+		}
 	},
 	"effects": {
 		"title": "Effetti video",

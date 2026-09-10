@@ -214,6 +214,11 @@ export function EditorShell(props: Props) {
 						handleOpenCropEditor={ui.handleOpenCropEditor}
 						handleSaveAutoCaptionEdit={autoCaption.handleSaveAutoCaptionEdit}
 						handleSelectAnnotation={handleSelectAnnotation}
+						handleAddFreezeFrame={() =>
+							clipCommands.handleAddFreezeFrame(
+								projection.timelinePlayheadTime * 1000,
+							)
+						}
 						setDuration={ui.setDuration}
 						setIsPreviewReady={ui.setIsPreviewReady}
 						setCurrentTime={ui.setCurrentTime}

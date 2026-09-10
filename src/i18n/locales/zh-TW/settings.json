@@ -23,7 +23,14 @@
 		"mutedState": "音訊已靜音",
 		"unmutedState": "音訊正在播放",
 		"separateClipFromAudio": "將片段與音訊分離",
-		"delete": "刪除片段"
+		"delete": "刪除片段",
+		"freeze": {
+			"title": "定格畫面",
+			"add": "在播放頭處定格",
+			"empty": "定格播放頭下的畫面。影片暫停，輸出時間繼續。",
+			"at": "位於 {{time}}",
+			"remove": "移除定格畫面"
+		}
 	},
 	"effects": {
 		"title": "影片效果",

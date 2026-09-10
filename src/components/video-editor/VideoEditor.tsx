@@ -348,6 +348,7 @@ export default function VideoEditor() {
 		effectiveShowCursor,
 		handleShowCursorChange,
 		currentTime,
+		timelinePlayheadTime: projection.timelinePlayheadTime,
 		isPlaying,
 		aspectRatio,
 		setAspectRatio,

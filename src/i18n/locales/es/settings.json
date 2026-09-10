@@ -23,7 +23,14 @@
 		"mutedState": "El audio está silenciado",
 		"unmutedState": "El audio se está reproduciendo",
 		"separateClipFromAudio": "Separar clip del audio",
-		"delete": "Eliminar clip"
+		"delete": "Eliminar clip",
+		"freeze": {
+			"title": "Congelar fotogramas",
+			"add": "Congelar en el cabezal",
+			"empty": "Mantiene el fotograma bajo el cabezal. El video se pausa mientras la salida sigue avanzando.",
+			"at": "En {{time}}",
+			"remove": "Quitar fotograma congelado"
+		}
 	},
 	"effects": {
 		"title": "Efectos de video",

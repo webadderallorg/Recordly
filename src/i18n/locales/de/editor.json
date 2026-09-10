@@ -142,11 +142,16 @@
 	},
 	"toolbar": {
 		"addLayer": "Ebene hinzufügen",
-		"splitClip": "Clip teilen (C)"
+		"splitClip": "Clip teilen (C)",
+		"freezeFrame": "Standbild am Abspielkopf"
 	},
 	"timeline": {
 		"expand": "Zeitleiste erweitern",
-		"collapse": "Zeitleiste reduzieren"
+		"collapse": "Zeitleiste reduzieren",
+		"freezeNoClip": "Bewege den Abspielkopf über einen Clip, um ein Standbild zu setzen.",
+		"freezeClipOverlap": "Das Standbild würde den nächsten Clip überlappen. Verschiebe oder teile Clips, um Platz zu schaffen.",
+		"freezeZoomOverlap": "Das Standbild würde einen Zoom in einen anderen Zoom schieben. Verschiebe oder lösche zuerst den überlappenden Zoom.",
+		"freezeSplitBlocked": "Entferne das Standbild, bevor du danach teilst. Ein Schnitt dort würde das gehaltene Material überspringen."
 	},
 	"openRecordingsFolder": "Aufnahmeordner öffnen"
 }

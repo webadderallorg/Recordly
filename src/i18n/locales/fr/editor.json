@@ -143,11 +143,16 @@
 	},
 	"toolbar": {
 		"addLayer": "Ajouter une couche",
-		"splitClip": "Diviser le clip (C)"
+		"splitClip": "Diviser le clip (C)",
+		"freezeFrame": "Arrêt sur image à la tête de lecture"
 	},
 	"timeline": {
 		"expand": "Développer la timeline",
-		"collapse": "Réduire la timeline"
+		"collapse": "Réduire la timeline",
+		"freezeNoClip": "Placez la tête de lecture sur un clip pour figer une image.",
+		"freezeClipOverlap": "L'arrêt sur image chevaucherait le clip suivant. Déplacez ou divisez des clips pour faire de la place.",
+		"freezeZoomOverlap": "L'arrêt sur image pousserait un zoom sur un autre zoom. Déplacez ou supprimez d'abord le zoom qui chevauche.",
+		"freezeSplitBlocked": "Supprimez l'arrêt sur image avant de diviser après celui-ci. Une division à cet endroit sauterait les images figées."
 	},
 	"openRecordingsFolder": "Ouvrir le dossier des enregistrements"
 }

@@ -23,7 +23,14 @@
 		"mutedState": "Audio ist stummgeschaltet",
 		"unmutedState": "Audio wird wiedergegeben",
 		"separateClipFromAudio": "Clip vom Audio trennen",
-		"delete": "Clip löschen"
+		"delete": "Clip löschen",
+		"freeze": {
+			"title": "Standbilder",
+			"add": "Standbild am Abspielkopf",
+			"empty": "Hält das Bild unter dem Abspielkopf fest. Das Video pausiert, während die Ausgabe weiterläuft.",
+			"at": "Bei {{time}}",
+			"remove": "Standbild entfernen"
+		}
 	},
 	"effects": {
 		"title": "Videoeffekte",

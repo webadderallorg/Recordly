@@ -10,7 +10,7 @@ import type { useZoomRegionCommands } from "../hooks/useZoomRegionCommands";
 import { SettingsPanel } from "../SettingsPanel";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
-import type { EditorEffectSection } from "../types";
+import { type EditorEffectSection, getClipFreezeTimelineSpans } from "../types";
 
 type Input = {
 	activeEffectSection: EditorEffectSection;
@@ -26,6 +26,8 @@ type Input = {
 	effectiveShowCursor: boolean;
 	handleShowCursorChange: (show: boolean) => void;
 	currentTime: number;
+	/** Timeline playhead in seconds, including held freeze frame time. */
+	timelinePlayheadTime: number;
 	isPlaying: boolean;
 	aspectRatio: AspectRatio;
 	setAspectRatio: Dispatch<SetStateAction<AspectRatio>>;
@@ -55,6 +57,7 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		effectiveShowCursor,
 		handleShowCursorChange,
 		currentTime,
+		timelinePlayheadTime,
 		isPlaying,
 		aspectRatio,
 		setAspectRatio,
@@ -100,6 +103,18 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onClipMutedChange: clipCommands.handleClipMutedChange,
 		onClipShowSourceAudioChange: clipCommands.handleClipShowSourceAudioChange,
 		onClipDelete: clipCommands.handleClipDelete,
+		selectedClipFreezeFrames: selectedClip ? getClipFreezeTimelineSpans(selectedClip) : [],
+		onAddFreezeFrame: () => clipCommands.handleAddFreezeFrame(timelinePlayheadTime * 1000),
+		onFreezeFrameDurationChange: (freezeFrameId, durationMs) =>
+			timeline.selectedClipId &&
+			clipCommands.handleFreezeFrameDurationChange(
+				timeline.selectedClipId,
+				freezeFrameId,
+				durationMs,
+			),
+		onFreezeFrameDelete: (freezeFrameId) =>
+			timeline.selectedClipId &&
+			clipCommands.handleFreezeFrameDelete(timeline.selectedClipId, freezeFrameId),
 		hasClipSourceAudio: timeline.hasClipSourceAudio,
 		sourceAudioTrackMeta: audio.sourceAudioTrackMeta,
 		sourceAudioTrackSettings: audio.selectedClipSourceAudioTrackSettings,

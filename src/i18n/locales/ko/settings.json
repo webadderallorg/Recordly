@@ -23,7 +23,14 @@
 		"mutedState": "오디오가 음소거됨",
 		"unmutedState": "오디오가 재생 중",
 		"separateClipFromAudio": "클립에서 오디오 분리",
-		"delete": "클립 삭제"
+		"delete": "클립 삭제",
+		"freeze": {
+			"title": "정지 화면",
+			"add": "재생 헤드에서 정지",
+			"empty": "재생 헤드 아래의 프레임을 멈춥니다. 출력이 계속 진행되는 동안 영상이 일시 정지됩니다.",
+			"at": "{{time}} 위치",
+			"remove": "정지 화면 제거"
+		}
 	},
 	"effects": {
 		"title": "비디오 효과",
