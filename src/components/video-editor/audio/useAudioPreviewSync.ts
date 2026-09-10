@@ -468,6 +468,8 @@ export function useAudioPreviewSync({
 			const atEnd = audioDuration !== null && targetTime >= audioDuration;
 			if (isPlaying && !isSourcePlaybackHeld && !beforeAudioStart && !atEnd) {
 				void ensureSourceAudioRunning().then(() => {
+					// A freeze frame hold can begin while the audio context is resuming.
+					if (isSourcePlaybackHeldRef.current) return;
 					audio.play().catch(() => undefined);
 				});
 			} else if (!audio.paused) {
@@ -491,17 +493,20 @@ export function useAudioPreviewSync({
 	]);
 
 	useEffect(() => {
-		if (!isPlaying || isSourcePlaybackHeld || resolvedSourceTracks.length === 0) {
+		if (!isPlaying || resolvedSourceTracks.length === 0) {
 			return;
 		}
+		// Only runs when playback starts. When a freeze frame hold ends, the sync effect above
+		// resumes the tracks that are actually eligible to play.
 		void ensureSourceAudioRunning().then(() => {
+			if (isSourcePlaybackHeldRef.current) return;
 			for (const audio of sourceAudioElementsRef.current.values()) {
 				if (audio.paused) {
 					audio.play().catch(() => undefined);
 				}
 			}
 		});
-	}, [isPlaying, isSourcePlaybackHeld, resolvedSourceTracks.length, ensureSourceAudioRunning]);
+	}, [isPlaying, resolvedSourceTracks.length, ensureSourceAudioRunning]);
 
 	return { playSourceAudioPreview };
 }
