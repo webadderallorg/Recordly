@@ -1696,12 +1696,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				void discardActiveNativeCapture();
 			}
 
-			if (obsScreenRecording.current) {
-				obsScreenRecording.current = false;
-				void window.electronAPI.obsStopRecording();
-				void window.electronAPI?.setRecordingState(false).catch(() => {});
-			}
-
 			const recorder = mediaRecorder.current;
 			const recorderState = recorder?.state;
 			if (recorder && (recorderState === "recording" || recorderState === "paused")) {
@@ -2495,14 +2489,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			void (async () => {
 				await discardActiveNativeCapture();
 			})();
-			return;
-		}
-
-		if (obsScreenRecording.current) {
-			obsScreenRecording.current = false;
-			setRecording(false);
-			window.electronAPI?.setRecordingState(false);
-			void window.electronAPI.obsStopRecording();
 			return;
 		}
 

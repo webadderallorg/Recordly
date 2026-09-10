@@ -41,7 +41,7 @@ export async function disableCursorCapture() {
                 try {
                     await obs.call('SetInputSettings', {
                         inputName: input.inputName as string,
-                        inputSettings: { capture_cursor: false }
+                        inputSettings: { capture_cursor: false, cursor: false }
                     });
                 } catch (e) {
                     // Ignore if this specific input doesn't support capture_cursor
