@@ -224,6 +224,19 @@ export interface TrimRegion {
 	endMs: number;
 }
 
+export const MIN_FREEZE_FRAME_DURATION_MS = 100;
+export const MAX_FREEZE_FRAME_DURATION_MS = 30_000;
+export const DEFAULT_FREEZE_FRAME_DURATION_MS = 2_000;
+
+/** Holds one source frame of a clip on screen while output time keeps running. */
+export interface ClipFreezeFrame {
+	id: string;
+	/** Source-time offset (ms) from the clip start of the frame to hold. */
+	offsetMs: number;
+	/** How long the frame stays on screen in the output (ms). */
+	durationMs: number;
+}
+
 export interface ClipRegion {
 	id: string;
 	startMs: number;
@@ -231,12 +244,73 @@ export interface ClipRegion {
 	speed: number;
 	muted?: boolean;
 	showSourceAudio?: boolean;
+	/** Held frames. The clip's endMs already includes their total duration. */
+	freezeFrames?: ClipFreezeFrame[];
+}
+
+/** A clip freeze frame in source time, as consumed by playback and export. */
+export interface FreezeRegion {
+	id: string;
+	sourceMs: number;
+	durationMs: number;
+}
+
+export interface ClipFreezeTimelineSpan {
+	id: string;
+	clipId: string;
+	startMs: number;
+	endMs: number;
+	sourceMs: number;
+	durationMs: number;
+}
+
+export function getClipFreezeTotalMs(clip: ClipRegion): number {
+	return (clip.freezeFrames ?? []).reduce(
+		(totalMs, freezeFrame) => totalMs + Math.max(0, freezeFrame.durationMs),
+		0,
+	);
+}
+
+export function getSortedClipFreezeFrames(clip: ClipRegion): ClipFreezeFrame[] {
+	return [...(clip.freezeFrames ?? [])].sort((left, right) => left.offsetMs - right.offsetMs);
+}
+
+/** Timeline spans of a clip's holds, in playback order. */
+export function getClipFreezeTimelineSpans(clip: ClipRegion): ClipFreezeTimelineSpan[] {
+	const speed = getSafeClipSpeed(clip);
+	let heldBeforeMs = 0;
+
+	return getSortedClipFreezeFrames(clip).map((freezeFrame) => {
+		const durationMs = Math.max(0, freezeFrame.durationMs);
+		const startMs = Math.round(clip.startMs + freezeFrame.offsetMs / speed + heldBeforeMs);
+		heldBeforeMs += durationMs;
+		return {
+			id: freezeFrame.id,
+			clipId: clip.id,
+			startMs,
+			endMs: startMs + durationMs,
+			sourceMs: Math.round(clip.startMs + freezeFrame.offsetMs),
+			durationMs,
+		};
+	});
+}
+
+/** Every clip hold in source time, sorted by the held source frame. */
+export function getClipFreezeRegions(clips: ClipRegion[]): FreezeRegion[] {
+	return clips
+		.flatMap((clip) =>
+			getClipFreezeTimelineSpans(clip).map(({ id, sourceMs, durationMs }) => ({
+				id,
+				sourceMs,
+				durationMs,
+			})),
+		)
+		.sort((left, right) => left.sourceMs - right.sourceMs);
 }
 
 export function getClipSourceEndMs(clip: ClipRegion): number {
-	const displayDurationMs = Math.max(0, clip.endMs - clip.startMs);
-	const speed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
-	return Math.round(clip.startMs + displayDurationMs * speed);
+	const displayDurationMs = Math.max(0, clip.endMs - clip.startMs - getClipFreezeTotalMs(clip));
+	return Math.round(clip.startMs + displayDurationMs * getSafeClipSpeed(clip));
 }
 
 export function getTimelineDurationMs(clips: ClipRegion[], sourceDurationMs: number): number {
@@ -255,7 +329,7 @@ export function sortClipRegions(clips: ClipRegion[]): ClipRegion[] {
 	return [...clips].sort((left, right) => left.startMs - right.startMs);
 }
 
-function getSafeClipSpeed(clip: ClipRegion) {
+export function getSafeClipSpeed(clip: ClipRegion) {
 	return Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
 }
 
@@ -285,6 +359,31 @@ function clampToNearestClipBoundary(
 	return nearestTimeMs;
 }
 
+function mapTimelineTimeToSourceTimeInClip(timeMs: number, clip: ClipRegion): number {
+	let heldBeforeMs = 0;
+	for (const span of getClipFreezeTimelineSpans(clip)) {
+		if (timeMs < span.startMs) break;
+		if (timeMs < span.endMs) return span.sourceMs;
+		heldBeforeMs += span.durationMs;
+	}
+
+	return Math.round(
+		clip.startMs + (timeMs - clip.startMs - heldBeforeMs) * getSafeClipSpeed(clip),
+	);
+}
+
+function mapSourceTimeToTimelineTimeInClip(timeMs: number, clip: ClipRegion): number {
+	let heldBeforeMs = 0;
+	for (const span of getClipFreezeTimelineSpans(clip)) {
+		if (span.sourceMs >= timeMs) break;
+		heldBeforeMs += span.durationMs;
+	}
+
+	return Math.round(
+		clip.startMs + (timeMs - clip.startMs) / getSafeClipSpeed(clip) + heldBeforeMs,
+	);
+}
+
 export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[]): number {
 	const roundedTimeMs = Math.round(timeMs);
 	const sortedClips = sortClipRegions(clips);
@@ -294,7 +393,7 @@ export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[])
 			continue;
 		}
 
-		return Math.round(clip.startMs + (roundedTimeMs - clip.startMs) * getSafeClipSpeed(clip));
+		return mapTimelineTimeToSourceTimeInClip(roundedTimeMs, clip);
 	}
 
 	if (sortedClips.length === 0) {
@@ -314,7 +413,7 @@ export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[])
 			continue;
 		}
 
-		return Math.round(clip.startMs + (roundedTimeMs - clip.startMs) / getSafeClipSpeed(clip));
+		return mapSourceTimeToTimelineTimeInClip(roundedTimeMs, clip);
 	}
 
 	if (sortedClips.length === 0) {
