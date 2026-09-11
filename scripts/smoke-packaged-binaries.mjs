@@ -233,6 +233,34 @@ function verifyFfmpeg(unpackedRoot) {
 	console.log(output.split(/\r?\n/, 1)[0]);
 }
 
+function verifyFfprobe(unpackedRoot) {
+	const binaryName = process.platform === "win32" ? "ffprobe.exe" : "ffprobe";
+	const arch = process.arch === "arm64" ? "arm64" : "x64";
+	const ffprobePath = path.join(
+		unpackedRoot,
+		"node_modules",
+		"ffprobe-static",
+		"bin",
+		process.platform,
+		arch,
+		binaryName,
+	);
+
+	assertFile(ffprobePath, "packaged FFprobe binary", { executable: true });
+
+	const output = execFileSync(ffprobePath, ["-version"], {
+		encoding: "utf8",
+		timeout: 15000,
+		windowsHide: true,
+	});
+
+	if (!output.startsWith("ffprobe version")) {
+		fail(`FFprobe version smoke returned unexpected output from ${relativePath(ffprobePath)}`);
+	}
+
+	console.log(output.split(/\r?\n/, 1)[0]);
+}
+
 function verifyNativeHelpers(unpackedRoot) {
 	const nativeBinRoot = path.join(unpackedRoot, "electron", "native", "bin");
 	if (!existsSync(nativeBinRoot)) {
@@ -276,6 +304,7 @@ for (const unpackedRoot of unpackedRoots) {
 	console.log(`[packaged-smoke] root: ${relativePath(unpackedRoot)}`);
 	assertPackagedAppExecutable(unpackedRoot);
 	verifyFfmpeg(unpackedRoot);
+	verifyFfprobe(unpackedRoot);
 	verifyNativeHelpers(unpackedRoot);
 }
 
