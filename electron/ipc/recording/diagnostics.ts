@@ -496,6 +496,16 @@ export async function getCompanionAudioFallbackPaths(videoPath: string) {
 	return paths;
 }
 
+/**
+ * Resolve which audio files the editor should play alongside `videoPath`, and
+ * the start delay recorded for each.
+ *
+ * The renderer treats a `.system.`/`.mic.` pair as independent tracks and mutes
+ * the video's own track when both are present.  The macOS helper writes system
+ * audio to the inline track but keeps both sources as sidecars, so once a mac
+ * system sidecar exists the sidecars are authoritative and are returned in place
+ * of the video.  Other layouts keep the embedded track and add the mic sidecar.
+ */
 export async function getCompanionAudioFallbackInfo(videoPath: string) {
 	const companionCandidates = await getUsableCompanionAudioCandidates(videoPath);
 	if (companionCandidates.length === 0) {
@@ -524,9 +534,16 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 		if (!hasUsableMacSystemCompanion && usableMacMicOnlyCompanions.length > 0) {
 			paths = usableMacMicOnlyCompanions;
 		} else if (hasUsableMacSystemCompanion) {
-			// macOS keeps system and mic separate; an embedded stream is not a full mix.
+			// The inline mp4 audio track carries system audio only (the helper skips
+			// the microphone while system audio is captured), so returning the video
+			// alone drops the mic entirely.  Hand over both mac sidecars instead and
+			// let the renderer route them as independent system/mic tracks.
 			paths = Array.from(
-				new Set(companionCandidates.flatMap((candidate) => candidate.usablePaths)),
+				new Set(
+					companionCandidates.flatMap((candidate) =>
+						candidate.platform === "mac" ? candidate.usablePaths : [],
+					),
+				),
 			);
 		} else {
 			const companionPaths = Array.from(
