@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import { deriveNextId } from "./projectPersistence";
 
 import {
+	type ClipRegion,
 	extendAutoFullTrackClip,
 	findClipAtTimelineTime,
+	getClipFreezeRegions,
+	getClipFreezeTimelineSpans,
+	getClipSourceEndMs,
 	getTimelineDurationMs,
 	mapSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime,
@@ -161,6 +165,102 @@ describe("clip timeline mapping", () => {
 				clipsFromTrims.map((clip) => clip.id),
 			),
 		).toBe(4);
+	});
+});
+
+describe("clip freeze frames", () => {
+	// Plays source 0-4000ms at 1x and holds the frame at source 1000ms for 2000ms.
+	const frozenClip: ClipRegion = {
+		id: "clip-1",
+		startMs: 0,
+		endMs: 6_000,
+		speed: 1,
+		freezeFrames: [{ id: "freeze-1", offsetMs: 1_000, durationMs: 2_000 }],
+	};
+
+	it("excludes held time from the clip source end", () => {
+		expect(getClipSourceEndMs(frozenClip)).toBe(4_000);
+	});
+
+	it("maps timeline time before, inside and after a hold to source time", () => {
+		expect(mapTimelineTimeToSourceTime(500, [frozenClip])).toBe(500);
+		expect(mapTimelineTimeToSourceTime(1_000, [frozenClip])).toBe(1_000);
+		expect(mapTimelineTimeToSourceTime(2_500, [frozenClip])).toBe(1_000);
+		expect(mapTimelineTimeToSourceTime(3_000, [frozenClip])).toBe(1_000);
+		expect(mapTimelineTimeToSourceTime(4_500, [frozenClip])).toBe(2_500);
+	});
+
+	it("maps a held source frame to the start of its hold and shifts later source time", () => {
+		expect(mapSourceTimeToTimelineTime(500, [frozenClip])).toBe(500);
+		expect(mapSourceTimeToTimelineTime(1_000, [frozenClip])).toBe(1_000);
+		expect(mapSourceTimeToTimelineTime(2_500, [frozenClip])).toBe(4_500);
+	});
+
+	it("places holds using the clip speed", () => {
+		// Source 0-4000ms at 2x is 2000ms on the timeline, plus a 1000ms hold at source 2000ms.
+		const fastClip: ClipRegion = {
+			id: "clip-1",
+			startMs: 0,
+			endMs: 3_000,
+			speed: 2,
+			freezeFrames: [{ id: "freeze-1", offsetMs: 2_000, durationMs: 1_000 }],
+		};
+
+		expect(getClipSourceEndMs(fastClip)).toBe(4_000);
+		expect(mapTimelineTimeToSourceTime(1_500, [fastClip])).toBe(2_000);
+		expect(mapTimelineTimeToSourceTime(2_500, [fastClip])).toBe(3_000);
+		expect(mapSourceTimeToTimelineTime(3_000, [fastClip])).toBe(2_500);
+	});
+
+	it("returns timeline spans for holds in playback order", () => {
+		const clip: ClipRegion = {
+			id: "clip-1",
+			startMs: 0,
+			endMs: 5_500,
+			speed: 1,
+			freezeFrames: [
+				{ id: "freeze-a", offsetMs: 3_000, durationMs: 1_000 },
+				{ id: "freeze-b", offsetMs: 1_000, durationMs: 500 },
+			],
+		};
+
+		expect(getClipFreezeTimelineSpans(clip)).toEqual([
+			{
+				id: "freeze-b",
+				clipId: "clip-1",
+				startMs: 1_000,
+				endMs: 1_500,
+				sourceMs: 1_000,
+				durationMs: 500,
+			},
+			{
+				id: "freeze-a",
+				clipId: "clip-1",
+				startMs: 3_500,
+				endMs: 4_500,
+				sourceMs: 3_000,
+				durationMs: 1_000,
+			},
+		]);
+	});
+
+	it("flattens clip holds into source-time freeze regions sorted by source time", () => {
+		const laterClip: ClipRegion = {
+			id: "clip-2",
+			startMs: 8_000,
+			endMs: 10_500,
+			speed: 1,
+			freezeFrames: [{ id: "freeze-2", offsetMs: 500, durationMs: 500 }],
+		};
+
+		expect(getClipFreezeRegions([laterClip, frozenClip])).toEqual([
+			{ id: "freeze-1", sourceMs: 1_000, durationMs: 2_000 },
+			{ id: "freeze-2", sourceMs: 8_500, durationMs: 500 },
+		]);
+	});
+
+	it("extends the timeline duration by held time", () => {
+		expect(getTimelineDurationMs([frozenClip], 4_000)).toBe(6_000);
 	});
 });
 

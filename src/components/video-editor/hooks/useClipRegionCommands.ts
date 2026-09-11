@@ -1,14 +1,24 @@
 import type { Span } from "dnd-timeline";
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
 import { toast } from "sonner";
+import {
+	type ClipFreezeFrameBlockReason,
+	fitClipFreezeFrames,
+	getRightClipFreezeFramesAfterSplit,
+	planAddClipFreezeFrame,
+	planClipFreezeFrameDurationChange,
+	planRemoveClipFreezeFrame,
+} from "../clipFreezeFrames";
 import { planClipSpeedChange } from "../clipSpeedChange";
-import type {
-	AnnotationRegion,
-	AudioRegion,
-	ClipRegion,
-	EditorEffectSection,
-	SpeedRegion,
-	ZoomRegion,
+import { deriveNextId } from "../projectPersistence";
+import {
+	type AnnotationRegion,
+	type AudioRegion,
+	type ClipRegion,
+	DEFAULT_FREEZE_FRAME_DURATION_MS,
+	type EditorEffectSection,
+	type SpeedRegion,
+	type ZoomRegion,
 } from "../types";
 
 type Translator = (
@@ -79,21 +89,38 @@ export function useClipRegionCommands({
 
 	const handleClipSplit = useCallback(
 		(splitMs: number) => {
+			// Check the rounded position so a split can never leave a zero-length clip.
+			const splitAt = Math.round(splitMs);
 			const target = clipRegions.find(
-				(clip) => splitMs > clip.startMs && splitMs < clip.endMs,
+				(clip) => splitAt > clip.startMs && splitAt < clip.endMs,
 			);
 			if (!target) return;
+			const rightFreezeFrames = getRightClipFreezeFramesAfterSplit(target, splitAt);
+			if (!rightFreezeFrames) {
+				toast.warning(
+					t(
+						"editor.timeline.freezeSplitBlocked",
+						"Remove the freeze frame before splitting after it. A split there would skip the held footage.",
+					),
+				);
+				return;
+			}
 			const leftId = `clip-${nextClipIdRef.current++}`;
 			const rightId = `clip-${nextClipIdRef.current++}`;
-			const splitAt = Math.round(splitMs);
-			const left: ClipRegion = { ...target, id: leftId, endMs: splitAt };
-			const right: ClipRegion = { ...target, id: rightId, startMs: splitAt };
+			const { freezeFrames: _targetFreezeFrames, ...targetWithoutFreezeFrames } = target;
+			const left: ClipRegion = { ...targetWithoutFreezeFrames, id: leftId, endMs: splitAt };
+			const right: ClipRegion = {
+				...targetWithoutFreezeFrames,
+				id: rightId,
+				startMs: splitAt,
+				...(rightFreezeFrames.length > 0 ? { freezeFrames: rightFreezeFrames } : {}),
+			};
 			setClipRegions((current) =>
 				current.flatMap((clip) => (clip.id === target.id ? [left, right] : [clip])),
 			);
 			if (selectedClipId === target.id) setSelectedClipId(leftId);
 		},
-		[clipRegions, nextClipIdRef, selectedClipId, setClipRegions, setSelectedClipId],
+		[clipRegions, nextClipIdRef, selectedClipId, setClipRegions, setSelectedClipId, t],
 	);
 
 	const handleClipSpanChange = useCallback(
@@ -149,9 +176,26 @@ export function useClipRegionCommands({
 			}
 
 			setClipRegions((current) =>
-				current.map((clip) =>
-					clip.id === id ? { ...clip, startMs: newStart, endMs: newEnd } : clip,
-				),
+				current.map((clip) => {
+					if (clip.id !== id) return clip;
+					const startDeltaMs = newStart - clip.startMs;
+					const isMove = Math.abs(startDeltaMs - (newEnd - clip.endMs)) < 1;
+					// Trimming the left edge moves the clip's source start with it, so holds keep
+					// their footage by shifting their offsets. Moving the whole clip keeps offsets.
+					const freezeFrames =
+						clip.freezeFrames && !isMove
+							? clip.freezeFrames.map((freezeFrame) => ({
+									...freezeFrame,
+									offsetMs: freezeFrame.offsetMs - startDeltaMs,
+								}))
+							: clip.freezeFrames;
+					return fitClipFreezeFrames({
+						...clip,
+						startMs: newStart,
+						endMs: newEnd,
+						...(freezeFrames ? { freezeFrames } : {}),
+					});
+				}),
 			);
 		},
 		[
@@ -236,6 +280,95 @@ export function useClipRegionCommands({
 		],
 	);
 
+	const warnFreezeFrameBlocked = useCallback(
+		(reason: ClipFreezeFrameBlockReason) => {
+			toast.warning(
+				reason === "no-clip"
+					? t(
+							"editor.timeline.freezeNoClip",
+							"Move the playhead over a clip to freeze a frame.",
+						)
+					: reason === "clip-overlap"
+						? t(
+								"editor.timeline.freezeClipOverlap",
+								"The freeze frame would overlap the next clip. Move or split clips to make room first.",
+							)
+						: t(
+								"editor.timeline.freezeZoomOverlap",
+								"The freeze frame would push a zoom into another zoom. Move or delete the overlapping zoom first.",
+							),
+			);
+		},
+		[t],
+	);
+
+	const handleAddFreezeFrame = useCallback(
+		(timelineMs: number) => {
+			const existingFreezeFrameIds = clipRegions.flatMap((clip) =>
+				(clip.freezeFrames ?? []).map(({ id }) => id),
+			);
+			const plan = planAddClipFreezeFrame({
+				clipRegions,
+				zoomRegions,
+				timelineMs,
+				durationMs: DEFAULT_FREEZE_FRAME_DURATION_MS,
+				freezeFrameId: `freeze-${deriveNextId("freeze", existingFreezeFrameIds)}`,
+			});
+			if ("blockedReason" in plan) {
+				warnFreezeFrameBlocked(plan.blockedReason);
+				return;
+			}
+			if (plan.created) {
+				setClipRegions(plan.clipRegions);
+				setZoomRegions(plan.zoomRegions);
+			}
+			handleSelectClip(plan.clipId);
+		},
+		[
+			clipRegions,
+			handleSelectClip,
+			setClipRegions,
+			setZoomRegions,
+			warnFreezeFrameBlocked,
+			zoomRegions,
+		],
+	);
+
+	const handleFreezeFrameDurationChange = useCallback(
+		(clipId: string, freezeFrameId: string, durationMs: number) => {
+			const plan = planClipFreezeFrameDurationChange({
+				clipRegions,
+				zoomRegions,
+				clipId,
+				freezeFrameId,
+				durationMs,
+			});
+			if (!plan) return;
+			if ("blockedReason" in plan) {
+				warnFreezeFrameBlocked(plan.blockedReason);
+				return;
+			}
+			setClipRegions(plan.clipRegions);
+			setZoomRegions(plan.zoomRegions);
+		},
+		[clipRegions, setClipRegions, setZoomRegions, warnFreezeFrameBlocked, zoomRegions],
+	);
+
+	const handleFreezeFrameDelete = useCallback(
+		(clipId: string, freezeFrameId: string) => {
+			const plan = planRemoveClipFreezeFrame({
+				clipRegions,
+				zoomRegions,
+				clipId,
+				freezeFrameId,
+			});
+			if (!plan) return;
+			setClipRegions(plan.clipRegions);
+			setZoomRegions(plan.zoomRegions);
+		},
+		[clipRegions, setClipRegions, setZoomRegions, zoomRegions],
+	);
+
 	return {
 		handleSelectClip,
 		handleClipSplit,
@@ -244,5 +377,8 @@ export function useClipRegionCommands({
 		handleClipMutedChange,
 		handleClipShowSourceAudioChange,
 		handleClipDelete,
+		handleAddFreezeFrame,
+		handleFreezeFrameDurationChange,
+		handleFreezeFrameDelete,
 	};
 }

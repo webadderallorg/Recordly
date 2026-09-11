@@ -23,7 +23,14 @@
 		"mutedState": "Audio is gedempt",
 		"unmutedState": "Audio wordt afgespeeld",
 		"separateClipFromAudio": "Clip van audio scheiden",
-		"delete": "Clip verwijderen"
+		"delete": "Clip verwijderen",
+		"freeze": {
+			"title": "Stilstaande beelden",
+			"add": "Bevriezen bij afspeelkop",
+			"empty": "Houdt het beeld onder de afspeelkop vast. De video pauzeert terwijl de uitvoer doorloopt.",
+			"at": "Op {{time}}",
+			"remove": "Stilstaand beeld verwijderen"
+		}
 	},
 	"effects": {
 		"title": "Video-effecten",

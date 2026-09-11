@@ -3,6 +3,7 @@ import { SOURCE_AUDIO_NORMALIZE_GAIN } from "@/components/video-editor/audio/aud
 import type {
 	AudioRegion,
 	ClipRegion,
+	FreezeRegion,
 	SourceAudioTrackSettings,
 	SpeedRegion,
 	TrimRegion,
@@ -118,6 +119,8 @@ interface TimelineSlice {
 	sourceStartMs: number;
 	sourceEndMs: number;
 	speed: number;
+	/** Silence inserted before this slice plays, from freeze frames held on its first frame. */
+	holdBeforeMs: number;
 }
 
 interface PreparedOfflineRender {
@@ -242,6 +245,7 @@ export class AudioProcessor {
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 		sourceAudioTrackSettings?: SourceAudioTrackSettings,
 		clipRegions?: ClipRegion[],
+		freezeRegions?: FreezeRegion[],
 	): Promise<void> {
 		const sortedTrims = trimRegions
 			? [...trimRegions].sort((a, b) => a.startMs - b.startMs)
@@ -277,9 +281,10 @@ export class AudioProcessor {
 			requiresLegacyMacMicSidecarMix ||
 			hasTimedCompanionAudio;
 
-		// When speed edits, audio regions, or multiple audio sources need mixing, use offline AudioContext pipeline.
+		// When speed edits, freeze frames, audio regions, or multiple audio sources need mixing, use offline AudioContext pipeline.
 		if (
 			sortedSpeedRegions.length > 0 ||
+			(freezeRegions ?? []).length > 0 ||
 			sortedAudioRegions.length > 0 ||
 			needsSourceAudioMixing ||
 			hasNonDefaultSourceTrackSettings(sourceAudioTrackSettings) ||
@@ -294,6 +299,7 @@ export class AudioProcessor {
 				sourceAudioFallbackStartDelayMsByPath,
 				sourceAudioTrackSettings,
 				clipRegions,
+				freezeRegions,
 				muxer,
 			);
 			return;
@@ -327,6 +333,7 @@ export class AudioProcessor {
 				sourceAudioFallbackStartDelayMsByPath,
 				sourceAudioTrackSettings,
 				clipRegions,
+				freezeRegions,
 				muxer,
 			);
 			return;
@@ -375,6 +382,7 @@ export class AudioProcessor {
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 		sourceAudioTrackSettings?: SourceAudioTrackSettings,
 		clipRegions?: ClipRegion[],
+		freezeRegions?: FreezeRegion[],
 	): Promise<Blob> {
 		const sortedTrims = trimRegions
 			? [...trimRegions].sort((a, b) => a.startMs - b.startMs)
@@ -402,6 +410,7 @@ export class AudioProcessor {
 			sourceAudioFallbackStartDelayMsByPath,
 			sourceAudioTrackSettings,
 			clipRegions,
+			freezeRegions,
 		);
 		return this.renderToWavBlobChunked(prepared);
 	}
@@ -679,6 +688,7 @@ export class AudioProcessor {
 		sourceAudioFallbackStartDelayMsByPath: Record<string, number> | undefined,
 		sourceAudioTrackSettings: SourceAudioTrackSettings | undefined,
 		clipRegions: ClipRegion[] | undefined,
+		freezeRegions: FreezeRegion[] | undefined,
 		muxer: VideoMuxer,
 	): Promise<void> {
 		const prepared = await this.prepareOfflineRender(
@@ -690,6 +700,7 @@ export class AudioProcessor {
 			sourceAudioFallbackStartDelayMsByPath,
 			sourceAudioTrackSettings,
 			clipRegions,
+			freezeRegions,
 		);
 		if (this.cancelled) return;
 		await this.renderAndEncodeChunked(prepared, muxer);
@@ -704,6 +715,7 @@ export class AudioProcessor {
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 		sourceAudioTrackSettings?: SourceAudioTrackSettings,
 		clipRegions?: ClipRegion[],
+		freezeRegions?: FreezeRegion[],
 	): Promise<PreparedOfflineRender> {
 		if (this.cancelled) throw new Error("Export cancelled");
 		this.onProgress?.(0);
@@ -793,12 +805,18 @@ export class AudioProcessor {
 		}
 		const sourceDurationMs = sourceDurationSec * 1000;
 
-		// Build timeline slices (non-trimmed segments with speed info)
-		const slices = this.buildTimelineSlices(sourceDurationMs, trimRegions, speedRegions);
+		// Build timeline slices (non-trimmed segments with speed info and freeze frame holds)
+		const slices = this.buildTimelineSlices(
+			sourceDurationMs,
+			trimRegions,
+			speedRegions,
+			freezeRegions ?? [],
+		);
 
 		let outputDurationMs = 0;
 		for (const slice of slices) {
-			outputDurationMs += (slice.sourceEndMs - slice.sourceStartMs) / slice.speed;
+			outputDurationMs +=
+				slice.holdBeforeMs + (slice.sourceEndMs - slice.sourceStartMs) / slice.speed;
 		}
 
 		// Extend for audio regions that might exceed the video timeline
@@ -1357,11 +1375,13 @@ export class AudioProcessor {
 	}
 
 	// Build non-overlapping timeline slices from the source timeline, excluding
-	// trimmed regions and tagging each slice with its playback speed.
+	// trimmed regions and tagging each slice with its playback speed. A slice that
+	// starts on a freeze frame carries the hold as silence before it plays.
 	private buildTimelineSlices(
 		sourceDurationMs: number,
 		trimRegions: TrimLikeRegion[],
 		speedRegions: SpeedRegion[],
+		freezeRegions: FreezeRegion[] = [],
 	): TimelineSlice[] {
 		const boundaries = new Set<number>();
 		boundaries.add(0);
@@ -1375,6 +1395,11 @@ export class AudioProcessor {
 			if (speed.startMs >= 0 && speed.startMs <= sourceDurationMs)
 				boundaries.add(speed.startMs);
 			if (speed.endMs >= 0 && speed.endMs <= sourceDurationMs) boundaries.add(speed.endMs);
+		}
+		for (const freezeRegion of freezeRegions) {
+			if (freezeRegion.sourceMs >= 0 && freezeRegion.sourceMs < sourceDurationMs) {
+				boundaries.add(freezeRegion.sourceMs);
+			}
 		}
 
 		const sorted = [...boundaries].sort((a, b) => a - b);
@@ -1397,7 +1422,18 @@ export class AudioProcessor {
 				sourceStartMs: start,
 				sourceEndMs: end,
 				speed: speedRegion?.speed ?? 1,
+				holdBeforeMs: 0,
 			});
+		}
+
+		// Freeze frames inside trimmed footage have no kept slice starting on them and are dropped.
+		for (const freezeRegion of freezeRegions) {
+			const heldSlice = slices.find(
+				(slice) => Math.abs(slice.sourceStartMs - freezeRegion.sourceMs) < 0.001,
+			);
+			if (heldSlice && freezeRegion.durationMs > 0) {
+				heldSlice.holdBeforeMs += freezeRegion.durationMs;
+			}
 		}
 
 		return slices;
@@ -1411,6 +1447,7 @@ export class AudioProcessor {
 			if (sourceMs <= slice.sourceStartMs) {
 				return outputMs;
 			}
+			outputMs += slice.holdBeforeMs;
 			const sliceDurationMs = slice.sourceEndMs - slice.sourceStartMs;
 			if (sourceMs >= slice.sourceEndMs) {
 				outputMs += sliceDurationMs / slice.speed;
@@ -1441,6 +1478,8 @@ export class AudioProcessor {
 		let outputOffsetSec = 0;
 
 		for (const slice of slices) {
+			// Nothing is scheduled during a freeze frame hold, which leaves that stretch silent.
+			outputOffsetSec += slice.holdBeforeMs / 1000;
 			const sliceSourceDurationSec = (slice.sourceEndMs - slice.sourceStartMs) / 1000;
 			const sliceOutputDurationSec = sliceSourceDurationSec / slice.speed;
 

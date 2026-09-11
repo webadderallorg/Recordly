@@ -22,6 +22,8 @@ interface UseAudioPreviewSyncParams {
 	audioRegions: AudioRegion[];
 	previewVolume: number;
 	isPlaying: boolean;
+	/** True while a freeze frame holds the video, which keeps source audio silent. */
+	isSourcePlaybackHeld: boolean;
 	currentTime: number;
 	timelineTime: number;
 	duration: number;
@@ -38,6 +40,7 @@ export function useAudioPreviewSync({
 	audioRegions,
 	previewVolume,
 	isPlaying,
+	isSourcePlaybackHeld,
 	currentTime,
 	timelineTime,
 	duration,
@@ -79,6 +82,13 @@ export function useAudioPreviewSync({
 	const sourceAudioMasterGainRef = useRef<GainNode | null>(null);
 	const sourceAudioResumePromiseRef = useRef<Promise<void> | null>(null);
 	const lastSourceAudioSyncTimeRef = useRef<number | null>(null);
+	// Source audio can finish loading in the middle of a freeze frame hold; the load callback
+	// reads the live hold state so it never starts audio that should stay silent.
+	const isSourcePlaybackHeldRef = useRef(isSourcePlaybackHeld);
+
+	useEffect(() => {
+		isSourcePlaybackHeldRef.current = isSourcePlaybackHeld;
+	}, [isSourcePlaybackHeld]);
 
 	const ensureSourceAudioContext = useCallback(() => {
 		if (!sourceAudioContextRef.current) {
@@ -241,7 +251,7 @@ export function useAudioPreviewSync({
 							sourceAudioResourceVersion,
 						);
 						latestAudio.load();
-						if (isPlaying) {
+						if (isPlaying && !isSourcePlaybackHeldRef.current) {
 							playSourceAudioPreview();
 						}
 					} catch (error) {
@@ -456,8 +466,10 @@ export function useAudioPreviewSync({
 			}
 
 			const atEnd = audioDuration !== null && targetTime >= audioDuration;
-			if (isPlaying && !beforeAudioStart && !atEnd) {
+			if (isPlaying && !isSourcePlaybackHeld && !beforeAudioStart && !atEnd) {
 				void ensureSourceAudioRunning().then(() => {
+					// A freeze frame hold can begin while the audio context is resuming.
+					if (isSourcePlaybackHeldRef.current) return;
 					audio.play().catch(() => undefined);
 				});
 			} else if (!audio.paused) {
@@ -473,6 +485,7 @@ export function useAudioPreviewSync({
 		getSourceTrackPreviewGain,
 		isCurrentClipMuted,
 		isPlaying,
+		isSourcePlaybackHeld,
 		previewVolume,
 		resolvedSourceTracks,
 		sourceAudioFallbackStartDelayMsByPath,
@@ -483,7 +496,10 @@ export function useAudioPreviewSync({
 		if (!isPlaying || resolvedSourceTracks.length === 0) {
 			return;
 		}
+		// Only runs when playback starts. When a freeze frame hold ends, the sync effect above
+		// resumes the tracks that are actually eligible to play.
 		void ensureSourceAudioRunning().then(() => {
+			if (isSourcePlaybackHeldRef.current) return;
 			for (const audio of sourceAudioElementsRef.current.values()) {
 				if (audio.paused) {
 					audio.play().catch(() => undefined);

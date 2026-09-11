@@ -29,7 +29,14 @@
 		"mutedState": "Audio is muted",
 		"unmutedState": "Audio is playing",
 		"separateClipFromAudio": "Separate clip from audio",
-		"delete": "Delete Clip"
+		"delete": "Delete Clip",
+		"freeze": {
+			"title": "Freeze frames",
+			"add": "Freeze at playhead",
+			"empty": "Hold the frame under the playhead. The video pauses while the output keeps running.",
+			"at": "At {{time}}",
+			"remove": "Remove freeze frame"
+		}
 	},
 	"effects": {
 		"title": "Video Effects",

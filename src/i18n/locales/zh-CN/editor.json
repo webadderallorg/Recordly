@@ -143,11 +143,16 @@
 	},
 	"toolbar": {
 		"addLayer": "添加图层",
-		"splitClip": "拆分片段 (C)"
+		"splitClip": "拆分片段 (C)",
+		"freezeFrame": "在播放头处定格画面"
 	},
 	"timeline": {
 		"expand": "展开时间轴",
-		"collapse": "折叠时间轴"
+		"collapse": "折叠时间轴",
+		"freezeNoClip": "请将播放头移到片段上以定格画面。",
+		"freezeClipOverlap": "定格画面会与下一个片段重叠。请先移动或拆分片段以腾出空间。",
+		"freezeZoomOverlap": "定格画面会把一个缩放推到另一个缩放上。请先移动或删除重叠的缩放。",
+		"freezeSplitBlocked": "请先移除定格画面，再在其之后拆分。在那里拆分会跳过定格的画面。"
 	},
 	"openRecordingsFolder": "打开录制文件夹"
 }

@@ -143,11 +143,16 @@
 	},
 	"toolbar": {
 		"addLayer": "Adicionar camada",
-		"splitClip": "Dividir clipe (C)"
+		"splitClip": "Dividir clipe (C)",
+		"freezeFrame": "Congelar quadro no cursor de reprodução"
 	},
 	"timeline": {
 		"expand": "Expandir linha do tempo",
-		"collapse": "Recolher linha do tempo"
+		"collapse": "Recolher linha do tempo",
+		"freezeNoClip": "Posicione o cursor de reprodução sobre um clipe para congelar um quadro.",
+		"freezeClipOverlap": "O quadro congelado sobreporia o próximo clipe. Mova ou divida clipes para abrir espaço.",
+		"freezeZoomOverlap": "O quadro congelado empurraria um zoom sobre outro. Mova ou exclua primeiro o zoom sobreposto.",
+		"freezeSplitBlocked": "Remova o quadro congelado antes de dividir depois dele. Dividir ali pularia o trecho congelado."
 	},
 	"openRecordingsFolder": "Abrir pasta de gravações"
 }

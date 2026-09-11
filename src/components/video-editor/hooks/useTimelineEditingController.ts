@@ -33,6 +33,8 @@ type Input = {
 	currentSourcePath: string | null;
 	duration: number;
 	currentTime: number;
+	/** How long the current preview freeze frame has been held, or null when none is. */
+	freezeHoldElapsedMs: number | null;
 	isPlaying: boolean;
 	previewVolume: number;
 	loading: boolean;
@@ -78,6 +80,7 @@ export function useTimelineEditingController(input: Input) {
 		timeline,
 		duration: input.duration,
 		currentTime: input.currentTime,
+		freezeHoldElapsedMs: input.freezeHoldElapsedMs,
 		nextClipIdRef: input.nextClipIdRef,
 		initializedRef: input.clipInitializedRef,
 		autoFullTrackIdRef: input.autoFullTrackClipIdRef,
@@ -97,6 +100,7 @@ export function useTimelineEditingController(input: Input) {
 		timelineTime: projection.timelinePlayheadTime,
 		duration: input.duration,
 		isPlaying: input.isPlaying,
+		isSourcePlaybackHeld: input.freezeHoldElapsedMs !== null,
 		previewVolume: input.previewVolume,
 		sourceAudioFallbackRefreshKey: timeline.sourceAudioFallbackRefreshKey,
 		summarizeErrorMessage,

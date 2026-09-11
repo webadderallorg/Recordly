@@ -7,6 +7,7 @@ import type {
 	CropRegion,
 	CursorStyle,
 	CursorTelemetryPoint,
+	FreezeRegion,
 	Padding,
 	SourceAudioTrackSettings,
 	SpeedRegion,
@@ -49,6 +50,7 @@ interface VideoExporterConfig extends ExportConfig {
 	zoomRegions: ZoomRegion[];
 	trimRegions?: TrimRegion[];
 	speedRegions?: SpeedRegion[];
+	freezeRegions?: FreezeRegion[];
 	showShadow: boolean;
 	shadowIntensity: number;
 	backgroundBlur: number;
@@ -281,6 +283,7 @@ export class VideoExporter {
 			const effectiveDuration = this.streamingDecoder.getEffectiveDuration(
 				this.config.trimRegions,
 				this.config.speedRegions,
+				this.config.freezeRegions,
 			);
 			this.effectiveDurationSec = effectiveDuration;
 			const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
@@ -326,6 +329,7 @@ export class VideoExporter {
 					this.processedFrameCount = frameIndex;
 					this.reportProgress(frameIndex, totalFrames);
 				},
+				this.config.freezeRegions,
 			);
 
 			if (this.cancelled) {
@@ -412,6 +416,8 @@ export class VideoExporter {
 								this.config.sourceAudioFallbackPaths,
 								this.config.sourceAudioFallbackStartDelayMsByPath,
 								this.config.sourceAudioTrackSettings,
+								this.config.clipRegions,
+								this.config.freezeRegions,
 							),
 							"audio processing",
 							"audio",
@@ -570,8 +576,11 @@ export class VideoExporter {
 			return { audioMode: "none" };
 		}
 
+		// Freeze frames insert silence, which only the offline audio render can produce.
+		const hasFreezeFrames = (this.config.freezeRegions ?? []).length > 0;
 		if (
 			speedRegions.length > 0 ||
+			hasFreezeFrames ||
 			audioRegions.length > 0 ||
 			sourceAudioFallbackPaths.length > 1 ||
 			hasTimedSourceAudioFallback ||
@@ -596,16 +605,17 @@ export class VideoExporter {
 				typeof primaryAudioSourceSampleRate === "number" &&
 				Number.isFinite(primaryAudioSourceSampleRate) &&
 				primaryAudioSourceSampleRate > 0;
-			const strategy = canUsePrimaryAudioFiltergraph
-				? classifyEditedTrackStrategy({
-						primaryAudioSourcePath,
-						sourceDurationMs,
-						trimRegions,
-						speedRegions,
-						audioRegions,
-						sourceAudioFallbackPaths,
-					})
-				: "offline-render-fallback";
+			const strategy =
+				canUsePrimaryAudioFiltergraph && !hasFreezeFrames
+					? classifyEditedTrackStrategy({
+							primaryAudioSourcePath,
+							sourceDurationMs,
+							trimRegions,
+							speedRegions,
+							audioRegions,
+							sourceAudioFallbackPaths,
+						})
+					: "offline-render-fallback";
 
 			if (strategy === "filtergraph-fast-path") {
 				const audioSourcePath = primaryAudioSourcePath;
@@ -860,6 +870,7 @@ export class VideoExporter {
 						this.config.sourceAudioFallbackStartDelayMsByPath,
 						this.config.sourceAudioTrackSettings,
 						this.config.clipRegions,
+						this.config.freezeRegions,
 					),
 					"native edited audio rendering",
 					"audio",
@@ -958,6 +969,7 @@ export class VideoExporter {
 						this.config.sourceAudioFallbackStartDelayMsByPath,
 						this.config.sourceAudioTrackSettings,
 						this.config.clipRegions,
+						this.config.freezeRegions,
 					),
 					"ffmpeg edited audio rendering",
 					"audio",

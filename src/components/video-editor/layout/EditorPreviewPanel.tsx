@@ -9,6 +9,7 @@ import {
 	Plus,
 	Scissors,
 	SkipBack,
+	Snowflake,
 	SkipForward,
 	SpeakerHigh,
 	SpeakerLow,
@@ -63,10 +64,12 @@ type Props = {
 	handleOpenCropEditor: () => void;
 	handleSaveAutoCaptionEdit: (target: CaptionEditTarget, text: string) => void;
 	handleSelectAnnotation: (id: string | null) => void;
+	handleAddFreezeFrame: () => void;
 	setDuration: Dispatch<SetStateAction<number>>;
 	setIsPreviewReady: Dispatch<SetStateAction<boolean>>;
 	setCurrentTime: Dispatch<SetStateAction<number>>;
 	setIsPlaying: Dispatch<SetStateAction<boolean>>;
+	setFreezeHoldElapsedMs: Dispatch<SetStateAction<number | null>>;
 	setError: Dispatch<SetStateAction<string | null>>;
 };
 
@@ -105,10 +108,12 @@ export function EditorPreviewPanel(props: Props) {
 		handleOpenCropEditor,
 		handleSaveAutoCaptionEdit,
 		handleSelectAnnotation,
+		handleAddFreezeFrame,
 		setDuration,
 		setIsPreviewReady,
 		setCurrentTime,
 		setIsPlaying,
+		setFreezeHoldElapsedMs,
 		setError,
 	} = props;
 
@@ -192,12 +197,14 @@ export function EditorPreviewPanel(props: Props) {
 									audio={audio}
 									effectiveZoomRegions={projection.effectiveZoomRegions}
 									effectiveSpeedRegions={projection.effectiveSpeedRegions}
+									effectiveFreezeRegions={projection.effectiveFreezeRegions}
 									effectiveCursorTelemetry={effectiveCursorTelemetry}
 									effectiveShowCursor={effectiveShowCursor}
 									setDuration={setDuration}
 									setIsPreviewReady={setIsPreviewReady}
 									setCurrentTime={setCurrentTime}
 									setIsPlaying={setIsPlaying}
+									setFreezeHoldElapsedMs={setFreezeHoldElapsedMs}
 									setError={setError}
 									handlers={{
 										onSelectZoom: zoomCommands.handleSelectZoom,
@@ -295,6 +302,16 @@ export function EditorPreviewPanel(props: Props) {
 						title={t("editor.toolbar.splitClip")}
 					>
 						<Scissors className="h-4 w-4" />
+					</Button>
+					<Button
+						onClick={handleAddFreezeFrame}
+						variant="ghost"
+						size="icon"
+						className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-[#06b6d4]/10 hover:text-[#06b6d4]"
+						title={t("editor.toolbar.freezeFrame", "Freeze Frame at Playhead")}
+						aria-label={t("editor.toolbar.freezeFrame", "Freeze Frame at Playhead")}
+					>
+						<Snowflake className="h-4 w-4" />
 					</Button>
 				</div>
 

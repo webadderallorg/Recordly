@@ -52,8 +52,8 @@ export function useEditorGlobalInteractions({
 			event.preventDefault();
 			const playback = videoPlaybackRef.current;
 			if (!playback?.video) return;
-			if (playback.video.paused) startPlayback();
-			else playback.pause();
+			if (playback.isPlaybackActive()) playback.pause();
+			else startPlayback();
 		};
 		window.addEventListener("keydown", handleKeyDown, { capture: true });
 		return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });

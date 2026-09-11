@@ -23,7 +23,14 @@
 		"mutedState": "O áudio está mudo",
 		"unmutedState": "O áudio está tocando",
 		"separateClipFromAudio": "Separar áudio do clipe",
-		"delete": "Excluir clipe"
+		"delete": "Excluir clipe",
+		"freeze": {
+			"title": "Congelar quadros",
+			"add": "Congelar no cursor de reprodução",
+			"empty": "Mantém o quadro sob o cursor de reprodução. O vídeo pausa enquanto a saída continua.",
+			"at": "Em {{time}}",
+			"remove": "Remover quadro congelado"
+		}
 	},
 	"effects": {
 		"title": "Efeitos de vídeo",

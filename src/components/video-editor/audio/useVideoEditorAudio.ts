@@ -40,6 +40,8 @@ interface UseVideoEditorAudioParams {
 	timelineTime: number;
 	duration: number;
 	isPlaying: boolean;
+	/** True while a freeze frame holds the video, which keeps source audio silent. */
+	isSourcePlaybackHeld: boolean;
 	previewVolume: number;
 	sourceAudioFallbackRefreshKey?: number;
 	summarizeErrorMessage: (message: string) => string;
@@ -60,6 +62,7 @@ export function useVideoEditorAudio({
 	timelineTime,
 	duration,
 	isPlaying,
+	isSourcePlaybackHeld,
 	previewVolume,
 	sourceAudioFallbackRefreshKey = 0,
 	summarizeErrorMessage,
@@ -116,6 +119,7 @@ export function useVideoEditorAudio({
 		audioRegions,
 		previewVolume,
 		isPlaying,
+		isSourcePlaybackHeld,
 		currentTime,
 		timelineTime,
 		duration,

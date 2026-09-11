@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	getDecodedFrameStartupOffsetUs,
 	getDecodedFrameTimelineOffsetUs,
+	getHeldFreezeFrameMs,
 	StreamingVideoDecoder,
+	splitDecodeSegmentsAtFreezeFrames,
 } from "./streamingDecoder";
 
 const {
@@ -10,7 +12,9 @@ const {
 	mockDemuxerGetMediaInfo,
 	mockDemuxerDestroy,
 	mockDemuxerGetDecoderConfig,
+	mockDemuxerRead,
 } = vi.hoisted(() => ({
+	mockDemuxerRead: vi.fn(),
 	mockDemuxerLoad: vi.fn(),
 	mockDemuxerGetMediaInfo: vi.fn(async () => ({
 		duration: 4,
@@ -37,6 +41,7 @@ vi.mock("web-demuxer", () => ({
 		getMediaInfo = mockDemuxerGetMediaInfo;
 		destroy = mockDemuxerDestroy;
 		getDecoderConfig = mockDemuxerGetDecoderConfig;
+		read = mockDemuxerRead;
 	},
 }));
 
@@ -173,5 +178,161 @@ describe("getDecodedFrameTimelineOffsetUs", () => {
 				mediaStartTime: 0.1,
 			}),
 		).toBe(150_000);
+	});
+});
+
+describe("splitDecodeSegmentsAtFreezeFrames", () => {
+	it("splits a segment at a freeze frame and holds the frame that starts the second part", () => {
+		expect(
+			splitDecodeSegmentsAtFreezeFrames(
+				[{ startSec: 0, endSec: 4, speed: 1 }],
+				[{ id: "freeze-1", sourceMs: 1_000, durationMs: 500 }],
+				30,
+			),
+		).toEqual([
+			{ startSec: 0, endSec: 1, speed: 1, holdFrameCount: 0 },
+			{ startSec: 1, endSec: 4, speed: 1, holdFrameCount: 15 },
+		]);
+	});
+
+	it("holds on a segment boundary and keeps each segment's speed", () => {
+		expect(
+			splitDecodeSegmentsAtFreezeFrames(
+				[
+					{ startSec: 0, endSec: 1, speed: 1 },
+					{ startSec: 1, endSec: 3, speed: 2 },
+				],
+				[{ id: "freeze-1", sourceMs: 1_000, durationMs: 1_000 }],
+				60,
+			),
+		).toEqual([
+			{ startSec: 0, endSec: 1, speed: 1, holdFrameCount: 0 },
+			{ startSec: 1, endSec: 3, speed: 2, holdFrameCount: 60 },
+		]);
+	});
+
+	it("ignores freeze frames inside trimmed footage", () => {
+		const segments = [
+			{ startSec: 0, endSec: 1, speed: 1 },
+			{ startSec: 2, endSec: 4, speed: 1 },
+		];
+		const freezeRegions = [
+			{ id: "freeze-trimmed", sourceMs: 1_500, durationMs: 500 },
+			{ id: "freeze-kept", sourceMs: 2_000, durationMs: 100 },
+		];
+
+		expect(splitDecodeSegmentsAtFreezeFrames(segments, freezeRegions, 30)).toEqual([
+			{ startSec: 0, endSec: 1, speed: 1, holdFrameCount: 0 },
+			{ startSec: 2, endSec: 4, speed: 1, holdFrameCount: 3 },
+		]);
+		expect(getHeldFreezeFrameMs(segments, freezeRegions)).toBe(100);
+	});
+});
+
+describe("StreamingVideoDecoder freeze frames", () => {
+	const frameRate = 30;
+	const freezeRegion = { id: "freeze-1", sourceMs: 500, durationMs: 200 };
+	const createdFrames: Array<{ timestamp: number; close: ReturnType<typeof vi.fn> }> = [];
+
+	class FakeVideoDecoder {
+		state = "unconfigured";
+		decodeQueueSize = 0;
+		private readonly output: (frame: unknown) => void;
+
+		constructor(init: { output: (frame: unknown) => void }) {
+			this.output = init.output;
+		}
+
+		configure() {
+			this.state = "configured";
+		}
+
+		decode(chunk: { timestamp: number }) {
+			const frame = { timestamp: chunk.timestamp, close: vi.fn() };
+			createdFrames.push(frame);
+			this.output(frame);
+		}
+
+		async flush() {}
+
+		close() {
+			this.state = "closed";
+		}
+	}
+
+	beforeEach(() => {
+		createdFrames.length = 0;
+		mockDemuxerLoad.mockReset();
+		mockDemuxerGetMediaInfo.mockResolvedValueOnce({
+			duration: 1,
+			start_time: 0,
+			streams: [
+				{
+					codec_type_string: "video",
+					width: 640,
+					height: 360,
+					avg_frame_rate: "30/1",
+					codec_string: "avc1.640034",
+					start_time: 0,
+					duration: 1,
+				},
+			],
+		});
+		mockDemuxerGetDecoderConfig.mockResolvedValue({ codec: "avc1.640034" });
+		mockDemuxerRead.mockImplementation(() => {
+			let chunkIndex = 0;
+			return new ReadableStream<{ timestamp: number }>({
+				pull(controller) {
+					if (chunkIndex >= frameRate) {
+						controller.close();
+						return;
+					}
+					controller.enqueue({
+						timestamp: Math.round((chunkIndex * 1_000_000) / frameRate),
+					});
+					chunkIndex++;
+				},
+			});
+		});
+		vi.stubGlobal("VideoDecoder", FakeVideoDecoder);
+		vi.stubGlobal("window", { location: { href: "http://localhost:5173/" } });
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("repeats the held frame for the hold duration before playback continues", async () => {
+		const decoder = new StreamingVideoDecoder();
+		await decoder.loadMetadata("http://127.0.0.1:43123/video?path=%2Ftmp%2Ffreeze.mp4");
+		const emitted: Array<{
+			frame: unknown;
+			exportTimestampUs: number;
+			sourceTimestampMs: number;
+		}> = [];
+
+		await decoder.decodeAll(
+			frameRate,
+			[],
+			[],
+			async (frame, exportTimestampUs, sourceTimestampMs) => {
+				emitted.push({ frame, exportTimestampUs, sourceTimestampMs });
+			},
+			[freezeRegion],
+		);
+
+		// 30 playback frames plus a 200ms hold at 30fps.
+		expect(emitted).toHaveLength(36);
+		const heldIndexes = emitted
+			.map(({ sourceTimestampMs }, index) => (sourceTimestampMs === 500 ? index : -1))
+			.filter((index) => index >= 0);
+		expect(heldIndexes).toHaveLength(7);
+		expect(heldIndexes[heldIndexes.length - 1] - heldIndexes[0]).toBe(6);
+		expect(new Set(heldIndexes.map((index) => emitted[index].frame)).size).toBe(1);
+		emitted.forEach(({ exportTimestampUs }, index) => {
+			expect(exportTimestampUs).toBeCloseTo((index * 1_000_000) / frameRate, 3);
+		});
+		expect(createdFrames.every((frame) => frame.close.mock.calls.length > 0)).toBe(true);
+		expect(decoder.getEffectiveDuration([], [], [freezeRegion])).toBeCloseTo(1.2, 5);
 	});
 });

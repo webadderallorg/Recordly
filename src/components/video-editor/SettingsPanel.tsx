@@ -2,6 +2,7 @@ import {
 	CursorClick,
 	Palette,
 	PresentationChart,
+	Snowflake,
 	Trash as Trash2,
 	UploadSimple as Upload,
 	X,
@@ -51,6 +52,7 @@ import type {
 	AutoCaptionAnimation,
 	AutoCaptionSettings,
 	CaptionCue,
+	ClipFreezeTimelineSpan,
 	CropRegion,
 	CursorClickEffectStyle,
 	CursorStyle,
@@ -508,6 +510,12 @@ function CursorClickEffectCards({
 	);
 }
 
+const FREEZE_FRAME_DURATION_PRESETS_MS = [500, 1_000, 2_000, 3_000, 5_000] as const;
+
+function formatFreezeFrameSeconds(durationMs: number): string {
+	return `${Number((durationMs / 1000).toFixed(1))}s`;
+}
+
 interface SettingsPanelProps {
 	panelMode?: "editor" | "background";
 	activeEffectSection?: EditorEffectSection;
@@ -532,6 +540,10 @@ interface SettingsPanelProps {
 	onSourceAudioTrackVolumeChange?: (id: string, volume: number) => void;
 	onSourceAudioTrackNormalizeChange?: (id: string, normalize: boolean) => void;
 	onClipDelete?: (id: string) => void;
+	selectedClipFreezeFrames?: ClipFreezeTimelineSpan[];
+	onAddFreezeFrame?: () => void;
+	onFreezeFrameDurationChange?: (freezeFrameId: string, durationMs: number) => void;
+	onFreezeFrameDelete?: (freezeFrameId: string) => void;
 	selectedAudioId?: string | null;
 	selectedAudioVolume?: number | null;
 	selectedAudioNormalize?: boolean | null;
@@ -992,6 +1004,10 @@ export function SettingsPanel({
 	onSourceAudioTrackVolumeChange,
 	onSourceAudioTrackNormalizeChange,
 	onClipDelete,
+	selectedClipFreezeFrames = [],
+	onAddFreezeFrame,
+	onFreezeFrameDurationChange,
+	onFreezeFrameDelete,
 	selectedAudioId,
 	selectedAudioVolume,
 	selectedAudioNormalize,
@@ -3068,6 +3084,91 @@ export function SettingsPanel({
 							</Button>
 						);
 					})}
+				</div>
+
+				<div className="mt-2 flex flex-col gap-2 border-t border-foreground/5 pt-3">
+					<div className="flex items-center justify-between gap-3">
+						<SectionLabel>
+							{tSettings("clip.freeze.title", "Freeze frames")}
+						</SectionLabel>
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							onClick={() => onAddFreezeFrame?.()}
+							className="h-7 gap-1.5 rounded-lg px-2 text-[10px] font-semibold text-[#06b6d4] hover:bg-[#06b6d4]/10 hover:text-[#06b6d4]"
+						>
+							<Snowflake className="h-3.5 w-3.5" weight="bold" />
+							{tSettings("clip.freeze.add", "Freeze at playhead")}
+						</Button>
+					</div>
+					{selectedClipFreezeFrames.length === 0 ? (
+						<p className="text-[9px] text-muted-foreground/60">
+							{tSettings(
+								"clip.freeze.empty",
+								"Hold the frame under the playhead. The video pauses while the output keeps running.",
+							)}
+						</p>
+					) : (
+						selectedClipFreezeFrames.map((freezeFrame) => (
+							<div
+								key={freezeFrame.id}
+								className="flex flex-col gap-1.5 rounded-lg bg-foreground/[0.03] px-2.5 py-2"
+							>
+								<div className="flex items-center justify-between gap-2">
+									<span className="text-[10px] tabular-nums text-muted-foreground">
+										{tSettings("clip.freeze.at", "At {{time}}", {
+											time: formatFreezeFrameSeconds(freezeFrame.startMs),
+										})}
+									</span>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										onClick={() => onFreezeFrameDelete?.(freezeFrame.id)}
+										className="h-6 w-6 rounded-md text-muted-foreground hover:bg-red-500/10 hover:text-red-400"
+										title={tSettings(
+											"clip.freeze.remove",
+											"Remove freeze frame",
+										)}
+										aria-label={tSettings(
+											"clip.freeze.remove",
+											"Remove freeze frame",
+										)}
+									>
+										<Trash2 className="h-3 w-3" />
+									</Button>
+								</div>
+								<div className="grid grid-cols-5 gap-1">
+									{FREEZE_FRAME_DURATION_PRESETS_MS.map((durationMs) => {
+										const isActive = freezeFrame.durationMs === durationMs;
+										return (
+											<Button
+												key={durationMs}
+												type="button"
+												onClick={() =>
+													onFreezeFrameDurationChange?.(
+														freezeFrame.id,
+														durationMs,
+													)
+												}
+												className={cn(
+													"h-auto w-full rounded-lg border px-0.5 py-1.5 text-center shadow-sm transition-all duration-200 ease-out cursor-pointer",
+													isActive
+														? "border-[#06b6d4] bg-[#06b6d4] text-white"
+														: "border-foreground/5 bg-foreground/5 text-muted-foreground hover:bg-foreground/10 hover:border-foreground/10 hover:text-foreground",
+												)}
+											>
+												<span className="text-[10px] font-semibold">
+													{formatFreezeFrameSeconds(durationMs)}
+												</span>
+											</Button>
+										);
+									})}
+								</div>
+							</div>
+						))
+					)}
 				</div>
 
 				<div className="mt-2 flex flex-col gap-2 border-t border-foreground/5 pt-3">

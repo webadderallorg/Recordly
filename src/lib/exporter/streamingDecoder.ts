@@ -1,5 +1,5 @@
 import { WebDemuxer } from "web-demuxer";
-import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
+import type { FreezeRegion, SpeedRegion, TrimRegion } from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { createFallbackDemuxerSource, resolveMediaResourceUrl } from "./localMediaSource";
 
@@ -58,6 +58,93 @@ export function getDecodedFrameTimelineOffsetUs(
 	return (
 		Math.max(0, streamStartTimeUs - mediaStartTimeUs) +
 		getDecodedFrameStartupOffsetUs(firstDecodedFrameTimestampUs, metadata)
+	);
+}
+
+interface PlaybackSegment {
+	startSec: number;
+	endSec: number;
+	speed: number;
+}
+
+export interface DecodeSegment extends PlaybackSegment {
+	/** Output frames that repeat this segment's first frame before it plays (freeze frame holds). */
+	holdFrameCount: number;
+}
+
+const FREEZE_FRAME_BOUNDARY_EPSILON_SEC = 0.0001;
+
+function isFreezeFrameInSegment(freezeRegion: FreezeRegion, segment: PlaybackSegment): boolean {
+	const freezeSec = freezeRegion.sourceMs / 1000;
+	return (
+		freezeRegion.durationMs > 0 &&
+		freezeSec >= segment.startSec - FREEZE_FRAME_BOUNDARY_EPSILON_SEC &&
+		freezeSec < segment.endSec - FREEZE_FRAME_BOUNDARY_EPSILON_SEC
+	);
+}
+
+/**
+ * Splits playback segments at freeze frame source times. The segment that starts on a freeze
+ * frame carries how many output frames hold its first frame. Freeze frames inside trimmed
+ * footage are ignored.
+ */
+export function splitDecodeSegmentsAtFreezeFrames(
+	segments: PlaybackSegment[],
+	freezeRegions: FreezeRegion[] | undefined,
+	targetFrameRate: number,
+): DecodeSegment[] {
+	const sortedFreezeRegions = [...(freezeRegions ?? [])].sort(
+		(left, right) => left.sourceMs - right.sourceMs,
+	);
+	const decodeSegments: DecodeSegment[] = [];
+
+	for (const segment of segments) {
+		let cursorSec = segment.startSec;
+		let pendingHoldFrameCount = 0;
+		for (const freezeRegion of sortedFreezeRegions) {
+			if (!isFreezeFrameInSegment(freezeRegion, segment)) {
+				continue;
+			}
+
+			const freezeSec = freezeRegion.sourceMs / 1000;
+			if (freezeSec > cursorSec + FREEZE_FRAME_BOUNDARY_EPSILON_SEC) {
+				decodeSegments.push({
+					startSec: cursorSec,
+					endSec: freezeSec,
+					speed: segment.speed,
+					holdFrameCount: pendingHoldFrameCount,
+				});
+				cursorSec = freezeSec;
+				pendingHoldFrameCount = 0;
+			}
+			pendingHoldFrameCount += Math.max(
+				1,
+				Math.round((freezeRegion.durationMs / 1000) * targetFrameRate),
+			);
+		}
+
+		decodeSegments.push({
+			startSec: cursorSec,
+			endSec: segment.endSec,
+			speed: segment.speed,
+			holdFrameCount: pendingHoldFrameCount,
+		});
+	}
+
+	return decodeSegments;
+}
+
+/** Total hold time of the freeze frames that fall inside kept playback segments. */
+export function getHeldFreezeFrameMs(
+	segments: PlaybackSegment[],
+	freezeRegions: FreezeRegion[] | undefined,
+): number {
+	return (freezeRegions ?? []).reduce(
+		(totalMs, freezeRegion) =>
+			segments.some((segment) => isFreezeFrameInSegment(freezeRegion, segment))
+				? totalMs + freezeRegion.durationMs
+				: totalMs,
+		0,
 	);
 }
 
@@ -197,6 +284,7 @@ export class StreamingVideoDecoder {
 		trimRegions: TrimRegion[] | undefined,
 		speedRegions: SpeedRegion[] | undefined,
 		onFrame: OnFrameCallback,
+		freezeRegions?: FreezeRegion[],
 	): Promise<void> {
 		if (!this.demuxer || !this.metadata) {
 			throw new Error("Must call loadMetadata() before decodeAll()");
@@ -209,15 +297,19 @@ export class StreamingVideoDecoder {
 			duration: this.metadata.duration,
 			streamDuration: this.metadata.streamDuration,
 		});
-		const segments = this.splitBySpeed(
-			this.computeSegments(effectiveVideoDuration, trimRegions),
-			speedRegions,
+		const segments = splitDecodeSegmentsAtFreezeFrames(
+			this.splitBySpeed(
+				this.computeSegments(effectiveVideoDuration, trimRegions),
+				speedRegions,
+			),
+			freezeRegions,
+			targetFrameRate,
 		);
 		const segmentOutputFrameCounts = segments.map((segment) =>
 			Math.ceil(((segment.endSec - segment.startSec) / segment.speed) * targetFrameRate),
 		);
-		const expectedOutputFrames = segmentOutputFrameCounts.reduce(
-			(sum, count) => sum + count,
+		const expectedOutputFrames = segments.reduce(
+			(sum, segment, index) => sum + segmentOutputFrameCounts[index] + segment.holdFrameCount,
 			0,
 		);
 		const frameDurationUs = 1_000_000 / targetFrameRate;
@@ -380,12 +472,52 @@ export class StreamingVideoDecoder {
 		let lastDecodedFrameSec: number | null = null;
 		let heldFrame: VideoFrame | null = null;
 		let heldFrameSec = 0;
+		let holdEmittedForSegmentIdx = -1;
 
-		const emitHeldFrameForTarget = async (segment: {
-			startSec: number;
-			endSec: number;
-			speed: number;
-		}) => {
+		// Repeats the frame that starts a freeze frame segment for the length of its hold.
+		const emitFreezeFrameHold = async (frame: VideoFrame, segment: DecodeSegment) => {
+			if (segment.holdFrameCount <= 0 || holdEmittedForSegmentIdx === segmentIdx) {
+				return;
+			}
+
+			holdEmittedForSegmentIdx = segmentIdx;
+			const heldSourceTimestampMs = segment.startSec * 1000;
+			for (
+				let holdFrameIndex = 0;
+				holdFrameIndex < segment.holdFrameCount && !this.cancelled;
+				holdFrameIndex++
+			) {
+				await onFrame(
+					frame,
+					exportFrameIndex * frameDurationUs,
+					heldSourceTimestampMs,
+					heldSourceTimestampMs,
+				);
+				exportFrameIndex++;
+			}
+		};
+
+		const emitSegmentFrame = async (
+			frame: VideoFrame,
+			segment: DecodeSegment,
+			sourceTimeSec: number,
+		) => {
+			if (segmentFrameIndex === 0) {
+				await emitFreezeFrameHold(frame, segment);
+			}
+
+			const sourceTimestampMs = sourceTimeSec * 1000;
+			await onFrame(
+				frame,
+				exportFrameIndex * frameDurationUs,
+				sourceTimestampMs,
+				sourceTimestampMs,
+			);
+			segmentFrameIndex++;
+			exportFrameIndex++;
+		};
+
+		const emitHeldFrameForTarget = async (segment: DecodeSegment) => {
 			if (!heldFrame) return false;
 			const segmentFrameCount = segmentOutputFrameCounts[segmentIdx];
 			if (segmentFrameIndex >= segmentFrameCount) return false;
@@ -395,15 +527,7 @@ export class StreamingVideoDecoder {
 				segment.startSec + (segmentFrameIndex / segmentFrameCount) * segmentDurationSec;
 			if (sourceTimeSec >= segment.endSec - epsilonSec) return false;
 
-			const sourceTimestampMs = sourceTimeSec * 1000;
-			await onFrame(
-				heldFrame,
-				exportFrameIndex * frameDurationUs,
-				sourceTimestampMs,
-				sourceTimestampMs,
-			);
-			segmentFrameIndex++;
-			exportFrameIndex++;
+			await emitSegmentFrame(heldFrame, segment, sourceTimeSec);
 			return true;
 		};
 
@@ -438,6 +562,10 @@ export class StreamingVideoDecoder {
 				const segment = segments[segmentIdx];
 				while (!this.cancelled && (await emitHeldFrameForTarget(segment))) {
 					// Keep emitting remaining output frames for this segment from the last known frame.
+				}
+				// A segment too short to emit any frame still owes its freeze frame hold.
+				if (heldFrame && !this.cancelled) {
+					await emitFreezeFrameHold(heldFrame, segment);
 				}
 
 				segmentIdx++;
@@ -490,15 +618,7 @@ export class StreamingVideoDecoder {
 					break;
 				}
 
-				const sourceTimestampMs = sourceTimeSec * 1000;
-				await onFrame(
-					heldFrame,
-					exportFrameIndex * frameDurationUs,
-					sourceTimestampMs,
-					sourceTimestampMs,
-				);
-				segmentFrameIndex++;
-				exportFrameIndex++;
+				await emitSegmentFrame(heldFrame, currentSegment, sourceTimeSec);
 			}
 
 			heldFrame.close();
@@ -516,6 +636,9 @@ export class StreamingVideoDecoder {
 
 				while (!this.cancelled && (await emitHeldFrameForTarget(segment))) {
 					// Keep emitting output frames for the active segment.
+				}
+				if (!this.cancelled) {
+					await emitFreezeFrameHold(heldFrame, segment);
 				}
 
 				segmentIdx++;
@@ -596,7 +719,11 @@ export class StreamingVideoDecoder {
 		return segments;
 	}
 
-	getEffectiveDuration(trimRegions?: TrimRegion[], speedRegions?: SpeedRegion[]): number {
+	getEffectiveDuration(
+		trimRegions?: TrimRegion[],
+		speedRegions?: SpeedRegion[],
+		freezeRegions?: FreezeRegion[],
+	): number {
 		if (!this.metadata) throw new Error("Must call loadMetadata() first");
 		const trimSegments = this.computeSegments(
 			getEffectiveVideoStreamDurationSeconds({
@@ -606,7 +733,11 @@ export class StreamingVideoDecoder {
 			trimRegions,
 		);
 		const speedSegments = this.splitBySpeed(trimSegments, speedRegions);
-		return speedSegments.reduce((sum, seg) => sum + (seg.endSec - seg.startSec) / seg.speed, 0);
+		const playbackSeconds = speedSegments.reduce(
+			(sum, seg) => sum + (seg.endSec - seg.startSec) / seg.speed,
+			0,
+		);
+		return playbackSeconds + getHeldFreezeFrameMs(speedSegments, freezeRegions) / 1000;
 	}
 
 	private splitBySpeed(

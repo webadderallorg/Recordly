@@ -23,7 +23,14 @@
 		"mutedState": "Le son est coupé",
 		"unmutedState": "Le son est activé",
 		"separateClipFromAudio": "Séparer le clip de l'audio",
-		"delete": "Supprimer le clip"
+		"delete": "Supprimer le clip",
+		"freeze": {
+			"title": "Arrêts sur image",
+			"add": "Figer à la tête de lecture",
+			"empty": "Fige l'image sous la tête de lecture. La vidéo se met en pause pendant que la sortie continue.",
+			"at": "À {{time}}",
+			"remove": "Supprimer l'arrêt sur image"
+		}
 	},
 	"effects": {
 		"title": "Effets vidéo",

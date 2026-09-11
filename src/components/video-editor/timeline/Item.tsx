@@ -5,6 +5,7 @@ import {
 	MusicNotes as Music,
 	MouseLeftClickIcon as PhMouseLeftClick,
 	Scissors,
+	Snowflake,
 	SpeakerX,
 	MagnifyingGlassPlus as ZoomIn,
 } from "@phosphor-icons/react";
@@ -30,6 +31,8 @@ interface ItemProps {
 	zoomDepth?: number;
 	zoomMode?: "auto" | "manual";
 	speedValue?: number;
+	/** Freeze frame holds, in ms relative to the item start. */
+	freezeSpans?: Span[];
 	waveformPeaks?: AudioPeaksData | null;
 	waveformSegmentSpan?: Span;
 	waveformGain?: number;
@@ -71,6 +74,7 @@ export default function Item({
 	zoomDepth = 1,
 	zoomMode = "auto",
 	speedValue,
+	freezeSpans,
 	waveformPeaks = null,
 	waveformSegmentSpan,
 	waveformGain = 1,
@@ -209,6 +213,33 @@ export default function Item({
 							normalize={waveformNormalize}
 							className="absolute inset-0 w-full h-full pointer-events-none opacity-45"
 						/>
+					)}
+					{isClip && freezeSpans && freezeSpans.length > 0 && (
+						<div
+							className="absolute inset-0 z-[5] pointer-events-none"
+							aria-hidden="true"
+						>
+							{freezeSpans.map((freezeSpan) => {
+								const itemDurationMs = Math.max(1, span.end - span.start);
+								return (
+									<div
+										key={`${freezeSpan.start}-${freezeSpan.end}`}
+										className="absolute inset-y-0 flex items-center justify-center border-x border-white/60 bg-sky-400/30"
+										style={{
+											insetInlineStart: `${(freezeSpan.start / itemDurationMs) * 100}%`,
+											width: `${((freezeSpan.end - freezeSpan.start) / itemDurationMs) * 100}%`,
+											backgroundImage:
+												"repeating-linear-gradient(135deg, rgba(255,255,255,0.3) 0 4px, transparent 4px 9px)",
+										}}
+									>
+										<Snowflake
+											className="h-3 w-3 shrink-0 text-white"
+											weight="bold"
+										/>
+									</div>
+								);
+							})}
+						</div>
 					)}
 					{/* Muted overlay for source audio track items */}
 					{isAudio && muted && (

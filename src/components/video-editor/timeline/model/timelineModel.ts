@@ -1,10 +1,13 @@
 import { formatClipSpeedLabel } from "../../clipSpeedChange";
-import type {
-	AnnotationRegion,
-	AudioRegion,
-	CaptionCue,
-	ClipRegion,
-	ZoomRegion,
+import {
+	type AnnotationRegion,
+	type AudioRegion,
+	type CaptionCue,
+	type ClipRegion,
+	getClipFreezeTimelineSpans,
+	getClipSourceEndMs,
+	getSafeClipSpeed,
+	type ZoomRegion,
 } from "../../types";
 import { CAPTION_ROW_ID, CLIP_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
 import {
@@ -61,20 +64,23 @@ export function buildTimelineItems(params: {
 	}));
 
 	const clips: TimelineRenderItem[] = clipRegions.map((region, index) => {
-		const displayDurationMs = Math.max(0, region.endMs - region.startMs);
-		const speed = Number.isFinite(region.speed) && region.speed > 0 ? region.speed : 1;
-		const sourceEndMs = region.startMs + displayDurationMs * speed;
+		const speed = getSafeClipSpeed(region);
 		const speedLabel = formatClipSpeedLabel(speed);
+		const freezeSpans = getClipFreezeTimelineSpans(region).map(({ startMs, endMs }) => ({
+			start: startMs - region.startMs,
+			end: endMs - region.startMs,
+		}));
 
 		return {
 			id: region.id,
 			rowId: CLIP_ROW_ID,
 			span: { start: region.startMs, end: region.endMs },
-			sourceSpan: { start: region.startMs, end: sourceEndMs },
+			sourceSpan: { start: region.startMs, end: getClipSourceEndMs(region) },
 			label: speedLabel ? `Clip ${index + 1} ${speedLabel}` : `Clip ${index + 1}`,
 			speedValue: speedLabel ? speed : undefined,
 			showSourceAudio: region.showSourceAudio,
 			muted: Boolean(region.muted),
+			...(freezeSpans.length > 0 ? { freezeSpans } : {}),
 			variant: "clip",
 		};
 	});

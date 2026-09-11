@@ -143,11 +143,16 @@
 	},
 	"toolbar": {
 		"addLayer": "Add Layer",
-		"splitClip": "Split Clip (C)"
+		"splitClip": "Split Clip (C)",
+		"freezeFrame": "Freeze Frame at Playhead"
 	},
 	"timeline": {
 		"expand": "Expand Timeline",
-		"collapse": "Collapse Timeline"
+		"collapse": "Collapse Timeline",
+		"freezeNoClip": "Move the playhead over a clip to freeze a frame.",
+		"freezeClipOverlap": "The freeze frame would overlap the next clip. Move or split clips to make room first.",
+		"freezeZoomOverlap": "The freeze frame would push a zoom into another zoom. Move or delete the overlapping zoom first.",
+		"freezeSplitBlocked": "Remove the freeze frame before splitting after it. A split there would skip the held footage."
 	},
 	"openRecordingsFolder": "Open recordings folder"
 }

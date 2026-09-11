@@ -143,11 +143,16 @@
 	},
 	"toolbar": {
 		"addLayer": "Aggiungi livello",
-		"splitClip": "Dividi clip (C)"
+		"splitClip": "Dividi clip (C)",
+		"freezeFrame": "Fermo immagine sulla testina"
 	},
 	"timeline": {
 		"expand": "Espandi timeline",
-		"collapse": "Comprimi timeline"
+		"collapse": "Comprimi timeline",
+		"freezeNoClip": "Sposta la testina su una clip per bloccare un fotogramma.",
+		"freezeClipOverlap": "Il fermo immagine si sovrapporrebbe alla clip successiva. Sposta o dividi le clip per fare spazio.",
+		"freezeZoomOverlap": "Il fermo immagine spingerebbe uno zoom sopra un altro. Sposta o elimina prima lo zoom sovrapposto.",
+		"freezeSplitBlocked": "Rimuovi il fermo immagine prima di dividere dopo di esso. Una divisione lì salterebbe il filmato bloccato."
 	},
 	"openRecordingsFolder": "Apri cartella registrazioni"
 }

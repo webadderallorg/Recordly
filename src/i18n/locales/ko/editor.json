@@ -144,11 +144,16 @@
 	},
 	"toolbar": {
 		"addLayer": "레이어 추가",
-		"splitClip": "클립 분할 (C)"
+		"splitClip": "클립 분할 (C)",
+		"freezeFrame": "재생 헤드에서 정지 화면"
 	},
 	"timeline": {
 		"expand": "타임라인 펼치기",
-		"collapse": "타임라인 접기"
+		"collapse": "타임라인 접기",
+		"freezeNoClip": "프레임을 정지하려면 재생 헤드를 클립 위로 옮기세요.",
+		"freezeClipOverlap": "정지 화면이 다음 클립과 겹칩니다. 먼저 클립을 옮기거나 분할해 공간을 만드세요.",
+		"freezeZoomOverlap": "정지 화면 때문에 줌이 다른 줌과 겹칩니다. 먼저 겹치는 줌을 옮기거나 삭제하세요.",
+		"freezeSplitBlocked": "정지 화면 뒤에서 분할하기 전에 정지 화면을 제거하세요. 그 위치에서 분할하면 정지된 구간을 건너뜁니다."
 	},
 	"openRecordingsFolder": "녹화 폴더 열기"
 }
