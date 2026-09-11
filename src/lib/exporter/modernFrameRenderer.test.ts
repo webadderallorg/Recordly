@@ -867,3 +867,23 @@ describe("ModernFrameRenderer temporal webcam sync", () => {
 		).toBeGreaterThan(1);
 	});
 });
+
+describe("ModernFrameRenderer sprite texture replacement", () => {
+	it("destroys the replaced texture immediately on replacement", () => {
+		const renderer = createRenderer() as unknown as {
+			replaceSpriteTexture: (
+				sprite: { texture: { destroy: ReturnType<typeof vi.fn> } },
+				source: CanvasImageSource,
+			) => unknown;
+		};
+		const firstTexture = { destroy: vi.fn() };
+		const sprite = { texture: firstTexture };
+
+		renderer.replaceSpriteTexture(sprite, {} as CanvasImageSource);
+
+		expect(sprite.texture).not.toBe(firstTexture);
+		expect(firstTexture.destroy).toHaveBeenCalledTimes(1);
+		expect(firstTexture.destroy).toHaveBeenCalledWith(true);
+		expect(sprite.texture.destroy).not.toHaveBeenCalled();
+	});
+});

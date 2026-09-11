@@ -916,6 +916,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getPlatform: () => {
 		return ipcRenderer.invoke("get-platform");
 	},
+	getLinuxRenderBackendEnv: () => {
+		return ipcRenderer.invoke("get-linux-render-backend-env");
+	},
 	getLinuxWindowSystem: () => {
 		return ipcRenderer.invoke("get-linux-window-system");
 	},

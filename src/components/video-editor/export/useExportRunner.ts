@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { getMp4ExportBitrate } from "@/lib/exporter/exportBitrate";
 import { DEFAULT_MP4_CODEC } from "@/lib/exporter/mp4Support";
 import type { ExportSettings } from "@/lib/exporter/types";
+import { keepError, keepLog } from "@/lib/keepConsole";
 import { calculateMp4ExportDimensions } from "../exportDimensions";
 import { resolveMp4ExportRouting } from "../mp4ExportRouting";
 import { resolveMp4ExportSettings } from "../mp4ExportSettings";
@@ -98,6 +99,14 @@ export function useExportRunner(input: ExportRunnerInput) {
 			setExportError(null);
 			clearPendingExportSave();
 			const smokeExportStartedAt = smokeExportConfig.enabled ? performance.now() : null;
+			if (smokeExportConfig.enabled) {
+				keepLog("[smoke-export] Export run started", {
+					format: settings.format,
+					quality: settings.quality,
+					encodingMode: settings.encodingMode,
+					outputPath: smokeExportConfig.outputPath,
+				});
+			}
 
 			let keepExportDialogOpen = false;
 			const wasPlaying = isPlaying;
@@ -185,7 +194,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 							keepExportDialogOpen = true;
 						} else if (saveResult.success && saveResult.path) {
 							if (smokeExportStartedAt !== null) {
-								console.log(
+								keepLog(
 									`[smoke-export] Completed in ${Math.round(performance.now() - smokeExportStartedAt)}ms (${saveResult.path})`,
 								);
 							}
@@ -428,7 +437,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 								});
 							}
 							if (smokeExportStartedAt !== null) {
-								console.log(
+								keepLog(
 									`[smoke-export] Completed in ${Math.round(performance.now() - smokeExportStartedAt)}ms (${saveResult.path})`,
 								);
 							}
@@ -440,6 +449,11 @@ export function useExportRunner(input: ExportRunnerInput) {
 							}
 						} else {
 							if (smokeExportConfig.enabled) {
+								keepError(
+									`[smoke-export] Export save failed after ${smokeExportElapsedMs}ms: ${
+										saveResult.message || "Failed to save video"
+									}`,
+								);
 								await writeSmokeExportReport(smokeExportConfig.outputPath, {
 									success: false,
 									phase: "save",
@@ -472,6 +486,11 @@ export function useExportRunner(input: ExportRunnerInput) {
 						}
 					} else {
 						if (smokeExportConfig.enabled) {
+							keepError(
+								`[smoke-export] Export failed after ${smokeExportElapsedMs}ms (pipeline=${pipelineModel} backend=${backendPreference}): ${
+									result.error || "Export failed"
+								}`,
+							);
 							await writeSmokeExportReport(smokeExportConfig.outputPath, {
 								success: false,
 								phase: "export",
@@ -503,7 +522,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 				}
 			} catch (error) {
 				if (exportWasCancelled()) return;
-				console.error("Export error:", error);
+				keepError("Export error:", error);
 				const errorMessage = error instanceof Error ? error.message : "Unknown error";
 				if (smokeExportConfig.enabled) {
 					await writeSmokeExportReport(smokeExportConfig.outputPath, {

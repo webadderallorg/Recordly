@@ -45,6 +45,7 @@ import {
 	getWebcamOverlaySizePx,
 	isWebcamCropRegionDefault,
 } from "@/components/video-editor/webcamOverlay";
+import { keepError, keepLog } from "@/lib/keepConsole";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import {
 	DEFAULT_WALLPAPER_PATH,
@@ -54,6 +55,7 @@ import {
 import { AudioProcessor, isAacAudioEncodingSupported } from "./audioEncoder";
 import {
 	normalizeLightningRuntimePlatform,
+	resolveLinuxExportRenderBackend,
 	shouldPreferNativeAutoBackend,
 	shouldPreferNativeStaticLayoutBeforeBreeze,
 } from "./backendPolicy";
@@ -325,6 +327,10 @@ export class ModernVideoExporter {
 	private exportStartTimeMs = 0;
 	private lastThroughputLogTimeMs = 0;
 	private renderBackend: ExportRenderBackend | null = null;
+	private renderStageFailure = false;
+	private renderFallbackUsed = false;
+	private linuxWebglFallbackOverride = false;
+	private linuxWebgpuEnvForced = false;
 	private encodeBackend: ExportEncodeBackend | null = null;
 	private encoderName: string | null = null;
 	private backpressureProfile: ExportBackpressureProfile | null = null;
@@ -375,13 +381,20 @@ export class ModernVideoExporter {
 	async export(): Promise<ExportResult> {
 		let useFallbackMediaSource = false;
 		let retriedWithFallbackMediaSource = false;
+		let retriedWithWebglRenderFallback = false;
+		this.renderFallbackUsed = false;
+		this.linuxWebglFallbackOverride = false;
+		this.linuxWebgpuEnvForced = false;
 
 		while (true) {
 			let shouldRetryWithFallbackMediaSource = false;
+			let shouldRetryWithWebglRenderFallback = false;
 			try {
 				this.cleanup();
 				this.cancelled = false;
 				this.encoderError = null;
+				this.renderBackend = null;
+				this.renderStageFailure = false;
 				this.nativeEncoderError = null;
 				this.nativeStaticLayoutSkipReason = null;
 				this.nativeStaticLayoutSkipReasons = [];
@@ -588,7 +601,7 @@ export class ModernVideoExporter {
 				this.renderer = new ModernFrameRenderer({
 					width: this.config.width,
 					height: this.config.height,
-					preferredRenderBackend: undefined,
+					preferredRenderBackend: await this.resolvePreferredRenderBackend(),
 					wallpaper: this.config.wallpaper,
 					zoomRegions: this.config.zoomRegions,
 					showShadow: this.config.showShadow,
@@ -644,10 +657,15 @@ export class ModernVideoExporter {
 					zoomSmoothness: this.config.zoomSmoothness,
 					zoomClassicMode: this.config.zoomClassicMode,
 				});
-				await this.renderer.initialize();
+				try {
+					await this.renderer.initialize();
+				} catch (error) {
+					this.renderStageFailure = true;
+					throw error;
+				}
 				this.rendererInitTimeMs = this.getNowMs() - stageStartedAt;
 				this.renderBackend = this.renderer.getRendererBackend();
-				console.log(`[VideoExporter] Using ${this.renderBackend} render backend`);
+				keepLog(`[VideoExporter] Using ${this.renderBackend} render backend`);
 
 				if (!useNativeEncoder) {
 					const hasAudio = nativeAudioPlan.audioMode !== "none";
@@ -693,13 +711,18 @@ export class ModernVideoExporter {
 						const sourceTimestampUs = sourceTimestampMs * 1000;
 						const cursorTimestampUs = cursorTimestampMs * 1000;
 						const renderStartedAt = this.getNowMs();
-						await this.renderer!.renderFrame(
-							videoFrame,
-							sourceTimestampUs,
-							cursorTimestampUs,
-							frameDuration,
-							timestamp,
-						);
+						try {
+							await this.renderer!.renderFrame(
+								videoFrame,
+								sourceTimestampUs,
+								cursorTimestampUs,
+								frameDuration,
+								timestamp,
+							);
+						} catch (error) {
+							this.renderStageFailure = true;
+							throw error;
+						}
 						this.renderFrameTimeMs += this.getNowMs() - renderStartedAt;
 
 						if (this.cancelled) {
@@ -888,7 +911,23 @@ export class ModernVideoExporter {
 					metrics: this.buildExportMetrics(),
 				};
 			} catch (error) {
+				const attemptRenderBackend =
+					this.renderBackend ?? this.renderer?.getRendererBackend() ?? null;
 				if (
+					!retriedWithWebglRenderFallback &&
+					this.shouldRetryWithWebglRenderFallback(attemptRenderBackend)
+				) {
+					retriedWithWebglRenderFallback = true;
+					shouldRetryWithWebglRenderFallback = true;
+					this.renderFallbackUsed = true;
+					this.linuxWebglFallbackOverride = true;
+					keepError(
+						`[VideoExporter] WebGPU export failed (${
+							error instanceof Error ? error.message : String(error)
+						}); retrying with webgl fallback`,
+						error,
+					);
+				} else if (
 					!useFallbackMediaSource &&
 					!retriedWithFallbackMediaSource &&
 					this.shouldRetryWithFallbackMediaSource(error)
@@ -918,7 +957,11 @@ export class ModernVideoExporter {
 					};
 				}
 			} finally {
-				if (!shouldRetryWithFallbackMediaSource && this.totalExportStartTimeMs > 0) {
+				if (
+					!shouldRetryWithFallbackMediaSource &&
+					!shouldRetryWithWebglRenderFallback &&
+					this.totalExportStartTimeMs > 0
+				) {
 					console.log(
 						`[VideoExporter] Final metrics ${JSON.stringify(this.buildExportMetrics())}`,
 					);
@@ -926,10 +969,37 @@ export class ModernVideoExporter {
 				this.cleanup();
 			}
 
-			if (shouldRetryWithFallbackMediaSource) {
+			if (shouldRetryWithFallbackMediaSource || shouldRetryWithWebglRenderFallback) {
 				continue;
 			}
 		}
+	}
+
+	// Linux only: when the default WebGPU export renderer fails mid-export
+	// (renderer init or render crash, e.g. pixi's BindGroupSystem
+	// "Cannot read properties of undefined (reading '_resourceType')"), retry
+	// the whole export pipeline once with WebGL. An explicit
+	// RECORDLY_LINUX_RENDER_BACKEND=webgpu disables the retry — the operator
+	// chose webgpu on purpose, so the failure must surface, not be retried.
+	// Non-Linux platforms, non-webgpu attempts, and non-renderer failures
+	// never take this path.
+	//
+	// Known limitation (conscious decision): if WebGPU fails during init
+	// BEFORE the frame renderer reports its backend (rendererBackend is only
+	// set after createPixiApplication succeeds — FrameRenderer.ts:521), the
+	// attempt backend is unidentifiable and no webgl retry happens. The
+	// FrameRenderer's own init fallback order (webgpu → webgl) already covers
+	// init-stage failures, so this edge has not been observed in practice.
+	private shouldRetryWithWebglRenderFallback(
+		attemptRenderBackend: ExportRenderBackend | null,
+	): boolean {
+		return (
+			this.getRuntimePlatform() === "linux" &&
+			attemptRenderBackend === "webgpu" &&
+			!this.linuxWebgpuEnvForced &&
+			this.renderStageFailure &&
+			!this.cancelled
+		);
 	}
 
 	private shouldRetryWithFallbackMediaSource(error: unknown): boolean {
@@ -963,6 +1033,39 @@ export class ModernVideoExporter {
 		}
 
 		return normalizeLightningRuntimePlatform(navigator.platform || navigator.userAgent || "");
+	}
+
+	// Linux only: RECORDLY_LINUX_RENDER_BACKEND selects the export render
+	// backend ("webgl" | "webgpu" respected; unset/invalid → webgpu, the
+	// default). After a WebGPU mid-export failure, the webgl fallback retry
+	// forces webgl for the restarted pipeline. Non-Linux platforms keep the
+	// default backend selection.
+	private async resolvePreferredRenderBackend(): Promise<ExportRenderBackend | undefined> {
+		if (this.getRuntimePlatform() !== "linux") {
+			return undefined;
+		}
+
+		if (this.linuxWebglFallbackOverride) {
+			keepLog("[VideoExporter] Linux export render backend: webgl (webgpu fallback retry)");
+			return "webgl";
+		}
+
+		let envBackend: string | null | undefined;
+		try {
+			envBackend = await window.electronAPI?.getLinuxRenderBackendEnv?.();
+		} catch (error) {
+			keepError(
+				"[VideoExporter] Failed to read RECORDLY_LINUX_RENDER_BACKEND; defaulting to webgpu:",
+				error,
+			);
+		}
+
+		const backend = resolveLinuxExportRenderBackend("linux", envBackend);
+		this.linuxWebgpuEnvForced = envBackend === "webgpu";
+		keepLog(
+			`[VideoExporter] Linux export render backend: ${backend} (${envBackend ? `RECORDLY_LINUX_RENDER_BACKEND=${envBackend}` : "default"})`,
+		);
+		return backend;
 	}
 
 	private getLightningErrorGuidance(message: string): string[] {
@@ -3225,6 +3328,7 @@ export class ModernVideoExporter {
 			finalizationMs: this.finalizationTimeMs,
 			frameCount: this.processedFrameCount,
 			renderBackend: this.renderBackend ?? undefined,
+			renderFallbackUsed: this.renderFallbackUsed || undefined,
 			encodeBackend: this.encodeBackend ?? undefined,
 			encoderName: this.encoderName ?? undefined,
 			backpressureProfile: this.backpressureProfile?.name,

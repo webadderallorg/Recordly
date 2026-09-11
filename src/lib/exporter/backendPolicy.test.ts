@@ -4,6 +4,7 @@ import {
 	getDefaultLightningRenderBackend,
 	normalizeLightningRuntimePlatform,
 	planLightningExportRoutes,
+	resolveLinuxExportRenderBackend,
 	shouldPreferNativeAutoBackend,
 	shouldPreferNativeStaticLayoutBeforeBreeze,
 } from "./backendPolicy";
@@ -192,5 +193,30 @@ describe("backendPolicy", () => {
 				},
 			],
 		});
+	});
+});
+
+describe("resolveLinuxExportRenderBackend (Linux Lightning export backend)", () => {
+	it("honors RECORDLY_LINUX_RENDER_BACKEND=webgl on Linux", () => {
+		expect(resolveLinuxExportRenderBackend("linux", "webgl")).toBe("webgl");
+	});
+
+	it("honors RECORDLY_LINUX_RENDER_BACKEND=webgpu on Linux (experimental WebGPU path)", () => {
+		expect(resolveLinuxExportRenderBackend("linux", "webgpu")).toBe("webgpu");
+	});
+
+	it("defaults the Linux export backend to WebGPU (dynamic webgl fallback lives in the exporter)", () => {
+		expect(resolveLinuxExportRenderBackend("linux", undefined)).toBe("webgpu");
+	});
+
+	it("falls back to the WebGPU default on Linux for invalid or null env values", () => {
+		expect(resolveLinuxExportRenderBackend("linux", "banana")).toBe("webgpu");
+		expect(resolveLinuxExportRenderBackend("linux", null)).toBe("webgpu");
+	});
+
+	it("leaves non-Linux platforms on the default backend selection", () => {
+		expect(resolveLinuxExportRenderBackend("darwin", "webgl")).toBeUndefined();
+		expect(resolveLinuxExportRenderBackend("win32", "webgl")).toBeUndefined();
+		expect(resolveLinuxExportRenderBackend("unknown", "webgpu")).toBeUndefined();
 	});
 });

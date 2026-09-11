@@ -130,6 +130,9 @@ export interface ExportMetrics {
 	finalizationMs?: number;
 	frameCount?: number;
 	renderBackend?: ExportRenderBackend;
+	/** True when the export completed on the webgl fallback retry after a
+	 * WebGPU renderer failure (Linux only; absent otherwise). */
+	renderFallbackUsed?: boolean;
 	encodeBackend?: ExportEncodeBackend;
 	encoderName?: string;
 	backpressureProfile?: string;

@@ -149,3 +149,29 @@ export function planLightningExportRoutes(options: {
 export function getDefaultLightningRenderBackend(): ExportRenderBackend {
 	return "webgl";
 }
+
+// Linux only: RECORDLY_LINUX_RENDER_BACKEND selects the Lightning export
+// renderer backend on Linux. WebGPU is the default (the original design);
+// when the WebGPU renderer fails mid-export (e.g. pixi's BindGroupSystem
+// "Cannot read properties of undefined (reading '_resourceType')"), the
+// exporter retries the whole pipeline once with WebGL (see
+// modernVideoExporter's webgl fallback retry).
+// - "webgl" | "webgpu" → explicit override, always respected (an explicit
+//   "webgpu" also disables the automatic webgl fallback retry).
+// - unset/invalid → webgpu (default).
+// Non-Linux platforms always return undefined so their behavior stays
+// unchanged.
+export function resolveLinuxExportRenderBackend(
+	platform: LightningRuntimePlatform,
+	envBackend: string | null | undefined,
+): ExportRenderBackend | undefined {
+	if (platform !== "linux") {
+		return undefined;
+	}
+
+	if (envBackend === "webgl" || envBackend === "webgpu") {
+		return envBackend;
+	}
+
+	return "webgpu";
+}

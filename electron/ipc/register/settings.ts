@@ -51,6 +51,12 @@ export function registerSettingsHandlers() {
 		return process.platform;
 	});
 
+	// Experimental (Linux only): exposes RECORDLY_LINUX_RENDER_BACKEND to the
+	// renderer so the Lightning export can honor webgl|webgpu for validation.
+	ipcMain.handle("get-linux-render-backend-env", () => {
+		return process.env.RECORDLY_LINUX_RENDER_BACKEND ?? null;
+	});
+
 	ipcMain.on("app-settings:get", (event, key: unknown) => {
 		try {
 			if (typeof key !== "string" || key.length === 0) {

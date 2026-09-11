@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { ExportSettings } from "@/lib/exporter";
+import { keepError } from "@/lib/keepConsole";
 import type { getSmokeExportConfig } from "../smokeExportConfig";
 import { writeSmokeExportReport } from "./exportPersistence";
 
@@ -70,7 +71,7 @@ export function useSmokeExportAutomation({
 		if (!config.enabled || startedRef.current) return;
 		if (error) {
 			startedRef.current = true;
-			console.error(`[smoke-export] ${error}`);
+			keepError(`[smoke-export] ${error}`);
 			void writeSmokeExportReport(config.outputPath, {
 				success: false,
 				phase: "load",
