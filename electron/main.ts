@@ -6,7 +6,6 @@ import {
 	BrowserWindow,
 	desktopCapturer,
 	dialog,
-	webContents as electronWebContents,
 	ipcMain,
 	Menu,
 	nativeImage,
@@ -25,6 +24,7 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
+import { isLikelyLinuxWaylandSession } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { hardenWebContentsNavigation, shouldHardenWebContentsType } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
@@ -1058,21 +1058,29 @@ app.whenReady().then(async () => {
 		try {
 			const frame = request.frame;
 			const isLiveFrame = Boolean(frame && !frame.isDestroyed());
+			const hudWindow = getHudOverlayWindow();
 			const requestingWebContents =
-				isLiveFrame && frame ? electronWebContents.fromFrame(frame) : undefined;
+				isLiveFrame && frame
+					? ((frame as { webContents?: Electron.WebContents }).webContents ??
+						(hudWindow && !hudWindow.isDestroyed() ? hudWindow.webContents : undefined))
+					: (hudWindow && !hudWindow.isDestroyed() ? hudWindow.webContents : undefined);
 			const isHudMainFrame = Boolean(
-				isLiveFrame &&
-					requestingWebContents &&
+				requestingWebContents &&
 					isHudWebContents(requestingWebContents) &&
-					frame === requestingWebContents.mainFrame,
+					(!frame || frame === requestingWebContents.mainFrame || frame.parent === null),
 			);
 
 			if (
 				!shouldGrantDisplayCapture(
 					{
 						isTrustedCaptureWindow: isHudMainFrame,
-						isMainFrame: Boolean(isLiveFrame && frame?.parent === null),
-						currentDocumentUrl: isLiveFrame ? (frame?.url ?? "") : "",
+						isMainFrame: Boolean(isLiveFrame && frame ? frame.parent === null : true),
+						currentDocumentUrl:
+							isLiveFrame && frame?.url
+								? frame.url
+								: hudWindow && !hudWindow.isDestroyed()
+									? hudWindow.webContents.getURL()
+									: "",
 						securityOrigin: request.securityOrigin,
 						videoRequested: request.videoRequested,
 					},
@@ -1100,8 +1108,9 @@ app.whenReady().then(async () => {
 			// pre-selected (e.g. fresh session where the renderer skipped the
 			// source picker entirely). This avoids calling getSources() which
 			// would itself trigger an extra portal dialog.
+			const isWayland = isLikelyLinuxWaylandSession(process.env);
 			const isLinuxPortalSentinel =
-				process.platform === "linux" && (sourceId === "screen:linux-portal" || !sourceId);
+				process.platform === "linux" && isWayland && (sourceId === "screen:linux-portal" || !sourceId);
 			if (isLinuxPortalSentinel) {
 				callback({ video: { id: "screen:0:0", name: "Entire screen" } });
 				return;
