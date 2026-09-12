@@ -79,6 +79,7 @@ export function useAudioPreviewSync({
 	const sourceAudioMasterGainRef = useRef<GainNode | null>(null);
 	const sourceAudioResumePromiseRef = useRef<Promise<void> | null>(null);
 	const lastSourceAudioSyncTimeRef = useRef<number | null>(null);
+	const syncSourceAudioRef = useRef<() => void>(() => undefined);
 
 	const ensureSourceAudioContext = useCallback(() => {
 		if (!sourceAudioContextRef.current) {
@@ -110,10 +111,8 @@ export function useAudioPreviewSync({
 
 	const playSourceAudioPreview = useCallback(() => {
 		void ensureSourceAudioRunning();
-		for (const audio of sourceAudioElementsRef.current.values()) {
-			if (!audio.src) continue;
-			audio.play().catch(() => undefined);
-		}
+		// Unlock the context during the user gesture. Timeline sync owns playback,
+		// including delayed starts and pauses while an audio resource is loading.
 	}, [ensureSourceAudioRunning]);
 
 	useEffect(() => {
@@ -241,9 +240,7 @@ export function useAudioPreviewSync({
 							sourceAudioResourceVersion,
 						);
 						latestAudio.load();
-						if (isPlaying) {
-							playSourceAudioPreview();
-						}
+						syncSourceAudioRef.current();
 					} catch (error) {
 						const latestAudio = existing.get(audioPath);
 						if (
@@ -289,13 +286,11 @@ export function useAudioPreviewSync({
 		}
 	}, [
 		getSourceTrackPreviewGain,
-		isPlaying,
 		isCurrentClipMuted,
 		onSourceFallbackLoadError,
 		resolvedSourceTracks,
 		sourceAudioResourceVersion,
 		previewVolume,
-		playSourceAudioPreview,
 	]);
 
 	useEffect(() => {
@@ -380,7 +375,7 @@ export function useAudioPreviewSync({
 		}
 	}, [effectiveSpeedRegions, isPlaying, resolvedUserTracks, timelineTime]);
 
-	useEffect(() => {
+	const syncSourceAudio = useCallback(() => {
 		if (resolvedSourceTracks.length === 0) {
 			lastSourceAudioSyncTimeRef.current = null;
 			return;
@@ -422,14 +417,18 @@ export function useAudioPreviewSync({
 				sourceAudioFallbackStartDelayMsByPath[sourceAudioPath],
 			);
 			const maxPreviewStartDelaySeconds = isMicCompanionTrack ? 2 : 5;
-			const startDelaySeconds = isMicCompanionTrack
-				? 0
-				: Number.isFinite(duration) &&
-						(rawStartDelaySeconds >= Math.max(0, duration - 0.01) ||
-							rawStartDelaySeconds >
-								Math.max(maxPreviewStartDelaySeconds, duration * 0.9))
-					? 0
-					: rawStartDelaySeconds;
+			const recordedStartDelayMs = sourceAudioFallbackStartDelayMsByPath[sourceAudioPath];
+			const startDelaySeconds =
+				Number.isFinite(recordedStartDelayMs) && recordedStartDelayMs >= 0
+					? rawStartDelaySeconds
+					: isMicCompanionTrack
+						? 0
+						: Number.isFinite(duration) &&
+								(rawStartDelaySeconds >= Math.max(0, duration - 0.01) ||
+									rawStartDelaySeconds >
+										Math.max(maxPreviewStartDelaySeconds, duration * 0.9))
+							? 0
+							: rawStartDelaySeconds;
 			const beforeAudioStart = currentTime + 0.001 < startDelaySeconds;
 			const targetTime = clampMediaTimeToDuration(
 				currentTime - startDelaySeconds,
@@ -456,10 +455,11 @@ export function useAudioPreviewSync({
 			}
 
 			const atEnd = audioDuration !== null && targetTime >= audioDuration;
-			if (isPlaying && !beforeAudioStart && !atEnd) {
-				void ensureSourceAudioRunning().then(() => {
-					audio.play().catch(() => undefined);
-				});
+			if (isPlaying && !beforeAudioStart && !atEnd && audio.src) {
+				void ensureSourceAudioRunning();
+				if (audio.paused) {
+					void audio.play().catch(() => undefined);
+				}
 			} else if (!audio.paused) {
 				audio.pause();
 			}
@@ -479,18 +479,11 @@ export function useAudioPreviewSync({
 		ensureSourceAudioRunning,
 	]);
 
+	// Async resource loads must only observe committed playback state.
 	useEffect(() => {
-		if (!isPlaying || resolvedSourceTracks.length === 0) {
-			return;
-		}
-		void ensureSourceAudioRunning().then(() => {
-			for (const audio of sourceAudioElementsRef.current.values()) {
-				if (audio.paused) {
-					audio.play().catch(() => undefined);
-				}
-			}
-		});
-	}, [isPlaying, resolvedSourceTracks.length, ensureSourceAudioRunning]);
+		syncSourceAudioRef.current = syncSourceAudio;
+		syncSourceAudio();
+	}, [syncSourceAudio]);
 
 	return { playSourceAudioPreview };
 }

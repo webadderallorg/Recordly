@@ -68,7 +68,12 @@ export function buildResolvedAudioPlan(input: {
 	if (pathsByTrack.mic) playbackPaths.push(pathsByTrack.mic);
 	if (!hasDedicatedTracks && pathsByTrack.mixed) playbackPaths.push(pathsByTrack.mixed);
 
-	const includeEmbeddedInExport = !pathsByTrack.system && !pathsByTrack.mixed;
+	// A mic-only selection replaces embedded audio unless the selector explicitly
+	// included the video (for example, Windows system audio plus a mic sidecar).
+	const includeEmbeddedInExport =
+		!pathsByTrack.system &&
+		!pathsByTrack.mixed &&
+		(!pathsByTrack.mic || hasEmbeddedSourceAudio);
 	const resolvedRegions = (input.audioRegions ?? [])
 		.slice()
 		.sort((a, b) => a.startMs - b.startMs);

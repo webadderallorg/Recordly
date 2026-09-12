@@ -150,18 +150,31 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		});
 	});
 
-	it("mixes companion sidecar audio when the source MP4 also has an audio track", () => {
+	it("mixes companion sidecar audio when the source MP4 is explicitly selected", () => {
 		const videoPath = "C:\\recordly\\recording.mp4";
 		const micPath = "C:\\recordly\\recording.mic.wav";
 		const exporter = createExporter({
 			videoUrl: `file:///${videoPath.replace(/\\/g, "/")}`,
-			sourceAudioFallbackPaths: [micPath],
+			sourceAudioFallbackPaths: [videoPath, micPath],
 		});
 
 		expect(exporter.buildNativeAudioPlan(videoInfo)).toMatchObject({
 			audioMode: "edited-track",
 			strategy: "offline-render-fallback",
 			sourceAudioFallbackPaths: [expect.stringMatching(/recording\.mp4$/), micPath],
+		});
+	});
+
+	it.each([
+		"m4a",
+		"webm",
+	])("does not add embedded audio back to a mic replacement (%s)", (extension) => {
+		const micPath = `/recording.mic.${extension}`;
+		const exporter = createExporter({ sourceAudioFallbackPaths: [micPath] });
+		expect(exporter.buildNativeAudioPlan(videoInfo)).toEqual({
+			audioMode: "edited-track",
+			strategy: "offline-render-fallback",
+			sourceAudioFallbackPaths: [micPath],
 		});
 	});
 
