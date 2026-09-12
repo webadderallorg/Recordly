@@ -1497,10 +1497,10 @@ export function SettingsPanel({
 		width: 1,
 		height: 1,
 	};
-	const cropTop = Math.round(crop.y * 100);
-	const cropLeft = Math.round(crop.x * 100);
-	const cropBottom = Math.round((1 - crop.y - crop.height) * 100);
-	const cropRight = Math.round((1 - crop.x - crop.width) * 100);
+	const cropTop = Math.round(crop.y * 1000) / 10;
+	const cropLeft = Math.round(crop.x * 1000) / 10;
+	const cropBottom = Math.round((1 - crop.y - crop.height) * 1000) / 10;
+	const cropRight = Math.round((1 - crop.x - crop.width) * 1000) / 10;
 	const isCropped = cropTop > 0 || cropLeft > 0 || cropBottom > 0 || cropRight > 0;
 
 	const setCropInset = (side: "top" | "bottom" | "left" | "right", pct: number) => {
@@ -2236,9 +2236,9 @@ export function SettingsPanel({
 					defaultValue={0}
 					min={0}
 					max={50}
-					step={1}
+					step={0.1}
 					onChange={(v) => setCropInset("top", v)}
-					formatValue={(v) => `${Math.round(v)}%`}
+					formatValue={(v) => `${(Math.round(v * 10) / 10).toFixed(1)}%`}
 					parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
 				/>
 				<SliderControl
@@ -2247,9 +2247,9 @@ export function SettingsPanel({
 					defaultValue={0}
 					min={0}
 					max={50}
-					step={1}
+					step={0.1}
 					onChange={(v) => setCropInset("bottom", v)}
-					formatValue={(v) => `${Math.round(v)}%`}
+					formatValue={(v) => `${(Math.round(v * 10) / 10).toFixed(1)}%`}
 					parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
 				/>
 				<SliderControl
@@ -2258,9 +2258,9 @@ export function SettingsPanel({
 					defaultValue={0}
 					min={0}
 					max={50}
-					step={1}
+					step={0.1}
 					onChange={(v) => setCropInset("left", v)}
-					formatValue={(v) => `${Math.round(v)}%`}
+					formatValue={(v) => `${(Math.round(v * 10) / 10).toFixed(1)}%`}
 					parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
 				/>
 				<SliderControl
@@ -2269,9 +2269,9 @@ export function SettingsPanel({
 					defaultValue={0}
 					min={0}
 					max={50}
-					step={1}
+					step={0.1}
 					onChange={(v) => setCropInset("right", v)}
-					formatValue={(v) => `${Math.round(v)}%`}
+					formatValue={(v) => `${(Math.round(v * 10) / 10).toFixed(1)}%`}
 					parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
 				/>
 			</div>
