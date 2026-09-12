@@ -930,6 +930,12 @@ interface Window {
 		cancelCountdown: () => Promise<{ success: boolean }>;
 		getActiveCountdown: () => Promise<{ success: boolean; seconds: number | null }>;
 		onCountdownTick: (callback: (seconds: number) => void) => () => void;
+		obsConnect: (password?: string) => Promise<boolean>;
+		obsDisconnect: () => Promise<boolean>;
+		obsSetMode: (enabled: boolean) => Promise<boolean>;
+		obsGetMode: () => Promise<boolean>;
+		obsStartRecording: () => Promise<{ success: boolean; error?: string }>;
+		obsStopRecording: () => Promise<{ success: boolean; videoPath?: string; error?: string }>;
 	};
 }
 

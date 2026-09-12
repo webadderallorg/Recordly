@@ -8,6 +8,7 @@ import { registerProjectHandlers } from "./register/project";
 import { registerRecordingHandlers } from "./register/recording";
 import { registerSettingsHandlers } from "./register/settings";
 import { registerSourceHandlers } from "./register/sources";
+import { registerObsHandlers } from "./register/obs";
 import {
 	selectedSource,
 	setNativeScreenRecordingActive,
@@ -71,4 +72,5 @@ export function registerIpcHandlers(
 	registerCaptionHandlers();
 	registerProjectHandlers();
 	registerSettingsHandlers();
+	registerObsHandlers(onRecordingStateChange);
 }

@@ -400,6 +400,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const webcamTimeOffsetMs = useRef(0);
 	const recordingSessionTimestamp = useRef<number | null>(null);
 	const nativeScreenRecording = useRef(false);
+	const obsScreenRecording = useRef(false);
 	const nativeWindowsRecording = useRef(false);
 	const nativeWarmStartActive = useRef(false);
 	const pendingNativeCleanupPath = useRef<string | null>(null);
@@ -1266,6 +1267,53 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const stopRecording = useRef(() => {
 		recordingStartGeneration.current += 1;
 		setPaused(false);
+		
+		if (obsScreenRecording.current) {
+			setRecording(false);
+			setFinalizing(true);
+			void (async () => {
+				const stoppedAtMs = Date.now();
+				markRecordingResumed(stoppedAtMs);
+				
+				const webcamPathPromise = stopWebcamRecorder();
+				const result = await window.electronAPI.obsStopRecording();
+				obsScreenRecording.current = false;
+				
+				try {
+					await window.electronAPI?.setRecordingState(false);
+				} catch (stateError) {
+					console.warn("Failed to reset main-process recording state:", stateError);
+				}
+				
+				if (!result.success || !result.path) {
+					await notifyRecordingFinalizationFailure("Failed to stop OBS recording");
+					return;
+				}
+				
+				const finalPath = result.path;
+				await finalizeRecordingSession(finalPath, null);
+				
+				void (async () => {
+					try {
+						const webcamPath = await webcamPathPromise;
+						await window.electronAPI.setCurrentRecordingSession({
+							videoPath: finalPath,
+							webcamPath: webcamPath || null,
+							timeOffsetMs: webcamTimeOffsetMs.current,
+							hideOverlayCursorByDefault: hideEditorOverlayCursorByDefault.current,
+						});
+					} catch (bgError) {
+						console.error("Error in background finalization:", bgError);
+					} finally {
+						if (typeof window.electronAPI?.hudOverlayClose === "function") {
+							window.electronAPI.hudOverlayClose();
+						}
+					}
+				})();
+			})();
+			return;
+		}
+
 		if (nativeScreenRecording.current && nativeWarmStartActive.current) {
 			setRecording(false);
 			void (async () => {
@@ -1690,6 +1738,51 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			const { selectedSource, useNativeMacScreenCapture, useNativeWindowsCapture, micLabel } =
 				preparedStart;
+
+			if (selectedSource.id === "obs-engine") {
+				if (countdownDelay > 0) {
+					setCountdownActive(true);
+					try {
+						const result = await window.electronAPI.startCountdown(countdownDelay);
+						if (!result.success || result.cancelled || startWasCancelled()) {
+							cleanupCapturedMedia();
+							await stopWebcamRecorder();
+							return;
+						}
+					} finally {
+						setCountdownActive(false);
+					}
+					recordingSessionTimestamp.current = Date.now();
+					resetRecordingClock(recordingSessionTimestamp.current);
+				}
+
+				const obsResult = await window.electronAPI.obsStartRecording();
+				if (!obsResult) {
+					throw new Error("Failed to start OBS recording");
+				}
+				
+				const mainStartedAt = Date.now();
+				micFallbackStartDelayMs.current = null;
+				beginWebcamCapture();
+				resetRecordingClock(mainStartedAt);
+				webcamTimeOffsetMs.current =
+					webcamStartTime.current === null
+						? 0
+						: webcamStartTime.current - mainStartedAt;
+				
+				setRecording(true);
+				try {
+					await window.electronAPI?.setRecordingState(true);
+				} catch (stateError) {
+					console.warn(stateError);
+				}
+				
+				obsScreenRecording.current = true;
+				startInFlight.current = false;
+				setStarting(false);
+				return;
+			}
+
 			const useNativeCapture = useNativeMacScreenCapture || useNativeWindowsCapture;
 			const shouldWarmStartNativeCapture = useNativeCapture && countdownDelay > 0;
 			if (countdownDelay > 0 && !shouldWarmStartNativeCapture) {
