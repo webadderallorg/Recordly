@@ -110,6 +110,7 @@ function LaunchWindowContent() {
 	const {
 		hudOverlayMousePassthroughSupported,
 		platform,
+		linuxWindowSystem,
 		appVersion,
 		hideHudFromCapture,
 		chooseRecordingsDirectory,
@@ -223,7 +224,7 @@ function LaunchWindowContent() {
 
 	const idleControls = (
 		<>
-			{platform !== "linux" && (
+			{(platform !== "linux" || linuxWindowSystem === "x11") && (
 				<>
 					<SourcePopover
 						selectedSource={selectedSource}

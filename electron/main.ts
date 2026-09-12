@@ -25,6 +25,7 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
+import { shouldUseLinuxPortalSentinel } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { hardenWebContentsNavigation, shouldHardenWebContentsType } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
@@ -1096,20 +1097,20 @@ app.whenReady().then(async () => {
 			// is set we skip getSources entirely and hand back a synthetic
 			// source id; Chromium then opens the portal once to actually
 			// resolve the capture.
-			// Default to the sentinel on Linux when no source has been
-			// pre-selected (e.g. fresh session where the renderer skipped the
-			// source picker entirely). This avoids calling getSources() which
-			// would itself trigger an extra portal dialog.
-			const isLinuxPortalSentinel =
-				process.platform === "linux" && (sourceId === "screen:linux-portal" || !sourceId);
-			if (isLinuxPortalSentinel) {
+			// Default to the sentinel only on Wayland when no source has been
+			// pre-selected. X11 must continue below and resolve a live Electron
+			// desktopCapturer source.
+			if (shouldUseLinuxPortalSentinel({ sourceId })) {
 				callback({ video: { id: "screen:0:0", name: "Entire screen" } });
 				return;
 			}
 			const sources = await desktopCapturer.getSources({ types: ["screen", "window"] });
-			const source = sourceId
-				? (sources.find((s) => s.id === sourceId) ?? sources[0])
-				: sources[0];
+			const liveSourceId = sourceId === "screen:linux-portal" ? null : sourceId;
+			const source = liveSourceId
+				? (sources.find((s) => s.id === liveSourceId) ??
+					sources.find((s) => s.id.startsWith("screen:")) ??
+					sources[0])
+				: (sources.find((s) => s.id.startsWith("screen:")) ?? sources[0]);
 			if (source) {
 				callback({
 					video: { id: source.id, name: source.name },
