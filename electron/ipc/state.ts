@@ -84,7 +84,14 @@ export let isCursorCaptureActive = false;
 export let interactionCaptureCleanup: (() => void) | null = null;
 export let hasLoggedInteractionHookFailure = false;
 export let lastLeftClick: { timeMs: number; cx: number; cy: number } | null = null;
-export let linuxCursorScreenPoint: { x: number; y: number; updatedAt: number } | null = null;
+export interface LinuxCursorScreenPoint {
+	x: number;
+	y: number;
+	updatedAt: number;
+	coordinateSpace: "logical" | "physical";
+	source: "hyprland" | "uiohook";
+}
+export let linuxCursorScreenPoint: LinuxCursorScreenPoint | null = null;
 export let selectedWindowBounds: WindowBounds | null = null;
 export let windowBoundsCaptureInterval: NodeJS.Timeout | null = null;
 
@@ -263,7 +270,7 @@ export function setHasLoggedInteractionHookFailure(v: boolean) {
 export function setLastLeftClick(v: { timeMs: number; cx: number; cy: number } | null) {
 	lastLeftClick = v;
 }
-export function setLinuxCursorScreenPoint(v: { x: number; y: number; updatedAt: number } | null) {
+export function setLinuxCursorScreenPoint(v: LinuxCursorScreenPoint | null) {
 	linuxCursorScreenPoint = v;
 }
 export function setSelectedWindowBounds(v: WindowBounds | null) {
