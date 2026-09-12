@@ -239,6 +239,46 @@ export function getClipSourceEndMs(clip: ClipRegion): number {
 	return Math.round(clip.startMs + displayDurationMs * speed);
 }
 
+/**
+ * Kept timeline segment for one clip.
+ *
+ * `clipRegions` are stored in SOURCE time (startMs = first kept source frame),
+ * while the editor timeline is a compacted view where removed ranges do not
+ * occupy space. `timelineStartMs`/`timelineEndMs` are the clip's bounds in that
+ * compacted timeline, and `sourceStartMs`/`sourceEndMs` are the matching source
+ * bounds.
+ */
+export interface KeptTimelineSpan {
+	clip: ClipRegion;
+	timelineStartMs: number;
+	timelineEndMs: number;
+	sourceStartMs: number;
+	sourceEndMs: number;
+	speed: number;
+}
+
+export function getKeptTimelineSpans(clips: ClipRegion[]): KeptTimelineSpan[] {
+	const sortedClips = sortClipRegions(clips);
+	const spans: KeptTimelineSpan[] = [];
+	let cursorMs = 0;
+
+	for (const clip of sortedClips) {
+		const displayDurationMs = Math.max(0, clip.endMs - clip.startMs);
+		const speed = getSafeClipSpeed(clip);
+		spans.push({
+			clip,
+			timelineStartMs: cursorMs,
+			timelineEndMs: cursorMs + displayDurationMs,
+			sourceStartMs: clip.startMs,
+			sourceEndMs: getClipSourceEndMs(clip),
+			speed,
+		});
+		cursorMs += displayDurationMs;
+	}
+
+	return spans;
+}
+
 export function getTimelineDurationMs(clips: ClipRegion[], sourceDurationMs: number): number {
 	const baseDurationMs = Math.max(0, Math.round(sourceDurationMs));
 	if (clips.length === 0) {
@@ -246,9 +286,34 @@ export function getTimelineDurationMs(clips: ClipRegion[], sourceDurationMs: num
 	}
 
 	return clips.reduce(
-		(durationMs, clip) => Math.max(durationMs, Math.max(0, Math.round(clip.endMs))),
-		baseDurationMs,
+		(durationMs, clip) => durationMs + Math.max(0, Math.round(clip.endMs - clip.startMs)),
+		0,
 	);
+}
+
+export function getClipTimelineStartMs(clip: ClipRegion, clips: ClipRegion[]): number {
+	const sortedClips = sortClipRegions(clips);
+	let cursorMs = 0;
+
+	for (const candidate of sortedClips) {
+		if (candidate.id === clip.id) {
+			return cursorMs;
+		}
+		cursorMs += Math.max(0, candidate.endMs - candidate.startMs);
+	}
+
+	return cursorMs;
+}
+
+/**
+ * Convert a compacted-timeline offset (ms) back into SOURCE time (ms).
+ * Used when writing user edits (split / resize) back into `clipRegions`.
+ */
+export function mapTimelineOffsetToSourceTime(
+	timelineMs: number,
+	clips: ClipRegion[],
+): number {
+	return mapTimelineTimeToSourceTime(timelineMs, clips);
 }
 
 export function sortClipRegions(clips: ClipRegion[]): ClipRegion[] {
@@ -259,78 +324,114 @@ function getSafeClipSpeed(clip: ClipRegion) {
 	return Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
 }
 
-function clampToNearestClipBoundary(
-	timeMs: number,
-	clips: ClipRegion[],
-	kind: "timeline" | "source",
-) {
-	let nearestTimeMs = Math.round(timeMs);
-	let nearestDistance = Number.POSITIVE_INFINITY;
-
-	for (const clip of clips) {
-		const boundaries =
-			kind === "timeline"
-				? [clip.startMs, clip.endMs]
-				: [clip.startMs, getClipSourceEndMs(clip)];
-
-		for (const boundary of boundaries) {
-			const distance = Math.abs(timeMs - boundary);
-			if (distance < nearestDistance) {
-				nearestDistance = distance;
-				nearestTimeMs = Math.round(boundary);
-			}
-		}
-	}
-
-	return nearestTimeMs;
-}
-
 export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[]): number {
 	const roundedTimeMs = Math.round(timeMs);
-	const sortedClips = sortClipRegions(clips);
+	const spans = getKeptTimelineSpans(clips);
 
-	for (const clip of sortedClips) {
-		if (roundedTimeMs < clip.startMs || roundedTimeMs > clip.endMs) {
-			continue;
-		}
-
-		return Math.round(clip.startMs + (roundedTimeMs - clip.startMs) * getSafeClipSpeed(clip));
-	}
-
-	if (sortedClips.length === 0) {
+	if (spans.length === 0) {
 		return roundedTimeMs;
 	}
 
-	return clampToNearestClipBoundary(roundedTimeMs, sortedClips, "timeline");
+	for (const span of spans) {
+		// Half-open interval [timelineStartMs, timelineEndMs): a clip boundary
+		// belongs to the NEXT kept span, matching findClipAtTimelineTime.
+		if (roundedTimeMs < span.timelineStartMs || roundedTimeMs >= span.timelineEndMs) {
+			continue;
+		}
+
+		return Math.round(span.sourceStartMs + (roundedTimeMs - span.timelineStartMs) * span.speed);
+	}
+
+	const firstSpan = spans[0];
+	const lastSpan = spans[spans.length - 1];
+
+	if (roundedTimeMs < firstSpan.timelineStartMs) {
+		return Math.round(firstSpan.sourceStartMs);
+	}
+
+	if (roundedTimeMs > lastSpan.timelineEndMs) {
+		return Math.round(lastSpan.sourceEndMs);
+	}
+
+	let previousSpan = firstSpan;
+	let nextSpan: KeptTimelineSpan | null = null;
+	for (const span of spans) {
+		if (span.timelineStartMs > roundedTimeMs) {
+			nextSpan = span;
+			break;
+		}
+		previousSpan = span;
+	}
+
+	if (!nextSpan) {
+		return Math.round(previousSpan.sourceEndMs);
+	}
+
+	const distanceToPrevious = roundedTimeMs - previousSpan.timelineEndMs;
+	const distanceToNext = nextSpan.timelineStartMs - roundedTimeMs;
+
+	return distanceToPrevious <= distanceToNext
+		? Math.round(previousSpan.sourceEndMs)
+		: Math.round(nextSpan.sourceStartMs);
 }
 
 export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[]): number {
 	const roundedTimeMs = Math.round(timeMs);
-	const sortedClips = sortClipRegions(clips);
+	const spans = getKeptTimelineSpans(clips);
 
-	for (const clip of sortedClips) {
-		const sourceEndMs = getClipSourceEndMs(clip);
-		if (roundedTimeMs < clip.startMs || roundedTimeMs > sourceEndMs) {
-			continue;
-		}
-
-		return Math.round(clip.startMs + (roundedTimeMs - clip.startMs) / getSafeClipSpeed(clip));
-	}
-
-	if (sortedClips.length === 0) {
+	if (spans.length === 0) {
 		return roundedTimeMs;
 	}
 
-	return clampToNearestClipBoundary(roundedTimeMs, sortedClips, "source");
+	for (const span of spans) {
+		if (roundedTimeMs < span.sourceStartMs || roundedTimeMs > span.sourceEndMs) {
+			continue;
+		}
+
+		return Math.round(span.timelineStartMs + (roundedTimeMs - span.sourceStartMs) / span.speed);
+	}
+
+	const firstSpan = spans[0];
+	const lastSpan = spans[spans.length - 1];
+
+	if (roundedTimeMs < firstSpan.sourceStartMs) {
+		return Math.round(firstSpan.timelineStartMs);
+	}
+
+	if (roundedTimeMs > lastSpan.sourceEndMs) {
+		return Math.round(lastSpan.timelineEndMs);
+	}
+
+	let previousSpan = firstSpan;
+	let nextSpan: KeptTimelineSpan | null = null;
+	for (const span of spans) {
+		if (span.sourceStartMs > roundedTimeMs) {
+			nextSpan = span;
+			break;
+		}
+		previousSpan = span;
+	}
+
+	if (!nextSpan) {
+		return Math.round(previousSpan.timelineEndMs);
+	}
+
+	const distanceToPrevious = roundedTimeMs - previousSpan.sourceEndMs;
+	const distanceToNext = nextSpan.sourceStartMs - roundedTimeMs;
+
+	return distanceToPrevious <= distanceToNext
+		? Math.round(previousSpan.timelineEndMs)
+		: Math.round(nextSpan.timelineStartMs);
 }
 
 export function findClipAtTimelineTime(timeMs: number, clips: ClipRegion[]): ClipRegion | null {
 	const roundedTimeMs = Math.round(timeMs);
-	return (
-		sortClipRegions(clips).find(
-			(clip) => roundedTimeMs >= clip.startMs && roundedTimeMs < clip.endMs,
-		) ?? null
+	const span = getKeptTimelineSpans(clips).find(
+		(candidate) =>
+			roundedTimeMs >= candidate.timelineStartMs && roundedTimeMs < candidate.timelineEndMs,
 	);
+
+	return span?.clip ?? null;
 }
 
 export function extendAutoFullTrackClip(

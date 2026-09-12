@@ -114,35 +114,56 @@ describe("extendAutoFullTrackClip", () => {
 	});
 });
 
-describe("clip timeline mapping", () => {
+describe("clip timeline mapping (ripple)", () => {
 	const clips = [
 		{ id: "clip-1", startMs: 0, endMs: 4_000, speed: 1 },
 		{ id: "clip-2", startMs: 6_000, endMs: 8_000, speed: 2 },
 	];
 
-	it("maps kept timeline time into source time", () => {
+	it("compacts adjacent clips by removing the inter-clip source gap", () => {
+		// clip-1 display: 4_000ms, clip-2 display: (8_000 - 6_000) = 2_000ms
+		// (speed is embedded in endMs via getClipSourceEndMs, so display = end - start)
+		// total timeline length: 6_000ms — the source gap [4000, 6000] contributes nothing
+		expect(getTimelineDurationMs(clips, 10_000)).toBe(6_000);
+	});
+
+	it("maps kept timeline time into source time inside each kept span", () => {
+		// timeline [0, 4000] → source [0, 4000] at speed 1
 		expect(mapTimelineTimeToSourceTime(1_500, clips)).toBe(1_500);
-		expect(mapTimelineTimeToSourceTime(7_000, clips)).toBe(8_000);
+		// timeline [4000, 6000] → source [6000, 10000] at speed 2
+		expect(mapTimelineTimeToSourceTime(5_000, clips)).toBe(8_000);
 	});
 
-	it("snaps timeline gaps to the nearest clip edge", () => {
-		expect(mapTimelineTimeToSourceTime(4_300, clips)).toBe(4_000);
-		expect(mapTimelineTimeToSourceTime(5_700, clips)).toBe(6_000);
+	it("maps a clip boundary into the next kept span", () => {
+		// timeline 4_000 is the splice between clip-1 and clip-2; it must map to
+		// the next clip's source origin (6_000), not clip-1's source end (4_000).
+		expect(mapTimelineTimeToSourceTime(4_000, clips)).toBe(6_000);
+		expect(findClipAtTimelineTime(4_000, clips)?.id).toBe("clip-2");
 	});
 
-	it("maps kept source time back into timeline time", () => {
+	it("clamps timeline positions that fall outside the compacted range", () => {
+		// far before first kept span → source origin of clip-1
+		expect(mapTimelineTimeToSourceTime(-100, clips)).toBe(0);
+		// far after last kept span → source end of clip-2 (= 6000 + 4000 source ms)
+		expect(mapTimelineTimeToSourceTime(7_000, clips)).toBe(10_000);
+	});
+
+	it("maps source time back into compacted timeline time", () => {
 		expect(mapSourceTimeToTimelineTime(1_500, clips)).toBe(1_500);
-		expect(mapSourceTimeToTimelineTime(8_000, clips)).toBe(7_000);
+		expect(mapSourceTimeToTimelineTime(8_000, clips)).toBe(5_000);
 	});
 
-	it("snaps removed source gaps to the nearest kept boundary", () => {
-		expect(mapSourceTimeToTimelineTime(4_200, clips)).toBe(4_000);
-		expect(mapSourceTimeToTimelineTime(5_900, clips)).toBe(6_000);
+	it("clamps source positions inside removed gaps to the nearest kept boundary", () => {
+		// source [4000, 6000] is removed; both sides collapse onto the timeline splice at 4_000ms.
+		expect(mapSourceTimeToTimelineTime(4_100, clips)).toBe(4_000);
+		expect(mapSourceTimeToTimelineTime(5_900, clips)).toBe(4_000);
 	});
 
 	it("finds clips only inside visible kept spans", () => {
 		expect(findClipAtTimelineTime(500, clips)?.id).toBe("clip-1");
-		expect(findClipAtTimelineTime(5_000, clips)).toBeNull();
+		expect(findClipAtTimelineTime(5_000, clips)?.id).toBe("clip-2");
+		// exactly on the right boundary of clip-2 → no clip owns the open end
+		expect(findClipAtTimelineTime(6_000, clips)).toBeNull();
 	});
 
 	it("derives the next clip id after converting trim gaps into clip ids", () => {
@@ -174,9 +195,22 @@ describe("getTimelineDurationMs", () => {
 		).toBe(20_000);
 	});
 
-	it("keeps the source duration when speed edits make clips shorter", () => {
+	it("uses the display duration of clips, ignoring the source duration", () => {
+		// speed=2 halves the apparent length: display = 5_000ms regardless of source 10_000ms
 		expect(
 			getTimelineDurationMs([{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }], 10_000),
-		).toBe(10_000);
+		).toBe(5_000);
+	});
+
+	it("sums all clip display durations and ignores inter-clip source gaps", () => {
+		expect(
+			getTimelineDurationMs(
+				[
+					{ id: "clip-1", startMs: 0, endMs: 4_000, speed: 1 },
+					{ id: "clip-2", startMs: 6_000, endMs: 8_000, speed: 2 },
+				],
+				10_000,
+			),
+		).toBe(6_000);
 	});
 });

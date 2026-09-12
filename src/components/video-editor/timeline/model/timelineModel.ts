@@ -16,6 +16,7 @@ import {
 	isAudioTrackRowId,
 } from "../core/rows";
 import type { TimelineRegionSpan, TimelineRenderItem } from "../core/timelineTypes";
+import { getKeptTimelineSpans } from "../../types";
 
 export function getAnnotationLabel(region: AnnotationRegion): string {
 	if (region.type === "text") {
@@ -60,16 +61,22 @@ export function buildTimelineItems(params: {
 		variant: "zoom",
 	}));
 
+	const keptSpansById = new Map(
+		getKeptTimelineSpans(clipRegions).map((span) => [span.clip.id, span]),
+	);
 	const clips: TimelineRenderItem[] = clipRegions.map((region, index) => {
 		const displayDurationMs = Math.max(0, region.endMs - region.startMs);
 		const speed = Number.isFinite(region.speed) && region.speed > 0 ? region.speed : 1;
 		const sourceEndMs = region.startMs + displayDurationMs * speed;
 		const speedLabel = formatClipSpeedLabel(speed);
+		const keptSpan = keptSpansById.get(region.id);
+		const timelineStartMs = keptSpan?.timelineStartMs ?? region.startMs;
+		const timelineEndMs = keptSpan?.timelineEndMs ?? region.endMs;
 
 		return {
 			id: region.id,
 			rowId: CLIP_ROW_ID,
-			span: { start: region.startMs, end: region.endMs },
+			span: { start: timelineStartMs, end: timelineEndMs },
 			sourceSpan: { start: region.startMs, end: sourceEndMs },
 			label: speedLabel ? `Clip ${index + 1} ${speedLabel}` : `Clip ${index + 1}`,
 			speedValue: speedLabel ? speed : undefined,

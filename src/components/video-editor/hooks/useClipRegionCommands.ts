@@ -2,13 +2,14 @@ import type { Span } from "dnd-timeline";
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
 import { toast } from "sonner";
 import { planClipSpeedChange } from "../clipSpeedChange";
-import type {
-	AnnotationRegion,
-	AudioRegion,
-	ClipRegion,
-	EditorEffectSection,
-	SpeedRegion,
-	ZoomRegion,
+import {
+	getClipTimelineStartMs,
+	type AnnotationRegion,
+	type AudioRegion,
+	type ClipRegion,
+	type EditorEffectSection,
+	type SpeedRegion,
+	type ZoomRegion,
 } from "../types";
 
 type Translator = (
@@ -79,15 +80,29 @@ export function useClipRegionCommands({
 
 	const handleClipSplit = useCallback(
 		(splitMs: number) => {
-			const target = clipRegions.find(
-				(clip) => splitMs > clip.startMs && splitMs < clip.endMs,
-			);
+			const target = clipRegions.find((clip) => {
+				const timelineStart = getClipTimelineStartMs(clip, clipRegions);
+				const timelineEnd = timelineStart + Math.max(0, clip.endMs - clip.startMs);
+				return splitMs > timelineStart && splitMs < timelineEnd;
+			});
 			if (!target) return;
 			const leftId = `clip-${nextClipIdRef.current++}`;
 			const rightId = `clip-${nextClipIdRef.current++}`;
+			const timelineStart = getClipTimelineStartMs(target, clipRegions);
 			const splitAt = Math.round(splitMs);
-			const left: ClipRegion = { ...target, id: leftId, endMs: splitAt };
-			const right: ClipRegion = { ...target, id: rightId, startMs: splitAt };
+			const splitOffset = splitAt - timelineStart;
+			const safeSpeed = Number.isFinite(target.speed) && target.speed > 0 ? target.speed : 1;
+			const newSourceStart = Math.round(target.startMs + splitOffset * safeSpeed);
+			// ClipRegion.endMs is the display end (= startMs + display duration), not
+			// the source end, so the left clip keeps exactly `splitOffset` of display
+			// time rather than inheriting the source-derived split point.
+			const left: ClipRegion = { ...target, id: leftId, endMs: target.startMs + splitOffset };
+			const right: ClipRegion = {
+				...target,
+				id: rightId,
+				startMs: newSourceStart,
+				endMs: newSourceStart + Math.max(0, target.endMs - target.startMs - splitOffset),
+			};
 			setClipRegions((current) =>
 				current.flatMap((clip) => (clip.id === target.id ? [left, right] : [clip])),
 			);
@@ -99,30 +114,41 @@ export function useClipRegionCommands({
 	const handleClipSpanChange = useCallback(
 		(id: string, span: Span) => {
 			const oldClip = clipRegions.find((clip) => clip.id === id);
-			const newStart = Math.round(span.start);
-			const newEnd = Math.round(span.end);
+			const newTimelineStart = Math.round(span.start);
+			const newTimelineEnd = Math.round(span.end);
+			const oldTimelineStart = oldClip
+				? getClipTimelineStartMs(oldClip, clipRegions)
+				: 0;
+			const oldTimelineEnd =
+				oldTimelineStart + Math.max(0, (oldClip?.endMs ?? 0) - (oldClip?.startMs ?? 0));
+			const newTimelineDuration = Math.max(0, newTimelineEnd - newTimelineStart);
+			const speed = oldClip && oldClip.speed > 0 ? oldClip.speed : 1;
+			const newSourceStart = oldClip
+				? Math.round(oldClip.startMs + (newTimelineStart - oldTimelineStart) * speed)
+				: 0;
+			const newEndMs = newSourceStart + newTimelineDuration;
 			const removedSegments = oldClip
 				? [
-						...(newStart > oldClip.startMs
-							? [{ startMs: oldClip.startMs, endMs: newStart }]
+						...(newTimelineStart > oldTimelineStart
+							? [{ startMs: oldTimelineStart, endMs: newTimelineStart }]
 							: []),
-						...(newEnd < oldClip.endMs
-							? [{ startMs: newEnd, endMs: oldClip.endMs }]
+						...(newTimelineEnd < oldTimelineEnd
+							? [{ startMs: newTimelineEnd, endMs: oldTimelineEnd }]
 							: []),
 					]
 				: [];
 
 			if (oldClip) {
-				const startDelta = newStart - oldClip.startMs;
-				const endDelta = newEnd - oldClip.endMs;
-				if (Math.abs(startDelta - endDelta) < 1 && Math.abs(startDelta) > 0) {
+				const timelineStartDelta = newTimelineStart - oldTimelineStart;
+				const timelineEndDelta = newTimelineEnd - oldTimelineEnd;
+				if (Math.abs(timelineStartDelta - timelineEndDelta) < 1 && Math.abs(timelineStartDelta) > 0) {
 					setZoomRegions((current) =>
 						current.map((zoom) =>
-							zoom.startMs < oldClip.endMs && zoom.endMs > oldClip.startMs
+							zoom.startMs < oldTimelineEnd && zoom.endMs > oldTimelineStart
 								? {
 										...zoom,
-										startMs: zoom.startMs + startDelta,
-										endMs: zoom.endMs + startDelta,
+										startMs: zoom.startMs + timelineStartDelta,
+										endMs: zoom.endMs + timelineStartDelta,
 									}
 								: zoom,
 						),
@@ -150,7 +176,9 @@ export function useClipRegionCommands({
 
 			setClipRegions((current) =>
 				current.map((clip) =>
-					clip.id === id ? { ...clip, startMs: newStart, endMs: newEnd } : clip,
+					clip.id === id
+						? { ...clip, startMs: newSourceStart, endMs: newEndMs }
+						: clip,
 				),
 			);
 		},
