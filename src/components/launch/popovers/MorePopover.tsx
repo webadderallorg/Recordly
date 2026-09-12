@@ -29,7 +29,7 @@ const LOCALE_LABELS: Record<string, string> = {
 	nl: "Nederlands",
 	ko: "한국어",
 	"pt-BR": "Português",
-	"zh-CN": "簡體中文",
+	"zh-CN": "简体中文",
 	"zh-TW": "繁體中文",
 };
 
