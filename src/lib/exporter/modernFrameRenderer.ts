@@ -638,14 +638,24 @@ export class FrameRenderer {
 		};
 
 		const preferredRenderBackend = this.config.preferredRenderBackend;
-		const backendOrder: ExportRenderBackend[] =
-			preferredRenderBackend === "webgl"
+		const webgpuRuntimeAvailable = typeof navigator !== "undefined" && "gpu" in navigator;
+		// On Linux the WebGPU export path is unreliable. Under a Wayland session
+		// Chromium reports "'--ozone-platform=wayland' is not compatible with
+		// Vulkan", Dawn comes up degraded, and the Pixi WebGPU bind group code then
+		// throws "Cannot read properties of undefined (reading '_resourceType')"
+		// partway through the export. WebGL through ANGLE works on both Wayland and
+		// X11, so prefer it there unless the caller explicitly asked for WebGPU.
+		const preferWebglOnThisPlatform =
+			typeof navigator !== "undefined" && /Linux/i.test(navigator.userAgent);
+		const backendOrder: ExportRenderBackend[] = !webgpuRuntimeAvailable
+			? ["webgl"]
+			: preferredRenderBackend === "webgl"
 				? ["webgl", "webgpu"]
 				: preferredRenderBackend === "webgpu"
 					? ["webgpu", "webgl"]
-					: typeof navigator !== "undefined" && "gpu" in navigator
-						? ["webgpu", "webgl"]
-						: ["webgl"];
+					: preferWebglOnThisPlatform
+						? ["webgl", "webgpu"]
+						: ["webgpu", "webgl"];
 		const failures: PixiRendererAttempt[] = [];
 
 		for (const backend of backendOrder) {
