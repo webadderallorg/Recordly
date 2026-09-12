@@ -122,6 +122,14 @@ export type NativeMacWindowSource = {
 
 export type HookEventName = "mousedown" | "mouseup" | "mousemove";
 
+export type HookKeyboardEvent = {
+	altKey?: boolean;
+	ctrlKey?: boolean;
+	metaKey?: boolean;
+	shiftKey?: boolean;
+	keycode?: number;
+};
+
 export type HookMouseEvent = {
 	button?: number;
 	mouseButton?: number;
@@ -140,11 +148,21 @@ export type HookMouseEvent = {
 };
 
 export type HookEventListener = (event: HookMouseEvent) => void;
+export type HookKeyboardEventListener = (event: HookKeyboardEvent) => void;
 
 export type UiohookLike = {
-	on: (eventName: HookEventName, listener: HookEventListener) => void;
-	off?: (eventName: HookEventName, listener: HookEventListener) => void;
-	removeListener?: (eventName: HookEventName, listener: HookEventListener) => void;
+	on: {
+		(eventName: HookEventName, listener: HookEventListener): void;
+		(eventName: "keydown" | "keyup", listener: HookKeyboardEventListener): void;
+	};
+	off?: {
+		(eventName: HookEventName, listener: HookEventListener): void;
+		(eventName: "keydown" | "keyup", listener: HookKeyboardEventListener): void;
+	};
+	removeListener?: {
+		(eventName: HookEventName, listener: HookEventListener): void;
+		(eventName: "keydown" | "keyup", listener: HookKeyboardEventListener): void;
+	};
 	start: () => void;
 	stop?: () => void;
 };

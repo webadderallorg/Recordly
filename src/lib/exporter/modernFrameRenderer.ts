@@ -264,6 +264,14 @@ function isCanvasRenderer(application: Application): boolean {
 	);
 }
 
+function isLinuxRuntime(): boolean {
+	if (typeof navigator === "undefined") {
+		return false;
+	}
+
+	return /linux/i.test(navigator.platform || navigator.userAgent || "");
+}
+
 function toErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error ?? "Unknown renderer init error");
 }
@@ -449,12 +457,6 @@ export class FrameRenderer {
 	private webcamLayoutCache: WebcamLayoutCache | null = null;
 	private videoTextureUsesStartupStaging = false;
 	private webcamTextureUsesStartupStaging = false;
-	private retainedSceneSourceFrame: VideoFrame | null = null;
-	private retainedSceneTextureFrame: VideoFrame | null = null;
-	private retainedBackgroundSourceFrame: VideoFrame | null = null;
-	private retainedBackgroundTextureFrame: VideoFrame | null = null;
-	private retainedWebcamSourceFrame: VideoFrame | null = null;
-	private retainedWebcamTextureFrame: VideoFrame | null = null;
 	private retainedSceneBitmapTimestamp: number | null = null;
 	private retainedSceneBitmap: ImageBitmap | null = null;
 	private retainedBackgroundBitmapTimestamp: number | null = null;
@@ -638,14 +640,16 @@ export class FrameRenderer {
 		};
 
 		const preferredRenderBackend = this.config.preferredRenderBackend;
+		const shouldPreferWebGpuByDefault =
+			!isLinuxRuntime() && typeof navigator !== "undefined" && "gpu" in navigator;
 		const backendOrder: ExportRenderBackend[] =
 			preferredRenderBackend === "webgl"
 				? ["webgl", "webgpu"]
 				: preferredRenderBackend === "webgpu"
 					? ["webgpu", "webgl"]
-					: typeof navigator !== "undefined" && "gpu" in navigator
+					: shouldPreferWebGpuByDefault
 						? ["webgpu", "webgl"]
-						: ["webgl"];
+						: ["webgl", "webgpu"];
 		const failures: PixiRendererAttempt[] = [];
 
 		for (const backend of backendOrder) {
@@ -812,59 +816,6 @@ export class FrameRenderer {
 		layer.container.visible = true;
 	}
 
-	private getRetainedVideoFrameState(kind: "scene" | "background" | "webcam") {
-		if (kind === "scene") {
-			return {
-				sourceFrame: this.retainedSceneSourceFrame,
-				textureFrame: this.retainedSceneTextureFrame,
-			};
-		}
-
-		if (kind === "background") {
-			return {
-				sourceFrame: this.retainedBackgroundSourceFrame,
-				textureFrame: this.retainedBackgroundTextureFrame,
-			};
-		}
-
-		return {
-			sourceFrame: this.retainedWebcamSourceFrame,
-			textureFrame: this.retainedWebcamTextureFrame,
-		};
-	}
-
-	private setRetainedVideoFrameState(
-		kind: "scene" | "background" | "webcam",
-		sourceFrame: VideoFrame | null,
-		textureFrame: VideoFrame | null,
-	): void {
-		if (kind === "scene") {
-			this.retainedSceneSourceFrame = sourceFrame;
-			this.retainedSceneTextureFrame = textureFrame;
-			return;
-		}
-
-		if (kind === "background") {
-			this.retainedBackgroundSourceFrame = sourceFrame;
-			this.retainedBackgroundTextureFrame = textureFrame;
-			return;
-		}
-
-		this.retainedWebcamSourceFrame = sourceFrame;
-		this.retainedWebcamTextureFrame = textureFrame;
-	}
-
-	private closeRetainedVideoFrame(kind: "scene" | "background" | "webcam"): void {
-		const state = this.getRetainedVideoFrameState(kind);
-		if (!state.textureFrame) {
-			this.setRetainedVideoFrameState(kind, null, null);
-			return;
-		}
-
-		state.textureFrame.close();
-		this.setRetainedVideoFrameState(kind, null, null);
-	}
-
 	private closeRetainedBitmap(kind: "scene" | "background"): void {
 		if (kind === "scene") {
 			this.retainedSceneBitmap?.close();
@@ -915,37 +866,6 @@ export class FrameRenderer {
 				error,
 			);
 			return this.stageVideoFrameForTexture(frame, kind, fallbackWidth, fallbackHeight);
-		}
-	}
-
-	private resolveRetainedVideoFrameSource(
-		frame: VideoFrame,
-		kind: "scene" | "background" | "webcam",
-		fallbackWidth: number,
-		fallbackHeight: number,
-	): CanvasImageSource | VideoFrame {
-		if (this.rendererBackend !== "webgpu") {
-			return frame;
-		}
-
-		const state = this.getRetainedVideoFrameState(kind);
-		if (state.sourceFrame === frame && state.textureFrame) {
-			return state.textureFrame;
-		}
-
-		try {
-			const retainedFrame = new VideoFrame(frame, {
-				timestamp: frame.timestamp,
-			});
-			this.closeRetainedVideoFrame(kind);
-			this.setRetainedVideoFrameState(kind, frame, retainedFrame);
-			return retainedFrame;
-		} catch (error) {
-			console.warn(
-				`[ModernFrameRenderer] Failed to retain ${kind} VideoFrame, falling back to staging canvas:`,
-				error,
-			);
-			return this.stageVideoFrameOnCanvas(frame, kind, fallbackWidth, fallbackHeight);
 		}
 	}
 
@@ -1026,17 +946,12 @@ export class FrameRenderer {
 		fallbackWidth: number,
 		fallbackHeight: number,
 	): CanvasImageSource | VideoFrame {
-		// Keep webcam uploads on the older canvas-staged path. The newer
-		// retained-VideoFrame upload path is fine for the main scene/background,
-		// but it has produced unstable webcam overlays in Lightning exports.
-		if (kind === "webcam") {
-			return this.stageVideoFrameOnCanvas(frame, kind, fallbackWidth, fallbackHeight);
-		}
-
-		if (this.rendererBackend === "webgpu") {
-			return this.resolveRetainedVideoFrameSource(frame, kind, fallbackWidth, fallbackHeight);
-		}
-
+		// Chromium's Linux WebGPU implementation can expose a VideoFrame that
+		// Pixi accepts as a texture source but cannot bind during rendering. The
+		// resulting failure is the opaque "Cannot read properties of undefined
+		// (reading '_resourceType')" error. Canvas staging is a little less
+		// efficient, but it is portable across WebGPU/WebGL and keeps export
+		// deterministic on Linux.
 		return this.stageVideoFrameOnCanvas(frame, kind, fallbackWidth, fallbackHeight);
 	}
 
@@ -3581,9 +3496,6 @@ export class FrameRenderer {
 		this.webcamVideoFrameStagingCtx = null;
 		this.videoTextureUsesStartupStaging = false;
 		this.webcamTextureUsesStartupStaging = false;
-		this.closeRetainedVideoFrame("scene");
-		this.closeRetainedVideoFrame("background");
-		this.closeRetainedVideoFrame("webcam");
 		this.closeRetainedBitmap("scene");
 		this.closeRetainedBitmap("background");
 

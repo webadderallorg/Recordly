@@ -1,5 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { execFile, spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -13,14 +14,19 @@ import {
 	systemPreferences,
 } from "electron";
 import { getHudCaptureExcludedProcessIds } from "../../../src/lib/hudCaptureProtection";
+import { DEFAULT_SHORTCUTS, type ShortcutBinding } from "../../../src/lib/shortcuts";
 import { showCursor } from "../../cursorHider";
 import {
 	getHudOverlayCaptureProtectionEnabled,
 	reassertHudOverlayCaptureProtection,
 } from "../../windows";
-import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
+import { ALLOW_RECORDLY_WINDOW_CAPTURE, SHORTCUTS_FILE } from "../constants";
 import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../cursor/bounds";
-import { startInteractionCapture, stopInteractionCapture } from "../cursor/interaction";
+import {
+	matchesHookKeyboardShortcut,
+	startInteractionCapture,
+	stopInteractionCapture,
+} from "../cursor/interaction";
 import { startNativeCursorMonitor, stopNativeCursorMonitor } from "../cursor/monitor";
 import {
 	normalizeCursorTelemetrySamples,
@@ -143,7 +149,12 @@ import {
 	windowsPendingVideoPath,
 	windowsSystemAudioPath,
 } from "../state";
-import type { CursorTelemetryPoint, NativeMacRecordingOptions, SelectedSource } from "../types";
+import type {
+	CursorTelemetryPoint,
+	HookKeyboardEvent,
+	NativeMacRecordingOptions,
+	SelectedSource,
+} from "../types";
 import {
 	getMacPrivacySettingsUrl,
 	getRecordingsDir,
@@ -401,6 +412,61 @@ async function resolveExistingPath(...candidates: Array<string | null | undefine
 export function registerRecordingHandlers(
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
 ) {
+	let recordingPauseShortcut: ShortcutBinding = DEFAULT_SHORTCUTS.playPause;
+	const pressedRecordingShortcutKeycodes = new Set<number>();
+
+	const loadRecordingPauseShortcut = () => {
+		try {
+			const parsed = JSON.parse(readFileSync(SHORTCUTS_FILE, "utf-8")) as {
+				playPause?: Partial<ShortcutBinding>;
+			};
+			const binding = parsed.playPause;
+			if (typeof binding?.key === "string" && binding.key.length > 0) {
+				recordingPauseShortcut = {
+					key: binding.key,
+					ctrl: binding.ctrl === true,
+					shift: binding.shift === true,
+					alt: binding.alt === true,
+				};
+				return;
+			}
+		} catch {
+			// Use the editor's default Play / Pause binding when no settings exist.
+		}
+
+		recordingPauseShortcut = DEFAULT_SHORTCUTS.playPause;
+	};
+
+	const handleRecordingShortcutKeyDown = (event: HookKeyboardEvent) => {
+		const keycode = event.keycode;
+		if (
+			typeof keycode !== "number" ||
+			!matchesHookKeyboardShortcut(
+				event,
+				recordingPauseShortcut,
+				process.platform === "darwin",
+			)
+		) {
+			return;
+		}
+
+		// uiohook can repeat keydown events while a key is held. Toggle once per press.
+		if (pressedRecordingShortcutKeycodes.has(keycode)) return;
+		pressedRecordingShortcutKeycodes.add(keycode);
+
+		BrowserWindow.getAllWindows().forEach((window) => {
+			if (!window.isDestroyed()) {
+				window.webContents.send("recording-toggle-pause");
+			}
+		});
+	};
+
+	const handleRecordingShortcutKeyUp = (event: HookKeyboardEvent) => {
+		if (typeof event.keycode === "number") {
+			pressedRecordingShortcutKeycodes.delete(event.keycode);
+		}
+	};
+
 	ipcMain.handle(
 		"start-native-screen-recording",
 		async (_, source: SelectedSource, options?: NativeMacRecordingOptions) => {
@@ -1862,6 +1928,8 @@ export function registerRecordingHandlers(
 
 	ipcMain.handle("set-recording-state", (_, recording: boolean) => {
 		if (recording) {
+			loadRecordingPauseShortcut();
+			pressedRecordingShortcutKeycodes.clear();
 			stopCursorCapture();
 			stopInteractionCapture();
 			startWindowBoundsCapture();
@@ -1875,8 +1943,12 @@ export function registerRecordingHandlers(
 			setLastLeftClick(null);
 			sampleCursorPoint();
 			startCursorSampling();
-			void startInteractionCapture();
+			void startInteractionCapture({
+				onKeyDown: handleRecordingShortcutKeyDown,
+				onKeyUp: handleRecordingShortcutKeyUp,
+			});
 		} else {
+			pressedRecordingShortcutKeycodes.clear();
 			setIsCursorCaptureActive(false);
 			stopCursorCapture();
 			stopInteractionCapture();

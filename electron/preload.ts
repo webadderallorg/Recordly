@@ -632,6 +632,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("recording-state-changed", listener);
 		return () => ipcRenderer.removeListener("recording-state-changed", listener);
 	},
+	onRecordingTogglePause: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("recording-toggle-pause", listener);
+		return () => ipcRenderer.removeListener("recording-toggle-pause", listener);
+	},
 	onRecordingInterrupted: (callback: (state: { reason: string; message: string }) => void) => {
 		const listener = (
 			_event: Electron.IpcRendererEvent,

@@ -12,9 +12,30 @@ vi.mock("electron", () => ({
 }));
 
 import {
+	getHookKeyboardKey,
+	matchesHookKeyboardShortcut,
 	repairBundledUiohookBinaryForCurrentArch,
 	shouldStartGlobalInteractionHook,
 } from "./interaction";
+
+describe("global keyboard shortcut matching", () => {
+	it("normalizes the space key used by the default Play / Pause shortcut", () => {
+		expect(getHookKeyboardKey({ keycode: 0x0039 })).toBe(" ");
+		expect(matchesHookKeyboardShortcut({ keycode: 0x0039 }, { key: " " }, false)).toBe(true);
+	});
+
+	it("honors platform-aware modifiers", () => {
+		const binding = { key: "p", ctrl: true };
+
+		expect(
+			matchesHookKeyboardShortcut({ keycode: 0x0019, ctrlKey: true }, binding, false),
+		).toBe(true);
+		expect(matchesHookKeyboardShortcut({ keycode: 0x0019, metaKey: true }, binding, true)).toBe(
+			true,
+		);
+		expect(matchesHookKeyboardShortcut({ keycode: 0x0019 }, binding, false)).toBe(false);
+	});
+});
 
 describe("shouldStartGlobalInteractionHook", () => {
 	it("does not start the synchronous uiohook event tap on macOS", () => {
