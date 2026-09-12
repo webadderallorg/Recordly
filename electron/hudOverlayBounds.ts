@@ -38,6 +38,21 @@ export function getHudOverlayWindowBounds(
 	};
 }
 
+export type HudOverlayResizeAnchor = "bottom" | "center";
+
+// Wayland refuses client-side window placement, so the compositor decides where
+// a resized HUD lands. Hyprland keeps floating windows centered while X11 honors
+// the bottom-anchored bounds this module computes.
+export function getHudOverlayResizeAnchor(
+	platform: NodeJS.Platform,
+	env: NodeJS.ProcessEnv,
+): HudOverlayResizeAnchor {
+	if (platform !== "linux") {
+		return "bottom";
+	}
+	return env.XDG_SESSION_TYPE === "wayland" || env.WAYLAND_DISPLAY ? "center" : "bottom";
+}
+
 export function shouldExpandHudOverlayFallback({
 	fallbackExpanded,
 	recordingActive,
