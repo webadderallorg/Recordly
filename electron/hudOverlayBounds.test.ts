@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	getHudOverlayResizeAnchor,
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
@@ -30,9 +31,9 @@ describe("getHudOverlayWindowBounds", () => {
 	it("expands the non-passthrough fallback for HUD menus and hover interaction", () => {
 		expect(getHudOverlayWindowBounds(workArea, false, true)).toEqual({
 			x: 650,
-			y: 540,
+			y: 400,
 			width: 860,
-			height: 540,
+			height: 680,
 		});
 	});
 
@@ -98,9 +99,9 @@ describe("resizeHudOverlayFallbackBounds", () => {
 			),
 		).toEqual({
 			x: 420,
-			y: 320,
+			y: 180,
 			width: 860,
-			height: 540,
+			height: 680,
 		});
 	});
 
@@ -110,9 +111,9 @@ describe("resizeHudOverlayFallbackBounds", () => {
 				workArea,
 				{
 					x: 420,
-					y: 320,
+					y: 180,
 					width: 860,
-					height: 540,
+					height: 680,
 				},
 				false,
 			),
@@ -138,10 +139,32 @@ describe("resizeHudOverlayFallbackBounds", () => {
 			),
 		).toEqual({
 			x: 1060,
-			y: 520,
+			y: 380,
 			width: 860,
-			height: 540,
+			height: 680,
 		});
+	});
+});
+
+describe("getHudOverlayResizeAnchor", () => {
+	it("returns bottom on non-linux platforms", () => {
+		expect(getHudOverlayResizeAnchor("darwin", {})).toBe("bottom");
+		expect(getHudOverlayResizeAnchor("win32", {})).toBe("bottom");
+	});
+
+	it("returns center on linux under wayland", () => {
+		expect(
+			getHudOverlayResizeAnchor("linux", { XDG_SESSION_TYPE: "wayland" }),
+		).toBe("center");
+		expect(
+			getHudOverlayResizeAnchor("linux", { WAYLAND_DISPLAY: "wayland-1" }),
+		).toBe("center");
+	});
+
+	it("returns bottom on linux under x11", () => {
+		expect(
+			getHudOverlayResizeAnchor("linux", { XDG_SESSION_TYPE: "x11" }),
+		).toBe("bottom");
 	});
 });
 

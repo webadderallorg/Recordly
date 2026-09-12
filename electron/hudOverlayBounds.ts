@@ -7,10 +7,25 @@ export interface HudOverlayWorkArea {
 
 const NON_PASSTHROUGH_HUD_WIDTH_DIP = 860;
 const NON_PASSTHROUGH_HUD_COMPACT_HEIGHT_DIP = 160;
-const NON_PASSTHROUGH_HUD_EXPANDED_HEIGHT_DIP = 540;
+const NON_PASSTHROUGH_HUD_EXPANDED_HEIGHT_DIP = 680;
 
 function clamp(value: number, min: number, max: number): number {
 	return Math.min(Math.max(value, min), max);
+}
+
+export type HudOverlayResizeAnchor = "bottom" | "center";
+
+// Wayland refuses client-side window placement, so the compositor decides where
+// a resized HUD lands. Hyprland keeps floating windows centered while X11 honors
+// the bottom-anchored bounds this module computes.
+export function getHudOverlayResizeAnchor(
+	platform: NodeJS.Platform,
+	env: NodeJS.ProcessEnv,
+): HudOverlayResizeAnchor {
+	if (platform !== "linux") {
+		return "bottom";
+	}
+	return env.XDG_SESSION_TYPE === "wayland" || env.WAYLAND_DISPLAY ? "center" : "bottom";
 }
 
 export function getHudOverlayWindowBounds(
