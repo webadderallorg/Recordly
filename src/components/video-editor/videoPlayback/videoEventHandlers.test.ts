@@ -2,12 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createVideoEventHandlers } from "./videoEventHandlers";
 
-type PresentedFrameCallback = (now: DOMHighResTimeStamp, metadata: { mediaTime?: number }) => void;
-
-type MockVideo = HTMLVideoElement & {
-	requestVideoFrameCallback?: (callback: PresentedFrameCallback) => number;
-	cancelVideoFrameCallback?: (handle: number) => void;
-};
+type MockVideo = HTMLVideoElement;
 
 function createMutableRef<T>(value: T) {
 	return { current: value };
@@ -41,14 +36,16 @@ describe("createVideoEventHandlers", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("prefers requestVideoFrameCallback mediaTime when available", () => {
-		let presentedFrameCallback: PresentedFrameCallback | null = null;
+	it("advances from currentTime between presented video frames", () => {
+		let animationFrameCallback: FrameRequestCallback | null = null;
+		requestAnimationFrameMock.mockImplementation((callback: FrameRequestCallback) => {
+			animationFrameCallback = callback;
+			return 19;
+		});
+		const requestVideoFrameCallback = vi.fn(() => 7);
 		const video = createMockVideo({
-			requestVideoFrameCallback: vi.fn((callback) => {
-				presentedFrameCallback = callback;
-				return 7;
-			}),
-			cancelVideoFrameCallback: vi.fn(),
+			currentTime: 0.5,
+			requestVideoFrameCallback,
 		});
 		const onPlayStateChange = vi.fn();
 		const onTimeUpdate = vi.fn();
@@ -70,44 +67,14 @@ describe("createVideoEventHandlers", () => {
 
 		handlers.handlePlay();
 		expect(onPlayStateChange).toHaveBeenCalledWith(true);
-		expect(video.requestVideoFrameCallback).toHaveBeenCalledTimes(1);
-		expect(requestAnimationFrameMock).not.toHaveBeenCalled();
+		expect(requestAnimationFrameMock).toHaveBeenCalledTimes(1);
+		expect(requestVideoFrameCallback).not.toHaveBeenCalled();
 
-		presentedFrameCallback?.(0, { mediaTime: 1.25 });
+		video.currentTime = 1.25;
+		animationFrameCallback?.(0);
 
 		expect(onTimeUpdate).toHaveBeenCalledWith(1.25);
 		expect(currentTimeRef.current).toBe(1250);
-	});
-
-	it("falls back to requestAnimationFrame when requestVideoFrameCallback is unavailable", () => {
-		let animationFrameCallback: FrameRequestCallback | null = null;
-		requestAnimationFrameMock.mockImplementation((callback: FrameRequestCallback) => {
-			animationFrameCallback = callback;
-			return 19;
-		});
-		const video = createMockVideo({ currentTime: 0.75 });
-		const onTimeUpdate = vi.fn();
-
-		const handlers = createVideoEventHandlers({
-			video,
-			isSeekingRef: createMutableRef(false),
-			isPlayingRef: createMutableRef(false),
-			allowPlaybackRef: createMutableRef(true),
-			currentTimeRef: createMutableRef(0),
-			timeUpdateAnimationRef: createMutableRef<number | null>(null),
-			onPlayStateChange: vi.fn(),
-			onTimeUpdate,
-			trimRegionsRef: createMutableRef([]),
-			speedRegionsRef: createMutableRef([]),
-		});
-
-		handlers.handlePlay();
-		expect(requestAnimationFrameMock).toHaveBeenCalledTimes(1);
-
-		video.paused = true;
-		animationFrameCallback?.(0);
-
-		expect(onTimeUpdate).toHaveBeenCalledWith(0.75);
 	});
 
 	it("skips removed footage when playback reaches a cut region", () => {
@@ -139,12 +106,8 @@ describe("createVideoEventHandlers", () => {
 		expect(onTimeUpdate).toHaveBeenLastCalledWith(2);
 	});
 
-	it("cancels a pending requestVideoFrameCallback on pause and dispose", () => {
-		const cancelVideoFrameCallback = vi.fn();
-		const video = createMockVideo({
-			requestVideoFrameCallback: vi.fn(() => 23),
-			cancelVideoFrameCallback,
-		});
+	it("cancels a pending animation frame on pause and dispose", () => {
+		const video = createMockVideo();
 		const handlers = createVideoEventHandlers({
 			video,
 			isSeekingRef: createMutableRef(false),
@@ -160,12 +123,12 @@ describe("createVideoEventHandlers", () => {
 
 		handlers.handlePlay();
 		handlers.handlePause();
-		expect(cancelVideoFrameCallback).toHaveBeenCalledWith(23);
+		expect(cancelAnimationFrameMock).toHaveBeenCalledWith(11);
 
-		cancelVideoFrameCallback.mockClear();
+		cancelAnimationFrameMock.mockClear();
 		handlers.handlePlay();
 		handlers.dispose();
-		expect(cancelVideoFrameCallback).toHaveBeenCalledWith(23);
+		expect(cancelAnimationFrameMock).toHaveBeenCalledWith(11);
 	});
 
 	it("skips removed footage after a paused seek", () => {
