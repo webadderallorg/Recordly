@@ -29,6 +29,9 @@ export function useEditorUiState(
 	const [sessionNativeCaptureUnavailable, setSessionNativeCaptureUnavailable] = useState(false);
 	const [nativeCaptureUnavailableModalOpen, setNativeCaptureUnavailableModalOpen] =
 		useState(false);
+	const [captionEngine, setCaptionEngine] = useState<"whisper" | "parakeet">(
+		initialPreferences.captionEngine ?? "whisper",
+	);
 	const [whisperExecutablePath, setWhisperExecutablePath] = useState<string | null>(
 		initialPreferences.whisperExecutablePath,
 	);
@@ -42,6 +45,19 @@ export function useEditorUiState(
 		"idle" | "downloading" | "downloaded" | "error"
 	>(initialPreferences.whisperModelPath ? "downloaded" : "idle");
 	const [whisperModelDownloadProgress, setWhisperModelDownloadProgress] = useState(0);
+	const [parakeetExecutablePath, setParakeetExecutablePath] = useState<string | null>(
+		initialPreferences.parakeetExecutablePath ?? null,
+	);
+	const [parakeetModelPath, setParakeetModelPath] = useState<string | null>(
+		initialPreferences.parakeetModelPath ?? null,
+	);
+	const [downloadedParakeetModelPath, setDownloadedParakeetModelPath] = useState<string | null>(
+		null,
+	);
+	const [parakeetModelDownloadStatus, setParakeetModelDownloadStatus] = useState<
+		"idle" | "downloading" | "downloaded" | "error"
+	>(initialPreferences.parakeetModelPath ? "downloaded" : "idle");
+	const [parakeetModelDownloadProgress, setParakeetModelDownloadProgress] = useState(0);
 	const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
 	const [previewVolume, setPreviewVolume] = useState(1);
 	const [aspectRatio, setAspectRatio] = useState<AspectRatio>(initialPreferences.aspectRatio);
@@ -125,6 +141,8 @@ export function useEditorUiState(
 		sessionNativeCaptureUnavailable,
 		nativeCaptureUnavailableModalOpen,
 		setNativeCaptureUnavailableModalOpen,
+		captionEngine,
+		setCaptionEngine,
 		whisperExecutablePath,
 		setWhisperExecutablePath,
 		whisperModelPath,
@@ -135,6 +153,16 @@ export function useEditorUiState(
 		setWhisperModelDownloadStatus,
 		whisperModelDownloadProgress,
 		setWhisperModelDownloadProgress,
+		parakeetExecutablePath,
+		setParakeetExecutablePath,
+		parakeetModelPath,
+		setParakeetModelPath,
+		downloadedParakeetModelPath,
+		setDownloadedParakeetModelPath,
+		parakeetModelDownloadStatus,
+		setParakeetModelDownloadStatus,
+		parakeetModelDownloadProgress,
+		setParakeetModelDownloadProgress,
 		isGeneratingCaptions,
 		setIsGeneratingCaptions,
 		previewVolume,

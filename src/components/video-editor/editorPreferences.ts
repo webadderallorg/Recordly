@@ -75,8 +75,11 @@ export interface EditorPresetSnapshot extends Omit<PersistedEditorControls, "web
 	cropRegion: PresetCropRegion;
 	webcam: PresetWebcamSettings;
 	autoCaptionSettings: PresetAutoCaptionSettings;
+	captionEngine?: "whisper" | "parakeet";
 	whisperExecutablePath: string | null;
 	whisperModelPath: string | null;
+	parakeetExecutablePath?: string | null;
+	parakeetModelPath?: string | null;
 }
 
 export interface EditorPreset {
@@ -93,8 +96,11 @@ export interface EditorPreferences extends PersistedEditorControls {
 	customAspectHeight: string;
 	customWallpapers: string[];
 	autoApplyFreshRecordingAutoZooms: boolean;
+	captionEngine: "whisper" | "parakeet";
 	whisperExecutablePath: string | null;
 	whisperModelPath: string | null;
+	parakeetExecutablePath: string | null;
+	parakeetModelPath: string | null;
 }
 
 export const EDITOR_PREFERENCES_STORAGE_KEY = "recordly.editor.preferences";
@@ -158,8 +164,11 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	customAspectHeight: "9",
 	customWallpapers: [],
 	autoApplyFreshRecordingAutoZooms: true,
+	captionEngine: "whisper",
 	whisperExecutablePath: null,
 	whisperModelPath: null,
+	parakeetExecutablePath: null,
+	parakeetModelPath: null,
 };
 
 function normalizeBoolean(value: unknown, fallback: boolean): boolean {
@@ -228,11 +237,17 @@ function normalizeEditorPresetSnapshot(candidate: unknown): EditorPresetSnapshot
 		webcam,
 		cropRegion: normalizedCropRegion,
 		autoCaptionSettings: normalizePresetAutoCaptionSettings(raw.autoCaptionSettings),
+		captionEngine: raw.captionEngine === "parakeet" ? "parakeet" : "whisper",
 		whisperExecutablePath:
 			normalizeNullablePath(raw.whisperExecutablePath) ??
 			normalizedPreferences.whisperExecutablePath,
 		whisperModelPath:
 			normalizeNullablePath(raw.whisperModelPath) ?? normalizedPreferences.whisperModelPath,
+		parakeetExecutablePath:
+			normalizeNullablePath(raw.parakeetExecutablePath) ??
+			normalizedPreferences.parakeetExecutablePath,
+		parakeetModelPath:
+			normalizeNullablePath(raw.parakeetModelPath) ?? normalizedPreferences.parakeetModelPath,
 	};
 }
 
@@ -462,9 +477,15 @@ export function normalizeEditorPreferences(
 			raw.autoApplyFreshRecordingAutoZooms,
 			fallback.autoApplyFreshRecordingAutoZooms,
 		),
+		captionEngine:
+			raw.captionEngine === "parakeet" ? "parakeet" : (fallback.captionEngine ?? "whisper"),
 		whisperExecutablePath:
 			normalizeNullablePath(raw.whisperExecutablePath) ?? fallback.whisperExecutablePath,
 		whisperModelPath: normalizeNullablePath(raw.whisperModelPath) ?? fallback.whisperModelPath,
+		parakeetExecutablePath:
+			normalizeNullablePath(raw.parakeetExecutablePath) ?? fallback.parakeetExecutablePath,
+		parakeetModelPath:
+			normalizeNullablePath(raw.parakeetModelPath) ?? fallback.parakeetModelPath,
 	};
 }
 

@@ -40,8 +40,12 @@ electron/native/gpu-export-probe/build/
 electron/native/nvidia-cuda-compositor/build/
 electron/native/bin/*/whisper-*
 electron/native/bin/*/whisper-runtime.json
+electron/native/bin/*/sherpa-onnx-*
+electron/native/bin/win32/
 
 # Local debug helpers
 tmp-*.ps1
 .tmp-*.ps1
 gpu-export-probe.mp4
+
+electron/native/bin/**/*.dll

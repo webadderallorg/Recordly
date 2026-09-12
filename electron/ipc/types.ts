@@ -201,3 +201,52 @@ export type WhisperJsonSegment = {
 	};
 	tokens?: unknown;
 };
+
+export type CaptionEngineType = "whisper" | "parakeet";
+
+export type SherpaOnnxRecognitionResult = {
+	text?: string;
+	lang?: string;
+	emotion?: string;
+	event?: string;
+	timestamps?: number[]; // start time in seconds
+	durations?: number[]; // duration in seconds
+	tokens?: string[];
+	ys_log_probs?: number[];
+};
+
+export type ParakeetModelStatus = {
+	success: boolean;
+	exists: boolean;
+	path: string | null;
+	error?: string;
+};
+
+export type ParakeetRuntimeStatus = {
+	success: boolean;
+	exists: boolean;
+	path: string | null;
+	error?: string;
+};
+
+export type ParakeetModelDownloadProgress = {
+	status: "idle" | "downloading" | "downloaded" | "error";
+	progress: number;
+	path?: string | null;
+	error?: string;
+	currentFile?: string;
+};
+
+export type AutoCaptionGenerateOptions = {
+	videoPath: string;
+	engine?: CaptionEngineType;
+	whisperExecutablePath?: string;
+	whisperModelPath?: string;
+	parakeetExecutablePath?: string;
+	parakeetModelPath?: string;
+	language?: string;
+	clipStartMs?: number;
+	clipEndMs?: number;
+	startSec?: number;
+	durationSec?: number;
+};

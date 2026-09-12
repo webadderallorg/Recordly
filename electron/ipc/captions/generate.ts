@@ -7,36 +7,17 @@ import { app } from "electron";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { getBundledWhisperExecutableCandidates } from "../paths/binaries";
 import { resolveRecordingSession } from "../project/session";
-import { getUsableCompanionAudioCandidates } from "../recording/diagnostics";
+import {
+	getCompanionAudioStartDelayMs,
+	getUsableCompanionAudioCandidates,
+} from "../recording/diagnostics";
 import { normalizeVideoSourcePath } from "../utils";
 import { getCaptionCompanionAudioCandidates } from "./audioCandidates";
-import { parseSrtCues, parseWhisperJsonCues, shouldRetryWhisperWithoutJson } from "./parser";
-import { isMissingWindowsWhisperRuntimeDependency } from "./runtimeErrors";
 import { segmentCuesIntoPhrases } from "./segment";
-import {
-	parseSilenceIntervals,
-	SILENCE_DETECT_MIN_S,
-	SILENCE_NOISE_DB,
-	type SilenceInterval,
-} from "./silence";
+import { getTranscriptionEngine } from "./engine";
+import { detectSilenceIntervals } from "./silence";
 
 const execFileAsync = promisify(execFile);
-
-async function executeWhisper(whisperExecutablePath: string, args: string[]) {
-	try {
-		await execFileAsync(whisperExecutablePath, args, {
-			timeout: 30 * 60 * 1000,
-			maxBuffer: 20 * 1024 * 1024,
-		});
-	} catch (error) {
-		if (isMissingWindowsWhisperRuntimeDependency(error)) {
-			throw new Error(
-				"Whisper could not start because the Microsoft Visual C++ x64 Redistributable is missing. Install it from https://aka.ms/vc14/vc_redist.x64.exe, then restart Recordly.",
-			);
-		}
-		throw error;
-	}
-}
 
 export async function ensureReadableFile(filePath: string, options?: { executable?: boolean }) {
 	await fs.access(filePath, fsConstants.R_OK);
@@ -128,11 +109,23 @@ export async function resolveCaptionAudioCandidates(videoPath: string) {
 	return candidates;
 }
 
+export interface ExtractedCaptionAudioResult {
+	path: string;
+	label: string;
+	startDelayMs: number;
+	audioStartMs: number;
+	effectiveTimelineOffsetMs: number;
+}
+
 export async function extractCaptionAudioSource(options: {
 	videoPath: string;
 	ffmpegPath: string;
 	wavPath: string;
-}) {
+	startSec?: number;
+	durationSec?: number;
+	clipStartMs?: number;
+	clipEndMs?: number;
+}): Promise<ExtractedCaptionAudioResult> {
 	const candidates = await resolveCaptionAudioCandidates(options.videoPath);
 	const attemptedCandidates: Array<{
 		path: string;
@@ -142,30 +135,75 @@ export async function extractCaptionAudioSource(options: {
 		error?: string;
 	}> = [];
 
+	const requestedClipStartMs =
+		typeof options.clipStartMs === "number" &&
+		Number.isFinite(options.clipStartMs) &&
+		options.clipStartMs > 0
+			? Math.round(options.clipStartMs)
+			: typeof options.startSec === "number" &&
+					Number.isFinite(options.startSec) &&
+					options.startSec > 0
+				? Math.round(options.startSec * 1000)
+				: 0;
+
+	const requestedClipEndMs =
+		typeof options.clipEndMs === "number" &&
+		Number.isFinite(options.clipEndMs) &&
+		options.clipEndMs > requestedClipStartMs
+			? Math.round(options.clipEndMs)
+			: typeof options.durationSec === "number" &&
+					Number.isFinite(options.durationSec) &&
+					options.durationSec > 0
+				? requestedClipStartMs + Math.round(options.durationSec * 1000)
+				: undefined;
+
 	for (const candidate of candidates) {
 		try {
 			await ensureReadableFile(candidate.path);
-			await execFileAsync(
-				options.ffmpegPath,
-				[
-					"-y",
-					"-i",
-					candidate.path,
-					"-map",
-					"0:a:0",
-					"-vn",
-					"-ac",
-					"1",
-					"-ar",
-					"16000",
-					"-c:a",
-					"pcm_s16le",
-					options.wavPath,
-				],
-				{ timeout: 5 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 },
-			);
+			const startDelayMs = (await getCompanionAudioStartDelayMs(candidate.path)) ?? 0;
+			const audioStartMs = Math.max(0, requestedClipStartMs - startDelayMs);
+			const audioStartSec = audioStartMs > 0 ? audioStartMs / 1000 : undefined;
+
+			let audioDurationSec: number | undefined;
+			if (typeof requestedClipEndMs === "number") {
+				const audioEndMs = Math.max(0, requestedClipEndMs - startDelayMs);
+				if (audioEndMs > audioStartMs) {
+					audioDurationSec = (audioEndMs - audioStartMs) / 1000;
+				}
+			}
+
+			const ffmpegArgs = [
+				"-y",
+				...(typeof audioStartSec === "number" ? ["-ss", audioStartSec.toFixed(3)] : []),
+				"-i",
+				candidate.path,
+				...(typeof audioDurationSec === "number"
+					? ["-t", audioDurationSec.toFixed(3)]
+					: []),
+				"-map",
+				"0:a:0",
+				"-vn",
+				"-ac",
+				"1",
+				"-ar",
+				"16000",
+				"-af",
+				"aresample=16000:async=1:first_pts=0,asetpts=PTS-STARTPTS",
+				"-c:a",
+				"pcm_s16le",
+				options.wavPath,
+			];
+			await execFileAsync(options.ffmpegPath, ffmpegArgs, {
+				timeout: 5 * 60 * 1000,
+				maxBuffer: 20 * 1024 * 1024,
+			});
 			attemptedCandidates.push({ ...candidate, readable: true, extractedAudio: true });
-			return candidate;
+			return {
+				...candidate,
+				startDelayMs,
+				audioStartMs,
+				effectiveTimelineOffsetMs: startDelayMs + audioStartMs,
+			};
 		} catch (error) {
 			attemptedCandidates.push({
 				...candidate,
@@ -186,35 +224,20 @@ export async function extractCaptionAudioSource(options: {
 	);
 }
 
-export async function detectSilenceIntervals(options: {
-	ffmpegPath: string;
-	wavPath: string;
-}): Promise<SilenceInterval[]> {
-	// ffmpeg writes silencedetect results to stderr; the null muxer just runs the filter.
-	const { stderr } = await execFileAsync(
-		options.ffmpegPath,
-		[
-			"-hide_banner",
-			"-nostats",
-			"-i",
-			options.wavPath,
-			"-af",
-			`silencedetect=noise=${SILENCE_NOISE_DB}dB:d=${SILENCE_DETECT_MIN_S}`,
-			"-f",
-			"null",
-			"-",
-		],
-		{ timeout: 5 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 },
-	);
-
-	return parseSilenceIntervals(stderr ?? "");
-}
+export { detectSilenceIntervals };
 
 export async function generateAutoCaptionsFromVideo(options: {
 	videoPath: string;
+	engine?: "whisper" | "parakeet";
 	whisperExecutablePath?: string;
-	whisperModelPath: string;
+	whisperModelPath?: string;
+	parakeetExecutablePath?: string;
+	parakeetModelPath?: string;
 	language?: string;
+	startSec?: number;
+	durationSec?: number;
+	clipStartMs?: number;
+	clipEndMs?: number;
 }) {
 	const ffmpegPath = getFfmpegBinaryPath();
 	const normalizedVideoPath = normalizeVideoSourcePath(options.videoPath);
@@ -222,85 +245,72 @@ export async function generateAutoCaptionsFromVideo(options: {
 		throw new Error("Missing source video path.");
 	}
 
-	const whisperExecutablePath = await resolveWhisperExecutablePath(options.whisperExecutablePath);
-	const whisperModelPath = path.resolve(options.whisperModelPath);
-	await ensureReadableFile(whisperExecutablePath, { executable: true });
-	await ensureReadableFile(whisperModelPath);
+	const clipStartMs =
+		typeof options.clipStartMs === "number" &&
+		Number.isFinite(options.clipStartMs) &&
+		options.clipStartMs > 0
+			? Math.round(options.clipStartMs)
+			: typeof options.startSec === "number" &&
+					Number.isFinite(options.startSec) &&
+					options.startSec > 0
+				? Math.round(options.startSec * 1000)
+				: 0;
+
+	const startSec = clipStartMs > 0 ? clipStartMs / 1000 : undefined;
+	const durationSec =
+		typeof options.clipEndMs === "number" &&
+		Number.isFinite(options.clipEndMs) &&
+		options.clipEndMs > clipStartMs
+			? (options.clipEndMs - clipStartMs) / 1000
+			: typeof options.durationSec === "number" &&
+					Number.isFinite(options.durationSec) &&
+					options.durationSec > 0
+				? options.durationSec
+				: undefined;
+
+	const engineType = options.engine ?? "whisper";
+	const transcriptionEngine = getTranscriptionEngine(engineType);
 
 	const tempBase = path.join(
 		app.getPath("temp"),
 		`recordly-captions-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 	);
 	const wavPath = `${tempBase}.wav`;
-	const outputBase = `${tempBase}-whisper`;
-	const srtPath = `${outputBase}.srt`;
-	const jsonPath = `${outputBase}.json`;
 
 	try {
 		const audioSource = await extractCaptionAudioSource({
 			videoPath: normalizedVideoPath,
 			ffmpegPath,
 			wavPath,
+			startSec,
+			durationSec,
+			clipStartMs,
+			clipEndMs: options.clipEndMs,
 		});
 
-		const language =
-			options.language && options.language.trim() ? options.language.trim() : "auto";
-		const whisperBaseArgs = [
-			"-m",
-			whisperModelPath,
-			"-f",
-			wavPath,
-			"-osrt",
-			"-of",
-			outputBase,
-			"-l",
-			language,
-			"-np",
-		];
+		const transcriptionResult = await transcriptionEngine.transcribe({
+			videoPath: normalizedVideoPath,
+			audioWavPath: wavPath,
+			language: options.language,
+			executablePath:
+				engineType === "parakeet"
+					? options.parakeetExecutablePath
+					: options.whisperExecutablePath,
+			modelPath:
+				engineType === "parakeet" ? options.parakeetModelPath : options.whisperModelPath,
+		});
 
-		let jsonEnabled = true;
-		try {
-			await executeWhisper(whisperExecutablePath, [...whisperBaseArgs, "-ojf"]);
-		} catch (error) {
-			if (!shouldRetryWhisperWithoutJson(error)) {
-				throw error;
-			}
-
-			jsonEnabled = false;
-			console.warn(
-				"[auto-captions] Whisper runtime does not support JSON full output, retrying with SRT only:",
-				error,
-			);
-			await executeWhisper(whisperExecutablePath, whisperBaseArgs);
-		}
-
-		const timedCues = jsonEnabled
-			? parseWhisperJsonCues(await fs.readFile(jsonPath, "utf-8"))
-			: [];
-		if (jsonEnabled && timedCues.length === 0) {
-			// JSON ran but yielded no word-timed cues (empty/malformed output). We fall back
-			// to SRT, which has no word timings — captions are then split by sentence text and
-			// silence rather than precise word timing. Surface it for diagnosis.
-			console.warn(
-				"[auto-captions] Whisper JSON produced no word-timed cues; falling back to SRT (no word timings).",
-			);
-		}
-		const cues =
-			timedCues.length > 0 ? timedCues : parseSrtCues(await fs.readFile(srtPath, "utf-8"));
+		const cues = transcriptionResult.cues;
 		if (cues.length === 0) {
-			throw new Error("Whisper completed, but no caption cues were produced.");
+			throw new Error(
+				`${transcriptionEngine.name} completed, but no caption cues were produced.`,
+			);
 		}
 
-		// Whisper cues run sentences together and don't break on pauses. Re-segment them
-		// into one caption per sentence/phrase using Whisper's own word stream (punctuation
-		// + pauses), backed by ground-truth acoustic silence (ffmpeg `silencedetect`).
-		// Failure here must not block caption generation — fall back to raw.
+		// Re-segment raw cues into phrases using ground-truth acoustic silence
 		let cuesToReturn = cues;
 		try {
 			const silences = await detectSilenceIntervals({ ffmpegPath, wavPath });
-			// An empty result is a valid resegmentation (e.g. every transcribed word fell
-			// inside a long detected silence and was dropped as a hallucination), so take it
-			// as-is. Only a thrown exception should fall back to the raw cues.
 			cuesToReturn = segmentCuesIntoPhrases(cues, silences);
 		} catch (error) {
 			console.warn(
@@ -309,15 +319,31 @@ export async function generateAutoCaptionsFromVideo(options: {
 			);
 		}
 
+		// Shift cue timestamps to match timeline coordinate space
+		// (accounting for clip start and companion audio start delay)
+		if (audioSource.effectiveTimelineOffsetMs > 0) {
+			const offsetMs = audioSource.effectiveTimelineOffsetMs;
+			cuesToReturn = cuesToReturn.map((cue) => {
+				const words = cue.words?.map((word) => ({
+					...word,
+					startMs: word.startMs + offsetMs,
+					endMs: word.endMs + offsetMs,
+				}));
+				return {
+					...cue,
+					startMs: cue.startMs + offsetMs,
+					endMs: cue.endMs + offsetMs,
+					...(words ? { words } : {}),
+				};
+			});
+		}
+
 		return {
 			cues: cuesToReturn,
 			audioSourceLabel: audioSource.label,
+			engine: engineType,
 		};
 	} finally {
-		await Promise.allSettled([
-			fs.rm(wavPath, { force: true }),
-			fs.rm(srtPath, { force: true }),
-			fs.rm(jsonPath, { force: true }),
-		]);
+		await fs.rm(wavPath, { force: true }).catch(() => undefined);
 	}
 }

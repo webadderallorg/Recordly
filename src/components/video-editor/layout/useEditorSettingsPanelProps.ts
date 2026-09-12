@@ -33,6 +33,11 @@ type Input = {
 	whisperModelPath: string | null;
 	whisperModelDownloadStatus: "idle" | "downloading" | "downloaded" | "error";
 	whisperModelDownloadProgress: number;
+	captionEngine: "whisper" | "parakeet";
+	parakeetExecutablePath: string | null;
+	parakeetModelPath: string | null;
+	parakeetModelDownloadStatus: "idle" | "downloading" | "downloaded" | "error";
+	parakeetModelDownloadProgress: number;
 	isGeneratingCaptions: boolean;
 	sessionNativeCaptureUnavailable: boolean;
 	setNativeCaptureUnavailableModalOpen: Dispatch<SetStateAction<boolean>>;
@@ -62,6 +67,11 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		whisperModelPath,
 		whisperModelDownloadStatus,
 		whisperModelDownloadProgress,
+		captionEngine,
+		parakeetExecutablePath,
+		parakeetModelPath,
+		parakeetModelDownloadStatus,
+		parakeetModelDownloadProgress,
 		isGeneratingCaptions,
 		sessionNativeCaptureUnavailable,
 		setNativeCaptureUnavailableModalOpen,
@@ -195,14 +205,22 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		annotationRegions: timeline.annotationRegions,
 		autoCaptions: timeline.autoCaptions,
 		autoCaptionSettings: timeline.autoCaptionSettings,
+		captionEngine,
+		onCaptionEngineChange: autoCaptionController.setCaptionEngine,
 		whisperExecutablePath,
 		whisperModelPath,
 		whisperModelDownloadStatus,
 		whisperModelDownloadProgress,
+		parakeetExecutablePath,
+		parakeetModelPath,
+		parakeetModelDownloadStatus,
+		parakeetModelDownloadProgress,
 		isGeneratingCaptions,
 		onAutoCaptionSettingsChange: timeline.setAutoCaptionSettings,
 		onPickWhisperExecutable: autoCaptionController.handlePickWhisperExecutable,
 		onPickWhisperModel: autoCaptionController.handlePickWhisperModel,
+		onPickParakeetExecutable: autoCaptionController.handlePickParakeetExecutable,
+		onPickParakeetModel: autoCaptionController.handlePickParakeetModel,
 		onGenerateAutoCaptions: autoCaptionController.handleGenerateAutoCaptions,
 		onClearAutoCaptions: captionCommands.handleClearAutoCaptions,
 		captionCurrentTimeMs: Math.round(currentTime * 1000),
@@ -215,6 +233,8 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onCaptionDelete: captionCommands.handleCaptionDelete,
 		onDownloadWhisperSmallModel: autoCaptionController.handleDownloadWhisperSmallModel,
 		onDeleteWhisperSmallModel: autoCaptionController.handleDeleteWhisperSmallModel,
+		onDownloadParakeetModel: autoCaptionController.handleDownloadParakeetModel,
+		onDeleteParakeetModel: autoCaptionController.handleDeleteParakeetModel,
 		nativeCaptureUnavailableSession: sessionNativeCaptureUnavailable,
 		onOpenNativeCaptureUnavailableModal: () => setNativeCaptureUnavailableModalOpen(true),
 		onAnnotationContentChange: annotationCommands.handleAnnotationContentChange,

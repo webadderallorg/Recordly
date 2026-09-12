@@ -13,10 +13,16 @@ type Input = {
 	exportSettings: ReturnType<typeof useExportSettings>;
 	aspectRatio: AspectRatio;
 	setAspectRatio: Dispatch<SetStateAction<AspectRatio>>;
+	captionEngine?: "whisper" | "parakeet";
+	setCaptionEngine?: Dispatch<SetStateAction<"whisper" | "parakeet">>;
 	whisperExecutablePath: string | null;
 	setWhisperExecutablePath: Dispatch<SetStateAction<string | null>>;
 	whisperModelPath: string | null;
 	setWhisperModelPath: Dispatch<SetStateAction<string | null>>;
+	parakeetExecutablePath?: string | null;
+	setParakeetExecutablePath?: Dispatch<SetStateAction<string | null>>;
+	parakeetModelPath?: string | null;
+	setParakeetModelPath?: Dispatch<SetStateAction<string | null>>;
 };
 
 export function useVideoEditorPresets({
@@ -26,10 +32,16 @@ export function useVideoEditorPresets({
 	exportSettings,
 	aspectRatio,
 	setAspectRatio,
+	captionEngine,
+	setCaptionEngine,
 	whisperExecutablePath,
 	setWhisperExecutablePath,
 	whisperModelPath,
 	setWhisperModelPath,
+	parakeetExecutablePath,
+	setParakeetExecutablePath,
+	parakeetModelPath,
+	setParakeetModelPath,
 }: Input) {
 	const [editorPresets, setEditorPresets] = useState(() => loadEditorPresets());
 	const [activeEditorPresetId, setActiveEditorPresetId] = useState<string | null>(null);
@@ -91,16 +103,22 @@ export function useVideoEditorPresets({
 			gifLoop: exportSettings.gifLoop,
 			gifSizePreset: exportSettings.gifSizePreset,
 			autoCaptionSettings: { ...timeline.autoCaptionSettings },
+			captionEngine,
 			whisperExecutablePath,
 			whisperModelPath,
+			parakeetExecutablePath,
+			parakeetModelPath,
 		}),
 		[
 			appearance,
 			timeline.autoCaptionSettings,
 			exportSettings,
 			aspectRatio,
+			captionEngine,
 			whisperExecutablePath,
 			whisperModelPath,
+			parakeetExecutablePath,
+			parakeetModelPath,
 		],
 	);
 
@@ -161,16 +179,28 @@ export function useVideoEditorPresets({
 			exportSettings.setGifLoop(snapshot.gifLoop);
 			exportSettings.setGifSizePreset(snapshot.gifSizePreset);
 			timeline.setAutoCaptionSettings({ ...snapshot.autoCaptionSettings });
+			if (snapshot.captionEngine && setCaptionEngine) {
+				setCaptionEngine(snapshot.captionEngine);
+			}
 			setWhisperExecutablePath(snapshot.whisperExecutablePath);
 			setWhisperModelPath(snapshot.whisperModelPath);
+			if (snapshot.parakeetExecutablePath !== undefined && setParakeetExecutablePath) {
+				setParakeetExecutablePath(snapshot.parakeetExecutablePath);
+			}
+			if (snapshot.parakeetModelPath !== undefined && setParakeetModelPath) {
+				setParakeetModelPath(snapshot.parakeetModelPath);
+			}
 		},
 		[
 			appearance,
 			exportSettings,
 			timeline,
 			setAspectRatio,
+			setCaptionEngine,
 			setWhisperExecutablePath,
 			setWhisperModelPath,
+			setParakeetExecutablePath,
+			setParakeetModelPath,
 		],
 	);
 

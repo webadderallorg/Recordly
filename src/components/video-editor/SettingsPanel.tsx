@@ -628,18 +628,28 @@ interface SettingsPanelProps {
 	onAnnotationDelete?: (id: string) => void;
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
+	captionEngine?: "whisper" | "parakeet";
+	onCaptionEngineChange?: (engine: "whisper" | "parakeet") => void;
 	whisperExecutablePath?: string | null;
 	whisperModelPath?: string | null;
 	whisperModelDownloadStatus?: "idle" | "downloading" | "downloaded" | "error";
 	whisperModelDownloadProgress?: number;
+	parakeetExecutablePath?: string | null;
+	parakeetModelPath?: string | null;
+	parakeetModelDownloadStatus?: "idle" | "downloading" | "downloaded" | "error";
+	parakeetModelDownloadProgress?: number;
 	isGeneratingCaptions?: boolean;
 	onAutoCaptionSettingsChange?: (settings: AutoCaptionSettings) => void;
 	onPickWhisperExecutable?: () => void;
 	onPickWhisperModel?: () => void;
+	onPickParakeetExecutable?: () => void;
+	onPickParakeetModel?: () => void;
 	onGenerateAutoCaptions?: () => void;
 	onClearAutoCaptions?: () => void;
 	onDownloadWhisperSmallModel?: () => void;
 	onDeleteWhisperSmallModel?: () => void;
+	onDownloadParakeetModel?: () => void;
+	onDeleteParakeetModel?: () => void;
 	captionCurrentTimeMs?: number;
 	selectedCaptionId?: string | null;
 	onBeginCaptionEdit?: (id: string) => void;
@@ -1076,16 +1086,24 @@ export function SettingsPanel({
 	onAnnotationDelete,
 	autoCaptions = [],
 	autoCaptionSettings = DEFAULT_AUTO_CAPTION_SETTINGS,
+	captionEngine = "whisper",
+	onCaptionEngineChange,
 	whisperModelPath,
 	whisperModelDownloadStatus = "idle",
 	whisperModelDownloadProgress = 0,
+	parakeetModelPath,
+	parakeetModelDownloadStatus = "idle",
+	parakeetModelDownloadProgress = 0,
 	isGeneratingCaptions = false,
 	onAutoCaptionSettingsChange,
 	onPickWhisperModel,
+	onPickParakeetModel,
 	onGenerateAutoCaptions,
 	onClearAutoCaptions,
 	onDownloadWhisperSmallModel,
 	onDeleteWhisperSmallModel,
+	onDownloadParakeetModel,
+	onDeleteParakeetModel,
 	captionCurrentTimeMs = 0,
 	selectedCaptionId = null,
 	onBeginCaptionEdit,
@@ -2302,81 +2320,188 @@ export function SettingsPanel({
 			</div>
 
 			<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2 space-y-3">
-				<div>
-					<Button
-						type="button"
-						variant="outline"
-						onClick={onPickWhisperModel}
-						className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
-					>
-						{tSettings("captions.selectModel", "Select Model")}
-					</Button>
-				</div>
 				<div className="flex items-center justify-between gap-3">
 					<div className="text-sm font-medium text-foreground">
-						{tSettings("captions.language", "Language")}
+						{tSettings("captions.engine", "Engine")}
 					</div>
 					<Select
-						value={autoCaptionSettings.language || "auto"}
-						onValueChange={(value) => updateAutoCaptionSettings({ language: value })}
+						value={captionEngine}
+						onValueChange={(value) =>
+							onCaptionEngineChange?.(value as "whisper" | "parakeet")
+						}
 					>
 						<SelectTrigger className="h-10 w-[180px] rounded-xl border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent className="border-foreground/10 bg-editor-surface-alt text-foreground">
-							{CAPTION_LANGUAGE_OPTIONS.map((option) => (
-								<SelectItem key={option.value} value={option.value}>
-									{option.label}
-								</SelectItem>
-							))}
+							<SelectItem value="whisper">Whisper (cpp)</SelectItem>
+							<SelectItem value="parakeet">NVIDIA Parakeet (TDT)</SelectItem>
 						</SelectContent>
 					</Select>
 				</div>
-				<div className="flex flex-wrap items-center gap-2">
-					<div className="grid w-full grid-cols-2 gap-2">
-						{whisperModelDownloadStatus === "downloading" ? (
-							<Button
-								type="button"
-								disabled
-								className="h-10 w-full rounded-xl bg-foreground/10 px-4 text-sm font-medium text-foreground hover:bg-foreground/10"
-							>
-								{tSettings("captions.downloading", "Downloading...")}{" "}
-								{Math.round(whisperModelDownloadProgress)}%
-							</Button>
-						) : whisperModelPath ? (
+
+				{captionEngine === "whisper" ? (
+					<>
+						<div>
 							<Button
 								type="button"
 								variant="outline"
-								onClick={onDeleteWhisperSmallModel}
+								onClick={onPickWhisperModel}
 								className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
 							>
-								{tSettings("captions.deleteModel", "Delete Model")}
+								{tSettings("captions.selectModel", "Select Model")}
 							</Button>
-						) : (
+						</div>
+						<div className="flex items-center justify-between gap-3">
+							<div className="text-sm font-medium text-foreground">
+								{tSettings("captions.language", "Language")}
+							</div>
+							<Select
+								value={autoCaptionSettings.language || "auto"}
+								onValueChange={(value) =>
+									updateAutoCaptionSettings({ language: value })
+								}
+							>
+								<SelectTrigger className="h-10 w-[180px] rounded-xl border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent className="border-foreground/10 bg-editor-surface-alt text-foreground">
+									{CAPTION_LANGUAGE_OPTIONS.map((option) => (
+										<SelectItem key={option.value} value={option.value}>
+											{option.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+						<div className="flex flex-wrap items-center gap-2">
+							<div className="grid w-full grid-cols-2 gap-2">
+								{whisperModelDownloadStatus === "downloading" ? (
+									<Button
+										type="button"
+										disabled
+										className="h-10 w-full rounded-xl bg-foreground/10 px-4 text-sm font-medium text-foreground hover:bg-foreground/10"
+									>
+										{tSettings("captions.downloading", "Downloading...")}{" "}
+										{Math.round(whisperModelDownloadProgress)}%
+									</Button>
+								) : whisperModelPath ? (
+									<Button
+										type="button"
+										variant="outline"
+										onClick={onDeleteWhisperSmallModel}
+										className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
+									>
+										{tSettings("captions.deleteModel", "Delete Model")}
+									</Button>
+								) : (
+									<Button
+										type="button"
+										onClick={onDownloadWhisperSmallModel}
+										className="h-10 w-full rounded-xl bg-[#2563EB] px-4 text-sm font-medium text-white hover:bg-[#2563EB]/90"
+									>
+										{tSettings("captions.downloadModel", "Download Model")}
+									</Button>
+								)}
+								<Button
+									type="button"
+									variant="outline"
+									onClick={onClearAutoCaptions}
+									disabled={captionCueCount === 0}
+									className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+								>
+									{tSettings("captions.clearFull", "Clear Captions")}
+								</Button>
+							</div>
+						</div>
+						{whisperModelDownloadStatus === "downloading" ? (
+							<div className="h-2 overflow-hidden rounded-full bg-foreground/5">
+								<div
+									className="h-full rounded-full bg-[#2196f3] transition-all"
+									style={{ width: `${whisperModelDownloadProgress}%` }}
+								/>
+							</div>
+						) : null}
+					</>
+				) : (
+					<>
+						<div>
 							<Button
 								type="button"
-								onClick={onDownloadWhisperSmallModel}
-								className="h-10 w-full rounded-xl bg-[#2563EB] px-4 text-sm font-medium text-white hover:bg-[#2563EB]/90"
+								variant="outline"
+								onClick={onPickParakeetModel}
+								className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
 							>
-								{tSettings("captions.downloadModel", "Download Model")}
+								{tSettings("captions.selectParakeetModel", "Select Model Folder")}
 							</Button>
-						)}
-						<Button
-							type="button"
-							variant="outline"
-							onClick={onClearAutoCaptions}
-							disabled={captionCueCount === 0}
-							className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
-						>
-							{tSettings("captions.clearFull", "Clear Captions")}
-						</Button>
-					</div>
-				</div>
+						</div>
+						<div className="flex items-center justify-between gap-3">
+							<div className="text-sm font-medium text-foreground">
+								{tSettings("captions.modelInfo", "Model")}
+							</div>
+							<div className="text-xs text-muted-foreground font-mono">
+								{tSettings("captions.parakeetModelName", "Parakeet-TDT 0.6B v3")}
+							</div>
+						</div>
+						<div className="flex flex-wrap items-center gap-2">
+							<div className="grid w-full grid-cols-2 gap-2">
+								{parakeetModelDownloadStatus === "downloading" ? (
+									<Button
+										type="button"
+										disabled
+										className="h-10 w-full rounded-xl bg-foreground/10 px-4 text-sm font-medium text-foreground hover:bg-foreground/10"
+									>
+										{tSettings("captions.downloading", "Downloading...")}{" "}
+										{Math.round(parakeetModelDownloadProgress)}%
+									</Button>
+								) : parakeetModelPath ? (
+									<Button
+										type="button"
+										variant="outline"
+										onClick={onDeleteParakeetModel}
+										className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground"
+									>
+										{tSettings("captions.deleteModel", "Delete Model")}
+									</Button>
+								) : (
+									<Button
+										type="button"
+										onClick={onDownloadParakeetModel}
+										className="h-10 w-full rounded-xl bg-[#2563EB] px-4 text-sm font-medium text-white hover:bg-[#2563EB]/90"
+									>
+										{tSettings("captions.downloadModel", "Download Model")}
+									</Button>
+								)}
+								<Button
+									type="button"
+									variant="outline"
+									onClick={onClearAutoCaptions}
+									disabled={captionCueCount === 0}
+									className="h-10 w-full rounded-xl border-foreground/10 bg-foreground/5 px-4 text-sm text-foreground hover:bg-foreground/10 hover:text-foreground disabled:opacity-50"
+								>
+									{tSettings("captions.clearFull", "Clear Captions")}
+								</Button>
+							</div>
+						</div>
+						{parakeetModelDownloadStatus === "downloading" ? (
+							<div className="h-2 overflow-hidden rounded-full bg-foreground/5">
+								<div
+									className="h-full rounded-full bg-[#2196f3] transition-all"
+									style={{ width: `${parakeetModelDownloadProgress}%` }}
+								/>
+							</div>
+						) : null}
+					</>
+				)}
+
 				<div className="flex flex-col gap-2">
 					<Button
 						type="button"
 						onClick={onGenerateAutoCaptions}
-						disabled={isGeneratingCaptions || !whisperModelPath}
+						disabled={
+							isGeneratingCaptions ||
+							(captionEngine === "parakeet" ? !parakeetModelPath : !whisperModelPath)
+						}
 						className="h-10 w-full rounded-xl bg-[#2563EB] px-4 text-sm font-medium text-white hover:bg-[#2563EB]/90 disabled:opacity-60"
 					>
 						{isGeneratingCaptions
@@ -2397,14 +2522,6 @@ export function SettingsPanel({
 						</div>
 					) : null}
 				</div>
-				{whisperModelDownloadStatus === "downloading" ? (
-					<div className="h-2 overflow-hidden rounded-full bg-foreground/5">
-						<div
-							className="h-full rounded-full bg-[#2196f3] transition-all"
-							style={{ width: `${whisperModelDownloadProgress}%` }}
-						/>
-					</div>
-				) : null}
 			</div>
 
 			<div className="flex flex-col gap-1.5">
