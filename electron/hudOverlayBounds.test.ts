@@ -21,18 +21,26 @@ describe("getHudOverlayWindowBounds", () => {
 	it("uses a bottom-centered compact fallback when mouse passthrough is unavailable", () => {
 		expect(getHudOverlayWindowBounds(workArea, false)).toEqual({
 			x: 650,
-			y: 920,
+			y: 520,
 			width: 860,
-			height: 160,
+			height: 560,
 		});
+	});
+
+	it("reserves enough compact height for a full-height HUD menu", () => {
+		// The menu card is capped at 400px and sits above roughly 96px of bar and
+		// padding plus 16px of offsets. If the compact window is shorter than that
+		// the menu is clipped by the window bounds, which is the bug this guards.
+		const compact = getHudOverlayWindowBounds(workArea, false);
+		expect(compact.height).toBeGreaterThanOrEqual(400 + 16 + 96);
 	});
 
 	it("expands the non-passthrough fallback for HUD menus and hover interaction", () => {
 		expect(getHudOverlayWindowBounds(workArea, false, true)).toEqual({
 			x: 650,
-			y: 540,
+			y: 400,
 			width: 860,
-			height: 540,
+			height: 680,
 		});
 	});
 
@@ -49,9 +57,9 @@ describe("getHudOverlayWindowBounds", () => {
 			),
 		).toEqual({
 			x: -100,
-			y: 280,
+			y: 20,
 			width: 640,
-			height: 160,
+			height: 420,
 		});
 	});
 
@@ -98,9 +106,9 @@ describe("resizeHudOverlayFallbackBounds", () => {
 			),
 		).toEqual({
 			x: 420,
-			y: 320,
+			y: 180,
 			width: 860,
-			height: 540,
+			height: 680,
 		});
 	});
 
@@ -110,17 +118,17 @@ describe("resizeHudOverlayFallbackBounds", () => {
 				workArea,
 				{
 					x: 420,
-					y: 320,
+					y: 180,
 					width: 860,
-					height: 540,
+					height: 680,
 				},
 				false,
 			),
 		).toEqual({
 			x: 420,
-			y: 700,
+			y: 300,
 			width: 860,
-			height: 160,
+			height: 560,
 		});
 	});
 
@@ -138,9 +146,9 @@ describe("resizeHudOverlayFallbackBounds", () => {
 			),
 		).toEqual({
 			x: 1060,
-			y: 520,
+			y: 380,
 			width: 860,
-			height: 540,
+			height: 680,
 		});
 	});
 });
