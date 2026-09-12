@@ -74,6 +74,24 @@ describe("timeline model", () => {
 		});
 	});
 
+	it("keeps a split clip's sourceSpan in source coordinates", () => {
+		const items = buildTimelineItems({
+			zoomRegions: [],
+			// The right half of a 2x clip split at timeline 10s: it still sits at
+			// 10s but reads from 20s.
+			clipRegions: [
+				{ id: "c1", startMs: 10_000, endMs: 60_000, sourceStartMs: 20_000, speed: 2 },
+			],
+			annotationRegions: [],
+			audioRegions: [],
+		});
+
+		expect(items[0]).toMatchObject({
+			span: { start: 10_000, end: 60_000 },
+			sourceSpan: { start: 20_000, end: 120_000 },
+		});
+	});
+
 	it("builds all variant labels for annotation and audio", () => {
 		expect(getAnnotationLabel({ ...BASE_ANNOTATION, type: "text", content: "   " })).toBe(
 			"Empty text",

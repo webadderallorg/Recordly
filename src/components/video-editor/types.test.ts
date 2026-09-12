@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { deriveNextId } from "./projectPersistence";
 
 import {
+	type ClipRegion,
+	clipsToTrims,
 	extendAutoFullTrackClip,
 	findClipAtTimelineTime,
 	getTimelineDurationMs,
@@ -178,5 +180,45 @@ describe("getTimelineDurationMs", () => {
 		expect(
 			getTimelineDurationMs([{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }], 10_000),
 		).toBe(10_000);
+	});
+});
+
+describe("clipsToTrims", () => {
+	it("trims the source ranges no clip covers", () => {
+		const clips: ClipRegion[] = [
+			{ id: "clip-1", startMs: 0, endMs: 10_000, speed: 1 },
+			{ id: "clip-2", startMs: 10_000, endMs: 20_000, sourceStartMs: 30_000, speed: 1 },
+		];
+
+		expect(clipsToTrims(clips, 60_000)).toEqual([
+			{ id: "trim-gap-1", startMs: 10_000, endMs: 30_000 },
+			{ id: "trim-gap-2", startMs: 40_000, endMs: 60_000 },
+		]);
+	});
+
+	it("covers source ranges that sit out of order on the timeline", () => {
+		// A moved clip keeps its source in-point, so the clip that comes first on
+		// the timeline can read from later in the recording.
+		const clips: ClipRegion[] = [
+			{ id: "clip-1", startMs: 0, endMs: 10_000, sourceStartMs: 20_000, speed: 1 },
+			{ id: "clip-2", startMs: 10_000, endMs: 20_000, sourceStartMs: 0, speed: 1 },
+		];
+
+		// Source [0,10] and [20,30] are both in use; only the gaps go.
+		expect(clipsToTrims(clips, 40_000)).toEqual([
+			{ id: "trim-gap-1", startMs: 10_000, endMs: 20_000 },
+			{ id: "trim-gap-2", startMs: 30_000, endMs: 40_000 },
+		]);
+	});
+
+	it("merges overlapping source spans instead of trimming between them", () => {
+		const clips: ClipRegion[] = [
+			{ id: "clip-1", startMs: 0, endMs: 20_000, sourceStartMs: 0, speed: 1 },
+			{ id: "clip-2", startMs: 20_000, endMs: 30_000, sourceStartMs: 10_000, speed: 1 },
+		];
+
+		expect(clipsToTrims(clips, 40_000)).toEqual([
+			{ id: "trim-gap-1", startMs: 20_000, endMs: 40_000 },
+		]);
 	});
 });

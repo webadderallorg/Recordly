@@ -5,7 +5,7 @@ import { toFileUrl } from "../projectPersistence";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
-import { getClipSourceEndMs, type SpeedRegion } from "../types";
+import { getClipSourceEndMs, getClipSourceStartMs, type SpeedRegion } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 
 type Input = {
@@ -180,7 +180,7 @@ export function useProjectLibraryController({
 							.filter((clip) => clip.speed !== 1)
 							.map((clip) => ({
 								id: `clip-speed-${clip.id}`,
-								startMs: clip.startMs,
+								startMs: getClipSourceStartMs(clip),
 								endMs: getClipSourceEndMs(clip),
 								speed: clip.speed as SpeedRegion["speed"],
 							}));

@@ -226,17 +226,29 @@ export interface TrimRegion {
 
 export interface ClipRegion {
 	id: string;
+	/** Where the clip sits on the timeline. */
 	startMs: number;
+	/** Where the clip ends on the timeline (`startMs` + source duration / speed). */
 	endMs: number;
+	/**
+	 * Where the clip reads from in the recording. Defaults to `startMs`, which is
+	 * only the same thing while everything before it plays at 1x — splitting or
+	 * left-trimming a sped-up clip moves the source in without moving the clip.
+	 */
+	sourceStartMs?: number;
 	speed: number;
 	muted?: boolean;
 	showSourceAudio?: boolean;
 }
 
+export function getClipSourceStartMs(clip: ClipRegion): number {
+	return Number.isFinite(clip.sourceStartMs) ? (clip.sourceStartMs as number) : clip.startMs;
+}
+
 export function getClipSourceEndMs(clip: ClipRegion): number {
 	const displayDurationMs = Math.max(0, clip.endMs - clip.startMs);
 	const speed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
-	return Math.round(clip.startMs + displayDurationMs * speed);
+	return Math.round(getClipSourceStartMs(clip) + displayDurationMs * speed);
 }
 
 export function getTimelineDurationMs(clips: ClipRegion[], sourceDurationMs: number): number {
@@ -271,7 +283,7 @@ function clampToNearestClipBoundary(
 		const boundaries =
 			kind === "timeline"
 				? [clip.startMs, clip.endMs]
-				: [clip.startMs, getClipSourceEndMs(clip)];
+				: [getClipSourceStartMs(clip), getClipSourceEndMs(clip)];
 
 		for (const boundary of boundaries) {
 			const distance = Math.abs(timeMs - boundary);
@@ -294,7 +306,9 @@ export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[])
 			continue;
 		}
 
-		return Math.round(clip.startMs + (roundedTimeMs - clip.startMs) * getSafeClipSpeed(clip));
+		return Math.round(
+			getClipSourceStartMs(clip) + (roundedTimeMs - clip.startMs) * getSafeClipSpeed(clip),
+		);
 	}
 
 	if (sortedClips.length === 0) {
@@ -309,12 +323,13 @@ export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[])
 	const sortedClips = sortClipRegions(clips);
 
 	for (const clip of sortedClips) {
+		const sourceStartMs = getClipSourceStartMs(clip);
 		const sourceEndMs = getClipSourceEndMs(clip);
-		if (roundedTimeMs < clip.startMs || roundedTimeMs > sourceEndMs) {
+		if (roundedTimeMs < sourceStartMs || roundedTimeMs > sourceEndMs) {
 			continue;
 		}
 
-		return Math.round(clip.startMs + (roundedTimeMs - clip.startMs) / getSafeClipSpeed(clip));
+		return Math.round(clip.startMs + (roundedTimeMs - sourceStartMs) / getSafeClipSpeed(clip));
 	}
 
 	if (sortedClips.length === 0) {
@@ -365,15 +380,24 @@ export function extendAutoFullTrackClip(
 /** Convert clip regions (kept segments) to trim regions (gaps to remove). */
 export function clipsToTrims(clips: ClipRegion[], totalDurationMs: number): TrimRegion[] {
 	if (clips.length === 0) return [];
-	const sorted = [...clips].sort((a, b) => a.startMs - b.startMs);
+	// Clips are ordered on the timeline, but a moved clip keeps its source
+	// in-point, so timeline order says nothing about source order. Walk the
+	// source ranges the clips claim and trim whatever is left uncovered.
+	const coveredSpans = clips
+		.map((clip) => ({
+			startMs: getClipSourceStartMs(clip),
+			endMs: getClipSourceEndMs(clip),
+		}))
+		.filter((span) => span.endMs > span.startMs)
+		.sort((left, right) => left.startMs - right.startMs);
 	const trims: TrimRegion[] = [];
 	let cursor = 0;
 	let trimId = 1;
-	for (const clip of sorted) {
-		if (clip.startMs > cursor) {
-			trims.push({ id: `trim-gap-${trimId++}`, startMs: cursor, endMs: clip.startMs });
+	for (const span of coveredSpans) {
+		if (span.startMs > cursor) {
+			trims.push({ id: `trim-gap-${trimId++}`, startMs: cursor, endMs: span.startMs });
 		}
-		cursor = getClipSourceEndMs(clip);
+		cursor = Math.max(cursor, span.endMs);
 	}
 	if (cursor < totalDurationMs) {
 		trims.push({ id: `trim-gap-${trimId++}`, startMs: cursor, endMs: totalDurationMs });

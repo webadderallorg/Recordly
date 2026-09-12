@@ -1,5 +1,5 @@
-import { getClipSourceEndMs, sortClipRegions } from "../types";
 import type { ClipRegion } from "../types";
+import { getClipSourceEndMs, getClipSourceStartMs, sortClipRegions } from "../types";
 
 export function getActiveClipIdAtSourceTime(
 	sourceTimeSeconds: number,
@@ -7,7 +7,7 @@ export function getActiveClipIdAtSourceTime(
 ): string | null {
 	const sourceMs = Math.round(sourceTimeSeconds * 1000);
 	const activeClip = sortClipRegions(clipRegions).find(
-		(clip) => sourceMs >= clip.startMs && sourceMs < getClipSourceEndMs(clip),
+		(clip) => sourceMs >= getClipSourceStartMs(clip) && sourceMs < getClipSourceEndMs(clip),
 	);
 	return activeClip?.id ?? null;
 }

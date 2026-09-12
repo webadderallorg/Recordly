@@ -2,6 +2,7 @@ import type { Span } from "dnd-timeline";
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
 import { toast } from "sonner";
 import { planClipSpeedChange } from "../clipSpeedChange";
+import { planClipSplit } from "../clipSplit";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -10,6 +11,7 @@ import type {
 	SpeedRegion,
 	ZoomRegion,
 } from "../types";
+import { getClipSourceStartMs } from "../types";
 
 type Translator = (
 	key: string,
@@ -79,19 +81,18 @@ export function useClipRegionCommands({
 
 	const handleClipSplit = useCallback(
 		(splitMs: number) => {
-			const target = clipRegions.find(
-				(clip) => splitMs > clip.startMs && splitMs < clip.endMs,
-			);
-			if (!target) return;
-			const leftId = `clip-${nextClipIdRef.current++}`;
-			const rightId = `clip-${nextClipIdRef.current++}`;
-			const splitAt = Math.round(splitMs);
-			const left: ClipRegion = { ...target, id: leftId, endMs: splitAt };
-			const right: ClipRegion = { ...target, id: rightId, startMs: splitAt };
+			const plan = planClipSplit({
+				clipRegions,
+				splitMs,
+				createId: () => `clip-${nextClipIdRef.current++}`,
+			});
+			if (!plan) return;
 			setClipRegions((current) =>
-				current.flatMap((clip) => (clip.id === target.id ? [left, right] : [clip])),
+				current.flatMap((clip) =>
+					clip.id === plan.targetId ? [plan.left, plan.right] : [clip],
+				),
 			);
-			if (selectedClipId === target.id) setSelectedClipId(leftId);
+			if (selectedClipId === plan.targetId) setSelectedClipId(plan.left.id);
 		},
 		[clipRegions, nextClipIdRef, selectedClipId, setClipRegions, setSelectedClipId],
 	);
@@ -149,9 +150,19 @@ export function useClipRegionCommands({
 			}
 
 			setClipRegions((current) =>
-				current.map((clip) =>
-					clip.id === id ? { ...clip, startMs: newStart, endMs: newEnd } : clip,
-				),
+				current.map((clip) => {
+					if (clip.id !== id) return clip;
+					const speed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
+					const startDelta = newStart - clip.startMs;
+					const endDelta = newEnd - clip.endMs;
+					// A move carries its footage along; trimming the left edge skips
+					// into the source by however much source that edge covered.
+					const isMove = Math.abs(startDelta - endDelta) < 1;
+					const sourceStartMs = isMove
+						? getClipSourceStartMs(clip)
+						: Math.max(0, Math.round(getClipSourceStartMs(clip) + startDelta * speed));
+					return { ...clip, startMs: newStart, endMs: newEnd, sourceStartMs };
+				}),
 			);
 		},
 		[

@@ -7,6 +7,7 @@ import {
 	clipsToTrims,
 	extendAutoFullTrackClip,
 	getClipSourceEndMs,
+	getClipSourceStartMs,
 	getTimelineDurationMs,
 	mapSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime,
@@ -119,7 +120,7 @@ export function useTimelineProjection({
 			.filter(({ speed }) => speed !== 1)
 			.map((clip) => ({
 				id: `clip-speed-${clip.id}`,
-				startMs: clip.startMs,
+				startMs: getClipSourceStartMs(clip),
 				endMs: getClipSourceEndMs(clip),
 				speed: clip.speed as SpeedRegion["speed"],
 			}));

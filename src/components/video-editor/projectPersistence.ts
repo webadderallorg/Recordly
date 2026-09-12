@@ -537,6 +537,9 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						id: region.id,
 						startMs,
 						endMs,
+						...(isFiniteNumber(region.sourceStartMs)
+							? { sourceStartMs: Math.max(0, Math.round(region.sourceStartMs)) }
+							: {}),
 						speed: isFiniteNumber(region.speed) ? region.speed : 1,
 						muted: typeof region.muted === "boolean" ? region.muted : false,
 						showSourceAudio:
