@@ -86,6 +86,10 @@ import {
 	renderAnnotations,
 	renderAnnotationToCanvas,
 } from "./annotationRenderer";
+import {
+	getDefaultLightningRenderBackendOrder,
+	normalizeLightningRuntimePlatform,
+} from "./backendPolicy";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import { resolveMediaElementSource } from "./localMediaSource";
 import {
@@ -638,13 +642,16 @@ export class FrameRenderer {
 		};
 
 		const preferredRenderBackend = this.config.preferredRenderBackend;
+		const runtimePlatform = normalizeLightningRuntimePlatform(
+			typeof navigator !== "undefined" ? navigator.platform || navigator.userAgent || "" : "",
+		);
 		const backendOrder: ExportRenderBackend[] =
 			preferredRenderBackend === "webgl"
 				? ["webgl", "webgpu"]
 				: preferredRenderBackend === "webgpu"
 					? ["webgpu", "webgl"]
 					: typeof navigator !== "undefined" && "gpu" in navigator
-						? ["webgpu", "webgl"]
+						? getDefaultLightningRenderBackendOrder(runtimePlatform)
 						: ["webgl"];
 		const failures: PixiRendererAttempt[] = [];
 
