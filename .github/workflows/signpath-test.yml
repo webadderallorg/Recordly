@@ -1,0 +1,161 @@
+name: SignPath Test Signing
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read # SignPath reads the uploaded workflow artifact and job metadata.
+  contents: read # Checkout and SignPath origin metadata need repository access.
+
+concurrency:
+  group: signpath-test-signing
+  cancel-in-progress: false
+
+jobs:
+  sign-cursor-monitor:
+    name: Sign cursor monitor with the test policy
+    if: github.repository == 'webadderallorg/Recordly' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Require the SignPath CI token
+        shell: pwsh
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:SIGNPATH_API_TOKEN)) {
+            throw 'SIGNPATH_API_TOKEN is not configured. Refusing to submit a signing request.'
+          }
+
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '22'
+
+      - name: Build an unsigned cursor monitor
+        id: build
+        shell: pwsh
+        run: |
+          node scripts/build-cursor-monitor.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $source = Join-Path $env:GITHUB_WORKSPACE 'electron/native/bin/win32-x64/cursor-monitor.exe'
+          $inputDirectory = Join-Path $env:RUNNER_TEMP 'recordly-signpath-input'
+          $input = Join-Path $inputDirectory 'cursor-monitor.exe'
+
+          if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+            throw "Expected cursor monitor was not built: $source"
+          }
+
+          $signature = Get-AuthenticodeSignature -LiteralPath $source
+          if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::NotSigned) {
+            throw "Test input must be unsigned, but status was $($signature.Status)."
+          }
+
+          New-Item -ItemType Directory -Path $inputDirectory -Force | Out-Null
+          Copy-Item -LiteralPath $source -Destination $input -Force
+          "unsigned-sha256=$((Get-FileHash -LiteralPath $input -Algorithm SHA256).Hash)" |
+            Add-Content -LiteralPath $env:GITHUB_OUTPUT
+
+      - name: Upload the unsigned PE
+        id: upload-unsigned
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: ${{ runner.temp }}/recordly-signpath-input/cursor-monitor.exe
+          archive: false
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Submit the test-signing request
+        id: signpath
+        uses: SignPath/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd # v2.2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: d10f26b9-667f-46fb-9ecf-17c19d024c1a
+          project-slug: Recordly
+          signing-policy-slug: test-signing
+          artifact-configuration-slug: initial
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: ${{ runner.temp }}/recordly-signpath-signed
+          skip-decompress: true
+
+      - name: Verify the test-signed PE
+        id: verify
+        shell: pwsh
+        run: |
+          $signedDirectory = Join-Path $env:RUNNER_TEMP 'recordly-signpath-signed'
+          $signedFiles = @(Get-ChildItem -LiteralPath $signedDirectory -Filter 'cursor-monitor.exe' -File -Recurse)
+          if ($signedFiles.Count -ne 1) {
+            throw "Expected exactly one signed cursor-monitor.exe, found $($signedFiles.Count)."
+          }
+
+          $signed = $signedFiles[0].FullName
+          $unsigned = Join-Path $env:RUNNER_TEMP 'recordly-signpath-input/cursor-monitor.exe'
+          $unsignedHash = (Get-FileHash -LiteralPath $unsigned -Algorithm SHA256).Hash
+          $signedHash = (Get-FileHash -LiteralPath $signed -Algorithm SHA256).Hash
+          if ($signedHash -eq $unsignedHash) {
+            throw 'Signed and unsigned artifacts have the same SHA-256 digest.'
+          }
+
+          $signature = Get-AuthenticodeSignature -LiteralPath $signed
+          if ($signature.SignatureType -ne [System.Management.Automation.SignatureType]::Authenticode) {
+            throw "Expected Authenticode, found $($signature.SignatureType)."
+          }
+          if ($signature.Status -eq [System.Management.Automation.SignatureStatus]::HashMismatch -or
+              $signature.Status -eq [System.Management.Automation.SignatureStatus]::NotSigned) {
+            throw "Invalid Authenticode status: $($signature.Status) — $($signature.StatusMessage)"
+          }
+          if ($signature.Status -notin @(
+              [System.Management.Automation.SignatureStatus]::Valid,
+              [System.Management.Automation.SignatureStatus]::UnknownError
+            )) {
+            throw "Unexpected Authenticode status: $($signature.Status) — $($signature.StatusMessage)"
+          }
+          if ($signature.Status -eq [System.Management.Automation.SignatureStatus]::UnknownError -and
+              $signature.StatusMessage -notmatch '(?i)root certificate.*not trusted|not trusted.*root certificate') {
+            throw "The test signature failed for an unexpected reason: $($signature.StatusMessage)"
+          }
+
+          $expectedSubject = "CN=Test certificate for 'Recordly [OSS]'"
+          if ($null -eq $signature.SignerCertificate -or
+              $signature.SignerCertificate.Subject -ne $expectedSubject) {
+            throw "Unexpected signer: $($signature.SignerCertificate.Subject)"
+          }
+          $hasCodeSigningEku = @($signature.SignerCertificate.EnhancedKeyUsageList) |
+            Where-Object { $_.ObjectId -eq '1.3.6.1.5.5.7.3.3' }
+          if (-not $hasCodeSigningEku) {
+            throw 'The signer certificate does not contain the Code Signing EKU.'
+          }
+          if ($null -eq $signature.TimeStamperCertificate) {
+            throw 'The test-signed artifact has no timestamp certificate.'
+          }
+
+          "signed-sha256=$signedHash" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+          "signer-thumbprint=$($signature.SignerCertificate.Thumbprint)" |
+            Add-Content -LiteralPath $env:GITHUB_OUTPUT
+
+      - name: Record the verification summary
+        shell: pwsh
+        env:
+          SIGNING_REQUEST_URL: ${{ steps.signpath.outputs.signing-request-web-url }}
+          UNSIGNED_SHA256: ${{ steps.build.outputs.unsigned-sha256 }}
+          SIGNED_SHA256: ${{ steps.verify.outputs.signed-sha256 }}
+          SIGNER_THUMBPRINT: ${{ steps.verify.outputs.signer-thumbprint }}
+        run: |
+          @(
+            '## SignPath test-signing verification'
+            ''
+            '- Policy: `test-signing` (self-signed test certificate; not for release)'
+            ('- Signing request: {0}' -f $env:SIGNING_REQUEST_URL)
+            ('- Unsigned SHA-256: `{0}`' -f $env:UNSIGNED_SHA256)
+            ('- Signed SHA-256: `{0}`' -f $env:SIGNED_SHA256)
+            ('- Signer thumbprint: `{0}`' -f $env:SIGNER_THUMBPRINT)
+            '- Public release/upload: none'
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
