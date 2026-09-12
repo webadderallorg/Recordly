@@ -38,6 +38,7 @@
 		"benchmark:export-queues": "node scripts/benchmark-export-queues.mjs",
 		"normalize:electron-main-cjs": "node scripts/normalize-electron-main-cjs.mjs",
 		"smoke:electron-main-cjs": "node scripts/smoke-electron-main-cjs.mjs",
+		"smoke:hud-x11": "node scripts/smoke-hud-x11.mjs",
 		"smoke:packaged-binaries": "node scripts/smoke-packaged-binaries.mjs",
 		"verify:macos-distribution": "node scripts/verify-macos-distribution.mjs",
 		"checksums:release": "node scripts/write-release-checksums.mjs",

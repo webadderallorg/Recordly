@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	getHudOverlayStaticBounds,
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
@@ -58,6 +59,70 @@ describe("getHudOverlayWindowBounds", () => {
 	it("fits the expanded fallback inside small displays", () => {
 		expect(
 			getHudOverlayWindowBounds(
+				{
+					x: -100,
+					y: 20,
+					width: 640,
+					height: 420,
+				},
+				false,
+				true,
+			),
+		).toEqual({
+			x: -100,
+			y: 20,
+			width: 640,
+			height: 420,
+		});
+	});
+});
+
+describe("getHudOverlayStaticBounds", () => {
+	const workArea = {
+		x: 120,
+		y: 40,
+		width: 1920,
+		height: 1040,
+	};
+
+	it("creates the Wayland HUD at the expanded height so menus fit", () => {
+		expect(getHudOverlayStaticBounds(workArea, false, true)).toEqual({
+			x: 650,
+			y: 540,
+			width: 860,
+			height: 540,
+		});
+	});
+
+	it("keeps X11 sessions on the compact creation bounds of main", () => {
+		expect(getHudOverlayStaticBounds(workArea, false, false)).toEqual({
+			x: 650,
+			y: 920,
+			width: 860,
+			height: 160,
+		});
+	});
+
+	it("keeps passthrough platforms (win/mac) on the full work area", () => {
+		expect(getHudOverlayStaticBounds(workArea, true, false)).toEqual(workArea);
+	});
+
+	it("never shrinks the Wayland HUD when recording without a webcam preview", () => {
+		// The dynamic fallback compacts to 160 in this state, which would
+		// shrink a window that was created expanded and re-clip the menus.
+		expect(
+			shouldExpandHudOverlayFallback({
+				fallbackExpanded: false,
+				recordingActive: true,
+				webcamPreviewVisible: false,
+			}),
+		).toBe(false);
+		expect(getHudOverlayStaticBounds(workArea, false, true).height).toBe(540);
+	});
+
+	it("fits the static expanded Wayland fallback inside small displays", () => {
+		expect(
+			getHudOverlayStaticBounds(
 				{
 					x: -100,
 					y: 20,

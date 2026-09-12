@@ -53,11 +53,13 @@ import {
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
+	isHudOverlayRecordingActive,
 	reassertHudOverlayCaptureProtection,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
 	setHudOverlayRecordingActive,
 	showUpdateToastWindow,
 } from "./windows";
+import { decideHudOverlayRestoreStrategy } from "./hudOverlayWindowActions";
 
 const electronMainDir = path.dirname(fileURLToPath(import.meta.url));
 const IS_SMOKE_EXPORT = process.env.RECORDLY_SMOKE_EXPORT === "1";
@@ -373,10 +375,18 @@ function focusOrCreateMainWindow() {
 		// work because they receive an XDG activation token via StatusNotifierItem.ProvideXdgActivationToken;
 		// Electron's tray doesn't handle that yet. Workaround: destroy and recreate the HUD so the new
 		// window gets focus (creation path works). Only for HUD, not editor.
+		// A hidden, minimized, or recording HUD must never take this path: destroy kills
+		// the renderer and any in-flight recording with it — the show()
+		// path below restores it (same as showHudOverlayFromTray).
 		if (
-			process.platform === "linux" &&
-			!mainWindow.isFocused() &&
-			!isEditorWindow(mainWindow)
+			decideHudOverlayRestoreStrategy({
+				platform: process.platform,
+				isFocused: mainWindow.isFocused(),
+				isVisible: mainWindow.isVisible(),
+				isMinimized: mainWindow.isMinimized(),
+				isEditor: isEditorWindow(mainWindow),
+				recordingActive: isHudOverlayRecordingActive(),
+			}) === "recreate"
 		) {
 			const win = mainWindow;
 			mainWindow = null;

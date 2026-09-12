@@ -38,6 +38,25 @@ export function getHudOverlayWindowBounds(
 	};
 }
 
+export function getHudOverlayStaticBounds(
+	workArea: HudOverlayWorkArea,
+	mousePassthroughSupported: boolean,
+	waylandSession: boolean,
+): HudOverlayWorkArea {
+	// Linux/Wayland runs the non-passthrough fallback HUD. Compositors there
+	// ignore programmatic x/y placement, so runtime resizes re-anchor the
+	// window and destabilize the bottom-anchored toolbar (the instability
+	// behind the reverted e2802bf / PR #656). The window is therefore created
+	// directly at the expanded fallback height and every later bounds
+	// recompute keeps it there: menus fit and no recording/webcam state can
+	// shrink the window after creation.
+	//
+	// The expansion is gated to Wayland sessions: X11 honors programmatic
+	// placement and keeps the dynamic compact/expanded fallback of main, so
+	// a non-Wayland session gets the compact creation bounds (160 DIP).
+	return getHudOverlayWindowBounds(workArea, mousePassthroughSupported, waylandSession);
+}
+
 export function shouldExpandHudOverlayFallback({
 	fallbackExpanded,
 	recordingActive,
