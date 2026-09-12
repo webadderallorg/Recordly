@@ -311,10 +311,9 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 		applyHudOverlayBounds();
 	}
 
-	if (!isHudOverlayMousePassthroughSupported()) {
-		if (process.platform !== "linux") {
-			setHudOverlayFallbackExpanded(!ignore);
-		}
+	const mousePassthroughSupported = isHudOverlayMousePassthroughSupported();
+	if (!mousePassthroughSupported) {
+		setHudOverlayFallbackExpanded(!ignore);
 		hudOverlayWindow.setIgnoreMouseEvents(false);
 		return;
 	}
