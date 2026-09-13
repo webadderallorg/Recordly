@@ -89,6 +89,10 @@ import {
 import { ForwardFrameSource } from "./forwardFrameSource";
 import { resolveMediaElementSource } from "./localMediaSource";
 import {
+	getBatchTextureLimitMismatchMessage,
+	readWebGlMaxBatchableTextures,
+} from "./pixiBatchTextureLimits";
+import {
 	getShadowFilterPadding,
 	getWebcamShadowStrength,
 	VIDEO_SHADOW_LAYER_PROFILES,
@@ -262,6 +266,20 @@ function isCanvasRenderer(application: Application): boolean {
 		rendererName &&
 			(rendererName.includes("canvasrenderer") || rendererName.includes("canvas")),
 	);
+}
+
+function assertWebGpuBatchTextureLimitCompatible(application: Application): void {
+	const webglLimit = readWebGlMaxBatchableTextures();
+	if (webglLimit === null) {
+		return;
+	}
+	const mismatch = getBatchTextureLimitMismatchMessage(
+		application.renderer.limits.maxBatchableTextures,
+		webglLimit,
+	);
+	if (mismatch) {
+		throw new Error(mismatch);
+	}
 }
 
 function toErrorMessage(error: unknown): string {
@@ -677,6 +695,9 @@ export class FrameRenderer {
 					throw new Error(
 						`Renderer initialized with unsupported fallback backend after ${elapsed}ms: ${app.renderer.constructor?.name ?? "unknown"}`,
 					);
+				}
+				if (backend === "webgpu") {
+					assertWebGpuBatchTextureLimitCompatible(app);
 				}
 				return { app, backend };
 			} catch (error) {
