@@ -89,6 +89,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 	private let microphoneOutputTypeRawValue = 2
 
+	/// Configures the ScreenCaptureKit stream and asset writers from the JSON
+	/// config passed on the command line, then starts capturing. Screen frames
+	/// are delivered on `queue`; audio outputs are delivered on `audioQueue`.
 	func startCapture(configJSON: String) async throws {
 		guard !isRecording else {
 			throw NSError(domain: "RecordlyCapture", code: 1, userInfo: [NSLocalizedDescriptionKey: "Recording is already in progress"])
@@ -399,6 +402,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 	}
 
+	/// ScreenCaptureKit delivery entry point. Screen frames arrive on `queue` and
+	/// are handled inline; audio arrives on `audioQueue` and is hopped onto
+	/// `queue` so recorder state is only ever touched from one queue and a slow
+	/// video callback can never block or drop audio delivery.
 	func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
 		if outputType != .screen {
 			queue.async { [weak self] in
@@ -409,6 +416,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		handleSampleBuffer(sampleBuffer, of: outputType)
 	}
 
+	/// Retimes one screen, system-audio, or microphone sample onto the recording
+	/// timeline and appends it to the matching writer inputs. Always runs on
+	/// `queue`; drops everything once finalization has started.
 	private func handleSampleBuffer(_ sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
 		guard sessionStarted, sampleBuffer.isValid, isRecording else { return }
 		guard let presentationTime = adjustedPresentationTime(for: sampleBuffer, outputType: outputType) else { return }
@@ -594,6 +604,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 	}
 
+	/// Stops the stream, gives the last frame its full duration, closes every
+	/// writer, reports audio-gap diagnostics on stderr, and resets recorder state.
+	/// Throws if any writer failed so a half-written file is never reported as
+	/// a successful recording.
 	private func finishCapture() async throws -> String {
 
 		if let activeStream = stream {
@@ -824,6 +838,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		return videoEndTime + CMTimeMinimum(tailExtension, maxInlineAudioTailExtension)
 	}
 
+	/// Appends one audio buffer to `input` at `presentationTime`, first filling
+	/// any gap since the previous buffer with silence so lost buffers never
+	/// compact the track. Buffers that arrive while the input is not ready are
+	/// counted as dropped; `lastPresentationTime`/`lastDuration` track the last
+	/// sample (real or silence) the writer accepted for this input.
 	private func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, to input: AVAssetWriterInput, of writer: AVAssetWriter?, firstSampleTime: inout CMTime?, lastPresentationTime: inout CMTime, lastDuration: inout CMTime, presentationTime: CMTime) {
 		// A writer that failed mid-capture (a full disk, say) raises on every
 		// further append, which would abort the helper and lose the whole file.
