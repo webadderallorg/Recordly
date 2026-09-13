@@ -541,7 +541,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		// isRecording guard. finalizeCapture never runs on either queue (it is
 		// called from the command queue or a Task), so the barrier cannot deadlock.
 		audioQueue.sync {}
-		await withCheckedContinuation { continuation in
+		return await withCheckedContinuation { continuation in
 			queue.async {
 				if self.isFinalizing {
 					self.interactiveStopParticipated = self.interactiveStopParticipated || interactive
