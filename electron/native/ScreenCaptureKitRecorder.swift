@@ -535,6 +535,12 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	/// the recorder queue have drained. Manual stop and automatic window-close
 	/// detection join the same operation instead of racing the asset writers.
 	private func finalizeCapture(interactive: Bool) async -> CaptureFinalizationResult {
+		// Audio arrives on audioQueue and hops onto the recorder queue. Drain that
+		// hop first so every buffer delivered before this stop request is already
+		// queued ahead of the finalization block instead of being dropped by the
+		// isRecording guard. finalizeCapture never runs on either queue (it is
+		// called from the command queue or a Task), so the barrier cannot deadlock.
+		audioQueue.sync {}
 		await withCheckedContinuation { continuation in
 			queue.async {
 				if self.isFinalizing {

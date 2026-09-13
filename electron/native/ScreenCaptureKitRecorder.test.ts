@@ -93,6 +93,7 @@ describe("ScreenCaptureKitRecorder audio continuity", () => {
 			"type: microphoneOutputType, sampleHandlerQueue: audioQueue",
 		);
 		expect(recorderSource).toMatch(/if outputType != \.screen \{\s*queue\.async/);
+		expect(recorderSource).toContain("audioQueue.sync {}");
 	});
 
 	it("fills audio timestamp gaps with silence instead of compacting the track", () => {
