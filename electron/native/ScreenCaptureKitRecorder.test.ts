@@ -84,3 +84,30 @@ describe("ScreenCaptureKitRecorder window capture", () => {
 		expect(recorderSource).toContain("self.windowCropRect = cropRect");
 	});
 });
+
+describe("ScreenCaptureKitRecorder audio continuity", () => {
+	it("delivers audio on a dedicated queue and hops onto the recorder queue", () => {
+		expect(recorderSource).toContain('DispatchQueue(label: "recordly.screencapturekit.audio")');
+		expect(recorderSource).toContain("type: .audio, sampleHandlerQueue: audioQueue");
+		expect(recorderSource).toContain(
+			"type: microphoneOutputType, sampleHandlerQueue: audioQueue",
+		);
+		expect(recorderSource).toMatch(/if outputType != \.screen \{\s*queue\.async/);
+	});
+
+	it("fills audio timestamp gaps with silence instead of compacting the track", () => {
+		expect(recorderSource).toContain(
+			"appendSilence(matching: sampleBuffer, from: expectedNext, to: presentationTime, into: input, lastPresentationTime: &lastPresentationTime, lastDuration: &lastDuration)",
+		);
+		expect(recorderSource).toContain("CMAudioSampleBufferCreateReadyWithPacketDescriptions(");
+		expect(recorderSource).toContain("lastDuration = sampleBuffer.duration");
+		expect(recorderSource).toContain(
+			"lastDuration = CMTime(value: CMTimeValue(frames), timescale: CMTimeScale(sampleRate))",
+		);
+	});
+
+	it("counts dropped audio buffers and reports gaps at finalization", () => {
+		expect(recorderSource).toContain("droppedAudioBufferCount += 1");
+		expect(recorderSource).toContain("AUDIO_GAPS: droppedBuffers=");
+	});
+});
