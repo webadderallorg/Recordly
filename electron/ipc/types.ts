@@ -191,6 +191,7 @@ export type WhisperJsonToken = {
 		from?: unknown;
 		to?: unknown;
 	};
+	t_dtw?: unknown;
 };
 
 export type WhisperJsonSegment = {

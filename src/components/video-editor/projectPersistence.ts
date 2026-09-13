@@ -1,4 +1,5 @@
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
+import { normalizeAutoCaptionSettings } from "@/lib/captions/captionSettings";
 import type {
 	ExportBackendPreference,
 	ExportEncodingMode,
@@ -9,7 +10,6 @@ import type {
 	GifFrameRate,
 	GifSizePreset,
 } from "@/lib/exporter";
-import { isValidMp4FrameRate } from "@/lib/exporter/types";
 import {
 	TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT,
 	TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION,
@@ -18,6 +18,7 @@ import {
 	TEMPORAL_MOTION_BLUR_MIN_SAMPLE_COUNT,
 	TEMPORAL_MOTION_BLUR_MIN_SHUTTER_FRACTION,
 } from "@/lib/exporter/temporalMotionBlur";
+import { isValidMp4FrameRate } from "@/lib/exporter/types";
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
 import { CURSOR_MOTION_PRESETS, resolveCursorMotionPresetId } from "./cursorMotionPresets";
@@ -25,7 +26,6 @@ import {
 	ADVANCED_VERTICAL_PADDING_MAX,
 	type AnnotationRegion,
 	type AudioRegion,
-	type AutoCaptionAnimation,
 	type AutoCaptionSettings,
 	type CaptionCue,
 	type CaptionCueWord,
@@ -36,7 +36,6 @@ import {
 	DEFAULT_ANNOTATION_POSITION,
 	DEFAULT_ANNOTATION_SIZE,
 	DEFAULT_ANNOTATION_STYLE,
-	DEFAULT_AUTO_CAPTION_SETTINGS,
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
 	DEFAULT_CONNECTED_ZOOM_EASING,
 	DEFAULT_CONNECTED_ZOOM_GAP_MS,
@@ -69,7 +68,6 @@ import {
 	DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 	DEFAULT_ZOOM_OUT_EASING,
 	DEFAULT_ZOOM_SMOOTHNESS,
-	getDefaultCaptionFontFamily,
 	normalizeCursorClickEffectColor,
 	normalizeCursorClickEffectStyle,
 	type Padding,
@@ -228,15 +226,6 @@ function normalizeZoomTransitionEasing(
 		value === "smooth" ||
 		value === "snappy" ||
 		value === "linear"
-		? value
-		: fallback;
-}
-
-function normalizeAutoCaptionAnimation(
-	value: unknown,
-	fallback: AutoCaptionAnimation,
-): AutoCaptionAnimation {
-	return value === "none" || value === "fade" || value === "rise" || value === "pop"
 		? value
 		: fallback;
 }
@@ -751,6 +740,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 										startMs: normalizedWordStart,
 										endMs: normalizedWordEnd,
 										...(word.leadingSpace ? { leadingSpace: true } : {}),
+										...(word.emphasized === true ? { emphasized: true } : {}),
 									};
 								})
 								.filter((word) => word.text.length > 0)
@@ -767,58 +757,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 				.filter((cue) => cue.text.length > 0)
 		: [];
 
-	const rawAutoCaptionSettings: Partial<AutoCaptionSettings> =
-		editor.autoCaptionSettings && typeof editor.autoCaptionSettings === "object"
-			? (editor.autoCaptionSettings as Partial<AutoCaptionSettings>)
-			: {};
-	const normalizedAutoCaptionSettings: AutoCaptionSettings = {
-		enabled:
-			typeof rawAutoCaptionSettings.enabled === "boolean"
-				? rawAutoCaptionSettings.enabled
-				: DEFAULT_AUTO_CAPTION_SETTINGS.enabled,
-		timelineQuickAdd:
-			typeof rawAutoCaptionSettings.timelineQuickAdd === "boolean"
-				? rawAutoCaptionSettings.timelineQuickAdd
-				: DEFAULT_AUTO_CAPTION_SETTINGS.timelineQuickAdd,
-		language:
-			typeof rawAutoCaptionSettings.language === "string" &&
-			rawAutoCaptionSettings.language.trim()
-				? rawAutoCaptionSettings.language.trim()
-				: DEFAULT_AUTO_CAPTION_SETTINGS.language,
-		fontFamily: getDefaultCaptionFontFamily(),
-		fontSize: isFiniteNumber(rawAutoCaptionSettings.fontSize)
-			? clamp(rawAutoCaptionSettings.fontSize, 16, 72)
-			: DEFAULT_AUTO_CAPTION_SETTINGS.fontSize,
-		bottomOffset: isFiniteNumber(rawAutoCaptionSettings.bottomOffset)
-			? clamp(rawAutoCaptionSettings.bottomOffset, 0, 30)
-			: DEFAULT_AUTO_CAPTION_SETTINGS.bottomOffset,
-		maxWidth: isFiniteNumber(rawAutoCaptionSettings.maxWidth)
-			? clamp(rawAutoCaptionSettings.maxWidth, 40, 95)
-			: DEFAULT_AUTO_CAPTION_SETTINGS.maxWidth,
-		maxRows: isFiniteNumber(rawAutoCaptionSettings.maxRows)
-			? clamp(Math.round(rawAutoCaptionSettings.maxRows), 1, 4)
-			: DEFAULT_AUTO_CAPTION_SETTINGS.maxRows,
-		animationStyle: normalizeAutoCaptionAnimation(
-			rawAutoCaptionSettings.animationStyle,
-			DEFAULT_AUTO_CAPTION_SETTINGS.animationStyle,
-		),
-		boxRadius: isFiniteNumber(rawAutoCaptionSettings.boxRadius)
-			? clamp(rawAutoCaptionSettings.boxRadius, 0, 40)
-			: DEFAULT_AUTO_CAPTION_SETTINGS.boxRadius,
-		textColor:
-			typeof rawAutoCaptionSettings.textColor === "string" &&
-			rawAutoCaptionSettings.textColor.trim()
-				? rawAutoCaptionSettings.textColor
-				: DEFAULT_AUTO_CAPTION_SETTINGS.textColor,
-		inactiveTextColor:
-			typeof rawAutoCaptionSettings.inactiveTextColor === "string" &&
-			rawAutoCaptionSettings.inactiveTextColor.trim()
-				? rawAutoCaptionSettings.inactiveTextColor
-				: DEFAULT_AUTO_CAPTION_SETTINGS.inactiveTextColor,
-		backgroundOpacity: isFiniteNumber(rawAutoCaptionSettings.backgroundOpacity)
-			? clamp(rawAutoCaptionSettings.backgroundOpacity, 0, 1)
-			: DEFAULT_AUTO_CAPTION_SETTINGS.backgroundOpacity,
-	};
+	const normalizedAutoCaptionSettings = normalizeAutoCaptionSettings(editor.autoCaptionSettings);
 
 	const rawCropX = isFiniteNumber(editor.cropRegion?.x)
 		? editor.cropRegion.x

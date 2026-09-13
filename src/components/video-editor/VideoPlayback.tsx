@@ -31,17 +31,8 @@ import {
 } from "@/lib/wallpapers";
 import { type AspectRatio, formatAspectRatioForCSS } from "@/utils/aspectRatioUtils";
 import { AnnotationOverlay } from "./AnnotationOverlay";
-import { type CaptionEditTarget, normalizeCaptionEditText } from "./captionEditing";
-import { buildActiveCaptionLayout } from "./captionLayout";
-import {
-	CAPTION_FONT_WEIGHT,
-	CAPTION_LINE_HEIGHT,
-	getCaptionPadding,
-	getCaptionScaledFontSize,
-	getCaptionScaledRadius,
-	getCaptionTextMaxWidth,
-	getCaptionWordVisualState,
-} from "./captionStyle";
+import type { CaptionEditTarget } from "./captionEditing";
+import { CaptionOverlay, type CaptionOverlayHandle } from "./captions/CaptionOverlay";
 import {
 	type AnnotationRegion,
 	type AutoCaptionSettings,
@@ -75,7 +66,6 @@ import {
 	DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 	DEFAULT_ZOOM_OUT_DURATION_MS,
 	DEFAULT_ZOOM_OUT_EASING,
-	getDefaultCaptionFontFamily,
 	type Padding,
 	type SpeedRegion,
 	type TrimRegion,
@@ -147,11 +137,6 @@ type PlaybackAnimationState = {
 	progress: number;
 	x: number;
 	y: number;
-};
-
-type CaptionEditSession = {
-	target: CaptionEditTarget;
-	draft: string;
 };
 
 type SceneTransformState = {
@@ -439,12 +424,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const [webcamSynchronizedPath, setWebcamSynchronizedPath] = useState<string | null>(null);
 		const webcamMediaSynchronized =
 			Boolean(webcamVideoPath) && webcamSynchronizedPath === webcamVideoPath;
-		const captionBoxRef = useRef<HTMLDivElement | null>(null);
-		const captionEditInputRef = useRef<HTMLTextAreaElement | null>(null);
-		const captionEditSessionRef = useRef<CaptionEditSession | null>(null);
-		const [captionEditSession, setCaptionEditSession] = useState<CaptionEditSession | null>(
-			null,
-		);
+		const captionOverlayRef = useRef<CaptionOverlayHandle>(null);
 		const currentTimeRef = useRef(0);
 		const zoomRegionsRef = useRef<ZoomRegion[]>([]);
 		const selectedZoomIdRef = useRef<string | null>(null);
@@ -617,200 +597,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			[],
 		);
 
-		const activeCaptionLayout = useMemo(() => {
-			if (
-				!autoCaptionSettings?.enabled ||
-				autoCaptions.length === 0 ||
-				typeof document === "undefined"
-			) {
-				return null;
-			}
-
-			const overlayWidth = overlayRef.current?.clientWidth || 960;
-			const fontSize = getCaptionScaledFontSize(
-				autoCaptionSettings.fontSize,
-				overlayWidth,
-				autoCaptionSettings.maxWidth,
-			);
-			const maxTextWidthPx = getCaptionTextMaxWidth(
-				overlayWidth,
-				autoCaptionSettings.maxWidth,
-				fontSize,
-			);
-			const measurementCanvas = document.createElement("canvas");
-			const measurementContext = measurementCanvas.getContext("2d");
-			if (!measurementContext) {
-				return null;
-			}
-
-			measurementContext.font = `${CAPTION_FONT_WEIGHT} ${fontSize}px ${autoCaptionSettings.fontFamily || getDefaultCaptionFontFamily()}`;
-
-			return buildActiveCaptionLayout({
-				cues: autoCaptions,
-				timeMs: Math.round(currentTime * 1000),
-				settings: autoCaptionSettings,
-				maxWidthPx: maxTextWidthPx,
-				measureText: (text) => measurementContext.measureText(text).width,
-			});
-		}, [autoCaptionSettings, autoCaptions, currentTime]);
-		const isCaptionEditing = captionEditSession !== null;
-		const captionEditDraft = captionEditSession?.draft ?? "";
-		const captionEditTargetId = captionEditSession?.target.id ?? null;
-		const captionEditTextMetrics = useMemo(() => {
-			if (!captionEditSession || !autoCaptionSettings || typeof document === "undefined") {
-				return null;
-			}
-
-			const overlayWidth = overlayRef.current?.clientWidth || 960;
-			const fontSize = getCaptionScaledFontSize(
-				autoCaptionSettings.fontSize,
-				overlayWidth,
-				autoCaptionSettings.maxWidth,
-			);
-			const maxTextWidthPx = getCaptionTextMaxWidth(
-				overlayWidth,
-				autoCaptionSettings.maxWidth,
-				fontSize,
-			);
-			const measurementCanvas = document.createElement("canvas");
-			const measurementContext = measurementCanvas.getContext("2d");
-			if (!measurementContext) {
-				return null;
-			}
-
-			measurementContext.font = `${CAPTION_FONT_WEIGHT} ${fontSize}px ${autoCaptionSettings.fontFamily || getDefaultCaptionFontFamily()}`;
-			const measuredWidth = Math.max(
-				...captionEditSession.draft
-					.split(/\r?\n/)
-					.map((line) => measurementContext.measureText(line || " ").width),
-			);
-
-			return {
-				fontSize,
-				maxTextWidthPx,
-				widthPx: Math.ceil(
-					Math.min(maxTextWidthPx, Math.max(fontSize * 2, measuredWidth + 2)),
-				),
-			};
-		}, [autoCaptionSettings, captionEditSession]);
-		const captionEditSizeKey = captionEditSession
-			? `${captionEditTextMetrics?.widthPx ?? 0}:${captionEditDraft}`
-			: "";
-
-		const beginCaptionEdit = useCallback(() => {
-			if (!activeCaptionLayout?.editTarget || !onEditAutoCaption) {
-				return;
-			}
-
+		const pauseForCaptionEdit = useCallback(() => {
 			videoRef.current?.pause();
 			onPlayStateChange(false);
-			const nextSession = {
-				target: activeCaptionLayout.editTarget,
-				draft: activeCaptionLayout.editTarget.text,
-			};
-			captionEditSessionRef.current = nextSession;
-			setCaptionEditSession(nextSession);
-		}, [activeCaptionLayout, onEditAutoCaption, onPlayStateChange]);
-
-		const commitCaptionEdit = useCallback(() => {
-			const session = captionEditSessionRef.current;
-			if (!session || !onEditAutoCaption) {
-				captionEditSessionRef.current = null;
-				setCaptionEditSession(null);
-				return;
-			}
-
-			const normalizedDraft = normalizeCaptionEditText(session.draft);
-			captionEditSessionRef.current = null;
-			if (!normalizedDraft) {
-				setCaptionEditSession(null);
-				return;
-			}
-
-			if (normalizedDraft !== normalizeCaptionEditText(session.target.text)) {
-				onEditAutoCaption(session.target, session.draft);
-			}
-			setCaptionEditSession(null);
-		}, [onEditAutoCaption]);
-
-		const cancelCaptionEdit = useCallback(() => {
-			captionEditSessionRef.current = null;
-			setCaptionEditSession(null);
-		}, []);
-
-		useEffect(() => {
-			if (!captionEditTargetId) {
-				return;
-			}
-
-			const frame = requestAnimationFrame(() => {
-				const input = captionEditInputRef.current;
-				if (!input) {
-					return;
-				}
-
-				input.focus();
-				const cursorPosition = input.value.length;
-				input.setSelectionRange(cursorPosition, cursorPosition);
-			});
-
-			return () => cancelAnimationFrame(frame);
-		}, [captionEditTargetId]);
-
-		useEffect(() => {
-			if (!captionEditSizeKey) {
-				return;
-			}
-
-			const frame = requestAnimationFrame(() => {
-				const input = captionEditInputRef.current;
-				if (!input) {
-					return;
-				}
-
-				input.style.height = "auto";
-				input.style.height = `${input.scrollHeight}px`;
-			});
-
-			return () => cancelAnimationFrame(frame);
-		}, [captionEditSizeKey]);
-
-		useEffect(() => {
-			const captionBox = captionBoxRef.current;
-			if (!captionBox || !activeCaptionLayout || !autoCaptionSettings) {
-				if (captionBox) {
-					captionBox.style.clipPath = "";
-					captionBox.style.removeProperty("-webkit-clip-path");
-				}
-				return;
-			}
-
-			const frame = requestAnimationFrame(() => {
-				const width = captionBox.offsetWidth;
-				const height = captionBox.offsetHeight;
-				if (width <= 0 || height <= 0) {
-					return;
-				}
-
-				const fontSize = getCaptionScaledFontSize(
-					autoCaptionSettings.fontSize,
-					overlayRef.current?.clientWidth || 960,
-					autoCaptionSettings.maxWidth,
-				);
-
-				const squirclePath = getSquircleSvgPath({
-					x: 0,
-					y: 0,
-					width,
-					height,
-					radius: getCaptionScaledRadius(autoCaptionSettings.boxRadius, fontSize),
-				});
-				captionBox.style.clipPath = `path('${squirclePath}')`;
-				captionBox.style.setProperty("-webkit-clip-path", `path('${squirclePath}')`);
-			});
-
-			return () => cancelAnimationFrame(frame);
-		}, [activeCaptionLayout, autoCaptionSettings]);
+		}, [onPlayStateChange]);
+		const cancelCaptionEdit = useCallback(() => captionOverlayRef.current?.cancelEdit(), []);
 		const motionBlurStateRef = useRef<MotionBlurState>(createMotionBlurState());
 		const webcamEnabled = webcam?.enabled ?? false;
 		const webcamMargin = webcam?.margin ?? 24;
@@ -2449,7 +2240,6 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			backgroundBlur,
 			shadowIntensity: showShadow ? shadowIntensity : 0,
 		});
-		const captionFontFamily = autoCaptionSettings?.fontFamily || getDefaultCaptionFontFamily();
 		// Overscan blurred wallpaper layers so the browser never samples transparent
 		// pixels beyond the preview bounds, which otherwise looks like a vignette.
 		const backgroundBlurOverscan = sceneEffects.backgroundOverscanPx;
@@ -2597,228 +2387,15 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								</div>
 							</div>
 						) : null}
-						{activeCaptionLayout && autoCaptionSettings ? (
-							<div
-								className="absolute inset-x-0 flex justify-center"
-								style={{
-									bottom: `${autoCaptionSettings.bottomOffset}%`,
-									pointerEvents: onEditAutoCaption ? "auto" : "none",
-								}}
-							>
-								<div
-									style={{
-										maxWidth: `${autoCaptionSettings.maxWidth}%`,
-										opacity: activeCaptionLayout.opacity,
-										transform: `translateY(${activeCaptionLayout.translateY}px) scale(${activeCaptionLayout.scale})`,
-										transformOrigin: "center center",
-									}}
-								>
-									<div
-										ref={captionBoxRef}
-										role={
-											onEditAutoCaption && !isCaptionEditing
-												? "button"
-												: undefined
-										}
-										tabIndex={
-											onEditAutoCaption && !isCaptionEditing ? 0 : undefined
-										}
-										aria-label={
-											onEditAutoCaption && !isCaptionEditing
-												? "Edit current caption"
-												: undefined
-										}
-										onClick={(event) => {
-											event.stopPropagation();
-											if (!isCaptionEditing) {
-												beginCaptionEdit();
-											}
-										}}
-										onPointerDown={(event) => {
-											event.stopPropagation();
-										}}
-										onKeyDown={(event) => {
-											if (!onEditAutoCaption || isCaptionEditing) {
-												return;
-											}
-
-											if (event.key === "Enter" || event.key === " ") {
-												event.preventDefault();
-												beginCaptionEdit();
-											}
-										}}
-										style={{
-											backgroundColor: `rgba(0, 0, 0, ${autoCaptionSettings.backgroundOpacity})`,
-											fontFamily: captionFontFamily,
-											fontSize: `${getCaptionScaledFontSize(
-												autoCaptionSettings.fontSize,
-												overlayRef.current?.clientWidth || 960,
-												autoCaptionSettings.maxWidth,
-											)}px`,
-											lineHeight: CAPTION_LINE_HEIGHT,
-											textAlign: "center",
-											fontWeight: CAPTION_FONT_WEIGHT,
-											padding: `${
-												getCaptionPadding(
-													getCaptionScaledFontSize(
-														autoCaptionSettings.fontSize,
-														overlayRef.current?.clientWidth || 960,
-														autoCaptionSettings.maxWidth,
-													),
-												).y
-											}px ${
-												getCaptionPadding(
-													getCaptionScaledFontSize(
-														autoCaptionSettings.fontSize,
-														overlayRef.current?.clientWidth || 960,
-														autoCaptionSettings.maxWidth,
-													),
-												).x
-											}px`,
-											borderRadius: `${getCaptionScaledRadius(
-												autoCaptionSettings.boxRadius,
-												getCaptionScaledFontSize(
-													autoCaptionSettings.fontSize,
-													overlayRef.current?.clientWidth || 960,
-													autoCaptionSettings.maxWidth,
-												),
-											)}px`,
-											boxSizing: "border-box",
-											cursor:
-												onEditAutoCaption && !isCaptionEditing
-													? "text"
-													: undefined,
-											pointerEvents: onEditAutoCaption ? "auto" : undefined,
-										}}
-									>
-										{captionEditSession ? (
-											<textarea
-												ref={captionEditInputRef}
-												value={captionEditSession.draft}
-												onChange={(event) => {
-													const draft = event.target.value;
-													setCaptionEditSession((session) => {
-														const nextSession = session
-															? { ...session, draft }
-															: session;
-														captionEditSessionRef.current = nextSession;
-														return nextSession;
-													});
-												}}
-												onBlur={commitCaptionEdit}
-												onClick={(event) => event.stopPropagation()}
-												onKeyDown={(event) => {
-													if (event.key === "Escape") {
-														event.preventDefault();
-														cancelCaptionEdit();
-														return;
-													}
-
-													if (event.key === "Enter" && !event.shiftKey) {
-														event.preventDefault();
-														event.currentTarget.blur();
-													}
-												}}
-												rows={Math.max(
-													1,
-													activeCaptionLayout.visibleLines.length,
-												)}
-												aria-label="Edit current caption"
-												style={{
-													display: "block",
-													width: `${
-														captionEditTextMetrics?.widthPx ??
-														Math.max(
-															48,
-															activeCaptionLayout.visibleLines.reduce(
-																(width, line) =>
-																	Math.max(width, line.width),
-																0,
-															),
-														)
-													}px`,
-													maxWidth: `${
-														captionEditTextMetrics?.maxTextWidthPx ??
-														getCaptionTextMaxWidth(
-															overlayRef.current?.clientWidth || 960,
-															autoCaptionSettings.maxWidth,
-															getCaptionScaledFontSize(
-																autoCaptionSettings.fontSize,
-																overlayRef.current?.clientWidth ||
-																	960,
-																autoCaptionSettings.maxWidth,
-															),
-														)
-													}px`,
-													minHeight: `${
-														Math.max(
-															1,
-															activeCaptionLayout.visibleLines.length,
-														) *
-														(
-															captionEditTextMetrics?.fontSize ??
-																getCaptionScaledFontSize(
-																	autoCaptionSettings.fontSize,
-																	overlayRef.current
-																		?.clientWidth || 960,
-																	autoCaptionSettings.maxWidth,
-																)
-														) *
-														CAPTION_LINE_HEIGHT
-													}px`,
-													resize: "none",
-													border: "0",
-													outline: "0",
-													padding: "0",
-													margin: "0",
-													overflow: "hidden",
-													background: "transparent",
-													color: autoCaptionSettings.textColor,
-													font: "inherit",
-													lineHeight: "inherit",
-													textAlign: "center",
-												}}
-											/>
-										) : (
-											activeCaptionLayout.visibleLines.map((line) => (
-												<div
-													key={`${activeCaptionLayout.blockKey}-${line.startWordIndex}`}
-													style={{
-														display: "flex",
-														justifyContent: "center",
-														flexWrap: "nowrap",
-														whiteSpace: "nowrap",
-													}}
-												>
-													{line.words.map((word) => {
-														const visualState =
-															getCaptionWordVisualState(
-																activeCaptionLayout.hasWordTimings,
-																word.state,
-															);
-
-														return (
-															<span
-																key={`${activeCaptionLayout.blockKey}-${word.index}`}
-																style={{
-																	display: "inline-block",
-																	whiteSpace: "pre",
-																	color: visualState.isInactive
-																		? autoCaptionSettings.inactiveTextColor
-																		: autoCaptionSettings.textColor,
-																	opacity: visualState.opacity,
-																}}
-															>
-																{`${word.leadingSpace ? " " : ""}${word.text}`}
-															</span>
-														);
-													})}
-												</div>
-											))
-										)}
-									</div>
-								</div>
-							</div>
+						{autoCaptionSettings?.enabled && autoCaptions.length > 0 ? (
+							<CaptionOverlay
+								ref={captionOverlayRef}
+								cues={autoCaptions}
+								settings={autoCaptionSettings}
+								currentTimeSec={currentTime}
+								onEditCaption={onEditAutoCaption}
+								onBeginEdit={pauseForCaptionEdit}
+							/>
 						) : null}
 						<div
 							className="absolute inset-0"

@@ -4,6 +4,7 @@ import App from "./App.tsx";
 import { I18nProvider } from "./contexts/I18nContext.tsx";
 import { ThemeProvider } from "./contexts/ThemeContext.tsx";
 import "./index.css";
+import "./lib/captions/captionFontFaces";
 
 document.documentElement.dataset.platform = /mac/i.test(navigator.platform) ? "macos" : "other";
 

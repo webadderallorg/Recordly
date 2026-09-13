@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { flattenCaptionWords } from "./captionLayout";
-import { deleteCue, mergeCues, retimeCue, splitCue } from "./captionOps";
+import { deleteCue, mergeCues, retimeCue, splitCue, toggleCaptionWordEmphasis } from "./captionOps";
 import type { CaptionCue } from "./types";
 
 function makeCues(): CaptionCue[] {
@@ -158,5 +158,38 @@ describe("captionOps.deleteCue", () => {
 	it("is a no-op for an unknown id", () => {
 		const cues = makeCues();
 		expect(deleteCue(cues, "missing")).toBe(cues);
+	});
+});
+
+describe("toggleCaptionWordEmphasis", () => {
+	it("marks a word as emphasized and unmarks it on a second toggle", () => {
+		const emphasized = toggleCaptionWordEmphasis(makeCues(), "a", 2);
+		expect(emphasized[0].words?.[2]).toMatchObject({ text: "three", emphasized: true });
+		expect(emphasized[0].words?.filter((word) => word.emphasized)).toHaveLength(1);
+
+		const cleared = toggleCaptionWordEmphasis(emphasized, "a", 2);
+		expect(cleared[0].words?.[2].emphasized).toBeUndefined();
+	});
+
+	it("builds word entries for a cue without word timings so it can be emphasized", () => {
+		const cues: CaptionCue[] = [{ id: "plain", startMs: 0, endMs: 900, text: "hola mundo" }];
+
+		const result = toggleCaptionWordEmphasis(cues, "plain", 1);
+
+		expect(result[0].words?.map((word) => [word.text, Boolean(word.emphasized)])).toEqual([
+			["hola", false],
+			["mundo", true],
+		]);
+	});
+
+	it("keeps emphasis when a cue is retimed or split", () => {
+		const emphasized = toggleCaptionWordEmphasis(makeCues(), "a", 3);
+
+		const retimed = retimeCue(emphasized, "a", { startMs: 0, endMs: 4_000 });
+		expect(retimed.find((cue) => cue.id === "a")?.words?.[3].emphasized).toBe(true);
+
+		const split = splitCue(emphasized, "a", 1_000);
+		const splitWords = split.flatMap((cue) => cue.words ?? []);
+		expect(splitWords.find((word) => word.text === "four")?.emphasized).toBe(true);
 	});
 });

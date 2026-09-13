@@ -114,3 +114,34 @@ describe("normalizeProjectEditor", () => {
 		expect(editor.webcam.roundness).toBeCloseTo(4.34, 1);
 	});
 });
+
+describe("normalizeProjectEditor caption word emphasis", () => {
+	it("keeps the emphasized flag on saved caption words", () => {
+		const editor = normalizeProjectEditor({
+			autoCaptions: [
+				{
+					id: "cue-1",
+					startMs: 0,
+					endMs: 1_000,
+					text: "hola mundo",
+					words: [
+						{ text: "hola", startMs: 0, endMs: 500 },
+						{
+							text: "mundo",
+							startMs: 500,
+							endMs: 1_000,
+							leadingSpace: true,
+							emphasized: true,
+						},
+					],
+				},
+			],
+		});
+
+		expect(editor.autoCaptions[0].words?.[1]).toMatchObject({
+			text: "mundo",
+			emphasized: true,
+		});
+		expect(editor.autoCaptions[0].words?.[0].emphasized).toBeUndefined();
+	});
+});

@@ -36,6 +36,7 @@ import { SUPPORTED_LOCALES } from "../../i18n/config";
 import { AnnotationSettingsPanel } from "./AnnotationSettingsPanel";
 import CaptionListPanel from "./CaptionListPanel";
 import type { CaptionRetimeSpan } from "./captionOps";
+import { CaptionStyleControls } from "./captions/CaptionStyleControls";
 import {
 	CURSOR_MOTION_PRESETS,
 	type CursorMotionPresetId,
@@ -648,6 +649,7 @@ interface SettingsPanelProps {
 	onCaptionSplit?: (id: string, atMs: number) => void;
 	onCaptionMerge?: (idA: string, idB: string) => void;
 	onCaptionDelete?: (id: string) => void;
+	onCaptionWordEmphasisToggle?: (id: string, wordIndex: number) => void;
 	nativeCaptureUnavailableSession?: boolean;
 	onOpenNativeCaptureUnavailableModal?: () => void;
 }
@@ -1094,6 +1096,7 @@ export function SettingsPanel({
 	onCaptionSplit,
 	onCaptionMerge,
 	onCaptionDelete,
+	onCaptionWordEmphasisToggle,
 	nativeCaptureUnavailableSession = false,
 	onOpenNativeCaptureUnavailableModal,
 }: SettingsPanelProps) {
@@ -2448,33 +2451,13 @@ export function SettingsPanel({
 						className="data-[state=checked]:bg-[#2563EB] scale-75"
 					/>
 				</div>
-				<label className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-2">
-					<span className="text-[10px] text-muted-foreground">
-						{tSettings("captions.textColor", "Text color")}
-					</span>
-					<input
-						type="color"
-						value={autoCaptionSettings.textColor}
-						onChange={(event) =>
-							updateAutoCaptionSettings({ textColor: event.target.value })
-						}
-						className="h-7 w-10 rounded border border-foreground/10 bg-transparent"
-					/>
-				</label>
-				<div className="mb-1 text-sm font-medium text-foreground">
-					{tSettings("captions.fontSettings", "Font Settings")}
-				</div>
-				<SliderControl
-					label={tSettings("captions.fontSize", "Font size")}
-					value={autoCaptionSettings.fontSize}
-					defaultValue={DEFAULT_AUTO_CAPTION_SETTINGS.fontSize}
-					min={16}
-					max={72}
-					step={1}
-					onChange={(value) => updateAutoCaptionSettings({ fontSize: value })}
-					formatValue={(value) => `${Math.round(value)}px`}
-					parseInput={(text) => parseFloat(text.replace(/px$/, ""))}
+				<CaptionStyleControls
+					settings={autoCaptionSettings}
+					onChange={updateAutoCaptionSettings}
 				/>
+				<div className="mb-1 mt-2 text-sm font-medium text-foreground">
+					{tSettings("captions.boxSettings", "Box")}
+				</div>
 				<SliderControl
 					label={tSettings("captions.rowCount", "Rows")}
 					value={autoCaptionSettings.maxRows}
@@ -2485,17 +2468,6 @@ export function SettingsPanel({
 					onChange={(value) => updateAutoCaptionSettings({ maxRows: Math.round(value) })}
 					formatValue={(value) => `${Math.round(value)}`}
 					parseInput={(text) => parseFloat(text)}
-				/>
-				<SliderControl
-					label={tSettings("captions.bottomOffset", "Bottom offset")}
-					value={autoCaptionSettings.bottomOffset}
-					defaultValue={DEFAULT_AUTO_CAPTION_SETTINGS.bottomOffset}
-					min={0}
-					max={30}
-					step={1}
-					onChange={(value) => updateAutoCaptionSettings({ bottomOffset: value })}
-					formatValue={(value) => `${Math.round(value)}%`}
-					parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
 				/>
 				<SliderControl
 					label={tSettings("captions.maxWidth", "Max width")}
@@ -3186,6 +3158,9 @@ export function SettingsPanel({
 						onCaptionSplit={(id, atMs) => onCaptionSplit?.(id, atMs)}
 						onCaptionMerge={(idA, idB) => onCaptionMerge?.(idA, idB)}
 						onCaptionDelete={(id) => onCaptionDelete?.(id)}
+						onCaptionWordEmphasisToggle={(id, wordIndex) =>
+							onCaptionWordEmphasisToggle?.(id, wordIndex)
+						}
 					/>
 				) : (
 					<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-6 text-center">

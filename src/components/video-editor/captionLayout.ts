@@ -18,6 +18,7 @@ export interface CaptionWordLayout {
 	startMs: number;
 	endMs: number;
 	hasRealTiming: boolean;
+	emphasized: boolean;
 	state: CaptionWordState;
 }
 
@@ -56,6 +57,7 @@ type CaptionSourceWord = {
 	leadingSpace?: boolean;
 	startMs?: number;
 	endMs?: number;
+	emphasized?: boolean;
 };
 
 const CAPTION_ENTER_MS = 180;
@@ -109,6 +111,7 @@ function splitCaptionWords(cue: CaptionCue) {
 				leadingSpace: Boolean(word.leadingSpace),
 				startMs: word.startMs,
 				endMs: word.endMs,
+				emphasized: Boolean(word.emphasized),
 			}))
 			.filter((word) => word.text.length > 0);
 
@@ -162,6 +165,7 @@ export function flattenCaptionWords(cues: CaptionCue[]) {
 		startMs: number;
 		endMs: number;
 		hasRealTiming: boolean;
+		emphasized: boolean;
 	}> = [];
 
 	cues.forEach((cue, cueIndex) => {
@@ -209,6 +213,7 @@ export function flattenCaptionWords(cues: CaptionCue[]) {
 					? word.endMs!
 					: Math.max(fallbackStartMs + 1, fallbackEndMs),
 				hasRealTiming: cueHasRealWordTimings,
+				emphasized: Boolean(word.emphasized),
 			});
 		});
 	});
@@ -472,6 +477,7 @@ export function buildActiveCaptionLayout(options: {
 			startMs: word.startMs,
 			endMs: word.endMs,
 			hasRealTiming: word.hasRealTiming,
+			emphasized: word.emphasized,
 			state:
 				index < activeWordIndex
 					? "spoken"
