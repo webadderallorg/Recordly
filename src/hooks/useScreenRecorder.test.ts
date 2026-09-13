@@ -5,9 +5,47 @@ import {
 	createProcessedMicrophoneConstraints,
 	normalizeBrowserMicrophoneProfile,
 	resolveBrowserCaptureCursorPolicy,
+	resolveDefaultLinuxRecordingSource,
 	shouldUseNativeWindowsCaptureForSource,
 	stopAndDiscardNativeCapture,
 } from "./useScreenRecorder";
+
+const portalSource = {
+	id: "screen:linux-portal",
+	name: "Linux Portal",
+	display_id: "",
+	thumbnail: null,
+	appIcon: null,
+	sourceType: "screen" as const,
+};
+
+describe("resolveDefaultLinuxRecordingSource", () => {
+	it("keeps Wayland on the Linux portal source", () => {
+		expect(
+			resolveDefaultLinuxRecordingSource({ windowSystem: "wayland", sources: [] }),
+		).toEqual(portalSource);
+	});
+
+	it("uses the primary live desktopCapturer screen on X11", () => {
+		const secondary = { ...portalSource, id: "screen:111:0", name: "Screen 1" };
+		const primary = { ...portalSource, id: "screen:222:0", name: "Screen 2 (Primary)" };
+		expect(
+			resolveDefaultLinuxRecordingSource({
+				windowSystem: "x11",
+				sources: [secondary, primary],
+			}),
+		).toBe(primary);
+	});
+
+	it("does not fall back to portal or synthetic fallback ids on X11", () => {
+		expect(
+			resolveDefaultLinuxRecordingSource({
+				windowSystem: "x11",
+				sources: [portalSource, { ...portalSource, id: "screen:fallback:42" }],
+			}),
+		).toBeNull();
+	});
+});
 
 type RecordingState = "inactive" | "recording" | "paused";
 

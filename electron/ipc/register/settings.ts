@@ -19,6 +19,7 @@ import {
 	setCountdownTimer,
 } from "../state";
 import { parseJsonWithByteOrderMark } from "../utils";
+import { getLinuxWindowSystem } from "./sourceMapping";
 
 const BROWSER_MICROPHONE_PROFILE_ENV = "RECORDLY_BROWSER_MIC_PROFILE";
 const DEFAULT_BROWSER_MICROPHONE_PROFILE = "processed";
@@ -49,6 +50,10 @@ export function registerSettingsHandlers() {
 
 	ipcMain.handle("get-platform", () => {
 		return process.platform;
+	});
+
+	ipcMain.handle("get-linux-window-system", () => {
+		return getLinuxWindowSystem();
 	});
 
 	ipcMain.on("app-settings:get", (event, key: unknown) => {
