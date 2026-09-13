@@ -886,13 +886,16 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		// presentationTime is already relative to the video's first frame
 		// (computed by adjustedPresentationTime), so use it directly.
 		let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: presentationTime, decodeTimeStamp: sampleBuffer.decodeTimeStamp)
-		if let retimedSampleBuffer = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]) {
-			let appended = input.append(retimedSampleBuffer)
-			if appended {
-				lastPresentationTime = presentationTime
-				lastDuration = sampleBuffer.duration
-			}
+		guard let retimedSampleBuffer = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]),
+			  input.append(retimedSampleBuffer) else {
+			// A failed retime or a rejected append loses this buffer as well; count
+			// it so AUDIO_GAPS reflects every buffer missing from the track. The
+			// hole is filled by the next accepted buffer like any other drop.
+			droppedAudioBufferCount += 1
+			return
 		}
+		lastPresentationTime = presentationTime
+		lastDuration = sampleBuffer.duration
 	}
 
 	/// Appends zeroed LPCM covering [start, end) in the same format as `sampleBuffer`,
