@@ -1,16 +1,6 @@
 import { Application, BlurFilter, Container, Graphics, Rectangle, Sprite, Texture } from "pixi.js";
 import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
-import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
-import {
-	CAPTION_FONT_WEIGHT,
-	CAPTION_LINE_HEIGHT,
-	getCaptionPadding,
-	getCaptionScaledFontSize,
-	getCaptionScaledRadius,
-	getCaptionTextMaxWidth,
-	getCaptionWordVisualState,
-} from "@/components/video-editor/captionStyle";
 import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
@@ -26,10 +16,7 @@ import type {
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
-import {
-	DEFAULT_WEBCAM_ROUNDNESS,
-	getDefaultCaptionFontFamily,
-} from "@/components/video-editor/types";
+import { DEFAULT_WEBCAM_ROUNDNESS } from "@/components/video-editor/types";
 import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
 import {
 	type CursorFollowCameraState,
@@ -70,6 +57,12 @@ import {
 	scaleWebcamOverlayPixels,
 } from "@/components/video-editor/webcamOverlay";
 import { getAssetPath, getExportableVideoUrl, getRenderableAssetUrl } from "@/lib/assetPath";
+import {
+	buildCaptionBlock,
+	type CaptionBlock,
+	drawCaptionBlock,
+	ensureCaptionSettingsFontLoaded,
+} from "@/lib/captions/captionPainter";
 import { drawSquircleOnCanvas, drawSquircleOnGraphics } from "@/lib/geometry/squircle";
 import {
 	clampMediaTimeToDuration,
@@ -229,20 +222,6 @@ interface AnnotationSpriteEntry {
 interface ExportCompositeCanvasState {
 	canvas: HTMLCanvasElement;
 	context: CanvasRenderingContext2D;
-}
-
-type ResolvedCaptionLayout = NonNullable<ReturnType<typeof buildActiveCaptionLayout>>;
-
-interface CaptionRenderState {
-	key: string;
-	layout: ResolvedCaptionLayout;
-	fontFamily: string;
-	fontSize: number;
-	lineHeight: number;
-	boxWidth: number;
-	boxHeight: number;
-	centerX: number;
-	centerY: number;
 }
 
 type PixiRendererAttempt = {
@@ -605,7 +584,7 @@ export class FrameRenderer {
 		this.annotationScaleFactor = this.calculateAnnotationScaleFactor();
 		this.annotationAssets = await preloadAnnotationAssets(this.config.annotationRegions ?? []);
 		await this.setupAnnotationLayer();
-		this.setupCaptionResources();
+		await this.setupCaptionResources();
 
 		if (this.shouldUseZoomMotionBlur()) {
 			this.zoomBlurFilter = new ZoomBlurFilter({
@@ -1621,11 +1600,13 @@ export class FrameRenderer {
 		}
 	}
 
-	private setupCaptionResources(): void {
-		if (!this.config.autoCaptions?.length || !this.config.autoCaptionSettings) {
+	private async setupCaptionResources(): Promise<void> {
+		const settings = this.config.autoCaptionSettings;
+		if (!this.config.autoCaptions?.length || !settings) {
 			return;
 		}
 
+		await ensureCaptionSettingsFontLoaded(settings, this.config.width);
 		this.captionMeasureCanvas = document.createElement("canvas");
 		this.captionMeasureCanvas.width = 1;
 		this.captionMeasureCanvas.height = 1;
@@ -1634,61 +1615,20 @@ export class FrameRenderer {
 		);
 	}
 
-	private buildCaptionRenderState(timeMs: number): CaptionRenderState | null {
+	private buildCaptionRenderBlock(timeMs: number): CaptionBlock | null {
 		const settings = this.config.autoCaptionSettings;
 		const cues = this.config.autoCaptions;
-		const measureCtx = this.captionMeasureCtx;
-
-		if (!settings || !cues?.length || !measureCtx) {
+		if (!settings || !cues?.length || !this.captionMeasureCtx) {
 			return null;
 		}
 
-		const fontFamily = settings.fontFamily || getDefaultCaptionFontFamily();
-		const fontSize = getCaptionScaledFontSize(
-			settings.fontSize,
-			this.config.width,
-			settings.maxWidth,
-		);
-		measureCtx.font = `${CAPTION_FONT_WEIGHT} ${fontSize}px ${fontFamily}`;
-
-		const layout = buildActiveCaptionLayout({
+		return buildCaptionBlock({
 			cues,
 			timeMs,
 			settings,
-			maxWidthPx: getCaptionTextMaxWidth(this.config.width, settings.maxWidth, fontSize),
-			measureText: (text) => measureCtx.measureText(text).width,
+			frame: { width: this.config.width, height: this.config.height },
+			measureContext: this.captionMeasureCtx,
 		});
-		if (!layout) {
-			return null;
-		}
-
-		const padding = getCaptionPadding(fontSize);
-		const lineHeight = fontSize * CAPTION_LINE_HEIGHT;
-		const textBlockHeight = layout.visibleLines.length * lineHeight;
-		const boxHeight = textBlockHeight + padding.y * 2;
-		const maxMeasuredWidth = layout.visibleLines.reduce(
-			(largest, line) => Math.max(largest, line.width),
-			0,
-		);
-		const boxWidth = Math.min(
-			this.config.width * (settings.maxWidth / 100) + padding.x * 2,
-			maxMeasuredWidth + padding.x * 2,
-		);
-		const centerX = this.config.width / 2;
-		const centerY =
-			this.config.height - (this.config.height * settings.bottomOffset) / 100 - boxHeight / 2;
-
-		return {
-			key: `${layout.blockKey}:${layout.visiblePageIndex}:${layout.activeWordIndex}`,
-			layout,
-			fontFamily,
-			fontSize,
-			lineHeight,
-			boxWidth,
-			boxHeight,
-			centerX,
-			centerY,
-		};
 	}
 
 	private ensureCaptionCanvas(width: number, height: number): void {
@@ -1728,67 +1668,35 @@ export class FrameRenderer {
 		}
 	}
 
-	private rasterizeCaptionSprite(state: CaptionRenderState): void {
-		this.ensureCaptionCanvas(state.boxWidth, state.boxHeight);
+	private getCaptionCanvasSize(block: CaptionBlock) {
+		return {
+			width: Math.max(1, Math.ceil(block.boxWidth + block.bleed * 2)),
+			height: Math.max(1, Math.ceil(block.boxHeight + block.bleed * 2)),
+		};
+	}
 
-		if (!this.captionCtx || !this.captionCanvas || !this.captionSprite) {
+	private rasterizeCaptionSprite(block: CaptionBlock): void {
+		const settings = this.config.autoCaptionSettings;
+		const canvasSize = this.getCaptionCanvasSize(block);
+		this.ensureCaptionCanvas(canvasSize.width, canvasSize.height);
+		if (!settings || !this.captionCtx || !this.captionCanvas || !this.captionSprite) {
 			return;
 		}
 
 		const ctx = this.captionCtx;
-		const settings = this.config.autoCaptionSettings;
-		if (!settings) {
-			return;
-		}
-
 		ctx.clearRect(0, 0, this.captionCanvas.width, this.captionCanvas.height);
-		ctx.font = `${CAPTION_FONT_WEIGHT} ${state.fontSize}px ${state.fontFamily}`;
-		ctx.fillStyle = `rgba(0, 0, 0, ${settings.backgroundOpacity})`;
-		drawSquircleOnCanvas(ctx, {
-			x: 0,
-			y: 0,
-			width: state.boxWidth,
-			height: state.boxHeight,
-			radius: getCaptionScaledRadius(settings.boxRadius, state.fontSize),
-		});
-		ctx.fill();
-
-		const padding = getCaptionPadding(state.fontSize);
-		ctx.textAlign = "left";
-		ctx.textBaseline = "middle";
-
-		state.layout.visibleLines.forEach((line, lineIndex) => {
-			let cursorX = (state.boxWidth - line.width) / 2;
-			const lineY = padding.y + state.lineHeight * lineIndex + state.lineHeight / 2;
-
-			line.words.forEach((word) => {
-				const segmentText = `${word.leadingSpace ? " " : ""}${word.text}`;
-				const segmentWidth = ctx.measureText(segmentText).width;
-				const visualState = getCaptionWordVisualState(
-					state.layout.hasWordTimings,
-					word.state,
-				);
-
-				ctx.save();
-				ctx.translate(cursorX, lineY);
-				ctx.fillStyle = visualState.isInactive
-					? settings.inactiveTextColor
-					: settings.textColor;
-				ctx.globalAlpha = visualState.opacity;
-				ctx.fillText(segmentText, 0, 0);
-				ctx.restore();
-
-				cursorX += segmentWidth;
-			});
-		});
+		ctx.save();
+		ctx.translate(this.captionCanvas.width / 2, this.captionCanvas.height / 2);
+		drawCaptionBlock(ctx, block, settings);
+		ctx.restore();
 
 		this.captionTextureSource?.update();
-		this.captionRenderKey = state.key;
+		this.captionRenderKey = block.renderKey;
 	}
 
 	private updateCaptionLayer(timeMs: number): void {
-		const state = this.buildCaptionRenderState(timeMs);
-		if (!state || !this.captionContainer) {
+		const block = this.buildCaptionRenderBlock(timeMs);
+		if (!block || !this.captionContainer) {
 			if (this.captionSprite) {
 				this.captionSprite.visible = false;
 			}
@@ -1799,15 +1707,16 @@ export class FrameRenderer {
 			return;
 		}
 
+		const canvasSize = this.getCaptionCanvasSize(block);
 		const needsReraster =
 			!this.captionSprite ||
 			!this.captionCanvas ||
-			this.captionCanvas.width !== Math.max(1, Math.ceil(state.boxWidth)) ||
-			this.captionCanvas.height !== Math.max(1, Math.ceil(state.boxHeight)) ||
-			this.captionRenderKey !== state.key;
+			this.captionCanvas.width !== canvasSize.width ||
+			this.captionCanvas.height !== canvasSize.height ||
+			this.captionRenderKey !== block.renderKey;
 
 		if (needsReraster) {
-			this.rasterizeCaptionSprite(state);
+			this.rasterizeCaptionSprite(block);
 		}
 
 		if (!this.captionSprite) {
@@ -1816,9 +1725,9 @@ export class FrameRenderer {
 
 		this.captionContainer.visible = true;
 		this.captionSprite.visible = true;
-		this.captionSprite.position.set(state.centerX, state.centerY + state.layout.translateY);
-		this.captionSprite.scale.set(state.layout.scale);
-		this.captionSprite.alpha = state.layout.opacity;
+		this.captionSprite.position.set(block.centerX, block.centerY + block.layout.translateY);
+		this.captionSprite.scale.set(block.layout.scale);
+		this.captionSprite.alpha = block.layout.opacity;
 	}
 
 	private async syncBackgroundFrame(timeSeconds: number): Promise<void> {

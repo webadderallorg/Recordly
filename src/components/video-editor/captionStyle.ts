@@ -1,7 +1,5 @@
-import type { CaptionWordState } from "./captionLayout";
 import { DEFAULT_AUTO_CAPTION_SETTINGS } from "./types";
 
-export const CAPTION_FONT_WEIGHT = 400;
 export const CAPTION_LINE_HEIGHT = 1.32;
 
 const DEFAULT_CAPTION_REFERENCE_WIDTH = 1920 * (DEFAULT_AUTO_CAPTION_SETTINGS.maxWidth / 100);
@@ -45,13 +43,4 @@ export function getCaptionTextMaxWidth(
 		fontSize * 4,
 		getCaptionTargetWidth(containerWidth, maxWidthPercent) - padding.x * 2,
 	);
-}
-
-export function getCaptionWordVisualState(_hasWordTimings: boolean, _state: CaptionWordState) {
-	// Per-word "spoken" highlighting is disabled: word-level timings from the
-	// transcriber are unreliable, so captions render as a single uniform block.
-	return {
-		isInactive: false,
-		opacity: 1,
-	};
 }

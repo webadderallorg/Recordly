@@ -60,6 +60,7 @@ import {
 	scaleWebcamOverlayPixels,
 } from "@/components/video-editor/webcamOverlay";
 import { getAssetPath, getExportableVideoUrl, getRenderableAssetUrl } from "@/lib/assetPath";
+import { ensureCaptionSettingsFontLoaded } from "@/lib/captions/captionPainter";
 import { getWebcamShadowFilter } from "@/lib/exporter/shadowProfile";
 import { drawSquircleOnCanvas, drawSquircleOnGraphics } from "@/lib/geometry/squircle";
 import {
@@ -439,6 +440,12 @@ export class FrameRenderer {
 
 		// Setup background (render separately, not in PixiJS)
 		await this.setupBackground();
+		if (this.config.autoCaptionSettings) {
+			await ensureCaptionSettingsFontLoaded(
+				this.config.autoCaptionSettings,
+				this.config.width,
+			);
+		}
 		await this.setupWebcamSource();
 
 		if ((this.config.zoomMotionBlur ?? 0) > 0) {
@@ -1485,8 +1492,7 @@ export class FrameRenderer {
 					this.compositeCtx,
 					this.config.autoCaptions,
 					this.config.autoCaptionSettings,
-					this.config.width,
-					this.config.height,
+					{ width: this.config.width, height: this.config.height },
 					temporalSnapshot.timeMs,
 				);
 			}
@@ -1591,8 +1597,7 @@ export class FrameRenderer {
 				this.compositeCtx,
 				this.config.autoCaptions,
 				this.config.autoCaptionSettings,
-				this.config.width,
-				this.config.height,
+				{ width: this.config.width, height: this.config.height },
 				timeMs,
 			);
 		}

@@ -142,3 +142,49 @@ describe("captionEditing", () => {
 		expect(updated[0].words).toEqual([{ text: "coughs", startMs: 1_000, endMs: 2_000 }]);
 	});
 });
+
+describe("updateCaptionCuesForEditedTarget emphasis", () => {
+	it("keeps emphasis on words whose text survives an edit", () => {
+		const cues: CaptionCue[] = [
+			{
+				id: "cue-1",
+				startMs: 0,
+				endMs: 1_200,
+				text: "hola mundo cruel",
+				words: [
+					{ text: "hola", startMs: 0, endMs: 400 },
+					{
+						text: "mundo",
+						startMs: 400,
+						endMs: 800,
+						leadingSpace: true,
+						emphasized: true,
+					},
+					{ text: "cruel", startMs: 800, endMs: 1_200, leadingSpace: true },
+				],
+			},
+		];
+		const target: CaptionEditTarget = {
+			id: "page",
+			startMs: 0,
+			endMs: 1_200,
+			text: "hola mundo cruel",
+			words: cues[0].words!.map((word, index) => ({
+				cueId: "cue-1",
+				cueWordIndex: index,
+				startMs: word.startMs,
+				endMs: word.endMs,
+				text: word.text,
+				leadingSpace: Boolean(word.leadingSpace),
+			})),
+		};
+
+		const [edited] = updateCaptionCuesForEditedTarget(cues, target, "hola mundo amable");
+
+		expect(edited.words?.map((word) => [word.text, Boolean(word.emphasized)])).toEqual([
+			["hola", false],
+			["mundo", true],
+			["amable", false],
+		]);
+	});
+});

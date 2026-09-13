@@ -82,6 +82,7 @@ export function normalizeCaptionWords(cue: CaptionCue): CaptionCueWord[] {
 				startMs,
 				endMs,
 				...(word.leadingSpace ? { leadingSpace: true } : {}),
+				...(word.emphasized ? { emphasized: true } : {}),
 			};
 		})
 		.filter((word) => word.text.length > 0);
@@ -103,7 +104,32 @@ export function normalizeCaptionWordSpacing(words: CaptionCueWord[]): CaptionCue
 			startMs: word.startMs,
 			endMs: word.endMs,
 			...(index > 0 ? { leadingSpace: true } : {}),
+			...(word.emphasized ? { emphasized: true } : {}),
 		}));
+}
+
+function toEmphasisKey(text: string) {
+	return normalizeCaptionEditText(text).toLocaleLowerCase();
+}
+
+/** Re-applies emphasis to edited words whose text matches an emphasized original word. */
+function carryEmphasisByText(
+	originalWords: CaptionCueWord[],
+	editedWords: CaptionCueWord[],
+): CaptionCueWord[] {
+	const remaining = new Map<string, number>();
+	for (const word of originalWords) {
+		if (!word.emphasized) continue;
+		const key = toEmphasisKey(word.text);
+		remaining.set(key, (remaining.get(key) ?? 0) + 1);
+	}
+	return editedWords.map((word) => {
+		const key = toEmphasisKey(word.text);
+		const count = remaining.get(key) ?? 0;
+		if (count <= 0) return word;
+		remaining.set(key, count - 1);
+		return { ...word, emphasized: true };
+	});
 }
 
 function shouldPreserveCaptionWords(cue: CaptionCue) {
@@ -167,9 +193,10 @@ export function updateCaptionCuesForEditedTarget(
 		const targetIndexes = new Set(targetWords.map((word) => word.cueWordIndex));
 		const existingWords = normalizeCaptionWords(cue);
 		const keptWords = existingWords.filter((_, index) => !targetIndexes.has(index));
+		const replacedWords = existingWords.filter((_, index) => targetIndexes.has(index));
 		const nextWords = normalizeCaptionWordSpacing([
 			...keptWords,
-			...(editedWordsByCue.get(cue.id) ?? []),
+			...carryEmphasisByText(replacedWords, editedWordsByCue.get(cue.id) ?? []),
 		]);
 		const shouldKeepWords = shouldPreserveCaptionWords(cue);
 

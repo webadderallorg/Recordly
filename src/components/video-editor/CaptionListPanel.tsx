@@ -2,6 +2,7 @@ import { ArrowsMerge, Scissors, Trash } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useScopedT } from "@/contexts/I18nContext";
+import { normalizeCaptionWords } from "./captionEditing";
 import type { CaptionRetimeSpan } from "./captionOps";
 import type { CaptionCue } from "./types";
 
@@ -15,6 +16,7 @@ interface CaptionListPanelProps {
 	onCaptionSplit: (id: string, atMs: number) => void;
 	onCaptionMerge: (idA: string, idB: string) => void;
 	onCaptionDelete: (id: string) => void;
+	onCaptionWordEmphasisToggle: (id: string, wordIndex: number) => void;
 }
 
 function clampNumber(value: number, min: number, max: number): number {
@@ -50,6 +52,39 @@ interface CaptionEditorProps {
 	onSplit: (id: string, atMs: number) => void;
 	onMerge: (id: string) => void;
 	onDelete: (id: string) => void;
+	onToggleWordEmphasis: (id: string, wordIndex: number) => void;
+}
+
+function CaptionWordEmphasisPicker(props: {
+	cue: CaptionCue;
+	onToggle: (id: string, wordIndex: number) => void;
+}) {
+	const t = useScopedT("settings");
+	const words = normalizeCaptionWords(props.cue);
+	if (words.length === 0) {
+		return null;
+	}
+
+	return (
+		<div className="flex flex-col gap-1">
+			<span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+				{t("captions.editor.emphasis", "Emphasize words")}
+			</span>
+			<div className="flex flex-wrap gap-1">
+				{words.map((word, index) => (
+					<button
+						key={`${index}-${word.text}`}
+						type="button"
+						aria-pressed={Boolean(word.emphasized)}
+						onClick={() => props.onToggle(props.cue.id, index)}
+						className="rounded-md border border-foreground/10 bg-foreground/5 px-1.5 py-0.5 text-xs text-foreground transition-colors hover:bg-foreground/10 aria-pressed:border-[#FB923C]/70 aria-pressed:bg-[#FB923C]/20 aria-pressed:font-semibold"
+					>
+						{word.text}
+					</button>
+				))}
+			</div>
+		</div>
+	);
 }
 
 function CaptionEditor({
@@ -62,6 +97,7 @@ function CaptionEditor({
 	onSplit,
 	onMerge,
 	onDelete,
+	onToggleWordEmphasis,
 }: CaptionEditorProps) {
 	const t = useScopedT("settings");
 	const [draftText, setDraftText] = useState(cue.text);
@@ -134,6 +170,8 @@ function CaptionEditor({
 					className="min-h-[4.5rem] w-full resize-none rounded-md border border-foreground/10 bg-background/60 px-2 py-1.5 text-sm text-foreground outline-none focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]"
 				/>
 			</label>
+
+			<CaptionWordEmphasisPicker cue={cue} onToggle={onToggleWordEmphasis} />
 
 			<div className="flex items-center gap-2">
 				<label className="flex flex-1 flex-col gap-1">
@@ -215,6 +253,7 @@ export default function CaptionListPanel({
 	onCaptionSplit,
 	onCaptionMerge,
 	onCaptionDelete,
+	onCaptionWordEmphasisToggle,
 }: CaptionListPanelProps) {
 	const index = cues.findIndex((cue) => cue.id === selectedCaptionId);
 	if (index < 0) {
@@ -240,6 +279,7 @@ export default function CaptionListPanel({
 				}
 			}}
 			onDelete={onCaptionDelete}
+			onToggleWordEmphasis={onCaptionWordEmphasisToggle}
 		/>
 	);
 }

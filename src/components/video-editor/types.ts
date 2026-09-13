@@ -1,3 +1,5 @@
+import { type CaptionFontId, DEFAULT_CAPTION_FONT_ID } from "@/lib/captions/captionFonts";
+
 export type ZoomDepth = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface ZoomFocus {
@@ -471,10 +473,6 @@ function getDefaultAnnotationFontFamily() {
 	return '"SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif';
 }
 
-export function getDefaultCaptionFontFamily() {
-	return '"SF Pro Text", "SF Pro Display", "Helvetica Neue", sans-serif';
-}
-
 export interface AnnotationRegion {
 	id: string;
 	startMs: number;
@@ -580,41 +578,76 @@ export interface CaptionCueWord {
 	startMs: number;
 	endMs: number;
 	leadingSpace?: boolean;
+	/** Picked out by the user so it renders in the emphasis color. */
+	emphasized?: boolean;
 }
 
 export type AutoCaptionAnimation = "none" | "fade" | "rise" | "pop";
+
+export type CaptionVerticalPosition = "top" | "middle" | "bottom";
+
+export type CaptionHorizontalAlign = "left" | "center" | "right";
+
+/** How the word currently being spoken stands out: tinted, on a pill, or enlarged. */
+export type CaptionHighlightMode = "none" | "color" | "pill" | "pop";
+
+/** Words emphasized automatically in every caption, on top of manual emphasis. */
+export type CaptionAccentRule = "none" | "first-word" | "longest-word";
 
 export interface AutoCaptionSettings {
 	enabled: boolean;
 	/** Show the hover ghost on the timeline caption track for click-to-add. */
 	timelineQuickAdd: boolean;
 	language: string;
-	fontFamily: string;
+	fontId: CaptionFontId;
+	fontWeight: number;
 	fontSize: number;
+	uppercase: boolean;
+	verticalPosition: CaptionVerticalPosition;
+	horizontalAlign: CaptionHorizontalAlign;
+	/** Distance from the edge the caption is anchored to (% of frame height); ignored in the middle. */
 	bottomOffset: number;
 	maxWidth: number;
 	maxRows: number;
 	animationStyle: AutoCaptionAnimation;
 	boxRadius: number;
 	textColor: string;
-	inactiveTextColor: string;
 	backgroundOpacity: number;
+	/** Text outline thickness in px at the default font size; 0 disables it. */
+	outlineWidth: number;
+	outlineColor: string;
+	/** Drop shadow strength behind the text; 0 disables it. */
+	shadowOpacity: number;
+	highlightMode: CaptionHighlightMode;
+	highlightColor: string;
+	emphasisColor: string;
+	accentRule: CaptionAccentRule;
 }
 
 export const DEFAULT_AUTO_CAPTION_SETTINGS: AutoCaptionSettings = {
 	enabled: false,
 	timelineQuickAdd: true,
 	language: "auto",
-	fontFamily: getDefaultCaptionFontFamily(),
+	fontId: DEFAULT_CAPTION_FONT_ID,
+	fontWeight: 600,
 	fontSize: 30,
+	uppercase: false,
+	verticalPosition: "bottom",
+	horizontalAlign: "center",
 	bottomOffset: 3,
 	maxWidth: 62,
 	maxRows: 1,
 	animationStyle: "fade",
 	boxRadius: 17.5,
 	textColor: "#FFFFFF",
-	inactiveTextColor: "#A3A3A3",
 	backgroundOpacity: 0.9,
+	outlineWidth: 0,
+	outlineColor: "#000000",
+	shadowOpacity: 0,
+	highlightMode: "color",
+	highlightColor: "#FACC15",
+	emphasisColor: "#FB923C",
+	accentRule: "none",
 };
 
 export type PlaybackSpeed = 0.25 | 0.5 | 0.75 | 1.25 | 1.5 | 1.75 | 2;

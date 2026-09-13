@@ -14,6 +14,7 @@ import {
 	mergeCues,
 	retimeCue,
 	splitCue,
+	toggleCaptionWordEmphasis,
 } from "../captionOps";
 import type { AutoCaptionSettings, CaptionCue, EditorEffectSection } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
@@ -146,6 +147,12 @@ export function useCaptionCommands({
 		},
 		[cancelEdit, setAutoCaptions],
 	);
+	const handleCaptionWordEmphasisToggle = useCallback(
+		(id: string, wordIndex: number) => {
+			setAutoCaptions((captions) => toggleCaptionWordEmphasis(captions, id, wordIndex));
+		},
+		[setAutoCaptions],
+	);
 	const handleCaptionDelete = useCallback(
 		(id: string) => {
 			cancelEdit();
@@ -198,6 +205,7 @@ export function useCaptionCommands({
 		handleCaptionSplit,
 		handleCaptionMerge,
 		handleCaptionDelete,
+		handleCaptionWordEmphasisToggle,
 		handleCaptionAdded,
 		handleClearAutoCaptions,
 	};

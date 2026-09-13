@@ -46,6 +46,14 @@
 		"test:watch": "vitest"
 	},
 	"dependencies": {
+		"@fontsource-variable/inter": "^5.3.0",
+		"@fontsource-variable/league-spartan": "^5.3.0",
+		"@fontsource-variable/montserrat": "^5.3.0",
+		"@fontsource-variable/oswald": "^5.3.0",
+		"@fontsource-variable/roboto": "^5.3.0",
+		"@fontsource/anton": "^5.3.0",
+		"@fontsource/bebas-neue": "^5.3.0",
+		"@fontsource/poppins": "^5.3.0",
 		"@phosphor-icons/react": "^2.1.10",
 		"capturekit": "^1.0.13",
 		"electron-updater": "^6.8.3",

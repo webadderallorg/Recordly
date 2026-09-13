@@ -78,6 +78,7 @@ function rescaleWordsIntoSpan(
 			startMs,
 			endMs,
 			...(word.leadingSpace ? { leadingSpace: true } : {}),
+			...(word.emphasized ? { emphasized: true } : {}),
 		});
 	});
 
@@ -213,4 +214,29 @@ export function mergeCues(cues: CaptionCue[], idA: string, idB: string): Caption
 export function deleteCue(cues: CaptionCue[], id: string): CaptionCue[] {
 	const next = cues.filter((cue) => cue.id !== id);
 	return next.length === cues.length ? cues : sortCaptionCues(next);
+}
+
+/** Toggles manual emphasis on one word of a cue, creating word entries when the cue has none. */
+export function toggleCaptionWordEmphasis(
+	cues: CaptionCue[],
+	id: string,
+	wordIndex: number,
+): CaptionCue[] {
+	return cues.map((cue) => {
+		if (cue.id !== id) {
+			return cue;
+		}
+		const words = normalizeCaptionWords(cue);
+		if (wordIndex < 0 || wordIndex >= words.length) {
+			return cue;
+		}
+		const toggledWords = words.map((word, index) => {
+			if (index !== wordIndex) {
+				return word;
+			}
+			const { emphasized, ...rest } = word;
+			return emphasized ? rest : { ...rest, emphasized: true };
+		});
+		return { ...cue, words: toggledWords };
+	});
 }
