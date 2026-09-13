@@ -53,6 +53,7 @@ import {
 	shouldPreferNativeAutoBackend,
 	shouldPreferNativeStaticLayoutBeforeBreeze,
 } from "./backendPolicy";
+import { createCanvasGradientFromCss } from "./cssGradient";
 import { buildEditedTrackSourceSegments, classifyEditedTrackStrategy } from "./editedTrackStrategy";
 import {
 	type ExportBackpressureProfile,
@@ -1929,79 +1930,10 @@ export class ModernVideoExporter {
 		ctx: CanvasRenderingContext2D,
 		wallpaper: string,
 	): CanvasGradient | null {
-		const gradientMatch = wallpaper.match(/(linear|radial)-gradient\((.+)\)/);
-		if (!gradientMatch) {
-			return null;
-		}
-
-		const [, type, params] = gradientMatch;
-		const parts = this.splitCssGradientArguments(params).map((part) => part.trim());
-		const colorStops = parts
-			.map(
-				(part) =>
-					part.match(/^(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-z]+)/i)?.[1],
-			)
-			.filter((color): color is string => Boolean(color));
-		if (colorStops.length === 0) {
-			return null;
-		}
-
-		const gradient =
-			type === "linear"
-				? ctx.createLinearGradient(0, 0, 0, this.config.height)
-				: ctx.createRadialGradient(
-						this.config.width / 2,
-						this.config.height / 2,
-						0,
-						this.config.width / 2,
-						this.config.height / 2,
-						Math.max(this.config.width, this.config.height) / 2,
-					);
-
-		if (colorStops.length === 1) {
-			gradient.addColorStop(0, colorStops[0]);
-			gradient.addColorStop(1, colorStops[0]);
-			return gradient;
-		}
-
-		colorStops.forEach((color, index) => {
-			gradient.addColorStop(index / (colorStops.length - 1), color);
+		return createCanvasGradientFromCss(ctx, wallpaper, {
+			width: this.config.width,
+			height: this.config.height,
 		});
-		return gradient;
-	}
-
-	private splitCssGradientArguments(params: string): string[] {
-		const parts: string[] = [];
-		let current = "";
-		let depth = 0;
-
-		for (const char of params) {
-			if (char === "(") {
-				depth++;
-				current += char;
-				continue;
-			}
-			if (char === ")") {
-				depth = Math.max(0, depth - 1);
-				current += char;
-				continue;
-			}
-			if (char === "," && depth === 0) {
-				if (current.trim()) {
-					parts.push(current.trim());
-				}
-				current = "";
-				continue;
-			}
-
-			current += char;
-		}
-
-		if (current.trim()) {
-			parts.push(current.trim());
-		}
-
-		return parts;
 	}
 
 	private async writeNativeStaticLayoutTempAsset(
