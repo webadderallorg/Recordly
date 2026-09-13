@@ -89,6 +89,25 @@ describe("AudioProcessor offline render preparation", () => {
 		expect(decodeAudioFromUrl).not.toHaveBeenCalledWith("/tmp/recording.mp4");
 	});
 
+	it("does not decode an embedded microphone again when its companion replaces it", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const micBuffer = { duration: 10, numberOfChannels: 1 } as AudioBuffer;
+		const decode = vi.spyOn(processor, "decodeAudioFromUrl").mockResolvedValue(micBuffer);
+		vi.spyOn(processor, "getMediaDurationSec").mockResolvedValue(10);
+		const prepared = await processor.prepareOfflineRender(
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			[],
+			["/tmp/recording.mic.m4a"],
+		);
+		expect(prepared.mainBufferEntry).toBeNull();
+		expect(prepared.companionEntries).toHaveLength(1);
+		expect(prepared.companionEntries[0].gain).toBe(1);
+		expect(decode).toHaveBeenCalledTimes(1);
+		expect(decode).toHaveBeenCalledWith("/tmp/recording.mic.m4a");
+	});
+
 	it("does not treat a single embedded fallback path as an external sidecar", async () => {
 		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
 		const loadAudioFileDemuxer = vi.spyOn(processor, "loadAudioFileDemuxer");
@@ -115,6 +134,7 @@ describe("AudioProcessor offline render preparation", () => {
 		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
 		const mainBuffer = { duration: 600, numberOfChannels: 2 } as AudioBuffer;
 		const micBuffer = { duration: 565, numberOfChannels: 1 } as AudioBuffer;
+		vi.spyOn(processor, "getMediaDurationSec").mockResolvedValue(600);
 
 		vi.spyOn(processor, "decodeAudioFromUrl").mockImplementation(async (url: string) => {
 			if (url === "file:///tmp/recording.mp4") {
@@ -161,7 +181,28 @@ describe("AudioProcessor offline render preparation", () => {
 		expect(renderAndMuxOfflineAudio).toHaveBeenCalled();
 	});
 
-	it("avoids the single-sidecar fast path for legacy mac mic sidecars that still need embedded audio", async () => {
+	it.each([
+		"mic",
+		"system",
+	])("renders a native mac %s companion instead of using the demux fast path", async (track) => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const loadDemuxer = vi.spyOn(processor, "loadAudioFileDemuxer");
+		const render = vi.spyOn(processor, "renderAndMuxOfflineAudio").mockResolvedValue();
+		await processor.process(
+			null,
+			{} as never,
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			[`/tmp/recording.${track}.m4a`],
+		);
+		expect(loadDemuxer).not.toHaveBeenCalled();
+		expect(render).toHaveBeenCalled();
+	});
+
+	it("mixes a mic companion when embedded audio is explicitly selected", async () => {
 		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
 		const loadAudioFileDemuxer = vi.spyOn(processor, "loadAudioFileDemuxer");
 		const renderAndMuxOfflineAudio = vi
@@ -176,7 +217,7 @@ describe("AudioProcessor offline render preparation", () => {
 			[],
 			undefined,
 			[],
-			["/tmp/recording.mic.m4a"],
+			["/tmp/recording.mp4", "/tmp/recording.mic.m4a"],
 		);
 
 		expect(loadAudioFileDemuxer).not.toHaveBeenCalled();

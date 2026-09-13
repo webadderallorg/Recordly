@@ -196,6 +196,58 @@ describe("getCompanionAudioFallbackPaths", () => {
 		await expect(getCompanionAudioFallbackPaths(videoPath)).resolves.toEqual([micPath]);
 	});
 
+	it.each([
+		{ name: "both mac tracks", embedded: true, suffixes: [".system.m4a", ".mic.m4a"] },
+		{ name: "mac mic only", embedded: true, suffixes: [".mic.m4a"] },
+		{ name: "mac system only", embedded: true, suffixes: [".system.m4a"] },
+		{ name: "no embedded audio", embedded: false, suffixes: [".system.m4a", ".mic.m4a"] },
+		{ name: "no companions", embedded: true, suffixes: [] },
+		{ name: "legacy mac webm tracks", embedded: true, suffixes: [".system.webm", ".mic.webm"] },
+		{
+			name: "native system and browser mic",
+			embedded: true,
+			suffixes: [".system.m4a", ".mic.webm"],
+		},
+	])("uses independent tracks and their timing for $name", async ({ embedded, suffixes }) => {
+		const videoPath = path.join(tempRoot, "recording.mp4");
+		const paths = suffixes.map((suffix) => path.join(tempRoot, `recording${suffix}`));
+		await fs.writeFile(videoPath, "video");
+		await Promise.all(
+			paths.map(async (audioPath) => {
+				await fs.writeFile(audioPath, "audio");
+				await fs.writeFile(`${audioPath}.json`, JSON.stringify({ startDelayMs: 125 }));
+			}),
+		);
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				const stderr = embedded ? "Stream #0:1: Audio: aac" : "Stream #0:0: Video: h264";
+				callback(Object.assign(new Error("probe"), { stderr }), "", stderr);
+			},
+		);
+
+		const { getCompanionAudioFallbackInfo } = await import("./diagnostics");
+		await expect(getCompanionAudioFallbackInfo(videoPath)).resolves.toEqual({
+			paths,
+			startDelayMsByPath: Object.fromEntries(paths.map((audioPath) => [audioPath, 125])),
+		});
+	});
+
+	it("ignores empty mac sidecars and preserves embedded-only playback", async () => {
+		const videoPath = path.join(tempRoot, "recording.mp4");
+		await fs.writeFile(videoPath, "video");
+		await fs.writeFile(path.join(tempRoot, "recording.system.m4a"), "");
+		const { getCompanionAudioFallbackInfo } = await import("./diagnostics");
+		await expect(getCompanionAudioFallbackInfo(videoPath)).resolves.toEqual({
+			paths: [],
+			startDelayMsByPath: {},
+		});
+	});
+
 	it("loads saved sidecar timing metadata alongside companion audio paths", async () => {
 		const videoPath = path.join(tempRoot, "recording.mp4");
 		const micPath = path.join(tempRoot, "recording.mic.webm");

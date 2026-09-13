@@ -38,4 +38,21 @@ describe("resolveSourceTrackRoutingPolicy", () => {
 		expect(policy.muteEmbeddedPreview).toBe(false);
 		expect(policy.includeEmbeddedInExport).toBe(true);
 	});
+	it.each([
+		"m4a",
+		"webm",
+		"wav",
+	])("uses a selected mic companion as replacement audio (%s)", (extension) => {
+		const micPath = `/tmp/recording.mic.${extension}`;
+		const policy = resolveSourceTrackRoutingPolicy("/tmp/recording.mp4", [micPath]);
+		expect(policy.playbackPaths).toEqual([micPath]);
+		expect(policy.muteEmbeddedPreview).toBe(true);
+		expect(policy.includeEmbeddedInExport).toBe(false);
+	});
+
+	it("keeps embedded-only playback when no companion was selected", () => {
+		const policy = resolveSourceTrackRoutingPolicy("/tmp/recording.mp4", []);
+		expect(policy.muteEmbeddedPreview).toBe(false);
+		expect(policy.includeEmbeddedInExport).toBe(true);
+	});
 });
