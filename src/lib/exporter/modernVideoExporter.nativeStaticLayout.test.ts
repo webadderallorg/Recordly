@@ -487,9 +487,9 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 
 		expect(result).toBe(gradient);
 		expect(gradient.addColorStop).toHaveBeenCalledTimes(3);
-		expect(gradient.addColorStop).toHaveBeenNthCalledWith(1, 0, "rgba(114,167,232,1)");
-		expect(gradient.addColorStop).toHaveBeenNthCalledWith(2, 0.5, "rgba(253,129,82,1)");
-		expect(gradient.addColorStop).toHaveBeenNthCalledWith(3, 1, "rgba(249,202,86,1)");
+		expect(gradient.addColorStop).toHaveBeenNthCalledWith(1, 0.094, "rgba(114,167,232,1)");
+		expect(gradient.addColorStop).toHaveBeenNthCalledWith(2, 0.439, "rgba(253,129,82,1)");
+		expect(gradient.addColorStop).toHaveBeenNthCalledWith(3, 0.863, "rgba(249,202,86,1)");
 	});
 
 	it("allows non-tail trim timelines with native static-layout", () => {
