@@ -1,5 +1,6 @@
 import { WebDemuxer } from "web-demuxer";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
+import { resolveSupportedVideoDecoderConfig } from "./decoderCodec";
 import { createFallbackDemuxerSource, resolveMediaResourceUrl } from "./localMediaSource";
 import { getDecodedFrameTimelineOffsetUs } from "./streamingDecoder";
 
@@ -104,7 +105,9 @@ export class ForwardFrameSource {
 			throw new Error("Must call initialize() before starting decoder");
 		}
 
-		const decoderConfig = await this.demuxer.getDecoderConfig("video");
+		const decoderConfig = await resolveSupportedVideoDecoderConfig(
+			await this.demuxer.getDecoderConfig("video"),
+		);
 		const codec = this.metadata.codec.toLowerCase();
 		const shouldPreferSoftwareDecode = codec.includes("av01") || codec.includes("av1");
 

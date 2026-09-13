@@ -1,6 +1,7 @@
 import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import type { WebDemuxer } from "web-demuxer";
+import { resolveSupportedVideoDecoderConfig } from "./decoderCodec";
 import {
 	buildVideoDecodeFailure,
 	getDecodedFrameTimelineOffsetUs,
@@ -43,7 +44,9 @@ export async function decodeVideoStream(
 		throw new Error("Must call loadMetadata() before decodeAll()");
 	}
 
-	const decoderConfig = await context.demuxer.getDecoderConfig("video");
+	const decoderConfig = await resolveSupportedVideoDecoderConfig(
+		await context.demuxer.getDecoderConfig("video"),
+	);
 	const codec = context.metadata.codec.toLowerCase();
 	const shouldPreferSoftwareDecode = codec.includes("av01") || codec.includes("av1");
 	const effectiveVideoDuration = getEffectiveVideoStreamDurationSeconds({
