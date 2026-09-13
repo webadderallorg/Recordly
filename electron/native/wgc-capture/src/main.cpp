@@ -24,12 +24,21 @@ static std::atomic<int64_t> g_accumulatedPausedHns{0};
 static std::mutex g_stopMutex;
 static std::condition_variable g_stopCv;
 
+static void reportMicrophoneCaptureUnavailable() {
+    std::cerr << "WARNING: Failed to initialize WASAPI mic capture" << std::endl;
+    // This stable stdout marker is ordered before "Recording started", allowing
+    // Electron to select its per-recording browser fallback without a pipe race.
+    std::cout << "MICROPHONE_CAPTURE_UNAVAILABLE" << std::endl;
+    std::cout.flush();
+}
+
 struct CaptureConfig {
     int64_t displayId = 0;
     int64_t windowHandle = 0;
     std::string outputPath;
     std::string audioOutputPath;
     std::string micOutputPath;
+    std::string micDeviceId;
     std::string micDeviceName;
     int fps = 60;
     int width = 0;
@@ -119,6 +128,7 @@ static bool parseSimpleJson(const std::string& json, CaptureConfig& config) {
 
     config.audioOutputPath = findString("audioOutputPath");
     config.micOutputPath = findString("micOutputPath");
+    config.micDeviceId = findString("micDeviceId");
     config.micDeviceName = findString("micDeviceName");
 
     auto findBool = [&](const std::string& key) -> bool {
@@ -342,6 +352,7 @@ int main(int argc, char* argv[]) {
     std::atomic<int64_t> frameCount{0};
     std::atomic<int64_t> firstVideoTimestampHns{-1};
     std::atomic<bool> recordingStartedAnnounced{false};
+    std::atomic<bool> captureSetupComplete{false};
     session.setFrameCallback([&](ID3D11Texture2D* texture, int64_t timestampHns) {
         g_lastFrameTimestampHns = timestampHns;
         int64_t expectedFirstVideoTimestampHns = -1;
@@ -354,7 +365,7 @@ int main(int argc, char* argv[]) {
 
         if (encoder.writeFrame(texture, adjustedTimestampHns)) {
             const int64_t writtenFrames = frameCount.fetch_add(1) + 1;
-            if (writtenFrames == 1 && !recordingStartedAnnounced.exchange(true)) {
+            if (captureSetupComplete && writtenFrames >= 1 && !recordingStartedAnnounced.exchange(true)) {
                 std::cout << "Recording started" << std::endl;
                 std::cout.flush();
             }
@@ -381,9 +392,12 @@ int main(int argc, char* argv[]) {
     }
 
     if (config.captureMic && !config.micOutputPath.empty()) {
-        micInitialized = micCapture.initializeMic(config.micOutputPath, config.micDeviceName);
+        micInitialized = micCapture.initializeMic(
+            config.micOutputPath,
+            config.micDeviceId,
+            config.micDeviceName);
         if (!micInitialized) {
-            std::cerr << "WARNING: Failed to initialize WASAPI mic capture" << std::endl;
+            reportMicrophoneCaptureUnavailable();
         }
     }
 
@@ -398,7 +412,11 @@ int main(int argc, char* argv[]) {
     }
     if (micInitialized) {
         micActive = micCapture.start();
+        if (!micActive) {
+            reportMicrophoneCaptureUnavailable();
+        }
     }
+    captureSetupComplete = true;
 
     // Wait for stop signal while pausing/resuming audio tracks in lockstep.
     while (!g_stopRequested && !session.hasFatalError()) {

@@ -531,6 +531,9 @@ export function registerRecordingHandlers(
 						);
 						config.captureMic = true;
 						config.micOutputPath = tempMicPath;
+						if (options.microphoneDeviceId) {
+							config.micDeviceId = options.microphoneDeviceId;
+						}
 						if (options.microphoneLabel) {
 							config.micDeviceName = options.microphoneLabel;
 						}

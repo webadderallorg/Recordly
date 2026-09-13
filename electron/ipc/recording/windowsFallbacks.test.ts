@@ -7,9 +7,9 @@ import {
 } from "./windowsFallbacks";
 
 describe("shouldUseWindowsBrowserMicrophoneFallback", () => {
-	it("defaults Windows microphone capture to the browser fallback path", () => {
+	it("defaults Windows microphone capture to native WASAPI", () => {
 		expect(shouldStartWindowsBrowserMicrophoneFallback({ capturesMicrophone: true }, {})).toBe(
-			true,
+			false,
 		);
 	});
 
@@ -22,7 +22,7 @@ describe("shouldUseWindowsBrowserMicrophoneFallback", () => {
 		).toBe(true);
 	});
 
-	it("allows lab runs to force native WASAPI microphone capture", () => {
+	it("keeps native WASAPI enabled when explicitly requested", () => {
 		expect(
 			shouldStartWindowsBrowserMicrophoneFallback(
 				{ capturesMicrophone: true },
@@ -33,6 +33,15 @@ describe("shouldUseWindowsBrowserMicrophoneFallback", () => {
 			shouldStartWindowsBrowserMicrophoneFallback(
 				{ capturesMicrophone: true },
 				{ [WINDOWS_MIC_CAPTURE_MODE_ENV]: "wasapi" },
+			),
+		).toBe(false);
+	});
+
+	it("uses native WASAPI for unknown mode values", () => {
+		expect(
+			shouldStartWindowsBrowserMicrophoneFallback(
+				{ capturesMicrophone: true },
+				{ [WINDOWS_MIC_CAPTURE_MODE_ENV]: "typo" },
 			),
 		).toBe(false);
 	});
@@ -55,6 +64,15 @@ describe("shouldUseWindowsBrowserMicrophoneFallback", () => {
 		).toBe(true);
 	});
 
+	it("returns true when the native helper reports its stable fallback marker", () => {
+		expect(
+			shouldUseWindowsBrowserMicrophoneFallback(
+				"MICROPHONE_CAPTURE_UNAVAILABLE\nRecording started",
+				{ capturesMicrophone: true },
+			),
+		).toBe(true);
+	});
+
 	it("returns false when microphone capture was not requested", () => {
 		expect(
 			shouldUseWindowsBrowserMicrophoneFallback(
@@ -64,12 +82,12 @@ describe("shouldUseWindowsBrowserMicrophoneFallback", () => {
 		).toBe(false);
 	});
 
-	it("returns false for a healthy native mic when lab mode forces native capture", () => {
+	it("returns false for a healthy native mic by default", () => {
 		expect(
 			shouldUseWindowsBrowserMicrophoneFallback(
 				"Recording started",
 				{ capturesMicrophone: true },
-				{ [WINDOWS_MIC_CAPTURE_MODE_ENV]: "native" },
+				{},
 			),
 		).toBe(false);
 	});
