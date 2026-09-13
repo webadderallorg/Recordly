@@ -5,6 +5,13 @@ import type {
 	WhisperJsonToken,
 } from "../types";
 
+// Control tokens such as [_BEG_] and [_TT_612] carry no speech and have zero-length offsets.
+const WHISPER_SPECIAL_TOKEN = /^\s*\[_[A-Z0-9_]+\]\s*$/;
+
+// DTW timestamps land ~150 ms after the audible word onset (measured against isolated
+// speech bursts in real recordings), so shift them earlier to keep captions on the audio.
+export const DTW_ONSET_LAG_MS = 150;
+
 function isFiniteNumber(value: unknown): value is number {
 	return typeof value === "number" && Number.isFinite(value);
 }
@@ -16,61 +23,124 @@ export function buildCaptionTextFromWords(words: CaptionWordPayload[]): string {
 		.trim();
 }
 
-export function parseWhisperJsonWords(tokens: unknown): CaptionWordPayload[] {
-	if (!Array.isArray(tokens)) {
-		return [];
-	}
+type TimedToken = {
+	text: string;
+	startMs: number;
+	endMs: number;
+};
 
+type RawSpeechToken = {
+	text: string;
+	fromMs: number | null;
+	toMs: number | null;
+	dtwMs: number | null;
+};
+
+function readSpeechTokens(tokens: unknown[]): RawSpeechToken[] {
+	return tokens.flatMap((token) => {
+		if (!token || typeof token !== "object") {
+			return [];
+		}
+		const tokenData = token as WhisperJsonToken;
+		const text = typeof tokenData.text === "string" ? tokenData.text : "";
+		if (!text || WHISPER_SPECIAL_TOKEN.test(text)) {
+			return [];
+		}
+		return [
+			{
+				text,
+				fromMs: isFiniteNumber(tokenData.offsets?.from)
+					? Math.round(tokenData.offsets.from)
+					: null,
+				toMs: isFiniteNumber(tokenData.offsets?.to)
+					? Math.round(tokenData.offsets.to)
+					: null,
+				// whisper.cpp reports t_dtw in centiseconds and -1 when DTW is disabled.
+				dtwMs:
+					isFiniteNumber(tokenData.t_dtw) && tokenData.t_dtw >= 0
+						? tokenData.t_dtw * 10
+						: null,
+			},
+		];
+	});
+}
+
+/** DTW onsets for every token (shifted by the measured lag), each ending at the next onset. */
+function timeTokensWithDtw(tokens: RawSpeechToken[]): TimedToken[] {
+	let previousStartMs = 0;
+	const starts = tokens.map((token) => {
+		previousStartMs = Math.max(previousStartMs, (token.dtwMs ?? 0) - DTW_ONSET_LAG_MS);
+		return previousStartMs;
+	});
+	return tokens.map((token, index) => {
+		const nextStartMs = starts[index + 1] ?? token.toMs ?? starts[index];
+		return {
+			text: token.text,
+			startMs: starts[index],
+			endMs: Math.max(nextStartMs, starts[index] + 1),
+		};
+	});
+}
+
+function timeTokensWithOffsets(tokens: RawSpeechToken[]): TimedToken[] | null {
+	const timed: TimedToken[] = [];
+	for (const token of tokens) {
+		if (token.fromMs == null || token.toMs == null || token.toMs < token.fromMs) {
+			return null;
+		}
+		// whisper.cpp emits zero-length timings for some short tokens; keep the word.
+		timed.push({
+			text: token.text,
+			startMs: token.fromMs,
+			endMs: Math.max(token.toMs, token.fromMs + 1),
+		});
+	}
+	return timed;
+}
+
+function assembleWords(tokens: TimedToken[]): CaptionWordPayload[] {
 	const words: CaptionWordPayload[] = [];
 	let nextLeadingSpace = false;
 
 	for (const token of tokens) {
-		if (!token || typeof token !== "object") {
-			continue;
-		}
-
-		const tokenData = token as WhisperJsonToken;
-		const tokenText = typeof tokenData.text === "string" ? tokenData.text : "";
-		if (!tokenText) {
-			continue;
-		}
-
-		const tokenStartMs = isFiniteNumber(tokenData.offsets?.from)
-			? Math.round(tokenData.offsets.from)
-			: null;
-		const tokenEndMs = isFiniteNumber(tokenData.offsets?.to)
-			? Math.round(tokenData.offsets.to)
-			: null;
-		const parts = tokenText.match(/\s+|[^\s]+/g) ?? [];
-
-		for (const part of parts) {
+		for (const part of token.text.match(/\s+|[^\s]+/g) ?? []) {
 			if (/^\s+$/.test(part)) {
 				nextLeadingSpace = words.length > 0;
 				continue;
-			}
-
-			if (tokenStartMs == null || tokenEndMs == null || tokenEndMs <= tokenStartMs) {
-				return [];
 			}
 
 			const previousWord = words.length > 0 ? words[words.length - 1] : null;
 			if (!previousWord || nextLeadingSpace) {
 				words.push({
 					text: part,
-					startMs: tokenStartMs,
-					endMs: tokenEndMs,
+					startMs: token.startMs,
+					endMs: token.endMs,
 					...(words.length > 0 && nextLeadingSpace ? { leadingSpace: true } : {}),
 				});
 			} else {
 				previousWord.text += part;
-				previousWord.endMs = Math.max(previousWord.endMs, tokenEndMs);
+				previousWord.endMs = Math.max(previousWord.endMs, token.endMs);
 			}
-
 			nextLeadingSpace = false;
 		}
 	}
 
 	return words.filter((word) => word.text.trim().length > 0);
+}
+
+export function parseWhisperJsonWords(tokens: unknown): CaptionWordPayload[] {
+	if (!Array.isArray(tokens)) {
+		return [];
+	}
+
+	const speechTokens = readSpeechTokens(tokens);
+	const hasCompleteDtw =
+		speechTokens.length > 0 && speechTokens.every((token) => token.dtwMs !== null);
+	const timedTokens = hasCompleteDtw
+		? timeTokensWithDtw(speechTokens)
+		: timeTokensWithOffsets(speechTokens);
+
+	return timedTokens ? assembleWords(timedTokens) : [];
 }
 
 export function parseWhisperJsonCues(content: string): CaptionCuePayload[] {

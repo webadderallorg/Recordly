@@ -19,13 +19,20 @@ import {
 	SILENCE_NOISE_DB,
 	type SilenceInterval,
 } from "./silence";
+import { buildWhisperArgAttempts, type WhisperArgAttempt } from "./whisperDtw";
+import {
+	getWavDurationSec,
+	getWhisperTimeoutMs,
+	isProcessTimeoutError,
+	WhisperTimeoutError,
+} from "./whisperTimeout";
 
 const execFileAsync = promisify(execFile);
 
-async function executeWhisper(whisperExecutablePath: string, args: string[]) {
+async function executeWhisper(whisperExecutablePath: string, args: string[], timeoutMs: number) {
 	try {
 		await execFileAsync(whisperExecutablePath, args, {
-			timeout: 30 * 60 * 1000,
+			timeout: timeoutMs,
 			maxBuffer: 20 * 1024 * 1024,
 		});
 	} catch (error) {
@@ -34,8 +41,46 @@ async function executeWhisper(whisperExecutablePath: string, args: string[]) {
 				"Whisper could not start because the Microsoft Visual C++ x64 Redistributable is missing. Install it from https://aka.ms/vc14/vc_redist.x64.exe, then restart Recordly.",
 			);
 		}
+		if (isProcessTimeoutError(error)) {
+			throw new WhisperTimeoutError(timeoutMs);
+		}
 		throw error;
 	}
+}
+
+/**
+ * Runs Whisper attempts from most to least precise timing. A failed DTW attempt falls
+ * back (older runtimes lack `--dtw`) unless it timed out, since a rerun would double the
+ * wait; dropping JSON output only happens when the runtime rejects the JSON flag itself.
+ */
+async function runWhisperWithTimingFallbacks(
+	whisperExecutablePath: string,
+	attempts: WhisperArgAttempt[],
+	timeoutMs: number,
+): Promise<WhisperArgAttempt> {
+	for (const [index, attempt] of attempts.entries()) {
+		const nextAttempt = attempts[index + 1];
+		try {
+			await executeWhisper(whisperExecutablePath, attempt.args, timeoutMs);
+			return attempt;
+		} catch (error) {
+			const usesDtw = attempt.args.includes("-dtw");
+			if (
+				!nextAttempt ||
+				error instanceof WhisperTimeoutError ||
+				(!usesDtw && !shouldRetryWhisperWithoutJson(error))
+			) {
+				throw error;
+			}
+			console.warn(
+				usesDtw
+					? "[auto-captions] Whisper DTW word timing failed, retrying without DTW:"
+					: "[auto-captions] Whisper runtime does not support JSON full output, retrying with SRT only:",
+				error,
+			);
+		}
+	}
+	throw new Error("No Whisper invocation attempts were provided.");
 }
 
 export async function ensureReadableFile(filePath: string, options?: { executable?: boolean }) {
@@ -258,21 +303,12 @@ export async function generateAutoCaptionsFromVideo(options: {
 			"-np",
 		];
 
-		let jsonEnabled = true;
-		try {
-			await executeWhisper(whisperExecutablePath, [...whisperBaseArgs, "-ojf"]);
-		} catch (error) {
-			if (!shouldRetryWhisperWithoutJson(error)) {
-				throw error;
-			}
-
-			jsonEnabled = false;
-			console.warn(
-				"[auto-captions] Whisper runtime does not support JSON full output, retrying with SRT only:",
-				error,
-			);
-			await executeWhisper(whisperExecutablePath, whisperBaseArgs);
-		}
+		const audioDurationSec = getWavDurationSec((await fs.stat(wavPath)).size);
+		const { jsonEnabled } = await runWhisperWithTimingFallbacks(
+			whisperExecutablePath,
+			buildWhisperArgAttempts(whisperBaseArgs, whisperModelPath),
+			getWhisperTimeoutMs(audioDurationSec),
+		);
 
 		const timedCues = jsonEnabled
 			? parseWhisperJsonCues(await fs.readFile(jsonPath, "utf-8"))
