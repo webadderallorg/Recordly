@@ -2423,6 +2423,50 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		startRecording();
 	};
 
+	const recordingControlsRef = useRef({
+		recording,
+		paused,
+		toggleRecording,
+		pauseRecording,
+		resumeRecording,
+	});
+	recordingControlsRef.current = {
+		recording,
+		paused,
+		toggleRecording,
+		pauseRecording,
+		resumeRecording,
+	};
+
+	useEffect(() => {
+		if (!window.electronAPI?.onRecordingShortcut) {
+			return;
+		}
+
+		return window.electronAPI.onRecordingShortcut((payload) => {
+			const controls = recordingControlsRef.current;
+			const action = payload?.action;
+			if (action === "toggle") {
+				void controls.toggleRecording();
+				return;
+			}
+			if (action === "stop") {
+				if (controls.recording) {
+					stopRecording.current();
+				}
+				return;
+			}
+			if (action === "pauseResume") {
+				if (!controls.recording) return;
+				if (controls.paused) {
+					controls.resumeRecording();
+				} else {
+					controls.pauseRecording();
+				}
+			}
+		});
+	}, []);
+
 	return {
 		recording,
 		paused,

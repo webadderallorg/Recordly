@@ -25,6 +25,10 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
+import {
+	initRecordingShortcuts,
+	unregisterRecordingShortcuts,
+} from "./ipc/register/recordingShortcuts";
 import { ensureMediaServer } from "./mediaServer";
 import { hardenWebContentsNavigation, shouldHardenWebContentsType } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
@@ -717,10 +721,24 @@ function updateTrayMenu(recording: boolean = false) {
 					},
 				},
 				{
+					label: "Pause / Resume",
+					click: () => {
+						for (const window of BrowserWindow.getAllWindows()) {
+							if (!window.isDestroyed()) {
+								window.webContents.send("recording-shortcut", {
+									action: "pauseResume",
+								});
+							}
+						}
+					},
+				},
+				{
 					label: "Stop Recording",
 					click: () => {
-						if (mainWindow && !mainWindow.isDestroyed()) {
-							mainWindow.webContents.send("stop-recording-from-tray");
+						for (const window of BrowserWindow.getAllWindows()) {
+							if (!window.isDestroyed()) {
+								window.webContents.send("recording-shortcut", { action: "stop" });
+							}
 						}
 					},
 				},
@@ -865,6 +883,7 @@ function createSourceSelectorWindowWrapper() {
 // explicitly with Cmd + Q.
 app.on("before-quit", () => {
 	isAppQuitting = true;
+	unregisterRecordingShortcuts();
 	killWindowsCaptureProcess();
 	showCursor();
 	cleanupNativeVideoExportSessions();
@@ -1015,6 +1034,10 @@ app.whenReady().then(async () => {
 			}
 		},
 	);
+
+	void initRecordingShortcuts().catch((error) => {
+		console.warn("[recording-shortcuts] Failed to initialize:", error);
+	});
 
 	if (IS_SMOKE_EXPORT || process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {
 		await logSmokeExportGpuDiagnostics();
