@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import type { ShortcutBinding } from "../../../src/lib/shortcuts";
 import {
 	hasLoggedInteractionHookFailure,
 	interactionCaptureCleanup,
@@ -13,6 +14,8 @@ import {
 } from "../state";
 import type {
 	CursorInteractionType,
+	HookKeyboardEvent,
+	HookKeyboardEventListener,
 	HookMouseEvent,
 	UiohookLike,
 	UiohookModuleNamespace,
@@ -47,6 +50,93 @@ export function getHookMouseButton(event: HookMouseEvent | null | undefined): 1 
 	return normalizeHookMouseButton(
 		event?.button ?? event?.mouseButton ?? event?.data?.button ?? event?.data?.mouseButton,
 	);
+}
+
+const UIOHOOK_KEY_TO_EVENT_KEY = new Map<number, string>([
+	[0x0001, "escape"],
+	[0x000e, "backspace"],
+	[0x000f, "tab"],
+	[0x001c, "enter"],
+	[0x0039, " "],
+	[0x0e49, "pageup"],
+	[0x0e51, "pagedown"],
+	[0x0e4f, "end"],
+	[0x0e47, "home"],
+	[0xe04b, "arrowleft"],
+	[0xe048, "arrowup"],
+	[0xe04d, "arrowright"],
+	[0xe050, "arrowdown"],
+	[0x0e52, "insert"],
+	[0x0e53, "delete"],
+	[0x000b, "0"],
+	[0x0002, "1"],
+	[0x0003, "2"],
+	[0x0004, "3"],
+	[0x0005, "4"],
+	[0x0006, "5"],
+	[0x0007, "6"],
+	[0x0008, "7"],
+	[0x0009, "8"],
+	[0x000a, "9"],
+	[0x001e, "a"],
+	[0x0030, "b"],
+	[0x002e, "c"],
+	[0x0020, "d"],
+	[0x0012, "e"],
+	[0x0021, "f"],
+	[0x0022, "g"],
+	[0x0023, "h"],
+	[0x0017, "i"],
+	[0x0024, "j"],
+	[0x0025, "k"],
+	[0x0026, "l"],
+	[0x0032, "m"],
+	[0x0031, "n"],
+	[0x0018, "o"],
+	[0x0019, "p"],
+	[0x0010, "q"],
+	[0x0013, "r"],
+	[0x001f, "s"],
+	[0x0014, "t"],
+	[0x0016, "u"],
+	[0x002f, "v"],
+	[0x0011, "w"],
+	[0x002d, "x"],
+	[0x0015, "y"],
+	[0x002c, "z"],
+	[0x003b, "f1"],
+	[0x003c, "f2"],
+	[0x003d, "f3"],
+	[0x003e, "f4"],
+	[0x003f, "f5"],
+	[0x0040, "f6"],
+	[0x0041, "f7"],
+	[0x0042, "f8"],
+	[0x0043, "f9"],
+	[0x0044, "f10"],
+	[0x0057, "f11"],
+	[0x0058, "f12"],
+]);
+
+export function getHookKeyboardKey(event: HookKeyboardEvent | null | undefined): string | null {
+	if (typeof event?.keycode !== "number") return null;
+	return UIOHOOK_KEY_TO_EVENT_KEY.get(event.keycode) ?? null;
+}
+
+export function matchesHookKeyboardShortcut(
+	event: HookKeyboardEvent,
+	binding: ShortcutBinding,
+	isMacPlatform: boolean,
+): boolean {
+	const key = getHookKeyboardKey(event);
+	if (!key || key !== binding.key.toLowerCase()) return false;
+
+	const primaryMod = isMacPlatform ? event.metaKey : event.ctrlKey;
+	if (!!primaryMod !== !!binding.ctrl) return false;
+	if (!!event.shiftKey !== !!binding.shift) return false;
+	if (!!event.altKey !== !!binding.alt) return false;
+
+	return true;
 }
 
 export function stopInteractionCapture() {
@@ -233,7 +323,9 @@ export function recordCursorMouseUp() {
 	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "mouseup");
 }
 
-export async function startInteractionCapture() {
+export async function startInteractionCapture(
+	options: { onKeyDown?: HookKeyboardEventListener; onKeyUp?: HookKeyboardEventListener } = {},
+) {
 	if (!isCursorCaptureActive) {
 		return;
 	}
@@ -276,6 +368,14 @@ export async function startInteractionCapture() {
 			recordCursorMouseUp();
 		};
 
+		const onKeyDown = (event: HookKeyboardEvent) => {
+			options.onKeyDown?.(event);
+		};
+
+		const onKeyUp = (event: HookKeyboardEvent) => {
+			options.onKeyUp?.(event);
+		};
+
 		const onMouseMove = (event: HookMouseEvent) => {
 			if (process.platform !== "linux" || !isCursorCaptureActive || isCursorCapturePaused()) {
 				return;
@@ -291,6 +391,12 @@ export async function startInteractionCapture() {
 
 		hook.on("mousedown", onMouseDown);
 		hook.on("mouseup", onMouseUp);
+		if (options.onKeyDown) {
+			hook.on("keydown", onKeyDown);
+		}
+		if (options.onKeyUp) {
+			hook.on("keyup", onKeyUp);
+		}
 		if (process.platform === "linux") {
 			hook.on("mousemove", onMouseMove);
 		}
@@ -300,12 +406,24 @@ export async function startInteractionCapture() {
 				if (typeof hook.off === "function") {
 					hook.off("mousedown", onMouseDown);
 					hook.off("mouseup", onMouseUp);
+					if (options.onKeyDown) {
+						hook.off("keydown", onKeyDown);
+					}
+					if (options.onKeyUp) {
+						hook.off("keyup", onKeyUp);
+					}
 					if (process.platform === "linux") {
 						hook.off("mousemove", onMouseMove);
 					}
 				} else if (typeof hook.removeListener === "function") {
 					hook.removeListener("mousedown", onMouseDown);
 					hook.removeListener("mouseup", onMouseUp);
+					if (options.onKeyDown) {
+						hook.removeListener("keydown", onKeyDown);
+					}
+					if (options.onKeyUp) {
+						hook.removeListener("keyup", onKeyUp);
+					}
 					if (process.platform === "linux") {
 						hook.removeListener("mousemove", onMouseMove);
 					}
