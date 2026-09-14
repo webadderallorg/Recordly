@@ -113,6 +113,16 @@ describe("cursor telemetry pause clock", () => {
 		expect(rm).not.toHaveBeenCalled();
 	});
 
+	it("preserves anonymous keydown timing telemetry", () => {
+		const samples = normalizeCursorTelemetrySamples([
+			{ timeMs: 42, cx: 0.25, cy: 0.75, interactionType: "keydown" },
+		]);
+
+		expect(samples).toEqual([
+			{ timeMs: 42, cx: 0.25, cy: 0.75, interactionType: "keydown", cursorType: undefined },
+		]);
+	});
+
 	it("removes the sidecar when saving an empty cursor telemetry payload", async () => {
 		await writeCursorTelemetry("/tmp/recording.mp4", []);
 

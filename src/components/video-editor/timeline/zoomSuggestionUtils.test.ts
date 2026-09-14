@@ -20,6 +20,10 @@ function makeMove(timeMs: number, cx = 0.5, cy = 0.5): CursorTelemetryPoint {
 	return { timeMs, cx, cy, interactionType: "move" };
 }
 
+function makeKeyDown(timeMs: number, cx = 0.5, cy = 0.5): CursorTelemetryPoint {
+	return { timeMs, cx, cy, interactionType: "keydown" };
+}
+
 /** Wraps click samples with surrounding move events to mimic real mixed telemetry. */
 function withMoves(clicks: CursorTelemetryPoint[], totalMs: number): CursorTelemetryPoint[] {
 	return [makeMove(0), ...clicks, makeMove(totalMs)];
@@ -48,6 +52,75 @@ describe("shouldAutoApplyFreshRecordingZoomsForSource", () => {
 });
 
 describe("buildInteractionZoomSuggestions (click-cluster logic)", () => {
+	it("extends a text-field click through a valid typing burst", () => {
+		const result = buildInteractionZoomSuggestions({
+			cursorTelemetry: withMoves(
+				[
+					makeClick(5_000, 0.3, 0.4),
+					makeKeyDown(5_200, 0.3, 0.4),
+					makeKeyDown(5_350, 0.3, 0.4),
+					makeKeyDown(5_500, 0.3, 0.4),
+					makeKeyDown(5_650, 0.3, 0.4),
+				],
+				TOTAL_MS,
+			),
+			totalMs: TOTAL_MS,
+			defaultDurationMs: 3_000,
+		});
+
+		expect(result.status).toBe("ok");
+		expect(result.suggestions).toEqual([
+			{ start: 4_500, end: 6_150, focus: { cx: 0.3, cy: 0.4 } },
+		]);
+	});
+
+	it("keeps a normal click window for isolated key activity", () => {
+		const result = buildInteractionZoomSuggestions({
+			cursorTelemetry: withMoves([makeClick(5_000), makeKeyDown(5_200)], TOTAL_MS),
+			totalMs: TOTAL_MS,
+			defaultDurationMs: 3_000,
+		});
+
+		expect(result.suggestions).toEqual([
+			{ start: 4_500, end: 5_500, focus: { cx: 0.5, cy: 0.5 } },
+		]);
+	});
+
+	it("merges nearby typing bursts but splits bursts separated by a long pause", () => {
+		const shortPause = buildInteractionZoomSuggestions({
+			cursorTelemetry: withMoves(
+				[
+					makeClick(1_000),
+					makeKeyDown(1_100), makeKeyDown(1_200), makeKeyDown(1_300),
+					makeKeyDown(3_500), makeKeyDown(3_600), makeKeyDown(3_700),
+				],
+				TOTAL_MS,
+			),
+			totalMs: TOTAL_MS,
+			defaultDurationMs: 3_000,
+		});
+		expect(shortPause.suggestions).toHaveLength(1);
+		expect(shortPause.suggestions[0]).toMatchObject({ start: 500, end: 4_200 });
+
+		const longPause = buildInteractionZoomSuggestions({
+			cursorTelemetry: withMoves(
+				[
+					makeClick(1_000),
+					makeKeyDown(1_100), makeKeyDown(1_200), makeKeyDown(1_300),
+					makeKeyDown(4_000), makeKeyDown(4_100), makeKeyDown(4_200),
+				],
+				TOTAL_MS,
+			),
+			totalMs: TOTAL_MS,
+			defaultDurationMs: 3_000,
+		});
+		expect(longPause.suggestions).toHaveLength(2);
+		expect(longPause.suggestions.map(({ start, end }) => ({ start, end }))).toEqual([
+			{ start: 500, end: 1_800 },
+			{ start: 3_500, end: 4_700 },
+		]);
+	});
+
 	it("creates one zoom track for a single isolated click with 500ms padding", () => {
 		const telemetry = withMoves([makeClick(5_000)], TOTAL_MS);
 

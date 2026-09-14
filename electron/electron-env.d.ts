@@ -956,7 +956,8 @@ interface CursorTelemetryPoint {
 		| "double-click"
 		| "right-click"
 		| "middle-click"
-		| "mouseup";
+		| "mouseup"
+		| "keydown";
 	cursorType?:
 		| "arrow"
 		| "text"
