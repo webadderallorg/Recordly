@@ -626,6 +626,7 @@ interface Window {
 			success: boolean;
 			config: { toggle: string; pauseResume: string; stop: string };
 			failed: Array<"toggle" | "pauseResume" | "stop">;
+			error?: string;
 		}>;
 		onRecordingStateChanged: (
 			callback: (state: { recording: boolean; sourceName: string }) => void,

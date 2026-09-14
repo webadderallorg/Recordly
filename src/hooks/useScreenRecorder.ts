@@ -2,6 +2,7 @@ import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
+import { dispatchRecordingShortcut } from "@/lib/recordingShortcuts";
 import {
 	getVideoExtensionForMimeType,
 	isWebmMimeType,
@@ -2429,14 +2430,19 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		toggleRecording,
 		pauseRecording,
 		resumeRecording,
+		stopRecording: () => stopRecording.current(),
 	});
-	recordingControlsRef.current = {
-		recording,
-		paused,
-		toggleRecording,
-		pauseRecording,
-		resumeRecording,
-	};
+
+	useEffect(() => {
+		recordingControlsRef.current = {
+			recording,
+			paused,
+			toggleRecording,
+			pauseRecording,
+			resumeRecording,
+			stopRecording: () => stopRecording.current(),
+		};
+	});
 
 	useEffect(() => {
 		if (!window.electronAPI?.onRecordingShortcut) {
@@ -2444,26 +2450,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 
 		return window.electronAPI.onRecordingShortcut((payload) => {
-			const controls = recordingControlsRef.current;
-			const action = payload?.action;
-			if (action === "toggle") {
-				void controls.toggleRecording();
-				return;
-			}
-			if (action === "stop") {
-				if (controls.recording) {
-					stopRecording.current();
-				}
-				return;
-			}
-			if (action === "pauseResume") {
-				if (!controls.recording) return;
-				if (controls.paused) {
-					controls.resumeRecording();
-				} else {
-					controls.pauseRecording();
-				}
-			}
+			dispatchRecordingShortcut(payload?.action, recordingControlsRef.current);
 		});
 	}, []);
 

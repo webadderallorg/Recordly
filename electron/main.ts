@@ -1035,9 +1035,11 @@ app.whenReady().then(async () => {
 		},
 	);
 
-	void initRecordingShortcuts().catch((error) => {
+	try {
+		await initRecordingShortcuts();
+	} catch (error) {
 		console.warn("[recording-shortcuts] Failed to initialize:", error);
-	});
+	}
 
 	if (IS_SMOKE_EXPORT || process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {
 		await logSmokeExportGpuDiagnostics();

@@ -10,6 +10,16 @@ export type RecordingShortcutsConfig = Record<
 	RecordingShortcutAccelerator
 >;
 
+/** Live recording controls used when a global shortcut is pressed. */
+export type RecordingShortcutControls = {
+	recording: boolean;
+	paused: boolean;
+	toggleRecording: () => void | Promise<void>;
+	pauseRecording: () => void;
+	resumeRecording: () => void;
+	stopRecording: () => void;
+};
+
 export const DEFAULT_RECORDING_SHORTCUTS: RecordingShortcutsConfig = {
 	toggle: "F9",
 	pauseResume: "F8",
@@ -22,6 +32,10 @@ export const RECORDING_SHORTCUT_LABELS: Record<RecordingShortcutAction, string> 
 	stop: "Stop Recording",
 };
 
+/**
+ * Merge a partial shortcuts config with defaults.
+ * Blank or missing accelerators fall back to `DEFAULT_RECORDING_SHORTCUTS`.
+ */
 export function mergeRecordingShortcuts(
 	partial: Partial<RecordingShortcutsConfig> | null | undefined,
 ): RecordingShortcutsConfig {
@@ -37,6 +51,34 @@ export function mergeRecordingShortcuts(
 		}
 	}
 	return merged;
+}
+
+/**
+ * Route a recording-shortcut action to the matching control callback.
+ * Ignores pause/stop when not recording so idle presses are no-ops.
+ */
+export function dispatchRecordingShortcut(
+	action: RecordingShortcutAction | undefined,
+	controls: RecordingShortcutControls,
+): void {
+	if (action === "toggle") {
+		void controls.toggleRecording();
+		return;
+	}
+	if (action === "stop") {
+		if (controls.recording) {
+			controls.stopRecording();
+		}
+		return;
+	}
+	if (action === "pauseResume") {
+		if (!controls.recording) return;
+		if (controls.paused) {
+			controls.resumeRecording();
+		} else {
+			controls.pauseRecording();
+		}
+	}
 }
 
 /** Human-readable label for tooltips (Electron accelerators → display text). */
