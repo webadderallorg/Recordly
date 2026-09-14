@@ -47,6 +47,7 @@ export interface TimelineEditorProps {
 	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
 	onZoomSpanChange: (id: string, span: Span) => void;
 	onZoomDelete: (id: string) => void;
+	onDuplicateSelectedRegion?: () => void;
 	onClearZooms?: () => void;
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
@@ -128,6 +129,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onZoomSuggested,
 			onZoomSpanChange,
 			onZoomDelete,
+			onDuplicateSelectedRegion,
 			onClearZooms,
 			selectedZoomId,
 			onSelectZoom,
@@ -342,6 +344,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			totalMs,
 			currentTimeMs,
 			safeMinDurationMs,
+			onDuplicateSelectedRegion,
 			cursorTelemetry: autoZoomTelemetry,
 			zoomRegions,
 			onZoomAdded,

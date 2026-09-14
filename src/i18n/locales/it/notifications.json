@@ -33,6 +33,7 @@
 	"windowsStartFailed": "Impossibile avviare l’acquisizione nativa di Windows. Verrà usata quella del browser.",
 	"microphoneDenied": "Accesso al microfono negato. La registrazione continuerà senza audio del microfono.",
 	"systemAudioUnavailable": "L’audio di sistema non è disponibile per questa sorgente. La registrazione continuerà senza di esso.",
+	"timelineDuplicateNoRoom": "Non c’è spazio per duplicare questo elemento.",
 	"waylandScreenCastMissing": "Per registrare lo schermo su Wayland serve un portale ScreenCast. Installa il portale di condivisione dello schermo per il tuo ambiente desktop oppure passa a una sessione X11 e riprova.",
 	"startRecordingFailed": "Impossibile avviare la registrazione",
 	"saveRecordingFailed": "Impossibile salvare la registrazione.",

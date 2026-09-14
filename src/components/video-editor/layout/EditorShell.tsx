@@ -549,6 +549,7 @@ export function EditorShell(props: Props) {
 								normalizedCursorTelemetry={cursor.normalizedCursorTelemetry}
 								currentTime={ui.currentTime}
 								handleSelectAnnotation={handleSelectAnnotation}
+								onDuplicateSelectedRegion={editing.duplicateSelectedRegion}
 							/>
 						</AutoZoomNudgeContext.Provider>
 					</div>

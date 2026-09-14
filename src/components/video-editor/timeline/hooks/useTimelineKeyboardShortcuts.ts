@@ -28,6 +28,7 @@ interface UseTimelineKeyboardShortcutsParams {
 	deleteSelectedAnnotation: () => void;
 	deleteSelectedAudio: () => void;
 	deleteSelectedCaption: () => void;
+	onDuplicateSelectedRegion?: () => void;
 	cycleAnnotationsAtCurrentTime: (backward?: boolean) => boolean;
 }
 
@@ -56,6 +57,7 @@ export function useTimelineKeyboardShortcuts({
 	deleteSelectedAnnotation,
 	deleteSelectedAudio,
 	deleteSelectedCaption,
+	onDuplicateSelectedRegion,
 	cycleAnnotationsAtCurrentTime,
 }: UseTimelineKeyboardShortcutsParams) {
 	useEffect(() => {
@@ -117,6 +119,22 @@ export function useTimelineKeyboardShortcuts({
 			}
 
 			if (
+				onDuplicateSelectedRegion &&
+				!selectAllBlocksActive &&
+				!selectedKeyframeId &&
+				(selectedZoomId || selectedAnnotationId || selectedAudioId) &&
+				matchesShortcut(e, keyShortcuts.duplicateSelected, isMac) &&
+				!Object.entries(keyShortcuts).some(
+					([action, binding]) =>
+						action !== "duplicateSelected" && matchesShortcut(e, binding, isMac),
+				)
+			) {
+				e.preventDefault();
+				if (!e.repeat) onDuplicateSelectedRegion();
+				return;
+			}
+
+			if (
 				hasAnyZoomBlocks &&
 				matchesShortcut(e, CLEAR_ALL_ZOOMS_SHORTCUT, isMac) &&
 				!Object.values(keyShortcuts).some((binding) => matchesShortcut(e, binding, isMac))
@@ -173,6 +191,7 @@ export function useTimelineKeyboardShortcuts({
 		isMac,
 		isTimelineFocusedRef,
 		keyShortcuts,
+		onDuplicateSelectedRegion,
 		selectAllBlocksActive,
 		selectedAnnotationId,
 		selectedAudioId,
