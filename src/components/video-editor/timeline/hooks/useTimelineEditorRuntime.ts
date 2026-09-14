@@ -37,6 +37,7 @@ interface UseTimelineEditorRuntimeParams {
 	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
 	onZoomSpanChange: (id: string, span: Span) => void;
 	onZoomDelete: (id: string) => void;
+	onClearAllZooms?: () => void;
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
 	trimRegions: TrimRegion[];
@@ -87,6 +88,7 @@ export function useTimelineEditorRuntime({
 	onZoomSuggested,
 	onZoomSpanChange,
 	onZoomDelete,
+	onClearAllZooms,
 	selectedZoomId,
 	onSelectZoom,
 	trimRegions,
@@ -260,6 +262,10 @@ export function useTimelineEditorRuntime({
 		[videoDuration, totalMs, currentTimeMs, defaultRegionDurationMs, onAnnotationAdded],
 	);
 
+	const handleClearAllZooms = useCallback(() => {
+		onClearAllZooms?.();
+	}, [onClearAllZooms]);
+
 	useTimelineKeyboardShortcuts({
 		isMac,
 		keyShortcuts,
@@ -276,6 +282,7 @@ export function useTimelineEditorRuntime({
 		selectAllBlocksActive,
 		addKeyframe,
 		handleAddZoom,
+		handleClearAllZooms,
 		handleSplitClip,
 		handleAddAnnotation: () => handleAddAnnotation(),
 		deleteSelectedKeyframe,
@@ -292,6 +299,7 @@ export function useTimelineEditorRuntime({
 		() => ({
 			addZoom: handleAddZoom,
 			suggestZooms: handleSuggestZooms,
+			clearAllZooms: handleClearAllZooms,
 			splitClip: handleSplitClip,
 			addAnnotation: handleAddAnnotation,
 			addAudio: handleAddAudio,
@@ -301,6 +309,7 @@ export function useTimelineEditorRuntime({
 			handleAddAnnotation,
 			handleAddAudio,
 			handleAddZoom,
+			handleClearAllZooms,
 			handleSuggestZooms,
 			handleSplitClip,
 			keyframes,

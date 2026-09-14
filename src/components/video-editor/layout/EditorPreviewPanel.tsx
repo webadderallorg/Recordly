@@ -3,6 +3,7 @@ import {
 	Check,
 	Crop,
 	MagicWand,
+	MagnifyingGlassMinus,
 	MagnifyingGlassPlus,
 	Pause,
 	Play,
@@ -286,6 +287,17 @@ export function EditorPreviewPanel(props: Props) {
 						title={t("timeline.zoom.suggestZooms")}
 					>
 						<MagicWand className="h-4 w-4" />
+					</Button>
+					<Button
+						onClick={() => timelineRef.current?.clearAllZooms()}
+						variant="ghost"
+						size="icon"
+						disabled={timeline.zoomRegions.length === 0}
+						className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-red-500/10 hover:text-red-400 disabled:opacity-40"
+						title={t("timeline.zoom.clearAllZooms")}
+						aria-label={t("timeline.zoom.clearAllZooms")}
+					>
+						<MagnifyingGlassMinus className="h-4 w-4" />
 					</Button>
 					<Button
 						onClick={() => timelineRef.current?.splitClip()}
