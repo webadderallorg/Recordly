@@ -519,6 +519,7 @@ interface SettingsPanelProps {
 	selectedZoomMode?: ZoomMode | null;
 	onZoomModeChange?: (mode: ZoomMode) => void;
 	onZoomDelete?: (id: string) => void;
+	onZoomDuplicate?: () => boolean | void;
 	selectedClipId?: string | null;
 	selectedClipSpeed?: number | null;
 	selectedClipMuted?: boolean | null;
@@ -538,6 +539,7 @@ interface SettingsPanelProps {
 	onAudioVolumeChange?: (volume: number) => void;
 	onAudioNormalizeChange?: (normalize: boolean) => void;
 	onAudioDelete?: (id: string) => void;
+	onAudioDuplicate?: () => boolean | void;
 	shadowIntensity?: number;
 	onShadowChange?: (intensity: number) => void;
 	backgroundBlur?: number;
@@ -626,6 +628,7 @@ interface SettingsPanelProps {
 	onAnnotationBlurIntensityChange?: (id: string, intensity: number) => void;
 	onAnnotationBlurColorChange?: (id: string, color: string) => void;
 	onAnnotationDelete?: (id: string) => void;
+	onAnnotationDuplicate?: () => boolean | void;
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
 	whisperExecutablePath?: string | null;
@@ -979,6 +982,7 @@ export function SettingsPanel({
 	selectedZoomMode,
 	onZoomModeChange,
 	onZoomDelete,
+	onZoomDuplicate,
 	selectedClipId,
 	selectedClipSpeed,
 	selectedClipMuted,
@@ -998,6 +1002,7 @@ export function SettingsPanel({
 	onAudioVolumeChange,
 	onAudioNormalizeChange,
 	onAudioDelete,
+	onAudioDuplicate,
 	shadowIntensity = 0.67,
 	onShadowChange,
 	backgroundBlur = 0,
@@ -1074,6 +1079,7 @@ export function SettingsPanel({
 	onAnnotationBlurIntensityChange,
 	onAnnotationBlurColorChange,
 	onAnnotationDelete,
+	onAnnotationDuplicate,
 	autoCaptions = [],
 	autoCaptionSettings = DEFAULT_AUTO_CAPTION_SETTINGS,
 	whisperModelPath,
@@ -3788,44 +3794,95 @@ export function SettingsPanel({
 					</Button>
 				)}
 				{activeEffectSection === "zoom" && selectedZoomId && (
-					<Button
-						onClick={() => {
-							if (selectedZoomId && onZoomDelete) onZoomDelete(selectedZoomId);
-						}}
-						variant="destructive"
-						size="sm"
-						className="h-8 w-full gap-2 border border-red-500/20 bg-red-500/10 text-xs text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/20"
-					>
-						<Trash2 className="h-3 w-3" />
-						{tSettings("zoom.deleteZoom", "Delete Zoom")}
-					</Button>
+					<>
+						<Button
+							onClick={() => {
+								const ok = onZoomDuplicate?.();
+								if (ok === false) {
+									toast.error(
+										"Not enough space to duplicate after the selected item",
+									);
+								}
+							}}
+							variant="ghost"
+							size="sm"
+							className="h-8 w-full gap-2 border border-foreground/10 bg-foreground/5 text-xs text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
+						>
+							{tSettings("zoom.duplicateZoom", "Duplicate Zoom")}
+						</Button>
+						<Button
+							onClick={() => {
+								if (selectedZoomId && onZoomDelete) onZoomDelete(selectedZoomId);
+							}}
+							variant="destructive"
+							size="sm"
+							className="h-8 w-full gap-2 border border-red-500/20 bg-red-500/10 text-xs text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/20"
+						>
+							<Trash2 className="h-3 w-3" />
+							{tSettings("zoom.deleteZoom", "Delete Zoom")}
+						</Button>
+					</>
 				)}
 				{activeEffectSection === "audio" && selectedAudioId && (
-					<Button
-						onClick={() => {
-							if (selectedAudioId && onAudioDelete) onAudioDelete(selectedAudioId);
-						}}
-						variant="destructive"
-						size="sm"
-						className="h-8 w-full gap-2 border border-red-500/20 bg-red-500/10 text-xs text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/20"
-					>
-						<Trash2 className="h-3 w-3" />
-						{tSettings("audio.deleteRegion", "Delete Audio")}
-					</Button>
+					<>
+						<Button
+							onClick={() => {
+								const ok = onAudioDuplicate?.();
+								if (ok === false) {
+									toast.error(
+										"Not enough space to duplicate after the selected item",
+									);
+								}
+							}}
+							variant="ghost"
+							size="sm"
+							className="h-8 w-full gap-2 border border-foreground/10 bg-foreground/5 text-xs text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
+						>
+							{tSettings("audio.duplicateRegion", "Duplicate Audio")}
+						</Button>
+						<Button
+							onClick={() => {
+								if (selectedAudioId && onAudioDelete) onAudioDelete(selectedAudioId);
+							}}
+							variant="destructive"
+							size="sm"
+							className="h-8 w-full gap-2 border border-red-500/20 bg-red-500/10 text-xs text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/20"
+						>
+							<Trash2 className="h-3 w-3" />
+							{tSettings("audio.deleteRegion", "Delete Audio")}
+						</Button>
+					</>
 				)}
 				{selectedAnnotationId && (
-					<Button
-						onClick={() => {
-							if (selectedAnnotationId && onAnnotationDelete)
-								onAnnotationDelete(selectedAnnotationId);
-						}}
-						variant="destructive"
-						size="sm"
-						className="h-8 w-full gap-2 border border-red-500/20 bg-red-500/10 text-xs text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/20"
-					>
-						<Trash2 className="h-3 w-3" />
-						{tSettings("annotation.delete", "Delete Annotation")}
-					</Button>
+					<>
+						<Button
+							onClick={() => {
+								const ok = onAnnotationDuplicate?.();
+								if (ok === false) {
+									toast.error(
+										"Not enough space to duplicate after the selected item",
+									);
+								}
+							}}
+							variant="ghost"
+							size="sm"
+							className="h-8 w-full gap-2 border border-foreground/10 bg-foreground/5 text-xs text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
+						>
+							{tSettings("annotation.duplicate", "Duplicate Annotation")}
+						</Button>
+						<Button
+							onClick={() => {
+								if (selectedAnnotationId && onAnnotationDelete)
+									onAnnotationDelete(selectedAnnotationId);
+							}}
+							variant="destructive"
+							size="sm"
+							className="h-8 w-full gap-2 border border-red-500/20 bg-red-500/10 text-xs text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/20"
+						>
+							<Trash2 className="h-3 w-3" />
+							{tSettings("annotation.delete", "Delete Annotation")}
+						</Button>
+					</>
 				)}
 			</div>
 		</div>

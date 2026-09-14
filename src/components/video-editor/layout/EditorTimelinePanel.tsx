@@ -75,6 +75,12 @@ export function EditorTimelinePanel(props: Props) {
 				onZoomSuggested={zoomCommands.handleZoomSuggested}
 				onZoomSpanChange={zoomCommands.handleZoomSpanChange}
 				onZoomDelete={zoomCommands.handleZoomDelete}
+				onZoomDuplicate={(id) =>
+					zoomCommands.handleZoomDuplicate(
+						id,
+						Math.round(projection.timelineDuration * 1000),
+					)
+				}
 				selectedZoomId={timeline.selectedZoomId}
 				onSelectZoom={zoomCommands.handleSelectZoom}
 				trimRegions={timeline.trimRegions}
@@ -87,6 +93,12 @@ export function EditorTimelinePanel(props: Props) {
 				onAudioAdded={audioCommands.handleAudioAdded}
 				onAudioSpanChange={audioCommands.handleAudioSpanChange}
 				onAudioDelete={audioCommands.handleAudioDelete}
+				onAudioDuplicate={(id) =>
+					audioCommands.handleAudioDuplicate(
+						id,
+						Math.round(projection.timelineDuration * 1000),
+					)
+				}
 				selectedAudioId={timeline.selectedAudioId}
 				onSelectAudio={audioCommands.handleSelectAudio}
 				captionRegions={projection.effectiveCaptionRegions}
@@ -106,6 +118,12 @@ export function EditorTimelinePanel(props: Props) {
 				onAnnotationAdded={annotationCommands.handleAnnotationAdded}
 				onAnnotationSpanChange={annotationCommands.handleAnnotationSpanChange}
 				onAnnotationDelete={annotationCommands.handleAnnotationDelete}
+				onAnnotationDuplicate={(id) =>
+					annotationCommands.handleAnnotationDuplicate(
+						id,
+						Math.round(projection.timelineDuration * 1000),
+					)
+				}
 				selectedAnnotationId={timeline.selectedAnnotationId}
 				onSelectAnnotation={handleSelectAnnotation}
 				showSourceAudioTrack={timeline.clipRegions.some((clip) => clip.showSourceAudio)}

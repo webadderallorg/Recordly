@@ -45,6 +45,7 @@ export interface TimelineEditorProps {
 	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
 	onZoomSpanChange: (id: string, span: Span) => void;
 	onZoomDelete: (id: string) => void;
+	onZoomDuplicate?: (id: string) => boolean;
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
 	trimRegions?: TrimRegion[];
@@ -59,6 +60,7 @@ export interface TimelineEditorProps {
 	onAnnotationAdded?: (span: Span, trackIndex?: number) => void;
 	onAnnotationSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
 	onAnnotationDelete?: (id: string) => void;
+	onAnnotationDuplicate?: (id: string) => boolean;
 	selectedAnnotationId?: string | null;
 	onSelectAnnotation?: (id: string | null) => void;
 	speedRegions?: SpeedRegion[];
@@ -67,6 +69,7 @@ export interface TimelineEditorProps {
 	onAudioAdded?: (span: Span, audioPath: string, trackIndex?: number) => void;
 	onAudioSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
 	onAudioDelete?: (id: string) => void;
+	onAudioDuplicate?: (id: string) => boolean;
 	selectedAudioId?: string | null;
 	onSelectAudio?: (id: string | null) => void;
 	captionRegions?: CaptionCue[];
@@ -128,6 +131,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onZoomSuggested,
 			onZoomSpanChange,
 			onZoomDelete,
+			onZoomDuplicate,
 			selectedZoomId,
 			onSelectZoom,
 			trimRegions = [],
@@ -142,6 +146,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAnnotationAdded,
 			onAnnotationSpanChange,
 			onAnnotationDelete,
+			onAnnotationDuplicate,
 			selectedAnnotationId,
 			onSelectAnnotation,
 			speedRegions = [],
@@ -150,6 +155,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAudioAdded,
 			onAudioSpanChange,
 			onAudioDelete,
+			onAudioDuplicate,
 			selectedAudioId,
 			onSelectAudio,
 			captionRegions = [],
@@ -367,6 +373,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onZoomSuggested,
 			onZoomSpanChange,
 			onZoomDelete,
+			onZoomDuplicate,
 			selectedZoomId,
 			onSelectZoom,
 			trimRegions,
@@ -381,6 +388,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAnnotationAdded,
 			onAnnotationSpanChange,
 			onAnnotationDelete,
+			onAnnotationDuplicate,
 			selectedAnnotationId,
 			onSelectAnnotation,
 			speedRegions,
@@ -389,6 +397,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			onAudioAdded,
 			onAudioSpanChange,
 			onAudioDelete,
+			onAudioDuplicate,
 			selectedAudioId,
 			onSelectAudio,
 			captionCues: captionRegions,
