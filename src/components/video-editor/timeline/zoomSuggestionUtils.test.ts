@@ -121,6 +121,36 @@ describe("buildInteractionZoomSuggestions (click-cluster logic)", () => {
 		]);
 	});
 
+	it("does not let a later burst inherit text context from an earlier burst", () => {
+		const result = buildInteractionZoomSuggestions({
+			cursorTelemetry: withMoves(
+				[
+					makeClick(2_600, 0.3, 0.4),
+					makeKeyDown(2_700, 0.3, 0.4),
+					makeKeyDown(2_800, 0.3, 0.4),
+					makeKeyDown(2_900, 0.3, 0.4),
+					// This later click lands within the first burst's text-cursor
+					// annotation window, but its typing happens away from that field.
+					makeClick(3_300, 0.7, 0.7),
+					makeMove(3_450, 0.75, 0.75),
+					makeMove(3_500, 0.8, 0.7),
+					makeMove(3_550, 0.75, 0.8),
+					makeKeyDown(3_600, 0.8, 0.8),
+					makeKeyDown(3_700, 0.8, 0.8),
+					makeKeyDown(3_800, 0.8, 0.8),
+				],
+				TOTAL_MS,
+			),
+			totalMs: TOTAL_MS,
+			defaultDurationMs: 3_000,
+		});
+
+		expect(result.status).toBe("ok");
+		expect(result.suggestions).toEqual([
+			{ start: 2_100, end: 3_800, focus: { cx: 0.3, cy: 0.4 } },
+		]);
+	});
+
 	it("creates one zoom track for a single isolated click with 500ms padding", () => {
 		const telemetry = withMoves([makeClick(5_000)], TOTAL_MS);
 

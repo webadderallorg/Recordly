@@ -268,12 +268,15 @@ function findTypingBurstsAfterClick(
 		const relevantSamples = samples.filter(
 			(sample) => sample.timeMs >= clickSample.timeMs && sample.timeMs <= last.timeMs,
 		);
+		const burstSamples = samples.filter(
+			(sample) => sample.timeMs >= first.timeMs && sample.timeMs <= last.timeMs,
+		);
 		const stayedNearField = relevantSamples.every(
 			(sample) =>
 				Math.hypot(sample.cx - clickSample.cx, sample.cy - clickSample.cy) <=
 				MAX_CLICK_TO_TYPING_DISTANCE,
 		);
-		const hasTextContext = relevantSamples.some((sample) => sample.cursorType === "text");
+		const hasTextContext = burstSamples.some((sample) => sample.cursorType === "text");
 
 		if (startsSoonEnough && (stayedNearField || hasTextContext)) {
 			bursts.push({ startMs: first.timeMs, endMs: last.timeMs });
