@@ -1,4 +1,5 @@
 import { type PointerEvent, useCallback, useEffect, useRef, useState } from "react";
+import { acquireSharedWebcamStream, releaseSharedWebcamStream } from "@/lib/sharedWebcamStream";
 import { canShowFloatingWebcamPreview } from "../floatingWebcamPreview";
 
 const WEBCAM_PREVIEW_DRAG_THRESHOLD = 6;
@@ -210,6 +211,7 @@ export function useWebcamPreviewOverlay({
 
 	useEffect(() => {
 		let mounted = true;
+		let acquisition: Promise<MediaStream> | null = null;
 
 		const startPreview = async () => {
 			if (!shouldStreamWebcamPreview) {
@@ -217,24 +219,11 @@ export function useWebcamPreviewOverlay({
 			}
 
 			try {
-				const previewStream = await navigator.mediaDevices.getUserMedia({
-					video: webcamDeviceId
-						? {
-								deviceId: { exact: webcamDeviceId },
-								width: { ideal: 320 },
-								height: { ideal: 320 },
-								frameRate: { ideal: 24, max: 30 },
-							}
-						: {
-								width: { ideal: 320 },
-								height: { ideal: 320 },
-								frameRate: { ideal: 24, max: 30 },
-							},
-					audio: false,
-				});
+				acquisition = acquireSharedWebcamStream(webcamDeviceId);
+				const previewStream = await acquisition;
 
 				if (!mounted) {
-					previewStream.getTracks().forEach((track) => track.stop());
+					releaseSharedWebcamStream(acquisition);
 					return;
 				}
 
@@ -260,7 +249,9 @@ export function useWebcamPreviewOverlay({
 					videoElement.pause();
 					videoElement.srcObject = null;
 				});
-			previewStream?.getTracks().forEach((track) => track.stop());
+			if (acquisition) {
+				releaseSharedWebcamStream(acquisition);
+			}
 			if (previewStreamRef.current === previewStream) {
 				previewStreamRef.current = null;
 			}

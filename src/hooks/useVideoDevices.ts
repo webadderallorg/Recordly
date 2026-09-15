@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { acquireSharedWebcamStream, releaseSharedWebcamStream } from "@/lib/sharedWebcamStream";
 
 export interface VideoDevice {
 	deviceId: string;
@@ -24,7 +25,7 @@ export function useVideoDevices(enabled: boolean = true) {
 
 		const loadDevices = async () => {
 			const loadId = ++activeLoadId;
-			let permissionStream: MediaStream | null = null;
+			let permissionAcquisition: Promise<MediaStream> | null = null;
 
 			try {
 				if (mounted && loadId === activeLoadId) {
@@ -41,14 +42,16 @@ export function useVideoDevices(enabled: boolean = true) {
 						groupId: device.groupId,
 					}));
 
+				// Chromium can report zero video inputs at all (not just unlabeled ones)
+				// until getUserMedia() has been called at least once for this app's
+				// profile. Probe with getUserMedia whenever we don't yet have a labeled
+				// device list, not only when placeholder entries are present.
 				const needsLabelPermission =
-					videoInputs.length > 0 && videoInputs.every((device) => !device.label.trim());
+					videoInputs.length === 0 || videoInputs.every((device) => !device.label.trim());
 
 				if (needsLabelPermission && !hasRequestedVideoLabels) {
-					permissionStream = await navigator.mediaDevices.getUserMedia({
-						video: true,
-						audio: false,
-					});
+					permissionAcquisition = acquireSharedWebcamStream();
+					await permissionAcquisition;
 					allDevices = await navigator.mediaDevices.enumerateDevices();
 					videoInputs = allDevices
 						.filter((device) => device.kind === "videoinput")
@@ -87,7 +90,9 @@ export function useVideoDevices(enabled: boolean = true) {
 					console.error("Error loading video devices:", error);
 				}
 			} finally {
-				permissionStream?.getTracks().forEach((track) => track.stop());
+				if (permissionAcquisition) {
+					releaseSharedWebcamStream(permissionAcquisition);
+				}
 				if (mounted && loadId === activeLoadId) {
 					setIsLoading(false);
 				}
