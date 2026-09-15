@@ -29,6 +29,78 @@ describe("endsSentence", () => {
 });
 
 describe("segmentCuesIntoPhrases", () => {
+	it("ends a word at a detected silence so a pause still splits the phrase", () => {
+		// DTW-derived words end where the next word starts, which hides the pause
+		// between "acá," and "quiero" unless the acoustic silence clips the word.
+		const cues: CaptionCuePayload[] = [
+			{
+				id: "caption-1",
+				startMs: 12_000,
+				endMs: 15_600,
+				text: "estamos acá, quiero ver",
+				words: [
+					{ text: "estamos", startMs: 12_000, endMs: 12_490 },
+					{ text: "acá,", startMs: 12_490, endMs: 15_250, leadingSpace: true },
+					{ text: "quiero", startMs: 15_250, endMs: 15_510, leadingSpace: true },
+					{ text: "ver", startMs: 15_510, endMs: 15_600, leadingSpace: true },
+				],
+			},
+		];
+
+		const result = segmentCuesIntoPhrases(cues, [{ startMs: 13_000, endMs: 15_100 }]);
+
+		expect(result.map((cue) => cue.text)).toEqual(["estamos acá,", "quiero ver"]);
+		expect(result[0].words?.[1].endMs).toBe(13_000);
+		expect(result[0].endMs).toBeLessThan(15_000);
+	});
+
+	it("ends a caption where the next one starts so the next caption is never delayed", () => {
+		const cues: CaptionCuePayload[] = [
+			{
+				id: "caption-1",
+				startMs: 0,
+				endMs: 1_400,
+				text: "Ok.",
+				words: [{ text: "Ok.", startMs: 500, endMs: 1_400 }],
+			},
+			{
+				id: "caption-2",
+				startMs: 1_200,
+				endMs: 3_000,
+				text: "Bueno, prueba de video.",
+				words: [
+					{ text: "Bueno,", startMs: 1_200, endMs: 1_800 },
+					{ text: "prueba", startMs: 1_800, endMs: 2_300, leadingSpace: true },
+					{ text: "de", startMs: 2_300, endMs: 2_500, leadingSpace: true },
+					{ text: "video.", startMs: 2_500, endMs: 3_000, leadingSpace: true },
+				],
+			},
+		];
+
+		const result = segmentCuesIntoPhrases(cues, []);
+
+		expect(result.map((cue) => cue.text)).toEqual(["Ok.", "Bueno, prueba de video."]);
+		expect(result[1].startMs).toBe(1_200);
+		expect(result[0].endMs).toBeLessThanOrEqual(result[1].startMs);
+		expect(result[0].words?.[0].endMs).toBeLessThanOrEqual(result[1].startMs);
+	});
+
+	it("does not clip a word that starts inside the silence it is leaving", () => {
+		const cues: CaptionCuePayload[] = [
+			{
+				id: "caption-1",
+				startMs: 2_000,
+				endMs: 3_000,
+				text: "hola",
+				words: [{ text: "hola", startMs: 2_950, endMs: 3_600 }],
+			},
+		];
+
+		const result = segmentCuesIntoPhrases(cues, [{ startMs: 1_000, endMs: 3_100 }]);
+
+		expect(result[0].words?.[0].endMs).toBe(3_600);
+	});
+
 	it("splits back-to-back sentences with no pause into separate captions", () => {
 		const cues: CaptionCuePayload[] = [
 			{
