@@ -49,7 +49,9 @@ import {
 } from "@/lib/wallpapers";
 import { AudioProcessor, isAacAudioEncodingSupported } from "./audioEncoder";
 import {
+	isWebGPURendererFailure,
 	normalizeLightningRuntimePlatform,
+	resolveLightningPreferredRenderBackend,
 	shouldPreferNativeAutoBackend,
 	shouldPreferNativeStaticLayoutBeforeBreeze,
 } from "./backendPolicy";
@@ -380,6 +382,8 @@ export class ModernVideoExporter {
 	async export(): Promise<ExportResult> {
 		let useFallbackMediaSource = false;
 		let retriedWithFallbackMediaSource = false;
+		let forcedRenderBackend: ExportRenderBackend | null = null;
+		let retriedWithWebGLFallback = false;
 		let nativeFailure: string | null = null;
 		this.mediaSourceRetryAttempted = false;
 		this.runtimeDiagnostics = await this.collectRuntimeDiagnostics();
@@ -604,7 +608,11 @@ export class ModernVideoExporter {
 					timelineEffects: this.config.clipRegions !== undefined,
 					width: this.config.width,
 					height: this.config.height,
-					preferredRenderBackend: undefined,
+					preferredRenderBackend:
+						resolveLightningPreferredRenderBackend(
+							runtimePlatform,
+							forcedRenderBackend ?? this.config.preferredRenderBackend,
+						) ?? this.config.preferredRenderBackend,
 					wallpaper: this.config.wallpaper,
 					zoomRegions: this.config.zoomRegions,
 					showShadow: this.config.showShadow,
@@ -915,6 +923,20 @@ export class ModernVideoExporter {
 							nativeFailure,
 					);
 					retryExport = true;
+				} else if (
+					!this.cancelled &&
+					!retriedWithWebGLFallback &&
+					forcedRenderBackend !== "webgl" &&
+					this.renderBackend !== "webgl" &&
+					isWebGPURendererFailure(this.encoderError ?? error)
+				) {
+					retriedWithWebGLFallback = true;
+					forcedRenderBackend = "webgl";
+					retryExport = true;
+					console.warn(
+						"[VideoExporter] WebGPU render failed (Pixi _resourceType); retrying Lightning export once with WebGL.",
+						error,
+					);
 				} else if (
 					!this.cancelled &&
 					!useFallbackMediaSource &&
