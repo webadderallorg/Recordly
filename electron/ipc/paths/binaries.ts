@@ -89,6 +89,62 @@ export function getBundledWhisperExecutableCandidates(): string[] {
 	return binaryNames.map((binaryName) => getPrebundledNativeHelperPath(binaryName));
 }
 
+export function getBundledSherpaOnnxExecutableCandidates(): string[] {
+	const binaryNames =
+		process.platform === "win32"
+			? ["sherpa-onnx-offline.exe", "sherpa-onnx.exe"]
+			: ["sherpa-onnx-offline", "sherpa-onnx"];
+
+	const candidates = new Set<string>();
+	const userDataDir = app.getPath("userData");
+	const userDataRuntimeDir = path.join(userDataDir, "runtime");
+	const userDataSherpaDir = path.join(userDataRuntimeDir, "sherpa-onnx");
+	const platformShort = process.platform === "win32" ? "win32" : process.platform;
+	const archTag = getNativeArchTag();
+
+	for (const binaryName of binaryNames) {
+		// AppData / UserData runtime directories
+		candidates.add(path.join(userDataRuntimeDir, binaryName));
+		candidates.add(path.join(userDataRuntimeDir, "bin", binaryName));
+		candidates.add(path.join(userDataSherpaDir, "bin", binaryName));
+		candidates.add(path.join(userDataSherpaDir, binaryName));
+
+		// Prebundled native helper paths within app bundle / dev checkout
+		candidates.add(getPrebundledNativeHelperPath(binaryName, archTag));
+		candidates.add(
+			resolveUnpackedAppPath("electron", "native", "bin", platformShort, binaryName),
+		);
+		candidates.add(
+			resolveUnpackedAppPath(
+				"electron",
+				"native",
+				"bin",
+				`${platformShort}-${process.arch}`,
+				binaryName,
+			),
+		);
+		candidates.add(
+			resolveUnpackedAppPath("electron", "native", "bin", `${platformShort}-x64`, binaryName),
+		);
+		candidates.add(
+			resolveUnpackedAppPath(
+				"electron",
+				"native",
+				"bin",
+				`${platformShort}-arm64`,
+				binaryName,
+			),
+		);
+		if (process.platform === "win32") {
+			candidates.add(
+				resolveUnpackedAppPath("electron", "native", "bin", "win32", binaryName),
+			);
+		}
+	}
+
+	return Array.from(candidates);
+}
+
 export function getNativeCaptureHelperBinaryPath(): string {
 	return path.join(app.getPath("userData"), "native-tools", "recordly-screencapturekit-helper");
 }

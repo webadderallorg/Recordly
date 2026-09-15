@@ -8,16 +8,22 @@ type Input = {
 	appearance: ReturnType<typeof useAppearanceState>;
 	exportSettings: ReturnType<typeof useExportSettings>;
 	aspectRatio: AspectRatio;
+	captionEngine?: "whisper" | "parakeet";
 	whisperExecutablePath: string | null;
 	whisperModelPath: string | null;
+	parakeetExecutablePath?: string | null;
+	parakeetModelPath?: string | null;
 };
 
 export function useEditorPreferencesPersistence({
 	appearance,
 	exportSettings,
 	aspectRatio,
+	captionEngine = "whisper",
 	whisperExecutablePath,
 	whisperModelPath,
+	parakeetExecutablePath = null,
+	parakeetModelPath = null,
 }: Input) {
 	useEffect(() => {
 		saveEditorPreferences({
@@ -71,6 +77,9 @@ export function useEditorPreferencesPersistence({
 			gifSizePreset: exportSettings.gifSizePreset,
 			whisperExecutablePath,
 			whisperModelPath,
+			captionEngine,
+			parakeetExecutablePath,
+			parakeetModelPath,
 		});
 	}, [
 		appearance.wallpaper,
@@ -123,5 +132,8 @@ export function useEditorPreferencesPersistence({
 		exportSettings.gifSizePreset,
 		whisperExecutablePath,
 		whisperModelPath,
+		captionEngine,
+		parakeetExecutablePath,
+		parakeetModelPath,
 	]);
 }
