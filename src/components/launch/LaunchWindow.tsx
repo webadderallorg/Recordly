@@ -62,6 +62,7 @@ function LaunchWindowContent() {
 		paused,
 		finalizing,
 		countdownActive,
+		awaitingScreenPermission,
 		toggleRecording,
 		pauseRecording,
 		resumeRecording,
@@ -356,7 +357,7 @@ function LaunchWindowContent() {
 								requestOpen("sources");
 							}
 				}
-				disabled={countdownActive}
+				disabled={countdownActive || awaitingScreenPermission}
 				title={t("recording.record")}
 			>
 				<div className={styles.recDot} />

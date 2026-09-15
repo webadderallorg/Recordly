@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { app, ipcMain } from "electron";
+import { app, ipcMain, screen } from "electron";
 import { hasAppSetting, readAppSettingsStore, writeAppSettingsStore } from "../../appSettingsStore";
 import { hideCursor } from "../../cursorHider";
 import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from "../../windows";
@@ -19,6 +19,7 @@ import {
 	setCountdownTimer,
 } from "../state";
 import { parseJsonWithByteOrderMark } from "../utils";
+import { createScreenPermissionWaitController } from "../screenPermissionWait";
 
 const BROWSER_MICROPHONE_PROFILE_ENV = "RECORDLY_BROWSER_MIC_PROFILE";
 const DEFAULT_BROWSER_MICROPHONE_PROFILE = "processed";
@@ -41,6 +42,65 @@ function getBrowserMicrophoneProfileFromEnv() {
 		requestedBrowserMicrophoneProfile: requested,
 	};
 }
+
+function sendAwaitingScreenPermission(win: Electron.BrowserWindow, awaiting: boolean) {
+	if (!win.isDestroyed()) {
+		win.webContents.send("awaiting-screen-permission-changed", awaiting);
+	}
+}
+
+// The awaiting layout (glass panel with spinner + labels) is taller than the
+// 200×200 countdown circle; the window is resized per state and recentered on
+// the primary display's work area.
+const COUNTDOWN_WINDOW_SIZE = { width: 200, height: 200 } as const;
+const AWAITING_WINDOW_SIZE = { width: 320, height: 320 } as const;
+
+function setCountdownWindowGeometry(awaiting: boolean) {
+	const win = getCountdownWindow();
+	if (!win || win.isDestroyed()) {
+		return;
+	}
+	const size = awaiting ? AWAITING_WINDOW_SIZE : COUNTDOWN_WINDOW_SIZE;
+	const { workArea } = screen.getPrimaryDisplay();
+	win.setBounds({
+		x: Math.floor(workArea.x + (workArea.width - size.width) / 2),
+		y: Math.floor(workArea.y + (workArea.height - size.height) / 2),
+		width: size.width,
+		height: size.height,
+	});
+}
+
+// Linux portal permission wait: drives the countdown overlay window between
+// "waiting for the user to accept the portal dialog" and the countdown that
+// follows once capture frames actually flow.
+const screenPermissionWait = createScreenPermissionWaitController({
+	onWaitStarted: () => {
+		const win = getCountdownWindow() ?? createCountdownWindow();
+		setCountdownWindowGeometry(true);
+		if (win.webContents.isLoadingMainFrame()) {
+			win.webContents.once("did-finish-load", () => {
+				if (screenPermissionWait.isPending()) {
+					sendAwaitingScreenPermission(win, true);
+				}
+			});
+		} else {
+			sendAwaitingScreenPermission(win, true);
+		}
+	},
+	onWaitEnded: (granted) => {
+		if (granted) {
+			// Keep the overlay alive: start-countdown reuses this window and
+			// flips it from the spinner state to the countdown number.
+			const win = getCountdownWindow();
+			if (win) {
+				sendAwaitingScreenPermission(win, false);
+			}
+			setCountdownWindowGeometry(false);
+		} else {
+			closeCountdownWindow();
+		}
+	},
+});
 
 export function registerSettingsHandlers() {
 	ipcMain.handle("app:getVersion", () => {
@@ -190,11 +250,20 @@ export function registerSettingsHandlers() {
 			return { success: false, error: "Countdown already in progress" };
 		}
 
+		// A post-grant overlay cancel (click / Esc between the permission
+		// grant and this call) must suppress the countdown entirely.
+		if (screenPermissionWait.consumeCountdownStartGate()) {
+			return { success: false, cancelled: true };
+		}
+
 		setCountdownInProgress(true);
 		setCountdownCancelled(false);
 		setCountdownRemaining(seconds);
 
-		const countdownWin = createCountdownWindow();
+		// Reuse a live countdown window when one exists: the Linux portal
+		// permission wait keeps the overlay open (spinner state) right before
+		// the countdown starts, and recreating the window would flash.
+		const countdownWin = getCountdownWindow() ?? createCountdownWindow();
 
 		if (countdownWin.webContents.isLoadingMainFrame()) {
 			await new Promise<void>((resolve) => {
@@ -248,6 +317,9 @@ export function registerSettingsHandlers() {
 	});
 
 	ipcMain.handle("cancel-countdown", () => {
+		// Also aborts a pending screen-permission wait (overlay click / Esc
+		// while the portal dialog is open).
+		screenPermissionWait.cancel();
 		setCountdownCancelled(true);
 		setCountdownInProgress(false);
 		setCountdownRemaining(null);
@@ -264,5 +336,21 @@ export function registerSettingsHandlers() {
 			success: true,
 			seconds: countdownInProgress ? countdownRemaining : null,
 		};
+	});
+
+	ipcMain.handle("get-awaiting-screen-permission", () => {
+		return { success: true, awaiting: screenPermissionWait.isAwaitingOverlay() };
+	});
+
+	ipcMain.handle("begin-screen-permission-wait", () => {
+		const wait = screenPermissionWait.begin();
+		if (!wait) {
+			return { success: false, cancelled: true, error: "Permission wait already in progress" };
+		}
+		return wait;
+	});
+
+	ipcMain.handle("end-screen-permission-wait", (_, granted: boolean) => {
+		return { success: screenPermissionWait.end(granted === true) };
 	});
 }

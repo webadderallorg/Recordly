@@ -1,7 +1,13 @@
 import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/contexts/I18nContext";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
+import {
+	createVideoFramePermissionProbe,
+	isScreenPermissionDeniedError,
+	waitForScreenPermission,
+} from "@/utils/screenPermission";
 import {
 	getVideoExtensionForMimeType,
 	isWebmMimeType,
@@ -131,6 +137,7 @@ type UseScreenRecorderReturn = {
 	paused: boolean;
 	finalizing: boolean;
 	countdownActive: boolean;
+	awaitingScreenPermission: boolean;
 	toggleRecording: () => void;
 	pauseRecording: () => void;
 	resumeRecording: () => void;
@@ -202,12 +209,59 @@ export function resolveBrowserCaptureCursorPolicy({
 			hideEditorOverlayCursorByDefault: true,
 		};
 	}
-
 	return {
 		streamCursor: "never",
 		hideOsCursorBeforeRecording: true,
 		hideEditorOverlayCursorByDefault: true,
 	};
+}
+
+export function startMediaRecorderAtTimelineBoundary(
+	recorder: Pick<MediaRecorder, "addEventListener" | "removeEventListener" | "start">,
+	timesliceMs: number,
+	timeoutMs = 5_000,
+) {
+	return new Promise<number>((resolve, reject) => {
+		let settled = false;
+		const cleanup = () => {
+			clearTimeout(timeoutId);
+			recorder.removeEventListener("start", handleStart);
+			recorder.removeEventListener("error", handleFailure);
+			recorder.removeEventListener("stop", handleFailure);
+		};
+		const finish = () => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			resolve(Date.now());
+		};
+		const fail = (error: unknown) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			reject(
+				error instanceof Error
+					? error
+					: new Error("MediaRecorder failed before its media timeline started."),
+			);
+		};
+		const handleStart = () => finish();
+		const handleFailure = () =>
+			fail(new Error("MediaRecorder failed before its media timeline started."));
+		const timeoutId = setTimeout(
+			() => fail(new Error("MediaRecorder did not start within the expected time.")),
+			timeoutMs,
+		);
+		recorder.addEventListener("start", handleStart, { once: true });
+		recorder.addEventListener("error", handleFailure, { once: true });
+		recorder.addEventListener("stop", handleFailure, { once: true });
+
+		try {
+			recorder.start(timesliceMs);
+		} catch (error) {
+			fail(error);
+		}
+	});
 }
 
 export function shouldUseNativeWindowsCaptureForSource(
@@ -374,11 +428,13 @@ async function createAudioInputDeviceSnapshot(): Promise<
 }
 
 export function useScreenRecorder(): UseScreenRecorderReturn {
+	const { t } = useI18n();
 	const [recording, setRecording] = useState(false);
 	const [paused, setPaused] = useState(false);
 	const [starting, setStarting] = useState(false);
 	const [finalizing, setFinalizing] = useState(false);
 	const [countdownActive, setCountdownActive] = useState(false);
+	const [awaitingScreenPermission, setAwaitingScreenPermission] = useState(false);
 	const [isMacOS, setIsMacOS] = useState(false);
 	const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
 	const [microphoneDeviceId, setMicrophoneDeviceId] = useState<string | undefined>(undefined);
@@ -1680,6 +1736,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		startInFlight.current = true;
 		setStarting(true);
 
+		// Tracks whether this attempt routes through the Linux portal so the
+		// outer catch can treat permission denial as a user choice.
+		let linuxPortalAttempt = false;
+
 		try {
 			const preparedStart = await prepareRecordingStart();
 			if (!preparedStart || startWasCancelled()) {
@@ -1692,7 +1752,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				preparedStart;
 			const useNativeCapture = useNativeMacScreenCapture || useNativeWindowsCapture;
 			const shouldWarmStartNativeCapture = useNativeCapture && countdownDelay > 0;
-			if (countdownDelay > 0 && !shouldWarmStartNativeCapture) {
+			if (
+				countdownDelay > 0 &&
+				!shouldWarmStartNativeCapture &&
+				selectedSource.id !== "screen:linux-portal"
+			) {
 				setCountdownActive(true);
 				try {
 					const result = await window.electronAPI.startCountdown(countdownDelay);
@@ -1957,6 +2021,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			let systemAudioIncluded = false;
 			const mediaDevices = navigator.mediaDevices as DesktopCaptureMediaDevices;
 			const useLinuxPortal = selectedSource.id === "screen:linux-portal";
+			linuxPortalAttempt = useLinuxPortal;
 			const browserScreenVideoConstraints = {
 				mandatory: {
 					chromeMediaSource: CHROME_MEDIA_SOURCE,
@@ -1999,11 +2064,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 									},
 									video: browserScreenVideoConstraints,
 								});
-					} catch (audioError) {
-						console.warn(
-							"System audio capture failed, falling back to video-only:",
-							audioError,
-						);
+				} catch (audioError) {
+					// Portal denial is a user choice, not an audio failure —
+					// rethrow so the outer handler cancels quietly instead of
+					// retrying with a second portal dialog.
+					if (useLinuxPortal && isScreenPermissionDeniedError(audioError)) {
+						throw audioError;
+					}
+					console.warn(
+						"System audio capture failed, falling back to video-only:",
+						audioError,
+					);
 						alert(
 							"System audio is not available for this source. Recording will continue without system audio.",
 						);
@@ -2109,6 +2180,82 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				throw new Error("Media stream is not available.");
 			}
 
+			// Linux portal gate: `getDisplayMedia` resolves when the Electron
+			// display-media handler answers with the sentinel source — BEFORE
+			// the user accepts the xdg-desktop-portal dialog. Everything below
+			// (countdown, MediaRecorder timeline, cursor telemetry) must wait
+			// for the FIRST delivered frame, which is the real "user granted"
+			// signal. Gated to the linux-portal source only: desktopCapturer
+			// sources (Windows/macOS/X11) deliver frames immediately.
+			if (useLinuxPortal) {
+				const permissionProbe = createVideoFramePermissionProbe(videoTrack);
+				if (!permissionProbe) {
+					console.warn(
+						"requestVideoFrameCallback unavailable; starting without the portal permission gate.",
+					);
+				} else {
+					setAwaitingScreenPermission(true);
+					let outcome: "granted" | "denied" | "cancelled";
+					try {
+						// Overlay cancel (click / Esc on the awaiting overlay)
+						// resolves this IPC promise as cancelled.
+						const overlayWait = window.electronAPI.beginScreenPermissionWait();
+						const trackWait = waitForScreenPermission(videoTrack, permissionProbe);
+						outcome = await new Promise<(typeof outcome) | "cancelled">((resolve) => {
+							let settled = false;
+							const finish = (value: "granted" | "denied" | "cancelled") => {
+								if (!settled) {
+									settled = true;
+									resolve(value);
+								}
+							};
+						void trackWait.then(finish);
+						void overlayWait
+							.then((result) => {
+								if (result.cancelled) {
+									finish("cancelled");
+								}
+							})
+							.catch((error) => {
+								console.warn("Screen permission wait IPC failed:", error);
+								finish("cancelled");
+							});
+					});
+					if (outcome !== "cancelled") {
+						await window.electronAPI.endScreenPermissionWait(outcome === "granted");
+					}
+				} finally {
+					permissionProbe.dispose();
+					setAwaitingScreenPermission(false);
+				}
+				if (outcome !== "granted" || startWasCancelled()) {
+					// A post-grant cancellation (HUD cancel raced with the
+					// accept) leaves the overlay window alive — close it.
+					if (outcome === "granted") {
+						try {
+							await window.electronAPI.cancelCountdown();
+						} catch (closeError) {
+							console.warn(
+								"Failed to close the countdown window after cancellation:",
+								closeError,
+							);
+						}
+					}
+					cleanupCapturedMedia();
+					await stopWebcamRecorder();
+					if ((outcome === "denied" || outcome === "cancelled") && !startWasCancelled()) {
+						toast.info(
+							t(
+								"recording.cancelledNoPermission",
+								"Recording canceled — screen permission not granted",
+							),
+						);
+					}
+					return;
+				}
+				}
+			}
+
 			try {
 				await videoTrack.applyConstraints({
 					frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
@@ -2139,6 +2286,25 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					videoBitsPerSecond / BITS_PER_MEGABIT,
 				)} Mbps`,
 			);
+
+			// Linux portal: the screen picker (and its permission token) runs
+			// BEFORE the countdown, so the recording starts immediately after
+			// it — no frozen lead-in frames and no telemetry/video drift.
+			if (countdownDelay > 0) {
+				setCountdownActive(true);
+				try {
+					const result = await window.electronAPI.startCountdown(countdownDelay);
+					if (!result.success || result.cancelled || startWasCancelled()) {
+						cleanupCapturedMedia();
+						await stopWebcamRecorder();
+						return;
+					}
+				} finally {
+					setCountdownActive(false);
+				}
+				recordingSessionTimestamp.current = Date.now();
+				resetRecordingClock(recordingSessionTimestamp.current);
+			}
 
 			chunks.current = [];
 			const hasAudio = stream.current.getAudioTracks().length > 0;
@@ -2241,25 +2407,51 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			recorder.onerror = () => {
 				setRecording(false);
 			};
-			const mainStartedAt = Date.now();
+			const mainStartedAt = await startMediaRecorderAtTimelineBoundary(
+				recorder,
+				RECORDER_TIMESLICE_MS,
+			);
 			beginWebcamCapture();
 			resetRecordingClock(mainStartedAt);
 			webcamTimeOffsetMs.current =
 				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
-			recorder.start(RECORDER_TIMESLICE_MS);
 			setRecording(true);
 			try {
-				await window.electronAPI?.setRecordingState(true);
+				const cursorCaptureState = await window.electronAPI?.setRecordingState(true, {
+					mediaTimelineStartedAtEpochMs: mainStartedAt,
+				});
+				if (cursorCaptureState?.cursorOverlayAvailable) {
+					hideEditorOverlayCursorByDefault.current = false;
+				}
 			} catch (stateError) {
 				console.warn("Failed to notify main process that recording started:", stateError);
 			}
 		} catch (error) {
 			console.error("Failed to start recording:", error);
-			alert(
-				error instanceof Error
-					? `Failed to start recording: ${error.message}`
-					: "Failed to start recording",
-			);
+			// A failure after the portal grant (e.g. MediaRecorder rejecting
+			// the stream) must not leave the transparent alwaysOnTop countdown
+			// window open and invisibly blocking clicks. Inert otherwise.
+			try {
+				await window.electronAPI.cancelCountdown();
+			} catch (closeError) {
+				console.warn("Failed to close the countdown window after a start failure:", closeError);
+			}
+			if (linuxPortalAttempt && isScreenPermissionDeniedError(error)) {
+				// The user denied or dismissed the portal dialog — a choice,
+				// not a failure. Quiet informational toast, no error dialog.
+				toast.info(
+					t(
+						"recording.cancelledNoPermission",
+						"Recording canceled — screen permission not granted",
+					),
+				);
+			} else {
+				alert(
+					error instanceof Error
+						? `Failed to start recording: ${error.message}`
+						: "Failed to start recording",
+				);
+			}
 			setRecording(false);
 			if (nativeScreenRecording.current) {
 				await discardActiveNativeCapture();
@@ -2411,7 +2603,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, [cleanupCapturedMedia, discardActiveNativeCapture, markRecordingResumed, recording]);
 
 	const toggleRecording = async () => {
-		if (starting || countdownActive || finalizing) {
+		if (starting || countdownActive || awaitingScreenPermission || finalizing) {
 			return;
 		}
 
@@ -2428,6 +2620,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		paused,
 		finalizing,
 		countdownActive,
+		awaitingScreenPermission,
 		toggleRecording,
 		pauseRecording,
 		resumeRecording,
