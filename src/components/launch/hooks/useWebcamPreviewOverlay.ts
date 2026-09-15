@@ -4,18 +4,22 @@ import { canShowFloatingWebcamPreview } from "../floatingWebcamPreview";
 const WEBCAM_PREVIEW_DRAG_THRESHOLD = 6;
 const DEFAULT_WEBCAM_PREVIEW_OFFSET = { x: 0, y: 0 };
 
+type MutableStreamRef = { current: MediaStream | null };
+
 export function useWebcamPreviewOverlay({
 	webcamEnabled,
 	webcamDeviceId,
 	showWebcamControls,
 	webcamPopoverOpen,
 	hudOverlayMousePassthroughSupported,
+	activeWebcamPreviewStreamRef: externalPreviewStreamRef,
 }: {
 	webcamEnabled: boolean;
 	webcamDeviceId?: string;
 	showWebcamControls: boolean;
 	webcamPopoverOpen: boolean;
 	hudOverlayMousePassthroughSupported: boolean | null;
+	activeWebcamPreviewStreamRef?: MutableStreamRef;
 }) {
 	const [showFloatingWebcamPreview, setShowFloatingWebcamPreview] = useState(true);
 	const [webcamPreviewOffset, setWebcamPreviewOffset] = useState(DEFAULT_WEBCAM_PREVIEW_OFFSET);
@@ -239,6 +243,9 @@ export function useWebcamPreviewOverlay({
 				}
 
 				previewStreamRef.current = previewStream;
+				if (externalPreviewStreamRef) {
+					externalPreviewStreamRef.current = previewStream;
+				}
 				attachPreviewStreamToNode(webcamPreviewRef.current);
 				attachPreviewStreamToNode(recordingWebcamPreviewRef.current);
 			} catch (error) {
@@ -264,8 +271,11 @@ export function useWebcamPreviewOverlay({
 			if (previewStreamRef.current === previewStream) {
 				previewStreamRef.current = null;
 			}
+			if (externalPreviewStreamRef && externalPreviewStreamRef.current === previewStream) {
+				externalPreviewStreamRef.current = null;
+			}
 		};
-	}, [attachPreviewStreamToNode, shouldStreamWebcamPreview, webcamDeviceId]);
+	}, [attachPreviewStreamToNode, shouldStreamWebcamPreview, webcamDeviceId, externalPreviewStreamRef]);
 
 	return {
 		showFloatingWebcamPreview,

@@ -41,8 +41,12 @@ export function useVideoDevices(enabled: boolean = true) {
 						groupId: device.groupId,
 					}));
 
+				// Chromium can report zero video inputs at all (not just unlabeled ones)
+				// until getUserMedia() has been called at least once for this app's
+				// profile. Probe with getUserMedia whenever we don't yet have a labeled
+				// device list, not only when placeholder entries are present.
 				const needsLabelPermission =
-					videoInputs.length > 0 && videoInputs.every((device) => !device.label.trim());
+					videoInputs.length === 0 || videoInputs.every((device) => !device.label.trim());
 
 				if (needsLabelPermission && !hasRequestedVideoLabels) {
 					permissionStream = await navigator.mediaDevices.getUserMedia({

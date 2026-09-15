@@ -373,7 +373,10 @@ async function createAudioInputDeviceSnapshot(): Promise<
 	return audioInputs.length > 0 ? audioInputs : null;
 }
 
-export function useScreenRecorder(): UseScreenRecorderReturn {
+export function useScreenRecorder(
+	options?: { activeWebcamPreviewStreamRef?: { current: MediaStream | null } },
+): UseScreenRecorderReturn {
+	const activeWebcamPreviewStreamRef = options?.activeWebcamPreviewStreamRef;
 	const [recording, setRecording] = useState(false);
 	const [paused, setPaused] = useState(false);
 	const [starting, setStarting] = useState(false);
@@ -1017,21 +1020,37 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 
 		try {
-			webcamStream.current = await navigator.mediaDevices.getUserMedia({
-				video: webcamDeviceId
-					? {
-							deviceId: { exact: webcamDeviceId },
-							width: { ideal: WEBCAM_WIDTH },
-							height: { ideal: WEBCAM_HEIGHT },
-							frameRate: { ideal: WEBCAM_FRAME_RATE, max: WEBCAM_FRAME_RATE },
-						}
-					: {
-							width: { ideal: WEBCAM_WIDTH },
-							height: { ideal: WEBCAM_HEIGHT },
-							frameRate: { ideal: WEBCAM_FRAME_RATE, max: WEBCAM_FRAME_RATE },
-						},
-				audio: false,
-			});
+			// Reuse the already-open HUD webcam preview track when possible instead of
+			// calling getUserMedia() a second time for the same physical device. Many
+			// UVC webcams only allow a single open handle at the OS/driver level, so a
+			// second concurrent getUserMedia() call for the same camera can freeze the
+			// existing preview stream and/or silently fail to deliver frames to the
+			// recorder. MediaStreamTrack.clone() shares the same underlying capture
+			// session instead of opening the device again.
+			const existingPreviewStream = activeWebcamPreviewStreamRef?.current ?? null;
+			const existingPreviewTrack = existingPreviewStream?.getVideoTracks()[0] ?? null;
+			const existingPreviewTrackMatchesDevice =
+				existingPreviewTrack != null &&
+				existingPreviewTrack.readyState === "live" &&
+				(!webcamDeviceId || existingPreviewTrack.getSettings().deviceId === webcamDeviceId);
+
+			webcamStream.current = existingPreviewTrackMatchesDevice
+				? new MediaStream([existingPreviewTrack.clone()])
+				: await navigator.mediaDevices.getUserMedia({
+						video: webcamDeviceId
+							? {
+									deviceId: { exact: webcamDeviceId },
+									width: { ideal: WEBCAM_WIDTH },
+									height: { ideal: WEBCAM_HEIGHT },
+									frameRate: { ideal: WEBCAM_FRAME_RATE, max: WEBCAM_FRAME_RATE },
+								}
+							: {
+									width: { ideal: WEBCAM_WIDTH },
+									height: { ideal: WEBCAM_HEIGHT },
+									frameRate: { ideal: WEBCAM_FRAME_RATE, max: WEBCAM_FRAME_RATE },
+								},
+						audio: false,
+					});
 
 			const mimeType = selectWebcamMimeType();
 			webcamChunks.current = [];

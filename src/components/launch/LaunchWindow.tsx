@@ -56,6 +56,10 @@ export function LaunchWindow() {
 function LaunchWindowContent() {
 	const t = useScopedT("launch");
 	const { openId, requestClose, requestOpen } = useLaunchPopoverCoordinator();
+	// Shared with useWebcamPreviewOverlay so the recorder can reuse the HUD's
+	// already-open webcam preview track instead of opening the camera a second
+	// time when recording starts (see useScreenRecorder's prepareWebcamRecorder).
+	const activeWebcamPreviewStreamRef = useRef<MediaStream | null>(null);
 
 	const {
 		recording,
@@ -79,7 +83,7 @@ function LaunchWindowContent() {
 		countdownDelay,
 		setCountdownDelay,
 		preparePermissions,
-	} = useScreenRecorder();
+	} = useScreenRecorder({ activeWebcamPreviewStreamRef });
 
 	const { elapsed, formatTime } = useRecordingTimer(recording, paused);
 	const hudContentRef = useRef<HTMLDivElement>(null);
@@ -151,6 +155,7 @@ function LaunchWindowContent() {
 		showWebcamControls,
 		webcamPopoverOpen: openId === "webcam",
 		hudOverlayMousePassthroughSupported,
+		activeWebcamPreviewStreamRef,
 	});
 
 	useEffect(() => {
