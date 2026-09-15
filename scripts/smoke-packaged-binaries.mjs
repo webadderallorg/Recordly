@@ -8,14 +8,32 @@ const packageJson = JSON.parse(readFileSync(path.join(projectRoot, "package.json
 const productName = packageJson.productName ?? packageJson.name ?? "Recordly";
 const packageName = packageJson.name ?? "recordly";
 
+/**
+ * Converts an absolute file path to a project-relative posix path.
+ *
+ * @param {string} filePath
+ * @returns {string}
+ */
 function relativePath(filePath) {
 	return path.relative(projectRoot, filePath).replaceAll("\\", "/");
 }
 
+/**
+ * Throws a formatted smoke verification error.
+ *
+ * @param {string} message
+ */
 function fail(message) {
 	throw new Error(`[packaged-smoke] ${message}`);
 }
 
+/**
+ * Asserts that a file exists, is regular, and optionally is executable.
+ *
+ * @param {string} filePath
+ * @param {string} label
+ * @param {{ executable?: boolean }} options
+ */
 function assertFile(filePath, label, { executable = false } = {}) {
 	if (!existsSync(filePath)) {
 		fail(`${label} is missing at ${relativePath(filePath)}`);
@@ -36,6 +54,14 @@ function assertFile(filePath, label, { executable = false } = {}) {
 	console.log(`[packaged-smoke] ${label}: ${relativePath(filePath)}`);
 }
 
+/**
+ * Finds all directories with a specific name under a root directory up to maxDepth.
+ *
+ * @param {string} rootDir
+ * @param {string} directoryName
+ * @param {number} [maxDepth=8]
+ * @returns {string[]}
+ */
 function findDirectoriesByName(rootDir, directoryName, maxDepth = 8) {
 	if (!existsSync(rootDir)) {
 		return [];
@@ -68,6 +94,12 @@ function findDirectoriesByName(rootDir, directoryName, maxDepth = 8) {
 	return matches;
 }
 
+/**
+ * Finds the .app directory bundle traversing upwards from startDir.
+ *
+ * @param {string} startDir
+ * @returns {string | null}
+ */
 function findAppBundleDir(startDir) {
 	let current = startDir;
 	while (current !== path.dirname(current)) {
@@ -80,10 +112,21 @@ function findAppBundleDir(startDir) {
 	return null;
 }
 
+/**
+ * Returns the first existing regular file path from a list of candidate paths.
+ *
+ * @param {string[]} candidates
+ * @returns {string | undefined}
+ */
 function findFirstExistingFile(candidates) {
 	return candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isFile());
 }
 
+/**
+ * Validates the packaged application executable within the unpacked bundle.
+ *
+ * @param {string} unpackedRoot
+ */
 function assertPackagedAppExecutable(unpackedRoot) {
 	const resourcesDir = path.dirname(unpackedRoot);
 
@@ -125,6 +168,13 @@ function assertPackagedAppExecutable(unpackedRoot) {
 	});
 }
 
+/**
+ * Resolves the native architecture tag for helper binary folders.
+ *
+ * @param {NodeJS.Platform} [platform=process.platform]
+ * @param {string} [arch=process.arch]
+ * @returns {string}
+ */
 function getNativeArchTag(platform = process.platform, arch = process.arch) {
 	if (platform === "darwin") {
 		return arch === "arm64" ? "darwin-arm64" : "darwin-x64";
@@ -141,6 +191,11 @@ function getNativeArchTag(platform = process.platform, arch = process.arch) {
 	return `${platform}-${arch}`;
 }
 
+/**
+ * Resolves the list of required architecture tags to verify.
+ *
+ * @returns {string[]}
+ */
 function getRequiredArchTags() {
 	const configured = process.env.PACKAGED_SMOKE_ARCH_TAGS?.trim();
 	if (!configured) {
@@ -157,6 +212,12 @@ function getRequiredArchTags() {
 	];
 }
 
+/**
+ * Returns expected native helper files and manifests for a given architecture tag.
+ *
+ * @param {string} archTag
+ * @returns {Array<{ name: string, label: string, executable?: boolean }>}
+ */
 function getExpectedNativeHelperFiles(archTag) {
 	if (archTag.startsWith("win32-")) {
 		const helpers = [
@@ -214,6 +275,11 @@ function getExpectedNativeHelperFiles(archTag) {
 	return [];
 }
 
+/**
+ * Validates the presence and executable status of packaged FFmpeg.
+ *
+ * @param {string} unpackedRoot
+ */
 function verifyFfmpeg(unpackedRoot) {
 	const binaryName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
 	const ffmpegPath = path.join(unpackedRoot, "node_modules", "ffmpeg-static", binaryName);
@@ -233,6 +299,44 @@ function verifyFfmpeg(unpackedRoot) {
 	console.log(output.split(/\r?\n/, 1)[0]);
 }
 
+/**
+ * Validates the presence and executable status of packaged FFprobe.
+ *
+ * @param {string} unpackedRoot
+ */
+function verifyFfprobe(unpackedRoot) {
+	const binaryName = process.platform === "win32" ? "ffprobe.exe" : "ffprobe";
+	const arch = process.arch === "arm64" ? "arm64" : "x64";
+	const ffprobePath = path.join(
+		unpackedRoot,
+		"node_modules",
+		"ffprobe-static",
+		"bin",
+		process.platform,
+		arch,
+		binaryName,
+	);
+
+	assertFile(ffprobePath, "packaged FFprobe binary", { executable: true });
+
+	const output = execFileSync(ffprobePath, ["-version"], {
+		encoding: "utf8",
+		timeout: 15000,
+		windowsHide: true,
+	});
+
+	if (!output.startsWith("ffprobe version")) {
+		fail(`FFprobe version smoke returned unexpected output from ${relativePath(ffprobePath)}`);
+	}
+
+	console.log(output.split(/\r?\n/, 1)[0]);
+}
+
+/**
+ * Validates that all required native helper binaries and runtime manifests are present.
+ *
+ * @param {string} unpackedRoot
+ */
 function verifyNativeHelpers(unpackedRoot) {
 	const nativeBinRoot = path.join(unpackedRoot, "electron", "native", "bin");
 	if (!existsSync(nativeBinRoot)) {
@@ -276,6 +380,7 @@ for (const unpackedRoot of unpackedRoots) {
 	console.log(`[packaged-smoke] root: ${relativePath(unpackedRoot)}`);
 	assertPackagedAppExecutable(unpackedRoot);
 	verifyFfmpeg(unpackedRoot);
+	verifyFfprobe(unpackedRoot);
 	verifyNativeHelpers(unpackedRoot);
 }
 
