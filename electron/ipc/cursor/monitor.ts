@@ -12,7 +12,7 @@ import {
 	setNativeCursorMonitorProcess,
 } from "../state";
 import type { CursorVisualType } from "../types";
-import { recordCursorMouseDown, recordCursorMouseUp } from "./interaction";
+import { recordCursorKeyDown, recordCursorMouseDown, recordCursorMouseUp } from "./interaction";
 
 export function emitCursorStateChanged(cursorType: CursorVisualType) {
 	BrowserWindow.getAllWindows().forEach((window) => {
@@ -28,9 +28,11 @@ export function handleCursorMonitorStdout(chunk: Buffer) {
 	setNativeCursorMonitorOutputBuffer(lines.pop() ?? "");
 
 	for (const line of lines) {
-		const interactionMatch = line.match(/^INTERACTION:(mousedown|mouseup)(?::([123]))?$/);
+		const interactionMatch = line.match(/^INTERACTION:(mousedown|mouseup|keydown)(?::([123]))?$/);
 		if (interactionMatch) {
-			if (interactionMatch[1] === "mouseup") {
+			if (interactionMatch[1] === "keydown") {
+				recordCursorKeyDown();
+			} else if (interactionMatch[1] === "mouseup") {
 				recordCursorMouseUp();
 			} else {
 				const button = Number(interactionMatch[2]);

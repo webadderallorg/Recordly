@@ -12,9 +12,20 @@ vi.mock("electron", () => ({
 }));
 
 import {
+	isCandidateTypingKeyEvent,
 	repairBundledUiohookBinaryForCurrentArch,
 	shouldStartGlobalInteractionHook,
 } from "./interaction";
+
+describe("isCandidateTypingKeyEvent", () => {
+	it("accepts ordinary keys but filters modifiers and Ctrl/Meta shortcuts", () => {
+		expect(isCandidateTypingKeyEvent({ keycode: 0x001e })).toBe(true);
+		expect(isCandidateTypingKeyEvent({ keycode: 0x002a })).toBe(false); // Shift
+		expect(isCandidateTypingKeyEvent({ keycode: 0x003a })).toBe(false); // Caps Lock
+		expect(isCandidateTypingKeyEvent({ keycode: 0x001e, ctrlKey: true })).toBe(false);
+		expect(isCandidateTypingKeyEvent({ keycode: 0x001e, metaKey: true })).toBe(false);
+	});
+});
 
 describe("shouldStartGlobalInteractionHook", () => {
 	it("does not start the synchronous uiohook event tap on macOS", () => {
