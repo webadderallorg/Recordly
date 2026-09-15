@@ -9,6 +9,7 @@
 		"level": "Zoom Level",
 		"selectRegion": "Select a zoom region to adjust",
 		"deleteZoom": "Delete Zoom",
+		"clearAllZooms": "Clear All Zooms",
 		"modeAuto": "Auto",
 		"modeManual": "Manual",
 		"modeManualDescription": "Set a fixed focus point for this zoom",

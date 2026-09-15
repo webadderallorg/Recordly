@@ -520,6 +520,8 @@ interface SettingsPanelProps {
 	selectedZoomMode?: ZoomMode | null;
 	onZoomModeChange?: (mode: ZoomMode) => void;
 	onZoomDelete?: (id: string) => void;
+	onClearAllZooms?: () => void;
+	hasZoomRegions?: boolean;
 	selectedClipId?: string | null;
 	selectedClipSpeed?: number | null;
 	selectedClipMuted?: boolean | null;
@@ -980,6 +982,8 @@ export function SettingsPanel({
 	selectedZoomMode,
 	onZoomModeChange,
 	onZoomDelete,
+	onClearAllZooms,
+	hasZoomRegions = false,
 	selectedClipId,
 	selectedClipSpeed,
 	selectedClipMuted,
@@ -3808,6 +3812,17 @@ export function SettingsPanel({
 					>
 						<Trash2 className="h-3 w-3" />
 						{tSettings("zoom.deleteZoom", "Delete Zoom")}
+					</Button>
+				)}
+				{activeEffectSection === "zoom" && hasZoomRegions && (
+					<Button
+						onClick={() => onClearAllZooms?.()}
+						variant="destructive"
+						size="sm"
+						className="h-8 w-full gap-2 border border-red-500/20 bg-red-500/10 text-xs text-red-400 transition-all hover:border-red-500/30 hover:bg-red-500/20"
+					>
+						<Trash2 className="h-3 w-3" />
+						{tSettings("zoom.clearAllZooms", "Clear All Zooms")}
 					</Button>
 				)}
 				{activeEffectSection === "audio" && selectedAudioId && (
