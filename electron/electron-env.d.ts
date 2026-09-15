@@ -608,6 +608,26 @@ interface Window {
 			error?: string;
 		}>;
 		onStopRecordingFromTray: (callback: () => void) => () => void;
+		onRecordingShortcut: (
+			callback: (payload: { action: "toggle" | "pauseResume" | "stop" }) => void,
+		) => () => void;
+		getRecordingShortcuts: () => Promise<{
+			toggle: string;
+			pauseResume: string;
+			stop: string;
+		}>;
+		saveRecordingShortcuts: (shortcuts: unknown) => Promise<{
+			success: boolean;
+			config: { toggle: string; pauseResume: string; stop: string };
+			failed: Array<"toggle" | "pauseResume" | "stop">;
+			error?: string;
+		}>;
+		resetRecordingShortcuts: () => Promise<{
+			success: boolean;
+			config: { toggle: string; pauseResume: string; stop: string };
+			failed: Array<"toggle" | "pauseResume" | "stop">;
+			error?: string;
+		}>;
 		onRecordingStateChanged: (
 			callback: (state: { recording: boolean; sourceName: string }) => void,
 		) => () => void;

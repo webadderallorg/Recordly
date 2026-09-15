@@ -1,20 +1,27 @@
 import {
+	ArrowClockwiseIcon,
+	DesktopIcon,
 	EyeIcon,
 	EyeSlashIcon,
 	FolderOpenIcon,
+	KeyboardIcon,
+	MoonIcon,
+	SunIcon,
 	TranslateIcon,
 	VideoCameraIcon,
-	ArrowClockwiseIcon,
-	SunIcon,
-	MoonIcon,
-	DesktopIcon,
 } from "@phosphor-icons/react";
-import type { ReactElement } from "react";
-import { useI18n } from "@/contexts/I18nContext";
-import { useScopedT } from "@/contexts/I18nContext";
+import { type ReactElement, useEffect, useState } from "react";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { AppLocale } from "@/i18n/config";
 import { SUPPORTED_LOCALES } from "@/i18n/config";
+import {
+	DEFAULT_RECORDING_SHORTCUTS,
+	formatRecordingAccelerator,
+	RECORDING_SHORTCUT_ACTIONS,
+	RECORDING_SHORTCUT_LABELS,
+	type RecordingShortcutsConfig,
+} from "@/lib/recordingShortcuts";
 import styles from "../LaunchWindow.module.css";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import { DropdownItem, HudPopover } from "./PopoverScaffold";
@@ -61,6 +68,24 @@ export function MorePopover({
 	const { preference, setPreference } = useTheme();
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
 	const open = isOpen(POPOVER_ID);
+	const [shortcuts, setShortcuts] = useState<RecordingShortcutsConfig>(
+		DEFAULT_RECORDING_SHORTCUTS,
+	);
+	const isMac =
+		typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+
+	useEffect(() => {
+		if (!open) return;
+		let cancelled = false;
+		void window.electronAPI?.getRecordingShortcuts?.().then((config) => {
+			if (!cancelled && config) {
+				setShortcuts({ ...DEFAULT_RECORDING_SHORTCUTS, ...config });
+			}
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [open]);
 
 	return (
 		<HudPopover
@@ -124,6 +149,23 @@ export function MorePopover({
 					{t("recording.previewUpdateUi", "Preview Update UI")}
 				</DropdownItem>
 			) : null}
+			<div className={styles.ddLabel} style={{ marginTop: 4 }}>
+				{t("recording.shortcuts", "Recording shortcuts")}
+			</div>
+			{RECORDING_SHORTCUT_ACTIONS.map((action) => (
+				<div
+					key={action}
+					className="flex items-center gap-2 px-3 py-1.5 text-[12px] text-[var(--launch-text)]"
+				>
+					<KeyboardIcon size={14} className="shrink-0 opacity-70" />
+					<span className="flex-1 truncate">
+						{t(`recording.shortcut.${action}`, RECORDING_SHORTCUT_LABELS[action])}
+					</span>
+					<kbd className="shrink-0 rounded border border-[var(--launch-border)] bg-[var(--launch-hover)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--launch-text-muted)]">
+						{formatRecordingAccelerator(shortcuts[action], isMac)}
+					</kbd>
+				</div>
+			))}
 			<div className={styles.ddLabel} style={{ marginTop: 4 }}>
 				{t("recording.appearance", "Appearance")}
 			</div>

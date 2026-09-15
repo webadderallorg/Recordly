@@ -43,6 +43,12 @@
 		"stop": "Stop",
 		"cancel": "Cancel",
 		"more": "More",
+		"shortcuts": "Recording shortcuts",
+		"shortcut": {
+			"toggle": "Start / Stop",
+			"pauseResume": "Pause / Resume",
+			"stop": "Stop"
+		},
 		"update": {
 			"update": "Update",
 			"updated": "Updated",
