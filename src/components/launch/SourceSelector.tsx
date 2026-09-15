@@ -224,7 +224,8 @@ export const SourceSelector = React.memo(function SourceSelector({
 	);
 
 	// Split sources for internal use
-	const internalScreenSources = useMemo(
+	const internalScreenSources = useMemo
+	(
 		() => internalSources.filter(isScreenSource),
 		[internalSources],
 	);
@@ -233,7 +234,20 @@ export const SourceSelector = React.memo(function SourceSelector({
 		[internalSources],
 	);
 
-	const screenSources = propsScreenSources ?? internalScreenSources;
+	const screenSources = useMemo(() => {
+		const sources = propsScreenSources ?? internalScreenSources;
+		return [
+			{
+				id: "obs-engine",
+				name: "OBS Studio",
+				thumbnail: null,
+				display_id: "obs",
+				appIcon: null,
+				sourceType: "screen" as const,
+			},
+			...sources,
+		];
+	}, [propsScreenSources, internalScreenSources]);
 	const windowSources = propsWindowSources ?? internalWindowSources;
 
 	const hasPrefetchedRef = useRef(false);
