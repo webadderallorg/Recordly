@@ -342,7 +342,6 @@ export default function VideoEditor() {
 		activeEffectSection,
 		appearance,
 		timeline,
-		audio,
 		zoomCommands,
 		clipCommands,
 		audioCommands,

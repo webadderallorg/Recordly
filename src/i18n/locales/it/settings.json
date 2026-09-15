@@ -19,7 +19,7 @@
 	},
 	"clip": {
 		"title": "Clip",
-		"mute": "Disattiva audio",
+		"mute": "Disattiva l'audio del clip",
 		"mutedState": "Audio disattivato",
 		"unmutedState": "Audio in riproduzione",
 		"separateClipFromAudio": "Separa clip dall'audio",

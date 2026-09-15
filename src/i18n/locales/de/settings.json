@@ -19,7 +19,7 @@
 	},
 	"clip": {
 		"title": "Clip",
-		"mute": "Stummschalten",
+		"mute": "Clip stummschalten",
 		"mutedState": "Audio ist stummgeschaltet",
 		"unmutedState": "Audio wird wiedergegeben",
 		"separateClipFromAudio": "Clip vom Audio trennen",

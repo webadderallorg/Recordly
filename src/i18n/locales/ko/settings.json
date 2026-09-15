@@ -19,7 +19,7 @@
 	},
 	"clip": {
 		"title": "클립",
-		"mute": "음소거",
+		"mute": "클립 음소거",
 		"mutedState": "오디오가 음소거됨",
 		"unmutedState": "오디오가 재생 중",
 		"separateClipFromAudio": "클립에서 오디오 분리",

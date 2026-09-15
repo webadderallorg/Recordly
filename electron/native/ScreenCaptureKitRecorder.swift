@@ -394,13 +394,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 	func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
 		guard sessionStarted, sampleBuffer.isValid, isRecording else { return }
-		guard let presentationTime = adjustedPresentationTime(for: sampleBuffer, outputType: outputType) else { return }
 
 		if outputType == .screen {
-			if frameCount > 0 && CMTimeCompare(presentationTime, lastVideoPresentationTime) <= 0 {
-				return
-			}
-
 			guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
 					  let attachment = attachments.first,
 					  let statusRawValue = attachment[SCStreamFrameInfo.status] as? Int,
@@ -413,8 +408,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				  assetWriter?.status == .writing,
 				  videoInput.isReadyForMoreMediaData else { return }
 
-			if firstSampleTime == .zero {
-				firstSampleTime = sampleBuffer.presentationTimeStamp
+			// Only a complete frame that the writer can accept may establish time zero.
+			guard let presentationTime = adjustedPresentationTime(for: sampleBuffer, outputType: outputType) else { return }
+			if frameCount > 0 && CMTimeCompare(presentationTime, lastVideoPresentationTime) <= 0 {
+				return
 			}
 
 			lastSampleBuffer = sampleBuffer
@@ -439,9 +436,15 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 						print("Recording started")
 						fflush(stdout)
 					}
+			} else if frameCount == 0 {
+				// A failed crop/append must not leave an empty interval before frame one.
+				firstSampleTime = .zero
 			}
 			return
 		}
+
+		guard frameCount > 0,
+			  let presentationTime = adjustedPresentationTime(for: sampleBuffer, outputType: outputType) else { return }
 
 		if outputType == .audio {
 			guard let systemAudioInput else { return }

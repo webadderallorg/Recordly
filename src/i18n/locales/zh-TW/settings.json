@@ -19,7 +19,7 @@
 	},
 	"clip": {
 		"title": "片段",
-		"mute": "靜音",
+		"mute": "將片段靜音",
 		"mutedState": "音訊已靜音",
 		"unmutedState": "音訊正在播放",
 		"separateClipFromAudio": "將片段與音訊分離",

@@ -1,6 +1,5 @@
 import type { ComponentProps, Dispatch, SetStateAction } from "react";
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
-import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { useAutoCaptionController } from "../captions/useAutoCaptionController";
 import type { useAnnotationRegionCommands } from "../hooks/useAnnotationRegionCommands";
 import type { useAudioRegionCommands } from "../hooks/useAudioRegionCommands";
@@ -16,7 +15,6 @@ type Input = {
 	activeEffectSection: EditorEffectSection;
 	appearance: ReturnType<typeof useAppearanceState>;
 	timeline: ReturnType<typeof useTimelineState>;
-	audio: ReturnType<typeof useVideoEditorAudio>;
 	zoomCommands: ReturnType<typeof useZoomRegionCommands>;
 	clipCommands: ReturnType<typeof useClipRegionCommands>;
 	audioCommands: ReturnType<typeof useAudioRegionCommands>;
@@ -45,7 +43,6 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		activeEffectSection,
 		appearance,
 		timeline,
-		audio,
 		zoomCommands,
 		clipCommands,
 		audioCommands,
@@ -94,17 +91,9 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		selectedClipId: timeline.selectedClipId,
 		selectedClipSpeed: selectedClip?.speed ?? (timeline.selectedClipId ? 1 : null),
 		selectedClipMuted: selectedClip?.muted ?? (timeline.selectedClipId ? false : null),
-		selectedClipShowSourceAudio:
-			selectedClip?.showSourceAudio ?? (timeline.selectedClipId ? false : null),
 		onClipSpeedChange: clipCommands.handleClipSpeedChange,
 		onClipMutedChange: clipCommands.handleClipMutedChange,
-		onClipShowSourceAudioChange: clipCommands.handleClipShowSourceAudioChange,
 		onClipDelete: clipCommands.handleClipDelete,
-		hasClipSourceAudio: timeline.hasClipSourceAudio,
-		sourceAudioTrackMeta: audio.sourceAudioTrackMeta,
-		sourceAudioTrackSettings: audio.selectedClipSourceAudioTrackSettings,
-		onSourceAudioTrackVolumeChange: audio.onSelectedClipSourceAudioTrackVolumeChange,
-		onSourceAudioTrackNormalizeChange: audio.onSelectedClipSourceAudioTrackNormalizeChange,
 		selectedAudioId: timeline.selectedAudioId,
 		selectedAudioVolume: selectedAudio?.volume ?? null,
 		selectedAudioNormalize:

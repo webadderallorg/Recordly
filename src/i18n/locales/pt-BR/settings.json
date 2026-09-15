@@ -19,7 +19,7 @@
 	},
 	"clip": {
 		"title": "Clipe",
-		"mute": "Mudo",
+		"mute": "Silenciar clipe",
 		"mutedState": "O áudio está mudo",
 		"unmutedState": "O áudio está tocando",
 		"separateClipFromAudio": "Separar áudio do clipe",

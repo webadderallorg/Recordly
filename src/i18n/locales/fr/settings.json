@@ -19,7 +19,7 @@
 	},
 	"clip": {
 		"title": "Clip",
-		"mute": "Sourdine",
+		"mute": "Couper le son du clip",
 		"mutedState": "Le son est coupé",
 		"unmutedState": "Le son est activé",
 		"separateClipFromAudio": "Séparer le clip de l'audio",

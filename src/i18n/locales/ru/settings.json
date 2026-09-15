@@ -19,7 +19,7 @@
 	},
 	"clip": {
 		"title": "Клип",
-		"mute": "Без звука",
+		"mute": "Отключить звук клипа",
 		"mutedState": "Звук выключен",
 		"unmutedState": "Звук включен",
 		"separateClipFromAudio": "Отделить аудио от клипа",

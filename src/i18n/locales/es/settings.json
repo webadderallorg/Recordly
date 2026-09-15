@@ -19,7 +19,7 @@
 	},
 	"clip": {
 		"title": "Clip",
-		"mute": "Silenciar",
+		"mute": "Silenciar clip",
 		"mutedState": "El audio está silenciado",
 		"unmutedState": "El audio se está reproduciendo",
 		"separateClipFromAudio": "Separar clip del audio",

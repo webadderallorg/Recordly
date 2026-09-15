@@ -19,7 +19,7 @@
 	},
 	"clip": {
 		"title": "Clip",
-		"mute": "Dempen",
+		"mute": "Clip dempen",
 		"mutedState": "Audio is gedempt",
 		"unmutedState": "Audio wordt afgespeeld",
 		"separateClipFromAudio": "Clip van audio scheiden",
