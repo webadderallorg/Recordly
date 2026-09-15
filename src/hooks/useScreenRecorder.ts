@@ -2,6 +2,7 @@ import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
+import { acquireSharedWebcamStream, releaseSharedWebcamStream } from "@/lib/sharedWebcamStream";
 import {
 	getVideoExtensionForMimeType,
 	isWebmMimeType,
@@ -33,9 +34,6 @@ const AUDIO_BITRATE_VOICE = 128_000;
 const AUDIO_BITRATE_SYSTEM = 192_000;
 const MIC_GAIN_BOOST = 1.4;
 const WEBCAM_BITRATE = 8_000_000;
-const WEBCAM_WIDTH = 1280;
-const WEBCAM_HEIGHT = 720;
-const WEBCAM_FRAME_RATE = 30;
 const WEBCAM_SUFFIX = "-webcam";
 const MICROPHONE_FALLBACK_ERROR_TOAST_ID = "recording-microphone-fallback-error";
 const MICROPHONE_SIDECAR_ERROR_TOAST_ID = "recording-microphone-sidecar-error";
@@ -373,10 +371,7 @@ async function createAudioInputDeviceSnapshot(): Promise<
 	return audioInputs.length > 0 ? audioInputs : null;
 }
 
-export function useScreenRecorder(
-	options?: { activeWebcamPreviewStreamRef?: { current: MediaStream | null } },
-): UseScreenRecorderReturn {
-	const activeWebcamPreviewStreamRef = options?.activeWebcamPreviewStreamRef;
+export function useScreenRecorder(): UseScreenRecorderReturn {
 	const [recording, setRecording] = useState(false);
 	const [paused, setPaused] = useState(false);
 	const [starting, setStarting] = useState(false);
@@ -1020,37 +1015,24 @@ export function useScreenRecorder(
 		}
 
 		try {
-			// Reuse the already-open HUD webcam preview track when possible instead of
-			// calling getUserMedia() a second time for the same physical device. Many
-			// UVC webcams only allow a single open handle at the OS/driver level, so a
-			// second concurrent getUserMedia() call for the same camera can freeze the
-			// existing preview stream and/or silently fail to deliver frames to the
-			// recorder. MediaStreamTrack.clone() shares the same underlying capture
-			// session instead of opening the device again.
-			const existingPreviewStream = activeWebcamPreviewStreamRef?.current ?? null;
-			const existingPreviewTrack = existingPreviewStream?.getVideoTracks()[0] ?? null;
-			const existingPreviewTrackMatchesDevice =
-				existingPreviewTrack != null &&
-				existingPreviewTrack.readyState === "live" &&
-				(!webcamDeviceId || existingPreviewTrack.getSettings().deviceId === webcamDeviceId);
-
-			webcamStream.current = existingPreviewTrackMatchesDevice
-				? new MediaStream([existingPreviewTrack.clone()])
-				: await navigator.mediaDevices.getUserMedia({
-						video: webcamDeviceId
-							? {
-									deviceId: { exact: webcamDeviceId },
-									width: { ideal: WEBCAM_WIDTH },
-									height: { ideal: WEBCAM_HEIGHT },
-									frameRate: { ideal: WEBCAM_FRAME_RATE, max: WEBCAM_FRAME_RATE },
-								}
-							: {
-									width: { ideal: WEBCAM_WIDTH },
-									height: { ideal: WEBCAM_HEIGHT },
-									frameRate: { ideal: WEBCAM_FRAME_RATE, max: WEBCAM_FRAME_RATE },
-								},
-						audio: false,
-					});
+			// Route through the shared webcam coordinator instead of calling
+			// getUserMedia() directly. Many UVC webcams only allow a single open
+			// handle at the OS/driver level, so a second concurrent getUserMedia()
+			// call for the same camera (e.g. while the HUD preview's own acquisition
+			// is still in flight) can freeze the existing stream and/or silently fail
+			// to deliver frames to the recorder. Awaiting the coordinator means we
+			// either join the preview's in-flight/resolved acquisition or, if nothing
+			// else is using the camera, become the sole owner of a fresh one.
+			// MediaStreamTrack.clone() lets the recorder keep an independent track
+			// after releasing our reference to the shared acquisition.
+			const acquisition = acquireSharedWebcamStream(webcamDeviceId);
+			try {
+				const sharedStream = await acquisition;
+				const sharedTrack = sharedStream.getVideoTracks()[0];
+				webcamStream.current = sharedTrack ? new MediaStream([sharedTrack.clone()]) : sharedStream;
+			} finally {
+				releaseSharedWebcamStream(acquisition);
+			}
 
 			const mimeType = selectWebcamMimeType();
 			webcamChunks.current = [];
