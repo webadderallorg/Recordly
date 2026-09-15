@@ -7,6 +7,8 @@ export type DeleteSelectionTarget =
 	| "caption"
 	| "none";
 
+export type DuplicateSelectionTarget = "zoom" | "annotation" | "audio" | "none";
+
 interface ResolveDeleteSelectionTargetParams {
 	selectAllBlocksActive: boolean;
 	selectedKeyframeId: string | null;
@@ -33,5 +35,21 @@ export function resolveDeleteSelectionTarget({
 	if (selectedAnnotationId) return "annotation";
 	if (selectedAudioId) return "audio";
 	if (selectedCaptionId) return "caption";
+	return "none";
+}
+
+/** Resolve which selected timeline item can be duplicated (MVP: zoom, annotation, audio). */
+export function resolveDuplicateSelectionTarget({
+	selectedZoomId,
+	selectedAnnotationId,
+	selectedAudioId,
+}: {
+	selectedZoomId: string | null;
+	selectedAnnotationId?: string | null;
+	selectedAudioId?: string | null;
+}): DuplicateSelectionTarget {
+	if (selectedZoomId) return "zoom";
+	if (selectedAnnotationId) return "annotation";
+	if (selectedAudioId) return "audio";
 	return "none";
 }

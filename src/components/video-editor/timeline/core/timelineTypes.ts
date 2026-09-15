@@ -25,6 +25,7 @@ export interface TimelineShortcutBindings {
 	splitClip: ShortcutBinding;
 	addAnnotation: ShortcutBinding;
 	deleteSelected: ShortcutBinding;
+	duplicateSelected: ShortcutBinding;
 }
 
 export interface TimelineRenderItem {

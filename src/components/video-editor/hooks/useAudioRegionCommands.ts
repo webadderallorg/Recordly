@@ -1,5 +1,6 @@
 import type { Span } from "dnd-timeline";
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
+import { placeSpanAfter } from "../timeline/hooks/utils/timelineDuplicateUtils";
 import type { AudioRegion, EditorEffectSection } from "../types";
 
 interface UseAudioRegionCommandsParams {
@@ -117,6 +118,47 @@ export function useAudioRegionCommands({
 		[selectedAudioId, setAudioRegions, setSelectedAudioId],
 	);
 
+	const handleAudioDuplicate = useCallback(
+		(id: string, totalMs: number): boolean => {
+			let createdId: string | null = null;
+			setAudioRegions((current) => {
+				const source = current.find((region) => region.id === id);
+				if (!source) return current;
+
+				const placed = placeSpanAfter(source, totalMs);
+				if (!placed) return current;
+
+				createdId = `audio-${nextAudioIdRef.current++}`;
+				return [
+					...current,
+					{
+						...source,
+						id: createdId,
+						startMs: placed.startMs,
+						endMs: placed.endMs,
+					},
+				];
+			});
+
+			if (!createdId) return false;
+			setSelectedAudioId(createdId);
+			setSelectedZoomId(null);
+			setSelectedAnnotationId(null);
+			setSelectedCaptionId(null);
+			setActiveEffectSection("audio");
+			return true;
+		},
+		[
+			nextAudioIdRef,
+			setActiveEffectSection,
+			setAudioRegions,
+			setSelectedAnnotationId,
+			setSelectedAudioId,
+			setSelectedCaptionId,
+			setSelectedZoomId,
+		],
+	);
+
 	const handleAudioNormalizeChange = useCallback(
 		(normalize: boolean) => {
 			if (!selectedAudioId) return;
@@ -135,6 +177,7 @@ export function useAudioRegionCommands({
 		handleAudioSpanChange,
 		handleAudioVolumeChange,
 		handleAudioDelete,
+		handleAudioDuplicate,
 		handleAudioNormalizeChange,
 	};
 }

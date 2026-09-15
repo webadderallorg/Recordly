@@ -353,6 +353,7 @@ export default function VideoEditor() {
 		handleShowCursorChange,
 		currentTime,
 		isPlaying,
+		timelineDurationMs: Math.round(projection.timelineDuration * 1000),
 		aspectRatio,
 		setAspectRatio,
 		whisperExecutablePath,

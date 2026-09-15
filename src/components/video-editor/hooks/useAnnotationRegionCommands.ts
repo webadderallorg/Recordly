@@ -1,5 +1,6 @@
 import type { Span } from "dnd-timeline";
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
+import { placeSpanAfter } from "../timeline/hooks/utils/timelineDuplicateUtils";
 import {
 	type AnnotationRegion,
 	DEFAULT_ANNOTATION_POSITION,
@@ -86,6 +87,47 @@ export function useAnnotationRegionCommands({
 		[selectedAnnotationId, setAnnotationRegions, setSelectedAnnotationId],
 	);
 
+	const handleAnnotationDuplicate = useCallback(
+		(id: string, totalMs: number): boolean => {
+			let createdId: string | null = null;
+			setAnnotationRegions((current) => {
+				const source = current.find((region) => region.id === id);
+				if (!source) return current;
+
+				const placed = placeSpanAfter(source, totalMs);
+				if (!placed) return current;
+
+				createdId = `annotation-${nextAnnotationIdRef.current++}`;
+				return [
+					...current,
+					{
+						...source,
+						id: createdId,
+						startMs: placed.startMs,
+						endMs: placed.endMs,
+						position: { ...source.position },
+						size: { ...source.size },
+						style: { ...source.style },
+						figureData: source.figureData ? { ...source.figureData } : undefined,
+						zIndex: nextAnnotationZIndexRef.current++,
+					},
+				];
+			});
+
+			if (!createdId) return false;
+			setSelectedAnnotationId(createdId);
+			setSelectedZoomId(null);
+			return true;
+		},
+		[
+			nextAnnotationIdRef,
+			nextAnnotationZIndexRef,
+			setAnnotationRegions,
+			setSelectedAnnotationId,
+			setSelectedZoomId,
+		],
+	);
+
 	const handleAnnotationContentChange = useCallback(
 		(id: string, content: string) => {
 			setAnnotationRegions((current) =>
@@ -167,6 +209,7 @@ export function useAnnotationRegionCommands({
 		handleAnnotationAdded,
 		handleAnnotationSpanChange,
 		handleAnnotationDelete,
+		handleAnnotationDuplicate,
 		handleAnnotationContentChange,
 		handleAnnotationTypeChange,
 		handleAnnotationStyleChange,
