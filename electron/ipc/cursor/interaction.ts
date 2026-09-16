@@ -24,6 +24,7 @@ import {
 	isCursorCapturePaused,
 	pushCursorSample,
 } from "./telemetry";
+import { startWaylandInteractionCapture } from "./wayland";
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -249,6 +250,12 @@ export async function startInteractionCapture() {
 
 	stopInteractionCapture();
 
+	const stopWaylandCapture = startWaylandInteractionCapture({
+		onMouseDown: recordCursorMouseDown,
+		onMouseUp: recordCursorMouseUp,
+	});
+	setInteractionCaptureCleanup(() => stopWaylandCapture?.());
+
 	try {
 		const hook = loadUiohookModule();
 		console.log(
@@ -296,6 +303,7 @@ export async function startInteractionCapture() {
 		}
 
 		setInteractionCaptureCleanup(() => {
+			stopWaylandCapture?.();
 			try {
 				if (typeof hook.off === "function") {
 					hook.off("mousedown", onMouseDown);
