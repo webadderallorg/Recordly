@@ -96,6 +96,32 @@ export function getSourceTrackIdFromPath(audioPath: string): SourceTrackId {
 	return "mixed";
 }
 
+export function isWavAudioPath(audioPath: string | null | undefined): boolean {
+	if (!audioPath) {
+		return false;
+	}
+	const normalized = audioPath.toLowerCase().trim();
+	if (normalized.endsWith(".wav")) {
+		return true;
+	}
+	try {
+		const parsedUrl = new URL(audioPath, "http://localhost");
+		const pathParam = parsedUrl.searchParams.get("path");
+		if (pathParam && pathParam.toLowerCase().trim().endsWith(".wav")) {
+			return true;
+		}
+		if (parsedUrl.pathname.toLowerCase().endsWith(".wav")) {
+			return true;
+		}
+	} catch {
+		const beforeQuery = normalized.split("?")[0];
+		if (beforeQuery.endsWith(".wav")) {
+			return true;
+		}
+	}
+	return false;
+}
+
 export function hasNonDefaultSourceTrackSettings(
 	sourceAudioTrackSettings?: SourceAudioTrackSettings,
 ) {

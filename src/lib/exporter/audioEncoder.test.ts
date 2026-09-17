@@ -1,11 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { AudioProcessor, softLimitOfflineMixPeaksInPlace } from "./audioEncoder";
+import { AudioProcessor, isWavAudioPath, softLimitOfflineMixPeaksInPlace } from "./audioEncoder";
 
 type OfflineRenderTestHarness = AudioProcessor & {
+	bulkDecodeFromUrl(url: string, sampleRate: number): Promise<AudioBuffer | null>;
 	decodeAudioFromUrl(url: string): Promise<AudioBuffer | null>;
 	getMediaDurationSec(url: string): Promise<number>;
 	loadAudioFileDemuxer(audioPath: string): Promise<unknown>;
+	processTrimOnlyAudio(
+		demuxer: unknown,
+		muxer: unknown,
+		sortedTrims: unknown[],
+		readEndSec?: number,
+	): Promise<boolean>;
+	streamDecodeFromUrl(url: string): Promise<AudioBuffer | null>;
 	prepareOfflineRender(
 		videoUrl: string,
 		trimRegions: never[],
@@ -55,14 +63,37 @@ function fakeAudioBuffer(channels: Float32Array[]): AudioBuffer {
 describe("AudioProcessor offline render preparation", () => {
 	it("routes a muted full-track clip through offline audio rendering", async () => {
 		const processor = new AudioProcessor();
-		const render = vi.spyOn(processor as unknown as OfflineRenderTestHarness,
-			"renderAndMuxOfflineAudio").mockResolvedValue();
-		const clips = [{ id: "clip", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1, muted: true }];
+		const render = vi
+			.spyOn(processor as unknown as OfflineRenderTestHarness, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+		const clips = [
+			{ id: "clip", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1, muted: true },
+		];
 		const muxer = {} as never;
-		await processor.process(null, muxer, "recording.mp4", [], [], undefined,
-			[], [], undefined, undefined, clips);
-		expect(render).toHaveBeenCalledWith("recording.mp4", [], [], [], [],
-			undefined, undefined, clips, muxer);
+		await processor.process(
+			null,
+			muxer,
+			"recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			[],
+			undefined,
+			undefined,
+			clips,
+		);
+		expect(render).toHaveBeenCalledWith(
+			"recording.mp4",
+			[],
+			[],
+			[],
+			[],
+			undefined,
+			undefined,
+			clips,
+			muxer,
+		);
 	});
 
 	it("rejects a cancelled chunked render instead of returning a partial WAV", async () => {
@@ -206,6 +237,101 @@ describe("AudioProcessor offline render preparation", () => {
 
 		expect(loadAudioFileDemuxer).not.toHaveBeenCalled();
 		expect(renderAndMuxOfflineAudio).toHaveBeenCalled();
+	});
+
+	it("detects WAV audio paths and URLs correctly", () => {
+		expect(isWavAudioPath("C:\\Recordly\\recording.system.wav")).toBe(true);
+		expect(isWavAudioPath("/tmp/recording.mic.WAV")).toBe(true);
+		expect(isWavAudioPath("http://localhost:4321/video?path=audio.wav&sig=123")).toBe(true);
+		expect(isWavAudioPath("file:///tmp/recording.mp4")).toBe(false);
+		expect(isWavAudioPath("/tmp/recording.mic.m4a")).toBe(false);
+		expect(isWavAudioPath("/tmp/recording.mic.webm")).toBe(false);
+		expect(isWavAudioPath(null)).toBe(false);
+		expect(isWavAudioPath(undefined)).toBe(false);
+	});
+
+	it("avoids the single-sidecar fast path for WAV companion audio (such as system audio) and routes to offline rendering", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const loadAudioFileDemuxer = vi.spyOn(processor, "loadAudioFileDemuxer");
+		const renderAndMuxOfflineAudio = vi
+			.spyOn(processor, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+
+		await processor.process(
+			null,
+			{} as never,
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			["C:\\Recordly\\recording.system.wav"],
+		);
+
+		expect(loadAudioFileDemuxer).not.toHaveBeenCalled();
+		expect(renderAndMuxOfflineAudio).toHaveBeenCalledWith(
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			[],
+			["C:\\Recordly\\recording.system.wav"],
+			undefined,
+			undefined,
+			undefined,
+			expect.anything(),
+		);
+	});
+
+	it("falls back to offline rendering when fast sidecar demux fails or outputs no audio", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const mockDemuxer = { destroy: vi.fn() };
+		vi.spyOn(processor, "loadAudioFileDemuxer").mockResolvedValue(mockDemuxer);
+		vi.spyOn(processor, "processTrimOnlyAudio").mockResolvedValue(false);
+		const renderAndMuxOfflineAudio = vi
+			.spyOn(processor, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+
+		await processor.process(
+			null,
+			{} as never,
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			undefined,
+			[],
+			["/tmp/recording.mic.webm"],
+		);
+
+		expect(mockDemuxer.destroy).toHaveBeenCalled();
+		expect(renderAndMuxOfflineAudio).toHaveBeenCalledWith(
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			[],
+			["/tmp/recording.mic.webm"],
+			undefined,
+			undefined,
+			undefined,
+			expect.anything(),
+		);
+	});
+
+	it("bypasses streaming decode and uses bulk decode directly for WAV files", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const fakeBuffer = { duration: 10, numberOfChannels: 2 } as AudioBuffer;
+		const streamDecodeFromUrl = vi.spyOn(processor, "streamDecodeFromUrl");
+		const bulkDecodeFromUrl = vi
+			.spyOn(processor, "bulkDecodeFromUrl")
+			.mockResolvedValue(fakeBuffer);
+
+		const result = await processor.decodeAudioFromUrl("C:\\Recordly\\recording.system.wav");
+
+		expect(result).toBe(fakeBuffer);
+		expect(streamDecodeFromUrl).not.toHaveBeenCalled();
+		expect(bulkDecodeFromUrl).toHaveBeenCalledWith(
+			"C:\\Recordly\\recording.system.wav",
+			expect.any(Number),
+		);
 	});
 
 	it("soft-limits mixed peaks before encoding or WAV conversion", () => {

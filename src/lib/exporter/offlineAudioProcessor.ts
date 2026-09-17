@@ -104,9 +104,12 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 			startDelaySec: number;
 			gain: number;
 		}> = [];
-		const refDuration =
+		const mediaDuration =
 			mainBuffer?.duration ??
-			(resolvedPlan.playbackPaths.length > 0 ? await this.getMediaDurationSec(videoUrl) : 0);
+			(resolvedPlan.playbackPaths.length > 0 || audioRegions.length > 0
+				? await this.getMediaDurationSec(videoUrl)
+				: 0);
+		const refDuration = mediaDuration;
 		for (const audioPath of resolvedPlan.playbackPaths) {
 			if (this.cancelled) throw new Error("Export cancelled");
 			const buffer = await this.decodeAudioFromUrl(audioPath);
@@ -147,7 +150,10 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		if (mainBufferEntry?.buffer) {
 			sourceDurationSec = mainBufferEntry.buffer.duration;
 		} else if (resolvedPlan.playbackPaths.length > 0 || regionEntries.length > 0) {
-			sourceDurationSec = await this.getMediaDurationSec(videoUrl);
+			sourceDurationSec = Math.max(
+				mediaDuration > 0 ? mediaDuration : 0,
+				primaryBuffer?.duration ?? 0,
+			);
 		} else {
 			sourceDurationSec = primaryBuffer?.duration ?? 0;
 		}
@@ -215,6 +221,7 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 
 		let encodeError: Error | null = null;
 		let muxError: Error | null = null;
+		const getEncodeError = (): Error | null => encodeError;
 		let pendingMuxing = Promise.resolve();
 		let wroteFirstChunk = false;
 
@@ -249,6 +256,8 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		});
 		encoder.configure(encodeConfig);
 
+		let totalFramesEncoded = 0;
+
 		try {
 			await this.renderChunked(
 				prepared,
@@ -256,20 +265,35 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 				async (rendered, outputOffsetSec) => {
 					if (encodeError) throw encodeError;
 					if (muxError) throw muxError;
-					await this.feedBufferToEncoder(encoder, rendered, outputOffsetSec);
+					const frames = await this.feedBufferToEncoder(
+						encoder,
+						rendered,
+						outputOffsetSec,
+					);
+					totalFramesEncoded += frames;
 				},
 			);
 
 			if (encodeError) throw encodeError;
 			if (muxError) throw muxError;
 
-			if (encoder.state === "configured") {
-				await encoder.flush();
+			if (totalFramesEncoded > 0 && encoder.state === "configured") {
+				try {
+					await encoder.flush();
+				} catch (flushError) {
+					console.warn(
+						"[OfflineAudioProcessor] Non-fatal audio encoder flush warning:",
+						flushError,
+					);
+				}
 			}
 
 			await pendingMuxing;
 
-			if (encodeError) throw encodeError;
+			const finalEncodeError = getEncodeError();
+			const isIgnorableFlushError =
+				wroteFirstChunk && Boolean(finalEncodeError?.message.includes("Flushing error"));
+			if (finalEncodeError && !isIgnorableFlushError) throw finalEncodeError;
 			if (muxError) throw muxError;
 		} finally {
 			if (encoder.state === "configured") {
@@ -425,10 +449,11 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		encoder: AudioEncoder,
 		buffer: AudioBuffer,
 		timestampOffsetSec: number,
-	): Promise<void> {
+	): Promise<number> {
 		const sampleRate = buffer.sampleRate;
 		const numChannels = buffer.numberOfChannels;
 		const totalFrames = buffer.length;
+		let encodedFrames = 0;
 
 		for (
 			let offset = 0;
@@ -454,11 +479,14 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 
 			encoder.encode(audioData);
 			audioData.close();
+			encodedFrames += frameCount;
 
 			while (encoder.encodeQueueSize >= ENCODE_BACKPRESSURE_LIMIT && !this.cancelled) {
 				await new Promise((r) => setTimeout(r, 1));
 			}
 		}
+
+		return encodedFrames;
 	}
 
 	// Decode audio from a URL using streaming WebCodecs decode with bulk fallback.
