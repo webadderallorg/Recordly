@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { Rnd } from "react-rnd";
+import { SPOTLIGHT_CORNER_RADIUS } from "@/lib/spotlight/spotlightMask";
 import { cn } from "@/lib/utils";
 import { getArrowComponent } from "./ArrowSvgs";
 import { type AnnotationRegion, BASE_PREVIEW_WIDTH, BLUR_ANNOTATION_STRENGTH } from "./types";
@@ -201,6 +202,21 @@ export function AnnotationOverlay({
 				);
 			}
 
+			case "spotlight":
+				// The dimming itself is drawn by SpotlightMaskOverlay; this box only
+				// provides the drag and resize handles.
+				return (
+					<div
+						className={cn(
+							"h-full w-full",
+							annotation.disabled && "border border-dashed border-white/60",
+						)}
+						style={{
+							borderRadius: `${SPOTLIGHT_CORNER_RADIUS * blurScaleFactor}px`,
+						}}
+					/>
+				);
+
 			default:
 				return null;
 		}
@@ -300,6 +316,7 @@ export function AnnotationOverlay({
 					annotation.type === "text" && "bg-transparent",
 					annotation.type === "image" && "bg-transparent",
 					annotation.type === "figure" && "bg-transparent",
+					annotation.type === "spotlight" && "bg-transparent",
 					isSelected && "shadow-lg",
 				)}
 			>

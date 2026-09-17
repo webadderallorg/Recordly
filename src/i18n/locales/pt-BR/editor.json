@@ -43,7 +43,14 @@
 		"imageUploadError": "Envie um arquivo de imagem JPG, PNG, GIF ou WebP.",
 		"blurStrength": "Intensidade do blur: {{strength}}",
 		"solidColor": "Cor sólida (censura)",
-		"borderRadius": "Raio da borda"
+		"borderRadius": "Raio da borda",
+		"spotlight": "Holofote",
+		"spotlightOpacity": "Opacidade do holofote: {{opacity}}%",
+		"resetSpotlightOpacity": "Redefinir",
+		"applySpotlightOpacityToAll": "Aplicar a todos os holofotes",
+		"focusSpotlightStart": "Ir para o início do holofote",
+		"disableSpotlight": "Desativar",
+		"disableSpotlightDescription": "Quando desativado, o holofote não é renderizado, mas permanece na linha do tempo."
 	},
 
 	"fontStyles": {

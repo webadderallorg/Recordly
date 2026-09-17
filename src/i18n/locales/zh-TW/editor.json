@@ -43,7 +43,14 @@
 		"imageUploadError": "請上傳 JPG、PNG、GIF 或 WebP 圖片檔案。",
 		"blurStrength": "模糊強度: {{strength}}",
 		"solidColor": "純色 (審查)",
-		"borderRadius": "邊框半徑"
+		"borderRadius": "邊框半徑",
+		"spotlight": "聚光燈",
+		"spotlightOpacity": "聚光燈透明度：{{opacity}}%",
+		"resetSpotlightOpacity": "重設",
+		"applySpotlightOpacityToAll": "套用到所有聚光燈",
+		"focusSpotlightStart": "跳至聚光燈起點",
+		"disableSpotlight": "停用",
+		"disableSpotlightDescription": "停用後不會渲染聚光燈，但仍保留在時間軸上。"
 	},
 
 	"fontStyles": {

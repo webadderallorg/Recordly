@@ -109,6 +109,17 @@ describe("timeline model", () => {
 		expect(getAnnotationLabel({ ...BASE_ANNOTATION, type: "figure", content: "x" })).toBe(
 			"Annotation",
 		);
+		expect(getAnnotationLabel({ ...BASE_ANNOTATION, type: "spotlight", content: "" })).toBe(
+			"Spotlight 50%",
+		);
+		expect(
+			getAnnotationLabel({
+				...BASE_ANNOTATION,
+				type: "spotlight",
+				content: "",
+				spotlightOpacity: 72.6,
+			}),
+		).toBe("Spotlight 73%");
 
 		expect(
 			getAudioLabel({

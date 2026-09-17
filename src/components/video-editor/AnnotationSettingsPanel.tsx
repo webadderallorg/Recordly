@@ -4,6 +4,7 @@ import {
 	AlignRight,
 	TextB as Bold,
 	CaretDown as ChevronDown,
+	Flashlight,
 	ImageSquare as ImageIcon,
 	Info,
 	TextItalic as Italic,
@@ -26,6 +27,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { type CustomFont, getCustomFonts } from "@/lib/customFonts";
@@ -33,7 +35,13 @@ import { cn } from "@/lib/utils";
 import { useScopedT } from "../../contexts/I18nContext";
 import { AddCustomFontDialog } from "./AddCustomFontDialog";
 import { getArrowComponent } from "./ArrowSvgs";
-import type { AnnotationRegion, AnnotationType, ArrowDirection, FigureData } from "./types";
+import {
+	type AnnotationRegion,
+	type AnnotationType,
+	type ArrowDirection,
+	DEFAULT_SPOTLIGHT_OPACITY,
+	type FigureData,
+} from "./types";
 
 interface AnnotationSettingsPanelProps {
 	annotation: AnnotationRegion;
@@ -43,6 +51,10 @@ interface AnnotationSettingsPanelProps {
 	onFigureDataChange?: (figureData: FigureData) => void;
 	onBlurIntensityChange?: (intensity: number) => void;
 	onBlurColorChange?: (color: string) => void;
+	onSpotlightOpacityChange?: (opacity: number) => void;
+	onApplySpotlightOpacityToAll?: (opacity: number) => void;
+	onDisabledChange?: (disabled: boolean) => void;
+	onFocusStart?: () => void;
 	onDelete: () => void;
 }
 
@@ -67,6 +79,10 @@ export function AnnotationSettingsPanel({
 	onFigureDataChange,
 	onBlurIntensityChange,
 	onBlurColorChange,
+	onSpotlightOpacityChange,
+	onApplySpotlightOpacityToAll,
+	onDisabledChange,
+	onFocusStart,
 	onDelete,
 }: AnnotationSettingsPanelProps) {
 	const t = useScopedT("editor");
@@ -157,7 +173,7 @@ export function AnnotationSettingsPanel({
 						onValueChange={(value) => onTypeChange(value as AnnotationType)}
 						className="mb-6"
 					>
-						<TabsList className="mb-4 bg-foreground/5 border border-foreground/5 p-1 w-full grid grid-cols-4 h-auto rounded-xl">
+						<TabsList className="mb-4 bg-foreground/5 border border-foreground/5 p-1 w-full grid grid-cols-5 h-auto rounded-xl">
 							<TabsTrigger
 								value="text"
 								className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-muted-foreground py-2 rounded-lg transition-all gap-2"
@@ -197,6 +213,13 @@ export function AnnotationSettingsPanel({
 							>
 								<SquareDashed className="w-4 h-4" />
 								{t("annotations.blur")}
+							</TabsTrigger>
+							<TabsTrigger
+								value="spotlight"
+								className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-muted-foreground py-2 rounded-lg transition-all gap-2"
+							>
+								<Flashlight className="w-4 h-4" />
+								{t("annotations.spotlight")}
 							</TabsTrigger>
 						</TabsList>
 
@@ -658,6 +681,90 @@ export function AnnotationSettingsPanel({
 									</PopoverContent>
 								</Popover>
 							</div>
+						</TabsContent>
+
+						<TabsContent value="spotlight" className="mt-0 space-y-4">
+							{onFocusStart && (
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={onFocusStart}
+									className="w-full bg-foreground/5 border-foreground/10 text-foreground hover:bg-foreground/10"
+								>
+									{t("annotations.focusSpotlightStart")}
+								</Button>
+							)}
+
+							<div className="p-4 bg-foreground/5 rounded-xl border border-foreground/10 space-y-3">
+								<div className="flex items-center justify-between gap-2">
+									<span className="text-xs font-medium text-foreground">
+										{t("annotations.spotlightOpacity", undefined, {
+											opacity: Math.round(
+												annotation.spotlightOpacity ??
+													DEFAULT_SPOTLIGHT_OPACITY,
+											),
+										})}
+									</span>
+									<Button
+										variant="ghost"
+										size="sm"
+										className="h-7 px-2 text-xs text-muted-foreground"
+										disabled={
+											(annotation.spotlightOpacity ??
+												DEFAULT_SPOTLIGHT_OPACITY) ===
+											DEFAULT_SPOTLIGHT_OPACITY
+										}
+										onClick={() =>
+											onSpotlightOpacityChange?.(DEFAULT_SPOTLIGHT_OPACITY)
+										}
+									>
+										{t("annotations.resetSpotlightOpacity")}
+									</Button>
+								</div>
+								<Slider
+									value={[
+										annotation.spotlightOpacity ?? DEFAULT_SPOTLIGHT_OPACITY,
+									]}
+									onValueChange={([value]) => onSpotlightOpacityChange?.(value)}
+									min={0}
+									max={100}
+									step={1}
+									className="w-full"
+								/>
+								{onApplySpotlightOpacityToAll && (
+									<Button
+										variant="outline"
+										size="sm"
+										className="w-full bg-foreground/5 border-foreground/10 text-foreground hover:bg-foreground/10"
+										onClick={() =>
+											onApplySpotlightOpacityToAll(
+												annotation.spotlightOpacity ??
+													DEFAULT_SPOTLIGHT_OPACITY,
+											)
+										}
+									>
+										{t("annotations.applySpotlightOpacityToAll")}
+									</Button>
+								)}
+							</div>
+
+							{onDisabledChange && (
+								<div className="p-4 bg-foreground/5 rounded-xl border border-foreground/10 flex items-start justify-between gap-3">
+									<div className="space-y-1">
+										<span className="text-xs font-medium text-foreground block">
+											{t("annotations.disableSpotlight")}
+										</span>
+										<span className="text-xs text-muted-foreground block">
+											{t("annotations.disableSpotlightDescription")}
+										</span>
+									</div>
+									<Switch
+										checked={annotation.disabled === true}
+										onCheckedChange={onDisabledChange}
+										aria-label={t("annotations.disableSpotlight")}
+									/>
+								</div>
+							)}
 						</TabsContent>
 
 						<TabsContent value="blur" className="mt-0 space-y-4">

@@ -43,7 +43,14 @@
 		"imageUploadError": "Veuillez importer une image JPG, PNG, GIF ou WebP.",
 		"blurStrength": "Intensité du flou : {{strength}}",
 		"solidColor": "Couleur unie (censure)",
-		"borderRadius": "Rayon de bordure"
+		"borderRadius": "Rayon de bordure",
+		"spotlight": "Projecteur",
+		"spotlightOpacity": "Opacité du projecteur : {{opacity}} %",
+		"resetSpotlightOpacity": "Réinitialiser",
+		"applySpotlightOpacityToAll": "Appliquer à tous les projecteurs",
+		"focusSpotlightStart": "Aller au début du projecteur",
+		"disableSpotlight": "Désactiver",
+		"disableSpotlightDescription": "Lorsqu’il est désactivé, le projecteur n’est pas rendu mais reste sur la timeline."
 	},
 
 	"fontStyles": {

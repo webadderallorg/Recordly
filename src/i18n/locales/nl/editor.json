@@ -44,7 +44,14 @@
 		"imageUploadError": "Upload een JPG-, PNG-, GIF- of WebP-afbeelding.",
 		"blurStrength": "Vervagingssterkte: {{strength}}",
 		"solidColor": "Effen Kleur (Censuur)",
-		"borderRadius": "Hoekradius"
+		"borderRadius": "Hoekradius",
+		"spotlight": "Spotlight",
+		"spotlightOpacity": "Spotlight-dekking: {{opacity}}%",
+		"resetSpotlightOpacity": "Herstellen",
+		"applySpotlightOpacityToAll": "Toepassen op alle spotlights",
+		"focusSpotlightStart": "Naar begin van spotlight",
+		"disableSpotlight": "Uitschakelen",
+		"disableSpotlightDescription": "Uitgeschakeld wordt de spotlight niet weergegeven, maar blijft hij op de tijdlijn staan."
 	},
 
 	"fontStyles": {

@@ -43,7 +43,14 @@
 		"imageUploadError": "Загрузите файл JPG, PNG, GIF, или WebP.",
 		"blurStrength": "Сила размытия: {{strength}}",
 		"solidColor": "Сплошной цвет (цензура)",
-		"borderRadius": "Скругление углов"
+		"borderRadius": "Скругление углов",
+		"spotlight": "Прожектор",
+		"spotlightOpacity": "Непрозрачность прожектора: {{opacity}}%",
+		"resetSpotlightOpacity": "Сбросить",
+		"applySpotlightOpacityToAll": "Применить ко всем прожекторам",
+		"focusSpotlightStart": "Перейти к началу прожектора",
+		"disableSpotlight": "Отключить",
+		"disableSpotlightDescription": "Отключённый прожектор не отображается, но остаётся на таймлайне."
 	},
 
 	"fontStyles": {

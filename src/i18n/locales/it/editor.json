@@ -43,7 +43,14 @@
 		"imageUploadError": "Carica un file immagine JPG, PNG, GIF o WebP.",
 		"blurStrength": "Intensità sfocatura: {{strength}}",
 		"solidColor": "Colore pieno (Censura)",
-		"borderRadius": "Raggio bordo"
+		"borderRadius": "Raggio bordo",
+		"spotlight": "Riflettore",
+		"spotlightOpacity": "Opacità del riflettore: {{opacity}}%",
+		"resetSpotlightOpacity": "Ripristina",
+		"applySpotlightOpacityToAll": "Applica a tutti i riflettori",
+		"focusSpotlightStart": "Vai all’inizio del riflettore",
+		"disableSpotlight": "Disattiva",
+		"disableSpotlightDescription": "Se disattivato, il riflettore non viene renderizzato ma resta nella timeline."
 	},
 
 	"fontStyles": {

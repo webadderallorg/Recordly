@@ -1419,12 +1419,27 @@ export class FrameRenderer {
 		return (this.config.width / previewWidth + this.config.height / previewHeight) / 2;
 	}
 
+	/**
+	 * Blur and spotlight annotations sample or dim already-rendered scene pixels, so frames
+	 * that contain them are composited on a 2D canvas instead of the sprite layer.
+	 */
 	private hasActiveBlurAnnotations(timeMs: number): boolean {
 		return (this.config.annotationRegions ?? []).some(
 			(annotation) =>
-				annotation.type === "blur" &&
+				(annotation.type === "blur" || annotation.type === "spotlight") &&
+				!annotation.disabled &&
 				timeMs >= annotation.startMs &&
 				timeMs <= annotation.endMs,
+		);
+	}
+
+	private getVideoCornerRadius(): number {
+		const maskRect = this.layoutCache?.maskRect;
+		if (!maskRect) return 0;
+		return scalePreviewBorderRadius(
+			maskRect.width,
+			maskRect.height,
+			this.config.borderRadius ?? 0,
 		);
 	}
 
@@ -1507,6 +1522,7 @@ export class FrameRenderer {
 				y: this.animationState.y,
 			},
 			this.layoutCache?.maskRect,
+			this.getVideoCornerRadius(),
 		);
 
 		this.drawCaptionOverlay(context);
@@ -1568,6 +1584,7 @@ export class FrameRenderer {
 	private updateAnnotationLayer(currentTimeMs: number): void {
 		for (const entry of this.annotationSprites) {
 			entry.sprite.visible =
+				!entry.annotation.disabled &&
 				currentTimeMs >= entry.annotation.startMs &&
 				currentTimeMs <= entry.annotation.endMs;
 		}

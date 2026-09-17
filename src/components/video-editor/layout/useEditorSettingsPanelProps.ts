@@ -223,6 +223,11 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onAnnotationStyleChange: annotationCommands.handleAnnotationStyleChange,
 		onAnnotationFigureDataChange: annotationCommands.handleAnnotationFigureDataChange,
 		onAnnotationBlurIntensityChange: annotationCommands.handleAnnotationBlurIntensityChange,
+		onAnnotationSpotlightOpacityChange:
+			annotationCommands.handleAnnotationSpotlightOpacityChange,
+		onApplySpotlightOpacityToAll: annotationCommands.handleApplySpotlightOpacityToAll,
+		onAnnotationDisabledChange: annotationCommands.handleAnnotationDisabledChange,
+		onAnnotationFocusStart: annotationCommands.handleAnnotationFocusStart,
 		onAnnotationBlurColorChange: annotationCommands.handleAnnotationBlurColorChange,
 		onAnnotationDelete: annotationCommands.handleAnnotationDelete,
 	};

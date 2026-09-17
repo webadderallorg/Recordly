@@ -43,7 +43,14 @@
 		"imageUploadError": "Por favor sube un archivo de imagen JPG, PNG, GIF o WebP.",
 		"blurStrength": "Fuerza del Desenfoque: {{strength}}",
 		"solidColor": "Color Sólido (Censura)",
-		"borderRadius": "Radio del Borde"
+		"borderRadius": "Radio del Borde",
+		"spotlight": "Foco",
+		"spotlightOpacity": "Opacidad del foco: {{opacity}}%",
+		"resetSpotlightOpacity": "Restablecer",
+		"applySpotlightOpacityToAll": "Aplicar a todos los focos",
+		"focusSpotlightStart": "Ir al inicio del foco",
+		"disableSpotlight": "Desactivar",
+		"disableSpotlightDescription": "Si está desactivado, el foco no se renderiza, pero permanece en la línea de tiempo."
 	},
 
 	"fontStyles": {

@@ -43,7 +43,14 @@
 		"imageUploadError": "Bitte lade eine JPG-, PNG-, GIF- oder WebP-Bilddatei hoch.",
 		"blurStrength": "Unschärfestärke: {{strength}}",
 		"solidColor": "Einfarbig (Zensur)",
-		"borderRadius": "Randradius"
+		"borderRadius": "Randradius",
+		"spotlight": "Spotlight",
+		"spotlightOpacity": "Spotlight-Deckkraft: {{opacity}} %",
+		"resetSpotlightOpacity": "Zurücksetzen",
+		"applySpotlightOpacityToAll": "Auf alle Spotlights anwenden",
+		"focusSpotlightStart": "Zum Spotlight-Anfang springen",
+		"disableSpotlight": "Deaktivieren",
+		"disableSpotlightDescription": "Deaktiviert wird das Spotlight nicht gerendert, bleibt aber in der Zeitleiste."
 	},
 	"fontStyles": {
 		"classic": "Klassisch",

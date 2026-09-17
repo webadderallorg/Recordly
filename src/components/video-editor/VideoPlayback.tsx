@@ -42,6 +42,7 @@ import {
 	getCaptionTextMaxWidth,
 	getCaptionWordVisualState,
 } from "./captionStyle";
+import { SpotlightMaskOverlay } from "./SpotlightMaskOverlay";
 import {
 	type AnnotationRegion,
 	type AutoCaptionSettings,
@@ -103,7 +104,10 @@ import {
 	preloadCursorAssets,
 } from "./videoPlayback/cursorRenderer";
 import { clampFocusToStage as clampFocusToStageUtil } from "./videoPlayback/focusUtils";
-import { layoutVideoContent as layoutVideoContentUtil } from "./videoPlayback/layoutUtils";
+import {
+	layoutVideoContent as layoutVideoContentUtil,
+	scalePreviewBorderRadius,
+} from "./videoPlayback/layoutUtils";
 import { clamp01 } from "./videoPlayback/mathUtils";
 import {
 	createSpringState,
@@ -1047,6 +1051,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				// Reset camera container to identity
 				cameraContainer.scale.set(1);
 				cameraContainer.position.set(0, 0);
+				// The reset drops the active zoom from the Pixi scene while the annotation
+				// overlay keeps its last scene transform. While paused, the ticker only
+				// recomposes on request, so ask for one to re-apply the zoom and keep
+				// annotation editing aligned with the visible frame.
+				requestPausedFrameRefresh();
 
 				const selectedId = selectedZoomIdRef.current;
 				const activeRegion = selectedId
@@ -1058,6 +1067,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			}
 		}, [
 			updateOverlayForRegion,
+			requestPausedFrameRefresh,
 			cropRegion,
 			borderRadius,
 			padding,
@@ -2445,6 +2455,54 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								</div>
 							</div>
 						) : null}
+						{(() => {
+							// Spotlight dimming sits below captions so, as in export, captions are
+							// never dimmed. Drag handles stay in the annotation layer above.
+							const spotlightAreaWidth =
+								annotationRecordingRect.width ||
+								overlayRef.current?.clientWidth ||
+								800;
+							const spotlightAreaHeight =
+								annotationRecordingRect.height ||
+								overlayRef.current?.clientHeight ||
+								600;
+							const spotlightTimeMs = Math.round(timelineTime * 1000);
+
+							return (
+								<div
+									className="absolute inset-0"
+									style={{
+										pointerEvents: "none",
+										transform: `matrix(${annotationSceneTransform.scale}, 0, 0, ${annotationSceneTransform.scale}, ${annotationSceneTransform.x}, ${annotationSceneTransform.y})`,
+										transformOrigin: "top left",
+									}}
+								>
+									<div
+										className="absolute"
+										style={{
+											pointerEvents: "none",
+											left: annotationRecordingRect.x || 0,
+											top: annotationRecordingRect.y || 0,
+											width: spotlightAreaWidth,
+											height: spotlightAreaHeight,
+										}}
+									>
+										<SpotlightMaskOverlay
+											annotations={annotationRegions || []}
+											timeMs={spotlightTimeMs}
+											width={spotlightAreaWidth}
+											height={spotlightAreaHeight}
+											videoCornerRadius={scalePreviewBorderRadius(
+												spotlightAreaWidth,
+												spotlightAreaHeight,
+												borderRadius,
+											)}
+											sceneScale={annotationSceneTransform.scale}
+										/>
+									</div>
+								</div>
+							);
+						})()}
 						{!isGap && activeCaptionLayout && autoCaptionSettings ? (
 							<div
 								className="absolute inset-x-0 flex justify-center"

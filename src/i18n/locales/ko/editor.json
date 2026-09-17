@@ -44,7 +44,14 @@
 		"imageUploadError": "JPG, PNG, GIF 또는 WebP 이미지 파일을 업로드해 주세요.",
 		"blurStrength": "블러 강도: {{strength}}",
 		"solidColor": "단색 (검열)",
-		"borderRadius": "테두리 반경"
+		"borderRadius": "테두리 반경",
+		"spotlight": "스포트라이트",
+		"spotlightOpacity": "스포트라이트 불투명도: {{opacity}}%",
+		"resetSpotlightOpacity": "초기화",
+		"applySpotlightOpacityToAll": "모든 스포트라이트에 적용",
+		"focusSpotlightStart": "스포트라이트 시작으로 이동",
+		"disableSpotlight": "비활성화",
+		"disableSpotlightDescription": "비활성화하면 스포트라이트가 렌더링되지 않지만 타임라인에는 남아 있습니다."
 	},
 
 	"fontStyles": {

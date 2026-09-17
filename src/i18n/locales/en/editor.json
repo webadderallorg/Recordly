@@ -43,7 +43,14 @@
 		"imageUploadError": "Please upload a JPG, PNG, GIF, or WebP image file.",
 		"blurStrength": "Blur Strength: {{strength}}",
 		"solidColor": "Solid Color (Censorship)",
-		"borderRadius": "Border Radius"
+		"borderRadius": "Border Radius",
+		"spotlight": "Spotlight",
+		"spotlightOpacity": "Spotlight opacity: {{opacity}}%",
+		"resetSpotlightOpacity": "Reset",
+		"applySpotlightOpacityToAll": "Apply to all spotlights",
+		"focusSpotlightStart": "Jump to spotlight start",
+		"disableSpotlight": "Disable",
+		"disableSpotlightDescription": "When disabled, the spotlight is not rendered but stays on the timeline."
 	},
 
 	"fontStyles": {

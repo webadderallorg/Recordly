@@ -204,6 +204,7 @@ export function useTimelineEditingController(input: Input) {
 		setSelectedZoomId: timeline.setSelectedZoomId,
 		nextAnnotationIdRef: input.nextAnnotationIdRef,
 		nextAnnotationZIndexRef: input.nextAnnotationZIndexRef,
+		handleSeek: playback.handleSeek,
 	});
 
 	useEditorGlobalInteractions({

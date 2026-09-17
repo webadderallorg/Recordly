@@ -76,7 +76,6 @@ import { renderCaptions } from "./captionRenderer";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import { resolveMediaElementSource } from "./localMediaSource";
 
-
 interface FrameRenderConfig {
 	timelineEffects?: boolean;
 	width: number;
@@ -1510,6 +1509,13 @@ export class FrameRenderer {
 					y: this.animationState.y,
 				},
 				this.layoutCache?.maskRect,
+				this.layoutCache?.maskRect
+					? scalePreviewBorderRadius(
+							this.layoutCache.maskRect.width,
+							this.layoutCache.maskRect.height,
+							this.config.borderRadius ?? 0,
+						)
+					: 0,
 			);
 		}
 

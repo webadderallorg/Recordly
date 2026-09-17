@@ -127,3 +127,45 @@ describe("normalizeProjectEditor", () => {
 		expect(editor.webcam.roundness).toBeCloseTo(4.34, 1);
 	});
 });
+
+describe("normalizeProjectEditor spotlight annotations", () => {
+	const baseRegion = {
+		id: "annotation-1",
+		startMs: 1000,
+		endMs: 2000,
+		content: "",
+		position: { x: 10, y: 10 },
+		size: { width: 30, height: 20 },
+		zIndex: 1,
+	};
+
+	it("keeps the spotlight type and clamps its opacity", () => {
+		const editor = normalizeProjectEditor({
+			annotationRegions: [
+				{ ...baseRegion, type: "spotlight", spotlightOpacity: 140, disabled: true },
+			],
+		} as never);
+		const [region] = editor.annotationRegions;
+		expect(region.type).toBe("spotlight");
+		expect(region.spotlightOpacity).toBe(100);
+		expect(region.disabled).toBe(true);
+	});
+
+	it("defaults a spotlight without opacity to 50 and leaves it enabled", () => {
+		const editor = normalizeProjectEditor({
+			annotationRegions: [{ ...baseRegion, type: "spotlight" }],
+		} as never);
+		const [region] = editor.annotationRegions;
+		expect(region.spotlightOpacity).toBe(50);
+		expect(region.disabled).toBeUndefined();
+	});
+
+	it("does not add spotlight fields to other annotation types", () => {
+		const editor = normalizeProjectEditor({
+			annotationRegions: [{ ...baseRegion, type: "blur" }],
+		} as never);
+		const [region] = editor.annotationRegions;
+		expect(region.spotlightOpacity).toBeUndefined();
+		expect(region.disabled).toBeUndefined();
+	});
+});

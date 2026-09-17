@@ -6,7 +6,7 @@ import type {
 	ClipRegion,
 	ZoomRegion,
 } from "../../types";
-import { getClipSourceEndMs, getClipSourceStartMs } from "../../types";
+import { DEFAULT_SPOTLIGHT_OPACITY, getClipSourceEndMs, getClipSourceStartMs } from "../../types";
 import { CAPTION_ROW_ID, CLIP_ROW_ID, ZOOM_ROW_ID } from "../core/constants";
 import {
 	getAnnotationTrackIndex,
@@ -25,6 +25,10 @@ export function getAnnotationLabel(region: AnnotationRegion): string {
 	}
 	if (region.type === "image") {
 		return "Image";
+	}
+	if (region.type === "spotlight") {
+		const opacity = Math.round(region.spotlightOpacity ?? DEFAULT_SPOTLIGHT_OPACITY);
+		return `Spotlight ${opacity}%`;
 	}
 	return "Annotation";
 }

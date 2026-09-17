@@ -418,8 +418,12 @@ export function trimsToClips(trims: TrimRegion[], totalDurationMs: number): Clip
 	return clips;
 }
 
-export type AnnotationType = "text" | "image" | "figure" | "blur";
+export type AnnotationType = "text" | "image" | "figure" | "blur" | "spotlight";
 export const BLUR_ANNOTATION_STRENGTH = 20;
+/** Default dimming (0-100) applied outside spotlight areas. */
+export const DEFAULT_SPOTLIGHT_OPACITY = 50;
+export const MIN_SPOTLIGHT_OPACITY = 0;
+export const MAX_SPOTLIGHT_OPACITY = 100;
 export const BASE_PREVIEW_WIDTH = 1920;
 export const BASE_PREVIEW_HEIGHT = 1080;
 
@@ -485,6 +489,10 @@ export interface AnnotationRegion {
 	figureData?: FigureData;
 	blurIntensity?: number;
 	blurColor?: string;
+	/** Spotlight only: how strongly the area outside the spotlight is dimmed (0-100). */
+	spotlightOpacity?: number;
+	/** When true the region stays on the timeline but is not rendered. */
+	disabled?: boolean;
 }
 
 export const DEFAULT_ANNOTATION_POSITION: AnnotationPosition = {

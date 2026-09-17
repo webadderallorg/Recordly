@@ -3,6 +3,13 @@ import {
 	type ArrowDirection,
 	BLUR_ANNOTATION_STRENGTH,
 } from "@/components/video-editor/types";
+import {
+	getActiveSpotlights,
+	getSpotlightDimAlpha,
+	getSpotlightHoleStrengths,
+	paintSpotlightMask,
+	SPOTLIGHT_CORNER_RADIUS,
+} from "@/lib/spotlight/spotlightMask";
 
 export interface AnnotationRenderAssets {
 	imageCache: Map<string, HTMLImageElement>;
@@ -46,6 +53,65 @@ function getBlurBufferCanvas(): HTMLCanvasElement | null {
 		blurBufferCanvas = document.createElement("canvas");
 	}
 	return blurBufferCanvas;
+}
+
+let spotlightBufferCanvas: HTMLCanvasElement | null = null;
+
+function getSpotlightBufferCanvas(): HTMLCanvasElement | null {
+	if (typeof document === "undefined") return null;
+	if (!spotlightBufferCanvas) {
+		spotlightBufferCanvas = document.createElement("canvas");
+	}
+	return spotlightBufferCanvas;
+}
+
+function renderSpotlightMask(
+	ctx: CanvasRenderingContext2D,
+	annotations: AnnotationRegion[],
+	currentTimeMs: number,
+	annotationRect: AnnotationCoordinateRect,
+	scaleFactor: number,
+	sceneTransform: AnnotationSceneTransform | undefined,
+	videoCornerRadius: number,
+): void {
+	const spotlights = getActiveSpotlights(annotations, currentTimeMs);
+	if (spotlights.length === 0) return;
+
+	const alpha = getSpotlightDimAlpha(spotlights, currentTimeMs);
+	const buffer = getSpotlightBufferCanvas();
+	const bufferCtx = buffer?.getContext("2d");
+	if (!buffer || !bufferCtx || alpha <= 0) return;
+
+	if (buffer.width !== ctx.canvas.width || buffer.height !== ctx.canvas.height) {
+		buffer.width = ctx.canvas.width;
+		buffer.height = ctx.canvas.height;
+	}
+	bufferCtx.clearRect(0, 0, buffer.width, buffer.height);
+
+	const sceneScale = sceneTransform?.scale ?? 1;
+	const strengths = getSpotlightHoleStrengths(spotlights, currentTimeMs);
+	const painted = paintSpotlightMask(bufferCtx, {
+		area: transformAnnotationRect(annotationRect, sceneTransform),
+		areaRadius: videoCornerRadius * sceneScale,
+		holes: spotlights.map((spotlight, index) => ({
+			...transformAnnotationRect(
+				{
+					x: annotationRect.x + (spotlight.position.x / 100) * annotationRect.width,
+					y: annotationRect.y + (spotlight.position.y / 100) * annotationRect.height,
+					width: (spotlight.size.width / 100) * annotationRect.width,
+					height: (spotlight.size.height / 100) * annotationRect.height,
+				},
+				sceneTransform,
+			),
+			strength: strengths[index],
+		})),
+		holeRadius: SPOTLIGHT_CORNER_RADIUS * scaleFactor * sceneScale,
+		alpha,
+	});
+
+	if (painted) {
+		ctx.drawImage(buffer, 0, 0);
+	}
 }
 
 function getAnnotationImageContent(annotation: AnnotationRegion): string | null {
@@ -365,9 +431,10 @@ export async function renderAnnotations(
 	assets?: AnnotationRenderAssets,
 	sceneTransform?: AnnotationSceneTransform,
 	coordinateRect?: AnnotationCoordinateRect,
+	videoCornerRadius = 0,
 ): Promise<void> {
 	const activeAnnotations = annotations.filter(
-		(ann) => currentTimeMs >= ann.startMs && currentTimeMs <= ann.endMs,
+		(ann) => !ann.disabled && currentTimeMs >= ann.startMs && currentTimeMs <= ann.endMs,
 	);
 
 	const sortedAnnotations = [...activeAnnotations].sort((a, b) => a.zIndex - b.zIndex);
@@ -377,6 +444,17 @@ export async function renderAnnotations(
 		width: canvasWidth,
 		height: canvasHeight,
 	};
+
+	// Spotlights dim the scene underneath every other annotation.
+	renderSpotlightMask(
+		ctx,
+		activeAnnotations,
+		currentTimeMs,
+		annotationRect,
+		scaleFactor,
+		sceneTransform,
+		videoCornerRadius,
+	);
 
 	for (const annotation of sortedAnnotations) {
 		const rect = transformAnnotationRect(
@@ -457,6 +535,10 @@ export async function renderAnnotations(
 				ctx.restore();
 				break;
 			}
+
+			case "spotlight":
+				// Painted once for all active spotlights by renderSpotlightMask.
+				break;
 		}
 	}
 }
@@ -511,6 +593,9 @@ export async function renderAnnotationToCanvas(
 		case "blur":
 			// Blur annotations must sample already-rendered scene pixels,
 			// so they cannot be rasterized as standalone sprites.
+			return null;
+		case "spotlight":
+			// Spotlights dim the whole scene around them, so they are composited on canvas.
 			return null;
 	}
 

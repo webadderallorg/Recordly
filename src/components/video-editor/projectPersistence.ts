@@ -44,6 +44,7 @@ import {
 	DEFAULT_FIGURE_DATA,
 	DEFAULT_PADDING,
 	DEFAULT_PLAYBACK_SPEED,
+	DEFAULT_SPOTLIGHT_OPACITY,
 	DEFAULT_WEBCAM_MARGIN,
 	DEFAULT_WEBCAM_OVERLAY,
 	DEFAULT_WEBCAM_POSITION_PRESET,
@@ -62,6 +63,8 @@ import {
 	DEFAULT_ZOOM_OUT_EASING,
 	DEFAULT_ZOOM_SMOOTHNESS,
 	getDefaultCaptionFontFamily,
+	MAX_SPOTLIGHT_OPACITY,
+	MIN_SPOTLIGHT_OPACITY,
 	normalizeCursorClickEffectColor,
 	normalizeCursorClickEffectStyle,
 	type Padding,
@@ -564,7 +567,8 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						type:
 							region.type === "image" ||
 							region.type === "figure" ||
-							region.type === "blur"
+							region.type === "blur" ||
+							region.type === "spotlight"
 								? region.type
 								: "text",
 						content: typeof region.content === "string" ? region.content : "",
@@ -624,6 +628,16 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 							: 20,
 						blurColor:
 							typeof region.blurColor === "string" ? region.blurColor : undefined,
+						spotlightOpacity: isFiniteNumber(region.spotlightOpacity)
+							? clamp(
+									region.spotlightOpacity,
+									MIN_SPOTLIGHT_OPACITY,
+									MAX_SPOTLIGHT_OPACITY,
+								)
+							: region.type === "spotlight"
+								? DEFAULT_SPOTLIGHT_OPACITY
+								: undefined,
+						disabled: region.disabled === true ? true : undefined,
 						trackIndex: isFiniteNumber(region.trackIndex)
 							? Math.max(0, Math.floor(region.trackIndex))
 							: 0,
