@@ -186,8 +186,10 @@ async function copyCursorTelemetry(sourcePath: string, outputPath: string) {
 			getTelemetryPathForVideo(sourcePath),
 			getTelemetryPathForVideo(outputPath),
 		);
+		return true;
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+		return false;
 	}
 }
 
@@ -264,7 +266,10 @@ export async function importTimelineClip(
 		await syncExistingFile(partialPath);
 		await fs.rename(partialPath, finalPath);
 		await syncParentDirectory(recordingsDir);
-		await copyCursorTelemetry(normalizedSourcePath, finalPath);
+		if (await copyCursorTelemetry(normalizedSourcePath, finalPath)) {
+			await syncExistingFile(getTelemetryPathForVideo(finalPath));
+			await syncParentDirectory(recordingsDir);
+		}
 		return {
 			success: true,
 			outputPath: finalPath,
