@@ -103,6 +103,8 @@ type Props = {
 	setCurrentTime: Dispatch<SetStateAction<number>>;
 	setIsPlaying: Dispatch<SetStateAction<boolean>>;
 	setError: (message: string | null) => void;
+	onImportVideoClip: () => void;
+	canImportVideoClip: boolean;
 };
 
 export function EditorPreviewPanel(props: Props) {
@@ -315,6 +317,13 @@ export function EditorPreviewPanel(props: Props) {
 							</Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="start">
+							<DropdownMenuItem
+								onClick={props.onImportVideoClip}
+								disabled={!props.canImportVideoClip}
+								className="cursor-pointer text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+							>
+								{t("ui.importVideo")}
+							</DropdownMenuItem>
 							<DropdownMenuItem
 								onClick={() => {
 									const nextTrack =

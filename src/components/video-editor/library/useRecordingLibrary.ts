@@ -242,6 +242,42 @@ export function useRecordingLibrary(
 			setCancelling(false);
 		}
 	};
+	const importVideoFile = async () => {
+		const { videoSourcePath, currentProjectPath } = current.current.project;
+		if (lock.current || !videoSourcePath) return;
+		lock.current = true;
+		setBusy(true);
+		let path: string;
+		try {
+			const selected = await window.electronAPI.openVideoFilePicker({
+				preserveProjectPath: true,
+			});
+			if (selected.canceled) return;
+			if (!selected.success || !selected.path || selected.kind === "project")
+				throw new Error(selected.error || selected.message);
+			const latest = current.current.project;
+			if (
+				latest.videoSourcePath !== videoSourcePath ||
+				latest.currentProjectPath !== currentProjectPath
+			)
+				throw new Error(
+					te(
+						"projectChangedWhileImporting",
+						"The project changed while importing. Add the recordings again.",
+					),
+				);
+			path = selected.path;
+		} catch (error) {
+			toast.error(
+				te("addVideoFailed", "Could not add video: {{error}}", { error: String(error) }),
+			);
+			return;
+		} finally {
+			lock.current = false;
+			setBusy(false);
+		}
+		await addToTimeline(path);
+	};
 	return {
 		open,
 		setOpen,
@@ -259,5 +295,6 @@ export function useRecordingLibrary(
 		cancelling,
 		cancelImport,
 		addToTimeline,
+		importVideoFile,
 	};
 }

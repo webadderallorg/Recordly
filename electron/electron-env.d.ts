@@ -811,7 +811,10 @@ interface Window {
 			canceled?: boolean;
 		}>;
 		importWallpaperVideo: (file: File) => Promise<{ success: boolean; path?: string }>;
-		openVideoFilePicker: (options?: { includeProjects?: boolean }) => Promise<{
+		openVideoFilePicker: (options?: {
+			includeProjects?: boolean;
+			preserveProjectPath?: boolean;
+		}) => Promise<{
 			success: boolean;
 			kind?: "media" | "project";
 			path?: string;

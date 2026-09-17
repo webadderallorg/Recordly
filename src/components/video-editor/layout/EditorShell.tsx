@@ -491,6 +491,12 @@ export function EditorShell(props: Props) {
 							/>
 							<EditorPreviewPanel
 								t={t}
+								onImportVideoClip={() => void library.importVideoFile()}
+								canImportVideoClip={
+									Boolean(project.videoSourcePath) &&
+									!library.busy &&
+									!library.importing
+								}
 								videoPath={project.videoPath}
 								previewVersion={ui.previewVersion}
 								aspectRatio={ui.aspectRatio}

@@ -55,10 +55,6 @@ async function setup(page: Page) {
 	await expect(page.locator('[data-variant="clip"]')).toHaveAttribute("data-end-ms", "6000", {
 		timeout: 20000,
 	});
-	await expect(page.locator('[data-variant="clip"] img').first()).toBeVisible();
-	await expect(page.getByLabel("Loading preview")).toHaveCount(0);
-	await page.getByRole("button", { name: "Clips", exact: true }).click();
-	await expect(page.getByLabel("Select first.mp4")).toBeVisible();
 }
 
 test("Clips supports selection, remove all, undo and real timeline drag insertion", async ({
@@ -67,6 +63,10 @@ test("Clips supports selection, remove all, undo and real timeline drag insertio
 	const errors: string[] = [];
 	page.on("pageerror", (error) => errors.push(error.message));
 	await setup(page);
+	await expect(page.locator('[data-variant="clip"] img').first()).toBeVisible();
+	await expect(page.getByLabel("Loading preview")).toHaveCount(0);
+	await page.getByRole("button", { name: "Clips", exact: true }).click();
+	await expect(page.getByLabel("Select first.mp4")).toBeVisible();
 	const panel = page.getByRole("complementary", { name: "Clips" });
 	await panel.getByRole("button", { name: "Open recordings folder", exact: true }).click();
 	await expect(page.locator("html")).toHaveAttribute("data-recordings-folder-opened", "true");
@@ -133,6 +133,54 @@ test("Clips supports selection, remove all, undo and real timeline drag insertio
 	await expect(panel).toHaveCount(0);
 	await expect(page.getByRole("slider", { name: "Blur", exact: true })).toBeVisible();
 	expect(errors).toEqual([]);
+});
+
+test("Add Layer imports an external video into the current timeline and handles Cancel", async ({
+	page,
+}) => {
+	test.setTimeout(60000);
+	await setup(page);
+	await page.evaluate(() => {
+		let cancel = true;
+		window.electronAPI.openVideoFilePicker = async (options) => {
+			document.documentElement.dataset.preserveProject = String(options?.preserveProjectPath);
+			if (cancel) {
+				cancel = false;
+				return { success: false, canceled: true };
+			}
+			return { success: true, kind: "media", path: "/picked/outside.mp4" };
+		};
+		window.electronAPI.importRecording = async (_current, path) => {
+			document.documentElement.dataset.importedPath = path;
+			const url = `${location.origin}/tests/ui/fixtures/filmstrip.mp4`;
+			return {
+				success: true,
+				value: {
+					path: url,
+					url,
+					sourceStartMs: 6000,
+					durationMs: 1000,
+					totalDurationMs: 7000,
+				},
+			};
+		};
+	});
+	const clips = page.locator('[data-variant="clip"]');
+	const add = page.getByRole("button", { name: "Add Layer", exact: true });
+	const importVideo = page.getByRole("menuitem", { name: "Import video", exact: true });
+	await expect(clips).toHaveCount(1);
+	await add.click();
+	await importVideo.click();
+	await expect(page.locator("html")).toHaveAttribute("data-preserve-project", "true");
+	await expect(page.locator("html")).not.toHaveAttribute("data-imported-path");
+	await expect(clips).toHaveCount(1);
+
+	await add.click();
+	await importVideo.click();
+	await expect(page.locator("html")).toHaveAttribute("data-imported-path", "/picked/outside.mp4");
+	await expect(clips).toHaveCount(2);
+	await expect(clips.last()).toHaveAttribute("data-start-ms", "6000");
+	await expect(clips.last()).toHaveAttribute("data-end-ms", "7000");
 });
 
 test("generating captions leaves the current media session intact and shows the cues", async ({

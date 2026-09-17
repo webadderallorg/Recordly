@@ -24,7 +24,11 @@ import {
 	sendWhisperModelDownloadProgress,
 } from "../captions/whisper";
 import { LEGACY_PROJECT_FILE_EXTENSIONS, PROJECT_FILE_EXTENSION } from "../constants";
-import { hasProjectFileExtension, loadProjectFromPath } from "../project/manager";
+import {
+	hasProjectFileExtension,
+	loadProjectFromPath,
+	rememberApprovedLocalReadPath,
+} from "../project/manager";
 import { setCurrentProjectPath } from "../state";
 import { approveUserPath, getRecordingsDir } from "../utils";
 import { registerWallpaperVideoHandler } from "./wallpaperVideo";
@@ -34,6 +38,7 @@ const PROJECT_FILE_EXTENSIONS = [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_
 
 type OpenVideoFilePickerOptions = {
 	includeProjects?: boolean;
+	preserveProjectPath?: boolean;
 };
 
 export function registerCaptionHandlers() {
@@ -176,8 +181,12 @@ export function registerCaptionHandlers() {
 					: projectResult;
 			}
 
-			approveUserPath(selectedPath);
-			setCurrentProjectPath(null);
+			if (options?.preserveProjectPath) {
+				await rememberApprovedLocalReadPath(selectedPath);
+			} else {
+				approveUserPath(selectedPath);
+				setCurrentProjectPath(null);
+			}
 			return {
 				success: true,
 				kind: "media",
