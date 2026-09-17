@@ -14,6 +14,7 @@ import { useEditorSettingsPanelProps } from "./layout/useEditorSettingsPanelProp
 import { useVideoEditorPresets } from "./presets/useVideoEditorPresets";
 import { useEditorProjectController } from "./project/useEditorProjectController";
 import { useProjectLibraryController } from "./project/useProjectLibraryController";
+import { useTimelineClipImport } from "./project/useTimelineClipImport";
 import { getDevOpenRecordingConfig, getSmokeExportConfig } from "./smokeExportConfig";
 import { useAppearanceState } from "./state/useAppearanceState";
 import { useEditorUiState } from "./state/useEditorUiState";
@@ -365,6 +366,20 @@ export default function VideoEditor() {
 		handleUploadWebcam,
 		handleClearWebcam,
 	});
+	const handleImportTimelineClip = useTimelineClipImport({
+		project,
+		appearance,
+		timeline,
+		videoPlaybackRef,
+		nextClipIdRef,
+		autoFullTrackClipIdRef,
+		autoFullTrackClipEndMsRef,
+		setIsPlaying,
+		setCurrentTime,
+		setDuration,
+		setIsPreviewReady,
+		remountPreview,
+	});
 	return (
 		<EditorShell
 			t={t}
@@ -387,6 +402,7 @@ export default function VideoEditor() {
 			setExperimentalNvidiaCudaExport={setExperimentalNvidiaCudaExport}
 			effectiveShowCursor={effectiveShowCursor}
 			previewAspectRatioValue={previewAspectRatioValue}
+			handleImportTimelineClip={handleImportTimelineClip}
 		/>
 	);
 }
