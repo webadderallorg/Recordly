@@ -185,9 +185,7 @@ async function copyCursorTelemetry(sourcePath: string, outputPath: string) {
 			getTelemetryPathForVideo(outputPath),
 		);
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-			console.warn("[clip-import] Unable to copy cursor telemetry:", error);
-		}
+		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 	}
 }
 
@@ -251,7 +249,7 @@ export async function importTimelineClip(
 			output.width !== evenDimension(source.width) ||
 			output.height !== evenDimension(source.height) ||
 			Math.abs(output.duration - expectedDuration) >
-				Math.max(1, 2 / safeFrameRate(source.frameRate))
+				Math.max(0.05, 2 / safeFrameRate(source.frameRate))
 		) {
 			throw new Error(
 				"The imported clip failed output validation; the original project was not changed.",
@@ -268,7 +266,11 @@ export async function importTimelineClip(
 			totalDurationMs: Math.round(output.duration * 1000),
 		};
 	} catch (error) {
-		await fs.rm(partialPath, { force: true }).catch(() => undefined);
+		await Promise.all([
+			fs.rm(partialPath, { force: true }),
+			fs.rm(finalPath, { force: true }),
+			fs.rm(getTelemetryPathForVideo(finalPath), { force: true }),
+		]).catch(() => undefined);
 		throw error;
 	}
 }

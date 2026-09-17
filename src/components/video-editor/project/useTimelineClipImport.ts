@@ -36,6 +36,7 @@ export function useTimelineClipImport(input: Input) {
 
 		const current = inputRef.current;
 		const sourcePath = current.project.videoSourcePath;
+		const projectPath = current.project.currentProjectPath;
 		if (!sourcePath) {
 			toast.error("Open a recording before importing a clip.");
 			return;
@@ -69,27 +70,37 @@ export function useTimelineClipImport(input: Input) {
 				throw new Error(result.message || "Unable to import clip.");
 			}
 
+			const latest = inputRef.current;
+			if (
+				latest.project.videoSourcePath !== sourcePath ||
+				latest.project.currentProjectPath !== projectPath
+			) {
+				throw new Error(
+					"The active project changed while the clip was importing. No editor changes were made.",
+				);
+			}
+
 			const plan = buildImportedClipPlan({
-				clips: current.timeline.clipRegions,
+				clips: latest.timeline.clipRegions,
 				sourceDurationMs: result.sourceDurationMs,
 				importedDurationMs: result.importedDurationMs,
-				nextClipId: current.nextClipIdRef.current,
+				nextClipId: latest.nextClipIdRef.current,
 			});
 			const outputPath = result.outputPath;
 			const outputUrl = await resolveVideoUrl(outputPath);
 
 			try {
-				current.videoPlaybackRef.current?.pause();
+				latest.videoPlaybackRef.current?.pause();
 			} catch {
 				// The preview may already be remounting.
 			}
-			const preserveProjectPath = Boolean(current.project.currentProjectPath);
-			if (current.appearance.webcam.sourcePath) {
+			const preserveProjectPath = Boolean(latest.project.currentProjectPath);
+			if (latest.appearance.webcam.sourcePath) {
 				await window.electronAPI.setCurrentRecordingSession(
 					{
 						videoPath: outputPath,
-						webcamPath: current.appearance.webcam.sourcePath,
-						timeOffsetMs: current.appearance.webcam.timeOffsetMs,
+						webcamPath: latest.appearance.webcam.sourcePath,
+						timeOffsetMs: latest.appearance.webcam.timeOffsetMs,
 					},
 					{ preserveProjectPath },
 				);
@@ -97,25 +108,25 @@ export function useTimelineClipImport(input: Input) {
 				await window.electronAPI.setCurrentVideoPath(outputPath, { preserveProjectPath });
 			}
 
-			current.autoFullTrackClipIdRef.current = null;
-			current.autoFullTrackClipEndMsRef.current = null;
-			current.nextClipIdRef.current += 1;
-			current.timeline.setClipRegions((clips) => [...clips, plan.clip]);
-			current.timeline.setSelectedClipId(plan.clip.id);
-			current.timeline.setSelectedZoomId(null);
-			current.timeline.setSelectedAnnotationId(null);
-			current.timeline.setSelectedAudioId(null);
-			current.timeline.setSelectedCaptionId(null);
-			current.timeline.setSourceAudioTrackSettingsByClip({});
-			current.timeline.setDefaultSourceAudioTrackSettings({});
-			current.timeline.setSourceAudioFallbackRefreshKey((value) => value + 1);
-			current.project.setVideoSourcePath(outputPath);
-			current.project.setVideoPath(outputUrl);
-			current.setIsPlaying(false);
-			current.setDuration(0);
-			current.setCurrentTime(plan.timelineStartMs / 1000);
-			current.setIsPreviewReady(false);
-			current.remountPreview();
+			latest.autoFullTrackClipIdRef.current = null;
+			latest.autoFullTrackClipEndMsRef.current = null;
+			latest.nextClipIdRef.current += 1;
+			latest.timeline.setClipRegions((clips) => [...clips, plan.clip]);
+			latest.timeline.setSelectedClipId(plan.clip.id);
+			latest.timeline.setSelectedZoomId(null);
+			latest.timeline.setSelectedAnnotationId(null);
+			latest.timeline.setSelectedAudioId(null);
+			latest.timeline.setSelectedCaptionId(null);
+			latest.timeline.setSourceAudioTrackSettingsByClip({});
+			latest.timeline.setDefaultSourceAudioTrackSettings({});
+			latest.timeline.setSourceAudioFallbackRefreshKey((value) => value + 1);
+			latest.project.setVideoSourcePath(outputPath);
+			latest.project.setVideoPath(outputUrl);
+			latest.setIsPlaying(false);
+			latest.setDuration(0);
+			latest.setCurrentTime(plan.timelineStartMs / 1000);
+			latest.setIsPreviewReady(false);
+			latest.remountPreview();
 			toast.success(
 				"Clip imported at the end of the timeline. Save the project to keep it.",
 				{
