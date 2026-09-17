@@ -114,6 +114,34 @@ describe("downloadWhisperSmallModel", () => {
 			"Window was closed before Whisper model download could start.",
 		);
 	});
+
+	it("aborts and cleans up when webContents is destroyed during an in-flight download", async () => {
+		const webContentsEmitter = new EventEmitter();
+		let isDestroyed = false;
+
+		const mockWebContents = Object.assign(webContentsEmitter, {
+			isDestroyed: () => isDestroyed,
+			send: vi.fn(),
+		}) as unknown as Electron.WebContents;
+
+		const req = Object.assign(new EventEmitter(), {
+			destroy: vi.fn(),
+		});
+
+		const mockedGet = vi.mocked(httpsGet);
+		mockedGet.mockImplementationOnce(() => {
+			setImmediate(() => {
+				isDestroyed = true;
+				webContentsEmitter.emit("destroyed");
+			});
+			return req as unknown as ReturnType<typeof httpsGet>;
+		});
+
+		await expect(downloadWhisperSmallModel(mockWebContents)).rejects.toThrow(
+			"Download aborted",
+		);
+		expect(req.destroy).toHaveBeenCalled();
+	});
 });
 
 describe("downloadFileWithProgress", () => {
