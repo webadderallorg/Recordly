@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	getHudOverlayStaticBounds,
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
@@ -73,6 +74,46 @@ describe("getHudOverlayWindowBounds", () => {
 			width: 640,
 			height: 420,
 		});
+	});
+});
+
+describe("getHudOverlayStaticBounds", () => {
+	const workArea = {
+		x: 120,
+		y: 40,
+		width: 1920,
+		height: 1040,
+	};
+
+	it("pre-sizes the Wayland fallback so HUD popovers are not clipped", () => {
+		const bounds = getHudOverlayStaticBounds(workArea, false, true);
+		expect(bounds).toEqual({
+			x: 650,
+			y: 540,
+			width: 860,
+			height: 540,
+		});
+		// Maximum menu card (400) + popover offset and HUD bar clearance.
+		expect(bounds.height).toBeGreaterThanOrEqual(400 + 16 + 96);
+	});
+
+	it("preserves compact bounds for a Linux X11 session", () => {
+		expect(getHudOverlayStaticBounds(workArea, false, false)).toEqual({
+			x: 650,
+			y: 920,
+			width: 860,
+			height: 160,
+		});
+	});
+
+	it("preserves full-work-area bounds on passthrough platforms", () => {
+		expect(getHudOverlayStaticBounds(workArea, true, true)).toEqual(workArea);
+		expect(getHudOverlayStaticBounds(workArea, true, false)).toEqual(workArea);
+	});
+
+	it("clamps the Wayland fallback to a small display work area", () => {
+		const smallWorkArea = { x: -100, y: 20, width: 640, height: 420 };
+		expect(getHudOverlayStaticBounds(smallWorkArea, false, true)).toEqual(smallWorkArea);
 	});
 });
 
