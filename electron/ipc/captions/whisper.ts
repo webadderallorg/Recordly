@@ -9,6 +9,13 @@ import {
 	WHISPER_SMALL_MODEL_PATH,
 } from "../constants";
 
+/**
+ * Sends Whisper speech-to-text model download progress to the renderer process.
+ * Safely ignores missing, uninitialized, or destroyed WebContents instances.
+ *
+ * @param webContents The target Electron WebContents to dispatch IPC events to.
+ * @param payload The progress payload containing status, progress percentage, path, and error info.
+ */
 export function sendWhisperModelDownloadProgress(
 	webContents: Electron.WebContents | null | undefined,
 	payload: {
@@ -29,6 +36,11 @@ export function sendWhisperModelDownloadProgress(
 	}
 }
 
+/**
+ * Checks whether the Whisper small model file exists on disk and is readable.
+ *
+ * @returns An object indicating existence status and file path.
+ */
 export async function getWhisperSmallModelStatus() {
 	try {
 		await fs.access(WHISPER_SMALL_MODEL_PATH, fsConstants.R_OK);
@@ -46,6 +58,14 @@ export async function getWhisperSmallModelStatus() {
 	}
 }
 
+/**
+ * Downloads a file over HTTPS with incremental progress tracking, redirect handling, and abort support.
+ *
+ * @param url The source URL to download from.
+ * @param destinationPath The local file destination path.
+ * @param onProgress Callback receiving progress percentage (0-100).
+ * @param signal Optional AbortSignal to cancel the download in flight.
+ */
 export function downloadFileWithProgress(
 	url: string,
 	destinationPath: string,
@@ -89,6 +109,7 @@ export function downloadFileWithProgress(
 
 				if (statusCode >= 300 && statusCode < 400 && location) {
 					response.resume();
+					response.destroy();
 					cleanupSignal();
 					if (redirectCount >= 5) {
 						settled = true;
@@ -96,6 +117,7 @@ export function downloadFileWithProgress(
 						return;
 					}
 
+					settled = true;
 					const nextUrl = new URL(location, currentUrl).toString();
 					void request(nextUrl, redirectCount + 1)
 						.then(resolve)
@@ -159,6 +181,7 @@ export function downloadFileWithProgress(
 				cleanupSignal();
 				if (!settled) {
 					settled = true;
+					fileStream?.destroy(error);
 					reject(error);
 				}
 			});
@@ -166,9 +189,11 @@ export function downloadFileWithProgress(
 			req.on("timeout", () => {
 				cleanupSignal();
 				if (!settled) {
+					const error = new Error("Whisper model download timed out.");
 					settled = true;
-					req.destroy(new Error("Whisper model download timed out."));
-					reject(new Error("Whisper model download timed out."));
+					fileStream?.destroy(error);
+					req.destroy(error);
+					reject(error);
 				}
 			});
 		});
@@ -177,6 +202,13 @@ export function downloadFileWithProgress(
 	return request(url);
 }
 
+/**
+ * Downloads the Whisper small model into the local application directory.
+ * Dispatches progress events via IPC and aborts if the caller WebContents is destroyed.
+ *
+ * @param webContents The initiating Electron WebContents.
+ * @returns The file path of the downloaded Whisper model.
+ */
 export async function downloadWhisperSmallModel(
 	webContents: Electron.WebContents,
 ): Promise<string> {
@@ -237,6 +269,9 @@ export async function downloadWhisperSmallModel(
 	}
 }
 
+/**
+ * Deletes the downloaded Whisper small model from disk if present.
+ */
 export async function deleteWhisperSmallModel(): Promise<void> {
 	await fs.rm(WHISPER_SMALL_MODEL_PATH, { force: true });
 }
