@@ -1,8 +1,10 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { probeNativeVideoMetadata } from "./export/native-video";
 import { getFfmpegBinaryPath } from "./ffmpeg/binary";
+import { syncExistingFile, syncParentDirectory } from "./project/atomicSave";
 import { getCompanionAudioFallbackInfo } from "./recording/diagnostics";
 import { getRecordingsDir, getTelemetryPathForVideo } from "./utils";
 
@@ -217,7 +219,10 @@ export async function importTimelineClip(
 	}
 
 	const recordingsDir = await getRecordingsDir();
-	const finalPath = path.join(recordingsDir, `recordly-composite-${Date.now()}.mp4`);
+	const finalPath = path.join(
+		recordingsDir,
+		`recordly-composite-${Date.now()}-${randomUUID()}.mp4`,
+	);
 	const partialPath = `${finalPath}.partial.mp4`;
 	try {
 		const sourceAudio = await resolveAudioInputs(normalizedSourcePath, 0, source, 2);
@@ -256,7 +261,9 @@ export async function importTimelineClip(
 			);
 		}
 
+		await syncExistingFile(partialPath);
 		await fs.rename(partialPath, finalPath);
+		await syncParentDirectory(recordingsDir);
 		await copyCursorTelemetry(normalizedSourcePath, finalPath);
 		return {
 			success: true,

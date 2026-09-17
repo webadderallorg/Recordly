@@ -56,7 +56,7 @@ async function writeSyncedTemporaryFile(
 	}
 }
 
-async function syncExistingFile(filePath: string): Promise<void> {
+export async function syncExistingFile(filePath: string): Promise<void> {
 	const handle = await fs.open(filePath, "r+");
 	try {
 		await handle.sync();
@@ -65,7 +65,7 @@ async function syncExistingFile(filePath: string): Promise<void> {
 	}
 }
 
-async function syncParentDirectory(parentDir: string): Promise<void> {
+export async function syncParentDirectory(parentDir: string): Promise<void> {
 	if (process.platform === "win32") {
 		return;
 	}
