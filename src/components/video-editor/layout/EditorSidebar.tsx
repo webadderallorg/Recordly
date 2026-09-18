@@ -48,69 +48,77 @@ export function EditorSidebar({ t, activeSection, setActiveSection, settingsPane
 		[t],
 	);
 	return (
-		<div className="flex flex-shrink-0 gap-1.5">
-			<div className="flex flex-shrink-0 flex-col items-center gap-0.5 px-2 py-2">
-				{sections.map((section) => {
+		<div className="flex flex-shrink-0 h-full relative bg-card rounded-xl shadow-xl p-1.5">
+			<div className="flex flex-shrink-0 flex-col items-center gap-1 py-2 w-[56px] bg-black/20 rounded-l-xl relative z-20">
+				{sections.map((section, index) => {
 					const isActive = activeSection === section.id;
 					return (
-						<div key={section.id} className="flex items-center">
-							<motion.button
+						<div key={section.id} className="relative w-full flex items-center justify-center h-11">
+							{isActive ? (
+								<motion.div
+									layoutId="rail-active-bg"
+									className="absolute inset-y-0 right-0 left-2 rounded-l-xl bg-editor-panel z-0"
+									transition={{ type: "spring", stiffness: 450, damping: 35 }}
+								>
+									{/* Top Inverted Curve */}
+									{index !== 0 && (
+										<svg
+											className="absolute -top-4 right-0 h-4 w-4 text-editor-panel pointer-events-none"
+											viewBox="0 0 16 16"
+											fill="currentColor"
+										>
+											<path d="M 0 16 A 16 16 0 0 0 16 0 L 16 16 Z" />
+										</svg>
+									)}
+									{/* Bottom Inverted Curve */}
+									{index !== sections.length - 1 && (
+										<svg
+											className="absolute -bottom-4 right-0 h-4 w-4 text-editor-panel pointer-events-none"
+											viewBox="0 0 16 16"
+											fill="currentColor"
+										>
+											<path d="M 0 0 A 16 16 0 0 1 16 16 L 16 0 Z" />
+										</svg>
+									)}
+								</motion.div>
+							) : null}
+							
+							<button
 								type="button"
 								onClick={() => setActiveSection(section.id)}
 								title={section.label}
-								className="group relative flex h-9 w-9 items-center justify-center rounded-lg outline-none focus:outline-none focus-visible:outline-none"
-								animate={{ opacity: isActive ? 1 : 0.55 }}
-								transition={{ duration: 0.14 }}
+								className="group relative z-10 flex h-9 w-9 items-center justify-center rounded-lg outline-none focus:outline-none focus-visible:outline-none transition-colors"
 							>
-								{isActive ? (
-									<motion.span
-										layoutId="rail-active-bg"
-										className="absolute inset-0 rounded-lg bg-foreground/[0.08]"
-										transition={{ type: "spring", stiffness: 450, damping: 35 }}
-									/>
-								) : null}
 								<motion.span
 									className="relative z-10"
 									animate={{
-										color: isActive ? "#2563EB" : "hsl(var(--foreground))",
+										color: isActive ? "hsl(var(--primary))" : "hsl(var(--foreground))",
+										opacity: isActive ? 1 : 0.55,
 									}}
+									whileHover={{ opacity: 1 }}
 									transition={{ duration: 0.14 }}
 								>
 									<section.icon
-										className="h-[27px] w-[27px]"
+										className="h-[24px] w-[24px]"
 										weight={isActive ? "fill" : "regular"}
 									/>
 								</motion.span>
-							</motion.button>
-							<div className="ml-1.5 h-1.5 w-1.5 flex-shrink-0">
-								{isActive ? (
-									<motion.span
-										layoutId="rail-active-dot"
-										className="block h-1.5 w-1.5 rounded-full bg-[#2563EB]"
-										initial={{ opacity: 0, scale: 0.5 }}
-										animate={{ opacity: 1, scale: 1 }}
-										exit={{ opacity: 0, scale: 0.5 }}
-										transition={{ type: "spring", stiffness: 500, damping: 32 }}
-									/>
-								) : null}
-							</div>
+							</button>
 						</div>
 					);
 				})}
-				<div className="mt-auto flex flex-col items-center gap-0.5 pt-3">
-					<motion.button
+				<div className="mt-auto relative w-full flex items-center justify-center pt-3 z-20">
+					<button
 						type="button"
 						onClick={() =>
 							toast.info(t("editor.account.comingSoon", "Account coming soon"))
 						}
 						title={t("editor.account.title", "Account")}
 						className="group relative flex h-9 w-9 items-center justify-center rounded-lg text-foreground/55 outline-none transition hover:text-foreground focus:outline-none focus-visible:outline-none"
-						whileHover={{ opacity: 1 }}
-						initial={{ opacity: 0.55 }}
 					>
-						<motion.span className="absolute inset-0 rounded-lg bg-foreground/[0.04] opacity-0 transition group-hover:opacity-100" />
-						<UserCircle className="relative z-10 h-[22px] w-[22px]" />
-					</motion.button>
+						<span className="absolute inset-0 rounded-lg bg-foreground/[0.04] opacity-0 transition group-hover:opacity-100" />
+						<UserCircle className="relative z-10 h-[24px] w-[24px]" />
+					</button>
 				</div>
 			</div>
 			{activeSection === "extensions" ? (

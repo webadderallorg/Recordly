@@ -105,14 +105,14 @@ export function ExportSettingsMenu({
 								className={cn(
 									"relative flex-1 overflow-hidden rounded-xl border py-2 text-xs font-medium transition-colors",
 									isActive
-										? "border-[#2563EB]/50 text-[#2563EB] dark:text-white"
+										? "border-primary/50 text-primary dark:text-white"
 										: "border-foreground/10 bg-foreground/5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground",
 								)}
 							>
 								{isActive ? (
 									<motion.span
 										layoutId="header-export-format-pill"
-										className="absolute inset-0 rounded-xl bg-[#2563EB]/10"
+										className="absolute inset-0 rounded-xl bg-primary/10"
 										transition={{ type: "spring", stiffness: 380, damping: 32 }}
 									/>
 								) : null}
@@ -280,13 +280,13 @@ export function ExportSettingsMenu({
 						})}
 					</div>
 					{!isLegacyModel && nvidiaCudaExportAvailable ? (
-						<div className="mb-3 flex min-h-12 items-center justify-between gap-3 rounded-lg border border-[#2563EB]/20 bg-[#2563EB]/5 px-3 py-2">
+						<div className="mb-3 flex min-h-12 items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
 							<div className="min-w-0">
 								<div className="flex items-center gap-1.5">
 									<span className="text-[11px] font-semibold text-foreground">
 										{tSettings("export.nvidiaCuda.title", "NVIDIA CUDA")}
 									</span>
-									<span className="rounded bg-[#2563EB]/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-[#2563EB]">
+									<span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-primary">
 										{tSettings("export.nvidiaCuda.badge", "Experimental")}
 									</span>
 								</div>
@@ -304,7 +304,7 @@ export function ExportSettingsMenu({
 									"export.nvidiaCuda.toggle",
 									"Enable experimental NVIDIA CUDA export",
 								)}
-								className="shrink-0 scale-75 data-[state=checked]:bg-[#2563EB]"
+								className="shrink-0 scale-75 data-[state=checked]:bg-primary"
 							/>
 						</div>
 					) : null}
@@ -331,7 +331,7 @@ export function ExportSettingsMenu({
 									"export.captionSidecar.toggle",
 									"Export captions sidecar files",
 								)}
-								className="shrink-0 scale-75 data-[state=checked]:bg-[#2563EB]"
+								className="shrink-0 scale-75 data-[state=checked]:bg-primary"
 							/>
 						</div>
 					) : null}
@@ -442,7 +442,7 @@ export function ExportSettingsMenu({
 							<Switch
 								checked={gifLoop}
 								onCheckedChange={onGifLoopChange}
-								className="scale-75 data-[state=checked]:bg-[#2563EB]"
+								className="scale-75 data-[state=checked]:bg-primary"
 							/>
 						</div>
 					</div>
@@ -453,7 +453,7 @@ export function ExportSettingsMenu({
 				type="button"
 				size="lg"
 				onClick={onExport}
-				className="h-11 w-full gap-2 rounded-lg bg-[#2563EB] text-sm font-semibold text-white transition-colors duration-200 hover:bg-[#2563EB]/90"
+				className="h-11 w-full gap-2 rounded-lg bg-primary text-sm font-semibold text-white transition-colors duration-200 hover:bg-primary/90"
 			>
 				<Download className="h-4 w-4" />
 				{tSettings("export.exportVideo", undefined, {

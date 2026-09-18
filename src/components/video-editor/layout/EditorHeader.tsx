@@ -92,7 +92,7 @@ export function EditorHeader(props: Props) {
 
 	return (
 		<div
-			className="relative z-50 flex h-11 flex-shrink-0 items-center justify-between border-b border-foreground/10 bg-editor-header/88 px-5 backdrop-blur-md"
+			className="relative z-50 flex h-11 flex-shrink-0 items-center justify-between bg-card rounded-md px-5"
 			style={{ WebkitAppRegion: "drag" } as CSSProperties}
 		>
 			<div
@@ -119,22 +119,22 @@ export function EditorHeader(props: Props) {
 					variant="ghost"
 					onClick={handleUndo}
 					disabled={!canUndo}
-					className="inline-flex h-8 w-8 items-center justify-center rounded-[5px] border border-foreground/10 bg-foreground/5 p-0 text-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+					className="inline-flex h-7 w-7 items-center justify-center rounded-[5px] bg-transparent p-0 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
 					title={t("common.actions.undo", "Undo")}
 					aria-label={t("common.actions.undo", "Undo")}
 				>
-					<Undo2 className="h-4 w-4" />
+					<Undo2 className="h-[14px] w-[14px]" />
 				</Button>
 				<Button
 					type="button"
 					variant="ghost"
 					onClick={handleRedo}
 					disabled={!canRedo}
-					className="inline-flex h-8 w-8 items-center justify-center rounded-[5px] border border-foreground/10 bg-foreground/5 p-0 text-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+					className="inline-flex h-7 w-7 items-center justify-center rounded-[5px] bg-transparent p-0 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
 					title={t("common.actions.redo", "Redo")}
 					aria-label={t("common.actions.redo", "Redo")}
 				>
-					<Redo2 className="h-4 w-4" />
+					<Redo2 className="h-[14px] w-[14px]" />
 				</Button>
 			</div>
 
@@ -148,7 +148,7 @@ export function EditorHeader(props: Props) {
 						className="flex max-w-[min(52vw,460px)] items-baseline gap-1 rounded-[7px] border border-foreground/10 bg-editor-panel/[0.88] px-2.5 py-1 shadow-[0_10px_28px_rgba(0,0,0,0.18)]"
 					>
 						{hasUnsavedChanges ? (
-							<span className="mt-[1px] size-2 shrink-0 rounded-full bg-[#2563EB]" />
+							<span className="mt-[1px] size-2 shrink-0 rounded-full bg-primary" />
 						) : null}
 						<input
 							ref={projectNameInputRef}
@@ -182,7 +182,7 @@ export function EditorHeader(props: Props) {
 						aria-label={t("editor.project.renameTitle", "Rename project")}
 					>
 						{hasUnsavedChanges ? (
-							<span className="mt-[1px] size-2 shrink-0 rounded-full bg-[#2563EB]" />
+							<span className="mt-[1px] size-2 shrink-0 rounded-full bg-primary" />
 						) : null}
 						<span className="truncate text-sm font-semibold tracking-tight text-foreground/90">
 							{projectDisplayName}

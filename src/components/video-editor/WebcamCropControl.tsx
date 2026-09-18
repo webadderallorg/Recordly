@@ -441,7 +441,7 @@ export function WebcamCropControl({
 
 			<div
 				className={cn(
-					"absolute border border-white shadow-[0_0_0_1px_rgba(37,99,235,0.9),0_8px_24px_rgba(0,0,0,0.25)] focus:outline-none focus:ring-2 focus:ring-[#2563EB]/60 focus:ring-offset-2 focus:ring-offset-editor-dialog",
+					"absolute border border-white shadow-[0_0_0_1px_rgba(37,99,235,0.9),0_8px_24px_rgba(0,0,0,0.25)] focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-2 focus:ring-offset-editor-dialog",
 					activeHandle === "move" ? "cursor-grabbing" : "cursor-move",
 				)}
 				style={{
@@ -473,7 +473,7 @@ export function WebcamCropControl({
 						aria-valuenow={Math.round(crop.width * 100)}
 						aria-valuetext={`${Math.round(crop.width * 100)}%`}
 						className={cn(
-							"absolute z-10 h-3.5 w-3.5 rounded-[3px] border-2 border-white bg-[#2563EB] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#2563EB]/60 focus:ring-offset-2 focus:ring-offset-editor-dialog",
+							"absolute z-10 h-3.5 w-3.5 rounded-[3px] border-2 border-white bg-primary shadow-sm focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-2 focus:ring-offset-editor-dialog",
 							handle.className,
 							handle.cursorClassName,
 							activeHandle === handle.handle && "scale-110",

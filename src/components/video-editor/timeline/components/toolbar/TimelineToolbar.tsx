@@ -79,7 +79,7 @@ export default function TimelineToolbar({
 					onClick={onAddZoom}
 					variant="ghost"
 					size="icon"
-					className="h-7 w-7 text-muted-foreground hover:text-[#2563EB] hover:bg-[#2563EB]/10 transition-all"
+					className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
 					title={addZoomLabel}
 					aria-label={addZoomLabel}
 				>
@@ -89,7 +89,7 @@ export default function TimelineToolbar({
 					onClick={onSuggestZooms}
 					variant="ghost"
 					size="icon"
-					className="h-7 w-7 text-muted-foreground hover:text-[#2563EB] hover:bg-[#2563EB]/10 transition-all"
+					className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
 					title={suggestZoomsLabel}
 					aria-label={suggestZoomsLabel}
 				>
@@ -150,7 +150,7 @@ export default function TimelineToolbar({
 							>
 								<span>{getAspectRatioLabel(ratio)}</span>
 								{aspectRatio === ratio && (
-									<Check className="w-3 h-3 text-[#2563EB]" />
+									<Check className="w-3 h-3 text-primary" />
 								)}
 							</DropdownMenuItem>
 						))}
@@ -165,7 +165,7 @@ export default function TimelineToolbar({
 									onCustomAspectWidthChange(event.target.value.replace(/\D/g, ""))
 								}
 								onKeyDown={onCustomAspectRatioKeyDown}
-								className="w-12 h-7 rounded border border-foreground/10 bg-foreground/5 px-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+								className="w-12 h-7 rounded border border-foreground/10 bg-foreground/5 px-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
 								aria-label="Custom aspect width"
 							/>
 							<span className="text-muted-foreground/70">:</span>
@@ -179,7 +179,7 @@ export default function TimelineToolbar({
 									)
 								}
 								onKeyDown={onCustomAspectRatioKeyDown}
-								className="w-12 h-7 rounded border border-foreground/10 bg-foreground/5 px-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+								className="w-12 h-7 rounded border border-foreground/10 bg-foreground/5 px-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
 								aria-label="Custom aspect height"
 							/>
 							<Button
@@ -191,7 +191,7 @@ export default function TimelineToolbar({
 								Set
 							</Button>
 							{isCustomAspectRatio(aspectRatio) && (
-								<Check className="w-3 h-3 text-[#2563EB] ml-auto" />
+								<Check className="w-3 h-3 text-primary ml-auto" />
 							)}
 						</div>
 					</DropdownMenuContent>
@@ -206,25 +206,25 @@ export default function TimelineToolbar({
 				>
 					<Crop className="w-3.5 h-3.5" />
 					<span className="font-medium">{cropLabel}</span>
-					{isCropped ? <span className="h-1.5 w-1.5 rounded-full bg-[#2563EB]" /> : null}
+					{isCropped ? <span className="h-1.5 w-1.5 rounded-full bg-primary" /> : null}
 				</Button>
 			</div>
 			<div className="flex-1" />
 			<div className="flex items-center gap-4 text-[10px] text-muted-foreground/70 font-medium">
 				<span className="flex items-center gap-1.5">
-					<kbd className="px-1.5 py-0.5 bg-foreground/5 border border-foreground/10 rounded text-[#2563EB] font-sans">
+					<kbd className="px-1.5 py-0.5 bg-foreground/5 border border-foreground/10 rounded text-primary font-sans">
 						Side Scroll
 					</kbd>
 					<span>Pan</span>
 				</span>
 				<span className="flex items-center gap-1.5">
-					<kbd className="px-1.5 py-0.5 bg-foreground/5 border border-foreground/10 rounded text-[#2563EB] font-sans">
+					<kbd className="px-1.5 py-0.5 bg-foreground/5 border border-foreground/10 rounded text-primary font-sans">
 						{scrollLabels.pan}
 					</kbd>
 					<span>Pan</span>
 				</span>
 				<span className="flex items-center gap-1.5">
-					<kbd className="px-1.5 py-0.5 bg-foreground/5 border border-foreground/10 rounded text-[#2563EB] font-sans">
+					<kbd className="px-1.5 py-0.5 bg-foreground/5 border border-foreground/10 rounded text-primary font-sans">
 						{scrollLabels.zoom}
 					</kbd>
 					<span>Zoom</span>

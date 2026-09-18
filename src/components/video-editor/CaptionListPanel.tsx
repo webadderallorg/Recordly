@@ -131,7 +131,7 @@ function CaptionEditor({
 							event.currentTarget.blur();
 						}
 					}}
-					className="min-h-[4.5rem] w-full resize-none rounded-md border border-foreground/10 bg-background/60 px-2 py-1.5 text-sm text-foreground outline-none focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]"
+					className="min-h-[4.5rem] w-full resize-none rounded-md border border-foreground/10 bg-background/60 px-2 py-1.5 text-sm text-foreground outline-none focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary"
 				/>
 			</label>
 
@@ -149,7 +149,7 @@ function CaptionEditor({
 								event.currentTarget.blur();
 							}
 						}}
-						className="w-full rounded-md border border-foreground/10 bg-background/60 px-2 py-1 font-mono text-xs tabular-nums text-foreground outline-none focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]"
+						className="w-full rounded-md border border-foreground/10 bg-background/60 px-2 py-1 font-mono text-xs tabular-nums text-foreground outline-none focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary"
 					/>
 				</label>
 				<label className="flex flex-1 flex-col gap-1">
@@ -165,7 +165,7 @@ function CaptionEditor({
 								event.currentTarget.blur();
 							}
 						}}
-						className="w-full rounded-md border border-foreground/10 bg-background/60 px-2 py-1 font-mono text-xs tabular-nums text-foreground outline-none focus-visible:border-[#2563EB] focus-visible:ring-1 focus-visible:ring-[#2563EB]"
+						className="w-full rounded-md border border-foreground/10 bg-background/60 px-2 py-1 font-mono text-xs tabular-nums text-foreground outline-none focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary"
 					/>
 				</label>
 			</div>

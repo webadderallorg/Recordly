@@ -69,7 +69,7 @@ export function EditorPresetMenu({ t, presets }: Props) {
 							<Button
 								type="submit"
 								size="sm"
-								className="h-9 rounded-xl bg-[#2563EB] px-3 text-white hover:bg-[#1d4ed8]"
+								className="h-9 rounded-xl bg-primary px-3 text-white hover:bg-[#1d4ed8]"
 							>
 								{t("common.actions.save", "Save")}
 							</Button>
@@ -93,7 +93,7 @@ export function EditorPresetMenu({ t, presets }: Props) {
 											className={cn(
 												"flex items-center gap-2 rounded-xl border px-2 py-2 text-sm transition-colors",
 												isActive
-													? "border-[#2563EB]/20 bg-[#2563EB]/10 text-foreground"
+													? "border-primary/20 bg-primary/10 text-foreground"
 													: "border-foreground/8 bg-foreground/[0.03] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground",
 											)}
 										>
@@ -104,7 +104,7 @@ export function EditorPresetMenu({ t, presets }: Props) {
 											>
 												<span className="truncate pr-3">{preset.name}</span>
 												{isActive ? (
-													<Check className="h-3.5 w-3.5 shrink-0 text-[#2563EB]" />
+													<Check className="h-3.5 w-3.5 shrink-0 text-primary" />
 												) : null}
 											</button>
 											<button

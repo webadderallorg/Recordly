@@ -268,3 +268,11 @@
 		transform: translateX(270%);
 	}
 }
+
+/* Preview Fullscreen mode — hide all other editor UI */
+body.preview-fullscreen [data-editor-header],
+body.preview-fullscreen [data-editor-sidebar],
+body.preview-fullscreen [data-editor-timeline],
+body.preview-fullscreen [data-editor-announcement] {
+	display: none !important;
+}

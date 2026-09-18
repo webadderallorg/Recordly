@@ -129,7 +129,7 @@ export function ShortcutsConfigDialog() {
 			<DialogContent className="bg-editor-dialog border-foreground/10 text-foreground max-w-[460px]">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2 text-sm">
-						<Keyboard className="w-4 h-4 text-[#2563EB]" />
+						<Keyboard className="w-4 h-4 text-primary" />
 						{t("shortcutsConfig.title")}
 					</DialogTitle>
 				</DialogHeader>
@@ -161,10 +161,10 @@ export function ShortcutsConfigDialog() {
 										className={[
 											"px-2 py-1 rounded text-xs font-mono border transition-all min-w-[90px] text-center select-none",
 											isCapturing
-												? "bg-[#2563EB]/20 border-[#2563EB] text-[#2563EB] animate-pulse"
+												? "bg-primary/20 border-primary text-primary animate-pulse"
 												: hasConflict
 													? "bg-amber-500/10 border-amber-500/50 text-amber-400"
-													: "bg-foreground/5 border-foreground/10 text-foreground hover:border-[#2563EB]/50 hover:text-[#2563EB] cursor-pointer",
+													: "bg-foreground/5 border-foreground/10 text-foreground hover:border-primary/50 hover:text-primary cursor-pointer",
 										].join(" ")}
 									>
 										{isCapturing
@@ -242,7 +242,7 @@ export function ShortcutsConfigDialog() {
 						</Button>
 						<Button
 							size="sm"
-							className="bg-[#2563EB] hover:bg-[#1d4ed8] text-white"
+							className="bg-primary hover:bg-[#1d4ed8] text-white"
 							onClick={handleSave}
 						>
 							{t("shortcutsConfig.save")}
