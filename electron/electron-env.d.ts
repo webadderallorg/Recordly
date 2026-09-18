@@ -611,6 +611,7 @@ interface Window {
 		onRecordingStateChanged: (
 			callback: (state: { recording: boolean; sourceName: string }) => void,
 		) => () => void;
+		onRecordingTogglePause: (callback: () => void) => () => void;
 		onRecordingSessionChanged: (
 			callback: (session: RendererRecordingSessionData | null) => void,
 		) => () => void;
