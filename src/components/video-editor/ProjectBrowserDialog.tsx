@@ -219,7 +219,7 @@ export default function ProjectBrowserDialog({
 											)}
 											{entry.isCurrent ? (
 												<div className="absolute right-1.5 top-1.5">
-													<span className="rounded-[5px] bg-[#2563EB] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_20px_rgba(37,99,235,0.28)]">
+													<span className="rounded-[5px] bg-primary px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_20px_rgba(37,99,235,0.28)]">
 														Current
 													</span>
 												</div>
@@ -301,7 +301,7 @@ export default function ProjectBrowserDialog({
 											)}
 											{entry.isCurrent ? (
 												<div className="absolute right-1.5 top-1.5">
-													<span className="rounded-[5px] bg-[#2563EB] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_20px_rgba(37,99,235,0.28)]">
+													<span className="rounded-[5px] bg-primary px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_20px_rgba(37,99,235,0.28)]">
 														Current
 													</span>
 												</div>

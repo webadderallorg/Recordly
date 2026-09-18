@@ -15,8 +15,8 @@
 
 .glassGreen.selected {
 	background: #1c3e89;
-	border-color: #2563eb;
-	box-shadow: inset 0 0 0 1.5px #2563eb;
+	border-color: hsl(var(--primary));
+	box-shadow: inset 0 0 0 1.5px hsl(var(--primary));
 	z-index: 10;
 }
 
@@ -125,8 +125,8 @@
 
 .glassCyan.selected {
 	background: #1c3e89;
-	border-color: #2563eb;
-	box-shadow: inset 0 0 0 1.5px #2563eb;
+	border-color: hsl(var(--primary));
+	box-shadow: inset 0 0 0 1.5px hsl(var(--primary));
 	z-index: 10;
 }
 
@@ -206,8 +206,8 @@
 }
 :global(:root:not(.dark)) .glassGreen.selected {
 	background: linear-gradient(180deg, #93c5fd 0%, #3b82f6 100%);
-	border-color: #2563eb;
-	box-shadow: inset 0 0 0 1.5px #2563eb;
+	border-color: hsl(var(--primary));
+	box-shadow: inset 0 0 0 1.5px hsl(var(--primary));
 }
 
 :global(:root:not(.dark)) .glassRed {
@@ -276,8 +276,8 @@
 }
 :global(:root:not(.dark)) .glassCyan.selected {
 	background: linear-gradient(180deg, #93c5fd 0%, #3b82f6 100%);
-	border-color: #2563eb;
-	box-shadow: inset 0 0 0 1.5px #2563eb;
+	border-color: hsl(var(--primary));
+	box-shadow: inset 0 0 0 1.5px hsl(var(--primary));
 }
 
 :global(:root:not(.dark)) .glassDarkGreen {

@@ -91,7 +91,7 @@ export default function TimelineAxis({ videoDurationMs, currentTimeMs }: Timelin
 								className={cn(
 									"text-[10px] font-medium tabular-nums tracking-tight",
 									Math.abs(marker.time - currentTimeMs) < 1
-										? "text-[#2563EB]"
+										? "text-primary"
 										: "text-foreground/40",
 								)}
 							>

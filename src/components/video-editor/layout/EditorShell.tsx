@@ -145,48 +145,54 @@ export function EditorShell(props: Props) {
 		);
 
 	return (
-		<div className="flex h-screen flex-col overflow-hidden bg-editor-bg text-foreground selection:bg-[#2563EB]/30">
-			<EditorHeader
-				t={t}
-				headerLeftControlsPaddingClass={headerLeftControlsPaddingClass}
-				project={project}
-				projectBrowserTriggerRef={ui.projectBrowserTriggerRef}
-				projectNameInputRef={ui.projectNameInputRef}
-				projectDisplayName={snapshot.projectDisplayName}
-				hasUnsavedChanges={hasUnsavedChanges}
-				canUndo={history.canUndo}
-				canRedo={history.canRedo}
-				handleOpenProjectBrowser={openActions.handleOpenProjectBrowser}
-				handleUndo={history.handleUndo}
-				handleRedo={history.handleRedo}
-				handleProjectNameSubmit={saveActions.handleProjectNameSubmit}
-				closeProjectNameEditor={saveActions.closeProjectNameEditor}
-				presets={presets}
-				exportSettings={exportSettings}
-				exportSession={exportSession}
-				exportDimensions={exportDimensions}
-				exportStatus={exportStatus}
-				hasCaptionsForSidecar={hasCaptionsForSidecar}
-				nvidiaCudaExportAvailable={nvidiaCudaExportAvailable}
-				experimentalNvidiaCudaExport={experimentalNvidiaCudaExport}
-				setExperimentalNvidiaCudaExport={setExperimentalNvidiaCudaExport}
-				handleOpenExportDropdown={dialogActions.handleOpenExportDropdown}
-				handleExportDropdownClose={dialogActions.handleExportDropdownClose}
-				handleCancelExport={dialogActions.handleCancelExport}
-				handleRetrySaveExport={dialogActions.handleRetrySaveExport}
-				handleStartExportFromDropdown={dialogActions.handleStartExportFromDropdown}
-				revealExportedFile={dialogActions.revealExportedFile}
-				exportMessage={exportMessage}
-			/>
-			<EditorAnnouncementBanner />
-			<div className="relative flex min-h-0 flex-1 flex-col gap-3 p-4">
-				<div className="relative z-10 flex min-h-0 flex-1 gap-3">
-					<EditorSidebar
+		<div className="flex h-screen flex-col overflow-hidden bg-editor-bg text-foreground selection:bg-primary/30">
+			<div className="relative flex min-h-0 flex-1 flex-col gap-2 p-2">
+				<div data-editor-header="">
+					<EditorHeader
 						t={t}
-						activeSection={ui.activeEffectSection}
-						setActiveSection={ui.setActiveEffectSection}
-						settingsPanelProps={settingsPanelProps}
+						headerLeftControlsPaddingClass={headerLeftControlsPaddingClass}
+						project={project}
+						projectBrowserTriggerRef={ui.projectBrowserTriggerRef}
+						projectNameInputRef={ui.projectNameInputRef}
+						projectDisplayName={snapshot.projectDisplayName}
+						hasUnsavedChanges={hasUnsavedChanges}
+						canUndo={history.canUndo}
+						canRedo={history.canRedo}
+						handleOpenProjectBrowser={openActions.handleOpenProjectBrowser}
+						handleUndo={history.handleUndo}
+						handleRedo={history.handleRedo}
+						handleProjectNameSubmit={saveActions.handleProjectNameSubmit}
+						closeProjectNameEditor={saveActions.closeProjectNameEditor}
+						presets={presets}
+						exportSettings={exportSettings}
+						exportSession={exportSession}
+						exportDimensions={exportDimensions}
+						exportStatus={exportStatus}
+						hasCaptionsForSidecar={hasCaptionsForSidecar}
+						nvidiaCudaExportAvailable={nvidiaCudaExportAvailable}
+						experimentalNvidiaCudaExport={experimentalNvidiaCudaExport}
+						setExperimentalNvidiaCudaExport={setExperimentalNvidiaCudaExport}
+						handleOpenExportDropdown={dialogActions.handleOpenExportDropdown}
+						handleExportDropdownClose={dialogActions.handleExportDropdownClose}
+						handleCancelExport={dialogActions.handleCancelExport}
+						handleRetrySaveExport={dialogActions.handleRetrySaveExport}
+						handleStartExportFromDropdown={dialogActions.handleStartExportFromDropdown}
+						revealExportedFile={dialogActions.revealExportedFile}
+						exportMessage={exportMessage}
 					/>
+				</div>
+				<div data-editor-announcement="">
+					<EditorAnnouncementBanner />
+				</div>
+				<div className="relative z-10 flex min-h-0 flex-1 gap-2">
+					<div data-editor-sidebar="">
+						<EditorSidebar
+							t={t}
+							activeSection={ui.activeEffectSection}
+							setActiveSection={ui.setActiveEffectSection}
+							settingsPanelProps={settingsPanelProps}
+						/>
+					</div>
 					<EditorPreviewPanel
 						t={t}
 						videoPath={project.videoPath}
@@ -221,27 +227,29 @@ export function EditorShell(props: Props) {
 						setError={project.setError}
 					/>
 				</div>
-				<EditorTimelinePanel
-					timelineRef={ui.timelineRef}
-					timeline={timeline}
-					projection={projection}
-					playback={playback}
-					audio={audio}
-					zoomCommands={zoomCommands}
-					clipCommands={clipCommands}
-					audioCommands={audioCommands}
-					captionCommands={captionCommands}
-					annotationCommands={annotationCommands}
-					videoPath={project.videoPath}
-					videoSourcePath={project.videoSourcePath}
-					cursorTelemetrySourcePath={timeline.cursorTelemetrySourcePath}
-					normalizedCursorTelemetry={cursor.normalizedCursorTelemetry}
-					autoSuggestZoomsTrigger={ui.autoSuggestZoomsTrigger}
-					handleAutoSuggestZoomsConsumed={handleAutoSuggestZoomsConsumed}
-					disableSuggestedZooms={!appearance.autoApplyFreshRecordingAutoZooms}
-					currentTime={ui.currentTime}
-					handleSelectAnnotation={handleSelectAnnotation}
-				/>
+				<div data-editor-timeline="">
+					<EditorTimelinePanel
+						timelineRef={ui.timelineRef}
+						timeline={timeline}
+						projection={projection}
+						playback={playback}
+						audio={audio}
+						zoomCommands={zoomCommands}
+						clipCommands={clipCommands}
+						audioCommands={audioCommands}
+						captionCommands={captionCommands}
+						annotationCommands={annotationCommands}
+						videoPath={project.videoPath}
+						videoSourcePath={project.videoSourcePath}
+						cursorTelemetrySourcePath={timeline.cursorTelemetrySourcePath}
+						normalizedCursorTelemetry={cursor.normalizedCursorTelemetry}
+						autoSuggestZoomsTrigger={ui.autoSuggestZoomsTrigger}
+						handleAutoSuggestZoomsConsumed={handleAutoSuggestZoomsConsumed}
+						disableSuggestedZooms={!appearance.autoApplyFreshRecordingAutoZooms}
+						currentTime={ui.currentTime}
+						handleSelectAnnotation={handleSelectAnnotation}
+					/>
+				</div>
 			</div>
 			{editorDialogs}
 			<CropEditorDialog

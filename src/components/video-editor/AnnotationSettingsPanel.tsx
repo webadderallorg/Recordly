@@ -146,7 +146,7 @@ export function AnnotationSettingsPanel({
 						<span className="text-sm font-medium text-foreground">
 							{t("annotations.settings")}
 						</span>
-						<span className="text-[10px] uppercase tracking-wider font-medium text-[#2563EB] bg-[#2563EB]/10 px-2 py-1 rounded-full">
+						<span className="text-[10px] uppercase tracking-wider font-medium text-primary bg-primary/10 px-2 py-1 rounded-full">
 							{t("annotations.active")}
 						</span>
 					</div>
@@ -160,21 +160,21 @@ export function AnnotationSettingsPanel({
 						<TabsList className="mb-4 bg-foreground/5 border border-foreground/5 p-1 w-full grid grid-cols-4 h-auto rounded-xl">
 							<TabsTrigger
 								value="text"
-								className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-muted-foreground py-2 rounded-lg transition-all gap-2"
+								className="data-[state=active]:bg-primary data-[state=active]:text-white text-muted-foreground py-2 rounded-lg transition-all gap-2"
 							>
 								<Type className="w-4 h-4" />
 								{t("annotations.text")}
 							</TabsTrigger>
 							<TabsTrigger
 								value="image"
-								className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-muted-foreground py-2 rounded-lg transition-all gap-2"
+								className="data-[state=active]:bg-primary data-[state=active]:text-white text-muted-foreground py-2 rounded-lg transition-all gap-2"
 							>
 								<ImageIcon className="w-4 h-4" />
 								{t("annotations.image")}
 							</TabsTrigger>
 							<TabsTrigger
 								value="figure"
-								className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-muted-foreground py-2 rounded-lg transition-all gap-2"
+								className="data-[state=active]:bg-primary data-[state=active]:text-white text-muted-foreground py-2 rounded-lg transition-all gap-2"
 							>
 								<svg
 									className="w-4 h-4"
@@ -193,7 +193,7 @@ export function AnnotationSettingsPanel({
 							</TabsTrigger>
 							<TabsTrigger
 								value="blur"
-								className="data-[state=active]:bg-[#2563EB] data-[state=active]:text-white text-muted-foreground py-2 rounded-lg transition-all gap-2"
+								className="data-[state=active]:bg-primary data-[state=active]:text-white text-muted-foreground py-2 rounded-lg transition-all gap-2"
 							>
 								<SquareDashed className="w-4 h-4" />
 								{t("annotations.blur")}
@@ -211,7 +211,7 @@ export function AnnotationSettingsPanel({
 									onChange={(e) => onContentChange(e.target.value)}
 									placeholder={t("annotations.textPlaceholder")}
 									rows={5}
-									className="w-full px-3 py-2 bg-foreground/5 border border-foreground/10 rounded-lg text-foreground text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent resize-none"
+									className="w-full px-3 py-2 bg-foreground/5 border border-foreground/10 rounded-lg text-foreground text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
 								/>
 							</div>
 
@@ -321,7 +321,7 @@ export function AnnotationSettingsPanel({
 															: "bold",
 												})
 											}
-											className="h-8 w-8 data-[state=on]:bg-[#2563EB] data-[state=on]:text-white text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
+											className="h-8 w-8 data-[state=on]:bg-primary data-[state=on]:text-white text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
 										>
 											<Bold className="h-4 w-4" />
 										</ToggleGroupItem>
@@ -341,7 +341,7 @@ export function AnnotationSettingsPanel({
 															: "italic",
 												})
 											}
-											className="h-8 w-8 data-[state=on]:bg-[#2563EB] data-[state=on]:text-white text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
+											className="h-8 w-8 data-[state=on]:bg-primary data-[state=on]:text-white text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
 										>
 											<Italic className="h-4 w-4" />
 										</ToggleGroupItem>
@@ -362,7 +362,7 @@ export function AnnotationSettingsPanel({
 															: "underline",
 												})
 											}
-											className="h-8 w-8 data-[state=on]:bg-[#2563EB] data-[state=on]:text-white text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
+											className="h-8 w-8 data-[state=on]:bg-primary data-[state=on]:text-white text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
 										>
 											<Underline className="h-4 w-4" />
 										</ToggleGroupItem>
@@ -377,7 +377,7 @@ export function AnnotationSettingsPanel({
 											value="left"
 											aria-label={t("annotations.alignLeft")}
 											onClick={() => onStyleChange({ textAlign: "left" })}
-											className="h-8 w-8 data-[state=on]:bg-[#2563EB] data-[state=on]:text-white text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
+											className="h-8 w-8 data-[state=on]:bg-primary data-[state=on]:text-white text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
 										>
 											<AlignLeft className="h-4 w-4" />
 										</ToggleGroupItem>
@@ -385,7 +385,7 @@ export function AnnotationSettingsPanel({
 											value="center"
 											aria-label={t("annotations.alignCenter")}
 											onClick={() => onStyleChange({ textAlign: "center" })}
-											className="h-8 w-8 data-[state=on]:bg-[#2563EB] data-[state=on]:text-white text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
+											className="h-8 w-8 data-[state=on]:bg-primary data-[state=on]:text-white text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
 										>
 											<AlignCenter className="h-4 w-4" />
 										</ToggleGroupItem>
@@ -393,7 +393,7 @@ export function AnnotationSettingsPanel({
 											value="right"
 											aria-label={t("annotations.alignRight")}
 											onClick={() => onStyleChange({ textAlign: "right" })}
-											className="h-8 w-8 data-[state=on]:bg-[#2563EB] data-[state=on]:text-white text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
+											className="h-8 w-8 data-[state=on]:bg-primary data-[state=on]:text-white text-muted-foreground hover:bg-foreground/5 hover:text-foreground"
 										>
 											<AlignRight className="h-4 w-4" />
 										</ToggleGroupItem>
@@ -517,7 +517,7 @@ export function AnnotationSettingsPanel({
 							<Button
 								onClick={() => fileInputRef.current?.click()}
 								variant="outline"
-								className="w-full gap-2 bg-foreground/5 text-foreground border-foreground/10 hover:bg-[#2563EB] hover:text-white hover:border-[#2563EB] transition-all py-8"
+								className="w-full gap-2 bg-foreground/5 text-foreground border-foreground/10 hover:bg-primary hover:text-white hover:border-primary transition-all py-8"
 							>
 								<Upload className="w-5 h-5" />
 								{t("annotations.uploadImage")}
@@ -576,7 +576,7 @@ export function AnnotationSettingsPanel({
 													"h-16 rounded-lg border flex items-center justify-center transition-all p-2",
 													annotation.figureData?.arrowDirection ===
 														direction
-														? "bg-[#2563EB] border-[#2563EB]"
+														? "bg-primary border-primary"
 														: "bg-foreground/5 border-foreground/10 hover:bg-foreground/10 hover:border-foreground/20",
 												)}
 											>
@@ -696,7 +696,7 @@ export function AnnotationSettingsPanel({
 												"w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all",
 												!annotation.blurColor ||
 													annotation.blurColor === "transparent"
-													? "border-[#2563EB] scale-110"
+													? "border-primary scale-110"
 													: "border-transparent hover:border-foreground/20",
 											)}
 											title={t("annotations.none", "None")}
@@ -710,7 +710,7 @@ export function AnnotationSettingsPanel({
 											className={cn(
 												"w-8 h-8 rounded-full border-2 transition-all bg-black",
 												annotation.blurColor === "#000000"
-													? "border-[#2563EB] scale-110"
+													? "border-primary scale-110"
 													: "border-transparent hover:border-foreground/20",
 											)}
 											title="Black"
@@ -720,7 +720,7 @@ export function AnnotationSettingsPanel({
 											className={cn(
 												"w-8 h-8 rounded-full border-2 transition-all bg-white",
 												annotation.blurColor === "#FFFFFF"
-													? "border-[#2563EB] scale-110"
+													? "border-primary scale-110"
 													: "border-transparent hover:border-foreground/20",
 											)}
 											title="White"
@@ -738,7 +738,7 @@ export function AnnotationSettingsPanel({
 																"transparent",
 																"",
 															].includes(annotation.blurColor)
-															? "border-[#2563EB] scale-110"
+															? "border-primary scale-110"
 															: "border-transparent hover:border-foreground/20",
 													)}
 													style={{

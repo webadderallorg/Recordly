@@ -440,9 +440,7 @@ export class FrameRenderer {
 	private retainedBackgroundTextureFrame: VideoFrame | null = null;
 	private retainedWebcamSourceFrame: VideoFrame | null = null;
 	private retainedWebcamTextureFrame: VideoFrame | null = null;
-	private retainedSceneBitmapTimestamp: number | null = null;
 	private retainedSceneBitmap: ImageBitmap | null = null;
-	private retainedBackgroundBitmapTimestamp: number | null = null;
 	private retainedBackgroundBitmap: ImageBitmap | null = null;
 	private cleanupWebcamSource: (() => void) | null = null;
 
@@ -623,8 +621,14 @@ export class FrameRenderer {
 		};
 
 		const preferredRenderBackend = this.config.preferredRenderBackend;
+		
+		// Linux WebGPU in PixiJS v8/Electron has upstream driver issues (especially 
+		// on Intel integrated graphics) leading to _resourceType BindGroup crashes.
+		// Force WebGL on Linux for stability unless they specifically force WebGPU.
+		const isLinux = typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("linux");
+		
 		const backendOrder: ExportRenderBackend[] =
-			preferredRenderBackend === "webgl"
+			preferredRenderBackend === "webgl" || (isLinux && preferredRenderBackend !== "webgpu")
 				? ["webgl", "webgpu"]
 				: preferredRenderBackend === "webgpu"
 					? ["webgpu", "webgl"]
@@ -739,7 +743,8 @@ export class FrameRenderer {
 			const previousTexture = layer.sprite.texture;
 			layer.sprite.texture = nextTexture;
 			layer.textureSource = nextTexture.source as unknown as MutableVideoTextureSource;
-			previousTexture.destroy(true);
+			const isSameSource = previousTexture.source === nextTexture.source;
+			previousTexture.destroy(!isSameSource);
 		} else {
 			layer.sprite = new Sprite(nextTexture);
 			layer.container.addChild(layer.sprite);
@@ -854,13 +859,11 @@ export class FrameRenderer {
 		if (kind === "scene") {
 			this.retainedSceneBitmap?.close();
 			this.retainedSceneBitmap = null;
-			this.retainedSceneBitmapTimestamp = null;
 			return;
 		}
 
 		this.retainedBackgroundBitmap?.close();
 		this.retainedBackgroundBitmap = null;
-		this.retainedBackgroundBitmapTimestamp = null;
 	}
 
 	private async resolveDetachedVideoFrameSource(
@@ -869,70 +872,9 @@ export class FrameRenderer {
 		fallbackWidth: number,
 		fallbackHeight: number,
 	): Promise<CanvasImageSource | VideoFrame> {
-		if (this.rendererBackend !== "webgpu" || typeof createImageBitmap !== "function") {
-			return this.stageVideoFrameForTexture(frame, kind, fallbackWidth, fallbackHeight);
-		}
-
-		const cachedTimestamp =
-			kind === "scene"
-				? this.retainedSceneBitmapTimestamp
-				: this.retainedBackgroundBitmapTimestamp;
-		const cachedBitmap =
-			kind === "scene" ? this.retainedSceneBitmap : this.retainedBackgroundBitmap;
-		if (cachedTimestamp === frame.timestamp && cachedBitmap) {
-			return cachedBitmap;
-		}
-
-		try {
-			const bitmap = await createImageBitmap(frame);
-			this.closeRetainedBitmap(kind);
-			if (kind === "scene") {
-				this.retainedSceneBitmap = bitmap;
-				this.retainedSceneBitmapTimestamp = frame.timestamp;
-			} else {
-				this.retainedBackgroundBitmap = bitmap;
-				this.retainedBackgroundBitmapTimestamp = frame.timestamp;
-			}
-			return bitmap;
-		} catch (error) {
-			console.warn(
-				`[ModernFrameRenderer] Failed to detach ${kind} VideoFrame to ImageBitmap, falling back to retained VideoFrame:`,
-				error,
-			);
-			return this.stageVideoFrameForTexture(frame, kind, fallbackWidth, fallbackHeight);
-		}
+		return this.stageVideoFrameForTexture(frame, kind, fallbackWidth, fallbackHeight);
 	}
 
-	private resolveRetainedVideoFrameSource(
-		frame: VideoFrame,
-		kind: "scene" | "background" | "webcam",
-		fallbackWidth: number,
-		fallbackHeight: number,
-	): CanvasImageSource | VideoFrame {
-		if (this.rendererBackend !== "webgpu") {
-			return frame;
-		}
-
-		const state = this.getRetainedVideoFrameState(kind);
-		if (state.sourceFrame === frame && state.textureFrame) {
-			return state.textureFrame;
-		}
-
-		try {
-			const retainedFrame = new VideoFrame(frame, {
-				timestamp: frame.timestamp,
-			});
-			this.closeRetainedVideoFrame(kind);
-			this.setRetainedVideoFrameState(kind, frame, retainedFrame);
-			return retainedFrame;
-		} catch (error) {
-			console.warn(
-				`[ModernFrameRenderer] Failed to retain ${kind} VideoFrame, falling back to staging canvas:`,
-				error,
-			);
-			return this.stageVideoFrameOnCanvas(frame, kind, fallbackWidth, fallbackHeight);
-		}
-	}
 
 	private ensureVideoFrameStagingCanvas(
 		kind: "scene" | "background" | "webcam",
@@ -1011,17 +953,9 @@ export class FrameRenderer {
 		fallbackWidth: number,
 		fallbackHeight: number,
 	): CanvasImageSource | VideoFrame {
-		// Keep webcam uploads on the older canvas-staged path. The newer
-		// retained-VideoFrame upload path is fine for the main scene/background,
-		// but it has produced unstable webcam overlays in Lightning exports.
-		if (kind === "webcam") {
-			return this.stageVideoFrameOnCanvas(frame, kind, fallbackWidth, fallbackHeight);
-		}
-
-		if (this.rendererBackend === "webgpu") {
-			return this.resolveRetainedVideoFrameSource(frame, kind, fallbackWidth, fallbackHeight);
-		}
-
+		// Use canvas staging for all video frames. The retained-VideoFrame 
+		// upload path has proven unstable across various WebGPU environments 
+		// (especially on Linux), leading to _resourceType undefined crashes.
 		return this.stageVideoFrameOnCanvas(frame, kind, fallbackWidth, fallbackHeight);
 	}
 
@@ -1032,7 +966,8 @@ export class FrameRenderer {
 		const nextTexture = this.createTextureFromSource(source);
 		const previousTexture = sprite.texture;
 		sprite.texture = nextTexture;
-		previousTexture.destroy(true);
+		const isSameSource = previousTexture.source === nextTexture.source;
+		previousTexture.destroy(!isSameSource);
 		return nextTexture.source as unknown as MutableVideoTextureSource;
 	}
 
@@ -1671,7 +1606,8 @@ export class FrameRenderer {
 			const previousTexture = this.captionSprite.texture;
 			this.captionSprite.texture = nextTexture;
 			this.captionTextureSource = nextTexture.source as unknown as MutableVideoTextureSource;
-			previousTexture.destroy(true);
+			const isSameSource = previousTexture.source === nextTexture.source;
+			previousTexture.destroy(!isSameSource);
 		} else {
 			this.captionSprite = new Sprite(nextTexture);
 			this.captionSprite.anchor.set(0.5);

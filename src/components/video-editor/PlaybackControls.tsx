@@ -68,7 +68,7 @@ export default function PlaybackControls({
 				{/* Custom Track Background */}
 				<div className="absolute left-0 right-0 h-0.5 bg-foreground/10 rounded-full overflow-hidden">
 					<div
-						className="h-full bg-[#2563EB] rounded-full"
+						className="h-full bg-primary rounded-full"
 						style={{ width: `${progress}%` }}
 					/>
 				</div>

@@ -48,8 +48,8 @@ export const SliderControl = memo(function SliderControl({
 
 	const dividerClass =
 		accentColor === "purple"
-			? "bg-foreground/95 shadow-[0_0_10px_rgba(139,92,246,0.28)]"
-			: "bg-foreground/95 shadow-[0_0_10px_rgba(37,99,235,0.28)]";
+			? "bg-primary/90 shadow-[0_0_10px_hsl(var(--primary)/0.4)]"
+			: "bg-primary/90 shadow-[0_0_10px_hsl(var(--primary)/0.35)]";
 
 	// Sync initial and prop-driven changes to CSS variable
 	useEffect(() => {
@@ -163,7 +163,7 @@ export const SliderControl = memo(function SliderControl({
 					onChange(clamp(quantizeToStep(value + step, min, step), min, max));
 				}
 			}}
-			className="relative flex h-10 w-full select-none items-center overflow-hidden rounded-xl bg-editor-bg/80 px-1.5 outline-none focus-visible:ring-1 focus-visible:ring-[#2563EB]/40"
+			className="relative flex h-9 w-full select-none items-center overflow-hidden rounded-xl bg-foreground/[0.04] px-1.5 outline-none focus-visible:ring-1 focus-visible:ring-primary/40 hover:bg-foreground/[0.06] transition-colors"
 			style={
 				{
 					"--slider-pct": String(pct / 100),
@@ -171,7 +171,7 @@ export const SliderControl = memo(function SliderControl({
 			}
 		>
 			<div
-				className="pointer-events-none absolute inset-y-[3px] left-[3px] right-auto rounded-[10px] bg-foreground/[0.08] shadow-[0_4px_10px_0_rgba(0,0,0,0.18)] transition-none"
+				className="pointer-events-none absolute inset-y-[3px] left-[3px] right-auto rounded-[10px] bg-primary/10 transition-none"
 				style={{
 					width: "calc(var(--slider-pct) * (100% - 6px))",
 				}}
@@ -185,12 +185,12 @@ export const SliderControl = memo(function SliderControl({
 					left: "calc(var(--slider-pct) * (100% - 6px) - 6px)",
 				}}
 			/>
-			<span className="pointer-events-none relative z-10 flex-1 pl-3 text-[12px] font-medium text-muted-foreground">
+			<span className="pointer-events-none relative z-10 flex-1 pl-2.5 text-[11px] font-medium text-foreground">
 				{label}
 			</span>
 			<span
 				ref={valueTextRef}
-				className="pointer-events-none relative z-10 pr-3 text-[12px] font-medium tabular-nums text-foreground"
+				className="pointer-events-none relative z-10 pr-2.5 text-[11px] font-semibold tabular-nums text-primary"
 			>
 				{formatValue(value)}
 			</span>
