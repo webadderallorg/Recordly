@@ -8,6 +8,7 @@ import { registerProjectHandlers } from "./register/project";
 import { registerRecordingHandlers } from "./register/recording";
 import { registerSettingsHandlers } from "./register/settings";
 import { registerSourceHandlers } from "./register/sources";
+import { registerTimelineClipImportHandlers } from "./register/timelineClipImport";
 import {
 	selectedSource,
 	setNativeScreenRecordingActive,
@@ -69,6 +70,7 @@ export function registerIpcHandlers(
 	registerAssetHandlers();
 	registerExportHandlers();
 	registerCaptionHandlers();
+	registerTimelineClipImportHandlers();
 	registerProjectHandlers();
 	registerSettingsHandlers();
 }

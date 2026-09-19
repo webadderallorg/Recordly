@@ -701,8 +701,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			captionSidecar,
 		);
 	},
-	openVideoFilePicker: (options?: { includeProjects?: boolean }) => {
+	openVideoFilePicker: (options?: {
+		includeProjects?: boolean;
+		preserveProjectPath?: boolean;
+	}) => {
 		return ipcRenderer.invoke("open-video-file-picker", options);
+	},
+	importTimelineClip: (options: { sourcePath: string; clipPath: string }) => {
+		return ipcRenderer.invoke("import-timeline-clip", options);
 	},
 	openAudioFilePicker: () => {
 		return ipcRenderer.invoke("open-audio-file-picker");
