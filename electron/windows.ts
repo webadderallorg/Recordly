@@ -207,6 +207,13 @@ function getHudOverlayBounds() {
 		recordingActive: hudOverlayRecordingActive,
 		webcamPreviewVisible: hudOverlayWebcamPreviewVisible,
 	});
+	// The fallback geometry is a fixed, solid block sized for platforms that
+	// cannot make the overlay click-through.  Using it while recording on a
+	// platform that *can* pass clicks through leaves a large real window sitting
+	// over the screen: the OS window picker (Cmd+Shift+5) highlights and selects
+	// the HUD instead of the app behind it, and any moment the renderer holds the
+	// mouse the whole block swallows clicks.  Passthrough support is a property
+	// of the platform, not of whether a recording is in progress.
 	return getHudOverlayWindowBounds(
 		workArea,
 		isHudOverlayMousePassthroughSupported(),
