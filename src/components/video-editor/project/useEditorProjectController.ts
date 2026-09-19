@@ -50,6 +50,20 @@ type Input = {
 		SetStateAction<"idle" | "downloading" | "downloaded" | "error">
 	>;
 	setWhisperModelDownloadProgress: Dispatch<SetStateAction<number>>;
+	captionEngine: "whisper" | "parakeet";
+	setCaptionEngine: Dispatch<SetStateAction<"whisper" | "parakeet">>;
+	parakeetExecutablePath: string | null;
+	setParakeetExecutablePath: Dispatch<SetStateAction<string | null>>;
+	parakeetModelPath: string | null;
+	setParakeetModelPath: Dispatch<SetStateAction<string | null>>;
+	downloadedParakeetModelPath: string | null;
+	setDownloadedParakeetModelPath: Dispatch<SetStateAction<string | null>>;
+	parakeetModelDownloadStatus: "idle" | "downloading" | "downloaded" | "error";
+	setParakeetModelDownloadStatus: Dispatch<
+		SetStateAction<"idle" | "downloading" | "downloaded" | "error">
+	>;
+	parakeetModelDownloadProgress: number;
+	setParakeetModelDownloadProgress: Dispatch<SetStateAction<number>>;
 	isGeneratingCaptions: boolean;
 	setIsGeneratingCaptions: Dispatch<SetStateAction<boolean>>;
 	videoPlaybackRef: RefObject<VideoPlaybackRef>;
@@ -156,8 +170,11 @@ export function useEditorProjectController(input: Input) {
 		appearance: input.appearance,
 		exportSettings: input.exportSettings,
 		aspectRatio: input.aspectRatio,
+		captionEngine: input.captionEngine,
 		whisperExecutablePath: input.whisperExecutablePath,
 		whisperModelPath: input.whisperModelPath,
+		parakeetExecutablePath: input.parakeetExecutablePath,
+		parakeetModelPath: input.parakeetModelPath,
 	});
 	const autoCaption = useAutoCaptionController({
 		t: input.t,
@@ -166,6 +183,8 @@ export function useEditorProjectController(input: Input) {
 		videoSourcePath: input.videoSourcePath,
 		setVideoSourcePath: input.setVideoSourcePath,
 		webcamSourcePath: input.appearance.webcam.sourcePath ?? null,
+		captionEngine: input.captionEngine,
+		setCaptionEngine: input.setCaptionEngine,
 		whisperExecutablePath: input.whisperExecutablePath,
 		setWhisperExecutablePath: input.setWhisperExecutablePath,
 		whisperModelPath: input.whisperModelPath,
@@ -175,12 +194,23 @@ export function useEditorProjectController(input: Input) {
 		whisperModelDownloadStatus: input.whisperModelDownloadStatus,
 		setWhisperModelDownloadStatus: input.setWhisperModelDownloadStatus,
 		setWhisperModelDownloadProgress: input.setWhisperModelDownloadProgress,
+		parakeetExecutablePath: input.parakeetExecutablePath,
+		setParakeetExecutablePath: input.setParakeetExecutablePath,
+		parakeetModelPath: input.parakeetModelPath,
+		setParakeetModelPath: input.setParakeetModelPath,
+		downloadedParakeetModelPath: input.downloadedParakeetModelPath,
+		setDownloadedParakeetModelPath: input.setDownloadedParakeetModelPath,
+		parakeetModelDownloadStatus: input.parakeetModelDownloadStatus,
+		setParakeetModelDownloadStatus: input.setParakeetModelDownloadStatus,
+		parakeetModelDownloadProgress: input.parakeetModelDownloadProgress,
+		setParakeetModelDownloadProgress: input.setParakeetModelDownloadProgress,
 		isGeneratingCaptions: input.isGeneratingCaptions,
 		setIsGeneratingCaptions: input.setIsGeneratingCaptions,
 		autoCaptionSettings: input.timeline.autoCaptionSettings,
 		setAutoCaptionSettings: input.timeline.setAutoCaptionSettings,
 		setAutoCaptions: input.timeline.setAutoCaptions,
 		syncActiveVideoSource: lifecycle.syncActiveVideoSource,
+		clipRegions: input.timeline.clipRegions,
 	});
 	const saveActions = useProjectSaveActions({
 		project: input.project,

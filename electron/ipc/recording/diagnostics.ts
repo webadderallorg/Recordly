@@ -466,11 +466,41 @@ async function readCompanionAudioTimingMetadata(
 export async function getCompanionAudioStartDelayMs(companionPath: string) {
 	const metadata = await readCompanionAudioTimingMetadata(companionPath);
 	const startDelayMs = metadata?.startDelayMs;
-	if (!Number.isFinite(startDelayMs) || (startDelayMs ?? 0) < 0) {
-		return null;
+	if (Number.isFinite(startDelayMs) && (startDelayMs ?? 0) >= 0) {
+		return Math.round(startDelayMs ?? 0);
 	}
 
-	return Math.round(startDelayMs ?? 0);
+	try {
+		const basePath = companionPath.replace(/\.(mic|system|desktop)\.wav$/i, "");
+		const diagPath = `${basePath}.recording-diagnostics.json`;
+		const diagRaw = await fs.readFile(diagPath, "utf8");
+		const diag = parseJsonWithByteOrderMark<RecordingDiagnosticsLog | null>(diagRaw);
+		const latest = (diag?.latest ??
+			(Array.isArray(diag?.events) && diag.events.length > 0
+				? diag.events[diag.events.length - 1]
+				: null)) as {
+			media?: {
+				systemAudio?: { startDelayMs?: number | null };
+				microphone?: { startDelayMs?: number | null };
+			};
+		} | null;
+		const latestMedia = latest?.media;
+		const isSystem = /\.(system|desktop)\.wav$/i.test(companionPath);
+		const isMic = /\.mic\.wav$/i.test(companionPath);
+		const candidateAudio = isSystem
+			? latestMedia?.systemAudio
+			: isMic
+				? latestMedia?.microphone
+				: null;
+		const fallbackDelay = candidateAudio?.startDelayMs;
+		if (Number.isFinite(fallbackDelay) && (fallbackDelay ?? 0) >= 0) {
+			return Math.round(fallbackDelay ?? 0);
+		}
+	} catch {
+		// Fallback ignore
+	}
+
+	return null;
 }
 
 export async function hasEmbeddedAudioStream(videoPath: string) {

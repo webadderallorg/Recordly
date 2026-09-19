@@ -1,5 +1,9 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import type { CaptionCuePayload, CaptionWordPayload } from "../types";
 import { buildCaptionTextFromWords } from "./parser";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Silence-aware caption re-segmentation.
@@ -320,4 +324,28 @@ export function resegmentCuesBySilence(
 		text: piece.text,
 		...(piece.words && piece.words.length > 0 ? { words: piece.words } : {}),
 	}));
+}
+
+export async function detectSilenceIntervals(options: {
+	ffmpegPath: string;
+	wavPath: string;
+}): Promise<SilenceInterval[]> {
+	// ffmpeg writes silencedetect results to stderr; the null muxer just runs the filter.
+	const { stderr } = await execFileAsync(
+		options.ffmpegPath,
+		[
+			"-hide_banner",
+			"-nostats",
+			"-i",
+			options.wavPath,
+			"-af",
+			`silencedetect=noise=${SILENCE_NOISE_DB}dB:d=${SILENCE_DETECT_MIN_S}`,
+			"-f",
+			"null",
+			"-",
+		],
+		{ timeout: 5 * 60 * 1000, maxBuffer: 20 * 1024 * 1024 },
+	);
+
+	return parseSilenceIntervals(stderr ?? "");
 }
