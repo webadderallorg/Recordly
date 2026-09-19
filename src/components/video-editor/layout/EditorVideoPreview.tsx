@@ -119,6 +119,7 @@ export function EditorVideoPreview({
 			zoomMotionBlurTuning={appearance.zoomMotionBlurTuning}
 			cursorMotionBlur={appearance.cursorMotionBlur}
 			cursorClickEffect={appearance.cursorClickEffect}
+			rightClickEffect={appearance.rightClickEffect}
 			cursorClickEffectColor={appearance.cursorClickEffectColor}
 			cursorClickEffectScale={appearance.cursorClickEffectScale}
 			cursorClickEffectOpacity={appearance.cursorClickEffectOpacity}

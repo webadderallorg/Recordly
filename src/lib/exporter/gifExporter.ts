@@ -3,8 +3,9 @@ import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
 	CaptionCue,
-	CursorClickEffectStyle,
 	CropRegion,
+	CursorClickEffectProfile,
+	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
@@ -80,6 +81,7 @@ interface GifExporterConfig {
 	cursorMotionBlur?: number;
 	cursorClickEffect?: CursorClickEffectStyle;
 	cursorClickEffectColor?: string;
+	rightClickEffect?: CursorClickEffectProfile;
 	cursorClickEffectScale?: number;
 	cursorClickEffectOpacity?: number;
 	cursorClickEffectDurationMs?: number;
@@ -184,6 +186,7 @@ export function buildGifFrameRendererConfig(
 		cursorMotionBlur: config.cursorMotionBlur,
 		cursorClickEffect: config.cursorClickEffect,
 		cursorClickEffectColor: config.cursorClickEffectColor,
+		rightClickEffect: config.rightClickEffect,
 		cursorClickEffectScale: config.cursorClickEffectScale,
 		cursorClickEffectOpacity: config.cursorClickEffectOpacity,
 		cursorClickEffectDurationMs: config.cursorClickEffectDurationMs,

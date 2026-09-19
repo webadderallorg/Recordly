@@ -493,6 +493,7 @@ describe("ModernVideoExporter native fallback routing", () => {
 			backendPreference: "webcodecs",
 			cursorClickEffect: "echo",
 			cursorClickEffectColor: "#22C55E",
+			rightClickEffect: { effect: "ripple", color: "#EF4444", scale: 1.2 },
 			cursorClickEffectScale: 1.4,
 			cursorClickEffectOpacity: 0.65,
 			cursorClickEffectDurationMs: 720,
@@ -513,6 +514,7 @@ describe("ModernVideoExporter native fallback routing", () => {
 			expect.objectContaining({
 				cursorClickEffect: "echo",
 				cursorClickEffectColor: "#22C55E",
+				rightClickEffect: { effect: "ripple", color: "#EF4444", scale: 1.2 },
 				cursorClickEffectScale: 1.4,
 				cursorClickEffectOpacity: 0.65,
 				cursorClickEffectDurationMs: 720,

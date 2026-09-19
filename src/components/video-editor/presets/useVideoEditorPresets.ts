@@ -66,6 +66,7 @@ export function useVideoEditorPresets({
 			cursorMotionBlur: appearance.cursorMotionBlur,
 			cursorClickEffect: appearance.cursorClickEffect,
 			cursorClickEffectColor: appearance.cursorClickEffectColor,
+			rightClickEffect: appearance.rightClickEffect,
 			cursorClickEffectScale: appearance.cursorClickEffectScale,
 			cursorClickEffectOpacity: appearance.cursorClickEffectOpacity,
 			cursorClickEffectDurationMs: appearance.cursorClickEffectDurationMs,
@@ -131,6 +132,7 @@ export function useVideoEditorPresets({
 			appearance.setCursorMotionBlur(snapshot.cursorMotionBlur);
 			appearance.setCursorClickEffect(snapshot.cursorClickEffect);
 			appearance.setCursorClickEffectColor(snapshot.cursorClickEffectColor);
+			appearance.setRightClickEffect(snapshot.rightClickEffect);
 			appearance.setCursorClickEffectScale(snapshot.cursorClickEffectScale);
 			appearance.setCursorClickEffectOpacity(snapshot.cursorClickEffectOpacity);
 			appearance.setCursorClickEffectDurationMs(snapshot.cursorClickEffectDurationMs);

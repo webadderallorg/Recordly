@@ -52,6 +52,7 @@ import type {
 	AutoCaptionSettings,
 	CaptionCue,
 	CropRegion,
+	CursorClickEffectProfile,
 	CursorClickEffectStyle,
 	CursorStyle,
 	EditorEffectSection,
@@ -584,6 +585,8 @@ interface SettingsPanelProps {
 	onZoomClassicModeChange?: (enabled: boolean) => void;
 	cursorClickEffect?: CursorClickEffectStyle;
 	onCursorClickEffectChange?: (effect: CursorClickEffectStyle) => void;
+	rightClickEffect?: CursorClickEffectProfile;
+	onRightClickEffectChange?: (profile?: CursorClickEffectProfile) => void;
 	cursorClickEffectColor?: string;
 	onCursorClickEffectColorChange?: (color: string) => void;
 	cursorClickEffectScale?: number;
@@ -1027,6 +1030,8 @@ export function SettingsPanel({
 	onZoomClassicModeChange,
 	cursorClickEffect = DEFAULT_CURSOR_CLICK_EFFECT,
 	onCursorClickEffectChange,
+	rightClickEffect,
+	onRightClickEffectChange,
 	cursorClickEffectColor = DEFAULT_CURSOR_CLICK_EFFECT_COLOR,
 	onCursorClickEffectColorChange,
 	cursorClickEffectScale = DEFAULT_CURSOR_CLICK_EFFECT_SCALE,
@@ -1240,6 +1245,56 @@ export function SettingsPanel({
 		Partial<Record<string, string>>
 	>({});
 	const [showCursorClickEffectAdvanced, setShowCursorClickEffectAdvanced] = useState(false);
+	const [clickEffectTarget, setClickEffectTarget] = useState<"left" | "right">("left");
+	const activeClickEffect =
+		clickEffectTarget === "right"
+			? (rightClickEffect?.effect ?? cursorClickEffect)
+			: cursorClickEffect;
+	const activeClickEffectColor =
+		clickEffectTarget === "right"
+			? (rightClickEffect?.color ?? cursorClickEffectColor)
+			: cursorClickEffectColor;
+	const activeClickEffectScale =
+		clickEffectTarget === "right"
+			? (rightClickEffect?.scale ?? cursorClickEffectScale)
+			: cursorClickEffectScale;
+	const rightClickFollowsLeft = !rightClickEffect;
+	const updateActiveClickEffect = (effect: CursorClickEffectStyle) => {
+		if (clickEffectTarget === "left") {
+			onCursorClickEffectChange?.(effect);
+			return;
+		}
+
+		onRightClickEffectChange?.({
+			effect,
+			color: activeClickEffectColor,
+			scale: activeClickEffectScale,
+		});
+	};
+	const updateActiveClickEffectColor = (color: string) => {
+		if (clickEffectTarget === "left") {
+			onCursorClickEffectColorChange?.(color);
+			return;
+		}
+
+		onRightClickEffectChange?.({
+			effect: activeClickEffect,
+			color,
+			scale: activeClickEffectScale,
+		});
+	};
+	const updateActiveClickEffectScale = (scale: number) => {
+		if (clickEffectTarget === "left") {
+			onCursorClickEffectScaleChange?.(scale);
+			return;
+		}
+
+		onRightClickEffectChange?.({
+			effect: activeClickEffect,
+			color: activeClickEffectColor,
+			scale,
+		});
+	};
 	const cursorPreviewUrls = builtInCursorPreviewUrls;
 	const showDevMotionControls = import.meta.env.DEV;
 	const cursorStyleOptions = BUILTIN_CURSOR_STYLE_OPTIONS;
@@ -1570,6 +1625,7 @@ export function SettingsPanel({
 		onCursorSpringMassMultiplierChange?.(initialEditorPreferences.cursorSpringMassMultiplier);
 		onCursorClickEffectChange?.(initialEditorPreferences.cursorClickEffect);
 		onCursorClickEffectColorChange?.(initialEditorPreferences.cursorClickEffectColor);
+		onRightClickEffectChange?.(initialEditorPreferences.rightClickEffect);
 		onCursorClickEffectScaleChange?.(initialEditorPreferences.cursorClickEffectScale);
 		onCursorClickEffectOpacityChange?.(initialEditorPreferences.cursorClickEffectOpacity);
 		onCursorClickEffectDurationMsChange?.(initialEditorPreferences.cursorClickEffectDurationMs);
@@ -3178,14 +3234,85 @@ export function SettingsPanel({
 								formatValue={(v) => `${v.toFixed(2)}×`}
 								parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
 							/>
+							<div className="grid gap-2">
+								<div className="text-[10px] text-muted-foreground">
+									{tSettings("effects.cursorClickEffects.target", "Click button")}
+								</div>
+								<ToggleGroup
+									type="single"
+									value={clickEffectTarget}
+									onValueChange={(value) => {
+										if (value === "left" || value === "right") {
+											setClickEffectTarget(value);
+										}
+									}}
+									className="grid grid-cols-2 gap-1 rounded-lg bg-foreground/[0.04] p-1"
+									aria-label={tSettings(
+										"effects.cursorClickEffects.target",
+										"Click button",
+									)}
+								>
+									<ToggleGroupItem
+										value="left"
+										className="h-7 rounded-md text-[10px] data-[state=on]:bg-background"
+									>
+										{tSettings("effects.cursorClickEffects.left", "Left click")}
+									</ToggleGroupItem>
+									<ToggleGroupItem
+										value="right"
+										className="h-7 rounded-md text-[10px] data-[state=on]:bg-background"
+									>
+										{tSettings(
+											"effects.cursorClickEffects.right",
+											"Right click",
+										)}
+									</ToggleGroupItem>
+								</ToggleGroup>
+								{clickEffectTarget === "right" ? (
+									<div className="flex items-center justify-between gap-3 rounded-lg border border-foreground/10 px-2.5 py-2">
+										<div className="grid gap-0.5">
+											<div className="text-[10px] text-foreground">
+												{tSettings(
+													"effects.cursorClickEffects.followLeft",
+													"Follow left click",
+												)}
+											</div>
+											<div className="text-[9px] text-muted-foreground">
+												{tSettings(
+													"effects.cursorClickEffects.followLeftDescription",
+													"Use the left-click effect until you customize this profile.",
+												)}
+											</div>
+										</div>
+										<Switch
+											checked={rightClickFollowsLeft}
+											onCheckedChange={(checked) => {
+												onRightClickEffectChange?.(
+													checked
+														? undefined
+														: {
+																effect: cursorClickEffect,
+																color: cursorClickEffectColor,
+																scale: cursorClickEffectScale,
+															},
+												);
+											}}
+											aria-label={tSettings(
+												"effects.cursorClickEffects.followLeft",
+												"Follow left click",
+											)}
+										/>
+									</div>
+								) : null}
+							</div>
 							<CursorClickEffectCards
 								title={tSettings(
 									"effects.cursorClickEffects.title",
 									"Click Effects",
 								)}
-								activeEffectId={cursorClickEffect}
-								effectColor={cursorClickEffectColor}
-								onApply={(effectId) => onCursorClickEffectChange?.(effectId)}
+								activeEffectId={activeClickEffect}
+								effectColor={activeClickEffectColor}
+								onApply={updateActiveClickEffect}
 								showAdvanced={showCursorClickEffectAdvanced}
 								onToggleAdvanced={() =>
 									setShowCursorClickEffectAdvanced((current) => !current)
@@ -3197,9 +3324,9 @@ export function SettingsPanel({
 									<input
 										ref={cursorClickEffectColorInputRef}
 										type="color"
-										value={cursorClickEffectColor}
+										value={activeClickEffectColor}
 										onChange={(event) =>
-											onCursorClickEffectColorChange?.(event.target.value)
+											updateActiveClickEffectColor(event.target.value)
 										}
 										className="sr-only"
 									/>
@@ -3213,14 +3340,14 @@ export function SettingsPanel({
 										<div className="flex flex-wrap gap-1.5">
 											{CLICK_EFFECT_COLOR_OPTIONS.map((color) => {
 												const isSelected =
-													cursorClickEffectColor.toLowerCase() ===
+													activeClickEffectColor.toLowerCase() ===
 													color.toLowerCase();
 												return (
 													<button
 														key={color}
 														type="button"
 														onClick={() =>
-															onCursorClickEffectColorChange?.(color)
+															updateActiveClickEffectColor(color)
 														}
 														className={cn(
 															"h-6 w-6 rounded-[8px] border transition-transform hover:scale-[1.04]",
@@ -3240,7 +3367,7 @@ export function SettingsPanel({
 												}
 												className="relative h-6 w-10 overflow-hidden rounded-[8px] border border-foreground/10 text-[8px] font-semibold uppercase tracking-[0.18em] text-foreground"
 												style={{
-													background: `linear-gradient(135deg, ${cursorClickEffectColor} 0%, ${cursorClickEffectColor} 58%, rgba(255,255,255,0.92) 58%, rgba(255,255,255,0.92) 100%)`,
+													background: `linear-gradient(135deg, ${activeClickEffectColor} 0%, ${activeClickEffectColor} 58%, rgba(255,255,255,0.92) 58%, rgba(255,255,255,0.92) 100%)`,
 												}}
 												aria-label="Custom effect color picker"
 											>
@@ -3255,12 +3382,12 @@ export function SettingsPanel({
 											"effects.cursorClickEffects.size",
 											"Effect Size",
 										)}
-										value={cursorClickEffectScale}
+										value={activeClickEffectScale}
 										defaultValue={DEFAULT_CURSOR_CLICK_EFFECT_SCALE}
 										min={0.5}
 										max={2}
 										step={0.05}
-										onChange={(v) => onCursorClickEffectScaleChange?.(v)}
+										onChange={updateActiveClickEffectScale}
 										formatValue={(v) => `${v.toFixed(2)}×`}
 										parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
 									/>

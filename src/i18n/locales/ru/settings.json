@@ -97,6 +97,11 @@
 		"off": "Выкл.",
 		"cursorClickEffects": {
 			"title": "Click Effects",
+			"target": "Click button",
+			"left": "Left click",
+			"right": "Right click",
+			"followLeft": "Follow left click",
+			"followLeftDescription": "Use the left-click effect until you customize this profile.",
 			"advanced": "Advanced",
 			"advancedShow": "Show advanced click effect controls",
 			"advancedHide": "Hide advanced click effect controls",

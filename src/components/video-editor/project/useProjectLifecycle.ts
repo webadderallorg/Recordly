@@ -153,6 +153,7 @@ export function useProjectLifecycle(input: Input) {
 		appearance.setCameraSpringMassMultiplier(editor.cameraSpringMassMultiplier);
 		appearance.setCursorClickEffect(editor.cursorClickEffect);
 		appearance.setCursorClickEffectColor(editor.cursorClickEffectColor);
+		appearance.setRightClickEffect(editor.rightClickEffect);
 		appearance.setCursorClickEffectScale(editor.cursorClickEffectScale);
 		appearance.setCursorClickEffectOpacity(editor.cursorClickEffectOpacity);
 		appearance.setCursorClickEffectDurationMs(editor.cursorClickEffectDurationMs);

@@ -5,6 +5,7 @@ import type {
 	CaptionCue,
 	ClipRegion,
 	CropRegion,
+	CursorClickEffectProfile,
 	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
@@ -136,6 +137,7 @@ interface VideoExporterConfig extends ExportConfig {
 	cursorMotionBlur?: number;
 	cursorClickEffect?: CursorClickEffectStyle;
 	cursorClickEffectColor?: string;
+	rightClickEffect?: CursorClickEffectProfile;
 	cursorClickEffectScale?: number;
 	cursorClickEffectOpacity?: number;
 	cursorClickEffectDurationMs?: number;
@@ -648,6 +650,7 @@ export class ModernVideoExporter {
 					cursorMotionBlur: this.config.cursorMotionBlur,
 					cursorClickEffect: this.config.cursorClickEffect,
 					cursorClickEffectColor: this.config.cursorClickEffectColor,
+					rightClickEffect: this.config.rightClickEffect,
 					cursorClickEffectScale: this.config.cursorClickEffectScale,
 					cursorClickEffectOpacity: this.config.cursorClickEffectOpacity,
 					cursorClickEffectDurationMs: this.config.cursorClickEffectDurationMs,
@@ -1708,9 +1711,12 @@ export class ModernVideoExporter {
 		}
 
 		const speedRegions = this.config.speedRegions ?? [];
+		const hasRightClickEffect =
+			this.config.rightClickEffect?.effect !== undefined &&
+			this.config.rightClickEffect.effect !== "none";
 		const hasCursorClickEffect =
 			(this.config.cursorTelemetry?.length ?? 0) > 0 &&
-			(this.config.cursorClickEffect ?? "none") !== "none";
+			((this.config.cursorClickEffect ?? "none") !== "none" || hasRightClickEffect);
 		const configuredWallpaper = this.config.wallpaper?.trim() ?? "";
 		if (isVideoWallpaperSource(configuredWallpaper)) {
 			reasons.push("unsupported-background-video");

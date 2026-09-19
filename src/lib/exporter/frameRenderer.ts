@@ -6,6 +6,7 @@ import type {
 	AutoCaptionSettings,
 	CaptionCue,
 	CropRegion,
+	CursorClickEffectProfile,
 	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
@@ -76,7 +77,6 @@ import { renderCaptions } from "./captionRenderer";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import { resolveMediaElementSource } from "./localMediaSource";
 
-
 interface FrameRenderConfig {
 	timelineEffects?: boolean;
 	width: number;
@@ -127,6 +127,7 @@ interface FrameRenderConfig {
 	cursorMotionBlur?: number;
 	cursorClickEffect?: CursorClickEffectStyle;
 	cursorClickEffectColor?: string;
+	rightClickEffect?: CursorClickEffectProfile;
 	cursorClickEffectScale?: number;
 	cursorClickEffectOpacity?: number;
 	cursorClickEffectDurationMs?: number;
@@ -410,6 +411,7 @@ export class FrameRenderer {
 				clickEffect: this.config.cursorClickEffect ?? DEFAULT_CURSOR_CONFIG.clickEffect,
 				clickEffectColor:
 					this.config.cursorClickEffectColor ?? DEFAULT_CURSOR_CONFIG.clickEffectColor,
+				rightClickEffect: this.config.rightClickEffect,
 				clickEffectScale:
 					this.config.cursorClickEffectScale ?? DEFAULT_CURSOR_CONFIG.clickEffectScale,
 				clickEffectOpacity:

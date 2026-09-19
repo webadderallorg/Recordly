@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { EditorPreferences } from "../editorPreferences";
 import type {
 	CropRegion,
+	CursorClickEffectProfile,
 	CursorClickEffectStyle,
 	CursorStyle,
 	WebcamOverlaySettings,
@@ -93,6 +94,9 @@ export function useAppearanceState(preferences: EditorPreferences) {
 	const [cursorClickEffectColor, setCursorClickEffectColor] = useState(
 		preferences.cursorClickEffectColor,
 	);
+	const [rightClickEffect, setRightClickEffect] = useState<CursorClickEffectProfile | undefined>(
+		preferences.rightClickEffect,
+	);
 	const [cursorClickEffectScale, setCursorClickEffectScale] = useState(
 		preferences.cursorClickEffectScale,
 	);
@@ -178,6 +182,8 @@ export function useAppearanceState(preferences: EditorPreferences) {
 		setCursorClickEffect,
 		cursorClickEffectColor,
 		setCursorClickEffectColor,
+		rightClickEffect,
+		setRightClickEffect,
 		cursorClickEffectScale,
 		setCursorClickEffectScale,
 		cursorClickEffectOpacity,

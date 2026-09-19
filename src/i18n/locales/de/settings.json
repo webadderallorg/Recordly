@@ -97,6 +97,11 @@
 		"off": "Aus",
 		"cursorClickEffects": {
 			"title": "Klick-Effekte",
+			"target": "Klicktaste",
+			"left": "Linksklick",
+			"right": "Rechtsklick",
+			"followLeft": "Linksklick folgen",
+			"followLeftDescription": "Bis du dieses Profil anpasst, wird der Linksklick-Effekt verwendet.",
 			"advanced": "Erweitert",
 			"advancedShow": "Erweiterte Steuerelemente für Klick-Effekte anzeigen",
 			"advancedHide": "Erweiterte Steuerelemente für Klick-Effekte ausblenden",

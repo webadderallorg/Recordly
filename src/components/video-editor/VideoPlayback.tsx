@@ -47,6 +47,7 @@ import {
 	type AutoCaptionSettings,
 	type CaptionCue,
 	type ClipRegion,
+	type CursorClickEffectProfile,
 	type CursorClickEffectStyle,
 	type CursorStyle,
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
@@ -115,13 +116,13 @@ import {
 import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
 import { supportsPreviewPlaybackRate } from "./videoPlayback/playbackRate";
 import { PreviewVideoSource } from "./videoPlayback/previewVideoSource";
-import { usePreviewVideoReady } from "./videoPlayback/usePreviewVideoReady";
 import { getSceneEffectMetrics } from "./videoPlayback/sceneEffects";
 import {
 	resolvePreviewMotionMode,
 	resolveSceneZoomTarget,
 	shouldComposePreviewFrame,
 } from "./videoPlayback/sceneMotion";
+import { usePreviewVideoReady } from "./videoPlayback/usePreviewVideoReady";
 import {
 	getWebcamMediaTargetTimeSeconds,
 	isWebcamMediaSynchronized,
@@ -276,6 +277,7 @@ interface VideoPlaybackProps {
 	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
 	cursorMotionBlur?: number;
 	cursorClickEffect?: CursorClickEffectStyle;
+	rightClickEffect?: CursorClickEffectProfile;
 	cursorClickEffectColor?: string;
 	cursorClickEffectScale?: number;
 	cursorClickEffectOpacity?: number;
@@ -361,6 +363,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			zoomMotionBlurTuning = DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 			cursorMotionBlur = DEFAULT_CURSOR_MOTION_BLUR,
 			cursorClickEffect = DEFAULT_CURSOR_CLICK_EFFECT,
+			rightClickEffect,
 			cursorClickEffectColor = DEFAULT_CURSOR_CLICK_EFFECT_COLOR,
 			cursorClickEffectScale = DEFAULT_CURSOR_CLICK_EFFECT_SCALE,
 			cursorClickEffectOpacity = DEFAULT_CURSOR_CLICK_EFFECT_OPACITY,
@@ -502,6 +505,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const cameraSpringMassMultiplierRef = useRef(cameraSpringMassMultiplier);
 		const cursorMotionBlurRef = useRef(cursorMotionBlur);
 		const cursorClickEffectRef = useRef(cursorClickEffect);
+		const rightClickEffectRef = useRef(rightClickEffect);
 		const cursorClickEffectColorRef = useRef(cursorClickEffectColor);
 		const cursorClickEffectScaleRef = useRef(cursorClickEffectScale);
 		const cursorClickEffectOpacityRef = useRef(cursorClickEffectOpacity);
@@ -530,9 +534,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		}, []);
 
 		const initializePixiRenderer = useCallback(
-			async (
-				container: HTMLDivElement,
-			): Promise<Application> => {
+			async (container: HTMLDivElement): Promise<Application> => {
 				const backendOrder: PixiPreviewBackend[] = ["webgl", "webgpu"];
 				const attempts: PixiRendererAttempt[] = [];
 
@@ -1500,6 +1502,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		}, [cursorClickEffect]);
 
 		useEffect(() => {
+			rightClickEffectRef.current = rightClickEffect;
+		}, [rightClickEffect]);
+
+		useEffect(() => {
 			cursorClickEffectColorRef.current = cursorClickEffectColor;
 		}, [cursorClickEffectColor]);
 
@@ -1785,6 +1791,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						},
 						motionBlur: cursorMotionBlurRef.current,
 						clickEffect: cursorClickEffectRef.current,
+						rightClickEffect: rightClickEffectRef.current,
 						clickEffectColor: cursorClickEffectColorRef.current,
 						clickEffectScale: cursorClickEffectScaleRef.current,
 						clickEffectOpacity: cursorClickEffectOpacityRef.current,
@@ -2150,6 +2157,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			});
 			overlay.setMotionBlur(cursorMotionBlur);
 			overlay.setClickEffect(cursorClickEffect);
+			overlay.setRightClickEffect(rightClickEffect);
 			overlay.setClickEffectColor(cursorClickEffectColor);
 			overlay.setClickEffectScale(cursorClickEffectScale);
 			overlay.setClickEffectOpacity(cursorClickEffectOpacity);
@@ -2186,6 +2194,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			cursorSpringMassMultiplier,
 			cursorMotionBlur,
 			cursorClickEffect,
+			rightClickEffect,
 			cursorClickEffectColor,
 			cursorClickEffectScale,
 			cursorClickEffectOpacity,

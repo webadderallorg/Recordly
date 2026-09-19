@@ -97,6 +97,11 @@
 		"off": "關閉",
 		"cursorClickEffects": {
 			"title": "Click Effects",
+			"target": "點擊按鍵",
+			"left": "左鍵",
+			"right": "右鍵",
+			"followLeft": "跟隨左鍵",
+			"followLeftDescription": "自訂此設定檔前，使用左鍵效果。",
 			"advanced": "Advanced",
 			"advancedShow": "Show advanced click effect controls",
 			"advancedHide": "Hide advanced click effect controls",

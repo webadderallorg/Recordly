@@ -9,8 +9,25 @@ import {
 	getTimelineDurationMs,
 	mapSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime,
+	resolveCursorClickEffectProfile,
 	trimsToClips,
 } from "./types";
+
+describe("resolveCursorClickEffectProfile", () => {
+	const left = { effect: "ripple" as const, color: "#2563EB", scale: 1.25 };
+	const right = { effect: "spotlight" as const, color: "#F97316", scale: 1.75 };
+
+	it("uses the right-click profile only for right-click interactions", () => {
+		expect(resolveCursorClickEffectProfile(left, right, "right-click")).toEqual(right);
+		expect(resolveCursorClickEffectProfile(left, right, "click")).toEqual(left);
+		expect(resolveCursorClickEffectProfile(left, right, "double-click")).toEqual(left);
+		expect(resolveCursorClickEffectProfile(left, right, "middle-click")).toEqual(left);
+	});
+
+	it("falls back to the left-click profile when no right profile is configured", () => {
+		expect(resolveCursorClickEffectProfile(left, undefined, "right-click")).toEqual(left);
+	});
+});
 
 describe("extendAutoFullTrackClip", () => {
 	it("extends the default full-track clip when metadata duration grows", () => {

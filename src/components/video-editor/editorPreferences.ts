@@ -40,6 +40,7 @@ type PersistedEditorControls = Pick<
 	| "cursorMotionBlur"
 	| "cursorClickEffect"
 	| "cursorClickEffectColor"
+	| "rightClickEffect"
 	| "cursorClickEffectScale"
 	| "cursorClickEffectOpacity"
 	| "cursorClickEffectDurationMs"
@@ -330,6 +331,7 @@ function normalizeEditorControls(
 		cursorClickEffect: sanitizedRaw.cursorClickEffect ?? fallback.cursorClickEffect,
 		cursorClickEffectColor:
 			sanitizedRaw.cursorClickEffectColor ?? fallback.cursorClickEffectColor,
+		rightClickEffect: sanitizedRaw.rightClickEffect ?? fallback.rightClickEffect,
 		cursorClickEffectScale:
 			sanitizedRaw.cursorClickEffectScale ?? fallback.cursorClickEffectScale,
 		cursorClickEffectOpacity:
@@ -395,6 +397,7 @@ function normalizeEditorControls(
 		cursorMotionBlur: normalized.cursorMotionBlur,
 		cursorClickEffect: normalized.cursorClickEffect,
 		cursorClickEffectColor: normalized.cursorClickEffectColor,
+		rightClickEffect: normalized.rightClickEffect,
 		cursorClickEffectScale: normalized.cursorClickEffectScale,
 		cursorClickEffectOpacity: normalized.cursorClickEffectOpacity,
 		cursorClickEffectDurationMs: normalized.cursorClickEffectDurationMs,

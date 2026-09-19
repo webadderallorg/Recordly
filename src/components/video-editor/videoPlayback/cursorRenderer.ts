@@ -3,6 +3,7 @@ import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import minimalCursorUrl from "@/assets/cursors/custom/minimal-cursor.svg";
 import { getRenderableAssetUrl } from "@/lib/assetPath";
 import {
+	type CursorClickEffectProfile,
 	type CursorClickEffectStyle,
 	type CursorStyle,
 	type CursorTelemetryPoint,
@@ -14,6 +15,7 @@ import {
 	DEFAULT_CURSOR_CLICK_EFFECT_SCALE,
 	DEFAULT_CURSOR_STYLE,
 	normalizeCursorClickEffectColor,
+	resolveCursorClickEffectProfile,
 } from "../types";
 import { getCursorViewportScale } from "./cursorScale";
 import { computeCursorSwayRotation } from "./cursorSway";
@@ -99,6 +101,8 @@ export interface CursorRenderConfig {
 	clickEffect: CursorClickEffectStyle;
 	/** Click effect base color. */
 	clickEffectColor: string;
+	/** Optional independent right-click effect profile. */
+	rightClickEffect?: CursorClickEffectProfile;
 	/** Click effect size multiplier. */
 	clickEffectScale: number;
 	/** Click effect opacity multiplier. */
@@ -1257,6 +1261,10 @@ export class PixiCursorOverlay {
 		this.config.clickEffectColor = normalizeCursorClickEffectColor(clickEffectColor);
 	}
 
+	setRightClickEffect(rightClickEffect?: CursorClickEffectProfile) {
+		this.config.rightClickEffect = rightClickEffect;
+	}
+
 	setClickEffectScale(clickEffectScale: number) {
 		this.config.clickEffectScale = clamp(clickEffectScale, 0.5, 2);
 	}
@@ -1361,13 +1369,22 @@ export class PixiCursorOverlay {
 		const h =
 			this.config.dotRadius *
 			getCursorViewportScale(viewport.width, this.config.minViewportScale);
-		const { cursorType, clickSample, clickBounceProgress, clickProgress } =
+		const { cursorType, interactionType, clickSample, clickBounceProgress, clickProgress } =
 			getCursorVisualState(
 				samples,
 				timeMs,
 				this.config.clickBounceDuration,
 				this.config.clickEffectDurationMs,
 			);
+		const clickEffectProfile = resolveCursorClickEffectProfile(
+			{
+				effect: this.config.clickEffect,
+				color: this.config.clickEffectColor,
+				scale: this.config.clickEffectScale,
+			},
+			this.config.rightClickEffect,
+			interactionType,
+		);
 		const projectedClickSample = clickSample
 			? projectCursorPositionToViewport(clickSample, viewport.sourceCrop)
 			: null;
@@ -1381,7 +1398,7 @@ export class PixiCursorOverlay {
 				: viewport.y + projectedTarget.cy * viewport.height;
 		const shouldShowCursorSprite = visible && projectedTarget.visible;
 		const shouldDrawClickEffect =
-			this.config.clickEffect !== "none" &&
+			clickEffectProfile.effect !== "none" &&
 			clickProgress > 0 &&
 			Boolean(projectedClickSample?.visible);
 
@@ -1451,14 +1468,14 @@ export class PixiCursorOverlay {
 
 		drawClickEffectGraphics(
 			this.clickRingGraphics,
-			this.config.clickEffect,
+			clickEffectProfile.effect,
 			clickEffectPx,
 			clickEffectPy,
 			scaledH,
 			clickProgress,
-			this.config.clickEffectScale,
+			clickEffectProfile.scale,
 			this.config.clickEffectOpacity,
-			this.config.clickEffectColor,
+			clickEffectProfile.color,
 		);
 
 		const spriteKey = (
@@ -1656,11 +1673,21 @@ export function drawCursorOnCanvas(
 	const px = viewport.x + smoothedState.x * viewport.width;
 	const py = viewport.y + smoothedState.y * viewport.height;
 	const h = config.dotRadius * getCursorViewportScale(viewport.width, config.minViewportScale);
-	const { cursorType, clickSample, clickBounceProgress, clickProgress } = getCursorVisualState(
-		samples,
-		timeMs,
-		config.clickBounceDuration,
-		config.clickEffectDurationMs,
+	const { cursorType, interactionType, clickSample, clickBounceProgress, clickProgress } =
+		getCursorVisualState(
+			samples,
+			timeMs,
+			config.clickBounceDuration,
+			config.clickEffectDurationMs,
+		);
+	const clickEffectProfile = resolveCursorClickEffectProfile(
+		{
+			effect: config.clickEffect,
+			color: config.clickEffectColor,
+			scale: config.clickEffectScale,
+		},
+		config.rightClickEffect,
+		interactionType,
 	);
 	const projectedClickSample = clickSample
 		? projectCursorPositionToViewport(clickSample, viewport.sourceCrop)
@@ -1689,14 +1716,14 @@ export function drawCursorOnCanvas(
 	const drawHeight = effectHeight * bounceScale;
 	drawClickEffectOnCanvas(
 		ctx,
-		config.clickEffect,
+		clickEffectProfile.effect,
 		clickEffectPx,
 		clickEffectPy,
 		effectHeight,
 		clickProgress,
-		config.clickEffectScale,
+		clickEffectProfile.scale,
 		config.clickEffectOpacity,
-		config.clickEffectColor,
+		clickEffectProfile.color,
 	);
 
 	ctx.save();

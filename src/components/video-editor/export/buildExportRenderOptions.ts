@@ -78,6 +78,7 @@ export function buildExportRenderOptions({
 		cursorMotionBlur: appearance.cursorMotionBlur,
 		cursorClickEffect: appearance.cursorClickEffect,
 		cursorClickEffectColor: appearance.cursorClickEffectColor,
+		rightClickEffect: appearance.rightClickEffect,
 		cursorClickEffectScale: appearance.cursorClickEffectScale,
 		cursorClickEffectOpacity: appearance.cursorClickEffectOpacity,
 		cursorClickEffectDurationMs: appearance.cursorClickEffectDurationMs,
