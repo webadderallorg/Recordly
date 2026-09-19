@@ -37,8 +37,12 @@ export function useMicrophoneDevices(enabled: boolean = true, preferredDeviceId?
 						groupId: device.groupId,
 					}));
 
+				// Chromium can report zero audio inputs at all (not just unlabeled ones)
+				// until getUserMedia() has been called at least once for this app's
+				// profile. Probe with getUserMedia whenever we don't yet have a labeled
+				// device list, not only when placeholder entries are present.
 				const needsLabelPermission =
-					audioInputs.length > 0 && audioInputs.every((device) => !device.label.trim());
+					audioInputs.length === 0 || audioInputs.every((device) => !device.label.trim());
 
 				if (needsLabelPermission && !hasRequestedMicrophoneLabels) {
 					hasRequestedMicrophoneLabels = true;
