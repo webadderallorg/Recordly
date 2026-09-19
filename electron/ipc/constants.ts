@@ -8,6 +8,7 @@ export const PROJECT_THUMBNAIL_SUFFIX = ".preview.png";
 export const RECENT_PROJECTS_FILE = path.join(USER_DATA_PATH, "recent-projects.json");
 export const MAX_RECENT_PROJECTS = 16;
 export const SHORTCUTS_FILE = path.join(USER_DATA_PATH, "shortcuts.json");
+export const RECORDING_SHORTCUTS_FILE = path.join(USER_DATA_PATH, "recording-shortcuts.json");
 export const RECORDINGS_SETTINGS_FILE = path.join(USER_DATA_PATH, "recordings-settings.json");
 export const COUNTDOWN_SETTINGS_FILE = path.join(USER_DATA_PATH, "countdown-settings.json");
 export const APP_SETTINGS_FILE = path.join(USER_DATA_PATH, "app-settings.json");

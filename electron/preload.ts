@@ -622,6 +622,25 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("stop-recording-from-tray", listener);
 		return () => ipcRenderer.removeListener("stop-recording-from-tray", listener);
 	},
+	onRecordingShortcut: (
+		callback: (payload: { action: "toggle" | "pauseResume" | "stop" }) => void,
+	) => {
+		const listener = (
+			_event: Electron.IpcRendererEvent,
+			payload: { action: "toggle" | "pauseResume" | "stop" },
+		) => callback(payload);
+		ipcRenderer.on("recording-shortcut", listener);
+		return () => ipcRenderer.removeListener("recording-shortcut", listener);
+	},
+	getRecordingShortcuts: () => {
+		return ipcRenderer.invoke("get-recording-shortcuts");
+	},
+	saveRecordingShortcuts: (shortcuts: unknown) => {
+		return ipcRenderer.invoke("save-recording-shortcuts", shortcuts);
+	},
+	resetRecordingShortcuts: () => {
+		return ipcRenderer.invoke("reset-recording-shortcuts");
+	},
 	onRecordingStateChanged: (
 		callback: (state: { recording: boolean; sourceName: string }) => void,
 	) => {

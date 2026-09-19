@@ -6,10 +6,15 @@ import {
 	PlayIcon,
 	XIcon,
 } from "@phosphor-icons/react";
-import { useMemo } from "react";
-import { useScopedT } from "@/contexts/I18nContext";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { useScopedT } from "@/contexts/I18nContext";
+import {
+	DEFAULT_RECORDING_SHORTCUTS,
+	formatRecordingAccelerator,
+	type RecordingShortcutsConfig,
+} from "@/lib/recordingShortcuts";
 import styles from "./LaunchWindow.module.css";
 
 interface RecordingControlsProps {
@@ -36,6 +41,27 @@ export const RecordingControls = ({
 	formatTime,
 }: RecordingControlsProps) => {
 	const t = useScopedT("launch");
+	const [shortcuts, setShortcuts] = useState<RecordingShortcutsConfig>(
+		DEFAULT_RECORDING_SHORTCUTS,
+	);
+	const isMac =
+		typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+
+	useEffect(() => {
+		let cancelled = false;
+		void window.electronAPI?.getRecordingShortcuts?.().then((config) => {
+			if (!cancelled && config) {
+				setShortcuts({ ...DEFAULT_RECORDING_SHORTCUTS, ...config });
+			}
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+
+	const pauseLabel = paused ? t("recording.resume") : t("recording.pause");
+	const pauseShortcut = formatRecordingAccelerator(shortcuts.pauseResume, isMac);
+	const stopShortcut = formatRecordingAccelerator(shortcuts.stop, isMac);
 
 	const memoizedControls = useMemo(() => {
 		return (
@@ -90,8 +116,8 @@ export const RecordingControls = ({
 					size="icon"
 					iconSize="lg"
 					onClick={onPauseResume}
-					title={paused ? t("recording.resume") : t("recording.pause")}
-					aria-label={paused ? t("recording.resume") : t("recording.pause")}
+					title={`${pauseLabel} (${pauseShortcut})`}
+					aria-label={`${pauseLabel} (${pauseShortcut})`}
 					className={paused ? styles.ibGreen : ""}
 				>
 					{paused ? (
@@ -104,8 +130,8 @@ export const RecordingControls = ({
 				<button
 					type="button"
 					onClick={onStopRecording}
-					title={t("recording.stop")}
-					aria-label={t("recording.stop")}
+					title={`${t("recording.stop")} (${stopShortcut})`}
+					aria-label={`${t("recording.stop")} (${stopShortcut})`}
 					className={`${styles.recBtn} ${styles.electronNoDrag}`}
 				>
 					<span className={styles.stopSquare} />
@@ -145,6 +171,9 @@ export const RecordingControls = ({
 		onCancelRecording,
 		formatTime,
 		t,
+		pauseLabel,
+		pauseShortcut,
+		stopShortcut,
 	]);
 
 	return memoizedControls;
