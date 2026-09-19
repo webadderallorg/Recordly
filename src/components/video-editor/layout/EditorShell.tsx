@@ -42,6 +42,7 @@ type Props = {
 	setExperimentalNvidiaCudaExport: (enabled: boolean) => void;
 	effectiveShowCursor: boolean;
 	previewAspectRatioValue: number;
+	handleImportTimelineClip: () => Promise<void>;
 };
 
 export function EditorShell(props: Props) {
@@ -66,6 +67,7 @@ export function EditorShell(props: Props) {
 		setExperimentalNvidiaCudaExport,
 		effectiveShowCursor,
 		previewAspectRatioValue,
+		handleImportTimelineClip,
 	} = props;
 	const {
 		snapshot,
@@ -214,6 +216,7 @@ export function EditorShell(props: Props) {
 						handleOpenCropEditor={ui.handleOpenCropEditor}
 						handleSaveAutoCaptionEdit={autoCaption.handleSaveAutoCaptionEdit}
 						handleSelectAnnotation={handleSelectAnnotation}
+						handleImportTimelineClip={handleImportTimelineClip}
 						setDuration={ui.setDuration}
 						setIsPreviewReady={ui.setIsPreviewReady}
 						setCurrentTime={ui.setCurrentTime}

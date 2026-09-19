@@ -63,6 +63,7 @@ type Props = {
 	handleOpenCropEditor: () => void;
 	handleSaveAutoCaptionEdit: (target: CaptionEditTarget, text: string) => void;
 	handleSelectAnnotation: (id: string | null) => void;
+	handleImportTimelineClip: () => Promise<void>;
 	setDuration: Dispatch<SetStateAction<number>>;
 	setIsPreviewReady: Dispatch<SetStateAction<boolean>>;
 	setCurrentTime: Dispatch<SetStateAction<number>>;
@@ -105,6 +106,7 @@ export function EditorPreviewPanel(props: Props) {
 		handleOpenCropEditor,
 		handleSaveAutoCaptionEdit,
 		handleSelectAnnotation,
+		handleImportTimelineClip,
 		setDuration,
 		setIsPreviewReady,
 		setCurrentTime,
@@ -233,6 +235,12 @@ export function EditorPreviewPanel(props: Props) {
 							align="start"
 							className="border-foreground/10 bg-editor-surface-alt"
 						>
+							<DropdownMenuItem
+								onClick={() => void handleImportTimelineClip()}
+								className="cursor-pointer text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+							>
+								{t("editor.toolbar.importClip", "Import video clip")}
+							</DropdownMenuItem>
 							<DropdownMenuItem
 								onClick={() => {
 									const nextTrack =

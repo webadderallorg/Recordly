@@ -17,6 +17,7 @@ const PROJECT_FILE_EXTENSIONS = [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_
 
 type OpenVideoFilePickerOptions = {
 	includeProjects?: boolean;
+	preserveProjectPath?: boolean;
 };
 
 export function registerCaptionHandlers() {
@@ -62,7 +63,7 @@ export function registerCaptionHandlers() {
 			}
 
 			approveUserPath(selectedPath);
-			setCurrentProjectPath(null);
+			if (!options?.preserveProjectPath) setCurrentProjectPath(null);
 			return {
 				success: true,
 				kind: "media",

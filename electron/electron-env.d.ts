@@ -670,7 +670,10 @@ interface Window {
 			error?: string;
 			canceled?: boolean;
 		}>;
-		openVideoFilePicker: (options?: { includeProjects?: boolean }) => Promise<{
+		openVideoFilePicker: (options?: {
+			includeProjects?: boolean;
+			preserveProjectPath?: boolean;
+		}) => Promise<{
 			success: boolean;
 			kind?: "media" | "project";
 			path?: string;
@@ -679,6 +682,14 @@ interface Window {
 			message?: string;
 			canceled?: boolean;
 			error?: string;
+		}>;
+		importTimelineClip: (options: { sourcePath: string; clipPath: string }) => Promise<{
+			success: boolean;
+			outputPath?: string;
+			sourceDurationMs?: number;
+			importedDurationMs?: number;
+			totalDurationMs?: number;
+			message?: string;
 		}>;
 		openAudioFilePicker: () => Promise<{ success: boolean; path?: string; canceled?: boolean }>;
 		openWhisperExecutablePicker: () => Promise<{
