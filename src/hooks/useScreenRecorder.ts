@@ -121,6 +121,47 @@ const LINUX_PORTAL_SOURCE: ProcessedDesktopSource = {
 	sourceType: "screen",
 };
 
+export function resolveDefaultLinuxRecordingSource({
+	windowSystem,
+	sources,
+}: {
+	windowSystem: "wayland" | "x11" | null | undefined;
+	sources: ReadonlyArray<ProcessedDesktopSource>;
+}): ProcessedDesktopSource | null {
+	if (windowSystem !== "x11") {
+		return LINUX_PORTAL_SOURCE;
+	}
+
+	const liveScreens = sources.filter(
+		(source) =>
+			source.id.startsWith("screen:") &&
+			source.id !== LINUX_PORTAL_SOURCE.id &&
+			!source.id.startsWith("screen:fallback:"),
+	);
+	return liveScreens.find((source) => /\(primary\)/i.test(source.name)) ?? liveScreens[0] ?? null;
+}
+
+async function getLinuxWindowSystemSafe(): Promise<"wayland" | "x11" | null> {
+	try {
+		return await window.electronAPI.getLinuxWindowSystem();
+	} catch {
+		return null;
+	}
+}
+
+async function getLinuxScreenSourcesSafe(): Promise<ProcessedDesktopSource[]> {
+	try {
+		return await window.electronAPI.getSources({
+			types: ["screen"],
+			thumbnailSize: { width: 1, height: 1 },
+			fetchWindowIcons: false,
+		});
+	} catch (error) {
+		console.warn("Failed to enumerate Linux screen sources:", error);
+		return [];
+	}
+}
+
 type DesktopCaptureMediaDevices = {
 	getUserMedia: (constraints: unknown) => Promise<MediaStream>;
 	getDisplayMedia: (constraints: unknown) => Promise<MediaStream>;
@@ -697,7 +738,18 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		// The sentinel is handled later by routing through getDisplayMedia,
 		// which lets the portal pick the source in a single dialog.
 		if (source.id === "screen:linux-portal") {
-			return source;
+			const windowSystem = await getLinuxWindowSystemSafe();
+			if (windowSystem !== "x11") {
+				return source;
+			}
+			const resolvedSource = resolveDefaultLinuxRecordingSource({
+				windowSystem,
+				sources: await getLinuxScreenSourcesSafe(),
+			});
+			if (!resolvedSource) {
+				throw new Error("No captureable X11 screen source is available.");
+			}
+			return resolvedSource;
 		}
 
 		try {
@@ -1129,18 +1181,27 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		const platform = await window.electronAPI.getPlatform();
 		hideEditorOverlayCursorByDefault.current = false;
 		const existingSource = await window.electronAPI.getSelectedSource();
-		const selectedSource =
-			existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
+		let selectedSource = existingSource;
+		if (
+			platform === "linux" &&
+			(!selectedSource || selectedSource.id === LINUX_PORTAL_SOURCE.id)
+		) {
+			const windowSystem = await getLinuxWindowSystemSafe();
+			selectedSource = resolveDefaultLinuxRecordingSource({
+				windowSystem,
+				sources: windowSystem === "x11" ? await getLinuxScreenSourcesSafe() : [],
+			});
+		}
 		if (!selectedSource) {
-			alert("Please select a source to record");
+			alert("No captureable screen source was found. Please select a source to record.");
 			return null;
 		}
 
-		if (!existingSource && selectedSource.id === "screen:linux-portal") {
+		if (!existingSource || existingSource.id !== selectedSource.id) {
 			try {
 				await window.electronAPI.selectSource(selectedSource);
 			} catch (err) {
-				console.warn("Failed to persist Linux portal sentinel source:", err);
+				console.warn("Failed to persist default Linux recording source:", err);
 			}
 		}
 
