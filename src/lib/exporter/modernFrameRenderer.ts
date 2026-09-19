@@ -624,6 +624,11 @@ export class FrameRenderer {
 		console.log(`[FrameRenderer] Export renderer backend: ${this.rendererBackend}`);
 	}
 
+	/**
+	 * Initializes a Pixi Application on the given canvas, trying render backends in
+	 * order until one succeeds. Honors an explicit `preferredRenderBackend`; otherwise
+	 * falls back to the platform-aware default order from `getDefaultLightningRenderBackendOrder`.
+	 */
 	private async createPixiApplication(
 		canvas: HTMLCanvasElement,
 	): Promise<{ app: Application; backend: ExportRenderBackend }> {
