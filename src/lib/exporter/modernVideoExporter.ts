@@ -343,6 +343,11 @@ export class ModernVideoExporter {
 	private nativeStaticLayoutSkipReasons: string[] = [];
 	private nativeStaticLayoutBackgroundSkipReason: string | null = null;
 	private nativeH264Encoder: VideoEncoder | null = null;
+	// Breeze can either stream browser-produced Annex B packets or feed the
+	// packaged FFmpeg encoder raw RGBA frames.  The latter must remain available
+	// when Chromium exposes VideoEncoder but cannot configure Annex B H.264.
+	private nativeInputMode: "rawvideo" | "h264-stream" | null = null;
+	private forceRawvideoNativeRetry = false;
 	private nativeEncoderError: Error | null = null;
 	private effectiveDurationSec = 0;
 	private totalExportStartTimeMs = 0;
@@ -372,6 +377,8 @@ export class ModernVideoExporter {
 	private sourceVideoInfo: DecodedVideoInfo | null = null;
 	private mediaSourceRetryAttempted = false;
 	private runtimeDiagnostics: ExportRuntimeDiagnostics = {};
+	private rendererAttempts: string[] = [];
+	private encoderAttempts: string[] = [];
 
 	constructor(config: VideoExporterConfig) {
 		this.config = config;
@@ -381,12 +388,17 @@ export class ModernVideoExporter {
 		let useFallbackMediaSource = false;
 		let retriedWithFallbackMediaSource = false;
 		let nativeFailure: string | null = null;
+		let retryWithWebgl = false;
 		this.mediaSourceRetryAttempted = false;
+		this.rendererAttempts = [];
+		this.encoderAttempts = [];
+		this.forceRawvideoNativeRetry = false;
 		this.runtimeDiagnostics = await this.collectRuntimeDiagnostics();
 
 		while (true) {
 			let retryExport = false;
 			let inNativeStage = false;
+			let inRendererStage = false;
 			try {
 				this.cleanup();
 				this.cancelled = false;
@@ -604,7 +616,7 @@ export class ModernVideoExporter {
 					timelineEffects: this.config.clipRegions !== undefined,
 					width: this.config.width,
 					height: this.config.height,
-					preferredRenderBackend: undefined,
+					preferredRenderBackend: retryWithWebgl ? "webgl" : undefined,
 					wallpaper: this.config.wallpaper,
 					zoomRegions: this.config.zoomRegions,
 					showShadow: this.config.showShadow,
@@ -657,9 +669,12 @@ export class ModernVideoExporter {
 					zoomSmoothness: this.config.zoomSmoothness,
 					zoomClassicMode: this.config.zoomClassicMode,
 				});
+				inRendererStage = true;
 				await this.renderer.initialize();
+				inRendererStage = false;
 				this.rendererInitTimeMs = this.getNowMs() - stageStartedAt;
 				this.renderBackend = this.renderer.getRendererBackend();
+				this.rendererAttempts.push(`${this.renderBackend}: selected`);
 				console.log(`[VideoExporter] Using ${this.renderBackend} render backend`);
 
 				if (!useNativeEncoder) {
@@ -706,6 +721,7 @@ export class ModernVideoExporter {
 						const sourceTimestampUs = sourceTimestampMs * 1000;
 						const cursorTimestampUs = cursorTimestampMs * 1000;
 						const renderStartedAt = this.getNowMs();
+						inRendererStage = true;
 						await this.renderer!.renderFrame(
 							videoFrame,
 							sourceTimestampUs,
@@ -713,6 +729,7 @@ export class ModernVideoExporter {
 							frameDuration,
 							timestamp,
 						);
+						inRendererStage = false;
 						this.renderFrameTimeMs += this.getNowMs() - renderStartedAt;
 
 						if (this.cancelled) {
@@ -902,7 +919,35 @@ export class ModernVideoExporter {
 					metrics: this.buildExportMetrics(),
 				};
 			} catch (error) {
-				if (
+				if (!this.cancelled && !retryWithWebgl && inRendererStage) {
+					// A Pixi WebGPU resource can become invalid after Chromium has accepted
+					// the renderer (not only during initialization). Restarting is required
+					// because decoded frames and GPU bind groups cannot safely be reused.
+					console.warn(
+						"[VideoExporter] Renderer failed at runtime; restarting once with WebGL.",
+						error,
+					);
+					this.rendererAttempts.push(
+						`WebGPU: failed: ${error instanceof Error ? error.message : String(error)}`,
+					);
+					retryWithWebgl = true;
+					retryExport = true;
+				} else if (
+					!this.cancelled &&
+					!this.forceRawvideoNativeRetry &&
+					this.nativeInputMode === "h264-stream" &&
+					(inNativeStage || this.nativeEncoderError)
+				) {
+					this.forceRawvideoNativeRetry = true;
+					this.encoderAttempts.push(
+						"WebCodecs H.264 Annex B: runtime failure; retrying packaged FFmpeg rawvideo once",
+					);
+					console.warn(
+						"[VideoExporter] Annex B encoder failed at runtime; restarting once with FFmpeg rawvideo.",
+						error,
+					);
+					retryExport = true;
+				} else if (
 					!this.cancelled &&
 					!nativeFailure &&
 					(inNativeStage || this.nativeEncoderError)
@@ -1204,6 +1249,12 @@ export class ModernVideoExporter {
 
 		if (this.renderBackend) {
 			lines.push(`Renderer: ${this.renderBackend}`);
+		}
+		if (this.rendererAttempts.length > 0) {
+			lines.push(`Renderer attempts: ${this.rendererAttempts.join("; ")}`);
+		}
+		if (this.encoderAttempts.length > 0) {
+			lines.push(`Encoder attempts: ${this.encoderAttempts.join("; ")}`);
 		}
 
 		if (resolvedEncodePath) {
@@ -2772,14 +2823,6 @@ export class ModernVideoExporter {
 			return false;
 		}
 
-		if (
-			typeof VideoEncoder === "undefined" ||
-			typeof VideoEncoder.isConfigSupported !== "function"
-		) {
-			this.lastNativeExportError = `${NATIVE_EXPORT_ENGINE_NAME} export requires WebCodecs VideoEncoder support.`;
-			return false;
-		}
-
 		const encoderConfig: VideoEncoderConfig = {
 			codec: "avc1.640034",
 			width: this.config.width,
@@ -2790,49 +2833,82 @@ export class ModernVideoExporter {
 			avc: { format: "annexb" },
 		};
 
-		try {
-			const support = await VideoEncoder.isConfigSupported(encoderConfig);
-			if (!support.supported) {
-				this.lastNativeExportError = `H.264 Annex B encoding is not supported at ${this.config.width}x${this.config.height}.`;
+		const startNativeSession = async (inputMode: "rawvideo" | "h264-stream") =>
+			window.electronAPI.nativeVideoExportStart({
+				width: this.config.width,
+				height: this.config.height,
+				frameRate: this.config.frameRate,
+				bitrate: this.config.bitrate,
+				encodingMode: this.config.encodingMode ?? "balanced",
+				inputMode,
+			});
+
+		const canUseAnnexB =
+			!this.forceRawvideoNativeRetry &&
+			typeof VideoEncoder !== "undefined" &&
+			typeof VideoEncoder.isConfigSupported === "function" &&
+			(await VideoEncoder.isConfigSupported(encoderConfig)
+				.then((support) => support.supported)
+				.catch((error) => {
+					console.warn(
+						`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} Annex B support check failed`,
+						error,
+					);
+					return false;
+				}));
+
+		let result = canUseAnnexB ? await startNativeSession("h264-stream") : null;
+		this.encoderAttempts.push(
+			`WebCodecs H.264 Annex B: ${canUseAnnexB ? "available" : "unavailable"}`,
+		);
+		if (!result?.success || !result.sessionId) {
+			const annexBReason = canUseAnnexB
+				? result?.error || "H.264 Annex B stream session could not be started."
+				: `H.264 Annex B encoding is not supported at ${this.config.width}x${this.config.height}.`;
+			console.warn(
+				`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} Annex B path unavailable; trying packaged FFmpeg rawvideo encoding.`,
+				annexBReason,
+			);
+			this.encoderAttempts.push(
+				`FFmpeg rawvideo: starting after Annex B failure (${annexBReason})`,
+			);
+			result = await startNativeSession("rawvideo");
+			if (!result.success || !result.sessionId) {
+				this.encoderAttempts.push(
+					`FFmpeg rawvideo: failed: ${result.error || "unavailable"}`,
+				);
+				this.lastNativeExportError = `${annexBReason} Rawvideo FFmpeg fallback: ${result.error || "unavailable"}`;
 				return false;
 			}
-		} catch (error) {
-			this.lastNativeExportError = error instanceof Error ? error.message : String(error);
-			console.warn(
-				`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} encoder support check failed`,
-				error,
+			this.nativeInputMode = "rawvideo";
+			this.encoderAttempts.push(
+				`FFmpeg rawvideo: selected (${result.encoderName ?? "encoder unknown"})`,
 			);
-			return false;
-		}
-
-		const result = await window.electronAPI.nativeVideoExportStart({
-			width: this.config.width,
-			height: this.config.height,
-			frameRate: this.config.frameRate,
-			bitrate: this.config.bitrate,
-			encodingMode: this.config.encodingMode ?? "balanced",
-			inputMode: "h264-stream",
-		});
-
-		if (!result.success || !result.sessionId) {
-			this.lastNativeExportError =
-				result.error ||
-				`${NATIVE_EXPORT_ENGINE_NAME} export could not be started on this system.`;
-			console.warn(
-				`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} export unavailable`,
-				result.error,
-			);
-			return false;
+		} else {
+			this.nativeInputMode = "h264-stream";
+			this.encoderAttempts.push("WebCodecs H.264 Annex B + FFmpeg stream copy: selected");
 		}
 
 		this.nativeExportSessionId = result.sessionId;
 		this.lastNativeExportError = null;
 		this.encodeBackend = "ffmpeg";
-		this.encoderName = "h264-stream-copy";
+		this.encoderName =
+			result.encoderName ??
+			(this.nativeInputMode === "rawvideo" ? "ffmpeg-rawvideo" : "h264-stream-copy");
 		this.pendingNativeWriteChunks = [];
 		this.pendingNativeWriteBytes = 0;
 
 		const sessionId = result.sessionId;
+		if (this.nativeInputMode === "rawvideo") {
+			console.log(
+				`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} session ready (rawvideo FFmpeg)`,
+				{
+					sessionId,
+					encoderName: this.encoderName,
+				},
+			);
+			return true;
+		}
 		const encoder = new VideoEncoder({
 			output: (chunk) => {
 				if (this.cancelled || !this.nativeExportSessionId) {
@@ -2868,7 +2944,11 @@ export class ModernVideoExporter {
 				`[VideoExporter] ${NATIVE_EXPORT_ENGINE_NAME} encoder configure failed`,
 				error,
 			);
-			return false;
+			this.forceRawvideoNativeRetry = true;
+			this.encoderAttempts.push(
+				"WebCodecs H.264 Annex B: configure failed; retrying packaged FFmpeg rawvideo",
+			);
+			return this.tryStartNativeVideoExport();
 		}
 
 		this.nativeH264Encoder = encoder;
@@ -2885,6 +2965,16 @@ export class ModernVideoExporter {
 		frameIndex: number,
 	): Promise<void> {
 		if (!this.nativeH264Encoder || !this.nativeExportSessionId) {
+			if (this.nativeInputMode === "rawvideo" && this.nativeExportSessionId) {
+				const pixels = this.renderer?.capturePixelsForNativeExport();
+				if (!pixels)
+					throw new Error("Unable to read rendered pixels for native FFmpeg export");
+				this.queueNativeWriteChunk(
+					this.nativeExportSessionId,
+					new Uint8Array(pixels.buffer, pixels.byteOffset, pixels.byteLength),
+				);
+				return;
+			}
 			if (this.cancelled) return;
 			throw new Error(`${NATIVE_EXPORT_ENGINE_NAME} export session is not active`);
 		}
@@ -3476,6 +3566,7 @@ export class ModernVideoExporter {
 
 	private disposeNativeH264Encoder(): void {
 		if (!this.nativeH264Encoder) {
+			this.nativeInputMode = null;
 			return;
 		}
 
@@ -3486,6 +3577,7 @@ export class ModernVideoExporter {
 		}
 
 		this.nativeH264Encoder = null;
+		this.nativeInputMode = null;
 	}
 
 	private getNowMs(): number {
