@@ -52,7 +52,7 @@ export function useEditorGlobalInteractions({
 			event.preventDefault();
 			const playback = videoPlaybackRef.current;
 			if (!playback?.video) return;
-			if (playback.video.paused) startPlayback();
+			if (!playback.isPlaying) startPlayback();
 			else playback.pause();
 		};
 		window.addEventListener("keydown", handleKeyDown, { capture: true });

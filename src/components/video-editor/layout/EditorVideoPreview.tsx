@@ -3,7 +3,7 @@ import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
-import type { CursorTelemetryPoint, SpeedRegion, ZoomRegion } from "../types";
+import type { CursorTelemetryPoint, ZoomRegion } from "../types";
 import VideoPlayback, { type VideoPlaybackRef } from "../VideoPlayback";
 
 type PlaybackProps = ComponentProps<typeof VideoPlayback>;
@@ -30,7 +30,6 @@ type Props = {
 	timeline: ReturnType<typeof useTimelineState>;
 	audio: ReturnType<typeof useVideoEditorAudio>;
 	effectiveZoomRegions: ZoomRegion[];
-	effectiveSpeedRegions: SpeedRegion[];
 	effectiveCursorTelemetry: CursorTelemetryPoint[];
 	effectiveShowCursor: boolean;
 	setDuration: Dispatch<SetStateAction<number>>;
@@ -54,7 +53,6 @@ export function EditorVideoPreview({
 	timeline,
 	audio,
 	effectiveZoomRegions,
-	effectiveSpeedRegions,
 	effectiveCursorTelemetry,
 	effectiveShowCursor,
 	setDuration,
@@ -66,6 +64,7 @@ export function EditorVideoPreview({
 }: Props) {
 	return (
 		<VideoPlayback
+			clipRegions={timeline.clipRegions}
 			key={`${videoPath || "no-video"}:${previewVersion}:inline`}
 			aspectRatio={aspectRatio}
 			ref={playbackRef}
@@ -99,8 +98,6 @@ export function EditorVideoPreview({
 			webcamVideoPath={
 				appearance.webcam.sourcePath ? appearance.resolvedWebcamVideoUrl : null
 			}
-			trimRegions={timeline.trimRegions}
-			speedRegions={effectiveSpeedRegions}
 			annotationRegions={timeline.annotationRegions}
 			autoCaptions={timeline.autoCaptions}
 			autoCaptionSettings={timeline.autoCaptionSettings}

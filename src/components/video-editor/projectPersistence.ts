@@ -10,14 +10,6 @@ import type {
 	GifSizePreset,
 } from "@/lib/exporter";
 import { isValidMp4FrameRate } from "@/lib/exporter/types";
-import {
-	TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT,
-	TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION,
-	TEMPORAL_MOTION_BLUR_MAX_SAMPLE_COUNT,
-	TEMPORAL_MOTION_BLUR_MAX_SHUTTER_FRACTION,
-	TEMPORAL_MOTION_BLUR_MIN_SAMPLE_COUNT,
-	TEMPORAL_MOTION_BLUR_MIN_SHUTTER_FRACTION,
-} from "@/lib/exporter/temporalMotionBlur";
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
 import { CURSOR_MOTION_PRESETS, resolveCursorMotionPresetId } from "./cursorMotionPresets";
@@ -104,9 +96,6 @@ export interface ProjectEditorState {
 	backgroundBlur: number;
 	zoomMotionBlur: number;
 	zoomMotionBlurTuning: ZoomMotionBlurTuning;
-	zoomTemporalMotionBlur: number;
-	zoomMotionBlurSampleCount: number | null;
-	zoomMotionBlurShutterFraction: number | null;
 	connectZooms: boolean;
 	zoomInDurationMs: number;
 	zoomInOverlapMs: number;
@@ -354,27 +343,6 @@ export function validateProjectData(candidate: unknown): candidate is EditorProj
 }
 
 export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): ProjectEditorState {
-	const normalizeTemporalBlurSampleCount = (value: unknown): number => {
-		if (!isFiniteNumber(value)) {
-			return TEMPORAL_MOTION_BLUR_DEFAULT_SAMPLE_COUNT;
-		}
-
-		const roundedValue = Math.round(value);
-		const clampedValue = clamp(
-			roundedValue,
-			TEMPORAL_MOTION_BLUR_MIN_SAMPLE_COUNT,
-			TEMPORAL_MOTION_BLUR_MAX_SAMPLE_COUNT,
-		);
-
-		if (clampedValue % 2 === 1) {
-			return clampedValue;
-		}
-
-		return clampedValue >= TEMPORAL_MOTION_BLUR_MAX_SAMPLE_COUNT
-			? clampedValue - 1
-			: clampedValue + 1;
-	};
-
 	const validAspectRatios = new Set<AspectRatio>(ASPECT_RATIOS);
 	const legacyMotionBlurEnabled = (editor as Partial<{ motionBlurEnabled: boolean }>)
 		.motionBlurEnabled;
@@ -415,11 +383,6 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			? clamp(rawZoomMotionBlurTuning.zoomSafeZoneRadiusPx, 0, 80)
 			: DEFAULT_ZOOM_MOTION_BLUR_TUNING.zoomSafeZoneRadiusPx,
 	};
-	const normalizedZoomTemporalMotionBlur = isFiniteNumber(
-		(editor as Partial<ProjectEditorState>).zoomTemporalMotionBlur,
-	)
-		? clamp((editor as Partial<ProjectEditorState>).zoomTemporalMotionBlur as number, 0, 2)
-		: normalizedZoomMotionBlur;
 	const normalizedBackgroundBlur = isFiniteNumber(
 		(editor as Partial<ProjectEditorState>).backgroundBlur,
 	)
@@ -427,18 +390,6 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		: legacyShowBlur
 			? 2
 			: 0;
-	const normalizedZoomMotionBlurSampleCount = normalizeTemporalBlurSampleCount(
-		(editor as Partial<ProjectEditorState>).zoomMotionBlurSampleCount,
-	);
-	const normalizedZoomMotionBlurShutterFraction = isFiniteNumber(
-		(editor as Partial<ProjectEditorState>).zoomMotionBlurShutterFraction,
-	)
-		? clamp(
-				(editor as Partial<ProjectEditorState>).zoomMotionBlurShutterFraction as number,
-				TEMPORAL_MOTION_BLUR_MIN_SHUTTER_FRACTION,
-				TEMPORAL_MOTION_BLUR_MAX_SHUTTER_FRACTION,
-			)
-		: TEMPORAL_MOTION_BLUR_DEFAULT_SHUTTER_FRACTION;
 	const normalizedZoomInDurationMs = isFiniteNumber(editor.zoomInDurationMs)
 		? clamp(editor.zoomInDurationMs, 60, 4000)
 		: DEFAULT_MOTION_PRESET.zoomInDurationMs;
@@ -915,9 +866,6 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		backgroundBlur: normalizedBackgroundBlur,
 		zoomMotionBlur: normalizedZoomMotionBlur,
 		zoomMotionBlurTuning: normalizedZoomMotionBlurTuning,
-		zoomTemporalMotionBlur: normalizedZoomTemporalMotionBlur,
-		zoomMotionBlurSampleCount: normalizedZoomMotionBlurSampleCount,
-		zoomMotionBlurShutterFraction: normalizedZoomMotionBlurShutterFraction,
 		connectZooms: typeof editor.connectZooms === "boolean" ? editor.connectZooms : true,
 		zoomInDurationMs: normalizedMotionPreset.zoomInDurationMs,
 		zoomInOverlapMs: normalizedZoomInOverlapMs,

@@ -1,17 +1,11 @@
 import type { Span } from "dnd-timeline";
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
 import { toast } from "sonner";
+import { changeClipSpan } from "../clipSpanChange";
 import { planClipSpeedChange } from "../clipSpeedChange";
 import { planClipSplit } from "../clipSplit";
-import type {
-	AnnotationRegion,
-	AudioRegion,
-	ClipRegion,
-	EditorEffectSection,
-	SpeedRegion,
-	ZoomRegion,
-} from "../types";
-import { getClipSourceStartMs } from "../types";
+import type { ClipRegion, EditorEffectSection, ZoomRegion } from "../types";
+import { supportsPreviewPlaybackRate } from "../videoPlayback/playbackRate";
 
 type Translator = (
 	key: string,
@@ -20,13 +14,11 @@ type Translator = (
 ) => string;
 
 interface UseClipRegionCommandsParams {
+	sourceDurationMs: number;
 	clipRegions: ClipRegion[];
 	setClipRegions: Dispatch<SetStateAction<ClipRegion[]>>;
 	zoomRegions: ZoomRegion[];
 	setZoomRegions: Dispatch<SetStateAction<ZoomRegion[]>>;
-	setAnnotationRegions: Dispatch<SetStateAction<AnnotationRegion[]>>;
-	setSpeedRegions: Dispatch<SetStateAction<SpeedRegion[]>>;
-	setAudioRegions: Dispatch<SetStateAction<AudioRegion[]>>;
 	selectedClipId: string | null;
 	setSelectedClipId: Dispatch<SetStateAction<string | null>>;
 	setSelectedZoomId: Dispatch<SetStateAction<string | null>>;
@@ -39,13 +31,11 @@ interface UseClipRegionCommandsParams {
 }
 
 export function useClipRegionCommands({
+	sourceDurationMs,
 	clipRegions,
 	setClipRegions,
 	zoomRegions,
 	setZoomRegions,
-	setAnnotationRegions,
-	setSpeedRegions,
-	setAudioRegions,
 	selectedClipId,
 	setSelectedClipId,
 	setSelectedZoomId,
@@ -102,16 +92,6 @@ export function useClipRegionCommands({
 			const oldClip = clipRegions.find((clip) => clip.id === id);
 			const newStart = Math.round(span.start);
 			const newEnd = Math.round(span.end);
-			const removedSegments = oldClip
-				? [
-						...(newStart > oldClip.startMs
-							? [{ startMs: oldClip.startMs, endMs: newStart }]
-							: []),
-						...(newEnd < oldClip.endMs
-							? [{ startMs: newEnd, endMs: oldClip.endMs }]
-							: []),
-					]
-				: [];
 
 			if (oldClip) {
 				const startDelta = newStart - oldClip.startMs;
@@ -131,53 +111,28 @@ export function useClipRegionCommands({
 				}
 			}
 
-			if (removedSegments.length > 0) {
-				const removeTrimmedRegions = <T extends { startMs: number; endMs: number }>(
-					regions: T[],
-				) =>
-					regions.filter(
-						(region) =>
-							!removedSegments.some(
-								(segment) =>
-									region.startMs < segment.endMs &&
-									region.endMs > segment.startMs,
-							),
-					);
-				setZoomRegions((current) => removeTrimmedRegions(current));
-				setAnnotationRegions((current) => removeTrimmedRegions(current));
-				setSpeedRegions((current) => removeTrimmedRegions(current));
-				setAudioRegions((current) => removeTrimmedRegions(current));
-			}
-
 			setClipRegions((current) =>
 				current.map((clip) => {
 					if (clip.id !== id) return clip;
-					const speed = Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
-					const startDelta = newStart - clip.startMs;
-					const endDelta = newEnd - clip.endMs;
-					// A move carries its footage along; trimming the left edge skips
-					// into the source by however much source that edge covered.
-					const isMove = Math.abs(startDelta - endDelta) < 1;
-					const sourceStartMs = isMove
-						? getClipSourceStartMs(clip)
-						: Math.max(0, Math.round(getClipSourceStartMs(clip) + startDelta * speed));
-					return { ...clip, startMs: newStart, endMs: newEnd, sourceStartMs };
+					return changeClipSpan(clip, newStart, newEnd, sourceDurationMs);
 				}),
 			);
 		},
-		[
-			clipRegions,
-			setAnnotationRegions,
-			setAudioRegions,
-			setClipRegions,
-			setSpeedRegions,
-			setZoomRegions,
-		],
+		[clipRegions, setClipRegions, setZoomRegions, sourceDurationMs],
 	);
 
 	const handleClipSpeedChange = useCallback(
 		(speed: number) => {
 			if (!selectedClipId || !Number.isFinite(speed) || speed <= 0) return;
+			if (!supportsPreviewPlaybackRate(speed)) {
+				toast.error(
+					t(
+						"editor.timeline.unsupportedSpeed",
+						"This speed is not supported for preview on this device.",
+					),
+				);
+				return;
+			}
 			const plan = planClipSpeedChange({ clipRegions, zoomRegions, selectedClipId, speed });
 			if (!plan) return;
 			if ("blockedReason" in plan) {
@@ -223,28 +178,11 @@ export function useClipRegionCommands({
 
 	const handleClipDelete = useCallback(
 		(id: string) => {
-			const deletedClip = clipRegions.find((clip) => clip.id === id);
+			// Other tracks have their own timeline positions; deleting footage is not a ripple edit.
 			setClipRegions((current) => current.filter((clip) => clip.id !== id));
-			if (deletedClip) {
-				const outsideDeletedClip = (region: { startMs: number; endMs: number }) =>
-					region.endMs <= deletedClip.startMs || region.startMs >= deletedClip.endMs;
-				setZoomRegions((current) => current.filter(outsideDeletedClip));
-				setAnnotationRegions((current) => current.filter(outsideDeletedClip));
-				setSpeedRegions((current) => current.filter(outsideDeletedClip));
-				setAudioRegions((current) => current.filter(outsideDeletedClip));
-			}
 			if (selectedClipId === id) setSelectedClipId(null);
 		},
-		[
-			clipRegions,
-			selectedClipId,
-			setAnnotationRegions,
-			setAudioRegions,
-			setClipRegions,
-			setSelectedClipId,
-			setSpeedRegions,
-			setZoomRegions,
-		],
+		[selectedClipId, setClipRegions, setSelectedClipId],
 	);
 
 	return {

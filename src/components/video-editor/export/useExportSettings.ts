@@ -9,12 +9,17 @@ import type {
 	GifFrameRate,
 	GifSizePreset,
 } from "@/lib/exporter";
+import { projectCaptionCues } from "../captionTimeline";
 import type { EditorPreferences } from "../editorPreferences";
-import type { CaptionCue } from "../types";
+import type { CaptionCue, ClipRegion } from "../types";
 
 const DEFAULT_MP4_EXPORT_FRAME_RATE: ExportMp4FrameRate = 30;
 
-export function useExportSettings(preferences: EditorPreferences, autoCaptions: CaptionCue[]) {
+export function useExportSettings(
+	preferences: EditorPreferences,
+	autoCaptions: CaptionCue[],
+	clips: ClipRegion[],
+) {
 	const [includeCaptionSidecar, setIncludeCaptionSidecar] = useState(false);
 	const [exportQuality, setExportQuality] = useState<ExportQuality>(preferences.exportQuality);
 	const [exportEncodingMode, setExportEncodingMode] = useState<ExportEncodingMode>(
@@ -35,7 +40,7 @@ export function useExportSettings(preferences: EditorPreferences, autoCaptions: 
 	const [gifSizePreset, setGifSizePreset] = useState<GifSizePreset>(preferences.gifSizePreset);
 	const captionSidecarCues = useMemo(
 		() =>
-			autoCaptions
+			projectCaptionCues(autoCaptions, clips)
 				.filter(
 					(cue) =>
 						Number.isFinite(cue.startMs) &&
@@ -45,7 +50,7 @@ export function useExportSettings(preferences: EditorPreferences, autoCaptions: 
 						cue.text.trim().length > 0,
 				)
 				.map(({ startMs, endMs, text }) => ({ startMs, endMs, text })),
-		[autoCaptions],
+		[autoCaptions, clips],
 	);
 
 	return {

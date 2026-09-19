@@ -5,6 +5,11 @@ import type {
 	SourceAudioTrackSettings,
 	SpeedRegion,
 } from "@/components/video-editor/types";
+import {
+	getClipSourceEndMs,
+	getClipSourceStartMs,
+	getTimelineDurationMs,
+} from "@/components/video-editor/types";
 import { buildResolvedAudioPlan } from "@/lib/exporter/audioRoutingEngine";
 import { estimateCompanionAudioStartDelaySeconds } from "@/lib/mediaTiming";
 import { AudioMediaProcessor } from "./audioMediaProcessor";
@@ -149,16 +154,26 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		const sourceDurationMs = sourceDurationSec * 1000;
 
 		// Build timeline slices (non-trimmed segments with speed info)
-		const slices = this.buildTimelineSlices(sourceDurationMs, trimRegions, speedRegions);
+		const slices = clipRegions
+			? clipRegions.map((clip) => ({
+					sourceStartMs: getClipSourceStartMs(clip),
+					sourceEndMs: getClipSourceEndMs(clip),
+					speed: clip.speed,
+					outputStartMs: clip.startMs,
+				}))
+			: this.buildTimelineSlices(sourceDurationMs, trimRegions, speedRegions);
 
 		let outputDurationMs = 0;
 		for (const slice of slices) {
 			outputDurationMs += (slice.sourceEndMs - slice.sourceStartMs) / slice.speed;
 		}
+		if (clipRegions) outputDurationMs = getTimelineDurationMs(clipRegions, sourceDurationMs);
 
 		// Extend for audio regions that might exceed the video timeline
 		for (const { region } of regionEntries) {
-			const regionEndOutput = this.sourceTimeToOutputTime(region.endMs, slices);
+			const regionEndOutput = clipRegions
+				? region.endMs
+				: this.sourceTimeToOutputTime(region.endMs, slices);
 			outputDurationMs = Math.max(outputDurationMs, regionEndOutput);
 		}
 
@@ -177,6 +192,7 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 			}));
 
 		return {
+			usesClipTimeline: clipRegions !== undefined,
 			mainBufferEntry,
 			companionEntries,
 			regionEntries,
@@ -275,6 +291,7 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		await this.renderChunked(prepared, totalOutputSec, async (rendered) => {
 			pcmParts.push(...this.audioBufferToPcmParts(rendered));
 		});
+		if (this.cancelled) throw new Error("Export cancelled");
 
 		return new Blob(pcmParts, { type: "audio/wav" });
 	}
@@ -341,6 +358,7 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 					slices,
 					outputOffsetSec,
 					chunkSec,
+					prepared.usesClipTimeline,
 				);
 			}
 
@@ -363,9 +381,14 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		slices: TimelineSlice[],
 		chunkOutputStartSec: number,
 		chunkDurationSec: number,
+		usesClipTimeline = false,
 	): void {
-		const outputStartMs = this.sourceTimeToOutputTime(region.startMs, slices);
-		const outputEndMs = this.sourceTimeToOutputTime(region.endMs, slices);
+		const outputStartMs = usesClipTimeline
+			? region.startMs
+			: this.sourceTimeToOutputTime(region.startMs, slices);
+		const outputEndMs = usesClipTimeline
+			? region.endMs
+			: this.sourceTimeToOutputTime(region.endMs, slices);
 
 		let localStartSec = outputStartMs / 1000 - chunkOutputStartSec;
 		let localEndSec = outputEndMs / 1000 - chunkOutputStartSec;

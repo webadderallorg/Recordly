@@ -1,4 +1,5 @@
 import type { WebDemuxer } from "web-demuxer";
+import { requiresClipTimelineRendering } from "./clipTimeline";
 import type {
 	AudioRegion,
 	ClipRegion,
@@ -149,6 +150,7 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 
 		// When speed edits, audio regions, or multiple audio sources need mixing, use offline AudioContext pipeline.
 		if (
+			requiresClipTimelineRendering(clipRegions) ||
 			sortedSpeedRegions.length > 0 ||
 			sortedAudioRegions.length > 0 ||
 			needsSourceAudioMixing ||

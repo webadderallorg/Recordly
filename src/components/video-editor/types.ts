@@ -259,7 +259,7 @@ export function getTimelineDurationMs(clips: ClipRegion[], sourceDurationMs: num
 
 	return clips.reduce(
 		(durationMs, clip) => Math.max(durationMs, Math.max(0, Math.round(clip.endMs))),
-		baseDurationMs,
+		0,
 	);
 }
 
@@ -271,25 +271,22 @@ function getSafeClipSpeed(clip: ClipRegion) {
 	return Number.isFinite(clip.speed) && clip.speed > 0 ? clip.speed : 1;
 }
 
-function clampToNearestClipBoundary(
-	timeMs: number,
-	clips: ClipRegion[],
-	kind: "timeline" | "source",
-) {
+function mapNearestClipBoundary(timeMs: number, clips: ClipRegion[], from: "timeline" | "source") {
 	let nearestTimeMs = Math.round(timeMs);
 	let nearestDistance = Number.POSITIVE_INFINITY;
 
 	for (const clip of clips) {
-		const boundaries =
-			kind === "timeline"
-				? [clip.startMs, clip.endMs]
-				: [getClipSourceStartMs(clip), getClipSourceEndMs(clip)];
+		const boundaries = [
+			[clip.startMs, getClipSourceStartMs(clip)],
+			[clip.endMs, getClipSourceEndMs(clip)],
+		];
 
-		for (const boundary of boundaries) {
-			const distance = Math.abs(timeMs - boundary);
+		for (const [timelineTimeMs, sourceTimeMs] of boundaries) {
+			const inputTimeMs = from === "timeline" ? timelineTimeMs : sourceTimeMs;
+			const distance = Math.abs(timeMs - inputTimeMs);
 			if (distance < nearestDistance) {
 				nearestDistance = distance;
-				nearestTimeMs = Math.round(boundary);
+				nearestTimeMs = Math.round(from === "timeline" ? sourceTimeMs : timelineTimeMs);
 			}
 		}
 	}
@@ -302,7 +299,7 @@ export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[])
 	const sortedClips = sortClipRegions(clips);
 
 	for (const clip of sortedClips) {
-		if (roundedTimeMs < clip.startMs || roundedTimeMs > clip.endMs) {
+		if (timeMs < clip.startMs || timeMs >= clip.endMs) {
 			continue;
 		}
 
@@ -315,7 +312,7 @@ export function mapTimelineTimeToSourceTime(timeMs: number, clips: ClipRegion[])
 		return roundedTimeMs;
 	}
 
-	return clampToNearestClipBoundary(roundedTimeMs, sortedClips, "timeline");
+	return mapNearestClipBoundary(roundedTimeMs, sortedClips, "timeline");
 }
 
 export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[]): number {
@@ -325,7 +322,7 @@ export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[])
 	for (const clip of sortedClips) {
 		const sourceStartMs = getClipSourceStartMs(clip);
 		const sourceEndMs = getClipSourceEndMs(clip);
-		if (roundedTimeMs < sourceStartMs || roundedTimeMs > sourceEndMs) {
+		if (timeMs < sourceStartMs || timeMs >= sourceEndMs) {
 			continue;
 		}
 
@@ -336,15 +333,12 @@ export function mapSourceTimeToTimelineTime(timeMs: number, clips: ClipRegion[])
 		return roundedTimeMs;
 	}
 
-	return clampToNearestClipBoundary(roundedTimeMs, sortedClips, "source");
+	return mapNearestClipBoundary(roundedTimeMs, sortedClips, "source");
 }
 
 export function findClipAtTimelineTime(timeMs: number, clips: ClipRegion[]): ClipRegion | null {
-	const roundedTimeMs = Math.round(timeMs);
 	return (
-		sortClipRegions(clips).find(
-			(clip) => roundedTimeMs >= clip.startMs && roundedTimeMs < clip.endMs,
-		) ?? null
+		sortClipRegions(clips).find((clip) => timeMs >= clip.startMs && timeMs < clip.endMs) ?? null
 	);
 }
 

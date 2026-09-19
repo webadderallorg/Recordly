@@ -33,6 +33,7 @@ export function buildExportRenderOptions({
 	onProgress,
 }: BuildExportRenderOptionsInput) {
 	return {
+		clipRegions: timeline.clipRegions,
 		wallpaper: appearance.wallpaper,
 		trimRegions: timeline.trimRegions,
 		speedRegions: effectiveSpeedRegions,
@@ -41,9 +42,6 @@ export function buildExportRenderOptions({
 		backgroundBlur: appearance.backgroundBlur,
 		zoomMotionBlur: appearance.zoomMotionBlur,
 		zoomMotionBlurTuning: appearance.zoomMotionBlurTuning,
-		zoomTemporalMotionBlur: appearance.zoomTemporalMotionBlur,
-		zoomMotionBlurSampleCount: appearance.zoomMotionBlurSampleCount,
-		zoomMotionBlurShutterFraction: appearance.zoomMotionBlurShutterFraction,
 		connectZooms: appearance.connectZooms,
 		zoomInDurationMs: appearance.zoomInDurationMs,
 		zoomInOverlapMs: appearance.zoomInOverlapMs,

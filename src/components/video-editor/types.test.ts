@@ -117,6 +117,20 @@ describe("extendAutoFullTrackClip", () => {
 });
 
 describe("clip timeline mapping", () => {
+	it("selects the next source at an exact cut, but keeps fractional times before it in the previous clip", () => {
+		const clips = [
+			{ id: "a", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 3 },
+			{ id: "b", startMs: 1000, endMs: 2000, sourceStartMs: 6000, speed: 1 },
+		];
+		expect(mapTimelineTimeToSourceTime(1000, clips)).toBe(6000);
+		expect(mapTimelineTimeToSourceTime(999.9, clips)).toBe(3000);
+		expect(mapTimelineTimeToSourceTime(2000, clips)).toBe(7000);
+		const sourceAdjacent = [
+			clips[0],
+			{ ...clips[1], startMs: 2000, endMs: 3000, sourceStartMs: 3000 },
+		];
+		expect(mapSourceTimeToTimelineTime(3000, sourceAdjacent)).toBe(2000);
+	});
 	const clips = [
 		{ id: "clip-1", startMs: 0, endMs: 4_000, speed: 1 },
 		{ id: "clip-2", startMs: 6_000, endMs: 8_000, speed: 2 },
@@ -140,6 +154,16 @@ describe("clip timeline mapping", () => {
 	it("snaps removed source gaps to the nearest kept boundary", () => {
 		expect(mapSourceTimeToTimelineTime(4_200, clips)).toBe(4_000);
 		expect(mapSourceTimeToTimelineTime(5_900, clips)).toBe(6_000);
+	});
+
+	it("maps gaps between different source and timeline positions", () => {
+		const movedClips = [
+			{ id: "clip-1", startMs: 0, endMs: 4_000, sourceStartMs: 0, speed: 1 },
+			{ id: "clip-2", startMs: 6_000, endMs: 8_000, sourceStartMs: 10_000, speed: 1 },
+		];
+
+		expect(mapTimelineTimeToSourceTime(5_900, movedClips)).toBe(10_000);
+		expect(mapSourceTimeToTimelineTime(9_900, movedClips)).toBe(6_000);
 	});
 
 	it("finds clips only inside visible kept spans", () => {
@@ -176,10 +200,10 @@ describe("getTimelineDurationMs", () => {
 		).toBe(20_000);
 	});
 
-	it("keeps the source duration when speed edits make clips shorter", () => {
+	it("shortens the timeline when speed edits make clips shorter", () => {
 		expect(
 			getTimelineDurationMs([{ id: "clip-1", startMs: 0, endMs: 5_000, speed: 2 }], 10_000),
-		).toBe(10_000);
+		).toBe(5_000);
 	});
 });
 

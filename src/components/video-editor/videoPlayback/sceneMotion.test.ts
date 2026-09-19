@@ -43,13 +43,13 @@ describe("resolveSceneZoomTarget", () => {
 });
 
 describe("resolvePreviewMotionMode", () => {
-	it("preserves the composed frame on a plain pause", () => {
+	it.each([false, true])("preserves a plain pause with classic mode %s", (zoomClassicMode) => {
 		expect(
 			resolvePreviewMotionMode({
 				isPlaying: false,
 				isSeeking: false,
 				shouldSnapPausedFrame: false,
-				zoomClassicMode: false,
+				zoomClassicMode,
 			}),
 		).toBe("preserve");
 	});
@@ -95,5 +95,18 @@ describe("shouldComposePreviewFrame", () => {
 				shouldSnapPausedFrame: true,
 			}),
 		).toBe(true);
+	});
+});
+
+
+describe("preview seek completion", () => {
+	it("holds the composed frame until seeking finishes, even with a pending refresh", () => {
+		const pending = {
+			motionMode: "snap" as const,
+			contentTimeChanged: true,
+			shouldSnapPausedFrame: true,
+		};
+		expect(shouldComposePreviewFrame({ ...pending, isSeeking: true })).toBe(false);
+		expect(shouldComposePreviewFrame({ ...pending, isSeeking: false })).toBe(true);
 	});
 });

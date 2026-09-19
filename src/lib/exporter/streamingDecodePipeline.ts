@@ -1,14 +1,20 @@
+import type { WebDemuxer } from "web-demuxer";
 import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
-import type { WebDemuxer } from "web-demuxer";
 import {
 	buildVideoDecodeFailure,
+	type DecodedVideoInfo,
 	getDecodedFrameTimelineOffsetUs,
 	preserveFirstVideoDecodeFailure,
-	type DecodedVideoInfo,
 	type VideoDecodeFailureContext,
 } from "./streamingDecoderSupport";
-import { computeVideoSegments, splitVideoSegmentsBySpeed } from "./videoTimelineSegments";
+import {
+	computeVideoSegments,
+	segmentFrameCount,
+	segmentSourceTime,
+	splitVideoSegmentsBySpeed,
+	type VideoSegment,
+} from "./videoTimelineSegments";
 
 type OnFrameCallback = (
 	frame: VideoFrame,
@@ -38,6 +44,7 @@ export async function decodeVideoStream(
 	trimRegions: TrimRegion[] | undefined,
 	speedRegions: SpeedRegion[] | undefined,
 	onFrame: OnFrameCallback,
+	segmentsOverride?: VideoSegment[],
 ): Promise<void> {
 	if (!context.demuxer || !context.metadata) {
 		throw new Error("Must call loadMetadata() before decodeAll()");
@@ -50,12 +57,14 @@ export async function decodeVideoStream(
 		duration: context.metadata.duration,
 		streamDuration: context.metadata.streamDuration,
 	});
-	const segments = splitVideoSegmentsBySpeed(
-		computeVideoSegments(effectiveVideoDuration, trimRegions),
-		speedRegions,
-	);
+	const segments =
+		segmentsOverride ??
+		splitVideoSegmentsBySpeed(
+			computeVideoSegments(effectiveVideoDuration, trimRegions),
+			speedRegions,
+		);
 	const segmentOutputFrameCounts = segments.map((segment) =>
-		Math.ceil(((segment.endSec - segment.startSec) / segment.speed) * targetFrameRate),
+		segmentFrameCount(segment, targetFrameRate),
 	);
 	const expectedOutputFrames = segmentOutputFrameCounts.reduce((sum, count) => sum + count, 0);
 	const frameDurationUs = 1_000_000 / targetFrameRate;
@@ -256,24 +265,20 @@ export async function decodeVideoStream(
 	let heldFrame: VideoFrame | null = null;
 	let heldFrameSec = 0;
 
-	const emitHeldFrameForTarget = async (segment: {
-		startSec: number;
-		endSec: number;
-		speed: number;
-	}) => {
+	const emitHeldFrameForTarget = async (segment: VideoSegment) => {
 		if (!heldFrame) return false;
 		const segmentFrameCount = segmentOutputFrameCounts[segmentIdx];
 		if (segmentFrameIndex >= segmentFrameCount) return false;
 
-		const segmentDurationSec = segment.endSec - segment.startSec;
-		const sourceTimeSec =
-			segment.startSec + (segmentFrameIndex / segmentFrameCount) * segmentDurationSec;
-		if (sourceTimeSec >= segment.endSec - epsilonSec) return false;
+		const sourceTimeSec = segmentSourceTime(segment, segmentFrameIndex, targetFrameRate);
 
 		const sourceTimestampMs = sourceTimeSec * 1000;
 		await onFrame(
 			heldFrame,
-			exportFrameIndex * frameDurationUs,
+			(segment.outputStartSec === undefined
+				? exportFrameIndex
+				: Math.ceil(segment.outputStartSec * targetFrameRate) + segmentFrameIndex) *
+				frameDurationUs,
 			sourceTimestampMs,
 			sourceTimestampMs,
 		);
@@ -317,14 +322,6 @@ export async function decodeVideoStream(
 
 			segmentIdx++;
 			segmentFrameIndex = 0;
-			if (
-				heldFrame &&
-				segmentIdx < segments.length &&
-				heldFrameSec < segments[segmentIdx].startSec - epsilonSec
-			) {
-				heldFrame.close();
-				heldFrame = null;
-			}
 		}
 
 		if (segmentIdx >= segments.length) {
@@ -334,9 +331,11 @@ export async function decodeVideoStream(
 
 		const currentSegment = segments[segmentIdx];
 
-		// Before current segment (trimmed region or pre-roll).
+		// Keep the nearest pre-roll frame for cuts between source frames.
 		if (frameTimeSec < currentSegment.startSec - epsilonSec) {
-			frame.close();
+			heldFrame?.close();
+			heldFrame = frame;
+			heldFrameSec = frameTimeSec;
 			continue;
 		}
 
@@ -354,26 +353,16 @@ export async function decodeVideoStream(
 				break;
 			}
 
-			const segmentDurationSec = currentSegment.endSec - currentSegment.startSec;
-			const sourceTimeSec =
-				currentSegment.startSec +
-				(segmentFrameIndex / segmentFrameCount) * segmentDurationSec;
-			if (sourceTimeSec >= currentSegment.endSec - epsilonSec) {
-				break;
-			}
+			const sourceTimeSec = segmentSourceTime(
+				currentSegment,
+				segmentFrameIndex,
+				targetFrameRate,
+			);
 			if (sourceTimeSec > handoffBoundarySec) {
 				break;
 			}
 
-			const sourceTimestampMs = sourceTimeSec * 1000;
-			await onFrame(
-				heldFrame,
-				exportFrameIndex * frameDurationUs,
-				sourceTimestampMs,
-				sourceTimestampMs,
-			);
-			segmentFrameIndex++;
-			exportFrameIndex++;
+			await emitHeldFrameForTarget(currentSegment);
 		}
 
 		heldFrame.close();

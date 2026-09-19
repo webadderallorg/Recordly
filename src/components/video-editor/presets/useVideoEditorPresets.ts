@@ -43,9 +43,6 @@ export function useVideoEditorPresets({
 			backgroundBlur: appearance.backgroundBlur,
 			zoomMotionBlur: appearance.zoomMotionBlur,
 			zoomMotionBlurTuning: { ...appearance.zoomMotionBlurTuning },
-			zoomTemporalMotionBlur: appearance.zoomTemporalMotionBlur,
-			zoomMotionBlurSampleCount: appearance.zoomMotionBlurSampleCount,
-			zoomMotionBlurShutterFraction: appearance.zoomMotionBlurShutterFraction,
 			connectZooms: appearance.connectZooms,
 			zoomInDurationMs: appearance.zoomInDurationMs,
 			zoomInOverlapMs: appearance.zoomInOverlapMs,
@@ -111,9 +108,6 @@ export function useVideoEditorPresets({
 			appearance.setBackgroundBlur(snapshot.backgroundBlur);
 			appearance.setZoomMotionBlur(snapshot.zoomMotionBlur);
 			appearance.setZoomMotionBlurTuning({ ...snapshot.zoomMotionBlurTuning });
-			appearance.setZoomTemporalMotionBlur(snapshot.zoomTemporalMotionBlur);
-			appearance.setZoomMotionBlurSampleCount(snapshot.zoomMotionBlurSampleCount);
-			appearance.setZoomMotionBlurShutterFraction(snapshot.zoomMotionBlurShutterFraction);
 			appearance.setConnectZooms(snapshot.connectZooms);
 			appearance.setZoomInDurationMs(snapshot.zoomInDurationMs);
 			appearance.setZoomInOverlapMs(snapshot.zoomInOverlapMs);

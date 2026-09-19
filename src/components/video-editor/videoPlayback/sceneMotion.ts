@@ -32,7 +32,7 @@ export function resolvePreviewMotionMode({
 	shouldSnapPausedFrame: boolean;
 	zoomClassicMode: boolean;
 }): PreviewMotionMode {
-	if (isSeeking || shouldSnapPausedFrame || zoomClassicMode) {
+	if (isSeeking || shouldSnapPausedFrame || (isPlaying && zoomClassicMode)) {
 		return "snap";
 	}
 
@@ -42,14 +42,17 @@ export function resolvePreviewMotionMode({
 /** Match export's one-composition-per-media-frame behavior. */
 export function shouldComposePreviewFrame({
 	motionMode,
+	isSeeking = false,
 	contentTimeChanged,
 	shouldSnapPausedFrame,
 }: {
 	motionMode: PreviewMotionMode;
+	isSeeking?: boolean;
 	contentTimeChanged: boolean;
 	shouldSnapPausedFrame: boolean;
 }): boolean {
-	if (motionMode === "preserve") {
+	// Do not consume the pending composition against the old decoded image.
+	if (isSeeking || motionMode === "preserve") {
 		return false;
 	}
 
@@ -60,6 +63,7 @@ export function shouldComposePreviewFrame({
 export function resolveSceneZoomTarget({
 	zoomRegions,
 	timeMs,
+	cursorTimeMs = timeMs,
 	connectZooms,
 	zoomInDurationMs,
 	zoomOutDurationMs,
@@ -69,6 +73,7 @@ export function resolveSceneZoomTarget({
 }: {
 	zoomRegions: ZoomRegion[];
 	timeMs: number;
+	cursorTimeMs?: number;
 	connectZooms?: boolean;
 	zoomInDurationMs?: number;
 	zoomOutDurationMs?: number;
@@ -97,7 +102,7 @@ export function resolveSceneZoomTarget({
 		focus = computeCursorFollowFocus(
 			cursorFollowCamera,
 			cursorTelemetry,
-			timeMs,
+			cursorTimeMs,
 			scale,
 			strength,
 			region.focus,

@@ -58,6 +58,7 @@ export function useTimelineKeyboardShortcuts({
 }: UseTimelineKeyboardShortcutsParams) {
 	useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
+			if (e.defaultPrevented) return;
 			const eventTarget = e.target;
 			if (
 				eventTarget instanceof HTMLInputElement ||
@@ -65,6 +66,12 @@ export function useTimelineKeyboardShortcuts({
 				eventTarget instanceof HTMLSelectElement ||
 				(eventTarget instanceof HTMLElement && eventTarget.isContentEditable)
 			) {
+				return;
+			}
+
+			if (selectedClipId && e.key === "Backspace" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+				e.preventDefault();
+				deleteSelectedClip();
 				return;
 			}
 

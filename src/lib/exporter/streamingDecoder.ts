@@ -1,9 +1,19 @@
 import { WebDemuxer } from "web-demuxer";
-import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
+import {
+	type ClipRegion,
+	type SpeedRegion,
+	type TrimRegion,
+	getTimelineDurationMs,
+	findClipAtTimelineTime,
+} from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { createFallbackDemuxerSource, resolveMediaResourceUrl } from "./localMediaSource";
 import { decodeVideoStream } from "./streamingDecodePipeline";
-import { computeVideoSegments, splitVideoSegmentsBySpeed } from "./videoTimelineSegments";
+import {
+	buildClipDecodeRuns,
+	computeVideoSegments,
+	splitVideoSegmentsBySpeed,
+} from "./videoTimelineSegments";
 
 const DEFAULT_MAX_DECODE_QUEUE = 12;
 const DEFAULT_MAX_PENDING_FRAMES = 32;
@@ -25,7 +35,7 @@ interface StreamingVideoDecoderLoadOptions {
 
 /** Decoder retains ownership of the VideoFrame and closes it after use. */
 type OnFrameCallback = (
-	frame: VideoFrame,
+	frame: VideoFrame | null,
 	exportTimestampUs: number,
 	sourceTimestampMs: number,
 	cursorTimestampMs: number,
@@ -167,38 +177,74 @@ export class StreamingVideoDecoder {
 		trimRegions: TrimRegion[] | undefined,
 		speedRegions: SpeedRegion[] | undefined,
 		onFrame: OnFrameCallback,
+		clipRegions?: ClipRegion[],
 	): Promise<void> {
 		if (!this.demuxer || !this.metadata) {
 			throw new Error("Must call loadMetadata() before decodeAll()");
 		}
 
 		const owner = this;
-		await decodeVideoStream(
-			{
-				demuxer: this.demuxer,
-				metadata: this.metadata,
-				pendingFrames: this.pendingFrames,
-				maxDecodeQueue: this.maxDecodeQueue,
-				maxPendingFrames: this.maxPendingFrames,
-				get cancelled() {
-					return owner.cancelled;
-				},
-				get decoder() {
-					return owner.decoder;
-				},
-				set decoder(value) {
-					owner.decoder = value;
-				},
+		const context = {
+			demuxer: this.demuxer,
+			metadata: this.metadata,
+			pendingFrames: this.pendingFrames,
+			maxDecodeQueue: this.maxDecodeQueue,
+			maxPendingFrames: this.maxPendingFrames,
+			get cancelled() {
+				return owner.cancelled;
 			},
-			targetFrameRate,
-			trimRegions,
-			speedRegions,
-			onFrame,
+			get decoder() {
+				return owner.decoder;
+			},
+			set decoder(value) {
+				owner.decoder = value;
+			},
+		};
+		if (!clipRegions) {
+			await decodeVideoStream(context, targetFrameRate, trimRegions, speedRegions, onFrame);
+			return;
+		}
+		let nextFrame = 0;
+		const emitGapsUntil = async (endFrame: number) => {
+			while (!this.cancelled && nextFrame < endFrame) {
+				if (findClipAtTimelineTime((nextFrame * 1000) / targetFrameRate, clipRegions)) {
+					throw new Error(`Missing decoded clip frame at output frame ${nextFrame}`);
+				}
+				await onFrame(null, (nextFrame * 1_000_000) / targetFrameRate, 0, 0);
+				nextFrame++;
+			}
+		};
+		for (const run of buildClipDecodeRuns(clipRegions)) {
+			if (this.cancelled) break;
+			await decodeVideoStream(
+				context,
+				targetFrameRate,
+				undefined,
+				undefined,
+				async (frame, timestamp, source, cursor) => {
+					await emitGapsUntil(Math.round((timestamp * targetFrameRate) / 1_000_000));
+					if (this.cancelled) return;
+					await onFrame(frame, timestamp, source, cursor);
+					nextFrame++;
+				},
+				run,
+			);
+		}
+		await emitGapsUntil(
+			Math.ceil(
+				this.getEffectiveDuration(undefined, undefined, clipRegions) * targetFrameRate,
+			),
 		);
 	}
 
-	getEffectiveDuration(trimRegions?: TrimRegion[], speedRegions?: SpeedRegion[]): number {
+	getEffectiveDuration(
+		trimRegions?: TrimRegion[],
+		speedRegions?: SpeedRegion[],
+		clipRegions?: ClipRegion[],
+	): number {
 		if (!this.metadata) throw new Error("Must call loadMetadata() first");
+		if (clipRegions)
+			return getTimelineDurationMs(clipRegions, this.metadata.duration * 1000) / 1000;
 		const trimSegments = computeVideoSegments(
 			getEffectiveVideoStreamDurationSeconds({
 				duration: this.metadata.duration,

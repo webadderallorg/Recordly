@@ -94,13 +94,10 @@ import {
 	VIDEO_SHADOW_LAYER_PROFILES,
 	WEBCAM_SHADOW_LAYER_PROFILES,
 } from "./shadowProfile";
-import { buildTemporalSamplePlanUs, getTemporalMotionBlurConfig } from "./temporalMotionBlur";
-
-const TEMPORAL_ZOOM_MOTION_BLUR_ENABLED = false;
-
 import type { ExportRenderBackend } from "./types";
 
 interface FrameRenderConfig {
+	timelineEffects?: boolean;
 	width: number;
 	height: number;
 	preferredRenderBackend?: ExportRenderBackend;
@@ -111,9 +108,6 @@ interface FrameRenderConfig {
 	backgroundBlur: number;
 	zoomMotionBlur?: number;
 	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
-	zoomTemporalMotionBlur?: number;
-	zoomMotionBlurSampleCount?: number | null;
-	zoomMotionBlurShutterFraction?: number | null;
 	connectZooms?: boolean;
 	zoomInDurationMs?: number;
 	zoomInOverlapMs?: number;
@@ -281,14 +275,6 @@ function isKnownRendererUnavailableError(error: unknown): boolean {
 	);
 }
 
-interface RenderSnapshot {
-	timeMs: number;
-	cursorTimeMs: number;
-	backgroundTimelineTimeMs: number;
-	sceneTransform: { scale: number; x: number; y: number };
-	zoom: { scale: number; focusX: number; focusY: number; progress: number };
-}
-
 function createAnimationState(): AnimationState {
 	return {
 		scale: 1,
@@ -431,7 +417,6 @@ export class FrameRenderer {
 	private captionTextureSource: MutableVideoTextureSource | null = null;
 	private captionRenderKey: string | null = null;
 	private exportCompositeCanvas: ExportCompositeCanvasState | null = null;
-	private temporalCompositeCanvas: ExportCompositeCanvasState | null = null;
 	private outputCanvasOverride: HTMLCanvasElement | null = null;
 	private config: FrameRenderConfig;
 	private animationState: AnimationState;
@@ -1472,35 +1457,6 @@ export class FrameRenderer {
 		return this.exportCompositeCanvas;
 	}
 
-	private ensureTemporalCompositeCanvas(): ExportCompositeCanvasState | null {
-		const targetWidth = Math.max(1, Math.ceil(this.config.width));
-		const targetHeight = Math.max(1, Math.ceil(this.config.height));
-
-		if (
-			this.temporalCompositeCanvas &&
-			this.temporalCompositeCanvas.canvas.width === targetWidth &&
-			this.temporalCompositeCanvas.canvas.height === targetHeight
-		) {
-			return this.temporalCompositeCanvas;
-		}
-
-		const canvas = document.createElement("canvas");
-		canvas.width = targetWidth;
-		canvas.height = targetHeight;
-
-		const context = configureHighQuality2DContext(canvas.getContext("2d"));
-		if (!context) {
-			return null;
-		}
-
-		this.temporalCompositeCanvas = {
-			canvas,
-			context,
-		};
-
-		return this.temporalCompositeCanvas;
-	}
-
 	private drawCaptionOverlay(context: CanvasRenderingContext2D): void {
 		if (
 			!this.captionContainer?.visible ||
@@ -1521,11 +1477,7 @@ export class FrameRenderer {
 		context.restore();
 	}
 
-	private async composeBlurAnnotationFrame(
-		timeMs: number,
-		sceneTransform?: { scale: number; x: number; y: number },
-		sourceCanvas?: CanvasImageSource,
-	): Promise<void> {
+	private async composeBlurAnnotationFrame(timeMs: number): Promise<void> {
 		if (!this.app) {
 			this.outputCanvasOverride = null;
 			return;
@@ -1539,7 +1491,7 @@ export class FrameRenderer {
 
 		const { canvas, context } = compositeState;
 		context.clearRect(0, 0, canvas.width, canvas.height);
-		context.drawImage(sourceCanvas ?? (this.app.canvas as HTMLCanvasElement), 0, 0);
+		context.drawImage(this.app.canvas as HTMLCanvasElement, 0, 0);
 
 		await renderAnnotations(
 			context,
@@ -1549,7 +1501,7 @@ export class FrameRenderer {
 			timeMs,
 			this.annotationScaleFactor,
 			this.annotationAssets ?? undefined,
-			sceneTransform ?? {
+			{
 				scale: this.animationState.appliedScale,
 				x: this.animationState.x,
 				y: this.animationState.y,
@@ -2314,20 +2266,6 @@ export class FrameRenderer {
 
 	private async setupWebcamSource(): Promise<void> {
 		const webcamUrl = this.config.webcamUrl;
-		if (!this.config.webcam?.enabled || !webcamUrl) {
-			this.webcamForwardFrameSource?.cancel();
-			void this.webcamForwardFrameSource?.destroy();
-			this.webcamForwardFrameSource = null;
-			this.closeWebcamDecodedFrame();
-			this.clearWebcamMediaElement();
-			this.webcamFrameCacheCanvas = null;
-			this.webcamFrameCacheCtx = null;
-			this.lastSyncedWebcamTime = null;
-			this.webcamLayoutCache = null;
-			this.webcamRenderMode = "hidden";
-			return;
-		}
-
 		this.webcamForwardFrameSource?.cancel();
 		void this.webcamForwardFrameSource?.destroy();
 		this.webcamForwardFrameSource = null;
@@ -2337,6 +2275,9 @@ export class FrameRenderer {
 		this.webcamFrameCacheCtx = null;
 		this.webcamLayoutCache = null;
 		this.webcamRenderMode = "hidden";
+		this.lastSyncedWebcamTime = null;
+
+		if (!this.config.webcam?.enabled || !webcamUrl) return;
 
 		try {
 			const frameSource = new ForwardFrameSource();
@@ -2903,209 +2844,11 @@ export class FrameRenderer {
 		}
 	}
 
-	private async renderSceneSample(
-		timestamp: number,
-		cursorTimestamp: number,
-		backgroundTimelineTimestamp: number,
-		layoutCache: LayoutCache,
-		useVelocityMotionBlur: boolean,
-		includeOverlayLayers = true,
-		webcamTimeSecondsOverride?: number,
-	): Promise<RenderSnapshot> {
-		if (!this.app || !this.cameraContainer || !this.videoMaskGraphics) {
-			throw new Error("Renderer not initialized");
-		}
-
-		this.currentVideoTime = timestamp / 1_000_000;
-		const webcamRenderTimeSeconds = Math.max(
-			0,
-			webcamTimeSecondsOverride ?? this.currentVideoTime,
-		);
-
-		if (this.webcamForwardFrameSource || this.webcamVideoElement) {
-			await this.syncWebcamFrame(webcamRenderTimeSeconds);
-		}
-
-		if (this.backgroundForwardFrameSource || this.backgroundVideoElement) {
-			await this.syncBackgroundFrame(Math.max(0, backgroundTimelineTimestamp / 1_000_000));
-		}
-
-		const timeMs = this.currentVideoTime * 1000;
-		const cursorTimeMs = cursorTimestamp / 1000;
-
-		if (this.cursorOverlay) {
-			this.cursorOverlay.update(
-				this.config.cursorTelemetry ?? [],
-				cursorTimeMs,
-				layoutCache.maskRect,
-				this.config.showCursor ?? true,
-				false,
-			);
-		}
-
-		this.updateAnimationState(timeMs);
-
-		applyZoomTransform({
-			cameraContainer: this.cameraContainer,
-			zoomBlurFilter: this.zoomBlurFilter,
-			motionBlurFilter: this.motionBlurFilter,
-			stageSize: layoutCache.stageSize,
-			baseMask: layoutCache.maskRect,
-			zoomScale: this.animationState.scale,
-			zoomProgress: this.animationState.progress,
-			focusX: this.animationState.focusX,
-			focusY: this.animationState.focusY,
-			isPlaying: true,
-			motionBlurAmount: useVelocityMotionBlur ? (this.config.zoomMotionBlur ?? 0) : 0,
-			motionBlurTuning: this.config.zoomMotionBlurTuning,
-			transformOverride: {
-				scale: this.animationState.appliedScale,
-				x: this.animationState.x,
-				y: this.animationState.y,
-			},
-			motionBlurState: this.motionBlurState,
-			frameTimeMs: timeMs,
-		});
-
-		if (includeOverlayLayers) {
-			this.updateAnnotationLayer(timeMs);
-			this.updateCaptionLayer(timeMs);
-		}
-		this.updateWebcamOverlay(webcamRenderTimeSeconds);
-
-		const annotationContainerVisible = this.annotationContainer?.visible ?? true;
-		const captionContainerVisible = this.captionContainer?.visible ?? true;
-		if (!includeOverlayLayers) {
-			if (this.annotationContainer) {
-				this.annotationContainer.visible = false;
-			}
-			if (this.captionContainer) {
-				this.captionContainer.visible = false;
-			}
-		}
-
-		this.app.render();
-
-		if (!includeOverlayLayers) {
-			if (this.annotationContainer) {
-				this.annotationContainer.visible = annotationContainerVisible;
-			}
-			if (this.captionContainer) {
-				this.captionContainer.visible = captionContainerVisible;
-			}
-		}
-
-		return {
-			timeMs,
-			cursorTimeMs,
-			backgroundTimelineTimeMs: backgroundTimelineTimestamp / 1000,
-			sceneTransform: {
-				scale: this.animationState.appliedScale,
-				x: this.animationState.x,
-				y: this.animationState.y,
-			},
-			zoom: {
-				scale: this.animationState.scale,
-				focusX: this.animationState.focusX,
-				focusY: this.animationState.focusY,
-				progress: this.animationState.progress,
-			},
-		};
-	}
-
-	private async renderTemporalMotionBlurFrame(
-		timestamp: number,
-		cursorTimestamp: number,
-		backgroundTimelineTimestamp: number,
-		frameDurationUs: number,
-		layoutCache: LayoutCache,
-	): Promise<RenderSnapshot | null> {
-		if (!this.app) {
-			return null;
-		}
-
-		const blurConfig = getTemporalMotionBlurConfig(this.config.zoomTemporalMotionBlur, {
-			sampleCount: this.config.zoomMotionBlurSampleCount,
-			shutterFraction: this.config.zoomMotionBlurShutterFraction,
-		});
-		if (!blurConfig) {
-			return null;
-		}
-
-		const compositeState = this.ensureTemporalCompositeCanvas();
-		if (!compositeState) {
-			return null;
-		}
-
-		const samplePlan = buildTemporalSamplePlanUs(frameDurationUs, blurConfig);
-		const webcamReferenceTimeSeconds = Math.max(0, timestamp / 1_000_000);
-
-		compositeState.context.clearRect(
-			0,
-			0,
-			compositeState.canvas.width,
-			compositeState.canvas.height,
-		);
-
-		let centerSnapshot: RenderSnapshot | null = null;
-		let lastSnapshot: RenderSnapshot | null = null;
-
-		for (const { offsetUs: sampleOffsetUs, weight } of samplePlan) {
-			const sampleTimestamp = Math.max(0, timestamp + sampleOffsetUs);
-			const sampleCursorTimestamp = Math.max(0, cursorTimestamp + sampleOffsetUs);
-			const sampleBackgroundTimelineTimestamp = Math.max(
-				0,
-				backgroundTimelineTimestamp + sampleOffsetUs,
-			);
-			const snapshot = await this.renderSceneSample(
-				sampleTimestamp,
-				sampleCursorTimestamp,
-				sampleBackgroundTimelineTimestamp,
-				layoutCache,
-				false,
-				false,
-				webcamReferenceTimeSeconds,
-			);
-			lastSnapshot = snapshot;
-			if (Math.abs(sampleOffsetUs) < 0.0001) {
-				centerSnapshot = snapshot;
-			}
-
-			compositeState.context.save();
-			compositeState.context.globalCompositeOperation = "lighter";
-			compositeState.context.globalAlpha = weight;
-			compositeState.context.drawImage(this.app.canvas as HTMLCanvasElement, 0, 0);
-			compositeState.context.restore();
-		}
-
-		const resolvedSnapshot = centerSnapshot ?? lastSnapshot;
-		if (!resolvedSnapshot) {
-			return null;
-		}
-
-		this.updateCaptionLayer(resolvedSnapshot.timeMs);
-
-		const hasOverlayCanvasWork =
-			(this.config.annotationRegions?.length ?? 0) > 0 ||
-			Boolean(this.captionCanvas && this.captionSprite?.visible);
-		if (hasOverlayCanvasWork) {
-			await this.composeBlurAnnotationFrame(
-				resolvedSnapshot.timeMs,
-				resolvedSnapshot.sceneTransform,
-				compositeState.canvas,
-			);
-		} else {
-			this.outputCanvasOverride = compositeState.canvas;
-		}
-
-		return resolvedSnapshot;
-	}
-
 	async renderFrame(
-		videoFrame: VideoFrame,
+		videoFrame: VideoFrame | null,
 		timestamp: number,
 		cursorTimestamp = timestamp,
-		frameDurationUs?: number,
+		_frameDurationUs?: number,
 		backgroundTimelineTimestamp = timestamp,
 	): Promise<void> {
 		if (!this.app || !this.videoContainer || !this.cameraContainer || !this.videoMaskGraphics) {
@@ -3113,6 +2856,20 @@ export class FrameRenderer {
 		}
 
 		this.currentVideoTime = timestamp / 1_000_000;
+		this.cameraContainer.visible = videoFrame !== null;
+		if (!videoFrame) {
+			this.updateAnimationState(backgroundTimelineTimestamp / 1000, cursorTimestamp / 1000);
+			if (this.backgroundForwardFrameSource || this.backgroundVideoElement) {
+				await this.syncBackgroundFrame(backgroundTimelineTimestamp / 1_000_000);
+			}
+			if (this.webcamRootContainer) this.webcamRootContainer.visible = false;
+			if (this.captionContainer) this.captionContainer.visible = false;
+			// Gap frames must bypass canvas annotation compositing as well as Pixi layers.
+			this.outputCanvasOverride = null;
+			this.app.render();
+			return;
+		}
+		if (this.captionContainer) this.captionContainer.visible = true;
 
 		const resolvedVideoSource = await this.resolveDetachedVideoFrameSource(
 			videoFrame,
@@ -3147,24 +2904,6 @@ export class FrameRenderer {
 			throw new Error("Renderer layout cache is unavailable");
 		}
 
-		const temporalSnapshot =
-			TEMPORAL_ZOOM_MOTION_BLUR_ENABLED &&
-			(this.config.zoomTemporalMotionBlur ?? 0) > 0 &&
-			typeof frameDurationUs === "number" &&
-			frameDurationUs > 0
-				? await this.renderTemporalMotionBlurFrame(
-						timestamp,
-						cursorTimestamp,
-						backgroundTimelineTimestamp,
-						frameDurationUs,
-						layoutCache,
-					)
-				: null;
-
-		if (temporalSnapshot) {
-			return;
-		}
-
 		if (this.webcamForwardFrameSource || this.webcamVideoElement) {
 			await this.syncWebcamFrame(Math.max(0, this.currentVideoTime));
 		}
@@ -3173,7 +2912,9 @@ export class FrameRenderer {
 			await this.syncBackgroundFrame(Math.max(0, backgroundTimelineTimestamp / 1_000_000));
 		}
 
-		const timeMs = this.currentVideoTime * 1000;
+		const timeMs = this.config.timelineEffects
+			? backgroundTimelineTimestamp / 1000
+			: timestamp / 1000;
 		const cursorTimeMs = cursorTimestamp / 1000;
 
 		if (this.cursorOverlay) {
@@ -3186,7 +2927,7 @@ export class FrameRenderer {
 			);
 		}
 
-		this.updateAnimationState(timeMs);
+		this.updateAnimationState(timeMs, cursorTimeMs);
 
 		applyZoomTransform({
 			cameraContainer: this.cameraContainer,
@@ -3211,9 +2952,12 @@ export class FrameRenderer {
 		});
 
 		this.updateAnnotationLayer(timeMs);
-		this.updateCaptionLayer(timeMs);
+		this.updateCaptionLayer(timestamp / 1000);
 		this.updateWebcamOverlay();
+		await this.renderOutput(timeMs);
+	}
 
+	private async renderOutput(timeMs: number): Promise<void> {
 		if (this.hasActiveBlurAnnotations(timeMs)) {
 			const annotationContainerVisible = this.annotationContainer?.visible ?? true;
 			const captionContainerVisible = this.captionContainer?.visible ?? true;
@@ -3225,7 +2969,7 @@ export class FrameRenderer {
 				this.captionContainer.visible = false;
 			}
 
-			this.app.render();
+			this.app!.render();
 
 			if (this.annotationContainer) {
 				this.annotationContainer.visible = annotationContainerVisible;
@@ -3239,7 +2983,7 @@ export class FrameRenderer {
 		}
 
 		this.outputCanvasOverride = null;
-		this.app.render();
+		this.app!.render();
 	}
 
 	private updateLayout(): void {
@@ -3344,7 +3088,7 @@ export class FrameRenderer {
 	}
 
 	/** Advance the export camera from the shared scene target at this media time. */
-	private updateAnimationState(timeMs: number): number {
+	private updateAnimationState(timeMs: number, cursorTimeMs = timeMs): number {
 		if (!this.cameraContainer || !this.layoutCache) {
 			return 0;
 		}
@@ -3352,6 +3096,7 @@ export class FrameRenderer {
 		const target = resolveSceneZoomTarget({
 			zoomRegions: this.config.zoomRegions,
 			timeMs,
+			cursorTimeMs,
 			connectZooms: this.config.connectZooms,
 			zoomInDurationMs: this.config.zoomInDurationMs,
 			zoomOutDurationMs: this.config.zoomOutDurationMs,
@@ -3469,27 +3214,15 @@ export class FrameRenderer {
 
 	destroy(): void {
 		const texturesToDestroy = new Set<Texture>();
-		if (this.videoSprite?.texture) {
-			texturesToDestroy.add(this.videoSprite.texture);
-		}
-		if (this.backgroundSprite?.texture) {
-			texturesToDestroy.add(this.backgroundSprite.texture);
-		}
-		if (this.webcamSprite?.texture) {
-			texturesToDestroy.add(this.webcamSprite.texture);
-		}
-		if (this.captionSprite?.texture) {
-			texturesToDestroy.add(this.captionSprite.texture);
-		}
-		for (const layer of this.videoShadowLayers) {
-			if (layer.sprite?.texture) {
-				texturesToDestroy.add(layer.sprite.texture);
-			}
-		}
-		for (const layer of this.webcamShadowLayers) {
-			if (layer.sprite?.texture) {
-				texturesToDestroy.add(layer.sprite.texture);
-			}
+		for (const sprite of [
+			this.videoSprite,
+			this.backgroundSprite,
+			this.webcamSprite,
+			this.captionSprite,
+			...this.videoShadowLayers.map((layer) => layer.sprite),
+			...this.webcamShadowLayers.map((layer) => layer.sprite),
+		]) {
+			if (sprite?.texture) texturesToDestroy.add(sprite.texture);
 		}
 		for (const entry of this.annotationSprites) {
 			texturesToDestroy.add(entry.texture);
@@ -3595,7 +3328,6 @@ export class FrameRenderer {
 		this.captionTextureSource = null;
 		this.captionRenderKey = null;
 		this.exportCompositeCanvas = null;
-		this.temporalCompositeCanvas = null;
 		this.outputCanvasOverride = null;
 
 		this.annotationScaleFactor = 1;

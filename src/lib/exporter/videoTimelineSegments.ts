@@ -1,4 +1,51 @@
-import type { SpeedRegion, TrimRegion } from "@/components/video-editor/types";
+import {
+	type ClipRegion,
+	type SpeedRegion,
+	type TrimRegion,
+	getClipSourceStartMs,
+	getClipSourceEndMs,
+	sortClipRegions,
+} from "@/components/video-editor/types";
+
+export interface VideoSegment {
+	startSec: number;
+	endSec: number;
+	speed: number;
+	outputStartSec?: number;
+	outputEndSec?: number;
+}
+
+/** One forward decode pass per source-order run; timeline gaps need no decoding. */
+export function buildClipDecodeRuns(clips: ClipRegion[]): VideoSegment[][] {
+	const runs: VideoSegment[][] = [];
+	for (const clip of sortClipRegions(clips)) {
+		const segment: VideoSegment = {
+			startSec: getClipSourceStartMs(clip) / 1000,
+			endSec: getClipSourceEndMs(clip) / 1000,
+			speed: clip.speed,
+			outputStartSec: clip.startMs / 1000,
+			outputEndSec: clip.endMs / 1000,
+		};
+		const run = runs[runs.length - 1];
+		if (run && segment.startSec >= run[run.length - 1].endSec) run.push(segment);
+		else runs.push([segment]);
+	}
+	return runs;
+}
+
+export function segmentFrameCount(segment: VideoSegment, fps: number): number {
+	return segment.outputStartSec !== undefined && segment.outputEndSec !== undefined
+		? Math.ceil(segment.outputEndSec * fps) - Math.ceil(segment.outputStartSec * fps)
+		: Math.ceil(((segment.endSec - segment.startSec) / segment.speed) * fps);
+}
+
+export function segmentSourceTime(segment: VideoSegment, index: number, fps: number): number {
+	const outputOffset =
+		segment.outputStartSec === undefined
+			? index / fps
+			: (Math.ceil(segment.outputStartSec * fps) + index) / fps - segment.outputStartSec;
+	return segment.startSec + outputOffset * segment.speed;
+}
 
 export function computeVideoSegments(
 	totalDuration: number,

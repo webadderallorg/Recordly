@@ -94,7 +94,11 @@ export default function VideoEditor() {
 	const effectiveShowCursor = sessionShowCursorOverride ?? showCursor;
 	const headerLeftControlsPaddingClass = appPlatform === "darwin" ? "pl-[76px]" : "";
 	const { cursorTelemetrySourcePath, autoCaptions, autoCaptionSettings } = timeline;
-	const exportSettings = useExportSettings(initialEditorPreferences, autoCaptions);
+	const exportSettings = useExportSettings(
+		initialEditorPreferences,
+		autoCaptions,
+		timeline.clipRegions,
+	);
 	const {
 		includeCaptionSidecar,
 		mp4FrameRate,
@@ -338,7 +342,6 @@ export default function VideoEditor() {
 		activeEffectSection,
 		appearance,
 		timeline,
-		audio,
 		zoomCommands,
 		clipCommands,
 		audioCommands,

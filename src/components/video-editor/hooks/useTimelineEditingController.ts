@@ -88,13 +88,12 @@ export function useTimelineEditingController(input: Input) {
 		selectedClipId: timeline.selectedClipId,
 		clipRegions: timeline.clipRegions,
 		audioRegions: timeline.audioRegions,
-		effectiveSpeedRegions: projection.effectiveSpeedRegions,
 		sourceAudioTrackSettingsByClip: timeline.sourceAudioTrackSettingsByClip,
 		setSourceAudioTrackSettingsByClip: timeline.setSourceAudioTrackSettingsByClip,
 		defaultSourceAudioTrackSettings: timeline.defaultSourceAudioTrackSettings,
 		setDefaultSourceAudioTrackSettings: timeline.setDefaultSourceAudioTrackSettings,
-		currentTime: input.currentTime,
 		timelineTime: projection.timelinePlayheadTime,
+		currentTime: projection.mapTimelineTimeToSourceTime(input.currentTime * 1000) / 1000,
 		duration: input.duration,
 		isPlaying: input.isPlaying,
 		previewVolume: input.previewVolume,
@@ -106,11 +105,11 @@ export function useTimelineEditingController(input: Input) {
 		videoPlaybackRef: input.videoPlaybackRef,
 		timelineRef: input.timelineRef,
 		playSourceAudioPreview: audio.playSourceAudioPreview,
-		mapTimelineTimeToSourceTime: projection.mapTimelineTimeToSourceTime,
 		timelinePlayheadTime: projection.timelinePlayheadTime,
 		timelineDuration: projection.timelineDuration,
 	});
 	const captionCommands = useCaptionCommands({
+		clipRegions: timeline.clipRegions,
 		autoCaptions: timeline.autoCaptions,
 		setAutoCaptions: timeline.setAutoCaptions,
 		setAutoCaptionSettings: timeline.setAutoCaptionSettings,
@@ -122,7 +121,6 @@ export function useTimelineEditingController(input: Input) {
 		setActiveEffectSection: input.setActiveEffectSection,
 		videoPlaybackRef: input.videoPlaybackRef,
 		mapSourceTimeToTimelineTime: projection.mapSourceTimeToTimelineTime,
-		mapTimelineTimeToSourceTime: projection.mapTimelineTimeToSourceTime,
 		handleSeek: playback.handleSeek,
 	});
 	const zoomCommands = useZoomRegionCommands({
@@ -174,13 +172,11 @@ export function useTimelineEditingController(input: Input) {
 			input.pendingFreshRecordingAutoSuggestTelemetryCountRef,
 	});
 	const clipCommands = useClipRegionCommands({
+		sourceDurationMs: input.duration * 1000,
 		clipRegions: timeline.clipRegions,
 		setClipRegions: timeline.setClipRegions,
 		zoomRegions: timeline.zoomRegions,
 		setZoomRegions: timeline.setZoomRegions,
-		setAnnotationRegions: timeline.setAnnotationRegions,
-		setSpeedRegions: timeline.setSpeedRegions,
-		setAudioRegions: timeline.setAudioRegions,
 		selectedClipId: timeline.selectedClipId,
 		setSelectedClipId: timeline.setSelectedClipId,
 		setSelectedZoomId: timeline.setSelectedZoomId,

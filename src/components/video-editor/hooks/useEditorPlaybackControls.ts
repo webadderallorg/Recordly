@@ -6,7 +6,6 @@ interface UseEditorPlaybackControlsParams {
 	videoPlaybackRef: RefObject<VideoPlaybackRef>;
 	timelineRef: RefObject<TimelineEditorHandle>;
 	playSourceAudioPreview: () => void;
-	mapTimelineTimeToSourceTime: (timeMs: number) => number;
 	timelinePlayheadTime: number;
 	timelineDuration: number;
 }
@@ -15,7 +14,6 @@ export function useEditorPlaybackControls({
 	videoPlaybackRef,
 	timelineRef,
 	playSourceAudioPreview,
-	mapTimelineTimeToSourceTime,
 	timelinePlayheadTime,
 	timelineDuration,
 }: UseEditorPlaybackControlsParams) {
@@ -34,7 +32,7 @@ export function useEditorPlaybackControls({
 		const video = playback?.video;
 		if (!playback || !video) return;
 
-		if (!video.paused && !video.ended) playback.pause();
+		if (playback.isPlaying) playback.pause();
 		else startPlayback();
 	}, [getActivePlayback, startPlayback]);
 
@@ -44,10 +42,10 @@ export function useEditorPlaybackControls({
 			const video = playback?.video;
 			if (!video) return;
 
-			if (options.pause && !video.paused) playback?.pause();
-			video.currentTime = mapTimelineTimeToSourceTime(time * 1000) / 1000;
+			if (options.pause) playback.pause();
+			playback.seekTimeline(time);
 		},
-		[getActivePlayback, mapTimelineTimeToSourceTime],
+		[getActivePlayback],
 	);
 
 	const handleTimelineSeek = useCallback(

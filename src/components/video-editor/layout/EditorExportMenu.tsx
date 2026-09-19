@@ -1,4 +1,5 @@
 import { DownloadSimple as Download } from "@phosphor-icons/react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -190,10 +191,32 @@ export function EditorExportMenu(props: Props) {
 								Path: {exportRuntimeLabel}
 							</p>
 						) : null}
-						<p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted-foreground">
+						<p className="mt-1 select-text whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
 							{exportError}
 						</p>
 						<div className="mt-4 flex gap-2">
+							<Button
+								type="button"
+								variant="outline"
+								className="h-8 text-xs"
+								onClick={async () => {
+									try {
+										await navigator.clipboard.writeText(exportError);
+										toast.success(
+											t("editor.exportStatus.errorCopied", "Error copied"),
+										);
+									} catch {
+										toast.error(
+											t(
+												"editor.exportStatus.errorCopyFailed",
+												"Couldn't copy. Select the error text and copy it manually.",
+											),
+										);
+									}
+								}}
+							>
+								{t("editor.exportStatus.copyError", "Copy error")}
+							</Button>
 							{hasPendingExportSave ? (
 								<Button
 									type="button"

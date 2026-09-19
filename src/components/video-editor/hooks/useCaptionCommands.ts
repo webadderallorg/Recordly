@@ -15,10 +15,18 @@ import {
 	retimeCue,
 	splitCue,
 } from "../captionOps";
-import type { AutoCaptionSettings, CaptionCue, EditorEffectSection } from "../types";
+import { captionSpanToSource } from "../captionTimeline";
+import {
+	type AutoCaptionSettings,
+	type CaptionCue,
+	type ClipRegion,
+	type EditorEffectSection,
+	findClipAtTimelineTime,
+} from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 
 interface UseCaptionCommandsParams {
+	clipRegions: ClipRegion[];
 	autoCaptions: CaptionCue[];
 	setAutoCaptions: Dispatch<SetStateAction<CaptionCue[]>>;
 	setAutoCaptionSettings: Dispatch<SetStateAction<AutoCaptionSettings>>;
@@ -30,11 +38,11 @@ interface UseCaptionCommandsParams {
 	setActiveEffectSection: Dispatch<SetStateAction<EditorEffectSection>>;
 	videoPlaybackRef: RefObject<VideoPlaybackRef>;
 	mapSourceTimeToTimelineTime: (timeMs: number) => number;
-	mapTimelineTimeToSourceTime: (timeMs: number) => number;
 	handleSeek: (time: number, options?: { pause?: boolean }) => void;
 }
 
 export function useCaptionCommands({
+	clipRegions,
 	autoCaptions,
 	setAutoCaptions,
 	setAutoCaptionSettings,
@@ -46,7 +54,6 @@ export function useCaptionCommands({
 	setActiveEffectSection,
 	videoPlaybackRef,
 	mapSourceTimeToTimelineTime,
-	mapTimelineTimeToSourceTime,
 	handleSeek,
 }: UseCaptionCommandsParams) {
 	const handleSelectCaption = useCallback(
@@ -157,11 +164,10 @@ export function useCaptionCommands({
 
 	const handleCaptionAdded = useCallback(
 		(span: Span) => {
+			const clip = findClipAtTimelineTime(span.start, clipRegions);
+			if (!clip) return;
 			cancelEdit();
-			const newCue = createCaptionCue({
-				startMs: mapTimelineTimeToSourceTime(span.start),
-				endMs: mapTimelineTimeToSourceTime(span.end),
-			});
+			const newCue = createCaptionCue(captionSpanToSource(clip, span));
 			setAutoCaptions((captions) => addCue(captions, newCue));
 			setSelectedCaptionId(newCue.id);
 			setActiveEffectSection("caption");
@@ -174,7 +180,7 @@ export function useCaptionCommands({
 		[
 			cancelEdit,
 			handleSeek,
-			mapTimelineTimeToSourceTime,
+			clipRegions,
 			setActiveEffectSection,
 			setAutoCaptions,
 			setSelectedAnnotationId,

@@ -112,6 +112,7 @@ type MockContext = {
 	scale: MockFunction;
 	clearRect: MockFunction;
 	filter: string;
+	fillStyle: string;
 };
 type MockCanvas = ReturnType<typeof createMockCanvas>;
 type FrameRendererTestAccess = {
@@ -251,6 +252,7 @@ function createMockContext() {
 		scale: vi.fn(),
 		clearRect: vi.fn(),
 		filter: "",
+		fillStyle: "",
 	};
 }
 
@@ -287,6 +289,24 @@ function createRenderer() {
 }
 
 describe("FrameRenderer webcam export path", () => {
+	it("composites the background during a gap without source layers", async () => {
+		const renderer = createRenderer();
+		const camera = { visible: true };
+		const context = createMockContext();
+		const app = { stage: {}, renderer: { render: vi.fn() } };
+		const composite = vi.fn();
+		Object.assign(renderer, {
+			app,
+			cameraContainer: camera,
+			videoContainer: {},
+			compositeCtx: context,
+			compositeWithShadows: composite,
+		});
+		await renderer.renderFrame(null, 0, 0, 33333, 1500000);
+		expect(camera.visible).toBe(false);
+		expect(app.renderer.render).toHaveBeenCalledWith(app.stage);
+		expect(composite).toHaveBeenCalledWith(false);
+	});
 	const createdCanvases: ReturnType<typeof createMockCanvas>[] = [];
 
 	beforeEach(() => {

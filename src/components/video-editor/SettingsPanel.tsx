@@ -91,6 +91,7 @@ import {
 } from "./types";
 import { fromCursorSwaySliderValue, toCursorSwaySliderValue } from "./videoPlayback/cursorSway";
 import { isZeroPadding } from "./videoPlayback/layoutUtils";
+import { getPreviewPlaybackRateRange } from "./videoPlayback/playbackRate";
 import {
 	cursorSetAssets,
 	getCursorStyleSizeMultiplier,
@@ -522,15 +523,10 @@ interface SettingsPanelProps {
 	selectedClipId?: string | null;
 	selectedClipSpeed?: number | null;
 	selectedClipMuted?: boolean | null;
-	selectedClipShowSourceAudio?: boolean | null;
-	hasClipSourceAudio?: boolean;
+	hasClipAudioOverrides?: boolean;
+	onResetClipAudio?: () => void;
 	onClipSpeedChange?: (speed: number) => void;
 	onClipMutedChange?: (muted: boolean) => void;
-	onClipShowSourceAudioChange?: (show: boolean) => void;
-	sourceAudioTrackMeta?: Array<{ id: string; label: string }>;
-	sourceAudioTrackSettings?: Record<string, { volume: number; normalize: boolean }>;
-	onSourceAudioTrackVolumeChange?: (id: string, volume: number) => void;
-	onSourceAudioTrackNormalizeChange?: (id: string, normalize: boolean) => void;
 	onClipDelete?: (id: string) => void;
 	selectedAudioId?: string | null;
 	selectedAudioVolume?: number | null;
@@ -982,15 +978,10 @@ export function SettingsPanel({
 	selectedClipId,
 	selectedClipSpeed,
 	selectedClipMuted,
-	selectedClipShowSourceAudio = false,
-	hasClipSourceAudio = false,
+	hasClipAudioOverrides = false,
+	onResetClipAudio,
 	onClipSpeedChange,
 	onClipMutedChange,
-	onClipShowSourceAudioChange,
-	sourceAudioTrackMeta = [],
-	sourceAudioTrackSettings = {},
-	onSourceAudioTrackVolumeChange,
-	onSourceAudioTrackNormalizeChange,
 	onClipDelete,
 	selectedAudioId,
 	selectedAudioVolume,
@@ -1102,6 +1093,7 @@ export function SettingsPanel({
 	const { preference: themePreference, setPreference: setThemePreference } = useTheme();
 	const isBackgroundPanel = panelMode === "background";
 	const initialEditorPreferences = useMemo(() => loadEditorPreferences(), []);
+	const clipSpeedRange = useMemo(getPreviewPlaybackRateRange, []);
 	const [builtInWallpapers, setBuiltInWallpapers] =
 		useState<BuiltInWallpaper[]>(BUILT_IN_WALLPAPERS);
 	const [wallpaperPreviewPaths, setWallpaperPreviewPaths] = useState<string[]>([]);
@@ -3019,155 +3011,40 @@ export function SettingsPanel({
 		);
 
 		const clipSectionContent = (
-			<section className="flex flex-col gap-2">
-				<div className="flex items-center justify-between gap-3">
-					<SectionLabel>{tSettings("clip.title", "Clip")}</SectionLabel>
-					{selectedClipSpeed != null && selectedClipSpeed !== 1 && (
-						<span className="rounded-full bg-[#06b6d4]/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#06b6d4]">
-							{selectedClipSpeed}×
-						</span>
+			<section className="flex flex-col gap-3">
+				<SectionLabel>{tSettings("clip.title", "Clip")}</SectionLabel>
+				<SliderControl
+					label={tSettings("speed.label", "Speed")}
+					value={Math.min(clipSpeedRange.max, Math.max(clipSpeedRange.min, selectedClipSpeed ?? 1))}
+					defaultValue={1}
+					min={clipSpeedRange.min}
+					max={clipSpeedRange.max}
+					step={0.25}
+					onChange={(value) => onClipSpeedChange?.(value)}
+					formatValue={(value) => `${value}×`}
+					parseInput={(text) => Number.parseFloat(text)}
+				/>
+				{selectedClipSpeed != null &&
+					(selectedClipSpeed < clipSpeedRange.min || selectedClipSpeed > clipSpeedRange.max) && (
+						<p className="text-[11px] text-muted-foreground" role="status">
+							{selectedClipSpeed}× — {tSettings("speed.unsupported", "Not supported for preview on this device")}
+						</p>
 					)}
-				</div>
-
-				<div className="flex items-center gap-3">
-					<SectionLabel>{tSettings("speed.label", "Speed")}</SectionLabel>
-				</div>
-				<div className="grid grid-cols-4 gap-1.5">
-					{[
-						{ speed: 0.25, label: "0.25×" },
-						{ speed: 0.5, label: "0.5×" },
-						{ speed: 0.75, label: "0.75×" },
-						{ speed: 1, label: "1×" },
-						{ speed: 1.25, label: "1.25×" },
-						{ speed: 1.5, label: "1.5×" },
-						{ speed: 2, label: "2×" },
-						{ speed: 2.5, label: "2.5×" },
-						{ speed: 3, label: "3×" },
-						{ speed: 4, label: "4×" },
-						{ speed: 5, label: "5×" },
-						{ speed: 8, label: "8×" },
-						{ speed: 10, label: "10×" },
-						{ speed: 15, label: "15×" },
-						{ speed: 20, label: "20×" },
-						{ speed: 30, label: "30×" },
-					].map((option) => {
-						const isActive = selectedClipSpeed === option.speed;
-						return (
-							<Button
-								key={option.speed}
-								type="button"
-								onClick={() => onClipSpeedChange?.(option.speed)}
-								className={cn(
-									"h-auto w-full rounded-lg border px-0.5 py-2 text-center shadow-sm transition-all duration-200 ease-out cursor-pointer",
-									isActive
-										? "border-[#06b6d4] bg-[#06b6d4] text-white"
-										: "border-foreground/5 bg-foreground/5 text-muted-foreground hover:bg-foreground/10 hover:border-foreground/10 hover:text-foreground",
-								)}
-							>
-								<span className="text-[10px] font-semibold">{option.label}</span>
-							</Button>
-						);
-					})}
-				</div>
-
-				<div className="mt-2 flex flex-col gap-2 border-t border-foreground/5 pt-3">
-					<SectionLabel>{tSettings("audio.title", "Audio")}</SectionLabel>
-
-					<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
-						<div>
-							<span className="text-[10px] text-muted-foreground">
-								{tSettings("clip.mute", "Mute")}
-							</span>
-							<p className="text-[9px] text-muted-foreground/50 mt-0.5">
-								{selectedClipMuted
-									? tSettings("clip.mutedState", "Audio is muted")
-									: tSettings("clip.unmutedState", "Audio is playing")}
-							</p>
-						</div>
-						<Switch
-							checked={selectedClipMuted ?? false}
-							onCheckedChange={(v) => onClipMutedChange?.(v)}
-							className="data-[state=checked]:bg-[#06b6d4] scale-75"
-						/>
-					</div>
-					{hasClipSourceAudio && (
-						<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
-							<span className="text-[10px] text-muted-foreground">
-								{tSettings(
-									"clip.separateClipFromAudio",
-									"Separate clip from audio",
-								)}
-							</span>
-							<Switch
-								checked={selectedClipShowSourceAudio ?? false}
-								onCheckedChange={(v) => onClipShowSourceAudioChange?.(v)}
-								className="data-[state=checked]:bg-[#06b6d4] scale-75"
-							/>
-						</div>
-					)}
-				</div>
-
-				{selectedClipId && hasClipSourceAudio && sourceAudioTrackMeta.length > 0 && (
-					<div className="mt-1 flex flex-col gap-3">
-						{sourceAudioTrackMeta.map((track) => {
-							const settings = sourceAudioTrackSettings[track.id] ?? {
-								volume: 1,
-								normalize: false,
-							};
-							return (
-								<div
-									key={track.id}
-									className="rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2"
-								>
-									<div className="mb-2 flex items-center justify-between">
-										<span className="text-[11px] font-medium text-foreground">
-											{track.label}
-										</span>
-										<button
-											type="button"
-											onClick={() => {
-												onSourceAudioTrackVolumeChange?.(track.id, 1);
-												onSourceAudioTrackNormalizeChange?.(
-													track.id,
-													false,
-												);
-											}}
-											className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
-										>
-											{t("common.actions.reset", "Reset")}
-										</button>
-									</div>
-									<div className="mb-2 flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-1.5">
-										<span className="text-[10px] text-muted-foreground">
-											{tSettings("audio.normalize", "Normalize")}
-										</span>
-										<Switch
-											checked={settings.normalize}
-											onCheckedChange={(v) =>
-												onSourceAudioTrackNormalizeChange?.(track.id, v)
-											}
-											className="data-[state=checked]:bg-[#06b6d4] scale-75"
-										/>
-									</div>
-									<SliderControl
-										label={tSettings("audio.volume", "Volume")}
-										value={settings.volume}
-										defaultValue={1}
-										min={0}
-										max={1}
-										step={0.01}
-										onChange={(v) =>
-											onSourceAudioTrackVolumeChange?.(track.id, v)
-										}
-										formatValue={(v) => `${Math.round(v * 100)}%`}
-										parseInput={(text) =>
-											parseFloat(text.replace(/%$/, "")) / 100
-										}
-									/>
-								</div>
-							);
-						})}
-					</div>
+				<label className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+					<span className="text-[11px] text-muted-foreground">
+						{tSettings("clip.mute", "Mute clip")}
+					</span>
+					<Switch
+						checked={selectedClipMuted ?? false}
+						onCheckedChange={(muted) => onClipMutedChange?.(muted)}
+						aria-label={tSettings("clip.mute", "Mute clip")}
+						className="data-[state=checked]:bg-[#06b6d4] scale-75"
+					/>
+				</label>
+				{hasClipAudioOverrides && onResetClipAudio && (
+					<Button type="button" variant="ghost" onClick={onResetClipAudio}>
+						{tSettings("clip.resetAudioSettings", "Reset audio settings")}
+					</Button>
 				)}
 			</section>
 		);

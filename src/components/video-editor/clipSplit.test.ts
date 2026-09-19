@@ -5,6 +5,8 @@ import {
 	clipsToTrims,
 	getClipSourceEndMs,
 	getClipSourceStartMs,
+	getTimelineDurationMs,
+	mapSourceTimeToTimelineTime,
 	mapTimelineTimeToSourceTime,
 } from "./types";
 
@@ -125,6 +127,21 @@ describe("planClipSplit", () => {
 		]);
 		// Nothing else is lost: the tail of the recording is still covered.
 		expect(getClipSourceEndMs(kept[1])).toBe(sourceDurationMs);
+	});
+
+	it("preserves the gap and source positions after deleting the middle of a 3x clip", () => {
+		const sourceDurationMs = 120_000;
+		const clip: ClipRegion = { id: "clip-1", startMs: 0, endMs: 40_000, speed: 3 };
+		const { kept, deleted } = splitAndDeleteMiddle(clip, 10_000, 10_000);
+		const remaining = [...kept, deleted].filter(({ id }) => id !== deleted.id);
+
+		expect(remaining).toEqual([
+			expect.objectContaining({ startMs: 0, endMs: 10_000 }),
+			expect.objectContaining({ startMs: 20_000, endMs: 40_000, sourceStartMs: 60_000 }),
+		]);
+		expect(mapSourceTimeToTimelineTime(30_000, remaining)).toBe(10_000);
+		expect(mapSourceTimeToTimelineTime(60_000, remaining)).toBe(20_000);
+		expect(getTimelineDurationMs(remaining, sourceDurationMs)).toBe(40_000);
 	});
 
 	it("removes the source range the user cut out at 1x", () => {

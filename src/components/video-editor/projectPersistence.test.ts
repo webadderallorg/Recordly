@@ -34,6 +34,19 @@ describe("resolveVideoUrl", () => {
 });
 
 describe("normalizeProjectEditor", () => {
+	it("ignores retired temporal blur fields when opening an older project", () => {
+		const savedEditor = {
+			zoomMotionBlur: 0.6,
+			zoomTemporalMotionBlur: 0.35,
+			zoomMotionBlurSampleCount: 13,
+			zoomMotionBlurShutterFraction: 0.94,
+		};
+		const normalized = normalizeProjectEditor(savedEditor);
+		expect(normalized.zoomMotionBlur).toBe(0.6);
+		for (const field of ["zoomTemporalMotionBlur", "zoomMotionBlurSampleCount", "zoomMotionBlurShutterFraction"]) {
+			expect(normalized).not.toHaveProperty(field);
+		}
+	});
 	it("defaults to 8% on macOS and square corners elsewhere", () => {
 		expect(getDefaultBorderRadiusPercent("MacIntel")).toBe(8);
 		expect(getDefaultBorderRadiusPercent("Win32")).toBe(0);

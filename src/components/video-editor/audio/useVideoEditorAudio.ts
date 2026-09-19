@@ -1,8 +1,9 @@
 import React, { useMemo } from "react";
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import { resolveSourceTrackRoutingPolicy } from "@/lib/exporter/sourceTrackRoutingPolicy";
-import type { AudioRegion, ClipRegion, SpeedRegion } from "../types";
-import { getActiveClipIdAtSourceTime, isClipMutedById } from "./clipAudio";
+import type { AudioRegion, ClipRegion } from "../types";
+import { findClipAtTimelineTime } from "../types";
+import { isClipMutedById } from "./clipAudio";
 import { useAudioPreviewSync } from "./useAudioPreviewSync";
 import { useClipAudioSettingsController } from "./useClipAudioSettingsController";
 import { useSourceAudioFallback } from "./useSourceAudioFallback";
@@ -27,7 +28,6 @@ interface UseVideoEditorAudioParams {
 	selectedClipId: string | null;
 	clipRegions: ClipRegion[];
 	audioRegions: AudioRegion[];
-	effectiveSpeedRegions: SpeedRegion[];
 	sourceAudioTrackSettingsByClip: Record<string, SourceAudioTrackSettings>;
 	setSourceAudioTrackSettingsByClip: React.Dispatch<
 		React.SetStateAction<Record<string, SourceAudioTrackSettings>>
@@ -51,7 +51,6 @@ export function useVideoEditorAudio({
 	selectedClipId,
 	clipRegions,
 	audioRegions,
-	effectiveSpeedRegions,
 	sourceAudioTrackSettingsByClip,
 	setSourceAudioTrackSettingsByClip,
 	defaultSourceAudioTrackSettings,
@@ -85,11 +84,13 @@ export function useVideoEditorAudio({
 	const shouldMutePreviewVideo = sourceTrackRoutingPolicy.muteEmbeddedPreview;
 
 	const activeClipIdAtCurrentTime = useMemo(
-		() => getActiveClipIdAtSourceTime(currentTime, clipRegions),
-		[clipRegions, currentTime],
+		() => findClipAtTimelineTime(timelineTime * 1000, clipRegions)?.id ?? null,
+		[clipRegions, timelineTime],
 	);
 	const isCurrentClipMuted = useMemo(
-		() => isClipMutedById(activeClipIdAtCurrentTime, clipRegions),
+		() =>
+			activeClipIdAtCurrentTime === null ||
+			isClipMutedById(activeClipIdAtCurrentTime, clipRegions),
 		[activeClipIdAtCurrentTime, clipRegions],
 	);
 
@@ -119,7 +120,7 @@ export function useVideoEditorAudio({
 		currentTime,
 		timelineTime,
 		duration,
-		effectiveSpeedRegions,
+		sourcePlaybackRate: findClipAtTimelineTime(timelineTime * 1000, clipRegions)?.speed ?? 1,
 		previewSourceAudioFallbackPaths,
 		sourceAudioFallbackStartDelayMsByPath,
 		sourceAudioResourceVersion: sourceAudioFallbackRefreshKey,

@@ -1,3 +1,4 @@
+import { requiresClipTimelineRendering } from "./clipTimeline";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -54,9 +55,6 @@ interface VideoExporterConfig extends ExportConfig {
 	backgroundBlur: number;
 	zoomMotionBlur?: number;
 	zoomMotionBlurTuning?: ZoomMotionBlurTuning;
-	zoomTemporalMotionBlur?: number;
-	zoomMotionBlurSampleCount?: number | null;
-	zoomMotionBlurShutterFraction?: number | null;
 	connectZooms?: boolean;
 	zoomInDurationMs?: number;
 	zoomInOverlapMs?: number;
@@ -206,7 +204,9 @@ export class VideoExporter {
 			const shouldUseFfmpegAudioFallback =
 				!useNativeEncoder &&
 				audioPlan.audioMode !== "none" &&
-				(shouldUsePitchPreservingFfmpegAudio || !(await isAacAudioEncodingSupported()));
+				(requiresClipTimelineRendering(this.config.clipRegions) ||
+					shouldUsePitchPreservingFfmpegAudio ||
+					!(await isAacAudioEncodingSupported()));
 
 			if (!useNativeEncoder) {
 				await this.initializeEncoder();
@@ -214,6 +214,7 @@ export class VideoExporter {
 
 			// Initialize frame renderer
 			this.renderer = new FrameRenderer({
+				timelineEffects: this.config.clipRegions !== undefined,
 				width: this.config.width,
 				height: this.config.height,
 				preferredRenderBackend: undefined,
@@ -224,9 +225,6 @@ export class VideoExporter {
 				backgroundBlur: this.config.backgroundBlur,
 				zoomMotionBlur: this.config.zoomMotionBlur,
 				zoomMotionBlurTuning: this.config.zoomMotionBlurTuning,
-				zoomTemporalMotionBlur: this.config.zoomTemporalMotionBlur,
-				zoomMotionBlurSampleCount: this.config.zoomMotionBlurSampleCount,
-				zoomMotionBlurShutterFraction: this.config.zoomMotionBlurShutterFraction,
 				connectZooms: this.config.connectZooms,
 				zoomInDurationMs: this.config.zoomInDurationMs,
 				zoomInOverlapMs: this.config.zoomInOverlapMs,
@@ -281,6 +279,7 @@ export class VideoExporter {
 			const effectiveDuration = this.streamingDecoder.getEffectiveDuration(
 				this.config.trimRegions,
 				this.config.speedRegions,
+				this.config.clipRegions,
 			);
 			this.effectiveDurationSec = effectiveDuration;
 			const totalFrames = Math.ceil(effectiveDuration * this.config.frameRate);
@@ -326,6 +325,7 @@ export class VideoExporter {
 					this.processedFrameCount = frameIndex;
 					this.reportProgress(frameIndex, totalFrames);
 				},
+				this.config.clipRegions,
 			);
 
 			if (this.cancelled) {
@@ -412,6 +412,7 @@ export class VideoExporter {
 								this.config.sourceAudioFallbackPaths,
 								this.config.sourceAudioFallbackStartDelayMsByPath,
 								this.config.sourceAudioTrackSettings,
+								this.config.clipRegions,
 							),
 							"audio processing",
 							"audio",
@@ -571,6 +572,7 @@ export class VideoExporter {
 		}
 
 		if (
+			requiresClipTimelineRendering(this.config.clipRegions) ||
 			speedRegions.length > 0 ||
 			audioRegions.length > 0 ||
 			sourceAudioFallbackPaths.length > 1 ||
@@ -589,6 +591,7 @@ export class VideoExporter {
 			);
 			const trimRegions = this.config.trimRegions ?? [];
 			const canUsePrimaryAudioFiltergraph =
+				!requiresClipTimelineRendering(this.config.clipRegions) &&
 				Boolean(primaryAudioSourcePath) &&
 				!hasTimedSourceAudioFallback &&
 				(usesEmbeddedPrimaryAudio ||

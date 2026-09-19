@@ -87,6 +87,7 @@ export class AudioTimelineProcessor extends AudioProcessorBase {
 
 		for (const slice of slices) {
 			const sliceSourceDurationSec = (slice.sourceEndMs - slice.sourceStartMs) / 1000;
+			if (slice.outputStartMs !== undefined) outputOffsetSec = slice.outputStartMs / 1000;
 			const sliceOutputDurationSec = sliceSourceDurationSec / slice.speed;
 
 			// Where in the buffer does this slice read from?

@@ -112,3 +112,18 @@ describe("ScreenCaptureKitRecorder audio continuity", () => {
 		expect(recorderSource).toContain("AUDIO_GAPS: droppedBuffers=");
 	});
 });
+
+describe("ScreenCaptureKitRecorder first frame timing", () => {
+	const callback = recorderSource.slice(recorderSource.indexOf("func stream(_ stream:"), recorderSource.indexOf("func stream(_ stream:") + 5000);
+	it("validates a complete frame and writer readiness before setting time zero", () => {
+		const clock = callback.indexOf("adjustedPresentationTime(for:");
+		expect(clock).toBeGreaterThan(callback.indexOf("status == .complete"));
+		expect(clock).toBeGreaterThan(callback.indexOf("videoInput.isReadyForMoreMediaData"));
+	});
+	it("resets the origin after a rejected first frame and gates audio on accepted video", () => {
+		expect(callback).toMatch(/else if frameCount == 0\s*\{[^}]*firstSampleTime = \.zero/);
+		const audioGuard = callback.indexOf("guard frameCount > 0,");
+		expect(audioGuard).toBeGreaterThan(0);
+		expect(audioGuard).toBeLessThan(callback.indexOf("if outputType == .audio"));
+	});
+});

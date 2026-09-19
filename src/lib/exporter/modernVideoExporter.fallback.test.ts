@@ -76,7 +76,81 @@ describe("ModernVideoExporter native fallback routing", () => {
 
 	afterEach(() => {
 		vi.clearAllMocks();
+		if (vi.isMockFunction(console.error)) console.error.mockRestore();
 		vi.unstubAllGlobals();
+	});
+
+	it("removes failed native writes without creating an unhandled rejection", async () => {
+		const exporter = new ModernVideoExporter({} as never) as unknown as {
+			trackNativeWritePromise: (write: Promise<void>) => void;
+			nativeWritePromises: Set<Promise<void>>;
+		};
+		const write = Promise.reject(new Error("Native write failed"));
+		exporter.trackNativeWritePromise(write);
+		await expect(write).rejects.toThrow("Native write failed");
+		expect(exporter.nativeWritePromises.size).toBe(0);
+	});
+
+	it.each([
+		"returned",
+		"thrown",
+		"write",
+		"cancelled",
+		"both-fail",
+		"decode",
+	])("handles a native runtime failure: %s", async (failure) => {
+		vi.stubGlobal("navigator", { platform: "Win32" });
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#000000",
+			backendPreference: "auto",
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean; error?: string }>;
+			cancel: () => void;
+			initializeEncoder: () => Promise<unknown>;
+			tryStartNativeVideoExport: () => Promise<boolean>;
+			finishNativeVideoExport: () => Promise<unknown>;
+			nativeEncoderError: Error | null;
+		};
+		const log = vi.spyOn(console, "error").mockImplementation(() => {});
+		const start = vi.spyOn(exporter, "tryStartNativeVideoExport").mockResolvedValue(true);
+		const initialize = vi.spyOn(exporter, "initializeEncoder").mockImplementation(async () => {
+			if (failure === "both-fail") throw new Error("WebCodecs unavailable");
+			return { hardwareAcceleration: "prefer-hardware" };
+		});
+		vi.spyOn(exporter, "finishNativeVideoExport").mockImplementation(async () => {
+			if (failure === "cancelled") exporter.cancel();
+			if (failure === "thrown" || failure === "cancelled")
+				throw new Error("Native finish failed");
+			return { success: false, error: "Native finish failed" };
+		});
+		if (failure === "write" || failure === "decode") {
+			mocks.streamingDecoderDecodeAll.mockImplementationOnce(async () => {
+				const error = new Error(
+					failure === "write" ? "Native write failed" : "Source decode failed",
+				);
+				if (failure === "write") exporter.nativeEncoderError = error;
+				throw error;
+			});
+		}
+		const result = await exporter.export();
+		expect(start).toHaveBeenCalledTimes(1);
+		const shouldRetry = failure !== "cancelled" && failure !== "decode";
+		expect(initialize).toHaveBeenCalledTimes(shouldRetry ? 1 : 0);
+		expect(result.success).toBe(shouldRetry && failure !== "both-fail");
+		if (shouldRetry)
+			expect(log).toHaveBeenCalledWith(
+				expect.stringContaining("restarting once with WebCodecs"),
+			);
+		if (failure === "both-fail") {
+			expect(result.error).toContain("Native finish failed");
+			expect(result.error).toContain("WebCodecs unavailable");
+		}
+		if (failure === "cancelled") expect(result.error).toBe("Export cancelled");
 	});
 
 	it("falls back to WebCodecs instead of surfacing a native error when Breeze is unavailable", async () => {

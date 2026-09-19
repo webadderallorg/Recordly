@@ -1,5 +1,5 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { useCallback, useRef, memo, useEffect } from "react";
+import { useCallback, useRef, memo } from "react";
 import { cn } from "@/lib/utils";
 
 interface SliderControlProps {
@@ -39,8 +39,6 @@ export const SliderControl = memo(function SliderControl({
 	parseInput: _parseInput,
 	accentColor = "blue",
 }: SliderControlProps) {
-	const rootRef = useRef<HTMLDivElement | null>(null);
-	const valueTextRef = useRef<HTMLSpanElement | null>(null);
 	const boundsRef = useRef<DOMRect | null>(null);
 	const requestRef = useRef<number | null>(null);
 
@@ -50,13 +48,6 @@ export const SliderControl = memo(function SliderControl({
 		accentColor === "purple"
 			? "bg-foreground/95 shadow-[0_0_10px_rgba(139,92,246,0.28)]"
 			: "bg-foreground/95 shadow-[0_0_10px_rgba(37,99,235,0.28)]";
-
-	// Sync initial and prop-driven changes to CSS variable
-	useEffect(() => {
-		if (rootRef.current) {
-			rootRef.current.style.setProperty("--slider-pct", String(pct / 100));
-		}
-	}, [pct]);
 
 	const updateValue = useCallback(
 		(clientX: number) => {
@@ -69,22 +60,10 @@ export const SliderControl = memo(function SliderControl({
 			const rawValue = min + normalized * (max - min);
 			const nextValue = clamp(quantizeToStep(rawValue, min, step), min, max);
 			const finalValue = Number(nextValue.toFixed(6));
-			const finalPct = (((finalValue - min) / (max - min || 1)) * 100).toFixed(4);
-
-			// Direct DOM update for instant feedback
-			if (rootRef.current) {
-				rootRef.current.style.setProperty("--slider-pct", String(Number(finalPct) / 100));
-				rootRef.current.setAttribute("aria-valuenow", String(finalValue));
-				rootRef.current.setAttribute("aria-valuetext", formatValue(finalValue));
-			}
-			if (valueTextRef.current) {
-				valueTextRef.current.textContent = formatValue(finalValue);
-			}
-
 			// Notify parent
 			onChange(finalValue);
 		},
-		[max, min, onChange, step, formatValue],
+		[max, min, onChange, step],
 	);
 
 	const handlePointerDown = useCallback(
@@ -143,7 +122,6 @@ export const SliderControl = memo(function SliderControl({
 
 	return (
 		<div
-			ref={rootRef}
 			role="slider"
 			tabIndex={0}
 			aria-label={label}
@@ -189,7 +167,6 @@ export const SliderControl = memo(function SliderControl({
 				{label}
 			</span>
 			<span
-				ref={valueTextRef}
 				className="pointer-events-none relative z-10 pr-3 text-[12px] font-medium tabular-nums text-foreground"
 			>
 				{formatValue(value)}

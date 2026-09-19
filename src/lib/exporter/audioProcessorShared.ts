@@ -109,12 +109,14 @@ export function hasNonDefaultSourceTrackSettings(
 }
 
 export interface TimelineSlice {
+	outputStartMs?: number;
 	sourceStartMs: number;
 	sourceEndMs: number;
 	speed: number;
 }
 
 export interface PreparedOfflineRender {
+	usesClipTimeline?: boolean;
 	mainBufferEntry: { buffer: AudioBuffer; gain: number } | null;
 	companionEntries: Array<{ buffer: AudioBuffer; startDelaySec: number; gain: number }>;
 	regionEntries: Array<{ buffer: AudioBuffer; region: AudioRegion }>;

@@ -31,15 +31,6 @@ export function useAppearanceState(preferences: EditorPreferences) {
 	const [zoomMotionBlurTuning, setZoomMotionBlurTuning] = useState<ZoomMotionBlurTuning>(
 		preferences.zoomMotionBlurTuning ?? DEFAULT_ZOOM_MOTION_BLUR_TUNING,
 	);
-	const [zoomTemporalMotionBlur, setZoomTemporalMotionBlur] = useState(
-		preferences.zoomTemporalMotionBlur,
-	);
-	const [zoomMotionBlurSampleCount, setZoomMotionBlurSampleCount] = useState<number | null>(
-		preferences.zoomMotionBlurSampleCount,
-	);
-	const [zoomMotionBlurShutterFraction, setZoomMotionBlurShutterFraction] = useState<
-		number | null
-	>(preferences.zoomMotionBlurShutterFraction);
 	const [autoApplyFreshRecordingAutoZooms, setAutoApplyFreshRecordingAutoZooms] = useState(
 		preferences.autoApplyFreshRecordingAutoZooms,
 	);
@@ -135,12 +126,6 @@ export function useAppearanceState(preferences: EditorPreferences) {
 		setZoomMotionBlur,
 		zoomMotionBlurTuning,
 		setZoomMotionBlurTuning,
-		zoomTemporalMotionBlur,
-		setZoomTemporalMotionBlur,
-		zoomMotionBlurSampleCount,
-		setZoomMotionBlurSampleCount,
-		zoomMotionBlurShutterFraction,
-		setZoomMotionBlurShutterFraction,
 		autoApplyFreshRecordingAutoZooms,
 		setAutoApplyFreshRecordingAutoZooms,
 		connectZooms,

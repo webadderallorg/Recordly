@@ -7,6 +7,7 @@ import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
 import { getClipSourceEndMs, getClipSourceStartMs, type SpeedRegion } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
+import { findPreviewClipAtTimelineTime } from "../videoPlayback/clipPlayback";
 
 type Input = {
 	project: ReturnType<typeof useProjectState>;
@@ -67,9 +68,6 @@ export function useProjectLibraryController({
 		zoomInOverlapMs,
 		zoomMotionBlur,
 		zoomMotionBlurTuning,
-		zoomTemporalMotionBlur,
-		zoomMotionBlurSampleCount,
-		zoomMotionBlurShutterFraction,
 		zoomOutDurationMs,
 		zoomOutEasing,
 		zoomClassicMode,
@@ -140,8 +138,12 @@ export function useProjectLibraryController({
 			let frameRenderer: FrameRenderer | null = null;
 
 			try {
-				videoFrame = new VideoFrame(previewVideo, { timestamp: frameTimestampUs });
+				const sourceTimestampUs = previewVideo.currentTime * 1_000_000;
+				if (findPreviewClipAtTimelineTime(frameTimestampUs / 1000, clipRegions)) {
+					videoFrame = new VideoFrame(previewVideo, { timestamp: sourceTimestampUs });
+				}
 				frameRenderer = new FrameRenderer({
+					timelineEffects: true,
 					width: targetWidth,
 					height: targetHeight,
 					wallpaper,
@@ -151,9 +153,6 @@ export function useProjectLibraryController({
 					backgroundBlur,
 					zoomMotionBlur,
 					zoomMotionBlurTuning,
-					zoomTemporalMotionBlur,
-					zoomMotionBlurSampleCount,
-					zoomMotionBlurShutterFraction,
 					connectZooms,
 					zoomInDurationMs,
 					zoomInOverlapMs,
@@ -222,7 +221,13 @@ export function useProjectLibraryController({
 					cursorSway,
 				});
 				await frameRenderer.initialize();
-				await frameRenderer.renderFrame(videoFrame, frameTimestampUs);
+				await frameRenderer.renderFrame(
+					videoFrame,
+					sourceTimestampUs,
+					sourceTimestampUs,
+					undefined,
+					frameTimestampUs,
+				);
 				return frameRenderer.getCanvas().toDataURL("image/png");
 			} catch (thumbnailRenderError) {
 				console.warn(
@@ -316,9 +321,6 @@ export function useProjectLibraryController({
 		zoomInOverlapMs,
 		zoomMotionBlur,
 		zoomMotionBlurTuning,
-		zoomTemporalMotionBlur,
-		zoomMotionBlurSampleCount,
-		zoomMotionBlurShutterFraction,
 		zoomOutDurationMs,
 		zoomOutEasing,
 		zoomRegions,
