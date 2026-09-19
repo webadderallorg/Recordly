@@ -43,6 +43,10 @@
 		"stop": "Detener",
 		"cancel": "Cancelar",
 		"more": "Más",
+		"enableFocusMode": "Activar modo de concentración",
+		"disableFocusMode": "Desactivar modo de concentración",
+		"focusModeUnavailable": "El modo de concentración no está disponible en esta plataforma",
+		"focusModeError": "No se pudo cambiar el modo de concentración",
 		"update": {
 			"update": "Actualizar",
 			"updated": "Actualizado",

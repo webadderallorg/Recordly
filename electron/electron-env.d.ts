@@ -67,6 +67,14 @@ interface UpdateStatusSummary {
 
 type RendererRecordingSessionData = import("./ipc/types").RecordingSessionData;
 
+interface FocusModeResult {
+	success: boolean;
+	enabled: boolean;
+	/** Always true for in-app suppression (supported on all platforms). */
+	supported: boolean;
+	error?: string;
+}
+
 interface RendererFfmpegAudioMuxMetrics {
 	tempVideoWriteMs?: number;
 	tempEditedAudioWriteMs?: number;
@@ -930,6 +938,11 @@ interface Window {
 		cancelCountdown: () => Promise<{ success: boolean }>;
 		getActiveCountdown: () => Promise<{ success: boolean; seconds: number | null }>;
 		onCountdownTick: (callback: (seconds: number) => void) => () => void;
+		/** Focus mode — in-app notification suppression */
+		getFocusModeStatus: () => Promise<FocusModeResult>;
+		setFocusMode: (enabled: boolean) => Promise<FocusModeResult>;
+		/** Subscribe to focus-mode state changes broadcast from the main process. Returns an unsubscribe function. */
+		onFocusModeChanged: (callback: (result: FocusModeResult) => void) => () => void;
 	};
 }
 

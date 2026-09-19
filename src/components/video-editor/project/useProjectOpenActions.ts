@@ -6,7 +6,7 @@ import {
 	useCallback,
 	useEffect,
 } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { fromFileUrl, resolveVideoUrl } from "../projectPersistence";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";

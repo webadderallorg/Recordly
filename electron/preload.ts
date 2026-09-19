@@ -1019,4 +1019,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("countdown-tick", listener);
 		return () => ipcRenderer.removeListener("countdown-tick", listener);
 	},
+	// Focus mode — in-app notification suppression
+	getFocusModeStatus: () => ipcRenderer.invoke("get-focus-mode-status"),
+	setFocusMode: (enabled: boolean) => ipcRenderer.invoke("set-focus-mode", enabled),
+	onFocusModeChanged: (
+		callback: (result: {
+			success: boolean;
+			enabled: boolean;
+			supported: boolean;
+			error?: string;
+		}) => void,
+	) => {
+		const listener = (
+			_event: Electron.IpcRendererEvent,
+			payload: { success: boolean; enabled: boolean; supported: boolean; error?: string },
+		) => callback(payload);
+		ipcRenderer.on("focus-mode-changed", listener);
+		return () => ipcRenderer.removeListener("focus-mode-changed", listener);
+	},
 });

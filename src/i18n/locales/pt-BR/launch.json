@@ -43,6 +43,10 @@
 		"stop": "Parar",
 		"cancel": "Cancelar",
 		"more": "Mais",
+		"enableFocusMode": "Ativar modo de foco",
+		"disableFocusMode": "Desativar modo de foco",
+		"focusModeUnavailable": "Modo de foco não disponível nesta plataforma",
+		"focusModeError": "Falha ao alterar o modo de foco",
 		"update": {
 			"update": "Atualizar",
 			"updated": "Atualizado",

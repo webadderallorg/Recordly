@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, ArrowSquareOut, Megaphone } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { BUNDLED_ANNOUNCEMENT_FEED } from "@/content/announcements";
 import { useI18n } from "@/contexts/I18nContext";
 import { runAnnouncementAction } from "@/lib/announcementActions";
