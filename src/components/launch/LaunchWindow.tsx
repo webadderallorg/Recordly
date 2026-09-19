@@ -12,8 +12,9 @@ import {
 	XIcon,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RxDragHandleDots2 } from "react-icons/rx";
+import { ObsSettingsDialog } from "../settings/ObsSettings";
 import { Separator } from "@/components/ui/separator";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
@@ -85,16 +86,29 @@ function LaunchWindowContent() {
 	const hudContentRef = useRef<HTMLDivElement>(null);
 	const hudBarRef = useRef<HTMLDivElement>(null);
 
+	const [isObsSettingsOpen, setIsObsSettingsOpen] = useState(false);
+
 	const {
 		selectedSource,
 		hasSelectedSource,
 		projectLibraryEntries,
-		handleSourceSelect,
+		handleSourceSelect: originalHandleSourceSelect,
 		openVideoFile,
 		openProjectFromLibrary,
 		syncSelectedSource,
 		refreshProjectLibrary,
 	} = useLaunchWindowActions();
+
+	const handleSourceSelect = async (source: DesktopSource) => {
+		if (source.id === "obs-engine") {
+			const connected = await window.electronAPI.obsGetMode();
+			if (!connected) {
+				setIsObsSettingsOpen(true);
+				return;
+			}
+		}
+		originalHandleSourceSelect(source);
+	};
 
 	const showWebcamControls = webcamEnabled && !recording;
 	const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(
@@ -396,6 +410,7 @@ function LaunchWindowContent() {
 						console.warn("Failed to preview update toast:", error);
 					});
 				}}
+				onOpenObsSettings={() => setIsObsSettingsOpen(true)}
 				appVersion={appVersion}
 				trigger={
 					<Button variant="ghost" size="icon" iconSize="lg" title={t("recording.more")}>
@@ -547,6 +562,7 @@ function LaunchWindowContent() {
 					</div>
 				</div>
 			</div>
+			<ObsSettingsDialog open={isObsSettingsOpen} onOpenChange={setIsObsSettingsOpen} />
 		</HudInteractionContext.Provider>
 	);
 }

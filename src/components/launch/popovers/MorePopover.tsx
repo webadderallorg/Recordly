@@ -54,6 +54,7 @@ export function MorePopover({
 	onOpenProjectBrowser: () => void;
 	showDevUpdatePreview: boolean;
 	onPreviewUpdateUi: () => void;
+	onOpenObsSettings?: () => void;
 	appVersion: string | null;
 }) {
 	const t = useScopedT("launch");
@@ -124,6 +125,15 @@ export function MorePopover({
 					{t("recording.previewUpdateUi", "Preview Update UI")}
 				</DropdownItem>
 			) : null}
+			<DropdownItem
+				icon={<VideoCameraIcon size={16} />}
+				onClick={() => {
+					requestClose(POPOVER_ID);
+					onOpenObsSettings?.();
+				}}
+			>
+				{t("recording.obsSettings", "OBS Studio Integration")}
+			</DropdownItem>
 			<div className={styles.ddLabel} style={{ marginTop: 4 }}>
 				{t("recording.appearance", "Appearance")}
 			</div>

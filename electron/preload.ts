@@ -1019,4 +1019,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("countdown-tick", listener);
 		return () => ipcRenderer.removeListener("countdown-tick", listener);
 	},
+	obsConnect: (password?: string) => {
+		return ipcRenderer.invoke("obs-connect", password);
+	},
+	obsDisconnect: () => {
+		return ipcRenderer.invoke("obs-disconnect");
+	},
+	obsSetMode: (enabled: boolean) => {
+		return ipcRenderer.invoke("obs-set-mode", enabled);
+	},
+	obsGetMode: () => {
+		return ipcRenderer.invoke("obs-get-mode");
+	},
+	obsStartRecording: () => {
+		return ipcRenderer.invoke("obs-start-recording");
+	},
+	obsStopRecording: () => {
+		return ipcRenderer.invoke("obs-stop-recording");
+	},
 });
