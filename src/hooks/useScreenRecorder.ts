@@ -2,6 +2,7 @@ import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
+import { dispatchRecordingShortcut } from "@/lib/recordingShortcuts";
 import {
 	getVideoExtensionForMimeType,
 	isWebmMimeType,
@@ -2422,6 +2423,36 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		startRecording();
 	};
+
+	const recordingControlsRef = useRef({
+		recording,
+		paused,
+		toggleRecording,
+		pauseRecording,
+		resumeRecording,
+		stopRecording: () => stopRecording.current(),
+	});
+
+	useEffect(() => {
+		recordingControlsRef.current = {
+			recording,
+			paused,
+			toggleRecording,
+			pauseRecording,
+			resumeRecording,
+			stopRecording: () => stopRecording.current(),
+		};
+	});
+
+	useEffect(() => {
+		if (!window.electronAPI?.onRecordingShortcut) {
+			return;
+		}
+
+		return window.electronAPI.onRecordingShortcut((payload) => {
+			dispatchRecordingShortcut(payload?.action, recordingControlsRef.current);
+		});
+	}, []);
 
 	return {
 		recording,
