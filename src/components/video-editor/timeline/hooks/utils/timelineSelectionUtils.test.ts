@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveDeleteSelectionTarget } from "./timelineSelectionUtils";
+import {
+	resolveDeleteSelectionTarget,
+	resolveDuplicateSelectionTarget,
+} from "./timelineSelectionUtils";
 
 describe("timelineSelectionUtils", () => {
 	it("treats zoom select-all as a zoom deletion target", () => {
@@ -48,6 +51,37 @@ describe("timelineSelectionUtils", () => {
 				selectAllBlocksActive: false,
 				selectedKeyframeId: null,
 				selectedZoomId: null,
+			}),
+		).toBe("none");
+	});
+
+	it("resolves duplicate targets for zoom, annotation, and audio", () => {
+		expect(
+			resolveDuplicateSelectionTarget({
+				selectedZoomId: "z-1",
+				selectedAnnotationId: "a-1",
+				selectedAudioId: "au-1",
+			}),
+		).toBe("zoom");
+		expect(
+			resolveDuplicateSelectionTarget({
+				selectedZoomId: null,
+				selectedAnnotationId: "a-1",
+				selectedAudioId: "au-1",
+			}),
+		).toBe("annotation");
+		expect(
+			resolveDuplicateSelectionTarget({
+				selectedZoomId: null,
+				selectedAnnotationId: null,
+				selectedAudioId: "au-1",
+			}),
+		).toBe("audio");
+		expect(
+			resolveDuplicateSelectionTarget({
+				selectedZoomId: null,
+				selectedAnnotationId: null,
+				selectedAudioId: null,
 			}),
 		).toBe("none");
 	});

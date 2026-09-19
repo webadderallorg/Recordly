@@ -1,5 +1,6 @@
 import type { Span } from "dnd-timeline";
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
+import { placeSpanAfter } from "../timeline/hooks/utils/timelineDuplicateUtils";
 import {
 	clampFocusToDepth,
 	DEFAULT_AUTO_ZOOM_DEPTH,
@@ -170,6 +171,48 @@ export function useZoomRegionCommands({
 		[selectedZoomId, setSelectedZoomId, setZoomRegions],
 	);
 
+	const handleZoomDuplicate = useCallback(
+		(id: string, totalMs: number): boolean => {
+			let createdId: string | null = null;
+			setZoomRegions((current) => {
+				const source = current.find((region) => region.id === id);
+				if (!source) return current;
+
+				const placed = placeSpanAfter(source, totalMs);
+				if (!placed) return current;
+
+				createdId = `zoom-${nextZoomIdRef.current++}`;
+				return [
+					...current,
+					{
+						...source,
+						id: createdId,
+						startMs: placed.startMs,
+						endMs: placed.endMs,
+						focus: { ...source.focus },
+					},
+				];
+			});
+
+			if (!createdId) return false;
+			setSelectedZoomId(createdId);
+			setSelectedAnnotationId(null);
+			setSelectedAudioId(null);
+			setSelectedCaptionId(null);
+			setActiveEffectSection("zoom");
+			return true;
+		},
+		[
+			nextZoomIdRef,
+			setActiveEffectSection,
+			setSelectedAnnotationId,
+			setSelectedAudioId,
+			setSelectedCaptionId,
+			setSelectedZoomId,
+			setZoomRegions,
+		],
+	);
+
 	return {
 		handleSelectZoom,
 		handleZoomAdded,
@@ -179,5 +222,6 @@ export function useZoomRegionCommands({
 		handleZoomDepthChange,
 		handleZoomModeChange,
 		handleZoomDelete,
+		handleZoomDuplicate,
 	};
 }

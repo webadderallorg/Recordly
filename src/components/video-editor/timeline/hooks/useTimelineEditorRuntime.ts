@@ -1,6 +1,7 @@
 import type { Span } from "dnd-timeline";
 import type { ForwardedRef, RefObject } from "react";
 import { useCallback, useImperativeHandle } from "react";
+import { toast } from "sonner";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -21,6 +22,7 @@ import { useTimelineDndBindings } from "./useTimelineDndBindings";
 import { useTimelineKeyboardShortcuts } from "./useTimelineKeyboardShortcuts";
 import { useTimelineNormalization } from "./useTimelineNormalization";
 import { useTimelineSelection } from "./useTimelineSelection";
+import { resolveDuplicateSelectionTarget } from "./utils/timelineSelectionUtils";
 
 interface UseTimelineEditorRuntimeParams {
 	ref: ForwardedRef<TimelineEditorHandle>;
@@ -37,6 +39,7 @@ interface UseTimelineEditorRuntimeParams {
 	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
 	onZoomSpanChange: (id: string, span: Span) => void;
 	onZoomDelete: (id: string) => void;
+	onZoomDuplicate?: (id: string) => boolean;
 	selectedZoomId: string | null;
 	onSelectZoom: (id: string | null) => void;
 	trimRegions: TrimRegion[];
@@ -51,6 +54,7 @@ interface UseTimelineEditorRuntimeParams {
 	onAnnotationAdded?: (span: Span, trackIndex?: number) => void;
 	onAnnotationSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
 	onAnnotationDelete?: (id: string) => void;
+	onAnnotationDuplicate?: (id: string) => boolean;
 	selectedAnnotationId?: string | null;
 	onSelectAnnotation?: (id: string | null) => void;
 	speedRegions: SpeedRegion[];
@@ -59,6 +63,7 @@ interface UseTimelineEditorRuntimeParams {
 	onAudioAdded?: (span: Span, audioPath: string, trackIndex?: number) => void;
 	onAudioSpanChange?: (id: string, span: Span, trackIndex?: number) => void;
 	onAudioDelete?: (id: string) => void;
+	onAudioDuplicate?: (id: string) => boolean;
 	selectedAudioId?: string | null;
 	onSelectAudio?: (id: string | null) => void;
 	captionCues: CaptionCue[];
@@ -87,6 +92,7 @@ export function useTimelineEditorRuntime({
 	onZoomSuggested,
 	onZoomSpanChange,
 	onZoomDelete,
+	onZoomDuplicate,
 	selectedZoomId,
 	onSelectZoom,
 	trimRegions,
@@ -101,6 +107,7 @@ export function useTimelineEditorRuntime({
 	onAnnotationAdded,
 	onAnnotationSpanChange,
 	onAnnotationDelete,
+	onAnnotationDuplicate,
 	selectedAnnotationId,
 	onSelectAnnotation,
 	speedRegions,
@@ -109,6 +116,7 @@ export function useTimelineEditorRuntime({
 	onAudioAdded,
 	onAudioSpanChange,
 	onAudioDelete,
+	onAudioDuplicate,
 	selectedAudioId,
 	onSelectAudio,
 	captionCues,
@@ -260,6 +268,36 @@ export function useTimelineEditorRuntime({
 		[videoDuration, totalMs, currentTimeMs, defaultRegionDurationMs, onAnnotationAdded],
 	);
 
+	const handleDuplicateSelected = useCallback(() => {
+		const target = resolveDuplicateSelectionTarget({
+			selectedZoomId,
+			selectedAnnotationId,
+			selectedAudioId,
+		});
+
+		let ok = false;
+		if (target === "zoom" && selectedZoomId && onZoomDuplicate) {
+			ok = onZoomDuplicate(selectedZoomId);
+		} else if (target === "annotation" && selectedAnnotationId && onAnnotationDuplicate) {
+			ok = onAnnotationDuplicate(selectedAnnotationId);
+		} else if (target === "audio" && selectedAudioId && onAudioDuplicate) {
+			ok = onAudioDuplicate(selectedAudioId);
+		} else {
+			return;
+		}
+
+		if (!ok) {
+			toast.error("Not enough space to duplicate after the selected item");
+		}
+	}, [
+		onAnnotationDuplicate,
+		onAudioDuplicate,
+		onZoomDuplicate,
+		selectedAnnotationId,
+		selectedAudioId,
+		selectedZoomId,
+	]);
+
 	useTimelineKeyboardShortcuts({
 		isMac,
 		keyShortcuts,
@@ -278,6 +316,7 @@ export function useTimelineEditorRuntime({
 		handleAddZoom,
 		handleSplitClip,
 		handleAddAnnotation: () => handleAddAnnotation(),
+		handleDuplicateSelected,
 		deleteSelectedKeyframe,
 		deleteSelectedZoom,
 		deleteSelectedClip,

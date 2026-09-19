@@ -21,6 +21,7 @@ interface UseTimelineKeyboardShortcutsParams {
 	handleAddZoom: () => void;
 	handleSplitClip: () => void;
 	handleAddAnnotation: () => void;
+	handleDuplicateSelected: () => void;
 	deleteSelectedKeyframe: () => void;
 	deleteSelectedZoom: () => void;
 	deleteSelectedClip: () => void;
@@ -48,6 +49,7 @@ export function useTimelineKeyboardShortcuts({
 	handleAddZoom,
 	handleSplitClip,
 	handleAddAnnotation,
+	handleDuplicateSelected,
 	deleteSelectedKeyframe,
 	deleteSelectedZoom,
 	deleteSelectedClip,
@@ -93,6 +95,11 @@ export function useTimelineKeyboardShortcuts({
 			if (matchesShortcut(e, keyShortcuts.splitClip, isMac)) handleSplitClip();
 			if (matchesShortcut(e, keyShortcuts.addAnnotation, isMac)) {
 				handleAddAnnotation();
+			}
+			if (matchesShortcut(e, keyShortcuts.duplicateSelected, isMac)) {
+				e.preventDefault();
+				handleDuplicateSelected();
+				return;
 			}
 
 			if (e.key === "Tab" && annotationCount > 0) {
@@ -149,6 +156,7 @@ export function useTimelineKeyboardShortcuts({
 		deleteSelectedZoom,
 		handleAddAnnotation,
 		handleAddZoom,
+		handleDuplicateSelected,
 		handleSplitClip,
 		hasAnyZoomBlocks,
 		isMac,
