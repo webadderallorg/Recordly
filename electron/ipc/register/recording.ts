@@ -518,6 +518,12 @@ export function registerRecordingHandlers(
 						);
 						config.captureSystemAudio = true;
 						config.audioOutputPath = tempSystemAudioPath;
+						if (options.systemAudioDeviceId) {
+							config.systemAudioDeviceId = options.systemAudioDeviceId;
+						}
+						if (options.systemAudioDeviceName) {
+							config.systemAudioDeviceName = options.systemAudioDeviceName;
+						}
 						setWindowsSystemAudioPath(systemAudioPath);
 					} else {
 						setWindowsSystemAudioPath(null);

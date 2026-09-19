@@ -21,29 +21,47 @@ export type ShortcutsConfig = Record<ShortcutAction, ShortcutBinding>;
 
 export interface FixedShortcut {
 	label: string;
+	translationKey: string;
 	display: string;
 	bindings: ShortcutBinding[];
 }
 
 export const FIXED_SHORTCUTS: FixedShortcut[] = [
-	{ label: "Cycle Annotations Forward", display: "Tab", bindings: [{ key: "tab" }] },
+	{
+		label: "Cycle Annotations Forward",
+		translationKey: "cycleForward",
+		display: "Tab",
+		bindings: [{ key: "tab" }],
+	},
 	{
 		label: "Cycle Annotations Backward",
+		translationKey: "cycleBackward",
 		display: "Shift + Tab",
 		bindings: [{ key: "tab", shift: true }],
 	},
 	{
 		label: "Delete Selected (alt)",
+		translationKey: "deleteSelectedAlt",
 		display: "Del / ⌫",
 		bindings: [{ key: "delete" }, { key: "backspace" }],
 	},
-	{ label: "Pan Timeline", display: "Shift + Scroll", bindings: [] },
-	{ label: "Zoom Timeline", display: "Ctrl + Scroll", bindings: [] },
+	{
+		label: "Pan Timeline",
+		translationKey: "panTimeline",
+		display: "Shift + Scroll",
+		bindings: [],
+	},
+	{
+		label: "Zoom Timeline",
+		translationKey: "zoomTimeline",
+		display: "Ctrl + Scroll",
+		bindings: [],
+	},
 ];
 
 export type ShortcutConflict =
 	| { type: "configurable"; action: ShortcutAction }
-	| { type: "fixed"; label: string };
+	| { type: "fixed"; label: string; translationKey: string };
 
 export function bindingsEqual(a: ShortcutBinding, b: ShortcutBinding): boolean {
 	return (
@@ -61,7 +79,7 @@ export function findConflict(
 ): ShortcutConflict | null {
 	for (const fixed of FIXED_SHORTCUTS) {
 		if (fixed.bindings.some((b) => bindingsEqual(b, binding))) {
-			return { type: "fixed", label: fixed.label };
+			return { type: "fixed", label: fixed.label, translationKey: fixed.translationKey };
 		}
 	}
 	for (const action of SHORTCUT_ACTIONS) {
@@ -88,6 +106,15 @@ export const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
 	addKeyframe: "Add Keyframe",
 	deleteSelected: "Delete Selected",
 	playPause: "Play / Pause",
+};
+
+export const SHORTCUT_LABEL_KEYS: Record<ShortcutAction, string> = {
+	addZoom: "addZoom",
+	splitClip: "splitClip",
+	addAnnotation: "addAnnotation",
+	addKeyframe: "addKeyframe",
+	deleteSelected: "deleteSelected",
+	playPause: "playPause",
 };
 
 export function matchesShortcut(

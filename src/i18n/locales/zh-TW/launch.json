@@ -5,6 +5,7 @@
 		"disableMicrophone": "停用麥克風",
 		"enableMicrophone": "啟用麥克風",
 		"micToggleDisabledTip": "錄製過程中無法切換麥克風",
+		"systemAudioToggleDisabledTip": "錄製過程中無法切換系統音訊",
 		"disableWebcam": "停用網路攝影機疊加",
 		"enableWebcam": "啟用網路攝影機疊加",
 		"countdownDelay": "倒數延遲",
@@ -23,11 +24,18 @@
 		"windows": "視窗",
 		"screen": "螢幕",
 		"window": "視窗",
+		"folder": "資料夾",
+		"display": "螢幕 {{index}}",
+		"primaryDisplay": "螢幕 {{index}}（主螢幕）",
 		"noSourcesFound": "找不到可錄製的來源",
 		"microphone": "麥克風",
+		"systemAudio": "系統音訊",
 		"turnOffMicrophone": "關閉麥克風",
+		"turnOffSystemAudio": "停用系統音訊",
 		"selectMicToEnable": "選擇要啟用的麥克風",
+		"selectAudioOutputToEnable": "選擇要啟用的音訊輸出",
 		"noMicrophonesFound": "找不到麥克風",
+		"noAudioOutputsFound": "找不到音訊輸出裝置",
 		"webcam": "網路攝影機",
 		"turnOffWebcam": "關閉網路攝影機",
 		"hideFloatingWebcamPreview": "隱藏浮動預覽",
@@ -53,7 +61,11 @@
 			"upToDateTitle": "Recordly {{version}} 已是最新版本。",
 			"availableTitle": "Recordly {{version}} 已推出新版本。",
 			"availableGenericTitle": "有可用更新。"
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "正在載入來源...",
@@ -90,6 +102,7 @@
 		"notNow": "暫不",
 		"updateNow": "立即更新",
 		"restartToUpdate": "重新啟動以更新",
-		"tryAgain": "重試"
+		"tryAgain": "重試",
+		"ariaLabel": "Recordly update"
 	}
 }

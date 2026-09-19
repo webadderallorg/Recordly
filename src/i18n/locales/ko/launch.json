@@ -5,6 +5,7 @@
 		"disableMicrophone": "마이크 끄기",
 		"enableMicrophone": "마이크 켜기",
 		"micToggleDisabledTip": "녹음 중에는 마이크를 전환할 수 없습니다",
+		"systemAudioToggleDisabledTip": "녹음 중에는 시스템 오디오를 전환할 수 없습니다",
 		"disableWebcam": "웹캠 오버레이 끄기",
 		"enableWebcam": "웹캠 오버레이 켜기",
 		"countdownDelay": "카운트다운 지연",
@@ -23,11 +24,18 @@
 		"windows": "창",
 		"screen": "화면",
 		"window": "창",
+		"folder": "폴더",
+		"display": "디스플레이 {{index}}",
+		"primaryDisplay": "디스플레이 {{index}} (주)",
 		"noSourcesFound": "사용 가능한 소스를 찾을 수 없습니다",
 		"microphone": "마이크",
+		"systemAudio": "시스템 오디오",
 		"turnOffMicrophone": "마이크 끄기",
+		"turnOffSystemAudio": "시스템 오디오 끄기",
 		"selectMicToEnable": "사용할 마이크를 선택하세요",
+		"selectAudioOutputToEnable": "활성화할 오디오 출력 선택",
 		"noMicrophonesFound": "마이크를 찾을 수 없습니다",
+		"noAudioOutputsFound": "오디오 출력을 찾을 수 없습니다",
 		"webcam": "웹캠",
 		"turnOffWebcam": "웹캠 끄기",
 		"hideFloatingWebcamPreview": "플로팅 미리보기 숨기기",
@@ -53,7 +61,11 @@
 			"upToDateTitle": "Recordly {{version}}은(는) 최신 버전입니다.",
 			"availableTitle": "Recordly {{version}}을(를) 사용할 수 있습니다.",
 			"availableGenericTitle": "업데이트를 사용할 수 있습니다."
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "소스를 불러오는 중...",
@@ -90,6 +102,7 @@
 		"notNow": "나중에",
 		"updateNow": "지금 업데이트",
 		"restartToUpdate": "다시 시작하여 업데이트",
-		"tryAgain": "다시 시도"
+		"tryAgain": "다시 시도",
+		"ariaLabel": "Recordly update"
 	}
 }

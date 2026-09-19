@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { Rnd } from "react-rnd";
+import { useScopedT } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";
 import { getArrowComponent } from "./ArrowSvgs";
 import { type AnnotationRegion, BASE_PREVIEW_WIDTH, BLUR_ANNOTATION_STRENGTH } from "./types";
@@ -55,6 +56,7 @@ export function AnnotationOverlay({
 	zIndex,
 	isSelectedBoost,
 }: AnnotationOverlayProps) {
+	const t = useScopedT("editor");
 	const safeRecordingRect =
 		recordingRect.width > 0 && recordingRect.height > 0
 			? recordingRect
@@ -153,7 +155,7 @@ export function AnnotationOverlay({
 					return (
 						<img
 							src={annotation.content}
-							alt="Annotation"
+							alt={t("annotations.uploadedImageAlt", "Uploaded annotation")}
 							className="w-full h-full object-contain"
 							draggable={false}
 						/>
@@ -161,7 +163,7 @@ export function AnnotationOverlay({
 				}
 				return (
 					<div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm">
-						No image
+						{t("annotations.noImage", "No image")}
 					</div>
 				);
 
@@ -169,7 +171,7 @@ export function AnnotationOverlay({
 				if (!annotation.figureData) {
 					return (
 						<div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm">
-							No arrow data
+							{t("annotations.noArrowData", "No arrow data")}
 						</div>
 					);
 				}

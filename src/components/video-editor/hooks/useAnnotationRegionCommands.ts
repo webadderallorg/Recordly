@@ -34,7 +34,7 @@ export function useAnnotationRegionCommands({
 				startMs: Math.round(span.start),
 				endMs: Math.round(span.end),
 				type: "text",
-				content: "Enter text...",
+				content: "",
 				position: { ...DEFAULT_ANNOTATION_POSITION },
 				size: { ...DEFAULT_ANNOTATION_SIZE },
 				style: { ...DEFAULT_ANNOTATION_STYLE },
@@ -107,7 +107,7 @@ export function useAnnotationRegionCommands({
 				current.map((region) => {
 					if (region.id !== id) return region;
 					const updated = { ...region, type };
-					if (type === "text") updated.content = region.textContent || "Enter text...";
+					if (type === "text") updated.content = region.textContent || "";
 					else if (type === "image") updated.content = region.imageContent || "";
 					else if (type === "figure") {
 						updated.content = "";

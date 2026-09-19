@@ -15,7 +15,6 @@
 		"arrow": "화살표",
 		"blur": "흐리게",
 		"textContent": "텍스트 내용",
-
 		"textPlaceholder": "텍스트를 입력하세요...",
 		"fontStyle": "글꼴 스타일",
 		"selectStyle": "스타일 선택",
@@ -44,9 +43,19 @@
 		"imageUploadError": "JPG, PNG, GIF 또는 WebP 이미지 파일을 업로드해 주세요.",
 		"blurStrength": "블러 강도: {{strength}}",
 		"solidColor": "단색 (검열)",
-		"borderRadius": "테두리 반경"
+		"borderRadius": "테두리 반경",
+		"arrowDirectionOption": "Arrow direction: {{direction}}",
+		"imageUploadErrorDescription": "Only JPG, PNG, GIF, or WebP image files are supported.",
+		"imageUploadFailed": "Image upload failed",
+		"imageUploadFailedDescription": "There was an error reading the image file.",
+		"customFonts": "Custom Fonts",
+		"uploadedImageAlt": "Uploaded annotation",
+		"noImage": "No image",
+		"noArrowData": "No arrow data",
+		"colorBlack": "Black",
+		"colorWhite": "White",
+		"colorCustom": "Custom Color"
 	},
-
 	"fontStyles": {
 		"classic": "클래식",
 		"editor": "에디터",
@@ -117,14 +126,39 @@
 		"unsavedChangesTitle": "저장되지 않은 변경 사항",
 		"unsavedChangesDescription": "{{action}} 전에 현재 프로젝트를 저장하시겠습니까?",
 		"discardChanges": "변경 사항 버리기",
-		"saveProject": "프로젝트 저장"
+		"saveProject": "프로젝트 저장",
+		"projects": "Open projects",
+		"renameInput": "Project name",
+		"renameTitle": "Rename project",
+		"saveDescription": "Name this project. It will be saved in your Recordly Projects folder.",
+		"saveNameLabel": "Project name",
+		"saveTitle": "Save Project",
+		"saving": "Saving...",
+		"noVideoLoaded": "No video loaded",
+		"saveCanceled": "Project save canceled",
+		"saveFailed": "Failed to save project",
+		"savedTo": "Project saved to {{path}}",
+		"saved": "Project saved",
+		"nameRequired": "Project name is required",
+		"loadFailed": "Failed to load project",
+		"invalidFormat": "Invalid project file format",
+		"loadedFrom": "Project loaded from {{path}}",
+		"loaded": "Project loaded",
+		"importFailed": "Failed to import file",
+		"noMediaSelected": "No media file selected",
+		"mediaImported": "Media imported",
+		"openAnotherProject": "open another project",
+		"importFile": "import a file"
 	},
 	"exportTips": {
 		"autoZooms": "팁: 설정에서 자동 적용 확대를 끌 수 있습니다",
 		"experimentalBuilds": "팁: 설정에서 실험적 빌드 액세스를 켜 보세요",
 		"cursorAppearance": "팁: 커서 모양을 사용자 지정할 수 있습니다"
 	},
-	"account": { "title": "계정", "comingSoon": "계정 기능 준비 중" },
+	"account": {
+		"title": "계정",
+		"comingSoon": "계정 기능 준비 중"
+	},
 	"nativeCaptureUnavailable": {
 		"title": "문제가 생긴 것은 아니지만, 애니메이션 커서 오버레이를 렌더링할 수 없습니다.",
 		"description": "이 장치는 네이티브 캡처를 지원하지 않습니다. 아직 확인하지 못한 여러 이유가 있을 수 있습니다. Recordly는 계속 작동하지만 커서 스무딩은 사용할 수 없습니다.",
@@ -137,7 +171,37 @@
 		"completePercent": "{{percent}}% 완료",
 		"issue": "내보내기 오류",
 		"complete": "내보내기 완료",
-		"savedSuccessfully": "파일이 성공적으로 저장되었습니다."
+		"savedSuccessfully": "파일이 성공적으로 저장되었습니다.",
+		"copyError": "Copy error",
+		"errorCopied": "Error copied",
+		"errorCopyFailed": "Couldn't copy. Select the error text and copy it manually.",
+		"finalizingPercent": "Finalizing {{percent}}%",
+		"muxingAndSaving": "Muxing audio and saving file...",
+		"muxingAndSavingPercent": "Muxing and saving {{percent}}%",
+		"renderSpeed": "Render speed {{fps}} FPS",
+		"renderingAudio": "Rendering audio {{percent}}%",
+		"saving": "Opening save dialog...",
+		"legacySlow": "Export too slow? Cancel and try Lightning export!",
+		"path": "Path: {{path}}",
+		"done": "Done",
+		"noVideoLoaded": "No video loaded",
+		"videoNotReady": "Video not ready",
+		"metadataLoading": "Video metadata is still loading",
+		"exportCanceled": "Export canceled",
+		"saveDialogCanceled": "Save dialog canceled. Click Save Again to save without re-rendering.",
+		"saveCanceledTryAgain": "Save canceled. You can try again.",
+		"saveCanceledWithoutReexport": "Save canceled. You can save again without re-exporting.",
+		"noPendingExport": "No pending export to save",
+		"failedToSaveVideo": "Failed to save video",
+		"failedToSaveGif": "Failed to save GIF",
+		"gifExportFailed": "GIF export failed",
+		"exportFailed": "Export failed",
+		"successToPath": "Exported successfully to {{path}}",
+		"showInFolder": "Show in Folder",
+		"revealFailed": "Failed to reveal item in folder.",
+		"revealError": "Error revealing in folder: {{error}}",
+		"unknownError": "Unknown error",
+		"exportFailedWithDetail": "Export failed: {{error}}"
 	},
 	"export": {
 		"processingAudioEdits": "속도/오버레이 편집으로 오디오 처리 중"
@@ -148,7 +212,66 @@
 	},
 	"timeline": {
 		"expand": "타임라인 펼치기",
-		"collapse": "타임라인 접기"
+		"collapse": "타임라인 접기",
+		"speedClipOverlap": "Speed change would overlap the next clip. Move or split clips before slowing this section.",
+		"speedZoomOverlap": "Speed change would overlap another zoom. Move or delete the overlapping zoom first.",
+		"unsupportedSpeed": "This speed is not supported for preview on this device."
 	},
-	"openRecordingsFolder": "녹화 폴더 열기"
+	"openRecordingsFolder": "녹화 폴더 열기",
+	"extensions": {
+		"title": "Extensions",
+		"unavailableTitle": "Extensions are no longer available",
+		"unavailableDescription": "Extension installation and marketplace access have been disabled. This area is kept as a placeholder for existing projects and navigation."
+	},
+	"projectBrowser": {
+		"title": "Projects",
+		"import": "Import",
+		"noPreview": "No preview yet",
+		"current": "Current",
+		"empty": "No saved projects yet"
+	},
+	"loadingVideo": "Loading video...",
+	"openProjects": "Open Projects",
+	"presets": {
+		"open": "Open presets",
+		"label": "Presets",
+		"saveCurrentAs": "Save current preset as",
+		"namePlaceholder": "Preset name",
+		"savedList": "Saved presets",
+		"empty": "No presets yet.",
+		"deleteAriaLabel": "Delete preset {{name}}",
+		"toasts": {
+			"applied": "Applied preset \"{{name}}\"",
+			"saved": "Saved preset \"{{name}}\"",
+			"deleted": "Deleted preset \"{{name}}\""
+		},
+		"errors": {
+			"nameRequired": "Enter a preset name.",
+			"duplicateName": "A preset with that name already exists.",
+			"saveFailed": "Could not save that preset. Check your browser storage settings and try again.",
+			"deleteFailed": "Could not delete that preset. Check your browser storage settings and try again."
+		}
+	},
+	"theme": {
+		"appearance": "Appearance",
+		"light": "Light",
+		"dark": "Dark",
+		"system": "System"
+	},
+	"audio": {
+		"fallbackUnavailable": "Could not load companion audio sources",
+		"fallbackPlaybackHint": "Playback and export may miss microphone audio.",
+		"fallbackLoadError": "Could not load companion audio source"
+	},
+	"captions": {
+		"whisperExecutableSelected": "Whisper executable selected",
+		"downloadModelFailed": "Failed to download Whisper small model",
+		"whisperModelSelected": "Whisper model selected",
+		"deleteModelFailed": "Failed to delete Whisper small model",
+		"whisperSmallModelDeleted": "Whisper small model deleted",
+		"noSourceVideo": "No source video is loaded",
+		"selectModel": "Select a Whisper model or download the small model first",
+		"generateFailed": "Failed to generate captions",
+		"generatedCount": "Generated {{count}} captions"
+	}
 }

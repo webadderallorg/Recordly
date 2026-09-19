@@ -46,6 +46,7 @@ type Input = {
 
 export function useEditorExportController(input: Input) {
 	const runner = useExportRunner({
+		t: input.t,
 		videoPath: input.videoPath,
 		videoPlaybackRef: input.videoPlaybackRef,
 		isPlaying: input.isPlaying,
@@ -66,6 +67,7 @@ export function useEditorExportController(input: Input) {
 		remountPreview: input.remountPreview,
 	});
 	const dialogActions = useExportDialogActions({
+		t: input.t,
 		videoPath: input.videoPath,
 		videoPlaybackRef: input.videoPlaybackRef,
 		hasCaptionsForSidecar: input.hasCaptionsForSidecar,

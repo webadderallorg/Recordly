@@ -4,7 +4,8 @@
 		"editorTitle": "Recordly Editor",
 		"subtitle": "Schermopname en bewerking",
 		"language": "Taal",
-		"manageRecordings": "Opnamemap openen"
+		"manageRecordings": "Opnamemap openen",
+		"discord": "Join Discord"
 	},
 	"actions": {
 		"cancel": "Annuleren",
@@ -22,5 +23,18 @@
 		"invalidFileType": "Ongeldig bestandstype",
 		"failedToUploadImage": "Afbeelding uploaden mislukt",
 		"fileReadError": "Er is een fout opgetreden bij het lezen van het bestand."
-	}
+	},
+	"loading": "Refreshing...",
+	"light": "Light",
+	"dark": "Dark",
+	"system": "System",
+	"announcements": {
+		"carousel": "Announcements",
+		"dismiss": "Dismiss",
+		"next": "Next announcement",
+		"openFailed": "Failed to open link.",
+		"previous": "Previous announcement",
+		"show": "Show announcement"
+	},
+	"close": "Close"
 }

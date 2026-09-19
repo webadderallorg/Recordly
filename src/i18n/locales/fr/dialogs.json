@@ -40,7 +40,9 @@
 		"addSuccess": "Police « {{name}} » ajoutée avec succès",
 		"addFailed": "Échec de l’ajout de la police",
 		"loadTimeout": "Le chargement de la police a pris trop de temps. Veuillez vérifier l’URL et réessayer.",
-		"loadFailed": "La police n’a pas pu être chargée. Veuillez vérifier que l’URL Google Fonts est correcte."
+		"loadFailed": "La police n’a pas pu être chargée. Veuillez vérifier que l’URL Google Fonts est correcte.",
+		"alreadyAdded": "This font has already been added.",
+		"cancel": "Cancel"
 	},
 	"shortcutsConfig": {
 		"title": "Raccourcis clavier",

@@ -40,7 +40,9 @@
 		"addSuccess": "Schriftart \"{{name}}\" erfolgreich hinzugefügt",
 		"addFailed": "Schriftart konnte nicht hinzugefügt werden",
 		"loadTimeout": "Das Laden der Schriftart hat zu lange gedauert. Bitte überprüfen Sie die URL und versuchen Sie es erneut.",
-		"loadFailed": "Die Schriftart konnte nicht geladen werden. Bitte überprüfen Sie, ob die Google Fonts-URL korrekt ist."
+		"loadFailed": "Die Schriftart konnte nicht geladen werden. Bitte überprüfen Sie, ob die Google Fonts-URL korrekt ist.",
+		"alreadyAdded": "This font has already been added.",
+		"cancel": "Cancel"
 	},
 	"shortcutsConfig": {
 		"title": "Tastaturkürzel",

@@ -1,14 +1,15 @@
 {
 	"actions": {
 		"addZoom": "添加缩放",
-		"addTrim": "添加修剪",
+		"splitClip": "分割片段",
+		"addTrim": "添加分割",
 		"addSpeed": "添加变速",
-		"addAnnotation": "添加注释",
+		"addAnnotation": "添加标注",
 		"addKeyframe": "添加关键帧",
 		"deleteSelected": "删除选中",
 		"playPause": "播放 / 暂停",
-		"cycleForward": "向前循环切换注释",
-		"cycleBackward": "向后循环切换注释",
+		"cycleForward": "下一个重叠标注",
+		"cycleBackward": "上一个重叠标注",
 		"deleteSelectedAlt": "删除选中（替代）",
 		"panTimeline": "平移时间线",
 		"zoomTimeline": "缩放时间线"

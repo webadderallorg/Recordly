@@ -6,6 +6,8 @@ import {
 	MicrophoneSlashIcon,
 	MinusIcon,
 	MonitorIcon,
+	SpeakerHighIcon,
+	SpeakerXIcon,
 	TimerIcon,
 	VideoCameraIcon,
 	VideoCameraSlashIcon,
@@ -16,6 +18,7 @@ import { useEffect, useRef } from "react";
 import { RxDragHandleDots2 } from "react-icons/rx";
 import { Separator } from "@/components/ui/separator";
 import { useScopedT } from "../../contexts/I18nContext";
+import { useAudioOutputDevices } from "../../hooks/audioOutputDevices";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { useVideoDevices } from "../../hooks/useVideoDevices";
@@ -40,8 +43,10 @@ import { MicPopover } from "./popovers/MicPopover";
 import { MorePopover } from "./popovers/MorePopover";
 import { ProjectPopover } from "./popovers/ProjectPopover";
 import { SourcePopover } from "./popovers/SourcePopover";
+import { SystemAudioPopover } from "./popovers/SystemAudioPopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { RecordingControls } from "./RecordingControls";
+import { getLocalizedSourceLabel } from "./sourceLabel";
 
 const SHOW_DEV_UPDATE_PREVIEW = import.meta.env.DEV;
 
@@ -72,6 +77,9 @@ function LaunchWindowContent() {
 		setMicrophoneDeviceId,
 		systemAudioEnabled,
 		setSystemAudioEnabled,
+		systemAudioDeviceId,
+		systemAudioDeviceName,
+		setSystemAudioDevice,
 		webcamEnabled,
 		setWebcamEnabled,
 		webcamDeviceId,
@@ -95,6 +103,7 @@ function LaunchWindowContent() {
 		syncSelectedSource,
 		refreshProjectLibrary,
 	} = useLaunchWindowActions();
+	const selectedSourceLabel = getLocalizedSourceLabel(selectedSource, t);
 
 	const showWebcamControls = webcamEnabled && !recording;
 	const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(
@@ -106,6 +115,16 @@ function LaunchWindowContent() {
 		selectedDeviceId: selectedVideoDeviceId,
 		setSelectedDeviceId: setSelectedVideoDeviceId,
 	} = useVideoDevices(webcamEnabled || openId === "webcam");
+	const {
+		devices: audioOutputDevices,
+		selectedDeviceId: selectedAudioOutputDeviceId,
+		selectedDevice: selectedAudioOutputDevice,
+		setSelectedDeviceId: setSelectedAudioOutputDeviceId,
+	} = useAudioOutputDevices(
+		systemAudioEnabled || openId === "system-audio",
+		systemAudioDeviceId,
+		systemAudioDeviceName,
+	);
 
 	const {
 		hudOverlayMousePassthroughSupported,
@@ -131,6 +150,25 @@ function LaunchWindowContent() {
 			setWebcamDeviceId(selectedVideoDeviceId);
 		}
 	}, [selectedVideoDeviceId, setWebcamDeviceId]);
+
+	useEffect(() => {
+		if (
+			systemAudioDeviceId &&
+			audioOutputDevices.length > 0 &&
+			selectedAudioOutputDeviceId !== systemAudioDeviceId
+		) {
+			setSystemAudioDevice(
+				selectedAudioOutputDeviceId === "default" ? undefined : selectedAudioOutputDeviceId,
+				selectedAudioOutputDevice.label,
+			);
+		}
+	}, [
+		audioOutputDevices.length,
+		selectedAudioOutputDevice,
+		selectedAudioOutputDeviceId,
+		setSystemAudioDevice,
+		systemAudioDeviceId,
+	]);
 
 	const {
 		showFloatingWebcamPreview,
@@ -211,6 +249,7 @@ function LaunchWindowContent() {
 		<RecordingControls
 			paused={paused}
 			microphoneEnabled={microphoneEnabled}
+			systemAudioEnabled={systemAudioEnabled}
 			elapsed={elapsed}
 			onToggleMicrophone={() => setMicrophoneEnabled(!microphoneEnabled)}
 			onPauseResume={paused ? resumeRecording : pauseRecording}
@@ -234,11 +273,11 @@ function LaunchWindowContent() {
 								variant="outline"
 								size="lg"
 								className={`${styles.electronNoDrag} group gap-2 px-3 min-w-0 max-w-[180px] rounded-[11px] font-medium text-[12px] shrink-0 border-[var(--launch-border)] bg-[var(--launch-surface)] text-[var(--launch-text)] hover:border-[var(--launch-border-strong)] hover:bg-[var(--launch-hover)] transition-all ${openId === "sources" ? "border-[var(--launch-border-strong)] bg-[var(--launch-hover)]" : ""}`}
-								title={selectedSource}
+								title={selectedSourceLabel}
 							>
 								<MonitorIcon size={16} className="shrink-0" />
 								<div className="flex-1 min-w-0 overflow-hidden">
-									<MarqueeText text={selectedSource} />
+									<MarqueeText text={selectedSourceLabel} />
 								</div>
 								<CaretUpIcon
 									size={10}
@@ -256,8 +295,6 @@ function LaunchWindowContent() {
 
 			<MicPopover
 				disabled={recording}
-				systemAudioEnabled={systemAudioEnabled}
-				onToggleSystemAudio={() => setSystemAudioEnabled(!systemAudioEnabled)}
 				microphoneEnabled={microphoneEnabled}
 				onDisableMicrophone={() => setMicrophoneEnabled(false)}
 				devices={devices}
@@ -284,6 +321,39 @@ function LaunchWindowContent() {
 							<MicrophoneIcon size={18} />
 						) : (
 							<MicrophoneSlashIcon size={18} />
+						)}
+					</Button>
+				}
+			/>
+
+			<SystemAudioPopover
+				disabled={recording}
+				deviceSelectionSupported={platform === "win32"}
+				systemAudioEnabled={systemAudioEnabled}
+				onToggleSystemAudio={() => setSystemAudioEnabled(!systemAudioEnabled)}
+				devices={audioOutputDevices}
+				selectedDeviceId={selectedAudioOutputDeviceId}
+				onSelectDevice={(device) => {
+					setSelectedAudioOutputDeviceId(device.deviceId);
+					setSystemAudioDevice(device.deviceId, device.label);
+					setSystemAudioEnabled(true);
+				}}
+				trigger={
+					<Button
+						variant="ghost"
+						size="icon"
+						iconSize="lg"
+						title={
+							systemAudioEnabled
+								? t("recording.turnOffSystemAudio", "Turn Off System Audio")
+								: t("recording.enableSystemAudio")
+						}
+						className={systemAudioEnabled ? styles.ibActive : ""}
+					>
+						{systemAudioEnabled ? (
+							<SpeakerHighIcon size={18} />
+						) : (
+							<SpeakerXIcon size={18} />
 						)}
 					</Button>
 				}

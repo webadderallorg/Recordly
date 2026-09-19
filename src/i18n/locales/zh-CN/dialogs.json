@@ -24,7 +24,7 @@
 	"addFont": {
 		"title": "添加 Google 字体",
 		"heading": "添加 Google 字体",
-		"description": "从 Google Fonts 添加自定义字体用于注释。",
+		"description": "从 Google Fonts 添加自定义字体用于标注。",
 		"urlLabel": "Google Fonts 导入 URL",
 		"urlPlaceholder": "https://fonts.googleapis.com/css2?family=Roboto&display=swap",
 		"urlHelp": "从 Google Fonts 获取：选择字体 → 点击「获取字体」→ 复制 @import URL",
@@ -40,7 +40,9 @@
 		"addSuccess": "字体 \"{{name}}\" 添加成功",
 		"addFailed": "添加字体失败",
 		"loadTimeout": "字体加载超时。请检查 URL 后重试。",
-		"loadFailed": "无法加载字体。请确认 Google Fonts URL 是否正确。"
+		"loadFailed": "无法加载字体。请确认 Google Fonts URL 是否正确。",
+		"alreadyAdded": "此字体已添加。",
+		"cancel": "取消"
 	},
 	"shortcutsConfig": {
 		"title": "键盘快捷键",

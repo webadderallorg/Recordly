@@ -4,17 +4,20 @@ import {
 	MinusIcon,
 	PauseIcon,
 	PlayIcon,
+	SpeakerHighIcon,
+	SpeakerXIcon,
 	XIcon,
 } from "@phosphor-icons/react";
 import { useMemo } from "react";
-import { useScopedT } from "@/contexts/I18nContext";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { useScopedT } from "@/contexts/I18nContext";
 import styles from "./LaunchWindow.module.css";
 
 interface RecordingControlsProps {
 	paused: boolean;
 	microphoneEnabled: boolean;
+	systemAudioEnabled: boolean;
 	elapsed: number;
 	onToggleMicrophone: () => void;
 	onPauseResume: () => void;
@@ -27,6 +30,7 @@ interface RecordingControlsProps {
 export const RecordingControls = ({
 	paused,
 	microphoneEnabled,
+	systemAudioEnabled,
 	elapsed,
 	onToggleMicrophone,
 	onPauseResume,
@@ -79,6 +83,23 @@ export const RecordingControls = ({
 							<MicrophoneIcon size={18} />
 						) : (
 							<MicrophoneSlashIcon size={18} />
+						)}
+					</Button>
+				</span>
+
+				<span title={t("recording.systemAudioToggleDisabledTip")}>
+					<Button
+						variant="ghost"
+						size="icon"
+						iconSize="lg"
+						className={systemAudioEnabled ? styles.ibActive : ""}
+						aria-label={t("recording.systemAudioToggleDisabledTip")}
+						disabled
+					>
+						{systemAudioEnabled ? (
+							<SpeakerHighIcon size={18} />
+						) : (
+							<SpeakerXIcon size={18} />
 						)}
 					</Button>
 				</span>
@@ -137,6 +158,7 @@ export const RecordingControls = ({
 	}, [
 		paused,
 		microphoneEnabled,
+		systemAudioEnabled,
 		elapsed,
 		onToggleMicrophone,
 		onPauseResume,

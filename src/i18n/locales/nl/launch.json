@@ -5,6 +5,7 @@
 		"disableMicrophone": "Microfoon uitschakelen",
 		"enableMicrophone": "Microfoon inschakelen",
 		"micToggleDisabledTip": "Microfoon kan niet worden gewijzigd tijdens de opname",
+		"systemAudioToggleDisabledTip": "Systeemaudio kan niet worden gewijzigd tijdens de opname",
 		"disableWebcam": "Webcam-overlay uitschakelen",
 		"enableWebcam": "Webcam-overlay inschakelen",
 		"countdownDelay": "Aftelvertraging",
@@ -23,11 +24,18 @@
 		"windows": "Vensters",
 		"screen": "Scherm",
 		"window": "Venster",
+		"folder": "Map",
+		"display": "Beeldscherm {{index}}",
+		"primaryDisplay": "Beeldscherm {{index}} (primair)",
 		"noSourcesFound": "Geen bronnen gevonden",
 		"microphone": "Microfoon",
+		"systemAudio": "Systeemaudio",
 		"turnOffMicrophone": "Microfoon uitschakelen",
+		"turnOffSystemAudio": "Systeemaudio uitschakelen",
 		"selectMicToEnable": "Selecteer een microfoon om in te schakelen",
+		"selectAudioOutputToEnable": "Selecteer een audio-uitgang om in te schakelen",
 		"noMicrophonesFound": "Geen microfoons gevonden",
+		"noAudioOutputsFound": "Geen audio-uitgangen gevonden",
 		"webcam": "Webcam",
 		"turnOffWebcam": "Webcam uitschakelen",
 		"hideFloatingWebcamPreview": "Zwevende voorbeeldweergave verbergen",
@@ -53,7 +61,11 @@
 			"upToDateTitle": "Recordly {{version}} is up-to-date.",
 			"availableTitle": "Recordly {{version}} is beschikbaar.",
 			"availableGenericTitle": "Er is een update beschikbaar."
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "Bronnen laden...",
@@ -90,6 +102,7 @@
 		"notNow": "Niet nu",
 		"updateNow": "Nu updaten",
 		"restartToUpdate": "Opnieuw starten om te updaten",
-		"tryAgain": "Opnieuw proberen"
+		"tryAgain": "Opnieuw proberen",
+		"ariaLabel": "Recordly update"
 	}
 }

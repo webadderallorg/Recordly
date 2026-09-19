@@ -40,7 +40,9 @@
 		"addSuccess": "Шрифт \"{{name}}\" успешно добавлен",
 		"addFailed": "Не удалось добавить шрифт",
 		"loadTimeout": "Шрифт загружается слишком долго. Проверьте ссылку и попробуйте снова.",
-		"loadFailed": "Не удалось загрузить шрифт. Проверьте ссылку на Google Fonts."
+		"loadFailed": "Не удалось загрузить шрифт. Проверьте ссылку на Google Fonts.",
+		"alreadyAdded": "This font has already been added.",
+		"cancel": "Cancel"
 	},
 	"shortcutsConfig": {
 		"title": "Сочетания клавиш",

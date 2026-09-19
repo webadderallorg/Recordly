@@ -26,6 +26,7 @@ import {
 	registerIpcHandlers,
 } from "./ipc/handlers";
 import { ensureMediaServer } from "./mediaServer";
+import { getNativeDialogCopy } from "./nativeDialogLocale";
 import { hardenWebContentsNavigation, shouldHardenWebContentsType } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
@@ -815,14 +816,15 @@ function createEditorWindowWrapper() {
 
 		event.preventDefault();
 
+		const copy = getNativeDialogCopy();
 		const choice = dialog.showMessageBoxSync(editorWindow, {
 			type: "warning",
-			buttons: ["Save & Close", "Discard & Close", "Cancel"],
+			buttons: [copy.saveAndClose, copy.discardAndClose, copy.cancel],
 			defaultId: 0,
 			cancelId: 2,
-			title: "Unsaved Changes",
-			message: "You have unsaved changes.",
-			detail: "Do you want to save your project before closing?",
+			title: copy.unsavedChangesTitle,
+			message: copy.unsavedChangesMessage,
+			detail: copy.unsavedChangesDetail,
 		});
 
 		if (choice === 0) {

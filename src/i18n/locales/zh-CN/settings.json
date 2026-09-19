@@ -6,16 +6,18 @@
 		"modeAuto": "自动",
 		"modeManual": "手动",
 		"modeManualDescription": "为此缩放设置固定焦点",
-		"modeAutoDescription": "镜头会自动跟随光标"
+		"modeAutoDescription": "镜头会自动跟随光标",
+		"globalSettings": "动画"
 	},
 	"trim": {
-		"deleteRegion": "删除修剪区域"
+		"deleteRegion": "删除分割区域"
 	},
 	"speed": {
 		"playbackSpeed": "播放速度",
 		"selectRegion": "选择变速区域以调整",
 		"deleteRegion": "删除变速区域",
-		"label": "速度"
+		"label": "速度",
+		"unsupported": "此设备不支持预览"
 	},
 	"clip": {
 		"title": "片段",
@@ -38,7 +40,7 @@
 			"tahoe-inverted": "Tahoe 反相",
 			"windows11": "Windows 11",
 			"dot": "圆点",
-			"figma": "Minimal",
+			"figma": "极简",
 			"lavender": "Lavender",
 			"parched": "Parched",
 			"chooper": "Chooper",
@@ -47,7 +49,7 @@
 		},
 		"backgroundBlur": "模糊",
 		"zoomMotionBlur": "缩放运动模糊",
-		"auto": "Auto",
+		"auto": "自动",
 		"connectZooms": "连接缩放",
 		"connectZoomsDescription": "将连续的缩放区域平滑连接为一次连续的镜头移动。",
 		"autoApplyFreshRecordingZooms": "自动为新录制应用缩放",
@@ -91,9 +93,9 @@
 		},
 		"cursorSize": "光标大小",
 		"cursorSmoothing": "光标平滑",
-		"cursorSpringStiffness": "光标弹簧刚度",
-		"cursorSpringDamping": "光标弹簧阻尼",
-		"cursorSpringMass": "光标弹簧质量",
+		"cursorSpringStiffness": "光标弹性系数 ",
+		"cursorSpringDamping": "光标弹性阻尼",
+		"cursorSpringMass": "光标弹性质量",
 		"off": "关",
 		"cursorClickEffects": {
 			"title": "Click Effects",
@@ -105,20 +107,20 @@
 			"opacity": "Effect Opacity",
 			"duration": "Effect Duration",
 			"none": {
-				"label": "Off",
-				"description": "No click graphic. Only the cursor motion changes when you click."
+				"label": "关闭",
+				"description": "不显示点击图形，仅在点击时改变光标运动。"
 			},
 			"ripple": {
-				"label": "Ripple",
-				"description": "Expanding rings radiate from each click so taps read clearly in motion."
+				"label": "波纹",
+				"description": "从每次点击处扩散圆环，让点击动作在视频中更清晰。"
 			},
 			"spotlight": {
-				"label": "Spotlight",
-				"description": "A soft halo flashes around the pointer to emphasize the clicked area."
+				"label": "聚光灯",
+				"description": "指针周围短暂闪现柔和光晕，突出点击区域。"
 			},
 			"echo": {
-				"label": "Echo",
-				"description": "A pair of soft rings that spread outward with a cleaner pulse."
+				"label": "回声",
+				"description": "两道柔和圆环向外扩散，形成更干净的点击脉冲。"
 			}
 		},
 		"cursorMotionBlur": "光标运动模糊",
@@ -138,7 +140,7 @@
 		"webcamHeight": "摄像头高度",
 		"webcamCrop": "摄像头裁剪",
 		"webcamReactToZoom": "摄像头随缩放变化",
-		"webcamMirror": "镜像摄像头",
+		"webcamMirror": "摄像头镜像",
 		"webcamRoundness": "摄像头圆角",
 		"webcamShadow": "摄像头阴影",
 		"shadow": "阴影",
@@ -151,7 +153,37 @@
 		"paddingBottom": "下",
 		"paddingLeft": "左",
 		"paddingRight": "右",
-		"removeBackground": "移除背景"
+		"removeBackground": "移除背景",
+		"paddingAdvanced": "高级",
+		"paddingAdvancedHide": "隐藏高级内边距控制",
+		"paddingAdvancedShow": "显示高级内边距控制",
+		"cameraDebugTuning": "镜头调试调节",
+		"cameraDebugTuningHint": "仅用于开发的镜头运动弹性调节控件。",
+		"cameraSpringStiffnessMultiplier": "镜头弹性系数",
+		"cameraSpringDampingMultiplier": "镜头弹性阻尼",
+		"cameraSpringMassMultiplier": "镜头质量",
+		"cursorDebugTuning": "光标调试调节",
+		"cursorDebugTuningHint": "仅用于开发的弹性调节控件。",
+		"cursorSpringStiffnessMultiplier": "弹性系数",
+		"cursorSpringDampingMultiplier": "弹性阻尼",
+		"cursorSpringMassMultiplier": "弹性质量",
+		"cursorDebugMovedToDev": "光标弹性调节位于“设置 > 开发”。",
+		"devSection": "开发",
+		"devSectionHint": "用于原生捕获和运动调节的临时测试控件。",
+		"nativeCaptureWarningTester": "原生捕获警告",
+		"nativeCaptureWarningTesterUnavailable": "当前项目标记为不支持原生捕获。",
+		"nativeCaptureWarningTesterAvailable": "当前项目未标记为不支持，但仍可打开此窗口测试界面。",
+		"openNativeCaptureWarning": "打开警告",
+		"classicZoom": "经典动画",
+		"webcamPosition": "位置",
+		"webcamCustomPosition": "自定义位置",
+		"webcamHorizontal": "水平",
+		"webcamVertical": "垂直",
+		"webcamMargin": "边距",
+		"pickColor": "选择",
+		"devBadge": "开发",
+		"customColorPicker": "自定义颜色选择器",
+		"customEffectColorPicker": "自定义效果颜色选择器"
 	},
 	"sections": {
 		"scene": "场景",
@@ -161,12 +193,14 @@
 		"cursor": "光标",
 		"webcam": "摄像头",
 		"frame": "边框",
-		"crop": "裁剪"
+		"crop": "裁剪",
+		"settings": "设置",
+		"extensions": "扩展"
 	},
 	"captions": {
 		"selectOnTimeline": "在时间轴上选择字幕进行编辑。",
 		"enabled": "显示",
-		"timelineQuickAdd": "悬停以在时间轴上添加",
+		"timelineQuickAdd": "悬停即可在时间轴添加字幕",
 		"language": "语言",
 		"downloading": "下载中...",
 		"deleteModel": "删除模型",
@@ -192,12 +226,27 @@
 		"backgroundOpacity": "背景透明度",
 		"textColor": "文字颜色",
 		"editor": {
-			"text": "Text",
-			"start": "Start",
-			"end": "End",
-			"split": "Split",
-			"merge": "Merge",
-			"delete": "Delete"
+			"text": "文本",
+			"start": "开始",
+			"end": "结束",
+			"split": "拆分",
+			"merge": "合并",
+			"delete": "删除"
+		},
+		"editSaved": "字幕已更新",
+		"selectModel": "选择模型",
+		"generatingStatus": "正在生成字幕，这可能需要一些时间。",
+		"languages": {
+			"auto": "自动检测",
+			"en": "英语",
+			"es": "西班牙语",
+			"fr": "法语",
+			"de": "德语",
+			"it": "意大利语",
+			"pt": "葡萄牙语",
+			"zh": "简体中文",
+			"ja": "日语",
+			"ko": "韩语"
 		}
 	},
 	"crop": {
@@ -218,7 +267,13 @@
 		"uploadCustom": "上传自定义",
 		"uploadSuccess": "自定义图片上传成功！",
 		"uploadError": "请上传 JPG 或 JPEG 图片文件。",
-		"uploadErrorDescription": "仅支持 JPG 和 JPEG 图片。"
+		"uploadErrorDescription": "仅支持 JPG 和 JPEG 图片。",
+		"video": "视频",
+		"uploadCustomVideo": "上传视频",
+		"unsupportedFormat": "不支持的格式",
+		"videoFormatDescription": "请选择视频文件（mp4、webm、mov 等）",
+		"videoAdded": "视频背景已添加",
+		"videoImportFailed": "视频背景导入失败"
 	},
 	"export": {
 		"title": "导出",
@@ -238,9 +293,26 @@
 		"sizePresetLargeShort": "大",
 		"loadProject": "加载项目",
 		"saveProject": "保存项目",
-		"exportVideo": "导出{{format}}",
+		"exportVideo": "导出视频",
 		"reportBug": "报告问题",
-		"starOnGithub": "在 GitHub 上点赞"
+		"starOnGithub": "在 GitHub 上 star",
+		"encodingTitle": "编码",
+		"encoding": {
+			"fast": "快速",
+			"balanced": "平衡",
+			"quality": "质量"
+		},
+		"nvidiaCuda": {
+			"title": "NVIDIA CUDA",
+			"badge": "实验性",
+			"hint": "在此 Windows 设备上尝试 GPU 导出。",
+			"toggle": "启用实验性 NVIDIA CUDA 导出"
+		},
+		"captionSidecar": {
+			"title": "导出字幕文件",
+			"hint": "将 .srt 和 .vtt 文件保存到导出视频旁边。",
+			"toggle": "导出字幕附加文件"
+		}
 	},
 	"audio": {
 		"title": "音频",
@@ -254,9 +326,12 @@
 		"deleteRegion": "删除音频"
 	},
 	"updates": {
-		"experimentalDescription": "你已选择接收实验性更新，因此可以在 Recordly 最新更新广泛发布之前选择先行测试。",
+		"experimentalDescription": "你已选择接收测试版更新，因此可以在 Recordly 最新更新广泛发布之前选择先行测试。",
 		"title": "更新",
-		"experimental": "实验性更新",
+		"experimental": "测试版更新",
 		"saveFailed": "无法更改更新频道。"
+	},
+	"annotation": {
+		"delete": "删除标注"
 	}
 }

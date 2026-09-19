@@ -1,6 +1,7 @@
 {
 	"actions": {
 		"addZoom": "Zoom hinzufügen",
+		"splitClip": "Clip teilen",
 		"addTrim": "Trimmen hinzufügen",
 		"addSpeed": "Geschwindigkeit hinzufügen",
 		"addAnnotation": "Anmerkung hinzufügen",

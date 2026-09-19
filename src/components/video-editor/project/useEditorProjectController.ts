@@ -183,6 +183,7 @@ export function useEditorProjectController(input: Input) {
 		syncActiveVideoSource: lifecycle.syncActiveVideoSource,
 	});
 	const saveActions = useProjectSaveActions({
+		t: input.t,
 		project: input.project,
 		currentSourcePath: snapshot.currentSourcePath,
 		currentProjectSnapshot: lifecycle.currentProjectSnapshot,
@@ -198,6 +199,7 @@ export function useEditorProjectController(input: Input) {
 		remountPreview: input.remountPreview,
 	});
 	const openActions = useProjectOpenActions({
+		t: input.t,
 		project: input.project,
 		appearance: input.appearance,
 		videoPlaybackRef: input.videoPlaybackRef,

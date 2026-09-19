@@ -6,7 +6,8 @@
 		"modeAuto": "Auto",
 		"modeManual": "Handmatig",
 		"modeManualDescription": "Stel een vast focuspunt in voor deze zoom",
-		"modeAutoDescription": "De camera volgt de cursor automatisch"
+		"modeAutoDescription": "De camera volgt de cursor automatisch",
+		"globalSettings": "Animation"
 	},
 	"trim": {
 		"deleteRegion": "Trimgebied verwijderen"
@@ -15,7 +16,8 @@
 		"playbackSpeed": "Afspeelsnelheid",
 		"selectRegion": "Selecteer een snelheidsgebied om aan te passen",
 		"deleteRegion": "Snelheidsgebied verwijderen",
-		"label": "Snelheid"
+		"label": "Snelheid",
+		"unsupported": "Not supported for preview on this device"
 	},
 	"clip": {
 		"title": "Clip",
@@ -151,7 +153,37 @@
 		"paddingBottom": "Onder",
 		"paddingLeft": "Links",
 		"paddingRight": "Rechts",
-		"removeBackground": "Achtergrond verwijderen"
+		"removeBackground": "Achtergrond verwijderen",
+		"paddingAdvanced": "Advanced",
+		"paddingAdvancedHide": "Hide advanced padding controls",
+		"paddingAdvancedShow": "Show advanced padding controls",
+		"cameraDebugTuning": "Camera Debug Tuning",
+		"cameraDebugTuningHint": "Development-only spring tuning controls for camera motion.",
+		"cameraSpringStiffnessMultiplier": "Camera stiffness",
+		"cameraSpringDampingMultiplier": "Camera damping",
+		"cameraSpringMassMultiplier": "Camera mass",
+		"cursorDebugTuning": "Cursor Debug Tuning",
+		"cursorDebugTuningHint": "Development-only spring tuning controls.",
+		"cursorSpringStiffnessMultiplier": "Spring stiffness",
+		"cursorSpringDampingMultiplier": "Spring damping",
+		"cursorSpringMassMultiplier": "Spring mass",
+		"cursorDebugMovedToDev": "Cursor spring tuning is available in Settings > Dev.",
+		"devSection": "Dev",
+		"devSectionHint": "Temporary testing controls for native capture and motion tuning.",
+		"nativeCaptureWarningTester": "Native capture warning",
+		"nativeCaptureWarningTesterUnavailable": "This project is currently marked as native capture unavailable.",
+		"nativeCaptureWarningTesterAvailable": "This project is not marked as unsupported, but you can still open the modal for UI testing.",
+		"openNativeCaptureWarning": "Open warning",
+		"classicZoom": "Classic Animation",
+		"webcamPosition": "Position",
+		"webcamCustomPosition": "Custom position",
+		"webcamHorizontal": "Horizontal",
+		"webcamVertical": "Vertical",
+		"webcamMargin": "Margin",
+		"pickColor": "Pick",
+		"devBadge": "DEV",
+		"customColorPicker": "Custom color picker",
+		"customEffectColorPicker": "Custom effect color picker"
 	},
 	"sections": {
 		"scene": "Scène",
@@ -161,7 +193,9 @@
 		"cursor": "Cursor",
 		"webcam": "Webcam",
 		"frame": "Kader",
-		"crop": "Bijsnijden"
+		"crop": "Bijsnijden",
+		"settings": "Instellingen",
+		"extensions": "Extensies"
 	},
 	"captions": {
 		"selectOnTimeline": "Selecteer een ondertitel op de tijdlijn om deze te bewerken.",
@@ -198,6 +232,21 @@
 			"split": "Split",
 			"merge": "Merge",
 			"delete": "Delete"
+		},
+		"editSaved": "Caption updated",
+		"selectModel": "Select Model",
+		"generatingStatus": "Generating captions. This can take a moment.",
+		"languages": {
+			"auto": "Auto Detect",
+			"en": "English",
+			"es": "Spanish",
+			"fr": "French",
+			"de": "German",
+			"it": "Italian",
+			"pt": "Portuguese",
+			"zh": "Chinese (Simplified)",
+			"ja": "Japanese",
+			"ko": "Korean"
 		}
 	},
 	"crop": {
@@ -218,7 +267,13 @@
 		"uploadCustom": "Afbeelding uploaden",
 		"uploadSuccess": "Eigen afbeelding succesvol geüpload!",
 		"uploadError": "Upload een JPG- of JPEG-afbeelding.",
-		"uploadErrorDescription": "Alleen JPG- en JPEG-afbeeldingen worden ondersteund."
+		"uploadErrorDescription": "Alleen JPG- en JPEG-afbeeldingen worden ondersteund.",
+		"video": "Video",
+		"uploadCustomVideo": "Upload Video",
+		"unsupportedFormat": "Unsupported format",
+		"videoFormatDescription": "Please select a video file (mp4, webm, mov, etc.)",
+		"videoAdded": "Video background added",
+		"videoImportFailed": "Failed to import video background"
 	},
 	"export": {
 		"title": "Exporteren",
@@ -240,7 +295,24 @@
 		"saveProject": "Project opslaan",
 		"exportVideo": "{{format}} exporteren",
 		"reportBug": "Bug melden",
-		"starOnGithub": "Ster op GitHub"
+		"starOnGithub": "Ster op GitHub",
+		"encodingTitle": "Encoding",
+		"encoding": {
+			"fast": "Fast",
+			"balanced": "Balanced",
+			"quality": "Quality"
+		},
+		"nvidiaCuda": {
+			"title": "NVIDIA CUDA",
+			"badge": "Experimental",
+			"hint": "Try GPU export on this Windows device.",
+			"toggle": "Enable experimental NVIDIA CUDA export"
+		},
+		"captionSidecar": {
+			"title": "Export captions file",
+			"hint": "Save .srt and .vtt files next to your exported video.",
+			"toggle": "Export captions sidecar files"
+		}
 	},
 	"audio": {
 		"title": "Audio",
@@ -258,5 +330,8 @@
 		"title": "Updates",
 		"experimental": "Experimentele updates",
 		"saveFailed": "Kan het updatekanaal niet wijzigen."
+	},
+	"annotation": {
+		"delete": "Delete Annotation"
 	}
 }

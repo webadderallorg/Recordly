@@ -13,7 +13,10 @@ public:
     WasapiCapture();
     ~WasapiCapture();
 
-    bool initializeLoopback(const std::string& outputPath);
+	bool initializeLoopback(
+		const std::string& outputPath,
+		const std::string& deviceId = "",
+		const std::string& deviceName = "");
     bool initializeMic(
         const std::string& outputPath,
         const std::string& deviceId = "",
@@ -43,7 +46,8 @@ private:
     void writePcmFrames(const int16_t* samples, UINT32 frameCount, WORD channels);
     void writeSilenceFrames(uint64_t frameCount, WORD channels);
     uint32_t boundaryFadeInFrameCount() const;
-    IMMDevice* findCaptureDeviceByName(const std::wstring& name);
+	IMMDevice* findCaptureDeviceByName(const std::wstring& name);
+	IMMDevice* findRenderDeviceByName(const std::wstring& name);
 
     std::string outputPath_;
     std::thread thread_;

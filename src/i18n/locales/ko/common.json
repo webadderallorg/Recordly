@@ -4,7 +4,8 @@
 		"editorTitle": "Recordly 편집기",
 		"subtitle": "화면 녹화 및 편집",
 		"language": "언어",
-		"manageRecordings": "녹화 폴더 열기"
+		"manageRecordings": "녹화 폴더 열기",
+		"discord": "Join Discord"
 	},
 	"actions": {
 		"cancel": "취소",
@@ -22,5 +23,18 @@
 		"invalidFileType": "잘못된 파일 형식입니다",
 		"failedToUploadImage": "이미지 업로드에 실패했습니다",
 		"fileReadError": "파일을 읽는 중 오류가 발생했습니다."
-	}
+	},
+	"loading": "Refreshing...",
+	"light": "Light",
+	"dark": "Dark",
+	"system": "System",
+	"announcements": {
+		"carousel": "Announcements",
+		"dismiss": "Dismiss",
+		"next": "Next announcement",
+		"openFailed": "Failed to open link.",
+		"previous": "Previous announcement",
+		"show": "Show announcement"
+	},
+	"close": "Close"
 }

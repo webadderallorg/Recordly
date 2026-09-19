@@ -130,7 +130,10 @@ export function EditorExportMenu(props: Props) {
 								) : null}
 								{isLegacyExportInProgress ? (
 									<p className="mt-1 text-[11px] text-muted-foreground/70">
-										Export too slow? Cancel and try Lightning export!
+										{t(
+											"editor.exportStatus.legacySlow",
+											"Export too slow? Cancel and try Lightning export!",
+										)}
 									</p>
 								) : null}
 							</div>
@@ -172,7 +175,9 @@ export function EditorExportMenu(props: Props) {
 						) : null}
 						{exportRuntimeLabel ? (
 							<p className="mt-1 text-[11px] text-muted-foreground/70">
-								Path: {exportRuntimeLabel}
+								{t("editor.exportStatus.path", "Path: {{path}}", {
+									path: exportRuntimeLabel,
+								})}
 							</p>
 						) : null}
 						{exportNativeSkipLabel ? (
@@ -188,7 +193,9 @@ export function EditorExportMenu(props: Props) {
 						</p>
 						{exportRuntimeLabel ? (
 							<p className="mt-1 text-[11px] text-muted-foreground/70">
-								Path: {exportRuntimeLabel}
+								{t("editor.exportStatus.path", "Path: {{path}}", {
+									path: exportRuntimeLabel,
+								})}
 							</p>
 						) : null}
 						<p className="mt-1 select-text whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground">
@@ -249,7 +256,9 @@ export function EditorExportMenu(props: Props) {
 						</p>
 						{exportRuntimeLabel ? (
 							<p className="mt-1 text-[11px] text-muted-foreground/70">
-								Path: {exportRuntimeLabel}
+								{t("editor.exportStatus.path", "Path: {{path}}", {
+									path: exportRuntimeLabel,
+								})}
 							</p>
 						) : null}
 						<p className="mt-3 truncate text-xs text-muted-foreground/70">
@@ -269,7 +278,7 @@ export function EditorExportMenu(props: Props) {
 								onClick={handleExportDropdownClose}
 								className="h-8 flex-1 border-foreground/10 bg-foreground/5 text-xs text-muted-foreground hover:bg-foreground/10"
 							>
-								Done
+								{t("editor.exportStatus.done", "Done")}
 							</Button>
 						</div>
 					</div>

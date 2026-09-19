@@ -5,6 +5,7 @@
 		"disableMicrophone": "Отключить микрофон",
 		"enableMicrophone": "Включить микрофон",
 		"micToggleDisabledTip": "Нельзя переключать микрофон во время записи",
+		"systemAudioToggleDisabledTip": "Нельзя переключать системный звук во время записи",
 		"disableWebcam": "Отключить наложение веб-камеры",
 		"enableWebcam": "Включить наложение веб-камеры",
 		"countdownDelay": "Обратный отсчёт",
@@ -23,11 +24,18 @@
 		"windows": "Окна",
 		"screen": "Экран",
 		"window": "Окно",
+		"folder": "Папка",
+		"display": "Дисплей {{index}}",
+		"primaryDisplay": "Дисплей {{index}} (основной)",
 		"noSourcesFound": "Источники изображения не найдены",
 		"microphone": "Микрофон",
+		"systemAudio": "Системный звук",
 		"turnOffMicrophone": "Выключить микрофон",
+		"turnOffSystemAudio": "Отключить системный звук",
 		"selectMicToEnable": "Выберите микрофон для записи звука",
+		"selectAudioOutputToEnable": "Выберите аудиовыход для включения",
 		"noMicrophonesFound": "Нет доступных микрофонов",
+		"noAudioOutputsFound": "Аудиовыходы не найдены",
 		"webcam": "Веб-камера",
 		"turnOffWebcam": "Выключить веб-камеру",
 		"hideFloatingWebcamPreview": "Скрыть предпросмотр",
@@ -53,7 +61,11 @@
 			"upToDateTitle": "У вас актуальная версия Recordly {{version}}.",
 			"availableTitle": "Доступна новая версия Recordly {{version}}.",
 			"availableGenericTitle": "Доступно обновление."
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "Загрузка источников...",
@@ -90,6 +102,7 @@
 		"notNow": "Не сейчас",
 		"updateNow": "Обновить сейчас",
 		"restartToUpdate": "Перезапустить для обновления",
-		"tryAgain": "Повторить"
+		"tryAgain": "Повторить",
+		"ariaLabel": "Recordly update"
 	}
 }

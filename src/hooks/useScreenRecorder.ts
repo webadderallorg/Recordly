@@ -1,6 +1,7 @@
 import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useI18n } from "@/contexts/I18nContext";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
 import {
 	getVideoExtensionForMimeType,
@@ -143,6 +144,9 @@ type UseScreenRecorderReturn = {
 	setMicrophoneDeviceId: (deviceId: string | undefined) => void;
 	systemAudioEnabled: boolean;
 	setSystemAudioEnabled: (enabled: boolean) => void;
+	systemAudioDeviceId: string | undefined;
+	systemAudioDeviceName: string | undefined;
+	setSystemAudioDevice: (deviceId: string | undefined, deviceName?: string) => void;
 	webcamEnabled: boolean;
 	setWebcamEnabled: (enabled: boolean) => void;
 	webcamDeviceId: string | undefined;
@@ -374,6 +378,7 @@ async function createAudioInputDeviceSnapshot(): Promise<
 }
 
 export function useScreenRecorder(): UseScreenRecorderReturn {
+	const { t } = useI18n();
 	const [recording, setRecording] = useState(false);
 	const [paused, setPaused] = useState(false);
 	const [starting, setStarting] = useState(false);
@@ -383,6 +388,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
 	const [microphoneDeviceId, setMicrophoneDeviceId] = useState<string | undefined>(undefined);
 	const [systemAudioEnabled, setSystemAudioEnabled] = useState(false);
+	const [systemAudioDeviceId, setSystemAudioDeviceId] = useState<string | undefined>(undefined);
+	const [systemAudioDeviceName, setSystemAudioDeviceName] = useState<string | undefined>(
+		undefined,
+	);
 	const [webcamEnabled, setWebcamEnabled] = useState(false);
 	const [webcamDeviceId, setWebcamDeviceId] = useState<string | undefined>(undefined);
 	const [countdownDelay, setCountdownDelayState] = useState(3);
@@ -1132,7 +1141,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		const selectedSource =
 			existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
 		if (!selectedSource) {
-			alert("Please select a source to record");
+			alert(t("launch.permissions.selectSource", "Please select a source to record"));
 			return null;
 		}
 
@@ -1200,12 +1209,26 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			}
 		}
 
+		let systemAudioLabel: string | undefined = systemAudioDeviceName;
+		if ((useNativeMacScreenCapture || useNativeWindowsCapture) && systemAudioEnabled) {
+			try {
+				const devices = await navigator.mediaDevices.enumerateDevices();
+				const output = devices.find(
+					(d) => d.deviceId === systemAudioDeviceId && d.kind === "audiooutput",
+				);
+				systemAudioLabel = output?.label || systemAudioLabel;
+			} catch {
+				// Native capture falls back to the default output when the selected endpoint is unavailable.
+			}
+		}
+
 		return {
 			platform,
 			selectedSource,
 			useNativeMacScreenCapture,
 			useNativeWindowsCapture,
 			micLabel,
+			systemAudioLabel,
 		};
 	}, [
 		logNativeCaptureDiagnostics,
@@ -1214,6 +1237,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		preparePermissions,
 		prepareWebcamRecorder,
 		resetRecordingClock,
+		systemAudioDeviceId,
+		systemAudioDeviceName,
+		systemAudioEnabled,
+		t,
 	]);
 
 	const discardActiveNativeCapture = useCallback(async () => {
@@ -1533,6 +1560,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					setMicrophoneDeviceId(result.microphoneDeviceId);
 				}
 				setSystemAudioEnabled(result.systemAudioEnabled);
+				setSystemAudioDeviceId(result.systemAudioDeviceId);
+				setSystemAudioDeviceName(result.systemAudioDeviceName);
 				setWebcamEnabled(result.webcamEnabled);
 				if (result.webcamDeviceId) {
 					setWebcamDeviceId(result.webcamDeviceId);
@@ -1555,6 +1584,20 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		setSystemAudioEnabled(enabled);
 		void window.electronAPI.setRecordingPreferences({ systemAudioEnabled: enabled });
 	}, []);
+
+	const persistSystemAudioDevice = useCallback(
+		(deviceId: string | undefined, deviceName?: string) => {
+			const normalizedDeviceId = deviceId && deviceId !== "default" ? deviceId : undefined;
+			const normalizedDeviceName = normalizedDeviceId ? deviceName : undefined;
+			setSystemAudioDeviceId(normalizedDeviceId);
+			setSystemAudioDeviceName(normalizedDeviceName);
+			void window.electronAPI.setRecordingPreferences({
+				systemAudioDeviceId: normalizedDeviceId,
+				systemAudioDeviceName: normalizedDeviceName,
+			});
+		},
+		[],
+	);
 
 	const persistWebcamEnabled = useCallback((enabled: boolean) => {
 		setWebcamEnabled(enabled);
@@ -1688,8 +1731,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				return;
 			}
 
-			const { selectedSource, useNativeMacScreenCapture, useNativeWindowsCapture, micLabel } =
-				preparedStart;
+			const {
+				selectedSource,
+				useNativeMacScreenCapture,
+				useNativeWindowsCapture,
+				micLabel,
+				systemAudioLabel,
+			} = preparedStart;
 			const useNativeCapture = useNativeMacScreenCapture || useNativeWindowsCapture;
 			const shouldWarmStartNativeCapture = useNativeCapture && countdownDelay > 0;
 			if (countdownDelay > 0 && !shouldWarmStartNativeCapture) {
@@ -1715,6 +1763,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					selectedSource,
 					{
 						capturesSystemAudio: systemAudioEnabled,
+						systemAudioDeviceId,
+						systemAudioDeviceName: systemAudioLabel,
 						capturesMicrophone: microphoneEnabled,
 						microphoneDeviceId,
 						microphoneLabel: micLabel,
@@ -2440,6 +2490,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		setMicrophoneDeviceId: persistMicrophoneDeviceId,
 		systemAudioEnabled,
 		setSystemAudioEnabled: persistSystemAudioEnabled,
+		systemAudioDeviceId,
+		systemAudioDeviceName,
+		setSystemAudioDevice: persistSystemAudioDevice,
 		webcamEnabled,
 		setWebcamEnabled: persistWebcamEnabled,
 		webcamDeviceId,

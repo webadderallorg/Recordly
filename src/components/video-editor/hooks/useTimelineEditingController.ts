@@ -59,12 +59,15 @@ type Input = {
 
 export function useTimelineEditingController(input: Input) {
 	const { timeline } = input;
-	const handleSourceFallbackLoadError = useCallback((error: unknown) => {
-		toast.warning(
-			`Could not load companion audio source: ${summarizeErrorMessage(getErrorMessage(error))}`,
-			{ duration: 10000 },
-		);
-	}, []);
+	const handleSourceFallbackLoadError = useCallback(
+		(error: unknown) => {
+			toast.warning(
+				`${input.t("editor.audio.fallbackLoadError", "Could not load companion audio source")}: ${summarizeErrorMessage(getErrorMessage(error))}`,
+				{ duration: 10000 },
+			);
+		},
+		[input.t],
+	);
 	const cursor = useCursorTelemetry({
 		videoPath: input.videoPath,
 		videoSourcePath: input.videoSourcePath,
@@ -99,6 +102,7 @@ export function useTimelineEditingController(input: Input) {
 		previewVolume: input.previewVolume,
 		sourceAudioFallbackRefreshKey: timeline.sourceAudioFallbackRefreshKey,
 		summarizeErrorMessage,
+		t: input.t,
 		onSourceFallbackLoadError: handleSourceFallbackLoadError,
 	});
 	const playback = useEditorPlaybackControls({

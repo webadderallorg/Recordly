@@ -5,6 +5,7 @@
 		"disableMicrophone": "Desativar microfone",
 		"enableMicrophone": "Ativar microfone",
 		"micToggleDisabledTip": "O microfone não pode ser alternado durante a gravação",
+		"systemAudioToggleDisabledTip": "O áudio do sistema não pode ser alternado durante a gravação",
 		"disableWebcam": "Desativar sobreposição da webcam",
 		"enableWebcam": "Ativar sobreposição da webcam",
 		"countdownDelay": "Atraso da contagem regressiva",
@@ -23,11 +24,18 @@
 		"windows": "Janelas",
 		"screen": "Tela",
 		"window": "Janela",
+		"folder": "Pasta",
+		"display": "Monitor {{index}}",
+		"primaryDisplay": "Monitor {{index}} (principal)",
 		"noSourcesFound": "Nenhuma fonte encontrada",
 		"microphone": "Microfone",
+		"systemAudio": "Áudio do sistema",
 		"turnOffMicrophone": "Desligar microfone",
+		"turnOffSystemAudio": "Desativar áudio do sistema",
 		"selectMicToEnable": "Selecione um microfone para ativar",
+		"selectAudioOutputToEnable": "Selecione uma saída de áudio para ativar",
 		"noMicrophonesFound": "Nenhum microfone encontrado",
+		"noAudioOutputsFound": "Nenhuma saída de áudio encontrada",
 		"webcam": "Webcam",
 		"turnOffWebcam": "Desligar webcam",
 		"hideFloatingWebcamPreview": "Ocultar prévia flutuante",
@@ -53,7 +61,11 @@
 			"upToDateTitle": "Recordly {{version}} está atualizado.",
 			"availableTitle": "Recordly {{version}} está disponível.",
 			"availableGenericTitle": "Há uma atualização disponível."
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "Carregando fontes...",
@@ -90,6 +102,7 @@
 		"notNow": "Agora não",
 		"updateNow": "Atualizar agora",
 		"restartToUpdate": "Reiniciar para atualizar",
-		"tryAgain": "Tentar novamente"
+		"tryAgain": "Tentar novamente",
+		"ariaLabel": "Recordly update"
 	}
 }

@@ -3,7 +3,7 @@ import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { useScopedT } from "@/contexts/I18nContext";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { cn } from "@/lib/utils";
 import {
 	type DesktopSource,
@@ -15,6 +15,7 @@ import "./launchTheme.css";
 import "./SourceSelector.css";
 import { useHudInteraction } from "./contexts/HudInteractionContext";
 import { MarqueeText } from "./MarqueeText";
+import { getLocalizedSourceLabel } from "./sourceLabel";
 
 interface SourceSelectorProps {
 	/** List of available screen sources */
@@ -51,8 +52,13 @@ export const SourceSelectorContent = ({
 	"screenSources" | "windowSources" | "selectedSource" | "loading" | "onSourceSelect"
 >) => {
 	const t = useScopedT("launch");
+	const { t: tCommon } = useI18n();
 	const renderSourceItem = (source: DesktopSource, index: number) => {
 		const isSelected = selectedSource === source.name;
+		const sourceLabel = getLocalizedSourceLabel(
+			isScreenSource(source) ? source.name : source.windowTitle || source.name,
+			t,
+		);
 		return (
 			<button
 				key={`${source.id}-${index}`}
@@ -86,12 +92,10 @@ export const SourceSelectorContent = ({
 
 				<div className="flex-1 min-w-0 flex flex-col items-start text-left">
 					<div className="text-sm font-medium source-selector-text w-full">
-						<MarqueeText text={source.windowTitle || source.name} />
+						<MarqueeText text={sourceLabel} />
 					</div>
 					<div className="text-xs source-selector-subtle truncate w-full text-left">
-						{source.sourceType === "screen"
-							? t("recording.screen")
-							: t("recording.window")}
+						{isScreenSource(source) ? t("recording.screen") : t("recording.window")}
 					</div>
 				</div>
 			</button>
@@ -122,7 +126,7 @@ export const SourceSelectorContent = ({
 										loading ? "opacity-100" : "opacity-0",
 									)}
 								>
-									{t("common.loading", "Refreshing...")}
+									{tCommon("common.loading", "Refreshing...")}
 								</span>
 							</div>
 							<div className="space-y-0.5">
@@ -169,6 +173,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 	onOpenChange: propsOnOpenChange,
 	children,
 }: SourceSelectorProps) {
+	const t = useScopedT("launch");
 	// Internal state for standalone/uncontrolled use
 	const [internalOpen, setInternalOpen] = useState(false);
 	const [internalSources, setInternalSources] = useState<DesktopSource[]>([]);
@@ -235,6 +240,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 
 	const screenSources = propsScreenSources ?? internalScreenSources;
 	const windowSources = propsWindowSources ?? internalWindowSources;
+	const selectedSourceLabel = getLocalizedSourceLabel(selectedSource, t);
 
 	const hasPrefetchedRef = useRef(false);
 	const fetchInFlightRef = useRef(false);
@@ -301,11 +307,11 @@ export const SourceSelector = React.memo(function SourceSelector({
 				"border-[#2a2a34] bg-[#1a1a22] text-[#eeeef2] hover:border-[#3e3e4c] hover:bg-[#20202a] transition-all",
 				"data-[state=open]:border-[#3e3e4c] data-[state=open]:bg-[#20202a]",
 			)}
-			title={selectedSource}
+			title={selectedSourceLabel}
 		>
 			<MonitorIcon size={16} className="shrink-0" />
 			<div className="flex-1 min-w-0">
-				<MarqueeText text={selectedSource} />
+				<MarqueeText text={selectedSourceLabel} />
 			</div>
 			<CaretUpIcon
 				size={10}

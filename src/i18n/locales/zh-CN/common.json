@@ -4,7 +4,8 @@
 		"editorTitle": "Recordly 编辑器",
 		"subtitle": "屏幕录制与编辑",
 		"language": "语言",
-		"manageRecordings": "打开录制文件夹"
+		"manageRecordings": "打开录制文件夹",
+		"discord": "加入 Discord"
 	},
 	"actions": {
 		"cancel": "取消",
@@ -22,5 +23,18 @@
 		"invalidFileType": "无效的文件类型",
 		"failedToUploadImage": "上传图片失败",
 		"fileReadError": "读取文件时出错。"
-	}
+	},
+	"loading": "正在刷新...",
+	"light": "浅色",
+	"dark": "深色",
+	"system": "跟随系统",
+	"announcements": {
+		"carousel": "公告",
+		"dismiss": "关闭",
+		"next": "下一条公告",
+		"openFailed": "打开链接失败。",
+		"previous": "上一条公告",
+		"show": "显示公告"
+	},
+	"close": "关闭"
 }

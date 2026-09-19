@@ -6,7 +6,8 @@
 		"modeAuto": "자동",
 		"modeManual": "수동",
 		"modeManualDescription": "이 확대에 고정 초점을 설정합니다",
-		"modeAutoDescription": "카메라가 커서를 자동으로 따라갑니다"
+		"modeAutoDescription": "카메라가 커서를 자동으로 따라갑니다",
+		"globalSettings": "Animation"
 	},
 	"trim": {
 		"deleteRegion": "트림 구간 삭제"
@@ -15,7 +16,8 @@
 		"playbackSpeed": "재생 속도",
 		"selectRegion": "조정할 속도 구간을 선택하세요",
 		"deleteRegion": "속도 구간 삭제",
-		"label": "속도"
+		"label": "속도",
+		"unsupported": "Not supported for preview on this device"
 	},
 	"clip": {
 		"title": "클립",
@@ -151,7 +153,37 @@
 		"paddingBottom": "아래",
 		"paddingLeft": "왼쪽",
 		"paddingRight": "오른쪽",
-		"removeBackground": "배경 제거"
+		"removeBackground": "배경 제거",
+		"paddingAdvanced": "Advanced",
+		"paddingAdvancedHide": "Hide advanced padding controls",
+		"paddingAdvancedShow": "Show advanced padding controls",
+		"cameraDebugTuning": "Camera Debug Tuning",
+		"cameraDebugTuningHint": "Development-only spring tuning controls for camera motion.",
+		"cameraSpringStiffnessMultiplier": "Camera stiffness",
+		"cameraSpringDampingMultiplier": "Camera damping",
+		"cameraSpringMassMultiplier": "Camera mass",
+		"cursorDebugTuning": "Cursor Debug Tuning",
+		"cursorDebugTuningHint": "Development-only spring tuning controls.",
+		"cursorSpringStiffnessMultiplier": "Spring stiffness",
+		"cursorSpringDampingMultiplier": "Spring damping",
+		"cursorSpringMassMultiplier": "Spring mass",
+		"cursorDebugMovedToDev": "Cursor spring tuning is available in Settings > Dev.",
+		"devSection": "Dev",
+		"devSectionHint": "Temporary testing controls for native capture and motion tuning.",
+		"nativeCaptureWarningTester": "Native capture warning",
+		"nativeCaptureWarningTesterUnavailable": "This project is currently marked as native capture unavailable.",
+		"nativeCaptureWarningTesterAvailable": "This project is not marked as unsupported, but you can still open the modal for UI testing.",
+		"openNativeCaptureWarning": "Open warning",
+		"classicZoom": "Classic Animation",
+		"webcamPosition": "Position",
+		"webcamCustomPosition": "Custom position",
+		"webcamHorizontal": "Horizontal",
+		"webcamVertical": "Vertical",
+		"webcamMargin": "Margin",
+		"pickColor": "Pick",
+		"devBadge": "DEV",
+		"customColorPicker": "Custom color picker",
+		"customEffectColorPicker": "Custom effect color picker"
 	},
 	"sections": {
 		"scene": "장면",
@@ -161,7 +193,9 @@
 		"cursor": "커서",
 		"webcam": "웹캠",
 		"frame": "프레임",
-		"crop": "자르기"
+		"crop": "자르기",
+		"settings": "설정",
+		"extensions": "확장"
 	},
 	"captions": {
 		"selectOnTimeline": "타임라인에서 자막을 선택하여 편집하세요.",
@@ -198,6 +232,21 @@
 			"split": "Split",
 			"merge": "Merge",
 			"delete": "Delete"
+		},
+		"editSaved": "Caption updated",
+		"selectModel": "Select Model",
+		"generatingStatus": "Generating captions. This can take a moment.",
+		"languages": {
+			"auto": "Auto Detect",
+			"en": "English",
+			"es": "Spanish",
+			"fr": "French",
+			"de": "German",
+			"it": "Italian",
+			"pt": "Portuguese",
+			"zh": "Chinese (Simplified)",
+			"ja": "Japanese",
+			"ko": "Korean"
 		}
 	},
 	"crop": {
@@ -218,7 +267,13 @@
 		"uploadCustom": "사용자 이미지 업로드",
 		"uploadSuccess": "사용자 이미지를 업로드했습니다!",
 		"uploadError": "JPG 또는 JPEG 이미지 파일을 업로드해 주세요.",
-		"uploadErrorDescription": "JPG 또는 JPEG 이미지 파일을 업로드해 주세요."
+		"uploadErrorDescription": "JPG 또는 JPEG 이미지 파일을 업로드해 주세요.",
+		"video": "Video",
+		"uploadCustomVideo": "Upload Video",
+		"unsupportedFormat": "Unsupported format",
+		"videoFormatDescription": "Please select a video file (mp4, webm, mov, etc.)",
+		"videoAdded": "Video background added",
+		"videoImportFailed": "Failed to import video background"
 	},
 	"export": {
 		"title": "내보내기",
@@ -240,7 +295,24 @@
 		"saveProject": "프로젝트 저장",
 		"exportVideo": "{{format}} 내보내기",
 		"reportBug": "버그 신고",
-		"starOnGithub": "GitHub에서 별표 주기"
+		"starOnGithub": "GitHub에서 별표 주기",
+		"encodingTitle": "Encoding",
+		"encoding": {
+			"fast": "Fast",
+			"balanced": "Balanced",
+			"quality": "Quality"
+		},
+		"nvidiaCuda": {
+			"title": "NVIDIA CUDA",
+			"badge": "Experimental",
+			"hint": "Try GPU export on this Windows device.",
+			"toggle": "Enable experimental NVIDIA CUDA export"
+		},
+		"captionSidecar": {
+			"title": "Export captions file",
+			"hint": "Save .srt and .vtt files next to your exported video.",
+			"toggle": "Export captions sidecar files"
+		}
 	},
 	"audio": {
 		"title": "오디오",
@@ -258,5 +330,8 @@
 		"title": "업데이트",
 		"experimental": "실험적 업데이트",
 		"saveFailed": "업데이트 채널을 변경하지 못했습니다."
+	},
+	"annotation": {
+		"delete": "Delete Annotation"
 	}
 }

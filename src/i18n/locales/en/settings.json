@@ -12,7 +12,8 @@
 		"modeAuto": "Auto",
 		"modeManual": "Manual",
 		"modeManualDescription": "Set a fixed focus point for this zoom",
-		"modeAutoDescription": "Camera recenters when the cursor nears the edge of the zoomed view"
+		"modeAutoDescription": "Camera recenters when the cursor nears the edge of the zoomed view",
+		"globalSettings": "Animation"
 	},
 	"trim": {
 		"deleteRegion": "Delete Trim Region"
@@ -21,7 +22,8 @@
 		"playbackSpeed": "Playback Speed",
 		"selectRegion": "Select a speed region to adjust",
 		"deleteRegion": "Delete Speed Region",
-		"label": "Speed"
+		"label": "Speed",
+		"unsupported": "Not supported for preview on this device"
 	},
 	"clip": {
 		"title": "Clip",
@@ -157,7 +159,37 @@
 		"paddingBottom": "Bottom",
 		"paddingLeft": "Left",
 		"paddingRight": "Right",
-		"removeBackground": "Remove background"
+		"removeBackground": "Remove background",
+		"paddingAdvanced": "Advanced",
+		"paddingAdvancedHide": "Hide advanced padding controls",
+		"paddingAdvancedShow": "Show advanced padding controls",
+		"cameraDebugTuning": "Camera Debug Tuning",
+		"cameraDebugTuningHint": "Development-only spring tuning controls for camera motion.",
+		"cameraSpringStiffnessMultiplier": "Camera stiffness",
+		"cameraSpringDampingMultiplier": "Camera damping",
+		"cameraSpringMassMultiplier": "Camera mass",
+		"cursorDebugTuning": "Cursor Debug Tuning",
+		"cursorDebugTuningHint": "Development-only spring tuning controls.",
+		"cursorSpringStiffnessMultiplier": "Spring stiffness",
+		"cursorSpringDampingMultiplier": "Spring damping",
+		"cursorSpringMassMultiplier": "Spring mass",
+		"cursorDebugMovedToDev": "Cursor spring tuning is available in Settings > Dev.",
+		"devSection": "Dev",
+		"devSectionHint": "Temporary testing controls for native capture and motion tuning.",
+		"nativeCaptureWarningTester": "Native capture warning",
+		"nativeCaptureWarningTesterUnavailable": "This project is currently marked as native capture unavailable.",
+		"nativeCaptureWarningTesterAvailable": "This project is not marked as unsupported, but you can still open the modal for UI testing.",
+		"openNativeCaptureWarning": "Open warning",
+		"classicZoom": "Classic Animation",
+		"webcamPosition": "Position",
+		"webcamCustomPosition": "Custom position",
+		"webcamHorizontal": "Horizontal",
+		"webcamVertical": "Vertical",
+		"webcamMargin": "Margin",
+		"pickColor": "Pick",
+		"devBadge": "DEV",
+		"customColorPicker": "Custom color picker",
+		"customEffectColorPicker": "Custom effect color picker"
 	},
 	"sections": {
 		"scene": "Scene",
@@ -167,12 +199,14 @@
 		"cursor": "Cursor",
 		"webcam": "Webcam",
 		"frame": "Frame",
-		"crop": "Crop"
+		"crop": "Crop",
+		"settings": "Settings",
+		"extensions": "Extensions"
 	},
 	"captions": {
 		"selectOnTimeline": "Select a caption on the timeline to edit it.",
 		"enabled": "Show",
-		"timelineQuickAdd": "Hover to add on timeline",
+		"timelineQuickAdd": "Hover to add a caption on the timeline",
 		"language": "Language",
 		"downloading": "Downloading...",
 		"deleteModel": "Delete Model",
@@ -204,6 +238,21 @@
 			"split": "Split",
 			"merge": "Merge",
 			"delete": "Delete"
+		},
+		"editSaved": "Caption updated",
+		"selectModel": "Select Model",
+		"generatingStatus": "Generating captions. This can take a moment.",
+		"languages": {
+			"auto": "Auto Detect",
+			"en": "English",
+			"es": "Spanish",
+			"fr": "French",
+			"de": "German",
+			"it": "Italian",
+			"pt": "Portuguese",
+			"zh": "Chinese (Simplified)",
+			"ja": "Japanese",
+			"ko": "Korean"
 		}
 	},
 	"crop": {
@@ -224,7 +273,13 @@
 		"uploadCustom": "Upload Custom",
 		"uploadSuccess": "Custom image uploaded successfully!",
 		"uploadError": "Please upload a JPG or JPEG image file.",
-		"uploadErrorDescription": "Only JPG and JPEG images are supported."
+		"uploadErrorDescription": "Only JPG and JPEG images are supported.",
+		"video": "Video",
+		"uploadCustomVideo": "Upload Video",
+		"unsupportedFormat": "Unsupported format",
+		"videoFormatDescription": "Please select a video file (mp4, webm, mov, etc.)",
+		"videoAdded": "Video background added",
+		"videoImportFailed": "Failed to import video background"
 	},
 	"export": {
 		"title": "Export",
@@ -246,7 +301,24 @@
 		"saveProject": "Save Project",
 		"exportVideo": "Export {{format}}",
 		"reportBug": "Report Bug",
-		"starOnGithub": "Star on GitHub"
+		"starOnGithub": "Star on GitHub",
+		"encodingTitle": "Encoding",
+		"encoding": {
+			"fast": "Fast",
+			"balanced": "Balanced",
+			"quality": "Quality"
+		},
+		"nvidiaCuda": {
+			"title": "NVIDIA CUDA",
+			"badge": "Experimental",
+			"hint": "Try GPU export on this Windows device.",
+			"toggle": "Enable experimental NVIDIA CUDA export"
+		},
+		"captionSidecar": {
+			"title": "Export captions file",
+			"hint": "Save .srt and .vtt files next to your exported video.",
+			"toggle": "Export captions sidecar files"
+		}
 	},
 	"audio": {
 		"title": "Audio",
@@ -258,5 +330,8 @@
 		"micLabel": "Source Mic",
 		"mixedLabel": "Source",
 		"deleteRegion": "Delete Audio"
+	},
+	"annotation": {
+		"delete": "Delete Annotation"
 	}
 }

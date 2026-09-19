@@ -5,6 +5,7 @@
 		"disableMicrophone": "Disable microphone",
 		"enableMicrophone": "Enable microphone",
 		"micToggleDisabledTip": "Microphone cannot be toggled during recording",
+		"systemAudioToggleDisabledTip": "System audio cannot be toggled during recording",
 		"disableWebcam": "Disable webcam overlay",
 		"enableWebcam": "Enable webcam overlay",
 		"countdownDelay": "Countdown delay",
@@ -23,11 +24,18 @@
 		"windows": "Windows",
 		"screen": "Screen",
 		"window": "Window",
+		"folder": "Folder",
+		"display": "Display {{index}}",
+		"primaryDisplay": "Display {{index}} (Primary)",
 		"noSourcesFound": "No sources found",
 		"microphone": "Microphone",
+		"systemAudio": "System audio",
 		"turnOffMicrophone": "Turn Off Microphone",
+		"turnOffSystemAudio": "Turn Off System Audio",
 		"selectMicToEnable": "Select a microphone to enable",
+		"selectAudioOutputToEnable": "Select an audio output to enable",
 		"noMicrophonesFound": "No microphones found",
+		"noAudioOutputsFound": "No audio outputs found",
 		"webcam": "Webcam",
 		"turnOffWebcam": "Turn Off Webcam",
 		"hideFloatingWebcamPreview": "Hide Floating Preview",
@@ -53,7 +61,11 @@
 			"upToDateTitle": "Recordly {{version}} is up to date.",
 			"availableTitle": "Recordly {{version}} is available.",
 			"availableGenericTitle": "An update is available."
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "Loading sources...",
@@ -90,6 +102,7 @@
 		"notNow": "Not now",
 		"updateNow": "Update now",
 		"restartToUpdate": "Restart to update",
-		"tryAgain": "Try again"
+		"tryAgain": "Try again",
+		"ariaLabel": "Recordly update"
 	}
 }

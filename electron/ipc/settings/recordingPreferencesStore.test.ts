@@ -43,4 +43,22 @@ describe("recording preferences store", () => {
 			webcamDeviceId: "preferred-camera",
 		});
 	});
+
+	it("persists the selected system audio output alongside the enabled state", async () => {
+		const directory = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-preferences-"));
+		temporaryDirectories.push(directory);
+		const store = createRecordingPreferencesStore(path.join(directory, "recording.json"));
+
+		await store.update({
+			systemAudioEnabled: true,
+			systemAudioDeviceId: "speaker-id",
+			systemAudioDeviceName: "Speakers (USB Audio)",
+		});
+
+		await expect(store.read()).resolves.toEqual({
+			systemAudioEnabled: true,
+			systemAudioDeviceId: "speaker-id",
+			systemAudioDeviceName: "Speakers (USB Audio)",
+		});
+	});
 });

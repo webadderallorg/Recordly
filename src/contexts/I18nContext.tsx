@@ -182,10 +182,16 @@ const messages: Record<AppLocale, LocaleBundle> = {
 	},
 } as const;
 
+export type I18nTranslate = (
+	key: string,
+	fallback?: string,
+	vars?: Record<string, string | number>,
+) => string;
+
 interface I18nContextValue {
 	locale: AppLocale;
 	setLocale: (locale: AppLocale) => void;
-	t: (key: string, fallback?: string, vars?: Record<string, string | number>) => string;
+	t: I18nTranslate;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
@@ -319,6 +325,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		document.documentElement.lang = locale;
+		window.electronAPI?.setAppLocale?.(locale);
 	}, [locale]);
 
 	const t = useCallback(

@@ -4,7 +4,8 @@
 		"editorTitle": "Recordly Editor",
 		"subtitle": "Bildschirmaufzeichnung und -bearbeitung",
 		"language": "Sprache",
-		"manageRecordings": "Aufzeichnungsordner öffnen"
+		"manageRecordings": "Aufzeichnungsordner öffnen",
+		"discord": "Join Discord"
 	},
 	"actions": {
 		"cancel": "Abbrechen",
@@ -22,5 +23,18 @@
 		"invalidFileType": "Ungültiger Dateityp",
 		"failedToUploadImage": "Bild konnte nicht hochgeladen werden",
 		"fileReadError": "Beim Lesen der Datei ist ein Fehler aufgetreten."
-	}
+	},
+	"loading": "Refreshing...",
+	"light": "Light",
+	"dark": "Dark",
+	"system": "System",
+	"announcements": {
+		"carousel": "Announcements",
+		"dismiss": "Dismiss",
+		"next": "Next announcement",
+		"openFailed": "Failed to open link.",
+		"previous": "Previous announcement",
+		"show": "Show announcement"
+	},
+	"close": "Close"
 }

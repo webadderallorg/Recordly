@@ -1,18 +1,16 @@
-import { MicrophoneSlashIcon, SpeakerHighIcon, SpeakerXIcon } from "@phosphor-icons/react";
+import { MicrophoneSlashIcon } from "@phosphor-icons/react";
+import type { ReactElement } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
-import { DropdownItem, HudPopover, MicDeviceRow } from "./PopoverScaffold";
+import styles from "../LaunchWindow.module.css";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import type { DeviceOption } from "./launchPopoverTypes";
-import type { ReactElement } from "react";
-import styles from "../LaunchWindow.module.css";
+import { DropdownItem, HudPopover, MicDeviceRow } from "./PopoverScaffold";
 
 const POPOVER_ID = "mic";
 
 export function MicPopover({
 	trigger,
 	disabled,
-	systemAudioEnabled,
-	onToggleSystemAudio,
 	microphoneEnabled,
 	onDisableMicrophone,
 	devices,
@@ -22,8 +20,6 @@ export function MicPopover({
 }: {
 	trigger: ReactElement;
 	disabled?: boolean;
-	systemAudioEnabled: boolean;
-	onToggleSystemAudio: () => void;
 	microphoneEnabled: boolean;
 	onDisableMicrophone: () => void;
 	devices: DeviceOption[];
@@ -52,17 +48,6 @@ export function MicPopover({
 			align="start"
 		>
 			<div className={styles.ddLabel}>{t("recording.microphone")}</div>
-			<DropdownItem
-				icon={
-					systemAudioEnabled ? <SpeakerHighIcon size={16} /> : <SpeakerXIcon size={16} />
-				}
-				selected={systemAudioEnabled}
-				onClick={onToggleSystemAudio}
-			>
-				{systemAudioEnabled
-					? t("recording.disableSystemAudio")
-					: t("recording.enableSystemAudio")}
-			</DropdownItem>
 			{microphoneEnabled && (
 				<DropdownItem
 					icon={<MicrophoneSlashIcon size={16} />}

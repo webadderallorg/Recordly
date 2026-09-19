@@ -1,10 +1,13 @@
 #include "wgc_session.h"
 #include "mf_encoder.h"
 #include "monitor_utils.h"
+#include "audio_level_monitor.h"
 #include "wasapi_loopback.h"
 
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.System.h>
+#include <functiondiscoverykeys_devpkey.h>
+#include <propidl.h>
 
 #include <iostream>
 #include <string>
@@ -32,11 +35,71 @@ static void reportMicrophoneCaptureUnavailable() {
     std::cout.flush();
 }
 
+static std::string wideToUtf8(const std::wstring& value) {
+    if (value.empty()) return "";
+    const int size = WideCharToMultiByte(
+        CP_UTF8, 0, value.c_str(), static_cast<int>(value.size()), nullptr, 0, nullptr, nullptr);
+    if (size <= 0) return "";
+    std::string result(size, '\0');
+    WideCharToMultiByte(
+        CP_UTF8, 0, value.c_str(), static_cast<int>(value.size()),
+        result.data(), size, nullptr, nullptr);
+    return result;
+}
+
+static int listAudioOutputs() {
+    HRESULT initHr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    const bool shouldUninitialize = SUCCEEDED(initHr);
+    IMMDeviceEnumerator* enumerator = nullptr;
+    HRESULT hr = CoCreateInstance(
+        __uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+        __uuidof(IMMDeviceEnumerator), reinterpret_cast<void**>(&enumerator));
+    if (FAILED(hr) || !enumerator) {
+        if (shouldUninitialize) CoUninitialize();
+        return 1;
+    }
+
+    IMMDeviceCollection* collection = nullptr;
+    hr = enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &collection);
+    if (SUCCEEDED(hr) && collection) {
+        UINT count = 0;
+        collection->GetCount(&count);
+        for (UINT i = 0; i < count; i++) {
+            IMMDevice* device = nullptr;
+            if (FAILED(collection->Item(i, &device)) || !device) continue;
+
+            LPWSTR id = nullptr;
+            IPropertyStore* store = nullptr;
+            PROPVARIANT value;
+            PropVariantInit(&value);
+            const bool gotId = SUCCEEDED(device->GetId(&id));
+            const bool gotStore = SUCCEEDED(device->OpenPropertyStore(STGM_READ, &store)) && store;
+            const bool gotName = gotStore &&
+                SUCCEEDED(store->GetValue(PKEY_Device_FriendlyName, &value)) &&
+                value.vt == VT_LPWSTR && value.pwszVal;
+            if (gotId && gotName) {
+                std::cout << "AUDIO_OUTPUT\t" << wideToUtf8(id) << "\t"
+                          << wideToUtf8(value.pwszVal) << std::endl;
+            }
+            PropVariantClear(&value);
+            if (store) store->Release();
+            if (id) CoTaskMemFree(id);
+            device->Release();
+        }
+        collection->Release();
+    }
+    enumerator->Release();
+    if (shouldUninitialize) CoUninitialize();
+    return SUCCEEDED(hr) ? 0 : 1;
+}
+
 struct CaptureConfig {
     int64_t displayId = 0;
     int64_t windowHandle = 0;
     std::string outputPath;
     std::string audioOutputPath;
+    std::string systemAudioDeviceId;
+    std::string systemAudioDeviceName;
     std::string micOutputPath;
     std::string micDeviceId;
     std::string micDeviceName;
@@ -127,6 +190,8 @@ static bool parseSimpleJson(const std::string& json, CaptureConfig& config) {
     if (height > 0) config.height = height;
 
     config.audioOutputPath = findString("audioOutputPath");
+    config.systemAudioDeviceId = findString("systemAudioDeviceId");
+    config.systemAudioDeviceName = findString("systemAudioDeviceName");
     config.micOutputPath = findString("micOutputPath");
     config.micDeviceId = findString("micDeviceId");
     config.micDeviceName = findString("micDeviceName");
@@ -290,6 +355,14 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    if (std::string(argv[1]) == "--list-audio-outputs") {
+        return listAudioOutputs();
+    }
+
+    if (std::string(argv[1]) == "--monitor-audio-outputs") {
+        return runAudioOutputLevelMonitor();
+    }
+
     // Keep Win32 monitor/window rectangles in physical pixels. Without
     // per-monitor awareness, mixed-DPI desktops can report virtualized bounds
     // that do not line up with the WGC monitor texture.
@@ -385,7 +458,10 @@ int main(int argc, char* argv[]) {
     bool micInitialized = false;
 
     if (config.captureSystemAudio && !config.audioOutputPath.empty()) {
-        audioInitialized = loopback.initializeLoopback(config.audioOutputPath);
+        audioInitialized = loopback.initializeLoopback(
+            config.audioOutputPath,
+            config.systemAudioDeviceId,
+            config.systemAudioDeviceName);
         if (!audioInitialized) {
             std::cerr << "WARNING: Failed to initialize WASAPI loopback" << std::endl;
         }

@@ -40,7 +40,9 @@
 		"addSuccess": "已成功新增字型「{{name}}」",
 		"addFailed": "新增字型失敗",
 		"loadTimeout": "字型載入時間過久。請檢查 URL 後再試一次。",
-		"loadFailed": "無法載入字型。請確認 Google Fonts URL 是否正確。"
+		"loadFailed": "無法載入字型。請確認 Google Fonts URL 是否正確。",
+		"alreadyAdded": "This font has already been added.",
+		"cancel": "Cancel"
 	},
 	"shortcutsConfig": {
 		"title": "鍵盤快捷鍵",

@@ -218,6 +218,7 @@ interface RendererExportHardwareInfo {
 
 interface Window {
 	electronAPI: {
+		setAppLocale: (locale: string) => void;
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
 		hudOverlaySetSourceSelectionActive: (active: boolean) => void;
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;
@@ -247,6 +248,8 @@ interface Window {
 			source: ProcessedDesktopSource,
 			options?: {
 				capturesSystemAudio?: boolean;
+				systemAudioDeviceId?: string;
+				systemAudioDeviceName?: string;
 				capturesMicrophone?: boolean;
 				microphoneDeviceId?: string;
 				microphoneLabel?: string;
@@ -909,9 +912,22 @@ interface Window {
 			microphoneEnabled: boolean;
 			microphoneDeviceId?: string;
 			systemAudioEnabled: boolean;
+			systemAudioDeviceId?: string;
+			systemAudioDeviceName?: string;
 			webcamEnabled: boolean;
 			webcamDeviceId?: string;
 		}>;
+		getNativeAudioOutputDevices: () => Promise<Array<{ deviceId: string; label: string }>>;
+		startAudioOutputLevelMonitor: () => Promise<{ success: boolean; error?: string }>;
+		stopAudioOutputLevelMonitor: () => Promise<{ success: boolean }>;
+		onAudioOutputLevel: (
+			callback: (event: {
+				deviceId: string;
+				rms: number;
+				peak: number;
+				level: number;
+			}) => void,
+		) => () => void;
 		getRecordingAudioLabConfig: () => Promise<{
 			browserMicrophoneProfile: string;
 			requestedBrowserMicrophoneProfile: string | null;
@@ -920,6 +936,8 @@ interface Window {
 			microphoneEnabled?: boolean;
 			microphoneDeviceId?: string;
 			systemAudioEnabled?: boolean;
+			systemAudioDeviceId?: string;
+			systemAudioDeviceName?: string;
 			webcamEnabled?: boolean;
 			webcamDeviceId?: string;
 		}) => Promise<{ success: boolean; error?: string }>;

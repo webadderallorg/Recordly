@@ -8,14 +8,14 @@
 		"volume": "预览音量"
 	},
 	"annotations": {
-		"settings": "注释设置",
+		"settings": "标注设置",
 		"active": "活动",
 		"text": "文本",
 		"image": "图片",
 		"arrow": "箭头",
 		"blur": "模糊",
 		"textContent": "文本内容",
-		"textPlaceholder": "输入文本...",
+		"textPlaceholder": "输入文本",
 		"fontStyle": "字体样式",
 		"selectStyle": "选择样式",
 		"size": "大小",
@@ -34,24 +34,34 @@
 		"arrowDirection": "箭头方向",
 		"strokeWidth": "描边宽度：{{width}}px",
 		"arrowColor": "箭头颜色",
-		"deleteAnnotation": "删除注释",
+		"deleteAnnotation": "删除标注",
 		"shortcutsAndTips": "快捷键与提示",
-		"tipSelectAnnotation": "将播放头移动到注释重叠区域并选择项目。",
-		"tipCycleForward": "使用 Tab 循环切换重叠项目。",
-		"tipCycleBackward": "使用 Shift+Tab 反向循环切换。",
+		"tipSelectAnnotation": "将播放头移动到标注重叠区域并选择项目。",
+		"tipCycleForward": "按 Tab 选择下一个重叠标注。",
+		"tipCycleBackward": "按 Shift+Tab 选择上一个重叠标注。",
 		"imageUploadSuccess": "图片上传成功！",
 		"imageUploadError": "请上传 JPG、PNG、GIF 或 WebP 图片文件。",
 		"blurStrength": "模糊强度: {{strength}}",
-		"solidColor": "纯色 (审查)",
-		"borderRadius": "边框半径"
+		"solidColor": "纯色 (遮挡)",
+		"borderRadius": "边框半径",
+		"arrowDirectionOption": "箭头方向：{{direction}}",
+		"imageUploadErrorDescription": "仅支持 JPG、PNG、GIF 或 WebP 图片。",
+		"imageUploadFailed": "图片上传失败",
+		"imageUploadFailedDescription": "读取图片文件时出错。",
+		"customFonts": "自定义字体",
+		"uploadedImageAlt": "已上传的标注",
+		"noImage": "无图片",
+		"noArrowData": "无箭头数据",
+		"colorBlack": "黑色",
+		"colorWhite": "白色",
+		"colorCustom": "自定义颜色"
 	},
-
 	"fontStyles": {
 		"classic": "经典",
 		"editor": "编辑器",
-		"strong": "加粗",
+		"strong": "粗体",
 		"typewriter": "打字机",
-		"deco": "装饰",
+		"deco": "艺术装饰",
 		"simple": "简约",
 		"modern": "现代",
 		"clean": "清爽"
@@ -66,23 +76,23 @@
 		"frameRate": "帧率",
 		"outputSize": "输出尺寸",
 		"outputDimensions": "输出：{{width}} × {{height}}px",
-		"loopAnimation": "循环动画",
-		"loopDescription": "GIF 将持续播放"
+		"loopAnimation": "循环播放",
+		"loopDescription": "GIF 将无缝循环播放"
 	},
 	"tutorial": {
-		"howTrimmingWorks": "修剪的工作方式",
-		"title": "修剪的工作方式",
-		"understanding": "了解如何裁剪视频中不需要的部分。",
-		"descriptionP1": "修剪工具通过定义要",
+		"howTrimmingWorks": "分割的工作方式",
+		"title": "分割的工作方式",
+		"understanding": "了解如何删除视频中不需要的部分。",
+		"descriptionP1": "分割工具通过定义要",
 		"descriptionRemove": "移除",
 		"descriptionP2": "的片段来工作。",
-		"descriptionP3": "时间线上被红色修剪区域覆盖的部分将在导出时被剪掉。",
-		"visualExample": "视觉示例",
+		"descriptionP3": "时间线上被红色分割区域覆盖的部分将在导出时被剪掉。",
+		"visualExample": "效果示意",
 		"removed": "已移除",
 		"kept": "保留",
 		"finalVideo": "最终视频",
 		"part": "第 {{number}} 部分",
-		"addTrimStep": "1. 添加修剪",
+		"addTrimStep": "1. 添加分割",
 		"addTrimDesc": "按 T 或点击剪刀图标标记要移除的部分。",
 		"adjustStep": "2. 调整",
 		"adjustDesc": "拖动红色区域的边缘，精确覆盖要剪掉的部分。"
@@ -90,10 +100,10 @@
 	"feedback": {
 		"trigger": "反馈",
 		"title": "反馈与联系",
-		"description": "如果有问题或缺失功能，可以直接联系或提交 issue。",
+		"description": "如果有问题或缺失功能，欢迎直接联系我们或提交 Issue。",
 		"emailLabel": "邮箱",
 		"xLabel": "X",
-		"reportIssue": "报告问题 / 提交反馈",
+		"reportIssue": "反馈问题 / 提交反馈",
 		"openFailed": "打开链接失败。"
 	},
 	"keyboardShortcuts": {
@@ -104,29 +114,54 @@
 		"customize": "自定义",
 		"panTimeline": "平移时间线",
 		"zoomTimeline": "缩放时间线",
-		"cycleAnnotations": "循环切换注释",
+		"cycleAnnotations": "切换重叠标注",
 		"tab": "Tab"
 	},
 	"actions": {
-		"saveAgain": "再次保存",
+		"saveAgain": "重新保存",
 		"showInFolder": "在文件夹中显示"
 	},
 	"project": {
 		"untitled": "未命名",
 		"unsavedChangesTitle": "未保存的更改",
-		"unsavedChangesDescription": "在{{action}}之前保存当前项目吗？",
+		"unsavedChangesDescription": "在{{action}}之前，是否保存当前项目？",
 		"discardChanges": "放弃更改",
-		"saveProject": "保存项目"
+		"saveProject": "保存项目",
+		"projects": "打开项目",
+		"renameInput": "项目名称",
+		"renameTitle": "重命名项目",
+		"saveDescription": "为项目命名。项目将保存到 Recordly 项目文件夹。",
+		"saveNameLabel": "项目名称",
+		"saveTitle": "保存项目",
+		"saving": "正在保存...",
+		"noVideoLoaded": "未加载视频",
+		"saveCanceled": "已取消保存项目",
+		"saveFailed": "项目保存失败",
+		"savedTo": "项目已保存到 {{path}}",
+		"saved": "项目已保存",
+		"nameRequired": "必须填写项目名称",
+		"loadFailed": "项目加载失败",
+		"invalidFormat": "项目文件格式无效",
+		"loadedFrom": "项目已从 {{path}} 加载",
+		"loaded": "项目已加载",
+		"importFailed": "文件导入失败",
+		"noMediaSelected": "未选择媒体文件",
+		"mediaImported": "媒体已导入",
+		"openAnotherProject": "打开其他项目",
+		"importFile": "导入文件"
 	},
 	"exportTips": {
 		"autoZooms": "提示：可在设置中关闭自动应用的缩放",
-		"experimentalBuilds": "提示：可在设置中开启实验版本访问权限",
+		"experimentalBuilds": "提示：可在设置中开启测试版访问权限",
 		"cursorAppearance": "提示：你可以自定义光标外观"
 	},
-	"account": { "title": "账户", "comingSoon": "账户功能即将推出" },
+	"account": {
+		"title": "账户",
+		"comingSoon": "账户功能即将推出"
+	},
 	"nativeCaptureUnavailable": {
-		"title": "没有出错，但我们无法渲染动画光标叠加层。",
-		"description": "你的设备不支持原生捕获。这可能是由我们尚未确定的多种原因造成的。Recordly 仍可继续运行，但无法进行光标平滑处理。",
+		"title": "功能运行正常，但目前无法渲染平滑光标图层。",
+		"description": "您的设备不支持原生捕获，这可能受尚未确定的系统环境限制影响。此问题不会影响 Recordly 的基本功能，但光标平滑效果将无法生效。",
 		"confirm": "好的"
 	},
 	"exportStatus": {
@@ -136,18 +171,107 @@
 		"completePercent": "已完成 {{percent}}%",
 		"issue": "导出问题",
 		"complete": "导出完成",
-		"savedSuccessfully": "文件已成功保存。"
+		"savedSuccessfully": "文件已成功保存。",
+		"copyError": "复制错误信息",
+		"errorCopied": "已复制错误信息",
+		"errorCopyFailed": "复制失败。请手动选择错误文本并复制。",
+		"finalizingPercent": "正在完成 {{percent}}%",
+		"muxingAndSaving": "正在合并音频并保存文件...",
+		"muxingAndSavingPercent": "正在合并并保存 {{percent}}%",
+		"renderSpeed": "渲染速度 {{fps}} FPS",
+		"renderingAudio": "正在渲染音频 {{percent}}%",
+		"saving": "正在打开保存对话框...",
+		"legacySlow": "导出速度过慢？可取消并尝试极速导出！",
+		"path": "路径：{{path}}",
+		"done": "完成",
+		"noVideoLoaded": "未加载视频",
+		"videoNotReady": "视频未就绪",
+		"metadataLoading": "视频元数据仍在加载",
+		"exportCanceled": "导出已取消",
+		"saveDialogCanceled": "保存已取消。点击“再次保存”即可直接保存，无需重新渲染。",
+		"saveCanceledTryAgain": "保存已取消。你可以重试。",
+		"saveCanceledWithoutReexport": "保存已取消。你可以直接再次保存，无需重新导出。",
+		"noPendingExport": "没有待保存的导出任务",
+		"failedToSaveVideo": "视频保存失败",
+		"failedToSaveGif": "GIF 保存失败",
+		"gifExportFailed": "GIF 导出失败",
+		"exportFailed": "导出失败",
+		"successToPath": "已成功导出到 {{path}}",
+		"showInFolder": "在文件夹中显示",
+		"revealFailed": "无法在文件夹中定位该文件。",
+		"revealError": "定位文件时发生错误：{{error}}",
+		"unknownError": "未知错误",
+		"exportFailedWithDetail": "导出失败：{{error}}"
 	},
 	"export": {
-		"processingAudioEdits": "正在处理带有速度/叠加编辑的音频"
+		"processingAudioEdits": "正在处理包含变速/重叠剪辑的音频"
 	},
 	"toolbar": {
 		"addLayer": "添加图层",
-		"splitClip": "拆分片段 (C)"
+		"splitClip": "分割片段 (C)"
 	},
 	"timeline": {
 		"expand": "展开时间轴",
-		"collapse": "折叠时间轴"
+		"collapse": "折叠时间轴",
+		"speedClipOverlap": "变速区域会与下一个片段重叠。在减速前，请先移动或分割片段。",
+		"speedZoomOverlap": "变速操作将会与其他缩放区域重叠。请先移动或删除重叠的缩放。",
+		"unsupportedSpeed": "此设备不支持对此速度进行预览。"
 	},
-	"openRecordingsFolder": "打开录制文件夹"
+	"openRecordingsFolder": "打开录制文件夹",
+	"extensions": {
+		"title": "扩展",
+		"unavailableTitle": "扩展功能已不可用",
+		"unavailableDescription": "扩展安装和市场访问已禁用。此区域仅作为现有项目和导航的占位内容。"
+	},
+	"projectBrowser": {
+		"title": "项目",
+		"import": "导入",
+		"noPreview": "暂无预览",
+		"current": "当前项目",
+		"empty": "暂无已保存的项目"
+	},
+	"loadingVideo": "正在加载视频...",
+	"openProjects": "打开项目",
+	"presets": {
+		"open": "打开预设",
+		"label": "预设",
+		"saveCurrentAs": "将当前设置保存为预设",
+		"namePlaceholder": "预设名称",
+		"savedList": "已保存的预设",
+		"empty": "暂无预设。",
+		"deleteAriaLabel": "删除预设 {{name}}",
+		"toasts": {
+			"applied": "已应用预设“{{name}}”",
+			"saved": "已保存预设“{{name}}”",
+			"deleted": "已删除预设“{{name}}”"
+		},
+		"errors": {
+			"nameRequired": "请输入预设名称。",
+			"duplicateName": "已存在同名预设。",
+			"saveFailed": "无法保存该预设。请检查浏览器存储设置后重试。",
+			"deleteFailed": "无法删除该预设。请检查浏览器存储设置后重试。"
+		}
+	},
+	"theme": {
+		"appearance": "外观",
+		"light": "浅色",
+		"dark": "深色",
+		"system": "跟随系统"
+	},
+	"audio": {
+		"fallbackUnavailable": "无法加载备用音频源",
+		"fallbackPlaybackHint": "播放和导出可能会缺失麦克风声音。",
+		"fallbackLoadError": "无法加载备用音频来源"
+	},
+	"captions": {
+		"whisperExecutableSelected": "已选择 Whisper 可执行文件",
+		"downloadModelFailed": "下载 Whisper small 模型失败",
+		"whisperModelSelected": "已选择 Whisper 模型",
+		"deleteModelFailed": "删除 Whisper small 模型失败",
+		"whisperSmallModelDeleted": "已删除 Whisper small 模型",
+		"noSourceVideo": "未加载源视频",
+		"selectModel": "请选择 Whisper 模型，或先下载 small 模型",
+		"generateFailed": "生成字幕失败",
+		"generatedCount": "已生成 {{count}} 条字幕"
+	}
 }

@@ -61,7 +61,45 @@ IMMDevice* WasapiCapture::findCaptureDeviceByName(const std::wstring& targetName
     return nullptr;
 }
 
-bool WasapiCapture::initializeLoopback(const std::string& outputPath) {
+IMMDevice* WasapiCapture::findRenderDeviceByName(const std::wstring& targetName) {
+    IMMDeviceCollection* collection = nullptr;
+    HRESULT hr = enumerator_->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, &collection);
+    if (FAILED(hr)) return nullptr;
+
+    UINT count = 0;
+    collection->GetCount(&count);
+
+    for (UINT i = 0; i < count; i++) {
+        IMMDevice* dev = nullptr;
+        if (FAILED(collection->Item(i, &dev)) || !dev) continue;
+
+        IPropertyStore* store = nullptr;
+        if (FAILED(dev->OpenPropertyStore(STGM_READ, &store)) || !store) {
+            dev->Release();
+            continue;
+        }
+        PROPVARIANT pv;
+        PropVariantInit(&pv);
+        store->GetValue(PKEY_Device_FriendlyName, &pv);
+        std::wstring name = pv.pwszVal ? pv.pwszVal : L"";
+        PropVariantClear(&pv);
+        store->Release();
+
+        if (name.find(targetName) != std::wstring::npos || targetName.find(name) != std::wstring::npos) {
+            collection->Release();
+            return dev;
+        }
+        dev->Release();
+    }
+
+    collection->Release();
+    return nullptr;
+}
+
+bool WasapiCapture::initializeLoopback(
+    const std::string& outputPath,
+    const std::string& deviceId,
+    const std::string& deviceName) {
     outputPath_ = outputPath;
     streamFlags_ = AUDCLNT_STREAMFLAGS_LOOPBACK;
 
@@ -70,7 +108,22 @@ bool WasapiCapture::initializeLoopback(const std::string& outputPath) {
         IID_IMMDeviceEnumerator_, reinterpret_cast<void**>(&enumerator_));
     if (FAILED(hr)) return false;
 
-    hr = enumerator_->GetDefaultAudioEndpoint(eRender, eConsole, &device_);
+    if (!deviceId.empty() && deviceId != "default") {
+        hr = enumerator_->GetDevice(utf8ToWide(deviceId).c_str(), &device_);
+        if (FAILED(hr)) device_ = nullptr;
+    }
+    if (!device_ && !deviceName.empty() && deviceId != "default") {
+        device_ = findRenderDeviceByName(utf8ToWide(deviceName));
+        if (device_) hr = S_OK;
+    }
+    if (!device_) {
+        const bool wantedSpecificDevice =
+            deviceId != "default" && (!deviceId.empty() || !deviceName.empty());
+        if (wantedSpecificDevice) {
+            std::cerr << "WARNING: Requested system audio output unavailable; using default" << std::endl;
+        }
+        hr = enumerator_->GetDefaultAudioEndpoint(eRender, eConsole, &device_);
+    }
     if (FAILED(hr)) return false;
 
     return initializeCommon();

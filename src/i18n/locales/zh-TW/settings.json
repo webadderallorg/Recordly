@@ -6,7 +6,8 @@
 		"modeAuto": "自動",
 		"modeManual": "手動",
 		"modeManualDescription": "為此縮放設定固定的對焦點",
-		"modeAutoDescription": "相機會自動跟隨游標"
+		"modeAutoDescription": "相機會自動跟隨游標",
+		"globalSettings": "Animation"
 	},
 	"trim": {
 		"deleteRegion": "刪除修剪區域"
@@ -15,7 +16,8 @@
 		"playbackSpeed": "播放速度",
 		"selectRegion": "選取要調整的速度區域",
 		"deleteRegion": "刪除速度區域",
-		"label": "速度"
+		"label": "速度",
+		"unsupported": "Not supported for preview on this device"
 	},
 	"clip": {
 		"title": "片段",
@@ -151,7 +153,37 @@
 		"paddingBottom": "下",
 		"paddingLeft": "左",
 		"paddingRight": "右",
-		"removeBackground": "移除背景"
+		"removeBackground": "移除背景",
+		"paddingAdvanced": "Advanced",
+		"paddingAdvancedHide": "Hide advanced padding controls",
+		"paddingAdvancedShow": "Show advanced padding controls",
+		"cameraDebugTuning": "Camera Debug Tuning",
+		"cameraDebugTuningHint": "Development-only spring tuning controls for camera motion.",
+		"cameraSpringStiffnessMultiplier": "Camera stiffness",
+		"cameraSpringDampingMultiplier": "Camera damping",
+		"cameraSpringMassMultiplier": "Camera mass",
+		"cursorDebugTuning": "Cursor Debug Tuning",
+		"cursorDebugTuningHint": "Development-only spring tuning controls.",
+		"cursorSpringStiffnessMultiplier": "Spring stiffness",
+		"cursorSpringDampingMultiplier": "Spring damping",
+		"cursorSpringMassMultiplier": "Spring mass",
+		"cursorDebugMovedToDev": "Cursor spring tuning is available in Settings > Dev.",
+		"devSection": "Dev",
+		"devSectionHint": "Temporary testing controls for native capture and motion tuning.",
+		"nativeCaptureWarningTester": "Native capture warning",
+		"nativeCaptureWarningTesterUnavailable": "This project is currently marked as native capture unavailable.",
+		"nativeCaptureWarningTesterAvailable": "This project is not marked as unsupported, but you can still open the modal for UI testing.",
+		"openNativeCaptureWarning": "Open warning",
+		"classicZoom": "Classic Animation",
+		"webcamPosition": "Position",
+		"webcamCustomPosition": "Custom position",
+		"webcamHorizontal": "Horizontal",
+		"webcamVertical": "Vertical",
+		"webcamMargin": "Margin",
+		"pickColor": "Pick",
+		"devBadge": "DEV",
+		"customColorPicker": "Custom color picker",
+		"customEffectColorPicker": "Custom effect color picker"
 	},
 	"sections": {
 		"scene": "場景",
@@ -161,7 +193,9 @@
 		"cursor": "游標",
 		"webcam": "網路攝影機",
 		"frame": "外框",
-		"crop": "裁切"
+		"crop": "裁切",
+		"settings": "設定",
+		"extensions": "擴充功能"
 	},
 	"captions": {
 		"selectOnTimeline": "在時間軸上選擇字幕進行編輯。",
@@ -198,6 +232,21 @@
 			"split": "Split",
 			"merge": "Merge",
 			"delete": "Delete"
+		},
+		"editSaved": "Caption updated",
+		"selectModel": "Select Model",
+		"generatingStatus": "Generating captions. This can take a moment.",
+		"languages": {
+			"auto": "Auto Detect",
+			"en": "English",
+			"es": "Spanish",
+			"fr": "French",
+			"de": "German",
+			"it": "Italian",
+			"pt": "Portuguese",
+			"zh": "Chinese (Simplified)",
+			"ja": "Japanese",
+			"ko": "Korean"
 		}
 	},
 	"crop": {
@@ -218,7 +267,13 @@
 		"uploadCustom": "上傳自訂圖片",
 		"uploadSuccess": "自訂圖片已成功上傳！",
 		"uploadError": "請上傳 JPG 或 JPEG 圖片檔。",
-		"uploadErrorDescription": "僅支援 JPG 與 JPEG 圖片。"
+		"uploadErrorDescription": "僅支援 JPG 與 JPEG 圖片。",
+		"video": "Video",
+		"uploadCustomVideo": "Upload Video",
+		"unsupportedFormat": "Unsupported format",
+		"videoFormatDescription": "Please select a video file (mp4, webm, mov, etc.)",
+		"videoAdded": "Video background added",
+		"videoImportFailed": "Failed to import video background"
 	},
 	"export": {
 		"title": "匯出",
@@ -240,7 +295,24 @@
 		"saveProject": "儲存專案",
 		"exportVideo": "匯出 {{format}}",
 		"reportBug": "回報錯誤",
-		"starOnGithub": "在 GitHub 按讚"
+		"starOnGithub": "在 GitHub 按讚",
+		"encodingTitle": "Encoding",
+		"encoding": {
+			"fast": "Fast",
+			"balanced": "Balanced",
+			"quality": "Quality"
+		},
+		"nvidiaCuda": {
+			"title": "NVIDIA CUDA",
+			"badge": "Experimental",
+			"hint": "Try GPU export on this Windows device.",
+			"toggle": "Enable experimental NVIDIA CUDA export"
+		},
+		"captionSidecar": {
+			"title": "Export captions file",
+			"hint": "Save .srt and .vtt files next to your exported video.",
+			"toggle": "Export captions sidecar files"
+		}
 	},
 	"audio": {
 		"title": "音訊",
@@ -258,5 +330,8 @@
 		"title": "更新",
 		"experimental": "實驗性更新",
 		"saveFailed": "無法變更更新頻道。"
+	},
+	"annotation": {
+		"delete": "Delete Annotation"
 	}
 }

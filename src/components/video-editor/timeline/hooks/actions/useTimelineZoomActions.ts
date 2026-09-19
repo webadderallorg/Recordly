@@ -1,10 +1,12 @@
 import type { Span } from "dnd-timeline";
 import { useCallback, useEffect, useMemo } from "react";
+import type { I18nTranslate } from "@/contexts/I18nContext";
 import type { CursorTelemetryPoint, ZoomFocus, ZoomRegion } from "../../../types";
 import { buildInteractionZoomSuggestions } from "../../zoomSuggestionUtils";
 import { timelineNotifications } from "../utils/timelineNotifications";
 
 interface UseTimelineZoomActionsParams {
+	t: I18nTranslate;
 	timeline: {
 		videoDuration: number;
 		totalMs: number;
@@ -25,6 +27,7 @@ interface UseTimelineZoomActionsParams {
 }
 
 export function useTimelineZoomActions({
+	t,
 	timeline,
 	regions,
 	cursorTelemetry,
@@ -88,15 +91,18 @@ export function useTimelineZoomActions({
 			const startPos = Math.max(0, Math.min(startMs, totalMs));
 			if (!canPlaceZoomAtMs(startPos)) {
 				timelineNotifications.error(
-					"Cannot place zoom here",
-					"Zoom already exists here or there is not enough room before the next zoom or clip end.",
+					t("zoom.cannotPlace", "Cannot place zoom here"),
+					t(
+						"zoom.existsOrNoSpace",
+						"Zoom already exists here or there is not enough room before the next zoom or clip end.",
+					),
 				);
 				return;
 			}
 
 			onZoomAdded({ start: startPos, end: startPos + defaultDuration });
 		},
-		[videoDuration, totalMs, defaultRegionDurationMs, canPlaceZoomAtMs, onZoomAdded],
+		[videoDuration, totalMs, defaultRegionDurationMs, canPlaceZoomAtMs, onZoomAdded, t],
 	);
 
 	const handleAddZoom = useCallback(() => {
@@ -114,20 +120,28 @@ export function useTimelineZoomActions({
 
 		if (disableSuggestedZooms) {
 			timelineNotifications.info(
-				"Suggested zooms are unavailable while cursor looping is enabled.",
+				t(
+					"zoom.suggestUnavailable",
+					"Suggested zooms are unavailable while cursor looping is enabled.",
+				),
 			);
 			return;
 		}
 
 		if (!onZoomSuggested) {
-			timelineNotifications.error("Zoom suggestion handler unavailable");
+			timelineNotifications.error(
+				t("zoom.suggestHandlerUnavailable", "Zoom suggestion handler unavailable"),
+			);
 			return;
 		}
 
 		if (cursorTelemetry.length < 2) {
 			timelineNotifications.info(
-				"No cursor telemetry available",
-				"Record a screencast first to generate cursor-based suggestions.",
+				t("zoom.noTelemetry", "No cursor telemetry available"),
+				t(
+					"zoom.recordFirst",
+					"Record a screencast first to generate cursor-based suggestions.",
+				),
 			);
 			return;
 		}
@@ -148,24 +162,33 @@ export function useTimelineZoomActions({
 
 		if (result.status === "no-telemetry") {
 			timelineNotifications.info(
-				"No usable cursor telemetry",
-				"The recording does not include enough cursor movement data.",
+				t("zoom.noUsableTelemetry", "No usable cursor telemetry"),
+				t(
+					"zoom.notEnoughMovement",
+					"The recording does not include enough cursor movement data.",
+				),
 			);
 			return;
 		}
 
 		if (result.status === "no-interactions") {
 			timelineNotifications.info(
-				"No clear interaction moments found",
-				"Try a recording with pauses or clicks around important actions.",
+				t("zoom.noInteractionMoments", "No clear interaction moments found"),
+				t(
+					"zoom.tryRecording",
+					"Try a recording with pauses or clicks around important actions.",
+				),
 			);
 			return;
 		}
 
 		if (result.status === "no-slots" || result.suggestions.length === 0) {
 			timelineNotifications.info(
-				"No auto-zoom slots available",
-				"Detected dwell points overlap existing zoom regions.",
+				t("zoom.noAutoZoomSlots", "No auto-zoom slots available"),
+				t(
+					"zoom.dwellPointsOverlap",
+					"Detected dwell points overlap existing zoom regions.",
+				),
 			);
 			return;
 		}
@@ -175,7 +198,9 @@ export function useTimelineZoomActions({
 		}
 
 		timelineNotifications.success(
-			`Added ${result.suggestions.length} interaction-based zoom suggestion${result.suggestions.length === 1 ? "" : "s"}`,
+			t("zoom.addedSuggestions", "Added {{count}} interaction-based zoom suggestions", {
+				count: result.suggestions.length,
+			}),
 		);
 	}, [
 		videoDuration,
@@ -185,6 +210,7 @@ export function useTimelineZoomActions({
 		cursorTelemetry,
 		defaultRegionDurationMs,
 		zoomRegions,
+		t,
 	]);
 
 	useEffect(() => {

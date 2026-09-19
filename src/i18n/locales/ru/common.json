@@ -4,7 +4,8 @@
 		"editorTitle": "Recordly Editor",
 		"subtitle": "Запись экрана и редактирование видео",
 		"language": "Язык",
-		"manageRecordings": "Открыть папку с записями"
+		"manageRecordings": "Открыть папку с записями",
+		"discord": "Join Discord"
 	},
 	"actions": {
 		"cancel": "Отмена",
@@ -22,5 +23,18 @@
 		"invalidFileType": "Неверный формат файла",
 		"failedToUploadImage": "Не удалось загрузить изображение",
 		"fileReadError": "Произошла ошибка при чтении файла."
-	}
+	},
+	"loading": "Refreshing...",
+	"light": "Light",
+	"dark": "Dark",
+	"system": "System",
+	"announcements": {
+		"carousel": "Announcements",
+		"dismiss": "Dismiss",
+		"next": "Next announcement",
+		"openFailed": "Failed to open link.",
+		"previous": "Previous announcement",
+		"show": "Show announcement"
+	},
+	"close": "Close"
 }

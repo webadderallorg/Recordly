@@ -5,6 +5,7 @@
 		"disableMicrophone": "Disabilita microfono",
 		"enableMicrophone": "Abilita microfono",
 		"micToggleDisabledTip": "Il microfono non può essere attivato/disattivato durante la registrazione",
+		"systemAudioToggleDisabledTip": "L'audio di sistema non può essere attivato/disattivato durante la registrazione",
 		"disableWebcam": "Disabilita overlay webcam",
 		"enableWebcam": "Abilita overlay webcam",
 		"countdownDelay": "Ritardo conto alla rovescia",
@@ -23,11 +24,18 @@
 		"windows": "Finestre",
 		"screen": "Schermo",
 		"window": "Finestra",
+		"folder": "Cartella",
+		"display": "Schermo {{index}}",
+		"primaryDisplay": "Schermo {{index}} (principale)",
 		"noSourcesFound": "Nessuna sorgente trovata",
 		"microphone": "Microfono",
+		"systemAudio": "Audio di sistema",
 		"turnOffMicrophone": "Spegni microfono",
+		"turnOffSystemAudio": "Disabilita audio di sistema",
 		"selectMicToEnable": "Seleziona un microfono da abilitare",
+		"selectAudioOutputToEnable": "Seleziona un’uscita audio da abilitare",
 		"noMicrophonesFound": "Nessun microfono trovato",
+		"noAudioOutputsFound": "Nessuna uscita audio trovata",
 		"webcam": "Webcam",
 		"turnOffWebcam": "Spegni webcam",
 		"hideFloatingWebcamPreview": "Nascondi anteprima fluttuante",
@@ -53,7 +61,11 @@
 			"upToDateTitle": "Recordly {{version}} è aggiornato.",
 			"availableTitle": "Recordly {{version}} è disponibile.",
 			"availableGenericTitle": "È disponibile un aggiornamento."
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "Caricamento sorgenti...",
@@ -90,6 +102,7 @@
 		"notNow": "Non ora",
 		"updateNow": "Aggiorna ora",
 		"restartToUpdate": "Riavvia per aggiornare",
-		"tryAgain": "Riprova"
+		"tryAgain": "Riprova",
+		"ariaLabel": "Recordly update"
 	}
 }

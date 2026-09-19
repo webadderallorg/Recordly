@@ -43,9 +43,19 @@
 		"imageUploadError": "Please upload a JPG, PNG, GIF, or WebP image file.",
 		"blurStrength": "Blur Strength: {{strength}}",
 		"solidColor": "Solid Color (Censorship)",
-		"borderRadius": "Border Radius"
+		"borderRadius": "Border Radius",
+		"arrowDirectionOption": "Arrow direction: {{direction}}",
+		"imageUploadErrorDescription": "Only JPG, PNG, GIF, or WebP image files are supported.",
+		"imageUploadFailed": "Image upload failed",
+		"imageUploadFailedDescription": "There was an error reading the image file.",
+		"customFonts": "Custom Fonts",
+		"uploadedImageAlt": "Uploaded annotation",
+		"noImage": "No image",
+		"noArrowData": "No arrow data",
+		"colorBlack": "Black",
+		"colorWhite": "White",
+		"colorCustom": "Custom Color"
 	},
-
 	"fontStyles": {
 		"classic": "Classic",
 		"editor": "Editor",
@@ -116,14 +126,39 @@
 		"unsavedChangesTitle": "Unsaved changes",
 		"unsavedChangesDescription": "Save your current project before you {{action}}?",
 		"discardChanges": "Discard changes",
-		"saveProject": "Save project"
+		"saveProject": "Save project",
+		"projects": "Open projects",
+		"renameInput": "Project name",
+		"renameTitle": "Rename project",
+		"saveDescription": "Name this project. It will be saved in your Recordly Projects folder.",
+		"saveNameLabel": "Project name",
+		"saveTitle": "Save Project",
+		"saving": "Saving...",
+		"noVideoLoaded": "No video loaded",
+		"saveCanceled": "Project save canceled",
+		"saveFailed": "Failed to save project",
+		"savedTo": "Project saved to {{path}}",
+		"saved": "Project saved",
+		"nameRequired": "Project name is required",
+		"loadFailed": "Failed to load project",
+		"invalidFormat": "Invalid project file format",
+		"loadedFrom": "Project loaded from {{path}}",
+		"loaded": "Project loaded",
+		"importFailed": "Failed to import file",
+		"noMediaSelected": "No media file selected",
+		"mediaImported": "Media imported",
+		"openAnotherProject": "open another project",
+		"importFile": "import a file"
 	},
 	"exportTips": {
 		"autoZooms": "Tip: Turn off auto-applied zooms in settings",
 		"experimentalBuilds": "Tip: Try experimental builds by turning on access in settings",
 		"cursorAppearance": "Tip: You can customise your cursor appearance"
 	},
-	"account": { "title": "Account", "comingSoon": "Account coming soon" },
+	"account": {
+		"title": "Account",
+		"comingSoon": "Account coming soon"
+	},
 	"nativeCaptureUnavailable": {
 		"title": "Nothing’s broken, but we won’t be able to render an animated cursor overlay.",
 		"description": "Your device does not support native capture. This could be for a variety of reasons we haven’t figured out yet. This doesn’t break Recordly, but it does make cursor smoothing impossible.",
@@ -136,7 +171,37 @@
 		"completePercent": "{{percent}}% complete",
 		"issue": "Export issue",
 		"complete": "Export complete",
-		"savedSuccessfully": "Your file was saved successfully."
+		"savedSuccessfully": "Your file was saved successfully.",
+		"copyError": "Copy error",
+		"errorCopied": "Error copied",
+		"errorCopyFailed": "Couldn't copy. Select the error text and copy it manually.",
+		"finalizingPercent": "Finalizing {{percent}}%",
+		"muxingAndSaving": "Muxing audio and saving file...",
+		"muxingAndSavingPercent": "Muxing and saving {{percent}}%",
+		"renderSpeed": "Render speed {{fps}} FPS",
+		"renderingAudio": "Rendering audio {{percent}}%",
+		"saving": "Opening save dialog...",
+		"legacySlow": "Export too slow? Cancel and try Lightning export!",
+		"path": "Path: {{path}}",
+		"done": "Done",
+		"noVideoLoaded": "No video loaded",
+		"videoNotReady": "Video not ready",
+		"metadataLoading": "Video metadata is still loading",
+		"exportCanceled": "Export canceled",
+		"saveDialogCanceled": "Save dialog canceled. Click Save Again to save without re-rendering.",
+		"saveCanceledTryAgain": "Save canceled. You can try again.",
+		"saveCanceledWithoutReexport": "Save canceled. You can save again without re-exporting.",
+		"noPendingExport": "No pending export to save",
+		"failedToSaveVideo": "Failed to save video",
+		"failedToSaveGif": "Failed to save GIF",
+		"gifExportFailed": "GIF export failed",
+		"exportFailed": "Export failed",
+		"successToPath": "Exported successfully to {{path}}",
+		"showInFolder": "Show in Folder",
+		"revealFailed": "Failed to reveal item in folder.",
+		"revealError": "Error revealing in folder: {{error}}",
+		"unknownError": "Unknown error",
+		"exportFailedWithDetail": "Export failed: {{error}}"
 	},
 	"export": {
 		"processingAudioEdits": "Processing audio with speed/overlay edits"
@@ -147,7 +212,66 @@
 	},
 	"timeline": {
 		"expand": "Expand Timeline",
-		"collapse": "Collapse Timeline"
+		"collapse": "Collapse Timeline",
+		"speedClipOverlap": "Speed change would overlap the next clip. Move or split clips before slowing this section.",
+		"speedZoomOverlap": "Speed change would overlap another zoom. Move or delete the overlapping zoom first.",
+		"unsupportedSpeed": "This speed is not supported for preview on this device."
 	},
-	"openRecordingsFolder": "Open recordings folder"
+	"openRecordingsFolder": "Open recordings folder",
+	"extensions": {
+		"title": "Extensions",
+		"unavailableTitle": "Extensions are no longer available",
+		"unavailableDescription": "Extension installation and marketplace access have been disabled. This area is kept as a placeholder for existing projects and navigation."
+	},
+	"projectBrowser": {
+		"title": "Projects",
+		"import": "Import",
+		"noPreview": "No preview yet",
+		"current": "Current",
+		"empty": "No saved projects yet"
+	},
+	"loadingVideo": "Loading video...",
+	"openProjects": "Open Projects",
+	"presets": {
+		"open": "Open presets",
+		"label": "Presets",
+		"saveCurrentAs": "Save current preset as",
+		"namePlaceholder": "Preset name",
+		"savedList": "Saved presets",
+		"empty": "No presets yet.",
+		"deleteAriaLabel": "Delete preset {{name}}",
+		"toasts": {
+			"applied": "Applied preset \"{{name}}\"",
+			"saved": "Saved preset \"{{name}}\"",
+			"deleted": "Deleted preset \"{{name}}\""
+		},
+		"errors": {
+			"nameRequired": "Enter a preset name.",
+			"duplicateName": "A preset with that name already exists.",
+			"saveFailed": "Could not save that preset. Check your browser storage settings and try again.",
+			"deleteFailed": "Could not delete that preset. Check your browser storage settings and try again."
+		}
+	},
+	"theme": {
+		"appearance": "Appearance",
+		"light": "Light",
+		"dark": "Dark",
+		"system": "System"
+	},
+	"audio": {
+		"fallbackUnavailable": "Could not load companion audio sources",
+		"fallbackPlaybackHint": "Playback and export may miss microphone audio.",
+		"fallbackLoadError": "Could not load companion audio source"
+	},
+	"captions": {
+		"whisperExecutableSelected": "Whisper executable selected",
+		"downloadModelFailed": "Failed to download Whisper small model",
+		"whisperModelSelected": "Whisper model selected",
+		"deleteModelFailed": "Failed to delete Whisper small model",
+		"whisperSmallModelDeleted": "Whisper small model deleted",
+		"noSourceVideo": "No source video is loaded",
+		"selectModel": "Select a Whisper model or download the small model first",
+		"generateFailed": "Failed to generate captions",
+		"generatedCount": "Generated {{count}} captions"
+	}
 }

@@ -1,9 +1,13 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
+import { promisify } from "node:util";
 import { app, ipcMain } from "electron";
 import { hasAppSetting, readAppSettingsStore, writeAppSettingsStore } from "../../appSettingsStore";
 import { hideCursor } from "../../cursorHider";
+import { setNativeDialogLocale } from "../../nativeDialogLocale";
 import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from "../../windows";
 import { COUNTDOWN_SETTINGS_FILE, RECORDINGS_SETTINGS_FILE, SHORTCUTS_FILE } from "../constants";
+import { getWindowsCaptureExePath } from "../paths/binaries";
 import {
 	createRecordingPreferencesStore,
 	type RecordingPreferencesPatch,
@@ -23,6 +27,7 @@ import { parseJsonWithByteOrderMark } from "../utils";
 const BROWSER_MICROPHONE_PROFILE_ENV = "RECORDLY_BROWSER_MIC_PROFILE";
 const DEFAULT_BROWSER_MICROPHONE_PROFILE = "processed";
 const recordingPreferencesStore = createRecordingPreferencesStore(RECORDINGS_SETTINGS_FILE);
+const execFileAsync = promisify(execFile);
 const BROWSER_MICROPHONE_PROFILES = new Set([
 	"processed",
 	"no-agc",
@@ -43,6 +48,12 @@ function getBrowserMicrophoneProfileFromEnv() {
 }
 
 export function registerSettingsHandlers() {
+	ipcMain.on("set-app-locale", (_event, locale: unknown) => {
+		if (typeof locale === "string") {
+			setNativeDialogLocale(locale);
+		}
+	});
+
 	ipcMain.handle("app:getVersion", () => {
 		return app.getVersion();
 	});
@@ -131,6 +142,14 @@ export function registerSettingsHandlers() {
 						? parsed.microphoneDeviceId
 						: undefined,
 				systemAudioEnabled: parsed.systemAudioEnabled === true,
+				systemAudioDeviceId:
+					typeof parsed.systemAudioDeviceId === "string"
+						? parsed.systemAudioDeviceId
+						: undefined,
+				systemAudioDeviceName:
+					typeof parsed.systemAudioDeviceName === "string"
+						? parsed.systemAudioDeviceName
+						: undefined,
 				webcamEnabled: parsed.webcamEnabled === true,
 				webcamDeviceId:
 					typeof parsed.webcamDeviceId === "string" ? parsed.webcamDeviceId : undefined,
@@ -141,6 +160,8 @@ export function registerSettingsHandlers() {
 				microphoneEnabled: false,
 				microphoneDeviceId: undefined,
 				systemAudioEnabled: false,
+				systemAudioDeviceId: undefined,
+				systemAudioDeviceName: undefined,
 				webcamEnabled: false,
 				webcamDeviceId: undefined,
 			};
@@ -149,6 +170,31 @@ export function registerSettingsHandlers() {
 
 	ipcMain.handle("get-recording-audio-lab-config", () => {
 		return getBrowserMicrophoneProfileFromEnv();
+	});
+
+	ipcMain.handle("get-native-audio-output-devices", async () => {
+		if (process.platform !== "win32") {
+			return [];
+		}
+
+		try {
+			const { stdout } = await execFileAsync(
+				getWindowsCaptureExePath(),
+				["--list-audio-outputs"],
+				{ timeout: 5000, windowsHide: true, maxBuffer: 1024 * 1024 },
+			);
+			return stdout
+				.split(/\r?\n/u)
+				.filter((line) => line.startsWith("AUDIO_OUTPUT\t"))
+				.map((line) => {
+					const [, deviceId, ...labelParts] = line.split("\t");
+					return { deviceId, label: labelParts.join("\t") };
+				})
+				.filter((device) => device.deviceId && device.label);
+		} catch (error) {
+			console.warn("Failed to enumerate native audio output devices:", error);
+			return [];
+		}
 	});
 
 	ipcMain.handle("set-recording-preferences", async (_, prefs: RecordingPreferencesPatch) => {

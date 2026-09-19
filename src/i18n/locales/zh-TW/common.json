@@ -4,7 +4,8 @@
 		"editorTitle": "Recordly 編輯器",
 		"subtitle": "螢幕錄製與編輯",
 		"language": "語言",
-		"manageRecordings": "打開錄製影像文件夾"
+		"manageRecordings": "打開錄製影像文件夾",
+		"discord": "Join Discord"
 	},
 	"actions": {
 		"cancel": "取消",
@@ -22,5 +23,18 @@
 		"invalidFileType": "無效的檔案類型",
 		"failedToUploadImage": "上傳圖片失敗",
 		"fileReadError": "讀取檔案時出錯。"
-	}
+	},
+	"loading": "Refreshing...",
+	"light": "Light",
+	"dark": "Dark",
+	"system": "System",
+	"announcements": {
+		"carousel": "Announcements",
+		"dismiss": "Dismiss",
+		"next": "Next announcement",
+		"openFailed": "Failed to open link.",
+		"previous": "Previous announcement",
+		"show": "Show announcement"
+	},
+	"close": "Close"
 }

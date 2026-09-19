@@ -1,12 +1,12 @@
 import { MicrophoneIcon, MicrophoneSlashIcon } from "@phosphor-icons/react";
 import type { ReactElement, ReactNode } from "react";
+import { AudioLevelMeter } from "@/components/ui/audio-level-meter";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAudioLevelMeter } from "@/hooks/useAudioLevelMeter";
-import { AudioLevelMeter } from "@/components/ui/audio-level-meter";
 import styles from "../LaunchWindow.module.css";
 import "../launchTheme.css";
-import type { DeviceOption } from "./launchPopoverTypes";
 import { useHudInteraction } from "../contexts/HudInteractionContext";
+import type { DeviceOption } from "./launchPopoverTypes";
 
 export function DropdownItem({
 	onClick,
@@ -28,7 +28,7 @@ export function DropdownItem({
 			onClick={onClick}
 		>
 			<span className="shrink-0">{icon}</span>
-			<span className="truncate">{children}</span>
+			<span className="min-w-0 flex-1 truncate">{children}</span>
 			{trailing}
 		</button>
 	);

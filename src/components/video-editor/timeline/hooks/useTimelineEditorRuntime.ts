@@ -1,6 +1,7 @@
 import type { Span } from "dnd-timeline";
 import type { ForwardedRef, RefObject } from "react";
 import { useCallback, useImperativeHandle } from "react";
+import type { I18nTranslate } from "@/contexts/I18nContext";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -23,6 +24,7 @@ import { useTimelineNormalization } from "./useTimelineNormalization";
 import { useTimelineSelection } from "./useTimelineSelection";
 
 interface UseTimelineEditorRuntimeParams {
+	t: I18nTranslate;
 	ref: ForwardedRef<TimelineEditorHandle>;
 	videoDuration: number;
 	totalMs: number;
@@ -73,6 +75,7 @@ interface UseTimelineEditorRuntimeParams {
 }
 
 export function useTimelineEditorRuntime({
+	t,
 	ref,
 	videoDuration,
 	totalMs,
@@ -211,6 +214,7 @@ export function useTimelineEditorRuntime({
 		handleAddZoom,
 		handleSuggestZooms,
 	} = useTimelineZoomActions({
+		t,
 		timeline: { videoDuration, totalMs, currentTimeMs },
 		regions: { zoom: zoomRegions, clip: clipRegions },
 		cursorTelemetry,
@@ -223,6 +227,7 @@ export function useTimelineEditorRuntime({
 
 	const { canPlaceCaptionAtMs, addCaptionAtMs, resolveCaptionSpanAtMs } =
 		useTimelineCaptionActions({
+			t,
 			totalMs,
 			captionRegions: captionCues,
 			onCaptionAdded,
@@ -236,6 +241,7 @@ export function useTimelineEditorRuntime({
 	}, [videoDuration, totalMs, currentTimeMs, onClipSplit]);
 
 	const { handleAddAudio } = useTimelineAudioActions({
+		t,
 		timeline: { videoDuration, totalMs, currentTimeMs },
 		regions: { audio: audioRegions },
 		onAudioAdded,

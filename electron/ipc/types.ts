@@ -10,6 +10,8 @@ export type SelectedSource = {
 
 export type NativeMacRecordingOptions = {
 	capturesSystemAudio?: boolean;
+	systemAudioDeviceId?: string;
+	systemAudioDeviceName?: string;
 	capturesMicrophone?: boolean;
 	microphoneDeviceId?: string;
 	microphoneLabel?: string;

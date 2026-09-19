@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(wgc-capture
   src/main.cpp
+  src/audio_level_monitor.cpp
   src/wgc_session.cpp
   src/mf_encoder.cpp
   src/monitor_utils.cpp

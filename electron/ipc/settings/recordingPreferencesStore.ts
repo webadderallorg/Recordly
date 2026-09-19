@@ -5,6 +5,8 @@ export interface RecordingPreferencesPatch {
 	microphoneEnabled?: boolean;
 	microphoneDeviceId?: string;
 	systemAudioEnabled?: boolean;
+	systemAudioDeviceId?: string;
+	systemAudioDeviceName?: string;
 	webcamEnabled?: boolean;
 	webcamDeviceId?: string;
 }

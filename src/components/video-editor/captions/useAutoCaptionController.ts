@@ -102,8 +102,10 @@ export function useAutoCaptionController({
 		const result = await window.electronAPI.openWhisperExecutablePicker();
 		if (!result.success || !result.path) return;
 		setWhisperExecutablePath(result.path);
-		toast.success("Whisper executable selected");
-	}, [setWhisperExecutablePath]);
+		toast.success(
+			t("editor.captions.whisperExecutableSelected", "Whisper executable selected"),
+		);
+	}, [setWhisperExecutablePath, t]);
 
 	const handleDownloadWhisperSmallModel = useCallback(async () => {
 		if (whisperModelDownloadStatus === "downloading") return;
@@ -112,7 +114,13 @@ export function useAutoCaptionController({
 		const result = await window.electronAPI.downloadWhisperSmallModel();
 		if (!result.success) {
 			setWhisperModelDownloadStatus("error");
-			toast.error(result.error || "Failed to download Whisper small model");
+			toast.error(
+				result.error ||
+					t(
+						"editor.captions.downloadModelFailed",
+						"Failed to download Whisper small model",
+					),
+			);
 			return;
 		}
 		if (result.path) {
@@ -120,6 +128,7 @@ export function useAutoCaptionController({
 			setWhisperModelPath(result.path);
 		}
 	}, [
+		t,
 		setDownloadedWhisperModelPath,
 		setWhisperModelDownloadProgress,
 		setWhisperModelDownloadStatus,
@@ -131,21 +140,25 @@ export function useAutoCaptionController({
 		const result = await window.electronAPI.openWhisperModelPicker();
 		if (!result.success || !result.path) return;
 		setWhisperModelPath(result.path);
-		toast.success("Whisper model selected");
-	}, [setWhisperModelPath]);
+		toast.success(t("editor.captions.whisperModelSelected", "Whisper model selected"));
+	}, [setWhisperModelPath, t]);
 
 	const handleDeleteWhisperSmallModel = useCallback(async () => {
 		const result = await window.electronAPI.deleteWhisperSmallModel();
 		if (!result.success) {
-			toast.error(result.error || "Failed to delete Whisper small model");
+			toast.error(
+				result.error ||
+					t("editor.captions.deleteModelFailed", "Failed to delete Whisper small model"),
+			);
 			return;
 		}
 		setWhisperModelPath((current) => (current === downloadedWhisperModelPath ? null : current));
 		setDownloadedWhisperModelPath(null);
 		setWhisperModelDownloadStatus("idle");
 		setWhisperModelDownloadProgress(0);
-		toast.success("Whisper small model deleted");
+		toast.success(t("editor.captions.whisperSmallModelDeleted", "Whisper small model deleted"));
 	}, [
+		t,
 		downloadedWhisperModelPath,
 		setDownloadedWhisperModelPath,
 		setWhisperModelDownloadProgress,
@@ -173,7 +186,7 @@ export function useAutoCaptionController({
 				});
 			}
 			if (!sourcePath) {
-				toast.error("No source video is loaded");
+				toast.error(t("editor.captions.noSourceVideo", "No source video is loaded"));
 				return;
 			}
 			await syncActiveVideoSource(sourcePath, webcamSourcePath);
@@ -182,7 +195,12 @@ export function useAutoCaptionController({
 				setVideoPath(await resolveVideoUrl(sourcePath));
 			}
 			if (!whisperModelPath) {
-				toast.error("Select a Whisper model or download the small model first");
+				toast.error(
+					t(
+						"editor.captions.selectModel",
+						"Select a Whisper model or download the small model first",
+					),
+				);
 				return;
 			}
 
@@ -194,14 +212,22 @@ export function useAutoCaptionController({
 			});
 			if (!result.success || !result.cues) {
 				const errorMessage = result.error ? getErrorMessage(result.error) : result.message;
-				toast.error(errorMessage || "Failed to generate captions");
+				toast.error(
+					errorMessage ||
+						t("editor.captions.generateFailed", "Failed to generate captions"),
+				);
 				return;
 			}
 			setAutoCaptions(result.cues);
 			if (result.cues.length > 0) {
 				setAutoCaptionSettings((current) => ({ ...current, enabled: true }));
 			}
-			toast.success(result.message || `Generated ${result.cues.length} captions`);
+			toast.success(
+				result.message ||
+					t("editor.captions.generatedCount", "Generated {{count}} captions", {
+						count: result.cues.length,
+					}),
+			);
 		} catch (error) {
 			toast.error(getErrorMessage(error));
 		} finally {
@@ -211,6 +237,7 @@ export function useAutoCaptionController({
 	}, [
 		autoCaptionSettings.language,
 		isGeneratingCaptions,
+		t,
 		setAutoCaptionSettings,
 		setAutoCaptions,
 		setIsGeneratingCaptions,
