@@ -19,6 +19,7 @@ interface UseTimelineKeyboardShortcutsParams {
 	selectAllBlocksActive: boolean;
 	addKeyframe: () => void;
 	handleAddZoom: () => void;
+	handleClearAllZooms: () => void;
 	handleSplitClip: () => void;
 	handleAddAnnotation: () => void;
 	deleteSelectedKeyframe: () => void;
@@ -46,6 +47,7 @@ export function useTimelineKeyboardShortcuts({
 	selectAllBlocksActive,
 	addKeyframe,
 	handleAddZoom,
+	handleClearAllZooms,
 	handleSplitClip,
 	handleAddAnnotation,
 	deleteSelectedKeyframe,
@@ -85,6 +87,15 @@ export function useTimelineKeyboardShortcuts({
 				}
 				e.preventDefault();
 				activateSelectAllZooms();
+				return;
+			}
+
+			if (matchesShortcut(e, { key: "backspace", ctrl: true, shift: true }, isMac)) {
+				if (!hasAnyZoomBlocks) {
+					return;
+				}
+				e.preventDefault();
+				handleClearAllZooms();
 				return;
 			}
 
@@ -149,6 +160,7 @@ export function useTimelineKeyboardShortcuts({
 		deleteSelectedZoom,
 		handleAddAnnotation,
 		handleAddZoom,
+		handleClearAllZooms,
 		handleSplitClip,
 		hasAnyZoomBlocks,
 		isMac,
