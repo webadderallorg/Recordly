@@ -6,11 +6,14 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { supportsHudCaptureProtection } from "../src/lib/hudCaptureProtection";
 import { USER_DATA_PATH } from "./appPaths";
 import {
+	getHudOverlayStaticBounds,
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
 import { getHudOverlayTaskbarOptions } from "./hudOverlayWindowOptions";
+import { isWaylandSession } from "./hudOverlaySession";
+import { hideHudOverlayWindow } from "./hudOverlayWindowActions";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
 const electronWindowsDir = path.dirname(fileURLToPath(import.meta.url));
@@ -119,6 +122,18 @@ export function isHudOverlayMousePassthroughSupported(): boolean {
 	return process.platform !== "linux";
 }
 
+let hudOverlayWaylandSession: boolean | null = null;
+
+function isHudOverlayWaylandSession(): boolean {
+	// Session env is stable for the lifetime of the app process, so probe it
+	// once (lazily) and cache — every Wayland-only HUD behavior reads this
+	// single flag instead of touching process.env at call sites.
+	if (hudOverlayWaylandSession === null) {
+		hudOverlayWaylandSession = isWaylandSession();
+	}
+	return hudOverlayWaylandSession;
+}
+
 function loadHudOverlayCaptureProtectionSetting(): boolean {
 	if (hudOverlayCaptureProtectionLoaded) {
 		return hudOverlayHiddenFromCapture;
@@ -202,16 +217,23 @@ function getHudOverlayDisplay() {
 
 function getHudOverlayBounds() {
 	const { workArea } = getHudOverlayDisplay();
+	const mousePassthroughSupported = isHudOverlayMousePassthroughSupported();
+	const waylandSession = isHudOverlayWaylandSession();
+	if (!mousePassthroughSupported && waylandSession) {
+		// Wayland-only fallback HUD: created expanded and never resized at
+		// runtime (Wayland ignores programmatic placement; runtime growth was
+		// the instability behind the reverted e2802bf). Static bounds keep
+		// every recompute — creation, recording/webcam transitions, display
+		// changes — at the expanded height so nothing shrinks the window.
+		// X11 falls through to the dynamic fallback below, matching main.
+		return getHudOverlayStaticBounds(workArea, mousePassthroughSupported, waylandSession);
+	}
 	const fallbackExpanded = shouldExpandHudOverlayFallback({
 		fallbackExpanded: hudOverlayFallbackExpanded,
 		recordingActive: hudOverlayRecordingActive,
 		webcamPreviewVisible: hudOverlayWebcamPreviewVisible,
 	});
-	return getHudOverlayWindowBounds(
-		workArea,
-		isHudOverlayMousePassthroughSupported(),
-		fallbackExpanded,
-	);
+	return getHudOverlayWindowBounds(workArea, mousePassthroughSupported, fallbackExpanded);
 }
 
 function applyHudOverlayBounds() {
@@ -401,7 +423,7 @@ ipcMain.on("hud-overlay-drag", (_event, phase: string, screenX: number, screenY:
 
 ipcMain.on("hud-overlay-hide", () => {
 	if (hudOverlayWindow && !hudOverlayWindow.isDestroyed()) {
-		hudOverlayWindow.minimize();
+		hideHudOverlayWindow(hudOverlayWindow, process.platform, isHudOverlayWaylandSession());
 	}
 });
 
@@ -689,6 +711,10 @@ export function setHudOverlayRecordingActive(recording: boolean): void {
 	// make the visible HUD controls interactive when the pointer reaches them,
 	// while transparent parts never block the recorded application.
 	setHudOverlayMousePassthrough(true);
+}
+
+export function isHudOverlayRecordingActive(): boolean {
+	return hudOverlayRecordingActive;
 }
 
 export function createUpdateToastWindow(): BrowserWindow {
