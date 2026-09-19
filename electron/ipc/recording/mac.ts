@@ -6,6 +6,10 @@ import {
 	snapshotCursorTelemetryForPersistence,
 } from "../cursor/telemetry";
 import {
+	persistPendingKeystrokeTelemetry,
+	snapshotKeystrokeTelemetryForPersistence,
+} from "../cursor/keystrokes";
+import {
 	lastNativeCaptureDiagnostics,
 	nativeCaptureMicrophonePath,
 	nativeCaptureOutputBuffer,
@@ -263,12 +267,18 @@ export async function finalizeStoredVideo(videoPath: string) {
 	}
 
 	snapshotCursorTelemetryForPersistence();
+	snapshotKeystrokeTelemetryForPersistence();
 	setCurrentVideoPath(videoPath);
 	setCurrentProjectPath(null);
 	try {
 		await persistPendingCursorTelemetry(videoPath);
 	} catch (error) {
 		console.warn("[mac-stop] Failed to persist cursor telemetry:", error);
+	}
+	try {
+		await persistPendingKeystrokeTelemetry(videoPath);
+	} catch (error) {
+		console.warn("[mac-stop] Failed to persist keystroke telemetry:", error);
 	}
 	if (isAutoRecordingPath(videoPath)) {
 		await pruneAutoRecordings([videoPath]);

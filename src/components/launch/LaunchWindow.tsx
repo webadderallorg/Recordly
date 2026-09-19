@@ -112,8 +112,10 @@ function LaunchWindowContent() {
 		platform,
 		appVersion,
 		hideHudFromCapture,
+		captureKeystrokes,
 		chooseRecordingsDirectory,
 		toggleHudCaptureProtection,
+		toggleCaptureKeystrokes,
 	} = useLaunchWindowSystemState(preparePermissions);
 
 	const hudCaptureProtectionSupported = supportsHudCaptureProtection(platform ?? "");
@@ -377,6 +379,10 @@ function LaunchWindowContent() {
 				hideHudFromCapture={hideHudFromCapture}
 				onToggleHudCaptureProtection={() => {
 					void toggleHudCaptureProtection();
+				}}
+				captureKeystrokes={captureKeystrokes}
+				onToggleCaptureKeystrokes={() => {
+					void toggleCaptureKeystrokes();
 				}}
 				onChooseRecordingsDirectory={() => {
 					void chooseRecordingsDirectory();

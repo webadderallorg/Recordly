@@ -88,12 +88,14 @@ export function useVideoEditorPresets({
 			gifLoop: exportSettings.gifLoop,
 			gifSizePreset: exportSettings.gifSizePreset,
 			autoCaptionSettings: { ...timeline.autoCaptionSettings },
+			keystrokeOverlaySettings: { ...timeline.keystrokeOverlaySettings },
 			whisperExecutablePath,
 			whisperModelPath,
 		}),
 		[
 			appearance,
 			timeline.autoCaptionSettings,
+			timeline.keystrokeOverlaySettings,
 			exportSettings,
 			aspectRatio,
 			whisperExecutablePath,
@@ -155,6 +157,9 @@ export function useVideoEditorPresets({
 			exportSettings.setGifLoop(snapshot.gifLoop);
 			exportSettings.setGifSizePreset(snapshot.gifSizePreset);
 			timeline.setAutoCaptionSettings({ ...snapshot.autoCaptionSettings });
+			if (snapshot.keystrokeOverlaySettings) {
+				timeline.setKeystrokeOverlaySettings({ ...snapshot.keystrokeOverlaySettings });
+			}
 			setWhisperExecutablePath(snapshot.whisperExecutablePath);
 			setWhisperModelPath(snapshot.whisperModelPath);
 		},

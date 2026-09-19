@@ -101,6 +101,8 @@ export function EditorVideoPreview({
 			annotationRegions={timeline.annotationRegions}
 			autoCaptions={timeline.autoCaptions}
 			autoCaptionSettings={timeline.autoCaptionSettings}
+			keystrokeTelemetry={timeline.keystrokeTelemetry}
+			keystrokeOverlaySettings={timeline.keystrokeOverlaySettings}
 			selectedAnnotationId={timeline.selectedAnnotationId}
 			cursorTelemetry={effectiveCursorTelemetry}
 			showCursor={effectiveShowCursor}

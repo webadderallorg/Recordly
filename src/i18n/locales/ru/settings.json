@@ -125,6 +125,15 @@
 		"cursorClickBounce": "Отскок при клике",
 		"cursorClickBounceDuration": "Скорость отскока",
 		"cursorSway": "Покачивание курсора",
+		"keystrokeOverlay": {
+			"title": "Оверлей клавиш",
+			"mode": "Только сочетания",
+			"position": "Положение",
+			"bottom": "Снизу",
+			"top": "Сверху",
+			"size": "Размер",
+			"offset": "Отступ"
+		},
 		"webcam": "Наложение веб-камеры",
 		"webcamFootage": "Запись с веб-камеры",
 		"webcamFootageDescription": "Видео не добавлено",

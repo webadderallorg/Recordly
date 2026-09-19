@@ -180,6 +180,7 @@ export function useProjectLifecycle(input: Input) {
 		timeline.setDefaultSourceAudioTrackSettings(editor.defaultSourceAudioTrackSettings ?? {});
 		timeline.setAutoCaptions(editor.autoCaptions);
 		timeline.setAutoCaptionSettings(editor.autoCaptionSettings);
+		timeline.setKeystrokeOverlaySettings(editor.keystrokeOverlaySettings);
 		current.setAspectRatio(editor.aspectRatio);
 		exportSettings.setExportEncodingMode(editor.exportEncodingMode);
 		exportSettings.setExportBackendPreference(editor.exportBackendPreference);
@@ -339,6 +340,7 @@ export function useProjectLifecycle(input: Input) {
 		timeline.setAudioRegions([]);
 		timeline.setCursorTelemetry([]);
 		timeline.setCursorTelemetrySourcePath(null);
+		timeline.setKeystrokeTelemetry([]);
 		timeline.setSourceAudioTrackSettingsByClip({});
 		timeline.setDefaultSourceAudioTrackSettings({});
 		timeline.setHasClipSourceAudio(false);

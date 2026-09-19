@@ -6,4 +6,4 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(cursor-monitor src/main.cpp)
 
-target_link_libraries(cursor-monitor PRIVATE user32)
+target_link_libraries(cursor-monitor PRIVATE user32 ole32 oleaut32 UIAutomationCore)

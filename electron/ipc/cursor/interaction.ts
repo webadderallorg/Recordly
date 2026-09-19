@@ -5,6 +5,7 @@ import {
 	hasLoggedInteractionHookFailure,
 	interactionCaptureCleanup,
 	isCursorCaptureActive,
+	isKeystrokeCaptureEnabled,
 	lastLeftClick,
 	setHasLoggedInteractionHookFailure,
 	setInteractionCaptureCleanup,
@@ -24,6 +25,7 @@ import {
 	isCursorCapturePaused,
 	pushCursorSample,
 } from "./telemetry";
+import { recordKeystrokeFromHookEvent } from "./keystrokes";
 
 const nodeRequire = createRequire(import.meta.url);
 
@@ -289,10 +291,20 @@ export async function startInteractionCapture() {
 			setLinuxCursorScreenPoint({ x: point.x, y: point.y, updatedAt: Date.now() });
 		};
 
+		const onKeyDown = (event: HookMouseEvent) => {
+			if (process.platform !== "linux" || !isKeystrokeCaptureEnabled) {
+				return;
+			}
+			recordKeystrokeFromHookEvent(event);
+		};
+
 		hook.on("mousedown", onMouseDown);
 		hook.on("mouseup", onMouseUp);
 		if (process.platform === "linux") {
 			hook.on("mousemove", onMouseMove);
+			if (isKeystrokeCaptureEnabled) {
+				hook.on("keydown", onKeyDown);
+			}
 		}
 
 		setInteractionCaptureCleanup(() => {
@@ -302,12 +314,14 @@ export async function startInteractionCapture() {
 					hook.off("mouseup", onMouseUp);
 					if (process.platform === "linux") {
 						hook.off("mousemove", onMouseMove);
+						hook.off("keydown", onKeyDown);
 					}
 				} else if (typeof hook.removeListener === "function") {
 					hook.removeListener("mousedown", onMouseDown);
 					hook.removeListener("mouseup", onMouseUp);
 					if (process.platform === "linux") {
 						hook.removeListener("mousemove", onMouseMove);
+						hook.removeListener("keydown", onKeyDown);
 					}
 				}
 			} catch {

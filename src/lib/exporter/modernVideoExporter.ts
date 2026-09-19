@@ -122,6 +122,8 @@ interface VideoExporterConfig extends ExportConfig {
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
+	keystrokeTelemetry?: import("@/lib/keystrokeOverlay").KeystrokeSample[];
+	keystrokeOverlaySettings?: import("@/lib/keystrokeOverlay").KeystrokeOverlaySettings;
 	cursorTelemetry?: CursorTelemetryPoint[];
 	showCursor?: boolean;
 	cursorStyle?: CursorStyle;
@@ -631,6 +633,8 @@ export class ModernVideoExporter {
 					annotationRegions: this.config.annotationRegions,
 					autoCaptions: this.config.autoCaptions,
 					autoCaptionSettings: this.config.autoCaptionSettings,
+					keystrokeTelemetry: this.config.keystrokeTelemetry,
+					keystrokeOverlaySettings: this.config.keystrokeOverlaySettings,
 					speedRegions: this.config.speedRegions,
 					previewWidth: this.config.previewWidth,
 					previewHeight: this.config.previewHeight,
@@ -1745,6 +1749,12 @@ export class ModernVideoExporter {
 		}
 		if ((this.config.autoCaptions ?? []).length > 0) {
 			reasons.push("unsupported-caption-overlay");
+		}
+		if (
+			this.config.keystrokeOverlaySettings?.enabled &&
+			(this.config.keystrokeTelemetry?.length ?? 0) > 0
+		) {
+			reasons.push("unsupported-keystroke-overlay");
 		}
 		if (this.config.webcam?.enabled) {
 			// Native GPU compositors use a different corner and shadow model.

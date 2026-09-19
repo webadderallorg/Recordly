@@ -125,6 +125,15 @@
 		"cursorClickBounce": "光标点击弹跳",
 		"cursorClickBounceDuration": "弹跳速度",
 		"cursorSway": "光标摆动",
+		"keystrokeOverlay": {
+			"title": "按键叠加",
+			"mode": "仅快捷键",
+			"position": "位置",
+			"bottom": "底部",
+			"top": "顶部",
+			"size": "大小",
+			"offset": "偏移"
+		},
 		"webcam": "摄像头叠加",
 		"webcamFootage": "摄像头素材",
 		"webcamFootageDescription": "此视频尚未关联摄像头素材",

@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import { useScopedT } from "@/contexts/I18nContext";
+import { loadAppSetting, saveAppSetting } from "../../../lib/appSettings";
+import { KEYSTROKE_OVERLAY_CAPTURE_SETTING } from "../../../lib/keystrokeOverlay";
 
 export function useLaunchWindowSystemState(
 	preparePermissions: (args: { startup?: boolean }) => Promise<unknown>,
 ) {
+	const t = useScopedT("launch");
 	const [recordingsDirectory, setRecordingsDirectory] = useState<string | null>(null);
 	const [hudOverlayMousePassthroughSupported, setHudOverlayMousePassthroughSupported] = useState<
 		boolean | null
@@ -10,6 +14,9 @@ export function useLaunchWindowSystemState(
 	const [platform, setPlatform] = useState<string | null>(null);
 	const [appVersion, setAppVersion] = useState<string | null>(null);
 	const [hideHudFromCapture, setHideHudFromCapture] = useState(true);
+	const [captureKeystrokes, setCaptureKeystrokes] = useState(
+		() => loadAppSetting<boolean>(KEYSTROKE_OVERLAY_CAPTURE_SETTING) === true,
+	);
 
 	useEffect(() => {
 		window.electronAPI?.hudOverlayRendererReady?.();
@@ -64,6 +71,32 @@ export function useLaunchWindowSystemState(
 			cancelled = true;
 		};
 	}, []);
+
+	useEffect(() => {
+		let cancelled = false;
+		const syncKeystrokePermission = async () => {
+			if (!captureKeystrokes) {
+				return;
+			}
+			try {
+				const nextPlatform = platform ?? (await window.electronAPI.getPlatform());
+				if (nextPlatform !== "darwin") {
+					return;
+				}
+				const status = await window.electronAPI.getAccessibilityPermissionStatus();
+				if (!cancelled && status?.success && status.trusted === false) {
+					setCaptureKeystrokes(false);
+					saveAppSetting(KEYSTROKE_OVERLAY_CAPTURE_SETTING, false);
+				}
+			} catch {
+				// Keep the stored preference if permission status cannot be read.
+			}
+		};
+		void syncKeystrokePermission();
+		return () => {
+			cancelled = true;
+		};
+	}, [captureKeystrokes, platform]);
 
 	useEffect(() => {
 		void preparePermissions({ startup: true });
@@ -129,6 +162,43 @@ export function useLaunchWindowSystemState(
 		}
 	}, [hideHudFromCapture]);
 
+	const toggleCaptureKeystrokes = useCallback(async () => {
+		if (captureKeystrokes) {
+			setCaptureKeystrokes(false);
+			saveAppSetting(KEYSTROKE_OVERLAY_CAPTURE_SETTING, false);
+			void window.electronAPI.stopKeystrokeTap?.();
+			return;
+		}
+
+		const nextPlatform = platform ?? (await window.electronAPI.getPlatform().catch(() => null));
+		if (nextPlatform === "darwin") {
+			try {
+				const permission = await window.electronAPI.requestKeystrokeCapturePermission?.();
+				if (!permission?.trusted || permission.tapOk === false) {
+					await window.electronAPI.openAccessibilityPreferences();
+					await window.electronAPI.openInputMonitoringPreferences?.();
+					const clientName = permission?.clientName || "Electron";
+					alert(
+						t(
+							"recording.captureKeystrokesNeedAccessibility",
+							"System Settings opened. Under Privacy & Security, enable {{name}} in both Accessibility and Input Monitoring. Not Cursor. Then click Show keys in recording again.",
+							{ name: clientName },
+						),
+					);
+					return;
+				}
+			} catch (error) {
+				console.warn("Unable to request key overlay permissions:", error);
+				setCaptureKeystrokes(false);
+				saveAppSetting(KEYSTROKE_OVERLAY_CAPTURE_SETTING, false);
+				return;
+			}
+		}
+
+		setCaptureKeystrokes(true);
+		saveAppSetting(KEYSTROKE_OVERLAY_CAPTURE_SETTING, true);
+	}, [captureKeystrokes, platform, t]);
+
 	return {
 		recordingsDirectory,
 		hudOverlayMousePassthroughSupported,
@@ -136,7 +206,9 @@ export function useLaunchWindowSystemState(
 		appVersion,
 		hideHudFromCapture,
 		setHideHudFromCapture,
+		captureKeystrokes,
 		chooseRecordingsDirectory,
 		toggleHudCaptureProtection,
+		toggleCaptureKeystrokes,
 	};
 }

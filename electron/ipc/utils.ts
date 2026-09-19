@@ -67,6 +67,10 @@ export function getTelemetryPathForVideo(videoPath: string) {
 	return `${videoPath}.cursor.json`;
 }
 
+export function getKeystrokePathForVideo(videoPath: string) {
+	return `${videoPath}.keys.json`;
+}
+
 export function isAutoRecordingPath(filePath: string) {
 	return path.basename(filePath).startsWith(AUTO_RECORDING_PREFIX);
 }
@@ -113,11 +117,15 @@ export async function getRecordingsDir() {
 	return targetDir;
 }
 
-export function getMacPrivacySettingsUrl(pane: "screen" | "accessibility" | "microphone"): string {
+export function getMacPrivacySettingsUrl(
+	pane: "screen" | "accessibility" | "microphone" | "input-monitoring",
+): string {
 	if (pane === "screen")
 		return "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
 	if (pane === "microphone")
 		return "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
+	if (pane === "input-monitoring")
+		return "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
 	return "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
 }
 

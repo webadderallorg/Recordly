@@ -120,7 +120,7 @@ export type NativeMacWindowSource = {
 	height?: number;
 };
 
-export type HookEventName = "mousedown" | "mouseup" | "mousemove";
+export type HookEventName = "mousedown" | "mouseup" | "mousemove" | "keydown" | "keyup";
 
 export type HookMouseEvent = {
 	button?: number;
@@ -129,6 +129,13 @@ export type HookMouseEvent = {
 	y?: number;
 	screenX?: number;
 	screenY?: number;
+	keycode?: number;
+	rawcode?: number;
+	keychar?: number;
+	altKey?: boolean;
+	ctrlKey?: boolean;
+	metaKey?: boolean;
+	shiftKey?: boolean;
 	data?: {
 		button?: number;
 		mouseButton?: number;

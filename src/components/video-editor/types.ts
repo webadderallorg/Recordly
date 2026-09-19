@@ -611,6 +611,17 @@ export const DEFAULT_AUTO_CAPTION_SETTINGS: AutoCaptionSettings = {
 	backgroundOpacity: 0.9,
 };
 
+export type {
+	KeystrokeOverlayMode,
+	KeystrokeOverlayPosition,
+	KeystrokeOverlaySettings,
+	KeystrokeSample,
+} from "@/lib/keystrokeOverlay";
+export {
+	DEFAULT_KEYSTROKE_OVERLAY_SETTINGS,
+	normalizeKeystrokeOverlaySettings,
+} from "@/lib/keystrokeOverlay";
+
 export type PlaybackSpeed = 0.25 | 0.5 | 0.75 | 1.25 | 1.5 | 1.75 | 2;
 
 export interface SpeedRegion {

@@ -1,4 +1,5 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import type { KeystrokeSample } from "../../src/lib/keystrokeOverlay";
 import type {
 	CursorInteractionType,
 	CursorTelemetryPoint,
@@ -80,7 +81,10 @@ export let cursorCaptureAccumulatedPausedMs = 0;
 export let cursorCapturePauseStartedAtMs: number | null = null;
 export let activeCursorSamples: CursorTelemetryPoint[] = [];
 export let pendingCursorSamples: CursorTelemetryPoint[] = [];
+export let activeKeystrokeSamples: KeystrokeSample[] = [];
+export let pendingKeystrokeSamples: KeystrokeSample[] = [];
 export let isCursorCaptureActive = false;
+export let isKeystrokeCaptureEnabled = false;
 export let interactionCaptureCleanup: (() => void) | null = null;
 export let hasLoggedInteractionHookFailure = false;
 export let lastLeftClick: { timeMs: number; cx: number; cy: number } | null = null;
@@ -250,6 +254,15 @@ export function setActiveCursorSamples(v: CursorTelemetryPoint[]) {
 }
 export function setPendingCursorSamples(v: CursorTelemetryPoint[]) {
 	pendingCursorSamples = v;
+}
+export function setActiveKeystrokeSamples(v: KeystrokeSample[]) {
+	activeKeystrokeSamples = v;
+}
+export function setPendingKeystrokeSamples(v: KeystrokeSample[]) {
+	pendingKeystrokeSamples = v;
+}
+export function setIsKeystrokeCaptureEnabled(v: boolean) {
+	isKeystrokeCaptureEnabled = v;
 }
 export function setIsCursorCaptureActive(v: boolean) {
 	isCursorCaptureActive = v;

@@ -56,6 +56,7 @@ import type {
 	CursorStyle,
 	EditorEffectSection,
 	FigureData,
+	KeystrokeOverlaySettings,
 	Padding,
 	WebcamOverlaySettings,
 	WebcamPositionPreset,
@@ -77,6 +78,7 @@ import {
 	DEFAULT_CURSOR_SIZE,
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_CURSOR_SWAY,
+	DEFAULT_KEYSTROKE_OVERLAY_SETTINGS,
 	DEFAULT_PADDING,
 	DEFAULT_WEBCAM_MARGIN,
 	DEFAULT_WEBCAM_POSITION_PRESET,
@@ -598,6 +600,8 @@ interface SettingsPanelProps {
 	onCursorClickBounceDurationChange?: (duration: number) => void;
 	cursorSway?: number;
 	onCursorSwayChange?: (amount: number) => void;
+	keystrokeOverlaySettings?: KeystrokeOverlaySettings;
+	onKeystrokeOverlaySettingsChange?: (settings: KeystrokeOverlaySettings) => void;
 	borderRadius?: number;
 	onBorderRadiusChange?: (radius: number) => void;
 	webcam?: WebcamOverlaySettings;
@@ -1041,6 +1045,8 @@ export function SettingsPanel({
 	onCursorClickBounceDurationChange,
 	cursorSway = DEFAULT_CURSOR_SWAY,
 	onCursorSwayChange,
+	keystrokeOverlaySettings = DEFAULT_KEYSTROKE_OVERLAY_SETTINGS,
+	onKeystrokeOverlaySettingsChange,
 	borderRadius = getDefaultBorderRadiusPercent(),
 	onBorderRadiusChange,
 	webcam,
@@ -1576,6 +1582,7 @@ export function SettingsPanel({
 		onCursorClickBounceChange?.(initialEditorPreferences.cursorClickBounce);
 		onCursorClickBounceDurationChange?.(initialEditorPreferences.cursorClickBounceDuration);
 		onCursorSwayChange?.(initialEditorPreferences.cursorSway);
+		onKeystrokeOverlaySettingsChange?.(DEFAULT_KEYSTROKE_OVERLAY_SETTINGS);
 	};
 
 	const activeMotionPresetId = useMemo(() => {
@@ -3340,6 +3347,116 @@ export function SettingsPanel({
 									return parseFloat(text.replace(/×$/, ""));
 								}}
 							/>
+							<div className="mt-2 rounded-lg bg-foreground/[0.03] px-2.5 py-2 space-y-2">
+								<div className="flex items-center justify-between gap-3">
+									<div className="text-sm font-medium text-foreground">
+										{tSettings("effects.keystrokeOverlay.title", "Key overlay")}
+									</div>
+									<Switch
+										checked={keystrokeOverlaySettings.enabled}
+										onCheckedChange={(enabled) =>
+											onKeystrokeOverlaySettingsChange?.({
+												...keystrokeOverlaySettings,
+												enabled,
+											})
+										}
+										aria-label={tSettings(
+											"effects.keystrokeOverlay.title",
+											"Key overlay",
+										)}
+										className="data-[state=checked]:bg-[#2563EB] scale-75"
+									/>
+								</div>
+								<div className="flex items-center justify-between gap-3">
+									<div className="text-[11px] text-muted-foreground">
+										{tSettings(
+											"effects.keystrokeOverlay.mode",
+											"Shortcuts only",
+										)}
+									</div>
+									<Switch
+										checked={keystrokeOverlaySettings.mode === "shortcuts"}
+										onCheckedChange={(shortcutsOnly) =>
+											onKeystrokeOverlaySettingsChange?.({
+												...keystrokeOverlaySettings,
+												mode: shortcutsOnly ? "shortcuts" : "all",
+											})
+										}
+										aria-label={tSettings(
+											"effects.keystrokeOverlay.mode",
+											"Shortcuts only",
+										)}
+										className="data-[state=checked]:bg-[#2563EB] scale-75"
+									/>
+								</div>
+								<div className="flex items-center justify-between gap-3">
+									<div className="text-sm font-medium text-foreground">
+										{tSettings(
+											"effects.keystrokeOverlay.position",
+											"Position",
+										)}
+									</div>
+									<Select
+										value={keystrokeOverlaySettings.position}
+										onValueChange={(value) =>
+											onKeystrokeOverlaySettingsChange?.({
+												...keystrokeOverlaySettings,
+												position: value === "top" ? "top" : "bottom",
+											})
+										}
+									>
+										<SelectTrigger className="h-9 w-[140px] rounded-xl border-foreground/10 bg-foreground/5 text-sm">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent className="border-foreground/10 bg-editor-surface-alt text-foreground">
+											<SelectItem value="bottom">
+												{tSettings(
+													"effects.keystrokeOverlay.bottom",
+													"Bottom",
+												)}
+											</SelectItem>
+											<SelectItem value="top">
+												{tSettings("effects.keystrokeOverlay.top", "Top")}
+											</SelectItem>
+										</SelectContent>
+									</Select>
+								</div>
+								<SliderControl
+									label={tSettings("effects.keystrokeOverlay.size", "Size")}
+									value={keystrokeOverlaySettings.fontSize}
+									defaultValue={DEFAULT_KEYSTROKE_OVERLAY_SETTINGS.fontSize}
+									min={12}
+									max={48}
+									step={1}
+									onChange={(fontSize) =>
+										onKeystrokeOverlaySettingsChange?.({
+											...keystrokeOverlaySettings,
+											fontSize,
+										})
+									}
+									formatValue={(v) => `${Math.round(v)}`}
+									parseInput={(text) => parseFloat(text)}
+								/>
+								<SliderControl
+									label={tSettings(
+										"effects.keystrokeOverlay.offset",
+										"Offset",
+									)}
+									value={keystrokeOverlaySettings.bottomOffset}
+									defaultValue={DEFAULT_KEYSTROKE_OVERLAY_SETTINGS.bottomOffset}
+									min={0}
+									max={30}
+									step={1}
+									onChange={(bottomOffset) =>
+										onKeystrokeOverlaySettingsChange?.({
+											...keystrokeOverlaySettings,
+											bottomOffset,
+										})
+									}
+									formatValue={(v) => `${Math.round(v)}%`}
+									parseInput={(text) => parseFloat(text.replace(/%$/, ""))}
+								/>
+							</div>
 							{showDevMotionControls ? (
 								<div className="rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2">
 									<div className="text-[10px] text-muted-foreground">

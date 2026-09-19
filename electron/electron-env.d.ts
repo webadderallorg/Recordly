@@ -602,6 +602,21 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		getKeystrokeTelemetry: (videoPath?: string) => Promise<{
+			success: boolean;
+			samples: KeystrokeSample[];
+			message?: string;
+			error?: string;
+		}>;
+		setKeystrokeTelemetry: (
+			videoPath: string | undefined,
+			samples: KeystrokeSample[],
+		) => Promise<{
+			success: boolean;
+			samples: KeystrokeSample[];
+			message?: string;
+			error?: string;
+		}>;
 		getSystemCursorAssets: () => Promise<{
 			success: boolean;
 			cursors: Record<string, SystemCursorAsset>;
@@ -631,8 +646,17 @@ interface Window {
 			success: boolean;
 			trusted: boolean;
 			prompted: boolean;
+			clientName?: string;
 			error?: string;
 		}>;
+		requestKeystrokeCapturePermission: () => Promise<{
+			success: boolean;
+			trusted: boolean;
+			tapOk?: boolean;
+			clientName?: string;
+			error?: string;
+		}>;
+		stopKeystrokeTap: () => Promise<{ success: boolean }>;
 		getScreenRecordingPermissionStatus: () => Promise<{
 			success: boolean;
 			status: string;
@@ -640,6 +664,7 @@ interface Window {
 		}>;
 		openScreenRecordingPreferences: () => Promise<{ success: boolean; error?: string }>;
 		openAccessibilityPreferences: () => Promise<{ success: boolean; error?: string }>;
+		openInputMonitoringPreferences: () => Promise<{ success: boolean; error?: string }>;
 		saveExportedVideo: (
 			videoData: ArrayBuffer,
 			fileName: string,
@@ -967,6 +992,17 @@ interface CursorTelemetryPoint {
 		| "resize-ew"
 		| "resize-ns"
 		| "not-allowed";
+}
+
+interface KeystrokeSample {
+	timeMs: number;
+	key: string;
+	code: string;
+	ctrl: boolean;
+	alt: boolean;
+	shift: boolean;
+	meta: boolean;
+	repeat?: boolean;
 }
 
 interface SystemCursorAsset {

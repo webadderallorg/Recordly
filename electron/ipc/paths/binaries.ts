@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync, constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { app } from "electron";
@@ -107,6 +108,17 @@ export function getNativeCursorMonitorSourcePath(): string {
 
 export function getNativeCursorMonitorBinaryPath(): string {
 	return path.join(app.getPath("userData"), "native-tools", "recordly-native-cursor-monitor");
+}
+
+export function getKeystrokeTapSourcePath(): string {
+	if (app.isPackaged) {
+		return getPrebundledNativeHelperPath("recordly-keystroke-tap.node");
+	}
+	return resolveUnpackedAppPath("electron", "native", "KeystrokeEventTap.c");
+}
+
+export function getKeystrokeTapBinaryPath(): string {
+	return path.join(app.getPath("userData"), "native-tools", "recordly-keystroke-tap.node");
 }
 
 export function getNativeWindowListSourcePath(): string {
@@ -228,18 +240,107 @@ export async function ensureSwiftHelperBinary(
 		return binaryPath;
 	}
 
+	const moduleCacheRoot = path.join(os.tmpdir(), "recordly-swift-module-cache");
 	try {
 		await execFileAsync("swiftc", ["-O", sourcePath, "-o", binaryPath], {
 			encoding: "utf8",
 			timeout: 120000,
+			env: {
+				...process.env,
+				CLANG_MODULE_CACHE_PATH: path.join(moduleCacheRoot, "clang"),
+				SWIFT_MODULECACHE_PATH: path.join(moduleCacheRoot, "swift"),
+			},
 		});
 	} catch (error) {
+		if (prebundledBinaryName) {
+			const fallbackPath = getPrebundledNativeHelperPath(prebundledBinaryName);
+			try {
+				await fs.access(fallbackPath, fsConstants.X_OK);
+				console.warn(`Failed to compile ${label}; using prebundled helper`);
+				return fallbackPath;
+			} catch {
+				// Fall through to the original compile error.
+			}
+		}
 		const err = error as NodeJS.ErrnoException & { stdout?: string; stderr?: string };
 		const details = [err.stderr, err.stdout].filter(Boolean).join("\n").trim();
 		throw new Error(details || `Failed to compile ${label}`);
 	}
 
 	return binaryPath;
+}
+
+export async function ensureKeystrokeTapBinary(): Promise<string> {
+	if (app.isPackaged) {
+		const packagedPath = getKeystrokeTapSourcePath();
+		try {
+			await fs.access(packagedPath);
+			return packagedPath;
+		} catch {
+			throw new Error(
+				`Keystroke tap helper is missing from this app build (${packagedPath}). Reinstall or update the app.`,
+			);
+		}
+	}
+
+	const sourcePath = getKeystrokeTapSourcePath();
+	const binaryPath = getKeystrokeTapBinaryPath();
+	await fs.mkdir(path.dirname(binaryPath), { recursive: true });
+
+	const [sourceStat, binaryStat] = await Promise.all([
+		fs.stat(sourcePath),
+		fs.stat(binaryPath).catch(() => null),
+	]);
+	if (binaryStat && binaryStat.mtimeMs >= sourceStat.mtimeMs) {
+		return binaryPath;
+	}
+
+	const includeCandidates = [
+		path.join(os.homedir(), ".nvm", "versions", "node", `v${process.versions.node}`, "include", "node"),
+		"/usr/local/include/node",
+		path.join(os.homedir(), ".nvm", "versions", "node", "v24.4.0", "include", "node"),
+	];
+	let includeDir: string | null = null;
+	for (const candidate of includeCandidates) {
+		try {
+			await fs.access(path.join(candidate, "node_api.h"));
+			includeDir = candidate;
+			break;
+		} catch {
+			// try next
+		}
+	}
+	if (!includeDir) {
+		throw new Error("node_api.h not found; cannot compile in-process keystroke tap");
+	}
+
+	try {
+		await execFileAsync(
+			"clang",
+			[
+				"-bundle",
+				"-undefined",
+				"dynamic_lookup",
+				"-Os",
+				`-I${includeDir}`,
+				sourcePath,
+				"-framework",
+				"ApplicationServices",
+				"-o",
+				binaryPath,
+			],
+			{
+				encoding: "utf8",
+				timeout: 60000,
+			},
+		);
+		await fs.chmod(binaryPath, 0o755);
+		return binaryPath;
+	} catch (error) {
+		const err = error as NodeJS.ErrnoException & { stdout?: string; stderr?: string };
+		const details = [err.stderr, err.stdout].filter(Boolean).join("\n").trim();
+		throw new Error(details || "Failed to compile native keystroke tap helper");
+	}
 }
 
 export async function ensureNativeCaptureHelperBinary(): Promise<string> {
