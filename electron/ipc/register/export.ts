@@ -5,6 +5,7 @@ import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import type { SaveDialogOptions } from "electron";
 import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { getNativeDialogCopy } from "../../nativeDialogLocale";
 import {
 	closeExportStream,
 	isOwnedExportPath,
@@ -863,12 +864,13 @@ export function registerExportHandlers() {
 
 				// Determine file type from extension
 				const isGif = fileName.toLowerCase().endsWith(".gif");
+				const copy = getNativeDialogCopy();
 				const filters = isGif
-					? [{ name: "GIF Image", extensions: ["gif"] }]
-					: [{ name: "MP4 Video", extensions: ["mp4"] }];
+					? [{ name: copy.gifFileFilter, extensions: ["gif"] }]
+					: [{ name: copy.mp4FileFilter, extensions: ["mp4"] }];
 				const parentWindow = BrowserWindow.fromWebContents(event.sender);
 				const saveDialogOptions: SaveDialogOptions = {
-					title: isGif ? "Save Exported GIF" : "Save Exported Video",
+					title: isGif ? copy.saveGifTitle : copy.saveVideoTitle,
 					defaultPath: path.join(app.getPath("downloads"), fileName),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],
@@ -1018,12 +1020,13 @@ export function registerExportHandlers() {
 				}
 
 				const isGif = fileName.toLowerCase().endsWith(".gif");
+				const copy = getNativeDialogCopy();
 				const filters = isGif
-					? [{ name: "GIF Image", extensions: ["gif"] }]
-					: [{ name: "MP4 Video", extensions: ["mp4"] }];
+					? [{ name: copy.gifFileFilter, extensions: ["gif"] }]
+					: [{ name: copy.mp4FileFilter, extensions: ["mp4"] }];
 				const parentWindow = BrowserWindow.fromWebContents(event.sender);
 				const saveDialogOptions: SaveDialogOptions = {
-					title: isGif ? "Save Exported GIF" : "Save Exported Video",
+					title: isGif ? copy.saveGifTitle : copy.saveVideoTitle,
 					defaultPath: path.join(app.getPath("downloads"), fileName),
 					filters,
 					properties: ["createDirectory", "showOverwriteConfirmation"],

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useScopedT } from "@/contexts/I18nContext";
 import { toFileUrl } from "./projectPersistence";
 
 export type ProjectLibraryEntry = {
@@ -32,6 +33,7 @@ export default function ProjectBrowserDialog({
 	onPanelHeightChange,
 	renderMode = "floating",
 }: ProjectBrowserDialogProps) {
+	const t = useScopedT("editor");
 	const panelRef = useRef<HTMLDivElement | null>(null);
 	const [position, setPosition] = useState({ top: 72, left: 16, maxHeight: 360 });
 	const visibleEntries = useMemo(() => entries.slice(0, 24), [entries]);
@@ -173,12 +175,12 @@ export default function ProjectBrowserDialog({
 			<div
 				ref={panelRef}
 				role="dialog"
-				aria-label="Projects"
+				aria-label={t("projectBrowser.title", "Projects")}
 				className="pointer-events-auto mb-1.5 w-[300px] max-h-[400px] overflow-hidden rounded-[14px] border border-foreground/[0.07] bg-editor-panel/[0.96] text-foreground shadow-[0_12px_32px_rgba(0,0,0,0.22),0_2px_10px_rgba(0,0,0,0.1)] animate-in fade-in-0 duration-150"
 			>
 				<div className="flex items-center justify-between gap-2 border-b border-foreground/10 px-3 py-2.5">
 					<div className="text-sm font-medium tracking-tight text-foreground">
-						Projects
+						{t("projectBrowser.title", "Projects")}
 					</div>
 					{onImportFile ? (
 						<button
@@ -186,7 +188,7 @@ export default function ProjectBrowserDialog({
 							onClick={onImportFile}
 							className="rounded-md px-2 py-1 text-xs font-medium text-foreground/70 transition hover:bg-foreground/10 hover:text-foreground"
 						>
-							Import
+							{t("projectBrowser.import", "Import")}
 						</button>
 					) : null}
 				</div>
@@ -214,13 +216,16 @@ export default function ProjectBrowserDialog({
 												/>
 											) : (
 												<div className="flex h-full w-full items-center justify-center bg-[linear-gradient(180deg,_rgba(37,99,235,0.22),_rgba(13,17,23,0.92))] text-[10px] font-medium text-white/60">
-													No preview yet
+													{t(
+														"projectBrowser.noPreview",
+														"No preview yet",
+													)}
 												</div>
 											)}
 											{entry.isCurrent ? (
 												<div className="absolute right-1.5 top-1.5">
 													<span className="rounded-[5px] bg-[#2563EB] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_20px_rgba(37,99,235,0.28)]">
-														Current
+														{t("projectBrowser.current", "Current")}
 													</span>
 												</div>
 											) : null}
@@ -237,7 +242,7 @@ export default function ProjectBrowserDialog({
 					) : (
 						<div className="flex min-h-[140px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-foreground/10 bg-editor-bg px-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
 							<div className="text-sm font-semibold text-foreground">
-								No saved projects yet
+								{t("projectBrowser.empty", "No saved projects yet")}
 							</div>
 						</div>
 					)}
@@ -251,13 +256,13 @@ export default function ProjectBrowserDialog({
 			<div
 				ref={panelRef}
 				role="dialog"
-				aria-label="Projects"
+				aria-label={t("projectBrowser.title", "Projects")}
 				style={{ top: `${position.top}px`, left: `${position.left}px` }}
 				className="pointer-events-auto fixed w-[min(280px,calc(100vw-24px))] overflow-hidden rounded-2xl border border-foreground/10 bg-editor-surface text-foreground shadow-2xl animate-in fade-in-0 duration-150"
 			>
 				<div className="flex items-center justify-between gap-2 border-b border-foreground/10 px-3 py-2.5">
 					<div className="text-sm font-medium tracking-tight text-foreground">
-						Projects
+						{t("projectBrowser.title", "Projects")}
 					</div>
 					{onImportFile ? (
 						<button
@@ -265,7 +270,7 @@ export default function ProjectBrowserDialog({
 							onClick={onImportFile}
 							className="rounded-md px-2 py-1 text-xs font-medium text-foreground/70 transition hover:bg-foreground/10 hover:text-foreground"
 						>
-							Import
+							{t("projectBrowser.import", "Import")}
 						</button>
 					) : null}
 				</div>
@@ -296,13 +301,16 @@ export default function ProjectBrowserDialog({
 												/>
 											) : (
 												<div className="flex h-full w-full items-center justify-center bg-[linear-gradient(180deg,_rgba(37,99,235,0.22),_rgba(13,17,23,0.92))] text-[10px] font-medium text-white/60">
-													No preview yet
+													{t(
+														"projectBrowser.noPreview",
+														"No preview yet",
+													)}
 												</div>
 											)}
 											{entry.isCurrent ? (
 												<div className="absolute right-1.5 top-1.5">
 													<span className="rounded-[5px] bg-[#2563EB] px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_20px_rgba(37,99,235,0.28)]">
-														Current
+														{t("projectBrowser.current", "Current")}
 													</span>
 												</div>
 											) : null}
@@ -319,7 +327,7 @@ export default function ProjectBrowserDialog({
 					) : (
 						<div className="flex min-h-[140px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-foreground/10 bg-editor-bg px-4 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
 							<div className="text-sm font-semibold text-foreground">
-								No saved projects yet
+								{t("projectBrowser.empty", "No saved projects yet")}
 							</div>
 						</div>
 					)}

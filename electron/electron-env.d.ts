@@ -218,6 +218,7 @@ interface RendererExportHardwareInfo {
 
 interface Window {
 	electronAPI: {
+		setAppLocale: (locale: string) => void;
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
 		hudOverlaySetSourceSelectionActive: (active: boolean) => void;
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;

@@ -2,6 +2,7 @@
 	"zoom": {
 		"cannotPlace": "Não é possível inserir zoom aqui",
 		"existsOrNoSpace": "Já existe zoom nesse local ou não há espaço suficiente.",
+		"suggestUnavailable": "As sugestões de zoom não estão disponíveis enquanto o loop do cursor estiver ativado.",
 		"suggestHandlerUnavailable": "Manipulador de sugestão de zoom indisponível",
 		"noTelemetry": "Nenhuma telemetria de cursor disponível",
 		"recordFirst": "Grave uma captura de tela primeiro para gerar sugestões baseadas no cursor.",
@@ -33,9 +34,40 @@
 		"addAnnotation": "Adicionar anotação (A)"
 	},
 	"audio": {
-		"label": "Áudio"
+		"label": "Áudio",
+		"cannotRead": "Could not read audio file",
+		"cannotReadDescription": "The selected file may be corrupted or in an unsupported format.",
+		"cannotPlace": "Cannot place audio here",
+		"noRemainingSpace": "There is no remaining space at the current playhead position.",
+		"occupied": "Audio region already exists at this location or not enough space available."
+	},
+	"caption": {
+		"cannotPlace": "Cannot place caption here",
+		"exists": "A caption already exists at this position."
 	},
 	"addSpeed": "Adicionar velocidade (S)",
 	"resizeLeft": "Redimensionar para a esquerda",
-	"resizeRight": "Redimensionar para a direita"
+	"resizeRight": "Redimensionar para a direita",
+	"empty": {
+		"noVideo": "No Video Loaded",
+		"dragDrop": "Drag and drop a video to start editing"
+	},
+	"toolbar": {
+		"custom": "Custom",
+		"aspectWidth": "Custom aspect width",
+		"aspectHeight": "Custom aspect height",
+		"aspectRatioNative": "Native",
+		"set": "Set",
+		"sideScroll": "Side Scroll",
+		"pan": "Pan",
+		"zoom": "Zoom"
+	},
+	"item": {
+		"trim": "Trim",
+		"clip": "Clip",
+		"speed": "Speed",
+		"manual": "Manual",
+		"auto": "Auto",
+		"loading": "Loading..."
+	}
 }

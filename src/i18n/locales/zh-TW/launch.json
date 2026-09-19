@@ -23,6 +23,9 @@
 		"windows": "視窗",
 		"screen": "螢幕",
 		"window": "視窗",
+		"folder": "資料夾",
+		"display": "螢幕 {{index}}",
+		"primaryDisplay": "螢幕 {{index}}（主螢幕）",
 		"noSourcesFound": "找不到可錄製的來源",
 		"microphone": "麥克風",
 		"turnOffMicrophone": "關閉麥克風",
@@ -53,7 +56,11 @@
 			"upToDateTitle": "Recordly {{version}} 已是最新版本。",
 			"availableTitle": "Recordly {{version}} 已推出新版本。",
 			"availableGenericTitle": "有可用更新。"
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "正在載入來源...",
@@ -90,6 +97,7 @@
 		"notNow": "暫不",
 		"updateNow": "立即更新",
 		"restartToUpdate": "重新啟動以更新",
-		"tryAgain": "重試"
+		"tryAgain": "重試",
+		"ariaLabel": "Recordly update"
 	}
 }

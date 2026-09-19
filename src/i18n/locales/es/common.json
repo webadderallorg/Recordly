@@ -4,7 +4,8 @@
 		"editorTitle": "Editor de Recordly",
 		"subtitle": "Grabación de pantalla y edición",
 		"language": "Idioma",
-		"manageRecordings": "Abrir carpeta de grabaciones"
+		"manageRecordings": "Abrir carpeta de grabaciones",
+		"discord": "Join Discord"
 	},
 	"actions": {
 		"cancel": "Cancelar",
@@ -22,5 +23,18 @@
 		"invalidFileType": "Tipo de archivo inválido",
 		"failedToUploadImage": "Error al subir la imagen",
 		"fileReadError": "Hubo un error al leer el archivo."
-	}
+	},
+	"loading": "Refreshing...",
+	"light": "Light",
+	"dark": "Dark",
+	"system": "System",
+	"announcements": {
+		"carousel": "Announcements",
+		"dismiss": "Dismiss",
+		"next": "Next announcement",
+		"openFailed": "Failed to open link.",
+		"previous": "Previous announcement",
+		"show": "Show announcement"
+	},
+	"close": "Close"
 }

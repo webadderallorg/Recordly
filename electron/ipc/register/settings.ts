@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { app, ipcMain } from "electron";
 import { hasAppSetting, readAppSettingsStore, writeAppSettingsStore } from "../../appSettingsStore";
 import { hideCursor } from "../../cursorHider";
+import { setNativeDialogLocale } from "../../nativeDialogLocale";
 import { closeCountdownWindow, createCountdownWindow, getCountdownWindow } from "../../windows";
 import { COUNTDOWN_SETTINGS_FILE, RECORDINGS_SETTINGS_FILE, SHORTCUTS_FILE } from "../constants";
 import {
@@ -43,6 +44,12 @@ function getBrowserMicrophoneProfileFromEnv() {
 }
 
 export function registerSettingsHandlers() {
+	ipcMain.on("set-app-locale", (_event, locale: unknown) => {
+		if (typeof locale === "string") {
+			setNativeDialogLocale(locale);
+		}
+	});
+
 	ipcMain.handle("app:getVersion", () => {
 		return app.getVersion();
 	});

@@ -40,7 +40,9 @@
 		"addSuccess": "글꼴 \"{{name}}\"을(를) 추가했습니다",
 		"addFailed": "글꼴 추가에 실패했습니다",
 		"loadTimeout": "글꼴을 불러오는 데 너무 오래 걸립니다. URL을 확인한 뒤 다시 시도해 주세요.",
-		"loadFailed": "글꼴을 불러올 수 없습니다. Google Fonts URL이 올바른지 확인해 주세요."
+		"loadFailed": "글꼴을 불러올 수 없습니다. Google Fonts URL이 올바른지 확인해 주세요.",
+		"alreadyAdded": "This font has already been added.",
+		"cancel": "Cancel"
 	},
 	"shortcutsConfig": {
 		"title": "키보드 단축키",

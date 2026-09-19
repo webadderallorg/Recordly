@@ -1,5 +1,6 @@
 import { type RefObject, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
+import type { useI18n } from "@/contexts/I18nContext";
 import { createProjectData, type EditorProjectData } from "../projectPersistence";
 import type { useProjectState } from "../state/useProjectState";
 import { cloneStructured, getErrorMessage } from "../videoEditorUtils";
@@ -14,6 +15,7 @@ type SaveProjectOptions = {
 };
 
 type UseProjectSaveActionsInput = {
+	t: ReturnType<typeof useI18n>["t"];
 	project: ReturnType<typeof useProjectState>;
 	currentSourcePath: string | null;
 	currentProjectSnapshot: EditorProjectData | null;
@@ -30,6 +32,7 @@ type UseProjectSaveActionsInput = {
 };
 
 export function useProjectSaveActions({
+	t,
 	project,
 	currentSourcePath,
 	currentProjectSnapshot,
@@ -76,7 +79,8 @@ export function useProjectSaveActions({
 			clearPendingAutosave();
 			return queueSave(async () => {
 				if (!currentSourcePath) {
-					if (!options?.silent) toast.error("No video loaded");
+					if (!options?.silent)
+						toast.error(t("editor.project.noVideoLoaded", "No video loaded"));
 					return false;
 				}
 
@@ -121,12 +125,16 @@ export function useProjectSaveActions({
 						thumbnail,
 					);
 					if (result.canceled) {
-						if (!options?.silent) toast.info("Project save canceled");
+						if (!options?.silent)
+							toast.info(t("editor.project.saveCanceled", "Project save canceled"));
 						return false;
 					}
 					if (!result.success) {
 						if (!options?.silent)
-							toast.error(result.message || "Failed to save project");
+							toast.error(
+								result.message ||
+									t("editor.project.saveFailed", "Failed to save project"),
+							);
 						return false;
 					}
 
@@ -141,7 +149,12 @@ export function useProjectSaveActions({
 						),
 					);
 					if (refreshLibrary) await refreshProjectLibrary();
-					if (!options?.silent) toast.success(`Project saved to ${result.path}`);
+					if (!options?.silent)
+						toast.success(
+							t("editor.project.savedTo", "Project saved to {{path}}", {
+								path: result.path ?? "",
+							}),
+						);
 					return true;
 				} finally {
 					if (remount) remountPreview();
@@ -149,6 +162,7 @@ export function useProjectSaveActions({
 			});
 		},
 		[
+			t,
 			clearPendingAutosave,
 			queueSave,
 			currentSourcePath,
@@ -195,11 +209,11 @@ export function useProjectSaveActions({
 		async (name: string, mode: "rename" | "copy" = "rename") => {
 			const trimmedName = name.trim();
 			if (!trimmedName) {
-				toast.error("Project name is required");
+				toast.error(t("editor.project.nameRequired", "Project name is required"));
 				return false;
 			}
 			if (!currentSourcePath) {
-				toast.error("No video loaded");
+				toast.error(t("editor.project.noVideoLoaded", "No video loaded"));
 				return false;
 			}
 			try {
@@ -218,11 +232,13 @@ export function useProjectSaveActions({
 					mode,
 				);
 				if (result.canceled) {
-					toast.info("Project save canceled");
+					toast.info(t("editor.project.saveCanceled", "Project save canceled"));
 					return false;
 				}
 				if (!result.success) {
-					toast.error(result.message || "Failed to save project");
+					toast.error(
+						result.message || t("editor.project.saveFailed", "Failed to save project"),
+					);
 					return false;
 				}
 				if (result.path) setCurrentProjectPath(result.path);
@@ -236,13 +252,20 @@ export function useProjectSaveActions({
 					),
 				);
 				await refreshProjectLibrary();
-				toast.success(result.path ? `Project saved to ${result.path}` : "Project saved");
+				toast.success(
+					result.path
+						? t("editor.project.savedTo", "Project saved to {{path}}", {
+								path: result.path,
+							})
+						: t("editor.project.saved", "Project saved"),
+				);
 				return true;
 			} finally {
 				remountPreview();
 			}
 		},
 		[
+			t,
 			currentSourcePath,
 			currentProjectSnapshot,
 			currentPersistedEditorState,
@@ -260,7 +283,7 @@ export function useProjectSaveActions({
 			event?.preventDefault();
 			const name = projectSaveDialogDraft.trim();
 			if (!name) {
-				toast.error("Project name is required");
+				toast.error(t("editor.project.nameRequired", "Project name is required"));
 				projectSaveDialogInputRef.current?.focus();
 				return;
 			}
@@ -280,6 +303,7 @@ export function useProjectSaveActions({
 			}
 		},
 		[
+			t,
 			projectSaveDialogDraft,
 			setIsSavingProjectDialog,
 			projectSaveDialogInputRef,

@@ -23,6 +23,9 @@
 		"windows": "Janelas",
 		"screen": "Tela",
 		"window": "Janela",
+		"folder": "Pasta",
+		"display": "Monitor {{index}}",
+		"primaryDisplay": "Monitor {{index}} (principal)",
 		"noSourcesFound": "Nenhuma fonte encontrada",
 		"microphone": "Microfone",
 		"turnOffMicrophone": "Desligar microfone",
@@ -53,7 +56,11 @@
 			"upToDateTitle": "Recordly {{version}} está atualizado.",
 			"availableTitle": "Recordly {{version}} está disponível.",
 			"availableGenericTitle": "Há uma atualização disponível."
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "Carregando fontes...",
@@ -90,6 +97,7 @@
 		"notNow": "Agora não",
 		"updateNow": "Atualizar agora",
 		"restartToUpdate": "Reiniciar para atualizar",
-		"tryAgain": "Tentar novamente"
+		"tryAgain": "Tentar novamente",
+		"ariaLabel": "Recordly update"
 	}
 }

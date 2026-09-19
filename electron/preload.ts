@@ -184,6 +184,9 @@ function settleNativeVideoExportPendingRequests(
 }
 
 contextBridge.exposeInMainWorld("electronAPI", {
+	setAppLocale: (locale: string) => {
+		ipcRenderer.send("set-app-locale", locale);
+	},
 	hudOverlaySetIgnoreMouse: (ignore: boolean) => {
 		ipcRenderer.send("hud-overlay-set-ignore-mouse", ignore);
 	},

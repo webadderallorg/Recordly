@@ -2,6 +2,7 @@
 	"zoom": {
 		"cannotPlace": "無法在此處新增縮放",
 		"existsOrNoSpace": "此位置已存在縮放，或可用空間不足。",
+		"suggestUnavailable": "啟用游標循環時無法使用縮放建議。",
 		"suggestHandlerUnavailable": "無法使用縮放建議功能",
 		"noTelemetry": "沒有可用的游標追蹤資料",
 		"recordFirst": "請先錄製螢幕影片，以產生基於游標的建議。",
@@ -33,9 +34,40 @@
 		"addAnnotation": "新增註解（A）"
 	},
 	"audio": {
-		"label": "音訊"
+		"label": "音訊",
+		"cannotRead": "Could not read audio file",
+		"cannotReadDescription": "The selected file may be corrupted or in an unsupported format.",
+		"cannotPlace": "Cannot place audio here",
+		"noRemainingSpace": "There is no remaining space at the current playhead position.",
+		"occupied": "Audio region already exists at this location or not enough space available."
+	},
+	"caption": {
+		"cannotPlace": "Cannot place caption here",
+		"exists": "A caption already exists at this position."
 	},
 	"addSpeed": "新增速度（S）",
 	"resizeLeft": "向左調整大小",
-	"resizeRight": "向右調整大小"
+	"resizeRight": "向右調整大小",
+	"empty": {
+		"noVideo": "No Video Loaded",
+		"dragDrop": "Drag and drop a video to start editing"
+	},
+	"toolbar": {
+		"custom": "Custom",
+		"aspectWidth": "Custom aspect width",
+		"aspectHeight": "Custom aspect height",
+		"aspectRatioNative": "Native",
+		"set": "Set",
+		"sideScroll": "Side Scroll",
+		"pan": "Pan",
+		"zoom": "Zoom"
+	},
+	"item": {
+		"trim": "Trim",
+		"clip": "Clip",
+		"speed": "Speed",
+		"manual": "Manual",
+		"auto": "Auto",
+		"loading": "Loading..."
+	}
 }

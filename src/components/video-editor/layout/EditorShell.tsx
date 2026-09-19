@@ -120,7 +120,9 @@ export function EditorShell(props: Props) {
 	if (project.loading)
 		return (
 			<div className="flex h-screen items-center justify-center bg-background">
-				<div className="text-foreground">Loading video...</div>
+				<div className="text-foreground">
+					{t("editor.loadingVideo", "Loading video...")}
+				</div>
 				{editorDialogs}
 				<Toaster className="pointer-events-auto" />
 			</div>
@@ -136,7 +138,7 @@ export function EditorShell(props: Props) {
 						onClick={openActions.handleOpenProjectBrowser}
 						className="rounded-[5px] bg-neutral-800 px-3 py-1.5 text-sm font-semibold text-white shadow-[0_14px_32px_rgba(0,0,0,0.18)] transition-colors hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"
 					>
-						Open Projects
+						{t("editor.openProjects", "Open Projects")}
 					</button>
 				</div>
 				{editorDialogs}

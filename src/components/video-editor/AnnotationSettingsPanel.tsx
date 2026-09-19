@@ -247,7 +247,10 @@ export function AnnotationSettingsPanel({
 												{customFonts.length > 0 && (
 													<>
 														<div className="px-2 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-															Custom Fonts
+															{t(
+																"annotations.customFonts",
+																"Custom Fonts",
+															)}
 														</div>
 														{customFonts.map((font) => (
 															<SelectItem
@@ -527,7 +530,10 @@ export function AnnotationSettingsPanel({
 								<div className="rounded-lg border border-foreground/10 overflow-hidden bg-foreground/5 p-2">
 									<img
 										src={annotation.content}
-										alt="Uploaded annotation"
+										alt={t(
+											"annotations.uploadedImageAlt",
+											"Uploaded annotation",
+										)}
 										className="w-full h-auto rounded-md"
 									/>
 								</div>
@@ -713,7 +719,7 @@ export function AnnotationSettingsPanel({
 													? "border-[#2563EB] scale-110"
 													: "border-transparent hover:border-foreground/20",
 											)}
-											title="Black"
+											title={t("annotations.colorBlack", "Black")}
 										/>
 										<button
 											onClick={() => onBlurColorChange?.("#FFFFFF")}
@@ -723,7 +729,7 @@ export function AnnotationSettingsPanel({
 													? "border-[#2563EB] scale-110"
 													: "border-transparent hover:border-foreground/20",
 											)}
-											title="White"
+											title={t("annotations.colorWhite", "White")}
 										/>
 
 										<Popover>
@@ -753,7 +759,10 @@ export function AnnotationSettingsPanel({
 																? annotation.blurColor
 																: "transparent",
 													}}
-													title="Custom Color"
+													title={t(
+														"annotations.colorCustom",
+														"Custom Color",
+													)}
 												>
 													{(!annotation.blurColor ||
 														[

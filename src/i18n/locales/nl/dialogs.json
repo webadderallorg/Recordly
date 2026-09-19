@@ -40,7 +40,9 @@
 		"addSuccess": "Lettertype \"{{name}}\" succesvol toegevoegd",
 		"addFailed": "Lettertype toevoegen mislukt",
 		"loadTimeout": "Lettertype duurde te lang om te laden. Controleer de URL en probeer het opnieuw.",
-		"loadFailed": "Het lettertype kon niet worden geladen. Controleer of de Google Fonts-URL correct is."
+		"loadFailed": "Het lettertype kon niet worden geladen. Controleer of de Google Fonts-URL correct is.",
+		"alreadyAdded": "This font has already been added.",
+		"cancel": "Cancel"
 	},
 	"shortcutsConfig": {
 		"title": "Sneltoetsen",

@@ -5,6 +5,7 @@ import { app, BrowserWindow, dialog } from "electron";
 import { autoUpdater } from "electron-updater";
 import { USER_DATA_PATH } from "./appPaths";
 import { readAppSetting, writeAppSetting } from "./appSettingsStore";
+import { formatNativeDialogText, getNativeDialogCopy } from "./nativeDialogLocale";
 import { EXPERIMENTAL_UPDATE_DESCRIPTION, getUpdateChannelConfiguration } from "./updateChannel";
 
 const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
@@ -586,16 +587,22 @@ async function showAvailableUpdateDialog(
 ) {
 	const isPreview = Boolean(options?.isPreview);
 	const isExperimental = options?.isExperimental ?? getExperimentalUpdatesEnabled();
+	const copy = getNativeDialogCopy();
 	const result = await showMessageBox(getMainWindow, {
 		type: "info",
-		title: isExperimental ? "Experimental Update Available" : "Update Available",
-		message: `Recordly ${version} is available${isExperimental ? " on the experimental channel" : ""}.`,
+		title: isExperimental ? copy.experimentalUpdateAvailableTitle : copy.updateAvailableTitle,
+		message: formatNativeDialogText(
+			isExperimental ? copy.experimentalUpdateAvailableMessage : copy.updateAvailableMessage,
+			{ version },
+		),
 		detail: isPreview
-			? `${isExperimental ? EXPERIMENTAL_UPDATE_DESCRIPTION : "This is a development preview of the standard update flow."} No real update will be installed.`
+			? isExperimental
+				? copy.experimentalUpdatePreviewDetail
+				: copy.updateAvailablePreviewDetail
 			: isExperimental
-				? EXPERIMENTAL_UPDATE_DESCRIPTION
-				: "Install and restart now, or remind me later.",
-		buttons: ["Install & Restart", "Later"],
+				? copy.experimentalUpdateDetail
+				: copy.updateAvailableDetail,
+		buttons: [copy.installAndRestart, copy.later],
 		defaultId: 0,
 		cancelId: 1,
 		noLink: true,
@@ -603,11 +610,13 @@ async function showAvailableUpdateDialog(
 
 	if (result.response === 0) {
 		if (isPreview) {
+			const previewCopy = getNativeDialogCopy();
 			await showMessageBox(getMainWindow, {
 				type: "info",
-				title: "Preview Only",
-				message: "No real update was installed.",
-				detail: "This was only a manual development preview of the update prompt.",
+				title: previewCopy.previewOnlyTitle,
+				message: previewCopy.previewOnlyMessage,
+				detail: previewCopy.previewOnlyDetail,
+				buttons: [previewCopy.okButton],
 			});
 			return;
 		}
@@ -629,16 +638,15 @@ async function showDownloadedUpdateDialog(
 	options?: { isPreview?: boolean },
 ) {
 	const isPreview = Boolean(options?.isPreview);
+	const copy = getNativeDialogCopy();
 	const result = await showMessageBox(getMainWindow, {
 		type: "info",
-		title: "Update Ready",
+		title: copy.updateReadyTitle,
 		message: isPreview
-			? `Recordly ${version} is ready to install.`
-			: `Recordly ${version} has been downloaded.`,
-		detail: isPreview
-			? "Development preview of the native update prompt. No real update will be installed."
-			: "Install and restart now, or remind me later.",
-		buttons: ["Install & Restart", "Later"],
+			? formatNativeDialogText(copy.updateReadyPreviewMessage, { version })
+			: formatNativeDialogText(copy.updateReadyMessage, { version }),
+		detail: isPreview ? copy.updateReadyPreviewDetail : copy.updateReadyDetail,
+		buttons: [copy.installAndRestart, copy.later],
 		defaultId: 0,
 		cancelId: 1,
 		noLink: true,
@@ -646,11 +654,13 @@ async function showDownloadedUpdateDialog(
 
 	if (result.response === 0) {
 		if (isPreview) {
+			const previewCopy = getNativeDialogCopy();
 			await showMessageBox(getMainWindow, {
 				type: "info",
-				title: "Preview Only",
-				message: "No real update was installed.",
-				detail: "This was only a manual development preview of the update prompt.",
+				title: previewCopy.previewOnlyTitle,
+				message: previewCopy.previewOnlyMessage,
+				detail: previewCopy.previewOnlyDetail,
+				buttons: [previewCopy.okButton],
 			});
 			return;
 		}
@@ -683,12 +693,13 @@ async function showUpdateErrorDialog(
 	version: string,
 	error: unknown,
 ) {
+	const copy = getNativeDialogCopy();
 	await showMessageBox(getMainWindow, {
 		type: "error",
-		title: "Update Failed",
-		message: `Recordly ${version} could not be downloaded.`,
+		title: copy.updateFailedTitle,
+		message: formatNativeDialogText(copy.updateFailedMessage, { version }),
 		detail: String(error),
-		buttons: ["OK"],
+		buttons: [copy.okButton],
 		defaultId: 0,
 		noLink: true,
 	});
@@ -703,13 +714,15 @@ export async function checkForAppUpdates(
 			`Skipped update check because auto-updates are unavailable. packaged=${app.isPackaged} mas=${process.mas ? "yes" : "no"} disabled=${AUTO_UPDATES_DISABLED ? "yes" : "no"}`,
 		);
 		if (options?.manual) {
+			const copy = getNativeDialogCopy();
 			await showMessageBox(getMainWindow, {
 				type: "info",
-				title: "Updates Not Enabled",
-				message: "Auto-updates are only available in packaged releases.",
+				title: copy.updatesNotEnabledTitle,
+				message: copy.updatesNotEnabledMessage,
 				detail: AUTO_UPDATES_DISABLED
-					? "This build disabled auto-updates through RECORDLY_DISABLE_AUTO_UPDATES=1."
-					: "Development builds do not ship the packaged update metadata required by electron-updater.",
+					? copy.updatesDisabledDetail
+					: copy.developmentBuildDetail,
+				buttons: [copy.okButton],
 			});
 		}
 		return;

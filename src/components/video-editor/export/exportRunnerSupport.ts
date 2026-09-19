@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import { useCallback } from "react";
 import { toast } from "sonner";
+import type { useI18n } from "@/contexts/I18nContext";
 import type { SupportedMp4Dimensions } from "@/lib/exporter";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { getSmokeExportConfig } from "../smokeExportConfig";
@@ -14,6 +15,7 @@ import type { useExportSession } from "./useExportSession";
 import type { useExportSettings } from "./useExportSettings";
 
 export type ExportRunnerInput = {
+	t: ReturnType<typeof useI18n>["t"];
 	videoPath: string | null;
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
 	isPlaying: boolean;
@@ -44,26 +46,45 @@ export function showExportErrorToast(message: string) {
 	});
 }
 
-export function useExportSuccessToast() {
-	return useCallback((filePath: string) => {
-		toast.success(`Exported successfully to ${filePath}`, {
-			action: {
-				label: "Show in Folder",
-				onClick: async () => {
-					try {
-						const result = await window.electronAPI.revealInFolder(filePath);
-						if (!result.success) {
-							toast.error(
-								result.error ||
-									result.message ||
-									"Failed to reveal item in folder.",
-							);
-						}
-					} catch (error) {
-						toast.error(`Error revealing in folder: ${String(error)}`);
-					}
+export function useExportSuccessToast(t: ReturnType<typeof useI18n>["t"]) {
+	return useCallback(
+		(filePath: string) => {
+			toast.success(
+				t("editor.exportStatus.successToPath", "Exported successfully to {{path}}", {
+					path: filePath,
+				}),
+				{
+					action: {
+						label: t("editor.exportStatus.showInFolder", "Show in Folder"),
+						onClick: async () => {
+							try {
+								const result = await window.electronAPI.revealInFolder(filePath);
+								if (!result.success) {
+									toast.error(
+										result.error ||
+											result.message ||
+											t(
+												"editor.exportStatus.revealFailed",
+												"Failed to reveal item in folder.",
+											),
+									);
+								}
+							} catch (error) {
+								toast.error(
+									t(
+										"editor.exportStatus.revealError",
+										"Error revealing in folder: {{error}}",
+										{
+											error: String(error),
+										},
+									),
+								);
+							}
+						},
+					},
 				},
-			},
-		});
-	}, []);
+			);
+		},
+		[t],
+	);
 }

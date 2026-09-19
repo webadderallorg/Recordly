@@ -1,6 +1,7 @@
 {
 	"actions": {
 		"addZoom": "Add Zoom",
+		"splitClip": "Split Clip",
 		"addTrim": "Add Trim",
 		"addSpeed": "Add Speed",
 		"addAnnotation": "Add Annotation",

@@ -1,5 +1,6 @@
 import { type RefObject, useCallback } from "react";
 import { toast } from "sonner";
+import type { useI18n } from "@/contexts/I18nContext";
 import type { ExportSettings } from "@/lib/exporter";
 import { resolveExportStartSettings } from "../exportStartSettings";
 import type { VideoPlaybackRef } from "../VideoPlayback";
@@ -10,6 +11,7 @@ type ExportSession = ReturnType<typeof useExportSession>;
 type ExportSettingsState = ReturnType<typeof useExportSettings>;
 
 type UseExportDialogActionsInput = {
+	t: ReturnType<typeof useI18n>["t"];
 	videoPath: string | null;
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
 	hasCaptionsForSidecar: boolean;
@@ -20,6 +22,7 @@ type UseExportDialogActionsInput = {
 };
 
 export function useExportDialogActions({
+	t,
 	videoPath,
 	videoPlaybackRef,
 	hasCaptionsForSidecar,
@@ -30,34 +33,39 @@ export function useExportDialogActions({
 }: UseExportDialogActionsInput) {
 	const handleOpenExportDropdown = useCallback(() => {
 		if (!videoPath) {
-			toast.error("No video loaded");
+			toast.error(t("editor.exportStatus.noVideoLoaded", "No video loaded"));
 			return;
 		}
 
 		if (session.hasPendingExportSave) {
 			session.setShowExportDropdown(true);
 			session.setExportError(
-				"Save dialog canceled. Click Save Again to save without re-rendering.",
+				t(
+					"editor.exportStatus.saveDialogCanceled",
+					"Save dialog canceled. Click Save Again to save without re-rendering.",
+				),
 			);
 			return;
 		}
 		session.setShowExportDropdown(true);
 		session.setExportProgress(null);
 		session.setExportError(null);
-	}, [videoPath, session]);
+	}, [t, videoPath, session]);
 
 	const handleStartExportFromDropdown = useCallback(() => {
 		const video = videoPlaybackRef.current?.video;
 		if (!videoPath) {
-			toast.error("No video loaded");
+			toast.error(t("editor.exportStatus.noVideoLoaded", "No video loaded"));
 			return;
 		}
 		if (!video) {
-			toast.error("Video not ready");
+			toast.error(t("editor.exportStatus.videoNotReady", "Video not ready"));
 			return;
 		}
 		if (video.videoWidth <= 0 || video.videoHeight <= 0) {
-			toast.error("Video metadata is still loading");
+			toast.error(
+				t("editor.exportStatus.metadataLoading", "Video metadata is still loading"),
+			);
 			return;
 		}
 
@@ -80,7 +88,7 @@ export function useExportDialogActions({
 		session.setExportedFilePath(undefined);
 		session.setShowExportDropdown(true);
 		handleExport(resolvedSettings);
-	}, [videoPath, videoPlaybackRef, hasCaptionsForSidecar, settings, session, handleExport]);
+	}, [t, videoPath, videoPlaybackRef, hasCaptionsForSidecar, settings, session, handleExport]);
 
 	const handleCancelExport = useCallback(() => {
 		if (!session.isExporting) return;
@@ -88,14 +96,14 @@ export function useExportDialogActions({
 		session.exportRunIdRef.current += 1;
 		session.exporterRef.current?.cancel();
 		session.exporterRef.current = null;
-		toast.info("Export canceled");
+		toast.info(t("editor.exportStatus.exportCanceled", "Export canceled"));
 		session.clearPendingExportSave();
 		session.setShowExportDropdown(false);
 		session.setIsExporting(false);
 		session.setExportProgress(null);
 		session.setExportError(null);
 		session.setExportedFilePath(undefined);
-	}, [session]);
+	}, [t, session]);
 
 	const handleExportDropdownClose = useCallback(() => {
 		session.clearPendingExportSave();
@@ -122,13 +130,24 @@ export function useExportDialogActions({
 						pendingSave.fileName,
 						pendingSave.captionSidecar,
 					)
-				: { success: false, message: "No pending export to save" };
+				: {
+						success: false,
+						message: t(
+							"editor.exportStatus.noPendingExport",
+							"No pending export to save",
+						),
+					};
 
 		if (saveResult.canceled) {
 			session.setExportError(
-				"Save dialog canceled. Click Save Again to save without re-rendering.",
+				t(
+					"editor.exportStatus.saveDialogCanceled",
+					"Save dialog canceled. Click Save Again to save without re-rendering.",
+				),
 			);
-			toast.info("Save canceled. You can try again.");
+			toast.info(
+				t("editor.exportStatus.saveCanceledTryAgain", "Save canceled. You can try again."),
+			);
 			return;
 		}
 		if (saveResult.success && saveResult.path) {
@@ -141,22 +160,32 @@ export function useExportDialogActions({
 			return;
 		}
 
-		const errorMessage = saveResult.message || "Failed to save video";
+		const errorMessage =
+			saveResult.message ||
+			t("editor.exportStatus.failedToSaveVideo", "Failed to save video");
 		session.setExportError(errorMessage);
 		toast.error(errorMessage);
-	}, [session, showExportSuccessToast]);
+	}, [t, session, showExportSuccessToast]);
 
 	const revealExportedFile = useCallback(async () => {
 		if (!session.exportedFilePath) return;
 		try {
 			const result = await window.electronAPI.revealInFolder(session.exportedFilePath);
 			if (!result.success) {
-				toast.error(result.error || result.message || "Failed to reveal item in folder.");
+				toast.error(
+					result.error ||
+						result.message ||
+						t("editor.exportStatus.revealFailed", "Failed to reveal item in folder."),
+				);
 			}
 		} catch (error) {
-			toast.error(`Failed to reveal item in folder: ${String(error)}`);
+			toast.error(
+				t("editor.exportStatus.revealError", "Error revealing in folder: {{error}}", {
+					error: String(error),
+				}),
+			);
 		}
-	}, [session.exportedFilePath]);
+	}, [t, session.exportedFilePath]);
 
 	return {
 		handleOpenExportDropdown,

@@ -23,6 +23,9 @@
 		"windows": "창",
 		"screen": "화면",
 		"window": "창",
+		"folder": "폴더",
+		"display": "디스플레이 {{index}}",
+		"primaryDisplay": "디스플레이 {{index}} (주)",
 		"noSourcesFound": "사용 가능한 소스를 찾을 수 없습니다",
 		"microphone": "마이크",
 		"turnOffMicrophone": "마이크 끄기",
@@ -53,7 +56,11 @@
 			"upToDateTitle": "Recordly {{version}}은(는) 최신 버전입니다.",
 			"availableTitle": "Recordly {{version}}을(를) 사용할 수 있습니다.",
 			"availableGenericTitle": "업데이트를 사용할 수 있습니다."
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "소스를 불러오는 중...",
@@ -90,6 +97,7 @@
 		"notNow": "나중에",
 		"updateNow": "지금 업데이트",
 		"restartToUpdate": "다시 시작하여 업데이트",
-		"tryAgain": "다시 시도"
+		"tryAgain": "다시 시도",
+		"ariaLabel": "Recordly update"
 	}
 }

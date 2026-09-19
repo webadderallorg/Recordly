@@ -23,6 +23,9 @@
 		"windows": "Vensters",
 		"screen": "Scherm",
 		"window": "Venster",
+		"folder": "Map",
+		"display": "Beeldscherm {{index}}",
+		"primaryDisplay": "Beeldscherm {{index}} (primair)",
 		"noSourcesFound": "Geen bronnen gevonden",
 		"microphone": "Microfoon",
 		"turnOffMicrophone": "Microfoon uitschakelen",
@@ -53,7 +56,11 @@
 			"upToDateTitle": "Recordly {{version}} is up-to-date.",
 			"availableTitle": "Recordly {{version}} is beschikbaar.",
 			"availableGenericTitle": "Er is een update beschikbaar."
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "Bronnen laden...",
@@ -90,6 +97,7 @@
 		"notNow": "Niet nu",
 		"updateNow": "Nu updaten",
 		"restartToUpdate": "Opnieuw starten om te updaten",
-		"tryAgain": "Opnieuw proberen"
+		"tryAgain": "Opnieuw proberen",
+		"ariaLabel": "Recordly update"
 	}
 }

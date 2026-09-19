@@ -1,17 +1,16 @@
 import {
+	ArrowClockwiseIcon,
+	DesktopIcon,
 	EyeIcon,
 	EyeSlashIcon,
 	FolderOpenIcon,
+	MoonIcon,
+	SunIcon,
 	TranslateIcon,
 	VideoCameraIcon,
-	ArrowClockwiseIcon,
-	SunIcon,
-	MoonIcon,
-	DesktopIcon,
 } from "@phosphor-icons/react";
 import type { ReactElement } from "react";
-import { useI18n } from "@/contexts/I18nContext";
-import { useScopedT } from "@/contexts/I18nContext";
+import { useI18n, useScopedT } from "@/contexts/I18nContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import type { AppLocale } from "@/i18n/config";
 import { SUPPORTED_LOCALES } from "@/i18n/config";
@@ -29,7 +28,7 @@ const LOCALE_LABELS: Record<string, string> = {
 	nl: "Nederlands",
 	ko: "한국어",
 	"pt-BR": "Português",
-	"zh-CN": "簡體中文",
+	"zh-CN": "简体中文",
 	"zh-TW": "繁體中文",
 };
 
@@ -57,7 +56,7 @@ export function MorePopover({
 	appVersion: string | null;
 }) {
 	const t = useScopedT("launch");
-	const { locale, setLocale } = useI18n();
+	const { locale, setLocale, t: tCommon } = useI18n();
 	const { preference, setPreference } = useTheme();
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
 	const open = isOpen(POPOVER_ID);
@@ -135,7 +134,7 @@ export function MorePopover({
 					requestClose(POPOVER_ID);
 				}}
 			>
-				{t("common.light", "Light")}
+				{tCommon("common.light", "Light")}
 			</DropdownItem>
 			<DropdownItem
 				icon={<MoonIcon size={16} />}
@@ -145,7 +144,7 @@ export function MorePopover({
 					requestClose(POPOVER_ID);
 				}}
 			>
-				{t("common.dark", "Dark")}
+				{tCommon("common.dark", "Dark")}
 			</DropdownItem>
 			<DropdownItem
 				icon={<DesktopIcon size={16} />}
@@ -155,7 +154,7 @@ export function MorePopover({
 					requestClose(POPOVER_ID);
 				}}
 			>
-				{t("common.system", "System")}
+				{tCommon("common.system", "System")}
 			</DropdownItem>
 			<div className={styles.ddLabel} style={{ marginTop: 4 }}>
 				{t("recording.language")}

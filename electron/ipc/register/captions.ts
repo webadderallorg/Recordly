@@ -8,6 +8,7 @@ import {
 	sendWhisperModelDownloadProgress,
 } from "../captions/whisper";
 import { LEGACY_PROJECT_FILE_EXTENSIONS, PROJECT_FILE_EXTENSION } from "../constants";
+import { getNativeDialogCopy } from "../../nativeDialogLocale";
 import { hasProjectFileExtension, loadProjectFromPath } from "../project/manager";
 import { setCurrentProjectPath } from "../state";
 import { approveUserPath, getRecordingsDir } from "../utils";
@@ -22,16 +23,17 @@ type OpenVideoFilePickerOptions = {
 export function registerCaptionHandlers() {
 	ipcMain.handle("open-video-file-picker", async (_, options?: OpenVideoFilePickerOptions) => {
 		try {
+			const copy = getNativeDialogCopy();
 			const includeProjects = Boolean(options?.includeProjects);
 			const recordingsDir = await getRecordingsDir();
 			const result = await dialog.showOpenDialog({
-				title: includeProjects ? "Import Media or Recordly Project" : "Select Video File",
+				title: includeProjects ? copy.importMediaOrProjectTitle : copy.selectVideoTitle,
 				defaultPath: recordingsDir,
 				filters: [
 					...(includeProjects
 						? [
 								{
-									name: "Media or Recordly Projects",
+									name: copy.mediaOrProjectFilter,
 									extensions: [
 										...VIDEO_FILE_EXTENSIONS,
 										...PROJECT_FILE_EXTENSIONS,
@@ -39,11 +41,11 @@ export function registerCaptionHandlers() {
 								},
 							]
 						: []),
-					{ name: "Video Files", extensions: VIDEO_FILE_EXTENSIONS },
+					{ name: copy.videoFileFilter, extensions: VIDEO_FILE_EXTENSIONS },
 					...(includeProjects
-						? [{ name: "Recordly Projects", extensions: PROJECT_FILE_EXTENSIONS }]
+						? [{ name: copy.projectFileFilter, extensions: PROJECT_FILE_EXTENSIONS }]
 						: []),
-					{ name: "All Files", extensions: ["*"] },
+					{ name: copy.allFilesFilter, extensions: ["*"] },
 				],
 				properties: ["openFile"],
 			});
@@ -81,14 +83,15 @@ export function registerCaptionHandlers() {
 
 	ipcMain.handle("open-audio-file-picker", async () => {
 		try {
+			const copy = getNativeDialogCopy();
 			const result = await dialog.showOpenDialog({
-				title: "Select Audio File",
+				title: copy.selectAudioTitle,
 				filters: [
 					{
-						name: "Audio Files",
+						name: copy.audioFileFilter,
 						extensions: ["mp3", "wav", "aac", "m4a", "flac", "ogg"],
 					},
-					{ name: "All Files", extensions: ["*"] },
+					{ name: copy.allFilesFilter, extensions: ["*"] },
 				],
 				properties: ["openFile"],
 			});
@@ -114,14 +117,15 @@ export function registerCaptionHandlers() {
 
 	ipcMain.handle("open-whisper-executable-picker", async () => {
 		try {
+			const copy = getNativeDialogCopy();
 			const result = await dialog.showOpenDialog({
-				title: "Select Whisper Executable",
+				title: copy.selectWhisperExecutableTitle,
 				filters: [
 					{
-						name: "Executables",
+						name: copy.executablesFilter,
 						extensions: process.platform === "win32" ? ["exe", "cmd", "bat"] : ["*"],
 					},
-					{ name: "All Files", extensions: ["*"] },
+					{ name: copy.allFilesFilter, extensions: ["*"] },
 				],
 				properties: ["openFile"],
 			});
@@ -140,11 +144,12 @@ export function registerCaptionHandlers() {
 
 	ipcMain.handle("open-whisper-model-picker", async () => {
 		try {
+			const copy = getNativeDialogCopy();
 			const result = await dialog.showOpenDialog({
-				title: "Select Whisper Model",
+				title: copy.selectWhisperModelTitle,
 				filters: [
-					{ name: "Whisper Models", extensions: ["bin"] },
-					{ name: "All Files", extensions: ["*"] },
+					{ name: copy.whisperModelsFilter, extensions: ["bin"] },
+					{ name: copy.allFilesFilter, extensions: ["*"] },
 				],
 				properties: ["openFile"],
 			});

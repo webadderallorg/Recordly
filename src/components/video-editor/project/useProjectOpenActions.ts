@@ -7,6 +7,7 @@ import {
 	useEffect,
 } from "react";
 import { toast } from "sonner";
+import type { useI18n } from "@/contexts/I18nContext";
 import { fromFileUrl, resolveVideoUrl } from "../projectPersistence";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
@@ -16,6 +17,7 @@ import type { VideoPlaybackRef } from "../VideoPlayback";
 type Set<T> = Dispatch<SetStateAction<T>>;
 
 type UseProjectOpenActionsInput = {
+	t: ReturnType<typeof useI18n>["t"];
 	project: ReturnType<typeof useProjectState>;
 	appearance: ReturnType<typeof useAppearanceState>;
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
@@ -35,6 +37,7 @@ type UseProjectOpenActionsInput = {
 };
 
 export function useProjectOpenActions({
+	t,
 	project,
 	appearance,
 	videoPlaybackRef,
@@ -65,22 +68,34 @@ export function useProjectOpenActions({
 
 	const handleOpenProjectFromLibrary = useCallback(
 		async (projectPath: string) => {
-			if (!(await confirmReplaceSourceWithUnsavedChanges("open another project"))) return;
+			if (
+				!(await confirmReplaceSourceWithUnsavedChanges(
+					t("editor.project.openAnotherProject", "open another project"),
+				))
+			)
+				return;
 			const result = await window.electronAPI.openProjectFileAtPath(projectPath);
 			if (result.canceled) return;
 			if (!result.success) {
-				toast.error(result.message || "Failed to load project");
+				toast.error(
+					result.message || t("editor.project.loadFailed", "Failed to load project"),
+				);
 				return;
 			}
 			if (!(await applyLoadedProject(result.project, result.path ?? null))) {
-				toast.error("Invalid project file format");
+				toast.error(t("editor.project.invalidFormat", "Invalid project file format"));
 				return;
 			}
 			project.setProjectBrowserOpen(false);
 			await refreshProjectLibrary();
-			toast.success(`Project loaded from ${result.path}`);
+			toast.success(
+				t("editor.project.loadedFrom", "Project loaded from {{path}}", {
+					path: result.path ?? "",
+				}),
+			);
 		},
 		[
+			t,
 			applyLoadedProject,
 			confirmReplaceSourceWithUnsavedChanges,
 			project,
@@ -89,25 +104,38 @@ export function useProjectOpenActions({
 	);
 
 	const handleImportMediaOrProject = useCallback(async () => {
-		if (!(await confirmReplaceSourceWithUnsavedChanges("import a file"))) return;
+		if (
+			!(await confirmReplaceSourceWithUnsavedChanges(
+				t("editor.project.importFile", "import a file"),
+			))
+		)
+			return;
 		const result = await window.electronAPI.openVideoFilePicker({ includeProjects: true });
 		if (result.canceled) return;
 		if (!result.success) {
-			toast.error(result.message || "Failed to import file");
+			toast.error(
+				result.message || t("editor.project.importFailed", "Failed to import file"),
+			);
 			return;
 		}
 		if (result.kind === "project" || result.project) {
 			if (!(await applyLoadedProject(result.project, result.path ?? null))) {
-				toast.error("Invalid project file format");
+				toast.error(t("editor.project.invalidFormat", "Invalid project file format"));
 				return;
 			}
 			project.setProjectBrowserOpen(false);
 			await refreshProjectLibrary();
-			toast.success(result.path ? `Project loaded from ${result.path}` : "Project loaded");
+			toast.success(
+				result.path
+					? t("editor.project.loadedFrom", "Project loaded from {{path}}", {
+							path: result.path,
+						})
+					: t("editor.project.loaded", "Project loaded"),
+			);
 			return;
 		}
 		if (!result.path) {
-			toast.error("No media file selected");
+			toast.error(t("editor.project.noMediaSelected", "No media file selected"));
 			return;
 		}
 
@@ -139,8 +167,9 @@ export function useProjectOpenActions({
 		applySessionPresentation(null);
 		project.setProjectBrowserOpen(false);
 		await refreshProjectLibrary();
-		toast.success("Media imported");
+		toast.success(t("editor.project.mediaImported", "Media imported"));
 	}, [
+		t,
 		confirmReplaceSourceWithUnsavedChanges,
 		applyLoadedProject,
 		project,

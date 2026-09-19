@@ -23,6 +23,9 @@
 		"windows": "Windows",
 		"screen": "Screen",
 		"window": "Window",
+		"folder": "Folder",
+		"display": "Display {{index}}",
+		"primaryDisplay": "Display {{index}} (Primary)",
 		"noSourcesFound": "No sources found",
 		"microphone": "Microphone",
 		"turnOffMicrophone": "Turn Off Microphone",
@@ -53,7 +56,11 @@
 			"upToDateTitle": "Recordly {{version}} is up to date.",
 			"availableTitle": "Recordly {{version}} is available.",
 			"availableGenericTitle": "An update is available."
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "Loading sources...",
@@ -90,6 +97,7 @@
 		"notNow": "Not now",
 		"updateNow": "Update now",
 		"restartToUpdate": "Restart to update",
-		"tryAgain": "Try again"
+		"tryAgain": "Try again",
+		"ariaLabel": "Recordly update"
 	}
 }

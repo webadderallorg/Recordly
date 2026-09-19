@@ -1,17 +1,39 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { SOURCE_AUDIO_FALLBACK_TOAST_ID } from "@/components/video-editor/audio/audioTypes";
+import type { I18nTranslate } from "@/contexts/I18nContext";
 
 interface UseSourceAudioFallbackParams {
 	currentSourcePath: string | null;
 	refreshKey?: number;
 	summarizeErrorMessage: (message: string) => string;
+	t: I18nTranslate;
+}
+
+export function formatSourceAudioFallbackWarning(
+	t: I18nTranslate,
+	summarizeErrorMessage: (message: string) => string,
+	error: string | null | undefined,
+): string {
+	if (error) {
+		return t(
+			"editor.audio.fallbackUnavailableWithError",
+			"Could not load companion audio sources: {{error}}",
+			{ error: summarizeErrorMessage(error) },
+		);
+	}
+
+	return t(
+		"editor.audio.fallbackUnavailableWithPlaybackHint",
+		"Could not load companion audio sources. Playback and export may miss microphone audio.",
+	);
 }
 
 export function useSourceAudioFallback({
 	currentSourcePath,
 	refreshKey = 0,
 	summarizeErrorMessage,
+	t,
 }: UseSourceAudioFallbackParams) {
 	const [sourceAudioFallbackPaths, setSourceAudioFallbackPaths] = useState<string[]>([]);
 	const [sourceAudioFallbackStartDelayMsByPath, setSourceAudioFallbackStartDelayMsByPath] =
@@ -48,9 +70,7 @@ export function useSourceAudioFallback({
 						setSourceAudioFallbackStartDelayMsByPath({});
 					}
 					toast.warning(
-						result.error
-							? `Could not load companion audio sources: ${summarizeErrorMessage(result.error)}`
-							: "Could not load companion audio sources. Playback and export may miss microphone audio.",
+						formatSourceAudioFallbackWarning(t, summarizeErrorMessage, result.error),
 						{ id: SOURCE_AUDIO_FALLBACK_TOAST_ID, duration: 10000 },
 					);
 					return;
@@ -66,7 +86,7 @@ export function useSourceAudioFallback({
 						setSourceAudioFallbackStartDelayMsByPath({});
 					}
 					toast.warning(
-						`Could not load companion audio sources: ${summarizeErrorMessage(String(error))}`,
+						formatSourceAudioFallbackWarning(t, summarizeErrorMessage, String(error)),
 						{ id: SOURCE_AUDIO_FALLBACK_TOAST_ID, duration: 10000 },
 					);
 				}
@@ -76,7 +96,7 @@ export function useSourceAudioFallback({
 		return () => {
 			cancelled = true;
 		};
-	}, [currentSourcePath, refreshKey, summarizeErrorMessage]);
+	}, [currentSourcePath, refreshKey, summarizeErrorMessage, t]);
 
 	return { sourceAudioFallbackPaths, sourceAudioFallbackStartDelayMsByPath };
 }

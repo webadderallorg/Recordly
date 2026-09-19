@@ -1,6 +1,7 @@
 {
 	"actions": {
 		"addZoom": "Добавить зум",
+		"splitClip": "Разделить клип",
 		"addTrim": "Обрезать",
 		"addSpeed": "Увеличить скорость",
 		"addAnnotation": "Добавить аннотацию",

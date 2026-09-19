@@ -16,6 +16,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useScopedT } from "@/contexts/I18nContext";
 import {
 	ASPECT_RATIOS,
 	type AspectRatio,
@@ -72,6 +73,7 @@ export default function TimelineToolbar({
 	addAudioLabel,
 	splitClipLabel,
 }: TimelineToolbarProps) {
+	const t = useScopedT("timeline");
 	return (
 		<div className="flex items-center gap-2 px-4 py-2 border-b border-foreground/10 bg-editor-panel">
 			<div className="flex items-center gap-1">
@@ -134,7 +136,11 @@ export default function TimelineToolbar({
 							size="sm"
 							className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-all gap-1"
 						>
-							<span className="font-medium">{getAspectRatioLabel(aspectRatio)}</span>
+							<span className="font-medium">
+								{aspectRatio === "native"
+									? t("toolbar.aspectRatioNative", "Native")
+									: getAspectRatioLabel(aspectRatio)}
+							</span>
 							<ChevronDown className="w-3 h-3" />
 						</Button>
 					</DropdownMenuTrigger>
@@ -148,7 +154,11 @@ export default function TimelineToolbar({
 								onClick={() => onAspectRatioChange?.(ratio)}
 								className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer flex items-center justify-between gap-3"
 							>
-								<span>{getAspectRatioLabel(ratio)}</span>
+								<span>
+									{ratio === "native"
+										? t("toolbar.aspectRatioNative", "Native")
+										: getAspectRatioLabel(ratio)}
+								</span>
 								{aspectRatio === ratio && (
 									<Check className="w-3 h-3 text-[#2563EB]" />
 								)}
@@ -156,7 +166,7 @@ export default function TimelineToolbar({
 						))}
 						<div className="mx-1 my-1 h-px bg-foreground/10" />
 						<div className="px-2 py-1.5 flex items-center gap-2 text-muted-foreground">
-							<span className="text-sm">Custom</span>
+							<span className="text-sm">{t("toolbar.custom", "Custom")}</span>
 							<input
 								type="text"
 								inputMode="numeric"
@@ -166,7 +176,7 @@ export default function TimelineToolbar({
 								}
 								onKeyDown={onCustomAspectRatioKeyDown}
 								className="w-12 h-7 rounded border border-foreground/10 bg-foreground/5 px-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
-								aria-label="Custom aspect width"
+								aria-label={t("toolbar.aspectWidth", "Custom aspect width")}
 							/>
 							<span className="text-muted-foreground/70">:</span>
 							<input
@@ -180,7 +190,7 @@ export default function TimelineToolbar({
 								}
 								onKeyDown={onCustomAspectRatioKeyDown}
 								className="w-12 h-7 rounded border border-foreground/10 bg-foreground/5 px-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
-								aria-label="Custom aspect height"
+								aria-label={t("toolbar.aspectHeight", "Custom aspect height")}
 							/>
 							<Button
 								variant="ghost"
@@ -188,7 +198,7 @@ export default function TimelineToolbar({
 								onClick={onApplyCustomAspectRatio}
 								className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/10"
 							>
-								Set
+								{t("toolbar.set", "Set")}
 							</Button>
 							{isCustomAspectRatio(aspectRatio) && (
 								<Check className="w-3 h-3 text-[#2563EB] ml-auto" />
@@ -213,21 +223,21 @@ export default function TimelineToolbar({
 			<div className="flex items-center gap-4 text-[10px] text-muted-foreground/70 font-medium">
 				<span className="flex items-center gap-1.5">
 					<kbd className="px-1.5 py-0.5 bg-foreground/5 border border-foreground/10 rounded text-[#2563EB] font-sans">
-						Side Scroll
+						{t("toolbar.sideScroll", "Side Scroll")}
 					</kbd>
-					<span>Pan</span>
+					<span>{t("toolbar.pan", "Pan")}</span>
 				</span>
 				<span className="flex items-center gap-1.5">
 					<kbd className="px-1.5 py-0.5 bg-foreground/5 border border-foreground/10 rounded text-[#2563EB] font-sans">
 						{scrollLabels.pan}
 					</kbd>
-					<span>Pan</span>
+					<span>{t("toolbar.pan", "Pan")}</span>
 				</span>
 				<span className="flex items-center gap-1.5">
 					<kbd className="px-1.5 py-0.5 bg-foreground/5 border border-foreground/10 rounded text-[#2563EB] font-sans">
 						{scrollLabels.zoom}
 					</kbd>
-					<span>Zoom</span>
+					<span>{t("toolbar.zoom", "Zoom")}</span>
 				</span>
 			</div>
 		</div>

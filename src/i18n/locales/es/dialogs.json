@@ -40,7 +40,9 @@
 		"addSuccess": "Fuente \"{{name}}\" agregada exitosamente",
 		"addFailed": "Error al agregar la fuente",
 		"loadTimeout": "La fuente tardó demasiado en cargar. Por favor verifica la URL e inténtalo de nuevo.",
-		"loadFailed": "No se pudo cargar la fuente. Por favor verifica que la URL de Google Fonts sea correcta."
+		"loadFailed": "No se pudo cargar la fuente. Por favor verifica que la URL de Google Fonts sea correcta.",
+		"alreadyAdded": "This font has already been added.",
+		"cancel": "Cancel"
 	},
 	"shortcutsConfig": {
 		"title": "Atajos de teclado",

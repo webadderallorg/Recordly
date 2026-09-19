@@ -1,26 +1,27 @@
 {
 	"zoom": {
 		"cannotPlace": "无法在此处放置缩放",
-		"existsOrNoSpace": "此位置已存在缩放或空间不足。",
+		"existsOrNoSpace": "该位置已存在缩放或空间不足。",
+		"suggestUnavailable": "启用光标循环时无法使用缩放建议。",
 		"suggestHandlerUnavailable": "缩放建议处理不可用",
-		"noTelemetry": "无光标遥测数据",
-		"recordFirst": "请先录制屏幕以生成基于光标的建议。",
-		"noUsableTelemetry": "无可用的光标遥测数据",
+		"noTelemetry": "无有效光标轨迹数据",
+		"recordFirst": "请先录制屏幕，以生成基于光标轨迹的缩放建议。",
+		"noUsableTelemetry": "无可用的光标轨迹数据",
 		"notEnoughMovement": "录制中未包含足够的光标移动数据。",
 		"noInteractionMoments": "未找到明显的交互时刻",
-		"tryRecording": "尝试在关键操作附近有停顿或点击的录制。",
+		"tryRecording": "建议在关键操作附近增加停顿或点击后重新录制。",
 		"noAutoZoomSlots": "没有可用的自动缩放位置",
 		"dwellPointsOverlap": "检测到的停留点与现有缩放区域重叠。",
 		"addedSuggestions": "已添加 {{count}} 个基于交互的缩放建议",
 		"label": "缩放 {{index}}",
 		"addZoom": "添加缩放 (Z)",
-		"suggestZooms": "从光标建议缩放"
+		"suggestZooms": "从光标推荐缩放"
 	},
 	"trim": {
-		"cannotPlace": "无法在此处放置修剪",
-		"existsOrNoSpace": "此位置已存在修剪或空间不足。",
-		"label": "修剪 {{index}}",
-		"addTrim": "添加修剪 (T)"
+		"cannotPlace": "无法在此处添加分割",
+		"existsOrNoSpace": "此位置已存在分割或空间不足。",
+		"label": "分割 {{index}}",
+		"addTrim": "添加分割 (T)"
 	},
 	"speed": {
 		"cannotPlace": "无法在此处放置变速",
@@ -28,14 +29,45 @@
 		"label": "变速"
 	},
 	"annotation": {
-		"label": "注释",
+		"label": "标注",
 		"image": "图片",
-		"addAnnotation": "添加注释 (A)"
+		"addAnnotation": "添加标注 (A)"
 	},
 	"audio": {
-		"label": "音频"
+		"label": "音频",
+		"cannotRead": "无法读取音频文件",
+		"cannotReadDescription": "所选文件可能已损坏或格式不受支持。",
+		"cannotPlace": "无法在此处放置音频",
+		"noRemainingSpace": "当前播放头位置没有剩余空间。",
+		"occupied": "此位置已有音频区域，或可用空间不足。"
+	},
+	"caption": {
+		"cannotPlace": "无法在此处放置字幕",
+		"exists": "此位置已有字幕。"
 	},
 	"addSpeed": "添加变速 (S)",
 	"resizeLeft": "向左调整",
-	"resizeRight": "向右调整"
+	"resizeRight": "向右调整",
+	"empty": {
+		"noVideo": "未加载视频",
+		"dragDrop": "拖放视频以开始编辑"
+	},
+	"toolbar": {
+		"custom": "自定义",
+		"aspectWidth": "自定义宽度",
+		"aspectHeight": "自定义高度",
+		"aspectRatioNative": "原始比例",
+		"set": "设置",
+		"sideScroll": "侧向滚动",
+		"pan": "平移",
+		"zoom": "缩放"
+	},
+	"item": {
+		"trim": "分割",
+		"clip": "片段",
+		"speed": "变速",
+		"manual": "手动",
+		"auto": "自动",
+		"loading": "加载中..."
+	}
 }

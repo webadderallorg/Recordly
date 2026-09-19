@@ -23,6 +23,9 @@
 		"windows": "Окна",
 		"screen": "Экран",
 		"window": "Окно",
+		"folder": "Папка",
+		"display": "Дисплей {{index}}",
+		"primaryDisplay": "Дисплей {{index}} (основной)",
 		"noSourcesFound": "Источники изображения не найдены",
 		"microphone": "Микрофон",
 		"turnOffMicrophone": "Выключить микрофон",
@@ -53,7 +56,11 @@
 			"upToDateTitle": "У вас актуальная версия Recordly {{version}}.",
 			"availableTitle": "Доступна новая версия Recordly {{version}}.",
 			"availableGenericTitle": "Доступно обновление."
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "Загрузка источников...",
@@ -90,6 +97,7 @@
 		"notNow": "Не сейчас",
 		"updateNow": "Обновить сейчас",
 		"restartToUpdate": "Перезапустить для обновления",
-		"tryAgain": "Повторить"
+		"tryAgain": "Повторить",
+		"ariaLabel": "Recordly update"
 	}
 }

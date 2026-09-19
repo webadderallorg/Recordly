@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { RECORDINGS_DIR } from "../../appPaths";
+import { getNativeDialogCopy } from "../../nativeDialogLocale";
 import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
 import { LEGACY_PROJECT_FILE_EXTENSIONS, PROJECT_FILE_EXTENSION } from "../constants";
 import { getProjectBackupPath, writeProjectFileAtomically } from "../project/atomicSave";
@@ -278,9 +279,10 @@ export function registerProjectHandlers() {
 
 	ipcMain.handle("choose-recordings-directory", async () => {
 		try {
+			const copy = getNativeDialogCopy();
 			const current = await getRecordingsDir();
 			const result = await dialog.showOpenDialog({
-				title: "Choose recordings folder",
+				title: copy.recordingsFolderTitle,
 				defaultPath: current,
 				properties: ["openDirectory", "createDirectory", "promptToCreate"],
 			});
@@ -355,13 +357,17 @@ export function registerProjectHandlers() {
 
 				const safeName = normalizeProjectSaveName(suggestedName) || `project-${Date.now()}`;
 				const defaultName = `${safeName}.${PROJECT_FILE_EXTENSION}`;
+				const copy = getNativeDialogCopy();
 
 				const result = await dialog.showSaveDialog({
-					title: "Save Recordly Project",
+					title: copy.saveProjectTitle,
 					defaultPath: path.join(projectsDir, defaultName),
 					filters: [
-						{ name: "Recordly Project", extensions: [PROJECT_FILE_EXTENSION] },
-						{ name: "JSON", extensions: ["json"] },
+						{
+							name: copy.projectFileFilter,
+							extensions: [PROJECT_FILE_EXTENSION],
+						},
+						{ name: copy.jsonFileFilter, extensions: ["json"] },
 					],
 					properties: ["createDirectory", "showOverwriteConfirmation"],
 				});
@@ -508,17 +514,18 @@ export function registerProjectHandlers() {
 
 	ipcMain.handle("load-project-file", async () => {
 		try {
+			const copy = getNativeDialogCopy();
 			const projectsDir = await getProjectsDir();
 			const result = await dialog.showOpenDialog({
-				title: "Open Recordly Project",
+				title: copy.openProjectTitle,
 				defaultPath: projectsDir,
 				filters: [
 					{
-						name: "Recordly Project",
+						name: copy.projectFileFilter,
 						extensions: [PROJECT_FILE_EXTENSION, ...LEGACY_PROJECT_FILE_EXTENSIONS],
 					},
-					{ name: "JSON", extensions: ["json"] },
-					{ name: "All Files", extensions: ["*"] },
+					{ name: copy.jsonFileFilter, extensions: ["json"] },
+					{ name: copy.allFilesFilter, extensions: ["*"] },
 				],
 				properties: ["openFile"],
 			});

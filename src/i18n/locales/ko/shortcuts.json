@@ -1,6 +1,7 @@
 {
 	"actions": {
 		"addZoom": "확대 추가",
+		"splitClip": "클립 분할",
 		"addTrim": "트림 추가",
 		"addSpeed": "속도 추가",
 		"addAnnotation": "주석 추가",

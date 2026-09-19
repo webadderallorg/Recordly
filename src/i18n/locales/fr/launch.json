@@ -23,6 +23,9 @@
 		"windows": "Fenêtres",
 		"screen": "Écran",
 		"window": "Fenêtre",
+		"folder": "Dossier",
+		"display": "Écran {{index}}",
+		"primaryDisplay": "Écran {{index}} (principal)",
 		"noSourcesFound": "Aucune source trouvée",
 		"microphone": "Microphone",
 		"turnOffMicrophone": "Désactiver le microphone",
@@ -53,7 +56,11 @@
 			"upToDateTitle": "Recordly {{version}} est à jour.",
 			"availableTitle": "Recordly {{version}} est disponible.",
 			"availableGenericTitle": "Une mise à jour est disponible."
-		}
+		},
+		"preparing": "Preparing recording",
+		"preparingSubtitle": "Opening the editor in a moment",
+		"previewUpdateUi": "Preview Update UI",
+		"appearance": "Appearance"
 	},
 	"sourceSelector": {
 		"loadingSources": "Chargement des sources...",
@@ -90,6 +97,7 @@
 		"notNow": "Plus tard",
 		"updateNow": "Mettre à jour",
 		"restartToUpdate": "Redémarrer pour mettre à jour",
-		"tryAgain": "Réessayer"
+		"tryAgain": "Réessayer",
+		"ariaLabel": "Recordly update"
 	}
 }

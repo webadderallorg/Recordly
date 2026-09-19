@@ -1,6 +1,7 @@
 {
 	"actions": {
 		"addZoom": "新增縮放",
+		"splitClip": "分割片段",
 		"addTrim": "新增修剪",
 		"addSpeed": "新增速度",
 		"addAnnotation": "新增註解",

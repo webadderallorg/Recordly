@@ -125,7 +125,9 @@ export function EditorPreviewPanel(props: Props) {
 									className="h-7 gap-1 px-2 text-xs text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
 								>
 									<span className="font-medium">
-										{getAspectRatioLabel(aspectRatio)}
+										{aspectRatio === "native"
+											? t("timeline.toolbar.aspectRatioNative", "Native")
+											: getAspectRatioLabel(aspectRatio)}
 									</span>
 									<CaretDown className="h-3 w-3" />
 								</Button>
@@ -140,7 +142,11 @@ export function EditorPreviewPanel(props: Props) {
 										onClick={() => setAspectRatio(ratio)}
 										className="flex cursor-pointer items-center justify-between gap-3 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
 									>
-										<span>{getAspectRatioLabel(ratio)}</span>
+										<span>
+											{ratio === "native"
+												? t("timeline.toolbar.aspectRatioNative", "Native")
+												: getAspectRatioLabel(ratio)}
+										</span>
 										{aspectRatio === ratio ? (
 											<Check className="h-3 w-3 text-[#2563EB]" />
 										) : null}
@@ -316,7 +322,11 @@ export function EditorPreviewPanel(props: Props) {
 							size="icon"
 							className={`h-7 w-7 rounded-full border border-foreground/10 shadow-[0_8px_18px_rgba(0,0,0,0.18)] transition-all ${isPlaying ? "bg-foreground/10 text-foreground hover:bg-foreground/20" : "bg-neutral-800 text-white hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-white/90"}`}
 							onClick={playback.togglePlayPause}
-							title={isPlaying ? "Pause" : "Play"}
+							title={
+								isPlaying
+									? t("editor.playback.pause", "Pause")
+									: t("editor.playback.play", "Play")
+							}
 						>
 							{isPlaying ? (
 								<Pause className="h-3.5 w-3.5" weight="fill" />

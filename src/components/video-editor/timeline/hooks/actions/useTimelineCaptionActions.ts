@@ -1,5 +1,6 @@
 import type { Span } from "dnd-timeline";
 import { useCallback } from "react";
+import type { I18nTranslate } from "@/contexts/I18nContext";
 import type { CaptionCue } from "../../../types";
 import { timelineNotifications } from "../utils/timelineNotifications";
 
@@ -8,6 +9,7 @@ import { timelineNotifications } from "../utils/timelineNotifications";
 export const DEFAULT_CAPTION_DURATION_MS = 1500;
 
 interface UseTimelineCaptionActionsParams {
+	t: I18nTranslate;
 	totalMs: number;
 	// Caption regions in timeline-ms (matches the hover position passed in).
 	captionRegions: CaptionCue[];
@@ -15,6 +17,7 @@ interface UseTimelineCaptionActionsParams {
 }
 
 export function useTimelineCaptionActions({
+	t,
 	totalMs,
 	captionRegions,
 	onCaptionAdded,
@@ -68,8 +71,8 @@ export function useTimelineCaptionActions({
 			const startPos = Math.max(0, Math.min(startMs, totalMs));
 			if (!canPlaceCaptionAtMs(startPos)) {
 				timelineNotifications.error(
-					"Cannot place caption here",
-					"A caption already exists at this position.",
+					t("caption.cannotPlace", "Cannot place caption here"),
+					t("caption.exists", "A caption already exists at this position."),
 				);
 				return;
 			}
@@ -79,7 +82,7 @@ export function useTimelineCaptionActions({
 			}
 			onCaptionAdded(span);
 		},
-		[onCaptionAdded, totalMs, canPlaceCaptionAtMs, resolveCaptionSpanAtMs],
+		[onCaptionAdded, totalMs, canPlaceCaptionAtMs, resolveCaptionSpanAtMs, t],
 	);
 
 	return {

@@ -3,13 +3,13 @@ import type { ProjectLibraryEntry } from "@/components/video-editor/ProjectBrows
 import type { DesktopSource } from "../popovers/launchPopoverTypes";
 
 export function useLaunchWindowActions() {
-	const [selectedSource, setSelectedSource] = useState("Screen");
+	const [selectedSource, setSelectedSource] = useState<DesktopSource | null>(null);
 	const [hasSelectedSource, setHasSelectedSource] = useState(false);
 	const [projectLibraryEntries, setProjectLibraryEntries] = useState<ProjectLibraryEntry[]>([]);
 
 	const handleSourceSelect = useCallback(async (source: DesktopSource) => {
 		await window.electronAPI.selectSource(source);
-		setSelectedSource(source.name);
+		setSelectedSource(source);
 		setHasSelectedSource(true);
 		window.electronAPI.showSourceHighlight?.({
 			...source,
@@ -52,13 +52,13 @@ export function useLaunchWindowActions() {
 		}
 	}, []);
 
-	const syncSelectedSource = useCallback((source: { name?: string } | null | undefined) => {
+	const syncSelectedSource = useCallback((source: DesktopSource | null | undefined) => {
 		if (source?.name) {
-			setSelectedSource(source.name);
+			setSelectedSource(source);
 			setHasSelectedSource(true);
 			return;
 		}
-		setSelectedSource("Screen");
+		setSelectedSource(null);
 		setHasSelectedSource(false);
 	}, []);
 

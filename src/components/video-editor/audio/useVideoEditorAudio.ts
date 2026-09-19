@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
+import type { I18nTranslate } from "@/contexts/I18nContext";
 import { resolveSourceTrackRoutingPolicy } from "@/lib/exporter/sourceTrackRoutingPolicy";
 import type { AudioRegion, ClipRegion } from "../types";
 import { findClipAtTimelineTime } from "../types";
@@ -43,6 +44,7 @@ interface UseVideoEditorAudioParams {
 	previewVolume: number;
 	sourceAudioFallbackRefreshKey?: number;
 	summarizeErrorMessage: (message: string) => string;
+	t: I18nTranslate;
 	onSourceFallbackLoadError: (error: unknown) => void;
 }
 
@@ -62,6 +64,7 @@ export function useVideoEditorAudio({
 	previewVolume,
 	sourceAudioFallbackRefreshKey = 0,
 	summarizeErrorMessage,
+	t,
 	onSourceFallbackLoadError,
 }: UseVideoEditorAudioParams) {
 	const fallbackLookupSourcePath = useMemo(
@@ -74,6 +77,7 @@ export function useVideoEditorAudio({
 			currentSourcePath: fallbackLookupSourcePath,
 			refreshKey: sourceAudioFallbackRefreshKey,
 			summarizeErrorMessage,
+			t,
 		});
 
 	const sourceTrackRoutingPolicy = useMemo(
