@@ -393,6 +393,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const cameraContainerRef = useRef<Container | null>(null);
 		const [pixiReady, setPixiReady] = useState(false);
 		const videoReady = usePreviewVideoReady(videoRef, videoPath);
+		// Bumped to force a full teardown/recreate of the Pixi renderer after a
+		// lost WebGL/WebGPU context (e.g. Windows reclaiming GPU resources from a
+		// long-minimized window), since neither backend reliably self-recovers.
+		const [rendererGeneration, setRendererGeneration] = useState(0);
+		const contextLostCleanupRef = useRef<(() => void) | null>(null);
 
 		const [previewViewportWidth, setPreviewViewportWidth] = useState(640);
 		const [annotationSceneTransform, setAnnotationSceneTransform] =
@@ -1743,6 +1748,21 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				appRef.current = app;
 				container.appendChild(app.canvas);
 
+				// A lost WebGL context (common after Windows reclaims GPU resources
+				// from a window minimized/occluded for a long time) leaves the canvas
+				// permanently black with no further Pixi errors. Force a full
+				// teardown/recreate rather than relying on browser-level restore,
+				// which PixiJS does not reliably resume from.
+				const canvasEl = app.canvas as unknown as HTMLCanvasElement;
+				const handleContextLost = (event: Event) => {
+					event.preventDefault();
+					console.warn("Preview renderer lost its GPU context; recreating.");
+					setRendererGeneration((generation) => generation + 1);
+				};
+				canvasEl.addEventListener("webglcontextlost", handleContextLost, false);
+				contextLostCleanupRef.current = () =>
+					canvasEl.removeEventListener("webglcontextlost", handleContextLost, false);
+
 				// Camera container - this will be scaled/positioned for zoom
 				const cameraContainer = new Container();
 				cameraContainerRef.current = cameraContainer;
@@ -1823,6 +1843,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				motionBlurFilterRef.current?.destroy();
 				zoomBlurFilterRef.current = null;
 				motionBlurFilterRef.current = null;
+				contextLostCleanupRef.current?.();
+				contextLostCleanupRef.current = null;
 				destroyPixiApplication(app, "preview renderer");
 				appRef.current = null;
 				cameraContainerRef.current = null;
@@ -1831,7 +1853,32 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				cursorContainerRef.current = null;
 				videoSpriteRef.current = null;
 			};
-		}, [initializePixiRenderer, onError, syncPreviewMotionBlurQuality]);
+		}, [initializePixiRenderer, onError, syncPreviewMotionBlurQuality, rendererGeneration]);
+
+		// Safety net for GPU context loss that doesn't fire `webglcontextlost`
+		// (e.g. the WebGPU backend, or a stalled hidden <video> decoder session)
+		// after the window was minimized/occluded for a long time.
+		useEffect(() => {
+			let hiddenAtMs: number | null = document.hidden ? performance.now() : null;
+			const RECOVERY_THRESHOLD_MS = 60_000;
+
+			const handleVisibilityChange = () => {
+				if (document.hidden) {
+					hiddenAtMs = performance.now();
+					return;
+				}
+
+				if (hiddenAtMs !== null && performance.now() - hiddenAtMs >= RECOVERY_THRESHOLD_MS) {
+					setRendererGeneration((generation) => generation + 1);
+				}
+				hiddenAtMs = null;
+			};
+
+			document.addEventListener("visibilitychange", handleVisibilityChange);
+			return () => {
+				document.removeEventListener("visibilitychange", handleVisibilityChange);
+			};
+		}, []);
 
 		// biome-ignore lint/correctness/useExhaustiveDependencies: A new media path must reset the persistent video element.
 		useEffect(() => {
