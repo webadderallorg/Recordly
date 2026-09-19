@@ -262,6 +262,81 @@ describe("ModernFrameRenderer Pixi lifecycle", () => {
 	});
 });
 
+describe("ModernFrameRenderer backend order", () => {
+	const LINUX_USER_AGENT =
+		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+	const WINDOWS_USER_AGENT =
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+
+	it.each([
+		{
+			platform: "Linux",
+			userAgent: LINUX_USER_AGENT,
+			webgpu: true,
+			preference: undefined,
+			expected: "webgl",
+		},
+		{
+			platform: "Linux",
+			userAgent: LINUX_USER_AGENT,
+			webgpu: true,
+			preference: "webgpu",
+			expected: "webgpu",
+		},
+		{
+			platform: "Linux",
+			userAgent: LINUX_USER_AGENT,
+			webgpu: true,
+			preference: "webgl",
+			expected: "webgl",
+		},
+		{
+			platform: "Windows",
+			userAgent: WINDOWS_USER_AGENT,
+			webgpu: true,
+			preference: undefined,
+			expected: "webgpu",
+		},
+		{
+			platform: "Windows",
+			userAgent: WINDOWS_USER_AGENT,
+			webgpu: false,
+			preference: undefined,
+			expected: "webgl",
+		},
+	] as const)("tries $expected first on $platform with WebGPU available: $webgpu and preference $preference", async ({
+		userAgent,
+		webgpu,
+		preference,
+		expected,
+	}) => {
+		pixiApplicationInstancesMock.length = 0;
+		pixiInitializationErrorsMock.length = 0;
+		vi.stubGlobal("navigator", webgpu ? { gpu: {}, userAgent } : { userAgent });
+
+		try {
+			const renderer = createRenderer() as unknown as {
+				config: { preferredRenderBackend?: "webgl" | "webgpu" };
+				createPixiApplication: (
+					canvas: HTMLCanvasElement,
+				) => Promise<{ backend: "webgl" | "webgpu" }>;
+			};
+			renderer.config.preferredRenderBackend = preference;
+
+			await expect(
+				renderer.createPixiApplication({} as HTMLCanvasElement),
+			).resolves.toMatchObject({ backend: expected });
+
+			expect(pixiApplicationInstancesMock).toHaveLength(1);
+			expect(pixiApplicationInstancesMock[0].init).toHaveBeenCalledWith(
+				expect.objectContaining({ preference: expected }),
+			);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
+
 describe("ModernFrameRenderer blur export path", () => {
 	beforeEach(() => {
 		Object.assign(globalThis, {
