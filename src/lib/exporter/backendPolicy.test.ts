@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	getDefaultLightningRenderBackend,
+	getDefaultLightningRenderBackendOrder,
 	normalizeLightningRuntimePlatform,
 	planLightningExportRoutes,
 	shouldPreferNativeAutoBackend,
@@ -27,6 +28,13 @@ describe("backendPolicy", () => {
 		expect(getDefaultLightningRenderBackend()).toBe("webgl");
 	});
 
+	it("defaults Linux to WebGL first to avoid the WebGPU/Dawn resource-import crash", () => {
+		expect(getDefaultLightningRenderBackendOrder("linux")).toEqual(["webgl", "webgpu"]);
+		expect(getDefaultLightningRenderBackendOrder("win32")).toEqual(["webgpu", "webgl"]);
+		expect(getDefaultLightningRenderBackendOrder("darwin")).toEqual(["webgpu", "webgl"]);
+		expect(getDefaultLightningRenderBackendOrder("unknown")).toEqual(["webgpu", "webgl"]);
+	});
+	
 	it("keeps Windows auto exports on the streaming route by default", () => {
 		expect(shouldPreferNativeStaticLayoutBeforeBreeze("win32", "auto")).toBe(false);
 		expect(shouldPreferNativeStaticLayoutBeforeBreeze("darwin", "auto")).toBe(false);
