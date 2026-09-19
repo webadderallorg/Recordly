@@ -6,10 +6,12 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { supportsHudCaptureProtection } from "../src/lib/hudCaptureProtection";
 import { USER_DATA_PATH } from "./appPaths";
 import {
+	getHudOverlayStaticBounds,
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
+import { isWaylandSession } from "./hudOverlaySession";
 import { getHudOverlayTaskbarOptions } from "./hudOverlayWindowOptions";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
@@ -202,16 +204,20 @@ function getHudOverlayDisplay() {
 
 function getHudOverlayBounds() {
 	const { workArea } = getHudOverlayDisplay();
+	const mousePassthroughSupported = isHudOverlayMousePassthroughSupported();
+	if (!mousePassthroughSupported && isWaylandSession()) {
+		// Popovers live inside this BrowserWindow and cannot paint outside its
+		// native surface. Keep the Wayland fallback at its expanded height from
+		// creation onward; runtime growth cannot preserve x/y on Wayland and can
+		// make the bottom-anchored bar jump or oscillate.
+		return getHudOverlayStaticBounds(workArea, mousePassthroughSupported, true);
+	}
 	const fallbackExpanded = shouldExpandHudOverlayFallback({
 		fallbackExpanded: hudOverlayFallbackExpanded,
 		recordingActive: hudOverlayRecordingActive,
 		webcamPreviewVisible: hudOverlayWebcamPreviewVisible,
 	});
-	return getHudOverlayWindowBounds(
-		workArea,
-		isHudOverlayMousePassthroughSupported(),
-		fallbackExpanded,
-	);
+	return getHudOverlayWindowBounds(workArea, mousePassthroughSupported, fallbackExpanded);
 }
 
 function applyHudOverlayBounds() {
