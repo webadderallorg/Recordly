@@ -18,6 +18,10 @@ import type {
 	UiohookModuleNamespace,
 } from "../types";
 import {
+	isHyprlandCursorProviderActive,
+	startEvdevButtonCapture,
+} from "./hyprland";
+import {
 	getCursorCaptureElapsedMs,
 	getHookCursorScreenPoint,
 	getNormalizedCursorPoint,
@@ -249,6 +253,24 @@ export async function startInteractionCapture() {
 
 	stopInteractionCapture();
 
+	const onMouseDown = (event: HookMouseEvent) => {
+		recordCursorMouseDown(getHookMouseButton(event));
+	};
+
+	const onMouseUp = () => {
+		recordCursorMouseUp();
+	};
+
+	// Raw evdev clicks (Wayland: the uiohook never sees them) — must start
+	// independently of the uiohook, which can fail to load on Wayland.
+	const stopEvdevCapture = startEvdevButtonCapture({
+		onMouseDown: (button) => onMouseDown({ button } as unknown as HookMouseEvent),
+		onMouseUp: () => onMouseUp(),
+	});
+	setInteractionCaptureCleanup(() => {
+		stopEvdevCapture();
+	});
+
 	try {
 		const hook = loadUiohookModule();
 		console.log(
@@ -260,24 +282,23 @@ export async function startInteractionCapture() {
 			typeof hook?.start,
 		);
 		if (!isCursorCaptureActive) {
+			stopEvdevCapture();
 			return;
 		}
 
 		if (!hook || typeof hook.on !== "function" || typeof hook.start !== "function") {
 			console.log("[CursorTelemetry] hook unusable — aborting interaction capture");
+			stopEvdevCapture();
 			return;
 		}
 
-		const onMouseDown = (event: HookMouseEvent) => {
-			recordCursorMouseDown(getHookMouseButton(event));
-		};
-
-		const onMouseUp = () => {
-			recordCursorMouseUp();
-		};
-
 		const onMouseMove = (event: HookMouseEvent) => {
-			if (process.platform !== "linux" || !isCursorCaptureActive || isCursorCapturePaused()) {
+			if (
+				process.platform !== "linux" ||
+				isHyprlandCursorProviderActive() ||
+				!isCursorCaptureActive ||
+				isCursorCapturePaused()
+			) {
 				return;
 			}
 
@@ -286,7 +307,13 @@ export async function startInteractionCapture() {
 				return;
 			}
 
-			setLinuxCursorScreenPoint({ x: point.x, y: point.y, updatedAt: Date.now() });
+			setLinuxCursorScreenPoint({
+				x: point.x,
+				y: point.y,
+				updatedAt: Date.now(),
+				coordinateSpace: "physical",
+				source: "uiohook",
+			});
 		};
 
 		hook.on("mousedown", onMouseDown);
@@ -296,6 +323,7 @@ export async function startInteractionCapture() {
 		}
 
 		setInteractionCaptureCleanup(() => {
+			stopEvdevCapture();
 			try {
 				if (typeof hook.off === "function") {
 					hook.off("mousedown", onMouseDown);
@@ -325,6 +353,7 @@ export async function startInteractionCapture() {
 
 		hook.start();
 	} catch (error) {
+		stopEvdevCapture();
 		if (!hasLoggedInteractionHookFailure) {
 			setHasLoggedInteractionHookFailure(true);
 			console.warn("[CursorTelemetry] Global interaction capture unavailable:", error);
