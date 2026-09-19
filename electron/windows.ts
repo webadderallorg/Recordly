@@ -7,6 +7,7 @@ import { supportsHudCaptureProtection } from "../src/lib/hudCaptureProtection";
 import { USER_DATA_PATH } from "./appPaths";
 import {
 	getHudOverlayWindowBounds,
+	isWaylandSession,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
@@ -206,6 +207,7 @@ function getHudOverlayBounds() {
 		fallbackExpanded: hudOverlayFallbackExpanded,
 		recordingActive: hudOverlayRecordingActive,
 		webcamPreviewVisible: hudOverlayWebcamPreviewVisible,
+		waylandSession: isWaylandSession(process.env, process.platform),
 	});
 	return getHudOverlayWindowBounds(
 		workArea,
