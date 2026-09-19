@@ -26,6 +26,7 @@ type Input = {
 	handleShowCursorChange: (show: boolean) => void;
 	currentTime: number;
 	isPlaying: boolean;
+	timelineDurationMs: number;
 	aspectRatio: AspectRatio;
 	setAspectRatio: Dispatch<SetStateAction<AspectRatio>>;
 	whisperExecutablePath: string | null;
@@ -54,6 +55,7 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		handleShowCursorChange,
 		currentTime,
 		isPlaying,
+		timelineDurationMs,
 		aspectRatio,
 		setAspectRatio,
 		whisperExecutablePath,
@@ -92,6 +94,9 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onZoomModeChange: (mode) =>
 			timeline.selectedZoomId && zoomCommands.handleZoomModeChange(mode),
 		onZoomDelete: zoomCommands.handleZoomDelete,
+		onZoomDuplicate: timeline.selectedZoomId
+			? () => zoomCommands.handleZoomDuplicate(timeline.selectedZoomId!, timelineDurationMs)
+			: undefined,
 		selectedClipId: timeline.selectedClipId,
 		selectedClipSpeed: selectedClip?.speed ?? (timeline.selectedClipId ? 1 : null),
 		selectedClipMuted: selectedClip?.muted ?? (timeline.selectedClipId ? false : null),
@@ -105,6 +110,13 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onAudioVolumeChange: audioCommands.handleAudioVolumeChange,
 		onAudioNormalizeChange: audioCommands.handleAudioNormalizeChange,
 		onAudioDelete: audioCommands.handleAudioDelete,
+		onAudioDuplicate: timeline.selectedAudioId
+			? () =>
+					audioCommands.handleAudioDuplicate(
+						timeline.selectedAudioId!,
+						timelineDurationMs,
+					)
+			: undefined,
 		shadowIntensity: appearance.shadowIntensity,
 		onShadowChange: appearance.setShadowIntensity,
 		backgroundBlur: appearance.backgroundBlur,
@@ -218,5 +230,12 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onAnnotationBlurIntensityChange: annotationCommands.handleAnnotationBlurIntensityChange,
 		onAnnotationBlurColorChange: annotationCommands.handleAnnotationBlurColorChange,
 		onAnnotationDelete: annotationCommands.handleAnnotationDelete,
+		onAnnotationDuplicate: timeline.selectedAnnotationId
+			? () =>
+					annotationCommands.handleAnnotationDuplicate(
+						timeline.selectedAnnotationId!,
+						timelineDurationMs,
+					)
+			: undefined,
 	};
 }
