@@ -108,9 +108,13 @@ export function formatTimeLabel(milliseconds: number, intervalMs: number) {
 }
 
 export function formatPlayheadTime(ms: number): string {
-	const s = ms / 1000;
-	const min = Math.floor(s / 60);
-	const sec = s % 60;
+	// Round to the displayed precision (tenths of a second) before splitting
+	// into minutes and seconds. Rounding the seconds component on its own lets
+	// values such as 59.97s render as "60.0" and carry into labels like
+	// "1:60.0" or "60.0s" instead of rolling over to the next minute.
+	const tenths = Math.round((ms / 1000) * 10);
+	const min = Math.floor(tenths / 600);
+	const sec = (tenths - min * 600) / 10;
 	if (min > 0) return `${min}:${sec.toFixed(1).padStart(4, "0")}`;
 	return `${sec.toFixed(1)}s`;
 }
