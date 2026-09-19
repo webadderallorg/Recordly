@@ -1,6 +1,6 @@
 import type { Span } from "dnd-timeline";
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { changeClipSpan } from "../clipSpanChange";
 import { planClipSpeedChange } from "../clipSpeedChange";
 import { planClipSplit } from "../clipSplit";

@@ -43,6 +43,10 @@
 		"stop": "중지",
 		"cancel": "취소",
 		"more": "더 보기",
+		"enableFocusMode": "집중 모드 사용",
+		"disableFocusMode": "집중 모드 사용 안 함",
+		"focusModeUnavailable": "이 플랫폼에서는 집중 모드를 사용할 수 없습니다",
+		"focusModeError": "집중 모드를 변경하지 못했습니다",
 		"update": {
 			"update": "업데이트",
 			"updated": "업데이트 완료",

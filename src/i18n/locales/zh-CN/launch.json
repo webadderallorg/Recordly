@@ -43,6 +43,10 @@
 		"stop": "停止",
 		"cancel": "取消",
 		"more": "更多",
+		"enableFocusMode": "开启专注模式",
+		"disableFocusMode": "关闭专注模式",
+		"focusModeUnavailable": "专注模式在此平台上不可用",
+		"focusModeError": "更改专注模式失败",
 		"update": {
 			"update": "更新",
 			"updated": "已是最新",

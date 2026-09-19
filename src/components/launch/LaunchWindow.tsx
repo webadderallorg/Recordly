@@ -1,5 +1,7 @@
 import {
 	ArrowClockwiseIcon,
+	BellSimpleIcon,
+	BellSimpleSlashIcon,
 	CaretUpIcon,
 	DotsThreeVerticalIcon,
 	MicrophoneIcon,
@@ -42,6 +44,7 @@ import { ProjectPopover } from "./popovers/ProjectPopover";
 import { SourcePopover } from "./popovers/SourcePopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { RecordingControls } from "./RecordingControls";
+import { useFocusMode } from "./hooks/useFocusMode";
 
 const SHOW_DEV_UPDATE_PREVIEW = import.meta.env.DEV;
 
@@ -84,6 +87,9 @@ function LaunchWindowContent() {
 	const { elapsed, formatTime } = useRecordingTimer(recording, paused);
 	const hudContentRef = useRef<HTMLDivElement>(null);
 	const hudBarRef = useRef<HTMLDivElement>(null);
+
+	const { focusModeEnabled, focusModeSupported, focusModeLoading, toggleFocusMode } =
+		useFocusMode();
 
 	const {
 		selectedSource,
@@ -344,6 +350,38 @@ function LaunchWindowContent() {
 					</Button>
 				}
 			/>
+
+			<Button
+				variant="ghost"
+				size="icon"
+				iconSize="lg"
+				id="focus-mode-toggle"
+				title={
+					!focusModeSupported
+						? t("recording.focusModeUnavailable")
+						: focusModeEnabled
+							? t("recording.disableFocusMode")
+							: t("recording.enableFocusMode")
+				}
+				aria-label={
+					!focusModeSupported
+						? t("recording.focusModeUnavailable")
+						: focusModeEnabled
+							? t("recording.disableFocusMode")
+							: t("recording.enableFocusMode")
+				}
+				disabled={!focusModeSupported || focusModeLoading}
+				className={focusModeEnabled && focusModeSupported ? styles.ibActive : ""}
+				onClick={() => {
+					void toggleFocusMode();
+				}}
+			>
+				{focusModeEnabled ? (
+					<BellSimpleSlashIcon size={18} />
+				) : (
+					<BellSimpleIcon size={18} />
+				)}
+			</Button>
 
 			<button
 				type="button"

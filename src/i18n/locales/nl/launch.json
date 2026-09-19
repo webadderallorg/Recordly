@@ -43,6 +43,10 @@
 		"stop": "Stoppen",
 		"cancel": "Annuleren",
 		"more": "Meer",
+		"enableFocusMode": "Focusmodus inschakelen",
+		"disableFocusMode": "Focusmodus uitschakelen",
+		"focusModeUnavailable": "Focusmodus is niet beschikbaar op dit platform",
+		"focusModeError": "Focusmodus kon niet worden gewijzigd",
 		"update": {
 			"update": "Bijwerken",
 			"updated": "Bijgewerkt",
