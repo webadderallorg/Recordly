@@ -136,6 +136,23 @@ function flattenWords(cues: CaptionCuePayload[]): CaptionWordPayload[] {
 	return stream.sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs);
 }
 
+/**
+ * End each word where acoustic silence begins. Word-level timestamps (DTW especially)
+ * run a word up to the next word's onset, which hides pauses from phrase splitting and
+ * keeps a word highlighted through the silence.
+ */
+function clipWordsAtSilence(
+	words: CaptionWordPayload[],
+	silences: SilenceInterval[],
+): CaptionWordPayload[] {
+	return words.map((word) => {
+		const silence = silences.find(
+			(interval) => interval.startMs > word.startMs && interval.startMs < word.endMs,
+		);
+		return silence ? { ...word, endMs: silence.startMs } : word;
+	});
+}
+
 /** Drop words that sit entirely inside a long detected silence (Whisper hallucinations). */
 function dropHallucinations(
 	words: CaptionWordPayload[],
@@ -344,6 +361,34 @@ function mergeShortAdjacentCaptions(
 	return merged;
 }
 
+/**
+ * Word timings from adjacent Whisper segments can overlap slightly. The renderer shows the
+ * first matching caption, so an overlap would hold back the next caption; end each caption
+ * (and its words) no later than the next caption's start instead.
+ */
+function endCaptionsBeforeNextStart(cues: CaptionCuePayload[]): CaptionCuePayload[] {
+	return cues.map((cue, index) => {
+		const nextStartMs = cues[index + 1]?.startMs;
+		if (nextStartMs === undefined || cue.endMs <= nextStartMs) {
+			return cue;
+		}
+		const clipEnd = (startMs: number, endMs: number) =>
+			Math.max(startMs + 1, Math.min(endMs, nextStartMs));
+		return {
+			...cue,
+			endMs: clipEnd(cue.startMs, cue.endMs),
+			...(cue.words
+				? {
+						words: cue.words.map((word) => ({
+							...word,
+							endMs: clipEnd(word.startMs, word.endMs),
+						})),
+					}
+				: {}),
+		};
+	});
+}
+
 /** Assign sequential, stable ids to the final cue list. */
 function renumberCues(cues: CaptionCuePayload[]): CaptionCuePayload[] {
 	return cues.map((cue, index) => ({ ...cue, id: `caption-${index + 1}` }));
@@ -387,7 +432,11 @@ export function segmentCuesIntoPhrases(
 	const sortedCues = [...cues].sort(
 		(left, right) => left.startMs - right.startMs || left.endMs - right.endMs,
 	);
-	const stream = dropHallucinations(flattenWords(sortedCues), silences, splitSilenceMs);
+	const stream = dropHallucinations(
+		clipWordsAtSilence(flattenWords(sortedCues), silences),
+		silences,
+		splitSilenceMs,
+	);
 	if (stream.length === 0) {
 		return [];
 	}
@@ -453,7 +502,10 @@ export function segmentCuesIntoPhrases(
 	// speech gaps. Padding pulls cue edges toward each other, which would shrink the
 	// apparent gap and could merge two captions across a real pause sitting just above
 	// mergeGapMs. Pad the survivors afterward so envelopes still get their edge padding.
-	const merged = mergeShortAdjacentCaptions(sentenceCues, mergeOptions);
+	const merged = mergeShortAdjacentCaptions(
+		endCaptionsBeforeNextStart(sentenceCues),
+		mergeOptions,
+	);
 	padSpans(merged, edgePadMs);
 	return renumberCues(merged);
 }
