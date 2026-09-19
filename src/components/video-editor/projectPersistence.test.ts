@@ -126,4 +126,33 @@ describe("normalizeProjectEditor", () => {
 		expect(editor.webcam.height).toBe(80);
 		expect(editor.webcam.roundness).toBeCloseTo(4.34, 1);
 	});
+
+	it("defaults and clamps keystroke overlay settings", () => {
+		expect(normalizeProjectEditor({}).keystrokeOverlay).toEqual({
+			enabled: false,
+			mode: "shortcuts",
+			position: "bottom-left",
+			size: 1,
+		});
+
+		const editor = normalizeProjectEditor({
+			keystrokeOverlay: {
+				enabled: "yes",
+				mode: "words",
+				position: "top-left",
+				size: 9,
+			} as never,
+		});
+		expect(editor.keystrokeOverlay).toEqual({
+			enabled: false,
+			mode: "shortcuts",
+			position: "bottom-left",
+			size: 2,
+		});
+		expect(
+			normalizeProjectEditor({
+				keystrokeOverlay: { size: Number.NaN } as never,
+			}).keystrokeOverlay.size,
+		).toBe(1);
+	});
 });

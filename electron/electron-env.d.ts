@@ -593,6 +593,11 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		getKeystrokeTelemetry: (videoPath?: string) => Promise<{
+			success: boolean;
+			samples: KeystrokeTelemetryPoint[];
+			message?: string;
+		}>;
 		setCursorTelemetry: (
 			videoPath: string | undefined,
 			samples: CursorTelemetryPoint[],
@@ -967,6 +972,12 @@ interface CursorTelemetryPoint {
 		| "resize-ew"
 		| "resize-ns"
 		| "not-allowed";
+}
+
+interface KeystrokeTelemetryPoint {
+	timeMs: number;
+	key: string;
+	modifiers: Array<"meta" | "ctrl" | "alt" | "shift">;
 }
 
 interface SystemCursorAsset {

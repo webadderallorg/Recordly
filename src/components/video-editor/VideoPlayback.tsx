@@ -103,6 +103,12 @@ import {
 	preloadCursorAssets,
 } from "./videoPlayback/cursorRenderer";
 import { clampFocusToStage as clampFocusToStageUtil } from "./videoPlayback/focusUtils";
+import { KeystrokeOverlay } from "./videoPlayback/keystrokeOverlay/KeystrokeOverlay";
+import {
+	DEFAULT_KEYSTROKE_OVERLAY,
+	type KeystrokeOverlaySettings,
+	type KeystrokeTelemetryPoint,
+} from "./videoPlayback/keystrokeOverlay/keystrokeTypes";
 import { layoutVideoContent as layoutVideoContentUtil } from "./videoPlayback/layoutUtils";
 import { clamp01 } from "./videoPlayback/mathUtils";
 import {
@@ -115,13 +121,13 @@ import {
 import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
 import { supportsPreviewPlaybackRate } from "./videoPlayback/playbackRate";
 import { PreviewVideoSource } from "./videoPlayback/previewVideoSource";
-import { usePreviewVideoReady } from "./videoPlayback/usePreviewVideoReady";
 import { getSceneEffectMetrics } from "./videoPlayback/sceneEffects";
 import {
 	resolvePreviewMotionMode,
 	resolveSceneZoomTarget,
 	shouldComposePreviewFrame,
 } from "./videoPlayback/sceneMotion";
+import { usePreviewVideoReady } from "./videoPlayback/usePreviewVideoReady";
 import {
 	getWebcamMediaTargetTimeSeconds,
 	isWebcamMediaSynchronized,
@@ -260,6 +266,8 @@ interface VideoPlaybackProps {
 	onAnnotationPositionChange?: (id: string, position: { x: number; y: number }) => void;
 	onAnnotationSizeChange?: (id: string, size: { width: number; height: number }) => void;
 	cursorTelemetry?: CursorTelemetryPoint[];
+	keystrokeSamples?: KeystrokeTelemetryPoint[];
+	keystrokeOverlay?: KeystrokeOverlaySettings;
 	showCursor?: boolean;
 	cursorStyle?: CursorStyle;
 	cursorSize?: number;
@@ -345,6 +353,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			onAnnotationPositionChange,
 			onAnnotationSizeChange,
 			cursorTelemetry = [],
+			keystrokeSamples = [],
+			keystrokeOverlay = DEFAULT_KEYSTROKE_OVERLAY,
 			showCursor = false,
 			cursorStyle = DEFAULT_CURSOR_STYLE,
 			cursorSize = DEFAULT_CURSOR_SIZE,
@@ -530,9 +540,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		}, []);
 
 		const initializePixiRenderer = useCallback(
-			async (
-				container: HTMLDivElement,
-			): Promise<Application> => {
+			async (container: HTMLDivElement): Promise<Application> => {
 				const backendOrder: PixiPreviewBackend[] = ["webgl", "webgpu"];
 				const attempts: PixiRendererAttempt[] = [];
 
@@ -2671,6 +2679,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								</div>
 							</div>
 						) : null}
+						<KeystrokeOverlay
+							samples={keystrokeSamples}
+							settings={keystrokeOverlay}
+							timeMs={currentTime * 1000}
+							overlayWidth={overlayRef.current?.clientWidth || previewViewportWidth}
+							isGap={isGap}
+						/>
 						<div
 							className="absolute inset-0"
 							style={{

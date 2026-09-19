@@ -3,6 +3,7 @@ import { toFileUrl } from "../projectPersistence";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
 import type { CursorTelemetryPoint, SpeedRegion, ZoomRegion } from "../types";
+import type { KeystrokeTelemetryPoint } from "../videoPlayback/keystrokeOverlay/keystrokeTypes";
 
 type AppearanceState = ReturnType<typeof useAppearanceState>;
 type TimelineState = ReturnType<typeof useTimelineState>;
@@ -13,6 +14,7 @@ type BuildExportRenderOptionsInput = {
 	effectiveSpeedRegions: SpeedRegion[];
 	effectiveZoomRegions: ZoomRegion[];
 	effectiveCursorTelemetry: CursorTelemetryPoint[];
+	keystrokeTelemetry: KeystrokeTelemetryPoint[];
 	effectiveShowCursor: boolean;
 	previewWidth: number;
 	previewHeight: number;
@@ -26,6 +28,7 @@ export function buildExportRenderOptions({
 	effectiveSpeedRegions,
 	effectiveZoomRegions,
 	effectiveCursorTelemetry,
+	keystrokeTelemetry,
 	effectiveShowCursor,
 	previewWidth,
 	previewHeight,
@@ -63,6 +66,8 @@ export function buildExportRenderOptions({
 		autoCaptionSettings: timeline.autoCaptionSettings,
 		zoomRegions: effectiveZoomRegions,
 		cursorTelemetry: effectiveCursorTelemetry,
+		keystrokeTelemetry,
+		keystrokeOverlay: appearance.keystrokeOverlay,
 		showCursor: effectiveShowCursor,
 		cursorStyle: appearance.cursorStyle,
 		cursorSize: appearance.cursorSize,

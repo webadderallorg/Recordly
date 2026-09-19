@@ -90,6 +90,11 @@ import {
 	DEFAULT_ZOOM_OUT_DURATION_MS,
 } from "./types";
 import { fromCursorSwaySliderValue, toCursorSwaySliderValue } from "./videoPlayback/cursorSway";
+import {
+	DEFAULT_KEYSTROKE_OVERLAY,
+	type KeystrokeOverlayPosition,
+	type KeystrokeOverlaySettings,
+} from "./videoPlayback/keystrokeOverlay/keystrokeTypes";
 import { isZeroPadding } from "./videoPlayback/layoutUtils";
 import { getPreviewPlaybackRateRange } from "./videoPlayback/playbackRate";
 import {
@@ -607,6 +612,9 @@ interface SettingsPanelProps {
 	onWebcamChange?: (webcam: WebcamOverlaySettings) => void;
 	onUploadWebcam?: () => void;
 	onClearWebcam?: () => void;
+	keystrokeOverlay?: KeystrokeOverlaySettings;
+	onKeystrokeOverlayChange?: (overlay: KeystrokeOverlaySettings) => void;
+	keystrokeSampleCount?: number;
 	padding?: Padding;
 	onPaddingChange?: (padding: Padding) => void;
 	cropRegion?: CropRegion;
@@ -670,6 +678,25 @@ const WEBCAM_POSITION_PRESETS: Array<{
 	{ preset: "bottom-left", label: "↙" },
 	{ preset: "bottom-center", label: "↓" },
 	{ preset: "bottom-right", label: "↘" },
+];
+
+const KEYSTROKE_OVERLAY_POSITIONS: Array<{
+	position: KeystrokeOverlayPosition;
+	labelKey: string;
+	fallback: string;
+}> = [
+	{ position: "bottom-left", labelKey: "keystrokes.positionBottomLeft", fallback: "Bottom left" },
+	{
+		position: "bottom-center",
+		labelKey: "keystrokes.positionBottomCenter",
+		fallback: "Bottom center",
+	},
+	{
+		position: "bottom-right",
+		labelKey: "keystrokes.positionBottomRight",
+		fallback: "Bottom right",
+	},
+	{ position: "top-center", labelKey: "keystrokes.positionTopCenter", fallback: "Top center" },
 ];
 
 type CursorStyleOption = { value: CursorStyle; label: string };
@@ -1050,6 +1077,9 @@ export function SettingsPanel({
 	onWebcamChange,
 	onUploadWebcam,
 	onClearWebcam,
+	keystrokeOverlay = DEFAULT_KEYSTROKE_OVERLAY,
+	onKeystrokeOverlayChange,
+	keystrokeSampleCount = 0,
 	padding = DEFAULT_PADDING,
 	onPaddingChange,
 	cropRegion,
@@ -1628,6 +1658,14 @@ export function SettingsPanel({
 	const resetWebcamSection = () => {
 		if (!onWebcamChange) return;
 		onWebcamChange({ ...defaultWebcam });
+	};
+
+	const resetKeystrokesSection = () => {
+		onKeystrokeOverlayChange?.({ ...initialEditorPreferences.keystrokeOverlay });
+	};
+
+	const updateKeystrokeOverlay = (patch: Partial<KeystrokeOverlaySettings>) => {
+		onKeystrokeOverlayChange?.({ ...keystrokeOverlay, ...patch });
 	};
 
 	const resetCropSection = () => {
@@ -3351,6 +3389,127 @@ export function SettingsPanel({
 								</div>
 							) : null}
 						</div>
+					</section>
+				);
+			case "keystrokes":
+				return (
+					<section className="flex flex-col gap-2">
+						<div className="flex items-center justify-between gap-3">
+							<div className="flex items-center gap-3">
+								<SectionLabel>
+									{tSettings("sections.keystrokes", "Keystrokes")}
+								</SectionLabel>
+								<button
+									type="button"
+									onClick={resetKeystrokesSection}
+									className="text-[10px] text-[#2563EB] transition-opacity hover:opacity-80"
+								>
+									{t("common.actions.reset", "Reset")}
+								</button>
+							</div>
+							<div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+								<span>{tSettings("captions.enabled", "Show")}</span>
+								<Switch
+									checked={keystrokeOverlay.enabled}
+									onCheckedChange={(enabled) =>
+										updateKeystrokeOverlay({ enabled })
+									}
+									className="data-[state=checked]:bg-[#2563EB] scale-75"
+								/>
+							</div>
+						</div>
+						{keystrokeOverlay.enabled ? (
+							<div className="flex flex-col gap-1.5">
+								<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+									<div className="mb-2 text-[10px] text-muted-foreground">
+										{tSettings("keystrokes.mode", "Mode")}
+									</div>
+									<ToggleGroup
+										type="single"
+										value={keystrokeOverlay.mode}
+										onValueChange={(value) => {
+											if (value === "shortcuts" || value === "all") {
+												updateKeystrokeOverlay({ mode: value });
+											}
+										}}
+										className="grid grid-cols-2 gap-1.5"
+										aria-label={tSettings("keystrokes.mode", "Mode")}
+									>
+										<ToggleGroupItem
+											value="shortcuts"
+											className={cn(
+												"h-8 rounded-lg border px-0 text-xs font-medium shadow-none transition-all",
+												"data-[state=on]:border-[#2563EB] data-[state=on]:bg-[#2563EB] data-[state=on]:text-white",
+												"border-foreground/10 bg-foreground/5 text-muted-foreground hover:border-foreground/20 hover:bg-foreground/10",
+											)}
+										>
+											{tSettings("keystrokes.modeShortcuts", "Shortcuts")}
+										</ToggleGroupItem>
+										<ToggleGroupItem
+											value="all"
+											className={cn(
+												"h-8 rounded-lg border px-0 text-xs font-medium shadow-none transition-all",
+												"data-[state=on]:border-[#2563EB] data-[state=on]:bg-[#2563EB] data-[state=on]:text-white",
+												"border-foreground/10 bg-foreground/5 text-muted-foreground hover:border-foreground/20 hover:bg-foreground/10",
+											)}
+										>
+											{tSettings("keystrokes.modeAll", "All typing")}
+										</ToggleGroupItem>
+									</ToggleGroup>
+								</div>
+								<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+									<div className="mb-2 text-[10px] text-muted-foreground">
+										{tSettings("keystrokes.position", "Position")}
+									</div>
+									<div className="grid grid-cols-2 gap-1.5">
+										{KEYSTROKE_OVERLAY_POSITIONS.map((option) => {
+											const isActive =
+												keystrokeOverlay.position === option.position;
+											return (
+												<Button
+													key={option.position}
+													type="button"
+													onClick={() =>
+														updateKeystrokeOverlay({
+															position: option.position,
+														})
+													}
+													className={cn(
+														"h-8 rounded-lg border px-2 text-xs font-semibold transition-all",
+														isActive
+															? "border-[#2563EB] bg-[#2563EB] text-white"
+															: "border-foreground/10 bg-foreground/5 text-muted-foreground hover:border-foreground/20 hover:bg-foreground/10",
+													)}
+												>
+													{tSettings(option.labelKey, option.fallback)}
+												</Button>
+											);
+										})}
+									</div>
+								</div>
+								<SliderControl
+									label={tSettings("keystrokes.size", "Size")}
+									value={keystrokeOverlay.size}
+									defaultValue={DEFAULT_KEYSTROKE_OVERLAY.size}
+									min={0.5}
+									max={2}
+									step={0.05}
+									onChange={(size) => updateKeystrokeOverlay({ size })}
+									formatValue={(v) => `${v.toFixed(2)}×`}
+									parseInput={(text) => parseFloat(text.replace(/×$/, ""))}
+								/>
+								{keystrokeSampleCount === 0 ? (
+									<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+										<p className="text-[11px] text-muted-foreground">
+											{tSettings(
+												"keystrokes.empty",
+												"This recording has no keystrokes. Leave Show on when you record to capture them.",
+											)}
+										</p>
+									</div>
+								) : null}
+							</div>
+						) : null}
 					</section>
 				);
 			case "webcam":

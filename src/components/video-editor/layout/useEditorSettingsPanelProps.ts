@@ -37,6 +37,7 @@ type Input = {
 	setNativeCaptureUnavailableModalOpen: Dispatch<SetStateAction<boolean>>;
 	handleUploadWebcam: () => void;
 	handleClearWebcam: () => void;
+	keystrokeSampleCount: number;
 };
 
 export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof SettingsPanel> {
@@ -65,6 +66,7 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		setNativeCaptureUnavailableModalOpen,
 		handleUploadWebcam,
 		handleClearWebcam,
+		keystrokeSampleCount,
 	} = input;
 	const selectedZoom = timeline.zoomRegions.find(
 		(region) => region.id === timeline.selectedZoomId,
@@ -179,6 +181,9 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onWebcamChange: appearance.setWebcam,
 		onUploadWebcam: handleUploadWebcam,
 		onClearWebcam: handleClearWebcam,
+		keystrokeOverlay: appearance.keystrokeOverlay,
+		onKeystrokeOverlayChange: appearance.setKeystrokeOverlay,
+		keystrokeSampleCount,
 		padding: appearance.padding,
 		onPaddingChange: appearance.setPadding,
 		cropRegion: appearance.cropRegion,

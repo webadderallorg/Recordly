@@ -21,6 +21,10 @@ import { DEFAULT_WEBCAM_ROUNDNESS } from "@/components/video-editor/types";
 import { createCursorFollowCameraState } from "@/components/video-editor/videoPlayback/cursorFollowCamera";
 import { buildNativeCursorAtlas } from "@/components/video-editor/videoPlayback/cursorRenderer";
 import { getCursorViewportScale } from "@/components/video-editor/videoPlayback/cursorScale";
+import type {
+	KeystrokeOverlaySettings,
+	KeystrokeTelemetryPoint,
+} from "@/components/video-editor/videoPlayback/keystrokeOverlay/keystrokeTypes";
 import {
 	computePaddedLayout,
 	scalePreviewBorderRadius,
@@ -122,6 +126,8 @@ interface VideoExporterConfig extends ExportConfig {
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
+	keystrokeTelemetry?: KeystrokeTelemetryPoint[];
+	keystrokeOverlay?: KeystrokeOverlaySettings;
 	cursorTelemetry?: CursorTelemetryPoint[];
 	showCursor?: boolean;
 	cursorStyle?: CursorStyle;
@@ -631,6 +637,8 @@ export class ModernVideoExporter {
 					annotationRegions: this.config.annotationRegions,
 					autoCaptions: this.config.autoCaptions,
 					autoCaptionSettings: this.config.autoCaptionSettings,
+					keystrokeTelemetry: this.config.keystrokeTelemetry,
+					keystrokeOverlay: this.config.keystrokeOverlay,
 					speedRegions: this.config.speedRegions,
 					previewWidth: this.config.previewWidth,
 					previewHeight: this.config.previewHeight,
@@ -1745,6 +1753,12 @@ export class ModernVideoExporter {
 		}
 		if ((this.config.autoCaptions ?? []).length > 0) {
 			reasons.push("unsupported-caption-overlay");
+		}
+		if (
+			this.config.keystrokeOverlay?.enabled &&
+			(this.config.keystrokeTelemetry?.length ?? 0) > 0
+		) {
+			reasons.push("unsupported-keystroke-overlay");
 		}
 		if (this.config.webcam?.enabled) {
 			// Native GPU compositors use a different corner and shadow model.

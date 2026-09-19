@@ -159,9 +159,22 @@
 		"caption": "Sous-titre",
 		"zoom": "Zoom",
 		"cursor": "Curseur",
+		"keystrokes": "Frappes",
 		"webcam": "Webcam",
 		"frame": "Cadre",
 		"crop": "Recadrage"
+	},
+	"keystrokes": {
+		"mode": "Mode",
+		"modeShortcuts": "Raccourcis",
+		"modeAll": "Toute saisie",
+		"position": "Position",
+		"positionBottomLeft": "Bas gauche",
+		"positionBottomCenter": "Bas centre",
+		"positionBottomRight": "Bas droit",
+		"positionTopCenter": "Haut centre",
+		"size": "Taille",
+		"empty": "Cet enregistrement n'a pas de frappes. Laissez Afficher activé pendant l'enregistrement pour les capturer."
 	},
 	"captions": {
 		"selectOnTimeline": "Sélectionnez un sous-titre sur la timeline pour le modifier.",

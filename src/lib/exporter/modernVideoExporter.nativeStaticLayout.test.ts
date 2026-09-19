@@ -428,6 +428,38 @@ describe("ModernVideoExporter native static-layout eligibility", () => {
 		]);
 	});
 
+	it("skips native static layout when the keystroke overlay is enabled with samples", () => {
+		const exporter = createExporter({
+			keystrokeOverlay: {
+				enabled: true,
+				mode: "shortcuts",
+				position: "bottom-left",
+				size: 1,
+			},
+			keystrokeTelemetry: [{ timeMs: 0, key: "c", modifiers: ["meta"] }],
+		});
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReasons({ audioMode: "none" }, videoInfo, 60),
+		).toContain("unsupported-keystroke-overlay");
+	});
+
+	it("does not skip native static layout for an enabled overlay with no samples", () => {
+		const exporter = createExporter({
+			keystrokeOverlay: {
+				enabled: true,
+				mode: "shortcuts",
+				position: "bottom-left",
+				size: 1,
+			},
+			keystrokeTelemetry: [],
+		});
+
+		expect(
+			exporter.getNativeStaticLayoutSkipReasons({ audioMode: "none" }, videoInfo, 60),
+		).not.toContain("unsupported-keystroke-overlay");
+	});
+
 	it("reports invalid crop geometry instead of passing native export bad coordinates", () => {
 		const exporter = createExporter({
 			cropRegion: { x: 0, y: 0, width: 0, height: 1 },

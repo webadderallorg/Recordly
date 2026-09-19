@@ -3,6 +3,7 @@ import {
 	ClosedCaptioning,
 	Cursor,
 	Gear,
+	Keyboard,
 	PuzzlePiece,
 	Sparkle,
 	UserCircle,
@@ -28,6 +29,11 @@ export function EditorSidebar({ t, activeSection, setActiveSection, settingsPane
 		() => [
 			{ id: "scene" as const, label: t("settings.sections.scene", "Scene"), icon: Sparkle },
 			{ id: "cursor" as const, label: t("settings.sections.cursor", "Cursor"), icon: Cursor },
+			{
+				id: "keystrokes" as const,
+				label: t("settings.sections.keystrokes", "Keystrokes"),
+				icon: Keyboard,
+			},
 			{ id: "webcam" as const, label: t("settings.sections.webcam", "Webcam"), icon: Camera },
 			{
 				id: "captions" as const,

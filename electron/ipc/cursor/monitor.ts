@@ -11,8 +11,33 @@ import {
 	setNativeCursorMonitorOutputBuffer,
 	setNativeCursorMonitorProcess,
 } from "../state";
-import type { CursorVisualType } from "../types";
+import type { CursorVisualType, KeystrokeModifier } from "../types";
 import { recordCursorMouseDown, recordCursorMouseUp } from "./interaction";
+import { recordKeystroke } from "./keystrokeTelemetry";
+
+const KEYSTROKE_MONITOR_LINE = /^KEY:down:([a-z0-9]+):([a-z,]*)$/;
+const MODIFIER_ORDER: KeystrokeModifier[] = ["meta", "ctrl", "alt", "shift"];
+
+export function parseKeystrokeMonitorLine(
+	line: string,
+): { key: string; modifiers: KeystrokeModifier[] } | null {
+	const match = line.match(KEYSTROKE_MONITOR_LINE);
+	if (!match) {
+		return null;
+	}
+
+	const seen = new Set<KeystrokeModifier>();
+	for (const value of match[2].split(",")) {
+		if (value === "meta" || value === "ctrl" || value === "alt" || value === "shift") {
+			seen.add(value);
+		}
+	}
+
+	return {
+		key: match[1],
+		modifiers: MODIFIER_ORDER.filter((modifier) => seen.has(modifier)),
+	};
+}
 
 export function emitCursorStateChanged(cursorType: CursorVisualType) {
 	BrowserWindow.getAllWindows().forEach((window) => {
@@ -36,6 +61,12 @@ export function handleCursorMonitorStdout(chunk: Buffer) {
 				const button = Number(interactionMatch[2]);
 				recordCursorMouseDown(button === 2 || button === 3 ? button : 1);
 			}
+			continue;
+		}
+
+		const keystroke = parseKeystrokeMonitorLine(line);
+		if (keystroke) {
+			recordKeystroke(keystroke.key, keystroke.modifiers);
 			continue;
 		}
 
@@ -84,7 +115,7 @@ export function stopNativeCursorMonitor() {
 	setNativeCursorMonitorOutputBuffer("");
 }
 
-export async function startNativeCursorMonitor() {
+export async function startNativeCursorMonitor(options?: { captureKeys?: boolean }) {
 	stopNativeCursorMonitor();
 
 	if (process.platform !== "darwin" && process.platform !== "win32") {
@@ -113,7 +144,9 @@ export async function startNativeCursorMonitor() {
 
 		let proc: ReturnType<typeof spawn> | null;
 		try {
-			proc = spawn(helperPath, [], {
+			const spawnArgs =
+				process.platform === "darwin" && options?.captureKeys ? ["--capture-keys"] : [];
+			proc = spawn(helperPath, spawnArgs, {
 				stdio: ["pipe", "pipe", "pipe"],
 			});
 		} catch (spawnError) {

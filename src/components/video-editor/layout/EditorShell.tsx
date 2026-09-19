@@ -78,6 +78,7 @@ export function EditorShell(props: Props) {
 	} = projectController;
 	const {
 		cursor,
+		keystrokeSamples,
 		projection,
 		audio,
 		playback,
@@ -209,6 +210,7 @@ export function EditorShell(props: Props) {
 						zoomCommands={zoomCommands}
 						annotationCommands={annotationCommands}
 						effectiveCursorTelemetry={cursor.effectiveCursorTelemetry}
+						keystrokeSamples={keystrokeSamples}
 						effectiveShowCursor={effectiveShowCursor}
 						isCropped={ui.isCropped}
 						handleOpenCropEditor={ui.handleOpenCropEditor}

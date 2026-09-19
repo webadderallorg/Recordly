@@ -159,9 +159,22 @@
 		"caption": "Legenda",
 		"zoom": "Zoom",
 		"cursor": "Cursor",
+		"keystrokes": "Teclas",
 		"webcam": "Webcam",
 		"frame": "Quadro",
 		"crop": "Corte"
+	},
+	"keystrokes": {
+		"mode": "Modo",
+		"modeShortcuts": "Atalhos",
+		"modeAll": "Toda a digitação",
+		"position": "Posição",
+		"positionBottomLeft": "Inferior esquerdo",
+		"positionBottomCenter": "Inferior centro",
+		"positionBottomRight": "Inferior direito",
+		"positionTopCenter": "Superior centro",
+		"size": "Tamanho",
+		"empty": "Esta gravação não tem teclas. Deixe Mostrar ativado ao gravar para capturá-las."
 	},
 	"captions": {
 		"selectOnTimeline": "Selecione uma legenda na linha do tempo para editá-la.",

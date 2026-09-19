@@ -40,6 +40,10 @@ import {
 	PixiCursorOverlay,
 	preloadCursorAssets,
 } from "@/components/video-editor/videoPlayback/cursorRenderer";
+import type {
+	KeystrokeOverlaySettings,
+	KeystrokeTelemetryPoint,
+} from "@/components/video-editor/videoPlayback/keystrokeOverlay/keystrokeTypes";
 import {
 	computePaddedLayout,
 	scalePreviewBorderRadius,
@@ -87,6 +91,7 @@ import {
 	renderAnnotationToCanvas,
 } from "./annotationRenderer";
 import { ForwardFrameSource } from "./forwardFrameSource";
+import { renderKeystrokes } from "./keystrokeRenderer";
 import { resolveMediaElementSource } from "./localMediaSource";
 import {
 	getShadowFilterPadding,
@@ -127,6 +132,8 @@ interface FrameRenderConfig {
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
+	keystrokeTelemetry?: KeystrokeTelemetryPoint[];
+	keystrokeOverlay?: KeystrokeOverlaySettings;
 	speedRegions?: SpeedRegion[];
 	previewWidth?: number;
 	previewHeight?: number;
@@ -1477,7 +1484,28 @@ export class FrameRenderer {
 		context.restore();
 	}
 
-	private async composeBlurAnnotationFrame(timeMs: number): Promise<void> {
+	private paintKeystrokeOverlay(context: CanvasRenderingContext2D, timeMs: number) {
+		if (!this.config.keystrokeOverlay) {
+			return;
+		}
+		renderKeystrokes(
+			context,
+			this.config.keystrokeTelemetry ?? [],
+			this.config.keystrokeOverlay,
+			this.config.width,
+			this.config.height,
+			timeMs,
+		);
+	}
+
+	private hasKeystrokeOverlay() {
+		return Boolean(
+			this.config.keystrokeOverlay?.enabled &&
+				(this.config.keystrokeTelemetry?.length ?? 0) > 0,
+		);
+	}
+
+	private async composeBlurAnnotationFrame(timeMs: number, cursorTimeMs: number): Promise<void> {
 		if (!this.app) {
 			this.outputCanvasOverride = null;
 			return;
@@ -1510,6 +1538,7 @@ export class FrameRenderer {
 		);
 
 		this.drawCaptionOverlay(context);
+		this.paintKeystrokeOverlay(context, cursorTimeMs);
 		this.outputCanvasOverride = canvas;
 	}
 
@@ -2954,10 +2983,10 @@ export class FrameRenderer {
 		this.updateAnnotationLayer(timeMs);
 		this.updateCaptionLayer(timestamp / 1000);
 		this.updateWebcamOverlay();
-		await this.renderOutput(timeMs);
+		await this.renderOutput(timeMs, cursorTimeMs);
 	}
 
-	private async renderOutput(timeMs: number): Promise<void> {
+	private async renderOutput(timeMs: number, cursorTimeMs: number): Promise<void> {
 		if (this.hasActiveBlurAnnotations(timeMs)) {
 			const annotationContainerVisible = this.annotationContainer?.visible ?? true;
 			const captionContainerVisible = this.captionContainer?.visible ?? true;
@@ -2978,12 +3007,27 @@ export class FrameRenderer {
 				this.captionContainer.visible = captionContainerVisible;
 			}
 
-			await this.composeBlurAnnotationFrame(timeMs);
+			await this.composeBlurAnnotationFrame(timeMs, cursorTimeMs);
 			return;
 		}
 
-		this.outputCanvasOverride = null;
 		this.app!.render();
+		if (!this.hasKeystrokeOverlay()) {
+			this.outputCanvasOverride = null;
+			return;
+		}
+
+		const compositeState = this.ensureExportCompositeCanvas();
+		if (!compositeState) {
+			this.outputCanvasOverride = null;
+			return;
+		}
+
+		const { canvas, context } = compositeState;
+		context.clearRect(0, 0, canvas.width, canvas.height);
+		context.drawImage(this.app!.canvas as HTMLCanvasElement, 0, 0);
+		this.paintKeystrokeOverlay(context, cursorTimeMs);
+		this.outputCanvasOverride = canvas;
 	}
 
 	private updateLayout(): void {

@@ -18,6 +18,7 @@ import { useCursorTelemetry } from "./useCursorTelemetry";
 import { useEditorGlobalInteractions } from "./useEditorGlobalInteractions";
 import { useEditorPlaybackControls } from "./useEditorPlaybackControls";
 import { useFreshRecordingAutoZoom } from "./useFreshRecordingAutoZoom";
+import { useKeystrokeTelemetry } from "./useKeystrokeTelemetry";
 import { useTimelineProjection } from "./useTimelineProjection";
 import { useZoomRegionCommands } from "./useZoomRegionCommands";
 
@@ -74,6 +75,7 @@ export function useTimelineEditingController(input: Input) {
 		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
 		autoSuggestedVideoPathRef: input.autoSuggestedVideoPathRef,
 	});
+	const { keystrokeSamples } = useKeystrokeTelemetry(input.videoSourcePath);
 	const projection = useTimelineProjection({
 		timeline,
 		duration: input.duration,
@@ -218,6 +220,7 @@ export function useTimelineEditingController(input: Input) {
 
 	return {
 		cursor,
+		keystrokeSamples,
 		projection,
 		audio,
 		playback,

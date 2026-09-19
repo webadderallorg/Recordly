@@ -165,9 +165,22 @@
 		"caption": "Caption",
 		"zoom": "Zoom",
 		"cursor": "Cursor",
+		"keystrokes": "Keystrokes",
 		"webcam": "Webcam",
 		"frame": "Frame",
 		"crop": "Crop"
+	},
+	"keystrokes": {
+		"mode": "Mode",
+		"modeShortcuts": "Shortcuts",
+		"modeAll": "All typing",
+		"position": "Position",
+		"positionBottomLeft": "Bottom left",
+		"positionBottomCenter": "Bottom center",
+		"positionBottomRight": "Bottom right",
+		"positionTopCenter": "Top center",
+		"size": "Size",
+		"empty": "This recording has no keystrokes. Leave Show on when you record to capture them."
 	},
 	"captions": {
 		"selectOnTimeline": "Select a caption on the timeline to edit it.",

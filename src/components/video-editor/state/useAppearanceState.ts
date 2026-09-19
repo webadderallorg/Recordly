@@ -22,6 +22,10 @@ import {
 	DEFAULT_ZOOM_OUT_DURATION_MS,
 	DEFAULT_ZOOM_OUT_EASING,
 } from "../types";
+import {
+	DEFAULT_KEYSTROKE_OVERLAY,
+	type KeystrokeOverlaySettings,
+} from "../videoPlayback/keystrokeOverlay/keystrokeTypes";
 
 export function useAppearanceState(preferences: EditorPreferences) {
 	const [wallpaper, setWallpaper] = useState(preferences.wallpaper);
@@ -113,6 +117,9 @@ export function useAppearanceState(preferences: EditorPreferences) {
 	const [webcam, setWebcam] = useState<WebcamOverlaySettings>(
 		preferences.webcam ?? DEFAULT_WEBCAM_OVERLAY,
 	);
+	const [keystrokeOverlay, setKeystrokeOverlay] = useState<KeystrokeOverlaySettings>(
+		preferences.keystrokeOverlay ?? DEFAULT_KEYSTROKE_OVERLAY,
+	);
 	const [resolvedWebcamVideoUrl, setResolvedWebcamVideoUrl] = useState<string | null>(null);
 
 	return {
@@ -198,6 +205,8 @@ export function useAppearanceState(preferences: EditorPreferences) {
 		setCropRegion,
 		webcam,
 		setWebcam,
+		keystrokeOverlay,
+		setKeystrokeOverlay,
 		resolvedWebcamVideoUrl,
 		setResolvedWebcamVideoUrl,
 	};

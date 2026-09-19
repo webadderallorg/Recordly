@@ -2,6 +2,10 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs/promises";
 import { BrowserWindow } from "electron";
 import {
+	persistPendingKeystrokeTelemetry,
+	snapshotKeystrokeTelemetryForPersistence,
+} from "../cursor/keystrokeTelemetry";
+import {
 	persistPendingCursorTelemetry,
 	snapshotCursorTelemetryForPersistence,
 } from "../cursor/telemetry";
@@ -263,12 +267,18 @@ export async function finalizeStoredVideo(videoPath: string) {
 	}
 
 	snapshotCursorTelemetryForPersistence();
+	snapshotKeystrokeTelemetryForPersistence();
 	setCurrentVideoPath(videoPath);
 	setCurrentProjectPath(null);
 	try {
 		await persistPendingCursorTelemetry(videoPath);
 	} catch (error) {
 		console.warn("[mac-stop] Failed to persist cursor telemetry:", error);
+	}
+	try {
+		await persistPendingKeystrokeTelemetry(videoPath);
+	} catch (error) {
+		console.warn("Failed to persist keystroke telemetry", error);
 	}
 	if (isAutoRecordingPath(videoPath)) {
 		await pruneAutoRecordings([videoPath]);

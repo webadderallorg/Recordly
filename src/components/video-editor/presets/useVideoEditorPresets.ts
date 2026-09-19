@@ -77,6 +77,7 @@ export function useVideoEditorPresets({
 			padding: { ...appearance.padding },
 			cropRegion: { ...appearance.cropRegion },
 			webcam: (({ sourcePath: _sourcePath, ...settings }) => settings)(appearance.webcam),
+			keystrokeOverlay: appearance.keystrokeOverlay,
 			aspectRatio,
 			exportEncodingMode: exportSettings.exportEncodingMode,
 			exportBackendPreference: exportSettings.exportBackendPreference,
@@ -144,6 +145,7 @@ export function useVideoEditorPresets({
 				...snapshot.webcam,
 				sourcePath: current.sourcePath,
 			}));
+			appearance.setKeystrokeOverlay({ ...snapshot.keystrokeOverlay });
 			setAspectRatio(snapshot.aspectRatio);
 			exportSettings.setExportEncodingMode(snapshot.exportEncodingMode);
 			exportSettings.setExportBackendPreference(snapshot.exportBackendPreference);

@@ -31,6 +31,10 @@ import {
 	PixiCursorOverlay,
 	preloadCursorAssets,
 } from "@/components/video-editor/videoPlayback/cursorRenderer";
+import type {
+	KeystrokeOverlaySettings,
+	KeystrokeTelemetryPoint,
+} from "@/components/video-editor/videoPlayback/keystrokeOverlay/keystrokeTypes";
 import {
 	computePaddedLayout,
 	scalePreviewBorderRadius,
@@ -74,8 +78,8 @@ import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import { renderAnnotations } from "./annotationRenderer";
 import { renderCaptions } from "./captionRenderer";
 import { ForwardFrameSource } from "./forwardFrameSource";
+import { renderKeystrokes } from "./keystrokeRenderer";
 import { resolveMediaElementSource } from "./localMediaSource";
-
 
 interface FrameRenderConfig {
 	timelineEffects?: boolean;
@@ -108,6 +112,8 @@ interface FrameRenderConfig {
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
+	keystrokeTelemetry?: KeystrokeTelemetryPoint[];
+	keystrokeOverlay?: KeystrokeOverlaySettings;
 	speedRegions?: SpeedRegion[];
 	previewWidth?: number;
 	previewHeight?: number;
@@ -1526,6 +1532,17 @@ export class FrameRenderer {
 				this.config.width,
 				this.config.height,
 				timestamp / 1000,
+			);
+		}
+
+		if (this.config.keystrokeOverlay && this.compositeCtx) {
+			renderKeystrokes(
+				this.compositeCtx,
+				this.config.keystrokeTelemetry ?? [],
+				this.config.keystrokeOverlay,
+				this.config.width,
+				this.config.height,
+				cursorTimeMs,
 			);
 		}
 	}

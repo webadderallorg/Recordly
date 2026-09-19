@@ -159,9 +159,22 @@
 		"caption": "Субтитр",
 		"zoom": "Зум",
 		"cursor": "Курсор",
+		"keystrokes": "Клавиши",
 		"webcam": "Веб-камера",
 		"frame": "Рамка",
 		"crop": "Обрезать видео"
+	},
+	"keystrokes": {
+		"mode": "Режим",
+		"modeShortcuts": "Сочетания",
+		"modeAll": "Весь ввод",
+		"position": "Положение",
+		"positionBottomLeft": "Слева внизу",
+		"positionBottomCenter": "По центру внизу",
+		"positionBottomRight": "Справа внизу",
+		"positionTopCenter": "По центру вверху",
+		"size": "Размер",
+		"empty": "В этой записи нет нажатий клавиш. Оставьте «Показать» включённым при записи, чтобы сохранить их."
 	},
 	"captions": {
 		"selectOnTimeline": "Выберите субтитры на таймлайне, чтобы отредактировать их.",

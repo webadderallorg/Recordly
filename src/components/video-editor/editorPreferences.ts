@@ -49,6 +49,7 @@ type PersistedEditorControls = Pick<
 	| "borderRadius"
 	| "padding"
 	| "webcam"
+	| "keystrokeOverlay"
 	| "aspectRatio"
 	| "exportEncodingMode"
 	| "exportBackendPreference"
@@ -138,6 +139,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	borderRadiusUnit: "percent",
 	padding: DEFAULT_EDITOR_CONTROLS.padding,
 	webcam: DEFAULT_EDITOR_CONTROLS.webcam,
+	keystrokeOverlay: DEFAULT_EDITOR_CONTROLS.keystrokeOverlay,
 	aspectRatio: DEFAULT_EDITOR_CONTROLS.aspectRatio,
 	exportEncodingMode: DEFAULT_EDITOR_CONTROLS.exportEncodingMode,
 	exportBackendPreference: DEFAULT_EDITOR_CONTROLS.exportBackendPreference,
@@ -343,6 +345,7 @@ function normalizeEditorControls(
 		borderRadius: sanitizedRaw.borderRadius ?? fallback.borderRadius,
 		padding: sanitizedRaw.padding ?? fallback.padding,
 		webcam: sanitizedRaw.webcam ?? fallback.webcam,
+		keystrokeOverlay: sanitizedRaw.keystrokeOverlay ?? fallback.keystrokeOverlay,
 		aspectRatio: sanitizedRaw.aspectRatio ?? fallback.aspectRatio,
 		exportEncodingMode: sanitizedRaw.exportEncodingMode ?? fallback.exportEncodingMode,
 		exportBackendPreference:
@@ -404,6 +407,7 @@ function normalizeEditorControls(
 		borderRadius: normalized.borderRadius,
 		padding: normalized.padding,
 		webcam: normalized.webcam,
+		keystrokeOverlay: normalized.keystrokeOverlay,
 		aspectRatio: normalized.aspectRatio,
 		exportEncodingMode: normalized.exportEncodingMode,
 		exportBackendPreference: normalized.exportBackendPreference,

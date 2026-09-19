@@ -159,9 +159,22 @@
 		"caption": "Untertitel",
 		"zoom": "Zoom",
 		"cursor": "Cursor",
+		"keystrokes": "Tastenanschläge",
 		"webcam": "Webcam",
 		"frame": "Bild",
 		"crop": "Zuschneiden"
+	},
+	"keystrokes": {
+		"mode": "Modus",
+		"modeShortcuts": "Tastenkürzel",
+		"modeAll": "Alle Eingaben",
+		"position": "Position",
+		"positionBottomLeft": "Unten links",
+		"positionBottomCenter": "Unten mittig",
+		"positionBottomRight": "Unten rechts",
+		"positionTopCenter": "Oben mittig",
+		"size": "Größe",
+		"empty": "Diese Aufnahme enthält keine Tastenanschläge. Lassen Sie Anzeigen beim Aufnehmen eingeschaltet, um sie zu erfassen."
 	},
 	"captions": {
 		"selectOnTimeline": "Wählen Sie einen Untertitel auf der Zeitleiste aus, um ihn zu bearbeiten.",

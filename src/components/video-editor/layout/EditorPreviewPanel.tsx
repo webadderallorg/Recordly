@@ -34,6 +34,7 @@ import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
 import type { TimelineEditorHandle } from "../timeline/TimelineEditor";
 import type { VideoPlaybackRef } from "../VideoPlayback";
+import type { KeystrokeTelemetryPoint } from "../videoPlayback/keystrokeOverlay/keystrokeTypes";
 import { EditorVideoPreview } from "./EditorVideoPreview";
 
 type Props = {
@@ -58,6 +59,7 @@ type Props = {
 	zoomCommands: ReturnType<typeof useZoomRegionCommands>;
 	annotationCommands: ReturnType<typeof useAnnotationRegionCommands>;
 	effectiveCursorTelemetry: ReturnType<typeof useTimelineState>["cursorTelemetry"];
+	keystrokeSamples: KeystrokeTelemetryPoint[];
 	effectiveShowCursor: boolean;
 	isCropped: boolean;
 	handleOpenCropEditor: () => void;
@@ -100,6 +102,7 @@ export function EditorPreviewPanel(props: Props) {
 		zoomCommands,
 		annotationCommands,
 		effectiveCursorTelemetry,
+		keystrokeSamples,
 		effectiveShowCursor,
 		isCropped,
 		handleOpenCropEditor,
@@ -192,6 +195,7 @@ export function EditorPreviewPanel(props: Props) {
 									audio={audio}
 									effectiveZoomRegions={projection.effectiveZoomRegions}
 									effectiveCursorTelemetry={effectiveCursorTelemetry}
+									keystrokeSamples={keystrokeSamples}
 									effectiveShowCursor={effectiveShowCursor}
 									setDuration={setDuration}
 									setIsPreviewReady={setIsPreviewReady}

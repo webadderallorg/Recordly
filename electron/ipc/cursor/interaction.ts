@@ -5,6 +5,7 @@ import {
 	hasLoggedInteractionHookFailure,
 	interactionCaptureCleanup,
 	isCursorCaptureActive,
+	isKeystrokeCaptureActive,
 	lastLeftClick,
 	setHasLoggedInteractionHookFailure,
 	setInteractionCaptureCleanup,
@@ -13,10 +14,13 @@ import {
 } from "../state";
 import type {
 	CursorInteractionType,
+	HookKeyboardEvent,
 	HookMouseEvent,
+	KeystrokeModifier,
 	UiohookLike,
 	UiohookModuleNamespace,
 } from "../types";
+import { recordKeystroke } from "./keystrokeTelemetry";
 import {
 	getCursorCaptureElapsedMs,
 	getHookCursorScreenPoint,
@@ -187,6 +191,75 @@ export function shouldStartGlobalInteractionHook(platform: NodeJS.Platform = pro
 	return platform !== "darwin";
 }
 
+const KEY_TOKEN_ALIASES: Record<string, string> = {
+	return: "enter",
+	enter: "enter",
+	escape: "esc",
+	arrow_left: "arrowleft",
+	left: "arrowleft",
+	arrow_right: "arrowright",
+	right: "arrowright",
+	arrow_up: "arrowup",
+	up: "arrowup",
+	arrow_down: "arrowdown",
+	down: "arrowdown",
+	page_up: "pageup",
+	page_down: "pagedown",
+	ctrlright: "ctrl",
+	altright: "alt",
+	altgr: "alt",
+	shiftright: "shift",
+	metaright: "meta",
+};
+
+export function resolveUiohookKeyToken(
+	keycode: number,
+	keyTable: Record<string, number>,
+): string | null {
+	if (!Number.isFinite(keycode)) {
+		return null;
+	}
+
+	let name: string | null = null;
+	for (const [key, code] of Object.entries(keyTable)) {
+		if (code === keycode) {
+			name = key;
+			break;
+		}
+	}
+	if (!name) {
+		return null;
+	}
+
+	const token = name.toLowerCase();
+	return KEY_TOKEN_ALIASES[token] ?? token;
+}
+
+function loadUiohookKeyTable(moduleExports: UiohookModuleNamespace): Record<string, number> {
+	const table = moduleExports.UiohookKey;
+	if (!table || typeof table !== "object") {
+		return {};
+	}
+	return table;
+}
+
+function modifiersFromHookEvent(event: HookKeyboardEvent): KeystrokeModifier[] {
+	const modifiers: KeystrokeModifier[] = [];
+	if (event.metaKey) {
+		modifiers.push("meta");
+	}
+	if (event.ctrlKey) {
+		modifiers.push("ctrl");
+	}
+	if (event.altKey) {
+		modifiers.push("alt");
+	}
+	if (event.shiftKey) {
+		modifiers.push("shift");
+	}
+	return modifiers;
+}
+
 export function recordCursorMouseDown(button: 1 | 2 | 3) {
 	if (!isCursorCaptureActive || isCursorCapturePaused()) {
 		return;
@@ -264,7 +337,7 @@ export async function startInteractionCapture() {
 		}
 
 		if (!hook || typeof hook.on !== "function" || typeof hook.start !== "function") {
-			console.log("[CursorTelemetry] hook unusable â€” aborting interaction capture");
+			console.log("[CursorTelemetry] hook unusable — aborting interaction capture");
 			return;
 		}
 
@@ -289,10 +362,28 @@ export async function startInteractionCapture() {
 			setLinuxCursorScreenPoint({ x: point.x, y: point.y, updatedAt: Date.now() });
 		};
 
+		const keyTable = isKeystrokeCaptureActive
+			? loadUiohookKeyTable(nodeRequire("uiohook-napi") as UiohookModuleNamespace)
+			: {};
+		const captureKeys = isKeystrokeCaptureActive;
+		const onKeyDown = (event: HookKeyboardEvent) => {
+			if (typeof event.keycode !== "number") {
+				return;
+			}
+			const token = resolveUiohookKeyToken(event.keycode, keyTable);
+			if (!token) {
+				return;
+			}
+			recordKeystroke(token, modifiersFromHookEvent(event));
+		};
+
 		hook.on("mousedown", onMouseDown);
 		hook.on("mouseup", onMouseUp);
 		if (process.platform === "linux") {
 			hook.on("mousemove", onMouseMove);
+		}
+		if (captureKeys) {
+			hook.on("keydown", onKeyDown);
 		}
 
 		setInteractionCaptureCleanup(() => {
@@ -303,11 +394,17 @@ export async function startInteractionCapture() {
 					if (process.platform === "linux") {
 						hook.off("mousemove", onMouseMove);
 					}
+					if (captureKeys) {
+						hook.off("keydown", onKeyDown);
+					}
 				} else if (typeof hook.removeListener === "function") {
 					hook.removeListener("mousedown", onMouseDown);
 					hook.removeListener("mouseup", onMouseUp);
 					if (process.platform === "linux") {
 						hook.removeListener("mousemove", onMouseMove);
+					}
+					if (captureKeys) {
+						hook.removeListener("keydown", onKeyDown);
 					}
 				}
 			} catch {

@@ -159,9 +159,22 @@
 		"caption": "字幕編輯",
 		"zoom": "縮放",
 		"cursor": "游標",
+		"keystrokes": "按鍵",
 		"webcam": "網路攝影機",
 		"frame": "外框",
 		"crop": "裁切"
+	},
+	"keystrokes": {
+		"mode": "模式",
+		"modeShortcuts": "快捷鍵",
+		"modeAll": "全部輸入",
+		"position": "位置",
+		"positionBottomLeft": "左下",
+		"positionBottomCenter": "底部置中",
+		"positionBottomRight": "右下",
+		"positionTopCenter": "頂部置中",
+		"size": "大小",
+		"empty": "此錄製沒有按鍵。錄製時請保持顯示開啟以擷取按鍵。"
 	},
 	"captions": {
 		"selectOnTimeline": "在時間軸上選擇字幕進行編輯。",

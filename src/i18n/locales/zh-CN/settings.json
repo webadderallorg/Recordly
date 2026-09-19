@@ -159,9 +159,22 @@
 		"caption": "字幕编辑",
 		"zoom": "缩放",
 		"cursor": "光标",
+		"keystrokes": "按键",
 		"webcam": "摄像头",
 		"frame": "边框",
 		"crop": "裁剪"
+	},
+	"keystrokes": {
+		"mode": "模式",
+		"modeShortcuts": "快捷键",
+		"modeAll": "全部输入",
+		"position": "位置",
+		"positionBottomLeft": "左下",
+		"positionBottomCenter": "底部居中",
+		"positionBottomRight": "右下",
+		"positionTopCenter": "顶部居中",
+		"size": "大小",
+		"empty": "此录制没有按键。录制时请保持显示开启以捕获按键。"
 	},
 	"captions": {
 		"selectOnTimeline": "在时间轴上选择字幕进行编辑。",

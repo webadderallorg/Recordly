@@ -9,6 +9,7 @@ import type { useTimelineState } from "../state/useTimelineState";
 import type { CursorTelemetryPoint, SpeedRegion, ZoomRegion } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import { summarizeErrorMessage } from "../videoEditorUtils";
+import type { KeystrokeTelemetryPoint } from "../videoPlayback/keystrokeOverlay/keystrokeTypes";
 import type { PendingExportSave } from "./exportPersistence";
 import type { useExportSession } from "./useExportSession";
 import type { useExportSettings } from "./useExportSettings";
@@ -26,6 +27,7 @@ export type ExportRunnerInput = {
 	effectiveSpeedRegions: SpeedRegion[];
 	effectiveZoomRegions: ZoomRegion[];
 	effectiveCursorTelemetry: CursorTelemetryPoint[];
+	keystrokeTelemetry: KeystrokeTelemetryPoint[];
 	effectiveShowCursor: boolean;
 	ensureSupportedMp4SourceDimensions: (
 		frameRate: ReturnType<typeof useExportSettings>["mp4FrameRate"],

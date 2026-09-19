@@ -406,6 +406,141 @@ if CommandLine.arguments.contains("--export-images") {
 	exit(0)
 }
 
+func focusedIsSecureTextField() -> Bool {
+	guard let element = focusedElement() else {
+		return false
+	}
+	let subrole = attributeString(element, kAXSubroleAttribute)
+	return subrole == (kAXSecureTextFieldSubrole as String) || subrole == "AXSecureTextField"
+}
+
+func isModifierOnlyKeyCode(_ keyCode: Int64) -> Bool {
+	switch keyCode {
+	case 0x36, 0x37, 0x38, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E:
+		return true
+	default:
+		return false
+	}
+}
+
+func keystrokeToken(forKeyCode keyCode: Int64) -> String? {
+	switch keyCode {
+	case 0x00: return "a"
+	case 0x0B: return "b"
+	case 0x08: return "c"
+	case 0x02: return "d"
+	case 0x0E: return "e"
+	case 0x03: return "f"
+	case 0x05: return "g"
+	case 0x04: return "h"
+	case 0x22: return "i"
+	case 0x26: return "j"
+	case 0x28: return "k"
+	case 0x25: return "l"
+	case 0x2E: return "m"
+	case 0x2D: return "n"
+	case 0x1F: return "o"
+	case 0x23: return "p"
+	case 0x0C: return "q"
+	case 0x0F: return "r"
+	case 0x01: return "s"
+	case 0x11: return "t"
+	case 0x20: return "u"
+	case 0x09: return "v"
+	case 0x0D: return "w"
+	case 0x07: return "x"
+	case 0x10: return "y"
+	case 0x06: return "z"
+	case 0x1D: return "0"
+	case 0x12: return "1"
+	case 0x13: return "2"
+	case 0x14: return "3"
+	case 0x15: return "4"
+	case 0x17: return "5"
+	case 0x16: return "6"
+	case 0x1A: return "7"
+	case 0x1C: return "8"
+	case 0x19: return "9"
+	case 0x24, 0x4C: return "enter"
+	case 0x35: return "esc"
+	case 0x30: return "tab"
+	case 0x31: return "space"
+	case 0x33: return "backspace"
+	case 0x75: return "delete"
+	case 0x7B: return "arrowleft"
+	case 0x7C: return "arrowright"
+	case 0x7E: return "arrowup"
+	case 0x7D: return "arrowdown"
+	case 0x73: return "home"
+	case 0x77: return "end"
+	case 0x74: return "pageup"
+	case 0x79: return "pagedown"
+	case 0x7A: return "f1"
+	case 0x78: return "f2"
+	case 0x63: return "f3"
+	case 0x76: return "f4"
+	case 0x60: return "f5"
+	case 0x61: return "f6"
+	case 0x62: return "f7"
+	case 0x64: return "f8"
+	case 0x65: return "f9"
+	case 0x6D: return "f10"
+	case 0x67: return "f11"
+	case 0x6F: return "f12"
+	case 0x69: return "f13"
+	case 0x6B: return "f14"
+	case 0x71: return "f15"
+	case 0x6A: return "f16"
+	case 0x40: return "f17"
+	case 0x4F: return "f18"
+	case 0x50: return "f19"
+	case 0x2B: return "comma"
+	case 0x2F: return "period"
+	case 0x1B: return "minus"
+	case 0x18: return "equal"
+	case 0x2C: return "slash"
+	case 0x29: return "semicolon"
+	case 0x27: return "quote"
+	case 0x21: return "bracketleft"
+	case 0x1E: return "bracketright"
+	case 0x2A: return "backslash"
+	case 0x32: return "backquote"
+	default:
+		return nil
+	}
+}
+
+func emitKeystrokeIfNeeded(_ event: CGEvent) {
+	if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+		return
+	}
+	if focusedIsSecureTextField() {
+		return
+	}
+	let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+	if isModifierOnlyKeyCode(keyCode) {
+		return
+	}
+	guard let token = keystrokeToken(forKeyCode: keyCode) else {
+		return
+	}
+	var mods: [String] = []
+	if event.flags.contains(.maskCommand) {
+		mods.append("meta")
+	}
+	if event.flags.contains(.maskControl) {
+		mods.append("ctrl")
+	}
+	if event.flags.contains(.maskAlternate) {
+		mods.append("alt")
+	}
+	if event.flags.contains(.maskShift) {
+		mods.append("shift")
+	}
+	print("KEY:down:\(token):\(mods.joined(separator: ","))")
+	fflush(stdout)
+}
+
 func mouseInteractionCallback(
 	proxy: CGEventTapProxy,
 	type: CGEventType,
@@ -439,6 +574,9 @@ func mouseInteractionCallback(
 		}
 		action = "mouseup"
 		button = 3
+	case .keyDown:
+		emitKeystrokeIfNeeded(event)
+		return Unmanaged.passUnretained(event)
 	default:
 		return Unmanaged.passUnretained(event)
 	}
@@ -448,6 +586,30 @@ func mouseInteractionCallback(
 	return Unmanaged.passUnretained(event)
 }
 
+func eventMask(for types: [CGEventType]) -> CGEventMask {
+	types.reduce(CGEventMask(0)) { mask, type in
+		mask | (CGEventMask(1) << type.rawValue)
+	}
+}
+
+func installListenOnlyTap(_ mask: CGEventMask) -> Bool {
+	guard let tap = CGEvent.tapCreate(
+		tap: .cgSessionEventTap,
+		place: .headInsertEventTap,
+		options: .listenOnly,
+		eventsOfInterest: mask,
+		callback: mouseInteractionCallback,
+		userInfo: nil
+	),
+	let eventTapSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+		return false
+	}
+	CFRunLoopAddSource(CFRunLoopGetMain(), eventTapSource, .commonModes)
+	CGEvent.tapEnable(tap: tap, enable: true)
+	return true
+}
+
+let captureKeys = CommandLine.arguments.contains("--capture-keys")
 let mouseEventTypes: [CGEventType] = [
 	.leftMouseDown,
 	.leftMouseUp,
@@ -456,24 +618,18 @@ let mouseEventTypes: [CGEventType] = [
 	.otherMouseDown,
 	.otherMouseUp,
 ]
-let mouseEventMask = mouseEventTypes.reduce(CGEventMask(0)) { mask, type in
-	mask | (CGEventMask(1) << type.rawValue)
-}
-let mouseEventTap = CGEvent.tapCreate(
-	tap: .cgSessionEventTap,
-	place: .headInsertEventTap,
-	options: .listenOnly,
-	eventsOfInterest: mouseEventMask,
-	callback: mouseInteractionCallback,
-	userInfo: nil
-)
-if let mouseEventTap,
-	let eventTapSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, mouseEventTap, 0) {
-	CFRunLoopAddSource(CFRunLoopGetMain(), eventTapSource, .commonModes)
-	CGEvent.tapEnable(tap: mouseEventTap, enable: true)
-} else {
-	fputs("Mouse interaction event tap unavailable; click telemetry disabled\n", stderr)
-	fflush(stderr)
+let mouseOnlyMask = eventMask(for: mouseEventTypes)
+let combinedMask = captureKeys
+	? mouseOnlyMask | (CGEventMask(1) << CGEventType.keyDown.rawValue)
+	: mouseOnlyMask
+if !installListenOnlyTap(combinedMask) {
+	if captureKeys, installListenOnlyTap(mouseOnlyMask) {
+		fputs("Keyboard event tap unavailable; keystroke telemetry disabled\n", stderr)
+		fflush(stderr)
+	} else {
+		fputs("Mouse interaction event tap unavailable; click telemetry disabled\n", stderr)
+		fflush(stderr)
+	}
 }
 
 var lastState = ""

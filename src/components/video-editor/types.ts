@@ -109,6 +109,7 @@ export function normalizeCursorClickEffectColor(
 export type EditorEffectSection =
 	| "scene"
 	| "cursor"
+	| "keystrokes"
 	| "captions"
 	| "caption"
 	| "webcam"

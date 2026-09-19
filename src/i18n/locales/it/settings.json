@@ -159,9 +159,22 @@
 		"caption": "Sottotitolo",
 		"zoom": "Zoom",
 		"cursor": "Cursore",
+		"keystrokes": "Tasti",
 		"webcam": "Webcam",
 		"frame": "Cornice",
 		"crop": "Ritaglio"
+	},
+	"keystrokes": {
+		"mode": "Modalità",
+		"modeShortcuts": "Scorciatoie",
+		"modeAll": "Tutta la digitazione",
+		"position": "Posizione",
+		"positionBottomLeft": "In basso a sinistra",
+		"positionBottomCenter": "In basso al centro",
+		"positionBottomRight": "In basso a destra",
+		"positionTopCenter": "In alto al centro",
+		"size": "Dimensione",
+		"empty": "Questa registrazione non ha tasti. Lascia Mostra attivo durante la registrazione per catturarli."
 	},
 	"captions": {
 		"selectOnTimeline": "Seleziona un sottotitolo sulla timeline per modificarlo.",

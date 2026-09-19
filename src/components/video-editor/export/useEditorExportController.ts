@@ -6,6 +6,7 @@ import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
 import type { CursorTelemetryPoint, SpeedRegion, ZoomRegion } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
+import type { KeystrokeTelemetryPoint } from "../videoPlayback/keystrokeOverlay/keystrokeTypes";
 import { useExportDialogActions } from "./useExportDialogActions";
 import type { useExportDimensions } from "./useExportDimensions";
 import { useExportMessages } from "./useExportMessages";
@@ -35,6 +36,7 @@ type Input = {
 	effectiveSpeedRegions: SpeedRegion[];
 	effectiveZoomRegions: ZoomRegion[];
 	effectiveCursorTelemetry: CursorTelemetryPoint[];
+	keystrokeSamples: KeystrokeTelemetryPoint[];
 	effectiveShowCursor: boolean;
 	cursorTelemetrySourcePath: string | null;
 	hasCaptionsForSidecar: boolean;
@@ -58,6 +60,7 @@ export function useEditorExportController(input: Input) {
 		effectiveSpeedRegions: input.effectiveSpeedRegions,
 		effectiveZoomRegions: input.effectiveZoomRegions,
 		effectiveCursorTelemetry: input.effectiveCursorTelemetry,
+		keystrokeTelemetry: input.keystrokeSamples,
 		effectiveShowCursor: input.effectiveShowCursor,
 		ensureSupportedMp4SourceDimensions: input.dimensions.ensureSupportedMp4SourceDimensions,
 		captionSidecarPayload: input.captionSidecarPayload,

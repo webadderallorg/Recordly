@@ -159,9 +159,22 @@
 		"caption": "Subtítulo",
 		"zoom": "Zoom",
 		"cursor": "Cursor",
+		"keystrokes": "Pulsaciones",
 		"webcam": "Cámara",
 		"frame": "Marco",
 		"crop": "Recorte"
+	},
+	"keystrokes": {
+		"mode": "Modo",
+		"modeShortcuts": "Atajos",
+		"modeAll": "Toda la escritura",
+		"position": "Posición",
+		"positionBottomLeft": "Inferior izquierda",
+		"positionBottomCenter": "Inferior centro",
+		"positionBottomRight": "Inferior derecha",
+		"positionTopCenter": "Superior centro",
+		"size": "Tamaño",
+		"empty": "Esta grabación no tiene pulsaciones. Deja Mostrar activado al grabar para capturarlas."
 	},
 	"captions": {
 		"selectOnTimeline": "Selecciona un subtítulo en la línea de tiempo para editarlo.",

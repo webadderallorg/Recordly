@@ -72,6 +72,10 @@ import {
 	type ZoomRegion,
 	type ZoomTransitionEasing,
 } from "./types";
+import {
+	DEFAULT_KEYSTROKE_OVERLAY,
+	type KeystrokeOverlaySettings,
+} from "./videoPlayback/keystrokeOverlay/keystrokeTypes";
 import { convertLegacyWebcamRadiusToRoundness, normalizeWebcamCropRegion } from "./webcamOverlay";
 
 export const PROJECT_VERSION = 2;
@@ -141,6 +145,7 @@ export interface ProjectEditorState {
 	autoCaptions: CaptionCue[];
 	autoCaptionSettings: AutoCaptionSettings;
 	webcam: WebcamOverlaySettings;
+	keystrokeOverlay: KeystrokeOverlaySettings;
 	aspectRatio: AspectRatio;
 	sourceAudioTrackSettingsByClip?: Record<string, SourceAudioTrackSettings>;
 	defaultSourceAudioTrackSettings?: SourceAudioTrackSettings;
@@ -791,6 +796,10 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 
 	const webcam: Partial<WebcamOverlaySettings> =
 		editor.webcam && typeof editor.webcam === "object" ? editor.webcam : {};
+	const keystrokeOverlay: Partial<KeystrokeOverlaySettings> =
+		editor.keystrokeOverlay && typeof editor.keystrokeOverlay === "object"
+			? editor.keystrokeOverlay
+			: {};
 	const webcamSourcePath = typeof webcam.sourcePath === "string" ? webcam.sourcePath : null;
 	const legacyZoomScaleEffect = isFiniteNumber(
 		(webcam as Partial<{ zoomScaleEffect: number }>).zoomScaleEffect,
@@ -1041,6 +1050,26 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			margin: isFiniteNumber(webcam.margin)
 				? clamp(webcam.margin, 0, 96)
 				: DEFAULT_WEBCAM_MARGIN,
+		},
+		keystrokeOverlay: {
+			enabled:
+				typeof keystrokeOverlay.enabled === "boolean"
+					? keystrokeOverlay.enabled
+					: DEFAULT_KEYSTROKE_OVERLAY.enabled,
+			mode:
+				keystrokeOverlay.mode === "shortcuts" || keystrokeOverlay.mode === "all"
+					? keystrokeOverlay.mode
+					: DEFAULT_KEYSTROKE_OVERLAY.mode,
+			position:
+				keystrokeOverlay.position === "bottom-left" ||
+				keystrokeOverlay.position === "bottom-center" ||
+				keystrokeOverlay.position === "bottom-right" ||
+				keystrokeOverlay.position === "top-center"
+					? keystrokeOverlay.position
+					: DEFAULT_KEYSTROKE_OVERLAY.position,
+			size: isFiniteNumber(keystrokeOverlay.size)
+				? clamp(keystrokeOverlay.size, 0.5, 2)
+				: DEFAULT_KEYSTROKE_OVERLAY.size,
 		},
 		sourceAudioTrackSettingsByClip:
 			editor.sourceAudioTrackSettingsByClip &&

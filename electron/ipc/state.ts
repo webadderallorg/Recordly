@@ -3,6 +3,7 @@ import type {
 	CursorInteractionType,
 	CursorTelemetryPoint,
 	CursorVisualType,
+	KeystrokeTelemetryPoint,
 	NativeCaptureDiagnostics,
 	RecordingSessionData,
 	SelectedSource,
@@ -81,6 +82,9 @@ export let cursorCapturePauseStartedAtMs: number | null = null;
 export let activeCursorSamples: CursorTelemetryPoint[] = [];
 export let pendingCursorSamples: CursorTelemetryPoint[] = [];
 export let isCursorCaptureActive = false;
+export let activeKeystrokeSamples: KeystrokeTelemetryPoint[] = [];
+export let pendingKeystrokeSamples: KeystrokeTelemetryPoint[] = [];
+export let isKeystrokeCaptureActive = false;
 export let interactionCaptureCleanup: (() => void) | null = null;
 export let hasLoggedInteractionHookFailure = false;
 export let lastLeftClick: { timeMs: number; cx: number; cy: number } | null = null;
@@ -253,6 +257,15 @@ export function setPendingCursorSamples(v: CursorTelemetryPoint[]) {
 }
 export function setIsCursorCaptureActive(v: boolean) {
 	isCursorCaptureActive = v;
+}
+export function setActiveKeystrokeSamples(v: KeystrokeTelemetryPoint[]) {
+	activeKeystrokeSamples = v;
+}
+export function setPendingKeystrokeSamples(v: KeystrokeTelemetryPoint[]) {
+	pendingKeystrokeSamples = v;
+}
+export function setIsKeystrokeCaptureActive(v: boolean) {
+	isKeystrokeCaptureActive = v;
 }
 export function setInteractionCaptureCleanup(v: (() => void) | null) {
 	interactionCaptureCleanup = v;

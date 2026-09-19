@@ -166,6 +166,7 @@ export function useProjectLifecycle(input: Input) {
 		appearance.setPadding(editor.padding);
 		appearance.setCropRegion(editor.cropRegion);
 		appearance.setWebcam(editor.webcam);
+		appearance.setKeystrokeOverlay(editor.keystrokeOverlay);
 		timeline.setZoomRegions(editor.zoomRegions);
 		timeline.setTrimRegions(editor.trimRegions);
 		timeline.setClipRegions(editor.clipRegions);

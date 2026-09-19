@@ -1,4 +1,3 @@
-import { requiresClipTimelineRendering } from "./clipTimeline";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -17,8 +16,13 @@ import type {
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
+import type {
+	KeystrokeOverlaySettings,
+	KeystrokeTelemetryPoint,
+} from "@/components/video-editor/videoPlayback/keystrokeOverlay/keystrokeTypes";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { AudioProcessor, isAacAudioEncodingSupported } from "./audioEncoder";
+import { requiresClipTimelineRendering } from "./clipTimeline";
 import { buildEditedTrackSourceSegments, classifyEditedTrackStrategy } from "./editedTrackStrategy";
 import {
 	advanceFinalizationProgress,
@@ -73,6 +77,8 @@ interface VideoExporterConfig extends ExportConfig {
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
+	keystrokeTelemetry?: KeystrokeTelemetryPoint[];
+	keystrokeOverlay?: KeystrokeOverlaySettings;
 	cursorTelemetry?: CursorTelemetryPoint[];
 	showCursor?: boolean;
 	cursorStyle?: CursorStyle;
@@ -244,6 +250,8 @@ export class VideoExporter {
 				annotationRegions: this.config.annotationRegions,
 				autoCaptions: this.config.autoCaptions,
 				autoCaptionSettings: this.config.autoCaptionSettings,
+				keystrokeTelemetry: this.config.keystrokeTelemetry,
+				keystrokeOverlay: this.config.keystrokeOverlay,
 				speedRegions: this.config.speedRegions,
 				previewWidth: this.config.previewWidth,
 				previewHeight: this.config.previewHeight,

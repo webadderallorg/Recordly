@@ -159,9 +159,22 @@
 		"caption": "자막",
 		"zoom": "확대",
 		"cursor": "커서",
+		"keystrokes": "키 입력",
 		"webcam": "웹캠",
 		"frame": "프레임",
 		"crop": "자르기"
+	},
+	"keystrokes": {
+		"mode": "모드",
+		"modeShortcuts": "단축키",
+		"modeAll": "모든 입력",
+		"position": "위치",
+		"positionBottomLeft": "왼쪽 아래",
+		"positionBottomCenter": "가운데 아래",
+		"positionBottomRight": "오른쪽 아래",
+		"positionTopCenter": "가운데 위",
+		"size": "크기",
+		"empty": "이 녹화에는 키 입력이 없습니다. 캡처하려면 녹화할 때 표시를 켜 두세요."
 	},
 	"captions": {
 		"selectOnTimeline": "타임라인에서 자막을 선택하여 편집하세요.",

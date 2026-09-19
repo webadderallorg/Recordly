@@ -5,6 +5,7 @@ import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
 import type { CursorTelemetryPoint, ZoomRegion } from "../types";
 import VideoPlayback, { type VideoPlaybackRef } from "../VideoPlayback";
+import type { KeystrokeTelemetryPoint } from "../videoPlayback/keystrokeOverlay/keystrokeTypes";
 
 type PlaybackProps = ComponentProps<typeof VideoPlayback>;
 type Handlers = Pick<
@@ -31,6 +32,7 @@ type Props = {
 	audio: ReturnType<typeof useVideoEditorAudio>;
 	effectiveZoomRegions: ZoomRegion[];
 	effectiveCursorTelemetry: CursorTelemetryPoint[];
+	keystrokeSamples: KeystrokeTelemetryPoint[];
 	effectiveShowCursor: boolean;
 	setDuration: Dispatch<SetStateAction<number>>;
 	setIsPreviewReady: Dispatch<SetStateAction<boolean>>;
@@ -54,6 +56,7 @@ export function EditorVideoPreview({
 	audio,
 	effectiveZoomRegions,
 	effectiveCursorTelemetry,
+	keystrokeSamples,
 	effectiveShowCursor,
 	setDuration,
 	setIsPreviewReady,
@@ -103,6 +106,8 @@ export function EditorVideoPreview({
 			autoCaptionSettings={timeline.autoCaptionSettings}
 			selectedAnnotationId={timeline.selectedAnnotationId}
 			cursorTelemetry={effectiveCursorTelemetry}
+			keystrokeSamples={keystrokeSamples}
+			keystrokeOverlay={appearance.keystrokeOverlay}
 			showCursor={effectiveShowCursor}
 			cursorStyle={appearance.cursorStyle}
 			cursorSize={appearance.cursorSize}

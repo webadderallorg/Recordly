@@ -3,8 +3,8 @@ import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
 	CaptionCue,
-	CursorClickEffectStyle,
 	CropRegion,
+	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
@@ -15,6 +15,10 @@ import type {
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
+import type {
+	KeystrokeOverlaySettings,
+	KeystrokeTelemetryPoint,
+} from "@/components/video-editor/videoPlayback/keystrokeOverlay/keystrokeTypes";
 import { FrameRenderer } from "./frameRenderer";
 import { StreamingVideoDecoder } from "./streamingDecoder";
 import type {
@@ -64,6 +68,8 @@ interface GifExporterConfig {
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
+	keystrokeTelemetry?: KeystrokeTelemetryPoint[];
+	keystrokeOverlay?: KeystrokeOverlaySettings;
 	cursorTelemetry?: CursorTelemetryPoint[];
 	showCursor?: boolean;
 	cursorStyle?: CursorStyle;
@@ -165,6 +171,8 @@ export function buildGifFrameRendererConfig(
 		annotationRegions: config.annotationRegions,
 		autoCaptions: config.autoCaptions,
 		autoCaptionSettings: config.autoCaptionSettings,
+		keystrokeTelemetry: config.keystrokeTelemetry,
+		keystrokeOverlay: config.keystrokeOverlay,
 		speedRegions: config.speedRegions,
 		previewWidth: config.previewWidth,
 		previewHeight: config.previewHeight,

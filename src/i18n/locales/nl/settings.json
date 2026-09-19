@@ -159,9 +159,22 @@
 		"caption": "Ondertitel",
 		"zoom": "Zoom",
 		"cursor": "Cursor",
+		"keystrokes": "Toetsaanslagen",
 		"webcam": "Webcam",
 		"frame": "Kader",
 		"crop": "Bijsnijden"
+	},
+	"keystrokes": {
+		"mode": "Modus",
+		"modeShortcuts": "Sneltoetsen",
+		"modeAll": "Alle invoer",
+		"position": "Positie",
+		"positionBottomLeft": "Linksonder",
+		"positionBottomCenter": "Middenonder",
+		"positionBottomRight": "Rechtsonder",
+		"positionTopCenter": "Middenboven",
+		"size": "Grootte",
+		"empty": "Deze opname heeft geen toetsaanslagen. Laat Tonen aan tijdens het opnemen om ze vast te leggen."
 	},
 	"captions": {
 		"selectOnTimeline": "Selecteer een ondertitel op de tijdlijn om deze te bewerken.",

@@ -106,6 +106,14 @@ export interface CursorTelemetryPoint {
 	cursorType?: CursorVisualType;
 }
 
+export type KeystrokeModifier = "meta" | "ctrl" | "alt" | "shift";
+
+export interface KeystrokeTelemetryPoint {
+	timeMs: number;
+	key: string;
+	modifiers: KeystrokeModifier[];
+}
+
 export type NativeMacWindowSource = {
 	id: string;
 	name: string;
@@ -120,7 +128,7 @@ export type NativeMacWindowSource = {
 	height?: number;
 };
 
-export type HookEventName = "mousedown" | "mouseup" | "mousemove";
+export type HookEventName = "mousedown" | "mouseup" | "mousemove" | "keydown";
 
 export type HookMouseEvent = {
 	button?: number;
@@ -139,7 +147,15 @@ export type HookMouseEvent = {
 	};
 };
 
-export type HookEventListener = (event: HookMouseEvent) => void;
+export type HookKeyboardEvent = {
+	keycode?: number;
+	shiftKey?: boolean;
+	ctrlKey?: boolean;
+	altKey?: boolean;
+	metaKey?: boolean;
+};
+
+export type HookEventListener = (event: HookMouseEvent & HookKeyboardEvent) => void;
 
 export type UiohookLike = {
 	on: (eventName: HookEventName, listener: HookEventListener) => void;
@@ -153,6 +169,7 @@ export type UiohookModuleNamespace = {
 	uIOhook?: UiohookLike;
 	uiohook?: UiohookLike;
 	Uiohook?: UiohookLike;
+	UiohookKey?: Record<string, number>;
 	default?: UiohookLike | UiohookModuleNamespace;
 };
 

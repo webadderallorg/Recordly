@@ -12,9 +12,18 @@ vi.mock("electron", () => ({
 }));
 
 import {
+	activeKeystrokeSamples,
+	setActiveKeystrokeSamples,
+	setCursorCaptureStartTimeMs,
+	setIsKeystrokeCaptureActive,
+} from "../state";
+import {
 	repairBundledUiohookBinaryForCurrentArch,
+	resolveUiohookKeyToken,
 	shouldStartGlobalInteractionHook,
 } from "./interaction";
+import { recordKeystroke, resetKeystrokeRepeatState } from "./keystrokeTelemetry";
+import { resetCursorCaptureClock } from "./telemetry";
 
 describe("shouldStartGlobalInteractionHook", () => {
 	it("does not start the synchronous uiohook event tap on macOS", () => {
@@ -24,6 +33,81 @@ describe("shouldStartGlobalInteractionHook", () => {
 	it("keeps global interaction capture enabled on Windows and Linux", () => {
 		expect(shouldStartGlobalInteractionHook("win32")).toBe(true);
 		expect(shouldStartGlobalInteractionHook("linux")).toBe(true);
+	});
+});
+
+describe("resolveUiohookKeyToken", () => {
+	const keyTable = {
+		Enter: 28,
+		Escape: 1,
+		ArrowLeft: 57419,
+		ArrowRight: 57421,
+		Left: 100,
+		PageUp: 3657,
+		A: 30,
+		C: 46,
+		Comma: 51,
+		Ctrl: 29,
+		CtrlRight: 3613,
+		Alt: 56,
+		AltRight: 3640,
+		ShiftRight: 54,
+		Meta: 3675,
+		MetaRight: 3676,
+	};
+
+	it("aliases uiohook names onto the overlay token vocabulary", () => {
+		expect(resolveUiohookKeyToken(28, keyTable)).toBe("enter");
+		expect(resolveUiohookKeyToken(1, keyTable)).toBe("esc");
+		expect(resolveUiohookKeyToken(57419, keyTable)).toBe("arrowleft");
+		expect(resolveUiohookKeyToken(100, keyTable)).toBe("arrowleft");
+		expect(resolveUiohookKeyToken(3657, keyTable)).toBe("pageup");
+		expect(resolveUiohookKeyToken(30, keyTable)).toBe("a");
+		expect(resolveUiohookKeyToken(46, keyTable)).toBe("c");
+		expect(resolveUiohookKeyToken(51, keyTable)).toBe("comma");
+		expect(resolveUiohookKeyToken(99999, keyTable)).toBeNull();
+	});
+
+	it("folds right-hand modifiers onto the same tokens as the left-hand keys", () => {
+		expect(resolveUiohookKeyToken(29, keyTable)).toBe("ctrl");
+		expect(resolveUiohookKeyToken(3613, keyTable)).toBe("ctrl");
+		expect(resolveUiohookKeyToken(56, keyTable)).toBe("alt");
+		expect(resolveUiohookKeyToken(3640, keyTable)).toBe("alt");
+		expect(resolveUiohookKeyToken(54, keyTable)).toBe("shift");
+		expect(resolveUiohookKeyToken(3675, keyTable)).toBe("meta");
+		expect(resolveUiohookKeyToken(3676, keyTable)).toBe("meta");
+		expect(resolveUiohookKeyToken(57421, keyTable)).toBe("arrowright");
+	});
+});
+
+describe("keystroke repeat collapse", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		setIsKeystrokeCaptureActive(false);
+		setActiveKeystrokeSamples([]);
+		resetKeystrokeRepeatState();
+		resetCursorCaptureClock();
+	});
+
+	it("bumps last-seen time and emits once for a held key", () => {
+		setIsKeystrokeCaptureActive(true);
+		setCursorCaptureStartTimeMs(1_000);
+		setActiveKeystrokeSamples([]);
+		resetKeystrokeRepeatState();
+		resetCursorCaptureClock();
+
+		const now = vi.spyOn(Date, "now");
+		now.mockReturnValue(1_100);
+		recordKeystroke("c", ["meta"]);
+		now.mockReturnValue(1_120);
+		recordKeystroke("c", ["meta"]);
+
+		expect(activeKeystrokeSamples).toHaveLength(1);
+		expect(activeKeystrokeSamples[0]).toMatchObject({ key: "c", modifiers: ["meta"] });
+
+		now.mockReturnValue(1_200);
+		recordKeystroke("c", ["meta"]);
+		expect(activeKeystrokeSamples).toHaveLength(2);
 	});
 });
 

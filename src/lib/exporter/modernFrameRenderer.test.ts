@@ -312,7 +312,7 @@ describe("ModernFrameRenderer blur export path", () => {
 		renderer.annotationScaleFactor = 1;
 		renderer.annotationAssets = { imageCache: new Map() };
 
-		await renderer.composeBlurAnnotationFrame(500);
+		await renderer.composeBlurAnnotationFrame(500, 500);
 
 		expect(renderAnnotations).toHaveBeenCalledTimes(1);
 		expect(renderer.getCanvas()).not.toBe(sourceCanvas);
