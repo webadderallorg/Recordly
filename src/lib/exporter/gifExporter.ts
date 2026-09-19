@@ -64,6 +64,8 @@ interface GifExporterConfig {
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
+	keystrokeTelemetry?: import("@/lib/keystrokeOverlay").KeystrokeSample[];
+	keystrokeOverlaySettings?: import("@/lib/keystrokeOverlay").KeystrokeOverlaySettings;
 	cursorTelemetry?: CursorTelemetryPoint[];
 	showCursor?: boolean;
 	cursorStyle?: CursorStyle;
@@ -165,6 +167,8 @@ export function buildGifFrameRendererConfig(
 		annotationRegions: config.annotationRegions,
 		autoCaptions: config.autoCaptions,
 		autoCaptionSettings: config.autoCaptionSettings,
+		keystrokeTelemetry: config.keystrokeTelemetry,
+		keystrokeOverlaySettings: config.keystrokeOverlaySettings,
 		speedRegions: config.speedRegions,
 		previewWidth: config.previewWidth,
 		previewHeight: config.previewHeight,

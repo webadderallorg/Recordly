@@ -125,6 +125,15 @@
 		"cursorClickBounce": "Cursor-Klick-Rückprall",
 		"cursorClickBounceDuration": "Sprunggeschwindigkeit",
 		"cursorSway": "Cursor-Schwankung",
+		"keystrokeOverlay": {
+			"title": "Tasten-Overlay",
+			"mode": "Nur Tastenkürzel",
+			"position": "Position",
+			"bottom": "Unten",
+			"top": "Oben",
+			"size": "Größe",
+			"offset": "Abstand"
+		},
 		"webcam": "Webcam-Overlay",
 		"webcamFootage": "Webcam-Aufnahmen",
 		"webcamFootageDescription": "Zu diesem Video sind keine Webcam-Aufnahmen verknüpft",

@@ -10,7 +10,7 @@ import {
 	saveEditorPreferences,
 	saveEditorPresets,
 } from "./editorPreferences";
-import { DEFAULT_AUTO_CAPTION_SETTINGS, DEFAULT_CROP_REGION } from "./types";
+import { DEFAULT_AUTO_CAPTION_SETTINGS, DEFAULT_CROP_REGION, DEFAULT_KEYSTROKE_OVERLAY_SETTINGS } from "./types";
 
 describe("border radius preferences", () => {
 	it("migrates legacy pixels once and marks the stored unit", () => {
@@ -390,6 +390,7 @@ describe("editorPreferences", () => {
 						...DEFAULT_EDITOR_PREFERENCES,
 						cropRegion: DEFAULT_CROP_REGION,
 						autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+						keystrokeOverlaySettings: DEFAULT_KEYSTROKE_OVERLAY_SETTINGS,
 					},
 				},
 			]),
@@ -418,6 +419,7 @@ describe("editorPreferences", () => {
 						...DEFAULT_EDITOR_PREFERENCES,
 						cropRegion: DEFAULT_CROP_REGION,
 						autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+						keystrokeOverlaySettings: DEFAULT_KEYSTROKE_OVERLAY_SETTINGS,
 					},
 				},
 			]),
@@ -450,6 +452,7 @@ describe("editorPreferences", () => {
 						...DEFAULT_EDITOR_PREFERENCES,
 						cropRegion: DEFAULT_CROP_REGION,
 						autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+						keystrokeOverlaySettings: DEFAULT_KEYSTROKE_OVERLAY_SETTINGS,
 					},
 				},
 			]),
@@ -478,6 +481,7 @@ describe("editorPreferences", () => {
 						...DEFAULT_EDITOR_PREFERENCES,
 						cropRegion: { x: 0.08, y: 0.12, width: 0.8, height: 0.7 },
 						autoCaptionSettings: DEFAULT_AUTO_CAPTION_SETTINGS,
+						keystrokeOverlaySettings: DEFAULT_KEYSTROKE_OVERLAY_SETTINGS,
 					},
 				},
 			]),

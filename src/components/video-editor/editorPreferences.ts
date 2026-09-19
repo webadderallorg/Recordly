@@ -72,6 +72,7 @@ export interface EditorPresetSnapshot extends Omit<PersistedEditorControls, "web
 	cropRegion: PresetCropRegion;
 	webcam: PresetWebcamSettings;
 	autoCaptionSettings: PresetAutoCaptionSettings;
+	keystrokeOverlaySettings: ProjectEditorState["keystrokeOverlaySettings"];
 	whisperExecutablePath: string | null;
 	whisperModelPath: string | null;
 }
@@ -222,6 +223,9 @@ function normalizeEditorPresetSnapshot(candidate: unknown): EditorPresetSnapshot
 		webcam,
 		cropRegion: normalizedCropRegion,
 		autoCaptionSettings: normalizePresetAutoCaptionSettings(raw.autoCaptionSettings),
+		keystrokeOverlaySettings: normalizeProjectEditor({
+			keystrokeOverlaySettings: raw.keystrokeOverlaySettings,
+		}).keystrokeOverlaySettings,
 		whisperExecutablePath:
 			normalizeNullablePath(raw.whisperExecutablePath) ??
 			normalizedPreferences.whisperExecutablePath,

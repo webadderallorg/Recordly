@@ -406,12 +406,135 @@ if CommandLine.arguments.contains("--export-images") {
 	exit(0)
 }
 
+func elementLooksSecure(_ element: AXUIElement) -> Bool {
+	let role = attributeString(element, kAXRoleAttribute)?.lowercased() ?? ""
+	let subrole = attributeString(element, kAXSubroleAttribute)?.lowercased() ?? ""
+	let metadata = metadataString(for: element)
+	if subrole.contains("secure") || subrole.contains("password") {
+		return true
+	}
+	if role.contains("secure") || metadata.contains("secure text") || metadata.contains("password") {
+		return true
+	}
+	return false
+}
+
+func focusedElementLooksSecure() -> Bool {
+	for element in ancestorChain(startingAt: focusedElement(), maxDepth: 6) {
+		if elementLooksSecure(element) {
+			return true
+		}
+	}
+	return false
+}
+
+func keyName(for keyCode: Int64) -> String {
+	switch keyCode {
+	case 36, 76: return "Enter"
+	case 53: return "Escape"
+	case 48: return "Tab"
+	case 51: return "Backspace"
+	case 117: return "Delete"
+	case 49: return "Space"
+	case 126: return "ArrowUp"
+	case 125: return "ArrowDown"
+	case 123: return "ArrowLeft"
+	case 124: return "ArrowRight"
+	case 115: return "Home"
+	case 119: return "End"
+	case 116: return "PageUp"
+	case 121: return "PageDown"
+	case 114: return "Insert"
+	case 122: return "F1"
+	case 120: return "F2"
+	case 99: return "F3"
+	case 118: return "F4"
+	case 96: return "F5"
+	case 97: return "F6"
+	case 98: return "F7"
+	case 100: return "F8"
+	case 101: return "F9"
+	case 109: return "F10"
+	case 103: return "F11"
+	case 111: return "F12"
+	case 0: return "A"
+	case 11: return "B"
+	case 8: return "C"
+	case 2: return "D"
+	case 14: return "E"
+	case 3: return "F"
+	case 5: return "G"
+	case 4: return "H"
+	case 34: return "I"
+	case 38: return "J"
+	case 40: return "K"
+	case 37: return "L"
+	case 46: return "M"
+	case 45: return "N"
+	case 31: return "O"
+	case 35: return "P"
+	case 12: return "Q"
+	case 15: return "R"
+	case 1: return "S"
+	case 17: return "T"
+	case 32: return "U"
+	case 9: return "V"
+	case 13: return "W"
+	case 7: return "X"
+	case 16: return "Y"
+	case 6: return "Z"
+	case 18: return "1"
+	case 19: return "2"
+	case 20: return "3"
+	case 21: return "4"
+	case 22: return "5"
+	case 23: return "6"
+	case 24: return "7"
+	case 25: return "8"
+	case 26: return "9"
+	case 29: return "0"
+	case 56, 60: return "Shift"
+	case 59, 62: return "Control"
+	case 58, 61: return "Alt"
+	case 55, 54: return "Meta"
+	default: return "Key\(keyCode)"
+	}
+}
+
+func emitKeyEvent(_ event: CGEvent, action: String) {
+	if focusedElementLooksSecure() {
+		return
+	}
+
+	let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+	let flags = event.flags
+	var modifiers: [String] = []
+	if flags.contains(.maskControl) { modifiers.append("ctrl") }
+	if flags.contains(.maskAlternate) { modifiers.append("alt") }
+	if flags.contains(.maskShift) { modifiers.append("shift") }
+	if flags.contains(.maskCommand) { modifiers.append("meta") }
+	if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { modifiers.append("repeat") }
+
+	let encodedKey = keyName(for: keyCode).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "Key"
+	let suffix = modifiers.isEmpty ? "" : ":\(modifiers.joined(separator: ","))"
+	print("KEY:\(action):\(encodedKey)\(suffix)")
+	fflush(stdout)
+}
+
 func mouseInteractionCallback(
 	proxy: CGEventTapProxy,
 	type: CGEventType,
 	event: CGEvent,
 	refcon: UnsafeMutableRawPointer?
 ) -> Unmanaged<CGEvent>? {
+	if type == .keyDown {
+		emitKeyEvent(event, action: "down")
+		return Unmanaged.passUnretained(event)
+	}
+	if type == .keyUp {
+		return Unmanaged.passUnretained(event)
+	}
+
 	let action: String
 	let button: Int
 	switch type {
@@ -448,7 +571,8 @@ func mouseInteractionCallback(
 	return Unmanaged.passUnretained(event)
 }
 
-let mouseEventTypes: [CGEventType] = [
+let captureKeys = CommandLine.arguments.contains("--capture-keys")
+var mouseEventTypes: [CGEventType] = [
 	.leftMouseDown,
 	.leftMouseUp,
 	.rightMouseDown,
@@ -456,6 +580,10 @@ let mouseEventTypes: [CGEventType] = [
 	.otherMouseDown,
 	.otherMouseUp,
 ]
+if captureKeys {
+	mouseEventTypes.append(.keyDown)
+	mouseEventTypes.append(.keyUp)
+}
 let mouseEventMask = mouseEventTypes.reduce(CGEventMask(0)) { mask, type in
 	mask | (CGEventMask(1) << type.rawValue)
 }

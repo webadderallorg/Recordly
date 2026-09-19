@@ -81,3 +81,47 @@ describe("Windows native helper path resolution", () => {
 		expect(getWindowsCaptureExePath()).toBe(buildOutputPath);
 	});
 });
+
+describe("packaged keystroke tap helper path", () => {
+	let tempRoot: string;
+	let appPath: string;
+
+	beforeEach(async () => {
+		tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "recordly-keystroke-tap-"));
+		appPath = path.join(tempRoot, "App.asar");
+		await fs.mkdir(appPath, { recursive: true });
+
+		vi.resetModules();
+		vi.doMock("electron", () => ({
+			app: {
+				isPackaged: true,
+				getAppPath: () => appPath,
+				getPath: () => path.join(tempRoot, "userData"),
+			},
+		}));
+	});
+
+	afterEach(async () => {
+		vi.resetModules();
+		vi.doUnmock("electron");
+		await fs.rm(tempRoot, { recursive: true, force: true });
+	});
+
+	it("selects the architecture-specific packaged node binary", async () => {
+		const { getKeystrokeTapSourcePath, getNativeArchTag, ensureKeystrokeTapBinary } =
+			await import("./binaries");
+		const packagedPath = path.join(
+			appPath.replace(/\.asar$/, ".asar.unpacked"),
+			"electron",
+			"native",
+			"bin",
+			getNativeArchTag(),
+			"recordly-keystroke-tap.node",
+		);
+		await fs.mkdir(path.dirname(packagedPath), { recursive: true });
+		await fs.writeFile(packagedPath, "packaged-tap");
+
+		expect(getKeystrokeTapSourcePath()).toBe(packagedPath);
+		await expect(ensureKeystrokeTapBinary()).resolves.toBe(packagedPath);
+	});
+});

@@ -25,6 +25,7 @@ import {
 	type CropRegion,
 	type CursorClickEffectStyle,
 	type CursorStyle,
+	type KeystrokeOverlaySettings,
 	DEFAULT_ANNOTATION_POSITION,
 	DEFAULT_ANNOTATION_SIZE,
 	DEFAULT_ANNOTATION_STYLE,
@@ -42,6 +43,7 @@ import {
 	DEFAULT_CURSOR_STYLE,
 	DEFAULT_CURSOR_SWAY,
 	DEFAULT_FIGURE_DATA,
+	DEFAULT_KEYSTROKE_OVERLAY_SETTINGS,
 	DEFAULT_PADDING,
 	DEFAULT_PLAYBACK_SPEED,
 	DEFAULT_WEBCAM_MARGIN,
@@ -64,6 +66,7 @@ import {
 	getDefaultCaptionFontFamily,
 	normalizeCursorClickEffectColor,
 	normalizeCursorClickEffectStyle,
+	normalizeKeystrokeOverlaySettings,
 	type Padding,
 	type SpeedRegion,
 	type TrimRegion,
@@ -140,6 +143,7 @@ export interface ProjectEditorState {
 	audioRegions: AudioRegion[];
 	autoCaptions: CaptionCue[];
 	autoCaptionSettings: AutoCaptionSettings;
+	keystrokeOverlaySettings: KeystrokeOverlaySettings;
 	webcam: WebcamOverlaySettings;
 	aspectRatio: AspectRatio;
 	sourceAudioTrackSettingsByClip?: Record<string, SourceAudioTrackSettings>;
@@ -958,6 +962,10 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		audioRegions: normalizedAudioRegions,
 		autoCaptions: normalizedAutoCaptions,
 		autoCaptionSettings: normalizedAutoCaptionSettings,
+		keystrokeOverlaySettings: normalizeKeystrokeOverlaySettings(
+			(editor as Partial<ProjectEditorState>).keystrokeOverlaySettings,
+			DEFAULT_KEYSTROKE_OVERLAY_SETTINGS,
+		),
 		webcam: {
 			enabled:
 				typeof webcam.enabled === "boolean"

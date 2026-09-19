@@ -21,8 +21,19 @@ import {
 import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
 import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../cursor/bounds";
 import { startInteractionCapture, stopInteractionCapture } from "../cursor/interaction";
+import {
+	dropKeystrokesAfterElapsedMs,
+	normalizeKeystrokeSamples,
+	persistPendingKeystrokeTelemetry,
+	resetKeystrokeCapture,
+	snapshotKeystrokeTelemetryForPersistence,
+	syncKeystrokeCaptureEnabledFromSettings,
+	writeKeystrokeTelemetry,
+} from "../cursor/keystrokes";
+import { stopInProcessKeystrokeTap } from "../cursor/macKeystrokeTap";
 import { startNativeCursorMonitor, stopNativeCursorMonitor } from "../cursor/monitor";
 import {
+	getCursorCaptureElapsedMs,
 	normalizeCursorTelemetrySamples,
 	pauseCursorCaptureAtBoundary,
 	persistPendingCursorTelemetry,
@@ -44,7 +55,7 @@ import {
 	getSystemCursorHelperSourcePath,
 	getWindowsCaptureExePath,
 } from "../paths/binaries";
-import { rememberApprovedLocalReadPath } from "../project/manager";
+import { rememberApprovedLocalReadPath, isAllowedLocalReadPath } from "../project/manager";
 import {
 	getBrowserMicSidecarFilters,
 	shouldKeepRecordingAudioSidecars,
@@ -104,6 +115,7 @@ import {
 	nativeScreenRecordingActive,
 	selectedSource,
 	setActiveCursorSamples,
+	setActiveKeystrokeSamples,
 	setCachedSystemCursorAssets,
 	setCachedSystemCursorAssetsSourceMtimeMs,
 	setCursorCaptureStartTimeMs,
@@ -143,11 +155,13 @@ import {
 	windowsPendingVideoPath,
 	windowsSystemAudioPath,
 } from "../state";
+import type { KeystrokeSample } from "../../../src/lib/keystrokeOverlay";
 import type { CursorTelemetryPoint, NativeMacRecordingOptions, SelectedSource } from "../types";
 import {
 	getMacPrivacySettingsUrl,
 	getRecordingsDir,
 	getScreen,
+	getKeystrokePathForVideo,
 	getTelemetryPathForVideo,
 	moveFileWithOverwrite,
 	normalizeVideoSourcePath,
@@ -158,6 +172,49 @@ import { resolveWindowsCaptureTarget } from "../windowsCaptureSelection";
 import { bringSelectedWindowForward } from "./sources";
 
 const execFileAsync = promisify(execFile);
+
+async function persistCaptureTelemetryForVideo(videoPath: string) {
+	snapshotCursorTelemetryForPersistence();
+	snapshotKeystrokeTelemetryForPersistence();
+	try {
+		await persistPendingCursorTelemetry(videoPath);
+	} catch (error) {
+		console.warn("Failed to persist cursor telemetry during native stop:", error);
+	}
+	try {
+		await persistPendingKeystrokeTelemetry(videoPath);
+	} catch (error) {
+		console.warn("Failed to persist keystroke telemetry during native stop:", error);
+	}
+}
+
+function isAuthorizedIpcSender(event: Electron.IpcMainInvokeEvent) {
+	if (!event.sender || event.sender.isDestroyed()) {
+		return false;
+	}
+	const window = BrowserWindow.fromWebContents(event.sender);
+	return Boolean(window && !window.isDestroyed());
+}
+
+function resolveAuthorizedKeystrokeVideoPath(
+	event: Electron.IpcMainInvokeEvent,
+	videoPath?: string,
+) {
+	if (!isAuthorizedIpcSender(event)) {
+		return null;
+	}
+
+	const targetVideoPath = normalizeVideoSourcePath(videoPath ?? currentVideoPath);
+	if (!targetVideoPath) {
+		return null;
+	}
+
+	if (!isAllowedLocalReadPath(path.resolve(targetVideoPath))) {
+		return null;
+	}
+
+	return targetVideoPath;
+}
 
 async function writeWindowsRecordingDiagnostics(
 	videoPath: string | null | undefined,
@@ -1030,15 +1087,7 @@ export function registerRecordingHandlers(
 					});
 
 					// Persist cursor telemetry before returning so the editor can find it immediately
-					snapshotCursorTelemetryForPersistence();
-					try {
-						await persistPendingCursorTelemetry(finalVideoPath);
-					} catch (error) {
-						console.warn(
-							"Failed to persist cursor telemetry during native stop:",
-							error,
-						);
-					}
+					await persistCaptureTelemetryForVideo(finalVideoPath);
 
 					return { success: true, path: finalVideoPath };
 				} catch (error) {
@@ -1097,6 +1146,7 @@ export function registerRecordingHandlers(
 									recoveredAfterStopFailure: true,
 								},
 							});
+							await persistCaptureTelemetryForVideo(fallbackPath);
 							return { success: true, path: fallbackPath };
 						} catch {
 							// File is absent or failed validation.
@@ -1868,6 +1918,8 @@ export function registerRecordingHandlers(
 			stopCursorCapture();
 			stopInteractionCapture();
 			startWindowBoundsCapture();
+			syncKeystrokeCaptureEnabledFromSettings();
+			resetKeystrokeCapture();
 			void startNativeCursorMonitor();
 			setIsCursorCaptureActive(true);
 			setActiveCursorSamples([]);
@@ -1889,7 +1941,10 @@ export function registerRecordingHandlers(
 			setLinuxCursorScreenPoint(null);
 			resetCursorCaptureClock();
 			snapshotCursorTelemetryForPersistence();
+			snapshotKeystrokeTelemetryForPersistence();
+			stopInProcessKeystrokeTap();
 			setActiveCursorSamples([]);
+			setActiveKeystrokeSamples([]);
 		}
 
 		const source = selectedSource || { name: "Screen" };
@@ -1909,6 +1964,7 @@ export function registerRecordingHandlers(
 
 	ipcMain.handle("pause-cursor-capture", (_, pausedAtMs?: unknown) => {
 		pauseCursorCaptureAtBoundary(normalizeRendererTimestampMs(pausedAtMs));
+		dropKeystrokesAfterElapsedMs(getCursorCaptureElapsedMs());
 		return { success: true };
 	});
 
@@ -1929,7 +1985,6 @@ export function registerRecordingHandlers(
 			const content = await fs.readFile(telemetryPath, "utf-8");
 			const parsed = parseJsonWithByteOrderMark<unknown>(content);
 			const samples = normalizeCursorTelemetrySamples(parsed);
-
 			return { success: true, samples };
 		} catch (error) {
 			const nodeError = error as NodeJS.ErrnoException;
@@ -1968,6 +2023,61 @@ export function registerRecordingHandlers(
 					success: false,
 					samples: [],
 					message: "Failed to save cursor telemetry",
+					error: String(error),
+				};
+			}
+		},
+	);
+
+	ipcMain.handle("get-keystroke-telemetry", async (event, videoPath?: string) => {
+		const targetVideoPath = resolveAuthorizedKeystrokeVideoPath(event, videoPath);
+		if (!targetVideoPath) {
+			return { success: true, samples: [] };
+		}
+
+		const telemetryPath = getKeystrokePathForVideo(targetVideoPath);
+		try {
+			const content = await fs.readFile(telemetryPath, "utf-8");
+			const parsed = parseJsonWithByteOrderMark<unknown>(content);
+			const samples = normalizeKeystrokeSamples(parsed);
+			return { success: true, samples };
+		} catch (error) {
+			const nodeError = error as NodeJS.ErrnoException;
+			if (nodeError.code === "ENOENT") {
+				return { success: true, samples: [] };
+			}
+			console.error("Failed to load keystroke telemetry:", error);
+			return {
+				success: false,
+				message: "Failed to load keystroke telemetry",
+				error: String(error),
+				samples: [],
+			};
+		}
+	});
+
+	ipcMain.handle(
+		"set-keystroke-telemetry",
+		async (event, videoPath: string | undefined, samples: KeystrokeSample[]) => {
+			const targetVideoPath = resolveAuthorizedKeystrokeVideoPath(event, videoPath);
+			if (!targetVideoPath) {
+				return {
+					success: false,
+					samples: [],
+					message: "No video path available for keystroke telemetry",
+					error: "Missing video path",
+				};
+			}
+
+			try {
+				const normalizedSamples = await writeKeystrokeTelemetry(targetVideoPath, samples);
+				return { success: true, samples: normalizedSamples };
+			} catch (error) {
+				console.error("Failed to save keystroke telemetry:", error);
+				return {
+					success: false,
+					samples: [],
+					message: "Failed to save keystroke telemetry",
 					error: String(error),
 				};
 			}

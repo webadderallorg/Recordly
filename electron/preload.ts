@@ -614,6 +614,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	setCursorTelemetry: (videoPath: string | undefined, samples: CursorTelemetryPoint[]) => {
 		return ipcRenderer.invoke("set-cursor-telemetry", videoPath, samples);
 	},
+	getKeystrokeTelemetry: (videoPath?: string) => {
+		return ipcRenderer.invoke("get-keystroke-telemetry", videoPath);
+	},
+	setKeystrokeTelemetry: (videoPath: string | undefined, samples: KeystrokeSample[]) => {
+		return ipcRenderer.invoke("set-keystroke-telemetry", videoPath, samples);
+	},
 	getSystemCursorAssets: () => {
 		return ipcRenderer.invoke("get-system-cursor-assets");
 	},
@@ -659,6 +665,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	requestAccessibilityPermission: () => {
 		return ipcRenderer.invoke("request-accessibility-permission");
 	},
+	requestKeystrokeCapturePermission: () => {
+		return ipcRenderer.invoke("request-keystroke-capture-permission");
+	},
+	stopKeystrokeTap: () => {
+		return ipcRenderer.invoke("stop-keystroke-tap");
+	},
 	getScreenRecordingPermissionStatus: () => {
 		return ipcRenderer.invoke("get-screen-recording-permission-status");
 	},
@@ -667,6 +679,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	openAccessibilityPreferences: () => {
 		return ipcRenderer.invoke("open-accessibility-preferences");
+	},
+	openInputMonitoringPreferences: () => {
+		return ipcRenderer.invoke("open-input-monitoring-preferences");
 	},
 	saveExportedVideo: (
 		videoData: ArrayBuffer,

@@ -131,6 +131,15 @@
 		"cursorClickBounce": "Cursor Click Bounce",
 		"cursorClickBounceDuration": "Bounce Speed",
 		"cursorSway": "Cursor Sway",
+		"keystrokeOverlay": {
+			"title": "Key overlay",
+			"mode": "Shortcuts only",
+			"position": "Position",
+			"bottom": "Bottom",
+			"top": "Top",
+			"size": "Size",
+			"offset": "Offset"
+		},
 		"webcam": "Webcam Overlay",
 		"webcamFootage": "Webcam Footage",
 		"webcamFootageDescription": "No webcam footage linked to this video",

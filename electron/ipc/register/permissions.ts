@@ -1,5 +1,13 @@
-import { ipcMain, shell, systemPreferences } from "electron";
+import { app, ipcMain, shell, systemPreferences } from "electron";
+import { probeInProcessKeystrokeTap, stopInProcessKeystrokeTap } from "../cursor/macKeystrokeTap";
 import { getMacPrivacySettingsUrl } from "../utils";
+
+function accessibilityClientName() {
+	if (process.execPath.includes("Electron.app")) {
+		return "Electron";
+	}
+	return app.name || "Recordly";
+}
 
 export function registerPermissionHandlers() {
 	ipcMain.handle("open-external-url", async (_, url: string) => {
@@ -26,18 +34,50 @@ export function registerPermissionHandlers() {
 			success: true,
 			trusted: systemPreferences.isTrustedAccessibilityClient(false),
 			prompted: false,
+			clientName: accessibilityClientName(),
 		};
 	});
 
 	ipcMain.handle("request-accessibility-permission", () => {
 		if (process.platform !== "darwin") {
-			return { success: true, trusted: true, prompted: false };
+			return { success: true, trusted: true, prompted: false, clientName: accessibilityClientName() };
 		}
 
 		return {
 			success: true,
 			trusted: systemPreferences.isTrustedAccessibilityClient(true),
 			prompted: true,
+			clientName: accessibilityClientName(),
+		};
+	});
+
+	ipcMain.handle("stop-keystroke-tap", () => {
+		stopInProcessKeystrokeTap();
+		return { success: true };
+	});
+
+	ipcMain.handle("request-keystroke-capture-permission", async () => {
+		if (process.platform !== "darwin") {
+			return { success: true, trusted: true, clientName: accessibilityClientName() };
+		}
+
+		const trusted = systemPreferences.isTrustedAccessibilityClient(true);
+		let helperReady = false;
+		try {
+			const started = await probeInProcessKeystrokeTap();
+			helperReady = started;
+			if (!helperReady) {
+				console.warn("Unable to prepare keystroke tap helper: in-process CGEventTapCreate failed");
+			}
+		} catch (error) {
+			console.warn("Unable to prepare keystroke tap helper:", error);
+		}
+
+		return {
+			success: true,
+			trusted,
+			tapOk: helperReady,
+			clientName: accessibilityClientName(),
 		};
 	});
 
@@ -81,6 +121,20 @@ export function registerPermissionHandlers() {
 			return { success: true };
 		} catch (error) {
 			console.error("Failed to open Accessibility preferences:", error);
+			return { success: false, error: String(error) };
+		}
+	});
+
+	ipcMain.handle("open-input-monitoring-preferences", async () => {
+		if (process.platform !== "darwin") {
+			return { success: true };
+		}
+
+		try {
+			await shell.openExternal(getMacPrivacySettingsUrl("input-monitoring"));
+			return { success: true };
+		} catch (error) {
+			console.error("Failed to open Input Monitoring preferences:", error);
 			return { success: false, error: String(error) };
 		}
 	});

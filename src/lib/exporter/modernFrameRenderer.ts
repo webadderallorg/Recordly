@@ -19,6 +19,8 @@ import type {
 	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
+	KeystrokeOverlaySettings,
+	KeystrokeSample,
 	Padding,
 	SpeedRegion,
 	WebcamOverlaySettings,
@@ -87,6 +89,7 @@ import {
 	renderAnnotationToCanvas,
 } from "./annotationRenderer";
 import { ForwardFrameSource } from "./forwardFrameSource";
+import { detectKeystrokeOverlayIsMac, renderKeystrokeOverlay } from "./keystrokeRenderer";
 import { resolveMediaElementSource } from "./localMediaSource";
 import {
 	getShadowFilterPadding,
@@ -127,6 +130,8 @@ interface FrameRenderConfig {
 	annotationRegions?: AnnotationRegion[];
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
+	keystrokeTelemetry?: KeystrokeSample[];
+	keystrokeOverlaySettings?: KeystrokeOverlaySettings;
 	speedRegions?: SpeedRegion[];
 	previewWidth?: number;
 	previewHeight?: number;
@@ -428,6 +433,7 @@ export class FrameRenderer {
 	private lastContentTimeMs: number | null = null;
 	private layoutCache: LayoutCache | null = null;
 	private currentVideoTime = 0;
+	private readonly keystrokeOverlayIsMac = detectKeystrokeOverlayIsMac();
 	private cursorOverlay: PixiCursorOverlay | null = null;
 	private lastSyncedWebcamTime: number | null = null;
 	private webcamRenderMode: "hidden" | "live" | "cached" = "hidden";
@@ -1510,6 +1516,15 @@ export class FrameRenderer {
 		);
 
 		this.drawCaptionOverlay(context);
+		renderKeystrokeOverlay(
+			context,
+			this.config.keystrokeTelemetry ?? [],
+			this.config.keystrokeOverlaySettings,
+			this.config.width,
+			this.config.height,
+			this.currentVideoTime * 1000,
+			this.keystrokeOverlayIsMac,
+		);
 		this.outputCanvasOverride = canvas;
 	}
 
@@ -2982,8 +2997,31 @@ export class FrameRenderer {
 			return;
 		}
 
-		this.outputCanvasOverride = null;
 		this.app!.render();
+		if (
+			this.config.keystrokeOverlaySettings?.enabled &&
+			(this.config.keystrokeTelemetry?.length ?? 0) > 0
+		) {
+			const compositeState = this.ensureExportCompositeCanvas();
+			if (compositeState) {
+				const { canvas, context } = compositeState;
+				context.clearRect(0, 0, canvas.width, canvas.height);
+				context.drawImage(this.app!.canvas as HTMLCanvasElement, 0, 0);
+				renderKeystrokeOverlay(
+					context,
+					this.config.keystrokeTelemetry ?? [],
+					this.config.keystrokeOverlaySettings,
+					this.config.width,
+					this.config.height,
+					this.currentVideoTime * 1000,
+					this.keystrokeOverlayIsMac,
+				);
+				this.outputCanvasOverride = canvas;
+				return;
+			}
+		}
+
+		this.outputCanvasOverride = null;
 	}
 
 	private updateLayout(): void {

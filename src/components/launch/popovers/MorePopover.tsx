@@ -8,6 +8,7 @@ import {
 	SunIcon,
 	MoonIcon,
 	DesktopIcon,
+	Keyboard,
 } from "@phosphor-icons/react";
 import type { ReactElement } from "react";
 import { useI18n } from "@/contexts/I18nContext";
@@ -38,6 +39,8 @@ export function MorePopover({
 	supportsHudCaptureProtection,
 	hideHudFromCapture,
 	onToggleHudCaptureProtection,
+	captureKeystrokes,
+	onToggleCaptureKeystrokes,
 	onChooseRecordingsDirectory,
 	onOpenVideoFile,
 	onOpenProjectBrowser,
@@ -49,6 +52,8 @@ export function MorePopover({
 	supportsHudCaptureProtection: boolean;
 	hideHudFromCapture: boolean;
 	onToggleHudCaptureProtection: () => void;
+	captureKeystrokes: boolean;
+	onToggleCaptureKeystrokes: () => void;
 	onChooseRecordingsDirectory: () => void;
 	onOpenVideoFile: () => void;
 	onOpenProjectBrowser: () => void;
@@ -86,6 +91,15 @@ export function MorePopover({
 						: t("recording.showHudInVideo")}
 				</DropdownItem>
 			)}
+			<DropdownItem
+				icon={<Keyboard size={16} />}
+				selected={captureKeystrokes}
+				onClick={onToggleCaptureKeystrokes}
+			>
+				{captureKeystrokes
+					? t("recording.stopCapturingKeystrokes")
+					: t("recording.captureKeystrokes")}
+			</DropdownItem>
 			<DropdownItem
 				icon={<FolderOpenIcon size={16} />}
 				onClick={() => {

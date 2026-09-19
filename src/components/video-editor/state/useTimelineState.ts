@@ -7,16 +7,21 @@ import type {
 	CaptionCue,
 	ClipRegion,
 	CursorTelemetryPoint,
+	KeystrokeOverlaySettings,
+	KeystrokeSample,
 	SpeedRegion,
 	TrimRegion,
 	ZoomRegion,
 } from "../types";
-import { DEFAULT_AUTO_CAPTION_SETTINGS } from "../types";
+import { DEFAULT_AUTO_CAPTION_SETTINGS, DEFAULT_KEYSTROKE_OVERLAY_SETTINGS } from "../types";
 
 export function useTimelineState() {
 	const [zoomRegions, setZoomRegions] = useState<ZoomRegion[]>([]);
 	const [cursorTelemetry, setCursorTelemetry] = useState<CursorTelemetryPoint[]>([]);
 	const [cursorTelemetrySourcePath, setCursorTelemetrySourcePath] = useState<string | null>(null);
+	const [keystrokeTelemetry, setKeystrokeTelemetry] = useState<KeystrokeSample[]>([]);
+	const [keystrokeOverlaySettings, setKeystrokeOverlaySettings] =
+		useState<KeystrokeOverlaySettings>(DEFAULT_KEYSTROKE_OVERLAY_SETTINGS);
 	const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
 	const [trimRegions, setTrimRegions] = useState<TrimRegion[]>([]);
 	const [clipRegions, setClipRegions] = useState<ClipRegion[]>([]);
@@ -46,6 +51,10 @@ export function useTimelineState() {
 		setCursorTelemetry,
 		cursorTelemetrySourcePath,
 		setCursorTelemetrySourcePath,
+		keystrokeTelemetry,
+		setKeystrokeTelemetry,
+		keystrokeOverlaySettings,
+		setKeystrokeOverlaySettings,
 		selectedZoomId,
 		setSelectedZoomId,
 		trimRegions,

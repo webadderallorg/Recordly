@@ -12,6 +12,12 @@ import {
 	useState,
 } from "react";
 import { getAssetPath, getRenderableAssetUrl, getRenderableVideoUrl } from "@/lib/assetPath";
+import {
+	DEFAULT_KEYSTROKE_OVERLAY_SETTINGS,
+	formatKeystrokeLabel,
+	getKeystrokeOverlayOpacity,
+	getVisibleKeystroke,
+} from "@/lib/keystrokeOverlay";
 import { getWebcamShadowFilter } from "@/lib/exporter/shadowProfile";
 import { getSquircleSvgPath } from "@/lib/geometry/squircle";
 import {
@@ -255,6 +261,8 @@ interface VideoPlaybackProps {
 	autoCaptions?: CaptionCue[];
 	autoCaptionSettings?: AutoCaptionSettings;
 	onEditAutoCaption?: (target: CaptionEditTarget, text: string) => void;
+	keystrokeTelemetry?: import("@/lib/keystrokeOverlay").KeystrokeSample[];
+	keystrokeOverlaySettings?: import("@/lib/keystrokeOverlay").KeystrokeOverlaySettings;
 	selectedAnnotationId?: string | null;
 	onSelectAnnotation?: (id: string | null) => void;
 	onAnnotationPositionChange?: (id: string, position: { x: number; y: number }) => void;
@@ -340,6 +348,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			autoCaptions = [],
 			autoCaptionSettings,
 			onEditAutoCaption,
+			keystrokeTelemetry = [],
+			keystrokeOverlaySettings,
 			selectedAnnotationId,
 			onSelectAnnotation,
 			onAnnotationPositionChange,
@@ -2671,6 +2681,54 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								</div>
 							</div>
 						) : null}
+						{!isGap
+							? (() => {
+									const overlaySettings =
+										keystrokeOverlaySettings ??
+										DEFAULT_KEYSTROKE_OVERLAY_SETTINGS;
+									const timeMs = Math.round(currentTime * 1000);
+									const visible = getVisibleKeystroke(
+										keystrokeTelemetry,
+										timeMs,
+										overlaySettings,
+									);
+									const opacity = getKeystrokeOverlayOpacity(visible, timeMs);
+									if (!visible || opacity <= 0) {
+										return null;
+									}
+									const isMac =
+										typeof navigator !== "undefined" &&
+										/Mac|iPhone|iPad/.test(navigator.platform);
+									const label = formatKeystrokeLabel(visible, isMac);
+									const offset = `${overlaySettings.bottomOffset}%`;
+									return (
+										<div
+											className="pointer-events-none absolute inset-x-0 z-20 flex justify-center"
+											style={
+												overlaySettings.position === "top"
+													? { top: offset }
+													: { bottom: offset }
+											}
+										>
+											<div
+												style={{
+													opacity,
+													backgroundColor: "rgba(0, 0, 0, 0.82)",
+													color: "#fff",
+													fontSize: `${overlaySettings.fontSize}px`,
+													fontWeight: 600,
+													letterSpacing: "0.04em",
+													borderRadius: 12,
+													padding: "6px 14px",
+													boxShadow: "0 8px 24px rgba(0,0,0,0.28)",
+												}}
+											>
+												{label}
+											</div>
+										</div>
+									);
+								})()
+							: null}
 						<div
 							className="absolute inset-0"
 							style={{
