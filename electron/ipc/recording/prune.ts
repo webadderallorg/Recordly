@@ -130,7 +130,7 @@ export async function pruneAutoRecordings(exemptPaths: string[] = []) {
 	const entries = await fs.readdir(recordingsDir, { withFileTypes: true });
 	const autoRecordingStats = await Promise.all(
 		entries
-			.filter((entry) => entry.isFile() && /^recording-.*\.(mp4|mov|webm)$/i.test(entry.name))
+			.filter((entry) => entry.isFile() && isAutoRecordingPath(entry.name))
 			.map(async (entry) => {
 				const filePath = path.join(recordingsDir, entry.name);
 				const stats = await fs.stat(filePath);
