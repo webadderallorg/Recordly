@@ -586,7 +586,10 @@ interface Window {
 			startDelayMsByPath?: Record<string, number>;
 			error?: string;
 		}>;
-		setRecordingState: (recording: boolean) => Promise<void>;
+		setRecordingState: (
+			recording: boolean,
+			options?: { mediaTimelineStartedAtEpochMs?: number },
+		) => Promise<{ cursorOverlayAvailable: boolean }>;
 		getCursorTelemetry: (videoPath?: string) => Promise<{
 			success: boolean;
 			samples: CursorTelemetryPoint[];
@@ -865,7 +868,6 @@ interface Window {
 		onMenuSaveProject: (callback: () => void) => () => void;
 		onMenuSaveProjectAs: (callback: () => void) => () => void;
 		getPlatform: () => Promise<string>;
-		getLinuxWindowSystem: () => Promise<"wayland" | "x11" | null>;
 		revealInFolder: (
 			filePath: string,
 		) => Promise<{ success: boolean; error?: string; message?: string }>;
@@ -930,6 +932,15 @@ interface Window {
 		cancelCountdown: () => Promise<{ success: boolean }>;
 		getActiveCountdown: () => Promise<{ success: boolean; seconds: number | null }>;
 		onCountdownTick: (callback: (seconds: number) => void) => () => void;
+		/** Linux portal: wait for the user to accept the screen permission dialog */
+		beginScreenPermissionWait: () => Promise<{
+			success: boolean;
+			cancelled?: boolean;
+			error?: string;
+		}>;
+		endScreenPermissionWait: (granted: boolean) => Promise<{ success: boolean }>;
+		getAwaitingScreenPermission: () => Promise<{ success: boolean; awaiting: boolean }>;
+		onAwaitingScreenPermission: (callback: (awaiting: boolean) => void) => () => void;
 	};
 }
 

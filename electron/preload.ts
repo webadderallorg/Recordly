@@ -602,8 +602,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getRecordedVideoPath: () => {
 		return ipcRenderer.invoke("get-recorded-video-path");
 	},
-	setRecordingState: (recording: boolean) => {
-		return ipcRenderer.invoke("set-recording-state", recording);
+	setRecordingState: (
+		recording: boolean,
+		options?: { mediaTimelineStartedAtEpochMs?: number },
+	) => {
+		return ipcRenderer.invoke("set-recording-state", recording, options);
 	},
 	setCursorScale: (scale: number) => {
 		return ipcRenderer.invoke("set-cursor-scale", scale);
@@ -943,9 +946,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getPlatform: () => {
 		return ipcRenderer.invoke("get-platform");
 	},
-	getLinuxWindowSystem: () => {
-		return ipcRenderer.invoke("get-linux-window-system");
-	},
 	revealInFolder: (filePath: string) => {
 		return ipcRenderer.invoke("reveal-in-folder", filePath);
 	},
@@ -1018,5 +1018,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		const listener = (_event: Electron.IpcRendererEvent, seconds: number) => callback(seconds);
 		ipcRenderer.on("countdown-tick", listener);
 		return () => ipcRenderer.removeListener("countdown-tick", listener);
+	},
+	beginScreenPermissionWait: () => ipcRenderer.invoke("begin-screen-permission-wait"),
+	endScreenPermissionWait: (granted: boolean) =>
+		ipcRenderer.invoke("end-screen-permission-wait", granted),
+	getAwaitingScreenPermission: () => ipcRenderer.invoke("get-awaiting-screen-permission"),
+	onAwaitingScreenPermission: (callback: (awaiting: boolean) => void) => {
+		const listener = (_event: Electron.IpcRendererEvent, awaiting: boolean) =>
+			callback(awaiting);
+		ipcRenderer.on("awaiting-screen-permission-changed", listener);
+		return () => ipcRenderer.removeListener("awaiting-screen-permission-changed", listener);
 	},
 });
