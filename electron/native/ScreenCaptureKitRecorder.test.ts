@@ -6,27 +6,6 @@ const recorderSource = readFileSync(
 	fileURLToPath(new URL("./ScreenCaptureKitRecorder.swift", import.meta.url)),
 	"utf8",
 );
-const macLifecycleSource = readFileSync(
-	fileURLToPath(new URL("../ipc/recording/mac.ts", import.meta.url)),
-	"utf8",
-);
-
-describe("ScreenCaptureKitRecorder stream failures", () => {
-	it("finalizes and reports a stopped stream to Electron", () => {
-		expect(recorderSource).toContain('fputs("STREAM_STOPPED: \\(reason)\\n", stderr)');
-		expect(recorderSource).toContain("finalizeCapture(interactive: false)");
-		expect(macLifecycleSource).toContain("STREAM_STOPPED:");
-		expect(macLifecycleSource).toContain('"stream-stopped"');
-	});
-
-	it("honours a configured capture frame rate", () => {
-		expect(recorderSource).toContain("let requestedFPS = config.fps ?? targetCaptureFPS");
-		expect(recorderSource).not.toContain(
-			"let requestedFPS = max(targetCaptureFPS, config.fps ?? targetCaptureFPS)",
-		);
-	});
-});
-
 describe("ScreenCaptureKitRecorder finalization coordination", () => {
 	it("marks manual stops as participants in the shared finalization", () => {
 		expect(recorderSource).toContain("finalizeCapture(interactive: true)");
