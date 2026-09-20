@@ -16,11 +16,13 @@ import {
 import type { NativeMacWindowSource, SelectedSource, WindowBounds } from "../types";
 import { parseWindowId } from "../utils";
 import { resolveWindowsWindowBounds } from "../windowsWindowControl";
+import { createNonOverlappingRunner, createSingleFlight } from "./concurrency";
 
 const execFileAsync = promisify(execFile);
-let nativeMacWindowSourcesInFlight: Promise<NativeMacWindowSource[]> | null = null;
-let windowBoundsRefreshInFlight = false;
+const runNativeMacWindowSources = createSingleFlight<NativeMacWindowSource[]>();
+const runWindowBoundsRefresh = createNonOverlappingRunner();
 
+/** Return cached macOS windows or share one native enumeration among concurrent callers. */
 export async function getNativeMacWindowSources(options?: { maxAgeMs?: number }) {
 	if (process.platform !== "darwin") {
 		return [] as NativeMacWindowSource[];
@@ -31,11 +33,7 @@ export async function getNativeMacWindowSources(options?: { maxAgeMs?: number })
 	if (cachedNativeMacWindowSources && now - cachedNativeMacWindowSourcesAtMs < maxAgeMs) {
 		return cachedNativeMacWindowSources;
 	}
-	if (nativeMacWindowSourcesInFlight) {
-		return nativeMacWindowSourcesInFlight;
-	}
-
-	nativeMacWindowSourcesInFlight = (async () => {
+	return runNativeMacWindowSources(async () => {
 		try {
 			const binaryPath = await ensureNativeWindowListBinary();
 			const { stdout } = await execFileAsync(binaryPath, [], {
@@ -63,13 +61,7 @@ export async function getNativeMacWindowSources(options?: { maxAgeMs?: number })
 		} catch {
 			return cachedNativeMacWindowSources ?? ([] as NativeMacWindowSource[]);
 		}
-	})();
-
-	try {
-		return await nativeMacWindowSourcesInFlight;
-	} finally {
-		nativeMacWindowSourcesInFlight = null;
-	}
+	});
 }
 
 export function getWindowBoundsFromNativeSource(
@@ -185,12 +177,7 @@ export function stopWindowBoundsCapture() {
 }
 
 async function refreshSelectedWindowBounds() {
-	if (windowBoundsRefreshInFlight) {
-		return;
-	}
-	windowBoundsRefreshInFlight = true;
-
-	try {
+	await runWindowBoundsRefresh(async () => {
 		if (!selectedSource?.id?.startsWith("window:")) {
 			setSelectedWindowBounds(null);
 			return;
@@ -207,9 +194,7 @@ async function refreshSelectedWindowBounds() {
 		}
 
 		setSelectedWindowBounds(bounds);
-	} finally {
-		windowBoundsRefreshInFlight = false;
-	}
+	});
 }
 
 export function startWindowBoundsCapture() {
