@@ -216,13 +216,16 @@ export function attachNativeCaptureLifecycle(process: ChildProcessWithoutNullStr
 			}
 		});
 
+		const streamStoppedMatch = nativeCaptureOutputBuffer.match(/STREAM_STOPPED:\s*(.+)/);
 		const reason = nativeCaptureOutputBuffer.includes("WINDOW_UNAVAILABLE")
 			? "window-unavailable"
-			: "capture-stopped";
+			: streamStoppedMatch
+				? "stream-stopped"
+				: "capture-stopped";
 		const message =
 			reason === "window-unavailable"
 				? "The selected window is no longer capturable. Please reselect a window."
-				: "Recording stopped unexpectedly.";
+				: streamStoppedMatch?.[1]?.trim() || "Recording stopped unexpectedly.";
 
 		emitRecordingInterrupted(reason, message);
 	});

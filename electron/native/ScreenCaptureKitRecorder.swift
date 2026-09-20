@@ -103,7 +103,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 		writesSystemAudioToSeparateTrack = capturesSystemAudio
 		writesMicrophoneToSeparateTrack = capturesSystemAudio && capturesMicrophone
-		let requestedFPS = max(targetCaptureFPS, config.fps ?? targetCaptureFPS)
+		let requestedFPS = config.fps ?? targetCaptureFPS
 		streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(requestedFPS))
 		streamConfig.queueDepth = 6
 		streamConfig.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
@@ -513,8 +513,22 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	}
 
 	func stream(_ stream: SCStream, didStopWithError error: Error) {
-		fputs("Error: \(error.localizedDescription)\n", stderr)
+		let reason = error.localizedDescription.replacingOccurrences(of: "\n", with: " ")
+		fputs("STREAM_STOPPED: \(reason)\n", stderr)
 		fflush(stderr)
+
+		Task { [weak self] in
+			guard let self else { return }
+			let finalization = await self.finalizeCapture(interactive: false)
+			if finalization.interactiveStopParticipated {
+				return
+			}
+			if case let .success(outputPath) = finalization.outputResult {
+				print("Recording stopped. Output path: \(outputPath)")
+				fflush(stdout)
+			}
+			exit(1)
+		}
 	}
 
 	/// Starts one finalization operation after all previously delivered samples on

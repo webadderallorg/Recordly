@@ -6,6 +6,26 @@ const recorderSource = readFileSync(
 	fileURLToPath(new URL("./ScreenCaptureKitRecorder.swift", import.meta.url)),
 	"utf8",
 );
+const macLifecycleSource = readFileSync(
+	fileURLToPath(new URL("../ipc/recording/mac.ts", import.meta.url)),
+	"utf8",
+);
+
+describe("ScreenCaptureKitRecorder stream failures", () => {
+	it("finalizes and reports a stopped stream to Electron", () => {
+		expect(recorderSource).toContain('fputs("STREAM_STOPPED: \\(reason)\\n", stderr)');
+		expect(recorderSource).toContain("finalizeCapture(interactive: false)");
+		expect(macLifecycleSource).toContain("STREAM_STOPPED:");
+		expect(macLifecycleSource).toContain('"stream-stopped"');
+	});
+
+	it("honours a configured capture frame rate", () => {
+		expect(recorderSource).toContain("let requestedFPS = config.fps ?? targetCaptureFPS");
+		expect(recorderSource).not.toContain(
+			"let requestedFPS = max(targetCaptureFPS, config.fps ?? targetCaptureFPS)",
+		);
+	});
+});
 
 describe("ScreenCaptureKitRecorder finalization coordination", () => {
 	it("marks manual stops as participants in the shared finalization", () => {
@@ -85,9 +105,11 @@ describe("ScreenCaptureKitRecorder window capture", () => {
 	});
 });
 
-
 describe("ScreenCaptureKitRecorder first frame timing", () => {
-	const callback = recorderSource.slice(recorderSource.indexOf("func stream(_ stream:"), recorderSource.indexOf("func stream(_ stream:") + 5000);
+	const callback = recorderSource.slice(
+		recorderSource.indexOf("func stream(_ stream:"),
+		recorderSource.indexOf("func stream(_ stream:") + 5000,
+	);
 	it("validates a complete frame and writer readiness before setting time zero", () => {
 		const clock = callback.indexOf("adjustedPresentationTime(for:");
 		expect(clock).toBeGreaterThan(callback.indexOf("status == .complete"));
