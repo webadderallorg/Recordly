@@ -15,6 +15,7 @@ export function useLaunchHudInteractionState({
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 	useEffect(() => {
+		window.electronAPI?.hudOverlaySetMenuOpen?.(openId !== null);
 		if (openId !== null) {
 			if (timeoutRef.current) clearTimeout(timeoutRef.current);
 			window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
