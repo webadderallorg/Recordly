@@ -1,4 +1,3 @@
-import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -27,6 +26,7 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
+import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import { ensureMediaServer } from "./mediaServer";
 import { hardenWebContentsNavigation, shouldHardenWebContentsType } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
@@ -77,7 +77,9 @@ ignoreBrokenConsolePipe(process.stdout);
 ignoreBrokenConsolePipe(process.stderr);
 
 app.commandLine.appendSwitch("ignore-gpu-blocklist");
-app.commandLine.appendSwitch("enable-unsafe-webgpu");
+if (process.platform !== "linux") {
+	app.commandLine.appendSwitch("enable-unsafe-webgpu");
+}
 app.commandLine.appendSwitch("enable-gpu-rasterization");
 
 app.on("web-contents-created", (_event, contents) => {
@@ -873,7 +875,9 @@ function createSourceSelectorWindowWrapper() {
 app.on("before-quit", () => {
 	isAppQuitting = true;
 	authCallbacks.close();
-	void clearRecordingTrashUndo().catch((error) => console.warn("Could not clear recording undo cache", error));
+	void clearRecordingTrashUndo().catch((error) =>
+		console.warn("Could not clear recording undo cache", error),
+	);
 	killWindowsCaptureProcess();
 	showCursor();
 	cleanupNativeVideoExportSessions();
@@ -902,7 +906,9 @@ app.on("second-instance", (_event, commandLine) => {
 app.whenReady().then(async () => {
 	authCallbacks.startDevServer();
 	if (process.defaultApp && process.argv[1]) {
-		app.setAsDefaultProtocolClient(authCallbacks.protocol, process.execPath, [path.resolve(process.argv[1])]);
+		app.setAsDefaultProtocolClient(authCallbacks.protocol, process.execPath, [
+			path.resolve(process.argv[1]),
+		]);
 	} else {
 		app.setAsDefaultProtocolClient(authCallbacks.protocol);
 	}

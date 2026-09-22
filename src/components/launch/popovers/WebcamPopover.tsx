@@ -4,11 +4,11 @@ import {
 	VideoCamera as Video,
 	VideoCameraSlash as VideoOff,
 } from "@phosphor-icons/react";
+import type { ReactElement } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
-import { DropdownItem, HudPopover } from "./PopoverScaffold";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import type { DeviceOption } from "./launchPopoverTypes";
-import type { ReactElement } from "react";
+import { DropdownItem, HudPopover } from "./PopoverScaffold";
 
 const POPOVER_ID = "webcam";
 
@@ -67,13 +67,15 @@ export function WebcamPopover({
 			{webcamEnabled && (
 				<>
 					<DropdownItem
-						icon={<VideoOff size={16} />}
+						icon={<VideoOff size={16} className="text-red-400" />}
 						onClick={() => {
 							onDisableWebcam();
 							requestClose(POPOVER_ID);
 						}}
 					>
-						{t("recording.turnOffWebcam")}
+						<span className="text-red-400 font-medium">
+							{t("recording.turnOffWebcam")}
+						</span>
 					</DropdownItem>
 					{canToggleFloatingPreview ? (
 						<DropdownItem
@@ -108,28 +110,29 @@ export function WebcamPopover({
 					</div>
 				</div>
 			)}
-			{videoDevices.map((device) => (
-				<DropdownItem
-					key={device.deviceId}
-					icon={
-						webcamEnabled &&
-						(webcamDeviceId === device.deviceId ||
-							selectedVideoDeviceId === device.deviceId) ? (
-							<Video size={16} />
-						) : (
-							<VideoOff size={16} />
-						)
-					}
-					selected={
-						webcamEnabled &&
-						(webcamDeviceId === device.deviceId ||
-							selectedVideoDeviceId === device.deviceId)
-					}
-					onClick={() => onSelectVideoDevice(device.deviceId)}
-				>
-					{device.label}
-				</DropdownItem>
-			))}
+			{videoDevices.map((device) => {
+				const isSelected =
+					webcamEnabled &&
+					(webcamDeviceId === device.deviceId ||
+						selectedVideoDeviceId === device.deviceId);
+				return (
+					<DropdownItem
+						key={device.deviceId}
+						icon={isSelected ? <Video size={16} /> : <VideoOff size={16} />}
+						selected={isSelected}
+						onClick={() => {
+							if (isSelected) {
+								onDisableWebcam();
+								requestClose(POPOVER_ID);
+							} else {
+								onSelectVideoDevice(device.deviceId);
+							}
+						}}
+					>
+						{device.label}
+					</DropdownItem>
+				);
+			})}
 			{videoDevices.length === 0 && (
 				<div className="text-center text-xs text-[var(--launch-text-muted)] py-4">
 					{t("recording.noWebcamsFound")}
