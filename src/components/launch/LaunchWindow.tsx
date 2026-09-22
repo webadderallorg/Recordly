@@ -158,6 +158,14 @@ function LaunchWindowContent() {
 	}, [showRecordingWebcamPreview]);
 
 	useEffect(() => {
+		return window.electronAPI?.onRecordingTogglePause?.(() => {
+			if (!recording) return;
+			if (paused) resumeRecording();
+			else pauseRecording();
+		});
+	}, [pauseRecording, paused, recording, resumeRecording]);
+
+	useEffect(() => {
 		return () => {
 			window.electronAPI?.hudOverlaySetWebcamPreviewVisible?.(false);
 		};
