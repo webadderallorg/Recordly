@@ -1,10 +1,10 @@
 import { MicrophoneSlashIcon, SpeakerHighIcon, SpeakerXIcon } from "@phosphor-icons/react";
+import type { ReactElement } from "react";
 import { useScopedT } from "@/contexts/I18nContext";
-import { DropdownItem, HudPopover, MicDeviceRow } from "./PopoverScaffold";
+import styles from "../LaunchWindow.module.css";
 import { useLaunchPopoverCoordinator } from "./LaunchPopoverCoordinator";
 import type { DeviceOption } from "./launchPopoverTypes";
-import type { ReactElement } from "react";
-import styles from "../LaunchWindow.module.css";
+import { DropdownItem, HudPopover, MicDeviceRow } from "./PopoverScaffold";
 
 const POPOVER_ID = "mic";
 
@@ -65,13 +65,15 @@ export function MicPopover({
 			</DropdownItem>
 			{microphoneEnabled && (
 				<DropdownItem
-					icon={<MicrophoneSlashIcon size={16} />}
+					icon={<MicrophoneSlashIcon size={16} className="text-red-400" />}
 					onClick={() => {
 						onDisableMicrophone();
 						requestClose(POPOVER_ID);
 					}}
 				>
-					{t("recording.turnOffMicrophone")}
+					<span className="text-red-400 font-medium">
+						{t("recording.turnOffMicrophone")}
+					</span>
 				</DropdownItem>
 			)}
 			{!microphoneEnabled && (
@@ -79,18 +81,27 @@ export function MicPopover({
 					{t("recording.selectMicToEnable")}
 				</div>
 			)}
-			{devices.map((device) => (
-				<MicDeviceRow
-					key={device.deviceId}
-					device={device}
-					selected={
-						microphoneEnabled &&
-						(microphoneDeviceId === device.deviceId ||
-							selectedDeviceId === device.deviceId)
-					}
-					onSelect={() => onSelectDevice(device.deviceId)}
-				/>
-			))}
+			{devices.map((device) => {
+				const isSelected =
+					microphoneEnabled &&
+					(microphoneDeviceId === device.deviceId ||
+						selectedDeviceId === device.deviceId);
+				return (
+					<MicDeviceRow
+						key={device.deviceId}
+						device={device}
+						selected={isSelected}
+						onSelect={() => {
+							if (isSelected) {
+								onDisableMicrophone();
+								requestClose(POPOVER_ID);
+							} else {
+								onSelectDevice(device.deviceId);
+							}
+						}}
+					/>
+				);
+			})}
 			{devices.length === 0 && (
 				<div className="text-center text-xs text-[var(--launch-text-muted)] py-4">
 					{t("recording.noMicrophonesFound")}

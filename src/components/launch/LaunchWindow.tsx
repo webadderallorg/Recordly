@@ -279,6 +279,10 @@ function LaunchWindowContent() {
 								: t("recording.enableMicrophone")
 						}
 						className={microphoneEnabled ? "text-accent" : ""}
+						onContextMenu={(e) => {
+							e.preventDefault();
+							setMicrophoneEnabled(!microphoneEnabled);
+						}}
 					>
 						{microphoneEnabled ? (
 							<MicrophoneIcon size={18} />
@@ -319,6 +323,10 @@ function LaunchWindowContent() {
 								: t("recording.enableWebcam")
 						}
 						className={webcamEnabled ? "text-accent" : ""}
+						onContextMenu={(e) => {
+							e.preventDefault();
+							setWebcamEnabled(!webcamEnabled);
+						}}
 					>
 						{webcamEnabled ? (
 							<VideoCameraIcon size={18} />
@@ -446,8 +454,7 @@ function LaunchWindowContent() {
 	);
 
 	const hudMode = finalizing ? "finalizing" : recording ? "recording" : "idle";
-	const useNativeHudBarDrag =
-		platform === "linux" || hudOverlayMousePassthroughSupported === false;
+	const useNativeHudBarDrag = hudOverlayMousePassthroughSupported === false;
 	const shouldAnimateHudLayout = !recording && !showRecordingWebcamPreview && !isHudDragging;
 
 	return (
