@@ -5,11 +5,7 @@ import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, ipcMain } from "electron";
 import { supportsHudCaptureProtection } from "../src/lib/hudCaptureProtection";
 import { USER_DATA_PATH } from "./appPaths";
-import {
-	getHudOverlayWindowBounds,
-	resizeHudOverlayFallbackBounds,
-	shouldExpandHudOverlayFallback,
-} from "./hudOverlayBounds";
+import { getHudOverlayWindowBounds, shouldExpandHudOverlayFallback } from "./hudOverlayBounds";
 import { getHudOverlayTaskbarOptions } from "./hudOverlayWindowOptions";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
@@ -265,34 +261,6 @@ function positionUpdateToastWindow() {
 	updateToastWindow.moveTop();
 }
 
-function setHudOverlayFallbackExpanded(expanded: boolean) {
-	if (hudOverlayRecordingActive) {
-		hudOverlayFallbackExpanded = false;
-		return;
-	}
-
-	hudOverlayFallbackExpanded = expanded;
-	if (
-		!hudOverlayWindow ||
-		hudOverlayWindow.isDestroyed() ||
-		isHudOverlayMousePassthroughSupported()
-	) {
-		return;
-	}
-
-	const { workArea } = getHudOverlayDisplay();
-	const nextBounds = resizeHudOverlayFallbackBounds(
-		workArea,
-		hudOverlayWindow.getBounds(),
-		expanded,
-	);
-	hudOverlayWindow.setBounds(nextBounds, false);
-	positionUpdateToastWindow();
-	if (hudOverlayWindow.isVisible()) {
-		hudOverlayWindow.moveTop();
-	}
-}
-
 function setHudOverlayMousePassthrough(ignore: boolean) {
 	hudOverlayIgnoringMouse =
 		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive ? true : ignore;
@@ -312,9 +280,10 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 	}
 
 	if (!isHudOverlayMousePassthroughSupported()) {
-		if (process.platform !== "linux") {
-			setHudOverlayFallbackExpanded(!ignore);
-		}
+		// Deliberately no resize here. This branch is Linux-only, and growing the
+		// window on hover moves the bar out from under the pointer, which fires
+		// mouseleave and shrinks it back, oscillating. The fallback window instead
+		// reserves menu headroom up front, so menus need no resize at all.
 		hudOverlayWindow.setIgnoreMouseEvents(false);
 		return;
 	}
