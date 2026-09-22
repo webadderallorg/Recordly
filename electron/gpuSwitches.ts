@@ -57,7 +57,7 @@ export function getGpuSwitches(
 
 	if (platform === "linux") {
 		return {
-			useGl: shouldForceLinuxEgl(env) ? "egl" : undefined,
+			useGl: undefined,
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		};
 	}

@@ -260,6 +260,31 @@ describe("ModernFrameRenderer Pixi lifecycle", () => {
 			vi.unstubAllGlobals();
 		}
 	});
+
+	it("defaults to webgl when preferredRenderBackend is unspecified even if navigator.gpu exists", async () => {
+		pixiApplicationInstancesMock.length = 0;
+		pixiInitializationErrorsMock.length = 0;
+		vi.stubGlobal("navigator", { gpu: {} });
+
+		try {
+			const renderer = createRenderer() as unknown as {
+				config: { preferredRenderBackend?: "webgl" | "webgpu" };
+				createPixiApplication: (
+					canvas: HTMLCanvasElement,
+				) => Promise<{ backend: "webgl" | "webgpu" }>;
+			};
+
+			await expect(
+				renderer.createPixiApplication({} as HTMLCanvasElement),
+			).resolves.toMatchObject({
+				backend: "webgl",
+			});
+
+			expect(pixiApplicationInstancesMock).toHaveLength(1);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
 });
 
 describe("ModernFrameRenderer blur export path", () => {

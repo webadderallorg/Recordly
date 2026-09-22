@@ -1129,8 +1129,16 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		const platform = await window.electronAPI.getPlatform();
 		hideEditorOverlayCursorByDefault.current = false;
 		const existingSource = await window.electronAPI.getSelectedSource();
-		const selectedSource =
-			existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
+		let selectedSource = existingSource;
+		if (!selectedSource) {
+			try {
+				const sources = await window.electronAPI.getSources({ types: ["screen"] });
+				selectedSource = sources && sources[0] ? sources[0] : null;
+			} catch (_) {}
+		}
+		if (!selectedSource) {
+			selectedSource = platform === "linux" ? LINUX_PORTAL_SOURCE : null;
+		}
 		if (!selectedSource) {
 			alert("Please select a source to record");
 			return null;
