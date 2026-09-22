@@ -28,6 +28,7 @@ import {
 	registerIpcHandlers,
 } from "./ipc/handlers";
 import { ensureMediaServer } from "./mediaServer";
+import { isLikelyLinuxWaylandSession } from "./ipc/register/sourceMapping";
 import { hardenWebContentsNavigation, shouldHardenWebContentsType } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
@@ -1121,7 +1122,9 @@ app.whenReady().then(async () => {
 			// source picker entirely). This avoids calling getSources() which
 			// would itself trigger an extra portal dialog.
 			const isLinuxPortalSentinel =
-				process.platform === "linux" && (sourceId === "screen:linux-portal" || !sourceId);
+				process.platform === "linux" &&
+				isLikelyLinuxWaylandSession(process.env) &&
+				(sourceId === "screen:linux-portal" || !sourceId);
 			if (isLinuxPortalSentinel) {
 				callback({ video: { id: "screen:0:0", name: "Entire screen" } });
 				return;

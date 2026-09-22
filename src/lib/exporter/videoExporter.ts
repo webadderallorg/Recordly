@@ -217,7 +217,7 @@ export class VideoExporter {
 				timelineEffects: this.config.clipRegions !== undefined,
 				width: this.config.width,
 				height: this.config.height,
-				preferredRenderBackend: undefined,
+				preferredRenderBackend: this.config.preferredRenderBackend,
 				wallpaper: this.config.wallpaper,
 				zoomRegions: this.config.zoomRegions,
 				showShadow: this.config.showShadow,

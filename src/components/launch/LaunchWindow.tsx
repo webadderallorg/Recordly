@@ -188,7 +188,16 @@ function LaunchWindowContent() {
 	useEffect(() => {
 		let mounted = true;
 
-		void window.electronAPI.getSelectedSource().then((source) => {
+		void window.electronAPI.getSelectedSource().then(async (source) => {
+			if (!source) {
+				try {
+					const sources = await window.electronAPI.getSources({ types: ["screen"] });
+					if (sources && sources[0]) {
+						await window.electronAPI.selectSource(sources[0]);
+						source = sources[0];
+					}
+				} catch (_) {}
+			}
 			if (mounted) syncSelectedSource(source);
 		});
 
@@ -223,36 +232,32 @@ function LaunchWindowContent() {
 
 	const idleControls = (
 		<>
-			{platform !== "linux" && (
-				<>
-					<SourcePopover
-						selectedSource={selectedSource}
-						onSourceSelect={handleSourceSelect}
-						onOpen={beginInteractiveHudAction}
-						trigger={
-							<Button
-								variant="ghost"
-								size="lg"
-								className={` ${styles.electronNoDrag} group gap-2 px-3 min-w-0 max-w-[180px] shrink-0  ${openId === "sources" ? "border-[var(--launch-border-strong)] bg-[var(--launch-hover)]" : ""} `}
-								title={selectedSource}
-							>
-								<MonitorIcon size={16} className="shrink-0" />
-								<div className="flex-1 min-w-0 overflow-hidden">
-									<MarqueeText text={selectedSource} />
-								</div>
-								<CaretUpIcon
-									size={10}
-									className={`text-[#6b6b78] ml-0.5 shrink-0 transition-transform duration-200 ${
-										openId === "sources" ? "" : "rotate-180"
-									}`}
-								/>
-							</Button>
-						}
-					/>
+			<SourcePopover
+				selectedSource={selectedSource}
+				onSourceSelect={handleSourceSelect}
+				onOpen={beginInteractiveHudAction}
+				trigger={
+					<Button
+						variant="ghost"
+						size="lg"
+						className={` ${styles.electronNoDrag} group gap-2 px-3 min-w-0 max-w-[180px] shrink-0  ${openId === "sources" ? "border-[var(--launch-border-strong)] bg-[var(--launch-hover)]" : ""} `}
+						title={selectedSource}
+					>
+						<MonitorIcon size={16} className="shrink-0" />
+						<div className="flex-1 min-w-0 overflow-hidden">
+							<MarqueeText text={selectedSource} />
+						</div>
+						<CaretUpIcon
+							size={10}
+							className={`text-[#6b6b78] ml-0.5 shrink-0 transition-transform duration-200 ${
+								openId === "sources" ? "" : "rotate-180"
+							}`}
+						/>
+					</Button>
+				}
+			/>
 
-					<Separator orientation="vertical" className="mx-[5px] h-6" />
-				</>
-			)}
+			<Separator orientation="vertical" className="mx-[5px] h-6" />
 
 			<MicPopover
 				disabled={recording}
