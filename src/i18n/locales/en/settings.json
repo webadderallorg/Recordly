@@ -282,6 +282,8 @@
 		"animationRise": "Rise",
 		"animationPop": "Pop",
 		"bottomOffset": "Bottom Offset",
+		"horizontalPosition": "Horizontal position",
+		"verticalPosition": "Vertical position",
 		"maxWidth": "Max Width",
 		"boxRadius": "Box Radius",
 		"backgroundOpacity": "Background Opacity",

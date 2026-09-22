@@ -272,6 +272,8 @@
 		"animationRise": "せり上がり",
 		"animationPop": "ポップ",
 		"bottomOffset": "下端からの距離",
+		"horizontalPosition": "横位置",
+		"verticalPosition": "縦位置",
 		"maxWidth": "最大幅",
 		"boxRadius": "背景の角丸",
 		"backgroundOpacity": "背景の不透明度",

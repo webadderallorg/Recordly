@@ -254,6 +254,8 @@
 		"animationRise": "Remontée",
 		"animationPop": "Apparition",
 		"bottomOffset": "Décalage inférieur",
+		"horizontalPosition": "Position horizontale",
+		"verticalPosition": "Position verticale",
 		"maxWidth": "Largeur max",
 		"boxRadius": "Rayon de la boîte",
 		"backgroundOpacity": "Opacité de l’arrière-plan",
