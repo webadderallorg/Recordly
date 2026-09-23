@@ -8,12 +8,14 @@ const {
 	initializeForwardFrameSourceMock,
 	pixiApplicationInstancesMock,
 	pixiInitializationErrorsMock,
+	pixiInitOptionsMock,
 	resolveMediaElementSourceMock,
 } = vi.hoisted(() => ({
 	cancelForwardFrameSourceMock: vi.fn(),
 	destroyForwardFrameSourceMock: vi.fn(async () => undefined),
 	getForwardFrameAtTimeMock: vi.fn(async () => null),
 	initializeForwardFrameSourceMock: vi.fn(async () => undefined),
+	pixiInitOptionsMock: [] as Array<{ preference?: string } | undefined>,
 	pixiApplicationInstancesMock: [] as Array<{
 		destroy: ReturnType<typeof vi.fn>;
 		init: ReturnType<typeof vi.fn>;
@@ -32,7 +34,8 @@ vi.mock("pixi.js", () => ({
 		destroy = vi.fn(() => {
 			throw new TypeError("this._cancelResize is not a function");
 		});
-		init = vi.fn(async () => {
+		init = vi.fn(async (options?: { preference?: string }) => {
+			pixiInitOptionsMock.push(options);
 			const error = pixiInitializationErrorsMock.shift();
 			if (error) throw error;
 		});
@@ -231,6 +234,34 @@ it("bypasses blur annotation compositing during gaps and clears stale composite 
 });
 
 describe("ModernFrameRenderer Pixi lifecycle", () => {
+	it("prefers WebGL when no render backend is requested to keep the shared Pixi batch shader compatible", async () => {
+		pixiApplicationInstancesMock.length = 0;
+		pixiInitializationErrorsMock.length = 0;
+		pixiInitOptionsMock.length = 0;
+		vi.stubGlobal("navigator", { gpu: {} });
+
+		try {
+			const renderer = createRenderer() as unknown as {
+				config: { preferredRenderBackend?: "webgl" | "webgpu" };
+				createPixiApplication: (
+					canvas: HTMLCanvasElement,
+				) => Promise<{ backend: "webgl" | "webgpu" }>;
+			};
+			renderer.config.preferredRenderBackend = undefined;
+
+			await expect(
+				renderer.createPixiApplication({} as HTMLCanvasElement),
+			).resolves.toMatchObject({
+				backend: "webgl",
+			});
+
+			expect(pixiInitOptionsMock[0]?.preference).toBe("webgl");
+			expect(pixiApplicationInstancesMock).toHaveLength(1);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
 	it("continues to the next backend when failed-init cleanup would throw", async () => {
 		pixiApplicationInstancesMock.length = 0;
 		pixiInitializationErrorsMock.length = 0;
