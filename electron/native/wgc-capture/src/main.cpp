@@ -419,7 +419,7 @@ int main(int argc, char* argv[]) {
     captureSetupComplete = true;
 
     // Wait for stop signal while pausing/resuming audio tracks in lockstep.
-    while (!g_stopRequested && !session.hasFatalError()) {
+    while (!g_stopRequested && !session.hasFatalError() && !encoder.hasFatalError()) {
         if (g_pauseRequested) {
             if (audioActive) loopback.pause();
             if (micActive) micCapture.pause();
@@ -438,8 +438,8 @@ int main(int argc, char* argv[]) {
     if (audioActive) loopback.stop();
     if (micActive) micCapture.stop();
 
-    if (session.hasFatalError()) {
-        std::cerr << "ERROR: WGC capture session failed during recording" << std::endl;
+    if (session.hasFatalError() || encoder.hasFatalError()) {
+        std::cerr << "ERROR: WGC capture or encoder session failed during recording" << std::endl;
         encoder.finalize();
         DeleteFileW(outputPathW.c_str());
         if (!config.audioOutputPath.empty()) {
@@ -479,6 +479,9 @@ int main(int argc, char* argv[]) {
     if (!encoder.extendLastFrameTo(adjustedStopTimestampHns)) {
         std::cerr << "WARNING: Failed to extend the last video frame to the stop timestamp" << std::endl;
     }
+
+    std::cerr << "Encoder queue dropped " << encoder.droppedFrameCount()
+              << " stale frames to preserve capture responsiveness" << std::endl;
 
     if (!encoder.finalize()) {
         std::cerr << "ERROR: Failed to finalize Media Foundation encoder" << std::endl;
