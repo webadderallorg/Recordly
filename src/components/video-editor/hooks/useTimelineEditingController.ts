@@ -221,6 +221,11 @@ export function useTimelineEditingController(input: Input) {
 		handleUndo: input.handleUndo,
 		handleRedo: input.handleRedo,
 		startPlayback: playback.startPlayback,
+		stepFrameBackward: playback.stepFrameBackward,
+		stepFrameForward: playback.stepFrameForward,
+		stepTimeSeconds: playback.stepTimeSeconds,
+		handlePreviewSkipBack: playback.handlePreviewSkipBack,
+		handlePreviewSkipForward: playback.handlePreviewSkipForward,
 	});
 
 	return {

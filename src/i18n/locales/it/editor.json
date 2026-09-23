@@ -151,7 +151,10 @@
 		"panTimeline": "Sposta timeline",
 		"zoomTimeline": "Zoom timeline",
 		"cycleAnnotations": "Scorri annotazioni",
-		"tab": "Tab"
+		"tab": "Tab",
+		"stepFrame": "Sposta di 1 fotogramma",
+		"stepSecond": "Sposta di 1 secondo",
+		"jumpKeyframe": "Vai al fotogramma chiave"
 	},
 	"actions": {
 		"saveAgain": "Salva di nuovo",

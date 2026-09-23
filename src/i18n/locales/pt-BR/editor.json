@@ -151,7 +151,10 @@
 		"panTimeline": "Mover linha do tempo",
 		"zoomTimeline": "Zoom da linha do tempo",
 		"cycleAnnotations": "Alternar anotações",
-		"tab": "Tab"
+		"tab": "Tab",
+		"stepFrame": "Mover 1 quadro",
+		"stepSecond": "Mover 1 segundo",
+		"jumpKeyframe": "Ir para o quadro-chave"
 	},
 	"actions": {
 		"saveAgain": "Salvar novamente",
