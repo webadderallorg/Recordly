@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	getHudOverlayFallbackExpansionForInteraction,
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
@@ -184,5 +185,20 @@ describe("shouldExpandHudOverlayFallback", () => {
 				webcamPreviewVisible: true,
 			}),
 		).toBe(false);
+	});
+});
+
+describe("getHudOverlayFallbackExpansionForInteraction", () => {
+	it("expands the fallback while the HUD is interactive without mouse passthrough", () => {
+		expect(getHudOverlayFallbackExpansionForInteraction(false, false)).toBe(true);
+	});
+
+	it("requests compact bounds once the HUD becomes click-through", () => {
+		expect(getHudOverlayFallbackExpansionForInteraction(false, true)).toBe(false);
+	});
+
+	it("does not resize the window when mouse passthrough is supported", () => {
+		expect(getHudOverlayFallbackExpansionForInteraction(true, false)).toBeNull();
+		expect(getHudOverlayFallbackExpansionForInteraction(true, true)).toBeNull();
 	});
 });
