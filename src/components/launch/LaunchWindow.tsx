@@ -79,6 +79,7 @@ function LaunchWindowContent() {
 	const { elapsed, formatTime } = useRecordingTimer(recording, paused);
 	const hudContentRef = useRef<HTMLDivElement>(null);
 	const hudBarRef = useRef<HTMLDivElement>(null);
+	const pendingAutoStartRef = useRef(false);
 
 	const { selectedSource, hasSelectedSource, handleSourceSelect, syncSelectedSource } =
 		useLaunchWindowActions();
@@ -141,6 +142,12 @@ function LaunchWindowContent() {
 			window.electronAPI?.hudOverlaySetWebcamPreviewVisible?.(false);
 		};
 	}, []);
+
+	useEffect(() => {
+		if (openId !== "sources") {
+			pendingAutoStartRef.current = false;
+		}
+	}, [openId]);
 
 	const {
 		recordingHudOffset,
@@ -223,7 +230,13 @@ function LaunchWindowContent() {
 				<>
 					<SourcePopover
 						selectedSource={selectedSource}
-						onSourceSelect={handleSourceSelect}
+						onSourceSelect={async (source) => {
+							await handleSourceSelect(source);
+							if (pendingAutoStartRef.current) {
+								pendingAutoStartRef.current = false;
+								void toggleRecording();
+							}
+						}}
 						onOpen={beginInteractiveHudAction}
 						trigger={
 							<Button
@@ -367,6 +380,7 @@ function LaunchWindowContent() {
 						: () => {
 								beginInteractiveHudAction();
 								requestOpen("sources");
+								pendingAutoStartRef.current = true;
 							}
 				}
 				disabled={countdownActive}
