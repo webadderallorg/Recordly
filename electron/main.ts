@@ -89,13 +89,11 @@ app.on("web-contents-created", (_event, contents) => {
 });
 
 function configureGpuAccelerationSwitches() {
-	const { useAngle, useGl, disableFeatures } = getGpuSwitches(process.platform, process.env);
+	const { useAngle, disableFeatures } = getGpuSwitches(process.platform, process.env);
 	if (useAngle) {
 		app.commandLine.appendSwitch("use-angle", useAngle);
 	}
-	if (useGl) {
-		app.commandLine.appendSwitch("use-gl", useGl);
-	}
+
 	if (disableFeatures && disableFeatures.length > 0) {
 		app.commandLine.appendSwitch("disable-features", disableFeatures.join(","));
 	}
