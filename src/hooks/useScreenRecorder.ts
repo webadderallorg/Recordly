@@ -1195,6 +1195,31 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					(d) => d.deviceId === microphoneDeviceId && d.kind === "audioinput",
 				);
 				micLabel = mic?.label || undefined;
+
+				// Device labels are blank until the renderer has been granted mic
+				// permission at least once. Without a label, the native capture
+				// process can't match the selected device by name and silently
+				// falls back to the OS default mic, ignoring the user's choice.
+				// Briefly prime permission so we can pass the real device name.
+				if (!micLabel) {
+					let permissionStream: MediaStream | null = null;
+					try {
+						permissionStream = await navigator.mediaDevices.getUserMedia({
+							audio: microphoneDeviceId
+								? { deviceId: { exact: microphoneDeviceId } }
+								: true,
+						});
+						const labeledDevices = await navigator.mediaDevices.enumerateDevices();
+						const labeledMic = labeledDevices.find(
+							(d) => d.deviceId === microphoneDeviceId && d.kind === "audioinput",
+						);
+						micLabel = labeledMic?.label || undefined;
+					} catch {
+						// Fall through - native process will use the default mic.
+					} finally {
+						permissionStream?.getTracks().forEach((track) => track.stop());
+					}
+				}
 			} catch {
 				// Fall through - native process will use the default mic.
 			}
@@ -1819,6 +1844,18 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						webcamStartTime.current === null
 							? 0
 							: webcamStartTime.current - mainStartedAt;
+
+					// Unlike microphone capture, there is no fallback path for
+					// system/loopback audio on Windows: if WASAPI couldn't open the
+					// loopback session, the recording will simply have no system
+					// audio track. Tell the user instead of leaving them to discover
+					// a silently muted recording.
+					if (nativeResult.systemAudioCaptureUnavailable) {
+						toast.warning(
+							"System audio couldn't be captured for this recording. It will be saved without desktop audio.",
+							{ id: "recording-system-audio-unavailable", duration: 10000 },
+						);
+					}
 
 					// When native mic capture is unavailable or explicitly bypassed,
 					// record mic via browser getUserMedia as a sidecar file.
