@@ -19,7 +19,7 @@ import {
 import { RECORDINGS_DIR } from "./appPaths";
 import { createAuthCallbackController } from "./authCallback";
 import { showCursor } from "./cursorHider";
-import { getGpuSwitches } from "./gpuSwitches";
+import { getGpuSwitches, getLinuxOzonePlatformOverride } from "./gpuSwitches";
 import {
 	cleanupAllExportStreams,
 	cleanupNativeVideoExportSessions,
@@ -89,6 +89,13 @@ app.on("web-contents-created", (_event, contents) => {
 });
 
 function configureGpuAccelerationSwitches() {
+	if (process.platform === "linux" && !app.commandLine.hasSwitch("ozone-platform")) {
+		const ozonePlatform = getLinuxOzonePlatformOverride(process.env);
+		if (ozonePlatform) {
+			app.commandLine.appendSwitch("ozone-platform", ozonePlatform);
+		}
+	}
+
 	const { useAngle, useGl, disableFeatures } = getGpuSwitches(process.platform, process.env);
 	if (useAngle) {
 		app.commandLine.appendSwitch("use-angle", useAngle);
