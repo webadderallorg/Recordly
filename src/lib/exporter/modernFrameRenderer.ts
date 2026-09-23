@@ -94,6 +94,10 @@ import {
 	VIDEO_SHADOW_LAYER_PROFILES,
 	WEBCAM_SHADOW_LAYER_PROFILES,
 } from "./shadowProfile";
+import {
+	normalizeLightningRuntimePlatform,
+	resolveLightningRenderBackendOrder,
+} from "./backendPolicy";
 import type { ExportRenderBackend } from "./types";
 
 interface FrameRenderConfig {
@@ -623,14 +627,19 @@ export class FrameRenderer {
 		};
 
 		const preferredRenderBackend = this.config.preferredRenderBackend;
-		const backendOrder: ExportRenderBackend[] =
-			preferredRenderBackend === "webgl"
-				? ["webgl", "webgpu"]
-				: preferredRenderBackend === "webgpu"
-					? ["webgpu", "webgl"]
-					: typeof navigator !== "undefined" && "gpu" in navigator
-						? ["webgpu", "webgl"]
-						: ["webgl"];
+		const runtimePlatform =
+			typeof navigator !== "undefined"
+				? normalizeLightningRuntimePlatform(
+						(navigator as Navigator & { platform?: string }).platform ||
+							navigator.userAgent ||
+							"",
+					)
+				: "unknown";
+		const backendOrder: ExportRenderBackend[] = resolveLightningRenderBackendOrder({
+			preferredRenderBackend,
+			platform: runtimePlatform,
+			webgpuAvailable: typeof navigator !== "undefined" && "gpu" in navigator,
+		});
 		const failures: PixiRendererAttempt[] = [];
 
 		for (const backend of backendOrder) {
