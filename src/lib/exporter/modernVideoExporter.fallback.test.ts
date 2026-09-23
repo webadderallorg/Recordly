@@ -91,6 +91,93 @@ describe("ModernVideoExporter native fallback routing", () => {
 		expect(exporter.nativeWritePromises.size).toBe(0);
 	});
 
+	it("restarts once with WebGL after a runtime WebGPU renderer failure", async () => {
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 60,
+			bitrate: 8_000_000,
+			wallpaper: "#000000",
+			backendPreference: "webcodecs",
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean }>;
+			initializeEncoder: () => Promise<unknown>;
+		};
+		vi.spyOn(exporter, "initializeEncoder").mockResolvedValue({
+			codec: "avc1.640033",
+			hardwareAcceleration: "prefer-software",
+		});
+		mocks.frameRendererInitialize
+			.mockRejectedValueOnce(
+				new Error("Cannot read properties of undefined (reading '_resourceType')"),
+			)
+			.mockResolvedValueOnce(undefined);
+
+		const result = await exporter.export();
+
+		expect(result.success).toBe(true);
+		expect(mocks.frameRendererInitialize).toHaveBeenCalledTimes(2);
+		const FrameRenderer = (await import("./modernFrameRenderer")).FrameRenderer as unknown as {
+			mock: { calls: Array<[Record<string, unknown>]> };
+		};
+		expect(FrameRenderer.mock.calls[0][0].preferredRenderBackend).toBeUndefined();
+		expect(FrameRenderer.mock.calls[1][0].preferredRenderBackend).toBe("webgl");
+	});
+
+	it("uses bundled FFmpeg rawvideo when Annex B WebCodecs is unavailable", async () => {
+		const nativeVideoExportStart = vi.fn(async (options: { inputMode?: string }) => ({
+			success: options.inputMode === "rawvideo",
+			sessionId: options.inputMode === "rawvideo" ? "raw-session" : undefined,
+			encoderName: "libx264",
+			error: "Annex B unavailable",
+		}));
+		vi.stubGlobal("window", { electronAPI: { nativeVideoExportStart } });
+		vi.stubGlobal("VideoEncoder", undefined);
+		const exporter = new ModernVideoExporter({
+			width: 1920,
+			height: 1080,
+			frameRate: 60,
+			bitrate: 8_000_000,
+		} as never) as unknown as {
+			tryStartNativeVideoExport: () => Promise<boolean>;
+			nativeInputMode: string | null;
+			encoderName: string | null;
+		};
+
+		expect(await exporter.tryStartNativeVideoExport()).toBe(true);
+		expect(nativeVideoExportStart).toHaveBeenCalledTimes(1);
+		expect(nativeVideoExportStart).toHaveBeenCalledWith(
+			expect.objectContaining({ inputMode: "rawvideo" }),
+		);
+		expect(exporter.nativeInputMode).toBe("rawvideo");
+		expect(exporter.encoderName).toBe("libx264");
+	});
+
+	it("writes rendered RGBA frames to the rawvideo fallback without VideoEncoder", async () => {
+		const exporter = new ModernVideoExporter({} as never) as unknown as {
+			nativeInputMode: "rawvideo";
+			nativeExportSessionId: string;
+			renderer: { capturePixelsForNativeExport: () => Uint8ClampedArray };
+			queueNativeWriteChunk: (sessionId: string, bytes: Uint8Array) => void;
+			encodeRenderedFrameNative: (
+				timestamp: number,
+				frameDuration: number,
+				frameIndex: number,
+			) => Promise<void>;
+		};
+		exporter.nativeInputMode = "rawvideo";
+		exporter.nativeExportSessionId = "raw-session";
+		exporter.renderer = {
+			capturePixelsForNativeExport: () => new Uint8ClampedArray([1, 2, 3, 4]),
+		};
+		const write = vi.spyOn(exporter, "queueNativeWriteChunk");
+
+		await exporter.encodeRenderedFrameNative(0, 16_667, 0);
+
+		expect(write).toHaveBeenCalledWith("raw-session", new Uint8Array([1, 2, 3, 4]));
+	});
+
 	it.each([
 		"returned",
 		"thrown",
