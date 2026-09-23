@@ -1,5 +1,4 @@
 import type { WebDemuxer } from "web-demuxer";
-import { OfflineAudioProcessor } from "./offlineAudioProcessor";
 import {
 	AUDIO_BITRATE,
 	DECODE_BACKPRESSURE_LIMIT,
@@ -8,6 +7,7 @@ import {
 	type TrimLikeRegion,
 } from "./audioProcessorShared";
 import type { VideoMuxer } from "./muxer";
+import { OfflineAudioProcessor } from "./offlineAudioProcessor";
 
 export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 	protected async processTrimOnlyAudio(
@@ -15,19 +15,19 @@ export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 		muxer: VideoMuxer,
 		sortedTrims: TrimLikeRegion[],
 		readEndSec?: number,
-	): Promise<void> {
+	): Promise<boolean> {
 		let audioConfig: AudioDecoderConfig;
 		try {
 			audioConfig = (await demuxer.getDecoderConfig("audio")) as AudioDecoderConfig;
 		} catch {
 			console.warn("[AudioProcessor] No audio track found, skipping");
-			return;
+			return false;
 		}
 
 		const codecCheck = await AudioDecoder.isConfigSupported(audioConfig);
 		if (!codecCheck.supported) {
 			console.warn("[AudioProcessor] Audio codec not supported:", audioConfig.codec);
-			return;
+			return false;
 		}
 
 		const audioStream =
@@ -37,7 +37,7 @@ export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 
 		let sourceTimestampOffsetUs: number | null = null;
 
-		await this.transcodeAudioStream(
+		return await this.transcodeAudioStream(
 			audioStream as ReadableStream<EncodedAudioChunk>,
 			audioConfig,
 			muxer,
@@ -68,7 +68,7 @@ export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 			shouldSkipChunk?: (timestampMs: number) => boolean;
 			transformAudioData?: (data: AudioData) => AudioData | null;
 		} = {},
-	): Promise<void> {
+	): Promise<boolean> {
 		const pendingFrames: AudioData[] = [];
 		let decodeError: Error | null = null;
 		let encodeError: Error | null = null;
@@ -138,11 +138,13 @@ export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 		const encodeSupport = await AudioEncoder.isConfigSupported(encodeConfig);
 		if (!encodeSupport.supported) {
 			console.warn("[AudioProcessor] AAC encoding not supported, skipping audio");
-			return;
+			return false;
 		}
 
+		let wroteAudio = false;
 		const encoder = new AudioEncoder({
 			output: (chunk: EncodedAudioChunk, meta?: EncodedAudioChunkMetadata) => {
+				wroteAudio = true;
 				pendingMuxing = pendingMuxing
 					.then(async () => {
 						if (this.cancelled) {
@@ -223,7 +225,14 @@ export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 			}
 
 			if (decoder.state === "configured") {
-				await decoder.flush();
+				try {
+					await decoder.flush();
+				} catch (flushError) {
+					console.warn(
+						"[AudioTranscodeProcessor] Non-fatal audio decoder flush warning:",
+						flushError,
+					);
+				}
 			}
 
 			while (!this.cancelled && (pendingFrames.length > 0 || encoder.encodeQueueSize > 0)) {
@@ -237,7 +246,14 @@ export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 			failIfNeeded();
 
 			if (encoder.state === "configured") {
-				await encoder.flush();
+				try {
+					await encoder.flush();
+				} catch (flushError) {
+					console.warn(
+						"[AudioTranscodeProcessor] Non-fatal audio encoder flush warning:",
+						flushError,
+					);
+				}
 			}
 
 			await pendingMuxing;
@@ -264,8 +280,10 @@ export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 		}
 
 		if (this.cancelled) {
-			return;
+			return false;
 		}
+
+		return wroteAudio;
 	}
 
 	// ---------- Offline audio rendering pipeline ----------

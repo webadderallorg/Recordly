@@ -10,6 +10,7 @@ import { resolveSourceTrackRoutingPolicy } from "./sourceTrackRoutingPolicy";
 import { AudioTranscodeProcessor } from "./audioTranscodeProcessor";
 import {
 	hasNonDefaultSourceTrackSettings,
+	isWavAudioPath,
 	MIN_SPEED_REGION_DELTA_MS,
 	MP4_AUDIO_CODEC,
 	type TrimLikeRegion,
@@ -20,6 +21,7 @@ export {
 	getSourceTrackIdFromPath,
 	hasNonDefaultSourceTrackSettings,
 	isAacAudioEncodingSupported,
+	isWavAudioPath,
 	softLimitOfflineMixPeaksInPlace,
 } from "./audioProcessorShared";
 
@@ -142,11 +144,15 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 		const hasTimedCompanionAudio = routingPolicy.playbackPaths.some(
 			(audioPath) => (sourceAudioFallbackStartDelayMsByPath?.[audioPath] ?? 0) > 0,
 		);
+		const hasWavCompanionAudio = routingPolicy.playbackPaths.some((audioPath) =>
+			isWavAudioPath(audioPath),
+		);
 		const needsSourceAudioMixing =
 			routingPolicy.playbackPaths.length > 1 ||
 			(routingPolicy.hasEmbeddedSourceAudio && routingPolicy.playbackPaths.length > 0) ||
 			requiresLegacyMacMicSidecarMix ||
-			hasTimedCompanionAudio;
+			hasTimedCompanionAudio ||
+			hasWavCompanionAudio;
 
 		// When speed edits, audio regions, or multiple audio sources need mixing, use offline AudioContext pipeline.
 		if (
@@ -173,22 +179,34 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 
 		// Single sidecar audio with no speed/audio edits: demux directly (skips slow real-time rendering).
 		if (!routingPolicy.hasEmbeddedSourceAudio && routingPolicy.playbackPaths.length === 1) {
-			const sidecarDemuxer = await this.loadAudioFileDemuxer(routingPolicy.playbackPaths[0]);
-			if (sidecarDemuxer) {
-				try {
-					await this.processTrimOnlyAudio(sidecarDemuxer, muxer, sortedTrims);
-				} finally {
+			const sidecarPath = routingPolicy.playbackPaths[0];
+			if (!isWavAudioPath(sidecarPath)) {
+				const sidecarDemuxer = await this.loadAudioFileDemuxer(sidecarPath);
+				if (sidecarDemuxer) {
+					let wroteAudio = false;
 					try {
-						sidecarDemuxer.destroy();
-					} catch {
-						/* cleanup */
+						wroteAudio = await this.processTrimOnlyAudio(
+							sidecarDemuxer,
+							muxer,
+							sortedTrims,
+						);
+					} catch (error) {
+						console.warn("[AudioProcessor] Fast sidecar demux failed:", error);
+					} finally {
+						try {
+							sidecarDemuxer.destroy();
+						} catch {
+							/* cleanup */
+						}
+					}
+					if (wroteAudio) {
+						return;
 					}
 				}
-				return;
 			}
-			// Fallback to offline rendering if demuxer creation failed
+			// Fallback to offline rendering if demuxer creation failed, unsupported codec, or no audio was written
 			console.warn(
-				"[AudioProcessor] Fast sidecar demux failed, falling back to offline rendering",
+				"[AudioProcessor] Fast sidecar demux unavailable or failed, falling back to offline rendering",
 			);
 			await this.renderAndMuxOfflineAudio(
 				videoUrl,
@@ -235,7 +253,28 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 			}
 		}
 
-		await this.processTrimOnlyAudio(demuxer, muxer, sortedTrims, readEndSec);
+		const wroteTrimOnlyAudio = await this.processTrimOnlyAudio(
+			demuxer,
+			muxer,
+			sortedTrims,
+			readEndSec,
+		);
+		if (!wroteTrimOnlyAudio && routingPolicy.playbackPaths.length > 0) {
+			console.warn(
+				"[AudioProcessor] Main demuxer audio trim failed, falling back to offline rendering for playback paths",
+			);
+			await this.renderAndMuxOfflineAudio(
+				videoUrl,
+				sortedTrims,
+				[],
+				[],
+				routingPolicy.playbackPaths,
+				sourceAudioFallbackStartDelayMsByPath,
+				sourceAudioTrackSettings,
+				clipRegions,
+				muxer,
+			);
+		}
 	}
 
 	async renderEditedAudioTrack(
