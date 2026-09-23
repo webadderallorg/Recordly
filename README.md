@@ -176,6 +176,45 @@ https://github.com/webadderallorg/Recordly/releases
 
 ---
 
+## Nix (flakes)
+
+Install the stable release packaged by this flake:
+
+```bash
+nix profile install github:webadderallorg/Recordly#recordly
+```
+
+Or launch it directly:
+
+```bash
+nix run github:webadderallorg/Recordly#recordly
+```
+
+The flake currently packages Recordly `v1.2.1` from release artifacts and provides packages for `aarch64-darwin`, `x86_64-darwin`, and `x86_64-linux`.
+
+For nix-darwin, add Recordly as an input and include the package in your system packages:
+
+```nix
+{
+  inputs.recordly.url = "github:webadderallorg/Recordly";
+
+  outputs = { recordly, ... }@inputs: {
+    darwinConfigurations.your-host = inputs.nix-darwin.lib.darwinSystem {
+      system = "aarch64-darwin";
+      modules = [
+        ({ pkgs, ... }: {
+          environment.systemPackages = [
+            recordly.packages.${pkgs.stdenv.hostPlatform.system}.default
+          ];
+        })
+      ];
+    };
+  };
+}
+```
+
+---
+
 ## Arch Linux / Manjaro (yay)
 
 Install from the AUR ([recordly-bin](https://aur.archlinux.org/packages/recordly-bin)):
