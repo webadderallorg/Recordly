@@ -38,6 +38,27 @@ export function getHudOverlayWindowBounds(
 	};
 }
 
+/**
+ * Return stable creation/recompute bounds for the HUD. Wayland cannot honor
+ * the x/y half of a client-side resize reliably, so its non-passthrough HUD is
+ * created at the existing expanded height and kept there. That gives in-window
+ * popovers enough native surface to render without a resize/jump cycle.
+ *
+ * The gate is intentionally session-specific: Windows, macOS, and Linux/X11
+ * retain the existing bounds and runtime behavior.
+ */
+export function getHudOverlayStaticBounds(
+	workArea: HudOverlayWorkArea,
+	mousePassthroughSupported: boolean,
+	waylandSession: boolean,
+): HudOverlayWorkArea {
+	return getHudOverlayWindowBounds(
+		workArea,
+		mousePassthroughSupported,
+		!mousePassthroughSupported && waylandSession,
+	);
+}
+
 export function shouldExpandHudOverlayFallback({
 	fallbackExpanded,
 	recordingActive,
