@@ -13,6 +13,7 @@ import {
 } from "../state";
 import type {
 	CursorInteractionType,
+	HookKeyboardEvent,
 	HookMouseEvent,
 	UiohookLike,
 	UiohookModuleNamespace,
@@ -233,6 +234,47 @@ export function recordCursorMouseUp() {
 	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "mouseup");
 }
 
+/** uiohook virtual key codes for non-typing modifier/toggle keys. */
+const MODIFIER_ONLY_KEY_CODES = new Set([
+	0x002a, // left Shift
+	0x0036, // right Shift
+	0x001d, // left Control
+	0x0e1d, // right Control
+	0x0038, // left Alt
+	0x0e38, // right Alt
+	0x0e5b, // left Meta / Command
+	0x0e5c, // right Meta / Command
+	0x003a, // Caps Lock
+	0x0045, // Num Lock
+	0x0046, // Scroll Lock
+]);
+
+/**
+ * Keeps keyboard telemetry privacy-preserving: this decision uses only a
+ * modifier state and key code to decide whether to record an anonymous
+ * timestamp + cursor position. It never reads or stores key characters.
+ */
+export function isCandidateTypingKeyEvent(event: HookKeyboardEvent): boolean {
+	if (event.ctrlKey || event.metaKey) {
+		return false;
+	}
+
+	return typeof event.keycode === "number" && !MODIFIER_ONLY_KEY_CODES.has(event.keycode);
+}
+
+export function recordCursorKeyDown() {
+	if (!isCursorCaptureActive || isCursorCapturePaused()) {
+		return;
+	}
+
+	const point = getNormalizedCursorPoint();
+	if (!point) {
+		return;
+	}
+
+	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "keydown");
+}
+
 export async function startInteractionCapture() {
 	if (!isCursorCaptureActive) {
 		return;
@@ -276,6 +318,12 @@ export async function startInteractionCapture() {
 			recordCursorMouseUp();
 		};
 
+		const onKeyDown = (event: HookKeyboardEvent) => {
+			if (isCandidateTypingKeyEvent(event)) {
+				recordCursorKeyDown();
+			}
+		};
+
 		const onMouseMove = (event: HookMouseEvent) => {
 			if (process.platform !== "linux" || !isCursorCaptureActive || isCursorCapturePaused()) {
 				return;
@@ -291,6 +339,7 @@ export async function startInteractionCapture() {
 
 		hook.on("mousedown", onMouseDown);
 		hook.on("mouseup", onMouseUp);
+		hook.on("keydown", onKeyDown);
 		if (process.platform === "linux") {
 			hook.on("mousemove", onMouseMove);
 		}
@@ -300,12 +349,14 @@ export async function startInteractionCapture() {
 				if (typeof hook.off === "function") {
 					hook.off("mousedown", onMouseDown);
 					hook.off("mouseup", onMouseUp);
+					hook.off("keydown", onKeyDown);
 					if (process.platform === "linux") {
 						hook.off("mousemove", onMouseMove);
 					}
 				} else if (typeof hook.removeListener === "function") {
 					hook.removeListener("mousedown", onMouseDown);
 					hook.removeListener("mouseup", onMouseUp);
+					hook.removeListener("keydown", onKeyDown);
 					if (process.platform === "linux") {
 						hook.removeListener("mousemove", onMouseMove);
 					}

@@ -415,6 +415,16 @@ func mouseInteractionCallback(
 	let action: String
 	let button: Int
 	switch type {
+	case .keyDown:
+		// Timing-only telemetry: never emit the key code, character, or text.
+		// Command/Control combinations are app shortcuts rather than typing.
+		let flags = event.flags
+		guard !flags.contains(.maskCommand), !flags.contains(.maskControl) else {
+			return Unmanaged.passUnretained(event)
+		}
+		print("INTERACTION:keydown")
+		fflush(stdout)
+		return Unmanaged.passUnretained(event)
 	case .leftMouseDown:
 		action = "mousedown"
 		button = 1
@@ -455,6 +465,7 @@ let mouseEventTypes: [CGEventType] = [
 	.rightMouseUp,
 	.otherMouseDown,
 	.otherMouseUp,
+	.keyDown,
 ]
 let mouseEventMask = mouseEventTypes.reduce(CGEventMask(0)) { mask, type in
 	mask | (CGEventMask(1) << type.rawValue)
