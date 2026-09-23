@@ -874,6 +874,10 @@ function CursorStylePreview({
 	);
 }
 
+/**
+ * Renders editor controls and applies user changes to the active recording,
+ * including percentage-based horizontal and vertical caption positioning.
+ */
 export function SettingsPanel({
 	advanced = false,
 	panelMode = "editor",
@@ -2194,15 +2198,29 @@ export function SettingsPanel({
 					/>
 				)}
 				{advanced && (
-					<SliderControl
-						label={tSettings("captions.bottomOffset", "Bottom offset")}
-						value={autoCaptionSettings.bottomOffset}
-						min={0}
-						max={30}
-						step={1}
-						onChange={(value) => updateAutoCaptionSettings({ bottomOffset: value })}
-						formatValue={(value) => `${Math.round(value)}%`}
-					/>
+					<>
+						<div className="mb-1 mt-2 text-sm font-medium text-foreground">
+							{tSettings("captions.position", "Position")}
+						</div>
+						<SliderControl
+							label={tSettings("captions.positionX", "Horizontal position")}
+							value={autoCaptionSettings.positionX}
+							min={0}
+							max={100}
+							step={1}
+							onChange={(value) => updateAutoCaptionSettings({ positionX: value })}
+							formatValue={(value) => `${Math.round(value)}%`}
+						/>
+						<SliderControl
+							label={tSettings("captions.positionY", "Vertical position")}
+							value={autoCaptionSettings.positionY}
+							min={0}
+							max={100}
+							step={1}
+							onChange={(value) => updateAutoCaptionSettings({ positionY: value })}
+							formatValue={(value) => `${Math.round(value)}%`}
+						/>
+					</>
 				)}
 				{advanced && (
 					<SliderControl

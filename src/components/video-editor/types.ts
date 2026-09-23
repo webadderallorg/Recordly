@@ -590,7 +590,12 @@ export interface AutoCaptionSettings {
 	language: string;
 	fontFamily: string;
 	fontSize: number;
-	bottomOffset: number;
+	/** Horizontal center of the caption box as a percentage of the frame width. */
+	positionX: number;
+	/** Bottom edge of the caption box as a percentage of the frame height. */
+	positionY: number;
+	/** Legacy project field retained so older saved projects can be migrated. */
+	bottomOffset?: number;
 	maxWidth: number;
 	maxRows: number;
 	animationStyle: AutoCaptionAnimation;
@@ -606,7 +611,8 @@ export const DEFAULT_AUTO_CAPTION_SETTINGS: AutoCaptionSettings = {
 	language: "auto",
 	fontFamily: getDefaultCaptionFontFamily(),
 	fontSize: 30,
-	bottomOffset: 3,
+	positionX: 50,
+	positionY: 97,
 	maxWidth: 62,
 	maxRows: 1,
 	animationStyle: "fade",

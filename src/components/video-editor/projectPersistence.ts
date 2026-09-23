@@ -346,6 +346,10 @@ export function validateProjectData(candidate: unknown): candidate is EditorProj
 	return true;
 }
 
+/**
+ * Normalizes persisted editor data, supplies current defaults, and migrates
+ * legacy caption bottom offsets into percentage-based X/Y positions.
+ */
 export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): ProjectEditorState {
 	const validAspectRatios = new Set<AspectRatio>(ASPECT_RATIOS);
 	const legacyMotionBlurEnabled = (editor as Partial<{ motionBlurEnabled: boolean }>)
@@ -759,9 +763,15 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		fontSize: isFiniteNumber(rawAutoCaptionSettings.fontSize)
 			? clamp(rawAutoCaptionSettings.fontSize, 16, 72)
 			: DEFAULT_AUTO_CAPTION_SETTINGS.fontSize,
-		bottomOffset: isFiniteNumber(rawAutoCaptionSettings.bottomOffset)
-			? clamp(rawAutoCaptionSettings.bottomOffset, 0, 30)
-			: DEFAULT_AUTO_CAPTION_SETTINGS.bottomOffset,
+		positionX: isFiniteNumber(rawAutoCaptionSettings.positionX)
+			? clamp(rawAutoCaptionSettings.positionX, 0, 100)
+			: DEFAULT_AUTO_CAPTION_SETTINGS.positionX,
+		// Legacy projects stored distance from the bottom rather than a top-origin position.
+		positionY: isFiniteNumber(rawAutoCaptionSettings.positionY)
+			? clamp(rawAutoCaptionSettings.positionY, 0, 100)
+			: isFiniteNumber(rawAutoCaptionSettings.bottomOffset)
+				? clamp(100 - rawAutoCaptionSettings.bottomOffset, 0, 100)
+				: DEFAULT_AUTO_CAPTION_SETTINGS.positionY,
 		maxWidth: isFiniteNumber(rawAutoCaptionSettings.maxWidth)
 			? clamp(rawAutoCaptionSettings.maxWidth, 40, 95)
 			: DEFAULT_AUTO_CAPTION_SETTINGS.maxWidth,
