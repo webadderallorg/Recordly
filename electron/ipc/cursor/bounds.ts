@@ -16,9 +16,13 @@ import {
 import type { NativeMacWindowSource, SelectedSource, WindowBounds } from "../types";
 import { parseWindowId } from "../utils";
 import { resolveWindowsWindowBounds } from "../windowsWindowControl";
+import { createNonOverlappingRunner, createSingleFlight } from "./concurrency";
 
 const execFileAsync = promisify(execFile);
+const runNativeMacWindowSources = createSingleFlight<NativeMacWindowSource[]>();
+const runWindowBoundsRefresh = createNonOverlappingRunner();
 
+/** Return cached macOS windows or share one native enumeration among concurrent callers. */
 export async function getNativeMacWindowSources(options?: { maxAgeMs?: number }) {
 	if (process.platform !== "darwin") {
 		return [] as NativeMacWindowSource[];
@@ -29,34 +33,35 @@ export async function getNativeMacWindowSources(options?: { maxAgeMs?: number })
 	if (cachedNativeMacWindowSources && now - cachedNativeMacWindowSourcesAtMs < maxAgeMs) {
 		return cachedNativeMacWindowSources;
 	}
+	return runNativeMacWindowSources(async () => {
+		try {
+			const binaryPath = await ensureNativeWindowListBinary();
+			const { stdout } = await execFileAsync(binaryPath, [], {
+				timeout: 30000,
+				maxBuffer: 10 * 1024 * 1024,
+			});
 
-	try {
-		const binaryPath = await ensureNativeWindowListBinary();
-		const { stdout } = await execFileAsync(binaryPath, [], {
-			timeout: 30000,
-			maxBuffer: 10 * 1024 * 1024,
-		});
-
-		const parsed = JSON.parse(stdout);
-		if (!Array.isArray(parsed)) {
-			return [] as NativeMacWindowSource[];
-		}
-
-		const entries = parsed.filter((entry: unknown): entry is NativeMacWindowSource => {
-			if (!entry || typeof entry !== "object") {
-				return false;
+			const parsed = JSON.parse(stdout);
+			if (!Array.isArray(parsed)) {
+				return [] as NativeMacWindowSource[];
 			}
 
-			const candidate = entry as Partial<NativeMacWindowSource>;
-			return typeof candidate.id === "string" && typeof candidate.name === "string";
-		});
+			const entries = parsed.filter((entry: unknown): entry is NativeMacWindowSource => {
+				if (!entry || typeof entry !== "object") {
+					return false;
+				}
 
-		setCachedNativeMacWindowSources(entries);
-		setCachedNativeMacWindowSourcesAtMs(now);
-		return entries;
-	} catch {
-		return cachedNativeMacWindowSources ?? ([] as NativeMacWindowSource[]);
-	}
+				const candidate = entry as Partial<NativeMacWindowSource>;
+				return typeof candidate.id === "string" && typeof candidate.name === "string";
+			});
+
+			setCachedNativeMacWindowSources(entries);
+			setCachedNativeMacWindowSourcesAtMs(now);
+			return entries;
+		} catch {
+			return cachedNativeMacWindowSources ?? ([] as NativeMacWindowSource[]);
+		}
+	});
 }
 
 export function getWindowBoundsFromNativeSource(
@@ -172,22 +177,24 @@ export function stopWindowBoundsCapture() {
 }
 
 async function refreshSelectedWindowBounds() {
-	if (!selectedSource?.id?.startsWith("window:")) {
-		setSelectedWindowBounds(null);
-		return;
-	}
+	await runWindowBoundsRefresh(async () => {
+		if (!selectedSource?.id?.startsWith("window:")) {
+			setSelectedWindowBounds(null);
+			return;
+		}
 
-	let bounds: WindowBounds | null = null;
+		let bounds: WindowBounds | null = null;
 
-	if (process.platform === "darwin") {
-		bounds = await resolveMacWindowBounds(selectedSource);
-	} else if (process.platform === "win32") {
-		bounds = await resolveWindowsWindowBounds(selectedSource);
-	} else if (process.platform === "linux") {
-		bounds = await resolveLinuxWindowBounds(selectedSource);
-	}
+		if (process.platform === "darwin") {
+			bounds = await resolveMacWindowBounds(selectedSource);
+		} else if (process.platform === "win32") {
+			bounds = await resolveWindowsWindowBounds(selectedSource);
+		} else if (process.platform === "linux") {
+			bounds = await resolveLinuxWindowBounds(selectedSource);
+		}
 
-	setSelectedWindowBounds(bounds);
+		setSelectedWindowBounds(bounds);
+	});
 }
 
 export function startWindowBoundsCapture() {
