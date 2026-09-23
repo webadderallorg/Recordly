@@ -68,6 +68,8 @@ Optional repository variables:
 - `HOMEBREW_TAP_REPO`
 - `HOMEBREW_TAP_AUTO_MERGE`
 
+If `HOMEBREW_TAP_REPO` is not set, the workflow defaults to `webadderallorg/homebrew-tap`.
+
 ## Release flow
 
 1. Bump `package.json` to the version you want to ship.
