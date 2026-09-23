@@ -45,10 +45,11 @@ export function shouldAutoApplyFreshRecordingZoomsForSource(
 	sourceHeight?: number,
 	platform?: string,
 ): boolean {
-	// Window capture on Windows legitimately produces portrait and near-square
-	// sources. Click telemetry is already normalized to that captured window, so
-	// its aspect ratio is not a reason to suppress interaction-based zooms.
-	if (platform === "win32") {
+	// Window capture on Windows and macOS legitimately produces portrait and
+	// near-square sources (e.g. recording a single vertical app window). Click
+	// telemetry is already normalized to that captured window, so its aspect
+	// ratio is not a reason to suppress interaction-based zooms.
+	if (platform === "win32" || platform === "darwin") {
 		return true;
 	}
 
