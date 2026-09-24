@@ -1,0 +1,16 @@
+{
+	"actions": {
+		"addZoom": "জুম যোগ করুন",
+		"addTrim": "ট্রিম যোগ করুন",
+		"addSpeed": "স্পিড যোগ করুন",
+		"addAnnotation": "অ্যানোটেশন যোগ করুন",
+		"addKeyframe": "কি-ফ্রেম যোগ করুন",
+		"deleteSelected": "নির্বাচিত অংশ মুছুন",
+		"playPause": "চালান / থামান",
+		"cycleForward": "পরবর্তী অ্যানোটেশনে যান",
+		"cycleBackward": "পূর্ববর্তী অ্যানোটেশনে যান",
+		"deleteSelectedAlt": "নির্বাচিত অংশ মুছুন (বিকল্প)",
+		"panTimeline": "টাইমলাইন ডানে-বামে সরান",
+		"zoomTimeline": "টাইমলাইন জুম করুন"
+	}
+}
