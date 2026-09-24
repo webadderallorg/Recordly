@@ -58,6 +58,7 @@ export const SourceSelectorContent = ({
 			<ToggleButton
 				variant="ghost"
 				isSelected={isSelected}
+				aria-label={`${source.sourceType === "screen" ? t("recording.screen") : t("recording.window")}: ${source.windowTitle || source.name}`}
 				key={`${source.id}-${index}`}
 				className={cn(
 					"source-selector-item group min-h-[46px] w-full px-3 py-2.5 text-left flex items-center justify-start gap-3",
@@ -104,8 +105,9 @@ export const SourceSelectorContent = ({
 
 	if (loading && !hasAnySources) {
 		return (
-			<div className="flex items-center justify-center py-8">
+			<div className="flex items-center justify-center py-8" role="status">
 				<div className="animate-spin rounded-full h-5 w-5 border-b-2 source-selector-accent-border" />
+				<span className="sr-only">{t("sourceSelector.loadingSources")}</span>
 			</div>
 		);
 	}
@@ -148,7 +150,7 @@ export const SourceSelectorContent = ({
 					) : null}
 				</>
 			) : (
-				<div className="text-center py-8 text-sm source-selector-muted">
+				<div className="text-center py-8 text-sm source-selector-muted" role="status">
 					{t("recording.noSourcesFound")}
 				</div>
 			)}

@@ -46,15 +46,16 @@ export function RecordingControls({
 			>
 				<House weight="fill" className="size-4" />
 			</Button>
-			<div
-				className="flex items-center gap-3 px-2"
-				role="status"
-				aria-label={paused ? t("recording.paused") : t("recording.rec")}
-			>
+			<div className="flex items-center gap-3 px-2">
 				<span
 					className={`size-2 rounded-full ${paused ? "bg-warning" : `bg-danger ${styles.recDotBlink}`}`}
 				/>
-				<span className="min-w-14 text-sm font-medium tabular-nums text-foreground">
+				<span
+					role="timer"
+					aria-live="off"
+					aria-label={`${paused ? t("recording.paused") : t("recording.recordingInProgress")}: ${formatTime(elapsed)}`}
+					className="min-w-14 text-sm font-medium tabular-nums text-foreground"
+				>
 					{formatTime(elapsed)}
 				</span>
 				{paused && (

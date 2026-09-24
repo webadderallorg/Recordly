@@ -231,6 +231,7 @@ function LaunchWindowContent() {
 								size="lg"
 								className={` ${styles.electronNoDrag} group gap-2 px-3 min-w-0 max-w-[180px] shrink-0  ${openId === "sources" ? "border-[var(--launch-border-strong)] bg-[var(--launch-hover)]" : ""} `}
 								title={selectedSource}
+								aria-label={`${t("recording.source")}: ${selectedSource}`}
 							>
 								<MonitorIcon
 									weight={openId === "sources" ? "fill" : "regular"}
@@ -279,6 +280,7 @@ function LaunchWindowContent() {
 								: t("recording.enableMicrophone")
 						}
 						className={microphoneEnabled ? "text-accent" : ""}
+						aria-label={`${t("recording.microphone")}: ${t(microphoneEnabled ? "recording.on" : "recording.off")}`}
 					>
 						{microphoneEnabled ? (
 							<MicrophoneIcon
@@ -323,6 +325,7 @@ function LaunchWindowContent() {
 								: t("recording.enableWebcam")
 						}
 						className={webcamEnabled ? "text-accent" : ""}
+						aria-label={`${t("recording.webcam")}: ${t(webcamEnabled ? "recording.on" : "recording.off")}`}
 					>
 						{webcamEnabled ? (
 							<VideoCameraIcon
@@ -347,6 +350,7 @@ function LaunchWindowContent() {
 						iconSize="lg"
 						title={t("recording.countdownDelay")}
 						className={countdownDelay > 0 ? "text-accent" : ""}
+						aria-label={`${t("recording.countdownDelay")}: ${countdownDelay === 0 ? t("recording.noDelay") : `${countdownDelay}s`}`}
 					>
 						<TimerIcon
 							weight={openId === "countdown" ? "fill" : "regular"}
@@ -371,6 +375,7 @@ function LaunchWindowContent() {
 				}
 				disabled={countdownActive}
 				title={t("recording.record")}
+				aria-label={t("recording.record")}
 			>
 				<div className={styles.recDot} />
 			</Button>
@@ -420,6 +425,15 @@ function LaunchWindowContent() {
 		<HudInteractionContext.Provider
 			value={{ onMouseEnter: handleHudMouseEnter, onMouseLeave: handleHudMouseLeave }}
 		>
+			<div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+				{finalizing
+					? t("recording.preparing", "Preparing recording")
+					: recording
+						? paused
+							? t("recording.paused")
+							: t("recording.recordingInProgress")
+						: ""}
+			</div>
 			<div
 				className="w-full flex justify-center bg-transparent overflow-visible items-end pb-5 pointer-events-none"
 				style={{ height: "100vh" }}
@@ -468,6 +482,12 @@ function LaunchWindowContent() {
 											key={hudMode}
 											layout={shouldAnimateHudLayout}
 											className={styles.barState}
+											role={hudMode === "idle" ? "group" : undefined}
+											aria-label={
+												hudMode === "idle"
+													? t("recording.setup")
+													: undefined
+											}
 											initial={{
 												opacity: 0,
 												y: 10,
