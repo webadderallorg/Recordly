@@ -18,6 +18,7 @@ import { useCursorTelemetry } from "./useCursorTelemetry";
 import { useEditorGlobalInteractions } from "./useEditorGlobalInteractions";
 import { useEditorPlaybackControls } from "./useEditorPlaybackControls";
 import { useFreshRecordingAutoZoom } from "./useFreshRecordingAutoZoom";
+import { useFreshRecordingManualZoom } from "./useFreshRecordingManualZoom";
 import { useTimelineProjection } from "./useTimelineProjection";
 import { useZoomRegionCommands } from "./useZoomRegionCommands";
 
@@ -51,6 +52,8 @@ type Input = {
 	autoFullTrackClipEndMsRef: MutableRefObject<number | null>;
 	autoSuggestedVideoPathRef: MutableRefObject<string | null>;
 	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
+	pendingFreshRecordingManualZoomPathRef: MutableRefObject<string | null>;
+	manualRecordingZoomsAppliedVideoPathRef: MutableRefObject<string | null>;
 	pendingFreshRecordingAutoSuggestTimeoutRef: MutableRefObject<number | null>;
 	pendingFreshRecordingAutoSuggestTelemetryCountRef: MutableRefObject<number>;
 	handleUndo: () => void;
@@ -155,6 +158,19 @@ export function useTimelineEditingController(input: Input) {
 			timeline.setSelectedCaptionId,
 		],
 	);
+	useFreshRecordingManualZoom({
+		videoPath: input.videoPath,
+		loading: input.loading,
+		duration: input.duration,
+		normalizedCursorTelemetry: cursor.normalizedCursorTelemetry,
+		zoomRegions: timeline.zoomRegions,
+		setZoomRegions: timeline.setZoomRegions,
+		nextZoomIdRef: input.nextZoomIdRef,
+		autoSuggestedVideoPathRef: input.autoSuggestedVideoPathRef,
+		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingManualZoomPathRef: input.pendingFreshRecordingManualZoomPathRef,
+		manualRecordingZoomsAppliedVideoPathRef: input.manualRecordingZoomsAppliedVideoPathRef,
+	});
 	const freshZoom = useFreshRecordingAutoZoom({
 		appPlatform: input.appPlatform,
 		videoPath: input.videoPath,

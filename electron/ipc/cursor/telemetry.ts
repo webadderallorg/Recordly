@@ -60,7 +60,8 @@ export function normalizeCursorTelemetrySamples(rawSamples: unknown): CursorTele
 					point.interactionType === "right-click" ||
 					point.interactionType === "middle-click" ||
 					point.interactionType === "move" ||
-					point.interactionType === "mouseup"
+					point.interactionType === "mouseup" ||
+					point.interactionType === "manual-zoom"
 						? point.interactionType
 						: undefined,
 				cursorType:
@@ -253,13 +254,33 @@ export function pushCursorSample(
 	} as CursorTelemetryPoint);
 
 	if (activeCursorSamples.length > MAX_CURSOR_SAMPLES) {
-		activeCursorSamples.shift();
+		const oldestNonMarkerIndex = activeCursorSamples.findIndex(
+			(sample) => sample.interactionType !== "manual-zoom",
+		);
+		if (oldestNonMarkerIndex >= 0) {
+			activeCursorSamples.splice(oldestNonMarkerIndex, 1);
+		}
 	}
 }
 
 export function sampleCursorPoint() {
 	const point = getNormalizedCursorPoint();
 	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "move");
+}
+
+export function captureManualZoomMarker() {
+	if (!isCursorCaptureActive) {
+		return false;
+	}
+
+	const point = getNormalizedCursorPoint();
+	pushCursorSample(
+		point.cx,
+		point.cy,
+		getCursorCaptureElapsedMs(),
+		"manual-zoom",
+	);
+	return true;
 }
 
 export async function persistPendingCursorTelemetry(videoPath: string) {

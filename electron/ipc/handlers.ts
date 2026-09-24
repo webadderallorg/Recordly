@@ -1,4 +1,8 @@
 import { BrowserWindow } from "electron";
+import {
+	registerRecordingZoomShortcut,
+	unregisterRecordingZoomShortcut,
+} from "../recordingZoomShortcut";
 import { registerAnnouncementHandlers } from "./register/announcements";
 import { registerAssetHandlers } from "./register/assets";
 import { registerCaptionHandlers } from "./register/captions";
@@ -64,7 +68,14 @@ export function registerIpcHandlers(
 		createSourceSelectorWindow,
 		getSourceSelectorWindow,
 	});
-	registerRecordingHandlers(onRecordingStateChange);
+	registerRecordingHandlers((recording, sourceName) => {
+		if (recording) {
+			registerRecordingZoomShortcut();
+		} else {
+			unregisterRecordingZoomShortcut();
+		}
+		onRecordingStateChange?.(recording, sourceName);
+	});
 	registerPermissionHandlers();
 	registerAnnouncementHandlers();
 	registerAssetHandlers();

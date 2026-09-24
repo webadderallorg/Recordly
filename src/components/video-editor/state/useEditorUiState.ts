@@ -66,6 +66,8 @@ export function useEditorUiState(
 	const nextAnnotationZIndexRef = useRef(1);
 	const autoSuggestedVideoPathRef = useRef<string | null>(null);
 	const pendingFreshRecordingAutoZoomPathRef = useRef<string | null>(null);
+	const pendingFreshRecordingManualZoomPathRef = useRef<string | null>(null);
+	const manualRecordingZoomsAppliedVideoPathRef = useRef<string | null>(null);
 	const pendingFreshRecordingAutoSuggestTimeoutRef = useRef<number | null>(null);
 	const pendingFreshRecordingAutoSuggestTelemetryCountRef = useRef(0);
 	const cropSnapshotRef = useRef<CropRegion | null>(null);
@@ -165,6 +167,8 @@ export function useEditorUiState(
 		nextAnnotationZIndexRef,
 		autoSuggestedVideoPathRef,
 		pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingManualZoomPathRef,
+		manualRecordingZoomsAppliedVideoPathRef,
 		pendingFreshRecordingAutoSuggestTimeoutRef,
 		pendingFreshRecordingAutoSuggestTelemetryCountRef,
 		timelineRef,

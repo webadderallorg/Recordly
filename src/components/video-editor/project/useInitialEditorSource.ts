@@ -20,6 +20,7 @@ type Input = {
 	devConfig: ReturnType<typeof getDevOpenRecordingConfig>;
 	videoSourcePath: string | null;
 	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
+	pendingFreshRecordingManualZoomPathRef: MutableRefObject<string | null>;
 	applyLoadedProject: (candidate: unknown, path?: string | null) => Promise<boolean>;
 	resetSourceScopedEditorState: () => void;
 	applySessionPresentation: (session: SessionPresentation | null | undefined) => void;
@@ -33,6 +34,7 @@ export function useInitialEditorSource({
 	devConfig,
 	videoSourcePath,
 	pendingFreshRecordingAutoZoomPathRef,
+	pendingFreshRecordingManualZoomPathRef,
 	applyLoadedProject,
 	resetSourceScopedEditorState,
 	applySessionPresentation,
@@ -40,10 +42,6 @@ export function useInitialEditorSource({
 	const initialLoadStartedRef = useRef(false);
 
 	useEffect(() => {
-		// This effect owns launch-time hydration. Several of the callbacks it uses
-		// intentionally close over live editor state, so their identities may change
-		// after hydration updates that state. Never interpret that as a request to
-		// reload the source and reset the editor again.
 		if (initialLoadStartedRef.current) return;
 		initialLoadStartedRef.current = true;
 
@@ -94,6 +92,7 @@ export function useInitialEditorSource({
 					project.setCurrentProjectPath(null);
 					project.setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
+					pendingFreshRecordingManualZoomPathRef.current = sourceUrl;
 					pendingFreshRecordingAutoZoomPathRef.current =
 						appearance.autoApplyFreshRecordingAutoZooms ? sourceUrl : null;
 					appearance.setWebcam((previous) => ({
@@ -132,6 +131,7 @@ export function useInitialEditorSource({
 					project.setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
 					pendingFreshRecordingAutoZoomPathRef.current = null;
+					pendingFreshRecordingManualZoomPathRef.current = null;
 					appearance.setWebcam((previous) => ({
 						...previous,
 						visibleRanges: undefined,
@@ -165,6 +165,7 @@ export function useInitialEditorSource({
 					project.setCurrentProjectPath(null);
 					project.setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
+					pendingFreshRecordingManualZoomPathRef.current = sourceUrl;
 					pendingFreshRecordingAutoZoomPathRef.current =
 						appearance.autoApplyFreshRecordingAutoZooms ? sourceUrl : null;
 					applySessionPresentation(sessionResult.session);
@@ -181,7 +182,6 @@ export function useInitialEditorSource({
 
 				const currentVideo = await window.electronAPI.getCurrentVideoPath();
 				if (!currentVideo.success || !currentVideo.path) {
-					// An empty session is the normal dashboard launch, not a load failure.
 					project.setProjectBrowserOpen(true);
 					return;
 				}
@@ -192,6 +192,7 @@ export function useInitialEditorSource({
 				project.setLastSavedSnapshot(null);
 				resetSourceScopedEditorState();
 				pendingFreshRecordingAutoZoomPathRef.current = null;
+				pendingFreshRecordingManualZoomPathRef.current = null;
 				applySessionPresentation(null);
 				appearance.setWebcam((previous) => ({
 					...previous,

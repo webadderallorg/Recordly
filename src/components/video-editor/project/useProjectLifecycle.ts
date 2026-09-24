@@ -65,6 +65,8 @@ type Input = {
 		autoFullTrackClipIdRef: MutableRefObject<string | null>;
 		autoFullTrackClipEndMsRef: MutableRefObject<number | null>;
 		pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
+		pendingFreshRecordingManualZoomPathRef: MutableRefObject<string | null>;
+		manualRecordingZoomsAppliedVideoPathRef: MutableRefObject<string | null>;
 		pendingFreshRecordingAutoSuggestTelemetryCountRef: MutableRefObject<number>;
 		autoSuggestedVideoPathRef: MutableRefObject<string | null>;
 	};
@@ -106,6 +108,7 @@ export function useProjectLifecycle(input: Input) {
 		project.setError(null);
 
 		refs.pendingFreshRecordingAutoZoomPathRef.current = null;
+		refs.pendingFreshRecordingManualZoomPathRef.current = null;
 		if (editor.webcam.sourcePath) {
 			const result = await window.electronAPI.setCurrentRecordingSession?.(
 				{
@@ -173,7 +176,6 @@ export function useProjectLifecycle(input: Input) {
 		timeline.setZoomRegions(editor.zoomRegions);
 		timeline.setTrimRegions(editor.trimRegions);
 		timeline.setClipRegions(editor.clipRegions);
-		// An explicit empty clip list means the user deleted all footage, not a legacy project.
 		refs.clipInitializedRef.current = Array.isArray(persistedEditor.clipRegions);
 		refs.autoFullTrackClipIdRef.current = null;
 		refs.autoFullTrackClipEndMsRef.current = null;
@@ -359,6 +361,8 @@ export function useProjectLifecycle(input: Input) {
 		refs.nextAnnotationZIndexRef.current = 1;
 		refs.pendingFreshRecordingAutoSuggestTelemetryCountRef.current = 0;
 		refs.autoSuggestedVideoPathRef.current = null;
+		refs.pendingFreshRecordingManualZoomPathRef.current = null;
+		refs.manualRecordingZoomsAppliedVideoPathRef.current = null;
 		current.resetHistory();
 	}, []);
 	const handleUploadWebcam = useCallback(async () => {

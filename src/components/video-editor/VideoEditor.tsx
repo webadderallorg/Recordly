@@ -86,6 +86,8 @@ export default function VideoEditor() {
 		nextAnnotationZIndexRef,
 		autoSuggestedVideoPathRef,
 		pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingManualZoomPathRef,
+		manualRecordingZoomsAppliedVideoPathRef,
 		pendingFreshRecordingAutoSuggestTimeoutRef,
 		pendingFreshRecordingAutoSuggestTelemetryCountRef,
 		timelineRef,
@@ -151,6 +153,7 @@ export default function VideoEditor() {
 
 	useEffect(() => {
 		autoSuggestedVideoPathRef.current = null;
+		manualRecordingZoomsAppliedVideoPathRef.current = null;
 		pendingFreshRecordingAutoSuggestTelemetryCountRef.current = 0;
 		if (pendingFreshRecordingAutoSuggestTimeoutRef.current !== null) {
 			window.clearTimeout(pendingFreshRecordingAutoSuggestTimeoutRef.current);
@@ -260,6 +263,8 @@ export default function VideoEditor() {
 		autoFullTrackClipIdRef,
 		autoFullTrackClipEndMsRef,
 		pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingManualZoomPathRef,
+		manualRecordingZoomsAppliedVideoPathRef,
 		pendingFreshRecordingAutoSuggestTelemetryCountRef,
 		autoSuggestedVideoPathRef,
 		applySessionPresentation,
@@ -304,6 +309,8 @@ export default function VideoEditor() {
 		autoFullTrackClipEndMsRef,
 		autoSuggestedVideoPathRef,
 		pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingManualZoomPathRef,
+		manualRecordingZoomsAppliedVideoPathRef,
 		pendingFreshRecordingAutoSuggestTimeoutRef,
 		pendingFreshRecordingAutoSuggestTelemetryCountRef,
 		handleUndo,
