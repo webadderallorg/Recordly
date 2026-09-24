@@ -1,0 +1,262 @@
+{
+	"updates": {
+		"title": "আপডেট",
+		"experimental": "পরীক্ষামূলক আপডেট",
+		"experimentalDescription": "আপনি পরীক্ষামূলক আপডেটে সম্মতি দিয়েছেন, তাই সাধারণ ব্যবহারকারীদের জন্য উন্মুক্ত হওয়ার আগেই Recordly-র সর্বশেষ আপডেট পরীক্ষা করার সুযোগ পাচ্ছেন।",
+		"saveFailed": "আপডেট চ্যানেল পরিবর্তন করতে ব্যর্থ হয়েছে।"
+	},
+	"zoom": {
+		"level": "জুম লেভেল",
+		"selectRegion": "অ্যাডজাস্ট করতে একটি জুম অঞ্চল নির্বাচন করুন",
+		"deleteZoom": "জুম মুছুন",
+		"modeAuto": "স্বয়ংক্রিয়",
+		"modeManual": "ম্যানুয়াল",
+		"modeManualDescription": "এই জুমের জন্য একটি নির্দিষ্ট ফোকাস পয়েন্ট নির্ধারণ করুন",
+		"modeAutoDescription": "কার্সর জুম করা ভিউয়ের কিনারার কাছে গেলে ক্যামেরা পুনরায় কেন্দ্রে চলে আসে"
+	},
+	"trim": {
+		"deleteRegion": "ট্রিম অঞ্চল মুছুন"
+	},
+	"speed": {
+		"playbackSpeed": "প্লেব্যাক স্পিড",
+		"selectRegion": "অ্যাডজাস্ট করতে একটি স্পিড অঞ্চল নির্বাচন করুন",
+		"deleteRegion": "স্পিড অঞ্চল মুছুন",
+		"label": "স্পিড"
+	},
+	"clip": {
+		"title": "ক্লিপ",
+		"mute": "ক্লিপ মিউট করুন",
+		"resetAudioSettings": "অডিও সেটিংস রিসেট করুন",
+		"mutedState": "অডিও মিউট করা আছে",
+		"unmutedState": "অডিও চলছে",
+		"separateClipFromAudio": "ক্লিপ থেকে অডিও আলাদা করুন",
+		"delete": "ক্লিপ মুছুন"
+	},
+	"effects": {
+		"title": "ভিডিও ইফেক্ট",
+		"show": "দেখান",
+		"showCursor": "কার্সর দেখান",
+		"loopCursor": "কার্সর লুপ করুন",
+		"cursorStyle": "কার্সর স্টাইল",
+		"cursorStyleOptions": {
+			"macos": "macOS",
+			"tahoe": "Tahoe",
+			"tahoe-inverted": "Tahoe ইনভার্টেড",
+			"windows11": "Windows 11",
+			"dot": "ডট",
+			"figma": "মিনিমাল",
+			"lavender": "ল্যাভেন্ডার",
+			"parched": "পার্চড",
+			"chooper": "চুপার",
+			"amongus": "অ্যামাং আস",
+			"turtle": "টার্টল"
+		},
+		"backgroundBlur": "ব্লার",
+		"zoomMotionBlur": "জুম মোশন ব্লার",
+		"auto": "স্বয়ংক্রিয়",
+		"connectZooms": "জুম সংযুক্ত করুন",
+		"connectZoomsDescription": "টানা ক্যামেরার মুভমেন্টে একাধিক ধারাবাহিক জুম অঞ্চলকে মসৃণভাবে যুক্ত করুন।",
+		"autoApplyFreshRecordingZooms": "নতুন রেকর্ডিংয়ে স্বয়ংক্রিয়ভাবে জুম প্রয়োগ করুন",
+		"autoApplyFreshRecordingZoomsDescription": "নতুন রেকর্ডিং খোলার সময় স্বয়ংক্রিয়ভাবে এজ-রিসেন্টারিং জুমের পরামর্শ দিন।",
+		"zoomGeneralTitle": "সাধারণ",
+		"zoomGeneralDescription": "প্রতিটি জুম ট্রানজিশনের জন্য গ্লোবাল মোশন সেটিংস।",
+		"zoomInTitle": "জুম ইন",
+		"zoomInDescription": "ক্যামেরা কীভাবে জুম অঞ্চলে প্রবেশ করবে তা নিয়ন্ত্রণ করুন।",
+		"zoomOutTitle": "জুম আউট",
+		"zoomOutDescription": "ক্যামেরা কীভাবে জুম অঞ্চল থেকে বের হবে তা নিয়ন্ত্রণ করুন।",
+		"connectedZoomTitle": "জুমের মধ্যবর্তী অংশ",
+		"connectedZoomDescription": "সংযুক্তি সক্রিয় থাকলে একাধিক ধারাবাহিক জুম অঞ্চলের মধ্যবর্তী গ্লাইড টিউন করুন।",
+		"motionPresetsTitle": "মোশন প্রিসেট",
+		"motionPresetsZoomHint": "জুম মোশন প্রিসেট সেটিংসে পাওয়া যাবে।",
+		"animationPresets": "অ্যানিমেশন প্রিসেট",
+		"cursorMotionPresets": "কার্সর মোশন প্রিসেট",
+		"motionPresets": {
+			"focused": {
+				"label": "ফোকাসড",
+				"description": "ডেমো, ওয়াকথ্রু এবং দৈনন্দিন রেকর্ডিংয়ের জন্য দ্রুত ও নিখুঁত মোশন।"
+			},
+			"smooth": {
+				"label": "স্মুথ",
+				"description": "উপস্থাপনা, কিনোট-স্টাইল ভিডিও এবং মার্জিত রিভিলের জন্য কোমল মোশন।"
+			}
+		},
+		"zoomInDuration": "জুম ইন সময়কাল",
+		"zoomInOverlap": "জুম ইন ওভারল্যাপ",
+		"zoomOutDuration": "জুম আউট সময়কাল",
+		"zoomInEasing": "জুম ইন কার্ভ",
+		"zoomOutEasing": "জুম আউট কার্ভ",
+		"connectedZoomGap": "সংযুক্ত জুম গ্যাপ",
+		"connectedZoomDuration": "সংযুক্ত জুম সময়কাল",
+		"connectedZoomEasing": "সংযুক্ত প্যান কার্ভ",
+		"zoomEasingOptions": {
+			"recordly": "Recordly",
+			"glide": "গ্লাইড",
+			"smooth": "স্মুথ",
+			"snappy": "স্ন্যাপী",
+			"linear": "লিনিয়ার"
+		},
+		"cursorSize": "কার্সরের আকার",
+		"cursorSmoothing": "কার্সর স্মুথিং",
+		"cursorSpringStiffness": "কার্সর স্প্রিং স্টিফনেস",
+		"cursorSpringDamping": "কার্সর স্প্রিং ড্যাম্পিং",
+		"cursorSpringMass": "কার্সর স্প্রিং ম্যাস",
+		"off": "বন্ধ",
+		"cursorClickEffects": {
+			"title": "ক্লিক ইফেক্ট",
+			"advanced": "উন্নত",
+			"advancedShow": "উন্নত ক্লিক ইফেক্ট নিয়ন্ত্রণ দেখান",
+			"advancedHide": "উন্নত ক্লিক ইফেক্ট নিয়ন্ত্রণ লুকান",
+			"color": "ইফেক্টের রঙ",
+			"size": "ইফেক্টের আকার",
+			"opacity": "ইফেক্টের অস্বচ্ছতা",
+			"duration": "ইফেক্টের সময়কাল",
+			"none": {
+				"label": "বন্ধ",
+				"description": "কোনো ক্লিক গ্রাফিক্স নেই। ক্লিক করার সময় কেবল কার্সরের গতি পরিবর্তন হয়।"
+			},
+			"ripple": {
+				"label": "রিপল",
+				"description": "প্রতিটি ক্লিক থেকে সম্প্রসারিত রিং তৈরি হয় যাতে মোশনে ট্যাপগুলো স্পষ্টভাবে বোঝা যায়।"
+			},
+			"spotlight": {
+				"label": "স্পটলাইট",
+				"description": "ক্লিক করা অংশকে জোর দেওয়ার জন্য পয়েন্টারের চারপাশে একটি হালকা আলো জ্বলে ওঠে।"
+			},
+			"echo": {
+				"label": "ইকো",
+				"description": "একটি পরিষ্কার পালসসহ বাইরের দিকে ছড়িয়ে পড়া একজোড়া রিং।"
+			}
+		},
+		"cursorMotionBlur": "কার্সর মোশন ব্লার",
+		"cursorClickBounce": "কার্সর ক্লিক বাউন্স",
+		"cursorClickBounceDuration": "বাউন্স স্পিড",
+		"cursorSway": "কার্সর দোলা",
+		"webcam": "ওয়েবক্যাম ওভারলে",
+		"webcamFootage": "ওয়েবক্যাম ফুটেজ",
+		"webcamFootageDescription": "এই ভিডিওর সাথে কোনো ওয়েবক্যাম ফুটেজ যুক্ত নেই",
+		"uploadWebcamFootage": "ফুটেজ আপলোড করুন",
+		"replaceWebcamFootage": "ফুটেজ প্রতিস্থাপন করুন",
+		"removeWebcamFootage": "ফুটেজ সরান",
+		"webcamFootageAdded": "ওয়েবক্যাম ফুটেজ যুক্ত করা হয়েছে",
+		"webcamFootageRemoved": "ওয়েবক্যাম ফুটেজ সরানো হয়েছে",
+		"webcamSize": "ওয়েবক্যামের আকার",
+		"webcamWidth": "ওয়েবক্যামের প্রস্থ",
+		"webcamHeight": "ওয়েবক্যামের উচ্চতা",
+		"webcamCrop": "ওয়েবক্যাম ক্রপ",
+		"webcamReactToZoom": "ওয়েবক্যাম জুমে প্রতিক্রিয়া দেখাবে",
+		"webcamMirror": "ওয়েবক্যাম মিরর করুন",
+		"webcamRoundness": "ওয়েবক্যামের গোলাকার ভাব",
+		"webcamShadow": "ওয়েবক্যাম ছায়া",
+		"shadow": "ছায়া",
+		"radius": "রেডিয়াস",
+		"roundness": "গোলাকার",
+		"padding": "প্যাডিং",
+		"paddingLinked": "সংযুক্ত (সমান)",
+		"paddingUnlinked": "অসংযুক্ত (অসম)",
+		"paddingTop": "উপরে",
+		"paddingBottom": "নিচে",
+		"paddingLeft": "বামে",
+		"paddingRight": "ডানে",
+		"removeBackground": "ব্যাকগ্রাউন্ড সরান"
+	},
+	"sections": {
+		"scene": "দৃশ্য",
+		"captions": "ক্যাপশনসমূহ",
+		"caption": "ক্যাপশন",
+		"zoom": "জুম",
+		"cursor": "কার্সর",
+		"webcam": "ওয়েবক্যাম",
+		"frame": "ফ্রেম",
+		"crop": "ক্রপ"
+	},
+	"captions": {
+		"selectOnTimeline": "এডিট করতে টাইমলাইনে একটি ক্যাপশন নির্বাচন করুন।",
+		"enabled": "দেখান",
+		"timelineQuickAdd": "টাইমলাইনে যোগ করতে মাউস রাখুন",
+		"language": "ভাষা",
+		"downloading": "ডাউনলোড হচ্ছে...",
+		"deleteModel": "মডেল মুছুন",
+		"clearModel": "মডেল ক্লিয়ার করুন",
+		"downloadModel": "মডেল ডাউনলোড করুন",
+		"generating": "তৈরি হচ্ছে...",
+		"generateFull": "ক্যাপশন তৈরি করুন",
+		"regenerateFull": "ক্যাপশন পুনরায় তৈরি করুন",
+		"clearFull": "ক্যাপশন ক্লিয়ার করুন",
+		"fontSettings": "ফন্ট সেটিংস",
+		"defaultFont": "ডিফল্ট",
+		"fontFamily": "ফন্ট",
+		"fontSize": "ফন্টের আকার",
+		"rowCount": "সারি সংখ্যা",
+		"animation": "অ্যানিমেশন",
+		"animationOff": "বন্ধ",
+		"animationFade": "ফেড",
+		"animationRise": "রাইজ",
+		"animationPop": "পপ",
+		"bottomOffset": "নিচের অফসেট",
+		"maxWidth": "সর্বোচ্চ প্রস্থ",
+		"boxRadius": "বক্স রেডিয়াস",
+		"backgroundOpacity": "ব্যাকগ্রাউন্ডের অস্বচ্ছতা",
+		"textColor": "টেক্সটের রঙ",
+		"editor": {
+			"text": "টেক্সট",
+			"start": "শুরু",
+			"end": "শেষ",
+			"split": "স্প্লিট",
+			"merge": "মার্জ",
+			"delete": "মুছুন"
+		}
+	},
+	"crop": {
+		"title": "ভিডিও ক্রপ করুন",
+		"instruction": "ক্রপ এলাকা নির্ধারণ করতে প্রতিটি পাশে টেনে আনুন",
+		"top": "উপরে",
+		"bottom": "নিচে",
+		"left": "বামে",
+		"right": "ডানে",
+		"openEditor": "ক্রপ এডিটর খুলুন"
+	},
+	"background": {
+		"title": "ব্যাকগ্রাউন্ড",
+		"image": "ছবি",
+		"color": "রঙ",
+		"gradient": "গ্রেডিয়েন্ট",
+		"wallpaperPreview": "ওয়ালপেপার প্রিভিউ",
+		"uploadCustom": "কাস্টম আপলোড করুন",
+		"uploadSuccess": "কাস্টম ছবি সফলভাবে আপলোড হয়েছে!",
+		"uploadError": "অনুগ্রহ করে একটি JPG বা JPEG ছবি ফাইল আপলোড করুন।",
+		"uploadErrorDescription": "শুধুমাত্র JPG এবং JPEG ছবি সমর্থিত।"
+	},
+	"export": {
+		"title": "এক্সপোর্ট",
+		"mp4": "MP4",
+		"gif": "GIF",
+		"quality": {
+			"low": "কম",
+			"medium": "মাঝারি",
+			"high": "উচ্চ",
+			"original": "আসল"
+		},
+		"fpsTitle": "FPS",
+		"loop": "লুপ",
+		"outputDimensions": "আউটপুট: {{dimensions}}px",
+		"sizePresetOriginalShort": "আসল",
+		"sizePresetMediumShort": "মাঝারি",
+		"sizePresetLargeShort": "বড়",
+		"loadProject": "প্রজেক্ট লোড করুন",
+		"saveProject": "প্রজেক্ট সংরক্ষণ করুন",
+		"exportVideo": "{{format}} এক্সপোর্ট করুন",
+		"reportBug": "বাগ রিপোর্ট করুন",
+		"starOnGithub": "GitHub-এ স্টার দিন"
+	},
+	"audio": {
+		"title": "অডিও",
+		"volumeTitle": "অডিও",
+		"volume": "ভলিউম",
+		"normalize": "নরমালাইজ",
+		"sourceTracksTitle": "ক্লিপ সোর্স অডিও",
+		"systemLabel": "সোর্স সিস্টেম",
+		"micLabel": "সোর্স মাইক",
+		"mixedLabel": "সোর্স",
+		"deleteRegion": "অডিও মুছুন"
+	}
+}
