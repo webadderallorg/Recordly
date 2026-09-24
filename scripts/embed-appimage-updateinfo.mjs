@@ -9,6 +9,7 @@ import {
 	writeSync,
 } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const projectRoot = process.cwd();
 const releaseRoot = path.join(projectRoot, "release");
@@ -142,6 +143,8 @@ function processReleaseAppImages() {
 	const owner = process.env.GITHUB_REPOSITORY_OWNER || DEFAULT_OWNER;
 	const repo = process.env.GITHUB_REPOSITORY?.split("/")[1] || DEFAULT_REPO;
 
+	let hasFailures = false;
+
 	for (const appImagePath of appImageFiles) {
 		const fileName = path.basename(appImagePath);
 		const zsyncFileName = `${fileName}.zsync`;
@@ -151,11 +154,25 @@ function processReleaseAppImages() {
 			process.env.APPIMAGE_UPDATE_INFO ||
 			`gh-releases-zsync|${owner}|${repo}|latest|${zsyncFileName}`;
 
-		embedUpdateInfoInAppImage(appImagePath, updateInfoString);
-		generateZsyncFile(appImagePath, zsyncOutputPath);
+		const embedded = embedUpdateInfoInAppImage(appImagePath, updateInfoString);
+		if (!embedded) {
+			hasFailures = true;
+		}
+
+		const zsyncGenerated = generateZsyncFile(appImagePath, zsyncOutputPath);
+		if (!zsyncGenerated) {
+			hasFailures = true;
+		}
+	}
+
+	if (hasFailures && process.env.CI) {
+		console.error(
+			"[appimage-updateinfo] Error: Failed to embed update information or generate zsync in CI environment.",
+		);
+		process.exit(1);
 	}
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 	processReleaseAppImages();
 }
