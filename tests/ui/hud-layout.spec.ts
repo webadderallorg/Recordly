@@ -43,7 +43,7 @@ test("recording HUD uses uniform controls and a readable timer", async ({ page }
 	await page.evaluate(() => window.dispatchEvent(new Event("test-recording-started")));
 	const controls = page.getByRole("group", { name: "Recording controls" });
 	await expect(controls).toBeVisible();
-	await expect(controls.getByRole("status")).toContainText("00:00");
+	await expect(controls.getByRole("timer")).toContainText("00:00");
 	await expect(controls.getByRole("button", { name: "Home", exact: true })).toBeVisible();
 	const sizes = await controls.getByRole("button").evaluateAll((buttons) =>
 		buttons.map((button) => {
