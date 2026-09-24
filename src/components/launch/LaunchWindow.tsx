@@ -1,5 +1,5 @@
 import { Spinner } from "@heroui/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
 	House,
 	MicrophoneIcon,
@@ -89,6 +89,7 @@ function LaunchWindowContent() {
 	const hideHud = useHudHideAnimation(hudBarRef);
 
 	const { selectedSource, hasSelectedSource, syncSelectedSource } = useLaunchWindowActions();
+	const sourceDescriptionId = useId();
 
 	const { hudOverlayMousePassthroughSupported, platform, dragX11Window } =
 		useLaunchWindowSystemState(preparePermissions);
@@ -369,6 +370,7 @@ function LaunchWindowContent() {
 					size="lg"
 					className={`${styles.electronNoDrag} ${styles.sourceControl} group gap-2`}
 					aria-label={captureT("chooseSource")}
+					aria-describedby={hasSelectedSource ? sourceDescriptionId : undefined}
 					disabled={isPickerPending || !sourceReady || recording || finalizing}
 					onClick={() => void handlePickOnScreen()}
 				>
@@ -382,6 +384,11 @@ function LaunchWindowContent() {
 					</div>
 				</Button>
 			</HudTooltip>
+			{hasSelectedSource && (
+				<span id={sourceDescriptionId} className="sr-only">
+					{selectedSource}
+				</span>
+			)}
 			<span aria-hidden="true" className={styles.sourceDivider} />
 			<MicPopover
 				disabled={recording || countdownActive}
