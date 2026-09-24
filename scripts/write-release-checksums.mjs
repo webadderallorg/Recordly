@@ -6,7 +6,7 @@ const projectRoot = process.cwd();
 const releaseRoot = path.join(projectRoot, "release");
 const outputFileName = process.argv[2] ?? "SHA256SUMS.txt";
 const outputPath = path.join(releaseRoot, outputFileName);
-const releaseArtifactExtensions = new Set([".AppImage", ".blockmap", ".dmg", ".exe", ".zip"]);
+const releaseArtifactExtensions = new Set([".AppImage", ".blockmap", ".dmg", ".exe", ".zip", ".zsync"]);
 
 function relativePath(filePath) {
 	return path.relative(projectRoot, filePath).replaceAll("\\", "/");
