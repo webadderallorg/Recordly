@@ -34,12 +34,14 @@ import {
 	activeCursorSamples,
 	setActiveCursorSamples,
 	setCursorCaptureStartTimeMs,
+	setIsCursorCaptureActive,
 	setSelectedSource,
 	setSelectedWindowBounds,
 	setWindowsNativeCaptureActive,
 	setWindowsWindowCaptureSize,
 } from "../state";
 import {
+	captureRecordingZoomMarker,
 	getCursorCaptureElapsedMs,
 	getNormalizedCursorPoint,
 	normalizeCursorTelemetrySamples,
@@ -107,6 +109,25 @@ describe("cursor telemetry pause clock", () => {
 
 		resumeCursorCapture(1_700);
 		expect(getCursorCaptureElapsedMs(1_900)).toBe(400);
+	});
+
+	it("records markers only during active capture and preserves them when reading telemetry", () => {
+		setIsCursorCaptureActive(false);
+		expect(captureRecordingZoomMarker(1_050)).toBe(false);
+		setIsCursorCaptureActive(true);
+		try {
+			expect(captureRecordingZoomMarker(1_100)).toBe(true);
+			pauseCursorCapture(1_200);
+			expect(captureRecordingZoomMarker(1_300)).toBe(false);
+			resumeCursorCapture(1_500);
+			expect(captureRecordingZoomMarker(1_750)).toBe(true);
+			expect(normalizeCursorTelemetrySamples(activeCursorSamples)).toMatchObject([
+				{ timeMs: 100, interactionType: "manual-zoom" },
+				{ timeMs: 450, interactionType: "manual-zoom" },
+			]);
+		} finally {
+			setIsCursorCaptureActive(false);
+		}
 	});
 
 	it("ignores duplicate pause or resume transitions", () => {

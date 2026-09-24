@@ -140,6 +140,7 @@ export function EditorShell(props: Props) {
 		clipRegions: timeline.clipRegions,
 		zoomRegions: timeline.zoomRegions,
 		cursorTelemetry: editing.cursor.normalizedCursorTelemetry,
+		recordingZoomMarkers: editing.cursor.recordingZoomMarkers,
 		cursorTelemetrySourcePath: timeline.cursorTelemetrySourcePath,
 		onZoomSuggested: editing.zoomCommands.handleZoomSuggested,
 	});

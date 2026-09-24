@@ -48,6 +48,9 @@ vi.mock("../../cursorHider", () => ({ showCursor: mocks.showCursor }));
 vi.mock("../recording/focus", () => ({
 	recordingFocus: { start: vi.fn(), stop: vi.fn() },
 }));
+vi.mock("../recording/zoomShortcut", () => ({
+	setRecordingZoomShortcutActive: vi.fn(),
+}));
 vi.mock("../cursor/telemetry", () => ({
 	stopCursorCapture: mocks.stopTelemetry,
 	startCursorSampling: mocks.startTelemetry,

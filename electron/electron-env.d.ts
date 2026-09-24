@@ -706,6 +706,7 @@ interface Window {
 		getCursorTelemetry: (videoPath?: string) => Promise<{
 			success: boolean;
 			samples: CursorTelemetryPoint[];
+			recordingZoomMarkers?: Pick<CursorTelemetryPoint, "timeMs" | "cx" | "cy">[];
 			message?: string;
 			error?: string;
 		}>;

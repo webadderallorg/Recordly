@@ -64,7 +64,8 @@ export function normalizeCursorTelemetrySamples(rawSamples: unknown): CursorTele
 					point.interactionType === "right-click" ||
 					point.interactionType === "middle-click" ||
 					point.interactionType === "move" ||
-					point.interactionType === "mouseup"
+					point.interactionType === "mouseup" ||
+					point.interactionType === "manual-zoom"
 						? point.interactionType
 						: undefined,
 				...(point.mouseButton === 1 || point.mouseButton === 2 || point.mouseButton === 3
@@ -295,6 +296,14 @@ export function sampleCursorPoint() {
 	const point = getNormalizedCursorPoint();
 	if (!point) return;
 	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "move");
+}
+
+export function captureRecordingZoomMarker(nowMs = Date.now()) {
+	if (!isCursorCaptureActive || isCursorCapturePaused()) return false;
+	const point = getNormalizedCursorPoint();
+	if (!point) return false;
+	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(nowMs), "manual-zoom");
+	return true;
 }
 
 export async function persistPendingCursorTelemetry(videoPath: string) {

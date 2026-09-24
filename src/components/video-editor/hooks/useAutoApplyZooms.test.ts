@@ -12,6 +12,7 @@ function input(patch: Partial<Input> = {}): Input {
 		clipRegions: [{ id: "clip", startMs: 0, endMs: 6000, sourceStartMs: 0, speed: 1 }],
 		zoomRegions: [],
 		cursorTelemetrySourcePath: "recording.mp4",
+		recordingZoomMarkers: [],
 		cursorTelemetry: [
 			{ timeMs: 0, cx: 0.5, cy: 0.5, interactionType: "move" },
 			{ timeMs: 3000, cx: 0.5, cy: 0.5, interactionType: "click" },
@@ -56,6 +57,26 @@ it("keeps automatic zooms off when disabled and preserves reopened projects and 
 		expect(applyAutomaticZooms(params)).toBe(true);
 		expect(params.onZoomSuggested).not.toHaveBeenCalled();
 	}
+});
+
+it("uses manual markers from the current take even when automatic zooms are disabled", () => {
+	const params = input({
+		enabled: false,
+		recordingZoomMarkers: [
+			{ timeMs: 1000, cx: 0.45, cy: 0.55 },
+			{ timeMs: 1600, cx: 0.6, cy: 0.5 },
+			{ timeMs: 5750, cx: 0.55, cy: 0.45 },
+			{ timeMs: 6500, cx: 0.5, cy: 0.5 },
+		],
+	});
+	expect(applyAutomaticZooms({ ...params, cursorTelemetrySourcePath: "other.mp4" })).toBe(false);
+	expect(params.onZoomSuggested).not.toHaveBeenCalled();
+	expect(applyAutomaticZooms(params)).toBe(true);
+	expect(vi.mocked(params.onZoomSuggested).mock.calls).toEqual([
+		[{ start: 1000, end: 1600 }, { cx: 0.45, cy: 0.55 }, "manual"],
+		[{ start: 1600, end: 2600 }, { cx: 0.6, cy: 0.5 }, "manual"],
+		[{ start: 5750, end: 6000 }, { cx: 0.55, cy: 0.45 }, "manual"],
+	]);
 });
 
 it("preserves imported sequences and clip edits made while cursor data was loading", () => {
