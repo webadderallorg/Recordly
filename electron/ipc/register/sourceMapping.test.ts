@@ -24,6 +24,20 @@ describe("getScreenSourceIdForDisplay", () => {
 		).toBe(LINUX_PORTAL_SCREEN_SOURCE_ID);
 	});
 
+	it("keeps the portal source when Electron uses X11 inside a Wayland session", () => {
+		expect(
+			getScreenSourceIdForDisplay({
+				displayId: "42",
+				env: {
+					XDG_SESSION_TYPE: "wayland",
+					WAYLAND_DISPLAY: "wayland-0",
+					OZONE_PLATFORM: "x11",
+				},
+				platform: "linux",
+			}),
+		).toBe(LINUX_PORTAL_SCREEN_SOURCE_ID);
+	});
+
 	it("keeps unmatched Linux X11 screens on the explicit fallback id", () => {
 		expect(
 			getScreenSourceIdForDisplay({
