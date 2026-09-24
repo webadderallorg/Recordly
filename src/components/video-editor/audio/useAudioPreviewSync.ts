@@ -437,6 +437,7 @@ export function useAudioPreviewSync({
 				(isPlaying && Math.abs(audio.currentTime - targetTime) > 0.9);
 			if (shouldSeek) {
 				try {
+					if (!audio.paused) audio.pause();
 					audio.currentTime = targetTime;
 				} catch {
 					// no-op
@@ -453,7 +454,8 @@ export function useAudioPreviewSync({
 			const atEnd = audioDuration !== null && targetTime >= audioDuration;
 			if (isPlaying && !isCurrentClipMuted && !beforeAudioStart && !atEnd) {
 				void ensureSourceAudioRunning().then(() => {
-					if (!cancelled) audio.play().catch(() => undefined);
+					if (!cancelled && audio.paused && !audio.seeking)
+						audio.play().catch(() => undefined);
 				});
 			} else if (!audio.paused) {
 				audio.pause();
