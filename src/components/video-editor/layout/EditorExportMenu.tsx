@@ -1,13 +1,12 @@
+import { Card, ProgressBar } from "@heroui/react";
 import { useEffect, useState } from "react";
-import { CloudArrowUp } from "@/components/ui/icons";
-import { CloudShareButton } from "../cloud/CloudShareButton";
-import { Card } from "@heroui/react";
-import { ProgressBar } from "@heroui/react";
-import { DownloadSimple as Download } from "@/components/ui/icons";
-import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
+import { CloudArrowUp, DownloadSimple as Download } from "@/components/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { toast } from "@/components/ui/toast";
 import type { useI18n } from "@/contexts/I18nContext";
+import { copyToClipboard } from "@/lib/clipboard";
+import { CloudShareButton } from "../cloud/CloudShareButton";
 import { ExportSettingsMenu } from "../ExportSettingsMenu";
 import type { useExportDimensions } from "../export/useExportDimensions";
 import type { useExportSession } from "../export/useExportSession";
@@ -15,7 +14,7 @@ import type { useExportSettings } from "../export/useExportSettings";
 import type { useExportStatusViewModel } from "../export/useExportStatusViewModel";
 
 type Props = {
- projectPath?: string | null;
+	projectPath?: string | null;
 	t: ReturnType<typeof useI18n>["t"];
 	exportSettings: ReturnType<typeof useExportSettings>;
 	exportSession: ReturnType<typeof useExportSession>;
@@ -230,15 +229,15 @@ export function EditorExportMenu(props: Props) {
 									variant="outline"
 									className="h-8 text-xs"
 									onClick={async () => {
-										try {
-											await navigator.clipboard.writeText(exportError);
+										const copied = await copyToClipboard(exportError);
+										if (copied) {
 											toast.success(
 												t(
 													"editor.exportStatus.errorCopied",
 													"Error copied",
 												),
 											);
-										} catch {
+										} else {
 											toast.error(
 												t(
 													"editor.exportStatus.errorCopyFailed",
@@ -360,7 +359,7 @@ export function EditorExportMenu(props: Props) {
 			</Popover>
 			{shareOpen && (
 				<CloudShareButton
- projectPath={props.projectPath}
+					projectPath={props.projectPath}
 					hideTrigger
 					open={shareOpen}
 					onOpenChange={setShareOpen}

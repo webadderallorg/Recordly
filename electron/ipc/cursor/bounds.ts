@@ -123,6 +123,55 @@ export function parseXwininfoBounds(stdout: string): WindowBounds | null {
 export async function resolveLinuxWindowBounds(
 	source: SelectedSource,
 ): Promise<WindowBounds | null> {
+	if (process.env.HYPRLAND_INSTANCE_SIGNATURE) {
+		const targetTitle = (
+			typeof source.windowTitle === "string" ? source.windowTitle : source.name || ""
+		)
+			.trim()
+			.toLowerCase();
+		if (targetTitle) {
+			try {
+				const { stdout } = await execFileAsync("hyprctl", ["clients", "-j"], {
+					timeout: 1000,
+				});
+				const clients = JSON.parse(stdout);
+				if (Array.isArray(clients)) {
+					const match = clients.find(
+						(c) =>
+							(typeof c.title === "string" &&
+								c.title.length > 0 &&
+								(c.title.toLowerCase().includes(targetTitle) ||
+									targetTitle.includes(c.title.toLowerCase()))) ||
+							(typeof c.class === "string" &&
+								c.class.length > 0 &&
+								(c.class.toLowerCase().includes(targetTitle) ||
+									targetTitle.includes(c.class.toLowerCase()))),
+					);
+					if (
+						match &&
+						Array.isArray(match.at) &&
+						Array.isArray(match.size) &&
+						Number.isFinite(match.at[0]) &&
+						Number.isFinite(match.at[1]) &&
+						Number.isFinite(match.size[0]) &&
+						Number.isFinite(match.size[1]) &&
+						match.size[0] > 0 &&
+						match.size[1] > 0
+					) {
+						return {
+							x: match.at[0],
+							y: match.at[1],
+							width: match.size[0],
+							height: match.size[1],
+						};
+					}
+				}
+			} catch {
+				// fall through to xwininfo
+			}
+		}
+	}
+
 	const windowId = parseWindowId(source?.id);
 
 	if (windowId) {

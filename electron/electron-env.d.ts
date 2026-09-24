@@ -589,7 +589,10 @@ interface Window {
 			startDelayMsByPath?: Record<string, number>;
 			error?: string;
 		}>;
-		setRecordingState: (recording: boolean) => Promise<void>;
+		setRecordingState: (
+			recording: boolean,
+			options?: { mediaTimelineStartedAtEpochMs?: number },
+		) => Promise<{ cursorOverlayAvailable: boolean }>;
 		getCursorTelemetry: (videoPath?: string) => Promise<{
 			success: boolean;
 			samples: CursorTelemetryPoint[];
@@ -623,6 +626,7 @@ interface Window {
 		onCursorStateChanged: (
 			callback: (state: { cursorType: CursorTelemetryPoint["cursorType"] }) => void,
 		) => () => void;
+		writeClipboardText: (text: string) => Promise<{ success: boolean; error?: string }>;
 		openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
 		getAccessibilityPermissionStatus: () => Promise<{
 			success: boolean;
@@ -928,7 +932,6 @@ interface Window {
 		getPlatform: () => Promise<string>;
 		isWindowFullscreen: () => Promise<boolean>;
 		onWindowFullscreenChanged: (callback: (isFullscreen: boolean) => void) => () => void;
-		getLinuxWindowSystem: () => Promise<"wayland" | "x11" | null>;
 		ackAuthCallbackUrl: (url: string) => Promise<void>;
 		getPendingAuthCallbackUrl: () => Promise<string | null>;
 		onAuthCallbackUrl: (callback: (url: string) => void) => () => void;

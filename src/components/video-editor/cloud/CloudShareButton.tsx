@@ -1,8 +1,4 @@
-import { saveProjectShareLink } from "./projectShareLinks";
-import { useI18n } from "@/contexts/I18nContext";
-import { Check, CloudArrowUp, Copy, ShareNetwork } from "@/components/ui/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -11,13 +7,18 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { Check, CloudArrowUp, Copy, ShareNetwork } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "@/components/ui/toast";
+import { useI18n } from "@/contexts/I18nContext";
+import { copyToClipboard } from "@/lib/clipboard";
+import { saveProjectShareLink } from "./projectShareLinks";
 
 const DEFAULT_CLOUD_ENDPOINT = "http://localhost:8787/api/upload";
 
 type Props = {
- projectPath?: string | null;
+	projectPath?: string | null;
 	filePath?: string;
 	projectTitle: string;
 	prepareFile?: () => Promise<string | undefined>;
@@ -130,7 +131,13 @@ export function CloudShareButton({
 			}
 			setProgress(100);
 			setShareUrl(result.shareUrl);
- if (projectPath) { try { saveProjectShareLink(projectPath, result.shareUrl); } catch { toast.error("Share created, but its link could not be saved locally"); } }
+			if (projectPath) {
+				try {
+					saveProjectShareLink(projectPath, result.shareUrl);
+				} catch {
+					toast.error("Share created, but its link could not be saved locally");
+				}
+			}
 			toast.success(t("editor.cloud.linkCreated"));
 		} catch (cause) {
 			setError(cause instanceof Error ? cause.message : String(cause));
@@ -149,11 +156,11 @@ export function CloudShareButton({
 
 	const copyShareUrl = useCallback(async () => {
 		if (!shareUrl) return;
-		try {
-			await navigator.clipboard.writeText(shareUrl);
+		const copied = await copyToClipboard(shareUrl);
+		if (copied) {
 			setCopied(true);
 			toast.success(t("editor.cloud.linkCopied"));
-		} catch {
+		} else {
 			setCopied(false);
 			toast.error(t("editor.cloud.copyFailed"));
 		}

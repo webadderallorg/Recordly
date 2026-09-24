@@ -616,8 +616,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getRecordedVideoPath: () => {
 		return ipcRenderer.invoke("get-recorded-video-path");
 	},
-	setRecordingState: (recording: boolean) => {
-		return ipcRenderer.invoke("set-recording-state", recording);
+	setRecordingState: (
+		recording: boolean,
+		options?: { mediaTimelineStartedAtEpochMs?: number },
+	) => {
+		return ipcRenderer.invoke("set-recording-state", recording, options);
 	},
 	setCursorScale: (scale: number) => {
 		return ipcRenderer.invoke("set-cursor-scale", scale);
@@ -663,6 +666,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		) => callback(payload);
 		ipcRenderer.on("cursor-state-changed", listener);
 		return () => ipcRenderer.removeListener("cursor-state-changed", listener);
+	},
+	writeClipboardText: (text: string) => {
+		return ipcRenderer.invoke("clipboard-write-text", text);
 	},
 	openExternalUrl: (url: string) => {
 		return ipcRenderer.invoke("open-external-url", url);
@@ -990,9 +996,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			callback(isFullscreen);
 		ipcRenderer.on("window-fullscreen-changed", listener);
 		return () => ipcRenderer.removeListener("window-fullscreen-changed", listener);
-	},
-	getLinuxWindowSystem: () => {
-		return ipcRenderer.invoke("get-linux-window-system");
 	},
 	ackAuthCallbackUrl: (url: string) => ipcRenderer.invoke("auth:ack-callback", url),
 	getPendingAuthCallbackUrl: () => ipcRenderer.invoke("auth:get-pending-callback"),

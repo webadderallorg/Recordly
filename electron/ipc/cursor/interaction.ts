@@ -17,6 +17,7 @@ import type {
 	UiohookLike,
 	UiohookModuleNamespace,
 } from "../types";
+import { isHyprlandCursorProviderActive, startEvdevButtonCapture } from "./hyprland";
 import {
 	getCursorCaptureElapsedMs,
 	getHookCursorScreenPoint,
@@ -178,12 +179,6 @@ function loadUiohookModule() {
 }
 
 export function shouldStartGlobalInteractionHook(platform: NodeJS.Platform = process.platform) {
-	// On macOS, uiohook can block forever while its native event tap starts
-	// (notably when Accessibility permission is unavailable or stale). Because
-	// start() executes synchronously, that freezes Electron's main thread and
-	// makes every window, including the recording HUD, unresponsive. Cursor
-	// position and visual-state telemetry still come from the existing native
-	// macOS monitor and Electron sampler.
 	return platform !== "darwin";
 }
 
@@ -242,13 +237,42 @@ export async function startInteractionCapture() {
 		return;
 	}
 
+	stopInteractionCapture();
+	let evdevAvailable = false;
+
+	const onMouseDown = (event: HookMouseEvent) => {
+		if (!evdevAvailable) {
+			recordCursorMouseDown(getHookMouseButton(event));
+		}
+	};
+
+	const onMouseUp = () => {
+		if (!evdevAvailable) {
+			recordCursorMouseUp();
+		}
+	};
+
+	// Raw evdev clicks (Wayland: the uiohook never sees them) — must start
+	// independently of the uiohook, which can fail to load on Wayland.
+	const stopEvdevCapture = startEvdevButtonCapture(
+		{
+			onMouseDown: recordCursorMouseDown,
+			onMouseUp: recordCursorMouseUp,
+		},
+		{
+			onDeviceOpened: () => {
+				evdevAvailable = true;
+			},
+		},
+	);
+	setInteractionCaptureCleanup(() => {
+		stopEvdevCapture();
+	});
+
 	if (!shouldStartGlobalInteractionHook()) {
 		console.warn("[CursorTelemetry] Skipping the blocking global interaction hook on macOS.");
 		return;
 	}
-
-	stopInteractionCapture();
-
 	try {
 		const hook = loadUiohookModule();
 		console.log(
@@ -260,24 +284,22 @@ export async function startInteractionCapture() {
 			typeof hook?.start,
 		);
 		if (!isCursorCaptureActive) {
+			stopEvdevCapture();
 			return;
 		}
 
 		if (!hook || typeof hook.on !== "function" || typeof hook.start !== "function") {
-			console.log("[CursorTelemetry] hook unusable — aborting interaction capture");
+			console.warn("[CursorTelemetry] Global interaction hook unavailable.");
 			return;
 		}
 
-		const onMouseDown = (event: HookMouseEvent) => {
-			recordCursorMouseDown(getHookMouseButton(event));
-		};
-
-		const onMouseUp = () => {
-			recordCursorMouseUp();
-		};
-
 		const onMouseMove = (event: HookMouseEvent) => {
-			if (process.platform !== "linux" || !isCursorCaptureActive || isCursorCapturePaused()) {
+			if (
+				process.platform !== "linux" ||
+				isHyprlandCursorProviderActive() ||
+				!isCursorCaptureActive ||
+				isCursorCapturePaused()
+			) {
 				return;
 			}
 
@@ -286,7 +308,13 @@ export async function startInteractionCapture() {
 				return;
 			}
 
-			setLinuxCursorScreenPoint({ x: point.x, y: point.y, updatedAt: Date.now() });
+			setLinuxCursorScreenPoint({
+				x: point.x,
+				y: point.y,
+				updatedAt: Date.now(),
+				coordinateSpace: "physical",
+				source: "uiohook",
+			});
 		};
 
 		hook.on("mousedown", onMouseDown);
@@ -296,6 +324,7 @@ export async function startInteractionCapture() {
 		}
 
 		setInteractionCaptureCleanup(() => {
+			stopEvdevCapture();
 			try {
 				if (typeof hook.off === "function") {
 					hook.off("mousedown", onMouseDown);

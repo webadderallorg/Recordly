@@ -231,6 +231,60 @@ it("bypasses blur annotation compositing during gaps and clears stale composite 
 });
 
 describe("ModernFrameRenderer Pixi lifecycle", () => {
+	it("tries WebGL before WebGPU in default/auto mode when both are nominally available", async () => {
+		pixiApplicationInstancesMock.length = 0;
+		pixiInitializationErrorsMock.length = 0;
+		vi.stubGlobal("navigator", { gpu: {} });
+
+		try {
+			const renderer = createRenderer() as unknown as {
+				config: { preferredRenderBackend?: "webgl" | "webgpu" };
+				createPixiApplication: (
+					canvas: HTMLCanvasElement,
+				) => Promise<{ backend: "webgl" | "webgpu" }>;
+			};
+
+			await expect(
+				renderer.createPixiApplication({} as HTMLCanvasElement),
+			).resolves.toMatchObject({
+				backend: "webgl",
+			});
+
+			expect(pixiApplicationInstancesMock).toHaveLength(1);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("falls back to WebGPU when WebGL fails in default/auto mode", async () => {
+		pixiApplicationInstancesMock.length = 0;
+		pixiInitializationErrorsMock.length = 0;
+		pixiInitializationErrorsMock.push(new Error("WebGL initialization failed"));
+		vi.stubGlobal("navigator", { gpu: {} });
+
+		try {
+			const renderer = createRenderer() as unknown as {
+				config: { preferredRenderBackend?: "webgl" | "webgpu" };
+				createPixiApplication: (
+					canvas: HTMLCanvasElement,
+				) => Promise<{ backend: "webgl" | "webgpu" }>;
+			};
+
+			await expect(
+				renderer.createPixiApplication({} as HTMLCanvasElement),
+			).resolves.toMatchObject({
+				backend: "webgpu",
+			});
+
+			expect(pixiApplicationInstancesMock).toHaveLength(2);
+			expect(pixiApplicationInstancesMock[0].destroy).not.toHaveBeenCalled();
+			expect(pixiApplicationInstancesMock[0].stage.destroy).toHaveBeenCalledTimes(1);
+			expect(pixiApplicationInstancesMock[0].renderer.destroy).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
 	it("continues to the next backend when failed-init cleanup would throw", async () => {
 		pixiApplicationInstancesMock.length = 0;
 		pixiInitializationErrorsMock.length = 0;

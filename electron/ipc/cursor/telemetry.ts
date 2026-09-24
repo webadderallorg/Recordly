@@ -172,14 +172,17 @@ export function getNormalizedCursorPoint() {
 	const primarySf =
 		process.platform !== "darwin" ? getScreen().getPrimaryDisplay().scaleFactor || 1 : 1;
 
+	const linuxCursorScale = linuxCursorCache?.coordinateSpace === "logical" ? 1 : primarySf;
 	const cursor = isLinuxCacheFresh
-		? { x: linuxCursorCache.x / primarySf, y: linuxCursorCache.y / primarySf }
+		? { x: linuxCursorCache.x / linuxCursorScale, y: linuxCursorCache.y / linuxCursorScale }
 		: fallbackCursor;
 
 	const windowBounds = selectedSource?.id?.startsWith("window:") ? selectedWindowBounds : null;
 	if (windowBounds) {
 		const sf =
-			process.platform === "win32" || process.platform === "darwin"
+			process.platform === "win32" ||
+			process.platform === "darwin" ||
+			linuxCursorCache?.coordinateSpace === "logical"
 				? 1
 				: getScreen().getDisplayNearestPoint({
 						x: windowBounds.x / primarySf,
