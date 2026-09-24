@@ -13,6 +13,7 @@ import { buildInteractionZoomSuggestions } from "../timeline/zoomSuggestionUtils
 import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
 import type { useEditorUiState } from "../state/useEditorUiState";
+import { isAutoMotionAllowed } from "../videoPlayback/motionAnimation";
 
 export function useRecordingLibrary(
 	project: ReturnType<typeof useProjectState>,
@@ -153,7 +154,7 @@ export function useRecordingLibrary(
 					speed: 1,
 				});
 				sequence = packClipSequence(next);
-				if (current.current.appearance.autoApplyFreshRecordingAutoZooms) {
+				if (isAutoMotionAllowed(current.current.appearance.motionAnimationEnabled, current.current.appearance.autoApplyFreshRecordingAutoZooms)) {
 					const telemetry = await window.electronAPI.getCursorTelemetry(media.path);
 					const start = media.sourceStartMs;
 					const duration = media.durationMs;

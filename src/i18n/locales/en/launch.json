@@ -44,6 +44,10 @@
 		"stop": "Stop",
 		"cancel": "Cancel",
 		"more": "More",
+		"motionAnimation": "Motion Animation",
+		"motionAnimationOn": "Motion Animation on",
+		"motionAnimationOff": "Motion Animation off",
+		"motionAnimationDescription": "When off, playback matches the capture as displayed (no sway, blur, or auto-motion).",
 		"update": {
 			"update": "Update",
 			"updated": "Updated",

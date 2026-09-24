@@ -37,6 +37,7 @@ import {
 } from "./popovers/LaunchPopoverCoordinator";
 import { MicPopover } from "./popovers/MicPopover";
 import { SourcePopover } from "./popovers/SourcePopover";
+import { MorePopover } from "./popovers/MorePopover";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { RecordingControls } from "./RecordingControls";
 
@@ -455,10 +456,23 @@ function LaunchWindowContent() {
 									onPointerUp={handleHudBarPointerUp}
 									onPointerCancel={handleHudBarPointerUp}
 								>
-									<DotsThreeVerticalIcon
-										weight="fill"
-										size={18}
-										className="text-[#6b6b78]"
+									<MorePopover
+										trigger={
+											<Button
+												variant="ghost"
+												size="icon"
+												title={t("recording.more")}
+												aria-label={t("recording.more")}
+												className={`${styles.electronNoDrag}`}
+												data-hud-interactive
+											>
+												<DotsThreeVerticalIcon
+													weight="fill"
+													size={18}
+													className="text-[#6b6b78]"
+												/>
+											</Button>
+										}
 									/>
 								</div>
 

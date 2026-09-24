@@ -56,6 +56,8 @@
 		"auto": "Auto",
 		"connectZooms": "Connect Zooms",
 		"connectZoomsDescription": "Smooth consecutive zoom regions into a continuous camera move.",
+		"motionAnimation": "Motion Animation",
+		"motionAnimationDescription": "Apply motion presets, cursor sway, motion blur, and auto-motion effects. Turn off to play back recordings as displayed.",
 		"autoApplyFreshRecordingZooms": "Auto-apply fresh recording zooms",
 		"autoApplyFreshRecordingZoomsDescription": "Suggest edge-recentering zooms automatically when you open a new recording.",
 		"zoomGeneralTitle": "General",

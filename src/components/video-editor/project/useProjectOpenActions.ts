@@ -13,6 +13,7 @@ import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
 import { DEFAULT_WEBCAM_TIME_OFFSET_MS } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
+import { isAutoMotionAllowed } from "../videoPlayback/motionAnimation";
 
 type Set<T> = Dispatch<SetStateAction<T>>;
 
@@ -141,7 +142,9 @@ export function useProjectOpenActions({
 			project.setLastSavedSnapshot(null);
 			resetSourceScopedEditorState();
 			pendingFreshRecordingAutoZoomPathRef.current =
-				appearance.autoApplyFreshRecordingAutoZooms ? sourceVideoUrl : null;
+				isAutoMotionAllowed(appearance.motionAnimationEnabled, appearance.autoApplyFreshRecordingAutoZooms)
+					? sourceVideoUrl
+					: null;
 			appearance.setWebcam((previous) => ({
 				...previous,
 				visibleRanges: undefined,

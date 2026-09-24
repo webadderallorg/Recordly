@@ -23,6 +23,7 @@ import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useEditorUiState } from "../state/useEditorUiState";
 import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
+import { isAutoMotionAllowed } from "../videoPlayback/motionAnimation";
 import { CropEditorDialog } from "./CropEditorDialog";
 import { EditorDialogs } from "./EditorDialogs";
 import { EditorLoadingSkeleton } from "./EditorLoadingSkeleton";
@@ -396,7 +397,7 @@ export function EditorShell(props: Props) {
 					normalizedCursorTelemetry={cursor.normalizedCursorTelemetry}
 					autoSuggestZoomsTrigger={ui.autoSuggestZoomsTrigger}
 					handleAutoSuggestZoomsConsumed={handleAutoSuggestZoomsConsumed}
-					disableSuggestedZooms={!appearance.autoApplyFreshRecordingAutoZooms}
+					disableSuggestedZooms={!isAutoMotionAllowed(appearance.motionAnimationEnabled, appearance.autoApplyFreshRecordingAutoZooms)}
 					currentTime={ui.currentTime}
 					handleSelectAnnotation={handleSelectAnnotation}
 				/>

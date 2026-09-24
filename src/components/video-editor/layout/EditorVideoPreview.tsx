@@ -5,6 +5,7 @@ import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
 import type { CursorTelemetryPoint, ZoomRegion } from "../types";
 import VideoPlayback, { type VideoPlaybackRef } from "../VideoPlayback";
+import { resolveMotionAnimationPlayback } from "../videoPlayback/motionAnimation";
 
 type PlaybackProps = ComponentProps<typeof VideoPlayback>;
 type Handlers = Pick<
@@ -62,6 +63,14 @@ export function EditorVideoPreview({
 	setError,
 	handlers,
 }: Props) {
+	const motionPlayback = resolveMotionAnimationPlayback(appearance.motionAnimationEnabled, {
+		cursorSway: appearance.cursorSway,
+		cursorMotionBlur: appearance.cursorMotionBlur,
+		zoomMotionBlur: appearance.zoomMotionBlur,
+		zoomClassicMode: appearance.zoomClassicMode,
+		cursorClickBounce: appearance.cursorClickBounce,
+	});
+
 	return (
 		<VideoPlayback
 			clipRegions={timeline.clipRegions}
@@ -114,18 +123,18 @@ export function EditorVideoPreview({
 			cameraSpringDampingMultiplier={appearance.cameraSpringDampingMultiplier}
 			cameraSpringMassMultiplier={appearance.cameraSpringMassMultiplier}
 			zoomSmoothness={appearance.zoomSmoothness}
-			zoomClassicMode={appearance.zoomClassicMode}
-			zoomMotionBlur={appearance.zoomMotionBlur}
+			zoomClassicMode={motionPlayback.zoomClassicMode}
+			zoomMotionBlur={motionPlayback.zoomMotionBlur}
 			zoomMotionBlurTuning={appearance.zoomMotionBlurTuning}
-			cursorMotionBlur={appearance.cursorMotionBlur}
+			cursorMotionBlur={motionPlayback.cursorMotionBlur}
 			cursorClickEffect={appearance.cursorClickEffect}
 			cursorClickEffectColor={appearance.cursorClickEffectColor}
 			cursorClickEffectScale={appearance.cursorClickEffectScale}
 			cursorClickEffectOpacity={appearance.cursorClickEffectOpacity}
 			cursorClickEffectDurationMs={appearance.cursorClickEffectDurationMs}
-			cursorClickBounce={appearance.cursorClickBounce}
+			cursorClickBounce={motionPlayback.cursorClickBounce}
 			cursorClickBounceDuration={appearance.cursorClickBounceDuration}
-			cursorSway={appearance.cursorSway}
+			cursorSway={motionPlayback.cursorSway}
 			volume={
 				audio.shouldMutePreviewVideo || audio.isCurrentClipMuted
 					? 0

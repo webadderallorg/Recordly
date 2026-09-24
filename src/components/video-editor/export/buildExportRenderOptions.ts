@@ -3,6 +3,7 @@ import { toFileUrl } from "../projectPersistence";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
 import type { CursorTelemetryPoint, SpeedRegion, ZoomRegion } from "../types";
+import { resolveMotionAnimationPlayback } from "../videoPlayback/motionAnimation";
 
 type AppearanceState = ReturnType<typeof useAppearanceState>;
 type TimelineState = ReturnType<typeof useTimelineState>;
@@ -32,6 +33,14 @@ export function buildExportRenderOptions({
 	shadowIntensity,
 	onProgress,
 }: BuildExportRenderOptionsInput) {
+	const motionPlayback = resolveMotionAnimationPlayback(appearance.motionAnimationEnabled, {
+		cursorSway: appearance.cursorSway,
+		cursorMotionBlur: appearance.cursorMotionBlur,
+		zoomMotionBlur: appearance.zoomMotionBlur,
+		zoomClassicMode: appearance.zoomClassicMode,
+		cursorClickBounce: appearance.cursorClickBounce,
+	});
+
 	return {
 		clipRegions: timeline.clipRegions,
 		wallpaper: appearance.wallpaper,
@@ -40,7 +49,7 @@ export function buildExportRenderOptions({
 		showShadow: shadowIntensity > 0,
 		shadowIntensity,
 		backgroundBlur: appearance.backgroundBlur,
-		zoomMotionBlur: appearance.zoomMotionBlur,
+		zoomMotionBlur: motionPlayback.zoomMotionBlur,
 		zoomMotionBlurTuning: appearance.zoomMotionBlurTuning,
 		connectZooms: appearance.connectZooms,
 		zoomInDurationMs: appearance.zoomInDurationMs,
@@ -74,16 +83,16 @@ export function buildExportRenderOptions({
 		cameraSpringDampingMultiplier: appearance.cameraSpringDampingMultiplier,
 		cameraSpringMassMultiplier: appearance.cameraSpringMassMultiplier,
 		zoomSmoothness: appearance.zoomSmoothness,
-		zoomClassicMode: appearance.zoomClassicMode,
-		cursorMotionBlur: appearance.cursorMotionBlur,
+		zoomClassicMode: motionPlayback.zoomClassicMode,
+		cursorMotionBlur: motionPlayback.cursorMotionBlur,
 		cursorClickEffect: appearance.cursorClickEffect,
 		cursorClickEffectColor: appearance.cursorClickEffectColor,
 		cursorClickEffectScale: appearance.cursorClickEffectScale,
 		cursorClickEffectOpacity: appearance.cursorClickEffectOpacity,
 		cursorClickEffectDurationMs: appearance.cursorClickEffectDurationMs,
-		cursorClickBounce: appearance.cursorClickBounce,
+		cursorClickBounce: motionPlayback.cursorClickBounce,
 		cursorClickBounceDuration: appearance.cursorClickBounceDuration,
-		cursorSway: appearance.cursorSway,
+		cursorSway: motionPlayback.cursorSway,
 		previewWidth,
 		previewHeight,
 		onProgress,

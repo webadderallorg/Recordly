@@ -90,6 +90,8 @@ export interface EditorPreferences extends PersistedEditorControls {
 	customAspectHeight: string;
 	customWallpapers: string[];
 	autoApplyFreshRecordingAutoZooms: boolean;
+	/** When false, skip motion presets / sway / blur / auto-motion at playback and export. */
+	motionAnimationEnabled: boolean;
 	whisperExecutablePath: string | null;
 	whisperModelPath: string | null;
 }
@@ -152,6 +154,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	customAspectHeight: "9",
 	customWallpapers: [],
 	autoApplyFreshRecordingAutoZooms: true,
+	motionAnimationEnabled: true,
 	whisperExecutablePath: null,
 	whisperModelPath: null,
 };
@@ -456,6 +459,10 @@ export function normalizeEditorPreferences(
 		autoApplyFreshRecordingAutoZooms: normalizeBoolean(
 			raw.autoApplyFreshRecordingAutoZooms,
 			fallback.autoApplyFreshRecordingAutoZooms,
+		),
+		motionAnimationEnabled: normalizeBoolean(
+			raw.motionAnimationEnabled,
+			fallback.motionAnimationEnabled,
 		),
 		whisperExecutablePath:
 			normalizeNullablePath(raw.whisperExecutablePath) ?? fallback.whisperExecutablePath,

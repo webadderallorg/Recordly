@@ -309,6 +309,7 @@ describe("editorPreferences", () => {
 			customAspectHeight: "5",
 			customWallpapers: ["data:image/jpeg;base64,abc", "data:image/jpeg;base64,abc"],
 			autoApplyFreshRecordingAutoZooms: false,
+			motionAnimationEnabled: false,
 		});
 
 		expect(loadEditorPreferences()).toMatchObject({
@@ -339,7 +340,19 @@ describe("editorPreferences", () => {
 			customAspectHeight: "5",
 			customWallpapers: ["data:image/jpeg;base64,abc"],
 			autoApplyFreshRecordingAutoZooms: false,
+			motionAnimationEnabled: false,
 		});
+	});
+
+
+	it("defaults motionAnimationEnabled to true and persists false", () => {
+		const localStorage = createStorageMock();
+		vi.stubGlobal("localStorage", localStorage);
+
+		expect(loadEditorPreferences().motionAnimationEnabled).toBe(true);
+
+		saveEditorPreferences({ motionAnimationEnabled: false });
+		expect(loadEditorPreferences().motionAnimationEnabled).toBe(false);
 	});
 
 	it("saves custom Whisper paths", () => {
