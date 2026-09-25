@@ -70,6 +70,13 @@ import ptBRLaunch from "@/i18n/locales/pt-BR/launch.json";
 import ptBRSettings from "@/i18n/locales/pt-BR/settings.json";
 import ptBRShortcuts from "@/i18n/locales/pt-BR/shortcuts.json";
 import ptBRTimeline from "@/i18n/locales/pt-BR/timeline.json";
+import ruCommon from "@/i18n/locales/ru/common.json";
+import ruDialogs from "@/i18n/locales/ru/dialogs.json";
+import ruEditor from "@/i18n/locales/ru/editor.json";
+import ruLaunch from "@/i18n/locales/ru/launch.json";
+import ruSettings from "@/i18n/locales/ru/settings.json";
+import ruShortcuts from "@/i18n/locales/ru/shortcuts.json";
+import ruTimeline from "@/i18n/locales/ru/timeline.json";
 import zhCNCommon from "@/i18n/locales/zh-CN/common.json";
 import zhCNDialogs from "@/i18n/locales/zh-CN/dialogs.json";
 import zhCNEditor from "@/i18n/locales/zh-CN/editor.json";
@@ -161,6 +168,15 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		settings: ptBRSettings,
 		dialogs: ptBRDialogs,
 		shortcuts: ptBRShortcuts,
+	},
+	ru: {
+		common: ruCommon,
+		launch: ruLaunch,
+		editor: ruEditor,
+		timeline: ruTimeline,
+		settings: ruSettings,
+		dialogs: ruDialogs,
+		shortcuts: ruShortcuts,
 	},
 	"zh-CN": {
 		common: zhCNCommon,
