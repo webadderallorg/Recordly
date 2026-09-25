@@ -8,6 +8,7 @@ export const MEDIA_CONTENT_TYPES: Record<string, string> = {
 	".avi": "video/x-msvideo",
 	".wav": "audio/wav",
 	".mp3": "audio/mpeg",
+	".m4a": "audio/mp4",
 	".ogg": "audio/ogg",
 	".png": "image/png",
 	".jpg": "image/jpeg",
