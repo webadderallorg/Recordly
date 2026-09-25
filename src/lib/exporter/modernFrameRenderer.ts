@@ -623,14 +623,13 @@ export class FrameRenderer {
 		};
 
 		const preferredRenderBackend = this.config.preferredRenderBackend;
+		// Default to WebGL to match the preview renderer (VideoPlayback.tsx) and
+		// the legacy export renderer, so exported frames render on the same
+		// backend users see while editing. WebGPU remains available when it is
+		// explicitly requested; unproven WebGPU support has failed mid-export
+		// inside PixiJS bind-group setup on some Linux drivers.
 		const backendOrder: ExportRenderBackend[] =
-			preferredRenderBackend === "webgl"
-				? ["webgl", "webgpu"]
-				: preferredRenderBackend === "webgpu"
-					? ["webgpu", "webgl"]
-					: typeof navigator !== "undefined" && "gpu" in navigator
-						? ["webgpu", "webgl"]
-						: ["webgl"];
+			preferredRenderBackend === "webgpu" ? ["webgpu", "webgl"] : ["webgl", "webgpu"];
 		const failures: PixiRendererAttempt[] = [];
 
 		for (const backend of backendOrder) {
