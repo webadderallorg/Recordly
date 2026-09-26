@@ -2,11 +2,14 @@ import { useTheme } from "@/contexts/ThemeContext";
 import { useTimelineContext } from "dnd-timeline";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { AudioPeaksData } from "../../core/timelineTypes";
+import { getVisibleWaveformSourceSpan, getWaveformPixelPeak } from "../../core/waveformViewport";
 
 interface AudioWaveformProps {
 	peaks: AudioPeaksData;
 	segmentStartMs?: number;
 	segmentEndMs?: number;
+	timelineStartMs?: number;
+	timelineEndMs?: number;
 	gain?: number;
 	normalize?: boolean;
 	className?: string;
@@ -21,6 +24,8 @@ function AudioWaveformComponent({
 	peaks,
 	segmentStartMs,
 	segmentEndMs,
+	timelineStartMs,
+	timelineEndMs,
 	gain = 1,
 	normalize = false,
 	className,
@@ -79,8 +84,15 @@ function AudioWaveformComponent({
 			if (durationMs <= 0 || peakData.length === 0) return;
 
 			// Use raw values for smooth zooming/panning (no snapping)
-			const visibleStartMs = segmentStartMs ?? range.start;
-			const visibleEndMs = segmentEndMs ?? range.end;
+			const source = { start: segmentStartMs ?? range.start, end: segmentEndMs ?? range.end };
+			const visible = getVisibleWaveformSourceSpan(
+				{ start: timelineStartMs ?? source.start, end: timelineEndMs ?? source.end },
+				source,
+				range,
+			);
+			if (!visible) return;
+			const visibleStartMs = visible.start;
+			const visibleEndMs = visible.end;
 			const visibleDurationMs = visibleEndMs - visibleStartMs;
 
 			if (visibleDurationMs <= 0) return;
@@ -94,12 +106,7 @@ function AudioWaveformComponent({
 				// If the timeline time is beyond the actual audio duration, we draw nothing (flat line)
 				if (t < 0 || t > durationMs) continue;
 
-				const exactIndex = (t / durationMs) * (peakData.length - 1);
-				const leftIndex = Math.floor(exactIndex);
-				const rightIndex = Math.min(peakData.length - 1, leftIndex + 1);
-				const mix = exactIndex - leftIndex;
-
-				let amplitude = peakData[leftIndex] * (1 - mix) + peakData[rightIndex] * mix;
+				let amplitude = getWaveformPixelPeak(peaks, t, t + visibleDurationMs / width);
 
 				if (normalize) amplitude = Math.sqrt(Math.max(0, amplitude));
 				amplitude = Math.max(0, Math.min(1, amplitude * gain));
@@ -125,6 +132,8 @@ function AudioWaveformComponent({
 		resizeKey,
 		segmentStartMs,
 		segmentEndMs,
+		timelineStartMs,
+		timelineEndMs,
 		theme,
 	]);
 

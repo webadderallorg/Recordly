@@ -48,6 +48,23 @@ describe("local media path policy", () => {
 		}
 	});
 
+	it("preserves audio and webcam preferences when changing the recordings directory", async () => {
+		const { RECORDINGS_SETTINGS_FILE } = await import("../constants");
+		const { createRecordingPreferencesStore } = await import("../settings/recordingPreferencesStore");
+		const { persistRecordingsDirectorySetting } = await import("./manager");
+		const store = createRecordingPreferencesStore(RECORDINGS_SETTINGS_FILE);
+		await store.update({ microphoneEnabled: true, webcamEnabled: true });
+		const destination = path.join(tempRoot, "new-recordings");
+		await Promise.all([
+			persistRecordingsDirectorySetting(destination),
+			store.update({ microphoneDeviceId: "usb-mic", systemAudioEnabled: true }),
+		]);
+		await expect(store.read()).resolves.toEqual({
+			microphoneEnabled: true, webcamEnabled: true, microphoneDeviceId: "usb-mic",
+			systemAudioEnabled: true, recordingsDir: path.resolve(destination),
+		});
+	});
+
 	it("reads library previews without switching the active project and rejects unknown projects", async () => {
 		vi.doMock("../../mediaServer", () => ({
 			getMediaServerBaseUrl: () => "http://127.0.0.1:1234",
