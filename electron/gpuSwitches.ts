@@ -43,6 +43,7 @@ export function shouldForceLinuxEgl(env: NodeJS.ProcessEnv): boolean {
 export function getGpuSwitches(
 	platform: NodeJS.Platform,
 	env: NodeJS.ProcessEnv = process.env,
+	electronVersion: string = process.versions.electron ?? "",
 ): GpuSwitches {
 	if (platform === "darwin") {
 		return {
@@ -56,8 +57,18 @@ export function getGpuSwitches(
 	}
 
 	if (platform === "linux") {
+		const majorVersion = Number.parseInt(electronVersion, 10);
+		// Electron 39's default GL path works with hardware acceleration on
+		// Mesa/AMD (verified live: unmasked renderer "ANGLE (AMD Radeon
+		// radeonsi renoir, OpenGL 4.6)", stable context, no GPU-process
+		// exits) — and it rejects --use-gl switches outright. No switch at
+		// all is the correct configuration there; the angle switch above
+		// stays for Electron 40+.
+		if (Number.isFinite(majorVersion) && majorVersion < 40) {
+			return {};
+		}
 		return {
-			useGl: shouldForceLinuxEgl(env) ? "egl" : undefined,
+			...(shouldForceLinuxEgl(env) ? { useGl: "angle" } : {}),
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		};
 	}

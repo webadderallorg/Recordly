@@ -523,7 +523,7 @@ jobs:
           npm run build:platform-native-helpers
           npx tsc
           npx vite build
-          npx electron-builder --linux dir AppImage --x64 --publish never
+          npx electron-builder --linux dir AppImage --x64 --config electron-builder.linux.json5 --publish never
 
       - name: Smoke test packaged Linux x64 paths
         run: npm run smoke:packaged-binaries

@@ -604,7 +604,11 @@ export class ModernVideoExporter {
 					timelineEffects: this.config.clipRegions !== undefined,
 					width: this.config.width,
 					height: this.config.height,
-					preferredRenderBackend: undefined,
+					// Prefer WebGL: the WebGPU renderer path is not reliable in all
+					// environments (e.g. Linux where a Pixi WebGPU failure aborts
+					// the whole export instead of falling back), and no mid-render
+					// backend switch exists once init succeeds.
+					preferredRenderBackend: "webgl",
 					wallpaper: this.config.wallpaper,
 					zoomRegions: this.config.zoomRegions,
 					showShadow: this.config.showShadow,

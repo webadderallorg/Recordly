@@ -1,0 +1,10 @@
+// Linux packaging override: build the AppImage on Electron 39, whose default
+// GL path works with hardware acceleration on Mesa/AMD X11 where Electron
+// 43's ANGLE path crashes with gbm_bo_import GPU-process deaths (see
+// LINUX-CURSOR-WORKLOG.md "SHELVED — GPU-accelerated exports"). Everything
+// else inherits from electron-builder.json5; the electron dependency in
+// package.json stays on 43 for dev/Windows/macOS.
+{
+	extends: "electron-builder.json5",
+	electronVersion: "39.2.7",
+}
