@@ -42,6 +42,7 @@ import {
 	getWindowsCaptureExePath,
 } from "../paths/binaries";
 import { rememberApprovedLocalReadPath } from "../project/manager";
+import { writeAtomicAudioSidecar } from "../recording/atomicAudioSidecar";
 import {
 	getBrowserMicSidecarFilters,
 	shouldKeepRecordingAudioSidecars,
@@ -1670,7 +1671,7 @@ export function registerRecordingHandlers(
 
 			try {
 				await fs.writeFile(tempWebmPath, Buffer.from(audioData));
-				await execFileAsync(
+				await writeAtomicAudioSidecar(sidecarPath, (stagingPath) => execFileAsync(
 					getFfmpegBinaryPath(),
 					[
 						"-y",
@@ -1691,10 +1692,10 @@ export function registerRecordingHandlers(
 						].join(","),
 						"-c:a",
 						"pcm_s16le",
-						sidecarPath,
+						stagingPath,
 					],
 					{ timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
-				);
+				));
 				if (shouldKeepRecordingAudioSidecars()) {
 					await fs.rename(tempWebmPath, sourceWebmPath).catch(async () => {
 						await fs.copyFile(tempWebmPath, sourceWebmPath);
@@ -1788,7 +1789,6 @@ export function registerRecordingHandlers(
 			} catch (error) {
 				await Promise.all([
 					fs.rm(tempWebmPath, { force: true }).catch(() => undefined),
-					fs.rm(sidecarPath, { force: true }).catch(() => undefined),
 				]);
 				console.error("Failed to store microphone sidecar:", error);
 				return { success: false, error: String(error) };

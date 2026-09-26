@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 import { parseJsonWithByteOrderMark } from "../utils";
 
 export interface RecordingPreferencesPatch {
@@ -7,10 +8,14 @@ export interface RecordingPreferencesPatch {
 	systemAudioEnabled?: boolean;
 	webcamEnabled?: boolean;
 	webcamDeviceId?: string;
+	recordingsDir?: string;
 }
 
+// All users of the settings file share a queue, including the library directory picker.
+const operationQueues = new Map<string, Promise<void>>();
+
 export function createRecordingPreferencesStore(filePath: string) {
-	let operationQueue: Promise<void> = Promise.resolve();
+	const queueKey = path.resolve(filePath);
 
 	const readFile = async (): Promise<Record<string, unknown>> => {
 		try {
@@ -26,11 +31,11 @@ export function createRecordingPreferencesStore(filePath: string) {
 
 	return {
 		async read(): Promise<Record<string, unknown>> {
-			await operationQueue;
+			await operationQueues.get(queueKey);
 			return readFile();
 		},
 		async update(patch: RecordingPreferencesPatch): Promise<void> {
-			const operation = operationQueue.then(async () => {
+			const operation = (operationQueues.get(queueKey) ?? Promise.resolve()).then(async () => {
 				const existing = await readFile();
 				await fs.writeFile(
 					filePath,
@@ -38,7 +43,11 @@ export function createRecordingPreferencesStore(filePath: string) {
 					"utf-8",
 				);
 			});
-			operationQueue = operation.catch(() => undefined);
+			const settled = operation.catch(() => undefined);
+			operationQueues.set(queueKey, settled);
+			void settled.then(() => {
+				if (operationQueues.get(queueKey) === settled) operationQueues.delete(queueKey);
+			});
 			await operation;
 		},
 	};

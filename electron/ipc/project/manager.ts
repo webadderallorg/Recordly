@@ -1,6 +1,7 @@
 import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
 import type { ProjectPreviewData } from "../../../src/types/projectPreview";
 import { hasFreshProjectThumbnail } from "./thumbnailFreshness";
+import { createRecordingPreferencesStore } from "../settings/recordingPreferencesStore";
 import { existsSync, constants as fsConstants, realpathSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -248,13 +249,11 @@ export async function getProjectsDir() {
 }
 
 export async function persistRecordingsDirectorySetting(nextDir: string) {
+	await createRecordingPreferencesStore(RECORDINGS_SETTINGS_FILE).update({
+		recordingsDir: path.resolve(nextDir),
+	});
 	setCustomRecordingsDir(path.resolve(nextDir));
 	setRecordingsDirLoaded(true);
-	await fs.writeFile(
-		RECORDINGS_SETTINGS_FILE,
-		JSON.stringify({ recordingsDir: path.resolve(nextDir) }, null, 2),
-		"utf-8",
-	);
 }
 
 export function hasProjectFileExtension(filePath: string) {
