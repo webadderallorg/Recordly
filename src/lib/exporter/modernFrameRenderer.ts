@@ -623,14 +623,14 @@ export class FrameRenderer {
 		};
 
 		const preferredRenderBackend = this.config.preferredRenderBackend;
+		// WebGPU is opt-in. Linux Chromium exposes navigator.gpu, but Pixi's WebGPU
+		// bind-group path can crash mid-render with
+		// "Cannot read properties of undefined (reading '_resourceType')", which is only
+		// recoverable by restarting the whole export on a different backend.
 		const backendOrder: ExportRenderBackend[] =
-			preferredRenderBackend === "webgl"
-				? ["webgl", "webgpu"]
-				: preferredRenderBackend === "webgpu"
-					? ["webgpu", "webgl"]
-					: typeof navigator !== "undefined" && "gpu" in navigator
-						? ["webgpu", "webgl"]
-						: ["webgl"];
+			preferredRenderBackend === "webgpu"
+				? ["webgpu", "webgl"]
+				: ["webgl", "webgpu"];
 		const failures: PixiRendererAttempt[] = [];
 
 		for (const backend of backendOrder) {
