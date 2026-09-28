@@ -1,0 +1,262 @@
+{
+	"updates": {
+		"title": "التحديثات",
+		"experimental": "التحديثات التجريبية",
+		"experimentalDescription": "لقد اخترت تلقي التحديثات التجريبية حتى تتمكن من تجربة آخر تحديث لـ Recordly قبل طرحه رسمياً.",
+		"saveFailed": "فشل تغيير قناة التحديث."
+	},
+	"zoom": {
+		"level": "مستوى التكبير",
+		"selectRegion": "حدد منطقة تكبير لضبطها",
+		"deleteZoom": "حذف التكبير",
+		"modeAuto": "تلقائي",
+		"modeManual": "يدوي",
+		"modeManualDescription": "تعيين نقطة تركيز ثابتة لهذا التكبير",
+		"modeAutoDescription": "يعاد توسيط الكاميرا تلقائياً عندما يقترب المؤشر من حافة العرض المكبر"
+	},
+	"trim": {
+		"deleteRegion": "حذف منطقة القص"
+	},
+	"speed": {
+		"playbackSpeed": "سرعة التشغيل",
+		"selectRegion": "حدد منطقة سرعة لضبطها",
+		"deleteRegion": "حذف منطقة السرعة",
+		"label": "السرعة"
+	},
+	"clip": {
+		"title": "المقطع",
+		"mute": "كتم صوت المقطع",
+		"resetAudioSettings": "إعادة ضبط إعدادات الصوت",
+		"mutedState": "الصوت مكتوم",
+		"unmutedState": "الصوت قيد التشغيل",
+		"separateClipFromAudio": "فصل المقطع عن الصوت",
+		"delete": "حذف المقطع"
+	},
+	"effects": {
+		"title": "تأثيرات الفيديو",
+		"show": "إظهار",
+		"showCursor": "إظهار المؤشر",
+		"loopCursor": "تكرار حركة المؤشر",
+		"cursorStyle": "نمط المؤشر",
+		"cursorStyleOptions": {
+			"macos": "macOS",
+			"tahoe": "Tahoe",
+			"tahoe-inverted": "Tahoe معكوس",
+			"windows11": "Windows 11",
+			"dot": "نقطة",
+			"figma": "بسيط",
+			"lavender": "لافندر",
+			"parched": "جاف",
+			"chooper": "Chooper",
+			"amongus": "Among Us",
+			"turtle": "سلحفاة"
+		},
+		"backgroundBlur": "تمويه",
+		"zoomMotionBlur": "تمويه حركة التكبير",
+		"auto": "تلقائي",
+		"connectZooms": "ربط التكبيرات",
+		"connectZoomsDescription": "تنعيم مناطق التكبير المتتالية لتصبح حركة كاميرا مستمرة وانسيابية.",
+		"autoApplyFreshRecordingZooms": "تطبيق التكبير التلقائي على التسجيلات الجديدة",
+		"autoApplyFreshRecordingZoomsDescription": "اقتراح تكبيرات مع إعادة التوسيط تلقائياً عند فتح تسجيل جديد.",
+		"zoomGeneralTitle": "عام",
+		"zoomGeneralDescription": "إعدادات الحركة العامة لكل انتقال تكبير.",
+		"zoomInTitle": "تكبير للداخل",
+		"zoomInDescription": "التحكم في كيفية انتقال الكاميرا إلى منطقة التكبير.",
+		"zoomOutTitle": "تكبير للخارج",
+		"zoomOutDescription": "التحكم في كيفية خروج الكاميرا من منطقة التكبير.",
+		"connectedZoomTitle": "بين التكبيرات",
+		"connectedZoomDescription": "ضبط الانسيابية بين مناطق التكبير المتتالية عند تفعيل الربط.",
+		"motionPresetsTitle": "الإعدادات المسبقة للحركة",
+		"motionPresetsZoomHint": "الإعدادات المسبقة لحركة التكبير متوفرة في الإعدادات.",
+		"animationPresets": "إعدادات الحركة المسبقة",
+		"cursorMotionPresets": "إعدادات حركة المؤشر المسبقة",
+		"motionPresets": {
+			"focused": {
+				"label": "مركّز",
+				"description": "حركة أسرع وأكثر حسماً للعروض التوضيحية والشروحات والتسجيلات اليومية."
+			},
+			"smooth": {
+				"label": "سلس",
+				"description": "حركة أهدأ وأكثر نعومة للعروض التقديمية وفيديوهات الإعلانات المصقولة."
+			}
+		},
+		"zoomInDuration": "مدة التكبير للداخل",
+		"zoomInOverlap": "تداخل التكبير للداخل",
+		"zoomOutDuration": "مدة التكبير للخارج",
+		"zoomInEasing": "منحنى التكبير للداخل",
+		"zoomOutEasing": "منحنى التكبير للخارج",
+		"connectedZoomGap": "الفجوة بين التكبيرات المترابطة",
+		"connectedZoomDuration": "مدة التكبير المترابط",
+		"connectedZoomEasing": "منحنى التحريك المتصل",
+		"zoomEasingOptions": {
+			"recordly": "Recordly",
+			"glide": "Glide",
+			"smooth": "سلس",
+			"snappy": "سريع",
+			"linear": "خطي"
+		},
+		"cursorSize": "حجم المؤشر",
+		"cursorSmoothing": "تنعيم حركة المؤشر",
+		"cursorSpringStiffness": "صلابة ارتداد المؤشر",
+		"cursorSpringDamping": "إخماد ارتداد المؤشر",
+		"cursorSpringMass": "كتلة ارتداد المؤشر",
+		"off": "إيقاف",
+		"cursorClickEffects": {
+			"title": "تأثيرات النقر",
+			"advanced": "متقدم",
+			"advancedShow": "إظهار عناصر التحكم المتقدمة في تأثير النقر",
+			"advancedHide": "إخفاء عناصر التحكم المتقدمة في تأثير النقر",
+			"color": "لون التأثير",
+			"size": "حجم التأثير",
+			"opacity": "شفافية التأثير",
+			"duration": "مدة التأثير",
+			"none": {
+				"label": "إيقاف",
+				"description": "بدون رسم عند النقر. تتغير حركة المؤشر فقط عند النقر."
+			},
+			"ripple": {
+				"label": "تموج",
+				"description": "حلقات تتسع وتشع من موضع النقر لتوضيح النقرات بوضوح أثناء الحركة."
+			},
+			"spotlight": {
+				"label": "تسليط الضوء",
+				"description": "هالة ضوئية ناعمة تومض حول المؤشر لتسليط الضوء على المنطقة المنقورة."
+			},
+			"echo": {
+				"label": "صدى",
+				"description": "زوج من الحلقات الناعمة تنتشر للخارج بنبض أنيق ونقي."
+			}
+		},
+		"cursorMotionBlur": "تمويه حركة المؤشر",
+		"cursorClickBounce": "ارتداد النقر للمؤشر",
+		"cursorClickBounceDuration": "سرعة الارتداد",
+		"cursorSway": "تمايل المؤشر",
+		"webcam": "تراكب كاميرا الويب",
+		"webcamFootage": "لقطات كاميرا الويب",
+		"webcamFootageDescription": "لا توجد لقطات كاميرا ويب مرتبطة بهذا الفيديو",
+		"uploadWebcamFootage": "تحميل لقطات",
+		"replaceWebcamFootage": "استبدال اللقطات",
+		"removeWebcamFootage": "إزالة اللقطات",
+		"webcamFootageAdded": "تم ربط لقطات كاميرا الويب",
+		"webcamFootageRemoved": "تمت إزالة لقطات كاميرا الويب",
+		"webcamSize": "حجم كاميرا الويب",
+		"webcamWidth": "عرض كاميرا الويب",
+		"webcamHeight": "ارتفاع كاميرا الويب",
+		"webcamCrop": "اقتصاص كاميرا الويب",
+		"webcamReactToZoom": "تفاعل كاميرا الويب مع التكبير",
+		"webcamMirror": "عكس صورة الكاميرا مرآتياً",
+		"webcamRoundness": "استدارة زوايا الكاميرا",
+		"webcamShadow": "ظل كاميرا الويب",
+		"shadow": "الظل",
+		"radius": "نصف القطر",
+		"roundness": "الاستدارة",
+		"padding": "الهوامش الداخلية",
+		"paddingLinked": "مرتبط (متساوٍ)",
+		"paddingUnlinked": "غير مرتبط (مخصص لكل جهة)",
+		"paddingTop": "الأعلى",
+		"paddingBottom": "الأسفل",
+		"paddingLeft": "اليسار",
+		"paddingRight": "اليمين",
+		"removeBackground": "إزالة الخلفية"
+	},
+	"sections": {
+		"scene": "المشهد",
+		"captions": "النصوص التوضيحية",
+		"caption": "نص توضيحي",
+		"zoom": "التكبير",
+		"cursor": "المؤشر",
+		"webcam": "كاميرا الويب",
+		"frame": "الإطار",
+		"crop": "الاقتصاص"
+	},
+	"captions": {
+		"selectOnTimeline": "حدد نصاً توضيحياً على المخطط الزمني لتعديله.",
+		"enabled": "إظهار",
+		"timelineQuickAdd": "مرر المؤشر للإضافة على المخطط الزمني",
+		"language": "اللغة",
+		"downloading": "جارٍ التنزيل...",
+		"deleteModel": "حذف النموذج",
+		"clearModel": "مسح النموذج",
+		"downloadModel": "تنزيل النموذج",
+		"generating": "جارٍ التوليد...",
+		"generateFull": "توليد النصوص التوضيحية",
+		"regenerateFull": "إعادة توليد النصوص التوضيحية",
+		"clearFull": "مسح النصوص التوضيحية",
+		"fontSettings": "إعدادات الخط",
+		"defaultFont": "افتراضي",
+		"fontFamily": "الخط",
+		"fontSize": "حجم الخط",
+		"rowCount": "الصفوف",
+		"animation": "التحريك",
+		"animationOff": "إيقاف",
+		"animationFade": "تلاشٍ",
+		"animationRise": "صعود",
+		"animationPop": "انبثاق",
+		"bottomOffset": "الإزاحة من الأسفل",
+		"maxWidth": "أقصى عرض",
+		"boxRadius": "استدارة الصندوق",
+		"backgroundOpacity": "شفافية الخلفية",
+		"textColor": "لون النص",
+		"editor": {
+			"text": "النص",
+			"start": "البداية",
+			"end": "النهاية",
+			"split": "تقسيم",
+			"merge": "دمج",
+			"delete": "حذف"
+		}
+	},
+	"crop": {
+		"title": "اقتصاص الفيديو",
+		"instruction": "اسحب من أي جانب لضبط منطقة الاقتصاص",
+		"top": "الأعلى",
+		"bottom": "الأسفل",
+		"left": "اليسار",
+		"right": "اليمين",
+		"openEditor": "فتح محرر الاقتصاص"
+	},
+	"background": {
+		"title": "الخلفية",
+		"image": "صورة",
+		"color": "لون",
+		"gradient": "تدرج لوني",
+		"wallpaperPreview": "معاينة الخلفية",
+		"uploadCustom": "تحميل صورة مخصصة",
+		"uploadSuccess": "تم تحميل الصورة المخصصة بنجاح!",
+		"uploadError": "يرجى تحميل ملف صورة بصيغة JPG أو JPEG.",
+		"uploadErrorDescription": "يتم دعم صور JPG و JPEG فقط."
+	},
+	"export": {
+		"title": "تصدير",
+		"mp4": "MP4",
+		"gif": "GIF",
+		"quality": {
+			"low": "منخفضة",
+			"medium": "متوسطة",
+			"high": "عالية",
+			"original": "الأصلية"
+		},
+		"fpsTitle": "إطار في الثانية",
+		"loop": "تكرار",
+		"outputDimensions": "المخرجات: {{dimensions}} بكسل",
+		"sizePresetOriginalShort": "أصلي",
+		"sizePresetMediumShort": "متوسط",
+		"sizePresetLargeShort": "كبير",
+		"loadProject": "تحميل المشروع",
+		"saveProject": "حفظ المشروع",
+		"exportVideo": "تصدير {{format}}",
+		"reportBug": "الإبلاغ عن خطأ",
+		"starOnGithub": "نجمة على GitHub"
+	},
+	"audio": {
+		"title": "الصوت",
+		"volumeTitle": "الصوت",
+		"volume": "مستوى الصوت",
+		"normalize": "موازنة الصوت",
+		"sourceTracksTitle": "مصدر صوت المقطع",
+		"systemLabel": "صوت النظام",
+		"micLabel": "صوت الميكروفون",
+		"mixedLabel": "المصدر",
+		"deleteRegion": "حذف منطقة الصوت"
+	}
+}

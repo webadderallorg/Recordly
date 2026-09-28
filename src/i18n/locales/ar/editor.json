@@ -1,0 +1,199 @@
+{
+	"cloud": {
+		"signInRequired": "سجّل الدخول إلى Recordly قبل إنشاء رابط مشاركة.",
+		"prepareFailed": "تعذر تجهيز التعديل الحالي للمشاركة.",
+		"uploadFailed": "فشل الرفع إلى السحابة.",
+		"linkCreated": "تم إنشاء رابط المشاركة",
+		"linkCopied": "تم نسخ الرابط",
+		"copyFailed": "تعذر نسخ الرابط. يرجى تحديده ونسخه يدوياً.",
+		"copied": "تم النسخ",
+		"copy": "نسخ",
+		"preparing": "جارٍ تجهيز التعديل الحالي…",
+		"createLink": "إنشاء رابط",
+		"heading": "مشاركة عبر السحابة",
+		"ready": "الفيديو الخاص بك جاهز للمشاركة.",
+		"openPage": "فتح صفحة المشاركة",
+		"notes": "ملاحظات",
+		"publish": "نشر وإنشاء رابط",
+		"createLinkTitle": "إنشاء رابط قابل للمشاركة",
+		"notesPlaceholder": "أضف سياقاً أو تعليمات أو ملخصاً موجزاً للمشاهدين…",
+		"description": "انشر التعديل الحالي على صفحة مشاهدة وملاحظات Recordly. لا يلزم التنزيل. يتم إعداد مقاطع الفيديو المشتركة بدقة تصل إلى 1080p.",
+		"uploading": "جارٍ الرفع… {progress}%",
+		"googleUnavailable": "تسجيل الدخول عبر Google غير متاح حالياً. استخدم البريد الإلكتروني في الوقت الحالي، أو اطلب من مسؤول Recordly ربط حساب Google.",
+		"xUnavailable": "تسجيل الدخول عبر X غير متاح حالياً. استخدم البريد الإلكتروني في الوقت الحالي، أو اطلب من مسؤول Recordly ربط حساب X.",
+		"providerUnavailable": "طريقة تسجيل الدخول هذه غير مفعلة لـ Recordly بعد. استخدم البريد الإلكتروني في الوقت الحالي.",
+		"enterEmail": "أدخل عنوان بريدك الإلكتروني أولاً.",
+		"resetSent": "تم إرسال بريد إعادة تعيين كلمة المرور.",
+		"accountHeading": "حساب Recordly الخاص بك",
+		"signInHeading": "تسجيل الدخول إلى Recordly",
+		"signInShareDescription": "سجّل الدخول لنشر هذا الفيديو وإدارة رابط مشاركته.",
+		"signInDescription": "الوصول إلى تسجيلاتك والروابط المشتركة.",
+		"signingOut": "جارٍ تسجيل الخروج…",
+		"signOut": "تسجيل الخروج",
+		"signingIn": "جارٍ تسجيل الدخول…",
+		"signIn": "تسجيل الدخول",
+		"or": "أو",
+		"email": "البريد الإلكتروني",
+		"password": "كلمة المرور",
+		"forgotPassword": "نسيت كلمة المرور؟",
+		"unavailable": "تسجيل الدخول السحابي غير متاح في هذا الإصدار بعد. لا يزال بإمكانك حفظ مقاطع الفيديو على جهازك.",
+		"createShareLink": "إنشاء رابط مشاركة",
+		"done": "تم",
+		"addingVideo": "جارٍ إضافة الفيديو…",
+		"preparingFootage": "جارٍ تجهيز لقطات الفيديو والصوت للمخطط الزمني."
+	},
+	"library": {
+		"videos": "مقاطع الفيديو"
+	},
+	"playback": {
+		"play": "تشغيل",
+		"pause": "إيقاف مؤقت",
+		"skipBack": "تخطي للخلف",
+		"skipForward": "تخطي للأمام",
+		"muteUnmute": "كتم / إلغاء الكتم",
+		"volume": "مستوى صوت المعاينة"
+	},
+	"annotations": {
+		"settings": "إعدادات التعليق التوضيحي",
+		"active": "نشط",
+		"text": "نص",
+		"image": "صورة",
+		"arrow": "سهم",
+		"blur": "تمويه",
+		"textContent": "محتوى النص",
+		"textPlaceholder": "أدخل النص هنا...",
+		"fontStyle": "نمط الخط",
+		"selectStyle": "اختر النمط",
+		"size": "الحجم",
+		"toggleBold": "تبديل عريض",
+		"toggleItalic": "تبديل مائل",
+		"toggleUnderline": "تبديل تسطير",
+		"alignLeft": "محاذاة لليسار",
+		"alignCenter": "محاذاة للوسط",
+		"alignRight": "محاذاة لليمين",
+		"textColor": "لون النص",
+		"background": "الخلفية",
+		"none": "بلا",
+		"clearBackground": "مسح الخلفية",
+		"uploadImage": "تحميل صورة",
+		"supportedFormats": "الصيغ المدعومة: JPG, PNG, GIF, WebP",
+		"arrowDirection": "اتجاه السهم",
+		"strokeWidth": "عرض الخط: {{width}} بكسل",
+		"arrowColor": "لون السهم",
+		"deleteAnnotation": "حذف التعليق التوضيحي",
+		"shortcutsAndTips": "اختصارات وتلميحات",
+		"tipSelectAnnotation": "حرّك مؤشر التشغيل إلى موضع التعليقات التوضيحية المتداخلة وحدد عنصراً.",
+		"tipCycleForward": "استخدم مفتاح Tab للتنقل بين العناصر المتداخلة للأمام.",
+		"tipCycleBackward": "استخدم مفتاحي Shift+Tab للتنقل بين العناصر للخلف.",
+		"imageUploadSuccess": "تم تحميل الصورة بنجاح!",
+		"imageUploadError": "يرجى تحميل ملف صورة بصيغة JPG أو PNG أو GIF أو WebP.",
+		"blurStrength": "شدة التمويه: {{strength}}",
+		"solidColor": "لون مصمت (حجب)",
+		"borderRadius": "نصف قطر الحواف"
+	},
+
+	"fontStyles": {
+		"classic": "كلاسيكي",
+		"editor": "محرر",
+		"strong": "بارز",
+		"typewriter": "آلة كاتبة",
+		"deco": "ديكور",
+		"simple": "بسيط",
+		"modern": "عصري",
+		"clean": "أنيق"
+	},
+	"format": {
+		"mp4Video": "فيديو MP4",
+		"mp4Description": "ملف فيديو عالي الجودة",
+		"gifAnimation": "صورة GIF متحركة",
+		"gifDescription": "صورة متحركة للمشاركة"
+	},
+	"gifOptions": {
+		"frameRate": "معدل الإطارات",
+		"outputSize": "حجم المخرجات",
+		"outputDimensions": "المخرجات: {{width}} × {{height}} بكسل",
+		"loopAnimation": "تكرار الرسوم المتحركة",
+		"loopDescription": "سيتم تشغيل ملف GIF بشكل متكرر دون توقف"
+	},
+	"tutorial": {
+		"howTrimmingWorks": "كيف يعمل القص",
+		"title": "كيف يعمل القص",
+		"understanding": "فهم كيفية اقتطاع وحذف الأجزاء غير المرغوب فيها من الفيديو.",
+		"descriptionP1": "تعمل أداة القص من خلال تحديد الأجزاء التي تريد",
+		"descriptionRemove": "إزالتها",
+		"descriptionP2": "من الفيديو الخاص بك.",
+		"descriptionP3": "أي جزء من المخطط الزمني مغطى بجزء قص أحمر سيتم حذفه عند التصدير.",
+		"visualExample": "مثال توضيحي",
+		"removed": "محذوف",
+		"kept": "محفوظ",
+		"finalVideo": "الفيديو النهائي",
+		"part": "الجزء {{number}}",
+		"addTrimStep": "١. أضف قصاً",
+		"addTrimDesc": "اضغط على T أو انقر على أيقونة المقص لتمييز جزء لحذفه.",
+		"adjustStep": "٢. اضبط التحديد",
+		"adjustDesc": "اسحب حواف المنطقة الحمراء لتغطية ما تريد اقتطاعه بدقة."
+	},
+	"feedback": {
+		"trigger": "الملاحظات",
+		"title": "الملاحظات والتواصل",
+		"description": "تواصل معنا مباشرة أو افتح تذكرة إذا كان هناك شيء معطل أو مفقود.",
+		"emailLabel": "البريد الإلكتروني",
+		"xLabel": "X",
+		"reportIssue": "الإبلاغ عن مشكلة / إرسال ملاحظات",
+		"openFailed": "فشل فتح الرابط."
+	},
+	"keyboardShortcuts": {
+		"trigger": "الاختصارات",
+		"title": "اختصارات لوحة المفاتيح",
+		"description": "مرجع سريع لعناصر التحكم في المخطط الزمني والمحرر.",
+		"customizeTooltip": "تخصيص الاختصارات",
+		"customize": "تخصيص",
+		"panTimeline": "تحريك المخطط الزمني",
+		"zoomTimeline": "تكبير/تصغير المخطط الزمني",
+		"cycleAnnotations": "التنقل بين التعليقات التوضيحية",
+		"tab": "Tab"
+	},
+	"actions": {
+		"saveAgain": "حفظ مرة أخرى",
+		"showInFolder": "عرض في المجلد"
+	},
+	"project": {
+		"untitled": "بدون عنوان",
+		"unsavedChangesTitle": "تغييرات غير محفوظة",
+		"unsavedChangesDescription": "هل تريد حفظ مشروعك الحالي قبل أن تقوم بـ {{action}}؟",
+		"discardChanges": "تجاهل التغييرات",
+		"saveProject": "حفظ المشروع"
+	},
+	"exportTips": {
+		"autoZooms": "تلميح: أوقف التكبير التلقائي من الإعدادات",
+		"experimentalBuilds": "تلميح: جرّب الإصدارات التجريبية بتفعيل خيار الوصول في الإعدادات",
+		"cursorAppearance": "تلميح: يمكنك تخصيص مظهر المؤشر"
+	},
+	"account": { "title": "الحساب", "comingSoon": "الحساب قريباً" },
+	"nativeCaptureUnavailable": {
+		"title": "كل شيء يعمل بشكل جيد، لكن لن نتمكن من عرض تراكب المؤشر المتحرك.",
+		"description": "جهازك لا يدعم الالتقاط الأصلي. قد يعود ذلك لعدة أسباب نعمل على تحديدها. هذا لا يعطل Recordly، لكنه يجعل تنعيم حركة المؤشر غير متاح.",
+		"confirm": "حسناً"
+	},
+	"exportStatus": {
+		"exporting": "جارٍ التصدير",
+		"renderingFile": "جارٍ تصيير الملف الخاص بك.",
+		"preparing": "جارٍ تجهيز التصدير...",
+		"completePercent": "اكتمل بنسبة {{percent}}%",
+		"issue": "مشكلة في التصدير",
+		"complete": "اكتمل التصدير",
+		"savedSuccessfully": "تم حفظ ملفك بنجاح."
+	},
+	"export": {
+		"processingAudioEdits": "جارٍ معالجة الصوت مع تعديلات السرعة والتراكب"
+	},
+	"toolbar": {
+		"addLayer": "إضافة طبقة",
+		"splitClip": "تقسيم المقطع (C)"
+	},
+	"timeline": {
+		"expand": "توسيع المخطط الزمني",
+		"collapse": "طي المخطط الزمني"
+	},
+	"openRecordingsFolder": "فتح مجلد التسجيلات"
+}

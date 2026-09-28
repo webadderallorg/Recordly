@@ -1,0 +1,26 @@
+{
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "محرر Recordly",
+		"subtitle": "تسجيل الشاشة وتعديل الفيديو",
+		"language": "اللغة",
+		"manageRecordings": "فتح مجلد التسجيلات"
+	},
+	"actions": {
+		"cancel": "إلغاء",
+		"close": "إغلاق",
+		"export": "تصدير",
+		"load": "تحميل",
+		"redo": "إعادة",
+		"reset": "إعادة ضبط",
+		"save": "حفظ",
+		"undo": "تراجع",
+		"delete": "حذف",
+		"done": "تم"
+	},
+	"errors": {
+		"invalidFileType": "نوع الملف غير صالح",
+		"failedToUploadImage": "فشل تحميل الصورة",
+		"fileReadError": "حدث خطأ أثناء قراءة الملف."
+	}
+}
