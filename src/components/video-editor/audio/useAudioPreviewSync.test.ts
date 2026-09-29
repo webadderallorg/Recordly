@@ -119,6 +119,7 @@ describe("source preview playback ownership", () => {
 		seeking,
 		wasPlaying,
 	}) => {
+		const seekedListeners = new Set<() => void>();
 		const audio = {
 			src: "",
 			dataset: {},
@@ -135,6 +136,12 @@ describe("source preview playback ownership", () => {
 			play: vi.fn().mockImplementation(() => {
 				audio.paused = false;
 				return Promise.resolve();
+			}),
+			addEventListener: vi.fn((event: string, listener: () => void) => {
+				if (event === "seeked") seekedListeners.add(listener);
+			}),
+			removeEventListener: vi.fn((event: string, listener: () => void) => {
+				if (event === "seeked") seekedListeners.delete(listener);
 			}),
 		};
 		vi.stubGlobal("Audio", function () {
@@ -172,15 +179,17 @@ describe("source preview playback ownership", () => {
 		expect(harness.loaded).toHaveBeenCalledOnce();
 		expect(audio.play).not.toHaveBeenCalled();
 		if (wasPlaying) audio.paused = false;
-		harness.effects.at(-1)?.();
+		const cleanup = harness.effects.at(-1)?.();
 		await Promise.resolve();
 		expect(audio.play).toHaveBeenCalledTimes(plays ? 1 : 0);
 		if (wasPlaying) expect(audio.pause).toHaveBeenCalled();
 		if (seeking) {
 			audio.seeking = false;
-			harness.effects.at(-1)?.();
+			for (const listener of seekedListeners) listener();
 			await Promise.resolve();
 			expect(audio.play).toHaveBeenCalledOnce();
+			if (typeof cleanup === "function") cleanup();
+			expect(seekedListeners.size).toBe(0);
 		}
 		if (plays) {
 			expect(audio.currentTime).toBeCloseTo(time - delay / 1000);

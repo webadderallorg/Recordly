@@ -377,6 +377,7 @@ export function useAudioPreviewSync({
 			return;
 		}
 		let cancelled = false;
+		const seekedListeners: Array<{ audio: HTMLAudioElement; resume: () => void }> = [];
 		// A newly resolved source must pass the same playback checks as timeline updates.
 		void sourceLoadVersion;
 
@@ -453,10 +454,15 @@ export function useAudioPreviewSync({
 
 			const atEnd = audioDuration !== null && targetTime >= audioDuration;
 			if (isPlaying && !isCurrentClipMuted && !beforeAudioStart && !atEnd) {
-				void ensureSourceAudioRunning().then(() => {
-					if (!cancelled && audio.paused && !audio.seeking)
-						audio.play().catch(() => undefined);
-				});
+				const resume = () => {
+					void ensureSourceAudioRunning().then(() => {
+						if (!cancelled && audio.paused && !audio.seeking)
+							audio.play().catch(() => undefined);
+					});
+				};
+				audio.addEventListener("seeked", resume);
+				seekedListeners.push({ audio, resume });
+				resume();
 			} else if (!audio.paused) {
 				audio.pause();
 			}
@@ -465,6 +471,9 @@ export function useAudioPreviewSync({
 		lastSourceAudioSyncTimeRef.current = currentTime;
 		return () => {
 			cancelled = true;
+			for (const { audio, resume } of seekedListeners) {
+				audio.removeEventListener("seeked", resume);
+			}
 		};
 	}, [
 		sourceLoadVersion,
