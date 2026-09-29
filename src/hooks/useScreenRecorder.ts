@@ -38,6 +38,24 @@ const WEBCAM_HEIGHT = 720;
 const WEBCAM_FRAME_RATE = 30;
 const WEBCAM_SUFFIX = "-webcam";
 
+/** Resolves with the wall-clock time of the recorder's `start` event, or null on timeout. */
+export function waitForRecorderStart(
+	recorder: Pick<MediaRecorder, "addEventListener" | "removeEventListener">,
+	timeoutMs = 2000,
+): Promise<number | null> {
+	return new Promise((resolve) => {
+		const onStart = () => {
+			clearTimeout(timer);
+			resolve(Date.now());
+		};
+		const timer = setTimeout(() => {
+			recorder.removeEventListener("start", onStart);
+			resolve(null);
+		}, timeoutMs);
+		recorder.addEventListener("start", onStart, { once: true });
+	});
+}
+
 async function waitForFirstVideoFrame(mediaStream: MediaStream, timeoutMs = 3000) {
 	const video = document.createElement("video");
 	video.muted = true;
@@ -2259,24 +2277,47 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			recorder.onerror = () => {
 				setRecording(false);
 			};
-			// PipeWire/portal streams can take ~1s to deliver their first frame. The cursor
-			// telemetry clock starts with the recorder, so wait for real frames first or the
-			// cursor overlay ends up that far behind the video.
+			// PipeWire/portal streams can take ~1s to deliver their first frame, so don't
+			// start the recorder (or any clock) before real frames are flowing.
 			await waitForFirstVideoFrame(stream.current);
-			const mainStartedAt = Date.now();
+			if (startWasCancelled()) {
+				mediaRecorder.current = null;
+				await stopWebcamRecorder();
+				cleanupCapturedMedia();
+				return;
+			}
+
+			// The encoder starts a few hundred ms after start() on Linux portal capture.
+			// Anchor the duration clock, the webcam offset and the cursor telemetry to the
+			// same instant, when the recorder reports it has actually started.
+			const recorderStartedAt = waitForRecorderStart(recorder);
+			// Provisional anchor in case the recording is stopped before `start` fires.
+			resetRecordingClock(Date.now());
+			recorder.start(RECORDER_TIMESLICE_MS);
+			const startedAt = await recorderStartedAt;
+			if (startWasCancelled()) {
+				// A stop that ran during the wait has already finalized the recorder.
+				// Otherwise nothing has been saved yet: discard the capture.
+				if (recorder.state !== "inactive") {
+					recorder.ondataavailable = null;
+					chunks.current = [];
+					recorder.stop();
+					mediaRecorder.current = null;
+					await stopWebcamRecorder();
+					cleanupCapturedMedia();
+				}
+				return;
+			}
+			if (startedAt === null && recorder.state !== "recording") {
+				throw new Error("The screen recorder did not start.");
+			}
+
+			const mainStartedAt = startedAt ?? Date.now();
 			beginWebcamCapture();
 			resetRecordingClock(mainStartedAt);
 			webcamTimeOffsetMs.current =
 				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
-			// Start the cursor telemetry clock when the encoder actually starts, not when
-			// start() is requested; on Linux portal capture the gap is several hundred ms.
-			const recorderStarted = new Promise<void>((resolve) => {
-				recorder.onstart = () => resolve();
-				setTimeout(resolve, 2000);
-			});
-			recorder.start(RECORDER_TIMESLICE_MS);
 			setRecording(true);
-			await recorderStarted;
 			try {
 				await window.electronAPI?.setRecordingState(true);
 			} catch (stateError) {
