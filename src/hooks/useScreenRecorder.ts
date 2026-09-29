@@ -37,6 +37,24 @@ const WEBCAM_WIDTH = 1280;
 const WEBCAM_HEIGHT = 720;
 const WEBCAM_FRAME_RATE = 30;
 const WEBCAM_SUFFIX = "-webcam";
+
+async function waitForFirstVideoFrame(mediaStream: MediaStream, timeoutMs = 3000) {
+	const video = document.createElement("video");
+	video.muted = true;
+	video.srcObject = mediaStream;
+	try {
+		await Promise.race([
+			new Promise<void>((resolve) => {
+				video.requestVideoFrameCallback(() => resolve());
+				void video.play().catch(() => resolve());
+			}),
+			new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+		]);
+	} finally {
+		video.pause();
+		video.srcObject = null;
+	}
+}
 const MICROPHONE_FALLBACK_ERROR_TOAST_ID = "recording-microphone-fallback-error";
 const MICROPHONE_SIDECAR_ERROR_TOAST_ID = "recording-microphone-sidecar-error";
 export type BrowserMicrophoneProfile =
@@ -2241,13 +2259,24 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			recorder.onerror = () => {
 				setRecording(false);
 			};
+			// PipeWire/portal streams can take ~1s to deliver their first frame. The cursor
+			// telemetry clock starts with the recorder, so wait for real frames first or the
+			// cursor overlay ends up that far behind the video.
+			await waitForFirstVideoFrame(stream.current);
 			const mainStartedAt = Date.now();
 			beginWebcamCapture();
 			resetRecordingClock(mainStartedAt);
 			webcamTimeOffsetMs.current =
 				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
+			// Start the cursor telemetry clock when the encoder actually starts, not when
+			// start() is requested; on Linux portal capture the gap is several hundred ms.
+			const recorderStarted = new Promise<void>((resolve) => {
+				recorder.onstart = () => resolve();
+				setTimeout(resolve, 2000);
+			});
 			recorder.start(RECORDER_TIMESLICE_MS);
 			setRecording(true);
+			await recorderStarted;
 			try {
 				await window.electronAPI?.setRecordingState(true);
 			} catch (stateError) {
