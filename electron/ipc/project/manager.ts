@@ -19,6 +19,7 @@ import {
 import {
 	approvedLocalReadPaths,
 	currentProjectPath,
+	customRecordingsDir,
 	setCurrentProjectPath,
 	setCurrentRecordingSession,
 	setCurrentVideoPath,
@@ -46,6 +47,11 @@ export function getAssetRootPath() {
 export function isPathInsideDirectory(candidatePath: string, directoryPath: string) {
 	const normalizedCandidatePath = normalizePath(candidatePath);
 	const normalizedDirectoryPath = normalizePath(directoryPath);
+	if (process.platform === "win32") {
+		const cLower = normalizedCandidatePath.toLowerCase();
+		const dLower = normalizedDirectoryPath.toLowerCase();
+		return cLower === dLower || cLower.startsWith(`${dLower}${path.sep}`);
+	}
 	return (
 		normalizedCandidatePath === normalizedDirectoryPath ||
 		normalizedCandidatePath.startsWith(`${normalizedDirectoryPath}${path.sep}`)
@@ -55,6 +61,7 @@ export function isPathInsideDirectory(candidatePath: string, directoryPath: stri
 export function isAllowedLocalReadPath(candidatePath: string) {
 	const allowedPrefixes = [
 		RECORDINGS_DIR,
+		...(customRecordingsDir ? [customRecordingsDir] : []),
 		USER_DATA_PATH,
 		getAssetRootPath(),
 		app.getPath("temp"),

@@ -1,0 +1,24 @@
+FROM node:22-slim AS base
+
+# Install git and native build tools required for tree-sitter grammars
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    ca-certificates \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/* \
+    && git config --global --add safe.directory '*'
+
+RUN npm install -g @nanonets/graft
+
+WORKDIR /workspace
+
+# Stage: Builder that runs graft build and exports interactive visualizer HTML
+FROM base AS builder
+COPY . .
+RUN graft build && graft viz --export /workspace/graft/viz --no-open
+
+# Stage: Export graft graph and visualizer back to the local host
+FROM scratch AS export
+COPY --from=builder /workspace/graft /graft

@@ -761,6 +761,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		whisperExecutablePath?: string;
 		whisperModelPath: string;
 		language?: string;
+		provider?: string;
+		providerApiKey?: string;
+		providerModel?: string;
+		providerBaseUrl?: string | null;
+		providerApiMode?: "audio-transcription" | "chat-multimodal";
 	}) => {
 		return ipcRenderer.invoke("generate-auto-captions", options);
 	},
@@ -1054,6 +1059,32 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			success?: boolean;
 		};
 		return result?.success === true;
+	},
+	encryptSecret: (plaintext: string) => {
+		return ipcRenderer.invoke("encrypt-secret", plaintext) as Promise<{
+			success: boolean;
+			encrypted?: string | null;
+			error?: string;
+		}>;
+	},
+	decryptSecret: (encrypted: string) => {
+		return ipcRenderer.invoke("decrypt-secret", encrypted) as Promise<{
+			success: boolean;
+			decrypted?: string | null;
+			error?: string;
+		}>;
+	},
+	validateLlmProvider: (config: {
+		provider: string;
+		apiKey?: string;
+		model?: string;
+		baseUrl?: string | null;
+	}) => {
+		return ipcRenderer.invoke("validate-llm-provider", config) as Promise<{
+			success: boolean;
+			valid: boolean;
+			error?: string;
+		}>;
 	},
 	setHasUnsavedChanges: (hasChanges: boolean) => {
 		ipcRenderer.send("set-has-unsaved-changes", hasChanges);

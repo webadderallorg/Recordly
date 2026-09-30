@@ -230,6 +230,11 @@ export function registerCaptionHandlers() {
 				whisperExecutablePath: string;
 				whisperModelPath: string;
 				language?: string;
+				provider?: string;
+				providerApiKey?: string;
+				providerModel?: string;
+				providerBaseUrl?: string | null;
+				providerApiMode?: "audio-transcription" | "chat-multimodal";
 			},
 		) => {
 			try {

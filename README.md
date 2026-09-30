@@ -94,6 +94,14 @@ Browse and install community extensions from the [Recordly Marketplace](https://
 - Crop the recorded frame
 - Save and reopen projects with editor state preserved
 
+### Auto-Captions & AI Transcription
+
+- **Multiple AI Providers:** Local Whisper (offline), OpenAI Whisper, and Custom LLM providers (Gemini, GPT-4o, Claude, Ollama, Groq, Faster-Whisper).
+- **Flexible Protocols:** Supports both dedicated audio endpoints (`/audio/transcriptions`) and multimodal chat models (`/chat/completions`).
+- **Encrypted Credential Storage:** API keys securely stored via OS-level native encryption (`safeStorage`).
+- **Full Bidirectional (RTL / LTR) Support:** Native rendering for Arabic, Hebrew, and mixed English/Arabic scripts with precise word-level synchronization.
+- **Interactive Caption Editor:** Split, merge, retime, and style timed subtitles with custom fonts, colors, and animations.
+
 ### Cursor Controls
 
 - Show or hide the rendered cursor overlay

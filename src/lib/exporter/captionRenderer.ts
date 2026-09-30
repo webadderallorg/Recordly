@@ -1,4 +1,5 @@
 import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
+import { isRtlText } from "@/lib/bidi";
 import {
 	CAPTION_FONT_WEIGHT,
 	CAPTION_LINE_HEIGHT,
@@ -76,12 +77,15 @@ export function renderCaptions(
 	});
 	ctx.fill();
 
-	ctx.textAlign = "left";
 	ctx.textBaseline = "middle";
 
 	activeCaptionLayout.visibleLines.forEach((line, lineIndex) => {
-		let cursorX = -line.width / 2;
+		const lineText = line.words.map((w) => w.text).join(" ");
+		const isRtl = isRtlText(lineText);
+		let cursorX = isRtl ? line.width / 2 : -line.width / 2;
 		const lineY = -boxHeight / 2 + paddingY + lineHeight * lineIndex + lineHeight / 2;
+
+		ctx.textAlign = isRtl ? "right" : "left";
 
 		line.words.forEach((word) => {
 			const segmentText = `${word.leadingSpace ? " " : ""}${word.text}`;
@@ -100,7 +104,11 @@ export function renderCaptions(
 			ctx.fillText(segmentText, 0, 0);
 			ctx.restore();
 
-			cursorX += segmentWidth;
+			if (isRtl) {
+				cursorX -= segmentWidth;
+			} else {
+				cursorX += segmentWidth;
+			}
 		});
 	});
 

@@ -33,6 +33,7 @@ import { type AspectRatio, formatAspectRatioForCSS } from "@/utils/aspectRatioUt
 import { AnnotationOverlay } from "./AnnotationOverlay";
 import { type CaptionEditTarget, normalizeCaptionEditText } from "./captionEditing";
 import { buildActiveCaptionLayout } from "./captionLayout";
+import { isRtlText } from "@/lib/bidi";
 import {
 	CAPTION_FONT_WEIGHT,
 	CAPTION_LINE_HEIGHT,
@@ -2667,41 +2668,46 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 												}}
 											/>
 										) : (
-											activeCaptionLayout.visibleLines.map((line) => (
-												<div
-													key={`${activeCaptionLayout.blockKey}-${line.startWordIndex}`}
-													style={{
-														display: "flex",
-														justifyContent: "center",
-														flexWrap: "nowrap",
-														whiteSpace: "nowrap",
-													}}
-												>
-													{line.words.map((word) => {
-														const visualState =
-															getCaptionWordVisualState(
-																activeCaptionLayout.hasWordTimings,
-																word.state,
-															);
+											activeCaptionLayout.visibleLines.map((line) => {
+												const lineText = line.words.map((w) => w.text).join(" ");
+												const isRtl = isRtlText(lineText);
 
-														return (
-															<span
-																key={`${activeCaptionLayout.blockKey}-${word.index}`}
-																style={{
-																	display: "inline-block",
-																	whiteSpace: "pre",
-																	color: visualState.isInactive
-																		? autoCaptionSettings.inactiveTextColor
-																		: autoCaptionSettings.textColor,
-																	opacity: visualState.opacity,
-																}}
-															>
-																{`${word.leadingSpace ? " " : ""}${word.text}`}
-															</span>
-														);
-													})}
-												</div>
-											))
+												return (
+													<div
+														key={`${activeCaptionLayout.blockKey}-${line.startWordIndex}`}
+														dir={isRtl ? "rtl" : "ltr"}
+														style={{
+															textAlign: "center",
+															whiteSpace: "nowrap",
+															direction: isRtl ? "rtl" : "ltr",
+														}}
+													>
+														{line.words.map((word) => {
+															const visualState =
+																getCaptionWordVisualState(
+																	activeCaptionLayout.hasWordTimings,
+																	word.state,
+																);
+
+															return (
+																<span
+																	key={`${activeCaptionLayout.blockKey}-${word.index}`}
+																	style={{
+																		display: "inline",
+																		whiteSpace: "pre",
+																		color: visualState.isInactive
+																			? autoCaptionSettings.inactiveTextColor
+																			: autoCaptionSettings.textColor,
+																		opacity: visualState.opacity,
+																	}}
+																>
+																	{`${word.leadingSpace ? " " : ""}${word.text}`}
+																</span>
+															);
+														})}
+													</div>
+												);
+											})
 										)}
 									</div>
 								</div>

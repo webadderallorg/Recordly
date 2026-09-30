@@ -1001,6 +1001,7 @@ export function createEditorWindow(): BrowserWindow {
 
 	win.once("ready-to-show", () => {
 		console.log(`[PERF:MAIN] Editor Window: ready-to-show in ${Date.now() - perfStart}ms`);
+		win.maximize();
 		win.show();
 	});
 
@@ -1010,6 +1011,7 @@ export function createEditorWindow(): BrowserWindow {
 		// Fallback for Linux/Wayland where `ready-to-show` may not fire reliably.
 		if (!win.isDestroyed() && !win.isVisible()) {
 			console.log("[editor-window] forcing show after did-finish-load");
+			win.maximize();
 			win.show();
 		}
 	});

@@ -1,6 +1,6 @@
 import { createCountdownController } from "../../countdownController";
 import fs from "node:fs/promises";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, safeStorage } from "electron";
 import { hasAppSetting, readAppSettingsStore, writeAppSettingsStore } from "../../appSettingsStore";
 import { hideCursor } from "../../cursorHider";
 import { createCountdownWindow } from "../../windows";
@@ -16,6 +16,7 @@ import {
 	setCountdownRemaining,
 } from "../state";
 import { parseJsonWithByteOrderMark } from "../utils";
+import { createOpenAiWhisperProvider } from "../providers/openaiWhisperProvider";
 
 const BROWSER_MICROPHONE_PROFILE_ENV = "RECORDLY_BROWSER_MIC_PROFILE";
 const DEFAULT_BROWSER_MICROPHONE_PROFILE = "processed";
@@ -210,4 +211,91 @@ export function registerSettingsHandlers() {
 			seconds: countdownInProgress ? countdownRemaining : null,
 		};
 	});
+
+	// ---------------------------------------------------------------------------
+	// Safe Storage — encrypt/decrypt secrets (API keys) in the main process.
+	// ---------------------------------------------------------------------------
+	ipcMain.handle("encrypt-secret", (_, plaintext: unknown) => {
+		if (typeof plaintext !== "string") {
+			return { success: false, encrypted: null, error: "Value must be a string" };
+		}
+		try {
+			if (!safeStorage.isEncryptionAvailable()) {
+				// Fallback: store as-is (base64 obfuscation only — not secure,
+				// but allows the feature to work on platforms without a keychain).
+				return {
+					success: true,
+					encrypted: Buffer.from(plaintext, "utf8").toString("base64"),
+				};
+			}
+			const encrypted = safeStorage.encryptString(plaintext).toString("base64");
+			return { success: true, encrypted };
+		} catch (error) {
+			return { success: false, encrypted: null, error: String(error) };
+		}
+	});
+
+	ipcMain.handle("decrypt-secret", (_, encrypted: unknown) => {
+		if (typeof encrypted !== "string") {
+			return { success: false, decrypted: null, error: "Value must be a string" };
+		}
+		try {
+			const buffer = Buffer.from(encrypted, "base64");
+			if (!safeStorage.isEncryptionAvailable()) {
+				// Reverse fallback from above.
+				return { success: true, decrypted: buffer.toString("utf8") };
+			}
+			const decrypted = safeStorage.decryptString(buffer);
+			return { success: true, decrypted };
+		} catch (error) {
+			return { success: false, decrypted: null, error: String(error) };
+		}
+	});
+
+	ipcMain.handle(
+		"validate-llm-provider",
+		async (
+			_,
+			config: {
+				provider: string;
+				apiKey?: string;
+				model?: string;
+				baseUrl?: string | null;
+			},
+		) => {
+			try {
+				if (config.provider === "whisper-local") {
+					return { success: true, valid: true };
+				}
+
+				const provider = createOpenAiWhisperProvider({
+					apiKey: config.apiKey || "",
+					model: config.model,
+					baseUrl: config.baseUrl,
+				});
+
+				if (provider.validateConfig) {
+					const result = await provider.validateConfig({
+						provider: config.provider,
+						apiKey: config.apiKey || "",
+						model: config.model || "whisper-1",
+						baseUrl: config.baseUrl || null,
+					});
+					return {
+						success: true,
+						valid: result.valid,
+						error: result.error,
+					};
+				}
+
+				return { success: true, valid: true };
+			} catch (error) {
+				return {
+					success: false,
+					valid: false,
+					error: error instanceof Error ? error.message : String(error),
+				};
+			}
+		},
+	);
 }

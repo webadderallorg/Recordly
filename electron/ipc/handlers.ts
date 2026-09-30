@@ -9,6 +9,7 @@ import { registerProjectHandlers } from "./register/project";
 import { registerRecordingHandlers } from "./register/recording";
 import { registerSettingsHandlers } from "./register/settings";
 import { registerSourceHandlers } from "./register/sources";
+import { registerTranscriptionProviders } from "./providers/setup";
 import {
 	selectedSource,
 	setNativeScreenRecordingActive,
@@ -69,6 +70,7 @@ export function registerIpcHandlers(
 	registerAnnouncementHandlers();
 	registerAssetHandlers();
 	registerExportHandlers();
+	registerTranscriptionProviders();
 	registerCaptionHandlers();
 	registerCloudShareHandlers();
 	registerProjectHandlers();

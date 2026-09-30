@@ -21,6 +21,13 @@ import enLaunch from "@/i18n/locales/en/launch.json";
 import enSettings from "@/i18n/locales/en/settings.json";
 import enShortcuts from "@/i18n/locales/en/shortcuts.json";
 import enTimeline from "@/i18n/locales/en/timeline.json";
+import arCommon from "@/i18n/locales/ar/common.json";
+import arDialogs from "@/i18n/locales/ar/dialogs.json";
+import arEditor from "@/i18n/locales/ar/editor.json";
+import arLaunch from "@/i18n/locales/ar/launch.json";
+import arSettings from "@/i18n/locales/ar/settings.json";
+import arShortcuts from "@/i18n/locales/ar/shortcuts.json";
+import arTimeline from "@/i18n/locales/ar/timeline.json";
 import esCommon from "@/i18n/locales/es/common.json";
 import esDialogs from "@/i18n/locales/es/dialogs.json";
 import esEditor from "@/i18n/locales/es/editor.json";
@@ -98,6 +105,15 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		settings: enSettings,
 		dialogs: enDialogs,
 		shortcuts: enShortcuts,
+	},
+	ar: {
+		common: arCommon,
+		launch: arLaunch,
+		editor: arEditor,
+		timeline: arTimeline,
+		settings: arSettings,
+		dialogs: arDialogs,
+		shortcuts: arShortcuts,
 	},
 	es: {
 		common: esCommon,
