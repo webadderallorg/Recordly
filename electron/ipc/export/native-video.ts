@@ -5143,6 +5143,8 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 					nativeProcessPriorityBoosted: summary.nativeProcessPriorityBoosted,
 				};
 			}
+			const diagStartedAt = getNowMs();
+			console.info(formatLogTs(), "[PERF:MAIN] child-close diagnostics: STARTED");
 			await Promise.allSettled([
 				fs.writeFile(path.join(chunkDirectory, "nvidia-cuda-export.stdout.json"), stdout),
 				fs.writeFile(path.join(chunkDirectory, "nvidia-cuda-export.stderr.log"), stderr),
@@ -5165,6 +5167,9 @@ async function runExperimentalNvidiaCudaStaticLayoutExport(
 				stdout,
 				summary,
 				timedOut: stallTimedOut,
+			});
+			console.info(formatLogTs(), "[PERF:MAIN] child-close diagnostics: COMPLETED", {
+				elapsedMs: getNowMs() - diagStartedAt,
 			});
 			if (code !== 0 || !summary?.success) {
 				const suffix = signal ? ` (signal ${signal})` : "";
@@ -5667,11 +5672,16 @@ export async function exportNativeStaticLayoutVideo(
 		chunks: [],
 	};
 	const validateRenderedVideoOutput = async () => {
+		const validateStartedAt = getNowMs();
+		console.info(formatLogTs(), "[PERF:MAIN] validateRenderedVideoOutput: STARTED");
 		await validateNativeVideoOutputFile(ffprobePath, videoOnlyPath, {
 			durationSec: options.durationSec,
 			targetFrames: Math.ceil(options.durationSec * options.frameRate),
 		});
 		videoOutputValidated = true;
+		console.info(formatLogTs(), "[PERF:MAIN] validateRenderedVideoOutput: COMPLETED", {
+			elapsedMs: getNowMs() - validateStartedAt,
+		});
 	};
 
 	try {
@@ -6617,9 +6627,50 @@ export async function exportNativeStaticLayoutVideo(
 		throw error;
 	} finally {
 		nativeStaticLayoutExportSessions.delete(sessionId);
-		await fs.rm(chunkDirectory, { force: true, recursive: true }).catch(() => undefined);
+		// Fire-and-forget: chunkDirectory can contain multi-GB raw-RGBA overlay
+		// sidecars; recursive rm on Windows can take many seconds. Do not block
+		// IPC resolution on cleanup.
+		const cleanupStartedAt = getNowMs();
+		console.info(formatLogTs(), "[PERF:MAIN] finally-block cleanup: STARTED");
+		fs.rm(chunkDirectory, { force: true, recursive: true })
+			.then(() => {
+				console.info(
+					formatLogTs(),
+					"[PERF:MAIN] finally-block cleanup: chunkDirectory removed",
+					{
+						elapsedMs: getNowMs() - cleanupStartedAt,
+					},
+				);
+			})
+			.catch((err: unknown) => {
+				console.warn(
+					formatLogTs(),
+					"[PERF:MAIN] finally-block cleanup: chunkDirectory removal failed",
+					{
+						error: String(err),
+					},
+				);
+			});
 		if (outputPathToKeep !== videoOnlyPath) {
-			await removeTemporaryExportFile(videoOnlyPath);
+			removeTemporaryExportFile(videoOnlyPath)
+				.then(() => {
+					console.info(
+						formatLogTs(),
+						"[PERF:MAIN] finally-block cleanup: videoOnlyPath removed",
+						{
+							elapsedMs: getNowMs() - cleanupStartedAt,
+						},
+					);
+				})
+				.catch((err: unknown) => {
+					console.warn(
+						formatLogTs(),
+						"[PERF:MAIN] finally-block cleanup: videoOnlyPath removal failed",
+						{
+							error: String(err),
+						},
+					);
+				});
 		}
 	}
 }
@@ -6961,15 +7012,46 @@ export async function muxNativeVideoExportAudio(
 			tempVideoBytes: metrics.tempVideoBytes,
 			muxedVideoBytes: metrics.muxedVideoBytes,
 		});
-		await removeTemporaryExportFile(videoPath);
+		// Fire-and-forget: the mux output is already written to outputPath (a
+		// separate file); removing the input videoPath does not gate correctness.
+		const muxCleanupStartedAt = getNowMs();
+		console.info(formatLogTs(), "[PERF:MAIN] mux cleanup: videoPath removal STARTED");
+		removeTemporaryExportFile(videoPath)
+			.then(() => {
+				console.info(formatLogTs(), "[PERF:MAIN] mux cleanup: videoPath removed", {
+					elapsedMs: getNowMs() - muxCleanupStartedAt,
+				});
+			})
+			.catch((err: unknown) => {
+				console.warn(formatLogTs(), "[PERF:MAIN] mux cleanup: videoPath removal failed", {
+					error: String(err),
+				});
+			});
 		return {
 			outputPath,
 			metrics,
 		};
 	} finally {
-		await Promise.allSettled(
+		// Fire-and-forget: temp audio artifacts are no longer needed after mux.
+		const tempCleanupStartedAt = getNowMs();
+		console.info(formatLogTs(), "[PERF:MAIN] mux cleanup: temp artifacts STARTED");
+		Promise.allSettled(
 			tempArtifacts.map((artifactPath) => removeTemporaryExportFile(artifactPath)),
-		);
+		)
+			.then(() => {
+				console.info(formatLogTs(), "[PERF:MAIN] mux cleanup: temp artifacts removed", {
+					elapsedMs: getNowMs() - tempCleanupStartedAt,
+				});
+			})
+			.catch((err: unknown) => {
+				console.warn(
+					formatLogTs(),
+					"[PERF:MAIN] mux cleanup: temp artifacts removal failed",
+					{
+						error: String(err),
+					},
+				);
+			});
 	}
 }
 

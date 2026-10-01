@@ -62,7 +62,6 @@ const TEST_EXPANSION = {
 function createMockRenderer(overrides: Partial<CursorSpriteRenderer> = {}): CursorSpriteRenderer {
 	return {
 		render: vi.fn(),
-		clear: vi.fn(),
 		extract: {
 			pixels: vi.fn(),
 		},
@@ -213,14 +212,13 @@ describe("CursorSpriteCapturer", () => {
 
 		expect(result.captured).toBe(true);
 		expect(result.position).toEqual({ x: 80, y: 80 });
-		// The cursor is rendered into the bounded target then read back.
-		expect(renderer.clear).toHaveBeenCalledTimes(1);
+		// The cursor is rendered into the bounded target (clear: true) then read back.
 		expect(renderer.render).toHaveBeenCalledTimes(1);
 		expect(renderer.extract.pixels).toHaveBeenCalledTimes(1);
 		const renderCall = (renderer.render as unknown as ReturnType<typeof vi.fn>).mock
 			.calls[0][0];
 		expect(renderCall.container).toBe(container);
-		expect(renderCall.clear).toBe(false);
+		expect(renderCall.clear).toBe(true);
 		expect(renderCall.transform.tx).toBe(-80);
 		expect(renderCall.transform.ty).toBe(-80);
 
@@ -252,7 +250,6 @@ describe("CursorSpriteCapturer", () => {
 		const second = capturer.capture(bounds, "sig-v1");
 		expect(second.captured).toBe(true);
 		expect(second.position).toEqual({ x: 80, y: 80 });
-		expect(renderer.clear).toHaveBeenCalledTimes(1);
 		expect(renderer.render).toHaveBeenCalledTimes(1);
 		expect(renderer.extract.pixels).toHaveBeenCalledTimes(1);
 
@@ -279,7 +276,6 @@ describe("CursorSpriteCapturer", () => {
 		const second = capturer.capture(bounds, "sig-v2");
 
 		expect(second.captured).toBe(true);
-		expect(renderer.clear).toHaveBeenCalledTimes(2);
 		expect(renderer.render).toHaveBeenCalledTimes(2);
 		expect(renderer.extract.pixels).toHaveBeenCalledTimes(2);
 		capturer.destroy();
@@ -294,7 +290,6 @@ describe("CursorSpriteCapturer", () => {
 		capturer.capture({ x: 100, y: 100, width: 10, height: 10 }, "sig-v1");
 		capturer.capture({ x: 120, y: 100, width: 10, height: 10 }, "sig-v1");
 
-		expect(renderer.clear).toHaveBeenCalledTimes(2);
 		expect(renderer.render).toHaveBeenCalledTimes(2);
 		expect(renderer.extract.pixels).toHaveBeenCalledTimes(2);
 		capturer.destroy();
@@ -351,8 +346,8 @@ describe("CursorSpriteCapturer", () => {
 
 		expect(result.captured).toBe(true);
 		expect(capturer.isCursorVisible).toBe(false);
-		// Cleared but never rendered.
-		expect(renderer.clear).toHaveBeenCalledTimes(1);
+		// No render or readback for a hidden cursor; transparent zero placeholder.
+		expect(renderer.extract.pixels).not.toHaveBeenCalled();
 		expect(renderer.render).not.toHaveBeenCalled();
 		expect(capturer.finish()?.frameCount).toBe(1);
 		capturer.destroy();

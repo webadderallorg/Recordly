@@ -2672,7 +2672,9 @@ private:
             }
         }
 
-        for (int slot = 0; slot < kOverlayPrefetchSlots; ++slot) {
+        layer->staticLayer = descriptor.effectiveFrameCount == 1;
+        const int allocatedSlots = layer->staticLayer ? 1 : kOverlayPrefetchSlots;
+        for (int slot = 0; slot < allocatedSlots; ++slot) {
             checkCuda(cudaMalloc(&layer->deviceFrames[slot], layer->frameBytes), "cudaMalloc overlay frame");
             checkCuda(cudaMallocHost(&layer->pinnedFrames[slot], layer->frameBytes), "cudaMallocHost overlay frame");
         }
@@ -2682,7 +2684,6 @@ private:
         // device copy now so beginFrame serves it from slot 0 without a second
         // file read. The ring is keyed by the clamped frame index, which is
         // always 0 for an effectiveFrameCount == 1 layer, so slot 0 stays valid forever.
-        layer->staticLayer = descriptor.effectiveFrameCount == 1;
         layer->blendRegion = fullOverlayBlendRegion(descriptor);
         if (layer->staticLayer) {
             layer->input.seekg(0, std::ios::beg);
@@ -2708,6 +2709,11 @@ private:
                     layer->frameBytes,
                     cudaMemcpyHostToDevice),
                 "cudaMemcpy overlay static frame 0");
+            // Static frames never enter the reader/prefetch path again. Keep
+            // only the resident device copy, not a pinned host frame or three
+            // unused prefetch slots for the rest of the export.
+            checkCuda(cudaFreeHost(layer->pinnedFrames[0]), "cudaFreeHost overlay static staging");
+            layer->pinnedFrames[0] = nullptr;
             layer->loadedSlots[0] = 0;
             layer->slotStates[0] = SlotState::DeviceReady;
         }
@@ -3018,6 +3024,10 @@ public:
         return layers_[index]->tileCanvas;
     }
 
+    OverlayBlendRegion blendRegion(size_t index) const {
+        return layers_[index]->blendRegion;
+    }
+
     // Applies every frame delta with frameIndex <= the clamped logical frame of
     // the output index: bounded payload reads into the pinned staging buffer,
     // then one ordered H2D copy per changed tile on the compositor stream. A
@@ -3041,6 +3051,9 @@ public:
                 changedThisFrame += static_cast<int>(delta.changedTiles.size());
                 uploadDelta(*layer, delta, copyStream);
                 ++layer->nextDeltaIndex;
+            }
+            if (changedThisFrame > 0) {
+                updateBlendRegion(*layer);
             }
             changedTileCount_ += changedThisFrame;
             // Frame 0 is fully defined by the static base (uploaded once at
@@ -3102,7 +3115,58 @@ private:
         unsigned char* tileCanvas = nullptr;
         unsigned char* pinnedStaging = nullptr;
         size_t nextDeltaIndex = 0;
+        std::vector<bool> visibleTiles;
+        OverlayBlendRegion blendRegion;
     };
+
+    // Only inspect payloads already read for initialization or a delta. A
+    // transparent tile may become visible (or clear) on any subsequent delta.
+    // Padded edge pixels are excluded; their alpha is outside the layer.
+    static bool tileHasAlpha(const LoadedLayer& layer, int tileIndex, const unsigned char* rgba) {
+        const auto& d = layer.descriptor;
+        const int tileX = (tileIndex % d.tileColumns) * d.tileSize;
+        const int tileY = (tileIndex / d.tileColumns) * d.tileSize;
+        const int width = std::min(d.tileSize, d.width - tileX);
+        const int height = std::min(d.tileSize, d.height - tileY);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                if (rgba[(y * d.tileSize + x) * 4 + 3] != 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    static void updateBlendRegion(LoadedLayer& layer) {
+        const auto& d = layer.descriptor;
+        int left = d.width;
+        int top = d.height;
+        int right = 0;
+        int bottom = 0;
+        for (int tile = 0; tile < d.tileCount; ++tile) {
+            if (!layer.visibleTiles[tile]) {
+                continue;
+            }
+            const int x = (tile % d.tileColumns) * d.tileSize;
+            const int y = (tile / d.tileColumns) * d.tileSize;
+            left = std::min(left, x);
+            top = std::min(top, y);
+            right = std::max(right, std::min(d.width, x + d.tileSize));
+            bottom = std::max(bottom, std::min(d.height, y + d.tileSize));
+        }
+        if (right <= left || bottom <= top) {
+            layer.blendRegion = {0, 0, 0, 0, true};
+            return;
+        }
+        // Include the UV anchor immediately above/left of a visible tile,
+        // including when the layer origin is odd. One union rectangle keeps
+        // each chroma block single-owned; tile-by-tile launches could blend it
+        // twice at boundaries.
+        left = std::max(0, left - 1);
+        top = std::max(0, top - 1);
+        layer.blendRegion = {left, top, right - left, bottom - top, true};
+    }
 
     static std::unique_ptr<LoadedLayer> loadLayer(
         const TiledOverlayLayerDescriptor& descriptor) {
@@ -3134,27 +3198,28 @@ private:
                 static_cast<size_t>(descriptor.maxDeltaBytes)),
             "cudaMallocHost tiled overlay staging");
 
-        // Static base: read every tile's initial payload once and upload it
-        // synchronously before encoding. One-time cost, not timed (matching the
-        // raw static-layer staging semantics); the tiles stay device-resident.
+        // Assemble the static base in tile order, then upload it once instead
+        // of synchronously uploading hundreds of individual tiles at 4K.
+        // This temporary host canvas is bounded to one layer and freed before
+        // encoding; delta staging retains its existing largest-delta bound.
+        std::vector<unsigned char> initialCanvas(static_cast<size_t>(canvasBytes));
+        layer->visibleTiles.resize(descriptor.tileCount, false);
         for (const auto& record : descriptor.staticTiles) {
+            unsigned char* tile = initialCanvas.data() +
+                static_cast<size_t>(record.tileIndex) * static_cast<size_t>(tileByteSize);
             layer->input.seekg(static_cast<std::streamoff>(record.byteOffset), std::ios::beg);
             layer->input.read(
-                reinterpret_cast<char*>(layer->pinnedStaging),
+                reinterpret_cast<char*>(tile),
                 static_cast<std::streamsize>(kTiledOverlayTileByteSize));
             if (static_cast<int64_t>(layer->input.gcount()) != kTiledOverlayTileByteSize) {
                 fail("Failed to read static tile of tiled overlay layer: " + descriptor.id);
             }
-            checkCuda(
-                cudaMemcpy(
-                    layer->tileCanvas +
-                        static_cast<size_t>(record.tileIndex) *
-                            static_cast<size_t>(kTiledOverlayTileByteSize),
-                    layer->pinnedStaging,
-                    static_cast<size_t>(kTiledOverlayTileByteSize),
-                    cudaMemcpyHostToDevice),
-                "cudaMemcpy tiled overlay static tile");
+            layer->visibleTiles[record.tileIndex] = tileHasAlpha(*layer, record.tileIndex, tile);
         }
+        checkCuda(
+            cudaMemcpy(layer->tileCanvas, initialCanvas.data(), initialCanvas.size(), cudaMemcpyHostToDevice),
+            "cudaMemcpy tiled overlay static canvas");
+        updateBlendRegion(*layer);
         return layer;
     }
 
@@ -3189,6 +3254,8 @@ private:
                     "Failed to read changed tile payload of tiled overlay layer: " +
                     layer.descriptor.id);
             }
+            layer.visibleTiles[record.tileIndex] =
+                tileHasAlpha(layer, record.tileIndex, layer.pinnedStaging + stagingOffset);
             stagingOffset += static_cast<size_t>(kTiledOverlayTileByteSize);
         }
         hostReadUs_ += static_cast<int64_t>(
@@ -3875,11 +3942,12 @@ __device__ __forceinline__ unsigned char temporalAccumulateByte(
 // bounding box maps outside the content rect for every temporal sample, so its
 // per-sample composite value is always the background; the saturating weighted
 // sum of the background is therefore identical for all samples and can be
-// computed once per output frame. The term-for-term math reproduces the
+// cached once per export. The term-for-term math reproduces the
 // replace-then-saturate-accumulate chain of compositeStaticNv12Kernel exactly
 // (same (weight * value + 128) >> 8 per sample, same saturation), including
 // per-sample rounding, so pixels served by this pass are bit-identical to the
-// previous per-sample full-frame composites.
+// previous per-sample full-frame composites. The 256-byte accumulation table
+// pre-evaluates that sum for every possible byte, including rounding.
 __global__ void accumulateBackgroundNv12Kernel(
     unsigned char* dst,
     int dstPitch,
@@ -3890,21 +3958,15 @@ __global__ void accumulateBackgroundNv12Kernel(
     unsigned char backgroundU,
     unsigned char backgroundV,
     const unsigned char* background,
-    const unsigned int* sampleWeights,
-    int sampleCount) {
+    const unsigned char* accumulationLut) {
     const int x = blockIdx.x * blockDim.x + threadIdx.x;
     const int y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (x >= dstWidth || y >= dstHeight || sampleCount <= 0) {
+    if (x >= dstWidth || y >= dstHeight) {
         return;
     }
 
     const unsigned int bgY = background ? background[y * dstWidth + x] : backgroundY;
-    unsigned int yAcc = (sampleWeights[0] * bgY + 128u) >> 8;
-    for (int index = 1; index < sampleCount; ++index) {
-        const unsigned int term = (sampleWeights[index] * bgY + 128u) >> 8;
-        yAcc = min(255u, yAcc + term);
-    }
-    dst[y * dstPitch + x] = static_cast<unsigned char>(yAcc);
+    dst[y * dstPitch + x] = accumulationLut[bgY];
 
     if ((x % 2) == 0 && (y % 2) == 0) {
         unsigned int bgU = backgroundU;
@@ -3914,17 +3976,9 @@ __global__ void accumulateBackgroundNv12Kernel(
             bgU = bgUv[0];
             bgV = bgUv[1];
         }
-        unsigned int uAcc = (sampleWeights[0] * bgU + 128u) >> 8;
-        unsigned int vAcc = (sampleWeights[0] * bgV + 128u) >> 8;
-        for (int index = 1; index < sampleCount; ++index) {
-            const unsigned int uTerm = (sampleWeights[index] * bgU + 128u) >> 8;
-            const unsigned int vTerm = (sampleWeights[index] * bgV + 128u) >> 8;
-            uAcc = min(255u, uAcc + uTerm);
-            vAcc = min(255u, vAcc + vTerm);
-        }
         unsigned char* dstUv = dst + dstChromaOffset + (y / 2) * dstPitch + x;
-        dstUv[0] = static_cast<unsigned char>(uAcc);
-        dstUv[1] = static_cast<unsigned char>(vAcc);
+        dstUv[0] = accumulationLut[bgU];
+        dstUv[1] = accumulationLut[bgV];
     }
 }
 
@@ -4231,9 +4285,8 @@ __global__ void compositeStaticNv12Kernel(
 // Fused constant-transform temporal composition: evaluates the source + layout
 // composite value exactly once per pixel (the same content/bg/shadow selection
 // compositeStaticNv12Kernel makes for the temporal path, where webcam/cursor
-// are applied afterward) and then applies the existing fixed-point weights in
-// order: sample 0 replaces with (w0 * v + 128) >> 8 and later samples
-// saturate-accumulate (w * v + 128) >> 8. This is only launched when the
+// are applied afterward) and looks up the exact fixed-point weighted sum in
+// the sink's 256-byte accumulation table. This is only launched when the
 // stationary shutter-window check proved every sample resolves to the same
 // camera transform (bit-identical scale/x/y), so the per-sample composite value
 // is identical for every sample and the term-for-term math reproduces the
@@ -4273,11 +4326,10 @@ __global__ void compositeStaticStationaryNv12Kernel(
     float zoomScale,
     float zoomX,
     float zoomY,
-    const unsigned int* sampleWeights,
-    int sampleCount) {
+    const unsigned char* accumulationLut) {
     const int localX = blockIdx.x * blockDim.x + threadIdx.x;
     const int localY = blockIdx.y * blockDim.y + threadIdx.y;
-    if (localX >= regionWidth || localY >= regionHeight || sampleCount <= 0) {
+    if (localX >= regionWidth || localY >= regionHeight) {
         return;
     }
     const int x = regionX + localX;
@@ -4326,12 +4378,7 @@ __global__ void compositeStaticStationaryNv12Kernel(
             outY = static_cast<unsigned char>((static_cast<int>(outY) * (100 - darkenPct)) / 100);
         }
     }
-    unsigned int yAcc = (sampleWeights[0] * outY + 128u) >> 8;
-    for (int index = 1; index < sampleCount; ++index) {
-        const unsigned int term = (sampleWeights[index] * outY + 128u) >> 8;
-        yAcc = min(255u, yAcc + term);
-    }
-    dst[y * dstPitch + x] = static_cast<unsigned char>(yAcc);
+    dst[y * dstPitch + x] = accumulationLut[outY];
 
     if ((x % 2) == 0 && (y % 2) == 0) {
         unsigned char* dstUv = dst + dstChromaOffset + (y / 2) * dstPitch + x;
@@ -4368,16 +4415,8 @@ __global__ void compositeStaticStationaryNv12Kernel(
             outU = bgUv[0];
             outV = bgUv[1];
         }
-        unsigned int uAcc = (sampleWeights[0] * outU + 128u) >> 8;
-        unsigned int vAcc = (sampleWeights[0] * outV + 128u) >> 8;
-        for (int index = 1; index < sampleCount; ++index) {
-            const unsigned int uTerm = (sampleWeights[index] * outU + 128u) >> 8;
-            const unsigned int vTerm = (sampleWeights[index] * outV + 128u) >> 8;
-            uAcc = min(255u, uAcc + uTerm);
-            vAcc = min(255u, vAcc + vTerm);
-        }
-        dstUv[0] = static_cast<unsigned char>(uAcc);
-        dstUv[1] = static_cast<unsigned char>(vAcc);
+        dstUv[0] = accumulationLut[outU];
+        dstUv[1] = accumulationLut[outV];
     }
 }
 
@@ -4830,9 +4869,18 @@ __global__ void blendTiledOverlayRgbaNv12Kernel(
     int dstWidth,
     int dstHeight,
     int layerX,
-    int layerY) {
-    const int localX = blockIdx.x * blockDim.x + threadIdx.x;
-    const int localY = blockIdx.y * blockDim.y + threadIdx.y;
+    int layerY,
+    int regionX,
+    int regionY,
+    int regionWidth,
+    int regionHeight) {
+    const int regionLocalX = blockIdx.x * blockDim.x + threadIdx.x;
+    const int regionLocalY = blockIdx.y * blockDim.y + threadIdx.y;
+    if (regionLocalX >= regionWidth || regionLocalY >= regionHeight) {
+        return;
+    }
+    const int localX = regionX + regionLocalX;
+    const int localY = regionY + regionLocalY;
     if (localX >= layerWidth || localY >= layerHeight) {
         return;
     }
@@ -5583,8 +5631,14 @@ public:
                 }
             }
 
+            // A renderer sidecar may contain captions, annotations, or frame
+            // pixels while the cursor itself is owned by the native atlas.  In
+            // that case the sidecar deliberately excludes the cursor, so keep
+            // drawing the atlas after the base composition.  The no-atlas path
+            // remains suppressed for sidecars because those still bake their
+            // own cursor pixels.
             const bool drawCursor = cursorPosition.visible && cursorWidth > 0 && cursorHeight > 0 &&
-                !hasOverlayLayers_;
+                (useCursorAtlas || !hasOverlayLayers_);
             if (drawCursor) {
                 const int cursorPadding = useCursorAtlas ? 4 : 2;
                 const int regionX = std::max(0, cursorX - cursorPadding);
@@ -5814,8 +5868,10 @@ public:
                 }
             }
 
+            // See the fast-ROI branch above: an atlas-backed cursor remains
+            // native-owned even when another overlay sidecar is present.
             const bool drawCursor = cursorPosition.visible && cursorWidth > 0 && cursorHeight > 0 &&
-                !hasOverlayLayers_;
+                (useCursorAtlas || !hasOverlayLayers_);
             if (drawCursor) {
                 const int cursorPadding = useCursorAtlas ? 4 : 2;
                 const int regionX = std::max(0, cursorX - cursorPadding);
@@ -6024,9 +6080,16 @@ public:
                 } else {
                     const size_t layerIndex = static_cast<size_t>(entry.sourceIndex);
                     const auto& layer = tiledOverlaySource_->descriptor(layerIndex);
+                    const auto region = tiledOverlaySource_->blendRegion(layerIndex);
+                    const int64_t fullPixels = static_cast<int64_t>(layer.width) * layer.height;
+                    const int64_t regionPixels = static_cast<int64_t>(region.width) * region.height;
+                    tiledOverlaySkippedPixels_ += fullPixels - regionPixels;
+                    if (regionPixels == 0) {
+                        continue;
+                    }
                     const dim3 tiledGrid(
-                        (layer.width + block.x - 1) / block.x,
-                        (layer.height + block.y - 1) / block.y);
+                        (region.width + block.x - 1) / block.x,
+                        (region.height + block.y - 1) / block.y);
                     blendTiledOverlayRgbaNv12Kernel<<<tiledGrid, block, 0, copyStream_>>>(
                         tiledOverlaySource_->tileCanvasDevicePtr(layerIndex),
                         layer.tileSize,
@@ -6040,7 +6103,11 @@ public:
                         width_,
                         height_,
                         layer.x,
-                        layer.y);
+                        layer.y,
+                        region.x,
+                        region.y,
+                        region.width,
+                        region.height);
                     checkCuda(cudaGetLastError(), "blendTiledOverlayRgbaNv12Kernel");
                 }
             }
@@ -6136,10 +6203,10 @@ public:
             checkCuda(cudaFree(zoomBlurScratch_), "cudaFree zoomBlurScratch");
             zoomBlurScratch_ = nullptr;
         }
-        if (temporalWeightsDevice_) {
-            checkCuda(cudaFree(temporalWeightsDevice_), "cudaFree temporalWeightsDevice");
-            temporalWeightsDevice_ = nullptr;
-            temporalWeightsDeviceCount_ = 0;
+        if (temporalAccumulationLutDevice_) {
+            checkCuda(cudaFree(temporalAccumulationLutDevice_), "cudaFree temporalAccumulationLut");
+            temporalAccumulationLutDevice_ = nullptr;
+            temporalAccumulationLutSampleCount_ = 0;
         }
         if (temporalBgCacheDevice_) {
             checkCuda(cudaFree(temporalBgCacheDevice_), "cudaFree temporalBgCacheDevice");
@@ -6241,6 +6308,10 @@ public:
 
     int tiledOverlayBlendFrames() const {
         return tiledOverlayBlendFrames_;
+    }
+
+    int64_t tiledOverlaySkippedPixels() const {
+        return tiledOverlaySkippedPixels_;
     }
 
     // Tile payloads uploaded from frame deltas (measured; excludes the static
@@ -6478,7 +6549,7 @@ private:
             // transform the original loop used for every sample. The fused
             // kernel reproduces the replace-then-accumulate chain exactly while
             // evaluating source + layout once.
-            ensureTemporalWeightsDevice();
+            ensureTemporalAccumulationLut();
             const bool sampleZoomEnabled = zoomTrack_ && stationaryScale > 0.01;
             compositeStaticStationaryNv12Kernel<<<grid, block, 0, copyStream_>>>(
                 srcFrame,
@@ -6514,8 +6585,7 @@ private:
                 static_cast<float>(stationaryScale),
                 static_cast<float>(stationaryX),
                 static_cast<float>(stationaryY),
-                temporalWeightsDevice_,
-                static_cast<int>(samples.size()));
+                temporalAccumulationLutDevice_);
             checkCuda(cudaGetLastError(), "compositeStaticStationaryNv12Kernel");
             temporalBlurSamplesTotal_ += static_cast<int64_t>(samples.size());
             ++temporalBlurFrames_;
@@ -6682,7 +6752,7 @@ private:
         int regionHeight,
         bool anyContentVisible,
         double outputFrameTimeMs) {
-        ensureTemporalWeightsDevice();
+        ensureTemporalAccumulationLut();
         ensureTemporalBackgroundCache();
         checkCuda(
             cudaMemcpy2DAsync(
@@ -6812,41 +6882,49 @@ private:
             clampByte(layoutOptions_.backgroundU),
             clampByte(layoutOptions_.backgroundV),
             backgroundDevice_,
-            temporalWeightsDevice_,
-            static_cast<int>(temporalSamplePlan_.size()));
+            temporalAccumulationLutDevice_);
         checkCuda(cudaGetLastError(), "accumulateBackgroundNv12Kernel cache build");
         ++temporalBgCacheBuilds_;
     }
 
-    // Uploads the cos-tapered temporal sample weights to a device buffer once;
-    // accumulateBackgroundNv12Kernel needs the whole plan resident for the
-    // invariant-background pass and the stationary fused kernel needs it for
-    // the in-order fixed-point accumulation.
-    void ensureTemporalWeightsDevice() {
+    // A stationary pixel has the same byte value at every shutter sample.
+    // Evaluate the exact rounded, saturating sum for all 256 possible values
+    // once per export, rather than repeating N steps for every Y/U/V pixel.
+    // The table is specific to this sink's immutable shutter plan; moving
+    // samples still use the original per-sample composite/accumulate kernels.
+    void ensureTemporalAccumulationLut() {
         const size_t count = temporalSamplePlan_.size();
-        if (count == 0 || (temporalWeightsDevice_ && temporalWeightsDeviceCount_ == count)) {
+        if (count == 0 || (temporalAccumulationLutDevice_ && temporalAccumulationLutSampleCount_ == count)) {
             return;
         }
-        if (temporalWeightsDevice_) {
-            checkCuda(cudaFree(temporalWeightsDevice_), "cudaFree temporalWeightsDevice");
-            temporalWeightsDevice_ = nullptr;
+        if (temporalAccumulationLutDevice_) {
+            checkCuda(cudaFree(temporalAccumulationLutDevice_), "cudaFree temporalAccumulationLut");
+            temporalAccumulationLutDevice_ = nullptr;
         }
         std::vector<unsigned int> weights(count);
         for (size_t index = 0; index < count; ++index) {
             weights[index] = static_cast<unsigned int>(
                 std::lround(temporalSamplePlan_[index].weight * 256.0));
         }
+        unsigned char accumulationLut[256];
+        for (unsigned int value = 0; value < 256; ++value) {
+            unsigned int accumulated = 0;
+            for (unsigned int weight : weights) {
+                accumulated = std::min(255u, accumulated + ((weight * value + 128u) >> 8));
+            }
+            accumulationLut[value] = static_cast<unsigned char>(accumulated);
+        }
         checkCuda(
-            cudaMalloc(&temporalWeightsDevice_, count * sizeof(unsigned int)),
-            "cudaMalloc temporalWeightsDevice");
+            cudaMalloc(&temporalAccumulationLutDevice_, sizeof(accumulationLut)),
+            "cudaMalloc temporalAccumulationLut");
         checkCuda(
             cudaMemcpy(
-                temporalWeightsDevice_,
-                weights.data(),
-                count * sizeof(unsigned int),
+                temporalAccumulationLutDevice_,
+                accumulationLut,
+                sizeof(accumulationLut),
                 cudaMemcpyHostToDevice),
-            "cudaMemcpy temporalWeightsDevice");
-        temporalWeightsDeviceCount_ = count;
+            "cudaMemcpy temporalAccumulationLut");
+        temporalAccumulationLutSampleCount_ = count;
     }
 
     void applySharpOverlays(
@@ -6919,7 +6997,9 @@ private:
                     regionY,
                     regionWidth,
                     regionHeight,
-                    (cursorPosition.visible && !hasOverlayLayers_),
+                    // Sidecars exclude a native atlas-owned cursor but include
+                    // a browser-baked cursor when there is no atlas.
+                    (cursorPosition.visible && (useCursorAtlas || !hasOverlayLayers_)),
                     cursorX,
                     cursorY,
                     cursorWidth,
@@ -7175,6 +7255,7 @@ private:
     int zoomBlurFrames_ = 0;
     int overlayBlendFrames_ = 0;
     int tiledOverlayBlendFrames_ = 0;
+    int64_t tiledOverlaySkippedPixels_ = 0;
     int temporalBlurFrames_ = 0;
     int temporalBlurBgPrecomposedFrames_ = 0;
     int temporalBlurStationaryFrames_ = 0;
@@ -7193,8 +7274,8 @@ private:
     double temporalBlurShutterFraction_ = 0.0;
     double temporalBlurWeightPower_ = 1.0;
     std::vector<TemporalBlurSample> temporalSamplePlan_;
-    unsigned int* temporalWeightsDevice_ = nullptr;
-    size_t temporalWeightsDeviceCount_ = 0;
+    unsigned char* temporalAccumulationLutDevice_ = nullptr;
+    size_t temporalAccumulationLutSampleCount_ = 0;
     unsigned char* temporalBgCacheDevice_ = nullptr;
     Options layoutOptions_;
     unsigned char* backgroundDevice_ = nullptr;
@@ -7948,6 +8029,7 @@ int main(int argc, char** argv) {
                   << (sink ? sink->cursorSpriteBlendFrames() : 0) << ","
                   << "\"tiledOverlayLayers\":" << (sink ? sink->tiledOverlayLayerCount() : 0) << ","
                   << "\"tiledOverlayBlendFrames\":" << (sink ? sink->tiledOverlayBlendFrames() : 0) << ","
+                  << "\"tiledOverlaySkippedPixels\":" << (sink ? sink->tiledOverlaySkippedPixels() : 0) << ","
                   << "\"changedTileCount\":" << (sink ? sink->tiledChangedTileCount() : 0) << ","
                   << "\"uploadedTileBytes\":" << (sink ? sink->tiledUploadedTileBytes() : 0) << ","
                   << "\"cachedTileCount\":" << (sink ? sink->tiledCachedTileCount() : 0) << ","

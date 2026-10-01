@@ -1240,6 +1240,8 @@ export function registerExportHandlers() {
 				};
 			}
 
+			const finalizeStartedAt = Date.now();
+			console.log(formatLogTs(), "[PERF:MAIN] Handler: finalize-exported-video: STARTED");
 			try {
 				const sidecarPayload = parseCaptionSidecarPayload(payload.captionSidecar);
 				if (payload.outputPath) {
@@ -1274,9 +1276,26 @@ export function registerExportHandlers() {
 					properties: ["createDirectory", "showOverwriteConfirmation"],
 				};
 
+				const dialogStartedAt = Date.now();
+				console.log(
+					formatLogTs(),
+					"[PERF:MAIN] finalize-exported-video: showing save dialog",
+					{
+						elapsedSinceHandlerMs: dialogStartedAt - finalizeStartedAt,
+					},
+				);
 				const result = parentWindow
 					? await dialog.showSaveDialog(parentWindow, saveDialogOptions)
 					: await dialog.showSaveDialog(saveDialogOptions);
+
+				console.log(
+					formatLogTs(),
+					"[PERF:MAIN] finalize-exported-video: save dialog returned",
+					{
+						dialogMs: Date.now() - dialogStartedAt,
+						canceled: result.canceled,
+					},
+				);
 
 				if (result.canceled || !result.filePath) {
 					// Leave the temp file in place so the renderer can offer "Save Again"
@@ -1295,6 +1314,14 @@ export function registerExportHandlers() {
 					sidecarPayload,
 				);
 				approveUserPath(result.filePath);
+
+				console.log(
+					formatLogTs(),
+					"[PERF:MAIN] Handler: finalize-exported-video: COMPLETED",
+					{
+						elapsedMs: Date.now() - finalizeStartedAt,
+					},
+				);
 
 				return {
 					success: true,

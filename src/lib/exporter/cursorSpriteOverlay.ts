@@ -27,6 +27,10 @@ import type { NativeCursorSpritePosition } from "./nativeStaticLayoutOverlays";
  *   untouched. Alpha/z-order and top-down orientation are identical to the
  *   existing overlay contract because the same container is rendered with the
  *   same world transform the full-canvas path would use.
+ * - On WebGPU, calling renderer.clear() outside a render frame leaves the
+ *   internal commandEncoder unset and crashes with "Cannot read properties of
+ *   undefined (reading 'beginRenderPass')". We render with clear: true instead
+ *   and emit a zeroed buffer when the cursor is hidden.
  */
 
 export interface CursorRect {
@@ -165,6 +169,12 @@ interface CursorSpriteFrameRecord {
 }
 
 /** Minimal pixi renderer surface the capturer needs, for deterministic tests. */
+export interface CursorSpritePixelInfo {
+	pixels: Uint8Array | Uint8ClampedArray;
+	width: number;
+	height: number;
+}
+
 export interface CursorSpriteRenderer {
 	render(options: {
 		container: Container;
@@ -172,9 +182,8 @@ export interface CursorSpriteRenderer {
 		transform: Matrix;
 		clear: boolean;
 	}): void;
-	clear(options: { target: RenderTexture }): void;
 	extract: {
-		pixels(options: { target: RenderTexture }): Uint8Array | Uint8ClampedArray;
+		pixels(options: { target: RenderTexture }): CursorSpritePixelInfo;
 	};
 }
 
@@ -442,7 +451,6 @@ export class CursorSpriteCapturer {
 			};
 		}
 
-		this.renderer.clear({ target: renderTexture });
 		if (this.cursorContainer.visible) {
 			const transform = buildCursorSpriteRenderTransform(
 				this.cursorContainer.worldTransform,
@@ -453,12 +461,19 @@ export class CursorSpriteCapturer {
 				container: this.cursorContainer,
 				target: renderTexture,
 				transform,
-				clear: false,
+				clear: true,
 			});
 		}
 
-		const pixels = this.renderer.extract.pixels({ target: renderTexture });
-		const data = pixels instanceof Uint8ClampedArray ? new Uint8Array(pixels) : pixels.slice();
+		const pixelResult = this.cursorContainer.visible
+			? this.renderer.extract.pixels({ target: renderTexture })
+			: new Uint8Array(renderTexture.width * renderTexture.height * 4);
+		const pixelData =
+			pixelResult instanceof Uint8Array || pixelResult instanceof Uint8ClampedArray
+				? pixelResult
+				: pixelResult.pixels;
+		const data =
+			pixelData instanceof Uint8ClampedArray ? new Uint8Array(pixelData) : pixelData.slice();
 		const record: CursorSpriteFrameRecord = {
 			position: { x: roi.x, y: roi.y },
 			width: renderTexture.width,

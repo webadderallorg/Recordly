@@ -14,32 +14,33 @@ build-from-source + dev-run session on Windows. Kept practical.
   Authenticode Windows NSIS, Linux AppImage, Homebrew tap automation. Don't expect fast
   stables; they batch fixes into bigger cuts.
 
-## Upstream PR discipline (durable)
+## Local fork strategy (durable)
 
-This checkout is used to prepare changes destined for upstream PRs on
-webadderallorg/Recordly (`origin`), pushed from the fork nmzpy/Recordly
-(`mine`). Assume an external maintainer reads every commit. Keep the history
-clean and thoughtful — do not auto-commit, do not pile random changes onto
-`main`.
+This checkout is a FULLY LOCAL fork of webadderallorg/Recordly. We are NOT preparing
+upstream PRs and MUST assume no external maintainer will ever read these diffs.
+Large local diffs are expected and acceptable — optimize for what works on this
+machine, not for reviewability by strangers. We can do whatever we want with the
+code. Two hard exceptions: keep the product name "Recordly" unchanged, and keep
+the LICENSE file / license terms unchanged.
 
-- One logical change per commit; never mix unrelated edits in a single commit.
-- Never `git add -A` / `git add .`. Stage explicit paths only, after reviewing
-  `git status` and `git diff`.
-- Exclude from feature commits: scratch media (`mp4-work/`, temp fixtures),
-  generated binaries (unless a build commit intentionally ships them), and
-  local-only notes (AGENTS.md) unless committing them is deliberate.
-- Gate before committing: focused tests (vitest), `npx tsc --noEmit`, biome
-  check, `git diff --check`. Keep every commit buildable and testable on its own.
-- Use feature branches for anything destined for a PR. Checkpoint commits on
-  `main` are acceptable only if they are still clean, message-describe-what,
-  and do not mix unrelated work.
+- Remotes: `origin` = webadderallorg/Recordly (upstream reference), `mine` =
+  nmzpy/Recordly (fork). Treat both as read-only references by default. NEVER open
+  PRs against origin, never push local work to origin, and only push to `mine` if
+  deliberately asked.
+- Staying current with upstream: periodically `git fetch origin`. When an upstream
+  change is wanted, cherry-pick or hand-port individual commits onto the local line;
+  resolve conflicts in favor of local behavior and re-run gates after each port.
+  Rebase-merge from origin/main wholesale is allowed ONLY when explicitly requested,
+  because it can clobber heavy local work.
+- Commits are for us, not for show: checkpoint-style commits on `main` are fine,
+  batching related edits into one commit is fine. Still avoid committing scratch
+  media (`mp4-work/`, temp fixtures), generated binaries, `.tmp/` output, or
+  accidental junk; stage explicit paths rather than `git add -A` when practical.
+- Gate before declaring work done: focused tests (vitest), `npx tsc --noEmit`, biome
+  check, `git diff --check`. Keep the tree buildable at the end of every session.
 - Commit messages: conventional prefix (`feat`/`fix`/`perf`/`build`/`test`/
-  `docs`/`refactor`), imperative mood, state the why. No "misc", "wip", or
-  bundled-topic messages.
-- Before opening a PR: `git log origin/main..HEAD` should read like a story;
-  reword/split as needed; verify `git diff origin/main` touches only intended
-  files. Quote benchmark/measurement evidence that proves a perf change in the
-  PR body, not buried in commit messages.
+  `docs`/`refactor`) plus a short description is enough; no ceremony required.
+- Do not auto-commit; let the operator decide when to checkpoint.
 
 ## Build / run from source
 

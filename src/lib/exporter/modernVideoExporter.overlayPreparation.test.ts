@@ -227,6 +227,9 @@ function createExporter(overrides: Record<string, unknown> = {}) {
 		showCursor: true,
 		experimentalNativeExport: true,
 		experimentalNvidiaCudaExport: true,
+		// Most tests below exercise the legacy streaming/raw behavior explicitly.
+		// Production leaves this unset, which enables the sparse tiled transport.
+		experimentalNativeTiledOverlay: false,
 		exportVideoCodec: "hevc",
 		exportEncoderPreference: "hardware",
 		backendPreference: "auto",
@@ -322,7 +325,12 @@ describe("ModernVideoExporter native overlay preparation", () => {
 		vi.stubGlobal("OffscreenCanvas", FakeOffscreenCanvas);
 		const api = createWindowStub();
 
-		const exporter = createExporter(CAPTION_BROWSER_PIXEL_OVERRIDE);
+		const exporter = createExporter({
+			...CAPTION_BROWSER_PIXEL_OVERRIDE,
+			// Production leaves this option unset, which selects the raw-free tiled
+			// preparation pass for sparse caption pixels.
+			experimentalNativeTiledOverlay: undefined,
+		});
 		const result = await exporter.prepareNativeStaticLayoutOverlay(videoInfo, 1, 30);
 
 		expect(result).not.toBeNull();
@@ -348,20 +356,20 @@ describe("ModernVideoExporter native overlay preparation", () => {
 		expect(result?.rawFallbackReason).toBeNull();
 		expect(result?.tiledOverlayLayers[0]?.staticTiles).toHaveLength(TILE_COUNT);
 		// Captions are browser pixels the cursor-sprite ROI cannot represent, so
-		// the sprite path is skipped and the baked full-canvas sidecar runs
-		// directly (one renderer).
+		// the sprite path is skipped. The tiled pass owns the only export stream;
+		// no full-frame RGBA sidecar is written just to be deleted afterward.
 		expect(mocks.frameRendererInitialize).toHaveBeenCalledTimes(1);
 		expect(mocks.frameRendererRenderOverlayFrame).toHaveBeenCalledTimes(30);
-		expect(api.openExportStream).toHaveBeenCalledWith({ extension: "rgba" });
+		expect(api.openExportStream).not.toHaveBeenCalledWith({ extension: "rgba" });
 		expect(api.openExportStream).toHaveBeenCalledWith({ extension: "tiledrgba" });
-		expect(api.writeExportStreamChunk).toHaveBeenCalledTimes(TILE_COUNT + 1);
+		expect(api.writeExportStreamChunk).toHaveBeenCalledTimes(TILE_COUNT);
 		const lastTiledWrite = api.writeExportStreamChunk.mock.calls[
 			api.writeExportStreamChunk.mock.calls.length - 1
 		] as [string, number, Uint8Array];
 		expect(lastTiledWrite[0]).toBe("overlay-tiledrgba");
 		expect(lastTiledWrite[1]).toBe((TILE_COUNT - 1) * TILE_BYTE_SIZE);
 		expect(lastTiledWrite[2]).toHaveLength(TILE_BYTE_SIZE);
-		expect(api.discardExportedTemp).toHaveBeenCalledWith("C:/Temp/overlay.rgba");
+		expect(api.discardExportedTemp).not.toHaveBeenCalledWith("C:/Temp/overlay.rgba");
 		expect(mocks.frameRendererDestroy).toHaveBeenCalledTimes(1);
 		expect(exporter.nativeStaticLayoutOverlayFailure).toBeNull();
 	});
@@ -1562,7 +1570,7 @@ describe("ModernVideoExporter native overlay preparation", () => {
 		expect(api.closeExportStream).toHaveBeenCalledWith("overlay-sprite");
 	});
 
-	it("keeps webcamNativeOwned undefined and webcamInputPath null when captions coexist (baked path)", async () => {
+	it("keeps webcam native-owned when captions coexist in the CUDA sidecar", async () => {
 		vi.stubGlobal("VideoFrame", FakeVideoFrame);
 		vi.stubGlobal("OffscreenCanvas", FakeOffscreenCanvas);
 		const api = createWindowStub();
@@ -1576,12 +1584,9 @@ describe("ModernVideoExporter native overlay preparation", () => {
 			metrics: { chunkCount: 1, chunkDurationSec: 120, chunkExecMs: 0, chunks: [] },
 		});
 
-		// Captions are browser-rendered pixels, so the webcam stays baked in the
-		// sidecar and webcamInputPath must NOT be sent: sending it would make the
-		// CUDA compositor draw the webcam a second time (double-draw). The
-		// streaming raw-overlay path is selected because captions are browser
-		// pixels that require the baked full-canvas sidecar and the CUDA route is
-		// eligible: the raw layer is sent with streamingRawOverlay: true.
+		// The strict CUDA route owns the unshadowed webcam and composes it before
+		// the caption sidecar. The renderer therefore excludes webcam pixels;
+		// sending the native input is required and does not double-draw it.
 		const exporter = createExporter({
 			webcam: { enabled: true, sourcePath: "C:/webcam.mp4" },
 			autoCaptions: [{ startMs: 0, endMs: 1000, text: "Hi", lang: "en" }],
@@ -1595,14 +1600,52 @@ describe("ModernVideoExporter native overlay preparation", () => {
 
 		expect(result).toMatchObject({ success: true });
 		const exportCall = api.nativeStaticLayoutExport.mock.calls[0] as [Record<string, unknown>];
-		expect(exportCall[0].webcamInputPath).toBeNull();
-		expect(exportCall[0].webcamNativeOwned).toBeUndefined();
+		expect(exportCall[0].webcamInputPath).toBe("C:/webcam.mp4");
+		expect(exportCall[0].webcamNativeOwned).toBe(true);
 		expect(exportCall[0].streamingRawOverlay).toBe(true);
 		expect(Array.isArray(exportCall[0].overlayLayers)).toBe(true);
 		expect((exportCall[0].overlayLayers as unknown[]).length).toBe(1);
 		expect(exportCall[0].tiledOverlayLayers).toBeUndefined();
 		expect(mocks.frameRendererInitialize).toHaveBeenCalled();
 		expect(mocks.frameRendererRenderOverlayFrame).toHaveBeenCalledTimes(30);
+	});
+
+	it("uses a raw-free tiled caption sidecar above a native-owned webcam", async () => {
+		vi.stubGlobal("VideoFrame", FakeVideoFrame);
+		vi.stubGlobal("OffscreenCanvas", FakeOffscreenCanvas);
+		const api = createWindowStub();
+		api.nativeStaticLayoutExport.mockResolvedValue({
+			success: true,
+			tempPath: "C:/Temp/hevc-tiled-webcam.mp4",
+			videoCodec: "hevc",
+			encoderPreference: "hardware",
+			route: "nvidia-cuda-compositor",
+			encoderName: "nvidia-cuda-compositor",
+			metrics: { chunkCount: 1, chunkDurationSec: 120, chunkExecMs: 0, chunks: [] },
+		});
+
+		const exporter = createExporter({
+			webcam: { enabled: true, sourcePath: "C:/webcam.mp4" },
+			autoCaptions: [{ startMs: 0, endMs: 1000, text: "Hi", lang: "en" }],
+			// Production default: sparse authored pixels use a tiled sidecar.
+			experimentalNativeTiledOverlay: undefined,
+		});
+		const result = await exporter.tryExportNativeStaticLayout(
+			videoInfo,
+			{ audioMode: "none" },
+			1,
+			30,
+		);
+
+		expect(result).toMatchObject({ success: true });
+		const exportCall = api.nativeStaticLayoutExport.mock.calls[0] as [Record<string, unknown>];
+		expect(exportCall[0].webcamInputPath).toBe("C:/webcam.mp4");
+		expect(exportCall[0].webcamNativeOwned).toBe(true);
+		expect(exportCall[0].streamingRawOverlay).toBeUndefined();
+		expect(exportCall[0].overlayLayers).toBeUndefined();
+		expect(exportCall[0].tiledOverlayLayers).toHaveLength(1);
+		expect(api.openExportStream).not.toHaveBeenCalledWith({ extension: "rgba" });
+		expect(api.openExportStream).toHaveBeenCalledWith({ extension: "tiledrgba" });
 	});
 
 	it("keeps the webcam baked for HEVC Auto (non-strict) even when it is the only browser pixel", async () => {

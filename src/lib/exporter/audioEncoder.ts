@@ -375,6 +375,7 @@ export class AudioProcessor {
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 		sourceAudioTrackSettings?: SourceAudioTrackSettings,
 		clipRegions?: ClipRegion[],
+		knownDurationSec?: number,
 	): Promise<Blob> {
 		const sortedTrims = trimRegions
 			? [...trimRegions].sort((a, b) => a.startMs - b.startMs)
@@ -402,6 +403,7 @@ export class AudioProcessor {
 			sourceAudioFallbackStartDelayMsByPath,
 			sourceAudioTrackSettings,
 			clipRegions,
+			knownDurationSec,
 		);
 		return this.renderToWavBlobChunked(prepared);
 	}
@@ -680,6 +682,7 @@ export class AudioProcessor {
 		sourceAudioTrackSettings: SourceAudioTrackSettings | undefined,
 		clipRegions: ClipRegion[] | undefined,
 		muxer: VideoMuxer,
+		knownDurationSec?: number,
 	): Promise<void> {
 		const prepared = await this.prepareOfflineRender(
 			videoUrl,
@@ -690,6 +693,7 @@ export class AudioProcessor {
 			sourceAudioFallbackStartDelayMsByPath,
 			sourceAudioTrackSettings,
 			clipRegions,
+			knownDurationSec,
 		);
 		if (this.cancelled) return;
 		await this.renderAndEncodeChunked(prepared, muxer);
@@ -704,6 +708,7 @@ export class AudioProcessor {
 		sourceAudioFallbackStartDelayMsByPath?: Record<string, number>,
 		sourceAudioTrackSettings?: SourceAudioTrackSettings,
 		clipRegions?: ClipRegion[],
+		knownDurationSec?: number,
 	): Promise<PreparedOfflineRender> {
 		if (this.cancelled) throw new Error("Export cancelled");
 		this.onProgress?.(0);
@@ -746,7 +751,11 @@ export class AudioProcessor {
 		}> = [];
 		const refDuration =
 			mainBuffer?.duration ??
-			(resolvedPlan.playbackPaths.length > 0 ? await this.getMediaDurationSec(videoUrl) : 0);
+			(knownDurationSec != null && Number.isFinite(knownDurationSec) && knownDurationSec > 0
+				? knownDurationSec
+				: resolvedPlan.playbackPaths.length > 0
+					? await this.getMediaDurationSec(videoUrl)
+					: 0);
 		for (const audioPath of resolvedPlan.playbackPaths) {
 			if (this.cancelled) throw new Error("Export cancelled");
 			const buffer = await this.decodeAudioFromUrl(audioPath);
@@ -786,6 +795,16 @@ export class AudioProcessor {
 		let sourceDurationSec: number;
 		if (mainBufferEntry?.buffer) {
 			sourceDurationSec = mainBufferEntry.buffer.duration;
+		} else if (
+			knownDurationSec != null &&
+			Number.isFinite(knownDurationSec) &&
+			knownDurationSec > 0
+		) {
+			console.info(
+				"[AudioProcessor] Using known duration from native metadata probe; skipping <video> metadata load",
+				{ knownDurationSec },
+			);
+			sourceDurationSec = knownDurationSec;
 		} else if (resolvedPlan.playbackPaths.length > 0 || regionEntries.length > 0) {
 			sourceDurationSec = await this.getMediaDurationSec(videoUrl);
 		} else {

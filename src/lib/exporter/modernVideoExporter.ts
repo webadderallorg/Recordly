@@ -821,7 +821,7 @@ export class ModernVideoExporter {
 					cursorMotionBlur: this.config.cursorMotionBlur ?? 0,
 					cursorSway: this.config.cursorSway ?? 0,
 					cursorAtlasOwnershipEligible: this.canUseNativeCursorAtlasOwnership(),
-					webcamOnlyBrowserPixels: this.hasNativeStaticLayoutWebcamOnlyBrowserPixels(),
+					webcamNativePixelsEligible: this.canUseNativeStaticLayoutWebcamPixels(),
 					webcamNativeOwnershipEligible: this.canUseNativeWebcamOwnership(),
 				});
 				this.maxNativeWriteInFlight = useNativeEncoder
@@ -2442,6 +2442,7 @@ export class ModernVideoExporter {
 		description: string,
 		onProgress: (progress: number) => void,
 		sourceAudioFallbackPaths = this.config.sourceAudioFallbackPaths,
+		knownDurationSec?: number,
 	) {
 		this.audioProcessor = new AudioProcessor();
 		this.audioProcessor.setOnProgress(onProgress);
@@ -2456,6 +2457,7 @@ export class ModernVideoExporter {
 					this.config.sourceAudioFallbackStartDelayMsByPath,
 					this.config.sourceAudioTrackSettings,
 					this.config.clipRegions,
+					knownDurationSec,
 				),
 				description,
 				"audio",
@@ -2510,6 +2512,7 @@ export class ModernVideoExporter {
 	private startDeferredEditedAudioRender(
 		audioPlan: NativeAudioPlan,
 		totalFrames: number,
+		knownDurationSec?: number,
 	): { opened: Promise<string>; promise: Promise<void> } | null {
 		if (
 			audioPlan.audioMode !== "edited-track" ||
@@ -2546,6 +2549,7 @@ export class ModernVideoExporter {
 				"Native static-layout edited audio rendering",
 				(progress) => this.reportProgress(0, totalFrames, "preparing", undefined, progress),
 				audioPlan.sourceAudioFallbackPaths,
+				knownDurationSec,
 			);
 			const writeResult = await api.writeExportStreamChunk(
 				openedStream.streamId,
@@ -2602,6 +2606,7 @@ export class ModernVideoExporter {
 		audioPlan: NativeAudioPlan,
 		totalFrames: number,
 		deferEditedAudio = false,
+		knownDurationSec?: number,
 	) {
 		switch (audioPlan.audioMode) {
 			case "none":
@@ -2643,6 +2648,7 @@ export class ModernVideoExporter {
 					(progress) =>
 						this.reportProgress(0, totalFrames, "preparing", undefined, progress),
 					audioPlan.sourceAudioFallbackPaths,
+					knownDurationSec,
 				);
 
 				return {
@@ -2991,27 +2997,19 @@ export class ModernVideoExporter {
 	}
 
 	/**
-	 * Whether the webcam is the ONLY browser-rendered overlay pixel source and is
-	 * fully representable by the generalized NVIDIA CUDA compositor's native
-	 * webcam overlay contract.
-	 *
-	 * The CUDA compositor consumes the same resolved webcam geometry the renderer
-	 * would bake (left/top/size/radius/mirror/time-offset via the native-video.ts
-	 * webcam args), so a webcam-only export needs no renderer sidecar at all.
-	 * Mixed browser content (captions, annotations, frame visuals) or extension
-	 * render hooks keep the existing baked sidecar path, and a configured webcam
-	 * shadow is not representable in the CUDA wrapper today, so a shadowed webcam
-	 * must stay baked to preserve the golden visual.
+	 * Whether the webcam itself is fully representable by the generalized NVIDIA
+	 * CUDA compositor. Captions, annotations, and frame chrome may coexist: the
+	 * compositor draws the webcam first and then blends their sidecar above it,
+	 * matching the renderer layer order without sending webcam RGBA frames back
+	 * through the browser. A configured webcam shadow is still browser-owned
+	 * until its blur profile has a pixel-parity native implementation.
 	 */
-	private hasNativeStaticLayoutWebcamOnlyBrowserPixels(): boolean {
+	private canUseNativeStaticLayoutWebcamPixels(): boolean {
 		const webcamOverlay = this.getNativeStaticLayoutWebcamOverlay();
 		return (
 			this.config.webcam?.enabled === true &&
 			webcamOverlay !== null &&
 			(webcamOverlay.shadowIntensity ?? 0) <= 0 &&
-			(this.config.annotationRegions?.length ?? 0) === 0 &&
-			(this.config.autoCaptions?.length ?? 0) === 0 &&
-			!this.config.frame &&
 			!this.hasNativeStaticLayoutExtensionCursorVisuals()
 		);
 	}
@@ -3022,15 +3020,15 @@ export class ModernVideoExporter {
 	 *
 	 * Safe only on the strict HEVC Hardware CUDA route: that route guarantees the
 	 * CUDA compositor runs (any fallback hard-fails with noCpuFallback:true), so
-	 * excluding the webcam from the renderer sidecar can never silently drop it on
-	 * an FFmpeg/D3D11 fallback that cannot draw a native webcam. HEVC Auto and
-	 * H.264 keep the existing baked-webcam sidecar path unchanged.
+	 * excluding webcam pixels from a mixed captions/annotations sidecar can never
+	 * silently drop them on an FFmpeg/D3D11 fallback. HEVC Auto and H.264 keep
+	 * the existing baked-webcam sidecar path unchanged.
 	 */
 	private canUseNativeWebcamOwnership(): boolean {
 		if (!this.requiresStrictNativeCudaRoute() || !this.canUseNativeGpuStaticLayout()) {
 			return false;
 		}
-		return this.hasNativeStaticLayoutWebcamOnlyBrowserPixels();
+		return this.canUseNativeStaticLayoutWebcamPixels();
 	}
 
 	private hasUnsupportedNativeStaticLayoutOverlayContent(): string | null {
@@ -3078,7 +3076,10 @@ export class ModernVideoExporter {
 		return new ModernFrameRenderer({
 			width: this.config.width,
 			height: this.config.height,
-			preferredRenderBackend: undefined,
+			// Overlay sidecar readback is much faster on WebGL (gl.readPixels)
+			// than WebGPU's GenerateTexture canvas-copy path. The export renderer
+			// has no visible canvas, so the WebGL backend is the better default here.
+			preferredRenderBackend: "webgl",
 			wallpaper: DEFAULT_WALLPAPER_PATH,
 			zoomRegions: this.config.zoomRegions,
 			showShadow: this.config.showShadow,
@@ -3231,7 +3232,50 @@ export class ModernVideoExporter {
 		if (this.hasUnsupportedNativeStaticLayoutOverlayContent()) {
 			return false;
 		}
+		// Captions, authored annotations, and frame chrome occupy only a small
+		// part of the output in the normal case.  A full RGBA stream writes and
+		// blends every 4K pixel for every frame even though CUDA only needs the
+		// few changed tiles.  Prefer the sequential tiled sidecar for those
+		// sources; its preparation has a dense-content escape hatch back to the
+		// existing raw stream, so this never trades visual correctness for the
+		// optimization.
+		if (this.shouldPreferNativeTiledOverlay(webcamExcluded)) {
+			return false;
+		}
 		return true;
+	}
+
+	/**
+	 * Selects the tile-delta transport before the raw streaming transport for
+	 * sparse browser pixels. The renderer remains the typography/vector source
+	 * of truth, while CUDA receives only the tiles that differ over time and
+	 * blends their visible bounds. Live webcam pixels are intentionally excluded
+	 * here because they change across a large continuous region; the strict
+	 * native-webcam path owns those pixels separately.
+	 */
+	private shouldPreferNativeTiledOverlay(webcamExcluded: boolean): boolean {
+		if (
+			this.config.exportEncoderPreference === "cpu" ||
+			this.config.experimentalNativeExport !== true ||
+			this.config.experimentalNvidiaCudaExport !== true ||
+			this.config.experimentalNativeTiledOverlay === false
+		) {
+			return false;
+		}
+		if (this.hasNativeStaticLayoutExtensionCursorVisuals()) {
+			return false;
+		}
+		if (this.hasUnsupportedNativeStaticLayoutOverlayContent()) {
+			return false;
+		}
+		if (this.config.webcam?.enabled === true && !webcamExcluded) {
+			return false;
+		}
+		return Boolean(
+			(this.config.annotationRegions?.length ?? 0) > 0 ||
+				(this.config.autoCaptions?.length ?? 0) > 0 ||
+				this.config.frame,
+		);
 	}
 
 	/**
@@ -4217,6 +4261,8 @@ export class ModernVideoExporter {
 		cursorExcluded = false,
 		webcamExcluded = false,
 		onPreparationProgress?: (renderProgress: number) => void,
+		tiledOnly = false,
+		allowTiledOnlyAttempt = true,
 	): Promise<NativeStaticLayoutOverlayPreparationResult | null> {
 		this.nativeStaticLayoutOverlayFailure = null;
 		if (!this.hasNativeStaticLayoutOverlayContent()) {
@@ -4369,6 +4415,51 @@ export class ModernVideoExporter {
 				return null;
 			}
 		}
+		// Tiled preparation avoids creating the raw sidecar at all for sparse
+		// captions/annotations/frame pixels. If the actual content turns out to
+		// be dense, rerender once through the established raw path. That fallback
+		// is deliberately explicit rather than retaining every 4K frame in RAM
+		// while we decide, which would turn a long export into an unbounded cache.
+		if (
+			!tiledOnly &&
+			allowTiledOnlyAttempt &&
+			this.shouldPreferNativeTiledOverlay(webcamExcluded)
+		) {
+			const tiledResult = await this.prepareNativeStaticLayoutOverlay(
+				videoInfo,
+				durationSec,
+				totalFrames,
+				cursorExcluded,
+				webcamExcluded,
+				onPreparationProgress,
+				true,
+				false,
+			);
+			if (tiledResult) {
+				return tiledResult;
+			}
+			const tiledOnlyFailure = this.getNativeStaticLayoutOverlayFailure();
+			if (tiledOnlyFailure?.stage !== "tiled-overlay-not-beneficial") {
+				return null;
+			}
+			console.info("[VideoExporter] Native tiled overlay fell back to raw sidecar", {
+				reason: tiledOnlyFailure.message,
+				annotationRegions: this.config.annotationRegions?.length ?? 0,
+				autoCaptions: this.config.autoCaptions?.length ?? 0,
+				frame: Boolean(this.config.frame),
+			});
+			this.nativeStaticLayoutOverlayFailure = null;
+			return this.prepareNativeStaticLayoutOverlay(
+				videoInfo,
+				durationSec,
+				totalFrames,
+				cursorExcluded,
+				webcamExcluded,
+				onPreparationProgress,
+				false,
+				false,
+			);
+		}
 		// Falling back to the baked-cursor full-canvas sidecar; clear any
 		// cursor-sprite preparation failure so a successful sidecar is not
 		// misreported as an overlay failure.
@@ -4389,22 +4480,24 @@ export class ModernVideoExporter {
 
 		let rawStream: Awaited<ReturnType<typeof api.openExportStream>> | null = null;
 		let rawStreamId: string | null = null;
-		try {
-			rawStream = await api.openExportStream({ extension: "rgba" });
-			if (!rawStream.success || !rawStream.streamId || !rawStream.tempPath) {
+		if (!tiledOnly) {
+			try {
+				rawStream = await api.openExportStream({ extension: "rgba" });
+				if (!rawStream.success || !rawStream.streamId || !rawStream.tempPath) {
+					this.recordNativeStaticLayoutOverlayFailure(
+						"open-export-stream",
+						rawStream.error ?? "Native overlay export stream could not be opened",
+					);
+					return null;
+				}
+				rawStreamId = rawStream.streamId;
+			} catch (error) {
 				this.recordNativeStaticLayoutOverlayFailure(
 					"open-export-stream",
-					rawStream.error ?? "Native overlay export stream could not be opened",
+					error instanceof Error ? error.message : String(error),
 				);
 				return null;
 			}
-			rawStreamId = rawStream.streamId;
-		} catch (error) {
-			this.recordNativeStaticLayoutOverlayFailure(
-				"open-export-stream",
-				error instanceof Error ? error.message : String(error),
-			);
-			return null;
 		}
 
 		const renderer = this.createNativeStaticLayoutOverlayRenderer(
@@ -4435,19 +4528,22 @@ export class ModernVideoExporter {
 		let rawWrittenFrameCount = 0;
 		let runStartFrameIndex = 0;
 		let runFrame: Uint8Array | null = null;
-		if (rawStreamId === null) {
+		if (!tiledOnly && rawStreamId === null) {
 			this.recordNativeStaticLayoutOverlayFailure(
 				"open-export-stream",
 				"Native overlay export stream id was not set",
 			);
 			return null;
 		}
-		const activeRawStreamId: string = rawStreamId;
+		const activeRawStreamId = rawStreamId;
 		const writeRawOverlayChunk = async (
 			frameIndex: number,
 			frameCount: number,
 			chunk: Uint8Array,
 		): Promise<void> => {
+			if (!activeRawStreamId) {
+				throw new Error("overlay-stream-write: native raw overlay stream was not opened");
+			}
 			try {
 				const result = await api.writeExportStreamChunk(
 					activeRawStreamId,
@@ -4546,13 +4642,15 @@ export class ModernVideoExporter {
 				}
 				renderedFrameCount += 1;
 
-				if (runFrame === null) {
-					runFrame = frame;
-					runStartFrameIndex = frameIndex;
-				} else if (!areNativeStaticLayoutOverlayFramesEqual(frame, runFrame)) {
-					await flushRawIdenticalRun(frameIndex);
-					runFrame = frame;
-					runStartFrameIndex = frameIndex;
+				if (!tiledOnly) {
+					if (runFrame === null) {
+						runFrame = frame;
+						runStartFrameIndex = frameIndex;
+					} else if (!areNativeStaticLayoutOverlayFramesEqual(frame, runFrame)) {
+						await flushRawIdenticalRun(frameIndex);
+						runFrame = frame;
+						runStartFrameIndex = frameIndex;
+					}
 				}
 
 				if (tiledAbandoned) {
@@ -4629,29 +4727,36 @@ export class ModernVideoExporter {
 				}
 			}
 
-			if (runFrame !== null) {
-				await writeRawOverlayChunk(runStartFrameIndex, 1, runFrame);
-			}
+			if (!tiledOnly) {
+				if (runFrame !== null) {
+					await writeRawOverlayChunk(runStartFrameIndex, 1, runFrame);
+				}
 
-			let rawClosed: Awaited<ReturnType<typeof api.closeExportStream>>;
-			try {
-				rawClosed = await api.closeExportStream(activeRawStreamId);
-			} catch (error) {
-				throw new Error(
-					`overlay-stream-close: ${error instanceof Error ? error.message : String(error)}`,
-				);
-			}
-			if (!rawClosed.success || !rawClosed.tempPath) {
-				throw new Error(
-					`overlay-stream-close: ${rawClosed.error ?? "Native overlay export stream did not finalize"}`,
-				);
-			}
-			rawTempPath = rawClosed.tempPath;
-			const rawExpectedBytes = frameByteSize * rawWrittenFrameCount;
-			if (rawClosed.bytesWritten !== rawExpectedBytes) {
-				throw new Error(
-					`overlay-stream-truncated: expected ${rawExpectedBytes} bytes, stream wrote ${rawClosed.bytesWritten}`,
-				);
+				if (!activeRawStreamId) {
+					throw new Error(
+						"overlay-stream-close: native raw overlay stream was not opened",
+					);
+				}
+				let rawClosed: Awaited<ReturnType<typeof api.closeExportStream>>;
+				try {
+					rawClosed = await api.closeExportStream(activeRawStreamId);
+				} catch (error) {
+					throw new Error(
+						`overlay-stream-close: ${error instanceof Error ? error.message : String(error)}`,
+					);
+				}
+				if (!rawClosed.success || !rawClosed.tempPath) {
+					throw new Error(
+						`overlay-stream-close: ${rawClosed.error ?? "Native overlay export stream did not finalize"}`,
+					);
+				}
+				rawTempPath = rawClosed.tempPath;
+				const rawExpectedBytes = frameByteSize * rawWrittenFrameCount;
+				if (rawClosed.bytesWritten !== rawExpectedBytes) {
+					throw new Error(
+						`overlay-stream-truncated: expected ${rawExpectedBytes} bytes, stream wrote ${rawClosed.bytesWritten}`,
+					);
+				}
 			}
 
 			if (!tiledAbandoned) {
@@ -4745,6 +4850,14 @@ export class ModernVideoExporter {
 					}
 				}
 			}
+			if (tiledOnly) {
+				throw new Error(
+					`tiled-overlay-not-beneficial:${rawFallbackReason ?? "tiled sidecar did not satisfy the native transport heuristic"}`,
+				);
+			}
+			if (!rawTempPath) {
+				throw new Error("overlay-stream-close: native raw overlay path was not finalized");
+			}
 
 			const rawLayer: NativeStaticLayoutOverlayLayer = {
 				id: "native-effects",
@@ -4829,6 +4942,10 @@ export class ModernVideoExporter {
 		this.nativeStaticLayoutOverlayFailure = { stage, message };
 	}
 
+	private getNativeStaticLayoutOverlayFailure(): { stage: string; message: string } | null {
+		return this.nativeStaticLayoutOverlayFailure;
+	}
+
 	/**
 	 * Config-only predicate for whether the native cursor atlas may be needed:
 	 * the cursor is enabled, has telemetry, and is either the only overlay
@@ -4840,10 +4957,8 @@ export class ModernVideoExporter {
 		if (this.config.showCursor !== true || (this.config.cursorTelemetry?.length ?? 0) === 0) {
 			return false;
 		}
-		const needsOverlayLayers = this.hasNativeStaticLayoutOverlayContent();
-		const wantsNativeCursorOwnership =
-			needsOverlayLayers && this.canUseNativeCursorAtlasOwnership();
-		return !needsOverlayLayers || wantsNativeCursorOwnership;
+		const wantsNativeCursorOwnership = this.canUseNativeCursorAtlasOwnership();
+		return wantsNativeCursorOwnership;
 	}
 
 	/**
@@ -4951,11 +5066,9 @@ export class ModernVideoExporter {
 		// content, and native cursor-ownership eligibility (no IPC needed).
 		const cursorTelemetry = this.getNativeStaticLayoutCursorTelemetry();
 		const needsOverlayLayers = this.hasNativeStaticLayoutOverlayContent();
-		const wantsNativeCursorOwnership =
-			needsOverlayLayers && this.canUseNativeCursorAtlasOwnership();
+		const wantsNativeCursorOwnership = this.canUseNativeCursorAtlasOwnership();
 		const wantsCursorAtlas =
-			Boolean(cursorTelemetry && cursorTelemetry.length > 0) &&
-			(!needsOverlayLayers || wantsNativeCursorOwnership);
+			Boolean(cursorTelemetry && cursorTelemetry.length > 0) && wantsNativeCursorOwnership;
 
 		// Run the independent preparation stages (audio options / offline audio
 		// render, background resolution, cursor atlas build) in parallel. The
@@ -4968,12 +5081,13 @@ export class ModernVideoExporter {
 		const audioOptionsStartedAt = this.getNowMs();
 		const deferEditedAudio = this.canDeferEditedAudioRender(audioPlan);
 		const deferredEditedAudio = deferEditedAudio
-			? this.startDeferredEditedAudioRender(audioPlan, totalFrames)
+			? this.startDeferredEditedAudioRender(audioPlan, totalFrames, videoInfo.duration)
 			: null;
 		const audioOptionsPromise = this.getNativeStaticLayoutAudioOptions(
 			audioPlan,
 			totalFrames,
 			deferEditedAudio,
+			videoInfo.duration,
 		);
 		const backgroundStartedAt = this.getNowMs();
 		const backgroundPromise =
@@ -5286,8 +5400,16 @@ export class ModernVideoExporter {
 						offsetX,
 						offsetY,
 						nativeStaticLayoutOptions: preBakeNativeOptions,
-						onPreparationProgress: (renderProgress) =>
-							this.reportProgress(0, totalFrames, "preparing", renderProgress),
+						onPreparationProgress: (renderProgress) => {
+							const currentFrame = Math.max(
+								0,
+								Math.min(
+									totalFrames,
+									Math.round((renderProgress / 100) * totalFrames),
+								),
+							);
+							this.reportProgress(currentFrame, totalFrames, "extracting");
+						},
 					});
 					overlayPreparation = streamingCursorSpriteResult?.overlayPreparation ?? null;
 				} else {
@@ -5299,8 +5421,16 @@ export class ModernVideoExporter {
 						webcamExcluded: webcamNativeOwned,
 						sessionId,
 						nativeStaticLayoutOptions: preBakeNativeOptions,
-						onPreparationProgress: (renderProgress) =>
-							this.reportProgress(0, totalFrames, "preparing", renderProgress),
+						onPreparationProgress: (renderProgress) => {
+							const currentFrame = Math.max(
+								0,
+								Math.min(
+									totalFrames,
+									Math.round((renderProgress / 100) * totalFrames),
+								),
+							);
+							this.reportProgress(currentFrame, totalFrames, "extracting");
+						},
 					});
 					overlayPreparation = streamingResult?.overlayPreparation ?? null;
 				}
@@ -5311,8 +5441,13 @@ export class ModernVideoExporter {
 					totalFrames,
 					cursorAtlasOwnedByNative,
 					webcamNativeOwned,
-					(renderProgress) =>
-						this.reportProgress(0, totalFrames, "preparing", renderProgress),
+					(renderProgress) => {
+						const currentFrame = Math.max(
+							0,
+							Math.min(totalFrames, Math.round((renderProgress / 100) * totalFrames)),
+						);
+						this.reportProgress(currentFrame, totalFrames, "extracting");
+					},
 				);
 			}
 		}
@@ -5838,9 +5973,30 @@ export class ModernVideoExporter {
 			this.reportFinalizingProgress(totalFrames, 99);
 
 			// The native IPC resolved, which means main's mux already waited for the
-			// deferred edited-audio stream closure (or there was no deferred audio);
-			// await the render so its rejection still surfaces as a failure.
-			await this.settleDeferredEditedAudio(deferredEditedAudio, { abort: false });
+			// deferred edited-audio stream closure (or there was no deferred audio).
+			// The deferred promise is already resolved at this point; awaiting it
+			// would only block the success return (and the save dialog) for no
+			// benefit. Attach a late-rejection logger instead of blocking.
+			if (deferredEditedAudio) {
+				const settleStartedAt = this.getNowMs();
+				this.settleDeferredEditedAudio(deferredEditedAudio, { abort: false }).then(
+					() => {
+						const elapsedMs = Math.round(this.getNowMs() - settleStartedAt);
+						console.info(
+							formatLogTs(),
+							"[VideoExporter] [PERF] Deferred edited-audio settlement completed (non-blocking)",
+							{ elapsedMs, resolvedLate: elapsedMs > 100 },
+						);
+					},
+					(error: unknown) => {
+						console.warn(
+							formatLogTs(),
+							"[VideoExporter] Deferred edited-audio settlement failed after success return",
+							error,
+						);
+					},
+				);
+			}
 
 			return {
 				success: true,
@@ -5875,10 +6031,48 @@ export class ModernVideoExporter {
 			// stale native encode speed as its own throughput.
 			this.nativeStaticLayoutAverageFps = null;
 			this.nativeStaticLayoutFpsSource = null;
+			// Fire-and-forget temp-file cleanup so the success return (and save
+			// dialog) is not blocked by multi-GB file deletions.
 			if (overlayTempPath && typeof window !== "undefined") {
-				await window.electronAPI?.discardExportedTemp?.(overlayTempPath);
+				const cleanupStartedAt = this.getNowMs();
+				window.electronAPI?.discardExportedTemp?.(overlayTempPath).then(
+					() => {
+						const elapsedMs = Math.round(this.getNowMs() - cleanupStartedAt);
+						console.info(
+							formatLogTs(),
+							"[VideoExporter] [PERF] Overlay temp cleanup completed (non-blocking)",
+							{ elapsedMs },
+						);
+					},
+					(error: unknown) => {
+						console.warn(
+							formatLogTs(),
+							"[VideoExporter] Overlay temp cleanup failed (non-blocking)",
+							error,
+						);
+					},
+				);
 			}
-			await this.cleanupNativeStaticLayoutBackground(background);
+			{
+				const cleanupStartedAt = this.getNowMs();
+				this.cleanupNativeStaticLayoutBackground(background).then(
+					() => {
+						const elapsedMs = Math.round(this.getNowMs() - cleanupStartedAt);
+						console.info(
+							formatLogTs(),
+							"[VideoExporter] [PERF] Background cleanup completed (non-blocking)",
+							{ elapsedMs },
+						);
+					},
+					(error: unknown) => {
+						console.warn(
+							formatLogTs(),
+							"[VideoExporter] Background cleanup failed (non-blocking)",
+							error,
+						);
+					},
+				);
+			}
 			if (this.nativeStaticLayoutSessionId === sessionId) {
 				this.nativeStaticLayoutSessionId = null;
 			}

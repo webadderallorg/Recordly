@@ -9,6 +9,12 @@ export interface ExportConfig {
 	preferredRenderBackend?: ExportRenderBackend;
 	experimentalNativeExport?: boolean;
 	experimentalNvidiaCudaExport?: boolean;
+	/**
+	 * Defaults to enabled for CUDA static-layout jobs. Tests and targeted
+	 * diagnostics may set false to exercise the legacy streaming raw-sidecar
+	 * transport.
+	 */
+	experimentalNativeTiledOverlay?: boolean;
 	exportVideoCodec?: ExportVideoCodec;
 	exportEncoderPreference?: ExportEncoderPreference;
 	exportBitrateMode?: ExportBitrateMode;
