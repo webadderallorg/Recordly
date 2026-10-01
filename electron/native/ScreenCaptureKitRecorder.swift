@@ -967,7 +967,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 
 		insertedSilenceFrames += Int64(framesWritten)
-		return framesWritten >= totalFrames
+		// A gap above the per-callback cap remains pending for the next sample.
+		// Never append real audio after only part of the missing time was filled.
+		return framesWritten >= totalFrames && gapSeconds <= 10.0
 	}
 
 	private static func audioOutputSettings(bitRate: Int) -> [String: Any] {
