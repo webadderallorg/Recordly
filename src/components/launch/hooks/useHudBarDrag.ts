@@ -89,6 +89,7 @@ export function useHudBarDrag({
 			}
 
 			event.preventDefault();
+			event.stopPropagation();
 			event.currentTarget.setPointerCapture(event.pointerId);
 			isHudDraggingRef.current = true;
 			setIsHudDragging(true);
@@ -117,6 +118,9 @@ export function useHudBarDrag({
 		if (!dragState || dragState.pointerId !== event.pointerId) {
 			return;
 		}
+
+		event.preventDefault();
+		event.stopPropagation();
 
 		hudDragPendingPointerRef.current = { clientX: event.clientX, clientY: event.clientY };
 		if (hudDragMoveRafRef.current !== null) {
@@ -163,6 +167,9 @@ export function useHudBarDrag({
 			if (!dragState || dragState.pointerId !== event.pointerId) {
 				return;
 			}
+
+			event.preventDefault();
+			event.stopPropagation();
 
 			const pointer = hudDragPendingPointerRef.current || {
 				clientX: event.clientX,
