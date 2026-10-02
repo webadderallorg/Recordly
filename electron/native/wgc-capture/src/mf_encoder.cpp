@@ -2,6 +2,7 @@
 #include <mfapi.h>
 #include <mferror.h>
 #include <codecapi.h>
+#include <d3d10.h>
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
@@ -104,6 +105,21 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
     if (FAILED(hr)) return false;
 
     writerAttrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
+
+    // Without a D3D device the sink writer may pick a slow encoder (measured: ~20 ms/frame at
+    // 4K vs ~2 ms on the same GPU's hardware encoder), which cannot sustain 4K60 and makes
+    // capture fall behind real time. Best effort: on failure keep the previous behavior.
+    ComPtr<ID3D10Multithread> multithread;
+    if (SUCCEEDED(device_->QueryInterface(IID_PPV_ARGS(&multithread)))) {
+        multithread->SetMultithreadProtected(TRUE);
+    }
+    UINT resetToken = 0;
+    if (SUCCEEDED(MFCreateDXGIDeviceManager(&resetToken, &dxgiDeviceManager_)) &&
+        SUCCEEDED(dxgiDeviceManager_->ResetDevice(device_, resetToken))) {
+        writerAttrs->SetUnknown(MF_SINK_WRITER_D3D_MANAGER, dxgiDeviceManager_.Get());
+    } else {
+        dxgiDeviceManager_.Reset();
+    }
 
     hr = MFCreateSinkWriterFromURL(outputPath.c_str(), nullptr, writerAttrs.Get(), &sinkWriter_);
     if (FAILED(hr)) {
