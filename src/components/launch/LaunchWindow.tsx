@@ -186,6 +186,16 @@ function LaunchWindowContent() {
 		ease: [0.22, 1, 0.36, 1] as const,
 	};
 
+	const handlePickOnScreen = async () => {
+		const result = await window.electronAPI.pickCaptureTarget();
+		if (!result.success) return;
+		if (result.record) {
+			toggleRecording();
+		} else if (result.source) {
+			void window.electronAPI.showSourceHighlight?.(result.source);
+		}
+	};
+
 	const openHome = () => {
 		localStorage.setItem("recordly.open-dashboard", String(Date.now()));
 		void window.electronAPI.showProjectDashboard();
@@ -224,6 +234,7 @@ function LaunchWindowContent() {
 					<SourcePopover
 						selectedSource={selectedSource}
 						onSourceSelect={handleSourceSelect}
+						onPickOnScreen={platform === "darwin" ? handlePickOnScreen : undefined}
 						onOpen={beginInteractiveHudAction}
 						trigger={
 							<Button

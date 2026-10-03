@@ -42,6 +42,8 @@ let hudOverlayRecordingActive = false;
 let hudCaptureStarting = false;
 let hudOverlayWebcamPreviewVisible = false;
 let countdownWindow: BrowserWindow | null = null;
+let capturePickerWindows: BrowserWindow[] = [];
+let areaRecordingBorderWindow: BrowserWindow | null = null;
 let updateToastWindow: BrowserWindow | null = null;
 let hudWasVisibleBeforeUpdateToast = false;
 
@@ -49,6 +51,8 @@ const HUD_OVERLAY_SETTINGS_FILE = path.join(USER_DATA_PATH, "hud-overlay-setting
 const HUD_EDGE_MARGIN_DIP = 16;
 const UPDATE_TOAST_WIDTH = 420;
 const UPDATE_TOAST_HEIGHT = 172;
+/** Shows a capture picker that never reported ready. */
+const CAPTURE_PICKER_READY_TIMEOUT_MS = 1500;
 
 function getEditorWindowQuery(): Record<string, string> {
 	const query: Record<string, string> = {
@@ -1171,4 +1175,151 @@ export function closeCountdownWindow(): void {
 		countdownWindow.close();
 		countdownWindow = null;
 	}
+}
+
+/**
+ * Covers every display with a transparent overlay for picking what to record.
+ * Each overlay renders the `capture-picker` window and reports back over IPC.
+ */
+export function createCapturePickerWindows(onClosed: () => void): BrowserWindow[] {
+	closeCapturePickerWindows();
+	const cursorDisplayId = getScreen().getDisplayNearestPoint(
+		getScreen().getCursorScreenPoint(),
+	).id;
+	capturePickerWindows = getScreen()
+		.getAllDisplays()
+		.map((display) => {
+			const win = new BrowserWindow({
+				...display.bounds,
+				frame: false,
+				transparent: true,
+				resizable: false,
+				movable: false,
+				minimizable: false,
+				maximizable: false,
+				fullscreenable: false,
+				alwaysOnTop: true,
+				skipTaskbar: true,
+				hasShadow: false,
+				enableLargerThanScreen: true,
+				show: false,
+				backgroundColor: "#00000000",
+				...(process.platform === "darwin" ? { type: "panel" as const } : {}),
+				webPreferences: {
+					preload: path.join(electronWindowsDir, "preload.mjs"),
+					nodeIntegration: false,
+					contextIsolation: true,
+				},
+			});
+			// Above the menu bar and the HUD, on every Space and over full-screen apps.
+			win.setAlwaysOnTop(true, "screen-saver");
+			win.setVisibleOnAllWorkspaces(true, {
+				visibleOnFullScreen: true,
+				skipTransformProcessType: true,
+			});
+			win.setBounds(display.bounds);
+			// The page paints the app's opaque background before React makes it
+			// transparent, so the overlay stays hidden until the picker has painted.
+			let shown = false;
+			const show = () => {
+				if (shown || win.isDestroyed()) return;
+				shown = true;
+				win.show();
+				if (display.id === cursorDisplayId) {
+					app.focus({ steal: true });
+					win.focus();
+				}
+			};
+			win.webContents.ipc.once("capture-picker-ready", show);
+			win.webContents.once("did-finish-load", () => {
+				setTimeout(show, CAPTURE_PICKER_READY_TIMEOUT_MS);
+			});
+			win.on("closed", () => {
+				const wasOpen = capturePickerWindows.includes(win);
+				capturePickerWindows = capturePickerWindows.filter(
+					(candidate) => candidate !== win,
+				);
+				if (wasOpen) onClosed();
+			});
+
+			const query = { windowType: "capture-picker", displayId: String(display.id) };
+			if (VITE_DEV_SERVER_URL) {
+				win.loadURL(`${VITE_DEV_SERVER_URL}?${new URLSearchParams(query).toString()}`);
+			} else {
+				win.loadFile(path.join(RENDERER_DIST, "index.html"), { query });
+			}
+			return win;
+		});
+	return capturePickerWindows;
+}
+
+export function closeCapturePickerWindows(): void {
+	const windows = capturePickerWindows;
+	capturePickerWindows = [];
+	for (const win of windows) {
+		if (!win.isDestroyed()) win.close();
+	}
+}
+
+/**
+ * Outlines the area being recorded. The outline sits just outside the recorded
+ * rectangle and belongs to Recordly, which recordings exclude, so it never shows
+ * up in the video.
+ */
+export function showAreaRecordingBorder(area: {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}): void {
+	hideAreaRecordingBorder();
+	const outset = 3;
+	const win = new BrowserWindow({
+		x: Math.round(area.x) - outset,
+		y: Math.round(area.y) - outset,
+		width: Math.round(area.width) + outset * 2,
+		height: Math.round(area.height) + outset * 2,
+		frame: false,
+		transparent: true,
+		resizable: false,
+		movable: false,
+		focusable: false,
+		skipTaskbar: true,
+		hasShadow: false,
+		enableLargerThanScreen: true,
+		show: false,
+		backgroundColor: "#00000000",
+		...(process.platform === "darwin" ? { type: "panel" as const } : {}),
+		webPreferences: { nodeIntegration: false, contextIsolation: true },
+	});
+	win.setIgnoreMouseEvents(true);
+	win.setAlwaysOnTop(true, "screen-saver");
+	win.setVisibleOnAllWorkspaces(true, {
+		visibleOnFullScreen: true,
+		skipTransformProcessType: true,
+	});
+	win.setContentProtection(true);
+	areaRecordingBorderWindow = win;
+	win.on("closed", () => {
+		if (areaRecordingBorderWindow === win) areaRecordingBorderWindow = null;
+	});
+
+	const html = `<!DOCTYPE html><html><head><style>
+html,body{margin:0;height:100%;background:transparent;overflow:hidden}
+div{position:fixed;inset:0;border:2px dashed rgba(255,255,255,.95);box-shadow:0 0 0 1px rgba(0,0,0,.45),inset 0 0 0 1px rgba(0,0,0,.45)}
+</style></head><body><div></div></body></html>`;
+	void win
+		.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+		.then(() => {
+			if (!win.isDestroyed()) win.showInactive();
+		})
+		.catch(() => {
+			if (!win.isDestroyed()) win.close();
+		});
+}
+
+export function hideAreaRecordingBorder(): void {
+	const win = areaRecordingBorderWindow;
+	areaRecordingBorderWindow = null;
+	if (win && !win.isDestroyed()) win.close();
 }

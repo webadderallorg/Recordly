@@ -18,6 +18,7 @@ import {
 import { getDisplayBoundsForSource, getDisplayWorkAreaForSource } from "../recording/ffmpeg";
 import { selectedSource, setSelectedSource } from "../state";
 import type { SelectedSource, WindowBounds } from "../types";
+import { getSourceArea } from "../sourceArea";
 import { getScreen, parseWindowId } from "../utils";
 import { bringWindowsWindowForward, resolveWindowsWindowBounds } from "../windowsWindowControl";
 import { getScreenSourceIdForDisplay } from "./sourceMapping";
@@ -34,7 +35,7 @@ function normalizeDesktopSourceName(value: string) {
 	return value.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
-function broadcastSelectedSourceChange() {
+export function broadcastSelectedSourceChange() {
 	for (const window of BrowserWindow.getAllWindows()) {
 		if (!window.isDestroyed()) {
 			window.webContents.send("selected-source-changed", selectedSource);
@@ -408,9 +409,12 @@ export function registerSourceHandlers({
 			const isWindow = source.id?.startsWith("window:");
 
 			// ── 1. Resolve bounds ──
-			let bounds: { x: number; y: number; width: number; height: number } | null = null;
+			let bounds: { x: number; y: number; width: number; height: number } | null =
+				getSourceArea(source);
 
-			if (source.id?.startsWith("screen:")) {
+			if (bounds) {
+				// An area highlights exactly the rectangle that will be recorded.
+			} else if (source.id?.startsWith("screen:")) {
 				bounds =
 					process.platform === "darwin"
 						? getDisplayWorkAreaForSource(source)

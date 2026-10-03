@@ -1156,7 +1156,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		const useNativeMacScreenCapture =
 			platform === "darwin" &&
 			(selectedSource.id?.startsWith("screen:") ||
-				selectedSource.id?.startsWith("window:")) &&
+				selectedSource.id?.startsWith("window:") ||
+				selectedSource.id?.startsWith("area:")) &&
 			typeof window.electronAPI.startNativeScreenRecording === "function";
 
 		let useNativeWindowsCapture = false;
