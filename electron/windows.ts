@@ -1253,6 +1253,10 @@ export function createCapturePickerWindows(onClosed: () => void): BrowserWindow[
 	return capturePickerWindows;
 }
 
+export function getCapturePickerWindows(): BrowserWindow[] {
+	return [...capturePickerWindows];
+}
+
 export function closeCapturePickerWindows(): void {
 	const windows = capturePickerWindows;
 	capturePickerWindows = [];

@@ -25,25 +25,29 @@ const windows = [
 	},
 ];
 
-async function openPicker(page: Page) {
+async function openPicker(page: Page, allowArea = true) {
 	await installDesktopBridge(page);
-	await page.addInitScript((pickerWindows) => {
-		const api = (window as unknown as { electronAPI: Record<string, unknown> }).electronAPI;
-		Object.assign(api, {
-			getCapturePickerContext: async () => ({
-				displayBounds: { x: 0, y: 0, width: 1440, height: 1000 },
-				lastArea: null,
-				windows: pickerWindows,
-				cursor: null,
-			}),
-			completeCapturePick: async (pick: unknown) => {
-				document.documentElement.dataset.pick = JSON.stringify(pick);
-			},
-			capturePickerReady: () => {
-				document.documentElement.dataset.pickerReady = "true";
-			},
-		});
-	}, windows);
+	await page.addInitScript(
+		({ pickerWindows, allowArea }) => {
+			const api = (window as unknown as { electronAPI: Record<string, unknown> }).electronAPI;
+			Object.assign(api, {
+				getCapturePickerContext: async () => ({
+					displayBounds: { x: 0, y: 0, width: 1440, height: 1000 },
+					lastArea: null,
+					allowArea,
+					windows: pickerWindows,
+					cursor: null,
+				}),
+				completeCapturePick: async (pick: unknown) => {
+					document.documentElement.dataset.pick = JSON.stringify(pick);
+				},
+				capturePickerReady: () => {
+					document.documentElement.dataset.pickerReady = "true";
+				},
+			});
+		},
+		{ pickerWindows: windows, allowArea },
+	);
 	await page.goto("/?windowType=capture-picker&displayId=1");
 	await expect(page.locator("html")).toHaveAttribute("data-picker-ready", "true");
 }
@@ -59,12 +63,11 @@ test("hovering highlights the frontmost window and a click picks it", async ({ p
 	await expect(page.getByText("Notes — Launch checklist · 620 × 460")).toBeVisible();
 
 	await page.mouse.click(600, 300);
-	await page.getByRole("button", { name: "Record" }).click();
 	expect(await pick(page)).toEqual({
 		kind: "window",
 		windowId: "window:101:0",
 		displayId: 1,
-		record: true,
+		record: false,
 	});
 });
 
@@ -74,7 +77,6 @@ test("a click on the desktop picks the whole screen", async ({ page }) => {
 	await expect(page.getByText("Entire screen · 1440 × 1000")).toBeVisible();
 
 	await page.mouse.click(1380, 60);
-	await page.getByRole("button", { name: "Select" }).click();
 	expect(await pick(page)).toEqual({ kind: "screen", displayId: 1, record: false });
 });
 
@@ -86,13 +88,12 @@ test("a drag draws an area", async ({ page }) => {
 	await page.mouse.up();
 	await expect(page.getByText("400 × 250")).toBeVisible();
 
-	await page.keyboard.press("Enter");
 	expect(await pick(page)).toMatchObject({
 		kind: "area",
 		width: 400,
 		height: 250,
 		displayId: 1,
-		record: true,
+		record: false,
 	});
 });
 
@@ -100,4 +101,82 @@ test("Escape cancels", async ({ page }) => {
 	await openPicker(page);
 	await page.keyboard.press("Escape");
 	expect(await pick(page)).toBeNull();
+});
+
+test("selection has no recording toolbar", async ({ page }) => {
+	await openPicker(page);
+	await page.mouse.click(600, 300);
+	await expect(page.getByRole("button", { name: "Record", exact: true })).toHaveCount(0);
+	expect(await pick(page)).toMatchObject({ kind: "window", record: false });
+});
+
+test("platforms without area capture keep drag selection on an existing screen", async ({
+	page,
+}) => {
+	await openPicker(page, false);
+	await page.mouse.move(1300, 100);
+	await page.mouse.down();
+	await page.mouse.move(1380, 180, { steps: 8 });
+	await page.mouse.up();
+	expect(await pick(page)).toMatchObject({ kind: "screen", record: false });
+});
+
+for (const selected of [false, true]) {
+	test(`HUD ${selected ? "keeps the selected source and reopens on click" : "opens the picker once when no source exists"}`, async ({
+		page,
+	}) => {
+		await installDesktopBridge(page);
+		await page.addInitScript((selected) => {
+			Object.assign(window.electronAPI, {
+				getSelectedSource: async () =>
+					selected ? { id: "screen:1:0", name: "Existing screen" } : null,
+				pickCaptureTarget: async () => {
+					const html = document.documentElement;
+					html.dataset.pickerCalls = String(Number(html.dataset.pickerCalls ?? 0) + 1);
+					return {
+						success: true,
+						source: { id: "window:101:0", name: "Selected window" },
+					};
+				},
+			});
+		}, selected);
+		await page.goto("/?windowType=hud-overlay");
+		const control = page.getByRole("button", { name: "Choose recording source" });
+		await expect(control).toBeVisible();
+		if (selected) {
+			await expect(control).toContainText("Existing screen");
+			await expect(page.locator("html")).not.toHaveAttribute("data-picker-calls");
+			await control.click();
+		}
+		await expect(page.locator("html")).toHaveAttribute("data-picker-calls", "1");
+		await expect(control).toContainText("Selected window");
+		await expect(page.getByRole("button", { name: "Record", exact: true })).toBeVisible();
+	});
+}
+
+test("a newer selected-source event wins over the startup response", async ({ page }) => {
+	await installDesktopBridge(page);
+	await page.addInitScript(() => {
+		Object.assign(window.electronAPI, {
+			getSelectedSource: async () => {
+				await new Promise((resolve) => setTimeout(resolve, 100));
+				document.documentElement.dataset.sourceResolved = "true";
+				return null;
+			},
+			onSelectedSourceChanged: (listener: (source: { name: string }) => void) => {
+				const timer = setTimeout(() => listener({ name: "Newer window" }), 10);
+				return () => clearTimeout(timer);
+			},
+			pickCaptureTarget: async () => {
+				document.documentElement.dataset.pickerCalls = "1";
+				return { success: false, canceled: true };
+			},
+		});
+	});
+	await page.goto("/?windowType=hud-overlay");
+	await expect(page.locator("html")).toHaveAttribute("data-source-resolved", "true");
+	await expect(page.getByRole("button", { name: "Choose recording source" })).toContainText(
+		"Newer window",
+	);
+	await expect(page.locator("html")).not.toHaveAttribute("data-picker-calls");
 });

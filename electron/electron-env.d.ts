@@ -254,6 +254,7 @@ interface Window {
 		getCapturePickerContext: (displayId: number) => Promise<{
 			displayBounds: CaptureArea | null;
 			lastArea: CaptureArea | null;
+			allowArea: boolean;
 			/** On-screen windows on this display, front to back. */
 			windows: CapturePickerWindow[];
 			cursor: { x: number; y: number } | null;

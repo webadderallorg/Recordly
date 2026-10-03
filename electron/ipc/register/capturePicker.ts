@@ -1,54 +1,40 @@
-import { ipcMain } from "electron";
-import { closeCapturePickerWindows, createCapturePickerWindows } from "../../windows";
-import { getNativeMacWindowsFrontToBack, stopWindowBoundsCapture } from "../cursor/bounds";
+import { listCapturePickerWindows } from "../capturePickerSources";
+import { BrowserWindow, ipcMain } from "electron";
+import {
+	closeCapturePickerWindows,
+	createCapturePickerWindows,
+	getCapturePickerWindows,
+} from "../../windows";
+import { stopWindowBoundsCapture } from "../cursor/bounds";
 import { setSelectedSource } from "../state";
 import { createAreaSource, createWindowSource, normalizeCapturePick } from "../sourceArea";
 import type { AreaCapturePick, CapturePick, CapturePickerWindow, SelectedSource } from "../types";
 import { getScreen } from "../utils";
-import { getScreenSourceIdForDisplay } from "./sourceMapping";
-import { bringSelectedWindowForward, broadcastSelectedSourceChange } from "./sources";
-
-/** Windows the picker can offer, front to back, without Recordly's own. */
-async function listPickableWindows(): Promise<CapturePickerWindow[]> {
-	const entries = await getNativeMacWindowsFrontToBack();
-	return entries.flatMap((entry) => {
-		const { x, y, width, height } = entry;
-		if (
-			entry.ownerPid === process.pid ||
-			typeof x !== "number" ||
-			typeof y !== "number" ||
-			typeof width !== "number" ||
-			typeof height !== "number" ||
-			width <= 0 ||
-			height <= 0
-		) {
-			return [];
-		}
-		return [
-			{
-				id: entry.id,
-				appName: entry.appName ?? "",
-				title: entry.windowTitle ?? entry.name,
-				display_id: entry.display_id,
-				x,
-				y,
-				width,
-				height,
-			},
-		];
-	});
-}
+import { getScreenSourceIdForDisplay, isLikelyLinuxWaylandSession } from "./sourceMapping";
+import {
+	bringSelectedWindowForward,
+	broadcastSelectedSourceChange,
+	getDesktopSources,
+} from "./sources";
 
 /** The same source the screen list offers for this display. */
-function createScreenSource(displayId: number): SelectedSource | null {
+async function createScreenSource(displayId: number): Promise<SelectedSource | null> {
 	const displays = getScreen().getAllDisplays();
 	const index = displays.findIndex((display) => display.id === displayId);
 	if (index < 0) return null;
+	const sources = await getDesktopSources({
+		types: ["screen"],
+		thumbnailSize: { width: 0, height: 0 },
+	});
+	const matched =
+		sources.find((source) => source.display_id === String(displayId)) ??
+		(sources.length === displays.length ? sources[index] : undefined);
 	const isPrimary = getScreen().getPrimaryDisplay().id === displayId;
 	return {
 		id: getScreenSourceIdForDisplay({
 			displayId: String(displayId),
 			platform: process.platform,
+			matchedSourceId: matched?.id,
 		}),
 		name: isPrimary ? `Screen ${index + 1} (Primary)` : `Screen ${index + 1}`,
 		display_id: String(displayId),
@@ -72,14 +58,28 @@ export function registerCapturePickerHandlers() {
 		resolve?.(pick);
 	};
 
-	ipcMain.handle("pick-capture-target", async () => {
-		if (process.platform !== "darwin") {
-			return { success: false, message: "Picking on screen is available on macOS." };
+	let activePick: Promise<unknown> | null = null;
+	const pickTarget = async () => {
+		if (process.platform === "linux" && isLikelyLinuxWaylandSession(process.env)) {
+			// Preserve the existing portal recording path: its system picker opens
+			// when recording starts; overlay selection cannot identify Wayland windows.
+			const source = {
+				id: "screen:linux-portal",
+				name: "System picker",
+				sourceType: "screen" as const,
+			};
+			setSelectedSource(source);
+			broadcastSelectedSourceChange();
+			return {
+				success: true,
+				source,
+				message: "Choose a screen or window in the system picker when you start recording.",
+			};
 		}
 
 		finishPick(null);
 		// List windows before the overlays cover them.
-		pickableWindows = listPickableWindows();
+		pickableWindows = Promise.resolve(await listCapturePickerWindows());
 		const pick = await new Promise<CapturePick | null>((resolve) => {
 			resolvePendingPick = resolve;
 			// Closing an overlay without confirming cancels the pick.
@@ -98,7 +98,7 @@ export function registerCapturePickerHandlers() {
 			const window = (await pickableWindows).find((entry) => entry.id === pick.windowId);
 			source = window ? createWindowSource(window) : null;
 		} else {
-			source = createScreenSource(pick.displayId);
+			source = await createScreenSource(pick.displayId);
 		}
 		if (!source) {
 			return { success: false, message: "That window or screen is no longer available." };
@@ -112,10 +112,39 @@ export function registerCapturePickerHandlers() {
 		setSelectedSource(source);
 		broadcastSelectedSourceChange();
 		stopWindowBoundsCapture();
-		return { success: true, source, record: pick.record };
+		return { success: true, source };
+	};
+	ipcMain.handle("pick-capture-target", () => {
+		if (!activePick) {
+			activePick = pickTarget()
+				.catch((error) => {
+					finishPick(null);
+					closeCapturePickerWindows();
+					return {
+						success: false,
+						message:
+							error instanceof Error
+								? error.message
+								: "Unable to open the source picker.",
+					};
+				})
+				.finally(() => {
+					activePick = null;
+				});
+		}
+		return activePick;
 	});
 
-	ipcMain.handle("complete-capture-pick", async (_, input: unknown) => {
+	ipcMain.handle("complete-capture-pick", async (event, input: unknown) => {
+		if (!getCapturePickerWindows().includes(BrowserWindow.fromWebContents(event.sender)!))
+			return;
+		if (
+			input &&
+			typeof input === "object" &&
+			(input as { kind?: unknown }).kind === "area" &&
+			process.platform !== "darwin"
+		)
+			return;
 		if (!input) {
 			finishPick(null);
 			return;
@@ -123,15 +152,29 @@ export function registerCapturePickerHandlers() {
 		const displays = getScreen()
 			.getAllDisplays()
 			.map((display) => ({ id: display.id, bounds: display.bounds }));
-		finishPick(normalizeCapturePick(input, displays, await pickableWindows));
+		finishPick(
+			normalizeCapturePick(
+				input && typeof input === "object" ? { ...input, record: false } : input,
+				displays,
+				await pickableWindows,
+			),
+		);
 	});
 
-	ipcMain.handle("get-capture-picker-context", async (_, displayId: unknown) => {
+	ipcMain.handle("get-capture-picker-context", async (event, displayId: unknown) => {
+		if (!getCapturePickerWindows().includes(BrowserWindow.fromWebContents(event.sender)!))
+			throw new Error("Unknown picker window.");
 		const display = getScreen()
 			.getAllDisplays()
 			.find((entry) => entry.id === Number(displayId));
 		if (!display) {
-			return { displayBounds: null, lastArea: null, windows: [], cursor: null };
+			return {
+				displayBounds: null,
+				lastArea: null,
+				allowArea: process.platform === "darwin",
+				windows: [],
+				cursor: null,
+			};
 		}
 		const { x, y, width, height } = display.bounds;
 		const windows = (await pickableWindows).filter(
@@ -144,6 +187,7 @@ export function registerCapturePickerHandlers() {
 		const previous = lastArea?.displayId === display.id ? lastArea : null;
 		return {
 			displayBounds: display.bounds,
+			allowArea: process.platform === "darwin",
 			lastArea: previous
 				? { x: previous.x, y: previous.y, width: previous.width, height: previous.height }
 				: null,

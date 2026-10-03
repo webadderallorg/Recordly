@@ -1,6 +1,5 @@
 import {
 	ArrowClockwiseIcon,
-	CaretUpIcon,
 	House,
 	DotsThreeVerticalIcon,
 	MicrophoneIcon,
@@ -13,7 +12,7 @@ import {
 	XIcon,
 } from "@/components/ui/icons";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Separator } from "@/components/ui/separator";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
@@ -36,7 +35,7 @@ import {
 	useLaunchPopoverCoordinator,
 } from "./popovers/LaunchPopoverCoordinator";
 import { MicPopover } from "./popovers/MicPopover";
-import { SourcePopover } from "./popovers/SourcePopover";
+import { toast } from "@/components/ui/toast";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { RecordingControls } from "./RecordingControls";
 
@@ -50,7 +49,7 @@ export function LaunchWindow() {
 
 function LaunchWindowContent() {
 	const t = useScopedT("launch");
-	const { openId, requestOpen } = useLaunchPopoverCoordinator();
+	const { openId } = useLaunchPopoverCoordinator();
 
 	const {
 		recording,
@@ -80,8 +79,7 @@ function LaunchWindowContent() {
 	const hudContentRef = useRef<HTMLDivElement>(null);
 	const hudBarRef = useRef<HTMLDivElement>(null);
 
-	const { selectedSource, hasSelectedSource, handleSourceSelect, syncSelectedSource } =
-		useLaunchWindowActions();
+	const { selectedSource, hasSelectedSource, syncSelectedSource } = useLaunchWindowActions();
 
 	const showWebcamControls = webcamEnabled && !recording;
 	const { devices, selectedDeviceId, setSelectedDeviceId } = useMicrophoneDevices(
@@ -164,14 +162,47 @@ function LaunchWindowContent() {
 			webcamPreviewDragStartRef,
 		});
 
+	const hudStateTransition = {
+		duration: 0.24,
+		ease: [0.22, 1, 0.36, 1] as const,
+	};
+
+	const pickerPending = useRef(false);
+	const handlePickOnScreen = useCallback(async () => {
+		if (pickerPending.current || recording) return;
+		pickerPending.current = true;
+		beginInteractiveHudAction();
+		try {
+			const result = await window.electronAPI.pickCaptureTarget();
+			if (result.success && result.source) syncSelectedSource(result.source);
+			if (result.message && !result.canceled) {
+				if (result.success) toast.info(result.message);
+				else toast.error(result.message);
+			}
+		} catch {
+			toast.error("Unable to open the source picker.");
+		} finally {
+			pickerPending.current = false;
+		}
+	}, [recording, beginInteractiveHudAction, syncSelectedSource]);
+
+	const initialSourceChecked = useRef(false);
 	useEffect(() => {
 		let mounted = true;
+		let selectionEventSeen = false;
 
 		void window.electronAPI.getSelectedSource().then((source) => {
-			if (mounted) syncSelectedSource(source);
+			if (mounted && !selectionEventSeen) {
+				syncSelectedSource(source);
+				if (!initialSourceChecked.current) {
+					initialSourceChecked.current = true;
+					if (!source && !recording) void handlePickOnScreen();
+				}
+			}
 		});
 
 		const cleanup = window.electronAPI.onSelectedSourceChanged((source) => {
+			selectionEventSeen = true;
 			if (mounted) syncSelectedSource(source);
 		});
 
@@ -179,22 +210,7 @@ function LaunchWindowContent() {
 			mounted = false;
 			cleanup?.();
 		};
-	}, [syncSelectedSource]);
-
-	const hudStateTransition = {
-		duration: 0.24,
-		ease: [0.22, 1, 0.36, 1] as const,
-	};
-
-	const handlePickOnScreen = async () => {
-		const result = await window.electronAPI.pickCaptureTarget();
-		if (!result.success) return;
-		if (result.record) {
-			toggleRecording();
-		} else if (result.source) {
-			void window.electronAPI.showSourceHighlight?.(result.source);
-		}
-	};
+	}, [syncSelectedSource, recording, handlePickOnScreen]);
 
 	const openHome = () => {
 		localStorage.setItem("recordly.open-dashboard", String(Date.now()));
@@ -229,41 +245,20 @@ function LaunchWindowContent() {
 
 	const idleControls = (
 		<>
-			{platform !== "linux" && (
-				<>
-					<SourcePopover
-						selectedSource={selectedSource}
-						onSourceSelect={handleSourceSelect}
-						onPickOnScreen={platform === "darwin" ? handlePickOnScreen : undefined}
-						onOpen={beginInteractiveHudAction}
-						trigger={
-							<Button
-								variant="ghost"
-								size="lg"
-								className={` ${styles.electronNoDrag} group gap-2 px-3 min-w-0 max-w-[180px] shrink-0  ${openId === "sources" ? "border-[var(--launch-border-strong)] bg-[var(--launch-hover)]" : ""} `}
-								title={selectedSource}
-							>
-								<MonitorIcon
-									weight={openId === "sources" ? "fill" : "regular"}
-									size={18}
-									className="size-5 shrink-0"
-								/>
-								<div className="flex-1 min-w-0 overflow-hidden">
-									<MarqueeText text={selectedSource} />
-								</div>
-								<CaretUpIcon
-									size={10}
-									className={`text-[#6b6b78] ml-0.5 shrink-0 transition-transform duration-200 ${
-										openId === "sources" ? "" : "rotate-180"
-									}`}
-								/>
-							</Button>
-						}
-					/>
-
-					<Separator orientation="vertical" className="mx-[5px] h-6 self-center" />
-				</>
-			)}
+			<Button
+				variant="ghost"
+				size="lg"
+				className={`${styles.electronNoDrag} gap-2 px-3 min-w-0 max-w-[180px] shrink-0`}
+				title={selectedSource}
+				aria-label="Choose recording source"
+				onClick={() => void handlePickOnScreen()}
+			>
+				<MonitorIcon size={18} className="size-5 shrink-0" />
+				<div className="flex-1 min-w-0 overflow-hidden">
+					<MarqueeText text={selectedSource} />
+				</div>
+			</Button>
+			<Separator orientation="vertical" className="mx-[5px] h-6 self-center" />
 
 			<MicPopover
 				disabled={recording}
@@ -372,14 +367,7 @@ function LaunchWindowContent() {
 				variant="destructive"
 				size="icon"
 				className={styles.electronNoDrag}
-				onClick={
-					hasSelectedSource || platform === "linux"
-						? toggleRecording
-						: () => {
-								beginInteractiveHudAction();
-								requestOpen("sources");
-							}
-				}
+				onClick={hasSelectedSource ? toggleRecording : () => void handlePickOnScreen()}
 				disabled={countdownActive}
 				title={t("recording.record")}
 			>
