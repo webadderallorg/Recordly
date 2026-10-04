@@ -272,7 +272,7 @@ function LaunchWindowContent() {
 					{hasSelectedSource ? (
 						<MarqueeText text={selectedSource} />
 					) : (
-						<span>Pick screen</span>
+						<span>Pick source</span>
 					)}
 				</div>
 			</Button>

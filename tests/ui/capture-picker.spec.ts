@@ -214,7 +214,7 @@ test("areas can be moved and resized before Enter confirms them", async ({ page 
 	});
 });
 
-test("unselected source reads Pick screen once and Record stays disabled while picking", async ({
+test("unselected source reads Pick source once and Record stays disabled while picking", async ({
 	page,
 }) => {
 	await installDesktopBridge(page);
@@ -232,9 +232,9 @@ test("unselected source reads Pick screen once and Record stays disabled while p
 	await page.goto("/?windowType=hud-overlay");
 	await expect(page.locator("html")).toHaveAttribute("data-picker-pending", "true");
 	const source = page.getByRole("button", { name: "Choose recording source" });
-	await expect(source).toHaveText("Pick screen");
+	await expect(source).toHaveText("Pick source");
 	await expect(page.getByRole("button", { name: "Record", exact: true })).toBeDisabled();
 	await page.evaluate(() => (window as unknown as { finishPicker: () => void }).finishPicker());
 	await expect(page.getByRole("button", { name: "Record", exact: true })).toBeEnabled();
-	await expect(source).toHaveText("Pick screen");
+	await expect(source).toHaveText("Pick source");
 });
