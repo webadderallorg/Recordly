@@ -182,3 +182,35 @@ describe("applyZoomTransform motion blur routing", () => {
 		expect(zoomBlurFilter.innerRadius).toBe(0);
 	});
 });
+
+describe("paused camera frame blur", () => {
+	it("reconstructs blur without playback or prior render history and remains stable", () => {
+		const motionBlurFilter = { velocity: { x: 0, y: 0 }, kernelSize: 5, offset: 0 };
+		const zoomBlurFilter = { strength: 0, center: { x: 0, y: 0 }, innerRadius: 0, radius: -1 };
+		const params = {
+			cameraContainer: createStubContainer() as never,
+			motionBlurFilter: motionBlurFilter as never,
+			zoomBlurFilter: zoomBlurFilter as never,
+			stageSize: { width: 1000, height: 800 },
+			baseMask: { x: 0, y: 0, width: 1000, height: 800 },
+			zoomScale: 1,
+			focusX: 0.5,
+			focusY: 0.5,
+			isPlaying: false,
+			motionBlurAmount: 1,
+			transformOverride: { scale: 1, x: 10, y: 0 },
+			motionSample: { previousTransform: { scale: 1, x: 0, y: 0 }, deltaMs: 1000 / 60 },
+		};
+		applyZoomTransform(params);
+		expect(motionBlurFilter.velocity.x).toBeGreaterThan(0);
+		const velocity = { ...motionBlurFilter.velocity };
+		applyZoomTransform(params);
+		expect(motionBlurFilter.velocity).toEqual(velocity);
+		applyZoomTransform({ ...params, transformOverride: { scale: 1.01, x: 0, y: 0 } });
+		expect(zoomBlurFilter.strength).toBeGreaterThan(0);
+		expect(motionBlurFilter.velocity.x).toBe(0);
+		applyZoomTransform({ ...params, motionSample: null });
+		expect(zoomBlurFilter.strength).toBe(0);
+		expect(motionBlurFilter.velocity.x).toBe(0);
+	});
+});

@@ -52,6 +52,7 @@ interface TransformParams {
 	transformOverride?: AppliedTransform;
 	motionBlurState?: MotionBlurState;
 	frameTimeMs?: number;
+	motionSample?: { previousTransform: AppliedTransform; deltaMs: number } | null;
 }
 
 interface AppliedTransform {
@@ -495,6 +496,7 @@ export function applyZoomTransform({
 	transformOverride,
 	motionBlurState,
 	frameTimeMs,
+	motionSample,
 }: TransformParams): AppliedTransform {
 	if (
 		stageSize.width <= 0 ||
@@ -524,7 +526,26 @@ export function applyZoomTransform({
 	cameraContainer.position.set(transform.x, transform.y);
 	const resolvedTuning = resolveMotionBlurTuning(motionBlurTuning);
 
-	if (motionBlurState && motionBlurFilter && motionBlurAmount > 0 && isPlaying) {
+	if (motionBlurFilter && motionBlurAmount > 0 && motionSample && motionSample.deltaMs > 0) {
+		const analysis = analyzeCameraStep({
+			previousQuad: computeTransformQuad(baseMask, motionSample.previousTransform),
+			currentQuad: computeTransformQuad(baseMask, transform),
+			stageSize,
+			motionBlurAmount,
+			motionBlurTuning: resolvedTuning,
+			deltaSeconds: motionSample.deltaMs / 1000,
+		});
+		applyCameraStepBlur({ analysis, motionBlurFilter, zoomBlurFilter });
+		if (motionBlurState) {
+			motionBlurState.prevCamX = transform.x;
+			motionBlurState.prevCamY = transform.y;
+			motionBlurState.prevCamScale = transform.scale;
+			motionBlurState.lastFrameTimeMs = frameTimeMs ?? performance.now();
+			motionBlurState.initialized = true;
+		}
+	} else if (motionSample === null) {
+		resetMotionEffects(zoomBlurFilter, motionBlurFilter, motionBlurState);
+	} else if (motionBlurState && motionBlurFilter && motionBlurAmount > 0 && isPlaying) {
 		const now = frameTimeMs ?? performance.now();
 
 		if (!motionBlurState.initialized) {

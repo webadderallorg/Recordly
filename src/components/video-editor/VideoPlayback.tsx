@@ -111,6 +111,7 @@ import {
 } from "./videoPlayback/motionSmoothing";
 import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
 import { supportsPreviewPlaybackRate } from "./videoPlayback/playbackRate";
+import { getFrameMotionSample } from "./videoPlayback/frameMotionSample";
 import { PreviewVideoSource } from "./videoPlayback/previewVideoSource";
 import { usePreviewVideoReady } from "./videoPlayback/usePreviewVideoReady";
 import { getSceneEffectMetrics } from "./videoPlayback/sceneEffects";
@@ -1973,6 +1974,10 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			const applyTransform = (
 				transform: { scale: number; x: number; y: number },
 				focus: ZoomFocus,
+				motionSample?: {
+					previousTransform: { scale: number; x: number; y: number };
+					deltaMs: number;
+				} | null,
 			) => {
 				const cameraContainer = cameraContainerRef.current;
 				if (!cameraContainer) return;
@@ -1995,6 +2000,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					transformOverride: transform,
 					motionBlurState: motionBlurStateRef.current,
 					frameTimeMs: timelineTimeRef.current * 1000,
+					motionSample,
 				});
 
 				state.x = appliedTransform.x;
@@ -2051,17 +2057,56 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				}
 				lastRenderedContentTimeRef.current = contentTimeMs;
 
-				const target = resolveSceneZoomTarget({
-					zoomRegions: zoomRegionsRef.current,
-					timeMs: timelineTimeRef.current * 1000,
-					cursorTimeMs: currentTimeRef.current,
-					connectZooms: connectZoomsRef.current,
-					zoomInDurationMs: zoomInDurationMsRef.current,
-					zoomOutDurationMs: zoomOutDurationMsRef.current,
-					zoomClassicMode: zoomClassicModeRef.current,
-					cursorTelemetry: cursorTelemetryRef.current,
-					cursorFollowCamera: cursorFollowCameraRef.current,
-				});
+				const sampleFrozenFrame = motionMode === "snap" && !isPlayingRef.current;
+				const frameSample = sampleFrozenFrame
+					? getFrameMotionSample(contentTimeMs, clipRegionsRef.current)
+					: null;
+				const resolveTarget = (
+					timeMs: number,
+					cursorTimeMs: number,
+					cursorFollowCamera: CursorFollowCameraState,
+				) =>
+					resolveSceneZoomTarget({
+						zoomRegions: zoomRegionsRef.current,
+						timeMs,
+						cursorTimeMs,
+						connectZooms: connectZoomsRef.current,
+						zoomInDurationMs: zoomInDurationMsRef.current,
+						zoomOutDurationMs: zoomOutDurationMsRef.current,
+						zoomClassicMode: zoomClassicModeRef.current,
+						cursorTelemetry: cursorTelemetryRef.current,
+						cursorFollowCamera,
+					});
+
+				const target = resolveTarget(
+					contentTimeMs,
+					currentTimeRef.current,
+					sampleFrozenFrame
+						? createCursorFollowCameraState()
+						: cursorFollowCameraRef.current,
+				);
+				const previousTarget = frameSample
+					? resolveTarget(
+							frameSample.previousTimeMs,
+							frameSample.previousSourceTimeMs,
+							createCursorFollowCameraState(),
+						)
+					: null;
+				const motionSample = sampleFrozenFrame
+					? frameSample && previousTarget
+						? {
+								previousTransform: computeZoomTransform({
+									stageSize: stageSizeRef.current,
+									baseMask: baseMaskRef.current,
+									zoomScale: previousTarget.scale,
+									zoomProgress: previousTarget.progress,
+									focusX: previousTarget.focus.cx,
+									focusY: previousTarget.focus.cy,
+								}),
+								deltaMs: frameSample.deltaMs,
+							}
+						: null
+					: undefined;
 
 				const state = animationStateRef.current;
 
@@ -2126,7 +2171,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					appliedY = state.y;
 				}
 
-				applyTransform({ scale: appliedScale, x: appliedX, y: appliedY }, target.focus);
+				applyTransform(
+					{ scale: appliedScale, x: appliedX, y: appliedY },
+					target.focus,
+					motionSample,
+				);
 
 				applyWebcamBubbleLayout(animationStateRef.current.appliedScale || 1);
 
@@ -2139,6 +2188,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						baseMaskRef.current,
 						showCursorRef.current,
 						isSeekingRef.current || shouldSnapPausedFrameRef.current,
+						sampleFrozenFrame ? (frameSample?.previousSourceTimeMs ?? null) : undefined,
 					);
 				}
 
