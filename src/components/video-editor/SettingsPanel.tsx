@@ -594,8 +594,8 @@ type WallpaperTile = {
 
 const BUILTIN_CURSOR_STYLE_OPTIONS: CursorStyleOption[] = [
 	{ value: "macos", label: "macOS" },
-	{ value: "tahoe", label: "Tahoe" },
-	{ value: "tahoe-inverted", label: "Tahoe Inverted" },
+	{ value: "tahoe", label: "Golden Gate" },
+	{ value: "tahoe-inverted", label: "Golden Gate Inverted" },
 	{ value: "windows11", label: "Windows 11" },
 	{ value: "dot", label: "Dot" },
 	{ value: "figma", label: "Minimal" },
