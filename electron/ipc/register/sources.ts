@@ -1,3 +1,4 @@
+import { restoreLastCaptureSource } from "../captureSelection";
 import { createRecordingEditorNavigation } from "../../recordingEditorNavigation";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -117,13 +118,17 @@ export async function bringSelectedWindowForward(
 	return null;
 }
 
-export async function getDesktopSources(opts?: Electron.SourcesOptions): Promise<SelectedSource[]> {
+export async function getDesktopSources(
+	opts?: Electron.SourcesOptions,
+	options?: { strict?: boolean },
+): Promise<SelectedSource[]> {
 	const cacheKey = JSON.stringify({
 		types: opts?.types,
 		thumbnailSize: opts?.thumbnailSize,
 		fetchWindowIcons: opts?.fetchWindowIcons,
 	});
 	if (
+		!options?.strict &&
 		sourceListCache &&
 		sourceListCache.key === cacheKey &&
 		sourceListCache.expiresAt > Date.now()
@@ -146,6 +151,10 @@ export async function getDesktopSources(opts?: Electron.SourcesOptions): Promise
 						types: electronTypes,
 					})
 					.catch((error) => {
+						if (options?.strict)
+							throw new Error(
+								"Unable to detect recording sources. Check capture permission and try again.",
+							);
 						console.warn(
 							"desktopCapturer.getSources failed (screen recording permission may be missing):",
 							error,
@@ -194,6 +203,8 @@ export async function getDesktopSources(opts?: Electron.SourcesOptions): Promise
 			(electronScreenSourcesByIndex.length === displays.length
 				? electronScreenSourcesByIndex[index]
 				: undefined);
+		if (options?.strict && !matchedSource)
+			throw new Error("Unable to identify this screen. Try the picker again.");
 		const displayName =
 			displayId === primaryDisplayId
 				? `Screen ${index + 1} (Primary)`
@@ -588,7 +599,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 	});
 
 	ipcMain.handle("get-selected-source", () => {
-		return selectedSource;
+		return restoreLastCaptureSource();
 	});
 
 	ipcMain.handle("open-source-selector", () => {

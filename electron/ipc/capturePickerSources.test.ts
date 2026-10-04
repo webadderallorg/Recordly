@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
 	linux: vi.fn(),
 	dip: vi.fn(),
 }));
+vi.mock("electron", () => ({ systemPreferences: { getMediaAccessStatus: () => "granted" } }));
 vi.mock("node:util", () => ({ promisify: () => mocks.exec }));
 vi.mock("./cursor/bounds", () => ({
 	getNativeMacWindowsFrontToBack: mocks.mac,

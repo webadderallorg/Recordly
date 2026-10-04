@@ -1,3 +1,4 @@
+import { systemPreferences } from "electron";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { getNativeMacWindowsFrontToBack, resolveLinuxWindowBounds } from "./cursor/bounds";
@@ -45,7 +46,9 @@ ConvertTo-Json -InputObject @([RecordlyPickerWindows]::List()) -Compress`;
 
 export async function listCapturePickerWindows(): Promise<CapturePickerWindow[]> {
 	if (process.platform === "darwin") {
-		const entries = await getNativeMacWindowsFrontToBack();
+		if (systemPreferences.getMediaAccessStatus("screen") !== "granted")
+			throw new Error("Allow screen recording in System Settings before picking a window.");
+		const entries = await getNativeMacWindowsFrontToBack({ strict: true });
 		return entries
 			.filter(
 				(entry) =>
@@ -65,11 +68,14 @@ export async function listCapturePickerWindows(): Promise<CapturePickerWindow[]>
 				height: entry.height!,
 			}));
 	}
-	const sources = await getDesktopSources({
-		types: ["window"],
-		thumbnailSize: { width: 0, height: 0 },
-		fetchWindowIcons: false,
-	});
+	const sources = await getDesktopSources(
+		{
+			types: ["window"],
+			thumbnailSize: { width: 0, height: 0 },
+			fetchWindowIcons: false,
+		},
+		{ strict: true },
+	);
 	const capturable = sources.filter(
 		(source): source is SelectedSource & { id: string } =>
 			typeof source.id === "string" && source.id.startsWith("window:"),
@@ -107,6 +113,8 @@ export async function listCapturePickerWindows(): Promise<CapturePickerWindow[]>
 	const { stdout } = await exec("xprop", ["-root", "_NET_CLIENT_LIST_STACKING"], {
 		timeout: 3000,
 	});
+	if (!stdout.includes("window id #"))
+		throw new Error("Unable to detect windows on this desktop.");
 	const ordered = parseStackingOrder(stdout).flatMap((id) => {
 		const source = byId.get(id);
 		return source ? [source] : [];
@@ -117,6 +125,8 @@ export async function listCapturePickerWindows(): Promise<CapturePickerWindow[]>
 		const batch = await Promise.all(
 			ordered.slice(offset, offset + 8).map(async (source) => {
 				const bounds = await resolveLinuxWindowBounds(source);
+				if (!bounds)
+					throw new Error("Unable to detect a window position. Try the picker again.");
 				return bounds
 					? {
 							...bounds,

@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { frontmostAt, MIN_AREA_SIZE, normalizeAreaRect, type AreaRect } from "./areaGeometry";
+import {
+	frontmostAt,
+	MIN_AREA_SIZE,
+	normalizeAreaRect,
+	moveAreaRect,
+	resizeAreaRect,
+	rectContains,
+	AREA_HANDLES,
+	type AreaHandle,
+	type AreaRect,
+} from "./areaGeometry";
 
 type Target =
 	| { kind: "window"; window: CapturePickerWindow; rect: AreaRect }
@@ -19,7 +29,15 @@ export function CapturePicker() {
 	const windows = useRef<{ window: CapturePickerWindow; rect: AreaRect }[]>([]);
 	const origin = useRef({ x: window.screenX, y: window.screenY });
 	const current = useRef<Target | null>(null);
-	const press = useRef<{ x: number; y: number; drawing: boolean } | null>(null);
+	const press = useRef<{
+		x: number;
+		y: number;
+		drawing: boolean;
+		rect?: AreaRect;
+		handle?: AreaHandle;
+		moving?: boolean;
+	} | null>(null);
+	const editingArea = useRef(false);
 	const completed = useRef(false);
 	const targetAt = useCallback((x: number, y: number): Target => {
 		const hit = frontmostAt(windows.current, x, y);
@@ -100,6 +118,7 @@ export function CapturePicker() {
 								)
 							: null;
 				current.current = next;
+				editingArea.current = next?.kind === "area";
 				setTarget(next);
 				requestAnimationFrame(() =>
 					requestAnimationFrame(() => {
@@ -130,12 +149,22 @@ export function CapturePicker() {
 	}, [finish]);
 	const onMove = (event: ReactPointerEvent<HTMLDivElement>) => {
 		const start = press.current;
-		if (
+		if (start?.rect) {
+			const dx = event.clientX - start.x;
+			const dy = event.clientY - start.y;
+			update({
+				kind: "area",
+				rect: start.handle
+					? resizeAreaRect(start.rect, start.handle, dx, dy, screenRect())
+					: moveAreaRect(start.rect, dx, dy, screenRect()),
+			});
+		} else if (
 			start &&
 			allowArea &&
 			(start.drawing || Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 4)
 		) {
 			start.drawing = true;
+			editingArea.current = true;
 			update({
 				kind: "area",
 				rect: normalizeAreaRect(
@@ -148,7 +177,7 @@ export function CapturePicker() {
 					screenRect(),
 				),
 			});
-		} else if (!start) update(targetAt(event.clientX, event.clientY));
+		} else if (!start && !editingArea.current) update(targetAt(event.clientX, event.clientY));
 	};
 	const label =
 		target?.kind === "window"
@@ -163,7 +192,21 @@ export function CapturePicker() {
 			onPointerMove={onMove}
 			onPointerDown={(event) => {
 				if (event.button !== 0) return;
-				press.current = { x: event.clientX, y: event.clientY, drawing: false };
+				const area =
+					editingArea.current && current.current?.kind === "area"
+						? current.current.rect
+						: null;
+				const handle = (event.target as HTMLElement).closest<HTMLElement>(
+					"[data-area-handle]",
+				)?.dataset.areaHandle as AreaHandle | undefined;
+				press.current = {
+					x: event.clientX,
+					y: event.clientY,
+					drawing: false,
+					...(area && (handle || rectContains(area, event.clientX, event.clientY))
+						? { rect: area, handle, moving: !handle }
+						: {}),
+				};
 				event.currentTarget.setPointerCapture(event.pointerId);
 			}}
 			onPointerUp={(event) => {
@@ -172,7 +215,11 @@ export function CapturePicker() {
 				press.current = null;
 				if (event.currentTarget.hasPointerCapture(event.pointerId))
 					event.currentTarget.releasePointerCapture(event.pointerId);
-				finish(start.drawing ? current.current : targetAt(event.clientX, event.clientY));
+				if (start.drawing || start.rect) return;
+				if (editingArea.current) {
+					editingArea.current = false;
+				}
+				finish(targetAt(event.clientX, event.clientY));
 			}}
 			onPointerCancel={() => {
 				press.current = null;
@@ -184,7 +231,11 @@ export function CapturePicker() {
 		>
 			{target && (
 				<div
-					className="pointer-events-none absolute"
+					className={
+						target.kind === "area" && editingArea.current
+							? "absolute cursor-move"
+							: "pointer-events-none absolute"
+					}
 					style={{
 						left: target.rect.x,
 						top: target.rect.y,
@@ -196,8 +247,34 @@ export function CapturePicker() {
 						outlineOffset: -2,
 					}}
 				>
+					{target.kind === "area" &&
+						AREA_HANDLES.map((handle) => {
+							const left = handle.includes("w")
+								? "0%"
+								: handle.includes("e")
+									? "100%"
+									: "50%";
+							const top = handle.includes("n")
+								? "0%"
+								: handle.includes("s")
+									? "100%"
+									: "50%";
+							return (
+								<div
+									key={handle}
+									data-area-handle={handle}
+									className="absolute size-3 rounded-full border border-black/30 bg-white"
+									style={{
+										left,
+										top,
+										transform: "translate(-50%, -50%)",
+										cursor: `${handle}-resize`,
+									}}
+								/>
+							);
+						})}
 					<div
-						className="absolute whitespace-nowrap rounded-md bg-blue-600 px-2 py-1 text-xs text-white"
+						className="pointer-events-none absolute whitespace-nowrap rounded-md bg-blue-600 px-2 py-1 text-xs text-white"
 						style={{ top: target.rect.y >= 30 ? -28 : 6, left: 6 }}
 					>
 						{label} · {Math.round(target.rect.width)} × {Math.round(target.rect.height)}
@@ -206,9 +283,13 @@ export function CapturePicker() {
 			)}
 			<div className="pointer-events-none absolute inset-x-0 bottom-24 flex justify-center">
 				<div className="rounded-full bg-black/80 px-4 py-2 text-sm text-white">
-					{allowArea
-						? "Click a window or the desktop, or drag an area · Esc to cancel"
-						: "Click a window or the desktop · Esc to cancel"}
+					{target?.kind === "area" && editingArea.current
+						? target.rect.width < MIN_AREA_SIZE || target.rect.height < MIN_AREA_SIZE
+							? "Area is too small · Drag to enlarge · Esc to cancel"
+							: "Move or resize the area · Enter to select · Esc to cancel"
+						: allowArea
+							? "Click a window or the desktop, or drag an area · Esc to cancel"
+							: "Click a window or the desktop · Esc to cancel"}
 				</div>
 			</div>
 		</div>

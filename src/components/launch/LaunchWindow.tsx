@@ -12,7 +12,7 @@ import {
 	XIcon,
 } from "@/components/ui/icons";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
@@ -168,9 +168,12 @@ function LaunchWindowContent() {
 	};
 
 	const pickerPending = useRef(false);
+	const [isPickerPending, setIsPickerPending] = useState(false);
+	const [sourceReady, setSourceReady] = useState(false);
 	const handlePickOnScreen = useCallback(async () => {
-		if (pickerPending.current || recording) return;
+		if (pickerPending.current || recording || countdownActive || finalizing) return;
 		pickerPending.current = true;
+		setIsPickerPending(true);
 		beginInteractiveHudAction();
 		try {
 			const result = await window.electronAPI.pickCaptureTarget();
@@ -183,23 +186,33 @@ function LaunchWindowContent() {
 			toast.error("Unable to open the source picker.");
 		} finally {
 			pickerPending.current = false;
+			setIsPickerPending(false);
 		}
-	}, [recording, beginInteractiveHudAction, syncSelectedSource]);
+	}, [recording, countdownActive, finalizing, beginInteractiveHudAction, syncSelectedSource]);
 
 	const initialSourceChecked = useRef(false);
 	useEffect(() => {
 		let mounted = true;
 		let selectionEventSeen = false;
 
-		void window.electronAPI.getSelectedSource().then((source) => {
-			if (mounted && !selectionEventSeen) {
-				syncSelectedSource(source);
-				if (!initialSourceChecked.current) {
-					initialSourceChecked.current = true;
-					if (!source && !recording) void handlePickOnScreen();
+		void window.electronAPI
+			.getSelectedSource()
+			.then((source) => {
+				if (mounted) setSourceReady(true);
+				if (mounted && !selectionEventSeen) {
+					syncSelectedSource(source);
+					if (!initialSourceChecked.current) {
+						initialSourceChecked.current = true;
+						if (!source && !recording) void handlePickOnScreen();
+					}
 				}
-			}
-		});
+			})
+			.catch(() => {
+				if (mounted) {
+					setSourceReady(true);
+					toast.error("Unable to restore the previous source. Pick a source again.");
+				}
+			});
 
 		const cleanup = window.electronAPI.onSelectedSourceChanged((source) => {
 			selectionEventSeen = true;
@@ -248,14 +261,19 @@ function LaunchWindowContent() {
 			<Button
 				variant="ghost"
 				size="lg"
-				className={`${styles.electronNoDrag} gap-2 px-3 min-w-0 max-w-[180px] shrink-0`}
+				className={`${styles.electronNoDrag} group gap-2 px-3 min-w-0 max-w-[180px] shrink-0`}
 				title={selectedSource}
 				aria-label="Choose recording source"
+				disabled={isPickerPending || !sourceReady || countdownActive}
 				onClick={() => void handlePickOnScreen()}
 			>
 				<MonitorIcon size={18} className="size-5 shrink-0" />
 				<div className="flex-1 min-w-0 overflow-hidden">
-					<MarqueeText text={selectedSource} />
+					{hasSelectedSource ? (
+						<MarqueeText text={selectedSource} />
+					) : (
+						<span>Pick screen</span>
+					)}
 				</div>
 			</Button>
 			<Separator orientation="vertical" className="mx-[5px] h-6 self-center" />
@@ -368,7 +386,7 @@ function LaunchWindowContent() {
 				size="icon"
 				className={styles.electronNoDrag}
 				onClick={hasSelectedSource ? toggleRecording : () => void handlePickOnScreen()}
-				disabled={countdownActive}
+				disabled={countdownActive || isPickerPending || !sourceReady}
 				title={t("recording.record")}
 			>
 				<div className={styles.recDot} />

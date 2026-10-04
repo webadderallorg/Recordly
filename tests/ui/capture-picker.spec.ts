@@ -86,7 +86,9 @@ test("a drag draws an area", async ({ page }) => {
 	await page.mouse.down();
 	await page.mouse.move(700, 450, { steps: 8 });
 	await page.mouse.up();
-	await expect(page.getByText("400 × 250")).toBeVisible();
+	await expect(page.getByText("Area · 400 × 250")).toBeVisible();
+	expect(await pick(page)).toBeUndefined();
+	await page.keyboard.press("Enter");
 
 	expect(await pick(page)).toMatchObject({
 		kind: "area",
@@ -179,4 +181,60 @@ test("a newer selected-source event wins over the startup response", async ({ pa
 		"Newer window",
 	);
 	await expect(page.locator("html")).not.toHaveAttribute("data-picker-calls");
+});
+
+test("areas can be moved and resized before Enter confirms them", async ({ page }) => {
+	await openPicker(page);
+	await page.mouse.move(300, 200);
+	await page.mouse.down();
+	await page.mouse.move(700, 450, { steps: 8 });
+	await page.mouse.up();
+	await expect(page.getByText("Area · 400 × 250")).toBeVisible();
+	await page.mouse.move(400, 300);
+	await page.mouse.down();
+	await page.mouse.move(450, 350, { steps: 5 });
+	await page.mouse.up();
+	expect(await pick(page)).toBeUndefined();
+	const corner = page.locator('[data-area-handle="se"]');
+	const bounds = await corner.boundingBox();
+	if (!bounds) throw new Error("Missing area resize handle");
+	await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+	await page.mouse.down();
+	await page.mouse.move(850, 600, { steps: 5 });
+	await page.mouse.up();
+	await expect(page.getByText("Area · 500 × 350")).toBeVisible();
+	await page.keyboard.press("Enter");
+	expect(await pick(page)).toMatchObject({
+		kind: "area",
+		x: 350,
+		y: 250,
+		width: 500,
+		height: 350,
+		record: false,
+	});
+});
+
+test("unselected source reads Pick screen once and Record stays disabled while picking", async ({
+	page,
+}) => {
+	await installDesktopBridge(page);
+	await page.addInitScript(() => {
+		Object.assign(window.electronAPI, {
+			getSelectedSource: async () => null,
+			pickCaptureTarget: async () =>
+				new Promise((resolve) => {
+					(window as unknown as { finishPicker: () => void }).finishPicker = () =>
+						resolve({ success: false, canceled: true });
+					document.documentElement.dataset.pickerPending = "true";
+				}),
+		});
+	});
+	await page.goto("/?windowType=hud-overlay");
+	await expect(page.locator("html")).toHaveAttribute("data-picker-pending", "true");
+	const source = page.getByRole("button", { name: "Choose recording source" });
+	await expect(source).toHaveText("Pick screen");
+	await expect(page.getByRole("button", { name: "Record", exact: true })).toBeDisabled();
+	await page.evaluate(() => (window as unknown as { finishPicker: () => void }).finishPicker());
+	await expect(page.getByRole("button", { name: "Record", exact: true })).toBeEnabled();
+	await expect(source).toHaveText("Pick screen");
 });

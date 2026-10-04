@@ -1,3 +1,4 @@
+import { rememberCaptureSource, validateCaptureSource } from "../captureSelection";
 import { listCapturePickerWindows } from "../capturePickerSources";
 import { BrowserWindow, ipcMain } from "electron";
 import {
@@ -6,9 +7,14 @@ import {
 	getCapturePickerWindows,
 } from "../../windows";
 import { stopWindowBoundsCapture } from "../cursor/bounds";
-import { setSelectedSource } from "../state";
-import { createAreaSource, createWindowSource, normalizeCapturePick } from "../sourceArea";
-import type { AreaCapturePick, CapturePick, CapturePickerWindow, SelectedSource } from "../types";
+import { selectedSource, setSelectedSource } from "../state";
+import {
+	createAreaSource,
+	createWindowSource,
+	getSourceArea,
+	normalizeCapturePick,
+} from "../sourceArea";
+import type { CapturePick, CapturePickerWindow, SelectedSource } from "../types";
 import { getScreen } from "../utils";
 import { getScreenSourceIdForDisplay, isLikelyLinuxWaylandSession } from "./sourceMapping";
 import {
@@ -22,10 +28,13 @@ async function createScreenSource(displayId: number): Promise<SelectedSource | n
 	const displays = getScreen().getAllDisplays();
 	const index = displays.findIndex((display) => display.id === displayId);
 	if (index < 0) return null;
-	const sources = await getDesktopSources({
-		types: ["screen"],
-		thumbnailSize: { width: 0, height: 0 },
-	});
+	const sources = await getDesktopSources(
+		{
+			types: ["screen"],
+			thumbnailSize: { width: 0, height: 0 },
+		},
+		{ strict: true },
+	);
 	const matched =
 		sources.find((source) => source.display_id === String(displayId)) ??
 		(sources.length === displays.length ? sources[index] : undefined);
@@ -50,7 +59,6 @@ async function createScreenSource(displayId: number): Promise<SelectedSource | n
 export function registerCapturePickerHandlers() {
 	let resolvePendingPick: ((pick: CapturePick | null) => void) | null = null;
 	let pickableWindows: Promise<CapturePickerWindow[]> = Promise.resolve([]);
-	let lastArea: AreaCapturePick | null = null;
 
 	const finishPick = (pick: CapturePick | null) => {
 		const resolve = resolvePendingPick;
@@ -69,6 +77,7 @@ export function registerCapturePickerHandlers() {
 				sourceType: "screen" as const,
 			};
 			setSelectedSource(source);
+			rememberCaptureSource(source);
 			broadcastSelectedSourceChange();
 			return {
 				success: true,
@@ -92,7 +101,6 @@ export function registerCapturePickerHandlers() {
 
 		let source: SelectedSource | null;
 		if (pick.kind === "area") {
-			lastArea = pick;
 			source = createAreaSource(pick);
 		} else if (pick.kind === "window") {
 			const window = (await pickableWindows).find((entry) => entry.id === pick.windowId);
@@ -100,6 +108,7 @@ export function registerCapturePickerHandlers() {
 		} else {
 			source = await createScreenSource(pick.displayId);
 		}
+		if (source) source = await validateCaptureSource(source);
 		if (!source) {
 			return { success: false, message: "That window or screen is no longer available." };
 		}
@@ -110,6 +119,7 @@ export function registerCapturePickerHandlers() {
 			await bringSelectedWindowForward(source);
 		}
 		setSelectedSource(source);
+		rememberCaptureSource(source);
 		broadcastSelectedSourceChange();
 		stopWindowBoundsCapture();
 		return { success: true, source };
@@ -184,7 +194,10 @@ export function registerCapturePickerHandlers() {
 				window.y < y + height &&
 				window.y + window.height > y,
 		);
-		const previous = lastArea?.displayId === display.id ? lastArea : null;
+		const previous =
+			selectedSource?.display_id === String(display.id)
+				? getSourceArea(selectedSource)
+				: null;
 		return {
 			displayBounds: display.bounds,
 			allowArea: process.platform === "darwin",
