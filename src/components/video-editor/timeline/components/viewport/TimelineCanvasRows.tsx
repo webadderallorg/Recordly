@@ -37,6 +37,7 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	videoPath,
 	items,
 	videoDurationMs,
+	playheadMsRef,
 	selectAllBlocksActive,
 	selectedZoomIds,
 	onSelectZoomIds,
@@ -368,6 +369,7 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 						}
 						onSelectId={onSelectClip}
 						variant="clip"
+						playheadMsRef={playheadMsRef}
 						displaySpan={item.displaySpan}
 						sharedLeftGrip={clipPresentation.some(
 							(other) => other.span.end === item.span.start,
