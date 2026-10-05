@@ -1,5 +1,5 @@
 import { useTimelineContext } from "dnd-timeline";
-import { memo, useContext, useMemo } from "react";
+import { type MouseEvent, memo, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { MagicWand, MinusIcon, Plus } from "@/components/ui/icons";
 import { useScopedT } from "@/contexts/I18nContext";
@@ -24,6 +24,7 @@ import {
 import { useTimelinePresentation } from "../../core/TimelinePresentation";
 import type { TimelineRenderItem } from "../../core/timelineTypes";
 import { getZoomDisplaySpan } from "../../core/zoomPresentation";
+import { getZoomIdsInRange } from "../../hooks/utils/timelineSelectionUtils";
 import Item from "../../Item";
 import glassStyles from "../../ItemGlass.module.css";
 import Row from "../../Row";
@@ -35,7 +36,10 @@ import type { TimelineCanvasRowsProps } from "./TimelineCanvasTypes";
 export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	videoPath,
 	items,
+	videoDurationMs,
 	selectAllBlocksActive,
+	selectedZoomIds,
+	onSelectZoomIds,
 	selectedZoomId,
 	selectedClipId,
 	selectedClipIds,
@@ -172,6 +176,67 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 					clipPresentation,
 				);
 	const zoomGhostOffsetPx = zoomGhost ? valueToPixels(zoomGhost.start - rangeStart) : 0;
+	const [zoomSelection, setZoomSelection] = useState<{ from: number; to: number } | null>(null);
+	const zoomDrag = useRef<AbortController | null>(null);
+	const suppressZoomClick = useRef(false);
+	useEffect(() => () => zoomDrag.current?.abort(), []);
+
+	const visibleZoomItems = zoomItems.filter((item) => !hiddenIds.has(item.id));
+	const selectedZoomSet = new Set(
+		zoomSelection
+			? getZoomIdsInRange(visibleZoomItems, zoomSelection.from, zoomSelection.to)
+			: selectedZoomIds,
+	);
+	const startZoomSelection = (event: MouseEvent<HTMLDivElement>) => {
+		onZoomRowMouseDown?.(event);
+		suppressZoomClick.current = false;
+		if (
+			event.button !== 0 ||
+			!onSelectZoomIds ||
+			visibleZoomItems.length === 0 ||
+			(event.target as Element).closest("[data-timeline-item]")
+		)
+			return;
+		const rect = event.currentTarget.getBoundingClientRect();
+		if (rect.width <= 0) return;
+		const edgeTime = (clientX: number) => {
+			const x = direction === "rtl" ? rect.right - clientX : clientX - rect.left;
+			const elapsed = rangeStart + pixelsToValue(Math.max(0, Math.min(x, rect.width)));
+			return Math.max(0, Math.min(elapsed, videoDurationMs));
+		};
+		const startX = event.clientX;
+		const from = edgeTime(startX);
+		zoomDrag.current?.abort();
+		const drag = new AbortController();
+		zoomDrag.current = drag;
+		const cancel = () => {
+			drag.abort();
+			zoomDrag.current = null;
+			setZoomSelection(null);
+		};
+		window.addEventListener(
+			"mousemove",
+			(move) => {
+				if (Math.abs(move.clientX - startX) < 4 && !suppressZoomClick.current) return;
+				suppressZoomClick.current = true;
+				setZoomSelection({ from, to: edgeTime(move.clientX) });
+			},
+			{ signal: drag.signal },
+		);
+		window.addEventListener(
+			"mouseup",
+			(up) => {
+				if (suppressZoomClick.current) {
+					onSelectZoomIds(
+						getZoomIdsInRange(visibleZoomItems, from, edgeTime(up.clientX)),
+					);
+				}
+				cancel();
+			},
+			{ signal: drag.signal, once: true },
+		);
+		window.addEventListener("blur", cancel, { signal: drag.signal, once: true });
+	};
 	const zoomGhostWidthPx = zoomGhost ? valueToPixels(zoomGhost.end - zoomGhost.start) : 0;
 	const embeddedGhost =
 		captionGhostStartMs === null
@@ -372,9 +437,28 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				onMouseEnter={onZoomRowMouseEnter}
 				onMouseMove={onZoomRowMouseMove}
 				onMouseLeave={onZoomRowMouseLeave}
-				onMouseDown={onZoomRowMouseDown}
-				onClick={onZoomRowClick}
+				onMouseDown={startZoomSelection}
+				onClick={(event) => {
+					if (suppressZoomClick.current) {
+						event.stopPropagation();
+						return;
+					}
+					onZoomRowClick?.(event);
+				}}
 			>
+				{zoomSelection && (
+					<div
+						data-testid="zoom-selection-box"
+						aria-hidden="true"
+						className="pointer-events-none absolute inset-y-0 z-20 rounded border border-accent bg-accent/20"
+						style={{
+							insetInlineStart: valueToPixels(
+								Math.min(zoomSelection.from, zoomSelection.to) - rangeStart,
+							),
+							width: valueToPixels(Math.abs(zoomSelection.to - zoomSelection.from)),
+						}}
+					/>
+				)}
 				{zoomItems.length === 0 && onApplyAutoZooms && (
 					<div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
 						<div
@@ -448,23 +532,25 @@ export const TimelineCanvasRows = memo(function TimelineCanvasRows({
 						</div>
 					</div>
 				)}
-				{zoomItems
-					.filter((item) => !hiddenIds.has(item.id))
-					.map((item) => (
-						<Item
-							id={item.id}
-							key={item.id}
-							rowId={item.rowId}
-							span={item.span}
-							isSelected={selectAllBlocksActive || item.id === selectedZoomId}
-							onSelectId={onSelectZoom}
-							zoomDepth={item.zoomDepth}
-							zoomMode={item.zoomMode}
-							variant="zoom"
-						>
-							{item.label}
-						</Item>
-					))}
+				{visibleZoomItems.map((item) => (
+					<Item
+						id={item.id}
+						key={item.id}
+						rowId={item.rowId}
+						span={item.span}
+						isSelected={
+							selectedZoomSet.has(item.id) ||
+							(!zoomSelection &&
+								(selectAllBlocksActive || item.id === selectedZoomId))
+						}
+						onSelectId={onSelectZoom}
+						zoomDepth={item.zoomDepth}
+						zoomMode={item.zoomMode}
+						variant="zoom"
+					>
+						{item.label}
+					</Item>
+				))}
 			</Row>
 
 			{annotationRows.map(({ rowId, items: rowItems }, index) => (
