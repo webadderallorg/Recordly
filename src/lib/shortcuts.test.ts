@@ -43,6 +43,23 @@ it("does not retry a collision-skipped migration after the user changes the conf
 	expect(mergeWithDefaults({ ...first, addZoom: { key: "z" } }).splitClip).toEqual({ key: "c" });
 });
 
+it("preserves saved Q and W bindings when adding the new trim shortcuts", () => {
+	const merged = mergeWithDefaults({
+		version: 1,
+		addZoom: { key: "q" },
+		addAnnotation: { key: "w" },
+		addKeyframe: { key: "w", shift: true },
+	});
+	expect(merged).toMatchObject({
+		addZoom: { key: "q" },
+		addAnnotation: { key: "w" },
+		addKeyframe: { key: "w", shift: true },
+		trimStart: { key: "q", shift: true },
+		trimEnd: { key: "w", alt: true },
+	});
+	expect(mergeWithDefaults(serializeShortcuts(merged))).toEqual(merged);
+});
+
 const providerHooks = vi.hoisted(() => {
 	const slots: unknown[] = [];
 	let cursor = 0;

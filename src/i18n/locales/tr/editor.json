@@ -254,7 +254,9 @@
 	},
 	"toolbar": {
 		"addLayer": "Katman Ekle",
-		"splitClip": "Klibi Böl (C)"
+		"splitClip": "Klibi Böl (C)",
+		"trimStart": "Başlangıcı oynatma konumuna kırp ({{shortcut}})",
+		"trimEnd": "Sonu oynatma konumuna kırp ({{shortcut}})"
 	},
 	"timeline": {
 		"expand": "Zaman Çizelgesini Genişlet",
