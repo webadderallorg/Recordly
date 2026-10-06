@@ -40,6 +40,7 @@ beforeEach(() => {
 });
 afterEach(() => {
 	Object.defineProperty(process, "platform", { value: platform });
+	vi.unstubAllEnvs();
 });
 describe("remembered capture selection", () => {
 	it("restores only the same available window", async () => {
@@ -94,5 +95,56 @@ describe("remembered capture selection", () => {
 		const stored = mocks.write.mock.calls[0][1];
 		expect(stored.source).not.toHaveProperty("thumbnail");
 		expect(stored.platform).toBe("darwin");
+	});
+});
+
+describe("Linux selection", () => {
+	beforeEach(() => {
+		Object.defineProperty(process, "platform", { value: "linux" });
+		vi.stubEnv("XDG_SESSION_TYPE", "x11");
+		mocks.sources.mockResolvedValue([{ ...source, display_id: "1" }]);
+	});
+	it("validates X11 windows using live sources without geometry helpers", async () => {
+		expect(await validateCaptureSource(source)).toMatchObject({
+			id: source.id,
+			name: source.name,
+			windowTitle: source.windowTitle,
+			display_id: "1",
+			sourceType: "window",
+		});
+		expect(mocks.windows).not.toHaveBeenCalled();
+		expect(mocks.sources).toHaveBeenCalledWith(
+			{ types: ["window"], thumbnailSize: { width: 0, height: 0 } },
+			{ strict: true },
+		);
+	});
+	it("rejects missing and recycled X11 windows without substitution", async () => {
+		mocks.sources.mockResolvedValue([{ id: source.id, name: "Different document" }]);
+		expect(await validateCaptureSource(source)).toBeNull();
+		mocks.sources.mockResolvedValue([{ ...source, id: "window:102:0" }]);
+		expect(await validateCaptureSource(source)).toBeNull();
+	});
+	for (const saved of [null, { platform: "linux", source }]) {
+		it(`prepares Wayland recording without opening a startup portal (${saved ? "saved X11 window" : "fresh session"})`, async () => {
+			vi.stubEnv("XDG_SESSION_TYPE", "wayland");
+			mocks.read.mockReturnValue(saved);
+			expect(await restoreLastCaptureSource()).toEqual({
+				id: "screen:linux-portal",
+				name: "System picker",
+				sourceType: "screen",
+			});
+			expect(mocks.read).not.toHaveBeenCalled();
+			expect(mocks.sources).not.toHaveBeenCalled();
+			expect(mocks.windows).not.toHaveBeenCalled();
+		});
+	}
+	it("rejects old X11 IDs on Wayland without enumerating portal sources", async () => {
+		vi.stubEnv("XDG_SESSION_TYPE", "wayland");
+		expect(await validateCaptureSource(source)).toBeNull();
+		expect(
+			await validateCaptureSource({ id: "screen:1:0", name: "Screen", display_id: "1" }),
+		).toBeNull();
+		expect(mocks.sources).not.toHaveBeenCalled();
+		expect(mocks.windows).not.toHaveBeenCalled();
 	});
 });

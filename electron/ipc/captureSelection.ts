@@ -26,6 +26,27 @@ export async function validateCaptureSource(candidate: unknown): Promise<Selecte
 		return process.platform === "linux" && isLikelyLinuxWaylandSession(process.env)
 			? { id: source.id, name: "System picker", sourceType: "screen" }
 			: null;
+	if (process.platform === "linux" && isLikelyLinuxWaylandSession(process.env)) return null;
+	if (source.id.startsWith("window:") && process.platform === "linux") {
+		const windows = await getDesktopSources(
+			{ types: ["window"], thumbnailSize: { width: 0, height: 0 } },
+			{ strict: true },
+		);
+		const match = windows.find(
+			(entry) =>
+				entry.id === source.id &&
+				(entry.windowTitle ?? entry.name) === (source.windowTitle ?? source.name),
+		);
+		return match
+			? {
+					id: match.id,
+					name: match.name,
+					windowTitle: match.windowTitle ?? match.name,
+					display_id: match.display_id,
+					sourceType: "window",
+				}
+			: null;
+	}
 	if (source.id.startsWith("window:")) {
 		const windows = await listCapturePickerWindows();
 		const match = windows.find(
@@ -95,6 +116,15 @@ export function rememberCaptureSource(source: SelectedSource) {
 
 let restoring: Promise<SelectedSource | null> | null = null;
 export async function restoreLastCaptureSource(): Promise<SelectedSource | null> {
+	if (process.platform === "linux" && isLikelyLinuxWaylandSession(process.env)) {
+		const source: SelectedSource = {
+			id: LINUX_PORTAL_SCREEN_SOURCE_ID,
+			name: "System picker",
+			sourceType: "screen",
+		};
+		setSelectedSource(source);
+		return source;
+	}
 	if (selectedSource) return selectedSource;
 	if (!restoring)
 		restoring = (async () => {

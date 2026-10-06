@@ -1,6 +1,7 @@
 import { rememberCaptureSource, validateCaptureSource } from "../captureSelection";
 import { listCapturePickerWindows } from "../capturePickerSources";
 import { BrowserWindow, ipcMain } from "electron";
+import type { SourceListPickResult } from "../../sourceListPicker";
 import {
 	closeCapturePickerWindows,
 	createCapturePickerWindows,
@@ -52,7 +53,11 @@ async function createScreenSource(displayId: number): Promise<SelectedSource | n
  * the cursor, a click picks that window or the whole screen, and a drag draws an
  * area. The pick becomes the selected source.
  */
-export function registerCapturePickerHandlers() {
+export function registerCapturePickerHandlers({
+	pickSourceList,
+}: {
+	pickSourceList: () => Promise<SourceListPickResult>;
+}) {
 	let resolvePendingPick: ((pick: CapturePick | null) => void) | null = null;
 	let pickableWindows: Promise<CapturePickerWindow[]> = Promise.resolve([]);
 
@@ -82,6 +87,8 @@ export function registerCapturePickerHandlers() {
 				message: "Choose a screen or window in the system picker when you start recording.",
 			};
 		}
+
+		if (process.platform === "linux") return pickSourceList();
 
 		finishPick(null);
 		// List windows before the overlays cover them.

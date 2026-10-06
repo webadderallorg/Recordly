@@ -60,12 +60,12 @@ export function registerIpcHandlers(
 	getSourceSelectorWindow: () => BrowserWindow | null,
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
 ) {
-	registerSourceHandlers({
+	const { pickSourceList } = registerSourceHandlers({
 		createEditorWindow,
 		createSourceSelectorWindow,
 		getSourceSelectorWindow,
 	});
-	registerCapturePickerHandlers();
+	registerCapturePickerHandlers({ pickSourceList });
 	registerRecordingHandlers(onRecordingStateChange);
 	registerPermissionHandlers();
 	registerAnnouncementHandlers();

@@ -170,8 +170,10 @@ export async function resolveLinuxWindowBounds(
 				return bounds;
 			}
 		} catch {
-			// fall back to title lookup below
+			return null;
 		}
+		// Do not track a different same-title window after the selected ID disappears.
+		return null;
 	}
 
 	const windowTitle =

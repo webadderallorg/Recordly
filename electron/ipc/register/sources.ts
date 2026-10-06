@@ -1,5 +1,10 @@
+import { createSourceListPicker } from "../../sourceListPicker";
 import { writeAppSetting } from "../../appSettingsStore";
-import { restoreLastCaptureSource } from "../captureSelection";
+import {
+	rememberCaptureSource,
+	restoreLastCaptureSource,
+	validateCaptureSource,
+} from "../captureSelection";
 import { createRecordingEditorNavigation } from "../../recordingEditorNavigation";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -23,7 +28,11 @@ import type { SelectedSource, WindowBounds } from "../types";
 import { getSourceArea } from "../sourceArea";
 import { getScreen, parseWindowId } from "../utils";
 import { bringWindowsWindowForward, resolveWindowsWindowBounds } from "../windowsWindowControl";
-import { getScreenSourceIdForDisplay } from "./sourceMapping";
+import {
+	getScreenSourceIdForDisplay,
+	isLikelyLinuxWaylandSession,
+	LINUX_PORTAL_SCREEN_SOURCE_ID,
+} from "./sourceMapping";
 
 const execFileAsync = promisify(execFile);
 const SOURCE_LIST_CACHE_TTL_MS = 1200;
@@ -123,6 +132,11 @@ export async function getDesktopSources(
 	opts?: Electron.SourcesOptions,
 	options?: { strict?: boolean },
 ): Promise<SelectedSource[]> {
+	if (process.platform === "linux" && isLikelyLinuxWaylandSession(process.env)) {
+		return opts?.types && !opts.types.includes("screen")
+			? []
+			: [{ id: LINUX_PORTAL_SCREEN_SOURCE_ID, name: "System picker", sourceType: "screen" }];
+	}
 	const cacheKey = JSON.stringify({
 		types: opts?.types,
 		thumbnailSize: opts?.thumbnailSize,
@@ -398,16 +412,32 @@ export function registerSourceHandlers({
 	getSourceSelectorWindow: () => BrowserWindow | null;
 }) {
 	const recordingNavigation = createRecordingEditorNavigation(createEditorWindow);
+	const sourceListPicker = createSourceListPicker(
+		() => getSourceSelectorWindow() ?? createSourceSelectorWindow(),
+	);
 	ipcMain.handle("get-sources", (_, opts) => getDesktopSources(opts));
 
-	ipcMain.handle("select-source", async (_, source: SelectedSource) => {
+	ipcMain.handle("select-source", async (event, source: SelectedSource) => {
 		if (isCursorCaptureActive) return selectedSource;
+		const fromSelector = getSourceSelectorWindow()?.webContents === event.sender;
+		if (process.platform === "linux") {
+			const validated = await validateCaptureSource(source);
+			if (!validated)
+				throw new Error(
+					"That window or screen is no longer available. Refresh the source list.",
+				);
+			source = validated;
+		}
 		if (source.id?.startsWith("window:")) {
 			await bringSelectedWindowForward(source);
 		}
 		if (isCursorCaptureActive) return selectedSource;
+		if (fromSelector && getSourceSelectorWindow()?.webContents !== event.sender)
+			return selectedSource;
 		setSelectedSource(source);
+		rememberCaptureSource(source);
 		broadcastSelectedSourceChange();
+		if (sourceListPicker.isSender(event.sender)) sourceListPicker.complete(source);
 		stopWindowBoundsCapture();
 		const sourceSelectorWin = getSourceSelectorWindow();
 		if (sourceSelectorWin) {
@@ -605,8 +635,13 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 		return restoreLastCaptureSource();
 	});
 
-	ipcMain.handle("open-source-selector", () => {
+	ipcMain.handle("open-source-selector", async () => {
 		if (isCursorCaptureActive) return;
+		if (process.platform === "linux" && isLikelyLinuxWaylandSession(process.env)) {
+			await restoreLastCaptureSource();
+			broadcastSelectedSourceChange();
+			return;
+		}
 		const sourceSelectorWin = getSourceSelectorWindow();
 		if (sourceSelectorWin) {
 			sourceSelectorWin.focus();
@@ -647,4 +682,5 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 		}
 		recordingNavigation.open();
 	});
+	return { pickSourceList: () => sourceListPicker.open() };
 }

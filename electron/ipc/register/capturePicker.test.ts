@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	handlers: new Map<string, (...args: unknown[]) => unknown>(),
 	list: vi.fn(),
+	pickSourceList: vi.fn(),
 	validate: vi.fn(),
 	remember: vi.fn(),
 	selected: vi.fn(),
@@ -67,7 +68,7 @@ beforeEach(() => {
 	Object.defineProperty(process, "platform", { value: "darwin" });
 	mocks.list.mockResolvedValue([]);
 	mocks.validate.mockImplementation(async (source) => source);
-	registerCapturePickerHandlers();
+	registerCapturePickerHandlers({ pickSourceList: mocks.pickSourceList });
 });
 const call = (name: string, sender: object, input?: unknown) =>
 	mocks.handlers.get(name)!({ sender }, input);
@@ -191,4 +192,33 @@ it("does not open overlays if recording starts while listing windows", async () 
 		canceled: true,
 	});
 	expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it("keeps X11 on the source list and coalesces concurrent opens", async () => {
+	Object.defineProperty(process, "platform", { value: "linux" });
+	vi.stubEnv("XDG_SESSION_TYPE", "x11");
+	let finish!: (result: unknown) => void;
+	mocks.pickSourceList.mockReturnValue(
+		new Promise((resolve) => {
+			finish = resolve;
+		}),
+	);
+	const first = call("pick-capture-target", mocks.outsider);
+	const second = call("pick-capture-target", mocks.outsider);
+	expect(mocks.pickSourceList).toHaveBeenCalledOnce();
+	expect(mocks.list).not.toHaveBeenCalled();
+	expect(mocks.create).not.toHaveBeenCalled();
+	finish({ success: false, canceled: true });
+	expect(await first).toEqual({ success: false, canceled: true });
+	expect(await second).toEqual({ success: false, canceled: true });
+});
+it("keeps the X11 source list closed during recording", async () => {
+	Object.defineProperty(process, "platform", { value: "linux" });
+	vi.stubEnv("XDG_SESSION_TYPE", "x11");
+	mocks.recording = true;
+	expect(await call("pick-capture-target", mocks.outsider)).toEqual({
+		success: false,
+		canceled: true,
+	});
+	expect(mocks.pickSourceList).not.toHaveBeenCalled();
 });

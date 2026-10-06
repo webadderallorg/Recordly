@@ -3,21 +3,19 @@ const mocks = vi.hoisted(() => ({
 	exec: vi.fn(),
 	sources: vi.fn(),
 	mac: vi.fn(),
-	linux: vi.fn(),
 	dip: vi.fn(),
 }));
 vi.mock("electron", () => ({ systemPreferences: { getMediaAccessStatus: () => "granted" } }));
 vi.mock("node:util", () => ({ promisify: () => mocks.exec }));
 vi.mock("./cursor/bounds", () => ({
 	getNativeMacWindowsFrontToBack: mocks.mac,
-	resolveLinuxWindowBounds: mocks.linux,
 }));
 vi.mock("./register/sources", () => ({ getDesktopSources: mocks.sources }));
 vi.mock("./utils", () => ({
 	parseWindowId: (id?: string) => Number(id?.split(":")[1]),
 	getScreen: () => ({ screenToDipRect: mocks.dip }),
 }));
-import { listCapturePickerWindows, parseStackingOrder } from "./capturePickerSources";
+import { listCapturePickerWindows } from "./capturePickerSources";
 const platform = process.platform;
 afterEach(() => Object.defineProperty(process, "platform", { value: platform }));
 beforeEach(() => {
@@ -28,17 +26,10 @@ beforeEach(() => {
 	]);
 });
 describe("capture picker source adapters", () => {
-	it("reads X11 stacking from topmost to bottommost", async () => {
+	it("keeps Linux window selection on its source list without X11 helper probes", async () => {
 		Object.defineProperty(process, "platform", { value: "linux" });
-		mocks.exec.mockResolvedValue({
-			stdout: "_NET_CLIENT_LIST_STACKING(WINDOW): window id # 0x66, 0x65",
-		});
-		mocks.linux.mockResolvedValue({ x: 0, y: 0, width: 400, height: 300 });
-		expect(parseStackingOrder("0x66, 0x65")).toEqual([101, 102]);
-		expect((await listCapturePickerWindows()).map((entry) => entry.id)).toEqual([
-			"window:101:0",
-			"window:102:0",
-		]);
+		await expect(listCapturePickerWindows()).rejects.toThrow("Use the source list on Linux");
+		expect(mocks.exec).not.toHaveBeenCalled();
 	});
 	it("matches Windows handles to real capture IDs and converts physical bounds to DIP", async () => {
 		Object.defineProperty(process, "platform", { value: "win32" });
