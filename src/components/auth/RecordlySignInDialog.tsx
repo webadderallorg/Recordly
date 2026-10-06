@@ -32,6 +32,7 @@ export type SignInReason = "account" | "share";
 type Props = {
 	variant?: "compact" | "wide";
 	onboarding?: boolean;
+	startWithPermissions?: boolean;
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	reason?: SignInReason;
@@ -61,6 +62,7 @@ function friendlyAuthError(
 export function RecordlySignInDialog({
 	variant = "compact",
 	onboarding = false,
+	startWithPermissions = false,
 	open,
 	onOpenChange,
 	user,
@@ -90,6 +92,10 @@ export function RecordlySignInDialog({
 			setLinkSent(false);
 		}
 	}, [open]);
+
+	useEffect(() => {
+		if (open && startWithPermissions) setFeatureStep(0);
+	}, [open, startWithPermissions]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -184,8 +190,7 @@ export function RecordlySignInDialog({
 							/>
 							{feature && (
 								<OnboardingFeature
-									step={featureStep}
-									onStep={setFeatureStep}
+									onBack={() => setFeatureStep(-1)}
 									onFinish={onAuthenticated}
 								/>
 							)}

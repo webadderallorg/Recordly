@@ -127,20 +127,16 @@ export async function listCapturePickerWindows(): Promise<CapturePickerWindow[]>
 				const bounds = await resolveLinuxWindowBounds(source);
 				if (!bounds)
 					throw new Error("Unable to detect a window position. Try the picker again.");
-				return bounds
-					? {
-							...bounds,
-							id: source.id,
-							appName: "",
-							title: source.name,
-							display_id: source.display_id,
-						}
-					: null;
+				return {
+					...bounds,
+					id: source.id,
+					appName: "",
+					title: source.name,
+					display_id: source.display_id,
+				};
 			}),
 		);
-		windows.push(
-			...batch.filter((entry): entry is NonNullable<typeof entry> => entry !== null),
-		);
+		windows.push(...batch);
 	}
 	return windows;
 }

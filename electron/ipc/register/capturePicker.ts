@@ -7,7 +7,7 @@ import {
 	getCapturePickerWindows,
 } from "../../windows";
 import { stopWindowBoundsCapture } from "../cursor/bounds";
-import { selectedSource, setSelectedSource } from "../state";
+import { isCursorCaptureActive, selectedSource, setSelectedSource } from "../state";
 import {
 	createAreaSource,
 	createWindowSource,
@@ -17,11 +17,7 @@ import {
 import type { CapturePick, CapturePickerWindow, SelectedSource } from "../types";
 import { getScreen } from "../utils";
 import { getScreenSourceIdForDisplay, isLikelyLinuxWaylandSession } from "./sourceMapping";
-import {
-	bringSelectedWindowForward,
-	broadcastSelectedSourceChange,
-	getDesktopSources,
-} from "./sources";
+import { broadcastSelectedSourceChange, getDesktopSources } from "./sources";
 
 /** The same source the screen list offers for this display. */
 async function createScreenSource(displayId: number): Promise<SelectedSource | null> {
@@ -68,6 +64,7 @@ export function registerCapturePickerHandlers() {
 
 	let activePick: Promise<unknown> | null = null;
 	const pickTarget = async () => {
+		if (isCursorCaptureActive) return { success: false, canceled: true };
 		if (process.platform === "linux" && isLikelyLinuxWaylandSession(process.env)) {
 			// Preserve the existing portal recording path: its system picker opens
 			// when recording starts; overlay selection cannot identify Wayland windows.
@@ -89,13 +86,14 @@ export function registerCapturePickerHandlers() {
 		finishPick(null);
 		// List windows before the overlays cover them.
 		pickableWindows = Promise.resolve(await listCapturePickerWindows());
+		if (isCursorCaptureActive) return { success: false, canceled: true };
 		const pick = await new Promise<CapturePick | null>((resolve) => {
 			resolvePendingPick = resolve;
 			// Closing an overlay without confirming cancels the pick.
 			createCapturePickerWindows(() => finishPick(null));
 		});
 		closeCapturePickerWindows();
-		if (!pick) {
+		if (!pick || isCursorCaptureActive) {
 			return { success: false, canceled: true };
 		}
 
@@ -113,11 +111,8 @@ export function registerCapturePickerHandlers() {
 			return { success: false, message: "That window or screen is no longer available." };
 		}
 
-		// Recording raises the window itself, so only raise it here when it is
-		// just being selected.
-		if (source.id?.startsWith("window:") && !pick.record) {
-			await bringSelectedWindowForward(source);
-		}
+		if (isCursorCaptureActive) return { success: false, canceled: true };
+		// Recording brings the selected window forward; selection need not wait for it.
 		setSelectedSource(source);
 		rememberCaptureSource(source);
 		broadcastSelectedSourceChange();
@@ -125,6 +120,7 @@ export function registerCapturePickerHandlers() {
 		return { success: true, source };
 	};
 	ipcMain.handle("pick-capture-target", () => {
+		if (isCursorCaptureActive) return { success: false, canceled: true };
 		if (!activePick) {
 			activePick = pickTarget()
 				.catch((error) => {
@@ -155,7 +151,7 @@ export function registerCapturePickerHandlers() {
 			process.platform !== "darwin"
 		)
 			return;
-		if (!input) {
+		if (!input || isCursorCaptureActive) {
 			finishPick(null);
 			return;
 		}

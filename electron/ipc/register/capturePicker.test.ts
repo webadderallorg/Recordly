@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
 	validate: vi.fn(),
 	remember: vi.fn(),
 	selected: vi.fn(),
+	recording: false,
 	currentSource: null as Record<string, unknown> | null,
 	create: vi.fn(),
 	close: vi.fn(),
@@ -32,6 +33,9 @@ vi.mock("../capturePickerSources", () => ({ listCapturePickerWindows: mocks.list
 vi.mock("../cursor/bounds", () => ({ stopWindowBoundsCapture: vi.fn() }));
 vi.mock("../state", () => ({
 	setSelectedSource: mocks.selected,
+	get isCursorCaptureActive() {
+		return mocks.recording;
+	},
 	get selectedSource() {
 		return mocks.currentSource;
 	},
@@ -58,6 +62,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	mocks.handlers.clear();
 	mocks.currentSource = null;
+	mocks.recording = false;
 	mocks.windows = [mocks.overlay];
 	Object.defineProperty(process, "platform", { value: "darwin" });
 	mocks.list.mockResolvedValue([]);
@@ -154,4 +159,36 @@ it("reopens the currently selected saved area, without reusing an old area for a
 	expect(await call("get-capture-picker-context", mocks.overlay, 1)).toMatchObject({
 		lastArea: null,
 	});
+});
+
+it("does not open any source picker during recording or pause", async () => {
+	mocks.recording = true;
+	expect(await call("pick-capture-target", mocks.outsider)).toEqual({
+		success: false,
+		canceled: true,
+	});
+	expect(mocks.list).not.toHaveBeenCalled();
+	expect(mocks.create).not.toHaveBeenCalled();
+	expect(mocks.selected).not.toHaveBeenCalled();
+});
+
+it("rejects a pending selection if recording starts while the picker is open", async () => {
+	const pending = call("pick-capture-target", mocks.outsider);
+	await vi.waitFor(() => expect(mocks.create).toHaveBeenCalledOnce());
+	mocks.recording = true;
+	await call("complete-capture-pick", mocks.overlay, { kind: "screen", displayId: 1 });
+	expect(await pending).toEqual({ success: false, canceled: true });
+	expect(mocks.selected).not.toHaveBeenCalled();
+});
+
+it("does not open overlays if recording starts while listing windows", async () => {
+	mocks.list.mockImplementation(async () => {
+		mocks.recording = true;
+		return [];
+	});
+	expect(await call("pick-capture-target", mocks.outsider)).toEqual({
+		success: false,
+		canceled: true,
+	});
+	expect(mocks.create).not.toHaveBeenCalled();
 });

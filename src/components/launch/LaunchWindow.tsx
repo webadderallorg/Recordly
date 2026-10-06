@@ -60,6 +60,7 @@ function LaunchWindowContent() {
 		pauseRecording,
 		resumeRecording,
 		cancelRecording,
+		cancelRecordingStart,
 		microphoneEnabled,
 		setMicrophoneEnabled,
 		microphoneDeviceId,
@@ -171,11 +172,13 @@ function LaunchWindowContent() {
 	const [isPickerPending, setIsPickerPending] = useState(false);
 	const [sourceReady, setSourceReady] = useState(false);
 	const handlePickOnScreen = useCallback(async () => {
-		if (pickerPending.current || recording || countdownActive || finalizing) return;
+		if (pickerPending.current || recording || finalizing) return;
 		pickerPending.current = true;
 		setIsPickerPending(true);
 		beginInteractiveHudAction();
 		try {
+			if (!(await cancelRecordingStart())) return;
+			if (!(await preparePermissions())) return;
 			const result = await window.electronAPI.pickCaptureTarget();
 			if (result.success && result.source) syncSelectedSource(result.source);
 			if (result.message && !result.canceled) {
@@ -188,7 +191,14 @@ function LaunchWindowContent() {
 			pickerPending.current = false;
 			setIsPickerPending(false);
 		}
-	}, [recording, countdownActive, finalizing, beginInteractiveHudAction, syncSelectedSource]);
+	}, [
+		recording,
+		cancelRecordingStart,
+		preparePermissions,
+		finalizing,
+		beginInteractiveHudAction,
+		syncSelectedSource,
+	]);
 
 	useEffect(() => {
 		let mounted = true;
@@ -259,7 +269,7 @@ function LaunchWindowContent() {
 				className={`${styles.electronNoDrag} group gap-2 px-3 min-w-0 max-w-[180px] shrink-0`}
 				title={selectedSource}
 				aria-label="Choose recording source"
-				disabled={isPickerPending || !sourceReady || countdownActive}
+				disabled={isPickerPending || !sourceReady || recording || finalizing}
 				onClick={() => void handlePickOnScreen()}
 			>
 				<MonitorIcon size={18} className="size-5 shrink-0" />

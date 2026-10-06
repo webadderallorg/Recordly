@@ -513,6 +513,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getSources: async (opts: Electron.SourcesOptions) => {
 		return await ipcRenderer.invoke("get-sources", opts);
 	},
+	showRecordingPermissions: () => ipcRenderer.invoke("show-recording-permissions"),
+	onRecordingPermissionsRequested: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("recording-permissions-requested", listener);
+		return () => ipcRenderer.removeListener("recording-permissions-requested", listener);
+	},
 	showRecordingHud: () => ipcRenderer.invoke("show-recording-hud"),
 	createProjectFile: (data: unknown, thumbnail?: string | null) =>
 		ipcRenderer.invoke("create-project-file", data, thumbnail),

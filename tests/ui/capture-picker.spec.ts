@@ -157,7 +157,8 @@ for (const { selected, trigger } of [
 		await expect(page.locator("html")).not.toHaveAttribute("data-picker-calls");
 		await (trigger === "source"
 			? control
-			: page.getByRole("button", { name: "Record", exact: true })).click();
+			: page.getByRole("button", { name: "Record", exact: true })
+		).click();
 		await expect(page.locator("html")).toHaveAttribute("data-picker-calls", "1");
 		await expect(control).toContainText("Selected window");
 		await expect(page.getByRole("button", { name: "Record", exact: true })).toBeVisible();
@@ -248,4 +249,122 @@ test("unselected source reads Pick source once and Record stays disabled while p
 	await page.evaluate(() => (window as unknown as { finishPicker: () => void }).finishPicker());
 	await expect(page.getByRole("button", { name: "Record", exact: true })).toBeEnabled();
 	await expect(source).toHaveText("Pick source");
+});
+
+test("changing source cancels countdown and discards native warm-up before opening the picker", async ({
+	page,
+}) => {
+	await installDesktopBridge(page);
+	await page.addInitScript(() => {
+		let finishCountdown: (result: { success: boolean; cancelled: boolean }) => void;
+		const events: string[] = [];
+		Object.assign(window.electronAPI, {
+			startNativeScreenRecording: async () => ({ success: true }),
+			pauseNativeScreenRecording: async () => ({ success: true }),
+			resumeNativeScreenRecording: async () => {
+				events.push("resume");
+				return { success: true };
+			},
+			startCountdown: async () => {
+				document.documentElement.dataset.countdownStarted = "true";
+				return new Promise((resolve) => {
+					finishCountdown = resolve;
+				});
+			},
+			cancelCountdown: async () => {
+				events.push("cancel-countdown");
+				finishCountdown({ success: false, cancelled: true });
+				return { success: true };
+			},
+			stopNativeScreenRecording: async () => {
+				events.push("stop-native");
+				return { success: true, path: "/recordings/pending.mp4" };
+			},
+			deleteRecordingFile: async () => {
+				events.push("delete-file");
+				return { success: true };
+			},
+			setRecordingState: async (active: boolean) => {
+				if (active) events.push("recording");
+			},
+			pickCaptureTarget: async () => {
+				events.push("pick");
+				document.documentElement.dataset.events = JSON.stringify(events);
+				return { success: false, canceled: true };
+			},
+		});
+	});
+	await page.goto("/?windowType=hud-overlay");
+	await page.getByRole("button", { name: "Record", exact: true }).click();
+	await expect(page.locator("html")).toHaveAttribute("data-countdown-started", "true");
+	const source = page.getByRole("button", { name: "Choose recording source" });
+	await expect(source).toBeEnabled();
+	await source.click();
+	await expect(page.locator("html")).toHaveAttribute(
+		"data-events",
+		JSON.stringify(["cancel-countdown", "stop-native", "delete-file", "pick"]),
+	);
+	await expect(page.getByRole("button", { name: "Record", exact: true })).toBeEnabled();
+});
+
+test("recording and pause expose no interactive source picker", async ({ page }) => {
+	await installDesktopBridge(page);
+	await page.addInitScript(() => {
+		window.electronAPI.onRecordingStateChanged = (callback) => {
+			const listener = (event: Event) => callback((event as CustomEvent).detail);
+			window.addEventListener("test-recording", listener);
+			return () => window.removeEventListener("test-recording", listener);
+		};
+		window.electronAPI.pickCaptureTarget = async () => {
+			document.documentElement.dataset.pickerOpened = "true";
+			return { success: false, canceled: true };
+		};
+	});
+	await page.goto("/?windowType=hud-overlay");
+	await expect(page.getByRole("button", { name: "Choose recording source" })).toBeEnabled();
+	for (const paused of [false, true]) {
+		await page.evaluate(
+			(paused) =>
+				window.dispatchEvent(
+					new CustomEvent("test-recording", { detail: { recording: true, paused } }),
+				),
+			paused,
+		);
+		await expect(
+			page.getByRole("button", { name: "Choose recording source" }),
+		).not.toBeVisible();
+		await expect(page.locator("html")).not.toHaveAttribute("data-picker-opened");
+	}
+});
+
+test("changing source also cancels countdown on the browser capture path", async ({ page }) => {
+	await installDesktopBridge(page);
+	await page.addInitScript(() => {
+		let finishCountdown: (result: { success: boolean; cancelled: boolean }) => void;
+		Object.assign(window.electronAPI, {
+			getPlatform: async () => "linux",
+			startCountdown: async () => {
+				document.documentElement.dataset.countdownStarted = "true";
+				return new Promise((resolve) => {
+					finishCountdown = resolve;
+				});
+			},
+			cancelCountdown: async () => {
+				document.documentElement.dataset.countdownCancelled = "true";
+				finishCountdown({ success: false, cancelled: true });
+				return { success: true };
+			},
+			pickCaptureTarget: async () => {
+				document.documentElement.dataset.pickedAfterCancel =
+					document.documentElement.dataset.countdownCancelled;
+				return { success: false, canceled: true };
+			},
+		});
+	});
+	await page.goto("/?windowType=hud-overlay");
+	await page.getByRole("button", { name: "Record", exact: true }).click();
+	await expect(page.locator("html")).toHaveAttribute("data-countdown-started", "true");
+	await page.getByRole("button", { name: "Choose recording source" }).click();
+	await expect(page.locator("html")).toHaveAttribute("data-picked-after-cancel", "true");
+	await expect(page.getByRole("button", { name: "Record", exact: true })).toBeEnabled();
 });

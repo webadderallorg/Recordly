@@ -35,7 +35,6 @@ export function CapturePicker() {
 		drawing: boolean;
 		rect?: AreaRect;
 		handle?: AreaHandle;
-		moving?: boolean;
 	} | null>(null);
 	const editingArea = useRef(false);
 	const completed = useRef(false);
@@ -46,6 +45,17 @@ export function CapturePicker() {
 			: { kind: "screen", rect: screenRect() };
 	}, []);
 	const update = (next: Target) => {
+		const previous = current.current;
+		if (
+			previous?.kind === next.kind &&
+			(previous.kind !== "window" ||
+				(next.kind === "window" && previous.window.id === next.window.id)) &&
+			previous.rect.x === next.rect.x &&
+			previous.rect.y === next.rect.y &&
+			previous.rect.width === next.rect.width &&
+			previous.rect.height === next.rect.height
+		)
+			return;
 		current.current = next;
 		setTarget(next);
 	};
@@ -204,7 +214,7 @@ export function CapturePicker() {
 					y: event.clientY,
 					drawing: false,
 					...(area && (handle || rectContains(area, event.clientX, event.clientY))
-						? { rect: area, handle, moving: !handle }
+						? { rect: area, handle }
 						: {}),
 				};
 				event.currentTarget.setPointerCapture(event.pointerId);

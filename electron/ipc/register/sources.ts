@@ -1,3 +1,4 @@
+import { writeAppSetting } from "../../appSettingsStore";
 import { restoreLastCaptureSource } from "../captureSelection";
 import { createRecordingEditorNavigation } from "../../recordingEditorNavigation";
 import { execFile } from "node:child_process";
@@ -17,7 +18,7 @@ import {
 	stopWindowBoundsCapture,
 } from "../cursor/bounds";
 import { getDisplayBoundsForSource, getDisplayWorkAreaForSource } from "../recording/ffmpeg";
-import { selectedSource, setSelectedSource } from "../state";
+import { isCursorCaptureActive, selectedSource, setSelectedSource } from "../state";
 import type { SelectedSource, WindowBounds } from "../types";
 import { getSourceArea } from "../sourceArea";
 import { getScreen, parseWindowId } from "../utils";
@@ -400,9 +401,11 @@ export function registerSourceHandlers({
 	ipcMain.handle("get-sources", (_, opts) => getDesktopSources(opts));
 
 	ipcMain.handle("select-source", async (_, source: SelectedSource) => {
+		if (isCursorCaptureActive) return selectedSource;
 		if (source.id?.startsWith("window:")) {
 			await bringSelectedWindowForward(source);
 		}
+		if (isCursorCaptureActive) return selectedSource;
 		setSelectedSource(source);
 		broadcastSelectedSourceChange();
 		stopWindowBoundsCapture();
@@ -603,6 +606,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 	});
 
 	ipcMain.handle("open-source-selector", () => {
+		if (isCursorCaptureActive) return;
 		const sourceSelectorWin = getSourceSelectorWindow();
 		if (sourceSelectorWin) {
 			sourceSelectorWin.focus();
@@ -619,6 +623,15 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 			hud.focus();
 		} else {
 			createHudOverlayWindow();
+		}
+	});
+	ipcMain.handle("show-recording-permissions", () => {
+		if (process.platform !== "darwin" || isCursorCaptureActive) return;
+		writeAppSetting("recordly.onboarding.permissionsRequested", true);
+		setHudRecordingPreparationActive(false);
+		recordingNavigation.open(false);
+		for (const window of BrowserWindow.getAllWindows()) {
+			if (!window.isDestroyed()) window.webContents.send("recording-permissions-requested");
 		}
 	});
 	ipcMain.handle("show-project-dashboard", () => {

@@ -1,147 +1,311 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Description, Modal, Surface } from "@heroui/react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
 	ArrowLeft,
 	ArrowRight,
 	Check,
-	Link,
+	Cursor,
 	Monitor,
 	Play,
-	Record,
-	SlidersHorizontal,
+	ShareNetwork,
+	ShieldCheck,
 } from "@phosphor-icons/react";
 
-const features = [
-	{
-		name: "Record",
-		title: "Start with a moment.",
-		description: "Choose your screen or a window. Add your voice and camera, then hit record.",
-	},
-	{
-		name: "Preview",
-		title: "Make it yours.",
-		description: "Trim the take, frame your video, and bring the important details into focus.",
-	},
-	{
-		name: "Share",
-		title: "Ready when you are.",
-		description:
-			"Publish a link for anyone to watch, or save the finished video to your device.",
-	},
-];
+const steps = [
+	{ name: "Record", key: "record", icon: Monitor, color: "from-sky-100 to-blue-200" },
+	{ name: "Preview", key: "preview", icon: Play, color: "from-violet-100 to-indigo-200" },
+	{ name: "Share", key: "share", icon: ShareNetwork, color: "from-rose-100 to-orange-100" },
+] as const;
 
-// Decorative product illustrations stay crisp as the image frame changes size.
-function FeatureIllustration({ step }: { step: number }) {
+type Step = (typeof steps)[number]["key"];
+// Optional clips are bundled only when provided. Missing clips use illustrations, without 404s.
+const clips = import.meta.glob<string>("/src/assets/onboarding/{record,preview,share}.mp4", {
+	eager: true,
+	query: "?url",
+	import: "default",
+});
+
+function StepTile({
+	step,
+	src,
+	reduceMotion,
+}: {
+	step: (typeof steps)[number];
+	src?: string;
+	reduceMotion: boolean;
+}) {
+	const [failed, setFailed] = useState(false);
+	const player = useRef<HTMLVideoElement>(null);
+	useEffect(() => {
+		if (!src) return;
+		if (reduceMotion) player.current?.pause();
+		else void player.current?.play().catch(() => undefined);
+	}, [reduceMotion, src]);
+	const Icon = step.icon;
 	return (
-		<div
-			aria-hidden="true"
-			className="flex h-full items-center justify-center p-6 sm:p-10"
-		>
-			<div className="relative w-full max-w-[580px] overflow-hidden rounded-2xl border border-white/50 bg-white/85 text-zinc-900 shadow-2xl backdrop-blur-xl">
-				<div className="flex items-center gap-1.5 border-b border-black/5 px-4 py-3">
-					{[0, 1, 2].map((i) => (
-						<span key={i} className="size-2 rounded-full bg-zinc-300" />
-					))}
-					<span className="ml-3 text-xs font-medium">
-						{features[step].name === "Share" ? "Your recording" : "Recordly"}
-					</span>
-				</div>
-				<div className="relative mx-5 mb-5 mt-4 flex aspect-video items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-indigo-200 via-sky-100 to-rose-200">
-					<div className="flex w-3/5 flex-col gap-3 rounded-lg bg-white/90 p-5 shadow-lg">
-						<div className="h-2 w-1/3 rounded bg-indigo-300" />
-						<div className="h-3 w-4/5 rounded bg-zinc-700" />
-						<div className="h-2 w-full rounded bg-zinc-200" />
-						<div className="h-2 w-2/3 rounded bg-zinc-200" />
-					</div>
-					{step === 0 && (
-						<div className="absolute bottom-3 flex items-center gap-3 rounded-xl bg-white px-4 py-2 shadow-lg">
-							<Monitor size={20} />
-							<span className="text-xs">Entire screen</span>
-							<Record size={24} weight="fill" className="text-red-500" />
-						</div>
-					)}
-					{step === 1 && (
-						<div className="absolute bottom-3 flex items-center gap-3 rounded-xl bg-white px-4 py-2 shadow-lg">
-							<SlidersHorizontal size={20} />
-							<div className="h-1.5 w-24 rounded-full bg-blue-500" />
-							<span className="text-xs">Preview</span>
-						</div>
-					)}
-					{step === 2 && (
-						<div className="absolute flex size-14 items-center justify-center rounded-full bg-white/90 shadow-lg">
-							<Play size={24} weight="fill" />
-						</div>
-					)}
-				</div>
-				{step === 2 && (
-					<div className="mx-5 mb-5 flex items-center justify-center gap-2 rounded-lg bg-blue-500 p-3 text-sm font-medium text-white">
-						<Link size={18} />
-						Copy link
-						<Check size={16} />
-					</div>
+		<div className="min-w-0 flex-1 text-center">
+			<div
+				className={`relative flex aspect-square items-center justify-center overflow-hidden rounded-[24px] border border-black/5 bg-gradient-to-br ${step.color}`}
+			>
+				<Icon aria-hidden="true" size={52} weight="duotone" className="text-zinc-700" />
+				{src && !failed && (
+					<video
+						ref={player}
+						aria-label={`${step.name} demonstration`}
+						className="absolute inset-0 size-full object-cover"
+						autoPlay={!reduceMotion}
+						muted
+						loop
+						playsInline
+						controls={Boolean(reduceMotion)}
+						preload="metadata"
+						onError={() => setFailed(true)}
+					>
+						<source src={src} type="video/mp4" onError={() => setFailed(true)} />
+					</video>
 				)}
 			</div>
+			<h3 className="mt-4 text-base font-semibold sm:text-lg">{step.name}</h3>
 		</div>
 	);
 }
 
 export function OnboardingFeature({
-	step,
-	onStep,
+	onBack,
 	onFinish,
+	media = {},
 }: {
-	step: number;
-	onStep: (step: number) => void;
+	onBack: () => void;
 	onFinish: () => void;
+	media?: Partial<Record<Step, string>>;
 }) {
-	const reduceMotion = useReducedMotion();
-	const feature = features[step];
+	const [page, setPage] = useState<"checking" | "permissions" | "overview">("checking");
+	const [reduceMotion, setReduceMotion] = useState(
+		() => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+	);
+	useEffect(() => {
+		const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+		const change = () => setReduceMotion(query.matches);
+		query.addEventListener("change", change);
+		return () => query.removeEventListener("change", change);
+	}, []);
+	const [screenGranted, setScreenGranted] = useState(false);
+	const [accessibilityGranted, setAccessibilityGranted] = useState(false);
+	const [busy, setBusy] = useState<string>();
+	const [error, setError] = useState<string>();
+	const refresh = useCallback(async () => {
+		const [screen, accessibility] = await Promise.all([
+			window.electronAPI.getScreenRecordingPermissionStatus(),
+			window.electronAPI.getAccessibilityPermissionStatus(),
+		]);
+		if (!screen.success || !accessibility.success)
+			throw new Error("Could not check permissions. Try again.");
+		setScreenGranted(screen.status === "granted");
+		setAccessibilityGranted(accessibility.trusted);
+		setError(undefined);
+		return screen.status === "granted" && accessibility.trusted;
+	}, []);
+
+	useEffect(() => {
+		let disposed = false;
+		void (async () => {
+			try {
+				const mac = (await window.electronAPI.getPlatform()) === "darwin";
+				const granted = !mac || (await refresh());
+				if (!disposed) setPage(granted ? "overview" : "permissions");
+			} catch (error) {
+				if (!disposed) {
+					setError(String(error));
+					setPage("permissions");
+				}
+			}
+		})();
+		return () => {
+			disposed = true;
+		};
+	}, [refresh]);
+
+	useEffect(() => {
+		if (page !== "permissions") return;
+		const check = () => {
+			void refresh().catch((error) => setError(String(error)));
+		};
+		const visible = () => {
+			if (document.visibilityState === "visible") check();
+		};
+		window.addEventListener("focus", check);
+		document.addEventListener("visibilitychange", visible);
+		return () => {
+			window.removeEventListener("focus", check);
+			document.removeEventListener("visibilitychange", visible);
+		};
+	}, [page, refresh]);
+
+	const allow = async (permission: "screen" | "accessibility") => {
+		if (busy) return;
+		setBusy(permission);
+		try {
+			if (permission === "accessibility") {
+				const result = await window.electronAPI.requestAccessibilityPermission();
+				if (!result.success)
+					throw new Error(result.error || "Could not request Accessibility access.");
+				if (!result.trusted) {
+					const opened = await window.electronAPI.openAccessibilityPreferences();
+					if (!opened.success)
+						throw new Error(opened.error || "Could not open System Settings.");
+				}
+			} else {
+				const result = await window.electronAPI.openScreenRecordingPreferences();
+				if (!result.success)
+					throw new Error(result.error || "Could not open System Settings.");
+			}
+			await refresh();
+		} catch (error) {
+			setError(error instanceof Error ? error.message : String(error));
+		} finally {
+			setBusy(undefined);
+		}
+	};
+
 	return (
-		<div className="absolute inset-0 flex flex-col">
-			<div className="relative min-h-0 flex-1 overflow-hidden">
-				<AnimatePresence mode="wait" initial={false}>
-					<motion.div
-						key={step}
-						initial={{ opacity: 0, y: reduceMotion ? 0 : 12 }}
-						animate={{ opacity: 1, y: 0 }}
-						exit={{ opacity: 0 }}
-						transition={{ duration: reduceMotion ? 0 : 0.2 }}
-						className="absolute inset-0"
-					>
-						<FeatureIllustration step={step} />
-					</motion.div>
-				</AnimatePresence>
-			</div>
-			<Surface className="shrink-0 border-t border-separator px-6 py-5 sm:px-8 sm:py-6">
-				<div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-					<Modal.Header aria-live="polite" className="min-w-0 flex-1 gap-2">
-						<Modal.Heading className="text-2xl font-semibold tracking-tight sm:text-3xl">
-							{feature.title}
+		<Surface className="absolute inset-0 flex flex-col justify-center overflow-y-auto px-6 py-10 sm:px-12 sm:py-12">
+			{page === "checking" ? (
+				<p role="status" className="text-center text-sm text-muted">
+					Checking permissions…
+				</p>
+			) : page === "permissions" ? (
+				<div className="mx-auto w-full max-w-[600px]">
+					<ShieldCheck size={36} className="mb-5 text-accent" />
+					<Modal.Header className="gap-3">
+						<Modal.Heading className="text-3xl font-semibold tracking-tight">
+							Allow Recordly to record
 						</Modal.Heading>
 						<Description className="text-sm leading-relaxed">
-							{feature.description}
+							Enable these permissions in macOS System Settings. Your screen is
+							captured only when you start a recording.
 						</Description>
 					</Modal.Header>
-					<Modal.Footer className="shrink-0 gap-2">
+					<div className="my-7 space-y-3">
+						{[
+							{
+								key: "screen" as const,
+								name: "Screen Recording",
+								description: "Capture a screen, window or selected area.",
+								granted: screenGranted,
+								icon: Monitor,
+							},
+							{
+								key: "accessibility" as const,
+								name: "Accessibility",
+								description: "Track your cursor and highlight clicks.",
+								granted: accessibilityGranted,
+								icon: Cursor,
+							},
+						].map(({ key, name, description, granted, icon: Icon }) => (
+							<div
+								key={key}
+								className="flex items-center gap-4 rounded-2xl border border-separator p-4"
+							>
+								<Icon size={24} className="shrink-0 text-muted" />
+								<div className="min-w-0 flex-1">
+									<h3 className="text-sm font-semibold">{name}</h3>
+									<p className="mt-1 text-xs text-muted">{description}</p>
+								</div>
+								{granted ? (
+									<span className="flex shrink-0 items-center gap-1.5 text-xs text-success">
+										<Check size={16} />
+										Allowed
+									</span>
+								) : (
+									<Button
+										variant="secondary"
+										isDisabled={Boolean(busy)}
+										onPress={() => void allow(key)}
+										aria-label={`Allow ${name}`}
+									>
+										{busy === key ? "Opening…" : "Allow"}
+									</Button>
+								)}
+							</div>
+						))}
+					</div>
+					<p className="text-xs leading-relaxed text-muted">
+						Return here after enabling access. macOS may ask you to quit and reopen
+						Recordly for Screen Recording changes to take effect. Microphone and camera
+						access are requested when you use them.
+					</p>
+					{error && (
+						<p role="alert" className="mt-3 text-sm text-danger">
+							{error}
+						</p>
+					)}
+					<Modal.Footer className="mt-7 gap-3">
 						<Button
-							isIconOnly
-							aria-label={step === 0 ? "Back to sign in" : "Previous feature"}
 							variant="secondary"
-							onPress={() => onStep(step - 1)}
+							onPress={() => void refresh().catch((error) => setError(String(error)))}
+						>
+							Check again
+						</Button>
+						<Button
+							isDisabled={!screenGranted || !accessibilityGranted || Boolean(busy)}
+							onPress={() => setPage("overview")}
+						>
+							Continue
+						</Button>
+					</Modal.Footer>
+				</div>
+			) : (
+				<div className="mx-auto w-full max-w-[780px]">
+					<Modal.Header className="mb-8 items-center gap-2 text-center sm:mb-10">
+						<Modal.Heading className="text-3xl font-semibold tracking-tight sm:text-4xl">
+							Your next great recording
+						</Modal.Heading>
+					</Modal.Header>
+					<div className="flex items-start gap-2 sm:gap-4">
+						{steps.map((step, index) => (
+							<div key={step.key} className="contents">
+								<StepTile
+									step={step}
+									reduceMotion={reduceMotion}
+									src={
+										media[step.key] ??
+										clips[`/src/assets/onboarding/${step.key}.mp4`]
+									}
+								/>
+								{index < steps.length - 1 && (
+									<div
+										aria-hidden="true"
+										className="flex aspect-square w-5 shrink-0 items-center justify-center self-center pb-10 sm:w-8"
+									>
+										<ArrowRight size={24} className="text-muted" />
+									</div>
+								)}
+							</div>
+						))}
+					</div>
+					<div className="mx-auto mt-8 max-w-[550px] text-center sm:mt-10">
+						<Description className="text-sm leading-relaxed">
+							Capture a moment, polish it in the preview, and share it with anyone.
+							Recordly brings your screen, voice and camera together so your ideas are
+							easy to follow.
+						</Description>
+					</div>
+					<Modal.Footer className="mt-8 justify-center gap-3 sm:mt-10">
+						<Button
+							variant="secondary"
+							isIconOnly
+							aria-label="Back to sign in"
+							onPress={onBack}
 						>
 							<ArrowLeft size={18} />
 						</Button>
-						<Button
-							isIconOnly
-							aria-label={step === 2 ? "Get started" : "Next"}
-							variant="secondary"
-							onPress={() => (step === 2 ? onFinish() : onStep(step + 1))}
-						>
+						<Button onPress={onFinish}>
+							Start recording
 							<ArrowRight size={18} />
 						</Button>
 					</Modal.Footer>
 				</div>
-			</Surface>
-		</div>
+			)}
+		</Surface>
 	);
 }

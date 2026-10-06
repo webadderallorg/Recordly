@@ -19,24 +19,45 @@ export function OnboardingController({
 	callbackError?: string;
 }) {
 	const [open, setOpen] = useState(false);
+	const [startWithPermissions, setStartWithPermissions] = useState(false);
 	const checked = useRef(false);
 	useEffect(() => {
 		if (requestNonce > 0) setOpen(true);
 	}, [requestNonce]);
 	const close = useCallback(() => {
 		saveAppSetting(SEEN_KEY, true);
+		saveAppSetting("recordly.onboarding.permissionsRequested", false);
+		setStartWithPermissions(false);
 		setOpen(false);
 	}, []);
 
 	useEffect(() => {
 		if (!ready || checked.current) return;
 		checked.current = true;
-		if (!loadAppSetting<boolean>(SEEN_KEY)) setOpen(true);
+		if (loadAppSetting<boolean>("recordly.onboarding.permissionsRequested")) {
+			setStartWithPermissions(true);
+			setOpen(true);
+		} else if (!loadAppSetting<boolean>(SEEN_KEY)) setOpen(true);
 	}, [ready]);
+
+	useEffect(
+		() =>
+			window.electronAPI.onRecordingPermissionsRequested?.(() => {
+				setStartWithPermissions(true);
+				setOpen(true);
+			}),
+		[],
+	);
+
+	const finish = () => {
+		close();
+		void window.electronAPI.showRecordingHud();
+	};
 
 	return (
 		<RecordlySignInDialog
 			onboarding
+			startWithPermissions={startWithPermissions}
 			variant="wide"
 			open={open}
 			onOpenChange={(value) => {
@@ -45,7 +66,7 @@ export function OnboardingController({
 			user={user}
 			configured={configured}
 			callbackError={callbackError}
-			onAuthenticated={close}
+			onAuthenticated={finish}
 		/>
 	);
 }

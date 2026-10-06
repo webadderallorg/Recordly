@@ -860,6 +860,8 @@ interface Window {
 			path?: string;
 			error?: string;
 		}>;
+		showRecordingPermissions: () => Promise<void>;
+		onRecordingPermissionsRequested: (callback: () => void) => () => void;
 		showRecordingHud: () => Promise<void>;
 		createProjectFile: (
 			data: unknown,
