@@ -123,8 +123,12 @@ test("platforms without area capture keep drag selection on an existing screen",
 	expect(await pick(page)).toMatchObject({ kind: "screen", record: false });
 });
 
-for (const selected of [false, true]) {
-	test(`HUD ${selected ? "keeps the selected source and reopens on click" : "opens the picker once when no source exists"}`, async ({
+for (const { selected, trigger } of [
+	{ selected: false, trigger: "source" },
+	{ selected: false, trigger: "record" },
+	{ selected: true, trigger: "source" },
+]) {
+	test(`HUD ${selected ? "keeps the selected source" : "starts without a selected source"} and opens the picker only on ${trigger} click`, async ({
 		page,
 	}) => {
 		await installDesktopBridge(page);
@@ -144,12 +148,16 @@ for (const selected of [false, true]) {
 		}, selected);
 		await page.goto("/?windowType=hud-overlay");
 		const control = page.getByRole("button", { name: "Choose recording source" });
-		await expect(control).toBeVisible();
+		await expect(control).toBeEnabled();
 		if (selected) {
 			await expect(control).toContainText("Existing screen");
-			await expect(page.locator("html")).not.toHaveAttribute("data-picker-calls");
-			await control.click();
+		} else {
+			await expect(control).toHaveText("Pick source");
 		}
+		await expect(page.locator("html")).not.toHaveAttribute("data-picker-calls");
+		await (trigger === "source"
+			? control
+			: page.getByRole("button", { name: "Record", exact: true })).click();
 		await expect(page.locator("html")).toHaveAttribute("data-picker-calls", "1");
 		await expect(control).toContainText("Selected window");
 		await expect(page.getByRole("button", { name: "Record", exact: true })).toBeVisible();
@@ -230,9 +238,12 @@ test("unselected source reads Pick source once and Record stays disabled while p
 		});
 	});
 	await page.goto("/?windowType=hud-overlay");
-	await expect(page.locator("html")).toHaveAttribute("data-picker-pending", "true");
 	const source = page.getByRole("button", { name: "Choose recording source" });
+	await expect(source).toBeEnabled();
 	await expect(source).toHaveText("Pick source");
+	await expect(page.locator("html")).not.toHaveAttribute("data-picker-pending");
+	await source.click();
+	await expect(page.locator("html")).toHaveAttribute("data-picker-pending", "true");
 	await expect(page.getByRole("button", { name: "Record", exact: true })).toBeDisabled();
 	await page.evaluate(() => (window as unknown as { finishPicker: () => void }).finishPicker());
 	await expect(page.getByRole("button", { name: "Record", exact: true })).toBeEnabled();

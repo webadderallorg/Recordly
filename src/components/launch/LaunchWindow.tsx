@@ -190,7 +190,6 @@ function LaunchWindowContent() {
 		}
 	}, [recording, countdownActive, finalizing, beginInteractiveHudAction, syncSelectedSource]);
 
-	const initialSourceChecked = useRef(false);
 	useEffect(() => {
 		let mounted = true;
 		let selectionEventSeen = false;
@@ -201,10 +200,6 @@ function LaunchWindowContent() {
 				if (mounted) setSourceReady(true);
 				if (mounted && !selectionEventSeen) {
 					syncSelectedSource(source);
-					if (!initialSourceChecked.current) {
-						initialSourceChecked.current = true;
-						if (!source && !recording) void handlePickOnScreen();
-					}
 				}
 			})
 			.catch(() => {
@@ -223,7 +218,7 @@ function LaunchWindowContent() {
 			mounted = false;
 			cleanup?.();
 		};
-	}, [syncSelectedSource, recording, handlePickOnScreen]);
+	}, [syncSelectedSource]);
 
 	const openHome = () => {
 		localStorage.setItem("recordly.open-dashboard", String(Date.now()));
