@@ -20,7 +20,10 @@ import { useScreenRecorder } from "../../hooks/useScreenRecorder";
 import { useVideoDevices } from "../../hooks/useVideoDevices";
 import { Button } from "../ui/button";
 import { HudInteractionContext } from "./contexts/HudInteractionContext";
-import { canToggleFloatingWebcamPreview } from "./floatingWebcamPreview";
+import {
+	canToggleFloatingWebcamPreview,
+	WEBCAM_PREVIEW_RESIZE_HANDLES,
+} from "./floatingWebcamPreview";
 import { useHudBarDrag } from "./hooks/useHudBarDrag";
 import { useLaunchHudInteractionState } from "./hooks/useLaunchHudInteractionState";
 import { useLaunchWindowActions } from "./hooks/useLaunchWindowActions";
@@ -115,12 +118,16 @@ function LaunchWindowContent() {
 		setShowFloatingWebcamPreview,
 		showRecordingWebcamPreview,
 		webcamPreviewOffset,
+		webcamPreviewSize,
 		recordingWebcamPreviewContainerRef,
 		isWebcamPreviewDraggingRef,
 		webcamPreviewDragStartRef,
 		handleWebcamPreviewPointerDown,
 		handleWebcamPreviewPointerMove,
 		handleWebcamPreviewPointerUp,
+		handleWebcamPreviewResizePointerDown,
+		handleWebcamPreviewResizePointerMove,
+		handleWebcamPreviewResizePointerUp,
 		setWebcamPreviewNode,
 		setRecordingWebcamPreviewNode,
 	} = useWebcamPreviewOverlay({
@@ -528,6 +535,8 @@ function LaunchWindowContent() {
 								title={t("recording.webcam")}
 								style={{
 									transform: `translate(${webcamPreviewOffset.x}px, ${webcamPreviewOffset.y}px)`,
+									width: webcamPreviewSize.width,
+									height: webcamPreviewSize.height,
 								}}
 								onMouseEnter={handleHudMouseEnter}
 								onMouseLeave={handleHudMouseLeave}
@@ -543,6 +552,17 @@ function LaunchWindowContent() {
 									playsInline
 									style={{ transform: "scaleX(-1)" }}
 								/>
+								{WEBCAM_PREVIEW_RESIZE_HANDLES.map((handle) => (
+									<div
+										key={handle}
+										data-resize-handle={handle}
+										className={styles.recordingWebcamPreviewResizeHandle}
+										onPointerDown={handleWebcamPreviewResizePointerDown}
+										onPointerMove={handleWebcamPreviewResizePointerMove}
+										onPointerUp={handleWebcamPreviewResizePointerUp}
+										onPointerCancel={handleWebcamPreviewResizePointerUp}
+									/>
+								))}
 							</div>
 						)}
 					</div>
