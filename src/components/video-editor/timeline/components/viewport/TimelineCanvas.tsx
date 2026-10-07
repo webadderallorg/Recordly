@@ -31,6 +31,7 @@ import {
 	isAudioTrackRowId,
 } from "../../core/rows";
 import type { TimelineRenderItem } from "../../core/timelineTypes";
+import { getZoomIdsInRange } from "../../hooks/utils/timelineSelectionUtils";
 import { DEFAULT_CAPTION_DURATION_MS } from "../../hooks/actions/useTimelineCaptionActions";
 import { useTimelineAudioPeaks } from "../../hooks/useTimelineAudioPeaks";
 import Item from "../../Item";
@@ -53,6 +54,9 @@ import PlaybackCursor from "../playhead/PlaybackCursor";
 const HINT_CLIP = "Press C to split clip";
 const HINT_ANNOTATION = "Press A to add annotation";
 const HINT_AUDIO = "Click music icon to add audio";
+
+/** How far the pointer moves before a press on the zoom row becomes a selection box. */
+const SELECTION_BOX_THRESHOLD_PX = 4;
 
 interface TimelineCanvasProps {
 	videoPath?: string | null;
@@ -78,6 +82,8 @@ interface TimelineCanvasProps {
 	selectedAudioId?: string | null;
 	selectedCaptionId?: string | null;
 	selectAllBlocksActive?: boolean;
+	selectedZoomIds?: readonly string[];
+	onSelectZoomIds?: (ids: string[]) => void;
 	onClearBlockSelection?: () => void;
 	keyframes?: { id: string; time: number }[];
 	sourceAudioTracks?: SourceAudioTrackWithPeaks[];
@@ -406,6 +412,8 @@ interface TimelineCanvasRowsProps {
 	items: TimelineRenderItem[];
 	videoDurationMs: number;
 	selectAllBlocksActive: boolean;
+	selectedZoomIds?: readonly string[];
+	onSelectZoomIds?: (ids: string[]) => void;
 	selectedZoomId: string | null;
 	selectedClipId?: string | null;
 	selectedAnnotationId?: string | null;
@@ -482,7 +490,10 @@ function AudioItemWithWaveform({
 const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	videoPath,
 	items,
+	videoDurationMs,
 	selectAllBlocksActive,
+	selectedZoomIds,
+	onSelectZoomIds,
 	selectedZoomId,
 	selectedClipId,
 	selectedAnnotationId,
@@ -588,6 +599,79 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				displaySpan: getRegionDisplaySpan(item.span, clips),
 			})),
 		[clipItems, clips],
+	);
+
+	const [selectionBox, setSelectionBox] = useState<{ fromMs: number; toMs: number } | null>(null);
+	const visibleZoomItems = useMemo(
+		() => zoomItems.filter((item) => !hiddenIds.has(item.id)),
+		[zoomItems, hiddenIds],
+	);
+	const pickedZoomIds = useMemo(() => new Set(selectedZoomIds ?? []), [selectedZoomIds]);
+	const boxedZoomIds = useMemo(
+		() =>
+			selectionBox
+				? new Set(
+						getZoomIdsInRange(visibleZoomItems, selectionBox.fromMs, selectionBox.toMs),
+					)
+				: null,
+		[selectionBox, visibleZoomItems],
+	);
+
+	// Pressing and dragging on empty zoom-row space selects every zoom the box covers.
+	// A press without a drag still adds a zoom.
+	const handleZoomRowMouseDown = useCallback(
+		(event: MouseEvent<HTMLDivElement>) => {
+			onZoomRowMouseDown(event);
+			if (event.button !== 0 || !onSelectZoomIds) return;
+			if ((event.target as HTMLElement).closest("[data-timeline-item]")) return;
+			const rect = event.currentTarget.getBoundingClientRect();
+			const msAt = (clientX: number) => {
+				const offset = direction === "rtl" ? rect.right - clientX : clientX - rect.left;
+				const clamped = Math.max(0, Math.min(offset, rect.width));
+				return Math.max(0, Math.min(videoDurationMs, rangeStart + pixelsToValue(clamped)));
+			};
+			const startX = event.clientX;
+			const fromMs = msAt(startX);
+			let dragging = false;
+			const handleMove = (moveEvent: globalThis.MouseEvent) => {
+				if (
+					!dragging &&
+					Math.abs(moveEvent.clientX - startX) < SELECTION_BOX_THRESHOLD_PX
+				) {
+					return;
+				}
+				dragging = true;
+				moveEvent.preventDefault();
+				window.getSelection()?.removeAllRanges();
+				setSelectionBox({ fromMs, toMs: msAt(moveEvent.clientX) });
+			};
+			const handleUp = (upEvent: globalThis.MouseEvent) => {
+				window.removeEventListener("mousemove", handleMove);
+				window.removeEventListener("mouseup", handleUp);
+				if (!dragging) return;
+				setSelectionBox(null);
+				// The click that ends a drag must not add a zoom, seek or clear the selection.
+				const swallowClick = (clickEvent: globalThis.MouseEvent) =>
+					clickEvent.stopPropagation();
+				window.addEventListener("click", swallowClick, { capture: true, once: true });
+				window.setTimeout(
+					() => window.removeEventListener("click", swallowClick, { capture: true }),
+					0,
+				);
+				onSelectZoomIds(getZoomIdsInRange(visibleZoomItems, fromMs, msAt(upEvent.clientX)));
+			};
+			window.addEventListener("mousemove", handleMove);
+			window.addEventListener("mouseup", handleUp);
+		},
+		[
+			direction,
+			onSelectZoomIds,
+			onZoomRowMouseDown,
+			pixelsToValue,
+			rangeStart,
+			videoDurationMs,
+			visibleZoomItems,
+		],
 	);
 
 	const zoomGhost =
@@ -793,10 +877,22 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				onMouseEnter={onZoomRowMouseEnter}
 				onMouseMove={onZoomRowMouseMove}
 				onMouseLeave={onZoomRowMouseLeave}
-				onMouseDown={onZoomRowMouseDown}
+				onMouseDown={handleZoomRowMouseDown}
 				onClick={onZoomRowClick}
 			>
-				{canShowGhostZoom && ghostStartMs !== null && (
+				{selectionBox && (
+					<div
+						data-testid="zoom-selection-box"
+						className="pointer-events-none absolute inset-y-0.5 z-[4] rounded-md border border-sky-400/80 bg-sky-400/15"
+						style={{
+							[direction === "rtl" ? "right" : "left"]: valueToPixels(
+								Math.min(selectionBox.fromMs, selectionBox.toMs) - rangeStart,
+							),
+							width: valueToPixels(Math.abs(selectionBox.toMs - selectionBox.fromMs)),
+						}}
+					/>
+				)}
+				{canShowGhostZoom && !selectionBox && ghostStartMs !== null && (
 					<div
 						data-testid="timeline-add-preview"
 						className="absolute inset-0 z-[3] pointer-events-none"
@@ -830,23 +926,25 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 						</div>
 					</div>
 				)}
-				{zoomItems
-					.filter((item) => !hiddenIds.has(item.id))
-					.map((item) => (
-						<Item
-							id={item.id}
-							key={item.id}
-							rowId={item.rowId}
-							span={item.span}
-							isSelected={selectAllBlocksActive || item.id === selectedZoomId}
-							onSelectId={onSelectZoom}
-							zoomDepth={item.zoomDepth}
-							zoomMode={item.zoomMode}
-							variant="zoom"
-						>
-							{item.label}
-						</Item>
-					))}
+				{visibleZoomItems.map((item) => (
+					<Item
+						id={item.id}
+						key={item.id}
+						rowId={item.rowId}
+						span={item.span}
+						isSelected={
+							selectAllBlocksActive ||
+							item.id === selectedZoomId ||
+							(boxedZoomIds ?? pickedZoomIds).has(item.id)
+						}
+						onSelectId={onSelectZoom}
+						zoomDepth={item.zoomDepth}
+						zoomMode={item.zoomMode}
+						variant="zoom"
+					>
+						{item.label}
+					</Item>
+				))}
 			</Row>
 
 			{annotationRows.map(({ rowId, items: rowItems }, index) => (
@@ -919,6 +1017,8 @@ export default function TimelineCanvas({
 	selectedAudioId,
 	selectedCaptionId,
 	selectAllBlocksActive = false,
+	selectedZoomIds,
+	onSelectZoomIds,
 	onClearBlockSelection,
 	keyframes = [],
 	sourceAudioTracks = [],
@@ -1186,6 +1286,8 @@ export default function TimelineCanvas({
 					items={items}
 					videoDurationMs={videoDurationMs}
 					selectAllBlocksActive={selectAllBlocksActive}
+					selectedZoomIds={selectedZoomIds}
+					onSelectZoomIds={onSelectZoomIds}
 					selectedZoomId={selectedZoomId}
 					selectedClipId={selectedClipId}
 					selectedAnnotationId={selectedAnnotationId}
