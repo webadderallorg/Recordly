@@ -70,7 +70,10 @@ bool WasapiCapture::initializeLoopback(const std::string& outputPath) {
         IID_IMMDeviceEnumerator_, reinterpret_cast<void**>(&enumerator_));
     if (FAILED(hr)) return false;
 
-    hr = enumerator_->GetDefaultAudioEndpoint(eRender, eConsole, &device_);
+    hr = enumerator_->GetDefaultAudioEndpoint(eRender, eMultimedia, &device_);
+    if (FAILED(hr)) {
+        hr = enumerator_->GetDefaultAudioEndpoint(eRender, eConsole, &device_);
+    }
     if (FAILED(hr)) return false;
 
     return initializeCommon();

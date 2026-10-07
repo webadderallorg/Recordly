@@ -86,8 +86,7 @@ function findCmake() {
 	return null;
 }
 
-const cmake = findCmake();
-if (!cmake) {
+function fallbackToBundledHelperOrExit(reason) {
 	if (existsSync(bundledExePath)) {
 		const verification = verifyNativeHelperManifest({
 			projectRoot,
@@ -102,14 +101,20 @@ if (!cmake) {
 			);
 			process.exit(1);
 		}
+		console.log(`[build-windows-gpu-export] ${reason}`);
 		console.log(`[build-windows-gpu-export] Using bundled helper: ${bundledExePath}`);
 		process.exit(0);
 	}
 
-	console.error(
-		"[build-windows-gpu-export] CMake not found. Install Visual Studio with C++ CMake tools or standalone CMake.",
-	);
+	console.error(`[build-windows-gpu-export] ${reason}`);
 	process.exit(1);
+}
+
+const cmake = findCmake();
+if (!cmake) {
+	fallbackToBundledHelperOrExit(
+		"CMake not found. Install Visual Studio with C++ CMake tools or standalone CMake.",
+	);
 }
 
 mkdirSync(buildDir, { recursive: true });
@@ -135,8 +140,7 @@ try {
 			),
 	});
 } catch (error) {
-	console.error("[build-windows-gpu-export] CMake configure failed:", error.message);
-	process.exit(1);
+	fallbackToBundledHelperOrExit(`CMake configure failed: ${error.message}`);
 }
 
 console.log("[build-windows-gpu-export] Building Windows GPU export helper...");
@@ -147,8 +151,7 @@ try {
 		timeout: 300000,
 	});
 } catch (error) {
-	console.error("[build-windows-gpu-export] Build failed:", error.message);
-	process.exit(1);
+	fallbackToBundledHelperOrExit(`Build failed: ${error.message}`);
 }
 
 const exePath = path.join(buildDir, "Release", "gpu-export-probe.exe");

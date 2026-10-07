@@ -142,7 +142,7 @@ export function registerSettingsHandlers() {
 					typeof parsed.microphoneDeviceId === "string"
 						? parsed.microphoneDeviceId
 						: undefined,
-				systemAudioEnabled: parsed.systemAudioEnabled === true,
+				systemAudioEnabled: parsed.systemAudioEnabled !== false,
 				webcamEnabled: parsed.webcamEnabled === true,
 				webcamDeviceId:
 					typeof parsed.webcamDeviceId === "string" ? parsed.webcamDeviceId : undefined,
@@ -152,7 +152,7 @@ export function registerSettingsHandlers() {
 				success: true,
 				microphoneEnabled: false,
 				microphoneDeviceId: undefined,
-				systemAudioEnabled: false,
+				systemAudioEnabled: true,
 				webcamEnabled: false,
 				webcamDeviceId: undefined,
 			};

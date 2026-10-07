@@ -410,19 +410,13 @@ export function useAudioPreviewSync({
 
 			enablePitchPreservingPlayback(audio);
 			const audioDuration = resolvePreviewMediaDuration(audio.duration, duration);
-			const isMicCompanionTrack = /\.mic\./i.test(sourceAudioPath);
 			const rawStartDelaySeconds = estimateCompanionAudioStartDelaySeconds(
 				duration,
 				audioDuration,
 				sourceAudioFallbackStartDelayMsByPath[sourceAudioPath],
 			);
-			const maxPreviewStartDelaySeconds = isMicCompanionTrack ? 2 : 5;
-			const startDelaySeconds = isMicCompanionTrack
-				? 0
-				: Number.isFinite(duration) &&
-						(rawStartDelaySeconds >= Math.max(0, duration - 0.01) ||
-							rawStartDelaySeconds >
-								Math.max(maxPreviewStartDelaySeconds, duration * 0.9))
+			const startDelaySeconds =
+				Number.isFinite(duration) && rawStartDelaySeconds >= Math.max(0, duration - 0.01)
 					? 0
 					: rawStartDelaySeconds;
 			const beforeAudioStart = currentTime + 0.001 < startDelaySeconds;
@@ -431,10 +425,11 @@ export function useAudioPreviewSync({
 				audioDuration,
 			);
 
+			const drift = Math.abs(audio.currentTime - targetTime);
 			const shouldSeek =
 				timelineJumped ||
-				(!isPlaying && Math.abs(audio.currentTime - targetTime) > driftThreshold) ||
-				(isPlaying && Math.abs(audio.currentTime - targetTime) > 0.9);
+				(!isPlaying && drift > driftThreshold) ||
+				(isPlaying && drift > 0.25);
 			if (shouldSeek) {
 				try {
 					audio.currentTime = targetTime;
@@ -443,9 +438,15 @@ export function useAudioPreviewSync({
 				}
 			}
 
-			// KISS for companion source tracks: fixed playback rate avoids audible flutter/stutter
-			// from continuous micro-corrections on system audio.
-			const syncedPlaybackRate = sourcePlaybackRate;
+			const syncedPlaybackRate = isPlaying
+				? getMediaSyncPlaybackRate({
+						basePlaybackRate: sourcePlaybackRate,
+						currentTime: audio.currentTime,
+						targetTime,
+						toleranceSeconds: 0.02,
+						maxAdjustment: 0.05,
+					})
+				: sourcePlaybackRate;
 			if (Math.abs(audio.playbackRate - syncedPlaybackRate) > 0.001) {
 				audio.playbackRate = syncedPlaybackRate;
 			}
