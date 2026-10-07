@@ -35,19 +35,51 @@ describe("ScreenCaptureKitRecorder finalization coordination", () => {
 });
 
 describe("ScreenCaptureKitRecorder resume timing", () => {
-	it("anchors warm-start resume timing to video before accepting audio", () => {
+	it("resumes on the host clock so speech after the countdown is kept", () => {
+		expect(recorderSource).toContain("func resume(atHostTime hostTime: CMTime)");
 		expect(recorderSource).toContain(
-			"guard outputType == .screen, let pauseStartedHostTime else",
+			"self.clock.resume(atHostTime: RecordingClock.hostTime())",
 		);
+		expect(recorderSource).not.toContain("pendingResumeAdjustment");
 	});
 
-	it("drops non-monotonic video and audio samples", () => {
+	it("holds the last frame until the stop instead of ending at the last change", () => {
+		expect(recorderSource).toContain("private func appendStillFrameIfIdle()");
+		expect(recorderSource).toContain("endTime - tailDuration");
+		expect(recorderSource).toContain("assetWriter.endSession(atSourceTime: endTime)");
+	});
+
+	it("drops non-monotonic video frames", () => {
 		expect(recorderSource).toContain(
 			"CMTimeCompare(presentationTime, lastVideoPresentationTime) <= 0",
 		);
+	});
+});
+
+describe("ScreenCaptureKitRecorder audio", () => {
+	const track = recorderSource.slice(
+		recorderSource.indexOf("final class AudioTimelineTrack"),
+		recorderSource.indexOf("final class ScreenCaptureRecorder"),
+	);
+
+	it("delivers audio on its own queue, never behind video work", () => {
 		expect(recorderSource).toContain(
-			"CMTimeCompare(presentationTime, lastPresentationTime) > 0",
+			"try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)",
 		);
+		expect(recorderSource).toContain(
+			"try stream.addStreamOutput(self, type: microphoneOutputType, sampleHandlerQueue: audioQueue)",
+		);
+	});
+
+	it("never drops a buffer because an encoder is busy", () => {
+		expect(track).toContain("try sidecar.write(from: buffer)");
+		expect(track).toContain("pendingInline.append(sampleBuffer)");
+		expect(track).not.toMatch(/isReadyForMoreMediaData else \{\s*return/);
+	});
+
+	it("fills delivery gaps with silence and pads every track to the end", () => {
+		expect(track).toContain("writeSilence(frames: limited(drift))");
+		expect(recorderSource).toContain("track.finish(padTo: endFrame)");
 	});
 });
 
@@ -95,18 +127,23 @@ describe("ScreenCaptureKitRecorder window capture", () => {
 	});
 });
 
-
 describe("ScreenCaptureKitRecorder first frame timing", () => {
-	const callback = recorderSource.slice(recorderSource.indexOf("func stream(_ stream:"), recorderSource.indexOf("func stream(_ stream:") + 5000);
+	const callback = recorderSource.slice(
+		recorderSource.indexOf("func stream(_ stream:"),
+		recorderSource.indexOf("func stream(_ stream:") + 5000,
+	);
 	it("validates a complete frame and writer readiness before setting time zero", () => {
-		const clock = callback.indexOf("adjustedPresentationTime(for:");
+		const clock = callback.indexOf("clock.videoTime(for:");
 		expect(clock).toBeGreaterThan(callback.indexOf("status == .complete"));
 		expect(clock).toBeGreaterThan(callback.indexOf("videoInput.isReadyForMoreMediaData"));
 	});
 	it("resets the origin after a rejected first frame and gates audio on accepted video", () => {
-		expect(callback).toMatch(/else if frameCount == 0\s*\{[^}]*firstSampleTime = \.zero/);
-		const audioGuard = callback.indexOf("guard frameCount > 0,");
+		expect(callback).toMatch(/else if frameCount == 0\s*\{[^}]*clock\.clearOrigin\(\)/);
+		const audioGuard = callback.indexOf("guard let presentationTime = clock.audioTime(for:");
 		expect(audioGuard).toBeGreaterThan(0);
 		expect(audioGuard).toBeLessThan(callback.indexOf("if outputType == .audio"));
+		expect(recorderSource).toContain(
+			"guard origin.isValid, pauseStartedAt == nil else { return nil }",
+		);
 	});
 });

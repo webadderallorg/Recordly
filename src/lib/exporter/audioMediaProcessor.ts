@@ -1,6 +1,10 @@
 import { WebDemuxer } from "web-demuxer";
+import {
+	countPrimingFrames,
+	DECODE_BACKPRESSURE_LIMIT,
+	OFFLINE_AUDIO_SAMPLE_RATE,
+} from "./audioProcessorShared";
 import { AudioTimelineProcessor } from "./audioTimelineProcessor";
-import { DECODE_BACKPRESSURE_LIMIT, OFFLINE_AUDIO_SAMPLE_RATE } from "./audioProcessorShared";
 import { resolveMediaElementSource } from "./localMediaSource";
 
 export class AudioMediaProcessor extends AudioTimelineProcessor {
@@ -38,6 +42,16 @@ export class AudioMediaProcessor extends AudioTimelineProcessor {
 
 			const sampleRate = audioConfig.sampleRate || 48_000;
 			const numChannels = Math.min(audioConfig.numberOfChannels || 2, 2);
+			let streamStartTimeSec: number | undefined;
+			try {
+				const mediaInfo = await demuxer.getMediaInfo();
+				streamStartTimeSec = mediaInfo.streams.find(
+					(stream) => stream.codec_type_string === "audio",
+				)?.start_time;
+			} catch {
+				streamStartTimeSec = undefined;
+			}
+			let firstChunkTimestampUs: number | null = null;
 
 			// Accumulate decoded PCM per channel
 			const channelChunks: Float32Array[][] = Array.from({ length: numChannels }, () => []);
@@ -128,6 +142,7 @@ export class AudioMediaProcessor extends AudioTimelineProcessor {
 					const { done, value: chunk } = await reader.read();
 					if (done || !chunk) break;
 
+					firstChunkTimestampUs ??= chunk.timestamp;
 					decoder.decode(chunk);
 
 					while (decoder.decodeQueueSize > DECODE_BACKPRESSURE_LIMIT && !this.cancelled) {
@@ -152,20 +167,27 @@ export class AudioMediaProcessor extends AudioTimelineProcessor {
 				}
 			}
 
-			if (totalFrames === 0) return null;
+			const primingFrames = Math.min(
+				totalFrames,
+				countPrimingFrames(streamStartTimeSec, firstChunkTimestampUs, sampleRate),
+			);
+			if (totalFrames - primingFrames === 0) return null;
 
-			// Build AudioBuffer from accumulated chunks
+			// Build AudioBuffer from accumulated chunks, without the priming frames
 			const audioBuffer = new AudioBuffer({
-				length: totalFrames,
+				length: totalFrames - primingFrames,
 				numberOfChannels: numChannels,
 				sampleRate,
 			});
 			for (let ch = 0; ch < numChannels; ch++) {
 				const channelData = audioBuffer.getChannelData(ch);
+				let framesToSkip = primingFrames;
 				let writeOffset = 0;
 				for (const chunk of channelChunks[ch]) {
-					channelData.set(chunk, writeOffset);
-					writeOffset += chunk.length;
+					const skipped = Math.min(framesToSkip, chunk.length);
+					framesToSkip -= skipped;
+					channelData.set(chunk.subarray(skipped), writeOffset);
+					writeOffset += chunk.length - skipped;
 				}
 			}
 

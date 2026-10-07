@@ -15,6 +15,30 @@ export const MP4_AUDIO_CODEC = "mp4a.40.2";
 export const OFFLINE_AUDIO_SAMPLE_RATE = 48_000;
 export const OFFLINE_ENCODE_CHUNK_FRAMES = 1024;
 export const OFFLINE_CHUNK_DURATION_SEC = 30;
+
+/**
+ * Counts the frames a decoder emits before a stream's first presented sample. AAC
+ * starts with encoder priming, which containers place before the stream's start
+ * time: an edit list gives the first packets negative timestamps, and an iTunSMPB
+ * tag moves the start time later. Kept, it delays the audio by about 44 ms.
+ */
+export function countPrimingFrames(
+	streamStartTimeSec: number | undefined,
+	firstChunkTimestampUs: number | null,
+	sampleRate: number,
+): number {
+	if (
+		typeof streamStartTimeSec !== "number" ||
+		!Number.isFinite(streamStartTimeSec) ||
+		firstChunkTimestampUs === null
+	) {
+		return 0;
+	}
+	return Math.max(
+		0,
+		Math.round((streamStartTimeSec - firstChunkTimestampUs / 1_000_000) * sampleRate),
+	);
+}
 const OFFLINE_MIX_SOFT_LIMITER_THRESHOLD = 0.9;
 const OFFLINE_MIX_SOFT_LIMITER_CEILING = 0.985;
 
