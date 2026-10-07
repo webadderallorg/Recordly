@@ -1,5 +1,6 @@
 import { type Dispatch, type SetStateAction, useCallback, useEffect, useRef } from "react";
 import { toast } from "@/components/ui/toast";
+import { loadLlmConfig } from "@/lib/llmSettings";
 import { resolveAutoCaptionSourcePath } from "../autoCaptionSource";
 import { type CaptionEditTarget, updateCaptionCuesForEditedTarget } from "../captionEditing";
 import { resolveVideoUrl } from "../projectPersistence";
@@ -160,7 +161,11 @@ export function useAutoCaptionController({
 		captionGenerationInFlightRef.current = true;
 		setIsGeneratingCaptions(true);
 		try {
-			if (!whisperModelPath) {
+			// Load the LLM provider configuration
+			const llmConfig = loadLlmConfig();
+			const isLocalProvider = !llmConfig.provider || llmConfig.provider === "whisper-local";
+
+			if (isLocalProvider && !whisperModelPath) {
 				toast.error("Select a Whisper model or download the small model first");
 				return;
 			}
@@ -188,11 +193,26 @@ export function useAutoCaptionController({
 				setVideoSourcePath(sourcePath);
 				setVideoPath(await resolveVideoUrl(sourcePath));
 			}
+
+			// Decrypt the API key if using a non-local provider
+			let decryptedApiKey: string | undefined;
+			if (!isLocalProvider && llmConfig.apiKey) {
+				const decryptResult = await window.electronAPI.decryptSecret(llmConfig.apiKey);
+				if (decryptResult.success && decryptResult.decrypted) {
+					decryptedApiKey = decryptResult.decrypted;
+				}
+			}
+
 			const result = await window.electronAPI.generateAutoCaptions({
 				videoPath: sourcePath,
 				whisperExecutablePath: whisperExecutablePath ?? undefined,
-				whisperModelPath,
+				whisperModelPath: whisperModelPath ?? "",
 				language: autoCaptionSettings.language,
+				provider: llmConfig.provider,
+				providerApiKey: decryptedApiKey,
+				providerModel: llmConfig.model,
+				providerBaseUrl: llmConfig.baseUrl,
+				providerApiMode: llmConfig.apiMode,
 			});
 			if (resolveAutoCaptionSourcePath(activeSourceRef.current) !== sourcePath) {
 				toast.info("Recording changed; generated captions were not applied.");

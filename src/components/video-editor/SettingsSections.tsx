@@ -1,9 +1,11 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { ChoiceGroup, ChoiceItem } from "@/components/ui/choice-group";
+import { useI18n } from "@/contexts/I18nContext";
 
-type Category = "general" | "motion" | "recording" | "files" | "advanced";
-const labels: Record<Category, string> = {
+type Category = "general" | "ai" | "motion" | "recording" | "files" | "advanced";
+const defaultLabels: Record<Category, string> = {
 	general: "General",
+	ai: "AI & Models",
 	motion: "Motion",
 	recording: "Recording",
 	files: "Files",
@@ -19,6 +21,7 @@ export function SettingsSections({
 	children: ReactNode;
 	categories: Category[];
 }) {
+	const { t } = useI18n();
 	const parent = useContext(SettingsCategoryContext);
 	const [selected, setSelected] = useState<Category>("general");
 	if (parent) return <div className="space-y-6">{children}</div>;
@@ -34,11 +37,11 @@ export function SettingsSections({
 				>
 					{categories.map((category) => (
 						<ChoiceItem key={category} value={category}>
-							{labels[category]}
+							{t(`settings.categories.${category}`, defaultLabels[category])}
 						</ChoiceItem>
 					))}
 				</ChoiceGroup>
-				<div role="region" aria-label={`${labels[active]} settings`} className="space-y-6">
+				<div role="region" aria-label={`${defaultLabels[active]} settings`} className="space-y-6">
 					{children}
 				</div>
 			</div>

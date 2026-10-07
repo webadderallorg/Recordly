@@ -1,11 +1,9 @@
-import { execFile, spawnSync } from "node:child_process";
-import { constants as fsConstants } from "node:fs";
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { app } from "electron";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
-import { getBundledWhisperExecutableCandidates } from "../paths/binaries";
 import { resolveRecordingSession } from "../project/session";
 import {
 	getCompanionAudioStartDelayMs,
@@ -13,9 +11,6 @@ import {
 } from "../recording/diagnostics";
 import { normalizeVideoSourcePath } from "../utils";
 import { type CaptionAudioCandidate, getCaptionCompanionAudioCandidates } from "./audioCandidates";
-import { shouldRetryWhisperWithoutJson } from "./parser";
-import { readWhisperCaptionOutput } from "./output";
-import { isMissingWindowsWhisperRuntimeDependency } from "./runtimeErrors";
 import { mergeCaptionSources } from "./mergeSources";
 import { segmentCuesIntoPhrases } from "./segment";
 import {
@@ -24,90 +19,20 @@ import {
 	SILENCE_NOISE_DB,
 	type SilenceInterval,
 } from "./silence";
+import {
+	createWhisperLocalProvider,
+	ensureReadableFile,
+	isExecutableFile,
+	resolveWhisperExecutablePath,
+} from "../providers/whisperLocalProvider";
+import { createOpenAiWhisperProvider } from "../providers/openaiWhisperProvider";
+import type { TranscriptionProvider } from "../providers/types";
+
+export { ensureReadableFile, isExecutableFile, resolveWhisperExecutablePath };
 
 const execFileAsync = promisify(execFile);
 
 class NoCaptionAudioError extends Error {}
-
-async function executeWhisper(whisperExecutablePath: string, args: string[]) {
-	try {
-		await execFileAsync(whisperExecutablePath, args, {
-			timeout: 30 * 60 * 1000,
-			maxBuffer: 20 * 1024 * 1024,
-		});
-	} catch (error) {
-		if (isMissingWindowsWhisperRuntimeDependency(error)) {
-			throw new Error(
-				"Whisper could not start because the Microsoft Visual C++ x64 Redistributable is missing. Install it from https://aka.ms/vc14/vc_redist.x64.exe, then restart Recordly.",
-			);
-		}
-		throw error;
-	}
-}
-
-export async function ensureReadableFile(filePath: string, options?: { executable?: boolean }) {
-	await fs.access(filePath, fsConstants.R_OK);
-	if (options?.executable) {
-		try {
-			await fs.access(filePath, fsConstants.X_OK);
-		} catch {
-			throw new Error("The selected Whisper executable is not marked as executable.");
-		}
-	}
-}
-
-export async function isExecutableFile(filePath: string) {
-	try {
-		await fs.access(filePath, fsConstants.R_OK | fsConstants.X_OK);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-export async function resolveWhisperExecutablePath(preferredPath?: string | null) {
-	const candidatePaths = [
-		preferredPath?.trim() || null,
-		...getBundledWhisperExecutableCandidates(),
-		process.env["WHISPER_CPP_PATH"]?.trim() || null,
-		process.platform === "darwin" ? "/opt/homebrew/bin/whisper-cli" : null,
-		process.platform === "darwin" ? "/usr/local/bin/whisper-cli" : null,
-		process.platform === "darwin" ? "/opt/homebrew/bin/whisper-cpp" : null,
-		process.platform === "darwin" ? "/usr/local/bin/whisper-cpp" : null,
-	].filter((value): value is string => Boolean(value));
-
-	for (const candidate of candidatePaths) {
-		const normalized = path.resolve(candidate);
-		if (await isExecutableFile(normalized)) {
-			return normalized;
-		}
-	}
-
-	const pathCommand = process.platform === "win32" ? "where" : "which";
-	const binaryNames =
-		process.platform === "win32"
-			? ["whisper-cli.exe", "whisper.exe", "main.exe"]
-			: ["whisper-cli", "whisper-cpp", "whisper", "main"];
-
-	for (const binaryName of binaryNames) {
-		const result = spawnSync(pathCommand, [binaryName], { encoding: "utf-8" });
-		if (result.status === 0) {
-			const resolvedPath = result.stdout
-				.split(/\r?\n/)
-				.map((line) => line.trim())
-				.find(Boolean);
-
-			if (resolvedPath && (await isExecutableFile(resolvedPath))) {
-				return resolvedPath;
-			}
-		}
-	}
-
-	throw new Error(
-		`No Whisper runtime was found for ${process.platform}/${process.arch}. ` +
-			"This Recordly build is missing its bundled caption runtime. Reinstall or update Recordly, or select a whisper-cli executable in Caption settings.",
-	);
-}
 
 export async function resolveCaptionAudioCandidates(videoPath: string) {
 	const candidates: Array<{ path: string; label: string }> = [];
@@ -208,6 +133,7 @@ export async function extractCaptionAudioSource(options: {
 export async function detectSilenceIntervals(options: {
 	ffmpegPath: string;
 	wavPath: string;
+	candidates?: CaptionAudioCandidate[];
 }): Promise<SilenceInterval[]> {
 	// ffmpeg writes silencedetect results to stderr; the null muxer just runs the filter.
 	const { stderr } = await execFileAsync(
@@ -235,6 +161,11 @@ async function generateCaptionsForSource(options: {
 	whisperModelPath: string;
 	language?: string;
 	candidates: CaptionAudioCandidate[];
+	provider?: string;
+	providerApiKey?: string;
+	providerModel?: string;
+	providerBaseUrl?: string | null;
+	providerApiMode?: "audio-transcription" | "chat-multimodal";
 }) {
 	const ffmpegPath = getFfmpegBinaryPath();
 	const normalizedVideoPath = normalizeVideoSourcePath(options.videoPath);
@@ -242,19 +173,40 @@ async function generateCaptionsForSource(options: {
 		throw new Error("Missing source video path.");
 	}
 
-	const whisperExecutablePath = await resolveWhisperExecutablePath(options.whisperExecutablePath);
-	const whisperModelPath = path.resolve(options.whisperModelPath);
-	await ensureReadableFile(whisperExecutablePath, { executable: true });
-	await ensureReadableFile(whisperModelPath);
+	// ------------------------------------------------------------------
+	// Resolve the transcription provider
+	// ------------------------------------------------------------------
+	const providerId = options.provider || "whisper-local";
+	let transcriptionProvider: TranscriptionProvider;
 
+	if (providerId === "openai-whisper" || providerId === "custom") {
+		if (providerId === "openai-whisper" && !options.providerApiKey) {
+			throw new Error(
+				"An API key is required for the OpenAI Whisper provider. Set one in Settings.",
+			);
+		}
+		transcriptionProvider = createOpenAiWhisperProvider({
+			apiKey: options.providerApiKey || "",
+			model: options.providerModel,
+			baseUrl: options.providerBaseUrl,
+			apiMode: options.providerApiMode,
+		});
+	} else {
+		// Default: local Whisper
+		transcriptionProvider = createWhisperLocalProvider({
+			whisperExecutablePath: options.whisperExecutablePath,
+			whisperModelPath: options.whisperModelPath,
+		});
+	}
+
+	// ------------------------------------------------------------------
+	// Shared audio extraction (all providers need a WAV file)
+	// ------------------------------------------------------------------
 	const tempBase = path.join(
 		app.getPath("temp"),
 		`recordly-captions-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 	);
 	const wavPath = `${tempBase}.wav`;
-	const outputBase = `${tempBase}-whisper`;
-	const srtPath = `${outputBase}.srt`;
-	const jsonPath = `${outputBase}.json`;
 
 	try {
 		const audioSource = await extractCaptionAudioSource({
@@ -266,51 +218,29 @@ async function generateCaptionsForSource(options: {
 
 		const language =
 			options.language && options.language.trim() ? options.language.trim() : "auto";
-		const whisperBaseArgs = [
-			"-m",
-			whisperModelPath,
-			"-f",
-			wavPath,
-			"-osrt",
-			"-of",
-			outputBase,
-			"-l",
+
+		// ------------------------------------------------------------------
+		// Dispatch to the selected provider
+		// ------------------------------------------------------------------
+		const result = await transcriptionProvider.transcribe({
+			audioPath: wavPath,
 			language,
-			"-np",
-			// Do not carry a hallucinated phrase through later decoding windows.
-			"-mc",
-			"0",
-		];
+		});
 
-		let jsonEnabled = true;
-		try {
-			await executeWhisper(whisperExecutablePath, [...whisperBaseArgs, "-ojf"]);
-		} catch (error) {
-			if (!shouldRetryWhisperWithoutJson(error)) {
-				throw error;
-			}
-
-			jsonEnabled = false;
-			console.warn(
-				"[auto-captions] Whisper runtime does not support JSON full output, retrying with SRT only:",
-				error,
-			);
-			await executeWhisper(whisperExecutablePath, whisperBaseArgs);
-		}
-
-		const cues = await readWhisperCaptionOutput(outputBase, jsonEnabled);
-
+		// ------------------------------------------------------------------
+		// Shared post-processing: silence-aware re-segmentation
+		// ------------------------------------------------------------------
 		// Whisper cues run sentences together and don't break on pauses. Re-segment them
 		// into one caption per sentence/phrase using Whisper's own word stream (punctuation
 		// + pauses), backed by ground-truth acoustic silence (ffmpeg `silencedetect`).
 		// Failure here must not block caption generation — fall back to raw.
-		let cuesToReturn = cues;
+		let cuesToReturn = result.cues;
 		try {
 			const silences = await detectSilenceIntervals({ ffmpegPath, wavPath });
 			// An empty result is a valid resegmentation (e.g. every transcribed word fell
 			// inside a long detected silence and was dropped as a hallucination), so take it
 			// as-is. Only a thrown exception should fall back to the raw cues.
-			cuesToReturn = segmentCuesIntoPhrases(cues, silences);
+			cuesToReturn = segmentCuesIntoPhrases(result.cues, silences);
 		} catch (error) {
 			console.warn(
 				"[auto-captions] Silence-aware re-segmentation failed, using raw cues:",
@@ -323,11 +253,7 @@ async function generateCaptionsForSource(options: {
 			audioSourceLabel: audioSource.label,
 		};
 	} finally {
-		await Promise.allSettled([
-			fs.rm(wavPath, { force: true }),
-			fs.rm(srtPath, { force: true }),
-			fs.rm(jsonPath, { force: true }),
-		]);
+		await Promise.allSettled([fs.rm(wavPath, { force: true })]);
 	}
 }
 
@@ -336,6 +262,11 @@ export async function generateAutoCaptionsFromVideo(options: {
 	whisperExecutablePath?: string;
 	whisperModelPath: string;
 	language?: string;
+	provider?: string;
+	providerApiKey?: string;
+	providerModel?: string;
+	providerBaseUrl?: string | null;
+	providerApiMode?: "audio-transcription" | "chat-multimodal";
 }) {
 	const candidates = await resolveCaptionAudioCandidates(options.videoPath);
 	const microphone = candidates.filter((source) => source.label === "microphone audio sidecar");

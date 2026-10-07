@@ -1,0 +1,41 @@
+{
+	"zoom": {
+		"cannotPlace": "لا يمكن وضع زوم هنا",
+		"existsOrNoSpace": "يوجد زوم في هذا الموقع بالفعل أو لا توجد مساحة كافية.",
+		"suggestHandlerUnavailable": "أداة اقتراح الزوم غير متوفرة",
+		"noTelemetry": "لا توجد بيانات حركة للماوس",
+		"recordFirst": "سجل الشاشة أولاً لتوليد اقتراحات حركة الماوس.",
+		"noUsableTelemetry": "بيانات الماوس غير كافية",
+		"notEnoughMovement": "التسجيل لا يحتوي على حركة ماوس كافية.",
+		"noInteractionMoments": "لم يتم العثور على لحظات نقر أو تفاعل واضحة",
+		"tryRecording": "جرب التسجيل مع التوقف أو النقر حول العناصر الهامة.",
+		"noAutoZoomSlots": "لا توجد أماكن متاحة للزوم التلقائي",
+		"dwellPointsOverlap": "نقاط التوقف تتداخل مع مناطق زوم موجودة.",
+		"addedSuggestions": "تمت إضافة {{count}} اقتراح زوم تلقائي",
+		"label": "زوم {{index}}",
+		"addZoom": "إضافة زوم (Z)",
+		"suggestZooms": "اقتراح زوم ذكي من حركة الماوس"
+	},
+	"trim": {
+		"cannotPlace": "لا يمكن وضع قص هنا",
+		"existsOrNoSpace": "يوجد قص في هذا الموقع بالفعل أو لا توجد مساحة كافية.",
+		"label": "قص {{index}}",
+		"addTrim": "إضافة قص (T)"
+	},
+	"speed": {
+		"cannotPlace": "لا يمكن تعديل السرعة هنا",
+		"existsOrNoSpace": "توجد منطقة سرعة في هذا المكان بالفعل.",
+		"label": "السرعة"
+	},
+	"annotation": {
+		"label": "ملاحظة",
+		"image": "صورة",
+		"addAnnotation": "إضافة ملاحظة (A)"
+	},
+	"audio": {
+		"label": "صوت"
+	},
+	"addSpeed": "إضافة سرعة (S)",
+	"resizeLeft": "تغيير الحجم من اليسار",
+	"resizeRight": "تغيير الحجم من اليمين"
+}

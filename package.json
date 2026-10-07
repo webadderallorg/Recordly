@@ -74,7 +74,7 @@
 		"@vitejs/plugin-react": "^4.2.1",
 		"clsx": "^2.1.1",
 		"dnd-timeline": "^2.2.0",
-		"electron": "^43.1.0",
+		"electron": "^43.7.5",
 		"electron-builder": "^26.7.0",
 		"emoji-picker-react": "^4.16.1",
 		"fast-check": "^4.5.2",

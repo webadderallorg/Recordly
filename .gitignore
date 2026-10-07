@@ -40,6 +40,7 @@ electron/native/gpu-export-probe/build/
 electron/native/nvidia-cuda-compositor/build/
 electron/native/bin/*/whisper-*
 electron/native/bin/*/whisper-runtime.json
+electron/native/bin/*/*.dll
 
 # Local debug helpers
 tmp-*.ps1
@@ -49,3 +50,7 @@ gpu-export-probe.mp4
 # Browser test output
 test-results/
 playwright-report/
+
+# Graft architecture cache
+graft/
+PowerShellHistory.txt

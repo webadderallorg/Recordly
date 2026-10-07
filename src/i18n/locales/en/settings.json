@@ -1,4 +1,34 @@
 {
+	"categories": {
+		"general": "General",
+		"ai": "AI & Models",
+		"motion": "Motion",
+		"recording": "Recording",
+		"files": "Files",
+		"advanced": "Advanced"
+	},
+	"ai": {
+		"title": "AI & Model Providers",
+		"description": "Configure cloud or local AI models (Gemini, GPT-4o, Claude, Ollama, etc.) for captions and future vision features.",
+		"provider": "Active Provider",
+		"apiMode": "API Mode / Protocol",
+		"apiModeChat": "Multimodal Chat Model",
+		"apiModeChatDesc": "Uses /chat/completions. Ideal for Gemini, GPT-4o, Claude, or proxies without dedicated whisper endpoints.",
+		"apiModeAudio": "Dedicated Whisper Endpoint",
+		"apiModeAudioDesc": "Uses /audio/transcriptions. Standard for Groq, Faster-Whisper, OpenAI.",
+		"baseUrl": "API Base URL",
+		"baseUrlPlaceholder": "http://192.168.85.129:20128/v1",
+		"modelName": "Model Identifier",
+		"apiKey": "API Key",
+		"apiKeyOptional": "API Key (Optional for Local)",
+		"testAndSave": "Test Connection & Save Provider",
+		"testing": "Testing Connection...",
+		"testSuccess": "Connection successful! Provider settings saved.",
+		"testFailed": "Connection test failed",
+		"statusConnected": "Connected & verified ready",
+		"statusModified": "Settings modified — click below to test",
+		"statusError": "Connection failed"
+	},
 	"updates": {
 		"title": "Updates",
 		"experimental": "Experimental updates",
@@ -170,6 +200,18 @@
 		"crop": "Crop"
 	},
 	"captions": {
+		"provider": "Transcription Engine",
+		"activeEngine": "Transcription Engine",
+		"builtinModelTitle": "Whisper Offline Model",
+		"modelInstalled": "Model is downloaded and ready for offline use (~460MB)",
+		"modelNotInstalled": "Download offline model (~460MB)",
+		"useCustomModel": "Select custom model (.bin)",
+		"baseUrl": "API Base URL",
+		"modelName": "Model Identifier",
+		"apiKey": "API Key",
+		"apiKeyPlaceholder": "Enter API key...",
+		"clearKey": "Clear",
+		"saveKey": "Save",
 		"selectOnTimeline": "Select a caption on the timeline to edit it.",
 		"enabled": "Show",
 		"timelineQuickAdd": "Hover to add on timeline",

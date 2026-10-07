@@ -1,0 +1,5 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "model": "omniroute/antigravity/gemini-3.7-flash-tiered",
+  "small_model": "omniroute/antigravity/gemini-3.7-flash-tiered"
+}

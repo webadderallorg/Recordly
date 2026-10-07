@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import minimalCursorUrl from "@/assets/cursors/custom/minimal-cursor.svg";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -19,6 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { ChoiceGroup, ChoiceItem } from "@/components/ui/choice-group";
 import { useTheme } from "@/contexts/ThemeContext";
 import { getAssetPath, getRenderableVideoUrl, getWallpaperThumbnailUrl } from "@/lib/assetPath";
+import { loadLlmConfig, saveLlmConfig, TRANSCRIPTION_PROVIDERS, CUSTOM_API_MODES } from "@/lib/llmSettings";
 import { cn } from "@/lib/utils";
 import type { BuiltInWallpaper } from "@/lib/wallpapers";
 import {
@@ -603,6 +605,7 @@ const BUILTIN_CURSOR_STYLE_OPTIONS: CursorStyleOption[] = [
 
 const CAPTION_LANGUAGE_OPTIONS = [
 	{ value: "auto", label: "Auto Detect" },
+	{ value: "ar", label: "Arabic (العربية)" },
 	{ value: "en", label: "English" },
 	{ value: "es", label: "Spanish" },
 	{ value: "fr", label: "French" },
@@ -616,6 +619,7 @@ const CAPTION_LANGUAGE_OPTIONS = [
 
 const APP_LANGUAGE_LABELS: Record<AppLocale, string> = {
 	en: "English",
+	ar: "العربية",
 	es: "Español",
 	fr: "Français",
 	de: "Deutsch",
@@ -1033,6 +1037,135 @@ export function SettingsPanel({
 			...autoCaptionSettings,
 			...partial,
 		});
+	};
+
+	// LLM provider configuration (Centralized in Settings > AI & Models)
+	const [llmConfig, setLlmConfigState] = useState(() => loadLlmConfig());
+	const isLocalProvider = !llmConfig.provider || llmConfig.provider === "whisper-local";
+	const isCustomProvider = llmConfig.provider === "custom";
+	const [apiKeyInput, setApiKeyInput] = useState("");
+	const [apiKeySaved, setApiKeySaved] = useState(false);
+	const [modelInput, setModelInput] = useState(llmConfig.model || "whisper-1");
+	const [baseUrlInput, setBaseUrlInput] = useState(llmConfig.baseUrl || "");
+	const [apiModeInput, setApiModeInput] = useState(llmConfig.apiMode || "chat-multimodal");
+	const [isValidatingLlm, setIsValidatingLlm] = useState(false);
+	const [connectionStatus, setConnectionStatus] = useState<"idle" | "connected" | "modified" | "error">("idle");
+	const [lastErrorMessage, setLastErrorMessage] = useState("");
+
+	// Load decrypted API key on mount / provider change
+	useEffect(() => {
+		setModelInput(llmConfig.model || "whisper-1");
+		setBaseUrlInput(llmConfig.baseUrl || "");
+		setApiModeInput(llmConfig.apiMode || "chat-multimodal");
+		if (isLocalProvider || !llmConfig.apiKey) {
+			setApiKeyInput("");
+			setApiKeySaved(!!llmConfig.apiKey);
+			setConnectionStatus("idle");
+			return;
+		}
+		setApiKeySaved(true);
+		setApiKeyInput("••••••••");
+		setConnectionStatus("connected");
+	}, [isLocalProvider, llmConfig.apiKey, llmConfig.model, llmConfig.baseUrl, llmConfig.apiMode]);
+
+	const handleProviderChange = (providerId: string) => {
+		const defaultModel =
+			providerId === "openai-whisper"
+				? "whisper-1"
+				: providerId === "custom"
+					? llmConfig.model || "antigravity/gemini-3.7-flash-tiered"
+					: "whisper-1";
+		const updated = {
+			...llmConfig,
+			provider: providerId,
+			model: defaultModel,
+			baseUrl:
+				providerId === "custom"
+					? llmConfig.baseUrl || "http://192.168.85.129:20128/v1"
+					: null,
+		};
+		saveLlmConfig(updated);
+		setLlmConfigState(updated);
+		setModelInput(updated.model);
+		setBaseUrlInput(updated.baseUrl || "");
+		setConnectionStatus("modified");
+	};
+
+	const handleSaveAndTestLlmConfig = async () => {
+		setIsValidatingLlm(true);
+		setConnectionStatus("idle");
+		try {
+			let rawApiKey = apiKeyInput.trim();
+			let encryptedKey = llmConfig.apiKey;
+
+			// If user changed the key and it's not the placeholder
+			if (rawApiKey && rawApiKey !== "••••••••") {
+				const encResult = await window.electronAPI.encryptSecret(rawApiKey);
+				if (encResult.success && encResult.encrypted) {
+					encryptedKey = encResult.encrypted;
+				}
+			} else if (encryptedKey) {
+				// Decrypt existing for testing
+				const decResult = await window.electronAPI.decryptSecret(encryptedKey);
+				rawApiKey = decResult.success && decResult.decrypted ? decResult.decrypted : "";
+			}
+
+			const targetBaseUrl = isCustomProvider
+				? baseUrlInput.trim() || "http://192.168.85.129:20128/v1"
+				: null;
+			const targetModel = modelInput.trim() || "whisper-1";
+
+			// ALWAYS save the user's inputs locally first so nothing is lost even if connection fails or window reloads
+			const draftConfig = {
+				...llmConfig,
+				apiKey: encryptedKey,
+				model: targetModel,
+				baseUrl: targetBaseUrl,
+				apiMode: apiModeInput,
+			};
+			saveLlmConfig(draftConfig);
+			setLlmConfigState(draftConfig);
+
+			// Test connection
+			toast.info(tSettings("ai.testing", "Testing provider connection..."));
+			const valResult = await window.electronAPI.validateLlmProvider({
+				provider: llmConfig.provider,
+				apiKey: rawApiKey,
+				model: targetModel,
+				baseUrl: targetBaseUrl,
+			});
+
+			if (!valResult.valid) {
+				const err = valResult.error || "Unable to reach endpoint with this model";
+				toast.error(`${tSettings("ai.testFailed", "Connection test failed")}: ${err}`);
+				setConnectionStatus("error");
+				setLastErrorMessage(err);
+				setIsValidatingLlm(false);
+				return;
+			}
+
+			setApiKeySaved(!!encryptedKey);
+			if (encryptedKey) setApiKeyInput("••••••••");
+			setConnectionStatus("connected");
+			setLastErrorMessage("");
+			toast.success(tSettings("ai.testSuccess", "Connection successful! Provider settings saved."));
+		} catch (error) {
+			const err = error instanceof Error ? error.message : String(error);
+			setConnectionStatus("error");
+			setLastErrorMessage(err);
+			toast.error(`Failed to save settings: ${err}`);
+		} finally {
+			setIsValidatingLlm(false);
+		}
+	};
+
+	const handleClearApiKey = () => {
+		const updated = { ...llmConfig, apiKey: "" };
+		saveLlmConfig(updated);
+		setLlmConfigState(updated);
+		setApiKeySaved(false);
+		setApiKeyInput("");
+		toast.success("API key cleared");
 	};
 
 	useEffect(() => {
@@ -2009,7 +2142,27 @@ export function SettingsPanel({
 			</div>
 
 			<div className="py-2 space-y-3">
-				{advanced && (
+				<div className="flex items-center justify-between gap-3">
+					<div className="text-sm font-medium text-foreground">
+						{tSettings("captions.provider", "Provider")}
+					</div>
+					<Select
+						value={llmConfig.provider}
+						onValueChange={handleProviderChange}
+					>
+						<SelectTrigger className="h-9 w-[180px] text-sm">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{TRANSCRIPTION_PROVIDERS.map((p) => (
+								<SelectItem key={p.id} value={p.id}>
+									{p.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
+				{isLocalProvider && advanced && (
 					<div>
 						<Button
 							type="button"
@@ -2067,7 +2220,7 @@ export function SettingsPanel({
 				</div>
 				<div className="flex flex-wrap items-center gap-2">
 					<div className="grid w-full grid-cols-1 gap-2">
-						{whisperModelDownloadStatus === "downloading" ? (
+						{isLocalProvider && (whisperModelDownloadStatus === "downloading" ? (
 							<Button type="button" disabled className="h-9 w-full px-4 text-sm">
 								{tSettings("captions.downloading", "Downloading...")}{" "}
 								{Math.round(whisperModelDownloadProgress)}%
@@ -2089,7 +2242,7 @@ export function SettingsPanel({
 							>
 								{tSettings("captions.downloadModel", "Download Model")}
 							</Button>
-						)}
+						))}
 						<Button
 							type="button"
 							variant="outline"
@@ -2105,7 +2258,7 @@ export function SettingsPanel({
 					<Button
 						type="button"
 						onClick={onGenerateAutoCaptions}
-						disabled={isGeneratingCaptions || !whisperModelPath}
+						disabled={isGeneratingCaptions || (isLocalProvider && !whisperModelPath)}
 						className="h-9 w-full px-4 text-sm"
 					>
 						{isGeneratingCaptions
@@ -2130,7 +2283,7 @@ export function SettingsPanel({
 						</div>
 					) : null}
 				</div>
-				{whisperModelDownloadStatus === "downloading" ? (
+				{isLocalProvider && whisperModelDownloadStatus === "downloading" ? (
 					<div className="h-2 overflow-hidden rounded-full bg-foreground/5">
 						<div
 							className="h-full rounded-full bg-accent transition-all"
@@ -2250,7 +2403,11 @@ export function SettingsPanel({
 	const effectSectionContent = (() => {
 		const settingsSectionContent = (
 			<SettingsSections
-				categories={advanced ? ["general", "motion", "advanced"] : ["general", "motion"]}
+				categories={
+					advanced
+						? ["general", "ai", "motion", "advanced"]
+						: ["general", "ai", "motion"]
+				}
 			>
 				<SettingsCategory category="general">
 					{onShowOnboarding && (
@@ -2302,6 +2459,252 @@ export function SettingsPanel({
 							</SelectContent>
 						</Select>
 					</SettingsRow>
+				</SettingsCategory>
+
+				<SettingsCategory category="ai">
+					<section className="flex flex-col gap-4">
+						<SectionLabel>{tSettings("ai.title", "AI & Model Providers")}</SectionLabel>
+						<p className="text-xs text-muted-foreground leading-relaxed">
+							{tSettings(
+								"ai.description",
+								"Configure local Whisper or custom multimodal AI models (Gemini, Claude, GPT-4o, Ollama, vLLM) for captions and future vision analysis.",
+							)}
+						</p>
+
+						<div className="flex items-center justify-between gap-3">
+							<div className="text-sm font-medium text-foreground">
+								{tSettings("ai.provider", "Active Provider")}
+							</div>
+							<Select
+								value={llmConfig.provider}
+								onValueChange={handleProviderChange}
+							>
+								<SelectTrigger className="h-9 w-[180px] text-sm">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{TRANSCRIPTION_PROVIDERS.map((p) => (
+										<SelectItem key={p.id} value={p.id}>
+											{p.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
+
+						{isLocalProvider && (
+							<div className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-4">
+								<div className="flex items-center justify-between gap-3">
+									<div className="flex flex-col gap-0.5">
+										<span className="text-xs font-semibold text-foreground">
+											{tSettings("captions.builtinModelTitle", "Whisper Small Model")}
+										</span>
+										<span className="text-[11px] text-muted-foreground">
+											{whisperModelPath
+												? tSettings("captions.modelInstalled", "Model is installed and ready for offline use (~460MB)")
+												: tSettings("captions.modelNotInstalled", "Download the official offline speech model (~460MB)")}
+										</span>
+									</div>
+								</div>
+
+								<div className="flex flex-col gap-2 pt-1">
+									{whisperModelDownloadStatus === "downloading" ? (
+										<Button type="button" disabled className="h-9 w-full px-4 text-xs font-medium">
+											{tSettings("captions.downloading", "Downloading...")}{" "}
+											{Math.round(whisperModelDownloadProgress)}%
+										</Button>
+									) : whisperModelPath ? (
+										<Button
+											type="button"
+											variant="outline"
+											onClick={onDeleteWhisperSmallModel}
+											className="h-9 w-full px-4 text-xs font-medium text-destructive hover:bg-destructive/10 hover:text-destructive"
+										>
+											{tSettings("captions.deleteModel", "Delete Model")}
+										</Button>
+									) : (
+										<Button
+											type="button"
+											onClick={onDownloadWhisperSmallModel}
+											className="h-9 w-full px-4 text-xs font-medium"
+										>
+											{tSettings("captions.downloadModel", "Download Model")}
+										</Button>
+									)}
+
+									{advanced && (
+										<Button
+											type="button"
+											variant="ghost"
+											onClick={onPickWhisperModel}
+											className="h-8 w-full px-4 text-xs text-muted-foreground"
+										>
+											{tSettings("captions.useCustomModel", "Use custom .bin file")}
+										</Button>
+									)}
+								</div>
+							</div>
+						)}
+
+						{!isLocalProvider && (
+							<div className="space-y-4 rounded-xl border border-border/60 bg-muted/20 p-4">
+								{isCustomProvider && (
+									<>
+										<div className="space-y-1.5">
+											<div className="text-xs font-medium text-foreground">
+												{tSettings("ai.apiMode", "API Mode / Protocol")}
+											</div>
+											<Select
+												value={apiModeInput}
+												onValueChange={(val) =>
+													setApiModeInput(val as "audio-transcription" | "chat-multimodal")
+												}
+											>
+												<SelectTrigger className="h-9 w-full text-xs truncate">
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													{CUSTOM_API_MODES.map((mode) => (
+														<SelectItem key={mode.id} value={mode.id}>
+															{mode.id === "chat-multimodal"
+																? tSettings("ai.apiModeChat", mode.label)
+																: tSettings("ai.apiModeAudio", mode.label)}
+														</SelectItem>
+													))}
+												</SelectContent>
+											</Select>
+											<p className="text-[11px] text-muted-foreground leading-normal">
+												{apiModeInput === "chat-multimodal"
+													? tSettings("ai.apiModeChatDesc", "Ideal for Gemini, GPT-4o, Claude or proxies without dedicated whisper endpoints.")
+													: tSettings("ai.apiModeAudioDesc", "Use when connecting to an official Whisper API server (Groq, faster-whisper, OpenAI).")}
+											</p>
+										</div>
+
+										<div className="space-y-1.5">
+											<div className="text-xs font-medium text-foreground">
+												{tSettings("ai.baseUrl", "API Base URL")}
+											</div>
+											<Input
+												type="text"
+												placeholder={tSettings("ai.baseUrlPlaceholder", "http://192.168.85.129:20128/v1")}
+												value={baseUrlInput}
+												onChange={(e) => {
+													const val = e.target.value;
+													setBaseUrlInput(val);
+													saveLlmConfig({ baseUrl: val });
+													setConnectionStatus("modified");
+												}}
+												className="h-9 w-full text-xs font-mono"
+												dir="ltr"
+											/>
+										</div>
+									</>
+								)}
+
+								<div className="space-y-1.5">
+									<div className="text-xs font-medium text-foreground">
+										{tSettings("ai.modelName", "Model Identifier")}
+									</div>
+									<Input
+										type="text"
+										placeholder={isCustomProvider ? "antigravity/gemini-3.7-flash-tiered" : "whisper-1"}
+										value={modelInput}
+										onChange={(e) => {
+											const val = e.target.value;
+											setModelInput(val);
+											saveLlmConfig({ model: val });
+											setConnectionStatus("modified");
+										}}
+										className="h-9 w-full text-xs font-mono"
+										dir="ltr"
+									/>
+								</div>
+
+								<div className="space-y-1.5">
+									<div className="text-xs font-medium text-foreground">
+										{isCustomProvider
+											? tSettings("ai.apiKeyOptional", "API Key (Optional for Local)")
+											: tSettings("ai.apiKey", "API Key")}
+									</div>
+									<div className="flex items-center gap-2">
+										<Input
+											type="password"
+											placeholder={tSettings("ai.apiKeyPlaceholder", "Enter API key...")}
+											value={apiKeyInput}
+											onChange={(e) => {
+												setApiKeyInput(e.target.value);
+												setApiKeySaved(false);
+											}}
+											onFocus={() => {
+												if (apiKeyInput === "••••••••") setApiKeyInput("");
+											}}
+											className="h-9 flex-1 text-xs"
+											dir="ltr"
+										/>
+										{apiKeySaved ? (
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												onClick={handleClearApiKey}
+												className="h-9 shrink-0 text-xs text-muted-foreground hover:text-destructive"
+											>
+												{tSettings("captions.clearKey", "Clear")}
+											</Button>
+										) : null}
+									</div>
+								</div>
+
+								{/* Dynamic Connection Status Indicator */}
+								{isValidatingLlm ? (
+									<div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
+										<span className="h-2 w-2 shrink-0 rounded-full bg-primary animate-ping" />
+										<span className="font-medium">{tSettings("ai.testing", "Testing Connection...")}</span>
+									</div>
+								) : (
+									<>
+										{connectionStatus === "connected" && (
+											<div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-400">
+												<span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500 animate-pulse" />
+												<span className="font-medium">{tSettings("ai.statusConnected", "Connected & verified ready")}</span>
+											</div>
+										)}
+										{connectionStatus === "modified" && (
+											<div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
+												<span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+												<span className="font-medium">{tSettings("ai.statusModified", "Settings modified — click below to test")}</span>
+											</div>
+										)}
+										{connectionStatus === "error" && (
+											<div className="flex flex-col gap-1 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+												<div className="flex items-center gap-2 font-medium">
+													<span className="h-2 w-2 shrink-0 rounded-full bg-destructive" />
+													<span>{tSettings("ai.statusError", "Connection failed")}</span>
+												</div>
+												{lastErrorMessage && (
+													<span className="text-[11px] text-destructive/80 font-mono break-all pl-4">
+														{lastErrorMessage}
+													</span>
+												)}
+											</div>
+										)}
+									</>
+								)}
+
+								<Button
+									type="button"
+									variant={connectionStatus === "connected" ? "outline" : "default"}
+									onClick={handleSaveAndTestLlmConfig}
+									disabled={isValidatingLlm}
+									className="h-9 w-full text-xs font-medium mt-1"
+								>
+									{isValidatingLlm
+										? tSettings("ai.testing", "Testing Connection...")
+										: tSettings("ai.testAndSave", "Test Connection & Save Provider")}
+								</Button>
+							</div>
+						)}
+					</section>
 				</SettingsCategory>
 				<SettingsCategory category="advanced">
 					{advanced && (

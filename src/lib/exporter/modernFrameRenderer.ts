@@ -2,6 +2,7 @@ import { Application, BlurFilter, Container, Graphics, Rectangle, Sprite, Textur
 import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
+import { isRtlText } from "@/lib/bidi";
 import {
 	CAPTION_FONT_WEIGHT,
 	CAPTION_LINE_HEIGHT,
@@ -1706,12 +1707,17 @@ export class FrameRenderer {
 		ctx.fill();
 
 		const padding = getCaptionPadding(state.fontSize);
-		ctx.textAlign = "left";
 		ctx.textBaseline = "middle";
 
 		state.layout.visibleLines.forEach((line, lineIndex) => {
-			let cursorX = (state.boxWidth - line.width) / 2;
+			const lineText = line.words.map((w) => w.text).join(" ");
+			const isRtl = isRtlText(lineText);
+			let cursorX = isRtl
+				? (state.boxWidth + line.width) / 2
+				: (state.boxWidth - line.width) / 2;
 			const lineY = padding.y + state.lineHeight * lineIndex + state.lineHeight / 2;
+
+			ctx.textAlign = isRtl ? "right" : "left";
 
 			line.words.forEach((word) => {
 				const segmentText = `${word.leadingSpace ? " " : ""}${word.text}`;
@@ -1730,7 +1736,11 @@ export class FrameRenderer {
 				ctx.fillText(segmentText, 0, 0);
 				ctx.restore();
 
-				cursorX += segmentWidth;
+				if (isRtl) {
+					cursorX -= segmentWidth;
+				} else {
+					cursorX += segmentWidth;
+				}
 			});
 		});
 

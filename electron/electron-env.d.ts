@@ -722,6 +722,11 @@ interface Window {
 			whisperExecutablePath?: string;
 			whisperModelPath: string;
 			language?: string;
+			provider?: string;
+			providerApiKey?: string;
+			providerModel?: string;
+			providerBaseUrl?: string | null;
+			providerApiMode?: "audio-transcription" | "chat-multimodal";
 		}) => Promise<{
 			success: boolean;
 			cues?: AutoCaptionCue[];
@@ -996,6 +1001,26 @@ interface Window {
 		saveShortcuts: (shortcuts: unknown) => Promise<{ success: boolean; error?: string }>;
 		getAppSetting: (key: string) => unknown;
 		setAppSetting: (key: string, value: unknown) => boolean;
+		encryptSecret: (plaintext: string) => Promise<{
+			success: boolean;
+			encrypted?: string | null;
+			error?: string;
+		}>;
+		decryptSecret: (encrypted: string) => Promise<{
+			success: boolean;
+			decrypted?: string | null;
+			error?: string;
+		}>;
+		validateLlmProvider: (config: {
+			provider: string;
+			apiKey?: string;
+			model?: string;
+			baseUrl?: string | null;
+		}) => Promise<{
+			success: boolean;
+			valid: boolean;
+			error?: string;
+		}>;
 		setHasUnsavedChanges: (hasChanges: boolean) => void;
 		onRequestSaveBeforeClose: (callback: () => Promise<boolean>) => () => void;
 		isNativeWindowsCaptureAvailable: () => Promise<{ available: boolean }>;
