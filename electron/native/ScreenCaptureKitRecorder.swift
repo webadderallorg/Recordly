@@ -96,10 +96,38 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		let streamConfig = SCStreamConfiguration()
 		capturesSystemAudio = config.capturesSystemAudio ?? false
 		capturesMicrophone = config.capturesMicrophone ?? false
-		if capturesMicrophone && !supportsNativeMicrophoneCapture(streamConfig: streamConfig) {
-			fputs("MICROPHONE_CAPTURE_UNAVAILABLE\n", stderr)
-			fflush(stderr)
-			capturesMicrophone = false
+		// Resolve the requested capture device up front so we can verify it before
+		// capture starts.  Chromium's deviceId is an opaque hash and can never match
+		// AVFoundation's uniqueID, so the localized name is the only bridge between
+		// the two.  When the caller asked for a specific device but we cannot match
+		// it, capture nothing natively instead of silently falling back to the
+		// system default (which may be a muted or blocked built-in microphone).
+		// The renderer then records the mic through getUserMedia, which honours the
+		// exact deviceId.
+		var resolvedMicrophoneDeviceID: String?
+		if capturesMicrophone {
+			if !supportsNativeMicrophoneCapture(streamConfig: streamConfig) {
+				fputs("MICROPHONE_CAPTURE_UNAVAILABLE\n", stderr)
+				fflush(stderr)
+				capturesMicrophone = false
+			} else {
+				resolvedMicrophoneDeviceID = Self.resolveMicrophoneCaptureDeviceID(config: config)
+				let requestedLabel =
+					config.microphoneLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+				let requestedDeviceID =
+					config.microphoneDeviceId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+				let requestedSpecificDevice = !requestedLabel.isEmpty || !requestedDeviceID.isEmpty
+				if requestedSpecificDevice && resolvedMicrophoneDeviceID == nil {
+					fputs("MICROPHONE_DEVICE_UNAVAILABLE\n", stderr)
+					fflush(stderr)
+					capturesMicrophone = false
+				}
+			}
+		}
+		if config.capturesMicrophone == true {
+			let deviceDescription = capturesMicrophone ? (resolvedMicrophoneDeviceID ?? "default") : "unavailable"
+			print("MICROPHONE_DEVICE:\(deviceDescription)")
+			fflush(stdout)
 		}
 		writesSystemAudioToSeparateTrack = capturesSystemAudio
 		writesMicrophoneToSeparateTrack = capturesSystemAudio && capturesMicrophone
@@ -117,8 +145,8 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 
 		if capturesMicrophone {
 			streamConfig.setValue(true, forKey: "captureMicrophone")
-			if let microphoneDeviceId = Self.resolveMicrophoneCaptureDeviceID(config: config) {
-				streamConfig.setValue(microphoneDeviceId, forKey: "microphoneCaptureDeviceID")
+			if let resolvedMicrophoneDeviceID {
+				streamConfig.setValue(resolvedMicrophoneDeviceID, forKey: "microphoneCaptureDeviceID")
 			}
 		}
 
@@ -831,16 +859,22 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private static func resolveMicrophoneCaptureDeviceID(config: CaptureConfig) -> String? {
 		let audioDevices = AVCaptureDevice.devices(for: .audio)
 
-		if let microphoneLabel = config.microphoneLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneLabel.isEmpty {
-			if let matchedDevice = audioDevices.first(where: { $0.localizedName == microphoneLabel }) {
-				return matchedDevice.uniqueID
+		// The label is only a safe bridge from Chromium's opaque deviceId to
+		// AVFoundation when it identifies exactly one device.  Two devices can share
+		// a localizedName (for example two identical USB microphones), and picking
+		// the first would silently record the wrong one instead of requesting the
+		// browser fallback that resolves the exact deviceId.
+		let requestedLabel = config.microphoneLabel?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+		if !requestedLabel.isEmpty {
+			let labelMatches = audioDevices.filter { $0.localizedName == requestedLabel }
+			if labelMatches.count == 1 {
+				return labelMatches[0].uniqueID
 			}
 		}
 
-		if let microphoneDeviceId = config.microphoneDeviceId?.trimmingCharacters(in: .whitespacesAndNewlines), !microphoneDeviceId.isEmpty {
-			if audioDevices.contains(where: { $0.uniqueID == microphoneDeviceId }) {
-				return microphoneDeviceId
-			}
+		let requestedDeviceID = config.microphoneDeviceId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+		if !requestedDeviceID.isEmpty, audioDevices.contains(where: { $0.uniqueID == requestedDeviceID }) {
+			return requestedDeviceID
 		}
 
 		return nil

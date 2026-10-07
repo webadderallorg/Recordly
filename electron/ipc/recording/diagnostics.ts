@@ -413,6 +413,55 @@ export async function writeRecordingDiagnosticsSnapshot(
 	return diagnosticsPath;
 }
 
+/**
+ * Max-volume threshold (in dBFS) at or below which a companion track is treated
+ * as digital silence.  Real speech and room tone sit far above this; a muted or
+ * physically blocked microphone produces the ~-91 dB floor.
+ */
+export const SILENT_COMPANION_AUDIO_MAX_VOLUME_DB = -70;
+
+/**
+ * Measure a media file's peak level in dBFS via FFmpeg `volumedetect`.
+ *
+ * @returns The parsed `max_volume` in dBFS, or `null` when the probe fails or the
+ * value cannot be parsed, so callers can distinguish "unknown" from "silent".
+ */
+export async function probeAudioMaxVolumeDb(filePath: string): Promise<number | null> {
+	const ffmpegPath = getFfmpegBinaryPath();
+	let stderr = "";
+
+	try {
+		const result = await execFileAsync(
+			ffmpegPath,
+			["-hide_banner", "-nostdin", "-i", filePath, "-af", "volumedetect", "-f", "null", "-"],
+			{ timeout: 20000, maxBuffer: 10 * 1024 * 1024 },
+		);
+		stderr = result.stderr;
+	} catch (error) {
+		stderr = (error as NodeJS.ErrnoException & { stderr?: string }).stderr ?? "";
+	}
+
+	const match = stderr.match(/max_volume:\s*(-?\d+(?:\.\d+)?)\s*dB/i);
+	if (!match) {
+		return null;
+	}
+
+	const maxVolumeDb = Number(match[1]);
+	return Number.isFinite(maxVolumeDb) ? maxVolumeDb : null;
+}
+
+/**
+ * Report whether a companion track is effectively digital silence.
+ *
+ * A failed probe yields `false` so an unreadable file is never treated as silent
+ * evidence; only a measured peak at or below {@link SILENT_COMPANION_AUDIO_MAX_VOLUME_DB}
+ * counts.
+ */
+export async function isCompanionAudioEffectivelySilent(filePath: string): Promise<boolean> {
+	const maxVolumeDb = await probeAudioMaxVolumeDb(filePath);
+	return maxVolumeDb !== null && maxVolumeDb <= SILENT_COMPANION_AUDIO_MAX_VOLUME_DB;
+}
+
 export async function getUsableCompanionAudioCandidates(
 	videoPath: string,
 ): Promise<CompanionAudioCandidate[]> {
@@ -513,18 +562,53 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 		return { paths: [], startDelayMsByPath: {} };
 	}
 
+	// A raw companion file can be non-empty yet still contain digital silence (for
+	// example a closed-lid built-in microphone).  Dropping silent mic companions
+	// stops the renderer from muting the embedded track in favour of a track that
+	// has no voice in it, and lets the caller warn the user.  Sequence imports
+	// intentionally keep a dedicated (possibly silent) mic track, so they are
+	// exempt from both the drop and the warning.
+	const isSequenceSource = isLibrarySequenceSource(videoPath);
+	const silentPaths: string[] = [];
+	let companionCandidatesForRouting = companionCandidates;
+	if (!isSequenceSource) {
+		companionCandidatesForRouting = [];
+		for (const candidate of companionCandidates) {
+			if (
+				candidate.usablePaths.includes(candidate.micPath) &&
+				(await isCompanionAudioEffectivelySilent(candidate.micPath))
+			) {
+				silentPaths.push(candidate.micPath);
+			}
+
+			const usablePaths = candidate.usablePaths.filter(
+				(companionPath) => !silentPaths.includes(companionPath),
+			);
+			if (usablePaths.length > 0) {
+				companionCandidatesForRouting.push({ ...candidate, usablePaths });
+			}
+		}
+	}
+
+	const silentPathsResult: { silentPaths?: string[] } =
+		silentPaths.length > 0 ? { silentPaths } : {};
+
+	if (companionCandidatesForRouting.length === 0) {
+		return { paths: [], startDelayMsByPath: {}, ...silentPathsResult };
+	}
+
 	let paths: string[];
-	if (isLibrarySequenceSource(videoPath)) {
-		paths = companionCandidates.flatMap((candidate) => candidate.usablePaths);
+	if (isSequenceSource) {
+		paths = companionCandidatesForRouting.flatMap((candidate) => candidate.usablePaths);
 	} else if (await hasEmbeddedAudioStream(videoPath)) {
-		const hasUsableMacSystemCompanion = companionCandidates.some(
+		const hasUsableMacSystemCompanion = companionCandidatesForRouting.some(
 			(candidate) =>
 				candidate.platform === "mac" &&
 				candidate.usablePaths.includes(candidate.systemPath),
 		);
 		const usableMacMicOnlyCompanions = Array.from(
 			new Set(
-				companionCandidates.flatMap((candidate) =>
+				companionCandidatesForRouting.flatMap((candidate) =>
 					candidate.platform === "mac" &&
 					!candidate.usablePaths.includes(candidate.systemPath) &&
 					candidate.usablePaths.includes(candidate.micPath)
@@ -539,19 +623,25 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 		} else if (hasUsableMacSystemCompanion) {
 			// The inline mp4 audio track carries system audio only (the helper skips
 			// the microphone while system audio is captured), so returning the video
-			// alone drops the mic entirely.  Hand over both mac sidecars instead and
-			// let the renderer route them as independent system/mic tracks.
-			paths = Array.from(
-				new Set(
-					companionCandidates.flatMap((candidate) =>
-						candidate.platform === "mac" ? candidate.usablePaths : [],
-					),
-				),
+			// alone drops the mic entirely.  Hand over the mac system sidecar plus any
+			// mic companion instead and let the renderer route them as independent
+			// system/mic tracks.  The mic companion can be a browser-recorded
+			// `.mic.wav` when the native mic lane was unavailable.
+			const macSystemPaths = companionCandidatesForRouting
+				.filter(
+					(candidate) =>
+						candidate.platform === "mac" &&
+						candidate.usablePaths.includes(candidate.systemPath),
+				)
+				.map((candidate) => candidate.systemPath);
+			const everyMicPath = companionCandidatesForRouting.flatMap((candidate) =>
+				candidate.usablePaths.includes(candidate.micPath) ? [candidate.micPath] : [],
 			);
+			paths = Array.from(new Set([...macSystemPaths, ...everyMicPath]));
 		} else {
 			const companionPaths = Array.from(
 				new Set(
-					companionCandidates.flatMap((candidate) =>
+					companionCandidatesForRouting.flatMap((candidate) =>
 						candidate.usablePaths.filter(
 							(companionPath) => companionPath === candidate.micPath,
 						),
@@ -559,14 +649,14 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 				),
 			);
 			if (companionPaths.length === 0) {
-				return { paths: [], startDelayMsByPath: {} };
+				return { paths: [], startDelayMsByPath: {}, ...silentPathsResult };
 			}
 
 			paths = [videoPath, ...companionPaths];
 		}
 	} else {
 		paths = Array.from(
-			new Set(companionCandidates.flatMap((candidate) => candidate.usablePaths)),
+			new Set(companionCandidatesForRouting.flatMap((candidate) => candidate.usablePaths)),
 		);
 	}
 
@@ -586,6 +676,7 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 		startDelayMsByPath: Object.fromEntries(
 			metadataEntries.filter((entry): entry is readonly [string, number] => entry !== null),
 		),
+		...silentPathsResult,
 	};
 }
 

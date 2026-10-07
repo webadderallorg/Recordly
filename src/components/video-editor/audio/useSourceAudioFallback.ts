@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
-import { SOURCE_AUDIO_FALLBACK_TOAST_ID } from "@/components/video-editor/audio/audioTypes";
+import {
+	SOURCE_AUDIO_FALLBACK_TOAST_ID,
+	SOURCE_AUDIO_SILENT_TOAST_ID,
+} from "@/components/video-editor/audio/audioTypes";
 
 interface UseSourceAudioFallbackParams {
 	currentSourcePath: string | null;
@@ -27,6 +30,9 @@ export function useSourceAudioFallback({
 		if (sourceChanged) {
 			setSourceAudioFallbackPaths([]);
 			setSourceAudioFallbackStartDelayMsByPath({});
+			// Drop the previous source's silence warning immediately; the new source may
+			// have no path or fail its request, and in both cases it must not linger.
+			toast.dismiss(SOURCE_AUDIO_SILENT_TOAST_ID);
 		}
 
 		if (!currentSourcePath) {
@@ -59,6 +65,15 @@ export function useSourceAudioFallback({
 				toast.dismiss(SOURCE_AUDIO_FALLBACK_TOAST_ID);
 				setSourceAudioFallbackPaths(result.paths ?? []);
 				setSourceAudioFallbackStartDelayMsByPath(result.startDelayMsByPath ?? {});
+
+				if ((result.silentPaths ?? []).length > 0) {
+					toast.warning(
+						"The microphone track in this recording is silent. The selected microphone did not capture any audio - check that the correct microphone is selected before recording again.",
+						{ id: SOURCE_AUDIO_SILENT_TOAST_ID, duration: 15000 },
+					);
+				} else {
+					toast.dismiss(SOURCE_AUDIO_SILENT_TOAST_ID);
+				}
 			} catch (error) {
 				if (!cancelled) {
 					if (sourceChanged) {

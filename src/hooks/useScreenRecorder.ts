@@ -1825,6 +1825,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					if (nativeResult.microphoneFallbackRequired && microphoneEnabled) {
 						void logNativeCaptureDiagnostics("start-browser-microphone-fallback");
 						console.info("Using browser microphone processing for this recording.");
+						// Owns the stream until the recorder is attached to it.  If recorder
+						// construction or start fails, the microphone must be released here
+						// because no recorder reference exists for cleanup to reach it.
+						let micFallbackStream: MediaStream | null = null;
 						try {
 							const microphoneConstraints = createProcessedMicrophoneConstraints(
 								microphoneDeviceId,
@@ -1833,6 +1837,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							micFallbackRequestedConstraints.current = microphoneConstraints;
 							const micStream =
 								await navigator.mediaDevices.getUserMedia(microphoneConstraints);
+							micFallbackStream = micStream;
 							micFallbackTrackSettings.current =
 								createMicrophoneTrackSettingsSnapshot(micStream);
 							micFallbackAudioInputDevices.current =
@@ -1864,7 +1869,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							);
 							recorder.start(RECORDER_TIMESLICE_MS);
 							micFallbackRecorder.current = recorder;
+							// The recorder now owns the tracks; cleanup goes through it.
+							micFallbackStream = null;
 						} catch (micError) {
+							micFallbackStream?.getTracks().forEach((track) => track.stop());
+							micFallbackStream = null;
 							micFallbackStartDelayMs.current = null;
 							micFallbackTrackSettings.current = null;
 							micFallbackRequestedConstraints.current = null;

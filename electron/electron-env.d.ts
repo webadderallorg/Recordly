@@ -587,6 +587,7 @@ interface Window {
 			success: boolean;
 			paths: string[];
 			startDelayMsByPath?: Record<string, number>;
+			silentPaths?: string[];
 			error?: string;
 		}>;
 		setRecordingState: (recording: boolean) => Promise<void>;
