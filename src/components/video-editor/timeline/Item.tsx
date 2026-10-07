@@ -51,7 +51,17 @@ interface ItemProps {
 	variant?: "zoom" | "trim" | "clip" | "annotation" | "speed" | "audio" | "caption";
 	isLoading?: boolean;
 	loadingLabel?: string;
+	/** Timeline time a clip edge snaps to while resizing, usually the playhead. */
+	snapToMs?: number;
 }
+
+/** Width of the zone around a clip edge that starts a trim, half inside and half outside. */
+const CLIP_RESIZE_HANDLE_PX = 32;
+/** The grab strip covers the outside half plus a little of the inside. */
+const CLIP_GRAB_STRIP_PX = CLIP_RESIZE_HANDLE_PX / 2 + 2;
+/** How close a dragged clip edge has to come to the playhead to snap to it. It covers
+ * the 9 px between a clip grip and its edge, so a grip dropped on the playhead snaps. */
+const PLAYHEAD_SNAP_PX = 14;
 
 // Map zoom depth to multiplier labels
 const ZOOM_LABELS: Record<number, string> = {
@@ -90,6 +100,7 @@ export default function Item({
 	variant = "zoom",
 	isLoading = false,
 	loadingLabel,
+	snapToMs,
 	children,
 }: ItemProps) {
 	const timeline = useTimelineContext();
@@ -135,7 +146,14 @@ export default function Item({
 				edge,
 			);
 		const scale = (span.end - span.start) / (displaySpan.end - displaySpan.start);
-		return { ...span, [edge]: span[edge] + delta * scale };
+		const next = { ...span, [edge]: span[edge] + delta * scale };
+		if (
+			snapToMs !== undefined &&
+			Math.abs(next[edge] - snapToMs) <= timeline.pixelsToValue(PLAYHEAD_SNAP_PX) * scale
+		) {
+			next[edge] = snapToMs;
+		}
+		return next;
 	};
 
 	const paintPreview = (preview: Span, deltaY = 0) => {
@@ -174,7 +192,7 @@ export default function Item({
 			getSpanFromDragEvent: getMediaSpanFromDrag,
 			getSpanFromResizeEvent: getMediaSpanFromResize,
 		},
-		resizeHandleWidth: variant === "clip" ? 12 : undefined,
+		resizeHandleWidth: variant === "clip" ? CLIP_RESIZE_HANDLE_PX : undefined,
 		onResizeMove(event) {
 			if (!clipPresentation) return;
 			const next = getMediaSpanFromResize(event);
@@ -347,6 +365,32 @@ export default function Item({
 						}}
 						title="Resize right"
 					/>
+					{/* The visible clip grips sit outside the block. These invisible strips put
+					    them inside the area that starts a trim, so grabbing a grip works. */}
+					{isClip && !sharedLeftGrip && (
+						<div
+							aria-hidden="true"
+							data-clip-grab="start"
+							className="absolute inset-y-0 z-20"
+							style={{
+								left: -CLIP_RESIZE_HANDLE_PX / 2,
+								width: CLIP_GRAB_STRIP_PX,
+								cursor: "col-resize",
+							}}
+						/>
+					)}
+					{isClip && !sharedRightGrip && (
+						<div
+							aria-hidden="true"
+							data-clip-grab="end"
+							className="absolute inset-y-0 z-20"
+							style={{
+								right: -CLIP_RESIZE_HANDLE_PX / 2,
+								width: CLIP_GRAB_STRIP_PX,
+								cursor: "col-resize",
+							}}
+						/>
+					)}
 					{showAudioWaveform && waveformPeaks && (
 						<AudioWaveform
 							peaks={waveformPeaks}

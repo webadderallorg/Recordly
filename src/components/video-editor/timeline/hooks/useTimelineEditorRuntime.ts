@@ -12,6 +12,7 @@ import type {
 	ZoomFocus,
 	ZoomRegion,
 } from "../../types";
+import { type ClipTrimEdge, planClipTrimToPlayhead } from "../../clipTrim";
 import type { ClipSequenceSpan, TimelineShortcutBindings } from "../core/timelineTypes";
 import type { TimelineEditorHandle } from "../TimelineEditor";
 import { useTimelineAudioActions } from "./actions/useTimelineAudioActions";
@@ -43,6 +44,7 @@ interface UseTimelineEditorRuntimeParams {
 	onTrimSpanChange?: (id: string, span: Span) => void;
 	clipRegions: ClipRegion[];
 	onClipSplit?: (splitMs: number) => void;
+	onSeek?: (time: number) => void;
 	onClipSpanChange?: (id: string, span: ClipSequenceSpan) => void;
 	onClipDelete?: (id: string) => void;
 	selectedClipId?: string | null;
@@ -93,6 +95,7 @@ export function useTimelineEditorRuntime({
 	onTrimSpanChange,
 	clipRegions,
 	onClipSplit,
+	onSeek,
 	onClipSpanChange,
 	onClipDelete,
 	selectedClipId,
@@ -235,6 +238,25 @@ export function useTimelineEditorRuntime({
 		onClipSplit(currentTimeMs);
 	}, [videoDuration, totalMs, currentTimeMs, onClipSplit]);
 
+	const trimClipToPlayhead = useCallback(
+		(edge: ClipTrimEdge) => {
+			if (!onClipSpanChange || totalMs === 0) return;
+			const plan = planClipTrimToPlayhead(
+				clipRegions,
+				currentTimeMs,
+				edge,
+				safeMinDurationMs,
+			);
+			if (!plan) return;
+			onClipSpanChange(plan.clip.id, plan.span);
+			// The footage after a start trim moves back to where the clip began.
+			if (edge === "start") onSeek?.(plan.clip.startMs / 1000);
+		},
+		[clipRegions, currentTimeMs, onClipSpanChange, onSeek, safeMinDurationMs, totalMs],
+	);
+	const handleTrimStart = useCallback(() => trimClipToPlayhead("start"), [trimClipToPlayhead]);
+	const handleTrimEnd = useCallback(() => trimClipToPlayhead("end"), [trimClipToPlayhead]);
+
 	const { handleAddAudio } = useTimelineAudioActions({
 		timeline: { videoDuration, totalMs, currentTimeMs },
 		regions: { audio: audioRegions },
@@ -277,6 +299,8 @@ export function useTimelineEditorRuntime({
 		addKeyframe,
 		handleAddZoom,
 		handleSplitClip,
+		handleTrimStart,
+		handleTrimEnd,
 		handleAddAnnotation: () => handleAddAnnotation(),
 		deleteSelectedKeyframe,
 		deleteSelectedZoom,
@@ -293,6 +317,8 @@ export function useTimelineEditorRuntime({
 			addZoom: handleAddZoom,
 			suggestZooms: handleSuggestZooms,
 			splitClip: handleSplitClip,
+			trimStart: handleTrimStart,
+			trimEnd: handleTrimEnd,
 			addAnnotation: handleAddAnnotation,
 			addAudio: handleAddAudio,
 			keyframes,
@@ -303,6 +329,8 @@ export function useTimelineEditorRuntime({
 			handleAddZoom,
 			handleSuggestZooms,
 			handleSplitClip,
+			handleTrimEnd,
+			handleTrimStart,
 			keyframes,
 		],
 	);

@@ -405,6 +405,7 @@ interface TimelineCanvasRowsProps {
 	videoPath?: string | null;
 	items: TimelineRenderItem[];
 	videoDurationMs: number;
+	currentTimeMs: number;
 	selectAllBlocksActive: boolean;
 	selectedZoomId: string | null;
 	selectedClipId?: string | null;
@@ -482,6 +483,7 @@ function AudioItemWithWaveform({
 const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	videoPath,
 	items,
+	currentTimeMs,
 	selectAllBlocksActive,
 	selectedZoomId,
 	selectedClipId,
@@ -723,6 +725,7 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 						videoPath={videoPath}
 						sourceSpan={item.sourceSpan ?? item.span}
 						speedValue={item.speedValue}
+						snapToMs={currentTimeMs}
 					>
 						{item.label}
 					</Item>
@@ -1185,6 +1188,7 @@ export default function TimelineCanvas({
 					videoPath={videoPath}
 					items={items}
 					videoDurationMs={videoDurationMs}
+					currentTimeMs={currentTimeMs}
 					selectAllBlocksActive={selectAllBlocksActive}
 					selectedZoomId={selectedZoomId}
 					selectedClipId={selectedClipId}

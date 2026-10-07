@@ -189,7 +189,9 @@
 	},
 	"toolbar": {
 		"addLayer": "添加图层",
-		"splitClip": "拆分片段 (C)"
+		"splitClip": "拆分片段 (C)",
+		"trimStart": "将开头剪到播放头 ({{shortcut}})",
+		"trimEnd": "将结尾剪到播放头 ({{shortcut}})"
 	},
 	"timeline": {
 		"expand": "展开时间轴",
