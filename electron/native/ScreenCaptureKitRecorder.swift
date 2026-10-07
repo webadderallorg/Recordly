@@ -12,6 +12,11 @@ struct CaptureConfig: Codable {
 	let windowY: Double?
 	let windowWidth: Double?
 	let windowHeight: Double?
+	/// A fixed area of `displayId` in global display points (top-left origin).
+	let regionX: Double?
+	let regionY: Double?
+	let regionWidth: Double?
+	let regionHeight: Double?
 	let outputPath: String?
 	let capturesSystemAudio: Bool?
 	let capturesMicrophone: Bool?
@@ -130,6 +135,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			excludedProcessIds.contains($0.processID)
 		}
 
+		// A window or an area records the part of its display inside a frame, so menus
+		// and popovers over a window are captured just as they appear on screen.
+		let requestedFrame: CGRect?
 		if let windowId = config.windowId {
 			trackedWindowId = windowId
 			guard let window = availableContent.windows.first(where: { $0.windowID == windowId }) else {
@@ -137,22 +145,40 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			}
 
 			// Accessibility reports the visible frame at the native border.
-			let visibleFrame: CGRect
 			if let x = config.windowX,
 			   let y = config.windowY,
 			   let width = config.windowWidth,
 			   let height = config.windowHeight,
 			   width > 0,
 			   height > 0 {
-				visibleFrame = CGRect(x: x, y: y, width: width, height: height)
+				requestedFrame = CGRect(x: x, y: y, width: width, height: height)
 			} else {
-				visibleFrame = window.frame
+				requestedFrame = window.frame
 			}
-			guard let display = Self.captureDisplay(for: visibleFrame, from: availableContent.displays) else {
+		} else if let x = config.regionX,
+				  let y = config.regionY,
+				  let width = config.regionWidth,
+				  let height = config.regionHeight,
+				  width > 0,
+				  height > 0 {
+			trackedWindowId = nil
+			requestedFrame = CGRect(x: x, y: y, width: width, height: height)
+		} else {
+			requestedFrame = nil
+		}
+
+		if let visibleFrame = requestedFrame {
+			let preferredDisplay = config.windowId == nil
+				? config.displayId.flatMap { displayId in availableContent.displays.first(where: { $0.displayID == displayId }) }
+				: nil
+			guard let display = preferredDisplay ?? Self.captureDisplay(for: visibleFrame, from: availableContent.displays) else {
 				throw NSError(domain: "RecordlyCapture", code: 4, userInfo: [NSLocalizedDescriptionKey: "Window display not found"])
 			}
 			let scaleFactor = ScreenCaptureRecorder.scaleFactor(for: display.displayID)
 			let captureRect = visibleFrame.intersection(display.frame)
+			guard captureRect.width >= 2, captureRect.height >= 2 else {
+				throw NSError(domain: "RecordlyCapture", code: 18, userInfo: [NSLocalizedDescriptionKey: "Capture area is outside the display"])
+			}
 			filter = SCContentFilter(
 				display: display,
 				excludingApplications: excludedApplications,

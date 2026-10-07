@@ -14,11 +14,14 @@ export function SourcePopover({
 	trigger,
 	selectedSource,
 	onSourceSelect,
+	onPickOnScreen,
 	onOpen,
 }: {
 	trigger: ReactNode;
 	selectedSource: string;
 	onSourceSelect: (source: DesktopSource) => Promise<void> | void;
+	/** Opens the on-screen picker for an area or window; omitted where unsupported */
+	onPickOnScreen?: () => Promise<void> | void;
 	onOpen?: () => void;
 }) {
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
@@ -60,6 +63,14 @@ export function SourcePopover({
 					console.error("Failed to select source:", error);
 				}
 			}}
+			onPickOnScreen={
+				onPickOnScreen
+					? () => {
+							requestClose(POPOVER_ID);
+							void onPickOnScreen();
+						}
+					: undefined
+			}
 			onFetchSources={fetchSources}
 			open={open}
 			onOpenChange={(nextOpen) => {

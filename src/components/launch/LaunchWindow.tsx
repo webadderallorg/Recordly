@@ -15,6 +15,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef } from "react";
 import { Separator } from "@/components/ui/separator";
+import { toast } from "@/components/ui/toast";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
 import { useScreenRecorder } from "../../hooks/useScreenRecorder";
@@ -193,6 +194,19 @@ function LaunchWindowContent() {
 		ease: [0.22, 1, 0.36, 1] as const,
 	};
 
+	const handlePickOnScreen = async () => {
+		const result = await window.electronAPI.pickCaptureTarget();
+		if (!result.success) {
+			if (!result.canceled && result.message) toast.error(result.message);
+			return;
+		}
+		if (result.record) {
+			toggleRecording();
+		} else if (result.source) {
+			void window.electronAPI.showSourceHighlight?.(result.source);
+		}
+	};
+
 	const openHome = () => {
 		localStorage.setItem("recordly.open-dashboard", String(Date.now()));
 		void window.electronAPI.showProjectDashboard();
@@ -231,6 +245,7 @@ function LaunchWindowContent() {
 					<SourcePopover
 						selectedSource={selectedSource}
 						onSourceSelect={handleSourceSelect}
+						onPickOnScreen={platform === "darwin" ? handlePickOnScreen : undefined}
 						onOpen={beginInteractiveHudAction}
 						trigger={
 							<Button

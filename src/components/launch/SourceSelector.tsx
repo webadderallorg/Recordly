@@ -1,5 +1,5 @@
 import { ToggleButton } from "@heroui/react";
-import { AppWindowIcon, CaretUpIcon, MonitorIcon } from "@/components/ui/icons";
+import { AppWindowIcon, CaretUpIcon, Crop, MonitorIcon } from "@/components/ui/icons";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,8 @@ interface SourceSelectorProps {
 	loading?: boolean;
 	/** Callback when a source is selected */
 	onSourceSelect?: (source: DesktopSource) => void;
+	/** Opens the on-screen picker for an area or window; omitted where unsupported */
+	onPickOnScreen?: () => void;
 	/** Callback to fetch sources */
 	onFetchSources?: () => Promise<void>;
 	/** Whether the popover is open */
@@ -47,9 +49,15 @@ export const SourceSelectorContent = ({
 	selectedSource = "Screen",
 	loading = false,
 	onSourceSelect = () => undefined,
+	onPickOnScreen,
 }: Pick<
 	SourceSelectorProps,
-	"screenSources" | "windowSources" | "selectedSource" | "loading" | "onSourceSelect"
+	| "screenSources"
+	| "windowSources"
+	| "selectedSource"
+	| "loading"
+	| "onSourceSelect"
+	| "onPickOnScreen"
 >) => {
 	const t = useScopedT("launch");
 	const renderSourceItem = (source: DesktopSource, index: number) => {
@@ -101,58 +109,91 @@ export const SourceSelectorContent = ({
 	};
 
 	const hasAnySources = screenSources.length > 0 || windowSources.length > 0;
+	const pickOnScreenItem = onPickOnScreen ? (
+		<div className="p-2 pb-0">
+			<ToggleButton
+				variant="ghost"
+				isSelected={selectedSource.startsWith("Area ")}
+				className={cn(
+					"source-selector-item group min-h-[46px] w-full px-3 py-2.5 text-left flex items-center justify-start gap-3",
+					selectedSource.startsWith("Area ") && "source-selector-item-selected",
+				)}
+				onClick={onPickOnScreen}
+			>
+				<div className="source-selector-thumb-fallback w-12 h-8 rounded-[8px] flex items-center justify-center flex-shrink-0">
+					<Crop className="w-5 h-5 source-selector-muted" />
+				</div>
+				<div className="flex-1 min-w-0 flex flex-col items-start text-left">
+					<div className="text-sm font-medium source-selector-text w-full">
+						{t("recording.pickOnScreen", "Select area or window")}
+					</div>
+					<div className="text-xs source-selector-subtle truncate w-full text-left">
+						{selectedSource.startsWith("Area ")
+							? selectedSource
+							: t("recording.pickOnScreenHint", "Drag an area, or click a window")}
+					</div>
+				</div>
+			</ToggleButton>
+		</div>
+	) : null;
 
 	if (loading && !hasAnySources) {
 		return (
-			<div className="flex items-center justify-center py-8">
-				<div className="animate-spin rounded-full h-5 w-5 border-b-2 source-selector-accent-border" />
-			</div>
+			<>
+				{pickOnScreenItem}
+				<div className="flex items-center justify-center py-8">
+					<div className="animate-spin rounded-full h-5 w-5 border-b-2 source-selector-accent-border" />
+				</div>
+			</>
 		);
 	}
 
 	return (
-		<div className="max-h-[320px] overflow-y-auto overflow-x-hidden p-2 source-selector-scroll">
-			{hasAnySources ? (
-				<>
-					{screenSources.length > 0 ? (
-						<div className="space-y-1">
-							<div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label flex items-center gap-2">
-								{t("recording.screens")}
-								<span
-									className={cn(
-										"normal-case tracking-normal text-[10px] source-selector-muted transition-opacity duration-150",
-										loading ? "opacity-100" : "opacity-0",
+		<>
+			{pickOnScreenItem}
+			<div className="max-h-[320px] overflow-y-auto overflow-x-hidden p-2 source-selector-scroll">
+				{hasAnySources ? (
+					<>
+						{screenSources.length > 0 ? (
+							<div className="space-y-1">
+								<div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label flex items-center gap-2">
+									{t("recording.screens")}
+									<span
+										className={cn(
+											"normal-case tracking-normal text-[10px] source-selector-muted transition-opacity duration-150",
+											loading ? "opacity-100" : "opacity-0",
+										)}
+									>
+										{t("common.loading", "Refreshing...")}
+									</span>
+								</div>
+								<div className="space-y-0.5">
+									{screenSources.map((source, index) =>
+										renderSourceItem(source, index),
 									)}
-								>
-									{t("common.loading", "Refreshing...")}
-								</span>
+								</div>
 							</div>
-							<div className="space-y-0.5">
-								{screenSources.map((source, index) =>
-									renderSourceItem(source, index),
-								)}
+						) : null}
+						{windowSources.length > 0 ? (
+							<div className="space-y-1">
+								<div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label">
+									{t("recording.windows")}
+								</div>
+								<div className="space-y-0.5">
+									{windowSources.map((source, index) =>
+										renderSourceItem(source, index),
+									)}
+								</div>
 							</div>
-						</div>
-					) : null}
-					{windowSources.length > 0 ? (
-						<div className="space-y-1">
-							<div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.08em] source-selector-label">
-								{t("recording.windows")}
-							</div>
-							<div className="space-y-0.5">
-								{windowSources.map((source, index) =>
-									renderSourceItem(source, index),
-								)}
-							</div>
-						</div>
-					) : null}
-				</>
-			) : (
-				<div className="text-center py-8 text-sm source-selector-muted">
-					{t("recording.noSourcesFound")}
-				</div>
-			)}
-		</div>
+						) : null}
+					</>
+				) : (
+					<div className="text-center py-8 text-sm source-selector-muted">
+						{t("recording.noSourcesFound")}
+					</div>
+				)}
+			</div>
+		</>
 	);
 };
 
@@ -166,6 +207,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 	selectedSource: propsSelectedSource,
 	loading: propsLoading,
 	onSourceSelect: propsOnSourceSelect,
+	onPickOnScreen,
 	onFetchSources: propsOnFetchSources,
 	open: propsOpen,
 	onOpenChange: propsOnOpenChange,
@@ -340,6 +382,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 					selectedSource={selectedSource}
 					loading={loading}
 					onSourceSelect={onSourceSelect}
+					onPickOnScreen={onPickOnScreen}
 				/>
 			</PopoverContent>
 		</Popover>
