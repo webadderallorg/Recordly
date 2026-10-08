@@ -466,16 +466,20 @@ describe("StreamingVideoDecoder decode failures", () => {
 
 	it("promptly cancels demuxer reader when clip run completes without draining remaining stream chunks", async () => {
 		let cancelCalled = false;
+		let chunksProduced = 0;
 		mockDemuxerRead.mockImplementation(
 			() =>
 				new ReadableStream({
-					start(controller) {
-						for (let i = 0; i < 500; i++) {
-							controller.enqueue({ timestamp: (i * 1_000_000) / 30 });
+					pull(controller) {
+						if (chunksProduced < 500) {
+							controller.enqueue({ timestamp: (chunksProduced * 1_000_000) / 30 });
+							chunksProduced++;
+						} else {
+							controller.close();
 						}
-						controller.close();
 					},
-					cancel() {
+					async cancel() {
+						await new Promise((resolve) => setTimeout(resolve, 5));
 						cancelCalled = true;
 					},
 				}),
@@ -522,21 +526,29 @@ describe("StreamingVideoDecoder decode failures", () => {
 		);
 		expect(frames).toHaveLength(12);
 		expect(cancelCalled).toBe(true);
+		expect(chunksProduced).toBeGreaterThanOrEqual(12);
+		expect(chunksProduced).toBeLessThan(100);
 	});
 
 	it("seamlessly decodes multi-run split clip timelines across sequential runs", async () => {
 		let runIndex = 0;
 		const cancelledRuns: number[] = [];
+		const chunksProducedByRun: number[] = [];
 		mockDemuxerRead.mockImplementation(() => {
 			const currentRun = runIndex++;
+			chunksProducedByRun[currentRun] = 0;
 			return new ReadableStream({
-				start(controller) {
-					for (let i = 0; i < 150; i++) {
-						controller.enqueue({ timestamp: (i * 1_000_000) / 30 });
+				pull(controller) {
+					const count = chunksProducedByRun[currentRun];
+					if (count < 150) {
+						controller.enqueue({ timestamp: (count * 1_000_000) / 30 });
+						chunksProducedByRun[currentRun]++;
+					} else {
+						controller.close();
 					}
-					controller.close();
 				},
-				cancel() {
+				async cancel() {
+					await new Promise((resolve) => setTimeout(resolve, 5));
 					cancelledRuns.push(currentRun);
 				},
 			});
@@ -580,6 +592,10 @@ describe("StreamingVideoDecoder decode failures", () => {
 		expect(emitted).toHaveLength(21);
 		expect(emitted.filter((f) => !f.gap)).toHaveLength(12);
 		expect(cancelledRuns).toEqual([0, 1]);
+		expect(chunksProducedByRun[0]).toBeGreaterThanOrEqual(6);
+		expect(chunksProducedByRun[0]).toBeLessThan(100);
+		expect(chunksProducedByRun[1]).toBeGreaterThanOrEqual(6);
+		expect(chunksProducedByRun[1]).toBeLessThan(100);
 	});
 });
 
