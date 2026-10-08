@@ -1,3 +1,5 @@
+Language: EN | [Español](CONTRIBUTING.es.md)
+
 # Contribution Guidelines
 
 Thank you for considering contributing to this project! By contributing, you help make this project better for everyone. Please take a moment to review these guidelines to ensure a smooth contribution process.

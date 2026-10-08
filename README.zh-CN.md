@@ -1,4 +1,4 @@
-语言: [EN](README.md) | 简中
+语言: [EN](README.md) | 简中 | [Español](README.es.md)
 
 <p align="center">
   <img width="220" alt="Recordly logo" src="https://github.com/user-attachments/assets/082bb4b0-5fc5-4e9f-abda-55611fd6aded" />

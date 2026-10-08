@@ -1,3 +1,5 @@
+Language: EN | [Español](README.es.md)
+
 # Desktop feedback
 
 Before releasing feedback submission:
