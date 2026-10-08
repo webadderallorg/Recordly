@@ -17,6 +17,8 @@ import type {
 	UiohookLike,
 	UiohookModuleNamespace,
 } from "../types";
+import { isHyprlandCursorProviderActive, startEvdevButtonCapture } from "./hyprland";
+import { startHyprlandButtonCapture } from "./hyprlandButtons";
 import {
 	getCursorCaptureElapsedMs,
 	getHookCursorScreenPoint,
@@ -26,6 +28,7 @@ import {
 } from "./telemetry";
 
 const nodeRequire = createRequire(import.meta.url);
+let interactionCaptureGeneration = 0;
 
 export function normalizeHookMouseButton(rawButton: unknown): 1 | 2 | 3 {
 	if (typeof rawButton !== "number" || !Number.isFinite(rawButton)) {
@@ -50,10 +53,10 @@ export function getHookMouseButton(event: HookMouseEvent | null | undefined): 1 
 }
 
 export function stopInteractionCapture() {
-	if (interactionCaptureCleanup) {
-		interactionCaptureCleanup();
-		setInteractionCaptureCleanup(null);
-	}
+	interactionCaptureGeneration += 1;
+	const cleanup = interactionCaptureCleanup;
+	setInteractionCaptureCleanup(null);
+	cleanup?.();
 }
 
 function isUiohookLike(value: unknown): value is UiohookLike {
@@ -234,11 +237,7 @@ export function recordCursorMouseUp() {
 }
 
 export async function startInteractionCapture() {
-	if (!isCursorCaptureActive) {
-		return;
-	}
-
-	if (!["darwin", "win32", "linux"].includes(process.platform)) {
+	if (!isCursorCaptureActive || !["darwin", "win32", "linux"].includes(process.platform)) {
 		return;
 	}
 
@@ -248,86 +247,132 @@ export async function startInteractionCapture() {
 	}
 
 	stopInteractionCapture();
+	const generation = interactionCaptureGeneration;
+	const isCurrentCapture = () =>
+		generation === interactionCaptureGeneration && isCursorCaptureActive;
+	const controller = new AbortController();
+	let stopPrimary: () => void = () => undefined;
+	let stopFallback: () => void = () => undefined;
+	let fallbackStarted = false;
+
+	setInteractionCaptureCleanup(() => {
+		controller.abort();
+		stopPrimary();
+		stopFallback();
+	});
+
+	const startFallback = () => {
+		if (!isCurrentCapture() || fallbackStarted) return;
+		fallbackStarted = true;
+		let evdevAvailable = false;
+		const stopEvdevCapture = startEvdevButtonCapture(
+			{
+				onMouseDown: (button) => {
+					if (isCurrentCapture()) recordCursorMouseDown(button);
+				},
+				onMouseUp: () => {
+					if (isCurrentCapture()) recordCursorMouseUp();
+				},
+			},
+			{
+				onDeviceOpened: () => {
+					evdevAvailable = true;
+				},
+			},
+		);
+		stopFallback = stopEvdevCapture;
+
+		try {
+			const hook = loadUiohookModule();
+			if (!hook || typeof hook.on !== "function" || typeof hook.start !== "function") {
+				console.warn("[CursorTelemetry] Global interaction hook unavailable.");
+				return;
+			}
+			const onMouseDown = (event: HookMouseEvent) => {
+				if (isCurrentCapture() && !evdevAvailable) {
+					recordCursorMouseDown(getHookMouseButton(event));
+				}
+			};
+			const onMouseUp = () => {
+				if (isCurrentCapture() && !evdevAvailable) recordCursorMouseUp();
+			};
+			const onMouseMove = (event: HookMouseEvent) => {
+				if (
+					!isCurrentCapture() ||
+					process.platform !== "linux" ||
+					isHyprlandCursorProviderActive() ||
+					isCursorCapturePaused()
+				)
+					return;
+				const point = getHookCursorScreenPoint(event);
+				if (!point) return;
+				setLinuxCursorScreenPoint({
+					x: point.x,
+					y: point.y,
+					updatedAt: Date.now(),
+					coordinateSpace: "physical",
+					source: "uiohook",
+				});
+			};
+
+			hook.on("mousedown", onMouseDown);
+			hook.on("mouseup", onMouseUp);
+			if (process.platform === "linux") hook.on("mousemove", onMouseMove);
+			stopFallback = () => {
+				stopEvdevCapture();
+				try {
+					const removeListener = hook.off ?? hook.removeListener;
+					removeListener?.call(hook, "mousedown", onMouseDown);
+					removeListener?.call(hook, "mouseup", onMouseUp);
+					if (process.platform === "linux")
+						removeListener?.call(hook, "mousemove", onMouseMove);
+				} catch {
+					// ignore listener cleanup errors
+				}
+				try {
+					hook.stop?.();
+				} catch {
+					// ignore hook shutdown errors
+				}
+			};
+			hook.start();
+		} catch (error) {
+			if (!hasLoggedInteractionHookFailure) {
+				setHasLoggedInteractionHookFailure(true);
+				console.warn("[CursorTelemetry] Global interaction capture unavailable:", error);
+			}
+		}
+	};
 
 	try {
-		const hook = loadUiohookModule();
-		console.log(
-			"[CursorTelemetry] hook loaded:",
-			!!hook,
-			"has.on:",
-			typeof hook?.on,
-			"has.start:",
-			typeof hook?.start,
+		const primary = await startHyprlandButtonCapture(
+			{
+				onMouseDown: (button) => {
+					if (isCurrentCapture() && !fallbackStarted) recordCursorMouseDown(button);
+				},
+				onMouseUp: () => {
+					if (isCurrentCapture() && !fallbackStarted) recordCursorMouseUp();
+				},
+			},
+			{
+				signal: controller.signal,
+				onUnavailable: () => {
+					if (!isCurrentCapture() || fallbackStarted) return;
+					stopPrimary();
+					startFallback();
+				},
+			},
 		);
-		if (!isCursorCaptureActive) {
+		if (!isCurrentCapture()) {
+			primary.stop();
 			return;
 		}
-
-		if (!hook || typeof hook.on !== "function" || typeof hook.start !== "function") {
-			console.log("[CursorTelemetry] hook unusable — aborting interaction capture");
-			return;
+		stopPrimary = primary.stop;
+		if (!primary.available || fallbackStarted) {
+			stopPrimary();
+			startFallback();
 		}
-
-		const onMouseDown = (event: HookMouseEvent) => {
-			recordCursorMouseDown(getHookMouseButton(event));
-		};
-
-		const onMouseUp = () => {
-			recordCursorMouseUp();
-		};
-
-		const onMouseMove = (event: HookMouseEvent) => {
-			if (process.platform !== "linux" || !isCursorCaptureActive || isCursorCapturePaused()) {
-				return;
-			}
-
-			const point = getHookCursorScreenPoint(event);
-			if (!point) {
-				return;
-			}
-
-			setLinuxCursorScreenPoint({ x: point.x, y: point.y, updatedAt: Date.now() });
-		};
-
-		hook.on("mousedown", onMouseDown);
-		hook.on("mouseup", onMouseUp);
-		if (process.platform === "linux") {
-			hook.on("mousemove", onMouseMove);
-		}
-
-		setInteractionCaptureCleanup(() => {
-			try {
-				if (typeof hook.off === "function") {
-					hook.off("mousedown", onMouseDown);
-					hook.off("mouseup", onMouseUp);
-					if (process.platform === "linux") {
-						hook.off("mousemove", onMouseMove);
-					}
-				} else if (typeof hook.removeListener === "function") {
-					hook.removeListener("mousedown", onMouseDown);
-					hook.removeListener("mouseup", onMouseUp);
-					if (process.platform === "linux") {
-						hook.removeListener("mousemove", onMouseMove);
-					}
-				}
-			} catch {
-				// ignore listener cleanup errors
-			}
-
-			try {
-				if (typeof hook.stop === "function") {
-					hook.stop();
-				}
-			} catch {
-				// ignore hook shutdown errors
-			}
-		});
-
-		hook.start();
-	} catch (error) {
-		if (!hasLoggedInteractionHookFailure) {
-			setHasLoggedInteractionHookFailure(true);
-			console.warn("[CursorTelemetry] Global interaction capture unavailable:", error);
-		}
+	} catch {
+		startFallback();
 	}
 }
