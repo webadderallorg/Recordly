@@ -37,6 +37,42 @@ const WEBCAM_WIDTH = 1280;
 const WEBCAM_HEIGHT = 720;
 const WEBCAM_FRAME_RATE = 30;
 const WEBCAM_SUFFIX = "-webcam";
+
+/** Resolves with the wall-clock time of the recorder's `start` event, or null on timeout. */
+export function waitForRecorderStart(
+	recorder: Pick<MediaRecorder, "addEventListener" | "removeEventListener">,
+	timeoutMs = 2000,
+): Promise<number | null> {
+	return new Promise((resolve) => {
+		const onStart = () => {
+			clearTimeout(timer);
+			resolve(Date.now());
+		};
+		const timer = setTimeout(() => {
+			recorder.removeEventListener("start", onStart);
+			resolve(null);
+		}, timeoutMs);
+		recorder.addEventListener("start", onStart, { once: true });
+	});
+}
+
+async function waitForFirstVideoFrame(mediaStream: MediaStream, timeoutMs = 3000) {
+	const video = document.createElement("video");
+	video.muted = true;
+	video.srcObject = mediaStream;
+	try {
+		await Promise.race([
+			new Promise<void>((resolve) => {
+				video.requestVideoFrameCallback(() => resolve());
+				void video.play().catch(() => resolve());
+			}),
+			new Promise<void>((resolve) => setTimeout(resolve, timeoutMs)),
+		]);
+	} finally {
+		video.pause();
+		video.srcObject = null;
+	}
+}
 const MICROPHONE_FALLBACK_ERROR_TOAST_ID = "recording-microphone-fallback-error";
 const MICROPHONE_SIDECAR_ERROR_TOAST_ID = "recording-microphone-sidecar-error";
 export type BrowserMicrophoneProfile =
@@ -2241,12 +2277,46 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			recorder.onerror = () => {
 				setRecording(false);
 			};
-			const mainStartedAt = Date.now();
+			// PipeWire/portal streams can take ~1s to deliver their first frame, so don't
+			// start the recorder (or any clock) before real frames are flowing.
+			await waitForFirstVideoFrame(stream.current);
+			if (startWasCancelled()) {
+				mediaRecorder.current = null;
+				await stopWebcamRecorder();
+				cleanupCapturedMedia();
+				return;
+			}
+
+			// The encoder starts a few hundred ms after start() on Linux portal capture.
+			// Anchor the duration clock, the webcam offset and the cursor telemetry to the
+			// same instant, when the recorder reports it has actually started.
+			const recorderStartedAt = waitForRecorderStart(recorder);
+			// Provisional anchor in case the recording is stopped before `start` fires.
+			resetRecordingClock(Date.now());
+			recorder.start(RECORDER_TIMESLICE_MS);
+			const startedAt = await recorderStartedAt;
+			if (startWasCancelled()) {
+				// A stop that ran during the wait has already finalized the recorder.
+				// Otherwise nothing has been saved yet: discard the capture.
+				if (recorder.state !== "inactive") {
+					recorder.ondataavailable = null;
+					chunks.current = [];
+					recorder.stop();
+					mediaRecorder.current = null;
+					await stopWebcamRecorder();
+					cleanupCapturedMedia();
+				}
+				return;
+			}
+			if (startedAt === null && recorder.state !== "recording") {
+				throw new Error("The screen recorder did not start.");
+			}
+
+			const mainStartedAt = startedAt ?? Date.now();
 			beginWebcamCapture();
 			resetRecordingClock(mainStartedAt);
 			webcamTimeOffsetMs.current =
 				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
-			recorder.start(RECORDER_TIMESLICE_MS);
 			setRecording(true);
 			try {
 				await window.electronAPI?.setRecordingState(true);

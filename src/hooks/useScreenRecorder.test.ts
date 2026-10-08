@@ -7,6 +7,7 @@ import {
 	resolveBrowserCaptureCursorPolicy,
 	shouldUseNativeWindowsCaptureForSource,
 	stopAndDiscardNativeCapture,
+	waitForRecorderStart,
 } from "./useScreenRecorder";
 
 type RecordingState = "inactive" | "recording" | "paused";
@@ -924,5 +925,28 @@ describe("useScreenRecorder state machine", () => {
 			expect(recorder.state).toBe("inactive");
 			expect(webcam.state).toBe("inactive");
 		});
+	});
+});
+
+describe("waitForRecorderStart", () => {
+	it("resolves with the time of the start event", async () => {
+		const recorder = new EventTarget();
+		const started = waitForRecorderStart(recorder);
+		const before = Date.now();
+		recorder.dispatchEvent(new Event("start"));
+		const startedAt = await started;
+		expect(startedAt).not.toBeNull();
+		expect(startedAt as number).toBeGreaterThanOrEqual(before);
+	});
+
+	it("resolves with null when the recorder never starts", async () => {
+		vi.useFakeTimers();
+		try {
+			const started = waitForRecorderStart(new EventTarget(), 2000);
+			vi.advanceTimersByTime(2000);
+			expect(await started).toBeNull();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
