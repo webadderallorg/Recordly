@@ -1,6 +1,7 @@
 import type { Span } from "dnd-timeline";
 import { useCallback, useEffect, useMemo } from "react";
 import type { CursorTelemetryPoint, ZoomFocus, ZoomRegion } from "../../../types";
+import { playbackTimeStore } from "../../../state/playbackTimeStore";
 import { buildInteractionZoomSuggestions } from "../../zoomSuggestionUtils";
 import { timelineNotifications } from "../utils/timelineNotifications";
 
@@ -8,7 +9,6 @@ interface UseTimelineZoomActionsParams {
 	timeline: {
 		videoDuration: number;
 		totalMs: number;
-		currentTimeMs: number;
 	};
 	regions: {
 		zoom: ZoomRegion[];
@@ -34,7 +34,7 @@ export function useTimelineZoomActions({
 	onZoomAdded,
 	onZoomSuggested,
 }: UseTimelineZoomActionsParams) {
-	const { videoDuration, totalMs, currentTimeMs } = timeline;
+	const { videoDuration, totalMs } = timeline;
 	const { zoom: zoomRegions, clip: clipRegions } = regions;
 	const { disableSuggestedZooms } = options;
 	const defaultRegionDurationMs = useMemo(() => Math.min(1000, totalMs), [totalMs]);
@@ -104,8 +104,8 @@ export function useTimelineZoomActions({
 			return;
 		}
 
-		addZoomAtMs(currentTimeMs);
-	}, [videoDuration, totalMs, currentTimeMs, addZoomAtMs]);
+		addZoomAtMs(playbackTimeStore.getMs());
+	}, [videoDuration, totalMs, addZoomAtMs]);
 
 	const handleSuggestZooms = useCallback(() => {
 		if (!videoDuration || videoDuration === 0 || totalMs === 0) {

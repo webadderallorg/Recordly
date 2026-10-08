@@ -8,6 +8,7 @@ import type { useCaptionCommands } from "../hooks/useCaptionCommands";
 import type { useClipRegionCommands } from "../hooks/useClipRegionCommands";
 import type { useZoomRegionCommands } from "../hooks/useZoomRegionCommands";
 import { SettingsPanel } from "../SettingsPanel";
+import { playbackTimeStore } from "../state/playbackTimeStore";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
 import { type EditorEffectSection, mapTimelineTimeToSourceTime } from "../types";
@@ -24,7 +25,6 @@ type Input = {
 	autoCaptionController: ReturnType<typeof useAutoCaptionController>;
 	effectiveShowCursor: boolean;
 	handleShowCursorChange: (show: boolean) => void;
-	currentTime: number;
 	isPlaying: boolean;
 	aspectRatio: AspectRatio;
 	setAspectRatio: Dispatch<SetStateAction<AspectRatio>>;
@@ -52,7 +52,6 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		autoCaptionController,
 		effectiveShowCursor,
 		handleShowCursorChange,
-		currentTime,
 		isPlaying,
 		aspectRatio,
 		setAspectRatio,
@@ -173,8 +172,8 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onBorderRadiusChange: appearance.setBorderRadius,
 		webcam: appearance.webcam,
 		webcamPreviewSrc: appearance.webcam.sourcePath ? appearance.resolvedWebcamVideoUrl : null,
-		webcamPreviewCurrentTime:
-			mapTimelineTimeToSourceTime(currentTime * 1000, timeline.clipRegions) / 1000,
+		getWebcamPreviewSourceTime: (timelineSeconds: number) =>
+			mapTimelineTimeToSourceTime(timelineSeconds * 1000, timeline.clipRegions) / 1000,
 		webcamPreviewPlaying: isPlaying,
 		onWebcamChange: appearance.setWebcam,
 		onUploadWebcam: handleUploadWebcam,
@@ -199,7 +198,8 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onPickWhisperModel: autoCaptionController.handlePickWhisperModel,
 		onGenerateAutoCaptions: autoCaptionController.handleGenerateAutoCaptions,
 		onClearAutoCaptions: captionCommands.handleClearAutoCaptions,
-		captionCurrentTimeMs: mapTimelineTimeToSourceTime(currentTime * 1000, timeline.clipRegions),
+		getCaptionCurrentTimeMs: () =>
+			mapTimelineTimeToSourceTime(playbackTimeStore.getMs(), timeline.clipRegions),
 		selectedCaptionId: timeline.selectedCaptionId,
 		onBeginCaptionEdit: captionCommands.handleBeginCaptionEdit,
 		onCaptionTextEdit: captionCommands.handleCaptionTextEdit,

@@ -2,9 +2,11 @@ import type { ComponentProps, Dispatch, RefObject, SetStateAction } from "react"
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { useAppearanceState } from "../state/useAppearanceState";
+import { playbackTimeStore } from "../state/playbackTimeStore";
 import type { useTimelineState } from "../state/useTimelineState";
 import type { CursorTelemetryPoint, ZoomRegion } from "../types";
 import VideoPlayback, { type VideoPlaybackRef } from "../VideoPlayback";
+import type { PreviewRenderScale } from "../videoPlayback/previewRenderScale";
 
 type PlaybackProps = ComponentProps<typeof VideoPlayback>;
 type Handlers = Pick<
@@ -22,9 +24,9 @@ type Props = {
 	previewVersion: number;
 	aspectRatio: AspectRatio;
 	playbackRef: RefObject<VideoPlaybackRef | null>;
-	currentTime: number;
 	isPlaying: boolean;
 	previewVolume: number;
+	previewRenderScale: PreviewRenderScale;
 	suspendRendering: boolean;
 	appearance: ReturnType<typeof useAppearanceState>;
 	timeline: ReturnType<typeof useTimelineState>;
@@ -34,7 +36,7 @@ type Props = {
 	effectiveShowCursor: boolean;
 	setDuration: Dispatch<SetStateAction<number>>;
 	setIsPreviewReady: Dispatch<SetStateAction<boolean>>;
-	setCurrentTime: Dispatch<SetStateAction<number>>;
+	onTimeUpdate: (time: number) => void;
 	setIsPlaying: Dispatch<SetStateAction<boolean>>;
 	setError: (message: string | null) => void;
 	handlers: Handlers;
@@ -45,9 +47,9 @@ export function EditorVideoPreview({
 	previewVersion,
 	aspectRatio,
 	playbackRef,
-	currentTime,
 	isPlaying,
 	previewVolume,
+	previewRenderScale,
 	suspendRendering,
 	appearance,
 	timeline,
@@ -57,7 +59,7 @@ export function EditorVideoPreview({
 	effectiveShowCursor,
 	setDuration,
 	setIsPreviewReady,
-	setCurrentTime,
+	onTimeUpdate,
 	setIsPlaying,
 	setError,
 	handlers,
@@ -71,8 +73,9 @@ export function EditorVideoPreview({
 			videoPath={videoPath || ""}
 			onDurationChange={setDuration}
 			onPreviewReadyChange={setIsPreviewReady}
-			onTimeUpdate={setCurrentTime}
-			currentTime={currentTime}
+			onTimeUpdate={onTimeUpdate}
+			timeStore={playbackTimeStore}
+			previewRenderScale={previewRenderScale}
 			onPlayStateChange={setIsPlaying}
 			onError={setError}
 			wallpaper={appearance.wallpaper}

@@ -1,11 +1,27 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type Dispatch,
+	type SetStateAction,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { OPEN_EDITOR_SECTION_EVENT } from "@/lib/announcementActions";
+import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
 import { type AnnouncementEditorSection, isAnnouncementEditorSection } from "@/lib/announcements";
 import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import type { loadEditorPreferences } from "../editorPreferences";
 import type { TimelineEditorHandle } from "../timeline/TimelineEditor";
 import type { CropRegion, EditorEffectSection } from "../types";
 import type { VideoPlaybackRef } from "../VideoPlayback";
+import {
+	normalizePreviewRenderScale,
+	type PreviewRenderScale,
+} from "../videoPlayback/previewRenderScale";
+import { playbackTimeStore } from "./playbackTimeStore";
+
+const PREVIEW_RENDER_SCALE_STORAGE_KEY = "editorPreviewRenderScale";
 
 type SessionPresentation = {
 	hideOverlayCursorByDefault?: boolean;
@@ -21,7 +37,7 @@ export function useEditorUiState(
 		typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "darwin" : "",
 	);
 	const [isPlaying, setIsPlaying] = useState(false);
-	const [currentTime, setCurrentTime] = useState(0);
+	const [currentTime, setCurrentTimeState] = useState(0);
 	const [duration, setDuration] = useState(0);
 	const [sessionShowCursorOverride, setSessionShowCursorOverride] = useState<boolean | null>(
 		null,
@@ -44,12 +60,43 @@ export function useEditorUiState(
 	const [whisperModelDownloadProgress, setWhisperModelDownloadProgress] = useState(0);
 	const [isGeneratingCaptions, setIsGeneratingCaptions] = useState(false);
 	const [previewVolume, setPreviewVolume] = useState(1);
+	const [previewRenderScale, setPreviewRenderScaleState] = useState<PreviewRenderScale>(() =>
+		normalizePreviewRenderScale(loadAppSetting<unknown>(PREVIEW_RENDER_SCALE_STORAGE_KEY)),
+	);
+	const setPreviewRenderScale = useCallback((scale: PreviewRenderScale) => {
+		setPreviewRenderScaleState(scale);
+		saveAppSetting(PREVIEW_RENDER_SCALE_STORAGE_KEY, scale);
+	}, []);
 	const [aspectRatio, setAspectRatio] = useState<AspectRatio>(initialPreferences.aspectRatio);
 	const [activeEffectSection, setActiveEffectSection] = useState<EditorEffectSection>("scene");
 	const [showCropModal, setShowCropModal] = useState(false);
 	const [previewVersion, setPreviewVersion] = useState(0);
 	const [isPreviewReady, setIsPreviewReady] = useState(false);
 	const [autoSuggestZoomsTrigger, setAutoSuggestZoomsTrigger] = useState(0);
+
+	const isPlayingRef = useRef(isPlaying);
+	isPlayingRef.current = isPlaying;
+
+	/** Explicit time changes (seek, open project): store and state update together. */
+	const setCurrentTime = useCallback<Dispatch<SetStateAction<number>>>((value) => {
+		playbackTimeStore.set(typeof value === "function" ? value(playbackTimeStore.get()) : value);
+		setCurrentTimeState(playbackTimeStore.get());
+	}, []);
+
+	/**
+	 * Per-frame time from the player. The store is always exact; React state only
+	 * follows while paused, so playback never re-renders the editor tree. Consumers
+	 * that must track playback read the store instead of `currentTime`.
+	 */
+	const reportPlaybackTime = useCallback((time: number) => {
+		playbackTimeStore.set(time);
+		if (!isPlayingRef.current) setCurrentTimeState(time);
+	}, []);
+
+	// Land the final position when playback stops.
+	useEffect(() => {
+		if (!isPlaying) setCurrentTimeState(playbackTimeStore.get());
+	}, [isPlaying]);
 
 	const videoPlaybackRef = useRef<VideoPlaybackRef>(null);
 	const projectBrowserTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -118,6 +165,7 @@ export function useEditorUiState(
 		setIsPlaying,
 		currentTime,
 		setCurrentTime,
+		reportPlaybackTime,
 		duration,
 		setDuration,
 		sessionShowCursorOverride,
@@ -139,6 +187,8 @@ export function useEditorUiState(
 		setIsGeneratingCaptions,
 		previewVolume,
 		setPreviewVolume,
+		previewRenderScale,
+		setPreviewRenderScale,
 		aspectRatio,
 		setAspectRatio,
 		activeEffectSection,

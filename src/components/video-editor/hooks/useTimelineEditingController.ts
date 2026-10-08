@@ -92,8 +92,6 @@ export function useTimelineEditingController(input: Input) {
 		setSourceAudioTrackSettingsByClip: timeline.setSourceAudioTrackSettingsByClip,
 		defaultSourceAudioTrackSettings: timeline.defaultSourceAudioTrackSettings,
 		setDefaultSourceAudioTrackSettings: timeline.setDefaultSourceAudioTrackSettings,
-		timelineTime: projection.timelinePlayheadTime,
-		currentTime: projection.mapTimelineTimeToSourceTime(input.currentTime * 1000) / 1000,
 		duration: input.duration,
 		isPlaying: input.isPlaying,
 		previewVolume: input.previewVolume,
@@ -105,7 +103,6 @@ export function useTimelineEditingController(input: Input) {
 		videoPlaybackRef: input.videoPlaybackRef,
 		timelineRef: input.timelineRef,
 		playSourceAudioPreview: audio.playSourceAudioPreview,
-		timelinePlayheadTime: projection.timelinePlayheadTime,
 		timelineDuration: projection.timelineDuration,
 	});
 	const captionCommands = useCaptionCommands({

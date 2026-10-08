@@ -373,10 +373,11 @@ export function EditorShell(props: Props) {
 						previewAspectRatioValue={previewAspectRatioValue}
 						videoPlaybackRef={ui.videoPlaybackRef}
 						timelineRef={ui.timelineRef}
-						currentTime={ui.currentTime}
 						isPlaying={ui.isPlaying}
 						previewVolume={ui.previewVolume}
 						setPreviewVolume={ui.setPreviewVolume}
+						previewRenderScale={ui.previewRenderScale}
+						setPreviewRenderScale={ui.setPreviewRenderScale}
 						suspendRendering={exportStatus.shouldSuspendPreviewRendering}
 						appearance={appearance}
 						timeline={timeline}
@@ -394,7 +395,7 @@ export function EditorShell(props: Props) {
 						setDuration={ui.setDuration}
 						isPreviewReady={ui.isPreviewReady}
 						setIsPreviewReady={ui.setIsPreviewReady}
-						setCurrentTime={ui.setCurrentTime}
+						onTimeUpdate={ui.reportPlaybackTime}
 						setIsPlaying={ui.setIsPlaying}
 						setError={handlePreviewError}
 					/>
@@ -418,7 +419,6 @@ export function EditorShell(props: Props) {
 					autoSuggestZoomsTrigger={ui.autoSuggestZoomsTrigger}
 					handleAutoSuggestZoomsConsumed={handleAutoSuggestZoomsConsumed}
 					disableSuggestedZooms={!appearance.autoApplyFreshRecordingAutoZooms}
-					currentTime={ui.currentTime}
 					handleSelectAnnotation={handleSelectAnnotation}
 				/>
 			</div>

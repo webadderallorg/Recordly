@@ -1,8 +1,9 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import { resolveSourceTrackRoutingPolicy } from "@/lib/exporter/sourceTrackRoutingPolicy";
+import { playbackTimeStore, usePlaybackSelector } from "../state/playbackTimeStore";
 import type { AudioRegion, ClipRegion } from "../types";
-import { findClipAtTimelineTime } from "../types";
+import { findClipAtTimelineTime, mapTimelineTimeToSourceTime } from "../types";
 import { isClipMutedById } from "./clipAudio";
 import { useAudioPreviewSync } from "./useAudioPreviewSync";
 import { useClipAudioSettingsController } from "./useClipAudioSettingsController";
@@ -36,8 +37,6 @@ interface UseVideoEditorAudioParams {
 	setDefaultSourceAudioTrackSettings: React.Dispatch<
 		React.SetStateAction<SourceAudioTrackSettings>
 	>;
-	currentTime: number;
-	timelineTime: number;
 	duration: number;
 	isPlaying: boolean;
 	previewVolume: number;
@@ -55,8 +54,6 @@ export function useVideoEditorAudio({
 	setSourceAudioTrackSettingsByClip,
 	defaultSourceAudioTrackSettings,
 	setDefaultSourceAudioTrackSettings,
-	currentTime,
-	timelineTime,
 	duration,
 	isPlaying,
 	previewVolume,
@@ -83,9 +80,19 @@ export function useVideoEditorAudio({
 	const previewSourceAudioFallbackPaths = sourceTrackRoutingPolicy.playbackPaths;
 	const shouldMutePreviewVideo = sourceTrackRoutingPolicy.muteEmbeddedPreview;
 
-	const activeClipIdAtCurrentTime = useMemo(
-		() => findClipAtTimelineTime(timelineTime * 1000, clipRegions)?.id ?? null,
-		[clipRegions, timelineTime],
+	// Derived from the live playback clock; re-renders only when the active clip changes.
+	const activeClipIdAtCurrentTime = usePlaybackSelector(
+		playbackTimeStore,
+		(timelineTime) => findClipAtTimelineTime(timelineTime * 1000, clipRegions)?.id ?? null,
+	);
+	const activeClipSpeed = usePlaybackSelector(
+		playbackTimeStore,
+		(timelineTime) => findClipAtTimelineTime(timelineTime * 1000, clipRegions)?.speed ?? 1,
+	);
+	const getSourceTimeSeconds = useCallback(
+		(timelineSeconds: number) =>
+			mapTimelineTimeToSourceTime(timelineSeconds * 1000, clipRegions) / 1000,
+		[clipRegions],
 	);
 	const isCurrentClipMuted = useMemo(
 		() =>
@@ -117,10 +124,9 @@ export function useVideoEditorAudio({
 		audioRegions,
 		previewVolume,
 		isPlaying,
-		currentTime,
-		timelineTime,
+		getSourceTimeSeconds,
 		duration,
-		sourcePlaybackRate: findClipAtTimelineTime(timelineTime * 1000, clipRegions)?.speed ?? 1,
+		sourcePlaybackRate: activeClipSpeed,
 		previewSourceAudioFallbackPaths,
 		sourceAudioFallbackStartDelayMsByPath,
 		sourceAudioResourceVersion: sourceAudioFallbackRefreshKey,

@@ -12,6 +12,7 @@ import type {
 	ZoomFocus,
 	ZoomRegion,
 } from "../../types";
+import { playbackTimeStore } from "../../state/playbackTimeStore";
 import type { ClipSequenceSpan, TimelineShortcutBindings } from "../core/timelineTypes";
 import type { TimelineEditorHandle } from "../TimelineEditor";
 import { useTimelineAudioActions } from "./actions/useTimelineAudioActions";
@@ -26,7 +27,6 @@ interface UseTimelineEditorRuntimeParams {
 	ref: ForwardedRef<TimelineEditorHandle>;
 	videoDuration: number;
 	totalMs: number;
-	currentTimeMs: number;
 	safeMinDurationMs: number;
 	cursorTelemetry: CursorTelemetryPoint[];
 	autoSuggestZoomsTrigger: number;
@@ -76,7 +76,6 @@ export function useTimelineEditorRuntime({
 	ref,
 	videoDuration,
 	totalMs,
-	currentTimeMs,
 	safeMinDurationMs,
 	cursorTelemetry,
 	autoSuggestZoomsTrigger,
@@ -146,7 +145,6 @@ export function useTimelineEditorRuntime({
 		cycleAnnotationsAtCurrentTime,
 	} = useTimelineSelection({
 		totalMs,
-		currentTimeMs,
 		zoomRegions,
 		clipRegions,
 		annotationRegions,
@@ -211,7 +209,7 @@ export function useTimelineEditorRuntime({
 		handleAddZoom,
 		handleSuggestZooms,
 	} = useTimelineZoomActions({
-		timeline: { videoDuration, totalMs, currentTimeMs },
+		timeline: { videoDuration, totalMs },
 		regions: { zoom: zoomRegions, clip: clipRegions },
 		cursorTelemetry,
 		options: { disableSuggestedZooms },
@@ -232,11 +230,11 @@ export function useTimelineEditorRuntime({
 		if (!videoDuration || videoDuration === 0 || totalMs === 0 || !onClipSplit) {
 			return;
 		}
-		onClipSplit(currentTimeMs);
-	}, [videoDuration, totalMs, currentTimeMs, onClipSplit]);
+		onClipSplit(playbackTimeStore.getMs());
+	}, [videoDuration, totalMs, onClipSplit]);
 
 	const { handleAddAudio } = useTimelineAudioActions({
-		timeline: { videoDuration, totalMs, currentTimeMs },
+		timeline: { videoDuration, totalMs },
 		regions: { audio: audioRegions },
 		onAudioAdded,
 	});
@@ -253,11 +251,11 @@ export function useTimelineEditorRuntime({
 			}
 
 			const latestStartPos = Math.max(0, totalMs - defaultDuration);
-			const startPos = Math.max(0, Math.min(currentTimeMs, latestStartPos));
+			const startPos = Math.max(0, Math.min(playbackTimeStore.getMs(), latestStartPos));
 			const endPos = Math.min(startPos + defaultDuration, totalMs);
 			onAnnotationAdded({ start: startPos, end: endPos }, trackIndex);
 		},
-		[videoDuration, totalMs, currentTimeMs, defaultRegionDurationMs, onAnnotationAdded],
+		[videoDuration, totalMs, defaultRegionDurationMs, onAnnotationAdded],
 	);
 
 	useTimelineKeyboardShortcuts({
