@@ -259,12 +259,13 @@ async function decodeVideoStreamAttempt(
 		) + 0.5;
 	const reader = context.demuxer.read("video", 0, readEndSec).getReader();
 
+	let readerCancelled = false;
 	// Feed chunks to decoder in background with backpressure
 	const feedPromise = (async () => {
 		try {
-			while (!context.cancelled && !decodeError) {
+			while (!context.cancelled && !decodeError && !readerCancelled) {
 				const { done, value: chunk } = await reader.read();
-				if (done || !chunk) break;
+				if (done || !chunk || readerCancelled) break;
 
 				if (!loggedSteadyStateBackpressure && exportFrameIndex >= startupFrameBudget) {
 					loggedSteadyStateBackpressure = true;
@@ -285,6 +286,7 @@ async function decodeVideoStreamAttempt(
 				// Backpressure on both decode queue and decoded frame backlog.
 				while (
 					!decodeError &&
+					!readerCancelled &&
 					context.decoder!.state === "configured" &&
 					(context.decoder!.decodeQueueSize > decodeQueueLimit ||
 						pendingFrames.length > pendingFrameLimit) &&
@@ -292,7 +294,7 @@ async function decodeVideoStreamAttempt(
 				) {
 					await waitForBackpressureProgress();
 				}
-				if (context.cancelled || decodeError) break;
+				if (context.cancelled || decodeError || readerCancelled) break;
 				if (context.decoder!.state !== "configured") {
 					recordFirstDecodeError(
 						new DOMException(
@@ -309,11 +311,13 @@ async function decodeVideoStreamAttempt(
 				submittedChunkCount++;
 			}
 
-			if (!context.cancelled && context.decoder!.state === "configured") {
+			if (!context.cancelled && !readerCancelled && context.decoder!.state === "configured") {
 				await context.decoder!.flush();
 			}
 		} catch (e) {
-			recordFirstDecodeError(e);
+			if (!readerCancelled) {
+				recordFirstDecodeError(e);
+			}
 		} finally {
 			decodeDone = true;
 			if (frameResolve) {
@@ -465,18 +469,21 @@ async function decodeVideoStreamAttempt(
 		heldFrame = null;
 	}
 
-	// Drain leftover decoded frames
+	readerCancelled = true;
+	try {
+		await reader.cancel();
+	} catch {
+		/* already closed */
+	}
+	notifyBackpressureProgress();
+
+	// Drain any in-flight decoded frames already emitted before cancellation
 	while (!decodeDone && !decodeError) {
 		const frame = await getNextFrame();
 		if (!frame) break;
 		frame.close();
 	}
 
-	try {
-		reader.cancel();
-	} catch {
-		/* already closed */
-	}
 	await feedPromise;
 	for (const f of pendingFrames) f.close();
 	pendingFrames.length = 0;
