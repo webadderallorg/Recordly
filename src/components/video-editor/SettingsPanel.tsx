@@ -444,6 +444,8 @@ interface SettingsPanelProps {
 	selectedAudioNormalize?: boolean | null;
 	onAudioVolumeChange?: (volume: number) => void;
 	onAudioNormalizeChange?: (normalize: boolean) => void;
+	selectedAudioMatchClipSpeed?: boolean | null;
+	onAudioMatchClipSpeedChange?: (matchClipSpeed: boolean) => void;
 	onAudioDelete?: (id: string) => void;
 	shadowIntensity?: number;
 	onShadowChange?: (intensity: number) => void;
@@ -901,6 +903,8 @@ export function SettingsPanel({
 	selectedAudioNormalize,
 	onAudioVolumeChange,
 	onAudioNormalizeChange,
+	selectedAudioMatchClipSpeed,
+	onAudioMatchClipSpeedChange,
 	onAudioDelete,
 	shadowIntensity = 0.67,
 	onShadowChange,
@@ -2670,6 +2674,7 @@ export function SettingsPanel({
 						onClick={() => {
 							onAudioVolumeChange?.(1);
 							onAudioNormalizeChange?.(false);
+							onAudioMatchClipSpeedChange?.(false);
 						}}
 					>
 						{t("common.actions.reset", "Reset")}
@@ -2692,6 +2697,16 @@ export function SettingsPanel({
 						aria-label={tSettings("audio.normalize", "Normalize")}
 						checked={Boolean(selectedAudioNormalize)}
 						onCheckedChange={(v) => onAudioNormalizeChange?.(v)}
+					/>
+				</div>
+				<div className="flex items-center justify-between py-2">
+					<span className="text-xs text-muted-foreground">
+						{tSettings("audio.matchClipSpeed", "Match clip speed")}
+					</span>
+					<Switch
+						aria-label={tSettings("audio.matchClipSpeed", "Match clip speed")}
+						checked={Boolean(selectedAudioMatchClipSpeed)}
+						onCheckedChange={(v) => onAudioMatchClipSpeedChange?.(v)}
 					/>
 				</div>
 			</section>
