@@ -563,6 +563,8 @@ export interface AudioRegion {
 	audioPath: string;
 	volume: number;
 	normalize?: boolean;
+	/** Opt-in: play at the speed of the footage under the region instead of 1x. */
+	matchClipSpeed?: boolean;
 	trackIndex?: number;
 }
 

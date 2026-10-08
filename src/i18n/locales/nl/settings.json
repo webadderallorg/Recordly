@@ -247,6 +247,7 @@
 		"volumeTitle": "Audio",
 		"volume": "Volume",
 		"normalize": "Normaliseren",
+		"matchClipSpeed": "Clipsnelheid volgen",
 		"sourceTracksTitle": "Bronaudio clip",
 		"systemLabel": "Systeemaudio",
 		"micLabel": "Microfoon",
