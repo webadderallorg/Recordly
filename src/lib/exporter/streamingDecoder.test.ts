@@ -463,6 +463,124 @@ describe("StreamingVideoDecoder decode failures", () => {
 		);
 		expect(decoder.getEffectiveDuration(undefined, undefined, clips)).toBe(1.2);
 	});
+
+	it("promptly cancels demuxer reader when clip run completes without draining remaining stream chunks", async () => {
+		let cancelCalled = false;
+		mockDemuxerRead.mockImplementation(
+			() =>
+				new ReadableStream({
+					start(controller) {
+						for (let i = 0; i < 500; i++) {
+							controller.enqueue({ timestamp: (i * 1_000_000) / 30 });
+						}
+						controller.close();
+					},
+					cancel() {
+						cancelCalled = true;
+					},
+				}),
+		);
+		class TestDecoder {
+			state = "unconfigured";
+			decodeQueueSize = 0;
+			constructor(private callbacks: { output: (frame: VideoFrame) => void }) {}
+			configure() {
+				this.state = "configured";
+			}
+			decode(chunk: EncodedVideoChunk) {
+				this.callbacks.output({
+					timestamp: chunk.timestamp,
+					close: vi.fn(),
+				} as unknown as VideoFrame);
+			}
+			async flush() {}
+			close() {
+				this.state = "closed";
+			}
+		}
+		vi.stubGlobal("VideoDecoder", TestDecoder);
+		const decoder = new StreamingVideoDecoder();
+		await decoder.loadMetadata("/tmp/clip-prompt-cancel.mp4");
+		const clips = [
+			{
+				id: "clip-short",
+				startMs: 0,
+				endMs: 400,
+				sourceStartMs: 0,
+				speed: 1,
+			},
+		];
+		const frames: number[] = [];
+		await decoder.decodeAll(
+			30,
+			undefined,
+			undefined,
+			async (frame, timestamp) => {
+				if (frame) frames.push(timestamp);
+			},
+			clips,
+		);
+		expect(frames).toHaveLength(12);
+		expect(cancelCalled).toBe(true);
+	});
+
+	it("seamlessly decodes multi-run split clip timelines across sequential runs", async () => {
+		let runIndex = 0;
+		const cancelledRuns: number[] = [];
+		mockDemuxerRead.mockImplementation(() => {
+			const currentRun = runIndex++;
+			return new ReadableStream({
+				start(controller) {
+					for (let i = 0; i < 150; i++) {
+						controller.enqueue({ timestamp: (i * 1_000_000) / 30 });
+					}
+					controller.close();
+				},
+				cancel() {
+					cancelledRuns.push(currentRun);
+				},
+			});
+		});
+		class TestDecoder {
+			state = "unconfigured";
+			decodeQueueSize = 0;
+			constructor(private callbacks: { output: (frame: VideoFrame) => void }) {}
+			configure() {
+				this.state = "configured";
+			}
+			decode(chunk: EncodedVideoChunk) {
+				this.callbacks.output({
+					timestamp: chunk.timestamp,
+					close: vi.fn(),
+				} as unknown as VideoFrame);
+			}
+			async flush() {}
+			close() {
+				this.state = "closed";
+			}
+		}
+		vi.stubGlobal("VideoDecoder", TestDecoder);
+		const decoder = new StreamingVideoDecoder();
+		await decoder.loadMetadata("/tmp/multi-run.mp4");
+		// 2 separate runs (reordered source ranges require separate forward demuxer passes):
+		const clips = [
+			{ id: "c1", startMs: 0, endMs: 200, sourceStartMs: 1000, speed: 1 },
+			{ id: "c2", startMs: 500, endMs: 700, sourceStartMs: 0, speed: 1 },
+		];
+		const emitted: Array<{ gap: boolean; timestamp: number }> = [];
+		await decoder.decodeAll(
+			30,
+			undefined,
+			undefined,
+			async (frame, timestamp) => {
+				emitted.push({ gap: frame === null, timestamp });
+			},
+			clips,
+		);
+		expect(emitted).toHaveLength(21);
+		expect(emitted.filter((f) => !f.gap)).toHaveLength(12);
+		expect(cancelledRuns).toEqual([0, 1]);
+	});
 });
 
 describe("StreamingVideoDecoder local media loading", () => {

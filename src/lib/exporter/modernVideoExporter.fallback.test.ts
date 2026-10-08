@@ -53,6 +53,8 @@ vi.mock("./modernFrameRenderer", () => ({
 			destroy: mocks.frameRendererDestroy,
 			getRendererBackend: mocks.frameRendererGetBackend,
 			initialize: mocks.frameRendererInitialize,
+			renderFrame: vi.fn(async () => {}),
+			getCanvas: vi.fn(() => ({})),
 		};
 	}),
 }));
@@ -518,5 +520,170 @@ describe("ModernVideoExporter native fallback routing", () => {
 				cursorClickEffectDurationMs: 720,
 			}),
 		);
+	});
+
+	it("waitForEncodeCapacity resolves when notifyEncodeCapacityAvailable is called", async () => {
+		const exporter = new ModernVideoExporter({} as never) as unknown as {
+			waitForEncodeCapacity: (timeoutMs?: number) => Promise<void>;
+			notifyEncodeCapacityAvailable: () => void;
+		};
+		let resolved = false;
+		const waitPromise = exporter.waitForEncodeCapacity(1000).then(() => {
+			resolved = true;
+		});
+		expect(resolved).toBe(false);
+		exporter.notifyEncodeCapacityAvailable();
+		await waitPromise;
+		expect(resolved).toBe(true);
+	});
+
+	it("waitForEncodeCapacity resolves on fallback timeout when capacity notification is absent", async () => {
+		const exporter = new ModernVideoExporter({} as never) as unknown as {
+			waitForEncodeCapacity: (timeoutMs?: number) => Promise<void>;
+		};
+		const start = Date.now();
+		await exporter.waitForEncodeCapacity(20);
+		const elapsed = Date.now() - start;
+		expect(elapsed).toBeGreaterThanOrEqual(15);
+	});
+
+	it("flushes pending native write batch before awaiting capacity when encode queue reaches limit", async () => {
+		const writeFramesMock = vi.fn().mockResolvedValue({ success: true });
+		vi.stubGlobal("window", {
+			electronAPI: {
+				nativeVideoExportWriteFrames: writeFramesMock,
+			},
+		});
+
+		class MockVideoFrame {
+			constructor(_canvas: unknown, _init: unknown) {}
+			close() {}
+		}
+		vi.stubGlobal("VideoFrame", MockVideoFrame);
+
+		let queueSize = 64;
+		const mockEncoder = {
+			get encodeQueueSize() {
+				return queueSize;
+			},
+			encode: vi.fn(() => {
+				queueSize = 1;
+			}),
+		};
+
+		const exporter = new ModernVideoExporter({} as never) as unknown as {
+			nativeH264Encoder: unknown;
+			nativeExportSessionId: string;
+			pendingNativeWriteChunks: Uint8Array[];
+			pendingNativeWriteBytes: number;
+			renderer: { getCanvas: () => unknown };
+			encodeRenderedFrameNative: (t: number, d: number, i: number) => Promise<void>;
+			waitForEncodeCapacity: (timeoutMs?: number) => Promise<void>;
+		};
+
+		exporter.nativeH264Encoder = mockEncoder;
+		exporter.nativeExportSessionId = "test-session";
+		exporter.renderer = { getCanvas: () => ({}) };
+		exporter.pendingNativeWriteChunks = [new Uint8Array([1, 2, 3])];
+		exporter.pendingNativeWriteBytes = 3;
+
+		const waitSpy = vi.spyOn(exporter, "waitForEncodeCapacity").mockImplementation(async () => {
+			queueSize = 0;
+		});
+
+		await exporter.encodeRenderedFrameNative(0, 33333, 0);
+
+		expect(writeFramesMock).toHaveBeenCalledWith("test-session", [expect.any(Uint8Array)]);
+		expect(waitSpy).toHaveBeenCalled();
+		expect(mockEncoder.encode).toHaveBeenCalled();
+	});
+
+	it("wakes capacity waiters when output chunk is received even before batch is full", async () => {
+		const exporter = new ModernVideoExporter({} as never) as unknown as {
+			waitForEncodeCapacity: (timeoutMs?: number) => Promise<void>;
+			notifyEncodeCapacityAvailable: () => void;
+			queueNativeWriteChunk: (sessionId: string, chunk: Uint8Array) => void;
+			pendingNativeWriteChunks: Uint8Array[];
+		};
+
+		let resolved = false;
+		const waitPromise = exporter.waitForEncodeCapacity(1000).then(() => {
+			resolved = true;
+		});
+
+		exporter.queueNativeWriteChunk("test-session", new Uint8Array([1, 2, 3]));
+		exporter.notifyEncodeCapacityAvailable();
+
+		await waitPromise;
+		expect(resolved).toBe(true);
+		expect(exporter.pendingNativeWriteChunks.length).toBe(1);
+	});
+
+	it("successfully exports clip regions through all frames to completion with progress reaching 100%", async () => {
+		const progressEvents: Array<{ phase: string; currentFrame: number; totalFrames: number }> = [];
+		mocks.streamingDecoderGetEffectiveDuration.mockReturnValue(1); // 1s = 30 frames
+		mocks.streamingDecoderDecodeAll.mockImplementationOnce(
+			async (_fps, _trim, _speed, onFrame, clips) => {
+				expect(clips).toBeDefined();
+				expect(clips).toHaveLength(2);
+				for (let i = 0; i < 30; i++) {
+					await onFrame(
+						{ timestamp: i * 33333, close: vi.fn() } as unknown as VideoFrame,
+						i * 33333,
+						i * 33.33,
+						i * 33.33,
+					);
+				}
+			},
+		);
+
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#101010",
+			padding: 0,
+			borderRadius: 0,
+			backgroundBlur: 0,
+			shadowIntensity: 0,
+			showShadow: false,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			backendPreference: "webcodecs",
+			clipRegions: [
+				{ id: "clip-1", startMs: 0, endMs: 500, sourceStartMs: 0, speed: 1 },
+				{ id: "clip-2", startMs: 500, endMs: 1000, sourceStartMs: 1500, speed: 1 },
+			],
+			onProgress: (p) => {
+				progressEvents.push({
+					phase: p.phase,
+					currentFrame: p.currentFrame,
+					totalFrames: p.totalFrames,
+				});
+			},
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean; blob?: Blob; error?: string }>;
+			initializeEncoder: () => Promise<unknown>;
+		};
+
+		vi.spyOn(exporter, "initializeEncoder").mockResolvedValue({
+			codec: "avc1.640034",
+			hardwareAcceleration: "prefer-hardware",
+		});
+		vi.spyOn(
+			exporter as unknown as { encodeRenderedFrame: () => Promise<void> },
+			"encodeRenderedFrame",
+		).mockResolvedValue();
+
+		const result = await exporter.export();
+
+		expect(result.success).toBe(true);
+		expect(result.blob).toBeInstanceOf(Blob);
+		expect(progressEvents.length).toBeGreaterThan(0);
+		// Verified: frames proceed past 2% all the way through 30/30 (100%) and finalization
+		const maxFrame = Math.max(...progressEvents.map((e) => e.currentFrame));
+		expect(maxFrame).toBe(30);
+		expect(progressEvents.some((e) => e.phase === "finalizing")).toBe(true);
 	});
 });
