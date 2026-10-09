@@ -176,6 +176,25 @@ https://github.com/webadderallorg/Recordly/releases
 
 ---
 
+## Ubuntu AppImage: sandbox launch error
+
+On Ubuntu 24.04 and later, the downloaded AppImage can abort at startup with a fatal error from `setuid_sandbox_host.cc`: the SUID sandbox helper was found, but `chrome-sandbox` is not configured correctly. The same abort has been reported on TUXEDO OS.
+
+AppArmor can restrict unprivileged user namespaces. Chromium then falls back to its `chrome-sandbox` helper and exits, because that helper inside an AppImage is not setuid root. A missing FUSE dependency is a different problem. Installing FUSE, or building Recordly from source, does not lift this restriction.
+
+If the AppImage already opens, launch it with no extra flags. The commands below are only for this sandbox error, and only for a trusted build from the releases page above. They do not fix unrelated launch failures.
+
+From the directory that contains the AppImage:
+
+```bash
+chmod +x ./Recordly-linux-x64.AppImage
+./Recordly-linux-x64.AppImage --no-sandbox
+```
+
+`--no-sandbox` disables Chromium's sandbox and reduces process isolation. Include it each time you start this AppImage. System-wide user-namespace restriction changes affect every application and are not required for this workaround.
+
+---
+
 ## Arch Linux / Manjaro (yay)
 
 Install from the AUR ([recordly-bin](https://aur.archlinux.org/packages/recordly-bin)):
