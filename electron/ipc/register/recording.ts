@@ -80,6 +80,7 @@ import {
 	waitForWindowsCaptureStop,
 } from "../recording/windows";
 import {
+	isWindowsSystemAudioCaptureUnavailable,
 	shouldStartWindowsBrowserMicrophoneFallback,
 	shouldUseWindowsBrowserMicrophoneFallback,
 } from "../recording/windowsFallbacks";
@@ -590,6 +591,19 @@ export function registerRecordingHandlers(
 						microphonePath = null;
 						setWindowsMicAudioPath(null);
 					}
+					// There is no renderer-side fallback for system/loopback audio: a
+					// failed WASAPI loopback session is otherwise silent, leaving an
+					// empty or missing audio file that would be treated as valid.
+					// Detect it and drop the path so the recording is correctly
+					// treated as video-only instead of shipping broken audio.
+					const systemAudioCaptureUnavailable = isWindowsSystemAudioCaptureUnavailable(
+						captureOutput,
+						options,
+					);
+					if (systemAudioCaptureUnavailable) {
+						systemAudioPath = null;
+						setWindowsSystemAudioPath(null);
+					}
 					setWindowsNativeCaptureActive(true);
 					setNativeScreenRecordingActive(true);
 					recordNativeCaptureDiagnostics({
@@ -607,7 +621,7 @@ export function registerRecordingHandlers(
 						microphonePath,
 						processOutput: captureOutput.trim() || undefined,
 					});
-					return { success: true, microphoneFallbackRequired };
+					return { success: true, microphoneFallbackRequired, systemAudioCaptureUnavailable };
 				} catch (error) {
 					recordNativeCaptureDiagnostics({
 						backend: "windows-wgc",
