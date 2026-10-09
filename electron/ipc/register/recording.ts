@@ -20,6 +20,7 @@ import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../cursor/bou
 import { startInteractionCapture, stopInteractionCapture } from "../cursor/interaction";
 import { startNativeCursorMonitor, stopNativeCursorMonitor } from "../cursor/monitor";
 import {
+	isCursorCapturePaused,
 	normalizeCursorTelemetrySamples,
 	pauseCursorCaptureAtBoundary,
 	persistPendingCursorTelemetry,
@@ -33,6 +34,9 @@ import {
 } from "../cursor/telemetry";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { getMonitorHandles } from "../monitorResolver";
+import {
+	shouldUseNativeLinuxCaptureForSource,
+} from "../linuxCaptureSelection";
 import {
 	ensureNativeCaptureHelperBinary,
 	ensureSwiftHelperBinary,
@@ -71,6 +75,24 @@ import {
 	waitForNativeCaptureStart,
 	waitForNativeCaptureStop,
 } from "../recording/mac";
+import {
+	attachLinuxCaptureLifecycle,
+	describeLinuxCaptureUnavailableReason,
+	probeNativeLinuxCaptureAvailability,
+	stitchLinuxSegments,
+	waitForLinuxCaptureStart,
+	waitForLinuxCaptureStop,
+} from "../recording/linux";
+import { getSourcePickerVisibilityForPlatform } from "../linuxPortal";
+import { getLinuxVaapiCapture } from "../recording/linuxVaapi";
+import { getLinuxNvencCapture } from "../recording/linuxNvenc";
+import {
+	type LinuxSystemAudioUnavailableReason,
+	getLinuxSystemAudioCapture,
+	spawnLinuxSystemAudioSegment,
+	stopLinuxSystemAudioSegment,
+	waitForLinuxSystemAudioSegmentStart,
+} from "../recording/linuxSystemAudio";
 import { resolveRecordedVideoStoragePath } from "../recording/storagePath";
 import {
 	attachWindowsCaptureLifecycle,
@@ -91,7 +113,25 @@ import {
 	ffmpegCaptureProcess,
 	ffmpegCaptureTargetPath,
 	ffmpegScreenRecordingActive,
+	activeCursorSamples,
 	lastNativeCaptureDiagnostics,
+	linuxCaptureOutputBuffer,
+	linuxCaptureVaapi,
+	linuxCaptureNvenc,
+	isCursorCaptureActive,
+	pendingCursorSamples,
+	cursorCaptureStartTimeMs,
+	linuxCapturePaused,
+	linuxCaptureProcess,
+	linuxCaptureSegmentPath,
+	linuxCaptureSegments,
+	linuxCaptureTargetPath,
+	linuxNativeCaptureActive,
+	linuxSystemAudioProcess,
+	linuxSystemAudioFfmpegPath,
+	linuxSystemAudioSegmentPath,
+	linuxSystemAudioSegments,
+	linuxSystemAudioSourceName,
 	nativeCaptureMicrophonePath,
 	nativeCaptureOutputBuffer,
 	nativeCapturePaused,
@@ -110,7 +150,22 @@ import {
 	setFfmpegScreenRecordingActive,
 	setIsCursorCaptureActive,
 	setLastLeftClick,
+	setLinuxCaptureOutputBuffer,
+	setLinuxCaptureVaapi,
+	setLinuxCaptureNvenc,
+	setLinuxCapturePaused,
+	setLinuxCaptureProcess,
+	setLinuxCaptureSegmentPath,
+	setLinuxCaptureSegments,
+	setLinuxCaptureStopRequested,
+	setLinuxCaptureTargetPath,
+	setLinuxNativeCaptureActive,
 	setLinuxCursorScreenPoint,
+	setLinuxSystemAudioProcess,
+	setLinuxSystemAudioFfmpegPath,
+	setLinuxSystemAudioSegmentPath,
+	setLinuxSystemAudioSegments,
+	setLinuxSystemAudioSourceName,
 	setNativeCaptureMicrophonePath,
 	setNativeCaptureOutputBuffer,
 	setNativeCapturePaused,
@@ -395,6 +450,377 @@ async function resolveExistingPath(...candidates: Array<string | null | undefine
 	return null;
 }
 
+// ── Cursor-clock startup calibration ─────────────────────────────────────────
+// ffmpeg needs a moment after launch before x11grab delivers its first frame,
+// so the video's true t=0 sits that far after the process spawn; the cursor
+// clock is corrected onto it. The primary signal is showinfo's stderr log of
+// the first frame entering the filter chain — that is GRAB time. ffmpeg's
+// -progress `out_time` deliberately is NOT used as more than a fallback: it
+// reports the MUX timeline, and libx264's lookahead/thread pipeline delays
+// the first muxed packet ~0.4-1s past the grab, which would bias the whole
+// cursor track forward ("cursor ahead") by exactly that encoder delay.
+
+type LinuxCursorStartupCalibration = {
+	segmentSpawnMs: number;
+	isFirstSegment: boolean;
+	calibrated: boolean;
+	fallbackTimer: NodeJS.Timeout;
+};
+
+let linuxCursorStartupCalibration: LinuxCursorStartupCalibration | null = null;
+// stderr line splitter state: chunks can end mid-line, so the trailing
+// fragment is carried over to the next chunk before matching.
+let linuxCursorStderrTail = "";
+
+function clampCalibrationLagMs(rawLagMs: number) {
+	return Math.min(Math.max(Math.round(rawLagMs), 0), 1500);
+}
+
+function shiftLinuxCursorSamples(lagMs: number) {
+	if (lagMs <= 0) return;
+	// Stored positions were computed against the spawn epoch (p = wall - spawn),
+	// so each sits `lag` past its true video position (q = p - lag); subtract.
+	const shift = (samples: CursorTelemetryPoint[]) =>
+		samples.map((sample) => ({ ...sample, timeMs: sample.timeMs - lagMs }));
+	setActiveCursorSamples(shift(activeCursorSamples));
+	setPendingCursorSamples(shift(pendingCursorSamples));
+}
+
+function applyLinuxCursorStartupLag(
+	calibration: LinuxCursorStartupCalibration,
+	lagMs: number,
+) {
+	if (calibration.isFirstSegment || !isCursorCapturePaused()) {
+		// No pause boundary to lean on: shift the epoch and the samples taken
+		// so far so the whole track moves onto the video's true t=0.
+		if (lagMs > 0) {
+			setCursorCaptureStartTimeMs(cursorCaptureStartTimeMs + lagMs);
+			shiftLinuxCursorSamples(lagMs);
+		}
+		return;
+	}
+	// The clock is parked at the previous segment's stop; the startup lag
+	// belongs to the gap, so resume exactly at this segment's first frame.
+	resumeCursorCapture(calibration.segmentSpawnMs + lagMs);
+}
+
+function calibrateLinuxCursorStartup(chunk: string) {
+	const calibration = linuxCursorStartupCalibration;
+	if (!calibration || calibration.calibrated) {
+		return;
+	}
+	const match =
+		chunk.match(/out_time_us=(-?\d+)/) ?? chunk.match(/out_time_ms=(-?\d+)/);
+	if (!match) {
+		return;
+	}
+	const videoTimeMs = Number(match[1]) / 1000;
+	if (!Number.isFinite(videoTimeMs) || videoTimeMs < 0) {
+		return;
+	}
+	calibration.calibrated = true;
+	clearTimeout(calibration.fallbackTimer);
+	const rawLagMs = Date.now() - calibration.segmentSpawnMs - videoTimeMs;
+	applyLinuxCursorStartupLag(
+		calibration,
+		clampCalibrationLagMs(rawLagMs),
+	);
+}
+
+/**
+ * Input-side calibration from showinfo's per-frame stderr log. Its first
+ * `n: 0 pts_time:0` line fires when the first GRABBED frame enters the
+ * filter chain — the same timeline the saved file's pts live on — so the
+ * measured lag is the true spawn→first-frame delay, free of encoder delay.
+ */
+function calibrateLinuxCursorStartupFromFilterLog(line: string) {
+	const calibration = linuxCursorStartupCalibration;
+	if (!calibration || calibration.calibrated) {
+		return;
+	}
+	const match = line.match(/\bn:\s*\d+ pts:\s*-?\d+ pts_time:(\d+(?:\.\d+)?)/);
+	if (!match) {
+		return;
+	}
+	const videoTimeMs = Number.parseFloat(match[1]) * 1000;
+	if (!Number.isFinite(videoTimeMs) || videoTimeMs < 0) {
+		return;
+	}
+	calibration.calibrated = true;
+	clearTimeout(calibration.fallbackTimer);
+	const rawLagMs = Date.now() - calibration.segmentSpawnMs - videoTimeMs;
+	applyLinuxCursorStartupLag(
+		calibration,
+		clampCalibrationLagMs(rawLagMs),
+	);
+}
+
+function armLinuxCursorStartupCalibration(
+	segmentSpawnMs: number,
+	isFirstSegment: boolean,
+) {
+	if (linuxCursorStartupCalibration) {
+		clearTimeout(linuxCursorStartupCalibration.fallbackTimer);
+	}
+	linuxCursorStderrTail = "";
+	const calibration: LinuxCursorStartupCalibration = {
+		segmentSpawnMs,
+		isFirstSegment,
+		calibrated: false,
+		fallbackTimer: setTimeout(() => {
+			if (linuxCursorStartupCalibration !== calibration || calibration.calibrated) {
+				return;
+			}
+			calibration.calibrated = true;
+			// -progress never reported; fall back to the spawn-time epoch.
+			applyLinuxCursorStartupLag(calibration, 0);
+		}, 3000),
+	};
+	linuxCursorStartupCalibration = calibration;
+}
+
+async function startLinuxCaptureSegment(
+	source: SelectedSource,
+	segmentPath: string,
+): Promise<{ proc: ChildProcessWithoutNullStreams; startedAtMs: number }> {
+	// GPU tiers record with their probing binary (the bundled static build
+	// has no vaapi/nvenc support); the CPU fallback uses the bundled binary.
+	const ffmpegPath =
+		linuxCaptureVaapi?.ffmpegPath ?? linuxCaptureNvenc?.ffmpegPath ?? getFfmpegBinaryPath();
+	const args = await buildFfmpegCaptureArgs(source, segmentPath, {
+		vaapi: linuxCaptureVaapi
+			? { devicePath: linuxCaptureVaapi.devicePath }
+			: null,
+		nvenc: Boolean(linuxCaptureNvenc),
+	});
+	// Route ffmpeg's progress reports to stdout for startup calibration, at a
+	// fast 0.1s period so the first usable report lands well before anything
+	// else touches the cursor clock (default 0.5s loses races).
+	args.splice(args.length - 1, 0, "-progress", "pipe:1", "-stats_period", "0.1");
+	const recordingsDir = await getRecordingsDir();
+
+	let captureOutput = "";
+	// The buffer exists for error diagnostics; keep only its tail so steady
+	// chatter (status lines, progress blocks) can't grow it without bound.
+	const capLinuxCaptureOutput = () => {
+		if (captureOutput.length > 512 * 1024) {
+			captureOutput = captureOutput.slice(-256 * 1024);
+		}
+	};
+	setLinuxCaptureOutputBuffer("");
+	setLinuxCaptureSegmentPath(segmentPath);
+	const proc = spawn(ffmpegPath, args, {
+		cwd: recordingsDir,
+		stdio: ["pipe", "pipe", "pipe"],
+	});
+	// x11grab starts grabbing frames shortly after spawn; the exact instant is
+	// measured via -progress and corrected onto the cursor clock. This spawn
+	// instant is also what the renderer anchors the video timeline to.
+	const startedAtMs = Date.now();
+	setLinuxCaptureProcess(proc);
+	attachLinuxCaptureLifecycle(proc);
+
+	// Cursor session per segment kind:
+	// - first segment: fresh session at the spawn instant;
+	// - later segments: keep the session untouched — re-initializing here
+	//   would erase the samples recorded so far. Calibration extends it.
+	const isFirstSegment = linuxCaptureSegments.length === 0;
+	if (isFirstSegment) {
+		startCursorCaptureSession(startedAtMs);
+		armLinuxCursorStartupCalibration(startedAtMs, true);
+	} else {
+		armLinuxCursorStartupCalibration(startedAtMs, false);
+	}
+
+	proc.stdout.on("data", (chunk: Buffer) => {
+		const text = chunk.toString();
+		captureOutput += text;
+		capLinuxCaptureOutput();
+		setLinuxCaptureOutputBuffer(captureOutput);
+		calibrateLinuxCursorStartup(text);
+	});
+	proc.stderr.on("data", (chunk: Buffer) => {
+		// Line-buffered: showinfo logs one short line per grabbed frame, and a
+		// calibration line can straddle chunk boundaries. showinfo lines are
+		// dropped from the retained buffer — they are calibration chatter, not
+		// diagnostics, and would otherwise grow it ~18KB/s for the whole run.
+		const text = linuxCursorStderrTail + chunk.toString();
+		const lines = text.split(/\r\n|\r|\n/);
+		linuxCursorStderrTail = lines.pop() ?? "";
+		for (const line of lines) {
+			if (line.includes("Parsed_showinfo")) {
+				calibrateLinuxCursorStartupFromFilterLog(line);
+			} else if (line.length > 0) {
+				captureOutput += `${line}\n`;
+			}
+		}
+		capLinuxCaptureOutput();
+		setLinuxCaptureOutputBuffer(captureOutput);
+	});
+
+	// System audio records a parallel segment per video segment. Spawn it
+	// immediately (not after the video readiness wait) so its t=0 matches the
+	// video's instead of lagging ~1s behind; register the process synchronously
+	// so an instant pause can never miss it. Audio failure never fails the
+	// recording — we just continue video-only.
+	const audioSourceName = linuxSystemAudioSourceName;
+	if (audioSourceName) {
+		const audioSegmentPath = `${segmentPath.replace(/\.[^.]+$/, "")}.system.wav`;
+		const audioProc = spawnLinuxSystemAudioSegment(
+			linuxSystemAudioFfmpegPath ?? getFfmpegBinaryPath(),
+			audioSourceName,
+			audioSegmentPath,
+		);
+		audioProc.once("close", () => {
+			if (linuxSystemAudioProcess === audioProc) {
+				setLinuxSystemAudioProcess(null);
+			}
+		});
+		setLinuxSystemAudioProcess(audioProc);
+		setLinuxSystemAudioSegmentPath(audioSegmentPath);
+		waitForLinuxSystemAudioSegmentStart(audioProc).catch((error) => {
+			console.warn("Failed to start native Linux system audio segment:", error);
+			if (linuxSystemAudioProcess === audioProc) {
+				setLinuxSystemAudioProcess(null);
+				setLinuxSystemAudioSegmentPath(null);
+			}
+			try {
+				audioProc.kill();
+			} catch {
+				/* already gone */
+			}
+		});
+	}
+
+	await waitForLinuxCaptureStart(proc);
+	return { proc, startedAtMs };
+}
+
+async function stopLinuxCaptureSegment() {
+	const proc = linuxCaptureProcess;
+	const segmentPath = linuxCaptureSegmentPath;
+	if (!proc || !segmentPath) {
+		throw new Error("Native Linux capture process is not running");
+	}
+
+	setLinuxCaptureStopRequested(true);
+	proc.stdin.write("q\n");
+	const stoppedPath = await waitForLinuxCaptureStop(proc, segmentPath);
+	setLinuxCaptureProcess(null);
+	setLinuxCaptureSegmentPath(null);
+	setLinuxCaptureStopRequested(false);
+	setLinuxCaptureSegments([...linuxCaptureSegments, stoppedPath]);
+
+	const audioProc = linuxSystemAudioProcess;
+	const audioSegmentPath = linuxSystemAudioSegmentPath;
+	setLinuxSystemAudioProcess(null);
+	setLinuxSystemAudioSegmentPath(null);
+	if (audioProc && audioSegmentPath) {
+		try {
+			// The process was stored through the generic ChildProcess state type;
+			// segments always spawn it with a piped stdin, so the narrowing holds.
+			const stoppedAudioPath = await stopLinuxSystemAudioSegment(
+				audioProc as Parameters<typeof stopLinuxSystemAudioSegment>[0],
+				audioSegmentPath,
+			);
+			setLinuxSystemAudioSegments([...linuxSystemAudioSegments, stoppedAudioPath]);
+		} catch (error) {
+			// A dropped audio segment desyncs nothing before it; keep the video.
+			console.warn("Failed to stop native Linux system audio segment:", error);
+		}
+	}
+
+	return stoppedPath;
+}
+
+function systemAudioSidecarPathFor(finalVideoPath: string) {
+	return `${finalVideoPath.replace(/\.[^.]+$/, "")}.system.wav`;
+}
+
+/**
+ * Joins the recorded segments into the final video, and any system-audio
+ * segments into the `.system.wav` companion sidecar the editor already reads.
+ * Segments share encoder settings, so joining is a lossless stream copy
+ * (no re-encode).
+ */
+async function finalizeLinuxCaptureRecording(finalVideoPath: string) {
+	const segments = [...linuxCaptureSegments];
+	setLinuxCaptureSegments([]);
+	if (segments.length === 0) {
+		throw new Error("No Linux capture segments were recorded");
+	}
+
+	if (segments.length === 1) {
+		if (segments[0] !== finalVideoPath) {
+			await moveFileWithOverwrite(segments[0], finalVideoPath);
+		}
+	} else {
+		await stitchLinuxSegments(getFfmpegBinaryPath(), segments, finalVideoPath);
+	}
+
+	await Promise.all(
+		segments
+			.filter((segmentPath) => segmentPath !== finalVideoPath)
+			.map((segmentPath) => fs.rm(segmentPath, { force: true }).catch(() => undefined)),
+	);
+
+	const audioSegments = [...linuxSystemAudioSegments];
+	setLinuxSystemAudioSegments([]);
+
+	const sidecarPath = systemAudioSidecarPathFor(finalVideoPath);
+	if (audioSegments.length > 0) {
+		try {
+			if (audioSegments.length === 1) {
+				await moveFileWithOverwrite(audioSegments[0], sidecarPath);
+			} else {
+				// Stitch with the audio-capable ffmpeg the probe selected; the
+				// bundled binary may be the one lacking this machine's pulse device.
+				await stitchLinuxSegments(
+					linuxSystemAudioFfmpegPath ?? getFfmpegBinaryPath(),
+					audioSegments,
+					sidecarPath,
+				);
+				await Promise.all(
+					audioSegments.map((segmentPath) =>
+						fs.rm(segmentPath, { force: true }).catch(() => undefined),
+					),
+				);
+			}
+		} catch (error) {
+			console.warn("Failed to finalize Linux system audio sidecar:", error);
+			await Promise.all(
+				audioSegments.map((segmentPath) =>
+					fs.rm(segmentPath, { force: true }).catch(() => undefined),
+				),
+			);
+		}
+	}
+
+	return finalVideoPath;
+}
+
+/**
+ * Turns cursor tracking on with the video timeline's epoch. Shared by the
+ * set-recording-state handler and the Linux native capture spawn so sampling
+ * begins at the video's first frame instead of ~1.5s later.
+ */
+function startCursorCaptureSession(epochMs: number) {
+	stopCursorCapture();
+	stopInteractionCapture();
+	startWindowBoundsCapture();
+	void startNativeCursorMonitor();
+	setIsCursorCaptureActive(true);
+	setActiveCursorSamples([]);
+	setPendingCursorSamples([]);
+	setCursorCaptureStartTimeMs(epochMs);
+	resetCursorCaptureClock();
+	setLinuxCursorScreenPoint(null);
+	setLastLeftClick(null);
+	sampleCursorPoint();
+	startCursorSampling();
+	void startInteractionCapture();
+}
+
 export function registerRecordingHandlers(
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
 ) {
@@ -650,6 +1076,203 @@ export function registerRecordingHandlers(
 					return {
 						success: false,
 						message: "Failed to start native Windows capture",
+						error: String(error),
+					};
+				}
+			}
+
+			// Linux native capture path (ffmpeg x11grab — records without the OS cursor)
+			if (process.platform === "linux") {
+				const linuxAvailability = await probeNativeLinuxCaptureAvailability();
+				if (!linuxAvailability.available) {
+					return {
+						success: false,
+						message: describeLinuxCaptureUnavailableReason(linuxAvailability.reason),
+					};
+				}
+
+				if (!shouldUseNativeLinuxCaptureForSource(source)) {
+					return {
+						success: false,
+						message:
+							"Native Linux capture only supports screen sources; falling back to browser capture.",
+					};
+				}
+
+				if (linuxCaptureProcess && !linuxNativeCaptureActive) {
+					try {
+						linuxCaptureProcess.kill();
+					} catch {
+						/* ignore */
+					}
+					setLinuxCaptureProcess(null);
+					setLinuxCaptureTargetPath(null);
+					setLinuxCaptureStopRequested(false);
+				}
+
+				if (linuxCaptureProcess || linuxNativeCaptureActive) {
+					return {
+						success: false,
+						message: "A native Linux screen recording is already active.",
+					};
+				}
+
+				try {
+					const recordingsDir = await getRecordingsDir();
+					const sessionTimestamp = Date.now();
+					const finalVideoPath = path.join(
+						recordingsDir,
+						`recording-${sessionTimestamp}.mp4`,
+					);
+					const firstSegmentPath = path.join(
+						recordingsDir,
+						`recording-${sessionTimestamp}.segment-0.mp4`,
+					);
+
+					// Resolve the system-audio monitor source up front; when it is
+				// missing we still record video-only and let the renderer explain.
+					let systemAudioUnavailable: LinuxSystemAudioUnavailableReason | null =
+						null;
+					if (options?.capturesSystemAudio) {
+						const systemAudio = await getLinuxSystemAudioCapture();
+						if (systemAudio.available && systemAudio.sourceName) {
+							setLinuxSystemAudioSourceName(systemAudio.sourceName);
+							setLinuxSystemAudioFfmpegPath(systemAudio.ffmpegPath ?? null);
+						} else {
+							console.warn(
+								"Native Linux system audio unavailable:",
+								systemAudio.reason,
+							);
+							setLinuxSystemAudioSourceName(null);
+							setLinuxSystemAudioFfmpegPath(null);
+							systemAudioUnavailable = systemAudio.reason ?? "no-pulse-device";
+						}
+					} else {
+						setLinuxSystemAudioSourceName(null);
+						setLinuxSystemAudioFfmpegPath(null);
+					}
+					setLinuxSystemAudioSegments([]);
+
+					recordNativeCaptureDiagnostics({
+						backend: "linux-x11grab",
+						phase: "start",
+						sourceId: source?.id ?? null,
+						sourceType: source?.sourceType ?? "unknown",
+						outputPath: finalVideoPath,
+						systemAudioPath: linuxSystemAudioSourceName
+							? systemAudioSidecarPathFor(finalVideoPath)
+							: null,
+					});
+
+					setLinuxCaptureTargetPath(finalVideoPath);
+					setLinuxCaptureSegments([]);
+					setLinuxCapturePaused(false);
+					setLinuxCaptureStopRequested(false);
+					// Prefer GPU encoding when the machine can do it (keeps the
+					// desktop smooth at 60fps); otherwise the CPU fallback tier
+					// applies. Probe result is cached per session.
+					try {
+						const vaapi = await getLinuxVaapiCapture();
+						if (vaapi.available && vaapi.ffmpegPath && vaapi.devicePath) {
+							setLinuxCaptureVaapi({
+								ffmpegPath: vaapi.ffmpegPath,
+								devicePath: vaapi.devicePath,
+							});
+							setLinuxCaptureNvenc(null);
+							console.info(
+								`Native Linux capture encoder: h264_vaapi (${vaapi.devicePath})`,
+							);
+						} else {
+							setLinuxCaptureVaapi(null);
+					setLinuxCaptureNvenc(null);
+							// NVIDIA machines have no VAAPI — offer them NVENC
+							// before falling back to the CPU tier.
+							const nvenc = await getLinuxNvencCapture();
+							if (nvenc.available && nvenc.ffmpegPath) {
+								setLinuxCaptureNvenc({ ffmpegPath: nvenc.ffmpegPath });
+								console.info(
+									`Native Linux capture encoder: h264_nvenc (${nvenc.ffmpegPath})`,
+								);
+							} else {
+								setLinuxCaptureNvenc(null);
+								console.info(
+									`Native Linux capture encoder: libx264 (VAAPI unavailable: ${vaapi.reason ?? "unknown"}; NVENC unavailable: ${nvenc.reason ?? "unknown"})`,
+								);
+							}
+						}
+					} catch (error) {
+						setLinuxCaptureVaapi(null);
+						setLinuxCaptureNvenc(null);
+						console.warn("Native Linux GPU encoder probe failed:", error);
+					}
+					const { startedAtMs } = await startLinuxCaptureSegment(
+						source,
+						firstSegmentPath,
+					);
+					setLinuxNativeCaptureActive(true);
+					setNativeScreenRecordingActive(true);
+					recordNativeCaptureDiagnostics({
+						backend: "linux-x11grab",
+						phase: "start",
+						sourceId: source?.id ?? null,
+						sourceType: source?.sourceType ?? "unknown",
+						outputPath: finalVideoPath,
+						processOutput: linuxCaptureOutputBuffer.trim() || undefined,
+					});
+					// Mic capture is handled by the renderer's browser-microphone
+					// sidecar flow (same as the Windows orphaned-mic fallback).
+					return {
+						success: true,
+						microphoneFallbackRequired: Boolean(options?.capturesMicrophone),
+						systemAudioFallbackRequired: systemAudioUnavailable !== null,
+						systemAudioFallbackReason: systemAudioUnavailable ?? undefined,
+						startedAtMs,
+					};
+				} catch (error) {
+					recordNativeCaptureDiagnostics({
+						backend: "linux-x11grab",
+						phase: "start",
+						sourceId: source?.id ?? null,
+						sourceType: source?.sourceType ?? "unknown",
+						outputPath: linuxCaptureTargetPath,
+						processOutput: linuxCaptureOutputBuffer.trim() || undefined,
+						error: String(error),
+					});
+					console.error("Failed to start native Linux capture:", error);
+					// TypeScript sees the earlier "already active" guard as proving this
+					// is null, but startLinuxCaptureSegment may have spawned since.
+					const startedProcess = linuxCaptureProcess as ChildProcessWithoutNullStreams | null;
+					try {
+						startedProcess?.kill();
+					} catch {
+						/* ignore */
+					}
+					try {
+						linuxSystemAudioProcess?.kill();
+					} catch {
+						/* ignore */
+					}
+					const failedSegmentPath = linuxCaptureSegmentPath;
+					setLinuxNativeCaptureActive(false);
+					setNativeScreenRecordingActive(false);
+					setLinuxCaptureProcess(null);
+					setLinuxCaptureSegmentPath(null);
+					setLinuxCaptureSegments([]);
+					setLinuxCaptureTargetPath(null);
+					setLinuxCaptureStopRequested(false);
+					setLinuxCapturePaused(false);
+					setLinuxCaptureVaapi(null);
+					setLinuxCaptureNvenc(null);
+					setLinuxSystemAudioProcess(null);
+					setLinuxSystemAudioSourceName(null);
+					setLinuxSystemAudioSegmentPath(null);
+					setLinuxSystemAudioSegments([]);
+					if (failedSegmentPath) {
+						await fs.rm(failedSegmentPath, { force: true }).catch(() => undefined);
+					}
+					return {
+						success: false,
+						message: "Failed to start native Linux capture",
 						error: String(error),
 					};
 				}
@@ -1134,6 +1757,116 @@ export function registerRecordingHandlers(
 				}
 			}
 
+			// Linux native capture stop path
+			if (process.platform === "linux" && linuxNativeCaptureActive) {
+				const finalVideoPath = linuxCaptureTargetPath;
+				try {
+					if (!finalVideoPath) {
+						throw new Error("Native Linux capture output path is missing");
+					}
+
+					if (linuxCaptureProcess) {
+						await stopLinuxCaptureSegment();
+					}
+					if (linuxCapturePaused && linuxCaptureSegmentPath) {
+						// Stopped while paused with a segment still open (pause raced the
+						// stop); make sure the open segment file lands in the list.
+						setLinuxCaptureSegments([...linuxCaptureSegments, linuxCaptureSegmentPath]);
+						setLinuxCaptureSegmentPath(null);
+					}
+
+					setLinuxCaptureProcess(null);
+					setLinuxNativeCaptureActive(false);
+					setNativeScreenRecordingActive(false);
+					setLinuxCaptureTargetPath(null);
+					setLinuxCaptureStopRequested(false);
+					setLinuxCapturePaused(false);
+					setLinuxCaptureVaapi(null);
+					setLinuxCaptureNvenc(null);
+					try {
+						linuxSystemAudioProcess?.kill();
+					} catch {
+						/* ignore */
+					}
+					setLinuxSystemAudioProcess(null);
+					setLinuxSystemAudioSegmentPath(null);
+
+					const stitchedPath = await finalizeLinuxCaptureRecording(finalVideoPath);
+
+					recordNativeCaptureDiagnostics({
+						backend: "linux-x11grab",
+						phase: "stop",
+						outputPath: stitchedPath,
+						processOutput: linuxCaptureOutputBuffer.trim() || undefined,
+					});
+
+					return await finalizeStoredVideo(stitchedPath);
+				} catch (error) {
+					console.error("Failed to stop native Linux capture:", error);
+					const segments = linuxCaptureSegments;
+					const openSegmentPath = linuxCaptureSegmentPath;
+					setLinuxNativeCaptureActive(false);
+					setNativeScreenRecordingActive(false);
+					setLinuxCaptureProcess(null);
+					setLinuxCaptureSegmentPath(null);
+					setLinuxCaptureTargetPath(null);
+					setLinuxCaptureStopRequested(false);
+					setLinuxCapturePaused(false);
+					setLinuxCaptureVaapi(null);
+					setLinuxCaptureNvenc(null);
+					try {
+						linuxSystemAudioProcess?.kill();
+					} catch {
+						/* ignore */
+					}
+					setLinuxSystemAudioProcess(null);
+					setLinuxSystemAudioSegmentPath(null);
+
+					recordNativeCaptureDiagnostics({
+						backend: "linux-x11grab",
+						phase: "stop",
+						outputPath: finalVideoPath,
+						processOutput: linuxCaptureOutputBuffer.trim() || undefined,
+						fileSizeBytes: await getFileSizeIfPresent(finalVideoPath),
+						error: String(error),
+					});
+
+					// Best-effort recovery: an unclean ffmpeg exit still leaves usable
+					// segment files, and the final mp4 may exist from an earlier stage.
+					if (finalVideoPath && segments.length > 0) {
+						try {
+							const recoveredPath = await finalizeLinuxCaptureRecording(finalVideoPath);
+							return await finalizeStoredVideo(recoveredPath);
+						} catch (recoveryError) {
+							console.warn(
+								"Failed to recover Linux capture segments after stop failure:",
+								recoveryError,
+							);
+						}
+					}
+					if (finalVideoPath && (await pathExists(finalVideoPath))) {
+						try {
+							return await finalizeStoredVideo(finalVideoPath);
+						} catch {
+							// File failed validation.
+						}
+					}
+					if (openSegmentPath && (await pathExists(openSegmentPath))) {
+						try {
+							return await finalizeStoredVideo(openSegmentPath);
+						} catch {
+							// File failed validation.
+						}
+					}
+
+					return {
+						success: false,
+						message: "Failed to stop native Linux capture",
+						error: String(error),
+					};
+				}
+			}
+
 			if (process.platform !== "darwin") {
 				return {
 					success: false,
@@ -1327,6 +2060,40 @@ export function registerRecordingHandlers(
 			}
 		}
 
+		if (process.platform === "linux") {
+			if (!linuxNativeCaptureActive) {
+				return { success: false, message: "No native Linux screen recording is active." };
+			}
+
+			if (linuxCapturePaused) {
+				return { success: true };
+			}
+
+			try {
+				await stopLinuxCaptureSegment();
+				setLinuxCapturePaused(true);
+				// The video piece kept recording until the clean stop completed, so
+				// the cursor timeline must treat this instant — not the button-press
+				// moment the renderer used — as where the video freezes. Applied
+				// natively here; the renderer's echo call no-ops (already paused).
+				const pausedAtMs = Date.now();
+				pauseCursorCaptureAtBoundary(pausedAtMs);
+				recordNativeCaptureDiagnostics({
+					backend: "linux-x11grab",
+					phase: "stop",
+					outputPath: linuxCaptureTargetPath,
+					processOutput: linuxCaptureOutputBuffer.trim() || undefined,
+				});
+				return { success: true, pausedAtMs };
+			} catch (error) {
+				return {
+					success: false,
+					message: "Failed to pause native Linux capture",
+					error: String(error),
+				};
+			}
+		}
+
 		if (process.platform !== "darwin") {
 			return {
 				success: false,
@@ -1383,6 +2150,62 @@ export function registerRecordingHandlers(
 			}
 		}
 
+		if (process.platform === "linux") {
+			if (!linuxNativeCaptureActive) {
+				return { success: false, message: "No native Linux screen recording is active." };
+			}
+
+			if (!linuxCapturePaused) {
+				return { success: true };
+			}
+
+			const source = selectedSource;
+			if (!source || !shouldUseNativeLinuxCaptureForSource(source)) {
+				return {
+					success: false,
+					message: "Native Linux capture source is no longer available.",
+				};
+			}
+
+			try {
+				const finalVideoPath = linuxCaptureTargetPath;
+				if (!finalVideoPath) {
+					return {
+						success: false,
+						message: "Native Linux capture output path is missing.",
+					};
+				}
+				const nextSegmentPath = `${finalVideoPath.replace(
+					/\.[^.]+$/,
+					"",
+				)}.segment-${linuxCaptureSegments.length}.mp4`;
+				const { startedAtMs } = await startLinuxCaptureSegment(
+					source,
+					nextSegmentPath,
+				);
+				setLinuxCapturePaused(false);
+				return { success: true, startedAtMs };
+			} catch (error) {
+				// Resume failed: clean up the half-started segment but keep the
+				// session alive so Stop still finalizes what was recorded before
+				// the pause.
+				console.error("Failed to resume native Linux capture:", error);
+				try {
+					linuxCaptureProcess?.kill();
+				} catch {
+					/* ignore */
+				}
+				setLinuxCaptureProcess(null);
+				setLinuxCaptureSegmentPath(null);
+				setLinuxCapturePaused(false);
+				return {
+					success: false,
+					message: "Failed to resume native Linux capture",
+					error: String(error),
+				};
+			}
+		}
+
 		if (process.platform !== "darwin") {
 			return {
 				success: false,
@@ -1427,6 +2250,30 @@ export function registerRecordingHandlers(
 
 	ipcMain.handle("is-native-windows-capture-available", async () => {
 		return { available: await isNativeWindowsCaptureAvailable() };
+	});
+
+	ipcMain.handle("is-native-linux-capture-available", async () => {
+		const availability = await probeNativeLinuxCaptureAvailability();
+		recordNativeCaptureDiagnostics({
+			backend: "linux-x11grab",
+			phase: "availability",
+			unavailableReason: availability.available ? undefined : availability.reason,
+		});
+		return availability;
+	});
+
+	// Whether Recordly's own Screen/Window picker should be shown. On Linux
+	// X11 sessions without a ScreenCast portal it is the only working capture
+	// path; with a portal (GNOME/KDE) the system dialog covers it and the
+	// picker stays hidden as before.
+	ipcMain.handle("get-source-picker-visibility", async () => {
+		const visibility = await getSourcePickerVisibilityForPlatform();
+		if (visibility.reason === "no-portal-screencast") {
+			console.log(
+				"[source-picker] shown: no ScreenCast portal on this X11 session — the picker is the only working capture path",
+			);
+		}
+		return visibility;
 	});
 
 	ipcMain.handle("get-last-native-capture-diagnostics", async () => {
@@ -1859,22 +2706,20 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("set-recording-state", (_, recording: boolean) => {
+	ipcMain.handle("set-recording-state", (_, recording: boolean, startedAtMs?: unknown) => {
 		if (recording) {
-			stopCursorCapture();
-			stopInteractionCapture();
-			startWindowBoundsCapture();
-			void startNativeCursorMonitor();
-			setIsCursorCaptureActive(true);
-			setActiveCursorSamples([]);
-			setPendingCursorSamples([]);
-			setCursorCaptureStartTimeMs(Date.now());
-			resetCursorCaptureClock();
-			setLinuxCursorScreenPoint(null);
-			setLastLeftClick(null);
-			sampleCursorPoint();
-			startCursorSampling();
-			void startInteractionCapture();
+			if (process.platform === "linux" && linuxNativeCaptureActive && isCursorCaptureActive) {
+				// Native Linux capture already began the cursor session at the
+				// segment spawn with the video's exact epoch; re-initializing here
+				// would discard the samples collected since.
+			} else {
+				const requestedEpochMs = typeof startedAtMs === "number" ? startedAtMs : NaN;
+				const cursorEpochMs =
+					Number.isFinite(requestedEpochMs) && requestedEpochMs > 0
+						? Math.min(requestedEpochMs, Date.now())
+						: Date.now();
+				startCursorCaptureSession(cursorEpochMs);
+			}
 		} else {
 			setIsCursorCaptureActive(false);
 			stopCursorCapture();

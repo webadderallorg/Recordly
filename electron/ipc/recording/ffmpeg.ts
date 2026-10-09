@@ -22,15 +22,26 @@ export function getDisplayWorkAreaForSource(source: SelectedSource) {
 	return matched.workArea;
 }
 
-export async function buildFfmpegCaptureArgs(source: SelectedSource, outputPath: string) {
-	const buildOutputArgs = (inputRange: "auto" | "full") => [
+export type LinuxCaptureEncoderOptions = {
+	/** When set, encode on the GPU via VAAPI instead of libx264 on the CPU. */
+	vaapi?: { devicePath: string } | null;
+	/** When set, encode on the GPU via NVENC (NVIDIA) instead of libx264. */
+	nvenc?: boolean | null;
+};
+
+export async function buildFfmpegCaptureArgs(
+	source: SelectedSource,
+	outputPath: string,
+	options?: LinuxCaptureEncoderOptions,
+) {
+	const buildOutputArgs = (inputRange: "auto" | "full", vfPrefix?: string, preset?: string) => [
 		"-an",
 		"-vf",
-		`scale=in_range=${inputRange}:out_range=tv:out_color_matrix=bt709:sws_dither=bayer`,
+		`${vfPrefix ?? ""}scale=in_range=${inputRange}:out_range=tv:out_color_matrix=bt709:sws_dither=bayer`,
 		"-c:v",
 		"libx264",
 		"-preset",
-		"veryfast",
+		preset ?? "veryfast",
 		"-pix_fmt",
 		"yuv420p",
 		"-colorspace",
@@ -88,43 +99,85 @@ export async function buildFfmpegCaptureArgs(source: SelectedSource, outputPath:
 
 	if (process.platform === "linux") {
 		const displayEnv = process.env.DISPLAY || ":0.0";
-		if (source?.id?.startsWith("window:")) {
-			const bounds = await resolveLinuxWindowBounds(source);
-			if (!bounds) {
-				throw new Error("Unable to resolve Linux window bounds for FFmpeg capture");
-			}
-
-			return [
-				"-y",
-				"-f",
-				"x11grab",
-				"-framerate",
-				"60",
-				"-draw_mouse",
-				"0",
-				"-video_size",
-				`${Math.max(2, bounds.width)}x${Math.max(2, bounds.height)}`,
-				"-i",
-				`${displayEnv}+${Math.round(bounds.x)},${Math.round(bounds.y)}`,
-				...fullRangeOutputArgs,
+		// showinfo logs each frame as it enters the filter chain — i.e. at grab
+		// time, before the encoder pipeline delays the muxed output. The cursor
+		// clock's startup calibration reads its first line for the video's true
+		// first-frame instant (see calibrateLinuxCursorStartupFromFilterLog).
+		if (options?.vaapi?.devicePath) {
+			// GPU encode (h264_vaapi): the CPU stays free, so full 60fps holds up
+			// even under desktop load (59.1/60 grabs/s, pts drift 0.01s measured
+			// where libx264 veryfast collapsed to 17/60 and drifted >1s).
+			// CQP QP24 via -compression_level: constant-quality, no bitrate math;
+			// static screen content lands well under 1 Mbps.
+			const vaapiOutputArgs = [
+				"-an",
+				"-vf",
+				"showinfo,scale=in_range=full:out_range=tv:out_color_matrix=bt709:sws_dither=bayer,format=nv12,hwupload",
+				"-vaapi_device",
+				options.vaapi.devicePath,
+				"-c:v",
+				"h264_vaapi",
+				"-rc_mode",
+				"CQP",
+				"-compression_level",
+				"24",
+				"-colorspace",
+				"bt709",
+				"-color_primaries",
+				"bt709",
+				"-color_trc",
+				"bt709",
+				"-color_range",
+				"tv",
+				"-movflags",
+				"+faststart",
+				outputPath,
 			];
+			const inputArgs = await buildLinuxX11grabInputArgs(source, displayEnv);
+			return [...inputArgs, ...vaapiOutputArgs];
 		}
-
-		const bounds = getDisplayBoundsForSource(source);
-		return [
-			"-y",
-			"-f",
-			"x11grab",
-			"-framerate",
-			"60",
-			"-draw_mouse",
-			"0",
-			"-video_size",
-			`${Math.max(2, bounds.width)}x${Math.max(2, bounds.height)}`,
-			"-i",
-			`${displayEnv}+${Math.round(bounds.x)},${Math.round(bounds.y)}`,
-			...fullRangeOutputArgs,
-		];
+		if (options?.nvenc) {
+			// GPU encode (h264_nvenc) for NVIDIA machines — same rationale as the
+			// VAAPI tier: the CPU stays free, so full 60fps holds up under
+			// desktop load. NVENC uploads frames from system memory itself (no
+			// hwupload/-vaapi_device dance); constqp QP24 is constant-quality
+			// with no bitrate math, like CQP on the VAAPI side.
+			const nvencOutputArgs = [
+				"-an",
+				"-vf",
+				"showinfo,scale=in_range=full:out_range=tv:out_color_matrix=bt709:sws_dither=bayer,format=yuv420p",
+				"-c:v",
+				"h264_nvenc",
+				"-preset",
+				"p4",
+				"-rc",
+				"constqp",
+				"-qp",
+				"24",
+				"-colorspace",
+				"bt709",
+				"-color_primaries",
+				"bt709",
+				"-color_trc",
+				"bt709",
+				"-color_range",
+				"tv",
+				"-movflags",
+				"+faststart",
+				outputPath,
+			];
+			const inputArgs = await buildLinuxX11grabInputArgs(source, displayEnv);
+			return [...inputArgs, ...nvencOutputArgs];
+		}
+		const linuxOutputArgs = buildOutputArgs("full", "showinfo,", "ultrafast");
+		// CPU fallback tier: 30fps + ultrafast is deliberate. Encoding on the
+		// CPU while the desktop keeps running, 1080p60 veryfast starves x11grab
+		// (only ~17/60 grabs/s measured) and x11grab's schedule-based pts drifts
+		// >1s behind real grab time — the recorded screen visibly lags its own
+		// input. 30fps ultrafast keeps up (30.1/30, drift ≈ 0). The cursor
+		// overlay stays smooth regardless: it renders from telemetry, not video.
+		const inputArgs = await buildLinuxX11grabInputArgs(source, displayEnv, 30);
+		return [...inputArgs, ...linuxOutputArgs];
 	}
 
 	if (process.platform === "darwin") {
@@ -143,6 +196,49 @@ export async function buildFfmpegCaptureArgs(source: SelectedSource, outputPath:
 	}
 
 	throw new Error(`FFmpeg capture is not supported on ${process.platform}`);
+}
+
+/** The x11grab input half of the Linux capture args (display region + rate). */
+async function buildLinuxX11grabInputArgs(
+	source: SelectedSource,
+	displayEnv: string,
+	framerate = 60,
+): Promise<string[]> {
+	if (source?.id?.startsWith("window:")) {
+		const bounds = await resolveLinuxWindowBounds(source);
+		if (!bounds) {
+			throw new Error("Unable to resolve Linux window bounds for FFmpeg capture");
+		}
+
+		return [
+			"-y",
+			"-f",
+			"x11grab",
+			"-framerate",
+			String(framerate),
+			"-draw_mouse",
+			"0",
+			"-video_size",
+			`${Math.max(2, bounds.width)}x${Math.max(2, bounds.height)}`,
+			"-i",
+			`${displayEnv}+${Math.round(bounds.x)},${Math.round(bounds.y)}`,
+		];
+	}
+
+	const bounds = getDisplayBoundsForSource(source);
+	return [
+		"-y",
+		"-f",
+		"x11grab",
+		"-framerate",
+		String(framerate),
+		"-draw_mouse",
+		"0",
+		"-video_size",
+		`${Math.max(2, bounds.width)}x${Math.max(2, bounds.height)}`,
+		"-i",
+		`${displayEnv}+${Math.round(bounds.x)},${Math.round(bounds.y)}`,
+	];
 }
 
 export function waitForFfmpegCaptureStart(process: ChildProcessWithoutNullStreams) {

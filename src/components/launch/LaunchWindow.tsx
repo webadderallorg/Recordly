@@ -13,7 +13,7 @@ import {
 	XIcon,
 } from "@/components/ui/icons";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
@@ -27,6 +27,9 @@ import {
 } from "./floatingWebcamPreview";
 import { useHudBarDrag } from "./hooks/useHudBarDrag";
 import { useLaunchHudInteractionState } from "./hooks/useLaunchHudInteractionState";
+import { useHudContentShapeReporting } from "./hooks/useHudContentShapeReporting";
+import { useHudGrowSizeReporting } from "./hooks/useHudGrowSizeReporting";
+import { setHudWindowLayoutMode } from "./hudWindowMode";
 import { useLaunchWindowActions } from "./hooks/useLaunchWindowActions";
 import { useLaunchWindowSystemState } from "./hooks/useLaunchWindowSystemState";
 import { useRecordingTimer } from "./hooks/useRecordingTimer";
@@ -40,6 +43,7 @@ import {
 } from "./popovers/LaunchPopoverCoordinator";
 import { MicPopover } from "./popovers/MicPopover";
 import { SourcePopover } from "./popovers/SourcePopover";
+import { isWindowSource, type DesktopSource } from "./popovers/launchPopoverTypes";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { RecordingControls } from "./RecordingControls";
 
@@ -97,8 +101,22 @@ function LaunchWindowContent() {
 		setSelectedDeviceId: setSelectedVideoDeviceId,
 	} = useVideoDevices(webcamEnabled || openId === "webcam");
 
-	const { hudOverlayMousePassthroughSupported, platform } =
+	const { hudOverlayMousePassthroughSupported, platform, showSourcePicker, hudWindowMode } =
 		useLaunchWindowSystemState(preparePermissions);
+
+	useEffect(() => {
+		setHudWindowLayoutMode(hudWindowMode);
+	}, [hudWindowMode]);
+	useHudContentShapeReporting({
+		enabled: hudWindowMode === "shape",
+		contentRef: hudContentRef,
+		openId,
+	});
+	useHudGrowSizeReporting({
+		enabled: hudWindowMode === "grow",
+		contentRef: hudContentRef,
+		openId,
+	});
 
 	useEffect(() => {
 		if (!selectedDeviceId) {
@@ -161,6 +179,7 @@ function LaunchWindowContent() {
 		hudContentRef,
 		hudBarRef,
 		recordingWebcamPreviewContainerRef,
+		windowDrag: hudWindowMode === "shape",
 	});
 
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =
@@ -187,6 +206,26 @@ function LaunchWindowContent() {
 			cleanup?.();
 		};
 	}, [syncSelectedSource]);
+
+	// Window sources on Linux go through browser capture, which burns the
+	// system cursor into the video — alongside the default-on overlay cursor
+	// that is a double cursor. Warn once per session; users who turned the
+	// overlay off only see the one real cursor and have nothing to warn about.
+	const windowCursorNoticeShownRef = useRef(false);
+	const [windowCursorNoticeVisible, setWindowCursorNoticeVisible] = useState(false);
+
+	const handleSourceSelectWithCursorNotice = async (source: DesktopSource) => {
+		await handleSourceSelect(source);
+		if (
+			platform === "linux" &&
+			isWindowSource(source) &&
+			!windowCursorNoticeShownRef.current
+		) {
+			windowCursorNoticeShownRef.current = true;
+			setWindowCursorNoticeVisible(true);
+			window.setTimeout(() => setWindowCursorNoticeVisible(false), 6000);
+		}
+	};
 
 	const hudStateTransition = {
 		duration: 0.24,
@@ -224,13 +263,19 @@ function LaunchWindowContent() {
 		/>
 	);
 
+
 	const idleControls = (
 		<>
-			{platform !== "linux" && (
+			{showSourcePicker && (
 				<>
 					<SourcePopover
 						selectedSource={selectedSource}
-						onSourceSelect={handleSourceSelect}
+						onSourceSelect={handleSourceSelectWithCursorNotice}
+						windowSourcesNote={
+							platform === "linux"
+								? t("recording.windowCursorCaption")
+								: undefined
+						}
 						onOpen={beginInteractiveHudAction}
 						trigger={
 							<Button
@@ -419,21 +464,33 @@ function LaunchWindowContent() {
 	);
 
 	const hudMode = finalizing ? "finalizing" : recording ? "recording" : "idle";
+	// Native (OS) drag on Linux without shape mode and on non-passthrough
+	// fallbacks; shape-mode Linux takes the JS window drag instead — the WM's
+	// window-level clamp doesn't know the bar sits in the bottom of a tall
+	// window and would let it be dragged off-screen.
 	const useNativeHudBarDrag =
-		platform === "linux" || hudOverlayMousePassthroughSupported === false;
+		hudOverlayMousePassthroughSupported === false && hudWindowMode !== "shape";
 	const shouldAnimateHudLayout = !recording && !showRecordingWebcamPreview && !isHudDragging;
+	// Grow mode (native Wayland) anchors the bar to the window's TOP and the
+	// column flows downward — the compositor pins the window's top-left on
+	// resize, so growing for a menu keeps the bar exactly where it was.
+	const growLayout = hudWindowMode === "grow";
 
 	return (
 		<HudInteractionContext.Provider
 			value={{ onMouseEnter: handleHudMouseEnter, onMouseLeave: handleHudMouseLeave }}
 		>
 			<div
-				className="w-full flex justify-center bg-transparent overflow-visible items-end pb-5 pointer-events-none"
+				className={`w-full flex justify-center bg-transparent overflow-visible pointer-events-none ${
+					growLayout ? "items-start pt-5" : "items-end pb-5"
+				}`}
 				style={{ height: "100vh" }}
 			>
 				<div
 					ref={hudContentRef}
-					className="flex items-center overflow-visible flex-col-reverse pointer-events-none"
+					className={`flex items-center overflow-visible pointer-events-none ${
+						growLayout ? "flex-col" : "flex-col-reverse"
+					}`}
 				>
 					<div className="flex flex-col items-center pointer-events-none p-2">
 						<div
@@ -546,6 +603,21 @@ function LaunchWindowContent() {
 					</div>
 				</div>
 			</div>
+			<AnimatePresence>
+				{windowCursorNoticeVisible && (
+					<motion.div
+						initial={{ opacity: 0, y: 8 }}
+						animate={{ opacity: 1, y: 0 }}
+						exit={{ opacity: 0, y: 8 }}
+						transition={hudStateTransition}
+						className="launch-theme fixed bottom-28 left-1/2 -translate-x-1/2 z-50 pointer-events-auto rounded-[11px] border border-[var(--launch-border)] bg-[var(--launch-surface)] px-3 py-2 text-[12px] font-medium text-[var(--launch-text)] shadow-lg"
+						onMouseEnter={handleHudMouseEnter}
+						onMouseLeave={handleHudMouseLeave}
+					>
+						{t("recording.windowCursorToast")}
+					</motion.div>
+				)}
+			</AnimatePresence>
 		</HudInteractionContext.Provider>
 	);
 }

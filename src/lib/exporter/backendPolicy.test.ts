@@ -6,6 +6,7 @@ import {
 	planLightningExportRoutes,
 	shouldPreferNativeAutoBackend,
 	shouldPreferNativeStaticLayoutBeforeBreeze,
+	shouldPreferWebglRenderBackend,
 } from "./backendPolicy";
 
 describe("backendPolicy", () => {
@@ -25,6 +26,14 @@ describe("backendPolicy", () => {
 
 	it("keeps Lightning exports on the stable WebGL renderer by default", () => {
 		expect(getDefaultLightningRenderBackend()).toBe("webgl");
+	});
+
+	it("prefers WebGL exports on Linux but keeps the auto backend elsewhere", () => {
+		expect(shouldPreferWebglRenderBackend("Linux x86_64")).toBe(true);
+		expect(shouldPreferWebglRenderBackend("X11; Linux x86_64")).toBe(true);
+		expect(shouldPreferWebglRenderBackend("Win32")).toBe(false);
+		expect(shouldPreferWebglRenderBackend("MacIntel")).toBe(false);
+		expect(shouldPreferWebglRenderBackend(undefined)).toBe(false);
 	});
 
 	it("keeps Windows auto exports on the streaming route by default", () => {

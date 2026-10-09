@@ -25,6 +25,8 @@
 		"screen": "Screen",
 		"window": "Window",
 		"noSourcesFound": "No sources found",
+		"windowCursorCaption": "Window recordings include the system cursor.",
+		"windowCursorToast": "Window recordings include the real system cursor alongside the animated one.",
 		"microphone": "Microphone",
 		"turnOffMicrophone": "Turn Off Microphone",
 		"selectMicToEnable": "Select a microphone to enable",

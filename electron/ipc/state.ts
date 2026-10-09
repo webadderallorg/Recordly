@@ -1,4 +1,4 @@
-import type { ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcess, ChildProcessWithoutNullStreams } from "node:child_process";
 import type {
 	CursorInteractionType,
 	CursorTelemetryPoint,
@@ -46,6 +46,23 @@ export let windowsSystemAudioPath: string | null = null;
 export let windowsMicAudioPath: string | null = null;
 export let windowsOrphanedMicAudioPath: string | null = null;
 export let windowsPendingVideoPath: string | null = null;
+
+// ── Linux native capture (ffmpeg x11grab) ─────────────────────────────────────
+export let linuxCaptureProcess: ChildProcessWithoutNullStreams | null = null;
+export let linuxCaptureOutputBuffer = "";
+export let linuxCaptureTargetPath: string | null = null;
+export let linuxCaptureVaapi: { ffmpegPath: string; devicePath: string } | null = null;
+export let linuxCaptureNvenc: { ffmpegPath: string } | null = null;
+export let linuxNativeCaptureActive = false;
+export let linuxCaptureStopRequested = false;
+export let linuxCapturePaused = false;
+export let linuxCaptureSegmentPath: string | null = null;
+export let linuxCaptureSegments: string[] = [];
+export let linuxSystemAudioProcess: ChildProcess | null = null;
+export let linuxSystemAudioSourceName: string | null = null;
+export let linuxSystemAudioFfmpegPath: string | null = null;
+export let linuxSystemAudioSegmentPath: string | null = null;
+export let linuxSystemAudioSegments: string[] = [];
 
 // ── Diagnostics ───────────────────────────────────────────────────────────────
 export let lastNativeCaptureDiagnostics: NativeCaptureDiagnostics | null = null;
@@ -172,6 +189,52 @@ export function setWindowsCaptureStopRequested(v: boolean) {
 export function setWindowsCapturePaused(v: boolean) {
 	windowsCapturePaused = v;
 }
+export function setLinuxCaptureProcess(v: ChildProcessWithoutNullStreams | null) {
+	linuxCaptureProcess = v;
+}
+export function setLinuxCaptureOutputBuffer(v: string) {
+	linuxCaptureOutputBuffer = v;
+}
+export function setLinuxCaptureTargetPath(v: string | null) {
+	linuxCaptureTargetPath = v;
+}
+export function setLinuxCaptureVaapi(v: { ffmpegPath: string; devicePath: string } | null) {
+	linuxCaptureVaapi = v;
+}
+export function setLinuxCaptureNvenc(v: { ffmpegPath: string } | null) {
+	linuxCaptureNvenc = v;
+}
+export function setLinuxNativeCaptureActive(v: boolean) {
+	linuxNativeCaptureActive = v;
+}
+export function setLinuxCaptureStopRequested(v: boolean) {
+	linuxCaptureStopRequested = v;
+}
+export function setLinuxCapturePaused(v: boolean) {
+	linuxCapturePaused = v;
+}
+export function setLinuxCaptureSegmentPath(v: string | null) {
+	linuxCaptureSegmentPath = v;
+}
+export function setLinuxCaptureSegments(v: string[]) {
+	linuxCaptureSegments = v;
+}
+export function setLinuxSystemAudioProcess(v: ChildProcess | null) {
+	linuxSystemAudioProcess = v;
+}
+export function setLinuxSystemAudioSourceName(v: string | null) {
+	linuxSystemAudioSourceName = v;
+}
+export function setLinuxSystemAudioFfmpegPath(v: string | null) {
+	linuxSystemAudioFfmpegPath = v;
+}
+export function setLinuxSystemAudioSegmentPath(v: string | null) {
+	linuxSystemAudioSegmentPath = v;
+}
+export function setLinuxSystemAudioSegments(v: string[]) {
+	linuxSystemAudioSegments = v;
+}
+
 export function setWindowsSystemAudioPath(v: string | null) {
 	windowsSystemAudioPath = v;
 }

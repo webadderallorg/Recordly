@@ -190,9 +190,24 @@ export function normalizeBrowserMicrophoneProfile(value?: string | null): Browse
 
 export function resolveBrowserCaptureCursorPolicy({
 	nativeWindowsCaptureStartFailed = false,
+	platform = "",
 }: {
 	nativeWindowsCaptureStartFailed?: boolean;
+	platform?: string;
 } = {}): BrowserCaptureCursorPolicy {
+	if (platform === "linux") {
+		// Linux browser capture runs through xdg-desktop-portal/PipeWire, which
+		// offers no way to hide the OS cursor globally and typically embeds it
+		// in the stream even when "never" is requested. Keep the telemetry
+		// overlay enabled by default and let the editor's "Show cursor" toggle
+		// turn it off for users who dislike the double cursor.
+		return {
+			streamCursor: "never",
+			hideOsCursorBeforeRecording: false,
+			hideEditorOverlayCursorByDefault: false,
+		};
+	}
+
 	if (nativeWindowsCaptureStartFailed) {
 		// If WGC already failed, avoid the telemetry overlay path that can lag on
 		// constrained Windows systems; keep the browser-captured cursor instead.
@@ -208,6 +223,71 @@ export function resolveBrowserCaptureCursorPolicy({
 		hideOsCursorBeforeRecording: true,
 		hideEditorOverlayCursorByDefault: true,
 	};
+}
+
+export type NativeLinuxCaptureUnavailableReason =
+	| "not-linux"
+	| "wayland-session"
+	| "no-x11-display"
+	| "no-ffmpeg-binary"
+	| "no-x11grab"
+	| "no-libx264"
+	| "probe-failed";
+
+export function describeNativeLinuxCaptureUnavailable(
+	reason: NativeLinuxCaptureUnavailableReason | undefined,
+): string {
+	switch (reason) {
+		case "wayland-session":
+			return "Native Linux capture needs an X11 session. Falling back to browser capture.";
+		case "no-x11-display":
+			return "No X11 display found for native Linux capture. Falling back to browser capture.";
+		case "no-ffmpeg-binary":
+			return "ffmpeg was not found, so native Linux capture is unavailable. Falling back to browser capture.";
+		case "no-x11grab":
+			return "This ffmpeg build lacks x11grab support. Falling back to browser capture.";
+		case "no-libx264":
+			return "This ffmpeg build lacks the H.264 encoder needed for native Linux capture. Falling back to browser capture.";
+		case "probe-failed":
+			return "Could not verify native Linux capture support. Falling back to browser capture.";
+		default:
+			return "Native Linux capture is unavailable. Falling back to browser capture.";
+	}
+}
+
+/**
+ * Recording is impossible on a Wayland session without the ScreenCast
+ * portal (e.g. Cinnamon/muffin): native x11grab is Wayland-gated off and
+ * browser capture has no portal to ask. Instead of letting getDisplayMedia
+ * fail with a cryptic Chromium error, the caller checks this up front and
+ * tells the user to log into an X11 session.
+ */
+export const WAYLAND_NO_PORTAL_RECORDING_MESSAGE =
+	"Screen recording isn't available in this session. This desktop runs Wayland without the screen-sharing service (ScreenCast portal) that recording needs, and native capture only works on X11. Please log out and pick an X11 session (for example \"Cinnamon (X11)\") on the login screen, then try again.";
+
+export function resolveWaylandNoPortalRecordingBlock(
+	visibility: { reason?: string } | null | undefined,
+): string | null {
+	return visibility?.reason === "wayland-no-portal"
+		? WAYLAND_NO_PORTAL_RECORDING_MESSAGE
+		: null;
+}
+
+/**
+ * Anchors the video timeline's t=0 to the moment capture actually began.
+ * Linux native capture reports the spawn instant from the main process; a
+ * renderer-side Date.now() taken after the start IPC returns runs ~1s late,
+ * which used to push the cursor/click overlay ahead of the video.
+ */
+export function resolveVideoStartEpochMs(
+	startedAtMs: unknown,
+	fallbackMs: number,
+): number {
+	return typeof startedAtMs === "number" &&
+		Number.isFinite(startedAtMs) &&
+		startedAtMs > 0
+		? Math.min(Math.round(startedAtMs), fallbackMs)
+		: fallbackMs;
 }
 
 export function shouldUseNativeWindowsCaptureForSource(
@@ -401,6 +481,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const recordingSessionTimestamp = useRef<number | null>(null);
 	const nativeScreenRecording = useRef(false);
 	const nativeWindowsRecording = useRef(false);
+	// Linux native capture applies cursor pause/resume boundaries natively in
+	// the main process with exact segment times; the renderer must not echo
+	// them (its ~0.9s-later "now" stamps were racing and beating calibration).
+	const nativeLinuxRecording = useRef(false);
 	const nativeWarmStartActive = useRef(false);
 	const pendingNativeCleanupPath = useRef<string | null>(null);
 	const recordingStartGeneration = useRef(0);
@@ -408,6 +492,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const startInFlight = useRef(false);
 	const hasPromptedForReselect = useRef(false);
 	const hasShownNativeWindowsFallbackToast = useRef(false);
+	const hasShownNativeLinuxFallbackToast = useRef(false);
 	const countdownDelayLoaded = useRef(false);
 	const recordingPrefsLoaded = useRef(false);
 	const pendingWebcamPathPromise = useRef<Promise<string | null> | null>(null);
@@ -1187,8 +1272,37 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			}
 		}
 
+		let useNativeLinuxCapture = false;
+		let linuxUnavailableReason: NativeLinuxCaptureUnavailableReason | undefined;
+		if (
+			platform === "linux" &&
+			selectedSource.id?.startsWith("screen:") &&
+			typeof window.electronAPI.isNativeLinuxCaptureAvailable === "function"
+		) {
+			try {
+				const nativeLinuxResult =
+					await window.electronAPI.isNativeLinuxCaptureAvailable();
+				useNativeLinuxCapture = nativeLinuxResult.available;
+				if (!nativeLinuxResult.available) {
+					linuxUnavailableReason = nativeLinuxResult.reason;
+				}
+			} catch {
+				useNativeLinuxCapture = false;
+			}
+			if (
+				!useNativeLinuxCapture &&
+				!hasShownNativeLinuxFallbackToast.current
+			) {
+				hasShownNativeLinuxFallbackToast.current = true;
+				toast.info(describeNativeLinuxCaptureUnavailable(linuxUnavailableReason));
+			}
+		}
+
 		let micLabel: string | undefined;
-		if ((useNativeMacScreenCapture || useNativeWindowsCapture) && microphoneEnabled) {
+		if (
+			(useNativeMacScreenCapture || useNativeWindowsCapture || useNativeLinuxCapture) &&
+			microphoneEnabled
+		) {
 			try {
 				const devices = await navigator.mediaDevices.enumerateDevices();
 				const mic = devices.find(
@@ -1205,6 +1319,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			selectedSource,
 			useNativeMacScreenCapture,
 			useNativeWindowsCapture,
+			useNativeLinuxCapture,
 			micLabel,
 		};
 	}, [
@@ -1248,6 +1363,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		if (result.stopSucceeded) {
 			nativeScreenRecording.current = false;
 			nativeWindowsRecording.current = false;
+			nativeLinuxRecording.current = false;
 			nativeWarmStartActive.current = false;
 		}
 
@@ -1315,6 +1431,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (result.success) {
 					nativeScreenRecording.current = false;
 					nativeWindowsRecording.current = false;
+					nativeLinuxRecording.current = false;
 					nativeWarmStartActive.current = false;
 				}
 
@@ -1588,6 +1705,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					setRecording(false);
 					nativeScreenRecording.current = false;
 					nativeWindowsRecording.current = false;
+					nativeLinuxRecording.current = false;
 					nativeWarmStartActive.current = false;
 					cleanupCapturedMedia();
 					await window.electronAPI.setRecordingState(false);
@@ -1635,6 +1753,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							if (result.success) {
 								nativeScreenRecording.current = false;
 								nativeWindowsRecording.current = false;
+								nativeLinuxRecording.current = false;
 							}
 						})
 						.catch((error) => {
@@ -1681,6 +1800,18 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		setStarting(true);
 
 		try {
+			// Wayland without a ScreenCast portal has no capture path at all —
+			// bail with a real explanation before the countdown or any capture
+			// attempt can fail cryptically.
+			const pickerVisibility =
+				await window.electronAPI?.getSourcePickerVisibility?.();
+			const waylandNoPortalBlock =
+				resolveWaylandNoPortalRecordingBlock(pickerVisibility);
+			if (waylandNoPortalBlock) {
+				alert(waylandNoPortalBlock);
+				return;
+			}
+
 			const preparedStart = await prepareRecordingStart();
 			if (!preparedStart || startWasCancelled()) {
 				cleanupCapturedMedia();
@@ -1688,10 +1819,23 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				return;
 			}
 
-			const { selectedSource, useNativeMacScreenCapture, useNativeWindowsCapture, micLabel } =
-				preparedStart;
-			const useNativeCapture = useNativeMacScreenCapture || useNativeWindowsCapture;
-			const shouldWarmStartNativeCapture = useNativeCapture && countdownDelay > 0;
+			const {
+				selectedSource,
+				useNativeMacScreenCapture,
+				useNativeWindowsCapture,
+				useNativeLinuxCapture,
+				micLabel,
+			} = preparedStart;
+			const useNativeCapture =
+				useNativeMacScreenCapture || useNativeWindowsCapture || useNativeLinuxCapture;
+			// Linux native capture cold-starts on purpose: the countdown runs
+			// first and capture begins once, at the countdown's end. Its old
+			// warm start needed a throwaway pre-countdown segment (paused over
+			// the countdown, then dropped at stitch time) to mask the startup
+			// gap — the calibrated cursor clock made that machinery, and the
+			// segment cut it caused, unnecessary.
+			const shouldWarmStartNativeCapture =
+				useNativeCapture && !useNativeLinuxCapture && countdownDelay > 0;
 			if (countdownDelay > 0 && !shouldWarmStartNativeCapture) {
 				setCountdownActive(true);
 				try {
@@ -1709,6 +1853,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			}
 
 			let nativeWindowsCaptureStartFailed = false;
+			// Wall-clock epoch of the video timeline's first frame, passed to
+			// set-recording-state so cursor telemetry shares the video's t=0.
+			let videoStartedAtMs: number | undefined;
 
 			if (useNativeCapture) {
 				const nativeResult = await window.electronAPI.startNativeScreenRecording(
@@ -1720,9 +1867,18 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						microphoneLabel: micLabel,
 					},
 				);
+				if (nativeResult.success) {
+					// Native capture began inside the call above; prefer the main
+					// process's spawn-time epoch over this later renderer instant.
+					videoStartedAtMs = resolveVideoStartEpochMs(
+						nativeResult.startedAtMs,
+						Date.now(),
+					);
+				}
 				if (nativeResult.success && startWasCancelled()) {
 					nativeScreenRecording.current = true;
 					nativeWindowsRecording.current = useNativeWindowsCapture;
+					nativeLinuxRecording.current = useNativeLinuxCapture;
 					nativeWarmStartActive.current = shouldWarmStartNativeCapture;
 					await discardActiveNativeCapture();
 					cleanupCapturedMedia();
@@ -1730,17 +1886,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					return;
 				}
 				if (!nativeResult.success) {
-					if (useNativeWindowsCapture) {
+					if (useNativeWindowsCapture || useNativeLinuxCapture) {
 						nativeWindowsCaptureStartFailed = true;
 						console.warn(
-							"Native Windows capture failed, falling back to browser capture:",
+							"Native capture failed, falling back to browser capture:",
 							nativeResult.error ?? nativeResult.message,
 						);
 						void logNativeCaptureDiagnostics("start-native-screen-recording");
 						if (!hasShownNativeWindowsFallbackToast.current) {
 							hasShownNativeWindowsFallbackToast.current = true;
 							toast.warning(
-								"Native Windows capture failed to start. Falling back to browser capture.",
+								"Native capture failed to start. Falling back to browser capture.",
 							);
 						}
 					} else if (!nativeResult.userNotified) {
@@ -1760,6 +1916,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (nativeResult.success) {
 					nativeScreenRecording.current = true;
 					nativeWindowsRecording.current = useNativeWindowsCapture;
+					nativeLinuxRecording.current = useNativeLinuxCapture;
+					if (nativeResult.systemAudioFallbackRequired && systemAudioEnabled) {
+						toast.warning(
+							nativeResult.systemAudioFallbackReason === "no-pulse-device"
+								? "To record system audio on Linux, install ffmpeg (e.g. sudo apt install ffmpeg), then try again. Recording will continue without system audio."
+								: "System audio capture is not available on this system. Recording will continue without system audio.",
+							{ duration: 10000 },
+						);
+					}
 					if (shouldWarmStartNativeCapture) {
 						nativeWarmStartActive.current = true;
 						const pauseResult = await window.electronAPI.pauseNativeScreenRecording();
@@ -1806,6 +1971,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							);
 						}
 						nativeWarmStartActive.current = false;
+						// The pre-countdown segment is dropped at stitch time, so the
+						// saved video's first frame is the resumed segment's start;
+						// anchor the cursor epoch to that exact instant when the
+						// backend reports it.
+						videoStartedAtMs = resolveVideoStartEpochMs(
+							resumeResult.startedAtMs,
+							Date.now(),
+						);
 					}
 					if (startWasCancelled()) {
 						return;
@@ -1893,7 +2066,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 					setRecording(true);
 					try {
-						await window.electronAPI?.setRecordingState(true);
+						await window.electronAPI?.setRecordingState(true, videoStartedAtMs);
 					} catch (stateError) {
 						console.warn(
 							"Failed to notify main process that native recording started:",
@@ -1921,8 +2094,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				resetRecordingClock(recordingSessionTimestamp.current);
 			}
 
+			const platform = (await window.electronAPI?.getPlatform?.()) ?? "";
 			const browserCursorPolicy = resolveBrowserCaptureCursorPolicy({
 				nativeWindowsCaptureStartFailed,
+				platform,
 			});
 			hideEditorOverlayCursorByDefault.current =
 				browserCursorPolicy.hideEditorOverlayCursorByDefault;
@@ -1966,8 +2141,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					maxFrameRate: TARGET_FRAME_RATE,
 					minFrameRate: MIN_FRAME_RATE,
 					googCaptureCursor: browserCursorPolicy.streamCursor === "always",
+					// The cursor mode lives inside mandatory here: Chromium reads
+					// it as a legacy video constraint alongside chromeMediaSource,
+					// and a top-level `cursor` is silently ignored (the OS cursor
+					// stayed burned into Linux captures).
+					cursor: browserCursorPolicy.streamCursor,
 				},
-				cursor: browserCursorPolicy.streamCursor,
 			};
 
 			if (wantsAudioCapture) {
@@ -2246,10 +2425,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			resetRecordingClock(mainStartedAt);
 			webcamTimeOffsetMs.current =
 				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
+			// Anchor cursor telemetry to the video timeline: the first encoded
+			// frame lands at/just after recorder.start().
+			videoStartedAtMs = Date.now();
 			recorder.start(RECORDER_TIMESLICE_MS);
 			setRecording(true);
 			try {
-				await window.electronAPI?.setRecordingState(true);
+				await window.electronAPI?.setRecordingState(true, videoStartedAtMs);
 			} catch (stateError) {
 				console.warn("Failed to notify main process that recording started:", stateError);
 			}
@@ -2288,6 +2470,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		if (!recording || paused) return;
 		if (nativeScreenRecording.current) {
 			void (async () => {
+				// Stamp before the freeze so tail samples captured past the
+				// video's last frame get dropped at the boundary.
+				const boundaryMs = Date.now();
 				const result = await window.electronAPI.pauseNativeScreenRecording();
 				if (!result.success) {
 					console.error(
@@ -2297,15 +2482,30 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					return;
 				}
 
+				// Linux native capture keeps recording until its clean stop
+				// completes; it reports that instant so the cursor timeline
+				// freezes exactly where the video freezes.
+				const cursorBoundaryMs =
+					typeof result.pausedAtMs === "number" &&
+					Number.isFinite(result.pausedAtMs) &&
+					result.pausedAtMs > 0
+						? Math.round(result.pausedAtMs)
+						: boundaryMs;
+
 				if (webcamRecorder.current?.state === "recording") {
 					webcamRecorder.current.pause();
 				}
 				pauseMicFallbackRecorder();
-				const boundaryMs = Date.now();
 				markRecordingPaused(boundaryMs);
 				setPaused(true);
+				if (nativeLinuxRecording.current) {
+					// Linux native capture already froze the cursor timeline at the
+					// segment's true stop instant inside the pause handler; echoing
+					// a "now"-based boundary here raced and beat the calibration.
+					return;
+				}
 				try {
-					await window.electronAPI.pauseCursorCapture(boundaryMs);
+					await window.electronAPI.pauseCursorCapture(cursorBoundaryMs);
 				} catch (error) {
 					console.warn("Failed to pause cursor capture:", error);
 				}
@@ -2313,12 +2513,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			return;
 		}
 		if (mediaRecorder.current?.state === "recording") {
+			const boundaryMs = Date.now();
 			mediaRecorder.current.pause();
 			if (webcamRecorder.current?.state === "recording") {
 				webcamRecorder.current.pause();
 			}
 			void (async () => {
-				const boundaryMs = Date.now();
 				markRecordingPaused(boundaryMs);
 				setPaused(true);
 				try {
@@ -2350,7 +2550,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				const boundaryMs = Date.now();
 				markRecordingResumed(boundaryMs);
 				setPaused(false);
+				if (nativeLinuxRecording.current) {
+					// Linux native capture resumes the cursor timeline at the new
+					// segment's calibrated first frame inside the resume handler;
+					// echoing here resumed at "now" (~1s late) and beat it.
+					return;
+				}
 				try {
+					// Other native platforms report no segment times; anchor the
+					// cursor timeline to this renderer instant as before.
 					await window.electronAPI.resumeCursorCapture(boundaryMs);
 				} catch (error) {
 					console.warn("Failed to resume cursor capture:", error);
