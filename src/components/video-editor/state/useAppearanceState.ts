@@ -34,6 +34,9 @@ export function useAppearanceState(preferences: EditorPreferences) {
 	const [autoApplyFreshRecordingAutoZooms, setAutoApplyFreshRecordingAutoZooms] = useState(
 		preferences.autoApplyFreshRecordingAutoZooms,
 	);
+	const [motionAnimationEnabled, setMotionAnimationEnabled] = useState(
+		preferences.motionAnimationEnabled,
+	);
 	const [connectZooms, setConnectZooms] = useState(preferences.connectZooms);
 	const [zoomInDurationMs, setZoomInDurationMs] = useState(
 		preferences.zoomInDurationMs ?? DEFAULT_ZOOM_IN_DURATION_MS,
@@ -128,6 +131,8 @@ export function useAppearanceState(preferences: EditorPreferences) {
 		setZoomMotionBlurTuning,
 		autoApplyFreshRecordingAutoZooms,
 		setAutoApplyFreshRecordingAutoZooms,
+		motionAnimationEnabled,
+		setMotionAnimationEnabled,
 		connectZooms,
 		setConnectZooms,
 		zoomInDurationMs,

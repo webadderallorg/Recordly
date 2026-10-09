@@ -6,6 +6,7 @@ import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
 import { DEFAULT_WEBCAM_TIME_OFFSET_MS } from "../types";
+import { isAutoMotionAllowed } from "../videoPlayback/motionAnimation";
 
 type SessionPresentation = {
 	hideOverlayCursorByDefault?: boolean;
@@ -95,7 +96,9 @@ export function useInitialEditorSource({
 					project.setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
 					pendingFreshRecordingAutoZoomPathRef.current =
-						appearance.autoApplyFreshRecordingAutoZooms ? sourceUrl : null;
+						isAutoMotionAllowed(appearance.motionAnimationEnabled, appearance.autoApplyFreshRecordingAutoZooms)
+						? sourceUrl
+						: null;
 					appearance.setWebcam((previous) => ({
 						...previous,
 						visibleRanges: undefined,
@@ -166,7 +169,9 @@ export function useInitialEditorSource({
 					project.setLastSavedSnapshot(null);
 					resetSourceScopedEditorState();
 					pendingFreshRecordingAutoZoomPathRef.current =
-						appearance.autoApplyFreshRecordingAutoZooms ? sourceUrl : null;
+						isAutoMotionAllowed(appearance.motionAnimationEnabled, appearance.autoApplyFreshRecordingAutoZooms)
+						? sourceUrl
+						: null;
 					applySessionPresentation(sessionResult.session);
 					appearance.setWebcam((previous) => ({
 						...previous,
@@ -249,8 +254,8 @@ export function useInitialEditorSource({
 	}, [appearance.webcam.sourcePath, appearance.setResolvedWebcamVideoUrl]);
 
 	useEffect(() => {
-		if (!appearance.autoApplyFreshRecordingAutoZooms) {
+		if (!isAutoMotionAllowed(appearance.motionAnimationEnabled, appearance.autoApplyFreshRecordingAutoZooms)) {
 			pendingFreshRecordingAutoZoomPathRef.current = null;
 		}
-	}, [appearance.autoApplyFreshRecordingAutoZooms, pendingFreshRecordingAutoZoomPathRef]);
+	}, [appearance.autoApplyFreshRecordingAutoZooms, appearance.motionAnimationEnabled, pendingFreshRecordingAutoZoomPathRef]);
 }
