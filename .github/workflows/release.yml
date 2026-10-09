@@ -499,7 +499,7 @@ jobs:
       - name: Install Linux native build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxt-dev libxtst-dev libxkbfile-dev libxi-dev libxrandr-dev libxinerama-dev
+          sudo apt-get install -y libx11-dev libxt-dev libxtst-dev libxkbfile-dev libxi-dev libxrandr-dev libxinerama-dev zsync
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
@@ -524,6 +524,7 @@ jobs:
           npx tsc
           npx vite build
           npx electron-builder --linux dir AppImage --x64 --publish never
+          node scripts/embed-appimage-updateinfo.mjs
 
       - name: Smoke test packaged Linux x64 paths
         run: npm run smoke:packaged-binaries
@@ -543,6 +544,7 @@ jobs:
           path: |
             release/*.AppImage
             release/*.blockmap
+            release/*.zsync
             release/latest-linux.yml
             release/SHA256SUMS*.txt
           if-no-files-found: error
@@ -664,6 +666,7 @@ jobs:
             release-assets/windows-x64/*.blockmap
             release-assets/linux-x64/*.AppImage
             release-assets/linux-x64/*.blockmap
+            release-assets/linux-x64/*.zsync
           )
 
           if [ "$RELEASE_SCOPE" = "all" ]; then
