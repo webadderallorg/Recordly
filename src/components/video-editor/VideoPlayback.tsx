@@ -300,6 +300,10 @@ export interface VideoPlaybackRef {
 	cancelCaptionEdit: () => void;
 }
 
+/**
+ * Renders the interactive editor preview and keeps caption layout synchronized
+ * with the current preview viewport so it matches full-resolution export.
+ */
 const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 	(
 		{
@@ -395,6 +399,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const videoReady = usePreviewVideoReady(videoRef, videoPath);
 
 		const [previewViewportWidth, setPreviewViewportWidth] = useState(640);
+		// Keep caption measurement reactive so preview wrapping matches export after resizing.
+		const captionViewportWidth = Math.max(1, previewViewportWidth);
 		const [annotationSceneTransform, setAnnotationSceneTransform] =
 			useState<SceneTransformState>({
 				scale: 1,
@@ -595,14 +601,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				return null;
 			}
 
-			const overlayWidth = overlayRef.current?.clientWidth || 960;
 			const fontSize = getCaptionScaledFontSize(
 				autoCaptionSettings.fontSize,
-				overlayWidth,
+				captionViewportWidth,
 				autoCaptionSettings.maxWidth,
 			);
 			const maxTextWidthPx = getCaptionTextMaxWidth(
-				overlayWidth,
+				captionViewportWidth,
 				autoCaptionSettings.maxWidth,
 				fontSize,
 			);
@@ -621,7 +626,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				maxWidthPx: maxTextWidthPx,
 				measureText: (text) => measurementContext.measureText(text).width,
 			});
-		}, [autoCaptionSettings, autoCaptions, currentTime]);
+		}, [autoCaptionSettings, autoCaptions, captionViewportWidth, currentTime]);
 		const isCaptionEditing = captionEditSession !== null;
 		const captionEditDraft = captionEditSession?.draft ?? "";
 		const captionEditTargetId = captionEditSession?.target.id ?? null;
@@ -630,14 +635,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				return null;
 			}
 
-			const overlayWidth = overlayRef.current?.clientWidth || 960;
 			const fontSize = getCaptionScaledFontSize(
 				autoCaptionSettings.fontSize,
-				overlayWidth,
+				captionViewportWidth,
 				autoCaptionSettings.maxWidth,
 			);
 			const maxTextWidthPx = getCaptionTextMaxWidth(
-				overlayWidth,
+				captionViewportWidth,
 				autoCaptionSettings.maxWidth,
 				fontSize,
 			);
@@ -661,7 +665,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					Math.min(maxTextWidthPx, Math.max(fontSize * 2, measuredWidth + 2)),
 				),
 			};
-		}, [autoCaptionSettings, captionEditSession]);
+		}, [autoCaptionSettings, captionEditSession, captionViewportWidth]);
 		const captionEditSizeKey = captionEditSession
 			? `${captionEditTextMetrics?.widthPx ?? 0}:${captionEditDraft}`
 			: "";
@@ -762,7 +766,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 
 				const fontSize = getCaptionScaledFontSize(
 					autoCaptionSettings.fontSize,
-					overlayRef.current?.clientWidth || 960,
+					captionViewportWidth,
 					autoCaptionSettings.maxWidth,
 				);
 
@@ -778,7 +782,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			});
 
 			return () => cancelAnimationFrame(frame);
-		}, [activeCaptionLayout, autoCaptionSettings]);
+		}, [activeCaptionLayout, autoCaptionSettings, captionViewportWidth]);
 		const motionBlurStateRef = useRef<MotionBlurState>(createMotionBlurState());
 		const webcamEnabled = webcam?.enabled ?? false;
 		const webcamMargin = webcam?.margin ?? 24;
@@ -2338,6 +2342,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			shadowIntensity: showShadow ? shadowIntensity : 0,
 		});
 		const captionFontFamily = autoCaptionSettings?.fontFamily || getDefaultCaptionFontFamily();
+		const captionFontSize = autoCaptionSettings
+			? getCaptionScaledFontSize(
+					autoCaptionSettings.fontSize,
+					captionViewportWidth,
+					autoCaptionSettings.maxWidth,
+				)
+			: 1;
+		const captionPadding = getCaptionPadding(captionFontSize);
 		// Overscan blurred wallpaper layers so the browser never samples transparent
 		// pixels beyond the preview bounds, which otherwise looks like a vignette.
 		const backgroundBlurOverscan = sceneEffects.backgroundOverscanPx;
@@ -2484,9 +2496,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 						) : null}
 						{!isGap && activeCaptionLayout && autoCaptionSettings ? (
 							<div
-								className="absolute inset-x-0 flex justify-center"
+								className="absolute flex w-full justify-center"
 								style={{
-									bottom: `${autoCaptionSettings.bottomOffset}%`,
+									left: `${autoCaptionSettings.positionX}%`,
+									bottom: `${100 - autoCaptionSettings.positionY}%`,
+									transform: "translateX(-50%)",
 									pointerEvents: onEditAutoCaption ? "auto" : "none",
 								}}
 							>
@@ -2537,38 +2551,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 										style={{
 											backgroundColor: `rgba(0, 0, 0, ${autoCaptionSettings.backgroundOpacity})`,
 											fontFamily: captionFontFamily,
-											fontSize: `${getCaptionScaledFontSize(
-												autoCaptionSettings.fontSize,
-												overlayRef.current?.clientWidth || 960,
-												autoCaptionSettings.maxWidth,
-											)}px`,
+											fontSize: `${captionFontSize}px`,
 											lineHeight: CAPTION_LINE_HEIGHT,
 											textAlign: "center",
 											fontWeight: CAPTION_FONT_WEIGHT,
-											padding: `${
-												getCaptionPadding(
-													getCaptionScaledFontSize(
-														autoCaptionSettings.fontSize,
-														overlayRef.current?.clientWidth || 960,
-														autoCaptionSettings.maxWidth,
-													),
-												).y
-											}px ${
-												getCaptionPadding(
-													getCaptionScaledFontSize(
-														autoCaptionSettings.fontSize,
-														overlayRef.current?.clientWidth || 960,
-														autoCaptionSettings.maxWidth,
-													),
-												).x
-											}px`,
+											padding: `${captionPadding.y}px ${captionPadding.x}px`,
 											borderRadius: `${getCaptionScaledRadius(
 												autoCaptionSettings.boxRadius,
-												getCaptionScaledFontSize(
-													autoCaptionSettings.fontSize,
-													overlayRef.current?.clientWidth || 960,
-													autoCaptionSettings.maxWidth,
-												),
+												captionFontSize,
 											)}px`,
 											boxSizing: "border-box",
 											cursor:
@@ -2616,7 +2606,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 													width: `${
 														captionEditTextMetrics?.widthPx ??
 														Math.max(
-															48,
+															captionFontSize * 2,
 															activeCaptionLayout.visibleLines.reduce(
 																(width, line) =>
 																	Math.max(width, line.width),
@@ -2627,12 +2617,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 													maxWidth: `${
 														captionEditTextMetrics?.maxTextWidthPx ??
 														getCaptionTextMaxWidth(
-															overlayRef.current?.clientWidth || 960,
+															captionViewportWidth,
 															autoCaptionSettings.maxWidth,
 															getCaptionScaledFontSize(
 																autoCaptionSettings.fontSize,
-																overlayRef.current?.clientWidth ||
-																	960,
+																captionViewportWidth,
 																autoCaptionSettings.maxWidth,
 															),
 														)
@@ -2646,8 +2635,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 															captionEditTextMetrics?.fontSize ??
 																getCaptionScaledFontSize(
 																	autoCaptionSettings.fontSize,
-																	overlayRef.current
-																		?.clientWidth || 960,
+																	captionViewportWidth,
 																	autoCaptionSettings.maxWidth,
 																)
 														) *
