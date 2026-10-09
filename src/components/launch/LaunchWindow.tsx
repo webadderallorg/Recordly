@@ -444,7 +444,7 @@ function LaunchWindowContent() {
 						>
 							<motion.div
 								ref={hudBarRef}
-								layout={shouldAnimateHudLayout}
+								layout={false}
 								transition={hudStateTransition}
 								className={`${styles.bar} launch-theme mb-2 pointer-events-auto`}
 								onMouseEnter={handleHudMouseEnter}
@@ -473,24 +473,21 @@ function LaunchWindowContent() {
 									<AnimatePresence initial={false} mode="wait">
 										<motion.div
 											key={hudMode}
-											layout={shouldAnimateHudLayout}
+											layout={false}
 											className={styles.barState}
 											initial={{
 												opacity: 0,
 												y: 10,
-												scale: 0.985,
 												filter: "blur(8px)",
 											}}
 											animate={{
 												opacity: 1,
 												y: 0,
-												scale: 1,
 												filter: "blur(0px)",
 											}}
 											exit={{
 												opacity: 0,
 												y: -10,
-												scale: 0.985,
 												filter: "blur(6px)",
 											}}
 											transition={hudStateTransition}
