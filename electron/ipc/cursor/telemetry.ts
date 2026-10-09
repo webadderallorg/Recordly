@@ -12,7 +12,6 @@ import {
 	cursorCapturePauseStartedAtMs,
 	cursorCaptureStartTimeMs,
 	isCursorCaptureActive,
-	linuxCursorScreenPoint,
 	pendingCursorSamples,
 	selectedSource,
 	selectedWindowBounds,
@@ -165,16 +164,18 @@ export function getCursorCaptureElapsedMs(nowMs = Date.now()) {
 }
 
 export function getNormalizedCursorPoint() {
-	const fallbackCursor = getScreen().getCursorScreenPoint();
-	const linuxCursorCache = process.platform === "linux" ? linuxCursorScreenPoint : null;
-	const isLinuxCacheFresh = !!linuxCursorCache && Date.now() - linuxCursorCache.updatedAt <= 1000;
+	// Electron's getCursorScreenPoint() and Screen API display bounds share the
+	// same (DIP) coordinate space, so they can be combined safely. The uiohook
+	// mousemove cache (linuxCursorScreenPoint) reports raw X screen coordinates
+	// which, on multi-monitor X11/XWayland setups, live in the merged X screen
+	// space rather than per-display DIP space. Subtracting display bounds from
+	// those coordinates produced values outside [0, 1] that clamped to the
+	// display edge, pinning the overlay cursor and misplacing click zooms.
+	// Always use the Electron coordinate source instead.
+	const cursor = getScreen().getCursorScreenPoint();
 
 	const primarySf =
 		process.platform !== "darwin" ? getScreen().getPrimaryDisplay().scaleFactor || 1 : 1;
-
-	const cursor = isLinuxCacheFresh
-		? { x: linuxCursorCache.x / primarySf, y: linuxCursorCache.y / primarySf }
-		: fallbackCursor;
 
 	const windowBounds = selectedSource?.id?.startsWith("window:") ? selectedWindowBounds : null;
 	if (windowBounds) {
