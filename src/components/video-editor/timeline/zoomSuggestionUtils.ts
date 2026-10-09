@@ -84,6 +84,15 @@ function isExplicitClickType(
 	return typeof interactionType === "string" && EXPLICIT_CLICK_TYPES.has(interactionType);
 }
 
+/**
+ * True when the recording carries at least one real click event. Recordings made
+ * while the global interaction hook is unavailable contain only `move` samples,
+ * and callers use this to decide whether dwell heuristics should stand in.
+ */
+export function hasExplicitClickTelemetry(samples: CursorTelemetryPoint[]): boolean {
+	return samples.some((sample) => isExplicitClickType(sample.interactionType));
+}
+
 function normalizeTelemetrySample(
 	sample: CursorTelemetryPoint,
 	totalMs: number,
@@ -372,6 +381,13 @@ export function buildInteractionZoomSuggestions(params: {
 	spacingMs?: number;
 	mergeGapMs?: number;
 	padMs?: number;
+	/**
+	 * When no explicit click telemetry exists at all, derive zoom windows from
+	 * cursor dwell heuristics instead of giving up. Recordings made without a
+	 * working global interaction hook contain only `move` samples, and without
+	 * this fallback they would never receive automatic zooms.
+	 */
+	allowDwellFallback?: boolean;
 }): InteractionZoomSuggestionResult {
 	const {
 		cursorTelemetry,
@@ -379,6 +395,7 @@ export function buildInteractionZoomSuggestions(params: {
 		reservedSpans = [],
 		mergeGapMs = CLICK_CLUSTER_MERGE_GAP_MS,
 		padMs = CLICK_CLUSTER_PAD_MS,
+		allowDwellFallback = false,
 	} = params;
 
 	if (totalMs <= 0) {
@@ -397,10 +414,16 @@ export function buildInteractionZoomSuggestions(params: {
 		return { status: "no-telemetry", suggestions: [] };
 	}
 
-	// Only use explicit click events (uiohook telemetry) – ignore dwell heuristics
-	const clickCandidates = detectInteractionCandidates(normalizedSamples).filter(
+	// Prefer explicit click events (uiohook telemetry). Dwell heuristics are only
+	// consulted when the recording carries no clicks at all and the caller opted in.
+	const interactionCandidates = detectInteractionCandidates(normalizedSamples);
+	const explicitCandidates = interactionCandidates.filter(
 		(candidate) => candidate.source === "explicit",
 	);
+	const clickCandidates =
+		explicitCandidates.length === 0 && allowDwellFallback
+			? interactionCandidates.filter((candidate) => candidate.source === "heuristic")
+			: explicitCandidates;
 
 	if (clickCandidates.length === 0) {
 		return { status: "no-interactions", suggestions: [] };
