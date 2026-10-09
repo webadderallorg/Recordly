@@ -82,6 +82,7 @@ interface TimelineCanvasProps {
 	keyframes?: { id: string; time: number }[];
 	sourceAudioTracks?: SourceAudioTrackWithPeaks[];
 	getSourceAudioTrackSettingsForClip?: (clipId: string | null) => SourceAudioTrackSettings;
+	onSelectedClipSourceAudioTrackVolumeChange?: (trackId: string, volume: number) => void;
 	showSourceAudioTrack?: boolean;
 	liveSpanPreviewById?: Record<string, { start: number; end: number }>;
 	liveHiddenItemIds?: string[];
@@ -369,11 +370,11 @@ function useTimelineHover({
 		timelineHoverMs === null
 			? 0
 			: valueToPixels(
-					Math.max(
-						0,
-						getPlayheadDisplayTime(timelineHoverMs, clipPresentation) - rangeStart,
-					),
-				);
+				Math.max(
+					0,
+					getPlayheadDisplayTime(timelineHoverMs, clipPresentation) - rangeStart,
+				),
+			);
 	const canShowGhostPlayhead = isTimelineHovered && timelineHoverMs !== null;
 
 	return {
@@ -418,6 +419,7 @@ interface TimelineCanvasRowsProps {
 	onSelectCaption?: (id: string | null) => void;
 	sourceAudioTracks?: SourceAudioTrackWithPeaks[];
 	getSourceAudioTrackSettingsForClip?: (clipId: string | null) => SourceAudioTrackSettings;
+	onSelectedClipSourceAudioTrackVolumeChange?: (trackId: string, volume: number) => void;
 	showSourceAudioTrack?: boolean;
 	liveSpanPreviewById?: Record<string, { start: number; end: number }>;
 	liveHiddenItemIds?: string[];
@@ -482,6 +484,7 @@ function AudioItemWithWaveform({
 const TimelineCanvasRows = memo(function TimelineCanvasRows({
 	videoPath,
 	items,
+	onSelectedClipSourceAudioTrackVolumeChange,
 	selectAllBlocksActive,
 	selectedZoomId,
 	selectedClipId,
@@ -594,21 +597,21 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 		ghostStartMs === null
 			? null
 			: getRegionDisplaySpan(
-					{ start: ghostStartMs, end: ghostStartMs + pixelsToValue(ghostWidthPx) },
-					clipPresentation,
-				);
+				{ start: ghostStartMs, end: ghostStartMs + pixelsToValue(ghostWidthPx) },
+				clipPresentation,
+			);
 	const zoomGhostOffsetPx = zoomGhost ? valueToPixels(zoomGhost.start - rangeStart) : 0;
 	const zoomGhostWidthPx = zoomGhost ? valueToPixels(zoomGhost.end - zoomGhost.start) : 0;
 	const embeddedGhost =
 		captionGhostStartMs === null
 			? null
 			: getEmbeddedCaptionSpan(
-					{
-						start: captionGhostStartMs,
-						end: captionGhostStartMs + pixelsToValue(captionGhostWidthPx),
-					},
-					clipPresentation,
-				);
+				{
+					start: captionGhostStartMs,
+					end: captionGhostStartMs + pixelsToValue(captionGhostWidthPx),
+				},
+				clipPresentation,
+			);
 	const embeddedGhostOffset = embeddedGhost ? valueToPixels(embeddedGhost.start - rangeStart) : 0;
 	const embeddedGhostWidth = embeddedGhost
 		? valueToPixels(embeddedGhost.end - embeddedGhost.start)
@@ -651,13 +654,13 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 								style={
 									direction === "rtl"
 										? {
-												right: `${embeddedGhostOffset}px`,
-												width: `${embeddedGhostWidth}px`,
-											}
+											right: `${embeddedGhostOffset}px`,
+											width: `${embeddedGhostWidth}px`,
+										}
 										: {
-												left: `${embeddedGhostOffset}px`,
-												width: `${embeddedGhostWidth}px`,
-											}
+											left: `${embeddedGhostOffset}px`,
+											width: `${embeddedGhostWidth}px`,
+										}
 								}
 							>
 								<div
@@ -751,7 +754,24 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 			</Row>
 			{showSourceAudioTrack &&
 				sourceAudioTracks.map((track) => (
-					<Row key={track.id} id={`${SOURCE_AUDIO_ROW_ID}-${track.id}`}>
+					<Row
+						key={track.id}
+						id={`${SOURCE_AUDIO_ROW_ID}-${track.id}`}
+						trackControls={
+							<div className="flex flex-col gap-1 w-full">
+								<div className="text-xs font-semibold text-foreground/80">{track.label}</div>
+								<input
+									type="range"
+									min="0"
+									max="1"
+									step="0.05"
+									defaultValue="1"
+									className="w-full h-1 bg-muted rounded-lg appearance-none cursor-pointer"
+									onChange={(e) => onSelectedClipSourceAudioTrackVolumeChange?.(track.id, parseFloat(e.target.value))}
+								/>
+							</div>
+						}
+					>
 						{clipItems
 							.filter((item) => item.showSourceAudio)
 							.map((item) => {
@@ -785,8 +805,8 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 				id={ZOOM_ROW_ID}
 				compact={
 					annotationRows.length +
-						audioRows.length +
-						(showSourceAudioTrack ? sourceAudioTracks.length : 0) >
+					audioRows.length +
+					(showSourceAudioTrack ? sourceAudioTracks.length : 0) >
 					0
 				}
 				isEmpty={zoomItems.length === 0}
@@ -806,13 +826,13 @@ const TimelineCanvasRows = memo(function TimelineCanvasRows({
 							style={
 								direction === "rtl"
 									? {
-											right: `${zoomGhostOffsetPx}px`,
-											width: `${zoomGhostWidthPx}px`,
-										}
+										right: `${zoomGhostOffsetPx}px`,
+										width: `${zoomGhostWidthPx}px`,
+									}
 									: {
-											left: `${zoomGhostOffsetPx}px`,
-											width: `${zoomGhostWidthPx}px`,
-										}
+										left: `${zoomGhostOffsetPx}px`,
+										width: `${zoomGhostWidthPx}px`,
+									}
 							}
 						>
 							<div
