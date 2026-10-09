@@ -25,6 +25,8 @@
 		"screen": "Bildschirm",
 		"window": "Fenster",
 		"noSourcesFound": "Keine Quellen gefunden",
+		"windowCursorCaption": "Fensteraufnahmen enthalten den System-Cursor.",
+		"windowCursorToast": "Fensteraufnahmen enthalten den echten System-Cursor zusätzlich zum animierten Cursor.",
 		"microphone": "Mikrofon",
 		"turnOffMicrophone": "Mikrofon ausschalten",
 		"selectMicToEnable": "Mikrofon zum Aktivieren auswählen",

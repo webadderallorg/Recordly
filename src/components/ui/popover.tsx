@@ -64,6 +64,10 @@ export function PopoverContent({
 	>["placement"];
 	return (
 		<HeroPopover.Content
+			// Stable hook for HUD window-shape/grow reporting: the renderer
+			// reports this element's rect to the main process on Linux. Keep
+			// it independent of any popover library's internal markup.
+			data-hud-popover=""
 			{...props}
 			placement={placement}
 			offset={sideOffset}

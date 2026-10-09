@@ -5,6 +5,10 @@ import path from "node:path";
 const MANIFEST_FILE_NAME = "helpers-manifest.json";
 
 function getPlatformArchDir(platform, arch) {
+	if (platform === "linux") {
+		return arch === "arm64" ? "linux-arm64" : "linux-x64";
+	}
+
 	if (platform !== "win32") {
 		throw new Error(`Unsupported native helper manifest platform: ${platform}`);
 	}

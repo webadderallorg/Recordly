@@ -7,6 +7,7 @@ import {
 	useState,
 	type ReactNode,
 } from "react";
+import { isHudGrowMode } from "../hudWindowMode";
 
 interface LaunchPopoverCoordinatorValue {
 	openId: string | null;
@@ -21,6 +22,13 @@ export function LaunchPopoverCoordinatorProvider({ children }: { children: React
 	const [openId, setOpenId] = useState<string | null>(null);
 
 	const requestOpen = useCallback((id: string) => {
+		// Grow mode (native Wayland): pre-grow the window to the expanded
+		// preset BEFORE the menu mounts, so Radix measures a viewport with
+		// room below the bar and positions the menu correctly on the first
+		// try. Content-size reports shrink it to exact size right after.
+		if (isHudGrowMode()) {
+			window.electronAPI?.hudOverlaySetPopoverOpen?.(true);
+		}
 		setOpenId(id);
 	}, []);
 

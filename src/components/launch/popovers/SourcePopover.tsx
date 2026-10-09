@@ -15,11 +15,13 @@ export function SourcePopover({
 	selectedSource,
 	onSourceSelect,
 	onOpen,
+	windowSourcesNote,
 }: {
 	trigger: ReactNode;
 	selectedSource: string;
 	onSourceSelect: (source: DesktopSource) => Promise<void> | void;
 	onOpen?: () => void;
+	windowSourcesNote?: string;
 }) {
 	const { isOpen, requestOpen, requestClose } = useLaunchPopoverCoordinator();
 	const [sources, setSources] = useState<DesktopSource[]>([]);
@@ -50,6 +52,7 @@ export function SourcePopover({
 		<SourceSelector
 			screenSources={screenSources}
 			windowSources={windowSources}
+			windowSourcesNote={windowSourcesNote}
 			selectedSource={selectedSource}
 			loading={loading}
 			onSourceSelect={async (source) => {

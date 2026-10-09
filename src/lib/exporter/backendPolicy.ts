@@ -149,3 +149,13 @@ export function planLightningExportRoutes(options: {
 export function getDefaultLightningRenderBackend(): ExportRenderBackend {
 	return "webgl";
 }
+
+// On Linux/Mesa the Pixi WebGPU export path crashes mid-render and no
+// mid-render backend switch exists once init succeeds, so exports request
+// WebGL first (WebGPU stays as the init-time fallback). Other platforms keep
+// the default auto (WebGPU-first) behavior.
+export function shouldPreferWebglRenderBackend(
+	platformHint: string | null | undefined,
+): boolean {
+	return normalizeLightningRuntimePlatform(platformHint) === "linux";
+}

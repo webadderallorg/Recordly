@@ -25,6 +25,8 @@
 		"screen": "屏幕",
 		"window": "窗口",
 		"noSourcesFound": "未找到源",
+		"windowCursorCaption": "窗口录制会包含系统光标。",
+		"windowCursorToast": "窗口录制会在动画光标之外还包含真实的系统光标。",
 		"microphone": "麦克风",
 		"turnOffMicrophone": "关闭麦克风",
 		"selectMicToEnable": "选择一个麦克风以启用",
