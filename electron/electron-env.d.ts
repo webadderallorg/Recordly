@@ -261,6 +261,10 @@ interface Window {
 			error?: string;
 			userNotified?: boolean;
 			microphoneFallbackRequired?: boolean;
+			systemAudioFallbackRequired?: boolean;
+			systemAudioFallbackReason?: "no-pulse-device" | "no-monitor-source";
+			/** Epoch ms of the first video frame (Linux native capture). */
+			startedAtMs?: number;
 		}>;
 		stopNativeScreenRecording: () => Promise<{
 			success: boolean;
@@ -278,15 +282,19 @@ interface Window {
 			success: boolean;
 			diagnostics?: NativeCaptureDiagnostics | null;
 		}>;
-		pauseNativeScreenRecording: () => Promise<{
-			success: boolean;
-			message?: string;
-			error?: string;
-		}>;
 		resumeNativeScreenRecording: () => Promise<{
 			success: boolean;
 			message?: string;
 			error?: string;
+			/** Epoch ms of the resumed segment's first video frame (Linux native). */
+			startedAtMs?: number;
+		}>;
+		pauseNativeScreenRecording: () => Promise<{
+			success: boolean;
+			message?: string;
+			error?: string;
+			/** Epoch ms when the video piece actually stopped (Linux native). */
+			pausedAtMs?: number;
 		}>;
 		pauseCursorCapture: (pausedAtMs?: number) => Promise<{
 			success: boolean;
@@ -589,7 +597,7 @@ interface Window {
 			startDelayMsByPath?: Record<string, number>;
 			error?: string;
 		}>;
-		setRecordingState: (recording: boolean) => Promise<void>;
+		setRecordingState: (recording: boolean, startedAtMs?: number) => Promise<void>;
 		getCursorTelemetry: (videoPath?: string) => Promise<{
 			success: boolean;
 			samples: CursorTelemetryPoint[];
@@ -999,6 +1007,25 @@ interface Window {
 		setHasUnsavedChanges: (hasChanges: boolean) => void;
 		onRequestSaveBeforeClose: (callback: () => Promise<boolean>) => () => void;
 		isNativeWindowsCaptureAvailable: () => Promise<{ available: boolean }>;
+		isNativeLinuxCaptureAvailable: () => Promise<{
+			available: boolean;
+			reason?:
+				| "not-linux"
+				| "wayland-session"
+				| "no-x11-display"
+				| "no-ffmpeg-binary"
+				| "no-x11grab"
+				| "no-libx264"
+				| "probe-failed";
+		}>;
+		getSourcePickerVisibility: () => Promise<{
+			show: boolean;
+			reason:
+				| "not-linux"
+				| "wayland-session"
+				| "portal-screencast"
+				| "no-portal-screencast";
+		}>;
 		muxNativeWindowsRecording: (expectedDurationMs?: number) => Promise<{
 			success: boolean;
 			path?: string;

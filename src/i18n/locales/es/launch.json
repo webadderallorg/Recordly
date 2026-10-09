@@ -25,6 +25,8 @@
 		"screen": "Pantalla",
 		"window": "Ventana",
 		"noSourcesFound": "No se encontraron fuentes",
+		"windowCursorCaption": "Las grabaciones de ventana incluyen el cursor del sistema.",
+		"windowCursorToast": "Las grabaciones de ventana incluyen el cursor real del sistema además del animado.",
 		"microphone": "Micrófono",
 		"turnOffMicrophone": "Desactivar micrófono",
 		"selectMicToEnable": "Selecciona un micrófono para activar",

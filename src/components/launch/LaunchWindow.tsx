@@ -13,7 +13,7 @@ import {
 	XIcon,
 } from "@/components/ui/icons";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Separator } from "@/components/ui/separator";
 import { useScopedT } from "../../contexts/I18nContext";
 import { useMicrophoneDevices } from "../../hooks/useMicrophoneDevices";
@@ -40,6 +40,7 @@ import {
 } from "./popovers/LaunchPopoverCoordinator";
 import { MicPopover } from "./popovers/MicPopover";
 import { SourcePopover } from "./popovers/SourcePopover";
+import { isWindowSource, type DesktopSource } from "./popovers/launchPopoverTypes";
 import { WebcamPopover } from "./popovers/WebcamPopover";
 import { RecordingControls } from "./RecordingControls";
 
@@ -97,7 +98,7 @@ function LaunchWindowContent() {
 		setSelectedDeviceId: setSelectedVideoDeviceId,
 	} = useVideoDevices(webcamEnabled || openId === "webcam");
 
-	const { hudOverlayMousePassthroughSupported, platform } =
+	const { hudOverlayMousePassthroughSupported, platform, showSourcePicker } =
 		useLaunchWindowSystemState(preparePermissions);
 
 	useEffect(() => {
@@ -188,6 +189,26 @@ function LaunchWindowContent() {
 		};
 	}, [syncSelectedSource]);
 
+	// Window sources on Linux go through browser capture, which burns the
+	// system cursor into the video — alongside the default-on overlay cursor
+	// that is a double cursor. Warn once per session; users who turned the
+	// overlay off only see the one real cursor and have nothing to warn about.
+	const windowCursorNoticeShownRef = useRef(false);
+	const [windowCursorNoticeVisible, setWindowCursorNoticeVisible] = useState(false);
+
+	const handleSourceSelectWithCursorNotice = async (source: DesktopSource) => {
+		await handleSourceSelect(source);
+		if (
+			platform === "linux" &&
+			isWindowSource(source) &&
+			!windowCursorNoticeShownRef.current
+		) {
+			windowCursorNoticeShownRef.current = true;
+			setWindowCursorNoticeVisible(true);
+			window.setTimeout(() => setWindowCursorNoticeVisible(false), 6000);
+		}
+	};
+
 	const hudStateTransition = {
 		duration: 0.24,
 		ease: [0.22, 1, 0.36, 1] as const,
@@ -224,13 +245,19 @@ function LaunchWindowContent() {
 		/>
 	);
 
+
 	const idleControls = (
 		<>
-			{platform !== "linux" && (
+			{showSourcePicker && (
 				<>
 					<SourcePopover
 						selectedSource={selectedSource}
-						onSourceSelect={handleSourceSelect}
+						onSourceSelect={handleSourceSelectWithCursorNotice}
+						windowSourcesNote={
+							platform === "linux"
+								? t("recording.windowCursorCaption")
+								: undefined
+						}
 						onOpen={beginInteractiveHudAction}
 						trigger={
 							<Button
@@ -546,6 +573,21 @@ function LaunchWindowContent() {
 					</div>
 				</div>
 			</div>
+			<AnimatePresence>
+				{windowCursorNoticeVisible && (
+					<motion.div
+						initial={{ opacity: 0, y: 8 }}
+						animate={{ opacity: 1, y: 0 }}
+						exit={{ opacity: 0, y: 8 }}
+						transition={hudStateTransition}
+						className="launch-theme fixed bottom-28 left-1/2 -translate-x-1/2 z-50 pointer-events-auto rounded-[11px] border border-[var(--launch-border)] bg-[var(--launch-surface)] px-3 py-2 text-[12px] font-medium text-[var(--launch-text)] shadow-lg"
+						onMouseEnter={handleHudMouseEnter}
+						onMouseLeave={handleHudMouseLeave}
+					>
+						{t("recording.windowCursorToast")}
+					</motion.div>
+				)}
+			</AnimatePresence>
 		</HudInteractionContext.Provider>
 	);
 }

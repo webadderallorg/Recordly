@@ -5,6 +5,8 @@ import {
 	createProcessedMicrophoneConstraints,
 	normalizeBrowserMicrophoneProfile,
 	resolveBrowserCaptureCursorPolicy,
+	describeNativeLinuxCaptureUnavailable,
+	resolveVideoStartEpochMs,
 	shouldUseNativeWindowsCaptureForSource,
 	stopAndDiscardNativeCapture,
 } from "./useScreenRecorder";
@@ -158,6 +160,27 @@ describe("resolveBrowserCaptureCursorPolicy", () => {
 			hideEditorOverlayCursorByDefault: true,
 		});
 	});
+
+	it("enables the editor overlay by default on Linux, where the OS cursor cannot be hidden", () => {
+		expect(resolveBrowserCaptureCursorPolicy({ platform: "linux" })).toEqual({
+			streamCursor: "never",
+			hideOsCursorBeforeRecording: false,
+			hideEditorOverlayCursorByDefault: false,
+		});
+	});
+
+	it("still enables the editor overlay on Linux when native Windows capture failed", () => {
+		expect(
+			resolveBrowserCaptureCursorPolicy({
+				nativeWindowsCaptureStartFailed: true,
+				platform: "linux",
+			}),
+		).toEqual({
+			streamCursor: "never",
+			hideOsCursorBeforeRecording: false,
+			hideEditorOverlayCursorByDefault: false,
+		});
+	});
 });
 
 describe("shouldUseNativeWindowsCaptureForSource", () => {
@@ -171,6 +194,42 @@ describe("shouldUseNativeWindowsCaptureForSource", () => {
 
 	it("keeps browser capture for non-desktop sources", () => {
 		expect(shouldUseNativeWindowsCaptureForSource({ id: "browser-tab:abc" })).toBe(false);
+	});
+});
+
+describe("describeNativeLinuxCaptureUnavailable", () => {
+	it("explains Wayland sessions", () => {
+		expect(describeNativeLinuxCaptureUnavailable("wayland-session")).toMatch(
+			/X11 session/,
+		);
+	});
+
+	it("explains missing ffmpeg capabilities", () => {
+		expect(describeNativeLinuxCaptureUnavailable("no-x11grab")).toMatch(/x11grab/);
+		expect(describeNativeLinuxCaptureUnavailable("no-libx264")).toMatch(/H\.264/);
+		expect(describeNativeLinuxCaptureUnavailable("no-ffmpeg-binary")).toMatch(
+			/ffmpeg was not found/,
+		);
+	});
+
+	it("falls back to a generic message for unknown reasons", () => {
+		expect(describeNativeLinuxCaptureUnavailable(undefined)).toMatch(/unavailable/);
+	});
+});
+
+describe("resolveVideoStartEpochMs", () => {
+	it("prefers the main process's capture-start epoch", () => {
+		expect(resolveVideoStartEpochMs(1000, 2000)).toBe(1000);
+	});
+
+	it("clamps a future timestamp to the fallback", () => {
+		expect(resolveVideoStartEpochMs(3000, 2000)).toBe(2000);
+	});
+
+	it("falls back when the epoch is missing or invalid", () => {
+		expect(resolveVideoStartEpochMs(undefined, 2000)).toBe(2000);
+		expect(resolveVideoStartEpochMs(0, 2000)).toBe(2000);
+		expect(resolveVideoStartEpochMs(Number.NaN, 2000)).toBe(2000);
 	});
 });
 

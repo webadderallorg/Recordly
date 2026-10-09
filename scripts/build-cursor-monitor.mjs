@@ -25,6 +25,82 @@ const bundledDir = path.join(
 const bundledExePath = path.join(bundledDir, "cursor-monitor.exe");
 const helperId = "cursor-monitor";
 
+function buildLinuxCursorMonitor() {
+	const linuxSourceDir = path.join(projectRoot, "electron", "native", "cursor-monitor-linux");
+	const linuxBundledDir = path.join(
+		projectRoot,
+		"electron",
+		"native",
+		"bin",
+		process.arch === "arm64" ? "linux-arm64" : "linux-x64",
+	);
+	const linuxBinaryPath = path.join(linuxBundledDir, "cursor-monitor");
+	const mainSourcePath = path.join(linuxSourceDir, "src", "main.c");
+
+	if (!existsSync(mainSourcePath)) {
+		console.error("[build-cursor-monitor] Linux helper source not found at", mainSourcePath);
+		process.exit(1);
+	}
+
+	// The helper only needs core X11 headers plus a C compiler; XFixes and
+	// Xcursor are resolved at runtime via dlopen.
+	if (!existsSync("/usr/include/X11/Xlib.h")) {
+		if (existsSync(linuxBinaryPath)) {
+			console.log(
+				"[build-cursor-monitor] X11 headers missing; keeping existing Linux helper:",
+				linuxBinaryPath,
+			);
+			process.exit(0);
+		}
+		console.warn(
+			"[build-cursor-monitor] Skipping: install libx11-dev to build the Linux cursor monitor.",
+		);
+		process.exit(0);
+	}
+
+	let cc = "cc";
+	try {
+		execSync(`${cc} --version`, { stdio: "pipe" });
+	} catch {
+		cc = "gcc";
+		try {
+			execSync(`${cc} --version`, { stdio: "pipe" });
+		} catch {
+			console.warn(
+				"[build-cursor-monitor] Skipping: no C compiler found for the Linux cursor monitor.",
+			);
+			process.exit(0);
+		}
+	}
+
+	console.log("[build-cursor-monitor] Building Linux cursor monitor...");
+	mkdirSync(linuxBundledDir, { recursive: true });
+	try {
+		execSync(`${cc} -O2 -Wall -Wextra -o "${linuxBinaryPath}" "${mainSourcePath}" -lX11 -ldl -lpthread`, {
+			cwd: linuxSourceDir,
+			stdio: "inherit",
+			timeout: 120000,
+		});
+	} catch (error) {
+		console.error("[build-cursor-monitor] Linux build failed:", error.message);
+		process.exit(1);
+	}
+	const manifestPath = updateNativeHelperManifest({
+		projectRoot,
+		helperId,
+		sourceDir: linuxSourceDir,
+		binaryPath: linuxBinaryPath,
+		binaryName: "cursor-monitor",
+	});
+	console.log(`[build-cursor-monitor] Built Linux helper: ${linuxBinaryPath}`);
+	console.log(`[build-cursor-monitor] Updated helper manifest: ${manifestPath}`);
+}
+
+if (process.platform === "linux") {
+	buildLinuxCursorMonitor();
+	process.exit(0);
+}
+
 if (process.platform !== "win32") {
 	console.log("[build-cursor-monitor] Skipping: host platform is not Windows.");
 	process.exit(0);

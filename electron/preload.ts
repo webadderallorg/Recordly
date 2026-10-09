@@ -616,8 +616,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getRecordedVideoPath: () => {
 		return ipcRenderer.invoke("get-recorded-video-path");
 	},
-	setRecordingState: (recording: boolean) => {
-		return ipcRenderer.invoke("set-recording-state", recording);
+	setRecordingState: (recording: boolean, startedAtMs?: number) => {
+		return ipcRenderer.invoke("set-recording-state", recording, startedAtMs);
 	},
 	setCursorScale: (scale: number) => {
 		return ipcRenderer.invoke("set-cursor-scale", scale);
@@ -1089,6 +1089,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	isNativeWindowsCaptureAvailable: () =>
 		ipcRenderer.invoke("is-native-windows-capture-available"),
+	isNativeLinuxCaptureAvailable: () =>
+		ipcRenderer.invoke("is-native-linux-capture-available"),
+	getSourcePickerVisibility: () =>
+		ipcRenderer.invoke("get-source-picker-visibility"),
 	muxNativeWindowsRecording: (expectedDurationMs?: number) =>
 		ipcRenderer.invoke("mux-native-windows-recording", expectedDurationMs),
 	hideOsCursor: () => ipcRenderer.invoke("hide-cursor"),

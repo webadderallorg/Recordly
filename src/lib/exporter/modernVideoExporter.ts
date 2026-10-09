@@ -52,6 +52,7 @@ import {
 	normalizeLightningRuntimePlatform,
 	shouldPreferNativeAutoBackend,
 	shouldPreferNativeStaticLayoutBeforeBreeze,
+	shouldPreferWebglRenderBackend,
 } from "./backendPolicy";
 import { requiresClipTimelineRendering } from "./clipTimeline";
 import { buildEditedTrackSourceSegments, classifyEditedTrackStrategy } from "./editedTrackStrategy";
@@ -604,7 +605,12 @@ export class ModernVideoExporter {
 					timelineEffects: this.config.clipRegions !== undefined,
 					width: this.config.width,
 					height: this.config.height,
-					preferredRenderBackend: undefined,
+					// On Linux the Pixi WebGPU path crashes mid-render (no mid-render
+					// backend switch exists once init succeeds), so exports request
+					// WebGL first; other platforms keep the default auto behavior.
+					preferredRenderBackend: shouldPreferWebglRenderBackend(this.getRuntimePlatform())
+						? "webgl"
+						: undefined,
 					wallpaper: this.config.wallpaper,
 					zoomRegions: this.config.zoomRegions,
 					showShadow: this.config.showShadow,
