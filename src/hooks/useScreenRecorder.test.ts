@@ -158,6 +158,27 @@ describe("resolveBrowserCaptureCursorPolicy", () => {
 			hideEditorOverlayCursorByDefault: true,
 		});
 	});
+
+	it("enables the editor overlay by default on Linux, where the OS cursor cannot be hidden", () => {
+		expect(resolveBrowserCaptureCursorPolicy({ platform: "linux" })).toEqual({
+			streamCursor: "never",
+			hideOsCursorBeforeRecording: false,
+			hideEditorOverlayCursorByDefault: false,
+		});
+	});
+
+	it("still enables the editor overlay on Linux when native Windows capture failed", () => {
+		expect(
+			resolveBrowserCaptureCursorPolicy({
+				nativeWindowsCaptureStartFailed: true,
+				platform: "linux",
+			}),
+		).toEqual({
+			streamCursor: "never",
+			hideOsCursorBeforeRecording: false,
+			hideEditorOverlayCursorByDefault: false,
+		});
+	});
 });
 
 describe("shouldUseNativeWindowsCaptureForSource", () => {

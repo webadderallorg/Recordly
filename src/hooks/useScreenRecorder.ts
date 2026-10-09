@@ -190,9 +190,24 @@ export function normalizeBrowserMicrophoneProfile(value?: string | null): Browse
 
 export function resolveBrowserCaptureCursorPolicy({
 	nativeWindowsCaptureStartFailed = false,
+	platform = "",
 }: {
 	nativeWindowsCaptureStartFailed?: boolean;
+	platform?: string;
 } = {}): BrowserCaptureCursorPolicy {
+	if (platform === "linux") {
+		// Linux browser capture runs through xdg-desktop-portal/PipeWire, which
+		// offers no way to hide the OS cursor globally and typically embeds it
+		// in the stream even when "never" is requested. Keep the telemetry
+		// overlay enabled by default and let the editor's "Show cursor" toggle
+		// turn it off for users who dislike the double cursor.
+		return {
+			streamCursor: "never",
+			hideOsCursorBeforeRecording: false,
+			hideEditorOverlayCursorByDefault: false,
+		};
+	}
+
 	if (nativeWindowsCaptureStartFailed) {
 		// If WGC already failed, avoid the telemetry overlay path that can lag on
 		// constrained Windows systems; keep the browser-captured cursor instead.
@@ -1709,6 +1724,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			}
 
 			let nativeWindowsCaptureStartFailed = false;
+			// Wall-clock epoch of the video timeline's first frame, passed to
+			// set-recording-state so cursor telemetry shares the video's t=0.
+			let videoStartedAtMs: number | undefined;
 
 			if (useNativeCapture) {
 				const nativeResult = await window.electronAPI.startNativeScreenRecording(
@@ -1720,6 +1738,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						microphoneLabel: micLabel,
 					},
 				);
+				if (nativeResult.success) {
+					// Native capture began inside the call above.
+					videoStartedAtMs = Date.now();
+				}
 				if (nativeResult.success && startWasCancelled()) {
 					nativeScreenRecording.current = true;
 					nativeWindowsRecording.current = useNativeWindowsCapture;
@@ -1806,6 +1828,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							);
 						}
 						nativeWarmStartActive.current = false;
+						// Frames only begin (again) after the countdown resume.
+						videoStartedAtMs = Date.now();
 					}
 					if (startWasCancelled()) {
 						return;
@@ -1893,7 +1917,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 					setRecording(true);
 					try {
-						await window.electronAPI?.setRecordingState(true);
+						await window.electronAPI?.setRecordingState(true, videoStartedAtMs);
 					} catch (stateError) {
 						console.warn(
 							"Failed to notify main process that native recording started:",
@@ -1921,8 +1945,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				resetRecordingClock(recordingSessionTimestamp.current);
 			}
 
+			const platform = (await window.electronAPI?.getPlatform?.()) ?? "";
 			const browserCursorPolicy = resolveBrowserCaptureCursorPolicy({
 				nativeWindowsCaptureStartFailed,
+				platform,
 			});
 			hideEditorOverlayCursorByDefault.current =
 				browserCursorPolicy.hideEditorOverlayCursorByDefault;
@@ -2246,10 +2272,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			resetRecordingClock(mainStartedAt);
 			webcamTimeOffsetMs.current =
 				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
+			// Anchor cursor telemetry to the video timeline: the first encoded
+			// frame lands at/just after recorder.start().
+			videoStartedAtMs = Date.now();
 			recorder.start(RECORDER_TIMESLICE_MS);
 			setRecording(true);
 			try {
-				await window.electronAPI?.setRecordingState(true);
+				await window.electronAPI?.setRecordingState(true, videoStartedAtMs);
 			} catch (stateError) {
 				console.warn("Failed to notify main process that recording started:", stateError);
 			}
@@ -2288,6 +2317,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		if (!recording || paused) return;
 		if (nativeScreenRecording.current) {
 			void (async () => {
+				// Stamp before the freeze so tail samples captured past the
+				// video's last frame get dropped at the boundary.
+				const boundaryMs = Date.now();
 				const result = await window.electronAPI.pauseNativeScreenRecording();
 				if (!result.success) {
 					console.error(
@@ -2301,7 +2333,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					webcamRecorder.current.pause();
 				}
 				pauseMicFallbackRecorder();
-				const boundaryMs = Date.now();
 				markRecordingPaused(boundaryMs);
 				setPaused(true);
 				try {
@@ -2313,12 +2344,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			return;
 		}
 		if (mediaRecorder.current?.state === "recording") {
+			const boundaryMs = Date.now();
 			mediaRecorder.current.pause();
 			if (webcamRecorder.current?.state === "recording") {
 				webcamRecorder.current.pause();
 			}
 			void (async () => {
-				const boundaryMs = Date.now();
 				markRecordingPaused(boundaryMs);
 				setPaused(true);
 				try {

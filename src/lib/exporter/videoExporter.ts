@@ -19,6 +19,7 @@ import type {
 } from "@/components/video-editor/types";
 import { getEffectiveVideoStreamDurationSeconds } from "@/lib/mediaTiming";
 import { AudioProcessor, isAacAudioEncodingSupported } from "./audioEncoder";
+import { shouldPreferWebglRenderBackend } from "./backendPolicy";
 import { buildEditedTrackSourceSegments, classifyEditedTrackStrategy } from "./editedTrackStrategy";
 import {
 	advanceFinalizationProgress,
@@ -217,7 +218,12 @@ export class VideoExporter {
 				timelineEffects: this.config.clipRegions !== undefined,
 				width: this.config.width,
 				height: this.config.height,
-				preferredRenderBackend: undefined,
+				// Prefer WebGL on Linux: see the matching note in ModernVideoExporter.
+				preferredRenderBackend: shouldPreferWebglRenderBackend(
+					typeof navigator === "undefined" ? undefined : navigator.platform || navigator.userAgent,
+				)
+					? "webgl"
+					: undefined,
 				wallpaper: this.config.wallpaper,
 				zoomRegions: this.config.zoomRegions,
 				showShadow: this.config.showShadow,

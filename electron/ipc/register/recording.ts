@@ -1859,7 +1859,7 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("set-recording-state", (_, recording: boolean) => {
+	ipcMain.handle("set-recording-state", (_, recording: boolean, startedAtMs?: unknown) => {
 		if (recording) {
 			stopCursorCapture();
 			stopInteractionCapture();
@@ -1868,7 +1868,16 @@ export function registerRecordingHandlers(
 			setIsCursorCaptureActive(true);
 			setActiveCursorSamples([]);
 			setPendingCursorSamples([]);
-			setCursorCaptureStartTimeMs(Date.now());
+			// Prefer the renderer-provided video start epoch: the video timeline
+			// begins when capture starts, and this IPC arrives afterwards, so
+			// stamping the clock here would put cursor telemetry permanently
+			// ahead of the recorded frames.
+			const requestedEpochMs = typeof startedAtMs === "number" ? startedAtMs : NaN;
+			const cursorEpochMs =
+				Number.isFinite(requestedEpochMs) && requestedEpochMs > 0
+					? Math.min(requestedEpochMs, Date.now())
+					: Date.now();
+			setCursorCaptureStartTimeMs(cursorEpochMs);
 			resetCursorCaptureClock();
 			setLinuxCursorScreenPoint(null);
 			setLastLeftClick(null);
