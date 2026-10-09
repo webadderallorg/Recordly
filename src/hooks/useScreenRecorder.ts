@@ -216,6 +216,21 @@ export function shouldUseNativeWindowsCaptureForSource(
 	return source?.id?.startsWith("screen:") === true || source?.id?.startsWith("window:") === true;
 }
 
+export function stopActiveMediaRecorder(
+	recorder: Pick<MediaRecorder, "state" | "stop"> | null | undefined,
+): boolean {
+	if (!recorder) return false;
+	if (recorder.state === "recording" || recorder.state === "paused") {
+		try {
+			recorder.stop();
+			return true;
+		} catch {
+			return false;
+		}
+	}
+	return false;
+}
+
 export function createProcessedMicrophoneConstraints(
 	microphoneDeviceId?: string,
 	profile: BrowserMicrophoneProfile = DEFAULT_BROWSER_MICROPHONE_PROFILE,
@@ -630,6 +645,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		if (webcamStream.current) {
 			webcamStream.current.getTracks().forEach((track) => track.stop());
 			webcamStream.current = null;
+		}
+
+		if (webcamRecorder.current) {
+			stopActiveMediaRecorder(webcamRecorder.current);
+			webcamRecorder.current = null;
 		}
 
 		if (mixingContext.current) {
@@ -1648,11 +1668,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				void discardActiveNativeCapture();
 			}
 
-			const recorder = mediaRecorder.current;
-			const recorderState = recorder?.state;
-			if (recorder && (recorderState === "recording" || recorderState === "paused")) {
-				recorder.stop();
-			}
+			stopActiveMediaRecorder(mediaRecorder.current);
+			stopActiveMediaRecorder(webcamRecorder.current);
+			webcamRecorder.current = null;
 
 			cleanupCapturedMedia();
 		};
@@ -2384,9 +2402,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		// Discard webcam recording regardless of recording mode
 		webcamChunks.current = [];
-		if (webcamRecorder.current && webcamRecorder.current.state !== "inactive") {
-			webcamRecorder.current.stop();
-		}
+		stopActiveMediaRecorder(webcamRecorder.current);
 		webcamRecorder.current = null;
 		webcamStartTime.current = null;
 		webcamTimeOffsetMs.current = 0;
@@ -2407,9 +2423,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		if (mediaRecorder.current) {
 			chunks.current = [];
 			cleanupCapturedMedia();
-			if (mediaRecorder.current.state !== "inactive") {
-				mediaRecorder.current.stop();
-			}
+			stopActiveMediaRecorder(mediaRecorder.current);
 			setRecording(false);
 			window.electronAPI?.setRecordingState(false);
 		}
