@@ -192,6 +192,24 @@ type NativeAudioPlan =
 	  };
 
 const FILTERGRAPH_FALLBACK_AUDIO_SAMPLE_RATE = 48_000;
+const RUNTIME_DIAGNOSTICS_IPC_TIMEOUT_MS = 4000;
+
+/** Bounds a diagnostics-only IPC call so a stuck main process can never stall export prep. */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => reject(new Error("Timed out")), timeoutMs);
+		promise.then(
+			(value) => {
+				clearTimeout(timer);
+				resolve(value);
+			},
+			(error) => {
+				clearTimeout(timer);
+				reject(error);
+			},
+		);
+	});
+}
 
 function hasNonDefaultSourceTrackSettings(sourceAudioTrackSettings?: SourceAudioTrackSettings) {
 	if (!sourceAudioTrackSettings) {
@@ -1015,7 +1033,10 @@ export class ModernVideoExporter {
 				typeof window !== "undefined" &&
 				typeof window.electronAPI?.getAppVersion === "function"
 			) {
-				diagnostics.appVersion = await window.electronAPI.getAppVersion();
+				diagnostics.appVersion = await withTimeout(
+					window.electronAPI.getAppVersion(),
+					RUNTIME_DIAGNOSTICS_IPC_TIMEOUT_MS,
+				);
 			}
 		} catch {
 			// Environment diagnostics must never prevent an export attempt.
@@ -1026,7 +1047,10 @@ export class ModernVideoExporter {
 				typeof window !== "undefined" &&
 				typeof window.electronAPI?.getExportHardwareInfo === "function"
 			) {
-				const result = await window.electronAPI.getExportHardwareInfo();
+				const result = await withTimeout(
+					window.electronAPI.getExportHardwareInfo(),
+					RUNTIME_DIAGNOSTICS_IPC_TIMEOUT_MS,
+				);
 				if (result.success && result.hardware) {
 					diagnostics.hardware = result.hardware;
 				}
