@@ -12,6 +12,11 @@ type Input = {
 	handleUndo: () => void;
 	handleRedo: () => void;
 	startPlayback: () => void;
+	stepFrameBackward?: () => void;
+	stepFrameForward?: () => void;
+	stepTimeSeconds?: (seconds: number) => void;
+	handlePreviewSkipBack?: () => void;
+	handlePreviewSkipForward?: () => void;
 };
 
 export function useEditorGlobalInteractions({
@@ -22,6 +27,11 @@ export function useEditorGlobalInteractions({
 	handleUndo,
 	handleRedo,
 	startPlayback,
+	stepFrameBackward,
+	stepFrameForward,
+	stepTimeSeconds,
+	handlePreviewSkipBack,
+	handlePreviewSkipForward,
 }: Input) {
 	const heldPlaybackKey = useRef<string | null>(null);
 
@@ -72,6 +82,48 @@ export function useEditorGlobalInteractions({
 				}
 				return;
 			}
+
+			if (!editable) {
+				if (event.altKey && !event.ctrlKey && !event.metaKey) {
+					if (event.key === "ArrowLeft" && handlePreviewSkipBack) {
+						event.preventDefault();
+						handlePreviewSkipBack();
+						return;
+					}
+					if (event.key === "ArrowRight" && handlePreviewSkipForward) {
+						event.preventDefault();
+						handlePreviewSkipForward();
+						return;
+					}
+				}
+
+				if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+					if (event.key === "ArrowLeft" && stepTimeSeconds) {
+						event.preventDefault();
+						stepTimeSeconds(-1);
+						return;
+					}
+					if (event.key === "ArrowRight" && stepTimeSeconds) {
+						event.preventDefault();
+						stepTimeSeconds(1);
+						return;
+					}
+				}
+
+				if (!event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+					if ((event.key === "," || event.key === "ArrowLeft") && stepFrameBackward) {
+						event.preventDefault();
+						stepFrameBackward();
+						return;
+					}
+					if ((event.key === "." || event.key === "ArrowRight") && stepFrameForward) {
+						event.preventDefault();
+						stepFrameForward();
+						return;
+					}
+				}
+			}
+
 			if (!matchesShortcut(event, shortcuts.playPause, isMac) || editable) return;
 			consumePlaybackKey(event);
 			if (event.repeat) return;
@@ -89,7 +141,19 @@ export function useEditorGlobalInteractions({
 			window.removeEventListener("keyup", handleKeyUp, { capture: true });
 			window.removeEventListener("blur", releasePlaybackKey);
 		};
-	}, [shortcuts, isMac, handleUndo, handleRedo, startPlayback, videoPlaybackRef]);
+	}, [
+		shortcuts,
+		isMac,
+		handleUndo,
+		handleRedo,
+		startPlayback,
+		videoPlaybackRef,
+		stepFrameBackward,
+		stepFrameForward,
+		stepTimeSeconds,
+		handlePreviewSkipBack,
+		handlePreviewSkipForward,
+	]);
 
 	useEffect(() => {
 		if (
