@@ -38,12 +38,17 @@ export interface TimelineEditorProps {
 	playheadTime?: number;
 	onSeek?: (time: number) => void;
 	cursorTelemetry?: CursorTelemetryPoint[];
+	typingTelemetry?: TypingTelemetryPoint[];
 	autoSuggestZoomsTrigger?: number;
 	onAutoSuggestZoomsConsumed?: () => void;
 	disableSuggestedZooms?: boolean;
 	zoomRegions: ZoomRegion[];
 	onZoomAdded: (span: Span) => void;
-	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
+	onZoomSuggested?: (
+		span: Span,
+		focus: ZoomFocus,
+		depth?: ZoomRegion["depth"],
+	) => void;
 	onZoomSpanChange: (id: string, span: Span) => void;
 	onZoomDelete: (id: string) => void;
 	selectedZoomId: string | null;
@@ -107,6 +112,7 @@ function extractLocalPathFromMediaServerUrl(input: string | null | undefined): s
 export interface TimelineEditorHandle {
 	addZoom: () => void;
 	suggestZooms: () => void;
+	suggestTypingZooms: () => void;
 	splitClip: () => void;
 	addAnnotation: (trackIndex?: number) => void;
 	addAudio: (trackIndex?: number) => Promise<void>;
@@ -121,6 +127,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			playheadTime,
 			onSeek,
 			cursorTelemetry = [],
+			typingTelemetry,
 			autoSuggestZoomsTrigger = 0,
 			onAutoSuggestZoomsConsumed,
 			disableSuggestedZooms = false,
@@ -360,6 +367,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			currentTimeMs,
 			safeMinDurationMs,
 			cursorTelemetry,
+			typingTelemetry,
 			autoSuggestZoomsTrigger,
 			onAutoSuggestZoomsConsumed,
 			disableSuggestedZooms,

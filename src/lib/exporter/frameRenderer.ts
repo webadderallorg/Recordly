@@ -44,6 +44,12 @@ import {
 } from "@/components/video-editor/videoPlayback/motionSmoothing";
 import { getSceneEffectMetrics } from "@/components/video-editor/videoPlayback/sceneEffects";
 import { resolveSceneZoomTarget } from "@/components/video-editor/videoPlayback/sceneMotion";
+import {
+	applyCamera3DTransform,
+	createCamera3DContainer,
+	type Camera3DState,
+	ZERO_CAMERA_3D_STATE,
+} from "@/components/video-editor/videoPlayback/camera3d";
 import { getWebcamMediaTargetTimeSeconds, isWebcamVisibleAtSourceTime } from "@/components/video-editor/videoPlayback/webcamSync";
 import {
 	applyZoomTransform,
@@ -124,6 +130,7 @@ interface FrameRenderConfig {
 	cameraSpringMassMultiplier?: number;
 	zoomSmoothness?: number;
 	zoomClassicMode?: boolean;
+	zoom3DEnabled?: boolean;
 	cursorMotionBlur?: number;
 	cursorClickEffect?: CursorClickEffectStyle;
 	cursorClickEffectColor?: string;
@@ -222,6 +229,9 @@ function configureHighQuality2DContext(
 export class FrameRenderer {
 	private app: Application | null = null;
 	private cameraContainer: Container | null = null;
+	private tiltContainer: Container | null = null;
+	/** Resolved 3D move for the current frame, set in updateAnimationState. */
+	private camera3DState: Camera3DState = ZERO_CAMERA_3D_STATE;
 	private videoEffectsContainer: Container | null = null;
 	private videoContainer: Container | null = null;
 	private cursorContainer: Container | null = null;
@@ -386,11 +396,16 @@ export class FrameRenderer {
 		console.log(`[FrameRenderer] Export renderer backend: ${backend}`);
 
 		// Setup containers
+		// Tilt container sits between the stage and the camera, mirroring the
+		// preview scene graph so the 3D transform is written to the same node in
+		// both and cannot be clobbered by the per-frame zoom write.
+		this.tiltContainer = createCamera3DContainer();
 		this.cameraContainer = new Container();
 		this.videoEffectsContainer = new Container();
 		this.videoContainer = new Container();
 		this.cursorContainer = new Container();
-		this.app.stage.addChild(this.cameraContainer);
+		this.app.stage.addChild(this.tiltContainer);
+		this.tiltContainer.addChild(this.cameraContainer);
 		this.cameraContainer.addChild(this.videoEffectsContainer);
 		this.cameraContainer.addChild(this.cursorContainer);
 		this.videoEffectsContainer.addChild(this.videoContainer);
@@ -1455,6 +1470,22 @@ export class FrameRenderer {
 			this.updateAnimationState(timeMs, cursorTimeMs);
 		}
 
+		// Apply the 3D tilt before the zoom so both write to their own node, in
+		// the same order as the preview. progress is the zoom's own eased
+		// progress, so the tilt eases in and out with the move.
+		if (this.tiltContainer) {
+			const region3d = this.camera3DState;
+			const tilt =
+				region3d.rotateX === 0 && region3d.rotateY === 0
+					? ZERO_CAMERA_3D_STATE
+					: {
+							rotateY: region3d.rotateY * this.animationState.progress,
+							rotateX: region3d.rotateX * this.animationState.progress,
+							perspective: region3d.perspective,
+						};
+			applyCamera3DTransform(this.tiltContainer, tilt, layoutCache.stageSize);
+		}
+
 		applyZoomTransform({
 			cameraContainer: this.cameraContainer,
 			zoomBlurFilter: this.zoomBlurFilter,
@@ -1605,6 +1636,7 @@ export class FrameRenderer {
 			zoomInDurationMs: this.config.zoomInDurationMs,
 			zoomOutDurationMs: this.config.zoomOutDurationMs,
 			zoomClassicMode: this.config.zoomClassicMode,
+			zoom3DEnabled: this.config.zoom3DEnabled ?? true,
 			cursorTelemetry: this.config.cursorTelemetry,
 			cursorFollowCamera: this.cursorFollowCamera,
 		});
@@ -1619,6 +1651,7 @@ export class FrameRenderer {
 		state.focusX = target.focus.cx;
 		state.focusY = target.focus.cy;
 		state.progress = target.progress;
+		this.camera3DState = target.move3d;
 
 		const projectedTransform = computeZoomTransform({
 			stageSize: this.layoutCache.stageSize,

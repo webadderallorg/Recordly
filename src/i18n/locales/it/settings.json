@@ -62,6 +62,7 @@
 		"connectedZoomDescription": "Regola lo scorrimento tra regioni di zoom consecutive quando la connessione è abilitata.",
 		"motionPresetsTitle": "Preset di movimento",
 		"motionPresetsZoomHint": "I preset di movimento dello zoom sono disponibili nelle Impostazioni.",
+		"camera3d": "Movimenti camera 3D",
 		"animationPresets": "Preset di animazione",
 		"cursorMotionPresets": "Preset di movimento del cursore",
 		"motionPresets": {

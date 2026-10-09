@@ -493,6 +493,8 @@ interface SettingsPanelProps {
 	onCameraSpringMassMultiplierChange?: (multiplier: number) => void;
 	zoomClassicMode?: boolean;
 	onZoomClassicModeChange?: (enabled: boolean) => void;
+	zoom3DEnabled?: boolean;
+	onZoom3DEnabledChange?: (enabled: boolean) => void;
 	cursorClickEffect?: CursorClickEffectStyle;
 	onCursorClickEffectChange?: (effect: CursorClickEffectStyle) => void;
 	cursorClickEffectColor?: string;
@@ -938,6 +940,8 @@ export function SettingsPanel({
 	onCameraSpringMassMultiplierChange,
 	zoomClassicMode = false,
 	onZoomClassicModeChange,
+	zoom3DEnabled = true,
+	onZoom3DEnabledChange,
 	cursorClickEffect = DEFAULT_CURSOR_CLICK_EFFECT,
 	onCursorClickEffectChange,
 	cursorClickEffectColor = DEFAULT_CURSOR_CLICK_EFFECT_COLOR,
@@ -2643,6 +2647,16 @@ export function SettingsPanel({
 								aria-label={tSettings("effects.classicZoom", "Classic Animation")}
 								checked={zoomClassicMode}
 								onCheckedChange={(v) => onZoomClassicModeChange?.(v)}
+							/>
+						</div>
+						<div className="flex items-center justify-between py-2">
+							<span className="text-xs text-muted-foreground">
+								{tSettings("effects.camera3d", "3D Camera Moves")}
+							</span>
+							<Switch
+								aria-label={tSettings("effects.camera3d", "3D Camera Moves")}
+								checked={zoom3DEnabled}
+								onCheckedChange={(v) => onZoom3DEnabledChange?.(v)}
 							/>
 						</div>
 						{!zoomClassicMode && (

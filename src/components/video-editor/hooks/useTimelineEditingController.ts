@@ -15,6 +15,7 @@ import { useAudioRegionCommands } from "./useAudioRegionCommands";
 import { useCaptionCommands } from "./useCaptionCommands";
 import { useClipRegionCommands } from "./useClipRegionCommands";
 import { useCursorTelemetry } from "./useCursorTelemetry";
+import { useTypingTelemetry } from "./useTypingTelemetry";
 import { useEditorGlobalInteractions } from "./useEditorGlobalInteractions";
 import { useEditorPlaybackControls } from "./useEditorPlaybackControls";
 import { useFreshRecordingAutoZoom } from "./useFreshRecordingAutoZoom";
@@ -70,6 +71,15 @@ export function useTimelineEditingController(input: Input) {
 		videoSourcePath: input.videoSourcePath,
 		duration: input.duration,
 		loopCursor: input.appearance.loopCursor,
+		timeline,
+		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
+		autoSuggestedVideoPathRef: input.autoSuggestedVideoPathRef,
+	});
+	// Keystroke telemetry, loaded on the same retry schedule as cursor
+	// telemetry so both sidecars are available at the same time.
+	const typingTelemetry = useTypingTelemetry({
+		videoPath: input.videoPath,
+		videoSourcePath: input.videoSourcePath,
 		timeline,
 		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
 		autoSuggestedVideoPathRef: input.autoSuggestedVideoPathRef,
@@ -225,6 +235,7 @@ export function useTimelineEditingController(input: Input) {
 
 	return {
 		cursor,
+		typingTelemetry,
 		projection,
 		audio,
 		playback,

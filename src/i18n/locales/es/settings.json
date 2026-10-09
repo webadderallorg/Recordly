@@ -62,6 +62,7 @@
 		"connectedZoomDescription": "Ajusta el deslizamiento entre regiones de zoom consecutivas cuando la conexión está activada.",
 		"motionPresetsTitle": "Motion Presets",
 		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"camera3d": "Movimientos de cámara 3D",
 		"animationPresets": "Animation Presets",
 		"cursorMotionPresets": "Cursor Motion Presets",
 		"motionPresets": {

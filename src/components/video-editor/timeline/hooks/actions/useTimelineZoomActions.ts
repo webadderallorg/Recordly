@@ -1,7 +1,16 @@
 import type { Span } from "dnd-timeline";
 import { useCallback, useEffect, useMemo } from "react";
-import type { CursorTelemetryPoint, ZoomFocus, ZoomRegion } from "../../../types";
+import type {
+	CursorTelemetryPoint,
+	TypingTelemetryPoint,
+	ZoomFocus,
+	ZoomRegion,
+} from "../../../types";
 import { buildInteractionZoomSuggestions } from "../../zoomSuggestionUtils";
+import {
+	buildTypingZoomSuggestions,
+	resolveTypingZoomDepth,
+} from "../../typingZoomSuggestionUtils";
 import { timelineNotifications } from "../utils/timelineNotifications";
 
 interface UseTimelineZoomActionsParams {
@@ -15,19 +24,21 @@ interface UseTimelineZoomActionsParams {
 		clip: { startMs: number; endMs: number }[];
 	};
 	cursorTelemetry: CursorTelemetryPoint[];
+	typingTelemetry?: TypingTelemetryPoint[];
 	options: {
 		disableSuggestedZooms: boolean;
 	};
 	autoSuggestZoomsTrigger: number;
 	onAutoSuggestZoomsConsumed?: () => void;
 	onZoomAdded: (span: Span) => void;
-	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
+	onZoomSuggested?: (span: Span, focus: ZoomFocus, depth?: ZoomRegion["depth"]) => void;
 }
 
 export function useTimelineZoomActions({
 	timeline,
 	regions,
 	cursorTelemetry,
+	typingTelemetry = [],
 	options,
 	autoSuggestZoomsTrigger,
 	onAutoSuggestZoomsConsumed,
@@ -187,6 +198,67 @@ export function useTimelineZoomActions({
 		zoomRegions,
 	]);
 
+	const handleSuggestTypingZooms = useCallback(() => {
+		if (!videoDuration || videoDuration === 0 || totalMs === 0) {
+			return;
+		}
+
+		if (disableSuggestedZooms) {
+			timelineNotifications.info(
+				"Suggested zooms are unavailable while cursor looping is enabled.",
+			);
+			return;
+		}
+
+		if (!onZoomSuggested) {
+			timelineNotifications.error("Zoom suggestion handler unavailable");
+			return;
+		}
+
+		if (typingTelemetry.length === 0) {
+			timelineNotifications.info(
+				"No typing telemetry available",
+				"Record a screencast while typing to generate typing-based zoom suggestions.",
+			);
+			return;
+		}
+
+		const result = buildTypingZoomSuggestions({
+			typingTelemetry,
+			totalMs,
+			reservedSpans: zoomRegions
+				.map((region) => ({ start: region.startMs, end: region.endMs }))
+				.sort((a, b) => a.start - b.start),
+		});
+
+		if (result.status !== "ok" || result.suggestions.length === 0) {
+			timelineNotifications.info(
+				"No clear typing moments found",
+				"Try a recording with longer stretches of typing, or with existing zoom regions removed.",
+			);
+			return;
+		}
+
+		for (const suggestion of result.suggestions) {
+			onZoomSuggested(
+				{ start: suggestion.start, end: suggestion.end },
+				suggestion.focus,
+				resolveTypingZoomDepth(suggestion.keyCount),
+			);
+		}
+
+		timelineNotifications.success(
+			`Added ${result.suggestions.length} typing-based zoom suggestion${result.suggestions.length === 1 ? "" : "s"}`,
+		);
+	}, [
+		videoDuration,
+		totalMs,
+		disableSuggestedZooms,
+		onZoomSuggested,
+		typingTelemetry,
+		zoomRegions,
+	]);
+
 	useEffect(() => {
 		if (autoSuggestZoomsTrigger <= 0) {
 			return;
@@ -202,5 +274,6 @@ export function useTimelineZoomActions({
 		addZoomAtMs,
 		handleAddZoom,
 		handleSuggestZooms,
+		handleSuggestTypingZooms,
 	};
 }

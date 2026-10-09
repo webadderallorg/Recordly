@@ -62,6 +62,7 @@
 		"connectedZoomDescription": "啟用連接後，調整連續縮放區域之間的滑行效果。",
 		"motionPresetsTitle": "Motion Presets",
 		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"camera3d": "3D 運鏡",
 		"animationPresets": "Animation Presets",
 		"cursorMotionPresets": "Cursor Motion Presets",
 		"motionPresets": {

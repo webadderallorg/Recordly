@@ -14,7 +14,8 @@
 		"addedSuggestions": "Suggestions de zoom basées sur l'interaction ajoutées : {{count}}",
 		"label": "Zoom {{index}}",
 		"addZoom": "Ajouter un zoom (Z)",
-		"suggestZooms": "Suggérer des zooms à partir du curseur"
+		"suggestZooms": "Suggérer des zooms à partir du curseur",
+		"suggestTypingZooms": "Suggérer des zooms à partir de la saisie"
 	},
 	"trim": {
 		"cannotPlace": "Impossible de placer le découpage ici",

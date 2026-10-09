@@ -14,7 +14,8 @@
 		"addedSuggestions": "Добавлено зумов: {{count}}",
 		"label": "Зум {{index}}",
 		"addZoom": "Добавить зум (Z)",
-		"suggestZooms": "Предложить зумы на основе курсора"
+		"suggestZooms": "Предложить зумы на основе курсора",
+		"suggestTypingZooms": "Предложить зум по набору текста"
 	},
 	"trim": {
 		"cannotPlace": "Нельзя обрезать здесь",

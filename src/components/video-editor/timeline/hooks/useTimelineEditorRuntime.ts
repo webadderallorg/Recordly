@@ -8,6 +8,7 @@ import type {
 	ClipRegion,
 	CursorTelemetryPoint,
 	SpeedRegion,
+	TypingTelemetryPoint,
 	TrimRegion,
 	ZoomFocus,
 	ZoomRegion,
@@ -29,12 +30,17 @@ interface UseTimelineEditorRuntimeParams {
 	currentTimeMs: number;
 	safeMinDurationMs: number;
 	cursorTelemetry: CursorTelemetryPoint[];
+	typingTelemetry?: TypingTelemetryPoint[];
 	autoSuggestZoomsTrigger: number;
 	onAutoSuggestZoomsConsumed?: () => void;
 	disableSuggestedZooms: boolean;
 	zoomRegions: ZoomRegion[];
 	onZoomAdded: (span: Span) => void;
-	onZoomSuggested?: (span: Span, focus: ZoomFocus) => void;
+	onZoomSuggested?: (
+		span: Span,
+		focus: ZoomFocus,
+		depth?: ZoomRegion["depth"],
+	) => void;
 	onZoomSpanChange: (id: string, span: Span) => void;
 	onZoomDelete: (id: string) => void;
 	selectedZoomId: string | null;
@@ -79,6 +85,7 @@ export function useTimelineEditorRuntime({
 	currentTimeMs,
 	safeMinDurationMs,
 	cursorTelemetry,
+	typingTelemetry,
 	autoSuggestZoomsTrigger,
 	onAutoSuggestZoomsConsumed,
 	disableSuggestedZooms,
@@ -210,10 +217,12 @@ export function useTimelineEditorRuntime({
 		addZoomAtMs,
 		handleAddZoom,
 		handleSuggestZooms,
+		handleSuggestTypingZooms,
 	} = useTimelineZoomActions({
 		timeline: { videoDuration, totalMs, currentTimeMs },
 		regions: { zoom: zoomRegions, clip: clipRegions },
 		cursorTelemetry,
+		typingTelemetry,
 		options: { disableSuggestedZooms },
 		autoSuggestZoomsTrigger,
 		onAutoSuggestZoomsConsumed,
@@ -292,6 +301,7 @@ export function useTimelineEditorRuntime({
 		() => ({
 			addZoom: handleAddZoom,
 			suggestZooms: handleSuggestZooms,
+			suggestTypingZooms: handleSuggestTypingZooms,
 			splitClip: handleSplitClip,
 			addAnnotation: handleAddAnnotation,
 			addAudio: handleAddAudio,
@@ -302,6 +312,7 @@ export function useTimelineEditorRuntime({
 			handleAddAudio,
 			handleAddZoom,
 			handleSuggestZooms,
+			handleSuggestTypingZooms,
 			handleSplitClip,
 			keyframes,
 		],
@@ -332,6 +343,7 @@ export function useTimelineEditorRuntime({
 		resolveCaptionSpanAtMs,
 		handleAddZoom,
 		handleSuggestZooms,
+		handleSuggestTypingZooms,
 		handleSplitClip,
 		handleAddAudio,
 		handleAddAnnotation,

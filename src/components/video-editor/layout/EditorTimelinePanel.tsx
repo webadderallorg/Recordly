@@ -27,6 +27,7 @@ type Props = {
 	videoSourcePath: string | null;
 	cursorTelemetrySourcePath: string | null;
 	normalizedCursorTelemetry: ReturnType<typeof useTimelineState>["cursorTelemetry"];
+	typingTelemetry?: ReturnType<typeof useTimelineState>["typingTelemetry"];
 	autoSuggestZoomsTrigger: number;
 	handleAutoSuggestZoomsConsumed: () => void;
 	disableSuggestedZooms: boolean;
@@ -50,6 +51,7 @@ export function EditorTimelinePanel(props: Props) {
 		videoSourcePath,
 		cursorTelemetrySourcePath,
 		normalizedCursorTelemetry,
+		typingTelemetry,
 		autoSuggestZoomsTrigger,
 		handleAutoSuggestZoomsConsumed,
 		disableSuggestedZooms,
@@ -75,6 +77,7 @@ export function EditorTimelinePanel(props: Props) {
 				videoSourcePath={videoSourcePath}
 				cursorTelemetrySourcePath={cursorTelemetrySourcePath}
 				cursorTelemetry={normalizedCursorTelemetry}
+				typingTelemetry={typingTelemetry}
 				autoSuggestZoomsTrigger={autoSuggestZoomsTrigger}
 				onAutoSuggestZoomsConsumed={handleAutoSuggestZoomsConsumed}
 				disableSuggestedZooms={disableSuggestedZooms}

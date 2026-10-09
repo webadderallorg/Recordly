@@ -62,6 +62,7 @@
 		"connectedZoomDescription": "Ajuste la transition entre des zones de zoom consécutives lorsque la connexion est activée.",
 		"motionPresetsTitle": "Motion Presets",
 		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"camera3d": "Mouvements de caméra 3D",
 		"animationPresets": "Animation Presets",
 		"cursorMotionPresets": "Cursor Motion Presets",
 		"motionPresets": {

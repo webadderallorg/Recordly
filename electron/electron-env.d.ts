@@ -605,6 +605,17 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		/**
+		 * Keystroke telemetry for a recording. Returns an empty sample list for
+		 * recordings with no keyboard hook, which is a normal result rather than
+		 * an error — the auto-zoom-on-typing feature simply stays unavailable.
+		 */
+		getTypingTelemetry: (videoPath?: string) => Promise<{
+			success: boolean;
+			samples: TypingTelemetryPoint[];
+			message?: string;
+			error?: string;
+		}>;
 		getSystemCursorAssets: () => Promise<{
 			success: boolean;
 			cursors: Record<string, SystemCursorAsset>;
@@ -1076,6 +1087,29 @@ interface CursorTelemetryPoint {
 		| "resize-ew"
 		| "resize-ns"
 		| "not-allowed";
+}
+
+/**
+ * One keystroke, recorded without the character and without the raw key code.
+ * Mirrors `TypingTelemetryPoint` in electron/ipc/types.ts; it is redeclared here
+ * rather than imported because this file is a global ambient declaration file.
+ */
+interface TypingTelemetryPoint {
+	timeMs: number;
+	cx: number;
+	cy: number;
+	keyClass:
+		| "printable"
+		| "space"
+		| "enter"
+		| "backspace"
+		| "delete"
+		| "tab"
+		| "escape"
+		| "arrow"
+		| "navigation"
+		| "shortcut"
+		| "other";
 }
 
 interface SystemCursorAsset {

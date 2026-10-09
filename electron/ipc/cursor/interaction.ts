@@ -13,10 +13,12 @@ import {
 } from "../state";
 import type {
 	CursorInteractionType,
+	HookKeyboardEvent,
 	HookMouseEvent,
 	UiohookLike,
 	UiohookModuleNamespace,
 } from "../types";
+import { recordTypingKeydown } from "./typingCapture";
 import {
 	getCursorCaptureElapsedMs,
 	getHookCursorScreenPoint,
@@ -289,23 +291,33 @@ export async function startInteractionCapture() {
 			setLinuxCursorScreenPoint({ x: point.x, y: point.y, updatedAt: Date.now() });
 		};
 
+		// Keystrokes drive the auto-zoom-on-typing feature. This is the same
+		// native hook, already started above, so there is no extra native
+		// dependency and no extra lifecycle to manage.
+		const onKeyDown = (event: HookKeyboardEvent) => {
+			recordTypingKeydown(event);
+		};
+
 		hook.on("mousedown", onMouseDown);
 		hook.on("mouseup", onMouseUp);
 		if (process.platform === "linux") {
 			hook.on("mousemove", onMouseMove);
 		}
+		hook.on("keydown", onKeyDown);
 
 		setInteractionCaptureCleanup(() => {
 			try {
 				if (typeof hook.off === "function") {
 					hook.off("mousedown", onMouseDown);
 					hook.off("mouseup", onMouseUp);
+					hook.off("keydown", onKeyDown);
 					if (process.platform === "linux") {
 						hook.off("mousemove", onMouseMove);
 					}
 				} else if (typeof hook.removeListener === "function") {
 					hook.removeListener("mousedown", onMouseDown);
 					hook.removeListener("mouseup", onMouseUp);
+					hook.removeListener("keydown", onKeyDown);
 					if (process.platform === "linux") {
 						hook.removeListener("mousemove", onMouseMove);
 					}

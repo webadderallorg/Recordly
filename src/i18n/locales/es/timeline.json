@@ -14,7 +14,8 @@
 		"addedSuggestions": "Se agregaron {{count}} sugerencia(s) de zoom basadas en interacción",
 		"label": "Zoom {{index}}",
 		"addZoom": "Agregar Zoom (Z)",
-		"suggestZooms": "Sugerir zooms desde cursor"
+		"suggestZooms": "Sugerir zooms desde cursor",
+		"suggestTypingZooms": "Sugerir zooms a partir de la escritura"
 	},
 	"trim": {
 		"cannotPlace": "No se puede colocar recorte aquí",

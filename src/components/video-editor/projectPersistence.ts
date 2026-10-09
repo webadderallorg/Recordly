@@ -59,8 +59,10 @@ import {
 	type SpeedRegion,
 	type TrimRegion,
 	type WebcamOverlaySettings,
+	type Camera3DPreset,
 	type ZoomMotionBlurTuning,
 	type ZoomRegion,
+	type ZoomRegion3D,
 	type ZoomTransitionEasing,
 } from "./types";
 import { convertLegacyWebcamRadiusToRoundness, normalizeWebcamCropRegion } from "./webcamOverlay";
@@ -114,6 +116,7 @@ export interface ProjectEditorState {
 	cameraSpringMassMultiplier: number;
 	zoomSmoothness: number;
 	zoomClassicMode: boolean;
+	zoom3DEnabled: boolean;
 	cursorMotionBlur: number;
 	cursorClickBounce: number;
 	cursorClickBounceDuration: number;
@@ -364,7 +367,47 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		? clamp(editor.connectedZoomDurationMs, 60, 4000)
 		: DEFAULT_CONNECTED_ZOOM_DURATION_MS;
 
-	const normalizedZoomRegions: ZoomRegion[] = Array.isArray(editor.zoomRegions)
+	const ZOOM_3D_PRESETS: readonly string[] = [
+	"tilt-left",
+	"tilt-right",
+	"tilt-up",
+	"tilt-down",
+	"dolly",
+	"none",
+];
+
+/**
+ * Validate a persisted 3D move.
+ *
+ * A region with no `move3d`, or with preset "none", normalises to `undefined`
+ * rather than to an explicit object, so untouched regions stay byte-identical
+ * to projects written before this feature.
+ */
+function normalizeZoomRegion3D(value: unknown): ZoomRegion3D | undefined {
+	if (!value || typeof value !== "object") {
+		return undefined;
+	}
+
+	const candidate = value as { preset?: unknown; intensity?: unknown };
+	if (
+		typeof candidate.preset !== "string" ||
+		!ZOOM_3D_PRESETS.includes(candidate.preset) ||
+		candidate.preset === "none"
+	) {
+		return undefined;
+	}
+
+	if (!isFiniteNumber(candidate.intensity)) {
+		return { preset: candidate.preset as Camera3DPreset, intensity: 1 };
+	}
+
+	const intensity = clamp(candidate.intensity, 0, 1);
+	return intensity <= 0
+		? undefined
+		: { preset: candidate.preset as Camera3DPreset, intensity };
+}
+
+const normalizedZoomRegions: ZoomRegion[] = Array.isArray(editor.zoomRegions)
 		? editor.zoomRegions
 				.filter((region): region is ZoomRegion =>
 					Boolean(region && typeof region.id === "string"),
@@ -402,6 +445,9 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 							region.mode === "auto" || region.mode === "manual"
 								? region.mode
 								: undefined,
+						// Whitelist the 3D move here too, or it would be dropped on save
+						// and silently flatten every tilted region on the next load.
+						move3d: normalizeZoomRegion3D(region.move3d),
 					};
 				})
 		: [];
@@ -879,6 +925,10 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 		zoomSmoothness: DEFAULT_ZOOM_SMOOTHNESS,
 		zoomClassicMode:
 			typeof editor.zoomClassicMode === "boolean" ? editor.zoomClassicMode : false,
+		// Default true: a project saved before this setting existed must keep 3D
+		// enabled, not silently fall back to 2D.
+		zoom3DEnabled:
+			typeof editor.zoom3DEnabled === "boolean" ? editor.zoom3DEnabled : true,
 		cursorMotionBlur: DEFAULT_CURSOR_MOTION_BLUR,
 		cursorClickBounce: normalizedMotionPreset.cursorClickBounce,
 		cursorClickBounceDuration: normalizedMotionPreset.cursorClickBounceDuration,

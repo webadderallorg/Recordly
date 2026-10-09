@@ -62,6 +62,7 @@
 		"connectedZoomDescription": "Passen Sie den Übergang zwischen aufeinanderfolgenden Zoom-Bereichen an, wenn die Verbindung aktiviert ist.",
 		"motionPresetsTitle": "Bewegungsvoreinstellungen",
 		"motionPresetsZoomHint": "Zoom-Bewegungsvoreinstellungen sind in den Einstellungen verfügbar.",
+		"camera3d": "3D-Kamerafahrten",
 		"animationPresets": "Animationsvoreinstellungen",
 		"cursorMotionPresets": "Cursor-Bewegungsvoreinstellungen",
 		"motionPresets": {

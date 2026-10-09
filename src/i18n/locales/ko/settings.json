@@ -62,6 +62,7 @@
 		"connectedZoomDescription": "연결이 활성화된 경우, 연속된 확대 구간 사이의 이동을 조정합니다.",
 		"motionPresetsTitle": "Motion Presets",
 		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"camera3d": "3D 카메라 이동",
 		"animationPresets": "Animation Presets",
 		"cursorMotionPresets": "Cursor Motion Presets",
 		"motionPresets": {

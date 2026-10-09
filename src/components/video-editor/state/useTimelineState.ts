@@ -8,6 +8,7 @@ import type {
 	ClipRegion,
 	CursorTelemetryPoint,
 	SpeedRegion,
+	TypingTelemetryPoint,
 	TrimRegion,
 	ZoomRegion,
 } from "../types";
@@ -17,6 +18,8 @@ export function useTimelineState() {
 	const [zoomRegions, setZoomRegions] = useState<ZoomRegion[]>([]);
 	const [cursorTelemetry, setCursorTelemetry] = useState<CursorTelemetryPoint[]>([]);
 	const [cursorTelemetrySourcePath, setCursorTelemetrySourcePath] = useState<string | null>(null);
+	const [typingTelemetry, setTypingTelemetry] = useState<TypingTelemetryPoint[]>([]);
+	const [typingTelemetrySourcePath, setTypingTelemetrySourcePath] = useState<string | null>(null);
 	const [selectedZoomId, setSelectedZoomId] = useState<string | null>(null);
 	const [trimRegions, setTrimRegions] = useState<TrimRegion[]>([]);
 	const [clipRegions, setClipRegions] = useState<ClipRegion[]>([]);
@@ -46,6 +49,10 @@ export function useTimelineState() {
 		setCursorTelemetry,
 		cursorTelemetrySourcePath,
 		setCursorTelemetrySourcePath,
+		typingTelemetry,
+		setTypingTelemetry,
+		typingTelemetrySourcePath,
+		setTypingTelemetrySourcePath,
 		selectedZoomId,
 		setSelectedZoomId,
 		trimRegions,

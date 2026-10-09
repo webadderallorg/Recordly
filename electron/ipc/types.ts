@@ -107,6 +107,34 @@ export interface CursorTelemetryPoint {
 	cursorType?: CursorVisualType;
 }
 
+/**
+ * One keystroke, recorded WITHOUT the character and WITHOUT the raw key code.
+ *
+ * Storing either would let the telemetry be replayed into text on a known
+ * keyboard layout, so both are discarded at capture time. The coarse
+ * `keyClass` plus the cursor position is the full set of signals the
+ * auto-zoom-on-typing heuristic consumes.
+ */
+export interface TypingTelemetryPoint {
+	timeMs: number;
+	cx: number;
+	cy: number;
+	keyClass: TypingKeyClass;
+}
+
+export type TypingKeyClass =
+	| "printable"
+	| "space"
+	| "enter"
+	| "backspace"
+	| "delete"
+	| "tab"
+	| "escape"
+	| "arrow"
+	| "navigation"
+	| "shortcut"
+	| "other";
+
 export type NativeMacWindowSource = {
 	id: string;
 	name: string;
@@ -121,7 +149,7 @@ export type NativeMacWindowSource = {
 	height?: number;
 };
 
-export type HookEventName = "mousedown" | "mouseup" | "mousemove";
+export type HookEventName = "mousedown" | "mouseup" | "mousemove" | "keydown" | "keyup";
 
 export type HookMouseEvent = {
 	button?: number;
@@ -142,10 +170,40 @@ export type HookMouseEvent = {
 
 export type HookEventListener = (event: HookMouseEvent) => void;
 
+/**
+ * uiohook-napi's keyboard payload is a FLAT object (not nested under `data`,
+ * unlike the mouse payload we defensively unwrap). `keycode` is a raw
+ * layout-dependent scan code and is consumed transiently by
+ * `classifyTypingKey` — it is never persisted.
+ */
+export type HookKeyboardEvent = {
+	type?: number;
+	time?: number;
+	keycode?: number;
+	altKey?: boolean;
+	ctrlKey?: boolean;
+	metaKey?: boolean;
+	shiftKey?: boolean;
+	data?: {
+		keycode?: number;
+		altKey?: boolean;
+		ctrlKey?: boolean;
+		metaKey?: boolean;
+		shiftKey?: boolean;
+	};
+};
+
+export type HookKeyboardEventListener = (event: HookKeyboardEvent) => void;
+
 export type UiohookLike = {
-	on: (eventName: HookEventName, listener: HookEventListener) => void;
-	off?: (eventName: HookEventName, listener: HookEventListener) => void;
-	removeListener?: (eventName: HookEventName, listener: HookEventListener) => void;
+	// The hook is a single native emitter serving both mouse and keyboard
+	// events, so the listener is typed as accepting the union of both payloads.
+	on: (eventName: HookEventName, listener: HookEventListener | HookKeyboardEventListener) => void;
+	off?: (eventName: HookEventName, listener: HookEventListener | HookKeyboardEventListener) => void;
+	removeListener?: (
+		eventName: HookEventName,
+		listener: HookEventListener | HookKeyboardEventListener,
+	) => void;
 	start: () => void;
 	stop?: () => void;
 };

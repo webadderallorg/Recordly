@@ -62,6 +62,7 @@
 		"connectedZoomDescription": "Настройка плавного перехода между зумами.",
 		"motionPresetsTitle": "Пресеты движения",
 		"motionPresetsZoomHint": "Предварительные параметры доступны в настройках.",
+		"camera3d": "3D-движения камеры",
 		"animationPresets": "Пресеты анимации",
 		"cursorMotionPresets": "Предустановки движения курсора",
 		"motionPresets": {

@@ -14,7 +14,8 @@
 		"addedSuggestions": "상호작용 기반 확대 추천 {{count}}개를 추가했습니다",
 		"label": "확대 {{index}}",
 		"addZoom": "확대 추가 (Z)",
-		"suggestZooms": "커서 기반 확대 추천"
+		"suggestZooms": "커서 기반 확대 추천",
+		"suggestTypingZooms": "입력에서 줌 제안"
 	},
 	"trim": {
 		"cannotPlace": "여기에는 트림을 배치할 수 없습니다",

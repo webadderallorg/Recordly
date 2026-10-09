@@ -62,6 +62,7 @@
 		"connectedZoomDescription": "在启用连接缩放时，调整连续缩放区域之间的滑移方式。",
 		"motionPresetsTitle": "运动预设",
 		"motionPresetsZoomHint": "缩放运动预设已移到“设置”中。",
+		"camera3d": "3D 运镜",
 		"animationPresets": "动画预设",
 		"cursorMotionPresets": "光标运动预设",
 		"motionPresets": {

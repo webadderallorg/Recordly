@@ -14,7 +14,8 @@
 		"addedSuggestions": "已新增 {{count}} 個依互動產生的縮放建議",
 		"label": "縮放 {{index}}",
 		"addZoom": "新增縮放（Z）",
-		"suggestZooms": "依游標建議縮放"
+		"suggestZooms": "依游標建議縮放",
+		"suggestTypingZooms": "根據輸入建議縮放"
 	},
 	"trim": {
 		"cannotPlace": "無法在此處新增修剪",

@@ -68,6 +68,7 @@
 		"connectedZoomDescription": "Tune the glide between consecutive zoom regions when connection is enabled.",
 		"motionPresetsTitle": "Motion Presets",
 		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"camera3d": "3D Camera Moves",
 		"animationPresets": "Animation Presets",
 		"cursorMotionPresets": "Cursor Motion Presets",
 		"motionPresets": {

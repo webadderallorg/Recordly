@@ -153,6 +153,8 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 		onCameraSpringMassMultiplierChange: appearance.setCameraSpringMassMultiplier,
 		zoomClassicMode: appearance.zoomClassicMode,
 		onZoomClassicModeChange: appearance.setZoomClassicMode,
+		zoom3DEnabled: appearance.zoom3DEnabled,
+		onZoom3DEnabledChange: appearance.setZoom3DEnabled,
 		cursorClickEffect: appearance.cursorClickEffect,
 		cursorClickEffectColor: appearance.cursorClickEffectColor,
 		onCursorClickEffectChange: appearance.setCursorClickEffect,

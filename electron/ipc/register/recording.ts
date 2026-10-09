@@ -31,6 +31,11 @@ import {
 	stopCursorCapture,
 	writeCursorTelemetry,
 } from "../cursor/telemetry";
+import {
+	persistPendingTypingTelemetry,
+	snapshotTypingTelemetryForPersistence,
+} from "../cursor/typingCapture";
+import { normalizeTypingTelemetrySamples } from "../cursor/typing";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { getMonitorHandles } from "../monitorResolver";
 import {
@@ -109,6 +114,9 @@ import {
 	setFfmpegCaptureTargetPath,
 	setFfmpegScreenRecordingActive,
 	setIsCursorCaptureActive,
+	setActiveTypingSamples,
+	setIsTypingCaptureActive,
+	setPendingTypingSamples,
 	setLastLeftClick,
 	setLinuxCursorScreenPoint,
 	setNativeCaptureMicrophonePath,
@@ -146,6 +154,7 @@ import {
 	getRecordingsDir,
 	getScreen,
 	getTelemetryPathForVideo,
+	getTypingTelemetryPathForVideo,
 	moveFileWithOverwrite,
 	normalizeVideoSourcePath,
 	parseJsonWithByteOrderMark,
@@ -1036,6 +1045,17 @@ export function registerRecordingHandlers(
 						);
 					}
 
+					// Keystroke telemetry, same timing so the editor can enable
+					// auto-zoom-on-typing on this recording immediately.
+					try {
+						await persistPendingTypingTelemetry(finalVideoPath);
+					} catch (error) {
+						console.warn(
+							"Failed to persist typing telemetry during native stop:",
+							error,
+						);
+					}
+
 					return { success: true, path: finalVideoPath };
 				} catch (error) {
 					console.error("Failed to stop native Windows capture:", error);
@@ -1868,6 +1888,9 @@ export function registerRecordingHandlers(
 			setIsCursorCaptureActive(true);
 			setActiveCursorSamples([]);
 			setPendingCursorSamples([]);
+			setIsTypingCaptureActive(true);
+			setActiveTypingSamples([]);
+			setPendingTypingSamples([]);
 			setCursorCaptureStartTimeMs(Date.now());
 			resetCursorCaptureClock();
 			setLinuxCursorScreenPoint(null);
@@ -1877,6 +1900,7 @@ export function registerRecordingHandlers(
 			void startInteractionCapture();
 		} else {
 			setIsCursorCaptureActive(false);
+			setIsTypingCaptureActive(false);
 			stopCursorCapture();
 			stopInteractionCapture();
 			stopWindowBoundsCapture();
@@ -1885,7 +1909,9 @@ export function registerRecordingHandlers(
 			setLinuxCursorScreenPoint(null);
 			resetCursorCaptureClock();
 			snapshotCursorTelemetryForPersistence();
+			snapshotTypingTelemetryForPersistence();
 			setActiveCursorSamples([]);
+			setActiveTypingSamples([]);
 		}
 
 		const source = selectedSource || { name: "Screen" };
@@ -1936,6 +1962,34 @@ export function registerRecordingHandlers(
 			return {
 				success: false,
 				message: "Failed to load cursor telemetry",
+				error: String(error),
+				samples: [],
+			};
+		}
+	});
+
+	ipcMain.handle("get-typing-telemetry", async (_, videoPath?: string) => {
+		const targetVideoPath = normalizeVideoSourcePath(videoPath ?? currentVideoPath);
+		if (!targetVideoPath) {
+			return { success: true, samples: [] };
+		}
+
+		try {
+			const content = await fs.readFile(getTypingTelemetryPathForVideo(targetVideoPath), "utf-8");
+			const parsed = parseJsonWithByteOrderMark<unknown>(content);
+
+			return { success: true, samples: normalizeTypingTelemetrySamples(parsed) };
+		} catch (error) {
+			const nodeError = error as NodeJS.ErrnoException;
+			if (nodeError.code === "ENOENT") {
+				// Recordings made before this feature, or on a platform with no
+				// keyboard hook, simply have no typing telemetry.
+				return { success: true, samples: [] };
+			}
+			console.error("Failed to load typing telemetry:", error);
+			return {
+				success: false,
+				message: "Failed to load typing telemetry",
 				error: String(error),
 				samples: [],
 			};

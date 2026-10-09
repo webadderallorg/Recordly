@@ -7,11 +7,19 @@ import {
 	SNAP_TO_EDGES_RATIO_AUTO,
 } from "./cursorFollowCamera";
 import { findDominantRegion } from "./zoomRegionUtils";
+import { resolveRegion3DState, ZERO_CAMERA_3D_STATE, type Camera3DState } from "./camera3d";
 
 export type SceneZoomTarget = {
 	scale: number;
 	focus: ZoomFocus;
 	progress: number;
+	/**
+	 * The dominant region's 3D move, already resolved. Present on every target
+	 * so all three renderers (preview and both exporters) read the 3D state
+	 * from this one shared resolver rather than re-deriving it from the region
+	 * list — that is what keeps preview and export in agreement.
+	 */
+	move3d: Camera3DState;
 };
 
 export type PreviewMotionMode = "spring" | "snap" | "preserve";
@@ -70,6 +78,7 @@ export function resolveSceneZoomTarget({
 	zoomClassicMode,
 	cursorTelemetry,
 	cursorFollowCamera,
+	zoom3DEnabled = true,
 }: {
 	zoomRegions: ZoomRegion[];
 	timeMs: number;
@@ -80,6 +89,12 @@ export function resolveSceneZoomTarget({
 	zoomClassicMode?: boolean;
 	cursorTelemetry?: CursorTelemetryPoint[];
 	cursorFollowCamera: CursorFollowCameraState;
+	/**
+	 * Global 2D/3D switch. When false the 3D move is resolved out entirely, so
+	 * every region plays as a plain 2D zoom regardless of its own `move3d`.
+	 * Defaults to true so 3D is opt-out and existing 3D projects keep working.
+	 */
+	zoom3DEnabled?: boolean;
 }): SceneZoomTarget {
 	const { region, strength, blendedScale } = findDominantRegion(zoomRegions, timeMs, {
 		connectZooms,
@@ -88,7 +103,7 @@ export function resolveSceneZoomTarget({
 	});
 
 	if (!region || strength <= 0) {
-		return { scale: 1, focus: DEFAULT_FOCUS, progress: 0 };
+		return { scale: 1, focus: DEFAULT_FOCUS, progress: 0, move3d: ZERO_CAMERA_3D_STATE };
 	}
 
 	const scale = blendedScale ?? ZOOM_DEPTH_SCALES[region.depth];
@@ -110,5 +125,14 @@ export function resolveSceneZoomTarget({
 		);
 	}
 
-	return { scale, focus, progress: strength };
+	return {
+		scale,
+		focus,
+		progress: strength,
+		// Gate here, at the one place all three renderers read from, so the switch
+		// can never make the preview disagree with an export.
+		move3d: zoom3DEnabled
+			? resolveRegion3DState(region.move3d)
+			: ZERO_CAMERA_3D_STATE,
+	};
 }

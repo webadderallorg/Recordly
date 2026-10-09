@@ -102,13 +102,16 @@ export function useZoomRegionCommands({
 	);
 
 	const handleZoomSuggested = useCallback(
-		(span: Span, focus: ZoomFocus) => {
+		(span: Span, focus: ZoomFocus, depth?: ZoomRegion["depth"]) => {
+			// Interaction-driven zooms pass no depth and keep the existing default;
+			// typing-driven zooms pass a depth chosen from how much text was typed.
+			const resolvedDepth = depth ?? DEFAULT_AUTO_ZOOM_DEPTH;
 			const newRegion: ZoomRegion = {
 				id: `zoom-${nextZoomIdRef.current++}`,
 				startMs: Math.round(span.start),
 				endMs: Math.round(span.end),
-				depth: DEFAULT_AUTO_ZOOM_DEPTH,
-				focus: clampFocusToDepth(focus, DEFAULT_AUTO_ZOOM_DEPTH),
+				depth: resolvedDepth,
+				focus: clampFocusToDepth(focus, resolvedDepth),
 				mode: "auto",
 			};
 			markFreshRecordingSuggestion();

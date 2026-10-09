@@ -62,6 +62,7 @@
 		"connectedZoomDescription": "Stel de overgang af tussen opeenvolgende zoomgebieden wanneer verbinding is ingeschakeld.",
 		"motionPresetsTitle": "Motion Presets",
 		"motionPresetsZoomHint": "Zoom motion presets are available in Settings.",
+		"camera3d": "3D-camerabewegingen",
 		"animationPresets": "Animation Presets",
 		"cursorMotionPresets": "Cursor Motion Presets",
 		"motionPresets": {

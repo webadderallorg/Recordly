@@ -14,7 +14,8 @@
 		"addedSuggestions": "{{count}} interaktionsbasierte Zoomvorschläge hinzugefügt",
 		"label": "Zoom {{index}}",
 		"addZoom": "Zoom hinzufügen (Z)",
-		"suggestZooms": "Zooms vom Cursor vorschlagen"
+		"suggestZooms": "Zooms vom Cursor vorschlagen",
+		"suggestTypingZooms": "Zooms aus Eingaben vorschlagen"
 	},
 	"trim": {
 		"cannotPlace": "Trim kann hier nicht platziert werden",

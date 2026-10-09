@@ -86,6 +86,9 @@ export function useAppearanceState(preferences: EditorPreferences) {
 	);
 	const [zoomSmoothness, setZoomSmoothness] = useState(0.5);
 	const [zoomClassicMode, setZoomClassicMode] = useState(false);
+	// Global 2D/3D camera switch. Defaults on so 3D is opt-out; regions
+	// still need their own move3d before anything tilts.
+	const [zoom3DEnabled, setZoom3DEnabled] = useState(true);
 	const [cursorMotionBlur, setCursorMotionBlur] = useState(preferences.cursorMotionBlur);
 	const [cursorClickEffect, setCursorClickEffect] = useState<CursorClickEffectStyle>(
 		preferences.cursorClickEffect,
@@ -172,6 +175,8 @@ export function useAppearanceState(preferences: EditorPreferences) {
 		setZoomSmoothness,
 		zoomClassicMode,
 		setZoomClassicMode,
+		zoom3DEnabled,
+		setZoom3DEnabled,
 		cursorMotionBlur,
 		setCursorMotionBlur,
 		cursorClickEffect,

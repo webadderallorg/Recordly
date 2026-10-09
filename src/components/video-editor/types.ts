@@ -7,6 +7,31 @@ export interface ZoomFocus {
 
 export type ZoomMode = "auto" | "manual";
 
+/**
+ * 3D camera move applied to a zoom region.
+ *
+ * Optional so every region written before this feature still loads and renders
+ * exactly as it did — the project loader whitelists known fields, so an absent
+ * `move3d` means "flat zoom", not "unknown move".
+ *
+ * The union is declared here rather than imported from `camera3d.ts` so the
+ * persisted project shape does not depend on a PixiJS module: the type has to
+ * stay readable by the persistence and exporter code that never touches Pixi.
+ */
+export type Camera3DPreset =
+	| "tilt-left"
+	| "tilt-right"
+	| "tilt-up"
+	| "tilt-down"
+	| "dolly"
+	| "none";
+
+export interface ZoomRegion3D {
+	preset: Camera3DPreset;
+	/** Multiplies the preset's tilt, 0..1. Lets a region reuse a preset softly. */
+	intensity?: number;
+}
+
 export interface ZoomRegion {
 	id: string;
 	startMs: number;
@@ -14,6 +39,8 @@ export interface ZoomRegion {
 	depth: ZoomDepth;
 	focus: ZoomFocus;
 	mode?: ZoomMode;
+	/** 3D tilt/dolly for this region. Absent or "none" = flat 2D zoom. */
+	move3d?: ZoomRegion3D;
 }
 
 export interface CursorTelemetryPoint {
@@ -38,6 +65,33 @@ export interface CursorTelemetryPoint {
 		| "resize-ew"
 		| "resize-ns"
 		| "not-allowed";
+}
+
+/**
+ * One keystroke, recorded without the character and without the raw key code.
+ *
+ * This mirrors `TypingTelemetryPoint` in electron/ipc/types.ts. The duplication
+ * matches the existing `CursorTelemetryPoint` pattern in this file; the two
+ * declarations must be kept in step.
+ */
+export type TypingKeyClass =
+	| "printable"
+	| "space"
+	| "enter"
+	| "backspace"
+	| "delete"
+	| "tab"
+	| "escape"
+	| "arrow"
+	| "navigation"
+	| "shortcut"
+	| "other";
+
+export interface TypingTelemetryPoint {
+	timeMs: number;
+	cx: number;
+	cy: number;
+	keyClass: TypingKeyClass;
 }
 
 export interface CursorVisualSettings {

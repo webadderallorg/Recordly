@@ -68,6 +68,15 @@ export function getTelemetryPathForVideo(videoPath: string) {
 	return `${videoPath}.cursor.json`;
 }
 
+/**
+ * Sidecar file for keystroke telemetry, kept separate from the cursor sidecar
+ * so the two streams can evolve (and be deleted) independently. It contains
+ * no characters and no key codes — see `TypingTelemetryPoint`.
+ */
+export function getTypingTelemetryPathForVideo(videoPath: string) {
+	return `${videoPath}.typing.json`;
+}
+
 export function isAutoRecordingPath(filePath: string) {
 	return path.basename(filePath).startsWith(AUTO_RECORDING_PREFIX);
 }

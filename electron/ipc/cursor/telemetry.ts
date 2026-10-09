@@ -328,4 +328,4 @@ export function startCursorSampling() {
 
 export { CURSOR_SAMPLE_INTERVAL_MS } from "../constants";
 // Re-export for consumers that use it from this module
-export { getTelemetryPathForVideo } from "../utils";
+export { getTelemetryPathForVideo, getTypingTelemetryPathForVideo } from "../utils";

@@ -4,6 +4,7 @@ import {
 	CaretDown,
 	Check,
 	Crop,
+	Keyboard,
 	MagicWand,
 	MagnifyingGlassPlus,
 	Pause,
@@ -286,9 +287,18 @@ export function EditorPreviewPanel(props: Props) {
 						size="icon"
 						className="h-9 w-9"
 						title={t("timeline.zoom.suggestZooms")}
-					>
+						>
 						<MagicWand className="h-4 w-4" />
-					</Button>
+						</Button>
+						<Button
+						onClick={() => timelineRef.current?.suggestTypingZooms()}
+						variant="ghost"
+						size="icon"
+						className="h-9 w-9"
+						title={t("timeline.zoom.suggestTypingZooms")}
+						>
+						<Keyboard className="h-4 w-4" />
+						</Button>
 					<Button
 						onClick={() => timelineRef.current?.splitClip()}
 						variant="ghost"

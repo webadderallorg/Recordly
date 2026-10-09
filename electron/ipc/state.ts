@@ -7,6 +7,7 @@ import type {
 	RecordingSessionData,
 	SelectedSource,
 	SystemCursorAsset,
+	TypingTelemetryPoint,
 	WindowBounds,
 } from "./types";
 
@@ -87,6 +88,13 @@ export let lastLeftClick: { timeMs: number; cx: number; cy: number } | null = nu
 export let linuxCursorScreenPoint: { x: number; y: number; updatedAt: number } | null = null;
 export let selectedWindowBounds: WindowBounds | null = null;
 export let windowBoundsCaptureInterval: NodeJS.Timeout | null = null;
+
+// ── Typing telemetry (auto-zoom-on-typing) ────────────────────────────────────
+// Parallel to the cursor telemetry above and sharing its capture clock and
+// pause gates, so a paused recording records no keystrokes either.
+export let activeTypingSamples: TypingTelemetryPoint[] = [];
+export let pendingTypingSamples: TypingTelemetryPoint[] = [];
+export let isTypingCaptureActive = false;
 
 // ── Native macOS window source cache ─────────────────────────────────────────
 export let cachedNativeMacWindowSources: import("./types").NativeMacWindowSource[] | null = null;
@@ -253,6 +261,15 @@ export function setPendingCursorSamples(v: CursorTelemetryPoint[]) {
 }
 export function setIsCursorCaptureActive(v: boolean) {
 	isCursorCaptureActive = v;
+}
+export function setActiveTypingSamples(v: TypingTelemetryPoint[]) {
+	activeTypingSamples = v;
+}
+export function setPendingTypingSamples(v: TypingTelemetryPoint[]) {
+	pendingTypingSamples = v;
+}
+export function setIsTypingCaptureActive(v: boolean) {
+	isTypingCaptureActive = v;
 }
 export function setInteractionCaptureCleanup(v: (() => void) | null) {
 	interactionCaptureCleanup = v;

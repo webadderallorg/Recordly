@@ -156,6 +156,16 @@
 			}
 		},
 		{
+			"includes": ["verification/**", "scripts/verify-camera-render.mjs", "scripts/vite.verify.config.mjs"],
+			"linter": {
+				"rules": {
+					"suspicious": {
+						"noExplicitAny": "off"
+					}
+				}
+			}
+		},
+		{
 			"includes": ["**/*.test.ts", "**/*.test.tsx"],
 			"linter": {
 				"rules": {
