@@ -25,6 +25,8 @@
 		"screen": "Écran",
 		"window": "Fenêtre",
 		"noSourcesFound": "Aucune source trouvée",
+		"windowCursorCaption": "Les enregistrements de fenêtre incluent le curseur du système.",
+		"windowCursorToast": "Les enregistrements de fenêtre incluent le vrai curseur du système en plus du curseur animé.",
 		"microphone": "Microphone",
 		"turnOffMicrophone": "Désactiver le microphone",
 		"selectMicToEnable": "Sélectionnez un microphone à activer",

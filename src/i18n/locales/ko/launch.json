@@ -25,6 +25,8 @@
 		"screen": "화면",
 		"window": "창",
 		"noSourcesFound": "사용 가능한 소스를 찾을 수 없습니다",
+		"windowCursorCaption": "창 녹화에는 시스템 커서가 포함됩니다.",
+		"windowCursorToast": "창 녹화에는 애니메이션 커서 외에 실제 시스템 커서도 포함됩니다.",
 		"microphone": "마이크",
 		"turnOffMicrophone": "마이크 끄기",
 		"selectMicToEnable": "사용할 마이크를 선택하세요",

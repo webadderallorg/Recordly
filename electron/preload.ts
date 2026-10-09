@@ -218,6 +218,21 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getHudOverlayMousePassthroughSupported: () => {
 		return ipcRenderer.invoke("get-hud-overlay-mouse-passthrough-supported");
 	},
+	getHudOverlayWindowMode: () => {
+		return ipcRenderer.invoke("get-hud-overlay-window-mode");
+	},
+	hudOverlaySetContentSize: (size: { width: number; height: number }) => {
+		ipcRenderer.send("hud-overlay-set-content-size", size);
+	},
+	hudOverlayPreGrowPopover: () => {
+		ipcRenderer.send("hud-overlay-pre-grow-popover");
+	},
+	hudOverlaySetContentShape: (shape: {
+		bar: { x: number; y: number; width: number; height: number };
+		popover: { x: number; y: number; width: number; height: number } | null;
+	}) => {
+		ipcRenderer.send("hud-overlay-set-content-shape", shape);
+	},
 	setHudOverlayCaptureProtection: (enabled: boolean) => {
 		return ipcRenderer.invoke("set-hud-overlay-capture-protection", enabled);
 	},
@@ -616,8 +631,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getRecordedVideoPath: () => {
 		return ipcRenderer.invoke("get-recorded-video-path");
 	},
-	setRecordingState: (recording: boolean) => {
-		return ipcRenderer.invoke("set-recording-state", recording);
+	setRecordingState: (recording: boolean, startedAtMs?: number) => {
+		return ipcRenderer.invoke("set-recording-state", recording, startedAtMs);
 	},
 	setCursorScale: (scale: number) => {
 		return ipcRenderer.invoke("set-cursor-scale", scale);
@@ -1089,6 +1104,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	isNativeWindowsCaptureAvailable: () =>
 		ipcRenderer.invoke("is-native-windows-capture-available"),
+	isNativeLinuxCaptureAvailable: () =>
+		ipcRenderer.invoke("is-native-linux-capture-available"),
+	getSourcePickerVisibility: () =>
+		ipcRenderer.invoke("get-source-picker-visibility"),
 	muxNativeWindowsRecording: (expectedDurationMs?: number) =>
 		ipcRenderer.invoke("mux-native-windows-recording", expectedDurationMs),
 	hideOsCursor: () => ipcRenderer.invoke("hide-cursor"),

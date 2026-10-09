@@ -25,6 +25,8 @@
 		"screen": "Tela",
 		"window": "Janela",
 		"noSourcesFound": "Nenhuma fonte encontrada",
+		"windowCursorCaption": "Gravações de janela incluem o cursor do sistema.",
+		"windowCursorToast": "Gravações de janela incluem o cursor real do sistema além do animado.",
 		"microphone": "Microfone",
 		"turnOffMicrophone": "Desligar microfone",
 		"selectMicToEnable": "Selecione um microfone para ativar",

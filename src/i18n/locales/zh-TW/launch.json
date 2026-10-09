@@ -25,6 +25,8 @@
 		"screen": "螢幕",
 		"window": "視窗",
 		"noSourcesFound": "找不到可錄製的來源",
+		"windowCursorCaption": "視窗錄製會包含系統游標。",
+		"windowCursorToast": "視窗錄製會在動畫游標之外還包含真實的系統游標。",
 		"microphone": "麥克風",
 		"turnOffMicrophone": "關閉麥克風",
 		"selectMicToEnable": "選擇要啟用的麥克風",

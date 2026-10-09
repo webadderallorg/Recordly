@@ -10,11 +10,20 @@ import {
 } from "../src/lib/hudCaptureProtection";
 import { USER_DATA_PATH } from "./appPaths";
 import {
+	clampHudDragToWorkArea,
 	getHudOverlayWindowBounds,
+	NON_PASSTHROUGH_HUD_COMPACT_HEIGHT_DIP,
+	NON_PASSTHROUGH_HUD_EXPANDED_HEIGHT_DIP,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
 import { getHudOverlayTaskbarOptions } from "./hudOverlayWindowOptions";
+import { resolveHudWindowMode, type HudWindowMode } from "./hudSizing";
+import {
+	buildHudWindowShape,
+	shapeKey,
+	type HudShapeRect,
+} from "./hudOverlayShape";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
 const electronWindowsDir = path.dirname(fileURLToPath(import.meta.url));
@@ -41,12 +50,36 @@ let hudOverlayMouseReassertTimer: NodeJS.Timeout | null = null;
 let hudOverlayRecordingActive = false;
 let hudCaptureStarting = false;
 let hudOverlayWebcamPreviewVisible = false;
+// X clients (X11/XWayland): the HUD window stays a constant tall rectangle
+// and the X11 shape extension clips painting AND input to the reported
+// content rects (bar, open popover) — no clipping, no dead click zones.
+// Native-Wayland Electron and platforms without setShape keep the legacy
+// fixed-size window, byte for byte.
+const hudWindowMode: HudWindowMode = resolveHudWindowMode(
+	process.env,
+	process.platform,
+	process.argv,
+);
+const hudShapeCapable =
+	hudWindowMode === "shape" && typeof BrowserWindow.prototype.setShape === "function";
+let hudShapeModeActive = hudShapeCapable;
+let hudLastShapeKey = "";
+let hudLastBarRect: HudShapeRect | null = null;
+// Grow mode (native Wayland): the bar anchors to the window's TOP and opening
+// a popover grows the window DOWNWARD — compositors pin the top-left corner
+// on resizes, so the bar stays put while the menu appears below it. The idle
+// rectangle hugs the bar; no dead zones in the state that matters.
+let hudGrowContentSize: { width: number; height: number } | null = null;
 let countdownWindow: BrowserWindow | null = null;
 let updateToastWindow: BrowserWindow | null = null;
 let hudWasVisibleBeforeUpdateToast = false;
 
 const HUD_OVERLAY_SETTINGS_FILE = path.join(USER_DATA_PATH, "hud-overlay-settings.json");
 const HUD_EDGE_MARGIN_DIP = 16;
+// Grow-mode sizing: transparent ring around the reported content (top/left/
+// right full pad; the bottom pad is folded into the reported height).
+const HUD_GROW_RING_PX = 10;
+const HUD_GROW_MIN_HEIGHT_PX = 80;
 const UPDATE_TOAST_WIDTH = 420;
 const UPDATE_TOAST_HEIGHT = 172;
 
@@ -219,7 +252,7 @@ function getHudOverlayDisplay() {
 
 function getHudOverlayBounds() {
 	const { workArea } = getHudOverlayDisplay();
-	const fallbackExpanded = shouldExpandHudOverlayFallback({
+	const fallbackExpanded = hudShapeModeActive || shouldExpandHudOverlayFallback({
 		fallbackExpanded: hudOverlayFallbackExpanded,
 		recordingActive: hudOverlayRecordingActive,
 		webcamPreviewVisible: hudOverlayWebcamPreviewVisible,
@@ -235,7 +268,27 @@ function applyHudOverlayBounds() {
 	if (!hudOverlayWindow || hudOverlayWindow.isDestroyed()) {
 		return;
 	}
-	hudOverlayWindow.setBounds(getHudOverlayBounds(), false);
+	if (hudWindowMode === "grow" && hudGrowContentSize) {
+		// Grow mode: the compositor owns placement, so only resize — the bar
+		// is anchored to the window's top and stays exactly where it is.
+		const workArea = getHudOverlayDisplay().workArea;
+		const bounds = hudOverlayWindow.getBounds();
+		hudOverlayWindow.setBounds(
+			{
+				x: bounds.x,
+				y: bounds.y,
+				width: Math.min(workArea.width, hudGrowContentSize.width + HUD_GROW_RING_PX * 2),
+				height: Math.min(
+					workArea.height,
+					// small sanity floor; otherwise the rectangle hugs the bar
+					Math.max(HUD_GROW_MIN_HEIGHT_PX, hudGrowContentSize.height + HUD_GROW_RING_PX),
+				),
+			},
+			false,
+		);
+	} else {
+		hudOverlayWindow.setBounds(getHudOverlayBounds(), false);
+	}
 
 	positionUpdateToastWindow();
 	if (!hudOverlayWindow.isVisible()) {
@@ -344,6 +397,95 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 	hudOverlayWindow.setIgnoreMouseEvents(false);
 }
 
+ipcMain.handle("get-hud-overlay-window-mode", () => {
+	return { mode: hudShapeModeActive ? "shape" : hudWindowMode };
+});
+
+ipcMain.on("hud-overlay-pre-grow-popover", () => {
+	if (hudWindowMode !== "grow") {
+		return;
+	}
+	if (!hudOverlayWindow || hudOverlayWindow.isDestroyed()) {
+		return;
+	}
+	// Pre-grow to the generous expanded preset BEFORE the renderer mounts the
+	// popover, so Radix measures a viewport with room below the bar and
+	// positions the menu correctly on the first try. The content-size reports
+	// shrink the window to the exact menu size right after. On Wayland the
+	// compositor pins the top-left corner, so only the bottom edge moves —
+	// the bar cannot jump.
+	const workArea = getHudOverlayDisplay().workArea;
+	const bounds = hudOverlayWindow.getBounds();
+	hudOverlayWindow.setBounds(
+		{
+			x: bounds.x,
+			y: bounds.y,
+			width: bounds.width,
+			height: Math.min(workArea.height, NON_PASSTHROUGH_HUD_EXPANDED_HEIGHT_DIP),
+		},
+		false,
+	);
+});
+
+ipcMain.on(
+	"hud-overlay-set-content-size",
+	(_event, size: { width?: number; height?: number } | null) => {
+		if (hudWindowMode !== "grow") {
+			return;
+		}
+		const width = Math.round(Number(size?.width) || 0);
+		const height = Math.round(Number(size?.height) || 0);
+		if (width <= 0 || height <= 0) {
+			return;
+		}
+		const next = { width, height };
+		if (
+			hudGrowContentSize &&
+			hudGrowContentSize.width === width &&
+			hudGrowContentSize.height === height
+		) {
+			return;
+		}
+		hudGrowContentSize = next;
+		applyHudOverlayBounds();
+	},
+);
+
+ipcMain.on(
+	"hud-overlay-set-content-shape",
+	(
+		_event,
+		shape: { bar?: HudShapeRect | null; popover?: HudShapeRect | null } | null,
+	) => {
+		if (!hudShapeModeActive || !hudOverlayWindow || hudOverlayWindow.isDestroyed()) {
+			return;
+		}
+		const bounds = hudOverlayWindow.getBounds();
+		if (shape?.bar && shape.bar.width > 0 && shape.bar.height > 0) {
+			hudLastBarRect = shape.bar;
+		}
+		const rects = buildHudWindowShape({
+			windowSize: { width: bounds.width, height: bounds.height },
+			bar: shape?.bar ?? { x: 0, y: 0, width: 0, height: 0 },
+			popover: shape?.popover ?? null,
+		});
+		const key = shapeKey(rects);
+		if (key === hudLastShapeKey) {
+			return;
+		}
+		hudLastShapeKey = key;
+		try {
+			if (rects.length > 0) {
+				hudOverlayWindow.setShape(rects);
+			}
+		} catch (error) {
+			// Shape support is best-effort; a failure here leaves the window
+			// rectangular (legacy footprint minus the constant height).
+			console.warn("[hud-shape] setShape failed:", error);
+		}
+	},
+);
+
 ipcMain.on("hud-overlay-set-ignore-mouse", (_event, ignore: boolean) => {
 	setHudOverlayMousePassthrough(Boolean(ignore));
 });
@@ -368,13 +510,15 @@ let hudDragFixedSize: { width: number; height: number } | null = null;
 ipcMain.on("hud-overlay-drag", (_event, phase: string, screenX: number, screenY: number) => {
 	if (!hudOverlayWindow || hudOverlayWindow.isDestroyed()) return;
 
-	// On Linux the compositor (especially Wayland) refuses programmatic window
-	// placement, so BrowserWindow.setBounds() with x/y is silently ignored and
-	// the HUD appears "stuck".  The renderer marks the drag handle as
-	// -webkit-app-region: drag on Linux, letting the OS move the window for us.
-	// The resulting position is captured by the win.on("moved", ...) listener
-	// below so `hudUserPosition` stays in sync.
-	if (process.platform === "linux") {
+	// On Linux, programmatic placement is only reliable for X clients — which
+	// shape mode is by definition. There we drag via setBounds with a
+	// BAR-AWARE clamp: the window is a tall rectangle with the bar anchored
+	// inside it, so the WM's window-level clamp would happily push the bar
+	// off-screen. Native-Wayland Electron keeps the OS drag (the compositor
+	// really does refuse setBounds there); the renderer marks the handle as
+	// -webkit-app-region: drag and the win.on("moved", ...) listener below
+	// keeps `hudUserPosition` in sync.
+	if (process.platform === "linux" && !hudShapeModeActive) {
 		return;
 	}
 
@@ -397,10 +541,31 @@ ipcMain.on("hud-overlay-drag", (_event, phase: string, screenX: number, screenY:
 		const targetY = Math.round(screenY - hudDragOffset.y);
 		const fixedWidth = hudDragFixedSize?.width ?? hudOverlayWindow.getBounds().width;
 		const fixedHeight = hudDragFixedSize?.height ?? hudOverlayWindow.getBounds().height;
+		let nextX = targetX;
+		let nextY = targetY;
+		if (process.platform === "linux") {
+			// Keep the bar — not the window — inside the work area.
+			const bounds = hudOverlayWindow.getBounds();
+			const barRect =
+				hudLastBarRect ??
+				{
+					x: 0,
+					y: bounds.height - NON_PASSTHROUGH_HUD_COMPACT_HEIGHT_DIP,
+					width: bounds.width,
+					height: NON_PASSTHROUGH_HUD_COMPACT_HEIGHT_DIP,
+				};
+			const clamped = clampHudDragToWorkArea(
+				getHudOverlayDisplay().workArea,
+				{ x: nextX, y: nextY },
+				barRect,
+			);
+			nextX = clamped.x;
+			nextY = clamped.y;
+		}
 		hudOverlayWindow.setBounds(
 			{
-				x: targetX,
-				y: targetY,
+				x: nextX,
+				y: nextY,
 				width: fixedWidth,
 				height: fixedHeight,
 			},
@@ -499,6 +664,7 @@ export function createHudOverlayWindow(): BrowserWindow {
 		frame: false,
 		transparent: true,
 		backgroundColor: "#00000000",
+		useContentSize: true,
 		resizable: false,
 		alwaysOnTop: true,
 		// The HUD is Recordly's persistent top-level window, so it owns the
@@ -524,8 +690,13 @@ export function createHudOverlayWindow(): BrowserWindow {
 		});
 	}
 
-	const showHudWindow = () => {
+	const showHudWindow = (forced = false) => {
 		if (hasShownHudWindow || win.isDestroyed()) {
+			return;
+		}
+		// Grow mode: skip the first show until the renderer reports the real
+		// content size, so the bar never flashes at the legacy size.
+		if (!forced && hudWindowMode === "grow" && !hudGrowContentSize) {
 			return;
 		}
 		if (
@@ -597,10 +768,14 @@ export function createHudOverlayWindow(): BrowserWindow {
 	win.webContents.on("did-finish-load", () => {
 		console.log(`[PERF:MAIN] HUD Window: did-finish-load in ${Date.now() - perfStart}ms`);
 		win?.webContents.send("main-process-message", new Date().toLocaleString());
-		// Safety fallback if renderer-ready signal never arrives.
+		// Safety fallback if renderer-ready signal never arrives; last resort
+		// when grow mode never receives a measurement (broken renderer).
 		setTimeout(() => {
 			showHudWindow();
 		}, 1800);
+		setTimeout(() => {
+			showHudWindow(true);
+		}, 3200);
 	});
 
 	// Safety net: on Linux the renderer may fail to fire did-finish-load
@@ -623,6 +798,31 @@ export function createHudOverlayWindow(): BrowserWindow {
 	ipcMain.on("hud-overlay-renderer-ready", handleHudRendererReady);
 
 	hudOverlayWindow = win;
+
+	if (hudShapeModeActive) {
+		// Until the renderer reports the real bar rect, shape the window to its
+		// bottom strip — the same footprint as the legacy compact window — so
+		// the popover headroom never blocks clicks, not even briefly. If the
+		// platform rejects setShape after all, fall back to the legacy window.
+		try {
+			const size = win.getBounds();
+			const initialShape: HudShapeRect[] = [
+				{
+					x: 0,
+					y: Math.max(0, size.height - NON_PASSTHROUGH_HUD_COMPACT_HEIGHT_DIP),
+					width: size.width,
+					height: NON_PASSTHROUGH_HUD_COMPACT_HEIGHT_DIP,
+				},
+			];
+			win.setShape(initialShape);
+			hudLastShapeKey = shapeKey(initialShape);
+		} catch (error) {
+			hudShapeModeActive = false;
+			hudLastShapeKey = "";
+			console.warn("[hud-shape] setShape unavailable, keeping legacy window:", error);
+			applyHudOverlayBounds();
+		}
+	}
 
 	// On Linux the HUD is dragged by the OS via -webkit-app-region (Wayland
 	// forbids client-side positioning). Mirror moved bounds into drag state.

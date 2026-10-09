@@ -25,6 +25,8 @@
 		"screen": "Scherm",
 		"window": "Venster",
 		"noSourcesFound": "Geen bronnen gevonden",
+		"windowCursorCaption": "Vensteropnames bevatten de systeemcursor.",
+		"windowCursorToast": "Vensteropnames bevatten de echte systeemcursor naast de geanimeerde cursor.",
 		"microphone": "Microfoon",
 		"turnOffMicrophone": "Microfoon uitschakelen",
 		"selectMicToEnable": "Selecteer een microfoon om in te schakelen",
