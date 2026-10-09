@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ClipRegion } from "@/components/video-editor/types";
 import {
 	buildVideoDecodeFailure,
 	getDecodedFrameStartupOffsetUs,
@@ -167,6 +168,42 @@ describe("StreamingVideoDecoder decode failures", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
 	});
+
+	const CHUNKS = 120;
+	async function openClipDecoder(path: string) {
+		mockDemuxerRead.mockImplementation(
+			() =>
+				new ReadableStream({
+					start(controller) {
+						for (let i = 0; i < CHUNKS; i++)
+							controller.enqueue({ timestamp: (i * 1_000_000) / 30 });
+						controller.close();
+					},
+				}),
+		);
+		class TestDecoder {
+			state = "unconfigured";
+			decodeQueueSize = 0;
+			constructor(private callbacks: { output: (frame: VideoFrame) => void }) {}
+			configure() {
+				this.state = "configured";
+			}
+			decode(chunk: EncodedVideoChunk) {
+				this.callbacks.output({
+					timestamp: chunk.timestamp,
+					close: vi.fn(),
+				} as unknown as VideoFrame);
+			}
+			async flush() {}
+			close() {
+				this.state = "closed";
+			}
+		}
+		vi.stubGlobal("VideoDecoder", TestDecoder);
+		const decoder = new StreamingVideoDecoder();
+		await decoder.loadMetadata(path);
+		return decoder;
+	}
 
 	it("does not emit frozen remaining frames after a decoder error", async () => {
 		const frames: Array<{ timestamp: number; close: ReturnType<typeof vi.fn> }> = [];
@@ -393,37 +430,7 @@ describe("StreamingVideoDecoder decode failures", () => {
 		[true, 3, 0, 2400],
 		[false, 0.1, 5, 2405],
 	])("emits real gap frames (reordered: %s, speed: %s)", async (reordered, speed, firstSource, secondSource) => {
-		mockDemuxerRead.mockImplementation(
-			() =>
-				new ReadableStream({
-					start(controller) {
-						for (let i = 0; i < 120; i++)
-							controller.enqueue({ timestamp: (i * 1_000_000) / 30 });
-						controller.close();
-					},
-				}),
-		);
-		class TestDecoder {
-			state = "unconfigured";
-			decodeQueueSize = 0;
-			constructor(private callbacks: { output: (frame: VideoFrame) => void }) {}
-			configure() {
-				this.state = "configured";
-			}
-			decode(chunk: EncodedVideoChunk) {
-				this.callbacks.output({
-					timestamp: chunk.timestamp,
-					close: vi.fn(),
-				} as unknown as VideoFrame);
-			}
-			async flush() {}
-			close() {
-				this.state = "closed";
-			}
-		}
-		vi.stubGlobal("VideoDecoder", TestDecoder);
-		const decoder = new StreamingVideoDecoder();
-		await decoder.loadMetadata("/tmp/clip-timeline.mp4");
+		const decoder = await openClipDecoder("/tmp/clip-timeline.mp4");
 		const clips = [
 			{
 				id: "a",
@@ -462,6 +469,93 @@ describe("StreamingVideoDecoder decode failures", () => {
 			(Math.round(((reordered ? secondSource : firstSource) * 30) / 1000) * 1_000_000) / 30,
 		);
 		expect(decoder.getEffectiveDuration(undefined, undefined, clips)).toBe(1.2);
+	});
+
+	it("emits a blank clip as gap frames and still guards real clips", async () => {
+		const decoder = await openClipDecoder("/tmp/blank-card.mp4");
+		const clips: ClipRegion[] = [
+			{ id: "card", startMs: 0, endMs: 400, speed: 1, blank: true },
+			{ id: "a", startMs: 400, endMs: 800, sourceStartMs: 0, speed: 1 },
+		];
+		const frames: Array<{ gap: boolean }> = [];
+		await decoder.decodeAll(
+			30,
+			undefined,
+			undefined,
+			async (frame) => {
+				frames.push({ gap: frame === null });
+			},
+			clips,
+		);
+		expect(frames).toHaveLength(24);
+		for (let i = 0; i < frames.length; i++) expect(frames[i].gap).toBe(i < 12);
+		expect(decoder.getEffectiveDuration(undefined, undefined, clips)).toBe(0.8);
+
+		const unblanked: ClipRegion[] = [
+			{ id: "card", startMs: 0, endMs: 400, sourceStartMs: 4_100, speed: 1 },
+			clips[1],
+		];
+		await expect(
+			decoder.decodeAll(30, undefined, undefined, async () => undefined, unblanked),
+		).rejects.toThrow("Missing decoded clip frame");
+		decoder.destroy();
+	});
+
+	it.each([
+		{
+			label: "a title card in front of footage",
+			clips: [
+				{ id: "card", startMs: 0, endMs: 2000, sourceStartMs: 0, speed: 1 / 2000 },
+				{ id: "a", startMs: 2000, endMs: 4000, sourceStartMs: 0, speed: 1 },
+			] as ClipRegion[],
+			total: 120,
+		},
+		{
+			label: "a title card in front of a held frame",
+			clips: [
+				{ id: "card", startMs: 0, endMs: 2000, sourceStartMs: 0, speed: 1 / 2000 },
+				{ id: "hold", startMs: 2000, endMs: 4000, sourceStartMs: 0, speed: 1 / 2000 },
+			] as ClipRegion[],
+			total: 120,
+		},
+		{
+			label: "a card at both ends of footage",
+			clips: [
+				{ id: "title", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1 / 1000 },
+				{ id: "a", startMs: 1000, endMs: 3000, sourceStartMs: 0, speed: 1 },
+				{ id: "end", startMs: 3000, endMs: 4000, sourceStartMs: 1999, speed: 1 / 1000 },
+			] as ClipRegion[],
+			total: 120,
+		},
+		{
+			label: "a card on a one-clip timeline",
+			clips: [
+				{ id: "card", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1 / 1000 },
+			] as ClipRegion[],
+			total: 30,
+		},
+	])("renders every output frame of $label", async ({ clips, total }) => {
+		const decoder = await openClipDecoder("/tmp/card-front.mp4");
+		const frames: Array<{ gap: boolean; timestamp: number; source: number }> = [];
+		await decoder.decodeAll(
+			30,
+			undefined,
+			undefined,
+			async (frame, timestamp, source) => {
+				frames.push({ gap: frame === null, timestamp, source });
+			},
+			clips,
+		);
+		expect(frames).toHaveLength(total);
+		for (let i = 0; i < frames.length; i++) {
+			expect(frames[i].timestamp).toBeCloseTo((i * 1_000_000) / 30, 5);
+			expect(frames[i].gap).toBe(false);
+		}
+		const held = frames.slice(0, Math.round((clips[0].endMs * 30) / 1000));
+		for (let i = 1; i < held.length; i++) {
+			expect(held[i].source).toBeGreaterThan(held[i - 1].source);
+		}
+		decoder.destroy();
 	});
 });
 

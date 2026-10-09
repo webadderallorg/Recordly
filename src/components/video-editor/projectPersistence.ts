@@ -1,9 +1,14 @@
-import { getLocalMediaServerPath } from "@/lib/localMediaUrl";
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
+import { getLocalMediaServerPath } from "@/lib/localMediaUrl";
 import { DEFAULT_WALLPAPER_PATH } from "@/lib/wallpapers";
 import { ASPECT_RATIOS, type AspectRatio, isCustomAspectRatio } from "@/utils/aspectRatioUtils";
 import { closeClipGaps, rippleRegionAnchors, rippleRegions } from "./clipSequence";
 import { CURSOR_MOTION_PRESETS, resolveCursorMotionPresetId } from "./cursorMotionPresets";
+import {
+	type ClipTransition,
+	MAX_TRANSITION_MS,
+	MIN_TRANSITION_MS,
+} from "./export/editorOps/transitions";
 import {
 	ADVANCED_VERTICAL_PADDING_MAX,
 	type AnnotationRegion,
@@ -124,6 +129,7 @@ export interface ProjectEditorState {
 	zoomRegions: ZoomRegion[];
 	trimRegions: TrimRegion[];
 	clipRegions: ClipRegion[];
+	transitions: ClipTransition[];
 	autoFullTrackClipId?: string | null;
 	autoFullTrackClipEndMs?: number | null;
 	speedRegions: SpeedRegion[];
@@ -300,6 +306,45 @@ export function validateProjectData(candidate: unknown): candidate is EditorProj
 	return true;
 }
 
+function normalizeClipTransitions(value: unknown, clips: ClipRegion[]): ClipTransition[] {
+	if (!Array.isArray(value)) return [];
+	const known = new Set(clips.map((clip) => clip.id));
+	const kept = new Map<string, ClipTransition>();
+	for (const entry of value) {
+		const transition = entry as Partial<ClipTransition>;
+		if (transition?.kind !== "dip") continue;
+		if (typeof transition.afterClipId !== "string" || !known.has(transition.afterClipId)) {
+			continue;
+		}
+		if (!isFiniteNumber(transition.ms)) continue;
+		const ms = Math.round(clamp(transition.ms, MIN_TRANSITION_MS, MAX_TRANSITION_MS));
+		const id = `dip-${transition.afterClipId}`;
+		if (kept.has(id)) continue;
+		kept.set(id, { id, kind: "dip", ms, afterClipId: transition.afterClipId });
+	}
+	return [...kept.values()];
+}
+
+function normalizeAudioDuck(value: unknown) {
+	if (!value || typeof value !== "object") return undefined;
+	const duck = value as { level?: unknown; ranges?: unknown };
+	if (!isFiniteNumber(duck.level) || !Array.isArray(duck.ranges)) return undefined;
+	const ranges = duck.ranges
+		.map((range) => range as { startMs?: unknown; endMs?: unknown })
+		.filter(
+			(range) =>
+				isFiniteNumber(range.startMs) &&
+				isFiniteNumber(range.endMs) &&
+				(range.endMs as number) > (range.startMs as number),
+		)
+		.map((range) => ({
+			startMs: Math.max(0, Math.round(range.startMs as number)),
+			endMs: Math.max(0, Math.round(range.endMs as number)),
+		}));
+	if (ranges.length === 0) return undefined;
+	return { level: clamp(duck.level, 0, 1), ranges };
+}
+
 export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): ProjectEditorState {
 	const validAspectRatios = new Set<AspectRatio>(ASPECT_RATIOS);
 	const legacyMotionBlurEnabled = (editor as Partial<{ motionBlurEnabled: boolean }>)
@@ -466,6 +511,7 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						sourceMinMs,
 						sourceMaxMs,
 						speed: isFiniteNumber(region.speed) && region.speed > 0 ? region.speed : 1,
+						blank: region.blank === true ? (true as const) : undefined,
 						muted: typeof region.muted === "boolean" ? region.muted : false,
 						showSourceAudio:
 							typeof region.showSourceAudio === "boolean"
@@ -545,7 +591,8 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						type:
 							region.type === "image" ||
 							region.type === "figure" ||
-							region.type === "blur"
+							region.type === "blur" ||
+							region.type === "highlight"
 								? region.type
 								: "text",
 						content: typeof region.content === "string" ? region.content : "",
@@ -597,6 +644,11 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 							: 20,
 						blurColor:
 							typeof region.blurColor === "string" ? region.blurColor : undefined,
+						space: region.space === "screen" ? "screen" : undefined,
+						highlightDim:
+							typeof region.highlightDim === "number"
+								? region.highlightDim
+								: undefined,
 						trackIndex: isFiniteNumber(region.trackIndex)
 							? Math.max(0, Math.floor(region.trackIndex))
 							: 0,
@@ -631,6 +683,13 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 						trackIndex: isFiniteNumber(region.trackIndex)
 							? Math.max(0, Math.floor(region.trackIndex))
 							: 0,
+						fadeInMs: isFiniteNumber(region.fadeInMs)
+							? Math.max(0, Math.round(region.fadeInMs))
+							: undefined,
+						fadeOutMs: isFiniteNumber(region.fadeOutMs)
+							? Math.max(0, Math.round(region.fadeOutMs))
+							: undefined,
+						duck: normalizeAudioDuck(region.duck),
 					};
 				})
 		: [];
@@ -926,6 +985,10 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			: normalizedZoomRegions,
 		trimRegions: normalizedTrimRegions,
 		clipRegions: sequenceClips,
+		transitions: normalizeClipTransitions(
+			(editor as Partial<ProjectEditorState>).transitions,
+			sequenceClips,
+		),
 		autoFullTrackClipId: normalizedAutoFullTrackClipId,
 		autoFullTrackClipEndMs: normalizedAutoFullTrackClipEndMs,
 		speedRegions: normalizedSpeedRegions,

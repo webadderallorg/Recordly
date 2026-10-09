@@ -17,6 +17,7 @@ import { useClipRegionCommands } from "./useClipRegionCommands";
 import { useCursorTelemetry } from "./useCursorTelemetry";
 import { useEditorGlobalInteractions } from "./useEditorGlobalInteractions";
 import { useEditorPlaybackControls } from "./useEditorPlaybackControls";
+import { useFreshRecordingAgentEdits } from "./useFreshRecordingAgentEdits";
 import { useFreshRecordingAutoZoom } from "./useFreshRecordingAutoZoom";
 import { useTimelineProjection } from "./useTimelineProjection";
 import { useZoomRegionCommands } from "./useZoomRegionCommands";
@@ -51,6 +52,7 @@ type Input = {
 	autoFullTrackClipEndMsRef: MutableRefObject<number | null>;
 	autoSuggestedVideoPathRef: MutableRefObject<string | null>;
 	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
+	pendingFreshRecordingAgentEditsPathRef: MutableRefObject<string | null>;
 	pendingFreshRecordingAutoSuggestTimeoutRef: MutableRefObject<number | null>;
 	pendingFreshRecordingAutoSuggestTelemetryCountRef: MutableRefObject<number>;
 	handleUndo: () => void;
@@ -155,8 +157,24 @@ export function useTimelineEditingController(input: Input) {
 			timeline.setSelectedCaptionId,
 		],
 	);
+	const { agentEditsSettled } = useFreshRecordingAgentEdits({
+		enabled: input.appearance.autoApplyAgentEdits,
+		applyZooms: input.appearance.autoApplyFreshRecordingAutoZooms,
+		videoPath: input.videoPath,
+		videoSourcePath: input.videoSourcePath,
+		loading: input.loading,
+		isPreviewReady: input.isPreviewReady,
+		duration: input.duration,
+		timeline,
+		videoPlaybackRef: input.videoPlaybackRef,
+		nextZoomIdRef: input.nextZoomIdRef,
+		nextClipIdRef: input.nextClipIdRef,
+		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingAgentEditsPathRef: input.pendingFreshRecordingAgentEditsPathRef,
+	});
 	const freshZoom = useFreshRecordingAutoZoom({
 		appPlatform: input.appPlatform,
+		agentEditsSettled,
 		videoPath: input.videoPath,
 		loading: input.loading,
 		isPreviewReady: input.isPreviewReady,
@@ -235,5 +253,6 @@ export function useTimelineEditingController(input: Input) {
 		annotationCommands,
 		handleSelectAnnotation,
 		handleAutoSuggestZoomsConsumed: freshZoom.handleAutoSuggestZoomsConsumed,
+		agentEditsSettled,
 	};
 }

@@ -16,6 +16,7 @@ import {
 	pendingCursorSamples,
 	selectedSource,
 	selectedWindowBounds,
+	selectedWindowBoundsPending,
 	setActiveCursorSamples,
 	setCursorCaptureAccumulatedPausedMs,
 	setCursorCaptureInterval,
@@ -165,6 +166,10 @@ export function getCursorCaptureElapsedMs(nowMs = Date.now()) {
 }
 
 export function getNormalizedCursorPoint() {
+	if (selectedWindowBoundsPending) {
+		return null;
+	}
+
 	const fallbackCursor = getScreen().getCursorScreenPoint();
 	const linuxCursorCache = process.platform === "linux" ? linuxCursorScreenPoint : null;
 	const isLinuxCacheFresh = !!linuxCursorCache && Date.now() - linuxCursorCache.updatedAt <= 1000;
@@ -259,6 +264,10 @@ export function pushCursorSample(
 
 export function sampleCursorPoint() {
 	const point = getNormalizedCursorPoint();
+	if (!point) {
+		return;
+	}
+
 	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "move");
 }
 

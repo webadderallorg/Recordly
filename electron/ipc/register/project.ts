@@ -12,6 +12,7 @@ import path from "node:path";
 import { BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { RECORDINGS_DIR } from "../../appPaths";
 import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
+import { recordingSignals } from "../../mcp/signals";
 import { LEGACY_PROJECT_FILE_EXTENSIONS, PROJECT_FILE_EXTENSION } from "../constants";
 import { getProjectBackupPath, writeProjectFileAtomically } from "../project/atomicSave";
 import {
@@ -42,6 +43,7 @@ import {
 } from "../state";
 import {
 	approveUserPath,
+	getAgentActivityPathForVideo,
 	getRecordingsDir,
 	getTelemetryPathForVideo,
 	isAutoRecordingPath,
@@ -807,7 +809,7 @@ export function registerProjectHandlers() {
 	ipcMain.handle(
 		"set-current-video-path",
 		async (
-			_,
+			event,
 			path: string,
 			options?: { preserveProjectPath?: boolean; hideOverlayCursorByDefault?: boolean },
 		) => {
@@ -846,6 +848,7 @@ export function registerProjectHandlers() {
 				}
 			}
 
+			recordingSignals.emit("videoPath", nextSession.videoPath, event.sender);
 			return { success: true, webcamPath: nextSession.webcamPath ?? null };
 		},
 	);
@@ -853,7 +856,7 @@ export function registerProjectHandlers() {
 	ipcMain.handle(
 		"set-current-recording-session",
 		async (
-			_,
+			event,
 			session: {
 				videoPath: string;
 				webcamPath?: string | null;
@@ -884,6 +887,7 @@ export function registerProjectHandlers() {
 				}
 			}
 
+			recordingSignals.emit("videoPath", normalizedVideoPath, event.sender);
 			return { success: true };
 		},
 	);
@@ -929,6 +933,7 @@ export function registerProjectHandlers() {
 			// Also delete the cursor telemetry sidecar if it exists
 			const telemetryPath = getTelemetryPathForVideo(resolvedPath);
 			await fs.unlink(telemetryPath).catch(() => undefined);
+			await fs.unlink(getAgentActivityPathForVideo(resolvedPath)).catch(() => undefined);
 			const currentResolved = currentVideoPath
 				? await fs.realpath(currentVideoPath).catch(() => currentVideoPath)
 				: null;

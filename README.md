@@ -148,6 +148,7 @@ Browse and install community extensions from the [Recordly Marketplace](https://
 - Feedback and issue links from the editor
 - Project persistence for editor preferences
 - Faster preview recovery after export
+- Optional AI agent control over MCP, so tools such as Claude Code can record and export for you
 ---
 
 # Screenshots
@@ -281,6 +282,12 @@ Export options include:
 - **GIF** for lightweight sharing and loops
 
 You can adjust format-specific settings such as quality, GIF frame rate, GIF looping, and output size before export.
+
+## Let an AI agent drive it
+
+Recordly can expose the recorder to local AI tools over MCP, so an agent such as Claude Code or Codex can pick a window, record a demo, and export the polished result. Turn it on in **Settings → Advanced → AI agent control (MCP)**; it is off by default, listens on loopback only, and requires a token generated on your own computer.
+
+See [docs/mcp-server.md](./docs/mcp-server.md) for the available tools and the configuration each AI tool expects.
 
 ---
 

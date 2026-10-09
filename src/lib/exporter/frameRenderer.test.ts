@@ -58,6 +58,9 @@ vi.mock("@/components/video-editor/videoPlayback/zoomTransform", () => ({
 }));
 
 vi.mock("./annotationRenderer", () => ({
+	getAnnotationFrameRect: vi.fn(() => ({ x: 0, y: 0, width: 1920, height: 1080 })),
+	getAnnotationScaleFactor: vi.fn(() => 1),
+	placeAnnotation: vi.fn(() => ({ x: 0, y: 0, width: 0, height: 0, scaleFactor: 1 })),
 	renderAnnotations: vi.fn(),
 }));
 
@@ -602,5 +605,144 @@ describe("FrameRenderer webcam export path", () => {
 		expect(resolveMediaElementSourceMock).toHaveBeenCalledWith("wallpapers/wispysky.mp4");
 		expect(renderer.backgroundForwardFrameSource).toBeNull();
 		expect(renderer.backgroundVideoElement).toBeTruthy();
+	});
+});
+
+type RasterPixel = { r: number; g: number; b: number };
+
+function createRasterizer(fill: RasterPixel, width: number, height: number) {
+	const pixels: RasterPixel[] = Array.from({ length: width * height }, () => ({ ...fill }));
+	const stack: { alpha: number; style: string }[] = [];
+	const context = {
+		globalAlpha: 1,
+		globalCompositeOperation: "source-over",
+		fillStyle: "#ffffff",
+		filter: "none",
+		beginPath: vi.fn(),
+		moveTo: vi.fn(),
+		lineTo: vi.fn(),
+		closePath: vi.fn(),
+		clip: vi.fn(),
+		drawImage: vi.fn(),
+		translate: vi.fn(),
+		scale: vi.fn(),
+		clearRect: vi.fn(),
+		save() {
+			stack.push({ alpha: context.globalAlpha, style: context.fillStyle });
+		},
+		restore() {
+			const held = stack.pop();
+			if (!held) return;
+			context.globalAlpha = held.alpha;
+			context.fillStyle = held.style;
+		},
+		fillRect(x: number, y: number, w: number, h: number) {
+			const source = {
+				r: Number.parseInt(context.fillStyle.slice(1, 3), 16),
+				g: Number.parseInt(context.fillStyle.slice(3, 5), 16),
+				b: Number.parseInt(context.fillStyle.slice(5, 7), 16),
+			};
+			const alpha = context.globalAlpha;
+			for (let row = Math.max(0, y); row < Math.min(height, y + h); row++) {
+				for (let col = Math.max(0, x); col < Math.min(width, x + w); col++) {
+					const target = pixels[row * width + col];
+					target.r = Math.round(target.r * (1 - alpha) + source.r * alpha);
+					target.g = Math.round(target.g * (1 - alpha) + source.g * alpha);
+					target.b = Math.round(target.b * (1 - alpha) + source.b * alpha);
+				}
+			}
+		},
+	};
+	return { pixels, context: context as unknown as CanvasRenderingContext2D };
+}
+
+function createDipRenderer(dips: { atMs: number; ms: number }[], width: number, height: number) {
+	return new FrameRenderer({
+		timelineEffects: true,
+		dips,
+		width,
+		height,
+		wallpaper: "#2054c8",
+		zoomRegions: [],
+		showShadow: false,
+		shadowIntensity: 0,
+		backgroundBlur: 0,
+		cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+		webcam: { ...DEFAULT_WEBCAM_OVERLAY, enabled: false },
+		videoWidth: width,
+		videoHeight: height,
+	});
+}
+
+describe("FrameRenderer timeline dip", () => {
+	const WALLPAPER = { r: 32, g: 84, b: 200 };
+	const dips = [{ atMs: 5000, ms: 400 }];
+
+	function gapFrame(timelineMs: number) {
+		const renderer = createDipRenderer(dips, 4, 2);
+		const raster = createRasterizer(WALLPAPER, 4, 2);
+		Object.assign(renderer, {
+			app: { stage: {}, renderer: { render: vi.fn() } },
+			cameraContainer: { visible: true },
+			videoContainer: {},
+			compositeCtx: raster.context,
+			compositeWithShadows: vi.fn(),
+		});
+		return { renderer, raster };
+	}
+
+	it("darkens a gap frame's pixels to black on the cut, where the wallpaper still shows", async () => {
+		const { renderer, raster } = gapFrame(5000);
+		expect(raster.pixels[0]).toEqual(WALLPAPER);
+		await renderer.renderFrame(null, 0, 0, 33333, 5000 * 1000);
+		for (const pixel of raster.pixels) expect(pixel).toEqual({ r: 0, g: 0, b: 0 });
+	});
+
+	it("half-darkens a gap frame halfway through the dip", async () => {
+		const { renderer, raster } = gapFrame(4900);
+		await renderer.renderFrame(null, 0, 0, 33333, 4900 * 1000);
+		for (const pixel of raster.pixels) expect(pixel).toEqual({ r: 16, g: 42, b: 100 });
+	});
+
+	it("leaves a gap frame alone outside the dip", async () => {
+		const { renderer, raster } = gapFrame(0);
+		await renderer.renderFrame(null, 0, 0, 33333, 0);
+		for (const pixel of raster.pixels) expect(pixel).toEqual(WALLPAPER);
+		await renderer.renderFrame(null, 0, 0, 33333, 4800 * 1000);
+		for (const pixel of raster.pixels) expect(pixel).toEqual(WALLPAPER);
+	});
+
+	it("darkens the composited frame's pixels on the main path", () => {
+		const renderer = createDipRenderer(dips, 4, 2) as unknown as {
+			compositeCtx: CanvasRenderingContext2D | null;
+			paintTimelineDip: (timelineTimeMs: number) => void;
+		};
+		const raster = createRasterizer(WALLPAPER, 4, 2);
+		renderer.compositeCtx = raster.context;
+		renderer.paintTimelineDip(5000);
+		for (const pixel of raster.pixels) expect(pixel).toEqual({ r: 0, g: 0, b: 0 });
+		renderer.paintTimelineDip(9000);
+		for (const pixel of raster.pixels) expect(pixel).toEqual({ r: 0, g: 0, b: 0 });
+	});
+
+	it("paints nothing when no dip is configured", async () => {
+		const renderer = createDipRenderer([], 4, 2);
+		const raster = createRasterizer(WALLPAPER, 4, 2);
+		Object.assign(renderer, {
+			app: { stage: {}, renderer: { render: vi.fn() } },
+			cameraContainer: { visible: true },
+			videoContainer: {},
+			compositeCtx: raster.context,
+			compositeWithShadows: vi.fn(),
+		});
+		await renderer.renderFrame(null, 0, 0, 33333, 5000 * 1000);
+		for (const pixel of raster.pixels) expect(pixel).toEqual(WALLPAPER);
+	});
+
+	it("keeps the dip as the last thing both renderFrame paths do", () => {
+		expect(rendererSource).toContain(
+			"this.paintTimelineDip(backgroundTimelineTimestamp / 1000)",
+		);
+		expect(rendererSource).toContain("this.paintTimelineDip(timeMs);");
 	});
 });

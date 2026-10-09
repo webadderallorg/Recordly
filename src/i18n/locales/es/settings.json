@@ -52,6 +52,8 @@
 		"connectZoomsDescription": "Suaviza regiones de zoom consecutivas convirtiéndolas en un movimiento continuo de cámara.",
 		"autoApplyFreshRecordingZooms": "Aplicar automáticamente zooms a nuevas grabaciones",
 		"autoApplyFreshRecordingZoomsDescription": "Sugiere automáticamente zooms de seguimiento del cursor al abrir una nueva grabación.",
+		"autoApplyAgentEdits": "Ajustar grabaciones de agentes",
+		"autoApplyAgentEditsDescription": "Recorta las pausas en las que la IA piensa y hace zoom donde actúa. Se aplica a las nuevas grabaciones hechas por un agente de IA.",
 		"zoomGeneralTitle": "General",
 		"zoomGeneralDescription": "Ajustes globales de movimiento para todas las transiciones de zoom.",
 		"zoomInTitle": "Entrada",
@@ -258,5 +260,24 @@
 		"title": "Actualizaciones",
 		"experimental": "Actualizaciones experimentales",
 		"saveFailed": "No se pudo cambiar el canal de actualización."
+	},
+	"mcp": {
+		"title": "Control por agentes de IA (MCP)",
+		"enable": "Permitir que los agentes de IA controlen Recordly",
+		"enableDescription": "Permite que herramientas de IA locales como Claude Code inicien, detengan y exporten grabaciones mediante una conexión privada en este equipo.",
+		"runningAt": "Activo en {{url}}",
+		"copySetup": "Copiar comando de configuración",
+		"setupCopied": "Comando de configuración copiado",
+		"copyFailed": "No se pudo copiar el comando de configuración.",
+		"regenerateToken": "Regenerar token",
+		"tokenRegenerated": "Se creó un nuevo token. Vuelve a copiar el comando de configuración y añade Recordly de nuevo en tus herramientas de IA.",
+		"regenerateFailed": "No se pudo regenerar el token.",
+		"tokenHint": "Mantén el token en privado: cualquiera que lo tenga puede controlar la grabación.",
+		"saveFailed": "No se pudo cambiar el control por agentes de IA.",
+		"errorPortInUse": "El puerto {{port}} ya está en uso. Cierra la otra aplicación que lo usa y luego desactiva y vuelve a activar esta opción.",
+		"errorPortUnavailable": "No se puede usar el puerto {{port}} en este equipo: el sistema lo ha reservado. Libera el puerto o reinicia el equipo y luego desactiva y vuelve a activar esta opción.",
+		"errorStartFailed": "No se pudo iniciar la conexión para agentes de IA. Desactívala y vuelve a activarla.",
+		"control": "Permitir que los agentes usen el ratón y el teclado",
+		"controlDescription": "Permite al agente abrir páginas web, mover el puntero, hacer clic y escribir en la ventana que graba. Mueve el ratón o pulsa Esc en cualquier momento para recuperar el control."
 	}
 }

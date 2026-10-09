@@ -14,12 +14,19 @@ import {
 } from "electron";
 import { getHudCaptureExcludedProcessIds } from "../../../src/lib/hudCaptureProtection";
 import { showCursor } from "../../cursorHider";
+import {
+	persistAgentActivity,
+	readAgentActivity,
+	resetAgentActivity,
+	snapshotAgentActivity,
+} from "../../mcp/agentActivity";
 import { getHudOverlayCaptureProtectionEnabled, beginHudCaptureProtection } from "../../windows";
 import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
 import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../cursor/bounds";
 import { startInteractionCapture, stopInteractionCapture } from "../cursor/interaction";
 import { startNativeCursorMonitor, stopNativeCursorMonitor } from "../cursor/monitor";
 import {
+	getCursorCaptureElapsedMs,
 	normalizeCursorTelemetrySamples,
 	pauseCursorCaptureAtBoundary,
 	persistPendingCursorTelemetry,
@@ -32,6 +39,7 @@ import {
 	writeCursorTelemetry,
 } from "../cursor/telemetry";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
+import { extractScreenChangeTimesMs } from "../ffmpeg/changeTimes";
 import { getMonitorHandles } from "../monitorResolver";
 import {
 	ensureNativeCaptureHelperBinary,
@@ -140,7 +148,12 @@ import {
 	windowsPendingVideoPath,
 	windowsSystemAudioPath,
 } from "../state";
-import type { CursorTelemetryPoint, NativeMacRecordingOptions, SelectedSource } from "../types";
+import {
+	type CursorTelemetryPoint,
+	describeCaptureStartFailure,
+	type NativeMacRecordingOptions,
+	type SelectedSource,
+} from "../types";
 import {
 	getMacPrivacySettingsUrl,
 	getRecordingsDir,
@@ -927,11 +940,7 @@ export function registerRecordingHandlers(
 				setNativeCaptureMicrophonePath(null);
 				setNativeCaptureStopRequested(false);
 				setNativeCapturePaused(false);
-				return {
-					success: false,
-					message: "Failed to start native ScreenCaptureKit recording",
-					error: String(error),
-				};
+				return { success: false, ...describeCaptureStartFailure(error) };
 			}
 		},
 	);
@@ -956,6 +965,7 @@ export function registerRecordingHandlers(
 					const diagnosticsSystemAudioPath = windowsSystemAudioPath;
 					const diagnosticsMicAudioPath = windowsMicAudioPath;
 					setWindowsCaptureStopRequested(true);
+					snapshotAgentActivity(getCursorCaptureElapsedMs());
 					proc.stdin.write("stop\n");
 					const tempVideoPath = await waitForWindowsCaptureStop(proc);
 					stagedTempVideoPath = tempVideoPath;
@@ -1034,6 +1044,16 @@ export function registerRecordingHandlers(
 							"Failed to persist cursor telemetry during native stop:",
 							error,
 						);
+					}
+					try {
+						await persistAgentActivity(finalVideoPath, () =>
+							extractScreenChangeTimesMs(
+								finalVideoPath,
+								(validation.durationSeconds ?? 0) * 1000,
+							),
+						);
+					} catch (error) {
+						console.warn("Failed to persist agent activity during native stop:", error);
 					}
 
 					return { success: true, path: finalVideoPath };
@@ -1166,6 +1186,7 @@ export function registerRecordingHandlers(
 					preferredMicrophonePath,
 				);
 				setNativeCaptureStopRequested(true);
+				snapshotAgentActivity(getCursorCaptureElapsedMs());
 				process.stdin.write("stop\n");
 				const tempVideoPath = await waitForNativeCaptureStop(process);
 				console.log("[stop-native] Helper stopped, tempVideoPath:", tempVideoPath);
@@ -1870,12 +1891,14 @@ export function registerRecordingHandlers(
 			setPendingCursorSamples([]);
 			setCursorCaptureStartTimeMs(Date.now());
 			resetCursorCaptureClock();
+			resetAgentActivity();
 			setLinuxCursorScreenPoint(null);
 			setLastLeftClick(null);
 			sampleCursorPoint();
 			startCursorSampling();
 			void startInteractionCapture();
 		} else {
+			snapshotAgentActivity(getCursorCaptureElapsedMs());
 			setIsCursorCaptureActive(false);
 			stopCursorCapture();
 			stopInteractionCapture();
@@ -1938,6 +1961,25 @@ export function registerRecordingHandlers(
 				message: "Failed to load cursor telemetry",
 				error: String(error),
 				samples: [],
+			};
+		}
+	});
+
+	ipcMain.handle("get-agent-activity", async (_, videoPath?: string) => {
+		const targetVideoPath = normalizeVideoSourcePath(videoPath ?? currentVideoPath);
+		if (!targetVideoPath) {
+			return { success: true, log: null };
+		}
+
+		try {
+			return { success: true, log: await readAgentActivity(targetVideoPath) };
+		} catch (error) {
+			console.error("Failed to load agent activity:", error);
+			return {
+				success: false,
+				message: "Failed to load agent activity",
+				error: String(error),
+				log: null,
 			};
 		}
 	});

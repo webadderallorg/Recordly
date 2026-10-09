@@ -507,3 +507,31 @@ describe("Property 7: MP4 Export Regression", () => {
 		);
 	});
 });
+
+describe("buildGifFrameRendererConfig dips", () => {
+	const base = {
+		width: 640,
+		height: 360,
+		wallpaper: "#000000",
+		zoomRegions: [],
+		showShadow: false,
+		shadowIntensity: 0,
+		backgroundBlur: 0,
+		cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+		clipRegions: [],
+	};
+
+	it("hands the dips through to the legacy renderer the GIF path uses", () => {
+		const dips = [{ atMs: 5000, ms: 400 }];
+		expect(
+			buildGifFrameRendererConfig({ ...base, dips } as never, { width: 1920, height: 1080 })
+				.dips,
+		).toBe(dips);
+	});
+
+	it("leaves dips undefined when the edit has none", () => {
+		expect(
+			buildGifFrameRendererConfig(base as never, { width: 1920, height: 1080 }).dips,
+		).toBeUndefined();
+	});
+});

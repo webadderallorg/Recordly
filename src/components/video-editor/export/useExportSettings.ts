@@ -13,7 +13,7 @@ import { projectCaptionCues } from "../captionTimeline";
 import { saveEditorPreferences, type EditorPreferences } from "../editorPreferences";
 import type { CaptionCue, ClipRegion } from "../types";
 
-const DEFAULT_MP4_EXPORT_FRAME_RATE: ExportMp4FrameRate = 30;
+const DEFAULT_MP4_EXPORT_FRAME_RATE: ExportMp4FrameRate = 60;
 
 export function useExportSettings(
 	preferences: EditorPreferences,

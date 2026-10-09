@@ -14,12 +14,14 @@ import { useEditorSettingsPanelProps } from "./layout/useEditorSettingsPanelProp
 import { useVideoEditorPresets } from "./presets/useVideoEditorPresets";
 import { useEditorProjectController } from "./project/useEditorProjectController";
 import { useProjectLibraryController } from "./project/useProjectLibraryController";
+import { createProjectData } from "./projectPersistence";
 import { getDevOpenRecordingConfig, getSmokeExportConfig } from "./smokeExportConfig";
 import { useAppearanceState } from "./state/useAppearanceState";
 import { useEditorUiState } from "./state/useEditorUiState";
 import { useProjectState } from "./state/useProjectState";
 import { useTimelineState } from "./state/useTimelineState";
 import { useNvidiaCudaExportOptIn } from "./useNvidiaCudaExportOptIn";
+import { cloneStructured } from "./videoEditorUtils";
 
 export default function VideoEditor() {
 	const { t } = useI18n();
@@ -86,6 +88,7 @@ export default function VideoEditor() {
 		nextAnnotationZIndexRef,
 		autoSuggestedVideoPathRef,
 		pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingAgentEditsPathRef,
 		pendingFreshRecordingAutoSuggestTimeoutRef,
 		pendingFreshRecordingAutoSuggestTelemetryCountRef,
 		timelineRef,
@@ -254,6 +257,7 @@ export default function VideoEditor() {
 		autoFullTrackClipIdRef,
 		autoFullTrackClipEndMsRef,
 		pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingAgentEditsPathRef,
 		pendingFreshRecordingAutoSuggestTelemetryCountRef,
 		autoSuggestedVideoPathRef,
 		applySessionPresentation,
@@ -263,7 +267,7 @@ export default function VideoEditor() {
 	});
 	const {
 		snapshot: { currentSourcePath },
-		history: { handleUndo, handleRedo },
+		history: { handleUndo, handleRedo, canUndo, canRedo },
 		lifecycle: { handleUploadWebcam, handleClearWebcam },
 		autoCaption: autoCaptionController,
 	} = projectController;
@@ -298,6 +302,7 @@ export default function VideoEditor() {
 		autoFullTrackClipEndMsRef,
 		autoSuggestedVideoPathRef,
 		pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingAgentEditsPathRef,
 		pendingFreshRecordingAutoSuggestTimeoutRef,
 		pendingFreshRecordingAutoSuggestTelemetryCountRef,
 		handleUndo,
@@ -317,6 +322,49 @@ export default function VideoEditor() {
 
 	const exportController = useEditorExportController({
 		t,
+		history: { undo: handleUndo, redo: handleRedo, canUndo, canRedo },
+		adoptJoinedMedia: ({ path, url }: { path: string; url: string }) => {
+			setVideoSourcePath(path);
+			setVideoPath(url);
+			setIsPreviewReady(false);
+			setPreviewVersion((version) => version + 1);
+		},
+		project: {
+			snapshot: projectController.lifecycle.currentProjectSnapshot,
+			hasUnsavedChanges: projectController.hasUnsavedChanges,
+			isExporting: exportSession.isExporting,
+			applyLoaded: async (loaded, path) => {
+				const applied = await projectController.lifecycle.applyLoadedProject(loaded, path);
+				remountPreview();
+				return applied;
+			},
+			markSaved: ({ path, projectId }) => {
+				const saved = projectController.lifecycle.currentProjectSnapshot;
+				project.setCurrentProjectPath(path);
+				if (saved) {
+					project.setLastSavedSnapshot(
+						cloneStructured(
+							createProjectData(
+								saved.videoPath,
+								saved.editor,
+								projectId ?? saved.projectId ?? null,
+							),
+						),
+					);
+				}
+			},
+			detach: () => {
+				project.setCurrentProjectPath(null);
+				project.setLastSavedSnapshot(null);
+			},
+		},
+		ids: {
+			zoom: nextZoomIdRef,
+			clip: nextClipIdRef,
+			audio: nextAudioIdRef,
+			annotation: nextAnnotationIdRef,
+			annotationZIndex: nextAnnotationZIndexRef,
+		},
 		videoPath,
 		videoSourcePath,
 		videoPlaybackRef,
@@ -332,11 +380,14 @@ export default function VideoEditor() {
 		dimensions: exportDimensions,
 		audio,
 		smokeConfig: smokeExportConfig,
+		aspectRatio,
 		effectiveSpeedRegions,
 		effectiveZoomRegions,
 		effectiveCursorTelemetry,
 		effectiveShowCursor,
 		cursorTelemetrySourcePath,
+		pendingFreshRecordingAutoZoomPathRef,
+		agentEditsSettled: editing.agentEditsSettled,
 		hasCaptionsForSidecar,
 		captionSidecarPayload,
 		experimentalNvidiaCudaExport,

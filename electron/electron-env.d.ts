@@ -21,6 +21,96 @@ declare namespace NodeJS {
 	}
 }
 
+interface McpServerState {
+	enabled: boolean;
+	running: boolean;
+	url: string;
+	error: "port-in-use" | "port-unavailable" | "start-failed" | null;
+	controlEnabled: boolean;
+	controlSupported: boolean;
+	controlUnsupportedReason?: string;
+}
+
+type RemoteRecordingAction = "start" | "stop" | "pause" | "resume" | "cancel";
+
+interface RemoteRecordingCommand {
+	id: string;
+	action: RemoteRecordingAction;
+	countdownSeconds?: number;
+	hideCursor?: boolean;
+	expiresAt: number;
+}
+
+interface RemoteCommandResult {
+	id: string;
+	ok: boolean;
+	error?: string;
+}
+
+interface RemoteExportRequest {
+	id: string;
+	outputPath: string;
+	format: "mp4" | "gif";
+	quality?: "medium" | "good" | "high" | "source";
+	fromMs?: number;
+	toMs?: number;
+}
+
+interface RemoteExportResult {
+	id: string;
+	ok: boolean;
+	path?: string;
+	error?: string;
+	fromMs?: number;
+	toMs?: number;
+	timelineDurationMs?: number;
+	warnings?: string[];
+}
+
+interface RemoteExportProgress {
+	id: string;
+	progress: number;
+}
+
+interface RemoteEditorReadyState {
+	videoPath: string | null;
+	ready: boolean;
+}
+
+interface RemoteEditorRequest {
+	id: string;
+	op: string;
+	payload?: unknown;
+}
+
+interface RemoteEditorResult {
+	id: string;
+	ok: boolean;
+	data?: unknown;
+	error?: string;
+}
+
+interface RemoteReviewRequest {
+	id: string;
+}
+
+interface RemoteReviewTimeline {
+	clips: { startMs: number; endMs: number; sourceStartMs: number; speed: number }[];
+	zooms: number;
+	captions: number;
+	durationMs: number;
+	sourceDurationMs: number;
+	width: number;
+	height: number;
+}
+
+interface RemoteReviewResult {
+	id: string;
+	ok: boolean;
+	timeline?: RemoteReviewTimeline;
+	error?: string;
+}
+
 // Used in Renderer process, expose in `preload.ts`
 interface NativeCaptureDiagnostics {
 	backend: "windows-wgc" | "mac-screencapturekit" | "browser-store" | "ffmpeg";
@@ -596,6 +686,12 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		getAgentActivity: (videoPath?: string) => Promise<{
+			success: boolean;
+			log: AgentActivityLog | null;
+			message?: string;
+			error?: string;
+		}>;
 		setCursorTelemetry: (
 			videoPath: string | undefined,
 			samples: CursorTelemetryPoint[],
@@ -996,6 +1092,24 @@ interface Window {
 		saveShortcuts: (shortcuts: unknown) => Promise<{ success: boolean; error?: string }>;
 		getAppSetting: (key: string) => unknown;
 		setAppSetting: (key: string, value: unknown) => boolean;
+		getMcpServerState: () => Promise<McpServerState>;
+		setMcpServerEnabled: (enabled: boolean) => Promise<McpServerState>;
+		regenerateMcpServerToken: () => Promise<McpServerState>;
+		copyMcpSetupCommand: () => Promise<void>;
+		setMcpControlEnabled: (enabled: boolean) => Promise<McpServerState>;
+		onRemoteRecordingCommand: (
+			callback: (command: RemoteRecordingCommand) => void,
+		) => () => void;
+		sendRemoteRecordingResult: (result: RemoteCommandResult) => void;
+		notifyRemoteRecordingReady: () => void;
+		onRemoteExportRequest: (callback: (request: RemoteExportRequest) => void) => () => void;
+		sendRemoteExportResult: (result: RemoteExportResult) => void;
+		sendRemoteExportProgress: (progress: RemoteExportProgress) => void;
+		sendRemoteEditorReady: (state: RemoteEditorReadyState) => void;
+		onRemoteEditorRequest: (callback: (request: RemoteEditorRequest) => void) => () => void;
+		sendRemoteEditorResult: (result: RemoteEditorResult) => void;
+		onRemoteReviewRequest: (callback: (request: RemoteReviewRequest) => void) => () => void;
+		sendRemoteReviewResult: (result: RemoteReviewResult) => void;
 		setHasUnsavedChanges: (hasChanges: boolean) => void;
 		onRequestSaveBeforeClose: (callback: () => Promise<boolean>) => () => void;
 		isNativeWindowsCaptureAvailable: () => Promise<{ available: boolean }>;
@@ -1076,6 +1190,39 @@ interface CursorTelemetryPoint {
 		| "resize-ew"
 		| "resize-ns"
 		| "not-allowed";
+}
+
+type AgentActivitySpanKind = "motion" | "hold" | "wait";
+
+type AgentActivityAction = "move" | "click" | "drag" | "scroll" | "type" | "key" | "wait" | "raise";
+
+interface AgentActivityTarget {
+	cx: number;
+	cy: number;
+	width?: number;
+	height?: number;
+}
+
+interface AgentActivitySpan {
+	kind: AgentActivitySpanKind;
+	action: AgentActivityAction;
+	startMs: number;
+	endMs: number;
+	target?: AgentActivityTarget;
+}
+
+interface AgentActivityScene {
+	startMs: number;
+	endMs: number;
+	failed: boolean;
+	title?: string;
+}
+
+interface AgentActivityLog {
+	version: 1;
+	scenes: AgentActivityScene[];
+	spans: AgentActivitySpan[];
+	changeTimesMs?: number[];
 }
 
 interface SystemCursorAsset {

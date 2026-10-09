@@ -1,17 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import {
+	createEditorHistoryStack,
+	type EditorHistorySnapshot,
+	recordEditorHistorySnapshot,
+	undoEditorHistoryStack,
+} from "./editorHistory";
 import {
 	getDefaultBorderRadiusPercent,
 	legacyBorderRadiusPixelsToPercent,
 	normalizeProjectEditor,
 	resolveVideoUrl,
 } from "./projectPersistence";
-import {
-	createEditorHistoryStack,
-	recordEditorHistorySnapshot,
-	undoEditorHistoryStack,
-	type EditorHistorySnapshot,
-} from "./editorHistory";
 import { ADVANCED_VERTICAL_PADDING_MAX } from "./types";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -291,4 +290,68 @@ it("ignores legacy export preferences when opening and resaving a project", asyn
 		expect(createProjectData("/clip.mp4", legacyEditor).editor).not.toHaveProperty(key);
 	}
 	expect(legacyEditor.exportQuality).toBe("high");
+});
+
+describe("blank clips survive a reload", () => {
+	it("keeps a card's blank clip and does not invent one", () => {
+		const editor = normalizeProjectEditor({
+			clipRegions: [
+				{ id: "card", startMs: 0, endMs: 2000, speed: 1, blank: true },
+				{ id: "a", startMs: 2000, endMs: 5000, sourceStartMs: 0, speed: 1 },
+			],
+		});
+		expect(editor.clipRegions.map((clip) => clip.blank)).toEqual([true, undefined]);
+	});
+
+	it("ignores a blank flag that is not literally true", () => {
+		const editor = normalizeProjectEditor({
+			clipRegions: [{ id: "a", startMs: 0, endMs: 2000, speed: 1, blank: "yes" }],
+		});
+		expect(editor.clipRegions[0].blank).toBeUndefined();
+	});
+});
+
+describe("normalizeProjectEditor transitions", () => {
+	const clipRegions = [
+		{ id: "clip-1", startMs: 0, endMs: 5000, sourceStartMs: 0, speed: 1 },
+		{ id: "clip-2", startMs: 5000, endMs: 9000, sourceStartMs: 5000, speed: 1 },
+	];
+	const dip = { id: "dip-clip-2", kind: "dip" as const, ms: 400, afterClipId: "clip-2" };
+
+	const load = (transitions: unknown) =>
+		normalizeProjectEditor({
+			clipRegions,
+			transitions,
+		} as unknown as Parameters<typeof normalizeProjectEditor>[0]).transitions;
+
+	it("round-trips a saved dip unchanged", () => {
+		expect(load([dip])).toEqual([dip]);
+	});
+
+	it("gives an empty list for a project saved before transitions existed", () => {
+		expect(load(undefined)).toEqual([]);
+		expect(load(null)).toEqual([]);
+		expect(load("dip")).toEqual([]);
+	});
+
+	it("drops a dip whose clip is no longer in the project", () => {
+		expect(load([{ ...dip, afterClipId: "clip-9" }])).toEqual([]);
+	});
+
+	it("drops a crossfade or any other kind a hand-edited file carries", () => {
+		expect(load([{ ...dip, kind: "crossfade" }])).toEqual([]);
+		expect(load([{ ...dip, kind: undefined }])).toEqual([]);
+	});
+
+	it("drops an entry with no usable length and clamps one out of range", () => {
+		expect(load([{ ...dip, ms: "400" }])).toEqual([]);
+		expect(load([{ ...dip, ms: Number.NaN }])).toEqual([]);
+		expect(load([{ ...dip, ms: 5 }])).toEqual([{ ...dip, ms: 100 }]);
+		expect(load([{ ...dip, ms: 999999 }])).toEqual([{ ...dip, ms: 2000 }]);
+	});
+
+	it("keeps one dip per cut when a file carries duplicates, and rebuilds the id", () => {
+		expect(load([dip, { ...dip, ms: 900 }])).toEqual([dip]);
+		expect(load([{ ...dip, id: "whatever" }])).toEqual([dip]);
+	});
 });

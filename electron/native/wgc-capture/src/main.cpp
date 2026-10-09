@@ -2,6 +2,7 @@
 #include "mf_encoder.h"
 #include "monitor_utils.h"
 #include "wasapi_loopback.h"
+#include "pause_timeline.h"
 
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.System.h>
@@ -17,10 +18,8 @@
 #include <fstream>
 
 static std::atomic<bool> g_stopRequested{false};
-static std::atomic<bool> g_pauseRequested{false};
 static std::atomic<int64_t> g_lastFrameTimestampHns{0};
-static std::atomic<int64_t> g_pauseStartTimestampHns{0};
-static std::atomic<int64_t> g_accumulatedPausedHns{0};
+static PauseTimeline g_pauses;
 static std::mutex g_stopMutex;
 static std::condition_variable g_stopCv;
 
@@ -179,32 +178,11 @@ static int64_t queryPerformanceCounterHns() {
 }
 
 static int64_t adjustedVideoTimestampHns(int64_t timestampHns) {
-    int64_t accumulatedPausedHns = g_accumulatedPausedHns.load();
-    if (g_pauseRequested.load()) {
-        const int64_t pauseStart = g_pauseStartTimestampHns.load();
-        if (pauseStart > 0 && timestampHns > pauseStart) {
-            accumulatedPausedHns += (timestampHns - pauseStart);
-        }
-    }
-
-    int64_t adjustedTimestampHns = timestampHns - accumulatedPausedHns;
+    int64_t adjustedTimestampHns = timestampHns - g_pauses.pausedBefore(timestampHns);
     if (adjustedTimestampHns < 0) {
         adjustedTimestampHns = 0;
     }
     return adjustedTimestampHns;
-}
-
-static void openActivePauseAt(int64_t timestampHns) {
-    g_pauseStartTimestampHns.store(timestampHns);
-    g_pauseRequested.store(true);
-}
-
-static void closeActivePauseAt(int64_t timestampHns) {
-    const int64_t pauseStart = g_pauseStartTimestampHns.exchange(0);
-    if (pauseStart > 0 && timestampHns > pauseStart) {
-        g_accumulatedPausedHns.fetch_add(timestampHns - pauseStart);
-    }
-    g_pauseRequested.store(false);
 }
 
 static void writeCompanionAudioTimingMetadata(
@@ -263,12 +241,12 @@ static void stdinListenerThread() {
         }
 
         if (line == "pause") {
-            openActivePauseAt(queryPerformanceCounterHns());
+            g_pauses.pause(queryPerformanceCounterHns());
             continue;
         }
 
         if (line == "resume") {
-            closeActivePauseAt(queryPerformanceCounterHns());
+            g_pauses.resume(queryPerformanceCounterHns());
             continue;
         }
 
@@ -359,7 +337,7 @@ int main(int argc, char* argv[]) {
         firstVideoTimestampHns.compare_exchange_strong(expectedFirstVideoTimestampHns, timestampHns);
         if (g_stopRequested) return;
 
-        if (g_pauseRequested) return;
+        if (g_pauses.contains(timestampHns)) return;
 
         const int64_t adjustedTimestampHns = adjustedVideoTimestampHns(timestampHns);
 
@@ -383,6 +361,9 @@ int main(int argc, char* argv[]) {
     bool audioInitialized = false;
     bool micActive = false;
     bool micInitialized = false;
+
+    loopback.setPauseTimeline(&g_pauses);
+    micCapture.setPauseTimeline(&g_pauses);
 
     if (config.captureSystemAudio && !config.audioOutputPath.empty()) {
         audioInitialized = loopback.initializeLoopback(config.audioOutputPath);
@@ -418,16 +399,8 @@ int main(int argc, char* argv[]) {
     }
     captureSetupComplete = true;
 
-    // Wait for stop signal while pausing/resuming audio tracks in lockstep.
+    // Wait for stop signal. Pauses need no work here: every track reads g_pauses itself.
     while (!g_stopRequested && !session.hasFatalError()) {
-        if (g_pauseRequested) {
-            if (audioActive) loopback.pause();
-            if (micActive) micCapture.pause();
-        } else {
-            if (audioActive) loopback.resume();
-            if (micActive) micCapture.resume();
-        }
-
         std::unique_lock<std::mutex> lock(g_stopMutex);
         g_stopCv.wait_for(lock, std::chrono::milliseconds(20), [] { return g_stopRequested.load(); });
     }

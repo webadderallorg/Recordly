@@ -377,6 +377,14 @@ async function decodeVideoStreamAttempt(
 				: Math.max(lastDecodedFrameSec, normalizedFrameTimeSec);
 		lastDecodedFrameSec = frameTimeSec;
 
+		// A segment cannot be flushed from nothing, so the first frame of a pass is
+		// only ever held: a hold at source zero has no earlier frame to repeat.
+		if (!heldFrame) {
+			heldFrame = frame;
+			heldFrameSec = frameTimeSec;
+			continue;
+		}
+
 		// Finalize completed segments before handling this frame.
 		while (
 			segmentIdx < segments.length &&
@@ -401,12 +409,6 @@ async function decodeVideoStreamAttempt(
 		// Keep the nearest pre-roll frame for cuts between source frames.
 		if (frameTimeSec < currentSegment.startSec - epsilonSec) {
 			heldFrame?.close();
-			heldFrame = frame;
-			heldFrameSec = frameTimeSec;
-			continue;
-		}
-
-		if (!heldFrame) {
 			heldFrame = frame;
 			heldFrameSec = frameTimeSec;
 			continue;

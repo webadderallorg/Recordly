@@ -14,6 +14,7 @@ import {
 	streamExportBlobToTempFile,
 	writeSmokeExportReport,
 } from "./exportPersistence";
+import { type ExportRange, restrictTimelineToRange } from "./exportRange";
 import {
 	type ExportRunnerInput,
 	showExportErrorToast,
@@ -28,7 +29,12 @@ export function useExportRunner(input: ExportRunnerInput) {
 	const handleExport = useCallback(
 		async (
 			settings: ExportSettings,
-			options?: { destination?: "download" | "share" },
+			options?: {
+				destination?: "download" | "share";
+				outputPath?: string;
+				range?: ExportRange;
+				onError?: (message: string) => void;
+			},
 		): Promise<string | undefined> => {
 			const {
 				videoPath,
@@ -62,7 +68,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 			const {
 				setIsExporting,
 				setExportProgress,
-				setExportError,
+				setExportError: setSessionExportError,
 				setShowExportDropdown,
 				setExportedFilePath,
 				setHasPendingExportSave,
@@ -73,6 +79,19 @@ export function useExportRunner(input: ExportRunnerInput) {
 				exportRunIdRef,
 				cancelledExportRunIdRef,
 			} = exportSession;
+			const setExportError = (message: string | null) => {
+				setSessionExportError(message);
+				if (message) options?.onError?.(message);
+			};
+			const reportSaveError = (
+				saveResult: { message?: string; error?: string },
+				fallback: string,
+			) => {
+				const message = saveResult.message || fallback;
+				setSessionExportError(message);
+				options?.onError?.(saveResult.error || message);
+				return message;
+			};
 			if (!videoPath) {
 				toast.error("No video loaded");
 				return;
@@ -83,6 +102,22 @@ export function useExportRunner(input: ExportRunnerInput) {
 				toast.error("Video not ready");
 				return;
 			}
+
+			const ranged = options?.range
+				? restrictTimelineToRange(
+						{
+							clipRegions,
+							trimRegions: timeline.trimRegions,
+							annotationRegions: timeline.annotationRegions,
+							zoomRegions: effectiveZoomRegions,
+							audioRegions,
+						},
+						options.range,
+						Number.isFinite(video.duration) ? video.duration * 1000 : 0,
+					)
+				: undefined;
+			const exportClipRegions = ranged?.clipRegions ?? clipRegions;
+			const exportAudioRegions = ranged?.audioRegions ?? audioRegions;
 
 			const exportRunId = exportRunIdRef.current + 1;
 			exportRunIdRef.current = exportRunId;
@@ -104,6 +139,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 			const smokeExportStartedAt = smokeExportConfig.enabled ? performance.now() : null;
 
 			let keepExportDialogOpen = false;
+			let savedPath: string | undefined;
 			const wasPlaying = isPlaying;
 			const restoreTime = video.currentTime;
 
@@ -149,6 +185,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 							previewWidth,
 							previewHeight,
 							shadowIntensity: effectiveShadowIntensity,
+							ranged,
 							onProgress: (progress) => {
 								if (exportWasCancelled()) return;
 								recordSmokeProgress(progress);
@@ -178,7 +215,8 @@ export function useExportRunner(input: ExportRunnerInput) {
 						const { saveResult, pendingSave } = await saveExportBlob(
 							result.blob,
 							fileName,
-							smokeExportConfig.enabled ? smokeExportConfig.outputPath : null,
+							options?.outputPath ??
+								(smokeExportConfig.enabled ? smokeExportConfig.outputPath : null),
 						);
 						if (exportWasCancelled()) {
 							await discardCancelledTemp(pendingSave);
@@ -201,13 +239,14 @@ export function useExportRunner(input: ExportRunnerInput) {
 							}
 							showExportSuccessToast(saveResult.path);
 							setExportedFilePath(saveResult.path);
+							savedPath = saveResult.path;
 							if (smokeExportConfig.enabled) {
 								window.close();
 								return;
 							}
 						} else {
-							setExportError(saveResult.message || "Failed to save GIF");
-							toast.error(saveResult.message || "Failed to save GIF");
+							toast.error(reportSaveError(saveResult, "Failed to save GIF"));
+							if (options?.outputPath) await discardCancelledTemp(pendingSave);
 							if (smokeExportConfig.enabled) {
 								window.close();
 								return;
@@ -311,14 +350,15 @@ export function useExportRunner(input: ExportRunnerInput) {
 							previewWidth,
 							previewHeight,
 							shadowIntensity: effectiveShadowIntensity,
+							ranged,
 							onProgress: (progress) => {
 								if (exportWasCancelled()) return;
 								recordSmokeProgress(progress);
 								setExportProgress(progress);
 							},
 						}),
-						audioRegions,
-						clipRegions,
+						audioRegions: exportAudioRegions,
+						clipRegions: exportClipRegions,
 						sourceAudioFallbackPaths: audio.sourceAudioFallbackPaths,
 						sourceAudioFallbackStartDelayMsByPath:
 							audio.sourceAudioFallbackStartDelayMsByPath,
@@ -368,6 +408,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 							success: boolean;
 							path?: string;
 							message?: string;
+							error?: string;
 							canceled?: boolean;
 						};
 						let pendingOnCancel: PendingExportSave;
@@ -380,9 +421,10 @@ export function useExportRunner(input: ExportRunnerInput) {
 								tempPath: result.tempFilePath,
 								fileName,
 								outputPath:
-									smokeExportConfig.enabled && smokeExportConfig.outputPath
+									options?.outputPath ??
+									(smokeExportConfig.enabled && smokeExportConfig.outputPath
 										? smokeExportConfig.outputPath
-										: null,
+										: null),
 								captionSidecar: sidecarForThisExport,
 							});
 							if (exportWasCancelled()) {
@@ -405,7 +447,10 @@ export function useExportRunner(input: ExportRunnerInput) {
 							const blobSave = await saveExportBlob(
 								result.blob,
 								fileName,
-								smokeExportConfig.enabled ? smokeExportConfig.outputPath : null,
+								options?.outputPath ??
+									(smokeExportConfig.enabled
+										? smokeExportConfig.outputPath
+										: null),
 								sidecarForThisExport,
 							);
 							if (exportWasCancelled()) {
@@ -465,6 +510,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 							}
 							showExportSuccessToast(saveResult.path);
 							setExportedFilePath(saveResult.path);
+							savedPath = saveResult.path;
 							if (smokeExportConfig.enabled) {
 								window.close();
 								return;
@@ -485,13 +531,19 @@ export function useExportRunner(input: ExportRunnerInput) {
 									metrics: result.metrics,
 								});
 							}
-							setExportError(saveResult.message || "Failed to save video");
-							showExportErrorToast(saveResult.message || "Failed to save video");
-							// Keep the pending-save entry so the user can retry without
-							// re-rendering. The temp file is still on disk (the main
-							// process only moves/deletes it on success) and the
-							// ArrayBuffer fallback still references its in-memory blob.
-							if (pendingOnCancel.tempFilePath || pendingOnCancel.arrayBuffer) {
+							showExportErrorToast(
+								reportSaveError(saveResult, "Failed to save video"),
+							);
+							if (options?.outputPath) {
+								await discardCancelledTemp(pendingOnCancel);
+							} else if (
+								pendingOnCancel.tempFilePath ||
+								pendingOnCancel.arrayBuffer
+							) {
+								// Keep the pending-save entry so the user can retry without
+								// re-rendering. The temp file is still on disk (the main
+								// process only moves/deletes it on success) and the
+								// ArrayBuffer fallback still references its in-memory blob.
 								pendingExportSaveRef.current = pendingOnCancel;
 								setHasPendingExportSave(true);
 								keepExportDialogOpen = true;
@@ -532,6 +584,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 				} else {
 					video.currentTime = restoreTime;
 				}
+				return savedPath;
 			} catch (error) {
 				if (exportWasCancelled()) return;
 				console.error("Export error:", error);
@@ -563,7 +616,7 @@ export function useExportRunner(input: ExportRunnerInput) {
 				} else if (!exportWasCancelled()) {
 					setIsExporting(false);
 					exporterRef.current = null;
-					if (options?.destination !== "share")
+					if (options?.destination !== "share" && !options?.outputPath)
 						setShowExportDropdown(keepExportDialogOpen);
 					remountPreview();
 				}

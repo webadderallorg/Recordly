@@ -52,6 +52,8 @@
 		"connectZoomsDescription": "연속된 확대 구간을 하나의 부드러운 카메라 이동으로 연결합니다.",
 		"autoApplyFreshRecordingZooms": "새 녹화에 확대 자동 적용",
 		"autoApplyFreshRecordingZoomsDescription": "새 녹화를 열면 커서를 따라가는 확대를 자동으로 제안합니다.",
+		"autoApplyAgentEdits": "에이전트 녹화 다듬기",
+		"autoApplyAgentEditsDescription": "AI가 생각하는 동안의 멈춤을 잘라내고 동작하는 곳을 확대합니다. AI 에이전트가 만든 새 녹화에 적용됩니다.",
 		"zoomGeneralTitle": "일반",
 		"zoomGeneralDescription": "모든 확대 전환에 적용되는 전체 모션 설정입니다.",
 		"zoomInTitle": "확대 시작",
@@ -258,5 +260,24 @@
 		"title": "업데이트",
 		"experimental": "실험적 업데이트",
 		"saveFailed": "업데이트 채널을 변경하지 못했습니다."
+	},
+	"mcp": {
+		"title": "AI 에이전트 제어 (MCP)",
+		"enable": "AI 에이전트가 Recordly를 제어하도록 허용",
+		"enableDescription": "Claude Code 같은 로컬 AI 도구가 이 컴퓨터의 비공개 연결을 통해 녹화를 시작, 중지 및 내보낼 수 있습니다.",
+		"runningAt": "{{url}}에서 실행 중",
+		"copySetup": "설정 명령 복사",
+		"setupCopied": "설정 명령을 복사했습니다",
+		"copyFailed": "설정 명령을 복사하지 못했습니다.",
+		"regenerateToken": "토큰 재생성",
+		"tokenRegenerated": "새 토큰이 생성되었습니다. 설정 명령을 다시 복사하고 AI 도구에 Recordly를 다시 추가하세요.",
+		"regenerateFailed": "토큰을 재생성하지 못했습니다.",
+		"tokenHint": "토큰을 비공개로 유지하세요. 토큰이 있으면 누구나 녹화를 제어할 수 있습니다.",
+		"saveFailed": "AI 에이전트 제어를 변경하지 못했습니다.",
+		"errorPortInUse": "포트 {{port}}이(가) 이미 사용 중입니다. 해당 포트를 사용하는 다른 앱을 닫은 후 이 옵션을 껐다가 다시 켜세요.",
+		"errorPortUnavailable": "이 컴퓨터에서는 포트 {{port}}를 사용할 수 없습니다. 시스템이 예약해 두었습니다. 포트를 해제하거나 컴퓨터를 다시 시작한 다음 이 옵션을 껐다가 다시 켜세요.",
+		"errorStartFailed": "AI 에이전트 연결을 시작하지 못했습니다. 껐다가 다시 켜세요.",
+		"control": "에이전트가 마우스와 키보드를 사용하도록 허용",
+		"controlDescription": "에이전트가 웹 페이지를 열고, 포인터를 움직이고, 녹화 중인 창에서 클릭하고 입력할 수 있습니다. 언제든지 마우스를 움직이거나 Esc 키를 누르면 제어권을 되찾을 수 있습니다."
 	}
 }

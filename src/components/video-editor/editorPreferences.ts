@@ -77,6 +77,7 @@ export interface EditorPreferences extends PersistedEditorControls, ExportPrefer
 	customAspectHeight: string;
 	customWallpapers: string[];
 	autoApplyFreshRecordingAutoZooms: boolean;
+	autoApplyAgentEdits: boolean;
 	whisperExecutablePath: string | null;
 	whisperModelPath: string | null;
 }
@@ -131,6 +132,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
 	customAspectHeight: "9",
 	customWallpapers: [],
 	autoApplyFreshRecordingAutoZooms: true,
+	autoApplyAgentEdits: true,
 	whisperExecutablePath: null,
 	whisperModelPath: null,
 };
@@ -404,6 +406,10 @@ export function normalizeEditorPreferences(
 		autoApplyFreshRecordingAutoZooms: normalizeBoolean(
 			raw.autoApplyFreshRecordingAutoZooms,
 			fallback.autoApplyFreshRecordingAutoZooms,
+		),
+		autoApplyAgentEdits: normalizeBoolean(
+			raw.autoApplyAgentEdits,
+			fallback.autoApplyAgentEdits,
 		),
 		whisperExecutablePath:
 			normalizeNullablePath(raw.whisperExecutablePath) ?? fallback.whisperExecutablePath,

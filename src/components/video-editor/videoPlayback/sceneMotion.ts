@@ -66,6 +66,7 @@ export function resolveSceneZoomTarget({
 	cursorTimeMs = timeMs,
 	connectZooms,
 	zoomInDurationMs,
+	zoomInOverlapMs,
 	zoomOutDurationMs,
 	zoomClassicMode,
 	cursorTelemetry,
@@ -76,6 +77,7 @@ export function resolveSceneZoomTarget({
 	cursorTimeMs?: number;
 	connectZooms?: boolean;
 	zoomInDurationMs?: number;
+	zoomInOverlapMs?: number;
 	zoomOutDurationMs?: number;
 	zoomClassicMode?: boolean;
 	cursorTelemetry?: CursorTelemetryPoint[];
@@ -84,6 +86,7 @@ export function resolveSceneZoomTarget({
 	const { region, strength, blendedScale } = findDominantRegion(zoomRegions, timeMs, {
 		connectZooms,
 		zoomInDurationMs,
+		zoomInOverlapMs,
 		zoomOutDurationMs,
 	});
 

@@ -244,6 +244,21 @@ export interface ClipRegion {
 	speed: number;
 	muted?: boolean;
 	showSourceAudio?: boolean;
+	/** Occupies timeline time with no source footage: a card, not a cut. */
+	blank?: true;
+}
+
+export function isBlankClip(clip: ClipRegion): boolean {
+	return clip.blank === true;
+}
+
+/** Source span a freeze claims: one frame's worth at any frame rate we export. */
+export const FREEZE_SOURCE_MS = 1;
+
+/** A clip holding a single frame: the preview shows it without playing the media. */
+export function isStillClip(clip: ClipRegion): boolean {
+	if (isBlankClip(clip)) return false;
+	return getClipSourceEndMs(clip) - getClipSourceStartMs(clip) <= FREEZE_SOURCE_MS;
 }
 
 export function getClipSourceStartMs(clip: ClipRegion): number {
@@ -383,6 +398,7 @@ export function clipsToTrims(clips: ClipRegion[], totalDurationMs: number): Trim
 	// in-point, so timeline order says nothing about source order. Walk the
 	// source ranges the clips claim and trim whatever is left uncovered.
 	const coveredSpans = clips
+		.filter((clip) => !isBlankClip(clip))
 		.map((clip) => ({
 			startMs: getClipSourceStartMs(clip),
 			endMs: getClipSourceEndMs(clip),
@@ -423,7 +439,7 @@ export function trimsToClips(trims: TrimRegion[], totalDurationMs: number): Clip
 	return clips;
 }
 
-export type AnnotationType = "text" | "image" | "figure" | "blur";
+export type AnnotationType = "text" | "image" | "figure" | "blur" | "highlight";
 export const BLUR_ANNOTATION_STRENGTH = 20;
 export const BASE_PREVIEW_WIDTH = 1920;
 export const BASE_PREVIEW_HEIGHT = 1080;
@@ -464,6 +480,8 @@ export interface AnnotationTextStyle {
 	textDecoration: "none" | "underline";
 	textAlign: "left" | "center" | "right";
 	borderRadius: number;
+	/** Paint backgroundColor over the whole box instead of a pill per line. */
+	fillBox?: boolean;
 }
 
 function getDefaultAnnotationFontFamily() {
@@ -490,7 +508,14 @@ export interface AnnotationRegion {
 	figureData?: FigureData;
 	blurIntensity?: number;
 	blurColor?: string;
+	space?: AnnotationSpace;
+	highlightDim?: number;
 }
+
+export type AnnotationSpace = "frame" | "screen";
+export const DEFAULT_HIGHLIGHT_DIM = 0.6;
+export const MIN_HIGHLIGHT_DIM = 0.1;
+export const MAX_HIGHLIGHT_DIM = 0.9;
 
 export const DEFAULT_ANNOTATION_POSITION: AnnotationPosition = {
 	x: 50,
@@ -564,6 +589,9 @@ export interface AudioRegion {
 	volume: number;
 	normalize?: boolean;
 	trackIndex?: number;
+	fadeInMs?: number;
+	fadeOutMs?: number;
+	duck?: { level: number; ranges: { startMs: number; endMs: number }[] };
 }
 
 export interface CaptionCue {

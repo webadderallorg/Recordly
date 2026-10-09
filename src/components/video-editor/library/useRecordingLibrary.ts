@@ -1,18 +1,19 @@
-import type { useAppearanceState } from "../state/useAppearanceState";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import type { RecordingLibraryEntry } from "@/types/recordingLibrary";
-import { packClipSequence, rippleRegionAnchors, rippleRegions } from "../clipSequence";
-import {
-	type ZoomRegion,
-	sortClipRegions,
-	DEFAULT_AUTO_ZOOM_DEPTH,
-	clampFocusToDepth,
-} from "../types";
-import { buildInteractionZoomSuggestions } from "../timeline/zoomSuggestionUtils";
+import { appendImportedClip } from "../clipImport";
+import { rippleRegionAnchors, rippleRegions } from "../clipSequence";
+import type { useAppearanceState } from "../state/useAppearanceState";
+import type { useEditorUiState } from "../state/useEditorUiState";
 import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
-import type { useEditorUiState } from "../state/useEditorUiState";
+import { buildInteractionZoomSuggestions } from "../timeline/zoomSuggestionUtils";
+import {
+	clampFocusToDepth,
+	DEFAULT_AUTO_ZOOM_DEPTH,
+	sortClipRegions,
+	type ZoomRegion,
+} from "../types";
 
 export function useRecordingLibrary(
 	project: ReturnType<typeof useProjectState>,
@@ -138,21 +139,7 @@ export function useRecordingLibrary(
 				sourcePath = media.path;
 				if (media.webcam) webcam = { ...webcam, ...media.webcam, enabled: true };
 				id = `clip-${initial.ui.nextClipIdRef.current++}`;
-				const next = sequence.map((clip) => ({
-					...clip,
-					sourceMinMs: clip.sourceMinMs ?? 0,
-					sourceMaxMs: clip.sourceMaxMs ?? media!.sourceStartMs,
-				}));
-				next.splice(insertAt++, 0, {
-					id,
-					startMs: 0,
-					endMs: media.durationMs,
-					sourceStartMs: media.sourceStartMs,
-					sourceMinMs: media.sourceStartMs,
-					sourceMaxMs: media.sourceStartMs + media.durationMs,
-					speed: 1,
-				});
-				sequence = packClipSequence(next);
+				sequence = appendImportedClip(sequence, media, id, insertAt++);
 				if (current.current.appearance.autoApplyFreshRecordingAutoZooms) {
 					const telemetry = await window.electronAPI.getCursorTelemetry(media.path);
 					const start = media.sourceStartMs;

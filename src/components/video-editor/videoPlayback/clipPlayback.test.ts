@@ -254,4 +254,39 @@ describe("clip timeline playback", () => {
 		expect(findPreviewClipAtTimelineTime(4001, clips)).toBeNull();
 		expect(findPreviewClipAtTimelineTime(0, [])).toBeNull();
 	});
+
+	it("treats a blank clip as a gap frame without skipping the time it holds", async () => {
+		const clips: ClipRegion[] = [
+			{ id: "card", startMs: 0, endMs: 1000, speed: 1, blank: true },
+			{ id: "a", startMs: 1000, endMs: 2000, sourceStartMs: 0, speed: 1 },
+		];
+		expect(findPreviewClipAtTimelineTime(0, clips)).toBeNull();
+		expect(findPreviewClipAtTimelineTime(500, clips)).toBeNull();
+		expect(findPreviewClipAtTimelineTime(1000, clips)?.id).toBe("a");
+		const { video, playback, onTime } = setup(clips);
+		await playback.play();
+		expect(video.play).not.toHaveBeenCalled();
+		advance(400);
+		expect(onTime).toHaveBeenLastCalledWith(0.4, null);
+		advance(700);
+		expect(video.play).toHaveBeenCalled();
+		expect(onTime).toHaveBeenLastCalledWith(1.1, 0.1);
+	});
+
+	it("holds a frozen frame without asking the element for an unplayable rate", async () => {
+		const clips: ClipRegion[] = [
+			{ id: "a", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1 },
+			{ id: "hold", startMs: 1000, endMs: 3000, sourceStartMs: 999, speed: 0.0005 },
+		];
+		const { video, playback, onTime, onError } = setup(clips);
+		playback.seek(1.5);
+		expect(onError).not.toHaveBeenCalled();
+		expect(video.playbackRate).toBe(1);
+		expect(video.currentTime).toBeCloseTo(0.999, 3);
+		await playback.play();
+		expect(video.play).not.toHaveBeenCalled();
+		advance(500);
+		expect(onTime).toHaveBeenLastCalledWith(2, 0.9995);
+		expect(onError).not.toHaveBeenCalled();
+	});
 });

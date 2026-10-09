@@ -1,3 +1,4 @@
+import type { ClipTransition } from "./export/editorOps/transitions";
 import type {
 	AnnotationRegion,
 	AudioRegion,
@@ -10,6 +11,7 @@ import type {
 export type EditorHistorySnapshot = {
 	zoomRegions: ZoomRegion[];
 	clipRegions: ClipRegion[];
+	transitions: ClipTransition[];
 	speedRegions: SpeedRegion[];
 	annotationRegions: AnnotationRegion[];
 	audioRegions: AudioRegion[];

@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
 	closeClipGaps,
-	reorderClipSequence,
+	insertClipRegion,
 	mapClipSequenceTime,
 	packClipSequence,
+	reorderClipSequence,
 	rippleRegionAnchors,
 	rippleRegions,
+	shiftAnchorsForInsert,
+	shiftCaptionCuesForInsert,
+	shiftRegionsForInsert,
 } from "./clipSequence";
 import { changeClipSpan } from "./clipSpanChange";
+import { getClipSourceStartMs, getTimelineDurationMs } from "./types";
 
 const clips = [
 	{ id: "a", startMs: 0, endMs: 2800, speed: 1 },
@@ -129,4 +134,100 @@ it("reveals footage on a clip's left edge without changing sequence order", () =
 	expect(rippleRegions([{ startMs: 2200, endMs: 2600 }], before, after)).toEqual([
 		{ startMs: 5200, endMs: 5600 },
 	]);
+});
+
+describe("inserting time", () => {
+	const before = [
+		{ id: "a", startMs: 0, endMs: 2000, sourceStartMs: 0, speed: 1 },
+		{ id: "b", startMs: 2000, endMs: 5000, sourceStartMs: 2000, speed: 1 },
+	];
+	const card = { id: "card", startMs: 0, endMs: 1500, speed: 1, blank: true as const };
+
+	it("places a card at the start and pushes every clip later without touching source", () => {
+		const after = insertClipRegion(before, 0, card);
+		expect(after.map((clip) => [clip.id, clip.startMs, clip.endMs])).toEqual([
+			["card", 0, 1500],
+			["a", 1500, 3500],
+			["b", 3500, 6500],
+		]);
+		expect(after.map(getClipSourceStartMs)).toEqual([0, 0, 2000]);
+		expect(getTimelineDurationMs(after, 5000)).toBe(6500);
+	});
+
+	it("places a card at the end and leaves the footage alone", () => {
+		const after = insertClipRegion(before, 5000, { ...card, startMs: 5000, endMs: 6500 });
+		expect(after.map((clip) => [clip.id, clip.startMs, clip.endMs])).toEqual([
+			["a", 0, 2000],
+			["b", 2000, 5000],
+			["card", 5000, 6500],
+		]);
+	});
+
+	it("builds a one-clip timeline from an empty one", () => {
+		expect(insertClipRegion([], 0, card)).toEqual([card]);
+	});
+
+	it("keeps effects on the footage they described across the insert", () => {
+		const regions = [
+			{ id: "early", startMs: 200, endMs: 800 },
+			{ id: "straddling", startMs: 1800, endMs: 2400 },
+			{ id: "late", startMs: 3000, endMs: 3500 },
+		];
+		expect(shiftRegionsForInsert(regions, 2000, 1500)).toEqual([
+			{ id: "early", startMs: 200, endMs: 800 },
+			{ id: "straddling", startMs: 1800, endMs: 3900 },
+			{ id: "late", startMs: 4500, endMs: 5000 },
+		]);
+	});
+
+	it("moves an audio anchor without stretching the audio", () => {
+		expect(
+			shiftAnchorsForInsert([{ id: "u", startMs: 1800, endMs: 4800 }], 2000, 1500),
+		).toEqual([{ id: "u", startMs: 1800, endMs: 4800 }]);
+		expect(
+			shiftAnchorsForInsert([{ id: "u", startMs: 2000, endMs: 5000 }], 2000, 1500),
+		).toEqual([{ id: "u", startMs: 3500, endMs: 6500 }]);
+	});
+
+	it("carries caption word timings with their cue", () => {
+		const cues = [
+			{
+				id: "c",
+				startMs: 3000,
+				endMs: 3600,
+				words: [
+					{ startMs: 3000, endMs: 3200 },
+					{ startMs: 3300, endMs: 3600 },
+				],
+			},
+			{ id: "d", startMs: 100, endMs: 400 },
+		];
+		expect(shiftCaptionCuesForInsert(cues, 2000, 1500)).toEqual([
+			{
+				id: "c",
+				startMs: 4500,
+				endMs: 5100,
+				words: [
+					{ startMs: 4500, endMs: 4700 },
+					{ startMs: 4800, endMs: 5100 },
+				],
+			},
+			{ id: "d", startMs: 100, endMs: 400 },
+		]);
+	});
+
+	it("inserting zero time changes nothing", () => {
+		const after = insertClipRegion(before, 2000, { ...card, startMs: 2000, endMs: 2000 });
+		expect(after.filter((clip) => clip.endMs > clip.startMs)).toEqual(before);
+		expect(shiftRegionsForInsert([{ id: "z", startMs: 3000, endMs: 3500 }], 2000, 0)).toEqual([
+			{ id: "z", startMs: 3000, endMs: 3500 },
+		]);
+	});
+
+	it("two cards in a row each add their own time", () => {
+		const once = insertClipRegion(before, 0, card);
+		const twice = insertClipRegion(once, 0, { ...card, id: "card2" });
+		expect(twice.map((clip) => clip.id)).toEqual(["card2", "card", "a", "b"]);
+		expect(getTimelineDurationMs(twice, 5000)).toBe(8000);
+	});
 });

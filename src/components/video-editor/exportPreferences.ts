@@ -47,7 +47,7 @@ export function normalizeExportPipelineModel(_value: unknown): ExportPipelineMod
 }
 
 export function normalizeExportMp4FrameRate(value: unknown): ExportMp4FrameRate {
-	return typeof value === "number" && isValidMp4FrameRate(value) ? value : 30;
+	return typeof value === "number" && isValidMp4FrameRate(value) ? value : 60;
 }
 
 export function normalizeExportPreferences(raw: Partial<ExportPreferences>): ExportPreferences {

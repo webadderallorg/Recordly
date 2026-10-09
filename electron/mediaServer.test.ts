@@ -63,6 +63,35 @@ describe("media server path policy", () => {
 		expect(isAllowedMediaPath(videoPath)).toBe(true);
 	});
 
+	it("keeps serving a recording the app made after a project switch clears the set", async () => {
+		const { isAllowedMediaPath, setMediaPathPrefixAllowance } = await import("./mediaServer");
+		const { approvedLocalReadPaths } = await import("./ipc/state");
+		const insideRecordings = path.join(tempRoot, "recordings", "take.mp4");
+
+		setMediaPathPrefixAllowance((candidate) => candidate === insideRecordings);
+		try {
+			approvedLocalReadPaths.clear();
+			expect(isAllowedMediaPath(insideRecordings)).toBe(true);
+		} finally {
+			setMediaPathPrefixAllowance(null);
+		}
+
+		approvedLocalReadPaths.clear();
+		expect(isAllowedMediaPath(insideRecordings)).toBe(false);
+	});
+
+	it("still refuses a path the allowance does not cover", async () => {
+		const { isAllowedMediaPath, setMediaPathPrefixAllowance } = await import("./mediaServer");
+		const outside = path.join(tempRoot, "Downloads", "someone-elses.mp4");
+
+		setMediaPathPrefixAllowance((candidate) => candidate.includes("/recordings/"));
+		try {
+			expect(isAllowedMediaPath(outside)).toBe(false);
+		} finally {
+			setMediaPathPrefixAllowance(null);
+		}
+	});
+
 	it("rejects missing media files outside the allowed directories", async () => {
 		const missingPath = path.join(tempRoot, "Downloads", "missing.mp4");
 		const { isAllowedMediaPath } = await import("./mediaServer");

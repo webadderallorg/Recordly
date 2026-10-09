@@ -13,6 +13,7 @@ import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 import { useInitialEditorSource } from "./useInitialEditorSource";
+import { usePristineRecordingGate } from "./usePristineRecordingGate";
 import type { useProjectLibraryController } from "./useProjectLibraryController";
 import { useProjectLifecycle } from "./useProjectLifecycle";
 import { useProjectOpenActions } from "./useProjectOpenActions";
@@ -62,6 +63,7 @@ type Input = {
 	autoFullTrackClipIdRef: MutableRefObject<string | null>;
 	autoFullTrackClipEndMsRef: MutableRefObject<number | null>;
 	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
+	pendingFreshRecordingAgentEditsPathRef: MutableRefObject<string | null>;
 	pendingFreshRecordingAutoSuggestTelemetryCountRef: MutableRefObject<number>;
 	autoSuggestedVideoPathRef: MutableRefObject<string | null>;
 	applySessionPresentation: (
@@ -122,6 +124,7 @@ export function useEditorProjectController(input: Input) {
 			autoFullTrackClipIdRef: input.autoFullTrackClipIdRef,
 			autoFullTrackClipEndMsRef: input.autoFullTrackClipEndMsRef,
 			pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
+			pendingFreshRecordingAgentEditsPathRef: input.pendingFreshRecordingAgentEditsPathRef,
 			pendingFreshRecordingAutoSuggestTelemetryCountRef:
 				input.pendingFreshRecordingAutoSuggestTelemetryCountRef,
 			autoSuggestedVideoPathRef: input.autoSuggestedVideoPathRef,
@@ -136,6 +139,13 @@ export function useEditorProjectController(input: Input) {
 		[lifecycle.currentProjectSnapshot, input.project.lastSavedSnapshot],
 	);
 
+	const isPristineRecording = usePristineRecordingGate({
+		sourcePath: snapshot.currentSourcePath,
+		snapshot: lifecycle.currentProjectSnapshot,
+		isPipelineBusy: () =>
+			input.project.loading || input.pendingFreshRecordingAgentEditsPathRef.current !== null,
+	});
+
 	useInitialEditorSource({
 		project: input.project,
 		appearance: input.appearance,
@@ -143,7 +153,13 @@ export function useEditorProjectController(input: Input) {
 		smokeConfig: input.smokeConfig,
 		devConfig: input.devConfig,
 		videoSourcePath: input.videoSourcePath,
+		videoPlaybackRef: input.videoPlaybackRef,
+		setIsPlaying: input.setIsPlaying,
+		setCurrentTime: input.setCurrentTime,
+		setDuration: input.setDuration,
+		remountPreview: input.remountPreview,
 		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingAgentEditsPathRef: input.pendingFreshRecordingAgentEditsPathRef,
 		applyLoadedProject: lifecycle.applyLoadedProject,
 		resetSourceScopedEditorState: lifecycle.resetSourceScopedEditorState,
 		applySessionPresentation: input.applySessionPresentation,
@@ -184,6 +200,7 @@ export function useEditorProjectController(input: Input) {
 		currentPersistedEditorState: snapshot.currentPersistedEditorState,
 		projectDisplayName: snapshot.projectDisplayName,
 		hasUnsavedChanges,
+		isPristineRecording,
 		projectSaveDialogInputRef: input.projectSaveDialogInputRef,
 		projectNameInputRef: input.projectNameInputRef,
 		openProjectSaveDialog: lifecycle.openProjectSaveDialog,
@@ -197,6 +214,7 @@ export function useEditorProjectController(input: Input) {
 		appearance: input.appearance,
 		videoPlaybackRef: input.videoPlaybackRef,
 		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingAgentEditsPathRef: input.pendingFreshRecordingAgentEditsPathRef,
 		hasUnsavedChanges,
 		setIsPlaying: input.setIsPlaying,
 		setCurrentTime: input.setCurrentTime,

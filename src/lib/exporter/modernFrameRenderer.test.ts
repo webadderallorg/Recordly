@@ -125,13 +125,18 @@ vi.mock("./localMediaSource", () => ({
 	resolveMediaElementSource: resolveMediaElementSourceMock,
 }));
 
-vi.mock("./annotationRenderer", () => ({
+vi.mock("./annotationRenderer", async (importOriginal) => ({
+	...(await importOriginal<typeof import("./annotationRenderer")>()),
 	preloadAnnotationAssets: vi.fn(async () => ({ imageCache: new Map() })),
 	renderAnnotationToCanvas: vi.fn(async () => null),
 	renderAnnotations: vi.fn(async () => undefined),
 }));
 
-import { renderAnnotations } from "./annotationRenderer";
+import {
+	getAnnotationFrameRect,
+	renderAnnotations,
+	renderAnnotationToCanvas,
+} from "./annotationRenderer";
 import { FrameRenderer } from "./modernFrameRenderer";
 
 function createMockContext() {
@@ -880,5 +885,200 @@ describe("ModernFrameRenderer frame sequencing", () => {
 		expect(syncBackground).toHaveBeenLastCalledWith(2);
 		expect(updateAnnotations).toHaveBeenLastCalledWith(2000);
 		expect(updateCaptions).toHaveBeenLastCalledWith(6000);
+	});
+});
+
+describe("ModernFrameRenderer annotation placement", () => {
+	function createPaddedRenderer() {
+		return new FrameRenderer({
+			width: 1920,
+			height: 1080,
+			nativeReadbackMode: "pixels",
+			wallpaper: "#000000",
+			zoomRegions: [],
+			showShadow: false,
+			shadowIntensity: 0,
+			backgroundBlur: 0,
+			padding: 20,
+			previewWidth: 860,
+			previewHeight: 484,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			webcam: { ...DEFAULT_WEBCAM_OVERLAY, enabled: false },
+			videoWidth: 2560,
+			videoHeight: 1440,
+			annotationRegions: [
+				{
+					id: "title",
+					startMs: 0,
+					endMs: 2000,
+					type: "text",
+					content: "Entries",
+					textContent: "Entries",
+					position: { x: 10, y: 40 },
+					size: { width: 80, height: 20 },
+					style: {
+						color: "#ffffff",
+						backgroundColor: "transparent",
+						fontSize: 64,
+						fontFamily: "Inter",
+						fontWeight: "bold",
+						fontStyle: "normal",
+						textDecoration: "none",
+						textAlign: "center",
+						borderRadius: 0,
+					},
+					zIndex: 1,
+					space: "frame",
+				},
+			],
+		});
+	}
+
+	it("anchors a frame-space sprite to the padded picture, not the canvas", async () => {
+		vi.mocked(renderAnnotationToCanvas).mockResolvedValueOnce({
+			width: 10,
+			height: 10,
+		} as HTMLCanvasElement);
+		const renderer = createPaddedRenderer() as unknown as {
+			config: Parameters<typeof getAnnotationFrameRect>[0];
+			annotationContainer: { addChild: ReturnType<typeof vi.fn> };
+			overlayContainer: { addChild: ReturnType<typeof vi.fn> };
+			annotationScaleFactor: number;
+			annotationSprites: Array<{ sprite: { position: { set: ReturnType<typeof vi.fn> } } }>;
+			setupAnnotationLayer: () => Promise<void>;
+		};
+		renderer.annotationContainer = { addChild: vi.fn(), removeChildren: vi.fn() } as never;
+		renderer.overlayContainer = { addChild: vi.fn() } as never;
+		renderer.annotationScaleFactor = 1;
+
+		await renderer.setupAnnotationLayer();
+
+		const picture = getAnnotationFrameRect(renderer.config);
+		expect(picture.x).toBeGreaterThan(0);
+		expect(renderer.annotationSprites).toHaveLength(1);
+		expect(renderer.annotationSprites[0].sprite.position.set).toHaveBeenCalledWith(
+			picture.x + 0.1 * picture.width,
+			picture.y + 0.4 * picture.height,
+		);
+	});
+});
+
+describe("ModernFrameRenderer timeline dip", () => {
+	const dips = [{ atMs: 5000, ms: 400 }];
+
+	function dipStub() {
+		return {
+			visible: false,
+			alpha: 1,
+			clear: vi.fn(),
+			rect: vi.fn(),
+			fill: vi.fn(),
+		};
+	}
+
+	function dipRenderer(configured = dips) {
+		const renderer = new FrameRenderer({
+			timelineEffects: true,
+			dips: configured,
+			width: 1920,
+			height: 1080,
+			nativeReadbackMode: "pixels",
+			wallpaper: "#2054c8",
+			zoomRegions: [],
+			showShadow: false,
+			shadowIntensity: 0,
+			backgroundBlur: 0,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			webcam: { ...DEFAULT_WEBCAM_OVERLAY, enabled: false },
+			videoWidth: 1920,
+			videoHeight: 1080,
+		});
+		const graphics = dipStub();
+		Object.assign(renderer, { dipGraphics: graphics });
+		return { renderer: renderer as any, graphics };
+	}
+
+	it("blacks out a gap frame, where the wallpaper still renders", async () => {
+		const { renderer, graphics } = dipRenderer();
+		Object.assign(renderer, {
+			app: { canvas: createMockCanvas(), render: vi.fn() },
+			videoContainer: {},
+			videoMaskGraphics: {},
+			cameraContainer: { visible: true },
+			webcamRootContainer: { visible: true },
+			captionContainer: { visible: true },
+		});
+		await renderer.renderFrame(null, 0, 0, 33333, 5000 * 1000);
+		expect(graphics.visible).toBe(true);
+		expect(graphics.alpha).toBe(1);
+		expect(graphics.rect).toHaveBeenCalledWith(0, 0, 1920, 1080);
+		expect(graphics.fill).toHaveBeenCalledWith({ color: 0x000000 });
+	});
+
+	it("leaves a gap frame outside the dip untouched", async () => {
+		const { renderer, graphics } = dipRenderer();
+		Object.assign(renderer, {
+			app: { canvas: createMockCanvas(), render: vi.fn() },
+			videoContainer: {},
+			videoMaskGraphics: {},
+			cameraContainer: { visible: true },
+			webcamRootContainer: { visible: true },
+			captionContainer: { visible: true },
+		});
+		await renderer.renderFrame(null, 0, 0, 33333, 4800 * 1000);
+		expect(graphics.visible).toBe(false);
+		expect(graphics.rect).not.toHaveBeenCalled();
+	});
+
+	it("dims the stage by half partway through the dip on the plain output path", async () => {
+		const { renderer, graphics } = dipRenderer();
+		Object.assign(renderer, {
+			app: { canvas: createMockCanvas(), render: vi.fn() },
+			hasActiveBlurAnnotations: () => false,
+		});
+		await renderer.renderOutput(4900);
+		expect(graphics.visible).toBe(true);
+		expect(graphics.alpha).toBeCloseTo(0.5);
+		expect(renderer.outputCanvasOverride).toBeNull();
+	});
+
+	it("paints the dip on the 2D composite instead when blur annotations are active", async () => {
+		const { renderer, graphics } = dipRenderer();
+		const fills: { alpha: number; style: string; args: number[] }[] = [];
+		const context = {
+			globalAlpha: 1,
+			globalCompositeOperation: "source-over",
+			fillStyle: "#ffffff",
+			save: vi.fn(),
+			restore: vi.fn(),
+			clearRect: vi.fn(),
+			drawImage: vi.fn(),
+			fillRect: vi.fn((...args: number[]) =>
+				fills.push({ alpha: context.globalAlpha, style: context.fillStyle, args }),
+			),
+		};
+		Object.assign(renderer, {
+			app: { canvas: createMockCanvas(), render: vi.fn() },
+			annotationContainer: { visible: true },
+			captionContainer: { visible: true },
+			annotationScaleFactor: 1,
+			annotationAssets: { imageCache: new Map() },
+			exportCompositeCanvas: { canvas: { width: 1920, height: 1080 }, context },
+			hasActiveBlurAnnotations: () => true,
+		});
+		await renderer.renderOutput(5000);
+		expect(graphics.visible).toBe(false);
+		expect(fills).toEqual([{ alpha: 1, style: "#000000", args: [0, 0, 1920, 1080] }]);
+	});
+
+	it("paints nothing anywhere when no dip is configured", async () => {
+		const { renderer, graphics } = dipRenderer([]);
+		Object.assign(renderer, {
+			app: { canvas: createMockCanvas(), render: vi.fn() },
+			hasActiveBlurAnnotations: () => false,
+		});
+		await renderer.renderOutput(5000);
+		expect(graphics.visible).toBe(false);
+		expect(graphics.rect).not.toHaveBeenCalled();
 	});
 });

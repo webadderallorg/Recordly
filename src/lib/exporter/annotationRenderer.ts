@@ -1,24 +1,77 @@
 import {
 	type AnnotationRegion,
 	type ArrowDirection,
+	BASE_PREVIEW_HEIGHT,
+	BASE_PREVIEW_WIDTH,
 	BLUR_ANNOTATION_STRENGTH,
+	type CropRegion,
+	DEFAULT_HIGHLIGHT_DIM,
+	type Padding,
 } from "@/components/video-editor/types";
+import { computePaddedLayout } from "@/components/video-editor/videoPlayback/layoutUtils";
 
 export interface AnnotationRenderAssets {
 	imageCache: Map<string, HTMLImageElement>;
 }
 
-interface AnnotationSceneTransform {
+export interface AnnotationSceneTransform {
 	scale: number;
 	x: number;
 	y: number;
 }
 
-interface AnnotationCoordinateRect {
+export interface AnnotationCoordinateRect {
 	x: number;
 	y: number;
 	width: number;
 	height: number;
+}
+
+export interface AnnotationPlacement {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+	scaleFactor: number;
+}
+
+export interface AnnotationFrameConfig {
+	width: number;
+	height: number;
+	padding?: Padding | number;
+	cropRegion: CropRegion;
+	videoWidth: number;
+	videoHeight: number;
+}
+
+export function getAnnotationFrameRect(config: AnnotationFrameConfig): AnnotationCoordinateRect {
+	const layout = computePaddedLayout({
+		width: config.width,
+		height: config.height,
+		padding: config.padding ?? 0,
+		frameInsets: null,
+		cropRegion: config.cropRegion,
+		videoWidth: config.videoWidth,
+		videoHeight: config.videoHeight,
+	});
+
+	return {
+		x: layout.centerOffsetX,
+		y: layout.centerOffsetY,
+		width: layout.croppedDisplayWidth,
+		height: layout.croppedDisplayHeight,
+	};
+}
+
+export function getAnnotationScaleFactor(config: {
+	width: number;
+	height: number;
+	previewWidth?: number;
+	previewHeight?: number;
+}): number {
+	const previewWidth = config.previewWidth || BASE_PREVIEW_WIDTH;
+	const previewHeight = config.previewHeight || BASE_PREVIEW_HEIGHT;
+	return (config.width / previewWidth + config.height / previewHeight) / 2;
 }
 
 function transformAnnotationRect(
@@ -34,6 +87,31 @@ function transformAnnotationRect(
 		y: rect.y * sceneTransform.scale + sceneTransform.y,
 		width: rect.width * sceneTransform.scale,
 		height: rect.height * sceneTransform.scale,
+	};
+}
+
+export function placeAnnotation(
+	annotation: AnnotationRegion,
+	canvas: { width: number; height: number },
+	frameRect: AnnotationCoordinateRect,
+	scaleFactor: number,
+	sceneTransform?: AnnotationSceneTransform,
+): AnnotationPlacement {
+	const pinned = annotation.space === "screen";
+	const space = pinned ? { x: 0, y: 0, width: canvas.width, height: canvas.height } : frameRect;
+	const rect = transformAnnotationRect(
+		{
+			x: space.x + (annotation.position.x / 100) * space.width,
+			y: space.y + (annotation.position.y / 100) * space.height,
+			width: (annotation.size.width / 100) * space.width,
+			height: (annotation.size.height / 100) * space.height,
+		},
+		pinned ? undefined : sceneTransform,
+	);
+
+	return {
+		...rect,
+		scaleFactor: scaleFactor * (pinned ? 1 : (sceneTransform?.scale ?? 1)),
 	};
 }
 
@@ -199,6 +277,10 @@ function renderArrow(
 	ctx.restore();
 }
 
+const LINE_HEIGHT_RATIO = 1.4;
+const MIN_TEXT_FONT_SIZE = 1;
+const FIT_STEPS = 8;
+
 function renderText(
 	ctx: CanvasRenderingContext2D,
 	annotation: AnnotationRegion,
@@ -218,8 +300,6 @@ function renderText(
 
 	const fontWeight = style.fontWeight === "bold" ? "bold" : "normal";
 	const fontStyle = style.fontStyle === "italic" ? "italic" : "normal";
-	const scaledFontSize = style.fontSize * scaleFactor;
-	ctx.font = `${fontStyle} ${fontWeight} ${scaledFontSize}px ${style.fontFamily}`;
 	ctx.textBaseline = "middle";
 
 	const containerPadding = 8 * scaleFactor;
@@ -239,34 +319,79 @@ function renderText(
 	}
 
 	const availableWidth = width - containerPadding * 2;
-	const rawLines = annotation.content.split("\n");
-	const lines: string[] = [];
-	for (const rawLine of rawLines) {
-		if (!rawLine) {
-			lines.push("");
-			continue;
+	const wrapAt = (fontSize: number) => {
+		ctx.font = `${fontStyle} ${fontWeight} ${fontSize}px ${style.fontFamily}`;
+		const wrapped: string[] = [];
+		for (const rawLine of annotation.content.split("\n")) {
+			if (!rawLine) {
+				wrapped.push("");
+				continue;
+			}
+			const words = rawLine.split(/(\s+)/);
+			let current = "";
+			for (const word of words) {
+				const test = current + word;
+				if (current && ctx.measureText(test).width > availableWidth) {
+					wrapped.push(current);
+					current = word.trimStart();
+				} else {
+					current = test;
+				}
+			}
+			if (current) wrapped.push(current);
 		}
-		const words = rawLine.split(/(\s+)/);
-		let current = "";
-		for (const word of words) {
-			const test = current + word;
-			if (current && ctx.measureText(test).width > availableWidth) {
-				lines.push(current);
-				current = word.trimStart();
+		return wrapped;
+	};
+	const wrapWithinBox = (fontSize: number): string[] | null => {
+		const wrapped = wrapAt(fontSize);
+		const widest = wrapped.reduce(
+			(most, line) => Math.max(most, ctx.measureText(line).width),
+			0,
+		);
+		if (widest > availableWidth) return null;
+		if (wrapped.length * fontSize * LINE_HEIGHT_RATIO > height) return null;
+		return wrapped;
+	};
+
+	// Clipped words are worth nothing, so text that still overflows after wrapping
+	// shrinks to the largest size that fits instead.
+	let scaledFontSize = style.fontSize * scaleFactor;
+	let fitted = wrapWithinBox(scaledFontSize);
+	if (!fitted) {
+		let smallest = MIN_TEXT_FONT_SIZE;
+		let largest = scaledFontSize;
+		for (let step = 0; step < FIT_STEPS; step++) {
+			const candidate = (smallest + largest) / 2;
+			const wrapped = wrapWithinBox(candidate);
+			if (wrapped) {
+				smallest = candidate;
+				fitted = wrapped;
 			} else {
-				current = test;
+				largest = candidate;
 			}
 		}
-		if (current) lines.push(current);
+		scaledFontSize = smallest;
 	}
-	const lineHeight = scaledFontSize * 1.4;
+	const lines = fitted ?? wrapAt(scaledFontSize);
+	const lineHeight = scaledFontSize * LINE_HEIGHT_RATIO;
 
 	const startY = textY - ((lines.length - 1) * lineHeight) / 2;
+
+	const fillsWholeBox =
+		style.fillBox === true &&
+		Boolean(style.backgroundColor) &&
+		style.backgroundColor !== "transparent";
+	if (fillsWholeBox && style.backgroundColor) {
+		ctx.fillStyle = style.backgroundColor;
+		ctx.beginPath();
+		ctx.roundRect(x, y, width, height, (style.borderRadius ?? 0) * scaleFactor);
+		ctx.fill();
+	}
 
 	lines.forEach((line, index) => {
 		const currentY = startY + index * lineHeight;
 
-		if (style.backgroundColor && style.backgroundColor !== "transparent") {
+		if (!fillsWholeBox && style.backgroundColor && style.backgroundColor !== "transparent") {
 			const metrics = ctx.measureText(line);
 			const verticalPadding = scaledFontSize * 0.1;
 			const horizontalPadding = scaledFontSize * 0.2;
@@ -379,17 +504,19 @@ export async function renderAnnotations(
 	};
 
 	for (const annotation of sortedAnnotations) {
-		const rect = transformAnnotationRect(
-			{
-				x: annotationRect.x + (annotation.position.x / 100) * annotationRect.width,
-				y: annotationRect.y + (annotation.position.y / 100) * annotationRect.height,
-				width: (annotation.size.width / 100) * annotationRect.width,
-				height: (annotation.size.height / 100) * annotationRect.height,
-			},
+		const {
+			x,
+			y,
+			width,
+			height,
+			scaleFactor: effectiveScaleFactor,
+		} = placeAnnotation(
+			annotation,
+			{ width: canvasWidth, height: canvasHeight },
+			annotationRect,
+			scaleFactor,
 			sceneTransform,
 		);
-		const { x, y, width, height } = rect;
-		const effectiveScaleFactor = scaleFactor * (sceneTransform?.scale ?? 1);
 
 		switch (annotation.type) {
 			case "text":
@@ -415,6 +542,23 @@ export async function renderAnnotations(
 					);
 				}
 				break;
+
+			case "highlight": {
+				const left = Math.min(Math.max(Math.round(x), 0), canvasWidth);
+				const top = Math.min(Math.max(Math.round(y), 0), canvasHeight);
+				const right = Math.min(Math.max(Math.round(x + width), left), canvasWidth);
+				const bottom = Math.min(Math.max(Math.round(y + height), top), canvasHeight);
+
+				ctx.save();
+				ctx.fillStyle = "#000000";
+				ctx.globalAlpha = annotation.highlightDim ?? DEFAULT_HIGHLIGHT_DIM;
+				ctx.fillRect(0, 0, canvasWidth, top);
+				ctx.fillRect(0, bottom, canvasWidth, canvasHeight - bottom);
+				ctx.fillRect(0, top, left, bottom - top);
+				ctx.fillRect(right, top, canvasWidth - right, bottom - top);
+				ctx.restore();
+				break;
+			}
 
 			case "blur": {
 				const blurStrength =
@@ -509,6 +653,7 @@ export async function renderAnnotationToCanvas(
 			);
 			break;
 		case "blur":
+		case "highlight":
 			// Blur annotations must sample already-rendered scene pixels,
 			// so they cannot be rasterized as standalone sprites.
 			return null;

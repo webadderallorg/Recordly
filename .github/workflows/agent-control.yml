@@ -1,0 +1,116 @@
+name: Agent Control
+
+on:
+  push:
+    branches: [feature/mcp-control]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows helpers
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CI: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install bundled FFmpeg binary
+        run: node node_modules/ffmpeg-static/install.js
+
+      - name: Build agent input helper
+        run: node scripts/build-agent-input-windows.mjs
+
+      - name: Build capture helper
+        run: node scripts/build-windows-capture.mjs
+
+      - name: Upload helpers
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-agent-helpers
+          path: |
+            electron/native/bin/win32-x64/recordly-agent-input.exe
+            electron/native/bin/win32-x64/wgc-capture.exe
+            electron/native/bin/win32-x64/helpers-manifest.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Smoke test agent input helper
+        run: node scripts/smoke-agent-input-windows.mjs
+
+      - name: Unit tests
+        if: ${{ !cancelled() }}
+        run: npx vitest run electron
+
+  linux:
+    name: Linux helper
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: true
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install helper dependencies
+        run: |
+          APT_DEPS="$(grep -m1 '^APT_DEPS=' scripts/smoke-agent-input-linux.sh | cut -d'"' -f2)"
+          test -n "$APT_DEPS"
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $APT_DEPS
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install bundled FFmpeg binary
+        run: node node_modules/ffmpeg-static/install.js
+
+      - name: Build agent input helper
+        run: |
+          node scripts/build-native-helpers.mjs
+          test -x electron/native/bin/linux-x64/recordly-agent-input
+
+      - name: Upload helper
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-agent-helper
+          path: electron/native/bin/linux-x64/recordly-agent-input
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Smoke test agent input helper
+        run: bash scripts/smoke-agent-input-linux.sh
+
+      - name: Unit tests
+        if: ${{ !cancelled() }}
+        run: npx vitest run

@@ -10,6 +10,7 @@ import {
 	setCachedNativeMacWindowSourcesAtMs,
 	setInteractionCaptureCleanup,
 	setSelectedWindowBounds,
+	setSelectedWindowBoundsPending,
 	setWindowBoundsCaptureInterval,
 	windowBoundsCaptureInterval,
 } from "../state";
@@ -19,20 +20,28 @@ import { resolveWindowsWindowBounds } from "../windowsWindowControl";
 
 const execFileAsync = promisify(execFile);
 
-export async function getNativeMacWindowSources(options?: { maxAgeMs?: number }) {
+export async function getNativeMacWindowSources(options?: {
+	maxAgeMs?: number;
+	allSpaces?: boolean;
+}) {
 	if (process.platform !== "darwin") {
 		return [] as NativeMacWindowSource[];
 	}
 
+	const allSpaces = options?.allSpaces === true;
 	const maxAgeMs = options?.maxAgeMs ?? 5000;
 	const now = Date.now();
-	if (cachedNativeMacWindowSources && now - cachedNativeMacWindowSourcesAtMs < maxAgeMs) {
+	if (
+		!allSpaces &&
+		cachedNativeMacWindowSources &&
+		now - cachedNativeMacWindowSourcesAtMs < maxAgeMs
+	) {
 		return cachedNativeMacWindowSources;
 	}
 
 	try {
 		const binaryPath = await ensureNativeWindowListBinary();
-		const { stdout } = await execFileAsync(binaryPath, [], {
+		const { stdout } = await execFileAsync(binaryPath, allSpaces ? ["--all-spaces"] : [], {
 			timeout: 30000,
 			maxBuffer: 10 * 1024 * 1024,
 		});
@@ -51,11 +60,13 @@ export async function getNativeMacWindowSources(options?: { maxAgeMs?: number })
 			return typeof candidate.id === "string" && typeof candidate.name === "string";
 		});
 
-		setCachedNativeMacWindowSources(entries);
-		setCachedNativeMacWindowSourcesAtMs(now);
+		if (!allSpaces) {
+			setCachedNativeMacWindowSources(entries);
+			setCachedNativeMacWindowSourcesAtMs(now);
+		}
 		return entries;
 	} catch {
-		return cachedNativeMacWindowSources ?? ([] as NativeMacWindowSource[]);
+		return allSpaces ? [] : (cachedNativeMacWindowSources ?? ([] as NativeMacWindowSource[]));
 	}
 }
 
@@ -87,16 +98,35 @@ export function getWindowBoundsFromNativeSource(
 	return { x, y, width, height };
 }
 
-export async function resolveMacWindowBounds(source: SelectedSource): Promise<WindowBounds | null> {
-	const windowId = parseWindowId(source.id);
+export async function findNativeMacWindow(
+	sourceId: string | undefined,
+	options?: { maxAgeMs?: number; allSpaces?: boolean },
+) {
+	const windowId = parseWindowId(sourceId);
 	if (!windowId) {
 		return null;
 	}
 
+	const nativeSources = await getNativeMacWindowSources(options);
+	return nativeSources.find((entry) => parseWindowId(entry.id) === windowId) ?? null;
+}
+
+export async function isMacWindowOnScreen(sourceId: string) {
+	if (process.platform !== "darwin") {
+		return true;
+	}
+
+	const windowId = parseWindowId(sourceId);
+	const nativeSources = await getNativeMacWindowSources({ maxAgeMs: 0, allSpaces: true });
+	const entry = nativeSources.find((candidate) => parseWindowId(candidate.id) === windowId);
+	return nativeSources.length === 0 || (entry !== undefined && entry.onScreen !== false);
+}
+
+export async function resolveMacWindowBounds(source: SelectedSource): Promise<WindowBounds | null> {
 	try {
-		const nativeSources = await getNativeMacWindowSources({ maxAgeMs: 250 });
-		const matchedSource = nativeSources.find((entry) => parseWindowId(entry.id) === windowId);
-		return getWindowBoundsFromNativeSource(matchedSource);
+		return getWindowBoundsFromNativeSource(
+			await findNativeMacWindow(source.id, { maxAgeMs: 250 }),
+		);
 	} catch {
 		return null;
 	}
@@ -169,22 +199,28 @@ export function stopWindowBoundsCapture() {
 		setWindowBoundsCaptureInterval(null);
 	}
 	setSelectedWindowBounds(null);
+	setSelectedWindowBoundsPending(false);
 }
 
 async function refreshSelectedWindowBounds() {
 	if (!selectedSource?.id?.startsWith("window:")) {
 		setSelectedWindowBounds(null);
+		setSelectedWindowBoundsPending(false);
 		return;
 	}
 
 	let bounds: WindowBounds | null = null;
 
-	if (process.platform === "darwin") {
-		bounds = await resolveMacWindowBounds(selectedSource);
-	} else if (process.platform === "win32") {
-		bounds = await resolveWindowsWindowBounds(selectedSource);
-	} else if (process.platform === "linux") {
-		bounds = await resolveLinuxWindowBounds(selectedSource);
+	try {
+		if (process.platform === "darwin") {
+			bounds = await resolveMacWindowBounds(selectedSource);
+		} else if (process.platform === "win32") {
+			bounds = await resolveWindowsWindowBounds(selectedSource);
+		} else if (process.platform === "linux") {
+			bounds = await resolveLinuxWindowBounds(selectedSource);
+		}
+	} finally {
+		setSelectedWindowBoundsPending(false);
 	}
 
 	setSelectedWindowBounds(bounds);
@@ -200,6 +236,7 @@ export function startWindowBoundsCapture() {
 		return;
 	}
 
+	setSelectedWindowBoundsPending(process.platform === "darwin");
 	void refreshSelectedWindowBounds();
 	setWindowBoundsCaptureInterval(
 		setInterval(() => {

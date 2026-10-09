@@ -52,6 +52,8 @@
 		"connectZoomsDescription": "Maak opeenvolgende zoomgebieden vloeiend tot een doorlopende camerabeweging.",
 		"autoApplyFreshRecordingZooms": "Zooms voor nieuwe opnames automatisch toepassen",
 		"autoApplyFreshRecordingZoomsDescription": "Stel automatisch cursor-volgende zooms voor wanneer je een nieuwe opname opent.",
+		"autoApplyAgentEdits": "Agentopnames inkorten",
+		"autoApplyAgentEditsDescription": "Knipt de denkpauzes van de AI weg en zoomt in waar hij iets doet. Geldt voor nieuwe opnames van een AI-agent.",
 		"zoomGeneralTitle": "Algemeen",
 		"zoomGeneralDescription": "Globale bewegingsinstellingen voor elke zoomovergang.",
 		"zoomInTitle": "Inzoomen",
@@ -258,5 +260,24 @@
 		"title": "Updates",
 		"experimental": "Experimentele updates",
 		"saveFailed": "Kan het updatekanaal niet wijzigen."
+	},
+	"mcp": {
+		"title": "Besturing door AI-agents (MCP)",
+		"enable": "AI-agents Recordly laten besturen",
+		"enableDescription": "Laat lokale AI-tools zoals Claude Code opnames starten, stoppen en exporteren via een privéverbinding op deze computer.",
+		"runningAt": "Actief op {{url}}",
+		"copySetup": "Installatieopdracht kopiëren",
+		"setupCopied": "Installatieopdracht gekopieerd",
+		"copyFailed": "Kan de installatieopdracht niet kopiëren.",
+		"regenerateToken": "Token opnieuw genereren",
+		"tokenRegenerated": "Nieuw token aangemaakt. Kopieer de installatieopdracht opnieuw en voeg Recordly opnieuw toe in je AI-tools.",
+		"regenerateFailed": "Kan het token niet opnieuw genereren.",
+		"tokenHint": "Houd het token privé — iedereen die het heeft, kan de opname besturen.",
+		"saveFailed": "Kan de besturing door AI-agents niet wijzigen.",
+		"errorPortInUse": "Poort {{port}} is al in gebruik. Sluit de andere app die deze gebruikt en zet deze optie daarna uit en weer aan.",
+		"errorPortUnavailable": "Poort {{port}} kan op deze computer niet worden gebruikt: het systeem heeft hem gereserveerd. Maak de poort vrij of start de computer opnieuw op en zet dit daarna uit en weer aan.",
+		"errorStartFailed": "Kan de verbinding voor AI-agents niet starten. Zet deze uit en weer aan.",
+		"control": "Agents de muis en het toetsenbord laten gebruiken",
+		"controlDescription": "Hiermee kan de agent webpagina's openen, de aanwijzer bewegen en klikken en typen in het venster dat wordt opgenomen. Beweeg de muis of druk op Esc om op elk moment de controle terug te nemen."
 	}
 }

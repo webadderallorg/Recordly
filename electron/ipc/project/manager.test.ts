@@ -260,6 +260,38 @@ describe("local media path policy", () => {
 		await expect(resolveApprovedLocalMediaPath(videoPath)).resolves.toBeNull();
 	});
 
+	it("names a deleted, empty or non-file project video instead of loading it", async () => {
+		const { loadProjectFromPath } = await import("./manager");
+		const write = async (name: string, videoPath: string) => {
+			const projectPath = path.join(tempPath, `${name}.recordly`);
+			await fs.writeFile(
+				projectPath,
+				JSON.stringify({ version: 1, videoPath, editor: {} }),
+				"utf-8",
+			);
+			return loadProjectFromPath(projectPath);
+		};
+		const gone = path.join(tempPath, "gone.mp4");
+		const empty = path.join(tempPath, "empty.mp4");
+		await fs.writeFile(empty, "");
+		const missing = await write("missing", gone);
+		expect(missing).toMatchObject({
+			success: false,
+			reason: "missing",
+			videoPath: gone,
+			message: `Project video file not found: ${gone}`,
+		});
+		expect(await write("empty", empty)).toMatchObject({
+			success: false,
+			reason: "empty",
+			message: expect.stringContaining("is empty (0 bytes)"),
+		});
+		expect(await write("folder", tempPath)).toMatchObject({
+			success: false,
+			reason: "not-a-file",
+		});
+	});
+
 	it("approves editor audioRegions audioPath entries when loading a project", async () => {
 		const downloadsPath = path.join(tempRoot, "Downloads");
 		const videoPath = path.join(tempPath, "recording.mp4");

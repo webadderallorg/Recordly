@@ -26,7 +26,7 @@
 		"rebuild:native": "node ./node_modules/@electron/rebuild/lib/cli.js --force --only uiohook-napi",
 		"build:native-helpers": "node scripts/build-native-helpers.mjs",
 		"build:whisper-runtime": "node scripts/build-whisper-runtime.mjs",
-		"build:platform-native-helpers": "npm run build:whisper-runtime && npm run build:native-helpers && npm run build:windows-capture && npm run build:windows-gpu-export && npm run build:nvidia-cuda-compositor && npm run build:cursor-monitor",
+		"build:platform-native-helpers": "npm run build:whisper-runtime && npm run build:native-helpers && npm run build:windows-capture && npm run build:windows-gpu-export && npm run build:nvidia-cuda-compositor && npm run build:cursor-monitor && node scripts/build-agent-input-windows.mjs",
 		"build:windows-gpu-export": "node scripts/build-windows-gpu-export.mjs",
 		"build:nvidia-cuda-compositor": "node scripts/build-nvidia-cuda-compositor.mjs",
 		"build:windows-capture": "node scripts/build-windows-capture.mjs",
@@ -59,6 +59,7 @@
 		"uiohook-napi": "^1.5.4"
 	},
 	"devDependencies": {
+		"@modelcontextprotocol/server": "^2.3.1",
 		"@biomejs/biome": "2.3.13",
 		"@dnd-kit/core": "^6.3.1",
 		"@electron/rebuild": "^4.2.0",
@@ -100,7 +101,8 @@
 		"vite-plugin-electron": "^0.28.6",
 		"vite-plugin-electron-renderer": "^0.14.5",
 		"vitest": "^3.2.7",
-		"web-demuxer": "^4.0.0"
+		"web-demuxer": "^4.0.0",
+		"zod": "^4.6.5"
 	},
 	"main": "dist-electron/main.cjs"
 }

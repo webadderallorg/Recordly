@@ -52,6 +52,8 @@
 		"connectZoomsDescription": "将连续的缩放区域平滑连接为一次连续的镜头移动。",
 		"autoApplyFreshRecordingZooms": "自动为新录制应用缩放",
 		"autoApplyFreshRecordingZoomsDescription": "打开新录制时自动建议跟随光标的缩放。",
+		"autoApplyAgentEdits": "精简代理录制",
+		"autoApplyAgentEditsDescription": "剪掉 AI 思考时的停顿，并在其操作处放大。适用于 AI 代理录制的新视频。",
 		"zoomGeneralTitle": "全局",
 		"zoomGeneralDescription": "控制所有缩放过渡的整体运动设置。",
 		"zoomInTitle": "进入缩放",
@@ -258,5 +260,24 @@
 		"title": "更新",
 		"experimental": "实验性更新",
 		"saveFailed": "无法更改更新频道。"
+	},
+	"mcp": {
+		"title": "AI 代理控制 (MCP)",
+		"enable": "允许 AI 代理控制 Recordly",
+		"enableDescription": "允许 Claude Code 等本地 AI 工具通过本机上的私有连接开始、停止和导出录制。",
+		"runningAt": "正在运行：{{url}}",
+		"copySetup": "复制设置命令",
+		"setupCopied": "已复制设置命令",
+		"copyFailed": "无法复制设置命令。",
+		"regenerateToken": "重新生成令牌",
+		"tokenRegenerated": "已创建新令牌。请重新复制设置命令，并在 AI 工具中重新添加 Recordly。",
+		"regenerateFailed": "无法重新生成令牌。",
+		"tokenHint": "请妥善保管令牌——任何拥有它的人都可以控制录制。",
+		"saveFailed": "无法更改 AI 代理控制。",
+		"errorPortInUse": "端口 {{port}} 已被占用。请关闭正在使用该端口的其他应用，然后关闭并重新开启此选项。",
+		"errorPortUnavailable": "此电脑无法使用端口 {{port}}——系统已保留该端口。请释放该端口或重启电脑，然后关闭并重新打开此选项。",
+		"errorStartFailed": "无法启动 AI 代理连接。请关闭后重新开启。",
+		"control": "允许代理使用鼠标和键盘",
+		"controlDescription": "允许代理打开网页、移动指针，并在其录制的窗口中点击和输入。随时移动鼠标或按 Esc 键即可收回控制权。"
 	}
 }

@@ -4,6 +4,8 @@ import {
 	findClipAtTimelineTime,
 	getClipSourceStartMs,
 	getTimelineDurationMs,
+	isBlankClip,
+	isStillClip,
 	sortClipRegions,
 } from "../types";
 
@@ -13,9 +15,9 @@ export function findPreviewClipAtTimelineTime(
 	clips: ClipRegion[],
 ): ClipRegion | null {
 	const active = findClipAtTimelineTime(timeMs, clips);
-	if (active) return active;
+	if (active) return isBlankClip(active) ? null : active;
 	const last = sortClipRegions(clips)[clips.length - 1];
-	return last && Math.abs(timeMs - last.endMs) < 1e-7 ? last : null;
+	return last && !isBlankClip(last) && Math.abs(timeMs - last.endMs) < 1e-7 ? last : null;
 }
 
 /** Timeline time advances at 1x; only the source media uses the clip's speed. */
@@ -61,9 +63,9 @@ export function createClipPlayback({
 	};
 	const sync = (seek = false) => {
 		const clips = getClips();
-		// Empty timeline space is skipped during playback. Clip positions and
-		// paused seeks stay intact so editing a gap never moves source footage.
-		if (playing && !findPreviewClipAtTimelineTime(timeMs, clips)) {
+		// Empty timeline space is skipped during playback; a blank clip holds its
+		// time on purpose. Paused seeks stay intact so editing never moves source.
+		if (playing && !findClipAtTimelineTime(timeMs, clips)) {
 			const next = sortClipRegions(clips).find((clip) => clip.startMs > timeMs);
 			if (next) timeMs = next.startMs;
 		}
@@ -72,13 +74,19 @@ export function createClipPlayback({
 			? getClipSourceStartMs(clip) + (timeMs - clip.startMs) * clip.speed
 			: null;
 		if (clip && sourceMs !== null) {
-			enablePitchPreservingPlayback(video);
-			try {
-				video.playbackRate = clip.speed;
-			} catch (error) {
-				pause();
-				onError(error);
-				return;
+			const still = isStillClip(clip);
+			if (still) {
+				playRequest++;
+				video.pause();
+			} else {
+				enablePitchPreservingPlayback(video);
+				try {
+					video.playbackRate = clip.speed;
+				} catch (error) {
+					pause();
+					onError(error);
+					return;
+				}
 			}
 			if (seek || clip !== activeClip) {
 				// Clip out-points are exclusive. At the final timeline endpoint,
@@ -103,7 +111,7 @@ export function createClipPlayback({
 					video.currentTime = target;
 				}
 			}
-			if (playing && (seek || clip !== activeClip)) playSource();
+			if (!still && playing && (seek || clip !== activeClip)) playSource();
 		} else {
 			playRequest++;
 			video.pause();
@@ -116,7 +124,7 @@ export function createClipPlayback({
 		if (!playing) return;
 		// Follow the media inside footage (buffering must not skip content).
 		// With no clips loaded, elapsed real time is the fallback clock.
-		if (!activeClip) timeMs += now - lastTick;
+		if (!activeClip || isStillClip(activeClip)) timeMs += now - lastTick;
 		else if (!video.seeking) {
 			timeMs = video.ended
 				? activeClip.endMs

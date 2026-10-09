@@ -1,15 +1,30 @@
 /* biome-ignore-all lint/correctness/useExhaustiveDependencies: editor state setters are stable and initial source loading intentionally runs once per launch configuration. */
-import { type MutableRefObject, useEffect, useRef } from "react";
+import {
+	type Dispatch,
+	type MutableRefObject,
+	type RefObject,
+	type SetStateAction,
+	useCallback,
+	useEffect,
+	useRef,
+} from "react";
 import { fromFileUrl, resolveVideoUrl } from "../projectPersistence";
 import type { getDevOpenRecordingConfig, getSmokeExportConfig } from "../smokeExportConfig";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
 import { DEFAULT_WEBCAM_TIME_OFFSET_MS } from "../types";
+import type { VideoPlaybackRef } from "../VideoPlayback";
 
 type SessionPresentation = {
 	hideOverlayCursorByDefault?: boolean;
 	nativeCaptureUnavailable?: boolean;
+};
+
+type RecordingSession = SessionPresentation & {
+	videoPath: string;
+	webcamPath?: string | null;
+	timeOffsetMs?: number;
 };
 
 type Input = {
@@ -19,25 +34,73 @@ type Input = {
 	smokeConfig: ReturnType<typeof getSmokeExportConfig>;
 	devConfig: ReturnType<typeof getDevOpenRecordingConfig>;
 	videoSourcePath: string | null;
+	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
+	setIsPlaying: Dispatch<SetStateAction<boolean>>;
+	setCurrentTime: Dispatch<SetStateAction<number>>;
+	setDuration: Dispatch<SetStateAction<number>>;
+	remountPreview: () => void;
 	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
+	pendingFreshRecordingAgentEditsPathRef: MutableRefObject<string | null>;
 	applyLoadedProject: (candidate: unknown, path?: string | null) => Promise<boolean>;
 	resetSourceScopedEditorState: () => void;
 	applySessionPresentation: (session: SessionPresentation | null | undefined) => void;
 };
 
-export function useInitialEditorSource({
-	project,
-	appearance,
-	timeline,
-	smokeConfig,
-	devConfig,
-	videoSourcePath,
-	pendingFreshRecordingAutoZoomPathRef,
-	applyLoadedProject,
-	resetSourceScopedEditorState,
-	applySessionPresentation,
-}: Input) {
+export function useInitialEditorSource(input: Input) {
+	const {
+		project,
+		appearance,
+		timeline,
+		smokeConfig,
+		devConfig,
+		pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingAgentEditsPathRef,
+		applyLoadedProject,
+		resetSourceScopedEditorState,
+		applySessionPresentation,
+	} = input;
+	const latestRef = useRef(input);
+	latestRef.current = input;
 	const initialLoadStartedRef = useRef(false);
+	const initialLoadRef = useRef<Promise<void> | null>(null);
+
+	const adoptRecordingSession = useCallback(async (session: RecordingSession) => {
+		const current = latestRef.current;
+		const sourcePath = fromFileUrl(session.videoPath);
+		const webcamPath = session.webcamPath ? fromFileUrl(session.webcamPath) : null;
+		const sourceUrl = await resolveVideoUrl(sourcePath);
+		try {
+			current.videoPlaybackRef.current?.pause();
+		} catch {
+			/* the preview may already be tearing down */
+		}
+		current.setIsPlaying(false);
+		current.setCurrentTime(0);
+		current.setDuration(0);
+		current.project.setVideoSourcePath(sourcePath);
+		current.project.setVideoPath(sourceUrl);
+		current.project.setCurrentProjectPath(null);
+		current.project.setLastSavedSnapshot(null);
+		current.project.setError(null);
+		current.project.setProjectBrowserOpen(false);
+		current.resetSourceScopedEditorState();
+		current.pendingFreshRecordingAutoZoomPathRef.current = current.appearance
+			.autoApplyFreshRecordingAutoZooms
+			? sourceUrl
+			: null;
+		current.pendingFreshRecordingAgentEditsPathRef.current = sourceUrl;
+		current.applySessionPresentation(session);
+		current.appearance.setWebcam((previous) => ({
+			...previous,
+			visibleRanges: undefined,
+			enabled: Boolean(webcamPath),
+			sourcePath: webcamPath,
+			timeOffsetMs: webcamPath
+				? (session.timeOffsetMs ?? DEFAULT_WEBCAM_TIME_OFFSET_MS)
+				: DEFAULT_WEBCAM_TIME_OFFSET_MS,
+		}));
+		current.remountPreview();
+	}, []);
 
 	useEffect(() => {
 		// This effect owns launch-time hydration. Several of the callbacks it uses
@@ -96,6 +159,7 @@ export function useInitialEditorSource({
 					resetSourceScopedEditorState();
 					pendingFreshRecordingAutoZoomPathRef.current =
 						appearance.autoApplyFreshRecordingAutoZooms ? sourceUrl : null;
+					pendingFreshRecordingAgentEditsPathRef.current = sourceUrl;
 					appearance.setWebcam((previous) => ({
 						...previous,
 						visibleRanges: undefined,
@@ -158,24 +222,7 @@ export function useInitialEditorSource({
 
 				const sessionResult = await window.electronAPI.getCurrentRecordingSession?.();
 				if (sessionResult?.success && sessionResult.session?.videoPath) {
-					const sourcePath = fromFileUrl(sessionResult.session.videoPath);
-					const sourceUrl = await resolveVideoUrl(sourcePath);
-					project.setVideoSourcePath(sourcePath);
-					project.setVideoPath(sourceUrl);
-					project.setCurrentProjectPath(null);
-					project.setLastSavedSnapshot(null);
-					resetSourceScopedEditorState();
-					pendingFreshRecordingAutoZoomPathRef.current =
-						appearance.autoApplyFreshRecordingAutoZooms ? sourceUrl : null;
-					applySessionPresentation(sessionResult.session);
-					appearance.setWebcam((previous) => ({
-						...previous,
-						visibleRanges: undefined,
-						enabled: Boolean(sessionResult.session?.webcamPath),
-						sourcePath: sessionResult.session?.webcamPath ?? null,
-						timeOffsetMs:
-							sessionResult.session?.timeOffsetMs ?? DEFAULT_WEBCAM_TIME_OFFSET_MS,
-					}));
+					await adoptRecordingSession(sessionResult.session);
 					return;
 				}
 
@@ -206,8 +253,9 @@ export function useInitialEditorSource({
 				project.setLoading(false);
 			}
 		}
-		void loadInitialData();
+		initialLoadRef.current = loadInitialData();
 	}, [
+		adoptRecordingSession,
 		applyLoadedProject,
 		applySessionPresentation,
 		devConfig,
@@ -218,9 +266,22 @@ export function useInitialEditorSource({
 	useEffect(() => {
 		if (!window.electronAPI.onRecordingSessionChanged) return;
 		return window.electronAPI.onRecordingSessionChanged((session) => {
-			const sessionSourcePath = session?.videoPath ? fromFileUrl(session.videoPath) : null;
-			const webcamPath = session?.webcamPath ? fromFileUrl(session.webcamPath) : null;
-			if (!session || sessionSourcePath !== videoSourcePath) return;
+			if (!session?.videoPath) return;
+			const sessionSourcePath = fromFileUrl(session.videoPath);
+			if (sessionSourcePath !== latestRef.current.videoSourcePath) {
+				void (initialLoadRef.current ?? Promise.resolve())
+					.then(() => {
+						if (sessionSourcePath === latestRef.current.videoSourcePath) return;
+						return adoptRecordingSession(session);
+					})
+					.catch((error) =>
+						latestRef.current.project.setError(
+							`Error loading recording: ${String(error)}`,
+						),
+					);
+				return;
+			}
+			const webcamPath = session.webcamPath ? fromFileUrl(session.webcamPath) : null;
 			appearance.setWebcam((previous) => ({
 				...previous,
 				visibleRanges: undefined,
@@ -232,7 +293,7 @@ export function useInitialEditorSource({
 			}));
 			timeline.setSourceAudioFallbackRefreshKey((key) => key + 1);
 		});
-	}, [videoSourcePath, appearance.setWebcam, timeline.setSourceAudioFallbackRefreshKey]);
+	}, [adoptRecordingSession, appearance.setWebcam, timeline.setSourceAudioFallbackRefreshKey]);
 
 	useEffect(() => {
 		let cancelled = false;

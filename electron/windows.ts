@@ -1,17 +1,21 @@
-import { isHudInEditorMode } from "./hudEditorMode";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, ipcMain } from "electron";
 import {
-	supportsHudCaptureProtection,
 	shouldProtectHudCapture,
+	supportsHudCaptureProtection,
 } from "../src/lib/hudCaptureProtection";
 import { USER_DATA_PATH } from "./appPaths";
+import { isHudInEditorMode } from "./hudEditorMode";
 import {
+	getHudOverlayCornerBounds,
 	getHudOverlayWindowBounds,
+	type HudClickThrough,
+	type HudOverlayCorner,
 	resizeHudOverlayFallbackBounds,
+	resolveHudOverlayIgnoreMouse,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
 import { getHudOverlayTaskbarOptions } from "./hudOverlayWindowOptions";
@@ -37,8 +41,13 @@ let hudOverlayCaptureProtectionLoaded = false;
 let hudOverlayFallbackExpanded = false;
 let hudOverlayIgnoringMouse = true;
 let hudOverlaySourceSelectionActive = false;
+let hudOverlayAgentActive = false;
+let hudOverlayRequestedIgnore = true;
 let hudOverlayMouseReassertTimer: NodeJS.Timeout | null = null;
 let hudOverlayRecordingActive = false;
+let hudOverlayCorner: HudOverlayCorner | null = null;
+let hudOverlayHiddenByAgent = false;
+let hudOverlayClickThrough: HudClickThrough = "auto";
 let hudCaptureStarting = false;
 let hudOverlayWebcamPreviewVisible = false;
 let countdownWindow: BrowserWindow | null = null;
@@ -224,6 +233,8 @@ function getHudOverlayBounds() {
 		recordingActive: hudOverlayRecordingActive,
 		webcamPreviewVisible: hudOverlayWebcamPreviewVisible,
 	});
+	if (hudOverlayCorner)
+		return getHudOverlayCornerBounds(workArea, hudOverlayCorner, fallbackExpanded);
 	return getHudOverlayWindowBounds(
 		workArea,
 		isHudOverlayMousePassthroughSupported(),
@@ -296,6 +307,10 @@ function setHudOverlayFallbackExpanded(expanded: boolean) {
 	) {
 		return;
 	}
+	if (hudOverlayCorner) {
+		applyHudOverlayBounds();
+		return;
+	}
 
 	const { workArea } = getHudOverlayDisplay();
 	const nextBounds = resizeHudOverlayFallbackBounds(
@@ -311,8 +326,14 @@ function setHudOverlayFallbackExpanded(expanded: boolean) {
 }
 
 function setHudOverlayMousePassthrough(ignore: boolean) {
-	hudOverlayIgnoringMouse =
-		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive ? true : ignore;
+	hudOverlayRequestedIgnore = ignore;
+	hudOverlayIgnoringMouse = resolveHudOverlayIgnoreMouse(ignore, {
+		sourceSelectionActive: hudOverlaySourceSelectionActive,
+		recordingActive: hudOverlayRecordingActive,
+		agentActive: hudOverlayAgentActive,
+		clickThrough: hudOverlayClickThrough,
+	});
+	ignore = hudOverlayIgnoringMouse;
 
 	if (hudOverlayMouseReassertTimer) {
 		clearTimeout(hudOverlayMouseReassertTimer);
@@ -358,6 +379,54 @@ ipcMain.on("hud-overlay-set-source-selection-active", (_event, active: boolean) 
 
 	setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 });
+
+export function setHudOverlayAgentActive(active: boolean): void {
+	if (hudOverlayAgentActive === active) return;
+	hudOverlayAgentActive = active;
+	setHudOverlayMousePassthrough(hudOverlayRequestedIgnore);
+}
+
+export interface HudOverlayOptions {
+	position?: HudOverlayCorner | "default";
+	hidden?: boolean;
+	clickThrough?: HudClickThrough;
+}
+
+export interface HudOverlayState {
+	position: HudOverlayCorner | "default";
+	hidden: boolean;
+	clickThrough: HudClickThrough;
+	windowOpen: boolean;
+}
+
+export function getHudOverlayState(): HudOverlayState {
+	return {
+		position: hudOverlayCorner ?? "default",
+		hidden: hudOverlayHiddenByAgent,
+		clickThrough: hudOverlayClickThrough,
+		windowOpen: Boolean(getHudOverlayWindow()),
+	};
+}
+
+export function setHudOverlayOptions(options: HudOverlayOptions): HudOverlayState {
+	const hud = getHudOverlayWindow();
+	if (!hud) return getHudOverlayState();
+	if (options.position !== undefined) {
+		hudOverlayCorner = options.position === "default" ? null : options.position;
+		hudOverlayFallbackExpanded = false;
+	}
+	if (options.clickThrough !== undefined) hudOverlayClickThrough = options.clickThrough;
+	if (options.hidden !== undefined) hudOverlayHiddenByAgent = options.hidden;
+	applyHudOverlayBounds();
+	if (hudOverlayHiddenByAgent) {
+		if (hud.isVisible()) hud.hide();
+	} else if (!hud.isVisible() && options.hidden === false) {
+		hud.showInactive();
+		hud.moveTop();
+	}
+	setHudOverlayMousePassthrough(hudOverlayRequestedIgnore);
+	return getHudOverlayState();
+}
 
 // Keep compatibility with existing drag IPC/state.
 let hudUserPosition: { x: number; y: number } | null = null;
@@ -624,6 +693,10 @@ export function createHudOverlayWindow(): BrowserWindow {
 
 	hudOverlayWindow = win;
 
+	win.on("show", () => {
+		if (hudOverlayHiddenByAgent && !win.isDestroyed()) win.hide();
+	});
+
 	// On Linux the HUD is dragged by the OS via -webkit-app-region (Wayland
 	// forbids client-side positioning). Mirror moved bounds into drag state.
 	if (process.platform === "linux") {
@@ -668,6 +741,9 @@ export function createHudOverlayWindow(): BrowserWindow {
 			recordingPreparationActive = false;
 			hudCaptureStarting = false;
 			hudOverlayRecordingActive = false;
+			hudOverlayCorner = null;
+			hudOverlayHiddenByAgent = false;
+			hudOverlayClickThrough = "auto";
 		}
 	});
 

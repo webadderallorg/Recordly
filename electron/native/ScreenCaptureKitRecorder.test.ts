@@ -35,10 +35,13 @@ describe("ScreenCaptureKitRecorder finalization coordination", () => {
 });
 
 describe("ScreenCaptureKitRecorder resume timing", () => {
-	it("anchors warm-start resume timing to video before accepting audio", () => {
-		expect(recorderSource).toContain(
-			"guard outputType == .screen, let pauseStartedHostTime else",
+	it("ends the pause gap at resume and drops samples captured while paused", () => {
+		const resume = recorderSource.slice(recorderSource.indexOf("func resumeCapture()"));
+		expect(resume.slice(0, resume.indexOf("func stream("))).toContain(
+			"resumedHostTime - pauseStartedHostTime",
 		);
+		expect(recorderSource).toContain("if let resumedHostTime, sampleTime < resumedHostTime");
+		expect(recorderSource).not.toMatch(/sampleTime - pauseStartedHostTime/);
 	});
 
 	it("drops non-monotonic video and audio samples", () => {
@@ -95,9 +98,11 @@ describe("ScreenCaptureKitRecorder window capture", () => {
 	});
 });
 
-
 describe("ScreenCaptureKitRecorder first frame timing", () => {
-	const callback = recorderSource.slice(recorderSource.indexOf("func stream(_ stream:"), recorderSource.indexOf("func stream(_ stream:") + 5000);
+	const callback = recorderSource.slice(
+		recorderSource.indexOf("func stream(_ stream:"),
+		recorderSource.indexOf("func stream(_ stream:") + 5000,
+	);
 	it("validates a complete frame and writer readiness before setting time zero", () => {
 		const clock = callback.indexOf("adjustedPresentationTime(for:");
 		expect(clock).toBeGreaterThan(callback.indexOf("status == .complete"));
@@ -108,5 +113,39 @@ describe("ScreenCaptureKitRecorder first frame timing", () => {
 		const audioGuard = callback.indexOf("guard frameCount > 0,");
 		expect(audioGuard).toBeGreaterThan(0);
 		expect(audioGuard).toBeLessThan(callback.indexOf("if outputType == .audio"));
+	});
+});
+
+describe("ScreenCaptureKitRecorder keepalive frames", () => {
+	it("retimes a real frame a keepalive overtook instead of dropping it", () => {
+		expect(recorderSource).toMatch(
+			/CMTimeCompare\(presentationTime, lastVideoPresentationTime\) <= 0 \{\s*guard lastAppendWasKeepalive else \{ return \}\s*appendTime = lastVideoPresentationTime \+ CMTime\(value: 1, timescale: 600\)/,
+		);
+		expect(recorderSource).toContain(
+			"appendVideoSample(sampleBuffer, to: videoInput, at: appendTime)",
+		);
+	});
+
+	it("flags both keepalive append paths and clears the flag on a real frame", () => {
+		const keepalive = recorderSource.slice(
+			recorderSource.indexOf("private func appendKeepaliveFrame()"),
+			recorderSource.indexOf("private func appendVideoSample("),
+		);
+		expect(keepalive.match(/lastAppendWasKeepalive = true/g)).toHaveLength(2);
+		expect(keepalive).not.toContain("lastAppendWasKeepalive = false");
+		const append = recorderSource.slice(
+			recorderSource.indexOf("private func appendVideoSample("),
+			recorderSource.indexOf("private func appendCroppedVideoFrame("),
+		);
+		expect(append).toContain("lastAppendWasKeepalive = false");
+	});
+
+	it("resets the keepalive flag wherever the other capture state resets", () => {
+		expect(recorderSource.match(/^\t+lastAppendWasKeepalive = false$/gm)).toHaveLength(3);
+		expect(
+			recorderSource.match(
+				/^\t+lastVideoPresentationTime = \.zero\n\t+lastAppendWasKeepalive = false$/gm,
+			),
+		).toHaveLength(2);
 	});
 });

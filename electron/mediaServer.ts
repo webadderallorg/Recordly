@@ -58,8 +58,18 @@ async function resolveRealPath(filePath: string): Promise<string | null> {
 	}
 }
 
+let prefixAllowance: ((realPath: string) => boolean) | null = null;
+
+// The media server and read-local-file were two allowlists that disagreed: this one
+// is a bare set that a project switch clears, so a recording the app itself made
+// stopped being servable while the exporter could still read it.
+export function setMediaPathPrefixAllowance(check: ((realPath: string) => boolean) | null) {
+	prefixAllowance = check;
+}
+
 export function isAllowedMediaPath(realPath: string): boolean {
-	return approvedLocalReadPaths.has(realPath);
+	if (approvedLocalReadPaths.has(realPath)) return true;
+	return prefixAllowance?.(realPath) === true;
 }
 
 async function handleMediaRequest(

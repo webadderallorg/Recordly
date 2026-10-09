@@ -86,6 +86,7 @@ export let hasLoggedInteractionHookFailure = false;
 export let lastLeftClick: { timeMs: number; cx: number; cy: number } | null = null;
 export let linuxCursorScreenPoint: { x: number; y: number; updatedAt: number } | null = null;
 export let selectedWindowBounds: WindowBounds | null = null;
+export let selectedWindowBoundsPending = false;
 export let windowBoundsCaptureInterval: NodeJS.Timeout | null = null;
 
 // ── Native macOS window source cache ─────────────────────────────────────────
@@ -268,6 +269,9 @@ export function setLinuxCursorScreenPoint(v: { x: number; y: number; updatedAt: 
 }
 export function setSelectedWindowBounds(v: WindowBounds | null) {
 	selectedWindowBounds = v;
+}
+export function setSelectedWindowBoundsPending(v: boolean) {
+	selectedWindowBoundsPending = v;
 }
 export function setWindowBoundsCaptureInterval(v: NodeJS.Timeout | null) {
 	windowBoundsCaptureInterval = v;

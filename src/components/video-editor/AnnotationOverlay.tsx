@@ -122,12 +122,20 @@ export function AnnotationOverlay({
 										: "center",
 							alignItems: "center",
 							padding: `${8 * sizeScale}px`,
+							backgroundColor: annotation.style.fillBox
+								? annotation.style.backgroundColor
+								: undefined,
+							borderRadius: annotation.style.fillBox
+								? `${annotation.style.borderRadius * sizeScale}px`
+								: undefined,
 						}}
 					>
 						<span
 							style={{
 								color: annotation.style.color,
-								backgroundColor: annotation.style.backgroundColor,
+								backgroundColor: annotation.style.fillBox
+									? "transparent"
+									: annotation.style.backgroundColor,
 								fontSize: `${annotation.style.fontSize * sizeScale}px`,
 								fontFamily: annotation.style.fontFamily,
 								fontWeight: annotation.style.fontWeight,

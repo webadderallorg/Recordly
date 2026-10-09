@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildClipDecodeRuns, segmentFrameCount, segmentSourceTime } from "./videoTimelineSegments";
 import { requiresClipTimelineRendering } from "./clipTimeline";
+import { buildClipDecodeRuns, segmentFrameCount, segmentSourceTime } from "./videoTimelineSegments";
 
 describe("explicit clip export timeline", () => {
 	it("preserves gaps and source in-points without starting another decode pass", () => {
@@ -53,5 +53,46 @@ describe("explicit clip export timeline", () => {
 		expect(
 			requiresClipTimelineRendering([{ id: "gap", startMs: 1000, endMs: 2000, speed: 1 }]),
 		).toBe(true);
+	});
+});
+
+describe("blank clips", () => {
+	const card = { id: "card", startMs: 0, endMs: 1500, speed: 1, blank: true as const };
+	const footage = { id: "a", startMs: 1500, endMs: 3500, sourceStartMs: 0, speed: 1 };
+
+	it("decodes nothing for a blank clip and stays in one pass", () => {
+		expect(buildClipDecodeRuns([card, footage])).toEqual([
+			[{ startSec: 0, endSec: 2, speed: 1, outputStartSec: 1.5, outputEndSec: 3.5 }],
+		]);
+	});
+
+	it("needs no decode pass at all when every clip is blank", () => {
+		expect(buildClipDecodeRuns([card])).toEqual([]);
+	});
+
+	it("forces the clip-timeline renderer, since a trim concat cannot hold blank time", () => {
+		expect(requiresClipTimelineRendering([card])).toBe(true);
+		expect(
+			requiresClipTimelineRendering([
+				{ id: "a", startMs: 0, endMs: 3500, sourceStartMs: 0, speed: 1 },
+			]),
+		).toBe(false);
+	});
+
+	it("gives a card at the front its own pass, first, spanning one millisecond", () => {
+		const front = { id: "card", startMs: 0, endMs: 2000, sourceStartMs: 0, speed: 1 / 2000 };
+		const runs = buildClipDecodeRuns([front, { ...footage, startMs: 2000, endMs: 4000 }]);
+		expect(runs.map((run) => run[0].outputStartSec)).toEqual([0, 2]);
+		expect(runs[0][0]).toMatchObject({ startSec: 0, endSec: 0.001 });
+		expect(segmentFrameCount(runs[0][0], 30)).toBe(60);
+	});
+
+	it("keeps a held frame as real footage to decode", () => {
+		const held = { id: "h", startMs: 2000, endMs: 4000, sourceStartMs: 1999, speed: 0.0005 };
+		const runs = buildClipDecodeRuns([held]);
+		expect(runs).toHaveLength(1);
+		expect(segmentFrameCount(runs[0][0], 30)).toBe(60);
+		expect(segmentSourceTime(runs[0][0], 0, 30)).toBeCloseTo(1.999, 6);
+		expect(segmentSourceTime(runs[0][0], 59, 30)).toBeCloseTo(1.999983, 6);
 	});
 });

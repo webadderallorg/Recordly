@@ -1,22 +1,21 @@
 import type { ZoomFocus, ZoomRegion } from "../types";
 import { ZOOM_DEPTH_SCALES } from "../types";
 import {
+	CHAINED_ZOOM_PAN_GAP_MS,
 	TRANSITION_WINDOW_MS,
+	ZOOM_IN_OVERLAP_MS,
 	ZOOM_IN_TRANSITION_WINDOW_MS,
 	ZOOM_OUT_EARLY_START_MS,
 } from "./constants";
 import { clampFocusToScale } from "./focusUtils";
 import { clamp01, easeOutZoom } from "./mathUtils";
 
-const CHAINED_ZOOM_PAN_GAP_MS = 1350;
 const CONNECTED_ZOOM_PAN_DURATION_MS = 1000;
-const ZOOM_IN_OVERLAP_MS = 1000;
-// Playback offset relative to timeline blocks; positive values delay the animation.
-const ZOOM_ANIMATION_DELAY_MS = 500;
 
 type DominantRegionOptions = {
 	connectZooms?: boolean;
 	zoomInDurationMs?: number;
+	zoomInOverlapMs?: number;
 	zoomOutDurationMs?: number;
 };
 
@@ -38,12 +37,18 @@ type ConnectedPanTransition = {
 export function computeRegionStrength(
 	region: ZoomRegion,
 	timeMs: number,
-	options: Pick<DominantRegionOptions, "zoomInDurationMs" | "zoomOutDurationMs"> = {},
+	options: Pick<
+		DominantRegionOptions,
+		"zoomInDurationMs" | "zoomInOverlapMs" | "zoomOutDurationMs"
+	> = {},
 ) {
 	const zoomInDurationMs = Math.max(1, options.zoomInDurationMs ?? ZOOM_IN_TRANSITION_WINDOW_MS);
 	const zoomOutDurationMs = Math.max(1, options.zoomOutDurationMs ?? TRANSITION_WINDOW_MS);
-	const adjustedTimeMs = timeMs - ZOOM_ANIMATION_DELAY_MS;
-	const leadInStart = region.startMs + ZOOM_IN_OVERLAP_MS - ZOOM_IN_TRANSITION_WINDOW_MS;
+	const zoomInOverlapMs = Math.max(
+		0,
+		Math.min(zoomInDurationMs, options.zoomInOverlapMs ?? ZOOM_IN_OVERLAP_MS),
+	);
+	const leadInStart = region.startMs - zoomInOverlapMs;
 	let zoomOutStart = region.endMs - ZOOM_OUT_EARLY_START_MS;
 	let zoomInEnd = leadInStart + zoomInDurationMs;
 
@@ -55,20 +60,20 @@ export function computeRegionStrength(
 
 	const leadOutEnd = zoomOutStart + zoomOutDurationMs;
 
-	if (adjustedTimeMs < leadInStart || adjustedTimeMs > leadOutEnd) {
+	if (timeMs < leadInStart || timeMs > leadOutEnd) {
 		return 0;
 	}
 
-	if (adjustedTimeMs < zoomInEnd) {
-		const progress = (adjustedTimeMs - leadInStart) / zoomInDurationMs;
+	if (timeMs < zoomInEnd) {
+		const progress = (timeMs - leadInStart) / zoomInDurationMs;
 		return easeOutZoom(progress);
 	}
 
-	if (adjustedTimeMs <= zoomOutStart) {
+	if (timeMs <= zoomOutStart) {
 		return 1;
 	}
 
-	const progress = clamp01((adjustedTimeMs - zoomOutStart) / zoomOutDurationMs);
+	const progress = clamp01((timeMs - zoomOutStart) / zoomOutDurationMs);
 	return 1 - easeOutZoom(progress);
 }
 
@@ -92,9 +97,8 @@ function getConnectedRegionPairs(regions: ZoomRegion[]) {
 		pairs.push({
 			currentRegion,
 			nextRegion,
-			transitionStart: currentRegion.endMs + ZOOM_ANIMATION_DELAY_MS,
-			transitionEnd:
-				currentRegion.endMs + ZOOM_ANIMATION_DELAY_MS + CONNECTED_ZOOM_PAN_DURATION_MS,
+			transitionStart: currentRegion.endMs,
+			transitionEnd: currentRegion.endMs + CONNECTED_ZOOM_PAN_DURATION_MS,
 		});
 	}
 
@@ -115,10 +119,7 @@ function getActiveRegion(
 					return { region, strength: 0 };
 				}
 
-				const zoomOutStart =
-					outgoingPair.currentRegion.endMs -
-					ZOOM_OUT_EARLY_START_MS +
-					ZOOM_ANIMATION_DELAY_MS;
+				const zoomOutStart = outgoingPair.currentRegion.endMs - ZOOM_OUT_EARLY_START_MS;
 				if (timeMs >= zoomOutStart) {
 					return { region, strength: 1 };
 				}
@@ -131,9 +132,7 @@ function getActiveRegion(
 				}
 
 				const nextRegionZoomOutStart =
-					incomingPair.nextRegion.endMs -
-					ZOOM_OUT_EARLY_START_MS +
-					ZOOM_ANIMATION_DELAY_MS;
+					incomingPair.nextRegion.endMs - ZOOM_OUT_EARLY_START_MS;
 				if (timeMs < nextRegionZoomOutStart) {
 					return { region, strength: 1 };
 				}

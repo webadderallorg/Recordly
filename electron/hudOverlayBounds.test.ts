@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	getHudOverlayCornerBounds,
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
+	resolveHudOverlayIgnoreMouse,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
 
@@ -184,5 +186,90 @@ describe("shouldExpandHudOverlayFallback", () => {
 				webcamPreviewVisible: true,
 			}),
 		).toBe(false);
+	});
+});
+
+describe("resolveHudOverlayIgnoreMouse", () => {
+	const idle = { sourceSelectionActive: false, recordingActive: false, agentActive: false };
+
+	it("forces passthrough while an agent is acting, regardless of the pointer latch", () => {
+		expect(resolveHudOverlayIgnoreMouse(false, { ...idle, agentActive: true })).toBe(true);
+		expect(
+			resolveHudOverlayIgnoreMouse(false, {
+				...idle,
+				agentActive: true,
+				recordingActive: true,
+			}),
+		).toBe(true);
+	});
+
+	it("restores the requested latch once the agent is done", () => {
+		expect(resolveHudOverlayIgnoreMouse(false, idle)).toBe(false);
+		expect(resolveHudOverlayIgnoreMouse(true, idle)).toBe(true);
+	});
+
+	it("keeps source selection passthrough unless recording", () => {
+		expect(resolveHudOverlayIgnoreMouse(false, { ...idle, sourceSelectionActive: true })).toBe(
+			true,
+		);
+		expect(
+			resolveHudOverlayIgnoreMouse(false, {
+				...idle,
+				sourceSelectionActive: true,
+				recordingActive: true,
+			}),
+		).toBe(false);
+	});
+});
+
+describe("overlay modes", () => {
+	const idle = { sourceSelectionActive: false, recordingActive: false, agentActive: false };
+	const workArea = { x: 100, y: 50, width: 1920, height: 1080 };
+
+	it.each([
+		["top-left", { x: 100, y: 50 }],
+		["top-right", { x: 1160, y: 50 }],
+		["bottom-left", { x: 100, y: 970 }],
+		["bottom-right", { x: 1160, y: 970 }],
+		["bottom-center", { x: 630, y: 970 }],
+	] as const)("parks the compact window in %s", (corner, origin) => {
+		expect(getHudOverlayCornerBounds(workArea, corner)).toEqual({
+			...origin,
+			width: 860,
+			height: 160,
+		});
+	});
+
+	it("keeps an expanded window inside the corner", () => {
+		expect(getHudOverlayCornerBounds(workArea, "top-right", true)).toMatchObject({
+			y: 50,
+			height: 540,
+		});
+	});
+
+	it("click_through on always ignores the mouse, even while recording", () => {
+		expect(
+			resolveHudOverlayIgnoreMouse(false, {
+				...idle,
+				recordingActive: true,
+				clickThrough: "on",
+			}),
+		).toBe(true);
+	});
+
+	it("click_through off disables the agent latch but not the pointer latch", () => {
+		const state = { ...idle, agentActive: true, clickThrough: "off" as const };
+		expect(resolveHudOverlayIgnoreMouse(false, state)).toBe(false);
+		expect(resolveHudOverlayIgnoreMouse(true, state)).toBe(true);
+	});
+
+	it("click_through auto keeps the agent latch", () => {
+		expect(
+			resolveHudOverlayIgnoreMouse(false, {
+				...idle,
+				agentActive: true,
+				clickThrough: "auto",
+			}),
+		).toBe(true);
 	});
 });

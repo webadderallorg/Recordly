@@ -18,18 +18,6 @@ constexpr uint32_t kDiscontinuityGapFillThresholdMs = 140;
 constexpr uint32_t kSilentDiscontinuityCompactThresholdMs = 40;
 constexpr uint32_t kBoundaryFadeInMs = 5;
 
-int64_t queryPerformanceCounterHns() {
-    LARGE_INTEGER counter;
-    LARGE_INTEGER frequency;
-    if (!QueryPerformanceCounter(&counter) || !QueryPerformanceFrequency(&frequency) || frequency.QuadPart <= 0) {
-        return 0;
-    }
-
-    return static_cast<int64_t>(
-        (static_cast<long double>(counter.QuadPart) * 10000000.0L) /
-        static_cast<long double>(frequency.QuadPart));
-}
-
 bool isFloatFormat(const WAVEFORMATEX* format) {
     if (!format) return false;
     if (format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) return true;
@@ -240,8 +228,6 @@ bool WasapiCapture::start() {
     totalDataBytes_ = 0;
     framesWritten_ = 0;
     firstPacketQpcHns_ = -1;
-    pauseStartQpcHns_ = 0;
-    accumulatedPausedQpcHns_ = 0;
     dataDiscontinuityCount_ = 0;
     timestampErrorCount_ = 0;
     gapFillCount_ = 0;
@@ -261,30 +247,7 @@ bool WasapiCapture::start() {
     }
 
     capturing_ = true;
-    paused_ = false;
     thread_ = std::thread(&WasapiCapture::captureThread, this);
-    return true;
-}
-
-bool WasapiCapture::pause() {
-    if (!capturing_ || paused_) return true;
-    pauseStartQpcHns_ = queryPerformanceCounterHns();
-    paused_ = true;
-    return audioClient_ ? SUCCEEDED(audioClient_->Stop()) : false;
-}
-
-bool WasapiCapture::resume() {
-    if (!capturing_ || !paused_) return true;
-    const int64_t resumedQpcHns = queryPerformanceCounterHns();
-    const int64_t pauseStartQpcHns = pauseStartQpcHns_.load();
-    HRESULT hr = audioClient_ ? audioClient_->Start() : E_FAIL;
-    if (FAILED(hr)) return false;
-    if (pauseStartQpcHns > 0 && resumedQpcHns > pauseStartQpcHns) {
-        accumulatedPausedQpcHns_.fetch_add(resumedQpcHns - pauseStartQpcHns);
-    }
-    pauseStartQpcHns_ = 0;
-    paused_ = false;
-    fadeInFramesRemaining_ = boundaryFadeInFrameCount();
     return true;
 }
 
@@ -304,9 +267,6 @@ void WasapiCapture::stop() {
         outputFile_ = INVALID_HANDLE_VALUE;
     }
 
-    paused_ = false;
-    pauseStartQpcHns_ = 0;
-    accumulatedPausedQpcHns_ = 0;
     fadeInFramesRemaining_ = 0;
 }
 
@@ -439,16 +399,12 @@ void WasapiCapture::captureThread() {
         channels > 0 ? static_cast<WORD>(sourceBlockAlign / channels) : 0;
 
     std::vector<int16_t> pcmBuffer;
+    bool droppedPausedAudio = false;
 
     DWORD sleepMs = static_cast<DWORD>((static_cast<double>(bufferFrameCount_) / mixFormat_->nSamplesPerSec) * 500.0);
     if (sleepMs < 5) sleepMs = 5;
 
     while (capturing_) {
-        if (paused_) {
-            Sleep(10);
-            continue;
-        }
-
         Sleep(sleepMs);
 
         UINT32 packetLength = 0;
@@ -488,6 +444,17 @@ void WasapiCapture::captureThread() {
                 numFrames > 0 &&
                 qpcPosition > 0 &&
                 (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) == 0;
+            // The client keeps running while paused; frames are dropped by capture time, like video.
+            const auto frameQpcHns = [&](UINT32 frame) {
+                return static_cast<int64_t>(qpcPosition) +
+                    static_cast<int64_t>(frame) * kHundredNanosecondsPerSecond / mixFormat_->nSamplesPerSec;
+            };
+            const auto isPausedFrame = [&](UINT32 frame) {
+                if (!pauses_) return false;
+                return hasReliableTimestamp ? pauses_->contains(frameQpcHns(frame)) : pauses_->isPaused();
+            };
+            UINT32 firstKept = 0;
+            while (firstKept < numFrames && isPausedFrame(firstKept)) firstKept++;
             if (hasReliableTimestamp) {
                 int64_t expected = -1;
                 firstPacketQpcHns_.compare_exchange_strong(
@@ -495,16 +462,18 @@ void WasapiCapture::captureThread() {
                     static_cast<int64_t>(qpcPosition));
 
                 const int64_t firstPacketQpcHns = firstPacketQpcHns_.load();
+                const int64_t firstKeptQpcHns = frameQpcHns(firstKept);
                 if (
                     firstPacketQpcHns >= 0 &&
-                    static_cast<int64_t>(qpcPosition) > firstPacketQpcHns
+                    firstKept < numFrames &&
+                    firstKeptQpcHns > firstPacketQpcHns
                 ) {
-                    const int64_t elapsedHns =
-                        static_cast<int64_t>(qpcPosition) - firstPacketQpcHns;
+                    const int64_t elapsedHns = firstKeptQpcHns - firstPacketQpcHns;
+                    const int64_t pausedHns = pauses_
+                        ? pauses_->pausedBefore(firstKeptQpcHns) - pauses_->pausedBefore(firstPacketQpcHns)
+                        : 0;
                     const int64_t adjustedElapsedHns =
-                        elapsedHns > accumulatedPausedQpcHns_.load()
-                            ? elapsedHns - accumulatedPausedQpcHns_.load()
-                            : 0;
+                        elapsedHns > pausedHns ? elapsedHns - pausedHns : 0;
                     const uint64_t expectedStartFrame =
                         (static_cast<uint64_t>(adjustedElapsedHns) * mixFormat_->nSamplesPerSec +
                          kHundredNanosecondsPerSecond / 2) /
@@ -609,7 +578,23 @@ void WasapiCapture::captureThread() {
 
             captureClient_->ReleaseBuffer(numFrames);
 
-            writePcmFrames(pcmBuffer.data(), numFrames, channels);
+            if (firstKept > 0) droppedPausedAudio = true;
+            UINT32 runStart = firstKept;
+            for (UINT32 frame = firstKept; frame <= numFrames; frame++) {
+                if (frame < numFrames && !isPausedFrame(frame)) continue;
+                if (frame > runStart) {
+                    if (droppedPausedAudio) {
+                        fadeInFramesRemaining_ = boundaryFadeInFrameCount();
+                        droppedPausedAudio = false;
+                    }
+                    writePcmFrames(
+                        pcmBuffer.data() + static_cast<size_t>(runStart) * channels,
+                        frame - runStart,
+                        channels);
+                }
+                if (frame < numFrames) droppedPausedAudio = true;
+                runStart = frame + 1;
+            }
 
             hr = captureClient_->GetNextPacketSize(&packetLength);
             if (FAILED(hr)) {

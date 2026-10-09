@@ -5,8 +5,19 @@ export type SelectedSource = {
 	sourceType?: "screen" | "window";
 	appName?: string;
 	windowTitle?: string;
+	pid?: number;
 	[key: string]: unknown;
 };
+
+export const WINDOW_OFF_SCREEN_MESSAGE =
+	"The window is closed, minimized or on another desktop — bring it onto this desktop and try again.";
+
+export function describeCaptureStartFailure(error: unknown) {
+	const raw = String(error);
+	return raw.includes("Window not found")
+		? { message: WINDOW_OFF_SCREEN_MESSAGE, error: WINDOW_OFF_SCREEN_MESSAGE }
+		: { message: "Failed to start native ScreenCaptureKit recording", error: raw };
+}
 
 export type NativeMacRecordingOptions = {
 	capturesSystemAudio?: boolean;
@@ -115,6 +126,8 @@ export type NativeMacWindowSource = {
 	windowTitle?: string;
 	bundleId?: string;
 	appIcon?: string | null;
+	pid?: number;
+	onScreen?: boolean;
 	x?: number;
 	y?: number;
 	width?: number;

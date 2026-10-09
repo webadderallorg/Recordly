@@ -68,6 +68,10 @@ export function getTelemetryPathForVideo(videoPath: string) {
 	return `${videoPath}.cursor.json`;
 }
 
+export function getAgentActivityPathForVideo(videoPath: string) {
+	return `${videoPath}.agent.json`;
+}
+
 export function isAutoRecordingPath(filePath: string) {
 	return path.basename(filePath).startsWith(AUTO_RECORDING_PREFIX);
 }

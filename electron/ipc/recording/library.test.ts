@@ -70,6 +70,7 @@ it("lists recordings, moves recordings and their companions to Trash with revers
 		second,
 		path.join(state.root, "recording-new.webcam.mp4"),
 		path.join(state.root, "recording-new.mic.wav"),
+		path.join(state.root, "recording-new.mov.agent.json"),
 	])
 		await fs.writeFile(name, "fixture");
 	await fs.symlink(first, path.join(state.root, "linked.mp4"));
@@ -80,6 +81,9 @@ it("lists recordings, moves recordings and their companions to Trash with revers
 	expect(await listRecordings()).toEqual([]);
 	await expect(fs.access(first)).rejects.toThrow();
 	await expect(fs.access(path.join(state.root, "recording-new.mic.wav"))).rejects.toThrow();
+	await expect(
+		fs.access(path.join(state.root, "recording-new.mov.agent.json")),
+	).rejects.toThrow();
 	expect(
 		(await fs.readdir(state.root)).filter((name) => name.startsWith(".recordly-trash-")),
 	).toHaveLength(1);
@@ -87,6 +91,9 @@ it("lists recordings, moves recordings and their companions to Trash with revers
 	expect(await listRecordings()).toHaveLength(2);
 	expect(await fs.readFile(first, "utf8")).toBe("fixture");
 	expect(await fs.readFile(path.join(state.root, "recording-new.mic.wav"), "utf8")).toBe(
+		"fixture",
+	);
+	expect(await fs.readFile(path.join(state.root, "recording-new.mov.agent.json"), "utf8")).toBe(
 		"fixture",
 	);
 	await expect(setRecordingsRemoved(["/tmp/outside.mp4"], true)).rejects.toThrow("outside");

@@ -15,6 +15,7 @@ function createSnapshot(id: string | null): EditorHistorySnapshot {
 	return {
 		zoomRegions: [],
 		clipRegions: [],
+		transitions: [],
 		speedRegions: [],
 		annotationRegions: [],
 		audioRegions: [],
@@ -124,5 +125,41 @@ describe("editorHistory", () => {
 
 		expect(snapshot.selectedZoomId).toBe("first");
 		expect(areEditorHistorySnapshotsEqual(snapshot, createSnapshot("first"))).toBe(true);
+	});
+});
+
+describe("editorHistory transitions", () => {
+	const dip = { id: "dip-clip-2", kind: "dip" as const, ms: 400, afterClipId: "clip-2" };
+
+	it("records adding a dip and gives it back on undo", () => {
+		const stack = createEditorHistoryStack();
+		const before = createSnapshot(null);
+		recordEditorHistorySnapshot(stack, before);
+		const after = { ...before, transitions: [dip] };
+		expect(recordEditorHistorySnapshot(stack, after)).toBe("recorded");
+		expect(undoEditorHistoryStack(stack, after)).toEqual(before);
+	});
+
+	it("treats a changed dip length as a change and an identical one as unchanged", () => {
+		const stack = createEditorHistoryStack();
+		const withDip = { ...createSnapshot(null), transitions: [dip] };
+		recordEditorHistorySnapshot(stack, withDip);
+		expect(recordEditorHistorySnapshot(stack, { ...withDip, transitions: [dip] })).toBe(
+			"unchanged",
+		);
+		expect(
+			recordEditorHistorySnapshot(stack, {
+				...withDip,
+				transitions: [{ ...dip, ms: 900 }],
+			}),
+		).toBe("recorded");
+	});
+
+	it("clones the dip list instead of sharing it with the stack", () => {
+		const snapshot = { ...createSnapshot(null), transitions: [dip] };
+		const cloned = cloneEditorHistorySnapshot(snapshot);
+		expect(cloned.transitions).toEqual([dip]);
+		expect(cloned.transitions).not.toBe(snapshot.transitions);
+		expect(areEditorHistorySnapshotsEqual(cloned, snapshot)).toBe(true);
 	});
 });

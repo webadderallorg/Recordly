@@ -52,6 +52,8 @@
 		"connectZoomsDescription": "Unisce regioni di zoom consecutive in un movimento di camera continuo.",
 		"autoApplyFreshRecordingZooms": "Applica automaticamente zoom alle nuove registrazioni",
 		"autoApplyFreshRecordingZoomsDescription": "Suggerisci automaticamente zoom con ricentratura ai bordi quando apri una nuova registrazione.",
+		"autoApplyAgentEdits": "Compatta le registrazioni degli agenti",
+		"autoApplyAgentEditsDescription": "Taglia le pause in cui l'IA riflette e ingrandisce dove agisce. Si applica alle nuove registrazioni create da un agente IA.",
 		"zoomGeneralTitle": "Generale",
 		"zoomGeneralDescription": "Impostazioni di movimento globali per ogni transizione di zoom.",
 		"zoomInTitle": "Zoom in",
@@ -258,5 +260,24 @@
 		"title": "Aggiornamenti",
 		"experimental": "Aggiornamenti sperimentali",
 		"saveFailed": "Impossibile cambiare il canale di aggiornamento."
+	},
+	"mcp": {
+		"title": "Controllo tramite agenti IA (MCP)",
+		"enable": "Consenti agli agenti IA di controllare Recordly",
+		"enableDescription": "Consente a strumenti IA locali come Claude Code di avviare, interrompere ed esportare registrazioni tramite una connessione privata su questo computer.",
+		"runningAt": "In esecuzione su {{url}}",
+		"copySetup": "Copia comando di configurazione",
+		"setupCopied": "Comando di configurazione copiato",
+		"copyFailed": "Impossibile copiare il comando di configurazione.",
+		"regenerateToken": "Rigenera token",
+		"tokenRegenerated": "Nuovo token creato. Copia di nuovo il comando di configurazione e aggiungi di nuovo Recordly nei tuoi strumenti IA.",
+		"regenerateFailed": "Impossibile rigenerare il token.",
+		"tokenHint": "Mantieni il token privato: chiunque lo possieda può controllare la registrazione.",
+		"saveFailed": "Impossibile modificare il controllo tramite agenti IA.",
+		"errorPortInUse": "La porta {{port}} è già in uso. Chiudi l'altra app che la usa, poi disattiva e riattiva questa opzione.",
+		"errorPortUnavailable": "La porta {{port}} non può essere usata su questo computer: il sistema l'ha riservata. Libera la porta o riavvia il computer, poi disattiva e riattiva questa opzione.",
+		"errorStartFailed": "Impossibile avviare la connessione per gli agenti IA. Disattivala e riattivala.",
+		"control": "Consenti agli agenti di usare mouse e tastiera",
+		"controlDescription": "Consente all'agente di aprire pagine web, spostare il puntatore, fare clic e digitare nella finestra che registra. Muovi il mouse o premi Esc in qualsiasi momento per riprendere il controllo."
 	}
 }

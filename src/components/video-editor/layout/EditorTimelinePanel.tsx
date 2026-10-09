@@ -148,6 +148,7 @@ export function EditorTimelinePanel(props: Props) {
 				sourceAudioTrackSettings={audio.activeSourceAudioTrackSettings}
 				getSourceAudioTrackSettingsForClip={audio.getSourceAudioTrackSettingsForClip}
 				onSourceAudioAvailabilityChange={timeline.setHasClipSourceAudio}
+				onSourceAudioLoadingChange={timeline.setSourceAudioLoading}
 				onSourceAudioTracksMetaChange={audio.onSourceAudioTracksMetaChange}
 			/>
 		</div>

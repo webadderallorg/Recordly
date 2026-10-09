@@ -7,9 +7,57 @@ const projectRoot = process.cwd();
 const nativeRoot = path.join(projectRoot, "electron", "native");
 const moduleCacheRoot = path.join(os.tmpdir(), "recordly-swift-module-cache");
 
+if (process.platform === "linux") {
+	await buildLinuxHelpers();
+	process.exit(0);
+}
+
 if (process.platform !== "darwin") {
 	console.log("[build-native-helpers] Skipping: host platform is not macOS.");
 	process.exit(0);
+}
+
+async function buildLinuxHelpers() {
+	const arch = { x64: "x64", arm64: "arm64" }[process.arch];
+	const compiler = process.env.CC || "cc";
+	const libraries = ["-lX11", "-lXtst", "-lXi", "-ldl", "-lm"];
+	const probe = spawnSync(compiler, ["-x", "c", "-", "-o", os.devNull, ...libraries], {
+		encoding: "utf8",
+		input: "#include <X11/extensions/XInput2.h>\n#include <X11/extensions/XTest.h>\nint main(void) { return 0; }\n",
+	});
+	if (!arch || probe.error || probe.status !== 0) {
+		console.log(
+			`[build-native-helpers] Skipping Linux agent input helper: needs ${arch ? "a C compiler with libx11-dev, libxtst-dev and libxi-dev" : `x64 or arm64, not ${process.arch}`}.`,
+		);
+		return;
+	}
+	const outputDir = path.join(nativeRoot, "bin", `linux-${arch}`);
+	const outputPath = path.join(outputDir, "recordly-agent-input");
+	await mkdir(outputDir, { recursive: true });
+	const result = spawnSync(
+		compiler,
+		[
+			"-std=c11",
+			"-Wall",
+			"-Wextra",
+			"-O2",
+			"-pthread",
+			path.join(nativeRoot, "agent-input-linux", "agent_input.c"),
+			"-o",
+			outputPath,
+			...libraries,
+		],
+		{ encoding: "utf8", timeout: 120000 },
+	);
+	if (result.status !== 0) {
+		const details = [result.stderr, result.stdout].filter(Boolean).join("\n").trim();
+		throw new Error(details || "Failed to compile agent_input.c");
+	}
+	if (result.stderr.trim()) console.log(result.stderr.trim());
+	await chmod(outputPath, 0o755);
+	console.log(
+		`[build-native-helpers] Built recordly-agent-input (linux-${arch}) -> ${outputPath}`,
+	);
 }
 
 function getTargetConfigs() {
@@ -41,6 +89,10 @@ const helpers = [
 	{
 		source: "NativeCursorMonitor.swift",
 		output: "recordly-native-cursor-monitor",
+	},
+	{
+		source: "AgentInput.swift",
+		output: "recordly-agent-input",
 	},
 ];
 

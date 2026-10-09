@@ -52,6 +52,8 @@
 		"connectZoomsDescription": "Lisse les zones de zoom consécutives pour créer un mouvement de caméra continu.",
 		"autoApplyFreshRecordingZooms": "Appliquer automatiquement les zooms des nouveaux enregistrements",
 		"autoApplyFreshRecordingZoomsDescription": "Suggérer automatiquement des zooms suivant le curseur lorsque vous ouvrez un nouvel enregistrement.",
+		"autoApplyAgentEdits": "Resserrer les enregistrements d'agent",
+		"autoApplyAgentEditsDescription": "Coupe les pauses de réflexion de l'IA et zoome là où elle agit. S'applique aux nouveaux enregistrements réalisés par un agent IA.",
 		"zoomGeneralTitle": "Général",
 		"zoomGeneralDescription": "Paramètres globaux de mouvement pour chaque transition de zoom.",
 		"zoomInTitle": "Zoom avant",
@@ -258,5 +260,24 @@
 		"title": "Mises à jour",
 		"experimental": "Mises à jour expérimentales",
 		"saveFailed": "Impossible de changer le canal de mise à jour."
+	},
+	"mcp": {
+		"title": "Contrôle par agents IA (MCP)",
+		"enable": "Autoriser les agents IA à contrôler Recordly",
+		"enableDescription": "Permet aux outils d'IA locaux comme Claude Code de démarrer, d'arrêter et d'exporter des enregistrements via une connexion privée sur cet ordinateur.",
+		"runningAt": "Actif sur {{url}}",
+		"copySetup": "Copier la commande de configuration",
+		"setupCopied": "Commande de configuration copiée",
+		"copyFailed": "Impossible de copier la commande de configuration.",
+		"regenerateToken": "Régénérer le jeton",
+		"tokenRegenerated": "Nouveau jeton créé. Copiez à nouveau la commande de configuration et ajoutez de nouveau Recordly dans vos outils d'IA.",
+		"regenerateFailed": "Impossible de régénérer le jeton.",
+		"tokenHint": "Gardez le jeton secret : toute personne qui le possède peut contrôler l'enregistrement.",
+		"saveFailed": "Impossible de modifier le contrôle par agents IA.",
+		"errorPortInUse": "Le port {{port}} est déjà utilisé. Fermez l'autre application qui l'utilise, puis désactivez et réactivez cette option.",
+		"errorPortUnavailable": "Le port {{port}} ne peut pas être utilisé sur cet ordinateur : le système l'a réservé. Libérez le port ou redémarrez l'ordinateur, puis désactivez et réactivez cette option.",
+		"errorStartFailed": "Impossible de démarrer la connexion pour les agents IA. Désactivez-la puis réactivez-la.",
+		"control": "Autoriser les agents à utiliser la souris et le clavier",
+		"controlDescription": "Permet à l'agent d'ouvrir des pages web, de déplacer le pointeur, de cliquer et de saisir du texte dans la fenêtre qu'il enregistre. Bougez la souris ou appuyez sur Échap à tout moment pour reprendre le contrôle."
 	}
 }

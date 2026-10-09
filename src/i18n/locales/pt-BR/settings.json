@@ -52,6 +52,8 @@
 		"connectZoomsDescription": "Suaviza regiões de zoom consecutivas em um movimento contínuo de câmera.",
 		"autoApplyFreshRecordingZooms": "Aplicar zooms automaticamente em gravações novas",
 		"autoApplyFreshRecordingZoomsDescription": "Sugere zooms seguindo o cursor automaticamente ao abrir uma nova gravação.",
+		"autoApplyAgentEdits": "Enxugar gravações de agentes",
+		"autoApplyAgentEditsDescription": "Corta as pausas em que a IA está pensando e dá zoom onde ela age. Vale para novas gravações feitas por um agente de IA.",
 		"zoomGeneralTitle": "Geral",
 		"zoomGeneralDescription": "Configurações globais de movimento para cada transição de zoom.",
 		"zoomInTitle": "Aproximar",
@@ -258,5 +260,24 @@
 		"title": "Atualizações",
 		"experimental": "Atualizações experimentais",
 		"saveFailed": "Falha ao alterar o canal de atualização."
+	},
+	"mcp": {
+		"title": "Controle por agentes de IA (MCP)",
+		"enable": "Permitir que agentes de IA controlem o Recordly",
+		"enableDescription": "Permite que ferramentas de IA locais, como o Claude Code, iniciem, parem e exportem gravações por uma conexão privada neste computador.",
+		"runningAt": "Em execução em {{url}}",
+		"copySetup": "Copiar comando de configuração",
+		"setupCopied": "Comando de configuração copiado",
+		"copyFailed": "Não foi possível copiar o comando de configuração.",
+		"regenerateToken": "Gerar novo token",
+		"tokenRegenerated": "Novo token criado. Copie o comando de configuração novamente e adicione o Recordly de novo nas suas ferramentas de IA.",
+		"regenerateFailed": "Não foi possível gerar um novo token.",
+		"tokenHint": "Mantenha o token em sigilo — qualquer pessoa com ele pode controlar a gravação.",
+		"saveFailed": "Não foi possível alterar o controle por agentes de IA.",
+		"errorPortInUse": "A porta {{port}} já está em uso. Feche o outro app que a está usando e depois desative e ative esta opção novamente.",
+		"errorPortUnavailable": "A porta {{port}} não pode ser usada neste computador: o sistema a reservou. Libere a porta ou reinicie o computador e depois desative e ative esta opção novamente.",
+		"errorStartFailed": "Não foi possível iniciar a conexão para agentes de IA. Desative e ative novamente.",
+		"control": "Permitir que agentes usem o mouse e o teclado",
+		"controlDescription": "Permite que o agente abra páginas da web, mova o ponteiro, clique e digite na janela que está gravando. Mova o mouse ou pressione Esc a qualquer momento para retomar o controle."
 	}
 }

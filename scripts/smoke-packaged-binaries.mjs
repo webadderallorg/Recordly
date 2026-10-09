@@ -171,6 +171,11 @@ function getExpectedNativeHelperFiles(archTag) {
 				label: "Windows GPU export helper",
 				executable: true,
 			},
+			{
+				name: "recordly-agent-input.exe",
+				label: "Windows agent input helper",
+				executable: true,
+			},
 			{ name: "helpers-manifest.json", label: "Windows helper manifest" },
 			{ name: "whisper-cli.exe", label: "Whisper CLI runtime", executable: true },
 			{ name: "whisper-runtime.json", label: "Whisper runtime manifest" },
@@ -199,6 +204,7 @@ function getExpectedNativeHelperFiles(archTag) {
 				label: "Native cursor monitor helper",
 				executable: true,
 			},
+			{ name: "recordly-agent-input", label: "Agent input helper", executable: true },
 			{ name: "whisper-cli", label: "Whisper CLI runtime", executable: true },
 			{ name: "whisper-runtime.json", label: "Whisper runtime manifest" },
 		];
@@ -206,6 +212,7 @@ function getExpectedNativeHelperFiles(archTag) {
 
 	if (archTag.startsWith("linux-")) {
 		return [
+			{ name: "recordly-agent-input", label: "Agent input helper", executable: true },
 			{ name: "whisper-cli", label: "Whisper CLI runtime", executable: true },
 			{ name: "whisper-runtime.json", label: "Whisper runtime manifest" },
 		];

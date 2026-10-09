@@ -1,10 +1,11 @@
 import {
 	type ClipRegion,
-	type SpeedRegion,
-	type TrimRegion,
-	getClipSourceStartMs,
 	getClipSourceEndMs,
+	getClipSourceStartMs,
+	isBlankClip,
+	type SpeedRegion,
 	sortClipRegions,
+	type TrimRegion,
 } from "@/components/video-editor/types";
 
 export interface VideoSegment {
@@ -19,6 +20,7 @@ export interface VideoSegment {
 export function buildClipDecodeRuns(clips: ClipRegion[]): VideoSegment[][] {
 	const runs: VideoSegment[][] = [];
 	for (const clip of sortClipRegions(clips)) {
+		if (isBlankClip(clip)) continue;
 		const segment: VideoSegment = {
 			startSec: getClipSourceStartMs(clip) / 1000,
 			endSec: getClipSourceEndMs(clip) / 1000,

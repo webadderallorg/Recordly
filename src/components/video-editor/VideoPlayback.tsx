@@ -42,6 +42,7 @@ import {
 	getCaptionTextMaxWidth,
 	getCaptionWordVisualState,
 } from "./captionStyle";
+import { fromFileUrl } from "./projectPersistence";
 import {
 	type AnnotationRegion,
 	type AutoCaptionSettings,
@@ -112,17 +113,25 @@ import {
 import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
 import { supportsPreviewPlaybackRate } from "./videoPlayback/playbackRate";
 import { PreviewVideoSource } from "./videoPlayback/previewVideoSource";
-import { usePreviewVideoReady } from "./videoPlayback/usePreviewVideoReady";
 import { getSceneEffectMetrics } from "./videoPlayback/sceneEffects";
 import {
 	resolvePreviewMotionMode,
 	resolveSceneZoomTarget,
 	shouldComposePreviewFrame,
 } from "./videoPlayback/sceneMotion";
+import { usePreviewVideoReady } from "./videoPlayback/usePreviewVideoReady";
+import {
+	describeVideoLoadError,
+	formatVideoLoadErrorLog,
+	isSourceStillServable,
+	resolveDefaultServableCheckDeps,
+	toVideoLoadErrorKind,
+	type VideoLoadErrorDetail,
+} from "./videoPlayback/videoLoadError";
 import {
 	getWebcamMediaTargetTimeSeconds,
-	isWebcamVisibleAtSourceTime,
 	isWebcamMediaSynchronized,
+	isWebcamVisibleAtSourceTime,
 	shouldSeekWebcamMedia,
 } from "./videoPlayback/webcamSync";
 import {
@@ -225,7 +234,7 @@ interface VideoPlaybackProps {
 	onTimeUpdate: (time: number) => void;
 	currentTime: number;
 	onPlayStateChange: (playing: boolean) => void;
-	onError: (error: string) => void;
+	onError: (error: string, detail?: VideoLoadErrorDetail) => void;
 	wallpaper?: string;
 	zoomRegions: ZoomRegion[];
 	selectedZoomId: string | null;
@@ -2057,6 +2066,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					cursorTimeMs: currentTimeRef.current,
 					connectZooms: connectZoomsRef.current,
 					zoomInDurationMs: zoomInDurationMsRef.current,
+					zoomInOverlapMs: zoomInOverlapMsRef.current,
 					zoomOutDurationMs: zoomOutDurationMsRef.current,
 					zoomClassicMode: zoomClassicModeRef.current,
 					cursorTelemetry: cursorTelemetryRef.current,
@@ -2233,6 +2243,31 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 			if (Math.abs(video.currentTime - targetTime) > 1e-8) video.currentTime = targetTime;
 			video.pause();
 			currentTimeRef.current = targetTime * 1000;
+		};
+
+		const handleVideoLoadError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
+			const mediaError = e.currentTarget.error;
+			const code = mediaError?.code;
+			const src = e.currentTarget.currentSrc || videoPath;
+			const sourcePath = fromFileUrl(src);
+			const base = {
+				code,
+				kind: toVideoLoadErrorKind(code),
+				message: mediaError?.message,
+				src,
+				sourcePath: sourcePath === src ? "" : sourcePath,
+			};
+			const report = (servable: boolean | null) => {
+				const detail = { ...base, servable };
+				console.error("[VideoPlayback] Video load error:", formatVideoLoadErrorLog(detail));
+				onError(describeVideoLoadError(detail), detail);
+			};
+			const deps = resolveDefaultServableCheckDeps();
+			if (!deps || !base.sourcePath) {
+				report(null);
+				return;
+			}
+			void isSourceStillServable(base.sourcePath, deps).then(report, () => report(null));
 		};
 
 		const [resolvedWallpaper, setResolvedWallpaper] = useState<string | null>(null);
@@ -2707,95 +2742,113 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 								</div>
 							</div>
 						) : null}
-						<div
-							className="absolute inset-0"
-							style={{
-								pointerEvents: "none",
-								transform: `matrix(${annotationSceneTransform.scale}, 0, 0, ${annotationSceneTransform.scale}, ${annotationSceneTransform.x}, ${annotationSceneTransform.y})`,
-								transformOrigin: "top left",
-							}}
-						>
-							<div
-								className="absolute"
-								style={{
-									pointerEvents: "none",
-									left: 0,
-									top: 0,
-									width: overlayRef.current?.clientWidth || 800,
-									height: overlayRef.current?.clientHeight || 600,
-								}}
-							>
-								{(() => {
-									const timeMs = Math.round(timelineTime * 1000);
-									const filtered = (annotationRegions || []).filter(
-										(annotation) =>
-											isAnnotationActiveAtTime(annotation, timeMs),
-									);
-
-									const sorted = [...filtered].sort(
-										(a, b) => a.zIndex - b.zIndex,
-									);
-
-									const handleAnnotationClick = (clickedId: string) => {
-										if (!onSelectAnnotation) return;
-
-										if (
-											clickedId === selectedAnnotationId &&
-											sorted.length > 1
-										) {
-											const currentIndex = sorted.findIndex(
-												(a) => a.id === clickedId,
-											);
-											const nextIndex = (currentIndex + 1) % sorted.length;
-											onSelectAnnotation(sorted[nextIndex].id);
-										} else {
-											onSelectAnnotation(clickedId);
+						{(["frame", "screen"] as const).map((space) => {
+							const layerTransform =
+								space === "screen"
+									? { scale: 1, x: 0, y: 0 }
+									: annotationSceneTransform;
+							const layerRect =
+								space === "screen"
+									? {
+											x: 0,
+											y: 0,
+											width: overlayRef.current?.clientWidth || 800,
+											height: overlayRef.current?.clientHeight || 600,
 										}
-									};
-
-									return sorted.map((annotation) => (
-										<AnnotationOverlay
-											key={annotation.id}
-											annotation={annotation}
-											isSelected={annotation.id === selectedAnnotationId}
-											containerWidth={
+									: {
+											x: annotationRecordingRect.x,
+											y: annotationRecordingRect.y,
+											width:
 												annotationRecordingRect.width ||
 												overlayRef.current?.clientWidth ||
-												800
-											}
-											containerHeight={
+												800,
+											height:
 												annotationRecordingRect.height ||
 												overlayRef.current?.clientHeight ||
-												600
-											}
-											recordingRect={{
-												x: annotationRecordingRect.x,
-												y: annotationRecordingRect.y,
-												width:
-													annotationRecordingRect.width ||
-													overlayRef.current?.clientWidth ||
-													800,
-												height:
-													annotationRecordingRect.height ||
-													overlayRef.current?.clientHeight ||
-													600,
-											}}
-											sceneTransform={{ scale: 1, x: 0, y: 0 }}
-											interactionScale={annotationSceneTransform.scale}
-											onPositionChange={(id, position) =>
-												onAnnotationPositionChange?.(id, position)
-											}
-											onSizeChange={(id, size) =>
-												onAnnotationSizeChange?.(id, size)
-											}
-											onClick={handleAnnotationClick}
-											zIndex={annotation.zIndex}
-											isSelectedBoost={annotation.id === selectedAnnotationId}
-										/>
-									));
-								})()}
-							</div>
-						</div>
+												600,
+										};
+							return (
+								<div
+									key={space}
+									className="absolute inset-0"
+									style={{
+										pointerEvents: "none",
+										transform: `matrix(${layerTransform.scale}, 0, 0, ${layerTransform.scale}, ${layerTransform.x}, ${layerTransform.y})`,
+										transformOrigin: "top left",
+										// A card on a blank clip must survive the overlay's gap hiding.
+										visibility: space === "screen" ? "visible" : undefined,
+									}}
+								>
+									<div
+										className="absolute"
+										style={{
+											pointerEvents: "none",
+											left: 0,
+											top: 0,
+											width: overlayRef.current?.clientWidth || 800,
+											height: overlayRef.current?.clientHeight || 600,
+										}}
+									>
+										{(() => {
+											const timeMs = Math.round(timelineTime * 1000);
+											const filtered = (annotationRegions || []).filter(
+												(annotation) =>
+													(annotation.space ?? "frame") === space &&
+													isAnnotationActiveAtTime(annotation, timeMs),
+											);
+
+											const sorted = [...filtered].sort(
+												(a, b) => a.zIndex - b.zIndex,
+											);
+
+											const handleAnnotationClick = (clickedId: string) => {
+												if (!onSelectAnnotation) return;
+
+												if (
+													clickedId === selectedAnnotationId &&
+													sorted.length > 1
+												) {
+													const currentIndex = sorted.findIndex(
+														(a) => a.id === clickedId,
+													);
+													const nextIndex =
+														(currentIndex + 1) % sorted.length;
+													onSelectAnnotation(sorted[nextIndex].id);
+												} else {
+													onSelectAnnotation(clickedId);
+												}
+											};
+
+											return sorted.map((annotation) => (
+												<AnnotationOverlay
+													key={annotation.id}
+													annotation={annotation}
+													isSelected={
+														annotation.id === selectedAnnotationId
+													}
+													containerWidth={layerRect.width}
+													containerHeight={layerRect.height}
+													recordingRect={layerRect}
+													sceneTransform={{ scale: 1, x: 0, y: 0 }}
+													interactionScale={layerTransform.scale}
+													onPositionChange={(id, position) =>
+														onAnnotationPositionChange?.(id, position)
+													}
+													onSizeChange={(id, size) =>
+														onAnnotationSizeChange?.(id, size)
+													}
+													onClick={handleAnnotationClick}
+													zIndex={annotation.zIndex}
+													isSelectedBoost={
+														annotation.id === selectedAnnotationId
+													}
+												/>
+											));
+										})()}
+									</div>
+								</div>
+							);
+						})}
 					</div>
 				)}
 				{/* Keep the source video off-screen instead of display:none so the
@@ -2812,26 +2865,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					onDurationChange={(e) => {
 						onDurationChange(e.currentTarget.duration);
 					}}
-					onError={(e) => {
-						const mediaError = e.currentTarget.error;
-						const code = mediaError?.code;
-						const msg = mediaError?.message;
-						const detail =
-							code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
-								? "format not supported"
-								: code === MediaError.MEDIA_ERR_NETWORK
-									? "network error"
-									: code === MediaError.MEDIA_ERR_DECODE
-										? "decode error"
-										: msg || `code ${code ?? "unknown"}`;
-						console.error(
-							"[VideoPlayback] Video load error:",
-							detail,
-							"src:",
-							videoPath,
-						);
-						onError(`Failed to load video (${detail})`);
-					}}
+					onError={handleVideoLoadError}
 				/>
 			</div>
 		);

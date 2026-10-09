@@ -80,4 +80,51 @@ describe("Windows native helper path resolution", () => {
 
 		expect(getWindowsCaptureExePath()).toBe(buildOutputPath);
 	});
+
+	it("resolves the staged Windows agent input helper", async () => {
+		const prebundledPath = path.join(
+			appPath,
+			"electron",
+			"native",
+			"bin",
+			process.arch === "arm64" ? "win32-arm64" : "win32-x64",
+			"recordly-agent-input.exe",
+		);
+		await fs.mkdir(path.dirname(prebundledPath), { recursive: true });
+		await fs.writeFile(prebundledPath, "helper", { mode: 0o755 });
+
+		const { ensureAgentInputBinary } = await import("./binaries");
+
+		expect(await ensureAgentInputBinary("win32")).toBe(prebundledPath);
+	});
+
+	it.skipIf(process.platform === "win32")(
+		"makes the Linux agent input helper executable",
+		async () => {
+			const helperPath = path.join(
+				appPath,
+				"electron",
+				"native",
+				"bin",
+				process.arch === "arm64" ? "linux-arm64" : "linux-x64",
+				"recordly-agent-input",
+			);
+			await fs.mkdir(path.dirname(helperPath), { recursive: true });
+			await fs.writeFile(helperPath, "helper", { mode: 0o644 });
+
+			const { ensureAgentInputBinary } = await import("./binaries");
+
+			expect(await ensureAgentInputBinary("linux")).toBe(helperPath);
+			expect((await fs.stat(helperPath)).mode & 0o111).not.toBe(0);
+		},
+	);
+
+	it.each([
+		"linux",
+		"win32",
+	] as const)("says the agent input helper is missing on %s", async (platform) => {
+		const { AGENT_INPUT_MISSING, ensureAgentInputBinary } = await import("./binaries");
+
+		await expect(ensureAgentInputBinary(platform)).rejects.toThrow(AGENT_INPUT_MISSING);
+	});
 });

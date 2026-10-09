@@ -3,8 +3,8 @@ import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
 	CaptionCue,
-	CursorClickEffectStyle,
 	CropRegion,
+	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
@@ -31,6 +31,7 @@ const PROGRESS_SAMPLE_WINDOW_MS = 1_000;
 
 interface GifExporterConfig {
 	clipRegions?: import("@/components/video-editor/types").ClipRegion[];
+	dips?: import("@/components/video-editor/export/editorOps/transitions").TimelineDip[];
 	videoUrl: string;
 	width: number;
 	height: number;
@@ -138,6 +139,7 @@ export function buildGifFrameRendererConfig(
 	return {
 		width: config.width,
 		timelineEffects: config.clipRegions !== undefined,
+		dips: config.dips,
 		height: config.height,
 		wallpaper: config.wallpaper,
 		zoomRegions: config.zoomRegions,

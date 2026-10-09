@@ -1,6 +1,6 @@
-import { Plus } from "@/components/ui/icons";
 import type { Span } from "dnd-timeline";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
+import { Plus } from "@/components/ui/icons";
 import type {
 	SourceAudioTrackMeta,
 	SourceAudioTrackSettings,
@@ -84,6 +84,7 @@ export interface TimelineEditorProps {
 	showSourceAudioTrack?: boolean;
 	sourceAudioResourceVersion?: number;
 	onSourceAudioAvailabilityChange?: (available: boolean) => void;
+	onSourceAudioLoadingChange?: (loading: boolean) => void;
 	sourceAudioTrackSettings?: SourceAudioTrackSettings;
 	getSourceAudioTrackSettingsForClip?: (clipId: string | null) => SourceAudioTrackSettings;
 	onSourceAudioTracksMetaChange?: (tracks: SourceAudioTrackMeta) => void;
@@ -167,6 +168,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			showSourceAudioTrack = false,
 			sourceAudioResourceVersion = 0,
 			onSourceAudioAvailabilityChange,
+			onSourceAudioLoadingChange,
 			sourceAudioTrackSettings = {},
 			getSourceAudioTrackSettingsForClip,
 			onSourceAudioTracksMetaChange,
@@ -329,6 +331,18 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		useEffect(() => {
 			onSourceAudioAvailabilityChange?.(sourceAudioTracks.length > 0);
 		}, [onSourceAudioAvailabilityChange, sourceAudioTracks.length]);
+		useEffect(() => {
+			onSourceAudioLoadingChange?.(
+				Boolean(videoPath) &&
+					(sourceAudioLoading || micSidecarLoading || systemSidecarLoading),
+			);
+		}, [
+			onSourceAudioLoadingChange,
+			videoPath,
+			sourceAudioLoading,
+			micSidecarLoading,
+			systemSidecarLoading,
+		]);
 
 		const {
 			keyframes,

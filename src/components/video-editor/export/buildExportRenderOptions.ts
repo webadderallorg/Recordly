@@ -3,6 +3,8 @@ import { toFileUrl } from "../projectPersistence";
 import type { useAppearanceState } from "../state/useAppearanceState";
 import type { useTimelineState } from "../state/useTimelineState";
 import type { CursorTelemetryPoint, SpeedRegion, ZoomRegion } from "../types";
+import { resolveTimelineDips } from "./editorOps/transitions";
+import type { RangedTimeline } from "./exportRange";
 
 type AppearanceState = ReturnType<typeof useAppearanceState>;
 type TimelineState = ReturnType<typeof useTimelineState>;
@@ -18,6 +20,7 @@ type BuildExportRenderOptionsInput = {
 	previewHeight: number;
 	shadowIntensity: number;
 	onProgress: (progress: ExportProgress) => void;
+	ranged?: RangedTimeline;
 };
 
 export function buildExportRenderOptions({
@@ -31,11 +34,13 @@ export function buildExportRenderOptions({
 	previewHeight,
 	shadowIntensity,
 	onProgress,
+	ranged,
 }: BuildExportRenderOptionsInput) {
 	return {
-		clipRegions: timeline.clipRegions,
+		clipRegions: (ranged ?? timeline).clipRegions,
+		dips: resolveTimelineDips((ranged ?? timeline).clipRegions, timeline.transitions),
 		wallpaper: appearance.wallpaper,
-		trimRegions: timeline.trimRegions,
+		trimRegions: (ranged ?? timeline).trimRegions,
 		speedRegions: effectiveSpeedRegions,
 		showShadow: shadowIntensity > 0,
 		shadowIntensity,
@@ -58,10 +63,10 @@ export function buildExportRenderOptions({
 		webcamUrl:
 			appearance.resolvedWebcamVideoUrl ??
 			(appearance.webcam.sourcePath ? toFileUrl(appearance.webcam.sourcePath) : null),
-		annotationRegions: timeline.annotationRegions,
+		annotationRegions: (ranged ?? timeline).annotationRegions,
 		autoCaptions: timeline.autoCaptions,
 		autoCaptionSettings: timeline.autoCaptionSettings,
-		zoomRegions: effectiveZoomRegions,
+		zoomRegions: ranged ? ranged.zoomRegions : effectiveZoomRegions,
 		cursorTelemetry: effectiveCursorTelemetry,
 		showCursor: effectiveShowCursor,
 		cursorStyle: appearance.cursorStyle,

@@ -1,7 +1,7 @@
-import { moveProjectFolderReferences } from "../dashboard/useProjectFolders";
-import { moveProjectShareLink } from "../cloud/projectShareLinks";
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { toast } from "@/components/ui/toast";
+import { moveProjectShareLink } from "../cloud/projectShareLinks";
+import { moveProjectFolderReferences } from "../dashboard/useProjectFolders";
 import { createProjectData, type EditorProjectData } from "../projectPersistence";
 import type { useProjectState } from "../state/useProjectState";
 import { cloneStructured, getErrorMessage } from "../videoEditorUtils";
@@ -13,6 +13,7 @@ type SaveProjectOptions = {
 	remountPreviewAfterSave?: boolean;
 	refreshLibraryAfterSave?: boolean;
 	captureThumbnail?: boolean;
+	explicit?: boolean;
 };
 
 type UseProjectSaveActionsInput = {
@@ -22,6 +23,7 @@ type UseProjectSaveActionsInput = {
 	currentPersistedEditorState: Parameters<typeof createProjectData>[1];
 	projectDisplayName: string;
 	hasUnsavedChanges: boolean;
+	isPristineRecording: () => boolean;
 	projectSaveDialogInputRef: RefObject<HTMLInputElement | null>;
 	projectNameInputRef: RefObject<HTMLInputElement | null>;
 	openProjectSaveDialog: (initialName: string) => Promise<boolean>;
@@ -38,6 +40,7 @@ export function useProjectSaveActions({
 	currentPersistedEditorState,
 	projectDisplayName,
 	hasUnsavedChanges,
+	isPristineRecording,
 	projectSaveDialogInputRef,
 	projectNameInputRef,
 	openProjectSaveDialog,
@@ -88,6 +91,8 @@ export function useProjectSaveActions({
 			if (forceSaveAs) return openProjectSaveDialog(projectDisplayName || "Untitled Project");
 			return queueSave(async () => {
 				if (activeSourceRef.current !== currentSourcePath) return false;
+				if (!options?.explicit && !activePathRef.current && isPristineRecording())
+					return true;
 				if (!currentSourcePath) {
 					if (!options?.silent) toast.error("No video loaded");
 					return false;
@@ -170,6 +175,7 @@ export function useProjectSaveActions({
 			setLastSavedSnapshot,
 			openProjectSaveDialog,
 			projectDisplayName,
+			isPristineRecording,
 			captureProjectThumbnail,
 			refreshProjectLibrary,
 			remountPreview,
@@ -361,7 +367,10 @@ export function useProjectSaveActions({
 			saveProjectWithName,
 		],
 	);
-	const handleSaveProject = useCallback(() => saveProject(false), [saveProject]);
+	const handleSaveProject = useCallback(
+		() => saveProject(false, { explicit: true }),
+		[saveProject],
+	);
 	const handleSaveProjectAs = useCallback(async () => {
 		if (await saveProject(true)) setProjectBrowserOpen(false);
 	}, [saveProject, setProjectBrowserOpen]);

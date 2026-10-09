@@ -1,5 +1,3 @@
-import { createSaveBeforeCloseController } from "./saveBeforeClose";
-import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -28,10 +26,16 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
-import { ensureMediaServer } from "./mediaServer";
+import { isAllowedLocalReadPath } from "./ipc/project/manager";
+import { clearRecordingTrashUndo } from "./ipc/recording/library";
+import { pickWindowToFocus } from "./mainWindowTarget";
+import { setupMcpServer } from "./mcp";
+import { createRemoteControl } from "./mcp/remoteControl";
+import { ensureMediaServer, setMediaPathPrefixAllowance } from "./mediaServer";
 import { hardenWebContentsNavigation, shouldHardenWebContentsType } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
+import { createSaveBeforeCloseController } from "./saveBeforeClose";
 import {
 	checkForAppUpdates,
 	deferUpdateReminder,
@@ -49,6 +53,7 @@ import {
 	skipAvailableUpdateVersion,
 } from "./updater";
 import {
+	beginHudCaptureProtection,
 	createEditorWindow,
 	createHudOverlayWindow,
 	createSourceSelectorWindow,
@@ -56,7 +61,6 @@ import {
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
-	beginHudCaptureProtection,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
 	setHudOverlayRecordingActive,
 	showUpdateToastWindow,
@@ -183,6 +187,8 @@ let isForceClosing = false;
 let isAppQuitting = false;
 let isCreatingMainWindow = false;
 let isCreatingEditorWindow = false;
+const remoteControl = createRemoteControl();
+let mcpServer: ReturnType<typeof setupMcpServer> | null = null;
 const shouldEnforceSingleInstanceLock = !IS_DEV;
 const hasSingleInstanceLock = shouldEnforceSingleInstanceLock
 	? app.requestSingleInstanceLock()
@@ -366,15 +372,16 @@ function focusOrCreateMainWindow() {
 		return;
 	}
 
-	if (!mainWindow || mainWindow.isDestroyed()) {
-		const existingHud = getHudOverlayWindow();
-		if (existingHud && !existingHud.isDestroyed()) {
-			mainWindow = existingHud;
-		} else {
-			createWindow();
-			return;
-		}
+	const target = pickWindowToFocus({
+		current: mainWindow,
+		editor: getExistingEditorWindow(),
+		overlay: getHudOverlayWindow(),
+	});
+	if (!target) {
+		createWindow();
+		return;
 	}
+	mainWindow = target;
 
 	if (mainWindow && !mainWindow.isDestroyed()) {
 		// On Linux/Wayland, focus() often doesn't take effect (compositor ignores it). Apps like Telegram
@@ -885,6 +892,10 @@ app.on("before-quit", () => {
 	void cleanupAllExportStreams();
 });
 
+app.on("will-quit", () => {
+	void mcpServer?.close();
+});
+
 app.on("window-all-closed", () => {
 	if (IS_SMOKE_EXPORT || process.platform !== "darwin") {
 		app.quit();
@@ -1008,6 +1019,7 @@ app.whenReady().then(async () => {
 		updateTrayMenu();
 	}
 	setupApplicationMenu();
+	setMediaPathPrefixAllowance(isAllowedLocalReadPath);
 	await Promise.all([
 		ensureRecordingsDir(),
 		!VITE_DEV_SERVER_URL
@@ -1031,6 +1043,7 @@ app.whenReady().then(async () => {
 		(recording: boolean, sourceName: string) => {
 			selectedSourceName = sourceName;
 			setHudOverlayRecordingActive(recording);
+			remoteControl.onRecordingStateChange(recording);
 			if (shouldUseTray()) {
 				if (!tray) createTray();
 				updateTrayMenu(recording);
@@ -1043,6 +1056,20 @@ app.whenReady().then(async () => {
 			}
 		},
 	);
+
+	try {
+		mcpServer = setupMcpServer({
+			isDev: IS_DEV,
+			remote: remoteControl,
+			openEditorWindow: () => {
+				const existing = getExistingEditorWindow();
+				const opened = createEditorWindowWrapper();
+				return { created: Boolean(opened) && opened !== existing };
+			},
+		});
+	} catch (error) {
+		console.error("[mcp-server] Could not set up the MCP server:", error);
+	}
 
 	if (IS_SMOKE_EXPORT || process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {
 		await logSmokeExportGpuDiagnostics();

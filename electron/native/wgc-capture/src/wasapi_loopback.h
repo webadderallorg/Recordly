@@ -1,5 +1,7 @@
 #pragma once
 
+#include "pause_timeline.h"
+
 #include <windows.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
@@ -18,9 +20,8 @@ public:
         const std::string& outputPath,
         const std::string& deviceId = "",
         const std::string& deviceName = "");
+    void setPauseTimeline(const PauseTimeline* pauses) { pauses_ = pauses; }
     bool start();
-    bool pause();
-    bool resume();
     void stop();
     int64_t firstPacketQpcHns() const { return firstPacketQpcHns_.load(); }
     uint64_t capturedDurationMs() const;
@@ -48,7 +49,7 @@ private:
     std::string outputPath_;
     std::thread thread_;
     std::atomic<bool> capturing_{false};
-    std::atomic<bool> paused_{false};
+    const PauseTimeline* pauses_ = nullptr;
     HANDLE outputFile_ = INVALID_HANDLE_VALUE;
     std::atomic<uint64_t> totalDataBytes_{0};
     std::atomic<uint64_t> framesWritten_{0};
@@ -62,8 +63,6 @@ private:
 
     UINT32 bufferFrameCount_ = 0;
     std::atomic<int64_t> firstPacketQpcHns_{-1};
-    std::atomic<int64_t> pauseStartQpcHns_{0};
-    std::atomic<int64_t> accumulatedPausedQpcHns_{0};
     std::atomic<uint32_t> dataDiscontinuityCount_{0};
     std::atomic<uint32_t> timestampErrorCount_{0};
     std::atomic<uint32_t> gapFillCount_{0};

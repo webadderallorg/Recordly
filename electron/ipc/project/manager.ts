@@ -1,13 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { createProjectFirstFrameThumbnail } from "./firstFrameThumbnail";
-import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
-import type { ProjectPreviewData } from "../../../src/types/projectPreview";
-import { hasFreshProjectThumbnail } from "./thumbnailFreshness";
-import { type Stats, existsSync, constants as fsConstants, realpathSync } from "node:fs";
+import { existsSync, constants as fsConstants, realpathSync, type Stats } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { app } from "electron";
+import type { ProjectPreviewData } from "../../../src/types/projectPreview";
 import { RECORDINGS_DIR, USER_DATA_PATH } from "../../appPaths";
+import { buildMediaUrl, getMediaServerBaseUrl } from "../../mediaServer";
 import { isSupportedLocalMediaPath } from "../../mediaTypes";
 import {
 	LEGACY_PROJECT_FILE_EXTENSIONS,
@@ -34,6 +32,9 @@ import {
 	normalizeVideoSourcePath,
 	parseJsonWithByteOrderMark,
 } from "../utils";
+import { createProjectFirstFrameThumbnail } from "./firstFrameThumbnail";
+import { hasFreshProjectThumbnail } from "./thumbnailFreshness";
+import { inspectVideoFile, type VideoFileProblem } from "./videoFile";
 
 export { normalizePath, normalizeVideoSourcePath };
 
@@ -186,7 +187,7 @@ export async function resolveProjectMediaSources(
 	project: unknown,
 ): Promise<
 	| { success: true; videoPath: string; webcamPath: string | null }
-	| { success: false; message: string }
+	| { success: false; message: string; reason?: VideoFileProblem; videoPath?: string }
 > {
 	if (!project || typeof project !== "object") {
 		return { success: false, message: "Invalid project file format" };
@@ -202,12 +203,13 @@ export async function resolveProjectMediaSources(
 		return { success: false, message: "Project file is missing a valid video path" };
 	}
 
-	try {
-		await fs.access(normalizedVideoPath, fsConstants.F_OK);
-	} catch {
+	const inspection = await inspectVideoFile(normalizedVideoPath);
+	if (!inspection.ok) {
 		return {
 			success: false,
-			message: `Project video file not found: ${normalizedVideoPath}`,
+			message: inspection.message,
+			reason: inspection.problem,
+			videoPath: normalizedVideoPath,
 		};
 	}
 
@@ -536,6 +538,8 @@ export async function loadProjectFromPath(projectPath: string) {
 			success: false,
 			canceled: false,
 			message: mediaSources.message,
+			reason: mediaSources.reason,
+			videoPath: mediaSources.videoPath,
 		};
 	}
 	const projectObj = project as Record<string, unknown>;

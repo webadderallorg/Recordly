@@ -13,6 +13,8 @@ struct WindowListEntry: Codable {
 	let y: Double
 	let width: Double
 	let height: Double
+	let pid: Int32?
+	let onScreen: Bool
 }
 
 func normalize(_ value: String?) -> String? {
@@ -43,12 +45,14 @@ let excludedWindowTitles: Set<String> = [
 // as a standalone CLI process from Electron.
 let _ = CGMainDisplayID()
 
+let includeAllSpaces = CommandLine.arguments.contains("--all-spaces")
+
 let group = DispatchGroup()
 group.enter()
 
 Task {
 	do {
-		let shareableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+		let shareableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: !includeAllSpaces)
 
 		struct RawWindowEntry {
 			let entry: WindowListEntry
@@ -104,7 +108,9 @@ Task {
 				x: Double(frame.origin.x),
 				y: Double(frame.origin.y),
 				width: Double(frame.width),
-				height: Double(frame.height)
+				height: Double(frame.height),
+				pid: window.owningApplication?.processID,
+				onScreen: window.isOnScreen
 			)
 
 			return RawWindowEntry(entry: entry, hasRawTitle: windowTitle != nil, bundleId: bundleId)
@@ -114,16 +120,21 @@ Task {
 		// distinct title (e.g. Arc's sidebar/tab-bar chrome). If ALL windows
 		// from an app lack titles, keep them all.
 		var titledCountByBundle: [String: Int] = [:]
+		var titledOnScreenCountByBundle: [String: Int] = [:]
 		for raw in rawEntries {
 			if let bid = raw.bundleId, raw.hasRawTitle {
 				titledCountByBundle[bid, default: 0] += 1
+				if raw.entry.onScreen {
+					titledOnScreenCountByBundle[bid, default: 0] += 1
+				}
 			}
 		}
 
 		let entries = rawEntries
 			.filter { raw in
 				guard let bid = raw.bundleId else { return true }
-				if let titled = titledCountByBundle[bid], titled > 0 {
+				let counts = raw.entry.onScreen ? titledOnScreenCountByBundle : titledCountByBundle
+				if let titled = counts[bid], titled > 0 {
 					return raw.hasRawTitle
 				}
 				return true

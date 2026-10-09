@@ -1,5 +1,6 @@
-import type { RefObject } from "react";
+import type { MutableRefObject, RefObject } from "react";
 import type { useI18n } from "@/contexts/I18nContext";
+import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { getSmokeExportConfig } from "../smokeExportConfig";
 import type { useAppearanceState } from "../state/useAppearanceState";
@@ -13,10 +14,17 @@ import { useExportRunner } from "./useExportRunner";
 import type { useExportSession } from "./useExportSession";
 import type { useExportSettings } from "./useExportSettings";
 import { useExportStatusViewModel } from "./useExportStatusViewModel";
+import { useRemoteEditorBridge } from "./useRemoteEditorBridge";
+import { useRemoteExportBridge } from "./useRemoteExportBridge";
+import { useRemoteReviewBridge } from "./useRemoteReviewBridge";
 import { useSmokeExportAutomation } from "./useSmokeExportAutomation";
 
 type Input = {
 	t: ReturnType<typeof useI18n>["t"];
+	history: { undo: () => void; redo: () => void; canUndo: boolean; canRedo: boolean };
+	ids: Parameters<typeof useRemoteEditorBridge>[0]["ids"];
+	adoptJoinedMedia: Parameters<typeof useRemoteEditorBridge>[0]["adoptJoinedMedia"];
+	project?: Parameters<typeof useRemoteEditorBridge>[0]["project"];
 	videoPath: string | null;
 	videoSourcePath: string | null;
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
@@ -32,11 +40,14 @@ type Input = {
 	dimensions: ReturnType<typeof useExportDimensions>;
 	audio: ReturnType<typeof useVideoEditorAudio>;
 	smokeConfig: ReturnType<typeof getSmokeExportConfig>;
+	aspectRatio: AspectRatio;
 	effectiveSpeedRegions: SpeedRegion[];
 	effectiveZoomRegions: ZoomRegion[];
 	effectiveCursorTelemetry: CursorTelemetryPoint[];
 	effectiveShowCursor: boolean;
 	cursorTelemetrySourcePath: string | null;
+	pendingFreshRecordingAutoZoomPathRef?: MutableRefObject<string | null>;
+	agentEditsSettled?: boolean;
 	hasCaptionsForSidecar: boolean;
 	captionSidecarPayload?: Parameters<typeof useExportRunner>[0]["captionSidecarPayload"];
 	experimentalNvidiaCudaExport: boolean;
@@ -85,6 +96,9 @@ export function useEditorExportController(input: Input) {
 		videoSourcePath: input.videoSourcePath,
 		handleExport: runner.handleExport,
 	});
+	const remoteReady = useRemoteExportBridge({ ...input, handleExport: runner.handleExport });
+	useRemoteReviewBridge({ ...input, ready: remoteReady });
+	useRemoteEditorBridge({ ...input, ready: remoteReady });
 	const status = useExportStatusViewModel({
 		t: input.t,
 		session: input.session,

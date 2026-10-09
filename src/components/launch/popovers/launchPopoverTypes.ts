@@ -7,6 +7,8 @@ export interface DesktopSource {
 	sourceType?: "screen" | "window";
 	appName?: string;
 	windowTitle?: string;
+	pid?: number;
+	bundleId?: string;
 }
 
 /**
@@ -44,6 +46,8 @@ export function mapRawSource(s: DesktopSource): DesktopSource {
 		sourceType: type,
 		appName,
 		windowTitle: s.windowTitle ?? displayName,
+		pid: s.pid,
+		bundleId: s.bundleId,
 	};
 }
 

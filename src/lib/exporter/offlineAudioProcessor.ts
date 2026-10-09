@@ -9,9 +9,16 @@ import {
 	getClipSourceEndMs,
 	getClipSourceStartMs,
 	getTimelineDurationMs,
+	isBlankClip,
 } from "@/components/video-editor/types";
 import { buildResolvedAudioPlan } from "@/lib/exporter/audioRoutingEngine";
 import { estimateCompanionAudioStartDelaySeconds } from "@/lib/mediaTiming";
+import {
+	type AudioEnvelope,
+	envelopeBreakpointsMs,
+	envelopeGainAt,
+	hasEnvelope,
+} from "./audioEnvelope";
 import { AudioMediaProcessor } from "./audioMediaProcessor";
 import {
 	AUDIO_BITRATE,
@@ -155,12 +162,14 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 
 		// Build timeline slices (non-trimmed segments with speed info)
 		const slices = clipRegions
-			? clipRegions.map((clip) => ({
-					sourceStartMs: getClipSourceStartMs(clip),
-					sourceEndMs: getClipSourceEndMs(clip),
-					speed: clip.speed,
-					outputStartMs: clip.startMs,
-				}))
+			? clipRegions
+					.filter((clip) => !isBlankClip(clip))
+					.map((clip) => ({
+						sourceStartMs: getClipSourceStartMs(clip),
+						sourceEndMs: getClipSourceEndMs(clip),
+						speed: clip.speed,
+						outputStartMs: clip.startMs,
+					}))
 			: this.buildTimelineSlices(sourceDurationMs, trimRegions, speedRegions);
 
 		let outputDurationMs = 0;
@@ -377,7 +386,7 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 	protected scheduleRegionForChunk(
 		ctx: OfflineAudioContext,
 		buffer: AudioBuffer,
-		region: AudioRegion,
+		region: AudioRegion & AudioEnvelope,
 		slices: TimelineSlice[],
 		chunkOutputStartSec: number,
 		chunkDurationSec: number,
@@ -411,8 +420,33 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 
 		const gainNode = ctx.createGain();
 		const normalizeGain = region.normalize ? SOURCE_AUDIO_NORMALIZE_GAIN : 1;
-		gainNode.gain.value = Math.max(0, Math.min(1, region.volume * normalizeGain));
+		const baseGain = Math.max(0, Math.min(1, region.volume * normalizeGain));
+		gainNode.gain.value = baseGain;
 		gainNode.connect(ctx.destination);
+
+		if (hasEnvelope(region)) {
+			const toOutputMs = (ms: number) =>
+				usesClipTimeline ? ms : this.sourceTimeToOutputTime(ms, slices);
+			const lengthMs = outputEndMs - outputStartMs;
+			const ranges = (region.duck?.ranges ?? []).map((range) => ({
+				startMs: toOutputMs(range.startMs) - outputStartMs,
+				endMs: toOutputMs(range.endMs) - outputStartMs,
+			}));
+			const relativeMsAt = (contextSec: number) =>
+				(contextSec - localStartSec + bufferOffsetSec) * 1000;
+			const gainAt = (relativeMs: number) =>
+				baseGain * envelopeGainAt(region, lengthMs, ranges, relativeMs);
+			const firstMs = relativeMsAt(localStartSec);
+			const lastMs = relativeMsAt(localStartSec + duration);
+			gainNode.gain.setValueAtTime(gainAt(firstMs), localStartSec);
+			for (const pointMs of envelopeBreakpointsMs(region, lengthMs, ranges)) {
+				if (pointMs <= firstMs || pointMs > lastMs) continue;
+				gainNode.gain.linearRampToValueAtTime(
+					gainAt(pointMs),
+					localStartSec + (pointMs - firstMs) / 1000,
+				);
+			}
+		}
 
 		const source = ctx.createBufferSource();
 		source.buffer = buffer;

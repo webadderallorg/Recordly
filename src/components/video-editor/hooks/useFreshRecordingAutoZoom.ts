@@ -12,6 +12,7 @@ import type { VideoPlaybackRef } from "../VideoPlayback";
 
 interface UseFreshRecordingAutoZoomParams {
 	appPlatform: string;
+	agentEditsSettled: boolean;
 	videoPath: string | null;
 	loading: boolean;
 	isPreviewReady: boolean;
@@ -30,6 +31,7 @@ interface UseFreshRecordingAutoZoomParams {
 
 export function useFreshRecordingAutoZoom({
 	appPlatform,
+	agentEditsSettled,
 	videoPath,
 	loading,
 	isPreviewReady,
@@ -50,7 +52,7 @@ export function useFreshRecordingAutoZoom({
 	}, [setAutoSuggestZoomsTrigger]);
 
 	useEffect(() => {
-		if (!appPlatform) return;
+		if (!appPlatform || !agentEditsSettled) return;
 
 		if (
 			videoPath &&
@@ -113,6 +115,7 @@ export function useFreshRecordingAutoZoom({
 	}, [
 		videoPath,
 		appPlatform,
+		agentEditsSettled,
 		loading,
 		isPreviewReady,
 		duration,

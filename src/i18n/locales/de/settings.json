@@ -52,6 +52,8 @@
 		"connectZoomsDescription": "Füge aufeinanderfolgende Zoom-Bereiche zu einer kontinuierlichen Kamerabewegung zusammen.",
 		"autoApplyFreshRecordingZooms": "Neue Aufzeichnungszooms automatisch anwenden",
 		"autoApplyFreshRecordingZoomsDescription": "Schlägt beim Öffnen einer neuen Aufzeichnung automatisch Zooms zur Randzentrierung vor.",
+		"autoApplyAgentEdits": "Agent-Aufnahmen straffen",
+		"autoApplyAgentEditsDescription": "Schneidet die Denkpausen der KI heraus und zoomt dorthin, wo sie handelt. Gilt für neue Aufnahmen eines KI-Agenten.",
 		"zoomGeneralTitle": "Allgemein",
 		"zoomGeneralDescription": "Globale Bewegungseinstellungen für jeden Zoomübergang.",
 		"zoomInTitle": "Vergrößern",
@@ -258,5 +260,24 @@
 		"title": "Updates",
 		"experimental": "Experimentelle Updates",
 		"saveFailed": "Update-Kanal konnte nicht geändert werden."
+	},
+	"mcp": {
+		"title": "KI-Agentensteuerung (MCP)",
+		"enable": "KI-Agenten die Steuerung von Recordly erlauben",
+		"enableDescription": "Lokale KI-Tools wie Claude Code können über eine private Verbindung auf diesem Computer Aufnahmen starten, beenden und exportieren.",
+		"runningAt": "Läuft unter {{url}}",
+		"copySetup": "Einrichtungsbefehl kopieren",
+		"setupCopied": "Einrichtungsbefehl kopiert",
+		"copyFailed": "Einrichtungsbefehl konnte nicht kopiert werden.",
+		"regenerateToken": "Token neu erstellen",
+		"tokenRegenerated": "Neues Token erstellt. Kopieren Sie den Einrichtungsbefehl erneut und fügen Sie Recordly in Ihren KI-Tools neu hinzu.",
+		"regenerateFailed": "Token konnte nicht neu erstellt werden.",
+		"tokenHint": "Halten Sie das Token geheim – wer es besitzt, kann Aufnahmen steuern.",
+		"saveFailed": "KI-Agentensteuerung konnte nicht geändert werden.",
+		"errorPortInUse": "Port {{port}} wird bereits verwendet. Schließen Sie die andere App, die ihn nutzt, und schalten Sie diese Option dann aus und wieder ein.",
+		"errorPortUnavailable": "Port {{port}} kann auf diesem Computer nicht verwendet werden – das System hat ihn reserviert. Geben Sie den Port frei oder starten Sie den Computer neu und schalten Sie diese Option dann aus und wieder ein.",
+		"errorStartFailed": "Die Verbindung für KI-Agenten konnte nicht gestartet werden. Schalten Sie die Option aus und wieder ein.",
+		"control": "Agenten Maus und Tastatur verwenden lassen",
+		"controlDescription": "Erlaubt dem Agenten, Webseiten zu öffnen, den Zeiger zu bewegen sowie im aufgenommenen Fenster zu klicken und zu tippen. Bewegen Sie jederzeit die Maus oder drücken Sie Esc, um die Steuerung zurückzuübernehmen."
 	}
 }

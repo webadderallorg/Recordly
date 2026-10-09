@@ -59,6 +59,7 @@ function belongsToRecording(name: string, video: string) {
 	return (
 		name === video ||
 		name === `${video}.cursor.json` ||
+		name === `${video}.agent.json` ||
 		(name.startsWith(`${stem}.`) &&
 			/\.(?:system|mic|microphone|audio|webcam)\.(?:wav|webm|mp4|m4a)(?:\.json)?$/i.test(
 				name,

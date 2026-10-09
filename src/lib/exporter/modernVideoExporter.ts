@@ -2342,6 +2342,7 @@ export class ModernVideoExporter {
 				timeMs,
 				connectZooms: this.config.connectZooms,
 				zoomInDurationMs: this.config.zoomInDurationMs,
+				zoomInOverlapMs: this.config.zoomInOverlapMs,
 				zoomOutDurationMs: this.config.zoomOutDurationMs,
 				zoomClassicMode: this.config.zoomClassicMode,
 				cursorTelemetry: cursorTelemetry ?? [],

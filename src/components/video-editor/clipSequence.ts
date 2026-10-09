@@ -113,3 +113,60 @@ export function rippleRegions<T extends { startMs: number; endMs: number }>(
 		return [{ ...region, startMs, endMs }];
 	});
 }
+
+/** Insert new time at a clip boundary; everything from there on moves later. */
+export function insertClipRegion(
+	clips: ClipRegion[],
+	atMs: number,
+	inserted: ClipRegion,
+): ClipRegion[] {
+	const durationMs = inserted.endMs - inserted.startMs;
+	const shifted = sortClipRegions(clips).map((clip) =>
+		clip.startMs >= atMs
+			? {
+					...clip,
+					sourceStartMs: getClipSourceStartMs(clip),
+					startMs: clip.startMs + durationMs,
+					endMs: clip.endMs + durationMs,
+				}
+			: clip,
+	);
+	return packClipSequence(
+		sortClipRegions([...shifted, { ...inserted, startMs: atMs, endMs: atMs + durationMs }]),
+	);
+}
+
+/** An insert is a pure translation: effects keep the footage they described. */
+export function shiftRegionsForInsert<T extends { startMs: number; endMs: number }>(
+	regions: T[],
+	atMs: number,
+	ms: number,
+): T[] {
+	return regions.map((region) => ({
+		...region,
+		startMs: region.startMs >= atMs ? region.startMs + ms : region.startMs,
+		endMs: region.endMs > atMs ? region.endMs + ms : region.endMs,
+	}));
+}
+
+/** Imported audio keeps its own duration, so only its anchor moves. */
+export function shiftAnchorsForInsert<T extends { startMs: number; endMs: number }>(
+	regions: T[],
+	atMs: number,
+	ms: number,
+): T[] {
+	return regions.map((region) =>
+		region.startMs >= atMs
+			? { ...region, startMs: region.startMs + ms, endMs: region.endMs + ms }
+			: region,
+	);
+}
+
+/** Word timings are absolute, so they move with the cue that holds them. */
+export function shiftCaptionCuesForInsert<
+	T extends { startMs: number; endMs: number; words?: { startMs: number; endMs: number }[] },
+>(cues: T[], atMs: number, ms: number): T[] {
+	return shiftRegionsForInsert(cues, atMs, ms).map((cue) =>
+		cue.words ? { ...cue, words: shiftRegionsForInsert(cue.words, atMs, ms) } : cue,
+	);
+}

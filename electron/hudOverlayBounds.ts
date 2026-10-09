@@ -65,3 +65,52 @@ export function resizeHudOverlayFallbackBounds(
 		y: clamp(currentBounds.y + currentBounds.height - nextBounds.height, workArea.y, maxY),
 	};
 }
+
+export const HUD_OVERLAY_CORNERS = [
+	"top-left",
+	"top-right",
+	"bottom-left",
+	"bottom-right",
+	"bottom-center",
+] as const;
+export type HudOverlayCorner = (typeof HUD_OVERLAY_CORNERS)[number];
+
+// "auto" lets the agent latch decide, "on" is always click-through, and "off" turns the
+// agent latch off. "off" never makes the window swallow clicks: the pill is still only
+// clickable where the renderer says it is.
+export type HudClickThrough = "auto" | "on" | "off";
+
+// The pill is drawn at the bottom-centre of its window, so a corner means parking the
+// compact window in that corner rather than moving the pill inside a full-screen window.
+export function getHudOverlayCornerBounds(
+	workArea: HudOverlayWorkArea,
+	corner: HudOverlayCorner,
+	fallbackExpanded = false,
+): HudOverlayWorkArea {
+	const size = getHudOverlayWindowBounds(workArea, false, fallbackExpanded);
+	const left = workArea.x;
+	const right = workArea.x + workArea.width - size.width;
+	const top = workArea.y;
+	const bottom = workArea.y + workArea.height - size.height;
+	const x = corner.endsWith("left")
+		? left
+		: corner.endsWith("right")
+			? right
+			: Math.round(workArea.x + (workArea.width - size.width) / 2);
+	const y = corner.startsWith("top") ? top : bottom;
+	return { ...size, x, y };
+}
+
+export function resolveHudOverlayIgnoreMouse(
+	requested: boolean,
+	state: {
+		sourceSelectionActive: boolean;
+		recordingActive: boolean;
+		agentActive: boolean;
+		clickThrough?: HudClickThrough;
+	},
+): boolean {
+	if (state.clickThrough === "on") return true;
+	if (state.agentActive && state.clickThrough !== "off") return true;
+	return state.sourceSelectionActive && !state.recordingActive ? true : requested;
+}

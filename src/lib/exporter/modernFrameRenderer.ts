@@ -11,6 +11,11 @@ import {
 	getCaptionTextMaxWidth,
 	getCaptionWordVisualState,
 } from "@/components/video-editor/captionStyle";
+import {
+	dipAlphaAt,
+	paintDip,
+	type TimelineDip,
+} from "@/components/video-editor/export/editorOps/transitions";
 import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
@@ -53,7 +58,10 @@ import {
 } from "@/components/video-editor/videoPlayback/motionSmoothing";
 import { getSceneEffectMetrics } from "@/components/video-editor/videoPlayback/sceneEffects";
 import { resolveSceneZoomTarget } from "@/components/video-editor/videoPlayback/sceneMotion";
-import { getWebcamMediaTargetTimeSeconds, isWebcamVisibleAtSourceTime } from "@/components/video-editor/videoPlayback/webcamSync";
+import {
+	getWebcamMediaTargetTimeSeconds,
+	isWebcamVisibleAtSourceTime,
+} from "@/components/video-editor/videoPlayback/webcamSync";
 import {
 	applyZoomTransform,
 	computeZoomTransform,
@@ -82,6 +90,9 @@ import {
 import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import {
 	type AnnotationRenderAssets,
+	getAnnotationFrameRect,
+	getAnnotationScaleFactor,
+	placeAnnotation,
 	preloadAnnotationAssets,
 	renderAnnotations,
 	renderAnnotationToCanvas,
@@ -98,6 +109,7 @@ import type { ExportRenderBackend } from "./types";
 
 interface FrameRenderConfig {
 	timelineEffects?: boolean;
+	dips?: TimelineDip[];
 	width: number;
 	height: number;
 	preferredRenderBackend?: ExportRenderBackend;
@@ -369,6 +381,7 @@ export class FrameRenderer {
 	private videoContainer: Container | null = null;
 	private cursorContainer: Container | null = null;
 	private overlayContainer: Container | null = null;
+	private dipGraphics: Graphics | null = null;
 	private annotationContainer: Container | null = null;
 	private captionContainer: Container | null = null;
 	private webcamRootContainer: Container | null = null;
@@ -517,6 +530,9 @@ export class FrameRenderer {
 		this.app.stage.addChild(this.backgroundContainer);
 		this.app.stage.addChild(this.cameraContainer);
 		this.app.stage.addChild(this.overlayContainer);
+		this.dipGraphics = new Graphics();
+		this.dipGraphics.visible = false;
+		this.app.stage.addChild(this.dipGraphics);
 
 		this.videoShadowLayers = this.createShadowLayers(
 			this.cameraContainer,
@@ -587,7 +603,7 @@ export class FrameRenderer {
 		await this.setupBackground();
 		await this.setupWebcamSource();
 
-		this.annotationScaleFactor = this.calculateAnnotationScaleFactor();
+		this.annotationScaleFactor = getAnnotationScaleFactor(this.config);
 		this.annotationAssets = await preloadAnnotationAssets(this.config.annotationRegions ?? []);
 		await this.setupAnnotationLayer();
 		this.setupCaptionResources();
@@ -1413,16 +1429,10 @@ export class FrameRenderer {
 		void previousSource?.destroy();
 	}
 
-	private calculateAnnotationScaleFactor(): number {
-		const previewWidth = this.config.previewWidth || 1920;
-		const previewHeight = this.config.previewHeight || 1080;
-		return (this.config.width / previewWidth + this.config.height / previewHeight) / 2;
-	}
-
 	private hasActiveBlurAnnotations(timeMs: number): boolean {
 		return (this.config.annotationRegions ?? []).some(
 			(annotation) =>
-				annotation.type === "blur" &&
+				(annotation.type === "blur" || annotation.type === "highlight") &&
 				timeMs >= annotation.startMs &&
 				timeMs <= annotation.endMs,
 		);
@@ -1477,7 +1487,7 @@ export class FrameRenderer {
 		context.restore();
 	}
 
-	private async composeBlurAnnotationFrame(timeMs: number): Promise<void> {
+	private async composeBlurAnnotationFrame(timeMs: number, dipAlpha = 0): Promise<void> {
 		if (!this.app) {
 			this.outputCanvasOverride = null;
 			return;
@@ -1506,10 +1516,11 @@ export class FrameRenderer {
 				x: this.animationState.x,
 				y: this.animationState.y,
 			},
-			this.layoutCache?.maskRect,
+			getAnnotationFrameRect(this.config),
 		);
 
 		this.drawCaptionOverlay(context);
+		paintDip(context, this.config.width, this.config.height, dipAlpha);
 		this.outputCanvasOverride = canvas;
 	}
 
@@ -1529,17 +1540,15 @@ export class FrameRenderer {
 			(first, second) => first.zIndex - second.zIndex,
 		);
 
+		const frameRect = getAnnotationFrameRect(this.config);
+
 		for (const annotation of annotations) {
-			const annotationRect = this.layoutCache?.maskRect ?? {
-				x: 0,
-				y: 0,
-				width: this.config.width,
-				height: this.config.height,
-			};
-			const x = annotationRect.x + (annotation.position.x / 100) * annotationRect.width;
-			const y = annotationRect.y + (annotation.position.y / 100) * annotationRect.height;
-			const width = (annotation.size.width / 100) * annotationRect.width;
-			const height = (annotation.size.height / 100) * annotationRect.height;
+			const { x, y, width, height, scaleFactor } = placeAnnotation(
+				annotation,
+				this.config,
+				frameRect,
+				this.annotationScaleFactor,
+			);
 
 			if (width <= 0 || height <= 0) {
 				continue;
@@ -1549,7 +1558,7 @@ export class FrameRenderer {
 				annotation,
 				width,
 				height,
-				this.annotationScaleFactor,
+				scaleFactor,
 				this.annotationAssets ?? undefined,
 			);
 			if (!canvas) {
@@ -1560,7 +1569,9 @@ export class FrameRenderer {
 			const sprite = new Sprite(texture);
 			sprite.position.set(x, y);
 			sprite.visible = false;
-			this.annotationContainer.addChild(sprite);
+			const parent =
+				annotation.space === "screen" ? this.overlayContainer : this.annotationContainer;
+			parent?.addChild(sprite);
 			this.annotationSprites.push({ annotation, sprite, texture });
 		}
 	}
@@ -2725,7 +2736,12 @@ export class FrameRenderer {
 
 	private updateWebcamOverlay(referenceTimeSeconds = this.currentVideoTime): void {
 		const webcam = this.config.webcam;
-		if (!webcam?.enabled || !isWebcamVisibleAtSourceTime(webcam, referenceTimeSeconds) || !this.webcamRootContainer || !this.webcamMaskGraphics) {
+		if (
+			!webcam?.enabled ||
+			!isWebcamVisibleAtSourceTime(webcam, referenceTimeSeconds) ||
+			!this.webcamRootContainer ||
+			!this.webcamMaskGraphics
+		) {
 			if (this.webcamRootContainer) {
 				this.webcamRootContainer.visible = false;
 			}
@@ -2864,6 +2880,7 @@ export class FrameRenderer {
 			}
 			if (this.webcamRootContainer) this.webcamRootContainer.visible = false;
 			if (this.captionContainer) this.captionContainer.visible = false;
+			this.setStageDipAlpha(dipAlphaAt(this.config.dips, backgroundTimelineTimestamp / 1000));
 			// Gap frames must bypass canvas annotation compositing as well as Pixi layers.
 			this.outputCanvasOverride = null;
 			this.app.render();
@@ -2957,8 +2974,24 @@ export class FrameRenderer {
 		await this.renderOutput(timeMs);
 	}
 
+	private setStageDipAlpha(alpha: number): void {
+		const graphics = this.dipGraphics;
+		if (!graphics) return;
+		if (!(alpha > 0)) {
+			graphics.visible = false;
+			return;
+		}
+		graphics.clear();
+		graphics.rect(0, 0, this.config.width, this.config.height);
+		graphics.fill({ color: 0x000000 });
+		graphics.alpha = Math.min(1, alpha);
+		graphics.visible = true;
+	}
+
 	private async renderOutput(timeMs: number): Promise<void> {
+		const dipAlpha = dipAlphaAt(this.config.dips, timeMs);
 		if (this.hasActiveBlurAnnotations(timeMs)) {
+			this.setStageDipAlpha(0);
 			const annotationContainerVisible = this.annotationContainer?.visible ?? true;
 			const captionContainerVisible = this.captionContainer?.visible ?? true;
 
@@ -2978,10 +3011,11 @@ export class FrameRenderer {
 				this.captionContainer.visible = captionContainerVisible;
 			}
 
-			await this.composeBlurAnnotationFrame(timeMs);
+			await this.composeBlurAnnotationFrame(timeMs, dipAlpha);
 			return;
 		}
 
+		this.setStageDipAlpha(dipAlpha);
 		this.outputCanvasOverride = null;
 		this.app!.render();
 	}
@@ -3099,6 +3133,7 @@ export class FrameRenderer {
 			cursorTimeMs,
 			connectZooms: this.config.connectZooms,
 			zoomInDurationMs: this.config.zoomInDurationMs,
+			zoomInOverlapMs: this.config.zoomInOverlapMs,
 			zoomOutDurationMs: this.config.zoomOutDurationMs,
 			zoomClassicMode: this.config.zoomClassicMode,
 			cursorTelemetry: this.config.cursorTelemetry,
@@ -3260,6 +3295,7 @@ export class FrameRenderer {
 		this.videoContainer = null;
 		this.cursorContainer = null;
 		this.overlayContainer = null;
+		this.dipGraphics = null;
 		this.annotationContainer = null;
 		this.captionContainer = null;
 		this.webcamRootContainer = null;

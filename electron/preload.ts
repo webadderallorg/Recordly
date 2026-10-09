@@ -625,6 +625,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getCursorTelemetry: (videoPath?: string) => {
 		return ipcRenderer.invoke("get-cursor-telemetry", videoPath);
 	},
+	getAgentActivity: (videoPath?: string) => {
+		return ipcRenderer.invoke("get-agent-activity", videoPath);
+	},
 	setCursorTelemetry: (videoPath: string | undefined, samples: CursorTelemetryPoint[]) => {
 		return ipcRenderer.invoke("set-cursor-telemetry", videoPath, samples);
 	},
@@ -1114,4 +1117,48 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("countdown-tick", listener);
 		return () => ipcRenderer.removeListener("countdown-tick", listener);
 	},
+	getMcpServerState: () => ipcRenderer.invoke("mcp-server:get-state"),
+	setMcpServerEnabled: (enabled: boolean) =>
+		ipcRenderer.invoke("mcp-server:set-enabled", enabled),
+	regenerateMcpServerToken: () => ipcRenderer.invoke("mcp-server:regenerate-token"),
+	copyMcpSetupCommand: () => ipcRenderer.invoke("mcp-server:copy-setup-command"),
+	setMcpControlEnabled: (enabled: boolean) =>
+		ipcRenderer.invoke("mcp-server:set-control-enabled", enabled),
+	onRemoteRecordingCommand: (callback: (command: RemoteRecordingCommand) => void) => {
+		const listener = (_event: Electron.IpcRendererEvent, command: RemoteRecordingCommand) =>
+			callback(command);
+		ipcRenderer.on("remote-recording-command", listener);
+		return () => ipcRenderer.removeListener("remote-recording-command", listener);
+	},
+	sendRemoteRecordingResult: (result: RemoteCommandResult) =>
+		ipcRenderer.send("remote-recording-result", result),
+	notifyRemoteRecordingReady: () => ipcRenderer.send("remote-recording-ready"),
+	onRemoteExportRequest: (callback: (request: RemoteExportRequest) => void) => {
+		const listener = (_event: Electron.IpcRendererEvent, request: RemoteExportRequest) =>
+			callback(request);
+		ipcRenderer.on("remote-export-request", listener);
+		return () => ipcRenderer.removeListener("remote-export-request", listener);
+	},
+	sendRemoteExportResult: (result: RemoteExportResult) =>
+		ipcRenderer.send("remote-export-result", result),
+	sendRemoteExportProgress: (progress: RemoteExportProgress) =>
+		ipcRenderer.send("remote-export-progress", progress),
+	sendRemoteEditorReady: (state: RemoteEditorReadyState) =>
+		ipcRenderer.send("remote-editor-ready", state),
+	onRemoteEditorRequest: (callback: (request: RemoteEditorRequest) => void) => {
+		const listener = (_event: Electron.IpcRendererEvent, request: RemoteEditorRequest) =>
+			callback(request);
+		ipcRenderer.on("remote-editor-request", listener);
+		return () => ipcRenderer.removeListener("remote-editor-request", listener);
+	},
+	sendRemoteEditorResult: (result: RemoteEditorResult) =>
+		ipcRenderer.send("remote-editor-result", result),
+	onRemoteReviewRequest: (callback: (request: RemoteReviewRequest) => void) => {
+		const listener = (_event: Electron.IpcRendererEvent, request: RemoteReviewRequest) =>
+			callback(request);
+		ipcRenderer.on("remote-review-request", listener);
+		return () => ipcRenderer.removeListener("remote-review-request", listener);
+	},
+	sendRemoteReviewResult: (result: RemoteReviewResult) =>
+		ipcRenderer.send("remote-review-result", result),
 });

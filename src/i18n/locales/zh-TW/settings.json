@@ -52,6 +52,8 @@
 		"connectZoomsDescription": "將連續的縮放區域平滑串接成一段連續的鏡頭移動。",
 		"autoApplyFreshRecordingZooms": "自動套用新錄影的縮放",
 		"autoApplyFreshRecordingZoomsDescription": "開啟新錄影時，自動建議游標跟隨縮放。",
+		"autoApplyAgentEdits": "精簡代理錄影",
+		"autoApplyAgentEditsDescription": "剪掉 AI 思考時的停頓，並在其操作處放大。適用於 AI 代理錄製的新錄影。",
 		"zoomGeneralTitle": "一般",
 		"zoomGeneralDescription": "套用於每次縮放轉場的全域動作設定。",
 		"zoomInTitle": "拉近",
@@ -258,5 +260,24 @@
 		"title": "更新",
 		"experimental": "實驗性更新",
 		"saveFailed": "無法變更更新頻道。"
+	},
+	"mcp": {
+		"title": "AI 代理控制 (MCP)",
+		"enable": "允許 AI 代理控制 Recordly",
+		"enableDescription": "允許 Claude Code 等本機 AI 工具透過這台電腦上的私人連線開始、停止及匯出錄製內容。",
+		"runningAt": "正在執行：{{url}}",
+		"copySetup": "複製設定指令",
+		"setupCopied": "已複製設定指令",
+		"copyFailed": "無法複製設定指令。",
+		"regenerateToken": "重新產生權杖",
+		"tokenRegenerated": "已建立新權杖。請重新複製設定指令，並在 AI 工具中重新加入 Recordly。",
+		"regenerateFailed": "無法重新產生權杖。",
+		"tokenHint": "請妥善保管權杖——任何擁有它的人都能控制錄製。",
+		"saveFailed": "無法變更 AI 代理控制。",
+		"errorPortInUse": "連接埠 {{port}} 已被使用。請關閉正在使用該連接埠的其他應用程式，然後關閉並重新開啟此選項。",
+		"errorPortUnavailable": "此電腦無法使用連接埠 {{port}}——系統已保留該連接埠。請釋放該連接埠或重新啟動電腦，然後關閉並重新開啟此選項。",
+		"errorStartFailed": "無法啟動 AI 代理連線。請關閉後重新開啟。",
+		"control": "允許代理使用滑鼠和鍵盤",
+		"controlDescription": "允許代理開啟網頁、移動指標，並在其錄製的視窗中點按和輸入。隨時移動滑鼠或按下 Esc 鍵即可收回控制權。"
 	}
 }

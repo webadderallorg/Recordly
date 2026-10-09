@@ -21,6 +21,7 @@ type UseProjectOpenActionsInput = {
 	appearance: ReturnType<typeof useAppearanceState>;
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
 	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
+	pendingFreshRecordingAgentEditsPathRef: MutableRefObject<string | null>;
 	hasUnsavedChanges: boolean;
 	setIsPlaying: Set<boolean>;
 	setCurrentTime: Set<number>;
@@ -40,6 +41,7 @@ export function useProjectOpenActions({
 	appearance,
 	videoPlaybackRef,
 	pendingFreshRecordingAutoZoomPathRef,
+	pendingFreshRecordingAgentEditsPathRef,
 	hasUnsavedChanges,
 	setIsPlaying,
 	setCurrentTime,
@@ -138,6 +140,7 @@ export function useProjectOpenActions({
 			resetSourceScopedEditorState();
 			pendingFreshRecordingAutoZoomPathRef.current =
 				appearance.autoApplyFreshRecordingAutoZooms ? sourceVideoUrl : null;
+			pendingFreshRecordingAgentEditsPathRef.current = sourceVideoUrl;
 			appearance.setWebcam((previous) => ({
 				...previous,
 				visibleRanges: undefined,
@@ -165,6 +168,7 @@ export function useProjectOpenActions({
 		setDuration,
 		resetSourceScopedEditorState,
 		pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingAgentEditsPathRef,
 		applySessionPresentation,
 		refreshProjectLibrary,
 	]);

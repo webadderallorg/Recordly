@@ -1,10 +1,13 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs/promises";
 import { BrowserWindow } from "electron";
+import { persistAgentActivity, snapshotAgentActivity } from "../../mcp/agentActivity";
 import {
+	getCursorCaptureElapsedMs,
 	persistPendingCursorTelemetry,
 	snapshotCursorTelemetryForPersistence,
 } from "../cursor/telemetry";
+import { extractScreenChangeTimesMs } from "../ffmpeg/changeTimes";
 import {
 	lastNativeCaptureDiagnostics,
 	nativeCaptureMicrophonePath,
@@ -268,6 +271,14 @@ export async function finalizeStoredVideo(videoPath: string) {
 		await persistPendingCursorTelemetry(videoPath);
 	} catch (error) {
 		console.warn("[mac-stop] Failed to persist cursor telemetry:", error);
+	}
+	snapshotAgentActivity(getCursorCaptureElapsedMs());
+	try {
+		await persistAgentActivity(videoPath, () =>
+			extractScreenChangeTimesMs(videoPath, (validation.durationSeconds ?? 0) * 1000),
+		);
+	} catch (error) {
+		console.warn("[mac-stop] Failed to persist agent activity:", error);
 	}
 
 	if (
