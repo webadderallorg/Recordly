@@ -351,7 +351,7 @@ export function useAudioPreviewSync({
 			if (isPlaying && isInRegion) {
 				enablePitchPreservingPlayback(audio);
 				const audioOffset = (currentTimeMs - startMs) / 1000;
-				if (Math.abs(audio.currentTime - audioOffset) > 0.2) {
+				if (!audio.seeking && Math.abs(audio.currentTime - audioOffset) > 0.2) {
 					audio.currentTime = audioOffset;
 				}
 				const syncedPlaybackRate = getMediaSyncPlaybackRate({
@@ -404,7 +404,7 @@ export function useAudioPreviewSync({
 				Math.min(
 					1,
 					getSourceTrackPreviewGain(sourceAudioPath) *
-						(isCurrentClipMuted ? 0 : previewVolume),
+					(isCurrentClipMuted ? 0 : previewVolume),
 				),
 			);
 
@@ -420,9 +420,9 @@ export function useAudioPreviewSync({
 			const startDelaySeconds = isMicCompanionTrack
 				? 0
 				: Number.isFinite(duration) &&
-						(rawStartDelaySeconds >= Math.max(0, duration - 0.01) ||
-							rawStartDelaySeconds >
-								Math.max(maxPreviewStartDelaySeconds, duration * 0.9))
+					(rawStartDelaySeconds >= Math.max(0, duration - 0.01) ||
+						rawStartDelaySeconds >
+						Math.max(maxPreviewStartDelaySeconds, duration * 0.9))
 					? 0
 					: rawStartDelaySeconds;
 			const beforeAudioStart = currentTime + 0.001 < startDelaySeconds;
@@ -432,9 +432,10 @@ export function useAudioPreviewSync({
 			);
 
 			const shouldSeek =
-				timelineJumped ||
-				(!isPlaying && Math.abs(audio.currentTime - targetTime) > driftThreshold) ||
-				(isPlaying && Math.abs(audio.currentTime - targetTime) > 0.9);
+				!audio.seeking && (
+					timelineJumped ||
+					(!isPlaying && Math.abs(audio.currentTime - targetTime) > driftThreshold) ||
+					(isPlaying && Math.abs(audio.currentTime - targetTime) > 0.9));
 			if (shouldSeek) {
 				try {
 					audio.currentTime = targetTime;
