@@ -12,6 +12,8 @@ export interface ZoomDwellCandidate {
 }
 
 export interface CursorInteractionCandidate extends ZoomDwellCandidate {
+	startMs?: number;
+	endMs?: number;
 	kind:
 		| "dwell"
 		| "click-like"
@@ -19,7 +21,8 @@ export interface CursorInteractionCandidate extends ZoomDwellCandidate {
 		| "text-focus-like"
 		| "dropdown-open"
 		| "text-selection"
-		| "text-field-click";
+		| "text-field-click"
+		| "typing-burst";
 	source: "explicit" | "heuristic";
 }
 
@@ -71,6 +74,10 @@ export function shouldAutoApplyFreshRecordingZoomsForSource(
 export const CLICK_CLUSTER_MERGE_GAP_MS = 2500;
 /** Padding added before the first click and after the last click in a cluster. */
 export const CLICK_CLUSTER_PAD_MS = 500;
+export const TYPING_BURST_MAX_IDLE_MS = 2000;
+export const MIN_TYPING_BURST_KEY_COUNT = 3;
+export const MAX_CLICK_TO_TYPING_DELAY_MS = 2000;
+export const MAX_CLICK_TO_TYPING_DISTANCE = 0.08;
 const EXPLICIT_CLICK_TYPES = new Set<NonNullable<CursorTelemetryPoint["interactionType"]>>([
 	"click",
 	"double-click",
@@ -132,6 +139,16 @@ export function normalizeCursorTelemetry(
 				normalized,
 				candidate.centerTimeMs - 140,
 				candidate.centerTimeMs + 1200,
+				"text",
+			);
+			continue;
+		}
+
+		if (candidate.kind === "typing-burst") {
+			applyCursorTypeInRange(
+				normalized,
+				(candidate.startMs ?? candidate.centerTimeMs) - 100,
+				(candidate.endMs ?? candidate.centerTimeMs) + 500,
 				"text",
 			);
 			continue;
@@ -224,6 +241,62 @@ export function detectZoomDwellCandidates(samples: CursorTelemetryPoint[]): Zoom
 	return dwellCandidates;
 }
 
+type TypingBurst = { startMs: number; endMs: number };
+
+function findTypingBurstsAfterClick(
+	samples: CursorTelemetryPoint[],
+	clickSample: CursorTelemetryPoint,
+): TypingBurst[] {
+	const nextClickTime = samples.find(
+		(sample) => isExplicitClickType(sample.interactionType) && sample.timeMs > clickSample.timeMs,
+	)?.timeMs;
+	const keydowns = samples.filter(
+		(sample) =>
+			sample.interactionType === "keydown" &&
+			sample.timeMs > clickSample.timeMs &&
+			(nextClickTime === undefined || sample.timeMs < nextClickTime),
+	);
+	const bursts: TypingBurst[] = [];
+	let current: CursorTelemetryPoint[] = [];
+
+	const commit = () => {
+		if (current.length < MIN_TYPING_BURST_KEY_COUNT) return;
+		const first = current[0];
+		const last = current[current.length - 1];
+		const startsSoonEnough =
+			bursts.length > 0 || first.timeMs - clickSample.timeMs <= MAX_CLICK_TO_TYPING_DELAY_MS;
+		const relevantSamples = samples.filter(
+			(sample) => sample.timeMs >= clickSample.timeMs && sample.timeMs <= last.timeMs,
+		);
+		const burstSamples = samples.filter(
+			(sample) => sample.timeMs >= first.timeMs && sample.timeMs <= last.timeMs,
+		);
+		const stayedNearField = relevantSamples.every(
+			(sample) =>
+				Math.hypot(sample.cx - clickSample.cx, sample.cy - clickSample.cy) <=
+				MAX_CLICK_TO_TYPING_DISTANCE,
+		);
+		const hasTextContext = burstSamples.some((sample) => sample.cursorType === "text");
+
+		if (startsSoonEnough && (stayedNearField || hasTextContext)) {
+			bursts.push({ startMs: first.timeMs, endMs: last.timeMs });
+		}
+	};
+
+	for (const keydown of keydowns) {
+		if (
+			current.length > 0 &&
+			keydown.timeMs - current[current.length - 1].timeMs > TYPING_BURST_MAX_IDLE_MS
+		) {
+			commit();
+			current = [];
+		}
+		current.push(keydown);
+	}
+	commit();
+	return bursts;
+}
+
 export function detectInteractionCandidates(
 	samples: CursorTelemetryPoint[],
 ): CursorInteractionCandidate[] {
@@ -254,6 +327,18 @@ export function detectInteractionCandidates(
 			kind,
 			source: "explicit",
 		});
+
+		for (const [index, burst] of findTypingBurstsAfterClick(samples, clickSample).entries()) {
+			explicitInteractionCandidates.push({
+				centerTimeMs: Math.round((burst.startMs + burst.endMs) / 2),
+				focus: { cx: clickSample.cx, cy: clickSample.cy },
+				strength: 1400,
+				startMs: index === 0 ? clickSample.timeMs : burst.startMs,
+				endMs: burst.endMs,
+				kind: "typing-burst",
+				source: "explicit",
+			});
+		}
 	}
 
 	// --- Phase 2: Dwell-based heuristic candidates ---
@@ -315,8 +400,8 @@ function buildClickClusters(
 	const sorted = [...clicks].sort((a, b) => a.centerTimeMs - b.centerTimeMs);
 	const clusters: Array<{ firstMs: number; lastMs: number; focus: ZoomFocus }> = [];
 
-	let clusterStart = sorted[0].centerTimeMs;
-	let clusterEnd = sorted[0].centerTimeMs;
+	let clusterStart = sorted[0].startMs ?? sorted[0].centerTimeMs;
+	let clusterEnd = sorted[0].endMs ?? sorted[0].centerTimeMs;
 	let bestStrength = sorted[0].strength;
 	let bestFocus = sorted[0].focus;
 	let sumCx = sorted[0].focus.cx;
@@ -325,11 +410,13 @@ function buildClickClusters(
 
 	for (let i = 1; i < sorted.length; i++) {
 		const click = sorted[i];
-		const gap = click.centerTimeMs - clusterEnd;
+		const clickStart = click.startMs ?? click.centerTimeMs;
+		const clickEnd = click.endMs ?? click.centerTimeMs;
+		const gap = clickStart - clusterEnd;
 
 		if (gap <= mergeGapMs) {
 			// Extend current cluster
-			clusterEnd = Math.max(clusterEnd, click.centerTimeMs);
+			clusterEnd = Math.max(clusterEnd, clickEnd);
 			if (click.strength > bestStrength) {
 				bestStrength = click.strength;
 				bestFocus = click.focus;
@@ -344,8 +431,8 @@ function buildClickClusters(
 				lastMs: clusterEnd,
 				focus: bestFocus ?? { cx: sumCx / count, cy: sumCy / count },
 			});
-			clusterStart = click.centerTimeMs;
-			clusterEnd = click.centerTimeMs;
+			clusterStart = clickStart;
+			clusterEnd = clickEnd;
 			bestStrength = click.strength;
 			bestFocus = click.focus;
 			sumCx = click.focus.cx;
