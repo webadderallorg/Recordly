@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
 	getDefaultLightningRenderBackend,
+	isWebGPURendererFailure,
 	normalizeLightningRuntimePlatform,
 	planLightningExportRoutes,
+	resolveLightningPreferredRenderBackend,
+	resolveLightningRenderBackendOrder,
 	shouldPreferNativeAutoBackend,
 	shouldPreferNativeStaticLayoutBeforeBreeze,
 } from "./backendPolicy";
@@ -25,6 +28,72 @@ describe("backendPolicy", () => {
 
 	it("keeps Lightning exports on the stable WebGL renderer by default", () => {
 		expect(getDefaultLightningRenderBackend()).toBe("webgl");
+	});
+
+	it("prefers WebGL for Lightning on Linux while preserving other platforms", () => {
+		expect(resolveLightningPreferredRenderBackend("linux", undefined)).toBe("webgl");
+		expect(resolveLightningPreferredRenderBackend("linux", null)).toBe("webgl");
+		expect(resolveLightningPreferredRenderBackend("darwin", undefined)).toBeUndefined();
+		expect(resolveLightningPreferredRenderBackend("win32", undefined)).toBeUndefined();
+		expect(resolveLightningPreferredRenderBackend("unknown", undefined)).toBeUndefined();
+	});
+
+	it("respects an explicit render backend override on every platform", () => {
+		expect(resolveLightningPreferredRenderBackend("linux", "webgpu")).toBe("webgpu");
+		expect(resolveLightningPreferredRenderBackend("linux", "webgl")).toBe("webgl");
+		expect(resolveLightningPreferredRenderBackend("darwin", "webgl")).toBe("webgl");
+		expect(resolveLightningPreferredRenderBackend("win32", "webgpu")).toBe("webgpu");
+	});
+
+	it("orders WebGL before WebGPU for Linux Lightning exports", () => {
+		expect(
+			resolveLightningRenderBackendOrder({
+				preferredRenderBackend: undefined,
+				platform: "linux",
+				webgpuAvailable: true,
+			}),
+		).toEqual(["webgl", "webgpu"]);
+		expect(
+			resolveLightningRenderBackendOrder({
+				preferredRenderBackend: undefined,
+				platform: "linux",
+				webgpuAvailable: false,
+			}),
+		).toEqual(["webgl", "webgpu"]);
+	});
+
+	it("keeps WebGPU first on macOS/Windows when no backend is requested", () => {
+		expect(
+			resolveLightningRenderBackendOrder({
+				preferredRenderBackend: undefined,
+				platform: "darwin",
+				webgpuAvailable: true,
+			}),
+		).toEqual(["webgpu", "webgl"]);
+		expect(
+			resolveLightningRenderBackendOrder({
+				preferredRenderBackend: undefined,
+				platform: "win32",
+				webgpuAvailable: true,
+			}),
+		).toEqual(["webgpu", "webgl"]);
+		expect(
+			resolveLightningRenderBackendOrder({
+				preferredRenderBackend: undefined,
+				platform: "darwin",
+				webgpuAvailable: false,
+			}),
+		).toEqual(["webgl"]);
+	});
+
+	it("detects Pixi WebGPU _resourceType render failures", () => {
+		expect(
+			isWebGPURendererFailure(
+				new Error("Cannot read properties of undefined (reading '_resourceType')"),
+			),
+		).toBe(true);
+		expect(isWebGPURendererFailure(new Error("WebCodecs unavailable"))).toBe(false);
+		expect(isWebGPURendererFailure(new Error("readAVPacket pipeline failed"))).toBe(false);
 	});
 
 	it("keeps Windows auto exports on the streaming route by default", () => {

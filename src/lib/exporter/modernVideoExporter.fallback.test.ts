@@ -364,6 +364,96 @@ describe("ModernVideoExporter native fallback routing", () => {
 		expect(mocks.muxerFinalize).toHaveBeenCalledTimes(1);
 	});
 
+	it("prefers the WebGL renderer for Lightning exports on Linux", async () => {
+		vi.stubGlobal("navigator", {
+			platform: "Linux x86_64",
+			userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+		});
+		mocks.streamingDecoderGetEffectiveDuration.mockReturnValue(1);
+		mocks.streamingDecoderDecodeAll.mockResolvedValue(undefined);
+
+		const { FrameRenderer } = await import("./modernFrameRenderer");
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1440,
+			height: 810,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#101010",
+			padding: 0,
+			borderRadius: 0,
+			backgroundBlur: 0,
+			shadowIntensity: 0,
+			showShadow: false,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			backendPreference: "webcodecs",
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean; blob?: Blob; error?: string }>;
+			initializeEncoder: () => Promise<unknown>;
+		};
+
+		vi.spyOn(exporter, "initializeEncoder").mockResolvedValue({
+			codec: "avc1.640033",
+			hardwareAcceleration: "prefer-software",
+		});
+
+		const result = await exporter.export();
+
+		expect(result.success).toBe(true);
+		expect(FrameRenderer).toHaveBeenCalledWith(
+			expect.objectContaining({ preferredRenderBackend: "webgl" }),
+		);
+	});
+
+	it("retries a WebGPU _resourceType failure once with the WebGL renderer", async () => {
+		vi.stubGlobal("navigator", {
+			platform: "Win32",
+			userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+		});
+		mocks.streamingDecoderGetEffectiveDuration.mockReturnValue(1);
+		mocks.frameRendererGetBackend.mockReturnValueOnce("webgpu");
+		mocks.streamingDecoderDecodeAll
+			.mockRejectedValueOnce(
+				new Error("Cannot read properties of undefined (reading '_resourceType')"),
+			)
+			.mockResolvedValueOnce(undefined);
+
+		const { FrameRenderer } = await import("./modernFrameRenderer");
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#101010",
+			padding: 0,
+			borderRadius: 0,
+			backgroundBlur: 0,
+			shadowIntensity: 0,
+			showShadow: false,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			backendPreference: "webcodecs",
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean; blob?: Blob; error?: string }>;
+			initializeEncoder: () => Promise<unknown>;
+		};
+
+		vi.spyOn(exporter, "initializeEncoder").mockResolvedValue({
+			codec: "avc1.640034",
+			hardwareAcceleration: "prefer-hardware",
+		});
+
+		const result = await exporter.export();
+
+		expect(result.success).toBe(true);
+		expect(mocks.streamingDecoderDecodeAll).toHaveBeenCalledTimes(2);
+		const frameRendererMock = vi.mocked(FrameRenderer);
+		expect(frameRendererMock).toHaveBeenCalledTimes(2);
+		expect(frameRendererMock.mock.calls[1]?.[0]).toMatchObject({
+			preferredRenderBackend: "webgl",
+		});
+	});
+
 	it("builds actionable diagnostics for input decoder failures", () => {
 		vi.stubGlobal("navigator", {
 			platform: "Win32",
