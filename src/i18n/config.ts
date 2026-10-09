@@ -9,6 +9,7 @@ export const SUPPORTED_LOCALES = [
 	"nl",
 	"ko",
 	"pt-BR",
+	"ru",
 	"zh-CN",
 	"zh-TW",
 ] as const;
