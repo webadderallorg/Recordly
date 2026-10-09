@@ -44,6 +44,7 @@ export function getGpuSwitches(
 	platform: NodeJS.Platform,
 	env: NodeJS.ProcessEnv = process.env,
 ): GpuSwitches {
+	void env;
 	if (platform === "darwin") {
 		return {
 			useAngle: "metal",
@@ -57,7 +58,7 @@ export function getGpuSwitches(
 
 	if (platform === "linux") {
 		return {
-			useGl: shouldForceLinuxEgl(env) ? "egl" : undefined,
+			useGl: undefined,
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		};
 	}

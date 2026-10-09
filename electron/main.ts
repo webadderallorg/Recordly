@@ -21,6 +21,7 @@ import { RECORDINGS_DIR } from "./appPaths";
 import { createAuthCallbackController } from "./authCallback";
 import { showCursor } from "./cursorHider";
 import { getGpuSwitches } from "./gpuSwitches";
+import { isLikelyLinuxWaylandSession } from "./ipc/register/sourceMapping";
 import {
 	cleanupAllExportStreams,
 	cleanupNativeVideoExportSessions,
@@ -1129,7 +1130,9 @@ app.whenReady().then(async () => {
 			// source picker entirely). This avoids calling getSources() which
 			// would itself trigger an extra portal dialog.
 			const isLinuxPortalSentinel =
-				process.platform === "linux" && (sourceId === "screen:linux-portal" || !sourceId);
+				process.platform === "linux" &&
+				isLikelyLinuxWaylandSession(process.env) &&
+				(sourceId === "screen:linux-portal" || !sourceId);
 			if (isLinuxPortalSentinel) {
 				callback({ video: { id: "screen:0:0", name: "Entire screen" } });
 				return;
