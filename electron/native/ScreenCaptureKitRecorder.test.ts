@@ -95,9 +95,39 @@ describe("ScreenCaptureKitRecorder window capture", () => {
 	});
 });
 
+describe("ScreenCaptureKitRecorder audio continuity", () => {
+	it("delivers audio on a dedicated queue and hops onto the recorder queue", () => {
+		expect(recorderSource).toContain('DispatchQueue(label: "recordly.screencapturekit.audio")');
+		expect(recorderSource).toContain("type: .audio, sampleHandlerQueue: audioQueue");
+		expect(recorderSource).toContain(
+			"type: microphoneOutputType, sampleHandlerQueue: audioQueue",
+		);
+		expect(recorderSource).toMatch(/if outputType != \.screen \{\s*queue\.async/);
+		expect(recorderSource).toContain("audioQueue.sync {}");
+	});
+
+	it("fills audio timestamp gaps with silence instead of compacting the track", () => {
+		expect(recorderSource).toContain(
+			"appendSilence(matching: sampleBuffer, from: expectedNext, to: presentationTime, into: input, lastPresentationTime: &lastPresentationTime, lastDuration: &lastDuration)",
+		);
+		expect(recorderSource).toContain("CMAudioSampleBufferCreateReadyWithPacketDescriptions(");
+		expect(recorderSource).toContain("lastDuration = sampleBuffer.duration");
+		expect(recorderSource).toContain(
+			"lastDuration = CMTime(value: CMTimeValue(frames), timescale: CMTimeScale(sampleRate))",
+		);
+	});
+
+	it("counts dropped audio buffers and reports gaps at finalization", () => {
+		expect(recorderSource).toContain("droppedAudioBufferCount += 1");
+		expect(recorderSource).toContain("AUDIO_GAPS: droppedBuffers=");
+	});
+});
 
 describe("ScreenCaptureKitRecorder first frame timing", () => {
-	const callback = recorderSource.slice(recorderSource.indexOf("func stream(_ stream:"), recorderSource.indexOf("func stream(_ stream:") + 5000);
+	const callback = recorderSource.slice(
+		recorderSource.indexOf("func stream(_ stream:"),
+		recorderSource.indexOf("func stream(_ stream:") + 5000,
+	);
 	it("validates a complete frame and writer readiness before setting time zero", () => {
 		const clock = callback.indexOf("adjustedPresentationTime(for:");
 		expect(clock).toBeGreaterThan(callback.indexOf("status == .complete"));
