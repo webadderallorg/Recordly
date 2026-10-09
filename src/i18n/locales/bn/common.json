@@ -1,0 +1,26 @@
+{
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Recordly এডিটর",
+		"subtitle": "স্ক্রিন রেকর্ডিং এবং এডিটিং",
+		"language": "ভাষা",
+		"manageRecordings": "রেকর্ডিং ফোল্ডার খুলুন"
+	},
+	"actions": {
+		"cancel": "বাতিল",
+		"close": "বন্ধ করুন",
+		"export": "এক্সপোর্ট",
+		"load": "লোড",
+		"redo": "পুনরায় করুন",
+		"reset": "রিসেট",
+		"save": "সংরক্ষণ",
+		"undo": "পূর্বাবস্থায় ফেরান",
+		"delete": "মুছে ফেলুন",
+		"done": "সম্পন্ন"
+	},
+	"errors": {
+		"invalidFileType": "অকার্যকর ফাইল ধরন",
+		"failedToUploadImage": "ছবি আপলোড করতে ব্যর্থ হয়েছে",
+		"fileReadError": "ফাইলটি পড়ার সময় একটি সমস্যা হয়েছে।"
+	}
+}
