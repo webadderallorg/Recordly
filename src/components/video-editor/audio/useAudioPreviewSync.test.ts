@@ -54,6 +54,17 @@ describe("source preview playback ownership", () => {
 			plays: true,
 		},
 		{
+			name: "source seek pending",
+			muted: false,
+			playing: true,
+			rate: 1,
+			time: 1,
+			delay: 0,
+			seeking: true,
+			wasPlaying: true,
+			plays: false,
+		},
+		{
 			name: "gap or muted clip",
 			muted: true,
 			playing: true,
@@ -105,7 +116,10 @@ describe("source preview playback ownership", () => {
 		time,
 		delay,
 		plays,
+		seeking,
+		wasPlaying,
 	}) => {
+		const seekedListeners = new Set<() => void>();
 		const audio = {
 			src: "",
 			dataset: {},
@@ -113,10 +127,22 @@ describe("source preview playback ownership", () => {
 			currentTime: 0,
 			playbackRate: 1,
 			paused: true,
+			seeking: seeking ?? false,
 			volume: 1,
 			load: vi.fn(),
-			pause: vi.fn(),
-			play: vi.fn().mockResolvedValue(undefined),
+			pause: vi.fn(() => {
+				audio.paused = true;
+			}),
+			play: vi.fn().mockImplementation(() => {
+				audio.paused = false;
+				return Promise.resolve();
+			}),
+			addEventListener: vi.fn((event: string, listener: () => void) => {
+				if (event === "seeked") seekedListeners.add(listener);
+			}),
+			removeEventListener: vi.fn((event: string, listener: () => void) => {
+				if (event === "seeked") seekedListeners.delete(listener);
+			}),
 		};
 		vi.stubGlobal("Audio", function () {
 			return audio;
@@ -132,7 +158,7 @@ describe("source preview playback ownership", () => {
 			},
 		);
 		// Execute mocked effects explicitly so the asynchronous load can finish between syncs.
-		useAudioPreviewSync({
+		const params = {
 			audioRegions: [],
 			previewVolume: 1,
 			isPlaying: playing,
@@ -146,14 +172,30 @@ describe("source preview playback ownership", () => {
 			isCurrentClipMuted: muted,
 			getSourceTrackPreviewGain: () => 1,
 			onSourceFallbackLoadError: vi.fn(),
-		});
+		};
+		useAudioPreviewSync(params);
 		for (const effect of harness.effects) effect();
 		await Promise.resolve();
 		expect(harness.loaded).toHaveBeenCalledOnce();
 		expect(audio.play).not.toHaveBeenCalled();
-		harness.effects.at(-1)?.();
+		if (wasPlaying) audio.paused = false;
+		const cleanup = harness.effects.at(-1)?.();
 		await Promise.resolve();
 		expect(audio.play).toHaveBeenCalledTimes(plays ? 1 : 0);
-		if (plays) expect(audio.currentTime).toBeCloseTo(time - delay / 1000);
+		if (wasPlaying) expect(audio.pause).toHaveBeenCalled();
+		if (seeking) {
+			audio.seeking = false;
+			for (const listener of seekedListeners) listener();
+			await Promise.resolve();
+			expect(audio.play).toHaveBeenCalledOnce();
+			if (typeof cleanup === "function") cleanup();
+			expect(seekedListeners.size).toBe(0);
+		}
+		if (plays) {
+			expect(audio.currentTime).toBeCloseTo(time - delay / 1000);
+			harness.effects.at(-1)?.();
+			await Promise.resolve();
+			expect(audio.play).toHaveBeenCalledOnce();
+		}
 	});
 });

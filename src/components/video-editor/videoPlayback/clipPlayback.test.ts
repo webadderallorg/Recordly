@@ -37,9 +37,14 @@ describe("clip timeline playback", () => {
 			duration: 12,
 			currentTime: 0,
 			seeking: false,
+			paused: true,
 			playbackRate: 1,
-			play: vi.fn(async () => {}),
-			pause: vi.fn(),
+			play: vi.fn(async () => {
+				video.paused = false;
+			}),
+			pause: vi.fn(() => {
+				video.paused = true;
+			}),
 		} as unknown as HTMLVideoElement;
 		const onTime = vi.fn();
 		const onPlaying = vi.fn();
@@ -74,6 +79,30 @@ describe("clip timeline playback", () => {
 		video.currentTime = 3.501;
 		advance(1);
 		expect(onTime).toHaveBeenLastCalledWith(2.801, 3.501);
+	});
+	it("pauses source playback until a cut seek finishes", async () => {
+		const { video, playback } = setup([
+			{ id: "a", startMs: 0, endMs: 1_000, sourceStartMs: 0, speed: 1 },
+			{ id: "b", startMs: 1_000, endMs: 2_000, sourceStartMs: 5_000, speed: 1 },
+		]);
+		await playback.play();
+		const playCount = vi.mocked(video.play).mock.calls.length;
+		let sourceTime = 0;
+		Object.defineProperty(video, "currentTime", {
+			get: () => sourceTime,
+			set: (value: number) => {
+				sourceTime = value;
+				if (value === 5) Object.assign(video, { seeking: true });
+			},
+		});
+		video.currentTime = 1;
+		advance(1);
+		expect(video.pause).toHaveBeenCalled();
+		expect(video.currentTime).toBe(5);
+		expect(video.play).toHaveBeenCalledTimes(playCount);
+		Object.assign(video, { seeking: false });
+		advance(1);
+		expect(video.play).toHaveBeenCalledTimes(playCount + 1);
 	});
 	it("cannot simulate playback after the final clip is deleted", async () => {
 		const { video, playback, onTime } = setup([]);
