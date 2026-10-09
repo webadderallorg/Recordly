@@ -260,6 +260,61 @@ describe("ModernFrameRenderer Pixi lifecycle", () => {
 			vi.unstubAllGlobals();
 		}
 	});
+
+	it("defaults to WebGL before WebGPU when preferredRenderBackend is not specified", async () => {
+		pixiApplicationInstancesMock.length = 0;
+		pixiInitializationErrorsMock.length = 0;
+		vi.stubGlobal("navigator", { gpu: {} });
+
+		try {
+			const renderer = createRenderer() as unknown as {
+				config: { preferredRenderBackend?: "webgl" | "webgpu" };
+				createPixiApplication: (
+					canvas: HTMLCanvasElement,
+				) => Promise<{ backend: "webgl" | "webgpu" }>;
+			};
+
+			await expect(
+				renderer.createPixiApplication({} as HTMLCanvasElement),
+			).resolves.toMatchObject({
+				backend: "webgl",
+			});
+
+			expect(pixiApplicationInstancesMock).toHaveLength(1);
+			expect(pixiApplicationInstancesMock[0].init).toHaveBeenCalledWith(
+				expect.objectContaining({ preference: "webgl" }),
+			);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+});
+
+describe("ModernFrameRenderer zoom motion blur", () => {
+	it.each([
+		"webgl",
+		"webgpu",
+	] as const)("preserves enabled blur filters on %s exports", (backend) => {
+		const renderer = createRenderer() as unknown as {
+			config: { zoomMotionBlur?: number };
+			updateVideoEffectsFilterState: () => void;
+		};
+		const motionBlurFilter = {};
+		const zoomBlurFilter = {};
+		const videoEffectsContainer = { filters: null as unknown };
+		Object.assign(renderer, {
+			rendererBackend: backend,
+			motionBlurFilter,
+			zoomBlurFilter,
+			videoEffectsContainer,
+		});
+		renderer.config.zoomMotionBlur = 1;
+		renderer.updateVideoEffectsFilterState();
+		expect(videoEffectsContainer.filters).toEqual([motionBlurFilter, zoomBlurFilter]);
+		renderer.config.zoomMotionBlur = 0;
+		renderer.updateVideoEffectsFilterState();
+		expect(videoEffectsContainer.filters).toBeNull();
+	});
 });
 
 describe("ModernFrameRenderer blur export path", () => {

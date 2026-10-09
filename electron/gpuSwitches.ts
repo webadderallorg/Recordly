@@ -4,42 +4,25 @@ export interface GpuSwitches {
 	disableFeatures?: string[];
 }
 
-function normalizeLinuxWindowSystem(value: string | undefined): "wayland" | "x11" | null {
-	const normalized = value?.trim().toLowerCase();
-	if (normalized === "wayland" || normalized === "x11") {
-		return normalized;
-	}
 
-	return null;
-}
-
-function getForcedLinuxWindowSystem(env: NodeJS.ProcessEnv): "wayland" | "x11" | null {
-	return (
-		normalizeLinuxWindowSystem(env.OZONE_PLATFORM) ??
-		normalizeLinuxWindowSystem(env.ELECTRON_OZONE_PLATFORM_HINT)
-	);
-}
-
+/**
+ * Determines whether the Linux EGL backend should be forced via environment flags.
+ *
+ * @param env - Process environment variables.
+ * @returns True if RECORDLY_FORCE_EGL is set to "1" or "true", false otherwise.
+ */
 export function shouldForceLinuxEgl(env: NodeJS.ProcessEnv): boolean {
-	const forcedWindowSystem = getForcedLinuxWindowSystem(env);
-	if (forcedWindowSystem === "wayland") {
-		return false;
-	}
-	if (forcedWindowSystem === "x11") {
-		return true;
-	}
-
-	const sessionType = env.XDG_SESSION_TYPE?.toLowerCase();
-	if (sessionType === "wayland") {
-		return false;
-	}
-	if (sessionType === "x11") {
-		return true;
-	}
-
-	return !env.WAYLAND_DISPLAY;
+	const flag = env.RECORDLY_FORCE_EGL?.trim().toLowerCase();
+	return flag === "1" || flag === "true";
 }
 
+/**
+ * Computes platform-specific Chromium GPU switches and feature flags for hardware acceleration.
+ *
+ * @param platform - The host OS platform ("darwin", "win32", "linux").
+ * @param env - Process environment variables.
+ * @returns An object containing recommended GPU flags and disabled features.
+ */
 export function getGpuSwitches(
 	platform: NodeJS.Platform,
 	env: NodeJS.ProcessEnv = process.env,
@@ -56,8 +39,11 @@ export function getGpuSwitches(
 	}
 
 	if (platform === "linux") {
+		const useGl = env.RECORDLY_USE_GL ?? (shouldForceLinuxEgl(env) ? "egl" : undefined);
+		const useAngle = env.RECORDLY_USE_ANGLE;
 		return {
-			useGl: shouldForceLinuxEgl(env) ? "egl" : undefined,
+			...(useGl ? { useGl } : {}),
+			...(useAngle ? { useAngle } : {}),
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		};
 	}

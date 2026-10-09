@@ -68,7 +68,9 @@ import {
 } from "@/lib/mediaTiming";
 import {
 	destroyPixiApplication,
+	formatPixiRendererErrorMessage,
 	initializePixiApplicationWithTimeout,
+	isCanvasRenderer,
 } from "@/lib/pixiApplicationLifecycle";
 import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import { renderAnnotations } from "./annotationRenderer";
@@ -154,18 +156,22 @@ type PixiRendererAttempt = {
 const PIXI_RENDERER_INIT_TIMEOUT_MS = 8_000;
 const BACKGROUND_MEDIA_ELEMENT_READY_TIMEOUT_MS = 5_000;
 
-function isCanvasRenderer(renderer: Application): boolean {
-	const rendererName = renderer?.renderer?.constructor?.name?.toLowerCase();
-	return Boolean(
-		rendererName &&
-			(rendererName.includes("canvasrenderer") || rendererName.includes("canvas")),
-	);
-}
-
+/**
+ * Converts a renderer initialization error into a user-friendly error message.
+ *
+ * @param error - The caught error.
+ * @returns Formatted error string.
+ */
 function toErrorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error ?? "Unknown renderer init error");
+	return formatPixiRendererErrorMessage(error);
 }
 
+/**
+ * Summarizes failed renderer backend initialization attempts.
+ *
+ * @param attempts - Array of failed renderer attempts.
+ * @returns Combined summary string.
+ */
 function summarizeRendererAttempts(attempts: readonly PixiRendererAttempt[]): string {
 	const details = attempts.map((attempt) => `${attempt.backend}: ${attempt.message}`).join(" | ");
 	return `No supported Pixi export backend was available. Attempted: ${details}`;
@@ -220,6 +226,7 @@ function configureHighQuality2DContext(
 // Renders video frames with all effects (background, zoom, crop, blur, shadow) to an offscreen canvas for export.
 
 export class FrameRenderer {
+	private rendererBackend: ExportRenderBackend = "webgl";
 	private app: Application | null = null;
 	private cameraContainer: Container | null = null;
 	private videoEffectsContainer: Container | null = null;
@@ -276,6 +283,12 @@ export class FrameRenderer {
 		this.cursorFollowCamera = createCursorFollowCameraState();
 	}
 
+	/**
+	 * Creates and initializes the Pixi application for frame rendering, verifying backend identity.
+	 *
+	 * @param canvas - HTML canvas element for export rendering.
+	 * @returns Object containing the initialized Application and its confirmed backend.
+	 */
 	private async createPixiApplication(
 		canvas: HTMLCanvasElement,
 	): Promise<{ app: Application; backend: ExportRenderBackend }> {
@@ -314,7 +327,7 @@ export class FrameRenderer {
 			const app = new Application();
 			const initStarted = typeof performance === "undefined" ? Date.now() : performance.now();
 			try {
-				await initializePixiApplicationWithTimeout(
+				const actualBackend = await initializePixiApplicationWithTimeout(
 					app,
 					{
 						...baseOptions,
@@ -332,7 +345,7 @@ export class FrameRenderer {
 						`Renderer initialized with unsupported fallback backend after ${elapsed}ms: ${app.renderer.constructor?.name ?? "unknown"}`,
 					);
 				}
-				return { app, backend };
+				return { app, backend: actualBackend };
 			} catch (error) {
 				const elapsed = Math.round(
 					(typeof performance === "undefined" ? Date.now() : performance.now()) -
@@ -383,6 +396,7 @@ export class FrameRenderer {
 		// Initialize PixiJS with optimized settings for export performance
 		const { app, backend } = await this.createPixiApplication(canvas);
 		this.app = app;
+		this.rendererBackend = backend;
 		console.log(`[FrameRenderer] Export renderer backend: ${backend}`);
 
 		// Setup containers
@@ -1960,6 +1974,13 @@ export class FrameRenderer {
 			throw new Error("Renderer not initialized");
 		}
 		return this.compositeCanvas;
+	}
+
+	/**
+	 * Returns the active render backend ("webgl" | "webgpu").
+	 */
+	getRendererBackend(): ExportRenderBackend {
+		return this.rendererBackend;
 	}
 
 	destroy(): void {

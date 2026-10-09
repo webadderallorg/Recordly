@@ -44,4 +44,15 @@ describe("getScreenSourceIdForDisplay", () => {
 			}),
 		).toBe("screen:fallback:42");
 	});
+
+	it("does not route unknown session types through the portal sentinel even if WAYLAND_DISPLAY is set", () => {
+		expect(
+			getScreenSourceIdForDisplay({
+				displayId: "42",
+				env: { WAYLAND_DISPLAY: "wayland-0" },
+				matchedSourceId: null,
+				platform: "linux",
+			}),
+		).toBe("screen:fallback:42");
+	});
 });

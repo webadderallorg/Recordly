@@ -76,8 +76,11 @@ import {
 	getEffectiveVideoStreamDurationSeconds,
 } from "@/lib/mediaTiming";
 import {
+	CANVAS_RENDERER_NOT_IMPLEMENTED_HINT,
 	destroyPixiApplication,
+	formatPixiRendererErrorMessage,
 	initializePixiApplicationWithTimeout,
+	isCanvasRenderer,
 } from "@/lib/pixiApplicationLifecycle";
 import { isVideoWallpaperSource } from "@/lib/wallpapers";
 import {
@@ -244,24 +247,27 @@ type PixiRendererAttempt = {
 	message: string;
 };
 
-const CANVAS_RENDERER_NOT_IMPLEMENTED_HINT = "CanvasRenderer is not yet implemented";
 const NO_RENDERER_HINT = "no available renderer";
 const PIXI_RENDERER_INIT_TIMEOUT_MS = 8_000;
 const BACKGROUND_MEDIA_ELEMENT_READY_TIMEOUT_MS = 5_000;
 const WEBCAM_MEDIA_ELEMENT_READY_TIMEOUT_MS = 5_000;
 
-function isCanvasRenderer(application: Application): boolean {
-	const rendererName = application?.renderer?.constructor?.name?.toLowerCase();
-	return Boolean(
-		rendererName &&
-			(rendererName.includes("canvasrenderer") || rendererName.includes("canvas")),
-	);
-}
-
+/**
+ * Converts a renderer initialization error into a user-friendly error message.
+ *
+ * @param error - The caught error.
+ * @returns Formatted error string.
+ */
 function toErrorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error ?? "Unknown renderer init error");
+	return formatPixiRendererErrorMessage(error);
 }
 
+/**
+ * Summarizes all failed renderer backend attempts into a single descriptive message.
+ *
+ * @param attempts - Array of failed renderer attempts.
+ * @returns Combined summary string.
+ */
 function summarizeRendererAttempts(attempts: readonly PixiRendererAttempt[]): string {
 	const details = attempts.map((attempt) => `${attempt.backend}: ${attempt.message}`).join(" | ");
 	return `No supported Pixi modern renderer was available. Attempted: ${details}`;
@@ -605,6 +611,12 @@ export class FrameRenderer {
 		console.log(`[FrameRenderer] Export renderer backend: ${this.rendererBackend}`);
 	}
 
+	/**
+	 * Initializes the Pixi application for export rendering, validating the actual backend identity.
+	 *
+	 * @param canvas - Offscreen HTML canvas element to render into.
+	 * @returns Object containing the initialized Application and its confirmed backend ("webgl" | "webgpu").
+	 */
 	private async createPixiApplication(
 		canvas: HTMLCanvasElement,
 	): Promise<{ app: Application; backend: ExportRenderBackend }> {
@@ -624,13 +636,11 @@ export class FrameRenderer {
 
 		const preferredRenderBackend = this.config.preferredRenderBackend;
 		const backendOrder: ExportRenderBackend[] =
-			preferredRenderBackend === "webgl"
-				? ["webgl", "webgpu"]
-				: preferredRenderBackend === "webgpu"
-					? ["webgpu", "webgl"]
-					: typeof navigator !== "undefined" && "gpu" in navigator
-						? ["webgpu", "webgl"]
-						: ["webgl"];
+			preferredRenderBackend === "webgpu"
+				? ["webgpu", "webgl"]
+				: preferredRenderBackend === "webgl"
+					? ["webgl", "webgpu"]
+					: ["webgl", "webgpu"];
 		const failures: PixiRendererAttempt[] = [];
 
 		for (const backend of backendOrder) {
@@ -645,7 +655,7 @@ export class FrameRenderer {
 			const app = new Application();
 			const initStarted = typeof performance === "undefined" ? Date.now() : performance.now();
 			try {
-				await initializePixiApplicationWithTimeout(
+				const actualBackend = await initializePixiApplicationWithTimeout(
 					app,
 					{
 						...baseOptions,
@@ -663,7 +673,7 @@ export class FrameRenderer {
 						`Renderer initialized with unsupported fallback backend after ${elapsed}ms: ${app.renderer.constructor?.name ?? "unknown"}`,
 					);
 				}
-				return { app, backend };
+				return { app, backend: actualBackend };
 			} catch (error) {
 				const elapsed = Math.round(
 					(typeof performance === "undefined" ? Date.now() : performance.now()) -
@@ -3208,6 +3218,9 @@ export class FrameRenderer {
 		return pixels instanceof Uint8ClampedArray ? pixels : new Uint8ClampedArray(pixels);
 	}
 
+	/**
+	 * Returns the active export renderer backend ("webgl" | "webgpu").
+	 */
 	getRendererBackend(): ExportRenderBackend {
 		return this.rendererBackend;
 	}

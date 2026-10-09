@@ -3,6 +3,7 @@ import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { isLikelyLinuxWaylandSession } from "./ipc/register/sourceMapping";
 import {
 	app,
 	BrowserWindow,
@@ -442,6 +443,9 @@ function sendEditorMenuAction(
 	targetWindow.webContents.send(channel);
 }
 
+/**
+ * Configures the native desktop application menu with standard actions and shortcuts.
+ */
 function setupApplicationMenu() {
 	const isMac = process.platform === "darwin";
 	const template: Electron.MenuItemConstructorOptions[] = [];
@@ -484,9 +488,9 @@ function setupApplicationMenu() {
 				...(isMac
 					? []
 					: [
-							{ type: "separator" as const },
-							{ role: "quit" as const, accelerator: "CmdOrCtrl+Q" },
-						]),
+						{ type: "separator" as const },
+						{ role: "quit" as const, accelerator: "CmdOrCtrl+Q" },
+					]),
 			],
 		},
 		{
@@ -713,45 +717,50 @@ ipcMain.handle("check-for-app-updates", async () => {
 	return { success: true, logPath: getUpdaterLogPath() };
 });
 
+/**
+ * Updates the system tray context menu based on the current recording state.
+ *
+ * @param recording - Whether a recording session is currently active.
+ */
 function updateTrayMenu(recording: boolean = false) {
 	if (!tray) return;
 	const trayIcon = recording ? getRecordingTrayIcon() : getDefaultTrayIcon();
 	const trayToolTip = recording ? `Recording: ${selectedSourceName}` : "Recordly";
 	const menuTemplate = recording
 		? [
-				{
-					label: "Show Controls",
-					click: () => {
-						if (!showHudOverlayFromTray()) {
-							focusOrCreateMainWindow();
-						}
-					},
+			{
+				label: "Show Controls",
+				click: () => {
+					if (!showHudOverlayFromTray()) {
+						focusOrCreateMainWindow();
+					}
 				},
-				{
-					label: "Stop Recording",
-					click: () => {
-						if (mainWindow && !mainWindow.isDestroyed()) {
-							mainWindow.webContents.send("stop-recording-from-tray");
-						}
-					},
+			},
+			{
+				label: "Stop Recording",
+				click: () => {
+					if (mainWindow && !mainWindow.isDestroyed()) {
+						mainWindow.webContents.send("stop-recording-from-tray");
+					}
 				},
-			]
+			},
+		]
 		: [
-				{
-					label: "Open",
-					click: () => {
-						if (!showHudOverlayFromTray()) {
-							focusOrCreateMainWindow();
-						}
-					},
+			{
+				label: "Open",
+				click: () => {
+					if (!showHudOverlayFromTray()) {
+						focusOrCreateMainWindow();
+					}
 				},
-				{
-					label: "Quit",
-					click: () => {
-						app.quit();
-					},
+			},
+			{
+				label: "Quit",
+				click: () => {
+					app.quit();
 				},
-			];
+			},
+		];
 	const menu = Menu.buildFromTemplate(menuTemplate);
 	trayContextMenu = menu;
 	tray.setImage(trayIcon);
@@ -1012,11 +1021,11 @@ app.whenReady().then(async () => {
 		ensureRecordingsDir(),
 		!VITE_DEV_SERVER_URL
 			? ensurePackagedRendererServer(RENDERER_DIST).catch((error) => {
-					console.warn(
-						"[renderer-server] Failed to start packaged renderer server:",
-						error,
-					);
-				})
+				console.warn(
+					"[renderer-server] Failed to start packaged renderer server:",
+					error,
+				);
+			})
 			: Promise.resolve(),
 		ensureMediaServer().catch((error) => {
 			console.warn("[media-server] Failed to start media server:", error);
@@ -1090,9 +1099,9 @@ app.whenReady().then(async () => {
 				isLiveFrame && frame ? electronWebContents.fromFrame(frame) : undefined;
 			const isHudMainFrame = Boolean(
 				isLiveFrame &&
-					requestingWebContents &&
-					isHudWebContents(requestingWebContents) &&
-					frame === requestingWebContents.mainFrame,
+				requestingWebContents &&
+				isHudWebContents(requestingWebContents) &&
+				frame === requestingWebContents.mainFrame,
 			);
 
 			if (
@@ -1129,7 +1138,9 @@ app.whenReady().then(async () => {
 			// source picker entirely). This avoids calling getSources() which
 			// would itself trigger an extra portal dialog.
 			const isLinuxPortalSentinel =
-				process.platform === "linux" && (sourceId === "screen:linux-portal" || !sourceId);
+				process.platform === "linux" &&
+				isLikelyLinuxWaylandSession(process.env) &&
+				(sourceId === "screen:linux-portal" || !sourceId);
 			if (isLinuxPortalSentinel) {
 				callback({ video: { id: "screen:0:0", name: "Entire screen" } });
 				return;

@@ -1,7 +1,20 @@
-import { ipcMain, shell, systemPreferences } from "electron";
+import { clipboard, ipcMain, shell, systemPreferences } from "electron";
 import { getMacPrivacySettingsUrl } from "../utils";
 
+/**
+ * Registers IPC handlers for system permissions, clipboard operations, and external URL navigation.
+ */
 export function registerPermissionHandlers() {
+	ipcMain.handle("write-clipboard-text", (_event, text: string) => {
+		try {
+			clipboard.writeText(typeof text === "string" ? text : String(text ?? ""));
+			return { success: true };
+		} catch (error) {
+			console.error("Failed to write to clipboard:", error);
+			return { success: false, error: String(error) };
+		}
+	});
+
 	ipcMain.handle("open-external-url", async (_, url: string) => {
 		try {
 			// Security: only allow http/https URLs to prevent file:// or custom protocol abuse

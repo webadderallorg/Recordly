@@ -22,6 +22,7 @@ import {
 import {
 	destroyPixiApplication,
 	destroyPixiContainer,
+	formatPixiRendererErrorMessage,
 	initializePixiApplicationWithTimeout,
 } from "@/lib/pixiApplicationLifecycle";
 import {
@@ -187,10 +188,22 @@ type PixiRendererAttempt = {
 };
 const PIXI_RENDERER_INIT_TIMEOUT_MS = 8_000;
 
+/**
+ * Converts a preview renderer initialization error into a user-friendly error message.
+ *
+ * @param error - The caught error.
+ * @returns Formatted error string.
+ */
 function toRendererErrorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error ?? "Unknown renderer init error");
+	return formatPixiRendererErrorMessage(error);
 }
 
+/**
+ * Summarizes all failed preview renderer attempts into a single descriptive message.
+ *
+ * @param attempts - Array of failed renderer attempts.
+ * @returns Combined summary string.
+ */
 function summarizeRendererAttempts(attempts: readonly PixiRendererAttempt[]): string {
 	const details = attempts.map((attempt) => `${attempt.backend}: ${attempt.message}`).join(" | ");
 	return `No supported Pixi preview renderer was available. Attempted: ${details}`;

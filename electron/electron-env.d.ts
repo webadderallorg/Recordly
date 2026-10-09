@@ -623,6 +623,7 @@ interface Window {
 		onCursorStateChanged: (
 			callback: (state: { cursorType: CursorTelemetryPoint["cursorType"] }) => void,
 		) => () => void;
+		writeClipboardText: (text: string) => Promise<{ success: boolean; error?: string }>;
 		openExternalUrl: (url: string) => Promise<{ success: boolean; error?: string }>;
 		getAccessibilityPermissionStatus: () => Promise<{
 			success: boolean;

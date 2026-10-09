@@ -34,6 +34,22 @@ it("copies the error title and details through the native action", async () => {
 	await vi.waitFor(() => expect(native.success).toHaveBeenCalledWith("Error copied"));
 	expect(writeText).toHaveBeenCalledWith("Export failed\n\nEncoder unavailable");
 });
+it("copies the error via electronAPI.writeClipboardText when available", async () => {
+	const writeClipboardText = vi.fn().mockResolvedValue({ success: true });
+	vi.stubGlobal("window", {
+		electronAPI: { writeClipboardText },
+	});
+	toast.error("Export failed", { description: "Encoder unavailable" });
+	const options = (
+		native.mock.calls as unknown as [
+			string,
+			{ variant: string; actionProps: { children: string; onPress: () => void } },
+		][]
+	)[0][1];
+	options.actionProps.onPress();
+	await vi.waitFor(() => expect(native.success).toHaveBeenCalledWith("Error copied"));
+	expect(writeClipboardText).toHaveBeenCalledWith("Export failed\n\nEncoder unavailable");
+});
 it("preserves explicit actions and updates named notifications", () => {
 	const onClick = vi.fn();
 	toast.error("Retry", { id: "job", action: { label: "Retry", onClick } });
