@@ -60,7 +60,7 @@ describe("getGpuSwitches", () => {
 
 	it("returns the X11 EGL workaround on Linux X11", () => {
 		expect(getGpuSwitches("linux", { XDG_SESSION_TYPE: "x11" })).toEqual({
-			useGl: "egl",
+			useGl: "angle",
 			disableFeatures: ["VaapiVideoDecoder", "VaapiVideoEncoder"],
 		});
 	});
