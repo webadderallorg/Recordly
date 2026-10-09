@@ -3,11 +3,55 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createBrowserRecordingOptions,
 	createProcessedMicrophoneConstraints,
+	finalizeNativeMacAudioBeforeEditor,
 	normalizeBrowserMicrophoneProfile,
 	resolveBrowserCaptureCursorPolicy,
 	shouldUseNativeWindowsCaptureForSource,
 	stopAndDiscardNativeCapture,
 } from "./useScreenRecorder";
+
+describe("finalizeNativeMacAudioBeforeEditor", () => {
+	it("does not open the editor until the microphone sidecar is durable", async () => {
+		const order: string[] = [];
+		let releaseAudio: (() => void) | undefined;
+		const audioReady = new Promise<void>((resolve) => {
+			releaseAudio = resolve;
+		});
+		const openEditor = vi.fn(async () => {
+			order.push("editor");
+		});
+
+		const finalizing = finalizeNativeMacAudioBeforeEditor({
+			persistMicrophoneSidecar: async () => {
+				await audioReady;
+				order.push("audio");
+				return true;
+			},
+			openEditor,
+		});
+
+		await Promise.resolve();
+		expect(openEditor).not.toHaveBeenCalled();
+
+		releaseAudio?.();
+		await finalizing;
+
+		expect(order).toEqual(["audio", "editor"]);
+	});
+
+	it("does not open the editor when a requested microphone track failed to save", async () => {
+		const openEditor = vi.fn(async () => undefined);
+
+		await expect(
+			finalizeNativeMacAudioBeforeEditor({
+				microphoneRequired: true,
+				persistMicrophoneSidecar: async () => false,
+				openEditor,
+			}),
+		).rejects.toThrow(/microphone audio/i);
+		expect(openEditor).not.toHaveBeenCalled();
+	});
+});
 
 type RecordingState = "inactive" | "recording" | "paused";
 

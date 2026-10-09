@@ -32,8 +32,44 @@ import {
 import { emitRecordingInterrupted } from "./events";
 import { getFinalMacCompanionAudioPath } from "./macCompanionAudio";
 
+export function createMacAudioCapturePlan({
+	capturesSystemAudio,
+	capturesMicrophone,
+}: {
+	capturesSystemAudio: boolean;
+	capturesMicrophone: boolean;
+}) {
+	return {
+		capturesSystemAudio,
+		// Chromium owns microphone selection on macOS. Browser MediaDevices IDs
+		// are opaque and cannot be matched reliably to Core Audio device UIDs.
+		capturesMicrophoneNatively: false,
+		browserMicrophoneRequired: capturesMicrophone,
+	};
+}
+
+export function assertRequestedMacSystemAudioArtifact({
+	requested,
+	path,
+	fileSizeBytes,
+}: {
+	requested: boolean;
+	path: string | null | undefined;
+	fileSizeBytes: number | null | undefined;
+}) {
+	if (!requested) {
+		return;
+	}
+
+	if (!path || !Number.isFinite(fileSizeBytes) || (fileSizeBytes ?? 0) <= 0) {
+		throw new Error(
+			"The requested macOS system audio track was not written. The recording was kept, but Recordly will not open it as a successful audio recording.",
+		);
+	}
+}
+
 export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStreams) {
-	return new Promise<void>((resolve, reject) => {
+	return new Promise<number>((resolve, reject) => {
 		const timer = setTimeout(() => {
 			cleanup();
 			reject(new Error("Timed out waiting for ScreenCaptureKit recorder to start"));
@@ -44,7 +80,7 @@ export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStream
 			stdoutBuffer += chunk.toString();
 			if (stdoutBuffer.includes("Recording started")) {
 				cleanup();
-				resolve();
+				resolve(Date.now());
 			}
 		};
 
@@ -330,6 +366,12 @@ export async function recoverNativeMacCaptureOutput() {
 				console.warn("Failed to mux audio during recovery:", muxError);
 			}
 		}
+
+		assertRequestedMacSystemAudioArtifact({
+			requested: Boolean(systemAudioPath),
+			path: systemAudioPath,
+			fileSizeBytes: await getFileSizeIfPresent(systemAudioPath),
+		});
 
 		return await finalizeStoredVideo(candidatePath);
 	} catch (error) {

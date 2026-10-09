@@ -515,7 +515,9 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 
 	let paths: string[];
 	if (isLibrarySequenceSource(videoPath)) {
-		paths = companionCandidates.flatMap((candidate) => candidate.usablePaths);
+		paths = Array.from(
+			new Set(companionCandidates.flatMap((candidate) => candidate.usablePaths)),
+		);
 	} else if (await hasEmbeddedAudioStream(videoPath)) {
 		const hasUsableMacSystemCompanion = companionCandidates.some(
 			(candidate) =>
@@ -535,7 +537,12 @@ export async function getCompanionAudioFallbackInfo(videoPath: string) {
 		);
 
 		if (!hasUsableMacSystemCompanion && usableMacMicOnlyCompanions.length > 0) {
-			paths = usableMacMicOnlyCompanions;
+			// A browser microphone WAV is an additional track; keep the embedded
+			// source audio (normally system sound) beside it. Native mic-only M4A
+			// remains authoritative on its own to avoid playing the mic twice.
+			paths = usableMacMicOnlyCompanions.some((micPath) => micPath.endsWith(".mic.wav"))
+				? [videoPath, ...usableMacMicOnlyCompanions]
+				: usableMacMicOnlyCompanions;
 		} else if (hasUsableMacSystemCompanion) {
 			// The inline mp4 audio track carries system audio only (the helper skips
 			// the microphone while system audio is captured), so returning the video

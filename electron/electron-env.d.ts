@@ -260,6 +260,7 @@ interface Window {
 			message?: string;
 			error?: string;
 			userNotified?: boolean;
+			captureStartedAtMs?: number;
 			microphoneFallbackRequired?: boolean;
 		}>;
 		stopNativeScreenRecording: () => Promise<{

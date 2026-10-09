@@ -63,7 +63,9 @@ import {
 	waitForFfmpegCaptureStop,
 } from "../recording/ffmpeg";
 import {
+	assertRequestedMacSystemAudioArtifact,
 	attachNativeCaptureLifecycle,
+	createMacAudioCapturePlan,
 	finalizeStoredVideo,
 	muxNativeMacRecordingWithAudio,
 	recoverNativeMacCaptureOutput,
@@ -720,13 +722,14 @@ export function registerRecordingHandlers(
 				const helperPath = await ensureNativeCaptureHelperBinary();
 				const timestamp = Date.now();
 				const outputPath = path.join(recordingsDir, `recording-${timestamp}.mp4`);
-				const capturesSystemAudio = Boolean(options?.capturesSystemAudio);
-				const capturesMicrophone = Boolean(options?.capturesMicrophone);
+				const audioCapturePlan = createMacAudioCapturePlan({
+					capturesSystemAudio: Boolean(options?.capturesSystemAudio),
+					capturesMicrophone: Boolean(options?.capturesMicrophone),
+				});
+				const capturesSystemAudio = audioCapturePlan.capturesSystemAudio;
+				const capturesMicrophone = audioCapturePlan.capturesMicrophoneNatively;
 				const systemAudioOutputPath = capturesSystemAudio
 					? path.join(recordingsDir, `recording-${timestamp}.system.m4a`)
-					: null;
-				const microphoneOutputPath = capturesMicrophone
-					? path.join(recordingsDir, `recording-${timestamp}.mic.m4a`)
 					: null;
 				const config: Record<string, unknown> = {
 					fps: 60,
@@ -744,20 +747,8 @@ export function registerRecordingHandlers(
 					config.excludedProcessIds = excludedProcessIds;
 				}
 
-				if (options?.microphoneDeviceId) {
-					config.microphoneDeviceId = options.microphoneDeviceId;
-				}
-
-				if (options?.microphoneLabel) {
-					config.microphoneLabel = options.microphoneLabel;
-				}
-
 				if (systemAudioOutputPath) {
 					config.systemAudioOutputPath = systemAudioOutputPath;
-				}
-
-				if (microphoneOutputPath) {
-					config.microphoneOutputPath = microphoneOutputPath;
 				}
 
 				const windowId = parseWindowId(source?.id);
@@ -780,7 +771,7 @@ export function registerRecordingHandlers(
 				setNativeCaptureOutputBuffer("");
 				setNativeCaptureTargetPath(outputPath);
 				setNativeCaptureSystemAudioPath(systemAudioOutputPath);
-				setNativeCaptureMicrophonePath(microphoneOutputPath);
+				setNativeCaptureMicrophonePath(null);
 				setNativeCaptureStopRequested(false);
 				setNativeCapturePaused(false);
 				captProc = spawn(helperPath, [JSON.stringify(config)], {
@@ -797,18 +788,8 @@ export function registerRecordingHandlers(
 					setNativeCaptureOutputBuffer(nativeCaptureOutputBuffer + chunk.toString());
 				});
 
-				await waitForNativeCaptureStart(captProc);
+				const captureStartedAtMs = await waitForNativeCaptureStart(captProc);
 				setNativeScreenRecordingActive(true);
-
-				// If the native helper reported MICROPHONE_CAPTURE_UNAVAILABLE, it started
-				// capture without microphone.  Clear the mic path so the renderer can fall
-				// back to a browser-side sidecar recording for the microphone track.
-				const micUnavailableNatively = nativeCaptureOutputBuffer.includes(
-					"MICROPHONE_CAPTURE_UNAVAILABLE",
-				);
-				if (micUnavailableNatively) {
-					setNativeCaptureMicrophonePath(null);
-				}
 
 				recordNativeCaptureDiagnostics({
 					backend: "mac-screencapturekit",
@@ -824,7 +805,8 @@ export function registerRecordingHandlers(
 				});
 				return {
 					success: true,
-					microphoneFallbackRequired: micUnavailableNatively,
+					captureStartedAtMs,
+					microphoneFallbackRequired: audioCapturePlan.browserMicrophoneRequired,
 				};
 			} catch (error) {
 				console.error("Failed to start native ScreenCaptureKit recording:", error);
@@ -1169,13 +1151,6 @@ export function registerRecordingHandlers(
 				process.stdin.write("stop\n");
 				const tempVideoPath = await waitForNativeCaptureStop(process);
 				console.log("[stop-native] Helper stopped, tempVideoPath:", tempVideoPath);
-				setNativeCaptureProcess(null);
-				setNativeScreenRecordingActive(false);
-				setNativeCaptureTargetPath(null);
-				setNativeCaptureSystemAudioPath(null);
-				setNativeCaptureMicrophonePath(null);
-				setNativeCaptureStopRequested(false);
-				setNativeCapturePaused(false);
 
 				const finalVideoPath = preferredVideoPath ?? tempVideoPath;
 				if (tempVideoPath !== finalVideoPath) {
@@ -1203,6 +1178,20 @@ export function registerRecordingHandlers(
 				} else {
 					console.log("[stop-native] No separate audio tracks to mux");
 				}
+
+				assertRequestedMacSystemAudioArtifact({
+					requested: Boolean(preferredSystemAudioPath),
+					path: preferredSystemAudioPath,
+					fileSizeBytes: await getFileSizeIfPresent(preferredSystemAudioPath),
+				});
+
+				setNativeCaptureProcess(null);
+				setNativeScreenRecordingActive(false);
+				setNativeCaptureTargetPath(null);
+				setNativeCaptureSystemAudioPath(null);
+				setNativeCaptureMicrophonePath(null);
+				setNativeCaptureStopRequested(false);
+				setNativeCapturePaused(false);
 
 				return await finalizeStoredVideo(finalVideoPath);
 			} catch (error) {
@@ -1261,6 +1250,11 @@ export function registerRecordingHandlers(
 								);
 							}
 						}
+						assertRequestedMacSystemAudioArtifact({
+							requested: Boolean(fallbackSystemAudioPath),
+							path: fallbackSystemAudioPath,
+							fileSizeBytes: await getFileSizeIfPresent(fallbackSystemAudioPath),
+						});
 						return await finalizeStoredVideo(fallbackPath);
 					} catch {
 						// File doesn't exist or isn't accessible
