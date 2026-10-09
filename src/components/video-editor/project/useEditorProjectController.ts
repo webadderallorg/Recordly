@@ -62,6 +62,8 @@ type Input = {
 	autoFullTrackClipIdRef: MutableRefObject<string | null>;
 	autoFullTrackClipEndMsRef: MutableRefObject<number | null>;
 	pendingFreshRecordingAutoZoomPathRef: MutableRefObject<string | null>;
+	pendingFreshRecordingManualZoomPathRef: MutableRefObject<string | null>;
+	manualRecordingZoomsAppliedVideoPathRef: MutableRefObject<string | null>;
 	pendingFreshRecordingAutoSuggestTelemetryCountRef: MutableRefObject<number>;
 	autoSuggestedVideoPathRef: MutableRefObject<string | null>;
 	applySessionPresentation: (
@@ -122,6 +124,8 @@ export function useEditorProjectController(input: Input) {
 			autoFullTrackClipIdRef: input.autoFullTrackClipIdRef,
 			autoFullTrackClipEndMsRef: input.autoFullTrackClipEndMsRef,
 			pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
+			pendingFreshRecordingManualZoomPathRef: input.pendingFreshRecordingManualZoomPathRef,
+			manualRecordingZoomsAppliedVideoPathRef: input.manualRecordingZoomsAppliedVideoPathRef,
 			pendingFreshRecordingAutoSuggestTelemetryCountRef:
 				input.pendingFreshRecordingAutoSuggestTelemetryCountRef,
 			autoSuggestedVideoPathRef: input.autoSuggestedVideoPathRef,
@@ -144,6 +148,7 @@ export function useEditorProjectController(input: Input) {
 		devConfig: input.devConfig,
 		videoSourcePath: input.videoSourcePath,
 		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingManualZoomPathRef: input.pendingFreshRecordingManualZoomPathRef,
 		applyLoadedProject: lifecycle.applyLoadedProject,
 		resetSourceScopedEditorState: lifecycle.resetSourceScopedEditorState,
 		applySessionPresentation: input.applySessionPresentation,
@@ -197,6 +202,7 @@ export function useEditorProjectController(input: Input) {
 		appearance: input.appearance,
 		videoPlaybackRef: input.videoPlaybackRef,
 		pendingFreshRecordingAutoZoomPathRef: input.pendingFreshRecordingAutoZoomPathRef,
+		pendingFreshRecordingManualZoomPathRef: input.pendingFreshRecordingManualZoomPathRef,
 		hasUnsavedChanges,
 		setIsPlaying: input.setIsPlaying,
 		setCurrentTime: input.setCurrentTime,

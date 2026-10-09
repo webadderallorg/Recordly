@@ -97,6 +97,7 @@ export type CursorInteractionType =
 	| "double-click"
 	| "right-click"
 	| "middle-click"
+	| "manual-zoom"
 	| "mouseup";
 
 export interface CursorTelemetryPoint {
