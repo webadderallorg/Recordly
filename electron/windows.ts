@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, type WebContents } from "electron";
 import {
 	supportsHudCaptureProtection,
 	shouldProtectHudCapture,
@@ -1263,6 +1263,11 @@ export function closeCapturePickerWindows(): void {
 	for (const win of windows) {
 		if (!win.isDestroyed()) win.close();
 	}
+}
+
+/** Whether a message came from one of the open picker overlays. */
+export function isCapturePickerWebContents(contents: WebContents): boolean {
+	return capturePickerWindows.some((win) => !win.isDestroyed() && win.webContents === contents);
 }
 
 /**

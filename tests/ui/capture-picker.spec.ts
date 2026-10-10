@@ -224,6 +224,78 @@ test("areas can be moved and resized before Enter confirms them", async ({ page 
 	});
 });
 
+for (const resize of [false, true]) {
+	test(`area ${resize ? "resize" : "movement"} tracks pointer updates before the next render`, async ({
+		page,
+	}) => {
+		await openPicker(page);
+		await page.mouse.move(300, 200);
+		await page.mouse.down();
+		await page.mouse.move(700, 450);
+		await page.mouse.up();
+		await expect(page.getByText("Area · 400 × 250")).toBeVisible();
+		const start = resize ? { x: 700, y: 450 } : { x: 400, y: 300 };
+		await page.mouse.move(start.x, start.y);
+		await page.mouse.down();
+		await page.locator("div.fixed.inset-0.select-none").evaluate((overlay, start) => {
+			for (const delta of [50, 1]) {
+				overlay.dispatchEvent(
+					new PointerEvent("pointermove", {
+						bubbles: true,
+						pointerId: 1,
+						pointerType: "mouse",
+						buttons: 1,
+						clientX: start.x + delta,
+						clientY: start.y + delta,
+					}),
+				);
+			}
+		}, start);
+		await page.mouse.up();
+		await page.keyboard.press("Enter");
+		expect(await pick(page)).toMatchObject({
+			kind: "area",
+			x: resize ? 300 : 301,
+			y: resize ? 200 : 201,
+			width: resize ? 401 : 400,
+			height: resize ? 251 : 250,
+			record: false,
+		});
+	});
+}
+
+test("HUD reports a failed pick and keeps cancellation silent", async ({ page }) => {
+	await installDesktopBridge(page);
+	await page.addInitScript(() => {
+		let canceled = false;
+		Object.assign(window.electronAPI, {
+			getSelectedSource: async () => null,
+			pickCaptureTarget: async () => {
+				const result = {
+					success: false,
+					canceled,
+					message: "That window or screen is no longer available.",
+				};
+				canceled = true;
+				return result;
+			},
+		});
+	});
+	await page.goto("/?windowType=hud-overlay");
+	const source = page.getByRole("button", { name: "Choose recording source" });
+	await source.click();
+	await expect(
+		page.getByText("That window or screen is no longer available.", { exact: true }),
+	).toBeVisible();
+	await page.getByText("That window or screen is no longer available.", { exact: true }).hover();
+	await page.locator('[data-slot="toast-close"]').click();
+	await source.click();
+	await expect(source).toBeEnabled();
+	await expect(
+		page.getByText("That window or screen is no longer available.", { exact: true }),
+	).toHaveCount(0);
+});
+
 test("unselected source reads Pick source once and Record stays disabled while picking", async ({
 	page,
 }) => {

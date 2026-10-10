@@ -19,12 +19,11 @@ vi.mock("electron", () => ({
 		handle: (name: string, handler: (...args: unknown[]) => unknown) =>
 			mocks.handlers.set(name, handler),
 	},
-	BrowserWindow: { fromWebContents: (sender: unknown) => sender },
 }));
 vi.mock("../../windows", () => ({
 	createCapturePickerWindows: mocks.create,
 	closeCapturePickerWindows: mocks.close,
-	getCapturePickerWindows: () => mocks.windows,
+	isCapturePickerWebContents: (sender: object) => mocks.windows.includes(sender),
 }));
 vi.mock("../captureSelection", () => ({
 	validateCaptureSource: mocks.validate,

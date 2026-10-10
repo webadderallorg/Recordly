@@ -1,11 +1,11 @@
 import { rememberCaptureSource, validateCaptureSource } from "../captureSelection";
 import { listCapturePickerWindows } from "../capturePickerSources";
-import { BrowserWindow, ipcMain } from "electron";
+import { ipcMain } from "electron";
 import type { SourceListPickResult } from "../../sourceListPicker";
 import {
 	closeCapturePickerWindows,
 	createCapturePickerWindows,
-	getCapturePickerWindows,
+	isCapturePickerWebContents,
 } from "../../windows";
 import { stopWindowBoundsCapture } from "../cursor/bounds";
 import { isCursorCaptureActive, selectedSource, setSelectedSource } from "../state";
@@ -149,8 +149,7 @@ export function registerCapturePickerHandlers({
 	});
 
 	ipcMain.handle("complete-capture-pick", async (event, input: unknown) => {
-		if (!getCapturePickerWindows().includes(BrowserWindow.fromWebContents(event.sender)!))
-			return;
+		if (!isCapturePickerWebContents(event.sender)) return;
 		if (
 			input &&
 			typeof input === "object" &&
@@ -175,8 +174,7 @@ export function registerCapturePickerHandlers({
 	});
 
 	ipcMain.handle("get-capture-picker-context", async (event, displayId: unknown) => {
-		if (!getCapturePickerWindows().includes(BrowserWindow.fromWebContents(event.sender)!))
-			throw new Error("Unknown picker window.");
+		if (!isCapturePickerWebContents(event.sender)) throw new Error("Unknown picker window.");
 		const display = getScreen()
 			.getAllDisplays()
 			.find((entry) => entry.id === Number(displayId));
