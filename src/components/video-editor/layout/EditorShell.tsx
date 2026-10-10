@@ -140,6 +140,7 @@ export function EditorShell(props: Props) {
 		() => (
 			<SettingsPanel
 				{...settingsPanelProps}
+				accountUser={auth.user}
 				onShowOnboarding={showOnboarding}
 				activeEffectSection="settings"
 				selectedAnnotationId={null}
@@ -147,7 +148,7 @@ export function EditorShell(props: Props) {
 				advanced
 			/>
 		),
-		[settingsPanelProps, showOnboarding],
+		[settingsPanelProps, showOnboarding, auth.user],
 	);
 	const onboarding = (
 		<OnboardingController
@@ -361,6 +362,7 @@ export function EditorShell(props: Props) {
 						}}
 						settingsPanelProps={{
 							...settingsPanelProps,
+							accountUser: auth.user,
 							onShowOnboarding: showOnboarding,
 						}}
 					/>

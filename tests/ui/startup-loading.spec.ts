@@ -6,14 +6,19 @@ test("editor paints a wireframe before JavaScript loads", async ({ page }) => {
 	await page.goto("/?windowType=editor");
 	await expect(page.getByRole("status", { name: "Loading editor" })).toBeVisible();
 	await expect(page.locator(".boot-preview i").first()).toBeVisible();
+	await page.screenshot({ path: "test-results/startup-wireframe.png" });
 	await page.goto("/?windowType=hud-overlay");
 	await expect(page.locator(".boot-shell")).not.toBeVisible();
 });
 
-test("wireframe stays visible while the editor module loads, then gives way to the app", async ({ page }) => {
+test("wireframe stays visible while the editor module loads, then gives way to the app", async ({
+	page,
+}) => {
 	await installDesktopBridge(page);
 	let release!: () => void;
-	const paused = new Promise<void>((resolve) => { release = resolve; });
+	const paused = new Promise<void>((resolve) => {
+		release = resolve;
+	});
 	await page.route("**/components/video-editor/EditorWindow.tsx*", async (route) => {
 		await paused;
 		await route.continue();

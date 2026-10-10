@@ -1,5 +1,11 @@
 import type { Page } from "@playwright/test";
-export async function installDesktopBridge(page: Page, videoFixture = "preview.mp4") {
+import { installSupabaseAuth } from "./auth";
+export async function installDesktopBridge(
+	page: Page,
+	videoFixture = "preview.mp4",
+	auth = { signedIn: true },
+) {
+	await installSupabaseAuth(page, auth);
 	await page.addInitScript((videoFixture) => {
 		const success = async () => ({ success: true });
 		const subscribe = () => () => undefined;
@@ -104,7 +110,13 @@ export async function installDesktopBridge(page: Page, videoFixture = "preview.m
 				finishRecordingImport: success,
 				setCurrentRecordingSession: success,
 				setHasUnsavedChanges: success,
-				onAuthCallbackUrl: subscribe,
+				onAuthCallbackUrl: (callback: (url: string) => void) => {
+					const listener = (event: Event) =>
+						callback((event as CustomEvent<string>).detail);
+					window.addEventListener("recordly-test-auth-callback", listener);
+					return () =>
+						window.removeEventListener("recordly-test-auth-callback", listener);
+				},
 				onProjectThumbnailReady: subscribe,
 				getPendingAuthCallbackUrl: async () => null,
 				ackAuthCallbackUrl: success,

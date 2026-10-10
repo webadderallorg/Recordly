@@ -1,6 +1,7 @@
 import { type PointerEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
 	canShowFloatingWebcamPreview,
+	DEFAULT_WEBCAM_PREVIEW_SIZE,
 	parseWebcamPreviewSize,
 	resizeWebcamPreview,
 	WEBCAM_PREVIEW_SIZE_STORAGE_KEY,
@@ -48,9 +49,13 @@ export function useWebcamPreviewOverlay({
 	const [showFloatingWebcamPreview, setShowFloatingWebcamPreview] = useState(true);
 	const [webcamPreviewOffset, setWebcamPreviewOffset] = useState(DEFAULT_WEBCAM_PREVIEW_OFFSET);
 	const webcamPreviewOffsetRef = useRef(DEFAULT_WEBCAM_PREVIEW_OFFSET);
-	const [webcamPreviewSize, setWebcamPreviewSize] = useState(() =>
-		parseWebcamPreviewSize(localStorage.getItem(WEBCAM_PREVIEW_SIZE_STORAGE_KEY)),
-	);
+	const [webcamPreviewSize, setWebcamPreviewSize] = useState(() => {
+		try {
+			return parseWebcamPreviewSize(localStorage.getItem(WEBCAM_PREVIEW_SIZE_STORAGE_KEY));
+		} catch {
+			return DEFAULT_WEBCAM_PREVIEW_SIZE;
+		}
+	});
 	const webcamPreviewResizeRef = useRef<{
 		pointerId: number;
 		handle: WebcamPreviewResizeHandle;
@@ -273,7 +278,14 @@ export function useWebcamPreviewOverlay({
 			isWebcamPreviewDraggingRef.current = false;
 			setWebcamPreviewSize(resizeState.size);
 			setWebcamPreviewOffset({ ...webcamPreviewOffsetRef.current });
-			localStorage.setItem(WEBCAM_PREVIEW_SIZE_STORAGE_KEY, JSON.stringify(resizeState.size));
+			try {
+				localStorage.setItem(
+					WEBCAM_PREVIEW_SIZE_STORAGE_KEY,
+					JSON.stringify(resizeState.size),
+				);
+			} catch {
+				// Keep resizing and pointer cleanup working when preferences cannot be saved.
+			}
 			if (event.currentTarget.hasPointerCapture(event.pointerId)) {
 				event.currentTarget.releasePointerCapture(event.pointerId);
 			}

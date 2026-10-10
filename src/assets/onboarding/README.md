@@ -1,13 +1,6 @@
-# Onboarding clips
+# Onboarding
 
-Place optional square MP4 clips in this folder to replace the three illustrations:
-
-- `record.mp4`
-- `preview.mp4`
-- `share.mp4`
-
-They are discovered at build time. Use short, silent H.264 MP4s with the important
-content inside the square frame. Clips loop muted while the page is open, and
-show playback controls instead of autoplay when reduced motion is enabled.
-Missing or failed clips retain the illustration. Change the paragraph in
-`src/components/auth/OnboardingFeature.tsx` to update the introductory copy.
+Onboarding has two carousel pages: Account and Permissions, selected with the bottom pagination buttons. The Recordly logo sits above the title on each page. Account requires a non-anonymous Supabase session; there is no skip action. The shared banner uses
+`public/auth/login-banner.png` in `src/components/auth/OnboardingLayout.tsx`. It grows into the space left by the current page’s content and shrinks to a minimum height in short windows, keeping the form scrollable and the bottom navigation visible.
+Permission controls and the final Start recording action live in
+`src/components/auth/OnboardingPermissions.tsx`.

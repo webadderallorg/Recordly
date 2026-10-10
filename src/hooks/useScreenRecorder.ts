@@ -3,6 +3,7 @@ import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
+import { hasRecordlySession } from "@/lib/auth/recordlyAuth";
 import {
 	getVideoExtensionForMimeType,
 	isWebmMimeType,
@@ -547,6 +548,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, []);
 
 	const preparePermissions = useCallback(async () => {
+		if (!(await hasRecordlySession().catch(() => false))) {
+			await window.electronAPI.showRecordingPermissions();
+			return false;
+		}
 		if ((await window.electronAPI.getPlatform()) !== "darwin") return true;
 		const [screen, accessibility] = await Promise.all([
 			window.electronAPI.getScreenRecordingPermissionStatus(),
@@ -1802,6 +1807,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					if (nativeResult.microphoneFallbackRequired && microphoneEnabled) {
 						void logNativeCaptureDiagnostics("start-browser-microphone-fallback");
 						console.info("Using browser microphone processing for this recording.");
+						let unownedMicStream: MediaStream | null = null;
 						try {
 							const microphoneConstraints = createProcessedMicrophoneConstraints(
 								microphoneDeviceId,
@@ -1810,6 +1816,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							micFallbackRequestedConstraints.current = microphoneConstraints;
 							const micStream =
 								await navigator.mediaDevices.getUserMedia(microphoneConstraints);
+							unownedMicStream = micStream;
 							micFallbackTrackSettings.current =
 								createMicrophoneTrackSettingsSnapshot(micStream);
 							micFallbackAudioInputDevices.current =
@@ -1842,6 +1849,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							if (startWasCancelled()) return;
 							recorder.start(RECORDER_TIMESLICE_MS);
 							micFallbackRecorder.current = recorder;
+							unownedMicStream = null;
 						} catch (micError) {
 							micFallbackStartDelayMs.current = null;
 							micFallbackTrackSettings.current = null;
@@ -1860,6 +1868,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 									: `${getErrorMessage(micError)}. Recording will continue without microphone audio.`,
 								{ id: MICROPHONE_FALLBACK_ERROR_TOAST_ID, duration: 10000 },
 							);
+						} finally {
+							// Until the recorder owns it, cancellation or setup failure must release the mic.
+							unownedMicStream?.getTracks().forEach((track) => track.stop());
 						}
 					}
 					if (startWasCancelled()) {
@@ -2249,9 +2260,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		} finally {
 			try {
 				if (startWasCancelled()) {
-					await discardActiveNativeCapture();
-					cleanupCapturedMedia();
-					await Promise.allSettled([stopMicFallbackRecorder(), stopWebcamRecorder()]);
+					try {
+						await discardActiveNativeCapture();
+					} finally {
+						cleanupCapturedMedia();
+						await Promise.allSettled([
+							stopMicFallbackRecorder(),
+							stopWebcamRecorder(),
+							// This also restores the Windows cursor hidden during browser startup.
+							window.electronAPI.setRecordingState(false),
+						]);
+					}
 				}
 			} catch (error) {
 				console.warn("Failed to clean up canceled recording startup:", error);

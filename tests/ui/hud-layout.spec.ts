@@ -109,56 +109,77 @@ test("New recording mode starts the webcam with an editor still open and release
 		.toBe(true);
 });
 
-test("floating webcam preview resizes from its corners and remembers the size", async ({
-	page,
-}) => {
-	await installDesktopBridge(page);
-	await page.addInitScript(() => {
-		window.electronAPI.getRecordingPreferences = async () => ({
-			success: true,
-			microphoneEnabled: false,
-			webcamEnabled: true,
-			systemAudioEnabled: false,
+for (const storageBlocked of [false, true]) {
+	test(`floating webcam preview resizes from its corners ${storageBlocked ? "when storage is unavailable" : "and remembers the size"}`, async ({
+		page,
+	}) => {
+		const errors: string[] = [];
+		page.on("pageerror", (error) => errors.push(error.message));
+		await installDesktopBridge(page);
+		if (storageBlocked) {
+			await page.addInitScript(() => {
+				const getItem = Storage.prototype.getItem;
+				const setItem = Storage.prototype.setItem;
+				Storage.prototype.getItem = function (key) {
+					if (key === "recordly.webcam-preview-size")
+						throw new Error("Storage unavailable");
+					return getItem.call(this, key);
+				};
+				Storage.prototype.setItem = function (key, value) {
+					if (key === "recordly.webcam-preview-size")
+						throw new Error("Storage unavailable");
+					return setItem.call(this, key, value);
+				};
+			});
+		}
+		await page.addInitScript(() => {
+			window.electronAPI.getRecordingPreferences = async () => ({
+				success: true,
+				microphoneEnabled: false,
+				webcamEnabled: true,
+				systemAudioEnabled: false,
+			});
+			navigator.mediaDevices.getUserMedia = async () => {
+				const canvas = document.createElement("canvas");
+				canvas.getContext("2d")!.fillRect(0, 0, 320, 320);
+				return canvas.captureStream(24);
+			};
+			navigator.mediaDevices.enumerateDevices = async () => [];
 		});
-		navigator.mediaDevices.getUserMedia = async () => {
-			const canvas = document.createElement("canvas");
-			canvas.getContext("2d")!.fillRect(0, 0, 320, 320);
-			return canvas.captureStream(24);
+		await page.goto("/?windowType=hud-overlay");
+		const preview = page.locator("[data-resize-handle]").first().locator("..");
+		await expect(preview).toBeVisible();
+		const before = (await preview.boundingBox())!;
+		expect([before.width, before.height]).toEqual([288, 288]);
+
+		const dragHandle = async (handle: string, dx: number, dy: number) => {
+			const box = (await preview.locator(`[data-resize-handle="${handle}"]`).boundingBox())!;
+			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+			await page.mouse.down();
+			await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, {
+				steps: 5,
+			});
+			await page.mouse.up();
 		};
-		navigator.mediaDevices.enumerateDevices = async () => [];
+
+		// Top-left grows the preview while the bottom-right corner stays anchored.
+		await dragHandle("nw", -60, -40);
+		const grown = (await preview.boundingBox())!;
+		expect([grown.width, grown.height]).toEqual([348, 328]);
+		expect(grown.x + grown.width).toBeCloseTo(before.x + before.width);
+		expect(grown.y + grown.height).toBeCloseTo(before.y + before.height);
+
+		// Bottom-right shrinks the preview while the top-left corner stays put, down to the minimum.
+		await dragHandle("se", -500, -500);
+		const shrunk = (await preview.boundingBox())!;
+		expect([shrunk.width, shrunk.height]).toEqual([120, 120]);
+		expect(shrunk.x).toBeCloseTo(grown.x);
+		expect(shrunk.y).toBeCloseTo(grown.y);
+
+		await page.reload();
+		await expect(preview).toBeVisible();
+		const restored = (await preview.boundingBox())!;
+		expect([restored.width, restored.height]).toEqual(storageBlocked ? [288, 288] : [120, 120]);
+		expect(errors).toEqual([]);
 	});
-	await page.goto("/?windowType=hud-overlay");
-	const preview = page.locator("[data-resize-handle]").first().locator("..");
-	await expect(preview).toBeVisible();
-	const before = (await preview.boundingBox())!;
-	expect([before.width, before.height]).toEqual([288, 288]);
-
-	const dragHandle = async (handle: string, dx: number, dy: number) => {
-		const box = (await preview.locator(`[data-resize-handle="${handle}"]`).boundingBox())!;
-		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-		await page.mouse.down();
-		await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, {
-			steps: 5,
-		});
-		await page.mouse.up();
-	};
-
-	// Top-left grows the preview while the bottom-right corner stays anchored.
-	await dragHandle("nw", -60, -40);
-	const grown = (await preview.boundingBox())!;
-	expect([grown.width, grown.height]).toEqual([348, 328]);
-	expect(grown.x + grown.width).toBeCloseTo(before.x + before.width);
-	expect(grown.y + grown.height).toBeCloseTo(before.y + before.height);
-
-	// Bottom-right shrinks the preview while the top-left corner stays put, down to the minimum.
-	await dragHandle("se", -500, -500);
-	const shrunk = (await preview.boundingBox())!;
-	expect([shrunk.width, shrunk.height]).toEqual([120, 120]);
-	expect(shrunk.x).toBeCloseTo(grown.x);
-	expect(shrunk.y).toBeCloseTo(grown.y);
-
-	await page.reload();
-	await expect(preview).toBeVisible();
-	const restored = (await preview.boundingBox())!;
-	expect([restored.width, restored.height]).toEqual([120, 120]);
-});
+}

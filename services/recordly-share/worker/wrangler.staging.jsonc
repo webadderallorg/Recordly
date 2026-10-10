@@ -1,0 +1,28 @@
+{
+  // Owner-approved isolated staging endpoint; no custom-domain routes.
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "recordly-share-staging",
+  "account_id": "b000d832666fb4eb4bc63df58fecbb11",
+  "main": "src/index.js",
+  "compatibility_date": "2024-11-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "routes": [],
+  "assets": {
+    "directory": "./web/dist",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "recordly-share-staging-db",
+    "database_id": "1d930cc5-644f-4b29-932d-ef75257b2f8c"
+  }],
+  "r2_buckets": [{
+    "binding": "VIDEOS_BUCKET",
+    "bucket_name": "recordly-videos-staging"
+  }],
+  "vars": { "ALLOW_API_SECRET_UPLOADS": "false", "HOSTED_MODE": "true", "STAGING_ALLOWED_USER_ID": "5053639f-395a-4435-a0fa-c394cf14f51f" },
+  "ratelimits": [{"name": "REQUEST_RATE_LIMIT", "namespace_id": "2026092301", "simple": {"limit": 120, "period": 60}}, {"name": "ACCOUNT_RATE_LIMIT", "namespace_id": "2026092302", "simple": {"limit": 60, "period": 60}}],
+  "triggers": { "crons": ["17 * * * *"] }
+}
