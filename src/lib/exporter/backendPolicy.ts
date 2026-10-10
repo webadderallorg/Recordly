@@ -149,3 +149,13 @@ export function planLightningExportRoutes(options: {
 export function getDefaultLightningRenderBackend(): ExportRenderBackend {
 	return "webgl";
 }
+
+/**
+ * Linux GPU stacks expose WebGPU that initializes but fails in Pixi's batcher
+ * on the first rendered frame, so start with WebGL there.
+ */
+export function getPreferredRenderBackendForPlatform(
+	platform: LightningRuntimePlatform,
+): ExportRenderBackend | undefined {
+	return platform === "linux" ? "webgl" : undefined;
+}

@@ -31,6 +31,7 @@ import {
 	stopCursorCapture,
 	writeCursorTelemetry,
 } from "../cursor/telemetry";
+import { startCompositorCursorCapture, stopCompositorCursorCapture } from "../cursor/interaction";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
 import { getMonitorHandles } from "../monitorResolver";
 import {
@@ -1872,6 +1873,7 @@ export function registerRecordingHandlers(
 			resetCursorCaptureClock();
 			setLinuxCursorScreenPoint(null);
 			setLastLeftClick(null);
+			void startCompositorCursorCapture();
 			sampleCursorPoint();
 			startCursorSampling();
 			void startInteractionCapture();
@@ -1879,6 +1881,7 @@ export function registerRecordingHandlers(
 			setIsCursorCaptureActive(false);
 			stopCursorCapture();
 			stopInteractionCapture();
+			stopCompositorCursorCapture();
 			stopWindowBoundsCapture();
 			stopNativeCursorMonitor();
 			showCursor();

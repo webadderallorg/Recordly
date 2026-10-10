@@ -24,6 +24,7 @@ import {
 } from "../state";
 import type { CursorInteractionType, CursorTelemetryPoint, CursorVisualType } from "../types";
 import { getScreen, getTelemetryPathForVideo } from "../utils";
+import { isKdeWaylandSession } from "./kwinCursorBridge";
 
 export function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value));
@@ -167,13 +168,16 @@ export function getCursorCaptureElapsedMs(nowMs = Date.now()) {
 export function getNormalizedCursorPoint() {
 	const fallbackCursor = getScreen().getCursorScreenPoint();
 	const linuxCursorCache = process.platform === "linux" ? linuxCursorScreenPoint : null;
-	const isLinuxCacheFresh = !!linuxCursorCache && Date.now() - linuxCursorCache.updatedAt <= 1000;
+	const isLinuxCacheFresh =
+		!!linuxCursorCache &&
+		(linuxCursorCache.logical === true || Date.now() - linuxCursorCache.updatedAt <= 1000);
 
 	const primarySf =
 		process.platform !== "darwin" ? getScreen().getPrimaryDisplay().scaleFactor || 1 : 1;
+	const linuxCacheSf = linuxCursorCache?.logical ? 1 : primarySf;
 
 	const cursor = isLinuxCacheFresh
-		? { x: linuxCursorCache.x / primarySf, y: linuxCursorCache.y / primarySf }
+		? { x: linuxCursorCache.x / linuxCacheSf, y: linuxCursorCache.y / linuxCacheSf }
 		: fallbackCursor;
 
 	const windowBounds = selectedSource?.id?.startsWith("window:") ? selectedWindowBounds : null;
@@ -258,6 +262,11 @@ export function pushCursorSample(
 }
 
 export function sampleCursorPoint() {
+	// Until KWin reports a position the only alternative is Electron's 0,0.
+	if (isKdeWaylandSession(process.platform) && !linuxCursorScreenPoint?.logical) {
+		return;
+	}
+
 	const point = getNormalizedCursorPoint();
 	pushCursorSample(point.cx, point.cy, getCursorCaptureElapsedMs(), "move");
 }
