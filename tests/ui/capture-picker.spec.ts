@@ -61,6 +61,7 @@ test("hovering highlights the frontmost window and a click picks it", async ({ p
 	await openPicker(page);
 	await page.mouse.move(600, 300);
 	await expect(page.getByText("Notes — Launch checklist · 620 × 460")).toBeVisible();
+	await page.screenshot({ path: "test-results/capture-picker.png", animations: "disabled" });
 
 	await page.mouse.click(600, 300);
 	expect(await pick(page)).toEqual({
