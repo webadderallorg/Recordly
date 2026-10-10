@@ -1668,8 +1668,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			}
 
 			stopActiveMediaRecorder(mediaRecorder.current);
-			stopActiveMediaRecorder(webcamRecorder.current);
-			webcamRecorder.current = null;
 
 			cleanupCapturedMedia();
 		};
