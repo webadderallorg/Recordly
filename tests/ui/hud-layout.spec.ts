@@ -133,6 +133,10 @@ for (const storageBlocked of [false, true]) {
 			});
 		}
 		await page.addInitScript(() => {
+			window.electronAPI.hudOverlaySetIgnoreMouse = async (ignore) => {
+				document.documentElement.dataset.webcamPassthrough = String(ignore);
+				return { success: true };
+			};
 			window.electronAPI.getRecordingPreferences = async () => ({
 				success: true,
 				microphoneEnabled: false,
@@ -175,6 +179,7 @@ for (const storageBlocked of [false, true]) {
 		expect([shrunk.width, shrunk.height]).toEqual([120, 120]);
 		expect(shrunk.x).toBeCloseTo(grown.x);
 		expect(shrunk.y).toBeCloseTo(grown.y);
+		await expect(page.locator("html")).toHaveAttribute("data-webcam-passthrough", "true");
 
 		await page.reload();
 		await expect(preview).toBeVisible();
