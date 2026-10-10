@@ -96,6 +96,9 @@ export function getSourceTrackIdFromPath(audioPath: string): SourceTrackId {
 	return "mixed";
 }
 
+/**
+ * Checks whether an audio path or URL points to a WAV audio file.
+ */
 export function isWavAudioPath(audioPath: string | null | undefined): boolean {
 	if (!audioPath) {
 		return false;

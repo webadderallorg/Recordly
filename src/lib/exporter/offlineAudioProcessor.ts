@@ -30,6 +30,9 @@ import {
 import type { VideoMuxer } from "./muxer";
 
 export class OfflineAudioProcessor extends AudioMediaProcessor {
+	/**
+	 * Renders multi-source or processed audio offline and muxes it into the final output.
+	 */
 	protected async renderAndMuxOfflineAudio(
 		videoUrl: string,
 		trimRegions: TrimLikeRegion[],
@@ -439,7 +442,10 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		source.start(localStartSec, bufferOffsetSec, duration);
 	}
 
-	// Feed a rendered AudioBuffer chunk to an AudioEncoder with a timestamp offset.
+	/**
+	 * Feeds a rendered AudioBuffer chunk to an AudioEncoder with a timestamp offset.
+	 * Returns the count of frames successfully submitted to the encoder.
+	 */
 	protected async feedBufferToEncoder(
 		encoder: AudioEncoder,
 		buffer: AudioBuffer,

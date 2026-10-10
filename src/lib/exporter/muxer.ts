@@ -94,6 +94,9 @@ export class VideoMuxer {
 		this.mode = mode ?? (shouldUseStreamTarget() ? "stream" : "buffer");
 	}
 
+	/**
+	 * Indicates whether any encoded audio packets have been committed to the muxer.
+	 */
 	get hasCommittedAudio(): boolean {
 		return this.committedAudioChunks > 0;
 	}

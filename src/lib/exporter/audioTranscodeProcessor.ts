@@ -10,6 +10,10 @@ import type { VideoMuxer } from "./muxer";
 import { OfflineAudioProcessor } from "./offlineAudioProcessor";
 
 export class AudioTranscodeProcessor extends OfflineAudioProcessor {
+	/**
+	 * Demuxes and transcodes audio for trim-only operations without decoding to PCM.
+	 * Returns true if audio chunks were successfully encoded and written to the muxer.
+	 */
 	protected async processTrimOnlyAudio(
 		demuxer: WebDemuxer,
 		muxer: VideoMuxer,
@@ -59,6 +63,10 @@ export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 		);
 	}
 
+	/**
+	 * Transcodes a stream of encoded audio chunks through WebCodecs AudioDecoder and AudioEncoder.
+	 * Returns true if at least one audio packet was committed to the muxer.
+	 */
 	protected async transcodeAudioStream(
 		audioStream: ReadableStream<EncodedAudioChunk>,
 		audioConfig: AudioDecoderConfig,
