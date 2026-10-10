@@ -113,14 +113,6 @@ export default defineConfig(({ mode }) => ({
 		entries: ["index.html"],
 		// React Aria imports this CommonJS shim through its ESM collection modules.
 		include: ["use-sync-external-store/shim"],
-		exclude: [
-			"react-icons/bs",
-			"react-icons/fa",
-			"react-icons/fa6",
-			"react-icons/fi",
-			"react-icons/md",
-			"react-icons/rx",
-		],
 	},
 	build: {
 		target: "esnext",
