@@ -1,5 +1,4 @@
-import { createWriteStream } from "node:fs";
-import { constants as fsConstants } from "node:fs";
+import { createWriteStream, constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import { get as httpsGet } from "node:https";
 import type Electron from "electron";
