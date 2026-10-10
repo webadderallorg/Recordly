@@ -42,12 +42,25 @@ export function shouldExpandHudOverlayFallback({
 	fallbackExpanded,
 	recordingActive,
 	webcamPreviewVisible,
+	waylandSession = false,
 }: {
 	fallbackExpanded: boolean;
 	recordingActive: boolean;
 	webcamPreviewVisible: boolean;
+	waylandSession?: boolean;
 }): boolean {
+	// Wayland ignores client-side repositioning, so resizing at runtime shifts the
+	// HUD away from the pointer. Keep it expanded so menus always fit.
+	if (waylandSession) {
+		return true;
+	}
 	return fallbackExpanded || (recordingActive && webcamPreviewVisible);
+}
+
+export function isWaylandSession(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): boolean {
+	return (
+		platform === "linux" && (env.XDG_SESSION_TYPE === "wayland" || Boolean(env.WAYLAND_DISPLAY))
+	);
 }
 
 export function resizeHudOverlayFallbackBounds(
