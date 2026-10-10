@@ -605,6 +605,12 @@ export class FrameRenderer {
 		console.log(`[FrameRenderer] Export renderer backend: ${this.rendererBackend}`);
 	}
 
+	/**
+	 * Initializes the Pixi.js application with automatic fallback between WebGL and WebGPU.
+	 *
+	 * @param canvas - Target canvas element for rendering.
+	 * @returns Object with initialized Application instance and the active backend.
+	 */
 	private async createPixiApplication(
 		canvas: HTMLCanvasElement,
 	): Promise<{ app: Application; backend: ExportRenderBackend }> {
@@ -624,13 +630,9 @@ export class FrameRenderer {
 
 		const preferredRenderBackend = this.config.preferredRenderBackend;
 		const backendOrder: ExportRenderBackend[] =
-			preferredRenderBackend === "webgl"
-				? ["webgl", "webgpu"]
-				: preferredRenderBackend === "webgpu"
-					? ["webgpu", "webgl"]
-					: typeof navigator !== "undefined" && "gpu" in navigator
-						? ["webgpu", "webgl"]
-						: ["webgl"];
+			preferredRenderBackend === "webgpu"
+				? ["webgpu", "webgl"]
+				: ["webgl", "webgpu"];
 		const failures: PixiRendererAttempt[] = [];
 
 		for (const backend of backendOrder) {

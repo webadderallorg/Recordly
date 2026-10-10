@@ -310,6 +310,11 @@ function setHudOverlayFallbackExpanded(expanded: boolean) {
 	}
 }
 
+/**
+ * Updates HUD overlay mouse passthrough and expands/contracts fallback bounds when needed.
+ *
+ * @param ignore - Whether mouse events should pass through the HUD window.
+ */
 function setHudOverlayMousePassthrough(ignore: boolean) {
 	hudOverlayIgnoringMouse =
 		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive ? true : ignore;
@@ -329,9 +334,7 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 	}
 
 	if (!isHudOverlayMousePassthroughSupported()) {
-		if (process.platform !== "linux") {
-			setHudOverlayFallbackExpanded(!ignore);
-		}
+		setHudOverlayFallbackExpanded(!ignore);
 		hudOverlayWindow.setIgnoreMouseEvents(false);
 		return;
 	}

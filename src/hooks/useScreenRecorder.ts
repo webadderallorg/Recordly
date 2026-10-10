@@ -26,7 +26,6 @@ const DEFAULT_HEIGHT = 1080;
 const CODEC_ALIGNMENT = 2;
 const RECORDER_TIMESLICE_MS = 250;
 const BITS_PER_MEGABIT = 1_000_000;
-const MIN_FRAME_RATE = 30;
 const CHROME_MEDIA_SOURCE = "desktop";
 const RECORDING_FILE_PREFIX = "recording-";
 const AUDIO_BITRATE_VOICE = 128_000;
@@ -687,6 +686,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		[getMicFallbackRecordedElapsedMs],
 	);
 
+	/**
+	 * Resolves a live browser capture source matching the given desktop source.
+	 * Matches by direct ID or display_id to prevent capturing the wrong screen.
+	 */
 	const resolveBrowserCaptureSource = useCallback(async (source: ProcessedDesktopSource) => {
 		if (!source?.id?.startsWith("screen:")) {
 			return source;
@@ -1003,6 +1006,68 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	);
 
 	/**
+	 * Configures event handlers on a webcam MediaRecorder instance.
+	 * Parameterized with the target recorder and configured MIME type to ensure
+	 * metadata, container extension, and duration repair reflect the active recorder.
+	 */
+	const attachWebcamRecorderHandlers = useCallback(
+		(rec: MediaRecorder, configuredMimeType?: string) => {
+			rec.ondataavailable = (event) => {
+				if (event.data && event.data.size > 0) {
+					webcamChunks.current.push(event.data);
+				}
+			};
+			rec.onerror = () => {
+				webcamStopResolver.current?.(null);
+				webcamStopResolver.current = null;
+			};
+			rec.onstop = async () => {
+				const sessionTimestamp = recordingSessionTimestamp.current ?? Date.now();
+				const webcamMimeType = rec.mimeType || configuredMimeType;
+				const webcamFileName = `${RECORDING_FILE_PREFIX}${sessionTimestamp}${WEBCAM_SUFFIX}${getVideoExtensionForMimeType(webcamMimeType)}`;
+
+				try {
+					if (webcamChunks.current.length === 0) {
+						webcamStopResolver.current?.(null);
+						return;
+					}
+
+					const duration = Math.max(
+						0,
+						getRecordingDurationMs(Date.now()) - webcamTimeOffsetMs.current,
+					);
+					const webcamBlob = new Blob(
+						webcamChunks.current,
+						webcamMimeType ? { type: webcamMimeType } : undefined,
+					);
+					webcamChunks.current = [];
+					const finalBlob = isWebmMimeType(webcamMimeType)
+						? await fixWebmDuration(webcamBlob, duration)
+						: webcamBlob;
+					const arrayBuffer = await finalBlob.arrayBuffer();
+					const result = await window.electronAPI.storeRecordedVideo(
+						arrayBuffer,
+						webcamFileName,
+					);
+					webcamStopResolver.current?.(result.success ? (result.path ?? null) : null);
+				} catch (error) {
+					console.error("Error saving webcam recording:", error);
+					webcamStopResolver.current?.(null);
+				} finally {
+					webcamStopResolver.current = null;
+					webcamRecorder.current = null;
+					webcamStartTime.current = null;
+					if (webcamStream.current) {
+						webcamStream.current.getTracks().forEach((track) => track.stop());
+						webcamStream.current = null;
+					}
+				}
+			};
+		},
+		[getRecordingDurationMs],
+	);
+
+	/**
 	 * Acquire the webcam stream and prepare the MediaRecorder, but do NOT start
 	 * recording yet. Call {@link beginWebcamCapture} after the main recording
 	 * has started so both begin at approximately the same time.
@@ -1047,57 +1112,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			});
 
 			webcamRecorder.current = recorder;
-			recorder.ondataavailable = (event) => {
-				if (event.data && event.data.size > 0) {
-					webcamChunks.current.push(event.data);
-				}
-			};
-			recorder.onerror = () => {
-				webcamStopResolver.current?.(null);
-				webcamStopResolver.current = null;
-			};
-			recorder.onstop = async () => {
-				const sessionTimestamp = recordingSessionTimestamp.current ?? Date.now();
-				const webcamMimeType = recorder.mimeType || mimeType;
-				const webcamFileName = `${RECORDING_FILE_PREFIX}${sessionTimestamp}${WEBCAM_SUFFIX}${getVideoExtensionForMimeType(webcamMimeType)}`;
-
-				try {
-					if (webcamChunks.current.length === 0) {
-						webcamStopResolver.current?.(null);
-						return;
-					}
-
-					const duration = Math.max(
-						0,
-						getRecordingDurationMs(Date.now()) - webcamTimeOffsetMs.current,
-					);
-					const webcamBlob = new Blob(
-						webcamChunks.current,
-						webcamMimeType ? { type: webcamMimeType } : undefined,
-					);
-					webcamChunks.current = [];
-					const finalBlob = isWebmMimeType(webcamMimeType)
-						? await fixWebmDuration(webcamBlob, duration)
-						: webcamBlob;
-					const arrayBuffer = await finalBlob.arrayBuffer();
-					const result = await window.electronAPI.storeRecordedVideo(
-						arrayBuffer,
-						webcamFileName,
-					);
-					webcamStopResolver.current?.(result.success ? (result.path ?? null) : null);
-				} catch (error) {
-					console.error("Error saving webcam recording:", error);
-					webcamStopResolver.current?.(null);
-				} finally {
-					webcamStopResolver.current = null;
-					webcamRecorder.current = null;
-					webcamStartTime.current = null;
-					if (webcamStream.current) {
-						webcamStream.current.getTracks().forEach((track) => track.stop());
-						webcamStream.current = null;
-					}
-				}
-			};
+			attachWebcamRecorderHandlers(recorder, mimeType);
 		} catch (error) {
 			console.warn(
 				"Failed to start webcam recording; continuing without webcam layer:",
@@ -1114,33 +1129,92 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				webcamStream.current = null;
 			}
 		}
-	}, [getRecordingDurationMs, selectWebcamMimeType, webcamDeviceId, webcamEnabled]);
+	}, [attachWebcamRecorderHandlers, selectWebcamMimeType, webcamDeviceId, webcamEnabled]);
 
 	/** Start the prepared webcam MediaRecorder. Call after main recording begins. */
 	const beginWebcamCapture = useCallback(() => {
 		const recorder = webcamRecorder.current;
 		if (recorder && recorder.state === "inactive") {
-			webcamStartTime.current = Date.now();
-			recorder.start(RECORDER_TIMESLICE_MS);
+			try {
+				webcamStartTime.current = Date.now();
+				recorder.start(RECORDER_TIMESLICE_MS);
+			} catch (err) {
+				console.warn("Failed to start prepared webcam recorder, falling back:", err);
+				if (webcamStream.current && webcamStream.current.active) {
+					const fallbacks = [
+						"video/webm;codecs=vp9",
+						"video/webm;codecs=vp8",
+						"video/webm",
+						undefined,
+					];
+					let started = false;
+					for (const fbMime of fallbacks) {
+						try {
+							if (fbMime && !MediaRecorder.isTypeSupported(fbMime)) continue;
+							const fbRecorder = new MediaRecorder(webcamStream.current, {
+								videoBitsPerSecond: WEBCAM_BITRATE,
+								...(fbMime ? { mimeType: fbMime } : {}),
+							});
+							attachWebcamRecorderHandlers(fbRecorder, fbMime);
+							webcamRecorder.current = fbRecorder;
+							webcamStartTime.current = Date.now();
+							fbRecorder.start(RECORDER_TIMESLICE_MS);
+							started = true;
+							console.log(`Webcam recorder fallback started with ${fbMime ?? "default"}`);
+							break;
+						} catch (fallbackErr) {
+							console.warn(`Webcam fallback ${fbMime} failed:`, fallbackErr);
+						}
+					}
+					if (!started) {
+						webcamStopResolver.current?.(null);
+						webcamStopResolver.current = null;
+						webcamRecorder.current = null;
+					}
+				} else {
+					webcamStopResolver.current?.(null);
+					webcamStopResolver.current = null;
+					webcamRecorder.current = null;
+				}
+			}
 		}
-	}, []);
+	}, [attachWebcamRecorderHandlers]);
 
+	/**
+	 * Prepares the recording session, resolves display sources, and initializes capture pipelines.
+	 * On Linux Wayland sessions, selects the portal source directly to avoid duplicate dialogs.
+	 */
 	const prepareRecordingStart = useCallback(async () => {
 		const platform = await window.electronAPI.getPlatform();
 		hideEditorOverlayCursorByDefault.current = false;
 		const existingSource = await window.electronAPI.getSelectedSource();
-		const selectedSource =
-			existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
+		let selectedSource = existingSource;
+		if (!selectedSource && platform === "linux") {
+			try {
+				const windowSystem =
+					typeof window.electronAPI.getLinuxWindowSystem === "function"
+						? await window.electronAPI.getLinuxWindowSystem()
+						: null;
+				if (windowSystem === "wayland") {
+					selectedSource = LINUX_PORTAL_SOURCE;
+				} else {
+					const sources = await window.electronAPI.getSources({ types: ["screen"] });
+					selectedSource = sources[0] ?? LINUX_PORTAL_SOURCE;
+				}
+			} catch {
+				selectedSource = LINUX_PORTAL_SOURCE;
+			}
+		}
 		if (!selectedSource) {
 			alert("Please select a source to record");
 			return null;
 		}
 
-		if (!existingSource && selectedSource.id === "screen:linux-portal") {
+		if (!existingSource) {
 			try {
 				await window.electronAPI.selectSource(selectedSource);
 			} catch (err) {
-				console.warn("Failed to persist Linux portal sentinel source:", err);
+				console.warn("Failed to persist default selected source:", err);
 			}
 		}
 
@@ -1929,6 +2003,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			const wantsAudioCapture = microphoneEnabled || systemAudioEnabled;
 			const browserCaptureSource = await resolveBrowserCaptureSource(selectedSource);
+			if (browserCaptureSource && browserCaptureSource.id !== selectedSource.id) {
+				try {
+					await window.electronAPI.selectSource(browserCaptureSource);
+				} catch (err) {
+					console.warn("Failed to synchronize resolved browser capture source:", err);
+				}
+			}
 
 			if (
 				browserCaptureSource?.id?.startsWith("screen:fallback:") ||
@@ -1956,49 +2037,65 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			let videoTrack: MediaStreamTrack | undefined;
 			let systemAudioIncluded = false;
 			const mediaDevices = navigator.mediaDevices as DesktopCaptureMediaDevices;
-			const useLinuxPortal = selectedSource.id === "screen:linux-portal";
-			const browserScreenVideoConstraints = {
-				mandatory: {
-					chromeMediaSource: CHROME_MEDIA_SOURCE,
-					chromeMediaSourceId: browserCaptureSource.id,
-					maxWidth: TARGET_WIDTH,
-					maxHeight: TARGET_HEIGHT,
-					maxFrameRate: TARGET_FRAME_RATE,
-					minFrameRate: MIN_FRAME_RATE,
-					googCaptureCursor: browserCursorPolicy.streamCursor === "always",
-				},
-				cursor: browserCursorPolicy.streamCursor,
+			const acquireDisplayStream = async (withAudio: boolean) => {
+				const isDisplayMediaSupported =
+					typeof mediaDevices?.getDisplayMedia === "function";
+
+				if (isDisplayMediaSupported) {
+					try {
+						return await mediaDevices.getDisplayMedia({
+							audio: withAudio,
+							video: {
+								displaySurface: (browserCaptureSource?.id ?? selectedSource.id)?.startsWith("window:")
+									? "window"
+									: "monitor",
+								width: { ideal: TARGET_WIDTH, max: TARGET_WIDTH },
+								height: { ideal: TARGET_HEIGHT, max: TARGET_HEIGHT },
+								frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
+								cursor: browserCursorPolicy.streamCursor,
+							},
+							selfBrowserSurface: "exclude",
+							surfaceSwitching: "exclude",
+						});
+					} catch (displayMediaError) {
+						if (!browserCaptureSource?.id) {
+							throw displayMediaError;
+						}
+						console.warn(
+							"getDisplayMedia failed, falling back to getUserMedia:",
+							displayMediaError,
+						);
+					}
+				}
+
+				return await mediaDevices.getUserMedia({
+					audio: withAudio
+						? {
+								mandatory: {
+									chromeMediaSource: CHROME_MEDIA_SOURCE,
+									chromeMediaSourceId: browserCaptureSource.id,
+								},
+							}
+						: false,
+					video: {
+						mandatory: {
+							chromeMediaSource: CHROME_MEDIA_SOURCE,
+							chromeMediaSourceId: browserCaptureSource.id,
+							maxWidth: TARGET_WIDTH,
+							maxHeight: TARGET_HEIGHT,
+							maxFrameRate: TARGET_FRAME_RATE,
+						},
+						cursor: browserCursorPolicy.streamCursor,
+					},
+				});
 			};
 
 			if (wantsAudioCapture) {
 				let screenMediaStream: MediaStream;
-				const acquireLinuxPortalStream = (withAudio: boolean) =>
-					mediaDevices.getDisplayMedia({
-						audio: withAudio,
-						video: {
-							displaySurface: "monitor",
-							width: { ideal: TARGET_WIDTH, max: TARGET_WIDTH },
-							height: { ideal: TARGET_HEIGHT, max: TARGET_HEIGHT },
-							frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
-							cursor: browserCursorPolicy.streamCursor,
-						},
-						selfBrowserSurface: "exclude",
-						surfaceSwitching: "exclude",
-					});
 
 				if (systemAudioEnabled) {
 					try {
-						screenMediaStream = useLinuxPortal
-							? await acquireLinuxPortalStream(true)
-							: await mediaDevices.getUserMedia({
-									audio: {
-										mandatory: {
-											chromeMediaSource: CHROME_MEDIA_SOURCE,
-											chromeMediaSourceId: browserCaptureSource.id,
-										},
-									},
-									video: browserScreenVideoConstraints,
-								});
+						screenMediaStream = await acquireDisplayStream(true);
 					} catch (audioError) {
 						console.warn(
 							"System audio capture failed, falling back to video-only:",
@@ -2007,20 +2104,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						alert(
 							"System audio is not available for this source. Recording will continue without system audio.",
 						);
-						screenMediaStream = useLinuxPortal
-							? await acquireLinuxPortalStream(false)
-							: await mediaDevices.getUserMedia({
-									audio: false,
-									video: browserScreenVideoConstraints,
-								});
+						screenMediaStream = await acquireDisplayStream(false);
 					}
 				} else {
-					screenMediaStream = useLinuxPortal
-						? await acquireLinuxPortalStream(false)
-						: await mediaDevices.getUserMedia({
-								audio: false,
-								video: browserScreenVideoConstraints,
-							});
+					screenMediaStream = await acquireDisplayStream(false);
 				}
 
 				screenStream.current = screenMediaStream;
@@ -2081,25 +2168,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					stream.current.addTrack(micAudioTrack);
 				}
 			} else {
-				const mediaStream = useLinuxPortal
-					? await mediaDevices.getDisplayMedia({
-							audio: false,
-							video: {
-								displaySurface: selectedSource.id?.startsWith("window:")
-									? "window"
-									: "monitor",
-								width: { ideal: TARGET_WIDTH, max: TARGET_WIDTH },
-								height: { ideal: TARGET_HEIGHT, max: TARGET_HEIGHT },
-								frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
-								cursor: browserCursorPolicy.streamCursor,
-							},
-							selfBrowserSurface: "exclude",
-							surfaceSwitching: "exclude",
-						})
-					: await mediaDevices.getUserMedia({
-							audio: false,
-							video: browserScreenVideoConstraints,
-						});
+				const mediaStream = await acquireDisplayStream(false);
 
 				stream.current = mediaStream;
 				videoTrack = mediaStream.getVideoTracks()[0];
@@ -2147,106 +2216,156 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					? AUDIO_BITRATE_SYSTEM
 					: AUDIO_BITRATE_VOICE
 				: undefined;
-			const recorder = new MediaRecorder(
-				stream.current,
-				createBrowserRecordingOptions({
-					audioBitsPerSecond,
+			const candidateMimeTypes = Array.from(
+				new Set([
 					mimeType,
-					videoBitsPerSecond,
-				}),
+					"video/webm;codecs=vp9",
+					"video/webm;codecs=vp8",
+					"video/webm",
+					undefined,
+				]),
 			);
 
-			mediaRecorder.current = recorder;
-			recorder.ondataavailable = (event) => {
-				if (event.data && event.data.size > 0) chunks.current.push(event.data);
-			};
-			recorder.onstop = async () => {
-				cleanupCapturedMedia();
-				if (chunks.current.length === 0) {
-					setFinalizing(false);
-					return;
-				}
-
-				const duration = getRecordingDurationMs(Date.now());
-				const recordedChunks = chunks.current;
-				const recordingBlobType = recorder.mimeType || mimeType;
-				const buggyBlob = new Blob(
-					recordedChunks,
-					recordingBlobType ? { type: recordingBlobType } : undefined,
-				);
-				chunks.current = [];
-				const timestamp = recordingSessionTimestamp.current ?? Date.now();
-				const videoFileName = `${RECORDING_FILE_PREFIX}${timestamp}${getVideoExtensionForMimeType(recordingBlobType)}`;
-
-				try {
-					const videoBlob = isWebmMimeType(recordingBlobType)
-						? await fixWebmDuration(buggyBlob, duration)
-						: buggyBlob;
-					const arrayBuffer = await videoBlob.arrayBuffer();
-					const videoResult = await window.electronAPI.storeRecordedVideo(
-						arrayBuffer,
-						videoFileName,
-					);
-					if (!videoResult.success) {
-						console.error("Failed to store video:", videoResult.message);
-						await notifyRecordingFinalizationFailure(
-							videoResult.message || "Failed to store the recording.",
-						);
+			/**
+			 * Configures data and lifecycle handlers on a main screen MediaRecorder instance.
+			 */
+			const createScreenRecorderHandlers = (
+				recorder: MediaRecorder,
+				candidateMimeType?: string,
+			) => {
+				recorder.ondataavailable = (event) => {
+					if (event.data && event.data.size > 0) chunks.current.push(event.data);
+				};
+				recorder.onstop = async () => {
+					cleanupCapturedMedia();
+					if (chunks.current.length === 0) {
+						setFinalizing(false);
 						return;
 					}
 
-					if (videoResult.path) {
-						const finalVideoPath = videoResult.path;
-						// 1. Launch editor immediately (Optimistic UI)
-						await finalizeRecordingSession(finalVideoPath, null);
-
-						// 2. Background webcam processing
-						void (async () => {
-							const webcamPath = pendingWebcamPathPromise.current
-								? await pendingWebcamPathPromise.current
-								: resolvedWebcamPath.current;
-
-							try {
-								if (webcamPath) {
-									await window.electronAPI.setCurrentRecordingSession({
-										videoPath: finalVideoPath,
-										webcamPath,
-										timeOffsetMs: webcamTimeOffsetMs.current,
-										hideOverlayCursorByDefault:
-											hideEditorOverlayCursorByDefault.current,
-									});
-								}
-							} finally {
-								// After all background tasks are done (webcam),
-								// we can safely close the HUD window to release hardware and resources.
-								if (typeof window.electronAPI?.hudOverlayClose === "function") {
-									console.log(
-										"[useScreenRecorder:browser] All background tasks finished, closing HUD",
-									);
-									window.electronAPI.hudOverlayClose();
-								}
-							}
-						})();
-					} else {
-						await notifyRecordingFinalizationFailure("Failed to save the recording.");
-					}
-				} catch (error) {
-					console.error("Error saving recording:", error);
-					const message = error instanceof Error ? error.message : String(error);
-					await notifyRecordingFinalizationFailure(
-						`Failed to finalize the recording. ${message}`,
+					const duration = getRecordingDurationMs(Date.now());
+					const recordedChunks = chunks.current;
+					const recordingBlobType = recorder.mimeType || candidateMimeType;
+					const buggyBlob = new Blob(
+						recordedChunks,
+						recordingBlobType ? { type: recordingBlobType } : undefined,
 					);
+					chunks.current = [];
+					const timestamp = recordingSessionTimestamp.current ?? Date.now();
+					const videoFileName = `${RECORDING_FILE_PREFIX}${timestamp}${getVideoExtensionForMimeType(recordingBlobType)}`;
+
+					try {
+						const videoBlob = isWebmMimeType(recordingBlobType)
+							? await fixWebmDuration(buggyBlob, duration)
+							: buggyBlob;
+						const arrayBuffer = await videoBlob.arrayBuffer();
+						const videoResult = await window.electronAPI.storeRecordedVideo(
+							arrayBuffer,
+							videoFileName,
+						);
+						if (!videoResult.success) {
+							console.error("Failed to store video:", videoResult.message);
+							await notifyRecordingFinalizationFailure(
+								videoResult.message || "Failed to store the recording.",
+							);
+							return;
+						}
+
+						if (videoResult.path) {
+							const finalVideoPath = videoResult.path;
+							// 1. Launch editor immediately (Optimistic UI)
+							await finalizeRecordingSession(finalVideoPath, null);
+
+							// 2. Background webcam processing
+							void (async () => {
+								const webcamPath = pendingWebcamPathPromise.current
+									? await pendingWebcamPathPromise.current
+									: resolvedWebcamPath.current;
+
+								try {
+									if (webcamPath) {
+										await window.electronAPI.setCurrentRecordingSession({
+											videoPath: finalVideoPath,
+											webcamPath,
+											timeOffsetMs: webcamTimeOffsetMs.current,
+											hideOverlayCursorByDefault:
+												hideEditorOverlayCursorByDefault.current,
+										});
+									}
+								} finally {
+									// After all background tasks are done (webcam),
+									// we can safely close the HUD window to release hardware and resources.
+									if (typeof window.electronAPI?.hudOverlayClose === "function") {
+										console.log(
+											"[useScreenRecorder:browser] All background tasks finished, closing HUD",
+										);
+										window.electronAPI.hudOverlayClose();
+									}
+								}
+							})();
+						} else {
+							await notifyRecordingFinalizationFailure("Failed to save the recording.");
+						}
+					} catch (error) {
+						console.error("Error saving recording:", error);
+						const message = error instanceof Error ? error.message : String(error);
+						await notifyRecordingFinalizationFailure(
+							`Failed to finalize the recording. ${message}`,
+						);
+					}
+				};
+				recorder.onerror = () => {
+					setRecording(false);
+				};
+			};
+
+			let activeRecorder: MediaRecorder | null = null;
+			let lastStartError: unknown = null;
+
+			for (const candidateMimeType of candidateMimeTypes) {
+				try {
+					if (candidateMimeType && !MediaRecorder.isTypeSupported(candidateMimeType)) {
+						continue;
+					}
+					const recorder = new MediaRecorder(
+						stream.current,
+						createBrowserRecordingOptions({
+							audioBitsPerSecond,
+							mimeType: candidateMimeType,
+							videoBitsPerSecond,
+						}),
+					);
+
+					createScreenRecorderHandlers(recorder, candidateMimeType);
+
+					recorder.start(RECORDER_TIMESLICE_MS);
+					activeRecorder = recorder;
+					mediaRecorder.current = recorder;
+					console.log(
+						`MediaRecorder started successfully with mimeType: ${recorder.mimeType || candidateMimeType || "default"}`,
+					);
+					break;
+				} catch (candidateError) {
+					console.warn(
+						`Failed to start MediaRecorder with mimeType: ${candidateMimeType}:`,
+						candidateError,
+					);
+					lastStartError = candidateError;
 				}
-			};
-			recorder.onerror = () => {
-				setRecording(false);
-			};
+			}
+
+			if (!activeRecorder) {
+				throw (
+					lastStartError ||
+					new Error("Failed to initialize MediaRecorder with any supported MIME type")
+				);
+			}
+
 			const mainStartedAt = Date.now();
 			beginWebcamCapture();
 			resetRecordingClock(mainStartedAt);
 			webcamTimeOffsetMs.current =
 				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
-			recorder.start(RECORDER_TIMESLICE_MS);
 			setRecording(true);
 			try {
 				await window.electronAPI?.setRecordingState(true);
