@@ -6,8 +6,13 @@
 #include <mfreadwrite.h>
 #include <d3d11.h>
 #include <wrl/client.h>
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
+#include <deque>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
@@ -22,8 +27,19 @@ public:
     bool writeFrame(ID3D11Texture2D* texture, int64_t timestampHns);
     bool extendLastFrameTo(int64_t timestampHns);
     bool finalize();
+    bool hasFatalError() const { return workerFailed_.load(); }
+    uint64_t droppedFrameCount() const { return droppedFrameCount_.load(); }
 
 private:
+    struct PendingFrame {
+        ComPtr<ID3D11Texture2D> texture;
+        int64_t timestampHns = 0;
+    };
+
+    bool processFrameLocked(ID3D11Texture2D* texture, int64_t timestampHns);
+    void encoderWorkerLoop();
+    bool flushPendingFrames();
+    void stopEncoderWorker();
     void normalizeWriteTimestampHnsLocked(int64_t timestampHns, int64_t& normalizedTimestampHns);
     bool normalizeTimelineTimestampHnsLocked(int64_t timestampHns, int64_t& normalizedTimestampHns) const;
     bool extendLastFrameToLocked(int64_t timestampHns);
@@ -35,6 +51,8 @@ private:
     ComPtr<ID3D11Texture2D> stagingTexture_;
     ComPtr<ID3D11Texture2D> resizeCompositeTexture_;
     ComPtr<ID3D11RenderTargetView> resizeCompositeView_;
+    std::deque<ComPtr<ID3D11Texture2D>> freeFrameTextures_;
+    std::deque<PendingFrame> pendingFrames_;
     std::vector<uint8_t> nv12Buffer_;
     std::vector<uint8_t> lastFrameBuffer_;
     DWORD streamIndex_ = 0;
@@ -45,4 +63,12 @@ private:
     int64_t lastSampleTimeHns_ = -1;
     bool initialized_ = false;
     std::mutex mutex_;
+    std::mutex queueMutex_;
+    std::condition_variable queueCv_;
+    std::condition_variable queueDrainedCv_;
+    std::thread encoderWorker_;
+    bool workerStopping_ = false;
+    bool workerBusy_ = false;
+    std::atomic<bool> workerFailed_{false};
+    std::atomic<uint64_t> droppedFrameCount_{0};
 };
