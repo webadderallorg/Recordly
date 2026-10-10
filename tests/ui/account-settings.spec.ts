@@ -13,19 +13,23 @@ test("account settings save the Supabase profile and share it with the dashboard
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=editor");
 	let account = await openAccountSettings(page);
-	await expect(account.getByLabel("Display name", { exact: true })).toHaveValue("Test User");
+	await expect(account.getByRole("textbox", { name: /^Display name\*?$/ })).toHaveValue(
+		"Test User",
+	);
 	await expect(account.getByRole("list", { name: "Connected sign-in methods" })).toHaveText(
 		"Email magic link",
 	);
 	await expect(account.getByRole("button", { name: "Save profile" })).toBeDisabled();
-	await account.getByLabel("Display name", { exact: true }).fill("  Jordan Chen  ");
+	await account.getByRole("textbox", { name: /^Display name\*?$/ }).fill("  Jordan Chen  ");
 	const update = page.waitForRequest(
 		(request) => request.method() === "PUT" && request.url().includes("/auth/v1/user"),
 	);
 	await account.getByRole("button", { name: "Save profile" }).click();
 	expect((await update).postDataJSON().data).toEqual({ full_name: "Jordan Chen" });
 	await expect(account.getByRole("status")).toHaveText("Profile saved.");
-	await expect(account.getByLabel("Display name", { exact: true })).toHaveValue("Jordan Chen");
+	await expect(account.getByRole("textbox", { name: /^Display name\*?$/ })).toHaveValue(
+		"Jordan Chen",
+	);
 	await expect(
 		page
 			.getByRole("button", { name: "Recordly account", exact: true })
@@ -33,12 +37,16 @@ test("account settings save the Supabase profile and share it with the dashboard
 	).toBeVisible();
 	await page.reload();
 	account = await openAccountSettings(page);
-	await expect(account.getByLabel("Display name", { exact: true })).toHaveValue("Jordan Chen");
+	await expect(account.getByRole("textbox", { name: /^Display name\*?$/ })).toHaveValue(
+		"Jordan Chen",
+	);
 	await page.getByRole("button", { name: "Home", exact: true }).click();
 	const dashboard = page.getByRole("dialog", { name: "Projects dashboard", exact: true });
 	await dashboard.getByRole("button", { name: "Settings", exact: true }).click();
 	await dashboard.getByRole("row", { name: "Account", exact: true }).click();
-	await expect(dashboard.getByLabel("Display name", { exact: true })).toHaveValue("Jordan Chen");
+	await expect(dashboard.getByRole("textbox", { name: /^Display name\*?$/ })).toHaveValue(
+		"Jordan Chen",
+	);
 	await page.screenshot({
 		path: "test-results/dashboard-account-settings.png",
 		animations: "disabled",
@@ -53,9 +61,9 @@ test("email changes use a PKCE confirmation and retain the current email until c
 	const account = await openAccountSettings(page);
 	const change = account.getByRole("button", { name: "Change email", exact: true });
 	await expect(change).toBeDisabled();
-	await account.getByLabel("Email address", { exact: true }).fill("invalid@example");
+	await account.getByRole("textbox", { name: /^Email address\*?$/ }).fill("invalid@example");
 	await expect(change).toBeDisabled();
-	await account.getByLabel("Email address", { exact: true }).fill("new@example.com");
+	await account.getByRole("textbox", { name: /^Email address\*?$/ }).fill("new@example.com");
 	const update = page.waitForRequest(
 		(request) => request.method() === "PUT" && request.url().includes("/auth/v1/user"),
 	);
@@ -77,7 +85,7 @@ test("email changes use a PKCE confirmation and retain the current email until c
 	await expect(change).toBeDisabled();
 	await page.reload();
 	const restored = await openAccountSettings(page);
-	await expect(restored.getByLabel("Email address", { exact: true })).toHaveValue(
+	await expect(restored.getByRole("textbox", { name: /^Email address\*?$/ })).toHaveValue(
 		"test@email.com",
 	);
 	await expect(restored.getByText("Awaiting confirmation: new@example.com")).toBeVisible();
@@ -96,12 +104,14 @@ test("account update errors preserve the session and allow retry", async ({ page
 	});
 	await page.goto("/?windowType=editor");
 	const account = await openAccountSettings(page);
-	await account.getByLabel("Display name", { exact: true }).fill("New Name");
+	await account.getByRole("textbox", { name: /^Display name\*?$/ }).fill("New Name");
 	await account.getByRole("button", { name: "Save profile" }).click();
 	await expect(account.getByRole("alert")).toHaveText(
 		"Please wait before updating your profile.",
 	);
-	await expect(account.getByLabel("Display name", { exact: true })).toHaveValue("New Name");
+	await expect(account.getByRole("textbox", { name: /^Display name\*?$/ })).toHaveValue(
+		"New Name",
+	);
 	await account.getByRole("button", { name: "Save profile" }).click();
 	await expect(account.getByRole("status")).toHaveText("Profile saved.");
 	await expect(account.getByRole("alert")).toHaveCount(0);

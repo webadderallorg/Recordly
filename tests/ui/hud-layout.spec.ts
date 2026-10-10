@@ -17,11 +17,14 @@ test("HUD dividers are vertically centered", async ({ page }) => {
 	const home = page.getByRole("button", { name: "Home", exact: true });
 	await expect(home.locator("svg")).toHaveAttribute("data-icon-style", "bold");
 	await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(0);
-	const icon = await home.locator("svg").evaluate((element) => ({
-		width: element.getBoundingClientRect().width,
-		height: element.getBoundingClientRect().height,
-	}));
-	expect(icon).toEqual({ width: 20, height: 20 });
+	await expect
+		.poll(() =>
+			home.locator("svg").evaluate((element) => ({
+				width: Math.round(element.getBoundingClientRect().width),
+				height: Math.round(element.getBoundingClientRect().height),
+			})),
+		)
+		.toEqual({ width: 20, height: 20 });
 	await page.screenshot({ path: "test-results/hud-idle.png", animations: "disabled" });
 	await home.click();
 	await expect(page.locator("html")).toHaveAttribute("data-dashboard-opened", "true");

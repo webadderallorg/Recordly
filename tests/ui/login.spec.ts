@@ -21,7 +21,7 @@ test("sign-in offers only providers enabled in Supabase", async ({ page }) => {
 	await expect(
 		login.getByRole("button", { name: "Continue with GitHub", exact: true }),
 	).toHaveCount(0);
-	const email = login.getByLabel("Email", { exact: true });
+	const email = login.getByRole("textbox", { name: /^Email\*?$/ });
 	const magicLink = login.getByRole("button", { name: "Email me a magic link" });
 	await expect(magicLink).toHaveCount(0);
 	await email.fill("owner@example");
@@ -52,7 +52,7 @@ test("email sign-in reports Supabase errors and allows retry without granting ac
 	});
 	await page.goto("/?windowType=editor");
 	const login = page.getByRole("dialog", { name: "Welcome to Recordly" });
-	await login.getByLabel("Email", { exact: true }).fill("owner@example.test");
+	await login.getByRole("textbox", { name: /^Email\*?$/ }).fill("owner@example.test");
 	await login.getByRole("button", { name: "Email me a magic link" }).click();
 	await expect(login.getByText("Please wait before requesting another email.")).toBeVisible();
 	await expect(login).toHaveAttribute("data-onboarding-state", "login");
@@ -72,7 +72,7 @@ test("a rejected Supabase callback keeps sign-in mandatory", async ({ page }) =>
 	);
 	await page.goto("/?windowType=editor");
 	const login = page.getByRole("dialog", { name: "Welcome to Recordly" });
-	await login.getByLabel("Email", { exact: true }).fill("owner@example.test");
+	await login.getByRole("textbox", { name: /^Email\*?$/ }).fill("owner@example.test");
 	await login.getByRole("button", { name: "Email me a magic link" }).click();
 	await expect(login.getByText(/Check your inbox/)).toBeVisible();
 	await completeSupabaseSignIn(page);
@@ -139,7 +139,7 @@ test("sign-in banner fills spare space and keeps the email action usable in a sh
 	const banner = login.locator("[data-onboarding-artwork]");
 	const submit = login.getByRole("button", { name: "Email me a magic link" });
 	const pages = login.getByRole("navigation", { name: "Onboarding pages" });
-	await login.getByLabel("Email", { exact: true }).fill("owner@example.test");
+	await login.getByRole("textbox", { name: /^Email\*?$/ }).fill("owner@example.test");
 	await expect(submit).toBeVisible();
 	const tallBanner = (await banner.boundingBox())!;
 	expect(tallBanner.height).toBeGreaterThan(128);
@@ -153,7 +153,7 @@ test("sign-in banner fills spare space and keeps the email action usable in a sh
 	await page.setViewportSize({ width: 390, height: 600 });
 	await expect(banner).toBeInViewport();
 	expect((await banner.boundingBox())!.height).toBeLessThan(tallBanner.height);
-	await login.getByLabel("Email", { exact: true }).fill("owner@example.test");
+	await login.getByRole("textbox", { name: /^Email\*?$/ }).fill("owner@example.test");
 	await expect(login.getByLabel("Password", { exact: true })).toHaveCount(0);
 	await expect(login.getByRole("navigation", { name: "Onboarding pages" })).toBeInViewport();
 	await submit.scrollIntoViewIfNeeded();

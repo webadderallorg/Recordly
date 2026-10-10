@@ -42,7 +42,7 @@ The local desktop app already referenced this Supabase project before setup. Its
 2. Test app-initiated email signup/sign-in and Google login end to end. The local UI uses magic links for both signup and sign-in. Verify Azure and GitHub provider configuration before enabling those sign-in options for release. Email templates are saved live; the app changes are not released.
 3. Decide the production fallback URL. The UI requires a Supabase session and offers Google, Microsoft, GitHub, and email magic links. There is no local demo or guest login.
 4. Verify a real desktop feedback submission. Add cleanup for interrupted uploads and old quota rows through the appropriate server-side APIs.
-5. Cloud recording ownership, five-slot quotas, byte limits, cleanup code, and management UI are implemented locally; the private staging schema is migrated. Complete real-account and protected staging tests before deployment. See `../recordly-share/worker/STAGING.md`.
+5. Cloud recording ownership, five-slot quotas, byte limits, cleanup, and management UI are deployed to staging. A real desktop upload/playback/delete test passed; large multipart uploads, another-account isolation, and packaged callbacks still need live verification. See `../recordly-share/worker/STAGING.md`.
 6. Configure payments after these foundations and the planned frontend changes.
 
-Only three approved email DNS records under `auth.recordly.dev` were added. Framer hosting, root/www DNS, marketplace, media, Google provider credentials, and payment settings are unchanged. Cloudflare's recording Worker remains undeployed.
+Only three approved email DNS records under `auth.recordly.dev` were added. Framer hosting, root/www DNS, marketplace, media, Google provider credentials, and payment settings are unchanged. The isolated Cloudflare recording Worker is deployed to staging; production deployment remains separate.
