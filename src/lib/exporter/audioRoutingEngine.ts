@@ -1,11 +1,12 @@
 import { SOURCE_AUDIO_NORMALIZE_GAIN } from "@/components/video-editor/audio/audioTypes";
 import type { AudioRegion } from "@/components/video-editor/types";
 import { getSourceTrackIdFromPath } from "./audioProcessorShared";
+import type { SourceTrackId } from "./audioProcessorShared";
 import { resolveSourceAudioFallbackPaths } from "./sourceAudioFallback";
 
 export { getSourceTrackIdFromPath };
+export type { SourceTrackId };
 
-export type SourceTrackId = "mic" | "system" | "mixed";
 export type ResolvedAudioTrackKind = "user" | "system" | "mic" | "mixed" | "embedded";
 
 export interface ResolvedAudioTrack {

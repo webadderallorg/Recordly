@@ -5,7 +5,8 @@ import type {
 	SourceAudioTrackSettings,
 	TrimRegion,
 } from "@/components/video-editor/types";
-import type { SourceTrackId } from "@/lib/exporter/audioRoutingEngine";
+
+export type SourceTrackId = "mic" | "system" | "mixed";
 
 export const AUDIO_BITRATE = 128_000;
 export const DECODE_BACKPRESSURE_LIMIT = 20;
