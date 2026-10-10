@@ -649,7 +649,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		if (webcamRecorder.current) {
 			stopActiveMediaRecorder(webcamRecorder.current);
-			webcamRecorder.current = null;
 		}
 
 		if (mixingContext.current) {
