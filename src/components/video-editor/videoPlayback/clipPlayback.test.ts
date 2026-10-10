@@ -117,6 +117,60 @@ describe("clip timeline playback", () => {
 		playback.seek(1.5);
 		expect(onTime).toHaveBeenLastCalledWith(2, 6);
 	});
+	it.each([
+		0.5, 1, 3,
+	])("resumes at %sx without seeking back to the last animation tick", async (speed) => {
+		const { video, playback, onTime, onSourceSeek } = setup([
+			{ id: "clip", startMs: 0, endMs: 4000, sourceStartMs: 2000, speed },
+		]);
+		playback.seek(0.5);
+		await playback.play();
+		onSourceSeek.mockClear();
+		for (let cycle = 0; cycle < 3; cycle++) {
+			video.currentTime += 0.1 * speed;
+			advance(100);
+			// Media advances between the last RAF callback and the pause click.
+			video.currentTime += 0.01 * speed;
+			playback.pause();
+			const pausedTime = video.currentTime;
+			advance(5000);
+			await playback.play();
+			expect(video.currentTime).toBe(pausedTime);
+			expect(onSourceSeek).not.toHaveBeenCalled();
+			advance(16);
+			expect(onTime).toHaveBeenLastCalledWith(
+				expect.closeTo((pausedTime - 2) / speed, 8),
+				expect.closeTo(pausedTime, 8),
+			);
+		}
+		expect(video.play).toHaveBeenCalledTimes(4);
+	});
+	it("resolves a cut reached after the last tick before resuming", async () => {
+		const { video, playback, onTime, onSourceSeek } = setup([
+			{ id: "a", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1 },
+			{ id: "b", startMs: 1000, endMs: 2000, sourceStartMs: 6000, speed: 1 },
+		]);
+		playback.seek(0.99);
+		await playback.play();
+		video.currentTime = 1;
+		playback.pause();
+		await playback.play();
+		expect(video.currentTime).toBe(6);
+		expect(onTime).toHaveBeenLastCalledWith(1, 6);
+		expect(onSourceSeek).toHaveBeenLastCalledWith("cut");
+	});
+	it("restarts from the retained in-point if media ends between the last tick and pause", async () => {
+		const { video, playback, onTime } = setup([
+			{ id: "clip", startMs: 0, endMs: 10000, sourceStartMs: 2000, speed: 1 },
+		]);
+		playback.seek(9.99);
+		await playback.play();
+		Object.assign(video, { currentTime: 12, ended: true });
+		playback.pause();
+		await playback.play();
+		expect(video.currentTime).toBe(2);
+		expect(onTime).toHaveBeenLastCalledWith(0, 2);
+	});
 	it("skips a short gap without skipping the next clip in-point when a tick overshoots", async () => {
 		const { video, playback, onTime } = setup([
 			{ id: "a", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 3 },

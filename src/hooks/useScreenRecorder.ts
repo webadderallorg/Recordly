@@ -1,7 +1,9 @@
+import { acquireBrowserScreenCapture, isCapturePermissionDismissed } from "./browserScreenCapture";
 import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
+import { hasRecordlySession } from "@/lib/auth/recordlyAuth";
 import {
 	getVideoExtensionForMimeType,
 	isWebmMimeType,
@@ -112,14 +114,6 @@ type MicrophoneSidecarOptions = {
 	chunkEvents?: MicrophoneFallbackChunkEvent[];
 	pauseIntervals?: MicrophoneFallbackPauseInterval[];
 };
-const LINUX_PORTAL_SOURCE: ProcessedDesktopSource = {
-	id: "screen:linux-portal",
-	name: "Linux Portal",
-	display_id: "",
-	thumbnail: null,
-	appIcon: null,
-	sourceType: "screen",
-};
 
 type DesktopCaptureMediaDevices = {
 	getUserMedia: (constraints: unknown) => Promise<MediaStream>;
@@ -135,7 +129,8 @@ type UseScreenRecorderReturn = {
 	pauseRecording: () => void;
 	resumeRecording: () => void;
 	cancelRecording: () => void;
-	preparePermissions: (options?: { startup?: boolean }) => Promise<boolean>;
+	cancelRecordingStart: () => Promise<boolean>;
+	preparePermissions: () => Promise<boolean>;
 	isMacOS: boolean;
 	microphoneEnabled: boolean;
 	setMicrophoneEnabled: (enabled: boolean) => void;
@@ -374,7 +369,12 @@ async function createAudioInputDeviceSnapshot(): Promise<
 }
 
 export function useScreenRecorder(): UseScreenRecorderReturn {
-	const [recording, setRecording] = useState(false);
+	const [recording, setRecordingValue] = useState(false);
+	const recordingActive = useRef(false);
+	const setRecording = useCallback((value: boolean) => {
+		recordingActive.current = value;
+		setRecordingValue(value);
+	}, []);
 	const [paused, setPaused] = useState(false);
 	const [starting, setStarting] = useState(false);
 	const [finalizing, setFinalizing] = useState(false);
@@ -406,6 +406,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const recordingStartGeneration = useRef(0);
 	const nativeStopRequestInFlight = useRef(false);
 	const startInFlight = useRef(false);
+	const pendingStart = useRef<Promise<void> | null>(null);
 	const hasPromptedForReselect = useRef(false);
 	const hasShownNativeWindowsFallbackToast = useRef(false);
 	const countdownDelayLoaded = useRef(false);
@@ -546,44 +547,24 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		micFallbackPauseIntervals.current = [];
 	}, []);
 
-	const preparePermissions = useCallback(async (options: { startup?: boolean } = {}) => {
-		const platform = await window.electronAPI.getPlatform();
-		if (platform !== "darwin") {
-			return true;
-		}
-
-		const screenPermission = await window.electronAPI.getScreenRecordingPermissionStatus();
-		if (!screenPermission.success || screenPermission.status !== "granted") {
-			await window.electronAPI.openScreenRecordingPreferences();
-			alert(
-				options.startup
-					? "Recordly needs Screen Recording permission before you start. System Settings has been opened. After enabling it, quit and reopen Recordly."
-					: "Screen Recording permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Recordly before recording.",
-			);
+	const preparePermissions = useCallback(async () => {
+		if (!(await hasRecordlySession().catch(() => false))) {
+			await window.electronAPI.showRecordingPermissions();
 			return false;
 		}
-
-		const accessibilityPermission = await window.electronAPI.getAccessibilityPermissionStatus();
-		if (!accessibilityPermission.success) {
-			return false;
-		}
-
-		if (accessibilityPermission.trusted) {
+		if ((await window.electronAPI.getPlatform()) !== "darwin") return true;
+		const [screen, accessibility] = await Promise.all([
+			window.electronAPI.getScreenRecordingPermissionStatus(),
+			window.electronAPI.getAccessibilityPermissionStatus(),
+		]);
+		if (
+			screen.success &&
+			screen.status === "granted" &&
+			accessibility.success &&
+			accessibility.trusted
+		)
 			return true;
-		}
-
-		const requestedAccessibility = await window.electronAPI.requestAccessibilityPermission();
-		if (requestedAccessibility.success && requestedAccessibility.trusted) {
-			return true;
-		}
-
-		await window.electronAPI.openAccessibilityPreferences();
-		alert(
-			options.startup
-				? "Recordly also needs Accessibility permission for cursor tracking. System Settings has been opened. After enabling it, quit and reopen Recordly."
-				: "Accessibility permission is still missing. System Settings has been opened again. Enable it, then quit and reopen Recordly before recording.",
-		);
-
+		await window.electronAPI.showRecordingPermissions();
 		return false;
 	}, []);
 
@@ -1128,20 +1109,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const prepareRecordingStart = useCallback(async () => {
 		const platform = await window.electronAPI.getPlatform();
 		hideEditorOverlayCursorByDefault.current = false;
-		const existingSource = await window.electronAPI.getSelectedSource();
-		const selectedSource =
-			existingSource ?? (platform === "linux" ? LINUX_PORTAL_SOURCE : null);
+		const selectedSource = await window.electronAPI.getSelectedSource();
 		if (!selectedSource) {
 			alert("Please select a source to record");
 			return null;
-		}
-
-		if (!existingSource && selectedSource.id === "screen:linux-portal") {
-			try {
-				await window.electronAPI.selectSource(selectedSource);
-			} catch (err) {
-				console.warn("Failed to persist Linux portal sentinel source:", err);
-			}
 		}
 
 		const permissionsReady = await preparePermissions();
@@ -1156,7 +1127,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		const useNativeMacScreenCapture =
 			platform === "darwin" &&
 			(selectedSource.id?.startsWith("screen:") ||
-				selectedSource.id?.startsWith("window:")) &&
+				selectedSource.id?.startsWith("window:") ||
+				selectedSource.id?.startsWith("area:")) &&
 			typeof window.electronAPI.startNativeScreenRecording === "function";
 
 		let useNativeWindowsCapture = false;
@@ -1656,7 +1628,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			cleanupCapturedMedia();
 		};
-	}, [cleanupCapturedMedia, discardActiveNativeCapture, recoverNativeRecordingSession]);
+	}, [
+		cleanupCapturedMedia,
+		discardActiveNativeCapture,
+		recoverNativeRecordingSession,
+		setRecording,
+	]);
 
 	const startRecording = async () => {
 		if (startInFlight.current) {
@@ -1665,6 +1642,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		const startGeneration = recordingStartGeneration.current + 1;
 		recordingStartGeneration.current = startGeneration;
 		const startWasCancelled = () => recordingStartGeneration.current !== startGeneration;
+		let usingLinuxPortal = false;
 
 		let hudSourceSelectionActive = false;
 		const setHudSourceSelectionActive = (active: boolean) => {
@@ -1678,6 +1656,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		hasPromptedForReselect.current = false;
 		startInFlight.current = true;
+		let finishStart!: () => void;
+		pendingStart.current = new Promise<void>((resolve) => {
+			finishStart = resolve;
+		});
 		setStarting(true);
 
 		try {
@@ -1825,6 +1807,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					if (nativeResult.microphoneFallbackRequired && microphoneEnabled) {
 						void logNativeCaptureDiagnostics("start-browser-microphone-fallback");
 						console.info("Using browser microphone processing for this recording.");
+						let unownedMicStream: MediaStream | null = null;
 						try {
 							const microphoneConstraints = createProcessedMicrophoneConstraints(
 								microphoneDeviceId,
@@ -1833,6 +1816,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 							micFallbackRequestedConstraints.current = microphoneConstraints;
 							const micStream =
 								await navigator.mediaDevices.getUserMedia(microphoneConstraints);
+							unownedMicStream = micStream;
 							micFallbackTrackSettings.current =
 								createMicrophoneTrackSettingsSnapshot(micStream);
 							micFallbackAudioInputDevices.current =
@@ -1862,8 +1846,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 								0,
 								Date.now() - mainStartedAt,
 							);
+							if (startWasCancelled()) return;
 							recorder.start(RECORDER_TIMESLICE_MS);
 							micFallbackRecorder.current = recorder;
+							unownedMicStream = null;
 						} catch (micError) {
 							micFallbackStartDelayMs.current = null;
 							micFallbackTrackSettings.current = null;
@@ -1882,6 +1868,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 									: `${getErrorMessage(micError)}. Recording will continue without microphone audio.`,
 								{ id: MICROPHONE_FALLBACK_ERROR_TOAST_ID, duration: 10000 },
 							);
+						} finally {
+							// Until the recorder owns it, cancellation or setup failure must release the mic.
+							unownedMicStream?.getTracks().forEach((track) => track.stop());
 						}
 					}
 					if (startWasCancelled()) {
@@ -1905,11 +1894,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				}
 			}
 
+			if (startWasCancelled()) return;
 			if (nativeWindowsCaptureStartFailed && countdownDelay > 0) {
 				setCountdownActive(true);
 				try {
 					const result = await window.electronAPI.startCountdown(countdownDelay);
-					if (!result.success || result.cancelled) {
+					if (!result.success || result.cancelled || startWasCancelled()) {
 						cleanupCapturedMedia();
 						await stopWebcamRecorder();
 						return;
@@ -1921,6 +1911,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				resetRecordingClock(recordingSessionTimestamp.current);
 			}
 
+			if (startWasCancelled()) return;
 			const browserCursorPolicy = resolveBrowserCaptureCursorPolicy({
 				nativeWindowsCaptureStartFailed,
 			});
@@ -1957,6 +1948,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			let systemAudioIncluded = false;
 			const mediaDevices = navigator.mediaDevices as DesktopCaptureMediaDevices;
 			const useLinuxPortal = selectedSource.id === "screen:linux-portal";
+			usingLinuxPortal = useLinuxPortal;
 			const browserScreenVideoConstraints = {
 				mandatory: {
 					chromeMediaSource: CHROME_MEDIA_SOURCE,
@@ -1986,42 +1978,29 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						surfaceSwitching: "exclude",
 					});
 
-				if (systemAudioEnabled) {
-					try {
-						screenMediaStream = useLinuxPortal
-							? await acquireLinuxPortalStream(true)
-							: await mediaDevices.getUserMedia({
-									audio: {
-										mandatory: {
-											chromeMediaSource: CHROME_MEDIA_SOURCE,
-											chromeMediaSourceId: browserCaptureSource.id,
-										},
-									},
+				screenMediaStream = await acquireBrowserScreenCapture({
+					audio: systemAudioEnabled,
+					usePortal: useLinuxPortal,
+					request: (audio) =>
+						useLinuxPortal
+							? acquireLinuxPortalStream(audio)
+							: mediaDevices.getUserMedia({
+									audio: audio
+										? {
+												mandatory: {
+													chromeMediaSource: CHROME_MEDIA_SOURCE,
+													chromeMediaSourceId: browserCaptureSource.id,
+												},
+											}
+										: false,
 									video: browserScreenVideoConstraints,
-								});
-					} catch (audioError) {
-						console.warn(
-							"System audio capture failed, falling back to video-only:",
-							audioError,
-						);
+								}),
+					onAudioFallback: () => {
 						alert(
 							"System audio is not available for this source. Recording will continue without system audio.",
 						);
-						screenMediaStream = useLinuxPortal
-							? await acquireLinuxPortalStream(false)
-							: await mediaDevices.getUserMedia({
-									audio: false,
-									video: browserScreenVideoConstraints,
-								});
-					}
-				} else {
-					screenMediaStream = useLinuxPortal
-						? await acquireLinuxPortalStream(false)
-						: await mediaDevices.getUserMedia({
-								audio: false,
-								video: browserScreenVideoConstraints,
-							});
-				}
+					},
+				});
 
 				screenStream.current = screenMediaStream;
 				stream.current = new MediaStream();
@@ -2246,6 +2225,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			resetRecordingClock(mainStartedAt);
 			webcamTimeOffsetMs.current =
 				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
+			if (startWasCancelled()) return;
 			recorder.start(RECORDER_TIMESLICE_MS);
 			setRecording(true);
 			try {
@@ -2254,12 +2234,17 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				console.warn("Failed to notify main process that recording started:", stateError);
 			}
 		} catch (error) {
-			console.error("Failed to start recording:", error);
-			alert(
-				error instanceof Error
-					? `Failed to start recording: ${error.message}`
-					: "Failed to start recording",
-			);
+			if (
+				!startWasCancelled() &&
+				!(usingLinuxPortal && isCapturePermissionDismissed(error))
+			) {
+				console.error("Failed to start recording:", error);
+				alert(
+					error instanceof Error
+						? `Failed to start recording: ${error.message}`
+						: "Failed to start recording",
+				);
+			}
 			setRecording(false);
 			if (nativeScreenRecording.current) {
 				await discardActiveNativeCapture();
@@ -2274,15 +2259,47 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			}
 		} finally {
 			try {
+				if (startWasCancelled()) {
+					try {
+						await discardActiveNativeCapture();
+					} finally {
+						cleanupCapturedMedia();
+						await Promise.allSettled([
+							stopMicFallbackRecorder(),
+							stopWebcamRecorder(),
+							// This also restores the Windows cursor hidden during browser startup.
+							window.electronAPI.setRecordingState(false),
+						]);
+					}
+				}
+			} catch (error) {
+				console.warn("Failed to clean up canceled recording startup:", error);
+			}
+			try {
 				await window.electronAPI.finishRecordingStartup();
 			} catch (error) {
 				console.warn("Failed to release recording startup protection:", error);
 			}
 			setHudSourceSelectionActive(false);
 			startInFlight.current = false;
+			pendingStart.current = null;
 			setStarting(false);
+			finishStart();
 		}
 	};
+
+	const cancelRecordingStart = useCallback(async () => {
+		if (recordingActive.current) return false;
+		const pending = pendingStart.current;
+		if (!pending) return true;
+		recordingStartGeneration.current += 1;
+		await window.electronAPI.cancelCountdown();
+		// Wait for native warm-up, webcam and microphone cleanup before picking again.
+		await pending;
+		if (nativeScreenRecording.current || pendingNativeCleanupPath.current)
+			throw new Error("Could not stop the pending capture. Try again.");
+		return true;
+	}, []);
 
 	const pauseRecording = useCallback(() => {
 		if (!recording || paused) return;
@@ -2417,6 +2434,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		cleanupCapturedMedia,
 		discardActiveNativeCapture,
 		markRecordingResumed,
+		setRecording,
 		recording,
 		stopMicFallbackRecorder,
 	]);
@@ -2443,6 +2461,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		pauseRecording,
 		resumeRecording,
 		cancelRecording,
+		cancelRecordingStart,
 		preparePermissions,
 		isMacOS,
 		microphoneEnabled,

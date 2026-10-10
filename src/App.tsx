@@ -20,6 +20,7 @@ const UpdateToastWindow = lazy(() =>
 	})),
 );
 const EditorWindow = lazy(() => import("./components/video-editor/EditorWindow"));
+const CapturePicker = lazy(() => import("./components/capture-picker/CapturePicker"));
 
 export default function App() {
 	const [windowType] = useState(
@@ -35,7 +36,8 @@ export default function App() {
 			windowType === "hud-overlay" ||
 			windowType === "source-selector" ||
 			windowType === "countdown" ||
-			windowType === "update-toast"
+			windowType === "update-toast" ||
+			windowType === "capture-picker"
 		) {
 			document.body.style.background = "transparent";
 			document.documentElement.style.background = "transparent";
@@ -77,6 +79,9 @@ export default function App() {
 			break;
 		case "editor":
 			content = <EditorWindow />;
+			break;
+		case "capture-picker":
+			content = <CapturePicker />;
 			break;
 		default:
 			content = (

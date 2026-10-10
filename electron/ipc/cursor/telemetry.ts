@@ -23,6 +23,7 @@ import {
 	setPendingCursorSamples,
 } from "../state";
 import type { CursorInteractionType, CursorTelemetryPoint, CursorVisualType } from "../types";
+import { getSourceArea } from "../sourceArea";
 import { getScreen, getTelemetryPathForVideo } from "../utils";
 
 export function clamp(value: number, min: number, max: number) {
@@ -176,7 +177,10 @@ export function getNormalizedCursorPoint() {
 		? { x: linuxCursorCache.x / primarySf, y: linuxCursorCache.y / primarySf }
 		: fallbackCursor;
 
-	const windowBounds = selectedSource?.id?.startsWith("window:") ? selectedWindowBounds : null;
+	// Areas are fixed rectangles, so they normalize like a window that never moves.
+	const windowBounds = selectedSource?.id?.startsWith("window:")
+		? selectedWindowBounds
+		: getSourceArea(selectedSource);
 	if (windowBounds) {
 		const sf =
 			process.platform === "win32" || process.platform === "darwin"

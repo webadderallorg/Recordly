@@ -1,3 +1,6 @@
+import type { User } from "@supabase/supabase-js";
+import { AccountSettings } from "@/components/auth/AccountSettings";
+import { RecordingPermissionsSettings } from "@/components/auth/RecordingPermissionsSettings";
 import { SettingsSections, SettingsCategory } from "./SettingsSections";
 import { Card, RadioGroup, Radio, Label, Description } from "@heroui/react";
 import { ProgressBar } from "@heroui/react";
@@ -419,6 +422,7 @@ function CursorClickEffectCards({
 }
 
 interface SettingsPanelProps {
+	accountUser?: User | null;
 	onShowOnboarding?: () => void;
 	advanced?: boolean;
 	panelMode?: "editor" | "background";
@@ -594,8 +598,8 @@ type WallpaperTile = {
 
 const BUILTIN_CURSOR_STYLE_OPTIONS: CursorStyleOption[] = [
 	{ value: "macos", label: "macOS" },
-	{ value: "tahoe", label: "Tahoe" },
-	{ value: "tahoe-inverted", label: "Tahoe Inverted" },
+	{ value: "tahoe", label: "Golden Gate" },
+	{ value: "tahoe-inverted", label: "Golden Gate Inverted" },
 	{ value: "windows11", label: "Windows 11" },
 	{ value: "dot", label: "Dot" },
 	{ value: "figma", label: "Minimal" },
@@ -876,6 +880,7 @@ function CursorStylePreview({
 }
 
 export function SettingsPanel({
+	accountUser = null,
 	onShowOnboarding,
 	advanced = false,
 	panelMode = "editor",
@@ -2250,8 +2255,18 @@ export function SettingsPanel({
 	const effectSectionContent = (() => {
 		const settingsSectionContent = (
 			<SettingsSections
-				categories={advanced ? ["general", "motion", "advanced"] : ["general", "motion"]}
+				categories={
+					advanced
+						? ["general", "account", "permissions", "motion", "advanced"]
+						: ["general", "account", "permissions", "motion"]
+				}
 			>
+				<SettingsCategory category="account">
+					<AccountSettings key={accountUser?.id ?? "signed-out"} user={accountUser} />
+				</SettingsCategory>
+				<SettingsCategory category="permissions">
+					<RecordingPermissionsSettings onReview={onShowOnboarding} />
+				</SettingsCategory>
 				<SettingsCategory category="general">
 					{onShowOnboarding && (
 						<SettingsRow title="Onboarding">

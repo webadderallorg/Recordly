@@ -3,7 +3,7 @@ import type { ProjectLibraryEntry } from "@/components/video-editor/ProjectBrows
 import type { DesktopSource } from "../popovers/launchPopoverTypes";
 
 export function useLaunchWindowActions() {
-	const [selectedSource, setSelectedSource] = useState("Screen");
+	const [selectedSource, setSelectedSource] = useState("Pick source");
 	const [hasSelectedSource, setHasSelectedSource] = useState(false);
 	const [projectLibraryEntries, setProjectLibraryEntries] = useState<ProjectLibraryEntry[]>([]);
 
@@ -58,7 +58,7 @@ export function useLaunchWindowActions() {
 			setHasSelectedSource(true);
 			return;
 		}
-		setSelectedSource("Screen");
+		setSelectedSource("Pick source");
 		setHasSelectedSource(false);
 	}, []);
 
