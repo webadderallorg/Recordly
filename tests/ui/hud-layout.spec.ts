@@ -1,6 +1,41 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge } from "./bridge";
 
+for (const reducedMotion of ["reduce", "no-preference"] as const) {
+	test(`HUD source label respects ${reducedMotion} motion preference on hover`, async ({
+		page,
+	}) => {
+		await page.emulateMedia({ reducedMotion });
+		await installDesktopBridge(page);
+		await page.addInitScript(() => {
+			window.electronAPI.getSelectedSource = async () => ({
+				id: "window:101:0",
+				name: "A very long document title that overflows the recording source control",
+			});
+		});
+		await page.goto("/?windowType=hud-overlay");
+		const source = page.getByRole("button", { name: "Choose recording source", exact: true });
+		const label = source.locator(".source-selector-marquee");
+		await expect(label).toHaveAttribute("data-overflowing", "true");
+		await source.hover();
+		const reduce = reducedMotion === "reduce";
+		await expect(label.locator(".source-selector-marquee-static")).toHaveCSS(
+			"opacity",
+			reduce ? "1" : "0",
+		);
+		await expect(label.locator(".source-selector-marquee-animated")).toHaveCSS(
+			"opacity",
+			reduce ? "0" : "1",
+		);
+		const track = label.locator(".source-selector-marquee-track");
+		await expect(track).toHaveCSS(
+			"animation-name",
+			reduce ? "none" : "source-selector-marquee",
+		);
+		if (!reduce) await expect(track).toHaveCSS("animation-play-state", "running");
+	});
+}
+
 test("HUD dividers are vertically centered", async ({ page }) => {
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=hud-overlay");

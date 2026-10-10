@@ -661,7 +661,7 @@ body{background:transparent;overflow:hidden;width:100vw;height:100vh}
 		}
 	});
 	ipcMain.handle("show-recording-permissions", () => {
-		if (process.platform !== "darwin" || isCursorCaptureActive) return;
+		if (isCursorCaptureActive) return;
 		writeAppSetting("recordly.onboarding.permissionsRequested", true);
 		setHudRecordingPreparationActive(false);
 		recordingNavigation.open(false);

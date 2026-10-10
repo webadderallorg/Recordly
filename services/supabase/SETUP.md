@@ -40,7 +40,7 @@ The local desktop app already referenced this Supabase project before setup. Its
 
 1. SMTP delivery has passed an owner-authorized magic-link test. Review rate limits for launch volume; successful inbox delivery does not complete the desktop callback/recovery tests.
 2. Test app-initiated email signup/sign-in and Google login end to end. The local UI uses magic links for both signup and sign-in. Verify Azure and GitHub provider configuration before enabling those sign-in options for release. Email templates are saved live; the app changes are not released.
-3. Decide the production fallback URL. The UI requires a Supabase session and offers Google, Microsoft, GitHub, and email magic links. There is no local demo or guest login.
+3. Decide the production fallback URL. The UI requires a Supabase session and currently offers Google and email magic links, matching the enabled providers. There is no local demo or guest login.
 4. Verify a real desktop feedback submission. Add cleanup for interrupted uploads and old quota rows through the appropriate server-side APIs.
 5. Cloud recording ownership, five-slot quotas, byte limits, cleanup, and management UI are deployed to staging. A real desktop upload/playback/delete test passed; large multipart uploads, another-account isolation, and packaged callbacks still need live verification. See `../recordly-share/worker/STAGING.md`.
 6. Configure payments after these foundations and the planned frontend changes.

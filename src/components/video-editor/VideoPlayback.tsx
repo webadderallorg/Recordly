@@ -523,6 +523,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const cursorFollowCameraRef = useRef<CursorFollowCameraState>(
 			createCursorFollowCameraState(),
 		);
+		const cursorFollowCameraNeedsResetRef = useRef(false);
 		/** Requests one exact composition after an output-affecting edit while paused. */
 		const requestPausedFrameRefresh = useCallback(() => {
 			if (!isPlayingRef.current) {
@@ -2058,6 +2059,14 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				lastRenderedContentTimeRef.current = contentTimeMs;
 
 				const sampleFrozenFrame = motionMode === "snap" && !isPlayingRef.current;
+				if (sampleFrozenFrame) {
+					// Frozen frames use independent camera samples. Resume from that new
+					// position instead of retaining full-zoom focus from before a seek.
+					cursorFollowCameraNeedsResetRef.current = true;
+				} else if (motionMode === "spring" && cursorFollowCameraNeedsResetRef.current) {
+					cursorFollowCameraRef.current = createCursorFollowCameraState();
+					cursorFollowCameraNeedsResetRef.current = false;
+				}
 				const frameSample = sampleFrozenFrame
 					? getFrameMotionSample(contentTimeMs, clipRegionsRef.current)
 					: null;

@@ -48,6 +48,23 @@
 	animation-play-state: running;
 }
 
+@media (prefers-reduced-motion: reduce) {
+	.group:hover .source-selector-marquee[data-overflowing="true"] .source-selector-marquee-static {
+		opacity: 1;
+	}
+
+	.group:hover
+		.source-selector-marquee[data-overflowing="true"]
+		.source-selector-marquee-animated {
+		opacity: 0;
+	}
+
+	.source-selector-marquee-track {
+		animation: none;
+		will-change: auto;
+	}
+}
+
 @keyframes source-selector-marquee {
 	from {
 		transform: translateX(0);
