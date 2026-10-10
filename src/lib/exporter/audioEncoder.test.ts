@@ -369,6 +369,23 @@ describe("AudioProcessor offline render preparation", () => {
 		);
 	});
 
+	it("uses video duration instead of companion audio duration when video duration is available", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const companionBuffer = { duration: 15, numberOfChannels: 2 } as AudioBuffer;
+		vi.spyOn(processor, "decodeAudioFromUrl").mockResolvedValue(companionBuffer);
+		vi.spyOn(processor, "getMediaDurationSec").mockResolvedValue(10);
+
+		const prepared = await processor.prepareOfflineRender(
+			"file:///tmp/recording.mp4",
+			[],
+			[],
+			[],
+			["/tmp/recording.system.wav"],
+		);
+
+		expect(prepared.outputDurationMs).toBe(10_000);
+	});
+
 	it("bypasses streaming decode and uses bulk decode directly for WAV files", async () => {
 		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
 		const fakeBuffer = { duration: 10, numberOfChannels: 2 } as AudioBuffer;

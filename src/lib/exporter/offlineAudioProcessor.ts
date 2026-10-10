@@ -151,17 +151,9 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 			throw new Error("No decodable audio sources found");
 		}
 
-		let sourceDurationSec: number;
-		if (mainBufferEntry?.buffer) {
-			sourceDurationSec = mainBufferEntry.buffer.duration;
-		} else if (resolvedPlan.playbackPaths.length > 0 || regionEntries.length > 0) {
-			sourceDurationSec = Math.max(
-				mediaDuration > 0 ? mediaDuration : 0,
-				primaryBuffer?.duration ?? 0,
-			);
-		} else {
-			sourceDurationSec = primaryBuffer?.duration ?? 0;
-		}
+		const sourceDurationSec =
+			mainBufferEntry?.buffer?.duration ??
+			(mediaDuration > 0 ? mediaDuration : (primaryBuffer?.duration ?? 0));
 		const sourceDurationMs = sourceDurationSec * 1000;
 
 		// Build timeline slices (non-trimmed segments with speed info)
@@ -296,9 +288,7 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 			await pendingMuxing;
 
 			const finalEncodeError = getEncodeError();
-			const isIgnorableFlushError =
-				wroteFirstChunk && Boolean(finalEncodeError?.message.includes("Flushing error"));
-			if (finalEncodeError && !isIgnorableFlushError) throw finalEncodeError;
+			if (finalEncodeError) throw finalEncodeError;
 			if (muxError) throw muxError;
 		} finally {
 			if (encoder.state === "configured") {
