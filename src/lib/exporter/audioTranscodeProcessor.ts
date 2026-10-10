@@ -144,13 +144,13 @@ export class AudioTranscodeProcessor extends OfflineAudioProcessor {
 		let wroteAudio = false;
 		const encoder = new AudioEncoder({
 			output: (chunk: EncodedAudioChunk, meta?: EncodedAudioChunkMetadata) => {
-				wroteAudio = true;
 				pendingMuxing = pendingMuxing
 					.then(async () => {
 						if (this.cancelled) {
 							return;
 						}
 						await muxer.addAudioChunk(chunk, meta);
+						wroteAudio = true;
 					})
 					.catch((error) => {
 						muxError = error instanceof Error ? error : new Error(String(error));

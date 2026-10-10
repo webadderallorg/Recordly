@@ -81,6 +81,7 @@ export class VideoMuxer {
 	private output: Output | null = null;
 	private videoSource: EncodedVideoPacketSource | null = null;
 	private audioSource: EncodedAudioPacketSource | null = null;
+	private committedAudioChunks = 0;
 	private hasAudio: boolean;
 	private target: MediabunnyTarget | null = null;
 	private config: ExportConfig;
@@ -91,6 +92,10 @@ export class VideoMuxer {
 		this.config = config;
 		this.hasAudio = hasAudio;
 		this.mode = mode ?? (shouldUseStreamTarget() ? "stream" : "buffer");
+	}
+
+	get hasCommittedAudio(): boolean {
+		return this.committedAudioChunks > 0;
 	}
 
 	getTargetMode(): MuxerTargetMode {
@@ -158,6 +163,7 @@ export class VideoMuxer {
 
 		const packet = EncodedPacket.fromEncodedChunk(chunk);
 		await this.audioSource.add(packet, meta);
+		this.committedAudioChunks += 1;
 	}
 
 	async finalize(): Promise<MuxerFinalizeResult> {
@@ -210,6 +216,7 @@ export class VideoMuxer {
 		this.videoSource = null;
 		this.audioSource = null;
 		this.target = null;
+		this.committedAudioChunks = 0;
 		if (this.streamSink) {
 			void this.abortStream();
 		}

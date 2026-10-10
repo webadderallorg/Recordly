@@ -41,6 +41,11 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		clipRegions: ClipRegion[] | undefined,
 		muxer: VideoMuxer,
 	): Promise<void> {
+		if (muxer?.hasCommittedAudio) {
+			throw new Error(
+				"[AudioProcessor] Cannot render offline audio after audio chunks have already been committed to muxer",
+			);
+		}
 		const prepared = await this.prepareOfflineRender(
 			videoUrl,
 			trimRegions,

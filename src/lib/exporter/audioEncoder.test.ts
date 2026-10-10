@@ -316,6 +316,59 @@ describe("AudioProcessor offline render preparation", () => {
 		);
 	});
 
+	it("does not fall back to offline rendering if audio chunks were already committed to muxer", async () => {
+		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
+		const mockDemuxer = { destroy: vi.fn() };
+		vi.spyOn(processor, "loadAudioFileDemuxer").mockResolvedValue(mockDemuxer);
+		vi.spyOn(processor, "processTrimOnlyAudio").mockRejectedValue(
+			new Error("Muxer write failure"),
+		);
+		const renderAndMuxOfflineAudio = vi
+			.spyOn(processor, "renderAndMuxOfflineAudio")
+			.mockResolvedValue();
+
+		const muxer = { hasCommittedAudio: true } as never;
+
+		await expect(
+			processor.process(
+				null,
+				muxer,
+				"file:///tmp/recording.mp4",
+				[],
+				[],
+				undefined,
+				[],
+				["/tmp/recording.mic.webm"],
+			),
+		).rejects.toThrow("Muxer write failure");
+
+		expect(mockDemuxer.destroy).toHaveBeenCalled();
+		expect(renderAndMuxOfflineAudio).not.toHaveBeenCalled();
+	});
+
+	it("rejects offline audio rendering if muxer already has committed audio", async () => {
+		const processor = new AudioProcessor() as unknown as {
+			renderAndMuxOfflineAudio: (...args: unknown[]) => Promise<void>;
+		};
+		const muxer = { hasCommittedAudio: true } as never;
+
+		await expect(
+			processor.renderAndMuxOfflineAudio(
+				"file:///tmp/recording.mp4",
+				[],
+				[],
+				[],
+				["/tmp/recording.mic.webm"],
+				undefined,
+				undefined,
+				undefined,
+				muxer,
+			),
+		).rejects.toThrow(
+			"Cannot render offline audio after audio chunks have already been committed to muxer",
+		);
+	});
+
 	it("bypasses streaming decode and uses bulk decode directly for WAV files", async () => {
 		const processor = new AudioProcessor() as unknown as OfflineRenderTestHarness;
 		const fakeBuffer = { duration: 10, numberOfChannels: 2 } as AudioBuffer;

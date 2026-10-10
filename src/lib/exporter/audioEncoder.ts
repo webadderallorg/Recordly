@@ -1,13 +1,10 @@
 import type { WebDemuxer } from "web-demuxer";
-import { requiresClipTimelineRendering } from "./clipTimeline";
 import type {
 	AudioRegion,
 	ClipRegion,
 	SourceAudioTrackSettings,
 	SpeedRegion,
 } from "@/components/video-editor/types";
-import { resolveSourceTrackRoutingPolicy } from "./sourceTrackRoutingPolicy";
-import { AudioTranscodeProcessor } from "./audioTranscodeProcessor";
 import {
 	hasNonDefaultSourceTrackSettings,
 	isWavAudioPath,
@@ -15,7 +12,10 @@ import {
 	MP4_AUDIO_CODEC,
 	type TrimLikeRegion,
 } from "./audioProcessorShared";
+import { AudioTranscodeProcessor } from "./audioTranscodeProcessor";
+import { requiresClipTimelineRendering } from "./clipTimeline";
 import type { VideoMuxer } from "./muxer";
+import { resolveSourceTrackRoutingPolicy } from "./sourceTrackRoutingPolicy";
 
 export {
 	getSourceTrackIdFromPath,
@@ -192,6 +192,9 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 						);
 					} catch (error) {
 						console.warn("[AudioProcessor] Fast sidecar demux failed:", error);
+						if (muxer?.hasCommittedAudio) {
+							throw error;
+						}
 					} finally {
 						try {
 							sidecarDemuxer.destroy();
@@ -199,10 +202,13 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 							/* cleanup */
 						}
 					}
-					if (wroteAudio) {
+					if (wroteAudio || muxer?.hasCommittedAudio) {
 						return;
 					}
 				}
+			}
+			if (muxer?.hasCommittedAudio) {
+				return;
 			}
 			// Fallback to offline rendering if demuxer creation failed, unsupported codec, or no audio was written
 			console.warn(
@@ -259,7 +265,11 @@ export class AudioProcessor extends AudioTranscodeProcessor {
 			sortedTrims,
 			readEndSec,
 		);
-		if (!wroteTrimOnlyAudio && routingPolicy.playbackPaths.length > 0) {
+		if (
+			!wroteTrimOnlyAudio &&
+			routingPolicy.playbackPaths.length > 0 &&
+			!muxer?.hasCommittedAudio
+		) {
 			console.warn(
 				"[AudioProcessor] Main demuxer audio trim failed, falling back to offline rendering for playback paths",
 			);
