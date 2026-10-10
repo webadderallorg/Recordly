@@ -1,10 +1,17 @@
 import { WebDemuxer } from "web-demuxer";
+import {
+	DECODE_BACKPRESSURE_LIMIT,
+	isWavAudioPath,
+	OFFLINE_AUDIO_SAMPLE_RATE,
+} from "./audioProcessorShared";
 import { AudioTimelineProcessor } from "./audioTimelineProcessor";
-import { DECODE_BACKPRESSURE_LIMIT, OFFLINE_AUDIO_SAMPLE_RATE } from "./audioProcessorShared";
 import { resolveMediaElementSource } from "./localMediaSource";
 
 export class AudioMediaProcessor extends AudioTimelineProcessor {
 	protected async decodeAudioFromUrl(url: string): Promise<AudioBuffer | null> {
+		if (isWavAudioPath(url)) {
+			return this.bulkDecodeFromUrl(url, OFFLINE_AUDIO_SAMPLE_RATE);
+		}
 		try {
 			const buffer = await this.streamDecodeFromUrl(url);
 			if (buffer) return buffer;
@@ -34,6 +41,11 @@ export class AudioMediaProcessor extends AudioTimelineProcessor {
 				audioConfig = (await demuxer.getDecoderConfig("audio")) as AudioDecoderConfig;
 			} catch {
 				return null; // No audio track
+			}
+
+			const codecCheck = await AudioDecoder.isConfigSupported(audioConfig);
+			if (!codecCheck.supported) {
+				return null;
 			}
 
 			const sampleRate = audioConfig.sampleRate || 48_000;
@@ -137,7 +149,14 @@ export class AudioMediaProcessor extends AudioTimelineProcessor {
 				}
 
 				if (decoder.state === "configured") {
-					await decoder.flush();
+					try {
+						await decoder.flush();
+					} catch (flushError) {
+						console.warn(
+							"[AudioMediaProcessor] Non-fatal audio decoder flush warning:",
+							flushError,
+						);
+					}
 				}
 				if (decodeError) throw decodeError;
 			} finally {
@@ -236,6 +255,9 @@ export class AudioMediaProcessor extends AudioTimelineProcessor {
 
 	// Get the duration of a media file by loading only its metadata.
 	protected async getMediaDurationSec(url: string): Promise<number> {
+		if (typeof document === "undefined") {
+			return 0;
+		}
 		const source = await resolveMediaElementSource(url);
 		try {
 			const media = document.createElement("video");
