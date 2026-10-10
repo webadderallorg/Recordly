@@ -974,7 +974,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 		if (recorder.state !== "inactive") {
 			recorder.stop();
-		} else if (pending && webcamStopResolver.current) {
+		} else if (pending && webcamStopResolver.current && webcamStartTime.current === null) {
 			webcamStopResolver.current(resolvedWebcamPath.current);
 			webcamStopResolver.current = null;
 		}
