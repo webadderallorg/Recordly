@@ -96,6 +96,7 @@ import {
 	cursorSetAssets,
 	getCursorStyleSizeMultiplier,
 } from "./videoPlayback/uploadedCursorAssets";
+import { usePlaybackTime } from "./state/playbackTimeStore";
 import { WebcamCropControl } from "./WebcamCropControl";
 import {
 	getCropMatchedWebcamHeightPercent,
@@ -154,6 +155,22 @@ const CLICK_EFFECT_COLOR_OPTIONS = [
 ] as const;
 
 type BackgroundTab = "image" | "video" | "color" | "gradient";
+/** Follows the live playback clock itself so the rest of the settings panel doesn't re-render per frame. */
+function LiveWebcamCropControl({
+	getSourceTime,
+	...props
+}: Omit<React.ComponentProps<typeof WebcamCropControl>, "previewCurrentTime"> & {
+	getSourceTime?: (timelineSeconds: number) => number;
+}) {
+	const timelineSeconds = usePlaybackTime();
+	return (
+		<WebcamCropControl
+			{...props}
+			previewCurrentTime={getSourceTime ? getSourceTime(timelineSeconds) : 0}
+		/>
+	);
+}
+
 function isHexWallpaper(value: string): boolean {
 	return /^#(?:[0-9a-f]{3}){1,2}$/i.test(value);
 }
@@ -517,7 +534,7 @@ interface SettingsPanelProps {
 	onBorderRadiusChange?: (radius: number) => void;
 	webcam?: WebcamOverlaySettings;
 	webcamPreviewSrc?: string | null;
-	webcamPreviewCurrentTime?: number;
+	getWebcamPreviewSourceTime?: (timelineSeconds: number) => number;
 	webcamPreviewPlaying?: boolean;
 	onWebcamChange?: (webcam: WebcamOverlaySettings) => void;
 	onUploadWebcam?: () => void;
@@ -551,7 +568,7 @@ interface SettingsPanelProps {
 	onClearAutoCaptions?: () => void;
 	onDownloadWhisperSmallModel?: () => void;
 	onDeleteWhisperSmallModel?: () => void;
-	captionCurrentTimeMs?: number;
+	getCaptionCurrentTimeMs?: () => number;
 	selectedCaptionId?: string | null;
 	onBeginCaptionEdit?: (id: string) => void;
 	onCaptionTextEdit?: (id: string, text: string) => void;
@@ -963,7 +980,7 @@ export function SettingsPanel({
 	onBorderRadiusChange,
 	webcam,
 	webcamPreviewSrc = null,
-	webcamPreviewCurrentTime = 0,
+	getWebcamPreviewSourceTime,
 	webcamPreviewPlaying = false,
 	onWebcamChange,
 	onUploadWebcam,
@@ -995,7 +1012,7 @@ export function SettingsPanel({
 	onClearAutoCaptions,
 	onDownloadWhisperSmallModel,
 	onDeleteWhisperSmallModel,
-	captionCurrentTimeMs = 0,
+	getCaptionCurrentTimeMs,
 	selectedCaptionId = null,
 	onBeginCaptionEdit,
 	onCaptionTextEdit,
@@ -2761,7 +2778,7 @@ export function SettingsPanel({
 					<CaptionListPanel
 						cues={autoCaptions}
 						selectedCaptionId={selectedCaptionId}
-						currentTimeMs={captionCurrentTimeMs}
+						getCurrentTimeMs={getCaptionCurrentTimeMs ?? (() => 0)}
 						onBeginCaptionEdit={(id) => onBeginCaptionEdit?.(id)}
 						onCaptionTextEdit={(id, text) => onCaptionTextEdit?.(id, text)}
 						onCaptionRetime={(id, span) => onCaptionRetime?.(id, span)}
@@ -3107,11 +3124,11 @@ export function SettingsPanel({
 										</Button>
 									</div>
 									<div className="mx-auto w-full max-w-56">
-										<WebcamCropControl
+										<LiveWebcamCropControl
 											cropRegion={webcamCrop}
 											mirrored={webcam?.mirror ?? true}
 											previewSrc={webcamPreviewSrc}
-											previewCurrentTime={webcamPreviewCurrentTime}
+											getSourceTime={getWebcamPreviewSourceTime}
 											previewPlaying={webcamPreviewPlaying}
 											previewTimeOffsetMs={webcam?.timeOffsetMs}
 											onCropChange={(cropRegion, previewFrame) =>

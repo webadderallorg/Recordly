@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
+import { playbackTimeStore } from "../../state/playbackTimeStore";
 import type { TimelineRegion } from "../core/timelineTypes";
 
 interface UseTimelineSelectionParams {
 	totalMs: number;
-	currentTimeMs: number;
 	zoomRegions: TimelineRegion[];
 	clipRegions: TimelineRegion[];
 	annotationRegions: (TimelineRegion & { zIndex: number })[];
@@ -27,7 +27,6 @@ interface UseTimelineSelectionParams {
 
 export function useTimelineSelection({
 	totalMs,
-	currentTimeMs,
 	zoomRegions,
 	annotationRegions,
 	selectedZoomId,
@@ -53,10 +52,10 @@ export function useTimelineSelection({
 
 	const addKeyframe = useCallback(() => {
 		if (totalMs === 0) return;
-		const time = Math.max(0, Math.min(currentTimeMs, totalMs));
+		const time = Math.max(0, Math.min(playbackTimeStore.getMs(), totalMs));
 		if (keyframes.some((kf) => Math.abs(kf.time - time) < 1)) return;
 		setKeyframes((prev) => [...prev, { id: globalThis.crypto.randomUUID(), time }]);
-	}, [currentTimeMs, totalMs, keyframes]);
+	}, [totalMs, keyframes]);
 
 	const deleteSelectedKeyframe = useCallback(() => {
 		if (!selectedKeyframeId) return;
@@ -192,6 +191,7 @@ export function useTimelineSelection({
 
 	const cycleAnnotationsAtCurrentTime = useCallback(
 		(backward = false) => {
+			const currentTimeMs = playbackTimeStore.getMs();
 			const overlapping = annotationRegions
 				.filter((a) => currentTimeMs >= a.startMs && currentTimeMs <= a.endMs)
 				.sort((a, b) => a.zIndex - b.zIndex);
@@ -211,7 +211,7 @@ export function useTimelineSelection({
 			onSelectAnnotation?.(overlapping[nextIndex].id);
 			return true;
 		},
-		[annotationRegions, currentTimeMs, selectedAnnotationId, onSelectAnnotation],
+		[annotationRegions, selectedAnnotationId, onSelectAnnotation],
 	);
 
 	return {

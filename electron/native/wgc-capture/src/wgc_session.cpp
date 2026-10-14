@@ -2,6 +2,7 @@
 
 #include <windows.graphics.capture.interop.h>
 #include <Windows.Graphics.Capture.h>
+#include <d3d11_4.h>
 #include <dwmapi.h>
 #include <inspectable.h>
 
@@ -26,6 +27,9 @@ extern "C" {
         IDXGIDevice* dxgiDevice,
         IInspectable** graphicsDevice);
 }
+
+// Frames the pool can hold while the consumer is busy; 2 starves easily at high frame rates.
+static constexpr int kFramePoolBufferCount = 4;
 
 static int normalizeFramePoolExtent(int value) {
     int normalized = value < 2 ? 2 : value;
@@ -60,6 +64,26 @@ bool WgcSession::createD3DDevice() {
     if (FAILED(hr)) {
         std::cerr << "ERROR: D3D11CreateDevice failed: 0x" << std::hex << hr << std::endl;
         return false;
+    }
+
+    // The capture callback and the encoder's readback worker share this immediate context.
+    ComPtr<ID3D11Multithread> multithread;
+    hr = d3dContext_.As(&multithread);
+    if (FAILED(hr) || !multithread) {
+        std::cerr << "ERROR: Failed to query ID3D11Multithread: 0x" << std::hex << hr << std::endl;
+        return false;
+    }
+    multithread->SetMultithreadProtected(TRUE);
+
+    // Report which GPU performs the capture; on hybrid laptops this matters for performance.
+    ComPtr<IDXGIDevice> dxgiDevice;
+    ComPtr<IDXGIAdapter> adapter;
+    DXGI_ADAPTER_DESC adapterDesc{};
+    if (SUCCEEDED(d3dDevice_.As(&dxgiDevice)) && SUCCEEDED(dxgiDevice->GetAdapter(&adapter)) &&
+        SUCCEEDED(adapter->GetDesc(&adapterDesc))) {
+        char name[256]{};
+        WideCharToMultiByte(CP_UTF8, 0, adapterDesc.Description, -1, name, sizeof(name) - 1, nullptr, nullptr);
+        std::cerr << "Capture adapter: " << name << std::endl;
     }
 
     return true;
@@ -109,7 +133,7 @@ bool WgcSession::initializeWithItem(int fps) {
     framePool_ = winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
         winrtDevice_,
         winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
-        2,
+        kFramePoolBufferCount,
         size);
 
     session_ = framePool_.CreateCaptureSession(captureItem_);
@@ -144,7 +168,7 @@ bool WgcSession::recreateFramePoolIfNeeded(
         framePool_.Recreate(
             winrtDevice_,
             winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
-            2,
+            kFramePoolBufferCount,
             normalizedSize);
         framePoolWidth_ = normalizedWidth;
         framePoolHeight_ = normalizedHeight;
@@ -290,6 +314,7 @@ bool WgcSession::startCapture() {
     capturing_ = true;
     fatalError_ = false;
     lastFrameTimeHns_ = 0;
+    nextFrameDueHns_ = 0;
 
     frameArrivedRevoker_ = framePool_.FrameArrived(
         winrt::auto_revoke,
@@ -335,11 +360,17 @@ void WgcSession::onFrameArrived(
     auto timestamp = frame.SystemRelativeTime();
     int64_t frameTimeHns = std::chrono::duration_cast<std::chrono::duration<int64_t, std::ratio<1, 10000000>>>(timestamp).count();
 
-    // Frame rate limiting: skip frames that arrive too soon
-    if (lastFrameTimeHns_ > 0 && (frameTimeHns - lastFrameTimeHns_) < (frameIntervalHns_ * 7 / 10)) {
+    // Frame rate limiting against a fixed schedule. The display can refresh much faster than
+    // the recording rate (e.g. 165 Hz); a plain "minimum gap" test would let through every
+    // second refresh (~82 fps) and make the encoder do far more work than requested.
+    if (nextFrameDueHns_ == 0) nextFrameDueHns_ = frameTimeHns;
+    if (frameTimeHns + frameIntervalHns_ / 2 < nextFrameDueHns_) {
         frame.Close();
         return;
     }
+    nextFrameDueHns_ += frameIntervalHns_;
+    // After a pause or an idle screen the schedule is stale; restart it from this frame.
+    if (nextFrameDueHns_ < frameTimeHns) nextFrameDueHns_ = frameTimeHns + frameIntervalHns_;
     lastFrameTimeHns_ = frameTimeHns;
 
     auto surface = frame.Surface();

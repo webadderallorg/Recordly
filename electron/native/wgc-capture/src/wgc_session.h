@@ -56,6 +56,7 @@ private:
     int framePoolHeight_ = 0;
     int64_t frameIntervalHns_ = 0;
     int64_t lastFrameTimeHns_ = 0;
+    int64_t nextFrameDueHns_ = 0;
     HWND windowHandle_ = nullptr;
     RECT monitorBounds_{};
     RECT cropRect_{};

@@ -1,4 +1,5 @@
 import { type RefObject, useCallback } from "react";
+import { playbackTimeStore } from "../state/playbackTimeStore";
 import type { TimelineEditorHandle } from "../timeline/TimelineEditor";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 
@@ -6,7 +7,6 @@ interface UseEditorPlaybackControlsParams {
 	videoPlaybackRef: RefObject<VideoPlaybackRef | null>;
 	timelineRef: RefObject<TimelineEditorHandle | null>;
 	playSourceAudioPreview: () => void;
-	timelinePlayheadTime: number;
 	timelineDuration: number;
 }
 
@@ -14,7 +14,6 @@ export function useEditorPlaybackControls({
 	videoPlaybackRef,
 	timelineRef,
 	playSourceAudioPreview,
-	timelinePlayheadTime,
 	timelineDuration,
 }: UseEditorPlaybackControlsParams) {
 	const getActivePlayback = useCallback(() => videoPlaybackRef.current, [videoPlaybackRef]);
@@ -54,20 +53,22 @@ export function useEditorPlaybackControls({
 	);
 
 	const handlePreviewSkipBack = useCallback(() => {
+		const timelinePlayheadTime = playbackTimeStore.get();
 		const currentMs = timelinePlayheadTime * 1000;
 		const keyframes = timelineRef.current?.keyframes ?? [];
 		const previous = [...keyframes]
 			.reverse()
 			.find((keyframe) => keyframe.time < currentMs - 50);
 		handleSeek(previous ? previous.time / 1000 : Math.max(0, timelinePlayheadTime - 5));
-	}, [handleSeek, timelinePlayheadTime, timelineRef]);
+	}, [handleSeek, timelineRef]);
 
 	const handlePreviewSkipForward = useCallback(() => {
+		const timelinePlayheadTime = playbackTimeStore.get();
 		const currentMs = timelinePlayheadTime * 1000;
 		const keyframes = timelineRef.current?.keyframes ?? [];
 		const next = keyframes.find((keyframe) => keyframe.time > currentMs + 50);
 		handleSeek(next ? next.time / 1000 : Math.min(timelineDuration, timelinePlayheadTime + 5));
-	}, [handleSeek, timelineDuration, timelinePlayheadTime, timelineRef]);
+	}, [handleSeek, timelineDuration, timelineRef]);
 
 	return {
 		startPlayback,

@@ -1,10 +1,12 @@
 #include "mf_encoder.h"
+#include <d3d11_4.h>
 #include <mfapi.h>
 #include <mferror.h>
 #include <codecapi.h>
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
+#include <chrono>
 #include <cstring>
 #include "../../common/bt709_video.h"
 
@@ -129,7 +131,8 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
         return false;
     }
 
-    // Pre-allocate staging texture
+    // Staging ring: each frame is copied into the next free slot on the GPU, then read back
+    // by the worker thread. Slots are CPU-readable BGRA textures of the output size.
     D3D11_TEXTURE2D_DESC stagingDesc = {};
     stagingDesc.Width = width_;
     stagingDesc.Height = height_;
@@ -140,11 +143,26 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
     stagingDesc.Usage = D3D11_USAGE_STAGING;
     stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
 
-    hr = device_->CreateTexture2D(&stagingDesc, nullptr, &stagingTexture_);
-    if (FAILED(hr)) {
-        std::cerr << "ERROR: Failed to create staging texture: 0x" << std::hex << hr << std::endl;
+    constexpr size_t kStagingSlotCount = 4;
+    slots_.clear();
+    slots_.resize(kStagingSlotCount);
+    for (auto& slot : slots_) {
+        hr = device_->CreateTexture2D(&stagingDesc, nullptr, &slot.texture);
+        if (FAILED(hr)) {
+            std::cerr << "ERROR: Failed to create staging texture: 0x" << std::hex << hr << std::endl;
+            return false;
+        }
+    }
+
+    // The capture thread issues copies while the worker maps staging textures, so the shared
+    // immediate context has to serialise those calls.
+    ComPtr<ID3D11Multithread> multithread;
+    hr = context_->QueryInterface(IID_PPV_ARGS(&multithread));
+    if (FAILED(hr) || !multithread) {
+        std::cerr << "ERROR: Failed to query ID3D11Multithread: 0x" << std::hex << hr << std::endl;
         return false;
     }
+    multithread->SetMultithreadProtected(TRUE);
 
     // WGC window captures can change frame size while recording. Keep the muxer
     // output dimensions stable by compositing resized frames into this fixed
@@ -178,25 +196,48 @@ bool MFEncoder::initialize(const std::wstring& outputPath, int width, int height
     lastFrameBuffer_.clear();
     firstSampleTimeHns_ = -1;
     lastSampleTimeHns_ = -1;
+    droppedFrames_ = 0;
 
+    stopWorker_ = false;
+    workerBusy_ = false;
+    pending_.clear();
     initialized_ = true;
+    worker_ = std::thread([this] { workerLoop(); });
     return true;
 }
 
 bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> captureLock(captureMutex_);
 
-    if (!initialized_ || !sinkWriter_) return false;
+    size_t slotIndex = slots_.size();
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        if (!initialized_ || stopWorker_ || !sinkWriter_) return false;
+        for (size_t i = 0; i < slots_.size(); ++i) {
+            if (slots_[i].state == SlotState::Free) {
+                slotIndex = i;
+                break;
+            }
+        }
+        if (slotIndex == slots_.size()) {
+            // The worker is behind. Dropping is better than stalling the capture frame pool;
+            // the gap is filled by repeating the previous frame.
+            droppedFrames_.fetch_add(1);
+            return false;
+        }
+        slots_[slotIndex].state = SlotState::Reserved;
+    }
 
     D3D11_TEXTURE2D_DESC sourceDesc = {};
     texture->GetDesc(&sourceDesc);
 
+    bool copied = true;
     if (sourceDesc.Width == static_cast<UINT>(width_) &&
         sourceDesc.Height == static_cast<UINT>(height_)) {
-        context_->CopyResource(stagingTexture_.Get(), texture);
+        context_->CopyResource(slots_[slotIndex].texture.Get(), texture);
+    } else if (!resizeCompositeTexture_ || !resizeCompositeView_) {
+        copied = false;
     } else {
-        if (!resizeCompositeTexture_ || !resizeCompositeView_) return false;
-
         const FLOAT clearColor[4] = {0.0f, 0.0f, 0.0f, 1.0f};
         context_->ClearRenderTargetView(resizeCompositeView_.Get(), clearColor);
 
@@ -208,30 +249,127 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
         sourceBox.bottom = (std::min)(sourceDesc.Height, static_cast<UINT>(height_));
         sourceBox.back = 1;
 
-        if (sourceBox.right == 0 || sourceBox.bottom == 0) return false;
-
-        context_->CopySubresourceRegion(
-            resizeCompositeTexture_.Get(),
-            0,
-            0,
-            0,
-            0,
-            texture,
-            0,
-            &sourceBox);
-        context_->CopyResource(stagingTexture_.Get(), resizeCompositeTexture_.Get());
+        if (sourceBox.right == 0 || sourceBox.bottom == 0) {
+            copied = false;
+        } else {
+            context_->CopySubresourceRegion(
+                resizeCompositeTexture_.Get(),
+                0,
+                0,
+                0,
+                0,
+                texture,
+                0,
+                &sourceBox);
+            context_->CopyResource(slots_[slotIndex].texture.Get(), resizeCompositeTexture_.Get());
+        }
     }
 
-    D3D11_MAPPED_SUBRESOURCE mapped;
-    HRESULT hr = context_->Map(stagingTexture_.Get(), 0, D3D11_MAP_READ, 0, &mapped);
-    if (FAILED(hr)) return false;
+    if (!copied) {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        slots_[slotIndex].state = SlotState::Free;
+        return false;
+    }
+
+    // Submit the copy now. Without this the work can sit in the context's command buffer and
+    // the worker's non-blocking Map would keep reporting "still drawing".
+    context_->Flush();
+
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        slots_[slotIndex].timestampHns = timestampHns;
+        slots_[slotIndex].state = SlotState::Pending;
+        pending_.push_back(slotIndex);
+    }
+    queueCv_.notify_one();
+    return true;
+}
+
+namespace {
+
+// Sleeps ~0.5 ms using a high-resolution waitable timer (default Sleep granularity is ~15 ms).
+class ShortSleeper {
+public:
+    ShortSleeper() {
+        timer_ = CreateWaitableTimerExW(
+            nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+    }
+    ~ShortSleeper() {
+        if (timer_) CloseHandle(timer_);
+    }
+    void sleep() {
+        if (timer_) {
+            LARGE_INTEGER dueTime;
+            dueTime.QuadPart = -5000;  // 0.5 ms, relative
+            if (SetWaitableTimer(timer_, &dueTime, 0, nullptr, nullptr, FALSE)) {
+                WaitForSingleObject(timer_, 20);
+                return;
+            }
+        }
+        Sleep(1);
+    }
+
+private:
+    HANDLE timer_ = nullptr;
+};
+
+}  // namespace
+
+void MFEncoder::workerLoop() {
+    for (;;) {
+        size_t index = 0;
+        {
+            std::unique_lock<std::mutex> lock(queueMutex_);
+            queueCv_.wait(lock, [this] { return !pending_.empty() || stopWorker_; });
+            if (pending_.empty()) return;  // asked to stop and nothing left to write
+            index = pending_.front();
+            pending_.pop_front();
+            workerBusy_ = true;
+        }
+
+        processSlot(index);
+
+        {
+            std::lock_guard<std::mutex> lock(queueMutex_);
+            slots_[index].state = SlotState::Free;
+            workerBusy_ = false;
+            if (pending_.empty()) idleCv_.notify_all();
+        }
+    }
+}
+
+void MFEncoder::processSlot(size_t index) {
+    ID3D11Texture2D* staging = slots_[index].texture.Get();
+    const int64_t timestampHns = slots_[index].timestampHns;
+
+    // Poll instead of blocking: a blocking Map would hold the (multithread-protected) context
+    // lock and stall the capture thread for as long as the GPU takes to finish the copy.
+    static thread_local ShortSleeper sleeper;
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    HRESULT hr = S_OK;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    for (;;) {
+        hr = context_->Map(staging, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+        if (hr != DXGI_ERROR_WAS_STILL_DRAWING) break;
+        if (std::chrono::steady_clock::now() > deadline) break;
+        sleeper.sleep();
+    }
+    if (FAILED(hr)) {
+        droppedFrames_.fetch_add(1);
+        return;
+    }
 
     // Convert full-range desktop BGRA to explicitly tagged BT.709 video-range NV12.
-    const uint8_t* bgra = static_cast<const uint8_t*>(mapped.pData);
-    const int bgraPitch = static_cast<int>(mapped.RowPitch);
-    convertBgraToBt709LimitedNv12(bgra, bgraPitch, width_, height_, nv12Buffer_);
+    convertBgraToBt709LimitedNv12(
+        static_cast<const uint8_t*>(mapped.pData),
+        static_cast<int>(mapped.RowPitch),
+        width_,
+        height_,
+        nv12Buffer_);
+    context_->Unmap(staging, 0);
 
-    context_->Unmap(stagingTexture_.Get(), 0);
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!initialized_ || !sinkWriter_) return;
 
     // WGC may stop delivering frames while the scene is static; keep the MP4
     // timeline continuous by repeating the previous frame before writing a new one.
@@ -239,18 +377,36 @@ bool MFEncoder::writeFrame(ID3D11Texture2D* texture, int64_t timestampHns) {
     normalizeWriteTimestampHnsLocked(timestampHns, normalizedTimestampHns);
 
     if (!lastFrameBuffer_.empty() && !extendLastFrameToLocked(normalizedTimestampHns)) {
-        return false;
+        return;
     }
 
-    bool wroteSample = writeNv12SampleLocked(nv12Buffer_, normalizedTimestampHns);
-    if (wroteSample) {
-        lastFrameBuffer_ = nv12Buffer_;
+    if (writeNv12SampleLocked(nv12Buffer_, normalizedTimestampHns)) {
+        // Swap rather than copy: nv12Buffer_ is fully rewritten by the next conversion.
+        // The first swap hands back an empty buffer, so restore its size.
+        lastFrameBuffer_.swap(nv12Buffer_);
+        nv12Buffer_.resize(lastFrameBuffer_.size());
         lastSampleTimeHns_ = normalizedTimestampHns;
     }
-    return wroteSample;
+}
+
+void MFEncoder::drainQueue() {
+    std::unique_lock<std::mutex> lock(queueMutex_);
+    idleCv_.wait(lock, [this] { return pending_.empty() && !workerBusy_; });
+}
+
+void MFEncoder::stopWorker() {
+    {
+        std::lock_guard<std::mutex> lock(queueMutex_);
+        stopWorker_ = true;
+    }
+    queueCv_.notify_all();
+    if (worker_.joinable()) worker_.join();
 }
 
 bool MFEncoder::extendLastFrameTo(int64_t timestampHns) {
+    // Frames still queued for the worker must land before the timeline is extended.
+    drainQueue();
+
     std::lock_guard<std::mutex> lock(mutex_);
 
     int64_t normalizedTimestampHns = 0;
@@ -346,6 +502,18 @@ bool MFEncoder::writeNv12SampleLocked(const std::vector<uint8_t>& frameBuffer, i
 }
 
 bool MFEncoder::finalize() {
+    // Hold off any in-flight writeFrame() until teardown is done; it reads slots_ and initialized_.
+    std::lock_guard<std::mutex> captureLock(captureMutex_);
+
+    if (initialized_) {
+        drainQueue();
+        stopWorker();
+        if (droppedFrames_.load() > 0) {
+            std::cerr << "WARNING: Encoder dropped " << droppedFrames_.load()
+                      << " frame(s) because encoding fell behind capture" << std::endl;
+        }
+    }
+
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (!initialized_) return false;
@@ -358,7 +526,8 @@ bool MFEncoder::finalize() {
 
     initialized_ = false;
     sinkWriter_.Reset();
-    stagingTexture_.Reset();
+    slots_.clear();
+    pending_.clear();
     resizeCompositeView_.Reset();
     resizeCompositeTexture_.Reset();
     nv12Buffer_.clear();

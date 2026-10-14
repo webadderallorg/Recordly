@@ -2,6 +2,7 @@ import { useTimelineContext } from "dnd-timeline";
 import { useEffect, useState, type RefObject } from "react";
 import { cn } from "@/lib/utils";
 import { formatPlayheadTime } from "../../core/time";
+import { usePlaybackTime } from "../../../state/playbackTimeStore";
 
 import {
 	getPlayheadDisplayTime,
@@ -11,7 +12,6 @@ import {
 
 interface PlaybackCursorProps {
 	clips: ClipPresentation[];
-	currentTimeMs: number;
 	videoDurationMs: number;
 	onSeek?: (time: number) => void;
 	timelineRef: RefObject<HTMLDivElement | null>;
@@ -21,7 +21,6 @@ interface PlaybackCursorProps {
 
 export default function PlaybackCursor({
 	clips,
-	currentTimeMs,
 	videoDurationMs,
 	onSeek,
 	timelineRef,
@@ -29,6 +28,8 @@ export default function PlaybackCursor({
 	isLoading = false,
 }: PlaybackCursorProps) {
 	const { sidebarWidth, direction, range, valueToPixels, pixelsToValue } = useTimelineContext();
+	// Subscribes directly so the playhead stays frame-accurate without re-rendering the timeline.
+	const currentTimeMs = Math.round(usePlaybackTime() * 1000);
 	const sideProperty = direction === "rtl" ? "right" : "left";
 	const [isDragging, setIsDragging] = useState(false);
 	const [isHovered, setIsHovered] = useState(false);

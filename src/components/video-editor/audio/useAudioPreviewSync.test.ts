@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { playbackTimeStore } from "../state/playbackTimeStore";
 import { useAudioPreviewSync } from "./useAudioPreviewSync";
 
 const harness = vi.hoisted(() => ({
@@ -131,13 +132,13 @@ describe("source preview playback ownership", () => {
 				}
 			},
 		);
+		playbackTimeStore.set(time);
 		// Execute mocked effects explicitly so the asynchronous load can finish between syncs.
 		useAudioPreviewSync({
 			audioRegions: [],
 			previewVolume: 1,
 			isPlaying: playing,
-			currentTime: time,
-			timelineTime: time,
+			getSourceTimeSeconds: (timelineSeconds: number) => timelineSeconds,
 			duration: 10,
 			sourcePlaybackRate: rate,
 			previewSourceAudioFallbackPaths: ["/audio.system.wav"],
@@ -147,13 +148,22 @@ describe("source preview playback ownership", () => {
 			getSourceTrackPreviewGain: () => 1,
 			onSourceFallbackLoadError: vi.fn(),
 		});
-		for (const effect of harness.effects) effect();
+		const cleanups: unknown[] = [];
+		for (const effect of harness.effects) cleanups.push(effect());
 		await Promise.resolve();
 		expect(harness.loaded).toHaveBeenCalledOnce();
 		expect(audio.play).not.toHaveBeenCalled();
-		harness.effects.at(-1)?.();
+		cleanups.push(harness.effects.at(-1)?.());
 		await Promise.resolve();
 		expect(audio.play).toHaveBeenCalledTimes(plays ? 1 : 0);
 		if (plays) expect(audio.currentTime).toBeCloseTo(time - delay / 1000);
+		// Drop store subscriptions; the unmount cleanup needs real audio nodes, so ignore its mock errors.
+		for (const cleanup of cleanups) {
+			try {
+				if (typeof cleanup === "function") cleanup();
+			} catch {
+				// mocked nodes
+			}
+		}
 	});
 });

@@ -34,8 +34,6 @@ import {
 
 export interface TimelineEditorProps {
 	videoDuration: number;
-	currentTime: number;
-	playheadTime?: number;
 	onSeek?: (time: number) => void;
 	cursorTelemetry?: CursorTelemetryPoint[];
 	autoSuggestZoomsTrigger?: number;
@@ -117,8 +115,6 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 	function TimelineEditor(
 		{
 			videoDuration,
-			currentTime,
-			playheadTime,
 			onSeek,
 			cursorTelemetry = [],
 			autoSuggestZoomsTrigger = 0,
@@ -177,10 +173,6 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		const totalMs = useMemo(
 			() => Math.max(0, Math.round(videoDuration * 1000)),
 			[videoDuration],
-		);
-		const currentTimeMs = useMemo(
-			() => Math.round((playheadTime ?? currentTime) * 1000),
-			[currentTime, playheadTime],
 		);
 		const timelineScale = useMemo(() => calculateTimelineScale(videoDuration), [videoDuration]);
 		const safeMinDurationMs = useMemo(
@@ -357,7 +349,6 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			ref,
 			videoDuration,
 			totalMs,
-			currentTimeMs,
 			safeMinDurationMs,
 			cursorTelemetry,
 			autoSuggestZoomsTrigger,
@@ -486,7 +477,6 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							videoPath={videoPath}
 							items={timelineItems}
 							videoDurationMs={totalMs}
-							currentTimeMs={currentTimeMs}
 							onSeek={onSeek}
 							onAddZoomAtMs={addZoomAtMs}
 							canPlaceZoomAtMs={canPlaceZoomAtMs}

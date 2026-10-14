@@ -58,7 +58,6 @@ interface TimelineCanvasProps {
 	videoPath?: string | null;
 	items: TimelineRenderItem[];
 	videoDurationMs: number;
-	currentTimeMs: number;
 	onSeek?: (time: number) => void;
 	canPlaceZoomAtMs?: (startMs: number) => boolean;
 	onSelectZoom?: (id: string | null) => void;
@@ -899,7 +898,6 @@ export default function TimelineCanvas({
 	videoPath,
 	items,
 	videoDurationMs,
-	currentTimeMs,
 	onSeek,
 	onAddZoomAtMs,
 	canPlaceZoomAtMs,
@@ -1155,7 +1153,6 @@ export default function TimelineCanvas({
 			<div aria-hidden="true" style={{ height: TIMELINE_AXIS_HEIGHT_PX, flexShrink: 0 }} />
 			<PlaybackCursor
 				clips={clipPresentation}
-				currentTimeMs={currentTimeMs}
 				videoDurationMs={videoDurationMs}
 				onSeek={onSeek}
 				timelineRef={localTimelineRef}

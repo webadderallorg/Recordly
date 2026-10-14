@@ -20,6 +20,7 @@ import { useEditorUiState } from "./state/useEditorUiState";
 import { useProjectState } from "./state/useProjectState";
 import { useTimelineState } from "./state/useTimelineState";
 import { useNvidiaCudaExportOptIn } from "./useNvidiaCudaExportOptIn";
+import { getEffectiveNativeAspectRatio } from "./videoPlayback/effectiveAspectRatio";
 
 export default function VideoEditor() {
 	const { t } = useI18n();
@@ -346,11 +347,14 @@ export default function VideoEditor() {
 	const previewAspectRatioValue = getAspectRatioValue(
 		aspectRatio,
 		(() => {
+			// Must match the inner preview, which sizes "native" from the cropped area.
 			const previewVideo = videoPlaybackRef.current?.video;
-			if (previewVideo && previewVideo.videoHeight > 0) {
-				return previewVideo.videoWidth / previewVideo.videoHeight;
-			}
-			return 16 / 9;
+			return getEffectiveNativeAspectRatio(
+				previewVideo
+					? { width: previewVideo.videoWidth, height: previewVideo.videoHeight }
+					: null,
+				cropRegion,
+			);
 		})(),
 	);
 	const settingsPanelProps = useEditorSettingsPanelProps({
@@ -365,7 +369,6 @@ export default function VideoEditor() {
 		autoCaptionController,
 		effectiveShowCursor,
 		handleShowCursorChange,
-		currentTime,
 		isPlaying,
 		aspectRatio,
 		setAspectRatio,

@@ -8,6 +8,7 @@ import type { useClipRegionCommands } from "../hooks/useClipRegionCommands";
 import type { useEditorPlaybackControls } from "../hooks/useEditorPlaybackControls";
 import type { useTimelineProjection } from "../hooks/useTimelineProjection";
 import type { useZoomRegionCommands } from "../hooks/useZoomRegionCommands";
+import { playbackTimeStore, usePlaybackSelector } from "../state/playbackTimeStore";
 import type { useTimelineState } from "../state/useTimelineState";
 import TimelineEditor, { type TimelineEditorHandle } from "../timeline/TimelineEditor";
 
@@ -30,7 +31,6 @@ type Props = {
 	autoSuggestZoomsTrigger: number;
 	handleAutoSuggestZoomsConsumed: () => void;
 	disableSuggestedZooms: boolean;
-	currentTime: number;
 	handleSelectAnnotation: (id: string | null) => void;
 };
 
@@ -53,9 +53,25 @@ export function EditorTimelinePanel(props: Props) {
 		autoSuggestZoomsTrigger,
 		handleAutoSuggestZoomsConsumed,
 		disableSuggestedZooms,
-		currentTime,
 		handleSelectAnnotation,
 	} = props;
+
+	// Prefers the fragment under the playhead; re-renders only when that choice changes.
+	const selectedCaptionRegionId = usePlaybackSelector(playbackTimeStore, (timelineSeconds) => {
+		const timeMs = timelineSeconds * 1000;
+		return (
+			projection.effectiveCaptionRegions.find(
+				(cue) =>
+					cue.sourceCueId === timeline.selectedCaptionId &&
+					timeMs >= cue.startMs &&
+					timeMs < cue.endMs,
+			)?.id ??
+			projection.effectiveCaptionRegions.find(
+				(cue) => cue.sourceCueId === timeline.selectedCaptionId,
+			)?.id ??
+			null
+		);
+	});
 
 	return (
 		<div
@@ -68,8 +84,6 @@ export function EditorTimelinePanel(props: Props) {
 			<TimelineEditor
 				ref={timelineRef}
 				videoDuration={projection.timelineDuration}
-				currentTime={currentTime}
-				playheadTime={projection.timelinePlayheadTime}
 				onSeek={playback.handleTimelineSeek}
 				videoPath={videoPath}
 				videoSourcePath={videoSourcePath}
@@ -109,18 +123,7 @@ export function EditorTimelinePanel(props: Props) {
 						retimeCaptionFragment(fragment, span),
 					);
 				}}
-				selectedCaptionId={
-					projection.effectiveCaptionRegions.find(
-						(cue) =>
-							cue.sourceCueId === timeline.selectedCaptionId &&
-							currentTime * 1000 >= cue.startMs &&
-							currentTime * 1000 < cue.endMs,
-					)?.id ??
-					projection.effectiveCaptionRegions.find(
-						(cue) => cue.sourceCueId === timeline.selectedCaptionId,
-					)?.id ??
-					null
-				}
+				selectedCaptionId={selectedCaptionRegionId}
 				onSelectCaption={(id) => {
 					const fragment = projection.effectiveCaptionRegions.find(
 						(cue) => cue.id === id,

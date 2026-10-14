@@ -9,7 +9,7 @@ import type { CaptionCue } from "./types";
 interface CaptionListPanelProps {
 	cues: CaptionCue[];
 	selectedCaptionId: string | null;
-	currentTimeMs: number;
+	getCurrentTimeMs: () => number;
 	onBeginCaptionEdit: (id: string) => void;
 	onCaptionTextEdit: (id: string, text: string) => void;
 	onCaptionRetime: (id: string, span: CaptionRetimeSpan) => void;
@@ -44,7 +44,7 @@ function parseTimecode(value: string): number | null {
 interface CaptionEditorProps {
 	cue: CaptionCue;
 	canMerge: boolean;
-	currentTimeMs: number;
+	getCurrentTimeMs: () => number;
 	onBeginEdit: (id: string) => void;
 	onTextEdit: (id: string, text: string) => void;
 	onRetime: (id: string, span: CaptionRetimeSpan) => void;
@@ -56,7 +56,7 @@ interface CaptionEditorProps {
 function CaptionEditor({
 	cue,
 	canMerge,
-	currentTimeMs,
+	getCurrentTimeMs,
 	onBeginEdit,
 	onTextEdit,
 	onRetime,
@@ -177,7 +177,7 @@ function CaptionEditor({
 					variant="ghost"
 					type="button"
 					onClick={() =>
-						onSplit(cue.id, clampNumber(currentTimeMs, cue.startMs, cue.endMs))
+						onSplit(cue.id, clampNumber(getCurrentTimeMs(), cue.startMs, cue.endMs))
 					}
 					className="flex h-9 items-center justify-center gap-1.5 text-xs"
 				>
@@ -212,7 +212,7 @@ function CaptionEditor({
 export default function CaptionListPanel({
 	cues,
 	selectedCaptionId,
-	currentTimeMs,
+	getCurrentTimeMs,
 	onBeginCaptionEdit,
 	onCaptionTextEdit,
 	onCaptionRetime,
@@ -233,7 +233,7 @@ export default function CaptionListPanel({
 			key={cue.id}
 			cue={cue}
 			canMerge={canMerge}
-			currentTimeMs={currentTimeMs}
+			getCurrentTimeMs={getCurrentTimeMs}
 			onBeginEdit={onBeginCaptionEdit}
 			onTextEdit={onCaptionTextEdit}
 			onRetime={onCaptionRetime}
