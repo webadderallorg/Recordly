@@ -149,3 +149,16 @@ export function planLightningExportRoutes(options: {
 export function getDefaultLightningRenderBackend(): ExportRenderBackend {
 	return "webgl";
 }
+
+/**
+ * Returns the Lightning renderer backend fallback order for the given platform.
+ *
+ * WebGPU-on-Linux (Dawn/Vulkan) can corrupt GPU resource imports for VideoFrame-backed
+ * textures mid-export, crashing PixiJS's WebGPU bind group system well after init
+ * succeeds. Default Linux to WebGL until that upstream instability is resolved.
+ */
+export function getDefaultLightningRenderBackendOrder(
+	platform: LightningRuntimePlatform,
+): ExportRenderBackend[] {
+	return platform === "linux" ? ["webgl", "webgpu"] : ["webgpu", "webgl"];
+}

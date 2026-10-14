@@ -86,6 +86,10 @@ import {
 	renderAnnotations,
 	renderAnnotationToCanvas,
 } from "./annotationRenderer";
+import {
+	getDefaultLightningRenderBackendOrder,
+	normalizeLightningRuntimePlatform,
+} from "./backendPolicy";
 import { ForwardFrameSource } from "./forwardFrameSource";
 import { resolveMediaElementSource } from "./localMediaSource";
 import {
@@ -605,6 +609,11 @@ export class FrameRenderer {
 		console.log(`[FrameRenderer] Export renderer backend: ${this.rendererBackend}`);
 	}
 
+	/**
+	 * Initializes a Pixi Application on the given canvas, trying render backends in
+	 * order until one succeeds. Honors an explicit `preferredRenderBackend`; otherwise
+	 * falls back to the platform-aware default order from `getDefaultLightningRenderBackendOrder`.
+	 */
 	private async createPixiApplication(
 		canvas: HTMLCanvasElement,
 	): Promise<{ app: Application; backend: ExportRenderBackend }> {
@@ -623,13 +632,16 @@ export class FrameRenderer {
 		};
 
 		const preferredRenderBackend = this.config.preferredRenderBackend;
+		const runtimePlatform = normalizeLightningRuntimePlatform(
+			typeof navigator !== "undefined" ? navigator.platform || navigator.userAgent || "" : "",
+		);
 		const backendOrder: ExportRenderBackend[] =
 			preferredRenderBackend === "webgl"
 				? ["webgl", "webgpu"]
 				: preferredRenderBackend === "webgpu"
 					? ["webgpu", "webgl"]
 					: typeof navigator !== "undefined" && "gpu" in navigator
-						? ["webgpu", "webgl"]
+						? getDefaultLightningRenderBackendOrder(runtimePlatform)
 						: ["webgl"];
 		const failures: PixiRendererAttempt[] = [];
 
