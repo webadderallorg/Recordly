@@ -6,7 +6,6 @@ const recorderSource = readFileSync(
 	fileURLToPath(new URL("./ScreenCaptureKitRecorder.swift", import.meta.url)),
 	"utf8",
 );
-
 describe("ScreenCaptureKitRecorder finalization coordination", () => {
 	it("finalizes on parent pipe closure as well as an explicit stop, exactly once", () => {
 		const commandLoop = recorderSource.slice(
