@@ -31,3 +31,24 @@ export function shouldUseWindowsBrowserMicrophoneFallback(
 			))
 	);
 }
+
+const WINDOWS_SYSTEM_AUDIO_UNAVAILABLE_MARKERS = [
+	"WARNING: Failed to initialize WASAPI loopback",
+];
+
+/**
+ * Unlike microphone capture, the native Windows helper has no renderer-side
+ * fallback for system/loopback audio — a failed WASAPI loopback session is
+ * silent by design (it prints a warning but keeps recording video only). We
+ * can still detect that warning so the app stops treating the resulting
+ * (empty or missing) system-audio file as valid and tells the user instead.
+ */
+export function isWindowsSystemAudioCaptureUnavailable(
+	captureOutput: string,
+	options?: { capturesSystemAudio?: boolean },
+) {
+	return (
+		Boolean(options?.capturesSystemAudio) &&
+		WINDOWS_SYSTEM_AUDIO_UNAVAILABLE_MARKERS.some((marker) => captureOutput.includes(marker))
+	);
+}
