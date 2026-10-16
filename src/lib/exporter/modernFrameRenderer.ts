@@ -623,14 +623,18 @@ export class FrameRenderer {
 		};
 
 		const preferredRenderBackend = this.config.preferredRenderBackend;
+		// Pixi caches a single module-level batch shader (`DefaultBatcher`'s
+		// `defaultShader`) sized by the texture limit of the first renderer created
+		// in the page, and pixi.js 8.14 never regenerates it. The editor preview
+		// always initializes WebGL first, and on Mesa drivers WebGL exposes 32
+		// texture units while WebGPU exposes 16, so a WebGPU export renderer reused
+		// a bind group layout that expected 32 textures but only had 16 and crashed
+		// on the first frame with "Cannot read properties of undefined (reading
+		// '_resourceType')". Defaulting to WebGL-first keeps the export on the same
+		// backend family as the preview (matching the legacy renderer and
+		// `getDefaultLightningRenderBackend`); WebGPU stays as the fallback.
 		const backendOrder: ExportRenderBackend[] =
-			preferredRenderBackend === "webgl"
-				? ["webgl", "webgpu"]
-				: preferredRenderBackend === "webgpu"
-					? ["webgpu", "webgl"]
-					: typeof navigator !== "undefined" && "gpu" in navigator
-						? ["webgpu", "webgl"]
-						: ["webgl"];
+			preferredRenderBackend === "webgpu" ? ["webgpu", "webgl"] : ["webgl", "webgpu"];
 		const failures: PixiRendererAttempt[] = [];
 
 		for (const backend of backendOrder) {
