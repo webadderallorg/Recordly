@@ -149,3 +149,66 @@ export function planLightningExportRoutes(options: {
 export function getDefaultLightningRenderBackend(): ExportRenderBackend {
 	return "webgl";
 }
+
+/**
+ * Resolve the preferred Pixi render backend for a Lightning export.
+ *
+ * Linux Mesa/Intel WebGPU adapters can initialize successfully in Electron
+ * but produce invalid GPU resources on the first rendered frame, surfacing as
+ * `Cannot read properties of undefined (reading '_resourceType')` (issue #644).
+ * Legacy exports already render WebGL-first and are unaffected, so Lightning
+ * on Linux must also start with WebGL while macOS/Windows keep the existing
+ * WebGPU-first order.
+ *
+ * An explicit backend (smoke-test override) is always respected so WebGPU can
+ * still be exercised on Linux when requested.
+ */
+export function resolveLightningPreferredRenderBackend(
+	platform: LightningRuntimePlatform,
+	explicitPreference?: ExportRenderBackend | null,
+): ExportRenderBackend | undefined {
+	if (explicitPreference === "webgl" || explicitPreference === "webgpu") {
+		return explicitPreference;
+	}
+
+	if (platform === "linux") {
+		return "webgl";
+	}
+
+	return undefined;
+}
+
+/**
+ * Resolve the ordered Pixi backend attempts for a Lightning export.
+ * WebGL-first on Linux; otherwise preserve the historical behavior of trying
+ * WebGPU first when the runtime exposes `navigator.gpu`.
+ */
+export function resolveLightningRenderBackendOrder(options: {
+	preferredRenderBackend?: ExportRenderBackend | null;
+	platform: LightningRuntimePlatform;
+	webgpuAvailable: boolean;
+}): ExportRenderBackend[] {
+	const resolved = resolveLightningPreferredRenderBackend(
+		options.platform,
+		options.preferredRenderBackend ?? undefined,
+	);
+	if (resolved === "webgl") {
+		return ["webgl", "webgpu"];
+	}
+	if (resolved === "webgpu") {
+		return ["webgpu", "webgl"];
+	}
+	return options.webgpuAvailable ? ["webgpu", "webgl"] : ["webgl"];
+}
+
+/**
+ * Detect the Pixi WebGPU render failure seen on Linux (`_resourceType`).
+ * WebGPU initialization can succeed while the first frame render throws
+ * `Cannot read properties of undefined (reading '_resourceType')`, which is
+ * only recoverable by retrying the export with the WebGL renderer.
+ */
+export function isWebGPURendererFailure(error: unknown): boolean {
+	const message =
+		error instanceof Error ? (error.message ?? String(error)) : String(error ?? "");
+	return message.toLowerCase().includes("_resourcetype");
+}
