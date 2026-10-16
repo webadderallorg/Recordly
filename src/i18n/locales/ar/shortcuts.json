@@ -1,0 +1,16 @@
+{
+	"actions": {
+		"addZoom": "إضافة تكبير",
+		"addTrim": "إضافة قص",
+		"addSpeed": "إضافة سرعة",
+		"addAnnotation": "إضافة تعليق توضيحي",
+		"addKeyframe": "إضافة إطار مفتاحي",
+		"deleteSelected": "حذف المحدد",
+		"playPause": "تشغيل / إيقاف مؤقت",
+		"cycleForward": "التنقل بين التعليقات التوضيحية للأمام",
+		"cycleBackward": "التنقل بين التعليقات التوضيحية للخلف",
+		"deleteSelectedAlt": "حذف المحدد (بديل)",
+		"panTimeline": "تحريك المخطط الزمني",
+		"zoomTimeline": "تكبير/تصغير المخطط الزمني"
+	}
+}
