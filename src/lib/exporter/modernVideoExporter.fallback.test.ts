@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
 		streamingDecoderGetDemuxer: vi.fn(() => null),
 		streamingDecoderGetEffectiveDuration: vi.fn(() => 0),
 		streamingDecoderLoadMetadata: vi.fn(async () => videoInfo),
+		frameRendererConfigs: [] as Array<{ preferredRenderBackend?: "webgl" | "webgpu" }>,
 		frameRendererDestroy: vi.fn(),
 		frameRendererGetBackend: vi.fn(() => "webgl"),
 		frameRendererInitialize: vi.fn(async () => {}),
@@ -48,7 +49,8 @@ vi.mock("./streamingDecoder", () => ({
 }));
 
 vi.mock("./modernFrameRenderer", () => ({
-	FrameRenderer: vi.fn().mockImplementation(function () {
+	FrameRenderer: vi.fn().mockImplementation(function (config) {
+		mocks.frameRendererConfigs.push(config);
 		return {
 			destroy: mocks.frameRendererDestroy,
 			getRendererBackend: mocks.frameRendererGetBackend,
@@ -76,9 +78,48 @@ describe("ModernVideoExporter native fallback routing", () => {
 
 	afterEach(() => {
 		vi.clearAllMocks();
+		mocks.frameRendererConfigs.length = 0;
 		if (vi.isMockFunction(console.error)) console.error.mockRestore();
 		vi.unstubAllGlobals();
 	});
+
+	it.each([
+		{ configured: undefined, expected: "webgl" },
+		{ configured: "webgpu" as const, expected: "webgpu" },
+	])("uses $expected as the Lightning render backend when configured backend is $configured", async ({
+		configured,
+		expected,
+	}) => {
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#101010",
+			padding: 0,
+			borderRadius: 0,
+			backgroundBlur: 0,
+			shadowIntensity: 0,
+			showShadow: false,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			backendPreference: "webcodecs",
+			preferredRenderBackend: configured,
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean }>;
+			initializeEncoder: () => Promise<unknown>;
+		};
+		vi.spyOn(exporter, "initializeEncoder").mockResolvedValue({
+			codec: "avc1.640034",
+			hardwareAcceleration: "prefer-hardware",
+		});
+
+		const result = await exporter.export();
+
+		expect(result.success).toBe(true);
+		expect(mocks.frameRendererConfigs).toHaveLength(1);
+		expect(mocks.frameRendererConfigs[0]?.preferredRenderBackend).toBe(expected);
+	}, 15_000);
 
 	it("removes failed native writes without creating an unhandled rejection", async () => {
 		const exporter = new ModernVideoExporter({} as never) as unknown as {
