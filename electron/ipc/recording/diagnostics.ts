@@ -616,7 +616,22 @@ export async function validateRecordedVideo(videoPath: string) {
 		);
 		stderr = result.stderr;
 	} catch (error) {
-		const execError = error as NodeJS.ErrnoException & { stderr?: string };
+		const execError = error as NodeJS.ErrnoException & {
+			stderr?: string;
+			signal?: NodeJS.Signals | null;
+		};
+		// A failure to start or finish FFmpeg says nothing about the video, so
+		// report it as an FFmpeg problem instead of blaming the recording.
+		if (execError.syscall?.startsWith("spawn")) {
+			throw new Error(
+				`FFmpeg could not start (${execError.code ?? execError.message}): ${ffmpegPath}`,
+			);
+		}
+		if (execError.signal) {
+			throw new Error(
+				`FFmpeg was stopped by ${execError.signal} before it finished checking the recording: ${videoPath}`,
+			);
+		}
 		const output = execError.stderr?.trim();
 		throw new Error(output || `Recorded output could not be decoded: ${videoPath}`);
 	}

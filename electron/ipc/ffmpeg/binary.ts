@@ -5,6 +5,45 @@ import { app } from "electron";
 
 const nodeRequire = createRequire(import.meta.url);
 
+const binaryRunProblems = new Map<string, string | null>();
+const BINARY_RUN_CHECK_TIMEOUT_MS = 5_000;
+
+/**
+ * Returns why the binary at `binaryPath` cannot run, or null when it runs.
+ * A bundled binary can exist but still fail to start (missing execute bit,
+ * noexec mount, wrong architecture), so we run `-version` once and cache it.
+ * The check is synchronous like the rest of the lookup; SIGKILL on timeout
+ * bounds how long a hung binary can block it.
+ */
+export function getBinaryRunProblem(binaryPath: string): string | null {
+	const cached = binaryRunProblems.get(binaryPath);
+	if (cached !== undefined) {
+		return cached;
+	}
+
+	const result = spawnSync(binaryPath, ["-version"], {
+		stdio: "ignore",
+		timeout: BINARY_RUN_CHECK_TIMEOUT_MS,
+		killSignal: "SIGKILL",
+		windowsHide: true,
+	});
+
+	let problem: string | null = null;
+	if (result.error) {
+		problem = (result.error as NodeJS.ErrnoException).code ?? result.error.message;
+	} else if (result.signal) {
+		problem = `terminated by ${result.signal}`;
+	} else if (result.status !== 0) {
+		problem = `exited with code ${result.status}`;
+	}
+
+	if (problem) {
+		console.warn(`[ffmpeg] ${binaryPath} cannot run (${problem})`);
+	}
+	binaryRunProblems.set(binaryPath, problem);
+	return problem;
+}
+
 export function loadFfmpegStatic(): string | null {
 	try {
 		const moduleExports = nodeRequire("ffmpeg-static");
@@ -118,13 +157,17 @@ export function resolveSystemFfprobeBinaryPath(): string | null {
 
 export function getFfmpegBinaryPath(): string {
 	const ffmpegStatic = loadFfmpegStatic();
+	let bundledProblem: string | null = null;
 	if (ffmpegStatic && typeof ffmpegStatic === "string") {
 		const bundledPath = app.isPackaged
 			? ffmpegStatic.replace(/\.asar([/\\])/, ".asar.unpacked$1")
 			: ffmpegStatic;
 
 		if (existsSync(bundledPath)) {
-			return bundledPath;
+			bundledProblem = getBinaryRunProblem(bundledPath);
+			if (!bundledProblem) {
+				return bundledPath;
+			}
 		}
 	}
 
@@ -134,19 +177,25 @@ export function getFfmpegBinaryPath(): string {
 	}
 
 	throw new Error(
-		"FFmpeg binary is unavailable. Install ffmpeg-static for this platform or make ffmpeg available on PATH.",
+		bundledProblem
+			? `Bundled FFmpeg cannot run (${bundledProblem}) and no system FFmpeg was found on PATH.`
+			: "FFmpeg binary is unavailable. Install ffmpeg-static for this platform or make ffmpeg available on PATH.",
 	);
 }
 
 export function getFfprobeBinaryPath(): string {
 	const ffprobeStatic = loadFfprobeStatic();
+	let bundledProblem: string | null = null;
 	if (ffprobeStatic && typeof ffprobeStatic === "string") {
 		const bundledPath = app.isPackaged
 			? ffprobeStatic.replace(/\.asar([/\\])/, ".asar.unpacked$1")
 			: ffprobeStatic;
 
 		if (existsSync(bundledPath)) {
-			return bundledPath;
+			bundledProblem = getBinaryRunProblem(bundledPath);
+			if (!bundledProblem) {
+				return bundledPath;
+			}
 		}
 	}
 
@@ -156,6 +205,8 @@ export function getFfprobeBinaryPath(): string {
 	}
 
 	throw new Error(
-		"FFprobe binary is unavailable. Install ffprobe-static for this platform or make ffprobe available on PATH.",
+		bundledProblem
+			? `Bundled FFprobe cannot run (${bundledProblem}) and no system FFprobe was found on PATH.`
+			: "FFprobe binary is unavailable. Install ffprobe-static for this platform or make ffprobe available on PATH.",
 	);
 }
