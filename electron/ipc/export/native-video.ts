@@ -3954,9 +3954,11 @@ export async function resolveNativeVideoEncoder(
 	const candidates = [
 		...new Set([...getPreferredNativeVideoEncoders(process.platform), "libx264"]),
 	];
+	const attempts: string[] = [];
 
 	for (const encoderName of candidates) {
 		if (!availableEncoders.has(encoderName)) {
+			attempts.push(`${encoderName}: not built into bundled FFmpeg`);
 			continue;
 		}
 
@@ -3964,9 +3966,12 @@ export async function resolveNativeVideoEncoder(
 			setCachedNativeVideoEncoder({ ffmpegPath, encodingMode, encoderName });
 			return encoderName;
 		}
+		attempts.push(`${encoderName}: probe failed`);
 	}
 
-	throw new Error("No usable FFmpeg encoder was available for native export");
+	throw new Error(
+		`No usable FFmpeg encoder was available for native export. Attempted: ${attempts.join("; ")}`,
+	);
 }
 
 export function canCopyAudioCodecIntoMp4(codec?: string | null) {
