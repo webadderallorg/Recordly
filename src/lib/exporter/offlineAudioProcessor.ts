@@ -30,6 +30,9 @@ import {
 import type { VideoMuxer } from "./muxer";
 
 export class OfflineAudioProcessor extends AudioMediaProcessor {
+	/**
+	 * Renders multi-source or processed audio offline and muxes it into the final output.
+	 */
 	protected async renderAndMuxOfflineAudio(
 		videoUrl: string,
 		trimRegions: TrimLikeRegion[],
@@ -41,6 +44,11 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		clipRegions: ClipRegion[] | undefined,
 		muxer: VideoMuxer,
 	): Promise<void> {
+		if (muxer?.hasCommittedAudio) {
+			throw new Error(
+				"[AudioProcessor] Cannot render offline audio after audio chunks have already been committed to muxer",
+			);
+		}
 		const prepared = await this.prepareOfflineRender(
 			videoUrl,
 			trimRegions,
@@ -104,9 +112,12 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 			startDelaySec: number;
 			gain: number;
 		}> = [];
-		const refDuration =
+		const mediaDuration =
 			mainBuffer?.duration ??
-			(resolvedPlan.playbackPaths.length > 0 ? await this.getMediaDurationSec(videoUrl) : 0);
+			(resolvedPlan.playbackPaths.length > 0 || audioRegions.length > 0
+				? await this.getMediaDurationSec(videoUrl)
+				: 0);
+		const refDuration = mediaDuration;
 		for (const audioPath of resolvedPlan.playbackPaths) {
 			if (this.cancelled) throw new Error("Export cancelled");
 			const buffer = await this.decodeAudioFromUrl(audioPath);
@@ -143,14 +154,9 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 			throw new Error("No decodable audio sources found");
 		}
 
-		let sourceDurationSec: number;
-		if (mainBufferEntry?.buffer) {
-			sourceDurationSec = mainBufferEntry.buffer.duration;
-		} else if (resolvedPlan.playbackPaths.length > 0 || regionEntries.length > 0) {
-			sourceDurationSec = await this.getMediaDurationSec(videoUrl);
-		} else {
-			sourceDurationSec = primaryBuffer?.duration ?? 0;
-		}
+		const sourceDurationSec =
+			mainBufferEntry?.buffer?.duration ??
+			(mediaDuration > 0 ? mediaDuration : (primaryBuffer?.duration ?? 0));
 		const sourceDurationMs = sourceDurationSec * 1000;
 
 		// Build timeline slices (non-trimmed segments with speed info)
@@ -215,6 +221,7 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 
 		let encodeError: Error | null = null;
 		let muxError: Error | null = null;
+		const getEncodeError = (): Error | null => encodeError;
 		let pendingMuxing = Promise.resolve();
 		let wroteFirstChunk = false;
 
@@ -249,6 +256,8 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		});
 		encoder.configure(encodeConfig);
 
+		let totalFramesEncoded = 0;
+
 		try {
 			await this.renderChunked(
 				prepared,
@@ -256,20 +265,33 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 				async (rendered, outputOffsetSec) => {
 					if (encodeError) throw encodeError;
 					if (muxError) throw muxError;
-					await this.feedBufferToEncoder(encoder, rendered, outputOffsetSec);
+					const frames = await this.feedBufferToEncoder(
+						encoder,
+						rendered,
+						outputOffsetSec,
+					);
+					totalFramesEncoded += frames;
 				},
 			);
 
 			if (encodeError) throw encodeError;
 			if (muxError) throw muxError;
 
-			if (encoder.state === "configured") {
-				await encoder.flush();
+			if (totalFramesEncoded > 0 && encoder.state === "configured") {
+				try {
+					await encoder.flush();
+				} catch (flushError) {
+					console.warn(
+						"[OfflineAudioProcessor] Non-fatal audio encoder flush warning:",
+						flushError,
+					);
+				}
 			}
 
 			await pendingMuxing;
 
-			if (encodeError) throw encodeError;
+			const finalEncodeError = getEncodeError();
+			if (finalEncodeError) throw finalEncodeError;
 			if (muxError) throw muxError;
 		} finally {
 			if (encoder.state === "configured") {
@@ -420,15 +442,19 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		source.start(localStartSec, bufferOffsetSec, duration);
 	}
 
-	// Feed a rendered AudioBuffer chunk to an AudioEncoder with a timestamp offset.
+	/**
+	 * Feeds a rendered AudioBuffer chunk to an AudioEncoder with a timestamp offset.
+	 * Returns the count of frames successfully submitted to the encoder.
+	 */
 	protected async feedBufferToEncoder(
 		encoder: AudioEncoder,
 		buffer: AudioBuffer,
 		timestampOffsetSec: number,
-	): Promise<void> {
+	): Promise<number> {
 		const sampleRate = buffer.sampleRate;
 		const numChannels = buffer.numberOfChannels;
 		const totalFrames = buffer.length;
+		let encodedFrames = 0;
 
 		for (
 			let offset = 0;
@@ -454,11 +480,14 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 
 			encoder.encode(audioData);
 			audioData.close();
+			encodedFrames += frameCount;
 
 			while (encoder.encodeQueueSize >= ENCODE_BACKPRESSURE_LIMIT && !this.cancelled) {
 				await new Promise((r) => setTimeout(r, 1));
 			}
 		}
+
+		return encodedFrames;
 	}
 
 	// Decode audio from a URL using streaming WebCodecs decode with bulk fallback.
