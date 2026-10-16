@@ -629,7 +629,7 @@ export class FrameRenderer {
 				: preferredRenderBackend === "webgpu"
 					? ["webgpu", "webgl"]
 					: typeof navigator !== "undefined" && "gpu" in navigator
-						? ["webgpu", "webgl"]
+						? ["webgl", "webgpu"]
 						: ["webgl"];
 		const failures: PixiRendererAttempt[] = [];
 
