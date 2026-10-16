@@ -4,6 +4,7 @@ import {
 	buildInteractionZoomSuggestions,
 	CLICK_CLUSTER_MERGE_GAP_MS,
 	CLICK_CLUSTER_PAD_MS,
+	hasExplicitClickTelemetry,
 	shouldAutoApplyFreshRecordingZoomsForSource,
 } from "./zoomSuggestionUtils";
 
@@ -44,6 +45,26 @@ describe("shouldAutoApplyFreshRecordingZoomsForSource", () => {
 
 	it("does not block when source dimensions are not available yet", () => {
 		expect(shouldAutoApplyFreshRecordingZoomsForSource()).toBe(true);
+	});
+});
+
+describe("hasExplicitClickTelemetry", () => {
+	it("reports false for recordings that only contain move samples", () => {
+		expect(hasExplicitClickTelemetry([makeMove(0), makeMove(500), makeMove(1_000)])).toBe(
+			false,
+		);
+	});
+
+	it("reports true as soon as one explicit click sample is present", () => {
+		expect(hasExplicitClickTelemetry([makeMove(0), makeClick(500), makeMove(1_000)])).toBe(
+			true,
+		);
+	});
+
+	it("does not treat mouseup alone as click telemetry", () => {
+		expect(hasExplicitClickTelemetry([makeMove(0), makeClick(500, 0.5, 0.5, "mouseup")])).toBe(
+			false,
+		);
 	});
 });
 
@@ -180,6 +201,54 @@ describe("buildInteractionZoomSuggestions (click-cluster logic)", () => {
 			makeMove(200, 0.5005, 0.5005),
 			makeMove(400, 0.5008, 0.5008),
 			makeMove(600, 0.501, 0.501),
+		];
+
+		const result = buildInteractionZoomSuggestions({
+			cursorTelemetry: telemetry,
+			totalMs: TOTAL_MS,
+			defaultDurationMs: 3_000,
+		});
+
+		expect(result.status).toBe("no-interactions");
+		expect(result.suggestions).toHaveLength(0);
+	});
+
+	it("falls back to dwell heuristics when allowed and no explicit clicks exist", () => {
+		const telemetry: CursorTelemetryPoint[] = [
+			makeMove(0, 0.1, 0.1),
+			makeMove(1_000, 0.5, 0.5),
+			makeMove(5_000, 0.6, 0.6),
+			makeMove(5_300, 0.6, 0.6),
+			makeMove(5_700, 0.6, 0.6),
+			makeMove(6_200, 0.6, 0.6),
+			makeMove(8_000, 0.9, 0.9),
+		];
+
+		const result = buildInteractionZoomSuggestions({
+			cursorTelemetry: telemetry,
+			totalMs: TOTAL_MS,
+			defaultDurationMs: 3_000,
+			allowDwellFallback: true,
+		});
+
+		expect(result.status).toBe("ok");
+		expect(result.suggestions).toHaveLength(1);
+
+		const [suggestion] = result.suggestions;
+		expect(suggestion.focus.cx).toBeCloseTo(0.6, 2);
+		expect(suggestion.start).toBeLessThan(5_700);
+		expect(suggestion.end).toBeGreaterThan(5_700);
+	});
+
+	it("still ignores dwell heuristics when the fallback is not enabled", () => {
+		const telemetry: CursorTelemetryPoint[] = [
+			makeMove(0, 0.1, 0.1),
+			makeMove(1_000, 0.5, 0.5),
+			makeMove(5_000, 0.6, 0.6),
+			makeMove(5_300, 0.6, 0.6),
+			makeMove(5_700, 0.6, 0.6),
+			makeMove(6_200, 0.6, 0.6),
+			makeMove(8_000, 0.9, 0.9),
 		];
 
 		const result = buildInteractionZoomSuggestions({

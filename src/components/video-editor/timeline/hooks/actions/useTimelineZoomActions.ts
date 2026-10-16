@@ -1,7 +1,10 @@
 import type { Span } from "dnd-timeline";
 import { useCallback, useEffect, useMemo } from "react";
 import type { CursorTelemetryPoint, ZoomFocus, ZoomRegion } from "../../../types";
-import { buildInteractionZoomSuggestions } from "../../zoomSuggestionUtils";
+import {
+	buildInteractionZoomSuggestions,
+	hasExplicitClickTelemetry,
+} from "../../zoomSuggestionUtils";
 import { timelineNotifications } from "../utils/timelineNotifications";
 
 interface UseTimelineZoomActionsParams {
@@ -137,6 +140,11 @@ export function useTimelineZoomActions({
 			return;
 		}
 
+		// Recordings captured without a working global interaction hook contain no
+		// click samples at all. Rather than silently producing nothing, fall back to
+		// cursor dwell points so auto-zoom still follows the cursor, as advertised.
+		const allowDwellFallback = !hasExplicitClickTelemetry(cursorTelemetry);
+
 		const result = buildInteractionZoomSuggestions({
 			cursorTelemetry,
 			totalMs,
@@ -144,6 +152,7 @@ export function useTimelineZoomActions({
 			reservedSpans: zoomRegions
 				.map((region) => ({ start: region.startMs, end: region.endMs }))
 				.sort((a, b) => a.start - b.start),
+			allowDwellFallback,
 		});
 
 		if (result.status === "no-telemetry") {
