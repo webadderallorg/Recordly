@@ -247,6 +247,7 @@
 		"volumeTitle": "音频",
 		"volume": "音量",
 		"normalize": "标准化",
+		"matchClipSpeed": "跟随片段速度",
 		"sourceTracksTitle": "剪辑源音频",
 		"systemLabel": "系统声音",
 		"micLabel": "麦克风",

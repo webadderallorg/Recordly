@@ -135,6 +135,18 @@ export function useAudioRegionCommands({
 		[selectedAudioId, setAudioRegions],
 	);
 
+	const handleAudioMatchClipSpeedChange = useCallback(
+		(matchClipSpeed: boolean) => {
+			if (!selectedAudioId) return;
+			setAudioRegions((current) =>
+				current.map((region) =>
+					region.id === selectedAudioId ? { ...region, matchClipSpeed } : region,
+				),
+			);
+		},
+		[selectedAudioId, setAudioRegions],
+	);
+
 	return {
 		handleSelectAudio,
 		handleAudioAdded,
@@ -142,5 +154,6 @@ export function useAudioRegionCommands({
 		handleAudioVolumeChange,
 		handleAudioDelete,
 		handleAudioNormalizeChange,
+		handleAudioMatchClipSpeedChange,
 	};
 }

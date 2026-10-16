@@ -247,6 +247,7 @@
 		"volumeTitle": "Audio",
 		"volume": "Volume",
 		"normalize": "Normalizza",
+		"matchClipSpeed": "Segui la velocità della clip",
 		"sourceTracksTitle": "Audio sorgente clip",
 		"systemLabel": "Sorgente sistema",
 		"micLabel": "Sorgente microfono",

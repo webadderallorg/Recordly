@@ -8,8 +8,12 @@ import {
 	getMediaSyncPlaybackRate,
 	resolvePreviewMediaDuration,
 } from "@/lib/mediaTiming";
-import type { AudioRegion } from "../types";
+import type { AudioRegion, ClipRegion } from "../types";
 import { supportsPreviewPlaybackRate } from "../videoPlayback/playbackRate";
+import {
+	buildAudioRegionPlaybackSegments,
+	getAudioRegionPlaybackPosition,
+} from "./audioRegionTiming";
 import {
 	getAudioResourceVersionKey,
 	getVersionedAudioResourceUrl,
@@ -21,6 +25,7 @@ const SOURCE_AUDIO_PREVIEW_PAUSED_SEEK_DRIFT_SECONDS = 0.01;
 
 interface UseAudioPreviewSyncParams {
 	audioRegions: AudioRegion[];
+	clipRegions: ClipRegion[];
 	previewVolume: number;
 	isPlaying: boolean;
 	currentTime: number;
@@ -37,6 +42,7 @@ interface UseAudioPreviewSyncParams {
 
 export function useAudioPreviewSync({
 	audioRegions,
+	clipRegions,
 	previewVolume,
 	isPlaying,
 	currentTime,
@@ -66,6 +72,16 @@ export function useAudioPreviewSync({
 	const resolvedSourceTracks = useMemo(
 		() => resolvedPlan.tracks.filter((track) => track.kind !== "user"),
 		[resolvedPlan],
+	);
+	const userTrackSegmentsById = useMemo(
+		() =>
+			new Map(
+				resolvedUserTracks.map((track) => [
+					track.id,
+					buildAudioRegionPlaybackSegments(track.timelineBinding, clipRegions),
+				]),
+			),
+		[clipRegions, resolvedUserTracks],
 	);
 
 	const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
@@ -344,18 +360,20 @@ export function useAudioPreviewSync({
 			const audio = audioElementsRef.current.get(track.id);
 			if (!audio) continue;
 
-			const startMs = track.timelineBinding.startMs;
-			const endMs = track.timelineBinding.endMs;
-			const isInRegion = currentTimeMs >= startMs && currentTimeMs < endMs;
+			// Imported audio runs on the timeline clock (1x) unless it opts into clip speed.
+			const position = getAudioRegionPlaybackPosition(
+				userTrackSegmentsById.get(track.id) ?? [],
+				currentTimeMs,
+			);
 
-			if (isPlaying && isInRegion) {
+			if (isPlaying && position) {
 				enablePitchPreservingPlayback(audio);
-				const audioOffset = (currentTimeMs - startMs) / 1000;
+				const audioOffset = position.audioOffsetMs / 1000;
 				if (Math.abs(audio.currentTime - audioOffset) > 0.2) {
 					audio.currentTime = audioOffset;
 				}
 				const syncedPlaybackRate = getMediaSyncPlaybackRate({
-					basePlaybackRate: 1,
+					basePlaybackRate: position.speed,
 					currentTime: audio.currentTime,
 					targetTime: audioOffset,
 				});
@@ -369,7 +387,7 @@ export function useAudioPreviewSync({
 				audio.pause();
 			}
 		}
-	}, [isPlaying, resolvedUserTracks, timelineTime]);
+	}, [isPlaying, resolvedUserTracks, timelineTime, userTrackSegmentsById]);
 
 	useEffect(() => {
 		if (resolvedSourceTracks.length === 0) {

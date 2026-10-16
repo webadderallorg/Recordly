@@ -70,6 +70,34 @@ describe("clip audio timeline", () => {
 		);
 		expect(starts[0]).toHaveBeenCalledWith(0.5, 0, 3);
 	});
+	it("stretches music that opts into clip speed and keeps the gap at 1x", async () => {
+		const processor = new TestAudioProcessor();
+		const prepared = await processor.prepare(
+			"file:///tmp/source.mp4",
+			[],
+			[],
+			[],
+			[],
+			undefined,
+			undefined,
+			clips,
+		);
+		const { starts, ctx } = context();
+		processor.scheduleOverlay(
+			ctx,
+			buffer,
+			{ startMs: 500, endMs: 3500, volume: 1, matchClipSpeed: true } as AudioRegion,
+			prepared.slices,
+			0,
+			4,
+			true,
+		);
+		expect(starts.map((start) => start.mock.calls[0])).toEqual([[0.5], [1, 1.5, 1], [2]]);
+		expect(processor.stretches.map(([, ...args]) => args.slice(0, 4))).toEqual([
+			[3, 0, 1.5, 0.5],
+			[3, 2.5, 4.5, 1.5],
+		]);
+	});
 	it("schedules a clip correctly when its audio straddles an offline chunk boundary", async () => {
 		const processor = new TestAudioProcessor();
 		const prepared = await processor.prepare(

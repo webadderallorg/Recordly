@@ -134,6 +134,7 @@ describe("source preview playback ownership", () => {
 		// Execute mocked effects explicitly so the asynchronous load can finish between syncs.
 		useAudioPreviewSync({
 			audioRegions: [],
+			clipRegions: [],
 			previewVolume: 1,
 			isPlaying: playing,
 			currentTime: time,
@@ -155,5 +156,57 @@ describe("source preview playback ownership", () => {
 		await Promise.resolve();
 		expect(audio.play).toHaveBeenCalledTimes(plays ? 1 : 0);
 		if (plays) expect(audio.currentTime).toBeCloseTo(time - delay / 1000);
+	});
+});
+
+describe("imported audio preview speed", () => {
+	it.each([
+		{ name: "stays at 1x under a 2x clip", matchClipSpeed: undefined, rate: 1, offset: 3 },
+		{ name: "follows a 2x clip when matched", matchClipSpeed: true, rate: 2, offset: 6 },
+	])("$name", ({ matchClipSpeed, rate, offset }) => {
+		const audio = {
+			src: "",
+			dataset: {},
+			duration: 20,
+			currentTime: 0,
+			playbackRate: 1,
+			paused: true,
+			volume: 1,
+			load: vi.fn(),
+			pause: vi.fn(),
+			play: vi.fn().mockResolvedValue(undefined),
+		};
+		vi.stubGlobal("Audio", function () {
+			return audio;
+		});
+		useAudioPreviewSync({
+			audioRegions: [
+				{
+					id: "music",
+					startMs: 0,
+					endMs: 10_000,
+					audioPath: "/music.mp3",
+					volume: 1,
+					matchClipSpeed,
+				},
+			],
+			clipRegions: [{ id: "clip-1", startMs: 0, endMs: 5000, sourceStartMs: 0, speed: 2 }],
+			previewVolume: 1,
+			isPlaying: true,
+			currentTime: 6,
+			timelineTime: 3,
+			duration: 10,
+			sourcePlaybackRate: 2,
+			previewSourceAudioFallbackPaths: [],
+			sourceAudioFallbackStartDelayMsByPath: {},
+			sourceAudioResourceVersion: 0,
+			isCurrentClipMuted: false,
+			getSourceTrackPreviewGain: () => 1,
+			onSourceFallbackLoadError: vi.fn(),
+		});
+		for (const effect of harness.effects) effect();
+		expect(audio.currentTime).toBeCloseTo(offset);
+		expect(audio.playbackRate).toBe(rate);
+		expect(audio.play).toHaveBeenCalledOnce();
 	});
 });

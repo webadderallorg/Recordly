@@ -1,3 +1,4 @@
+import { buildAudioRegionPlaybackSegments } from "@/components/video-editor/audio/audioRegionTiming";
 import { SOURCE_AUDIO_NORMALIZE_GAIN } from "@/components/video-editor/audio/audioTypes";
 import type {
 	AudioRegion,
@@ -389,35 +390,58 @@ export class OfflineAudioProcessor extends AudioMediaProcessor {
 		const outputEndMs = usesClipTimeline
 			? region.endMs
 			: this.sourceTimeToOutputTime(region.endMs, slices);
+		// Imported audio plays at 1x unless the region opts into the footage speed under it.
+		const segments = buildAudioRegionPlaybackSegments(
+			{ startMs: outputStartMs, endMs: outputEndMs, matchClipSpeed: region.matchClipSpeed },
+			region.matchClipSpeed ? this.getSliceOutputSpans(slices) : [],
+		);
 
-		let localStartSec = outputStartMs / 1000 - chunkOutputStartSec;
-		let localEndSec = outputEndMs / 1000 - chunkOutputStartSec;
+		let gainNode: GainNode | null = null;
+		for (const segment of segments) {
+			const overlapStartSec = Math.max(segment.timelineStartMs / 1000, chunkOutputStartSec);
+			const overlapEndSec = Math.min(
+				segment.timelineEndMs / 1000,
+				chunkOutputStartSec + chunkDurationSec,
+			);
+			if (overlapEndSec <= overlapStartSec) continue;
 
-		// Skip if region doesn't overlap with this chunk
-		if (localEndSec <= 0 || localStartSec >= chunkDurationSec) return;
+			const { speed } = segment;
+			const bufferOffsetSec =
+				segment.audioOffsetMs / 1000 +
+				(overlapStartSec - segment.timelineStartMs / 1000) * speed;
+			const sourceDurationSec = Math.min(
+				(overlapEndSec - overlapStartSec) * speed,
+				buffer.duration - bufferOffsetSec,
+			);
+			const outputDurationSec = sourceDurationSec / speed;
+			if (outputDurationSec <= 0.001) continue;
 
-		// Clip to chunk bounds
-		let bufferOffsetSec = 0;
-		if (localStartSec < 0) {
-			bufferOffsetSec = -localStartSec;
-			localStartSec = 0;
+			if (!gainNode) {
+				gainNode = ctx.createGain();
+				const normalizeGain = region.normalize ? SOURCE_AUDIO_NORMALIZE_GAIN : 1;
+				gainNode.gain.value = Math.max(0, Math.min(1, region.volume * normalizeGain));
+				gainNode.connect(ctx.destination);
+			}
+
+			const localStartSec = overlapStartSec - chunkOutputStartSec;
+			const source = ctx.createBufferSource();
+			source.connect(gainNode);
+			if (speed === 1) {
+				source.buffer = buffer;
+				source.start(localStartSec, bufferOffsetSec, outputDurationSec);
+			} else {
+				// Match the pitch-preserving preview instead of resampling.
+				source.buffer = this.stretchAudioBuffer(
+					buffer,
+					speed,
+					bufferOffsetSec,
+					sourceDurationSec,
+					outputDurationSec,
+					ctx,
+				);
+				source.start(localStartSec);
+			}
 		}
-		if (localEndSec > chunkDurationSec) {
-			localEndSec = chunkDurationSec;
-		}
-
-		const duration = Math.min(localEndSec - localStartSec, buffer.duration - bufferOffsetSec);
-		if (duration <= 0.001) return;
-
-		const gainNode = ctx.createGain();
-		const normalizeGain = region.normalize ? SOURCE_AUDIO_NORMALIZE_GAIN : 1;
-		gainNode.gain.value = Math.max(0, Math.min(1, region.volume * normalizeGain));
-		gainNode.connect(ctx.destination);
-
-		const source = ctx.createBufferSource();
-		source.buffer = buffer;
-		source.connect(gainNode);
-		source.start(localStartSec, bufferOffsetSec, duration);
 	}
 
 	// Feed a rendered AudioBuffer chunk to an AudioEncoder with a timestamp offset.
