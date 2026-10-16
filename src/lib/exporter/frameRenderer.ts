@@ -16,11 +16,7 @@ import type {
 	ZoomRegion,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
-import {
-	BASE_PREVIEW_HEIGHT,
-	BASE_PREVIEW_WIDTH,
-	DEFAULT_WEBCAM_ROUNDNESS,
-} from "@/components/video-editor/types";
+import { BASE_PREVIEW_WIDTH, DEFAULT_WEBCAM_ROUNDNESS } from "@/components/video-editor/types";
 import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
 import {
 	type CursorFollowCameraState,
@@ -1491,10 +1487,9 @@ export class FrameRenderer {
 			this.config.annotationRegions.length > 0 &&
 			this.compositeCtx
 		) {
-			// Calculate scale factor based on export vs preview dimensions
-			const scaleX = this.config.width / BASE_PREVIEW_WIDTH;
-			const scaleY = this.config.height / BASE_PREVIEW_HEIGHT;
-			const scaleFactor = (scaleX + scaleY) / 2;
+			// Match the preview, which sizes annotation text against the recording rect width.
+			const annotationRectWidth = this.layoutCache?.maskRect.width ?? this.config.width;
+			const scaleFactor = annotationRectWidth / BASE_PREVIEW_WIDTH;
 
 			await renderAnnotations(
 				this.compositeCtx,

@@ -27,6 +27,7 @@ import type {
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
 import {
+	BASE_PREVIEW_WIDTH,
 	DEFAULT_WEBCAM_ROUNDNESS,
 	getDefaultCaptionFontFamily,
 } from "@/components/video-editor/types";
@@ -384,6 +385,7 @@ export class FrameRenderer {
 	private backgroundBlurFilter: BlurFilter | null = null;
 	private annotationAssets: AnnotationRenderAssets | null = null;
 	private annotationScaleFactor = 1;
+	private annotationLayerReady = false;
 	private annotationSprites: AnnotationSpriteEntry[] = [];
 	private backgroundForwardFrameSource: ForwardFrameSource | null = null;
 	private backgroundForwardFrameSourceUrl: string | null = null;
@@ -587,9 +589,7 @@ export class FrameRenderer {
 		await this.setupBackground();
 		await this.setupWebcamSource();
 
-		this.annotationScaleFactor = this.calculateAnnotationScaleFactor();
 		this.annotationAssets = await preloadAnnotationAssets(this.config.annotationRegions ?? []);
-		await this.setupAnnotationLayer();
 		this.setupCaptionResources();
 
 		if (this.shouldUseZoomMotionBlur()) {
@@ -1413,10 +1413,10 @@ export class FrameRenderer {
 		void previousSource?.destroy();
 	}
 
+	/** Match the preview, which sizes annotation text against the recording rect width. */
 	private calculateAnnotationScaleFactor(): number {
-		const previewWidth = this.config.previewWidth || 1920;
-		const previewHeight = this.config.previewHeight || 1080;
-		return (this.config.width / previewWidth + this.config.height / previewHeight) / 2;
+		const annotationRectWidth = this.layoutCache?.maskRect.width ?? this.config.width;
+		return annotationRectWidth / BASE_PREVIEW_WIDTH;
 	}
 
 	private hasActiveBlurAnnotations(timeMs: number): boolean {
@@ -2903,6 +2903,12 @@ export class FrameRenderer {
 		if (!layoutCache) {
 			throw new Error("Renderer layout cache is unavailable");
 		}
+		if (!this.annotationLayerReady) {
+			// Annotation sprites are positioned inside maskRect, so build them once layout exists.
+			this.annotationScaleFactor = this.calculateAnnotationScaleFactor();
+			await this.setupAnnotationLayer();
+			this.annotationLayerReady = true;
+		}
 
 		if (this.webcamForwardFrameSource || this.webcamVideoElement) {
 			await this.syncWebcamFrame(Math.max(0, this.currentVideoTime));
@@ -3331,6 +3337,7 @@ export class FrameRenderer {
 		this.outputCanvasOverride = null;
 
 		this.annotationScaleFactor = 1;
+		this.annotationLayerReady = false;
 		this.lastSyncedWebcamTime = null;
 		this.webcamRenderMode = "hidden";
 		this.webcamLayoutCache = null;
