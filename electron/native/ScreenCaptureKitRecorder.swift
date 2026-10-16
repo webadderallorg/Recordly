@@ -475,8 +475,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		if outputType == .audio {
 			guard let systemAudioInput else { return }
 			appendAudioSampleBuffer(sampleBuffer, to: systemAudioInput, of: systemAudioWriter, firstSampleTime: &firstSystemAudioSampleTime, lastPresentationTime: &lastSystemAudioPresentationTime, presentationTime: presentationTime)
-			// Also write system audio to the inline video track
-			if let inlineAudioInput, inlineAudioInput.isReadyForMoreMediaData {
+			// Also write system audio to the inline video track.
+			// When the microphone is also captured the mic owns the inline track
+			// (see the microphone branch below), so skip system audio here to
+			// avoid interleaving two unmixed sources into one track.
+			if !capturesMicrophone, let inlineAudioInput, inlineAudioInput.isReadyForMoreMediaData {
 				appendAudioSampleBuffer(sampleBuffer, to: inlineAudioInput, of: assetWriter, firstSampleTime: &firstInlineAudioSampleTime, lastPresentationTime: &lastInlineAudioPresentationTime, presentationTime: presentationTime)
 			}
 			return
@@ -486,8 +489,10 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			if let microphoneOnlyInput {
 				appendAudioSampleBuffer(sampleBuffer, to: microphoneOnlyInput, of: microphoneOnlyWriter, firstSampleTime: &firstMicrophoneSampleTime, lastPresentationTime: &lastMicrophonePresentationTime, presentationTime: presentationTime)
 			}
-			// Write mic to inline video track only if there's no system audio (avoids double-writing)
-			if !capturesSystemAudio, let inlineAudioInput, inlineAudioInput.isReadyForMoreMediaData {
+			// The microphone always owns the inline track when it is captured.
+			// Narration is the audio users expect to hear when they play the .mp4
+			// directly; system audio remains available as a sidecar for the editor.
+			if let inlineAudioInput, inlineAudioInput.isReadyForMoreMediaData {
 				appendAudioSampleBuffer(sampleBuffer, to: inlineAudioInput, of: assetWriter, firstSampleTime: &firstInlineAudioSampleTime, lastPresentationTime: &lastInlineAudioPresentationTime, presentationTime: presentationTime)
 			}
 			return
