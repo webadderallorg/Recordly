@@ -29,6 +29,9 @@ private:
     bool extendLastFrameToLocked(int64_t timestampHns);
     bool writeNv12SampleLocked(const std::vector<uint8_t>& frameBuffer, int64_t timestampHns);
 
+    // Declared before sinkWriter_ so it is destroyed after it: ties the hardware H.264
+    // encoder to the capture GPU.
+    ComPtr<IMFDXGIDeviceManager> dxgiDeviceManager_;
     ComPtr<IMFSinkWriter> sinkWriter_;
     ID3D11Device* device_ = nullptr;
     ID3D11DeviceContext* context_ = nullptr;
