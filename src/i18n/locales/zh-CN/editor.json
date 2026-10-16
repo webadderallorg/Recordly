@@ -151,7 +151,10 @@
 		"panTimeline": "平移时间线",
 		"zoomTimeline": "缩放时间线",
 		"cycleAnnotations": "循环切换注释",
-		"tab": "Tab"
+		"tab": "Tab",
+		"stepFrame": "移动 1 帧",
+		"stepSecond": "移动 1 秒",
+		"jumpKeyframe": "跳转到关键帧"
 	},
 	"actions": {
 		"saveAgain": "再次保存",
