@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { app } from "electron";
 
@@ -47,6 +47,18 @@ export function loadFfprobeStatic(): string | null {
 	return null;
 }
 
+function isExecutableFile(filePath: string): boolean {
+	if (!existsSync(filePath)) {
+		return false;
+	}
+	try {
+		accessSync(filePath, constants.X_OK);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export function resolveSystemFfmpegBinaryPath(): string | null {
 	const locator = process.platform === "win32" ? "where" : "which";
 	const result = spawnSync(locator, ["ffmpeg"], {
@@ -73,7 +85,7 @@ export function resolveSystemFfmpegBinaryPath(): string | null {
 			"/usr/bin/ffmpeg",
 		];
 		for (const p of commonPaths) {
-			if (existsSync(p)) {
+			if (isExecutableFile(p)) {
 				return p;
 			}
 		}
@@ -116,21 +128,76 @@ export function resolveSystemFfprobeBinaryPath(): string | null {
 	return null;
 }
 
-export function getFfmpegBinaryPath(): string {
-	const ffmpegStatic = loadFfmpegStatic();
-	if (ffmpegStatic && typeof ffmpegStatic === "string") {
-		const bundledPath = app.isPackaged
-			? ffmpegStatic.replace(/\.asar([/\\])/, ".asar.unpacked$1")
-			: ffmpegStatic;
+const FFMPEG_PATH_OVERRIDE_ENV = "RECORDLY_FFMPEG_PATH";
 
-		if (existsSync(bundledPath)) {
-			return bundledPath;
-		}
+export type FfmpegBinarySource = "override" | "system" | "bundled";
+
+/**
+ * Chooses between an explicit RECORDLY_FFMPEG_PATH override, a system
+ * FFmpeg, and the packaged ffmpeg-static binary. Pure function so the
+ * precedence stays unit-testable.
+ *
+ * Linux distro packages ship the hardware encoders (VAAPI, NVENC, CUDA)
+ * that the portable ffmpeg-static build leaves out, so a system FFmpeg
+ * wins on Linux when one is present. Windows and macOS keep the bundled
+ * binary first for a predictable toolchain.
+ */
+export function pickFfmpegBinaryPath(inputs: {
+	override: string | null;
+	bundled: string | null;
+	system: string | null;
+	platform: NodeJS.Platform;
+}): { path: string; source: FfmpegBinarySource } | null {
+	if (inputs.override) {
+		return { path: inputs.override, source: "override" };
 	}
+	if (inputs.platform === "linux" && inputs.system) {
+		return { path: inputs.system, source: "system" };
+	}
+	if (inputs.bundled) {
+		return { path: inputs.bundled, source: "bundled" };
+	}
+	if (inputs.system) {
+		return { path: inputs.system, source: "system" };
+	}
+	return null;
+}
 
-	const systemFfmpeg = resolveSystemFfmpegBinaryPath();
-	if (systemFfmpeg) {
-		return systemFfmpeg;
+function resolveBundledFfmpegBinaryPath(): string | null {
+	const ffmpegStatic = loadFfmpegStatic();
+	if (!ffmpegStatic || typeof ffmpegStatic !== "string") {
+		return null;
+	}
+	const bundledPath = app.isPackaged
+		? ffmpegStatic.replace(/\.asar([/\\])/, ".asar.unpacked$1")
+		: ffmpegStatic;
+	return existsSync(bundledPath) ? bundledPath : null;
+}
+
+function resolveFfmpegPathOverride(): string | null {
+	const override = process.env[FFMPEG_PATH_OVERRIDE_ENV]?.trim();
+	if (!override) {
+		return null;
+	}
+	if (isExecutableFile(override)) {
+		return override;
+	}
+	console.warn(`${FFMPEG_PATH_OVERRIDE_ENV} is set but not an executable file: ${override}`);
+	return null;
+}
+
+export function getFfmpegBinaryPath(): string {
+	const bundled = resolveBundledFfmpegBinaryPath();
+	const choice = pickFfmpegBinaryPath({
+		override: resolveFfmpegPathOverride(),
+		bundled,
+		// Only probe PATH when the answer can change: on Linux (system-first)
+		// or when the bundled binary is missing.
+		system: process.platform === "linux" || !bundled ? resolveSystemFfmpegBinaryPath() : null,
+		platform: process.platform,
+	});
+	if (choice) {
+		return choice.path;
 	}
 
 	throw new Error(
