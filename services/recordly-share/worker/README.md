@@ -1,3 +1,5 @@
+Language: EN | [Español](README.es.md)
+
 # Recordly Share
 
 Recordly Share is the self-hosted video publishing and review service used by Recordly. It runs as a Cloudflare Worker with R2 video storage, D1 metadata, range streaming, a responsive viewer, timestamped comments, reactions, passwords, expiration, and a private recording library.
@@ -16,7 +18,7 @@ Set `OWNER_USER_ID` to the deployment owner’s Supabase user ID. Only that user
 
 - Endpoint: `http://localhost:8787/api/upload`
 
-The Worker validates Supabase access tokens before accepting uploads. `API_SECRET` remains a server-side library-administration password. An API-secret upload fallback can be enabled only for isolated local tests by setting `ALLOW_API_SECRET_UPLOADS=true`; do not enable it in production.
+The Worker validates Supabase access tokens for uploads. Self-hosted `POST /api/upload` requests can also authenticate with a valid dashboard session cookie (`voom_session`), without a Supabase access token. `API_SECRET` remains a server-side library-administration password. An API-secret upload fallback can be enabled only for isolated local tests by setting `ALLOW_API_SECRET_UPLOADS=true`; do not enable it in production.
 
 Anyone with a valid link can watch and leave timestamped feedback using a display name; commenting does not require an account. Per-IP rate limiting and comment-length limits remain enabled.
 

@@ -1,3 +1,5 @@
+Language: EN | [Español](README.es.md)
+
 # Official provider logos
 
 Unmodified standalone color logos displayed inside HeroUI buttons; labels and controls belong to Recordly.

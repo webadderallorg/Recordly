@@ -1,3 +1,5 @@
+Language: EN | [Español](README.es.md)
+
 # Desktop feedback
 
 See [setup status](SETUP.md) for the applied project configuration, verification, and remaining launch work.

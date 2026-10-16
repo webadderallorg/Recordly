@@ -25,6 +25,6 @@ Anyone with a valid link can watch a public recording and leave timestamped feed
 
 ## Third-party licensing
 
-The hosting service is based on MIT-licensed open-source software. Required attribution and the complete license text are preserved in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) and [the vendored license](../services/recordly-share/LICENSE).
+The hosting service is based on MIT-licensed open-source software. Required attribution and the complete license text are preserved in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) ([Español](../THIRD_PARTY_NOTICES.es.md)) and [the vendored license](../services/recordly-share/LICENSE).
 
 The self-hosted worker is a single-owner library. Set `OWNER_USER_ID` to the owner’s Supabase user ID. Other accounts in the same Supabase project cannot administer the library. Missing owner configuration disables Supabase bearer access.
