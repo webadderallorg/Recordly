@@ -1,11 +1,46 @@
+import { EventEmitter } from "node:events";
 import * as fc from "fast-check";
-import { describe, expect, it } from "vitest";
+import type GIF from "gif.js";
+import { describe, expect, it, vi } from "vitest";
 import {
+	awaitGifRender,
 	buildGifFrameRendererConfig,
 	calculateOutputDimensions,
 	getGifRepeat,
 } from "./gifExporter";
 import { GIF_SIZE_PRESETS, GifSizePreset } from "./types";
+
+/**
+ * Build a minimal gif.js stand-in. gif.js's real GIF class extends
+ * EventEmitter, so an EventEmitter with the two methods we depend on
+ * (`render`, `abort`) is enough to exercise the encoder-facing surface
+ * of `awaitGifRender` without pulling in the real worker pool.
+ */
+function createFakeGif(): GIF & {
+	renderCalls: number;
+	emitFinished: (blob: Blob) => void;
+	emitAbort: () => void;
+	emitProgress: (percent: number) => void;
+} {
+	const emitter = new EventEmitter();
+	const fake = emitter as unknown as GIF & {
+		renderCalls: number;
+		emitFinished: (blob: Blob) => void;
+		emitAbort: () => void;
+		emitProgress: (percent: number) => void;
+	};
+	fake.renderCalls = 0;
+	(fake as unknown as { render: () => void }).render = () => {
+		fake.renderCalls += 1;
+	};
+	(fake as unknown as { abort: () => void }).abort = () => {
+		emitter.emit("abort");
+	};
+	fake.emitFinished = (blob) => emitter.emit("finished", blob);
+	fake.emitAbort = () => emitter.emit("abort");
+	fake.emitProgress = (percent) => emitter.emit("progress", percent);
+	return fake;
+}
 
 /**
  * Property 2: Loop Encoding Correctness
@@ -505,5 +540,44 @@ describe("Property 7: MP4 Export Regression", () => {
 			),
 			{ numRuns: 100 },
 		);
+	});
+});
+
+describe("awaitGifRender", () => {
+	it("resolves with the encoder blob when gif.js finishes", async () => {
+		const gif = createFakeGif();
+		const blob = new Blob(["gif-bytes"], { type: "image/gif" });
+
+		const rendered = awaitGifRender(gif);
+		expect(gif.renderCalls).toBe(1);
+		gif.emitFinished(blob);
+
+		await expect(rendered).resolves.toBe(blob);
+	});
+
+	it("rejects when gif.js aborts so a mid-render cancel does not hang", async () => {
+		const gif = createFakeGif();
+
+		const rendered = awaitGifRender(gif);
+		expect(gif.renderCalls).toBe(1);
+		gif.abort();
+
+		await expect(rendered).rejects.toThrow("Export cancelled");
+	});
+
+	it("forwards progress ticks and still resolves on finished", async () => {
+		const gif = createFakeGif();
+		const onProgress = vi.fn();
+		const blob = new Blob(["gif"], { type: "image/gif" });
+
+		const rendered = awaitGifRender(gif, onProgress);
+		gif.emitProgress(0.25);
+		gif.emitProgress(0.75);
+		gif.emitFinished(blob);
+
+		await expect(rendered).resolves.toBe(blob);
+		expect(onProgress).toHaveBeenCalledTimes(2);
+		expect(onProgress).toHaveBeenNthCalledWith(1, 0.25);
+		expect(onProgress).toHaveBeenNthCalledWith(2, 0.75);
 	});
 });
