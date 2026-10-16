@@ -1,22 +1,22 @@
-import { resolveEditorStartupView } from "./editorStartupView";
-import { currentProjectPath, currentVideoPath, currentRecordingSession } from "./ipc/state";
-import { isHudInEditorMode } from "./hudEditorMode";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, ipcMain, type WebContents } from "electron";
 import {
-	supportsHudCaptureProtection,
 	shouldProtectHudCapture,
+	supportsHudCaptureProtection,
 } from "../src/lib/hudCaptureProtection";
 import { USER_DATA_PATH } from "./appPaths";
+import { resolveEditorStartupView } from "./editorStartupView";
+import { isHudInEditorMode } from "./hudEditorMode";
 import {
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
 import { getHudOverlayTaskbarOptions } from "./hudOverlayWindowOptions";
+import { currentProjectPath, currentRecordingSession, currentVideoPath } from "./ipc/state";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
 const electronWindowsDir = path.dirname(fileURLToPath(import.meta.url));
@@ -35,6 +35,7 @@ const WINDOW_ICON_PATH = path.join(
 
 let hudOverlayWindow: BrowserWindow | null = null;
 let hudOverlayHiddenFromCapture = true;
+let hudRemoteVisible = false;
 let hudOverlayCaptureProtectionLoaded = false;
 let hudOverlayFallbackExpanded = false;
 let hudOverlayIgnoringMouse = true;
@@ -155,7 +156,8 @@ function loadHudOverlayCaptureProtectionSetting(): boolean {
 		}
 
 		const raw = fs.readFileSync(HUD_OVERLAY_SETTINGS_FILE, "utf-8");
-		const parsed = JSON.parse(raw) as { hiddenFromCapture?: unknown };
+		const parsed = JSON.parse(raw) as { hiddenFromCapture?: unknown; remoteVisible?: unknown };
+		if (typeof parsed.remoteVisible === "boolean") hudRemoteVisible = parsed.remoteVisible;
 		if (typeof parsed.hiddenFromCapture === "boolean") {
 			hudOverlayHiddenFromCapture = parsed.hiddenFromCapture;
 		}
@@ -167,7 +169,7 @@ function loadHudOverlayCaptureProtectionSetting(): boolean {
 }
 
 export function getHudOverlayCaptureProtectionEnabled(): boolean {
-	return loadHudOverlayCaptureProtectionSetting();
+	return loadHudOverlayCaptureProtectionSetting() && !hudRemoteVisible;
 }
 
 function applyHudOverlayCaptureProtectionToWindow(hud: BrowserWindow, enabled: boolean): void {
@@ -178,7 +180,11 @@ function applyHudOverlayCaptureProtectionToWindow(hud: BrowserWindow, enabled: b
 	try {
 		// Keep the idle HUD visible to screenshots and other capture applications.
 		hud.setContentProtection(
-			shouldProtectHudCapture(enabled, hudOverlayRecordingActive, hudCaptureStarting),
+			shouldProtectHudCapture(
+				enabled && !hudRemoteVisible,
+				hudOverlayRecordingActive,
+				hudCaptureStarting,
+			),
 		);
 	} catch (error) {
 		console.warn("Failed to apply HUD capture protection:", error);
@@ -210,7 +216,11 @@ function persistHudOverlayCaptureProtectionSetting(enabled: boolean): void {
 	try {
 		fs.writeFileSync(
 			HUD_OVERLAY_SETTINGS_FILE,
-			JSON.stringify({ hiddenFromCapture: enabled }, null, 2),
+			JSON.stringify(
+				{ hiddenFromCapture: enabled, remoteVisible: hudRemoteVisible },
+				null,
+				2,
+			),
 			"utf-8",
 		);
 	} catch {
@@ -447,6 +457,35 @@ ipcMain.handle("get-hud-overlay-capture-protection", () => {
 		success: true,
 		enabled,
 	};
+});
+
+ipcMain.handle("get-hud-remote-visible", () => {
+	loadHudOverlayCaptureProtectionSetting();
+	return hudRemoteVisible;
+});
+
+ipcMain.handle("set-hud-remote-visible", (_event, enabled: unknown) => {
+	if (typeof enabled !== "boolean") return { success: false, error: "Expected a boolean." };
+	loadHudOverlayCaptureProtectionSetting();
+	try {
+		fs.writeFileSync(
+			HUD_OVERLAY_SETTINGS_FILE,
+			JSON.stringify(
+				{
+					hiddenFromCapture: hudOverlayHiddenFromCapture,
+					remoteVisible: enabled,
+				},
+				null,
+				2,
+			),
+			"utf8",
+		);
+		hudRemoteVisible = enabled;
+		reassertHudOverlayCaptureProtection();
+		return { success: true };
+	} catch (error) {
+		return { success: false, error: String(error) };
+	}
 });
 
 ipcMain.handle("get-hud-overlay-mouse-passthrough-supported", () => {

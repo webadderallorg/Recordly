@@ -1,16 +1,30 @@
-import { SettingsSections, SettingsCategory } from "../SettingsSections";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { SettingsRow } from "../SettingsRow";
-import { Switch } from "@/components/ui/switch";
-import { supportsHudCaptureProtection } from "@/lib/hudCaptureProtection";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
+import { supportsHudCaptureProtection } from "@/lib/hudCaptureProtection";
+import { SettingsRow } from "../SettingsRow";
+import { SettingsCategory, SettingsSections } from "../SettingsSections";
+import { RecordingShortcutSettings } from "./RecordingShortcutSettings";
 export const DashboardSettingsContext = createContext<ReactNode>(null);
 export function DashboardSettings({ onImportFile }: { onImportFile: () => Promise<void> }) {
 	const settingsContent = useContext(DashboardSettingsContext);
 	const [directory, setDirectory] = useState("");
 	const [recordings, setRecordings] = useState("");
 	const [hideHud, setHideHud] = useState(true);
+	const [remoteVisible, setRemoteVisible] = useState(false);
+	useEffect(() => {
+		let active = true;
+		window.electronAPI
+			.getHudRemoteVisible()
+			.then((value) => {
+				if (active) setRemoteVisible(value);
+			})
+			.catch((error) => toast.error(String(error)));
+		return () => {
+			active = false;
+		};
+	}, []);
 	const [captureSupported, setCaptureSupported] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const run = async (action: () => Promise<void>) => {
@@ -102,12 +116,12 @@ export function DashboardSettings({ onImportFile }: { onImportFile: () => Promis
 					{captureSupported && (
 						<SettingsRow
 							title="Hide HUD from recordings"
-							description="Only while recording. The idle HUD stays visible in captures."
+							description="Only while recording. Capture protection can also hide controls from remote desktop. Remote visible mode overrides this setting."
 						>
 							<Switch
 								aria-label="Hide HUD from recordings"
 								checked={hideHud}
-								disabled={busy}
+								disabled={busy || remoteVisible}
 								onCheckedChange={(enabled) =>
 									void run(async () => {
 										const result =
@@ -122,6 +136,31 @@ export function DashboardSettings({ onImportFile }: { onImportFile: () => Promis
 							/>
 						</SettingsRow>
 					)}
+					{captureSupported && (
+						<SettingsRow
+							title="Remote visible mode"
+							description="Allow remote desktop to capture the controls. The HUD may also appear in recordings. Turn this off to restore your capture protection preference. On macOS, restart an active recording for native capture exclusions to update."
+						>
+							<Switch
+								aria-label="Remote visible mode"
+								checked={remoteVisible}
+								disabled={busy}
+								onCheckedChange={(enabled) =>
+									void run(async () => {
+										const result =
+											await window.electronAPI.setHudRemoteVisible(enabled);
+										if (!result.success)
+											throw new Error(
+												result.error ??
+													"Could not change remote visible mode",
+											);
+										setRemoteVisible(enabled);
+									})
+								}
+							/>
+						</SettingsRow>
+					)}
+					<RecordingShortcutSettings />
 				</SettingsCategory>
 				<SettingsCategory category="advanced">
 					{import.meta.env.DEV && (

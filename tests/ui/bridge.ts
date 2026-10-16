@@ -17,6 +17,38 @@ export async function installDesktopBridge(
 		};
 		Object.assign(window, {
 			electronAPI: {
+				getHudRemoteVisible: async () =>
+					localStorage.getItem("test.remoteVisible") === "true",
+				setHudRemoteVisible: async (enabled: boolean) => {
+					localStorage.setItem("test.remoteVisible", String(enabled));
+					return { success: true };
+				},
+				getRecordingShortcuts: async () => ({
+					settings: JSON.parse(
+						localStorage.getItem("test.shortcuts") ??
+							JSON.stringify({
+								toggleRecording: "CommandOrControl+Alt+R",
+								togglePause: "CommandOrControl+Alt+P",
+								toggleHud: "CommandOrControl+Alt+H",
+								cancelRecording: "CommandOrControl+Alt+Shift+X",
+								openCapturePicker: "CommandOrControl+Shift+2",
+							}),
+					),
+					errors: [],
+				}),
+				setRecordingShortcuts: async (settings: Record<string, string>) => {
+					localStorage.setItem("test.shortcuts", JSON.stringify(settings));
+					return {
+						success: true,
+						settings,
+						errors: settings.toggleRecording === "F9" ? ["F9 is already in use."] : [],
+					};
+				},
+				onRecordingShortcut: (callback: (action: string) => void) => {
+					const listener = (event: Event) => callback((event as CustomEvent).detail);
+					window.addEventListener("test-recording-shortcut", listener);
+					return () => window.removeEventListener("test-recording-shortcut", listener);
+				},
 				getAppSetting: (key: string) =>
 					key === "recordly.onboarding.v1.seen" ? true : null,
 				finishRecordingStartup: async () => undefined,
