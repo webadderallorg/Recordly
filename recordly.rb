@@ -1,9 +1,9 @@
 cask "recordly" do
   arch arm: "arm64", intel: "x64"
 
-  version "1.1.14"
-  sha256 arm:   "e669ab7c8bdd4596211937183ee2374545da5482702cab0dfe477c1466422b0f",
-         intel: "85f5183219de0b656400625797ff9299893bd8fbda8455b0f745878b2c729526"
+  version "1.3.3"
+  sha256 arm:   "7fa8f4116e870d40fd78bb36d2ad20af364c945023b7b5ec3e72b568b6bbdee5",
+         intel: "35e49a0bf7afbca771b12fc99a834a287cbcb2e47bc9be07c4e56cbdd2923f85"
 
   url "https://github.com/webadderallorg/Recordly/releases/download/v#{version}/Recordly-#{arch}.dmg"
   name "Recordly"
