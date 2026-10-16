@@ -107,7 +107,12 @@ export function useTimelineZoomActions({
 		addZoomAtMs(currentTimeMs);
 	}, [videoDuration, totalMs, currentTimeMs, addZoomAtMs]);
 
-	const handleSuggestZooms = useCallback(() => {
+	// `quiet` is used for the automatic run after a fresh recording: "nothing found"
+	// there is not something the user asked for, so skip those info toasts.
+	const handleSuggestZooms = useCallback((quiet?: unknown) => {
+		const notifyInfo: typeof timelineNotifications.info = (...args) => {
+			if (quiet !== true) timelineNotifications.info(...args);
+		};
 		if (!videoDuration || videoDuration === 0 || totalMs === 0) {
 			return;
 		}
@@ -125,7 +130,7 @@ export function useTimelineZoomActions({
 		}
 
 		if (cursorTelemetry.length < 2) {
-			timelineNotifications.info(
+			notifyInfo(
 				"No cursor telemetry available",
 				"Record a screencast first to generate cursor-based suggestions.",
 			);
@@ -147,7 +152,7 @@ export function useTimelineZoomActions({
 		});
 
 		if (result.status === "no-telemetry") {
-			timelineNotifications.info(
+			notifyInfo(
 				"No usable cursor telemetry",
 				"The recording does not include enough cursor movement data.",
 			);
@@ -155,7 +160,7 @@ export function useTimelineZoomActions({
 		}
 
 		if (result.status === "no-interactions") {
-			timelineNotifications.info(
+			notifyInfo(
 				"No clear interaction moments found",
 				"Try a recording with pauses or clicks around important actions.",
 			);
@@ -163,7 +168,7 @@ export function useTimelineZoomActions({
 		}
 
 		if (result.status === "no-slots" || result.suggestions.length === 0) {
-			timelineNotifications.info(
+			notifyInfo(
 				"No auto-zoom slots available",
 				"Detected dwell points overlap existing zoom regions.",
 			);
@@ -193,7 +198,7 @@ export function useTimelineZoomActions({
 		}
 
 		onAutoSuggestZoomsConsumed?.();
-		handleSuggestZooms();
+		handleSuggestZooms(true);
 	}, [autoSuggestZoomsTrigger, handleSuggestZooms, onAutoSuggestZoomsConsumed]);
 
 	return {
