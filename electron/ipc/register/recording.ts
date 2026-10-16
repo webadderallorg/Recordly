@@ -76,7 +76,10 @@ import {
 	waitForNativeCaptureStart,
 	waitForNativeCaptureStop,
 } from "../recording/mac";
-import { resolveRecordedVideoStoragePath } from "../recording/storagePath";
+import {
+	isWebcamCompanionRecordingPath,
+	resolveRecordedVideoStoragePath,
+} from "../recording/storagePath";
 import {
 	attachWindowsCaptureLifecycle,
 	isNativeWindowsCaptureAvailable,
@@ -1820,6 +1823,13 @@ export function registerRecordingHandlers(
 			const recordingsDir = await getRecordingsDir();
 			const videoPath = resolveRecordedVideoStoragePath(recordingsDir, fileName);
 			await fs.writeFile(videoPath, Buffer.from(videoData));
+			if (isWebcamCompanionRecordingPath(videoPath)) {
+				// The webcam companion is stored before the screen recording. Finalizing it
+				// would persist (and clear) the session's cursor telemetry next to the webcam
+				// file, leaving the screen recording without cursor data.
+				await validateRecordedVideo(videoPath);
+				return { success: true, path: videoPath };
+			}
 			return await finalizeStoredVideo(videoPath);
 		} catch (error) {
 			console.error("Failed to store video:", error);
