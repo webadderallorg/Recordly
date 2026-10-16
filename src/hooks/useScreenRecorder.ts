@@ -314,6 +314,48 @@ export async function stopAndDiscardNativeCapture({
 	}
 }
 
+export type WindowUnavailableOutcome =
+	| "recovered"
+	| "discarded"
+	| "discard-failed"
+	| "recovery-failed";
+
+export async function resolveWindowUnavailableInterruption({
+	confirmKeepRecording,
+	recoverRecording,
+	discardRecording,
+}: {
+	confirmKeepRecording?: () => Promise<boolean>;
+	recoverRecording: () => Promise<string | null>;
+	discardRecording?: () => Promise<boolean>;
+}): Promise<WindowUnavailableOutcome> {
+	let keepRecording = true;
+	if (confirmKeepRecording) {
+		try {
+			keepRecording = await confirmKeepRecording();
+		} catch (error) {
+			console.error("Failed to ask whether to keep the interrupted recording:", error);
+		}
+	}
+
+	if (!keepRecording) {
+		try {
+			const deleted = (await discardRecording?.()) ?? true;
+			return deleted ? "discarded" : "discard-failed";
+		} catch (error) {
+			console.error("Failed to delete the discarded recording:", error);
+			return "discard-failed";
+		}
+	}
+
+	try {
+		return (await recoverRecording()) ? "recovered" : "recovery-failed";
+	} catch (error) {
+		console.error("Failed to recover interrupted native screen recording:", error);
+		return "recovery-failed";
+	}
+}
+
 function createMicrophoneTrackSettingsSnapshot(
 	stream: MediaStream,
 ): MicrophoneTrackSettingsSnapshot | null {
@@ -1564,7 +1606,30 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					cleanupCapturedMedia();
 					await window.electronAPI.setRecordingState(false);
 
-					if (state.reason !== "window-unavailable") {
+					if (state.reason === "window-unavailable") {
+						const outcome = await resolveWindowUnavailableInterruption({
+							confirmKeepRecording:
+								typeof window.electronAPI?.confirmKeepInterruptedRecording ===
+								"function"
+									? window.electronAPI.confirmKeepInterruptedRecording
+									: undefined,
+							recoverRecording: () => recoverNativeRecordingSession(),
+							discardRecording: async () =>
+								(await window.electronAPI.discardNativeScreenRecording()).success,
+						});
+						if (outcome === "recovered") {
+							return;
+						}
+						if (outcome === "discard-failed") {
+							toast.error(
+								"Couldn't delete the discarded recording. It may still be in your recordings folder.",
+							);
+						}
+						if (outcome === "discarded" || outcome === "discard-failed") {
+							await window.electronAPI.openSourceSelector();
+							return;
+						}
+					} else {
 						try {
 							const recoveredPath = await recoverNativeRecordingSession();
 							if (recoveredPath) {

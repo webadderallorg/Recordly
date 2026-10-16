@@ -16,6 +16,7 @@ import {
 	selectedSource,
 	setCurrentProjectPath,
 	setCurrentVideoPath,
+	setLastNativeCaptureDiagnostics,
 	setNativeCaptureMicrophonePath,
 	setNativeCaptureProcess,
 	setNativeCaptureStopRequested,
@@ -23,7 +24,7 @@ import {
 	setNativeCaptureTargetPath,
 	setNativeScreenRecordingActive,
 } from "../state";
-import { moveFileWithOverwrite } from "../utils";
+import { getTelemetryPathForVideo, moveFileWithOverwrite } from "../utils";
 import {
 	getFileSizeIfPresent,
 	recordNativeCaptureDiagnostics,
@@ -304,15 +305,35 @@ export async function finalizeStoredVideo(videoPath: string) {
 	};
 }
 
-export async function recoverNativeMacCaptureOutput() {
+function getNativeMacCaptureOutputPaths() {
 	const macDiagnostics =
 		lastNativeCaptureDiagnostics?.backend === "mac-screencapturekit"
 			? lastNativeCaptureDiagnostics
 			: null;
-	const diagnosticsPath = macDiagnostics?.outputPath ?? null;
-	const candidatePath = nativeCaptureTargetPath ?? diagnosticsPath;
-	const systemAudioPath = nativeCaptureSystemAudioPath ?? macDiagnostics?.systemAudioPath ?? null;
-	const microphonePath = nativeCaptureMicrophonePath ?? macDiagnostics?.microphonePath ?? null;
+	return {
+		candidatePath: nativeCaptureTargetPath ?? macDiagnostics?.outputPath ?? null,
+		systemAudioPath: nativeCaptureSystemAudioPath ?? macDiagnostics?.systemAudioPath ?? null,
+		microphonePath: nativeCaptureMicrophonePath ?? macDiagnostics?.microphonePath ?? null,
+	};
+}
+
+export async function discardNativeMacCaptureOutput() {
+	const { candidatePath, systemAudioPath, microphonePath } = getNativeMacCaptureOutputPaths();
+	if (!candidatePath) {
+		return false;
+	}
+
+	await Promise.all(
+		[candidatePath, getTelemetryPathForVideo(candidatePath), systemAudioPath, microphonePath]
+			.filter((filePath): filePath is string => Boolean(filePath))
+			.map((filePath) => fs.rm(filePath, { force: true })),
+	);
+	setLastNativeCaptureDiagnostics(null);
+	return true;
+}
+
+export async function recoverNativeMacCaptureOutput() {
+	const { candidatePath, systemAudioPath, microphonePath } = getNativeMacCaptureOutputPaths();
 
 	if (!candidatePath) {
 		return null;
