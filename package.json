@@ -96,10 +96,10 @@
 		"tailwindcss-animate": "^1.0.7",
 		"terser": "^5.44.1",
 		"typescript": "^5.2.2",
-		"vite": "^5.1.6",
+		"vite": "^8.3.1",
 		"vite-plugin-electron": "^0.28.6",
 		"vite-plugin-electron-renderer": "^0.14.5",
-		"vitest": "^3.2.7",
+		"vitest": "^5.0.1",
 		"web-demuxer": "^4.0.0"
 	},
 	"main": "dist-electron/main.cjs"
