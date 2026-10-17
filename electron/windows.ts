@@ -12,6 +12,7 @@ import {
 } from "../src/lib/hudCaptureProtection";
 import { USER_DATA_PATH } from "./appPaths";
 import {
+	getHudOverlayFallbackExpansionForInteraction,
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
@@ -346,10 +347,12 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 		applyHudOverlayBounds();
 	}
 
-	if (!isHudOverlayMousePassthroughSupported()) {
-		if (process.platform !== "linux") {
-			setHudOverlayFallbackExpanded(!ignore);
-		}
+	const fallbackExpansion = getHudOverlayFallbackExpansionForInteraction(
+		isHudOverlayMousePassthroughSupported(),
+		ignore,
+	);
+	if (fallbackExpansion !== null) {
+		setHudOverlayFallbackExpanded(fallbackExpansion);
 		hudOverlayWindow.setIgnoreMouseEvents(false);
 		return;
 	}

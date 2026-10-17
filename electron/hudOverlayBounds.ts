@@ -50,6 +50,25 @@ export function shouldExpandHudOverlayFallback({
 	return fallbackExpanded || (recordingActive && webcamPreviewVisible);
 }
 
+/**
+ * On platforms without mouse passthrough the HUD overlay is a compact fallback
+ * window that must grow while it is interactive, otherwise popovers such as the
+ * camera, source and microphone menus are clipped by the window bounds.
+ *
+ * Returns the fallback expansion to apply, or `null` when the platform uses
+ * real mouse passthrough and the window therefore never needs to resize.
+ */
+export function getHudOverlayFallbackExpansionForInteraction(
+	mousePassthroughSupported: boolean,
+	ignoreMouse: boolean,
+): boolean | null {
+	if (mousePassthroughSupported) {
+		return null;
+	}
+
+	return !ignoreMouse;
+}
+
 export function resizeHudOverlayFallbackBounds(
 	workArea: HudOverlayWorkArea,
 	currentBounds: HudOverlayWorkArea,
