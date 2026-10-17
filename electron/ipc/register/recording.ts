@@ -76,7 +76,13 @@ import {
 	waitForNativeCaptureStart,
 	waitForNativeCaptureStop,
 } from "../recording/mac";
+import {
+	finalizeKeepingPath,
+	RecordingFileCloseError,
+	RecordingFileStreams,
+} from "../recording/recordingFileStreams";
 import { resolveRecordedVideoStoragePath } from "../recording/storagePath";
+import { finishWebmRecording, remuxH264WebmToMp4 } from "../recording/webmDuration";
 import {
 	attachWindowsCaptureLifecycle,
 	isNativeWindowsCaptureAvailable,
@@ -161,6 +167,36 @@ import { getSourceArea } from "../sourceArea";
 import { bringSelectedWindowForward } from "./sources";
 
 const execFileAsync = promisify(execFile);
+
+const recordingFileStreams = new RecordingFileStreams();
+/**
+ * Post-processing for a streamed recording: an H.264 webcam WebM becomes an MP4, any other
+ * WebM gets its duration (finishWebmRecording). It must never cost the recording: on any
+ * error, including a missing ffmpeg, the file is kept as written.
+ */
+async function finishStreamedRecording(filePath: string): Promise<string> {
+	if (!filePath.toLowerCase().endsWith(".webm")) {
+		return filePath;
+	}
+	try {
+		return await finishWebmRecording(getFfmpegBinaryPath(), filePath);
+	} catch (error) {
+		console.warn("Failed to finish the WebM recording; keeping it as written:", error);
+		return filePath;
+	}
+}
+
+function closeRecordingFileStreamsWhenOwnerGoes(owner: Electron.WebContents) {
+	recordingFileStreams.closeWhenOwnerGoes(owner, (closed) => {
+		for (const stream of closed) {
+			console.warn(
+				`Renderer went away during recording; kept ${stream.bytesWritten} bytes at ${stream.path}`,
+			);
+			// Finish it like a normal save, so an H.264 webcam WebM becomes a playable MP4.
+			void finishStreamedRecording(stream.path);
+		}
+	});
+}
 
 async function writeWindowsRecordingDiagnostics(
 	videoPath: string | null | undefined,
@@ -1820,7 +1856,18 @@ export function registerRecordingHandlers(
 			const recordingsDir = await getRecordingsDir();
 			const videoPath = resolveRecordedVideoStoragePath(recordingsDir, fileName);
 			await fs.writeFile(videoPath, Buffer.from(videoData));
-			return await finalizeStoredVideo(videoPath);
+			// H.264 in WebM (the webcam's format) becomes an MP4 here as well. The renderer
+			// already wrote the WebM duration on this path.
+			let finalPath = videoPath;
+			if (videoPath.toLowerCase().endsWith(".webm")) {
+				try {
+					finalPath =
+						(await remuxH264WebmToMp4(getFfmpegBinaryPath(), videoPath)) ?? videoPath;
+				} catch (error) {
+					console.warn("Failed to remux the WebM; keeping it as written:", error);
+				}
+			}
+			return await finalizeStoredVideo(finalPath);
 		} catch (error) {
 			console.error("Failed to store video:", error);
 			return {
@@ -1828,6 +1875,85 @@ export function registerRecordingHandlers(
 				message: "Failed to store video",
 				error: String(error),
 			};
+		}
+	});
+
+	ipcMain.handle("open-recording-file-stream", async (event, fileName: unknown) => {
+		try {
+			const recordingsDir = await getRecordingsDir();
+			const filePath = resolveRecordedVideoStoragePath(recordingsDir, fileName);
+			closeRecordingFileStreamsWhenOwnerGoes(event.sender);
+			const streamId = await recordingFileStreams.open(filePath, event.sender.id);
+			return { success: true, streamId };
+		} catch (error) {
+			console.error("Failed to open recording file stream:", error);
+			return { success: false, error: String(error) };
+		}
+	});
+
+	ipcMain.handle(
+		"append-recording-file-stream",
+		async (event, streamId: unknown, chunk: ArrayBuffer) => {
+			try {
+				if (typeof streamId !== "string" || !(chunk instanceof ArrayBuffer)) {
+					throw new Error("Invalid recording file stream chunk");
+				}
+				await recordingFileStreams.append(streamId, event.sender.id, new Uint8Array(chunk));
+				return { success: true };
+			} catch (error) {
+				console.error("Failed to append to recording file stream:", error);
+				return { success: false, error: String(error) };
+			}
+		},
+	);
+
+	ipcMain.handle(
+		"close-recording-file-stream",
+		async (event, streamId: unknown, fileName: unknown) => {
+			try {
+				if (typeof streamId !== "string") {
+					throw new Error("Invalid recording file stream");
+				}
+				const recordingsDir = await getRecordingsDir();
+				const targetPath = resolveRecordedVideoStoragePath(recordingsDir, fileName);
+				const closed = await recordingFileStreams.close(
+					streamId,
+					event.sender.id,
+					targetPath,
+				);
+				return await finalizeKeepingPath(
+					await finishStreamedRecording(closed.path),
+					finalizeStoredVideo,
+				);
+			} catch (error) {
+				console.error("Failed to close recording file stream:", error);
+				if (error instanceof RecordingFileCloseError) {
+					return {
+						success: false,
+						path: error.partialPath,
+						message: `Part of the recording could not be saved. The part that was written is at ${error.partialPath}.`,
+						error: String(error),
+					};
+				}
+				return {
+					success: false,
+					message: "Failed to store video",
+					error: String(error),
+				};
+			}
+		},
+	);
+
+	ipcMain.handle("discard-recording-file-stream", async (event, streamId: unknown) => {
+		try {
+			if (typeof streamId !== "string") {
+				throw new Error("Invalid recording file stream");
+			}
+			await recordingFileStreams.discard(streamId, event.sender.id);
+			return { success: true };
+		} catch (error) {
+			console.error("Failed to discard recording file stream:", error);
+			return { success: false, error: String(error) };
 		}
 	});
 

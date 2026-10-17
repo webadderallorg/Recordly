@@ -42,9 +42,23 @@ export function selectRecordingMimeType(options: MimeTypeSelectorOptions = {}): 
 	return selectMimeTypeFromPreferences(RECORDING_MIME_TYPE_PREFERENCES, options);
 }
 
+/**
+ * The webcam records H.264 in WebM when it can. Chromium's MP4 muxer crashes the renderer
+ * once a recording passes 4 GiB (about 72 minutes at WEBCAM_BITRATE); the WebM muxer has no
+ * such limit. canPlayType reports H.264 in WebM as unplayable, so the playability check below
+ * would skip it; main remuxes it to MP4 when it saves the file (remuxH264WebmToMp4), so the
+ * editor and exporters still get MP4/H.264 as before.
+ */
+const WEBCAM_WEBM_H264_MIME_TYPE = "video/webm;codecs=h264";
+
 export function selectWebcamRecordingMimeType(
 	options: MimeTypeSelectorOptions = {},
 ): string | undefined {
+	const isTypeSupported =
+		options.isTypeSupported ?? ((type: string) => MediaRecorder.isTypeSupported(type));
+	if (isTypeSupported(WEBCAM_WEBM_H264_MIME_TYPE)) {
+		return WEBCAM_WEBM_H264_MIME_TYPE;
+	}
 	return selectMimeTypeFromPreferences(WEBCAM_RECORDING_MIME_TYPE_PREFERENCES, options);
 }
 

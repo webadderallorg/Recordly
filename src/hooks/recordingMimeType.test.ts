@@ -65,6 +65,16 @@ describe("selectRecordingMimeType", () => {
 		expect(mimeType).toBe("video/mp4;codecs=avc1.42E01E");
 	});
 
+	it("records the webcam as H.264 in WebM when supported, even though it can't be played", () => {
+		// Main remuxes it to MP4 on save; MP4 from MediaRecorder crashes past 4 GiB.
+		const mimeType = selectWebcamRecordingMimeType({
+			isTypeSupported: () => true,
+			canPlayType: (type) => (type === "video/webm;codecs=h264" ? "" : "probably"),
+		});
+
+		expect(mimeType).toBe("video/webm;codecs=h264");
+	});
+
 	it("falls back to WebM webcam capture when MP4 is unavailable", () => {
 		const mimeType = selectWebcamRecordingMimeType({
 			isTypeSupported: (type) => ["video/webm;codecs=vp9", "video/webm"].includes(type),

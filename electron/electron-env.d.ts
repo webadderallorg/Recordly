@@ -330,6 +330,20 @@ interface Window {
 			videoData: ArrayBuffer,
 			fileName: string,
 		) => Promise<{ success: boolean; path?: string; message?: string }>;
+		openRecordingFileStream: (
+			fileName: string,
+		) => Promise<{ success: boolean; streamId?: string; error?: string }>;
+		appendRecordingFileStream: (
+			streamId: string,
+			chunk: ArrayBuffer,
+		) => Promise<{ success: boolean; error?: string }>;
+		closeRecordingFileStream: (
+			streamId: string,
+			fileName: string,
+		) => Promise<{ success: boolean; path?: string; message?: string }>;
+		discardRecordingFileStream: (
+			streamId: string,
+		) => Promise<{ success: boolean; error?: string }>;
 		storeMicrophoneSidecar: (
 			audioData: ArrayBuffer,
 			videoPath: string,
