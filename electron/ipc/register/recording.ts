@@ -54,6 +54,7 @@ import {
 import {
 	getCompanionAudioFallbackInfo,
 	getFileSizeIfPresent,
+	getRecordingDiagnosticsPath,
 	type MicrophoneChunkTimingEvent,
 	type MicrophonePauseInterval,
 	type RecordingDiagnosticsSnapshot,
@@ -76,6 +77,11 @@ import {
 	waitForNativeCaptureStart,
 	waitForNativeCaptureStop,
 } from "../recording/mac";
+import {
+	createHudCrashRecoveryDeps,
+	createStartTracker,
+	stopRecordingWhenHudGoes,
+} from "../recording/hudCrashRecovery";
 import { resolveRecordedVideoStoragePath } from "../recording/storagePath";
 import {
 	attachWindowsCaptureLifecycle,
@@ -101,6 +107,7 @@ import {
 	nativeCaptureOutputBuffer,
 	nativeCapturePaused,
 	nativeCaptureProcess,
+	nativeCaptureStopRequested,
 	nativeCaptureSystemAudioPath,
 	nativeCaptureTargetPath,
 	nativeScreenRecordingActive,
@@ -138,6 +145,7 @@ import {
 	windowsCaptureOutputBuffer,
 	windowsCapturePaused,
 	windowsCaptureProcess,
+	windowsCaptureStopRequested,
 	windowsCaptureTargetPath,
 	windowsMicAudioPath,
 	windowsNativeCaptureActive,
@@ -401,12 +409,80 @@ async function resolveExistingPath(...candidates: Array<string | null | undefine
 	return null;
 }
 
+async function reportRecordingRecoveredAfterHudCrash(
+	result: { success: boolean; path?: string; message?: string; error?: string },
+	reason: string,
+) {
+	if (result.success && result.path) {
+		const { response } = await dialog.showMessageBox({
+			type: "warning",
+			title: "Recording Stopped",
+			message: "The recording controls stopped working, so Recordly saved the recording.",
+			detail: `The recording was stopped and saved to:\n${result.path}\n\n(Renderer exit reason: ${reason})`,
+			buttons: [process.platform === "darwin" ? "Show in Finder" : "Show in Folder", "OK"],
+			defaultId: 0,
+			cancelId: 1,
+		});
+		if (response === 0) {
+			shell.showItemInFolder(result.path);
+		}
+		return;
+	}
+	await dialog.showMessageBox({
+		type: "error",
+		title: "Recording Stopped",
+		message:
+			"The recording controls stopped working, and Recordly could not save the recording.",
+		detail: `${result.error ?? result.message ?? "Unknown error"}\n\n(Renderer exit reason: ${reason})`,
+	});
+}
+
 export function registerRecordingHandlers(
 	onRecordingStateChange?: (recording: boolean, sourceName: string) => void,
 ) {
+	// True after set-recording-state(true): a recording the user sees, not a countdown.
+	let userRecordingActive = false;
+	let lastStopEndedUserRecording = false;
+	let stoppedCountdownPath: string | null = null;
+	// Every start-native-screen-recording call still running, so recovery can wait for them.
+	const starts = createStartTracker();
+	const trackStart = starts.track;
+	const hudCrashRecoveryDeps = createHudCrashRecoveryDeps({
+		captureState: () => ({
+			nativeActive: nativeScreenRecordingActive,
+			nativeStopRequested: nativeCaptureStopRequested,
+			windowsActive: windowsNativeCaptureActive,
+			windowsStopRequested: windowsCaptureStopRequested,
+			userRecording: userRecordingActive,
+			lastStopEndedUserRecording,
+		}),
+		startSettled: starts.settled,
+		stopNativeScreenRecording,
+		muxNativeWindowsRecording: () => muxNativeWindowsRecording(),
+		clearWindowsPendingVideo: () => setWindowsPendingVideoPath(null),
+		windowsPendingVideoPath: () => windowsPendingVideoPath,
+		stoppedCountdownPath: () => stoppedCountdownPath,
+		clearStoppedCountdownPath: () => {
+			stoppedCountdownPath = null;
+		},
+		fileExists: (filePath) =>
+			fs.access(filePath).then(
+				() => true,
+				() => false,
+			),
+		deleteFile: (filePath) => fs.rm(filePath, { force: true }),
+		telemetryPathFor: getTelemetryPathForVideo,
+		diagnosticsPathFor: getRecordingDiagnosticsPath,
+		setRecordingState,
+		reportRecovered: reportRecordingRecoveredAfterHudCrash,
+	});
+
 	ipcMain.handle(
 		"start-native-screen-recording",
-		async (_, source: SelectedSource, options?: NativeMacRecordingOptions) => {
+		trackStart(async (event, source: SelectedSource, options?: NativeMacRecordingOptions) => {
+			// If this renderer dies mid-recording, nothing else can press Stop (#1139).
+			stopRecordingWhenHudGoes(event.sender, hudCrashRecoveryDeps);
+			stoppedCountdownPath = null;
 			// Protect the HUD at the capture boundary, before the renderer publishes recording state.
 			beginHudCaptureProtection();
 			const visibleWindowBounds = source.id?.startsWith("window:")
@@ -952,10 +1028,13 @@ export function registerRecordingHandlers(
 					error: String(error),
 				};
 			}
-		},
+		}),
 	);
 
-	ipcMain.handle("stop-native-screen-recording", async () => {
+	async function stopNativeScreenRecording() {
+		// The renderer leaves the recording state only after this stop, so this tells a
+		// recording from a countdown capture if its HUD dies before the Windows mux.
+		lastStopEndedUserRecording = userRecordingActive;
 		const start = Date.now();
 		console.log("[PERF:MAIN] Handler: stop-native-screen-recording: STARTED");
 		try {
@@ -1302,6 +1381,15 @@ export function registerRecordingHandlers(
 				`[PERF:MAIN] Handler: stop-native-screen-recording: COMPLETED in ${Date.now() - start}ms`,
 			);
 		}
+	}
+	ipcMain.handle("stop-native-screen-recording", async () => {
+		const stopped = await stopNativeScreenRecording();
+		// A countdown the renderer stopped is deleted by it next; remember it in case the
+		// renderer dies before that (HUD crash recovery discards it then).
+		if (stopped.success && "path" in stopped && stopped.path && !lastStopEndedUserRecording) {
+			stoppedCountdownPath = stopped.path;
+		}
+		return stopped;
 	});
 
 	ipcMain.handle("recover-native-screen-recording", async () => {
@@ -1470,7 +1558,7 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("mux-native-windows-recording", async (_event, expectedDurationMs?: number) => {
+	async function muxNativeWindowsRecording(expectedDurationMs?: number) {
 		const start = Date.now();
 		console.log("[PERF:MAIN] Handler: mux-native-windows-recording: STARTED");
 		try {
@@ -1582,7 +1670,10 @@ export function registerRecordingHandlers(
 				`[PERF:MAIN] Handler: mux-native-windows-recording: COMPLETED in ${Date.now() - start}ms`,
 			);
 		}
-	});
+	}
+	ipcMain.handle("mux-native-windows-recording", (_event, expectedDurationMs?: number) =>
+		muxNativeWindowsRecording(expectedDurationMs),
+	);
 
 	ipcMain.handle("start-ffmpeg-recording", async (_, source: SelectedSource) => {
 		if (ffmpegCaptureProcess) {
@@ -1878,7 +1969,8 @@ export function registerRecordingHandlers(
 		}
 	});
 
-	ipcMain.handle("set-recording-state", (_, recording: boolean) => {
+	function setRecordingState(recording: boolean) {
+		userRecordingActive = recording;
 		if (recording) {
 			stopCursorCapture();
 			stopInteractionCapture();
@@ -1926,7 +2018,8 @@ export function registerRecordingHandlers(
 		if (onRecordingStateChange) {
 			onRecordingStateChange(recording, source.name);
 		}
-	});
+	}
+	ipcMain.handle("set-recording-state", (_, recording: boolean) => setRecordingState(recording));
 
 	ipcMain.handle("pause-cursor-capture", (_, pausedAtMs?: unknown) => {
 		pauseCursorCaptureAtBoundary(normalizeRendererTimestampMs(pausedAtMs));
