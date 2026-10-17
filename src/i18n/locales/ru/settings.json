@@ -96,29 +96,29 @@
 		"cursorSpringMass": "Масса (инерция)",
 		"off": "Выкл.",
 		"cursorClickEffects": {
-			"title": "Click Effects",
-			"advanced": "Advanced",
-			"advancedShow": "Show advanced click effect controls",
-			"advancedHide": "Hide advanced click effect controls",
-			"color": "Effect Color",
-			"size": "Effect Size",
-			"opacity": "Effect Opacity",
-			"duration": "Effect Duration",
+			"title": "Эффекты клика",
+			"advanced": "Дополнительно",
+			"advancedShow": "Показать дополнительные настройки эффекта клика",
+			"advancedHide": "Скрыть дополнительные настройки эффекта клика",
+			"color": "Цвет эффекта",
+			"size": "Размер эффекта",
+			"opacity": "Прозрачность эффекта",
+			"duration": "Длительность эффекта",
 			"none": {
-				"label": "Off",
-				"description": "No click graphic. Only the cursor motion changes when you click."
+				"label": "Выкл.",
+				"description": "Без графики при клике — меняется только движение курсора."
 			},
 			"ripple": {
-				"label": "Ripple",
-				"description": "Expanding rings radiate from each click so taps read clearly in motion."
+				"label": "Волны",
+				"description": "От каждого клика расходятся круги, поэтому нажатия хорошо читаются в движении."
 			},
 			"spotlight": {
-				"label": "Spotlight",
-				"description": "A soft halo flashes around the pointer to emphasize the clicked area."
+				"label": "Подсветка",
+				"description": "Вокруг курсора вспыхивает мягкий ореол и подчёркивает место клика."
 			},
 			"echo": {
-				"label": "Echo",
-				"description": "A pair of soft rings that spread outward with a cleaner pulse."
+				"label": "Эхо",
+				"description": "Пара мягких колец расходится наружу более чётким импульсом."
 			}
 		},
 		"cursorMotionBlur": "Размытие в движении",
@@ -192,12 +192,12 @@
 		"backgroundOpacity": "Прозрачность фона",
 		"textColor": "Цвет текста",
 		"editor": {
-			"text": "Text",
-			"start": "Start",
-			"end": "End",
-			"split": "Split",
-			"merge": "Merge",
-			"delete": "Delete"
+			"text": "Текст",
+			"start": "Начало",
+			"end": "Конец",
+			"split": "Разделить",
+			"merge": "Объединить",
+			"delete": "Удалить"
 		}
 	},
 	"crop": {
