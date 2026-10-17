@@ -117,3 +117,14 @@ describe("ScreenCaptureKitRecorder first frame timing", () => {
 		expect(audioGuard).toBeLessThan(callback.indexOf("if outputType == .audio"));
 	});
 });
+
+describe("ScreenCaptureKitRecorder still screens", () => {
+	it("writes the last frame again while the screen is still", () => {
+		expect(recorderSource).toContain("startStillFrameTimer()");
+		expect(recorderSource).toContain("let repeatTime = now - stillFrameDeliveryAllowance");
+	});
+	it("ends the recording at the stop instead of the last screen change", () => {
+		expect(recorderSource).toContain("self.stopTimelineTime = self.timelineTimeOfStop()");
+		expect(recorderSource).toContain("stopTimelineTime.map { max($0, videoEndTime) }");
+	});
+});
