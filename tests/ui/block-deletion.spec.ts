@@ -167,3 +167,29 @@ test("a dragged annotation can be selected across its whole block and deleted wi
 	await expect(annotation).toHaveCount(0);
 	await expect(clip).toHaveCount(1);
 });
+
+test("a selection box picks several zooms and deletes them in one undo step", async ({ page }) => {
+	const row = page.locator('[data-timeline-row="row-zoom"]');
+	const box = (await row.boundingBox())!;
+	const y = box.y + box.height / 2;
+	const at = (fraction: number) => box.x + box.width * fraction;
+	for (const fraction of [0.1, 0.45, 0.8]) {
+		await page.mouse.click(at(fraction), y);
+	}
+	const zooms = page.locator('[data-variant="zoom"]');
+	await expect(zooms).toHaveCount(3);
+
+	await page.mouse.move(at(0.35), y);
+	await page.mouse.down();
+	await page.mouse.move(at(0.97), y, { steps: 12 });
+	await expect(page.getByTestId("zoom-selection-box")).toBeVisible();
+	await page.mouse.up();
+	await expect(page.getByTestId("zoom-selection-bar")).toContainText("2 zooms selected");
+	await expect(zooms).toHaveCount(3);
+
+	await page.keyboard.press("Delete");
+	await expect(zooms).toHaveCount(1);
+	expect(Number(await zooms.getAttribute("data-start-ms"))).toBeLessThan(1000);
+	await page.keyboard.press("ControlOrMeta+z");
+	await expect(zooms).toHaveCount(3);
+});

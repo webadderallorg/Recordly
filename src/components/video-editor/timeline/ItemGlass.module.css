@@ -98,8 +98,11 @@
 	background: color-mix(in srgb, var(--accent) 88%, white);
 }
 
+/* An inset ring keeps the selection visible on zooms only a few pixels wide. */
 .glassBlue.selected {
+	background: color-mix(in srgb, var(--accent) 82%, white);
 	border-color: color-mix(in srgb, var(--accent) 60%, white);
+	box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.9);
 	z-index: 10;
 }
 

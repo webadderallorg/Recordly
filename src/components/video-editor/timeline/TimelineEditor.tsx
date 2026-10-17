@@ -1,4 +1,5 @@
-import { Plus } from "@/components/ui/icons";
+import { Button } from "@/components/ui/button";
+import { Plus, Trash as Trash2 } from "@/components/ui/icons";
 import type { Span } from "dnd-timeline";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -336,6 +337,10 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			setSelectedKeyframeId,
 			selectAllBlocksActive,
 			setSelectAllBlocksActive,
+			selectedZoomIds,
+			setSelectedZoomIds,
+			selectZoomIds,
+			deleteSelectedZoom,
 			handleKeyframeMove,
 			clearSelectedBlocks,
 			handleSelectZoom,
@@ -403,6 +408,11 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 			isTimelineFocusedRef,
 		});
 
+		const zoomIds = new Set(zoomRegions.map((region) => region.id));
+		const pickedZoomCount = selectAllBlocksActive
+			? zoomRegions.length
+			: selectedZoomIds.filter((id) => zoomIds.has(id)).length;
+
 		if (!videoDuration || videoDuration === 0) {
 			return (
 				<div className="flex-1 flex flex-col items-center justify-center rounded-lg bg-editor-surface gap-3">
@@ -420,7 +430,28 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 		}
 
 		return (
-			<div className="flex-1 min-h-0 flex flex-col bg-transparent overflow-hidden">
+			<div className="relative flex-1 min-h-0 flex flex-col bg-transparent overflow-hidden">
+				{(selectAllBlocksActive || pickedZoomCount > 1) && pickedZoomCount > 0 && (
+					<div
+						data-testid="zoom-selection-bar"
+						className="absolute right-4 top-1 z-30 flex items-center gap-2 rounded-full border border-foreground/10 bg-editor-surface/95 py-1 pl-3 pr-1 text-xs shadow-lg backdrop-blur"
+					>
+						<span className="text-foreground/80">
+							{t("timeline.zoomsSelected", "{{count}} zooms selected", {
+								count: String(pickedZoomCount),
+							})}
+						</span>
+						<Button
+							variant="destructive-soft"
+							size="sm"
+							className="h-7 gap-1.5 rounded-full px-3 text-xs"
+							onClick={deleteSelectedZoom}
+						>
+							<Trash2 className="h-3 w-3" />
+							{t("timeline.deleteZooms", "Delete")}
+						</Button>
+					</div>
+				)}
 				<div
 					ref={timelineContainerRef}
 					data-testid="timeline-scroll"
@@ -440,6 +471,7 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 					onClick={() => {
 						setSelectedKeyframeId(null);
 						setSelectAllBlocksActive(false);
+						setSelectedZoomIds([]);
 					}}
 					onWheel={handleTimelineWheel}
 				>
@@ -506,6 +538,8 @@ const TimelineEditor = forwardRef<TimelineEditorHandle, TimelineEditorProps>(
 							selectedAudioId={selectedAudioId}
 							selectedCaptionId={selectedCaptionId}
 							selectAllBlocksActive={selectAllBlocksActive}
+							selectedZoomIds={selectedZoomIds}
+							onSelectZoomIds={selectZoomIds}
 							onClearBlockSelection={clearSelectedBlocks}
 							keyframes={keyframes}
 							sourceAudioTracks={sourceAudioTracks}
