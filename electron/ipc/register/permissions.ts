@@ -1,4 +1,4 @@
-import { ipcMain, shell, systemPreferences } from "electron";
+import { desktopCapturer, ipcMain, shell, systemPreferences } from "electron";
 import { getMacPrivacySettingsUrl } from "../utils";
 
 export function registerPermissionHandlers() {
@@ -63,6 +63,17 @@ export function registerPermissionHandlers() {
 		}
 
 		try {
+			// First-time access must register Recordly in macOS before its settings row can be enabled.
+			if (systemPreferences.getMediaAccessStatus("screen") === "not-determined") {
+				try {
+					await desktopCapturer.getSources({
+						types: ["screen"],
+						thumbnailSize: { width: 0, height: 0 },
+					});
+				} catch {
+					// A denied prompt still needs the settings page so access can be enabled later.
+				}
+			}
 			await shell.openExternal(getMacPrivacySettingsUrl("screen"));
 			return { success: true };
 		} catch (error) {

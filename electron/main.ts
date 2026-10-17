@@ -1,3 +1,4 @@
+import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
 import { createSaveBeforeCloseController } from "./saveBeforeClose";
 import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import fs from "node:fs/promises";
@@ -1115,36 +1116,17 @@ app.whenReady().then(async () => {
 			// resolves, before recording-state-changed is emitted.
 			beginHudCaptureProtection();
 
-			const sourceId = getSelectedSourceId();
-			// On Linux/Wayland, calling desktopCapturer.getSources() itself
-			// invokes the xdg-desktop-portal picker. If we then return one of
-			// those sources, Chromium triggers a SECOND portal because the
-			// pre-enumerated source IDs are stale on Wayland. To collapse this
-			// into a single portal invocation, when the Linux portal sentinel
-			// is set we skip getSources entirely and hand back a synthetic
-			// source id; Chromium then opens the portal once to actually
-			// resolve the capture.
-			// Default to the sentinel on Linux when no source has been
-			// pre-selected (e.g. fresh session where the renderer skipped the
-			// source picker entirely). This avoids calling getSources() which
-			// would itself trigger an extra portal dialog.
-			const isLinuxPortalSentinel =
-				process.platform === "linux" && (sourceId === "screen:linux-portal" || !sourceId);
-			if (isLinuxPortalSentinel) {
-				callback({ video: { id: "screen:0:0", name: "Entire screen" } });
-				return;
-			}
-			const sources = await desktopCapturer.getSources({ types: ["screen", "window"] });
-			const source = sourceId
-				? (sources.find((s) => s.id === sourceId) ?? sources[0])
-				: sources[0];
-			if (source) {
-				callback({
-					video: { id: source.id, name: source.name },
-				});
-			} else {
-				callback({});
-			}
+			const video = await resolveDisplayMediaSource({
+				platform: process.platform,
+				env: process.env,
+				selectedSourceId: getSelectedSourceId(),
+				getSources: () =>
+					desktopCapturer.getSources({
+						types: ["screen", "window"],
+						thumbnailSize: { width: 0, height: 0 },
+					}),
+			});
+			callback(video ? { video } : {});
 		} catch (error) {
 			console.error("setDisplayMediaRequestHandler error:", error);
 			callback({});

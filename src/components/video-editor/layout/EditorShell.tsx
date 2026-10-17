@@ -26,6 +26,8 @@ import type { useProjectState } from "../state/useProjectState";
 import type { useTimelineState } from "../state/useTimelineState";
 import { CropEditorDialog } from "./CropEditorDialog";
 import { EditorDialogs } from "./EditorDialogs";
+import { getStartupView } from "@/lib/startupView";
+import { HomeLoadingSkeleton } from "../dashboard/HomeLoadingSkeleton";
 import { EditorLoadingSkeleton } from "./EditorLoadingSkeleton";
 import { EditorHeader } from "./EditorHeader";
 import { EditorPreviewPanel } from "./EditorPreviewPanel";
@@ -140,6 +142,7 @@ export function EditorShell(props: Props) {
 		() => (
 			<SettingsPanel
 				{...settingsPanelProps}
+				accountUser={auth.user}
 				onShowOnboarding={showOnboarding}
 				activeEffectSection="settings"
 				selectedAnnotationId={null}
@@ -147,7 +150,7 @@ export function EditorShell(props: Props) {
 				advanced
 			/>
 		),
-		[settingsPanelProps, showOnboarding],
+		[settingsPanelProps, showOnboarding, auth.user],
 	);
 	const onboarding = (
 		<OnboardingController
@@ -206,7 +209,7 @@ export function EditorShell(props: Props) {
 	if (project.loading && !project.error)
 		return (
 			<>
-				<EditorLoadingSkeleton />
+				{getStartupView() === "home" ? <HomeLoadingSkeleton /> : <EditorLoadingSkeleton />}
 				<RecordlySignInDialog
 					open={signInOpen}
 					onOpenChange={setSignInOpen}
@@ -361,6 +364,7 @@ export function EditorShell(props: Props) {
 						}}
 						settingsPanelProps={{
 							...settingsPanelProps,
+							accountUser: auth.user,
 							onShowOnboarding: showOnboarding,
 						}}
 					/>

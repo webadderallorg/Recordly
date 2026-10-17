@@ -102,9 +102,9 @@ export function useClipRegionCommands({
 					clip.id === plan.targetId ? [plan.left, plan.right] : [clip],
 				),
 			);
-			if (selectedClipId === plan.targetId) setSelectedClipId(plan.left.id);
+			handleSelectClip(plan.left.id);
 		},
-		[clipRegions, nextClipIdRef, selectedClipId, setClipRegions, setSelectedClipId],
+		[clipRegions, nextClipIdRef, setClipRegions, handleSelectClip],
 	);
 
 	const handleClipSpanChange = useCallback(

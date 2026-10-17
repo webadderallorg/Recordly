@@ -1,4 +1,5 @@
 -- Apply to the Supabase project used by VITE_SUPABASE_URL before shipping feedback.
+begin;
 create table public.feedback_reports (
   id uuid primary key,
   user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
@@ -10,6 +11,7 @@ create table public.feedback_reports (
   attachments jsonb not null default '[]' check (jsonb_typeof(attachments) = 'array' and jsonb_array_length(attachments) <= 5)
 );
 alter table public.feedback_reports enable row level security;
+revoke all on public.feedback_reports from public, anon, authenticated;
 grant select, insert on public.feedback_reports to authenticated;
 create policy "Submit own feedback" on public.feedback_reports for insert to authenticated with check (user_id = auth.uid());
 create policy "Read own feedback" on public.feedback_reports for select to authenticated using (user_id = auth.uid());
@@ -24,3 +26,5 @@ using (bucket_id = 'feedback-attachments' and (storage.foldername(name))[1] = au
 -- Allow owners to locate their uploads for cleanup; the bucket remains private.
 create policy "Read own feedback uploads" on storage.objects for select to authenticated
 using (bucket_id = 'feedback-attachments' and (storage.foldername(name))[1] = auth.uid()::text);
+
+commit;

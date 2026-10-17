@@ -1,0 +1,45 @@
+/* Fit permissions in the window instead of scrolling behind the footer. */
+@media (max-height: 800px) {
+	.onboarding-permissions [data-onboarding-body] {
+		padding-top: 12px;
+		padding-bottom: 12px;
+	}
+	.onboarding-permissions [data-onboarding-body] > div > :not(:last-child) {
+		margin-bottom: 12px;
+	}
+	.onboarding-permissions .modal__header {
+		gap: 6px;
+	}
+	.onboarding-permissions [data-onboarding-brand] {
+		margin-bottom: 0;
+	}
+	.onboarding-permissions [data-onboarding-brand] img {
+		width: 32px;
+		height: 32px;
+	}
+	.onboarding-permissions .modal__heading {
+		font-size: 24px;
+	}
+	.onboarding-permissions .onboarding-permission-row {
+		gap: 10px;
+		padding: 10px;
+	}
+	.onboarding-permissions .onboarding-permission-row > div:first-child {
+		width: 32px;
+		height: 32px;
+	}
+	.onboarding-permissions .onboarding-permission-row p,
+	.onboarding-permissions .onboarding-permission-help p {
+		line-height: 16px;
+	}
+}
+
+@media (max-height: 800px) and (max-width: 440px) {
+	.onboarding-permissions .onboarding-permission-row p {
+		display: none;
+	}
+	.onboarding-permissions .onboarding-permission-row .button {
+		height: 32px;
+		min-height: 32px;
+	}
+}

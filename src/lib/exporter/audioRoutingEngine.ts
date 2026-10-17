@@ -1,8 +1,12 @@
-import type { AudioRegion } from "@/components/video-editor/types";
 import { SOURCE_AUDIO_NORMALIZE_GAIN } from "@/components/video-editor/audio/audioTypes";
+import type { AudioRegion } from "@/components/video-editor/types";
+import { getSourceTrackIdFromPath } from "./audioProcessorShared";
+import type { SourceTrackId } from "./audioProcessorShared";
 import { resolveSourceAudioFallbackPaths } from "./sourceAudioFallback";
 
-export type SourceTrackId = "mic" | "system" | "mixed";
+export { getSourceTrackIdFromPath };
+export type { SourceTrackId };
+
 export type ResolvedAudioTrackKind = "user" | "system" | "mic" | "mixed" | "embedded";
 
 export interface ResolvedAudioTrack {
@@ -27,13 +31,6 @@ export interface ResolvedAudioPlan {
 	includeEmbeddedInExport: boolean;
 	tracks: ResolvedAudioTrack[];
 	masterGain: number;
-}
-
-export function getSourceTrackIdFromPath(audioPath: string): SourceTrackId {
-	const normalized = audioPath.toLowerCase();
-	if (normalized.includes(".mic.")) return "mic";
-	if (normalized.includes(".system.")) return "system";
-	return "mixed";
 }
 
 function clampGain(value: number, max: number) {

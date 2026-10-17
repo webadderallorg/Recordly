@@ -1,8 +1,10 @@
 # Desktop feedback
 
+See [setup status](SETUP.md) for the applied project configuration, verification, and remaining launch work.
+
 Before releasing feedback submission:
 
-1. Apply `migrations/202609230001_feedback.sql` and then `migrations/202609230002_feedback_limits.sql` in the configured Supabase project. If the first migration is already applied, apply only the second.
+1. Apply `migrations/202609230001_feedback.sql` and then `migrations/202609230002_feedback_limits.sql` in the configured Supabase project. Apply `migrations/202610030001_feedback_access.sql` after both, including on existing deployments; it revokes inherited client table privileges while preserving owner reads and server inserts.
 2. Deploy the `submit-feedback` Edge Function from the repository root with the Supabase CLI: `supabase functions deploy submit-feedback --workdir services --project-ref YOUR_PROJECT_REF`. The function explicitly validates the bearer token with `auth.getUser` before parsing or storing feedback. The function configuration disables only the gateway's JWT check, not the function's authentication.
 3. Use the project's built-in `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` secrets for the function. Never put a service-role key in the desktop app.
 
@@ -15,6 +17,12 @@ On submission, the modal captures up to 100 recent renderer warnings/errors (2,0
 A local demo account can preview the form but cannot submit without a real Supabase session. Failed submissions retain the draft in memory; closing and reopening the same modal keeps it, but restarting the app does not. The function cleans up failed uploads on a best-effort basis. Periodically remove unattached objects left by interrupted sessions through the Storage API, and prune old `feedback_daily_usage` rows after their UTC day has ended.
 
 Unit tests exercise the server handler with an injected storage/auth backend. `tests/feedback_limits.sql` verifies the migration's quotas and permissions in a disposable database with the migrations applied; it rolls back its test data. Live deployment and end-to-end Supabase uploads must be checked separately before release.
+
+## Access verification
+
+Run `checks/feedback-quota-access.sql` as postgres after all feedback migrations in a disposable Supabase database. It uses an existing user with no feedback usage today and rolls back test data. It checks server insertion, owner reads and cross-user isolation after hardening, server-only quota access, authenticated attachment-upload denial for the feedback bucket, client report write denial, anonymous read denial, and all three daily limits. The older `checks/feedback-access.sql` is only for testing migration 001 in isolation, before migration 002 removes direct client inserts.
+
+Do not put real account IDs, project references, credentials, or operator setup status in this documentation.
 
 ## User-triggered export error reports (no account link)
 

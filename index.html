@@ -6,11 +6,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Recordly</title>
     <script>
-      // Paint the editor shell before the renderer bundle is downloaded or evaluated.
+      // Paint the destination shell before the renderer bundle is downloaded or evaluated.
       // Keep recording overlays transparent during their own startup.
       document.documentElement.dataset.windowType =
         new URLSearchParams(location.search).get("windowType") || "";
       if (document.documentElement.dataset.windowType === "editor") {
+        let startupView = new URLSearchParams(location.search).get("startupView");
+        try { startupView = window.electronAPI?.getEditorStartupView?.() || startupView; }
+        catch { /* Fall back to the explicit destination if the bridge is unavailable. */ }
+        try { if (localStorage.getItem("recordly.open-dashboard")) startupView = "home"; }
+        catch { /* Home metadata can still be resolved through the desktop bridge. */ }
+        document.documentElement.dataset.startupView = startupView === "home" ? "home" : "editor";
         let preference = "system";
         try {
           preference = window.electronAPI?.getAppSetting("recordly.theme") ||
@@ -28,11 +34,32 @@
       html[data-window-type="editor"][data-theme="dark"] { background: #171719; }
       html[data-window-type="editor"] .boot-shell {
         --boot-block: #e5e5e9;
-        position: fixed; inset: 0; display: flex; flex-direction: column;
+        position: fixed; inset: 0; flex-direction: column;
         padding: 0 20px 20px; gap: 16px; box-sizing: border-box;
         background: #f6f6f7; overflow: hidden;
       }
       html[data-theme="dark"] .boot-shell { --boot-block: #303034; background: #171719; }
+      html[data-window-type="editor"] .boot-editor { display: flex; }
+      html[data-window-type="editor"][data-startup-view="home"] .boot-editor { display: none; }
+      html[data-window-type="editor"][data-startup-view="home"] .boot-home { display: flex; flex-direction: row; padding: 0; gap: 0; }
+      .boot-home-sidebar { width: 192px; flex-shrink: 0; display: flex; flex-direction: column; gap: 20px; padding: 48px 16px 20px; box-sizing: border-box; }
+      .boot-home-sidebar i { height: 32px; flex-shrink: 0; }
+      .boot-home-sidebar i:first-child { width: 128px; height: 40px; }
+      .boot-home-sidebar i:nth-child(2) { height: 40px; }
+      .boot-home-sidebar i:last-child { margin-top: auto; }
+      .boot-home-panel { flex: 1; min-width: 0; margin: 12px 12px 12px 0; padding: 0 28px; border-radius: 16px; background: #fff; box-shadow: 0 1px 3px #0001; }
+      html[data-theme="dark"] .boot-home-panel { background: #202023; }
+      .boot-home-toolbar { display: flex; gap: 20px; height: 96px; align-items: center; padding-top: 20px; box-sizing: border-box; }
+      .boot-home-toolbar i:first-child { flex: 1; height: 44px; }
+      .boot-home-toolbar i:last-child { width: 96px; height: 40px; }
+      .boot-home-filters { display: flex; gap: 12px; padding: 20px 0 28px; }
+      .boot-home-filters i { width: 80px; height: 28px; border-radius: 20px; }
+      .boot-home-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,280px),1fr)); gap: 40px 28px; }
+      .boot-home-grid > div { display: flex; flex-direction: column; gap: 16px; }
+      .boot-home-grid i:first-child { aspect-ratio: 4/3; border-radius: 12px; }
+      .boot-home-grid i:nth-child(2) { width: 75%; height: 16px; }
+      .boot-home-grid i:nth-child(3) { width: 33%; height: 12px; }
+      @media (min-width: 1024px) { .boot-home-sidebar { width: 224px; } .boot-home-panel { padding: 0 40px; } .boot-home-grid { column-gap: 36px; } }
       .boot-shell i { display: block; background: var(--boot-block); border-radius: 8px; }
       .boot-header { height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; }
       .boot-header i { width: 96px; height: 28px; }
@@ -55,7 +82,7 @@
   </head>
   <body>
     <div id="root">
-      <div class="boot-shell" role="status" aria-label="Loading editor" aria-busy="true">
+      <div class="boot-shell boot-editor" role="status" aria-label="Loading editor" aria-busy="true">
         <div class="boot-header" aria-hidden="true"><i></i><i></i><i></i></div>
         <div class="boot-body" aria-hidden="true">
           <div class="boot-rail"><i></i><i></i><i></i><i></i><i></i><i></i></div>
@@ -63,6 +90,14 @@
           <div class="boot-preview"><i></i><i></i></div>
         </div>
         <div class="boot-timeline" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="boot-shell boot-home" role="status" aria-label="Loading home" aria-busy="true">
+        <div class="boot-home-sidebar" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="boot-home-panel" aria-hidden="true">
+          <div class="boot-home-toolbar"><i></i><i></i></div>
+          <div class="boot-home-filters"><i></i><i></i></div>
+          <div class="boot-home-grid"><div><i></i><i></i><i></i></div><div><i></i><i></i><i></i></div><div><i></i><i></i><i></i></div></div>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>

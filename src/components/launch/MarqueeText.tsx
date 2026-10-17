@@ -1,3 +1,4 @@
+import "./MarqueeText.css";
 import { useLayoutEffect, useRef, useState } from "react";
 
 export function MarqueeText({ text }: { text: string }) {
@@ -24,7 +25,7 @@ export function MarqueeText({ text }: { text: string }) {
 			<span ref={staticRef} className="source-selector-marquee-static">
 				{text}
 			</span>
-			<span className="source-selector-marquee-animated">
+			<span aria-hidden="true" className="source-selector-marquee-animated">
 				<span className="source-selector-marquee-track">
 					<span className="source-selector-marquee-segment">{text}</span>
 					<span className="source-selector-marquee-segment source-selector-marquee-duplicate">

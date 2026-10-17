@@ -1,6 +1,8 @@
 import { Card } from "@heroui/react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useI18n } from "./contexts/I18nContext";
+import { getStartupView } from "./lib/startupView";
+import { HomeLoadingSkeleton } from "./components/video-editor/dashboard/HomeLoadingSkeleton";
 import { EditorLoadingSkeleton } from "./components/video-editor/layout/EditorLoadingSkeleton";
 
 const HudWindow = lazy(() => import("./components/launch/HudWindow"));
@@ -20,6 +22,7 @@ const UpdateToastWindow = lazy(() =>
 	})),
 );
 const EditorWindow = lazy(() => import("./components/video-editor/EditorWindow"));
+const CapturePicker = lazy(() => import("./components/capture-picker/CapturePicker"));
 
 export default function App() {
 	const [windowType] = useState(
@@ -35,7 +38,8 @@ export default function App() {
 			windowType === "hud-overlay" ||
 			windowType === "source-selector" ||
 			windowType === "countdown" ||
-			windowType === "update-toast"
+			windowType === "update-toast" ||
+			windowType === "capture-picker"
 		) {
 			document.body.style.background = "transparent";
 			document.documentElement.style.background = "transparent";
@@ -78,6 +82,9 @@ export default function App() {
 		case "editor":
 			content = <EditorWindow />;
 			break;
+		case "capture-picker":
+			content = <CapturePicker />;
+			break;
 		default:
 			content = (
 				<div className="flex h-full w-full items-center justify-center bg-editor-bg text-foreground">
@@ -101,7 +108,17 @@ export default function App() {
 	}
 
 	return (
-		<Suspense fallback={windowType === "editor" ? <EditorLoadingSkeleton /> : null}>
+		<Suspense
+			fallback={
+				windowType === "editor" ? (
+					getStartupView() === "home" ? (
+						<HomeLoadingSkeleton />
+					) : (
+						<EditorLoadingSkeleton />
+					)
+				) : null
+			}
+		>
 			{content}
 		</Suspense>
 	);

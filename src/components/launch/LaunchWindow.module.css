@@ -153,8 +153,6 @@
 	position: fixed;
 	right: 32px;
 	bottom: 120px;
-	height: 288px;
-	width: 288px;
 	overflow: hidden;
 	border-radius: 24px;
 	background: var(--launch-surface);
@@ -169,6 +167,36 @@
 
 .recordingWebcamPreview:active {
 	cursor: grabbing;
+}
+
+.recordingWebcamPreviewResizeHandle {
+	position: absolute;
+	width: 20px;
+	height: 20px;
+}
+
+.recordingWebcamPreviewResizeHandle[data-resize-handle="nw"] {
+	top: 0;
+	left: 0;
+	cursor: nwse-resize;
+}
+
+.recordingWebcamPreviewResizeHandle[data-resize-handle="ne"] {
+	top: 0;
+	right: 0;
+	cursor: nesw-resize;
+}
+
+.recordingWebcamPreviewResizeHandle[data-resize-handle="sw"] {
+	bottom: 0;
+	left: 0;
+	cursor: nesw-resize;
+}
+
+.recordingWebcamPreviewResizeHandle[data-resize-handle="se"] {
+	bottom: 0;
+	right: 0;
+	cursor: nwse-resize;
 }
 
 .recordingWebcamPreviewVideo {

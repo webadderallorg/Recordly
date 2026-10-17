@@ -34,12 +34,12 @@ function createMockMediaRecorder(initialState: RecordingState = "inactive") {
 }
 
 describe("createProcessedMicrophoneConstraints", () => {
-	it("requests browser voice processing with AGC for the default microphone", () => {
+	it("requests browser voice processing without AGC for the default microphone", () => {
 		expect(createProcessedMicrophoneConstraints()).toEqual({
 			audio: {
 				echoCancellation: true,
 				noiseSuppression: true,
-				autoGainControl: true,
+				autoGainControl: false,
 				channelCount: { ideal: 1 },
 				sampleRate: { ideal: 48000 },
 			},
@@ -53,7 +53,7 @@ describe("createProcessedMicrophoneConstraints", () => {
 				deviceId: { exact: "device-123" },
 				echoCancellation: true,
 				noiseSuppression: true,
-				autoGainControl: true,
+				autoGainControl: false,
 				channelCount: { ideal: 1 },
 				sampleRate: { ideal: 48000 },
 			},
@@ -105,10 +105,10 @@ describe("createProcessedMicrophoneConstraints", () => {
 		});
 	});
 
-	it("normalizes invalid lab microphone profiles to production voice processing", () => {
+	it("normalizes invalid lab microphone profiles to the default voice processing", () => {
 		expect(normalizeBrowserMicrophoneProfile("RAW")).toBe("raw");
-		expect(normalizeBrowserMicrophoneProfile("unknown")).toBe("processed");
-		expect(normalizeBrowserMicrophoneProfile(null)).toBe("processed");
+		expect(normalizeBrowserMicrophoneProfile("unknown")).toBe("no-agc");
+		expect(normalizeBrowserMicrophoneProfile(null)).toBe("no-agc");
 	});
 });
 

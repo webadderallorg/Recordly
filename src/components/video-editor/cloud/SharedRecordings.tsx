@@ -215,14 +215,18 @@ export function SharedRecordings({
 	return (
 		<section className="space-y-3 border-b border-foreground/10 pb-4">
 			<div className="flex items-center justify-between gap-2">
-				<Button
-					variant="ghost"
-					size="sm"
-					onPress={() => setExpanded((value) => !value)}
-					aria-expanded={expanded}
-				>
-					{expanded ? "Hide shared recordings" : "Manage shared recordings"}
-				</Button>
+				{standalone ? (
+					<h2 className="text-lg font-semibold">Shared recordings</h2>
+				) : (
+					<Button
+						variant="ghost"
+						size="sm"
+						onPress={() => setExpanded((value) => !value)}
+						aria-expanded={expanded}
+					>
+						{expanded ? "Hide shared recordings" : "Manage shared recordings"}
+					</Button>
+				)}
 				{expanded && (
 					<Button
 						variant="ghost"
@@ -246,7 +250,11 @@ export function SharedRecordings({
 					{loading ? (
 						<LibrarySkeleton />
 					) : (
-						<ul className="max-h-64 space-y-2 overflow-y-auto">
+						<ul
+							className={
+								standalone ? "space-y-2" : "max-h-64 space-y-2 overflow-y-auto"
+							}
+						>
 							{recordings.map((recording) => (
 								<li
 									key={recording.code}

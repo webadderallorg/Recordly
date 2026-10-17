@@ -1,5 +1,13 @@
 import { type PointerEvent, useCallback, useEffect, useRef, useState } from "react";
-import { canShowFloatingWebcamPreview } from "../floatingWebcamPreview";
+import {
+	canShowFloatingWebcamPreview,
+	DEFAULT_WEBCAM_PREVIEW_SIZE,
+	parseWebcamPreviewSize,
+	resizeWebcamPreview,
+	WEBCAM_PREVIEW_SIZE_STORAGE_KEY,
+	type WebcamPreviewResizeHandle,
+} from "../floatingWebcamPreview";
+import { shouldRestoreHudMousePassthroughAfterDrag } from "../hudMousePassthrough";
 
 const WEBCAM_PREVIEW_DRAG_THRESHOLD = 6;
 const DEFAULT_WEBCAM_PREVIEW_OFFSET = { x: 0, y: 0 };
@@ -41,6 +49,22 @@ export function useWebcamPreviewOverlay({
 	const [showFloatingWebcamPreview, setShowFloatingWebcamPreview] = useState(true);
 	const [webcamPreviewOffset, setWebcamPreviewOffset] = useState(DEFAULT_WEBCAM_PREVIEW_OFFSET);
 	const webcamPreviewOffsetRef = useRef(DEFAULT_WEBCAM_PREVIEW_OFFSET);
+	const [webcamPreviewSize, setWebcamPreviewSize] = useState(() => {
+		try {
+			return parseWebcamPreviewSize(localStorage.getItem(WEBCAM_PREVIEW_SIZE_STORAGE_KEY));
+		} catch {
+			return DEFAULT_WEBCAM_PREVIEW_SIZE;
+		}
+	});
+	const webcamPreviewResizeRef = useRef<{
+		pointerId: number;
+		handle: WebcamPreviewResizeHandle;
+		startX: number;
+		startY: number;
+		startRect: DOMRect;
+		startOffset: { x: number; y: number };
+		size: { width: number; height: number };
+	} | null>(null);
 	const webcamPreviewRef = useRef<HTMLVideoElement | null>(null);
 	const recordingWebcamPreviewRef = useRef<HTMLVideoElement | null>(null);
 	const recordingWebcamPreviewContainerRef = useRef<HTMLDivElement | null>(null);
@@ -190,6 +214,96 @@ export function useWebcamPreviewOverlay({
 		}
 	}, []);
 
+	const handleWebcamPreviewResizePointerDown = useCallback(
+		(event: PointerEvent<HTMLDivElement>) => {
+			const container = recordingWebcamPreviewContainerRef.current;
+			if (event.button !== 0 || !container) {
+				return;
+			}
+
+			// Keep the container's drag handler from treating this as a move.
+			event.preventDefault();
+			event.stopPropagation();
+			window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+			isWebcamPreviewDraggingRef.current = true;
+			webcamPreviewResizeRef.current = {
+				pointerId: event.pointerId,
+				handle: event.currentTarget.dataset.resizeHandle as WebcamPreviewResizeHandle,
+				startX: event.clientX,
+				startY: event.clientY,
+				startRect: container.getBoundingClientRect(),
+				startOffset: webcamPreviewOffsetRef.current,
+				size: webcamPreviewSize,
+			};
+			event.currentTarget.setPointerCapture(event.pointerId);
+		},
+		[webcamPreviewSize],
+	);
+
+	const handleWebcamPreviewResizePointerMove = useCallback(
+		(event: PointerEvent<HTMLDivElement>) => {
+			const resizeState = webcamPreviewResizeRef.current;
+			const container = recordingWebcamPreviewContainerRef.current;
+			if (!resizeState || resizeState.pointerId !== event.pointerId || !container) {
+				return;
+			}
+
+			const { width, height, shiftX, shiftY } = resizeWebcamPreview(
+				resizeState.handle,
+				resizeState.startRect,
+				event.clientX - resizeState.startX,
+				event.clientY - resizeState.startY,
+				{ width: window.innerWidth, height: window.innerHeight },
+			);
+			resizeState.size = { width, height };
+			webcamPreviewOffsetRef.current = {
+				x: resizeState.startOffset.x + shiftX,
+				y: resizeState.startOffset.y + shiftY,
+			};
+			container.style.width = `${width}px`;
+			container.style.height = `${height}px`;
+			container.style.transform = `translate(${webcamPreviewOffsetRef.current.x}px, ${webcamPreviewOffsetRef.current.y}px)`;
+		},
+		[],
+	);
+
+	const handleWebcamPreviewResizePointerUp = useCallback(
+		(event: PointerEvent<HTMLDivElement>) => {
+			const resizeState = webcamPreviewResizeRef.current;
+			if (!resizeState || resizeState.pointerId !== event.pointerId) {
+				return;
+			}
+
+			webcamPreviewResizeRef.current = null;
+			isWebcamPreviewDraggingRef.current = false;
+			setWebcamPreviewSize(resizeState.size);
+			setWebcamPreviewOffset({ ...webcamPreviewOffsetRef.current });
+			try {
+				localStorage.setItem(
+					WEBCAM_PREVIEW_SIZE_STORAGE_KEY,
+					JSON.stringify(resizeState.size),
+				);
+			} catch {
+				// Keep resizing and pointer cleanup working when preferences cannot be saved.
+			}
+			if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+				event.currentTarget.releasePointerCapture(event.pointerId);
+			}
+			const previewBounds =
+				recordingWebcamPreviewContainerRef.current?.getBoundingClientRect();
+			if (
+				shouldRestoreHudMousePassthroughAfterDrag(
+					previewBounds ?? null,
+					event.clientX,
+					event.clientY,
+				)
+			) {
+				window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
+			}
+		},
+		[],
+	);
+
 	const attachPreviewStreamToNode = useCallback((videoElement: HTMLVideoElement | null) => {
 		const previewStream = previewStreamRef.current;
 		if (!videoElement || !previewStream || videoElement.srcObject === previewStream) {
@@ -294,12 +408,16 @@ export function useWebcamPreviewOverlay({
 		showFloatingWebcamPreview,
 		setShowFloatingWebcamPreview,
 		webcamPreviewOffset,
+		webcamPreviewSize,
 		recordingWebcamPreviewContainerRef,
 		isWebcamPreviewDraggingRef,
 		webcamPreviewDragStartRef,
 		handleWebcamPreviewPointerDown,
 		handleWebcamPreviewPointerMove,
 		handleWebcamPreviewPointerUp,
+		handleWebcamPreviewResizePointerDown,
+		handleWebcamPreviewResizePointerMove,
+		handleWebcamPreviewResizePointerUp,
 		setWebcamPreviewNode,
 		setRecordingWebcamPreviewNode,
 		showRecordingWebcamPreview,

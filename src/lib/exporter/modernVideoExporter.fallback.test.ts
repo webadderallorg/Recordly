@@ -80,6 +80,52 @@ describe("ModernVideoExporter native fallback routing", () => {
 		vi.unstubAllGlobals();
 	});
 
+	it.each([
+		...["MacIntel", "Win32", "Linux x86_64"].flatMap((platform) => [
+			{ platform, configured: undefined, expected: "webgl" },
+			{ platform, configured: "webgpu" as const, expected: "webgpu" },
+			{ platform, configured: "webgl" as const, expected: "webgl" },
+		]),
+	])("uses $expected as the Lightning render backend on $platform when configured backend is $configured", async ({
+		platform,
+		configured,
+		expected,
+	}) => {
+		vi.stubGlobal("navigator", { platform });
+		const exporter = new ModernVideoExporter({
+			videoUrl: "file:///recording.mp4",
+			width: 1920,
+			height: 1080,
+			frameRate: 30,
+			bitrate: 8_000_000,
+			wallpaper: "#101010",
+			padding: 0,
+			borderRadius: 0,
+			backgroundBlur: 0,
+			shadowIntensity: 0,
+			showShadow: false,
+			cropRegion: { x: 0, y: 0, width: 1, height: 1 },
+			backendPreference: "webcodecs",
+			preferredRenderBackend: configured,
+		} as never) as unknown as {
+			export: () => Promise<{ success: boolean }>;
+			initializeEncoder: () => Promise<unknown>;
+		};
+		vi.spyOn(exporter, "initializeEncoder").mockResolvedValue({
+			codec: "avc1.640034",
+			hardwareAcceleration: "prefer-hardware",
+		});
+
+		const result = await exporter.export();
+
+		expect(result.success).toBe(true);
+		const { FrameRenderer } = await import("./modernFrameRenderer");
+		expect(FrameRenderer).toHaveBeenCalledOnce();
+		expect(FrameRenderer).toHaveBeenCalledWith(
+			expect.objectContaining({ preferredRenderBackend: expected }),
+		);
+	}, 15_000);
+
 	it("removes failed native writes without creating an unhandled rejection", async () => {
 		const exporter = new ModernVideoExporter({} as never) as unknown as {
 			trackNativeWritePromise: (write: Promise<void>) => void;
