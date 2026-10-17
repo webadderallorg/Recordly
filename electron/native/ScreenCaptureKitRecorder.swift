@@ -233,6 +233,10 @@ final class AudioSampleQueue {
 /// the optional tail frame: 100 polls x 10 ms = 1 s.
 let writerReadinessPollAttempts = 100
 let writerReadinessPollInterval: UInt64 = 10_000_000
+/// While the screen is still, the last frame is written again this often.
+let stillFrameInterval = CMTime(value: 1, timescale: 1)
+/// Longest a captured frame takes to reach the recorder.
+let stillFrameDeliveryAllowance = CMTime(value: 1, timescale: 10)
 
 final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private struct CaptureFinalizationResult {
@@ -254,6 +258,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var microphoneOnlyWriter: AVAssetWriter?
 	private var microphoneOnlyInput: AVAssetWriterInput?
 	private var stream: SCStream?
+	private var stillFrameTimer: DispatchSourceTimer?
 	private var firstSampleTime: CMTime = .zero
 	private var firstSystemAudioSampleTime: CMTime?
 	private var firstMicrophoneSampleTime: CMTime?
@@ -262,6 +267,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var lastSampleBuffer: CMSampleBuffer?
 	private var lastVideoPresentationTime: CMTime = .zero
 	private var lastVideoDuration: CMTime = .zero
+	private var stopTimelineTime: CMTime?
 	private var lastInlineAudioPresentationTime: CMTime = .invalid
 	private var lastInlineAudioDuration: CMTime = .zero
 	private var isRecording = false
@@ -582,7 +588,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		firstSampleTime = .zero
 		lastVideoPresentationTime = .zero
 		lastVideoDuration = .zero
+		stopTimelineTime = nil
 		startWindowValidationIfNeeded()
+		startStillFrameTimer()
 	}
 
 	func stopCapture() async throws -> String {
@@ -771,6 +779,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 				self.isFinalizing = true
 				self.interactiveStopParticipated = interactive
 				self.isRecording = false
+				self.stillFrameTimer?.cancel()
+				self.stillFrameTimer = nil
+				self.stopTimelineTime = self.timelineTimeOfStop()
 				self.windowValidationTask = nil
 				self.trackedWindowId = nil
 				self.finalizationWaiters.append(continuation)
@@ -812,6 +823,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 		stream = nil
 
+		// The recording runs until the stop even when the screen has been still since
+		// the last frame, so the tail frame holds that frame up to the stop.
+		let videoEndTime = lastVideoPresentationTime + (lastSampleBuffer.map { frameDuration(for: $0) } ?? .zero)
+		let endTime = stopTimelineTime.map { max($0, videoEndTime) } ?? resolvedCaptureEndTime(videoEndTime: videoEndTime)
+
 		// The tail frame only gives the last captured frame its full duration, so
 		// it must never put the file at risk.  Appending to an input whose encoder
 		// queue is still backed up — routine after a long high-resolution capture —
@@ -822,11 +838,12 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		if let originalBuffer = lastSampleBuffer,
 		   let videoInput = videoInput,
 		   await waitUntilReady(videoInput, of: assetWriter) {
-			let additionalTime = lastVideoPresentationTime + frameDuration(for: originalBuffer)
+			let tailDuration = frameDuration(for: originalBuffer)
+			let additionalTime = max(lastVideoPresentationTime + tailDuration, endTime - tailDuration)
 			if let adaptor = videoPixelBufferAdaptor, let pixelBuffer = lastCroppedPixelBuffer {
 				adaptor.append(pixelBuffer, withPresentationTime: additionalTime)
 			} else {
-				let timing = CMSampleTimingInfo(duration: originalBuffer.duration, presentationTimeStamp: additionalTime, decodeTimeStamp: originalBuffer.decodeTimeStamp)
+				let timing = CMSampleTimingInfo(duration: tailDuration, presentationTimeStamp: additionalTime, decodeTimeStamp: originalBuffer.decodeTimeStamp)
 				if let additionalSampleBuffer = try? CMSampleBuffer(copying: originalBuffer, withNewTiming: [timing]) {
 				videoInput.append(additionalSampleBuffer)
 				}
@@ -836,8 +853,6 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		// `endSession`, `markAsFinished` and `finishWriting` all raise when the
 		// writer is no longer in the `.writing` state (a mid-capture failure, for
 		// example a full disk), which would abort the helper the same way.
-		let videoEndTime = lastVideoPresentationTime + (lastSampleBuffer.map { frameDuration(for: $0) } ?? .zero)
-		let endTime = resolvedCaptureEndTime(videoEndTime: videoEndTime)
 		var audioFailure: Error?
 		for samples in audioSampleQueues.values {
 			if let error = await samples.finish(at: endTime) { audioFailure = audioFailure ?? error }
@@ -897,6 +912,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		lastSampleBuffer = nil
 		lastVideoPresentationTime = .zero
 		lastVideoDuration = .zero
+		stopTimelineTime = nil
 		lastInlineAudioPresentationTime = .invalid
 		lastInlineAudioDuration = .zero
 		frameCount = 0
@@ -989,6 +1005,60 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 
 		return max(.zero, sampleTime - firstSampleTime - accumulatedPausedDuration)
+	}
+
+	/// ScreenCaptureKit sends no frames while the screen does not change, so a still
+	/// stretch would end the video early and cut off the audio recorded over it.
+	private func startStillFrameTimer() {
+		stillFrameTimer?.cancel()
+		let timer = DispatchSource.makeTimerSource(queue: queue)
+		timer.schedule(deadline: .now() + stillFrameInterval.seconds / 2, repeating: stillFrameInterval.seconds / 2)
+		timer.setEventHandler { [weak self] in
+			self?.appendStillFrameIfIdle()
+		}
+		timer.resume()
+		stillFrameTimer = timer
+	}
+
+	/// Writes the last frame again once the screen has been still for a second. The
+	/// repeat is stamped slightly in the past, so a real frame still on its way stays
+	/// newer than it. Runs on the recorder queue.
+	private func appendStillFrameIfIdle() {
+		guard isRecording, frameCount > 0, !isPaused, !pendingResumeAdjustment,
+			  let lastSampleBuffer,
+			  let videoInput,
+			  assetWriter?.status == .writing,
+			  videoInput.isReadyForMoreMediaData,
+			  let now = timelineTime(atHostTime: CMClockGetTime(CMClockGetHostTimeClock())) else { return }
+		let repeatTime = now - stillFrameDeliveryAllowance
+		guard CMTimeCompare(repeatTime - lastVideoPresentationTime, stillFrameInterval) >= 0 else { return }
+		let appended: Bool
+		if let adaptor = videoPixelBufferAdaptor {
+			guard let pixelBuffer = lastCroppedPixelBuffer else { return }
+			appended = adaptor.append(pixelBuffer, withPresentationTime: repeatTime)
+		} else {
+			let timing = CMSampleTimingInfo(duration: lastSampleBuffer.duration, presentationTimeStamp: repeatTime, decodeTimeStamp: lastSampleBuffer.decodeTimeStamp)
+			guard let repeated = try? CMSampleBuffer(copying: lastSampleBuffer, withNewTiming: [timing]) else { return }
+			appended = videoInput.append(repeated)
+		}
+		if appended {
+			lastVideoPresentationTime = repeatTime
+		}
+	}
+
+	/// Where the recording ends: now, or where it was paused. Nil before the first
+	/// frame, and after a resume that no frame has anchored yet.
+	private func timelineTimeOfStop() -> CMTime? {
+		guard !pendingResumeAdjustment else { return nil }
+		let stopHostTime = isPaused ? pauseStartedHostTime : CMClockGetTime(CMClockGetHostTimeClock())
+		return stopHostTime.flatMap { timelineTime(atHostTime: $0) }
+	}
+
+	/// Maps a host clock time onto the recording timeline, as `adjustedPresentationTime`
+	/// does for sample timestamps.
+	private func timelineTime(atHostTime hostTime: CMTime) -> CMTime? {
+		guard firstSampleTime != .zero else { return nil }
+		return max(.zero, hostTime - firstSampleTime - accumulatedPausedDuration)
 	}
 
 	private func frameDuration(for sampleBuffer: CMSampleBuffer) -> CMTime {
