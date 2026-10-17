@@ -3,6 +3,7 @@ import ScreenCaptureKit
 import AVFoundation
 import CoreGraphics
 import CoreImage
+import VideoToolbox
 
 struct CaptureConfig: Codable {
 	let fps: Int?
@@ -33,6 +34,57 @@ let maxInlineAudioTailExtension = CMTime(seconds: 2.0, preferredTimescale: 600)
 /// the optional tail frame: 100 polls x 10 ms = 1 s.
 let writerReadinessPollAttempts = 100
 let writerReadinessPollInterval: UInt64 = 10_000_000
+
+/// True when a hardware encoder can open a session for `codec` at this exact size.
+/// Apple's H.264 hardware encoders stop at 4096 px wide, so a 4112 x 2658 Retina display
+/// has no H.264 hardware; HEVC hardware goes higher.
+func hardwareVideoEncoderAvailable(_ codec: CMVideoCodecType, width: Int, height: Int) -> Bool {
+	var session: VTCompressionSession?
+	let status = VTCompressionSessionCreate(
+		allocator: nil,
+		width: Int32(width),
+		height: Int32(height),
+		codecType: codec,
+		encoderSpecification: [
+			kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true,
+		] as CFDictionary,
+		imageBufferAttributes: nil,
+		compressedDataAllocator: nil,
+		outputCallback: nil,
+		refcon: nil,
+		compressionSessionOut: &session
+	)
+	if let session {
+		VTCompressionSessionInvalidate(session)
+	}
+	return status == noErr
+}
+
+/// H.264 when the hardware encoder takes this size. Otherwise HEVC when its hardware
+/// encoder does, because software H.264 at full Retina size uses several CPU cores
+/// and drops frames. H.264 in software stays the last resort.
+func preferredVideoCodec(width: Int, height: Int) -> AVVideoCodecType {
+	if hardwareVideoEncoderAvailable(kCMVideoCodecType_H264, width: width, height: height) {
+		return .h264
+	}
+	if hardwareVideoEncoderAvailable(kCMVideoCodecType_HEVC, width: width, height: height) {
+		return .hevc
+	}
+	return .h264
+}
+
+/// Switches H.264 settings from AVOutputSettingsAssistant to HEVC. It keeps the bit rate,
+/// key frame interval and frame rate, so files stay about the same size: the HEVC preset
+/// asks for about 3.4 times the H.264 bit rate.
+func hevcVideoSettings(from h264Settings: [String: Any]) -> [String: Any] {
+	var settings = h264Settings
+	settings[AVVideoCodecKey] = AVVideoCodecType.hevc
+	var compression = settings[AVVideoCompressionPropertiesKey] as? [String: Any] ?? [:]
+	compression.removeValue(forKey: AVVideoH264EntropyModeKey)
+	compression[AVVideoProfileLevelKey] = kVTProfileLevel_HEVC_Main_AutoLevel as String
+	settings[AVVideoCompressionPropertiesKey] = compression
+	return settings
+}
 
 final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private struct CaptureFinalizationResult {
@@ -262,16 +314,33 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
 		]
 
-		let videoInput = AVAssetWriterInput(
-			mediaType: .video,
-			outputSettings: outputSettings,
-			sourceFormatHint: sourceVideoFormat
-		)
-		videoInput.expectsMediaDataInRealTime = true
+		func makeVideoInput(_ settings: [String: Any]) -> AVAssetWriterInput {
+			let input = AVAssetWriterInput(
+				mediaType: .video,
+				outputSettings: settings,
+				sourceFormatHint: sourceVideoFormat
+			)
+			input.expectsMediaDataInRealTime = true
+			return input
+		}
 
-		guard let assetWriter = assetWriter, assetWriter.canAdd(videoInput) else {
+		guard let assetWriter = assetWriter else {
 			throw NSError(domain: "RecordlyCapture", code: 7, userInfo: [NSLocalizedDescriptionKey: "Unable to add video writer input"])
 		}
+		var videoCodec = preferredVideoCodec(width: outputWidth, height: outputHeight)
+		var videoInput = makeVideoInput(
+			videoCodec == .hevc ? hevcVideoSettings(from: outputSettings) : outputSettings
+		)
+		if videoCodec == .hevc && !assetWriter.canAdd(videoInput) {
+			// The writer refused HEVC: record H.264 as before rather than fail the recording.
+			videoCodec = .h264
+			videoInput = makeVideoInput(outputSettings)
+		}
+		guard assetWriter.canAdd(videoInput) else {
+			throw NSError(domain: "RecordlyCapture", code: 7, userInfo: [NSLocalizedDescriptionKey: "Unable to add video writer input"])
+		}
+		fputs("VIDEO_CODEC \(videoCodec.rawValue) \(outputWidth)x\(outputHeight)\n", stderr)
+		fflush(stderr)
 
 		assetWriter.add(videoInput)
 		self.videoInput = videoInput
