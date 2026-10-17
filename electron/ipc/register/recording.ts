@@ -76,7 +76,13 @@ import {
 	waitForNativeCaptureStart,
 	waitForNativeCaptureStop,
 } from "../recording/mac";
+import {
+	finalizeKeepingPath,
+	RecordingFileCloseError,
+	RecordingFileStreams,
+} from "../recording/recordingFileStreams";
 import { resolveRecordedVideoStoragePath } from "../recording/storagePath";
+import { writeWebmDuration } from "../recording/webmDuration";
 import {
 	attachWindowsCaptureLifecycle,
 	isNativeWindowsCaptureAvailable,
@@ -161,6 +167,33 @@ import { getSourceArea } from "../sourceArea";
 import { bringSelectedWindowForward } from "./sources";
 
 const execFileAsync = promisify(execFile);
+
+const recordingFileStreams = new RecordingFileStreams();
+/**
+ * Post-processing for a streamed recording. It must never cost the recording: on any error,
+ * including a missing ffmpeg, the file is kept as written.
+ */
+async function finishStreamedRecording(filePath: string): Promise<string> {
+	if (!filePath.toLowerCase().endsWith(".webm")) {
+		return filePath;
+	}
+	try {
+		await writeWebmDuration(getFfmpegBinaryPath(), filePath);
+	} catch (error) {
+		console.warn("Failed to write WebM duration; keeping the recording as written:", error);
+	}
+	return filePath;
+}
+
+function closeRecordingFileStreamsWhenOwnerGoes(owner: Electron.WebContents) {
+	recordingFileStreams.closeWhenOwnerGoes(owner, (closed) => {
+		for (const stream of closed) {
+			console.warn(
+				`Renderer went away during recording; kept ${stream.bytesWritten} bytes at ${stream.path}`,
+			);
+		}
+	});
+}
 
 async function writeWindowsRecordingDiagnostics(
 	videoPath: string | null | undefined,
@@ -1828,6 +1861,85 @@ export function registerRecordingHandlers(
 				message: "Failed to store video",
 				error: String(error),
 			};
+		}
+	});
+
+	ipcMain.handle("open-recording-file-stream", async (event, fileName: unknown) => {
+		try {
+			const recordingsDir = await getRecordingsDir();
+			const filePath = resolveRecordedVideoStoragePath(recordingsDir, fileName);
+			closeRecordingFileStreamsWhenOwnerGoes(event.sender);
+			const streamId = await recordingFileStreams.open(filePath, event.sender.id);
+			return { success: true, streamId };
+		} catch (error) {
+			console.error("Failed to open recording file stream:", error);
+			return { success: false, error: String(error) };
+		}
+	});
+
+	ipcMain.handle(
+		"append-recording-file-stream",
+		async (event, streamId: unknown, chunk: ArrayBuffer) => {
+			try {
+				if (typeof streamId !== "string" || !(chunk instanceof ArrayBuffer)) {
+					throw new Error("Invalid recording file stream chunk");
+				}
+				await recordingFileStreams.append(streamId, event.sender.id, new Uint8Array(chunk));
+				return { success: true };
+			} catch (error) {
+				console.error("Failed to append to recording file stream:", error);
+				return { success: false, error: String(error) };
+			}
+		},
+	);
+
+	ipcMain.handle(
+		"close-recording-file-stream",
+		async (event, streamId: unknown, fileName: unknown) => {
+			try {
+				if (typeof streamId !== "string") {
+					throw new Error("Invalid recording file stream");
+				}
+				const recordingsDir = await getRecordingsDir();
+				const targetPath = resolveRecordedVideoStoragePath(recordingsDir, fileName);
+				const closed = await recordingFileStreams.close(
+					streamId,
+					event.sender.id,
+					targetPath,
+				);
+				return await finalizeKeepingPath(
+					await finishStreamedRecording(closed.path),
+					finalizeStoredVideo,
+				);
+			} catch (error) {
+				console.error("Failed to close recording file stream:", error);
+				if (error instanceof RecordingFileCloseError) {
+					return {
+						success: false,
+						path: error.partialPath,
+						message: `Part of the recording could not be saved. The part that was written is at ${error.partialPath}.`,
+						error: String(error),
+					};
+				}
+				return {
+					success: false,
+					message: "Failed to store video",
+					error: String(error),
+				};
+			}
+		},
+	);
+
+	ipcMain.handle("discard-recording-file-stream", async (event, streamId: unknown) => {
+		try {
+			if (typeof streamId !== "string") {
+				throw new Error("Invalid recording file stream");
+			}
+			await recordingFileStreams.discard(streamId, event.sender.id);
+			return { success: true };
+		} catch (error) {
+			console.error("Failed to discard recording file stream:", error);
+			return { success: false, error: String(error) };
 		}
 	});
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
 import { hasRecordlySession } from "@/lib/auth/recordlyAuth";
+import { RecordingFileWriter } from "./recordingFileWriter";
 import {
 	getVideoExtensionForMimeType,
 	isWebmMimeType,
@@ -393,8 +394,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const microphoneStream = useRef<MediaStream | null>(null);
 	const webcamStream = useRef<MediaStream | null>(null);
 	const mixingContext = useRef<AudioContext | null>(null);
-	const chunks = useRef<Blob[]>([]);
-	const webcamChunks = useRef<Blob[]>([]);
+	// Screen and webcam chunks go straight to files in the main process (RecordingFileWriter).
+	// Cancel marks the current writer; each recorder's onstop checks its own writer.
+	const screenWriter = useRef<RecordingFileWriter | null>(null);
+	const webcamWriter = useRef<RecordingFileWriter | null>(null);
 	const startTime = useRef<number>(0);
 	const webcamStartTime = useRef<number | null>(null);
 	const webcamTimeOffsetMs = useRef(0);
@@ -1015,7 +1018,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			});
 
 			const mimeType = selectWebcamMimeType();
-			webcamChunks.current = [];
 			resolvedWebcamPath.current = null;
 			webcamStopPromise.current = new Promise((resolve) => {
 				webcamStopResolver.current = resolve;
@@ -1028,9 +1030,15 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			});
 
 			webcamRecorder.current = recorder;
+			const getWebcamFileName = () => {
+				const sessionTimestamp = recordingSessionTimestamp.current ?? Date.now();
+				return `${RECORDING_FILE_PREFIX}${sessionTimestamp}${WEBCAM_SUFFIX}${getVideoExtensionForMimeType(recorder.mimeType || mimeType)}`;
+			};
+			const writer = new RecordingFileWriter(window.electronAPI, getWebcamFileName, "webcam");
+			webcamWriter.current = writer;
 			recorder.ondataavailable = (event) => {
 				if (event.data && event.data.size > 0) {
-					webcamChunks.current.push(event.data);
+					writer.write(event.data);
 				}
 			};
 			recorder.onerror = () => {
@@ -1038,12 +1046,37 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				webcamStopResolver.current = null;
 			};
 			recorder.onstop = async () => {
-				const sessionTimestamp = recordingSessionTimestamp.current ?? Date.now();
 				const webcamMimeType = recorder.mimeType || mimeType;
-				const webcamFileName = `${RECORDING_FILE_PREFIX}${sessionTimestamp}${WEBCAM_SUFFIX}${getVideoExtensionForMimeType(webcamMimeType)}`;
+				const webcamFileName = getWebcamFileName();
 
 				try {
-					if (webcamChunks.current.length === 0) {
+					// The final dataavailable fires before stop, so this includes the last chunk.
+					if (writer.isCancelled) {
+						await writer.discard();
+						webcamStopResolver.current?.(null);
+						return;
+					}
+
+					const finished = await writer.finish(webcamFileName);
+					if (finished.kind === "file") {
+						if (!finished.result.success) {
+							console.error(
+								"Error saving webcam recording:",
+								finished.result.message,
+							);
+							// The screen recording can still succeed, so only tell the user here.
+							toast.error(
+								finished.result.message ??
+									"The webcam recording could not be saved.",
+								{ duration: 10000 },
+							);
+						}
+						webcamStopResolver.current?.(
+							finished.result.success ? (finished.result.path ?? null) : null,
+						);
+						return;
+					}
+					if (finished.kind === "empty") {
 						webcamStopResolver.current?.(null);
 						return;
 					}
@@ -1053,10 +1086,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						getRecordingDurationMs(Date.now()) - webcamTimeOffsetMs.current,
 					);
 					const webcamBlob = new Blob(
-						webcamChunks.current,
+						finished.chunks,
 						webcamMimeType ? { type: webcamMimeType } : undefined,
 					);
-					webcamChunks.current = [];
 					const finalBlob = isWebmMimeType(webcamMimeType)
 						? await fixWebmDuration(webcamBlob, duration)
 						: webcamBlob;
@@ -2119,7 +2151,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				)} Mbps`,
 			);
 
-			chunks.current = [];
 			const hasAudio = stream.current.getAudioTracks().length > 0;
 			const audioBitsPerSecond = hasAudio
 				? systemAudioIncluded
@@ -2136,36 +2167,51 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			);
 
 			mediaRecorder.current = recorder;
+			const getScreenFileName = () => {
+				const timestamp = recordingSessionTimestamp.current ?? Date.now();
+				return `${RECORDING_FILE_PREFIX}${timestamp}${getVideoExtensionForMimeType(recorder.mimeType || mimeType)}`;
+			};
+			const writer = new RecordingFileWriter(window.electronAPI, getScreenFileName, "screen");
+			screenWriter.current = writer;
 			recorder.ondataavailable = (event) => {
-				if (event.data && event.data.size > 0) chunks.current.push(event.data);
+				if (event.data && event.data.size > 0) writer.write(event.data);
 			};
 			recorder.onstop = async () => {
 				cleanupCapturedMedia();
-				if (chunks.current.length === 0) {
+				if (writer.isCancelled) {
+					await writer.discard();
 					setFinalizing(false);
 					return;
 				}
 
 				const duration = getRecordingDurationMs(Date.now());
-				const recordedChunks = chunks.current;
 				const recordingBlobType = recorder.mimeType || mimeType;
-				const buggyBlob = new Blob(
-					recordedChunks,
-					recordingBlobType ? { type: recordingBlobType } : undefined,
-				);
-				chunks.current = [];
-				const timestamp = recordingSessionTimestamp.current ?? Date.now();
-				const videoFileName = `${RECORDING_FILE_PREFIX}${timestamp}${getVideoExtensionForMimeType(recordingBlobType)}`;
+				const videoFileName = getScreenFileName();
 
 				try {
-					const videoBlob = isWebmMimeType(recordingBlobType)
-						? await fixWebmDuration(buggyBlob, duration)
-						: buggyBlob;
-					const arrayBuffer = await videoBlob.arrayBuffer();
-					const videoResult = await window.electronAPI.storeRecordedVideo(
-						arrayBuffer,
-						videoFileName,
-					);
+					// The final dataavailable fires before stop, so this includes the last chunk.
+					const finished = await writer.finish(videoFileName);
+					if (finished.kind === "empty") {
+						setFinalizing(false);
+						return;
+					}
+					let videoResult: { success: boolean; path?: string; message?: string };
+					if (finished.kind === "file") {
+						// The main process already wrote the WebM duration (writeWebmDuration).
+						videoResult = finished.result;
+					} else {
+						const buggyBlob = new Blob(
+							finished.chunks,
+							recordingBlobType ? { type: recordingBlobType } : undefined,
+						);
+						const videoBlob = isWebmMimeType(recordingBlobType)
+							? await fixWebmDuration(buggyBlob, duration)
+							: buggyBlob;
+						videoResult = await window.electronAPI.storeRecordedVideo(
+							await videoBlob.arrayBuffer(),
+							videoFileName,
+						);
+					}
 					if (!videoResult.success) {
 						console.error("Failed to store video:", videoResult.message);
 						await notifyRecordingFinalizationFailure(
@@ -2400,7 +2446,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		markRecordingResumed(Date.now());
 
 		// Discard webcam recording regardless of recording mode
-		webcamChunks.current = [];
+		webcamWriter.current?.cancel();
 		if (webcamRecorder.current && webcamRecorder.current.state !== "inactive") {
 			webcamRecorder.current.stop();
 		}
@@ -2422,7 +2468,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 
 		if (mediaRecorder.current) {
-			chunks.current = [];
+			screenWriter.current?.cancel();
 			cleanupCapturedMedia();
 			if (mediaRecorder.current.state !== "inactive") {
 				mediaRecorder.current.stop();
