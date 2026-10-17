@@ -10,6 +10,8 @@ import {
 	Play,
 	Plus,
 	Scissors,
+	TrimEnd,
+	TrimStart,
 	SkipBack,
 	SkipForward,
 	SpeakerHigh,
@@ -26,6 +28,8 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { useI18n } from "@/contexts/I18nContext";
+import { useShortcuts } from "@/contexts/ShortcutsContext";
+import { formatBinding } from "@/lib/shortcuts";
 import { ASPECT_RATIOS, type AspectRatio, getAspectRatioLabel } from "@/utils/aspectRatioUtils";
 import type { useVideoEditorAudio } from "../audio/useVideoEditorAudio";
 import type { CaptionEditTarget } from "../captionEditing";
@@ -116,6 +120,7 @@ export function EditorPreviewPanel(props: Props) {
 		setIsPlaying,
 		setError,
 	} = props;
+	const { shortcuts, isMac } = useShortcuts();
 
 	return (
 		<div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -297,6 +302,28 @@ export function EditorPreviewPanel(props: Props) {
 						title={t("editor.toolbar.splitClip")}
 					>
 						<Scissors className="h-4 w-4" />
+					</Button>
+					<Button
+						onClick={() => timelineRef.current?.trimStart()}
+						variant="ghost"
+						size="icon"
+						className="h-9 w-9"
+						title={t("editor.toolbar.trimStart", undefined, {
+							shortcut: formatBinding(shortcuts.trimStart, isMac),
+						})}
+					>
+						<TrimStart className="h-4 w-4" />
+					</Button>
+					<Button
+						onClick={() => timelineRef.current?.trimEnd()}
+						variant="ghost"
+						size="icon"
+						className="h-9 w-9"
+						title={t("editor.toolbar.trimEnd", undefined, {
+							shortcut: formatBinding(shortcuts.trimEnd, isMac),
+						})}
+					>
+						<TrimEnd className="h-4 w-4" />
 					</Button>
 				</div>
 

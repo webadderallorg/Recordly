@@ -257,6 +257,31 @@ export const PlayIcon = solar(PlayLinear, PlayBold);
 export const Plus = solar(AddLinear, AddBold);
 export const Question = solar(QuestionCircleLinear, QuestionCircleBold);
 export const Scissors = solar(ScissorsLinear, ScissorsBold);
+
+// Trim to playhead: the cut line, the part of the clip that stays, and an arrow
+// pointing into the cut from the side that is removed. Drawn in Solar's line style.
+const trimIcon =
+	(mirrored: boolean) =>
+	({ weight: _weight, mirrored: _mirrored, size = 24, ...props }: IconProps) => (
+		<svg
+			width={size}
+			height={size}
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth={1.5}
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			{...props}
+			style={{ ...props.style, ...(mirrored ? { transform: "scaleX(-1)" } : {}) }}
+		>
+			<path d="M9 4V20" />
+			<rect x="12" y="7" width="9" height="10" rx="2" />
+			<path d="M3 12H7M5.5 10L7.5 12L5.5 14" />
+		</svg>
+	);
+export const TrimStart = trimIcon(false);
+export const TrimEnd = trimIcon(true);
 export const ShareNetwork = solar(ShareLinear, ShareBold);
 export const SignOut = solar(LogoutLinear, LogoutBold);
 export const SkipBack = solar(SkipPreviousLinear, SkipPreviousBold);

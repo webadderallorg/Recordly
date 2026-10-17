@@ -135,3 +135,23 @@ it("keeps creation and select-all shortcuts scoped to the timeline", () => {
 	expect(params.handleAddZoom).not.toHaveBeenCalled();
 	expect(params.activateSelectAllZooms).not.toHaveBeenCalled();
 });
+
+describe("trim to playhead", () => {
+	it("trims with Q and W without timeline focus", () => {
+		const handleTrimStart = vi.fn();
+		const handleTrimEnd = vi.fn();
+		const { press } = setup({ handleTrimStart, handleTrimEnd });
+		expect(press({ key: "q" }).preventDefault).toHaveBeenCalled();
+		press({ key: "w" });
+		expect(handleTrimStart).toHaveBeenCalledTimes(1);
+		expect(handleTrimEnd).toHaveBeenCalledTimes(1);
+	});
+
+	it("leaves Q and W alone while typing and with Cmd held", () => {
+		const handleTrimStart = vi.fn();
+		const { press } = setup({ handleTrimStart });
+		press({ key: "q", target: new Input() });
+		press({ key: "q", metaKey: true });
+		expect(handleTrimStart).not.toHaveBeenCalled();
+	});
+});

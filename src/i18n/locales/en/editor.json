@@ -189,7 +189,9 @@
 	},
 	"toolbar": {
 		"addLayer": "Add Layer",
-		"splitClip": "Split Clip (C)"
+		"splitClip": "Split Clip (C)",
+		"trimStart": "Trim Start to Playhead ({{shortcut}})",
+		"trimEnd": "Trim End to Playhead ({{shortcut}})"
 	},
 	"timeline": {
 		"expand": "Expand Timeline",

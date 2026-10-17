@@ -1,6 +1,8 @@
 export const SHORTCUT_ACTIONS = [
 	"addZoom",
 	"splitClip",
+	"trimStart",
+	"trimEnd",
 	"addAnnotation",
 	"addKeyframe",
 	"deleteSelected",
@@ -75,6 +77,8 @@ export function findConflict(
 export const DEFAULT_SHORTCUTS: ShortcutsConfig = {
 	addZoom: { key: "z" },
 	splitClip: { key: "c" },
+	trimStart: { key: "q" },
+	trimEnd: { key: "w" },
 	addAnnotation: { key: "a" },
 	addKeyframe: { key: "f" },
 	deleteSelected: { key: "d", ctrl: true },
@@ -84,6 +88,8 @@ export const DEFAULT_SHORTCUTS: ShortcutsConfig = {
 export const SHORTCUT_LABELS: Record<ShortcutAction, string> = {
 	addZoom: "Add Zoom",
 	splitClip: "Split Clip",
+	trimStart: "Trim Start to Playhead",
+	trimEnd: "Trim End to Playhead",
 	addAnnotation: "Add Annotation",
 	addKeyframe: "Add Keyframe",
 	deleteSelected: "Delete Selected",

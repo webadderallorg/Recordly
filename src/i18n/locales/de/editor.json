@@ -188,7 +188,9 @@
 	},
 	"toolbar": {
 		"addLayer": "Ebene hinzufügen",
-		"splitClip": "Clip teilen (C)"
+		"splitClip": "Clip teilen (C)",
+		"trimStart": "Anfang bis zur Abspielposition kürzen ({{shortcut}})",
+		"trimEnd": "Ende ab der Abspielposition kürzen ({{shortcut}})"
 	},
 	"timeline": {
 		"expand": "Zeitleiste erweitern",

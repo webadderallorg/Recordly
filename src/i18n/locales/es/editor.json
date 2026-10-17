@@ -189,7 +189,9 @@
 	},
 	"toolbar": {
 		"addLayer": "Agregar capa",
-		"splitClip": "Dividir clip (C)"
+		"splitClip": "Dividir clip (C)",
+		"trimStart": "Recortar el inicio hasta el cabezal ({{shortcut}})",
+		"trimEnd": "Recortar el final desde el cabezal ({{shortcut}})"
 	},
 	"timeline": {
 		"expand": "Expandir línea de tiempo",
