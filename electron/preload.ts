@@ -568,6 +568,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 			capturesMicrophone?: boolean;
 			microphoneDeviceId?: string;
 			microphoneLabel?: string;
+			captureWebcam?: boolean;
+			webcamDeviceId?: string;
+			webcamLabel?: string;
 		},
 	) => {
 		return ipcRenderer.invoke("start-native-screen-recording", source, options);

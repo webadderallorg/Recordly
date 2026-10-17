@@ -43,6 +43,10 @@ export type NativeMacRecordingOptions = {
 	capturesMicrophone?: boolean;
 	microphoneDeviceId?: string;
 	microphoneLabel?: string;
+	/** Record the webcam in the capture helper instead of the renderer (macOS). */
+	captureWebcam?: boolean;
+	webcamDeviceId?: string;
+	webcamLabel?: string;
 };
 
 export type WindowBounds = {

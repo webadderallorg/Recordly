@@ -31,6 +31,7 @@ import {
 } from "./diagnostics";
 import { emitRecordingInterrupted } from "./events";
 import { getFinalMacCompanionAudioPath } from "./macCompanionAudio";
+import { withNativeWebcam } from "./nativeWebcam";
 
 export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStreams) {
 	return new Promise<void>((resolve, reject) => {
@@ -331,7 +332,10 @@ export async function recoverNativeMacCaptureOutput() {
 			}
 		}
 
-		return await finalizeStoredVideo(candidatePath);
+		return withNativeWebcam(
+			await finalizeStoredVideo(candidatePath),
+			nativeCaptureOutputBuffer,
+		);
 	} catch (error) {
 		recordNativeCaptureDiagnostics({
 			backend: "mac-screencapturekit",

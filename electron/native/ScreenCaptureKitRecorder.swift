@@ -25,6 +25,10 @@ struct CaptureConfig: Codable {
 	let microphoneLabel: String?
 	let microphoneOutputPath: String?
 	let excludedProcessIds: [Int32]?
+	/// When set, the camera is recorded natively to this file (see WebcamRecorder).
+	let webcamOutputPath: String?
+	let webcamDeviceId: String?
+	let webcamLabel: String?
 }
 
 let targetCaptureFPS = 60
@@ -33,6 +37,248 @@ let maxInlineAudioTailExtension = CMTime(seconds: 2.0, preferredTimescale: 600)
 /// the optional tail frame: 100 polls x 10 ms = 1 s.
 let writerReadinessPollAttempts = 100
 let writerReadinessPollInterval: UInt64 = 10_000_000
+
+/// Records the camera next to the screen capture, so the webcam doesn't go through
+/// Chromium's MediaRecorder (whose MP4 muxer stops the renderer once a file passes 4 GiB).
+///
+/// Frames arrive on the screen recorder's serial queue. `fileTime` maps a host-clock time
+/// onto the screen file's timeline and returns nil while paused or before the first screen
+/// frame, so pause and resume match the screen exactly. The file starts at its first frame;
+/// `finish()` returns where that frame sits on the screen timeline (the editor's offset).
+final class WebcamRecorder: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
+	static let hevcBitRate = 3_000_000
+	static let h264BitRate = 4_000_000
+	static let frameRate = 30
+
+	let outputURL: URL
+	private let device: AVCaptureDevice
+	private let queue: DispatchQueue
+	private let fileTime: (CMTime) -> CMTime?
+	private let session = AVCaptureSession()
+	private let videoOutput = AVCaptureVideoDataOutput()
+	// Touched only on `queue`.
+	private var writer: AVAssetWriter?
+	private var input: AVAssetWriterInput?
+	private var firstFileTime: CMTime?
+	private var lastSampleBuffer: CMSampleBuffer?
+	private var lastFrameTime: CMTime = .zero
+	private var lastFrameDuration = CMTime(value: 1, timescale: CMTimeScale(WebcamRecorder.frameRate))
+	private var finishing = false
+	private(set) var codec: AVVideoCodecType = .hevc
+	private(set) var frameCount = 0
+
+	init(device: AVCaptureDevice, outputURL: URL, queue: DispatchQueue, fileTime: @escaping (CMTime) -> CMTime?) {
+		self.device = device
+		self.outputURL = outputURL
+		self.queue = queue
+		self.fileTime = fileTime
+	}
+
+	/// The camera chosen in the app (matched by label, then by unique ID), or the default
+	/// camera when none was chosen. Nil when the chosen camera isn't connected.
+	/// True when Chromium's `label` names the camera called `name` on macOS. Chromium adds
+	/// " (<vendor>:<product>)" to the name whenever the camera has a model ID
+	/// (VideoCaptureDeviceDescriptor::GetNameAndModel), e.g. "FaceTime HD Camera (05ac:8514)".
+	static func labelMatches(name: String, label: String) -> Bool {
+		if label == name { return true }
+		guard label.hasPrefix(name + " (") else { return false }
+		let suffix = label.dropFirst(name.count)
+		return suffix.range(of: #"^ \([0-9A-Fa-f]{4}:[0-9A-Fa-f]{4}\)$"#, options: .regularExpression) != nil
+	}
+
+	/// The index of the one camera whose name matches `label`. Two cameras with the same name
+	/// (e.g. two of one model, which also share the model ID) are ambiguous: nil, so the app
+	/// records the webcam the old way, by Chromium's exact device ID, not the wrong camera.
+	static func matchingCamera(names: [String], label: String) -> Int? {
+		let matches = names.indices.filter { labelMatches(name: names[$0], label: label) }
+		return matches.count == 1 ? matches[0] : nil
+	}
+
+	static func resolveDevice(label: String?, uniqueID: String?) -> AVCaptureDevice? {
+		let devices = AVCaptureDevice.DiscoverySession(
+			deviceTypes: [.builtInWideAngleCamera, .external, .continuityCamera, .deskViewCamera],
+			mediaType: .video,
+			position: .unspecified
+		).devices
+		let trimmedLabel = label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+		let trimmedID = uniqueID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+		if !trimmedLabel.isEmpty {
+			let names = devices.map(\.localizedName)
+			if let index = matchingCamera(names: names, label: trimmedLabel) {
+				return devices[index]
+			}
+			// More than one camera matches: don't guess.
+			if names.contains(where: { labelMatches(name: $0, label: trimmedLabel) }) {
+				return nil
+			}
+		}
+		if !trimmedID.isEmpty, let match = devices.first(where: { $0.uniqueID == trimmedID }) {
+			return match
+		}
+		if trimmedLabel.isEmpty && trimmedID.isEmpty {
+			return AVCaptureDevice.default(for: .video)
+		}
+		return nil
+	}
+
+	static func cameraAccessGranted() async -> Bool {
+		switch AVCaptureDevice.authorizationStatus(for: .video) {
+		case .authorized:
+			return true
+		case .notDetermined:
+			return await AVCaptureDevice.requestAccess(for: .video)
+		default:
+			return false
+		}
+	}
+
+	/// Writer settings for a webcam frame size: hardware HEVC, or H.264 when the writer
+	/// refuses HEVC. Key frame every 2 s.
+	static func videoSettings(codec: AVVideoCodecType, width: Int, height: Int) -> [String: Any] {
+		[
+			AVVideoCodecKey: codec,
+			AVVideoWidthKey: width,
+			AVVideoHeightKey: height,
+			AVVideoCompressionPropertiesKey: [
+				AVVideoAverageBitRateKey: codec == .hevc ? hevcBitRate : h264BitRate,
+				AVVideoMaxKeyFrameIntervalKey: frameRate * 2,
+				AVVideoExpectedSourceFrameRateKey: frameRate,
+			],
+			AVVideoColorPropertiesKey: [
+				AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+				AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+				AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
+			],
+		]
+	}
+
+	func start() throws {
+		let deviceInput = try AVCaptureDeviceInput(device: device)
+		session.beginConfiguration()
+		if session.canSetSessionPreset(.hd1280x720) {
+			session.sessionPreset = .hd1280x720
+		}
+		guard session.canAddInput(deviceInput) else {
+			session.commitConfiguration()
+			throw NSError(domain: "RecordlyWebcam", code: 1, userInfo: [NSLocalizedDescriptionKey: "Camera input can't be added"])
+		}
+		session.addInput(deviceInput)
+		videoOutput.videoSettings = [
+			kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+		]
+		videoOutput.alwaysDiscardsLateVideoFrames = true
+		videoOutput.setSampleBufferDelegate(self, queue: queue)
+		guard session.canAddOutput(videoOutput) else {
+			session.commitConfiguration()
+			throw NSError(domain: "RecordlyWebcam", code: 2, userInfo: [NSLocalizedDescriptionKey: "Camera output can't be added"])
+		}
+		session.addOutput(videoOutput)
+		session.commitConfiguration()
+		session.startRunning()
+	}
+
+	/// The writer is made from the first usable frame, so it gets the frame size the camera
+	/// actually delivers.
+	private func setUpWriter(for sampleBuffer: CMSampleBuffer) -> Bool {
+		guard let format = sampleBuffer.formatDescription else { return false }
+		let dimensions = CMVideoFormatDescriptionGetDimensions(format)
+		guard let writer = try? AVAssetWriter(url: outputURL, fileType: .mp4) else { return false }
+		var input = AVAssetWriterInput(
+			mediaType: .video,
+			outputSettings: Self.videoSettings(codec: .hevc, width: Int(dimensions.width), height: Int(dimensions.height))
+		)
+		codec = .hevc
+		if !writer.canAdd(input) {
+			codec = .h264
+			input = AVAssetWriterInput(
+				mediaType: .video,
+				outputSettings: Self.videoSettings(codec: .h264, width: Int(dimensions.width), height: Int(dimensions.height))
+			)
+		}
+		guard writer.canAdd(input) else { return false }
+		input.expectsMediaDataInRealTime = true
+		writer.add(input)
+		guard writer.startWriting() else { return false }
+		writer.startSession(atSourceTime: .zero)
+		self.writer = writer
+		self.input = input
+		return true
+	}
+
+	func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+		guard !finishing, sampleBuffer.isValid else { return }
+		let hostTime = CMSyncConvertTime(
+			sampleBuffer.presentationTimeStamp,
+			from: session.synchronizationClock ?? CMClockGetHostTimeClock(),
+			to: CMClockGetHostTimeClock()
+		)
+		guard let time = fileTime(hostTime) else { return }
+		if writer == nil && !setUpWriter(for: sampleBuffer) { return }
+		guard let writer, let input, writer.status == .writing, input.isReadyForMoreMediaData else { return }
+
+		let frameTime = time - (firstFileTime ?? time)
+		if frameCount > 0 && CMTimeCompare(frameTime, lastFrameTime) <= 0 { return }
+		let timing = CMSampleTimingInfo(duration: sampleBuffer.duration, presentationTimeStamp: frameTime, decodeTimeStamp: .invalid)
+		guard let retimed = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]),
+			  input.append(retimed) else { return }
+		if firstFileTime == nil {
+			firstFileTime = time
+		}
+		lastSampleBuffer = sampleBuffer
+		lastFrameTime = frameTime
+		if sampleBuffer.duration.isValid && sampleBuffer.duration > .zero {
+			lastFrameDuration = sampleBuffer.duration
+		}
+		frameCount += 1
+	}
+
+	/// Stops the camera and finishes the file, holding the last frame until `screenEndTime`
+	/// (screen timeline) so both files end together. Returns where the file's first frame
+	/// sits on the screen timeline, or nil when nothing usable was written (file removed).
+	func finish(screenEndTime: CMTime) async -> CMTime? {
+		await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+			queue.async {
+				// Runs after every frame already queued; later frames are ignored.
+				self.finishing = true
+				continuation.resume()
+			}
+		}
+		session.stopRunning()
+		guard let writer, let input, writer.status == .writing, frameCount > 0, let firstFileTime else {
+			writer?.cancelWriting()
+			try? FileManager.default.removeItem(at: outputURL)
+			return nil
+		}
+		// Hold the last frame to the screen's end with a real sample: an edit list alone is
+		// ignored by ffmpeg-based readers, which the editor and exporters use.
+		var endTime = lastFrameTime + lastFrameDuration
+		let targetEnd = screenEndTime - firstFileTime
+		let tailTime = targetEnd - lastFrameDuration
+		if CMTimeCompare(tailTime, lastFrameTime) > 0, let lastSampleBuffer, await waitUntilReady(input) {
+			let timing = CMSampleTimingInfo(duration: lastFrameDuration, presentationTimeStamp: tailTime, decodeTimeStamp: .invalid)
+			if let tail = try? CMSampleBuffer(copying: lastSampleBuffer, withNewTiming: [timing]), input.append(tail) {
+				endTime = targetEnd
+			}
+		}
+		writer.endSession(atSourceTime: endTime)
+		input.markAsFinished()
+		await writer.finishWriting()
+		guard writer.status == .completed else {
+			return nil
+		}
+		return firstFileTime
+	}
+
+	/// Appending to an input that isn't ready raises an Objective-C exception Swift can't
+	/// catch, so wait briefly (up to 1 s) and skip the append if it stays busy.
+	private func waitUntilReady(_ input: AVAssetWriterInput) async -> Bool {
+		for _ in 0..<100 {
+			if input.isReadyForMoreMediaData { return true }
+			try? await Task.sleep(nanoseconds: 10_000_000)
+		}
+		return false
+	}
+}
 
 final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private struct CaptureFinalizationResult {
@@ -69,6 +315,7 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 	private var pauseStartedHostTime: CMTime?
 	private var pendingResumeAdjustment = false
 	private var accumulatedPausedDuration: CMTime = .zero
+	private var webcamRecorder: WebcamRecorder?
 	private var sessionStarted = false
 	private var frameCount = 0
 	private var outputURL: URL?
@@ -364,6 +611,9 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			}
 			try stream.addStreamOutput(self, type: microphoneOutputType, sampleHandlerQueue: queue)
 		}
+		if let webcamOutputPath = config.webcamOutputPath, !webcamOutputPath.isEmpty {
+			await startWebcam(config: config, outputPath: webcamOutputPath)
+		}
 		try await stream.startCapture()
 
 		guard assetWriter.startWriting() else {
@@ -637,6 +887,16 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		// example a full disk), which would abort the helper the same way.
 		let videoEndTime = lastVideoPresentationTime + (lastSampleBuffer.map { frameDuration(for: $0) } ?? .zero)
 		let endTime = resolvedCaptureEndTime(videoEndTime: videoEndTime)
+		if let webcamRecorder {
+			self.webcamRecorder = nil
+			if let offset = await webcamRecorder.finish(screenEndTime: endTime) {
+				let offsetMs = Int((CMTimeGetSeconds(offset) * 1000).rounded())
+				print("WEBCAM_OUTPUT \(webcamRecorder.outputURL.path) OFFSET_MS \(offsetMs)")
+			} else {
+				print("WEBCAM_OUTPUT_FAILED")
+			}
+			fflush(stdout)
+		}
 		if let assetWriter, assetWriter.status == .writing {
 			assetWriter.endSession(atSourceTime: endTime)
 			videoInput?.markAsFinished()
@@ -738,6 +998,42 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		NSError(domain: "RecordlyCapture", code: 10, userInfo: [
 			NSLocalizedDescriptionKey: "Recording could not be finalized (writer status \(status.rawValue))",
 		])
+	}
+
+	/// Starts native webcam capture. A camera problem never fails the screen recording: it
+	/// prints WEBCAM_CAPTURE_UNAVAILABLE and the app records the webcam the old way.
+	private func startWebcam(config: CaptureConfig, outputPath: String) async {
+		func unavailable(_ reason: String) {
+			print("WEBCAM_CAPTURE_UNAVAILABLE \(reason)")
+			fflush(stdout)
+		}
+		guard await WebcamRecorder.cameraAccessGranted() else {
+			return unavailable("camera access denied")
+		}
+		guard let device = WebcamRecorder.resolveDevice(label: config.webcamLabel, uniqueID: config.webcamDeviceId) else {
+			return unavailable("camera not found")
+		}
+		let recorder = WebcamRecorder(device: device, outputURL: URL(fileURLWithPath: outputPath), queue: queue) { [unowned self] hostTime in
+			self.webcamFileTime(hostTime: hostTime)
+		}
+		do {
+			try recorder.start()
+		} catch {
+			return unavailable(error.localizedDescription)
+		}
+		webcamRecorder = recorder
+		print("WEBCAM_CAPTURE_STARTED \(device.localizedName)")
+		fflush(stdout)
+	}
+
+	/// The screen file's time for a webcam frame at `hostTime`, on `queue`. Nil while paused,
+	/// until the post-resume anchor exists, and before the first screen frame.
+	private func webcamFileTime(hostTime: CMTime) -> CMTime? {
+		guard isRecording, !isPaused, !pendingResumeAdjustment, firstSampleTime != .zero else {
+			return nil
+		}
+		let time = hostTime - firstSampleTime - accumulatedPausedDuration
+		return time >= .zero ? time : nil
 	}
 
 	private func adjustedPresentationTime(for sampleBuffer: CMSampleBuffer, outputType: SCStreamOutputType) -> CMTime? {

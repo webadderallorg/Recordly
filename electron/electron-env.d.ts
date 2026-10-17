@@ -272,6 +272,9 @@ interface Window {
 				capturesMicrophone?: boolean;
 				microphoneDeviceId?: string;
 				microphoneLabel?: string;
+				captureWebcam?: boolean;
+				webcamDeviceId?: string;
+				webcamLabel?: string;
 			},
 		) => Promise<{
 			success: boolean;
@@ -280,18 +283,26 @@ interface Window {
 			error?: string;
 			userNotified?: boolean;
 			microphoneFallbackRequired?: boolean;
+			/** The capture helper records the webcam (macOS); the renderer must not. */
+			nativeWebcam?: boolean;
 		}>;
 		stopNativeScreenRecording: () => Promise<{
 			success: boolean;
 			path?: string;
 			message?: string;
 			error?: string;
+			/** Set when the capture helper recorded the webcam. */
+			webcamPath?: string;
+			webcamTimeOffsetMs?: number;
 		}>;
 		recoverNativeScreenRecording: () => Promise<{
 			success: boolean;
 			path?: string;
 			message?: string;
 			error?: string;
+			/** Set when the capture helper recorded the webcam. */
+			webcamPath?: string;
+			webcamTimeOffsetMs?: number;
 		}>;
 		getLastNativeCaptureDiagnostics: () => Promise<{
 			success: boolean;

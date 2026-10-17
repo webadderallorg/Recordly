@@ -76,6 +76,7 @@ import {
 	waitForNativeCaptureStart,
 	waitForNativeCaptureStop,
 } from "../recording/mac";
+import { parseNativeWebcamOutput, withNativeWebcam } from "../recording/nativeWebcam";
 import { resolveRecordedVideoStoragePath } from "../recording/storagePath";
 import {
 	attachWindowsCaptureLifecycle,
@@ -758,6 +759,15 @@ export function registerRecordingHandlers(
 					config.microphoneLabel = options.microphoneLabel;
 				}
 
+				if (options?.captureWebcam) {
+					config.webcamOutputPath = path.join(
+						recordingsDir,
+						`recording-${timestamp}-webcam.mp4`,
+					);
+					config.webcamDeviceId = options.webcamDeviceId;
+					config.webcamLabel = options.webcamLabel;
+				}
+
 				if (systemAudioOutputPath) {
 					config.systemAudioOutputPath = systemAudioOutputPath;
 				}
@@ -841,9 +851,17 @@ export function registerRecordingHandlers(
 					microphonePath: nativeCaptureMicrophonePath,
 					processOutput: nativeCaptureOutputBuffer.trim() || undefined,
 				});
+				const webcam = parseNativeWebcamOutput(nativeCaptureOutputBuffer);
+				if (options?.captureWebcam && !webcam.started) {
+					console.warn(
+						"[start-native] Native webcam unavailable; the renderer records it:",
+						webcam.unavailableReason,
+					);
+				}
 				return {
 					success: true,
 					microphoneFallbackRequired: micUnavailableNatively,
+					nativeWebcam: Boolean(options?.captureWebcam && webcam.started),
 				};
 			} catch (error) {
 				console.error("Failed to start native ScreenCaptureKit recording:", error);
@@ -1223,7 +1241,10 @@ export function registerRecordingHandlers(
 					console.log("[stop-native] No separate audio tracks to mux");
 				}
 
-				return await finalizeStoredVideo(finalVideoPath);
+				return withNativeWebcam(
+					await finalizeStoredVideo(finalVideoPath),
+					nativeCaptureOutputBuffer,
+				);
 			} catch (error) {
 				console.error("Failed to stop native ScreenCaptureKit recording:", error);
 				const fallbackPath = nativeCaptureTargetPath;
@@ -1280,7 +1301,10 @@ export function registerRecordingHandlers(
 								);
 							}
 						}
-						return await finalizeStoredVideo(fallbackPath);
+						return withNativeWebcam(
+							await finalizeStoredVideo(fallbackPath),
+							nativeCaptureOutputBuffer,
+						);
 					} catch {
 						// File doesn't exist or isn't accessible
 					}

@@ -262,6 +262,9 @@ type NativeCaptureStopResult = {
 	path?: string;
 	error?: string;
 	message?: string;
+	/** Set when the capture helper recorded the webcam (macOS native webcam). */
+	webcamPath?: string;
+	webcamTimeOffsetMs?: number;
 };
 
 export type DiscardNativeCaptureResult = {
@@ -270,6 +273,21 @@ export type DiscardNativeCaptureResult = {
 	path?: string;
 	error?: unknown;
 };
+
+/**
+ * The webcam file for a recovered native recording: the one the capture helper finished, with
+ * its offset, or else whatever the browser webcam recorder holds (`timeOffsetMs` null keeps the
+ * offset measured at start).
+ */
+export async function recoveredWebcam(
+	result: { webcamPath?: string; webcamTimeOffsetMs?: number },
+	stopBrowserWebcam: () => Promise<string | null>,
+): Promise<{ path: string | null; timeOffsetMs: number | null }> {
+	if (result.webcamPath) {
+		return { path: result.webcamPath, timeOffsetMs: result.webcamTimeOffsetMs ?? 0 };
+	}
+	return { path: await stopBrowserWebcam(), timeOffsetMs: null };
+}
 
 export async function stopAndDiscardNativeCapture({
 	stopNativeScreenRecording,
@@ -291,6 +309,11 @@ export async function stopAndDiscardNativeCapture({
 			deleteSucceeded: false,
 			error: stoppedResult.error ?? stoppedResult.message,
 		};
+	}
+
+	if (stoppedResult.webcamPath) {
+		// The capture helper's webcam file belongs to the same discarded capture.
+		await Promise.resolve(deleteRecordingFile(stoppedResult.webcamPath)).catch(() => undefined);
 	}
 
 	if (!stoppedResult.path) {
@@ -398,6 +421,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const startTime = useRef<number>(0);
 	const webcamStartTime = useRef<number | null>(null);
 	const webcamTimeOffsetMs = useRef(0);
+	// The capture helper records the webcam (macOS native capture), not the renderer.
+	const nativeWebcamActive = useRef(false);
 	const recordingSessionTimestamp = useRef<number | null>(null);
 	const nativeScreenRecording = useRef(false);
 	const nativeWindowsRecording = useRef(false);
@@ -965,9 +990,10 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 
 			const resolvedMicFallbackBlobPromise =
 				micFallbackBlobPromise ?? stopMicFallbackRecorder();
-			const webcamPath = await stopWebcamRecorder();
+			const webcam = await recoveredWebcam(result, stopWebcamRecorder);
+			if (webcam.timeOffsetMs !== null) webcamTimeOffsetMs.current = webcam.timeOffsetMs;
 			await storeMicrophoneSidecar(resolvedMicFallbackBlobPromise, result.path, startDelayMs);
-			await finalizeRecordingSession(result.path, webcamPath);
+			await finalizeRecordingSession(result.path, webcam.path);
 
 			if (typeof window.electronAPI?.hudOverlayClose === "function") {
 				window.electronAPI.hudOverlayClose();
@@ -1097,6 +1123,18 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		}
 	}, [getRecordingDurationMs, selectWebcamMimeType, webcamDeviceId, webcamEnabled]);
 
+	/** Drops a prepared, never-started webcam recorder and releases its camera stream. */
+	const releasePreparedWebcamRecorder = useCallback(() => {
+		webcamRecorder.current = null;
+		webcamStopResolver.current = null;
+		webcamStopPromise.current = null;
+		pendingWebcamPathPromise.current = null;
+		resolvedWebcamPath.current = null;
+		webcamStartTime.current = null;
+		webcamStream.current?.getTracks().forEach((track) => track.stop());
+		webcamStream.current = null;
+	}, []);
+
 	/** Start the prepared webcam MediaRecorder. Call after main recording begins. */
 	const beginWebcamCapture = useCallback(() => {
 		const recorder = webcamRecorder.current;
@@ -1172,12 +1210,27 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			}
 		}
 
+		// The capture helper matches cameras by name, like microphones; no choice means the
+		// default camera.
+		let webcamLabel: string | undefined;
+		if (useNativeMacScreenCapture && webcamEnabled && webcamDeviceId) {
+			try {
+				const devices = await navigator.mediaDevices.enumerateDevices();
+				webcamLabel =
+					devices.find((d) => d.kind === "videoinput" && d.deviceId === webcamDeviceId)
+						?.label || undefined;
+			} catch {
+				// Fall through - the helper uses the default camera.
+			}
+		}
+
 		return {
 			platform,
 			selectedSource,
 			useNativeMacScreenCapture,
 			useNativeWindowsCapture,
 			micLabel,
+			webcamLabel,
 		};
 	}, [
 		logNativeCaptureDiagnostics,
@@ -1186,6 +1239,8 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		preparePermissions,
 		prepareWebcamRecorder,
 		resetRecordingClock,
+		webcamDeviceId,
+		webcamEnabled,
 	]);
 
 	const discardActiveNativeCapture = useCallback(async () => {
@@ -1269,7 +1324,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				markRecordingResumed(stoppedAtMs);
 				const expectedDurationMs = getRecordingDurationMs(stoppedAtMs);
 				const micFallbackBlobPromise = stopMicFallbackRecorder();
-				const webcamPathPromise = stopWebcamRecorder();
+				let webcamPathPromise = stopWebcamRecorder();
 				const isNativeWindows = nativeWindowsRecording.current;
 
 				const ipcStopStart = performance.now();
@@ -1288,6 +1343,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					nativeScreenRecording.current = false;
 					nativeWindowsRecording.current = false;
 					nativeWarmStartActive.current = false;
+				}
+				if (nativeWebcamActive.current) {
+					nativeWebcamActive.current = false;
+					webcamTimeOffsetMs.current = result.webcamTimeOffsetMs ?? 0;
+					webcamPathPromise = Promise.resolve(result.webcamPath ?? null);
 				}
 
 				try {
@@ -1670,8 +1730,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				return;
 			}
 
-			const { selectedSource, useNativeMacScreenCapture, useNativeWindowsCapture, micLabel } =
-				preparedStart;
+			const {
+				selectedSource,
+				useNativeMacScreenCapture,
+				useNativeWindowsCapture,
+				micLabel,
+				webcamLabel,
+			} = preparedStart;
+			nativeWebcamActive.current = false;
 			const useNativeCapture = useNativeMacScreenCapture || useNativeWindowsCapture;
 			const shouldWarmStartNativeCapture = useNativeCapture && countdownDelay > 0;
 			if (countdownDelay > 0 && !shouldWarmStartNativeCapture) {
@@ -1700,6 +1766,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 						capturesMicrophone: microphoneEnabled,
 						microphoneDeviceId,
 						microphoneLabel: micLabel,
+						captureWebcam: useNativeMacScreenCapture && webcamEnabled,
+						webcamDeviceId,
+						webcamLabel,
 					},
 				);
 				if (nativeResult.success && startWasCancelled()) {
@@ -1742,6 +1811,12 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				if (nativeResult.success) {
 					nativeScreenRecording.current = true;
 					nativeWindowsRecording.current = useNativeWindowsCapture;
+					if (nativeResult.nativeWebcam) {
+						// The helper records the camera; drop the prepared browser recorder
+						// (never started) and its camera stream.
+						nativeWebcamActive.current = true;
+						releasePreparedWebcamRecorder();
+					}
 					if (shouldWarmStartNativeCapture) {
 						nativeWarmStartActive.current = true;
 						const pauseResult = await window.electronAPI.pauseNativeScreenRecording();
