@@ -49,6 +49,34 @@ describe("local media path policy", () => {
 		}
 	});
 
+	it("relinks missing project media to files next to the project file", async () => {
+		const manager = await import("./manager");
+		const projectDir = path.join(tempRoot, "moved");
+		await fs.mkdir(projectDir, { recursive: true });
+		await fs.writeFile(path.join(projectDir, "recording-1.mp4"), "video");
+		await fs.writeFile(path.join(projectDir, "recording-1-webcam.mp4"), "webcam");
+		const projectPath = path.join(projectDir, "demo.recordly");
+		const project = {
+			version: 1,
+			videoPath: "C:\\Users\\Old Name\\recordings\\recording-1.mp4",
+			editor: {
+				webcam: { sourcePath: "C:\\Users\\Old Name\\recordings\\recording-1-webcam.mp4" },
+			},
+		};
+		await fs.writeFile(projectPath, JSON.stringify(project));
+
+		const missing = await manager.resolveProjectMediaSources(project);
+		expect(missing.success).toBe(false);
+
+		const loaded = await manager.loadProjectFromPath(projectPath);
+		expect(loaded.success).toBe(true);
+		const loadedProject = loaded.project as typeof project;
+		expect(loadedProject.videoPath).toBe(path.join(projectDir, "recording-1.mp4"));
+		expect(loadedProject.editor.webcam.sourcePath).toBe(
+			path.join(projectDir, "recording-1-webcam.mp4"),
+		);
+	});
+
 	it("reads library previews without switching the active project and rejects unknown projects", async () => {
 		vi.doMock("../../mediaServer", () => ({
 			getMediaServerBaseUrl: () => "http://127.0.0.1:1234",

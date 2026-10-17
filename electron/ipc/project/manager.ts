@@ -182,10 +182,27 @@ export async function replaceApprovedSessionLocalReadPaths(
 	}
 }
 
+/**
+ * When a project was moved to another machine its stored absolute media path no longer exists.
+ * Fall back to a file with the same name next to the project file.
+ */
+async function findRelinkedMediaPath(
+	storedPath: string,
+	projectPath: string | undefined,
+): Promise<string | null> {
+	if (!projectPath) return null;
+	const baseName = path.basename(storedPath.replace(/\\/g, "/"));
+	if (!baseName) return null;
+	const candidate = path.join(path.dirname(normalizePath(projectPath)), baseName);
+	const stat = await fs.stat(candidate).catch(() => null);
+	return stat?.isFile() ? candidate : null;
+}
+
 export async function resolveProjectMediaSources(
 	project: unknown,
+	projectPath?: string,
 ): Promise<
-	| { success: true; videoPath: string; webcamPath: string | null }
+	| { success: true; videoPath: string; webcamPath: string | null; relinked: boolean }
 	| { success: false; message: string }
 > {
 	if (!project || typeof project !== "object") {
@@ -197,18 +214,24 @@ export async function resolveProjectMediaSources(
 		return { success: false, message: "Project file is missing a video path" };
 	}
 
-	const normalizedVideoPath = normalizeVideoSourcePath(rawVideoPath);
+	let normalizedVideoPath = normalizeVideoSourcePath(rawVideoPath);
 	if (!normalizedVideoPath) {
 		return { success: false, message: "Project file is missing a valid video path" };
 	}
+	let relinked = false;
 
 	try {
 		await fs.access(normalizedVideoPath, fsConstants.F_OK);
 	} catch {
-		return {
-			success: false,
-			message: `Project video file not found: ${normalizedVideoPath}`,
-		};
+		const relinkedVideoPath = await findRelinkedMediaPath(normalizedVideoPath, projectPath);
+		if (!relinkedVideoPath) {
+			return {
+				success: false,
+				message: `Project video file not found: ${normalizedVideoPath}`,
+			};
+		}
+		normalizedVideoPath = relinkedVideoPath;
+		relinked = true;
 	}
 
 	const rawWebcamPath =
@@ -217,30 +240,39 @@ export async function resolveProjectMediaSources(
 			? ((project as { editor?: { webcam?: { sourcePath?: string } } }).editor?.webcam
 					?.sourcePath ?? null)
 			: null;
-	const normalizedWebcamPath = normalizeVideoSourcePath(rawWebcamPath);
+	let normalizedWebcamPath = normalizeVideoSourcePath(rawWebcamPath);
 
 	if (!normalizedWebcamPath) {
 		return {
 			success: true,
 			videoPath: normalizedVideoPath,
 			webcamPath: null,
+			relinked,
 		};
 	}
 
 	try {
 		await fs.access(normalizedWebcamPath, fsConstants.F_OK);
-		return {
-			success: true,
-			videoPath: normalizedVideoPath,
-			webcamPath: normalizedWebcamPath,
-		};
 	} catch {
-		return {
-			success: true,
-			videoPath: normalizedVideoPath,
-			webcamPath: null,
-		};
+		const relinkedWebcamPath = await findRelinkedMediaPath(normalizedWebcamPath, projectPath);
+		if (!relinkedWebcamPath) {
+			return {
+				success: true,
+				videoPath: normalizedVideoPath,
+				webcamPath: null,
+				relinked,
+			};
+		}
+		normalizedWebcamPath = relinkedWebcamPath;
+		relinked = true;
 	}
+
+	return {
+		success: true,
+		videoPath: normalizedVideoPath,
+		webcamPath: normalizedWebcamPath,
+		relinked,
+	};
 }
 
 export async function getProjectsDir() {
@@ -347,7 +379,7 @@ export function refreshProjectThumbnail(projectPath: string, revision: Stats) {
 			if (!sameProjectRevision(revision, await fs.stat(projectPath))) return null;
 			const project = parseJsonWithByteOrderMark(await fs.readFile(projectPath, "utf-8"));
 			if (!isLoadableProjectData(project)) return null;
-			const media = await resolveProjectMediaSources(project);
+			const media = await resolveProjectMediaSources(project, projectPath);
 			if (!media.success) return null;
 			const thumbnail = await createProjectFirstFrameThumbnail(media.videoPath);
 			if (!sameProjectRevision(revision, await fs.stat(projectPath))) return null;
@@ -496,7 +528,7 @@ export async function readProjectPreview(projectPath: string): Promise<ProjectPr
 		throw new Error("Project is not in the library");
 	const project = parseJsonWithByteOrderMark(await fs.readFile(normalizedPath, "utf-8"));
 	if (!isLoadableProjectData(project)) throw new Error("Invalid project file format");
-	const media = await resolveProjectMediaSources(project);
+	const media = await resolveProjectMediaSources(project, normalizedPath);
 	if (!media.success) throw new Error(media.message);
 	const baseUrl = getMediaServerBaseUrl();
 	if (!baseUrl) throw new Error("Media server is not ready");
@@ -529,7 +561,7 @@ export async function loadProjectFromPath(projectPath: string) {
 			message: "Invalid project file format",
 		};
 	}
-	const mediaSources = await resolveProjectMediaSources(project);
+	const mediaSources = await resolveProjectMediaSources(project, normalizedPath);
 
 	if (!mediaSources.success) {
 		return {
@@ -540,6 +572,12 @@ export async function loadProjectFromPath(projectPath: string) {
 	}
 	const projectObj = project as Record<string, unknown>;
 	const editorObj = projectObj?.editor as Record<string, unknown> | undefined;
+	if (mediaSources.relinked) {
+		// Point the loaded project at the relinked files so the editor does not use the stale paths.
+		projectObj.videoPath = mediaSources.videoPath;
+		const webcamObj = editorObj?.webcam as { sourcePath?: unknown } | undefined;
+		if (webcamObj && mediaSources.webcamPath) webcamObj.sourcePath = mediaSources.webcamPath;
+	}
 	const audioTracks = editorObj?.audioTracks as { sourcePath?: unknown }[] | undefined;
 	const audioRegions = editorObj?.audioRegions as { audioPath?: unknown }[] | undefined;
 	const approvedProjectPaths: Array<string | null | undefined> = [
