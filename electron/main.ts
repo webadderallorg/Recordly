@@ -1,6 +1,3 @@
-import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
-import { createSaveBeforeCloseController } from "./saveBeforeClose";
-import { clearRecordingTrashUndo } from "./ipc/recording/library";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -29,10 +26,15 @@ import {
 	killWindowsCaptureProcess,
 	registerIpcHandlers,
 } from "./ipc/handlers";
+import { clearRecordingTrashUndo } from "./ipc/recording/library";
+import { resolveDisplayMediaSource } from "./ipc/register/sourceMapping";
 import { ensureMediaServer } from "./mediaServer";
 import { hardenWebContentsNavigation, shouldHardenWebContentsType } from "./navigationPolicy";
 import { shouldGrantDisplayCapture, shouldGrantMediaPermission } from "./permissionPolicy";
+import { createRecordingShortcutDispatcher } from "./recordingShortcutDispatch";
+import { registerRecordingShortcuts } from "./recordingShortcuts";
 import { ensurePackagedRendererServer, getPackagedRendererBaseUrl } from "./rendererServer";
+import { createSaveBeforeCloseController } from "./saveBeforeClose";
 import {
 	checkForAppUpdates,
 	deferUpdateReminder,
@@ -50,6 +52,7 @@ import {
 	skipAvailableUpdateVersion,
 } from "./updater";
 import {
+	beginHudCaptureProtection,
 	createEditorWindow,
 	createHudOverlayWindow,
 	createSourceSelectorWindow,
@@ -57,7 +60,6 @@ import {
 	getUpdateToastWindow,
 	hideUpdateToastWindow,
 	isHudOverlayMousePassthroughSupported,
-	beginHudCaptureProtection,
 	reassertHudOverlayMousePassthrough as reassertHudOverlayMouseState,
 	setHudOverlayRecordingActive,
 	showUpdateToastWindow,
@@ -179,6 +181,25 @@ let sourceSelectorWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let trayContextMenu: Menu | null = null;
 let selectedSourceName = "";
+let shortcutRecordingActive = false;
+let shortcutRecordingGeneration = 0;
+const dispatchRecordingShortcut = createRecordingShortcutDispatcher({
+	getHud: getHudOverlayWindow,
+	showHud: showHudOverlayFromTray,
+	getRecordingSession: () => (shortcutRecordingActive ? shortcutRecordingGeneration : null),
+	confirmDiscard: async () => {
+		const { response } = await dialog.showMessageBox({
+			type: "warning",
+			title: "Cancel recording?",
+			message: "Discard the current recording? This cannot be undone.",
+			buttons: ["Keep recording", "Discard recording"],
+			defaultId: 0,
+			cancelId: 0,
+			noLink: true,
+		});
+		return response === 1;
+	},
+});
 let editorHasUnsavedChanges = false;
 let isForceClosing = false;
 let isAppQuitting = false;
@@ -907,6 +928,11 @@ app.on("second-instance", (_event, commandLine) => {
 
 // Register all IPC handlers when app is ready
 app.whenReady().then(async () => {
+	registerRecordingShortcuts((action) => {
+		void dispatchRecordingShortcut(action).catch((error) =>
+			console.error("[recording-shortcuts]", error),
+		);
+	});
 	authCallbacks.startDevServer();
 	if (process.defaultApp && process.argv[1]) {
 		app.setAsDefaultProtocolClient(authCallbacks.protocol, process.execPath, [
@@ -1030,6 +1056,8 @@ app.whenReady().then(async () => {
 		() => mainWindow,
 		() => sourceSelectorWindow,
 		(recording: boolean, sourceName: string) => {
+			if (recording !== shortcutRecordingActive) shortcutRecordingGeneration += 1;
+			shortcutRecordingActive = recording;
 			selectedSourceName = sourceName;
 			setHudOverlayRecordingActive(recording);
 			if (shouldUseTray()) {

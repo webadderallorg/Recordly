@@ -630,6 +630,24 @@ interface Window {
 			error?: string;
 		}>;
 		onStopRecordingFromTray: (callback: () => void) => () => void;
+		getRecordingShortcuts: () => Promise<
+			import("../src/lib/recordingShortcuts").RecordingShortcutStatus
+		>;
+		setRecordingShortcuts: (
+			settings: import("../src/lib/recordingShortcuts").RecordingShortcutSettings,
+		) => Promise<
+			import("../src/lib/recordingShortcuts").RecordingShortcutStatus & {
+				success: boolean;
+				error?: string;
+			}
+		>;
+		onRecordingShortcut: (
+			callback: (
+				action: import("../src/lib/recordingShortcuts").RecordingShortcutAction,
+			) => void,
+		) => () => void;
+		getHudRemoteVisible: () => Promise<boolean>;
+		setHudRemoteVisible: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
 		onRecordingStateChanged: (
 			callback: (state: { recording: boolean; sourceName: string }) => void,
 		) => () => void;

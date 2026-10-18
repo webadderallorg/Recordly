@@ -654,6 +654,23 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		ipcRenderer.on("stop-recording-from-tray", listener);
 		return () => ipcRenderer.removeListener("stop-recording-from-tray", listener);
 	},
+	getRecordingShortcuts: () => ipcRenderer.invoke("get-recording-shortcuts"),
+	setRecordingShortcuts: (
+		settings: import("../src/lib/recordingShortcuts").RecordingShortcutSettings,
+	) => ipcRenderer.invoke("set-recording-shortcuts", settings),
+	onRecordingShortcut: (
+		callback: (action: import("../src/lib/recordingShortcuts").RecordingShortcutAction) => void,
+	) => {
+		const listener = (
+			_event: Electron.IpcRendererEvent,
+			action: import("../src/lib/recordingShortcuts").RecordingShortcutAction,
+		) => callback(action);
+		ipcRenderer.on("recording-shortcut", listener);
+		return () => ipcRenderer.removeListener("recording-shortcut", listener);
+	},
+	getHudRemoteVisible: () => ipcRenderer.invoke("get-hud-remote-visible"),
+	setHudRemoteVisible: (enabled: boolean) =>
+		ipcRenderer.invoke("set-hud-remote-visible", enabled),
 	onRecordingStateChanged: (
 		callback: (state: { recording: boolean; sourceName: string }) => void,
 	) => {

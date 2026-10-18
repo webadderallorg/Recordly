@@ -125,10 +125,10 @@ type UseScreenRecorderReturn = {
 	paused: boolean;
 	finalizing: boolean;
 	countdownActive: boolean;
-	toggleRecording: () => void;
-	pauseRecording: () => void;
-	resumeRecording: () => void;
-	cancelRecording: () => void;
+	toggleRecording: () => Promise<void>;
+	pauseRecording: () => void | Promise<void>;
+	resumeRecording: () => void | Promise<void>;
+	cancelRecording: () => void | Promise<void>;
 	cancelRecordingStart: () => Promise<boolean>;
 	preparePermissions: () => Promise<boolean>;
 	isMacOS: boolean;
@@ -2304,7 +2304,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const pauseRecording = useCallback(() => {
 		if (!recording || paused) return;
 		if (nativeScreenRecording.current) {
-			void (async () => {
+			return (async () => {
 				const result = await window.electronAPI.pauseNativeScreenRecording();
 				if (!result.success) {
 					console.error(
@@ -2327,14 +2327,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					console.warn("Failed to pause cursor capture:", error);
 				}
 			})();
-			return;
 		}
 		if (mediaRecorder.current?.state === "recording") {
 			mediaRecorder.current.pause();
 			if (webcamRecorder.current?.state === "recording") {
 				webcamRecorder.current.pause();
 			}
-			void (async () => {
+			return (async () => {
 				const boundaryMs = Date.now();
 				markRecordingPaused(boundaryMs);
 				setPaused(true);
@@ -2350,7 +2349,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	const resumeRecording = useCallback(() => {
 		if (!recording || !paused) return;
 		if (nativeScreenRecording.current) {
-			void (async () => {
+			return (async () => {
 				const result = await window.electronAPI.resumeNativeScreenRecording();
 				if (!result.success) {
 					console.error(
@@ -2373,14 +2372,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 					console.warn("Failed to resume cursor capture:", error);
 				}
 			})();
-			return;
 		}
 		if (mediaRecorder.current?.state === "paused") {
 			mediaRecorder.current.resume();
 			if (webcamRecorder.current?.state === "paused") {
 				webcamRecorder.current.resume();
 			}
-			void (async () => {
+			return (async () => {
 				const boundaryMs = Date.now();
 				markRecordingResumed(boundaryMs);
 				setPaused(false);
@@ -2415,10 +2413,14 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		if (nativeScreenRecording.current) {
 			setRecording(false);
 			window.electronAPI?.setRecordingState(false);
-			void (async () => {
-				await Promise.allSettled([discardActiveNativeCapture(), stopMicFallbackRecorder()]);
+			setFinalizing(true);
+			return (async () => {
+				try {
+					await Promise.allSettled([discardActiveNativeCapture(), stopMicFallbackRecorder()]);
+				} finally {
+					setFinalizing(false);
+				}
 			})();
-			return;
 		}
 
 		if (mediaRecorder.current) {
@@ -2449,7 +2451,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			return;
 		}
 
-		startRecording();
+		await startRecording();
 	};
 
 	return {
