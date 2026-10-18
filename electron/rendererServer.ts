@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import path from "node:path";
 
 const MIME_TYPES: Record<string, string> = {
@@ -23,6 +23,7 @@ const MIME_TYPES: Record<string, string> = {
 
 let packagedRendererBaseUrl: string | null = null;
 let packagedRendererServerStartPromise: Promise<string> | null = null;
+let packagedRendererServer: Server | null = null;
 
 function getContentType(filePath: string): string {
 	return MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
@@ -107,6 +108,8 @@ export function getPackagedRendererBaseUrl(): string | null {
 	return packagedRendererBaseUrl;
 }
 
+const STABLE_RENDERER_PORT = 43823;
+
 export async function ensurePackagedRendererServer(rootDir: string): Promise<string> {
 	if (packagedRendererBaseUrl) {
 		return packagedRendererBaseUrl;
@@ -121,11 +124,20 @@ export async function ensurePackagedRendererServer(rootDir: string): Promise<str
 			void servePackagedRendererRequest(rootDir, request, response);
 		});
 
-		server.once("error", (error) => {
+		// localStorage is scoped to the origin, so a random port per launch silently drops
+		// everything the renderer keeps there (folders, names, fonts, presets...). Prefer a
+		// fixed port and only fall back to a random one if it is taken.
+		let triedStablePort = false;
+		server.on("error", (error: NodeJS.ErrnoException) => {
+			if (triedStablePort && error.code === "EADDRINUSE") {
+				triedStablePort = false;
+				server.listen(0, "127.0.0.1");
+				return;
+			}
 			reject(error);
 		});
 
-		server.listen(0, "127.0.0.1", () => {
+		server.once("listening", () => {
 			const address = server.address();
 			if (!address || typeof address === "string") {
 				server.close();
@@ -133,14 +145,28 @@ export async function ensurePackagedRendererServer(rootDir: string): Promise<str
 				return;
 			}
 
+			packagedRendererServer = server;
 			packagedRendererBaseUrl = `http://127.0.0.1:${address.port}`;
 			resolve(packagedRendererBaseUrl);
 		});
+		triedStablePort = true;
+		server.listen(STABLE_RENDERER_PORT, "127.0.0.1");
 	});
 
 	try {
 		return await packagedRendererServerStartPromise;
 	} finally {
 		packagedRendererServerStartPromise = null;
+	}
+}
+
+export async function closePackagedRendererServer(): Promise<void> {
+	// Let a pending start finish first, otherwise it would store a server nobody closes.
+	await packagedRendererServerStartPromise?.catch(() => undefined);
+	const server = packagedRendererServer;
+	packagedRendererServer = null;
+	packagedRendererBaseUrl = null;
+	if (server) {
+		await new Promise<void>((resolve) => server.close(() => resolve()));
 	}
 }
