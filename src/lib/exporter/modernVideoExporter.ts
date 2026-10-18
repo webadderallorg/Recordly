@@ -579,7 +579,15 @@ export class ModernVideoExporter {
 					stageStartedAt = this.getNowMs();
 					useNativeEncoder = await this.tryStartNativeVideoExport();
 					this.nativeSessionStartTimeMs = this.getNowMs() - stageStartedAt;
-					if (!useNativeEncoder) {
+					if (useNativeEncoder) {
+						this.maxNativeWriteInFlight = Math.max(
+							1,
+							Math.floor(
+								this.config.maxInFlightNativeWrites ??
+									this.backpressureProfile.maxInFlightNativeWrites,
+							),
+						);
+					} else {
 						const nativeFailure =
 							this.lastNativeExportError ??
 							`${NATIVE_EXPORT_ENGINE_NAME} export is unavailable for this output profile on this system.`;
@@ -2866,6 +2874,7 @@ export class ModernVideoExporter {
 				const buffer = new ArrayBuffer(chunk.byteLength);
 				chunk.copyTo(buffer);
 				this.queueNativeWriteChunk(sessionId, new Uint8Array(buffer));
+				this.notifyEncodeCapacityAvailable();
 			},
 			error: (error) => {
 				if (this.nativeExportSessionId !== sessionId) return;
@@ -2921,6 +2930,9 @@ export class ModernVideoExporter {
 		while (
 			this.nativeH264Encoder.encodeQueueSize >= ModernVideoExporter.NATIVE_ENCODER_QUEUE_LIMIT
 		) {
+			if (this.pendingNativeWriteChunks.length > 0) {
+				this.flushPendingNativeWriteBatch(this.nativeExportSessionId);
+			}
 			await this.waitForEncodeCapacity();
 			if (this.cancelled) return;
 			if (this.nativeEncoderError) throw this.nativeEncoderError;
@@ -3281,9 +3293,27 @@ export class ModernVideoExporter {
 		this.notifyEncodeCapacityAvailable();
 	}
 
-	private waitForEncodeCapacity(): Promise<void> {
+	/**
+	 * Waits for available encoder capacity or until the safety timeout elapses.
+	 *
+	 * @param timeoutMs - Maximum duration in milliseconds to wait before resolving.
+	 */
+	private waitForEncodeCapacity(timeoutMs = 50): Promise<void> {
 		return new Promise((resolve) => {
-			this.encodeCapacityWaiters.add(resolve);
+			let timer: ReturnType<typeof setTimeout> | null = null;
+			const cleanup = () => {
+				if (timer !== null) {
+					clearTimeout(timer);
+					timer = null;
+				}
+				this.encodeCapacityWaiters.delete(wake);
+			};
+			const wake = () => {
+				cleanup();
+				resolve();
+			};
+			this.encodeCapacityWaiters.add(wake);
+			timer = setTimeout(wake, timeoutMs);
 		});
 	}
 
