@@ -1,0 +1,41 @@
+{
+	"zoom": {
+		"cannotPlace": "Không thể đặt vùng thu phóng tại đây",
+		"existsOrNoSpace": "Đã có vùng thu phóng tại vị trí này hoặc không đủ chỗ.",
+		"suggestHandlerUnavailable": "Không có chức năng đề xuất thu phóng",
+		"noTelemetry": "Không có dữ liệu theo dõi con trỏ",
+		"recordFirst": "Hãy quay màn hình trước để tạo đề xuất dựa trên con trỏ.",
+		"noUsableTelemetry": "Không có dữ liệu theo dõi con trỏ phù hợp",
+		"notEnoughMovement": "Bản ghi không có đủ dữ liệu chuyển động của con trỏ.",
+		"noInteractionMoments": "Không tìm thấy thời điểm tương tác rõ ràng",
+		"tryRecording": "Hãy thử bản ghi có các khoảng dừng hoặc thao tác nhấp ở những chỗ quan trọng.",
+		"noAutoZoomSlots": "Không có vị trí thu phóng tự động",
+		"dwellPointsOverlap": "Các điểm dừng được phát hiện trùng với vùng thu phóng hiện có.",
+		"addedSuggestions": "Đã thêm {{count}} đề xuất thu phóng dựa trên tương tác",
+		"label": "Thu phóng {{index}}",
+		"addZoom": "Thêm thu phóng (Z)",
+		"suggestZooms": "Đề xuất thu phóng từ con trỏ"
+	},
+	"trim": {
+		"cannotPlace": "Không thể đặt đoạn cắt tại đây",
+		"existsOrNoSpace": "Đã có đoạn cắt tại vị trí này hoặc không đủ chỗ.",
+		"label": "Đoạn cắt {{index}}",
+		"addTrim": "Thêm đoạn cắt (T)"
+	},
+	"speed": {
+		"cannotPlace": "Không thể đặt vùng tốc độ tại đây",
+		"existsOrNoSpace": "Đã có vùng tốc độ tại vị trí này hoặc không đủ chỗ.",
+		"label": "Tốc độ"
+	},
+	"annotation": {
+		"label": "Chú thích",
+		"image": "Hình ảnh",
+		"addAnnotation": "Thêm chú thích (A)"
+	},
+	"audio": {
+		"label": "Âm thanh"
+	},
+	"addSpeed": "Thêm tốc độ (S)",
+	"resizeLeft": "Điều chỉnh mép trái",
+	"resizeRight": "Điều chỉnh mép phải"
+}

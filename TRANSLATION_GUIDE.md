@@ -7,6 +7,7 @@ This project uses a namespace-based i18n setup so contributors can localize safe
 All locale files live under:
 
 - `src/i18n/locales/en/`
+- `src/i18n/locales/vi/`
 - `src/i18n/locales/es/`
 - `src/i18n/locales/zh-CN/`
 

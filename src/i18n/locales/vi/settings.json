@@ -1,0 +1,262 @@
+{
+	"updates": {
+		"title": "Cập nhật",
+		"experimental": "Bản cập nhật thử nghiệm",
+		"experimentalDescription": "Bạn đã chọn nhận bản cập nhật thử nghiệm để dùng thử phiên bản Recordly mới nhất trước khi phát hành rộng rãi.",
+		"saveFailed": "Không thể thay đổi kênh cập nhật."
+	},
+	"zoom": {
+		"level": "Mức thu phóng",
+		"selectRegion": "Chọn vùng thu phóng để điều chỉnh",
+		"deleteZoom": "Xóa vùng thu phóng",
+		"modeAuto": "Tự động",
+		"modeManual": "Thủ công",
+		"modeManualDescription": "Đặt điểm lấy nét cố định cho vùng thu phóng này",
+		"modeAutoDescription": "Máy quay tự căn giữa lại khi con trỏ đến gần mép khung hình đã phóng to"
+	},
+	"trim": {
+		"deleteRegion": "Xóa vùng cắt"
+	},
+	"speed": {
+		"playbackSpeed": "Tốc độ phát",
+		"selectRegion": "Chọn vùng tốc độ để điều chỉnh",
+		"deleteRegion": "Xóa vùng tốc độ",
+		"label": "Tốc độ"
+	},
+	"clip": {
+		"title": "Đoạn video",
+		"mute": "Tắt tiếng đoạn video",
+		"resetAudioSettings": "Đặt lại cài đặt âm thanh",
+		"mutedState": "Âm thanh đã tắt",
+		"unmutedState": "Âm thanh đang phát",
+		"separateClipFromAudio": "Tách đoạn video khỏi âm thanh",
+		"delete": "Xóa đoạn video"
+	},
+	"effects": {
+		"title": "Hiệu ứng video",
+		"show": "Hiện",
+		"showCursor": "Hiện con trỏ",
+		"loopCursor": "Lặp con trỏ",
+		"cursorStyle": "Kiểu con trỏ",
+		"cursorStyleOptions": {
+			"macos": "macOS",
+			"tahoe": "Tahoe",
+			"tahoe-inverted": "Tahoe đảo ngược",
+			"windows11": "Windows 11",
+			"dot": "Chấm",
+			"figma": "Tối giản",
+			"lavender": "Oải hương",
+			"parched": "Khô nẻ",
+			"chooper": "Chooper",
+			"amongus": "Among Us",
+			"turtle": "Rùa"
+		},
+		"backgroundBlur": "Làm mờ",
+		"zoomMotionBlur": "Làm mờ chuyển động khi thu phóng",
+		"auto": "Tự động",
+		"connectZooms": "Kết nối các vùng thu phóng",
+		"connectZoomsDescription": "Làm mượt các vùng thu phóng liên tiếp thành một chuyển động máy quay liền mạch.",
+		"autoApplyFreshRecordingZooms": "Tự động áp dụng thu phóng cho bản ghi mới",
+		"autoApplyFreshRecordingZoomsDescription": "Tự động đề xuất thu phóng để căn giữa lại khi con trỏ gần mép khung hình lúc mở bản ghi mới.",
+		"zoomGeneralTitle": "Chung",
+		"zoomGeneralDescription": "Cài đặt chuyển động chung cho mọi lần chuyển tiếp thu phóng.",
+		"zoomInTitle": "Phóng to",
+		"zoomInDescription": "Điều chỉnh cách máy quay đi vào vùng thu phóng.",
+		"zoomOutTitle": "Thu nhỏ",
+		"zoomOutDescription": "Điều chỉnh cách máy quay thoát khỏi vùng thu phóng.",
+		"connectedZoomTitle": "Giữa các vùng thu phóng",
+		"connectedZoomDescription": "Điều chỉnh chuyển động lướt giữa các vùng thu phóng liên tiếp khi bật kết nối.",
+		"motionPresetsTitle": "Thiết lập chuyển động",
+		"motionPresetsZoomHint": "Có thể thiết lập chuyển động thu phóng trong mục Cài đặt.",
+		"animationPresets": "Thiết lập ảnh động",
+		"cursorMotionPresets": "Thiết lập chuyển động con trỏ",
+		"motionPresets": {
+			"focused": {
+				"label": "Nhanh gọn",
+				"description": "Chuyển động nhanh nhạy hơn cho bản demo, hướng dẫn và bản ghi thường ngày."
+			},
+			"smooth": {
+				"label": "Mượt mà",
+				"description": "Chuyển động nhẹ nhàng hơn cho bài thuyết trình, video kiểu diễn văn và các cảnh giới thiệu trau chuốt."
+			}
+		},
+		"zoomInDuration": "Thời lượng phóng to",
+		"zoomInOverlap": "Độ chồng lấp khi phóng to",
+		"zoomOutDuration": "Thời lượng thu nhỏ",
+		"zoomInEasing": "Đường cong phóng to",
+		"zoomOutEasing": "Đường cong thu nhỏ",
+		"connectedZoomGap": "Khoảng cách giữa các vùng thu phóng",
+		"connectedZoomDuration": "Thời lượng chuyển tiếp giữa các vùng thu phóng",
+		"connectedZoomEasing": "Đường cong lia máy nối tiếp",
+		"zoomEasingOptions": {
+			"recordly": "Recordly",
+			"glide": "Lướt",
+			"smooth": "Mượt",
+			"snappy": "Nhanh",
+			"linear": "Tuyến tính"
+		},
+		"cursorSize": "Kích thước con trỏ",
+		"cursorSmoothing": "Độ mượt con trỏ",
+		"cursorSpringStiffness": "Độ cứng lò xo con trỏ",
+		"cursorSpringDamping": "Độ giảm chấn lò xo con trỏ",
+		"cursorSpringMass": "Khối lượng lò xo con trỏ",
+		"off": "Tắt",
+		"cursorClickEffects": {
+			"title": "Hiệu ứng nhấp",
+			"advanced": "Nâng cao",
+			"advancedShow": "Hiện điều khiển hiệu ứng nhấp nâng cao",
+			"advancedHide": "Ẩn điều khiển hiệu ứng nhấp nâng cao",
+			"color": "Màu hiệu ứng",
+			"size": "Kích thước hiệu ứng",
+			"opacity": "Độ mờ hiệu ứng",
+			"duration": "Thời lượng hiệu ứng",
+			"none": {
+				"label": "Tắt",
+				"description": "Không hiển thị hiệu ứng đồ họa khi nhấp. Chỉ chuyển động con trỏ thay đổi khi bạn nhấp."
+			},
+			"ripple": {
+				"label": "Gợn sóng",
+				"description": "Các vòng tròn lan rộng từ mỗi lần nhấp giúp thao tác chạm dễ nhận thấy khi phát."
+			},
+			"spotlight": {
+				"label": "Quầng sáng",
+				"description": "Một quầng sáng dịu lóe lên quanh con trỏ để làm nổi bật vùng được nhấp."
+			},
+			"echo": {
+				"label": "Vọng",
+				"description": "Hai vòng tròn dịu lan rộng ra ngoài với nhịp nhấn rõ nét hơn."
+			}
+		},
+		"cursorMotionBlur": "Làm mờ chuyển động con trỏ",
+		"cursorClickBounce": "Độ nảy con trỏ khi nhấp",
+		"cursorClickBounceDuration": "Tốc độ nảy",
+		"cursorSway": "Độ lắc con trỏ",
+		"webcam": "Lớp phủ webcam",
+		"webcamFootage": "Video webcam",
+		"webcamFootageDescription": "Chưa liên kết video webcam với video này",
+		"uploadWebcamFootage": "Tải video lên",
+		"replaceWebcamFootage": "Thay video",
+		"removeWebcamFootage": "Gỡ video",
+		"webcamFootageAdded": "Đã liên kết video webcam",
+		"webcamFootageRemoved": "Đã gỡ video webcam",
+		"webcamSize": "Kích thước webcam",
+		"webcamWidth": "Chiều rộng webcam",
+		"webcamHeight": "Chiều cao webcam",
+		"webcamCrop": "Cắt webcam",
+		"webcamReactToZoom": "Webcam phản ứng khi thu phóng",
+		"webcamMirror": "Lật gương webcam",
+		"webcamRoundness": "Độ bo tròn webcam",
+		"webcamShadow": "Bóng webcam",
+		"shadow": "Bóng",
+		"radius": "Bán kính",
+		"roundness": "Độ bo tròn",
+		"padding": "Lề trong",
+		"paddingLinked": "Liên kết (đồng đều)",
+		"paddingUnlinked": "Tách riêng (không đối xứng)",
+		"paddingTop": "Trên",
+		"paddingBottom": "Dưới",
+		"paddingLeft": "Trái",
+		"paddingRight": "Phải",
+		"removeBackground": "Xóa nền"
+	},
+	"sections": {
+		"scene": "Cảnh",
+		"captions": "Phụ đề",
+		"caption": "Phụ đề",
+		"zoom": "Thu phóng",
+		"cursor": "Con trỏ",
+		"webcam": "Webcam",
+		"frame": "Khung hình",
+		"crop": "Cắt"
+	},
+	"captions": {
+		"selectOnTimeline": "Chọn phụ đề trên dòng thời gian để chỉnh sửa.",
+		"enabled": "Hiện",
+		"timelineQuickAdd": "Di chuột để thêm vào dòng thời gian",
+		"language": "Ngôn ngữ",
+		"downloading": "Đang tải xuống...",
+		"deleteModel": "Xóa mô hình",
+		"clearModel": "Xóa mô hình khỏi máy",
+		"downloadModel": "Tải mô hình xuống",
+		"generating": "Đang tạo...",
+		"generateFull": "Tạo phụ đề",
+		"regenerateFull": "Tạo lại phụ đề",
+		"clearFull": "Xóa phụ đề",
+		"fontSettings": "Cài đặt phông chữ",
+		"defaultFont": "Mặc định",
+		"fontFamily": "Phông chữ",
+		"fontSize": "Cỡ chữ",
+		"rowCount": "Số dòng",
+		"animation": "Ảnh động",
+		"animationOff": "Tắt",
+		"animationFade": "Mờ dần",
+		"animationRise": "Trượt lên",
+		"animationPop": "Bật lên",
+		"bottomOffset": "Khoảng cách từ dưới",
+		"maxWidth": "Chiều rộng tối đa",
+		"boxRadius": "Độ bo góc hộp",
+		"backgroundOpacity": "Độ mờ nền",
+		"textColor": "Màu chữ",
+		"editor": {
+			"text": "Văn bản",
+			"start": "Bắt đầu",
+			"end": "Kết thúc",
+			"split": "Tách",
+			"merge": "Gộp",
+			"delete": "Xóa"
+		}
+	},
+	"crop": {
+		"title": "Cắt video",
+		"instruction": "Kéo từng cạnh để điều chỉnh vùng cắt",
+		"top": "Trên",
+		"bottom": "Dưới",
+		"left": "Trái",
+		"right": "Phải",
+		"openEditor": "Mở trình chỉnh sửa vùng cắt"
+	},
+	"background": {
+		"title": "Nền",
+		"image": "Hình ảnh",
+		"color": "Màu",
+		"gradient": "Chuyển màu",
+		"wallpaperPreview": "Xem trước hình nền",
+		"uploadCustom": "Tải ảnh tùy chỉnh lên",
+		"uploadSuccess": "Đã tải ảnh tùy chỉnh lên thành công!",
+		"uploadError": "Vui lòng tải lên tệp ảnh JPG hoặc JPEG.",
+		"uploadErrorDescription": "Chỉ hỗ trợ ảnh JPG và JPEG."
+	},
+	"export": {
+		"title": "Xuất",
+		"mp4": "MP4",
+		"gif": "GIF",
+		"quality": {
+			"low": "Thấp",
+			"medium": "Trung bình",
+			"high": "Cao",
+			"original": "Gốc"
+		},
+		"fpsTitle": "FPS",
+		"loop": "Lặp",
+		"outputDimensions": "Đầu ra: {{dimensions}}px",
+		"sizePresetOriginalShort": "Gốc",
+		"sizePresetMediumShort": "TB",
+		"sizePresetLargeShort": "Lớn",
+		"loadProject": "Tải dự án",
+		"saveProject": "Lưu dự án",
+		"exportVideo": "Xuất {{format}}",
+		"reportBug": "Báo lỗi",
+		"starOnGithub": "Đánh dấu sao trên GitHub"
+	},
+	"audio": {
+		"title": "Âm thanh",
+		"volumeTitle": "Âm thanh",
+		"volume": "Âm lượng",
+		"normalize": "Chuẩn hóa",
+		"sourceTracksTitle": "Âm thanh nguồn của đoạn video",
+		"systemLabel": "Âm thanh hệ thống nguồn",
+		"micLabel": "Micrô nguồn",
+		"mixedLabel": "Nguồn",
+		"deleteRegion": "Xóa âm thanh"
+	}
+}

@@ -1,0 +1,201 @@
+{
+	"cloud": {
+		"signInRequired": "Đăng nhập vào Recordly trước khi tạo liên kết chia sẻ.",
+		"prepareFailed": "Không thể chuẩn bị chỉnh sửa hiện tại để chia sẻ.",
+		"uploadFailed": "Tải lên đám mây không thành công.",
+		"linkCreated": "Đã tạo liên kết chia sẻ",
+		"linkCopied": "Đã sao chép liên kết",
+		"copyFailed": "Không thể sao chép liên kết. Hãy chọn và sao chép thủ công.",
+		"copied": "Đã sao chép",
+		"copy": "Sao chép",
+		"preparing": "Đang chuẩn bị chỉnh sửa hiện tại…",
+		"createLink": "Tạo liên kết",
+		"heading": "Chia sẻ lên đám mây",
+		"ready": "Video của bạn đã sẵn sàng để chia sẻ.",
+		"openPage": "Mở trang chia sẻ",
+		"notes": "Ghi chú",
+		"publish": "Đăng và tạo liên kết",
+		"createLinkTitle": "Tạo liên kết có thể chia sẻ",
+		"notesPlaceholder": "Thêm ngữ cảnh, hướng dẫn hoặc tóm tắt ngắn cho người xem…",
+		"description": "Đăng bản chỉnh sửa hiện tại lên trang xem và phản hồi của Recordly. Không cần tải xuống. Video chia sẻ được chuẩn bị ở độ phân giải tối đa 1080p.",
+		"uploading": "Đang tải lên… {progress}%",
+		"googleUnavailable": "Đăng nhập bằng Google chưa được bật. Hiện hãy dùng email hoặc yêu cầu quản trị viên Recordly kết nối Google.",
+		"xUnavailable": "Đăng nhập bằng X chưa được bật. Hiện hãy dùng email hoặc yêu cầu quản trị viên Recordly kết nối X.",
+		"providerUnavailable": "Phương thức đăng nhập này chưa được bật cho Recordly. Hiện hãy dùng email.",
+		"enterEmail": "Trước tiên, hãy nhập địa chỉ email.",
+		"resetSent": "Đã gửi email đặt lại mật khẩu.",
+		"accountHeading": "Tài khoản Recordly của bạn",
+		"signInHeading": "Đăng nhập vào Recordly",
+		"signInShareDescription": "Đăng nhập để đăng video này và quản lý liên kết chia sẻ.",
+		"signInDescription": "Truy cập bản ghi và liên kết chia sẻ của bạn.",
+		"signingOut": "Đang đăng xuất…",
+		"signOut": "Đăng xuất",
+		"signingIn": "Đang đăng nhập…",
+		"signIn": "Đăng nhập",
+		"or": "hoặc",
+		"email": "Email",
+		"password": "Mật khẩu",
+		"forgotPassword": "Quên mật khẩu?",
+		"unavailable": "Đăng nhập đám mây chưa khả dụng trong bản dựng này. Bạn vẫn có thể lưu video vào máy tính.",
+		"createShareLink": "Tạo liên kết chia sẻ",
+		"done": "Xong",
+		"addingVideo": "Đang thêm video…",
+		"preparingFootage": "Đang chuẩn bị video và âm thanh cho dòng thời gian."
+	},
+	"library": {
+		"videos": "Video"
+	},
+	"playback": {
+		"play": "Phát",
+		"pause": "Tạm dừng",
+		"skipBack": "Lùi lại",
+		"skipForward": "Tiến lên",
+		"muteUnmute": "Tắt/Bật tiếng",
+		"volume": "Âm lượng xem trước"
+	},
+	"annotations": {
+		"settings": "Cài đặt chú thích",
+		"active": "Đang bật",
+		"text": "Văn bản",
+		"image": "Hình ảnh",
+		"arrow": "Mũi tên",
+		"blur": "Làm mờ",
+		"textContent": "Nội dung văn bản",
+		"textPlaceholder": "Nhập văn bản...",
+		"fontStyle": "Kiểu phông chữ",
+		"selectStyle": "Chọn kiểu",
+		"size": "Kích thước",
+		"toggleBold": "Bật/tắt chữ đậm",
+		"toggleItalic": "Bật/tắt chữ nghiêng",
+		"toggleUnderline": "Bật/tắt gạch chân",
+		"alignLeft": "Căn trái",
+		"alignCenter": "Căn giữa",
+		"alignRight": "Căn phải",
+		"textColor": "Màu chữ",
+		"background": "Nền",
+		"none": "Không",
+		"clearBackground": "Xóa nền",
+		"uploadImage": "Tải ảnh lên",
+		"supportedFormats": "Định dạng hỗ trợ: JPG, PNG, GIF, WebP",
+		"arrowDirection": "Hướng mũi tên",
+		"strokeWidth": "Độ dày nét: {{width}}px",
+		"arrowColor": "Màu mũi tên",
+		"deleteAnnotation": "Xóa chú thích",
+		"shortcutsAndTips": "Phím tắt và mẹo",
+		"tipSelectAnnotation": "Di chuyển đầu phát đến đoạn có chú thích chồng lấp rồi chọn một mục.",
+		"tipCycleForward": "Nhấn Tab để chuyển qua các mục chồng lấp.",
+		"tipCycleBackward": "Nhấn Shift+Tab để chuyển ngược lại.",
+		"imageUploadSuccess": "Đã tải ảnh lên thành công!",
+		"imageUploadError": "Vui lòng tải lên tệp ảnh JPG, PNG, GIF hoặc WebP.",
+		"blurStrength": "Độ mờ: {{strength}}",
+		"solidColor": "Màu đặc (che nội dung)",
+		"borderRadius": "Bo góc"
+	},
+	"fontStyles": {
+		"classic": "Cổ điển",
+		"editor": "Trình chỉnh sửa",
+		"strong": "Đậm",
+		"typewriter": "Máy đánh chữ",
+		"deco": "Trang trí",
+		"simple": "Đơn giản",
+		"modern": "Hiện đại",
+		"clean": "Gọn gàng"
+	},
+	"format": {
+		"mp4Video": "Video MP4",
+		"mp4Description": "Tệp video chất lượng cao",
+		"gifAnimation": "Ảnh động GIF",
+		"gifDescription": "Ảnh động để chia sẻ"
+	},
+	"gifOptions": {
+		"frameRate": "Tốc độ khung hình",
+		"outputSize": "Kích thước đầu ra",
+		"outputDimensions": "Đầu ra: {{width}} × {{height}}px",
+		"loopAnimation": "Lặp ảnh động",
+		"loopDescription": "GIF sẽ phát liên tục"
+	},
+	"tutorial": {
+		"howTrimmingWorks": "Cách cắt video",
+		"title": "Cách cắt video",
+		"understanding": "Tìm hiểu cách loại bỏ những phần không mong muốn khỏi video.",
+		"descriptionP1": "Công cụ Cắt dùng để xác định những đoạn bạn muốn",
+		"descriptionRemove": "loại bỏ",
+		"descriptionP2": "khỏi video.",
+		"descriptionP3": "Mọi phần trên dòng thời gian được phủ bởi đoạn cắt màu đỏ sẽ bị loại bỏ khi xuất.",
+		"visualExample": "Ví dụ minh họa",
+		"removed": "ĐÃ LOẠI BỎ",
+		"kept": "Được giữ lại",
+		"finalVideo": "Video cuối cùng",
+		"part": "Phần {{number}}",
+		"addTrimStep": "1. Thêm đoạn cắt",
+		"addTrimDesc": "Nhấn T hoặc nhấp biểu tượng kéo để đánh dấu đoạn cần loại bỏ.",
+		"adjustStep": "2. Điều chỉnh",
+		"adjustDesc": "Kéo mép vùng màu đỏ để bao chính xác phần bạn muốn cắt."
+	},
+	"feedback": {
+		"trigger": "Phản hồi",
+		"title": "Phản hồi và liên hệ",
+		"description": "Liên hệ trực tiếp hoặc mở một vấn đề nếu có nội dung bị lỗi hoặc còn thiếu.",
+		"emailLabel": "Email",
+		"xLabel": "X",
+		"reportIssue": "Báo lỗi / gửi phản hồi",
+		"openFailed": "Không thể mở liên kết."
+	},
+	"keyboardShortcuts": {
+		"trigger": "Phím tắt",
+		"title": "Phím tắt",
+		"description": "Tham khảo nhanh các điều khiển dòng thời gian và trình chỉnh sửa.",
+		"customizeTooltip": "Tùy chỉnh phím tắt",
+		"customize": "Tùy chỉnh",
+		"panTimeline": "Di chuyển dòng thời gian",
+		"zoomTimeline": "Thu phóng dòng thời gian",
+		"cycleAnnotations": "Chuyển qua các chú thích",
+		"tab": "Tab"
+	},
+	"actions": {
+		"saveAgain": "Lưu lại",
+		"showInFolder": "Hiện trong thư mục"
+	},
+	"project": {
+		"untitled": "Chưa có tên",
+		"unsavedChangesTitle": "Thay đổi chưa lưu",
+		"unsavedChangesDescription": "Lưu dự án hiện tại trước khi {{action}}?",
+		"discardChanges": "Hủy thay đổi",
+		"saveProject": "Lưu dự án"
+	},
+	"exportTips": {
+		"autoZooms": "Mẹo: Tắt tính năng tự động áp dụng thu phóng trong cài đặt",
+		"experimentalBuilds": "Mẹo: Bật quyền truy cập trong cài đặt để thử các bản dựng thử nghiệm",
+		"cursorAppearance": "Mẹo: Bạn có thể tùy chỉnh giao diện con trỏ"
+	},
+	"account": {
+		"title": "Tài khoản",
+		"comingSoon": "Tài khoản sẽ sớm ra mắt"
+	},
+	"nativeCaptureUnavailable": {
+		"title": "Không có gì bị lỗi, nhưng không thể kết xuất lớp phủ con trỏ động.",
+		"description": "Thiết bị của bạn không hỗ trợ tính năng ghi hình gốc. Có thể do nhiều nguyên nhân mà chúng tôi chưa xác định được. Điều này không làm hỏng Recordly, nhưng khiến việc làm mượt con trỏ không khả dụng.",
+		"confirm": "Được"
+	},
+	"exportStatus": {
+		"exporting": "Đang xuất",
+		"renderingFile": "Đang kết xuất tệp.",
+		"preparing": "Đang chuẩn bị xuất...",
+		"completePercent": "Đã hoàn tất {{percent}}%",
+		"issue": "Sự cố khi xuất",
+		"complete": "Đã xuất xong",
+		"savedSuccessfully": "Đã lưu tệp thành công."
+	},
+	"export": {
+		"processingAudioEdits": "Đang xử lý âm thanh cùng các chỉnh sửa tốc độ/lớp phủ"
+	},
+	"toolbar": {
+		"addLayer": "Thêm lớp",
+		"splitClip": "Tách đoạn (C)"
+	},
+	"timeline": {
+		"expand": "Mở rộng dòng thời gian",
+		"collapse": "Thu gọn dòng thời gian"
+	},
+	"openRecordingsFolder": "Mở thư mục bản ghi"
+}
