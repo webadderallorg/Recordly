@@ -1,3 +1,5 @@
+Language: EN | [Español](TRANSLATION_GUIDE.es.md)
+
 # Translation Guide
 
 This project uses a namespace-based i18n setup so contributors can localize safely without changing app logic.
@@ -8,7 +10,14 @@ All locale files live under:
 
 - `src/i18n/locales/en/`
 - `src/i18n/locales/es/`
+- `src/i18n/locales/fr/`
+- `src/i18n/locales/de/`
+- `src/i18n/locales/it/`
+- `src/i18n/locales/nl/`
+- `src/i18n/locales/ko/`
+- `src/i18n/locales/pt-BR/`
 - `src/i18n/locales/zh-CN/`
+- `src/i18n/locales/zh-TW/`
 
 Each locale has the same namespace files:
 

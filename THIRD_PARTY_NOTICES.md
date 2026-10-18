@@ -1,3 +1,5 @@
+Language: EN | [Español](THIRD_PARTY_NOTICES.es.md)
+
 # Third-party notices
 
 ## Voom
