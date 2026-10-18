@@ -1,11 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@heroui/react", () => ({
+	Toast: () => null,
+	toast: {
+		error: vi.fn(),
+		success: vi.fn(),
+		info: vi.fn(),
+	},
+}));
+vi.mock("@/components/ui/toast", () => ({
+	toast: {
+		error: vi.fn(),
+		success: vi.fn(),
+		info: vi.fn(),
+	},
+}));
+
 import {
 	createBrowserRecordingOptions,
 	createProcessedMicrophoneConstraints,
 	normalizeBrowserMicrophoneProfile,
 	resolveBrowserCaptureCursorPolicy,
 	shouldUseNativeWindowsCaptureForSource,
+	stopActiveMediaRecorder,
 	stopAndDiscardNativeCapture,
 } from "./useScreenRecorder";
 
@@ -171,6 +188,39 @@ describe("shouldUseNativeWindowsCaptureForSource", () => {
 
 	it("keeps browser capture for non-desktop sources", () => {
 		expect(shouldUseNativeWindowsCaptureForSource({ id: "browser-tab:abc" })).toBe(false);
+	});
+});
+
+describe("stopActiveMediaRecorder", () => {
+	it("stops recorder when in recording state", () => {
+		const recorder = createMockMediaRecorder("recording");
+		expect(stopActiveMediaRecorder(recorder)).toBe(true);
+		expect(recorder.stop).toHaveBeenCalled();
+	});
+
+	it("stops recorder when in paused state", () => {
+		const recorder = createMockMediaRecorder("paused");
+		expect(stopActiveMediaRecorder(recorder)).toBe(true);
+		expect(recorder.stop).toHaveBeenCalled();
+	});
+
+	it("does not stop recorder when already inactive", () => {
+		const recorder = createMockMediaRecorder("inactive");
+		expect(stopActiveMediaRecorder(recorder)).toBe(false);
+		expect(recorder.stop).not.toHaveBeenCalled();
+	});
+
+	it("handles null or undefined recorder gracefully", () => {
+		expect(stopActiveMediaRecorder(null)).toBe(false);
+		expect(stopActiveMediaRecorder(undefined)).toBe(false);
+	});
+
+	it("swallows errors if recorder.stop() throws during cleanup", () => {
+		const recorder = createMockMediaRecorder("recording");
+		recorder.stop.mockImplementation(() => {
+			throw new Error("InvalidStateError");
+		});
+		expect(stopActiveMediaRecorder(recorder)).toBe(false);
 	});
 });
 
