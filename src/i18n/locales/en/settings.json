@@ -253,6 +253,7 @@
 		"volumeTitle": "Audio",
 		"volume": "Volume",
 		"normalize": "Normalize",
+		"matchClipSpeed": "Match clip speed",
 		"sourceTracksTitle": "Clip Source Audio",
 		"systemLabel": "Source System",
 		"micLabel": "Source Mic",

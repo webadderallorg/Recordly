@@ -247,6 +247,7 @@
 		"volumeTitle": "Аудио",
 		"volume": "Громкость",
 		"normalize": "Нормализовать",
+		"matchClipSpeed": "Следовать скорости клипа",
 		"sourceTracksTitle": "Исходное аудио клипа",
 		"systemLabel": "Системный звук",
 		"micLabel": "Микрофон",

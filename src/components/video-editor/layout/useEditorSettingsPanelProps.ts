@@ -104,6 +104,9 @@ export function useEditorSettingsPanelProps(input: Input): ComponentProps<typeof
 			selectedAudio?.normalize ?? (timeline.selectedAudioId ? false : null),
 		onAudioVolumeChange: audioCommands.handleAudioVolumeChange,
 		onAudioNormalizeChange: audioCommands.handleAudioNormalizeChange,
+		selectedAudioMatchClipSpeed:
+			selectedAudio?.matchClipSpeed ?? (timeline.selectedAudioId ? false : null),
+		onAudioMatchClipSpeedChange: audioCommands.handleAudioMatchClipSpeedChange,
 		onAudioDelete: audioCommands.handleAudioDelete,
 		shadowIntensity: appearance.shadowIntensity,
 		onShadowChange: appearance.setShadowIntensity,

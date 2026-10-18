@@ -115,6 +115,7 @@ export function useVideoEditorAudio({
 
 	const { playSourceAudioPreview } = useAudioPreviewSync({
 		audioRegions,
+		clipRegions,
 		previewVolume,
 		isPlaying,
 		currentTime,

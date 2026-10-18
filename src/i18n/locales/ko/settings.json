@@ -247,6 +247,7 @@
 		"volumeTitle": "오디오",
 		"volume": "볼륨",
 		"normalize": "정규화",
+		"matchClipSpeed": "클립 속도에 맞추기",
 		"sourceTracksTitle": "클립 소스 오디오",
 		"systemLabel": "시스템 소스",
 		"micLabel": "마이크 소스",

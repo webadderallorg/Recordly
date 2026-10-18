@@ -63,6 +63,17 @@ describe("normalizeProjectEditor", () => {
 		expect(getDefaultBorderRadiusPercent("Linux x86_64")).toBe(0);
 	});
 
+	it("keeps imported audio at 1x unless the project opted into clip speed", () => {
+		const region = { startMs: 0, endMs: 1000, audioPath: "/music.mp3", volume: 1 };
+		const normalized = normalizeProjectEditor({
+			audioRegions: [
+				{ ...region, id: "audio-1", matchClipSpeed: true },
+				{ ...region, id: "audio-2" },
+			],
+		});
+		expect(normalized.audioRegions.map((audio) => audio.matchClipSpeed)).toEqual([true, false]);
+	});
+
 	it("clamps radius percentages", () => {
 		expect(normalizeProjectEditor({ borderRadius: 75 }).borderRadius).toBe(50);
 	});

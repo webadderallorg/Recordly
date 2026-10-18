@@ -1,3 +1,4 @@
+import type { TimelineSpeedSpan } from "@/components/video-editor/audio/audioRegionTiming";
 import type { SpeedRegion } from "@/components/video-editor/types";
 import { AudioProcessorBase } from "./audioProcessorBase";
 import type { TimelineSlice, TrimLikeRegion } from "./audioProcessorShared";
@@ -67,6 +68,17 @@ export class AudioTimelineProcessor extends AudioProcessorBase {
 		}
 
 		return outputMs;
+	}
+
+	// Where each slice's footage sits on the output timeline, and how fast it plays.
+	protected getSliceOutputSpans(slices: TimelineSlice[]): TimelineSpeedSpan[] {
+		let outputStartMs = 0;
+		return slices.map((slice) => {
+			if (slice.outputStartMs !== undefined) outputStartMs = slice.outputStartMs;
+			const startMs = outputStartMs;
+			outputStartMs += (slice.sourceEndMs - slice.sourceStartMs) / slice.speed;
+			return { startMs, endMs: outputStartMs, speed: slice.speed };
+		});
 	}
 
 	// Schedule an AudioBuffer through the timeline slices in an OfflineAudioContext.
