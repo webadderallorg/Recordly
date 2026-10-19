@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolveRecordedVideoStoragePath } from "./storagePath";
+import { isWebcamCompanionRecordingPath, resolveRecordedVideoStoragePath } from "./storagePath";
 
 describe("resolveRecordedVideoStoragePath", () => {
 	const recordingsDir = path.resolve("recordings-root");
@@ -49,5 +49,25 @@ describe("resolveRecordedVideoStoragePath", () => {
 		expect(() => resolveRecordedVideoStoragePath(recordingsDir, value)).toThrow(
 			"Invalid recording file name",
 		);
+	});
+});
+
+describe("isWebcamCompanionRecordingPath", () => {
+	const recordingsDir = path.resolve("recordings-root");
+
+	it.each([
+		"recording-1720588800000-webcam.webm",
+		"recording-1720588800000-webcam.mp4",
+	])("detects a webcam companion recording: %s", (fileName) => {
+		expect(isWebcamCompanionRecordingPath(path.join(recordingsDir, fileName))).toBe(true);
+	});
+
+	it.each([
+		"recording-1720588800000.webm",
+		"recording-1720588800000.mp4",
+		"recording-webcam.webm",
+		"recording-1720588800000-webcam.mov",
+	])("does not treat other files as webcam companions: %s", (fileName) => {
+		expect(isWebcamCompanionRecordingPath(path.join(recordingsDir, fileName))).toBe(false);
 	});
 });
