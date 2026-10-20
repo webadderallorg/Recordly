@@ -348,6 +348,8 @@ export interface NativeStaticLayoutExportMetrics extends NativeVideoAudioMuxMetr
 export interface NativeStaticLayoutExportSession {
 	terminating: boolean;
 	currentProcess: ReturnType<typeof spawn> | null;
+	videoOnlyPath?: string | null;
+	chunkDirectory?: string | null;
 }
 
 export function cleanupNativeVideoExportSessions() {
@@ -365,6 +367,13 @@ export function cleanupNativeVideoExportSessions() {
 		} catch {
 			/* process may already be exited */
 		}
+		// native-video-export-finish hands session.outputPath to the muxer
+		// (which consumes it) and the cancel path already removes it. When
+		// cleanup runs from before-quit we've bypassed both, so unlink the
+		// encoder's mp4 intermediate best-effort. Mirror the cancel handler
+		// and also drop the "-final.mp4" mux sidecar if the mux was in flight.
+		void removeTemporaryExportFile(session.outputPath);
+		void removeTemporaryExportFile(session.outputPath.replace(/\.mp4$/, "-final.mp4"));
 		nativeVideoExportSessions.delete(sessionId);
 	}
 
@@ -374,6 +383,18 @@ export function cleanupNativeVideoExportSessions() {
 			session.currentProcess?.kill("SIGKILL");
 		} catch {
 			/* process may already be exited */
+		}
+		// exportNativeStaticLayoutVideo's own finally block removes the
+		// chunk directory and the concatenated videoOnly mp4; on before-quit
+		// that JS never runs. Drop them best-effort so per-chunk mp4s do
+		// not orphan under app tmp.
+		if (session.videoOnlyPath) {
+			void removeTemporaryExportFile(session.videoOnlyPath);
+		}
+		if (session.chunkDirectory) {
+			void fs
+				.rm(session.chunkDirectory, { force: true, recursive: true })
+				.catch(() => undefined);
 		}
 		nativeStaticLayoutExportSessions.delete(sessionId);
 	}
@@ -3217,13 +3238,15 @@ export async function exportNativeStaticLayoutVideo(
 	const sessionId =
 		options.sessionId ??
 		`recordly-static-layout-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-	const session: NativeStaticLayoutExportSession = {
-		terminating: false,
-		currentProcess: null,
-	};
 	const chunkDirectory = path.join(app.getPath("temp"), sessionId);
 	const concatListPath = path.join(chunkDirectory, "chunks.txt");
 	const videoOnlyPath = path.join(app.getPath("temp"), `${sessionId}.mp4`);
+	const session: NativeStaticLayoutExportSession = {
+		terminating: false,
+		currentProcess: null,
+		videoOnlyPath,
+		chunkDirectory,
+	};
 	const ffprobePath = getFfprobeBinaryPath();
 	let outputPathToKeep: string | null = null;
 	let videoOutputValidated = false;

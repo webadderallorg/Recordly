@@ -33,6 +33,7 @@ const fsMocks = vi.hoisted(() => ({
 	readFile: vi.fn(),
 	stat: vi.fn(async () => ({ size: 5_000_000_000 })),
 	unlink: vi.fn(async () => undefined),
+	rm: vi.fn(async () => undefined),
 }));
 
 vi.mock("node:fs/promises", () => ({
@@ -60,6 +61,7 @@ import {
 	buildNativeStaticLayoutTimelineSegments,
 	buildNativeVideoAudioMuxArgs,
 	canCopyAudioCodecIntoMp4,
+	cleanupNativeVideoExportSessions,
 	getExperimentalNvidiaCudaExportSkipReason,
 	getExportHardwareInfo,
 	getNativeExportCapabilities,
@@ -72,6 +74,10 @@ import {
 	mapNvidiaCudaWrapperProgressPercentage,
 	muxExportedVideoAudioBuffer,
 	type NativeStaticLayoutExportOptions,
+	type NativeStaticLayoutExportSession,
+	nativeStaticLayoutExportSessions,
+	type NativeVideoExportSession,
+	nativeVideoExportSessions,
 	normalizeNativeStaticLayoutBackground,
 	parseFfmpegDurationSeconds,
 	parseFfmpegFrameRate,
@@ -1511,5 +1517,105 @@ describe("parseFfmpegFrameRate", () => {
 		expect(parseFfmpegFrameRate("Video: h264, 1920x1080, 59.94 fps, 60 tbr")).toBe(59.94);
 		expect(parseFfmpegFrameRate("Video: h264, 1920x1080, 30 tbr")).toBe(30);
 		expect(parseFfmpegFrameRate("Video: h264")).toBeNull();
+	});
+});
+
+describe("cleanupNativeVideoExportSessions", () => {
+	function makeNativeVideoSession(outputPath: string): NativeVideoExportSession {
+		const kill = vi.fn();
+		const destroy = vi.fn();
+		return {
+			ffmpegProcess: {
+				stdin: { destroyed: false, destroy },
+				kill,
+			},
+			outputPath,
+			inputByteSize: 0,
+			inputMode: "rawvideo",
+			maxQueuedWriteBytes: 0,
+			stderrOutput: "",
+			encoderName: "libx264",
+			processError: null,
+			stdinError: null,
+			terminating: false,
+			writeSequence: Promise.resolve(),
+			completionPromise: Promise.resolve(),
+			sender: null,
+			pendingWriteRequestIds: new Set(),
+		} as unknown as NativeVideoExportSession;
+	}
+
+	function makeStaticLayoutSession(
+		videoOnlyPath: string | null,
+		chunkDirectory: string | null,
+	): NativeStaticLayoutExportSession {
+		return {
+			terminating: false,
+			currentProcess: { kill: vi.fn() } as unknown as NativeStaticLayoutExportSession["currentProcess"],
+			videoOnlyPath,
+			chunkDirectory,
+		};
+	}
+
+	function resetSessionMaps() {
+		nativeVideoExportSessions.clear();
+		nativeStaticLayoutExportSessions.clear();
+		fsMocks.rm.mockClear();
+	}
+
+	it("unlinks the encoder intermediate and its mux sidecar for each streamed session", async () => {
+		resetSessionMaps();
+		nativeVideoExportSessions.set(
+			"s-alpha",
+			makeNativeVideoSession("/tmp/recordly-export-alpha.mp4"),
+		);
+		nativeVideoExportSessions.set(
+			"s-beta",
+			makeNativeVideoSession("/tmp/recordly-export-beta.mp4"),
+		);
+
+		cleanupNativeVideoExportSessions();
+		// removeTemporaryExportFile is async; drain the microtask queue.
+		await new Promise((resolve) => setImmediate(resolve));
+
+		expect(nativeVideoExportSessions.size).toBe(0);
+		const rmPaths = fsMocks.rm.mock.calls.map(([path]) => path);
+		expect(rmPaths).toContain("/tmp/recordly-export-alpha.mp4");
+		expect(rmPaths).toContain("/tmp/recordly-export-alpha-final.mp4");
+		expect(rmPaths).toContain("/tmp/recordly-export-beta.mp4");
+		expect(rmPaths).toContain("/tmp/recordly-export-beta-final.mp4");
+	});
+
+	it("removes the chunk directory and concatenated video for static-layout sessions", async () => {
+		resetSessionMaps();
+		nativeStaticLayoutExportSessions.set(
+			"static-1",
+			makeStaticLayoutSession("/tmp/recordly-static-1.mp4", "/tmp/recordly-static-1"),
+		);
+
+		cleanupNativeVideoExportSessions();
+		await new Promise((resolve) => setImmediate(resolve));
+
+		expect(nativeStaticLayoutExportSessions.size).toBe(0);
+		const rmCalls = fsMocks.rm.mock.calls;
+		expect(rmCalls).toContainEqual(["/tmp/recordly-static-1.mp4", { force: true }]);
+		expect(rmCalls).toContainEqual([
+			"/tmp/recordly-static-1",
+			{ force: true, recursive: true },
+		]);
+	});
+
+	it("skips file cleanup for legacy static-layout sessions without tracked paths", async () => {
+		resetSessionMaps();
+		nativeStaticLayoutExportSessions.set(
+			"static-legacy",
+			makeStaticLayoutSession(null, null),
+		);
+
+		cleanupNativeVideoExportSessions();
+		await new Promise((resolve) => setImmediate(resolve));
+
+		expect(nativeStaticLayoutExportSessions.size).toBe(0);
+		expect(fsMocks.rm).not.toHaveBeenCalled();
 	});
 });
