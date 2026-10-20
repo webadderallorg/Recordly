@@ -124,6 +124,24 @@ describe("normalizeProjectEditor", () => {
 		expect(editor.webcam.cornerRadius).toBeUndefined();
 	});
 
+	it("migrates the legacy caption bottom offset to X/Y positioning", () => {
+		const editor = normalizeProjectEditor({
+			autoCaptionSettings: { bottomOffset: 12 } as never,
+		});
+
+		expect(editor.autoCaptionSettings.positionX).toBe(50);
+		expect(editor.autoCaptionSettings.positionY).toBe(88);
+	});
+
+	it("preserves and clamps saved caption X/Y positions", () => {
+		const editor = normalizeProjectEditor({
+			autoCaptionSettings: { positionX: -20, positionY: 140 } as never,
+		});
+
+		expect(editor.autoCaptionSettings.positionX).toBe(0);
+		expect(editor.autoCaptionSettings.positionY).toBe(100);
+	});
+
 	it("uses the legacy webcam size when migrating radius pixels", () => {
 		const editor = normalizeProjectEditor({
 			webcam: {
