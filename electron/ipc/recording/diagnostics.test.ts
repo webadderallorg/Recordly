@@ -443,4 +443,82 @@ describe("getCompanionAudioFallbackPaths", () => {
 			"Recorded output is too small to contain playable video",
 		);
 	});
+
+	it("reports an FFmpeg that cannot start instead of blaming the recording", async () => {
+		const videoPath = path.join(tempRoot, "recording-123.webm");
+		await fs.writeFile(videoPath, Buffer.alloc(4096));
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				const error = new Error("spawn ffmpeg EACCES") as NodeJS.ErrnoException;
+				error.code = "EACCES";
+				error.syscall = "spawn ffmpeg";
+				callback(error);
+			},
+		);
+
+		const { validateRecordedVideo } = await import("./diagnostics");
+
+		await expect(validateRecordedVideo(videoPath)).rejects.toThrow(
+			"FFmpeg could not start (EACCES): ffmpeg",
+		);
+	});
+
+	it("reports an FFmpeg that was stopped by a signal", async () => {
+		const videoPath = path.join(tempRoot, "recording-123.webm");
+		await fs.writeFile(videoPath, Buffer.alloc(4096));
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				const error = new Error("Command failed") as Error & {
+					signal?: string;
+					stderr?: string;
+				};
+				error.signal = "SIGSEGV";
+				error.stderr = "";
+				callback(error, "", "");
+			},
+		);
+
+		const { validateRecordedVideo } = await import("./diagnostics");
+
+		await expect(validateRecordedVideo(videoPath)).rejects.toThrow(
+			"FFmpeg was stopped by SIGSEGV before it finished checking the recording",
+		);
+	});
+
+	it("keeps FFmpeg's own output when the recording really cannot be decoded", async () => {
+		const videoPath = path.join(tempRoot, "recording-123.webm");
+		await fs.writeFile(videoPath, Buffer.alloc(4096));
+		execFileMock.mockImplementation(
+			(
+				_file: string,
+				_args: string[],
+				_options: Record<string, unknown>,
+				callback: ExecFileCallback,
+			) => {
+				const error = new Error("Command failed") as Error & {
+					code?: number;
+					stderr?: string;
+				};
+				error.code = 1;
+				error.stderr = "EBML header parsing failed";
+				callback(error, "", error.stderr);
+			},
+		);
+
+		const { validateRecordedVideo } = await import("./diagnostics");
+
+		await expect(validateRecordedVideo(videoPath)).rejects.toThrow(
+			"EBML header parsing failed",
+		);
+	});
 });
