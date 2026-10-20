@@ -131,6 +131,29 @@ export function getGifRepeat(loop: boolean): 0 | 1 {
 	return loop ? 0 : 1;
 }
 
+/**
+ * Wire a gif.js render into a promise. Resolves on the encoder's "finished"
+ * event and rejects on "abort" so a mid-render cancel does not leave the
+ * promise pending forever. Progress ticks are forwarded when provided.
+ */
+export function awaitGifRender(
+	gif: GIF,
+	onProgress?: (percent: number) => void,
+): Promise<Blob> {
+	return new Promise<Blob>((resolve, reject) => {
+		gif.once("finished", (blob: Blob) => {
+			resolve(blob);
+		});
+		gif.once("abort", () => {
+			reject(new Error("Export cancelled"));
+		});
+		if (onProgress) {
+			gif.on("progress", onProgress);
+		}
+		gif.render();
+	});
+}
+
 export function buildGifFrameRendererConfig(
 	config: GifExporterConfig,
 	videoInfo: { width: number; height: number },
@@ -199,6 +222,7 @@ export class GifExporter {
 	private renderer: FrameRenderer | null = null;
 	private gif: GIF | null = null;
 	private cancelled = false;
+	private currentRunId = 0;
 	private exportStartTimeMs = 0;
 	private progressSampleStartTimeMs = 0;
 	private progressSampleStartFrame = 0;
@@ -209,6 +233,7 @@ export class GifExporter {
 	}
 
 	async export(): Promise<ExportResult> {
+		const runId = ++this.currentRunId;
 		try {
 			this.cleanup();
 			this.cancelled = false;
@@ -274,13 +299,21 @@ export class GifExporter {
 				this.config.trimRegions,
 				this.config.speedRegions,
 				async (videoFrame, _exportTimestampUs, sourceTimestampMs, cursorTimestampMs) => {
-					if (this.cancelled) {
+					if (!this.isCurrentRun(runId)) {
+						return;
+					}
+
+					// Capture a local renderer reference so a concurrent cancel()
+					// nulling this.renderer between the guard and the render call
+					// cannot NPE the callback.
+					const renderer = this.renderer;
+					if (!renderer) {
 						return;
 					}
 
 					const sourceTimestampUs = sourceTimestampMs * 1000;
 					const cursorTimestampUs = cursorTimestampMs * 1000;
-					await this.renderer!.renderFrame(
+					await renderer.renderFrame(
 						videoFrame,
 						sourceTimestampUs,
 						cursorTimestampUs,
@@ -288,14 +321,22 @@ export class GifExporter {
 						frameIndex * frameDurationUs,
 					);
 
-					this.addRenderedGifFrame(frameDelay);
+					// Re-check after the renderFrame await — cancel() may have
+					// fired during the await and invalidated the run.
+					if (!this.isCurrentRun(runId)) {
+						return;
+					}
+
+					if (!this.addRenderedGifFrame(frameDelay)) {
+						return;
+					}
 					frameIndex++;
 					this.reportProgress(frameIndex, totalFrames);
 				},
 				this.config.clipRegions,
 			);
 
-			if (this.cancelled) {
+			if (!this.isCurrentRun(runId)) {
 				return { success: false, error: "Export cancelled" };
 			}
 
@@ -311,29 +352,28 @@ export class GifExporter {
 				});
 			}
 
-			// Render the GIF
-			const blob = await new Promise<Blob>((resolve, _reject) => {
-				this.gif!.on("finished", (blob: Blob) => {
-					resolve(blob);
-				});
+			// Capture a local reference so cancel() nulling this.gif via
+			// cleanup() between here and awaitGifRender's render() call cannot
+			// NPE the render.
+			const gif = this.gif;
+			if (!gif) {
+				return { success: false, error: "Export cancelled" };
+			}
 
-				// Track rendering progress
-				this.gif!.on("progress", (progress: number) => {
-					if (this.config.onProgress) {
-						this.config.onProgress({
-							currentFrame: totalFrames,
-							totalFrames,
-							percentage: 100,
-							estimatedTimeRemaining: 0,
-							phase: "finalizing",
-							renderFps: this.lastRenderFps,
-							renderProgress: Math.round(progress * 100),
-						});
-					}
-				});
-
-				// gif.js doesn't have a typed 'error' event, but we can catch errors in the try/catch
-				this.gif!.render();
+			// Render the GIF. awaitGifRender listens for both "finished" and
+			// "abort" so a mid-render cancel does not hang the promise.
+			const blob = await awaitGifRender(gif, (progress: number) => {
+				if (this.config.onProgress) {
+					this.config.onProgress({
+						currentFrame: totalFrames,
+						totalFrames,
+						percentage: 100,
+						estimatedTimeRemaining: 0,
+						phase: "finalizing",
+						renderFps: this.lastRenderFps,
+						renderProgress: Math.round(progress * 100),
+					});
+				}
 			});
 
 			return { success: true, blob };
@@ -348,9 +388,18 @@ export class GifExporter {
 		}
 	}
 
-	private addRenderedGifFrame(frameDelay: number) {
-		const canvas = this.renderer!.getCanvas();
-		this.gif!.addFrame(canvas, { delay: frameDelay, copy: true });
+	private addRenderedGifFrame(frameDelay: number): boolean {
+		const renderer = this.renderer;
+		const gif = this.gif;
+		if (!renderer || !gif) {
+			return false;
+		}
+		gif.addFrame(renderer.getCanvas(), { delay: frameDelay, copy: true });
+		return true;
+	}
+
+	private isCurrentRun(runId: number): boolean {
+		return !this.cancelled && this.currentRunId === runId;
 	}
 
 	private reportProgress(currentFrame: number, totalFrames: number) {
@@ -387,6 +436,10 @@ export class GifExporter {
 
 	cancel(): void {
 		this.cancelled = true;
+		// Bump the run id so any in-flight decode callbacks from a previous
+		// export() invocation short-circuit before touching state a later
+		// export() may have reassigned.
+		this.currentRunId++;
 		if (this.streamingDecoder) {
 			this.streamingDecoder.cancel();
 		}
