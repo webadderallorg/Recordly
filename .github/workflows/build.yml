@@ -165,7 +165,7 @@ jobs:
       - name: Install Linux native build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxt-dev libxtst-dev libxkbfile-dev libxi-dev libxrandr-dev libxinerama-dev
+          sudo apt-get install -y libx11-dev libxt-dev libxtst-dev libxkbfile-dev libxi-dev libxrandr-dev libxinerama-dev zsync
 
       - name: Remove stale uiohook build output
         run: rm -rf node_modules/uiohook-napi/build
@@ -179,6 +179,7 @@ jobs:
           npx tsc
           npx vite build
           npx electron-builder --linux dir AppImage --x64 --publish never
+          node scripts/embed-appimage-updateinfo.mjs
 
       - name: Smoke test packaged Linux paths
         run: npm run smoke:packaged-binaries
@@ -198,6 +199,7 @@ jobs:
           path: |
             release/**/*.AppImage
             release/**/*.blockmap
+            release/**/*.zsync
             release/latest-linux.yml
             release/SHA256SUMS*.txt
           if-no-files-found: error
