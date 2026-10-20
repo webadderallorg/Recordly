@@ -1,6 +1,8 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
+#include <thread>
 #include <mfapi.h>
 #include <mfidl.h>
 #include <vector>
@@ -19,13 +21,17 @@ inline HRESULT setBt709LimitedVideoAttributes(IMFMediaType* mediaType) {
     return mediaType->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235);
 }
 
-inline void convertBgraToBt709LimitedNv12(
+// Converts rows [rowBegin, rowEnd) of BGRA into NV12. Both bounds must be even so each
+// 2x2 chroma block stays within one range, which lets ranges run on separate threads.
+inline void convertBgraToBt709LimitedNv12Rows(
     const uint8_t* bgra,
     int bgraPitch,
     int width,
     int height,
+    int rowBegin,
+    int rowEnd,
     std::vector<uint8_t>& nv12Buffer) {
-    for (int y = 0; y < height; ++y) {
+    for (int y = rowBegin; y < rowEnd; ++y) {
         for (int x = 0; x < width; ++x) {
             const uint8_t* pixel = bgra + y * bgraPitch + x * 4;
             const int blue = pixel[0];
@@ -37,7 +43,7 @@ inline void convertBgraToBt709LimitedNv12(
     }
 
     uint8_t* uvPlane = nv12Buffer.data() + width * height;
-    for (int y = 0; y < height; y += 2) {
+    for (int y = rowBegin; y < rowEnd; y += 2) {
         for (int x = 0; x < width; x += 2) {
             int red = 0;
             int green = 0;
@@ -63,4 +69,32 @@ inline void convertBgraToBt709LimitedNv12(
             uvPlane[uvIndex + 1] = static_cast<uint8_t>(clampVideoSample(chromaRed, 16, 240));
         }
     }
+}
+
+// Full-frame BGRA -> NV12. A 4K frame is ~8M pixels and this runs once per captured frame,
+// so large frames are split into row bands across threads to stay inside the frame budget.
+inline void convertBgraToBt709LimitedNv12(
+    const uint8_t* bgra,
+    int bgraPitch,
+    int width,
+    int height,
+    std::vector<uint8_t>& nv12Buffer) {
+    // ponytail: thread-per-band spawn each frame (~50us); a persistent pool if this ever shows up in profiles.
+    constexpr int kMinPixelsPerThread = 1 << 20;
+    const unsigned hardwareThreads = (std::max)(1u, std::thread::hardware_concurrency());
+    const int bandCount = static_cast<int>((std::min)(
+        { static_cast<unsigned>(8), hardwareThreads,
+          static_cast<unsigned>((std::max)(1, width * height / kMinPixelsPerThread)) }));
+
+    // Even row boundaries, so chroma blocks never straddle two bands.
+    const int rowsPerBand = ((height + bandCount - 1) / bandCount + 1) & ~1;
+    std::vector<std::thread> workers;
+    for (int rowBegin = rowsPerBand; rowBegin < height; rowBegin += rowsPerBand) {
+        const int rowEnd = (std::min)(rowBegin + rowsPerBand, height);
+        workers.emplace_back([=, &nv12Buffer] {
+            convertBgraToBt709LimitedNv12Rows(bgra, bgraPitch, width, height, rowBegin, rowEnd, nv12Buffer);
+        });
+    }
+    convertBgraToBt709LimitedNv12Rows(bgra, bgraPitch, width, height, 0, (std::min)(rowsPerBand, height), nv12Buffer);
+    for (auto& worker : workers) worker.join();
 }
