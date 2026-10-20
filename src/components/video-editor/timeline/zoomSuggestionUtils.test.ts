@@ -42,6 +42,11 @@ describe("shouldAutoApplyFreshRecordingZoomsForSource", () => {
 		expect(shouldAutoApplyFreshRecordingZoomsForSource(936, 1028, "win32")).toBe(true);
 	});
 
+	it("allows narrow macOS window captures (portrait windows) too", () => {
+		expect(shouldAutoApplyFreshRecordingZoomsForSource(936, 1028, "darwin")).toBe(true);
+		expect(shouldAutoApplyFreshRecordingZoomsForSource(1080, 1920, "darwin")).toBe(true);
+	});
+
 	it("does not block when source dimensions are not available yet", () => {
 		expect(shouldAutoApplyFreshRecordingZoomsForSource()).toBe(true);
 	});
