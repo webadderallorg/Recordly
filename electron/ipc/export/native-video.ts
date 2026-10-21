@@ -1828,6 +1828,8 @@ export function sanitizeExportGpuInfo(
 	return { machineModel, gpus };
 }
 
+const GPU_INFO_TIMEOUT_MS = 3000;
+
 /** Captures sanitized hardware and GPU acceleration details for export support reports. */
 export async function getExportHardwareInfo(): Promise<ExportHardwareInfo> {
 	let sanitizedGpuInfo: Pick<ExportHardwareInfo, "machineModel" | "gpus"> = {
@@ -1835,7 +1837,18 @@ export async function getExportHardwareInfo(): Promise<ExportHardwareInfo> {
 		gpus: [],
 	};
 	try {
-		sanitizedGpuInfo = sanitizeExportGpuInfo(await app.getGPUInfo("complete"));
+		// app.getGPUInfo("complete") can hang forever (never resolve or reject)
+		// when the GPU process is crashed, disabled, or blocklisted, which would
+		// otherwise stall the entire export pipeline at "preparing" with no
+		// error surfaced. Race it against a timeout so a stuck GPU process can
+		// never block exporting.
+		const gpuInfo = await Promise.race([
+			app.getGPUInfo("complete"),
+			new Promise<never>((_resolve, reject) =>
+				setTimeout(() => reject(new Error("getGPUInfo timed out")), GPU_INFO_TIMEOUT_MS),
+			),
+		]);
+		sanitizedGpuInfo = sanitizeExportGpuInfo(gpuInfo);
 	} catch {
 		// Hardware diagnostics are best effort and must not affect exporting.
 	}
