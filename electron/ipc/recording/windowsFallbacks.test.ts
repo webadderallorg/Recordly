@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	isWindowsSystemAudioCaptureUnavailable,
 	shouldStartWindowsBrowserMicrophoneFallback,
 	shouldUseWindowsBrowserMicrophoneFallback,
 	WINDOWS_MIC_CAPTURE_MODE_ENV,
@@ -100,5 +101,33 @@ describe("shouldUseWindowsBrowserMicrophoneFallback", () => {
 				{ [WINDOWS_MIC_CAPTURE_MODE_ENV]: "fallback" },
 			),
 		).toBe(true);
+	});
+});
+
+describe("isWindowsSystemAudioCaptureUnavailable", () => {
+	it("returns true when native WASAPI loopback initialization fails", () => {
+		expect(
+			isWindowsSystemAudioCaptureUnavailable(
+				"WARNING: Failed to initialize WASAPI loopback\nRecording started",
+				{ capturesSystemAudio: true },
+			),
+		).toBe(true);
+	});
+
+	it("returns false when system audio capture was not requested", () => {
+		expect(
+			isWindowsSystemAudioCaptureUnavailable(
+				"WARNING: Failed to initialize WASAPI loopback\nRecording started",
+				{ capturesSystemAudio: false },
+			),
+		).toBe(false);
+	});
+
+	it("returns false for a healthy native loopback session", () => {
+		expect(
+			isWindowsSystemAudioCaptureUnavailable("Recording started", {
+				capturesSystemAudio: true,
+			}),
+		).toBe(false);
 	});
 });
