@@ -297,23 +297,32 @@ bool MFEncoder::extendLastFrameToLocked(int64_t timestampHns) {
         return true;
     }
 
-    int64_t nextSampleTimeHns = lastSampleTimeHns_ + frameDurationHns;
-    while (nextSampleTimeHns + frameDurationHns <= timestampHns) {
-        if (!writeNv12SampleLocked(lastFrameBuffer_, nextSampleTimeHns)) {
-            return false;
-        }
-        lastSampleTimeHns_ = nextSampleTimeHns;
-        nextSampleTimeHns += frameDurationHns;
+    // Cover the gap with one repeated sample instead of one per frame interval.
+    // Per-interval duplicates force the encoder to process a full fps worth of
+    // samples; when it runs slower than real time (shared/weak GPU) that backlog
+    // grows with recording length and has to drain on stop.
+    const int64_t nextSampleTimeHns = lastSampleTimeHns_ + frameDurationHns;
+    const int64_t gapFrames = (timestampHns - nextSampleTimeHns) / frameDurationHns;
+    if (gapFrames <= 0) {
+        return true;
     }
-
+    if (!writeNv12SampleLocked(lastFrameBuffer_, nextSampleTimeHns, gapFrames * frameDurationHns)) {
+        return false;
+    }
+    // Keep lastSampleTimeHns_ + frameDurationHns equal to the end of the covered gap.
+    lastSampleTimeHns_ = nextSampleTimeHns + (gapFrames - 1) * frameDurationHns;
     return true;
 }
 
-bool MFEncoder::writeNv12SampleLocked(const std::vector<uint8_t>& frameBuffer, int64_t timestampHns) {
+bool MFEncoder::writeNv12SampleLocked(
+    const std::vector<uint8_t>& frameBuffer,
+    int64_t timestampHns,
+    int64_t durationHns
+) {
     if (frameBuffer.empty()) return false;
     if (fps_ <= 0) return false;
 
-    const int64_t frameDurationHns = 10000000LL / fps_;
+    const int64_t frameDurationHns = durationHns > 0 ? durationHns : 10000000LL / fps_;
     if (frameDurationHns <= 0) return false;
 
     // Create MF sample
