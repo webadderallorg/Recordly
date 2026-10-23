@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	getHudOverlayWindowBounds,
+	isWaylandSession,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
 } from "./hudOverlayBounds";
@@ -184,5 +185,34 @@ describe("shouldExpandHudOverlayFallback", () => {
 				webcamPreviewVisible: true,
 			}),
 		).toBe(false);
+	});
+
+	it("always expands on Wayland so menus fit without runtime resizing", () => {
+		expect(
+			shouldExpandHudOverlayFallback({
+				fallbackExpanded: false,
+				recordingActive: true,
+				webcamPreviewVisible: false,
+				waylandSession: true,
+			}),
+		).toBe(true);
+	});
+});
+
+describe("isWaylandSession", () => {
+	it("detects Wayland from XDG_SESSION_TYPE on Linux", () => {
+		expect(isWaylandSession({ XDG_SESSION_TYPE: "wayland" }, "linux")).toBe(true);
+	});
+
+	it("detects Wayland from WAYLAND_DISPLAY on Linux", () => {
+		expect(isWaylandSession({ WAYLAND_DISPLAY: "wayland-0" }, "linux")).toBe(true);
+	});
+
+	it("returns false for X11 sessions", () => {
+		expect(isWaylandSession({ XDG_SESSION_TYPE: "x11" }, "linux")).toBe(false);
+	});
+
+	it("returns false outside Linux", () => {
+		expect(isWaylandSession({ XDG_SESSION_TYPE: "wayland" }, "darwin")).toBe(false);
 	});
 });
