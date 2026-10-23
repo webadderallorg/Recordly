@@ -176,6 +176,41 @@ https://github.com/webadderallorg/Recordly/releases
 
 ---
 
+## Linux: AppImage does not open (missing FUSE)
+
+If the AppImage does not open from your file manager, run it from a terminal in the download directory to see the error:
+
+```bash
+chmod +x Recordly-linux-x64.AppImage
+./Recordly-linux-x64.AppImage
+```
+
+If the output includes `dlopen(): error loading libfuse.so.2` or `AppImages require FUSE to run`, install the FUSE 2 library for your distribution. FUSE 3 alone does not provide this library.
+
+**Ubuntu 24.04 / Debian 13:**
+
+```bash
+sudo apt install libfuse2t64
+```
+
+**Ubuntu 22.04 / Debian 12:**
+
+```bash
+sudo apt install libfuse2
+```
+
+Then run the AppImage again. For other distributions, see the [AppImage FUSE troubleshooting guide](https://docs.appimage.org/user-guide/troubleshooting/fuse.html).
+
+If you cannot install FUSE, extract and run the AppImage instead:
+
+```bash
+./Recordly-linux-x64.AppImage --appimage-extract-and-run
+```
+
+This extracts temporary files and removes them when the app closes, so startup can be slower. It bypasses the FUSE dependency; other system requirements still apply.
+
+---
+
 ## Arch Linux / Manjaro (yay)
 
 Install from the AUR ([recordly-bin](https://aur.archlinux.org/packages/recordly-bin)):
