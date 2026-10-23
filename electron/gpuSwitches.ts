@@ -4,7 +4,9 @@ export interface GpuSwitches {
 	disableFeatures?: string[];
 }
 
-function normalizeLinuxWindowSystem(value: string | undefined): "wayland" | "x11" | null {
+export type LinuxOzonePlatform = "wayland" | "x11";
+
+function normalizeLinuxWindowSystem(value: string | undefined): LinuxOzonePlatform | null {
 	const normalized = value?.trim().toLowerCase();
 	if (normalized === "wayland" || normalized === "x11") {
 		return normalized;
@@ -13,11 +15,27 @@ function normalizeLinuxWindowSystem(value: string | undefined): "wayland" | "x11
 	return null;
 }
 
-function getForcedLinuxWindowSystem(env: NodeJS.ProcessEnv): "wayland" | "x11" | null {
-	return (
-		normalizeLinuxWindowSystem(env.OZONE_PLATFORM) ??
-		normalizeLinuxWindowSystem(env.ELECTRON_OZONE_PLATFORM_HINT)
+function getForcedLinuxWindowSystem(env: NodeJS.ProcessEnv): LinuxOzonePlatform | null {
+	return normalizeLinuxWindowSystem(env.OZONE_PLATFORM);
+}
+
+export function isHyprlandSession(env: NodeJS.ProcessEnv): boolean {
+	const currentDesktop = env.XDG_CURRENT_DESKTOP?.toLowerCase() ?? "";
+	const desktopSession = env.DESKTOP_SESSION?.toLowerCase() ?? "";
+
+	return Boolean(
+		env.HYPRLAND_INSTANCE_SIGNATURE ||
+			currentDesktop.split(":").includes("hyprland") ||
+			desktopSession.includes("hyprland"),
 	);
+}
+
+export function getLinuxOzonePlatformOverride(env: NodeJS.ProcessEnv): LinuxOzonePlatform | null {
+	if (getForcedLinuxWindowSystem(env)) {
+		return null;
+	}
+
+	return isHyprlandSession(env) ? "x11" : null;
 }
 
 export function shouldForceLinuxEgl(env: NodeJS.ProcessEnv): boolean {
