@@ -58,14 +58,6 @@ Recordly 可以根据操作自动强调重点区域，平滑光标运动，添�
   <img width="450" alt="timeline editor" src="https://github.com/user-attachments/assets/3692bd8f-7b8d-4a93-b696-d17c828487ea" />
 </p>
 
-## 扩展与市场
-
-Recordly 拥有一个社区驱动的扩展系统。任何人都可以构建和发布扩展来为 Recordly 添加新功能，例如光标点击音效、设备边框、浏览器模拟外壳、壁纸、渲染钩子、设置面板等等。
-
-浏览并安装社区扩展：[Recordly 扩展市场](https://marketplace.recordly.dev/extensions)。
-
----
-
 ## 全部功能
 
 ### 录制
