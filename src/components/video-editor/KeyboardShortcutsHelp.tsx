@@ -1,8 +1,8 @@
 import { Kbd } from "@heroui/react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Button } from "@/components/ui/button";
-import { Gear as Settings2, Question as HelpCircle } from "@/components/ui/icons";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Question as HelpCircle, Gear as Settings2 } from "@/components/ui/icons";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useScopedT } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
 import { formatBinding, SHORTCUT_ACTIONS, SHORTCUT_LABELS } from "@/lib/shortcuts";
@@ -74,6 +74,24 @@ export function KeyboardShortcutsHelp() {
 								{t("keyboardShortcuts.cycleAnnotations")}
 							</span>
 							<Kbd>{t("keyboardShortcuts.tab")}</Kbd>
+						</div>
+						<div className="flex items-center justify-between mt-1.5">
+							<span className="text-muted-foreground">
+								{t("keyboardShortcuts.stepFrame")}
+							</span>
+							<Kbd>, / . / ← / →</Kbd>
+						</div>
+						<div className="flex items-center justify-between mt-1.5">
+							<span className="text-muted-foreground">
+								{t("keyboardShortcuts.stepSecond")}
+							</span>
+							<Kbd>{isMac ? "⇧" : "Shift"} + ← / →</Kbd>
+						</div>
+						<div className="flex items-center justify-between mt-1.5">
+							<span className="text-muted-foreground">
+								{t("keyboardShortcuts.jumpKeyframe")}
+							</span>
+							<Kbd>{isMac ? "⌥" : "Alt"} + ← / →</Kbd>
 						</div>
 					</div>
 				</div>

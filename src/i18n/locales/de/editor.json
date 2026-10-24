@@ -150,7 +150,10 @@
 		"panTimeline": "Zeitleiste verschieben",
 		"zoomTimeline": "Zeitleiste zoomen",
 		"cycleAnnotations": "Anmerkungen durchlaufen",
-		"tab": "Registerkarte"
+		"tab": "Registerkarte",
+		"stepFrame": "1 Einzelbild weiter/zurück",
+		"stepSecond": "1 Sekunde weiter/zurück",
+		"jumpKeyframe": "Zum Keyframe springen"
 	},
 	"actions": {
 		"saveAgain": "Erneut speichern",

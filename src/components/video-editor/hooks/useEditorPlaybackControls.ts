@@ -1,4 +1,4 @@
-import { type RefObject, useCallback } from "react";
+import { type RefObject, useCallback, useEffect, useRef } from "react";
 import type { TimelineEditorHandle } from "../timeline/TimelineEditor";
 import type { VideoPlaybackRef } from "../VideoPlayback";
 
@@ -17,6 +17,12 @@ export function useEditorPlaybackControls({
 	timelinePlayheadTime,
 	timelineDuration,
 }: UseEditorPlaybackControlsParams) {
+	const lastSeekTargetRef = useRef(timelinePlayheadTime);
+
+	useEffect(() => {
+		lastSeekTargetRef.current = timelinePlayheadTime;
+	}, [timelinePlayheadTime]);
+
 	const getActivePlayback = useCallback(() => videoPlaybackRef.current, [videoPlaybackRef]);
 
 	const startPlayback = useCallback(() => {
@@ -42,6 +48,7 @@ export function useEditorPlaybackControls({
 			const video = playback?.video;
 			if (!video) return;
 
+			lastSeekTargetRef.current = time;
 			if (options.pause) playback.pause();
 			playback.seekTimeline(time);
 		},
@@ -54,20 +61,51 @@ export function useEditorPlaybackControls({
 	);
 
 	const handlePreviewSkipBack = useCallback(() => {
-		const currentMs = timelinePlayheadTime * 1000;
+		const currentMs = lastSeekTargetRef.current * 1000;
 		const keyframes = timelineRef.current?.keyframes ?? [];
 		const previous = [...keyframes]
 			.reverse()
 			.find((keyframe) => keyframe.time < currentMs - 50);
-		handleSeek(previous ? previous.time / 1000 : Math.max(0, timelinePlayheadTime - 5));
-	}, [handleSeek, timelinePlayheadTime, timelineRef]);
+		handleSeek(previous ? previous.time / 1000 : Math.max(0, lastSeekTargetRef.current - 5));
+	}, [handleSeek, timelineRef]);
 
 	const handlePreviewSkipForward = useCallback(() => {
-		const currentMs = timelinePlayheadTime * 1000;
+		const currentMs = lastSeekTargetRef.current * 1000;
 		const keyframes = timelineRef.current?.keyframes ?? [];
 		const next = keyframes.find((keyframe) => keyframe.time > currentMs + 50);
-		handleSeek(next ? next.time / 1000 : Math.min(timelineDuration, timelinePlayheadTime + 5));
-	}, [handleSeek, timelineDuration, timelinePlayheadTime, timelineRef]);
+		handleSeek(
+			next ? next.time / 1000 : Math.min(timelineDuration, lastSeekTargetRef.current + 5),
+		);
+	}, [handleSeek, timelineDuration, timelineRef]);
+
+	const stepFrameForward = useCallback(
+		(fps = 60) => {
+			const delta = 1 / Math.max(1, fps);
+			const baseTime = lastSeekTargetRef.current;
+			const targetTime = Math.min(timelineDuration, baseTime + delta);
+			handleSeek(targetTime, { pause: true });
+		},
+		[handleSeek, timelineDuration],
+	);
+
+	const stepFrameBackward = useCallback(
+		(fps = 60) => {
+			const delta = 1 / Math.max(1, fps);
+			const baseTime = lastSeekTargetRef.current;
+			const targetTime = Math.max(0, baseTime - delta);
+			handleSeek(targetTime, { pause: true });
+		},
+		[handleSeek],
+	);
+
+	const stepTimeSeconds = useCallback(
+		(seconds: number) => {
+			const baseTime = lastSeekTargetRef.current;
+			const targetTime = Math.max(0, Math.min(timelineDuration, baseTime + seconds));
+			handleSeek(targetTime, { pause: true });
+		},
+		[handleSeek, timelineDuration],
+	);
 
 	return {
 		startPlayback,
@@ -76,5 +114,8 @@ export function useEditorPlaybackControls({
 		handleTimelineSeek,
 		handlePreviewSkipBack,
 		handlePreviewSkipForward,
+		stepFrameBackward,
+		stepFrameForward,
+		stepTimeSeconds,
 	};
 }

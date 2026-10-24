@@ -152,7 +152,10 @@
 		"panTimeline": "타임라인 이동",
 		"zoomTimeline": "타임라인 확대/축소",
 		"cycleAnnotations": "주석 순환",
-		"tab": "Tab"
+		"tab": "Tab",
+		"stepFrame": "1프레임 이동",
+		"stepSecond": "1초 이동",
+		"jumpKeyframe": "키프레임으로 이동"
 	},
 	"actions": {
 		"saveAgain": "다시 저장",

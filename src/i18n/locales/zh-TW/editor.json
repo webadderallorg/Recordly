@@ -151,7 +151,10 @@
 		"panTimeline": "平移時間線",
 		"zoomTimeline": "縮放時間線",
 		"cycleAnnotations": "循環切換註釋",
-		"tab": "Tab"
+		"tab": "Tab",
+		"stepFrame": "移動 1 幀",
+		"stepSecond": "移動 1 秒",
+		"jumpKeyframe": "跳轉至關鍵影格"
 	},
 	"actions": {
 		"saveAgain": "再次保存",

@@ -118,3 +118,112 @@ describe("editor playback shortcut", () => {
 		expect(playback.pause).toHaveBeenCalledOnce();
 	});
 });
+
+describe("editor frame-by-frame and timeline stepping shortcuts", () => {
+	function setupStepping() {
+		vi.stubGlobal("HTMLInputElement", Input);
+		vi.stubGlobal("HTMLTextAreaElement", Textarea);
+		vi.stubGlobal("HTMLSelectElement", Select);
+		const handlers = new Map<string, (event: KeyboardEvent) => void>();
+		vi.stubGlobal("window", {
+			addEventListener: (name: string, handler: (event: KeyboardEvent) => void) =>
+				handlers.set(name, handler),
+			removeEventListener: vi.fn(),
+		});
+		const stepFrameBackward = vi.fn();
+		const stepFrameForward = vi.fn();
+		const stepTimeSeconds = vi.fn();
+		const handlePreviewSkipBack = vi.fn();
+		const handlePreviewSkipForward = vi.fn();
+
+		useEditorGlobalInteractions({
+			timeline: {},
+			videoPlaybackRef: { current: { video: {}, isPlaying: false, pause: vi.fn() } },
+			shortcuts: DEFAULT_SHORTCUTS,
+			isMac: true,
+			startPlayback: vi.fn(),
+			handleUndo: vi.fn(),
+			handleRedo: vi.fn(),
+			stepFrameBackward,
+			stepFrameForward,
+			stepTimeSeconds,
+			handlePreviewSkipBack,
+			handlePreviewSkipForward,
+		} as unknown as Parameters<typeof useEditorGlobalInteractions>[0]);
+
+		const send = (type = "keydown", options: Record<string, unknown> = {}) => {
+			const event = {
+				key: "",
+				code: "",
+				target: new Element(),
+				metaKey: false,
+				ctrlKey: false,
+				shiftKey: false,
+				altKey: false,
+				repeat: false,
+				preventDefault: vi.fn(),
+				stopImmediatePropagation: vi.fn(),
+				...options,
+			};
+			handlers.get(type)!(event as unknown as KeyboardEvent);
+			return event;
+		};
+
+		return {
+			send,
+			stepFrameBackward,
+			stepFrameForward,
+			stepTimeSeconds,
+			handlePreviewSkipBack,
+			handlePreviewSkipForward,
+		};
+	}
+
+	it("steps 1 frame backward with comma or ArrowLeft", () => {
+		const { send, stepFrameBackward } = setupStepping();
+		const e1 = send("keydown", { key: "," });
+		expect(e1.preventDefault).toHaveBeenCalled();
+		expect(stepFrameBackward).toHaveBeenCalledTimes(1);
+
+		const e2 = send("keydown", { key: "ArrowLeft" });
+		expect(e2.preventDefault).toHaveBeenCalled();
+		expect(stepFrameBackward).toHaveBeenCalledTimes(2);
+	});
+
+	it("steps 1 frame forward with period or ArrowRight", () => {
+		const { send, stepFrameForward } = setupStepping();
+		const e1 = send("keydown", { key: "." });
+		expect(e1.preventDefault).toHaveBeenCalled();
+		expect(stepFrameForward).toHaveBeenCalledTimes(1);
+
+		const e2 = send("keydown", { key: "ArrowRight" });
+		expect(e2.preventDefault).toHaveBeenCalled();
+		expect(stepFrameForward).toHaveBeenCalledTimes(2);
+	});
+
+	it("steps 1 second with Shift + Arrow keys", () => {
+		const { send, stepTimeSeconds } = setupStepping();
+		send("keydown", { key: "ArrowLeft", shiftKey: true });
+		expect(stepTimeSeconds).toHaveBeenCalledWith(-1);
+
+		send("keydown", { key: "ArrowRight", shiftKey: true });
+		expect(stepTimeSeconds).toHaveBeenCalledWith(1);
+	});
+
+	it("skips to keyframes with Alt + Arrow keys", () => {
+		const { send, handlePreviewSkipBack, handlePreviewSkipForward } = setupStepping();
+		send("keydown", { key: "ArrowLeft", altKey: true });
+		expect(handlePreviewSkipBack).toHaveBeenCalled();
+
+		send("keydown", { key: "ArrowRight", altKey: true });
+		expect(handlePreviewSkipForward).toHaveBeenCalled();
+	});
+
+	it("does not step frames when typing in input or textarea", () => {
+		const { send, stepFrameForward, stepFrameBackward } = setupStepping();
+		send("keydown", { key: ".", target: new Input() });
+		send("keydown", { key: "ArrowLeft", target: new Textarea() });
+		expect(stepFrameForward).not.toHaveBeenCalled();
+		expect(stepFrameBackward).not.toHaveBeenCalled();
+	});
+});

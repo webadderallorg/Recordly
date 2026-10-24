@@ -151,7 +151,10 @@
 		"panTimeline": "Перемещение по таймлайну",
 		"zoomTimeline": "Увеличение таймлайна",
 		"cycleAnnotations": "Переключение аннотаций",
-		"tab": "Tab"
+		"tab": "Tab",
+		"stepFrame": "Сдвиг на 1 кадр",
+		"stepSecond": "Сдвиг на 1 секунду",
+		"jumpKeyframe": "Перейти к ключевому кадру"
 	},
 	"actions": {
 		"saveAgain": "Сохранить ещё раз",
