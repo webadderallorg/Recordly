@@ -6,6 +6,8 @@ import {
 	normalizeBrowserMicrophoneProfile,
 	resolveBrowserCaptureCursorPolicy,
 	shouldUseNativeWindowsCaptureForSource,
+	startMediaRecorderAtTimelineBoundary,
+	stopAndDiscardBrowserCapture,
 	stopAndDiscardNativeCapture,
 } from "./useScreenRecorder";
 
@@ -157,6 +159,122 @@ describe("resolveBrowserCaptureCursorPolicy", () => {
 			hideOsCursorBeforeRecording: false,
 			hideEditorOverlayCursorByDefault: true,
 		});
+	});
+});
+
+describe("startMediaRecorderAtTimelineBoundary", () => {
+	it("uses the recorder start event as the media timeline origin", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(1_000);
+		const recorder = Object.assign(new EventTarget(), {
+			start: vi.fn(),
+		}) as unknown as MediaRecorder;
+		const startedAt = startMediaRecorderAtTimelineBoundary(recorder, 250);
+
+		vi.setSystemTime(2_400);
+		recorder.dispatchEvent(new Event("start"));
+
+		await expect(startedAt).resolves.toBe(2_400);
+		expect(recorder.start).toHaveBeenCalledWith(250);
+		expect(recorder.start).toHaveBeenCalledTimes(1);
+		expect(vi.getTimerCount()).toBe(0);
+		vi.useRealTimers();
+	});
+
+	it("rejects if no media timeline starts before the timeout", async () => {
+		vi.useFakeTimers();
+		const recorder = Object.assign(new EventTarget(), {
+			start: vi.fn(),
+		}) as unknown as MediaRecorder;
+		const startedAt = startMediaRecorderAtTimelineBoundary(recorder, 250, 100);
+		const expectation = expect(startedAt).rejects.toThrow(
+			"did not start within the expected time",
+		);
+
+		await vi.advanceTimersByTimeAsync(100);
+		await expectation;
+		vi.useRealTimers();
+	});
+
+	it("rejects if the recorder fails before its media timeline starts", async () => {
+		const recorder = Object.assign(new EventTarget(), {
+			start: vi.fn(),
+		}) as unknown as MediaRecorder;
+		const startedAt = startMediaRecorderAtTimelineBoundary(recorder, 250);
+
+		recorder.dispatchEvent(new Event("error"));
+
+		await expect(startedAt).rejects.toThrow("failed before its media timeline started");
+	});
+
+	it("rejects and cleans up when MediaRecorder.start throws", async () => {
+		const startError = new Error("unsupported recording configuration");
+		const recorder = Object.assign(new EventTarget(), {
+			start: vi.fn(() => {
+				throw startError;
+			}),
+		}) as unknown as MediaRecorder;
+
+		await expect(startMediaRecorderAtTimelineBoundary(recorder, 250)).rejects.toBe(startError);
+	});
+
+	it("rejects if capture stops while waiting for its media timeline", async () => {
+		const recorder = Object.assign(new EventTarget(), {
+			start: vi.fn(),
+		}) as unknown as MediaRecorder;
+		const startedAt = startMediaRecorderAtTimelineBoundary(recorder, 250);
+
+		recorder.dispatchEvent(new Event("stop"));
+		recorder.dispatchEvent(new Event("start"));
+
+		await expect(startedAt).rejects.toThrow("failed before its media timeline started");
+		expect(recorder.start).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("stopAndDiscardBrowserCapture", () => {
+	it.each([
+		"recording",
+		"paused",
+	] as const)("discards a cancelled %s startup before its final chunk can be saved", (state) => {
+		const saveChunk = vi.fn();
+		const saveRecording = vi.fn();
+		const reportError = vi.fn();
+		const recorder = {
+			state,
+			ondataavailable: saveChunk,
+			onstop: saveRecording,
+			onerror: reportError,
+			stop: vi.fn(() => {
+				recorder.ondataavailable?.();
+				recorder.onstop?.();
+				recorder.onerror?.();
+			}),
+		};
+
+		stopAndDiscardBrowserCapture(recorder);
+
+		expect(recorder.stop).toHaveBeenCalledTimes(1);
+		expect(saveChunk).not.toHaveBeenCalled();
+		expect(saveRecording).not.toHaveBeenCalled();
+		expect(reportError).not.toHaveBeenCalled();
+	});
+
+	it("does not stop an inactive recorder when startup was cancelled before start", () => {
+		const recorder = {
+			state: "inactive" as const,
+			ondataavailable: vi.fn(),
+			onstop: vi.fn(),
+			onerror: vi.fn(),
+			stop: vi.fn(),
+		};
+
+		stopAndDiscardBrowserCapture(recorder);
+
+		expect(recorder.stop).not.toHaveBeenCalled();
+		expect(recorder.ondataavailable).toBeNull();
+		expect(recorder.onstop).toBeNull();
+		expect(recorder.onerror).toBeNull();
 	});
 });
 
