@@ -54,10 +54,29 @@ export function resizeHudOverlayFallbackBounds(
 	workArea: HudOverlayWorkArea,
 	currentBounds: HudOverlayWorkArea,
 	fallbackExpanded: boolean,
+	compactBounds?: HudOverlayWorkArea,
+	expandedBounds?: HudOverlayWorkArea,
 ): HudOverlayWorkArea {
 	const nextBounds = getHudOverlayWindowBounds(workArea, false, fallbackExpanded);
 	const maxX = workArea.x + workArea.width - nextBounds.width;
 	const maxY = workArea.y + workArea.height - nextBounds.height;
+	if (!fallbackExpanded && compactBounds) {
+		const originalExpandedBounds =
+			expandedBounds ?? resizeHudOverlayFallbackBounds(workArea, compactBounds, true);
+		return {
+			...nextBounds,
+			x: clamp(
+				compactBounds.x + currentBounds.x - originalExpandedBounds.x,
+				workArea.x,
+				maxX,
+			),
+			y: clamp(
+				compactBounds.y + currentBounds.y - originalExpandedBounds.y,
+				workArea.y,
+				maxY,
+			),
+		};
+	}
 
 	return {
 		...nextBounds,

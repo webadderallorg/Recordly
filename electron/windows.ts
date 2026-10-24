@@ -15,8 +15,10 @@ import {
 	getHudOverlayWindowBounds,
 	resizeHudOverlayFallbackBounds,
 	shouldExpandHudOverlayFallback,
+	type HudOverlayWorkArea,
 } from "./hudOverlayBounds";
 import { getHudOverlayTaskbarOptions } from "./hudOverlayWindowOptions";
+import { getLinuxWindowSystem } from "./linuxWindowSystem";
 import { getPackagedRendererBaseUrl } from "./rendererServer";
 
 const electronWindowsDir = path.dirname(fileURLToPath(import.meta.url));
@@ -37,6 +39,8 @@ let hudOverlayWindow: BrowserWindow | null = null;
 let hudOverlayHiddenFromCapture = true;
 let hudOverlayCaptureProtectionLoaded = false;
 let hudOverlayFallbackExpanded = false;
+let hudOverlayCompactBounds: HudOverlayWorkArea | undefined;
+let hudOverlayExpandedBounds: HudOverlayWorkArea | undefined;
 let hudOverlayIgnoringMouse = true;
 let hudOverlaySourceSelectionActive = false;
 let hudOverlayMouseReassertTimer: NodeJS.Timeout | null = null;
@@ -140,6 +144,12 @@ function getEditorWindowQuery(): Record<string, string> {
 
 export function isHudOverlayMousePassthroughSupported(): boolean {
 	return process.platform !== "linux";
+}
+
+function getHudOverlayWindowSystem(): "wayland" | "x11" | null {
+	return process.platform === "linux"
+		? getLinuxWindowSystem(process.env, app.commandLine.getSwitchValue("ozone-platform"))
+		: null;
 }
 
 function loadHudOverlayCaptureProtectionSetting(): boolean {
@@ -305,6 +315,7 @@ function setHudOverlayFallbackExpanded(expanded: boolean) {
 		hudOverlayFallbackExpanded = false;
 		return;
 	}
+	if (hudOverlayFallbackExpanded === expanded) return;
 
 	hudOverlayFallbackExpanded = expanded;
 	if (
@@ -316,12 +327,26 @@ function setHudOverlayFallbackExpanded(expanded: boolean) {
 	}
 
 	const { workArea } = getHudOverlayDisplay();
+	const currentBounds = hudOverlayWindow.getBounds();
+	if (expanded) hudOverlayCompactBounds = currentBounds;
 	const nextBounds = resizeHudOverlayFallbackBounds(
 		workArea,
-		hudOverlayWindow.getBounds(),
+		currentBounds,
 		expanded,
+		hudOverlayCompactBounds,
+		hudOverlayExpandedBounds,
 	);
-	hudOverlayWindow.setBounds(nextBounds, false);
+	if (expanded) hudOverlayExpandedBounds = nextBounds;
+	else {
+		hudOverlayCompactBounds = undefined;
+		hudOverlayExpandedBounds = undefined;
+	}
+	if (getHudOverlayWindowSystem() === "wayland") {
+		// Wayland cannot apply a global origin; avoid updating Chromium's synthetic one.
+		hudOverlayWindow.setBounds({ width: nextBounds.width, height: nextBounds.height }, false);
+	} else {
+		hudOverlayWindow.setBounds(nextBounds, false);
+	}
 	positionUpdateToastWindow();
 	if (hudOverlayWindow.isVisible()) {
 		hudOverlayWindow.moveTop();
@@ -364,6 +389,15 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 
 ipcMain.on("hud-overlay-set-ignore-mouse", (_event, ignore: boolean) => {
 	setHudOverlayMousePassthrough(Boolean(ignore));
+});
+
+ipcMain.on("hud-overlay-set-menu-open", (_event, open: boolean) => {
+	if (hudOverlaySourceSelectionActive || isHudOverlayMousePassthroughSupported()) {
+		return;
+	}
+	// Linux keeps a compact native window while hovering and dragging. Only
+	// expand for an open menu so its contents fit without hover-driven resizes.
+	setHudOverlayFallbackExpanded(Boolean(open));
 });
 
 ipcMain.on("hud-overlay-set-source-selection-active", (_event, active: boolean) => {
@@ -453,6 +487,7 @@ ipcMain.handle("get-hud-overlay-mouse-passthrough-supported", () => {
 	return {
 		success: true,
 		supported: isHudOverlayMousePassthroughSupported(),
+		windowSystem: getHudOverlayWindowSystem(),
 	};
 });
 
@@ -506,6 +541,8 @@ export function createHudOverlayWindow(): BrowserWindow {
 	loadHudOverlayCaptureProtectionSetting();
 	hudOverlayFallbackExpanded = false;
 	hudOverlayWebcamPreviewVisible = false;
+	hudOverlayCompactBounds = undefined;
+	hudOverlayExpandedBounds = undefined;
 	const initialBounds = getHudOverlayBounds();
 	let hasShownHudWindow = false;
 

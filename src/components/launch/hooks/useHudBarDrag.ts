@@ -1,4 +1,12 @@
-import { type PointerEvent, type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import {
+	type PointerEvent,
+	type RefObject,
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import {
 	mergeHudInteractiveBounds,
 	shouldRestoreHudMousePassthroughAfterDrag,
@@ -11,10 +19,16 @@ export function useHudBarDrag({
 	hudContentRef,
 	hudBarRef,
 	recordingWebcamPreviewContainerRef,
+	menuOpen,
+	nativeWindowDrag,
+	useLocalCoordinates,
 }: {
 	hudContentRef: RefObject<HTMLDivElement | null>;
 	hudBarRef: RefObject<HTMLDivElement | null>;
 	recordingWebcamPreviewContainerRef: RefObject<HTMLDivElement | null>;
+	menuOpen: boolean;
+	nativeWindowDrag: boolean;
+	useLocalCoordinates: boolean;
 }) {
 	const [recordingHudOffset, setRecordingHudOffset] = useState(DEFAULT_RECORDING_HUD_OFFSET);
 	const [isHudDragging, setIsHudDragging] = useState(false);
@@ -34,6 +48,47 @@ export function useHudBarDrag({
 	const isHudDraggingRef = useRef(false);
 	const hudDragMoveRafRef = useRef<number | null>(null);
 	const hudDragPendingPointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
+	const previousMenuOpenRef = useRef(menuOpen);
+	const compactMenuHeightRef = useRef<number | null>(null);
+	const menuResizeAnchorRef = useRef<{
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+		local: boolean;
+		waiting: boolean;
+		windowX: number;
+		windowY: number;
+	} | null>(null);
+
+	useLayoutEffect(() => {
+		if (previousMenuOpenRef.current === menuOpen) return;
+		previousMenuOpenRef.current = menuOpen;
+		if (!nativeWindowDrag || !hudBarRef.current) return;
+		const bounds = hudBarRef.current.getBoundingClientRect();
+		// Capture the visible bar before the coordinator requests the native resize.
+		// Keep that target if another menu transition happens before resize is delivered.
+		if (menuOpen && !menuResizeAnchorRef.current)
+			compactMenuHeightRef.current = window.innerHeight;
+		const candidate = menuResizeAnchorRef.current;
+		const movedWithoutResize =
+			candidate &&
+			!candidate.local &&
+			candidate.width === window.innerWidth &&
+			candidate.height === window.innerHeight &&
+			(candidate.windowX !== window.screenX || candidate.windowY !== window.screenY);
+		const pending = candidate?.waiting && !movedWithoutResize ? candidate : null;
+		menuResizeAnchorRef.current = {
+			x: pending?.x ?? (useLocalCoordinates ? 0 : window.screenX) + bounds.left,
+			y: pending?.y ?? (useLocalCoordinates ? 0 : window.screenY) + bounds.top,
+			width: window.innerWidth,
+			height: window.innerHeight,
+			local: pending?.local ?? useLocalCoordinates,
+			waiting: true,
+			windowX: window.screenX,
+			windowY: window.screenY,
+		};
+	}, [menuOpen, nativeWindowDrag, hudBarRef, useLocalCoordinates]);
 
 	useEffect(() => {
 		recordingHudOffsetRef.current = recordingHudOffset;
@@ -48,10 +103,36 @@ export function useHudBarDrag({
 		}
 
 		const bounds = hudBarRef.current.getBoundingClientRect();
-		const nextOffset = clampHudOffsetToViewport(recordingHudOffsetRef.current, bounds, {
-			width: window.innerWidth,
-			height: window.innerHeight,
-		});
+		const anchor = menuResizeAnchorRef.current;
+		if (anchor && anchor.width === window.innerWidth && anchor.height === window.innerHeight)
+			return;
+		const nextOffset = anchor
+			? {
+					x:
+						recordingHudOffsetRef.current.x +
+						anchor.x -
+						(anchor.local ? 0 : window.screenX) -
+						bounds.left,
+					y:
+						recordingHudOffsetRef.current.y +
+						anchor.y -
+						(anchor.local ? 0 : window.screenY) -
+						bounds.top,
+				}
+			: clampHudOffsetToViewport(recordingHudOffsetRef.current, bounds, {
+					width: window.innerWidth,
+					height: window.innerHeight,
+				});
+		menuResizeAnchorRef.current =
+			anchor &&
+			(previousMenuOpenRef.current || window.innerHeight !== compactMenuHeightRef.current)
+				? {
+						...anchor,
+						width: window.innerWidth,
+						height: window.innerHeight,
+						waiting: false,
+					}
+				: null;
 		if (
 			nextOffset.x === recordingHudOffsetRef.current.x &&
 			nextOffset.y === recordingHudOffsetRef.current.y

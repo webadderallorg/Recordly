@@ -155,6 +155,7 @@ export async function installDesktopBridge(
 				onRecordingInterrupted: subscribe,
 				hudOverlayRendererReady: success,
 				hudOverlaySetIgnoreMouse: success,
+				hudOverlaySetMenuOpen: success,
 				hudOverlaySetWebcamPreviewVisible: success,
 				getEditorMode: async () => false,
 				onEditorModeChanged: subscribe,

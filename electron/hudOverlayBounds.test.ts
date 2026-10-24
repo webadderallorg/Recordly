@@ -124,6 +124,40 @@ describe("resizeHudOverlayFallbackBounds", () => {
 		});
 	});
 
+	it("restores the compact position when expansion was clamped at the top", () => {
+		expect(
+			resizeHudOverlayFallbackBounds(
+				workArea,
+				{ x: 420, y: 0, width: 860, height: 540 },
+				false,
+				{ x: 420, y: 120, width: 860, height: 160 },
+			),
+		).toEqual({ x: 420, y: 120, width: 860, height: 160 });
+	});
+
+	it("preserves a drag made while a top-clamped menu was expanded", () => {
+		expect(
+			resizeHudOverlayFallbackBounds(
+				workArea,
+				{ x: 460, y: 80, width: 860, height: 540 },
+				false,
+				{ x: 420, y: 120, width: 860, height: 160 },
+			),
+		).toEqual({ x: 460, y: 200, width: 860, height: 160 });
+	});
+
+	it("restores the bar after dragging an expanded menu to another display", () => {
+		expect(
+			resizeHudOverlayFallbackBounds(
+				{ x: 1920, y: 40, width: 1920, height: 1040 },
+				{ x: 2450, y: 200, width: 860, height: 540 },
+				false,
+				{ x: 530, y: 120, width: 860, height: 160 },
+				{ x: 530, y: 0, width: 860, height: 540 },
+			),
+		).toEqual({ x: 2450, y: 320, width: 860, height: 160 });
+	});
+
 	it("keeps resized fallback bounds inside the display work area", () => {
 		expect(
 			resizeHudOverlayFallbackBounds(

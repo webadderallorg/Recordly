@@ -31,6 +31,14 @@ export function LaunchPopoverCoordinatorProvider({ children }: { children: React
 	const isOpen = useCallback((id: string) => openId === id, [openId]);
 
 	useEffect(() => {
+		window.electronAPI?.hudOverlaySetMenuOpen?.(openId !== null);
+	}, [openId]);
+
+	useEffect(() => {
+		return () => window.electronAPI?.hudOverlaySetMenuOpen?.(false);
+	}, []);
+
+	useEffect(() => {
 		const handleBlur = () => setOpenId(null);
 		window.addEventListener("blur", handleBlur);
 		return () => window.removeEventListener("blur", handleBlur);

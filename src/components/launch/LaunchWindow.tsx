@@ -96,7 +96,7 @@ function LaunchWindowContent() {
 		setSelectedDeviceId: setSelectedVideoDeviceId,
 	} = useVideoDevices(webcamEnabled || openId === "webcam");
 
-	const { hudOverlayMousePassthroughSupported, platform } =
+	const { hudOverlayMousePassthroughSupported, hudOverlayWindowSystem, platform } =
 		useLaunchWindowSystemState(preparePermissions);
 
 	useEffect(() => {
@@ -148,6 +148,8 @@ function LaunchWindowContent() {
 		};
 	}, []);
 
+	const useNativeHudBarDrag =
+		platform === "linux" || hudOverlayMousePassthroughSupported === false;
 	const {
 		recordingHudOffset,
 		isHudDragging,
@@ -160,6 +162,9 @@ function LaunchWindowContent() {
 		hudContentRef,
 		hudBarRef,
 		recordingWebcamPreviewContainerRef,
+		menuOpen: openId !== null,
+		nativeWindowDrag: useNativeHudBarDrag,
+		useLocalCoordinates: hudOverlayWindowSystem === "wayland",
 	});
 
 	const { handleHudMouseEnter, handleHudMouseLeave, beginInteractiveHudAction } =
@@ -441,9 +446,8 @@ function LaunchWindowContent() {
 	);
 
 	const hudMode = finalizing ? "finalizing" : recording ? "recording" : "idle";
-	const useNativeHudBarDrag =
-		platform === "linux" || hudOverlayMousePassthroughSupported === false;
-	const shouldAnimateHudLayout = !recording && !showRecordingWebcamPreview && !isHudDragging;
+	const shouldAnimateHudLayout =
+		!useNativeHudBarDrag && !recording && !showRecordingWebcamPreview && !isHudDragging;
 
 	return (
 		<HudInteractionContext.Provider
