@@ -1,9 +1,9 @@
-import { acquireBrowserScreenCapture, isCapturePermissionDismissed } from "./browserScreenCapture";
 import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
-import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
 import { hasRecordlySession } from "@/lib/auth/recordlyAuth";
+import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
+import { acquireBrowserScreenCapture, isCapturePermissionDismissed } from "./browserScreenCapture";
 import {
 	getVideoExtensionForMimeType,
 	isWebmMimeType,
@@ -197,12 +197,70 @@ export function resolveBrowserCaptureCursorPolicy({
 			hideEditorOverlayCursorByDefault: true,
 		};
 	}
-
 	return {
 		streamCursor: "never",
 		hideOsCursorBeforeRecording: true,
 		hideEditorOverlayCursorByDefault: true,
 	};
+}
+
+export function startMediaRecorderAtTimelineBoundary(
+	recorder: Pick<MediaRecorder, "addEventListener" | "removeEventListener" | "start">,
+	timesliceMs: number,
+	timeoutMs = 5_000,
+) {
+	return new Promise<number>((resolve, reject) => {
+		let settled = false;
+		const cleanup = () => {
+			clearTimeout(timeoutId);
+			recorder.removeEventListener("start", handleStart);
+			recorder.removeEventListener("error", handleFailure);
+			recorder.removeEventListener("stop", handleFailure);
+		};
+		const finish = () => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			resolve(Date.now());
+		};
+		const fail = (error: unknown) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			reject(
+				error instanceof Error
+					? error
+					: new Error("MediaRecorder failed before its media timeline started."),
+			);
+		};
+		const handleStart = () => finish();
+		const handleFailure = () =>
+			fail(new Error("MediaRecorder failed before its media timeline started."));
+		const timeoutId = setTimeout(
+			() => fail(new Error("MediaRecorder did not start within the expected time.")),
+			timeoutMs,
+		);
+		recorder.addEventListener("start", handleStart, { once: true });
+		recorder.addEventListener("error", handleFailure, { once: true });
+		recorder.addEventListener("stop", handleFailure, { once: true });
+
+		try {
+			recorder.start(timesliceMs);
+		} catch (error) {
+			fail(error);
+		}
+	});
+}
+
+export function stopAndDiscardBrowserCapture(
+	recorder: Pick<MediaRecorder, "state" | "stop" | "ondataavailable" | "onstop" | "onerror">,
+) {
+	// A cancelled startup may already have produced media while waiting for `start`.
+	// Detach the save handlers before stopping so its final chunk cannot be persisted.
+	recorder.ondataavailable = null;
+	recorder.onstop = null;
+	recorder.onerror = null;
+	if (recorder.state !== "inactive") recorder.stop();
 }
 
 export function shouldUseNativeWindowsCaptureForSource(
@@ -1642,6 +1700,13 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 		const startGeneration = recordingStartGeneration.current + 1;
 		recordingStartGeneration.current = startGeneration;
 		const startWasCancelled = () => recordingStartGeneration.current !== startGeneration;
+		const discardPendingBrowserCapture = () => {
+			if (mediaRecorder.current) {
+				stopAndDiscardBrowserCapture(mediaRecorder.current);
+				mediaRecorder.current = null;
+			}
+			chunks.current = [];
+		};
 		let usingLinuxPortal = false;
 
 		let hudSourceSelectionActive = false;
@@ -1674,7 +1739,11 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				preparedStart;
 			const useNativeCapture = useNativeMacScreenCapture || useNativeWindowsCapture;
 			const shouldWarmStartNativeCapture = useNativeCapture && countdownDelay > 0;
-			if (countdownDelay > 0 && !shouldWarmStartNativeCapture) {
+			if (
+				countdownDelay > 0 &&
+				!shouldWarmStartNativeCapture &&
+				selectedSource.id !== "screen:linux-portal"
+			) {
 				setCountdownActive(true);
 				try {
 					const result = await window.electronAPI.startCountdown(countdownDelay);
@@ -2087,7 +2156,6 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			if (!stream.current || !videoTrack) {
 				throw new Error("Media stream is not available.");
 			}
-
 			try {
 				await videoTrack.applyConstraints({
 					frameRate: { ideal: TARGET_FRAME_RATE, max: TARGET_FRAME_RATE },
@@ -2119,6 +2187,25 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 				)} Mbps`,
 			);
 
+			// Linux portal: the screen picker (and its permission token) runs
+			// BEFORE the countdown, so the recording starts immediately after
+			// it — no frozen lead-in frames and no telemetry/video drift.
+			if (useLinuxPortal && countdownDelay > 0) {
+				setCountdownActive(true);
+				try {
+					const result = await window.electronAPI.startCountdown(countdownDelay);
+					if (!result.success || result.cancelled || startWasCancelled()) {
+						cleanupCapturedMedia();
+						await stopWebcamRecorder();
+						return;
+					}
+				} finally {
+					setCountdownActive(false);
+				}
+				recordingSessionTimestamp.current = Date.now();
+				resetRecordingClock(recordingSessionTimestamp.current);
+			}
+
 			chunks.current = [];
 			const hasAudio = stream.current.getAudioTracks().length > 0;
 			const audioBitsPerSecond = hasAudio
@@ -2136,6 +2223,19 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			);
 
 			mediaRecorder.current = recorder;
+			if (startWasCancelled()) return;
+			const mainStartedAt = await startMediaRecorderAtTimelineBoundary(
+				recorder,
+				RECORDER_TIMESLICE_MS,
+			);
+			if (startWasCancelled()) return;
+			beginWebcamCapture();
+			resetRecordingClock(mainStartedAt);
+			webcamTimeOffsetMs.current =
+				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
+
+			// Save handlers are installed only after startup succeeds, so a stop or error
+			// while waiting for the media timeline cannot persist a partial recording.
 			recorder.ondataavailable = (event) => {
 				if (event.data && event.data.size > 0) chunks.current.push(event.data);
 			};
@@ -2220,20 +2320,19 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			recorder.onerror = () => {
 				setRecording(false);
 			};
-			const mainStartedAt = Date.now();
-			beginWebcamCapture();
-			resetRecordingClock(mainStartedAt);
-			webcamTimeOffsetMs.current =
-				webcamStartTime.current === null ? 0 : webcamStartTime.current - mainStartedAt;
-			if (startWasCancelled()) return;
-			recorder.start(RECORDER_TIMESLICE_MS);
 			setRecording(true);
 			try {
-				await window.electronAPI?.setRecordingState(true);
+				const cursorCaptureState = await window.electronAPI?.setRecordingState(true, {
+					mediaTimelineStartedAtEpochMs: mainStartedAt,
+				});
+				if (cursorCaptureState?.cursorOverlayAvailable) {
+					hideEditorOverlayCursorByDefault.current = false;
+				}
 			} catch (stateError) {
 				console.warn("Failed to notify main process that recording started:", stateError);
 			}
 		} catch (error) {
+			discardPendingBrowserCapture();
 			if (
 				!startWasCancelled() &&
 				!(usingLinuxPortal && isCapturePermissionDismissed(error))
@@ -2261,6 +2360,7 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 			try {
 				if (startWasCancelled()) {
 					try {
+						discardPendingBrowserCapture();
 						await discardActiveNativeCapture();
 					} finally {
 						cleanupCapturedMedia();

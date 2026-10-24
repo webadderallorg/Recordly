@@ -4,6 +4,7 @@ import {
 	CURSOR_TELEMETRY_VERSION,
 	MAX_CURSOR_SAMPLES,
 } from "../constants";
+import { getSourceArea } from "../sourceArea";
 import {
 	activeCursorSamples,
 	currentCursorVisualType,
@@ -23,7 +24,6 @@ import {
 	setPendingCursorSamples,
 } from "../state";
 import type { CursorInteractionType, CursorTelemetryPoint, CursorVisualType } from "../types";
-import { getSourceArea } from "../sourceArea";
 import { getScreen, getTelemetryPathForVideo } from "../utils";
 
 export function clamp(value: number, min: number, max: number) {
@@ -173,8 +173,9 @@ export function getNormalizedCursorPoint() {
 	const primarySf =
 		process.platform !== "darwin" ? getScreen().getPrimaryDisplay().scaleFactor || 1 : 1;
 
+	const linuxCursorScale = linuxCursorCache?.coordinateSpace === "logical" ? 1 : primarySf;
 	const cursor = isLinuxCacheFresh
-		? { x: linuxCursorCache.x / primarySf, y: linuxCursorCache.y / primarySf }
+		? { x: linuxCursorCache.x / linuxCursorScale, y: linuxCursorCache.y / linuxCursorScale }
 		: fallbackCursor;
 
 	// Areas are fixed rectangles, so they normalize like a window that never moves.
