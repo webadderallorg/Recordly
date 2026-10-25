@@ -745,10 +745,10 @@ export function setHudOverlayRecordingActive(recording: boolean): void {
 	hudOverlayFallbackExpanded = false;
 	applyHudOverlayBounds();
 	reassertHudOverlayCaptureProtection();
-	// Start in passthrough mode. Forwarded pointer movement lets the renderer
-	// make the visible HUD controls interactive when the pointer reaches them,
-	// while transparent parts never block the recorded application.
-	setHudOverlayMousePassthrough(true);
+	// Keep whatever hover state the renderer last reported. Forcing passthrough
+	// here made the HUD click-through right after the user pressed record, so the
+	// stop button swallowed clicks until the pointer moved again.
+	setHudOverlayMousePassthrough(hudOverlayIgnoringMouse);
 }
 
 export function createUpdateToastWindow(): BrowserWindow {
