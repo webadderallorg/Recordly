@@ -7,6 +7,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { ProgressBar } from "@heroui/react";
 
 import { toast } from "@/components/ui/toast";
+import { copyText } from "@/lib/copyText";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { useI18n } from "@/contexts/I18nContext";
@@ -369,9 +370,7 @@ export function EditorExportMenu(props: Props) {
 												className="h-8 text-xs"
 												onClick={async () => {
 													try {
-														await navigator.clipboard.writeText(
-															exportError,
-														);
+														await copyText(exportError);
 														toast.success(
 															t(
 																"editor.exportStatus.errorCopied",

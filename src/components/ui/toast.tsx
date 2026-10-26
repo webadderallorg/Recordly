@@ -1,5 +1,6 @@
 import { Toast, toast as heroToast } from "@heroui/react";
 import { isValidElement, type ReactNode } from "react";
+import { copyText } from "@/lib/copyText";
 
 type Options = {
 	id?: string | number;
@@ -44,7 +45,7 @@ function notify(title: ReactNode, options: Options = {}, variant: Variant = "def
 				? {
 						children: "Copy",
 						onPress: () => {
-							void navigator.clipboard.writeText(errorText).then(
+							void copyText(errorText).then(
 								() => heroToast.success("Error copied"),
 								() =>
 									heroToast.danger("Could not copy error", {

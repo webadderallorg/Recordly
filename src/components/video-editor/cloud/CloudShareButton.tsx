@@ -9,6 +9,7 @@ import { useI18n } from "@/contexts/I18nContext";
 import { Check } from "@/components/ui/icons";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
+import { copyText } from "@/lib/copyText";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -240,7 +241,7 @@ export function CloudShareButton({
 	const copyShareUrl = useCallback(async () => {
 		if (!shareUrl) return;
 		try {
-			await navigator.clipboard.writeText(shareUrl);
+			await copyText(shareUrl);
 			setCopied(true);
 			toast.success(t("editor.cloud.linkCopied"));
 		} catch {

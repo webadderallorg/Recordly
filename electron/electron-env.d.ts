@@ -218,6 +218,7 @@ interface RendererExportHardwareInfo {
 
 interface Window {
 	electronAPI: {
+		writeClipboardText: (text: string) => Promise<void>;
 		hudOverlaySetIgnoreMouse: (ignore: boolean) => void;
 		hudOverlaySetSourceSelectionActive: (active: boolean) => void;
 		hudOverlayDrag: (phase: "start" | "move" | "end", screenX: number, screenY: number) => void;

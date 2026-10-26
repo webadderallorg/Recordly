@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
 	app,
 	BrowserWindow,
+	clipboard,
 	desktopCapturer,
 	dialog,
 	webContents as electronWebContents,
@@ -162,6 +163,35 @@ function getTrustedCaptureDocumentBaseUrls(): string[] {
 	}
 
 	return trustedUrls;
+}
+
+function isTrustedAppWindowFrame(
+	sender: Electron.WebContents,
+	senderFrame: Electron.WebFrameMain | null,
+): boolean {
+	if (
+		sender.isDestroyed() ||
+		!BrowserWindow.fromWebContents(sender) ||
+		!senderFrame ||
+		senderFrame !== sender.mainFrame
+	) {
+		return false;
+	}
+
+	try {
+		const documentUrl = new URL(sender.getURL());
+		documentUrl.search = "";
+		documentUrl.hash = "";
+		const documentHref = documentUrl.href.replace(/\/$/, "");
+		return getTrustedCaptureDocumentBaseUrls().some((baseUrl) => {
+			const trustedUrl = new URL(baseUrl);
+			trustedUrl.search = "";
+			trustedUrl.hash = "";
+			return trustedUrl.href.replace(/\/$/, "") === documentHref;
+		});
+	} catch {
+		return false;
+	}
 }
 
 function isHudWebContents(webContents: Electron.WebContents | null): boolean {
@@ -1044,6 +1074,17 @@ app.whenReady().then(async () => {
 			}
 		},
 	);
+
+	ipcMain.handle("write-clipboard-text", (event, text: unknown) => {
+		if (!isTrustedAppWindowFrame(event.sender, event.senderFrame)) {
+			throw new Error("Clipboard access is only available to Recordly windows");
+		}
+		if (typeof text !== "string" || text.length > 100_000) {
+			throw new TypeError("Clipboard text must be a string of at most 100,000 characters");
+		}
+
+		clipboard.writeText(text);
+	});
 
 	if (IS_SMOKE_EXPORT || process.env.RECORDLY_DEV_OPEN_RECORDING_INPUT) {
 		await logSmokeExportGpuDiagnostics();
