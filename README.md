@@ -176,6 +176,24 @@ https://github.com/webadderallorg/Recordly/releases
 
 ---
 
+## Debian / Ubuntu (amd64 and arm64)
+
+Download and verify the latest stable Debian package (the script detects the architecture):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/webadderallorg/Recordly/main/scripts/download-deb.sh -o download-deb.sh && sh download-deb.sh
+```
+
+The script prints the `sudo apt install` command for the downloaded package. It requires `curl` and `sha256sum`. To download a specific release, pass its tag to the script, for example:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/webadderallorg/Recordly/main/scripts/download-deb.sh -o download-deb.sh && sh download-deb.sh v1.4.0
+```
+
+The release must contain the package for your architecture and `SHA256SUMS.txt`. To update, download and install a newer package in the same way; move or remove the previous download first.
+
+---
+
 ## Arch Linux / Manjaro (yay)
 
 Install from the AUR ([recordly-bin](https://aur.archlinux.org/packages/recordly-bin)):

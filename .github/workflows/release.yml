@@ -499,7 +499,7 @@ jobs:
       - name: Install Linux native build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libx11-dev libxt-dev libxtst-dev libxkbfile-dev libxi-dev libxrandr-dev libxinerama-dev
+          sudo apt-get install -y libx11-dev libxt-dev libxtst-dev libxkbfile-dev libxi-dev libxrandr-dev libxinerama-dev xvfb xauth
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
@@ -523,10 +523,15 @@ jobs:
           npm run build:platform-native-helpers
           npx tsc
           npx vite build
-          npx electron-builder --linux dir AppImage --x64 --publish never
+          npx electron-builder --linux dir AppImage deb --x64 --publish never
+          test -f release/Recordly-linux-amd64.deb
+          test "$(dpkg-deb -f release/Recordly-linux-amd64.deb Architecture)" = amd64
 
       - name: Smoke test packaged Linux x64 paths
         run: npm run smoke:packaged-binaries
+
+      - name: Install and smoke test Debian package
+        run: sh scripts/smoke-installed-deb.sh release/Recordly-linux-amd64.deb
 
       - name: Generate Linux x64 artifact checksums
         run: npm run checksums:release -- SHA256SUMS-linux-x64.txt
@@ -542,8 +547,86 @@ jobs:
           name: linux-x64-release
           path: |
             release/*.AppImage
+            release/*.deb
             release/*.blockmap
             release/latest-linux.yml
+            release/SHA256SUMS*.txt
+          if-no-files-found: error
+
+  build-linux-arm64:
+    name: Build Linux arm64
+    needs: prepare-release
+    runs-on: ubuntu-24.04-arm
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.source_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Linux native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxt-dev libxtst-dev libxkbfile-dev libxi-dev libxrandr-dev libxinerama-dev xvfb xauth
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install bundled FFmpeg binary
+        run: node scripts/install-ffmpeg-static.mjs
+
+      - name: Verify bundled FFmpeg binary
+        run: |
+          node -e "const fs=require('node:fs'); const ffmpeg=require('ffmpeg-static'); if (typeof ffmpeg !== 'string' || !fs.existsSync(ffmpeg)) { throw new Error('Bundled ffmpeg-static binary is missing: ' + ffmpeg); } console.log('Using bundled ffmpeg binary: ' + ffmpeg);"
+
+      - name: Remove stale uiohook build output
+        run: rm -rf node_modules/uiohook-napi/build
+
+      - name: Install app dependencies
+        run: npx electron-builder install-app-deps
+
+      - name: Build Linux arm64
+        run: |
+          export CSC_IDENTITY_AUTO_DISCOVERY=false
+          npm run build:platform-native-helpers
+          npx tsc
+          npx vite build
+          npx electron-builder --linux dir deb --arm64 --publish never
+          test -f release/Recordly-linux-arm64.deb
+          test "$(dpkg-deb -f release/Recordly-linux-arm64.deb Architecture)" = arm64
+
+      - name: Smoke test packaged Linux arm64 paths
+        run: npm run smoke:packaged-binaries
+
+      - name: Install and smoke test Debian package
+        run: sh scripts/smoke-installed-deb.sh release/Recordly-linux-arm64.deb
+
+      - name: Generate Linux arm64 artifact checksums
+        run: npm run checksums:release -- SHA256SUMS-linux-arm64.txt
+
+      - name: Attest Linux arm64 artifacts
+        uses: actions/attest@v4
+        with:
+          subject-checksums: release/SHA256SUMS-linux-arm64.txt
+
+      - name: Upload Linux arm64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64-release
+          path: |
+            release/*.deb
             release/SHA256SUMS*.txt
           if-no-files-found: error
 
@@ -556,11 +639,13 @@ jobs:
       - merge-macos-update-metadata
       - build-windows-x64
       - build-linux-x64
+      - build-linux-arm64
     if: |
       always() &&
       needs.prepare-release.result == 'success' &&
       needs.build-windows-x64.result == 'success' &&
       needs.build-linux-x64.result == 'success' &&
+      needs.build-linux-arm64.result == 'success' &&
       (
         needs.prepare-release.outputs.release_scope == 'windows-linux' ||
         (
@@ -603,6 +688,12 @@ jobs:
         with:
           name: linux-x64-release
           path: release-assets/linux-x64
+
+      - name: Download Linux arm64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-arm64-release
+          path: release-assets/linux-arm64
 
       - name: Stage release assets
         shell: bash
@@ -663,6 +754,8 @@ jobs:
             release-assets/windows-x64/*.exe
             release-assets/windows-x64/*.blockmap
             release-assets/linux-x64/*.AppImage
+            release-assets/linux-x64/*.deb
+            release-assets/linux-arm64/*.deb
             release-assets/linux-x64/*.blockmap
           )
 
@@ -678,6 +771,13 @@ jobs:
           fi
 
           assets+=("${update_metadata[@]}")
+
+          for file in release-assets/linux-x64/Recordly-linux-amd64.deb release-assets/linux-arm64/Recordly-linux-arm64.deb; do
+            if [ ! -f "$file" ]; then
+              echo "Required Linux deb package is missing: $file"
+              exit 1
+            fi
+          done
 
           if [ ${#assets[@]} -eq 0 ]; then
             echo "No release assets found to checksum."
