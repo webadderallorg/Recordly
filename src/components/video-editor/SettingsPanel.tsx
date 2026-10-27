@@ -629,6 +629,7 @@ const APP_LANGUAGE_LABELS: Record<AppLocale, string> = {
 	"pt-BR": "Português",
 	"zh-CN": "簡體中文",
 	"zh-TW": "繁體中文",
+	vi: "Tiếng Việt",
 };
 
 function loadPreviewImage(url: string) {

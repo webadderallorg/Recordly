@@ -84,6 +84,13 @@ import zhTWLaunch from "@/i18n/locales/zh-TW/launch.json";
 import zhTWSettings from "@/i18n/locales/zh-TW/settings.json";
 import zhTWShortcuts from "@/i18n/locales/zh-TW/shortcuts.json";
 import zhTWTimeline from "@/i18n/locales/zh-TW/timeline.json";
+import viCommon from "@/i18n/locales/vi/common.json";
+import viDialogs from "@/i18n/locales/vi/dialogs.json";
+import viEditor from "@/i18n/locales/vi/editor.json";
+import viLaunch from "@/i18n/locales/vi/launch.json";
+import viSettings from "@/i18n/locales/vi/settings.json";
+import viShortcuts from "@/i18n/locales/vi/shortcuts.json";
+import viTimeline from "@/i18n/locales/vi/timeline.json";
 
 const LOCALE_STORAGE_KEY = "recordly.locale";
 
@@ -179,6 +186,15 @@ const messages: Record<AppLocale, LocaleBundle> = {
 		settings: zhTWSettings,
 		dialogs: zhTWDialogs,
 		shortcuts: zhTWShortcuts,
+	},
+	vi: {
+		common: viCommon,
+		launch: viLaunch,
+		editor: viEditor,
+		timeline: viTimeline,
+		settings: viSettings,
+		dialogs: viDialogs,
+		shortcuts: viShortcuts,
 	},
 } as const;
 

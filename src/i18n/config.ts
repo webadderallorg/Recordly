@@ -11,6 +11,7 @@ export const SUPPORTED_LOCALES = [
 	"pt-BR",
 	"zh-CN",
 	"zh-TW",
+	"vi",
 ] as const;
 
 export const I18N_NAMESPACES = [

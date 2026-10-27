@@ -1,0 +1,26 @@
+{
+	"app": {
+		"name": "Recordly",
+		"editorTitle": "Trình chỉnh sửa Recordly",
+		"subtitle": "Quay và chỉnh sửa màn hình",
+		"language": "Ngôn ngữ",
+		"manageRecordings": "Mở thư mục bản ghi"
+	},
+	"actions": {
+		"cancel": "Huỷ",
+		"close": "Đóng",
+		"export": "Xuất",
+		"load": "Tải",
+		"redo": "Làm lại",
+		"reset": "Đặt lại",
+		"save": "Lưu",
+		"undo": "Hoàn tác",
+		"delete": "Xoá",
+		"done": "Xong"
+	},
+	"errors": {
+		"invalidFileType": "Định dạng file không hợp lệ",
+		"failedToUploadImage": "Tải ảnh lên thất bại",
+		"fileReadError": "Đã xảy ra lỗi khi đọc file."
+	}
+}
