@@ -2229,6 +2229,10 @@ export function buildExperimentalWindowsGpuStaticLayoutArgs(
 		options.backgroundColor,
 		"--surface-pool-size",
 		String(surfacePoolSize),
+		// Decode through the CPU-side Media Foundation source reader instead of the
+		// D3D11/DXVA source reader (the flag also picks the high-performance GPU).
+		// On some AMD GPUs the DXVA decode path made exports loop earlier footage.
+		"--prefer-high-performance-adapter",
 	];
 
 	if (options.backgroundImagePath) {
