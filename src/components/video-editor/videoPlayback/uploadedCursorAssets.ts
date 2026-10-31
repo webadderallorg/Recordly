@@ -7,13 +7,13 @@ import macosArrowUrl from "../../../assets/cursors/macos/pointer-1__34-24.svg";
 import macosPointerUrl from "../../../assets/cursors/macos/pointinghand-1__39-26.svg";
 import macosResizeEwUrl from "../../../assets/cursors/macos/resizeeastwest-1__50-50.svg";
 import macosResizeNsUrl from "../../../assets/cursors/macos/resizenorthsouth-1__50-50.svg";
-import tahoeClosedHandUrl from "../../../assets/cursors/tahoe/closedhand-1__50-46.svg";
+import tahoeClosedHandUrl from "../../../assets/cursors/golden-gate/closedhand.svg";
 import tahoeCrosshairUrl from "../../../assets/cursors/tahoe/crosshair-1__50-50.svg";
 import tahoeTextUrl from "../../../assets/cursors/tahoe/ibeam-1__50-44.svg";
 import tahoeNotAllowedUrl from "../../../assets/cursors/tahoe/notallowed-1__23-0.svg";
-import tahoeOpenHandUrl from "../../../assets/cursors/tahoe/openhand-1__55-57.svg";
+import tahoeOpenHandUrl from "../../../assets/cursors/golden-gate/openhand.svg";
 import tahoeArrowUrl from "../../../assets/cursors/tahoe/pointer-1__14-6.svg";
-import tahoePointerUrl from "../../../assets/cursors/tahoe/pointinghand-1__40-10.svg";
+import tahoePointerUrl from "../../../assets/cursors/golden-gate/pointinghand.svg";
 import tahoeResizeEwUrl from "../../../assets/cursors/tahoe/resizeeastwest-1__50-50.svg";
 import tahoeResizeNsUrl from "../../../assets/cursors/tahoe/resizenorthsouth-1__50-49.svg";
 import windows11ArrowUrl from "../../../assets/cursors/windows11/arrow__31-22.svg";
@@ -93,13 +93,14 @@ export const cursorSetAssets: Record<
 		"resize-ns": asset(macosResizeNsUrl, 50, 50),
 		"not-allowed": asset(macosNotAllowedUrl, 23, 0),
 	},
+	// Keep the legacy style ID so saved projects use the updated Golden Gate pack.
 	tahoe: {
 		arrow: asset(tahoeArrowUrl, 14, 6),
 		text: asset(tahoeTextUrl, 50, 44),
-		pointer: asset(tahoePointerUrl, 40, 10),
+		pointer: asset(tahoePointerUrl, 37.5, 25),
 		crosshair: asset(tahoeCrosshairUrl, 50, 50),
-		"open-hand": asset(tahoeOpenHandUrl, 55, 57),
-		"closed-hand": asset(tahoeClosedHandUrl, 50, 46),
+		"open-hand": asset(tahoeOpenHandUrl, 46.875, 50),
+		"closed-hand": asset(tahoeClosedHandUrl, 46.875, 50),
 		"resize-ew": asset(tahoeResizeEwUrl, 50, 50),
 		"resize-ns": asset(tahoeResizeNsUrl, 50, 49),
 		"not-allowed": asset(tahoeNotAllowedUrl, 23, 0),

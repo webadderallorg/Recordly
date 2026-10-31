@@ -1,4 +1,3 @@
-import { demoLoginEnabled, demoUser, hasDemoSession, setDemoSession } from "./demoSession";
 import { createClient, type Provider, type User } from "@supabase/supabase-js";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim();
@@ -8,6 +7,23 @@ const callbackUrl = import.meta.env.DEV
 	: "recordly://auth/callback";
 
 export const recordlyAuthConfigured = Boolean(supabaseUrl && supabasePublishableKey);
+
+export type RecordlyOAuthProvider = "google" | "azure" | "github";
+
+export async function getEnabledSignInProviders(
+	signal?: AbortSignal,
+): Promise<RecordlyOAuthProvider[]> {
+	if (!recordlyAuthConfigured) return [];
+	const response = await fetch(`${supabaseUrl}/auth/v1/settings`, {
+		headers: { apikey: supabasePublishableKey! },
+		signal,
+	});
+	if (!response.ok) throw new Error("Sign-in is temporarily unavailable. Please try again.");
+	const settings = await response.json();
+	return (["google", "azure", "github"] as const).filter(
+		(provider) => settings.external?.[provider] === true,
+	);
+}
 
 export const recordlyAuth = recordlyAuthConfigured
 	? createClient(supabaseUrl!, supabasePublishableKey!, {
@@ -30,11 +46,6 @@ function requireAuth() {
 }
 
 export async function signInWithEmail(email: string, password: string): Promise<User> {
-	if (demoLoginEnabled && email.toLowerCase() === "test@email.com") {
-		if (password !== "1234") throw new Error("Incorrect email or password.");
-		setDemoSession(true);
-		return demoUser;
-	}
 	const client = requireAuth();
 	const { data, error } = await client.auth.signInWithPassword({ email, password });
 	if (error) throw error;
@@ -103,13 +114,38 @@ async function exchangeAuthCallback(url: string): Promise<void> {
 }
 
 export async function signOutRecordly(): Promise<void> {
-	if (hasDemoSession()) {
-		setDemoSession(false);
-		return;
-	}
 	const client = requireAuth();
 	const { error } = await client.auth.signOut();
 	if (error) throw error;
+}
+
+export async function updateAccountName(name: string): Promise<User> {
+	const fullName = name.trim();
+	if (!fullName || fullName.length > 80)
+		throw new Error("Enter a name between 1 and 80 characters.");
+	const { data, error } = await requireAuth().auth.updateUser({ data: { full_name: fullName } });
+	if (error) throw error;
+	if (!data.user) throw new Error("Could not update your profile. Please try again.");
+	return data.user;
+}
+
+export async function requestAccountEmailChange(email: string): Promise<User> {
+	const address = email.trim();
+	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address))
+		throw new Error("Enter a valid email address.");
+	const { data, error } = await requireAuth().auth.updateUser(
+		{ email: address },
+		{ emailRedirectTo: callbackUrl },
+	);
+	if (error) throw error;
+	if (!data.user) throw new Error("Could not change your email. Please try again.");
+	return data.user;
+}
+
+export async function hasRecordlySession(): Promise<boolean> {
+	if (!recordlyAuth) return false;
+	const { data, error } = await recordlyAuth.auth.getSession();
+	return !error && Boolean(data.session?.user && !data.session.user.is_anonymous);
 }
 
 let lastCallback: { url: string; completion: Promise<void> } | undefined;

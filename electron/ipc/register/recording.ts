@@ -14,7 +14,12 @@ import {
 } from "electron";
 import { getHudCaptureExcludedProcessIds } from "../../../src/lib/hudCaptureProtection";
 import { showCursor } from "../../cursorHider";
-import { getHudOverlayCaptureProtectionEnabled, beginHudCaptureProtection } from "../../windows";
+import {
+	beginHudCaptureProtection,
+	getHudOverlayCaptureProtectionEnabled,
+	hideAreaRecordingBorder,
+	showAreaRecordingBorder,
+} from "../../windows";
 import { ALLOW_RECORDLY_WINDOW_CAPTURE } from "../constants";
 import { startWindowBoundsCapture, stopWindowBoundsCapture } from "../cursor/bounds";
 import { startInteractionCapture, stopInteractionCapture } from "../cursor/interaction";
@@ -152,6 +157,7 @@ import {
 	parseWindowId,
 } from "../utils";
 import { resolveWindowsCaptureTarget } from "../windowsCaptureSelection";
+import { getSourceArea } from "../sourceArea";
 import { bringSelectedWindowForward } from "./sources";
 
 const execFileAsync = promisify(execFile);
@@ -762,8 +768,21 @@ export function registerRecordingHandlers(
 
 				const windowId = parseWindowId(source?.id);
 				const screenId = Number(source?.display_id);
+				const area = getSourceArea(source);
 
-				if (Number.isFinite(windowId) && windowId && source?.id?.startsWith("window:")) {
+				if (area) {
+					config.regionX = area.x;
+					config.regionY = area.y;
+					config.regionWidth = area.width;
+					config.regionHeight = area.height;
+					if (Number.isFinite(screenId) && screenId > 0) {
+						config.displayId = screenId;
+					}
+				} else if (
+					Number.isFinite(windowId) &&
+					windowId &&
+					source?.id?.startsWith("window:")
+				) {
 					config.windowId = windowId;
 					if (visibleWindowBounds) {
 						config.windowX = visibleWindowBounds.x;
@@ -1889,6 +1908,12 @@ export function registerRecordingHandlers(
 		}
 
 		const source = selectedSource || { name: "Screen" };
+		const recordingArea = recording ? getSourceArea(selectedSource) : null;
+		if (recordingArea) {
+			showAreaRecordingBorder(recordingArea);
+		} else {
+			hideAreaRecordingBorder();
+		}
 		BrowserWindow.getAllWindows().forEach((window) => {
 			if (!window.isDestroyed()) {
 				window.webContents.send("recording-state-changed", {

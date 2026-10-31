@@ -5,7 +5,6 @@ test("feedback preserves a draft on failure, supports attachments, and includes 
 	page,
 }) => {
 	await installDesktopBridge(page);
-	await page.addInitScript(() => sessionStorage.setItem("recordly.demo-session", "1"));
 	await page.goto("/?windowType=editor");
 	await page.getByRole("button", { name: "Feedback", exact: true }).click();
 	const modal = page.getByRole("dialog", { name: "Send feedback", exact: true });
@@ -27,7 +26,7 @@ test("feedback preserves a draft on failure, supports attachments, and includes 
 	await expect(modal.getByRole("checkbox")).toHaveCount(0);
 	await expect(modal.getByLabel("Title", { exact: true })).toHaveCount(0);
 	await modal.getByRole("button", { name: "Send feedback", exact: true }).click();
-	await expect(modal.getByRole("alert")).toContainText(/sign in again|unavailable/i);
+	await expect(modal.getByRole("alert")).toHaveText("Could not send feedback. Please try again.");
 	await expect(modal.getByLabel("Subject", { exact: true })).toHaveValue("Export stops early");
 	await modal.getByLabel("Subject", { exact: true }).fill("Export stops early (updated)");
 	await expect(modal.getByRole("alert")).toHaveCount(0);

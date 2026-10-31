@@ -5,7 +5,8 @@ import type {
 	SourceAudioTrackSettings,
 	TrimRegion,
 } from "@/components/video-editor/types";
-import type { SourceTrackId } from "@/lib/exporter/audioRoutingEngine";
+
+export type SourceTrackId = "mic" | "system" | "mixed";
 
 export const AUDIO_BITRATE = 128_000;
 export const DECODE_BACKPRESSURE_LIMIT = 20;
@@ -68,6 +69,7 @@ export function resolveSourceTrackGain(
 
 export function getSourceTrackIdFromPath(audioPath: string): SourceTrackId {
 	const normalized = audioPath.toLowerCase();
+	const filename = normalized.split(/[\\/]/).pop() ?? normalized;
 	// Check for common patterns like .mic., -mic., mic.mp4, etc.
 	if (
 		normalized.includes(".mic.") ||
@@ -75,9 +77,7 @@ export function getSourceTrackIdFromPath(audioPath: string): SourceTrackId {
 		normalized.includes("_mic_") ||
 		normalized.includes("/mic.") ||
 		normalized.includes("\\mic.") ||
-		normalized.endsWith("mic.mp4") ||
-		normalized.endsWith("mic.m4a") ||
-		normalized.endsWith("mic.wav")
+		/(?:^|[._-])mic\.(?:mp4|m4a|wav)$/.test(filename)
 	) {
 		return "mic";
 	}
@@ -87,9 +87,7 @@ export function getSourceTrackIdFromPath(audioPath: string): SourceTrackId {
 		normalized.includes("_system_") ||
 		normalized.includes("/system.") ||
 		normalized.includes("\\system.") ||
-		normalized.endsWith("system.mp4") ||
-		normalized.endsWith("system.m4a") ||
-		normalized.endsWith("system.wav")
+		/(?:^|[._-])system\.(?:mp4|m4a|wav)$/.test(filename)
 	) {
 		return "system";
 	}

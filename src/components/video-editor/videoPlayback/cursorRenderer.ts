@@ -27,6 +27,9 @@ import {
 } from "./motionSmoothing";
 import { cursorSetAssets, getCursorStyleSizeMultiplier } from "./uploadedCursorAssets";
 import { computeDirectionalMotionBlur } from "./zoomTransform";
+import { interpolateCursorPosition } from "./cursorPosition";
+import { computeCursorFrameBlur } from "./frameMotionSample";
+export { interpolateCursorPosition } from "./cursorPosition";
 
 type CursorAssetKey = NonNullable<CursorTelemetryPoint["cursorType"]>;
 type StatefulCursorStyle = Extract<CursorStyle, "macos" | "tahoe" | "tahoe-inverted" | "windows11">;
@@ -703,50 +706,6 @@ export async function buildNativeCursorAtlas(
 	};
 }
 
-/**
- * Interpolates cursor position from telemetry samples at a given time.
- * Uses linear interpolation between the two nearest samples.
- */
-export function interpolateCursorPosition(
-	samples: CursorTelemetryPoint[],
-	timeMs: number,
-): { cx: number; cy: number } | null {
-	if (!samples || samples.length === 0) return null;
-
-	if (timeMs <= samples[0].timeMs) {
-		return { cx: samples[0].cx, cy: samples[0].cy };
-	}
-
-	if (timeMs >= samples[samples.length - 1].timeMs) {
-		return {
-			cx: samples[samples.length - 1].cx,
-			cy: samples[samples.length - 1].cy,
-		};
-	}
-
-	let lo = 0;
-	let hi = samples.length - 1;
-	while (lo < hi - 1) {
-		const mid = (lo + hi) >> 1;
-		if (samples[mid].timeMs <= timeMs) {
-			lo = mid;
-		} else {
-			hi = mid;
-		}
-	}
-
-	const a = samples[lo];
-	const b = samples[hi];
-	const span = b.timeMs - a.timeMs;
-	if (span <= 0) return { cx: a.cx, cy: a.cy };
-
-	const t = (timeMs - a.timeMs) / span;
-	return {
-		cx: a.cx + (b.cx - a.cx) * t,
-		cy: a.cy + (b.cy - a.cy) * t,
-	};
-}
-
 function findLatestSample(samples: CursorTelemetryPoint[], timeMs: number) {
 	if (samples.length === 0) return null;
 
@@ -1327,6 +1286,7 @@ export class PixiCursorOverlay {
 		viewport: CursorViewportRect,
 		visible: boolean,
 		freeze = false,
+		previousFrameTimeMs?: number | null,
 	): void {
 		if (samples.length === 0 || viewport.width <= 0 || viewport.height <= 0) {
 			this.container.visible = false;
@@ -1536,7 +1496,21 @@ export class PixiCursorOverlay {
 			this.customCursorSprite.rotation = swayRotation;
 		}
 
-		this.applyCursorMotionBlur(px, py, timeMs, shouldFreezeCursorMotion);
+		if (shouldFreezeCursorMotion && previousFrameTimeMs !== undefined) {
+			const blur = computeCursorFrameBlur(
+				samples,
+				timeMs,
+				previousFrameTimeMs,
+				viewport,
+				this.config.motionBlur,
+				CURSOR_DIRECTIONAL_BLUR_STRENGTH,
+			);
+			this.cursorMotionBlurFilter.velocity = blur.velocity;
+			this.cursorMotionBlurFilter.kernelSize = blur.kernelSize;
+			this.cursorMotionBlurFilter.offset = blur.offset;
+		} else {
+			this.applyCursorMotionBlur(px, py, timeMs, shouldFreezeCursorMotion);
+		}
 		this.lastRenderedPoint = shouldShowCursorSprite ? { px, py } : null;
 		this.lastRenderedTimeMs = timeMs;
 	}

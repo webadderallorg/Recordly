@@ -37,9 +37,14 @@ describe("clip timeline playback", () => {
 			duration: 12,
 			currentTime: 0,
 			seeking: false,
+			paused: true,
 			playbackRate: 1,
-			play: vi.fn(async () => {}),
-			pause: vi.fn(),
+			play: vi.fn(async () => {
+				video.paused = false;
+			}),
+			pause: vi.fn(() => {
+				video.paused = true;
+			}),
 		} as unknown as HTMLVideoElement;
 		const onTime = vi.fn();
 		const onPlaying = vi.fn();
@@ -74,6 +79,30 @@ describe("clip timeline playback", () => {
 		video.currentTime = 3.501;
 		advance(1);
 		expect(onTime).toHaveBeenLastCalledWith(2.801, 3.501);
+	});
+	it("pauses source playback until a cut seek finishes", async () => {
+		const { video, playback } = setup([
+			{ id: "a", startMs: 0, endMs: 1_000, sourceStartMs: 0, speed: 1 },
+			{ id: "b", startMs: 1_000, endMs: 2_000, sourceStartMs: 5_000, speed: 1 },
+		]);
+		await playback.play();
+		const playCount = vi.mocked(video.play).mock.calls.length;
+		let sourceTime = 0;
+		Object.defineProperty(video, "currentTime", {
+			get: () => sourceTime,
+			set: (value: number) => {
+				sourceTime = value;
+				if (value === 5) Object.assign(video, { seeking: true });
+			},
+		});
+		video.currentTime = 1;
+		advance(1);
+		expect(video.pause).toHaveBeenCalled();
+		expect(video.currentTime).toBe(5);
+		expect(video.play).toHaveBeenCalledTimes(playCount);
+		Object.assign(video, { seeking: false });
+		advance(1);
+		expect(video.play).toHaveBeenCalledTimes(playCount + 1);
 	});
 	it("cannot simulate playback after the final clip is deleted", async () => {
 		const { video, playback, onTime } = setup([]);
@@ -116,6 +145,60 @@ describe("clip timeline playback", () => {
 		expect(onTime).toHaveBeenLastCalledWith(2.25, 6.75);
 		playback.seek(1.5);
 		expect(onTime).toHaveBeenLastCalledWith(2, 6);
+	});
+	it.each([
+		0.5, 1, 3,
+	])("resumes at %sx without seeking back to the last animation tick", async (speed) => {
+		const { video, playback, onTime, onSourceSeek } = setup([
+			{ id: "clip", startMs: 0, endMs: 4000, sourceStartMs: 2000, speed },
+		]);
+		playback.seek(0.5);
+		await playback.play();
+		onSourceSeek.mockClear();
+		for (let cycle = 0; cycle < 3; cycle++) {
+			video.currentTime += 0.1 * speed;
+			advance(100);
+			// Media advances between the last RAF callback and the pause click.
+			video.currentTime += 0.01 * speed;
+			playback.pause();
+			const pausedTime = video.currentTime;
+			advance(5000);
+			await playback.play();
+			expect(video.currentTime).toBe(pausedTime);
+			expect(onSourceSeek).not.toHaveBeenCalled();
+			advance(16);
+			expect(onTime).toHaveBeenLastCalledWith(
+				expect.closeTo((pausedTime - 2) / speed, 8),
+				expect.closeTo(pausedTime, 8),
+			);
+		}
+		expect(video.play).toHaveBeenCalledTimes(4);
+	});
+	it("resolves a cut reached after the last tick before resuming", async () => {
+		const { video, playback, onTime, onSourceSeek } = setup([
+			{ id: "a", startMs: 0, endMs: 1000, sourceStartMs: 0, speed: 1 },
+			{ id: "b", startMs: 1000, endMs: 2000, sourceStartMs: 6000, speed: 1 },
+		]);
+		playback.seek(0.99);
+		await playback.play();
+		video.currentTime = 1;
+		playback.pause();
+		await playback.play();
+		expect(video.currentTime).toBe(6);
+		expect(onTime).toHaveBeenLastCalledWith(1, 6);
+		expect(onSourceSeek).toHaveBeenLastCalledWith("cut");
+	});
+	it("restarts from the retained in-point if media ends between the last tick and pause", async () => {
+		const { video, playback, onTime } = setup([
+			{ id: "clip", startMs: 0, endMs: 10000, sourceStartMs: 2000, speed: 1 },
+		]);
+		playback.seek(9.99);
+		await playback.play();
+		Object.assign(video, { currentTime: 12, ended: true });
+		playback.pause();
+		await playback.play();
+		expect(video.currentTime).toBe(2);
+		expect(onTime).toHaveBeenLastCalledWith(0, 2);
 	});
 	it("skips a short gap without skipping the next clip in-point when a tick overshoots", async () => {
 		const { video, playback, onTime } = setup([

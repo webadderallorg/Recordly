@@ -13,6 +13,8 @@ struct WindowListEntry: Codable {
 	let y: Double
 	let width: Double
 	let height: Double
+	/// Process that owns the window, so callers can skip their own windows.
+	let ownerPid: Int32?
 }
 
 func normalize(_ value: String?) -> String? {
@@ -37,6 +39,10 @@ let excludedWindowTitles: Set<String> = [
 	"Offscreen Wallpaper Window",
 	"Wallpaper-",
 ]
+
+/// `--z-order` lists windows front to back, for hit-testing what is under a point,
+/// instead of alphabetically for menus.
+let listsInZOrder = CommandLine.arguments.contains("--z-order")
 
 // Force CoreGraphics Services initialization before asking ScreenCaptureKit for
 // shareable content. Without this, the helper can stall sporadically when run
@@ -104,7 +110,8 @@ Task {
 				x: Double(frame.origin.x),
 				y: Double(frame.origin.y),
 				width: Double(frame.width),
-				height: Double(frame.height)
+				height: Double(frame.height),
+				ownerPid: window.owningApplication?.processID
 			)
 
 			return RawWindowEntry(entry: entry, hasRawTitle: windowTitle != nil, bundleId: bundleId)
@@ -120,7 +127,7 @@ Task {
 			}
 		}
 
-		let entries = rawEntries
+		let visibleEntries = rawEntries
 			.filter { raw in
 				guard let bid = raw.bundleId else { return true }
 				if let titled = titledCountByBundle[bid], titled > 0 {
@@ -129,7 +136,22 @@ Task {
 				return true
 			}
 			.map { $0.entry }
-		.sorted { lhs, rhs in
+
+		// CGWindowList reports on-screen windows front to back; ScreenCaptureKit's
+		// order is unspecified.
+		var frontToBackRank: [String: Int] = [:]
+		if listsInZOrder {
+			let windowInfo = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+			for (rank, info) in windowInfo.enumerated() {
+				if let number = info[kCGWindowNumber as String] as? Int {
+					frontToBackRank["window:\(number):0"] = rank
+				}
+			}
+		}
+
+		let entries = listsInZOrder
+			? visibleEntries.sorted { (frontToBackRank[$0.id] ?? Int.max) < (frontToBackRank[$1.id] ?? Int.max) }
+			: visibleEntries.sorted { lhs, rhs in
 			let lhsApp = lhs.appName ?? lhs.name
 			let rhsApp = rhs.appName ?? rhs.name
 			if lhsApp != rhsApp {
