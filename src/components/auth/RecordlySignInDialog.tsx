@@ -438,7 +438,7 @@ export function RecordlySignInDialog({
 					)}
 				</div>
 			</SignInBody>
-			{onboarding && user && (
+			{onboarding && (user || !configured) && (
 				<OnboardingFooter>
 					<div className="flex w-full justify-end">
 						<Button
