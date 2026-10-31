@@ -46,15 +46,43 @@ async function expectCanvasRatio(dialog: Locator, aspectRatio: number) {
 }
 
 async function expectFittedDialog(dialog: Locator, aspectRatio: number) {
-	await expect(dialog.getByRole("button", { name: "Done", exact: true })).toBeInViewport();
+	const done = dialog.getByRole("button", { name: "Done", exact: true });
+	await expect(done).toBeInViewport({ ratio: 1 });
+
+	// Confirm the button is not merely intersecting: its box must sit fully
+	// inside the window on every edge.
+	const placement = await done.evaluate((element) => {
+		const rect = element.getBoundingClientRect();
+		return {
+			top: rect.top,
+			bottom: rect.bottom,
+			left: rect.left,
+			right: rect.right,
+			viewportWidth: window.innerWidth,
+			viewportHeight: window.innerHeight,
+		};
+	});
+	expect(placement.top).toBeGreaterThanOrEqual(0);
+	expect(placement.left).toBeGreaterThanOrEqual(0);
+	expect(placement.bottom).toBeLessThanOrEqual(placement.viewportHeight);
+	expect(placement.right).toBeLessThanOrEqual(placement.viewportWidth);
 
 	await expectCanvasRatio(dialog, aspectRatio);
 
-	const dimensions = await dialog.evaluate((element) => ({
-		clientHeight: element.clientHeight,
-		scrollHeight: element.scrollHeight,
-	}));
+	const dimensions = await dialog.evaluate((element) => {
+		const rect = element.getBoundingClientRect();
+		return {
+			clientHeight: element.clientHeight,
+			scrollHeight: element.scrollHeight,
+			top: rect.top,
+			bottom: rect.bottom,
+			viewportHeight: window.innerHeight,
+		};
+	});
 	expect(dimensions.scrollHeight).toBeLessThanOrEqual(dimensions.clientHeight + 1);
+	// The dialog must fit inside the window, not just scroll internally.
+	expect(dimensions.top).toBeGreaterThanOrEqual(-1);
+	expect(dimensions.bottom).toBeLessThanOrEqual(dimensions.viewportHeight + 1);
 }
 
 for (const viewport of VIEWPORTS) {
@@ -98,5 +126,7 @@ test("crop preview follows late metadata on the bound video element", async ({ p
 	});
 
 	await expectCanvasRatio(dialog, 360 / 640);
-	await expect(dialog.getByRole("button", { name: "Done", exact: true })).toBeInViewport();
+	await expect(dialog.getByRole("button", { name: "Done", exact: true })).toBeInViewport({
+		ratio: 1,
+	});
 });
