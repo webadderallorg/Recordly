@@ -513,6 +513,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	getSources: async (opts: Electron.SourcesOptions) => {
 		return await ipcRenderer.invoke("get-sources", opts);
 	},
+	showRecordingPermissions: () => ipcRenderer.invoke("show-recording-permissions"),
+	onRecordingPermissionsRequested: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("recording-permissions-requested", listener);
+		return () => ipcRenderer.removeListener("recording-permissions-requested", listener);
+	},
 	showRecordingHud: () => ipcRenderer.invoke("show-recording-hud"),
 	createProjectFile: (data: unknown, thumbnail?: string | null) =>
 		ipcRenderer.invoke("create-project-file", data, thumbnail),
@@ -531,6 +537,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	},
 	showSourceHighlight: (source: ProcessedDesktopSource) => {
 		return ipcRenderer.invoke("show-source-highlight", source);
+	},
+	pickCaptureTarget: () => {
+		return ipcRenderer.invoke("pick-capture-target");
+	},
+	completeCapturePick: (pick: CapturePick | null) => {
+		return ipcRenderer.invoke("complete-capture-pick", pick);
+	},
+	getCapturePickerContext: (displayId: number) => {
+		return ipcRenderer.invoke("get-capture-picker-context", displayId);
+	},
+	capturePickerReady: () => {
+		ipcRenderer.send("capture-picker-ready");
 	},
 	getSelectedSource: () => {
 		return ipcRenderer.invoke("get-selected-source");
@@ -1058,6 +1076,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	saveShortcuts: (shortcuts: unknown) => {
 		return ipcRenderer.invoke("save-shortcuts", shortcuts);
 	},
+	getEditorStartupView: (): "home" | "editor" => ipcRenderer.sendSync("get-editor-startup-view"),
 	getAppSetting: (key: string) => {
 		const result = ipcRenderer.sendSync("app-settings:get", key) as {
 			success?: boolean;

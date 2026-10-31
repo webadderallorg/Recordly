@@ -17,10 +17,10 @@ const cursorTypes = [
 const tahoeAssets = {
 	arrow: ["pointer-1__14-6.svg", 0.14, 0.06],
 	text: ["ibeam-1__50-44.svg", 0.5, 0.44],
-	pointer: ["pointinghand-1__40-10.svg", 0.4, 0.1],
+	pointer: ["../golden-gate/pointinghand.svg", 12 / 32, 8 / 32],
 	crosshair: ["crosshair-1__50-50.svg", 0.5, 0.5],
-	"open-hand": ["openhand-1__55-57.svg", 0.55, 0.57],
-	"closed-hand": ["closedhand-1__50-46.svg", 0.5, 0.46],
+	"open-hand": ["../golden-gate/openhand.svg", 15 / 32, 16 / 32],
+	"closed-hand": ["../golden-gate/closedhand.svg", 15 / 32, 16 / 32],
 	"resize-ew": ["resizeeastwest-1__50-50.svg", 0.5, 0.5],
 	"resize-ns": ["resizenorthsouth-1__50-49.svg", 0.5, 0.49],
 	"not-allowed": ["notallowed-1__23-0.svg", 0.23, 0],

@@ -9,6 +9,7 @@ export type CloudShareTicket = {
 
 const TRUSTED_SHARE_ORIGINS = new Set([
 	"https://videos.recordly.dev",
+	"https://recordly-share-staging.youngchen3442.workers.dev",
 	"http://localhost:8787",
 	"http://127.0.0.1:8787",
 ]);

@@ -1,6 +1,41 @@
 import { expect, test } from "@playwright/test";
 import { installDesktopBridge } from "./bridge";
 
+for (const reducedMotion of ["reduce", "no-preference"] as const) {
+	test(`HUD source label respects ${reducedMotion} motion preference on hover`, async ({
+		page,
+	}) => {
+		await page.emulateMedia({ reducedMotion });
+		await installDesktopBridge(page);
+		await page.addInitScript(() => {
+			window.electronAPI.getSelectedSource = async () => ({
+				id: "window:101:0",
+				name: "A very long document title that overflows the recording source control",
+			});
+		});
+		await page.goto("/?windowType=hud-overlay");
+		const source = page.getByRole("button", { name: "Choose recording source", exact: true });
+		const label = source.locator(".source-selector-marquee");
+		await expect(label).toHaveAttribute("data-overflowing", "true");
+		await source.hover();
+		const reduce = reducedMotion === "reduce";
+		await expect(label.locator(".source-selector-marquee-static")).toHaveCSS(
+			"opacity",
+			reduce ? "1" : "0",
+		);
+		await expect(label.locator(".source-selector-marquee-animated")).toHaveCSS(
+			"opacity",
+			reduce ? "0" : "1",
+		);
+		const track = label.locator(".source-selector-marquee-track");
+		await expect(track).toHaveCSS(
+			"animation-name",
+			reduce ? "none" : "source-selector-marquee",
+		);
+		if (!reduce) await expect(track).toHaveCSS("animation-play-state", "running");
+	});
+}
+
 test("HUD dividers are vertically centered", async ({ page }) => {
 	await installDesktopBridge(page);
 	await page.goto("/?windowType=hud-overlay");
@@ -17,11 +52,14 @@ test("HUD dividers are vertically centered", async ({ page }) => {
 	const home = page.getByRole("button", { name: "Home", exact: true });
 	await expect(home.locator("svg")).toHaveAttribute("data-icon-style", "bold");
 	await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(0);
-	const icon = await home.locator("svg").evaluate((element) => ({
-		width: element.getBoundingClientRect().width,
-		height: element.getBoundingClientRect().height,
-	}));
-	expect(icon).toEqual({ width: 20, height: 20 });
+	await expect
+		.poll(() =>
+			home.locator("svg").evaluate((element) => ({
+				width: Math.round(element.getBoundingClientRect().width),
+				height: Math.round(element.getBoundingClientRect().height),
+			})),
+		)
+		.toEqual({ width: 20, height: 20 });
 	await page.screenshot({ path: "test-results/hud-idle.png", animations: "disabled" });
 	await home.click();
 	await expect(page.locator("html")).toHaveAttribute("data-dashboard-opened", "true");

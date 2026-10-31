@@ -78,12 +78,17 @@ describe("ScreenCaptureKitRecorder window capture", () => {
 		expect(recorderSource).not.toContain("streamConfig.sourceRect");
 		expect(recorderSource).not.toContain("desktopIndependentWindow");
 		expect(recorderSource).toContain(
-			"visibleFrame = CGRect(x: x, y: y, width: width, height: height)",
+			"requestedFrame = CGRect(x: x, y: y, width: width, height: height)",
 		);
 		expect(recorderSource).toContain(
 			"let captureRect = visibleFrame.intersection(display.frame)",
 		);
 		expect(recorderSource).toContain("appendCroppedVideoFrame(sampleBuffer");
+	});
+
+	it("records a fixed area of a display through the same crop", () => {
+		expect(recorderSource).toContain("let regionX: Double?");
+		expect(recorderSource).toContain("} else if let x = config.regionX,");
 	});
 
 	it("refreshes the crop and capture display while the window moves or resizes", () => {
@@ -95,9 +100,11 @@ describe("ScreenCaptureKitRecorder window capture", () => {
 	});
 });
 
-
 describe("ScreenCaptureKitRecorder first frame timing", () => {
-	const callback = recorderSource.slice(recorderSource.indexOf("func stream(_ stream:"), recorderSource.indexOf("func stream(_ stream:") + 5000);
+	const callback = recorderSource.slice(
+		recorderSource.indexOf("func stream(_ stream:"),
+		recorderSource.indexOf("func stream(_ stream:") + 5000,
+	);
 	it("validates a complete frame and writer readiness before setting time zero", () => {
 		const clock = callback.indexOf("adjustedPresentationTime(for:");
 		expect(clock).toBeGreaterThan(callback.indexOf("status == .complete"));

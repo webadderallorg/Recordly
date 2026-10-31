@@ -1,5 +1,11 @@
 import type { Page } from "@playwright/test";
-export async function installDesktopBridge(page: Page, videoFixture = "preview.mp4") {
+import { installSupabaseAuth } from "./auth";
+export async function installDesktopBridge(
+	page: Page,
+	videoFixture = "preview.mp4",
+	auth = { signedIn: true },
+) {
+	await installSupabaseAuth(page, auth);
 	await page.addInitScript((videoFixture) => {
 		const success = async () => ({ success: true });
 		const subscribe = () => () => undefined;
@@ -11,7 +17,8 @@ export async function installDesktopBridge(page: Page, videoFixture = "preview.m
 		};
 		Object.assign(window, {
 			electronAPI: {
-				getAppSetting: (key: string) => key === "recordly.onboarding.v1.seen" ? true : null,
+				getAppSetting: (key: string) =>
+					key === "recordly.onboarding.v1.seen" ? true : null,
 				finishRecordingStartup: async () => undefined,
 				showProjectDashboard: async () => {
 					document.documentElement.dataset.dashboardOpened = "true";
@@ -30,6 +37,17 @@ export async function installDesktopBridge(page: Page, videoFixture = "preview.m
 				getRecordingThumbnail: async () => ({ success: false, error: "Unavailable" }),
 				setAppSetting: () => true,
 				getExperimentalUpdatesEnabled: async () => false,
+				showRecordingPermissions: async () => {
+					document.documentElement.dataset.permissionsOpened = "true";
+				},
+				onRecordingPermissionsRequested: subscribe,
+				openScreenRecordingPreferences: success,
+				openAccessibilityPreferences: success,
+				requestAccessibilityPermission: async () => ({
+					success: true,
+					trusted: false,
+					prompted: true,
+				}),
 				getScreenRecordingPermissionStatus: async () => ({
 					success: true,
 					status: "granted",
@@ -92,7 +110,13 @@ export async function installDesktopBridge(page: Page, videoFixture = "preview.m
 				finishRecordingImport: success,
 				setCurrentRecordingSession: success,
 				setHasUnsavedChanges: success,
-				onAuthCallbackUrl: subscribe,
+				onAuthCallbackUrl: (callback: (url: string) => void) => {
+					const listener = (event: Event) =>
+						callback((event as CustomEvent<string>).detail);
+					window.addEventListener("recordly-test-auth-callback", listener);
+					return () =>
+						window.removeEventListener("recordly-test-auth-callback", listener);
+				},
 				onProjectThumbnailReady: subscribe,
 				getPendingAuthCallbackUrl: async () => null,
 				ackAuthCallbackUrl: success,

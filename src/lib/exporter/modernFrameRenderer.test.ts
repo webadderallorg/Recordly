@@ -260,6 +260,34 @@ describe("ModernFrameRenderer Pixi lifecycle", () => {
 			vi.unstubAllGlobals();
 		}
 	});
+
+	it("defaults to WebGL when no backend is preferred, even when WebGPU is available", async () => {
+		pixiApplicationInstancesMock.length = 0;
+		pixiInitializationErrorsMock.length = 0;
+		// Linux Chromium exposes navigator.gpu, but Pixi's WebGPU bind-group path crashes
+		// with "Cannot read properties of undefined (reading '_resourceType')".
+		vi.stubGlobal("navigator", { gpu: {} });
+
+		try {
+			const renderer = createRenderer() as unknown as {
+				config: { preferredRenderBackend?: "webgl" | "webgpu" };
+				createPixiApplication: (
+					canvas: HTMLCanvasElement,
+				) => Promise<{ backend: "webgl" | "webgpu" }>;
+			};
+			renderer.config.preferredRenderBackend = undefined;
+
+			await expect(renderer.createPixiApplication({} as HTMLCanvasElement)).resolves
+				.toMatchObject({
+					backend: "webgl",
+				});
+
+			expect(pixiInitializationErrorsMock).toHaveLength(0);
+			expect(pixiApplicationInstancesMock).toHaveLength(1);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
 });
 
 describe("ModernFrameRenderer blur export path", () => {

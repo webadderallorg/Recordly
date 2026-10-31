@@ -1,5 +1,7 @@
 # Desktop feedback
 
+See [setup status](SETUP.md) for the applied project configuration, verification, and remaining launch work.
+
 Before releasing feedback submission:
 
 1. Apply `migrations/202609230001_feedback.sql` and then `migrations/202609230002_feedback_limits.sql` in the configured Supabase project. Apply `migrations/202610030001_feedback_access.sql` after both, including on existing deployments; it revokes inherited client table privileges while preserving owner reads and server inserts.
