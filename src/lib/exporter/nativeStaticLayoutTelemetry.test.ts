@@ -110,6 +110,24 @@ describe("buildNativeStaticLayoutCursorTelemetry", () => {
 		expect(resampled?.some((sample) => (sample.bounceScale ?? 1) < 1)).toBe(true);
 	});
 
+	it("keeps recorded cursor type boundaries when forcing the pointer cursor", () => {
+		const samples = [
+			{ timeMs: 0, cx: 0.4, cy: 0.6, cursorType: "arrow" as const },
+			{ timeMs: 500, cx: 0.4, cy: 0.6, cursorType: "text" as const },
+		];
+		const options = { frameRate: 10, durationSec: 1 };
+		const plain = buildNativeStaticLayoutCursorTelemetry(samples, options);
+		const forced = buildNativeStaticLayoutCursorTelemetry(samples, {
+			...options,
+			alwaysUsePointerCursor: true,
+		});
+
+		expect(forced?.map((sample) => sample.timeMs)).toEqual(plain?.map((sample) => sample.timeMs));
+		expect(forced).toHaveLength(2);
+		expect(forced?.every((sample) => sample.cursorType === "arrow")).toBe(true);
+		expect(forced?.every((sample) => sample.cursorTypeIndex === 0)).toBe(true);
+	});
+
 	it("projects cursor samples into the cropped viewport and marks out-of-crop samples hidden", () => {
 		const resampled = buildNativeStaticLayoutCursorTelemetry(
 			[

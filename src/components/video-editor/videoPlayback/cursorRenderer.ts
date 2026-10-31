@@ -112,6 +112,8 @@ export interface CursorRenderConfig {
 	sway: number;
 	/** Cursor visual style. */
 	style: CursorStyle;
+	/** Render every sample as the default arrow cursor. */
+	alwaysUsePointerCursor: boolean;
 }
 
 const MIN_CURSOR_VIEWPORT_SCALE = 0;
@@ -154,6 +156,7 @@ export const DEFAULT_CURSOR_CONFIG: CursorRenderConfig = {
 	clickEffectDurationMs: DEFAULT_CURSOR_CLICK_EFFECT_DURATION_MS,
 	sway: 0,
 	style: DEFAULT_CURSOR_STYLE,
+	alwaysUsePointerCursor: false,
 };
 let cursorAssetsPromise: Promise<void> | null = null;
 let cursorPackAssetsPromise: Promise<void> | null = null;
@@ -1236,6 +1239,10 @@ export class PixiCursorOverlay {
 		this.config.sway = clamp(sway, 0, 2);
 	}
 
+	setAlwaysUsePointerCursor(enabled: boolean) {
+		this.config.alwaysUsePointerCursor = enabled;
+	}
+
 	setStyle(style: CursorStyle) {
 		this.config.style = style;
 		if (isStatefulCursorStyle(style)) {
@@ -1321,13 +1328,20 @@ export class PixiCursorOverlay {
 		const h =
 			this.config.dotRadius *
 			getCursorViewportScale(viewport.width, this.config.minViewportScale);
-		const { cursorType, clickSample, clickBounceProgress, clickProgress } =
-			getCursorVisualState(
-				samples,
-				timeMs,
-				this.config.clickBounceDuration,
-				this.config.clickEffectDurationMs,
-			);
+		const {
+			cursorType: rawCursorType,
+			clickSample,
+			clickBounceProgress,
+			clickProgress,
+		} = getCursorVisualState(
+			samples,
+			timeMs,
+			this.config.clickBounceDuration,
+			this.config.clickEffectDurationMs,
+		);
+		const cursorType: CursorAssetKey = this.config.alwaysUsePointerCursor
+			? "arrow"
+			: rawCursorType;
 		const projectedClickSample = clickSample
 			? projectCursorPositionToViewport(clickSample, viewport.sourceCrop)
 			: null;
@@ -1630,12 +1644,18 @@ export function drawCursorOnCanvas(
 	const px = viewport.x + smoothedState.x * viewport.width;
 	const py = viewport.y + smoothedState.y * viewport.height;
 	const h = config.dotRadius * getCursorViewportScale(viewport.width, config.minViewportScale);
-	const { cursorType, clickSample, clickBounceProgress, clickProgress } = getCursorVisualState(
+	const {
+		cursorType: rawCursorType,
+		clickSample,
+		clickBounceProgress,
+		clickProgress,
+	} = getCursorVisualState(
 		samples,
 		timeMs,
 		config.clickBounceDuration,
 		config.clickEffectDurationMs,
 	);
+	const cursorType: CursorAssetKey = config.alwaysUsePointerCursor ? "arrow" : rawCursorType;
 	const projectedClickSample = clickSample
 		? projectCursorPositionToViewport(clickSample, viewport.sourceCrop)
 		: null;

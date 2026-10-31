@@ -64,6 +64,7 @@ export function buildExportRenderOptions({
 		zoomRegions: effectiveZoomRegions,
 		cursorTelemetry: effectiveCursorTelemetry,
 		showCursor: effectiveShowCursor,
+		alwaysUsePointerCursor: appearance.alwaysUsePointerCursor,
 		cursorStyle: appearance.cursorStyle,
 		cursorSize: appearance.cursorSize,
 		cursorSmoothing: appearance.cursorSmoothing,

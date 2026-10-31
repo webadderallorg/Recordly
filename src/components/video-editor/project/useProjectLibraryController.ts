@@ -28,6 +28,7 @@ export function useProjectLibraryController({
 }: Input) {
 	const { setProjectLibraryEntries, setProjectLibraryLoading } = project;
 	const {
+		alwaysUsePointerCursor,
 		backgroundBlur,
 		borderRadius,
 		connectZooms,
@@ -226,6 +227,7 @@ export function useProjectLibraryController({
 					previewHeight,
 					cursorTelemetry,
 					showCursor: effectiveShowCursor,
+					alwaysUsePointerCursor,
 					cursorStyle,
 					cursorSize,
 					cursorSmoothing,
@@ -274,6 +276,7 @@ export function useProjectLibraryController({
 		annotationRegions,
 		autoCaptionSettings,
 		autoCaptions,
+		alwaysUsePointerCursor,
 		backgroundBlur,
 		borderRadius,
 		connectZooms,

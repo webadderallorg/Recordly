@@ -477,6 +477,8 @@ interface SettingsPanelProps {
 	onShowCursorChange?: (enabled: boolean) => void;
 	loopCursor?: boolean;
 	onLoopCursorChange?: (enabled: boolean) => void;
+	alwaysUsePointerCursor?: boolean;
+	onAlwaysUsePointerCursorChange?: (enabled: boolean) => void;
 	cursorStyle?: CursorStyle;
 	onCursorStyleChange?: (style: CursorStyle) => void;
 	cursorSize?: number;
@@ -923,6 +925,8 @@ export function SettingsPanel({
 	onShowCursorChange,
 	loopCursor = false,
 	onLoopCursorChange,
+	alwaysUsePointerCursor = false,
+	onAlwaysUsePointerCursorChange,
 	cursorStyle = DEFAULT_CURSOR_STYLE,
 	onCursorStyleChange,
 	cursorSize = 5,
@@ -1435,6 +1439,7 @@ export function SettingsPanel({
 	const resetCursorSection = () => {
 		onShowCursorChange?.(initialEditorPreferences.showCursor);
 		onLoopCursorChange?.(initialEditorPreferences.loopCursor);
+		onAlwaysUsePointerCursorChange?.(initialEditorPreferences.alwaysUsePointerCursor);
 		onCursorStyleChange?.(initialEditorPreferences.cursorStyle);
 		onCursorSizeChange?.(initialEditorPreferences.cursorSize);
 		onCursorSmoothingChange?.(initialEditorPreferences.cursorSmoothing);
@@ -2835,6 +2840,14 @@ export function SettingsPanel({
 											aria-label={tSettings("effects.loopCursor")}
 											checked={loopCursor}
 											onCheckedChange={onLoopCursorChange}
+										/>
+									</label>
+									<label className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+										<span>{tSettings("effects.alwaysUsePointerCursor")}</span>
+										<Switch
+											aria-label={tSettings("effects.alwaysUsePointerCursor")}
+											checked={alwaysUsePointerCursor}
+											onCheckedChange={onAlwaysUsePointerCursorChange}
 										/>
 									</label>
 								</div>

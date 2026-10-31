@@ -31,6 +31,7 @@
 		"show": "Tonen",
 		"showCursor": "Cursor tonen",
 		"loopCursor": "Cursor herhalen",
+		"alwaysUsePointerCursor": "Altijd standaardcursor gebruiken",
 		"cursorStyle": "Cursorstijl",
 		"cursorStyleOptions": {
 			"macos": "macOS",
