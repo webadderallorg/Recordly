@@ -2,7 +2,6 @@ import type { Dispatch, SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import type { useI18n } from "@/contexts/I18nContext";
-import type { AspectRatio } from "@/utils/aspectRatioUtils";
 import { CropControl } from "../CropControl";
 import type { CropRegion } from "../types";
 
@@ -12,7 +11,6 @@ type Props = {
 	videoElement: HTMLVideoElement | null;
 	cropRegion: CropRegion;
 	setCropRegion: Dispatch<SetStateAction<CropRegion>>;
-	aspectRatio: AspectRatio;
 	onCancel: () => void;
 	onDone: () => void;
 };
@@ -23,30 +21,28 @@ export function CropEditorDialog({
 	videoElement,
 	cropRegion,
 	setCropRegion,
-	aspectRatio,
 	onCancel,
 	onDone,
 }: Props) {
 	return (
 		<Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onCancel()}>
-			<DialogContent className="max-h-[90vh] w-[90vw] max-w-5xl overflow-auto p-8">
-				<div className="mb-6 flex items-center justify-between">
-					<div>
-						<DialogTitle className="text-xl font-bold text-foreground">
-							{t("settings.crop.title")}
-						</DialogTitle>
-						<p className="mt-2 text-sm text-muted-foreground">
-							{t("settings.crop.instruction")}
-						</p>
-					</div>
+			<DialogContent className="flex h-[90vh] max-h-[900px] w-[90vw] max-w-5xl flex-col gap-0 overflow-hidden p-0">
+				<div className="shrink-0 px-6 pb-4 pr-12 pt-6">
+					<DialogTitle className="text-xl font-bold text-foreground">
+						{t("settings.crop.title")}
+					</DialogTitle>
+					<p className="mt-2 text-sm text-muted-foreground">
+						{t("settings.crop.instruction")}
+					</p>
 				</div>
-				<CropControl
-					videoElement={videoElement}
-					cropRegion={cropRegion}
-					onCropChange={setCropRegion}
-					aspectRatio={aspectRatio}
-				/>
-				<div className="mt-6 flex justify-end">
+				<div className="min-h-0 flex-1 px-6 py-2">
+					<CropControl
+						videoElement={videoElement}
+						cropRegion={cropRegion}
+						onCropChange={setCropRegion}
+					/>
+				</div>
+				<div className="flex shrink-0 justify-end border-t border-separator px-6 py-4">
 					<Button onClick={onDone} size="lg">
 						{t("common.actions.done")}
 					</Button>

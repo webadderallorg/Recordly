@@ -466,7 +466,6 @@ export function EditorShell(props: Props) {
 				videoElement={ui.videoPlaybackRef.current?.video ?? null}
 				cropRegion={appearance.cropRegion}
 				setCropRegion={appearance.setCropRegion}
-				aspectRatio={ui.aspectRatio}
 				onCancel={ui.handleCancelCropEditor}
 				onDone={ui.handleCloseCropEditor}
 			/>

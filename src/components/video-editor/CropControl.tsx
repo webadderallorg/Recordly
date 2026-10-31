@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { type AspectRatio } from "@/utils/aspectRatioUtils";
 
 interface CropRegion {
 	x: number; // 0-1 normalized
@@ -13,10 +12,16 @@ interface CropControlProps {
 	videoElement: HTMLVideoElement | null;
 	cropRegion: CropRegion;
 	onCropChange: (region: CropRegion) => void;
-	aspectRatio: AspectRatio;
 }
 
 type DragHandle = "top" | "right" | "bottom" | "left" | null;
+
+function getVideoAspectRatio(videoElement: HTMLVideoElement | null): number {
+	if (!videoElement) return 16 / 9;
+	return videoElement.videoWidth > 0 && videoElement.videoHeight > 0
+		? videoElement.videoWidth / videoElement.videoHeight
+		: 16 / 9;
+}
 
 export function CropControl({ videoElement, cropRegion, onCropChange }: CropControlProps) {
 	const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -24,6 +29,23 @@ export function CropControl({ videoElement, cropRegion, onCropChange }: CropCont
 	const [isDragging, setIsDragging] = useState<DragHandle>(null);
 	const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 	const [initialCrop, setInitialCrop] = useState<CropRegion>(cropRegion);
+	const [videoAspectRatio, setVideoAspectRatio] = useState(() =>
+		getVideoAspectRatio(videoElement),
+	);
+
+	useEffect(() => {
+		const updateVideoAspectRatio = () => {
+			setVideoAspectRatio(getVideoAspectRatio(videoElement));
+		};
+
+		updateVideoAspectRatio();
+		videoElement?.addEventListener("loadedmetadata", updateVideoAspectRatio);
+		videoElement?.addEventListener("resize", updateVideoAspectRatio);
+		return () => {
+			videoElement?.removeEventListener("loadedmetadata", updateVideoAspectRatio);
+			videoElement?.removeEventListener("resize", updateVideoAspectRatio);
+		};
+	}, [videoElement]);
 
 	useEffect(() => {
 		if (!videoElement || !canvasRef.current) return;
@@ -32,9 +54,6 @@ export function CropControl({ videoElement, cropRegion, onCropChange }: CropCont
 		const ctx = canvas.getContext("2d", { alpha: false });
 		if (!ctx) return;
 
-		canvas.width = videoElement.videoWidth || 1920;
-		canvas.height = videoElement.videoHeight || 1080;
-
 		let animationFrameId = 0;
 		let isCancelled = false;
 
@@ -42,6 +61,11 @@ export function CropControl({ videoElement, cropRegion, onCropChange }: CropCont
 			if (isCancelled) {
 				return;
 			}
+
+			const width = videoElement.videoWidth || canvas.width || 1920;
+			const height = videoElement.videoHeight || canvas.height || 1080;
+			if (canvas.width !== width) canvas.width = width;
+			if (canvas.height !== height) canvas.height = height;
 
 			if (videoElement.readyState >= 2) {
 				ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -148,23 +172,19 @@ export function CropControl({ videoElement, cropRegion, onCropChange }: CropCont
 	const cropPixelY = cropRegion.y * 100;
 	const cropPixelWidth = cropRegion.width * 100;
 	const cropPixelHeight = cropRegion.height * 100;
-	const videoAspectRatio = videoElement
-		? videoElement.videoWidth / videoElement.videoHeight
-		: 16 / 9;
-	const isVideoPortrait = videoAspectRatio < 1;
-	const maxContainerWidth = isVideoPortrait ? "40vw" : "75vw";
-	const maxContainerHeight = "75vh";
 
 	return (
-		<div className="w-full p-8">
+		<div
+			className="flex h-full min-h-0 w-full touch-none items-center justify-center p-2"
+			style={{ containerType: "size" }}
+		>
 			<div
 				ref={containerRef}
-				className="relative w-full bg-black rounded-lg overflow-visible cursor-default select-none shadow-2xl"
+				className="relative overflow-visible rounded-lg bg-black shadow-2xl cursor-default select-none"
 				style={{
 					aspectRatio: videoAspectRatio,
-					maxWidth: maxContainerWidth,
-					maxHeight: maxContainerHeight,
-					margin: "0 auto",
+					width: `min(100cqw, calc(100cqh * ${videoAspectRatio}))`,
+					height: `min(100cqh, calc(100cqw / ${videoAspectRatio}))`,
 				}}
 				onPointerMove={handlePointerMove}
 				onPointerUp={handlePointerUp}
