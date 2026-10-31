@@ -3,7 +3,7 @@ import { fixWebmDuration } from "@fix-webm-duration/fix";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { getEffectiveRecordingDurationMs } from "@/lib/mediaTiming";
-import { hasRecordlySession } from "@/lib/auth/recordlyAuth";
+import { hasRecordlySession, recordlyAuthConfigured } from "@/lib/auth/recordlyAuth";
 import {
 	getVideoExtensionForMimeType,
 	isWebmMimeType,
@@ -548,7 +548,9 @@ export function useScreenRecorder(): UseScreenRecorderReturn {
 	}, []);
 
 	const preparePermissions = useCallback(async () => {
-		if (!(await hasRecordlySession().catch(() => false))) {
+		// Local builds without cloud auth can still record; only gate recording on a
+		// session when Recordly Auth is configured.
+		if (recordlyAuthConfigured && !(await hasRecordlySession().catch(() => false))) {
 			await window.electronAPI.showRecordingPermissions();
 			return false;
 		}

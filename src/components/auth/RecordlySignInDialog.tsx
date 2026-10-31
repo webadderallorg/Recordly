@@ -80,8 +80,9 @@ export function RecordlySignInDialog({
 	const awaitingSignIn = useRef(false);
 	const wide = onboarding || variant === "wide";
 	const [showPermissions, setShowPermissions] = useState(false);
-	const requiresSignIn = onboarding && !user;
-	const permissions = onboarding && Boolean(user) && showPermissions;
+	const requiresSignIn = onboarding && configured && !user;
+	const canUseOnboardingPermissions = Boolean(user) || !configured;
+	const permissions = onboarding && canUseOnboardingPermissions && showPermissions;
 	const [email, setEmail] = useState("");
 	const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 	const [busy, setBusy] = useState<string>();
@@ -133,8 +134,8 @@ export function RecordlySignInDialog({
 	}, [open]);
 
 	useEffect(() => {
-		if (open && startWithPermissions && user) setShowPermissions(true);
-	}, [open, startWithPermissions, user]);
+		if (open && startWithPermissions && canUseOnboardingPermissions) setShowPermissions(true);
+	}, [open, startWithPermissions, canUseOnboardingPermissions]);
 
 	useEffect(() => {
 		if (!open) return;
@@ -484,9 +485,11 @@ export function RecordlySignInDialog({
 						{onboarding ? (
 							<OnboardingLayout
 								stage={permissions ? "permissions" : "account"}
-								canViewPermissions={Boolean(user)}
+								canViewPermissions={canUseOnboardingPermissions}
 								onStageChange={(stage) =>
-									setShowPermissions(stage === "permissions" && Boolean(user))
+									setShowPermissions(
+										stage === "permissions" && canUseOnboardingPermissions,
+									)
 								}
 							>
 								<AnimatePresence
@@ -508,7 +511,7 @@ export function RecordlySignInDialog({
 											<OnboardingPermissions
 												onBack={() => setShowPermissions(false)}
 												onFinish={() => {
-													if (user) onAuthenticated();
+													if (user || !configured) onAuthenticated();
 												}}
 											/>
 										) : (
