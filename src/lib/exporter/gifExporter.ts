@@ -23,6 +23,7 @@ import type {
 	GIF_SIZE_PRESETS,
 	GifFrameRate,
 	GifQualityPreset,
+	GifQualitySettings,
 	GifSizePreset,
 } from "./types";
 import { GIF_QUALITY_PRESETS, isValidGifQualityPreset } from "./types";
@@ -196,9 +197,19 @@ export function buildGifFrameRendererConfig(
 	};
 }
 
-export function getGifQuality(qualityPreset: unknown): number {
+export function getGifQualitySettings(qualityPreset: unknown): GifQualitySettings {
 	const preset = isValidGifQualityPreset(qualityPreset) ? qualityPreset : "balanced";
-	return GIF_QUALITY_PRESETS[preset].quality;
+	return GIF_QUALITY_PRESETS[preset];
+}
+
+export function reduceGifColorDepth(pixels: Uint8ClampedArray, colorBits: number) {
+	const shift = 8 - colorBits;
+	const scale = 255 / (255 >> shift);
+	for (let offset = 0; offset < pixels.length; offset += 4) {
+		pixels[offset] = (pixels[offset] >> shift) * scale;
+		pixels[offset + 1] = (pixels[offset + 1] >> shift) * scale;
+		pixels[offset + 2] = (pixels[offset + 2] >> shift) * scale;
+	}
 }
 
 export class GifExporter {
@@ -242,16 +253,17 @@ export class GifExporter {
 			const cores = navigator.hardwareConcurrency || 4;
 			const WORKER_COUNT = Math.max(1, Math.min(8, cores - 1));
 
+			const { quality, dither } = getGifQualitySettings(this.config.qualityPreset);
 			this.gif = new GIF({
 				workers: WORKER_COUNT,
-				quality: getGifQuality(this.config.qualityPreset),
+				quality,
 				width: this.config.width,
 				height: this.config.height,
 				workerScript: GIF_WORKER_URL,
 				repeat,
 				background: "#000000",
 				transparent: null,
-				dither: "FloydSteinberg",
+				dither,
 			});
 
 			// Calculate effective duration and frame count (excluding trim regions)
@@ -358,7 +370,16 @@ export class GifExporter {
 
 	private addRenderedGifFrame(frameDelay: number) {
 		const canvas = this.renderer!.getCanvas();
-		this.gif!.addFrame(canvas, { delay: frameDelay, copy: true });
+		const { colorBits } = getGifQualitySettings(this.config.qualityPreset);
+		const context = colorBits < 8 ? canvas.getContext("2d") : null;
+		if (!context) {
+			this.gif!.addFrame(canvas, { delay: frameDelay, copy: true });
+			return;
+		}
+
+		const frame = context.getImageData(0, 0, canvas.width, canvas.height);
+		reduceGifColorDepth(frame.data, colorBits);
+		this.gif!.addFrame(frame, { delay: frameDelay });
 	}
 
 	private reportProgress(currentFrame: number, totalFrames: number) {

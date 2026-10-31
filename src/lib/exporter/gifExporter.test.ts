@@ -1,25 +1,29 @@
+import { createRequire } from "node:module";
 import * as fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const gifMockState = vi.hoisted(() => ({
+	addFrameCalls: [] as Array<{ image: unknown; options: unknown }>,
+	canvas: {} as unknown,
 	constructorOptions: [] as Array<Record<string, unknown>>,
+	decodedFrames: 0,
 }));
 
 vi.mock("gif.js", () => ({
 	default: vi.fn((options: Record<string, unknown>) => {
 		gifMockState.constructorOptions.push(options);
 		const handlers = new Map<string, (value: Blob | number) => void>();
-		const quality = typeof options.quality === "number" ? options.quality : 10;
 
 		return {
-			addFrame: vi.fn(),
+			addFrame: vi.fn((image: unknown, frameOptions: unknown) => {
+				gifMockState.addFrameCalls.push({ image, options: frameOptions });
+			}),
 			abort: vi.fn(),
 			on: vi.fn((event: string, handler: (value: Blob | number) => void) => {
 				handlers.set(event, handler);
 			}),
 			render: vi.fn(() => {
-				const size = Math.max(1, 21 - quality);
-				handlers.get("finished")?.(new Blob(["x".repeat(size)], { type: "image/gif" }));
+				handlers.get("finished")?.(new Blob(["x"], { type: "image/gif" }));
 			}),
 		};
 	}),
@@ -28,7 +32,7 @@ vi.mock("gif.js", () => ({
 vi.mock("./frameRenderer", () => ({
 	FrameRenderer: vi.fn(() => ({
 		destroy: vi.fn(),
-		getCanvas: vi.fn(() => ({})),
+		getCanvas: vi.fn(() => gifMockState.canvas),
 		initialize: vi.fn(),
 		renderFrame: vi.fn(),
 	})),
@@ -37,7 +41,23 @@ vi.mock("./frameRenderer", () => ({
 vi.mock("./streamingDecoder", () => ({
 	StreamingVideoDecoder: vi.fn(() => ({
 		cancel: vi.fn(),
-		decodeAll: vi.fn(),
+		decodeAll: vi.fn(
+			async (
+				_frameRate: number,
+				_trimRegions: unknown,
+				_speedRegions: unknown,
+				onFrame: (
+					videoFrame: unknown,
+					exportTimestampUs: number,
+					sourceTimestampMs: number,
+					cursorTimestampMs: number,
+				) => Promise<void>,
+			) => {
+				for (let frame = 0; frame < gifMockState.decodedFrames; frame++) {
+					await onFrame({}, 0, 0, 0);
+				}
+			},
+		),
 		destroy: vi.fn(),
 		getEffectiveDuration: vi.fn(() => 0),
 		loadMetadata: vi.fn(() => Promise.resolve({ width: 2, height: 2, duration: 2 })),
@@ -47,11 +67,62 @@ vi.mock("./streamingDecoder", () => ({
 import {
 	buildGifFrameRendererConfig,
 	calculateOutputDimensions,
-	getGifQuality,
+	getGifQualitySettings,
 	getGifRepeat,
 	GifExporter,
+	reduceGifColorDepth,
 } from "./gifExporter";
-import { GIF_SIZE_PRESETS, type GifSizePreset } from "./types";
+import {
+	GIF_QUALITY_PRESETS,
+	GIF_SIZE_PRESETS,
+	type GifQualityPreset,
+	type GifSizePreset,
+} from "./types";
+
+// gif.js is mocked above; this is the real encoder its workers run.
+const RealGifEncoder = createRequire(import.meta.url)("gif.js/src/GIFEncoder.js");
+
+function createNoisyGradientFrame(width: number, height: number) {
+	const pixels = new Uint8ClampedArray(width * height * 4);
+	let seed = 1;
+	for (let offset = 0; offset < pixels.length; offset += 4) {
+		const pixel = offset / 4;
+		const x = pixel % width;
+		const y = Math.floor(pixel / width);
+		seed = (seed * 1103515245 + 12345) % 2147483648;
+		const noise = (seed % 9) - 4;
+		pixels[offset] = (x / width) * 255 + noise;
+		pixels[offset + 1] = (y / height) * 255 + noise;
+		pixels[offset + 2] = ((x + y) / (width + height)) * 255 + noise;
+		pixels[offset + 3] = 255;
+	}
+	return pixels;
+}
+
+function encodeWithRealGifEncoder(
+	source: Uint8ClampedArray,
+	width: number,
+	height: number,
+	preset: GifQualityPreset,
+) {
+	const { quality, dither, colorBits } = GIF_QUALITY_PRESETS[preset];
+	const pixels = source.slice();
+	if (colorBits < 8) {
+		reduceGifColorDepth(pixels, colorBits);
+	}
+
+	const encoder = new RealGifEncoder(width, height);
+	encoder.writeHeader();
+	encoder.setRepeat(0);
+	encoder.setDelay(66);
+	encoder.setQuality(quality);
+	encoder.setDither(dither);
+	encoder.addFrame(pixels);
+	encoder.finish();
+
+	const stream = encoder.stream();
+	return (stream.pages.length - 1) * stream.constructor.pageSize + stream.cursor;
+}
 
 type GifExporterTestConfig = ConstructorParameters<typeof GifExporter>[0];
 
@@ -90,7 +161,10 @@ function createGifExporterConfig(
  */
 describe("GIF Exporter", () => {
 	beforeEach(() => {
+		gifMockState.addFrameCalls = [];
+		gifMockState.canvas = {};
 		gifMockState.constructorOptions = [];
+		gifMockState.decodedFrames = 0;
 		vi.stubGlobal("navigator", { hardwareConcurrency: 4 });
 	});
 
@@ -132,33 +206,87 @@ describe("GIF Exporter", () => {
 	});
 
 	describe("GIF quality preset mapping", () => {
-		it("should pass the small preset quality to gif.js", async () => {
+		it("should pass the small preset settings to gif.js", async () => {
 			await new GifExporter(createGifExporterConfig({ qualityPreset: "small" })).export();
 
-			expect(gifMockState.constructorOptions.at(-1)).toMatchObject({ quality: 20 });
+			expect(gifMockState.constructorOptions.at(-1)).toMatchObject({
+				quality: 20,
+				dither: false,
+			});
 		});
 
-		it("should default to balanced quality when qualityPreset is omitted", async () => {
+		it("should default to balanced settings when qualityPreset is omitted", async () => {
 			await new GifExporter(createGifExporterConfig()).export();
 
-			expect(gifMockState.constructorOptions.at(-1)).toMatchObject({ quality: 10 });
+			expect(gifMockState.constructorOptions.at(-1)).toMatchObject({
+				quality: 10,
+				dither: "FloydSteinberg",
+			});
 		});
 
-		it("should fall back to balanced quality for unknown quality presets", () => {
-			expect(getGifQuality("future")).toBe(10);
+		it("should fall back to balanced settings for unknown quality presets", () => {
+			expect(getGifQualitySettings("future")).toBe(GIF_QUALITY_PRESETS.balanced);
 		});
 
-		it("should produce a smaller blob for the small preset than the high preset", async () => {
-			const highResult = await new GifExporter(
-				createGifExporterConfig({ qualityPreset: "high" }),
-			).export();
-			const smallResult = await new GifExporter(
-				createGifExporterConfig({ qualityPreset: "small" }),
-			).export();
+		it("should add canvas frames unchanged for the balanced preset", async () => {
+			gifMockState.decodedFrames = 1;
+			const canvas = { width: 2, height: 2, getContext: vi.fn() };
+			gifMockState.canvas = canvas;
 
-			expect(highResult.success).toBe(true);
-			expect(smallResult.success).toBe(true);
-			expect(smallResult.blob?.size).toBeLessThan(highResult.blob?.size ?? 0);
+			await new GifExporter(createGifExporterConfig({ qualityPreset: "balanced" })).export();
+
+			expect(canvas.getContext).not.toHaveBeenCalled();
+			expect(gifMockState.addFrameCalls).toEqual([
+				{ image: canvas, options: expect.objectContaining({ copy: true }) },
+			]);
+		});
+
+		it("should add color-reduced frames for the small preset", async () => {
+			gifMockState.decodedFrames = 1;
+			const frame = { data: new Uint8ClampedArray([255, 123, 7, 200]) };
+			gifMockState.canvas = {
+				width: 1,
+				height: 1,
+				getContext: vi.fn(() => ({ getImageData: vi.fn(() => frame) })),
+			};
+
+			await new GifExporter(createGifExporterConfig({ qualityPreset: "small" })).export();
+
+			expect(gifMockState.addFrameCalls).toHaveLength(1);
+			expect(gifMockState.addFrameCalls[0].image).toBe(frame);
+			expect([...frame.data]).toEqual([255, 123, 0, 200]);
+		});
+
+		it("should encode a smaller file for the small preset with the real encoder", () => {
+			const width = 160;
+			const height = 90;
+			const source = createNoisyGradientFrame(width, height);
+
+			const balancedSize = encodeWithRealGifEncoder(source, width, height, "balanced");
+			const smallSize = encodeWithRealGifEncoder(source, width, height, "small");
+
+			expect(smallSize).toBeLessThan(balancedSize * 0.8);
+		});
+	});
+
+	describe("reduceGifColorDepth", () => {
+		it("should keep black, white, and alpha while reducing channel levels", () => {
+			const pixels = new Uint8ClampedArray([0, 255, 8, 17]);
+
+			reduceGifColorDepth(pixels, 5);
+
+			expect([...pixels]).toEqual([0, 255, 8, 17]);
+		});
+
+		it("should map every channel value onto the reduced level count", () => {
+			const levels = new Set<number>();
+			for (let value = 0; value < 256; value++) {
+				const pixels = new Uint8ClampedArray([value, value, value, 255]);
+				reduceGifColorDepth(pixels, 5);
+				levels.add(pixels[0]);
+			}
+
+			expect(levels.size).toBe(32);
 		});
 	});
 

@@ -30,6 +30,7 @@ export type {
 	GifExportConfig,
 	GifFrameRate,
 	GifQualityPreset,
+	GifQualitySettings,
 	GifSizePreset,
 	VideoFrameData,
 } from "./types";

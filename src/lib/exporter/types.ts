@@ -219,10 +219,20 @@ export const GIF_SIZE_PRESETS: Record<GifSizePreset, { maxHeight: number; label:
 	original: { maxHeight: Infinity, label: "Original" },
 };
 
-export const GIF_QUALITY_PRESETS: Record<GifQualityPreset, { quality: number; label: string }> = {
-	high: { quality: 1, label: "High" },
-	balanced: { quality: 10, label: "Balanced" },
-	small: { quality: 20, label: "Small file" },
+export interface GifQualitySettings {
+	quality: number;
+	dither: "FloydSteinberg" | false;
+	colorBits: number;
+	label: string;
+}
+
+// gif.js `quality` only sets the palette sample interval, which barely changes file size.
+// The small preset shrinks output by reducing color depth and skipping dither instead, so
+// the frames compress better under LZW.
+export const GIF_QUALITY_PRESETS: Record<GifQualityPreset, GifQualitySettings> = {
+	high: { quality: 1, dither: "FloydSteinberg", colorBits: 8, label: "High" },
+	balanced: { quality: 10, dither: "FloydSteinberg", colorBits: 8, label: "Balanced" },
+	small: { quality: 20, dither: false, colorBits: 5, label: "Small file" },
 };
 
 export const GIF_FRAME_RATES: { value: GifFrameRate; label: string }[] = [
